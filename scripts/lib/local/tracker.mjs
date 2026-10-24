@@ -14,6 +14,7 @@ import {
   HEALTH, epicFrontmatter, parseEpicFile, parseUpdateFile, serializeEpic, serializeUpdate, sortEpics, sortUpdates, walkParents,
 } from './epics.mjs'
 import { parseIssueFile, serializeIssue, toFrontmatter } from './issue-file.mjs'
+import { buildCapabilities } from '../capabilities.mjs'
 import { lastEntry } from '../metrics.mjs'
 import { checkFilter, runQuery } from './query.mjs'
 import {
@@ -471,6 +472,22 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     return grouped
   }
 
+  function discover() {
+    return {
+      statuses: Object.keys(local.statuses).map(statusOf),
+      types: local.types,
+      priorities: local.priorities,
+      labels: local.labels,
+      members: Object.keys(local.members).sort().map((id) => ({ id, name: local.members[id].name, email: local.members[id].email, availability: local.members[id].availability })),
+      estimate: local.estimate,
+    }
+  }
+
+  function capabilities() {
+    const gitHost = config.pmkit.git_host?.system ?? 'none'
+    return { tracker: 'local', gitHost, generatedAt: stamp(), capabilities: buildCapabilities({ estimate: local.estimate, gitHost }) }
+  }
+
   function comment(id, body, actor, { dryRun = false } = {}) {
     if (typeof body !== 'string' || body.trim() === '') throw invalid('comment body must be a non-empty string')
     let written
@@ -673,7 +690,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
     comment, listComments, getHistory, logTime,
-    categoryOf, eventsByIssue, metricEvents, issuesBySprint,
+    discover, capabilities, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
     listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity,
   }
 }
