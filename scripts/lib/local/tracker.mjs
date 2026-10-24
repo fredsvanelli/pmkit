@@ -14,6 +14,7 @@ import {
   HEALTH, epicFrontmatter, parseEpicFile, parseUpdateFile, serializeEpic, serializeUpdate, sortEpics, sortUpdates, walkParents,
 } from './epics.mjs'
 import { parseIssueFile, serializeIssue, toFrontmatter } from './issue-file.mjs'
+import { lastEntry } from '../metrics.mjs'
 import { checkFilter, runQuery } from './query.mjs'
 import {
   SPRINT_STATES, addDays, overlaps, readSprint, readSprints, requireCapacity, serializeSprint, validDate,
@@ -437,6 +438,39 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     }
   }
 
+  const categoryOf = (name) => local.statuses[name]?.category ?? null
+
+  /** Every readable event log, keyed by issue id. Archived and unparseable issues count. */
+  function eventsByIssue() {
+    const result = {}
+    for (const id of listIssueIds(issuesDir, local.id_prefix)) {
+      const { events } = readEvents(issuePaths(issuesDir, id).events)
+      if (events.length > 0) result[id] = events
+    }
+    return result
+  }
+
+  /** Every issue's events in the range, tagged with the issue id and sorted by `at`. A date-only `until` includes that day. */
+  function metricEvents({ since, until } = {}) {
+    const last = until !== undefined && !until.includes('T') ? `${until}T23:59:59Z` : until
+    return Object.entries(eventsByIssue())
+      .flatMap(([issue, events]) => events.map((event) => ({ ...event, issue })))
+      .filter((event) => (since === undefined || event.at >= since) && (last === undefined || event.at <= last))
+      .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))
+  }
+
+  /** The `issuesBySprint` input of `velocity`: issues grouped by their current sprint, with the time they last reached a done status. */
+  function issuesBySprint() {
+    const logs = eventsByIssue()
+    const grouped = {}
+    for (const issue of scanIssues()) {
+      if (!issue.sprint) continue
+      const doneAt = lastEntry(logs[issue.id] ?? [], 'done', categoryOf)
+      ;(grouped[issue.sprint] ??= []).push({ id: issue.id, estimate: issue.estimate, status: issue.status.name, doneAt })
+    }
+    return grouped
+  }
+
   function comment(id, body, actor, { dryRun = false } = {}) {
     if (typeof body !== 'string' || body.trim() === '') throw invalid('comment body must be a non-empty string')
     let written
@@ -639,6 +673,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
     comment, listComments, getHistory, logTime,
+    categoryOf, eventsByIssue, metricEvents, issuesBySprint,
     listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity,
   }
 }
