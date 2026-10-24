@@ -431,14 +431,17 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   function relate(op, from, to, kind, actor, { dryRun = false } = {}) {
     requireWriter(actor)
     if (!LINK_KINDS.includes(kind)) throw invalid(`kind must be one of ${LINK_KINDS.join(', ')}`)
-    const a = knownIssue(from)
-    const b = knownIssue(to)
+    // Unlinking needs only the issue whose file changes, so a reference to a missing issue can be removed.
+    const exists = (id) => isId(id, local.id_prefix) && fs.existsSync(issuePaths(issuesDir, id).file)
+    const keep = op === 'unlink'
+    const a = keep && kind === 'blocks' && !exists(from) ? from : knownIssue(from)
+    const b = keep && kind !== 'blocks' && !exists(to) ? to : knownIssue(to)
     if (a === b) throw invalid(`${a} cannot be linked to itself`)
     const { field, prop } = LINKS[kind]
     const options = { dryRun }
     if (kind === 'blocks') {
       const all = scanIssues()
-      const before = withComputed(all.find((issue) => issue.id === a), all)
+      const before = withComputed(all.find((issue) => issue.id === a) ?? { ...all.find((issue) => issue.id === b), blocks: [] }, all)
       const closing = op === 'link' ? blockPath(b, a, all) : null
       if (closing) throw invalid(`${a} blocks ${b} would close a cycle: ${[a, ...closing].join(' → ')}`)
       const written = change(b, actor, options, listEdit(op, prop, field, a))
@@ -448,6 +451,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     }
     const result = change(a, actor, options, listEdit(op, prop, field, b))
     if (kind !== 'related') return result
+    if (!exists(b)) return result
     return { ...result, other: change(b, actor, options, listEdit(op, prop, field, a)) }
   }
 

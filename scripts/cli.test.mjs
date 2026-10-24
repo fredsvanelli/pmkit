@@ -559,3 +559,33 @@ test('docs read refuses a path outside the docs folder', () => {
   assert.equal(result.status, 2)
   assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT')
 })
+
+function fixConfig(root) {
+  const file = path.join(root, '.issues/config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/stale_days:.*/, 'stale_days: 60'))
+}
+
+test('unlink removes a reference to a missing issue, and link still needs both issues', () => {
+  const root = makeRepo('broken')
+  fixConfig(root)
+  const link = (...args) => run(root, ['issues', 'link', ...args], { env: { PMKIT_USER: 'fred' } })
+  const bad = link('ISS-4REF', 'ISS-9ZZZ', '--kind', 'related')
+  assert.equal(bad.status, 2)
+  assert.match(bad.stdout + bad.stderr, /ISS-9ZZZ does not exist/)
+  const ok = link('ISS-9ZZZ', 'ISS-4REF', '--kind', 'blocks', '--remove')
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr)
+  assert.doesNotMatch(fs.readFileSync(path.join(root, '.issues/issues/ISS-4REF/issue.md'), 'utf8'), /ISS-9ZZZ/)
+})
+
+test('unlink related and duplicate remove a missing target', () => {
+  const root = makeRepo('broken')
+  fixConfig(root)
+  const file = path.join(root, '.issues/issues/ISS-4REF/issue.md')
+  const text = fs.readFileSync(file, 'utf8')
+  fs.writeFileSync(file, text.replace('blocked_by: [ISS-9ZZZ]', 'blocked_by: []\nrelated: [ISS-9ZZZ]\nduplicate_of: [ISS-9ZZY]'))
+  for (const [target, kind] of [['ISS-9ZZZ', 'related'], ['ISS-9ZZY', 'duplicate']]) {
+    const res = run(root, ['issues', 'link', 'ISS-4REF', target, '--kind', kind, '--remove'], { env: { PMKIT_USER: 'fred' } })
+    assert.equal(res.status, 0, res.stdout + res.stderr)
+  }
+  assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /ISS-9ZZ/)
+})
