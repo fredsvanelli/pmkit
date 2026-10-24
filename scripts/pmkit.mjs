@@ -160,6 +160,7 @@ function writeText(result, { dryRun, record = issueRecord, header }) {
 }
 
 const issueWrite = (ctx, result, id = result.after.id) => ({ data: result, text: writeText(result, ctx), commit: id })
+const problemLine = (problem) => `${problem.id}: ${problem.code} ${problem.message}`
 
 // Command table. `run` returns { data, text, commit }: the JSON value, the plain text and, for a write, the id for the commit message.
 export const COMMANDS = [
@@ -202,7 +203,7 @@ export const COMMANDS = [
     flags: ['text', 'category', 'type', 'assignee', 'label', 'sprint', 'parent', 'blocked', 'updated-before', 'updated-after', 'sort', 'limit', 'archived'],
     run: (ctx) => {
       const found = ctx.tracker().searchIssues(issueFilter(ctx))
-      const warnings = found.problems.map((p) => `${p.id}: ${p.code} ${p.message}`)
+      const warnings = found.problems.map(problemLine)
       return { data: found, text: issueTable(found.issues, { sprint: ctx.opt('sprint') === undefined }), warnings }
     },
   },
@@ -251,7 +252,7 @@ export const COMMANDS = [
     run: (ctx) => issueWrite(ctx, ctx.tracker().moveToCategory(ctx.args[0], ctx.args[1], ctx.actor(), { status: ctx.opt('status'), dryRun: ctx.dryRun })),
   },
   {
-    name: 'issues assign', summary: 'assigns', usage: '<id> <member|none>', write: true, args: ['id', 'member'], flags: [],
+    name: 'issues assign', summary: 'assigns', usage: '<id> <member|me|none>', write: true, args: ['id', 'member'], flags: [],
     run: (ctx) => issueWrite(ctx, ctx.tracker().assign(ctx.args[0], ctx.args[1] === 'none' ? null : ctx.args[1], ctx.actor(), { dryRun: ctx.dryRun })),
   },
   {
@@ -325,16 +326,18 @@ export const COMMANDS = [
     run: (ctx) => {
       const result = ctx.tracker().closeCycle(ctx.args[0], ctx.actor(), { dryRun: ctx.dryRun })
       const head = `${result.sprint.id}  ${result.sprint.name}\nstate: active → closed\nunfinished issues:\n${issueTable(result.unfinished)}`
-      return { data: result, text: writeText(null, { dryRun: ctx.dryRun, header: head }), commit: result.sprint.id }
+      const warnings = result.problems.map(problemLine)
+      return { data: result, text: writeText(null, { dryRun: ctx.dryRun, header: head }), commit: result.sprint.id, warnings }
     },
   },
   {
-    name: 'cycle add', summary: 'moves issues into or out of a sprint', usage: '<id...> --to <sprint|none>', write: true, rest: 'id', flags: ['to'],
+    name: 'cycle add', summary: 'moves issues into or out of a sprint', usage: '<id...> --to <sprint|current|none>', write: true, rest: 'id', flags: ['to'],
     run: (ctx) => {
       if (ctx.opt('to') === undefined) throw usageError('cycle add needs --to', 'Use --to <sprint> or --to none')
       const to = ctx.opt('to') === 'none' ? null : ctx.opt('to')
       const result = ctx.tracker().moveToCycle(ctx.args, to, ctx.actor(), { dryRun: ctx.dryRun })
-      return { data: result, text: writeText(result, ctx), commit: to ?? ctx.args.join(' ') }
+      const sprint = to === null ? undefined : result[0].after.sprint
+      return { data: result, text: writeText(result, ctx), commit: sprint ?? ctx.args.join(' ') }
     },
   },
   {

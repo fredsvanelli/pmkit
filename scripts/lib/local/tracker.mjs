@@ -371,8 +371,10 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     })
   }
 
-  function assign(id, member, actor, { dryRun } = {}) {
+  /** `member` is a member id, `me` for the actor, or null to unassign. */
+  function assign(id, who, actor, { dryRun } = {}) {
     requireWriter(actor)
+    const member = who === 'me' ? actor : who
     if (member !== null) requireMember(member, 'assignee')
     return change(id, actor, { dryRun }, (issue, meta, before) => {
       if ((before.assignee ?? null) === member) return []
@@ -619,15 +621,19 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     requireWriter(actor)
     const before = getSprint(id)
     if (before.state !== 'active') throw invalid(`sprint ${before.id} is not active (it is ${before.state})`, 'pmkit cycle list')
+    // An issue that does not parse may belong to the sprint, so it is reported rather than left out silently.
+    const { issues, problems } = searchIssues({ sprint: before.id })
     const { after } = writeSprint(before, { ...before, state: 'closed' }, { dryRun })
-    const unfinished = cycleIssues(before.id).filter((issue) => !TERMINAL.includes(issue.status.category))
-    return { sprint: after, unfinished }
+    return { sprint: after, unfinished: issues.filter((issue) => !TERMINAL.includes(issue.status.category)), problems }
   }
 
-  function moveToCycle(ids, sprint, actor, { dryRun = false } = {}) {
+  /** `to` is a sprint id, `current` for the active sprint, or null to take the issues out of their sprint. */
+  function moveToCycle(ids, to, actor, { dryRun = false } = {}) {
     requireWriter(actor)
     if (!Array.isArray(ids) || ids.length === 0) throw invalid('ids must be a non-empty list')
     const known = ids.map(knownIssue)
+    const sprint = to === 'current' ? activeSprintId() : to
+    if (sprint === null && to === 'current') throw invalid('there is no active sprint', 'pmkit cycle list')
     if (sprint !== null) getSprint(sprint)
     return known.map((id) => updateIssue(id, { sprint }, actor, { dryRun }))
   }
@@ -653,12 +659,21 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
 
   const getDeliverable = (id) => readEpic(id).epic
 
+  /** Every epic that parses. An epic file that does not parse is skipped, as searchIssues skips a bad issue. */
   function listDeliverables() {
     if (!fs.existsSync(epicsDir)) return []
     const ids = fs.readdirSync(epicsDir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && isId(entry.name, local.epic_prefix) && fs.existsSync(path.join(epicsDir, entry.name, 'epic.md')))
       .map((entry) => entry.name)
-    return sortEpics(ids.map(getDeliverable))
+    const epics = []
+    for (const id of ids) {
+      try {
+        epics.push(getDeliverable(id))
+      } catch (error) {
+        if (!(error instanceof PmkitError)) throw error
+      }
+    }
+    return sortEpics(epics)
   }
 
   function createDeliverable(input, actor, { dryRun = false } = {}) {

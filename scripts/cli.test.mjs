@@ -500,3 +500,21 @@ test('issues list with a misspelled filter value exits 2 instead of printing no 
     assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT')
   }
 })
+
+test('cycle close prints the unreadable issues as warnings', () => {
+  const result = run(makeRepo('team'), ['cycle', 'close', '2026-10-12'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stderr, /^warning: ISS-3Q6T: CONFLICT /m)
+})
+
+test('issues assign <id> me assigns the actor and cycle add --to current uses the active sprint', () => {
+  const root = makeRepo('team')
+  assert.equal(json(root, ['issues', 'assign', 'ISS-3F7H', 'me']).after.assignee, 'fred')
+  assert.equal(json(root, ['issues', 'assign', 'ISS-3F7H', 'me', '--as', 'ana']).after.assignee, 'ana')
+  assert.equal(json(root, ['cycle', 'add', 'ISS-3F7H', '--to', 'current'])[0].after.sprint, '2026-10-12')
+  const empty = makeRepo('basic')
+  const { after } = json(empty, ['issues', 'create', '--title', 'First'])
+  const none = run(empty, ['cycle', 'add', after.id, '--to', 'current', '--json'])
+  assert.equal(none.status, 2)
+  assert.equal(JSON.parse(none.stdout).error.code, 'INVALID_INPUT')
+})

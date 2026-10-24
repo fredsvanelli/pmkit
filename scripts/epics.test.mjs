@@ -197,3 +197,11 @@ test('publishStatusUpdate refuses a body that would not read back and writes not
   )
   assert.equal(hashTree(root), hash)
 })
+
+test('listDeliverables skips an epic whose file does not parse', () => {
+  const { tracker, issuesDir } = setup()
+  const kept = tracker.createDeliverable({ title: 'Kept' }, 'fred').after.id
+  const broken = tracker.createDeliverable({ title: 'Broken' }, 'fred').after.id
+  fs.writeFileSync(path.join(epicDir(issuesDir, broken), 'epic.md'), 'no frontmatter here\n')
+  assert.deepEqual(tracker.listDeliverables().map((epic) => epic.id), [kept])
+})

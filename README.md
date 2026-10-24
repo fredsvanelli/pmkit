@@ -21,7 +21,7 @@ Run `node pmkit/scripts/pmkit.mjs <command>`. Every command takes `--json` and `
 | `issues create` | creates an issue |
 | `issues update <id>` | edits fields and acceptance criteria |
 | `issues move <id> <category>` | changes status by category |
-| `issues assign <id> <member\|none>` | assigns an issue |
+| `issues assign <id> <member\|me\|none>` | assigns an issue; `me` is the actor |
 | `issues link <from> <to> --kind blocks\|related\|duplicate` | links or unlinks (`--remove`) two issues |
 | `issues parent <id> <parent\|none>` | sets the parent |
 | `issues comment <id> --body-file f` | adds a comment |
@@ -31,8 +31,8 @@ Run `node pmkit/scripts/pmkit.mjs <command>`. Every command takes `--json` and `
 | `cycle current` | prints the active sprint |
 | `cycle issues <id>` | lists the issues of a sprint |
 | `cycle open --start d` | opens a sprint; the end defaults from `sprint_length_days` |
-| `cycle close <id>` | closes a sprint and prints the unfinished issues |
-| `cycle add <id...> --to <sprint\|none>` | moves issues into or out of a sprint |
+| `cycle close <id>` | closes a sprint and prints the unfinished issues, with a warning for each issue file it could not read |
+| `cycle add <id...> --to <sprint\|current\|none>` | moves issues into or out of a sprint; `current` is the active sprint |
 | `cycle capacity <id>` | reads or sets capacity (`--set member=n,..`) |
 | `epic list` | lists epics |
 | `epic get <id>` | shows one epic |

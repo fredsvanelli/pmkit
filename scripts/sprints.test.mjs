@@ -295,3 +295,9 @@ test('a hand-added key in a sprint file survives the next write', () => {
   assert.equal(read('2026-10-12').retro, '2026-10-26')
   assert.deepEqual(read('2026-10-12').capacity, { fred: 5 })
 })
+
+test('closeCycle reports the issues it could not read as problems', () => {
+  const { tracker } = setup()
+  const result = tracker.closeCycle('2026-10-12', 'fred')
+  assert.deepEqual(result.problems.map((problem) => [problem.id, problem.code]), [['ISS-3Q6T', 'CONFLICT']])
+})
