@@ -60,14 +60,27 @@ function parseFlow(text, lineNo) {
     }
     return text.slice(start, i)
   }
-  // A flow key ends at a colon followed by a space, a comma, a closing brace or the end.
+  // A flow key ends at the first colon followed by whitespace, a comma, a closing brace
+  // or the end of its entry. An entry without one ends its key at its first colon.
   const readKey = () => {
     const start = i
-    while (i < text.length && !',}'.includes(text[i])) {
-      if (text[i] === ':' && (i + 1 >= text.length || /[\s,}]/.test(text[i + 1]))) break
-      i++
+    const colons = []
+    let depth = 0
+    let quote = null
+    let end = start
+    for (; end < text.length; end++) {
+      const char = text[end]
+      if (quote) {
+        if (char === quote) quote = null
+      } else if (char === '"' || char === "'") quote = char
+      else if (char === '[' || char === '{') depth++
+      else if (depth > 0 && (char === ']' || char === '}')) depth--
+      else if (depth === 0 && (char === ',' || char === '}')) break
+      else if (depth === 0 && char === ':') colons.push(end)
     }
-    return text.slice(start, i)
+    const colon = colons.find((at) => at + 1 >= end || /[\s,}]/.test(text[at + 1])) ?? colons[0] ?? end
+    i = colon
+    return text.slice(start, colon)
   }
   const quoted = () => {
     const quote = text[i++]

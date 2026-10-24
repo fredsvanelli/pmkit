@@ -199,3 +199,14 @@ test('stringifyYaml writes keys with a colon plain and they round-trip', () => {
   assert.deepEqual(parseYaml(text), object)
   assert.deepEqual(parseYaml(stringifyYaml({ m: { 'agent:claude': 1 } })), { m: { 'agent:claude': 1 } })
 })
+
+test('flow-map entries without a space after the colon still parse', () => {
+  assert.deepEqual(parseYaml('m: { a:1 }\n'), { m: { a: 1 } })
+  assert.deepEqual(parseYaml('m: { a:[1] }\n'), { m: { a: [1] } })
+  assert.deepEqual(parseYaml('m: { a:[1, 2] }\n'), { m: { a: [1, 2] } })
+  assert.deepEqual(parseYaml('m: { a:"x" }\n'), { m: { a: 'x' } })
+  assert.deepEqual(parseYaml('m: { a:1, b: 2 }\n'), { m: { a: 1, b: 2 } })
+  assert.deepEqual(parseYaml('m: { fred: 8, agent:claude: 5 }\n'), { m: { fred: 8, 'agent:claude': 5 } })
+  assert.deepEqual(parseYaml('m: { agent:claude: 5 }\n'), { m: { 'agent:claude': 5 } })
+  assert.deepEqual(parseYaml('m: { a:"x: y" }\n'), { m: { a: 'x: y' } })
+})
