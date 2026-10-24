@@ -333,3 +333,46 @@ test('a hand-added frontmatter key survives the next write and causes no drift',
   assert.deepEqual(tracker.getIssue(id).extra, { team: 'payments' })
   assert.equal(rawEvents(id).filter((event) => event.synthetic).length, 0)
 })
+
+test('with a config that fails validation, reads work and every write refuses with the first problem', () => {
+  const { root, issuesDir } = setup()
+  let counter = 0
+  const before = createLocalTracker(root, { now: () => new Date(NOW), random: (n) => counter++ % n })
+  const { id } = before.createIssue({ title: 'First' }, 'fred').after
+  const other = before.createIssue({ title: 'Second' }, 'fred').after.id
+  before.openCycle({ start: '2026-10-19' }, 'fred')
+  const epic = before.createDeliverable({ title: 'E' }, 'fred').after.id
+  const configFile = path.join(issuesDir, 'config.yaml')
+  fs.writeFileSync(configFile, fs.readFileSync(configFile, 'utf8').replace('canceled: { category: canceled }', 'canceled: { category: cancelled }'))
+  const tracker = createLocalTracker(root, { now: () => new Date(NOW), random: scriptedRandom([7, 7, 7, 7]) })
+
+  assert.equal(tracker.getIssue(id).title, 'First')
+  assert.equal(tracker.searchIssues({}).issues.length, 2)
+  assert.equal(tracker.listCycles().length, 1)
+
+  const hash = hashTree(root)
+  const refused = (error) => error.code === 'INVALID_INPUT' &&
+    error.message.includes('status canceled: unknown category cancelled') && error.nextStep === 'pmkit validate'
+  const writes = {
+    createIssue: () => tracker.createIssue({ title: 'Third' }, 'fred'),
+    updateIssue: () => tracker.updateIssue(id, { title: 'Renamed' }, 'fred'),
+    moveToCategory: () => tracker.moveToCategory(id, 'done', 'fred'),
+    assign: () => tracker.assign(id, 'fred', 'fred'),
+    archive: () => tracker.archive(id, 'fred'),
+    link: () => tracker.link(id, other, 'related', 'fred'),
+    unlink: () => tracker.unlink(id, other, 'related', 'fred'),
+    setParent: () => tracker.setParent(id, other, 'fred'),
+    comment: () => tracker.comment(id, 'Hi', 'fred'),
+    logTime: () => tracker.logTime(id, 5, 'fred'),
+    openCycle: () => tracker.openCycle({ start: '2026-11-02' }, 'fred'),
+    closeCycle: () => tracker.closeCycle('2026-10-19', 'fred'),
+    moveToCycle: () => tracker.moveToCycle([id], '2026-10-19', 'fred'),
+    setCapacity: () => tracker.setCapacity('2026-10-19', { fred: 1 }, 'fred'),
+    createDeliverable: () => tracker.createDeliverable({ title: 'F' }, 'fred'),
+    publishStatusUpdate: () => tracker.publishStatusUpdate({ epic, health: 'on_track', body: 'Fine' }, 'fred'),
+    createDocument: () => tracker.createDocument('notes.md', 'Hello', 'fred'),
+    dryRun: () => tracker.updateIssue(id, { title: 'Renamed' }, 'fred', { dryRun: true }),
+  }
+  for (const [name, write] of Object.entries(writes)) assert.throws(write, refused, name)
+  assert.equal(hashTree(root), hash)
+})

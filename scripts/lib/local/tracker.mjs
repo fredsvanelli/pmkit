@@ -4,7 +4,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { requireActor, gitUserEmail } from '../actor.mjs'
-import { loadConfig } from '../config.mjs'
+import { loadConfig, validateLocalConfig } from '../config.mjs'
 import { PmkitError } from '../errors.mjs'
 import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
 import { isId, newId, normalizeId } from '../ids.mjs'
@@ -100,6 +100,14 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
       throw invalid(`${label} "${id}" is not a member`, `Use one of: ${Object.keys(local.members).join(', ')}`)
     }
     return id
+  }
+
+  let configProblems
+  // A write on a config that fails validation would store values no reader can map, such as a status without a category.
+  function requireWriter(actor) {
+    configProblems ??= validateLocalConfig(local)
+    if (configProblems.length > 0) throw invalid(`the tracker config is not valid, so writes are refused: ${configProblems[0]}`, 'pmkit validate')
+    return requireMember(actor, 'actor')
   }
 
   function requireEstimate(value) {
@@ -220,7 +228,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
 
   /** The one write path for existing issues: settle drift, then let `edit` return the next issue and its events. */
   function change(id, actor, { dryRun = false, eventsOnly = false } = {}, edit) {
-    requireMember(actor, 'actor')
+    requireWriter(actor)
     const { issue: before, paths } = readIssue(id)
     const logged = readEvents(paths.events).events
     const newest = logged.length > 0 ? logged[logged.length - 1].at : ''
@@ -304,7 +312,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   }
 
   function createIssue(input, actor, { dryRun = false } = {}) {
-    requireMember(actor, 'actor')
+    requireWriter(actor)
     checkKeys(input, CREATE_KEYS)
     const at = stamp()
     const issue = applyFields({
@@ -333,6 +341,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   }
 
   function updateIssue(id, patch, actor, options) {
+    requireWriter(actor)
     checkKeys(patch, UPDATE_KEYS)
     return change(id, actor, options, (issue, meta, before) => {
       applyFields(issue, patch)
@@ -348,6 +357,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   }
 
   function moveToCategory(id, category, actor, { status, dryRun } = {}) {
+    requireWriter(actor)
     oneOf('category', category, CATEGORIES)
     const inCategory = Object.keys(local.statuses).filter((name) => local.statuses[name].category === category)
     const name = status ?? inCategory[0]
@@ -360,6 +370,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   }
 
   function assign(id, member, actor, { dryRun } = {}) {
+    requireWriter(actor)
     if (member !== null) requireMember(member, 'assignee')
     return change(id, actor, { dryRun }, (issue, meta, before) => {
       if ((before.assignee ?? null) === member) return []
@@ -370,6 +381,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   }
 
   function archive(id, actor, { dryRun } = {}) {
+    requireWriter(actor)
     return change(id, actor, { dryRun }, (issue, meta, before) => {
       if (before.archived) return []
       issue.archived = true
@@ -408,7 +420,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   }
 
   function relate(op, from, to, kind, actor, { dryRun = false } = {}) {
-    requireMember(actor, 'actor')
+    requireWriter(actor)
     if (!LINK_KINDS.includes(kind)) throw invalid(`kind must be one of ${LINK_KINDS.join(', ')}`)
     const a = knownIssue(from)
     const b = knownIssue(to)
@@ -440,7 +452,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   }
 
   function setParent(id, parent, actor, { dryRun = false } = {}) {
-    requireMember(actor, 'actor')
+    requireWriter(actor)
     const self = knownIssue(id)
     const next = parent === null ? null : requireParent(parent)
     if (next === self) throw invalid(`${self} cannot be its own parent`)
@@ -522,6 +534,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   }
 
   function comment(id, body, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
     if (typeof body !== 'string' || body.trim() === '') throw invalid('comment body must be a non-empty string')
     let written
     // Settles drift and logs the event without rewriting issue.md; the comment lives in its own file.
@@ -555,6 +568,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   }
 
   function logTime(id, minutes, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
     if (!Number.isInteger(minutes) || minutes <= 0) throw invalid('minutes must be a positive integer')
     return change(id, actor, { dryRun, eventsOnly: true }, (issue, meta) => [{ ...meta, op: 'log_time', minutes }])
   }
@@ -574,7 +588,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   }
 
   function openCycle(input, actor, { dryRun = false } = {}) {
-    requireMember(actor, 'actor')
+    requireWriter(actor)
     const allowed = ['start', 'end', 'goal', 'name']
     for (const key of Object.keys(input)) {
       if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
@@ -600,7 +614,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   }
 
   function closeCycle(id, actor, { dryRun = false } = {}) {
-    requireMember(actor, 'actor')
+    requireWriter(actor)
     const before = getSprint(id)
     if (before.state !== 'active') throw invalid(`sprint ${before.id} is not active (it is ${before.state})`, 'pmkit cycle list')
     const { after } = writeSprint(before, { ...before, state: 'closed' }, { dryRun })
@@ -609,7 +623,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   }
 
   function moveToCycle(ids, sprint, actor, { dryRun = false } = {}) {
-    requireMember(actor, 'actor')
+    requireWriter(actor)
     if (!Array.isArray(ids) || ids.length === 0) throw invalid('ids must be a non-empty list')
     const known = ids.map(knownIssue)
     if (sprint !== null) getSprint(sprint)
@@ -619,7 +633,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   const getCapacity = (id) => getSprint(id).capacity
 
   function setCapacity(id, map, actor, { dryRun = false } = {}) {
-    requireMember(actor, 'actor')
+    requireWriter(actor)
     const before = getSprint(id)
     return writeSprint(before, { ...before, capacity: requireCapacity(map, local.members) }, { dryRun })
   }
@@ -646,7 +660,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   }
 
   function createDeliverable(input, actor, { dryRun = false } = {}) {
-    requireMember(actor, 'actor')
+    requireWriter(actor)
     const allowed = ['title', 'start', 'target', 'milestone', 'description']
     for (const key of Object.keys(input)) {
       if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
@@ -697,7 +711,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   }
 
   function publishStatusUpdate(input, actor, { dryRun = false } = {}) {
-    requireMember(actor, 'actor')
+    requireWriter(actor)
     const { epic, dir } = readEpic(input.epic)
     oneOf('health', input.health, HEALTH)
     if (typeof input.body !== 'string' || input.body.trim() === '') throw invalid('status update body must be a non-empty string')
@@ -730,7 +744,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   const readDocument = (docPath) => readDocumentFile(docsDir, docPath)
 
   function createDocument(docPath, body, actor, { dryRun = false } = {}) {
-    requireMember(actor, 'actor')
+    requireWriter(actor)
     return createDocumentFile(docsDir, docPath, body, { dryRun })
   }
 
