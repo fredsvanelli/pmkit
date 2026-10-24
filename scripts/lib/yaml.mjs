@@ -4,7 +4,10 @@
 
 export class FrontmatterError extends Error {}
 
-const KEY_LINE = /^([A-Za-z0-9_.-]+):(?:\s+(.*))?$/
+// A key may hold a colon that is not followed by a space, as in `agent:claude`.
+const KEY = '[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)*'
+const KEY_LINE = new RegExp(`^(${KEY}):(?:\\s+(.*))?$`)
+const PLAIN_KEY = new RegExp(`^${KEY}$`)
 
 export function splitFrontmatter(text) {
   const normalized = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
@@ -53,6 +56,15 @@ function parseFlow(text, lineNo) {
       if (depth === 0 && stops.includes(char)) break
       if (char === '[' || char === '{') depth++
       else if ((char === ']' || char === '}') && depth > 0) depth--
+      i++
+    }
+    return text.slice(start, i)
+  }
+  // A flow key ends at a colon followed by a space, a comma, a closing brace or the end.
+  const readKey = () => {
+    const start = i
+    while (i < text.length && !',}'.includes(text[i])) {
+      if (text[i] === ':' && (i + 1 >= text.length || /[\s,}]/.test(text[i + 1]))) break
       i++
     }
     return text.slice(start, i)
@@ -106,7 +118,7 @@ function parseFlow(text, lineNo) {
       }
       for (;;) {
         skipSpace()
-        const key = text[i] === '"' || text[i] === "'" ? quoted() : readUntil(':,}').trim()
+        const key = text[i] === '"' || text[i] === "'" ? quoted() : readKey().trim()
         skipSpace()
         if (text[i] !== ':') fail(`expected : after "${key}"`)
         i++
@@ -244,7 +256,7 @@ function formatScalar(value) {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
 }
 
-const formatKey = (key) => (/^[A-Za-z0-9_.-]+$/.test(key) ? key : formatScalar(key))
+const formatKey = (key) => (PLAIN_KEY.test(key) ? key : formatScalar(key))
 
 function formatList(list) {
   const items = list.filter((item) => !isEmpty(item))
@@ -263,7 +275,7 @@ function writeBlock(map, indent, keys) {
   for (const key of keys) {
     const value = map[key]
     if (isEmpty(value)) continue
-    if (!/^[A-Za-z0-9_.-]+$/.test(key)) throw new TypeError(`key "${key}" cannot be written as a block key`)
+    if (!PLAIN_KEY.test(key)) throw new TypeError(`key "${key}" cannot be written as a block key`)
     if (Array.isArray(value)) lines.push(`${pad}${key}: ${formatList(value)}`)
     else if (isPlainObject(value)) {
       const entries = Object.values(value).filter((entry) => !isEmpty(entry))

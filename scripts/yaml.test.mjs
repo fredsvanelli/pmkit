@@ -178,3 +178,24 @@ test('stringifyYaml rejects a list of maps', () => {
 test('parseYaml still throws FrontmatterError on bad input', () => {
   assert.throws(() => parseYaml('just text'), FrontmatterError)
 })
+
+test('keys may contain a colon not followed by a space', () => {
+  const block = parseYaml('members:\n  agent:claude: { name: Claude, availability: 1 }\n  fred: { name: Fred }\n')
+  assert.deepEqual(block, { members: { 'agent:claude': { name: 'Claude', availability: 1 }, fred: { name: 'Fred' } } })
+  assert.deepEqual(parseYaml('capacity: { fred: 8, agent:claude: 5 }\n'), { capacity: { fred: 8, 'agent:claude': 5 } })
+  assert.deepEqual(parseYaml('days_off:\n  agent:claude: [2026-11-06]\n'), { days_off: { 'agent:claude': ['2026-11-06'] } })
+  assert.deepEqual(parseYaml('agent:claude:\n  a: 1\n'), { 'agent:claude': { a: 1 } })
+})
+
+test('stringifyYaml writes keys with a colon plain and they round-trip', () => {
+  const object = {
+    members: { 'agent:claude': { name: 'Claude', availability: 1 }, fred: { name: 'Fred' } },
+    capacity: { fred: 8, 'agent:claude': 5 },
+    days_off: { 'agent:claude': ['2026-11-06'] },
+  }
+  const text = stringifyYaml(object)
+  assert.match(text, /^capacity: \{ fred: 8, agent:claude: 5 \}$/m)
+  assert.match(text, /^ {2}agent:claude: \{ name: Claude, availability: 1 \}$/m)
+  assert.deepEqual(parseYaml(text), object)
+  assert.deepEqual(parseYaml(stringifyYaml({ m: { 'agent:claude': 1 } })), { m: { 'agent:claude': 1 } })
+})
