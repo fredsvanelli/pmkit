@@ -574,16 +574,28 @@ export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
         : requireActor(ctx.config().local, { email: gitUserEmail(root), env }).id),
     }
     const result = command.run(ctx)
+    if (command.write && !dryRun && result.commit !== undefined && ctx.config().local.auto_commit === true) {
+      try {
+        commitTracker(ctx.config(), `pmkit: ${command.name} ${result.commit}`)
+      } catch (error) {
+        // The write succeeded; the caller still gets what was written, in the same single output.
+        error.written = { data: result.data, text: result.text }
+        throw error
+      }
+    }
     stdout.push(json ? `${JSON.stringify(result.data, null, 2)}\n` : `${result.text}\n`)
     for (const warning of result.warnings ?? []) stderr.push(`warning: ${warning}\n`)
-    if (command.write && !dryRun && result.commit !== undefined && ctx.config().local.auto_commit === true) {
-      commitTracker(ctx.config(), `pmkit: ${command.name} ${result.commit}`)
-    }
   } catch (error) {
     code = 2
     if (isPmkitError(error)) {
-      if (json) stdout.push(`${JSON.stringify({ error: { code: error.code, message: error.message, nextStep: error.nextStep } }, null, 2)}\n`)
-      else stderr.push(`error: ${error.message}\n${error.nextStep ? `next: ${error.nextStep}\n` : ''}`)
+      if (json) {
+        const body = { error: { code: error.code, message: error.message, nextStep: error.nextStep } }
+        if (error.written) body.result = error.written.data
+        stdout.push(`${JSON.stringify(body, null, 2)}\n`)
+      } else if (error.written) {
+        stdout.push(`${error.written.text}\n`)
+        stderr.push(`error: ${error.message}\n${error.nextStep ? `next: ${error.nextStep}\n` : ''}`)
+      } else stderr.push(`error: ${error.message}\n${error.nextStep ? `next: ${error.nextStep}\n` : ''}`)
     } else if (json) {
       stdout.push(`${JSON.stringify({ error: { code: 'UNEXPECTED', message: `unexpected: ${error.message}` } }, null, 2)}\n`)
     } else {

@@ -106,6 +106,8 @@ test('issues update --dry-run prints the change and leaves the repo byte-identic
 
 test('every write is byte-identical on --dry-run', () => {
   const root = makeRepo('team')
+  const commentFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-body-')), 'c.md')
+  fs.writeFileSync(commentFile, 'A comment.')
   const before = hashTree(root)
   const dry = (...args) => {
     const result = run(root, [...args, '--dry-run'])
@@ -123,6 +125,9 @@ test('every write is byte-identical on --dry-run', () => {
   dry('cycle', 'capacity', '2026-10-12', '--set', 'fred=3')
   dry('cycle', 'close', '2026-10-12')
   dry('epic', 'create', '--title', 'E')
+  dry('issues', 'update', 'ISS-3F7H', '--priority', 'urgent', '--estimate', '8')
+  dry('issues', 'comment', 'ISS-3F7H', '--body-file', commentFile)
+  dry('epic', 'update-status', 'EPC-2M9D', '--health', 'at_risk', '--body-file', commentFile)
   assert.equal(hashTree(root), before)
 })
 
@@ -368,4 +373,29 @@ test('auto_commit commits only the tracker folder with pmkit: <op> <id>', () => 
   const dry = run(root, ['issues', 'move', after.id, 'todo', '--dry-run'])
   assert.equal(dry.status, 0)
   assert.equal(git(root, 'rev-list', '--count', 'HEAD').stdout.trim(), '2')
+})
+
+test('a failing auto_commit exits 2 with one JSON value that carries the result', () => {
+  const root = makeRepo('basic')
+  const file = path.join(root, '.issues/config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('auto_commit: false', 'auto_commit: true'))
+  git(root, 'init', '-q')
+  git(root, 'config', 'user.name', 'Test')
+  git(root, 'config', 'user.email', 'test@example.com')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-q', '-m', 'init')
+  const hook = path.join(root, '.git/hooks/pre-commit')
+  fs.writeFileSync(hook, '#!/bin/sh\necho rejected >&2\nexit 1\n', { mode: 0o755 })
+  const result = run(root, ['issues', 'create', '--title', 'First', '--json'])
+  assert.equal(result.status, 2)
+  const body = JSON.parse(result.stdout)
+  assert.equal(body.error.code, 'UPSTREAM')
+  assert.ok(body.error.nextStep)
+  assert.equal(body.result.after.title, 'First')
+  assert.ok(fs.existsSync(path.join(root, '.issues/issues', body.result.after.id, 'issue.md')))
+  const text = run(root, ['issues', 'create', '--title', 'Second'])
+  assert.equal(text.status, 2)
+  assert.match(text.stdout, /Second/)
+  assert.match(text.stderr, /^error: .*auto_commit failed/m)
+  assert.match(text.stderr, /^next: /m)
 })
