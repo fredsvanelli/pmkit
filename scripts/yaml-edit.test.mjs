@@ -14,7 +14,7 @@ test('setScalar adds a missing key at the end of its parent block', () => {
     'git_host:\n  system: github\n  repo: fred/app\nwrite_policy:\n  confirm: none\n')
 })
 test('setScalar quotes a value the YAML subset would misread', () => {
-  assert.equal(setScalar('a: 1\n', ['a'], '# x'), "a: '# x'\n")
+  assert.equal(setScalar('a: 1\n', ['a'], '# x'), 'a: "# x"\n')
 })
 test('setScalar writes an array as a flow list', () => {
   assert.equal(setScalar('estimate:\n  scale: [1, 2]\n', ['estimate', 'scale'], ['XS', 'S']), 'estimate:\n  scale: [XS, S]\n')

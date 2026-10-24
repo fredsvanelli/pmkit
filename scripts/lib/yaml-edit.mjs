@@ -17,10 +17,7 @@ function formatValue(value) {
   if (value === '') return "''"
   const out = stringifyYaml({ k: value })
   if (!out.startsWith('k: ')) throw new TypeError(`cannot write ${JSON.stringify(value)}`)
-  const written = out.slice(3).replace(/\n$/, '')
-  // The writer double-quotes a risky string. Plain text in double quotes goes in single quotes, which read the same.
-  if (/^"[^"'\\]*"$/.test(written)) return `'${written.slice(1, -1)}'`
-  return written
+  return out.slice(3).replace(/\n$/, '')
 }
 
 const split = (text) => text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').split('\n')
