@@ -54,7 +54,7 @@ test('a sprint file with a BOM and CRLF reads like its LF copy', () => {
   const { sprints, tracker } = setup()
   const file = path.join(sprints, '2026-10-12.yaml')
   const lf = tracker.currentCycle()
-  fs.writeFileSync(file, `﻿${fs.readFileSync(file, 'utf8').replace(/\n/g, '\r\n')}`)
+  fs.writeFileSync(file, `\uFEFF${fs.readFileSync(file, 'utf8').replace(/\n/g, '\r\n')}`)
   assert.deepEqual(tracker.currentCycle(), lf)
 })
 

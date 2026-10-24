@@ -85,7 +85,7 @@ test('an unknown status gets a null category and archived true is read', () => {
 })
 
 test('CRLF and a BOM parse to the same Issue', () => {
-  const crlf = '﻿' + SPEC_FILE.replace(/\n/g, '\r\n')
+  const crlf = '\uFEFF' + SPEC_FILE.replace(/\n/g, '\r\n')
   assert.deepEqual(parse(crlf), parse(SPEC_FILE))
   assert.equal(serializeIssue(parse(crlf)), SPEC_FILE)
 })

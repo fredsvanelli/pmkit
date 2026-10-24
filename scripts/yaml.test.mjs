@@ -165,7 +165,7 @@ test('joinFrontmatter with nothing to write still reads back', () => {
 })
 
 test('splitFrontmatter accepts CRLF and a BOM', () => {
-  const crlf = `﻿${ISSUE_FILE.replace(/\n/g, '\r\n')}`
+  const crlf = `\uFEFF${ISSUE_FILE.replace(/\n/g, '\r\n')}`
   const split = splitFrontmatter(crlf)
   assert.deepEqual(parseYaml(split.yaml), issue())
   assert.equal(split.body, splitFrontmatter(ISSUE_FILE).body)

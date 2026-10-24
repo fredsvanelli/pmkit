@@ -32,7 +32,7 @@ test('a union-merged log replays like the clean one', () => {
 test('readEvents handles a missing file, a BOM, CRLF and events missing keys', () => {
   const dir = tmp()
   assert.deepEqual(readEvents(path.join(dir, 'none.jsonl')), { events: [], problems: [] })
-  const text = '﻿' + JSON.stringify(clean[0]) + '\r\n\r\n{"at":"x","by":"y"}\r\n'
+  const text = '\uFEFF' + JSON.stringify(clean[0]) + '\r\n\r\n{"at":"x","by":"y"}\r\n'
   const { events, problems } = readEvents(write(dir, 'events.jsonl', text))
   assert.deepEqual(events, [clean[0]])
   assert.equal(problems.length, 1)

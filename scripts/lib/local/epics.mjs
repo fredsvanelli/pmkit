@@ -9,7 +9,7 @@ export const EPIC_KEYS = ['id', 'title', 'status', 'start', 'target', 'milestone
 const UPDATE_ORDER = ['author', 'created', 'health']
 const DOCTOR = '/pmkit:local:doctor'
 
-const normalize = (text) => text.replace(/^﻿/, '').replace(/\r\n/g, '\n')
+const normalize = (text) => text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
 
 function parseFile(text, label) {
   const normalized = normalize(text)

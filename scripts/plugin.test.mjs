@@ -49,3 +49,16 @@ test('CONTEXT.md defines every term of the model', () => {
   const defined = [...text.matchAll(/^\*\*(.+?)\*\*:$/gm)].map((match) => match[1])
   assert.deepEqual(TERMS.filter((term) => !defined.includes(term)), [])
 })
+
+function scriptFiles(dir = path.join(ROOT, 'scripts')) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name)
+    if (entry.isDirectory()) return entry.name === '__fixtures__' ? [] : scriptFiles(full)
+    return entry.name.endsWith('.mjs') ? [full] : []
+  })
+}
+
+test('no script holds a literal U+FEFF; BOM regexes and tests use the \\uFEFF escape', () => {
+  const holders = scriptFiles().filter((file) => fs.readFileSync(file, 'utf8').includes('\uFEFF'))
+  assert.deepEqual(holders.map((file) => path.relative(ROOT, file)), [])
+})

@@ -31,7 +31,7 @@ export function readSprint(dir, id) {
   const bad = (why) => invalid(`sprint file ${file} ${why}`, DOCTOR)
   let data
   try {
-    data = parseYaml(fs.readFileSync(path.join(dir, file), 'utf8').replace(/^﻿/, '').replace(/\r\n/g, '\n'))
+    data = parseYaml(fs.readFileSync(path.join(dir, file), 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n'))
   } catch (error) {
     throw bad(`does not parse: ${error.message}`)
   }

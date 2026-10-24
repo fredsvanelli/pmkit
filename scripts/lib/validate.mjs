@@ -12,7 +12,7 @@ import { overlaps, readSprint } from './local/sprints.mjs'
 
 const CONFLICT_MARKERS = /^(<<<<<<< |>>>>>>> )/m
 const LIST_REFS = ['blocked_by', 'related', 'duplicate_of']
-const read = (file) => fs.readFileSync(file, 'utf8').replace(/^﻿/, '').replace(/\r\n/g, '\n')
+const read = (file) => fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
 const subdirs = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort() : [])
 const files = (dir, ext) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((name) => name.endsWith(ext)).sort() : [])
 

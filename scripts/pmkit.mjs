@@ -58,7 +58,7 @@ function randomSource(env) {
 
 function readInput(source) {
   try {
-    return fs.readFileSync(source === '-' ? 0 : source, 'utf8').replace(/^﻿/, '').replace(/\r\n/g, '\n')
+    return fs.readFileSync(source === '-' ? 0 : source, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
   } catch (error) {
     throw new PmkitError('INVALID_INPUT', `cannot read ${source === '-' ? 'stdin' : source}: ${error.message}`, 'Pass a readable file, or - for stdin')
   }

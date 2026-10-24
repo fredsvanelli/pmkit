@@ -108,7 +108,7 @@ export function validateLocalConfig(obj) {
 }
 
 function readYaml(file, label) {
-  const text = readFileSync(file, 'utf8').replace(/^﻿/, '').replace(/\r\n/g, '\n')
+  const text = readFileSync(file, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
   try {
     return parseYaml(text)
   } catch (error) {

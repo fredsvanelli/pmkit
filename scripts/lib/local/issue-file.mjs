@@ -14,7 +14,7 @@ const DESCRIPTION = 'Description'
 const CRITERIA = 'Acceptance criteria'
 const TASK_ITEM = /^- \[([ xX])\] (.*)$/
 
-const normalize = (text) => text.replace(/^﻿/, '').replace(/\r\n/g, '\n')
+const normalize = (text) => text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
 const asList = (value) => (Array.isArray(value) ? value.map(String) : value == null ? [] : [String(value)])
 
 function assertNoConflict(text) {

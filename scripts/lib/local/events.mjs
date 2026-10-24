@@ -24,7 +24,7 @@ function checkEvent(event) {
 
 export function readEvents(file) {
   if (!fs.existsSync(file)) return { events: [], problems: [] }
-  const text = fs.readFileSync(file, 'utf8').replace(/^﻿/, '').replace(/\r\n/g, '\n')
+  const text = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
   const events = []
   const problems = []
   const seen = new Set()
