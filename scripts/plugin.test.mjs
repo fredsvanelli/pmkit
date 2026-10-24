@@ -77,7 +77,7 @@ test('CHANGELOG.md has a section for the plugin version and a Tracker format tha
 })
 
 // Each Task that writes command files adds their names here.
-const COMMANDS = { '': [], issues: [], spec: [], backlog: [], report: [], cycle: [], team: [], local: [] }
+const COMMANDS = { '': ['setup', 'help', 'upgrade'], issues: [], spec: [], backlog: [], report: [], cycle: [], team: [], local: [] }
 
 const HEADINGS = ['## Parameters', '## Steps', '## Confirmation points', '## Output', '## If something is missing']
 
@@ -148,4 +148,10 @@ test('every command is listed in the skill table and in the README', (t) => {
       }
     }
   }
+})
+
+test('upgrade.md carries the pieces the upgrade flow needs', () => {
+  const text = fs.readFileSync(path.join(ROOT, 'commands/upgrade.md'), 'utf8')
+  for (const needle of ['--accept-command', 'migrate --dry-run', '/reload-plugins']) assert.ok(text.includes(needle), `upgrade.md mentions ${needle}`)
+  assert.doesNotMatch(text, /\s-y\b/)
 })
