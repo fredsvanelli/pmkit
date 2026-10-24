@@ -518,3 +518,44 @@ test('issues assign <id> me assigns the actor and cycle add --to current uses th
   assert.equal(none.status, 2)
   assert.equal(JSON.parse(none.stdout).error.code, 'INVALID_INPUT')
 })
+
+test('issues create takes --milestone', () => {
+  const root = makeRepo('basic')
+  const { after } = json(root, ['issues', 'create', '--title', 'T', '--milestone', 'M1'])
+  assert.equal(after.milestone, 'M1')
+})
+
+test('epic updates lists the status updates newest first', () => {
+  const root = makeRepo('team')
+  assert.deepEqual(json(root, ['epic', 'updates', 'EPC-2M9D']), [])
+  run(root, ['epic', 'update-status', 'EPC-2M9D', '--health', 'at_risk', '--body-file', '-'], { input: 'Older.\n', env: { PMKIT_NOW: '2026-10-20T09:00:00Z' } })
+  run(root, ['epic', 'update-status', 'EPC-2M9D', '--health', 'on_track', '--body-file', '-'], { input: 'Newer.\n', env: { PMKIT_NOW: '2026-10-22T09:00:00Z' } })
+  const updates = json(root, ['epic', 'updates', 'EPC-2M9D'])
+  assert.deepEqual(updates.map((u) => u.body), ['Newer.', 'Older.'])
+  assert.match(run(root, ['epic', 'updates', 'EPC-2M9D']).stdout, /on_track/)
+})
+
+test('docs create reads the body from stdin and docs read returns it', () => {
+  const root = makeRepo('basic')
+  const created = json(root, ['docs', 'create', 'retros/2026-11-15.md', '--body-file', '-'], { input: '# Retro\n\nWent well.\n' })
+  assert.equal(created.after.path, 'retros/2026-11-15.md')
+  const read = json(root, ['docs', 'read', 'retros/2026-11-15.md'])
+  assert.deepEqual(read, { path: 'retros/2026-11-15.md', body: '# Retro\n\nWent well.\n' })
+  assert.match(run(root, ['docs', 'read', 'retros/2026-11-15.md']).stdout, /Went well/)
+})
+
+test('docs create --dry-run writes nothing', () => {
+  const root = makeRepo('basic')
+  const before = hashTree(root)
+  const result = run(root, ['docs', 'create', 'retros/x.md', '--body-file', '-', '--dry-run'], { input: 'Body.\n' })
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /dry run/)
+  assert.equal(hashTree(root), before)
+})
+
+test('docs read refuses a path outside the docs folder', () => {
+  const root = makeRepo('basic')
+  const result = run(root, ['docs', 'read', '../x.md', '--json'])
+  assert.equal(result.status, 2)
+  assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT')
+})

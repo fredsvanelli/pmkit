@@ -118,6 +118,7 @@ function issuePatch(ctx, { create }) {
   if (create) {
     set('assignee', opt('assignee'))
     set('parent', opt('parent'))
+    set('milestone', opt('milestone'))
   } else {
     set('milestone', orNull(opt('milestone')))
     set('branch', orNull(opt('branch')))
@@ -238,8 +239,8 @@ export const COMMANDS = [
   },
   {
     name: 'issues create', summary: 'creates an issue', write: true,
-    usage: '--title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint] [--due] [--description-file f] [--criteria-file f]',
-    flags: ['title', 'type', 'priority', 'estimate', 'assignee', 'label', 'parent', 'sprint', 'due', 'description-file', 'criteria-file'],
+    usage: '--title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint] [--due] [--milestone m] [--description-file f] [--criteria-file f]',
+    flags: ['title', 'type', 'priority', 'estimate', 'assignee', 'label', 'parent', 'sprint', 'due', 'milestone', 'description-file', 'criteria-file'],
     run: (ctx) => {
       const patch = issuePatch(ctx, { create: true })
       if (patch.title === undefined) throw usageError('issues create needs --title', 'pmkit issues create --title "..."')
@@ -408,6 +409,32 @@ export const COMMANDS = [
       const result = ctx.tracker().publishStatusUpdate(input, ctx.actor(), { dryRun: ctx.dryRun })
       const text = [`status update on ${input.epic}`, ...fields([['health', result.after.health], ['by', result.after.author], ['at', result.after.at]]), '', result.after.body].join('\n')
       return { data: result, text: ctx.dryRun ? `${text}\ndry run: nothing was written` : text, commit: input.epic }
+    },
+  },
+  {
+    name: 'epic updates', summary: 'lists the status updates of an epic, newest first', usage: '<id>', args: ['id'], flags: [],
+    run: (ctx) => {
+      const updates = ctx.tracker().listStatusUpdates(ctx.args[0])
+      const text = updates.length === 0
+        ? 'no status updates'
+        : updates.map((u) => [`${u.at}  ${u.health}  ${u.author}`, u.body].join('\n')).join('\n\n')
+      return { data: updates, text }
+    },
+  },
+  {
+    name: 'docs read', summary: 'prints a document under the docs folder', usage: '<path>', args: ['path'], flags: [],
+    run: (ctx) => {
+      const doc = ctx.tracker().readDocument(ctx.args[0])
+      return { data: doc, text: doc.body }
+    },
+  },
+  {
+    name: 'docs create', summary: 'creates a document under the docs folder', usage: '<path> --body-file f', write: true, args: ['path'], flags: ['body-file'],
+    run: (ctx) => {
+      if (ctx.opt('body-file') === undefined) throw usageError('docs create needs --body-file', 'Pass a file, or - for stdin')
+      const result = ctx.tracker().createDocument(ctx.args[0], readInput(ctx.opt('body-file')), ctx.actor(), { dryRun: ctx.dryRun })
+      const text = `${ctx.dryRun ? 'would create' : 'created'} document ${result.after.path}${ctx.dryRun ? '\ndry run: nothing was written' : ''}`
+      return { data: result, text, commit: result.after.path }
     },
   },
   {
