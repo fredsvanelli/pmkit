@@ -113,18 +113,40 @@ test('pr sync --dry-run reports the moves and leaves the repo unchanged', () => 
   assert.equal(hashTree(root), before)
 })
 
-test('pr sync with nothing merged moves nothing and does not commit', () => {
+function autoCommitRepo() {
   const root = teamRepo()
+  git(root, 'config', 'user.name', 'Test')
+  git(root, 'config', 'user.email', 'test@x.dev')
   const file = path.join(root, '.issues/config.yaml')
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('auto_commit: false', 'auto_commit: true'))
-  const gh = fakeGh({ [view('open-branch')]: { stdout: prJson() } })
-  const env = envWith(gh)
+  assert.equal(git(root, 'add', '-A').status, 0)
+  assert.equal(git(root, 'commit', '-qm', 'initial').status, 0)
+  return root
+}
+
+const subjects = (root) => git(root, 'log', '--format=%s').stdout
+
+test('pr sync with nothing merged moves nothing and does not commit', () => {
+  const root = autoCommitRepo()
+  const env = envWith(fakeGh({ [view('open-branch')]: { stdout: prJson() } }))
   callJson(root, env, ['issues', 'update', 'ISS-8C4W', '--branch', 'open-branch'])
-  const commits = () => git(root, 'log', '--oneline').stdout
-  const before = commits()
+  const before = subjects(root)
+  assert.match(before, /pmkit: issues update ISS-8C4W/)
   const result = callJson(root, env, ['pr', 'sync'])
+  assert.equal(result.checked, 1)
   assert.deepEqual(result.moved, [])
-  assert.equal(commits(), before)
+  assert.equal(subjects(root), before)
+})
+
+test('pr sync commits with the moved ids when auto_commit is on', () => {
+  const root = autoCommitRepo()
+  const env = envWith(fakeGh({ [view('merged-branch')]: { stdout: prJson({ number: 11, mergedAt: '2026-10-22T10:00:00Z' }) } }))
+  inReview(root, env, 'ISS-2X6D', 'merged-branch')
+  const before = subjects(root)
+  const result = callJson(root, env, ['pr', 'sync'])
+  assert.deepEqual(result.moved, [{ id: 'ISS-2X6D', pr: 11 }])
+  assert.equal(git(root, 'log', '-1', '--format=%s').stdout.trim(), 'pmkit: pr sync ISS-2X6D')
+  assert.notEqual(subjects(root), before)
 })
 
 test('every pr command with git_host.system none exits 2 with NOT_SUPPORTED', () => {
