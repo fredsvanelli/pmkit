@@ -120,10 +120,10 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     return id
   }
 
+  const sprintExists = (id) => /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(String(id)) && fs.existsSync(path.join(issuesDir, 'sprints', `${id}.yaml`))
+
   function requireSprint(value) {
-    if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(String(value)) || !fs.existsSync(path.join(issuesDir, 'sprints', `${value}.yaml`))) {
-      throw invalid(`sprint ${value} does not exist`, 'pmkit cycle list')
-    }
+    if (!sprintExists(value)) throw invalid(`sprint ${value} does not exist`, 'pmkit cycle list')
     return String(value)
   }
 
@@ -277,7 +277,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   const today = () => now().toISOString().slice(0, 10)
 
   function getSprint(id) {
-    if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(String(id)) || !fs.existsSync(path.join(sprintsDir, `${id}.yaml`))) {
+    if (!sprintExists(id)) {
       throw new PmkitError('NOT_FOUND', `sprint ${id} does not exist`, 'pmkit cycle list')
     }
     return readSprint(sprintsDir, String(id))
@@ -292,7 +292,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   const activeSprintId = () => currentCycle()?.id ?? null
 
   function searchIssues(filter = {}) {
-    checkFilter(filter)
+    checkFilter(filter, { types: local.types, members: Object.keys(local.members), sprintExists })
     const resolved = { ...filter }
     if (filter.assignee === 'me') {
       resolved.assignee = requireActor(local, { email: gitEmail ?? gitUserEmail(root), env }).id

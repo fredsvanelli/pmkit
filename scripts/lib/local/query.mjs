@@ -1,7 +1,7 @@
 // Filtering and sorting for searchIssues. Pure: the tracker resolves `me` and `current` first.
 
 import { PmkitError } from '../errors.mjs'
-import { isBlocked } from '../model.mjs'
+import { CATEGORIES, isBlocked } from '../model.mjs'
 import { normalizeId } from '../ids.mjs'
 
 export const FILTER_KEYS = [
@@ -10,10 +10,14 @@ export const FILTER_KEYS = [
 ]
 export const SORTS = ['priority', 'updated', 'created', 'due']
 
-const invalid = (message) => new PmkitError('INVALID_INPUT', message, 'pmkit issues list --help')
+const invalid = (message, nextStep = 'pmkit issues list --help') => new PmkitError('INVALID_INPUT', message, nextStep)
 const isStringList = (value) => Array.isArray(value) && value.every((item) => typeof item === 'string')
 
-export function checkFilter(filter) {
+/**
+ * Checks the shape of a filter and its values. `types` and `members` come from the config, and
+ * `sprintExists(id)` tells whether a sprint file exists. Labels are free: an unknown one matches nothing.
+ */
+export function checkFilter(filter, { types = [], members = [], sprintExists = () => false } = {}) {
   if (filter === null || typeof filter !== 'object' || Array.isArray(filter)) throw invalid('filter must be an object')
   for (const key of Object.keys(filter)) {
     if (!FILTER_KEYS.includes(key)) throw invalid(`unknown filter "${key}"`)
@@ -30,6 +34,17 @@ export function checkFilter(filter) {
   if (filter.sort !== undefined && !SORTS.includes(filter.sort)) throw invalid(`sort must be one of ${SORTS.join(', ')}`)
   if (filter.limit !== undefined && !(Number.isInteger(filter.limit) && filter.limit >= 0)) throw invalid('limit must be a whole number, 0 or more')
   if (filter.sprint !== undefined && filter.sprint !== null && typeof filter.sprint !== 'string') throw invalid('sprint must be a string')
+
+  const within = (field, values, allowed, nextStep) => {
+    const unknown = values.find((value) => !allowed.includes(value))
+    if (unknown !== undefined) throw invalid(`${field} "${unknown}" is not one of ${allowed.join(', ')}`, nextStep)
+  }
+  if (filter.categories) within('category', filter.categories, CATEGORIES)
+  if (filter.types) within('type', filter.types, types, 'pmkit discover')
+  if (filter.assignee !== undefined) within('assignee', [filter.assignee], ['me', 'none', ...members], 'pmkit discover')
+  if (typeof filter.sprint === 'string' && !['current', 'none'].includes(filter.sprint) && !sprintExists(filter.sprint)) {
+    throw invalid(`sprint "${filter.sprint}" is not current, none or an existing sprint id`, 'pmkit cycle list')
+  }
 }
 
 const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0)

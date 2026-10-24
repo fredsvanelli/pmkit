@@ -491,3 +491,12 @@ test('a description with a fenced example of conflict markers is written and rea
   assert.equal(json(root, ['issues', 'get', id]).description, description.trim())
   assert.deepEqual(json(root, ['validate']).problems, [])
 })
+
+test('issues list with a misspelled filter value exits 2 instead of printing no issues', () => {
+  const root = makeRepo('team')
+  for (const args of [['--category', 'finished'], ['--type', 'bugg'], ['--assignee', 'nobody'], ['--sprint', '2026-01-01'], ['--sort', 'size']]) {
+    const result = run(root, ['issues', 'list', ...args, '--json'])
+    assert.equal(result.status, 2, args.join(' '))
+    assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT')
+  }
+})

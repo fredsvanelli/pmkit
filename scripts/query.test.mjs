@@ -156,3 +156,14 @@ test('getIssue on the conflicted issue throws CONFLICT with the doctor as next s
   assert.throws(() => tracker.getIssue('ISS-3Q6T'), (error) => error.code === 'CONFLICT' && error.nextStep === '/pmkit:local:doctor')
   assert.equal(tracker.getIssue('ISS-2X6D').children.length, 1)
 })
+
+test('a filter value outside the allowed ones is INVALID_INPUT naming them; an unknown label is an empty result', () => {
+  const { tracker, ids } = setup()
+  const naming = (pattern) => (error) => error.code === 'INVALID_INPUT' && pattern.test(error.message)
+  assert.throws(() => tracker.searchIssues({ categories: ['done', 'finished'] }), naming(/finished.*triage, backlog, todo, in_progress, in_review, done, canceled/))
+  assert.throws(() => tracker.searchIssues({ types: ['bugg'] }), naming(/bugg.*feature, bug, task, chore/))
+  assert.throws(() => tracker.searchIssues({ assignee: 'nobody' }), naming(/nobody.*me, none, fred, ana|nobody.*me, none, ana, fred/))
+  assert.throws(() => tracker.searchIssues({ sprint: '2026-10-13' }), naming(/2026-10-13.*current, none/))
+  assert.throws(() => tracker.searchIssues({ sort: 'size' }), naming(/priority, updated, created, due/))
+  assert.deepEqual(ids({ labels: ['no-such-label'] }), [])
+})
