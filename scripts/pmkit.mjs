@@ -13,6 +13,8 @@ import { cycleTimes, lastEntry, summary, velocity } from './lib/metrics.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { stringifyYaml, parseYaml } from './lib/yaml.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
+import { createGithubHost } from './lib/github/host.mjs'
+import { branchName } from './lib/ids.mjs'
 
 const TEMPLATES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates')
 const usageError = (message, nextStep = 'node scripts/pmkit.mjs --help') => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -160,6 +162,15 @@ function writeText(result, { dryRun, record = issueRecord, header }) {
 }
 
 const issueWrite = (ctx, result, id = result.after.id) => ({ data: result, text: writeText(result, ctx), commit: id })
+const defaultBranch = (ctx) => ctx.config().pmkit.git_host?.default_branch ?? 'main'
+
+function defaultPrBody(issue) {
+  const lines = [`Tracker issue: ${issue.id}`]
+  if (issue.acceptanceCriteria.length > 0) {
+    lines.push('', '## Acceptance criteria', ...issue.acceptanceCriteria.map((item) => `- [${item.done ? 'x' : ' '}] ${item.text}`))
+  }
+  return lines.join('\n')
+}
 const problemLine = (problem) => `${problem.id}: ${problem.code} ${problem.message}`
 
 // Command table. `run` returns { data, text, commit }: the JSON value, the plain text and, for a write, the id for the commit message.
@@ -439,6 +450,76 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'issues branch', summary: 'creates the issue branch and records it on the issue', usage: '<id> [--from branch]', write: true, args: ['id'], flags: ['from'],
+    run: (ctx) => {
+      const tracker = ctx.tracker()
+      const issue = tracker.getIssue(ctx.args[0])
+      const branch = branchName(issue.id, issue.title)
+      const from = ctx.opt('from') ?? defaultBranch(ctx)
+      if (ctx.dryRun) return { data: { branch, from }, text: `would create branch ${branch} from ${from}\ndry run: nothing was written` }
+      ctx.host().createBranch(branch, { from })
+      const result = tracker.updateIssue(issue.id, { branch }, ctx.actor())
+      return { data: { branch, ...result }, text: `created branch ${branch} from ${from}\n${writeText(result, ctx)}`, commit: issue.id }
+    },
+  },
+  {
+    name: 'pr open', summary: 'pushes the issue branch and opens a pull request', usage: '--issue <id> [--draft] [--body-file f]', write: true, args: [], flags: ['issue', 'body-file', 'draft'],
+    run: (ctx) => {
+      if (ctx.opt('issue') === undefined) throw usageError('pr open needs --issue', 'pmkit pr open --issue <id>')
+      const host = ctx.host()
+      const issue = ctx.tracker().getIssue(ctx.opt('issue'))
+      if (!issue.branch) throw usageError(`${issue.id} has no branch`, `pmkit issues branch ${issue.id}`)
+      const body = ctx.opt('body-file') !== undefined ? readInput(ctx.opt('body-file')) : defaultPrBody(issue)
+      const request = { title: `${issue.title} (${issue.id})`, body, head: issue.branch, base: defaultBranch(ctx), draft: ctx.flag('draft') }
+      if (ctx.dryRun) return { data: request, text: `would open a pull request ${request.head} to ${request.base}\n${request.title}\n\n${body}\ndry run: nothing was written` }
+      host.push(issue.branch)
+      const pr = host.openPullRequest(request)
+      return { data: pr, text: `opened pull request #${pr.number} ${pr.url}` }
+    },
+  },
+  {
+    name: 'pr status', summary: 'pull request, checks and reviews of a branch', usage: '[--branch b]', args: [], flags: ['branch'],
+    run: (ctx) => {
+      const host = ctx.host()
+      const branch = ctx.opt('branch') ?? host.currentBranch()
+      const pr = host.getPullRequest({ head: branch })
+      const checks = pr ? host.prChecks(pr.number) : []
+      const reviews = pr ? host.prReviews(pr.number).reviews : []
+      const lines = pr
+        ? [`#${pr.number} ${pr.title} (${pr.state}${pr.isDraft ? ', draft' : ''})`, pr.url, `checks: ${checks.length === 0 ? '(none)' : checks.map((c) => `${c.name} ${c.bucket ?? c.state}`).join(', ')}`, `reviews: ${reviews.length === 0 ? '(none)' : reviews.map((r) => r.state).join(', ')}`]
+        : [`no pull request for ${branch}`]
+      return { data: { branch, pr, checks, reviews }, text: lines.join('\n') }
+    },
+  },
+  {
+    name: 'pr sync', summary: 'moves in_review issues to done when their pull request is merged', write: true, args: [], flags: [],
+    run: (ctx) => {
+      const host = ctx.host()
+      const tracker = ctx.tracker()
+      const actor = ctx.actor()
+      const candidates = tracker.searchIssues({ categories: ['in_review'] }).issues.filter((issue) => issue.branch)
+      const moved = []
+      const problems = []
+      for (const issue of candidates) {
+        try {
+          const pr = host.getPullRequest({ head: issue.branch })
+          if (pr?.mergedAt) {
+            tracker.moveToCategory(issue.id, 'done', actor, { dryRun: ctx.dryRun })
+            moved.push({ id: issue.id, pr: pr.number })
+          }
+        } catch (error) {
+          // A missing or logged out gh fails every lookup the same way, so it stops the command.
+          if (!isPmkitError(error) || error.code === 'NOT_CONFIGURED' || error.code === 'AUTH') throw error
+          problems.push({ id: issue.id, code: error.code, message: error.message })
+        }
+      }
+      const lines = [`checked ${candidates.length} in_review issues, moved ${moved.length} to done`, ...moved.map((m) => `  ${m.id} merged in #${m.pr}`), ...problems.map((p) => `  ${problemLine(p)}`)]
+      if (ctx.dryRun) lines.push('dry run: nothing was written')
+      const data = { checked: candidates.length, moved, problems }
+      return { data, text: lines.join('\n'), commit: moved.length > 0 ? moved.map((m) => m.id).join(' ') : undefined }
+    },
+  },
+  {
     name: 'validate', summary: 'checks every file and reference; problems are output, not errors', flags: [],
     run: (ctx) => {
       const result = validateRepo(ctx.root)
@@ -540,6 +621,13 @@ function checkUsage(command, { options, positionals }) {
   }
 }
 
+function makeHost(ctx) {
+  if (ctx.config().pmkit.git_host?.system !== 'github') {
+    throw new PmkitError('NOT_SUPPORTED', 'this repository has no git host configured', 'Set git_host.system to github in .pmkit/config.yaml, or run /pmkit:setup')
+  }
+  return createGithubHost({ root: ctx.root, env: ctx.env })
+}
+
 /** Runs one command line. Returns the text for each stream and the exit code. */
 export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
   const stdout = []
@@ -569,6 +657,7 @@ export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
     const random = randomSource(env)
     let loaded
     let tracker
+    let host
     const ctx = {
       root, env, dryRun, args: parsed.positionals, json,
       opt: (name) => last(options[name]),
@@ -576,6 +665,7 @@ export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
       flag: (name) => last(options[name]) === true,
       config: () => (loaded ??= loadConfig(root)),
       tracker: () => (tracker ??= createLocalTracker(root, { config: ctx.config(), now, random, env })),
+      host: () => (host ??= makeHost(ctx)),
       actor: () => (typeof options.as === 'string'
         ? options.as
         : requireActor(ctx.config().local, { email: gitUserEmail(root), env }).id),

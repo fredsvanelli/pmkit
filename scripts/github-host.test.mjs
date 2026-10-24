@@ -82,6 +82,11 @@ test('prChecks keeps the list when gh exits non-zero for failing or pending chec
   assert.equal(host(exec).prChecks(12)[0].bucket, 'pending')
 })
 
+test('prChecks returns an empty list when gh reports no checks', () => {
+  const { exec } = fakeExec({ status: 1, stderr: "no checks reported on the 'iss-1' branch\n" })
+  assert.deepEqual(host(exec).prChecks(12), [])
+})
+
 test('a thrown ENOENT becomes NOT_CONFIGURED', () => {
   const { exec } = fakeExec(() => {
     throw Object.assign(new Error('spawnSync gh ENOENT'), { code: 'ENOENT' })

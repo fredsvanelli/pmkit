@@ -98,6 +98,8 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
           const list = JSON.parse(result.stdout)
           if (Array.isArray(list)) return list
         } catch {}
+        // A pull request without checks makes gh exit 1 with this message.
+        if (/no checks reported/i.test(result.stderr ?? '')) return []
         throw failure('gh', args, result)
       }
       return parse(result.stdout, 'the checks')
