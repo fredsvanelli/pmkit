@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { loadConfig } from '../config.mjs'
 import { PmkitError } from '../errors.mjs'
+import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
 import { isId, newId, normalizeId } from '../ids.mjs'
 import { CATEGORIES, LINK_KINDS } from '../model.mjs'
 import { appendEvents, driftEvents, readEvents } from './events.mjs'
@@ -383,5 +384,60 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     })
   }
 
-  return { getIssue, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent }
+  const fileSafe = (text) => text.replaceAll(':', '-')
+
+  function readComment(id, file) {
+    const split = splitFrontmatter(fs.readFileSync(file, 'utf8'))
+    const data = split ? parseYaml(split.yaml) : {}
+    return {
+      id: path.basename(file, '.md'),
+      issue: id,
+      author: String(data.author ?? ''),
+      body: split ? split.body.trim() : '',
+      created: String(data.created ?? ''),
+    }
+  }
+
+  function comment(id, body, actor, { dryRun = false } = {}) {
+    if (typeof body !== 'string' || body.trim() === '') throw invalid('comment body must be a non-empty string')
+    let written
+    // Settles drift and logs the event without rewriting issue.md; the comment lives in its own file.
+    change(id, actor, { dryRun, eventsOnly: true }, (issue, meta) => {
+      const dir = issuePaths(issuesDir, issue.id).comments
+      const base = `${fileSafe(meta.at)}-${fileSafe(actor)}`
+      let name = base
+      for (let n = 2; fs.existsSync(path.join(dir, `${name}.md`)); n++) name = `${base}-${n}`
+      written = { id: name, issue: issue.id, author: actor, body: body.trim(), created: meta.at }
+      if (!dryRun) {
+        fs.mkdirSync(dir, { recursive: true })
+        writeFileAtomic(path.join(dir, `${name}.md`), joinFrontmatter({ author: actor, created: meta.at }, `${written.body}\n`, { order: ['author', 'created'] }))
+      }
+      return [{ ...meta, op: 'comment', to: `${name}.md` }]
+    })
+    return written
+  }
+
+  function listComments(id) {
+    const { issue, paths } = readIssue(id)
+    if (!fs.existsSync(paths.comments)) return []
+    return fs.readdirSync(paths.comments)
+      .filter((name) => name.endsWith('.md'))
+      .map((name) => readComment(issue.id, path.join(paths.comments, name)))
+      .sort((a, b) => (a.created < b.created ? -1 : a.created > b.created ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  }
+
+  function getHistory(id, { since } = {}) {
+    const { events } = readEvents(readIssue(id).paths.events)
+    return since === undefined ? events : events.filter((event) => event.at >= since)
+  }
+
+  function logTime(id, minutes, actor, { dryRun = false } = {}) {
+    if (!Number.isInteger(minutes) || minutes <= 0) throw invalid('minutes must be a positive integer')
+    return change(id, actor, { dryRun, eventsOnly: true }, (issue, meta) => [{ ...meta, op: 'log_time', minutes }])
+  }
+
+  return {
+    getIssue, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
+    comment, listComments, getHistory, logTime,
+  }
 }
