@@ -1,0 +1,9 @@
+version: 1
+tracker:
+  system: local
+  path: .issues
+git_host:
+  system: none
+write_policy:
+  confirm: single_writes
+  preview: [bulk, delete, publish_update, move_scope]

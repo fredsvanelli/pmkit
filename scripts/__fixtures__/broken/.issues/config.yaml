@@ -1,0 +1,29 @@
+version: 1
+id_prefix: ISS
+epic_prefix: EPC
+statuses:
+  triage: { category: triage }
+  backlog: { category: backlog }
+  todo: { category: todo }
+  in_progress: { category: in_progress }
+  in_review: { category: in_review }
+  done: { category: done }
+  canceled: { category: canceled }
+default_status: backlog
+types: [feature, bug, task, chore]
+priorities: [urgent, high, medium, low]
+labels: [backend, frontend, webhooks, billing]
+estimate:
+  unit: points
+  scale: [1, 2, 3, 5, 8, 13]
+members:
+  fred: { name: Fred Vanelli, email: fred@example.com, availability: 1 }
+  ana: { name: Ana Souza, email: ana@example.com, availability: 0.8 }
+defaults:
+  stale_days: 0
+  stuck_business_days: 3
+  sprint_length_days: 14
+  sprint_start_weekday: mon
+  velocity_window: 3
+  status_update_window_days: 14
+auto_commit: false
