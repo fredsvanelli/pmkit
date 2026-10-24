@@ -30,10 +30,11 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 8. Implement the plan with the normal flow of the session. Put the issue ID in every commit message, for example `feat: add export (ISS-7K3Q)`.
 9. Deliver. Ask with `AskUserQuestion` whether to open the PR. When the user declines, stop. The code stays committed on the branch, so say so.
    1. Write the PR body to a temporary file outside `.issues/`: a short summary of the change, the issue ID and a link to the issue.
-   2. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" pr open --issue <id> --body-file <file> --dry-run --json`. Show `title`, `head`, `base` and the body.
-   3. When the user approves, run the same command without `--dry-run`. This pushes the branch and opens the PR.
-   4. Write a summary of what was done and the PR link to a temporary file. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues comment <id> --body-file <file> --dry-run --json`, show it and ask once. When the user approves, run it without `--dry-run`.
-   5. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues move <id> in_review --dry-run --json`, show `before` and `after` and ask once. When the user approves, run it without `--dry-run`.
+   2. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" pr open --issue <id> --body-file <file> --dry-run --json`. When `existing` is `false`, show `title`, `head`, `base` and the body, and ask once. When `existing` is `true`, the branch already has an open PR, in `pr`, for example a draft that `/pmkit:issues:pause` opened. Show its number, link and whether it is a draft, say that the real run only pushes the new commits to it and does not use the body, and ask once whether to push.
+   3. When the user approves, run the same command without `--dry-run`. This pushes the branch, and opens the PR when `existing` was `false`. When the user declines, stop. The code stays committed on the branch, so say so.
+   4. When the PR is a draft (`isDraft` is `true` in the result of sub-step 3), run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" pr ready --issue <id> --dry-run --json`. Show the PR number and link, say it changes from draft to ready for review, and ask once with `AskUserQuestion`. When the user approves, run the same command without `--dry-run`. When the user declines, leave the PR as a draft, say so, and go on.
+   5. Write a summary of what was done and the PR link to a temporary file. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues comment <id> --body-file <file> --dry-run --json`, show it and ask once. When the user approves, run it without `--dry-run`.
+   6. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues move <id> in_review --dry-run --json`, show `before` and `after` and ask once. When the user approves, run it without `--dry-run`.
 10. Offer follow-ups. When the work found extra scope or tech debt, list the candidates and ask which to create. For each one chosen, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues create --title "<title>" --dry-run --json`, show the new record and ask once. After approval, run it without `--dry-run`, then run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues link <new id> <id> --kind related --dry-run --json`, show it and ask once, and run it without `--dry-run`.
 11. Remove the temporary files.
 
@@ -47,10 +48,10 @@ The command never moves the issue to `done`. After the PR merges, `/pmkit:issues
 - Step 5: the assignment and the move to `in_progress`, together.
 - Step 6: the branch name and base, and whether to start from the current branch when it holds commits.
 - Step 7: the plan, and whether to post it. Posting asks once more, as a write.
-- Step 9: opening the PR, then the summary comment, then the move to `in_review`. Each write asks once.
+- Step 9: opening the PR (or pushing to the PR the branch already has), marking a draft PR ready for review, then the summary comment, then the move to `in_review`. Each write asks once.
 - Step 10: which follow-ups to create, then each create and each link.
 
-`write_policy.confirm: none` skips the single-write questions of steps 5 to 10. It never skips the readiness questions of steps 3 and 4, or the questions about opening the PR and the plan.
+`write_policy.confirm: none` skips the single-write questions of steps 5 to 10. It never skips the readiness questions of steps 3 and 4, or the questions about the plan, opening or pushing the PR, and marking it ready.
 
 ## Output
 
@@ -62,4 +63,5 @@ The PR link, the issue line with its full ID and new status, the branch name and
 - The git host is `none`: the CLI answers `NOT_SUPPORTED` on `issues branch` and `pr open`. Claim the issue, do the work on a branch of the user's choice, and say that the PR and the branch record need a GitHub host (`/pmkit:setup`).
 - `gh` is missing or not logged in: the CLI answers `NOT_CONFIGURED` or `AUTH`. Show the next step, leave the branch as it is, and offer to retry after the fix.
 - The issue has no `branch` when `pr open` fails with `INVALID_INPUT`: run step 6 first.
+- `pr ready` fails with `INVALID_INPUT` because the PR is no longer open or is already ready: show `error.message`, skip sub-step 4 of step 9 and go on.
 - An error from the CLI: apply the rules for reading errors in the conventions.

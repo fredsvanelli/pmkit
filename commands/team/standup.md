@@ -21,7 +21,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 2. Compute the start of the period. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" events --since <start> --json`. Group the events by `by`. For each person, list the issues they moved, created and completed, and the comments they wrote.
 3. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues list --category in_progress,in_review,todo --json`. Read `defaults.stuck_business_days` from `.issues/config.yaml` (3 when missing) and compute the cutoff date, that many business days before today. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" events --since <cutoff> --json`, because the period of step 2 can be shorter than the stuck window. An issue is stuck when it is in `in_progress` or `in_review` and no event since the cutoff names it. An issue is blocked when a `blockedBy` issue is not `done` or `canceled`.
 4. For each in-progress or in-review issue with a `branch`, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" pr status --branch <branch> --json`. Note whether the PR is open, merged or waiting for review, and its checks. When the call fails with `NOT_SUPPORTED`, `NOT_CONFIGURED` or `AUTH`, stop calling `pr status`, and say in one line that PR data is unavailable and why.
-5. When `person` is given, keep only that person's rows. When the tracker has one member, use the personal format of the Output section.
+5. When `person` is given, keep only that person's rows. When `person` is `me`, first run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" whoami --json` and use its `id`, because events and assignees hold member IDs. When the tracker has one member, use the personal format of the Output section.
 
 ## Confirmation points
 

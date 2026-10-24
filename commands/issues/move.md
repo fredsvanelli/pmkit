@@ -37,5 +37,5 @@ The updated issue line with its full ID and new status. When a warning applied a
 ## If something is missing
 
 - No category: ask for it, and list the seven categories.
-- The category is the current one: say so and change nothing.
+- The category and the status are the current ones: say so and change nothing. A `--status` change to another status of the same category is a real move, so run steps 4 to 6 for it.
 - An error from the CLI: apply the rules for reading errors in the conventions.

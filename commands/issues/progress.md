@@ -18,7 +18,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 
 1. Find the issue. When there is an `id`, use it. Otherwise run `git branch --show-current` and run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues list --assignee me --category in_progress,in_review --json`, then pick the issue whose `branch` equals the current branch. When none matches, ask for the ID.
 2. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues get <id> --json` for the title, the acceptance criteria and the `branch`.
-3. Summarize the session. Run `git log --oneline <base>..HEAD` and `git diff --stat <base>..HEAD`, where `<base>` is the default branch of the repository (`main` when unsure). Write a short comment: what was done, what is left and any open question.
+3. Summarize the session. Run `git log --oneline <base>..HEAD` and `git diff --stat <base>..HEAD`, where `<base>` is `git_host.default_branch` in `.pmkit/config.yaml`, or `main` when that key is not set. Write a short comment: what was done, what is left and any open question.
 4. Show the comment text and ask with `AskUserQuestion` whether to post it. The user can edit it first. When the user declines, skip the post and go on to step 7.
 5. Write the text to a temporary file outside `.issues/`. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues comment <id> --body-file <file> --dry-run --json`. Post it when the user approved in step 4: run the same command without `--dry-run`.
 6. Remove the temporary file.

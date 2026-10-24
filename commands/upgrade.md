@@ -53,10 +53,10 @@ With more than one install that applies (a user install and a project install), 
 ### 5. Migrate
 
 1. Skip this step when `.pmkit/config.yaml` is missing or its tracker is not `local`.
-2. Run the CLI of the new version, from its `installPath`. The session still runs the old code. Use `node "<installPath>/scripts/pmkit.mjs" migrate --dry-run --json`.
+2. Run the CLI of the new version, from its `installPath`. The session still runs the old code. Take `installPath` from the list read again in step 4, or from step 1 when step 4 did not run. When step 1 found a folder install (`claude --plugin-dir`), use `${CLAUDE_PLUGIN_ROOT}` as `installPath`. Use `node "<installPath>/scripts/pmkit.mjs" migrate --dry-run --json`.
 3. When `from` equals `to` and `steps` is empty, say that the tracker is already on the current format.
-4. Otherwise show every file under `steps[].changes` with its action, and ask once. After approval, run `node "<installPath>/scripts/pmkit.mjs" migrate --json`. Show the commit message when the result has a `commit`.
-5. `CONFLICT` means the tracker path has uncommitted changes. Show the message and ask the user to commit or discard them. `NOT_CONFIGURED` means the project is not a git repository, and the migration needs git history as the way back.
+4. Otherwise show every file under `steps[].changes` with its action, and ask once. After approval, run `node "<installPath>/scripts/pmkit.mjs" migrate --json`. Show the commit message when the result has a `commit`. When the user declines, change nothing and go to step 6.
+5. `CONFLICT` means the tracker path has uncommitted changes. Show the message and ask the user to commit or discard them. When the user has done so, run `node "<installPath>/scripts/pmkit.mjs" migrate --dry-run --json` again, show its files and ask again before migrating, as in sub-step 4. `NOT_CONFIGURED` means the project is not a git repository, and the migration needs git history as the way back.
 
 ### 6. Next steps
 

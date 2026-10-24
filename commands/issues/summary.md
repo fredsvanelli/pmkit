@@ -24,11 +24,11 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
    - Open points: unanswered questions, unchecked acceptance criteria, children that are not done.
    - Blockers: each issue in `blockedBy` that is not done or canceled, with its ID.
    - Next steps: what the record implies comes next. Say "none recorded" when it implies nothing.
-5. Offer to post the summary as a comment. When the user accepts, write the summary to standard input and run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues comment <id> --body-file - --dry-run --json`. Show the comment text and ask once with `AskUserQuestion`. When the user declines, post nothing. When the user approves, run the same command without `--dry-run`, with the same text.
+5. For an issue, offer to post the summary as a comment. Skip this step for an epic, because `issues comment` only takes an issue ID. When the user accepts, write the summary to standard input and run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues comment <id> --body-file - --dry-run --json`. Show the comment text and ask once with `AskUserQuestion`. When the user declines, post nothing. When the user approves, run the same command without `--dry-run`, with the same text.
 
 ## Confirmation points
 
-None for the summary, which only reads. Posting it as a comment (step 5) asks once, before the comment is posted. When the user declines the offer, post nothing.
+None for the summary, which only reads. Posting the summary of an issue as a comment (step 5) asks once, before the comment is posted. When the user declines the offer, post nothing.
 
 ## Output
 
