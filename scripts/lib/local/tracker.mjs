@@ -113,7 +113,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   function requireEstimate(value) {
     const { unit, scale } = local.estimate
     if (unit === 'hours') {
-      if (typeof value !== 'number' || !(value > 0)) throw invalid('estimate must be a positive number of hours')
+      if (!Number.isFinite(value) || value <= 0) throw invalid('estimate must be a positive number of hours')
     } else if (!scale.includes(value)) {
       throw invalid(`estimate must be one of ${scale.join(', ')}`)
     }

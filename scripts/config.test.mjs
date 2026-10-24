@@ -95,7 +95,7 @@ test('both templates validate with no problem', () => {
 
 test('the git templates hold the expected lines', () => {
   const read = (name) => readFileSync(new URL(`../templates/${name}`, import.meta.url), 'utf8')
-  assert.equal(read('issues.gitattributes'), 'events.jsonl merge=union\n')
+  assert.equal(read('issues.gitattributes'), 'events.jsonl merge=union\n*.jsonl text eol=lf\n*.md text eol=lf\n')
   assert.equal(read('issues.gitignore'), '.cache/\n')
 })
 
@@ -119,4 +119,17 @@ test('findRoot falls back to .git, then to the start folder', () => {
   assert.equal(findRoot(join(root, 'a', 'b')), root)
   const bare = tmp()
   assert.equal(findRoot(bare), bare)
+})
+
+test('an empty or non-map .pmkit/config.yaml and a non-string tracker.path are INVALID_INPUT', () => {
+  for (const text of ['', '# nothing yet\n', '- local\n', 'version: 1\n']) {
+    const root = tmp()
+    mkdirSync(join(root, '.pmkit'))
+    writeFileSync(join(root, '.pmkit', 'config.yaml'), text)
+    assert.throws(() => loadConfig(root), (error) => error.code === 'INVALID_INPUT' && error.nextStep === '/pmkit:setup', JSON.stringify(text))
+  }
+  const root = tmp()
+  mkdirSync(join(root, '.pmkit'))
+  writeFileSync(join(root, '.pmkit', 'config.yaml'), 'version: 1\ntracker:\n  system: local\n  path: 5\n')
+  assert.throws(() => loadConfig(root), (error) => error.code === 'INVALID_INPUT' && /tracker\.path/.test(error.message))
 })

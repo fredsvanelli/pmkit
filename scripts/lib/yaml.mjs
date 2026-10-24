@@ -264,6 +264,7 @@ const isEmpty = (value) =>
   (isPlainObject(value) && Object.values(value).every(isEmpty))
 
 function formatScalar(value) {
+  if (typeof value === 'number' && !Number.isFinite(value)) throw new TypeError(`cannot write ${value}, it would not read back as a number`)
   if (typeof value !== 'string') return String(value)
   const risky =
     value !== value.trim() ||

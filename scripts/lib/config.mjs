@@ -122,9 +122,15 @@ export function loadConfig(root) {
     throw new PmkitError('NOT_CONFIGURED', `no .pmkit/config.yaml in ${root}`, '/pmkit:setup')
   }
   const pmkit = readYaml(pmkitFile, '.pmkit/config.yaml')
-  const system = pmkit?.tracker?.system
+  const system = isObject(pmkit) && isObject(pmkit.tracker) ? pmkit.tracker.system : undefined
+  if (typeof system !== 'string') {
+    throw new PmkitError('INVALID_INPUT', '.pmkit/config.yaml has no tracker.system', '/pmkit:setup')
+  }
   if (system !== 'local') {
     throw new PmkitError('NOT_SUPPORTED', `tracker.system "${system}" is not supported yet`, 'Set tracker.system to local in .pmkit/config.yaml')
+  }
+  if (pmkit.tracker.path !== undefined && pmkit.tracker.path !== null && typeof pmkit.tracker.path !== 'string') {
+    throw new PmkitError('INVALID_INPUT', 'tracker.path in .pmkit/config.yaml must be a folder name such as .issues', 'Fix tracker.path in .pmkit/config.yaml')
   }
   const issuesDir = join(root, pmkit.tracker.path ?? '.issues')
   const localFile = join(issuesDir, 'config.yaml')

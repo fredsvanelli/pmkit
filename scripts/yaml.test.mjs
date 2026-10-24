@@ -217,3 +217,10 @@ test('quote characters inside a flow-map key stay part of the key', () => {
   assert.deepEqual(parseYaml('m: { a"b: 1 }\n'), { m: { 'a"b': 1 } })
   assert.deepEqual(parseYaml("m: { a: [don't, x], b: 2 }\n"), { m: { a: ["don't", 'x'], b: 2 } })
 })
+
+test('stringifyYaml refuses NaN and Infinity, which would not read back as numbers', () => {
+  for (const value of [NaN, Infinity, -Infinity]) {
+    assert.throws(() => stringifyYaml({ estimate: value }), TypeError, String(value))
+    assert.throws(() => stringifyYaml({ list: [1, value] }), TypeError, String(value))
+  }
+})

@@ -389,3 +389,14 @@ test('drift is dated no later than the write that finds it', () => {
   const synthetic = rawEvents('ISS-1234').filter((e) => e.synthetic)
   assert.deepEqual(synthetic.map((e) => [e.field, e.at]), [['status', NOW]])
 })
+
+test('an hours estimate must be a finite positive number', () => {
+  const { root, issuesDir } = setup()
+  const configFile = path.join(issuesDir, 'config.yaml')
+  fs.writeFileSync(configFile, fs.readFileSync(configFile, 'utf8').replace('unit: points', 'unit: hours'))
+  const tracker = createLocalTracker(root, { now: () => new Date(NOW), random: scriptedRandom([1, 2, 3, 4]) })
+  for (const estimate of [Infinity, NaN, 0, -1]) {
+    assert.throws(() => tracker.createIssue({ title: 'X', estimate }, 'fred'), (error) => error.code === 'INVALID_INPUT', String(estimate))
+  }
+  assert.equal(tracker.createIssue({ title: 'X', estimate: 1.5 }, 'fred').after.estimate, 1.5)
+})
