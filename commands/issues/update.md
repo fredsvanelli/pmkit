@@ -31,12 +31,12 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 3. Split the request. A part that belongs to another command (see Parameters) is not run here. Name the command for it in the output.
 4. For a new description or new acceptance criteria, write the text to a temporary file outside `.issues/` and pass it with `--description-file` or `--criteria-file`. To tick or untick a criterion, use `--check <n>` or `--uncheck <n>` with the criterion number from step 1.
 5. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues update <id> <flags> --dry-run --json`.
-6. Show `before` and `after` for each field that changes. Follow "How to show a write" in the conventions: ask once with `AskUserQuestion`. When the user declines, stop and change nothing.
+6. Show `before` and `after` for each field that changes. Follow "How to show a write" in the conventions: ask once with `AskUserQuestion`. A change of `--sprint` is a scope move: it always shows the full preview and asks, whatever `write_policy.confirm` says. When the user declines, stop and change nothing.
 7. When the user approves, run the same command without `--dry-run`, then remove the temporary files.
 
 ## Confirmation points
 
-- Step 6: the before and after of the changed fields. `write_policy.confirm: none` skips this question.
+- Step 6: the before and after of the changed fields. `write_policy.confirm: none` skips this question, except when `--sprint` changes, which always asks.
 
 ## Output
 

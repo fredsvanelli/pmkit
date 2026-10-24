@@ -16,7 +16,7 @@ Arguments: `$ARGUMENTS`
 
 Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 
-1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues get <id> --comments --history --json`.
+1. Read the record. An ID that starts with the epic prefix (for example `EPC-`) is an epic. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" epic get <id> --json` and `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" epic updates <id> --json`. For any other ID, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues get <id> --comments --history --json`.
 2. For an epic, or any issue with `children`, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues list --parent <id> --json` and use the children and their status categories.
 3. Use the comments and the history of the last 30 days. When the record has older entries, say "summarizing the last 30 days" in the output. Do not read older entries.
 4. Write four short sections from what the record says. Do not invent anything that the record does not state.
@@ -24,11 +24,11 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
    - Open points: unanswered questions, unchecked acceptance criteria, children that are not done.
    - Blockers: each issue in `blockedBy` that is not done or canceled, with its ID.
    - Next steps: what the record implies comes next. Say "none recorded" when it implies nothing.
-5. Offer to post the summary as a comment. When the user accepts, follow `/pmkit:issues:comment` with the summary text. That command shows the comment and asks before it posts.
+5. Offer to post the summary as a comment. When the user accepts, write the summary to standard input and run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues comment <id> --body-file - --dry-run --json`. Show the comment text and ask once with `AskUserQuestion`. When the user declines, post nothing. When the user approves, run the same command without `--dry-run`, with the same text.
 
 ## Confirmation points
 
-None for the summary, which only reads. Posting it as a comment (step 5) goes through the confirmation of `/pmkit:issues:comment`. When the user declines the offer, post nothing.
+None for the summary, which only reads. Posting it as a comment (step 5) asks once, before the comment is posted. When the user declines the offer, post nothing.
 
 ## Output
 
