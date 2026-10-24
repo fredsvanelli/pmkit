@@ -31,3 +31,12 @@ function setupLocal() {
 }
 
 runTrackerContract({ name: 'Local tracker contract', setup: setupLocal })
+
+// Every operation returns a promise, as a hosted adapter's would. The suite must await them.
+function setupAsync() {
+  const env = setupLocal()
+  const tracker = Object.fromEntries(Object.entries(env.tracker).map(([name, operation]) => [name, async (...args) => operation(...args)]))
+  return { ...env, tracker }
+}
+
+runTrackerContract({ name: 'Local tracker contract through promises', setup: setupAsync })
