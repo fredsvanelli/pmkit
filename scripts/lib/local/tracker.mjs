@@ -10,6 +10,7 @@ import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
 import { isId, newId, normalizeId } from '../ids.mjs'
 import { CATEGORIES, LINK_KINDS, TERMINAL } from '../model.mjs'
 import { appendEvents, driftEvents, readEvents } from './events.mjs'
+import { formatError } from './migrations.mjs'
 import {
   HEALTH, epicFrontmatter, parseEpicFile, parseUpdateFile, serializeEpic, serializeUpdate, sortEpics, sortUpdates, walkParents,
 } from './epics.mjs'
@@ -86,7 +87,9 @@ function checkKeys(input, allowed) {
 }
 
 export function createLocalTracker(root, { config = loadConfig(root), now = () => new Date(), random, gitEmail, env = process.env } = {}) {
-  const { local, issuesDir } = config
+  const { local } = config
+  // An older format is read from its migrated copy; see loadConfig.
+  const issuesDir = config.readDir ?? config.issuesDir
   const stamp = () => isoSeconds(now())
 
   const statusOf = (name) => ({ name, category: local.statuses[name]?.category ?? null })
@@ -104,7 +107,9 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
 
   let configProblems
   // A write on a config that fails validation would store values no reader can map, such as a status without a category.
+  // A write on an older format would mix shapes, so it is refused before any other check.
   function requireWriter(actor) {
+    if (config.format?.state === 'behind') throw formatError(config.format)
     configProblems ??= validateLocalConfig(local)
     if (configProblems.length > 0) throw invalid(`the tracker config is not valid, so writes are refused: ${configProblems[0]}`, 'pmkit validate')
     return requireMember(actor, 'actor')

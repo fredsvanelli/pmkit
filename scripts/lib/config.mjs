@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { PmkitError } from './errors.mjs'
+import { FORMAT_VERSION, MIGRATIONS, formatError, formatState, migratedCopy } from './local/migrations.mjs'
 import { CATEGORIES, isCategory } from './model.mjs'
 import { parseYaml } from './yaml.mjs'
 
@@ -66,9 +67,9 @@ export function validatePmkitConfig(obj) {
   return problems
 }
 
+// The format version is checked by loadConfig and validateRepo, before the rest of the config.
 export function validateLocalConfig(obj) {
   const problems = []
-  if (obj.version !== 1) problems.push('version must be 1')
   const { id_prefix: idPrefix, epic_prefix: epicPrefix } = obj
   if (typeof idPrefix !== 'string' || !PREFIX.test(idPrefix)) problems.push('id_prefix must be 2 to 5 capital letters')
   if (typeof epicPrefix !== 'string' || !PREFIX.test(epicPrefix)) problems.push('epic_prefix must be 2 to 5 capital letters')
@@ -116,7 +117,7 @@ function readYaml(file, label) {
   }
 }
 
-export function loadConfig(root) {
+export function loadConfig(root, { formatVersion = FORMAT_VERSION, migrations = MIGRATIONS } = {}) {
   const pmkitFile = join(root, '.pmkit', 'config.yaml')
   if (!existsSync(pmkitFile)) {
     throw new PmkitError('NOT_CONFIGURED', `no .pmkit/config.yaml in ${root}`, '/pmkit:setup')
@@ -132,13 +133,30 @@ export function loadConfig(root) {
   if (pmkit.tracker.path !== undefined && pmkit.tracker.path !== null && typeof pmkit.tracker.path !== 'string') {
     throw new PmkitError('INVALID_INPUT', 'tracker.path in .pmkit/config.yaml must be a folder name such as .issues', 'Fix tracker.path in .pmkit/config.yaml')
   }
-  const issuesDir = join(root, pmkit.tracker.path ?? '.issues')
+  const trackerPath = pmkit.tracker.path ?? '.issues'
+  const issuesDir = join(root, trackerPath)
   const localFile = join(issuesDir, 'config.yaml')
   if (!existsSync(localFile)) {
     throw new PmkitError('NOT_CONFIGURED', `no config.yaml in ${issuesDir}`, '/pmkit:setup')
   }
-  const local = withLocalDefaults(readYaml(localFile, `${pmkit.tracker.path ?? '.issues'}/config.yaml`))
-  return { pmkit, local, root, issuesDir }
+  const label = `${trackerPath}/config.yaml`
+  const raw = readYaml(localFile, label)
+  // The format comes first: the other checks and every reader assume the current shape.
+  const version = isObject(raw) ? raw.version : undefined
+  let state
+  try {
+    state = formatState(version, formatVersion)
+  } catch (error) {
+    throw new PmkitError('INVALID_INPUT', `${label}: ${error.message}`, `Set version in ${label}`)
+  }
+  const format = { state, version, current: formatVersion }
+  if (state === 'ahead') throw formatError(format)
+  if (state === 'behind') {
+    const readDir = migratedCopy({ root, trackerPath, from: version, to: formatVersion, migrations })
+    const local = withLocalDefaults(readYaml(join(readDir, 'config.yaml'), label))
+    return { pmkit, local, root, issuesDir, readDir, format }
+  }
+  return { pmkit, local: withLocalDefaults(raw), root, issuesDir, format }
 }
 
 export function findRoot(start) {

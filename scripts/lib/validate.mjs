@@ -7,6 +7,7 @@ import { isId, normalizeId } from './ids.mjs'
 import { parseYaml } from './yaml.mjs'
 import { parseEpicFile, walkParents } from './local/epics.mjs'
 import { driftEvents, readEvents } from './local/events.mjs'
+import { formatError } from './local/migrations.mjs'
 import { hasConflictMarkers, parseIssueFile, toFrontmatter } from './local/issue-file.mjs'
 import { overlaps, readSprint } from './local/sprints.mjs'
 
@@ -59,9 +60,14 @@ function blockedByCycles(graph) {
   return cycles
 }
 
-// loadConfig throws INVALID_INPUT when the local config.yaml does not parse. That is a finding, not a failure.
+const relative = (root, file) => path.relative(root, file).split(path.sep).join('/')
+const noneChecked = () => ({ issues: 0, epics: 0, sprints: 0, comments: 0 })
+
+// loadConfig throws INVALID_INPUT when the local config.yaml does not parse, and NOT_SUPPORTED when its
+// format is newer than this pmkit's. Both are findings, not failures.
 function brokenConfigProblem(root, error) {
-  if (error?.code !== 'INVALID_INPUT') throw error
+  const format = error?.details?.format !== undefined
+  if (error?.code !== 'INVALID_INPUT' && !format) throw error
   let issuesDir
   try {
     const pmkit = parseYaml(read(path.join(root, '.pmkit', 'config.yaml')))
@@ -71,9 +77,10 @@ function brokenConfigProblem(root, error) {
   }
   const file = path.join(issuesDir, 'config.yaml')
   if (!fs.existsSync(file)) throw error
+  if (format) return { path: relative(root, file), code: 'FORMAT', message: error.message }
   const conflict = hasConflictMarkers(read(file))
   return {
-    path: path.relative(root, file).split(path.sep).join('/'),
+    path: relative(root, file),
     code: conflict ? 'conflict' : 'config',
     message: conflict ? 'the file contains git conflict markers' : error.message,
   }
@@ -84,14 +91,19 @@ export function validateRepo(root, { config } = {}) {
     try {
       config = loadConfig(root)
     } catch (error) {
-      return { checked: { issues: 0, epics: 0, sprints: 0, comments: 0 }, problems: [brokenConfigProblem(root, error)] }
+      return { checked: noneChecked(), problems: [brokenConfigProblem(root, error)] }
     }
   }
   const { local, issuesDir } = config
+  // An older format is one problem: the other checks assume the current shape.
+  if (config.format && config.format.state !== 'current') {
+    const problem = { path: relative(root, path.join(issuesDir, 'config.yaml')), code: 'FORMAT', message: formatError(config.format).message }
+    return { checked: noneChecked(), problems: [problem] }
+  }
   const problems = []
-  const rel = (file) => path.relative(root, file).split(path.sep).join('/')
+  const rel = (file) => relative(root, file)
   const add = (file, code, message) => problems.push({ path: rel(file), code, message })
-  const checked = { issues: 0, epics: 0, sprints: 0, comments: 0 }
+  const checked = noneChecked()
 
   const configFile = path.join(issuesDir, 'config.yaml')
   const conflicted = new Set()
