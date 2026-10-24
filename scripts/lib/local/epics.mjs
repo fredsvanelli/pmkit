@@ -3,6 +3,7 @@
 
 import { PmkitError } from '../errors.mjs'
 import { FrontmatterError, joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
+import { hasConflictMarkers } from './issue-file.mjs'
 
 export const HEALTH = ['on_track', 'at_risk', 'off_track']
 export const EPIC_KEYS = ['id', 'title', 'status', 'start', 'target', 'milestone']
@@ -13,7 +14,7 @@ const normalize = (text) => text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
 
 function parseFile(text, label) {
   const normalized = normalize(text)
-  if (/^(<<<<<<< |>>>>>>> )/m.test(normalized)) {
+  if (hasConflictMarkers(normalized)) {
     throw new PmkitError('CONFLICT', `The ${label} file contains git conflict markers.`, DOCTOR)
   }
   const split = splitFrontmatter(normalized)

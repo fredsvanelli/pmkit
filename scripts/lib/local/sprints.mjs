@@ -25,13 +25,12 @@ export function addDays(date, days) {
 
 const isMap = (value) => value !== null && typeof value === 'object' && !Array.isArray(value)
 
-/** Reads sprints/<id>.yaml. A file that does not parse or lacks a start, end or state throws INVALID_INPUT. */
-export function readSprint(dir, id) {
-  const file = `${id}.yaml`
-  const bad = (why) => invalid(`sprint file ${file} ${why}`, DOCTOR)
+/** Parses the text of sprints/<id>.yaml. A text that does not parse or lacks a start, end or state throws INVALID_INPUT. */
+export function parseSprint(text, id) {
+  const bad = (why) => invalid(`sprint file ${id}.yaml ${why}`, DOCTOR)
   let data
   try {
-    data = parseYaml(fs.readFileSync(path.join(dir, file), 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n'))
+    data = parseYaml(text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n'))
   } catch (error) {
     throw bad(`does not parse: ${error.message}`)
   }
@@ -50,6 +49,8 @@ export function readSprint(dir, id) {
     daysOff: isMap(data.days_off) ? data.days_off : {},
   }
 }
+
+export const readSprint = (dir, id) => parseSprint(fs.readFileSync(path.join(dir, `${id}.yaml`), 'utf8'), id)
 
 export function readSprints(dir) {
   if (!fs.existsSync(dir)) return []

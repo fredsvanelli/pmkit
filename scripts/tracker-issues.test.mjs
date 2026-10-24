@@ -265,3 +265,59 @@ test('drift is dated no earlier than the newest logged event, so a second write 
   tracker.updateIssue('ISS-1234', { title: 'Second' }, 'fred')
   assert.equal(rawEvents('ISS-1234').filter((e) => e.synthetic).length, 1)
 })
+
+const FENCED_CONFLICT = 'Resolve it like this:\n\n```\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> other\n```'
+
+test('a write whose file would not read back throws and writes nothing', () => {
+  const { tracker, issuesDir, paths } = setup()
+  const before = hashTree(issuesDir)
+  const conflicted = 'Before\n<<<<<<< HEAD\nours\n>>>>>>> other'
+  assert.throws(() => tracker.createIssue({ title: 'X', description: conflicted }, 'fred'), (error) => error.code === 'INVALID_INPUT')
+  assert.equal(hashTree(issuesDir), before)
+
+  const { id } = tracker.createIssue({ title: 'First' }, 'fred').after
+  const written = hashTree(issuesDir)
+  assert.throws(() => tracker.updateIssue(id, { description: conflicted }, 'fred'), (error) => error.code === 'INVALID_INPUT')
+  assert.equal(hashTree(issuesDir), written)
+  assert.equal(tracker.getIssue(id).description, '')
+  assert.ok(fs.existsSync(paths(id).file))
+
+  const unclosed = { description: '```\nan unclosed fence', acceptanceCriteria: ['hidden by the fence'] }
+  assert.throws(() => tracker.updateIssue(id, unclosed, 'fred'), (error) => error.code === 'INVALID_INPUT' && /acceptance criteria/.test(error.message))
+  assert.equal(hashTree(issuesDir), written)
+})
+
+test('single-line fields refuse line breaks', () => {
+  const { tracker } = setup()
+  const lineBreak = (error) => error.code === 'INVALID_INPUT' && /line break/.test(error.message)
+  for (const input of [
+    { title: 'a\nb' },
+    { title: 'a\rb' },
+    { title: 'X', labels: ['ok', 'bad\nlabel'] },
+    { title: 'X', acceptanceCriteria: ['one\ntwo'] },
+    { title: 'X', acceptanceCriteria: [{ text: 'one\rtwo', done: false }] },
+  ]) assert.throws(() => tracker.createIssue(input, 'fred'), lineBreak, JSON.stringify(input))
+  const { id } = tracker.createIssue({ title: 'First' }, 'fred').after
+  for (const patch of [{ title: 'a\nb' }, { milestone: 'v1\nv2' }, { branch: 'feature\r\nx' }]) {
+    assert.throws(() => tracker.updateIssue(id, patch, 'fred'), lineBreak, JSON.stringify(patch))
+  }
+})
+
+test('conflict markers inside a fenced code block are text, not a conflict', () => {
+  const { tracker } = setup()
+  const { id } = tracker.createIssue({ title: 'Fenced', description: FENCED_CONFLICT }, 'fred').after
+  assert.equal(tracker.getIssue(id).description, FENCED_CONFLICT)
+  assert.deepEqual(tracker.searchIssues({}).problems, [])
+})
+
+test('a description or criterion with a ## heading outside a code fence is refused', () => {
+  const { tracker } = setup()
+  const heading = (error) => error.code === 'INVALID_INPUT' && error.nextStep === 'Use ### or deeper headings inside the description'
+  assert.throws(() => tracker.createIssue({ title: 'X', description: 'Intro\n\n## Notes\n\nMore' }, 'fred'), heading)
+  assert.throws(() => tracker.createIssue({ title: 'X', acceptanceCriteria: ['## Not a criterion'] }, 'fred'), heading)
+  const description = 'Intro\n\n### Notes\n\n```md\n## Inside a fence\n```'
+  const { id } = tracker.createIssue({ title: 'X', description }, 'fred').after
+  assert.equal(tracker.getIssue(id).description, description)
+  assert.throws(() => tracker.updateIssue(id, { description: '## Description\n\nAgain' }, 'fred'), heading)
+  assert.equal(tracker.getIssue(id).description, description)
+})

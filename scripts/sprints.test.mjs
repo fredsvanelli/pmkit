@@ -276,3 +276,13 @@ test('setCapacity with dryRun writes nothing and returns before and after', () =
   assert.deepEqual(result.after.capacity, { fred: 1 })
   assert.equal(hashTree(root), hash)
 })
+
+test('openCycle refuses a line break in the name or the goal and writes nothing', () => {
+  const { root, tracker } = setup('basic')
+  const hash = hashTree(root)
+  for (const input of [{ name: 'Sprint\none' }, { goal: 'Ship\nthe thing' }, { goal: 'Ship\rit' }]) {
+    assert.throws(() => tracker.openCycle({ start: '2026-11-02', ...input }, 'fred'), code('INVALID_INPUT', /line break/))
+  }
+  assert.equal(hashTree(root), hash)
+  assert.deepEqual(tracker.listCycles(), [])
+})

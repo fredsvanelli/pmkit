@@ -468,3 +468,26 @@ test('issues list keeps every repeated --label', () => {
   json(root, ['issues', 'create', '--title', 'Only y', '--label', 'y'])
   assert.deepEqual(json(root, ['issues', 'list', '--label', 'x', '--label', 'y']).issues.map((issue) => issue.id), [both])
 })
+
+test('a line break in a title or a sprint goal exits 2 and writes nothing', () => {
+  const root = makeRepo('basic')
+  const before = hashTree(root)
+  const title = run(root, ['issues', 'create', '--title', 'a\nb', '--json'])
+  assert.equal(title.status, 2)
+  assert.equal(JSON.parse(title.stdout).error.code, 'INVALID_INPUT')
+  const goal = run(root, ['cycle', 'open', '--start', '2026-10-19', '--goal', 'a\nb', '--json'])
+  assert.equal(goal.status, 2)
+  assert.equal(JSON.parse(goal.stdout).error.code, 'INVALID_INPUT')
+  assert.equal(hashTree(root), before)
+  assert.deepEqual(json(root, ['cycle', 'list']), [])
+})
+
+test('a description with a fenced example of conflict markers is written and read back', () => {
+  const root = makeRepo('basic')
+  const description = 'Resolve it like this:\n\n```\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> other\n```\n'
+  const created = run(root, ['issues', 'create', '--title', 'Fenced', '--description-file', '-', '--json'], { input: description })
+  assert.equal(created.status, 0, created.stdout)
+  const { id } = JSON.parse(created.stdout).after
+  assert.equal(json(root, ['issues', 'get', id]).description, description.trim())
+  assert.deepEqual(json(root, ['validate']).problems, [])
+})

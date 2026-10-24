@@ -17,8 +17,26 @@ const TASK_ITEM = /^- \[([ xX])\] (.*)$/
 const normalize = (text) => text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
 const asList = (value) => (Array.isArray(value) ? value.map(String) : value == null ? [] : [String(value)])
 
+const FENCE = /^(```|~~~)/
+
+// The lines of a Markdown text that are outside fenced code blocks.
+function unfencedLines(text) {
+  let fence = false
+  return text.split('\n').filter((line) => {
+    if (!FENCE.test(line)) return !fence
+    fence = !fence
+    return false
+  })
+}
+
+/** True when a line outside fenced code blocks starts with a git conflict marker. */
+export const hasConflictMarkers = (text) => unfencedLines(text).some((line) => /^(<<<<<<< |>>>>>>> )/.test(line))
+
+/** True when a line outside fenced code blocks is a `## ` heading, which would start a new section of the issue body. */
+export const hasSectionHeading = (text) => unfencedLines(text).some((line) => line.startsWith('## '))
+
 function assertNoConflict(text) {
-  if (/^(<<<<<<< |>>>>>>> )/m.test(text)) {
+  if (hasConflictMarkers(text)) {
     throw new PmkitError('CONFLICT', 'The issue file contains git conflict markers.', '/pmkit:local:doctor')
   }
 }
@@ -28,7 +46,7 @@ function splitSections(body) {
   const chunks = [{ title: null, text: '' }]
   let fence = false
   for (const line of body.split(/(?<=\n)/)) {
-    if (/^(```|~~~)/.test(line)) fence = !fence
+    if (FENCE.test(line)) fence = !fence
     const heading = !fence && line.match(/^## (.*?)\s*$/)
     if (heading) chunks.push({ title: heading[1], text: '' })
     chunks[chunks.length - 1].text += line

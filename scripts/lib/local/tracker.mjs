@@ -13,13 +13,13 @@ import { appendEvents, driftEvents, readEvents } from './events.mjs'
 import {
   HEALTH, epicFrontmatter, parseEpicFile, parseUpdateFile, serializeEpic, serializeUpdate, sortEpics, sortUpdates, walkParents,
 } from './epics.mjs'
-import { parseIssueFile, serializeIssue, toFrontmatter } from './issue-file.mjs'
+import { hasSectionHeading, parseIssueFile, serializeIssue, toFrontmatter } from './issue-file.mjs'
 import { buildCapabilities } from '../capabilities.mjs'
 import { lastEntry } from '../metrics.mjs'
 import { createDocumentFile, readDocumentFile } from './documents.mjs'
 import { checkFilter, runQuery } from './query.mjs'
 import {
-  SPRINT_STATES, addDays, overlaps, readSprint, readSprints, requireCapacity, serializeSprint, validDate,
+  SPRINT_STATES, addDays, overlaps, parseSprint, readSprint, readSprints, requireCapacity, serializeSprint, validDate,
 } from './sprints.mjs'
 import { fileMtimeIso, issuePaths, listIssueIds, writeFileAtomic } from './store.mjs'
 
@@ -53,6 +53,29 @@ const BODY_FIELDS = { description: 'description', acceptanceCriteria: 'acceptanc
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep || undefined)
 const isoSeconds = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z')
 const blank = (value) => value === undefined || value === null
+const HEADING_STEP = 'Use ### or deeper headings inside the description'
+
+// Single-line fields are written as one YAML or Markdown line, so a line break would break the file.
+function oneLine(field, value) {
+  if (/[\r\n]/.test(value)) throw invalid(`${field} must not contain a line break`)
+  return value
+}
+
+function noSectionHeading(field, value) {
+  if (hasSectionHeading(value)) throw invalid(`${field} has a line starting with "## ", which would end the section`, HEADING_STEP)
+  return value
+}
+
+/** Parses the text a write is about to save, so a text that would not read back is refused before anything is written. */
+function readBack(label, parse) {
+  try {
+    return parse()
+  } catch (error) {
+    if (!(error instanceof PmkitError)) throw error
+    const step = error.code === 'CONFLICT' ? 'Put example conflict markers inside a fenced code block' : undefined
+    throw invalid(`the ${label} would not read back after this write: ${error.message}`, step)
+  }
+}
 
 function checkKeys(input, allowed) {
   for (const key of Object.keys(input)) {
@@ -106,6 +129,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
 
   function requireLabels(value) {
     if (!Array.isArray(value) || !value.every((label) => typeof label === 'string')) throw invalid('labels must be a list of strings')
+    for (const label of value) oneLine('label', label)
     if (local.labels.length > 0) for (const label of value) oneOf('label', label, local.labels)
     return value
   }
@@ -115,7 +139,8 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     return value.map((item) => {
       const text = typeof item === 'string' ? item : item?.text
       if (typeof text !== 'string' || text.trim() === '') throw invalid('each acceptance criterion needs text')
-      return { text: text.trim(), done: item?.done === true }
+      const trimmed = noSectionHeading('acceptance criterion', oneLine('acceptance criterion', text.trim()))
+      return { text: trimmed, done: item?.done === true }
     })
   }
 
@@ -123,12 +148,13 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     if (typeof value !== 'string') throw invalid(`${field} must be a string`)
     return value
   }
+  const plainText = (field, value) => text(field)(value).replace(/\r\n/g, '\n').trim()
 
   // A normalizer per input field. Optional fields accept null to clear them.
   const NORMALIZE = {
     title: (value) => {
       if (typeof value !== 'string' || value.trim() === '') throw invalid('title is required')
-      return value.trim()
+      return oneLine('title', value.trim())
     },
     type: (value) => oneOf('type', value, local.types),
     status: (value) => oneOf('status', value, Object.keys(local.statuses)),
@@ -138,13 +164,13 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     labels: requireLabels,
     parent: requireParent,
     sprint: requireSprint,
-    milestone: text('milestone'),
+    milestone: (value) => oneLine('milestone', text('milestone')(value)),
     due: (value) => {
       if (!validDate(value)) throw invalid('due must be a date as YYYY-MM-DD')
       return value
     },
-    branch: text('branch'),
-    description: (value) => text('description')(value).trim(),
+    branch: (value) => oneLine('branch', text('branch')(value)),
+    description: (value) => noSectionHeading('description', plainText('description', value)),
     acceptanceCriteria: requireCriteria,
   }
   const REQUIRED = ['title', 'type', 'status']
@@ -175,15 +201,21 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     return { issue, paths }
   }
 
-  // The returned issue is what a reader sees after the write, so parse the text that gets saved.
+  // The returned issue is what a reader sees after the write, so parse the text that gets saved, before saving it.
   function save(issue, events, paths, { dryRun }) {
     const content = serializeIssue(issue)
+    const after = readBack('issue file', () => parseIssueFile(content, { statuses: local.statuses }))
+    // An unclosed code fence in the description, for one, hides the sections after it.
+    const same = (key, empty) => JSON.stringify(after[key]) === JSON.stringify(issue[key] ?? empty)
+    if (!same('description', '') || !same('acceptanceCriteria', [])) {
+      throw invalid('the issue file would not read back after this write: the description or the acceptance criteria would change', 'Close every code fence in the description')
+    }
     if (!dryRun) {
       fs.mkdirSync(paths.dir, { recursive: true })
       writeFileAtomic(paths.file, content)
       appendEvents(paths.events, events)
     }
-    return parseIssueFile(content, { statuses: local.statuses })
+    return after
   }
 
   /** The one write path for existing issues: settle drift, then let `edit` return the next issue and its events. */
@@ -532,9 +564,11 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   }
 
   function writeSprint(before, after, { dryRun }) {
+    const content = serializeSprint(after)
+    readBack('sprint file', () => parseSprint(content, after.id))
     if (!dryRun) {
       fs.mkdirSync(sprintsDir, { recursive: true })
-      writeFileAtomic(path.join(sprintsDir, `${after.id}.yaml`), serializeSprint(after))
+      writeFileAtomic(path.join(sprintsDir, `${after.id}.yaml`), content)
     }
     return { before, after }
   }
@@ -552,8 +586,10 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     if (start > end) throw invalid(`start ${start} is after end ${end}`)
     const name = input.name ?? `Sprint ${start}`
     if (typeof name !== 'string' || name.trim() === '') throw invalid('name must be a non-empty string')
+    oneLine('name', name.trim())
     const goal = input.goal ?? ''
     if (typeof goal !== 'string') throw invalid('goal must be a string')
+    oneLine('goal', goal)
     const existing = listCycles()
     if (existing.some((sprint) => sprint.id === start)) throw invalid(`a sprint file for ${start} already exists`, 'pmkit cycle list')
     const clash = existing.find((sprint) => sprint.state !== 'closed' && overlaps(sprint, { start, end }))
@@ -622,16 +658,17 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
       epic[key] = input[key]
     }
     if (!blank(input.milestone)) epic.milestone = NORMALIZE.milestone(input.milestone)
-    if (!blank(input.description)) epic.description = NORMALIZE.description(input.description)
+    if (!blank(input.description)) epic.description = plainText('description', input.description)
     epic.id = newId(local.epic_prefix, { random, exists: (candidate) => fs.existsSync(path.join(epicsDir, candidate)) })
     const content = serializeEpic(epic)
+    const after = readBack('epic file', () => parseEpicFile(content, { statuses: local.statuses }))
     if (!dryRun) {
       const dir = path.join(epicsDir, epic.id)
       fs.mkdirSync(dir, { recursive: true })
       writeFileAtomic(path.join(dir, 'epic.md'), content)
       appendEvents(path.join(dir, 'events.jsonl'), [{ at: stamp(), by: actor, op: 'create', to: epicFrontmatter(epic) }])
     }
-    return { before: null, after: parseEpicFile(content, { statuses: local.statuses }) }
+    return { before: null, after }
   }
 
   /** Counts the non-archived issues whose parent chain reaches the epic. */
@@ -666,13 +703,15 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     if (typeof input.body !== 'string' || input.body.trim() === '') throw invalid('status update body must be a non-empty string')
     const at = stamp()
     const update = { epic: epic.id, at, author: actor, health: input.health, body: input.body.trim() }
+    const content = serializeUpdate(update)
+    readBack('status update file', () => parseUpdateFile(content, epic.id))
     if (!dryRun) {
       const updates = path.join(dir, 'updates')
       const base = `${at.slice(0, 10)}-${fileSafe(actor)}`
       let name = base
       for (let n = 2; fs.existsSync(path.join(updates, `${name}.md`)); n++) name = `${base}-${n}`
       fs.mkdirSync(updates, { recursive: true })
-      writeFileAtomic(path.join(updates, `${name}.md`), serializeUpdate(update))
+      writeFileAtomic(path.join(updates, `${name}.md`), content)
     }
     return { before: null, after: update }
   }

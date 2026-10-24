@@ -174,3 +174,26 @@ test('listStatusUpdates is empty without updates and throws NOT_FOUND for a miss
   assert.deepEqual(tracker.listStatusUpdates('EPC-2M9D'), [])
   assert.throws(() => tracker.listStatusUpdates('EPC-ZZZZ'), (error) => error.code === 'NOT_FOUND')
 })
+
+test('createDeliverable refuses a line break in the title or milestone and a body that would not read back', () => {
+  const { tracker, root } = setup()
+  const hash = hashTree(root)
+  const code = (expected) => (error) => error.code === expected
+  assert.throws(() => tracker.createDeliverable({ title: 'Launch\nnow' }, 'fred'), code('INVALID_INPUT'))
+  assert.throws(() => tracker.createDeliverable({ title: 'Launch', milestone: 'v1\nv2' }, 'fred'), code('INVALID_INPUT'))
+  assert.throws(() => tracker.createDeliverable({ title: 'Launch', description: '<<<<<<< HEAD\nx\n>>>>>>> b' }, 'fred'), code('INVALID_INPUT'))
+  assert.equal(hashTree(root), hash)
+  const fenced = '```\n<<<<<<< HEAD\nx\n>>>>>>> b\n```'
+  const { after } = tracker.createDeliverable({ title: 'Launch', description: fenced }, 'fred')
+  assert.equal(tracker.getDeliverable(after.id).description, fenced)
+})
+
+test('publishStatusUpdate refuses a body that would not read back and writes nothing', () => {
+  const { tracker, root } = setup('team')
+  const hash = hashTree(root)
+  assert.throws(
+    () => tracker.publishStatusUpdate({ epic: 'EPC-2M9D', health: 'at_risk', body: 'Late.\n<<<<<<< HEAD\nx' }, 'fred'),
+    (error) => error.code === 'INVALID_INPUT',
+  )
+  assert.equal(hashTree(root), hash)
+})

@@ -7,10 +7,9 @@ import { isId, normalizeId } from './ids.mjs'
 import { parseYaml } from './yaml.mjs'
 import { parseEpicFile, walkParents } from './local/epics.mjs'
 import { driftEvents, readEvents } from './local/events.mjs'
-import { parseIssueFile, toFrontmatter } from './local/issue-file.mjs'
+import { hasConflictMarkers, parseIssueFile, toFrontmatter } from './local/issue-file.mjs'
 import { overlaps, readSprint } from './local/sprints.mjs'
 
-const CONFLICT_MARKERS = /^(<<<<<<< |>>>>>>> )/m
 const LIST_REFS = ['blocked_by', 'related', 'duplicate_of']
 const read = (file) => fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
 const subdirs = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort() : [])
@@ -72,7 +71,7 @@ function brokenConfigProblem(root, error) {
   }
   const file = path.join(issuesDir, 'config.yaml')
   if (!fs.existsSync(file)) throw error
-  const conflict = CONFLICT_MARKERS.test(read(file))
+  const conflict = hasConflictMarkers(read(file))
   return {
     path: path.relative(root, file).split(path.sep).join('/'),
     code: conflict ? 'conflict' : 'config',
@@ -97,7 +96,7 @@ export function validateRepo(root, { config } = {}) {
   const configFile = path.join(issuesDir, 'config.yaml')
   const conflicted = new Set()
   for (const file of walkFiles(issuesDir).filter((name) => name.endsWith('.md') || name.endsWith('.yaml'))) {
-    if (!CONFLICT_MARKERS.test(read(file))) continue
+    if (!hasConflictMarkers(read(file))) continue
     conflicted.add(file)
     add(file, 'conflict', 'the file contains git conflict markers')
   }

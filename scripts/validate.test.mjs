@@ -93,3 +93,12 @@ test('an unparseable config.yaml is one config problem and does not throw', () =
   fs.writeFileSync(path.join(root, '.issues', 'config.yaml'), 'version: 1\nthis line has no colon\n')
   assert.deepEqual(brief(validateRepo(root)), ['config .issues/config.yaml'])
 })
+
+test('conflict markers inside a fenced code block are not a conflict problem', () => {
+  const root = makeRepo('team')
+  fs.rmSync(path.join(root, '.issues', 'issues', 'ISS-3Q6T'), { recursive: true })
+  writeIssue(root, 'ISS-9FEN', '')
+  const file = path.join(root, '.issues', 'issues', 'ISS-9FEN', 'issue.md')
+  fs.appendFileSync(file, '\n## Description\n\n```\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> other\n```\n')
+  assert.deepEqual(brief(validateRepo(root)).filter((line) => line.startsWith('conflict')), [])
+})
