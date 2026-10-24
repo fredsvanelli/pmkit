@@ -116,12 +116,16 @@ export function parseIssueFile(text, { statuses = {} } = {}) {
     if (data[key] != null) issue[key] = data[key]
   }
   for (const key of ['created', 'updated']) if (issue[key] === undefined) delete issue[key]
+  // Keys pmkit does not know, such as one a person added by hand, are kept so the next write does not drop them.
+  const unknown = Object.keys(data).filter((key) => !ISSUE_KEYS.includes(key))
+  if (unknown.length > 0) issue.extra = Object.fromEntries(unknown.map((key) => [key, data[key]]))
   return issue
 }
 
-/** The frontmatter values of an issue, keyed as they are written to the file. */
+/** The frontmatter values of an issue, keyed as they are written to the file. Unknown keys from `extra` come first and are written last. */
 export function toFrontmatter(issue) {
   return {
+    ...issue.extra,
     id: issue.id,
     title: issue.title,
     type: issue.type,

@@ -321,3 +321,15 @@ test('a description or criterion with a ## heading outside a code fence is refus
   assert.throws(() => tracker.updateIssue(id, { description: '## Description\n\nAgain' }, 'fred'), heading)
   assert.equal(tracker.getIssue(id).description, description)
 })
+
+test('a hand-added frontmatter key survives the next write and causes no drift', () => {
+  const { tracker, paths, rawEvents } = setup()
+  const { id } = tracker.createIssue({ title: 'First' }, 'fred').after
+  const { file } = paths(id)
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('type: feature\n', 'type: feature\nteam: payments\n'))
+  assert.deepEqual(tracker.getIssue(id).extra, { team: 'payments' })
+  tracker.updateIssue(id, { title: 'Second' }, 'fred')
+  assert.match(fs.readFileSync(file, 'utf8'), /^team: payments$/m)
+  assert.deepEqual(tracker.getIssue(id).extra, { team: 'payments' })
+  assert.equal(rawEvents(id).filter((event) => event.synthetic).length, 0)
+})

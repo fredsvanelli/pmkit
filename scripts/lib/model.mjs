@@ -34,6 +34,7 @@ export const isCategory = (value) => CATEGORIES.includes(value)
  * @property {Criterion[]} acceptanceCriteria
  * @property {string} created ISO 8601 UTC
  * @property {string} updated ISO 8601 UTC
+ * @property {Object<string, *>} [extra] frontmatter keys pmkit does not know, kept on the next write
  *
  * @typedef {{ id: string, issue: string, author: string, body: string, created: string }} Comment
  *
@@ -56,6 +57,7 @@ export const isCategory = (value) => CATEGORIES.includes(value)
  * @property {'planned' | 'active' | 'closed'} state
  * @property {Object<string, number>} capacity member id to points or hours
  * @property {Object<string, string[]>} daysOff member id to dates
+ * @property {Object<string, *>} [extra] sprint file keys pmkit does not know, kept on the next write
  *
  * @typedef {object} Epic
  * @property {string} id

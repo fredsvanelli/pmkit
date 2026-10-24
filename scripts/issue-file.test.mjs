@@ -144,3 +144,14 @@ test('a file without frontmatter, or with broken frontmatter, throws INVALID_INP
     assert.throws(() => parse(text), (error) => error.code === 'INVALID_INPUT')
   }
 })
+
+test('unknown frontmatter keys go to extra and are written back after the known ones', () => {
+  const text = SPEC_FILE.replace('type: bug\n', 'type: bug\nteam: payments\nreviewers: [ana, fred]\n')
+  const issue = parse(text)
+  assert.deepEqual(issue.extra, { team: 'payments', reviewers: ['ana', 'fred'] })
+  assert.equal(toFrontmatter(issue).team, 'payments')
+  const written = serializeIssue(issue)
+  assert.equal(written, SPEC_FILE.replace('updated: 2026-10-24T13:40:00Z\n', 'updated: 2026-10-24T13:40:00Z\nreviewers: [ana, fred]\nteam: payments\n'))
+  assert.deepEqual(parse(written), { ...issue, body: issue.body })
+  assert.equal('extra' in parse(SPEC_FILE), false)
+})

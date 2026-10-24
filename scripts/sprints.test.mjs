@@ -286,3 +286,12 @@ test('openCycle refuses a line break in the name or the goal and writes nothing'
   assert.equal(hashTree(root), hash)
   assert.deepEqual(tracker.listCycles(), [])
 })
+
+test('a hand-added key in a sprint file survives the next write', () => {
+  const { sprints, tracker, read } = setup()
+  const file = path.join(sprints, '2026-10-12.yaml')
+  fs.writeFileSync(file, `${fs.readFileSync(file, 'utf8')}retro: 2026-10-26\n`)
+  tracker.setCapacity('2026-10-12', { fred: 5 }, 'fred')
+  assert.equal(read('2026-10-12').retro, '2026-10-26')
+  assert.deepEqual(read('2026-10-12').capacity, { fred: 5 })
+})

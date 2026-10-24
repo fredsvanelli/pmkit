@@ -38,7 +38,7 @@ export function parseSprint(text, id) {
   if (!validDate(data.start)) throw bad('has no valid start date')
   if (!validDate(data.end)) throw bad('has no valid end date')
   if (!SPRINT_STATES.includes(data.state)) throw bad(`has state "${data.state}", expected one of ${SPRINT_STATES.join(', ')}`)
-  return {
+  const sprint = {
     id,
     name: typeof data.name === 'string' ? data.name : `Sprint ${id}`,
     start: data.start,
@@ -48,6 +48,10 @@ export function parseSprint(text, id) {
     capacity: isMap(data.capacity) ? data.capacity : {},
     daysOff: isMap(data.days_off) ? data.days_off : {},
   }
+  // Keys pmkit does not know are kept so the next write does not drop them.
+  const unknown = Object.keys(data).filter((key) => !FILE_ORDER.includes(key))
+  if (unknown.length > 0) sprint.extra = Object.fromEntries(unknown.map((key) => [key, data[key]]))
+  return sprint
 }
 
 export const readSprint = (dir, id) => parseSprint(fs.readFileSync(path.join(dir, `${id}.yaml`), 'utf8'), id)
@@ -61,8 +65,8 @@ export function readSprints(dir) {
 }
 
 export function serializeSprint(sprint) {
-  const { id, daysOff, ...rest } = sprint
-  return stringifyYaml({ ...rest, days_off: daysOff }, { order: FILE_ORDER })
+  const { id, daysOff, extra, ...rest } = sprint
+  return stringifyYaml({ ...extra, ...rest, days_off: daysOff }, { order: FILE_ORDER })
 }
 
 export function requireCapacity(value, members) {
