@@ -51,13 +51,29 @@ export function readEvents(file) {
   return { events, problems }
 }
 
+function endsWithoutNewline(file) {
+  if (!fs.existsSync(file)) return false
+  const { size } = fs.statSync(file)
+  if (size === 0) return false
+  const fd = fs.openSync(file, 'r')
+  try {
+    const last = Buffer.alloc(1)
+    fs.readSync(fd, last, 0, 1, size - 1)
+    return last[0] !== 0x0a
+  } finally {
+    fs.closeSync(fd)
+  }
+}
+
 export function appendEvents(file, events) {
   const lines = events.map((event) => {
     const ordered = {}
     for (const key of EVENT_KEYS) if (event[key] !== undefined) ordered[key] = event[key]
     return JSON.stringify(ordered) + '\n'
   })
-  if (lines.length) fs.appendFileSync(file, lines.join(''))
+  if (lines.length === 0) return
+  const lead = endsWithoutNewline(file) ? '\n' : ''
+  fs.appendFileSync(file, lead + lines.join(''))
 }
 
 export function replay(events) {

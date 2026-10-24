@@ -71,6 +71,14 @@ test('appendEvents writes LF lines with keys in order and skips undefined', () =
   )
 })
 
+test('appendEvents starts a new line after a half-written one', () => {
+  const file = write(tmp(), 'events.jsonl', JSON.stringify(clean[0]) + '\n{"at":"2026-10')
+  appendEvents(file, [clean[1]])
+  const { events, problems } = readEvents(file)
+  assert.deepEqual(events, [clean[0], clean[1]])
+  assert.equal(problems.length, 1)
+})
+
 test('a hand edit of status gives one synthetic move, and applying it ends the drift', () => {
   const frontmatter = { id: 'ISS-1', title: 'A', status: 'done', labels: [], created: 'c', updated: 'u' }
   const fixed = { ...frontmatter, assignee: 'ana' }
