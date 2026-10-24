@@ -8,10 +8,13 @@ import { loadConfig } from '../config.mjs'
 import { PmkitError } from '../errors.mjs'
 import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
 import { isId, newId, normalizeId } from '../ids.mjs'
-import { CATEGORIES, LINK_KINDS } from '../model.mjs'
+import { CATEGORIES, LINK_KINDS, TERMINAL } from '../model.mjs'
 import { appendEvents, driftEvents, readEvents } from './events.mjs'
 import { parseIssueFile, serializeIssue, toFrontmatter } from './issue-file.mjs'
 import { checkFilter, runQuery } from './query.mjs'
+import {
+  SPRINT_STATES, addDays, overlaps, readSprint, readSprints, requireCapacity, serializeSprint, validDate,
+} from './sprints.mjs'
 import { fileMtimeIso, issuePaths, listIssueIds, writeFileAtomic } from './store.mjs'
 
 const CREATE_KEYS = [
@@ -44,11 +47,6 @@ const BODY_FIELDS = { description: 'description', acceptanceCriteria: 'acceptanc
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep || undefined)
 const isoSeconds = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z')
 const blank = (value) => value === undefined || value === null
-
-function validDate(text) {
-  if (typeof text !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(text)) return false
-  return new Date(`${text}T00:00:00Z`).toISOString().startsWith(text)
-}
 
 function checkKeys(input, allowed) {
   for (const key of Object.keys(input)) {
@@ -237,19 +235,23 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     return withComputed(readIssue(id).issue)
   }
 
-  /** The id of the sprint file whose state is active, or null. */
-  function activeSprintId() {
-    const dir = path.join(issuesDir, 'sprints')
-    if (!fs.existsSync(dir)) return null
-    const active = fs.readdirSync(dir)
-      .filter((name) => name.endsWith('.yaml'))
-      .sort()
-      .find((name) => {
-        const data = parseYaml(fs.readFileSync(path.join(dir, name), 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n'))
-        return data?.state === 'active'
-      })
-    return active ? path.basename(active, '.yaml') : null
+  const sprintsDir = path.join(issuesDir, 'sprints')
+  const today = () => now().toISOString().slice(0, 10)
+
+  function getSprint(id) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(String(id)) || !fs.existsSync(path.join(sprintsDir, `${id}.yaml`))) {
+      throw new PmkitError('NOT_FOUND', `sprint ${id} does not exist`, 'pmkit sprints list')
+    }
+    return readSprint(sprintsDir, String(id))
   }
+
+  function listCycles({ state } = {}) {
+    if (state !== undefined) oneOf('state', state, SPRINT_STATES)
+    return readSprints(sprintsDir).filter((sprint) => state === undefined || sprint.state === state)
+  }
+
+  const currentCycle = () => listCycles({ state: 'active' })[0] ?? null
+  const activeSprintId = () => currentCycle()?.id ?? null
 
   function searchIssues(filter = {}) {
     checkFilter(filter)
@@ -469,8 +471,70 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     return change(id, actor, { dryRun, eventsOnly: true }, (issue, meta) => [{ ...meta, op: 'log_time', minutes }])
   }
 
+  function cycleIssues(id) {
+    return searchIssues({ sprint: getSprint(id).id }).issues
+  }
+
+  function writeSprint(before, after, { dryRun }) {
+    if (!dryRun) {
+      fs.mkdirSync(sprintsDir, { recursive: true })
+      writeFileAtomic(path.join(sprintsDir, `${after.id}.yaml`), serializeSprint(after))
+    }
+    return { before, after }
+  }
+
+  function openCycle(input, actor, { dryRun = false } = {}) {
+    requireMember(actor, 'actor')
+    const allowed = ['start', 'end', 'goal', 'name']
+    for (const key of Object.keys(input)) {
+      if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+    }
+    const { start } = input
+    if (!validDate(start)) throw invalid('start must be a date as YYYY-MM-DD')
+    const end = input.end ?? addDays(start, local.defaults.sprint_length_days - 1)
+    if (!validDate(end)) throw invalid('end must be a date as YYYY-MM-DD')
+    if (start > end) throw invalid(`start ${start} is after end ${end}`)
+    const name = input.name ?? `Sprint ${start}`
+    if (typeof name !== 'string' || name.trim() === '') throw invalid('name must be a non-empty string')
+    const goal = input.goal ?? ''
+    if (typeof goal !== 'string') throw invalid('goal must be a string')
+    const existing = listCycles()
+    if (existing.some((sprint) => sprint.id === start)) throw invalid(`a sprint file for ${start} already exists`, 'pmkit sprints list')
+    const clash = existing.find((sprint) => sprint.state !== 'closed' && overlaps(sprint, { start, end }))
+    if (clash) throw invalid(`sprint ${start} to ${end} overlaps ${clash.id} (${clash.start} to ${clash.end})`, 'pmkit sprints list')
+    const state = start <= today() && !existing.some((sprint) => sprint.state === 'active') ? 'active' : 'planned'
+    const sprint = { id: start, name: name.trim(), start, end, goal, state, capacity: {}, daysOff: {} }
+    return writeSprint(null, sprint, { dryRun })
+  }
+
+  function closeCycle(id, actor, { dryRun = false } = {}) {
+    requireMember(actor, 'actor')
+    const before = getSprint(id)
+    if (before.state !== 'active') throw invalid(`sprint ${before.id} is not active (it is ${before.state})`, 'pmkit sprints list')
+    const { after } = writeSprint(before, { ...before, state: 'closed' }, { dryRun })
+    const unfinished = cycleIssues(before.id).filter((issue) => !TERMINAL.includes(issue.status.category))
+    return { sprint: after, unfinished }
+  }
+
+  function moveToCycle(ids, sprint, actor, { dryRun = false } = {}) {
+    requireMember(actor, 'actor')
+    if (!Array.isArray(ids) || ids.length === 0) throw invalid('ids must be a non-empty list')
+    const known = ids.map(knownIssue)
+    if (sprint !== null) getSprint(sprint)
+    return known.map((id) => updateIssue(id, { sprint }, actor, { dryRun }))
+  }
+
+  const getCapacity = (id) => getSprint(id).capacity
+
+  function setCapacity(id, map, actor, { dryRun = false } = {}) {
+    requireMember(actor, 'actor')
+    const before = getSprint(id)
+    return writeSprint(before, { ...before, capacity: requireCapacity(map, local.members) }, { dryRun })
+  }
+
   return {
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
     comment, listComments, getHistory, logTime,
+    listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity,
   }
 }
