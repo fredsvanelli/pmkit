@@ -81,3 +81,15 @@ test('two folders with the same normalized id are one id problem', () => {
   const ids = validateRepo(root).problems.filter((problem) => problem.code === 'id')
   assert.ok(ids.some((problem) => /same id/.test(problem.message)))
 })
+
+test('a config.yaml with conflict markers is one conflict problem and does not throw', () => {
+  const root = makeRepo('broken')
+  fs.writeFileSync(path.join(root, '.issues', 'config.yaml'), 'version: 1\n<<<<<<< HEAD\ndefault_status: todo\n=======\ndefault_status: backlog\n>>>>>>> feature/x\n')
+  assert.deepEqual(brief(validateRepo(root)), ['conflict .issues/config.yaml'])
+})
+
+test('an unparseable config.yaml is one config problem and does not throw', () => {
+  const root = makeRepo('team')
+  fs.writeFileSync(path.join(root, '.issues', 'config.yaml'), 'version: 1\nthis line has no colon\n')
+  assert.deepEqual(brief(validateRepo(root)), ['config .issues/config.yaml'])
+})

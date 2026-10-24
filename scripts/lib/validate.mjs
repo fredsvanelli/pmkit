@@ -60,7 +60,34 @@ function blockedByCycles(graph) {
   return cycles
 }
 
-export function validateRepo(root, { config = loadConfig(root) } = {}) {
+// loadConfig throws INVALID_INPUT when the local config.yaml does not parse. That is a finding, not a failure.
+function brokenConfigProblem(root, error) {
+  if (error?.code !== 'INVALID_INPUT') throw error
+  let issuesDir
+  try {
+    const pmkit = parseYaml(read(path.join(root, '.pmkit', 'config.yaml')))
+    issuesDir = path.join(root, pmkit.tracker.path ?? '.issues')
+  } catch {
+    throw error
+  }
+  const file = path.join(issuesDir, 'config.yaml')
+  if (!fs.existsSync(file)) throw error
+  const conflict = CONFLICT_MARKERS.test(read(file))
+  return {
+    path: path.relative(root, file).split(path.sep).join('/'),
+    code: conflict ? 'conflict' : 'config',
+    message: conflict ? 'the file contains git conflict markers' : error.message,
+  }
+}
+
+export function validateRepo(root, { config } = {}) {
+  if (!config) {
+    try {
+      config = loadConfig(root)
+    } catch (error) {
+      return { checked: { issues: 0, epics: 0, sprints: 0, comments: 0 }, problems: [brokenConfigProblem(root, error)] }
+    }
+  }
   const { local, issuesDir } = config
   const problems = []
   const rel = (file) => path.relative(root, file).split(path.sep).join('/')
