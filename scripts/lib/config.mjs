@@ -149,6 +149,8 @@ export function loadConfig(root, { formatVersion = FORMAT_VERSION, migrations = 
   } catch (error) {
     throw new PmkitError('INVALID_INPUT', `${label}: ${error.message}`, `Set version in ${label}`)
   }
+  // Format 1 is the first format, so no migration leads from a lower number.
+  if (version < 1) throw new PmkitError('INVALID_INPUT', `${label}: the tracker format version must be 1 or more, found ${version}`, `Set version in ${label}`)
   const format = { state, version, current: formatVersion }
   if (state === 'ahead') throw formatError(format)
   if (state === 'behind') {

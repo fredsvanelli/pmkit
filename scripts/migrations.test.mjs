@@ -131,7 +131,7 @@ test('validateRepo reports an older format as one FORMAT problem', () => {
   const { root } = setup()
   const config = loadConfig(root, { formatVersion: 2, migrations: [renameLogTime] })
   assert.deepEqual(validateRepo(root, { config }).problems, [
-    { path: '.issues/config.yaml', code: 'FORMAT', message: 'this repository uses tracker format 1, this pmkit writes format 2' },
+    { path: '.issues/config.yaml', code: 'FORMAT', message: 'this repository uses tracker format 1, this pmkit writes format 2; run /pmkit:upgrade' },
   ])
 })
 
@@ -152,6 +152,16 @@ test('loadConfig reports a missing version as INVALID_INPUT', () => {
   const configFile = path.join(root, '.issues', 'config.yaml')
   fs.writeFileSync(configFile, fs.readFileSync(configFile, 'utf8').replace(/^version: 1\n/m, ''))
   assert.throws(() => loadConfig(root), (error) => error.code === 'INVALID_INPUT' && /version/.test(error.message))
+})
+
+test('loadConfig reports a version below 1 as INVALID_INPUT', () => {
+  const root = makeRepo('basic')
+  const configFile = path.join(root, '.issues', 'config.yaml')
+  fs.writeFileSync(configFile, fs.readFileSync(configFile, 'utf8').replace(/^version: 1$/m, 'version: 0'))
+  assert.throws(
+    () => loadConfig(root),
+    (error) => error.code === 'INVALID_INPUT' && error.message === '.issues/config.yaml: the tracker format version must be 1 or more, found 0',
+  )
 })
 
 test('the migrated copy is removed when the process exits', () => {
@@ -189,6 +199,17 @@ test('the CLI refuses reads and writes on a newer format and writes nothing', ()
   const { status, body } = cli(root, ['validate'])
   assert.equal(status, 0)
   assert.deepEqual(body.problems, [
-    { path: '.issues/config.yaml', code: 'FORMAT', message: 'this repository uses tracker format 2, this pmkit reads up to format 1' },
+    { path: '.issues/config.yaml', code: 'FORMAT', message: 'this repository uses tracker format 2, this pmkit reads up to format 1; run /pmkit:upgrade' },
+  ])
+})
+
+test('validate lists a version below 1 as one problem and exits 0', () => {
+  const root = makeRepo('basic')
+  const configFile = path.join(root, '.issues', 'config.yaml')
+  fs.writeFileSync(configFile, fs.readFileSync(configFile, 'utf8').replace(/^version: 1$/m, 'version: 0'))
+  const { status, body } = cli(root, ['validate'])
+  assert.equal(status, 0)
+  assert.deepEqual(body.problems, [
+    { path: '.issues/config.yaml', code: 'config', message: '.issues/config.yaml: the tracker format version must be 1 or more, found 0' },
   ])
 })

@@ -62,6 +62,8 @@ function blockedByCycles(graph) {
 
 const relative = (root, file) => path.relative(root, file).split(path.sep).join('/')
 const noneChecked = () => ({ issues: 0, epics: 0, sprints: 0, comments: 0 })
+// A problem has no next step field, so the format problem carries it in its message.
+const formatProblem = (root, file, error) => ({ path: relative(root, file), code: 'FORMAT', message: `${error.message}; run ${error.nextStep}` })
 
 // loadConfig throws INVALID_INPUT when the local config.yaml does not parse, and NOT_SUPPORTED when its
 // format is newer than this pmkit's. Both are findings, not failures.
@@ -77,7 +79,7 @@ function brokenConfigProblem(root, error) {
   }
   const file = path.join(issuesDir, 'config.yaml')
   if (!fs.existsSync(file)) throw error
-  if (format) return { path: relative(root, file), code: 'FORMAT', message: error.message }
+  if (format) return formatProblem(root, file, error)
   const conflict = hasConflictMarkers(read(file))
   return {
     path: relative(root, file),
@@ -97,8 +99,7 @@ export function validateRepo(root, { config } = {}) {
   const { local, issuesDir } = config
   // An older format is one problem: the other checks assume the current shape.
   if (config.format && config.format.state !== 'current') {
-    const problem = { path: relative(root, path.join(issuesDir, 'config.yaml')), code: 'FORMAT', message: formatError(config.format).message }
-    return { checked: noneChecked(), problems: [problem] }
+    return { checked: noneChecked(), problems: [formatProblem(root, path.join(issuesDir, 'config.yaml'), formatError(config.format))] }
   }
   const problems = []
   const rel = (file) => relative(root, file)
