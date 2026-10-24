@@ -99,7 +99,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
 
   function requireSprint(value) {
     if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(String(value)) || !fs.existsSync(path.join(issuesDir, 'sprints', `${value}.yaml`))) {
-      throw invalid(`sprint ${value} does not exist`, 'pmkit sprints list')
+      throw invalid(`sprint ${value} does not exist`, 'pmkit cycle list')
     }
     return String(value)
   }
@@ -246,7 +246,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
 
   function getSprint(id) {
     if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(String(id)) || !fs.existsSync(path.join(sprintsDir, `${id}.yaml`))) {
-      throw new PmkitError('NOT_FOUND', `sprint ${id} does not exist`, 'pmkit sprints list')
+      throw new PmkitError('NOT_FOUND', `sprint ${id} does not exist`, 'pmkit cycle list')
     }
     return readSprint(sprintsDir, String(id))
   }
@@ -555,9 +555,9 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     const goal = input.goal ?? ''
     if (typeof goal !== 'string') throw invalid('goal must be a string')
     const existing = listCycles()
-    if (existing.some((sprint) => sprint.id === start)) throw invalid(`a sprint file for ${start} already exists`, 'pmkit sprints list')
+    if (existing.some((sprint) => sprint.id === start)) throw invalid(`a sprint file for ${start} already exists`, 'pmkit cycle list')
     const clash = existing.find((sprint) => sprint.state !== 'closed' && overlaps(sprint, { start, end }))
-    if (clash) throw invalid(`sprint ${start} to ${end} overlaps ${clash.id} (${clash.start} to ${clash.end})`, 'pmkit sprints list')
+    if (clash) throw invalid(`sprint ${start} to ${end} overlaps ${clash.id} (${clash.start} to ${clash.end})`, 'pmkit cycle list')
     const state = start <= today() && !existing.some((sprint) => sprint.state === 'active') ? 'active' : 'planned'
     const sprint = { id: start, name: name.trim(), start, end, goal, state, capacity: {}, daysOff: {} }
     return writeSprint(null, sprint, { dryRun })
@@ -566,7 +566,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   function closeCycle(id, actor, { dryRun = false } = {}) {
     requireMember(actor, 'actor')
     const before = getSprint(id)
-    if (before.state !== 'active') throw invalid(`sprint ${before.id} is not active (it is ${before.state})`, 'pmkit sprints list')
+    if (before.state !== 'active') throw invalid(`sprint ${before.id} is not active (it is ${before.state})`, 'pmkit cycle list')
     const { after } = writeSprint(before, { ...before, state: 'closed' }, { dryRun })
     const unfinished = cycleIssues(before.id).filter((issue) => !TERMINAL.includes(issue.status.category))
     return { sprint: after, unfinished }

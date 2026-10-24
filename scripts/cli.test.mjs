@@ -399,3 +399,29 @@ test('a failing auto_commit exits 2 with one JSON value that carries the result'
   assert.match(text.stderr, /^error: .*auto_commit failed/m)
   assert.match(text.stderr, /^next: /m)
 })
+
+test('every next step that starts with pmkit names a real CLI command', async () => {
+  const { COMMANDS } = await import('./pmkit.mjs')
+  const names = new Set(COMMANDS.map((command) => command.name))
+  const dir = path.dirname(CLI)
+  const walk = (folder) => fs.readdirSync(folder, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(folder, entry.name)
+    return entry.isDirectory() ? walk(full) : entry.name.endsWith('.mjs') ? [full] : []
+  })
+  const sources = [CLI, ...walk(path.join(dir, 'lib'))]
+  // Every string literal is a superset of the next steps; only those starting with `pmkit ` are checked.
+  const literal = /'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g
+  const bad = []
+  let checked = 0
+  for (const file of sources) {
+    for (const match of fs.readFileSync(file, 'utf8').matchAll(literal)) {
+      const text = match[1] ?? match[2] ?? match[3]
+      if (!text.startsWith('pmkit ')) continue
+      checked++
+      const words = text.slice('pmkit '.length).split(/\s+/)
+      if (!names.has(words.slice(0, 2).join(' ')) && !names.has(words[0])) bad.push(`${path.relative(dir, file)}: ${text}`)
+    }
+  }
+  assert.ok(checked > 10, `found ${checked} next steps`)
+  assert.deepEqual(bad, [])
+})
