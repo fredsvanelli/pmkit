@@ -230,12 +230,14 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   function change(id, actor, { dryRun = false, eventsOnly = false } = {}, edit) {
     requireWriter(actor)
     const { issue: before, paths } = readIssue(id)
+    const at = stamp()
     const logged = readEvents(paths.events).events
     const newest = logged.length > 0 ? logged[logged.length - 1].at : ''
     const mtime = fileMtimeIso(paths.file)
-    const drift = driftEvents(toFrontmatter(before), logged, { at: mtime > newest ? mtime : newest, by: actor })
+    // Drift is dated max(mtime, newest event), clamped to this write's time.
+    const latest = mtime > newest ? mtime : newest
+    const drift = driftEvents(toFrontmatter(before), logged, { at: latest < at ? latest : at, by: actor })
     if (!dryRun) appendEvents(paths.events, drift)
-    const at = stamp()
     const next = structuredClone(before)
     const events = edit(next, { at, by: actor }, before)
     if (events.length === 0) return { before, after: before }

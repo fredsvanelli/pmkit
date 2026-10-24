@@ -376,3 +376,16 @@ test('with a config that fails validation, reads work and every write refuses wi
   for (const [name, write] of Object.entries(writes)) assert.throws(write, refused, name)
   assert.equal(hashTree(root), hash)
 })
+
+test('drift is dated no later than the write that finds it', () => {
+  const { tracker, paths, rawEvents } = setup()
+  tracker.createIssue({ title: 'First' }, 'fred')
+  const { file } = paths('ISS-1234')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('status: backlog', 'status: done'))
+  const future = new Date('2030-01-01T00:00:00Z')
+  fs.utimesSync(file, future, future)
+
+  tracker.assign('ISS-1234', 'fred', 'fred')
+  const synthetic = rawEvents('ISS-1234').filter((e) => e.synthetic)
+  assert.deepEqual(synthetic.map((e) => [e.field, e.at]), [['status', NOW]])
+})
