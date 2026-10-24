@@ -10,6 +10,9 @@ import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
 import { isId, newId, normalizeId } from '../ids.mjs'
 import { CATEGORIES, LINK_KINDS, TERMINAL } from '../model.mjs'
 import { appendEvents, driftEvents, readEvents } from './events.mjs'
+import {
+  HEALTH, epicFrontmatter, parseEpicFile, parseUpdateFile, serializeEpic, serializeUpdate, sortEpics, sortUpdates, walkParents,
+} from './epics.mjs'
 import { parseIssueFile, serializeIssue, toFrontmatter } from './issue-file.mjs'
 import { checkFilter, runQuery } from './query.mjs'
 import {
@@ -395,21 +398,22 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   const link = (from, to, kind, actor, options) => relate('link', from, to, kind, actor, options)
   const unlink = (from, to, kind, actor, options) => relate('unlink', from, to, kind, actor, options)
 
+  // The parent of an issue on disk. Epics, missing issues and issues without a parent end the chain.
+  function parentOfIssue(id) {
+    if (!isId(id, local.id_prefix) || !fs.existsSync(issuePaths(issuesDir, id).file)) return undefined
+    return readIssue(id).issue.parent
+  }
+
   function setParent(id, parent, actor, { dryRun = false } = {}) {
     requireMember(actor, 'actor')
     const self = knownIssue(id)
     const next = parent === null ? null : requireParent(parent)
+    if (next === self) throw invalid(`${self} cannot be its own parent`)
     if (next !== null) {
-      const chain = [self, next]
-      let current = next
-      while (current !== undefined && isId(current, local.id_prefix)) {
-        const up = readIssue(current).issue.parent
-        if (up === undefined) break
-        chain.push(up)
-        if (up === self) throw invalid(`parent loop: ${chain.join(' → ')}`)
-        current = up
-      }
-      if (next === self) throw invalid(`${self} cannot be its own parent`)
+      const { chain, loop } = walkParents(next, parentOfIssue)
+      const at = chain.indexOf(self)
+      if (at >= 0) throw invalid(`parent loop: ${[self, ...chain.slice(0, at + 1)].join(' → ')}`)
+      if (loop) throw invalid(`parent loop: ${chain.join(' → ')}`)
     }
     return change(self, actor, { dryRun }, (issue, meta, before) => {
       if ((before.parent ?? null) === next) return []
@@ -532,7 +536,107 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     return writeSprint(before, { ...before, capacity: requireCapacity(map, local.members) }, { dryRun })
   }
 
+  const epicsDir = path.join(issuesDir, 'epics')
+
+  function readEpic(id) {
+    const normalized = normalizeId(String(id))
+    const file = path.join(epicsDir, normalized, 'epic.md')
+    if (!isId(normalized, local.epic_prefix) || !fs.existsSync(file)) {
+      throw new PmkitError('NOT_FOUND', `epic ${id} does not exist`, 'pmkit epic list')
+    }
+    return { epic: parseEpicFile(fs.readFileSync(file, 'utf8'), { statuses: local.statuses }), dir: path.join(epicsDir, normalized) }
+  }
+
+  const getDeliverable = (id) => readEpic(id).epic
+
+  function listDeliverables() {
+    if (!fs.existsSync(epicsDir)) return []
+    const ids = fs.readdirSync(epicsDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && isId(entry.name, local.epic_prefix) && fs.existsSync(path.join(epicsDir, entry.name, 'epic.md')))
+      .map((entry) => entry.name)
+    return sortEpics(ids.map(getDeliverable))
+  }
+
+  function createDeliverable(input, actor, { dryRun = false } = {}) {
+    requireMember(actor, 'actor')
+    const allowed = ['title', 'start', 'target', 'milestone', 'description']
+    for (const key of Object.keys(input)) {
+      if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+    }
+    const epic = { id: '', title: NORMALIZE.title(input.title), status: statusOf(local.default_status), description: '' }
+    for (const key of ['start', 'target']) {
+      if (blank(input[key])) continue
+      if (!validDate(input[key])) throw invalid(`${key} must be a date as YYYY-MM-DD`)
+      epic[key] = input[key]
+    }
+    if (!blank(input.milestone)) epic.milestone = NORMALIZE.milestone(input.milestone)
+    if (!blank(input.description)) epic.description = NORMALIZE.description(input.description)
+    epic.id = newId(local.epic_prefix, { random, exists: (candidate) => fs.existsSync(path.join(epicsDir, candidate)) })
+    const content = serializeEpic(epic)
+    if (!dryRun) {
+      const dir = path.join(epicsDir, epic.id)
+      fs.mkdirSync(dir, { recursive: true })
+      writeFileAtomic(path.join(dir, 'epic.md'), content)
+      appendEvents(path.join(dir, 'events.jsonl'), [{ at: stamp(), by: actor, op: 'create', to: epicFrontmatter(epic) }])
+    }
+    return { before: null, after: parseEpicFile(content, { statuses: local.statuses }) }
+  }
+
+  /** Counts the non-archived issues whose parent chain reaches the epic. */
+  function deliverableProgress(id) {
+    const { id: epic } = getDeliverable(id)
+    const issues = scanIssues()
+    const byId = new Map(issues.map((issue) => [issue.id, issue]))
+    const parentOf = (key) => byId.get(key)?.parent
+    const progress = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: Object.fromEntries(CATEGORIES.map((category) => [category, 0])) }
+    for (const issue of issues) {
+      if (issue.archived || !walkParents(issue.id, parentOf).chain.includes(epic)) continue
+      const { category } = issue.status
+      if (category in progress.byCategory) progress.byCategory[category]++
+      if (category === 'canceled') {
+        progress.canceled++
+        continue
+      }
+      progress.total++
+      if (category === 'done') progress.done++
+      if (typeof issue.estimate === 'number') {
+        progress.points += issue.estimate
+        if (category === 'done') progress.pointsDone += issue.estimate
+      }
+    }
+    return progress
+  }
+
+  function publishStatusUpdate(input, actor, { dryRun = false } = {}) {
+    requireMember(actor, 'actor')
+    const { epic, dir } = readEpic(input.epic)
+    oneOf('health', input.health, HEALTH)
+    if (typeof input.body !== 'string' || input.body.trim() === '') throw invalid('status update body must be a non-empty string')
+    const at = stamp()
+    const update = { epic: epic.id, at, author: actor, health: input.health, body: input.body.trim() }
+    if (!dryRun) {
+      const updates = path.join(dir, 'updates')
+      const base = `${at.slice(0, 10)}-${fileSafe(actor)}`
+      let name = base
+      for (let n = 2; fs.existsSync(path.join(updates, `${name}.md`)); n++) name = `${base}-${n}`
+      fs.mkdirSync(updates, { recursive: true })
+      writeFileAtomic(path.join(updates, `${name}.md`), serializeUpdate(update))
+    }
+    return { before: null, after: update }
+  }
+
+  function listStatusUpdates(id) {
+    const { epic, dir } = readEpic(id)
+    const updates = path.join(dir, 'updates')
+    if (!fs.existsSync(updates)) return []
+    const entries = fs.readdirSync(updates)
+      .filter((name) => name.endsWith('.md'))
+      .map((name) => ({ name, update: parseUpdateFile(fs.readFileSync(path.join(updates, name), 'utf8'), epic.id) }))
+    return sortUpdates(entries).map((entry) => entry.update)
+  }
+
   return {
+    listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
     comment, listComments, getHistory, logTime,
     listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity,

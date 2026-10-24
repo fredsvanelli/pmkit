@@ -146,3 +146,17 @@ test('getIssue skips a sibling that does not parse when it fills blocks and chil
   fs.writeFileSync(issuePaths(issuesDir, c).file, '<<<<<<< HEAD\nx\n>>>>>>> other\n')
   assert.deepEqual(tracker.getIssue(a).blocks, [b])
 })
+
+test('setParent stops at a hand-edited loop that does not include the issue', () => {
+  const { tracker, issuesDir, ids: [a, b, c] } = setup()
+  const setRaw = (id, parent) => {
+    const { file } = issuePaths(issuesDir, id)
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('\ncreated:', `\nparent: ${parent}\ncreated:`))
+  }
+  setRaw(b, c)
+  setRaw(c, b)
+  assert.throws(
+    () => tracker.setParent(a, b, 'fred'),
+    (error) => error.code === 'INVALID_INPUT' && error.message.includes(`${b} → ${c} → ${b}`),
+  )
+})
