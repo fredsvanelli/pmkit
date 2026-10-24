@@ -1,0 +1,4 @@
+{"at":"2026-10-09T10:00:00Z","by":"fred","op":"create","to":{"id":"ISS-0G5E","title":"Drop the legacy CSV endpoint","type":"chore","status":"backlog","priority":"medium","labels":["backend"],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-09T10:00:00Z","updated":"2026-10-09T10:00:00Z"}}
+{"at":"2026-10-09T10:10:00Z","by":"ana","op":"link","field":"related","to":"ISS-2X6D"}
+{"at":"2026-10-17T12:00:00Z","by":"fred","op":"move","field":"status","from":"backlog","to":"canceled"}
+{"at":"2026-10-17T12:05:00Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"ana"}

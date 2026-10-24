@@ -3,6 +3,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { requireActor, gitUserEmail } from '../actor.mjs'
 import { loadConfig } from '../config.mjs'
 import { PmkitError } from '../errors.mjs'
 import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
@@ -10,6 +11,7 @@ import { isId, newId, normalizeId } from '../ids.mjs'
 import { CATEGORIES, LINK_KINDS } from '../model.mjs'
 import { appendEvents, driftEvents, readEvents } from './events.mjs'
 import { parseIssueFile, serializeIssue, toFrontmatter } from './issue-file.mjs'
+import { checkFilter, runQuery } from './query.mjs'
 import { fileMtimeIso, issuePaths, listIssueIds, writeFileAtomic } from './store.mjs'
 
 const CREATE_KEYS = [
@@ -56,7 +58,7 @@ function checkKeys(input, allowed) {
   }
 }
 
-export function createLocalTracker(root, { config = loadConfig(root), now = () => new Date(), random } = {}) {
+export function createLocalTracker(root, { config = loadConfig(root), now = () => new Date(), random, gitEmail, env = process.env } = {}) {
   const { local, issuesDir } = config
   const stamp = () => isoSeconds(now())
 
@@ -205,17 +207,22 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     ...meta, op, field, from: toFrontmatter(before)[field] ?? null, to: toFrontmatter(after)[field] ?? null,
   })
 
-  /** Every issue that parses. A file with conflict markers or bad frontmatter is skipped. */
-  function scanIssues() {
-    return listIssueIds(issuesDir, local.id_prefix).flatMap((id) => {
+  /** Every issue that parses, and a problem for each file that does not (conflict markers, bad frontmatter). */
+  function readAll() {
+    const issues = []
+    const problems = []
+    for (const id of listIssueIds(issuesDir, local.id_prefix)) {
       try {
-        return [readIssue(id).issue]
+        issues.push(readIssue(id).issue)
       } catch (error) {
-        if (error instanceof PmkitError) return []
-        throw error
+        if (!(error instanceof PmkitError)) throw error
+        problems.push({ id, code: error.code, message: error.message })
       }
-    })
+    }
+    return { issues, problems }
   }
+
+  const scanIssues = () => readAll().issues
 
   /** Fills `blocks` and `children` on an issue from the other issues. */
   function withComputed(issue, all = scanIssues()) {
@@ -228,6 +235,32 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
 
   function getIssue(id) {
     return withComputed(readIssue(id).issue)
+  }
+
+  /** The id of the sprint file whose state is active, or null. */
+  function activeSprintId() {
+    const dir = path.join(issuesDir, 'sprints')
+    if (!fs.existsSync(dir)) return null
+    const active = fs.readdirSync(dir)
+      .filter((name) => name.endsWith('.yaml'))
+      .sort()
+      .find((name) => {
+        const data = parseYaml(fs.readFileSync(path.join(dir, name), 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n'))
+        return data?.state === 'active'
+      })
+    return active ? path.basename(active, '.yaml') : null
+  }
+
+  function searchIssues(filter = {}) {
+    checkFilter(filter)
+    const resolved = { ...filter }
+    if (filter.assignee === 'me') {
+      resolved.assignee = requireActor(local, { email: gitEmail ?? gitUserEmail(root), env }).id
+    }
+    if (filter.sprint === 'current') resolved.sprint = activeSprintId()
+    const { issues, problems } = readAll()
+    const found = runQuery(issues, resolved, { priorities: local.priorities })
+    return { issues: found.map((issue) => withComputed(issue, issues)), problems }
   }
 
   function createIssue(input, actor, { dryRun = false } = {}) {
@@ -437,7 +470,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   }
 
   return {
-    getIssue, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
+    getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
     comment, listComments, getHistory, logTime,
   }
 }

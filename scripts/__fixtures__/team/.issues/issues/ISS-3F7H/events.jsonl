@@ -1,0 +1,2 @@
+{"at":"2026-10-07T14:00:00Z","by":"fred","op":"create","to":{"id":"ISS-3F7H","title":"Empty state for the dashboard","type":"feature","status":"backlog","priority":"low","estimate":2,"labels":["frontend"],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-07T14:00:00Z","updated":"2026-10-07T14:00:00Z"}}
+{"at":"2026-10-22T17:00:00Z","by":"fred","op":"update","field":"priority","from":"low","to":"medium"}
