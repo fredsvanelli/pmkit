@@ -67,16 +67,24 @@ function parseFlow(text, lineNo) {
     const colons = []
     let depth = 0
     let quote = null
+    let atStart = true // a quote opens a string only at the start of a key or value
     let end = start
     for (; end < text.length; end++) {
       const char = text[end]
+      const opens = atStart
+      if (!/\s/.test(char)) atStart = false
       if (quote) {
         if (char === quote) quote = null
-      } else if (char === '"' || char === "'") quote = char
-      else if (char === '[' || char === '{') depth++
-      else if (depth > 0 && (char === ']' || char === '}')) depth--
+      } else if ((char === '"' || char === "'") && opens) quote = char
+      else if (char === '[' || char === '{') {
+        depth++
+        atStart = true
+      } else if (depth > 0 && (char === ']' || char === '}')) depth--
       else if (depth === 0 && (char === ',' || char === '}')) break
-      else if (depth === 0 && char === ':') colons.push(end)
+      else if (depth === 0 && char === ':') {
+        colons.push(end)
+        atStart = true
+      } else if (depth > 0 && char === ',') atStart = true
     }
     const colon = colons.find((at) => at + 1 >= end || /[\s,}]/.test(text[at + 1])) ?? colons[0] ?? end
     i = colon

@@ -210,3 +210,10 @@ test('flow-map entries without a space after the colon still parse', () => {
   assert.deepEqual(parseYaml('m: { agent:claude: 5 }\n'), { m: { 'agent:claude': 5 } })
   assert.deepEqual(parseYaml('m: { a:"x: y" }\n'), { m: { a: 'x: y' } })
 })
+
+test('quote characters inside a flow-map key stay part of the key', () => {
+  assert.deepEqual(parseYaml("m: { don't: 1 }\n"), { m: { "don't": 1 } })
+  assert.deepEqual(parseYaml("m: { a:1, don't: 2 }\n"), { m: { a: 1, "don't": 2 } })
+  assert.deepEqual(parseYaml('m: { a"b: 1 }\n'), { m: { 'a"b': 1 } })
+  assert.deepEqual(parseYaml("m: { a: [don't, x], b: 2 }\n"), { m: { a: ["don't", 'x'], b: 2 } })
+})
