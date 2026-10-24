@@ -40,7 +40,7 @@ Find the marketplace's local copy with `claude plugin marketplace list --json` a
 2. When it equals the installed version, say "already up to date" and go to step 5. The repository may still need a migration.
 3. Otherwise run the installed CLI against the new changelog: `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" changelog --file "<installLocation>/pmkit/CHANGELOG.md" --since <installed version> --json`.
 4. Show the installed version, the latest version, and each returned section from oldest to newest: version, date and body. When a section has a `trackerFormat`, add the line "this version migrates `.issues/` to format N".
-5. Ask once whether to update.
+5. Ask once whether to update. When the user declines, stop and change nothing: do not run steps 4 and 5.
 
 ### 4. Update
 

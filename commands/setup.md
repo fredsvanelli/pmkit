@@ -41,7 +41,7 @@ Its first rule (stop when there is no config) does not apply here, because this 
 6. Preview with `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --git-host <github|none> --prefix <P> --estimate-unit <unit> --members-file - --dry-run --json`. Use `--git-host github` only when step 2 found a GitHub remote.
 7. Show one summary: git host, prefix, estimate unit, the members and the files the dry run lists. When the git host is `none`, add one line naming the commands that lose features: `/pmkit:issues:work`, `/pmkit:issues:mine`, `/pmkit:issues:pause`, `/pmkit:report:status`, `/pmkit:cycle:close` and `/pmkit:team:standup`.
 8. After the user approves, run the same command without `--dry-run`, with the same members file.
-9. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`.
+9. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`, `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`.
 10. Go to "Output".
 
 ### Existing config
@@ -52,14 +52,15 @@ Never run `init` without `--update` when a config exists.
 3. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --dry-run --json`. Add `--git-host` or `--estimate-unit` only when the user asks to change them. `--update` refuses `--prefix`, so tell the user the prefix cannot change.
 4. Show every file the dry run marks `change` or `differs` with its diff. List the `create` and `replace` files by path. Say how many files were `keep`.
 5. For each `differs` file, ask with `AskUserQuestion` whether to replace it. A `differs` file is one the user edited, and the command replaces it only when asked.
-6. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --replace <path> --json`, with one `--replace <path>` per approved file and the same flags as the dry run. Without approved files, leave `--replace` out.
-7. Run `validate`, `discover` and `capabilities` as in step 9 of the first run. Go to "Output".
+6. When no file is `create`, `change`, `replace` or `differs`, say "already up to date", skip the write and go to step 8. Otherwise ask once with `AskUserQuestion` whether to apply the `create`, `change` and `replace` files shown, plus the `differs` files approved in step 5. When the user declines, stop and change nothing.
+7. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --replace <path> --json`, with one `--replace <path>` per approved file and the same flags as the dry run. Without approved files, leave `--replace` out.
+8. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`, `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`. Go to "Output".
 
 ## Confirmation points
 
-- First run: the one summary of step 7, before any file is written.
-- Existing config: one question per `differs` file. A `change` or `create` file shows in the preview, and the preview is approved as one bulk change.
-- The questions of step 4 are inputs, not confirmations.
+- First run: the one summary of step 7 of the first run, before any file is written.
+- Existing config: one question per `differs` file (step 5), then one question to apply everything shown (step 6), before `init --update` runs. With nothing to write, there is no question.
+- The questions of step 4 of the first run are inputs, not confirmations.
 
 ## Output
 
@@ -72,6 +73,6 @@ Lead with what was created or updated. Then:
 ## If something is missing
 
 - `gh` is not installed or not logged in: continue with the git host `github` when the remote is GitHub, and say that pull request features need `gh auth login`.
-- No GitHub remote: run with `--git-host none` and name the commands that lose features, as in step 7.
+- No GitHub remote: run with `--git-host none` and name the commands that lose features, as in step 7 of the first run.
 - Not a git repository: say that `/pmkit:upgrade` and the commit step need git, and continue only if the user wants a tracker without it.
 - An error from the CLI: apply the rules for reading errors in the conventions.
