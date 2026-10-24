@@ -1,4 +1,4 @@
-// File layout of a local tracker: issues/<ID>/{issue.md, events.jsonl, comments.jsonl}.
+// File layout of a local tracker: issues/<ID>/{issue.md, events.jsonl, comments/<name>.md}.
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -12,7 +12,7 @@ export function issuePaths(issuesDir, id) {
     dir,
     file: path.join(dir, 'issue.md'),
     events: path.join(dir, 'events.jsonl'),
-    comments: path.join(dir, 'comments.jsonl'),
+    comments: path.join(dir, 'comments'),
   }
 }
 

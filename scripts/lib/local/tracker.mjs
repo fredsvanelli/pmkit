@@ -6,10 +6,10 @@ import path from 'node:path'
 import { loadConfig } from '../config.mjs'
 import { PmkitError } from '../errors.mjs'
 import { isId, newId, normalizeId } from '../ids.mjs'
-import { CATEGORIES } from '../model.mjs'
+import { CATEGORIES, LINK_KINDS } from '../model.mjs'
 import { appendEvents, driftEvents, readEvents } from './events.mjs'
 import { parseIssueFile, serializeIssue, toFrontmatter } from './issue-file.mjs'
-import { fileMtimeIso, issuePaths, writeFileAtomic } from './store.mjs'
+import { fileMtimeIso, issuePaths, listIssueIds, writeFileAtomic } from './store.mjs'
 
 const CREATE_KEYS = [
   'title', 'type', 'status', 'priority', 'estimate', 'assignee', 'labels', 'parent', 'sprint',
@@ -30,6 +30,11 @@ const OWNED = {
   related: 'pmkit issues link',
   duplicateOf: 'pmkit issues link',
   archived: 'pmkit issues archive',
+}
+const LINKS = {
+  blocks: { field: 'blocked_by', prop: 'blockedBy' },
+  related: { field: 'related', prop: 'related' },
+  duplicate: { field: 'duplicate_of', prop: 'duplicateOf' },
 }
 const BODY_FIELDS = { description: 'description', acceptanceCriteria: 'acceptance_criteria' }
 
@@ -175,7 +180,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   }
 
   /** The one write path for existing issues: settle drift, then let `edit` return the next issue and its events. */
-  function change(id, actor, { dryRun = false } = {}, edit) {
+  function change(id, actor, { dryRun = false, eventsOnly = false } = {}, edit) {
     requireMember(actor, 'actor')
     const { issue: before, paths } = readIssue(id)
     const logged = readEvents(paths.events).events
@@ -187,6 +192,10 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     const next = structuredClone(before)
     const events = edit(next, { at, by: actor }, before)
     if (events.length === 0) return { before, after: before }
+    if (eventsOnly) {
+      if (!dryRun) appendEvents(paths.events, events)
+      return { before, after: before }
+    }
     next.updated = at
     return { before, after: save(next, events, paths, { dryRun }) }
   }
@@ -195,8 +204,29 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     ...meta, op, field, from: toFrontmatter(before)[field] ?? null, to: toFrontmatter(after)[field] ?? null,
   })
 
+  /** Every issue that parses. A file with conflict markers or bad frontmatter is skipped. */
+  function scanIssues() {
+    return listIssueIds(issuesDir, local.id_prefix).flatMap((id) => {
+      try {
+        return [readIssue(id).issue]
+      } catch (error) {
+        if (error instanceof PmkitError) return []
+        throw error
+      }
+    })
+  }
+
+  /** Fills `blocks` and `children` on an issue from the other issues. */
+  function withComputed(issue, all = scanIssues()) {
+    return {
+      ...issue,
+      blocks: all.filter((other) => other.blockedBy.includes(issue.id)).map((other) => other.id),
+      children: all.filter((other) => other.parent === issue.id).map((other) => other.id),
+    }
+  }
+
   function getIssue(id) {
-    return readIssue(id).issue
+    return withComputed(readIssue(id).issue)
   }
 
   function createIssue(input, actor, { dryRun = false } = {}) {
@@ -273,5 +303,85 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     })
   }
 
-  return { getIssue, createIssue, updateIssue, moveToCategory, assign, archive }
+  const knownIssue = (id) => readIssue(id).issue.id
+
+  function listEdit(op, prop, field, other) {
+    return (issue, meta, before) => {
+      if (before[prop].includes(other) === (op === 'unlink')) {
+        issue[prop] = op === 'link' ? [...before[prop], other] : before[prop].filter((item) => item !== other)
+        return [{ ...meta, op, field, to: other }]
+      }
+      return []
+    }
+  }
+
+  // The shortest path from `start` to `goal` along "blocks" edges, or null.
+  function blockPath(start, goal, all) {
+    const queue = [[start]]
+    const seen = new Set([start])
+    while (queue.length > 0) {
+      const trail = queue.shift()
+      const last = trail[trail.length - 1]
+      if (last === goal) return trail
+      for (const next of all.filter((issue) => issue.blockedBy.includes(last)).map((issue) => issue.id)) {
+        if (!seen.has(next)) {
+          seen.add(next)
+          queue.push([...trail, next])
+        }
+      }
+    }
+    return null
+  }
+
+  function relate(op, from, to, kind, actor, { dryRun = false } = {}) {
+    requireMember(actor, 'actor')
+    if (!LINK_KINDS.includes(kind)) throw invalid(`kind must be one of ${LINK_KINDS.join(', ')}`)
+    const a = knownIssue(from)
+    const b = knownIssue(to)
+    if (a === b) throw invalid(`${a} cannot be linked to itself`)
+    const { field, prop } = LINKS[kind]
+    const options = { dryRun }
+    if (kind === 'blocks') {
+      const all = scanIssues()
+      const before = withComputed(all.find((issue) => issue.id === a), all)
+      const closing = op === 'link' ? blockPath(b, a, all) : null
+      if (closing) throw invalid(`${a} blocks ${b} would close a cycle: ${[a, ...closing].join(' → ')}`)
+      const written = change(b, actor, options, listEdit(op, prop, field, a))
+      const changed = written.after !== written.before
+      const blocks = op === 'link' ? [...before.blocks, b].sort() : before.blocks.filter((item) => item !== b)
+      return { before, after: changed ? { ...before, blocks } : before }
+    }
+    const result = change(a, actor, options, listEdit(op, prop, field, b))
+    if (kind !== 'related') return result
+    return { ...result, other: change(b, actor, options, listEdit(op, prop, field, a)) }
+  }
+
+  const link = (from, to, kind, actor, options) => relate('link', from, to, kind, actor, options)
+  const unlink = (from, to, kind, actor, options) => relate('unlink', from, to, kind, actor, options)
+
+  function setParent(id, parent, actor, { dryRun = false } = {}) {
+    requireMember(actor, 'actor')
+    const self = knownIssue(id)
+    const next = parent === null ? null : requireParent(parent)
+    if (next !== null) {
+      const chain = [self, next]
+      let current = next
+      while (current !== undefined && isId(current, local.id_prefix)) {
+        const up = readIssue(current).issue.parent
+        if (up === undefined) break
+        chain.push(up)
+        if (up === self) throw invalid(`parent loop: ${chain.join(' → ')}`)
+        current = up
+      }
+      if (next === self) throw invalid(`${self} cannot be its own parent`)
+    }
+    return change(self, actor, { dryRun }, (issue, meta, before) => {
+      if ((before.parent ?? null) === next) return []
+      if (next === null) delete issue.parent
+      else issue.parent = next
+      return [fieldEvent('update', 'parent', before, issue, meta)]
+    })
+  }
+
+  return { getIssue, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent }
 }
