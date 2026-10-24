@@ -77,7 +77,7 @@ test('CHANGELOG.md has a section for the plugin version and a Tracker format tha
 })
 
 // Each Task that writes command files adds their names here.
-const COMMANDS = { '': ['setup', 'help', 'upgrade'], issues: [], spec: [], backlog: [], report: [], cycle: [], team: [], local: [] }
+const COMMANDS = { '': ['setup', 'help', 'upgrade'], issues: ['find', 'create', 'update', 'move', 'assign', 'comment', 'link', 'summary'], spec: [], backlog: [], report: [], cycle: [], team: [], local: [] }
 
 const HEADINGS = ['## Parameters', '## Steps', '## Confirmation points', '## Output', '## If something is missing']
 
