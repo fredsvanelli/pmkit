@@ -589,3 +589,16 @@ test('unlink related and duplicate remove a missing target', () => {
   }
   assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /ISS-9ZZ/)
 })
+
+test('unlink of a missing blocker previews the blocked_by change on the issue whose file changes', () => {
+  const root = makeRepo('broken')
+  fixConfig(root)
+  const args = ['issues', 'link', 'ISS-9ZZZ', 'ISS-4REF', '--kind', 'blocks', '--remove']
+  const dry = json(root, [...args, '--dry-run'], { env: { PMKIT_USER: 'fred' } })
+  assert.equal(dry.after.id, 'ISS-4REF')
+  assert.deepEqual(dry.before.blockedBy, ['ISS-9ZZZ'])
+  assert.deepEqual(dry.after.blockedBy, [])
+  const text = run(root, [...args, '--dry-run'], { env: { PMKIT_USER: 'fred' } }).stdout
+  assert.doesNotMatch(text, /no change/)
+  assert.match(text, /ISS-9ZZZ/)
+})

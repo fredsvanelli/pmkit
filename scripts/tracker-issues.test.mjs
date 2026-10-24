@@ -303,6 +303,19 @@ test('single-line fields refuse line breaks', () => {
   }
 })
 
+test('branch must be a git branch name, so it never reaches git as an option', () => {
+  const { tracker } = setup()
+  const { id } = tracker.createIssue({ title: 'First' }, 'fred').after
+  const bad = ['--receive-pack=touch x', '-b', 'has space', 'tab\there', 'a..b', 'a~1', 'a^', 'a:b', 'a?', 'a*', 'a[b', 'a\\b',
+    'trailing/', 'x.lock', 'a/x.lock/b', 'a@{1}', '@', '/lead', 'a//b', '.hidden', 'a/.hidden', 'dot.', 'del\x7f', '']
+  for (const branch of bad) {
+    assert.throws(() => tracker.updateIssue(id, { branch }, 'fred'), (e) => e.code === 'INVALID_INPUT', JSON.stringify(branch))
+  }
+  for (const branch of ['iss-7k3q-retry', 'feat/pmkit-step2', 'release/1.2', 'fix_a-b']) {
+    assert.equal(tracker.updateIssue(id, { branch }, 'fred').after.branch, branch)
+  }
+})
+
 test('conflict markers inside a fenced code block are text, not a conflict', () => {
   const { tracker } = setup()
   const { id } = tracker.createIssue({ title: 'Fenced', description: FENCED_CONFLICT }, 'fred').after

@@ -11,9 +11,11 @@ import { hashTree, makeRepo } from './test-helpers.mjs'
 const VIEW = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
 
 // The fake gh answers from the JSON file named by PMKIT_FAKE_GH: args joined by a space map to { status, stdout, stderr }.
+// It appends each call to the same file name plus .log.
 const FAKE_GH = `#!/usr/bin/env node
 const fs = require('node:fs')
 const key = process.argv.slice(2).join(' ')
+fs.appendFileSync(process.env.PMKIT_FAKE_GH + '.log', key + '\\n')
 const canned = JSON.parse(fs.readFileSync(process.env.PMKIT_FAKE_GH, 'utf8'))
 const answer = canned[key]
 if (!answer) {
@@ -35,6 +37,8 @@ function fakeGh(canned) {
   fs.writeFileSync(responses, JSON.stringify(canned))
   return { dir, responses }
 }
+
+const ghCalls = ({ responses }) => (fs.existsSync(`${responses}.log`) ? fs.readFileSync(`${responses}.log`, 'utf8').split('\n').filter(Boolean) : [])
 
 const envWith = ({ dir, responses }) => ({
   ...process.env,
@@ -90,9 +94,8 @@ test('pr sync moves merged issues, leaves open ones and reports failed lookups',
   const result = callJson(root, env, ['pr', 'sync'])
   assert.equal(result.checked, 3)
   assert.deepEqual(result.moved, [{ id: 'ISS-2X6D', pr: 11 }])
-  assert.equal(result.problems.length, 1)
-  assert.equal(result.problems[0].id, 'ISS-8C4W')
-  assert.equal(result.problems[0].code, 'UPSTREAM')
+  // ISS-3Q6T has conflict markers in the fixture, so it cannot be read.
+  assert.deepEqual(result.problems.map((p) => [p.id, p.code]), [['ISS-3Q6T', 'CONFLICT'], ['ISS-8C4W', 'UPSTREAM']])
 
   const moved = callJson(root, env, ['issues', 'get', 'ISS-2X6D', '--history'])
   assert.equal(moved.status.category, 'done')
@@ -152,7 +155,8 @@ test('pr sync commits with the moved ids when auto_commit is on', () => {
 test('every pr command with git_host.system none exits 2 with NOT_SUPPORTED', () => {
   const root = teamRepo({ github: false })
   const env = envWith(fakeGh({}))
-  for (const args of [['pr', 'status', '--branch', 'x'], ['pr', 'sync'], ['pr', 'open', '--issue', 'ISS-2X6D']]) {
+  const commands = [['pr', 'status', '--branch', 'x'], ['pr', 'sync'], ['pr', 'open', '--issue', 'ISS-2X6D'], ['pr', 'ready', '--issue', 'ISS-2X6D'], ['issues', 'branch', 'ISS-2X6D', '--dry-run']]
+  for (const args of commands) {
     const result = call(root, env, [...args, '--json'])
     assert.equal(result.code, 2, args.join(' '))
     const error = errorOf(result)
@@ -232,9 +236,10 @@ test('pr open without a branch on the issue exits 2 with INVALID_INPUT', () => {
   assert.equal(error.nextStep, 'pmkit issues branch ISS-2X6D')
 })
 
-test('pr open --dry-run returns the title, body and branches without running git or gh', () => {
+test('pr open --dry-run returns the title, body and branches without pushing or opening', () => {
   const root = teamRepo()
-  const env = envWith(fakeGh({}))
+  const gh = fakeGh({ [view('feat-x')]: { status: 1, stderr: 'no pull requests found for branch "feat-x"\n' } })
+  const env = envWith(gh)
   callJson(root, env, ['issues', 'update', 'ISS-2X6D', '--branch', 'feat-x'])
   const before = hashTree(root)
   const result = callJson(root, env, ['pr', 'open', '--issue', 'ISS-2X6D', '--draft', '--dry-run'])
@@ -243,9 +248,11 @@ test('pr open --dry-run returns the title, body and branches without running git
   assert.equal(result.head, 'feat-x')
   assert.equal(result.base, 'main')
   assert.equal(result.draft, true)
+  assert.equal(result.existing, false)
   assert.ok(result.body.startsWith('Tracker issue: ISS-2X6D'))
   for (const item of issue.acceptanceCriteria) assert.ok(result.body.includes(`- [${item.done ? 'x' : ' '}] ${item.text}`))
   assert.equal(hashTree(root), before)
+  assert.deepEqual(ghCalls(gh), [view('feat-x')])
 })
 
 test('pr open pushes the branch and opens the pull request with gh', () => {
@@ -264,4 +271,118 @@ test('pr open pushes the branch and opens the pull request with gh', () => {
   const pr = callJson(root, env, ['pr', 'open', '--issue', 'ISS-8C4W'])
   assert.equal(pr.number, 9)
   assert.match(git(remote, 'branch', '--list', 'feat-x').stdout, /feat-x/)
+})
+
+function pushableRepo() {
+  const root = teamRepo()
+  const remote = scratch()
+  git(remote, 'init', '-q', '--bare')
+  git(root, 'remote', 'add', 'origin', remote)
+  git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'init')
+  git(root, 'switch', '-c', 'feat-x')
+  return { root, remote }
+}
+
+test('pr open on a branch that already has an open pull request pushes and returns it with existing: true', () => {
+  const { root, remote } = pushableRepo()
+  const gh = fakeGh({ [view('feat-x')]: { stdout: prJson({ number: 9, headRefName: 'feat-x', isDraft: true }) } })
+  const env = envWith(gh)
+  callJson(root, env, ['issues', 'update', 'ISS-8C4W', '--branch', 'feat-x'])
+  const dry = callJson(root, env, ['pr', 'open', '--issue', 'ISS-8C4W', '--dry-run'])
+  assert.equal(dry.existing, true)
+  assert.equal(dry.pr.number, 9)
+  assert.equal(git(remote, 'branch', '--list', 'feat-x').stdout.trim(), '')
+  const pr = callJson(root, env, ['pr', 'open', '--issue', 'ISS-8C4W'])
+  assert.equal(pr.number, 9)
+  assert.equal(pr.existing, true)
+  assert.match(git(remote, 'branch', '--list', 'feat-x').stdout, /feat-x/)
+  assert.ok(ghCalls(gh).every((key) => !key.startsWith('pr create')), ghCalls(gh).join('\n'))
+})
+
+test('pr open opens a new pull request when the last one on the branch is merged', () => {
+  const { root } = pushableRepo()
+  const gh = fakeGh({
+    [view('feat-x')]: { stdout: prJson({ number: 3, headRefName: 'feat-x', state: 'MERGED', mergedAt: '2026-10-20T10:00:00Z' }) },
+    'pr create --title Dead-letter queue for webhooks (ISS-8C4W) --body-file - --head feat-x --base main': { stdout: 'https://github.com/o/r/pull/9\n' },
+  })
+  const env = envWith(gh)
+  callJson(root, env, ['issues', 'update', 'ISS-8C4W', '--branch', 'feat-x'])
+  const pr = callJson(root, env, ['pr', 'open', '--issue', 'ISS-8C4W'])
+  assert.equal(pr.existing, false)
+  assert.ok(ghCalls(gh).some((key) => key.startsWith('pr create')))
+})
+
+test('pr ready marks the open draft pull request ready, and refuses a ready one or a missing one', () => {
+  const root = teamRepo()
+  const gh = fakeGh({
+    [view('draft-branch')]: { stdout: prJson({ number: 7, isDraft: true }) },
+    'pr ready 7': { stdout: '' },
+    [view(7)]: { stdout: prJson({ number: 7, isDraft: false }) },
+    [view('ready-branch')]: { stdout: prJson({ number: 8, isDraft: false }) },
+    [view('none-branch')]: { status: 1, stderr: 'no pull requests found for branch "none-branch"\n' },
+  })
+  const env = envWith(gh)
+  callJson(root, env, ['issues', 'update', 'ISS-2X6D', '--branch', 'draft-branch'])
+  callJson(root, env, ['issues', 'update', 'ISS-5N1R', '--branch', 'ready-branch'])
+  callJson(root, env, ['issues', 'update', 'ISS-8C4W', '--branch', 'none-branch'])
+
+  const dry = callJson(root, env, ['pr', 'ready', '--issue', 'ISS-2X6D', '--dry-run'])
+  assert.equal(dry.number, 7)
+  assert.ok(!ghCalls(gh).includes('pr ready 7'))
+  const ready = callJson(root, env, ['pr', 'ready', '--issue', 'ISS-2X6D'])
+  assert.equal(ready.isDraft, false)
+  assert.ok(ghCalls(gh).includes('pr ready 7'))
+
+  for (const id of ['ISS-5N1R', 'ISS-8C4W']) {
+    const result = call(root, env, ['pr', 'ready', '--issue', id, '--json'])
+    assert.equal(result.code, 2, id)
+    assert.equal(errorOf(result).code, 'INVALID_INPUT', id)
+  }
+})
+
+test('pr status on a detached HEAD asks for --branch', () => {
+  const root = teamRepo()
+  git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'init')
+  git(root, 'checkout', '-q', '--detach')
+  const gh = fakeGh({})
+  const result = call(root, envWith(gh), ['pr', 'status', '--json'])
+  assert.equal(result.code, 2)
+  const error = errorOf(result)
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.equal(error.message, 'no current branch (detached HEAD)')
+  assert.match(error.nextStep, /--branch/)
+  assert.deepEqual(ghCalls(gh), [])
+})
+
+test('pr sync reports an issue file it cannot read', () => {
+  const root = teamRepo()
+  const env = envWith(fakeGh({}))
+  const file = path.join(root, '.issues/issues/ISS-2X6D/issue.md')
+  fs.writeFileSync(file, 'not: [an issue\n')
+  const result = callJson(root, env, ['pr', 'sync'])
+  assert.deepEqual(result.problems.map((p) => p.id).sort(), ['ISS-2X6D', 'ISS-3Q6T'])
+  assert.match(call(root, env, ['pr', 'sync']).stdout, /ISS-2X6D: /)
+})
+
+test('issues update refuses a branch that starts with a dash', () => {
+  const root = teamRepo()
+  const env = envWith(fakeGh({}))
+  const result = call(root, env, ['issues', 'update', 'ISS-2X6D', '--branch=--receive-pack=touch pwned', '--json'])
+  assert.equal(result.code, 2)
+  assert.equal(errorOf(result).code, 'INVALID_INPUT')
+})
+
+test('issues branch with no actor leaves no branch behind and stays on the current branch', () => {
+  const root = teamRepo()
+  git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'init')
+  const start = git(root, 'branch', '--show-current').stdout.trim()
+  const env = envWith(fakeGh({}))
+  delete env.PMKIT_USER
+  const title = callJson(root, envWith(fakeGh({})), ['issues', 'get', 'ISS-2X6D']).title
+  for (const extra of [[], ['--dry-run']]) {
+    const result = call(root, env, ['issues', 'branch', 'ISS-2X6D', '--from', start, ...extra, '--json'])
+    assert.equal(result.code, 2, result.stdout)
+  }
+  assert.equal(git(root, 'branch', '--show-current').stdout.trim(), start)
+  assert.equal(git(root, 'branch', '--list', branchName('ISS-2X6D', title)).stdout.trim(), '')
 })

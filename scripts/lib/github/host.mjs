@@ -27,6 +27,14 @@ function failure(cmd, args, result) {
   return new PmkitError('UPSTREAM', `${cmd} ${args.slice(0, 2).join(' ')} failed: ${detail}`, 'Check the output of the same command in a terminal')
 }
 
+/** Refuses a ref that git or gh would read as an option. */
+function refArg(what, value) {
+  if (typeof value !== 'string' || value === '' || value.startsWith('-')) {
+    throw new PmkitError('INVALID_INPUT', `${what} "${value}" is not a valid branch name`, 'Use a branch name that does not start with -')
+  }
+  return value
+}
+
 export function createGithubHost({ root, env, exec = defaultExec({ root, env }) }) {
   /** Runs exec and maps a missing binary to NOT_CONFIGURED. Returns the raw result. */
   const run = (cmd, args, options) => {
@@ -60,6 +68,7 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
     if (target === undefined || target === '') {
       throw new PmkitError('INVALID_INPUT', 'getPullRequest needs a number or a head', 'Pass a pull request number or a branch name')
     }
+    if (selector.number === undefined) refArg('head', target)
     const args = ['pr', 'view', String(target), '--json', VIEW_FIELDS]
     const result = run('gh', args)
     if (result.status !== 0) {
@@ -73,14 +82,16 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
     currentBranch: () => check('git', ['branch', '--show-current']).stdout.trim(),
 
     createBranch(name, { from }) {
-      check('git', ['switch', '-c', name, from])
+      check('git', ['switch', '-c', refArg('branch', name), refArg('from', from)])
     },
 
     push(branch) {
-      check('git', ['push', '-u', 'origin', branch])
+      check('git', ['push', '-u', 'origin', refArg('branch', branch)])
     },
 
     openPullRequest({ title, body, head, base, draft }) {
+      refArg('head', head)
+      refArg('base', base)
       const args = ['pr', 'create', '--title', title, '--body-file', '-', '--head', head, '--base', base]
       if (draft) args.push('--draft')
       check('gh', args, { input: body })
@@ -88,6 +99,12 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
     },
 
     getPullRequest,
+
+    markReady(number) {
+      if (!Number.isInteger(number) || number < 1) throw new PmkitError('INVALID_INPUT', `pull request number "${number}" is not valid`, 'Pass a pull request number')
+      check('gh', ['pr', 'ready', String(number)])
+      return getPullRequest({ number })
+    },
 
     prChecks(number) {
       const args = ['pr', 'checks', String(number), '--json', 'name,state,bucket']

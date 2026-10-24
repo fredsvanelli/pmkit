@@ -45,3 +45,13 @@ export function branchName(id, title) {
   const base = id.toLowerCase()
   return slug ? `${base}-${slug}` : base
 }
+
+/** True when `name` is a branch name `git check-ref-format --branch` accepts and git cannot read as an option. */
+export function isBranchName(name) {
+  if (typeof name !== 'string' || name === '' || name === '@') return false
+  if (name.startsWith('-') || name.startsWith('/') || name.endsWith('/') || name.endsWith('.')) return false
+  // Control characters, space, DEL and the characters git reserves for revision syntax.
+  if (/[\x00-\x20\x7f~^:?*[\\]/.test(name)) return false
+  if (name.includes('..') || name.includes('@{') || name.includes('//')) return false
+  return name.split('/').every((part) => !part.startsWith('.') && !part.endsWith('.lock'))
+}

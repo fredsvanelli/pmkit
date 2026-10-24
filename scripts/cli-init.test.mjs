@@ -124,3 +124,19 @@ test('--update --dry-run writes nothing, and --update refuses --prefix or a miss
   assert.equal(JSON.parse(empty.stdout).error.code, 'INVALID_INPUT')
   assert.match(JSON.parse(empty.stdout).error.nextStep, /without --update/)
 })
+
+test('--update that cannot edit a key fails with INVALID_INPUT naming the file and the key', () => {
+  const dir = tmp()
+  assert.equal(run(dir, ['init']).status, 0)
+  const file = path.join(dir, '.issues/config.yaml')
+  fs.writeFileSync(file, read(dir, '.issues/config.yaml').replace('scale: [1, 2, 3, 5, 8, 13]', 'scale:\n    - 1\n    - 2\n    - 3'))
+  const before = hashTree(dir)
+  const result = run(dir, ['init', '--update', '--estimate-unit', 'sizes', '--json'])
+  assert.equal(result.status, 2)
+  const error = JSON.parse(result.stdout).error
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.match(error.message, /\.issues\/config\.yaml/)
+  assert.match(error.message, /estimate\.scale/)
+  assert.doesNotMatch(error.message, /members/)
+  assert.equal(hashTree(dir), before)
+})

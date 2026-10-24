@@ -483,18 +483,22 @@ export const COMMANDS = [
   {
     name: 'issues branch', summary: 'creates the issue branch and records it on the issue', usage: '<id> [--from branch]', write: true, args: ['id'], flags: ['from'],
     run: (ctx) => {
+      const host = ctx.host()
       const tracker = ctx.tracker()
       const issue = tracker.getIssue(ctx.args[0])
       const branch = branchName(issue.id, issue.title)
       const from = ctx.opt('from') ?? defaultBranch(ctx)
+      // Check the tracker write first, so a refused write leaves git on the branch it was on.
+      const actor = ctx.actor()
+      tracker.updateIssue(issue.id, { branch }, actor, { dryRun: true })
       if (ctx.dryRun) return { data: { branch, from }, text: `would create branch ${branch} from ${from}\ndry run: nothing was written` }
-      ctx.host().createBranch(branch, { from })
-      const result = tracker.updateIssue(issue.id, { branch }, ctx.actor())
+      host.createBranch(branch, { from })
+      const result = tracker.updateIssue(issue.id, { branch }, actor)
       return { data: { branch, ...result }, text: `created branch ${branch} from ${from}\n${writeText(result, ctx)}`, commit: issue.id }
     },
   },
   {
-    name: 'pr open', summary: 'pushes the issue branch and opens a pull request', usage: '--issue <id> [--draft] [--body-file f]', write: true, args: [], flags: ['issue', 'body-file', 'draft'],
+    name: 'pr open', summary: 'pushes the issue branch and opens a pull request, or returns the one already open', usage: '--issue <id> [--draft] [--body-file f]', write: true, args: [], flags: ['issue', 'body-file', 'draft'],
     run: (ctx) => {
       if (ctx.opt('issue') === undefined) throw usageError('pr open needs --issue', 'pmkit pr open --issue <id>')
       const host = ctx.host()
@@ -502,10 +506,34 @@ export const COMMANDS = [
       if (!issue.branch) throw usageError(`${issue.id} has no branch`, `pmkit issues branch ${issue.id}`)
       const body = ctx.opt('body-file') !== undefined ? readInput(ctx.opt('body-file')) : defaultPrBody(issue)
       const request = { title: `${issue.title} (${issue.id})`, body, head: issue.branch, base: defaultBranch(ctx), draft: ctx.flag('draft') }
-      if (ctx.dryRun) return { data: request, text: `would open a pull request ${request.head} to ${request.base}\n${request.title}\n\n${body}\ndry run: nothing was written` }
+      // gh refuses a second pull request for a branch, so an open one is pushed to and returned as it is.
+      const found = host.getPullRequest({ head: issue.branch })
+      const open = found?.state === 'OPEN' ? found : null
+      if (ctx.dryRun) {
+        const text = open
+          ? `would push ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`
+          : `would open a pull request ${request.head} to ${request.base}\n${request.title}\n\n${body}`
+        return { data: { ...request, existing: open !== null, pr: open }, text: `${text}\ndry run: nothing was written` }
+      }
       host.push(issue.branch)
+      if (open) return { data: { ...open, existing: true }, text: `pushed ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}` }
       const pr = host.openPullRequest(request)
-      return { data: pr, text: `opened pull request #${pr.number} ${pr.url}` }
+      return { data: { ...pr, existing: false }, text: `opened pull request #${pr.number} ${pr.url}` }
+    },
+  },
+  {
+    name: 'pr ready', summary: 'marks the open draft pull request of an issue ready for review', usage: '--issue <id>', write: true, args: [], flags: ['issue'],
+    run: (ctx) => {
+      if (ctx.opt('issue') === undefined) throw usageError('pr ready needs --issue', 'pmkit pr ready --issue <id>')
+      const host = ctx.host()
+      const issue = ctx.tracker().getIssue(ctx.opt('issue'))
+      if (!issue.branch) throw usageError(`${issue.id} has no branch`, `pmkit issues branch ${issue.id}`)
+      const pr = host.getPullRequest({ head: issue.branch })
+      if (pr?.state !== 'OPEN') throw usageError(`${issue.branch} has no open pull request`, `pmkit pr open --issue ${issue.id}`)
+      if (!pr.isDraft) throw usageError(`pull request #${pr.number} is not a draft, it is already ready for review`, `pmkit pr status --branch ${issue.branch}`)
+      if (ctx.dryRun) return { data: { ...pr, isDraft: false }, text: `would mark pull request #${pr.number} ready for review ${pr.url}\ndry run: nothing was written` }
+      const ready = host.markReady(pr.number)
+      return { data: ready, text: `marked pull request #${ready.number} ready for review ${ready.url}` }
     },
   },
   {
@@ -513,6 +541,7 @@ export const COMMANDS = [
     run: (ctx) => {
       const host = ctx.host()
       const branch = ctx.opt('branch') ?? host.currentBranch()
+      if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
       const pr = host.getPullRequest({ head: branch })
       const checks = pr ? host.prChecks(pr.number) : []
       const reviews = pr ? host.prReviews(pr.number).reviews : []
@@ -528,9 +557,11 @@ export const COMMANDS = [
       const host = ctx.host()
       const tracker = ctx.tracker()
       const actor = ctx.actor()
-      const candidates = tracker.searchIssues({ categories: ['in_review'] }).issues.filter((issue) => issue.branch)
+      const found = tracker.searchIssues({ categories: ['in_review'] })
+      const candidates = found.issues.filter((issue) => issue.branch)
       const moved = []
-      const problems = []
+      // A file that does not parse may be an in_review issue, so it is reported, not skipped.
+      const problems = found.problems.map(({ id, code, message }) => ({ id, code, message }))
       for (const issue of candidates) {
         try {
           const pr = host.getPullRequest({ head: issue.branch })
@@ -703,12 +734,21 @@ function runInit(ctx) {
     }
   }
 
+  // A file edited by hand may hold a shape the line editor cannot change; name the file and the key.
+  const edit = (file, key, change) => {
+    try {
+      return change()
+    } catch (error) {
+      if (isPmkitError(error)) throw error
+      throw new PmkitError('INVALID_INPUT', `cannot set ${key} in ${slash(file)}: ${error.message}`, `Edit ${key} in ${slash(file)} by hand, then run init --update again`)
+    }
+  }
   let pmkit
   let local
   if (update) {
     pmkit = read(pmkitFile)
     local = read(issuesConfig)
-    if (host !== undefined) pmkit = setScalar(pmkit, ['git_host', 'system'], host)
+    if (host !== undefined) pmkit = edit(pmkitFile, 'git_host.system', () => setScalar(pmkit, ['git_host', 'system'], host))
   } else {
     const remote = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: root, encoding: 'utf8' })
     const repo = remote.status === 0 ? /github\.com[:/]([^/\s]+\/[^/\s]+?)(?:\.git)?\/?\s*$/.exec(remote.stdout)?.[1] : undefined
@@ -719,24 +759,27 @@ function runInit(ctx) {
     local = setScalar(template('issues.config.yaml').replace('id_prefix: ISS', `id_prefix: ${opt('prefix') ?? 'ISS'}`), ['version'], FORMAT_VERSION)
   }
   if (unit !== undefined) {
-    local = setScalar(local, ['estimate', 'unit'], unit)
-    if (unit === 'sizes') local = setScalar(local, ['estimate', 'scale'], SIZE_SCALE)
+    local = edit(issuesConfig, 'estimate.unit', () => setScalar(local, ['estimate', 'unit'], unit))
+    if (unit === 'sizes') local = edit(issuesConfig, 'estimate.scale', () => setScalar(local, ['estimate', 'scale'], SIZE_SCALE))
+  }
+  const parsedLocal = () => {
+    try {
+      return parseYaml(local)
+    } catch (error) {
+      throw new PmkitError('INVALID_INPUT', `${slash(issuesConfig)} is not valid YAML: ${error.message}`, 'Fix the file, then run init --update again')
+    }
   }
   const kept = []
-  try {
-    const existing = update ? Object.keys(parseYaml(local).members ?? {}) : []
-    for (const [id, value] of members) {
-      if (existing.includes(id)) {
-        if (!kept.includes(id)) kept.push(id)
-      } else {
-        local = addMapEntry(local, ['members'], id, value)
-        existing.push(id)
-      }
+  const existing = update ? Object.keys(parsedLocal().members ?? {}) : []
+  for (const [id, value] of members) {
+    if (existing.includes(id)) {
+      if (!kept.includes(id)) kept.push(id)
+    } else {
+      local = edit(issuesConfig, `members.${id}`, () => addMapEntry(local, ['members'], id, value))
+      existing.push(id)
     }
-  } catch (error) {
-    throw usageError(`cannot add the members: ${error.message}`, 'Fix the members file, or edit the tracker config.yaml by hand')
   }
-  const problems = validateLocalConfig(parseYaml(local))
+  const problems = validateLocalConfig(parsedLocal())
   if (problems.length > 0) throw usageError(`the ${update ? '' : 'generated '}${slash(issuesConfig)} is not valid: ${problems.join('; ')}`, 'Fix the init flags')
 
   const replace = new Set(ctx.list('replace').flatMap((item) => String(item).split(',')).map((item) => item.trim().replace(/\\/g, '/')))

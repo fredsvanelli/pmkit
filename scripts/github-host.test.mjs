@@ -134,6 +134,26 @@ test('git operations call git with the spec arguments', () => {
   ])
 })
 
+test('a branch, head or base that starts with a dash is refused before git or gh runs', () => {
+  const { exec, calls } = fakeExec()
+  const h = host(exec)
+  const refused = (e) => e instanceof PmkitError && e.code === 'INVALID_INPUT'
+  assert.throws(() => h.createBranch('--receive-pack=x', { from: 'main' }), refused)
+  assert.throws(() => h.createBranch('ok', { from: '-x' }), refused)
+  assert.throws(() => h.push('--receive-pack=touch pwned'), refused)
+  assert.throws(() => h.getPullRequest({ head: '-x' }), refused)
+  assert.throws(() => h.openPullRequest({ title: 'T', body: 'B', head: '--x', base: 'main', draft: false }), refused)
+  assert.throws(() => h.openPullRequest({ title: 'T', body: 'B', head: 'h', base: '-main', draft: false }), refused)
+  assert.deepEqual(calls, [])
+})
+
+test('markReady calls gh pr ready with the number, then reads the PR back', () => {
+  const { exec, calls } = fakeExec({}, { stdout: JSON.stringify({ ...pr, isDraft: false }) })
+  const result = host(exec).markReady(12)
+  assert.deepEqual(calls.map((c) => c.args), [['pr', 'ready', '12'], ['pr', 'view', '12', '--json', VIEW_FIELDS]])
+  assert.equal(result.isDraft, false)
+})
+
 test('the default exec throws ENOENT for a command that does not exist', () => {
   assert.throws(
     () => defaultExec({ root: process.cwd(), env: process.env })('pmkit-no-such-command-xyz', []),

@@ -7,7 +7,7 @@ import { requireActor, gitUserEmail } from '../actor.mjs'
 import { loadConfig, validateLocalConfig } from '../config.mjs'
 import { PmkitError } from '../errors.mjs'
 import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
-import { isId, newId, normalizeId } from '../ids.mjs'
+import { isBranchName, isId, newId, normalizeId } from '../ids.mjs'
 import { CATEGORIES, LINK_KINDS, TERMINAL } from '../model.mjs'
 import { appendEvents, driftEvents, readEvents } from './events.mjs'
 import { formatError } from './migrations.mjs'
@@ -182,7 +182,11 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
       if (!validDate(value)) throw invalid('due must be a date as YYYY-MM-DD')
       return value
     },
-    branch: (value) => oneLine('branch', text('branch')(value)),
+    branch: (value) => {
+      const name = oneLine('branch', text('branch')(value))
+      if (!isBranchName(name)) throw invalid(`branch "${name}" is not a valid git branch name`, 'Use a name git accepts, like iss-7k3q-retry-webhooks, that does not start with -')
+      return name
+    },
     description: (value) => noSectionHeading('description', plainText('description', value)),
     acceptanceCriteria: requireCriteria,
   }
@@ -441,10 +445,13 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     const options = { dryRun }
     if (kind === 'blocks') {
       const all = scanIssues()
-      const before = withComputed(all.find((issue) => issue.id === a) ?? { ...all.find((issue) => issue.id === b), blocks: [] }, all)
+      const blocker = all.find((issue) => issue.id === a)
       const closing = op === 'link' ? blockPath(b, a, all) : null
       if (closing) throw invalid(`${a} blocks ${b} would close a cycle: ${[a, ...closing].join(' → ')}`)
       const written = change(b, actor, options, listEdit(op, prop, field, a))
+      // A missing blocker has no record, so the result is the blocked issue, whose blocked_by changes.
+      if (!blocker) return written
+      const before = withComputed(blocker, all)
       const changed = written.after !== written.before
       const blocks = op === 'link' ? [...before.blocks, b].sort() : before.blocks.filter((item) => item !== b)
       return { before, after: changed ? { ...before, blocks } : before }
