@@ -11,7 +11,9 @@ import { PmkitError, isPmkitError } from './lib/errors.mjs'
 import { changeLines, epicRecord, eventTable, fields, issueRecord, issueTable, sprintRecord, table } from './lib/format.mjs'
 import { cycleTimes, lastEntry, summary, velocity } from './lib/metrics.mjs'
 import { validateRepo } from './lib/validate.mjs'
-import { stringifyYaml, parseYaml } from './lib/yaml.mjs'
+import { parseYaml } from './lib/yaml.mjs'
+import { addMapEntry, setScalar } from './lib/yaml-edit.mjs'
+import { lineDiff } from './lib/diff.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, planMigration } from './lib/local/migrations.mjs'
 import { parseChangelog, sectionsSince } from './lib/changelog.mjs'
@@ -179,9 +181,9 @@ const problemLine = (problem) => `${problem.id}: ${problem.code} ${problem.messa
 // Command table. `run` returns { data, text, commit }: the JSON value, the plain text and, for a write, the id for the commit message.
 export const COMMANDS = [
   {
-    name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite',
-    usage: '[--tracker local] [--git-host github|none] [--prefix ISS] [--member id --name n --email e]',
-    flags: ['tracker', 'git-host', 'prefix', 'member', 'name', 'email'], booleans: ['dry-run'], dryRun: true, run: runInit,
+    name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name',
+    usage: '[--tracker local] [--git-host github|none] [--prefix ISS] [--estimate-unit points|hours|sizes] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
+    flags: ['tracker', 'git-host', 'prefix', 'member', 'name', 'email', 'estimate-unit', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, run: runInit,
   },
   {
     name: 'capabilities', summary: 'prints the capability manifest', flags: [],
@@ -631,54 +633,155 @@ ${COMMANDS.map((c) => `  ${c.name}${c.usage ? ` ${c.usage}` : ''}\n      ${c.sum
 `
 
 // init is the only command that runs before a config exists.
+const ESTIMATE_UNITS = ['points', 'hours', 'sizes']
+const SIZE_SCALE = ['XS', 'S', 'M', 'L', 'XL']
+const slash = (file) => file.split(path.sep).join('/')
+const normalized = (text) => text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
+
+// Members from --member and --members-file, as [id, { name, email }] pairs.
+function initMembers(opt) {
+  const entries = []
+  const check = (id) => {
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) throw usageError(`member id "${id}" must be kebab-case, like fred`)
+  }
+  const member = opt('member')
+  if (member !== undefined) {
+    check(member)
+    entries.push([member, { name: opt('name') ?? member, email: opt('email') }])
+  }
+  if (opt('members-file') !== undefined) {
+    let parsed
+    try {
+      parsed = parseYaml(readInput(opt('members-file')))
+    } catch (error) {
+      if (isPmkitError(error)) throw error
+      throw usageError(`--members-file is not valid YAML: ${error.message}`)
+    }
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw usageError('--members-file must be a YAML map of id: { name, email }')
+    for (const [id, value] of Object.entries(parsed)) {
+      check(id)
+      if (value === null || typeof value !== 'object' || typeof value.name !== 'string' || value.name === '') {
+        throw usageError(`member ${id} needs a name`)
+      }
+      entries.push([id, { name: value.name, email: value.email }])
+    }
+  }
+  return entries
+}
+
 function runInit(ctx) {
   const { opt } = ctx
+  const update = ctx.flag('update')
   if ((opt('tracker') ?? 'local') !== 'local') throw new PmkitError('NOT_SUPPORTED', `tracker "${opt('tracker')}" is not supported yet`, 'Use --tracker local')
-  const host = opt('git-host') ?? 'none'
-  if (!['github', 'none'].includes(host)) throw usageError('--git-host must be github or none')
-  const member = opt('member')
-  if (member !== undefined && !/^[a-z0-9][a-z0-9-]*$/.test(member)) throw usageError('--member must be kebab-case, like fred')
+  const host = opt('git-host')
+  if (host !== undefined && !['github', 'none'].includes(host)) throw usageError('--git-host must be github or none')
+  const unit = opt('estimate-unit')
+  if (unit !== undefined && !ESTIMATE_UNITS.includes(unit)) throw usageError(`--estimate-unit must be ${ESTIMATE_UNITS.join(', ')}`)
+  if (update && opt('prefix') !== undefined) throw usageError('id_prefix cannot change after setup', 'Remove --prefix')
+  const members = initMembers(opt)
 
   const root = ctx.root
-  const pmkitFile = path.join('.pmkit', 'config.yaml')
-  const issuesConfig = path.join('.issues', 'config.yaml')
-  for (const file of [pmkitFile, issuesConfig]) {
-    if (fs.existsSync(path.join(root, file))) {
-      throw new PmkitError('CONFLICT', `${file.split(path.sep).join('/')} already exists`, 'Edit it, or delete it to start over')
-    }
-  }
-
+  const read = (file) => normalized(fs.readFileSync(path.join(root, file), 'utf8'))
+  const exists = (file) => fs.existsSync(path.join(root, file))
   const template = (name) => fs.readFileSync(path.join(TEMPLATES, name), 'utf8')
-  const remote = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: root, encoding: 'utf8' })
-  const repo = remote.status === 0 ? /github\.com[:/]([^/\s]+\/[^/\s]+?)(?:\.git)?\/?\s*$/.exec(remote.stdout)?.[1] : undefined
-  const pmkit = template('pmkit.config.yaml').replace(
-    /git_host:\n {2}system: .*\n {2}repo: .*\n/,
-    `git_host:\n  system: ${host}\n${repo ? `  repo: ${repo}\n` : ''}`,
-  )
-  const members = member === undefined
-    ? 'members: {}'
-    : `members:\n${stringifyYaml({ [member]: { name: opt('name') ?? member, email: opt('email') } }).replace(/^/gm, '  ').trimEnd()}`
-  const local = template('issues.config.yaml').replace('id_prefix: ISS', `id_prefix: ${opt('prefix') ?? 'ISS'}`).replace('members: {}', members)
-  const problems = validateLocalConfig(parseYaml(local))
-  if (problems.length > 0) throw usageError(`the generated .issues/config.yaml is not valid: ${problems.join('; ')}`, 'Fix the init flags')
-
-  const files = [
-    [pmkitFile, pmkit],
-    [issuesConfig, local],
-    [path.join('.issues', '.gitattributes'), template('issues.gitattributes')],
-    [path.join('.issues', '.gitignore'), template('issues.gitignore')],
-    ...['issues', 'epics', 'sprints', 'docs'].map((dir) => [path.join('.issues', dir, '.gitkeep'), '']),
-  ]
-  if (!ctx.dryRun) {
-    for (const [file, content] of files) {
-      fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true })
-      fs.writeFileSync(path.join(root, file), content)
+  const pmkitFile = path.join('.pmkit', 'config.yaml')
+  let trackerDir = '.issues'
+  if (update) {
+    if (!exists(pmkitFile)) throw usageError('.pmkit/config.yaml does not exist, so there is no setup to update', 'Run init without --update')
+    try {
+      trackerDir = parseYaml(read(pmkitFile)).tracker?.path ?? '.issues'
+    } catch (error) {
+      throw new PmkitError('INVALID_INPUT', `.pmkit/config.yaml is not valid YAML: ${error.message}`, 'Fix the file, then run init --update again')
     }
   }
-  const written = files.map(([file]) => file.split(path.sep).join('/'))
+  const issuesConfig = path.join(trackerDir, 'config.yaml')
+  if (update) {
+    if (!exists(issuesConfig)) throw new PmkitError('NOT_CONFIGURED', `${slash(issuesConfig)} does not exist`, 'Restore it from git, or delete .pmkit/config.yaml and run init without --update')
+  } else {
+    for (const file of [pmkitFile, issuesConfig]) {
+      if (exists(file)) throw new PmkitError('CONFLICT', `${slash(file)} already exists`, 'Edit it, or delete it to start over')
+    }
+  }
+
+  let pmkit
+  let local
+  if (update) {
+    pmkit = read(pmkitFile)
+    local = read(issuesConfig)
+    if (host !== undefined) pmkit = setScalar(pmkit, ['git_host', 'system'], host)
+  } else {
+    const remote = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: root, encoding: 'utf8' })
+    const repo = remote.status === 0 ? /github\.com[:/]([^/\s]+\/[^/\s]+?)(?:\.git)?\/?\s*$/.exec(remote.stdout)?.[1] : undefined
+    pmkit = template('pmkit.config.yaml').replace(
+      /git_host:\n {2}system: .*\n {2}repo: .*\n/,
+      `git_host:\n  system: ${host ?? 'none'}\n${repo ? `  repo: ${repo}\n` : ''}`,
+    )
+    local = setScalar(template('issues.config.yaml').replace('id_prefix: ISS', `id_prefix: ${opt('prefix') ?? 'ISS'}`), ['version'], FORMAT_VERSION)
+  }
+  if (unit !== undefined) {
+    local = setScalar(local, ['estimate', 'unit'], unit)
+    if (unit === 'sizes') local = setScalar(local, ['estimate', 'scale'], SIZE_SCALE)
+  }
+  const kept = []
+  try {
+    const existing = update ? Object.keys(parseYaml(local).members ?? {}) : []
+    for (const [id, value] of members) {
+      if (existing.includes(id)) {
+        if (!kept.includes(id)) kept.push(id)
+      } else {
+        local = addMapEntry(local, ['members'], id, value)
+        existing.push(id)
+      }
+    }
+  } catch (error) {
+    throw usageError(`cannot add the members: ${error.message}`, 'Fix the members file, or edit the tracker config.yaml by hand')
+  }
+  const problems = validateLocalConfig(parseYaml(local))
+  if (problems.length > 0) throw usageError(`the ${update ? '' : 'generated '}${slash(issuesConfig)} is not valid: ${problems.join('; ')}`, 'Fix the init flags')
+
+  const replace = new Set(ctx.list('replace').flatMap((item) => String(item).split(',')).map((item) => item.trim().replace(/\\/g, '/')))
+  const entries = []
+  const place = (file, content) => {
+    const rel = slash(file)
+    if (!exists(file)) return entries.push({ path: rel, action: 'create', content })
+    const before = read(file)
+    if (before === content) return entries.push({ path: rel, action: 'keep', content })
+    const diff = lineDiff(before, content)
+    if (!replace.has(rel)) return entries.push({ path: rel, action: 'differs', diff, content: before })
+    return entries.push({ path: rel, action: 'replace', diff, content })
+  }
+  const edited = (file, content) => {
+    const rel = slash(file)
+    if (!exists(file)) return entries.push({ path: rel, action: 'create', content })
+    const before = read(file)
+    if (before === content) return entries.push({ path: rel, action: 'keep', content })
+    return entries.push({ path: rel, action: 'change', diff: lineDiff(before, content), content })
+  }
+  edited(pmkitFile, pmkit)
+  edited(issuesConfig, local)
+  place(path.join(trackerDir, '.gitattributes'), template('issues.gitattributes'))
+  place(path.join(trackerDir, '.gitignore'), template('issues.gitignore'))
+  for (const dir of ['issues', 'epics', 'sprints', 'docs']) place(path.join(trackerDir, dir, '.gitkeep'), '')
+
+  if (!ctx.dryRun) {
+    for (const entry of entries) {
+      if (!['create', 'change', 'replace'].includes(entry.action)) continue
+      const file = path.join(root, entry.path)
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      fs.writeFileSync(file, entry.content)
+    }
+  }
+  const files = entries.map(({ content, ...entry }) => entry)
+  const label = { create: 'create', change: 'change', replace: 'replace', differs: 'differs, left as it is', keep: 'keep' }
+  const lines = files.map((file) => `  ${file.path}: ${ctx.dryRun && file.action !== 'keep' && file.action !== 'differs' ? 'would ' : ''}${label[file.action]}`)
   return {
-    data: { dryRun: ctx.dryRun, written },
-    text: [ctx.dryRun ? 'would write:' : 'wrote:', ...written.map((file) => `  ${file}`), ...(ctx.dryRun ? ['dry run: nothing was written'] : [])].join('\n'),
+    data: { dryRun: ctx.dryRun, files, kept },
+    text: [
+      ctx.dryRun ? 'files:' : 'wrote:', ...lines,
+      ...(kept.length > 0 ? [`members kept as they were: ${kept.join(', ')}`] : []),
+      ...files.filter((file) => file.diff).flatMap((file) => ['', `${file.path}:`, file.diff.trimEnd()]),
+      ...(ctx.dryRun ? ['dry run: nothing was written'] : []),
+    ].join('\n'),
   }
 }
 
