@@ -246,3 +246,22 @@ test('listIssueIds returns only folders that are issue ids', () => {
   fs.mkdirSync(path.join(issuesDir, 'issues', 'notes'))
   assert.deepEqual(listIssueIds(issuesDir, 'ISS'), ['ISS-1234'])
 })
+
+test('drift is dated no earlier than the newest logged event, so a second write adds none', () => {
+  const { tracker, paths, rawEvents } = setup()
+  tracker.createIssue({ title: 'First' }, 'fred')
+  const { file } = paths('ISS-1234')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('status: backlog', 'status: done'))
+  const restored = new Date('2026-10-23T09:00:00Z')
+  fs.utimesSync(file, restored, restored)
+
+  tracker.assign('ISS-1234', 'fred', 'fred')
+  const synthetic = rawEvents('ISS-1234').filter((e) => e.synthetic)
+  assert.equal(synthetic.length, 1)
+  assert.equal(synthetic[0].at, NOW)
+
+  const edited = new Date('2026-10-23T09:00:00Z')
+  fs.utimesSync(file, edited, edited)
+  tracker.updateIssue('ISS-1234', { title: 'Second' }, 'fred')
+  assert.equal(rawEvents('ISS-1234').filter((e) => e.synthetic).length, 1)
+})

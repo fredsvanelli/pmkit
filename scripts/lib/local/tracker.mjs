@@ -178,7 +178,10 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   function change(id, actor, { dryRun = false } = {}, edit) {
     requireMember(actor, 'actor')
     const { issue: before, paths } = readIssue(id)
-    const drift = driftEvents(toFrontmatter(before), readEvents(paths.events).events, { at: fileMtimeIso(paths.file), by: actor })
+    const logged = readEvents(paths.events).events
+    const newest = logged.length > 0 ? logged[logged.length - 1].at : ''
+    const mtime = fileMtimeIso(paths.file)
+    const drift = driftEvents(toFrontmatter(before), logged, { at: mtime > newest ? mtime : newest, by: actor })
     if (!dryRun) appendEvents(paths.events, drift)
     const at = stamp()
     const next = structuredClone(before)
