@@ -14,6 +14,7 @@ import { validateRepo } from './lib/validate.mjs'
 import { stringifyYaml, parseYaml } from './lib/yaml.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, planMigration } from './lib/local/migrations.mjs'
+import { parseChangelog, sectionsSince } from './lib/changelog.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
 import { branchName } from './lib/ids.mjs'
 
@@ -548,6 +549,17 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'changelog', summary: 'prints the CHANGELOG.md sections newer than a version, oldest first; needs no config', usage: '--file f --since v', flags: ['file', 'since'],
+    run: (ctx) => {
+      if (ctx.opt('file') === undefined || ctx.opt('since') === undefined) throw usageError('changelog needs --file and --since', 'Use --file <CHANGELOG.md> --since <version>')
+      const sections = sectionsSince(parseChangelog(readInput(path.resolve(ctx.cwd, ctx.opt('file')))), ctx.opt('since'))
+      const text = sections.length === 0
+        ? 'no changes since this version'
+        : sections.map((s) => [`${s.version}  ${s.date}`, s.body, ...(s.trackerFormat === null ? [] : [`tracker format: ${s.trackerFormat}`]), ...s.setup.map((reason) => `setup: ${reason}`)].filter(Boolean).join('\n')).join('\n\n')
+      return { data: sections, text }
+    },
+  },
+  {
     name: 'migrate', summary: 'moves the tracker files to the format this pmkit writes; --dry-run lists every file it would touch', write: true, flags: [],
     run: (ctx) => runMigrate(ctx.root, { dryRun: ctx.dryRun }),
   },
@@ -738,7 +750,7 @@ export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
     let tracker
     let host
     const ctx = {
-      root, env, dryRun, args: parsed.positionals, json,
+      root, cwd, env, dryRun, args: parsed.positionals, json,
       opt: (name) => last(options[name]),
       list: (name) => (options[name] === undefined ? [] : [options[name]].flat()),
       flag: (name) => last(options[name]) === true,

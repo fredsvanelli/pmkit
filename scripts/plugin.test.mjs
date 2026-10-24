@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parseChangelog } from './lib/changelog.mjs'
+import { FORMAT_VERSION } from './lib/local/migrations.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -61,4 +63,13 @@ function scriptFiles(dir = path.join(ROOT, 'scripts')) {
 test('no script holds a literal U+FEFF; BOM regexes and tests use the \\uFEFF escape', () => {
   const holders = scriptFiles().filter((file) => fs.readFileSync(file, 'utf8').includes('\uFEFF'))
   assert.deepEqual(holders.map((file) => path.relative(ROOT, file)), [])
+})
+
+test('CHANGELOG.md has a section for the plugin version and a Tracker format that matches FORMAT_VERSION', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/plugin.json'), 'utf8'))
+  const sections = parseChangelog(fs.readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf8'))
+  assert.ok(sections.some((section) => section.version === manifest.version), `no section for ${manifest.version}`)
+  const newest = sections.find((section) => section.trackerFormat !== null)
+  if (newest) assert.equal(newest.trackerFormat, FORMAT_VERSION)
+  else assert.equal(FORMAT_VERSION, 1)
 })
