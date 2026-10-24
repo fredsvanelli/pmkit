@@ -40,6 +40,6 @@ The posted note, the draft PR link when one was opened, the issue status and the
 
 - No issue found: ask for the ID.
 - No commits on the branch, or the git host is `none`: skip step 7 and say no draft PR was opened.
-- `pr open` fails with `INVALID_INPUT` because the issue has no `branch`: say there is no branch to push. Offer `pmkit issues branch <id>` only when the user has code to push.
+- `pr open` fails with `INVALID_INPUT` because the issue has no `branch`: say there is no branch recorded. When the user has commits to push, offer to record the current branch: run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues branch <id> --from <current branch> --dry-run --json`, show the branch name and `from`, and ask once. The new branch starts from `from`, so only commits on `from` come with it. When the user approves, run the same command without `--dry-run`, then retry step 7.
 - `gh` is missing or not logged in: the CLI answers `NOT_CONFIGURED` or `AUTH`. The note and status changes stay. Show the next step.
 - An error from the CLI: apply the rules for reading errors in the conventions.

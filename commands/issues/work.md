@@ -25,7 +25,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
    2. When it is not in `in_progress`, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues move <id> in_progress --dry-run --json`.
    3. Show the `before` and `after` of both changes together and ask once, following "How to show a write" in the conventions. When the user declines, stop and change nothing.
    4. When the user approves, run the same commands without `--dry-run`.
-6. Create the branch. When the issue already has a `branch`, run `git switch <branch>` and skip the rest of this step. Otherwise run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues branch <id> --dry-run --json`, show the branch name and the base (`from`), and ask once. When the user declines, stop. The claim of step 5 stays, so say so. When the user approves, run the same command without `--dry-run`. The command creates the branch, switches to it and records it in the issue.
+6. Create the branch. When the issue already has a `branch`, run `git switch <branch>` and skip the rest of this step. Otherwise check `git branch --show-current` and `git log <default branch>..HEAD --oneline`. When the current branch is not the default branch and has commits the default branch lacks, ask with `AskUserQuestion` whether to start the new branch from the current branch, and add `--from <current branch>` to the calls below when the user says yes. Without that flag the branch starts from the default branch and those commits stay behind. Then run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues branch <id> --dry-run --json`, show the branch name and the base (`from`), and ask once. When the user declines, stop. The claim of step 5 stays, so say so. When the user approves, run the same command without `--dry-run`. The command creates the branch, switches to it and records it in the issue.
 7. Propose a plan. Read the code the issue touches and write an implementation plan that covers each acceptance criterion. Show it and ask with `AskUserQuestion` whether to go ahead and whether to post it as a comment on the issue. When the user declines the plan, stop and say where the work stands. To post it, write the text to a temporary file outside `.issues/`, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues comment <id> --body-file <file> --dry-run --json`, show the comment and ask once, then run the same command without `--dry-run`.
 8. Implement the plan with the normal flow of the session. Put the issue ID in every commit message, for example `feat: add export (ISS-7K3Q)`.
 9. Deliver. Ask with `AskUserQuestion` whether to open the PR. When the user declines, stop. The code stays committed on the branch, so say so.
@@ -45,7 +45,7 @@ The command never moves the issue to `done`. After the PR merges, `/pmkit:issues
 - Step 3: continue despite a readiness problem.
 - Step 4: continue with uncommitted changes.
 - Step 5: the assignment and the move to `in_progress`, together.
-- Step 6: the branch name and base.
+- Step 6: the branch name and base, and whether to start from the current branch when it holds commits.
 - Step 7: the plan, and whether to post it. Posting asks once more, as a write.
 - Step 9: opening the PR, then the summary comment, then the move to `in_review`. Each write asks once.
 - Step 10: which follow-ups to create, then each create and each link.
