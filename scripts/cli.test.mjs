@@ -425,3 +425,46 @@ test('every next step that starts with pmkit names a real CLI command', async ()
   assert.ok(checked > 10, `found ${checked} next steps`)
   assert.deepEqual(bad, [])
 })
+
+test('a boolean flag takes =true or =false and nothing else', () => {
+  const root = makeRepo('basic')
+  const { after } = json(root, ['issues', 'create', '--title', 'First'])
+  const before = hashTree(root)
+  const dry = run(root, ['issues', 'update', after.id, '--priority', 'high', '--dry-run=true'])
+  assert.equal(dry.status, 0, dry.stderr)
+  assert.match(dry.stdout, /dry run/)
+  assert.equal(hashTree(root), before)
+  const asJson = run(root, ['issues', 'get', after.id, '--json=true'])
+  assert.equal(asJson.status, 0, asJson.stderr)
+  assert.equal(JSON.parse(asJson.stdout).id, after.id)
+  const plain = run(root, ['issues', 'get', after.id, '--json=false'])
+  assert.match(plain.stdout, /^id: /m)
+  const real = run(root, ['issues', 'update', after.id, '--priority', 'high', '--dry-run=false'])
+  assert.equal(real.status, 0, real.stderr)
+  assert.equal(json(root, ['issues', 'get', after.id]).priority, 'high')
+  const bad = run(root, ['issues', 'update', after.id, '--priority', 'low', '--dry-run=yes', '--json'])
+  assert.equal(bad.status, 2)
+  assert.match(JSON.parse(bad.stdout).error.message, /--dry-run/)
+  assert.equal(json(root, ['issues', 'get', after.id]).priority, 'high')
+  const badText = run(root, ['issues', 'list', '--json=1'])
+  assert.equal(badText.status, 2)
+  assert.match(badText.stderr, /^error: .*--json/m)
+})
+
+test('with --json an unknown or missing command prints one JSON error', () => {
+  for (const args of [['frobnicate', '--json'], ['--json']]) {
+    const result = run(os.tmpdir(), args)
+    assert.equal(result.status, 2)
+    const { error } = JSON.parse(result.stdout)
+    assert.equal(error.code, 'INVALID_INPUT')
+    assert.ok(error.nextStep)
+    assert.equal(result.stderr, '')
+  }
+})
+
+test('issues list keeps every repeated --label', () => {
+  const root = makeRepo('basic')
+  const both = json(root, ['issues', 'create', '--title', 'Both', '--label', 'x,y']).after.id
+  json(root, ['issues', 'create', '--title', 'Only y', '--label', 'y'])
+  assert.deepEqual(json(root, ['issues', 'list', '--label', 'x', '--label', 'y']).issues.map((issue) => issue.id), [both])
+})

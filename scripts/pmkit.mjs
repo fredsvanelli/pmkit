@@ -89,7 +89,7 @@ function issueFilter(ctx) {
   if (opt('category')) filter.categories = csv(opt('category'))
   if (opt('type')) filter.types = csv(opt('type'))
   set('assignee', opt('assignee'))
-  if (opt('label')) filter.labels = csv(opt('label'))
+  if (opt('label')) filter.labels = csv(ctx.list('label'))
   set('sprint', opt('sprint'))
   set('parent', opt('parent'))
   if (ctx.flag('blocked')) filter.blocked = true
@@ -542,22 +542,26 @@ export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
   const stdout = []
   const stderr = []
   let code = 0
-  const parsed = parseArgs(argv)
-  const json = parsed.options.json === true
+  // Until the arguments parse, a bare --json or --json=true still asks for a JSON error.
+  let json = argv.includes('--json') || argv.includes('--json=true')
   try {
-    if (parsed.options.help === true) {
+    const parsed = parseArgs(argv)
+    json = last(parsed.options.json) === true
+    if (last(parsed.options.help) === true) {
       stdout.push(USAGE)
       return { code: 2, stdout: stdout.join(''), stderr: '' }
     }
     const command = parsed.command === undefined ? undefined : findCommand(parsed.command)
     if (!command) {
-      stderr.push(`error: ${parsed.command === undefined ? 'no command given' : `unknown command "${parsed.command}"`}\n${USAGE}`)
+      const message = parsed.command === undefined ? 'no command given' : `unknown command "${parsed.command}"`
+      if (json) throw usageError(message)
+      stderr.push(`error: ${message}\n${USAGE}`)
       return { code: 2, stdout: '', stderr: stderr.join('') }
     }
     checkUsage(command, parsed)
     const { options } = parsed
     const root = path.resolve(typeof options.root === 'string' ? options.root : findRoot(cwd))
-    const dryRun = options['dry-run'] === true
+    const dryRun = last(options['dry-run']) === true
     const now = clock(env)
     const random = randomSource(env)
     let loaded
@@ -566,7 +570,7 @@ export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
       root, env, dryRun, args: parsed.positionals, json,
       opt: (name) => last(options[name]),
       list: (name) => (options[name] === undefined ? [] : [options[name]].flat()),
-      flag: (name) => options[name] === true,
+      flag: (name) => last(options[name]) === true,
       config: () => (loaded ??= loadConfig(root)),
       tracker: () => (tracker ??= createLocalTracker(root, { config: ctx.config(), now, random, env })),
       actor: () => (typeof options.as === 'string'

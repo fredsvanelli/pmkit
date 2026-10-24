@@ -1,3 +1,5 @@
+import { PmkitError } from './errors.mjs'
+
 // Flags that never take a value, so `--dry-run ISS-1` keeps ISS-1 as a positional.
 export const BOOLEANS = new Set(['json', 'dry-run', 'help', 'blocked', 'archived', 'comments', 'history', 'remove', 'draft'])
 // Commands with a second word: `issues move`, `cycle open`.
@@ -6,6 +8,7 @@ export const GROUPS = new Set(['issues', 'cycle', 'epic', 'metrics', 'pr'])
 /**
  * Splits argv into a command (one or two words), options and positionals.
  * A repeated option becomes an array, so `--set a=1 --set b=2` keeps both.
+ * A boolean flag written `--flag=value` takes only `true` or `false`.
  */
 export function parseArgs(argv, { booleans = BOOLEANS, groups = GROUPS } = {}) {
   const options = {}
@@ -19,7 +22,12 @@ export function parseArgs(argv, { booleans = BOOLEANS, groups = GROUPS } = {}) {
     if (arg.startsWith('--')) {
       const eq = arg.indexOf('=')
       if (eq > 0) {
-        set(arg.slice(2, eq), arg.slice(eq + 1))
+        const key = arg.slice(2, eq)
+        const value = arg.slice(eq + 1)
+        if (booleans.has(key) && value !== 'true' && value !== 'false') {
+          throw new PmkitError('INVALID_INPUT', `--${key} takes true or false, got "${value}"`, 'node scripts/pmkit.mjs --help')
+        }
+        set(key, booleans.has(key) ? value === 'true' : value)
         continue
       }
       const key = arg.slice(2)
