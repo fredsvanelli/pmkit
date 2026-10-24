@@ -5,6 +5,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseChangelog } from './lib/changelog.mjs'
 import { FORMAT_VERSION } from './lib/local/migrations.mjs'
+import { splitFrontmatter, parseYaml } from './lib/yaml.mjs'
+import { COMMANDS as CLI_COMMANDS } from './pmkit.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -72,4 +74,78 @@ test('CHANGELOG.md has a section for the plugin version and a Tracker format tha
   const newest = sections.find((section) => section.trackerFormat !== null)
   if (newest) assert.equal(newest.trackerFormat, FORMAT_VERSION)
   else assert.equal(FORMAT_VERSION, 1)
+})
+
+// Each Task that writes command files adds their names here.
+const COMMANDS = { '': [], issues: [], spec: [], backlog: [], report: [], cycle: [], team: [], local: [] }
+
+const HEADINGS = ['## Parameters', '## Steps', '## Confirmation points', '## Output', '## If something is missing']
+
+function commandFiles() {
+  const dir = path.join(ROOT, 'commands')
+  return fs.existsSync(dir) ? markdownFiles(dir) : []
+}
+
+test('every command has its frontmatter keys and its six sections in order', () => {
+  for (const file of commandFiles()) {
+    const rel = path.relative(ROOT, file)
+    const text = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n')
+    const parts = splitFrontmatter(text)
+    assert.ok(parts, `${rel} has no frontmatter`)
+    const data = parseYaml(parts.yaml)
+    assert.equal(typeof data.description, 'string', `${rel} description`)
+    assert.equal(typeof data['argument-hint'], 'string', `${rel} argument-hint`)
+    assert.equal(data['disable-model-invocation'], true, `${rel} disable-model-invocation`)
+    const lines = parts.body.split('\n')
+    const title = lines.findIndex((line) => /^# \S/.test(line))
+    assert.ok(title >= 0, `${rel} has a title`)
+    assert.ok(lines.includes('Arguments: `$ARGUMENTS`'), `${rel} shows its arguments`)
+    let last = title
+    for (const heading of HEADINGS) {
+      const at = lines.indexOf(heading, last + 1)
+      assert.ok(at > last, `${rel} has ${heading} in order`)
+      last = at
+    }
+    const steps = lines.slice(lines.indexOf('## Steps') + 1).filter((line) => line.trim() !== '')
+    assert.equal(steps[0], 'Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.', `${rel} reads the conventions first`)
+  }
+})
+
+test('every pmkit.mjs call in a command names a command of the CLI', () => {
+  const known = new Set(CLI_COMMANDS.map((command) => command.name))
+  const bad = []
+  for (const file of commandFiles()) {
+    const text = fs.readFileSync(file, 'utf8')
+    for (const match of text.matchAll(/pmkit\.mjs" +([^\s`|]+)(?: +([^\s`|-][^\s`|]*))?/g)) {
+      const [, first, second] = match
+      const name = [second ? `${first} ${second}` : null, first].find((candidate) => candidate && known.has(candidate))
+      if (!name) bad.push(`${path.relative(ROOT, file)}: ${match[0]}`)
+    }
+  }
+  assert.deepEqual(bad, [])
+})
+
+for (const [folder, names] of Object.entries(COMMANDS)) {
+  const dir = folder ? `commands/${folder}` : 'commands'
+  test(`the ${names.length} commands in ${dir} exist`, () => {
+    const full = path.join(ROOT, dir)
+    const found = fs.existsSync(full)
+      ? fs.readdirSync(full, { withFileTypes: true }).filter((entry) => entry.isFile() && entry.name.endsWith('.md')).map((entry) => path.basename(entry.name, '.md')).sort()
+      : []
+    assert.deepEqual(found, [...names].sort())
+  })
+}
+
+test('every command is listed in the skill table and in the README', (t) => {
+  const skill = path.join(ROOT, 'skills/pmkit/SKILL.md')
+  if (!fs.existsSync(skill)) return t.skip('skills/pmkit/SKILL.md does not exist yet')
+  for (const doc of [skill, path.join(ROOT, 'README.md')]) {
+    const text = fs.readFileSync(doc, 'utf8')
+    for (const [folder, names] of Object.entries(COMMANDS)) {
+      for (const name of names) {
+        const command = folder ? `${folder}:${name}` : name
+        assert.match(text, new RegExp(`/pmkit:${command}(?![\\w:-])`), `${path.relative(ROOT, doc)} lists ${command}`)
+      }
+    }
+  }
 })
