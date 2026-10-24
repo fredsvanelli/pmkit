@@ -23,22 +23,26 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
    3. Ask with `AskUserQuestion` whether to write it. When the user declines, leave that file as it is, say it stays in conflict, and go to the next file.
    4. After approval, edit the file to remove the markers and keep the approved content. This is the only hand edit any command makes, and it applies to a file with conflict markers only. Never edit a file without markers.
    5. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json` again. When the file still has problems, show them.
-3. Fix what the CLI can fix. For each remaining problem, propose a fix that uses a command, and skip the problems that have none.
+3. Settle the config and the format before any fix, because every write and every dry run fails while the tracker config is invalid or the format is old.
+   - `config` problems: show each message and say which setting to correct in `.issues/config.yaml` or `.pmkit/config.yaml`. The command does not edit config files. The user edits them. Ask with `AskUserQuestion` to continue once the user has done it, then run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json` again. When a `config` problem remains, stop here, say the CLI fixes need a valid config, and go to step 6.
+   - `FORMAT` problems with an older tracker format: run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" migrate --dry-run --json`, show the files it would touch and ask once with `AskUserQuestion`. After approval, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" migrate --json`. When the user declines, change nothing and go to step 6. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json` again.
+   - `FORMAT` problems with a newer tracker format: the installed pmkit is older than the tracker. Tell the user to run `/pmkit:upgrade`, and go to step 6.
+4. Fix what the CLI can fix. For each remaining problem, propose a fix that uses a command, and skip the problems that have none.
    - `value` (a priority, type or status that is not allowed): `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues update <id> --priority <value> --dry-run --json` or the matching field, with a value from `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json`.
-   - `reference` (a parent, blocker or milestone that does not exist): `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues parent <id> none --dry-run --json`, `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues link <from> <to> --kind blocks --remove --dry-run --json`, or `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues update <id> --milestone <name> --dry-run --json`. A sprint reference moves scope, so use `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" cycle add <id> --to none --dry-run --json`.
+   - `reference` (a parent, blocker or milestone that does not exist): `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues parent <id> none --dry-run --json`, or `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues update <id> --milestone <name> --dry-run --json`. For a blocker that no longer exists, name the missing issue first and the issue that lists it second: `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues link <missing id> <id> --kind blocks --remove --dry-run --json`. For a missing target of `related` or `duplicate`, name the issue that lists it first: `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues link <id> <missing id> --kind related --remove --dry-run --json`, or `--kind duplicate`. A sprint reference moves scope, so use `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" cycle add <id> --to none --dry-run --json`.
    - `cycle` (a blocker loop): remove one link of the loop with `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues link <from> <to> --kind blocks --remove --dry-run --json`. Ask which one.
-4. Show the dry-run results for all proposed fixes in one preview, with before and after per issue, and ask once with `AskUserQuestion`. When the user declines, change nothing. After approval, run the same commands without `--dry-run`.
-5. Report what the CLI cannot fix, with the manual step.
+5. Show the dry-run results for all proposed fixes in one preview, with before and after per issue, and ask once with `AskUserQuestion`. When the user declines, change nothing. After approval, run the same commands without `--dry-run`. Then report what the CLI cannot fix, with the manual step.
    - `drift`: no fix needed. The next write to that issue records the change as an event.
-   - `id` (a duplicate ID, or a folder that does not match its ID): rename the folder or change the `id` by hand, then run this command again. Reassigning IDs and updating references wait for phase 2.
-   - `frontmatter`, `events`, `config`, `sprint` and `FORMAT`: open the file named in the problem and correct it. Say which field the message names.
+   - `id` (a duplicate ID, or a folder that does not match its ID): the user renames the folder or changes the `id` and runs this command again. Reassigning IDs and updating references wait for phase 2.
+   - `frontmatter`, `events` and `sprint`: the user opens the file named in the problem and corrects the field the message names. The command does not edit these files.
    - Cache: `.issues/.cache/` does not exist in this version. A `reindex` command waits for phase 2.
 6. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json` a last time and compare with step 1.
 
 ## Confirmation points
 
 - Step 2.3: each conflicted file, one question per file, before it is edited. Declining leaves the file as it is.
-- Step 4: the preview of all CLI fixes, asked once. Declining changes nothing.
+- Step 3: the continue question after the user edits the config, and the `migrate` run. Declining the migration changes nothing.
+- Step 5: the preview of all CLI fixes, asked once. Declining changes nothing.
 
 ## Output
 
