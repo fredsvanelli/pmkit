@@ -2,9 +2,39 @@
 
 Project management for development agents: issues, sprints and epics in one command set across trackers. The agent calls one CLI, and an adapter translates to the team's tracker. The first tracker is the Local tracker, which keeps issues as files under `.issues/` in the repository, with no account and no network.
 
-## Status
+## Install
 
-Core and Local tracker only. The `pmkit.mjs` CLI works. The slash commands, the routing skill, the GitHub git host and the marketplace entry come in the next plan, so the plugin is not installable from the marketplace yet. Terms are defined in [CONTEXT.md](CONTEXT.md), and the decisions are in [docs/adr](docs/adr).
+    claude plugin marketplace add fredsvanelli/skills
+    claude plugin install pmkit@fredsvanelli
+
+Then run `/pmkit:setup` in the project. The GitHub git host (`pmkit pr open`, `pr status`, `pr sync`) comes in a later release. Terms are defined in [CONTEXT.md](CONTEXT.md), and the decisions are in [docs/adr](docs/adr).
+
+## Commands
+
+- `/pmkit:setup`: Set up pmkit in the project, or bring a setup in line with the installed version.
+- `/pmkit:upgrade`: Update the installed pmkit plugin and move `.issues/` to the current tracker format.
+- `/pmkit:help`: See what pmkit can do here, explain a capability, or find the command for a task.
+- `/pmkit:backlog:groom`: Find what is wrong with the backlog and fix what the user accepts.
+- `/pmkit:cycle:close`: Close the active sprint, report planned against delivered, and move the unfinished issues.
+- `/pmkit:cycle:plan`: Plan the next sprint from velocity, capacity and the prioritized backlog.
+- `/pmkit:issues:assign`: Assign an issue to a member, to the user or to nobody.
+- `/pmkit:issues:breakdown`: Break an issue into sub-issues with estimates, order and blockers.
+- `/pmkit:issues:capture`: Open an issue from what the session found (an error, a failing test, a TODO), after a duplicate check.
+- `/pmkit:issues:comment`: Add a comment to an issue.
+- `/pmkit:issues:create`: Create an issue, with the fields checked against the project config.
+- `/pmkit:issues:find`: Find issues with a plain-language question, such as "high-priority bugs in the current sprint".
+- `/pmkit:issues:link`: Link two issues (blocks, related, duplicate), remove a link, or set a parent.
+- `/pmkit:issues:mine`: List the issues assigned to the user, in the order to pick them up, with the state of their pull requests.
+- `/pmkit:issues:move`: Move an issue to a status category: in progress, in review, done.
+- `/pmkit:issues:pause`: Pause work on an issue, leave a handoff note and push a draft PR when there is code.
+- `/pmkit:issues:progress`: Post what was done on an issue as a comment, tick acceptance criteria and log the time spent.
+- `/pmkit:issues:summary`: Summarize an issue or an epic from its record, comments and history.
+- `/pmkit:issues:update`: Change the title, priority, estimate, labels or acceptance criteria of an issue.
+- `/pmkit:issues:work`: Pick up an issue: claim it, branch, plan, implement, open the PR and move it to review.
+- `/pmkit:local:doctor`: Check the tracker files, fix what can be fixed and resolve git conflict markers.
+- `/pmkit:report:status`: Draft a status update for an epic and publish it after approval.
+- `/pmkit:spec:import`: Turn a spec or PRD into an epic with milestones, issues, sub-issues, estimates and blockers.
+- `/pmkit:team:standup`: Digest of what changed since the last business day, per person, with what needs attention.
 
 ## CLI
 

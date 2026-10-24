@@ -83,3 +83,11 @@ _Avoid_: permissions, approval mode
 **Dry run**:
 A write run with `--dry-run`. It validates the change, returns `{ before, after }` and writes nothing, not even the event log. Commands use it to show before and after in a confirmation.
 _Avoid_: preview (a preview is the full listing of a bulk change), simulation
+
+**Tracker format**:
+The shape of the Local tracker's files, as one integer in the `version` key of `.issues/config.yaml`. It goes up only when the files change shape, not with each plugin release. The CLI holds the one format it reads and writes, which is 1 today. A repository on a newer format is refused for reads and writes, and one on an older format is read and not written, until `/pmkit:upgrade` migrates it.
+_Avoid_: schema version, plugin version (the plugin has its own version in `plugin.json`)
+
+**Migration**:
+One step that takes the tracker format from one number to the next. Steps run in order and each one is one-way. `pmkit migrate` lists every file it would change with `--dry-run`, then applies the steps. It refuses outside git and while the tracker folder has uncommitted changes.
+_Avoid_: upgrade (that is the command that updates the plugin and then runs the migrations), conversion

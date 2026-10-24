@@ -12,7 +12,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const TERMS = [
   'Tracker', 'Git host', 'Adapter', 'Issue', 'Sub-issue', 'Epic', 'Sprint', 'Status', 'Category', 'Blocked', 'Event',
-  'Synthetic event', 'Drift', 'Capability', 'Capability manifest', 'Member', 'Actor', 'Local tracker', 'Write policy', 'Dry run',
+  'Synthetic event', 'Drift', 'Capability', 'Capability manifest', 'Member', 'Actor', 'Local tracker', 'Write policy', 'Dry run', 'Tracker format', 'Migration',
 ]
 
 function markdownFiles(dir = ROOT) {
@@ -136,9 +136,8 @@ for (const [folder, names] of Object.entries(COMMANDS)) {
   })
 }
 
-test('every command is listed in the skill table and in the README', (t) => {
+test('every command is listed in the skill table and in the README', () => {
   const skill = path.join(ROOT, 'skills/pmkit/SKILL.md')
-  if (!fs.existsSync(skill)) return t.skip('skills/pmkit/SKILL.md does not exist yet')
   for (const doc of [skill, path.join(ROOT, 'README.md')]) {
     const text = fs.readFileSync(doc, 'utf8')
     for (const [folder, names] of Object.entries(COMMANDS)) {
@@ -154,4 +153,17 @@ test('upgrade.md carries the pieces the upgrade flow needs', () => {
   const text = fs.readFileSync(path.join(ROOT, 'commands/upgrade.md'), 'utf8')
   for (const needle of ['--accept-command', 'migrate --dry-run', '/reload-plugins']) assert.ok(text.includes(needle), `upgrade.md mentions ${needle}`)
   assert.doesNotMatch(text, /\s-y\b/)
+})
+
+test('the marketplace lists pmkit from ./pmkit', () => {
+  const marketplace = JSON.parse(fs.readFileSync(path.join(ROOT, '../.claude-plugin/marketplace.json'), 'utf8'))
+  const entry = marketplace.plugins.find((plugin) => plugin.name === 'pmkit')
+  assert.ok(entry, 'pmkit entry exists')
+  assert.equal(entry.source, './pmkit')
+})
+
+test('the routing skill has a name and a description', () => {
+  const data = parseYaml(splitFrontmatter(fs.readFileSync(path.join(ROOT, 'skills/pmkit/SKILL.md'), 'utf8')).yaml)
+  assert.equal(data.name, 'pmkit')
+  assert.ok(data.description && data.description.length > 20)
 })
