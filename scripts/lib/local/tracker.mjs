@@ -16,6 +16,7 @@ import {
 import { parseIssueFile, serializeIssue, toFrontmatter } from './issue-file.mjs'
 import { buildCapabilities } from '../capabilities.mjs'
 import { lastEntry } from '../metrics.mjs'
+import { createDocumentFile, readDocumentFile } from './documents.mjs'
 import { checkFilter, runQuery } from './query.mjs'
 import {
   SPRINT_STATES, addDays, overlaps, readSprint, readSprints, requireCapacity, serializeSprint, validDate,
@@ -686,10 +687,18 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     return sortUpdates(entries).map((entry) => entry.update)
   }
 
+  const docsDir = path.join(issuesDir, 'docs')
+  const readDocument = (docPath) => readDocumentFile(docsDir, docPath)
+
+  function createDocument(docPath, body, actor, { dryRun = false } = {}) {
+    requireMember(actor, 'actor')
+    return createDocumentFile(docsDir, docPath, body, { dryRun })
+  }
+
   return {
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
-    comment, listComments, getHistory, logTime,
+    comment, listComments, getHistory, logTime, readDocument, createDocument,
     discover, capabilities, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
     listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity,
   }
