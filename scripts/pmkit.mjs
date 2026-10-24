@@ -13,6 +13,7 @@ import { cycleTimes, lastEntry, summary, velocity } from './lib/metrics.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { stringifyYaml, parseYaml } from './lib/yaml.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
+import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, planMigration } from './lib/local/migrations.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
 import { branchName } from './lib/ids.mjs'
 
@@ -547,6 +548,10 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'migrate', summary: 'moves the tracker files to the format this pmkit writes; --dry-run lists every file it would touch', write: true, flags: [],
+    run: (ctx) => runMigrate(ctx.root, { dryRun: ctx.dryRun }),
+  },
+  {
     name: 'validate', summary: 'checks every file and reference; problems are output, not errors', flags: [],
     run: (ctx) => {
       const result = validateRepo(ctx.root)
@@ -557,6 +562,53 @@ export const COMMANDS = [
     },
   },
 ]
+
+const gitIn = (root, ...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' })
+
+/** Plans the migration, then writes it unless `dryRun`. `formatVersion` and `migrations` default to the real ones. */
+export function runMigrate(root, { dryRun = false, formatVersion = FORMAT_VERSION, migrations = MIGRATIONS } = {}) {
+  const config = loadConfig(root, { checkFormat: false })
+  const { version } = config.format
+  const trackerPath = (config.pmkit.tracker.path ?? '.issues').split(path.sep).join('/')
+  const state = formatState(version, formatVersion)
+  if (state === 'ahead') throw formatError({ state, version, current: formatVersion })
+  const result = (steps, commit) => {
+    const data = { from: version, to: formatVersion, steps: steps.map(({ from, to, changes }) => ({ from, to, changes })) }
+    if (commit !== undefined) data.commit = commit
+    const lines = steps.length === 0
+      ? [`the tracker is already at format ${formatVersion}, nothing to migrate`]
+      : [
+          `${dryRun ? 'would migrate' : 'migrated'} tracker format ${version} to ${formatVersion}`,
+          ...steps.flatMap((step) => [`step ${step.from} to ${step.to}: ${step.describe}`, ...step.changes.map((c) => `  ${c.action}  ${c.path}`)]),
+          ...(commit !== undefined ? [`committed: ${commit}`] : []),
+          ...(dryRun ? ['dry run: nothing was written'] : []),
+        ]
+    return { data, text: lines.join('\n') }
+  }
+  if (state === 'current') return result([])
+  const inside = gitIn(root, 'rev-parse', '--is-inside-work-tree')
+  if (inside.status !== 0 || inside.stdout.trim() !== 'true') {
+    throw new PmkitError('NOT_CONFIGURED', 'this folder is not a git repository, or git is not installed', 'migrate needs a git repository: git history is the only way back from a migration')
+  }
+  const dirty = gitIn(root, 'status', '--porcelain', '--', trackerPath)
+  if (dirty.status !== 0 || dirty.stdout.trim() !== '') {
+    throw new PmkitError('CONFLICT', `there are uncommitted changes under ${trackerPath}`, `Commit or discard the changes under ${trackerPath} first`)
+  }
+  const plan = planMigration({ root, trackerPath, from: version, to: formatVersion, migrations })
+  if (dryRun) return result(plan.steps)
+  applyMigration(plan, { root })
+  const message = `pmkit: migrate tracker format ${version} to ${formatVersion}`
+  const migrated = loadConfig(root, { formatVersion, migrations })
+  if (migrated.local.auto_commit !== true) return result(plan.steps)
+  const done = result(plan.steps, message)
+  try {
+    commitTracker(migrated, message)
+  } catch (error) {
+    error.written = { data: done.data, text: done.text }
+    throw error
+  }
+  return done
+}
 
 export const USAGE = `Usage: pmkit.mjs <command> [options]
 

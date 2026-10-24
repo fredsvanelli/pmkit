@@ -8,6 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { PmkitError } from '../errors.mjs'
 import { setScalar } from '../yaml-edit.mjs'
+import { writeFileAtomic } from './store.mjs'
 
 export const FORMAT_VERSION = 1
 
@@ -73,7 +74,11 @@ export function planMigration({ root, trackerPath, from, to, migrations = MIGRAT
   const planned = []
   for (const step of steps) {
     const before = snapshot(dir)
-    step.run(dir)
+    try {
+      step.run(dir)
+    } catch (error) {
+      throw new PmkitError('INVALID_INPUT', `migration ${step.from} to ${step.to} failed: ${error.message}`, 'pmkit validate')
+    }
     fs.writeFileSync(configFile, setScalar(fs.readFileSync(configFile, 'utf8'), ['version'], step.to))
     const after = snapshot(dir)
     const changes = []
@@ -85,10 +90,28 @@ export function planMigration({ root, trackerPath, from, to, migrations = MIGRAT
     changes.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
     planned.push({ from: step.from, to: step.to, describe: step.describe, changes })
   }
-  return { from, to, steps: planned, dir }
+  return { from, to, steps: planned, dir, trackerPath }
 }
 
 /** The migrated copy of the tracker folder, for reads. */
 export function migratedCopy(opts) {
   return planMigration(opts).dir
+}
+
+/** Writes the plan into the real tracker folder: every created or changed file is copied from the plan's copy, every deleted one is removed. */
+export function applyMigration(plan, { root }) {
+  const source = path.join(root, plan.trackerPath)
+  const touched = new Set(plan.steps.flatMap((step) => step.changes.map((change) => path.relative(source, path.join(root, change.path)))))
+  // config.yaml goes last, so an interrupted run still reads as the old format.
+  const ordered = [...touched].sort((a, b) => (a === 'config.yaml') - (b === 'config.yaml') || (a < b ? -1 : a > b ? 1 : 0))
+  for (const rel of ordered) {
+    const from = path.join(plan.dir, rel)
+    const to = path.join(source, rel)
+    if (fs.existsSync(from)) {
+      fs.mkdirSync(path.dirname(to), { recursive: true })
+      writeFileAtomic(to, fs.readFileSync(from))
+    } else {
+      fs.rmSync(to, { force: true })
+    }
+  }
 }

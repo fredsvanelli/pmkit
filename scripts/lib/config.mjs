@@ -117,7 +117,8 @@ function readYaml(file, label) {
   }
 }
 
-export function loadConfig(root, { formatVersion = FORMAT_VERSION, migrations = MIGRATIONS } = {}) {
+/** `checkFormat: false` reads a tracker of any format as it is, for `migrate`: no refusal, no migrated copy. */
+export function loadConfig(root, { formatVersion = FORMAT_VERSION, migrations = MIGRATIONS, checkFormat = true } = {}) {
   const pmkitFile = join(root, '.pmkit', 'config.yaml')
   if (!existsSync(pmkitFile)) {
     throw new PmkitError('NOT_CONFIGURED', `no .pmkit/config.yaml in ${root}`, '/pmkit:setup')
@@ -152,6 +153,7 @@ export function loadConfig(root, { formatVersion = FORMAT_VERSION, migrations = 
   // Format 1 is the first format, so no migration leads from a lower number.
   if (version < 1) throw new PmkitError('INVALID_INPUT', `${label}: the tracker format version must be 1 or more, found ${version}`, `Set version in ${label}`)
   const format = { state, version, current: formatVersion }
+  if (!checkFormat) return { pmkit, local: withLocalDefaults(raw), root, issuesDir, format }
   if (state === 'ahead') throw formatError(format)
   if (state === 'behind') {
     const readDir = migratedCopy({ root, trackerPath, from: version, to: formatVersion, migrations })

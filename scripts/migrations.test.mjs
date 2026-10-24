@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { loadConfig } from './lib/config.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { formatState, planMigration } from './lib/local/migrations.mjs'
+import { runMigrate } from './pmkit.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { fixedNow, hashTree, makeRepo, scriptedRandom } from './test-helpers.mjs'
@@ -212,4 +213,139 @@ test('validate lists a version below 1 as one problem and exits 0', () => {
   assert.deepEqual(body.problems, [
     { path: '.issues/config.yaml', code: 'config', message: '.issues/config.yaml: the tracker format version must be 1 or more, found 0' },
   ])
+})
+
+const git = (cwd, ...args) => spawnSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: '1' } })
+const subjects = (root) => git(root, 'log', '--format=%s').stdout
+
+test('planMigration turns a throwing step into INVALID_INPUT', () => {
+  const { root } = setup()
+  const broken = { from: 1, to: 2, describe: 'broken', run() { throw new Error('bad event') } }
+  assert.throws(
+    () => planMigration({ root, trackerPath: '.issues', from: 1, to: 2, migrations: [broken] }),
+    (error) => error.code === 'INVALID_INPUT' && error.message === 'migration 1 to 2 failed: bad event' && error.nextStep === 'pmkit validate',
+  )
+})
+
+// A committed repo; `tracker.path` can be moved to another folder.
+function gitRepo({ autoCommit = false, trackerPath } = {}) {
+  const made = setup()
+  const { root } = made
+  if (trackerPath) {
+    fs.renameSync(path.join(root, '.issues'), path.join(root, trackerPath))
+    const file = path.join(root, '.pmkit', 'config.yaml')
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^  path: .*$/m, `  path: ${trackerPath}`))
+  }
+  const configFile = path.join(root, trackerPath ?? '.issues', 'config.yaml')
+  fs.writeFileSync(configFile, fs.readFileSync(configFile, 'utf8').replace(/^auto_commit: .*$/m, `auto_commit: ${autoCommit}`))
+  assert.equal(git(root, 'init', '-q').status, 0)
+  git(root, 'config', 'user.name', 'Test')
+  git(root, 'config', 'user.email', 'test@x.dev')
+  assert.equal(git(root, 'add', '-A').status, 0)
+  assert.equal(git(root, 'commit', '-qm', 'initial').status, 0)
+  return { ...made, dir: path.join(root, trackerPath ?? '.issues') }
+}
+const options = { formatVersion: 2, migrations: [renameLogTime] }
+
+test('migrate --dry-run returns the plan and writes nothing', () => {
+  const { root, a, b, dir } = gitRepo()
+  const before = hashTree(dir)
+  const result = runMigrate(root, { dryRun: true, ...options })
+  assert.deepEqual(result.data, {
+    from: 1,
+    to: 2,
+    steps: [{
+      from: 1,
+      to: 2,
+      changes: [
+        { path: '.issues/config.yaml', action: 'change' },
+        { path: `.issues/issues/${a}/events.jsonl`, action: 'change' },
+        { path: `.issues/issues/${b}/events.jsonl`, action: 'change' },
+      ].sort((x, y) => (x.path < y.path ? -1 : 1)),
+    }],
+  })
+  assert.match(result.text, /would migrate tracker format 1 to 2/)
+  assert.equal(hashTree(dir), before)
+})
+
+test('migrate writes what the dry run listed', () => {
+  const { root, dir } = gitRepo()
+  const plan = planMigration({ root, trackerPath: '.issues', from: 1, to: 2, migrations: [renameLogTime] })
+  const result = runMigrate(root, options)
+  assert.equal(result.data.commit, undefined)
+  assert.equal(hashTree(dir), hashTree(plan.dir))
+  assert.equal(parseYaml(fs.readFileSync(path.join(dir, 'config.yaml'), 'utf8')).version, 2)
+  assert.equal(subjects(root), 'initial\n')
+})
+
+test('migrate applies create and delete changes', () => {
+  const { root, dir } = gitRepo()
+  const reshape = {
+    from: 1,
+    to: 2,
+    describe: 'docs move to notes',
+    run(copy) {
+      fs.rmSync(path.join(copy, 'docs', '.gitkeep'))
+      fs.mkdirSync(path.join(copy, 'notes'))
+      fs.writeFileSync(path.join(copy, 'notes', '.gitkeep'), '')
+    },
+  }
+  runMigrate(root, { formatVersion: 2, migrations: [reshape] })
+  assert.equal(fs.existsSync(path.join(dir, 'docs', '.gitkeep')), false)
+  assert.equal(fs.existsSync(path.join(dir, 'notes', '.gitkeep')), true)
+})
+
+test('migrate refuses uncommitted changes under tracker.path with CONFLICT and writes nothing', () => {
+  const { root, dir } = gitRepo({ trackerPath: 'tracker' })
+  fs.writeFileSync(path.join(dir, 'docs', 'note.md'), 'draft')
+  const before = hashTree(dir)
+  for (const dryRun of [true, false]) {
+    assert.throws(
+      () => runMigrate(root, { dryRun, ...options }),
+      (error) => error.code === 'CONFLICT' && error.nextStep === 'Commit or discard the changes under tracker first',
+    )
+  }
+  assert.equal(hashTree(dir), before)
+})
+
+test('a change outside tracker.path does not block migrate', () => {
+  const { root, dir } = gitRepo({ trackerPath: 'tracker' })
+  fs.writeFileSync(path.join(root, 'README.md'), 'x')
+  runMigrate(root, options)
+  assert.equal(parseYaml(fs.readFileSync(path.join(dir, 'config.yaml'), 'utf8')).version, 2)
+})
+
+test('migrate outside a git repository throws NOT_CONFIGURED', () => {
+  const { root } = setup()
+  const dir = path.join(root, '.issues')
+  const before = hashTree(dir)
+  assert.throws(
+    () => runMigrate(root, options),
+    (error) => error.code === 'NOT_CONFIGURED' && error.nextStep === 'migrate needs a git repository: git history is the only way back from a migration',
+  )
+  assert.equal(hashTree(dir), before)
+})
+
+test('migrate with auto_commit commits once with its own message', () => {
+  const { root } = gitRepo({ autoCommit: true })
+  const result = runMigrate(root, options)
+  assert.equal(result.data.commit, 'pmkit: migrate tracker format 1 to 2')
+  assert.equal(subjects(root), 'pmkit: migrate tracker format 1 to 2\ninitial\n')
+  assert.equal(git(root, 'status', '--porcelain').stdout, '')
+})
+
+test('migrate on a newer format throws NOT_SUPPORTED', () => {
+  const { root } = gitRepo()
+  assert.throws(() => runMigrate(root, { formatVersion: 0, migrations: [] }), (error) => error.code === 'NOT_SUPPORTED' && error.nextStep === '/pmkit:upgrade')
+})
+
+test('CLI migrate --json on a current tracker has nothing to do', () => {
+  const root = makeRepo('basic')
+  const before = hashTree(root)
+  for (const args of [['migrate'], ['migrate', '--dry-run']]) {
+    const { status, body } = cli(root, args)
+    assert.equal(status, 0)
+    assert.deepEqual(body, { from: 1, to: 1, steps: [] })
+  }
+  assert.equal(hashTree(root), before)
 })
