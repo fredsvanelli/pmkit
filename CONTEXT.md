@@ -49,11 +49,11 @@ One line of an issue's `events.jsonl`, appended on each write. It has `at`, `by`
 _Avoid_: log entry, activity, audit record
 
 **Synthetic event**:
-An event with `synthetic: true` that the adapter appends for a change nobody logged, found as drift. Its `at` is the modification time of `issue.md`, and its `by` is the current actor.
+An event with `synthetic: true` that the adapter appends for a change nobody logged, found as drift. Its `at` is the later of the modification time of `issue.md` and the newest logged event, but never later than the write that finds the drift. Its `by` is the current actor.
 _Avoid_: fake event, backfilled event
 
 **Drift**:
-The difference between an issue's frontmatter and the state its events lead to. It appears when someone edits `issue.md` by hand. Before each write the adapter replays the events, compares, and appends one synthetic event per differing field.
+The difference between an issue's frontmatter and the state its events lead to. It appears when someone edits `issue.md` by hand. Before each write the adapter replays the events, compares, and appends one synthetic event per differing field. An issue with no events at all, such as one written by hand, gets one synthetic `create` event that holds its whole frontmatter.
 _Avoid_: desync, inconsistency
 
 **Capability**:
@@ -69,7 +69,7 @@ A person registered in `.issues/config.yaml` under an id, with a name, an email 
 _Avoid_: user, teammate, account
 
 **Actor**:
-The member who performs a write. It is the member whose `email` equals `git config user.email`. Without a match, the `PMKIT_USER` environment variable names the member id, and `--as <member>` overrides both. Without an actor, a write fails with `NOT_CONFIGURED`. Reads never need one.
+The member who performs a write. It is the member whose `email` equals `git config user.email`. Without a match, the `PMKIT_USER` environment variable names the member id, and `--as <member>` overrides both. Without an actor, a write fails with `NOT_CONFIGURED`. Reads need one only to resolve `me`, as in `issues list --assignee me`.
 _Avoid_: author (comments and status updates have an author), current user
 
 **Local tracker**:

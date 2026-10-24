@@ -45,7 +45,9 @@ Run `node pmkit/scripts/pmkit.mjs <command>`. Every command takes `--json` and `
 | `validate` | checks every file and reference; problems are output, not errors |
 | `pr open`, `pr status`, `pr sync` | coming in the next plan, with the GitHub git host |
 
-Run `node pmkit/scripts/pmkit.mjs --help` for every flag. A failing command exits with code 2 and, with `--json`, prints one JSON error with a next step.
+Run `node pmkit/scripts/pmkit.mjs --help` for every flag. A failing command exits with code 2 and, with `--json`, prints one JSON error with a next step. An exception that is not a `PmkitError`, which means a bug in pmkit, has the code `UNEXPECTED` and no next step.
+
+Comments and time logs append an event to the issue's `events.jsonl` but leave `issue.md` alone, so they do not change the issue's `updated` timestamp.
 
 ## Tests
 

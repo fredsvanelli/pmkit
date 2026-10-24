@@ -4,7 +4,7 @@ pmkit's scripts are Node 18+ ES modules with no dependency, in `dependencies` or
 
 ## Considered options
 
-- Use a YAML library, an MCP SDK and the GitHub API client. Rejected: each adds an install step on the user's machine and a supply-chain surface in a plugin that runs on their repository.
+- Use a YAML library, an MCP SDK and the GitHub API client.
 
 ## Consequences
 
