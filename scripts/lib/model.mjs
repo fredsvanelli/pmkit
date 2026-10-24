@@ -23,7 +23,7 @@ export const isCategory = (value) => CATEGORIES.includes(value)
  * @property {string[]} blockedBy
  * @property {string[]} blocks computed
  * @property {string[]} related
- * @property {string} [duplicateOf]
+ * @property {string[]} duplicateOf
  * @property {string[]} children computed
  * @property {boolean} archived
  * @property {string} [sprint]
