@@ -1,5 +1,6 @@
-// Milestone files: milestones/<id>.md. Pure reading, validating and serializing; the tracker decides when to write.
+// Milestone files: milestones/<id>.md. Reading, validating and serializing; the tracker decides when to write.
 
+import fs from 'node:fs'
 import { PmkitError } from '../errors.mjs'
 import { stringifyYaml } from '../yaml.mjs'
 import { parseFile } from './epics.mjs'
@@ -10,6 +11,21 @@ const DOCTOR = '/pmkit:local:doctor'
 
 /** An id starts and ends with a letter or digit and holds only letters, digits, `.`, `_` and `-`. */
 export const validMilestoneId = (id) => typeof id === 'string' && /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/.test(id)
+
+/**
+ * The stems of the `.md` files in a milestones folder, as stored. Folders and other files do not
+ * count. Matching against these, rather than fs.existsSync, keeps ids case-sensitive on file
+ * systems that are not. A missing folder gives an empty set.
+ */
+export function milestoneStems(dir) {
+  if (!fs.existsSync(dir)) return new Set()
+  return new Set(fs.readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+    .map((entry) => entry.name.slice(0, -'.md'.length)))
+}
+
+/** Whether a milestones folder holds a `.md` file. Milestone references are checked only then. */
+export const hasMilestoneFiles = (dir) => milestoneStems(dir).size > 0
 
 /**
  * Parses the text of milestones/<id>.md. The file stem is the id, so an `id` key in the

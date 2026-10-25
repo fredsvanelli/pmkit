@@ -18,7 +18,7 @@ import { hasSectionHeading, parseIssueFile, serializeIssue, toFrontmatter } from
 import { buildCapabilities } from '../capabilities.mjs'
 import { lastEntry } from '../metrics.mjs'
 import { createDocumentFile, readDocumentFile } from './documents.mjs'
-import { parseMilestone, serializeMilestone, sortMilestones, validMilestoneId } from './milestones.mjs'
+import { hasMilestoneFiles, milestoneStems, parseMilestone, serializeMilestone, sortMilestones, validMilestoneId } from './milestones.mjs'
 import { checkFilter, runQuery } from './query.mjs'
 import {
   SPRINT_STATES, addDays, overlaps, parseSprint, readSprint, readSprints, requireCapacity, serializeSprint, validDate,
@@ -146,6 +146,17 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     return id
   }
 
+  const milestonesDir = path.join(issuesDir, 'milestones')
+
+  // A milestone is free text until milestones/ holds a .md file; from then on it must name one, exactly.
+  function requireMilestone(value) {
+    const milestone = oneLine('milestone', text('milestone')(value))
+    if (hasMilestoneFiles(milestonesDir) && !milestoneStems(milestonesDir).has(milestone)) {
+      throw invalid(`milestone ${milestone} does not exist`, `pmkit milestone create ${milestone}`)
+    }
+    return milestone
+  }
+
   const sprintExists = (id) => /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(String(id)) && fs.existsSync(path.join(issuesDir, 'sprints', `${id}.yaml`))
 
   function requireSprint(value) {
@@ -190,7 +201,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     labels: requireLabels,
     parent: requireParent,
     sprint: requireSprint,
-    milestone: (value) => oneLine('milestone', text('milestone')(value)),
+    milestone: requireMilestone,
     due: (value) => {
       if (!validDate(value)) throw invalid('due must be a date as YYYY-MM-DD')
       return value
@@ -788,20 +799,10 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     return sortUpdates(entries).map((entry) => entry.update)
   }
 
-  const milestonesDir = path.join(issuesDir, 'milestones')
-
-  // The stems of the .md files in milestones/, as stored. Matching against these, rather than
-  // fs.existsSync, keeps ids case-sensitive on file systems that are not.
-  const milestoneStems = () => (fs.existsSync(milestonesDir)
-    ? fs.readdirSync(milestonesDir, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
-      .map((entry) => entry.name.slice(0, -'.md'.length))
-    : [])
-
   const readMilestone = (id) => parseMilestone(fs.readFileSync(path.join(milestonesDir, `${id}.md`), 'utf8'), id)
 
   function getMilestone(id) {
-    if (!validMilestoneId(id) || !milestoneStems().includes(id)) {
+    if (!validMilestoneId(id) || !milestoneStems(milestonesDir).has(id)) {
       throw new PmkitError('NOT_FOUND', `milestone ${id} does not exist`, 'pmkit milestone list')
     }
     return readMilestone(id)
@@ -810,7 +811,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   /** Every milestone that parses. A file that does not parse, or whose stem breaks the id rule, is skipped; validate reports it. */
   function listMilestones() {
     const milestones = []
-    for (const id of milestoneStems().filter(validMilestoneId)) {
+    for (const id of [...milestoneStems(milestonesDir)].filter(validMilestoneId)) {
       try {
         milestones.push(readMilestone(id))
       } catch (error) {
@@ -830,7 +831,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     if (!validMilestoneId(id)) {
       throw invalid(`milestone id "${id}" must start and end with a letter or digit and hold only letters, digits, ".", "_" and "-"`, 'Use an id like local-gaps or v1.0')
     }
-    const clash = milestoneStems().find((stem) => stem.toLowerCase() === id.toLowerCase())
+    const clash = [...milestoneStems(milestonesDir)].find((stem) => stem.toLowerCase() === id.toLowerCase())
     if (clash !== undefined) throw new PmkitError('CONFLICT', `milestone ${clash} already exists`, 'pmkit milestone list')
     let name = id
     if (!blank(input.name)) {

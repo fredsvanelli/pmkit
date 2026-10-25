@@ -236,6 +236,17 @@ test('validate on the broken fixture exits 0 and lists every problem', () => {
   }
 })
 
+test('validate text starts with the counts, milestones included', () => {
+  const root = makeRepo('basic')
+  const dir = path.join(root, '.issues', 'milestones')
+  fs.mkdirSync(dir)
+  fs.writeFileSync(path.join(dir, 'v1.md'), '---\nname: V1\n---\n')
+  const { checked } = json(root, ['validate'])
+  const text = run(root, ['validate'])
+  assert.equal(text.status, 0)
+  assert.equal(text.stdout.split('\n')[0], `checked: ${checked.issues} issues, ${checked.epics} epics, ${checked.sprints} sprints, 1 milestones, ${checked.comments} comments`)
+})
+
 test('capabilities --json lists 20 capabilities', () => {
   const root = makeRepo('basic')
   assert.equal(json(root, ['capabilities']).capabilities.length, 20)
@@ -402,9 +413,9 @@ test('a failing auto_commit exits 2 with one JSON value that carries the result'
 
 test('every next step that starts with pmkit names a real CLI command', async () => {
   const { COMMANDS } = await import('./pmkit.mjs')
-  // PMK-3: the tracker names `pmkit milestone list` before the CLI has the milestone commands.
-  // The task that adds them removes 'milestone list' from this set.
-  const names = new Set([...COMMANDS.map((command) => command.name), 'milestone list'])
+  // PMK-3: the tracker names `pmkit milestone list` and `pmkit milestone create` before the CLI has
+  // the milestone commands. The task that adds them removes both from this set.
+  const names = new Set([...COMMANDS.map((command) => command.name), 'milestone list', 'milestone create'])
   const dir = path.dirname(CLI)
   const walk = (folder) => fs.readdirSync(folder, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(folder, entry.name)
@@ -525,6 +536,18 @@ test('issues create takes --milestone', () => {
   const root = makeRepo('basic')
   const { after } = json(root, ['issues', 'create', '--title', 'T', '--milestone', 'M1'])
   assert.equal(after.milestone, 'M1')
+})
+
+test('once a milestone file exists, --milestone must name one and --milestone none clears unchecked', () => {
+  const root = makeRepo('basic')
+  const { after } = json(root, ['issues', 'create', '--title', 'T', '--milestone', 'jira'])
+  const dir = path.join(root, '.issues', 'milestones')
+  fs.mkdirSync(dir)
+  fs.writeFileSync(path.join(dir, 'v1.md'), '---\nname: V1\n---\n')
+  const missing = run(root, ['issues', 'update', after.id, '--milestone', 'v2', '--json'])
+  assert.equal(missing.status, 2)
+  assert.deepEqual(JSON.parse(missing.stdout).error, { code: 'INVALID_INPUT', message: 'milestone v2 does not exist', nextStep: 'pmkit milestone create v2' })
+  assert.equal(json(root, ['issues', 'update', after.id, '--milestone', 'none']).after.milestone, undefined)
 })
 
 test('epic updates lists the status updates newest first', () => {

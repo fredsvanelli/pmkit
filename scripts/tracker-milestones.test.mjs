@@ -8,7 +8,9 @@ import { hashTree, makeRepo } from './test-helpers.mjs'
 function setup() {
   const root = makeRepo()
   const milestonesDir = path.join(root, '.issues', 'milestones')
-  const tracker = createLocalTracker(root, { now: () => new Date('2026-10-23T12:00:00Z'), random: () => 0 })
+  // Ids for issues and epics come from a counter, so each create gets a new one.
+  let counter = 0
+  const tracker = createLocalTracker(root, { now: () => new Date('2026-10-23T12:00:00Z'), random: (n) => counter++ % n })
   const write = (name, text) => {
     fs.mkdirSync(milestonesDir, { recursive: true })
     fs.writeFileSync(path.join(milestonesDir, name), text)
@@ -135,4 +137,42 @@ test('getMilestone of a file that does not parse throws its parse error', () => 
   const { tracker, write } = setup()
   write('M1.md', '---\ndue: soon\n---\n')
   assert.throws(() => tracker.getMilestone('M1'), code('INVALID_INPUT', /due/, '/pmkit:local:doctor'))
+})
+
+test('a milestone is free text while milestones/ holds no .md file', () => {
+  const { tracker, milestonesDir, write } = setup()
+  assert.equal(tracker.createIssue({ title: 'T', milestone: 'free text' }, 'fred').after.milestone, 'free text')
+  fs.mkdirSync(milestonesDir, { recursive: true })
+  assert.equal(tracker.createIssue({ title: 'T', milestone: 'v2' }, 'fred').after.milestone, 'v2')
+  fs.mkdirSync(path.join(milestonesDir, 'v2'))
+  assert.equal(tracker.createIssue({ title: 'T', milestone: 'v3' }, 'fred').after.milestone, 'v3')
+  write('v2.yaml', 'name: v2\n')
+  assert.equal(tracker.createIssue({ title: 'T', milestone: 'v3' }, 'fred').after.milestone, 'v3')
+  assert.equal(tracker.createDeliverable({ title: 'E', milestone: 'v3' }, 'fred').after.milestone, 'v3')
+})
+
+test('once a milestone file exists, writes refuse a milestone without a file', () => {
+  const { tracker } = setup()
+  const { id } = tracker.createIssue({ title: 'T' }, 'fred').after
+  tracker.createMilestone({ id: 'v2' }, 'fred')
+  const missing = code('INVALID_INPUT', /^milestone v3 does not exist$/, 'pmkit milestone create v3')
+  assert.throws(() => tracker.createIssue({ title: 'T', milestone: 'v3' }, 'fred'), missing)
+  assert.throws(() => tracker.updateIssue(id, { milestone: 'v3' }, 'fred'), missing)
+  assert.throws(() => tracker.createDeliverable({ title: 'E', milestone: 'v3' }, 'fred'), missing)
+  assert.throws(() => tracker.createIssue({ title: 'T', milestone: 'V2' }, 'fred'), code('INVALID_INPUT', /^milestone V2 does not exist$/, 'pmkit milestone create V2'))
+  assert.throws(() => tracker.createIssue({ title: 'T', milestone: 'v2\nv3' }, 'fred'), code('INVALID_INPUT', /line break/))
+  assert.equal(tracker.createIssue({ title: 'T', milestone: 'v2' }, 'fred').after.milestone, 'v2')
+  assert.equal(tracker.updateIssue(id, { milestone: 'v2' }, 'fred').after.milestone, 'v2')
+  assert.equal(tracker.createDeliverable({ title: 'E', milestone: 'v2' }, 'fred').after.milestone, 'v2')
+})
+
+test('clearing a milestone, or updating another field of an issue whose milestone has no file, is not checked', () => {
+  const { tracker } = setup()
+  const { id } = tracker.createIssue({ title: 'T', milestone: 'jira' }, 'fred').after
+  tracker.createMilestone({ id: 'v2' }, 'fred')
+  const { after } = tracker.updateIssue(id, { priority: 'high' }, 'fred')
+  assert.equal(after.priority, 'high')
+  assert.equal(after.milestone, 'jira')
+  // The CLI turns --milestone none into null.
+  assert.equal(tracker.updateIssue(id, { milestone: null }, 'fred').after.milestone, undefined)
 })

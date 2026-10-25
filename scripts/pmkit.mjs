@@ -601,7 +601,7 @@ export const COMMANDS = [
     run: (ctx) => {
       const result = validateRepo(ctx.root)
       const c = result.checked
-      const head = `checked: ${c.issues} issues, ${c.epics} epics, ${c.sprints} sprints, ${c.comments} comments`
+      const head = `checked: ${c.issues} issues, ${c.epics} epics, ${c.sprints} sprints, ${c.milestones} milestones, ${c.comments} comments`
       const body = result.problems.length === 0 ? 'no problems' : result.problems.map((p) => `${p.path}  ${p.code}  ${p.message}`).join('\n')
       return { data: result, text: `${head}\n${body}` }
     },
