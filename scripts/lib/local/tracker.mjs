@@ -852,6 +852,22 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     return { before: null, after }
   }
 
+  /**
+   * Milestone names that issues or epics use and that have no file, with how many of each use them.
+   * `except` is an id about to be filed. Not a contract operation; the CLI warns with it.
+   */
+  function unfiledMilestones(except) {
+    const filed = milestoneStems(milestonesDir)
+    const counts = new Map()
+    const tally = (name) => {
+      if (name === undefined || name === except || filed.has(name)) return
+      counts.set(name, (counts.get(name) ?? 0) + 1)
+    }
+    for (const issue of searchIssues().issues) tally(issue.milestone)
+    for (const epic of listDeliverables()) tally(epic.milestone)
+    return [...counts].map(([name, count]) => ({ name, count })).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+  }
+
   const docsDir = path.join(issuesDir, 'docs')
   const readDocument = (docPath) => readDocumentFile(docsDir, docPath)
 
@@ -862,7 +878,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
 
   return {
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
-    listMilestones, getMilestone, createMilestone,
+    listMilestones, getMilestone, createMilestone, unfiledMilestones,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
     comment, listComments, getHistory, logTime, readDocument, createDocument,
     discover, capabilities, categoryOf, eventsByIssue, metricEvents, issuesBySprint,

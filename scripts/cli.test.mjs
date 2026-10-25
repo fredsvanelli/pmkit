@@ -413,9 +413,7 @@ test('a failing auto_commit exits 2 with one JSON value that carries the result'
 
 test('every next step that starts with pmkit names a real CLI command', async () => {
   const { COMMANDS } = await import('./pmkit.mjs')
-  // PMK-3: the tracker names `pmkit milestone list` and `pmkit milestone create` before the CLI has
-  // the milestone commands. The task that adds them removes both from this set.
-  const names = new Set([...COMMANDS.map((command) => command.name), 'milestone list', 'milestone create'])
+  const names = new Set(COMMANDS.map((command) => command.name))
   const dir = path.dirname(CLI)
   const walk = (folder) => fs.readdirSync(folder, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(folder, entry.name)
@@ -626,4 +624,90 @@ test('unlink of a missing blocker previews the blocked_by change on the issue wh
   const text = run(root, [...args, '--dry-run'], { env: { PMKIT_USER: 'fred' } }).stdout
   assert.doesNotMatch(text, /no change/)
   assert.match(text, /ISS-9ZZZ/)
+})
+
+test('milestone list prints no milestones on an empty tracker and a table after a create', () => {
+  const root = makeRepo('basic')
+  assert.equal(run(root, ['milestone', 'list']).stdout.trim(), 'no milestones')
+  assert.deepEqual(json(root, ['milestone', 'list']), [])
+  json(root, ['milestone', 'create', 'local-gaps', '--name', 'Local tracker gaps', '--due', '2026-11-30'])
+  const text = run(root, ['milestone', 'list']).stdout
+  assert.match(text, /ID\s+\| Name\s+\| Due/)
+  assert.match(text, /local-gaps\s+\| Local tracker gaps\s+\| 2026-11-30/)
+  assert.deepEqual(json(root, ['milestone', 'list']).map((m) => m.id), ['local-gaps'])
+})
+
+test('milestone get prints the record and a miss is NOT_FOUND', () => {
+  const root = makeRepo('basic')
+  const dir = path.join(root, '.issues', 'milestones')
+  fs.mkdirSync(dir)
+  fs.writeFileSync(path.join(dir, 'v1.md'), '---\nname: Version one\ndue: 2026-12-01\n---\nShip it.\n')
+  const text = run(root, ['milestone', 'get', 'v1']).stdout
+  assert.match(text, /^id: v1$/m)
+  assert.match(text, /^name: Version one$/m)
+  assert.match(text, /^due: 2026-12-01$/m)
+  assert.match(text, /Ship it\./)
+  const miss = run(root, ['milestone', 'get', 'nope', '--json'])
+  assert.equal(miss.status, 2)
+  assert.deepEqual(JSON.parse(miss.stdout).error, { code: 'NOT_FOUND', message: 'milestone nope does not exist', nextStep: 'pmkit milestone list' })
+})
+
+test('milestone create returns before and after, and --dry-run writes nothing', () => {
+  const root = makeRepo('basic')
+  const before = hashTree(path.join(root, '.issues'))
+  const dry = json(root, ['milestone', 'create', 'local-gaps', '--dry-run'])
+  assert.equal(dry.before, null)
+  assert.equal(dry.after.id, 'local-gaps')
+  assert.deepEqual(hashTree(path.join(root, '.issues')), before)
+  const made = json(root, ['milestone', 'create', 'local-gaps', '--name', 'Local tracker gaps', '--due', '2026-11-30'])
+  assert.equal(made.before, null)
+  assert.deepEqual([made.after.name, made.after.due], ['Local tracker gaps', '2026-11-30'])
+  assert.ok(fs.existsSync(path.join(root, '.issues/milestones/local-gaps.md')))
+})
+
+test('milestone create refuses a bad id with INVALID_INPUT and writes nothing', () => {
+  const root = makeRepo('basic')
+  const result = run(root, ['milestone', 'create', 'Q4 2026', '--json'])
+  assert.equal(result.status, 2)
+  assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT')
+  assert.ok(!fs.existsSync(path.join(root, '.issues/milestones')))
+})
+
+test('milestone create commits as pmkit: milestone create <id> when auto commit is on', () => {
+  const root = makeRepo('basic')
+  const file = path.join(root, '.issues/config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('auto_commit: false', 'auto_commit: true'))
+  git(root, 'init', '-q')
+  git(root, 'config', 'user.name', 'Test')
+  git(root, 'config', 'user.email', 'test@example.com')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-q', '-m', 'init')
+  json(root, ['milestone', 'create', 'local-gaps'])
+  assert.equal(git(root, 'log', '-1', '--format=%s').stdout.trim(), 'pmkit: milestone create local-gaps')
+})
+
+test('milestone create warns on stderr about milestone names that have no file', () => {
+  const root = makeRepo('basic')
+  json(root, ['issues', 'create', '--title', 'A', '--milestone', 'jira'])
+  json(root, ['issues', 'create', '--title', 'B', '--milestone', 'jira'])
+  json(root, ['issues', 'create', '--title', 'C', '--milestone', 'generic-commands'])
+  const { after: epic } = json(root, ['epic', 'create', '--title', 'E'])
+  const epicFile = path.join(root, '.issues/epics', epic.id, 'epic.md')
+  fs.writeFileSync(epicFile, fs.readFileSync(epicFile, 'utf8').replace(/^---\n/, '---\nmilestone: generic-commands\n'))
+  const result = run(root, ['milestone', 'create', 'x', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stderr, /^warning: 2 milestones named by issues or epics have no file: generic-commands \(2\), jira \(2\); run \/pmkit:local:doctor$/m)
+  const body = JSON.parse(result.stdout)
+  assert.deepEqual(Object.keys(body), ['before', 'after'])
+  const dry = run(root, ['milestone', 'create', 'jira', '--dry-run'])
+  assert.match(dry.stderr, /1 milestones named by issues or epics have no file: generic-commands \(2\)/)
+})
+
+test('milestone create gives no warning when every name has a file', () => {
+  const root = makeRepo('basic')
+  json(root, ['issues', 'create', '--title', 'A', '--milestone', 'jira'])
+  json(root, ['milestone', 'create', 'jira'])
+  const result = run(root, ['milestone', 'create', 'y'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.doesNotMatch(result.stderr, /warning/)
 })
