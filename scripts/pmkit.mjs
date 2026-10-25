@@ -214,7 +214,7 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'issues list', summary: 'searches issues',
+    name: 'issues list', summary: 'searches issues, oldest created first unless --sort says otherwise',
     usage: '[--text t] [--category c,..] [--type t,..] [--assignee me|none|id] [--label l,..] [--sprint current|none|id] [--parent id] [--blocked] [--updated-before d] [--updated-after d] [--sort s] [--limit n] [--archived]',
     flags: ['text', 'category', 'type', 'assignee', 'label', 'sprint', 'parent', 'blocked', 'updated-before', 'updated-after', 'sort', 'limit', 'archived'],
     run: (ctx) => {

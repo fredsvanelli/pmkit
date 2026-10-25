@@ -24,7 +24,7 @@ Then run `/pmkit:setup` in the project. With the GitHub git host (`git_host.syst
 - `/pmkit:issues:create`: Create an issue, with the fields checked against the project config.
 - `/pmkit:issues:find`: Find issues with a plain-language question, such as "high-priority bugs in the current sprint".
 - `/pmkit:issues:link`: Link two issues (blocks, related, duplicate), remove a link, or set a parent.
-- `/pmkit:issues:mine`: List the issues assigned to the user, in the order to pick them up, with the state of their pull requests.
+- `/pmkit:issues:mine`: List the issues assigned to the user, with the state of their pull requests and the next one to pick up.
 - `/pmkit:issues:move`: Move an issue to a status category: in progress, in review, done.
 - `/pmkit:issues:pause`: Pause work on an issue, leave a handoff note and push a draft PR when there is code.
 - `/pmkit:issues:progress`: Post what was done on an issue as a comment, tick acceptance criteria and log the time spent.
@@ -47,7 +47,7 @@ Run `node pmkit/scripts/pmkit.mjs <command>`. Every command takes `--json` and `
 | `capabilities` | prints the capability manifest |
 | `discover` | prints statuses with categories, types, priorities, labels, members and the estimate scale |
 | `whoami` | prints the resolved actor |
-| `issues list` | searches issues by text, category, type, assignee, label, sprint, parent, blocked state or date |
+| `issues list` | searches issues by text, category, type, assignee, label, sprint, parent, blocked state or date, oldest created first unless `--sort` says otherwise |
 | `issues get <id>` | shows one issue, with `--comments` and `--history` |
 | `issues create` | creates an issue; takes `--milestone` |
 | `issues update <id>` | edits fields and acceptance criteria; `--milestone` and `--branch` take `none` to clear |

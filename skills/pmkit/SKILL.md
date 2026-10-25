@@ -26,7 +26,7 @@ Each command file holds the full procedure. When the user asks for one of these 
 | create an issue, with the fields checked against the project config | `/pmkit:issues:create` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/create.md` |
 | find issues with a plain-language question, such as "high-priority bugs in the current sprint" | `/pmkit:issues:find` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/find.md` |
 | link two issues (blocks, related, duplicate), remove a link, or set a parent | `/pmkit:issues:link` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/link.md` |
-| list the issues assigned to the user, in the order to pick them up, with the state of their pull requests | `/pmkit:issues:mine` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/mine.md` |
+| list the issues assigned to the user, with the state of their pull requests and the next one to pick up | `/pmkit:issues:mine` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/mine.md` |
 | move an issue to a status category: in progress, in review, done | `/pmkit:issues:move` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/move.md` |
 | pause work on an issue, leave a handoff note and push a draft PR when there is code | `/pmkit:issues:pause` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/pause.md` |
 | post what was done on an issue as a comment, tick acceptance criteria and log the time spent | `/pmkit:issues:progress` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/progress.md` |

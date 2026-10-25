@@ -71,7 +71,7 @@ function comparator(sort, priorities) {
 }
 
 /**
- * Filters and sorts issues. `all` holds every issue, archived ones included, for the blocked check.
+ * Filters and sorts issues, oldest created first when the filter names no sort. `all` holds every issue, archived ones included, for the blocked check.
  * `assignee` and `sprint` arrive resolved: an id or 'none'. A null `sprint` matches nothing.
  */
 export function runQuery(all, filter, { priorities }) {
@@ -92,6 +92,6 @@ export function runQuery(all, filter, { priorities }) {
     if (filter.updatedAfter !== undefined && !((issue.updated ?? '') > filter.updatedAfter)) return false
     return true
   }
-  const found = all.filter(keep).sort(comparator(filter.sort ?? 'priority', priorities))
+  const found = all.filter(keep).sort(comparator(filter.sort ?? 'created', priorities))
   return filter.limit === undefined ? found : found.slice(0, filter.limit)
 }

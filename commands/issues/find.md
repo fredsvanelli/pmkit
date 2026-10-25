@@ -21,7 +21,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
    - Map a status word to a category, for example "in review" to `in_review` and "open" to `backlog,todo,in_progress,in_review`.
    - Map "mine" to `--assignee me` and "unassigned" to `--assignee none`.
    - Turn a relative date such as "this week" into a `YYYY-MM-DD` date.
-   - Choose `--sort` from the question: "most urgent" means `priority`, "recently changed" means `updated`, "oldest" means `created`, "due soon" means `due`.
+   - Choose `--sort` from the question: "most urgent" means `priority`, "recently changed" means `updated`, "oldest" means `created`, "due soon" means `due`. When the question names no order, leave `--sort` out, and the CLI lists the oldest created first.
    - Use `--text` only for words that match no other flag.
 3. When a person or a label in the question matches more than one value from step 1, or none exactly, show the closest matches and ask with `AskUserQuestion` which one the user means. When the user declines to choose, drop that filter and say so.
 4. Show the flags in one line, for example "Filter: --type bug --sprint current --sort priority", so the user can correct them. Do not wait for an answer. When the user corrects the filter, rerun from step 3 with the correction.

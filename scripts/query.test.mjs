@@ -107,9 +107,7 @@ test('filters combine', () => {
 
 test('sort priority follows the configured order, then updated descending, with no priority last', () => {
   const { ids } = setup()
-  const expected = ['9T2M', '8C4W', '2X6D', '7K3Q', '3F7H', '5N1R', '0G5E', '4M2S', '4P8A', '6J0B', '1V9Z']
-  assert.deepEqual(ids({}), expected)
-  assert.deepEqual(ids({ sort: 'priority' }), expected)
+  assert.deepEqual(ids({ sort: 'priority' }), ['9T2M', '8C4W', '2X6D', '7K3Q', '3F7H', '5N1R', '0G5E', '4M2S', '4P8A', '6J0B', '1V9Z'])
 })
 
 test('sort updated puts the newest first', () => {
@@ -117,9 +115,11 @@ test('sort updated puts the newest first', () => {
   assert.deepEqual(ids({ sort: 'updated' }), ['3F7H', '5N1R', '8C4W', '1V9Z', '0G5E', '2X6D', '4M2S', '4P8A', '6J0B', '7K3Q', '9T2M'])
 })
 
-test('sort created puts the oldest first', () => {
+test('sort created puts the oldest first, and is the default', () => {
   const { ids } = setup()
-  assert.deepEqual(ids({ sort: 'created' }), ['7K3Q', '4P8A', '9T2M', '2X6D', '5N1R', '8C4W', '3F7H', '6J0B', '0G5E', '4M2S', '1V9Z'])
+  const expected = ['7K3Q', '4P8A', '9T2M', '2X6D', '5N1R', '8C4W', '3F7H', '6J0B', '0G5E', '4M2S', '1V9Z']
+  assert.deepEqual(ids({}), expected)
+  assert.deepEqual(ids({ sort: 'created' }), expected)
 })
 
 test('sort due puts the earliest first and issues without a due date last', () => {
@@ -131,7 +131,7 @@ test('sort due puts the earliest first and issues without a due date last', () =
 
 test('limit keeps the first n results after sorting', () => {
   const { ids } = setup()
-  assert.deepEqual(ids({ limit: 3 }), ['9T2M', '8C4W', '2X6D'])
+  assert.deepEqual(ids({ limit: 3 }), ['7K3Q', '4P8A', '9T2M'])
   assert.deepEqual(ids({ limit: 0 }), [])
 })
 

@@ -35,6 +35,8 @@ Every CLI call ends with `--json`. On a failure the CLI exits with code 2 and pr
 
 A list of issues is a table with these columns, in this order: ID, title, status, assignee, estimate. Leave a cell empty when the issue has no value for it. A command may add a column its result needs, after these five.
 
+Rows go in creation order, oldest first, unless the user asks for another order. A command that ranks issues to pick one, such as a recommended next issue or a sprint scope, still uses its own ranking for that choice, and the table it shows keeps creation order.
+
 ## The tracker files
 
 Commands never edit files under `.issues/` by hand. Every change goes through a `pmkit.mjs` command, which validates the change and records an event. The one exception is `/pmkit:local:doctor`, which resolves git conflict markers file by file after the user approves each edit.
