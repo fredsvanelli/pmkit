@@ -302,6 +302,24 @@ describe('tracker with the index', () => {
     assert.equal(fs.existsSync(path.join(config.readDir, '.cache')), false)
   }))
 
+  test('reindex refuses on an older format and writes no .cache anywhere', () => withRepo('team', (root) => {
+    const noop = { from: 2, to: 3, describe: 'nothing', run() {} }
+    const config = loadConfig(root, { formatVersion: 3, migrations: [noop] })
+    const result = trackerFor(root, { config }).reindex()
+    assert.equal(result.written, false)
+    assert.match(result.reason, /tracker format 2; run \/pmkit:upgrade/)
+    assert.equal(fs.existsSync(cacheOf(root)), false)
+    assert.equal(fs.existsSync(path.join(config.readDir, '.cache')), false)
+  }))
+
+  for (const index of [false, 'read']) {
+    test(`reindex with index: ${index} writes nothing`, () => withRepo('team', (root) => {
+      const result = trackerFor(root, { index }).reindex()
+      assert.deepEqual(result, { written: false, reason: 'the query index is off for this tracker' })
+      assert.equal(fs.existsSync(cacheOf(root)), false)
+    }))
+  }
+
   test('library dry runs never create or change the index', () => withRepo('team', (root) => {
     const dry = () => {
       const tracker = trackerFor(root)

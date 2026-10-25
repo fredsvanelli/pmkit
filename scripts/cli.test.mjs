@@ -683,3 +683,33 @@ test('the index never reaches git status or an auto-commit', () => {
     fs.rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('reindex on an older tracker format exits 0 with written: false and creates no .cache', () => {
+  const root = makeRepo('team')
+  try {
+    const config = path.join(root, '.issues', 'config.yaml')
+    fs.writeFileSync(config, fs.readFileSync(config, 'utf8').replace(/^version: \d+$/m, 'version: 1'))
+    const body = json(root, ['reindex'])
+    assert.equal(body.written, false)
+    assert.match(body.reason, /tracker format 1; run \/pmkit:upgrade/)
+    const text = run(root, ['reindex'])
+    assert.equal(text.status, 0)
+    assert.match(text.stdout, /^the query index was not written: /)
+    assert.match(text.stderr, /^warning: searches still work, they read every issue file$/m)
+    assert.equal(fs.existsSync(cacheIn(root)), false)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('reindex is not a write: --dry-run and --as are usage errors', () => {
+  const root = makeRepo('team')
+  try {
+    for (const flags of [['--dry-run'], ['--as', 'fred']]) {
+      assert.equal(run(root, ['reindex', ...flags]).status, 2, flags.join(' '))
+    }
+    assert.equal(fs.existsSync(cacheIn(root)), false)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
