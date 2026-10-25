@@ -4,3 +4,5 @@
 {"at":"2026-10-25T19:21:36Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-dz9q-issues-created-in-the-same-second-lose"}
 {"at":"2026-10-25T19:21:36Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-10-25T19:21:36Z","by":"fred","op":"comment","to":"2026-10-25T19-21-36Z-fred.md"}
+{"at":"2026-10-25T19:25:52Z","by":"fred","op":"comment","to":"2026-10-25T19-25-52Z-fred.md"}
+{"at":"2026-10-25T19:25:52Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
