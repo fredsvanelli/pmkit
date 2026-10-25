@@ -28,17 +28,21 @@ Its first rule does not apply here. Without a config, steps 1 to 4 still run and
 
 Done when you hold the installs to update, each with its version, scope and marketplace.
 
-### 2. Refresh the marketplace
+### 2. Fetch the latest version
 
-For each marketplace of those installs, run `claude plugin marketplace update <marketplace>`. This downloads the whole marketplace, so the new `pmkit/.claude-plugin/plugin.json` and `pmkit/CHANGELOG.md` are on disk before any install changes.
+1. For each marketplace of those installs, run `claude plugin marketplace update <marketplace>`.
+2. Find the marketplace's local copy with `claude plugin marketplace list --json` and read its `installLocation`.
+3. Read the `pmkit` entry in `<installLocation>/.claude-plugin/marketplace.json` and find the latest files from its `source`:
+   - A relative path such as `./pmkit`: the marketplace copy holds them, in `<installLocation>/<source>`.
+   - A `github` source with a `repo`: the marketplace copy holds only the entry. Clone the repository into a new temporary folder with `git clone --depth 1 --quiet https://github.com/<repo>.git <folder>`, and add `--branch <ref>` when the source has a `ref`.
 
-Find the marketplace's local copy with `claude plugin marketplace list --json` and read its `installLocation`.
+Call that folder `<latest>`. Step 3 reads the new `.claude-plugin/plugin.json` and `CHANGELOG.md` from it before any install changes.
 
 ### 3. Show what changes
 
-1. Read the latest version from `<installLocation>/pmkit/.claude-plugin/plugin.json`.
+1. Read the latest version from `<latest>/.claude-plugin/plugin.json`.
 2. When it equals the installed version, say "already up to date" and go to step 5. The repository may still need a migration.
-3. Otherwise run the installed CLI against the new changelog: `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" changelog --file "<installLocation>/pmkit/CHANGELOG.md" --since <installed version> --json`.
+3. Otherwise run the installed CLI against the new changelog: `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" changelog --file "<latest>/CHANGELOG.md" --since <installed version> --json`.
 4. Show the installed version, the latest version, and each returned section from oldest to newest: version, date and body. When a section has a `trackerFormat`, add the line "this version migrates `.issues/` to format N".
 5. Ask once whether to update. When the user declines, stop and change nothing: do not run steps 4 and 5.
 
@@ -80,6 +84,6 @@ The per-install lines, the migration result, the reload commands and the `Setup:
 ## If something is missing
 
 - `claude` is not on the `PATH` or no `pmkit@` install exists: say so. When the session loads pmkit from a folder, use the `git pull` path of step 1.
-- The marketplace copy has no `CHANGELOG.md`: show the two versions without the changelog and say so.
+- `<latest>` has no `CHANGELOG.md`: show the two versions without the changelog and say so.
 - No `.pmkit/config.yaml`: skip step 5 and offer `/pmkit:setup`.
 - An error from the CLI: apply the rules for reading errors in the conventions.

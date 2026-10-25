@@ -3,5 +3,5 @@
   "version": "0.1.0",
   "description": "Project management for development agents: issues, sprints and epics in one command set across trackers, starting with a local tracker kept in the repository.",
   "author": { "name": "Fred Vanelli" },
-  "repository": "https://github.com/fredsvanelli/skills"
+  "repository": "https://github.com/fredsvanelli/pmkit"
 }

@@ -155,13 +155,6 @@ test('upgrade.md carries the pieces the upgrade flow needs', () => {
   assert.doesNotMatch(text, /\s-y\b/)
 })
 
-test('the marketplace lists pmkit from ./pmkit', () => {
-  const marketplace = JSON.parse(fs.readFileSync(path.join(ROOT, '../.claude-plugin/marketplace.json'), 'utf8'))
-  const entry = marketplace.plugins.find((plugin) => plugin.name === 'pmkit')
-  assert.ok(entry, 'pmkit entry exists')
-  assert.equal(entry.source, './pmkit')
-})
-
 test('the routing skill has a name and a description', () => {
   const data = parseYaml(splitFrontmatter(fs.readFileSync(path.join(ROOT, 'skills/pmkit/SKILL.md'), 'utf8')).yaml)
   assert.equal(data.name, 'pmkit')
