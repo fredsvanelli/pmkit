@@ -19,9 +19,9 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 1. Sync merged pull requests. This is a bulk write, so preview it first. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" pr sync --dry-run --json`. When `moved` is empty, skip to step 2. Otherwise show each issue in `moved` with its PR and the change from `in_review` to `done`, and ask once with `AskUserQuestion`, whatever `write_policy.confirm` says. When the user approves, run the same command without `--dry-run`. When the user declines, change nothing and carry on with step 2. Show each entry of `problems` as a warning.
 2. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" cycle current --json`. When there is an active sprint, note its ID.
 3. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues list --assignee me --sprint current --json`. When there is no active sprint, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues list --assignee me --json` and say in one line that no sprint is active, so the list shows all assigned issues.
-4. Drop the issues in `done` or `canceled`. Rank the rest to choose the next issue: `in_progress` first, then priority (highest first), then due date (earliest first, no date last), then issues with no open blocker before blocked ones. An issue is blocked when `blockedBy` holds an issue not in `done` or `canceled`.
+4. Drop the issues in `done` or `canceled`. Keep the rest in creation order, oldest first, as the CLI returns them. An issue is blocked when `blockedBy` holds an issue not in `done` or `canceled`.
 5. For each issue with a `branch`, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" pr status --branch <branch> --json`. Note the PR, its checks and its reviews. When the call fails with `NOT_SUPPORTED`, `NOT_CONFIGURED` or `AUTH`, stop calling `pr status`, and say in one line that PR data is unavailable and why (use `error.message`).
-6. Pick one recommended next issue: the first unblocked issue in the order of step 4. Give the reason in one sentence.
+6. Pick one recommended next issue: the oldest created issue that is not blocked. Give the reason in one sentence.
 
 ## Confirmation points
 
