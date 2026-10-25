@@ -91,6 +91,17 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   // An older format is read from its migrated copy; see loadConfig.
   const issuesDir = config.readDir ?? config.issuesDir
   const stamp = () => isoSeconds(now())
+  // Every file this tracker writes, so auto_commit can commit those paths and nothing else.
+  const writtenPaths = new Set()
+  const writeFile = (file, text) => {
+    writeFileAtomic(file, text)
+    writtenPaths.add(file)
+  }
+  const append = (file, events) => {
+    appendEvents(file, events)
+    if (events.length > 0) writtenPaths.add(file)
+  }
+  const writtenFiles = () => [...writtenPaths].map((file) => path.relative(config.root, file).split(path.sep).join('/')).sort()
   // Creation times carry milliseconds, so creates in the same second keep their order. Within one
   // tracker they only grow, so two creates in the same millisecond still differ.
   let lastCreated = 0
@@ -241,8 +252,8 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     }
     if (!dryRun) {
       fs.mkdirSync(paths.dir, { recursive: true })
-      writeFileAtomic(paths.file, content)
-      appendEvents(paths.events, events)
+      writeFile(paths.file, content)
+      append(paths.events, events)
     }
     return after
   }
@@ -258,12 +269,12 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     // Drift is dated max(mtime, newest event), clamped to this write's time.
     const latest = mtime > newest ? mtime : newest
     const drift = driftEvents(toFrontmatter(before), logged, { at: latest < at ? latest : at, by: actor })
-    if (!dryRun) appendEvents(paths.events, drift)
+    if (!dryRun) append(paths.events, drift)
     const next = structuredClone(before)
     const events = edit(next, { at, by: actor }, before)
     if (events.length === 0) return { before, after: before }
     if (eventsOnly) {
-      if (!dryRun) appendEvents(paths.events, events)
+      if (!dryRun) append(paths.events, events)
       return { before, after: before }
     }
     next.updated = at
@@ -578,7 +589,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
       written = { id: name, issue: issue.id, author: actor, body: body.trim(), created: meta.at }
       if (!dryRun) {
         fs.mkdirSync(dir, { recursive: true })
-        writeFileAtomic(path.join(dir, `${name}.md`), joinFrontmatter({ author: actor, created: meta.at }, `${written.body}\n`, { order: ['author', 'created'] }))
+        writeFile(path.join(dir, `${name}.md`), joinFrontmatter({ author: actor, created: meta.at }, `${written.body}\n`, { order: ['author', 'created'] }))
       }
       return [{ ...meta, op: 'comment', to: `${name}.md` }]
     })
@@ -614,7 +625,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     readBack('sprint file', () => parseSprint(content, after.id))
     if (!dryRun) {
       fs.mkdirSync(sprintsDir, { recursive: true })
-      writeFileAtomic(path.join(sprintsDir, `${after.id}.yaml`), content)
+      writeFile(path.join(sprintsDir, `${after.id}.yaml`), content)
     }
     return { before, after }
   }
@@ -726,8 +737,8 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     if (!dryRun) {
       const dir = path.join(epicsDir, epic.id)
       fs.mkdirSync(dir, { recursive: true })
-      writeFileAtomic(path.join(dir, 'epic.md'), content)
-      appendEvents(path.join(dir, 'events.jsonl'), [{ at: createdStamp(), by: actor, op: 'create', to: epicFrontmatter(epic) }])
+      writeFile(path.join(dir, 'epic.md'), content)
+      append(path.join(dir, 'events.jsonl'), [{ at: createdStamp(), by: actor, op: 'create', to: epicFrontmatter(epic) }])
     }
     return { before: null, after }
   }
@@ -772,7 +783,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
       let name = base
       for (let n = 2; fs.existsSync(path.join(updates, `${name}.md`)); n++) name = `${base}-${n}`
       fs.mkdirSync(updates, { recursive: true })
-      writeFileAtomic(path.join(updates, `${name}.md`), content)
+      writeFile(path.join(updates, `${name}.md`), content)
     }
     return { before: null, after: update }
   }
@@ -792,7 +803,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
 
   function createDocument(docPath, body, actor, { dryRun = false } = {}) {
     requireWriter(actor)
-    return createDocumentFile(docsDir, docPath, body, { dryRun })
+    return createDocumentFile(docsDir, docPath, body, { dryRun, onWrite: (file) => writtenPaths.add(file) })
   }
 
   return {
@@ -801,5 +812,6 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     comment, listComments, getHistory, logTime, readDocument, createDocument,
     discover, capabilities, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
     listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity,
+    writtenFiles,
   }
 }

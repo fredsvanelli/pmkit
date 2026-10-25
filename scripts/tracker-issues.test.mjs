@@ -428,3 +428,17 @@ test('an hours estimate must be a finite positive number', () => {
   }
   assert.equal(tracker.createIssue({ title: 'X', estimate: 1.5 }, 'fred').after.estimate, 1.5)
 })
+
+test('writtenFiles lists the files a create wrote, and nothing after a dry run', () => {
+  const root = makeRepo()
+  try {
+    const tracker = createLocalTracker(root, { now: () => new Date(NOW), random: scriptedRandom([1, 2, 3, 4]) })
+    const { after } = tracker.createIssue({ title: 'First' }, 'fred')
+    assert.deepEqual(tracker.writtenFiles(), [`.issues/issues/${after.id}/events.jsonl`, `.issues/issues/${after.id}/issue.md`])
+    const dry = createLocalTracker(root, { now: () => new Date(NOW), random: scriptedRandom([2, 3, 4, 5]) })
+    dry.createIssue({ title: 'Dry' }, 'fred', { dryRun: true })
+    assert.deepEqual(dry.writtenFiles(), [])
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
