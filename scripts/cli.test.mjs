@@ -676,8 +676,14 @@ test('the index never reaches git status or an auto-commit', () => {
     const config = path.join(root, '.issues', 'config.yaml')
     fs.writeFileSync(config, fs.readFileSync(config, 'utf8').replace('auto_commit: false', 'auto_commit: true'))
     git(root, 'commit', '-q', '-am', 'auto commit on')
-    json(root, ['issues', 'create', '--title', 'Indexed'])
-    assert.doesNotMatch(git(root, 'show', '--name-only', '--format=', 'HEAD').stdout, /\.cache/)
+    // A blocks link reads through the index in the middle of the write, so the write refreshes the cache.
+    fs.rmSync(cacheIn(root), { recursive: true, force: true })
+    json(root, ['issues', 'link', 'ISS-3F7H', 'ISS-4M2S', '--kind', 'blocks'])
+    assert.ok(fs.existsSync(path.join(cacheIn(root), 'index.json')))
+    const committed = git(root, 'show', '--name-only', '--format=', 'HEAD').stdout
+    assert.match(committed, /issue\.md/)
+    assert.doesNotMatch(committed, /\.cache/)
+    assert.equal(git(root, 'status', '--porcelain').stdout, '')
     assert.equal(git(root, 'ls-files', '.issues/.cache').stdout, '')
   } finally {
     fs.rmSync(root, { recursive: true, force: true })

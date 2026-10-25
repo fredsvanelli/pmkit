@@ -71,11 +71,19 @@ export function loadIndex(file, header) {
   }
 }
 
+const IGNORE_TEXT = '*\n'
+const ignoreIsSound = (cacheDir) => {
+  try {
+    return fs.readFileSync(path.join(cacheDir, '.gitignore'), 'utf8') === IGNORE_TEXT
+  } catch {
+    return false
+  }
+}
+
 /** Writes `.gitignore` first, so git never sees index.json, then the index through a temp file and a rename. */
 export function saveIndex(cacheDir, header, entries) {
   fs.mkdirSync(cacheDir, { recursive: true })
-  const ignore = path.join(cacheDir, '.gitignore')
-  if (!fs.existsSync(ignore)) fs.writeFileSync(ignore, '*\n')
+  if (!ignoreIsSound(cacheDir)) writeFileAtomic(path.join(cacheDir, '.gitignore'), IGNORE_TEXT)
   writeFileAtomic(path.join(cacheDir, INDEX_FILE), JSON.stringify({ ...header, issues: Object.fromEntries(entries) }))
 }
 
@@ -133,6 +141,8 @@ export function readThroughIndex({ cacheDir, header, ids, fileOf, read, write })
     else issues.push(result.issue)
   }
   if (!changed) changed = [...old.keys()].some((id) => !next.has(id))
+  // A missing or altered cache .gitignore counts as a change, so a settled index repairs it.
+  if (!changed && write) changed = !ignoreIsSound(cacheDir)
   if (changed && write) {
     try {
       saveIndex(cacheDir, header, next)

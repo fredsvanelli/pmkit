@@ -97,6 +97,38 @@ describe('query index module', () => {
     assert.deepEqual(fs.readFileSync(f.indexFile), bytes)
   }))
 
+  test('a settled index restores a deleted .gitignore', () => withDir((dir) => {
+    const f = fake(dir, { A: 'one' })
+    f.run(['A'])
+    settle(f.cacheDir)
+    const ignore = path.join(f.cacheDir, '.gitignore')
+    fs.rmSync(ignore)
+    const result = f.run(['A'])
+    assert.deepEqual(counts(result.stats), { parsed: 0, reused: 1, written: true })
+    assert.equal(fs.readFileSync(ignore, 'utf8'), '*\n')
+  }))
+
+  test('a settled index restores an empty .gitignore', () => withDir((dir) => {
+    const f = fake(dir, { A: 'one' })
+    f.run(['A'])
+    settle(f.cacheDir)
+    const ignore = path.join(f.cacheDir, '.gitignore')
+    fs.writeFileSync(ignore, '')
+    f.run(['A'])
+    assert.equal(fs.readFileSync(ignore, 'utf8'), '*\n')
+  }))
+
+  test('a read-only run does not recreate a missing .gitignore', () => withDir((dir) => {
+    const f = fake(dir, { A: 'one' })
+    f.run(['A'])
+    settle(f.cacheDir)
+    const ignore = path.join(f.cacheDir, '.gitignore')
+    fs.rmSync(ignore)
+    const result = f.run(['A'], { write: false })
+    assert.equal(result.stats.written, false)
+    assert.equal(fs.existsSync(ignore), false)
+  }))
+
   test('racy entries are reparsed and the index is rewritten', () => withDir((dir) => {
     const f = fake(dir, { A: 'one' })
     f.run(['A'])
