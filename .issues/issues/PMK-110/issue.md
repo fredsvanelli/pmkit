@@ -2,7 +2,7 @@
 id: PMK-110
 title: List pmkit in the fredsvanelli/skills marketplace
 type: chore
-status: in_progress
+status: in_review
 priority: high
 estimate: 1
 assignee: fred
@@ -11,7 +11,7 @@ related: [PMK-1]
 milestone: local-gaps
 branch: pmk-110-list-pmkit-in-the-fredsvanelli-skills
 created: 2026-10-25T20:11:40.644Z
-updated: 2026-10-25T20:21:22Z
+updated: 2026-10-25T20:28:23Z
 ---
 
 ## Description
