@@ -3,3 +3,5 @@
 {"at":"2026-10-25T21:50:47Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-25T21:50:47Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-6-commit-each-operation-when-auto-commit"}
 {"at":"2026-10-25T21:55:42Z","by":"fred","op":"comment","to":"2026-10-25T21-55-42Z-fred.md"}
+{"at":"2026-10-25T22:07:31Z","by":"fred","op":"comment","to":"2026-10-25T22-07-31Z-fred.md"}
+{"at":"2026-10-25T22:07:31Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
