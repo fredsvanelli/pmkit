@@ -35,7 +35,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
    - `drift`: no fix needed. The next write to that issue records the change as an event.
    - `id` (a duplicate ID, or a folder that does not match its ID): the user renames the folder or changes the `id` and runs this command again. Reassigning IDs and updating references wait for phase 2.
    - `frontmatter`, `events` and `sprint`: the user opens the file named in the problem and corrects the field the message names. The command does not edit these files.
-6. Rebuild the query index. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" reindex --json`. With `written: true`, report how many issues it indexed (`issues`) and how many files it could not read (`problems`). With `written: false`, report the `reason` and say that searches still work, because they read every issue file. Ask nothing: the rebuild changes only files git ignores. When the config does not load, the command fails like any other; report the error and go on.
+6. Rebuild the query index. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" reindex --json`. With `written: true`, report how many issues it indexed (`issues`) and how many files it could not read (`problems`). With `written: false`, report the `reason` and say that searches still work, because they read every issue file. Ask nothing, because the rebuild changes only files git ignores. When the config does not load, the command fails like any other. Report the error and go on.
 7. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json` a last time and compare with step 1.
 
 ## Confirmation points
@@ -43,11 +43,11 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 - Step 2.3: each conflicted file, one question per file, before it is edited. Declining leaves the file as it is.
 - Step 3: the continue question after the user edits the config, and the `migrate` run. Declining the migration changes nothing.
 - Step 5: the preview of all CLI fixes, asked once. Declining changes nothing.
-- Step 6 asks nothing: `reindex` changes only files git ignores.
+- Step 6 asks nothing, because `reindex` changes only files git ignores.
 
 ## Output
 
-A health report. It has the files checked (from `checked`), the problems found, the problems fixed, and the problems left with the manual step for each, and the index rebuild: how many issues it indexed, or why it could not write the index. Say when the problem count is zero.
+A health report. It has the files checked (from `checked`), the problems found, the problems fixed, the problems left with the manual step for each, and the index rebuild (how many issues it indexed, or why it could not write the index). Say when the problem count is zero.
 
 ## If something is missing
 
