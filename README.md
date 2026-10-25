@@ -64,7 +64,7 @@ Run `node scripts/pmkit.mjs <command>`. Every command takes `--json` and `--root
 | `cycle open --start d` | opens a sprint; the end defaults from `sprint_length_days` |
 | `cycle close <id>` | closes a sprint and prints the unfinished issues, with a warning for each issue file it could not read |
 | `cycle add <id...> --to <sprint\|current\|none>` | moves issues into or out of a sprint; `current` is the active sprint |
-| `cycle capacity <id>` | reads or sets capacity (`--set member=n,..`) |
+| `cycle capacity <id>` | reads or sets capacity and days off (`--set member=n,..`, `--days-off member=date+date,..`) |
 | `epic list` | lists epics |
 | `epic get <id>` | shows one epic |
 | `epic progress <id>` | counts the issues under an epic |
