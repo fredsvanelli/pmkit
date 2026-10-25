@@ -1,0 +1,2 @@
+{"at":"2026-10-25T19:13:21Z","by":"fred","op":"create","to":{"id":"PMK-35","title":"Implement issues, relations and search for Linear","type":"feature","status":"backlog","priority":"medium","estimate":8,"labels":[],"parent":"EPC-5","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"linear","created":"2026-10-25T19:13:21Z","updated":"2026-10-25T19:13:21Z"}}
+{"at":"2026-10-25T19:13:25Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-33"}

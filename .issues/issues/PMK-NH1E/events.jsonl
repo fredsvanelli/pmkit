@@ -1,2 +1,0 @@
-{"at":"2026-10-25T19:13:22Z","by":"fred","op":"create","to":{"id":"PMK-NH1E","title":"Implement work items, transitions, links and JQL for Jira","type":"feature","status":"backlog","priority":"low","estimate":8,"labels":[],"parent":"EPC-QRE9","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"jira","created":"2026-10-25T19:13:22Z","updated":"2026-10-25T19:13:22Z"}}
-{"at":"2026-10-25T19:13:26Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-8FSH"}

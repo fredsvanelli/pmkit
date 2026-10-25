@@ -1,6 +1,7 @@
 version: 2
 id_prefix: PMK
 epic_prefix: EPC
+id_style: numbered
 statuses:
   triage: { category: triage }
   backlog: { category: backlog }

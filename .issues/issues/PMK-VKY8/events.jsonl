@@ -1,3 +1,0 @@
-{"at":"2026-10-25T19:13:23Z","by":"fred","op":"create","to":{"id":"PMK-VKY8","title":"Add the GitLab API client","type":"feature","status":"backlog","priority":"low","estimate":5,"labels":[],"parent":"EPC-VGY5","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"gitlab","created":"2026-10-25T19:13:23Z","updated":"2026-10-25T19:13:23Z"}}
-{"at":"2026-10-25T19:13:27Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-H4DB"}
-{"at":"2026-10-25T19:13:27Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-2DYH"}

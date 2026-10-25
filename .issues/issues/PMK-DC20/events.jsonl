@@ -1,3 +1,0 @@
-{"at":"2026-10-25T19:13:20Z","by":"fred","op":"create","to":{"id":"PMK-DC20","title":"Package the Codex plugin","type":"feature","status":"backlog","priority":"high","estimate":3,"labels":[],"parent":"EPC-E7GJ","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"faces","created":"2026-10-25T19:13:20Z","updated":"2026-10-25T19:13:20Z"}}
-{"at":"2026-10-25T19:13:24Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-0SC2"}
-{"at":"2026-10-25T19:13:24Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-7W0R"}

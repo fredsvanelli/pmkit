@@ -1,0 +1,4 @@
+{"at":"2026-10-25T19:13:20Z","by":"fred","op":"create","to":{"id":"PMK-33","title":"Discover a Linear workspace and build its capability manifest","type":"feature","status":"backlog","priority":"medium","estimate":5,"labels":[],"parent":"EPC-5","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"linear","created":"2026-10-25T19:13:20Z","updated":"2026-10-25T19:13:20Z"}}
+{"at":"2026-10-25T19:13:24Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-30"}
+{"at":"2026-10-25T19:13:25Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-31"}
+{"at":"2026-10-25T19:13:25Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-32"}

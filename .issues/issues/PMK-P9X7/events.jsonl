@@ -1,2 +1,0 @@
-{"at":"2026-10-25T19:13:19Z","by":"fred","op":"create","to":{"id":"PMK-P9X7","title":"Add command scenario tests","type":"task","status":"backlog","priority":"medium","estimate":8,"labels":[],"parent":"EPC-TJVF","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-25T19:13:19Z","updated":"2026-10-25T19:13:19Z"}}
-{"at":"2026-10-25T19:13:24Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-5A53"}
