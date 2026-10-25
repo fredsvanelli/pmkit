@@ -2,7 +2,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { isId } from '../ids.mjs'
+import { compareIds, isId } from '../ids.mjs'
 
 let counter = 0
 
@@ -22,7 +22,7 @@ export function listIssueIds(issuesDir, prefix) {
   return fs.readdirSync(dir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && isId(entry.name, prefix))
     .map((entry) => entry.name)
-    .sort()
+    .sort(compareIds)
 }
 
 export function writeFileAtomic(file, text) {

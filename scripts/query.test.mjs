@@ -1,7 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
 import { createLocalTracker } from './lib/local/tracker.mjs'
-import { makeRepo, fixedNow } from './test-helpers.mjs'
+import { makeRepo, fixedNow, scriptedRandom } from './test-helpers.mjs'
 
 const setup = () => {
   const root = makeRepo('team')
@@ -120,6 +122,26 @@ test('sort created puts the oldest first, and is the default', () => {
   const expected = ['7K3Q', '4P8A', '9T2M', '2X6D', '5N1R', '8C4W', '3F7H', '6J0B', '0G5E', '4M2S', '1V9Z']
   assert.deepEqual(ids({}), expected)
   assert.deepEqual(ids({ sort: 'created' }), expected)
+})
+
+test('issues created in the same second keep their creation order', () => {
+  const root = makeRepo('team')
+  const tracker = createLocalTracker(root, { now: fixedNow(), random: scriptedRandom([9, 9, 9, 9, 5, 5, 5, 5, 1, 1, 1, 1]), gitEmail: 'ana@example.com', env: {} })
+  const created = ['First', 'Second', 'Third'].map((title) => tracker.createIssue({ title: `Same second ${title}` }, 'fred').after)
+  assert.deepEqual(created.map((issue) => issue.id), ['ISS-9999', 'ISS-5555', 'ISS-1111'])
+  assert.deepEqual(created.map((issue) => issue.created), ['2026-10-23T12:00:00.000Z', '2026-10-23T12:00:00.001Z', '2026-10-23T12:00:00.002Z'])
+  assert.deepEqual(tracker.searchIssues({ text: 'same second' }).issues.map((issue) => issue.id), ['ISS-9999', 'ISS-5555', 'ISS-1111'])
+})
+
+test('numbered issues created in the same second sort by number, so ISS-2 comes before ISS-10', () => {
+  const root = makeRepo('team')
+  const dir = path.join(root, '.issues', 'issues')
+  for (const n of [10, 2, 1]) {
+    fs.mkdirSync(path.join(dir, `ISS-${n}`))
+    fs.writeFileSync(path.join(dir, `ISS-${n}`, 'issue.md'), `---\nid: ISS-${n}\ntitle: Tie ${n}\nstatus: backlog\ncreated: 2026-10-01T00:00:00Z\n---\n`)
+  }
+  const tracker = createLocalTracker(root, { now: fixedNow(), gitEmail: 'ana@example.com', env: {} })
+  assert.deepEqual(tracker.searchIssues({ text: 'tie' }).issues.map((issue) => issue.id), ['ISS-1', 'ISS-2', 'ISS-10'])
 })
 
 test('sort due puts the earliest first and issues without a due date last', () => {

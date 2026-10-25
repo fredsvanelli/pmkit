@@ -88,6 +88,15 @@ test('validateLocalConfig checks prefixes, members, estimate and defaults', () =
   assert.equal(problems.length, 8)
 })
 
+test('validateLocalConfig accepts a missing id_style and refuses an unknown one', () => {
+  const local = template('issues.config.yaml')
+  delete local.id_style
+  assert.deepEqual(validateLocalConfig(local), [])
+  local.id_style = 'sequential'
+  assert.deepEqual(validateLocalConfig(local), ['id_style must be random or numbered'])
+  assert.equal(withLocalDefaults({}).id_style, 'random')
+})
+
 test('both templates validate with no problem', () => {
   assert.deepEqual(validatePmkitConfig(template('pmkit.config.yaml')), [])
   assert.deepEqual(validateLocalConfig(withLocalDefaults(template('issues.config.yaml'))), [])

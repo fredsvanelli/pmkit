@@ -1,8 +1,8 @@
 // Filtering and sorting for searchIssues. Pure: the tracker resolves `me` and `current` first.
 
 import { PmkitError } from '../errors.mjs'
-import { CATEGORIES, isBlocked } from '../model.mjs'
-import { normalizeId } from '../ids.mjs'
+import { CATEGORIES, compareTimes, isBlocked } from '../model.mjs'
+import { compareIds, normalizeId } from '../ids.mjs'
 
 export const FILTER_KEYS = [
   'text', 'categories', 'types', 'assignee', 'labels', 'sprint', 'parent', 'blocked',
@@ -64,10 +64,10 @@ function comparator(sort, priorities) {
   const by = {
     priority: (a, b) => rank(a) - rank(b) || newestFirst(a, b),
     updated: newestFirst,
-    created: (a, b) => compare(a.created ?? '', b.created ?? ''),
+    created: (a, b) => compareTimes(a.created, b.created),
     due: missingLast('due'),
   }[sort]
-  return (a, b) => by(a, b) || compare(a.id, b.id)
+  return (a, b) => by(a, b) || compareIds(a.id, b.id)
 }
 
 /**

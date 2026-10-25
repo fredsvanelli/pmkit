@@ -90,3 +90,17 @@ export function isBlocked(issue, byId) {
     return !blocker || !TERMINAL.includes(blocker.status.category)
   })
 }
+
+/**
+ * Orders two ISO times by the instant they name, so `…:20Z` comes before `…:20.123Z`. A string
+ * compare gets that pair backwards. A missing or unreadable time sorts first.
+ */
+export function compareTimes(a, b) {
+  const time = (value) => {
+    const parsed = Date.parse(value ?? '')
+    return Number.isNaN(parsed) ? -Infinity : parsed
+  }
+  const ta = time(a)
+  const tb = time(b)
+  return ta < tb ? -1 : ta > tb ? 1 : 0
+}

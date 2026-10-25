@@ -20,6 +20,10 @@ _Avoid_: driver, connector, integration
 A unit of work: a title, a status, an optional type, priority, estimate, assignee, labels, a parent, links to other issues, a sprint, a branch, a description and acceptance criteria. The Local tracker keeps it in `issues/<ID>/issue.md`.
 _Avoid_: ticket, task, card
 
+**ID style**:
+How the Local tracker names a new issue or epic, set by `id_style` in `.issues/config.yaml`. `random` (the default) draws 4 Crockford base32 characters, as in `ISS-7K3Q`, so two branches never pick the same ID. `numbered` takes one more than the highest number in use, as in `ISS-12`. Both shapes stay valid, so changing the style keeps the existing IDs.
+_Avoid_: ID format (the tracker format is the shape of the files), sequence
+
 **Sub-issue**:
 An issue whose `parent` names another issue or an epic. The parent's `children` list is computed from it, never stored.
 _Avoid_: subtask, child ticket
@@ -85,7 +89,7 @@ A write run with `--dry-run`. It validates the change, returns `{ before, after 
 _Avoid_: preview (a preview is the full listing of a bulk change), simulation
 
 **Tracker format**:
-The shape of the Local tracker's files, as one integer in the `version` key of `.issues/config.yaml`. It goes up only when the files change shape, not with each plugin release. The CLI holds the one format it reads and writes, which is 1 today. A repository on a newer format is refused for reads and writes, and one on an older format is read and not written, until `/pmkit:upgrade` migrates it.
+The shape of the Local tracker's files, as one integer in the `version` key of `.issues/config.yaml`. It goes up only when the files change shape, not with each plugin release. The CLI holds the one format it reads and writes, which is 2 today. A repository on a newer format is refused for reads and writes, and one on an older format is read and not written, until `/pmkit:upgrade` migrates it.
 _Avoid_: schema version, plugin version (the plugin has its own version in `plugin.json`)
 
 **Migration**:

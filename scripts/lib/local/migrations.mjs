@@ -10,10 +10,14 @@ import { PmkitError } from '../errors.mjs'
 import { setScalar } from '../yaml-edit.mjs'
 import { writeFileAtomic } from './store.mjs'
 
-export const FORMAT_VERSION = 1
+export const FORMAT_VERSION = 2
 
 /** Each entry is `{ from, to, describe, run(dir) }`, where `run` edits the tracker files under `dir` in place. */
-export const MIGRATIONS = []
+export const MIGRATIONS = [
+  // Format 2 accepts numbered ids such as ISS-12, which format 1 reads as invalid folders. The files
+  // of a format 1 tracker are already valid, so only the version changes, and planMigration writes it.
+  { from: 1, to: 2, describe: 'numbered ids such as ISS-12 become valid', run() {} },
+]
 
 export function formatState(version, current = FORMAT_VERSION) {
   if (!Number.isInteger(version)) {

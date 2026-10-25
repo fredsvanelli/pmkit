@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ALPHABET, branchName, isId, newId, normalizeId } from './lib/ids.mjs'
+import { ALPHABET, branchName, compareIds, isId, newId, nextNumberedId, normalizeId } from './lib/ids.mjs'
 import { isPmkitError } from './lib/errors.mjs'
 
 test('newId uses 5 characters after 5 collisions', () => {
@@ -42,6 +42,17 @@ test('the alphabet is Crockford base32', () => {
   assert.equal(ALPHABET, '0123456789ABCDEFGHJKMNPQRSTVWXYZ')
 })
 
+test('nextNumberedId counts up from the highest number with the same prefix', () => {
+  assert.equal(nextNumberedId('ISS', []), 'ISS-1')
+  assert.equal(nextNumberedId('ISS', ['ISS-1', 'ISS-9', 'ISS-10', '.gitkeep']), 'ISS-11')
+  assert.equal(nextNumberedId('ISS', ['ISS-7K3Q', 'EPC-40', 'ISS-0012', 'ISS-3']), 'ISS-4')
+})
+
+test('compareIds orders numbered ids by number and other ids as text', () => {
+  assert.deepEqual(['ISS-10', 'ISS-2', 'ISS-1', 'ISS-7K3Q', 'EPC-3'].sort(compareIds), ['EPC-3', 'ISS-1', 'ISS-2', 'ISS-10', 'ISS-7K3Q'])
+  assert.equal(compareIds('ISS-4P8A', 'ISS-7K3Q'), -1)
+})
+
 test('normalizeId trims, upper-cases and decodes look-alike characters', () => {
   assert.equal(normalizeId(' iss-7k3o '), 'ISS-7K30')
   assert.equal(normalizeId('iss-il0o'), 'ISS-1100')
@@ -55,6 +66,14 @@ test('isId checks the prefix, the alphabet and the length', () => {
   assert.ok(!isId('ISS-7K3', 'ISS'))
   assert.ok(!isId('ISS-7K3Q567', 'ISS'))
   assert.ok(!isId('iss-7k3q', 'ISS'))
+})
+
+test('isId accepts numbered ids, without a leading zero', () => {
+  assert.ok(isId('ISS-1', 'ISS'))
+  assert.ok(isId('ISS-1234567', 'ISS'))
+  assert.ok(!isId('ISS-0', 'ISS'))
+  assert.ok(!isId('ISS-012', 'ISS'))
+  assert.ok(!isId('EPC-12', 'ISS'))
 })
 
 test('branchName slugs the title', () => {

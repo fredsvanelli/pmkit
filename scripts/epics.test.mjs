@@ -31,7 +31,7 @@ test('createDeliverable writes epic.md with the default status and a create even
   assert.match(text, new RegExp(`^---\\nid: ${after.id}\\ntitle: Launch\\nstatus: backlog\\nstart: 2026-11-01\\ntarget: 2026-12-01\\nmilestone: v1\\n---\\n\\nShip it\\.\\n$`))
   const events = fs.readFileSync(path.join(dir, 'events.jsonl'), 'utf8').trim().split('\n').map((line) => JSON.parse(line))
   assert.equal(events.length, 1)
-  assert.deepEqual([events[0].at, events[0].by, events[0].op], [NOW, 'fred', 'create'])
+  assert.deepEqual([events[0].at, events[0].by, events[0].op], ['2026-10-23T12:00:00.000Z', 'fred', 'create'])
   assert.deepEqual(events[0].to, { id: after.id, title: 'Launch', status: 'backlog', start: '2026-11-01', target: '2026-12-01', milestone: 'v1' })
   assert.deepEqual(tracker.getDeliverable(after.id), after)
 })
@@ -55,7 +55,7 @@ test('createDeliverable dry run writes nothing and returns before and after', ()
   assert.equal(hashTree(root), hash)
 })
 
-test('listDeliverables reads the team epic and sorts by start, then id, missing start last', () => {
+test('listDeliverables reads the team epic and sorts by start, then creation, missing start last', () => {
   const { tracker } = setup('team')
   const [seed] = tracker.listDeliverables()
   assert.deepEqual(seed, {
@@ -67,6 +67,15 @@ test('listDeliverables reads the team epic and sorts by start, then id, missing 
   const none = tracker.createDeliverable({ title: 'No start' }, 'fred').after.id
   const early = tracker.createDeliverable({ title: 'Early', start: '2026-01-01' }, 'fred').after.id
   assert.deepEqual(tracker.listDeliverables().map((epic) => epic.id), [early, 'EPC-2M9D', late, none])
+})
+
+test('listDeliverables keeps the creation order of epics created in the same second', () => {
+  const { tracker } = setup('basic', scriptedRandom([9, 9, 9, 9, 5, 5, 5, 5, 1, 1, 1, 1, 7, 7, 7, 7]))
+  const titles = ['First', 'Second', 'Third']
+  const ids = titles.map((title) => tracker.createDeliverable({ title }, 'fred').after.id)
+  assert.deepEqual(ids, ['EPC-9999', 'EPC-5555', 'EPC-1111'])
+  const dated = tracker.createDeliverable({ title: 'Dated', start: '2026-11-01' }, 'fred').after.id
+  assert.deepEqual(tracker.listDeliverables().map((epic) => epic.id), [dated, ...ids])
 })
 
 test('getDeliverable throws NOT_FOUND for a missing epic', () => {

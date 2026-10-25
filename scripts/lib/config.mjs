@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { PmkitError } from './errors.mjs'
+import { ID_STYLES } from './ids.mjs'
 import { FORMAT_VERSION, MIGRATIONS, formatError, formatState, migratedCopy } from './local/migrations.mjs'
 import { CATEGORIES, isCategory } from './model.mjs'
 import { parseYaml } from './yaml.mjs'
@@ -14,6 +15,7 @@ const MEMBER_ID = /^([a-z0-9][a-z0-9-]*|agent:[a-z0-9-]+)$/
 const DEFAULTS = {
   default_status: 'backlog',
   epic_prefix: 'EPC',
+  id_style: 'random',
   types: ['feature', 'bug', 'task', 'chore'],
   priorities: ['urgent', 'high', 'medium', 'low'],
   labels: [],
@@ -74,6 +76,7 @@ export function validateLocalConfig(obj) {
   if (typeof idPrefix !== 'string' || !PREFIX.test(idPrefix)) problems.push('id_prefix must be 2 to 5 capital letters')
   if (typeof epicPrefix !== 'string' || !PREFIX.test(epicPrefix)) problems.push('epic_prefix must be 2 to 5 capital letters')
   if (idPrefix === epicPrefix) problems.push('id_prefix and epic_prefix must differ')
+  if (obj.id_style !== undefined && !ID_STYLES.includes(obj.id_style)) problems.push(`id_style must be ${ID_STYLES.join(' or ')}`)
 
   const statuses = isObject(obj.statuses) ? obj.statuses : {}
   for (const [name, status] of Object.entries(statuses)) {

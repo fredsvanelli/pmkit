@@ -2,6 +2,7 @@ import { randomInt } from 'node:crypto'
 import { PmkitError } from './errors.mjs'
 
 export const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+export const ID_STYLES = ['random', 'numbered']
 
 const ATTEMPTS_PER_LENGTH = 5
 const LENGTHS = [4, 5, 6]
@@ -19,6 +20,24 @@ export function newId(prefix, { random = randomInt, exists = () => false } = {})
   throw new PmkitError('CONFLICT', `could not find a free ${prefix} id after ${LENGTHS.length * ATTEMPTS_PER_LENGTH} tries`, 'Try again')
 }
 
+/** One more than the highest number among the `taken` ids with this prefix, so the first id is `<prefix>-1`. */
+export function nextNumberedId(prefix, taken) {
+  let highest = 0
+  for (const id of taken) {
+    const match = /^(.+)-([1-9][0-9]*)$/.exec(id)
+    if (match && match[1] === prefix) highest = Math.max(highest, Number(match[2]))
+  }
+  return `${prefix}-${highest + 1}`
+}
+
+/** Orders ids as text, except that two numbered ids with the same prefix compare by number, so ISS-2 comes before ISS-10. */
+export function compareIds(a, b) {
+  const x = /^(.+)-([1-9][0-9]*)$/.exec(a)
+  const y = /^(.+)-([1-9][0-9]*)$/.exec(b)
+  if (x && y && x[1] === y[1]) return Number(x[2]) - Number(y[2])
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
 export function normalizeId(input) {
   const text = input.trim().toUpperCase()
   const dash = text.lastIndexOf('-')
@@ -26,8 +45,9 @@ export function normalizeId(input) {
   return dash < 0 ? code : `${text.slice(0, dash + 1)}${code}`
 }
 
+// Accepts both styles, so a tracker that changes id_style keeps its older ids.
 export function isId(value, prefix) {
-  return new RegExp(`^${prefix}-[${ALPHABET}]{4,6}$`).test(value)
+  return new RegExp(`^${prefix}-([${ALPHABET}]{4,6}|[1-9][0-9]*)$`).test(value)
 }
 
 export function branchName(id, title) {

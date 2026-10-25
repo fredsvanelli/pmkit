@@ -1,0 +1,2 @@
+{"at":"2026-10-25T19:13:22Z","by":"fred","op":"create","to":{"id":"PMK-79","title":"Map Jira epics, versions and status updates","type":"feature","status":"backlog","priority":"low","estimate":5,"labels":[],"parent":"EPC-7","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"jira","created":"2026-10-25T19:13:22Z","updated":"2026-10-25T19:13:22Z"}}
+{"at":"2026-10-25T19:13:26Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-77"}

@@ -7,7 +7,7 @@ import { requireActor, gitUserEmail } from '../actor.mjs'
 import { loadConfig, validateLocalConfig } from '../config.mjs'
 import { PmkitError } from '../errors.mjs'
 import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
-import { isBranchName, isId, newId, normalizeId } from '../ids.mjs'
+import { isBranchName, isId, newId, nextNumberedId, normalizeId } from '../ids.mjs'
 import { CATEGORIES, LINK_KINDS, TERMINAL } from '../model.mjs'
 import { appendEvents, driftEvents, readEvents } from './events.mjs'
 import { formatError } from './migrations.mjs'
@@ -91,6 +91,18 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   // An older format is read from its migrated copy; see loadConfig.
   const issuesDir = config.readDir ?? config.issuesDir
   const stamp = () => isoSeconds(now())
+  // Creation times carry milliseconds, so creates in the same second keep their order. Within one
+  // tracker they only grow, so two creates in the same millisecond still differ.
+  let lastCreated = 0
+  const createdStamp = () => {
+    lastCreated = Math.max(now().getTime(), lastCreated + 1)
+    return new Date(lastCreated).toISOString()
+  }
+
+  // `dir` holds one folder per id, the issues or the epics.
+  const nextId = (prefix, dir) => local.id_style === 'numbered'
+    ? nextNumberedId(prefix, fs.existsSync(dir) ? fs.readdirSync(dir) : [])
+    : newId(prefix, { random, exists: (candidate) => fs.existsSync(path.join(dir, candidate)) })
 
   const statusOf = (name) => ({ name, category: local.statuses[name]?.category ?? null })
   const oneOf = (field, value, allowed) => {
@@ -340,12 +352,12 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
       archived: false,
       description: '',
       acceptanceCriteria: [],
-      created: at,
+      created: createdStamp(),
       updated: at,
       body: '',
     }, input)
     if (!input.title) throw invalid('title is required')
-    const id = newId(local.id_prefix, { random, exists: (candidate) => fs.existsSync(issuePaths(issuesDir, candidate).dir) })
+    const id = nextId(local.id_prefix, path.join(issuesDir, 'issues'))
     issue.id = id
     const event = { at, by: actor, op: 'create', to: toFrontmatter(issue) }
     return { before: null, after: save(issue, [event], issuePaths(issuesDir, id), { dryRun }) }
@@ -682,14 +694,16 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
       .filter((entry) => entry.isDirectory() && isId(entry.name, local.epic_prefix) && fs.existsSync(path.join(epicsDir, entry.name, 'epic.md')))
       .map((entry) => entry.name)
     const epics = []
+    const created = {}
     for (const id of ids) {
       try {
         epics.push(getDeliverable(id))
+        created[id] = readEvents(path.join(epicsDir, id, 'events.jsonl')).events.find((event) => event.op === 'create')?.at
       } catch (error) {
         if (!(error instanceof PmkitError)) throw error
       }
     }
-    return sortEpics(epics)
+    return sortEpics(epics, created)
   }
 
   function createDeliverable(input, actor, { dryRun = false } = {}) {
@@ -706,14 +720,14 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     }
     if (!blank(input.milestone)) epic.milestone = NORMALIZE.milestone(input.milestone)
     if (!blank(input.description)) epic.description = plainText('description', input.description)
-    epic.id = newId(local.epic_prefix, { random, exists: (candidate) => fs.existsSync(path.join(epicsDir, candidate)) })
+    epic.id = nextId(local.epic_prefix, epicsDir)
     const content = serializeEpic(epic)
     const after = readBack('epic file', () => parseEpicFile(content, { statuses: local.statuses }))
     if (!dryRun) {
       const dir = path.join(epicsDir, epic.id)
       fs.mkdirSync(dir, { recursive: true })
       writeFileAtomic(path.join(dir, 'epic.md'), content)
-      appendEvents(path.join(dir, 'events.jsonl'), [{ at: stamp(), by: actor, op: 'create', to: epicFrontmatter(epic) }])
+      appendEvents(path.join(dir, 'events.jsonl'), [{ at: createdStamp(), by: actor, op: 'create', to: epicFrontmatter(epic) }])
     }
     return { before: null, after }
   }

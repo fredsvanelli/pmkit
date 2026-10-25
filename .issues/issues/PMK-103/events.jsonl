@@ -1,0 +1,2 @@
+{"at":"2026-10-25T19:13:24Z","by":"fred","op":"create","to":{"id":"PMK-103","title":"Implement work items, states, links and WIQL for Azure DevOps","type":"feature","status":"backlog","priority":"low","estimate":8,"labels":[],"parent":"EPC-10","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"azure-devops","created":"2026-10-25T19:13:24Z","updated":"2026-10-25T19:13:24Z"}}
+{"at":"2026-10-25T19:13:28Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-102"}

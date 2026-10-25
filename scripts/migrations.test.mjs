@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { loadConfig } from './lib/config.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
-import { formatState, planMigration } from './lib/local/migrations.mjs'
+import { MIGRATIONS, formatState, planMigration } from './lib/local/migrations.mjs'
 import { runMigrate } from './pmkit.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
@@ -37,20 +37,20 @@ const renameLogTime = {
   },
 }
 
-// A basic repo with a comment in its tracker config and three issues, two of them with logged time.
+// A basic repo on tracker format 1, with a comment in its tracker config and three issues, two of them with logged time.
 function setup() {
   const root = makeRepo('basic')
   const configFile = path.join(root, '.issues', 'config.yaml')
-  fs.writeFileSync(configFile, `# tracker settings\n${fs.readFileSync(configFile, 'utf8')}`)
   const tracker = createLocalTracker(root, { now: fixedNow(), random: scriptedRandom([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) })
   const [a, b, c] = ['A', 'B', 'C'].map((title) => tracker.createIssue({ title }, 'fred').after.id)
   tracker.logTime(a, 30, 'fred')
   tracker.logTime(b, 15, 'fred')
+  fs.writeFileSync(configFile, `# tracker settings\n${fs.readFileSync(configFile, 'utf8').replace(/^version: \d+$/m, 'version: 1')}`)
   return { root, a, b, c }
 }
 
 test('formatState compares a version with the current format', () => {
-  assert.equal(formatState(1), 'current')
+  assert.equal(formatState(2), 'current')
   assert.equal(formatState(1, 2), 'behind')
   assert.equal(formatState(3, 2), 'ahead')
   for (const version of ['1', undefined, null, 1.5]) {
@@ -143,22 +143,22 @@ test('loadConfig refuses a newer format and returns the current one as it is', (
     (error) => error.code === 'NOT_SUPPORTED' && error.nextStep === '/pmkit:upgrade'
       && error.message === 'this repository uses tracker format 1, this pmkit reads up to format 0',
   )
-  const config = loadConfig(root)
-  assert.deepEqual(config.format, { state: 'current', version: 1, current: 1 })
+  const config = loadConfig(makeRepo('basic'))
+  assert.deepEqual(config.format, { state: 'current', version: 2, current: 2 })
   assert.equal(config.readDir, undefined)
 })
 
 test('loadConfig reports a missing version as INVALID_INPUT', () => {
   const root = makeRepo('basic')
   const configFile = path.join(root, '.issues', 'config.yaml')
-  fs.writeFileSync(configFile, fs.readFileSync(configFile, 'utf8').replace(/^version: 1\n/m, ''))
+  fs.writeFileSync(configFile, fs.readFileSync(configFile, 'utf8').replace(/^version: 2\n/m, ''))
   assert.throws(() => loadConfig(root), (error) => error.code === 'INVALID_INPUT' && /version/.test(error.message))
 })
 
 test('loadConfig reports a version below 1 as INVALID_INPUT', () => {
   const root = makeRepo('basic')
   const configFile = path.join(root, '.issues', 'config.yaml')
-  fs.writeFileSync(configFile, fs.readFileSync(configFile, 'utf8').replace(/^version: 1$/m, 'version: 0'))
+  fs.writeFileSync(configFile, fs.readFileSync(configFile, 'utf8').replace(/^version: 2$/m, 'version: 0'))
   assert.throws(
     () => loadConfig(root),
     (error) => error.code === 'INVALID_INPUT' && error.message === '.issues/config.yaml: the tracker format version must be 1 or more, found 0',
@@ -187,27 +187,27 @@ function cli(cwd, args) {
 test('the CLI refuses reads and writes on a newer format and writes nothing', () => {
   const root = makeRepo('basic')
   const configFile = path.join(root, '.issues', 'config.yaml')
-  fs.writeFileSync(configFile, fs.readFileSync(configFile, 'utf8').replace(/^version: 1$/m, 'version: 2'))
+  fs.writeFileSync(configFile, fs.readFileSync(configFile, 'utf8').replace(/^version: 2$/m, 'version: 3'))
   const before = hashTree(root)
   for (const args of [['issues', 'list'], ['issues', 'create', '--title', 'X']]) {
     const { status, body } = cli(root, args)
     assert.equal(status, 2, args.join(' '))
     assert.equal(body.error.code, 'NOT_SUPPORTED')
     assert.equal(body.error.nextStep, '/pmkit:upgrade')
-    assert.equal(body.error.message, 'this repository uses tracker format 2, this pmkit reads up to format 1')
+    assert.equal(body.error.message, 'this repository uses tracker format 3, this pmkit reads up to format 2')
   }
   assert.equal(hashTree(root), before)
   const { status, body } = cli(root, ['validate'])
   assert.equal(status, 0)
   assert.deepEqual(body.problems, [
-    { path: '.issues/config.yaml', code: 'FORMAT', message: 'this repository uses tracker format 2, this pmkit reads up to format 1; run /pmkit:upgrade' },
+    { path: '.issues/config.yaml', code: 'FORMAT', message: 'this repository uses tracker format 3, this pmkit reads up to format 2; run /pmkit:upgrade' },
   ])
 })
 
 test('validate lists a version below 1 as one problem and exits 0', () => {
   const root = makeRepo('basic')
   const configFile = path.join(root, '.issues', 'config.yaml')
-  fs.writeFileSync(configFile, fs.readFileSync(configFile, 'utf8').replace(/^version: 1$/m, 'version: 0'))
+  fs.writeFileSync(configFile, fs.readFileSync(configFile, 'utf8').replace(/^version: 2$/m, 'version: 0'))
   const { status, body } = cli(root, ['validate'])
   assert.equal(status, 0)
   assert.deepEqual(body.problems, [
@@ -345,7 +345,17 @@ test('CLI migrate --json on a current tracker has nothing to do', () => {
   for (const args of [['migrate'], ['migrate', '--dry-run']]) {
     const { status, body } = cli(root, args)
     assert.equal(status, 0)
-    assert.deepEqual(body, { from: 1, to: 1, steps: [] })
+    assert.deepEqual(body, { from: 2, to: 2, steps: [] })
   }
   assert.equal(hashTree(root), before)
+})
+
+test('the migration from format 1 to 2 changes only the version in config.yaml', () => {
+  const { root, dir } = gitRepo()
+  const before = fs.readFileSync(path.join(dir, 'config.yaml'), 'utf8')
+  const result = runMigrate(root)
+  assert.deepEqual(result.data.steps, [{ from: 1, to: 2, changes: [{ path: '.issues/config.yaml', action: 'change' }] }])
+  assert.equal(fs.readFileSync(path.join(dir, 'config.yaml'), 'utf8'), before.replace(/^version: 1$/m, 'version: 2'))
+  assert.equal(git(root, 'status', '--porcelain').stdout, ' M .issues/config.yaml\n')
+  assert.deepEqual(MIGRATIONS.map(({ from, to }) => [from, to]), [[1, 2]])
 })

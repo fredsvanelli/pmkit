@@ -1,0 +1,3 @@
+{"at":"2026-10-25T19:13:20Z","by":"fred","op":"create","to":{"id":"PMK-13","title":"Register only the tools whose capability is present","type":"feature","status":"backlog","priority":"high","estimate":2,"labels":[],"parent":"EPC-2","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"faces","created":"2026-10-25T19:13:20Z","updated":"2026-10-25T19:13:20Z"}}
+{"at":"2026-10-25T19:13:24Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-12"}
+{"at":"2026-10-25T19:13:24Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-2"}

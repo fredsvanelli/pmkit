@@ -1,0 +1,2 @@
+{"at":"2026-10-25T19:13:23Z","by":"fred","op":"create","to":{"id":"PMK-95","title":"Implement work items and status moves for GitLab","type":"feature","status":"backlog","priority":"low","estimate":8,"labels":[],"parent":"EPC-9","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"gitlab","created":"2026-10-25T19:13:23Z","updated":"2026-10-25T19:13:23Z"}}
+{"at":"2026-10-25T19:13:27Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-94"}
