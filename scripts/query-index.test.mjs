@@ -108,6 +108,9 @@ describe('query index module', () => {
 
   test('an edit reparses that file only, and a same-size edit with the mtime restored is caught by ctime', () => withDir((dir) => {
     const f = fake(dir, { A: 'one', B: 'two' })
+    // A whole-second mtime survives the Date round trip below exactly, so only ctime can reveal the edit.
+    const pinned = new Date(Math.floor(Date.now() / 1000 - 3600) * 1000)
+    fs.utimesSync(f.fileOf('B'), pinned, pinned)
     f.run(['A', 'B'])
     settle(f.cacheDir)
     fs.writeFileSync(f.fileOf('A'), 'one, edited')
@@ -115,9 +118,10 @@ describe('query index module', () => {
     assert.deepEqual(result.issues[0], issueOf('A', 'one, edited'))
     assert.deepEqual(counts(result.stats), { parsed: 1, reused: 1, written: true })
     settle(f.cacheDir)
-    const { atime, mtime } = fs.statSync(f.fileOf('B'))
+    while (fs.statSync(f.fileOf('B')).ctimeMs > Date.now() - 25);
     fs.writeFileSync(f.fileOf('B'), 'TWO')
-    fs.utimesSync(f.fileOf('B'), atime, mtime)
+    fs.utimesSync(f.fileOf('B'), pinned, pinned)
+    assert.equal(fs.statSync(f.fileOf('B')).mtimeMs, pinned.getTime())
     result = f.run(['A', 'B'])
     assert.deepEqual(result.issues[1], issueOf('B', 'TWO'))
     assert.equal(result.stats.parsed, 1)
@@ -333,13 +337,15 @@ const outcome = (fn) => {
     return { error: error.code ?? error.message }
   }
 }
+// File timestamps come from a coarse kernel clock, so wait for the next tick before an edit that must change ctime.
+const tick = () => { for (const end = Date.now() + 25; Date.now() < end;); }
 const edit = (file, change) => fs.writeFileSync(file, change(fs.readFileSync(file, 'utf8')))
 
 /**
  * Compares every filter, and getIssue on every folder, with and without the index. `warm` settles the index
  * before each indexed call, so the signature check decides; otherwise the cache is removed first (cold).
  */
-function assertSame(root, label, { warm }) {
+function assertSame(root, label, { warm, unsigned = 0 }) {
   const plain = trackerFor(root, { index: false })
   const stats = []
   const indexed = trackerFor(root, { onIndexRead: (s) => stats.push(s) })
@@ -354,7 +360,8 @@ function assertSame(root, label, { warm }) {
     assert.deepEqual(outcome(() => indexed.getIssue(id)), outcome(() => plain.getIssue(id)), `${label}: getIssue ${id}`)
   }
   if (warm) {
-    assert.equal(stats.at(-1).parsed, 0, `${label}: the last read reparsed files`)
+    // `unsigned` counts folders without an issue file: they have no signature, so every read looks at them again.
+    assert.equal(stats.at(-1).parsed, unsigned, `${label}: the last read reparsed files`)
     assert.ok(stats.at(-1).reused > 0, `${label}: the last read reused nothing`)
   }
   return stats
@@ -378,13 +385,30 @@ function runStates(root, label) {
   assertSame(root, `${label} warm`, { warm: true })
 
   const [a] = readable()
+  // A whole-second mtime survives the restore below exactly, so only ctime can reveal the same-size edit.
+  const pinned = new Date(Math.floor(Date.now() / 1000 - 3600) * 1000)
   edit(fileOf(a), (text) => text.replace(/^title: .*$/m, 'title: Edited by hand'))
   assertSame(root, `${label} title edit`, { warm: true })
 
-  const { atime, mtime } = fs.statSync(fileOf(a))
+  fs.utimesSync(fileOf(a), pinned, pinned)
+  assertSame(root, `${label} pinned mtime`, { warm: true })
+  tick()
   edit(fileOf(a), (text) => text.replace('title: Edited by hand', 'title: edited by hand'))
-  fs.utimesSync(fileOf(a), atime, mtime)
+  fs.utimesSync(fileOf(a), pinned, pinned)
+  assert.equal(fs.statSync(fileOf(a)).mtimeMs, pinned.getTime(), `${label}: the mtime was not restored exactly`)
   assert.equal(assertSame(root, `${label} same-size edit`, { warm: true })[0].parsed, 1)
+
+  const [m] = readable().filter((id) => id !== a)
+  const kept = fs.readFileSync(fileOf(m))
+  fs.rmSync(fileOf(m))
+  assertSame(root, `${label} folder without issue.md`, { warm: true, unsigned: 1 })
+  const withoutFile = trackerFor(root)
+  withoutFile.searchIssues({})
+  assert.ok(!(m in JSON.parse(fs.readFileSync(indexFileOf(root), 'utf8')).issues), `${label}: the folder without issue.md has an index entry`)
+  assert.deepEqual(outcome(() => withoutFile.getIssue(m)), outcome(() => trackerFor(root, { index: false }).getIssue(m)))
+  assert.equal(outcome(() => withoutFile.getIssue(m)).error, 'NOT_FOUND')
+  fs.writeFileSync(fileOf(m), kept)
+  assertSame(root, `${label} issue.md back`, { warm: true })
 
   fs.rmSync(path.join(issuesDir, a), { recursive: true })
   assertSame(root, `${label} deleted folder`, { warm: true })
