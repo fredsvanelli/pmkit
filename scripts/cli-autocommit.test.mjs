@@ -80,7 +80,10 @@ test('one commit for a write that touches several files', () => {
     const linked = run(root, ['issues', 'link', 'ISS-0G5E', 'ISS-1V9Z', '--kind', 'related'])
     assert.equal(linked.status, 0, linked.stderr)
     assert.equal(commits(root), before + 1)
-    assert.ok(committedFiles(root).includes('.issues/issues/ISS-0G5E/issue.md'))
+    assert.deepEqual(committedFiles(root), [
+      '.issues/issues/ISS-0G5E/events.jsonl', '.issues/issues/ISS-0G5E/issue.md',
+      '.issues/issues/ISS-1V9Z/events.jsonl', '.issues/issues/ISS-1V9Z/issue.md',
+    ])
     assert.deepEqual(status(root, '.issues'), [])
 
     const added = run(root, ['cycle', 'add', 'ISS-1V9Z', 'ISS-3F7H', '--to', '2026-10-12'])
@@ -100,6 +103,7 @@ test('a write that changes nothing does not commit', () => {
     const result = run(root, ['issues', 'assign', 'ISS-0G5E', 'ana'])
     assert.equal(result.status, 0, result.stderr)
     assert.equal(git(root, 'rev-parse', 'HEAD').stdout.trim(), head)
+    assert.deepEqual(status(root), [])
   })
 })
 
@@ -113,5 +117,124 @@ test('docs create with brackets commits that file only', () => {
     assert.equal(commits(root), before + 1)
     assert.deepEqual(committedFiles(root), ['.issues/docs/notes/[x].md'])
     assert.deepEqual(status(root), ['?? .issues/docs/notes/a.md'])
+  })
+})
+
+// Every write command that returns `commit`, except `pr *` (cli-pr.test.mjs), `migrate` (migrations.test.mjs) and `issues branch` (own tests below).
+// `expectedMessage` is a string, or a RegExp when the id comes from the random generator.
+const WRITES = [
+  { args: ['issues', 'create', '--title', 'New'], expectedMessage: /^pmkit: issues create ISS-[0-9A-Z]{4}$/ },
+  { args: ['issues', 'update', 'ISS-3F7H', '--priority', 'urgent'], expectedMessage: 'pmkit: issues update ISS-3F7H' },
+  { args: ['issues', 'move', 'ISS-3F7H', 'done'], expectedMessage: 'pmkit: issues move ISS-3F7H' },
+  { args: ['issues', 'assign', 'ISS-0G5E', 'fred'], expectedMessage: 'pmkit: issues assign ISS-0G5E' },
+  { args: ['issues', 'parent', 'ISS-3F7H', 'EPC-2M9D'], expectedMessage: 'pmkit: issues parent ISS-3F7H' },
+  { args: ['issues', 'archive', 'ISS-3F7H'], expectedMessage: 'pmkit: issues archive ISS-3F7H' },
+  { args: ['issues', 'link', 'ISS-3F7H', 'ISS-4M2S', '--kind', 'related'], expectedMessage: 'pmkit: issues link ISS-3F7H' },
+  { args: ['issues', 'comment', 'ISS-3F7H', '--body-file', '-'], input: 'A comment.\n', expectedMessage: 'pmkit: issues comment ISS-3F7H' },
+  { args: ['issues', 'log-time', 'ISS-3F7H', '30'], expectedMessage: 'pmkit: issues log-time ISS-3F7H' },
+  { args: ['cycle', 'open', '--start', '2026-11-02'], expectedMessage: 'pmkit: cycle open 2026-11-02' },
+  { args: ['cycle', 'capacity', '2026-10-12', '--set', 'fred=3'], expectedMessage: 'pmkit: cycle capacity 2026-10-12' },
+  { args: ['cycle', 'close', '2026-10-12'], expectedMessage: 'pmkit: cycle close 2026-10-12' },
+  { args: ['cycle', 'add', 'ISS-3F7H', '--to', '2026-10-12'], expectedMessage: 'pmkit: cycle add 2026-10-12' },
+  { args: ['epic', 'create', '--title', 'E'], expectedMessage: /^pmkit: epic create EPC-[0-9A-Z]{4}$/ },
+  { args: ['epic', 'update-status', 'EPC-2M9D', '--health', 'at_risk', '--body-file', '-'], input: 'Late on retries.\n', expectedMessage: 'pmkit: epic update-status EPC-2M9D' },
+  { args: ['docs', 'create', 'notes.md', '--body-file', '-'], input: 'hello\n', expectedMessage: 'pmkit: docs create notes.md' },
+]
+
+const head = (root) => git(root, 'rev-parse', 'HEAD').stdout.trim()
+const subject = (root) => git(root, 'log', '-1', '--format=%s').stdout.trim()
+const label = ({ args }) => args.slice(0, 2).join(' ')
+
+for (const write of WRITES) {
+  test(`auto_commit true: ${label(write)} makes one commit, tracker clean afterwards`, () => {
+    withRepo('team', { autoCommit: true }, (root) => {
+      const before = commits(root)
+      const result = run(root, write.args, { input: write.input })
+      assert.equal(result.status, 0, result.stderr)
+      assert.equal(commits(root), before + 1)
+      if (write.expectedMessage instanceof RegExp) assert.match(subject(root), write.expectedMessage)
+      else assert.equal(subject(root), write.expectedMessage)
+      assert.deepEqual(status(root, '.issues'), [])
+    })
+  })
+
+  test(`auto_commit false: ${label(write)} does not commit and leaves files uncommitted`, () => {
+    withRepo('team', { autoCommit: false }, (root) => {
+      const before = head(root)
+      const result = run(root, write.args, { input: write.input })
+      assert.equal(result.status, 0, result.stderr)
+      assert.equal(head(root), before)
+      assert.notDeepEqual(status(root, '.issues'), [])
+    })
+  })
+
+  test(`--dry-run with auto_commit true: ${label(write)} does not commit and writes nothing`, () => {
+    withRepo('team', { autoCommit: true }, (root) => {
+      const before = head(root)
+      const result = run(root, [...write.args, '--dry-run'], { input: write.input })
+      assert.equal(result.status, 0, result.stderr)
+      assert.equal(head(root), before)
+      assert.deepEqual(status(root), [])
+    })
+  })
+}
+
+test('auto_commit defaults to false: a config without the key does not commit', () => {
+  withRepo('team', { autoCommit: true }, (root) => {
+    const file = path.join(root, '.issues/config.yaml')
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^auto_commit: .*\n/m, ''))
+    git(root, 'commit', '-qam', 'drop auto_commit')
+    assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /auto_commit/)
+    const before = head(root)
+    const result = run(root, ['issues', 'assign', 'ISS-0G5E', 'fred'])
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(head(root), before)
+    assert.notDeepEqual(status(root, '.issues'), [])
+  })
+})
+
+// `issues branch` needs a git host in the project config; it switches to the new branch before it writes.
+function withBranchRepo(autoCommit, fn) {
+  withRepo('team', { autoCommit }, (root) => {
+    const file = path.join(root, '.pmkit/config.yaml')
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('system: none', 'system: github\n  default_branch: main'))
+    git(root, 'commit', '-qam', 'enable github')
+    fn(root, git(root, 'branch', '--show-current').stdout.trim())
+  })
+}
+
+test('auto_commit true: issues branch makes one commit on the new branch', () => {
+  withBranchRepo(true, (root, start) => {
+    const before = commits(root)
+    const result = run(root, ['issues', 'branch', 'ISS-2X6D', '--from', start, '--json'])
+    assert.equal(result.status, 0, result.stderr)
+    const { branch } = JSON.parse(result.stdout)
+    assert.equal(git(root, 'branch', '--show-current').stdout.trim(), branch)
+    assert.equal(commits(root), before + 1)
+    assert.equal(subject(root), 'pmkit: issues branch ISS-2X6D')
+    assert.deepEqual(status(root, '.issues'), [])
+  })
+})
+
+test('auto_commit false: issues branch does not commit', () => {
+  withBranchRepo(false, (root, start) => {
+    const before = head(root)
+    const result = run(root, ['issues', 'branch', 'ISS-2X6D', '--from', start])
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(head(root), before)
+    assert.notDeepEqual(status(root, '.issues'), [])
+  })
+})
+
+test('--dry-run with auto_commit true: issues branch creates no branch and does not commit', () => {
+  withBranchRepo(true, (root, start) => {
+    const before = head(root)
+    const result = run(root, ['issues', 'branch', 'ISS-2X6D', '--from', start, '--dry-run', '--json'])
+    assert.equal(result.status, 0, result.stderr)
+    const { branch } = JSON.parse(result.stdout)
+    assert.equal(head(root), before)
+    assert.equal(git(root, 'branch', '--list', branch).stdout.trim(), '')
+    assert.equal(git(root, 'branch', '--show-current').stdout.trim(), start)
+    assert.deepEqual(status(root), [])
   })
 })
