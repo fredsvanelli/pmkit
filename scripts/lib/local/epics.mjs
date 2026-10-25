@@ -2,6 +2,7 @@
 // Pure reading, validating and serializing; the tracker decides when to write.
 
 import { PmkitError } from '../errors.mjs'
+import { compareTimes } from '../model.mjs'
 import { FrontmatterError, joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
 import { hasConflictMarkers } from './issue-file.mjs'
 
@@ -61,10 +62,15 @@ export function parseUpdateFile(text, epic) {
 export const serializeUpdate = (update) =>
   joinFrontmatter({ author: update.author, created: update.at, health: update.health }, `${update.body}\n`, { order: UPDATE_ORDER })
 
-/** Epics by start date, then id. An epic without a start goes last. */
-export function sortEpics(epics) {
+/**
+ * Epics by start date, then creation time, then id. An epic without a start goes last.
+ * `created` maps an epic id to the time of its `create` event.
+ */
+export function sortEpics(epics, created = {}) {
   const key = (epic) => epic.start ?? '￿'
-  return [...epics].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  return [...epics].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0)
+    || compareTimes(created[a.id], created[b.id])
+    || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 }
 
 /** Entries are `{ name, update }`, newest update first. Same-second updates fall back to the file name, where `-2` comes after the plain name. */

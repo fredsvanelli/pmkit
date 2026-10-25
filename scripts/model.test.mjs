@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { ERROR_CODES, PmkitError, isPmkitError } from './lib/errors.mjs'
-import { CATEGORIES, EVENT_OPS, LINK_KINDS, TERMINAL, isBlocked, isCategory } from './lib/model.mjs'
+import { CATEGORIES, EVENT_OPS, LINK_KINDS, TERMINAL, compareTimes, isBlocked, isCategory } from './lib/model.mjs'
 
 test('PmkitError carries a code, a message and a next step', () => {
   const error = new PmkitError('NOT_FOUND', 'no ISS-1', 'Run pmkit issues list', { id: 'ISS-1' })
@@ -41,4 +41,12 @@ test('isBlocked follows the categories of the blockers', () => {
   assert.equal(isBlocked(issue('X', 'todo', ['B', 'A']), byId), true)
   assert.equal(isBlocked(issue('X', 'todo', ['GONE']), byId), true)
   assert.equal(isBlocked({ id: 'X', status: { category: 'todo' } }, byId), false)
+})
+
+test('compareTimes orders by instant across second and millisecond precision', () => {
+  assert.equal(compareTimes('2026-10-23T12:00:00Z', '2026-10-23T12:00:00.123Z'), -1)
+  assert.equal(compareTimes('2026-10-23T12:00:00.999Z', '2026-10-23T12:00:01Z'), -1)
+  assert.equal(compareTimes('2026-10-23T12:00:00.000Z', '2026-10-23T12:00:00Z'), 0)
+  assert.equal(compareTimes(undefined, '2026-10-23T12:00:00Z'), -1)
+  assert.equal(compareTimes('not a time', undefined), 0)
 })
