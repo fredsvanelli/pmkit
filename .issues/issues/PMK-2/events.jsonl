@@ -3,3 +3,5 @@
 {"at":"2026-10-25T21:10:59Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-25T21:11:02Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-2-the-capability-manifest-reports"}
 {"at":"2026-10-25T21:13:26Z","by":"fred","op":"comment","to":"2026-10-25T21-13-26Z-fred.md"}
+{"at":"2026-10-25T21:20:45Z","by":"fred","op":"comment","to":"2026-10-25T21-20-45Z-fred.md"}
+{"at":"2026-10-25T21:20:45Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
