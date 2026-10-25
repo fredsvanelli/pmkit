@@ -1,0 +1,5 @@
+{"at":"2026-10-25T20:11:40Z","by":"fred","op":"create","to":{"id":"PMK-110","title":"List pmkit in the fredsvanelli/skills marketplace","type":"chore","status":"backlog","priority":"high","estimate":1,"labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-25T20:11:40.644Z","updated":"2026-10-25T20:11:40Z"}}
+{"at":"2026-10-25T20:11:40Z","by":"fred","op":"link","field":"related","to":"PMK-1"}
+{"at":"2026-10-25T20:20:17Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-25T20:20:17Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-25T20:21:22Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-110-list-pmkit-in-the-fredsvanelli-skills"}

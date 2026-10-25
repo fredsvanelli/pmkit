@@ -2,15 +2,16 @@
 id: PMK-1
 title: Fix the README paths left from the monorepo layout
 type: chore
-status: in_progress
+status: done
 priority: high
 estimate: 1
 assignee: fred
 parent: EPC-1
+related: [PMK-110]
 milestone: local-gaps
 branch: pmk-1-fix-the-readme-paths-left-from-the
 created: 2026-10-25T19:13:19Z
-updated: 2026-10-25T20:04:18Z
+updated: 2026-10-25T20:18:39Z
 ---
 
 ## Description
