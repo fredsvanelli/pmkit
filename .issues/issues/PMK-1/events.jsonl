@@ -1,1 +1,4 @@
 {"at":"2026-10-25T19:13:19Z","by":"fred","op":"create","to":{"id":"PMK-1","title":"Fix the README paths left from the monorepo layout","type":"chore","status":"backlog","priority":"high","estimate":1,"labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-25T19:13:19Z","updated":"2026-10-25T19:13:19Z"}}
+{"at":"2026-10-25T20:04:01Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-25T20:04:02Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-25T20:04:18Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-1-fix-the-readme-paths-left-from-the"}
