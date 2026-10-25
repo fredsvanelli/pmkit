@@ -243,7 +243,8 @@ test('pr open --dry-run returns the title, body and branches without pushing or 
   callJson(root, env, ['issues', 'update', 'ISS-2X6D', '--branch', 'feat-x'])
   const before = hashTree(root)
   const result = callJson(root, env, ['pr', 'open', '--issue', 'ISS-2X6D', '--draft', '--dry-run'])
-  // issues get is a read, so it writes the query index: hash the tree before it.
+  // issues get is a read, so it writes the query index: check the tree before it.
+  assert.equal(fs.existsSync(path.join(root, '.issues', '.cache')), false)
   assert.equal(hashTree(root), before)
   const issue = callJson(root, env, ['issues', 'get', 'ISS-2X6D'])
   assert.equal(result.title, `${issue.title} (ISS-2X6D)`)

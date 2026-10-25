@@ -597,6 +597,16 @@ export const COMMANDS = [
     run: (ctx) => runMigrate(ctx.root, { dryRun: ctx.dryRun }),
   },
   {
+    name: 'reindex', summary: 'rebuilds the query index in .issues/.cache/ from the issue files; changes only files git ignores', flags: [],
+    run: (ctx) => {
+      const result = ctx.tracker().reindex()
+      if (!result.written) {
+        return { data: result, text: `the query index was not written: ${result.reason}`, warnings: ['searches still work, they read every issue file'] }
+      }
+      return { data: result, text: `indexed ${result.issues} issues (${result.problems} could not be read) in ${result.path}` }
+    },
+  },
+  {
     name: 'validate', summary: 'checks every file and reference; problems are output, not errors', flags: [],
     run: (ctx) => {
       const result = validateRepo(ctx.root)

@@ -19,7 +19,7 @@ import { buildCapabilities } from '../capabilities.mjs'
 import { lastEntry } from '../metrics.mjs'
 import { createDocumentFile, readDocumentFile } from './documents.mjs'
 import { checkFilter, runQuery } from './query.mjs'
-import { CACHE_DIR, indexHeader, readThroughIndex } from './query-index.mjs'
+import { CACHE_DIR, INDEX_FILE, clearIndex, indexHeader, readThroughIndex } from './query-index.mjs'
 import {
   SPRINT_STATES, addDays, overlaps, parseSprint, readSprint, readSprints, requireCapacity, serializeSprint, validDate,
 } from './sprints.mjs'
@@ -320,6 +320,23 @@ export function createLocalTracker(root, {
     }
     onIndexRead(result.stats)
     return { issues: result.issues, problems: result.problems }
+  }
+
+  /** Rebuilds the query index from every issue file. Not a write: no actor, no dry run, no event, and only ignored files change. */
+  function reindex() {
+    if (config.readDir !== undefined) {
+      return { written: false, reason: `this repository uses tracker format ${config.format.version}; run /pmkit:upgrade before the index can be written` }
+    }
+    if (indexMode !== true) return { written: false, reason: 'the query index is off for this tracker' }
+    try {
+      clearIndex(cacheDir)
+      const { issues, problems, stats } = indexedRead(true)
+      if (stats.error) throw stats.error
+      const rel = path.relative(root, path.join(cacheDir, INDEX_FILE)).split(path.sep).join('/')
+      return { written: true, path: rel, issues: issues.length, problems: problems.length }
+    } catch (error) {
+      return { written: false, reason: error.message }
+    }
   }
 
   const scanIssues = (options) => readAll(options).issues
@@ -836,7 +853,7 @@ export function createLocalTracker(root, {
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
     comment, listComments, getHistory, logTime, readDocument, createDocument,
-    discover, capabilities, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
+    discover, capabilities, reindex, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
     listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity,
   }
 }
