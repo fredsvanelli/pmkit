@@ -238,3 +238,40 @@ test('--dry-run with auto_commit true: issues branch creates no branch and does 
     assert.deepEqual(status(root), [])
   })
 })
+
+/** Sets priority by hand in ISS-0G5E/issue.md, as an editor would, without an event. */
+function handEdit(root) {
+  const file = path.join(root, '.issues/issues/ISS-0G5E/issue.md')
+  const text = fs.readFileSync(file, 'utf8')
+  assert.match(text, /^priority: medium$/m)
+  fs.writeFileSync(file, text.replace(/^priority: medium$/m, 'priority: urgent'))
+}
+
+const driftFiles = ['.issues/issues/ISS-0G5E/events.jsonl', '.issues/issues/ISS-0G5E/issue.md']
+
+for (const { name, args, input } of [
+  { name: 'issues comment', args: ['issues', 'comment', 'ISS-0G5E', '--body-file', '-'], input: 'A comment.\n' },
+  { name: 'issues log-time', args: ['issues', 'log-time', 'ISS-0G5E', '30'] },
+]) {
+  test(`${name} after a hand edit commits issue.md with its drift events`, () => {
+    withRepo('team', { autoCommit: true }, (root) => {
+      handEdit(root)
+      const result = run(root, args, { input })
+      assert.equal(result.status, 0, result.stderr)
+      const files = committedFiles(root)
+      for (const file of driftFiles) assert.ok(files.includes(file), `${file} missing from ${files}`)
+      assert.deepEqual(status(root, '.issues/issues/ISS-0G5E'), [])
+      assert.match(git(root, 'show', 'HEAD:.issues/issues/ISS-0G5E/issue.md').stdout, /^priority: urgent$/m)
+    })
+  })
+}
+
+test('a no-op write after a hand edit commits issue.md with its drift events', () => {
+  withRepo('team', { autoCommit: true }, (root) => {
+    handEdit(root)
+    const result = run(root, ['issues', 'assign', 'ISS-0G5E', 'ana'])
+    assert.equal(result.status, 0, result.stderr)
+    assert.deepEqual(committedFiles(root), driftFiles)
+    assert.deepEqual(status(root, '.issues/issues/ISS-0G5E'), [])
+  })
+})

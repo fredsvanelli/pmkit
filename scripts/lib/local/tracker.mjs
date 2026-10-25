@@ -269,7 +269,11 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     // Drift is dated max(mtime, newest event), clamped to this write's time.
     const latest = mtime > newest ? mtime : newest
     const drift = driftEvents(toFrontmatter(before), logged, { at: latest < at ? latest : at, by: actor })
-    if (!dryRun) append(paths.events, drift)
+    if (!dryRun) {
+      append(paths.events, drift)
+      // Drift events describe a hand edit of issue.md, so the commit must carry that edit with them.
+      if (drift.length > 0) writtenPaths.add(paths.file)
+    }
     const next = structuredClone(before)
     const events = edit(next, { at, by: actor }, before)
     if (events.length === 0) return { before, after: before }
