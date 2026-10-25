@@ -2,14 +2,16 @@
 id: PMK-3
 title: Add milestones to the Local tracker
 type: feature
-status: backlog
+status: in_progress
 priority: medium
 estimate: 3
+assignee: fred
 parent: EPC-1
 blocked_by: [PMK-2]
 milestone: local-gaps
+branch: pmk-3-add-milestones-to-the-local-tracker
 created: 2026-10-25T19:13:19Z
-updated: 2026-10-25T19:13:24Z
+updated: 2026-10-25T21:21:02Z
 ---
 
 ## Description
