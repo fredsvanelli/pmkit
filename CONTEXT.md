@@ -89,7 +89,7 @@ A write run with `--dry-run`. It validates the change, returns `{ before, after 
 _Avoid_: preview (a preview is the full listing of a bulk change), simulation
 
 **Tracker format**:
-The shape of the Local tracker's files, as one integer in the `version` key of `.issues/config.yaml`. It goes up only when the files change shape, not with each plugin release. The CLI holds the one format it reads and writes, which is 1 today. A repository on a newer format is refused for reads and writes, and one on an older format is read and not written, until `/pmkit:upgrade` migrates it.
+The shape of the Local tracker's files, as one integer in the `version` key of `.issues/config.yaml`. It goes up only when the files change shape, not with each plugin release. The CLI holds the one format it reads and writes, which is 2 today. A repository on a newer format is refused for reads and writes, and one on an older format is read and not written, until `/pmkit:upgrade` migrates it.
 _Avoid_: schema version, plugin version (the plugin has its own version in `plugin.json`)
 
 **Migration**:

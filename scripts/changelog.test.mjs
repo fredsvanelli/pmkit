@@ -49,11 +49,10 @@ test('Tracker format and Setup lines are read and left out of the body', () => {
   assert.deepEqual(first.setup, [])
 })
 
-test('changelog --file --since --json returns the first release', () => {
+test('changelog --file --since --json returns the releases oldest first, with the format change of 0.2.0', () => {
   const result = spawnSync(process.execPath, [CLI, 'changelog', '--file', 'CHANGELOG.md', '--since', '0.0.0', '--json'], { cwd: ROOT, encoding: 'utf8' })
   assert.equal(result.status, 0, result.stderr)
   const sections = JSON.parse(result.stdout)
-  assert.equal(sections.length, 1)
-  assert.equal(sections[0].version, '0.1.0')
-  assert.equal(sections[0].trackerFormat, null)
+  assert.deepEqual(sections.map((section) => [section.version, section.trackerFormat]), [['0.1.0', null], ['0.2.0', 2]])
+  assert.equal(sections[1].setup.length, 1)
 })
