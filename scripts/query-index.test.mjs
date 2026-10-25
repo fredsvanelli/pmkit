@@ -312,3 +312,130 @@ describe('tracker with the index', () => {
     assert.deepEqual(fs.readFileSync(indexFileOf(root)), bytes)
   }))
 })
+
+// Covers every key of FILTER_KEYS, each sort, and both special values. A filter a fixture rejects must be rejected the same way.
+const FILTERS = [
+  {}, { archived: true }, { text: 'webhook' }, { text: 'no such words' },
+  { categories: ['todo', 'in_progress'] }, { types: ['bug'] },
+  { assignee: 'me' }, { assignee: 'none' }, { assignee: 'ana' },
+  { labels: ['backend'] }, { sprint: 'current' }, { sprint: 'none' }, { sprint: '2026-09-28' },
+  { parent: 'EPC-2M9D' }, { blocked: true }, { blocked: false },
+  { updatedBefore: '2026-10-10' }, { updatedAfter: '2026-10-01' },
+  { sort: 'priority' }, { sort: 'updated' }, { sort: 'created' }, { sort: 'due' },
+  { limit: 0 }, { limit: 3 },
+  { sort: 'priority', limit: 2, labels: ['backend'], archived: true },
+]
+
+const outcome = (fn) => {
+  try {
+    return { value: fn() }
+  } catch (error) {
+    return { error: error.code ?? error.message }
+  }
+}
+const edit = (file, change) => fs.writeFileSync(file, change(fs.readFileSync(file, 'utf8')))
+
+/**
+ * Compares every filter, and getIssue on every folder, with and without the index. `warm` settles the index
+ * before each indexed call, so the signature check decides; otherwise the cache is removed first (cold).
+ */
+function assertSame(root, label, { warm }) {
+  const plain = trackerFor(root, { index: false })
+  const stats = []
+  const indexed = trackerFor(root, { onIndexRead: (s) => stats.push(s) })
+  const prepare = () => (warm ? settleRepo(root) : fs.rmSync(cacheOf(root), { recursive: true, force: true }))
+  for (const filter of FILTERS) {
+    prepare()
+    assert.deepEqual(outcome(() => indexed.searchIssues(filter)), outcome(() => plain.searchIssues(filter)), `${label}: ${JSON.stringify(filter)}`)
+  }
+  const folders = fs.readdirSync(path.join(root, '.issues', 'issues')).filter((name) => !name.startsWith('.'))
+  for (const id of folders) {
+    prepare()
+    assert.deepEqual(outcome(() => indexed.getIssue(id)), outcome(() => plain.getIssue(id)), `${label}: getIssue ${id}`)
+  }
+  if (warm) {
+    assert.equal(stats.at(-1).parsed, 0, `${label}: the last read reparsed files`)
+    assert.ok(stats.at(-1).reused > 0, `${label}: the last read reused nothing`)
+  }
+  return stats
+}
+
+// Every value an index entry could serve stale, so a discarded index that is used anyway shows up.
+function poisoned(text, only) {
+  const data = JSON.parse(text)
+  for (const [id, entry] of Object.entries(data.issues)) {
+    if (entry.issue && (only === undefined || id === only)) entry.issue.title = 'Stale title from the index'
+  }
+  return data
+}
+
+function runStates(root, label) {
+  const issuesDir = path.join(root, '.issues', 'issues')
+  const fileOf = (id) => path.join(issuesDir, id, 'issue.md')
+  const readable = () => trackerFor(root, { index: false }).searchIssues({ archived: true }).issues.map((issue) => issue.id)
+
+  assertSame(root, `${label} cold`, { warm: false })
+  assertSame(root, `${label} warm`, { warm: true })
+
+  const [a] = readable()
+  edit(fileOf(a), (text) => text.replace(/^title: .*$/m, 'title: Edited by hand'))
+  assertSame(root, `${label} title edit`, { warm: true })
+
+  const { atime, mtime } = fs.statSync(fileOf(a))
+  edit(fileOf(a), (text) => text.replace('title: Edited by hand', 'title: edited by hand'))
+  fs.utimesSync(fileOf(a), atime, mtime)
+  assert.equal(assertSame(root, `${label} same-size edit`, { warm: true })[0].parsed, 1)
+
+  fs.rmSync(path.join(issuesDir, a), { recursive: true })
+  assertSame(root, `${label} deleted folder`, { warm: true })
+
+  fs.mkdirSync(path.join(issuesDir, 'ISS-9W9W'))
+  fs.writeFileSync(fileOf('ISS-9W9W'), '---\nid: ISS-9W9W\ntitle: Added by hand\nstatus: todo\ncreated: 2026-10-20T10:00:00Z\nupdated: 2026-10-20T10:00:00Z\n---\n\n## Description\n\nWritten without the CLI, about a webhook.\n')
+  assertSame(root, `${label} added by hand`, { warm: true })
+
+  const [b] = readable()
+  edit(fileOf(b), (text) => `${text}\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> other\n`)
+  assertSame(root, `${label} conflict markers`, { warm: true })
+
+  // A slower process renames an older index over a newer one: last writer wins, and it costs a reparse.
+  const older = fs.readFileSync(indexFileOf(root))
+  const [c] = readable()
+  edit(fileOf(c), (text) => text.replace(/^title: .*$/m, 'title: Newer than the index'))
+  trackerFor(root).searchIssues({})
+  fs.writeFileSync(indexFileOf(root), older)
+  assertSame(root, `${label} older index overwrites a newer one`, { warm: true })
+
+  edit(path.join(root, '.issues', 'config.yaml'), (text) => text.replace('todo: { category: todo }', 'todo: { category: in_progress }'))
+  assertSame(root, `${label} status moved to another category`, { warm: true })
+
+  const corruptions = [
+    ['truncated', (text) => text.slice(0, Math.floor(text.length / 2))],
+    ['invalid JSON', () => '{nope'],
+    ['another parser', (text) => JSON.stringify({ ...poisoned(text), parser: 'other' })],
+    ['another format', (text) => JSON.stringify({ ...poisoned(text), format: FORMAT_VERSION - 1 })],
+    ['an entry without sig', (text) => {
+      const [first] = readable()
+      const data = poisoned(text, first)
+      delete data.issues[first].sig
+      return JSON.stringify(data)
+    }],
+  ]
+  for (const [name, corrupt] of corruptions) {
+    trackerFor(root).searchIssues({})
+    edit(indexFileOf(root), corrupt)
+    assertSame(root, `${label} index ${name}`, { warm: true })
+  }
+}
+
+describe('the index and the plain scan give the same results', () => {
+  test('team fixture', () => withRepo('team', (root) => runStates(root, 'team')))
+  test('broken fixture', () => withRepo('broken', (root) => runStates(root, 'broken')))
+  test('basic fixture with issues created by the CLI library', () => withRepo('basic', (root) => {
+    let n = 0
+    const writer = createLocalTracker(root, { now: fixedNow(), random: (size) => n++ % size, index: false })
+    const [x, y, z] = ['Webhook retries', 'Billing export', 'Docs page'].map((title) => writer.createIssue({ title }, 'fred').after.id)
+    writer.link(x, y, 'blocks', 'fred')
+    writer.setParent(z, x, 'fred')
+    runStates(root, 'basic')
+  }))
+})
