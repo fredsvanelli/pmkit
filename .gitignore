@@ -1,5 +1,6 @@
 node_modules/
 .DS_Store
-.claude/
+.claude/*
+!.claude/settings.json
 .superpowers/
-docs/superpowers/
+.tmp
