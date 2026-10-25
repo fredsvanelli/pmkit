@@ -700,7 +700,17 @@ test('milestone create warns on stderr about milestone names that have no file',
   const body = JSON.parse(result.stdout)
   assert.deepEqual(Object.keys(body), ['before', 'after'])
   const dry = run(root, ['milestone', 'create', 'jira', '--dry-run'])
-  assert.match(dry.stderr, /1 milestones named by issues or epics have no file: generic-commands \(2\)/)
+  assert.match(dry.stderr, /warning: 1 milestone named by issues or epics has no file: generic-commands \(2\); run/)
+  assert.doesNotMatch(dry.stderr, /1 milestones/)
+})
+
+test('milestone create warning counts a milestone that only an archived issue names', () => {
+  const root = makeRepo('basic')
+  const { after: issue } = json(root, ['issues', 'create', '--title', 'A', '--milestone', 'old'])
+  assert.equal(run(root, ['issues', 'archive', issue.id]).status, 0)
+  const result = run(root, ['milestone', 'create', 'x'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stderr, /warning: 1 milestone named by issues or epics has no file: old \(1\); run/)
 })
 
 test('milestone create gives no warning when every name has a file', () => {

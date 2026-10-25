@@ -428,7 +428,7 @@ export const COMMANDS = [
       const tracker = ctx.tracker()
       const result = tracker.createMilestone(input, ctx.actor(), { dryRun: ctx.dryRun })
       const unfiled = tracker.unfiledMilestones(result.after.id)
-      const warnings = unfiled.length === 0 ? [] : [`${unfiled.length} milestones named by issues or epics have no file: ${unfiled.map((u) => `${u.name} (${u.count})`).join(', ')}; run /pmkit:local:doctor`]
+      const warnings = unfiled.length === 0 ? [] : [`${unfiled.length} ${unfiled.length === 1 ? 'milestone named by issues or epics has' : 'milestones named by issues or epics have'} no file: ${unfiled.map((u) => `${u.name} (${u.count})`).join(', ')}; run /pmkit:local:doctor`]
       return { data: result, text: writeText(result, { ...ctx, record: milestoneRecord }), commit: result.after.id, warnings }
     },
   },

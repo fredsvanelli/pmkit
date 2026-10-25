@@ -853,7 +853,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   }
 
   /**
-   * Milestone names that issues or epics use and that have no file, with how many of each use them.
+   * Milestone names that issues or epics use and that have no file, with how many of each use them. Archived issues count, as they do in `validate`.
    * `except` is an id about to be filed. Not a contract operation; the CLI warns with it.
    */
   function unfiledMilestones(except) {
@@ -863,7 +863,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
       if (name === undefined || name === except || filed.has(name)) return
       counts.set(name, (counts.get(name) ?? 0) + 1)
     }
-    for (const issue of searchIssues().issues) tally(issue.milestone)
+    for (const issue of searchIssues({ archived: true }).issues) tally(issue.milestone)
     for (const epic of listDeliverables()) tally(epic.milestone)
     return [...counts].map(([name, count]) => ({ name, count })).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
   }
