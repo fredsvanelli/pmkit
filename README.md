@@ -83,6 +83,7 @@ Run `node scripts/pmkit.mjs <command>`. Every command takes `--json` and `--root
 | `pr sync` | moves `in_review` issues to `done` when their pull request is merged |
 | `changelog --file f --since v` | prints the `CHANGELOG.md` sections newer than a version, oldest first; needs no config |
 | `migrate` | moves the tracker files to the format this pmkit writes; `--dry-run` lists every file it would touch |
+| `reindex` | rebuilds the query index in `.issues/.cache/` from the issue files; changes only files git ignores |
 | `validate` | checks every file and reference; problems are output, not errors |
 
 The `issues branch` and `pr` commands need `git_host.system: github` in `.pmkit/config.yaml` and a logged-in `gh`. Without them they fail with `NOT_SUPPORTED`, `NOT_CONFIGURED` or `AUTH`. Run `node scripts/pmkit.mjs --help` for every flag. A failing command exits with code 2 and, with `--json`, prints one JSON error with a next step. An exception that is not a `PmkitError`, which means a bug in pmkit, has the code `UNEXPECTED` and no next step.

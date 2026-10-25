@@ -80,6 +80,10 @@ _Avoid_: author (comments and status updates have an author), current user
 The tracker that keeps issues, epics, sprints and their history as plain files in the repository under `.issues/`, shared and versioned through git. It needs no account and no network. It is the reference implementation of the contract.
 _Avoid_: file tracker, offline mode
 
+**Query index**:
+The cache of parsed issue files in `.issues/.cache/index.json`. Searches rebuild an entry when the stat signature of its `issue.md` changes. Git ignores the index. It is never a source of truth, and deleting it only makes the next search slower.
+_Avoid_: database, search engine
+
 **Write policy**:
 The `write_policy` block of `.pmkit/config.yaml`. `confirm` (`all_writes`, `single_writes` or `none`) says when a command asks before a write, and `preview` lists the changes that always show a full preview first (`bulk`, `delete`, `publish_update`, `move_scope`). `confirm: none` never skips a preview.
 _Avoid_: permissions, approval mode
