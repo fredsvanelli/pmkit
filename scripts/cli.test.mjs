@@ -375,6 +375,30 @@ test('cycle capacity --days-off sets, clears and validates', () => {
   assert.equal(fs.readFileSync(sprintFile, 'utf8').includes('2026-10-17'), false)
 })
 
+test('cycle capacity --days-off rejects a member named twice', () => {
+  const root = makeRepo('team')
+  const sprintFile = path.join(root, '.issues/sprints/2026-10-12.yaml')
+  const before = fs.readFileSync(sprintFile, 'utf8')
+  for (const args of [['--days-off', 'fred=2026-10-14', '--days-off', 'fred=2026-10-15'], ['--days-off', 'fred=2026-10-14,fred=2026-10-15']]) {
+    const result = run(root, ['cycle', 'capacity', '2026-10-12', ...args, '--json'])
+    assert.equal(result.status, 2)
+    const error = JSON.parse(result.stdout).error
+    assert.match(error.message, /--days-off names fred twice/)
+    assert.match(error.next ?? error.next_step ?? JSON.stringify(error), /fred=2026-10-14\+2026-10-15/)
+  }
+  assert.equal(fs.readFileSync(sprintFile, 'utf8'), before)
+})
+
+test('cycle capacity reads a hand-edited days_off that is not a map of lists', () => {
+  const root = makeRepo('team')
+  const sprintFile = path.join(root, '.issues/sprints/2026-10-12.yaml')
+  const text = fs.readFileSync(sprintFile, 'utf8').replace(/days_off:[\s\S]*$/, 'days_off:\n  ana: 2026-10-16\n  fred:\n')
+  fs.writeFileSync(sprintFile, text)
+  const result = run(root, ['cycle', 'capacity', '2026-10-12'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /days off ana: 2026-10-16/)
+})
+
 test('cycle capacity --days-off keeps unknown keys of the sprint file', () => {
   const root = makeRepo('team')
   const sprintFile = path.join(root, '.issues/sprints/2026-10-12.yaml')

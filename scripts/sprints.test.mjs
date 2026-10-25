@@ -327,6 +327,16 @@ test('requireDaysOff accepts the sprint start and the last weekday, sorts lists 
   assert.deepEqual(requireDaysOff({ ana: ['2026-10-19', '2026-10-16'], fred: null }, MEMBERS, SPRINT), { ana: ['2026-10-16', '2026-10-19'], fred: null })
 })
 
+test('requireDaysOff treats an empty list as a clear, like null', () => {
+  assert.deepEqual(requireDaysOff({ fred: [], ana: ['2026-10-16'] }, MEMBERS, SPRINT), { fred: null, ana: ['2026-10-16'] })
+})
+
+test('updateCycleCapacity with an empty list removes the member entry', () => {
+  const { tracker, read } = setup()
+  tracker.updateCycleCapacity('2026-10-12', { daysOff: { ana: [] } }, 'fred')
+  assert.equal(read('2026-10-12').days_off?.ana, undefined)
+})
+
 test('updateCycleCapacity merges days off and leaves capacity alone', () => {
   const { tracker, read } = setup()
   tracker.updateCycleCapacity('2026-10-12', { daysOff: { fred: ['2026-10-14'] } }, 'fred')

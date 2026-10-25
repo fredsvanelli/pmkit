@@ -84,7 +84,7 @@ export function requireDaysOff(value, members, sprint) {
   const result = {}
   for (const [member, dates] of Object.entries(value)) {
     if (!Object.hasOwn(members, member)) throw invalid(`days off member "${member}" is not a member`, `Use one of: ${Object.keys(members).join(', ')}`)
-    if (dates === null) {
+    if (dates === null || (Array.isArray(dates) && dates.length === 0)) {
       result[member] = null
       continue
     }

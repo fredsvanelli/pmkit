@@ -159,6 +159,7 @@ function parseDaysOff(ctx) {
     const fail = () => usageError(`--days-off takes member=date+date pairs, got "${pair}"`, 'Use --days-off ana=2026-10-16+2026-10-19')
     const match = /^([^=]+)=(.+)$/.exec(pair)
     if (!match) throw fail()
+    if (Object.hasOwn(map, match[1])) throw usageError(`--days-off names ${match[1]} twice`, `Join the dates with +, for example ${match[1]}=2026-10-14+2026-10-15`)
     if (match[2] === 'none') {
       map[match[1]] = null
       continue
@@ -385,7 +386,7 @@ export const COMMANDS = [
         const daysOff = tracker.getDaysOff(id)
         const lines = [
           ...fields(Object.entries(capacity)),
-          ...Object.entries(daysOff).map(([member, dates]) => `days off ${member}: ${dates.join(', ')}`),
+          ...Object.entries(daysOff).map(([member, dates]) => `days off ${member}: ${[dates ?? []].flat().join(', ')}`),
         ]
         return { data: { capacity, days_off: daysOff }, text: lines.join('\n') || 'no capacity or days off set' }
       }
