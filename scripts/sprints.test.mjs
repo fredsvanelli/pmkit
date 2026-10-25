@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { createLocalTracker } from './lib/local/tracker.mjs'
+import { requireDaysOff } from './lib/local/sprints.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { fixedNow, hashTree, makeRepo } from './test-helpers.mjs'
 
@@ -300,4 +301,74 @@ test('closeCycle reports the issues it could not read as problems', () => {
   const { tracker } = setup()
   const result = tracker.closeCycle('2026-10-12', 'fred')
   assert.deepEqual(result.problems.map((problem) => [problem.id, problem.code]), [['ISS-3Q6T', 'CONFLICT']])
+})
+
+const MEMBERS = { fred: {}, ana: {} }
+const SPRINT = { start: '2026-10-12', end: '2026-10-25' }
+
+test('requireDaysOff rejects unknown members, bad dates, out of range, weekends, repeats and non-arrays', () => {
+  const cases = [
+    [{ ghost: ['2026-10-14'] }, /days off member "ghost" is not a member/],
+    [{ fred: ['2026-02-30'] }, /days off date "2026-02-30" for fred is not a valid date \(YYYY-MM-DD\)/],
+    [{ fred: ['2026-10-11'] }, /days off date 2026-10-11 for fred is outside the sprint 2026-10-12 to 2026-10-25/],
+    [{ fred: ['2026-10-26'] }, /days off date 2026-10-26 for fred is outside the sprint/],
+    [{ fred: ['2026-10-17'] }, /days off date 2026-10-17 for fred is not a weekday/],
+    [{ fred: ['2026-10-14', '2026-10-14'] }, /days off date 2026-10-14 for fred is repeated/],
+    [{ fred: '2026-10-14' }, /fred/],
+  ]
+  for (const [value, pattern] of cases) {
+    assert.throws(() => requireDaysOff(value, MEMBERS, SPRINT), code('INVALID_INPUT', pattern))
+  }
+  assert.throws(() => requireDaysOff([], MEMBERS, SPRINT), code('INVALID_INPUT'))
+})
+
+test('requireDaysOff accepts the sprint start and the last weekday, sorts lists and keeps null', () => {
+  assert.deepEqual(requireDaysOff({ fred: ['2026-10-23', '2026-10-12'] }, MEMBERS, SPRINT), { fred: ['2026-10-12', '2026-10-23'] })
+  assert.deepEqual(requireDaysOff({ ana: ['2026-10-19', '2026-10-16'], fred: null }, MEMBERS, SPRINT), { ana: ['2026-10-16', '2026-10-19'], fred: null })
+})
+
+test('updateCycleCapacity merges days off and leaves capacity alone', () => {
+  const { tracker, read } = setup()
+  tracker.updateCycleCapacity('2026-10-12', { daysOff: { fred: ['2026-10-14'] } }, 'fred')
+  const file = read('2026-10-12')
+  assert.deepEqual(file.days_off, { ana: ['2026-10-16'], fred: ['2026-10-14'] })
+  assert.deepEqual(file.capacity, { fred: 8, ana: 10 })
+})
+
+test('updateCycleCapacity replaces one member list and clears another with null', () => {
+  const { tracker, read } = setup()
+  tracker.updateCycleCapacity('2026-10-12', { daysOff: { ana: ['2026-10-19'] } }, 'fred')
+  assert.deepEqual(read('2026-10-12').days_off, { ana: ['2026-10-19'] })
+  tracker.updateCycleCapacity('2026-10-12', { daysOff: { ana: null } }, 'fred')
+  assert.equal(Object.hasOwn(read('2026-10-12').days_off ?? {}, 'ana'), false)
+  assert.deepEqual(tracker.getDaysOff('2026-10-12'), {})
+  tracker.updateCycleCapacity('2026-10-12', { daysOff: { ana: null } }, 'fred')
+})
+
+test('updateCycleCapacity writes capacity and days off together once', () => {
+  const { tracker, read } = setup()
+  const { before, after } = tracker.updateCycleCapacity('2026-10-12', { capacity: { fred: 3 }, daysOff: { fred: ['2026-10-14'] } }, 'fred')
+  assert.deepEqual(before.capacity, { fred: 8, ana: 10 })
+  assert.deepEqual(after.capacity, { fred: 3 })
+  assert.deepEqual(before.daysOff, { ana: ['2026-10-16'] })
+  assert.deepEqual(after.daysOff, { ana: ['2026-10-16'], fred: ['2026-10-14'] })
+  assert.deepEqual(read('2026-10-12').capacity, { fred: 3 })
+})
+
+test('updateCycleCapacity with dryRun or a rejected value leaves the tree unchanged', () => {
+  const { root, tracker } = setup()
+  const hash = hashTree(root)
+  const result = tracker.updateCycleCapacity('2026-10-12', { daysOff: { fred: ['2026-10-14'] } }, 'fred', { dryRun: true })
+  assert.deepEqual(result.after.daysOff, { ana: ['2026-10-16'], fred: ['2026-10-14'] })
+  assert.equal(hashTree(root), hash)
+  assert.throws(() => tracker.updateCycleCapacity('2026-10-12', { daysOff: { fred: ['2026-10-17'] } }, 'fred'), code('INVALID_INPUT'))
+  assert.throws(() => tracker.updateCycleCapacity('2026-10-12', { capacity: { fred: 1 }, daysOff: { ghost: [] } }, 'fred'), code('INVALID_INPUT'))
+  assert.equal(hashTree(root), hash)
+})
+
+test('getDaysOff returns the map of a sprint', () => {
+  const { tracker } = setup()
+  assert.deepEqual(tracker.getDaysOff('2026-10-12'), { ana: ['2026-10-16'] })
+  assert.deepEqual(tracker.getDaysOff('2026-09-28'), {})
+  assert.throws(() => tracker.getDaysOff('2030-01-01'), code('NOT_FOUND'))
 })

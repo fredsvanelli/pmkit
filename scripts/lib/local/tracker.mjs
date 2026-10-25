@@ -20,7 +20,7 @@ import { lastEntry } from '../metrics.mjs'
 import { createDocumentFile, readDocumentFile } from './documents.mjs'
 import { checkFilter, runQuery } from './query.mjs'
 import {
-  SPRINT_STATES, addDays, overlaps, parseSprint, readSprint, readSprints, requireCapacity, serializeSprint, validDate,
+  SPRINT_STATES, addDays, overlaps, parseSprint, readSprint, readSprints, requireCapacity, requireDaysOff, serializeSprint, validDate,
 } from './sprints.mjs'
 import { fileMtimeIso, issuePaths, listIssueIds, writeFileAtomic } from './store.mjs'
 
@@ -668,11 +668,25 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
 
   const getCapacity = (id) => getSprint(id).capacity
 
-  function setCapacity(id, map, actor, { dryRun = false } = {}) {
+  const getDaysOff = (id) => getSprint(id).daysOff
+
+  function updateCycleCapacity(id, { capacity, daysOff } = {}, actor, { dryRun = false } = {}) {
     requireWriter(actor)
     const before = getSprint(id)
-    return writeSprint(before, { ...before, capacity: requireCapacity(map, local.members) }, { dryRun })
+    const next = { ...before }
+    if (capacity !== undefined) next.capacity = requireCapacity(capacity, local.members)
+    if (daysOff !== undefined) {
+      const merged = { ...before.daysOff }
+      for (const [member, dates] of Object.entries(requireDaysOff(daysOff, local.members, before))) {
+        if (dates === null) delete merged[member]
+        else merged[member] = dates
+      }
+      next.daysOff = merged
+    }
+    return writeSprint(before, next, { dryRun })
   }
+
+  const setCapacity = (id, map, actor, opts) => updateCycleCapacity(id, { capacity: map }, actor, opts)
 
   const epicsDir = path.join(issuesDir, 'epics')
 
@@ -800,6 +814,6 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
     comment, listComments, getHistory, logTime, readDocument, createDocument,
     discover, capabilities, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
-    listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity,
+    listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity, getDaysOff, updateCycleCapacity,
   }
 }
