@@ -20,6 +20,10 @@ _Avoid_: driver, connector, integration
 A unit of work: a title, a status, an optional type, priority, estimate, assignee, labels, a parent, links to other issues, a sprint, a branch, a description and acceptance criteria. The Local tracker keeps it in `issues/<ID>/issue.md`.
 _Avoid_: ticket, task, card
 
+**ID style**:
+How the Local tracker names a new issue or epic, set by `id_style` in `.issues/config.yaml`. `random` (the default) draws 4 Crockford base32 characters, as in `ISS-7K3Q`, so two branches never pick the same ID. `numbered` takes one more than the highest number in use, as in `ISS-12`. Both shapes stay valid, so changing the style keeps the existing IDs.
+_Avoid_: ID format (the tracker format is the shape of the files), sequence
+
 **Sub-issue**:
 An issue whose `parent` names another issue or an epic. The parent's `children` list is computed from it, never stored.
 _Avoid_: subtask, child ticket

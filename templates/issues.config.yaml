@@ -1,6 +1,7 @@
 version: 1
 id_prefix: ISS
 epic_prefix: EPC
+id_style: random
 statuses:
   triage: { category: triage }
   backlog: { category: backlog }

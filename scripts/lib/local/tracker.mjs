@@ -7,7 +7,7 @@ import { requireActor, gitUserEmail } from '../actor.mjs'
 import { loadConfig, validateLocalConfig } from '../config.mjs'
 import { PmkitError } from '../errors.mjs'
 import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
-import { isBranchName, isId, newId, normalizeId } from '../ids.mjs'
+import { isBranchName, isId, newId, nextNumberedId, normalizeId } from '../ids.mjs'
 import { CATEGORIES, LINK_KINDS, TERMINAL } from '../model.mjs'
 import { appendEvents, driftEvents, readEvents } from './events.mjs'
 import { formatError } from './migrations.mjs'
@@ -98,6 +98,11 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     lastCreated = Math.max(now().getTime(), lastCreated + 1)
     return new Date(lastCreated).toISOString()
   }
+
+  // `dir` holds one folder per id, the issues or the epics.
+  const nextId = (prefix, dir) => local.id_style === 'numbered'
+    ? nextNumberedId(prefix, fs.existsSync(dir) ? fs.readdirSync(dir) : [])
+    : newId(prefix, { random, exists: (candidate) => fs.existsSync(path.join(dir, candidate)) })
 
   const statusOf = (name) => ({ name, category: local.statuses[name]?.category ?? null })
   const oneOf = (field, value, allowed) => {
@@ -352,7 +357,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
       body: '',
     }, input)
     if (!input.title) throw invalid('title is required')
-    const id = newId(local.id_prefix, { random, exists: (candidate) => fs.existsSync(issuePaths(issuesDir, candidate).dir) })
+    const id = nextId(local.id_prefix, path.join(issuesDir, 'issues'))
     issue.id = id
     const event = { at, by: actor, op: 'create', to: toFrontmatter(issue) }
     return { before: null, after: save(issue, [event], issuePaths(issuesDir, id), { dryRun }) }
@@ -715,7 +720,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     }
     if (!blank(input.milestone)) epic.milestone = NORMALIZE.milestone(input.milestone)
     if (!blank(input.description)) epic.description = plainText('description', input.description)
-    epic.id = newId(local.epic_prefix, { random, exists: (candidate) => fs.existsSync(path.join(epicsDir, candidate)) })
+    epic.id = nextId(local.epic_prefix, epicsDir)
     const content = serializeEpic(epic)
     const after = readBack('epic file', () => parseEpicFile(content, { statuses: local.statuses }))
     if (!dryRun) {

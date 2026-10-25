@@ -40,6 +40,20 @@ test('create writes the issue file with defaults and one create event', () => {
   assert.equal(events[0].to.title, 'First')
 })
 
+test('with id_style numbered, issues and epics count up from 1 on their own', () => {
+  const root = makeRepo()
+  const configFile = path.join(root, '.issues', 'config.yaml')
+  fs.writeFileSync(configFile, `${fs.readFileSync(configFile, 'utf8')}id_style: numbered\n`)
+  const tracker = createLocalTracker(root, { now: () => new Date(NOW), random: scriptedRandom([]) })
+  assert.equal(tracker.createIssue({ title: 'First' }, 'fred').after.id, 'ISS-1')
+  assert.equal(tracker.createIssue({ title: 'Second' }, 'fred').after.id, 'ISS-2')
+  assert.equal(tracker.createDeliverable({ title: 'Launch' }, 'fred').after.id, 'EPC-1')
+  assert.equal(tracker.createIssue({ title: 'Dry' }, 'fred', { dryRun: true }).after.id, 'ISS-3')
+  assert.equal(tracker.createIssue({ title: 'Third', parent: 'ISS-1' }, 'fred').after.id, 'ISS-3')
+  assert.deepEqual(listIssueIds(path.join(root, '.issues'), 'ISS'), ['ISS-1', 'ISS-2', 'ISS-3'])
+  assert.equal(tracker.getIssue('iss-l').title, 'First')
+})
+
 test('create rejects a type that is not in the config and names the allowed ones', () => {
   const { tracker } = setup()
   assert.throws(

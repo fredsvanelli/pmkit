@@ -55,6 +55,28 @@ test('--estimate-unit sizes also sets the scale', () => {
   assert.equal(run(dir, ['init', '--root', tmp(), '--estimate-unit', 'days']).status, 2)
 })
 
+test('--id-style sets id_style on a first run and on --update, and refuses an unknown style', () => {
+  const dir = tmp()
+  assert.equal(run(dir, ['init']).status, 0)
+  assert.equal(parseYaml(read(dir, '.issues/config.yaml')).id_style, 'random')
+  const update = json(dir, ['init', '--update', '--id-style', 'numbered'])
+  assert.deepEqual(update.files.filter((f) => f.action === 'change').map((f) => f.path), ['.issues/config.yaml'])
+  assert.equal(parseYaml(read(dir, '.issues/config.yaml')).id_style, 'numbered')
+  const other = tmp()
+  assert.equal(run(other, ['init', '--id-style', 'numbered']).status, 0)
+  assert.equal(parseYaml(read(other, '.issues/config.yaml')).id_style, 'numbered')
+  assert.equal(run(tmp(), ['init', '--id-style', 'sequential']).status, 2)
+})
+
+test('--update adds id_style to a config written before it existed', () => {
+  const dir = tmp()
+  assert.equal(run(dir, ['init']).status, 0)
+  fs.writeFileSync(path.join(dir, '.issues/config.yaml'), read(dir, '.issues/config.yaml').replace('id_style: random\n', ''))
+  assert.equal(json(dir, ['init', '--update', '--dry-run']).files.find((f) => f.path === '.issues/config.yaml').action, 'keep')
+  assert.equal(run(dir, ['init', '--update', '--id-style', 'numbered']).status, 0)
+  assert.equal(parseYaml(read(dir, '.issues/config.yaml')).id_style, 'numbered')
+})
+
 test('--update --git-host changes only the system line', () => {
   const dir = tmp()
   assert.equal(run(dir, ['init']).status, 0)
