@@ -38,7 +38,7 @@ Then run `/pmkit:setup` in the project. With the GitHub git host (`git_host.syst
 
 ## CLI
 
-Run `node pmkit/scripts/pmkit.mjs <command>`. Every command takes `--json` and `--root <dir>`. Every write also takes `--dry-run` and `--as <member>`.
+Run `node scripts/pmkit.mjs <command>`. Every command takes `--json` and `--root <dir>`. Every write also takes `--dry-run` and `--as <member>`.
 
 | Command | Does |
 |---|---|
@@ -85,7 +85,7 @@ Run `node pmkit/scripts/pmkit.mjs <command>`. Every command takes `--json` and `
 | `migrate` | moves the tracker files to the format this pmkit writes; `--dry-run` lists every file it would touch |
 | `validate` | checks every file and reference; problems are output, not errors |
 
-The `issues branch` and `pr` commands need `git_host.system: github` in `.pmkit/config.yaml` and a logged-in `gh`. Without them they fail with `NOT_SUPPORTED`, `NOT_CONFIGURED` or `AUTH`. Run `node pmkit/scripts/pmkit.mjs --help` for every flag. A failing command exits with code 2 and, with `--json`, prints one JSON error with a next step. An exception that is not a `PmkitError`, which means a bug in pmkit, has the code `UNEXPECTED` and no next step.
+The `issues branch` and `pr` commands need `git_host.system: github` in `.pmkit/config.yaml` and a logged-in `gh`. Without them they fail with `NOT_SUPPORTED`, `NOT_CONFIGURED` or `AUTH`. Run `node scripts/pmkit.mjs --help` for every flag. A failing command exits with code 2 and, with `--json`, prints one JSON error with a next step. An exception that is not a `PmkitError`, which means a bug in pmkit, has the code `UNEXPECTED` and no next step.
 
 Comments and time logs append an event to the issue's `events.jsonl` but leave `issue.md` alone, so they do not change the issue's `updated` timestamp.
 
@@ -93,10 +93,10 @@ Comments and time logs append an event to the issue's `events.jsonl` but leave `
 
     npm test
 
-Run it from `pmkit/`. It needs Node 18 or later and installs nothing.
+Run it from the repository root. It needs Node 18 or later and installs nothing.
 
 ## Local development
 
-    claude --plugin-dir pmkit
+    claude --plugin-dir .
 
 Run `/reload-plugins` after editing.
