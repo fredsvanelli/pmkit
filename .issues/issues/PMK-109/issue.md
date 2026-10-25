@@ -2,7 +2,7 @@
 id: PMK-109
 title: Issues created in the same second lose their creation order
 type: bug
-status: in_review
+status: done
 priority: high
 estimate: 2
 assignee: fred
@@ -10,7 +10,7 @@ parent: EPC-1
 milestone: local-gaps
 branch: pmk-dz9q-issues-created-in-the-same-second-lose
 created: 2026-10-25T19:16:21Z
-updated: 2026-10-25T19:25:52Z
+updated: 2026-10-25T19:48:17Z
 ---
 
 ## Description
