@@ -40,6 +40,8 @@ Then run `/pmkit:setup` in the project. With the GitHub git host (`git_host.syst
 
 Run `node scripts/pmkit.mjs <command>`. Every command takes `--json` and `--root <dir>`. Every write also takes `--dry-run` and `--as <member>`.
 
+With `auto_commit: true` in `.issues/config.yaml`, each write commits the files it changed as `pmkit: <command> <id>`. With `auto_commit: false`, the default, no command commits. `--dry-run`, `init`, `pr open` and `pr ready` never commit.
+
 | Command | Does |
 |---|---|
 | `init` | writes `.pmkit/config.yaml` and scaffolds `.issues/`; refuses to overwrite. Flags: `--tracker local`, `--git-host github\|none`, `--prefix`, `--id-style random\|numbered`, `--estimate-unit points\|hours\|sizes`, `--member id --name n --email e`, `--members-file f\|-` |
