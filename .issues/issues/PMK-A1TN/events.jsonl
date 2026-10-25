@@ -1,0 +1,2 @@
+{"at":"2026-10-25T19:13:22Z","by":"fred","op":"create","to":{"id":"PMK-A1TN","title":"Add the prioritize-by-demand command","type":"feature","status":"backlog","priority":"medium","estimate":3,"labels":[],"parent":"EPC-A6FH","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"generic-commands","created":"2026-10-25T19:13:22Z","updated":"2026-10-25T19:13:22Z"}}
+{"at":"2026-10-25T19:13:26Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-3P9Y"}

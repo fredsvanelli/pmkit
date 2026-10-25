@@ -1,0 +1,1 @@
+{"at":"2026-10-25T19:13:19Z","by":"fred","op":"create","to":{"id":"PMK-4C76","title":"Commit each operation when auto_commit is on","type":"feature","status":"backlog","priority":"medium","estimate":3,"labels":[],"parent":"EPC-TJVF","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-25T19:13:19Z","updated":"2026-10-25T19:13:19Z"}}

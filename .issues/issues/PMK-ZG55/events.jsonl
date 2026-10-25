@@ -1,0 +1,2 @@
+{"at":"2026-10-25T19:13:20Z","by":"fred","op":"create","to":{"id":"PMK-ZG55","title":"Add the Linear API client","type":"feature","status":"backlog","priority":"medium","estimate":5,"labels":[],"parent":"EPC-NCQN","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"linear","created":"2026-10-25T19:13:20Z","updated":"2026-10-25T19:13:20Z"}}
+{"at":"2026-10-25T19:13:24Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-N3WC"}
