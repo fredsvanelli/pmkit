@@ -2,7 +2,7 @@
 
 import { PmkitError } from '../errors.mjs'
 import { CATEGORIES, compareTimes, isBlocked } from '../model.mjs'
-import { normalizeId } from '../ids.mjs'
+import { compareIds, normalizeId } from '../ids.mjs'
 
 export const FILTER_KEYS = [
   'text', 'categories', 'types', 'assignee', 'labels', 'sprint', 'parent', 'blocked',
@@ -67,7 +67,7 @@ function comparator(sort, priorities) {
     created: (a, b) => compareTimes(a.created, b.created),
     due: missingLast('due'),
   }[sort]
-  return (a, b) => by(a, b) || compare(a.id, b.id)
+  return (a, b) => by(a, b) || compareIds(a.id, b.id)
 }
 
 /**

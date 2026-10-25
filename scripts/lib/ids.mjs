@@ -30,6 +30,14 @@ export function nextNumberedId(prefix, taken) {
   return `${prefix}-${highest + 1}`
 }
 
+/** Orders ids as text, except that two numbered ids with the same prefix compare by number, so ISS-2 comes before ISS-10. */
+export function compareIds(a, b) {
+  const x = /^(.+)-([1-9][0-9]*)$/.exec(a)
+  const y = /^(.+)-([1-9][0-9]*)$/.exec(b)
+  if (x && y && x[1] === y[1]) return Number(x[2]) - Number(y[2])
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
 export function normalizeId(input) {
   const text = input.trim().toUpperCase()
   const dash = text.lastIndexOf('-')

@@ -1,5 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { makeRepo, fixedNow, scriptedRandom } from './test-helpers.mjs'
 
@@ -129,6 +131,17 @@ test('issues created in the same second keep their creation order', () => {
   assert.deepEqual(created.map((issue) => issue.id), ['ISS-9999', 'ISS-5555', 'ISS-1111'])
   assert.deepEqual(created.map((issue) => issue.created), ['2026-10-23T12:00:00.000Z', '2026-10-23T12:00:00.001Z', '2026-10-23T12:00:00.002Z'])
   assert.deepEqual(tracker.searchIssues({ text: 'same second' }).issues.map((issue) => issue.id), ['ISS-9999', 'ISS-5555', 'ISS-1111'])
+})
+
+test('numbered issues created in the same second sort by number, so ISS-2 comes before ISS-10', () => {
+  const root = makeRepo('team')
+  const dir = path.join(root, '.issues', 'issues')
+  for (const n of [10, 2, 1]) {
+    fs.mkdirSync(path.join(dir, `ISS-${n}`))
+    fs.writeFileSync(path.join(dir, `ISS-${n}`, 'issue.md'), `---\nid: ISS-${n}\ntitle: Tie ${n}\nstatus: backlog\ncreated: 2026-10-01T00:00:00Z\n---\n`)
+  }
+  const tracker = createLocalTracker(root, { now: fixedNow(), gitEmail: 'ana@example.com', env: {} })
+  assert.deepEqual(tracker.searchIssues({ text: 'tie' }).issues.map((issue) => issue.id), ['ISS-1', 'ISS-2', 'ISS-10'])
 })
 
 test('sort due puts the earliest first and issues without a due date last', () => {

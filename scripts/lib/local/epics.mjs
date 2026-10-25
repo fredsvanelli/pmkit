@@ -2,6 +2,7 @@
 // Pure reading, validating and serializing; the tracker decides when to write.
 
 import { PmkitError } from '../errors.mjs'
+import { compareIds } from '../ids.mjs'
 import { compareTimes } from '../model.mjs'
 import { FrontmatterError, joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
 import { hasConflictMarkers } from './issue-file.mjs'
@@ -70,7 +71,7 @@ export function sortEpics(epics, created = {}) {
   const key = (epic) => epic.start ?? '￿'
   return [...epics].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0)
     || compareTimes(created[a.id], created[b.id])
-    || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    || compareIds(a.id, b.id))
 }
 
 /** Entries are `{ name, update }`, newest update first. Same-second updates fall back to the file name, where `-2` comes after the plain name. */
