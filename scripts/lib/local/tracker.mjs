@@ -18,6 +18,7 @@ import { hasSectionHeading, parseIssueFile, serializeIssue, toFrontmatter } from
 import { buildCapabilities } from '../capabilities.mjs'
 import { lastEntry } from '../metrics.mjs'
 import { createDocumentFile, readDocumentFile } from './documents.mjs'
+import { parseMilestone, serializeMilestone, sortMilestones, validMilestoneId } from './milestones.mjs'
 import { checkFilter, runQuery } from './query.mjs'
 import {
   SPRINT_STATES, addDays, overlaps, parseSprint, readSprint, readSprints, requireCapacity, serializeSprint, validDate,
@@ -787,6 +788,69 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     return sortUpdates(entries).map((entry) => entry.update)
   }
 
+  const milestonesDir = path.join(issuesDir, 'milestones')
+
+  // The stems of the .md files in milestones/, as stored. Matching against these, rather than
+  // fs.existsSync, keeps ids case-sensitive on file systems that are not.
+  const milestoneStems = () => (fs.existsSync(milestonesDir)
+    ? fs.readdirSync(milestonesDir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+      .map((entry) => entry.name.slice(0, -'.md'.length))
+    : [])
+
+  const readMilestone = (id) => parseMilestone(fs.readFileSync(path.join(milestonesDir, `${id}.md`), 'utf8'), id)
+
+  function getMilestone(id) {
+    if (!validMilestoneId(id) || !milestoneStems().includes(id)) {
+      throw new PmkitError('NOT_FOUND', `milestone ${id} does not exist`, 'pmkit milestone list')
+    }
+    return readMilestone(id)
+  }
+
+  /** Every milestone that parses. A file that does not parse, or whose stem breaks the id rule, is skipped; validate reports it. */
+  function listMilestones() {
+    const milestones = []
+    for (const id of milestoneStems().filter(validMilestoneId)) {
+      try {
+        milestones.push(readMilestone(id))
+      } catch (error) {
+        if (!(error instanceof PmkitError)) throw error
+      }
+    }
+    return sortMilestones(milestones)
+  }
+
+  function createMilestone(input, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const allowed = ['id', 'name', 'due']
+    for (const key of Object.keys(input)) {
+      if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+    }
+    const { id } = input
+    if (!validMilestoneId(id)) {
+      throw invalid(`milestone id "${id}" must start and end with a letter or digit and hold only letters, digits, ".", "_" and "-"`, 'Use an id like local-gaps or v1.0')
+    }
+    const clash = milestoneStems().find((stem) => stem.toLowerCase() === id.toLowerCase())
+    if (clash !== undefined) throw new PmkitError('CONFLICT', `milestone ${clash} already exists`, 'pmkit milestone list')
+    let name = id
+    if (!blank(input.name)) {
+      if (typeof input.name !== 'string' || input.name.trim() === '') throw invalid('name must be a non-empty string')
+      name = oneLine('name', input.name.trim())
+    }
+    const milestone = { name }
+    if (!blank(input.due)) {
+      if (!validDate(input.due)) throw invalid('due must be a date as YYYY-MM-DD')
+      milestone.due = input.due
+    }
+    const content = serializeMilestone(milestone)
+    const after = readBack('milestone file', () => parseMilestone(content, id))
+    if (!dryRun) {
+      fs.mkdirSync(milestonesDir, { recursive: true })
+      writeFileAtomic(path.join(milestonesDir, `${id}.md`), content)
+    }
+    return { before: null, after }
+  }
+
   const docsDir = path.join(issuesDir, 'docs')
   const readDocument = (docPath) => readDocumentFile(docsDir, docPath)
 
@@ -797,6 +861,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
 
   return {
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
+    listMilestones, getMilestone, createMilestone,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
     comment, listComments, getHistory, logTime, readDocument, createDocument,
     discover, capabilities, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
