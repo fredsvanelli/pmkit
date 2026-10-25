@@ -2,13 +2,15 @@
 id: PMK-2
 title: The capability manifest reports capabilities that no command serves
 type: bug
-status: backlog
+status: in_progress
 priority: high
 estimate: 2
+assignee: fred
 parent: EPC-1
 milestone: local-gaps
+branch: pmk-2-the-capability-manifest-reports
 created: 2026-10-25T19:13:19Z
-updated: 2026-10-25T19:13:19Z
+updated: 2026-10-25T21:11:02Z
 ---
 
 ## Description
