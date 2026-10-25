@@ -359,3 +359,17 @@ test('the migration from format 1 to 2 changes only the version in config.yaml',
   assert.equal(git(root, 'status', '--porcelain').stdout, ' M .issues/config.yaml\n')
   assert.deepEqual(MIGRATIONS.map(({ from, to }) => [from, to]), [[1, 2]])
 })
+
+test('planMigration never copies the query index', () => {
+  const { root } = setup()
+  try {
+    const cache = path.join(root, '.issues', '.cache')
+    fs.mkdirSync(cache)
+    fs.writeFileSync(path.join(cache, 'index.json'), '{}')
+    const plan = planMigration({ root, trackerPath: '.issues', from: 1, to: 2, migrations: [renameLogTime] })
+    assert.equal(fs.existsSync(path.join(plan.dir, '.cache')), false)
+    assert.ok(plan.steps[0].changes.every((change) => !change.path.includes('.cache')))
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})

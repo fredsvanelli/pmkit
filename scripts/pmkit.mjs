@@ -904,7 +904,7 @@ export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
       list: (name) => (options[name] === undefined ? [] : [options[name]].flat()),
       flag: (name) => last(options[name]) === true,
       config: () => (loaded ??= loadConfig(root)),
-      tracker: () => (tracker ??= createLocalTracker(root, { config: ctx.config(), now, random, env })),
+      tracker: () => (tracker ??= createLocalTracker(root, { config: ctx.config(), now, random, env, index: dryRun ? 'read' : true })),
       host: () => (host ??= makeHost(ctx)),
       actor: () => (typeof options.as === 'string'
         ? options.as

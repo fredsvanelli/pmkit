@@ -3,12 +3,15 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { loadConfig } from './lib/config.mjs'
 import { PmkitError } from './lib/errors.mjs'
 import { FORMAT_VERSION } from './lib/local/migrations.mjs'
 import {
   INDEX_FILE, RACY_MS, SCHEMA, clearIndex, indexHeader, isRacy, loadIndex, readThroughIndex,
 } from './lib/local/query-index.mjs'
 import { writeFileAtomic } from './lib/local/store.mjs'
+import { createLocalTracker } from './lib/local/tracker.mjs'
+import { fixedNow, makeRepo } from './test-helpers.mjs'
 
 function withDir(fn) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-index-'))
@@ -202,5 +205,110 @@ describe('query index module', () => {
     fs.writeFileSync(path.join(target, 'inside'), 'x')
     assert.throws(() => writeFileAtomic(target, 'text'))
     assert.deepEqual(fs.readdirSync(dir), ['target'])
+  }))
+})
+
+const indexFileOf = (root) => path.join(root, '.issues', '.cache', 'index.json')
+const cacheOf = (root) => path.join(root, '.issues', '.cache')
+const settleRepo = (root) => settle(cacheOf(root))
+const trackerFor = (root, options = {}) => createLocalTracker(root, { now: fixedNow(), gitEmail: 'ana@example.com', env: {}, ...options })
+const canChmod = process.platform !== 'win32' && process.getuid?.() !== 0
+
+function withRepo(name, fn) {
+  const root = makeRepo(name)
+  try {
+    return fn(root)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+}
+
+describe('tracker with the index', () => {
+  test('searchIssues builds the index, reuses it, and reparses only the edited issue', () => withRepo('team', (root) => {
+    const stats = []
+    const tracker = trackerFor(root, { onIndexRead: (s) => stats.push(s) })
+    tracker.searchIssues({})
+    assert.deepEqual(counts(stats[0]), { parsed: 13, reused: 0, written: true })
+    assert.equal(fs.readFileSync(path.join(cacheOf(root), '.gitignore'), 'utf8'), '*\n')
+    settleRepo(root)
+    tracker.searchIssues({})
+    assert.deepEqual(counts(stats[1]), { parsed: 0, reused: 13, written: false })
+    const file = path.join(root, '.issues', 'issues', 'ISS-7K3Q', 'issue.md')
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^title: .*$/m, 'title: Edited by hand'))
+    const found = tracker.searchIssues({ archived: true }).issues.find((issue) => issue.id === 'ISS-7K3Q')
+    assert.equal(found.title, 'Edited by hand')
+    assert.deepEqual(counts(stats[2]), { parsed: 1, reused: 12, written: true })
+  }))
+
+  test('racy entries are reparsed until the index settles', () => withRepo('team', (root) => {
+    const stats = []
+    const tracker = trackerFor(root, { onIndexRead: (s) => stats.push(s) })
+    tracker.searchIssues({})
+    const { ctimeMs } = fs.statSync(path.join(root, '.issues', 'issues', 'ISS-7K3Q', 'issue.md'))
+    const near = new Date(ctimeMs + 1000)
+    fs.utimesSync(indexFileOf(root), near, near)
+    tracker.searchIssues({})
+    assert.ok(stats[1].parsed >= 1)
+    assert.equal(stats[1].written, true)
+    settleRepo(root)
+    tracker.searchIssues({})
+    assert.equal(stats[2].parsed, 0)
+  }))
+
+  test('index: false never creates .cache, index: read never writes, and a bad value throws', () => withRepo('team', (root) => {
+    trackerFor(root, { index: false }).searchIssues({})
+    trackerFor(root, { index: 'read' }).searchIssues({})
+    assert.equal(fs.existsSync(cacheOf(root)), false)
+    trackerFor(root).searchIssues({})
+    settleRepo(root)
+    const bytes = fs.readFileSync(indexFileOf(root))
+    const file = path.join(root, '.issues', 'issues', 'ISS-7K3Q', 'issue.md')
+    fs.appendFileSync(file, '\nMore text.\n')
+    trackerFor(root, { index: 'read' }).searchIssues({})
+    assert.deepEqual(fs.readFileSync(indexFileOf(root)), bytes)
+    assert.throws(() => trackerFor(root, { index: 'yes' }), (error) => error.code === 'INVALID_INPUT')
+  }))
+
+  test('a .cache that is a file falls back silently to the scan result', () => withRepo('team', (root) => {
+    fs.writeFileSync(cacheOf(root), 'not a folder')
+    const plain = trackerFor(root, { index: false }).searchIssues({ archived: true })
+    assert.deepEqual(trackerFor(root).searchIssues({ archived: true }), plain)
+    assert.equal(fs.readFileSync(cacheOf(root), 'utf8'), 'not a folder')
+  }))
+
+  test('a read-only tracker folder falls back silently to the scan result', { skip: !canChmod }, () => withRepo('team', (root) => {
+    const dir = path.join(root, '.issues')
+    fs.chmodSync(dir, 0o555)
+    try {
+      const plain = trackerFor(root, { index: false }).searchIssues({ archived: true })
+      assert.deepEqual(trackerFor(root).searchIssues({ archived: true }), plain)
+      assert.equal(fs.existsSync(cacheOf(root)), false)
+    } finally {
+      fs.chmodSync(dir, 0o755)
+    }
+  }))
+
+  test('a tracker on an older format reads without an index', () => withRepo('team', (root) => {
+    const noop = { from: 2, to: 3, describe: 'nothing', run() {} }
+    const config = loadConfig(root, { formatVersion: 3, migrations: [noop] })
+    assert.ok(config.readDir)
+    const tracker = trackerFor(root, { config })
+    assert.equal(tracker.searchIssues({}).issues.length, 11)
+    assert.equal(fs.existsSync(cacheOf(root)), false)
+    assert.equal(fs.existsSync(path.join(config.readDir, '.cache')), false)
+  }))
+
+  test('library dry runs never create or change the index', () => withRepo('team', (root) => {
+    const dry = () => {
+      const tracker = trackerFor(root)
+      tracker.link('ISS-0G5E', 'ISS-1V9Z', 'blocks', 'fred', { dryRun: true })
+      tracker.closeCycle('2026-10-12', 'fred', { dryRun: true })
+    }
+    dry()
+    assert.equal(fs.existsSync(cacheOf(root)), false)
+    trackerFor(root).searchIssues({})
+    const bytes = fs.readFileSync(indexFileOf(root))
+    dry()
+    assert.deepEqual(fs.readFileSync(indexFileOf(root)), bytes)
   }))
 })
