@@ -74,7 +74,7 @@ Event ops: `create`, `update`, `move`, `assign`, `link`, `unlink`, `comment`, `l
 
 The 20 capabilities of the Unified model (`cycles`, `estimation`, `multilevel_hierarchy`, `dependencies`, `native_triage`, `deliverables`, `strategic_goals`, `status_update`, `releases`, `capacity`, `native_metrics`, `saved_views`, `documents`, `demand_signals`, `request_queue`, `time_tracking`, `linked_code`, `agent_delegation`, `security_alerts`, `user_inbox`). Each has a path (`native`, `derived`, `conditional`, `absent`), an optional `detail` map and an optional `enableHint`.
 
-The Local tracker serves all 20: native except `native_metrics` (from events), `linked_code` (from git and the git host), `agent_delegation` (assignee `agent:<name>`), `security_alerts` (from local scanners) and `user_inbox` (mentions and assignments since the last check), which are derived. In the MVP the manifest is computed on each run from the config **(builder's call)**: it is cheap for the Local tracker, and caching starts with the first hosted adapter.
+The Local tracker serves 12 of the 20: 10 native and 2 derived (`native_metrics`, `linked_code`). It reports the other eight as `absent`, each with an `enableHint`. The served-by table and the full split are in `2026-10-25-pmk-2-capability-manifest-design.md`. In the MVP the manifest is computed on each run from the config **(builder's call)**: it is cheap for the Local tracker, and caching starts with the first hosted adapter.
 
 `pmkit capabilities [--json]` prints it. `/pmkit:help` reads it.
 
