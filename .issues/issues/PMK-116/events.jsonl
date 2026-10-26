@@ -5,3 +5,4 @@
 {"at":"2026-10-26T19:04:30Z","by":"fred","op":"update","field":"estimate","from":null,"to":1}
 {"at":"2026-10-26T19:04:30Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-10-26T19:04:30Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-116-say-there-is-no-active-sprint-in-issues"}
+{"at":"2026-10-26T19:09:51Z","by":"fred","op":"comment","to":"2026-10-26T19-09-51Z-fred.md"}
