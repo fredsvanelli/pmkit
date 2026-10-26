@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   CONFIRM, ESTIMATE_UNITS, GIT_HOSTS, MEMBER_ID, PREFIX, PREVIEW, TRACKERS, WEEKDAYS,
-  findRoot, loadConfig, localConfigShapeProblems, validateLocalConfig, validatePmkitConfig, withLocalDefaults,
+  findRoot, loadConfig, localConfigShapeProblems, unsupportedTracker, validateLocalConfig, validatePmkitConfig, withLocalDefaults,
 } from './lib/config.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { tempDir } from './test-helpers.mjs'
@@ -50,11 +50,21 @@ test('a missing local config throws NOT_CONFIGURED', () => {
   assert.throws(() => loadConfig(root), (error) => error.code === 'NOT_CONFIGURED')
 })
 
+test('unsupportedTracker is null for local and a message and next step for any other tracker', () => {
+  assert.equal(unsupportedTracker('local'), null)
+  assert.deepEqual(unsupportedTracker('linear'), {
+    message: 'tracker.system "linear" is not supported yet',
+    nextStep: 'Set tracker.system to local in .pmkit/config.yaml',
+  })
+})
+
 test('tracker.system jira throws NOT_SUPPORTED', () => {
   const root = tmp()
   mkdirSync(join(root, '.pmkit'))
   writeFileSync(join(root, '.pmkit', 'config.yaml'), 'version: 1\ntracker:\n  system: jira\n')
-  assert.throws(() => loadConfig(root), (error) => error.code === 'NOT_SUPPORTED')
+  assert.throws(() => loadConfig(root), (error) => error.code === 'NOT_SUPPORTED' &&
+    error.message === 'tracker.system "jira" is not supported yet' &&
+    error.nextStep === 'Set tracker.system to local in .pmkit/config.yaml')
 })
 
 test('a local config that is not valid YAML throws INVALID_INPUT', () => {

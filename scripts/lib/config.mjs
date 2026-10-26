@@ -168,6 +168,11 @@ function readYaml(file, label) {
   }
 }
 
+export function unsupportedTracker(system) {
+  if (system === 'local') return null
+  return { message: `tracker.system "${system}" is not supported yet`, nextStep: 'Set tracker.system to local in .pmkit/config.yaml' }
+}
+
 /** `checkFormat: false` reads a tracker of any format as it is, for `migrate`: no refusal, no migrated copy. */
 export function loadConfig(root, { formatVersion = FORMAT_VERSION, migrations = MIGRATIONS, checkFormat = true } = {}) {
   const pmkitFile = join(root, '.pmkit', 'config.yaml')
@@ -179,9 +184,8 @@ export function loadConfig(root, { formatVersion = FORMAT_VERSION, migrations = 
   if (typeof system !== 'string') {
     throw new PmkitError('INVALID_INPUT', '.pmkit/config.yaml has no tracker.system', '/pmkit:setup')
   }
-  if (system !== 'local') {
-    throw new PmkitError('NOT_SUPPORTED', `tracker.system "${system}" is not supported yet`, 'Set tracker.system to local in .pmkit/config.yaml')
-  }
+  const unsupported = unsupportedTracker(system)
+  if (unsupported) throw new PmkitError('NOT_SUPPORTED', unsupported.message, unsupported.nextStep)
   if (pmkit.tracker.path !== undefined && pmkit.tracker.path !== null && typeof pmkit.tracker.path !== 'string') {
     throw new PmkitError('INVALID_INPUT', 'tracker.path in .pmkit/config.yaml must be a folder name such as .issues', 'Fix tracker.path in .pmkit/config.yaml')
   }
