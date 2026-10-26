@@ -808,7 +808,9 @@ function runInit(ctx) {
   if (update) {
     if (!exists(pmkitFile)) throw usageError('.pmkit/config.yaml does not exist, so there is no setup to update', 'Run init without --update')
     try {
-      trackerDir = parseYaml(read(pmkitFile)).tracker?.path ?? '.issues'
+      const parsed = parseYaml(read(pmkitFile))
+      const tp = parsed?.tracker?.path
+      trackerDir = typeof tp === 'string' ? tp : '.issues'
     } catch (error) {
       throw new PmkitError('INVALID_INPUT', `.pmkit/config.yaml is not valid YAML: ${error.message}`, 'Fix the file, then run init --update again')
     }
