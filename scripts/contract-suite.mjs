@@ -15,6 +15,12 @@ const DOC_PATH = 'contract/notes.md'
 
 const rejects = (fn, code) => assert.rejects(async () => fn(), (error) => error.code === code, `expected ${code}`)
 const ids = (issues) => issues.map((issue) => issue.id)
+const issueState = async (tracker, issueIds) => JSON.stringify({
+  issues: await Promise.all(issueIds.map(async (id) => ({ issue: await tracker.getIssue(id), history: await tracker.getHistory(id) }))),
+  all: (await tracker.searchIssues({ archived: true })).issues.map((issue) => issue.id),
+  cycles: await tracker.listCycles(),
+  metrics: await tracker.metricEvents(),
+})
 
 /** Registers the contract tests inside describe(name). */
 export function runTrackerContract({ name, setup }) {
@@ -174,6 +180,31 @@ export function runTrackerContract({ name, setup }) {
       await tracker.updateIssue(b, { sprint: null }, actor)
       assert.equal((await tracker.getIssue(b)).sprint, undefined)
       assert.deepEqual(ids(await tracker.cycleIssues(sprint.id)), [])
+    })
+
+    it('sprint current without an active sprint fails with INVALID_INPUT and writes nothing', async ({ tracker, actor, today }) => {
+      const a = (await tracker.createIssue({ title: 'A' }, actor)).after.id
+      const b = (await tracker.createIssue({ title: 'B' }, actor)).after.id
+      const expectNothingWritten = async () => {
+        const before = await issueState(tracker, [a, b])
+        await rejects(() => tracker.createIssue({ title: 'Never', sprint: 'current' }, actor), 'INVALID_INPUT')
+        assert.equal(await issueState(tracker, [a, b]), before)
+        await rejects(() => tracker.updateIssue(a, { sprint: 'current' }, actor), 'INVALID_INPUT')
+        assert.equal(await issueState(tracker, [a, b]), before)
+        await rejects(() => tracker.moveToCycle([a, b], 'current', actor), 'INVALID_INPUT')
+        assert.equal(await issueState(tracker, [a, b]), before)
+        return before
+      }
+
+      await expectNothingWritten()
+      await tracker.openCycle({ start: '2099-01-01' }, actor)
+      await expectNothingWritten()
+      const closing = (await tracker.openCycle({ start: today }, actor)).after
+      await tracker.closeCycle(closing.id, actor)
+      const last = await expectNothingWritten()
+
+      await tracker.comment(a, 'real', actor)
+      assert.notEqual(await issueState(tracker, [a, b]), last)
     })
 
     it('sets and reads cycle capacity', async ({ tracker, actor, today }) => {
