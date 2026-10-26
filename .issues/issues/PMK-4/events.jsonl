@@ -3,3 +3,5 @@
 {"at":"2026-10-25T23:00:18Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-25T23:00:18Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-4-record-days-off-per-sprint-from-the-cli"}
 {"at":"2026-10-25T23:02:44Z","by":"fred","op":"comment","to":"2026-10-25T23-02-44Z-fred.md"}
+{"at":"2026-10-26T00:15:42Z","by":"fred","op":"comment","to":"2026-10-26T00-15-42Z-fred.md"}
+{"at":"2026-10-26T00:15:43Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
