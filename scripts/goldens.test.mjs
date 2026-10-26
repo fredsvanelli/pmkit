@@ -53,7 +53,7 @@ const FIXTURES = {
 // One entry per command in COMMANDS: the argument lists after the command name.
 // Each case runs as text and --json, and a write also runs with --dry-run.
 const CASES = {
-  init: () => [[], ['--update']],
+  init: () => [[], ['--update'], ['--root', 'fresh']],
   capabilities: () => [[]],
   discover: () => [[]],
   whoami: () => [[]],

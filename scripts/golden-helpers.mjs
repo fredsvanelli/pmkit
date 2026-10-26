@@ -40,6 +40,8 @@ export function childEnv() {
     PMKIT_SEED: SEED,
     GIT_CONFIG_GLOBAL: os.devNull,
     GIT_CONFIG_NOSYSTEM: '1',
+    // Stops git from reading the config of a repository that contains the temp folder.
+    GIT_CEILING_DIRECTORIES: fs.realpathSync(os.tmpdir()),
   }
   if (process.platform === 'win32') env.SYSTEMROOT = process.env.SYSTEMROOT ?? ''
   return env

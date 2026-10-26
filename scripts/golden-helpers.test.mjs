@@ -47,7 +47,8 @@ test("childEnv has no key from the caller's env", () => {
     assert.equal(env.PMKIT_SEED, '1')
     assert.equal(env.GIT_CONFIG_GLOBAL, os.devNull)
     assert.equal(env.GIT_CONFIG_NOSYSTEM, '1')
-    const expected = ['PATH', 'TZ', 'PMKIT_USER', 'PMKIT_NOW', 'PMKIT_SEED', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM']
+    assert.equal(env.GIT_CEILING_DIRECTORIES, fs.realpathSync(os.tmpdir()))
+    const expected = ['PATH', 'TZ', 'PMKIT_USER', 'PMKIT_NOW', 'PMKIT_SEED', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM', 'GIT_CEILING_DIRECTORIES']
     if (process.platform === 'win32') expected.push('SYSTEMROOT')
     assert.deepEqual(Object.keys(env).sort(), expected.sort())
   } finally {
