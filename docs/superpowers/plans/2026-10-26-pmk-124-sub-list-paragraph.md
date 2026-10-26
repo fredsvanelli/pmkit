@@ -4,7 +4,7 @@
 
 **Goal:** In `pause.md` and `import.md`, the indented paragraph at the end of step 7 renders as part of the step, not inside the last sub-list item.
 
-**Architecture:** Add one empty line before the paragraph in each of two command files. No code changes. The spec's static check (`awk` and `grep -F`) fails first, the edit makes it pass, then `npm test` runs in full.
+**Architecture:** Add one empty line before the paragraph in each of two command files. No code changes. The spec's static check (`awk`) fails first, the edit makes it pass, then `npm test` runs in full.
 
 **Tech Stack:** Markdown, `awk`, `grep`, `git`, `npm test` (`node:test`).
 
