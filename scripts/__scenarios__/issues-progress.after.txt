@@ -5,14 +5,14 @@ $ pmkit issues comment ISS-5N1R --body-file <inputs>/comment.md --dry-run --json
 exit 0
 $ pmkit issues comment ISS-5N1R --body-file <inputs>/comment.md --json  [step 5, write]
 exit 0
-? Step 7  [confirmed]
 $ pmkit issues update ISS-5N1R --check 1 --dry-run --json  [step 7, dry run]
 exit 0
+? Step 7  [confirmed]
 $ pmkit issues update ISS-5N1R --check 1 --json  [step 7, write]
 exit 0
-? Step 8  [confirmed]
 $ pmkit issues log-time ISS-5N1R 30 --dry-run --json  [step 8, dry run]
 exit 0
+? Step 8  [confirmed]
 $ pmkit issues log-time ISS-5N1R 30 --json  [step 8, write]
 exit 0
 

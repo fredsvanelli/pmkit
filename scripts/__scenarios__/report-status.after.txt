@@ -1,0 +1,30 @@
+$ pmkit pr sync --dry-run --json  [step 1, dry run]
+exit 0
+$ pmkit epic get EPC-2M9D --json  [step 2, read]
+exit 0
+$ pmkit epic progress EPC-2M9D --json  [step 2, read]
+exit 0
+$ pmkit issues list --parent EPC-2M9D --json  [step 2, read]
+exit 0
+$ pmkit epic updates EPC-2M9D --json  [step 3, read]
+exit 0
+$ pmkit events --since 2026-10-09 --json  [step 4, read]
+exit 0
+$ pmkit epic update-status EPC-2M9D --health on_track --body-file <inputs>/status-update.md --dry-run --json  [step 7, dry run]
+exit 0
+? Step 7  [confirmed]
+$ pmkit epic update-status EPC-2M9D --health on_track --body-file <inputs>/status-update.md --json  [step 7, write]
+exit 0
+
+--- added .issues/epics/EPC-2M9D/updates/2026-10-23-fred.md
++---
++author: fred
++created: 2026-10-23T12:00:00Z
++health: on_track
++---
++
++Four of the nine issues are done and the rest are in progress. The retry work is the only open risk.
++
++Forecast: the target date looks reachable at the pace of the last two weeks.
+--- gh calls
+(none)

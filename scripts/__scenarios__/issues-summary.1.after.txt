@@ -1,0 +1,8 @@
+$ pmkit epic get EPC-4H7V --json  [step 1, read]
+exit 0
+$ pmkit epic updates EPC-4H7V --json  [step 1, read]
+exit 0
+$ pmkit issues list --parent EPC-4H7V --json  [step 2, read]
+exit 0
+
+(no file changed)

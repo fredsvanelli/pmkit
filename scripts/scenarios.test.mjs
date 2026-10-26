@@ -46,9 +46,9 @@ const CLI_NAMES = COMMANDS.map((command) => command.name)
 
 // Scenario names that have no module yet. Each task that adds scenarios removes its names; the last one deletes this set.
 const PENDING = new Set([
-  'backlog-groom', 'cycle-close', 'cycle-plan', 'help', 'issues-find', 'issues-mine', 'issues-pause',
-  'issues-summary', 'issues-work', 'local-doctor', 'report-status', 'setup',
-  'spec-import', 'team-standup', 'upgrade',
+  'backlog-groom', 'cycle-close', 'cycle-plan',
+  'issues-work', 'local-doctor', 'setup',
+  'spec-import', 'upgrade',
 ])
 
 function commandFiles(dir = COMMANDS_DIR, prefix = '') {

@@ -1,0 +1,8 @@
+$ pmkit discover --json  [step 1, read]
+exit 0
+$ pmkit issues list --category in_progress --assignee me --json  [step 5, read]
+exit 0
+$ pmkit issues list --type bug --sprint current --json  [step 5, read]
+exit 0
+
+(no file changed)

@@ -21,17 +21,22 @@ export default {
     { confirm: 'Step 4' },
     { step: '5', dryRun: comment },
     { step: '5', write: comment },
-    { confirm: 'Step 7' },
     { step: '7', dryRun: tick },
+    { confirm: 'Step 7' },
     { step: '7', write: tick },
-    { confirm: 'Step 8' },
     { step: '8', dryRun: log },
+    { confirm: 'Step 8' },
     { step: '8', write: log },
   ],
   skip: { '1 issues list': 'the ID is given, so step 1 does not look for the issue from the branch' },
   notHit: {},
   expect(repo) {
-    assert.match(repo.file('.issues/issues/ISS-5N1R/issue.md'), /^- \[x\] A 5xx answer schedules a retry$/m)
+    const issue = repo.file('.issues/issues/ISS-5N1R/issue.md')
+    assert.match(issue, /^- \[x\] A 5xx answer schedules a retry$/m)
+    assert.match(issue, /^- \[ \] /m, 'criterion 2 stays unchecked')
+    const comments = repo.newEvents('ISS-5N1R').filter((event) => event.op === 'comment')
+    assert.equal(comments.length, 1)
+    assert.ok(repo.file(`.issues/issues/ISS-5N1R/comments/${comments[0].to}`).includes('Added the cursor to the events endpoint.'))
     assert.equal(repo.newEvents('ISS-5N1R').filter((event) => event.op === 'log_time').length, 1)
   },
 }
