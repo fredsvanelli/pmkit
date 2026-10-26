@@ -236,6 +236,17 @@ test('a .pmkit/config.yaml that loadConfig rejects is not blamed on .issues/conf
   assert.match(result.problems[0].message, /^tracker\.system must be one of/)
 })
 
+test('a broken tracker config under a folder named .pmkit is still listed', () => {
+  const root = makeRepo('basic')
+  fs.mkdirSync(path.join(root, 'work'))
+  fs.renameSync(path.join(root, '.issues'), path.join(root, 'work', '.pmkit'))
+  editPmkit(root, 'path: .issues', 'path: work/.pmkit')
+  fs.writeFileSync(path.join(root, 'work', '.pmkit', 'config.yaml'), 'version: 1\nthis line has no colon\n')
+  const result = validateRepo(root)
+  assert.deepEqual(brief(result), ['config work/.pmkit/config.yaml'])
+  assert.match(result.problems[0].message, /^work\/\.pmkit\/config\.yaml is not valid YAML:/)
+})
+
 test('an empty or non-map .pmkit/config.yaml gives config problems and does not throw', () => {
   for (const text of ['', '- a\n- b\n']) {
     const root = makeRepo('basic')

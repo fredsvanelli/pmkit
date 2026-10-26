@@ -67,20 +67,21 @@ const noneChecked = () => ({ issues: 0, epics: 0, sprints: 0, milestones: 0, com
 const formatProblem = (root, file, error) => ({ path: relative(root, file), code: 'FORMAT', message: `${error.message}; run ${error.nextStep}` })
 
 // loadConfig throws INVALID_INPUT when the local config.yaml does not parse, and NOT_SUPPORTED when its
-// format is newer than this pmkit's. Both are findings, not failures.
+// format is newer than this pmkit's. Both are findings, not failures. Its errors from .pmkit/config.yaml
+// are rethrown here and left to pmkitConfigProblems.
 function brokenConfigProblem(root, error) {
   const format = error?.details?.format !== undefined
   if (error?.code !== 'INVALID_INPUT' && !format) throw error
-  // loadConfig names .pmkit/config.yaml in every error that file causes; those belong to pmkitConfigProblems.
-  if (error.message.includes('.pmkit/config.yaml')) throw error
-  let issuesDir
+  let trackerPath
   try {
     const pmkit = parseYaml(read(path.join(root, '.pmkit', 'config.yaml')))
-    issuesDir = path.join(root, pmkit.tracker.path ?? '.issues')
+    trackerPath = typeof pmkit.tracker.path === 'string' ? pmkit.tracker.path : '.issues'
   } catch {
     throw error
   }
-  const file = path.join(issuesDir, 'config.yaml')
+  // loadConfig starts every INVALID_INPUT from the local config.yaml with this label.
+  if (!format && !error.message.startsWith(`${trackerPath}/config.yaml`)) throw error
+  const file = path.join(root, trackerPath, 'config.yaml')
   if (!fs.existsSync(file)) throw error
   if (format) return formatProblem(root, file, error)
   const conflict = hasConflictMarkers(read(file))
