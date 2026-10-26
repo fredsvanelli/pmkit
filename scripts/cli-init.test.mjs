@@ -430,6 +430,28 @@ test('--update --git-host github works on a valid .pmkit/config.yaml', () => {
   assert.equal(parseYaml(read(dir, '.pmkit/config.yaml')).git_host.system, 'github')
 })
 
+test('init --update --git-host github repairs a bad git_host and writes go through again', () => {
+  const dir = tmp()
+  assert.equal(run(dir, ['init', '--member', 'fred', '--name', 'Fred', '--email', 'f@x.dev']).status, 0)
+  const file = path.join(dir, '.pmkit/config.yaml')
+  const text = fs.readFileSync(file, 'utf8')
+  const broken = text.replace(/^(\s+system: )(none|github)$/m, (line, head, value, offset) => (text.slice(0, offset).includes('git_host:') ? `${head}gitlab` : line))
+  assert.notEqual(broken, text)
+  fs.writeFileSync(file, broken)
+  const create = ['issues', 'create', '--title', 'X', '--type', 'task', '--dry-run', '--json']
+  const refused = run(dir, create)
+  assert.equal(refused.status, 2)
+  assert.ok(JSON.parse(refused.stdout).error.message.startsWith('.pmkit/config.yaml is not valid, so writes are refused'))
+  const dry = run(dir, ['init', '--update', '--git-host', 'github', '--dry-run', '--json'])
+  assert.equal(dry.status, 0, dry.stderr)
+  assert.equal(JSON.parse(dry.stdout).files.find((f) => f.path.endsWith('.pmkit/config.yaml')).action, 'change')
+  assert.equal(run(dir, ['init', '--update', '--git-host', 'github', '--json']).status, 0)
+  assert.equal(parseYaml(read(dir, '.pmkit/config.yaml')).git_host.system, 'github')
+  const again = run(dir, create)
+  assert.equal(again.status, 0, again.stdout)
+  assert.doesNotMatch(again.stderr, /warning:/)
+})
+
 test('a minimal hand-written .pmkit/config.yaml is refused with the missing keys', () => {
   const dir = tmp()
   assert.equal(run(dir, ['init']).status, 0)
