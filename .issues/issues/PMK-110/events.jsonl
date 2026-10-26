@@ -4,3 +4,4 @@
 {"at":"2026-10-25T20:20:17Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-25T20:21:22Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-110-list-pmkit-in-the-fredsvanelli-skills"}
 {"at":"2026-10-25T20:28:23Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-10-26T18:00:49Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}
