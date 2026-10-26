@@ -40,6 +40,14 @@ test('team fixture reports only its conflicted issue', () => {
   assert.deepEqual(brief(result), ['conflict .issues/issues/ISS-3Q6T/issue.md'])
 })
 
+const pmkitFile = (root) => path.join(root, '.pmkit', 'config.yaml')
+const setPmkit = (root, text) => fs.writeFileSync(pmkitFile(root), text)
+const editPmkit = (root, from, to) => setPmkit(root, fs.readFileSync(pmkitFile(root), 'utf8').replace(from, to))
+const breakPmkit = (root) => {
+  editPmkit(root, 'system: none', 'system: gitlab')
+  editPmkit(root, 'confirm: single_writes', 'confirm: sometimes')
+}
+
 test('validateRepo writes nothing', () => {
   for (const name of ['broken', 'team']) {
     const root = makeRepo(name)
@@ -47,6 +55,11 @@ test('validateRepo writes nothing', () => {
     validateRepo(root)
     assert.equal(hashTree(root), before)
   }
+  const root = makeRepo('basic')
+  breakPmkit(root)
+  const before = hashTree(root)
+  validateRepo(root)
+  assert.equal(hashTree(root), before)
 })
 
 function writeIssue(root, id, extra = '') {
@@ -164,4 +177,111 @@ test('conflict markers inside a fenced code block are not a conflict problem', (
   const file = path.join(root, '.issues', 'issues', 'ISS-9FEN', 'issue.md')
   fs.appendFileSync(file, '\n## Description\n\n```\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> other\n```\n')
   assert.deepEqual(brief(validateRepo(root)).filter((line) => line.startsWith('conflict')), [])
+})
+
+test('a bad .pmkit/config.yaml is reported with its path', () => {
+  const root = makeRepo('basic')
+  breakPmkit(root)
+  assert.deepEqual(validateRepo(root).problems, [
+    { path: '.pmkit/config.yaml', code: 'config', message: 'git_host.system must be github or none' },
+    { path: '.pmkit/config.yaml', code: 'config', message: 'write_policy.confirm must be one of all_writes, single_writes, none' },
+  ])
+})
+
+test('problems of both config files are listed, sorted by path', () => {
+  const root = makeRepo('broken')
+  fs.writeFileSync(path.join(root, '.issues', 'config.yaml'), 'version: 1\nthis line has no colon\n')
+  breakPmkit(root)
+  const result = validateRepo(root)
+  assert.deepEqual(brief(result), ['config .issues/config.yaml', 'config .pmkit/config.yaml', 'config .pmkit/config.yaml'])
+  assert.equal(result.problems[0].path, '.issues/config.yaml')
+})
+
+test('an unparseable .pmkit/config.yaml is one config problem and does not throw', () => {
+  const root = makeRepo('basic')
+  setPmkit(root, 'version: 1\nthis line has no colon\n')
+  const result = validateRepo(root)
+  assert.deepEqual(brief(result), ['config .pmkit/config.yaml'])
+  assert.match(result.problems[0].message, /^config\.yaml does not parse:/)
+})
+
+test('.pmkit/config.yaml with conflict markers is one conflict problem', () => {
+  const root = makeRepo('basic')
+  setPmkit(root, 'version: 1\n<<<<<<< HEAD\ngit_host:\n=======\nx: 1\n>>>>>>> b\n')
+  const result = validateRepo(root)
+  assert.deepEqual(brief(result), ['conflict .pmkit/config.yaml'])
+  assert.equal(result.problems[0].message, 'the file contains git conflict markers')
+})
+
+test('tracker.system trello and a numeric tracker.path are problems, not throws', () => {
+  const trello = makeRepo('basic')
+  editPmkit(trello, 'system: local', 'system: trello')
+  const first = validateRepo(trello).problems
+  assert.equal(first.length, 1)
+  assert.equal(first[0].path, '.pmkit/config.yaml')
+  assert.match(first[0].message, /^tracker\.system must be one of/)
+  const numeric = makeRepo('basic')
+  editPmkit(numeric, 'path: .issues', 'path: 7')
+  const second = validateRepo(numeric).problems
+  assert.equal(second.length, 1)
+  assert.equal(second[0].path, '.pmkit/config.yaml')
+  assert.equal(second[0].message, 'tracker.path must be a string')
+})
+
+test('a .pmkit/config.yaml that loadConfig rejects is not blamed on .issues/config.yaml', () => {
+  const root = makeRepo('basic')
+  editPmkit(root, 'system: local', 'system: 5')
+  const result = validateRepo(root)
+  assert.deepEqual(brief(result), ['config .pmkit/config.yaml'])
+  assert.match(result.problems[0].message, /^tracker\.system must be one of/)
+})
+
+test('a broken tracker config under a folder named .pmkit is still listed', () => {
+  const root = makeRepo('basic')
+  fs.mkdirSync(path.join(root, 'work'))
+  fs.renameSync(path.join(root, '.issues'), path.join(root, 'work', '.pmkit'))
+  editPmkit(root, 'path: .issues', 'path: work/.pmkit')
+  fs.writeFileSync(path.join(root, 'work', '.pmkit', 'config.yaml'), 'version: 1\nthis line has no colon\n')
+  const result = validateRepo(root)
+  assert.deepEqual(brief(result), ['config work/.pmkit/config.yaml'])
+  assert.match(result.problems[0].message, /^work\/\.pmkit\/config\.yaml is not valid YAML:/)
+})
+
+test('an empty or non-map .pmkit/config.yaml gives config problems and does not throw', () => {
+  for (const text of ['', '- a\n- b\n']) {
+    const root = makeRepo('basic')
+    setPmkit(root, text)
+    const result = validateRepo(root)
+    assert.ok(result.problems.length > 0)
+    assert.ok(result.problems.every((problem) => problem.path === '.pmkit/config.yaml' && problem.code === 'config'))
+  }
+})
+
+test('a missing .pmkit/config.yaml still throws NOT_CONFIGURED', () => {
+  const root = makeRepo('basic')
+  fs.rmSync(pmkitFile(root))
+  assert.throws(() => validateRepo(root), { code: 'NOT_CONFIGURED' })
+})
+
+test('a bad .pmkit/config.yaml with .issues/config.yaml missing still throws NOT_CONFIGURED', () => {
+  const root = makeRepo('basic')
+  editPmkit(root, 'system: none', 'system: gitlab')
+  fs.rmSync(path.join(root, '.issues', 'config.yaml'))
+  assert.throws(() => validateRepo(root), { code: 'NOT_CONFIGURED' })
+})
+
+test('tracker.system linear alone still throws NOT_SUPPORTED', () => {
+  const root = makeRepo('basic')
+  editPmkit(root, 'system: local', 'system: linear')
+  assert.throws(() => validateRepo(root), { code: 'NOT_SUPPORTED' })
+  editPmkit(root, 'system: none', 'system: gitlab')
+  assert.deepEqual(brief(validateRepo(root)), ['config .pmkit/config.yaml'])
+  assert.equal(validateRepo(root).problems[0].message, 'git_host.system must be github or none')
+})
+
+test('every fixture has no .pmkit/config.yaml problem', () => {
+  for (const name of ['basic', 'broken', 'team', 'no-sprints', 'messy-merge']) {
+    const problems = validateRepo(makeRepo(name)).problems.filter((problem) => problem.path === '.pmkit/config.yaml')
+    assert.deepEqual(problems, [], name)
+  }
 })

@@ -2,7 +2,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { loadConfig, validateLocalConfig } from './config.mjs'
+import { loadConfig, validateLocalConfig, validatePmkitConfig } from './config.mjs'
 import { isId, normalizeId } from './ids.mjs'
 import { parseYaml } from './yaml.mjs'
 import { parseEpicFile, walkParents } from './local/epics.mjs'
@@ -67,18 +67,21 @@ const noneChecked = () => ({ issues: 0, epics: 0, sprints: 0, milestones: 0, com
 const formatProblem = (root, file, error) => ({ path: relative(root, file), code: 'FORMAT', message: `${error.message}; run ${error.nextStep}` })
 
 // loadConfig throws INVALID_INPUT when the local config.yaml does not parse, and NOT_SUPPORTED when its
-// format is newer than this pmkit's. Both are findings, not failures.
+// format is newer than this pmkit's. Both are findings, not failures. Its errors from .pmkit/config.yaml
+// are rethrown here and left to pmkitConfigProblems.
 function brokenConfigProblem(root, error) {
   const format = error?.details?.format !== undefined
   if (error?.code !== 'INVALID_INPUT' && !format) throw error
-  let issuesDir
+  let trackerPath
   try {
     const pmkit = parseYaml(read(path.join(root, '.pmkit', 'config.yaml')))
-    issuesDir = path.join(root, pmkit.tracker.path ?? '.issues')
+    trackerPath = typeof pmkit.tracker.path === 'string' ? pmkit.tracker.path : '.issues'
   } catch {
     throw error
   }
-  const file = path.join(issuesDir, 'config.yaml')
+  // loadConfig starts every INVALID_INPUT from the local config.yaml with this label.
+  if (!format && !error.message.startsWith(`${trackerPath}/config.yaml`)) throw error
+  const file = path.join(root, trackerPath, 'config.yaml')
   if (!fs.existsSync(file)) throw error
   if (format) return formatProblem(root, file, error)
   const conflict = hasConflictMarkers(read(file))
@@ -89,20 +92,46 @@ function brokenConfigProblem(root, error) {
   }
 }
 
+const byPathThenCode = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.code < b.code ? -1 : a.code > b.code ? 1 : 0)
+
+// The root .pmkit/config.yaml is read here, not through loadConfig, which throws on the first bad key.
+function pmkitConfigProblems(root) {
+  const file = path.join(root, '.pmkit', 'config.yaml')
+  if (!fs.existsSync(file)) return []
+  const text = read(file)
+  const at = relative(root, file)
+  if (hasConflictMarkers(text)) return [{ path: at, code: 'conflict', message: 'the file contains git conflict markers' }]
+  let parsed
+  try {
+    parsed = parseYaml(text)
+  } catch (error) {
+    return [{ path: at, code: 'config', message: `config.yaml does not parse: ${error.message}` }]
+  }
+  return validatePmkitConfig(parsed).map((message) => ({ path: at, code: 'config', message }))
+}
+
 export function validateRepo(root, { config } = {}) {
+  const pmkit = pmkitConfigProblems(root)
   if (!config) {
     try {
       config = loadConfig(root)
     } catch (error) {
-      return { checked: noneChecked(), problems: [brokenConfigProblem(root, error)] }
+      let broken
+      try {
+        broken = brokenConfigProblem(root, error)
+      } catch (rethrown) {
+        if (pmkit.length > 0 && rethrown.code !== 'NOT_CONFIGURED') return { checked: noneChecked(), problems: pmkit }
+        throw rethrown
+      }
+      return { checked: noneChecked(), problems: [...pmkit, broken].sort(byPathThenCode) }
     }
   }
   const { local, issuesDir } = config
   // An older format is one problem: the other checks assume the current shape.
   if (config.format && config.format.state !== 'current') {
-    return { checked: noneChecked(), problems: [formatProblem(root, path.join(issuesDir, 'config.yaml'), formatError(config.format))] }
+    return { checked: noneChecked(), problems: [...pmkit, formatProblem(root, path.join(issuesDir, 'config.yaml'), formatError(config.format))].sort(byPathThenCode) }
   }
-  const problems = []
+  const problems = [...pmkit]
   const rel = (file) => relative(root, file)
   const add = (file, code, message) => problems.push({ path: rel(file), code, message })
   const checked = noneChecked()
@@ -267,6 +296,6 @@ export function validateRepo(root, { config } = {}) {
   const graph = new Map([...issues].map(([id, issue]) => [id, issue.blockedBy]))
   for (const cycle of blockedByCycles(graph)) report('blocked_by', cycle)
 
-  problems.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.code < b.code ? -1 : a.code > b.code ? 1 : 0))
+  problems.sort(byPathThenCode)
   return { checked, problems }
 }
