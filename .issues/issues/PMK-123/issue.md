@@ -2,7 +2,7 @@
 id: PMK-123
 title: "Carry blockers, sub-issues and criteria over to the new issue of a split"
 type: task
-status: in_progress
+status: in_review
 priority: low
 estimate: 3
 assignee: fred
@@ -11,7 +11,7 @@ related: [PMK-113]
 milestone: local-gaps
 branch: pmk-123-carry-blockers-sub-issues-and-criteria
 created: 2026-10-26T17:58:03.785Z
-updated: 2026-10-26T22:15:07Z
+updated: 2026-10-26T23:43:24Z
 ---
 
 ## Description
