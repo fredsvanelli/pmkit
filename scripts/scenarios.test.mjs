@@ -189,6 +189,26 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     assert.match(step8, /table \(ID, title, status, estimate, assignee, blocked by\)/)
   })
 
+  test('cycle/plan step 5 reads blockers outside its list, counts canceled as closed and names what it leaves out', () => {
+    const calls = FILES.find((file) => file.rel === 'cycle/plan.md').parsed.calls
+    assert.ok(calls.some((c) => c.step === '5' && c.command === 'issues list' && c.flags.includes('blocked') && !c.dryRun), 'step 5 lists the candidates with an open blocker')
+    assert.ok(calls.some((c) => c.step === '5' && c.command === 'issues get' && !c.dryRun), 'step 5 reads each blocker outside its list')
+    const lines = fs.readFileSync(path.join(COMMANDS_DIR, 'cycle', 'plan.md'), 'utf8').split('\n')
+    const step5 = lines.find((line) => line.startsWith('5. '))
+    assert.match(step5, /An open blocker is a `blockedBy` issue not in `done` or `canceled`/)
+    assert.match(step5, /the blocker's `sprint` is that sprint's ID/, 'a blocker already in the planned sprint counts as selected')
+    assert.match(lines.find((line) => line.startsWith('8. ')), /left out for an open blocker/)
+    assert.match(lines.find((line) => line.startsWith('The sprint plan.')), /every issue in the scope whose open blocker is not in the sprint/)
+  })
+
+  // The orchestrator's ruling on I1: no scenario covers a blocker already in the planned sprint (follow-up 6 of the
+  // spec), so this test pins the whole rule sentence.
+  test('cycle/plan step 5 counts a blocker already in the planned sprint as selected', () => {
+    const step5 = fs.readFileSync(path.join(COMMANDS_DIR, 'cycle', 'plan.md'), 'utf8').split('\n').find((line) => line.startsWith('5. '))
+    assert.ok(step5, 'plan.md has a step 5')
+    assert.ok(step5.includes("A blocker counts as selected when it is in the selection, or when step 1 chose an existing `planned` sprint and the blocker's `sprint` is that sprint's ID"), 'step 5 counts a blocker in the planned sprint as selected')
+  })
+
   for (const { name, entries } of LOADED) {
     entries.forEach((scenario, index) => {
       const file = snapshotFile(name, index, entries.length)
