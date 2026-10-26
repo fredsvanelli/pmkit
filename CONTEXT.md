@@ -32,6 +32,10 @@ _Avoid_: subtask, child ticket
 A larger body of work with a status, an optional start and target date, and published status updates. An issue belongs to an epic through `parent`, and the epic's progress counts every issue whose parent chain reaches it.
 _Avoid_: initiative, project, deliverable (that is the contract's name for the operations on an epic)
 
+**Milestone**:
+A named target with an optional due date that issues and epics point to by id.
+_Avoid_: release (PMK-22), phase, version
+
 **Sprint**:
 A time box with a start, an end, a goal, a state (`planned`, `active` or `closed`) and a capacity per member. At most one sprint is `active`. The sprint's id is its start date. The Unified model calls it a cycle, and the CLI command group is `cycle`.
 _Avoid_: iteration, cycle (outside the CLI and contract names)
@@ -79,6 +83,10 @@ _Avoid_: author (comments and status updates have an author), current user
 **Local tracker**:
 The tracker that keeps issues, epics, sprints and their history as plain files in the repository under `.issues/`, shared and versioned through git. It needs no account and no network. It is the reference implementation of the contract.
 _Avoid_: file tracker, offline mode
+
+**Query index**:
+The cache of parsed issue files in `.issues/.cache/index.json`. Searches rebuild an entry when the stat signature of its `issue.md` changes. Git ignores the index. It is never a source of truth, and deleting it only makes the next search slower.
+_Avoid_: database, search engine
 
 **Write policy**:
 The `write_policy` block of `.pmkit/config.yaml`. `confirm` (`all_writes`, `single_writes` or `none`) says when a command asks before a write, and `preview` lists the changes that always show a full preview first (`bulk`, `delete`, `publish_update`, `move_scope`). `confirm: none` never skips a preview.

@@ -8,12 +8,12 @@ import { hashTree, makeRepo, scriptedRandom } from './test-helpers.mjs'
 
 const NOW = '2026-10-23T12:00:00Z'
 
-function setup() {
+function setup(options = {}) {
   const root = makeRepo()
   const issuesDir = path.join(root, '.issues')
   let current = NOW
   const setNow = (iso) => { current = iso }
-  const tracker = createLocalTracker(root, { now: () => new Date(current), random: scriptedRandom([1, 2, 3, 4, 2, 3, 4, 5]) })
+  const tracker = createLocalTracker(root, { now: () => new Date(current), random: scriptedRandom([1, 2, 3, 4, 2, 3, 4, 5]), ...options })
   const paths = (id) => issuePaths(issuesDir, id)
   const rawEvents = (id) => fs.readFileSync(paths(id).events, 'utf8').trim().split('\n').map((line) => JSON.parse(line))
   return { root, issuesDir, tracker, paths, rawEvents, setNow }
@@ -284,7 +284,8 @@ test('drift is dated no earlier than the newest logged event, so a second write 
 const FENCED_CONFLICT = 'Resolve it like this:\n\n```\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> other\n```'
 
 test('a write whose file would not read back throws and writes nothing', () => {
-  const { tracker, issuesDir, paths } = setup()
+  // getIssue below is an incidental read between two hashes, so the query index stays off.
+  const { tracker, issuesDir, paths } = setup({ index: false })
   const before = hashTree(issuesDir)
   const conflicted = 'Before\n<<<<<<< HEAD\nours\n>>>>>>> other'
   assert.throws(() => tracker.createIssue({ title: 'X', description: conflicted }, 'fred'), (error) => error.code === 'INVALID_INPUT')
@@ -440,4 +441,18 @@ test('an hours estimate must be a finite positive number', () => {
     assert.throws(() => tracker.createIssue({ title: 'X', estimate }, 'fred'), (error) => error.code === 'INVALID_INPUT', String(estimate))
   }
   assert.equal(tracker.createIssue({ title: 'X', estimate: 1.5 }, 'fred').after.estimate, 1.5)
+})
+
+test('writtenFiles lists the files a create wrote, and nothing after a dry run', () => {
+  const root = makeRepo()
+  try {
+    const tracker = createLocalTracker(root, { now: () => new Date(NOW), random: scriptedRandom([1, 2, 3, 4]) })
+    const { after } = tracker.createIssue({ title: 'First' }, 'fred')
+    assert.deepEqual(tracker.writtenFiles(), [`.issues/issues/${after.id}/events.jsonl`, `.issues/issues/${after.id}/issue.md`])
+    const dry = createLocalTracker(root, { now: () => new Date(NOW), random: scriptedRandom([2, 3, 4, 5]) })
+    dry.createIssue({ title: 'Dry' }, 'fred', { dryRun: true })
+    assert.deepEqual(dry.writtenFiles(), [])
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
 })

@@ -27,8 +27,14 @@ export function listIssueIds(issuesDir, prefix) {
 
 export function writeFileAtomic(file, text) {
   const temp = `${file}.tmp-${process.pid}-${counter++}`
-  fs.writeFileSync(temp, text)
-  fs.renameSync(temp, file)
+  try {
+    fs.writeFileSync(temp, text)
+    fs.renameSync(temp, file)
+  } catch (error) {
+    // A full disk or a failed rename must not leave a temp file behind.
+    fs.rmSync(temp, { force: true })
+    throw error
+  }
 }
 
 export const fileMtimeIso = (file) => fs.statSync(file).mtime.toISOString().replace(/\.\d{3}Z$/, 'Z')

@@ -68,6 +68,12 @@ export const isCategory = (value) => CATEGORIES.includes(value)
  * @property {string} [milestone]
  * @property {string} [description]
  *
+ * @typedef {object} Milestone
+ * @property {string} id the file stem of milestones/<id>.md
+ * @property {string} name
+ * @property {string} [due] YYYY-MM-DD
+ * @property {string} description
+ *
  * @typedef {object} StatusUpdate
  * @property {string} epic
  * @property {string} at

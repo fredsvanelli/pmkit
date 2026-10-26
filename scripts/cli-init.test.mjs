@@ -259,3 +259,112 @@ test('--update on an invalid existing config writes nothing and says to fix it a
     fs.rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('--label on a first run fills labels from repeated and comma-separated flags', () => {
+  const dir = tmp()
+  try {
+    const result = json(dir, ['init', '--label', 'a', '--label', 'b,c', '--label', 'a'])
+    assert.deepEqual(parseYaml(read(dir, '.issues/config.yaml')).labels, ['a', 'b', 'c'])
+    assert.deepEqual(result.labelsAdded, ['a', 'b', 'c'])
+    assert.deepEqual(result.labelsKept, [])
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('--update --label appends and keeps existing labels, comments and key order', () => {
+  const dir = tmp()
+  try {
+    assert.equal(run(dir, ['init']).status, 0)
+    const file = path.join(dir, '.issues/config.yaml')
+    fs.writeFileSync(file, read(dir, '.issues/config.yaml').replace('labels: []', 'labels: [bug-report] # shown in the board').replace(/^types:/m, '# keep me\ntypes:'))
+    const order = Object.keys(parseYaml(read(dir, '.issues/config.yaml')))
+    const result = json(dir, ['init', '--update', '--label', 'needs-criteria,bug-report'])
+    const text = read(dir, '.issues/config.yaml')
+    assert.ok(text.split('\n').includes('labels: [bug-report, needs-criteria] # shown in the board'))
+    assert.ok(text.includes('# keep me'))
+    assert.deepEqual(Object.keys(parseYaml(text)), order)
+    assert.deepEqual(result.labelsAdded, ['needs-criteria'])
+    assert.deepEqual(result.labelsKept, ['bug-report'])
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('--label text output lists added and kept labels', () => {
+  const dir = tmp()
+  try {
+    assert.equal(run(dir, ['init', '--label', 'x']).status, 0)
+    const result = run(dir, ['init', '--update', '--label', 'x,y'])
+    assert.equal(result.status, 0, result.stderr)
+    assert.match(result.stdout, /labels added: y/)
+    assert.match(result.stdout, /labels kept as they were: x/)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('an invalid label exits 2 and writes nothing', () => {
+  const dir = tmp()
+  try {
+    assert.equal(run(dir, ['init']).status, 0)
+    const before = hashTree(dir)
+    for (const value of ['Bad', '-x', 'a b']) {
+      const result = run(dir, ['init', '--update', '--label', value, '--json'])
+      assert.equal(result.status, 2)
+      const message = JSON.parse(result.stdout).error.message
+      assert.ok(message.includes(value))
+      assert.ok(message.includes('^[a-z0-9][a-z0-9_-]*$'))
+      assert.equal(hashTree(dir), before)
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('--update --label --dry-run writes nothing and reports the diff', () => {
+  const dir = tmp()
+  try {
+    assert.equal(run(dir, ['init']).status, 0)
+    const before = hashTree(dir)
+    const result = json(dir, ['init', '--update', '--label', 'needs-criteria', '--dry-run'])
+    assert.equal(hashTree(dir), before)
+    const entry = result.files.find((f) => f.path === '.issues/config.yaml')
+    assert.equal(entry.action, 'change')
+    assert.ok(entry.diff.includes('+labels: [needs-criteria]'))
+    assert.deepEqual(result.labelsAdded, ['needs-criteria'])
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a block-style labels list fails with the by-hand hint', () => {
+  const dir = tmp()
+  try {
+    assert.equal(run(dir, ['init']).status, 0)
+    fs.writeFileSync(path.join(dir, '.issues/config.yaml'), read(dir, '.issues/config.yaml').replace('labels: []', 'labels:\n  - bug-report'))
+    const before = hashTree(dir)
+    const result = run(dir, ['init', '--update', '--label', 'x', '--json'])
+    assert.equal(result.status, 2)
+    const error = JSON.parse(result.stdout).error
+    assert.equal(error.code, 'INVALID_INPUT')
+    assert.match(error.message, /\.issues\/config\.yaml/)
+    assert.match(error.message, /labels/)
+    assert.match(error.nextStep, /by hand/)
+    assert.equal(hashTree(dir), before)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('init --label without --update still refuses an existing setup', () => {
+  const dir = tmp()
+  try {
+    assert.equal(run(dir, ['init']).status, 0)
+    const result = run(dir, ['init', '--label', 'a', '--json'])
+    assert.equal(result.status, 2)
+    assert.equal(JSON.parse(result.stdout).error.code, 'CONFLICT')
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})

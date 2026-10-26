@@ -1,2 +1,9 @@
 {"at":"2026-10-25T19:13:19Z","by":"fred","op":"create","to":{"id":"PMK-3","title":"Add milestones to the Local tracker","type":"feature","status":"backlog","priority":"medium","estimate":3,"labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-25T19:13:19Z","updated":"2026-10-25T19:13:19Z"}}
 {"at":"2026-10-25T19:13:24Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-2"}
+{"at":"2026-10-25T21:21:01Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-25T21:21:01Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-25T21:21:02Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-3-add-milestones-to-the-local-tracker"}
+{"at":"2026-10-25T21:28:14Z","by":"fred","op":"comment","to":"2026-10-25T21-28-14Z-fred.md"}
+{"at":"2026-10-25T21:50:07Z","by":"fred","op":"comment","to":"2026-10-25T21-50-07Z-fred.md"}
+{"at":"2026-10-25T21:50:07Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-10-25T21:50:21Z","by":"fred","op":"link","field":"related","to":"PMK-111"}

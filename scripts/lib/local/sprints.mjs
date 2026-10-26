@@ -78,4 +78,29 @@ export function requireCapacity(value, members) {
   return { ...value }
 }
 
+/** Validates a map of member to a list of dates off (or null to clear). Returns it with each list sorted. */
+export function requireDaysOff(value, members, sprint) {
+  if (!isMap(value)) throw invalid('days off must be a map of member to a list of dates')
+  const result = {}
+  for (const [member, dates] of Object.entries(value)) {
+    if (!Object.hasOwn(members, member)) throw invalid(`days off member "${member}" is not a member`, `Use one of: ${Object.keys(members).join(', ')}`)
+    if (dates === null || (Array.isArray(dates) && dates.length === 0)) {
+      result[member] = null
+      continue
+    }
+    if (!Array.isArray(dates)) throw invalid(`days off for ${member} must be a list of dates`)
+    const seen = new Set()
+    for (const date of dates) {
+      if (!validDate(date)) throw invalid(`days off date "${date}" for ${member} is not a valid date (YYYY-MM-DD)`)
+      if (date < sprint.start || date > sprint.end) throw invalid(`days off date ${date} for ${member} is outside the sprint ${sprint.start} to ${sprint.end}`)
+      const weekday = new Date(`${date}T00:00:00Z`).getUTCDay()
+      if (weekday === 0 || weekday === 6) throw invalid(`days off date ${date} for ${member} is not a weekday`)
+      if (seen.has(date)) throw invalid(`days off date ${date} for ${member} is repeated`)
+      seen.add(date)
+    }
+    result[member] = [...dates].sort()
+  }
+  return result
+}
+
 export const overlaps = (a, b) => a.start <= b.end && b.start <= a.end
