@@ -3,3 +3,4 @@
 {"at":"2026-10-26T01:42:34Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-10-26T01:42:34Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-26T01:42:34Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-10-add-command-scenario-tests"}
+{"at":"2026-10-26T02:01:33Z","by":"fred","op":"comment","to":"2026-10-26T02-01-33Z-fred.md"}
