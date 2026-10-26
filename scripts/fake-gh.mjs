@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { tempDir } from './test-helpers.mjs'
 
 // The fake gh answers from the JSON file named by PMKIT_FAKE_GH: args joined by a space map to { status, stdout, stderr }.
 // It appends each call to the same file name plus .log. A reply may also be an array: the Nth call of that command gets
@@ -26,10 +27,8 @@ process.stderr.write(answer.stderr ?? '')
 process.exit(answer.status ?? 0)
 `
 
-const scratch = () => fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-pr-'))
-
-/** Writes the fake gh and its canned responses into `dir` (a new `pmkit-pr-` temp folder when not given). */
-export function fakeGh(canned, dir = scratch()) {
+/** Writes the fake gh and its canned responses into `dir` (a new `pmkit-pr-` folder from `tempDir` when not given, removed after the test). */
+export function fakeGh(canned, dir = tempDir('pmkit-pr-')) {
   fs.writeFileSync(path.join(dir, 'gh'), FAKE_GH_SCRIPT, { mode: 0o755 })
   fs.chmodSync(path.join(dir, 'gh'), 0o755)
   const responses = path.join(dir, 'responses.json')
