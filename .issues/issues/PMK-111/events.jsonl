@@ -6,3 +6,4 @@
 {"at":"2026-10-26T15:44:07Z","by":"fred","op":"comment","to":"2026-10-26T15-44-07Z-fred.md"}
 {"at":"2026-10-26T15:54:35Z","by":"fred","op":"comment","to":"2026-10-26T15-54-35Z-fred.md"}
 {"at":"2026-10-26T15:54:35Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-10-26T16:04:31Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}
