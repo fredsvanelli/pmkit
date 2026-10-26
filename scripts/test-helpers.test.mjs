@@ -26,6 +26,7 @@ test('tempDir makes a folder under os.tmpdir() with the prefix', () => {
   assert.ok(path.basename(dir).startsWith('pmkit-x-'))
 })
 
+// This test and the next empty the whole registry, so they stay after the top-level folder test above.
 test('removeTempDirs removes every recorded folder and tolerates one already gone', () => {
   const a = tempDir()
   const b = tempDir()
