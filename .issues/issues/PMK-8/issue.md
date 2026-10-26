@@ -7,10 +7,11 @@ priority: low
 estimate: 3
 assignee: fred
 parent: EPC-1
+related: [PMK-112]
 milestone: local-gaps
 branch: pmk-8-publish-json-schemas-for-both-config
 created: 2026-10-25T19:13:19Z
-updated: 2026-10-26T15:38:52Z
+updated: 2026-10-26T15:39:56Z
 ---
 
 ## Description
