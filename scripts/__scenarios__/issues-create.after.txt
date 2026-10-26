@@ -1,0 +1,23 @@
+$ pmkit discover --json  [step 1, read]
+exit 0
+$ pmkit issues create --title 'Add a health check endpoint' --type task --priority high --estimate 3 --sprint 2026-10-12 --dry-run --json  [step 4, dry run]
+exit 0
+? Step 5  [confirmed]
+$ pmkit issues create --title 'Add a health check endpoint' --type task --priority high --estimate 3 --sprint 2026-10-12 --json  [step 4, write]
+exit 0
+
+--- added .issues/issues/ISS-M0GZ/events.jsonl
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-M0GZ","title":"Add a health check endpoint","type":"task","status":"backlog","priority":"high","estimate":3,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
+--- added .issues/issues/ISS-M0GZ/issue.md
++---
++id: ISS-M0GZ
++title: Add a health check endpoint
++type: task
++status: backlog
++priority: high
++estimate: 3
++sprint: 2026-10-12
++created: 2026-10-23T12:00:00.000Z
++updated: 2026-10-23T12:00:00Z
++---
++

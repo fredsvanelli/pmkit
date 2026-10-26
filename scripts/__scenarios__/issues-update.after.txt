@@ -1,0 +1,40 @@
+$ pmkit issues get ISS-3F7H --json  [step 1, read]
+exit 0
+$ pmkit discover --json  [step 2, read]
+exit 0
+$ pmkit issues update ISS-3F7H --priority high --estimate 3 --criteria-file <inputs>/criteria.md --dry-run --json  [step 5, dry run]
+exit 0
+? Step 6  [confirmed]
+$ pmkit issues update ISS-3F7H --priority high --estimate 3 --criteria-file <inputs>/criteria.md --json  [step 5, write]
+exit 0
+
+--- changed .issues/issues/ISS-3F7H/events.jsonl
+  {"at":"2026-10-07T14:00:00Z","by":"fred","op":"create","to":{"id":"ISS-3F7H","title":"Empty state for the dashboard","type":"feature","status":"backlog","priority":"low","estimate":2,"labels":["frontend"],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-07T14:00:00Z","updated":"2026-10-07T14:00:00Z"}}
+  {"at":"2026-10-22T17:00:00Z","by":"fred","op":"update","field":"priority","from":"low","to":"medium"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"priority","from":"medium","to":"high"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"estimate","from":2,"to":3}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"acceptance_criteria"}
+--- changed .issues/issues/ISS-3F7H/issue.md
+  ---
+  id: ISS-3F7H
+  title: Empty state for the dashboard
+  type: feature
+  status: backlog
+-priority: medium
+-estimate: 2
++priority: high
++estimate: 3
+  labels: [frontend]
+  created: 2026-10-07T14:00:00Z
+-updated: 2026-10-22T17:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  A new account sees a blank dashboard. Show a short guide instead.
++
++## Acceptance criteria
++
++- [ ] A 5xx answer schedules a retry
++- [ ] A delivery that fails 5 times lands in the dead-letter queue

@@ -1,0 +1,58 @@
+$ pmkit issues get ISS-5N1R --json  [step 2, read]
+exit 0
+? Step 4  [confirmed]
+$ pmkit issues comment ISS-5N1R --body-file <inputs>/comment.md --dry-run --json  [step 5, dry run]
+exit 0
+$ pmkit issues comment ISS-5N1R --body-file <inputs>/comment.md --json  [step 5, write]
+exit 0
+? Step 7  [confirmed]
+$ pmkit issues update ISS-5N1R --check 1 --dry-run --json  [step 7, dry run]
+exit 0
+$ pmkit issues update ISS-5N1R --check 1 --json  [step 7, write]
+exit 0
+? Step 8  [confirmed]
+$ pmkit issues log-time ISS-5N1R 30 --dry-run --json  [step 8, dry run]
+exit 0
+$ pmkit issues log-time ISS-5N1R 30 --json  [step 8, write]
+exit 0
+
+--- added .issues/issues/ISS-5N1R/comments/2026-10-23T12-00-00Z-fred.md
++---
++author: fred
++created: 2026-10-23T12:00:00Z
++---
++
++Added the cursor to the events endpoint. The page size is still fixed at 500.
++
++Left: tests for the last page and the docs.
+--- changed .issues/issues/ISS-5N1R/events.jsonl
+  {"at":"2026-10-05T09:30:00Z","by":"fred","op":"create","to":{"id":"ISS-5N1R","title":"Paginate the events API","type":"task","status":"todo","priority":"medium","estimate":3,"assignee":"fred","labels":["backend"],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-05T09:30:00Z","updated":"2026-10-05T09:30:00Z"}}
+  {"at":"2026-10-22T09:00:00Z","by":"fred","op":"move","field":"status","from":"todo","to":"in_progress"}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"acceptance_criteria"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"comment","to":"2026-10-23T12-00-00Z-fred.md"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"acceptance_criteria"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"log_time","minutes":30}
+--- changed .issues/issues/ISS-5N1R/issue.md
+  ---
+  id: ISS-5N1R
+  title: Paginate the events API
+  type: task
+  status: in_progress
+  priority: medium
+  estimate: 3
+  assignee: fred
+  labels: [backend]
+  sprint: 2026-10-12
+  created: 2026-10-05T09:30:00Z
+  updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  The export reads events in pages of 500.
+
+  ## Acceptance criteria
+
+-- [ ] A 5xx answer schedules a retry
++- [x] A 5xx answer schedules a retry
+  - [ ] A delivery that fails 5 times lands in the dead-letter queue
