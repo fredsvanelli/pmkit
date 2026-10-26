@@ -162,7 +162,7 @@ Complexidade: média
 - [ ] **Step 1: Write the failing tests.** After `run(dir, ['init'])`:
   - `an empty .pmkit/config.yaml in --update is refused with the file named`: write `''`. `init --update --json` exits 2, `error.code` is `INVALID_INPUT`, message matches `/\.pmkit\/config\.yaml/`, and `stderr` does not contain `TypeError`.
   - `a non-string tracker.path in --update is refused with the file named`: write a valid file with `path: 7`. Same assertions; message contains `tracker.path must be a string`.
-  - `the same two inputs answer NOT_CONFIGURED when .issues/config.yaml is missing`: `fs.rmSync` `.issues/config.yaml`, repeat both; exit 2? No: assert `error.code === 'NOT_CONFIGURED'` (the status is whatever `NOT_CONFIGURED` already returns; assert only the code).
+  - `the same two inputs answer NOT_CONFIGURED when .issues/config.yaml is missing`: `fs.rmSync` `.issues/config.yaml`, repeat both, and assert `error.code === 'NOT_CONFIGURED'` (the status is whatever `NOT_CONFIGURED` already returns; assert only the code).
   - `an unparseable .pmkit/config.yaml in --update keeps the is not valid YAML message`: write `a: [\n`; message matches `/is not valid YAML/`, code `INVALID_INPUT`.
 - [ ] **Step 2: Run** `node --test scripts/cli-init.test.mjs`. Expected: the empty-file and `path: 7` tests fail with a `TypeError` (crash). The unparseable one already passes.
 - [ ] **Step 3: Apply the guard** from Global Constraints in place of `trackerDir = parseYaml(read(pmkitFile)).tracker?.path ?? '.issues'`. Leave the `catch` as it is.
