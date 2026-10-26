@@ -43,7 +43,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 
 ## Output
 
-The delivered numbers and throughput come from the `cycle issues` read of step 8, after the writes. The sprint report. Lead with delivered against planned (count and estimate), then scope added and removed, carry-over, cycle time (median and p85) and throughput. Then the retro prompts from the data and the moves applied. For each split, the new issue's ID and the original's delivered estimate. Then the path of the retro document, if written.
+Write the sprint report. Lead with delivered against planned (count and estimate), then scope added and removed, carry-over, cycle time (median and p85) and throughput. Take the delivered numbers and throughput from the `cycle issues` read of step 8, after the writes. Then give the retro prompts from the data and the moves applied. For each split, give the new issue's ID and the original's delivered estimate. Then give the path of the retro document, if written.
 
 ## If something is missing
 
