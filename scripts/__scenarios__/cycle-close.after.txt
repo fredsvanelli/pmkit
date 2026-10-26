@@ -1,0 +1,193 @@
+$ pmkit pr sync --dry-run --json  [step 1, dry run]
+exit 0
+? Step 1  [confirmed]
+$ pmkit pr sync --json  [step 1, write]
+exit 0
+$ pmkit cycle current --json  [step 2, read]
+exit 0
+$ pmkit cycle issues 2026-10-12 --json  [step 3, read]
+exit 0
+$ pmkit events --since 2026-10-12 --until 2026-10-25 --json  [step 4, read]
+exit 0
+$ pmkit metrics cycle-time --since 2026-10-12 --until 2026-10-25 --json  [step 5, read]
+exit 0
+$ pmkit cycle list --state planned --json  [step 6, read]
+exit 0
+? Step 7  [confirmed]
+$ pmkit cycle add ISS-4M2S ISS-5N1R --to none --dry-run --json  [step 7, dry run]
+exit 0
+$ pmkit issues create --title 'Finish the billing export to CSV' --estimate 3 --parent EPC-2M9D --dry-run --json  [step 7, dry run]
+exit 0
+$ pmkit issues update ISS-2X6D --estimate 5 --dry-run --json  [step 7, dry run]
+exit 0
+$ pmkit cycle close 2026-10-12 --dry-run --json  [step 7, dry run]
+exit 0
+? Step 7  [confirmed]
+$ pmkit cycle close 2026-10-12 --json  [step 8, write]
+exit 0
+$ pmkit cycle add ISS-4M2S ISS-5N1R --to none --json  [step 7, write]
+exit 0
+$ pmkit issues create --title 'Finish the billing export to CSV' --estimate 3 --parent EPC-2M9D --json  [step 7, write]
+exit 0
+$ pmkit issues update ISS-2X6D --estimate 5 --json  [step 7, write]
+exit 0
+$ pmkit docs create retros/2026-10-12.md --body-file <inputs>/retro.md --dry-run --json  [step 9, dry run]
+exit 0
+? Step 9  [confirmed]
+$ pmkit docs create retros/2026-10-12.md --body-file <inputs>/retro.md --json  [step 9, write]
+exit 0
+
+--- added .issues/docs/retros/2026-10-12.md
++# Retro: Sprint 2026-10-12
++
++Goal: Webhook retries and the billing export.
++
++## Numbers
++
++- Delivered 1 of 3 planned issues, 5 of 16 points. ISS-8C4W moved to done when its pull request merged.
++- Scope added: ISS-4M2S (1 point) on 2026-10-13. Scope removed: none.
++- Carry-over: ISS-5N1R and ISS-4M2S went back to the backlog. ISS-2X6D was split, and its remaining 3 points are a new issue in the backlog.
++
++## What slipped and why
++
++- ISS-2X6D is blocked by ISS-5N1R, which only moved to in progress on 2026-10-22.
++- ISS-4M2S depends on the export of ISS-2X6D, so it never started.
++
++## For the next sprint
++
++- Plan ISS-5N1R first, because it blocks the billing export.
+--- changed .issues/issues/ISS-2X6D/events.jsonl
+  {"at":"2026-10-05T09:00:00Z","by":"ana","op":"create","to":{"id":"ISS-2X6D","title":"Billing export to CSV","type":"feature","status":"todo","priority":"high","estimate":8,"assignee":"ana","labels":["billing","backend"],"parent":"EPC-2M9D","blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","due":"2026-10-23","created":"2026-10-05T09:00:00Z","updated":"2026-10-05T09:00:00Z"}}
+  {"at":"2026-10-09T10:00:00Z","by":"fred","op":"link","field":"blocked_by","to":"ISS-5N1R"}
+  {"at":"2026-10-09T10:10:00Z","by":"ana","op":"link","field":"related","to":"ISS-0G5E"}
+  {"at":"2026-10-14T09:00:00Z","by":"ana","op":"move","field":"status","from":"todo","to":"in_progress"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"estimate","from":8,"to":5}
+--- changed .issues/issues/ISS-2X6D/issue.md
+  ---
+  id: ISS-2X6D
+  title: Billing export to CSV
+  type: feature
+  status: in_progress
+  priority: high
+-estimate: 8
++estimate: 5
+  assignee: ana
+  labels: [billing, backend]
+  parent: EPC-2M9D
+  blocked_by: [ISS-5N1R]
+  related: [ISS-0G5E]
+  sprint: 2026-10-12
+  due: 2026-10-23
+  created: 2026-10-05T09:00:00Z
+-updated: 2026-10-14T09:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Finance needs a CSV of all invoices for a date range.
+--- changed .issues/issues/ISS-4M2S/events.jsonl
+  {"at":"2026-10-13T09:00:00Z","by":"fred","op":"create","to":{"id":"ISS-4M2S","title":"Fix CSV column order","type":"task","status":"todo","priority":"medium","estimate":1,"labels":["billing"],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-13T09:00:00Z","updated":"2026-10-13T09:00:00Z"}}
+  {"at":"2026-10-13T09:10:00Z","by":"fred","op":"update","field":"parent","from":null,"to":"ISS-2X6D"}
+  {"at":"2026-10-13T09:20:00Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"sprint","from":"2026-10-12","to":null}
+--- changed .issues/issues/ISS-4M2S/issue.md
+  ---
+  id: ISS-4M2S
+  title: Fix CSV column order
+  type: task
+  status: todo
+  priority: medium
+  estimate: 1
+  assignee: fred
+  labels: [billing]
+  parent: ISS-2X6D
+-sprint: 2026-10-12
+  created: 2026-10-13T09:00:00Z
+-updated: 2026-10-13T09:20:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Columns follow the finance template: date, invoice, customer, total.
+--- changed .issues/issues/ISS-5N1R/events.jsonl
+  {"at":"2026-10-05T09:30:00Z","by":"fred","op":"create","to":{"id":"ISS-5N1R","title":"Paginate the events API","type":"task","status":"todo","priority":"medium","estimate":3,"assignee":"fred","labels":["backend"],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-05T09:30:00Z","updated":"2026-10-05T09:30:00Z"}}
+  {"at":"2026-10-22T09:00:00Z","by":"fred","op":"move","field":"status","from":"todo","to":"in_progress"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"sprint","from":"2026-10-12","to":null}
+--- changed .issues/issues/ISS-5N1R/issue.md
+  ---
+  id: ISS-5N1R
+  title: Paginate the events API
+  type: task
+  status: in_progress
+  priority: medium
+  estimate: 3
+  assignee: fred
+  labels: [backend]
+-sprint: 2026-10-12
+  created: 2026-10-05T09:30:00Z
+-updated: 2026-10-22T09:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  The export reads events in pages of 500.
+--- changed .issues/issues/ISS-8C4W/events.jsonl
+  {"at":"2026-10-06T11:00:00Z","by":"ana","op":"create","to":{"id":"ISS-8C4W","title":"Dead-letter queue for webhooks","type":"feature","status":"todo","priority":"high","estimate":5,"assignee":"ana","labels":["webhooks","backend"],"parent":"EPC-2M9D","blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","due":"2026-10-20","created":"2026-10-06T11:00:00Z","updated":"2026-10-06T11:00:00Z"}}
+  {"at":"2026-10-09T10:05:00Z","by":"fred","op":"link","field":"blocked_by","to":"ISS-7K3Q"}
+  {"at":"2026-10-15T09:00:00Z","by":"ana","op":"move","field":"status","from":"todo","to":"in_progress"}
+  {"at":"2026-10-21T14:00:00Z","by":"ana","op":"move","field":"status","from":"in_progress","to":"in_review"}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"branch","from":null,"to":"feat-dlq"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}
+--- changed .issues/issues/ISS-8C4W/issue.md
+  ---
+  id: ISS-8C4W
+  title: Dead-letter queue for webhooks
+  type: feature
+-status: in_review
++status: done
+  priority: high
+  estimate: 5
+  assignee: ana
+  labels: [webhooks, backend]
+  parent: EPC-2M9D
+  blocked_by: [ISS-7K3Q]
+  sprint: 2026-10-12
+  due: 2026-10-20
+  branch: feat-dlq
+  created: 2026-10-06T11:00:00Z
+  updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Store deliveries that exhausted their retries so support can replay them.
+--- added .issues/issues/ISS-M0GZ/events.jsonl
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-M0GZ","title":"Finish the billing export to CSV","type":"feature","status":"backlog","estimate":3,"labels":[],"parent":"EPC-2M9D","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
+--- added .issues/issues/ISS-M0GZ/issue.md
++---
++id: ISS-M0GZ
++title: Finish the billing export to CSV
++type: feature
++status: backlog
++estimate: 3
++parent: EPC-2M9D
++created: 2026-10-23T12:00:00.000Z
++updated: 2026-10-23T12:00:00Z
++---
++
+--- changed .issues/sprints/2026-10-12.yaml
+  name: Sprint 2026-10-12
+  start: 2026-10-12
+  end: 2026-10-25
+  goal: Webhook retries and the billing export
+-state: active
++state: closed
+  capacity: { fred: 8, ana: 10 }
+  days_off:
+    ana: [2026-10-16]
+--- gh calls
+pr view feat-dlq --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr view feat-dlq --json number,url,title,state,isDraft,headRefName,author,mergedAt

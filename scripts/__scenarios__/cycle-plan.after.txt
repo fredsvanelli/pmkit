@@ -1,0 +1,70 @@
+$ pmkit cycle list --json  [step 1, read]
+exit 0
+$ pmkit discover --json  [step 1, read]
+exit 0
+$ pmkit metrics velocity --window 3 --json  [step 3, read]
+exit 0
+$ pmkit issues list --category todo,backlog --sprint none --json  [step 5, read]
+exit 0
+? Step 6  [confirmed]
+$ pmkit cycle open --start 2026-10-26 --end 2026-11-08 --goal 'Dashboard empty state and build tooling' --dry-run --json  [step 7, dry run]
+exit 0
+$ pmkit cycle open --start 2026-10-26 --end 2026-11-08 --goal 'Dashboard empty state and build tooling' --json  [step 7, write]
+exit 0
+$ pmkit cycle capacity 2026-10-26 --set fred=8,ana=6 --json  [step 7, write]
+exit 0
+$ pmkit cycle add ISS-3F7H ISS-6J0B --to 2026-10-26 --dry-run --json  [step 8, dry run]
+exit 0
+? Step 8  [confirmed]
+$ pmkit cycle add ISS-3F7H ISS-6J0B --to 2026-10-26 --json  [step 8, write]
+exit 0
+
+--- changed .issues/issues/ISS-3F7H/events.jsonl
+  {"at":"2026-10-07T14:00:00Z","by":"fred","op":"create","to":{"id":"ISS-3F7H","title":"Empty state for the dashboard","type":"feature","status":"backlog","priority":"low","estimate":2,"labels":["frontend"],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-07T14:00:00Z","updated":"2026-10-07T14:00:00Z"}}
+  {"at":"2026-10-22T17:00:00Z","by":"fred","op":"update","field":"priority","from":"low","to":"medium"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"sprint","from":null,"to":"2026-10-26"}
+--- changed .issues/issues/ISS-3F7H/issue.md
+  ---
+  id: ISS-3F7H
+  title: Empty state for the dashboard
+  type: feature
+  status: backlog
+  priority: medium
+  estimate: 2
+  labels: [frontend]
++sprint: 2026-10-26
+  created: 2026-10-07T14:00:00Z
+-updated: 2026-10-22T17:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  A new account sees a blank dashboard. Show a short guide instead.
+--- changed .issues/issues/ISS-6J0B/events.jsonl
+  {"at":"2026-10-08T09:00:00Z","by":"fred","op":"create","to":{"id":"ISS-6J0B","title":"Upgrade the build tooling","type":"chore","status":"backlog","priority":"low","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"due":"2026-11-30","created":"2026-10-08T09:00:00Z","updated":"2026-10-08T09:00:00Z"}}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"sprint","from":null,"to":"2026-10-26"}
+--- changed .issues/issues/ISS-6J0B/issue.md
+  ---
+  id: ISS-6J0B
+  title: Upgrade the build tooling
+  type: chore
+  status: backlog
+  priority: low
++sprint: 2026-10-26
+  due: 2026-11-30
+  created: 2026-10-08T09:00:00Z
+-updated: 2026-10-08T09:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Move to the current LTS of the build runner.
+--- added .issues/sprints/2026-10-26.yaml
++name: Sprint 2026-10-26
++start: 2026-10-26
++end: 2026-11-08
++goal: Dashboard empty state and build tooling
++state: planned
++capacity: { fred: 8, ana: 6 }
