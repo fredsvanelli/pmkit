@@ -410,9 +410,14 @@ test('runScenario fails a dry run that writes', async () => {
   assert.match(problems[0], /^rule 8: dryRun \[step 4\] issues move ISS-2X6D done .*changed/)
 })
 
+// Creates the index only when it is missing: the real CLI may have built it on an earlier read, and a dry run
+// that overwrote it would be the fake's write, not the CLI's.
 const writingCache = async (args, cwd, options) => {
-  fs.mkdirSync(path.join(cwd, '.issues', '.cache'), { recursive: true })
-  fs.writeFileSync(path.join(cwd, '.issues', '.cache', 'index.json'), '{}')
+  const index = path.join(cwd, '.issues', '.cache', 'index.json')
+  if (!fs.existsSync(index)) {
+    fs.mkdirSync(path.dirname(index), { recursive: true })
+    fs.writeFileSync(index, '{}')
+  }
   return runPmkit(args, cwd, options)
 }
 

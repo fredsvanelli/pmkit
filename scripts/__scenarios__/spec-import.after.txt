@@ -2,6 +2,8 @@ $ pmkit docs read specs/overview.md --json  [step 1, read]
 exit 0
 $ pmkit discover --json  [step 2, read]
 exit 0
+$ pmkit milestone list --json  [step 2, read]
+exit 0
 ? Step 5  [confirmed]
 $ pmkit epic create --title 'Webhook delivery platform' --dry-run --json  [step 6, dry run]
 exit 0
@@ -9,7 +11,7 @@ $ pmkit issues create --title 'Retry failed deliveries with backoff' --type feat
 exit 0
 $ pmkit issues create --title 'Park exhausted deliveries in a dead-letter queue' --type feature --estimate 5 --dry-run --json  [step 6, dry run]
 exit 0
-$ pmkit epic create --title 'Webhook delivery platform' --json  [step 7, write]
+$ pmkit epic create --title 'Webhook delivery platform' --json  [step 7.1, write]
 exit 0
 $ pmkit issues create --title 'Retry failed deliveries with backoff' --type feature --estimate 3 --parent EPC-M0GZ --json  [step 8, write]
 exit 0

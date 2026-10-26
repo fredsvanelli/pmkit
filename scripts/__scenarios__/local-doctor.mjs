@@ -6,6 +6,7 @@
 // in_review at the same time; the log ends with in_review, so the resolution keeps in_review.
 // Neither file parses, so `issues get --history` fails with CONFLICT for both.
 // Step 4 fixes the priority and the parent; steps 3 and the other step 4 fixes have nothing to do.
+// Step 6 rebuilds the query index, which git ignores, so the snapshot shows no file for it.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -64,12 +65,15 @@ export default {
     { confirm: 'Step 5' },
     { step: '4', write: priority },
     { step: '4', write: parent },
-    { step: '6', read: ['validate'], save: 'last' },
+    // Step 6 rebuilds the query index and asks nothing; step 7 validates a last time.
+    { step: '6', read: ['reindex'], save: 'reindexed' },
+    { step: '7', read: ['validate'], save: 'last' },
   ],
   skip: {
     '3 validate': 'validate reports no config or FORMAT problem, so step 3 has nothing to settle',
     '3 migrate': 'the tracker is on the current format, so there is no FORMAT problem to migrate',
     '4 issues move': 'no status value is invalid, so no issues move fix is proposed',
+    '4 milestone create': 'no issue or epic names a milestone that does not exist',
     '4 issues link': 'no blocker, related or duplicate target is missing and there is no blocker loop',
     '4 cycle add': 'every sprint reference exists, so no issue moves to the backlog',
   },
@@ -88,5 +92,6 @@ export default {
     for (const id of ['ISS-5', 'ISS-7', 'ISS-8']) assert.deepEqual(codes(saved.last, id), [], `${id} has no problem left`)
     assert.doesNotMatch(repo.file('.issues/issues/ISS-5/issue.md'), /^(<{7}|={7}|>{7})/m)
     assert.equal(repo.issue('ISS-5').status, 'in_review')
+    assert.equal(typeof saved.reindexed.written, 'boolean', 'reindex reports whether it wrote the index')
   },
 }

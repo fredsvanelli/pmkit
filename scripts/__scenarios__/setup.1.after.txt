@@ -1,16 +1,51 @@
 $ pmkit validate --json  [step Existing config 2, read]
 exit 0
-$ pmkit init --update --dry-run --json  [step Existing config 3, dry run]
+$ pmkit discover --json  [step Existing config 3, read]
+exit 0
+$ pmkit issues list --archived --json  [step Existing config 3, read]
+exit 0
+$ pmkit init --update --label needs-criteria --dry-run --json  [step Existing config 4, dry run]
 exit 0
 ? Existing config  [confirmed]
-$ pmkit init --update --json  [step Existing config 7, write]
+$ pmkit init --update --label needs-criteria --json  [step Existing config 8, write]
 exit 0
-$ pmkit validate --json  [step Existing config 8, read]
+$ pmkit validate --json  [step Existing config 9, read]
 exit 0
-$ pmkit discover --json  [step Existing config 8, read]
+$ pmkit discover --json  [step Existing config 9, read]
 exit 0
-$ pmkit capabilities --json  [step Existing config 8, read]
+$ pmkit capabilities --json  [step Existing config 9, read]
 exit 0
 
 --- added .issues/.gitignore
 +.cache/
+--- changed .issues/config.yaml
+  # yaml-language-server: $schema=https://raw.githubusercontent.com/fredsvanelli/pmkit/main/schemas/issues.config.schema.json
+  version: 2
+  id_prefix: ISS
+  epic_prefix: EPC
+  statuses:
+    triage: { category: triage }
+    backlog: { category: backlog }
+    todo: { category: todo }
+    in_progress: { category: in_progress }
+    in_review: { category: in_review }
+    done: { category: done }
+    canceled: { category: canceled }
+  default_status: backlog
+  types: [feature, bug, task, chore]
+  priorities: [urgent, high, medium, low]
+-labels: []
++labels: [needs-criteria]
+  estimate:
+    unit: points
+    scale: [1, 2, 3, 5, 8, 13]
+  members:
+    fred: { name: Fred Vanelli, email: fred@example.com, availability: 1 }
+  defaults:
+    stale_days: 60
+    stuck_business_days: 3
+    sprint_length_days: 14
+    sprint_start_weekday: mon
+    velocity_window: 3
+    status_update_window_days: 14
+  auto_commit: false

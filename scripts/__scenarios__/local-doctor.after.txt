@@ -19,7 +19,9 @@ $ pmkit issues update ISS-7 --priority high --json  [step 4, write]
 exit 0
 $ pmkit issues parent ISS-8 none --json  [step 4, write]
 exit 0
-$ pmkit validate --json  [step 6, read]
+$ pmkit reindex --json  [step 6, read]
+exit 0
+$ pmkit validate --json  [step 7, read]
 exit 0
 
 --- changed .issues/issues/ISS-5/issue.md

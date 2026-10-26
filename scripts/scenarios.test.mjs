@@ -128,7 +128,7 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     const has = (rel, step, command, section) =>
       file(rel).calls.some((c) => c.step === step && (!command || c.command === command) && (!section || c.section === section))
     assert.ok(has('setup.md', 'First run 6'), 'setup.md First run 6')
-    assert.ok(has('setup.md', 'Existing config 7'), 'setup.md Existing config 7')
+    assert.ok(has('setup.md', 'Existing config 8', 'init'), 'setup.md Existing config 8 init')
     assert.ok(has('upgrade.md', '5', 'migrate'), 'upgrade.md 5 migrate')
     assert.ok(has('local/doctor.md', '2.1', 'issues get'), 'local/doctor.md 2.1 issues get')
     assert.ok(has('local/doctor.md', '4', 'issues parent'), 'local/doctor.md 4 issues parent')

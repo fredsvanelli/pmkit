@@ -1,7 +1,7 @@
-$ pmkit init --git-host none --prefix ISS --id-style random --estimate-unit points --members-file - --dry-run --json  [step First run 6, dry run]
+$ pmkit init --git-host none --prefix ISS --id-style random --estimate-unit points --members-file - --label needs-criteria --dry-run --json  [step First run 6, dry run]
 exit 0
 ? First run  [confirmed]
-$ pmkit init --git-host none --prefix ISS --id-style random --estimate-unit points --members-file - --json  [step First run 6, write]
+$ pmkit init --git-host none --prefix ISS --id-style random --estimate-unit points --members-file - --label needs-criteria --json  [step First run 6, write]
 exit 0
 $ pmkit validate --json  [step First run 9, read]
 exit 0
@@ -17,6 +17,7 @@ exit 0
 --- added .issues/.gitignore
 +.cache/
 --- added .issues/config.yaml
++# yaml-language-server: $schema=https://raw.githubusercontent.com/fredsvanelli/pmkit/main/schemas/issues.config.schema.json
 +version: 2
 +id_prefix: ISS
 +epic_prefix: EPC
@@ -32,7 +33,7 @@ exit 0
 +default_status: backlog
 +types: [feature, bug, task, chore]
 +priorities: [urgent, high, medium, low]
-+labels: []
++labels: [needs-criteria]
 +estimate:
 +  unit: points
 +  scale: [1, 2, 3, 5, 8, 13]
@@ -45,12 +46,15 @@ exit 0
 +  sprint_start_weekday: mon
 +  velocity_window: 3
 +  status_update_window_days: 14
++# With true, each pmkit write commits the files it changed as `pmkit: <command> <id>`.
++# With false, the default, no command commits.
 +auto_commit: false
 --- added .issues/docs/.gitkeep
 --- added .issues/epics/.gitkeep
 --- added .issues/issues/.gitkeep
 --- added .issues/sprints/.gitkeep
 --- added .pmkit/config.yaml
++# yaml-language-server: $schema=https://raw.githubusercontent.com/fredsvanelli/pmkit/main/schemas/pmkit.config.schema.json
 +version: 1
 +tracker:
 +  system: local
