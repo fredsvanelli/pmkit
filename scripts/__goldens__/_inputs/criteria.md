@@ -1,0 +1,2 @@
+- [ ] The output matches the golden file
+- [ ] The JSON output parses
