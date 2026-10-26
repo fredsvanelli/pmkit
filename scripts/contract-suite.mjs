@@ -149,6 +149,18 @@ export function runTrackerContract({ name, setup }) {
       assert.deepEqual(await tracker.getCapacity(cycle.id), { [member.id]: 8 })
     })
 
+    it('sets, reads and clears days off', async ({ tracker, actor, today }) => {
+      const [member] = (await tracker.discover()).members
+      const cycle = (await tracker.openCycle({ start: today }, actor)).after
+      const date = new Date(`${today}T00:00:00Z`)
+      while (date.getUTCDay() === 0 || date.getUTCDay() === 6) date.setUTCDate(date.getUTCDate() + 1)
+      const weekday = date.toISOString().slice(0, 10)
+      await tracker.updateCycleCapacity(cycle.id, { daysOff: { [member.id]: [weekday] } }, actor)
+      assert.deepEqual(await tracker.getDaysOff(cycle.id), { [member.id]: [weekday] })
+      await tracker.updateCycleCapacity(cycle.id, { daysOff: { [member.id]: null } }, actor)
+      assert.deepEqual(await tracker.getDaysOff(cycle.id), {})
+    })
+
     it('creates an epic, parents an issue and reads progress', async ({ tracker, actor }) => {
       const epic = (await tracker.createDeliverable({ title: 'Launch' }, actor)).after
       assert.equal((await tracker.getDeliverable(epic.id)).title, 'Launch')

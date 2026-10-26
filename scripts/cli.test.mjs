@@ -351,10 +351,71 @@ test('--as acts for another member and a stranger is rejected', () => {
 
 test('cycle capacity reads, and --set takes a list or repeated flags', () => {
   const root = makeRepo('team')
-  assert.deepEqual(json(root, ['cycle', 'capacity', '2026-10-12']), { fred: 8, ana: 10 })
+  assert.deepEqual(json(root, ['cycle', 'capacity', '2026-10-12']), { capacity: { fred: 8, ana: 10 }, days_off: { ana: ['2026-10-16'] } })
   assert.deepEqual(json(root, ['cycle', 'capacity', '2026-10-12', '--set', 'fred=3,ana=4']).after.capacity, { fred: 3, ana: 4 })
   assert.deepEqual(json(root, ['cycle', 'capacity', '2026-10-12', '--set', 'fred=6', '--set', 'ana=7']).after.capacity, { fred: 6, ana: 7 })
   assert.equal(run(root, ['cycle', 'capacity', '2026-10-12', '--set', 'fred']).status, 2)
+})
+
+test('cycle capacity --days-off sets, clears and validates', () => {
+  const root = makeRepo('team')
+  const sprintFile = path.join(root, '.issues/sprints/2026-10-12.yaml')
+  const cap = (...args) => json(root, ['cycle', 'capacity', '2026-10-12', ...args])
+  const set = cap('--days-off', 'fred=2026-10-14+2026-10-13')
+  assert.deepEqual(set.after.daysOff.fred, ['2026-10-13', '2026-10-14'])
+  assert.deepEqual(set.after.daysOff.ana, ['2026-10-16'])
+  const both = cap('--days-off', 'fred=2026-10-14', '--days-off', 'ana=2026-10-19')
+  assert.deepEqual(both.after.daysOff, { fred: ['2026-10-14'], ana: ['2026-10-19'] })
+  assert.equal('ana' in cap('--days-off', 'ana=none').after.daysOff, false)
+  const combined = cap('--set', 'fred=3', '--days-off', 'fred=2026-10-15')
+  assert.equal(combined.after.capacity.fred, 3)
+  assert.deepEqual(combined.after.daysOff.fred, ['2026-10-15'])
+  const before = fs.readFileSync(sprintFile, 'utf8')
+  cap('--days-off', 'fred=2026-10-16', '--dry-run')
+  assert.equal(fs.readFileSync(sprintFile, 'utf8'), before)
+  cap('--days-off', 'ana=2026-10-16')
+  const text = run(root, ['cycle', 'capacity', '2026-10-12'])
+  assert.match(text.stdout, /days off/)
+  assert.match(text.stdout, /ana/)
+  for (const bad of ['fred', '=2026-10-14', 'fred=']) assert.equal(run(root, ['cycle', 'capacity', '2026-10-12', '--days-off', bad]).status, 2, bad)
+  for (const bad of ['fred=2026-10-17', 'nobody=2026-10-14']) {
+    const result = run(root, ['cycle', 'capacity', '2026-10-12', '--days-off', bad, '--json'])
+    assert.equal(result.status, 2, bad)
+    assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT')
+  }
+  assert.equal(fs.readFileSync(sprintFile, 'utf8').includes('2026-10-17'), false)
+})
+
+test('cycle capacity --days-off rejects a member named twice', () => {
+  const root = makeRepo('team')
+  const sprintFile = path.join(root, '.issues/sprints/2026-10-12.yaml')
+  const before = fs.readFileSync(sprintFile, 'utf8')
+  for (const args of [['--days-off', 'fred=2026-10-14', '--days-off', 'fred=2026-10-15'], ['--days-off', 'fred=2026-10-14,fred=2026-10-15']]) {
+    const result = run(root, ['cycle', 'capacity', '2026-10-12', ...args, '--json'])
+    assert.equal(result.status, 2)
+    const error = JSON.parse(result.stdout).error
+    assert.match(error.message, /--days-off names fred twice/)
+    assert.match(error.next ?? error.next_step ?? JSON.stringify(error), /fred=2026-10-14\+2026-10-15/)
+  }
+  assert.equal(fs.readFileSync(sprintFile, 'utf8'), before)
+})
+
+test('cycle capacity reads a hand-edited days_off that is not a map of lists', () => {
+  const root = makeRepo('team')
+  const sprintFile = path.join(root, '.issues/sprints/2026-10-12.yaml')
+  const text = fs.readFileSync(sprintFile, 'utf8').replace(/days_off:[\s\S]*$/, 'days_off:\n  ana: 2026-10-16\n  fred:\n')
+  fs.writeFileSync(sprintFile, text)
+  const result = run(root, ['cycle', 'capacity', '2026-10-12'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /days off ana: 2026-10-16/)
+})
+
+test('cycle capacity --days-off keeps unknown keys of the sprint file', () => {
+  const root = makeRepo('team')
+  const sprintFile = path.join(root, '.issues/sprints/2026-10-12.yaml')
+  fs.appendFileSync(sprintFile, 'custom_note: keep me\n')
+  json(root, ['cycle', 'capacity', '2026-10-12', '--days-off', 'fred=2026-10-14'])
+  assert.match(fs.readFileSync(sprintFile, 'utf8'), /custom_note: keep me/)
 })
 
 test('cycle close prints the unfinished issues', () => {

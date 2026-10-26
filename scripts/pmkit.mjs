@@ -153,6 +153,24 @@ function parseCapacity(ctx) {
   return map
 }
 
+function parseDaysOff(ctx) {
+  const map = {}
+  for (const pair of csv(ctx.list('days-off'))) {
+    const fail = () => usageError(`--days-off takes member=date+date pairs, got "${pair}"`, 'Use --days-off ana=2026-10-16+2026-10-19')
+    const match = /^([^=]+)=(.+)$/.exec(pair)
+    if (!match) throw fail()
+    if (Object.hasOwn(map, match[1])) throw usageError(`--days-off names ${match[1]} twice`, `Join the dates with +, for example ${match[1]}=2026-10-14+2026-10-15`)
+    if (match[2] === 'none') {
+      map[match[1]] = null
+      continue
+    }
+    const dates = match[2].split('+')
+    if (dates.some((date) => date === '')) throw fail()
+    map[match[1]] = dates
+  }
+  return map
+}
+
 /** Text of a write: the changed fields, or the new record after a create. */
 function writeText(result, { dryRun, record = issueRecord, header }) {
   const one = (entry) => {
@@ -357,15 +375,22 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'cycle capacity', summary: 'reads or sets capacity', usage: '<id> [--set member=n,..]', write: true, args: ['id'], flags: ['set'],
+    name: 'cycle capacity', summary: 'reads or sets capacity and days off', usage: '<id> [--set member=n,..] [--days-off member=date+date,..]', write: true, args: ['id'], flags: ['set', 'days-off'],
     run: (ctx) => {
       const tracker = ctx.tracker()
       const [id] = ctx.args
-      if (ctx.opt('set') === undefined) {
+      const set = ctx.opt('set') !== undefined
+      const dayoff = ctx.opt('days-off') !== undefined
+      if (!set && !dayoff) {
         const capacity = tracker.getCapacity(id)
-        return { data: capacity, text: fields(Object.entries(capacity)).join('\n') || 'no capacity set' }
+        const daysOff = tracker.getDaysOff(id)
+        const lines = [
+          ...fields(Object.entries(capacity)),
+          ...Object.entries(daysOff).map(([member, dates]) => `days off ${member}: ${[dates ?? []].flat().join(', ')}`),
+        ]
+        return { data: { capacity, days_off: daysOff }, text: lines.join('\n') || 'no capacity or days off set' }
       }
-      const result = tracker.setCapacity(id, parseCapacity(ctx), ctx.actor(), { dryRun: ctx.dryRun })
+      const result = tracker.updateCycleCapacity(id, { capacity: set ? parseCapacity(ctx) : undefined, daysOff: dayoff ? parseDaysOff(ctx) : undefined }, ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: sprintRecord }), commit: id }
     },
   },
