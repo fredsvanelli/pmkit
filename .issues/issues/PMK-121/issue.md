@@ -2,7 +2,7 @@
 id: PMK-121
 title: Count done issues moved during a late cycle close in velocity
 type: bug
-status: in_progress
+status: in_review
 priority: medium
 estimate: 3
 assignee: fred
@@ -11,7 +11,7 @@ related: [PMK-113]
 milestone: local-gaps
 branch: pmk-121-count-done-issues-moved-during-a-late
 created: 2026-10-26T17:58:03.634Z
-updated: 2026-10-26T20:48:41Z
+updated: 2026-10-26T21:44:23Z
 ---
 
 ## Description
