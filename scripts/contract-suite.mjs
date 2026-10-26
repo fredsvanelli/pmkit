@@ -15,6 +15,12 @@ const DOC_PATH = 'contract/notes.md'
 
 const rejects = (fn, code) => assert.rejects(async () => fn(), (error) => error.code === code, `expected ${code}`)
 const ids = (issues) => issues.map((issue) => issue.id)
+const issueState = async (tracker, issueIds) => JSON.stringify({
+  issues: await Promise.all(issueIds.map(async (id) => ({ issue: await tracker.getIssue(id), history: await tracker.getHistory(id) }))),
+  all: (await tracker.searchIssues({ archived: true })).issues.map((issue) => issue.id),
+  cycles: await tracker.listCycles(),
+  metrics: await tracker.metricEvents(),
+})
 
 /** Registers the contract tests inside describe(name). */
 export function runTrackerContract({ name, setup }) {
@@ -140,6 +146,87 @@ export function runTrackerContract({ name, setup }) {
       assert.equal(closed.sprint.state, 'closed')
       assert.deepEqual(ids(closed.unfinished), [open])
       assert.equal(await tracker.currentCycle(), null)
+    })
+
+    it('createIssue and updateIssue with sprint current store the active sprint id', async ({ tracker, actor, today }) => {
+      const sprint = (await tracker.openCycle({ start: today }, actor)).after
+      const made = await tracker.createIssue({ title: 'Made current', sprint: 'current' }, actor)
+      assert.equal(made.after.sprint, sprint.id)
+      assert.equal((await tracker.getIssue(made.after.id)).sprint, sprint.id)
+
+      const plain = (await tracker.createIssue({ title: 'Plain' }, actor)).after.id
+      const moved = await tracker.updateIssue(plain, { sprint: 'current' }, actor)
+      assert.equal(moved.before.sprint, undefined)
+      assert.equal(moved.after.sprint, sprint.id)
+      assert.equal((await tracker.getIssue(plain)).sprint, sprint.id)
+
+      assert.deepEqual(ids(await tracker.cycleIssues(sprint.id)).sort(), [made.after.id, plain].sort())
+    })
+
+    it('moveToCycle with current moves issues into the active sprint, and null takes issues out of their sprint', async ({ tracker, actor, today }) => {
+      const sprint = (await tracker.openCycle({ start: today }, actor)).after
+      const a = (await tracker.createIssue({ title: 'A' }, actor)).after.id
+      const b = (await tracker.createIssue({ title: 'B' }, actor)).after.id
+
+      const moved = await tracker.moveToCycle([a, b], 'current', actor)
+      assert.equal(moved.length, 2)
+      for (const entry of moved) assert.equal(entry.after.sprint, sprint.id)
+      assert.deepEqual(ids(await tracker.cycleIssues(sprint.id)).sort(), [a, b].sort())
+
+      await tracker.moveToCycle([a], null, actor)
+      assert.equal((await tracker.getIssue(a)).sprint, undefined)
+      assert.deepEqual(ids(await tracker.cycleIssues(sprint.id)), [b])
+
+      await tracker.updateIssue(b, { sprint: null }, actor)
+      assert.equal((await tracker.getIssue(b)).sprint, undefined)
+      assert.deepEqual(ids(await tracker.cycleIssues(sprint.id)), [])
+    })
+
+    it('sprint current without an active sprint fails with INVALID_INPUT and writes nothing', async ({ tracker, actor, today }) => {
+      const a = (await tracker.createIssue({ title: 'A' }, actor)).after.id
+      const b = (await tracker.createIssue({ title: 'B' }, actor)).after.id
+      const expectNothingWritten = async () => {
+        const before = await issueState(tracker, [a, b])
+        await rejects(() => tracker.createIssue({ title: 'Never', sprint: 'current' }, actor), 'INVALID_INPUT')
+        assert.equal(await issueState(tracker, [a, b]), before)
+        await rejects(() => tracker.updateIssue(a, { sprint: 'current' }, actor), 'INVALID_INPUT')
+        assert.equal(await issueState(tracker, [a, b]), before)
+        await rejects(() => tracker.moveToCycle([a, b], 'current', actor), 'INVALID_INPUT')
+        assert.equal(await issueState(tracker, [a, b]), before)
+        return before
+      }
+
+      await expectNothingWritten()
+      await tracker.openCycle({ start: '2099-01-01' }, actor)
+      await expectNothingWritten()
+      const closing = (await tracker.openCycle({ start: today }, actor)).after
+      await tracker.closeCycle(closing.id, actor)
+      const last = await expectNothingWritten()
+
+      await tracker.comment(a, 'real', actor)
+      assert.notEqual(await issueState(tracker, [a, b]), last)
+    })
+
+    it('searchIssues with sprint current returns the active sprint issues and sprint none the issues in no sprint', async ({ tracker, actor, today }) => {
+      const active = (await tracker.openCycle({ start: today }, actor)).after
+      const planned = (await tracker.openCycle({ start: '2099-01-01' }, actor)).after
+      const inActive = (await tracker.createIssue({ title: 'In active', sprint: active.id }, actor)).after.id
+      const inPlanned = (await tracker.createIssue({ title: 'In planned', sprint: planned.id }, actor)).after.id
+      const free = (await tracker.createIssue({ title: 'Free' }, actor)).after.id
+
+      assert.deepEqual(ids((await tracker.searchIssues({ sprint: 'current' })).issues), [inActive])
+      assert.deepEqual(ids((await tracker.searchIssues({ sprint: 'none' })).issues), [free])
+      assert.deepEqual(ids((await tracker.searchIssues({ sprint: active.id })).issues), [inActive])
+      assert.deepEqual(ids((await tracker.searchIssues({ sprint: planned.id })).issues), [inPlanned])
+    })
+
+    it('searchIssues with sprint current returns an empty list without an active sprint', async ({ tracker, actor }) => {
+      const planned = (await tracker.openCycle({ start: '2099-01-01' }, actor)).after
+      await tracker.createIssue({ title: 'In planned', sprint: planned.id }, actor)
+      const free = (await tracker.createIssue({ title: 'Free' }, actor)).after.id
+
+      assert.deepEqual((await tracker.searchIssues({ sprint: 'current' })).issues, [])
+      assert.deepEqual(ids((await tracker.searchIssues({ sprint: 'none' })).issues), [free])
     })
 
     it('sets and reads cycle capacity', async ({ tracker, actor, today }) => {
