@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import {
-  childEnv, compareNames, expandCase, findCollisions, formatRun, goldenName, makeNormalizer, mapLimit, staleGoldens,
+  childEnv, compareNames, displayArgs, expandCase, findCollisions, formatRun, goldenName, makeNormalizer, mapLimit, staleGoldens,
 } from './golden-helpers.mjs'
 
 test('goldenName turns spaces into hyphens', () => {
@@ -101,6 +101,32 @@ test('formatRun shows (empty) for an empty stream and marks a missing final newl
 test('formatRun quotes an argument with a space', () => {
   const text = formatRun({ args: ['epic', 'create', '--title', 'Golden epic'], code: 0, stdout: 'x\n', stderr: '' })
   assert.equal(text.split('\n')[0], "$ pmkit epic create --title 'Golden epic'")
+})
+
+test('displayArgs shows paths under root or inputs as tokens with slashes', () => {
+  const base = path.join(path.sep, 'checkout', 'John Smith', 'pmkit')
+  const inputs = path.join(base, 'scripts', '__goldens__', '_inputs')
+  const root = path.join(path.sep, 'tmp', 'pmkit-ab12')
+  assert.deepEqual(
+    displayArgs(['issues', 'comment', 'ISS-1', '--body-file', path.join(inputs, 'comment.md'), path.join(root, 'docs', 'a.md'), inputs, base], { root, inputs }),
+    ['issues', 'comment', 'ISS-1', '--body-file', '<inputs>/comment.md', '<root>/docs/a.md', '<inputs>', base],
+  )
+})
+
+test('a root and inputs folder with a space give an unquoted $ line', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit golden '))
+  try {
+    const root = path.join(base, 'copy')
+    const inputs = path.join(base, 'in puts')
+    fs.mkdirSync(root)
+    fs.mkdirSync(inputs)
+    const args = ['changelog', '--file', path.join(inputs, 'CHANGELOG.md'), '--since', '0.0.0']
+    const text = makeNormalizer({ root, inputs })(formatRun({ args: displayArgs(args, { root, inputs }), code: 0, stdout: `read ${root}\n`, stderr: '' }))
+    assert.equal(text.split('\n')[0], '$ pmkit changelog --file <inputs>/CHANGELOG.md --since 0.0.0')
+    assert.equal(text.split('\n')[3], 'read <root>')
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true })
+  }
 })
 
 test('mapLimit keeps order and never runs more than the limit at once', async () => {

@@ -73,6 +73,22 @@ export function makeNormalizer({ root, inputs }) {
   return (text) => pairs.reduce((out, [from, to]) => out.split(from).join(to), text)
 }
 
+/**
+ * The arguments as the `$` line shows them: an argument under `root` or `inputs` becomes
+ * `<root>/...` or `<inputs>/...` with `/` separators. This runs before quoting, so a
+ * checkout path with a space or a backslash never reaches the golden.
+ */
+export function displayArgs(args, { root, inputs }) {
+  return args.map((arg) => {
+    for (const [dir, token] of [[inputs, '<inputs>'], [root, '<root>']]) {
+      const rel = path.relative(dir, arg)
+      const outside = rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)
+      if (path.isAbsolute(arg) && !outside) return rel === '' ? token : `${token}/${rel.split(path.sep).join('/')}`
+    }
+    return arg
+  })
+}
+
 const quote = (arg) => (arg === '' || /[\s'"]/.test(arg) ? `'${arg.replace(/'/g, "'\\''")}'` : arg)
 
 function streamLines(text) {

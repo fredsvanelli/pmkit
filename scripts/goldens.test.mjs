@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 import { COMMANDS } from './pmkit.mjs'
 import { makeRepo } from './test-helpers.mjs'
 import {
-  compareNames, expandCase, findCollisions, formatRun, goldenName, makeNormalizer, mapLimit, runPmkit, staleGoldens,
+  compareNames, displayArgs, expandCase, findCollisions, formatRun, goldenName, makeNormalizer, mapLimit, runPmkit, staleGoldens,
 } from './golden-helpers.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -45,7 +45,8 @@ const FIXTURES = {
   },
   'no-sprints': {
     about: 'a team without sprints: 6 issues, an epic with children, a comment and a document',
-    issue: 'ISS-2K5P', other: 'ISS-6R3N', conflicted: 'ISS-0000', epic: 'EPC-4H7V', sprint: '2026-10-12', doc: 'specs/overview.md',
+    // ISS-9B2X holds the one comment, is in_review and has no parent, so get --comments, move and parent show real output.
+    issue: 'ISS-9B2X', other: 'ISS-6R3N', conflicted: 'ISS-0000', epic: 'EPC-4H7V', sprint: '2026-10-12', doc: 'specs/overview.md',
   },
 }
 
@@ -106,7 +107,7 @@ async function runOnce(fixture, args) {
   const root = makeRepo(fixture)
   try {
     const result = await runPmkit(args, root)
-    return makeNormalizer({ root, inputs: INPUTS })(formatRun({ args, ...result }))
+    return makeNormalizer({ root, inputs: INPUTS })(formatRun({ ...result, args: displayArgs(args, { root, inputs: INPUTS }) }))
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
   }
@@ -127,7 +128,7 @@ test('CASES covers exactly COMMANDS', () => {
     ...extra.map((name) => `CASES entry "${name}" names no command in COMMANDS`),
     ...findCollisions(commandNames).map((names) => `commands ${names.map((n) => `"${n}"`).join(' and ')} share one golden file`),
   ]
-  assert.deepEqual(lines, [], `${lines.join('\n')}\nAdd the case, then regenerate with: ${REGENERATE}`)
+  assert.deepEqual(lines, [], `${lines.join('\n')}\nAdd or remove the case, then regenerate with: ${REGENERATE}`)
 })
 
 for (const [fixture, anchors] of Object.entries(FIXTURES)) {
@@ -154,13 +155,16 @@ for (const [fixture, anchors] of Object.entries(FIXTURES)) {
   })
 }
 
+// Entries that should not be there: a file or folder at the top of __goldens__ that is
+// neither _inputs nor a fixture, and a file in a fixture folder that matches no command.
+const findStale = () => [
+  ...(fs.existsSync(GOLDENS) ? fs.readdirSync(GOLDENS).filter((name) => name !== '_inputs' && !Object.hasOwn(FIXTURES, name)).sort() : [])
+    .map((name) => path.join(GOLDENS, name)),
+  ...Object.keys(FIXTURES).flatMap((fixture) => staleGoldens(path.join(GOLDENS, fixture), commandNames).map((name) => path.join(GOLDENS, fixture, name))),
+]
+
 test('no stale goldens', () => {
-  const stale = Object.keys(FIXTURES).flatMap((fixture) => {
-    const dir = path.join(GOLDENS, fixture)
-    const found = staleGoldens(dir, commandNames).map((name) => path.join(dir, name))
-    if (!UPDATE) return found
-    for (const file of found) fs.rmSync(file, { recursive: true, force: true })
-    return staleGoldens(dir, commandNames).map((name) => path.join(dir, name))
-  })
-  assert.deepEqual(stale.map(relative), [], `golden files that match no command: ${stale.map(relative).join(', ')}. Delete them with: ${REGENERATE}`)
+  if (UPDATE) for (const file of findStale()) fs.rmSync(file, { recursive: true, force: true })
+  const stale = findStale()
+  assert.deepEqual(stale.map(relative), [], `golden entries that match no command or fixture: ${stale.map(relative).join(', ')}. Delete them with: ${REGENERATE}`)
 })
