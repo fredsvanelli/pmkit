@@ -71,10 +71,11 @@ It names the cause in the words of PMK-114 ("there is no active sprint"), says w
 |---|---|---|---|
 | Human, no active sprint | `no issues` | `warning: there is no active sprint, so --sprint current matches no issues; run pmkit cycle list` | 0 |
 | `--json`, no active sprint | `{ "issues": [], "problems": [] }`, pretty-printed as today | the same warning line | 0 |
-| Active sprint, `--sprint current` | unchanged | empty | 0 |
-| `--sprint none` or a sprint id | unchanged | empty | 0 |
-| No `--sprint` | unchanged | empty | 0 |
-| Active sprint, filters match nothing | `no issues` | empty | 0 |
+| Active sprint, `--sprint current` | unchanged | no sprint warning (other warnings, such as conflict markers, still print) | 0 |
+| `--sprint none` or a sprint id, including a planned sprint | unchanged | no sprint warning | 0 |
+| No `--sprint` | unchanged | no sprint warning | 0 |
+| Active sprint, filters match nothing | `no issues` | no sprint warning | 0 |
+| Only a planned sprint, `--sprint current` | `no issues` | the warning line, still true because no sprint is active | 0 |
 
 Criterion 2 allows "the JSON data or the CLI's warning lines". This design uses the warning lines. The JSON object keeps its current keys.
 
@@ -82,8 +83,8 @@ Criterion 2 allows "the JSON data or the CLI's warning lines". This design uses 
 
 No command text changes.
 
-- `commands/issues/mine.md` step 3 already runs `cycle current` first. When no sprint is active it drops `--sprint current` and says so. The new warning does not fire there, so the text stays correct.
-- `commands/issues/find.md` runs `issues list <flags> --json` in step 5 and says, for an empty list, to "say so and name the filter that is likely too narrow". An agent reads stdout and stderr of that call together. It sees the warning, and the filter it names is `--sprint current`, which is the right one. The command needs no new step to be correct.
+- `commands/issues/mine.md` step 2 runs `cycle current`, and step 3 runs the list. When no sprint is active, step 3 drops `--sprint current` and says so. The new warning does not fire there, so the text stays correct.
+- `commands/issues/find.md` runs `issues list <flags> --json` in step 5 and says, for an empty list, to "say so and name the filter that is likely too narrow". The Bash tool returns stdout and stderr of that call together, so an agent should see the warning. No command text tells it to read stderr today (`grep -rn "stderr" commands skills` finds nothing), so this is an assumption, not a guarantee. The command stays correct without the warning, because `find.md` already has a rule for "no sprint is active and the question says current sprint".
 - `skills/pmkit/references/conventions.md` has a section on reading errors and none on warnings. That gap exists for every warning the CLI prints today, not only this one. It is a follow-up, not part of this issue.
 
 ## Snapshots
@@ -120,19 +121,21 @@ Test `issues list --sprint current --json keeps parseable stdout and puts the re
 
 Test `issues list --sprint current gives no warning when a sprint is active, and none or an id never warn`.
 
-- Input: `makeRepo('team')`, active sprint `2026-10-12`.
-  - `issues list --sprint current --json`: status 0, issue ids sorted equal `['ISS-2X6D', 'ISS-4M2S', 'ISS-5N1R', 'ISS-8C4W']` (the same list `scripts/sprints.test.mjs` asserts), stderr empty.
-  - `issues list --sprint current --text zzzzzz --json`: `issues` empty, stderr empty. A sprint exists, so an empty result is not a sprint problem.
-- Input: `makeRepo('basic')` with no active sprint.
-  - `issues list --sprint none --json` and `issues list --json`: status 0, stderr empty.
-  - A sprint id: in the same temp repo, open a sprint with `cycle open` and close it with `cycle close`, so no sprint is active. Then `issues list --sprint <id> --json` gives status 0 and an empty stderr. The id is a sprint that exists, so the filter is valid and never warns.
+- Input: `makeRepo('team')`, active sprint `2026-10-12`. The fixture holds ISS-3Q6T with conflict markers, so stderr is never empty here. Observed in a temp copy, both calls print `warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.` and nothing else. The assertions check that stderr does not match `/no active sprint/`, not that it is empty.
+  - `issues list --sprint current --json`: status 0, issue ids sorted equal `['ISS-2X6D', 'ISS-4M2S', 'ISS-5N1R', 'ISS-8C4W']` (the same list `scripts/sprints.test.mjs` asserts), stderr does not match `/no active sprint/`.
+  - `issues list --sprint current --text zzzzzz --json`: `issues` empty, stderr does not match `/no active sprint/`. A sprint exists, so an empty result is not a sprint problem.
+- `messy-merge` also prints other warnings (observed: conflict warnings for ISS-4 and ISS-5), so the same rule applies. The golden covers it and the test needs no case for it.
+- Input: `makeRepo('basic')`, which prints no other warnings, so these cases assert exact stderr equality.
+  - `issues list --sprint none --json` and `issues list --json`: status 0, stderr `''`. Observed: stdout `{ "issues": [], "problems": [] }`, stderr empty.
+  - A sprint id: in the same temp repo, run `cycle open --start 2026-10-26`. That creates a planned sprint with id `2026-10-26`, and no sprint becomes active (`cycle close` rejects a planned sprint, so the test does not call it). Then `issues list --sprint 2026-10-26 --json` gives status 0, stderr `''`, and an empty `issues` list. The id names a sprint that exists, so the filter is valid and never warns.
+  - In the same repo with the planned sprint, `issues list --sprint current` gives status 0, stdout `no issues\n` and stderr `WARNING\n`, because no sprint is active. Before the handler change, the observed stderr is empty, so this assertion is red first.
 - The golden diffs (see Snapshots) prove that the stdout of the unchanged cases did not change: `team` and `messy-merge` goldens stay identical.
 
 ### Criterion 4: a CLI test covers both cases, and `npm test` passes
 
 - The three tests above cover the case with and without an active sprint.
 - Commands: `node --test scripts/cli.test.mjs`, then `UPDATE_GOLDENS=1 node --test scripts/goldens.test.mjs` and the diff reading, then `npm test`.
-- Red first. Before the handler change, tests 1 and 2 fail on the stderr assertion and test 3 passes.
+- Red first. Before the handler change, tests 1 and 2 fail on the stderr assertion. Test 3 fails only on its last assertion (`--sprint current` with a planned sprint), and its other assertions pass.
 
 ## Decisões
 
@@ -142,13 +145,13 @@ Test `issues list --sprint current gives no warning when a sprint is active, and
 4. **Warn on any empty `--sprint current` result with no active sprint, whatever other filters are set.** The sprint filter alone already matches nothing, so the reason is true whatever else is filtered.
 5. **Message text.** It reuses the PMK-114 words and the PMK-114 next step, and uses the existing `; run <step>` shape of warnings. It adds "so --sprint current matches no issues" so the line makes sense alone in a stderr stream.
 6. **Stdout does not change.** Criterion 3 and the callers of the table depend on it. Only stderr gains a line.
-7. **No command text change.** `mine.md` avoids the case, and `find.md` already tells the agent to explain an empty list. The agent sees the warning in the same call. Changing the commands would go beyond the issue.
+7. **No command text change, and the warning stays on stderr.** `mine.md` avoids the case, and `find.md` already tells the agent to explain an empty list. Assumption: agents read the warning because the Bash tool returns stdout and stderr together. No command text tells them to read stderr today. Criterion 2 allows the CLI's warning lines, so the design meets it, but the guarantee rests on that assumption. The follow-up candidates list the text that would make it firm. Changing the commands would go beyond the issue.
 8. **Goldens regenerated, not edited by hand.** Four stderr sections change, and the diff is read line by line.
 9. **Choices made without asking the user.** Approach A and the message text are the author's recommendation, as the brief allowed.
 
 ## Follow-up candidates
 
-- Add a "Reading warnings" section to `skills/pmkit/references/conventions.md`: show each `warning:` line from stderr as it is. Today the file covers errors only.
+- Add a clause to `commands/issues/find.md` that tells the agent to read `warning:` lines from the CLI, for example when `issues list --sprint current` prints `there is no active sprint`. Pair it with a "Reading warnings" rule in `skills/pmkit/references/conventions.md`: show each `warning:` line from stderr as it is. Today the file covers errors only. Together they make the criterion 2 channel a rule instead of an assumption.
 - Consider a `warnings` array in the `--json` output of every command, if agents turn out to drop stderr.
 - Have `commands/issues/mine.md` rely on the warning instead of its own `cycle current` pre-check, to save one call. Separate issue, since it changes a command.
 - Give `cycle issues` or other `current` readers the same message if any prints silently. Check first with `grep -n "current" scripts/pmkit.mjs`.
