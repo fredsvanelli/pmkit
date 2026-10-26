@@ -59,7 +59,7 @@ Never run `init` without `--update` when a config exists.
    - On no, add one line: `/pmkit:spec:import` then lists those issues under "needs criteria". Go to step 4 without label flags.
    - On yes, and only when `labels` is empty, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues list --archived --json` and take the union of `issues[].labels`. Then split the union:
      - Names that match `^[a-z0-9][a-z0-9_-]*$` get one `--label` each, next to `--label needs-criteria`, in the commands of steps 4 and 8. Say which labels setup adds besides `needs-criteria`.
-     - Names that do not match are not passed. Name them to the user. Say that once the list has a label, `validate` rejects the issues that use these labels. Offer to rename them, with `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues update <id> --label <labels>`. That flag replaces the whole label list, so pass every label the issue keeps. Then run setup again.
+     - Names that do not match are not passed. Name them to the user. Say that once the list has a label, `validate` rejects the issues that use these labels. Offer to rename them. For each issue, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues update <id> --label <labels> --dry-run --json`, show the before and after, and ask once with `AskUserQuestion` for all of them. After approval, run the same commands without `--dry-run`. That flag replaces the whole label list, so pass every label the issue keeps. Then run setup again.
 4. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --dry-run --json`. Add `--git-host`, `--id-style` or `--estimate-unit` only when the user asks to change them. Add the `--label` flags from step 3, when there are any. `--update` refuses `--prefix`, so tell the user the prefix cannot change. A new ID style applies to the issues and epics created after it, and the existing IDs stay as they are.
 5. Show every file the dry run marks `change` or `differs` with its diff. List the `create` and `replace` files by path. Say how many files were `keep`.
 6. For each `differs` file, ask with `AskUserQuestion` whether to replace it. A `differs` file is one the user edited, and the command replaces it only when asked.
@@ -71,6 +71,7 @@ Never run `init` without `--update` when a config exists.
 
 - First run: the one summary of step 7 of the first run, before any file is written.
 - Existing config: one question per `differs` file (step 6), then one question to apply everything shown (step 7), before `init --update` runs. With nothing to write, there is no question.
+- Existing config step 3: the label renames, shown with their dry runs and asked once before any issue changes. Declining leaves the labels as they are.
 - The questions of step 4 of the first run and the label question of step 3 of the existing config are inputs, not confirmations.
 
 ## Output
