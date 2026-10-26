@@ -1,1 +1,7 @@
 {"at":"2026-10-25T19:13:19Z","by":"fred","op":"create","to":{"id":"PMK-6","title":"Commit each operation when auto_commit is on","type":"feature","status":"backlog","priority":"medium","estimate":3,"labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-25T19:13:19Z","updated":"2026-10-25T19:13:19Z"}}
+{"at":"2026-10-25T21:50:47Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-25T21:50:47Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-25T21:50:47Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-6-commit-each-operation-when-auto-commit"}
+{"at":"2026-10-25T21:55:42Z","by":"fred","op":"comment","to":"2026-10-25T21-55-42Z-fred.md"}
+{"at":"2026-10-25T22:07:31Z","by":"fred","op":"comment","to":"2026-10-25T22-07-31Z-fred.md"}
+{"at":"2026-10-25T22:07:31Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

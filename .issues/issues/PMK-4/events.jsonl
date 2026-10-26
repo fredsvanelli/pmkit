@@ -1,1 +1,7 @@
 {"at":"2026-10-25T19:13:19Z","by":"fred","op":"create","to":{"id":"PMK-4","title":"Record days off per sprint from the CLI","type":"feature","status":"backlog","priority":"medium","estimate":2,"labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-25T19:13:19Z","updated":"2026-10-25T19:13:19Z"}}
+{"at":"2026-10-25T23:00:18Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-25T23:00:18Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-25T23:00:18Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-4-record-days-off-per-sprint-from-the-cli"}
+{"at":"2026-10-25T23:02:44Z","by":"fred","op":"comment","to":"2026-10-25T23-02-44Z-fred.md"}
+{"at":"2026-10-26T00:15:42Z","by":"fred","op":"comment","to":"2026-10-26T00-15-42Z-fred.md"}
+{"at":"2026-10-26T00:15:43Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

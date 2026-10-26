@@ -8,6 +8,7 @@ import { parseYaml } from './yaml.mjs'
 import { parseEpicFile, walkParents } from './local/epics.mjs'
 import { driftEvents, readEvents } from './local/events.mjs'
 import { formatError } from './local/migrations.mjs'
+import { hasMilestoneFiles, milestoneStems, parseMilestone, validMilestoneId } from './local/milestones.mjs'
 import { hasConflictMarkers, parseIssueFile, toFrontmatter } from './local/issue-file.mjs'
 import { overlaps, readSprint } from './local/sprints.mjs'
 
@@ -61,7 +62,7 @@ function blockedByCycles(graph) {
 }
 
 const relative = (root, file) => path.relative(root, file).split(path.sep).join('/')
-const noneChecked = () => ({ issues: 0, epics: 0, sprints: 0, comments: 0 })
+const noneChecked = () => ({ issues: 0, epics: 0, sprints: 0, milestones: 0, comments: 0 })
 // A problem has no next step field, so the format problem carries it in its message.
 const formatProblem = (root, file, error) => ({ path: relative(root, file), code: 'FORMAT', message: `${error.message}; run ${error.nextStep}` })
 
@@ -128,6 +129,7 @@ export function validateRepo(root, { config } = {}) {
 
   // Epics
   const epicIds = new Set()
+  const epics = new Map()
   for (const name of subdirs(path.join(issuesDir, 'epics'))) {
     const file = path.join(issuesDir, 'epics', name, 'epic.md')
     if (!fs.existsSync(file)) continue
@@ -136,6 +138,7 @@ export function validateRepo(root, { config } = {}) {
     if (conflicted.has(file)) continue
     try {
       const epic = parseEpicFile(read(file), { statuses: local.statuses })
+      epics.set(name, epic)
       if (epic.id !== name) add(file, 'id', `folder ${name} and id ${epic.id} differ`)
     } catch (error) {
       add(file, 'frontmatter', error.message)
@@ -164,6 +167,24 @@ export function validateRepo(root, { config } = {}) {
   })
   const active = sprints.filter(({ sprint }) => sprint.state === 'active')
   for (const { sprint, file } of active.slice(1)) add(file, 'sprint', `more than one active sprint, ${active[0].sprint.id} is active too`)
+
+  // Milestones
+  const milestonesDir = path.join(issuesDir, 'milestones')
+  const milestoneIds = milestoneStems(milestonesDir)
+  for (const id of [...milestoneIds].sort()) {
+    const file = path.join(milestonesDir, `${id}.md`)
+    checked.milestones++
+    if (conflicted.has(file)) continue
+    if (!validMilestoneId(id)) {
+      add(file, 'milestone', `milestone id "${id}" must start and end with a letter or digit and hold only letters, digits, ".", "_" and "-"`)
+      continue
+    }
+    try {
+      parseMilestone(read(file), id)
+    } catch (error) {
+      add(file, 'milestone', error.message)
+    }
+  }
 
   // Issues
   const folders = subdirs(path.join(issuesDir, 'issues'))
@@ -210,8 +231,9 @@ export function validateRepo(root, { config } = {}) {
 
   // References
   const folderSet = new Set(folders)
-  const milestonesDir = path.join(issuesDir, 'milestones')
-  const milestones = fs.existsSync(milestonesDir) ? new Set(fs.readdirSync(milestonesDir).map((n) => n.replace(/\.(md|yaml)$/, ''))) : null
+  // Milestones are free text until milestones/ holds a .md file.
+  const milestonesChecked = hasMilestoneFiles(milestonesDir)
+  const milestoneMissing = (value) => milestonesChecked && value !== undefined && !milestoneIds.has(String(value))
   const sprintIds = new Set(files(sprintDir, '.yaml').map((name) => path.basename(name, '.yaml')))
   for (const [name, issue] of issues) {
     const file = path.join(issuesDir, 'issues', name, 'issue.md')
@@ -221,7 +243,10 @@ export function validateRepo(root, { config } = {}) {
       for (const value of values) if (!folderSet.has(value)) missing(field, value)
     }
     if (issue.sprint !== undefined && !sprintIds.has(String(issue.sprint))) missing('sprint', issue.sprint)
-    if (milestones && issue.milestone !== undefined && !milestones.has(String(issue.milestone))) missing('milestone', issue.milestone)
+    if (milestoneMissing(issue.milestone)) missing('milestone', issue.milestone)
+  }
+  for (const [name, epic] of epics) {
+    if (milestoneMissing(epic.milestone)) add(path.join(issuesDir, 'epics', name, 'epic.md'), 'reference', `milestone ${epic.milestone} does not exist`)
   }
 
   // Cycles
