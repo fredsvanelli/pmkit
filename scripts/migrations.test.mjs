@@ -470,3 +470,25 @@ test('migrate writes nothing when a later step fails', () => {
   assert.equal(git(root, 'status', '--porcelain').stdout, '')
   assert.equal(subjects(root), 'initial\n')
 })
+
+test('migrate refuses an invalid .pmkit/config.yaml before every other check', () => {
+  const gitlab = (root) => {
+    const file = path.join(root, '.pmkit', 'config.yaml')
+    const text = fs.readFileSync(file, 'utf8')
+    assert.ok(text.includes('system: none'))
+    fs.writeFileSync(file, text.replace('system: none', 'system: gitlab'))
+  }
+  // Format 1 in git, format 2 (nothing to migrate today) and format 1 outside git (NOT_CONFIGURED today).
+  for (const root of [gitRepo().root, makeRepo('team'), setup().root]) {
+    gitlab(root)
+    const before = hashTree(root)
+    for (const options of [{}, { dryRun: true }]) {
+      assert.throws(() => runMigrate(root, options), {
+        code: 'INVALID_INPUT',
+        message: '.pmkit/config.yaml is not valid, so writes are refused: git_host.system must be github or none',
+        nextStep: 'pmkit validate',
+      })
+      assert.equal(hashTree(root), before)
+    }
+  }
+})

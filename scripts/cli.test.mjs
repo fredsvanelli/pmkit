@@ -6,6 +6,8 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { hashTree, makeRepo, tempDir } from './test-helpers.mjs'
+import { COMMANDS, configClass } from './pmkit.mjs'
+import { fakeGh, ghCalls } from './fake-gh.mjs'
 
 const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), 'pmkit.mjs')
 
@@ -1067,4 +1069,260 @@ test('issues list --sprint current gives no warning when a sprint is active, and
     fs.rmSync(team, { recursive: true, force: true })
     fs.rmSync(basic, { recursive: true, force: true })
   }
+})
+
+const cmd = (name) => COMMANDS.find((c) => c.name === name)
+
+test('configClass sorts every call into exempt, read or write', () => {
+  assert.deepEqual(COMMANDS.filter((c) => c.exempt).map((c) => c.name), ['init', 'changelog', 'validate'])
+  for (const name of ['init', 'changelog', 'validate']) assert.equal(configClass(cmd(name), {}), 'exempt', name)
+  assert.equal(configClass(cmd('issues list'), {}), 'read')
+  assert.equal(configClass(cmd('issues create'), {}), 'write')
+  assert.equal(configClass(cmd('migrate'), {}), 'write')
+  assert.equal(configClass(cmd('cycle capacity'), {}), 'read')
+  assert.equal(configClass(cmd('cycle capacity'), { set: 'fred=5' }), 'write')
+  assert.equal(configClass(cmd('cycle capacity'), { 'days-off': 'fred=2026-10-20' }), 'write')
+})
+
+const INPUTS = path.join(path.dirname(fileURLToPath(import.meta.url)), '__goldens__', '_inputs')
+const input = (name) => path.join(INPUTS, name)
+const editPmkit = (root, from, to) => {
+  const file = path.join(root, '.pmkit', 'config.yaml')
+  const text = fs.readFileSync(file, 'utf8')
+  assert.ok(text.includes(from), `.pmkit/config.yaml has ${from}`)
+  fs.writeFileSync(file, text.replace(from, to))
+}
+const MAYBE = ['confirm: single_writes', 'confirm: maybe']
+const GITLAB = ['system: none', 'system: gitlab']
+const CONFIRM_MSG = 'write_policy.confirm must be one of all_writes, single_writes, none'
+const HOST_MSG = 'git_host.system must be github or none'
+const REFUSAL = (...p) => `.pmkit/config.yaml is not valid, so writes are refused: ${p.join('; ')}`
+const WARNING = (...p) => `warning: ${REFUSAL(...p)}; run pmkit validate`
+const errorOf = (result) => JSON.parse(result.stdout).error
+
+test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () => {
+  const WRITES = {
+    'issues create': ['--title', 'Second', '--type', 'task'],
+    'issues update': ['ISS-5N1R', '--title', 'Renamed'],
+    'issues move': ['ISS-5N1R', 'done'],
+    'issues assign': ['ISS-5N1R', 'fred'],
+    'issues link': ['ISS-5N1R', 'ISS-4M2S', '--kind', 'blocks'],
+    'issues parent': ['ISS-5N1R', 'EPC-2M9D'],
+    'issues comment': ['ISS-5N1R', '--body-file', input('comment.md')],
+    'issues log-time': ['ISS-5N1R', '30'],
+    'issues archive': ['ISS-5N1R'],
+    'cycle open': ['--start', '2026-10-26'],
+    'cycle close': ['2026-10-12'],
+    'cycle add': ['ISS-5N1R', '--to', 'current'],
+    'cycle capacity': ['2026-10-12', '--set', 'fred=5'],
+    'epic create': ['--title', 'New epic'],
+    'epic update-status': ['EPC-2M9D', '--health', 'on_track', '--body-file', input('update.md')],
+    'milestone create': ['v2.0'],
+    'docs create': ['notes/new.md', '--body-file', input('doc.md')],
+    'issues branch': ['ISS-5N1R'],
+    'pr open': ['--issue', 'ISS-5N1R'],
+    'pr ready': ['--issue', 'ISS-5N1R'],
+    'pr sync': [],
+    migrate: [],
+  }
+  assert.deepEqual(Object.keys(WRITES).sort(), COMMANDS.filter((c) => c.write).map((c) => c.name).sort())
+  const root = makeRepo('team')
+  editPmkit(root, 'system: none', 'system: github\n  default_branch: main')
+  editPmkit(root, ...MAYBE)
+  const fake = fakeGh({})
+  const env = { PATH: `${fake.dir}${path.delimiter}${process.env.PATH}`, PMKIT_FAKE_GH: fake.responses }
+  const before = hashTree(root)
+  const expected = { code: 'INVALID_INPUT', message: REFUSAL(CONFIRM_MSG), nextStep: 'pmkit validate' }
+  const calls = [
+    ...Object.entries(WRITES).flatMap(([name, argv]) => [[...name.split(' '), ...argv, '--json'], [...name.split(' '), ...argv, '--dry-run', '--json']]),
+    ['cycle', 'capacity', '2026-10-12', '--days-off', 'fred=2026-10-20', '--json'],
+  ]
+  for (const args of calls) {
+    const result = run(root, args, { env })
+    assert.equal(result.status, 2, `${args.join(' ')}: ${result.stdout}${result.stderr}`)
+    assert.deepEqual(errorOf(result), expected, args.join(' '))
+    assert.equal(hashTree(root), before, args.join(' '))
+  }
+  assert.deepEqual(ghCalls(fake), [])
+})
+
+test('issues create with git_host.system gitlab exits 2 and creates no issue', () => {
+  const root = makeRepo('team')
+  editPmkit(root, ...GITLAB)
+  const dir = path.join(root, '.issues', 'issues')
+  const before = fs.readdirSync(dir)
+  const result = run(root, ['issues', 'create', '--title', 'Second', '--type', 'task', '--json'])
+  assert.equal(result.status, 2)
+  assert.equal(errorOf(result).message, REFUSAL(HOST_MSG))
+  assert.deepEqual(fs.readdirSync(dir), before)
+})
+
+test('pr sync refuses an invalid file even when it would move nothing', () => {
+  const root = makeRepo('basic')
+  editPmkit(root, ...GITLAB)
+  const result = run(root, ['pr', 'sync', '--dry-run', '--json'])
+  assert.equal(result.status, 2)
+  assert.equal(errorOf(result).message, REFUSAL(HOST_MSG))
+})
+
+test('a write checks the config before its own flags', () => {
+  const dir = tempDir('pmkit-order-')
+  git(dir, 'init', '-q')
+  for (const args of [['epic', 'create', '--json'], ['pr', 'open', '--json']]) {
+    const result = run(dir, args)
+    assert.equal(result.status, 2)
+    assert.equal(errorOf(result).code, 'NOT_CONFIGURED', args.join(' '))
+    assert.equal(errorOf(result).nextStep, '/pmkit:setup', args.join(' '))
+  }
+  const root = makeRepo('team')
+  editPmkit(root, ...MAYBE)
+  const result = run(root, ['epic', 'create', '--json'])
+  assert.equal(result.status, 2)
+  assert.equal(errorOf(result).message, REFUSAL(CONFIRM_MSG))
+})
+
+test('every read goes on with one warning', () => {
+  const READS = {
+    capabilities: [],
+    discover: [],
+    whoami: [],
+    'issues list': [],
+    'issues get': ['ISS-5N1R'],
+    'cycle list': [],
+    'cycle current': [],
+    'cycle issues': ['2026-10-12'],
+    'cycle capacity': ['2026-10-12'],
+    'epic list': [],
+    'epic get': ['EPC-2M9D'],
+    'epic progress': ['EPC-2M9D'],
+    'epic updates': ['EPC-2M9D'],
+    'milestone list': [],
+    'milestone get': ['v1.0'],
+    'docs read': ['missing.md'],
+    'metrics velocity': [],
+    'metrics cycle-time': [],
+    events: [],
+    'pr status': [],
+    reindex: [],
+  }
+  assert.deepEqual(Object.keys(READS).sort(), [...COMMANDS.filter((c) => !c.write && !['init', 'changelog', 'validate'].includes(c.name)).map((c) => c.name), 'cycle capacity'].sort())
+  const root = makeRepo('team')
+  const runAll = () => Object.entries(READS).map(([name, argv]) => {
+    const result = run(root, [...name.split(' '), ...argv, '--json'])
+    let { stdout } = result
+    if (name === 'capabilities') {
+      const data = JSON.parse(stdout)
+      delete data.generatedAt
+      stdout = JSON.stringify(data)
+    }
+    return { name, status: result.status, stdout, stderr: result.stderr }
+  })
+  const valid = runAll()
+  editPmkit(root, ...MAYBE)
+  const invalid = runAll()
+  for (const [i, first] of valid.entries()) {
+    const second = invalid[i]
+    assert.equal(second.status, first.status, first.name)
+    assert.equal(second.stdout, first.stdout, first.name)
+    // Some reads print their own warnings on this fixture (an issue with conflict markers); the config warning comes first.
+    const count = (stderr) => stderr.split('\n').filter((line) => line === WARNING(CONFIRM_MSG)).length
+    assert.equal(count(first.stderr), 0, first.name)
+    assert.equal(count(second.stderr), 1, first.name)
+    assert.equal(second.stderr, `${WARNING(CONFIRM_MSG)}\n${first.stderr}`, first.name)
+  }
+  for (const name of ['milestone get', 'docs read', 'pr status']) {
+    assert.equal(invalid.find((r) => r.name === name).status, 2, name)
+  }
+})
+
+test('pr status warns before its own error', () => {
+  const root = makeRepo('team')
+  editPmkit(root, ...GITLAB)
+  const result = run(root, ['pr', 'status', '--branch', 'x', '--json'])
+  assert.equal(result.status, 2)
+  assert.equal(errorOf(result).code, 'NOT_SUPPORTED')
+  assert.equal(errorOf(result).message, 'this repository has no git host configured')
+  assert.equal(result.stderr, `${WARNING(HOST_MSG)}\n`)
+  const text = run(root, ['pr', 'status', '--branch', 'x'])
+  assert.equal(text.status, 2)
+  const lines = text.stderr.split('\n')
+  assert.equal(lines[0], WARNING(HOST_MSG))
+  assert.equal(lines[1], 'error: this repository has no git host configured')
+})
+
+test('text mode shows the refusal and the warning', () => {
+  const root = makeRepo('team')
+  const listed = run(root, ['issues', 'list'])
+  assert.equal(listed.status, 0, listed.stderr)
+  editPmkit(root, ...MAYBE)
+  const created = run(root, ['issues', 'create', '--title', 'Second', '--type', 'task'])
+  assert.equal(created.status, 2)
+  assert.equal(created.stdout, '')
+  assert.equal(created.stderr, `error: ${REFUSAL(CONFIRM_MSG)}\nnext: pmkit validate\n`)
+  const again = run(root, ['issues', 'list'])
+  assert.equal(again.status, 0)
+  assert.equal(again.stdout, listed.stdout)
+  assert.equal(again.stderr.split('\n')[0], WARNING(CONFIRM_MSG))
+})
+
+test('with both config files invalid, a write names .pmkit/config.yaml', () => {
+  const root = makeRepo('team')
+  editPmkit(root, ...MAYBE)
+  const file = path.join(root, '.issues', 'config.yaml')
+  const text = fs.readFileSync(file, 'utf8')
+  assert.ok(text.includes('default_status: backlog'))
+  fs.writeFileSync(file, text.replace('default_status: backlog', 'default_status: nope'))
+  const result = run(root, ['issues', 'create', '--title', 'Second', '--type', 'task', '--dry-run', '--json'])
+  assert.equal(result.status, 2)
+  assert.equal(errorOf(result).message, REFUSAL(CONFIRM_MSG))
+})
+
+test('a hand-written .pmkit/config.yaml with only version and tracker', () => {
+  const root = makeRepo('team')
+  fs.writeFileSync(path.join(root, '.pmkit', 'config.yaml'), 'version: 1\ntracker:\n  system: local\n  path: .issues\n')
+  const listed = run(root, ['issues', 'list', '--json'])
+  assert.equal(listed.status, 0, listed.stderr)
+  assert.ok(listed.stderr.split('\n').includes(WARNING(HOST_MSG, CONFIRM_MSG)), listed.stderr)
+  const created = run(root, ['issues', 'create', '--title', 'Second', '--type', 'task', '--dry-run', '--json'])
+  assert.equal(created.status, 2)
+  assert.equal(errorOf(created).message, REFUSAL(HOST_MSG, CONFIRM_MSG))
+})
+
+test('the refusal names every bad key, and its next step lists them', () => {
+  const root = makeRepo('team')
+  editPmkit(root, ...GITLAB)
+  editPmkit(root, 'confirm: single_writes', 'confirm: sometimes')
+  const result = run(root, ['issues', 'create', '--title', 'Second', '--type', 'task', '--json'])
+  assert.equal(result.status, 2)
+  assert.equal(errorOf(result).message, `.pmkit/config.yaml is not valid, so writes are refused: ${HOST_MSG}; write_policy.confirm must be one of all_writes, single_writes, none`)
+  const validated = json(root, ['validate'])
+  assert.deepEqual(validated.problems.filter((p) => p.path === '.pmkit/config.yaml').map((p) => p.message), [HOST_MSG, CONFIRM_MSG])
+})
+
+test('an unknown tracker.system refuses reads with INVALID_INPUT', () => {
+  const root = makeRepo('basic')
+  editPmkit(root, 'system: local', 'system: trello')
+  const result = run(root, ['issues', 'list', '--json'])
+  assert.equal(result.status, 2)
+  assert.deepEqual(errorOf(result), {
+    code: 'INVALID_INPUT',
+    message: '.pmkit/config.yaml is not valid: tracker.system must be one of local, linear, jira, github, gitlab, azure-devops',
+    nextStep: 'pmkit validate',
+  })
+  assert.doesNotMatch(result.stderr, /warning:/)
+})
+
+test('validate and changelog print no warning', () => {
+  const root = makeRepo('team')
+  editPmkit(root, ...MAYBE)
+  for (const args of [['validate'], ['validate', '--json']]) {
+    const result = run(root, args)
+    assert.equal(result.status, 0, result.stderr)
+    assert.ok(result.stdout.includes(CONFIRM_MSG), args.join(' '))
+    assert.doesNotMatch(result.stderr, /^warning: \.pmkit/m)
+  }
+  const changelog = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'CHANGELOG.md')
+  const result = run(root, ['changelog', '--file', changelog, '--since', '0.1.0'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.doesNotMatch(result.stderr, /^warning: \.pmkit/m)
 })

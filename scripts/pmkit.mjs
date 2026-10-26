@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { BOOLEANS, parseArgs } from './lib/args.mjs'
 import { requireActor, gitUserEmail } from './lib/actor.mjs'
-import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, validateLocalConfig, validatePmkitConfig } from './lib/config.mjs'
+import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig } from './lib/config.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
 import { changeLines, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, sprintRecord, table } from './lib/format.mjs'
 import { cycleTimes, lastEntry, summary, velocity } from './lib/metrics.mjs'
@@ -215,7 +215,7 @@ export const COMMANDS = [
   {
     name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels',
     usage: '[--tracker local] [--git-host github|none] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--label name ...] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
-    flags: ['tracker', 'git-host', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'label', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, run: runInit,
+    flags: ['tracker', 'git-host', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'label', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runInit,
   },
   {
     name: 'capabilities', summary: 'prints the capability manifest', flags: [],
@@ -392,7 +392,7 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'cycle capacity', summary: 'reads or sets capacity and days off', usage: '<id> [--set member=n,..] [--days-off member=date+date,..]', write: true, args: ['id'], flags: ['set', 'days-off'],
+    name: 'cycle capacity', summary: 'reads or sets capacity and days off', usage: '<id> [--set member=n,..] [--days-off member=date+date,..]', write: true, readUnless: ['set', 'days-off'], args: ['id'], flags: ['set', 'days-off'],
     run: (ctx) => {
       const tracker = ctx.tracker()
       const [id] = ctx.args
@@ -651,7 +651,7 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'changelog', summary: 'prints the CHANGELOG.md sections newer than a version, oldest first; needs no config', usage: '--file f --since v', flags: ['file', 'since'],
+    name: 'changelog', summary: 'prints the CHANGELOG.md sections newer than a version, oldest first; needs no config', usage: '--file f --since v', flags: ['file', 'since'], exempt: true,
     run: (ctx) => {
       if (ctx.opt('file') === undefined || ctx.opt('since') === undefined) throw usageError('changelog needs --file and --since', 'Use --file <CHANGELOG.md> --since <version>')
       const sections = sectionsSince(parseChangelog(readInput(path.resolve(ctx.cwd, ctx.opt('file')))), ctx.opt('since'))
@@ -676,7 +676,7 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'validate', summary: 'checks every file and reference; problems are output, not errors', flags: [],
+    name: 'validate', summary: 'checks every file and reference; problems are output, not errors', flags: [], exempt: true,
     run: (ctx) => {
       const result = validateRepo(ctx.root)
       const c = result.checked
@@ -692,6 +692,7 @@ const gitIn = (root, ...args) => spawnSync('git', args, { cwd: root, encoding: '
 /** Plans the migration, then writes it unless `dryRun`. `formatVersion` and `migrations` default to the real ones. */
 export function runMigrate(root, { dryRun = false, formatVersion = FORMAT_VERSION, migrations = MIGRATIONS } = {}) {
   const config = loadConfig(root, { checkFormat: false })
+  if (config.pmkitProblems.length > 0) throw pmkitWriteRefusal(config.pmkitProblems)
   const { version } = config.format
   const trackerPath = (config.pmkit.tracker.path ?? '.issues').split(path.sep).join('/')
   const state = formatState(version, formatVersion)
@@ -954,6 +955,14 @@ function commitTracker(config, message, paths) {
   if (committed.status !== 0) throw fail(committed)
 }
 
+/** How a call treats .pmkit/config.yaml: exempt skips the check, read warns, write refuses. `options` is `parseArgs(argv).options`. */
+export function configClass(command, options) {
+  if (command.exempt) return 'exempt'
+  if (!command.write) return 'read'
+  if (command.readUnless === undefined || command.readUnless.some((name) => options[name] !== undefined)) return 'write'
+  return 'read'
+}
+
 function findCommand(name) {
   return COMMANDS.find((command) => command.name === name)
 }
@@ -987,6 +996,12 @@ export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
   let code = 0
   // Until the arguments parse, a bare --json or --json=true still asks for a JSON error.
   let json = argv.includes('--json') || argv.includes('--json=true')
+  // Seen by the catch: a read with problems in .pmkit/config.yaml prints the warning before its error.
+  let loaded
+  let kind
+  const readWarning = () => {
+    if (kind === 'read' && loaded?.pmkitProblems.length > 0) stderr.push(`warning: ${pmkitConfigWarning(loaded.pmkitProblems)}\n`)
+  }
   try {
     const parsed = parseArgs(argv)
     json = last(parsed.options.json) === true
@@ -1007,7 +1022,6 @@ export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
     const dryRun = last(options['dry-run']) === true
     const now = clock(env)
     const random = randomSource(env)
-    let loaded
     let tracker
     let host
     const ctx = {
@@ -1022,6 +1036,12 @@ export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
         ? options.as
         : requireActor(ctx.config().local, { email: gitUserEmail(root), env }).id),
     }
+    kind = configClass(command, options)
+    // migrate refuses in runMigrate: ctx.config() checks the format, which would hide migrate's own format errors.
+    if (kind === 'write' && command.name !== 'migrate') {
+      const { pmkitProblems } = ctx.config()
+      if (pmkitProblems.length > 0) throw pmkitWriteRefusal(pmkitProblems)
+    }
     const result = command.run(ctx)
     if (command.write && !dryRun && result.commit !== undefined && ctx.config().local.auto_commit === true) {
       // Only the files this command wrote; a write that changed nothing commits nothing.
@@ -1035,9 +1055,11 @@ export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
       }
     }
     stdout.push(json ? `${JSON.stringify(result.data, null, 2)}\n` : `${result.text}\n`)
+    readWarning()
     for (const warning of result.warnings ?? []) stderr.push(`warning: ${warning}\n`)
   } catch (error) {
     code = 2
+    readWarning()
     if (isPmkitError(error)) {
       if (json) {
         const body = { error: { code: error.code, message: error.message, nextStep: error.nextStep } }
