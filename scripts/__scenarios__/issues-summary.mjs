@@ -35,18 +35,20 @@ export default [
     prompt: '/pmkit:issues:summary EPC-4H7V',
     answers: [],
     steps: [
-      { step: '1', read: ['epic', 'get', 'EPC-4H7V'] },
-      { step: '1', read: ['epic', 'updates', 'EPC-4H7V'] },
-      { step: '2', read: ['issues', 'list', '--parent', 'EPC-4H7V'] },
+      { step: '1', read: ['epic', 'get', 'EPC-4H7V'], save: 'epic' },
+      { step: '1', read: ['epic', 'updates', 'EPC-4H7V'], save: 'updates' },
+      { step: '2', read: ['issues', 'list', '--parent', 'EPC-4H7V'], save: 'children' },
     ],
     skip: {
       '1 issues get': 'EPC-4H7V is an epic, so step 1 takes the epic get path',
       '5 issues comment': 'step 5 is skipped for an epic, because issues comment only takes an issue ID',
     },
     notHit: { 'Step 5': 'an epic skips the offer to post the summary' },
-    expect(repo) {
+    expect(repo, saved) {
+      assert.equal(saved.epic.title, 'Reliable webhooks')
+      assert.deepEqual(saved.updates, [])
+      assert.deepEqual(saved.children.issues.map((issue) => issue.id).sort(), ['ISS-2K5P', 'ISS-6R3N'], 'the children the summary lists')
       assert.deepEqual(repo.newEvents('EPC-4H7V'), [])
-      assert.equal(repo.git('status', '--porcelain'), '')
     },
   },
 ]

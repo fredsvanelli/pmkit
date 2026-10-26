@@ -5,13 +5,18 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 
 // The fake gh answers from the JSON file named by PMKIT_FAKE_GH: args joined by a space map to { status, stdout, stderr }.
-// It appends each call to the same file name plus .log.
+// It appends each call to the same file name plus .log. A reply may also be an array: the Nth call of that command gets
+// element N, and the last element repeats.
 export const FAKE_GH_SCRIPT = `#!/usr/bin/env node
 const fs = require('node:fs')
 const key = process.argv.slice(2).join(' ')
 fs.appendFileSync(process.env.PMKIT_FAKE_GH + '.log', key + '\\n')
 const canned = JSON.parse(fs.readFileSync(process.env.PMKIT_FAKE_GH, 'utf8'))
-const answer = canned[key]
+let answer = canned[key]
+if (Array.isArray(answer)) {
+  const seen = fs.readFileSync(process.env.PMKIT_FAKE_GH + '.log', 'utf8').split('\\n').filter((line) => line === key).length
+  answer = answer[Math.min(seen - 1, answer.length - 1)]
+}
 if (!answer) {
   process.stderr.write('fake gh: no canned response for ' + key + '\\n')
   process.exit(1)

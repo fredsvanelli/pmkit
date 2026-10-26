@@ -520,7 +520,7 @@ export async function runScenario(scenario, { name, parsed, cliCommands, fixture
     problems.push(...pointProblems(parsed.points, confirmed, scenario.notHit ?? {})
       .map((problem) => `rule ${problem.startsWith('confirm ') ? 10 : 7}: ${problem}`))
     try {
-      await scenario.expect?.(makeRepoView(root, baseline, gh, env))
+      await scenario.expect?.(makeRepoView(root, baseline, gh, env), saved)
     } catch (error) {
       problems.push(`rule 11: expect failed: ${error.message}`)
     }

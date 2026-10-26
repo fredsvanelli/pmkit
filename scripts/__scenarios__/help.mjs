@@ -8,11 +8,12 @@ export default {
   prompt: '/pmkit:help',
   answers: [],
   steps: [
-    { step: '1', read: ['capabilities'] },
+    { step: '1', read: ['capabilities'], save: 'capabilities' },
   ],
   skip: {},
   notHit: {},
-  expect(repo) {
-    assert.equal(repo.git('status', '--porcelain'), '')
+  expect(repo, saved) {
+    assert.equal(saved.capabilities.tracker, 'local')
+    assert.ok(saved.capabilities.capabilities.some((capability) => capability.id === 'cycles'), 'the manifest lists cycles')
   },
 }

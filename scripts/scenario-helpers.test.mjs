@@ -4,6 +4,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { spawnSync } from 'node:child_process'
+import { fakeGh } from './fake-gh.mjs'
 import { COMMANDS } from './pmkit.mjs'
 import { NOW, runPmkit } from './golden-helpers.mjs'
 import {
@@ -480,5 +482,24 @@ test('runScenario gives the same snapshot twice and leaks no temp path, real dat
       else process.env[key] = saved[key]
     }
     fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('runScenario gives expect the saved results of the entries', async () => {
+  let seen
+  const read = { step: '1', read: ['issues', 'get', 'ISS-2X6D'], save: 'issue' }
+  const { problems } = await runMove(moveOnly([read], { expect: (repo, saved) => { seen = saved } }))
+  assert.deepEqual(problems.filter((problem) => !problem.startsWith('rule 6')), [])
+  assert.equal(seen.issue.id, 'ISS-2X6D')
+})
+
+test('the fake gh answers the Nth call of a command with the Nth reply and repeats the last one', () => {
+  const gh = fakeGh({ 'pr view x': [{ stdout: 'first' }, { stdout: 'second' }], 'pr view y': { stdout: 'plain' } })
+  try {
+    const ask = (...args) => spawnSync(path.join(gh.dir, 'gh'), args, { encoding: 'utf8', env: { ...process.env, PMKIT_FAKE_GH: gh.responses } }).stdout
+    assert.deepEqual(['pr view x', 'pr view x', 'pr view x'].map((key) => ask(...key.split(' '))), ['first', 'second', 'second'])
+    assert.equal(ask('pr', 'view', 'y'), 'plain')
+  } finally {
+    fs.rmSync(gh.dir, { recursive: true, force: true })
   }
 })

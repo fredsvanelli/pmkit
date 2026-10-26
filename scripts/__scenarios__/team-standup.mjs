@@ -20,16 +20,21 @@ export default {
   prompt: '/pmkit:team:standup me',
   answers: [],
   steps: [
-    { step: '1', dryRun: ['pr', 'sync'] },
-    { step: '2', read: ['events', '--since', '2026-10-22'] },
-    { step: '3', read: ['issues', 'list', '--category', 'in_progress,in_review,todo'] },
+    { step: '1', dryRun: ['pr', 'sync'], save: 'sync' },
+    { step: '2', read: ['events', '--since', '2026-10-22'], save: 'events' },
+    { step: '3', read: ['issues', 'list', '--category', 'in_progress,in_review,todo'], save: 'open' },
     { step: '3', read: ['events', '--since', '2026-10-20'] },
-    { step: '4', read: ['pr', 'status', '--branch', 'feat-dlq'] },
-    { step: '5', read: ['whoami'] },
+    { step: '4', read: ['pr', 'status', '--branch', 'feat-dlq'], save: 'status' },
+    { step: '5', read: ['whoami'], save: 'me' },
   ],
   skip: {},
   notHit: { 'Step 1': 'no in_review issue has a merged PR, so the pr sync preview moves nothing and does not ask' },
-  expect(repo) {
+  expect(repo, saved) {
+    assert.deepEqual(saved.sync.moved, [])
+    assert.equal(saved.me.id, 'fred')
+    assert.ok(saved.open.issues.some((issue) => issue.id === 'ISS-8C4W' && issue.branch === 'feat-dlq'))
+    assert.ok(saved.events.every((event) => event.at >= '2026-10-22'), 'the digest period starts on 2026-10-22')
+    assert.deepEqual(saved.status.checks.map((check) => check.bucket), ['fail'], 'the failing check goes to needs attention')
     assert.deepEqual(repo.newEvents('ISS-8C4W'), [], 'a read-only command appends no event')
     assert.ok(repo.ghCalls().includes('pr checks 9 --json name,state,bucket'), repo.ghCalls().join('\n'))
   },

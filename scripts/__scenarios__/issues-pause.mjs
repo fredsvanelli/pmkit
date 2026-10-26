@@ -1,11 +1,12 @@
 // /pmkit:issues:pause ISS-5N1R: post the handoff note, move the issue to todo, keep the assignee and open a draft PR.
-// The branch feat-retries has one commit and is recorded on the issue. The fake gh answers with one fixed reply per
-// command, so "the branch has no open PR" is a merged PR on the branch: pr open then opens a new one, as for a first PR.
+// The branch feat-retries has one commit and is recorded on the issue. The branch has no PR: the first two views
+// (the dry run and the real run) find none, and the view after pr create returns the new draft PR #9.
 import assert from 'node:assert/strict'
 import path from 'node:path'
 
 const VIEW = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
-const merged = { number: 3, url: 'https://github.com/o/r/pull/3', title: 'Older work', state: 'MERGED', isDraft: false, headRefName: 'feat-retries', author: { login: 'fred' }, mergedAt: '2026-10-20T10:00:00Z' }
+const noPr = { status: 1, stderr: 'no pull requests found for branch "feat-retries"\n' }
+const created = { number: 9, url: 'https://github.com/o/r/pull/9', title: 'Paginate the events API (ISS-5N1R)', state: 'OPEN', isDraft: true, headRefName: 'feat-retries', author: { login: 'fred' }, mergedAt: null }
 const note = path.join(import.meta.dirname, '_inputs', 'comment.md')
 const comment = ['issues', 'comment', 'ISS-5N1R', '--body-file', note]
 const move = ['issues', 'move', 'ISS-5N1R', 'todo']
@@ -16,7 +17,7 @@ export default {
   fixture: 'team',
   github: true,
   gh: {
-    [`pr view feat-retries --json ${VIEW}`]: { stdout: JSON.stringify(merged) },
+    [`pr view feat-retries --json ${VIEW}`]: [noPr, noPr, { stdout: JSON.stringify(created) }],
     'pr create --title Paginate the events API (ISS-5N1R) --body-file - --head feat-retries --base main --draft': { stdout: 'https://github.com/o/r/pull/9\n' },
   },
   async setup({ pmkit, git }) {
@@ -25,7 +26,7 @@ export default {
     await pmkit(['issues', 'update', 'ISS-5N1R', '--branch', 'feat-retries'])
   },
   prompt: '/pmkit:issues:pause ISS-5N1R',
-  answers: ['Yes', 'Move to todo, keep the assignee', 'Yes', 'Yes'],
+  answers: ['Yes', 'Move to todo, keep the assignee', 'Yes', 'Yes', 'Yes'],
   steps: [
     { step: '1', read: ['issues', 'get', 'ISS-5N1R'] },
     { confirm: 'Step 2' },
@@ -34,9 +35,9 @@ export default {
     { confirm: 'Step 5' },
     { step: '4', write: comment },
     { step: '4', write: move },
+    { step: '7', dryRun: open, save: 'preview' },
     { confirm: 'Step 7' },
-    { step: '7', dryRun: open },
-    { step: '7', write: open },
+    { step: '7', write: open, save: 'opened' },
   ],
   skip: {
     '1 issues list': 'the ID is given, so step 1 does not look for the issue from the branch',
@@ -44,7 +45,11 @@ export default {
     'missing issues update': 'the issue has a branch, so pr open does not fail with INVALID_INPUT',
   },
   notHit: { 'Recording the current branch on the issue, when `pr open` finds no branch': 'the issue already has a branch' },
-  expect(repo) {
+  expect(repo, saved) {
+    assert.equal(saved.preview.existing, false)
+    assert.equal(saved.preview.draft, true)
+    assert.equal(saved.opened.number, 9, 'the view after pr create returns the new PR')
+    assert.equal(saved.opened.existing, false)
     assert.equal(repo.issue('ISS-5N1R').status, 'todo')
     assert.equal(repo.issue('ISS-5N1R').assignee, 'fred')
     assert.equal(repo.newEvents('ISS-5N1R').filter((event) => event.op === 'comment').length, 1)
