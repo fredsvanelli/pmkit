@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { COMMANDS } from './pmkit.mjs'
 import {
   scenarioName, snapshotFile, parseCommandFile, callKey, unknownFlags,
-  matchEntry, coverageProblems, pointProblems, orderProblems,
+  matchEntry, coverageProblems, pointProblems, orderProblems, compareScenarios, staleSnapshots,
 } from './scenario-helpers.mjs'
 
 const CLI_NAMES = COMMANDS.map((c) => c.name)
@@ -239,4 +239,28 @@ test('orderProblems requires a matching dry run before a write via dry run', () 
 test('orderProblems does not let a dry run with other args cover a write', () => {
   const est = (n) => ['issues', 'update', 'A', '--estimate', n]
   assert.match(orderProblems([D(est('3')), C, W(est('5'))])[0], /--estimate 5.*no earlier dry run/)
+})
+
+test('parseCommandFile counts a flag named only in the prose of a step as a flag of that step', () => {
+  const text = [
+    '## Steps',
+    '',
+    `1. Run ${call('issues update <id> --priority <value> --dry-run --json')} or \`--type <value>\`.`,
+    `2. Run ${call('init --update --dry-run --json')}. Add \`--git-host\` only when asked.`,
+  ].join('\n')
+  const [first, second] = parse(text).calls
+  assert.deepEqual(first.flags.slice(-1), ['type'])
+  assert.ok(second.flags.includes('git-host'))
+  assert.ok(second.optional.includes('git-host'))
+})
+
+test('compareScenarios reports missing, extra and pending names that have a scenario', () => {
+  const found = compareScenarios(['a', 'b', 'c'], ['b', 'c', 'x'], new Set(['a', 'c']))
+  assert.deepEqual(found, { missing: [], extra: ['x'], pendingWithScenario: ['c'] })
+  assert.deepEqual(compareScenarios(['a', 'b'], ['b'], new Set()).missing, ['a'])
+})
+
+test('staleSnapshots returns snapshots with no entry and leaves _inputs and modules', () => {
+  const files = ['a.mjs', 'a.after.txt', 'b.0.after.txt', 'b.1.after.txt', 'gone.after.txt', '_inputs']
+  assert.deepEqual(staleSnapshots(files, ['a.after.txt', 'b.0.after.txt']), ['b.1.after.txt', 'gone.after.txt'])
 })

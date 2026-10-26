@@ -28,7 +28,8 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 
 ## Confirmation points
 
-None for the summary, which only reads. Posting the summary of an issue as a comment (step 5) asks once, before the comment is posted. When the user declines the offer, post nothing.
+- Step 5: posting the summary of an issue as a comment asks once, before the comment is posted. When the user declines the offer, post nothing.
+- The summary itself only reads.
 
 ## Output
 

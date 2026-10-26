@@ -1,4 +1,8 @@
 // Helpers for scripts/scenarios.test.mjs: the command file parser and the trace rules.
+import fs from 'node:fs'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
+
 // Rule numbers refer to the checks in docs/superpowers/specs/2026-10-25-pmk-10-command-scenarios-design.md.
 
 /** The scenario module name of a command file: `issues/create` or `issues/create.md` gives `issues-create`. */
@@ -123,7 +127,24 @@ export function parseCommandFile(text, cliNames) {
         if (label && !points.includes(label)) points.push(label)
       }
     }
-    for (const match of line.matchAll(CALL)) calls.push(readCall(match[1], stepId(), section, cliNames))
+    let prose = line
+    const here = []
+    for (const match of line.matchAll(CALL)) {
+      const call = readCall(match[1], stepId(), section, cliNames)
+      calls.push(call)
+      here.push({ at: match.index, call })
+      prose = prose.replace(match[0], ' '.repeat(match[0].length))
+    }
+    if (fence) continue
+    // A flag named only in the prose of a step, such as "or `--type <value>`", belongs to the call before it
+    // on the line, else to the last earlier call of the same step.
+    for (const flag of prose.matchAll(/`--([a-z][\w-]*)[^`]*`/gi)) {
+      const before = here.filter((entry) => entry.at < flag.index).at(-1)?.call
+      const owner = before ?? calls.slice(0, calls.length - here.length).findLast((call) => call.step === stepId() && call.section === section)
+      if (!owner || flag[1] === 'dry-run' || owner.flags.includes(flag[1])) continue
+      owner.flags.push(flag[1])
+      owner.optional.push(flag[1])
+    }
   }
   return { calls, points }
 }
@@ -212,4 +233,32 @@ export function orderProblems(trace) {
     }
   }
   return problems
+}
+
+/** Rule 1: command names without a scenario, scenario names without a command, and pending names that have a scenario. */
+export function compareScenarios(commandNames, scenarioNames, pending) {
+  const commands = new Set(commandNames)
+  const scenarios = new Set(scenarioNames)
+  return {
+    missing: commandNames.filter((name) => !scenarios.has(name) && !pending.has(name)),
+    extra: scenarioNames.filter((name) => !commands.has(name)),
+    pendingWithScenario: [...pending].filter((name) => scenarios.has(name)),
+  }
+}
+
+/** Rule 2: snapshot files that match no entry, sorted. `_inputs` and `*.mjs` are skipped. */
+export function staleSnapshots(files, expected) {
+  const known = new Set(expected)
+  return files.filter((file) => file !== '_inputs' && !file.endsWith('.mjs') && !known.has(file)).sort()
+}
+
+/** Loads every scenario module of `dir`: an array export gives several entries, an object one. */
+export async function loadScenarios(dir) {
+  const names = fs.readdirSync(dir).filter((file) => file.endsWith('.mjs')).map((file) => file.slice(0, -4)).sort()
+  const loaded = []
+  for (const name of names) {
+    const { default: exported } = await import(pathToFileURL(path.join(dir, `${name}.mjs`)).href)
+    loaded.push({ name, entries: Array.isArray(exported) ? exported : [exported] })
+  }
+  return loaded
 }
