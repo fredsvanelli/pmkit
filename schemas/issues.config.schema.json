@@ -1,0 +1,209 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "pmkit local tracker config",
+  "description": "The config of the pmkit local tracker, in .issues/config.yaml. The rules between keys (the two prefixes differ, every category has a status, default_status names a status) are checked by pmkit validate, not by this schema. Keys pmkit does not know are allowed.",
+  "type": "object",
+  "required": ["version", "id_prefix", "epic_prefix", "statuses", "default_status", "types", "priorities", "estimate"],
+  "properties": {
+    "version": {
+      "title": "Tracker format",
+      "description": "The format version of the tracker folder. pmkit migrate changes it; do not edit it by hand.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "id_prefix": {
+      "title": "Issue ID prefix",
+      "description": "2 to 5 capital letters, as in ISS-7K3Q. Must differ from epic_prefix.",
+      "type": "string",
+      "pattern": "^[A-Z]{2,5}$"
+    },
+    "epic_prefix": {
+      "title": "Epic ID prefix",
+      "description": "2 to 5 capital letters, as in EPC-1. Must differ from id_prefix.",
+      "type": "string",
+      "pattern": "^[A-Z]{2,5}$",
+      "default": "EPC"
+    },
+    "id_style": {
+      "title": "ID style",
+      "description": "random draws 4 Crockford base32 characters (ISS-7K3Q); numbered takes one more than the highest number in use (ISS-12). Changing it keeps the existing IDs.",
+      "enum": ["random", "numbered"],
+      "default": "random"
+    },
+    "statuses": {
+      "title": "Statuses",
+      "description": "The workflow statuses, by name. Each one belongs to a category, and every category needs at least one status.",
+      "type": "object",
+      "additionalProperties": {
+        "title": "Status",
+        "description": "A workflow status. Its key is the name commands use.",
+        "type": "object",
+        "required": ["category"],
+        "properties": {
+          "category": {
+            "title": "Category",
+            "description": "The category the status belongs to. Reports and metrics group statuses by category.",
+            "enum": ["triage", "backlog", "todo", "in_progress", "in_review", "done", "canceled"]
+          }
+        }
+      }
+    },
+    "default_status": {
+      "title": "Default status",
+      "description": "The status a new issue starts in. Must be a key of statuses.",
+      "type": "string",
+      "default": "backlog"
+    },
+    "types": {
+      "title": "Issue types",
+      "description": "The issue types, at least one.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" },
+      "default": ["feature", "bug", "task", "chore"]
+    },
+    "priorities": {
+      "title": "Priorities",
+      "description": "The priorities, highest first, at least one.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" },
+      "default": ["urgent", "high", "medium", "low"]
+    },
+    "labels": {
+      "title": "Labels",
+      "description": "The labels issues can carry.",
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "estimate": {
+      "title": "Estimate",
+      "description": "How issues are estimated.",
+      "type": "object",
+      "required": ["unit"],
+      "properties": {
+        "unit": {
+          "title": "Estimate unit",
+          "description": "points, hours or sizes.",
+          "enum": ["points", "hours", "sizes"],
+          "default": "points"
+        },
+        "scale": {
+          "title": "Estimate scale",
+          "description": "The values an estimate can take, numbers or strings (such as S, M, L for sizes).",
+          "type": "array",
+          "items": {
+            "type": ["number", "string"]
+          },
+          "default": [1, 2, 3, 5, 8, 13]
+        }
+      },
+      "default": {
+        "unit": "points",
+        "scale": [1, 2, 3, 5, 8, 13]
+      }
+    },
+    "members": {
+      "title": "Members",
+      "description": "The people and agents who work on issues, by member ID: lowercase letters, digits and hyphens (fred), or agent: and a name (agent:claude).",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^([a-z0-9][a-z0-9-]*|agent:[a-z0-9-]+)$"
+      },
+      "additionalProperties": {
+        "title": "Member",
+        "description": "A member. Its key is the ID that assignee and actor fields use.",
+        "type": "object",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "description": "The member's display name.",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "description": "The member's email.",
+            "type": "string"
+          },
+          "availability": {
+            "title": "Availability",
+            "description": "The share of a full sprint the member works, from 0 to 1.",
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      },
+      "default": {}
+    },
+    "defaults": {
+      "title": "Defaults",
+      "description": "Numbers the commands use when the user gives none. Any key other than sprint_start_weekday is a whole number of 1 or more.",
+      "type": "object",
+      "properties": {
+        "stale_days": {
+          "title": "Stale days",
+          "description": "Days without an update after which backlog grooming calls an issue stale.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 60
+        },
+        "stuck_business_days": {
+          "title": "Stuck business days",
+          "description": "Business days without an event after which the standup calls an in-progress or in-review issue stuck.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 3
+        },
+        "sprint_length_days": {
+          "title": "Sprint length in days",
+          "description": "The length of a new sprint when no end date is given.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 14
+        },
+        "sprint_start_weekday": {
+          "title": "Sprint start weekday",
+          "description": "The weekday a new sprint starts on.",
+          "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+          "default": "mon"
+        },
+        "velocity_window": {
+          "title": "Velocity window",
+          "description": "The number of past sprints velocity averages over.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 3
+        },
+        "status_update_window_days": {
+          "title": "Status update window in days",
+          "description": "The period a status report covers when its epic has no earlier update.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 14
+        }
+      },
+      "additionalProperties": {
+        "title": "Other default",
+        "description": "A default this version of pmkit does not name. A whole number of 1 or more.",
+        "type": "integer",
+        "minimum": 1
+      },
+      "default": {
+        "stale_days": 60,
+        "stuck_business_days": 3,
+        "sprint_length_days": 14,
+        "sprint_start_weekday": "mon",
+        "velocity_window": 3,
+        "status_update_window_days": 14
+      }
+    },
+    "auto_commit": {
+      "title": "Auto commit",
+      "description": "true makes every tracker write commit its own change.",
+      "type": "boolean",
+      "default": false
+    }
+  }
+}
