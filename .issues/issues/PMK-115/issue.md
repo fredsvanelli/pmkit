@@ -2,7 +2,7 @@
 id: PMK-115
 title: Cover sprint aliases in the contract suite
 type: task
-status: in_progress
+status: in_review
 priority: low
 estimate: 2
 assignee: fred
@@ -11,7 +11,7 @@ related: [PMK-114]
 milestone: local-gaps
 branch: pmk-115-cover-sprint-aliases-in-the-contract
 created: 2026-10-26T17:58:03.096Z
-updated: 2026-10-26T18:42:32Z
+updated: 2026-10-26T19:01:36Z
 ---
 
 ## Description

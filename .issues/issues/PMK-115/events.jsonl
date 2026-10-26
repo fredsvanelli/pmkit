@@ -6,3 +6,5 @@
 {"at":"2026-10-26T18:42:32Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-10-26T18:42:32Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-115-cover-sprint-aliases-in-the-contract"}
 {"at":"2026-10-26T18:50:06Z","by":"fred","op":"comment","to":"2026-10-26T18-50-06Z-fred.md"}
+{"at":"2026-10-26T19:01:35Z","by":"fred","op":"comment","to":"2026-10-26T19-01-35Z-fred.md"}
+{"at":"2026-10-26T19:01:36Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
