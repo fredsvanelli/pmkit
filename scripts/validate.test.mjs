@@ -63,6 +63,13 @@ test('a malformed closed names the value as written', () => {
   assert.match(problem.message, /^closed "2026" is not a timestamp/)
 })
 
+test('a malformed closed that is not a string is printed as JSON', () => {
+  const root = makeRepo('team')
+  addClosed(root, '[1, 2]')
+  const problem = validateRepo(root).problems.find((problem) => problem.code === 'sprint')
+  assert.match(problem.message, /^closed "\[1,2\]" is not a timestamp/)
+})
+
 test('a valid closed in a sprint file is no problem', () => {
   const root = makeRepo('team')
   addClosed(root, '2026-10-12T09:00:00Z')

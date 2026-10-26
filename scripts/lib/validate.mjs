@@ -189,7 +189,7 @@ export function validateRepo(root, { config, migrations } = {}) {
     try {
       const sprint = readSprint(sprintDir, path.basename(name, '.yaml'))
       if (sprint.extra && Object.hasOwn(sprint.extra, 'closed')) {
-        add(file, 'sprint', `closed "${sprint.extra.closed}" is not a timestamp with a date, a time and a zone (Z or an offset such as -03:00), so velocity uses the end date`)
+        add(file, 'sprint', `closed "${typeof sprint.extra.closed === 'string' ? sprint.extra.closed : JSON.stringify(sprint.extra.closed)}" is not a timestamp with a date, a time and a zone (Z or an offset such as -03:00), so velocity uses the end date`)
       }
       if (sprint.start > sprint.end) add(file, 'sprint', `start ${sprint.start} is after end ${sprint.end}`)
       else sprints.push({ sprint, file })

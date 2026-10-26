@@ -354,7 +354,7 @@ test('a missing or empty closed reads as no key', () => {
 })
 
 test('a malformed closed is kept in extra and does not block reads', () => {
-  for (const value of ['soon', '2026-10-26', '2026-10-26T12:00:00', '2026-10-26 12:00:00Z', '2026-02-30T12:00:00Z', '2026']) {
+  for (const value of ['soon', '2026-10-26', '2026-10-26T12:00:00', '2026-10-26 12:00:00Z', '2026-02-30T12:00:00Z', '2026-10-26T25:00:00Z', '2026']) {
     const { sprints, tracker } = setup()
     addLine(sprints, '2026-10-12', `closed: ${value}`)
     const expected = value === '2026' ? 2026 : value
