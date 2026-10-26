@@ -4,8 +4,9 @@
 // user sends ISS-4M2S and ISS-5N1R back to the backlog and splits ISS-2X6D: a new issue under EPC-2M9D takes the
 // remaining 3 points in the backlog, with a related link to ISS-2X6D, and ISS-2X6D moves to done with 5 points
 // instead of 8 and stays in the closed sprint.
-// Step 8 closes the sprint first, then runs the moves and the split, then reads the sprint's issues again for
-// the delivered numbers.
+// Step 6 reads ISS-0G5E, the issue outside the sprint that the related list of ISS-2X6D names. It is canceled and
+// older than the sprint, so it is no half-done split. Step 8 runs the moves and the split, closes the sprint last,
+// then reads the sprint's issues again for the delivered numbers.
 import assert from 'node:assert/strict'
 import path from 'node:path'
 
@@ -44,6 +45,7 @@ export default {
     { step: '4', read: ['events', '--since', '2026-10-12', '--until', '2026-10-25'] },
     { step: '5', read: ['metrics', 'cycle-time', '--since', '2026-10-12', '--until', '2026-10-25'] },
     { step: '6', read: ['cycle', 'list', '--state', 'planned'], save: 'planned' },
+    { step: '6', read: ['issues', 'get', 'ISS-0G5E'], save: 'related' },
     // Step 7: the decision per unfinished issue, the dry runs, then one approval for the whole preview.
     { confirm: 'Step 7' },
     { step: '7', dryRun: toBacklog },
@@ -52,13 +54,13 @@ export default {
     { step: '7', dryRun: done },
     { step: '7', dryRun: close },
     { confirm: 'Step 7' },
-    // Step 8: close the sprint, then the same moves and the split without --dry-run: create, link, estimate, move.
-    { step: '8', write: close },
+    // Step 8: the same moves and the split without --dry-run (create, link, estimate, move), then the close.
     { step: '7', write: toBacklog },
     { step: '7', write: split, save: 'remaining' },
     { step: '8', write: ({ remaining }) => ['issues', 'link', remaining.after.id, 'ISS-2X6D', '--kind', 'related'] },
     { step: '7', write: shrink },
-    { step: '7', write: done },
+    { step: '8', write: done },
+    { step: '8', write: close },
     // Step 8 reads the sprint's issues again, after the writes, for the delivered numbers.
     { step: '8', read: ['cycle', 'issues', '2026-10-12'], save: 'after' },
     // Step 9: the retro document.
@@ -75,6 +77,7 @@ export default {
     assert.deepEqual(saved.syncPreview.moved, [{ id: 'ISS-8C4W', pr: 12 }])
     assert.equal(saved.sprint.id, '2026-10-12')
     assert.deepEqual(saved.planned, [], 'no planned sprint, so the moves go to the backlog')
+    assert.equal(saved.related.status.category, 'canceled', 'the related issue outside the sprint is no half-done split')
     const unfinished = saved.issues.filter((issue) => issue.status.category !== 'done').map((issue) => issue.id).sort()
     assert.deepEqual(unfinished, ['ISS-2X6D', 'ISS-4M2S', 'ISS-5N1R'])
     const original = repo.issue('ISS-2X6D')

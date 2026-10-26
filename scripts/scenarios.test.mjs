@@ -135,6 +135,18 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     assert.ok(file('report/status.md').calls.some((c) => c.command === 'epic list' && c.section === 'other'), 'report/status.md epic list in other')
   })
 
+  test('cycle/close step 8 runs cycle close after every issues link and issues move call', () => {
+    const step8 = FILES.find((file) => file.rel === 'cycle/close.md').parsed.calls
+      .filter((call) => call.step === '8' && !call.dryRun)
+      .map((call) => call.command)
+    const close = step8.indexOf('cycle close')
+    assert.ok(close >= 0, 'step 8 runs cycle close')
+    for (const name of ['issues link', 'issues move']) {
+      assert.ok(step8.includes(name), `step 8 runs ${name}`)
+      assert.ok(step8.lastIndexOf(name) < close, `${name} comes before cycle close in step 8`)
+    }
+  })
+
   for (const { name, entries } of LOADED) {
     entries.forEach((scenario, index) => {
       const file = snapshotFile(name, index, entries.length)

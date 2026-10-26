@@ -488,12 +488,12 @@ test('cycle close prints the unfinished issues', () => {
 // existed before the change to commands/cycle/close.md, so it passes before and after it.
 test('a split in cycle close leaves the remaining work for cycle plan', () => {
   const root = makeRepo('team')
-  // The step 8 writes of the cycle-close scenario: close, create, link, lower the estimate, move to done.
-  json(root, ['cycle', 'close', '2026-10-12'])
+  // The step 8 writes of the cycle-close scenario: create, link, lower the estimate, move to done, then close.
   const { after: remaining } = json(root, ['issues', 'create', '--title', 'Finish the billing export to CSV', '--type', 'feature', '--estimate', '3', '--parent', 'EPC-2M9D', '--priority', 'high', '--label', 'billing,backend'])
   json(root, ['issues', 'link', remaining.id, 'ISS-2X6D', '--kind', 'related'])
   json(root, ['issues', 'update', 'ISS-2X6D', '--estimate', '5'])
   json(root, ['issues', 'move', 'ISS-2X6D', 'done'])
+  json(root, ['cycle', 'close', '2026-10-12'])
   // The query of commands/cycle/plan.md step 5.
   const offered = json(root, ['issues', 'list', '--category', 'todo,backlog', '--sprint', 'none']).issues.map((issue) => issue.id)
   assert.ok(offered.includes(remaining.id), 'plan offers the remaining work')
@@ -501,8 +501,7 @@ test('a split in cycle close leaves the remaining work for cycle plan', () => {
   const inSprint = json(root, ['cycle', 'issues', '2026-10-12'])
   assert.equal(inSprint.find((issue) => issue.id === 'ISS-2X6D').status.category, 'done')
   // ISS-2X6D is the only done issue of the sprint: the test runs no pr sync, so ISS-8C4W stays in in_review.
-  // PMKIT_NOW 2026-10-23 falls before the sprint's end of 2026-10-25, so this proves only a close on time.
-  // No assertion covers a late close, because it would lock in the gap that the velocity follow-up fixes.
+  // Every call runs at PMKIT_NOW 2026-10-23, before the sprint's end. "velocity counts the moves to done made before a late close and not after it" covers a late close.
   const velocity = json(root, ['metrics', 'velocity'])
   assert.deepEqual(velocity.perSprint.find((sprint) => sprint.id === '2026-10-12'), { id: '2026-10-12', points: 5, count: 1 })
 })
