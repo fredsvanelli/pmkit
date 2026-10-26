@@ -252,6 +252,9 @@ export const COMMANDS = [
     run: (ctx) => {
       const found = ctx.tracker().searchIssues(issueFilter(ctx))
       const warnings = found.problems.map(problemLine)
+      if (ctx.opt('sprint') === 'current' && found.issues.length === 0 && ctx.tracker().currentCycle() === null) {
+        warnings.push('there is no active sprint, so --sprint current matches no issues; run pmkit cycle list')
+      }
       return { data: found, text: issueTable(found.issues, { sprint: ctx.opt('sprint') === undefined }), warnings }
     },
   },
