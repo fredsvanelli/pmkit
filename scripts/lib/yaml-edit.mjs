@@ -110,3 +110,35 @@ export function addMapEntry(text, keyPath, key, value) {
   ensureTrailingNewline(lines)
   return join(lines)
 }
+
+const SCHEMA_LINE = /^#\s*yaml-language-server:\s*\$schema=(\S+)\s*$/
+
+// Classifies a line: null when it is not a schema line, 'pmkit' when its URL
+// is a pmkit schema URL of the same repository as `url` (any ref), else 'other'.
+export function schemaLineMatcher(url) {
+  const repo = /^https:\/\/raw\.githubusercontent\.com\/([^/]+\/[^/]+)\//.exec(url)?.[1]
+  const own = repo
+    ? new RegExp(`^https://raw\\.githubusercontent\\.com/${repo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/[^/\\s]+/schemas/(pmkit|issues)\\.config\\.schema\\.json$`)
+    : null
+  return (line) => {
+    const found = SCHEMA_LINE.exec(line)
+    if (!found) return null
+    return own?.test(found[1]) ? 'pmkit' : 'other'
+  }
+}
+
+// Puts the yaml-language-server schema line first: replaces an old pmkit line
+// in place, leaves a line for another schema alone, otherwise inserts it.
+export function setSchemaLine(text, url) {
+  const matcher = schemaLineMatcher(url)
+  const line = `# yaml-language-server: $schema=${url}`
+  const lines = split(text)
+  const kinds = lines.map(matcher)
+  if (kinds.includes('pmkit')) {
+    lines[kinds.indexOf('pmkit')] = line
+    return join(lines)
+  }
+  if (kinds.includes('other')) return text
+  lines.unshift(line)
+  return join(lines)
+}

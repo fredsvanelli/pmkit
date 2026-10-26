@@ -45,7 +45,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | Command | Does |
 |---|---|
 | `init` | writes `.pmkit/config.yaml` and scaffolds `.issues/`; refuses to overwrite. Flags: `--tracker local`, `--git-host github\|none`, `--prefix`, `--id-style random\|numbered`, `--estimate-unit points\|hours\|sizes`, `--label name`, `--member id --name n --email e`, `--members-file f\|-` |
-| `init --update` | edits only the lines its flags name; `--replace <path>` overwrites a template file that differs |
+| `init --update` | edits only the lines its flags name and adds or updates the schema line in the config files; `--replace <path>` overwrites a template file that differs |
 | `capabilities` | prints the capability manifest |
 | `discover` | prints statuses with categories, types, priorities, labels, members and the estimate scale |
 | `whoami` | prints the resolved actor |
@@ -94,6 +94,8 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 The `issues branch` and `pr` commands need `git_host.system: github` in `.pmkit/config.yaml` and a logged-in `gh`. Without them they fail with `NOT_SUPPORTED`, `NOT_CONFIGURED` or `AUTH`. Run `node scripts/pmkit.mjs --help` for every flag. A failing command exits with code 2 and, with `--json`, prints one JSON error with a next step. An exception that is not a `PmkitError`, which means a bug in pmkit, has the code `UNEXPECTED` and no next step.
 
 Comments and time logs append an event to the issue's `events.jsonl` but leave `issue.md` alone, so they do not change the issue's `updated` timestamp.
+
+Editors can check the config files against JSON Schemas. The schemas live in `schemas/` (`pmkit.config.schema.json` for `.pmkit/config.yaml` and `issues.config.schema.json` for `.issues/config.yaml`). `/pmkit:setup` and `init` write a `# yaml-language-server: $schema=` line as the first line of each config file. The line points at the schemas on `main` on GitHub. The Red Hat YAML extension in VS Code and JetBrains IDEs read it, and the CLI ignores it.
 
 ## Tests
 

@@ -163,6 +163,103 @@ test('--update that cannot edit a key fails with INVALID_INPUT naming the file a
   assert.equal(hashTree(dir), before)
 })
 
+const PMKIT_URL = 'https://raw.githubusercontent.com/fredsvanelli/pmkit/main/schemas/pmkit.config.schema.json'
+const ISSUES_URL = 'https://raw.githubusercontent.com/fredsvanelli/pmkit/main/schemas/issues.config.schema.json'
+const lineFor = (url) => `# yaml-language-server: $schema=${url}`
+const stripLine = (text) => text.split('\n').slice(1).join('\n')
+
+test('a first run writes the schema line first in both files, then the template', () => {
+  const dir = tmp()
+  try {
+    assert.equal(run(dir, ['init']).status, 0)
+    const pmkit = read(dir, '.pmkit/config.yaml')
+    const local = read(dir, '.issues/config.yaml')
+    assert.equal(pmkit.split('\n')[0], lineFor(PMKIT_URL))
+    assert.equal(local.split('\n')[0], lineFor(ISSUES_URL))
+    assert.deepEqual(parseYaml(pmkit), parseYaml(stripLine(pmkit)))
+    assert.equal(parseYaml(local).id_prefix, 'ISS')
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('--update adds the line to a config without it and changes only that line', () => {
+  const dir = tmp()
+  try {
+    assert.equal(run(dir, ['init']).status, 0)
+    const files = ['.pmkit/config.yaml', '.issues/config.yaml']
+    const old = {}
+    for (const f of files) {
+      old[f] = stripLine(read(dir, f))
+      fs.writeFileSync(path.join(dir, f), old[f])
+    }
+    const result = json(dir, ['init', '--update'])
+    for (const f of files) {
+      assert.equal(result.files.find((x) => x.path === f).action, 'change')
+      const now = read(dir, f)
+      assert.equal(lineDiff(old[f], now).split('\n').filter((l) => l.startsWith('+') || l.startsWith('-')).length, 1)
+      assert.equal(stripLine(now), old[f])
+    }
+    const again = json(dir, ['init', '--update'])
+    assert.deepEqual(again.files.filter((x) => files.includes(x.path)).map((x) => x.action), ['keep', 'keep'])
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('--update replaces an old-ref pmkit line and leaves a line for another host alone', () => {
+  const dir = tmp()
+  try {
+    assert.equal(run(dir, ['init']).status, 0)
+    const pmkitFile = path.join(dir, '.pmkit/config.yaml')
+    const issuesFile = path.join(dir, '.issues/config.yaml')
+    fs.writeFileSync(pmkitFile, lineFor(PMKIT_URL.replace('/main/', '/v0.1.0/')) + '\n' + stripLine(read(dir, '.pmkit/config.yaml')))
+    const foreign = lineFor('https://example.com/mine.schema.json')
+    fs.writeFileSync(issuesFile, foreign + '\n' + stripLine(read(dir, '.issues/config.yaml')))
+    const issuesBefore = read(dir, '.issues/config.yaml')
+    const result = json(dir, ['init', '--update'])
+    assert.equal(result.files.find((x) => x.path === '.pmkit/config.yaml').action, 'change')
+    assert.equal(read(dir, '.pmkit/config.yaml').split('\n')[0], lineFor(PMKIT_URL))
+    assert.equal(result.files.find((x) => x.path === '.issues/config.yaml').action, 'keep')
+    assert.equal(read(dir, '.issues/config.yaml'), issuesBefore)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('--update --dry-run reports change for the line and leaves the files byte-equal', () => {
+  const dir = tmp()
+  try {
+    assert.equal(run(dir, ['init']).status, 0)
+    for (const f of ['.pmkit/config.yaml', '.issues/config.yaml']) fs.writeFileSync(path.join(dir, f), stripLine(read(dir, f)))
+    const before = hashTree(dir)
+    const result = json(dir, ['init', '--update', '--dry-run'])
+    assert.deepEqual(result.files.filter((x) => x.path.endsWith('config.yaml')).map((x) => x.action), ['change', 'change'])
+    assert.equal(hashTree(dir), before)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('--update on an invalid existing config writes nothing and says to fix it and run again', () => {
+  const dir = tmp()
+  try {
+    assert.equal(run(dir, ['init']).status, 0)
+    const file = path.join(dir, '.issues/config.yaml')
+    fs.writeFileSync(file, stripLine(read(dir, '.issues/config.yaml')) + 'auto_commit: "yes"\n')
+    const before = hashTree(dir)
+    const result = run(dir, ['init', '--update', '--json'])
+    assert.equal(result.status, 2)
+    const error = JSON.parse(result.stdout).error
+    assert.match(error.message, /auto_commit must be true or false/)
+    assert.match(error.nextStep, /\.issues\/config\.yaml/)
+    assert.match(error.nextStep, /init --update again/)
+    assert.equal(hashTree(dir), before)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('--label on a first run fills labels from repeated and comma-separated flags', () => {
   const dir = tmp()
   try {
@@ -267,6 +364,25 @@ test('init --label without --update still refuses an existing setup', () => {
     const result = run(dir, ['init', '--label', 'a', '--json'])
     assert.equal(result.status, 2)
     assert.equal(JSON.parse(result.stdout).error.code, 'CONFLICT')
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('--update --label on a hand-written string labels value refuses with the validator message and writes nothing', () => {
+  const dir = tmp()
+  try {
+    assert.equal(run(dir, ['init']).status, 0)
+    fs.writeFileSync(path.join(dir, '.issues/config.yaml'), read(dir, '.issues/config.yaml').replace('labels: []', 'labels: bug'))
+    const before = hashTree(dir)
+    const result = run(dir, ['init', '--update', '--label', 'x', '--json'])
+    assert.equal(result.status, 2)
+    const error = JSON.parse(result.stdout).error
+    assert.match(error.message, /\.issues\/config\.yaml is not valid/)
+    assert.match(error.message, /labels must be a list of strings/)
+    assert.doesNotMatch(error.message, /"b", "u", "g"|\[b, u, g/)
+    assert.equal(error.nextStep, 'Fix .issues/config.yaml by hand, then run init --update again')
+    assert.equal(hashTree(dir), before)
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
   }

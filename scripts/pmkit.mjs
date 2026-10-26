@@ -6,13 +6,14 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { BOOLEANS, parseArgs } from './lib/args.mjs'
 import { requireActor, gitUserEmail } from './lib/actor.mjs'
-import { findRoot, loadConfig, validateLocalConfig } from './lib/config.mjs'
+import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, validateLocalConfig } from './lib/config.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
 import { changeLines, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, sprintRecord, table } from './lib/format.mjs'
 import { cycleTimes, lastEntry, summary, velocity } from './lib/metrics.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
-import { addMapEntry, setScalar } from './lib/yaml-edit.mjs'
+import { addMapEntry, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
+import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { lineDiff } from './lib/diff.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, planMigration } from './lib/local/migrations.mjs'
@@ -199,7 +200,7 @@ const problemLine = (problem) => `${problem.id}: ${problem.code} ${problem.messa
 // Command table. `run` returns { data, text, commit }: the JSON value, the plain text and, for a write, the id for the commit message.
 export const COMMANDS = [
   {
-    name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name',
+    name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels',
     usage: '[--tracker local] [--git-host github|none] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--label name ...] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
     flags: ['tracker', 'git-host', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'label', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, run: runInit,
   },
@@ -726,7 +727,6 @@ ${COMMANDS.map((c) => `  ${c.name}${c.usage ? ` ${c.usage}` : ''}\n      ${c.sum
 `
 
 // init is the only command that runs before a config exists.
-const ESTIMATE_UNITS = ['points', 'hours', 'sizes']
 const SIZE_SCALE = ['XS', 'S', 'M', 'L', 'XL']
 const slash = (file) => file.split(path.sep).join('/')
 const normalized = (text) => text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
@@ -777,7 +777,7 @@ function runInit(ctx) {
   const update = ctx.flag('update')
   if ((opt('tracker') ?? 'local') !== 'local') throw new PmkitError('NOT_SUPPORTED', `tracker "${opt('tracker')}" is not supported yet`, 'Use --tracker local')
   const host = opt('git-host')
-  if (host !== undefined && !['github', 'none'].includes(host)) throw usageError('--git-host must be github or none')
+  if (host !== undefined && !GIT_HOSTS.includes(host)) throw usageError(`--git-host must be ${GIT_HOSTS.join(' or ')}`)
   const idStyle = opt('id-style')
   if (idStyle !== undefined && !ID_STYLES.includes(idStyle)) throw usageError(`--id-style must be ${ID_STYLES.join(' or ')}`)
   const unit = opt('estimate-unit')
@@ -855,12 +855,21 @@ function runInit(ctx) {
       existing.push(id)
     }
   }
-  const currentLabels = parsedLocal().labels ?? []
+  // A hand-written `labels: bug` is a string: leave it alone so the validator below refuses it, instead of spreading it into letters or replacing it.
+  const labelsValue = parsedLocal().labels
+  const currentLabels = Array.isArray(labelsValue) ? labelsValue : []
   const labelsKept = labels.filter((name) => currentLabels.includes(name))
   const labelsAdded = labels.filter((name) => !currentLabels.includes(name))
-  if (labelsAdded.length > 0) local = edit(issuesConfig, 'labels', () => setScalar(local, ['labels'], [...currentLabels, ...labelsAdded]))
+  if (labelsAdded.length > 0 && (labelsValue === undefined || Array.isArray(labelsValue))) {
+    local = edit(issuesConfig, 'labels', () => setScalar(local, ['labels'], [...currentLabels, ...labelsAdded]))
+  }
+  pmkit = setSchemaLine(pmkit, schemaUrl(SCHEMA_FILES.pmkit))
+  local = setSchemaLine(local, schemaUrl(SCHEMA_FILES.issues))
   const problems = validateLocalConfig(parsedLocal())
-  if (problems.length > 0) throw usageError(`the ${update ? '' : 'generated '}${slash(issuesConfig)} is not valid: ${problems.join('; ')}`, 'Fix the init flags')
+  if (problems.length > 0) {
+    throw usageError(`the ${update ? '' : 'generated '}${slash(issuesConfig)} is not valid: ${problems.join('; ')}`,
+      update ? `Fix ${slash(issuesConfig)} by hand, then run init --update again` : 'Fix the init flags')
+  }
 
   const replace = new Set(ctx.list('replace').flatMap((item) => String(item).split(',')).map((item) => item.trim().replace(/\\/g, '/')))
   const entries = []
