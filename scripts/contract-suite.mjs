@@ -142,6 +142,40 @@ export function runTrackerContract({ name, setup }) {
       assert.equal(await tracker.currentCycle(), null)
     })
 
+    it('createIssue and updateIssue with sprint current store the active sprint id', async ({ tracker, actor, today }) => {
+      const sprint = (await tracker.openCycle({ start: today }, actor)).after
+      const made = await tracker.createIssue({ title: 'Made current', sprint: 'current' }, actor)
+      assert.equal(made.after.sprint, sprint.id)
+      assert.equal((await tracker.getIssue(made.after.id)).sprint, sprint.id)
+
+      const plain = (await tracker.createIssue({ title: 'Plain' }, actor)).after.id
+      const moved = await tracker.updateIssue(plain, { sprint: 'current' }, actor)
+      assert.equal(moved.before.sprint, undefined)
+      assert.equal(moved.after.sprint, sprint.id)
+      assert.equal((await tracker.getIssue(plain)).sprint, sprint.id)
+
+      assert.deepEqual(ids(await tracker.cycleIssues(sprint.id)).sort(), [made.after.id, plain].sort())
+    })
+
+    it('moveToCycle with current moves issues into the active sprint, and null takes issues out of their sprint', async ({ tracker, actor, today }) => {
+      const sprint = (await tracker.openCycle({ start: today }, actor)).after
+      const a = (await tracker.createIssue({ title: 'A' }, actor)).after.id
+      const b = (await tracker.createIssue({ title: 'B' }, actor)).after.id
+
+      const moved = await tracker.moveToCycle([a, b], 'current', actor)
+      assert.equal(moved.length, 2)
+      for (const entry of moved) assert.equal(entry.after.sprint, sprint.id)
+      assert.deepEqual(ids(await tracker.cycleIssues(sprint.id)).sort(), [a, b].sort())
+
+      await tracker.moveToCycle([a], null, actor)
+      assert.equal((await tracker.getIssue(a)).sprint, undefined)
+      assert.deepEqual(ids(await tracker.cycleIssues(sprint.id)), [b])
+
+      await tracker.updateIssue(b, { sprint: null }, actor)
+      assert.equal((await tracker.getIssue(b)).sprint, undefined)
+      assert.deepEqual(ids(await tracker.cycleIssues(sprint.id)), [])
+    })
+
     it('sets and reads cycle capacity', async ({ tracker, actor, today }) => {
       const [member] = (await tracker.discover()).members
       const cycle = (await tracker.openCycle({ start: today }, actor)).after
