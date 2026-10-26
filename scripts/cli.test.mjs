@@ -247,6 +247,45 @@ test('validate exits 0 and prints a .pmkit/config.yaml problem as path, code and
   assert.equal(problem.code, 'config')
 })
 
+const LINEAR_LINE = /^\.pmkit\/config\.yaml {2}config {2}tracker\.system "linear" is not supported yet, set it to local$/m
+const useLinear = (root) => {
+  const file = path.join(root, '.pmkit', 'config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/system: local/, 'system: linear'))
+  return file
+}
+
+test('validate lists tracker.system linear as a problem and exits 0', () => {
+  const root = makeRepo('basic')
+  useLinear(root)
+  const text = run(root, ['validate'])
+  assert.equal(text.status, 0)
+  assert.equal(text.stdout.split('\n')[0], 'checked: 0 issues, 0 epics, 0 sprints, 0 milestones, 0 comments')
+  assert.match(text.stdout, LINEAR_LINE)
+  const problem = json(root, ['validate']).problems[0]
+  assert.deepEqual(Object.keys(problem).sort(), ['code', 'message', 'path'])
+  assert.deepEqual(problem, { path: '.pmkit/config.yaml', code: 'config', message: 'tracker.system "linear" is not supported yet, set it to local' })
+})
+
+test('validate with linear and a bad git_host lists both and exits 0', () => {
+  const root = makeRepo('basic')
+  const file = useLinear(root)
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/system: none/, 'system: gitlab'))
+  const text = run(root, ['validate'])
+  assert.equal(text.status, 0)
+  assert.match(text.stdout, LINEAR_LINE)
+  assert.match(text.stdout, /^\.pmkit\/config\.yaml {2}config {2}git_host\.system must be github or none$/m)
+})
+
+test('issues list with linear still exits 2 with NOT_SUPPORTED', () => {
+  const root = makeRepo('basic')
+  useLinear(root)
+  const result = run(root, ['issues', 'list', '--json'])
+  assert.equal(result.status, 2)
+  const { error } = JSON.parse(result.stdout)
+  assert.equal(error.code, 'NOT_SUPPORTED')
+  assert.equal(error.message, 'tracker.system "linear" is not supported yet')
+})
+
 test('validate text starts with the counts, milestones included', () => {
   const root = makeRepo('basic')
   const dir = path.join(root, '.issues', 'milestones')
