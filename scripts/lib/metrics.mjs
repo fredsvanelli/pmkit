@@ -27,7 +27,9 @@ export function velocity(sprints, issuesBySprint, { window, categoryOf }) {
   const recent = window > 0 ? closed.slice(-window) : []
   const perSprint = recent.map((sprint) => {
     const done = (issuesBySprint[sprint.id] ?? []).filter((issue) => (
-      categoryOf(issue.status) === 'done' && issue.doneAt !== undefined && issue.doneAt.slice(0, 10) <= sprint.end
+      categoryOf(issue.status) === 'done' && issue.doneAt !== undefined && (
+        sprint.closed !== undefined ? Date.parse(issue.doneAt) <= Date.parse(sprint.closed) : issue.doneAt.slice(0, 10) <= sprint.end
+      )
     ))
     const points = done.reduce((sum, issue) => sum + (typeof issue.estimate === 'number' ? issue.estimate : 0), 0)
     return { id: sprint.id, points, count: done.length, estimated: done.some((issue) => typeof issue.estimate === 'number') }

@@ -35,6 +35,46 @@ test('velocity with no closed sprint is zero', () => {
   assert.deepEqual(velocity([sprint('a', '2026-01-10', 'active')], {}, { window: 3, categoryOf }), { perSprint: [], average: 0, unit: 'issues' })
 })
 
+const closedAt = (id, end, closed) => ({ id, end, state: 'closed', closed })
+
+test('velocity counts a move to done up to the close of a late-closed sprint', () => {
+  const sprints = [closedAt('a', '2026-10-25', '2026-10-26T12:00:00Z')]
+  const issuesBySprint = {
+    a: [item(2, '2026-10-24T15:00:00Z'), item(3, '2026-10-26T10:00:00Z'), item(5, '2026-10-26T12:00:00Z'), item(8, '2026-10-27T10:00:00Z')],
+  }
+  const result = velocity(sprints, issuesBySprint, { window: 3, categoryOf })
+  assert.deepEqual(result.perSprint, [{ id: 'a', points: 10, count: 3 }])
+})
+
+test('velocity compares doneAt and closed as instants, with an offset or a fraction', () => {
+  const offset = velocity([closedAt('a', '2026-10-25', '2026-10-26T09:00:00-03:00')], {
+    a: [item(3, '2026-10-26T11:30:00Z'), item(5, '2026-10-26T12:00:01Z')],
+  }, { window: 3, categoryOf })
+  assert.deepEqual(offset.perSprint, [{ id: 'a', points: 3, count: 1 }])
+  const fraction = velocity([closedAt('b', '2026-10-25', '2026-10-26T12:00:00.500Z')], {
+    b: [item(3, '2026-10-26T12:00:00Z'), item(5, '2026-10-26T12:00:01Z')],
+  }, { window: 3, categoryOf })
+  assert.deepEqual(fraction.perSprint, [{ id: 'b', points: 3, count: 1 }])
+})
+
+test('velocity leaves out a move to done after an early close', () => {
+  const result = velocity([closedAt('a', '2026-10-25', '2026-10-23T12:00:00Z')], {
+    a: [item(3, '2026-10-24T10:00:00Z')],
+  }, { window: 3, categoryOf })
+  assert.deepEqual(result.perSprint, [{ id: 'a', points: 0, count: 0 }])
+})
+
+test('velocity applies the close cutoff per sprint and the end date to a sprint without closed', () => {
+  const sprints = [sprint('old', '2026-10-11'), closedAt('new', '2026-10-25', '2026-10-26T12:00:00Z')]
+  const issuesBySprint = {
+    old: [item(6, '2026-10-11T10:00:00Z'), item(4, '2026-10-12T10:00:00Z')],
+    new: [item(3, '2026-10-26T10:00:00Z'), item(7, undefined)],
+  }
+  const result = velocity(sprints, issuesBySprint, { window: 3, categoryOf })
+  assert.deepEqual(result.perSprint, [{ id: 'old', points: 6, count: 1 }, { id: 'new', points: 3, count: 1 }])
+  assert.equal(result.average, 4.5)
+})
+
 test('cycle time runs from the first start to the last done, even after a move back', () => {
   const move = (at, to) => ({ at, by: 'fred', op: 'move', field: 'status', to })
   const events = {
