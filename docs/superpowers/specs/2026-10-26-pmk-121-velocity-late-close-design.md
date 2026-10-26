@@ -72,7 +72,7 @@ A second project closes the same sprint early, on 2026-10-23T12:00:00Z, and move
 
 ## Options
 
-The cutoff is the open question: up to what time does a move to `done` count for a closed sprint?
+The cutoff is the question: up to what time does a move to `done` count for a closed sprint?
 
 **A. Count a move to `done` up to the moment the sprint is closed.** `closeCycle` records the close time. The brief offered two places for it:
 
@@ -85,7 +85,7 @@ The `closed` key is the smaller change and the one this spec weighs as A.
 - Criterion 1, the split: does not count with today's `close.md`, because step 8 runs `cycle close` first and the split after it. The repro shows the gap: ISS-JRR9 moves to `done` 6 seconds after the close. A needs step 8 to run the moves and splits before `cycle close`.
 - Criterion 2: holds for a late close and for an early close.
 - Old sprints have no `closed`. A needs a fallback for them (see "Old data").
-- Other adapters: Linear cycles have `completedAt`, and Jira sprints have `completeDate`, so both can fill `closed`. GitHub Projects iterations, GitLab iterations and Azure DevOps iterations end by date, with no close action and no close time. Those adapters leave `closed` out, and the fallback applies. For them `end` is the right cutoff, because nobody runs a close after it.
+- Other adapters: Linear cycles have `completedAt`, and Jira sprints have `completeDate`, so both can fill `closed`. GitHub Projects iterations, GitLab iterations and Azure DevOps iterations end by date, with no close action and no close time. Those adapters leave `closed` out, and the fallback applies. For them the end date stays the cutoff it is today, with its UTC limit (see "Old data").
 - Format: one optional key. Readers that do not know it keep it. No migration, no format bump (the `1 → 2` bump existed because format 1 readers reject numbered IDs, which does not apply here).
 - Contract: no operation changes. The Sprint entity gains one optional field.
 
@@ -128,7 +128,7 @@ For each closed sprint `S` in the window, an issue counts when all of these hold
 2. Its status is in the `done` category.
 3. `doneAt`, the `at` of its last move into a `done` status, exists.
 4. The cutoff:
-   - When `S.closed` exists: `Date.parse(doneAt) <= Date.parse(S.closed)`. A move in the same second as the close counts.
+   - When `S.closed` exists: `Date.parse(doneAt) <= Date.parse(S.closed)`. A move in the same second as the close counts. The comparison is on instants, so a `closed` with an offset works the same as one with `Z`.
    - When `S.closed` is missing: `doneAt.slice(0, 10) <= S.end`, the rule of today.
 
 Points, the count, the unit choice and the average stay as they are. The window still takes the last `window` closed sprints sorted by `end`.
@@ -138,17 +138,71 @@ Points, the count, the unit choice and the average stay as they are. The window 
 ### The `closed` key
 
 - File: `closed: 2026-10-26T12:00:00Z` in `sprints/<id>.yaml`, after `state`. `FILE_ORDER` becomes `name, start, end, goal, state, closed, capacity, days_off`.
-- Model: `closed` on the sprint object, after `state`, as an ISO timestamp in UTC. It is left out when the file has none, the same way an issue leaves out a missing `sprint`. The name follows `created` and `updated` on issues.
-- `closeCycle` sets `closed` to the run time (`stamp()`, so `PMKIT_NOW` in tests), in the same file write that sets `state: closed`. The dry run returns the same sprint, `closed` included, and writes nothing.
-- `parseSprint` accepts `closed` when it is a string with a date, a time and `Z` or an offset that `Date.parse` reads. Any other value fails the file with `INVALID_INPUT`, as a bad `start` does today, and `validate` lists it through the existing sprint check. `parseSprint` refuses a date-only value, because it would cut off every move made later that day.
+- Model: `closed` on the sprint object, right after `state`, as an ISO timestamp with `Z` or an offset. It is left out when the file has none, the same way an issue leaves out a missing `sprint`. The name follows `created` and `updated` on issues. The `Sprint` typedef in `scripts/lib/model.mjs` gains `@property {string} [closed]` after `state`, described as "ISO timestamp of the close, with Z or an offset, set by closeCycle".
+- A valid `closed` matches `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$`, its first 10 characters pass `validDate`, and `Date.parse` gives a number. The `validDate` check refuses a day that does not exist, such as `2026-02-30T12:00:00Z`, which the regex and `Date.parse` both accept. The regex refuses a date with no time (it would cut off every move made later that day), a time with no zone (V8 reads it as local time, so the cutoff would depend on the machine), and a space in place of the `T`.
+- `parseSprint` keeps a valid `closed` as written, offset or fraction of a second included. It does not convert it to UTC, so no write rewrites a value the user typed. `closeCycle` writes the `Z` form, because `stamp()` gives it.
+- A malformed `closed` is not fatal. `parseSprint` leaves `closed` off the sprint object, so velocity takes the end-date fallback. It puts the value in `extra.closed`, so the next write keeps the line as written, as 0.1.0 and 0.2.0 do today for any unknown key. A `closed:` line with no value parses to `null`. It reads as missing, `validate` lists nothing for it, and the next write drops the line, as it drops any empty sprint key today.
+- `validate` lists a malformed `closed` as one problem on the sprint file. Path: `.issues/sprints/<id>.yaml`. Code: `sprint`. Message: `closed "<value>" is not a timestamp with a date, a time and a zone (Z or an offset such as -03:00), so velocity uses the end date`. `validate` finds it in `sprint.extra.closed` after `readSprint`, so the existing loop over sprint files needs one more check and no second read of the file.
+- `closeCycle` sets `closed` to the run time (`stamp()`, so `PMKIT_NOW` in tests), in the same file write that sets `state: closed`. It builds the sprint it writes in model order, with `closed` right after `state`, and drops `extra.closed` when the file held a malformed value. The JSON result then has `"closed"` right after `"state": "closed"`, not after `daysOff` or `extra`, which a plain `{ ...before, state: 'closed', closed }` would give. The dry run returns the same sprint, `closed` included, and writes nothing.
 - A `closed` on a sprint whose `state` is not `closed` is kept and ignored. Velocity reads only closed sprints, and the next `closeCycle` overwrites it. No command reopens a sprint today.
 - `updateCycleCapacity` and any other sprint write keep `closed`, because they spread the sprint they read.
 
 ### Step 8 of `/pmkit:cycle:close`
 
-Step 8 runs the writes in this order: the moves (`cycle add`), then each split (create, link, estimate, move to `done`), then `cycle close`. The new text says why in one sentence: velocity counts a move to `done` only up to the close, so the splits run before it. The step 7 preview, the single approval and the stop rule do not change. When a write fails, the sprint stays active, and a second run of `/pmkit:cycle:close` finds it again. The `cycle close` result then lists no unfinished issues, because the moves and splits already ran.
+Step 8 runs the writes in this order: the moves (`cycle add`), then each split (create, link, estimate, move to `done`), then `cycle close`. The new text says why in one sentence: velocity counts a move to `done` only up to the close, so the splits run before it. The single approval of step 7 does not change. To make the order testable, step 8 names the `issues move <original id> done` call in full, where today it says "the move to `done` of the original".
 
-The report text of `close.md` (step 8 numbers, Output) does not change. With the reorder, every done issue of the step 8 read has its move to `done` at or before `closed`, so the report and velocity give the same count and points.
+**A failed write.** The stop rule stays as `close.md` has it today: stop at the first failed write, list what was done and what was not, and do not retry it. The close is now the last write, so after any failure the sprint is still active, and step 8 says so. For a split whose create ran, step 8 gives the new ID and the commands of that split that did not run.
+
+**A second run.** A second run of `/pmkit:cycle:close` finds the sprint still active and repeats nothing that ran:
+
+- A `cycle add` that ran took its issues out of the sprint, so step 3 does not list them.
+- A split that finished left the original `done`, so step 3 counts it as delivered and step 6 offers nothing for it.
+- A split whose link ran but whose estimate update or move did not is found in step 6. For each unfinished issue whose `related` list names an issue outside the step 3 read, step 6 runs `issues get <related id> --json`. When that issue has no `sprint`, a status category other than `done` and `canceled`, and a `created` date on or after the sprint's start, step 6 names it and proposes to finish that split, in place of a new split. Steps 7 and 8 then run only the estimate update and the move to `done` of the original, with no create and no link, so no second remaining-work issue is made. The estimate update with the value the issue already has writes nothing (checked in a temp project).
+- A split whose create ran but whose link did not leaves no trace a second run can read. Step 8 names that case when it stops: it gives the new ID and the `issues link` command, and says that a second run cannot tell the new issue belongs to the split, so the user runs the link first. See open question 1.
+
+**A failed close.** When `cycle close` fails after every move and split ran (a teammate closed the sprint, or `.pmkit/config.yaml` became invalid), the moves stay written and the sprint is not closed by this run. Step 9 (the retro) runs only when `cycle close` succeeded, and says so when it skips.
+
+**The step 7 preview.** The dry run of `cycle close` in step 7 runs before the moves, so its `unfinished` list holds every unfinished issue. The real close runs after them and lists none. Step 7 says that the preview's list is the list before the moves and splits. When the real close lists an issue anyway, the issue joined the sprint after step 3, and step 8 names it and says it stays in the closed sprint.
+
+The report text of `close.md` (step 8 numbers, Output) does not change. With the reorder, every done issue of the step 8 read has its move to `done` at or before `closed`, so the report and velocity give the same count and points. The exception is a done issue with no move event (follow-up 1): it counts in the report and not in velocity, as it does today.
+
+### The new text of the steps that change
+
+Steps 6, 7, 8 and 9 of `commands/cycle/close.md` change. Steps 1 to 5, step 10, the confirmation points, Output and "If something is missing" stay as they are. A parse of this text with `parseCommandFile` gives the step 8 calls `issues link`, `issues move`, `cycle close`, `cycle issues`, in that order, every flag is a flag of its CLI command, and no flag is loose (checked against a temp copy of the text).
+
+Step 6 keeps its paragraph and gains a second one, indented under it:
+
+```markdown
+   A failed step 8 can leave a split half done, with the new issue created and linked but the original not yet `done`. For each unfinished issue whose `related` list in the step 3 read names an issue that is not in that read, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues get <related id> --json`. When that issue has no `sprint`, a status category other than `done` and `canceled`, and a `created` date on or after the sprint's start, it may hold the remaining work of a split already made. Name it, and propose to finish that split in place of a new one: step 7 asks for the delivered part, and step 8 runs only the estimate update and the move to `done` of the original. Do not offer a new split for that issue, because its create would make a second remaining-work issue. The two moves stay on offer.
+```
+
+Step 7 keeps its first paragraph and its three bullets. A new paragraph goes after the bullets:
+
+```markdown
+   For a split that a failed step 8 started (step 6), run only the estimate update and the move dry runs above, and show the new issue's ID and its `related` link in place of a create.
+```
+
+The last paragraph of step 7 becomes:
+
+```markdown
+   Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" cycle close <sprint id> --dry-run --json` as well. Its `unfinished` list is the list before the moves and splits. Step 8 runs them before the close, so the real close leaves no issue unfinished. Moving issues between sprints is a scope move and closing ends the sprint, so show one full preview of all of it and ask once, whatever `write_policy.confirm` says. When the user declines, change nothing.
+```
+
+Step 8 becomes:
+
+```markdown
+8. After the approval, run the same moves and splits without `--dry-run`, and close the sprint last. Velocity counts a move to `done` only up to the moment the sprint closes, so every write that moves an issue runs before the close. For each split, run the create first and note the new ID. Then run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues link <new id> <original id> --kind related --json`, then the estimate update, then `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues move <original id> done --json`. For a split that a failed step 8 started, run only the estimate update and the move. The approval of step 7 covers the link, because the preview showed it. After the last move and split, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" cycle close <sprint id> --json`. When its `unfinished` list is not empty, those issues joined the sprint after step 3. Name each one and say it stays in the closed sprint.
+
+   When a write fails, stop, list what was done and what was not, and do not retry it. Say that the sprint is still active, because the close is the last write. For a split whose create ran, give the new ID and the commands of that split that did not run. When its link did not run, say that a second run of `/pmkit:cycle:close` cannot tell the new issue belongs to the split, so the user runs the link before that. A second run finds the sprint still active: the moves that ran took their issues out of the sprint, a finished split is `done`, and step 6 finds a split whose link ran.
+
+   After the last write, or after a failed one, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" cycle issues <sprint id> --json` again. Delivered is the issues of this read whose status category is `done`: their count, and the sum of their `estimate`. Throughput is the same count. Planned stays the step 4 number, with the estimates of the step 3 read. Scope added and removed and cycle time keep the numbers of steps 4 and 5. Carry-over keeps the step 4 list, with the decision applied to each unfinished issue and the new ID of each split.
+```
+
+Step 9 gains two sentences at its start. The rest of the step stays:
+
+```markdown
+9. Run this step only when `cycle close` succeeded in step 8. When it did not, say that the sprint is still active and that no retro is offered, and go to step 10. Offer a retro document. ...
+```
 
 ## Old data
 
@@ -164,13 +218,19 @@ The `team` fixture's closed sprint `2026-09-28` has no `closed`, so it stays the
 
 A teammate on an older pmkit who closes a sprint writes no `closed`, so that sprint uses the fallback too. A teammate on an older pmkit who edits a sprint that has `closed` keeps the key, because older readers keep unknown keys.
 
+Teammates on mixed versions compute velocity with different rules for the same sprint. On 0.2.0, `closed` is an `extra` key, so `metrics velocity` and `/pmkit:cycle:plan` apply the end-date rule to every closed sprint. On the new version they apply the `closed` cutoff. The two agree when every move to `done` came before the close and on or before the end date. They differ when a move came between the end and a late close, or after an early close. The format stays 2 all the same: a bump would block the older teammate's writes, and the file stays readable by both.
+
+The fallback keeps one limit of today's rule, unchanged. It compares the UTC date of the move with `end`. In a zone behind UTC, a move made late on the end date is already the next day in UTC, so it does not count. A temp copy of the `team` fixture reproduces it: a move at 22:00 and a close at 23:00 local time on 2026-10-25 in UTC-3 give `2026-10-12 | 0 | 0` today. A sprint with `closed` counts that move, because the cutoff is the close instant. Old sprints and adapters with no close time keep the limit.
+
 ## Changes
 
-- `scripts/lib/local/sprints.mjs`: `closed` in `FILE_ORDER`, parse and validate it in `parseSprint`, leave it out of the sprint when missing.
-- `scripts/lib/local/tracker.mjs`: `closeCycle` writes `closed: stamp()`.
+- `scripts/lib/local/sprints.mjs`: `closed` in `FILE_ORDER`. `parseSprint` checks it with the rule of "The `closed` key", puts a valid one right after `state`, leaves it out when missing or empty, and puts a malformed one in `extra.closed`.
+- `scripts/lib/local/tracker.mjs`: `closeCycle` writes `closed: stamp()`, builds the sprint in model order, and drops `extra.closed`.
+- `scripts/lib/validate.mjs`: one `sprint` problem for a sprint whose `extra.closed` is set.
+- `scripts/lib/model.mjs`: the `Sprint` typedef gains `@property {string} [closed]` after `state`.
 - `scripts/lib/metrics.mjs`: the cutoff of "The rule".
-- `commands/cycle/close.md`: step 8 order and its one-sentence reason. The `cycle-close` scenario follows.
-- `docs/superpowers/specs/2026-10-23-pmkit-design.md`: the Sprint row of the common model gains `closed` (ISO timestamp, set by `closeCycle`, optional). The Sprints section says `closeCycle` sets `state: closed` and `closed`, and states the velocity cutoff.
+- `commands/cycle/close.md`: steps 6, 7, 8 and 9 as "The new text of the steps that change" gives them. The `cycle-close` scenario follows.
+- `docs/superpowers/specs/2026-10-23-pmkit-design.md`: the Sprint row of the common model gains `closed` (ISO timestamp with `Z` or an offset, set by `closeCycle`, optional). In the Sprints section (line 253), the sentence "`closeCycle` sets `closed` and returns the issues that were not `done` or `canceled`, for the command to move." becomes "`closeCycle` sets `state: closed` and `closed`, the time of the close, and returns the issues not in a terminal category. `/pmkit:cycle:close` moves or splits them before the close, so the list is empty after a full run." A new sentence states the velocity cutoff.
 - `CONTEXT.md`: the Sprint entry says a closed sprint records when it was closed.
 - No change to `commands/cycle/plan.md`, `commands/report/status.md`, `skills/pmkit/references/conventions.md`, `README.md`, the `metrics velocity` summary, `TRACKER_OPERATIONS`, the config schemas or the tracker format.
 
@@ -179,6 +239,20 @@ A teammate on an older pmkit who closes a sprint writes no `closed`, so that spr
 Criterion 1:
 
 - Unit, `velocity` with a sprint `{ id: 'a', end: '2026-10-25', state: 'closed', closed: '2026-10-26T12:00:00Z' }`: a done issue of 3 points with `doneAt` 2026-10-26T10:00:00Z counts, and one of 5 points with `doneAt` 2026-10-26T12:00:00Z (the same second) counts.
+- Unit, `closed` with an offset: a sprint with `closed: '2026-10-26T09:00:00-03:00'` and a done issue with `doneAt` 2026-10-26T11:30:00Z counts, because 11:30Z is before 12:00Z.
+- Static, step 8 order: in `scripts/scenarios.test.mjs`, inside `describe('scenarios')`, the test "cycle/close step 8 runs cycle close after every issues link and issues move call". It fails on today's `close.md`, whose step 8 calls are `cycle close`, `issues link`, `cycle issues`, with no `issues move`. The assertion:
+
+  ```js
+  const step8 = FILES.find((file) => file.rel === 'cycle/close.md').parsed.calls
+    .filter((call) => call.step === '8' && !call.dryRun)
+    .map((call) => call.command)
+  const close = step8.indexOf('cycle close')
+  assert.ok(close >= 0, 'step 8 runs cycle close')
+  for (const name of ['issues link', 'issues move']) {
+    assert.ok(step8.includes(name), `step 8 runs ${name}`)
+    assert.ok(step8.lastIndexOf(name) < close, `${name} comes before cycle close in step 8`)
+  }
+  ```
 - CLI, on a copy of the `team` fixture with one `PMKIT_NOW` per call:
   - ISS-5N1R moves to `done` at 2026-10-24T15:00:00Z (before the end, 3 points).
   - ISS-8C4W moves to `done` at 2026-10-26T10:00:00Z with `issues move`, the same `moveToCategory` write `pr sync` makes (5 points).
@@ -201,21 +275,25 @@ Criterion 3:
 
 Criterion 4:
 
-- Old data, unit: the existing velocity tests have no `closed`, so they now test the fallback and pass unchanged. One more unit test: a sprint without `closed` and a done issue on the day after `end` does not count.
+- Old data, unit: the existing velocity tests have no `closed`, so they now test the fallback and pass unchanged. Case `c` of "velocity averages the last window of closed sprints" already has a done issue on the day after `end` (`item(4, '2026-02-08T10:00:00Z')` against end `2026-02-07`) that does not count, so no new fallback test is added.
 - Old data, CLI: the `team` fixture's `2026-09-28` keeps `{ points: 10, count: 3 }` in the CLI test of criterion 1 and in `scripts/__goldens__/team/metrics-velocity.txt`.
 - Sprint file, `scripts/sprints.test.mjs`:
-  - `closeCycle` writes `closed` with the run time and returns it.
+  - `closeCycle` writes `closed` with the run time and returns it, with `closed` right after `state` in the result's keys.
   - The dry run returns `closed` and leaves the file as it was.
-  - A file without `closed` reads with no `closed` key.
-  - A file with `closed: soon` or `closed: 2026-10-26` throws `INVALID_INPUT` naming the file.
+  - A valid `closed`: a file with `closed: 2026-10-26T09:00:00-03:00` reads with that string as written, and a `setCapacity` write keeps the line as written.
+  - A missing `closed`: a file without it, and a file with an empty `closed:`, read with no `closed` key and no `extra`.
+  - A malformed `closed`: files with `closed: soon`, `2026-10-26`, `2026-10-26T12:00:00`, `2026-10-26 12:00:00Z` and `2026-02-30T12:00:00Z` read with no error, no `closed` key, and the value in `extra.closed`. `listCycles` and `currentCycle` still work, and a `setCapacity` write keeps the line as written.
+  - `closeCycle` on an active sprint with a malformed `closed` writes the new `closed` and leaves no `extra.closed`.
   - `updateCycleCapacity` on a closed sprint keeps `closed`.
+- Malformed `closed`, `scripts/validate.test.mjs`: a copy of the `team` fixture with `closed: 2026-10-26` added to `sprints/2026-09-28.yaml` lists one problem `{ path: '.issues/sprints/2026-09-28.yaml', code: 'sprint', message: 'closed "2026-10-26" is not a timestamp with a date, a time and a zone (Z or an offset such as -03:00), so velocity uses the end date' }` next to the fixture's conflict problem. The same copy with a valid `closed: 2026-10-12T09:00:00Z` lists only the conflict problem. Today's code lists only the conflict problem for both (checked in a temp project), so the malformed case fails first.
+- Malformed `closed`, CLI: on the same copy with `closed: 2026-10-26`, `metrics velocity --json` exits 0 and gives `{ id: '2026-09-28', points: 10, count: 3 }`, the end-date fallback. Today's code gives the same (checked in a temp project). This test guards the "not fatal" rule and does not fail first.
 - `npm test` passes.
 
 ## How each criterion is proven
 
 | Criterion | Proof |
 | --- | --- |
-| 1 | The unit tests in `scripts/metrics.test.mjs`, and the CLI test in `scripts/cli.test.mjs` with per-call `PMKIT_NOW`, written first and failing on today's code (velocity gives 3 points and 1 issue for `2026-10-12`). The `cycle-close` scenario shows the new step 8 order and the `closed` line in the sprint file diff. |
+| 1 | The unit tests in `scripts/metrics.test.mjs`, and the CLI test in `scripts/cli.test.mjs` with per-call `PMKIT_NOW`, written first and failing on today's code (velocity gives 3 points and 1 issue for `2026-10-12`). The static test "cycle/close step 8 runs cycle close after every issues link and issues move call" in `scripts/scenarios.test.mjs`, written first and failing on today's `close.md`, proves the command text runs the split before the close. The `cycle-close` scenario shows the `closed` line in the sprint file diff. It does not prove the order, because the harness does not compare the order of calls inside a step. |
 | 2 | The after-close and early-close unit tests, and the after-close move in the CLI test. The early-close unit test fails on today's code. |
 | 3 | The CLI test's comparison of velocity and the step 8 read. `cycle:plan` step 3 calls `metrics velocity`. `report:status` reads no velocity, which the spec states from `commands/report/status.md`. |
 | 4 | The tests above cover before the end, between the end and the close, and after the close, plus the fallback. `npm test` passes after the golden and scenario regeneration below. |
@@ -225,7 +303,11 @@ The scenarios run every call at one fixed `PMKIT_NOW` (2026-10-23T12:00:00Z), so
 ### Tests that change
 
 - `scripts/cli.test.mjs`, "a split in cycle close leaves the remaining work for cycle plan": run the split writes before `cycle close`, to match the new step 8. Replace the comment that says no assertion covers a late close, because the new CLI test covers it. The velocity assertion `{ points: 5, count: 1 }` stays.
-- `scripts/__scenarios__/cycle-close.mjs`: move the `{ step: '8', write: close }` entry after the split's move to `done`, and update the header comment ("Step 8 closes the sprint first" becomes the new order).
+- `scripts/__scenarios__/cycle-close.mjs`:
+  - Move the `{ step: '8', write: close }` entry after the split's move to `done`, and update the header comment ("Step 8 closes the sprint first" becomes the new order).
+  - The move to `done` entry becomes `{ step: '8', write: done }`, because step 8 now names the `issues move` call, and rule 6 needs an entry for it.
+  - Add `{ step: '6', read: ['issues', 'get', 'ISS-0G5E'] }` after the step 6 `cycle list` read. The fixture's ISS-2X6D has a `related` link to ISS-0G5E, which is outside the sprint, so the new step 6 check runs. ISS-0G5E is `canceled` with `created` 2026-10-09, before the sprint's start, so it is no split, and the split runs as before. `expect` asserts the saved read's status category is `canceled`.
+- `scripts/scenarios.test.mjs`: the new static test of criterion 1.
 
 ### Goldens and scenarios to regenerate
 
@@ -233,7 +315,7 @@ Regenerate only with `UPDATE_GOLDENS=1`, then read each diff line by line. The e
 
 - `scripts/__goldens__/team/cycle-close.txt`: in `cycle close 2026-10-12 --json` and `--dry-run --json`, the `sprint` object gains `"closed": "2026-10-23T12:00:00Z"` after `"state": "closed"`. The text outputs do not change.
 - `scripts/__goldens__/messy-merge/cycle-close.txt`: the same line in the same two JSON outputs.
-- `scripts/__scenarios__/cycle-close.after.txt`: the `cycle close` write line moves after the split's `issues move ISS-2X6D done` write, and the diff of `.issues/sprints/2026-10-12.yaml` gains `+closed: 2026-10-23T12:00:00Z` after `+state: closed`.
+- `scripts/__scenarios__/cycle-close.after.txt`: a `$ pmkit issues get ISS-0G5E --json  [step 6, read]` line after the step 6 `cycle list` read. The `issues move ISS-2X6D done --json` write shows `[step 8, write]` in place of `[step 7, write]`. The `cycle close` write line moves after it. The diff of `.issues/sprints/2026-10-12.yaml` gains `+closed: 2026-10-23T12:00:00Z` after `+state: closed`.
 
 Unchanged, and a diff in any of them is a bug: every `metrics-velocity.txt` golden (the `team` closed sprint has no `closed`), `team/cycle-list.txt`, `team/cycle-current.txt`, the `basic` and `no-sprints` `cycle-close.txt` (they fail before any write), and `cycle-plan.after.txt`.
 
@@ -246,25 +328,30 @@ Unchanged, and a diff in any of them is a bug: every `metrics-velocity.txt` gold
 | `closed` is a timestamp with a time, not a date. | `pr sync` and the split run on the same day as the close. A date would count a move made after the close that day. |
 | A move in the same second as the close counts (`<=`). | The tests and the scenarios use one fixed clock, so their writes and the close share a timestamp, and the PMK-113 CLI test keeps its 5 points. In real use, step 8 now runs every move before the close, so a tie means the move came first. |
 | A closed sprint without `closed` keeps the end-date rule. | Velocity already planned from does not change on upgrade, no file is rewritten, and "count every done issue" would count moves made after the close. Adapters with no close time (GitHub, GitLab and Azure DevOps iterations) use the same rule, which fits sprints that end by date. |
-| No backfill of `closed` for old sprints. | It would write to user files that are not broken, and pmkit has no reliable source for the old close time. Left as an open question. |
-| `close.md` step 8 runs the moves and splits before `cycle close`. | The split's move to `done` must come before the close to count, and it is the only command write in the close flow that comes after it today. A failed write now leaves the sprint active, so a second run finds it, where today it leaves a closed sprint with missing moves. Flagged as an open question, because it changes a command beyond the velocity rule. |
+| No backfill of `closed` for old sprints. Decided by the orchestrator. | It would write to user files that are not broken, and pmkit has no reliable source for the old close time: the git commit time of the sprint file exists only with `auto_commit` or a manual commit, and the last event of the sprint's issues is not the close. |
+| `close.md` step 8 runs the moves and splits before `cycle close`. Decided by the orchestrator: the reorder is in scope for this issue. | The split's move to `done` must come before the close to count, and it is the only command write in the close flow that comes after it today. Without it, a split after a late close counts 0 and criterion 1 is half met. A failed write now leaves the sprint active, so a second run finds it, where today it leaves a closed sprint with missing moves. |
+| A static test on `close.md` checks the step 8 order. | The scenario harness matches each entry to a call of its step and does not compare the order of calls inside a step, and the scenarios run at one fixed clock. Without the static test, the old order passes every test. |
+| Step 8 stops at the first failed write, lists what was done and what was not, and does not retry. Step 9 runs only after a successful close. | The stop rule is the one `close.md` has today. The close is the last write, so after any failure the sprint is still active, and a retro would describe a sprint that is not closed. |
+| A second run recognizes a split already made from the original's `related` link to a backlog issue created during the sprint, and finishes it with no create. | Moves and finished splits already leave the sprint or reach `done`, so they need no check. The link is the only trace a half-done split leaves that a later session can read. The estimate update and the move are safe to repeat. The check needs `created` on or after the sprint's start, so an older related issue, such as the fixture's ISS-0G5E, is not taken for a split. |
+| A malformed `closed` is not fatal. `parseSprint` treats it as missing and keeps it in `extra.closed`, and `validate` lists it as a `sprint` problem. | Today, and in 0.1.0 and 0.2.0, a hand-added `closed` of any value reads with no error. A strict check would make one such file fail every sprint read (`cycle list`, `cycle current`, `metrics velocity`, every `--sprint current` read and write). Velocity is the only reader of `closed`, so the end-date fallback is a safe default, and `validate` and `/pmkit:local:doctor` still report the typo. |
+| A valid `closed` is a date, a time and `Z` or an offset, and `parseSprint` keeps it as written. | A date alone cuts off every move made later that day. A time with no zone reads as local time, so the cutoff would depend on the machine. Keeping the string as written means no write rewrites what the user typed. |
 | The `cycle:close` report text does not change. | With the reorder, its delivered numbers and velocity agree. |
 | `velocity` stays the one shared function, and `issuesBySprint` does not change. | `metrics velocity` is its only caller, and `cycle:plan` reads that command. Putting the cutoff in `velocity` keeps it pure and testable without files. |
 | `report:status` needs no change. | It reads no velocity. Its numbers come from `epic progress` and `events`. |
-| `parseSprint` refuses a malformed `closed`. | A silently ignored typo would give wrong velocity. A bad `start` already fails the same way, and `validate` lists it. |
 | The sprint object leaves out `closed` when the file has none, instead of giving `null`. | Issues leave out missing optional fields, and the goldens of old sprints stay as they are. |
+| `closeCycle` builds the sprint in model order, so `closed` comes right after `state` in the JSON. | The goldens and the scenario snapshot then show `"closed"` next to `"state": "closed"`, where a reader looks for it. |
 | The `cycle close` text output does not show `closed`. | The JSON carries it. Leaving the text alone keeps the text goldens and the help as they are. |
 | `TRACKER_OPERATIONS` and the contract suite do not change. | No operation changes. `closed` is optional, because some adapters cannot provide it, so the contract suite cannot require it. The Local tracker's behavior is tested in `scripts/sprints.test.mjs`. |
 | No changelog entry and no `Tracker format` line in this issue. | The format stays 2. The release that ships the fix writes its changelog line. |
 
 ## Open questions
 
-1. **The step 8 reorder in `commands/cycle/close.md`.** The state file says to ask the user when a choice changes a command beyond the velocity rule. The reorder changes the order of writes in `/pmkit:cycle:close`, which PMK-113 set. This spec recommends it, because without it the split misses criterion 1. If the user declines, the alternative is to leave the order and accept that a split after a late close counts 0, which leaves criterion 1 half met.
-2. **Backfill of `closed` for sprints closed before the change.** Not chosen. A backfill would add a key to existing user files, and the only possible sources are the git commit time of the sprint file (present only with `auto_commit` or a manual commit) or the last event of the sprint's issues, and neither is reliable. Ask the user before any backfill.
+1. **A split whose create ran and whose link failed.** The new issue has no link to the original, so a second run cannot find it, and if the user reruns the close without running the link that step 8 gave, step 6 offers the split again and a second create makes a second remaining-work issue. Step 8 names the case and gives the link command. Closing the gap fully needs a mark on the new issue that a later read can find, such as a description that names the original (`issues list --text <original id> --sprint none` searches titles and descriptions). That changes the issue the PMK-113 split creates, so this spec leaves it out. Decide whether to add it here or in a follow-up.
 
 ## Follow-up candidates
 
 1. A done issue whose `issue.md` was edited by hand to `done` and has no `move` event has no `doneAt`. Velocity leaves it out, and the `cycle:close` report counts it. The drift events of the next write fix it, but a closed sprint is rarely written again. A `/pmkit:local:doctor` check could list such issues.
-2. `/pmkit:local:doctor` could offer to fill `closed` on old closed sprints from the git log of the sprint file, with a preview and an approval, if the user wants a backfill (open question 2).
+2. `/pmkit:local:doctor` could offer to fill `closed` on old closed sprints from the git log of the sprint file, with a preview and an approval, if the user later wants the backfill this issue leaves out.
 3. A teammate's clock that runs behind can date a move before a close that came first. pmkit takes timestamps from each machine's clock. Not worth a fix unless it shows up.
 4. When the Linear and Jira adapters land, map `completedAt` and `completeDate` to `closed`. The date-based adapters leave it out.
+5. `cycle add` still moves issues into a closed sprint. `cycle add ISS-3F7H --to 2026-10-12` on the closed sprint exits 0 (checked in a temp project). A done issue moved in after the close counts in velocity when its `doneAt` is before `closed`, as it did under the end-date rule. `cycle add --to <closed sprint>` could refuse or warn.
