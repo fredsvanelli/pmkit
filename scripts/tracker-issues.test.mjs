@@ -405,6 +405,19 @@ test('with a config that fails validation, reads work and every write refuses wi
   assert.equal(hashTree(root), hash)
 })
 
+test('a write refuses on auto_commit: "yes" with the new message and the validate next step', () => {
+  const { root, issuesDir } = setup()
+  const configFile = path.join(issuesDir, 'config.yaml')
+  fs.writeFileSync(configFile, fs.readFileSync(configFile, 'utf8').replace('auto_commit: false', 'auto_commit: "yes"'))
+  const tracker = createLocalTracker(root, { now: () => new Date(NOW), random: scriptedRandom([1, 2, 3, 4]) })
+  assert.throws(
+    () => tracker.createIssue({ title: 'First' }, 'fred'),
+    (error) => error.code === 'INVALID_INPUT' &&
+      error.message === 'the tracker config is not valid, so writes are refused: auto_commit must be true or false' &&
+      error.nextStep === 'pmkit validate',
+  )
+})
+
 test('drift is dated no later than the write that finds it', () => {
   const { tracker, paths, rawEvents } = setup()
   tracker.createIssue({ title: 'First' }, 'fred')

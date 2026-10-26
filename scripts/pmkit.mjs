@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { BOOLEANS, parseArgs } from './lib/args.mjs'
 import { requireActor, gitUserEmail } from './lib/actor.mjs'
-import { findRoot, loadConfig, validateLocalConfig } from './lib/config.mjs'
+import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, validateLocalConfig } from './lib/config.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
 import { changeLines, epicRecord, eventTable, fields, issueRecord, issueTable, sprintRecord, table } from './lib/format.mjs'
 import { cycleTimes, lastEntry, summary, velocity } from './lib/metrics.mjs'
@@ -664,7 +664,6 @@ ${COMMANDS.map((c) => `  ${c.name}${c.usage ? ` ${c.usage}` : ''}\n      ${c.sum
 `
 
 // init is the only command that runs before a config exists.
-const ESTIMATE_UNITS = ['points', 'hours', 'sizes']
 const SIZE_SCALE = ['XS', 'S', 'M', 'L', 'XL']
 const slash = (file) => file.split(path.sep).join('/')
 const normalized = (text) => text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
@@ -705,7 +704,7 @@ function runInit(ctx) {
   const update = ctx.flag('update')
   if ((opt('tracker') ?? 'local') !== 'local') throw new PmkitError('NOT_SUPPORTED', `tracker "${opt('tracker')}" is not supported yet`, 'Use --tracker local')
   const host = opt('git-host')
-  if (host !== undefined && !['github', 'none'].includes(host)) throw usageError('--git-host must be github or none')
+  if (host !== undefined && !GIT_HOSTS.includes(host)) throw usageError(`--git-host must be ${GIT_HOSTS.join(' or ')}`)
   const idStyle = opt('id-style')
   if (idStyle !== undefined && !ID_STYLES.includes(idStyle)) throw usageError(`--id-style must be ${ID_STYLES.join(' or ')}`)
   const unit = opt('estimate-unit')
