@@ -223,7 +223,13 @@ test('planMigration turns a throwing step into INVALID_INPUT', () => {
   const broken = { from: 1, to: 2, describe: 'broken', run() { throw new Error('bad event') } }
   assert.throws(
     () => planMigration({ root, trackerPath: '.issues', from: 1, to: 2, migrations: [broken] }),
-    (error) => error.code === 'INVALID_INPUT' && error.message === 'migration 1 to 2 failed: bad event' && error.nextStep === 'pmkit validate',
+    (error) => {
+      assert.equal(error.code, 'INVALID_INPUT')
+      assert.equal(error.message, 'migration 1 to 2 failed: bad event')
+      assert.equal(error.nextStep, 'pmkit validate')
+      assert.deepEqual(error.details, { migration: { from: 1, to: 2 } })
+      return true
+    },
   )
 })
 
@@ -246,6 +252,30 @@ function gitRepo({ autoCommit = false, trackerPath } = {}) {
   return { ...made, dir: path.join(root, trackerPath ?? '.issues') }
 }
 const options = { formatVersion: 2, migrations: [renameLogTime] }
+const bad = { from: 1, to: 2, describe: 'bad', run() { throw new Error('bad event') } }
+const problem = (at) => ({ path: at, code: 'migration', message: 'migration 1 to 2 failed: bad event' })
+
+test('a failing step is INVALID_INPUT for loadConfig and migrate, and validate lists it', () => {
+  const { root } = gitRepo()
+  const check = (error) => {
+    assert.equal(error.code, 'INVALID_INPUT')
+    assert.equal(error.message, 'migration 1 to 2 failed: bad event')
+    assert.equal(error.nextStep, 'pmkit validate')
+    assert.deepEqual(error.details, { migration: { from: 1, to: 2 } })
+    return true
+  }
+  assert.throws(() => loadConfig(root, { migrations: [bad] }), check)
+  assert.throws(() => runMigrate(root, { migrations: [bad] }), check)
+  assert.throws(() => runMigrate(root, { dryRun: true, migrations: [bad] }), check)
+  const result = validateRepo(root, { migrations: [bad] })
+  assert.deepEqual(result.problems, [problem('.issues/config.yaml')])
+  assert.deepEqual(result.checked, { issues: 0, epics: 0, sprints: 0, milestones: 0, comments: 0 })
+})
+
+test('validate lists a failing step at a custom tracker path', () => {
+  const { root } = gitRepo({ trackerPath: 'tracker' })
+  assert.deepEqual(validateRepo(root, { migrations: [bad] }).problems, [problem('tracker/config.yaml')])
+})
 
 test('migrate --dry-run returns the plan and writes nothing', () => {
   const { root, a, b, dir } = gitRepo()

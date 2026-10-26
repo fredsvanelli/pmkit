@@ -67,10 +67,12 @@ const noneChecked = () => ({ issues: 0, epics: 0, sprints: 0, milestones: 0, com
 const formatProblem = (root, file, error) => ({ path: relative(root, file), code: 'FORMAT', message: `${error.message}; run ${error.nextStep}` })
 
 // loadConfig throws INVALID_INPUT when the local config.yaml does not parse, and NOT_SUPPORTED when its
-// format is newer than this pmkit's. Both are findings, not failures. Its errors from .pmkit/config.yaml
-// (a bad key, or an unsupported tracker.system) are rethrown here. pmkitConfigProblems lists them.
+// format is newer than this pmkit's. Both are findings, not failures. So is a failing migration step,
+// listed with code `migration`. Its errors from .pmkit/config.yaml (a bad key, or an unsupported
+// tracker.system) are rethrown here. pmkitConfigProblems lists them.
 function brokenConfigProblem(root, error) {
   const format = error?.details?.format !== undefined
+  const migration = error?.details?.migration !== undefined
   if (error?.code !== 'INVALID_INPUT' && !format) throw error
   let trackerPath
   try {
@@ -79,11 +81,12 @@ function brokenConfigProblem(root, error) {
   } catch {
     throw error
   }
-  // loadConfig starts every INVALID_INPUT from the local config.yaml with this label.
-  if (!format && !error.message.startsWith(`${trackerPath}/config.yaml`)) throw error
+  // loadConfig starts every other INVALID_INPUT from the local config.yaml with this label.
+  if (!format && !migration && !error.message.startsWith(`${trackerPath}/config.yaml`)) throw error
   const file = path.join(root, trackerPath, 'config.yaml')
   if (!fs.existsSync(file)) throw error
   if (format) return formatProblem(root, file, error)
+  if (migration) return { path: relative(root, file), code: 'migration', message: error.message }
   const conflict = hasConflictMarkers(read(file))
   return {
     path: relative(root, file),
@@ -123,11 +126,11 @@ function pmkitConfigProblems(root) {
   return messages.map((message) => ({ path: at, code: 'config', message }))
 }
 
-export function validateRepo(root, { config } = {}) {
+export function validateRepo(root, { config, migrations } = {}) {
   const pmkit = pmkitConfigProblems(root)
   if (!config) {
     try {
-      config = loadConfig(root)
+      config = loadConfig(root, { migrations })
     } catch (error) {
       let broken
       try {

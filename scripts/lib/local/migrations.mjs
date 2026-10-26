@@ -82,7 +82,7 @@ export function planMigration({ root, trackerPath, from, to, migrations = MIGRAT
     try {
       step.run(dir)
     } catch (error) {
-      throw new PmkitError('INVALID_INPUT', `migration ${step.from} to ${step.to} failed: ${error.message}`, 'pmkit validate')
+      throw new PmkitError('INVALID_INPUT', `migration ${step.from} to ${step.to} failed: ${error.message}`, 'pmkit validate', { migration: { from: step.from, to: step.to } })
     }
     fs.writeFileSync(configFile, setScalar(fs.readFileSync(configFile, 'utf8'), ['version'], step.to))
     const after = snapshot(dir)
