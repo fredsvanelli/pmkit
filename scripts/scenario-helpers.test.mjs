@@ -1,10 +1,17 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { COMMANDS } from './pmkit.mjs'
+import { NOW, runPmkit } from './golden-helpers.mjs'
 import {
   scenarioName, snapshotFile, parseCommandFile, callKey, unknownFlags,
   matchEntry, coverageProblems, pointProblems, orderProblems, compareScenarios, staleSnapshots,
+  readTree, treeChanges, formatSnapshot, makeRepoView, runScenario,
 } from './scenario-helpers.mjs'
+import moveScenario from './__scenarios__/issues-move.mjs'
 
 const CLI_NAMES = COMMANDS.map((c) => c.name)
 const cli = (name) => COMMANDS.find((c) => c.name === name)
@@ -21,6 +28,10 @@ test('scenarioName turns a command path into a file name', () => {
 test('snapshotFile adds the index only when a module has several scenarios', () => {
   assert.equal(snapshotFile('issues-move', 0, 1), 'issues-move.after.txt')
   assert.equal(snapshotFile('setup', 1, 2), 'setup.1.after.txt')
+})
+
+test('snapshotFile numbers the entries of an array from 0', () => {
+  assert.equal(snapshotFile('setup', 0, 2), 'setup.0.after.txt')
 })
 
 test('parseCommandFile gives step ids to items, nested items, bullets and headings', () => {
@@ -281,4 +292,162 @@ test('parseCommandFile attaches a prose flag before the first call of a step to 
 test('parseCommandFile returns a prose flag that has no call in its step as loose', () => {
   const text = ['## Steps', '', '1. Ask for \`--bogus\`.', `2. Run ${call('discover --json')}.`].join('\n')
   assert.deepEqual(parse(text).looseFlags, [{ step: '1', section: 'steps', flag: 'bogus' }])
+})
+
+test('orderProblems does not let a dry run that ended in an expected error cover a write', () => {
+  const failed = { ...D(MOVE), expectError: 'INVALID_INPUT' }
+  assert.match(orderProblems([failed, C, W(MOVE)])[0], /no earlier dry run/)
+})
+
+const HERE = path.dirname(fileURLToPath(import.meta.url))
+const FIXTURES = path.join(HERE, '__fixtures__')
+const INPUTS = path.join(HERE, '__scenarios__', '_inputs')
+const MOVE_FILE = parse(fs.readFileSync(path.join(HERE, '..', 'commands', 'issues', 'move.md'), 'utf8'))
+const scratchDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-test-'))
+const writeFile = (root, rel, text) => {
+  fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true })
+  fs.writeFileSync(path.join(root, rel), text)
+}
+
+test('readTree maps posix relative paths to text and skips .git', () => {
+  const root = scratchDir()
+  try {
+    writeFile(root, 'a/b.txt', 'b\n')
+    writeFile(root, '.git/HEAD', 'ref\n')
+    assert.deepEqual([...readTree(root)], [['a/b.txt', 'b\n']])
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('treeChanges lists added, removed and changed files sorted', () => {
+  const before = new Map([['b.md', 'one\ntwo\n'], ['c.md', 'gone\n'], ['d.md', 'same\n']])
+  const after = new Map([['a.md', 'new\nlines\n'], ['b.md', 'one\nthree\n'], ['d.md', 'same\n']])
+  assert.deepEqual(treeChanges(before, after), [
+    '--- added a.md',
+    '+new',
+    '+lines',
+    '--- changed b.md',
+    '  one',
+    '-two',
+    '+three',
+    '--- removed c.md',
+  ])
+})
+
+test('treeChanges prints (no file changed)', () => {
+  assert.deepEqual(treeChanges(new Map([['a', 'x']]), new Map([['a', 'x']])), ['(no file changed)'])
+})
+
+test('formatSnapshot puts the gh calls last only when given', () => {
+  const rows = ['$ pmkit help --json  [step 1, read]', 'exit 0']
+  assert.equal(formatSnapshot({ rows, changes: ['(no file changed)'], gh: null }), `${rows.join('\n')}\n\n(no file changed)\n`)
+  assert.equal(
+    formatSnapshot({ rows, changes: ['(no file changed)'], gh: ['pr view x'] }),
+    `${rows.join('\n')}\n\n(no file changed)\n--- gh calls\npr view x\n`,
+  )
+  assert.match(formatSnapshot({ rows, changes: ['(no file changed)'], gh: [] }), /--- gh calls\n\(none\)\n$/)
+})
+
+test('makeRepoView.newEvents returns only appended events', () => {
+  const root = scratchDir()
+  try {
+    const log = '.issues/issues/ISS-1/events.jsonl'
+    writeFile(root, log, '{"op":"create"}\n')
+    writeFile(root, '.issues/epics/EPC-1/events.jsonl', '{"op":"create"}\n')
+    const baseline = readTree(root)
+    fs.appendFileSync(path.join(root, log), '{"op":"move"}\n{"op":"assign"}\n')
+    const repo = makeRepoView(root, baseline, null)
+    assert.deepEqual(repo.newEvents('ISS-1'), [{ op: 'move' }, { op: 'assign' }])
+    assert.deepEqual(repo.newEvents('EPC-1'), [])
+    assert.deepEqual(repo.ghCalls(), [])
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+// A scenario on move.md that excuses every call and point it does not reach, so only the rule under test can fail.
+const moveOnly = (steps, extra = {}) => ({
+  command: 'issues/move',
+  fixture: 'team',
+  steps,
+  skip: { '1 issues get': 'test', '2 issues get': 'test', '3 discover': 'test' },
+  notHit: { 'Step 5': 'test' },
+  ...extra,
+})
+const runMove = (scenario, run) =>
+  runScenario(scenario, { name: 'issues-move', parsed: MOVE_FILE, cliCommands: COMMANDS, fixturesDir: FIXTURES, inputsDir: INPUTS, run })
+const DRY_MOVE = { step: '4', dryRun: ['issues', 'move', 'ISS-2X6D', 'done'] }
+
+test('runScenario fails a dry run that writes', async () => {
+  const writing = async (args, cwd, options) => {
+    fs.writeFileSync(path.join(cwd, '.issues', 'x'), 'x')
+    return runPmkit(args, cwd, options)
+  }
+  const { problems } = await runMove(moveOnly([DRY_MOVE], { git: true }), writing)
+  assert.equal(problems.length, 1, problems.join('\n'))
+  assert.match(problems[0], /^rule 8: dryRun \[step 4\] issues move ISS-2X6D done .*changed/)
+})
+
+test('runScenario lets a dry run change files under .git', async () => {
+  const touchingGit = async (args, cwd, options) => {
+    fs.writeFileSync(path.join(cwd, '.git', 'x'), 'x')
+    return runPmkit(args, cwd, options)
+  }
+  const { problems } = await runMove(moveOnly([DRY_MOVE], { git: true }), touchingGit)
+  assert.deepEqual(problems, [])
+})
+
+test('runScenario matches a write to its dry run on the args without --json and --dry-run', async () => {
+  const write = (args) => ({ step: '4', write: args })
+  const confirm = { confirm: 'Step 5' }
+  const same = await runMove(moveOnly([DRY_MOVE, confirm, write(DRY_MOVE.dryRun)], { notHit: {} }))
+  assert.deepEqual(same.problems, [])
+  const other = await runMove(moveOnly([DRY_MOVE, confirm, write([...DRY_MOVE.dryRun, '--status', 'done'])], { notHit: {} }))
+  assert.equal(other.problems.length, 1, other.problems.join('\n'))
+  assert.match(other.problems[0], /^rule 9: .*--status done.*no earlier dry run/)
+})
+
+test('runScenario does not let a dry run that failed as expected cover a write', async () => {
+  const failing = { step: '4', dryRun: ['issues', 'move', 'ISS-2X6D', 'finished'], expectError: 'INVALID_INPUT' }
+  const { problems, snapshot } = await runMove(moveOnly([failing, { confirm: 'Step 5' }, { step: '4', write: failing.dryRun, expectError: 'INVALID_INPUT' }], { notHit: {} }))
+  assert.equal(problems.length, 1, problems.join('\n'))
+  assert.match(problems[0], /^rule 9: write .*finished.*no earlier dry run/)
+  assert.match(snapshot, /exit 2 \(expected INVALID_INPUT\)/)
+})
+
+test('runScenario stops at an entry that fails and names it', async () => {
+  const { problems, snapshot } = await runMove(moveOnly([{ step: '1', read: ['issues', 'get', 'ISS-NOPE'] }, DRY_MOVE]))
+  assert.equal(problems.length, 1, problems.join('\n'))
+  assert.match(problems[0], /read \[step 1\] issues get ISS-NOPE exited \d/)
+  assert.equal(snapshot, null)
+})
+
+test('runScenario gives the same snapshot twice and leaks no temp path, real date, user or git identity', async () => {
+  // github: true adds git, the bare origin and the fake gh to the run, so their environment is checked too.
+  const scenario = { ...moveScenario, github: true }
+  const home = scratchDir()
+  const keys = ['PMKIT_USER', 'HOME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_EMAIL', 'EMAIL']
+  const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
+  try {
+    const first = await runMove(scenario)
+    assert.deepEqual(first.problems, [])
+    writeFile(home, '.gitconfig', '[user]\n\tname = Leak\n\temail = leak@example.com\n')
+    Object.assign(process.env, { PMKIT_USER: 'other', HOME: home, GIT_AUTHOR_EMAIL: 'leak@example.com', GIT_COMMITTER_EMAIL: 'leak@example.com', EMAIL: 'leak@example.com' })
+    const second = await runMove(scenario)
+    assert.deepEqual(second.problems, [])
+    assert.equal(second.snapshot, first.snapshot)
+    for (const leak of [os.tmpdir(), fs.realpathSync(os.tmpdir()), 'pmkit-scn-', 'other', 'leak@']) {
+      assert.ok(!first.snapshot.includes(leak), `snapshot holds ${leak}`)
+    }
+    const today = new Date().toISOString().slice(0, 10)
+    if (today !== NOW.slice(0, 10)) assert.ok(!first.snapshot.includes(today), `snapshot holds today's date ${today}`)
+    assert.match(first.snapshot, /--- gh calls\n\(none\)\n$/)
+  } finally {
+    for (const key of keys) {
+      if (saved[key] === undefined) delete process.env[key]
+      else process.env[key] = saved[key]
+    }
+    fs.rmSync(home, { recursive: true, force: true })
+  }
 })

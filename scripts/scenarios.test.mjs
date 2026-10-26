@@ -7,6 +7,17 @@
 // Rule 4  every call ends with --json
 // Rule 13 a command file with a write call declares a confirmation point
 //
+// Each scenario entry then runs on a fresh copy of its fixture (scenario-helpers.mjs, runScenario):
+//
+// Rule 5  every read, dry run and write matches a call of the same step
+// Rule 6  every call of the procedure is used by an entry or listed in skip
+// Rule 7  the confirmation points of the file are confirmed or listed in notHit
+// Rule 8  every read and dry run exits 0 (or with its expectError), prints JSON and writes nothing outside .git
+// Rule 9  every write and edit comes after a confirm, and a write that repeats a dry run after that dry run
+// Rule 10 every confirm names a confirmation point of the file
+// Rule 11 expect(repo) passes
+// Rule 12 the snapshot equals <name>.after.txt, or <name>.<index>.after.txt (index from 0) for an array export
+//
 // Regenerate the snapshots, and delete the stale ones, with:
 //
 //   UPDATE_GOLDENS=1 node --test scripts/scenarios.test.mjs
@@ -21,12 +32,14 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { COMMANDS } from './pmkit.mjs'
 import {
-  compareScenarios, loadScenarios, parseCommandFile, scenarioName, snapshotFile, staleSnapshots, unknownFlags,
+  compareScenarios, loadScenarios, parseCommandFile, runScenario, scenarioName, snapshotFile, staleSnapshots, unknownFlags,
 } from './scenario-helpers.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const COMMANDS_DIR = path.join(HERE, '..', 'commands')
 const SCENARIOS = path.join(HERE, '__scenarios__')
+const FIXTURES = path.join(HERE, '__fixtures__')
+const INPUTS = path.join(SCENARIOS, '_inputs')
 const UPDATE = process.env.UPDATE_GOLDENS === '1'
 const REGENERATE = 'UPDATE_GOLDENS=1 node --test scripts/scenarios.test.mjs'
 const CLI_NAMES = COMMANDS.map((command) => command.name)
@@ -34,7 +47,7 @@ const CLI_NAMES = COMMANDS.map((command) => command.name)
 // Scenario names that have no module yet. Each task that adds scenarios removes its names; the last one deletes this set.
 const PENDING = new Set([
   'backlog-groom', 'cycle-close', 'cycle-plan', 'help', 'issues-assign', 'issues-breakdown', 'issues-capture',
-  'issues-comment', 'issues-create', 'issues-find', 'issues-link', 'issues-mine', 'issues-move', 'issues-pause',
+  'issues-comment', 'issues-create', 'issues-find', 'issues-link', 'issues-mine', 'issues-pause',
   'issues-progress', 'issues-summary', 'issues-update', 'issues-work', 'local-doctor', 'report-status', 'setup',
   'spec-import', 'team-standup', 'upgrade',
 ])
@@ -51,6 +64,7 @@ const FILES = commandFiles().map((rel) => ({
   name: scenarioName(rel),
   parsed: parseCommandFile(fs.readFileSync(path.join(COMMANDS_DIR, rel), 'utf8'), CLI_NAMES),
 }))
+const LOADED = await loadScenarios(SCENARIOS)
 const cliOf = (name) => COMMANDS.find((command) => command.name === name)
 const isWrite = (call) => call.dryRun || Boolean(cliOf(call.command)?.write)
 
@@ -129,4 +143,25 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     assert.ok(has('local/doctor.md', '4', 'issues parent'), 'local/doctor.md 4 issues parent')
     assert.ok(file('report/status.md').calls.some((c) => c.command === 'epic list' && c.section === 'other'), 'report/status.md epic list in other')
   })
+
+  for (const { name, entries } of LOADED) {
+    entries.forEach((scenario, index) => {
+      const file = snapshotFile(name, index, entries.length)
+      test(`scenario ${file.replace(/\.after\.txt$/, '')}`, async () => {
+        const command = FILES.find((f) => f.name === scenarioName(scenario.command))
+        assert.ok(command, `scenario ${name} names commands/${scenario.command}.md, which does not exist`)
+        assert.equal(scenarioName(scenario.command), name, `scenario ${name}.mjs names ${scenario.command}; the module name must be ${scenarioName(scenario.command)}`)
+        const { problems, snapshot } = await runScenario(scenario, {
+          name, parsed: command.parsed, cliCommands: COMMANDS, fixturesDir: FIXTURES, inputsDir: INPUTS,
+        })
+        assert.deepEqual(problems, [], `${file}:\n${problems.join('\n')}\nFix the scenario or the command file, then run ${REGENERATE}`)
+        const target = path.join(SCENARIOS, file)
+        if (UPDATE) fs.writeFileSync(target, snapshot)
+        else {
+          assert.ok(fs.existsSync(target), `${file} does not exist; create it with ${REGENERATE}`)
+          assert.equal(snapshot, fs.readFileSync(target, 'utf8'), `${file} differs from the run; if the change is intended, run ${REGENERATE}`)
+        }
+      })
+    })
+  }
 })
