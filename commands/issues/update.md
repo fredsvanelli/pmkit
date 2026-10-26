@@ -47,5 +47,5 @@ The updated issue as a one-row issue table, and the list of fields that changed.
 - No ID: ask for it.
 - No change: ask what to change.
 - The change is only a parent, a link or an archive: do not run `issues update`. Say which command to use.
-- `--sprint current` with no active sprint: the dry run in step 5 answers `INVALID_INPUT` "there is no active sprint" before the confirmation question. Say so, show no preview, and offer `/pmkit:cycle:plan` or updating the issue without a sprint.
+- `--sprint current` with no active sprint: the dry run in step 5 answers `INVALID_INPUT` "there is no active sprint" before the confirmation question. Say so, show no preview, and offer `/pmkit:cycle:plan` or applying the other changes without `--sprint`.
 - An error from the CLI: apply the rules for reading errors in the conventions.
