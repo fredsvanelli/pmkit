@@ -1,1 +1,4 @@
 {"at":"2026-10-25T19:13:19Z","by":"fred","op":"create","to":{"id":"PMK-8","title":"Publish JSON Schemas for both config files","type":"feature","status":"backlog","priority":"low","estimate":3,"labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-25T19:13:19Z","updated":"2026-10-25T19:13:19Z"}}
+{"at":"2026-10-26T00:27:42Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-26T00:27:42Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-26T00:27:42Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-8-publish-json-schemas-for-both-config"}
