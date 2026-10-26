@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { BOOLEANS, parseArgs } from './lib/args.mjs'
 import { requireActor, gitUserEmail } from './lib/actor.mjs'
-import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, validateLocalConfig } from './lib/config.mjs'
+import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, validateLocalConfig, validatePmkitConfig } from './lib/config.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
 import { changeLines, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, sprintRecord, table } from './lib/format.mjs'
 import { cycleTimes, lastEntry, summary, velocity } from './lib/metrics.mjs'
@@ -23,6 +23,19 @@ import { ID_STYLES, branchName } from './lib/ids.mjs'
 
 const TEMPLATES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates')
 const usageError = (message, nextStep = 'node scripts/pmkit.mjs --help') => new PmkitError('INVALID_INPUT', message, nextStep)
+
+// Checks the final .pmkit/config.yaml text init is about to write. Returns null when it is valid, else the error to throw.
+export function pmkitConfigRefusal(text, { update }) {
+  let problems
+  try {
+    problems = validatePmkitConfig(parseYaml(text))
+  } catch (error) {
+    problems = [`config.yaml does not parse: ${error.message}`]
+  }
+  if (problems.length === 0) return null
+  return usageError(`the ${update ? '' : 'generated '}.pmkit/config.yaml is not valid: ${problems.join('; ')}`,
+    update ? 'Fix .pmkit/config.yaml by hand, then run init --update again' : 'Fix the init flags')
+}
 
 // Option readers. A repeated option arrives as an array; the last one wins unless the command asks for a list.
 const last = (value) => (Array.isArray(value) ? value[value.length - 1] : value)
@@ -833,6 +846,10 @@ function runInit(ctx) {
     )
     local = setScalar(template('issues.config.yaml').replace('id_prefix: ISS', `id_prefix: ${opt('prefix') ?? 'ISS'}`), ['version'], FORMAT_VERSION)
   }
+  // pmkit is final here. This check runs first and alone, before any .issues/config.yaml parse and before entries exist.
+  pmkit = setSchemaLine(pmkit, schemaUrl(SCHEMA_FILES.pmkit))
+  const refusal = pmkitConfigRefusal(pmkit, { update })
+  if (refusal) throw refusal
   if (idStyle !== undefined) local = edit(issuesConfig, 'id_style', () => setScalar(local, ['id_style'], idStyle))
   if (unit !== undefined) {
     local = edit(issuesConfig, 'estimate.unit', () => setScalar(local, ['estimate', 'unit'], unit))
@@ -863,7 +880,6 @@ function runInit(ctx) {
   if (labelsAdded.length > 0 && (labelsValue === undefined || Array.isArray(labelsValue))) {
     local = edit(issuesConfig, 'labels', () => setScalar(local, ['labels'], [...currentLabels, ...labelsAdded]))
   }
-  pmkit = setSchemaLine(pmkit, schemaUrl(SCHEMA_FILES.pmkit))
   local = setSchemaLine(local, schemaUrl(SCHEMA_FILES.issues))
   const problems = validateLocalConfig(parsedLocal())
   if (problems.length > 0) {
