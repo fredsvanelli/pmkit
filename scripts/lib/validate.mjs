@@ -71,6 +71,8 @@ const formatProblem = (root, file, error) => ({ path: relative(root, file), code
 function brokenConfigProblem(root, error) {
   const format = error?.details?.format !== undefined
   if (error?.code !== 'INVALID_INPUT' && !format) throw error
+  // loadConfig names .pmkit/config.yaml in every error that file causes; those belong to pmkitConfigProblems.
+  if (error.message.includes('.pmkit/config.yaml')) throw error
   let issuesDir
   try {
     const pmkit = parseYaml(read(path.join(root, '.pmkit', 'config.yaml')))

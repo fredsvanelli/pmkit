@@ -228,6 +228,24 @@ test('tracker.system trello and a numeric tracker.path are problems, not throws'
   assert.equal(second[0].message, 'tracker.path must be a string')
 })
 
+test('a .pmkit/config.yaml that loadConfig rejects is not blamed on .issues/config.yaml', () => {
+  const root = makeRepo('basic')
+  editPmkit(root, 'system: local', 'system: 5')
+  const result = validateRepo(root)
+  assert.deepEqual(brief(result), ['config .pmkit/config.yaml'])
+  assert.match(result.problems[0].message, /^tracker\.system must be one of/)
+})
+
+test('an empty or non-map .pmkit/config.yaml gives config problems and does not throw', () => {
+  for (const text of ['', '- a\n- b\n']) {
+    const root = makeRepo('basic')
+    setPmkit(root, text)
+    const result = validateRepo(root)
+    assert.ok(result.problems.length > 0)
+    assert.ok(result.problems.every((problem) => problem.path === '.pmkit/config.yaml' && problem.code === 'config'))
+  }
+})
+
 test('a missing .pmkit/config.yaml still throws NOT_CONFIGURED', () => {
   const root = makeRepo('basic')
   fs.rmSync(pmkitFile(root))
