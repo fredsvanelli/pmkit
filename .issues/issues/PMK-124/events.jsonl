@@ -1,2 +1,11 @@
 {"at":"2026-10-26T17:58:03Z","by":"fred","op":"create","to":{"id":"PMK-124","title":"Separate the paragraph after a sub-list in pause and spec import","type":"task","status":"backlog","priority":"low","labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-26T17:58:03.864Z","updated":"2026-10-26T17:58:03Z"}}
 {"at":"2026-10-26T17:58:03Z","by":"fred","op":"link","field":"related","to":"PMK-113"}
+{"at":"2026-10-26T18:29:49Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-26T18:29:49Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-26T18:29:49Z","by":"fred","op":"update","field":"estimate","from":null,"to":1}
+{"at":"2026-10-26T18:29:49Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-26T18:29:56Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-124-separate-the-paragraph-after-a-sub-list"}
+{"at":"2026-10-26T18:32:51Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-26T18:34:07Z","by":"fred","op":"comment","to":"2026-10-26T18-34-07Z-fred.md"}
+{"at":"2026-10-26T18:41:08Z","by":"fred","op":"comment","to":"2026-10-26T18-41-08Z-fred.md"}
+{"at":"2026-10-26T18:41:08Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

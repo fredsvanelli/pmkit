@@ -25,6 +25,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 7. Draft PR. `<base>` is `git_host.default_branch` in `.pmkit/config.yaml`, or `main` when that key is not set. When the branch has commits not on the base branch (`git log <base>..HEAD`) and the git host is GitHub, ask with `AskUserQuestion` whether to push it and open a draft PR. Uncommitted changes are not pushed, so list them and offer to commit first. When the user agrees, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" pr open --issue <id> --draft --dry-run --json`.
    - When `existing` is `false`, show `title`, `head`, `base` and `draft`, and ask once.
    - When `existing` is `true`, the branch already has an open PR, in `pr`. Show its number, link and whether it is a draft. Say that the real run only pushes the new commits to it, and that a PR already ready for review stays ready. Ask once whether to push.
+
    When the user approves, run the same command without `--dry-run`. When the user declines, skip the push and say the branch is not pushed.
 8. Remove the temporary file.
 
