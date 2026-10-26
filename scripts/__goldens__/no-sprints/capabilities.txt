@@ -5,27 +5,27 @@ tracker: local
 git host: none
 
 Capability           | Path    | Detail
----------------------|---------|-----------------------------------------------------
+---------------------|---------|------------------------------------------------------------------
 cycles               | native  |
 estimation           | native  | unit=points scale=1/2/3/5/8/13
 multilevel_hierarchy | native  |
 dependencies         | native  |
 native_triage        | native  |
 deliverables         | native  |
-strategic_goals      | native  |
+strategic_goals      | absent  | No pmkit command serves strategic_goals in the Local tracker yet
 status_update        | native  |
-releases             | native  |
+releases             | absent  | No pmkit command serves releases in the Local tracker yet
 capacity             | native  |
 native_metrics       | derived | source=events
-saved_views          | native  |
+saved_views          | absent  | No pmkit command serves saved_views in the Local tracker yet
 documents            | native  |
-demand_signals       | native  |
-request_queue        | native  |
+demand_signals       | absent  | No pmkit command serves demand_signals in the Local tracker yet
+request_queue        | absent  | No pmkit command serves request_queue in the Local tracker yet
 time_tracking        | native  |
 linked_code          | derived | Set git_host in .pmkit/config.yaml
-agent_delegation     | derived | assignee=agent:<name>
-security_alerts      | derived | source=local scanners
-user_inbox           | derived | source=mentions and assignments since the last check
+agent_delegation     | absent  | No pmkit command serves agent_delegation in the Local tracker yet
+security_alerts      | absent  | No pmkit command serves security_alerts in the Local tracker yet
+user_inbox           | absent  | No pmkit command serves user_inbox in the Local tracker yet
 --- stderr
 (empty)
 
@@ -74,7 +74,8 @@ exit 0
     },
     {
       "id": "strategic_goals",
-      "path": "native"
+      "path": "absent",
+      "enableHint": "No pmkit command serves strategic_goals in the Local tracker yet"
     },
     {
       "id": "status_update",
@@ -82,7 +83,8 @@ exit 0
     },
     {
       "id": "releases",
-      "path": "native"
+      "path": "absent",
+      "enableHint": "No pmkit command serves releases in the Local tracker yet"
     },
     {
       "id": "capacity",
@@ -97,7 +99,8 @@ exit 0
     },
     {
       "id": "saved_views",
-      "path": "native"
+      "path": "absent",
+      "enableHint": "No pmkit command serves saved_views in the Local tracker yet"
     },
     {
       "id": "documents",
@@ -105,11 +108,13 @@ exit 0
     },
     {
       "id": "demand_signals",
-      "path": "native"
+      "path": "absent",
+      "enableHint": "No pmkit command serves demand_signals in the Local tracker yet"
     },
     {
       "id": "request_queue",
-      "path": "native"
+      "path": "absent",
+      "enableHint": "No pmkit command serves request_queue in the Local tracker yet"
     },
     {
       "id": "time_tracking",
@@ -125,24 +130,18 @@ exit 0
     },
     {
       "id": "agent_delegation",
-      "path": "derived",
-      "detail": {
-        "assignee": "agent:<name>"
-      }
+      "path": "absent",
+      "enableHint": "No pmkit command serves agent_delegation in the Local tracker yet"
     },
     {
       "id": "security_alerts",
-      "path": "derived",
-      "detail": {
-        "source": "local scanners"
-      }
+      "path": "absent",
+      "enableHint": "No pmkit command serves security_alerts in the Local tracker yet"
     },
     {
       "id": "user_inbox",
-      "path": "derived",
-      "detail": {
-        "source": "mentions and assignments since the last check"
-      }
+      "path": "absent",
+      "enableHint": "No pmkit command serves user_inbox in the Local tracker yet"
     }
   ]
 }

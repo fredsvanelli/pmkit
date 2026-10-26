@@ -1,0 +1,18 @@
+$ pmkit reindex
+exit 0
+--- stdout
+indexed 0 issues (0 could not be read) in .issues/.cache/index.json
+--- stderr
+(empty)
+
+$ pmkit reindex --json
+exit 0
+--- stdout
+{
+  "written": true,
+  "path": ".issues/.cache/index.json",
+  "issues": 0,
+  "problems": 0
+}
+--- stderr
+(empty)

@@ -1,0 +1,41 @@
+$ pmkit milestone get v1.0
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: milestone v1.0 does not exist
+next: pmkit milestone list
+
+$ pmkit milestone get v1.0 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "milestone v1.0 does not exist",
+    "nextStep": "pmkit milestone list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit milestone get missing-milestone
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: milestone missing-milestone does not exist
+next: pmkit milestone list
+
+$ pmkit milestone get missing-milestone --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "milestone missing-milestone does not exist",
+    "nextStep": "pmkit milestone list"
+  }
+}
+--- stderr
+(empty)

@@ -1,0 +1,13 @@
+$ pmkit milestone list
+exit 0
+--- stdout
+no milestones
+--- stderr
+(empty)
+
+$ pmkit milestone list --json
+exit 0
+--- stdout
+[]
+--- stderr
+(empty)

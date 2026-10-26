@@ -44,14 +44,57 @@ $ pmkit init --update
 exit 0
 --- stdout
 wrote:
-  .pmkit/config.yaml: keep
-  .issues/config.yaml: keep
+  .pmkit/config.yaml: change
+  .issues/config.yaml: change
   .issues/.gitattributes: create
   .issues/.gitignore: create
   .issues/issues/.gitkeep: keep
   .issues/epics/.gitkeep: keep
   .issues/sprints/.gitkeep: keep
   .issues/docs/.gitkeep: keep
+
+.pmkit/config.yaml:
++# yaml-language-server: $schema=https://raw.githubusercontent.com/fredsvanelli/pmkit/main/schemas/pmkit.config.schema.json
+  version: 1
+  tracker:
+    system: local
+    path: .issues
+  git_host:
+    system: none
+  write_policy:
+    confirm: single_writes
+    preview: [bulk, delete, publish_update, move_scope]
+
+.issues/config.yaml:
++# yaml-language-server: $schema=https://raw.githubusercontent.com/fredsvanelli/pmkit/main/schemas/issues.config.schema.json
+  version: 2
+  id_prefix: ISS
+  epic_prefix: EPC
+  statuses:
+    triage: { category: triage }
+    backlog: { category: backlog }
+    todo: { category: todo }
+    in_progress: { category: in_progress }
+    in_review: { category: in_review }
+    done: { category: done }
+    canceled: { category: canceled }
+  default_status: backlog
+  types: [feature, bug, task, chore]
+  priorities: [urgent, high, medium, low]
+  labels: []
+  estimate:
+    unit: points
+    scale: [1, 2, 3, 5, 8, 13]
+  members:
+    fred: { name: Fred Vanelli, email: fred@example.com, availability: 1 }
+  defaults:
+    stale_days: 60
+    stuck_business_days: 3
+    sprint_length_days: 14
+    sprint_start_weekday: mon
+    velocity_window: 3
+    status_update_window_days: 14
+  auto_commit: false
 --- stderr
 (empty)
 
@@ -63,11 +106,13 @@ exit 0
   "files": [
     {
       "path": ".pmkit/config.yaml",
-      "action": "keep"
+      "action": "change",
+      "diff": "+# yaml-language-server: $schema=https://raw.githubusercontent.com/fredsvanelli/pmkit/main/schemas/pmkit.config.schema.json\n  version: 1\n  tracker:\n    system: local\n    path: .issues\n  git_host:\n    system: none\n  write_policy:\n    confirm: single_writes\n    preview: [bulk, delete, publish_update, move_scope]\n"
     },
     {
       "path": ".issues/config.yaml",
-      "action": "keep"
+      "action": "change",
+      "diff": "+# yaml-language-server: $schema=https://raw.githubusercontent.com/fredsvanelli/pmkit/main/schemas/issues.config.schema.json\n  version: 2\n  id_prefix: ISS\n  epic_prefix: EPC\n  statuses:\n    triage: { category: triage }\n    backlog: { category: backlog }\n    todo: { category: todo }\n    in_progress: { category: in_progress }\n    in_review: { category: in_review }\n    done: { category: done }\n    canceled: { category: canceled }\n  default_status: backlog\n  types: [feature, bug, task, chore]\n  priorities: [urgent, high, medium, low]\n  labels: []\n  estimate:\n    unit: points\n    scale: [1, 2, 3, 5, 8, 13]\n  members:\n    fred: { name: Fred Vanelli, email: fred@example.com, availability: 1 }\n  defaults:\n    stale_days: 60\n    stuck_business_days: 3\n    sprint_length_days: 14\n    sprint_start_weekday: mon\n    velocity_window: 3\n    status_update_window_days: 14\n  auto_commit: false\n"
     },
     {
       "path": ".issues/.gitattributes",
@@ -94,7 +139,9 @@ exit 0
       "action": "keep"
     }
   ],
-  "kept": []
+  "kept": [],
+  "labelsAdded": [],
+  "labelsKept": []
 }
 --- stderr
 (empty)
@@ -103,14 +150,57 @@ $ pmkit init --update --dry-run
 exit 0
 --- stdout
 files:
-  .pmkit/config.yaml: keep
-  .issues/config.yaml: keep
+  .pmkit/config.yaml: would change
+  .issues/config.yaml: would change
   .issues/.gitattributes: would create
   .issues/.gitignore: would create
   .issues/issues/.gitkeep: keep
   .issues/epics/.gitkeep: keep
   .issues/sprints/.gitkeep: keep
   .issues/docs/.gitkeep: keep
+
+.pmkit/config.yaml:
++# yaml-language-server: $schema=https://raw.githubusercontent.com/fredsvanelli/pmkit/main/schemas/pmkit.config.schema.json
+  version: 1
+  tracker:
+    system: local
+    path: .issues
+  git_host:
+    system: none
+  write_policy:
+    confirm: single_writes
+    preview: [bulk, delete, publish_update, move_scope]
+
+.issues/config.yaml:
++# yaml-language-server: $schema=https://raw.githubusercontent.com/fredsvanelli/pmkit/main/schemas/issues.config.schema.json
+  version: 2
+  id_prefix: ISS
+  epic_prefix: EPC
+  statuses:
+    triage: { category: triage }
+    backlog: { category: backlog }
+    todo: { category: todo }
+    in_progress: { category: in_progress }
+    in_review: { category: in_review }
+    done: { category: done }
+    canceled: { category: canceled }
+  default_status: backlog
+  types: [feature, bug, task, chore]
+  priorities: [urgent, high, medium, low]
+  labels: []
+  estimate:
+    unit: points
+    scale: [1, 2, 3, 5, 8, 13]
+  members:
+    fred: { name: Fred Vanelli, email: fred@example.com, availability: 1 }
+  defaults:
+    stale_days: 60
+    stuck_business_days: 3
+    sprint_length_days: 14
+    sprint_start_weekday: mon
+    velocity_window: 3
+    status_update_window_days: 14
+  auto_commit: false
 dry run: nothing was written
 --- stderr
 (empty)
@@ -123,11 +213,13 @@ exit 0
   "files": [
     {
       "path": ".pmkit/config.yaml",
-      "action": "keep"
+      "action": "change",
+      "diff": "+# yaml-language-server: $schema=https://raw.githubusercontent.com/fredsvanelli/pmkit/main/schemas/pmkit.config.schema.json\n  version: 1\n  tracker:\n    system: local\n    path: .issues\n  git_host:\n    system: none\n  write_policy:\n    confirm: single_writes\n    preview: [bulk, delete, publish_update, move_scope]\n"
     },
     {
       "path": ".issues/config.yaml",
-      "action": "keep"
+      "action": "change",
+      "diff": "+# yaml-language-server: $schema=https://raw.githubusercontent.com/fredsvanelli/pmkit/main/schemas/issues.config.schema.json\n  version: 2\n  id_prefix: ISS\n  epic_prefix: EPC\n  statuses:\n    triage: { category: triage }\n    backlog: { category: backlog }\n    todo: { category: todo }\n    in_progress: { category: in_progress }\n    in_review: { category: in_review }\n    done: { category: done }\n    canceled: { category: canceled }\n  default_status: backlog\n  types: [feature, bug, task, chore]\n  priorities: [urgent, high, medium, low]\n  labels: []\n  estimate:\n    unit: points\n    scale: [1, 2, 3, 5, 8, 13]\n  members:\n    fred: { name: Fred Vanelli, email: fred@example.com, availability: 1 }\n  defaults:\n    stale_days: 60\n    stuck_business_days: 3\n    sprint_length_days: 14\n    sprint_start_weekday: mon\n    velocity_window: 3\n    status_update_window_days: 14\n  auto_commit: false\n"
     },
     {
       "path": ".issues/.gitattributes",
@@ -154,7 +246,9 @@ exit 0
       "action": "keep"
     }
   ],
-  "kept": []
+  "kept": [],
+  "labelsAdded": [],
+  "labelsKept": []
 }
 --- stderr
 (empty)
@@ -213,7 +307,9 @@ exit 0
       "action": "create"
     }
   ],
-  "kept": []
+  "kept": [],
+  "labelsAdded": [],
+  "labelsKept": []
 }
 --- stderr
 (empty)
@@ -273,7 +369,9 @@ exit 0
       "action": "create"
     }
   ],
-  "kept": []
+  "kept": [],
+  "labelsAdded": [],
+  "labelsKept": []
 }
 --- stderr
 (empty)
