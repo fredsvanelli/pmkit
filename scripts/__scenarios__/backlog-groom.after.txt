@@ -1,0 +1,93 @@
+$ pmkit issues list --category backlog,todo,triage --json  [step 2, read]
+exit 0
+$ pmkit events --since 2026-08-24 --json  [step 3, read]
+exit 0
+$ pmkit validate --json  [step 4, read]
+exit 0
+? Step 6  [confirmed]
+$ pmkit issues update ISS-6J0B --estimate 2 --dry-run --json  [step 7, dry run]
+exit 0
+$ pmkit issues parent ISS-3F7H EPC-2M9D --dry-run --json  [step 7, dry run]
+exit 0
+$ pmkit issues link ISS-1V9Z ISS-M0GZ --kind duplicate --dry-run --json  [step 7, dry run]
+exit 0
+$ pmkit issues move ISS-1V9Z canceled --dry-run --json  [step 7, dry run]
+exit 0
+? Step 8  [confirmed]
+$ pmkit issues update ISS-6J0B --estimate 2 --json  [step 7, write]
+exit 0
+$ pmkit issues parent ISS-3F7H EPC-2M9D --json  [step 7, write]
+exit 0
+$ pmkit issues link ISS-1V9Z ISS-M0GZ --kind duplicate --json  [step 7, write]
+exit 0
+$ pmkit issues move ISS-1V9Z canceled --json  [step 7, write]
+exit 0
+$ pmkit issues list --category backlog,todo,triage --json  [step 2, read]
+exit 0
+$ pmkit events --since 2026-08-24 --json  [step 3, read]
+exit 0
+$ pmkit validate --json  [step 4, read]
+exit 0
+
+--- changed .issues/issues/ISS-1V9Z/events.jsonl
+  {"at":"2026-10-20T16:00:00Z","by":"ana","op":"create","to":{"id":"ISS-1V9Z","title":"Investigate slow login","type":"bug","status":"triage","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-20T16:00:00Z","updated":"2026-10-20T16:00:00Z"}}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"duplicate_of","to":"ISS-M0GZ"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"triage","to":"canceled"}
+--- changed .issues/issues/ISS-1V9Z/issue.md
+  ---
+  id: ISS-1V9Z
+  title: Investigate slow login
+  type: bug
+-status: triage
++status: canceled
++duplicate_of: [ISS-M0GZ]
+  created: 2026-10-20T16:00:00Z
+-updated: 2026-10-20T16:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Some users wait ten seconds after submitting the login form.
+--- changed .issues/issues/ISS-3F7H/events.jsonl
+  {"at":"2026-10-07T14:00:00Z","by":"fred","op":"create","to":{"id":"ISS-3F7H","title":"Empty state for the dashboard","type":"feature","status":"backlog","priority":"low","estimate":2,"labels":["frontend"],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-07T14:00:00Z","updated":"2026-10-07T14:00:00Z"}}
+  {"at":"2026-10-22T17:00:00Z","by":"fred","op":"update","field":"priority","from":"low","to":"medium"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"parent","from":null,"to":"EPC-2M9D"}
+--- changed .issues/issues/ISS-3F7H/issue.md
+  ---
+  id: ISS-3F7H
+  title: Empty state for the dashboard
+  type: feature
+  status: backlog
+  priority: medium
+  estimate: 2
+  labels: [frontend]
++parent: EPC-2M9D
+  created: 2026-10-07T14:00:00Z
+-updated: 2026-10-22T17:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  A new account sees a blank dashboard. Show a short guide instead.
+--- changed .issues/issues/ISS-6J0B/events.jsonl
+  {"at":"2026-10-08T09:00:00Z","by":"fred","op":"create","to":{"id":"ISS-6J0B","title":"Upgrade the build tooling","type":"chore","status":"backlog","priority":"low","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"due":"2026-11-30","created":"2026-10-08T09:00:00Z","updated":"2026-10-08T09:00:00Z"}}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"estimate","from":null,"to":2}
+--- changed .issues/issues/ISS-6J0B/issue.md
+  ---
+  id: ISS-6J0B
+  title: Upgrade the build tooling
+  type: chore
+  status: backlog
+  priority: low
++estimate: 2
+  due: 2026-11-30
+  created: 2026-10-08T09:00:00Z
+-updated: 2026-10-08T09:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Move to the current LTS of the build runner.

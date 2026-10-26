@@ -20,7 +20,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 
 1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues get <id> --json` to read the issue, its `children` and its `blockedBy`.
 2. When the category is `done`, check two things from step 1. Warn when a child issue is not in the `done` or `canceled` category. Warn when a blocker is not in the `done` or `canceled` category. Look up each child and blocker with `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues get <child-or-blocker-id> --json`. List them by ID in the warning.
-3. When the category has more than one status and the user gave no `--status`, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and ask with `AskUserQuestion` which status to use.
+3. When the category has more than one status and the user gave no status name, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and ask with `AskUserQuestion` which status to use.
 4. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues move <id> <category> [--status <name>] --dry-run --json`.
 5. Show `before` and `after` of the status, with the warnings of step 2 above them. Follow "How to show a write" in the conventions: ask once. When the user declines, stop and change nothing.
 6. When the user approves, run the same command without `--dry-run`.

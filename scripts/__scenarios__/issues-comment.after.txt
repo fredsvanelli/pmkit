@@ -1,0 +1,17 @@
+$ pmkit issues comment ISS-5N1R --body-file - --dry-run --json  [step 2, dry run]
+exit 0
+? Step 3  [confirmed]
+$ pmkit issues comment ISS-5N1R --body-file - --json  [step 2, write]
+exit 0
+
+--- added .issues/issues/ISS-5N1R/comments/2026-10-23T12-00-00Z-fred.md
++---
++author: fred
++created: 2026-10-23T12:00:00Z
++---
++
++The cursor works on the staging data. I will open the PR tomorrow.
+--- changed .issues/issues/ISS-5N1R/events.jsonl
+  {"at":"2026-10-05T09:30:00Z","by":"fred","op":"create","to":{"id":"ISS-5N1R","title":"Paginate the events API","type":"task","status":"todo","priority":"medium","estimate":3,"assignee":"fred","labels":["backend"],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-05T09:30:00Z","updated":"2026-10-05T09:30:00Z"}}
+  {"at":"2026-10-22T09:00:00Z","by":"fred","op":"move","field":"status","from":"todo","to":"in_progress"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"comment","to":"2026-10-23T12-00-00Z-fred.md"}

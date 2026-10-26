@@ -1,0 +1,14 @@
+$ pmkit pr sync --dry-run --json  [step 1, dry run]
+exit 0
+$ pmkit cycle current --json  [step 2, read]
+exit 0
+$ pmkit issues list --assignee me --sprint current --json  [step 3, read]
+exit 0
+$ pmkit pr status --branch feat-retries --json  [step 5, read]
+exit 0
+
+(no file changed)
+--- gh calls
+pr view feat-retries --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr checks 7 --json name,state,bucket
+pr view 7 --json reviews,reviewRequests

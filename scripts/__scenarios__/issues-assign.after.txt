@@ -1,0 +1,30 @@
+$ pmkit discover --json  [step 1, read]
+exit 0
+$ pmkit issues assign ISS-3F7H ana --dry-run --json  [step 3, dry run]
+exit 0
+? Step 4  [confirmed]
+$ pmkit issues assign ISS-3F7H ana --json  [step 3, write]
+exit 0
+
+--- changed .issues/issues/ISS-3F7H/events.jsonl
+  {"at":"2026-10-07T14:00:00Z","by":"fred","op":"create","to":{"id":"ISS-3F7H","title":"Empty state for the dashboard","type":"feature","status":"backlog","priority":"low","estimate":2,"labels":["frontend"],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-07T14:00:00Z","updated":"2026-10-07T14:00:00Z"}}
+  {"at":"2026-10-22T17:00:00Z","by":"fred","op":"update","field":"priority","from":"low","to":"medium"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"ana"}
+--- changed .issues/issues/ISS-3F7H/issue.md
+  ---
+  id: ISS-3F7H
+  title: Empty state for the dashboard
+  type: feature
+  status: backlog
+  priority: medium
+  estimate: 2
++assignee: ana
+  labels: [frontend]
+  created: 2026-10-07T14:00:00Z
+-updated: 2026-10-22T17:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  A new account sees a blank dashboard. Show a short guide instead.

@@ -91,7 +91,8 @@ export function displayArgs(args, { root, inputs }) {
   })
 }
 
-const quote = (arg) => (arg === '' || /[\s'"]/.test(arg) ? `'${arg.replace(/'/g, "'\\''")}'` : arg)
+/** Single-quotes an argument that is empty or holds a space or quote, for the `$` line of a transcript. */
+export const quoteArg = (arg) => (arg === '' || /[\s'"]/.test(arg) ? `'${arg.replace(/'/g, "'\\''")}'` : arg)
 
 function streamLines(text) {
   if (text === '') return ['(empty)']
@@ -101,17 +102,20 @@ function streamLines(text) {
 
 /** One run of a transcript, with no trailing newline. */
 export function formatRun({ args, code, stdout, stderr }) {
-  return [`$ pmkit ${args.map(quote).join(' ')}`, `exit ${code}`, '--- stdout', ...streamLines(stdout), '--- stderr', ...streamLines(stderr)].join('\n')
+  return [`$ pmkit ${args.map(quoteArg).join(' ')}`, `exit ${code}`, '--- stdout', ...streamLines(stdout), '--- stderr', ...streamLines(stderr)].join('\n')
 }
 
-/** Runs the CLI as a child process with `childEnv()` and empty stdin. A non-zero exit resolves, it does not reject. */
-export function runPmkit(args, cwd) {
+/**
+ * Runs the CLI as a child process with `childEnv()`, merged with `env` when given, and `input` written to stdin.
+ * Stdin is empty when `input` is not given. A non-zero exit resolves, it does not reject.
+ */
+export function runPmkit(args, cwd, { env = {}, input } = {}) {
   return new Promise((resolve, reject) => {
-    const child = execFile(process.execPath, [PMKIT, ...args], { cwd, env: childEnv(), encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
+    const child = execFile(process.execPath, [PMKIT, ...args], { cwd, env: { ...childEnv(), ...env }, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error && typeof error.code !== 'number') reject(error)
       else resolve({ code: error ? error.code : 0, stdout, stderr })
     })
-    child.stdin.end()
+    child.stdin.end(input)
   })
 }
 

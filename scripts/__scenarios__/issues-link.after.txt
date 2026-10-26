@@ -1,0 +1,32 @@
+$ pmkit issues get ISS-6J0B --json  [step 2, read]
+exit 0
+$ pmkit issues get ISS-3F7H --json  [step 2, read]
+exit 0
+$ pmkit issues link ISS-6J0B ISS-3F7H --kind blocks --dry-run --json  [step 3, dry run]
+exit 0
+? Step 5  [confirmed]
+$ pmkit issues link ISS-6J0B ISS-3F7H --kind blocks --json  [step 3, write]
+exit 0
+
+--- changed .issues/issues/ISS-3F7H/events.jsonl
+  {"at":"2026-10-07T14:00:00Z","by":"fred","op":"create","to":{"id":"ISS-3F7H","title":"Empty state for the dashboard","type":"feature","status":"backlog","priority":"low","estimate":2,"labels":["frontend"],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-07T14:00:00Z","updated":"2026-10-07T14:00:00Z"}}
+  {"at":"2026-10-22T17:00:00Z","by":"fred","op":"update","field":"priority","from":"low","to":"medium"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"blocked_by","to":"ISS-6J0B"}
+--- changed .issues/issues/ISS-3F7H/issue.md
+  ---
+  id: ISS-3F7H
+  title: Empty state for the dashboard
+  type: feature
+  status: backlog
+  priority: medium
+  estimate: 2
+  labels: [frontend]
++blocked_by: [ISS-6J0B]
+  created: 2026-10-07T14:00:00Z
+-updated: 2026-10-22T17:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  A new account sees a blank dashboard. Show a short guide instead.

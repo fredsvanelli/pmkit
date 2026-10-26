@@ -7,38 +7,11 @@ import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
 import { branchName } from './lib/ids.mjs'
 import { hashTree, makeRepo } from './test-helpers.mjs'
+import { addBareOrigin, fakeGh, ghCalls } from './fake-gh.mjs'
 
 const VIEW = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
 
-// The fake gh answers from the JSON file named by PMKIT_FAKE_GH: args joined by a space map to { status, stdout, stderr }.
-// It appends each call to the same file name plus .log.
-const FAKE_GH = `#!/usr/bin/env node
-const fs = require('node:fs')
-const key = process.argv.slice(2).join(' ')
-fs.appendFileSync(process.env.PMKIT_FAKE_GH + '.log', key + '\\n')
-const canned = JSON.parse(fs.readFileSync(process.env.PMKIT_FAKE_GH, 'utf8'))
-const answer = canned[key]
-if (!answer) {
-  process.stderr.write('fake gh: no canned response for ' + key + '\\n')
-  process.exit(1)
-}
-process.stdout.write(answer.stdout ?? '')
-process.stderr.write(answer.stderr ?? '')
-process.exit(answer.status ?? 0)
-`
-
 const scratch = () => fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-pr-'))
-
-function fakeGh(canned) {
-  const dir = scratch()
-  fs.writeFileSync(path.join(dir, 'gh'), FAKE_GH, { mode: 0o755 })
-  fs.chmodSync(path.join(dir, 'gh'), 0o755)
-  const responses = path.join(dir, 'responses.json')
-  fs.writeFileSync(responses, JSON.stringify(canned))
-  return { dir, responses }
-}
-
-const ghCalls = ({ responses }) => (fs.existsSync(`${responses}.log`) ? fs.readFileSync(`${responses}.log`, 'utf8').split('\n').filter(Boolean) : [])
 
 const envWith = ({ dir, responses }) => ({
   ...process.env,
@@ -278,8 +251,7 @@ test('pr open --dry-run returns the title, body and branches without pushing or 
 test('pr open pushes the branch and opens the pull request with gh', () => {
   const root = teamRepo()
   const remote = scratch()
-  git(remote, 'init', '-q', '--bare')
-  git(root, 'remote', 'add', 'origin', remote)
+  addBareOrigin(root, remote)
   git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'init')
   const gh = fakeGh({
     'pr create --title Dead-letter queue for webhooks (ISS-8C4W) --body-file - --head feat-x --base main': { stdout: 'https://github.com/o/r/pull/9\n' },
@@ -296,8 +268,7 @@ test('pr open pushes the branch and opens the pull request with gh', () => {
 function pushableRepo() {
   const root = teamRepo()
   const remote = scratch()
-  git(remote, 'init', '-q', '--bare')
-  git(root, 'remote', 'add', 'origin', remote)
+  addBareOrigin(root, remote)
   git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'init')
   git(root, 'switch', '-c', 'feat-x')
   return { root, remote }

@@ -1,0 +1,67 @@
+$ pmkit init --git-host none --prefix ISS --id-style random --estimate-unit points --members-file - --label needs-criteria --dry-run --json  [step First run 6, dry run]
+exit 0
+? First run  [confirmed]
+$ pmkit init --git-host none --prefix ISS --id-style random --estimate-unit points --members-file - --label needs-criteria --json  [step First run 6, write]
+exit 0
+$ pmkit validate --json  [step First run 9, read]
+exit 0
+$ pmkit discover --json  [step First run 9, read]
+exit 0
+$ pmkit capabilities --json  [step First run 9, read]
+exit 0
+
+--- added .issues/.gitattributes
++events.jsonl merge=union
++*.jsonl text eol=lf
++*.md text eol=lf
+--- added .issues/.gitignore
++.cache/
+--- added .issues/config.yaml
++# yaml-language-server: $schema=https://raw.githubusercontent.com/fredsvanelli/pmkit/main/schemas/issues.config.schema.json
++version: 2
++id_prefix: ISS
++epic_prefix: EPC
++id_style: random
++statuses:
++  triage: { category: triage }
++  backlog: { category: backlog }
++  todo: { category: todo }
++  in_progress: { category: in_progress }
++  in_review: { category: in_review }
++  done: { category: done }
++  canceled: { category: canceled }
++default_status: backlog
++types: [feature, bug, task, chore]
++priorities: [urgent, high, medium, low]
++labels: [needs-criteria]
++estimate:
++  unit: points
++  scale: [1, 2, 3, 5, 8, 13]
++members:
++  fred: { name: Fred Vanelli, email: fred@example.com }
++defaults:
++  stale_days: 60
++  stuck_business_days: 3
++  sprint_length_days: 14
++  sprint_start_weekday: mon
++  velocity_window: 3
++  status_update_window_days: 14
++# With true, each pmkit write commits the files it changed as `pmkit: <command> <id>`.
++# With false, the default, no command commits.
++auto_commit: false
+--- added .issues/docs/.gitkeep
+--- added .issues/epics/.gitkeep
+--- added .issues/issues/.gitkeep
+--- added .issues/sprints/.gitkeep
+--- added .pmkit/config.yaml
++# yaml-language-server: $schema=https://raw.githubusercontent.com/fredsvanelli/pmkit/main/schemas/pmkit.config.schema.json
++version: 1
++tracker:
++  system: local
++  path: .issues
++git_host:
++  system: none
++  default_branch: main
++write_policy:
++  confirm: single_writes
++  preview: [bulk, delete, publish_update, move_scope]

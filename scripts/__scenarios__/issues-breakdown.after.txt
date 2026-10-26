@@ -1,0 +1,46 @@
+$ pmkit issues get ISS-3F7H --json  [step 1, read]
+exit 0
+$ pmkit discover --json  [step 2, read]
+exit 0
+? Step 5  [confirmed]
+$ pmkit issues create --title 'Design the empty state guide' --parent ISS-3F7H --type task --estimate 1 --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues create --title 'Build the empty state component' --parent ISS-3F7H --type task --estimate 1 --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues create --title 'Design the empty state guide' --parent ISS-3F7H --type task --estimate 1 --json  [step 6, write]
+exit 0
+$ pmkit issues create --title 'Build the empty state component' --parent ISS-3F7H --type task --estimate 1 --json  [step 6, write]
+exit 0
+$ pmkit issues link ISS-M0GZ ISS-Y8KQ --kind blocks --json  [step 8, write]
+exit 0
+
+--- added .issues/issues/ISS-M0GZ/events.jsonl
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-M0GZ","title":"Design the empty state guide","type":"task","status":"backlog","estimate":1,"labels":[],"parent":"ISS-3F7H","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
+--- added .issues/issues/ISS-M0GZ/issue.md
++---
++id: ISS-M0GZ
++title: Design the empty state guide
++type: task
++status: backlog
++estimate: 1
++parent: ISS-3F7H
++created: 2026-10-23T12:00:00.000Z
++updated: 2026-10-23T12:00:00Z
++---
++
+--- added .issues/issues/ISS-Y8KQ/events.jsonl
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-Y8KQ","title":"Build the empty state component","type":"task","status":"backlog","estimate":1,"labels":[],"parent":"ISS-3F7H","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"blocked_by","to":"ISS-M0GZ"}
+--- added .issues/issues/ISS-Y8KQ/issue.md
++---
++id: ISS-Y8KQ
++title: Build the empty state component
++type: task
++status: backlog
++estimate: 1
++parent: ISS-3F7H
++blocked_by: [ISS-M0GZ]
++created: 2026-10-23T12:00:00.000Z
++updated: 2026-10-23T12:00:00Z
++---
++

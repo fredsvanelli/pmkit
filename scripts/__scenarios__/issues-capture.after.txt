@@ -1,0 +1,65 @@
+$ pmkit discover --json  [step 2, read]
+exit 0
+$ pmkit issues list --text webhook --json  [step 4, read]
+exit 0
+? Step 5  [confirmed]
+$ pmkit issues create --title 'Webhook deliveries are lost on a 5xx answer' --type bug --priority high --description-file <inputs>/description.md --criteria-file <inputs>/criteria.md --dry-run --json  [step 6, dry run]
+exit 0
+? Step 7  [confirmed]
+$ pmkit issues create --title 'Webhook deliveries are lost on a 5xx answer' --type bug --priority high --description-file <inputs>/description.md --criteria-file <inputs>/criteria.md --json  [step 6, write]
+exit 0
+$ pmkit issues link ISS-M0GZ ISS-5N1R --kind related --dry-run --json  [step 9, dry run]
+exit 0
+? Step 9  [confirmed]
+$ pmkit issues link ISS-M0GZ ISS-5N1R --kind related --json  [step 9, write]
+exit 0
+
+--- changed .issues/issues/ISS-5N1R/events.jsonl
+  {"at":"2026-10-05T09:30:00Z","by":"fred","op":"create","to":{"id":"ISS-5N1R","title":"Paginate the events API","type":"task","status":"todo","priority":"medium","estimate":3,"assignee":"fred","labels":["backend"],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-05T09:30:00Z","updated":"2026-10-05T09:30:00Z"}}
+  {"at":"2026-10-22T09:00:00Z","by":"fred","op":"move","field":"status","from":"todo","to":"in_progress"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"related","to":"ISS-M0GZ"}
+--- changed .issues/issues/ISS-5N1R/issue.md
+  ---
+  id: ISS-5N1R
+  title: Paginate the events API
+  type: task
+  status: in_progress
+  priority: medium
+  estimate: 3
+  assignee: fred
+  labels: [backend]
++related: [ISS-M0GZ]
+  sprint: 2026-10-12
+  created: 2026-10-05T09:30:00Z
+-updated: 2026-10-22T09:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  The export reads events in pages of 500.
+--- added .issues/issues/ISS-M0GZ/events.jsonl
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-M0GZ","title":"Webhook deliveries are lost on a 5xx answer","type":"bug","status":"backlog","priority":"high","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"related","to":"ISS-5N1R"}
+--- added .issues/issues/ISS-M0GZ/issue.md
++---
++id: ISS-M0GZ
++title: Webhook deliveries are lost on a 5xx answer
++type: bug
++status: backlog
++priority: high
++related: [ISS-5N1R]
++created: 2026-10-23T12:00:00.000Z
++updated: 2026-10-23T12:00:00Z
++---
++
++## Description
++
++The webhook delivery worker drops a delivery when the receiver answers with a 5xx status.
++
++The log shows `delivery failed: 503` and no retry follows.
++
++## Acceptance criteria
++
++- [ ] A 5xx answer schedules a retry
++- [ ] A delivery that fails 5 times lands in the dead-letter queue

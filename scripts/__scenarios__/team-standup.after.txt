@@ -1,0 +1,19 @@
+$ pmkit pr sync --dry-run --json  [step 1, dry run]
+exit 0
+$ pmkit events --since 2026-10-22 --json  [step 2, read]
+exit 0
+$ pmkit issues list --category in_progress,in_review,todo --json  [step 3, read]
+exit 0
+$ pmkit events --since 2026-10-20 --json  [step 3, read]
+exit 0
+$ pmkit pr status --branch feat-dlq --json  [step 4, read]
+exit 0
+$ pmkit whoami --json  [step 5, read]
+exit 0
+
+(no file changed)
+--- gh calls
+pr view feat-dlq --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr view feat-dlq --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr checks 9 --json name,state,bucket
+pr view 9 --json reviews,reviewRequests

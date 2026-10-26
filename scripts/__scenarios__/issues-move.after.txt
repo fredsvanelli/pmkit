@@ -1,0 +1,42 @@
+$ pmkit issues get ISS-2X6D --json  [step 1, read]
+exit 0
+$ pmkit issues get ISS-4M2S --json  [step 2, read]
+exit 0
+$ pmkit issues get ISS-5N1R --json  [step 2, read]
+exit 0
+$ pmkit issues move ISS-2X6D done --dry-run --json  [step 4, dry run]
+exit 0
+? Step 5  [confirmed]
+$ pmkit issues move ISS-2X6D done --json  [step 4, write]
+exit 0
+
+--- changed .issues/issues/ISS-2X6D/events.jsonl
+  {"at":"2026-10-05T09:00:00Z","by":"ana","op":"create","to":{"id":"ISS-2X6D","title":"Billing export to CSV","type":"feature","status":"todo","priority":"high","estimate":8,"assignee":"ana","labels":["billing","backend"],"parent":"EPC-2M9D","blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","due":"2026-10-23","created":"2026-10-05T09:00:00Z","updated":"2026-10-05T09:00:00Z"}}
+  {"at":"2026-10-09T10:00:00Z","by":"fred","op":"link","field":"blocked_by","to":"ISS-5N1R"}
+  {"at":"2026-10-09T10:10:00Z","by":"ana","op":"link","field":"related","to":"ISS-0G5E"}
+  {"at":"2026-10-14T09:00:00Z","by":"ana","op":"move","field":"status","from":"todo","to":"in_progress"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"done"}
+--- changed .issues/issues/ISS-2X6D/issue.md
+  ---
+  id: ISS-2X6D
+  title: Billing export to CSV
+  type: feature
+-status: in_progress
++status: done
+  priority: high
+  estimate: 8
+  assignee: ana
+  labels: [billing, backend]
+  parent: EPC-2M9D
+  blocked_by: [ISS-5N1R]
+  related: [ISS-0G5E]
+  sprint: 2026-10-12
+  due: 2026-10-23
+  created: 2026-10-05T09:00:00Z
+-updated: 2026-10-14T09:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Finance needs a CSV of all invoices for a date range.

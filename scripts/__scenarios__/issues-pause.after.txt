@@ -1,0 +1,58 @@
+$ pmkit issues get ISS-5N1R --json  [step 1, read]
+exit 0
+? Step 2  [confirmed]
+$ pmkit issues comment ISS-5N1R --body-file <inputs>/comment.md --dry-run --json  [step 4, dry run]
+exit 0
+$ pmkit issues move ISS-5N1R todo --dry-run --json  [step 4, dry run]
+exit 0
+? Step 5  [confirmed]
+$ pmkit issues comment ISS-5N1R --body-file <inputs>/comment.md --json  [step 4, write]
+exit 0
+$ pmkit issues move ISS-5N1R todo --json  [step 4, write]
+exit 0
+$ pmkit pr open --issue ISS-5N1R --draft --dry-run --json  [step 7, dry run]
+exit 0
+? Step 7  [confirmed]
+$ pmkit pr open --issue ISS-5N1R --draft --json  [step 7, write]
+exit 0
+
+--- added .issues/issues/ISS-5N1R/comments/2026-10-23T12-00-00Z-fred.md
++---
++author: fred
++created: 2026-10-23T12:00:00Z
++---
++
++Added the cursor to the events endpoint. The page size is still fixed at 500.
++
++Left: tests for the last page and the docs.
+--- changed .issues/issues/ISS-5N1R/events.jsonl
+  {"at":"2026-10-05T09:30:00Z","by":"fred","op":"create","to":{"id":"ISS-5N1R","title":"Paginate the events API","type":"task","status":"todo","priority":"medium","estimate":3,"assignee":"fred","labels":["backend"],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-05T09:30:00Z","updated":"2026-10-05T09:30:00Z"}}
+  {"at":"2026-10-22T09:00:00Z","by":"fred","op":"move","field":"status","from":"todo","to":"in_progress"}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"branch","from":null,"to":"feat-retries"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"comment","to":"2026-10-23T12-00-00Z-fred.md"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"todo"}
+--- changed .issues/issues/ISS-5N1R/issue.md
+  ---
+  id: ISS-5N1R
+  title: Paginate the events API
+  type: task
+-status: in_progress
++status: todo
+  priority: medium
+  estimate: 3
+  assignee: fred
+  labels: [backend]
+  sprint: 2026-10-12
+  branch: feat-retries
+  created: 2026-10-05T09:30:00Z
+  updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  The export reads events in pages of 500.
+--- gh calls
+pr view feat-retries --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr view feat-retries --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr create --title Paginate the events API (ISS-5N1R) --body-file - --head feat-retries --base main --draft
+pr view feat-retries --json number,url,title,state,isDraft,headRefName,author,mergedAt
