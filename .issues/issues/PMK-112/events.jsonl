@@ -1,0 +1,2 @@
+{"at":"2026-10-26T15:39:49Z","by":"fred","op":"create","to":{"id":"PMK-112","title":"Report .pmkit/config.yaml problems in validate and init","type":"bug","status":"backlog","priority":"medium","estimate":2,"labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-26T15:39:49.360Z","updated":"2026-10-26T15:39:49Z"}}
+{"at":"2026-10-26T15:39:56Z","by":"fred","op":"link","field":"related","to":"PMK-8"}

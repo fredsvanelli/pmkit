@@ -8,10 +8,11 @@ estimate: 8
 assignee: fred
 parent: EPC-1
 blocked_by: [PMK-9]
+related: [PMK-113, PMK-114]
 milestone: local-gaps
 branch: pmk-10-add-command-scenario-tests
 created: 2026-10-25T19:13:19Z
-updated: 2026-10-26T15:38:52Z
+updated: 2026-10-26T15:39:56Z
 ---
 
 ## Description
