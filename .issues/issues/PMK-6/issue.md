@@ -2,7 +2,7 @@
 id: PMK-6
 title: Commit each operation when auto_commit is on
 type: feature
-status: in_review
+status: done
 priority: medium
 estimate: 3
 assignee: fred
@@ -10,7 +10,7 @@ parent: EPC-1
 milestone: local-gaps
 branch: pmk-6-commit-each-operation-when-auto-commit
 created: 2026-10-25T19:13:19Z
-updated: 2026-10-25T22:07:31Z
+updated: 2026-10-26T15:38:52Z
 ---
 
 ## Description

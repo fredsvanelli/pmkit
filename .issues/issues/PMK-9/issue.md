@@ -2,7 +2,7 @@
 id: PMK-9
 title: Add golden output tests on fixture repositories
 type: task
-status: in_review
+status: done
 priority: medium
 estimate: 3
 assignee: fred
@@ -10,7 +10,7 @@ parent: EPC-1
 milestone: local-gaps
 branch: pmk-9-add-golden-output-tests-on-fixture
 created: 2026-10-25T19:13:19Z
-updated: 2026-10-26T01:42:13Z
+updated: 2026-10-26T15:38:52Z
 ---
 
 ## Description
