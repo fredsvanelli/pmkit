@@ -147,6 +147,18 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     }
   })
 
+  // The in_review assertion encodes the PMK-122 decision (follow-up 1 of the spec). Change it when that issue lands.
+  test('cycle/plan step 5 drafts from todo, backlog and in_progress issues with no sprint', () => {
+    const call = FILES.find((file) => file.rel === 'cycle/plan.md').parsed.calls
+      .find((c) => c.step === '5' && c.command === 'issues list' && !c.dryRun)
+    assert.ok(call, 'step 5 runs issues list')
+    const categories = call.text.match(/--category (\S+)/)?.[1].split(',') ?? []
+    for (const name of ['todo', 'backlog', 'in_progress']) assert.ok(categories.includes(name), `step 5 reads ${name}`)
+    for (const name of ['done', 'canceled', 'triage', 'in_review']) assert.ok(!categories.includes(name), `step 5 leaves out ${name}`)
+    // `--sprint none` as a whole value: `--sprint none2` must not pass.
+    assert.match(call.text, /(?:^|\s)--sprint none(?:\s|$)/)
+  })
+
   for (const { name, entries } of LOADED) {
     entries.forEach((scenario, index) => {
       const file = snapshotFile(name, index, entries.length)
