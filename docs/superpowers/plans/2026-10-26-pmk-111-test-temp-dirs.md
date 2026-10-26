@@ -4,7 +4,7 @@
 
 **Goal:** Every test that makes a temp directory removes it when the test ends, and `npm test` leaves no `pmkit-*` directory behind.
 
-**Architecture:** `scripts/test-helpers.mjs` gets a registry (`tempDir`) that records each folder it makes. A root-level `afterEach` removes the folders of the finished test, and an `exit` listener removes the rest. `makeRepo`, `fakeGh` and every hand-written `mkdtempSync` in tests go through it. `npm test` runs `scripts/run-tests.mjs`, which gives the test processes a private `TMPDIR` and fails if anything is left in it.
+**Architecture:** `scripts/test-helpers.mjs` gets a registry (`tempDir`) that records each folder it makes. A root-level `after` hook removes the recorded folders when the file's tests end, and an `exit` listener covers a file that crashes first. `makeRepo`, `fakeGh` and every hand-written `mkdtempSync` in tests go through it. `npm test` runs `scripts/run-tests.mjs`, which gives the test processes a private `TMPDIR` and fails if anything is left in it.
 
 **Tech Stack:** Node 22 (floor in ADR-0003 is Node 18), `node:test`, no dependencies.
 
@@ -17,7 +17,7 @@
 - Registry API, in `scripts/test-helpers.mjs`:
   - `tempDir(prefix = 'pmkit-') -> string`: runs `fs.mkdtempSync(path.join(os.tmpdir(), prefix))`, records the path, returns it.
   - `removeTempDirs() -> void`: removes every recorded folder with `fs.rmSync(dir, { recursive: true, force: true })` and empties the record. Exported so tests can call it.
-  - At module load, the module registers `afterEach(removeTempDirs)` (root level, from `node:test`) and `process.on('exit', removeTempDirs)` (sync, backstop for file-level folders).
+  - At module load, the module registers `after(removeTempDirs)` (root level, from `node:test`, runs when the file's tests end) and `process.on('exit', removeTempDirs)` (sync, backstop for a file that crashes first).
 - `makeRepo(name = 'basic')` keeps its signature and return value; only its folder creation changes to `tempDir('pmkit-')`.
 - `fake-gh.mjs`: the default `dir` of `fakeGh(canned, dir)` becomes `tempDir('pmkit-pr-')`. Its signature does not change.
 - No direct `fs.mkdtempSync` in tests after Task 2. Production code (`scripts/lib/local/migrations.mjs` `planMigration`) and `runScenario` stay unchanged. Existing `try/finally` stays unless `tempDir` makes it dead code.
@@ -62,7 +62,7 @@ Covers: criterion 1 (every test that makes a temp directory removes it, pass or 
   - `a folder is removed after a test that throws`: write `scripts/__fixtures__/leaky.fixture.mjs` that imports `tempDir`, creates a folder in a test, writes its path to the file named by `process.env.LEAKY_OUT`, then throws. The test spawns `process.execPath --test <fixture>` with `LEAKY_OUT` set to a path inside a `tempDir()` folder and `TMPDIR` set to another `tempDir()` folder. Assert the child exit status is 1 (the fixture test failed), `LEAKY_OUT` holds a path, and that path no longer exists.
   - Replace the existing hand-written `mkdtempSync` in the `hashTree` test with `tempDir('pmkit-hash-')`.
 - [ ] **Step 2: Run** `node --test scripts/test-helpers.test.mjs`. Expected: FAIL, `tempDir` is not exported.
-- [ ] **Step 3: Implement** the registry in `scripts/test-helpers.mjs` as described in Global Constraints (import `afterEach` from `node:test`). Change `makeRepo` to call `tempDir('pmkit-')`.
+- [ ] **Step 3: Implement** the registry in `scripts/test-helpers.mjs` as described in Global Constraints (import `after` from `node:test`). Change `makeRepo` to call `tempDir('pmkit-')`.
 - [ ] **Step 4: Implement** in `scripts/fake-gh.mjs`: delete `scratch`, import `tempDir` from `./test-helpers.mjs`, default `dir = tempDir('pmkit-pr-')`. Update the doc comment.
 - [ ] **Step 5: Run** `node --test scripts/test-helpers.test.mjs scripts/cli-pr.test.mjs`, then `node --test scripts/goldens.test.mjs scripts/scenarios.test.mjs`, then `node --check scripts/scenarios-live.mjs`. Expected: all PASS, no golden or snapshot diff in `git status`.
 - [ ] **Step 6: Run** `node --test "scripts/**/*.test.mjs"`. Expected: PASS. Count of `ls "${TMPDIR:-/tmp}" | grep -c '^pmkit-'` before and after drops sharply (only the files of Task 2 still leak).

@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach } from 'node:test'
+import { after } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), '__fixtures__')
@@ -21,8 +21,9 @@ export function removeTempDirs() {
   for (const dir of made.splice(0)) fs.rmSync(dir, { recursive: true, force: true })
 }
 
-// Each test cleans up after itself. The exit hook catches folders made outside a test, at file level.
-afterEach(removeTempDirs)
+// Folders live until the file's tests end, so concurrent tests, subtests and file-level setup can use them.
+// The exit hook is the backstop for a file that crashes before the root `after` hook runs.
+after(removeTempDirs)
 process.on('exit', removeTempDirs)
 
 /** Copies a fixture into a fresh temp folder and returns its path. */

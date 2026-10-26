@@ -39,13 +39,13 @@ Where directories are created:
 - `scenario-helpers.mjs` `runScenario` makes `pmkit-scn-` and removes it in a `finally`. `scenarios-live.mjs` is not part of `npm test`.
 - `scripts/lib/local/migrations.mjs` `planMigration` makes `pmkit-format-` in production code and registers it with `removeOnExit`. It is already clean and stays unchanged.
 
-`node --test` runs each file in its own process, in parallel across files and in sequence inside a file. Root-level `afterEach` hooks run after passing and failing tests (checked on Node 22).
+`node --test` runs each file in its own process, in parallel across files and in sequence inside a file. Root-level `after` hooks run when the file's tests end, after passing and failing tests (checked on Node 22).
 
 ## Options
 
 A. `try/finally` in every test. It meets criterion 1 literally, but it touches about 160 call sites, adds an indent level to each test, and the next new test can forget it. Helpers such as `fakeGh` still need a way to hand back the folder.
 
-B. A registry in `test-helpers.mjs`. `tempDir(prefix)` makes the folder and records it. A root-level `afterEach` registered when the module loads removes every folder recorded during the test, and an `exit` listener removes anything still recorded (for top-level code outside a test). `makeRepo` and `fakeGh` call `tempDir`, so most tests change nothing.
+B. A registry in `test-helpers.mjs`. `tempDir(prefix)` makes the folder and records it. A root-level `after` hook registered when the module loads removes every recorded folder when the file's tests end, so concurrent tests, subtests and file-level folders keep theirs until then. An `exit` listener removes anything still recorded (a file that crashes before the hook runs). `makeRepo` and `fakeGh` call `tempDir`, so most tests change nothing.
 
 C. Helpers return a cleanup function (`const { root, cleanup } = makeRepo()`). The call sites change shape in 158 places and a test can still forget `cleanup`.
 
@@ -54,7 +54,7 @@ C. Helpers return a cleanup function (`const { root, cleanup } = makeRepo()`). T
 | Decision | Reason |
 | --- | --- |
 | Use option B. | The 21 files that call `makeRepo` need no edit, and the new test cannot forget cleanup because the helper owns it. A and C need a change at each call site. |
-| Clean up in a root-level `afterEach`, with a sync `exit` listener as a backstop. | `afterEach` removes the folder when each test ends, pass or fail (criterion 1). The `exit` listener covers folders made at file level and a test that throws before the hook is registered. |
+| Clean up in a root-level `after`, with a sync `exit` listener as a backstop. | `after` removes the folders when the file's tests end, pass or fail (criterion 1). The `exit` listener covers a file that crashes before the hook runs. |
 | Export `tempDir(prefix)` from `test-helpers.mjs` and use it in every hand-written `mkdtempSync` call in tests (`tmp()` in cli-init, config, events, `scratch()` in cli-pr, `scratchDir()` in scenario-helpers tests, and the inline calls in cli.test.mjs and golden-helpers tests). | One rule for tests: no direct `mkdtempSync` outside the helper. |
 | `fake-gh.mjs` imports `tempDir` for its default `dir`. | It is the only helper that makes a folder on its own. It is a test helper, so importing another test helper adds no dependency (ADR-0003). |
 | Leave `try/finally` that already exists. Remove it only where `tempDir` makes it dead code. | Smaller diff. The hook removes an already removed folder with `force: true`, so both are safe. |
@@ -72,13 +72,13 @@ C. Helpers return a cleanup function (`const { root, cleanup } = makeRepo()`). T
 
 Because the folder is private to this run, another process creating `pmkit-*` folders in the shared temp folder cannot fail the check. The check adds no run time beyond one directory listing. It matches every leaked name, not only `pmkit-*`, which is stricter than the criterion. It also stops a test from leaking into the user's real temp folder during the check.
 
-`package.json` changes `"test"` to `node scripts/run-tests.mjs`. `node --test` on a single file still works for fast runs, and it uses the same registry. The runner exports a `findLeaks(dir)` function so a small `run-tests.test.mjs` can cover the exit logic: an empty folder gives no leaks, and a folder with `pmkit-x` gives one. That test also checks the registry by calling `tempDir`, simulating the hook, and asserting that the folder is gone. A test for the failure path of the `afterEach` hook uses a fixture file run with `node --test` and `TMPDIR` set to a scratch folder: the fixture creates a folder and then throws, and the test asserts the folder is gone.
+`package.json` changes `"test"` to `node scripts/run-tests.mjs`. `node --test` on a single file still works for fast runs, and it uses the same registry. The runner exports a `findLeaks(dir)` function so a small `run-tests.test.mjs` can cover the exit logic: an empty folder gives no leaks, and a folder with `pmkit-x` gives one. That test also checks the registry by calling `tempDir`, simulating the hook, and asserting that the folder is gone. A test for the failure path of the `after` hook uses a fixture file run with `node --test` and `TMPDIR` set to a scratch folder: the fixture creates a folder and then throws, and the test asserts the folder is gone.
 
 ## Acceptance criteria to design
 
 | Criterion | Design part |
 | --- | --- |
-| 1. Every test that makes a temp directory removes it when the test ends, pass or fail | `tempDir` registry with the root-level `afterEach`; `makeRepo`, `fakeGh` and all hand-written `mkdtempSync` calls in tests routed through it; the failing-fixture test |
+| 1. Every test that makes a temp directory removes it when the test ends, pass or fail | `tempDir` registry with the root-level `after`; `makeRepo`, `fakeGh` and all hand-written `mkdtempSync` calls in tests routed through it; the failing-fixture test |
 | 2. `npm test` leaves no `pmkit-*` directory in the temp folder | `scripts/run-tests.mjs` with a private `TMPDIR`, the `findLeaks` check, `npm test` pointing at it; a manual check of `ls /tmp \| grep -c pmkit` before and after |
 
 ## Risks and non-goals
@@ -87,4 +87,4 @@ Because the folder is private to this run, another process creating `pmkit-*` fo
 - `exit` listeners run only on normal exit and on `process.exit`. A killed process (SIGKILL, tmpfs full) can still leave folders. This is out of scope.
 - Folders left by earlier runs stay until someone removes them. This change does not clean the existing ones.
 - Tests that call `run(os.tmpdir(), ...)` only read the folder and are unchanged.
-- Node 18 has no root-level hooks problem: `afterEach` exists since 18.8. The ADR-0003 floor holds.
+- Node 18 has no root-level hooks problem: `after` exists since 18. The ADR-0003 floor holds.

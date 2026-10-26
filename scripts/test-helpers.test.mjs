@@ -1,4 +1,4 @@
-import { test } from 'node:test'
+import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -8,7 +8,16 @@ import { fileURLToPath } from 'node:url'
 import { fakeGh } from './fake-gh.mjs'
 import { hashTree, makeRepo, removeTempDirs, tempDir } from './test-helpers.mjs'
 
+const topLevel = tempDir('pmkit-top-')
 const leakyFixture = path.join(path.dirname(fileURLToPath(import.meta.url)), '__fixtures__', 'leaky.fixture.mjs')
+
+test('a folder made at module top level survives until the file ends', () => {
+  assert.ok(fs.existsSync(topLevel))
+})
+
+test('a second test still sees the top-level folder', () => {
+  assert.ok(fs.existsSync(topLevel))
+})
 
 test('tempDir makes a folder under os.tmpdir() with the prefix', () => {
   const dir = tempDir('pmkit-x-')
@@ -61,4 +70,26 @@ test('hashTree skips the named top-level entries', () => {
   assert.equal(hashTree(dir, ['.git']), skipGit)
   fs.writeFileSync(path.join(dir, 'a.txt'), 'two')
   assert.notEqual(hashTree(dir, ['.git']), skipGit)
+})
+
+describe('concurrent tests', { concurrency: 2 }, () => {
+  const slowDir = { path: null }
+  test('the fast test finishes first', () => {
+    tempDir('pmkit-fast-')
+  })
+  test('the slow test still uses its folder after the fast one ends', async () => {
+    slowDir.path = tempDir('pmkit-slow-')
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    assert.ok(fs.existsSync(slowDir.path))
+    fs.writeFileSync(path.join(slowDir.path, 'x'), 'still here')
+  })
+})
+
+test('a subtest that ends does not remove the parent folder', async (t) => {
+  const parent = tempDir('pmkit-parent-')
+  await t.test('child', () => {
+    assert.ok(fs.existsSync(tempDir('pmkit-child-')))
+  })
+  assert.ok(fs.existsSync(parent))
+  fs.writeFileSync(path.join(parent, 'x'), 'still here')
 })
