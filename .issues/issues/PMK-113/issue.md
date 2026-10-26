@@ -2,7 +2,7 @@
 id: PMK-113
 title: Keep the original of a split issue out of the closed sprint
 type: bug
-status: in_progress
+status: in_review
 priority: medium
 estimate: 2
 assignee: fred
@@ -11,7 +11,7 @@ related: [PMK-10]
 milestone: local-gaps
 branch: pmk-113-keep-the-original-of-a-split-issue-out
 created: 2026-10-26T15:39:49.436Z
-updated: 2026-10-26T17:00:24Z
+updated: 2026-10-26T17:40:07Z
 ---
 
 ## Description
