@@ -109,7 +109,7 @@ export default {
     assert.equal(issue.status, 'in_review')
     assert.equal(issue.branch, BRANCH)
     assert.match(repo.git('ls-remote', '--heads', 'origin', BRANCH), new RegExp(`refs/heads/${BRANCH}`))
-    assert.match(repo.git('log', '-1', '--format=%s', `origin/${BRANCH}`).trim(), /\(ISS-4M2S\)$/)
+    assert.match(repo.git('log', '-1', '--format=%s', `origin/${BRANCH}`).trim(), /\(ISS-4M2S\)$/, 'pr open pushed the step 8 commit to origin')
     assert.ok(repo.ghCalls().includes('pr ready 7'), repo.ghCalls().join('\n'))
     assert.equal(repo.newEvents('ISS-4M2S').filter((event) => event.op === 'comment').length, 2, 'the plan and the summary')
     assert.deepEqual(repo.issue(saved.followUp.after.id).related, ['ISS-4M2S'])

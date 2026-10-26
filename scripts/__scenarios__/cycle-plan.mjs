@@ -1,6 +1,7 @@
 // /pmkit:cycle:plan on the team fixture. No sprint is planned, so step 1 does not ask. The active sprint 2026-10-12
-// ends on 2026-10-25, so the next one runs from Monday 2026-10-26 to 2026-11-08 (14 days). The user approves the
-// capacity fred=8, ana=6. The scope is every todo or backlog issue without a sprint: ISS-3F7H (2 points) and ISS-6J0B,
+// ends on 2026-10-25, so the next one runs from Monday 2026-10-26 to 2026-11-08 (14 days). The formula of step 4
+// gives fred=6 and ana=4 (velocity 10, 10 working days, availability 1 and 0.8); in step 6 the user raises them to
+// fred=8 and ana=6. The scope is every todo or backlog issue without a sprint: ISS-3F7H (2 points) and ISS-6J0B,
 // which has no estimate and is flagged as a risk. The sprint ID comes from the saved result of cycle open.
 import assert from 'node:assert/strict'
 
@@ -12,7 +13,7 @@ export default {
   command: 'cycle/plan',
   fixture: 'team',
   prompt: `/pmkit:cycle:plan ${goal}`,
-  answers: ['No days off for anyone', 'Yes, fred=8 and ana=6', 'Yes'],
+  answers: ['No days off for anyone', 'Change the capacity to fred=8 and ana=6, then yes', 'Yes'],
   steps: [
     // Step 1: the sprints and the members.
     { step: '1', read: ['cycle', 'list'] },

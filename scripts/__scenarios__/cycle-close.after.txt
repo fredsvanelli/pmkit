@@ -16,7 +16,7 @@ exit 0
 ? Step 7  [confirmed]
 $ pmkit cycle add ISS-4M2S ISS-5N1R --to none --dry-run --json  [step 7, dry run]
 exit 0
-$ pmkit issues create --title 'Finish the billing export to CSV' --estimate 3 --parent EPC-2M9D --dry-run --json  [step 7, dry run]
+$ pmkit issues create --title 'Finish the billing export to CSV' --type feature --estimate 3 --parent EPC-2M9D --priority high --label billing,backend --dry-run --json  [step 7, dry run]
 exit 0
 $ pmkit issues update ISS-2X6D --estimate 5 --dry-run --json  [step 7, dry run]
 exit 0
@@ -27,7 +27,7 @@ $ pmkit cycle close 2026-10-12 --json  [step 8, write]
 exit 0
 $ pmkit cycle add ISS-4M2S ISS-5N1R --to none --json  [step 7, write]
 exit 0
-$ pmkit issues create --title 'Finish the billing export to CSV' --estimate 3 --parent EPC-2M9D --json  [step 7, write]
+$ pmkit issues create --title 'Finish the billing export to CSV' --type feature --estimate 3 --parent EPC-2M9D --priority high --label billing,backend --json  [step 7, write]
 exit 0
 $ pmkit issues update ISS-2X6D --estimate 5 --json  [step 7, write]
 exit 0
@@ -165,14 +165,16 @@ exit 0
 
   Store deliveries that exhausted their retries so support can replay them.
 --- added .issues/issues/ISS-M0GZ/events.jsonl
-+{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-M0GZ","title":"Finish the billing export to CSV","type":"feature","status":"backlog","estimate":3,"labels":[],"parent":"EPC-2M9D","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-M0GZ","title":"Finish the billing export to CSV","type":"feature","status":"backlog","priority":"high","estimate":3,"labels":["billing","backend"],"parent":"EPC-2M9D","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
 --- added .issues/issues/ISS-M0GZ/issue.md
 +---
 +id: ISS-M0GZ
 +title: Finish the billing export to CSV
 +type: feature
 +status: backlog
++priority: high
 +estimate: 3
++labels: [billing, backend]
 +parent: EPC-2M9D
 +created: 2026-10-23T12:00:00.000Z
 +updated: 2026-10-23T12:00:00Z
