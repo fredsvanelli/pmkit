@@ -32,23 +32,24 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 
    Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" cycle close <sprint id> --dry-run --json` as well. Moving issues between sprints is a scope move and closing ends the sprint, so show one full preview of all of it and ask once, whatever `write_policy.confirm` says. When the user declines, change nothing.
 8. After the approval, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" cycle close <sprint id> --json`, then the same moves and splits without `--dry-run`. For each split, run the create first and note the new ID. Then run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues link <new id> <original id> --kind related --json`, then the estimate update and the move to `done` of the original. The approval of step 7 covers the link, because the preview showed it. When one fails, stop, list what was done and what was not, and do not retry it. After the last write, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" cycle issues <sprint id> --json` again. Delivered is the issues of this read whose status category is `done`: their count, and the sum of their `estimate`. Throughput is the same count. Planned stays the step 4 number, with the estimates of the step 3 read. Scope added and removed and cycle time keep the numbers of steps 4 and 5. Carry-over keeps the step 4 list, with the decision applied to each unfinished issue and the new ID of each split.
-9. Offer a retro document. Draft it from the numbers and the retro prompts (what slipped and why, based on the data). Write it to a temporary file outside `.issues/`, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" docs create retros/<sprint id>.md --body-file <file> --dry-run --json`, show the document and ask once. When the user declines, skip it. After approval, run it without `--dry-run`.
+9. Offer a retro document. Draft it from the numbers of step 8 and the retro prompts (what slipped and why, based on the data). Write it to a temporary file outside `.issues/`, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" docs create retros/<sprint id>.md --body-file <file> --dry-run --json`, show the document and ask once. When the user declines, skip it. After approval, run it without `--dry-run`.
 10. Remove the temporary files.
 
 ## Confirmation points
 
 - Step 1: the preview of `pr sync` when it would move issues. Declining leaves them as they are.
-- Step 7: the decision per unfinished issue, then one full preview of the moves, the splits and the close, always asked because it holds scope moves. Declining changes nothing.
+- Step 7: the decision per unfinished issue, then one full preview of the moves, the splits (the new issue, its link, the reduced estimate, the move of the original to `done`, and the open blockers, sub-issues and criteria that stay on it) and the close, always asked because it holds scope moves. Declining changes nothing.
 - Step 9: the retro document, shown with its dry run and asked once before it is written. Declining skips it.
 
 ## Output
 
-The sprint report. Lead with delivered against planned (count and estimate), then scope added and removed, carry-over, cycle time (median and p85) and throughput. Then the retro prompts from the data, the moves applied and the path of the retro document, if written.
+The delivered numbers and throughput come from the `cycle issues` read of step 8, after the writes. The sprint report. Lead with delivered against planned (count and estimate), then scope added and removed, carry-over, cycle time (median and p85) and throughput. Then the retro prompts from the data and the moves applied. For each split, the new issue's ID and the original's delivered estimate. Then the path of the retro document, if written.
 
 ## If something is missing
 
 - No active sprint and no ID: say so and offer `/pmkit:cycle:plan`.
 - No unfinished issues: close without moves.
 - No planned sprint: offer the backlog or a split, or ask whether to close and plan afterward with `/pmkit:cycle:plan`.
+- A split of an issue with no estimate, or with a delivered part of 0 or not lower than its estimate: offer a move to a planned sprint or to the backlog instead, because a split moves the original to `done` with a lower estimate.
 - The git host is `none`: skip PR data and say so in one line.
 - An error from the CLI: apply the rules for reading errors in the conventions.
