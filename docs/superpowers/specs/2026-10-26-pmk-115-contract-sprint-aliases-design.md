@@ -22,12 +22,12 @@ The suite asserts contract behavior, so the first job is to find the contract's 
 | `searchIssues({ sprint })` | `'current'` | Issues of the active sprint. Empty list with no active sprint (`activeSprintId()` gives null, and `runQuery` matches nothing for null). |
 | `searchIssues({ sprint })` | `'none'` | Issues with no sprint. |
 
-Sources: `requireSprint` (tracker.mjs line 177), `applyFields` and `blank` (null or undefined clears a field), `moveToCycle` (line 750), `search` (line 414), `runQuery` (`scripts/lib/local/query.mjs` line 88). The code comment on `moveToCycle` says "`current` for the active sprint, or null to take the issues out of their sprint".
+Sources, all in `scripts/lib/local/tracker.mjs` unless noted: `requireSprint`, `requireActiveSprintId`, `applyFields` and `blank` (null or undefined clears a field), `moveToCycle`, `search`, and `runQuery` in `scripts/lib/local/query.mjs`. The code comment on `moveToCycle` says "`current` for the active sprint, or null to take the issues out of their sprint".
 
 So the contract spells `none` two ways.
 
-- In filters (`searchIssues`), `none` is the string `'none'`. The design spec (`2026-10-23-pmkit-design.md`, line 100) lists `sprint` (id, `current` or `none`) there.
-- In writes (`createIssue`, `updateIssue`, `moveToCycle`), `none` is `null`. The design spec's operations table does not say this. The CLI maps the string `none` to `null` before it calls the tracker (`orNull` in `scripts/pmkit.mjs`, line 134, and `cycle add`, line 385).
+- In filters (`searchIssues`), `none` is the string `'none'`. The design spec (`2026-10-23-pmkit-design.md`, the paragraph on natural-language queries) lists `sprint` (id, `current` or `none`) there.
+- In writes (`createIssue`, `updateIssue`, `moveToCycle`), `none` is `null`. The design spec's operations table does not say this. The CLI maps the string `none` to `null` before it calls the tracker (`orNull` in `scripts/pmkit.mjs`, used for `--sprint`, and the `cycle add` command).
 
 The CLI and the contract do not disagree on behavior. They disagree on spelling, and the CLI translates. The contract stays as it is. The suite uses `null` for writes and `'none'` for the filter.
 
@@ -45,7 +45,7 @@ All four criteria describe behavior the code has today. I propose no criterion c
 The suite's `setup()` returns a fresh tracker with no issues and no sprints, and `today`.
 
 - No active sprint is the fresh state. No setup call is needed. A second no-active state comes from opening a sprint and closing it with `closeCycle`, after which `currentCycle()` is null (the existing cycle test asserts this). A third comes from a sprint that starts in the future, which is `planned`, not `active`.
-- An active sprint comes from `openCycle({ start: today }, actor)`, as the cycle test at line 124 does. `setup()` documents that this starts the sprint active.
+- An active sprint comes from `openCycle({ start: today }, actor)`, as the existing cycle test (`opens a cycle, adds issues, closes it and lists the unfinished ones`) does. `setup()` documents that this starts the sprint active.
 - A second, different sprint for the search test comes from `openCycle({ start: '2099-01-01' }, actor)`. It is `planned`, it does not overlap the active one, and the dry-run test already uses this start date.
 
 ## How the suite proves "write nothing"
@@ -75,7 +75,7 @@ const issueState = async (tracker, issueIds) => JSON.stringify({
 
 ## Chosen design
 
-Add five `it` blocks to `runTrackerContract`, directly after `'opens a cycle, adds issues, closes it and lists the unfinished ones'` (line 124) and before `'sets and reads cycle capacity'`. They sit with the other cycle tests and use the same `today` setup. Add the `issueState` helper after `ids`. The header comment of the file stays as it is.
+Add five `it` blocks to `runTrackerContract`, directly after `'opens a cycle, adds issues, closes it and lists the unfinished ones'` and before `'sets and reads cycle capacity'`. They sit with the other cycle tests and use the same `today` setup. Add the `issueState` helper after `ids`. The header comment of the file stays as it is.
 
 ### Test 1. `createIssue and updateIssue with sprint current store the active sprint id`
 
@@ -92,9 +92,8 @@ State: active sprint `S`. Issues `a`, `b`, `c` with no sprint.
 1. `moveToCycle([a, b], 'current', actor)`. Expect the result to have two entries, each with `after.sprint === S.id`. Expect `cycleIssues(S.id)` ids equal `[a, b]` sorted.
 2. `moveToCycle([a], null, actor)`. Expect `getIssue(a).sprint === undefined` and `cycleIssues(S.id)` ids equal `[b]`.
 3. `updateIssue(b, { sprint: null }, actor)`. Expect `getIssue(b).sprint === undefined` and `cycleIssues(S.id)` empty.
-4. `createIssue({ title: 'Born out', sprint: null }, actor)`. Expect `after.sprint === undefined`.
 
-This covers the contract's form of `none` for all three write operations.
+This covers the contract's form of `none` where it takes an issue out of its sprint: `moveToCycle` in step 2 and `updateIssue` in step 3. `createIssue` with `sprint: null` has no sprint to leave and `after.sprint === undefined` holds even if the adapter ignores `null`, so the suite has no step for it. Criterion 1 asks only that `none` takes an issue out of its sprint, and these two steps prove that.
 
 ### Test 3. `sprint current without an active sprint fails with INVALID_INPUT and writes nothing`
 
@@ -124,35 +123,56 @@ State: fresh tracker. Issues `free` (no sprint) and `planned` (in a sprint that 
 1. `searchIssues({ sprint: 'current' }).issues` deep equals `[]`. It does not throw and does not return all issues.
 2. `searchIssues({ sprint: 'none' })` ids equal `[free]`. The planned-sprint issue stays out, and the alias still works with no active sprint.
 
+The test reads `.issues` only. The rest of the result shape (`problems`, or a future note field) is not part of the assertion, so a CLI note or an extra result field in PMK-116 does not break it. A `searchIssues` that throws for `current` with no sprint would break it, and would also break criterion 3.
+
 ## How each criterion is proven
 
 | Criterion | Proof |
 |---|---|
-| 1 | Test 1 (create and update with `current`), test 2 (`moveToCycle` with `current`, and `null` through `moveToCycle`, `updateIssue` and `createIssue`). |
+| 1 | Test 1 (create and update with `current`), test 2 (`moveToCycle` with `current`, and `null` through `moveToCycle` and `updateIssue`). |
 | 2 | Test 3, with the fresh, planned and closed states, and the snapshot comparison. |
 | 3 | Tests 4 and 5. |
 | 4 | The tests sit in `scripts/contract-suite.mjs`. `node --test scripts/contract.test.mjs` runs them in the three adapter setups (plain, promises, no index). `npm test` runs the whole repo. |
 
 Commands:
 
-- `node --test scripts/contract.test.mjs` passes. The test count grows by 15 (five new tests times three setups). The implementer records the counts before and after.
-- `npm test` passes. The count grows by 15 as well. PMK-114 reported 987 tests, and the implementer records the real number.
+- `node --test scripts/contract.test.mjs` passes. It reports 59 tests on this branch before the change and 74 after (five new tests times three setups). The implementer records both numbers.
+- `npm test` passes. It reports 1011 tests on this branch before the change and 1026 after. The implementer records both numbers.
 
-Each new test must also fail when the behavior breaks. The implementer checks this once by hand, on a throwaway copy, with these mutations, and does not commit them.
+## Mutation check
 
-1. `requireSprint` treats `'current'` as a plain id. Tests 1 and 3 must fail.
-2. `moveToCycle` stops resolving `'current'`. Tests 2 and 3 must fail.
-3. `search` stops resolving `'current'`. Tests 4 and 5 must fail.
-4. `requireActiveSprintId` returns null instead of throwing. Test 3 must fail.
+Each new test must fail when the behavior breaks. The product code already behaves correctly, so the new tests pass on first run, and this check replaces the usual red step. The implementer runs it once, after the five tests exist and pass. Nothing from it is committed.
 
-The tests are written in the order of the plan with `superpowers:test-driven-development`. Because the product code already behaves correctly, the new tests pass on first run. The mutation check above replaces the usual red step.
+Recipe for every mutation: apply the edit with the `sed` line below (it replaces the whole line, and the old text is what that line holds today), run `node --test scripts/contract.test.mjs`, compare the failing tests with the expectation, then undo with `git checkout -- scripts/lib/local/tracker.mjs`. After the undo, `git status --porcelain` must show only `scripts/contract-suite.mjs` (the new tests, before they are committed) and nothing else. Do not use `git stash`. Each mutation also makes the three `Local tracker contract` entries (the parent `describe` blocks) fail. Count the leaf tests only. A failing leaf test fails in all three setups, so the run shows three failures per test name.
+
+All edits are in `scripts/lib/local/tracker.mjs`. Line numbers are from this branch before the change and drift, so check the old text first.
+
+| # | Line | Old text | New text | Must fail | May pass |
+|---|---|---|---|---|---|
+| 1 | 178 | `    if (value === 'current') return requireActiveSprintId()` | `    // mutation 1` | test 1 | tests 2 to 5 |
+| 2 | 750 | `    const sprint = to === 'current' ? requireActiveSprintId() : to` | `    const sprint = to` | tests 2 and 3 | tests 1, 4 and 5 |
+| 3 | 414 | `    if (filter.sprint === 'current') resolved.sprint = activeSprintId()` | `    // mutation 3` | test 4 | tests 1, 2, 3 and 5 |
+| 4 | 404 | `    if (id === null) throw invalid('there is no active sprint', 'pmkit cycle list')` | `    if (id === null) return null` | test 3 | tests 1, 2, 4 and 5 |
+| 5 | 401 | `  const activeSprintId = () => currentCycle()?.id ?? null` | `  const activeSprintId = () => currentCycle()?.id ?? listCycles()[0]?.id ?? null` | tests 3 and 5 | tests 1, 2 and 4 |
+
+Why each result holds, from the runs on this branch (the failing test names below are what `node --test` printed):
+
+1. Mutation 1 makes `createIssue` and `updateIssue` treat `current` as an unknown id. They throw `INVALID_INPUT` and write nothing, which test 3 expects, so test 3 passes. Test 1 fails.
+2. Mutation 2 makes `moveToCycle` look up a sprint called `current`. It throws `NOT_FOUND`, so test 2 fails on the move and test 3 fails because it expects `INVALID_INPUT`.
+3. Mutation 3 passes the string `current` to the query, which matches no issue. Only test 4 fails. Test 5 expects an empty list, so a lazy search cannot fail it. Test 5 guards the no-sprint case through mutation 5.
+4. Mutation 4 stops `requireActiveSprintId` from throwing. Only test 3 fails, because tests 1 and 2 run with an active sprint.
+5. Mutation 5 resolves `current` to the first sprint of `listCycles()` when none is active, so a planned or closed sprint counts as current. This is the case decision 6 exists for. Test 3 fails in its planned and closed states. Test 5 fails because the planned sprint's issue shows up in the `current` list.
+
+Observed on this branch, with the five tests written as described above: the five failing test names were `createIssue and updateIssue with sprint current store the active sprint id` (mutation 1), `moveToCycle with current moves issues into the active sprint, and null takes issues out of their sprint` and `sprint current without an active sprint fails with INVALID_INPUT and writes nothing` (mutation 2), `searchIssues with sprint current returns the active sprint issues and sprint none the issues in no sprint` (mutation 3), `sprint current without an active sprint fails with INVALID_INPUT and writes nothing` (mutation 4), and the same test plus `searchIssues with sprint current returns an empty list without an active sprint` (mutation 5). The implementer's test titles may differ, so match by test number.
+
+The tests are written in the order of the plan with `superpowers:test-driven-development`.
 
 ## Decisões
 
 1. **The suite uses `null` for `none` in writes and `'none'` in the filter.** Reason: that is what the contract does today, as the table shows. The CLI maps `none` to `null` before it calls the tracker, so the CLI spelling does not belong in the suite.
 2. **The suite does not assert what the string `'none'` does in a write.** Reason: the local tracker answers `INVALID_INPUT` for create and update and `NOT_FOUND` for `moveToCycle`. The design spec does not define it. Pinning it would turn an accident into a rule. See the follow-up list.
 3. **Five `it` blocks, not one.** Reason: each block needs its own state (active, none, planned), one failure should not hide others, and the file already uses one behavior per `it`.
-4. **The blocks go after the cycle test at line 124.** Reason: they are cycle tests and use the same `openCycle({ start: today })` setup.
+4. **The blocks go after the existing cycle test.** Reason: they are cycle tests and use the same `openCycle({ start: today })` setup.
 5. **The active sprint comes from `openCycle({ start: today })`.** Reason: `setup()` documents that this starts the sprint active, and the existing cycle tests do it. It works for any adapter that follows the suite's `today` rule.
 6. **"No active sprint" has three states in test 3 (fresh, planned only, closed).** Reason: criterion 2 says "no active sprint", and a planned or closed sprint is the case where a lazy adapter would return the wrong sprint. This is a small addition that stays inside the criterion. If a hosted adapter cannot open a future sprint, drop step 4 then.
 7. **"Write nothing" is proven with a snapshot of issue, history, search, cycles and metric events, plus a non-vacuous check.** Reason: contract operations are all the suite may use, and this is the pattern the dry-run test already uses.
@@ -163,7 +183,7 @@ The tests are written in the order of the plan with `superpowers:test-driven-dev
 
 ## Follow-up candidates
 
-- Write the null form of `none` into the operations table of `2026-10-23-pmkit-design.md`. Today the table says only `moveToCycle(ids, sprint, actor)`.
+- Write the null form of `none` into the operations table of `2026-10-23-pmkit-design.md`. The Cycles row still says only `moveToCycle(ids, sprint, actor)`. PMK-117 already added `current` and `none` to the CLI table (`--sprint id|current|none`), and that table covers the CLI spelling only, so the contract spelling is still missing.
 - Decide what the string `'none'` should do in `createIssue`, `updateIssue` and `moveToCycle`. Today the answers are `INVALID_INPUT`, `INVALID_INPUT` and `NOT_FOUND`. Either accept it as `null` in the contract, or make the three reject it with the same code. This changes contract behavior, so it needs its own issue.
 - An unknown sprint id gives `INVALID_INPUT` in `createIssue` and `updateIssue` but `NOT_FOUND` in `moveToCycle`. Pick one code and add a suite test.
 - Cover `current` with `dryRun: true` in the contract suite (PMK-114 tests it only in `scripts/sprints.test.mjs`).
