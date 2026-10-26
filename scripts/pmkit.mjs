@@ -200,8 +200,8 @@ const problemLine = (problem) => `${problem.id}: ${problem.code} ${problem.messa
 export const COMMANDS = [
   {
     name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name',
-    usage: '[--tracker local] [--git-host github|none] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
-    flags: ['tracker', 'git-host', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, run: runInit,
+    usage: '[--tracker local] [--git-host github|none] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--label name ...] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
+    flags: ['tracker', 'git-host', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'label', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, run: runInit,
   },
   {
     name: 'capabilities', summary: 'prints the capability manifest', flags: [],
@@ -762,6 +762,16 @@ function initMembers(opt) {
   return entries
 }
 
+// Label names from --label, deduplicated in flag order.
+function initLabels(ctx) {
+  const names = []
+  for (const name of csv(ctx.list('label'))) {
+    if (!/^[a-z0-9][a-z0-9_-]*$/.test(name)) throw usageError(`label "${name}" must match ^[a-z0-9][a-z0-9_-]*$, like needs-criteria`)
+    if (!names.includes(name)) names.push(name)
+  }
+  return names
+}
+
 function runInit(ctx) {
   const { opt } = ctx
   const update = ctx.flag('update')
@@ -774,6 +784,7 @@ function runInit(ctx) {
   if (unit !== undefined && !ESTIMATE_UNITS.includes(unit)) throw usageError(`--estimate-unit must be ${ESTIMATE_UNITS.join(', ')}`)
   if (update && opt('prefix') !== undefined) throw usageError('id_prefix cannot change after setup', 'Remove --prefix')
   const members = initMembers(opt)
+  const labels = initLabels(ctx)
 
   const root = ctx.root
   const read = (file) => normalized(fs.readFileSync(path.join(root, file), 'utf8'))
@@ -844,6 +855,10 @@ function runInit(ctx) {
       existing.push(id)
     }
   }
+  const currentLabels = parsedLocal().labels ?? []
+  const labelsKept = labels.filter((name) => currentLabels.includes(name))
+  const labelsAdded = labels.filter((name) => !currentLabels.includes(name))
+  if (labelsAdded.length > 0) local = edit(issuesConfig, 'labels', () => setScalar(local, ['labels'], [...currentLabels, ...labelsAdded]))
   const problems = validateLocalConfig(parsedLocal())
   if (problems.length > 0) throw usageError(`the ${update ? '' : 'generated '}${slash(issuesConfig)} is not valid: ${problems.join('; ')}`, 'Fix the init flags')
 
@@ -883,10 +898,12 @@ function runInit(ctx) {
   const label = { create: 'create', change: 'change', replace: 'replace', differs: 'differs, left as it is', keep: 'keep' }
   const lines = files.map((file) => `  ${file.path}: ${ctx.dryRun && file.action !== 'keep' && file.action !== 'differs' ? 'would ' : ''}${label[file.action]}`)
   return {
-    data: { dryRun: ctx.dryRun, files, kept },
+    data: { dryRun: ctx.dryRun, files, kept, labelsAdded, labelsKept },
     text: [
       ctx.dryRun ? 'files:' : 'wrote:', ...lines,
       ...(kept.length > 0 ? [`members kept as they were: ${kept.join(', ')}`] : []),
+      ...(labelsAdded.length > 0 ? [`labels added: ${labelsAdded.join(', ')}`] : []),
+      ...(labelsKept.length > 0 ? [`labels kept as they were: ${labelsKept.join(', ')}`] : []),
       ...files.filter((file) => file.diff).flatMap((file) => ['', `${file.path}:`, file.diff.trimEnd()]),
       ...(ctx.dryRun ? ['dry run: nothing was written'] : []),
     ].join('\n'),

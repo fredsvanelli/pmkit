@@ -44,7 +44,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 
 | Command | Does |
 |---|---|
-| `init` | writes `.pmkit/config.yaml` and scaffolds `.issues/`; refuses to overwrite. Flags: `--tracker local`, `--git-host github\|none`, `--prefix`, `--id-style random\|numbered`, `--estimate-unit points\|hours\|sizes`, `--member id --name n --email e`, `--members-file f\|-` |
+| `init` | writes `.pmkit/config.yaml` and scaffolds `.issues/`; refuses to overwrite. Flags: `--tracker local`, `--git-host github\|none`, `--prefix`, `--id-style random\|numbered`, `--estimate-unit points\|hours\|sizes`, `--label name`, `--member id --name n --email e`, `--members-file f\|-` |
 | `init --update` | edits only the lines its flags name; `--replace <path>` overwrites a template file that differs |
 | `capabilities` | prints the capability manifest |
 | `discover` | prints statuses with categories, types, priorities, labels, members and the estimate scale |
