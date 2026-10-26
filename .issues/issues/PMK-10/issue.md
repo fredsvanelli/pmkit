@@ -2,14 +2,16 @@
 id: PMK-10
 title: Add command scenario tests
 type: task
-status: backlog
+status: in_progress
 priority: medium
 estimate: 8
+assignee: fred
 parent: EPC-1
 blocked_by: [PMK-9]
 milestone: local-gaps
+branch: pmk-10-add-command-scenario-tests
 created: 2026-10-25T19:13:19Z
-updated: 2026-10-25T19:13:24Z
+updated: 2026-10-26T01:42:34Z
 ---
 
 ## Description
