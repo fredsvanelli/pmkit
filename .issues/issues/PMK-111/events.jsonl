@@ -4,3 +4,5 @@
 {"at":"2026-10-26T15:40:44Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-26T15:40:44Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-111-tests-leave-temp-directories-behind"}
 {"at":"2026-10-26T15:44:07Z","by":"fred","op":"comment","to":"2026-10-26T15-44-07Z-fred.md"}
+{"at":"2026-10-26T15:54:35Z","by":"fred","op":"comment","to":"2026-10-26T15-54-35Z-fred.md"}
+{"at":"2026-10-26T15:54:35Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
