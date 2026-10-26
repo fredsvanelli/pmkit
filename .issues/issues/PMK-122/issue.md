@@ -2,7 +2,7 @@
 id: PMK-122
 title: Offer in-progress issues sent back to the backlog in cycle plan
 type: bug
-status: in_review
+status: done
 priority: medium
 estimate: 2
 assignee: fred
@@ -11,7 +11,7 @@ related: [PMK-113]
 milestone: local-gaps
 branch: pmk-122-offer-in-progress-issues-sent-back-to
 created: 2026-10-26T17:58:03.712Z
-updated: 2026-10-26T22:13:04Z
+updated: 2026-10-26T23:46:29Z
 ---
 
 ## Description

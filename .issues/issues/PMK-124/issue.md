@@ -2,7 +2,7 @@
 id: PMK-124
 title: Separate the paragraph after a sub-list in pause and spec import
 type: task
-status: in_review
+status: done
 priority: low
 estimate: 1
 assignee: fred
@@ -11,7 +11,7 @@ related: [PMK-113]
 milestone: local-gaps
 branch: pmk-124-separate-the-paragraph-after-a-sub-list
 created: 2026-10-26T17:58:03.864Z
-updated: 2026-10-26T18:41:08Z
+updated: 2026-10-26T23:46:31Z
 ---
 
 ## Description

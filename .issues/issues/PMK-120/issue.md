@@ -2,7 +2,7 @@
 id: PMK-120
 title: Check .pmkit/config.yaml in loadConfig for every command
 type: task
-status: in_review
+status: done
 priority: medium
 estimate: 3
 assignee: fred
@@ -11,7 +11,7 @@ related: [PMK-112]
 milestone: local-gaps
 branch: pmk-120-check-pmkit-config-yaml-in-loadconfig
 created: 2026-10-26T17:58:03.560Z
-updated: 2026-10-26T20:47:28Z
+updated: 2026-10-26T23:46:28Z
 ---
 
 ## Description
