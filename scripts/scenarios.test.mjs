@@ -147,6 +147,32 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     }
   })
 
+  test('cycle/close carries a split\'s open blockers, open sub-issues and unchecked criteria to the new issue', () => {
+    const calls = FILES.find((file) => file.rel === 'cycle/close.md').parsed.calls
+    const create = calls.find((c) => c.step === '7' && c.command === 'issues create' && c.dryRun)
+    assert.ok(create?.flags.includes('criteria-file'), 'the step 7 create carries the unchecked criteria')
+    const step8 = calls.filter((c) => c.step === '8' && !c.dryRun)
+    const move = step8.findIndex((c) => c.command === 'issues move')
+    const blocks = step8.findIndex((c) => c.command === 'issues link' && /--kind blocks(?:\s|$)/.test(c.text))
+    const parent = step8.findIndex((c) => c.command === 'issues parent')
+    const related = step8.findIndex((c) => c.command === 'issues link' && /--kind related(?:\s|$)/.test(c.text))
+    assert.ok(blocks >= 0 && blocks < move, 'step 8 links each open blocker to the new issue before the move to done')
+    assert.ok(parent >= 0 && parent < move, 'step 8 moves each open sub-issue to the new issue before the move to done')
+    assert.ok(related >= 0 && related < blocks && related < parent, 'step 8 runs the related link before the blocker links and sub-issue moves')
+    const text = fs.readFileSync(path.join(COMMANDS_DIR, 'cycle', 'close.md'), 'utf8')
+    assert.match(text, /`blockedBy` and `children` whose status category is not `done` or `canceled`/)
+  })
+
+  test('cycle/close step 7 previews the blocker links and sub-issue moves of a split', () => {
+    const lines = fs.readFileSync(path.join(COMMANDS_DIR, 'cycle', 'close.md'), 'utf8').split('\n')
+    const step7 = lines.slice(lines.findIndex((line) => line.startsWith('7. ')), lines.findIndex((line) => line.startsWith('8. '))).join('\n')
+    assert.match(step7, /a `blocks` link from each open blocker to the new issue/, 'the step 7 preview shows the blocker links')
+    assert.match(step7, /a parent change that moves each open sub-issue from the original to the new issue/, 'the step 7 preview shows the sub-issue moves')
+    assert.doesNotMatch(step7, /The close does not move or copy them/, 'step 7 no longer says the close leaves them on the original')
+    const point = lines.find((line) => line.startsWith('- Step 7: '))
+    assert.match(point, /the blocker links and sub-issue moves/, 'the Step 7 confirmation point names the carry-over writes')
+  })
+
   // The in_review assertion encodes the PMK-122 decision (follow-up 1 of the spec). Change it when that issue lands.
   test('cycle/plan step 5 drafts from todo, backlog and in_progress issues with no sprint', () => {
     const call = FILES.find((file) => file.rel === 'cycle/plan.md').parsed.calls
@@ -163,6 +189,26 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     const step8 = fs.readFileSync(path.join(COMMANDS_DIR, 'cycle', 'plan.md'), 'utf8').split('\n').find((line) => line.startsWith('8. '))
     assert.ok(step8, 'plan.md has a step 8')
     assert.match(step8, /table \(ID, title, status, estimate, assignee, blocked by\)/)
+  })
+
+  test('cycle/plan step 5 reads blockers outside its list, counts canceled as closed and names what it leaves out', () => {
+    const calls = FILES.find((file) => file.rel === 'cycle/plan.md').parsed.calls
+    assert.ok(calls.some((c) => c.step === '5' && c.command === 'issues list' && c.flags.includes('blocked') && !c.dryRun), 'step 5 lists the candidates with an open blocker')
+    assert.ok(calls.some((c) => c.step === '5' && c.command === 'issues get' && !c.dryRun), 'step 5 reads each blocker outside its list')
+    const lines = fs.readFileSync(path.join(COMMANDS_DIR, 'cycle', 'plan.md'), 'utf8').split('\n')
+    const step5 = lines.find((line) => line.startsWith('5. '))
+    assert.match(step5, /An open blocker is a `blockedBy` issue not in `done` or `canceled`/)
+    assert.match(step5, /the blocker's `sprint` is that sprint's ID/, 'a blocker already in the planned sprint counts as selected')
+    assert.match(lines.find((line) => line.startsWith('8. ')), /left out for an open blocker/)
+    assert.match(lines.find((line) => line.startsWith('The sprint plan.')), /every issue in the scope whose open blocker is not in the sprint/)
+  })
+
+  // The orchestrator's ruling on I1: no scenario covers a blocker already in the planned sprint (follow-up 6 of the
+  // spec), so this test pins the whole rule sentence.
+  test('cycle/plan step 5 counts a blocker already in the planned sprint as selected', () => {
+    const step5 = fs.readFileSync(path.join(COMMANDS_DIR, 'cycle', 'plan.md'), 'utf8').split('\n').find((line) => line.startsWith('5. '))
+    assert.ok(step5, 'plan.md has a step 5')
+    assert.ok(step5.includes("A blocker counts as selected when it is in the selection, or when step 1 chose an existing `planned` sprint and the blocker's `sprint` is that sprint's ID"), 'step 5 counts a blocker in the planned sprint as selected')
   })
 
   for (const { name, entries } of LOADED) {

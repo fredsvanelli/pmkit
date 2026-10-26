@@ -18,7 +18,7 @@ exit 0
 ? Step 7  [confirmed]
 $ pmkit cycle add ISS-4M2S ISS-5N1R --to none --dry-run --json  [step 7, dry run]
 exit 0
-$ pmkit issues create --title 'Finish the billing export to CSV' --type feature --estimate 3 --parent EPC-2M9D --priority high --label billing,backend --dry-run --json  [step 7, dry run]
+$ pmkit issues create --title 'Finish the billing export to CSV' --type feature --estimate 3 --parent EPC-2M9D --priority high --label billing,backend --criteria-file <inputs>/remaining-criteria.md --dry-run --json  [step 7, dry run]
 exit 0
 $ pmkit issues update ISS-2X6D --estimate 5 --dry-run --json  [step 7, dry run]
 exit 0
@@ -29,9 +29,13 @@ exit 0
 ? Step 7  [confirmed]
 $ pmkit cycle add ISS-4M2S ISS-5N1R --to none --json  [step 7, write]
 exit 0
-$ pmkit issues create --title 'Finish the billing export to CSV' --type feature --estimate 3 --parent EPC-2M9D --priority high --label billing,backend --json  [step 7, write]
+$ pmkit issues create --title 'Finish the billing export to CSV' --type feature --estimate 3 --parent EPC-2M9D --priority high --label billing,backend --criteria-file <inputs>/remaining-criteria.md --json  [step 7, write]
 exit 0
 $ pmkit issues link ISS-M0GZ ISS-2X6D --kind related --json  [step 8, write]
+exit 0
+$ pmkit issues link ISS-5N1R ISS-M0GZ --kind blocks --json  [step 8, write]
+exit 0
+$ pmkit issues parent ISS-4M2S ISS-M0GZ --json  [step 8, write]
 exit 0
 $ pmkit issues update ISS-2X6D --estimate 5 --json  [step 7, write]
 exit 0
@@ -71,6 +75,7 @@ exit 0
   {"at":"2026-10-09T10:00:00Z","by":"fred","op":"link","field":"blocked_by","to":"ISS-5N1R"}
   {"at":"2026-10-09T10:10:00Z","by":"ana","op":"link","field":"related","to":"ISS-0G5E"}
   {"at":"2026-10-14T09:00:00Z","by":"ana","op":"move","field":"status","from":"todo","to":"in_progress"}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"acceptance_criteria"}
 +{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"related","to":"ISS-M0GZ"}
 +{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"estimate","from":8,"to":5}
 +{"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"done"}
@@ -93,18 +98,23 @@ exit 0
   sprint: 2026-10-12
   due: 2026-10-23
   created: 2026-10-05T09:00:00Z
--updated: 2026-10-14T09:00:00Z
-+updated: 2026-10-23T12:00:00Z
+  updated: 2026-10-23T12:00:00Z
   ---
 
   ## Description
 
   Finance needs a CSV of all invoices for a date range.
+
+  ## Acceptance criteria
+
+  - [x] Export invoices for a date range
+  - [ ] Totals row at the bottom
 --- changed .issues/issues/ISS-4M2S/events.jsonl
   {"at":"2026-10-13T09:00:00Z","by":"fred","op":"create","to":{"id":"ISS-4M2S","title":"Fix CSV column order","type":"task","status":"todo","priority":"medium","estimate":1,"labels":["billing"],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-13T09:00:00Z","updated":"2026-10-13T09:00:00Z"}}
   {"at":"2026-10-13T09:10:00Z","by":"fred","op":"update","field":"parent","from":null,"to":"ISS-2X6D"}
   {"at":"2026-10-13T09:20:00Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 +{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"sprint","from":"2026-10-12","to":null}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"parent","from":"ISS-2X6D","to":"ISS-M0GZ"}
 --- changed .issues/issues/ISS-4M2S/issue.md
   ---
   id: ISS-4M2S
@@ -115,8 +125,9 @@ exit 0
   estimate: 1
   assignee: fred
   labels: [billing]
-  parent: ISS-2X6D
+-parent: ISS-2X6D
 -sprint: 2026-10-12
++parent: ISS-M0GZ
   created: 2026-10-13T09:00:00Z
 -updated: 2026-10-13T09:20:00Z
 +updated: 2026-10-23T12:00:00Z
@@ -181,6 +192,7 @@ exit 0
 --- added .issues/issues/ISS-M0GZ/events.jsonl
 +{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-M0GZ","title":"Finish the billing export to CSV","type":"feature","status":"backlog","priority":"high","estimate":3,"labels":["billing","backend"],"parent":"EPC-2M9D","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
 +{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"related","to":"ISS-2X6D"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"blocked_by","to":"ISS-5N1R"}
 --- added .issues/issues/ISS-M0GZ/issue.md
 +---
 +id: ISS-M0GZ
@@ -191,11 +203,15 @@ exit 0
 +estimate: 3
 +labels: [billing, backend]
 +parent: EPC-2M9D
++blocked_by: [ISS-5N1R]
 +related: [ISS-2X6D]
 +created: 2026-10-23T12:00:00.000Z
 +updated: 2026-10-23T12:00:00Z
 +---
 +
++## Acceptance criteria
++
++- [ ] Totals row at the bottom
 --- changed .issues/sprints/2026-10-12.yaml
   name: Sprint 2026-10-12
   start: 2026-10-12

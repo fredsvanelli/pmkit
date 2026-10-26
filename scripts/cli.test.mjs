@@ -484,20 +484,34 @@ test('cycle close prints the unfinished issues', () => {
   assert.match(run(makeRepo('team'), ['cycle', 'close', '2026-10-12']).stdout, /state: active → closed/)
 })
 
-// A regression guard for PMK-113, not a failing-first test: it calls the CLI directly, and every call it makes
-// existed before the change to commands/cycle/close.md, so it passes before and after it.
+// A regression guard for PMK-113 and PMK-123, not a failing-first test: it calls the CLI directly, and every call it
+// makes existed before the changes to commands/cycle/close.md and commands/cycle/plan.md, so it passes before and
+// after them. It guards the data the split leaves for plan.
 test('a split in cycle close leaves the remaining work for cycle plan', () => {
   const root = makeRepo('team')
-  // The step 8 writes of the cycle-close scenario: create, link, lower the estimate, move to done, then close.
-  const { after: remaining } = json(root, ['issues', 'create', '--title', 'Finish the billing export to CSV', '--type', 'feature', '--estimate', '3', '--parent', 'EPC-2M9D', '--priority', 'high', '--label', 'billing,backend'])
+  // The setup of the cycle-close scenario: ISS-2X6D gets one checked and one unchecked criterion.
+  json(root, ['issues', 'update', 'ISS-2X6D', '--criteria-file', '-'], { input: '- [x] Export invoices for a date range\n- [ ] Totals row at the bottom\n' })
+  // The step 8 writes of the cycle-close scenario: create with the unchecked criterion, related link, blocker link,
+  // sub-issue move, lower the estimate, move to done, then close.
+  const { after: remaining } = json(root, ['issues', 'create', '--title', 'Finish the billing export to CSV', '--type', 'feature', '--estimate', '3', '--parent', 'EPC-2M9D', '--priority', 'high', '--label', 'billing,backend', '--criteria-file', '-'], { input: '- [ ] Totals row at the bottom\n' })
   json(root, ['issues', 'link', remaining.id, 'ISS-2X6D', '--kind', 'related'])
+  json(root, ['issues', 'link', 'ISS-5N1R', remaining.id, '--kind', 'blocks'])
+  json(root, ['issues', 'parent', 'ISS-4M2S', remaining.id])
   json(root, ['issues', 'update', 'ISS-2X6D', '--estimate', '5'])
   json(root, ['issues', 'move', 'ISS-2X6D', 'done'])
   json(root, ['cycle', 'close', '2026-10-12'])
   // The query of commands/cycle/plan.md step 5.
-  const offered = json(root, ['issues', 'list', '--category', 'todo,backlog,in_progress', '--sprint', 'none']).issues.map((issue) => issue.id)
+  const list = json(root, ['issues', 'list', '--category', 'todo,backlog,in_progress', '--sprint', 'none']).issues
+  const offered = list.map((issue) => issue.id)
   assert.ok(offered.includes(remaining.id), 'plan offers the remaining work')
   assert.ok(!offered.includes('ISS-2X6D'), 'plan does not offer the delivered original')
+  const carried = list.find((issue) => issue.id === remaining.id)
+  assert.deepEqual(carried.blockedBy, ['ISS-5N1R'], 'the new issue carries the open blocker')
+  assert.deepEqual(carried.children, ['ISS-4M2S'], 'the new issue carries the open sub-issue')
+  // The second query of commands/cycle/plan.md step 5.
+  const blocked = json(root, ['issues', 'list', '--category', 'todo,backlog,in_progress', '--sprint', 'none', '--blocked']).issues
+  assert.deepEqual(blocked.map((issue) => issue.id), [remaining.id])
+  assert.deepEqual(json(root, ['issues', 'get', remaining.id]).acceptanceCriteria, [{ text: 'Totals row at the bottom', done: false }])
   const inSprint = json(root, ['cycle', 'issues', '2026-10-12'])
   assert.equal(inSprint.find((issue) => issue.id === 'ISS-2X6D').status.category, 'done')
   // ISS-2X6D is the only done issue of the sprint: the test runs no pr sync, so ISS-8C4W stays in in_review.
