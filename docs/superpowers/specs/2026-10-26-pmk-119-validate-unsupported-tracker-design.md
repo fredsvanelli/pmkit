@@ -61,8 +61,6 @@ Chosen: A.
 
 ## Design
 
-In `scripts/lib/validate.mjs`:
-
 In `scripts/lib/config.mjs`, the shared rule:
 
 - Export `unsupportedTracker(system)` with the signature `(system: string) => { message: string, nextStep: string } | null`. It returns `null` when `system` is `local`. For any other string it returns `{ message: 'tracker.system "<system>" is not supported yet', nextStep: 'Set tracker.system to local in .pmkit/config.yaml' }`. These are the exact strings of today's error at line 183.
@@ -167,7 +165,7 @@ No change to `CHANGELOG.md` on this branch (the release adds the line, as for PM
 | Reverse PMK-112's choice to keep the throw for `linear` alone. | Listing the problem does not change the support policy. `loadConfig` and every other command still reject the tracker with `NOT_SUPPORTED`. |
 | Guard that `parsed` and `parsed.tracker` are plain maps before reading `tracker.system`. | An empty file parses to `null` and `tracker: linear` parses to a string. Tests pin that both give today's problems and no throw. |
 | Export `unsupportedTracker(system)` from `config.mjs` and use it in `loadConfig` and `validate`. | One copy of the "only `local` is supported" rule and its words. `loadConfig` keeps its code, message and next step. PMK-120 has nothing to reconcile. |
-| Do not change `commands/setup.md`. Describe its effect in "Other commands". | Setup still stops on `linear`, now with the reason. The sentence "makes `init --update` refuse" is not literally true for this problem, and a rewording is a follow-up candidate. |
+| Do not change `commands/setup.md`. Describe its effect in "Effect on `/pmkit:setup`". | Setup still stops on `linear`, now with the reason. The sentence "makes `init --update` refuse" is not literally true for this problem, and a rewording is a follow-up candidate. |
 | Keep the check out of `validatePmkitConfig`. | `init` and the JSON Schema share it, and both accept `linear`. Refusing it there changes `init` and the schema contract, and PMK-120 owns the other commands. |
 | Path `.pmkit/config.yaml`, code `config`. | Matches PMK-112 and the `config` case in `doctor.md`. A new code needs a doctor case. |
 | Message `tracker.system "linear" is not supported yet, set it to local`. | It names the tracker, reuses the `NOT_SUPPORTED` wording and carries the next step, because a problem has no next step field. |
