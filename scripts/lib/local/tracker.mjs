@@ -175,6 +175,7 @@ export function createLocalTracker(root, {
   const sprintExists = (id) => /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(String(id)) && fs.existsSync(path.join(issuesDir, 'sprints', `${id}.yaml`))
 
   function requireSprint(value) {
+    if (value === 'current') return requireActiveSprintId()
     if (!sprintExists(value)) throw invalid(`sprint ${value} does not exist`, 'pmkit cycle list')
     return String(value)
   }
@@ -398,6 +399,11 @@ export function createLocalTracker(root, {
 
   const currentCycle = () => listCycles({ state: 'active' })[0] ?? null
   const activeSprintId = () => currentCycle()?.id ?? null
+  const requireActiveSprintId = () => {
+    const id = activeSprintId()
+    if (id === null) throw invalid('there is no active sprint', 'pmkit cycle list')
+    return id
+  }
 
   function search(filter, { save = true } = {}) {
     checkFilter(filter, { types: local.types, members: Object.keys(local.members), sprintExists })
@@ -741,8 +747,7 @@ export function createLocalTracker(root, {
     requireWriter(actor)
     if (!Array.isArray(ids) || ids.length === 0) throw invalid('ids must be a non-empty list')
     const known = ids.map(knownIssue)
-    const sprint = to === 'current' ? activeSprintId() : to
-    if (sprint === null && to === 'current') throw invalid('there is no active sprint', 'pmkit cycle list')
+    const sprint = to === 'current' ? requireActiveSprintId() : to
     if (sprint !== null) getSprint(sprint)
     return known.map((id) => updateIssue(id, { sprint }, actor, { dryRun }))
   }

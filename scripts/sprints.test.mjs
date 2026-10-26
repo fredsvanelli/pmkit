@@ -382,3 +382,60 @@ test('getDaysOff returns the map of a sprint', () => {
   assert.deepEqual(tracker.getDaysOff('2026-09-28'), {})
   assert.throws(() => tracker.getDaysOff('2030-01-01'), code('NOT_FOUND'))
 })
+
+const noActiveSprint = (error) => {
+  code('INVALID_INPUT', /^there is no active sprint$/)(error)
+  assert.equal(error.nextStep, 'pmkit cycle list')
+  return true
+}
+
+const readEvents = (root, id) => fs.readFileSync(path.join(root, '.issues', 'issues', id, 'events.jsonl'), 'utf8').trim().split('\n').map((line) => JSON.parse(line))
+
+test('createIssue with sprint current stores the active sprint id', () => {
+  const { root, tracker } = setup('team')
+  const { after } = tracker.createIssue({ title: 'T', sprint: 'current' }, 'fred')
+  assert.equal(after.sprint, '2026-10-12')
+  const [first] = readEvents(root, after.id)
+  assert.equal(first.op, 'create')
+  assert.match(JSON.stringify(first), /2026-10-12/)
+  assert.doesNotMatch(JSON.stringify(first), /current/)
+})
+
+test('updateIssue with sprint current stores the active sprint id', () => {
+  const { root, tracker } = setup('team')
+  const { after } = tracker.updateIssue('ISS-3F7H', { sprint: 'current' }, 'fred')
+  assert.equal(after.sprint, '2026-10-12')
+  const last = readEvents(root, 'ISS-3F7H').at(-1)
+  assert.equal(last.op, 'update')
+  assert.equal(last.field, 'sprint')
+  assert.equal(last.to, '2026-10-12')
+})
+
+test('sprint current without an active sprint fails and writes nothing', () => {
+  const { root, tracker } = setup('basic')
+  const { after } = tracker.createIssue({ title: 'T' }, 'fred')
+  const hash = hashTree(root)
+  assert.throws(() => tracker.createIssue({ title: 'U', sprint: 'current' }, 'fred'), noActiveSprint)
+  assert.throws(() => tracker.updateIssue(after.id, { sprint: 'current' }, 'fred'), noActiveSprint)
+  assert.equal(hashTree(root), hash)
+})
+
+test('sprint current with dryRun resolves like a real run', () => {
+  const team = setup('team')
+  const hash = hashTree(team.root)
+  assert.equal(team.tracker.createIssue({ title: 'T', sprint: 'current' }, 'fred', { dryRun: true }).after.sprint, '2026-10-12')
+  assert.equal(team.tracker.updateIssue('ISS-3F7H', { sprint: 'current' }, 'fred', { dryRun: true }).after.sprint, '2026-10-12')
+  assert.equal(hashTree(team.root), hash)
+  const basic = setup('basic')
+  const { after } = basic.tracker.createIssue({ title: 'T' }, 'fred')
+  const basicHash = hashTree(basic.root)
+  assert.throws(() => basic.tracker.createIssue({ title: 'U', sprint: 'current' }, 'fred', { dryRun: true }), noActiveSprint)
+  assert.throws(() => basic.tracker.updateIssue(after.id, { sprint: 'current' }, 'fred', { dryRun: true }), noActiveSprint)
+  assert.equal(hashTree(basic.root), basicHash)
+})
+
+test('sprint current fails once the only active sprint is closed', () => {
+  const { tracker } = setup('team')
+  tracker.closeCycle('2026-10-12', 'fred')
+  assert.throws(() => tracker.createIssue({ title: 'T', sprint: 'current' }, 'fred'), noActiveSprint)
+})
