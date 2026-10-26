@@ -1,0 +1,181 @@
+$ pmkit issues get ISS-1
+exit 0
+--- stdout
+id: ISS-1
+title: Sign webhook payloads
+type: feature
+status: done (done)
+priority: medium
+estimate: 5
+assignee: ana
+labels: backend
+parent: EPC-1
+sprint: 2026-10-05
+created: 2026-10-02T10:00:00Z
+updated: 2026-10-09T17:00:00Z
+
+Add an HMAC signature header so receivers can verify the sender.
+--- stderr
+(empty)
+
+$ pmkit issues get ISS-1 --json
+exit 0
+--- stdout
+{
+  "id": "ISS-1",
+  "title": "Sign webhook payloads",
+  "status": {
+    "name": "done",
+    "category": "done"
+  },
+  "labels": [
+    "backend"
+  ],
+  "blockedBy": [],
+  "blocks": [],
+  "related": [],
+  "duplicateOf": [],
+  "children": [],
+  "archived": false,
+  "description": "Add an HMAC signature header so receivers can verify the sender.",
+  "acceptanceCriteria": [],
+  "created": "2026-10-02T10:00:00Z",
+  "updated": "2026-10-09T17:00:00Z",
+  "body": "## Description\n\nAdd an HMAC signature header so receivers can verify the sender.\n",
+  "type": "feature",
+  "priority": "medium",
+  "estimate": 5,
+  "assignee": "ana",
+  "parent": "EPC-1",
+  "sprint": "2026-10-05"
+}
+--- stderr
+(empty)
+
+$ pmkit issues get ISS-1 --comments --history
+exit 0
+--- stdout
+id: ISS-1
+title: Sign webhook payloads
+type: feature
+status: done (done)
+priority: medium
+estimate: 5
+assignee: ana
+labels: backend
+parent: EPC-1
+sprint: 2026-10-05
+created: 2026-10-02T10:00:00Z
+updated: 2026-10-09T17:00:00Z
+
+Add an HMAC signature header so receivers can verify the sender.
+
+comments:
+(none)
+
+history:
+At                   | Issue | By  | Op     | Change
+---------------------|-------|-----|--------|---------------------------
+2026-10-02T10:00:00Z |       | ana | create | Sign webhook payloads
+2026-10-05T09:00:00Z |       | ana | move   | status: todo → in_progress
+2026-10-09T17:00:00Z |       | ana | move   | status: in_progress → done
+--- stderr
+(empty)
+
+$ pmkit issues get ISS-1 --comments --history --json
+exit 0
+--- stdout
+{
+  "id": "ISS-1",
+  "title": "Sign webhook payloads",
+  "status": {
+    "name": "done",
+    "category": "done"
+  },
+  "labels": [
+    "backend"
+  ],
+  "blockedBy": [],
+  "blocks": [],
+  "related": [],
+  "duplicateOf": [],
+  "children": [],
+  "archived": false,
+  "description": "Add an HMAC signature header so receivers can verify the sender.",
+  "acceptanceCriteria": [],
+  "created": "2026-10-02T10:00:00Z",
+  "updated": "2026-10-09T17:00:00Z",
+  "body": "## Description\n\nAdd an HMAC signature header so receivers can verify the sender.\n",
+  "type": "feature",
+  "priority": "medium",
+  "estimate": 5,
+  "assignee": "ana",
+  "parent": "EPC-1",
+  "sprint": "2026-10-05",
+  "comments": [],
+  "history": [
+    {
+      "at": "2026-10-02T10:00:00Z",
+      "by": "ana",
+      "op": "create",
+      "to": {
+        "id": "ISS-1",
+        "title": "Sign webhook payloads",
+        "type": "feature",
+        "status": "todo",
+        "priority": "medium",
+        "estimate": 5,
+        "assignee": "ana",
+        "labels": [
+          "backend"
+        ],
+        "parent": "EPC-1",
+        "blocked_by": [],
+        "related": [],
+        "duplicate_of": [],
+        "sprint": "2026-10-05",
+        "created": "2026-10-02T10:00:00Z",
+        "updated": "2026-10-02T10:00:00Z"
+      }
+    },
+    {
+      "at": "2026-10-05T09:00:00Z",
+      "by": "ana",
+      "op": "move",
+      "field": "status",
+      "from": "todo",
+      "to": "in_progress"
+    },
+    {
+      "at": "2026-10-09T17:00:00Z",
+      "by": "ana",
+      "op": "move",
+      "field": "status",
+      "from": "in_progress",
+      "to": "done"
+    }
+  ]
+}
+--- stderr
+(empty)
+
+$ pmkit issues get ISS-4
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: The issue file contains git conflict markers.
+next: /pmkit:local:doctor
+
+$ pmkit issues get ISS-4 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "CONFLICT",
+    "message": "The issue file contains git conflict markers.",
+    "nextStep": "/pmkit:local:doctor"
+  }
+}
+--- stderr
+(empty)

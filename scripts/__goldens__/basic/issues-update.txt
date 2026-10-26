@@ -1,0 +1,41 @@
+$ pmkit issues update ISS-0000 --title Renamed --criteria-file <inputs>/criteria.md
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: issue ISS-0000 does not exist
+next: pmkit issues list
+
+$ pmkit issues update ISS-0000 --title Renamed --criteria-file <inputs>/criteria.md --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "issue ISS-0000 does not exist",
+    "nextStep": "pmkit issues list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues update ISS-0000 --title Renamed --criteria-file <inputs>/criteria.md --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: issue ISS-0000 does not exist
+next: pmkit issues list
+
+$ pmkit issues update ISS-0000 --title Renamed --criteria-file <inputs>/criteria.md --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "issue ISS-0000 does not exist",
+    "nextStep": "pmkit issues list"
+  }
+}
+--- stderr
+(empty)

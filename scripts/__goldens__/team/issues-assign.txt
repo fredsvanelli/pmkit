@@ -1,0 +1,140 @@
+$ pmkit issues assign ISS-5N1R fred
+exit 0
+--- stdout
+ISS-5N1R  Paginate the events API
+no change
+--- stderr
+(empty)
+
+$ pmkit issues assign ISS-5N1R fred --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "ISS-5N1R",
+    "title": "Paginate the events API",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "The export reads events in pages of 500.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-05T09:30:00Z",
+    "updated": "2026-10-22T09:00:00Z",
+    "body": "## Description\n\nThe export reads events in pages of 500.\n",
+    "type": "task",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "fred",
+    "sprint": "2026-10-12"
+  },
+  "after": {
+    "id": "ISS-5N1R",
+    "title": "Paginate the events API",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "The export reads events in pages of 500.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-05T09:30:00Z",
+    "updated": "2026-10-22T09:00:00Z",
+    "body": "## Description\n\nThe export reads events in pages of 500.\n",
+    "type": "task",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "fred",
+    "sprint": "2026-10-12"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues assign ISS-5N1R fred --dry-run
+exit 0
+--- stdout
+ISS-5N1R  Paginate the events API
+no change
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit issues assign ISS-5N1R fred --dry-run --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "ISS-5N1R",
+    "title": "Paginate the events API",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "The export reads events in pages of 500.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-05T09:30:00Z",
+    "updated": "2026-10-22T09:00:00Z",
+    "body": "## Description\n\nThe export reads events in pages of 500.\n",
+    "type": "task",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "fred",
+    "sprint": "2026-10-12"
+  },
+  "after": {
+    "id": "ISS-5N1R",
+    "title": "Paginate the events API",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "The export reads events in pages of 500.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-05T09:30:00Z",
+    "updated": "2026-10-22T09:00:00Z",
+    "body": "## Description\n\nThe export reads events in pages of 500.\n",
+    "type": "task",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "fred",
+    "sprint": "2026-10-12"
+  }
+}
+--- stderr
+(empty)

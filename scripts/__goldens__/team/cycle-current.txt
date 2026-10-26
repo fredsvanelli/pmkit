@@ -1,0 +1,36 @@
+$ pmkit cycle current
+exit 0
+--- stdout
+id: 2026-10-12
+name: Sprint 2026-10-12
+state: active
+start: 2026-10-12
+end: 2026-10-25
+goal: Webhook retries and the billing export
+capacity: {"fred":8,"ana":10}
+days off: {"ana":["2026-10-16"]}
+--- stderr
+(empty)
+
+$ pmkit cycle current --json
+exit 0
+--- stdout
+{
+  "id": "2026-10-12",
+  "name": "Sprint 2026-10-12",
+  "start": "2026-10-12",
+  "end": "2026-10-25",
+  "goal": "Webhook retries and the billing export",
+  "state": "active",
+  "capacity": {
+    "fred": 8,
+    "ana": 10
+  },
+  "daysOff": {
+    "ana": [
+      "2026-10-16"
+    ]
+  }
+}
+--- stderr
+(empty)

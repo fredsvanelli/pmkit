@@ -1,0 +1,148 @@
+$ pmkit cycle add ISS-1 --to current
+exit 0
+--- stdout
+ISS-1  Sign webhook payloads
+no change
+--- stderr
+(empty)
+
+$ pmkit cycle add ISS-1 --to current --json
+exit 0
+--- stdout
+[
+  {
+    "before": {
+      "id": "ISS-1",
+      "title": "Sign webhook payloads",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "labels": [
+        "backend"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Add an HMAC signature header so receivers can verify the sender.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-02T10:00:00Z",
+      "updated": "2026-10-09T17:00:00Z",
+      "body": "## Description\n\nAdd an HMAC signature header so receivers can verify the sender.\n",
+      "type": "feature",
+      "priority": "medium",
+      "estimate": 5,
+      "assignee": "ana",
+      "parent": "EPC-1",
+      "sprint": "2026-10-05"
+    },
+    "after": {
+      "id": "ISS-1",
+      "title": "Sign webhook payloads",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "labels": [
+        "backend"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Add an HMAC signature header so receivers can verify the sender.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-02T10:00:00Z",
+      "updated": "2026-10-09T17:00:00Z",
+      "body": "## Description\n\nAdd an HMAC signature header so receivers can verify the sender.\n",
+      "type": "feature",
+      "priority": "medium",
+      "estimate": 5,
+      "assignee": "ana",
+      "parent": "EPC-1",
+      "sprint": "2026-10-05"
+    }
+  }
+]
+--- stderr
+(empty)
+
+$ pmkit cycle add ISS-1 --to current --dry-run
+exit 0
+--- stdout
+ISS-1  Sign webhook payloads
+no change
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit cycle add ISS-1 --to current --dry-run --json
+exit 0
+--- stdout
+[
+  {
+    "before": {
+      "id": "ISS-1",
+      "title": "Sign webhook payloads",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "labels": [
+        "backend"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Add an HMAC signature header so receivers can verify the sender.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-02T10:00:00Z",
+      "updated": "2026-10-09T17:00:00Z",
+      "body": "## Description\n\nAdd an HMAC signature header so receivers can verify the sender.\n",
+      "type": "feature",
+      "priority": "medium",
+      "estimate": 5,
+      "assignee": "ana",
+      "parent": "EPC-1",
+      "sprint": "2026-10-05"
+    },
+    "after": {
+      "id": "ISS-1",
+      "title": "Sign webhook payloads",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "labels": [
+        "backend"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Add an HMAC signature header so receivers can verify the sender.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-02T10:00:00Z",
+      "updated": "2026-10-09T17:00:00Z",
+      "body": "## Description\n\nAdd an HMAC signature header so receivers can verify the sender.\n",
+      "type": "feature",
+      "priority": "medium",
+      "estimate": 5,
+      "assignee": "ana",
+      "parent": "EPC-1",
+      "sprint": "2026-10-05"
+    }
+  }
+]
+--- stderr
+(empty)

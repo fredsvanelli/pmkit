@@ -1,0 +1,23 @@
+$ pmkit validate
+exit 0
+--- stdout
+checked: 0 issues, 0 epics, 0 sprints, 0 milestones, 0 comments
+no problems
+--- stderr
+(empty)
+
+$ pmkit validate --json
+exit 0
+--- stdout
+{
+  "checked": {
+    "issues": 0,
+    "epics": 0,
+    "sprints": 0,
+    "milestones": 0,
+    "comments": 0
+  },
+  "problems": []
+}
+--- stderr
+(empty)

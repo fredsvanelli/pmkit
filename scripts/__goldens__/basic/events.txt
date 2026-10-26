@@ -1,0 +1,13 @@
+$ pmkit events
+exit 0
+--- stdout
+no events
+--- stderr
+(empty)
+
+$ pmkit events --json
+exit 0
+--- stdout
+[]
+--- stderr
+(empty)

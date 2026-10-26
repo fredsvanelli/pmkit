@@ -1,0 +1,56 @@
+$ pmkit epic update-status EPC-1 --health on_track --body-file <inputs>/update.md
+exit 0
+--- stdout
+status update on EPC-1
+health: on_track
+by: fred
+at: 2026-10-23T12:00:00Z
+
+Retries ship this week. Signing is waiting on review.
+--- stderr
+(empty)
+
+$ pmkit epic update-status EPC-1 --health on_track --body-file <inputs>/update.md --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "epic": "EPC-1",
+    "at": "2026-10-23T12:00:00Z",
+    "author": "fred",
+    "health": "on_track",
+    "body": "Retries ship this week. Signing is waiting on review."
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit epic update-status EPC-1 --health on_track --body-file <inputs>/update.md --dry-run
+exit 0
+--- stdout
+status update on EPC-1
+health: on_track
+by: fred
+at: 2026-10-23T12:00:00Z
+
+Retries ship this week. Signing is waiting on review.
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit epic update-status EPC-1 --health on_track --body-file <inputs>/update.md --dry-run --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "epic": "EPC-1",
+    "at": "2026-10-23T12:00:00Z",
+    "author": "fred",
+    "health": "on_track",
+    "body": "Retries ship this week. Signing is waiting on review."
+  }
+}
+--- stderr
+(empty)

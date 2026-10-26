@@ -1,0 +1,29 @@
+$ pmkit metrics cycle-time
+exit 0
+--- stdout
+count: 2
+median: 4.3 days
+p85: 4.3 days
+--- stderr
+(empty)
+
+$ pmkit metrics cycle-time --json
+exit 0
+--- stdout
+{
+  "count": 2,
+  "median": 4.3,
+  "p85": 4.3,
+  "issues": [
+    {
+      "issue": "ISS-1",
+      "days": 4.3
+    },
+    {
+      "issue": "ISS-6",
+      "days": 4.3
+    }
+  ]
+}
+--- stderr
+(empty)

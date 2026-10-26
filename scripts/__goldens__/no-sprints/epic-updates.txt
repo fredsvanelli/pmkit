@@ -1,0 +1,13 @@
+$ pmkit epic updates EPC-4H7V
+exit 0
+--- stdout
+no status updates
+--- stderr
+(empty)
+
+$ pmkit epic updates EPC-4H7V --json
+exit 0
+--- stdout
+[]
+--- stderr
+(empty)

@@ -1,0 +1,35 @@
+$ pmkit migrate
+exit 0
+--- stdout
+the tracker is already at format 2, nothing to migrate
+--- stderr
+(empty)
+
+$ pmkit migrate --json
+exit 0
+--- stdout
+{
+  "from": 2,
+  "to": 2,
+  "steps": []
+}
+--- stderr
+(empty)
+
+$ pmkit migrate --dry-run
+exit 0
+--- stdout
+the tracker is already at format 2, nothing to migrate
+--- stderr
+(empty)
+
+$ pmkit migrate --dry-run --json
+exit 0
+--- stdout
+{
+  "from": 2,
+  "to": 2,
+  "steps": []
+}
+--- stderr
+(empty)

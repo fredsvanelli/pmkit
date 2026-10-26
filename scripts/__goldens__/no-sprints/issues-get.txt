@@ -1,0 +1,183 @@
+$ pmkit issues get ISS-9B2X
+exit 0
+--- stdout
+id: ISS-9B2X
+title: Dead-letter queue
+type: feature
+status: in_review (in_review)
+priority: high
+estimate: 5
+assignee: ana
+labels: webhooks, backend
+created: 2026-10-06T11:00:00Z
+updated: 2026-10-21T14:00:00Z
+
+Keep deliveries that ran out of retries so support can replay them.
+--- stderr
+(empty)
+
+$ pmkit issues get ISS-9B2X --json
+exit 0
+--- stdout
+{
+  "id": "ISS-9B2X",
+  "title": "Dead-letter queue",
+  "status": {
+    "name": "in_review",
+    "category": "in_review"
+  },
+  "labels": [
+    "webhooks",
+    "backend"
+  ],
+  "blockedBy": [],
+  "blocks": [],
+  "related": [],
+  "duplicateOf": [],
+  "children": [],
+  "archived": false,
+  "description": "Keep deliveries that ran out of retries so support can replay them.",
+  "acceptanceCriteria": [],
+  "created": "2026-10-06T11:00:00Z",
+  "updated": "2026-10-21T14:00:00Z",
+  "body": "## Description\n\nKeep deliveries that ran out of retries so support can replay them.\n",
+  "type": "feature",
+  "priority": "high",
+  "estimate": 5,
+  "assignee": "ana"
+}
+--- stderr
+(empty)
+
+$ pmkit issues get ISS-9B2X --comments --history
+exit 0
+--- stdout
+id: ISS-9B2X
+title: Dead-letter queue
+type: feature
+status: in_review (in_review)
+priority: high
+estimate: 5
+assignee: ana
+labels: webhooks, backend
+created: 2026-10-06T11:00:00Z
+updated: 2026-10-21T14:00:00Z
+
+Keep deliveries that ran out of retries so support can replay them.
+
+comments:
+2026-10-21T14:05:00Z fred
+Looks good, one question about the replay endpoint.
+
+history:
+At                   | Issue | By   | Op     | Change
+---------------------|-------|------|--------|--------------------------------
+2026-10-06T11:00:00Z |       | fred | create | Dead-letter queue
+2026-10-14T09:00:00Z |       | ana  | move   | status: todo → in_progress
+2026-10-21T14:00:00Z |       | ana  | move   | status: in_progress → in_review
+--- stderr
+(empty)
+
+$ pmkit issues get ISS-9B2X --comments --history --json
+exit 0
+--- stdout
+{
+  "id": "ISS-9B2X",
+  "title": "Dead-letter queue",
+  "status": {
+    "name": "in_review",
+    "category": "in_review"
+  },
+  "labels": [
+    "webhooks",
+    "backend"
+  ],
+  "blockedBy": [],
+  "blocks": [],
+  "related": [],
+  "duplicateOf": [],
+  "children": [],
+  "archived": false,
+  "description": "Keep deliveries that ran out of retries so support can replay them.",
+  "acceptanceCriteria": [],
+  "created": "2026-10-06T11:00:00Z",
+  "updated": "2026-10-21T14:00:00Z",
+  "body": "## Description\n\nKeep deliveries that ran out of retries so support can replay them.\n",
+  "type": "feature",
+  "priority": "high",
+  "estimate": 5,
+  "assignee": "ana",
+  "comments": [
+    {
+      "id": "2026-10-21T14-05-00Z-fred",
+      "issue": "ISS-9B2X",
+      "author": "fred",
+      "body": "Looks good, one question about the replay endpoint.",
+      "created": "2026-10-21T14:05:00Z"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-10-06T11:00:00Z",
+      "by": "fred",
+      "op": "create",
+      "to": {
+        "id": "ISS-9B2X",
+        "title": "Dead-letter queue",
+        "type": "feature",
+        "status": "todo",
+        "priority": "high",
+        "estimate": 5,
+        "assignee": "ana",
+        "labels": [
+          "webhooks",
+          "backend"
+        ],
+        "blocked_by": [],
+        "related": [],
+        "duplicate_of": [],
+        "created": "2026-10-06T11:00:00Z",
+        "updated": "2026-10-06T11:00:00Z"
+      }
+    },
+    {
+      "at": "2026-10-14T09:00:00Z",
+      "by": "ana",
+      "op": "move",
+      "field": "status",
+      "from": "todo",
+      "to": "in_progress"
+    },
+    {
+      "at": "2026-10-21T14:00:00Z",
+      "by": "ana",
+      "op": "move",
+      "field": "status",
+      "from": "in_progress",
+      "to": "in_review"
+    }
+  ]
+}
+--- stderr
+(empty)
+
+$ pmkit issues get ISS-0000
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: issue ISS-0000 does not exist
+next: pmkit issues list
+
+$ pmkit issues get ISS-0000 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "issue ISS-0000 does not exist",
+    "nextStep": "pmkit issues list"
+  }
+}
+--- stderr
+(empty)

@@ -1,0 +1,287 @@
+$ pmkit issues list
+exit 0
+--- stdout
+ID       | Title                         | Status    | Assignee | Estimate | Sprint
+---------|-------------------------------|-----------|----------|----------|-------
+ISS-2K5P | Sign webhook payloads         | done      | ana      | 5        |
+ISS-6R3N | Retry failed deliveries       | done      | fred     | 8        |
+ISS-9B2X | Dead-letter queue             | in_review | ana      | 5        |
+ISS-3M8D | Billing export as CSV         | todo      | fred     | 3        |
+ISS-7T4C | Document the signature header | backlog   |          |          |
+ISS-1V9Z | Investigate slow login        | triage    |          |          |
+--- stderr
+(empty)
+
+$ pmkit issues list --json
+exit 0
+--- stdout
+{
+  "issues": [
+    {
+      "id": "ISS-2K5P",
+      "title": "Sign webhook payloads",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "labels": [
+        "backend",
+        "webhooks"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Add an HMAC signature header so receivers can verify the sender.",
+      "acceptanceCriteria": [],
+      "created": "2026-09-26T10:30:00Z",
+      "updated": "2026-10-08T17:00:00Z",
+      "body": "## Description\n\nAdd an HMAC signature header so receivers can verify the sender.\n",
+      "type": "feature",
+      "priority": "medium",
+      "estimate": 5,
+      "assignee": "ana",
+      "parent": "EPC-4H7V"
+    },
+    {
+      "id": "ISS-6R3N",
+      "title": "Retry failed deliveries",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "labels": [
+        "backend",
+        "webhooks"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Retry with exponential backoff, up to six attempts.",
+      "acceptanceCriteria": [],
+      "created": "2026-09-26T11:00:00Z",
+      "updated": "2026-10-16T15:00:00Z",
+      "body": "## Description\n\nRetry with exponential backoff, up to six attempts.\n",
+      "type": "feature",
+      "priority": "high",
+      "estimate": 8,
+      "assignee": "fred",
+      "parent": "EPC-4H7V"
+    },
+    {
+      "id": "ISS-9B2X",
+      "title": "Dead-letter queue",
+      "status": {
+        "name": "in_review",
+        "category": "in_review"
+      },
+      "labels": [
+        "webhooks",
+        "backend"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Keep deliveries that ran out of retries so support can replay them.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-06T11:00:00Z",
+      "updated": "2026-10-21T14:00:00Z",
+      "body": "## Description\n\nKeep deliveries that ran out of retries so support can replay them.\n",
+      "type": "feature",
+      "priority": "high",
+      "estimate": 5,
+      "assignee": "ana"
+    },
+    {
+      "id": "ISS-3M8D",
+      "title": "Billing export as CSV",
+      "status": {
+        "name": "todo",
+        "category": "todo"
+      },
+      "labels": [
+        "billing"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Finance needs a monthly CSV of invoices.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-12T09:00:00Z",
+      "updated": "2026-10-12T09:00:00Z",
+      "body": "## Description\n\nFinance needs a monthly CSV of invoices.\n",
+      "type": "feature",
+      "priority": "medium",
+      "estimate": 3,
+      "assignee": "fred"
+    },
+    {
+      "id": "ISS-7T4C",
+      "title": "Document the signature header",
+      "status": {
+        "name": "backlog",
+        "category": "backlog"
+      },
+      "labels": [],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Describe how receivers verify the signature.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-13T09:00:00Z",
+      "updated": "2026-10-13T09:00:00Z",
+      "body": "## Description\n\nDescribe how receivers verify the signature.\n",
+      "type": "chore",
+      "priority": "low"
+    },
+    {
+      "id": "ISS-1V9Z",
+      "title": "Investigate slow login",
+      "status": {
+        "name": "triage",
+        "category": "triage"
+      },
+      "labels": [],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Some users wait ten seconds after submitting the login form.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-20T16:00:00Z",
+      "updated": "2026-10-20T16:00:00Z",
+      "body": "## Description\n\nSome users wait ten seconds after submitting the login form.\n",
+      "type": "bug"
+    }
+  ],
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit issues list --sprint current
+exit 0
+--- stdout
+no issues
+--- stderr
+(empty)
+
+$ pmkit issues list --sprint current --json
+exit 0
+--- stdout
+{
+  "issues": [],
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit issues list --blocked
+exit 0
+--- stdout
+no issues
+--- stderr
+(empty)
+
+$ pmkit issues list --blocked --json
+exit 0
+--- stdout
+{
+  "issues": [],
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit issues list --category done
+exit 0
+--- stdout
+ID       | Title                   | Status | Assignee | Estimate | Sprint
+---------|-------------------------|--------|----------|----------|-------
+ISS-2K5P | Sign webhook payloads   | done   | ana      | 5        |
+ISS-6R3N | Retry failed deliveries | done   | fred     | 8        |
+--- stderr
+(empty)
+
+$ pmkit issues list --category done --json
+exit 0
+--- stdout
+{
+  "issues": [
+    {
+      "id": "ISS-2K5P",
+      "title": "Sign webhook payloads",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "labels": [
+        "backend",
+        "webhooks"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Add an HMAC signature header so receivers can verify the sender.",
+      "acceptanceCriteria": [],
+      "created": "2026-09-26T10:30:00Z",
+      "updated": "2026-10-08T17:00:00Z",
+      "body": "## Description\n\nAdd an HMAC signature header so receivers can verify the sender.\n",
+      "type": "feature",
+      "priority": "medium",
+      "estimate": 5,
+      "assignee": "ana",
+      "parent": "EPC-4H7V"
+    },
+    {
+      "id": "ISS-6R3N",
+      "title": "Retry failed deliveries",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "labels": [
+        "backend",
+        "webhooks"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Retry with exponential backoff, up to six attempts.",
+      "acceptanceCriteria": [],
+      "created": "2026-09-26T11:00:00Z",
+      "updated": "2026-10-16T15:00:00Z",
+      "body": "## Description\n\nRetry with exponential backoff, up to six attempts.\n",
+      "type": "feature",
+      "priority": "high",
+      "estimate": 8,
+      "assignee": "fred",
+      "parent": "EPC-4H7V"
+    }
+  ],
+  "problems": []
+}
+--- stderr
+(empty)

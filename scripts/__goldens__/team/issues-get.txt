@@ -1,0 +1,173 @@
+$ pmkit issues get ISS-5N1R
+exit 0
+--- stdout
+id: ISS-5N1R
+title: Paginate the events API
+type: task
+status: in_progress (in_progress)
+priority: medium
+estimate: 3
+assignee: fred
+labels: backend
+sprint: 2026-10-12
+blocks: ISS-2X6D
+created: 2026-10-05T09:30:00Z
+updated: 2026-10-22T09:00:00Z
+
+The export reads events in pages of 500.
+--- stderr
+(empty)
+
+$ pmkit issues get ISS-5N1R --json
+exit 0
+--- stdout
+{
+  "id": "ISS-5N1R",
+  "title": "Paginate the events API",
+  "status": {
+    "name": "in_progress",
+    "category": "in_progress"
+  },
+  "labels": [
+    "backend"
+  ],
+  "blockedBy": [],
+  "blocks": [
+    "ISS-2X6D"
+  ],
+  "related": [],
+  "duplicateOf": [],
+  "children": [],
+  "archived": false,
+  "description": "The export reads events in pages of 500.",
+  "acceptanceCriteria": [],
+  "created": "2026-10-05T09:30:00Z",
+  "updated": "2026-10-22T09:00:00Z",
+  "body": "## Description\n\nThe export reads events in pages of 500.\n",
+  "type": "task",
+  "priority": "medium",
+  "estimate": 3,
+  "assignee": "fred",
+  "sprint": "2026-10-12"
+}
+--- stderr
+(empty)
+
+$ pmkit issues get ISS-5N1R --comments --history
+exit 0
+--- stdout
+id: ISS-5N1R
+title: Paginate the events API
+type: task
+status: in_progress (in_progress)
+priority: medium
+estimate: 3
+assignee: fred
+labels: backend
+sprint: 2026-10-12
+blocks: ISS-2X6D
+created: 2026-10-05T09:30:00Z
+updated: 2026-10-22T09:00:00Z
+
+The export reads events in pages of 500.
+
+comments:
+(none)
+
+history:
+At                   | Issue | By   | Op     | Change
+---------------------|-------|------|--------|---------------------------
+2026-10-05T09:30:00Z |       | fred | create | Paginate the events API
+2026-10-22T09:00:00Z |       | fred | move   | status: todo → in_progress
+--- stderr
+(empty)
+
+$ pmkit issues get ISS-5N1R --comments --history --json
+exit 0
+--- stdout
+{
+  "id": "ISS-5N1R",
+  "title": "Paginate the events API",
+  "status": {
+    "name": "in_progress",
+    "category": "in_progress"
+  },
+  "labels": [
+    "backend"
+  ],
+  "blockedBy": [],
+  "blocks": [
+    "ISS-2X6D"
+  ],
+  "related": [],
+  "duplicateOf": [],
+  "children": [],
+  "archived": false,
+  "description": "The export reads events in pages of 500.",
+  "acceptanceCriteria": [],
+  "created": "2026-10-05T09:30:00Z",
+  "updated": "2026-10-22T09:00:00Z",
+  "body": "## Description\n\nThe export reads events in pages of 500.\n",
+  "type": "task",
+  "priority": "medium",
+  "estimate": 3,
+  "assignee": "fred",
+  "sprint": "2026-10-12",
+  "comments": [],
+  "history": [
+    {
+      "at": "2026-10-05T09:30:00Z",
+      "by": "fred",
+      "op": "create",
+      "to": {
+        "id": "ISS-5N1R",
+        "title": "Paginate the events API",
+        "type": "task",
+        "status": "todo",
+        "priority": "medium",
+        "estimate": 3,
+        "assignee": "fred",
+        "labels": [
+          "backend"
+        ],
+        "blocked_by": [],
+        "related": [],
+        "duplicate_of": [],
+        "sprint": "2026-10-12",
+        "created": "2026-10-05T09:30:00Z",
+        "updated": "2026-10-05T09:30:00Z"
+      }
+    },
+    {
+      "at": "2026-10-22T09:00:00Z",
+      "by": "fred",
+      "op": "move",
+      "field": "status",
+      "from": "todo",
+      "to": "in_progress"
+    }
+  ]
+}
+--- stderr
+(empty)
+
+$ pmkit issues get ISS-3Q6T
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: The issue file contains git conflict markers.
+next: /pmkit:local:doctor
+
+$ pmkit issues get ISS-3Q6T --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "CONFLICT",
+    "message": "The issue file contains git conflict markers.",
+    "nextStep": "/pmkit:local:doctor"
+  }
+}
+--- stderr
+(empty)

@@ -1,0 +1,694 @@
+$ pmkit issues list
+exit 0
+--- stdout
+ID       | Title                           | Status      | Assignee | Estimate | Sprint
+---------|---------------------------------|-------------|----------|----------|-----------
+ISS-7K3Q | Retry failed webhook deliveries | done        | fred     | 3        | 2026-09-28
+ISS-4P8A | Sign webhook payloads           | done        | ana      | 5        | 2026-09-28
+ISS-9T2M | Fix rounding in invoice totals  | done        | fred     | 2        | 2026-09-28
+ISS-2X6D | Billing export to CSV           | in_progress | ana      | 8        | 2026-10-12
+ISS-5N1R | Paginate the events API         | in_progress | fred     | 3        | 2026-10-12
+ISS-8C4W | Dead-letter queue for webhooks  | in_review   | ana      | 5        | 2026-10-12
+ISS-3F7H | Empty state for the dashboard   | backlog     |          | 2        |
+ISS-6J0B | Upgrade the build tooling       | backlog     |          |          |
+ISS-0G5E | Drop the legacy CSV endpoint    | canceled    | ana      |          |
+ISS-4M2S | Fix CSV column order            | todo        | fred     | 1        | 2026-10-12
+ISS-1V9Z | Investigate slow login          | triage      |          |          |
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues list --json
+exit 0
+--- stdout
+{
+  "issues": [
+    {
+      "id": "ISS-7K3Q",
+      "title": "Retry failed webhook deliveries",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "labels": [
+        "backend",
+        "webhooks"
+      ],
+      "blockedBy": [],
+      "blocks": [
+        "ISS-8C4W"
+      ],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Deliveries that fail with 5xx are dropped instead of retried.",
+      "acceptanceCriteria": [
+        {
+          "text": "Retries with exponential backoff, max 5 attempts",
+          "done": false
+        },
+        {
+          "text": "Dead-letter after the last attempt",
+          "done": true
+        }
+      ],
+      "created": "2026-09-26T10:00:00Z",
+      "updated": "2026-10-06T16:00:00Z",
+      "body": "## Description\n\nDeliveries that fail with 5xx are dropped instead of retried.\n\n## Acceptance criteria\n\n- [ ] Retries with exponential backoff, max 5 attempts\n- [x] Dead-letter after the last attempt\n",
+      "type": "bug",
+      "priority": "high",
+      "estimate": 3,
+      "assignee": "fred",
+      "parent": "EPC-2M9D",
+      "sprint": "2026-09-28",
+      "due": "2026-10-09"
+    },
+    {
+      "id": "ISS-4P8A",
+      "title": "Sign webhook payloads",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "labels": [
+        "backend",
+        "webhooks"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Add an HMAC signature header so receivers can verify the sender.",
+      "acceptanceCriteria": [],
+      "created": "2026-09-26T10:30:00Z",
+      "updated": "2026-10-08T17:00:00Z",
+      "body": "## Description\n\nAdd an HMAC signature header so receivers can verify the sender.\n",
+      "type": "feature",
+      "priority": "medium",
+      "estimate": 5,
+      "assignee": "ana",
+      "parent": "EPC-2M9D",
+      "sprint": "2026-09-28"
+    },
+    {
+      "id": "ISS-9T2M",
+      "title": "Fix rounding in invoice totals",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "labels": [
+        "billing"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Totals are off by one cent when a discount applies to three or more lines.",
+      "acceptanceCriteria": [],
+      "created": "2026-09-27T08:00:00Z",
+      "updated": "2026-10-05T15:00:00Z",
+      "body": "## Description\n\nTotals are off by one cent when a discount applies to three or more lines.\n",
+      "type": "bug",
+      "priority": "urgent",
+      "estimate": 2,
+      "assignee": "fred",
+      "sprint": "2026-09-28"
+    },
+    {
+      "id": "ISS-2X6D",
+      "title": "Billing export to CSV",
+      "status": {
+        "name": "in_progress",
+        "category": "in_progress"
+      },
+      "labels": [
+        "billing",
+        "backend"
+      ],
+      "blockedBy": [
+        "ISS-5N1R"
+      ],
+      "blocks": [],
+      "related": [
+        "ISS-0G5E"
+      ],
+      "duplicateOf": [],
+      "children": [
+        "ISS-4M2S"
+      ],
+      "archived": false,
+      "description": "Finance needs a CSV of all invoices for a date range.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-05T09:00:00Z",
+      "updated": "2026-10-14T09:00:00Z",
+      "body": "## Description\n\nFinance needs a CSV of all invoices for a date range.\n",
+      "type": "feature",
+      "priority": "high",
+      "estimate": 8,
+      "assignee": "ana",
+      "parent": "EPC-2M9D",
+      "sprint": "2026-10-12",
+      "due": "2026-10-23"
+    },
+    {
+      "id": "ISS-5N1R",
+      "title": "Paginate the events API",
+      "status": {
+        "name": "in_progress",
+        "category": "in_progress"
+      },
+      "labels": [
+        "backend"
+      ],
+      "blockedBy": [],
+      "blocks": [
+        "ISS-2X6D"
+      ],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "The export reads events in pages of 500.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-05T09:30:00Z",
+      "updated": "2026-10-22T09:00:00Z",
+      "body": "## Description\n\nThe export reads events in pages of 500.\n",
+      "type": "task",
+      "priority": "medium",
+      "estimate": 3,
+      "assignee": "fred",
+      "sprint": "2026-10-12"
+    },
+    {
+      "id": "ISS-8C4W",
+      "title": "Dead-letter queue for webhooks",
+      "status": {
+        "name": "in_review",
+        "category": "in_review"
+      },
+      "labels": [
+        "webhooks",
+        "backend"
+      ],
+      "blockedBy": [
+        "ISS-7K3Q"
+      ],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Store deliveries that exhausted their retries so support can replay them.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-06T11:00:00Z",
+      "updated": "2026-10-21T14:00:00Z",
+      "body": "## Description\n\nStore deliveries that exhausted their retries so support can replay them.\n",
+      "type": "feature",
+      "priority": "high",
+      "estimate": 5,
+      "assignee": "ana",
+      "parent": "EPC-2M9D",
+      "sprint": "2026-10-12",
+      "due": "2026-10-20"
+    },
+    {
+      "id": "ISS-3F7H",
+      "title": "Empty state for the dashboard",
+      "status": {
+        "name": "backlog",
+        "category": "backlog"
+      },
+      "labels": [
+        "frontend"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "A new account sees a blank dashboard. Show a short guide instead.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-07T14:00:00Z",
+      "updated": "2026-10-22T17:00:00Z",
+      "body": "## Description\n\nA new account sees a blank dashboard. Show a short guide instead.\n",
+      "type": "feature",
+      "priority": "medium",
+      "estimate": 2
+    },
+    {
+      "id": "ISS-6J0B",
+      "title": "Upgrade the build tooling",
+      "status": {
+        "name": "backlog",
+        "category": "backlog"
+      },
+      "labels": [],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Move to the current LTS of the build runner.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-08T09:00:00Z",
+      "updated": "2026-10-08T09:00:00Z",
+      "body": "## Description\n\nMove to the current LTS of the build runner.\n",
+      "type": "chore",
+      "priority": "low",
+      "due": "2026-11-30"
+    },
+    {
+      "id": "ISS-0G5E",
+      "title": "Drop the legacy CSV endpoint",
+      "status": {
+        "name": "canceled",
+        "category": "canceled"
+      },
+      "labels": [
+        "backend"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [
+        "ISS-2X6D"
+      ],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "The new export replaces it.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-09T10:00:00Z",
+      "updated": "2026-10-17T12:05:00Z",
+      "body": "## Description\n\nThe new export replaces it.\n",
+      "type": "chore",
+      "priority": "medium",
+      "assignee": "ana"
+    },
+    {
+      "id": "ISS-4M2S",
+      "title": "Fix CSV column order",
+      "status": {
+        "name": "todo",
+        "category": "todo"
+      },
+      "labels": [
+        "billing"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Columns follow the finance template: date, invoice, customer, total.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-13T09:00:00Z",
+      "updated": "2026-10-13T09:20:00Z",
+      "body": "## Description\n\nColumns follow the finance template: date, invoice, customer, total.\n",
+      "type": "task",
+      "priority": "medium",
+      "estimate": 1,
+      "assignee": "fred",
+      "parent": "ISS-2X6D",
+      "sprint": "2026-10-12"
+    },
+    {
+      "id": "ISS-1V9Z",
+      "title": "Investigate slow login",
+      "status": {
+        "name": "triage",
+        "category": "triage"
+      },
+      "labels": [],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Some users wait ten seconds after submitting the login form.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-20T16:00:00Z",
+      "updated": "2026-10-20T16:00:00Z",
+      "body": "## Description\n\nSome users wait ten seconds after submitting the login form.\n",
+      "type": "bug"
+    }
+  ],
+  "problems": [
+    {
+      "id": "ISS-3Q6T",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues list --sprint current
+exit 0
+--- stdout
+ID       | Title                          | Status      | Assignee | Estimate
+---------|--------------------------------|-------------|----------|---------
+ISS-2X6D | Billing export to CSV          | in_progress | ana      | 8
+ISS-5N1R | Paginate the events API        | in_progress | fred     | 3
+ISS-8C4W | Dead-letter queue for webhooks | in_review   | ana      | 5
+ISS-4M2S | Fix CSV column order           | todo        | fred     | 1
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues list --sprint current --json
+exit 0
+--- stdout
+{
+  "issues": [
+    {
+      "id": "ISS-2X6D",
+      "title": "Billing export to CSV",
+      "status": {
+        "name": "in_progress",
+        "category": "in_progress"
+      },
+      "labels": [
+        "billing",
+        "backend"
+      ],
+      "blockedBy": [
+        "ISS-5N1R"
+      ],
+      "blocks": [],
+      "related": [
+        "ISS-0G5E"
+      ],
+      "duplicateOf": [],
+      "children": [
+        "ISS-4M2S"
+      ],
+      "archived": false,
+      "description": "Finance needs a CSV of all invoices for a date range.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-05T09:00:00Z",
+      "updated": "2026-10-14T09:00:00Z",
+      "body": "## Description\n\nFinance needs a CSV of all invoices for a date range.\n",
+      "type": "feature",
+      "priority": "high",
+      "estimate": 8,
+      "assignee": "ana",
+      "parent": "EPC-2M9D",
+      "sprint": "2026-10-12",
+      "due": "2026-10-23"
+    },
+    {
+      "id": "ISS-5N1R",
+      "title": "Paginate the events API",
+      "status": {
+        "name": "in_progress",
+        "category": "in_progress"
+      },
+      "labels": [
+        "backend"
+      ],
+      "blockedBy": [],
+      "blocks": [
+        "ISS-2X6D"
+      ],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "The export reads events in pages of 500.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-05T09:30:00Z",
+      "updated": "2026-10-22T09:00:00Z",
+      "body": "## Description\n\nThe export reads events in pages of 500.\n",
+      "type": "task",
+      "priority": "medium",
+      "estimate": 3,
+      "assignee": "fred",
+      "sprint": "2026-10-12"
+    },
+    {
+      "id": "ISS-8C4W",
+      "title": "Dead-letter queue for webhooks",
+      "status": {
+        "name": "in_review",
+        "category": "in_review"
+      },
+      "labels": [
+        "webhooks",
+        "backend"
+      ],
+      "blockedBy": [
+        "ISS-7K3Q"
+      ],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Store deliveries that exhausted their retries so support can replay them.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-06T11:00:00Z",
+      "updated": "2026-10-21T14:00:00Z",
+      "body": "## Description\n\nStore deliveries that exhausted their retries so support can replay them.\n",
+      "type": "feature",
+      "priority": "high",
+      "estimate": 5,
+      "assignee": "ana",
+      "parent": "EPC-2M9D",
+      "sprint": "2026-10-12",
+      "due": "2026-10-20"
+    },
+    {
+      "id": "ISS-4M2S",
+      "title": "Fix CSV column order",
+      "status": {
+        "name": "todo",
+        "category": "todo"
+      },
+      "labels": [
+        "billing"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Columns follow the finance template: date, invoice, customer, total.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-13T09:00:00Z",
+      "updated": "2026-10-13T09:20:00Z",
+      "body": "## Description\n\nColumns follow the finance template: date, invoice, customer, total.\n",
+      "type": "task",
+      "priority": "medium",
+      "estimate": 1,
+      "assignee": "fred",
+      "parent": "ISS-2X6D",
+      "sprint": "2026-10-12"
+    }
+  ],
+  "problems": [
+    {
+      "id": "ISS-3Q6T",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues list --blocked
+exit 0
+--- stdout
+ID       | Title                 | Status      | Assignee | Estimate | Sprint
+---------|-----------------------|-------------|----------|----------|-----------
+ISS-2X6D | Billing export to CSV | in_progress | ana      | 8        | 2026-10-12
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues list --blocked --json
+exit 0
+--- stdout
+{
+  "issues": [
+    {
+      "id": "ISS-2X6D",
+      "title": "Billing export to CSV",
+      "status": {
+        "name": "in_progress",
+        "category": "in_progress"
+      },
+      "labels": [
+        "billing",
+        "backend"
+      ],
+      "blockedBy": [
+        "ISS-5N1R"
+      ],
+      "blocks": [],
+      "related": [
+        "ISS-0G5E"
+      ],
+      "duplicateOf": [],
+      "children": [
+        "ISS-4M2S"
+      ],
+      "archived": false,
+      "description": "Finance needs a CSV of all invoices for a date range.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-05T09:00:00Z",
+      "updated": "2026-10-14T09:00:00Z",
+      "body": "## Description\n\nFinance needs a CSV of all invoices for a date range.\n",
+      "type": "feature",
+      "priority": "high",
+      "estimate": 8,
+      "assignee": "ana",
+      "parent": "EPC-2M9D",
+      "sprint": "2026-10-12",
+      "due": "2026-10-23"
+    }
+  ],
+  "problems": [
+    {
+      "id": "ISS-3Q6T",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues list --category done
+exit 0
+--- stdout
+ID       | Title                           | Status | Assignee | Estimate | Sprint
+---------|---------------------------------|--------|----------|----------|-----------
+ISS-7K3Q | Retry failed webhook deliveries | done   | fred     | 3        | 2026-09-28
+ISS-4P8A | Sign webhook payloads           | done   | ana      | 5        | 2026-09-28
+ISS-9T2M | Fix rounding in invoice totals  | done   | fred     | 2        | 2026-09-28
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues list --category done --json
+exit 0
+--- stdout
+{
+  "issues": [
+    {
+      "id": "ISS-7K3Q",
+      "title": "Retry failed webhook deliveries",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "labels": [
+        "backend",
+        "webhooks"
+      ],
+      "blockedBy": [],
+      "blocks": [
+        "ISS-8C4W"
+      ],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Deliveries that fail with 5xx are dropped instead of retried.",
+      "acceptanceCriteria": [
+        {
+          "text": "Retries with exponential backoff, max 5 attempts",
+          "done": false
+        },
+        {
+          "text": "Dead-letter after the last attempt",
+          "done": true
+        }
+      ],
+      "created": "2026-09-26T10:00:00Z",
+      "updated": "2026-10-06T16:00:00Z",
+      "body": "## Description\n\nDeliveries that fail with 5xx are dropped instead of retried.\n\n## Acceptance criteria\n\n- [ ] Retries with exponential backoff, max 5 attempts\n- [x] Dead-letter after the last attempt\n",
+      "type": "bug",
+      "priority": "high",
+      "estimate": 3,
+      "assignee": "fred",
+      "parent": "EPC-2M9D",
+      "sprint": "2026-09-28",
+      "due": "2026-10-09"
+    },
+    {
+      "id": "ISS-4P8A",
+      "title": "Sign webhook payloads",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "labels": [
+        "backend",
+        "webhooks"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Add an HMAC signature header so receivers can verify the sender.",
+      "acceptanceCriteria": [],
+      "created": "2026-09-26T10:30:00Z",
+      "updated": "2026-10-08T17:00:00Z",
+      "body": "## Description\n\nAdd an HMAC signature header so receivers can verify the sender.\n",
+      "type": "feature",
+      "priority": "medium",
+      "estimate": 5,
+      "assignee": "ana",
+      "parent": "EPC-2M9D",
+      "sprint": "2026-09-28"
+    },
+    {
+      "id": "ISS-9T2M",
+      "title": "Fix rounding in invoice totals",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "labels": [
+        "billing"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Totals are off by one cent when a discount applies to three or more lines.",
+      "acceptanceCriteria": [],
+      "created": "2026-09-27T08:00:00Z",
+      "updated": "2026-10-05T15:00:00Z",
+      "body": "## Description\n\nTotals are off by one cent when a discount applies to three or more lines.\n",
+      "type": "bug",
+      "priority": "urgent",
+      "estimate": 2,
+      "assignee": "fred",
+      "sprint": "2026-09-28"
+    }
+  ],
+  "problems": [
+    {
+      "id": "ISS-3Q6T",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.

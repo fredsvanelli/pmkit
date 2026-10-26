@@ -1,0 +1,13 @@
+$ pmkit epic updates EPC-2M9D
+exit 0
+--- stdout
+no status updates
+--- stderr
+(empty)
+
+$ pmkit epic updates EPC-2M9D --json
+exit 0
+--- stdout
+[]
+--- stderr
+(empty)

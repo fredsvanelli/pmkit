@@ -1,0 +1,182 @@
+$ pmkit issues move ISS-5N1R done
+exit 0
+--- stdout
+ISS-5N1R  Paginate the events API
+status: in_progress → done
+--- stderr
+(empty)
+
+$ pmkit issues move ISS-5N1R done --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "ISS-5N1R",
+    "title": "Paginate the events API",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "The export reads events in pages of 500.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-05T09:30:00Z",
+    "updated": "2026-10-22T09:00:00Z",
+    "body": "## Description\n\nThe export reads events in pages of 500.\n",
+    "type": "task",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "fred",
+    "sprint": "2026-10-12"
+  },
+  "after": {
+    "id": "ISS-5N1R",
+    "title": "Paginate the events API",
+    "status": {
+      "name": "done",
+      "category": "done"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "The export reads events in pages of 500.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-05T09:30:00Z",
+    "updated": "2026-10-23T12:00:00Z",
+    "body": "## Description\n\nThe export reads events in pages of 500.\n",
+    "type": "task",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "fred",
+    "sprint": "2026-10-12"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues move ISS-5N1R done --dry-run
+exit 0
+--- stdout
+ISS-5N1R  Paginate the events API
+status: in_progress → done
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit issues move ISS-5N1R done --dry-run --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "ISS-5N1R",
+    "title": "Paginate the events API",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "The export reads events in pages of 500.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-05T09:30:00Z",
+    "updated": "2026-10-22T09:00:00Z",
+    "body": "## Description\n\nThe export reads events in pages of 500.\n",
+    "type": "task",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "fred",
+    "sprint": "2026-10-12"
+  },
+  "after": {
+    "id": "ISS-5N1R",
+    "title": "Paginate the events API",
+    "status": {
+      "name": "done",
+      "category": "done"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "The export reads events in pages of 500.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-05T09:30:00Z",
+    "updated": "2026-10-23T12:00:00Z",
+    "body": "## Description\n\nThe export reads events in pages of 500.\n",
+    "type": "task",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "fred",
+    "sprint": "2026-10-12"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues move ISS-3Q6T done
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: The issue file contains git conflict markers.
+next: /pmkit:local:doctor
+
+$ pmkit issues move ISS-3Q6T done --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "CONFLICT",
+    "message": "The issue file contains git conflict markers.",
+    "nextStep": "/pmkit:local:doctor"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues move ISS-3Q6T done --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: The issue file contains git conflict markers.
+next: /pmkit:local:doctor
+
+$ pmkit issues move ISS-3Q6T done --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "CONFLICT",
+    "message": "The issue file contains git conflict markers.",
+    "nextStep": "/pmkit:local:doctor"
+  }
+}
+--- stderr
+(empty)

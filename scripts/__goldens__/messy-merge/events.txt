@@ -1,0 +1,324 @@
+$ pmkit events
+exit 0
+--- stdout
+At                   | Issue | By   | Op     | Change
+---------------------|-------|------|--------|--------------------------------
+2026-10-02T10:00:00Z | ISS-1 | ana  | create | Sign webhook payloads
+2026-10-02T11:00:00Z | ISS-6 | fred | create | Paginate the events API
+2026-10-05T09:00:00Z | ISS-1 | ana  | move   | status: todo → in_progress
+2026-10-06T09:00:00Z | ISS-6 | fred | move   | status: todo → in_progress
+2026-10-09T10:00:00Z | ISS-2 | fred | create | Retry failed deliveries
+2026-10-09T11:00:00Z | ISS-3 | fred | create | Document the signature header
+2026-10-09T17:00:00Z | ISS-1 | ana  | move   | status: in_progress → done
+2026-10-10T10:00:00Z | ISS-7 | ana  | create | Dead-letter queue
+2026-10-10T16:00:00Z | ISS-6 | fred | move   | status: in_progress → done
+2026-10-12T10:00:00Z | ISS-5 | fred | create | Export invoices as CSV
+2026-10-13T09:00:00Z | ISS-2 | fred | move   | status: todo → in_progress
+2026-10-14T09:00:00Z | ISS-4 | fred | create | Fix CSV column order
+2026-10-14T09:00:00Z | ISS-7 | ana  | move   | status: todo → in_progress
+2026-10-14T11:30:00Z | ISS-4 | ana  | create | Fix CSV header order
+2026-10-16T09:00:00Z | ISS-5 | fred | move   | status: todo → in_progress
+2026-10-16T09:00:00Z | ISS-5 | ana  | move   | status: todo → in_review
+2026-10-20T16:00:00Z | ISS-8 | ana  | create | Slow login report
+2026-10-21T14:00:00Z | ISS-7 | ana  | move   | status: in_progress → in_review
+--- stderr
+(empty)
+
+$ pmkit events --json
+exit 0
+--- stdout
+[
+  {
+    "at": "2026-10-02T10:00:00Z",
+    "by": "ana",
+    "op": "create",
+    "to": {
+      "id": "ISS-1",
+      "title": "Sign webhook payloads",
+      "type": "feature",
+      "status": "todo",
+      "priority": "medium",
+      "estimate": 5,
+      "assignee": "ana",
+      "labels": [
+        "backend"
+      ],
+      "parent": "EPC-1",
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "sprint": "2026-10-05",
+      "created": "2026-10-02T10:00:00Z",
+      "updated": "2026-10-02T10:00:00Z"
+    },
+    "issue": "ISS-1"
+  },
+  {
+    "at": "2026-10-02T11:00:00Z",
+    "by": "fred",
+    "op": "create",
+    "to": {
+      "id": "ISS-6",
+      "title": "Paginate the events API",
+      "type": "task",
+      "status": "todo",
+      "priority": "medium",
+      "estimate": 3,
+      "assignee": "fred",
+      "labels": [
+        "backend"
+      ],
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "sprint": "2026-10-05",
+      "created": "2026-10-02T11:00:00Z",
+      "updated": "2026-10-02T11:00:00Z"
+    },
+    "issue": "ISS-6"
+  },
+  {
+    "at": "2026-10-05T09:00:00Z",
+    "by": "ana",
+    "op": "move",
+    "field": "status",
+    "from": "todo",
+    "to": "in_progress",
+    "issue": "ISS-1"
+  },
+  {
+    "at": "2026-10-06T09:00:00Z",
+    "by": "fred",
+    "op": "move",
+    "field": "status",
+    "from": "todo",
+    "to": "in_progress",
+    "issue": "ISS-6"
+  },
+  {
+    "at": "2026-10-09T10:00:00Z",
+    "by": "fred",
+    "op": "create",
+    "to": {
+      "id": "ISS-2",
+      "title": "Retry failed deliveries",
+      "type": "feature",
+      "status": "todo",
+      "priority": "high",
+      "estimate": 8,
+      "assignee": "fred",
+      "labels": [
+        "backend"
+      ],
+      "parent": "EPC-1",
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "sprint": "2026-10-12",
+      "created": "2026-10-09T10:00:00Z",
+      "updated": "2026-10-09T10:00:00Z"
+    },
+    "issue": "ISS-2"
+  },
+  {
+    "at": "2026-10-09T11:00:00Z",
+    "by": "fred",
+    "op": "create",
+    "to": {
+      "id": "ISS-3",
+      "title": "Document the signature header",
+      "type": "chore",
+      "status": "backlog",
+      "priority": "low",
+      "estimate": 1,
+      "labels": [],
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "created": "2026-10-09T11:00:00Z",
+      "updated": "2026-10-09T11:00:00Z"
+    },
+    "issue": "ISS-3"
+  },
+  {
+    "at": "2026-10-09T17:00:00Z",
+    "by": "ana",
+    "op": "move",
+    "field": "status",
+    "from": "in_progress",
+    "to": "done",
+    "issue": "ISS-1"
+  },
+  {
+    "at": "2026-10-10T10:00:00Z",
+    "by": "ana",
+    "op": "create",
+    "to": {
+      "id": "ISS-7",
+      "title": "Dead-letter queue",
+      "type": "feature",
+      "status": "todo",
+      "priority": "high",
+      "estimate": 5,
+      "assignee": "ana",
+      "labels": [
+        "backend"
+      ],
+      "parent": "EPC-1",
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "sprint": "2026-10-12",
+      "created": "2026-10-10T10:00:00Z",
+      "updated": "2026-10-10T10:00:00Z"
+    },
+    "issue": "ISS-7"
+  },
+  {
+    "at": "2026-10-10T16:00:00Z",
+    "by": "fred",
+    "op": "move",
+    "field": "status",
+    "from": "in_progress",
+    "to": "done",
+    "issue": "ISS-6"
+  },
+  {
+    "at": "2026-10-12T10:00:00Z",
+    "by": "fred",
+    "op": "create",
+    "to": {
+      "id": "ISS-5",
+      "title": "Export invoices as CSV",
+      "type": "feature",
+      "status": "todo",
+      "priority": "medium",
+      "estimate": 5,
+      "assignee": "fred",
+      "labels": [
+        "billing"
+      ],
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "sprint": "2026-10-12",
+      "created": "2026-10-12T10:00:00Z",
+      "updated": "2026-10-12T10:00:00Z"
+    },
+    "issue": "ISS-5"
+  },
+  {
+    "at": "2026-10-13T09:00:00Z",
+    "by": "fred",
+    "op": "move",
+    "field": "status",
+    "from": "todo",
+    "to": "in_progress",
+    "issue": "ISS-2"
+  },
+  {
+    "at": "2026-10-14T09:00:00Z",
+    "by": "fred",
+    "op": "create",
+    "to": {
+      "id": "ISS-4",
+      "title": "Fix CSV column order",
+      "type": "bug",
+      "status": "todo",
+      "priority": "medium",
+      "estimate": 2,
+      "assignee": "fred",
+      "labels": [
+        "backend"
+      ],
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "sprint": "2026-10-12",
+      "created": "2026-10-14T09:00:00Z",
+      "updated": "2026-10-14T09:00:00Z"
+    },
+    "issue": "ISS-4"
+  },
+  {
+    "at": "2026-10-14T09:00:00Z",
+    "by": "ana",
+    "op": "move",
+    "field": "status",
+    "from": "todo",
+    "to": "in_progress",
+    "issue": "ISS-7"
+  },
+  {
+    "at": "2026-10-14T11:30:00Z",
+    "by": "ana",
+    "op": "create",
+    "to": {
+      "id": "ISS-4",
+      "title": "Fix CSV header order",
+      "type": "bug",
+      "status": "todo",
+      "priority": "medium",
+      "estimate": 2,
+      "assignee": "ana",
+      "labels": [
+        "backend"
+      ],
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "sprint": "2026-10-12",
+      "created": "2026-10-14T11:30:00Z",
+      "updated": "2026-10-14T11:30:00Z"
+    },
+    "issue": "ISS-4"
+  },
+  {
+    "at": "2026-10-16T09:00:00Z",
+    "by": "fred",
+    "op": "move",
+    "field": "status",
+    "from": "todo",
+    "to": "in_progress",
+    "issue": "ISS-5"
+  },
+  {
+    "at": "2026-10-16T09:00:00Z",
+    "by": "ana",
+    "op": "move",
+    "field": "status",
+    "from": "todo",
+    "to": "in_review",
+    "issue": "ISS-5"
+  },
+  {
+    "at": "2026-10-20T16:00:00Z",
+    "by": "ana",
+    "op": "create",
+    "to": {
+      "id": "ISS-8",
+      "title": "Slow login report",
+      "type": "bug",
+      "status": "triage",
+      "priority": "medium",
+      "labels": [],
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "created": "2026-10-20T16:00:00Z",
+      "updated": "2026-10-20T16:00:00Z"
+    },
+    "issue": "ISS-8"
+  },
+  {
+    "at": "2026-10-21T14:00:00Z",
+    "by": "ana",
+    "op": "move",
+    "field": "status",
+    "from": "in_progress",
+    "to": "in_review",
+    "issue": "ISS-7"
+  }
+]
+--- stderr
+(empty)

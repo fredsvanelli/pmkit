@@ -1,0 +1,39 @@
+$ pmkit epic progress EPC-4H7V
+exit 0
+--- stdout
+total: 2
+done: 2
+canceled: 0
+points: 13
+points done: 13
+  triage: 0
+  backlog: 0
+  todo: 0
+  in_progress: 0
+  in_review: 0
+  done: 2
+  canceled: 0
+--- stderr
+(empty)
+
+$ pmkit epic progress EPC-4H7V --json
+exit 0
+--- stdout
+{
+  "total": 2,
+  "done": 2,
+  "canceled": 0,
+  "points": 13,
+  "pointsDone": 13,
+  "byCategory": {
+    "triage": 0,
+    "backlog": 0,
+    "todo": 0,
+    "in_progress": 0,
+    "in_review": 0,
+    "done": 2,
+    "canceled": 0
+  }
+}
+--- stderr
+(empty)

@@ -1,0 +1,32 @@
+$ pmkit epic updates EPC-1
+exit 0
+--- stdout
+2026-10-19T10:00:00Z  at_risk  ana
+Retries are slower than planned, the backoff tests are flaky.
+
+2026-10-12T10:00:00Z  on_track  fred
+The signing work is done and retries start this week.
+--- stderr
+(empty)
+
+$ pmkit epic updates EPC-1 --json
+exit 0
+--- stdout
+[
+  {
+    "epic": "EPC-1",
+    "at": "2026-10-19T10:00:00Z",
+    "author": "ana",
+    "health": "at_risk",
+    "body": "Retries are slower than planned, the backoff tests are flaky."
+  },
+  {
+    "epic": "EPC-1",
+    "at": "2026-10-12T10:00:00Z",
+    "author": "fred",
+    "health": "on_track",
+    "body": "The signing work is done and retries start this week."
+  }
+]
+--- stderr
+(empty)

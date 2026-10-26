@@ -1,0 +1,215 @@
+$ pmkit events
+exit 0
+--- stdout
+At                   | Issue    | By   | Op     | Change
+---------------------|----------|------|--------|--------------------------------
+2026-09-26T10:30:00Z | ISS-2K5P | ana  | create | Sign webhook payloads
+2026-09-26T11:00:00Z | ISS-6R3N | fred | create | Retry failed deliveries
+2026-09-30T09:00:00Z | ISS-2K5P | ana  | move   | status: todo → in_progress
+2026-10-05T09:00:00Z | ISS-6R3N | fred | move   | status: todo → in_progress
+2026-10-06T11:00:00Z | ISS-9B2X | fred | create | Dead-letter queue
+2026-10-08T17:00:00Z | ISS-2K5P | ana  | move   | status: in_progress → done
+2026-10-12T09:00:00Z | ISS-3M8D | fred | create | Billing export as CSV
+2026-10-13T09:00:00Z | ISS-7T4C | fred | create | Document the signature header
+2026-10-14T09:00:00Z | ISS-9B2X | ana  | move   | status: todo → in_progress
+2026-10-16T15:00:00Z | ISS-6R3N | fred | move   | status: in_progress → done
+2026-10-20T16:00:00Z | ISS-1V9Z | ana  | create | Investigate slow login
+2026-10-21T14:00:00Z | ISS-9B2X | ana  | move   | status: in_progress → in_review
+--- stderr
+(empty)
+
+$ pmkit events --json
+exit 0
+--- stdout
+[
+  {
+    "at": "2026-09-26T10:30:00Z",
+    "by": "ana",
+    "op": "create",
+    "to": {
+      "id": "ISS-2K5P",
+      "title": "Sign webhook payloads",
+      "type": "feature",
+      "status": "todo",
+      "priority": "medium",
+      "estimate": 5,
+      "assignee": "ana",
+      "labels": [
+        "backend",
+        "webhooks"
+      ],
+      "parent": "EPC-4H7V",
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "created": "2026-09-26T10:30:00Z",
+      "updated": "2026-09-26T10:30:00Z"
+    },
+    "issue": "ISS-2K5P"
+  },
+  {
+    "at": "2026-09-26T11:00:00Z",
+    "by": "fred",
+    "op": "create",
+    "to": {
+      "id": "ISS-6R3N",
+      "title": "Retry failed deliveries",
+      "type": "feature",
+      "status": "todo",
+      "priority": "high",
+      "estimate": 8,
+      "assignee": "fred",
+      "labels": [
+        "backend",
+        "webhooks"
+      ],
+      "parent": "EPC-4H7V",
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "created": "2026-09-26T11:00:00Z",
+      "updated": "2026-09-26T11:00:00Z"
+    },
+    "issue": "ISS-6R3N"
+  },
+  {
+    "at": "2026-09-30T09:00:00Z",
+    "by": "ana",
+    "op": "move",
+    "field": "status",
+    "from": "todo",
+    "to": "in_progress",
+    "issue": "ISS-2K5P"
+  },
+  {
+    "at": "2026-10-05T09:00:00Z",
+    "by": "fred",
+    "op": "move",
+    "field": "status",
+    "from": "todo",
+    "to": "in_progress",
+    "issue": "ISS-6R3N"
+  },
+  {
+    "at": "2026-10-06T11:00:00Z",
+    "by": "fred",
+    "op": "create",
+    "to": {
+      "id": "ISS-9B2X",
+      "title": "Dead-letter queue",
+      "type": "feature",
+      "status": "todo",
+      "priority": "high",
+      "estimate": 5,
+      "assignee": "ana",
+      "labels": [
+        "webhooks",
+        "backend"
+      ],
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "created": "2026-10-06T11:00:00Z",
+      "updated": "2026-10-06T11:00:00Z"
+    },
+    "issue": "ISS-9B2X"
+  },
+  {
+    "at": "2026-10-08T17:00:00Z",
+    "by": "ana",
+    "op": "move",
+    "field": "status",
+    "from": "in_progress",
+    "to": "done",
+    "issue": "ISS-2K5P"
+  },
+  {
+    "at": "2026-10-12T09:00:00Z",
+    "by": "fred",
+    "op": "create",
+    "to": {
+      "id": "ISS-3M8D",
+      "title": "Billing export as CSV",
+      "type": "feature",
+      "status": "todo",
+      "priority": "medium",
+      "estimate": 3,
+      "assignee": "fred",
+      "labels": [
+        "billing"
+      ],
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "created": "2026-10-12T09:00:00Z",
+      "updated": "2026-10-12T09:00:00Z"
+    },
+    "issue": "ISS-3M8D"
+  },
+  {
+    "at": "2026-10-13T09:00:00Z",
+    "by": "fred",
+    "op": "create",
+    "to": {
+      "id": "ISS-7T4C",
+      "title": "Document the signature header",
+      "type": "chore",
+      "status": "backlog",
+      "priority": "low",
+      "labels": [],
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "created": "2026-10-13T09:00:00Z",
+      "updated": "2026-10-13T09:00:00Z"
+    },
+    "issue": "ISS-7T4C"
+  },
+  {
+    "at": "2026-10-14T09:00:00Z",
+    "by": "ana",
+    "op": "move",
+    "field": "status",
+    "from": "todo",
+    "to": "in_progress",
+    "issue": "ISS-9B2X"
+  },
+  {
+    "at": "2026-10-16T15:00:00Z",
+    "by": "fred",
+    "op": "move",
+    "field": "status",
+    "from": "in_progress",
+    "to": "done",
+    "issue": "ISS-6R3N"
+  },
+  {
+    "at": "2026-10-20T16:00:00Z",
+    "by": "ana",
+    "op": "create",
+    "to": {
+      "id": "ISS-1V9Z",
+      "title": "Investigate slow login",
+      "type": "bug",
+      "status": "triage",
+      "labels": [],
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "created": "2026-10-20T16:00:00Z",
+      "updated": "2026-10-20T16:00:00Z"
+    },
+    "issue": "ISS-1V9Z"
+  },
+  {
+    "at": "2026-10-21T14:00:00Z",
+    "by": "ana",
+    "op": "move",
+    "field": "status",
+    "from": "in_progress",
+    "to": "in_review",
+    "issue": "ISS-9B2X"
+  }
+]
+--- stderr
+(empty)

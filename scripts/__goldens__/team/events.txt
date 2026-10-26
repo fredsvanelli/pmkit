@@ -1,0 +1,510 @@
+$ pmkit events
+exit 0
+--- stdout
+At                   | Issue    | By   | Op      | Change
+---------------------|----------|------|---------|---------------------------------
+2026-09-24T10:00:00Z | ISS-7D8K | fred | create  | Remove the old onboarding banner
+2026-09-26T10:00:00Z | ISS-7K3Q | fred | create  | Retry failed webhook deliveries
+2026-09-26T10:30:00Z | ISS-4P8A | ana  | create  | Sign webhook payloads
+2026-09-27T08:00:00Z | ISS-9T2M | fred | create  | Fix rounding in invoice totals
+2026-09-29T09:00:00Z | ISS-7K3Q | fred | move    | status: todo → in_progress
+2026-09-30T09:00:00Z | ISS-4P8A | ana  | move    | status: todo → in_progress
+2026-10-01T09:00:00Z | ISS-9T2M | fred | move    | status: todo → in_progress
+2026-10-02T10:00:00Z | ISS-7D8K | fred | move    | status: backlog → canceled
+2026-10-02T10:05:00Z | ISS-7D8K | fred | archive |
+2026-10-05T09:00:00Z | ISS-2X6D | ana  | create  | Billing export to CSV
+2026-10-05T09:30:00Z | ISS-5N1R | fred | create  | Paginate the events API
+2026-10-05T15:00:00Z | ISS-9T2M | fred | move    | status: in_progress → done
+2026-10-06T11:00:00Z | ISS-8C4W | ana  | create  | Dead-letter queue for webhooks
+2026-10-06T16:00:00Z | ISS-7K3Q | fred | move    | status: in_progress → done
+2026-10-07T14:00:00Z | ISS-3F7H | fred | create  | Empty state for the dashboard
+2026-10-08T09:00:00Z | ISS-6J0B | fred | create  | Upgrade the build tooling
+2026-10-08T17:00:00Z | ISS-4P8A | ana  | move    | status: in_progress → done
+2026-10-09T10:00:00Z | ISS-0G5E | fred | create  | Drop the legacy CSV endpoint
+2026-10-09T10:00:00Z | ISS-2X6D | fred | link    | blocked_by: (none) → ISS-5N1R
+2026-10-09T10:05:00Z | ISS-8C4W | fred | link    | blocked_by: (none) → ISS-7K3Q
+2026-10-09T10:10:00Z | ISS-0G5E | ana  | link    | related: (none) → ISS-2X6D
+2026-10-09T10:10:00Z | ISS-2X6D | ana  | link    | related: (none) → ISS-0G5E
+2026-10-13T09:00:00Z | ISS-4M2S | fred | create  | Fix CSV column order
+2026-10-13T09:10:00Z | ISS-4M2S | fred | update  | parent: (none) → ISS-2X6D
+2026-10-13T09:20:00Z | ISS-4M2S | fred | assign  | assignee: (none) → fred
+2026-10-14T09:00:00Z | ISS-2X6D | ana  | move    | status: todo → in_progress
+2026-10-15T09:00:00Z | ISS-8C4W | ana  | move    | status: todo → in_progress
+2026-10-17T12:00:00Z | ISS-0G5E | fred | move    | status: backlog → canceled
+2026-10-17T12:05:00Z | ISS-0G5E | fred | assign  | assignee: (none) → ana
+2026-10-20T16:00:00Z | ISS-1V9Z | ana  | create  | Investigate slow login
+2026-10-21T14:00:00Z | ISS-8C4W | ana  | move    | status: in_progress → in_review
+2026-10-22T09:00:00Z | ISS-5N1R | fred | move    | status: todo → in_progress
+2026-10-22T17:00:00Z | ISS-3F7H | fred | update  | priority: low → medium
+--- stderr
+(empty)
+
+$ pmkit events --json
+exit 0
+--- stdout
+[
+  {
+    "at": "2026-09-24T10:00:00Z",
+    "by": "fred",
+    "op": "create",
+    "to": {
+      "id": "ISS-7D8K",
+      "title": "Remove the old onboarding banner",
+      "type": "task",
+      "status": "backlog",
+      "priority": "low",
+      "labels": [
+        "frontend"
+      ],
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "created": "2026-09-24T10:00:00Z",
+      "updated": "2026-09-24T10:00:00Z"
+    },
+    "issue": "ISS-7D8K"
+  },
+  {
+    "at": "2026-09-26T10:00:00Z",
+    "by": "fred",
+    "op": "create",
+    "to": {
+      "id": "ISS-7K3Q",
+      "title": "Retry failed webhook deliveries",
+      "type": "bug",
+      "status": "todo",
+      "priority": "high",
+      "estimate": 3,
+      "assignee": "fred",
+      "labels": [
+        "backend",
+        "webhooks"
+      ],
+      "parent": "EPC-2M9D",
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "sprint": "2026-09-28",
+      "due": "2026-10-09",
+      "created": "2026-09-26T10:00:00Z",
+      "updated": "2026-09-26T10:00:00Z"
+    },
+    "issue": "ISS-7K3Q"
+  },
+  {
+    "at": "2026-09-26T10:30:00Z",
+    "by": "ana",
+    "op": "create",
+    "to": {
+      "id": "ISS-4P8A",
+      "title": "Sign webhook payloads",
+      "type": "feature",
+      "status": "todo",
+      "priority": "medium",
+      "estimate": 5,
+      "assignee": "ana",
+      "labels": [
+        "backend",
+        "webhooks"
+      ],
+      "parent": "EPC-2M9D",
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "sprint": "2026-09-28",
+      "created": "2026-09-26T10:30:00Z",
+      "updated": "2026-09-26T10:30:00Z"
+    },
+    "issue": "ISS-4P8A"
+  },
+  {
+    "at": "2026-09-27T08:00:00Z",
+    "by": "fred",
+    "op": "create",
+    "to": {
+      "id": "ISS-9T2M",
+      "title": "Fix rounding in invoice totals",
+      "type": "bug",
+      "status": "todo",
+      "priority": "urgent",
+      "estimate": 2,
+      "assignee": "fred",
+      "labels": [
+        "billing"
+      ],
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "sprint": "2026-09-28",
+      "created": "2026-09-27T08:00:00Z",
+      "updated": "2026-09-27T08:00:00Z"
+    },
+    "issue": "ISS-9T2M"
+  },
+  {
+    "at": "2026-09-29T09:00:00Z",
+    "by": "fred",
+    "op": "move",
+    "field": "status",
+    "from": "todo",
+    "to": "in_progress",
+    "issue": "ISS-7K3Q"
+  },
+  {
+    "at": "2026-09-30T09:00:00Z",
+    "by": "ana",
+    "op": "move",
+    "field": "status",
+    "from": "todo",
+    "to": "in_progress",
+    "issue": "ISS-4P8A"
+  },
+  {
+    "at": "2026-10-01T09:00:00Z",
+    "by": "fred",
+    "op": "move",
+    "field": "status",
+    "from": "todo",
+    "to": "in_progress",
+    "issue": "ISS-9T2M"
+  },
+  {
+    "at": "2026-10-02T10:00:00Z",
+    "by": "fred",
+    "op": "move",
+    "field": "status",
+    "from": "backlog",
+    "to": "canceled",
+    "issue": "ISS-7D8K"
+  },
+  {
+    "at": "2026-10-02T10:05:00Z",
+    "by": "fred",
+    "op": "archive",
+    "issue": "ISS-7D8K"
+  },
+  {
+    "at": "2026-10-05T09:00:00Z",
+    "by": "ana",
+    "op": "create",
+    "to": {
+      "id": "ISS-2X6D",
+      "title": "Billing export to CSV",
+      "type": "feature",
+      "status": "todo",
+      "priority": "high",
+      "estimate": 8,
+      "assignee": "ana",
+      "labels": [
+        "billing",
+        "backend"
+      ],
+      "parent": "EPC-2M9D",
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "sprint": "2026-10-12",
+      "due": "2026-10-23",
+      "created": "2026-10-05T09:00:00Z",
+      "updated": "2026-10-05T09:00:00Z"
+    },
+    "issue": "ISS-2X6D"
+  },
+  {
+    "at": "2026-10-05T09:30:00Z",
+    "by": "fred",
+    "op": "create",
+    "to": {
+      "id": "ISS-5N1R",
+      "title": "Paginate the events API",
+      "type": "task",
+      "status": "todo",
+      "priority": "medium",
+      "estimate": 3,
+      "assignee": "fred",
+      "labels": [
+        "backend"
+      ],
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "sprint": "2026-10-12",
+      "created": "2026-10-05T09:30:00Z",
+      "updated": "2026-10-05T09:30:00Z"
+    },
+    "issue": "ISS-5N1R"
+  },
+  {
+    "at": "2026-10-05T15:00:00Z",
+    "by": "fred",
+    "op": "move",
+    "field": "status",
+    "from": "in_progress",
+    "to": "done",
+    "issue": "ISS-9T2M"
+  },
+  {
+    "at": "2026-10-06T11:00:00Z",
+    "by": "ana",
+    "op": "create",
+    "to": {
+      "id": "ISS-8C4W",
+      "title": "Dead-letter queue for webhooks",
+      "type": "feature",
+      "status": "todo",
+      "priority": "high",
+      "estimate": 5,
+      "assignee": "ana",
+      "labels": [
+        "webhooks",
+        "backend"
+      ],
+      "parent": "EPC-2M9D",
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "sprint": "2026-10-12",
+      "due": "2026-10-20",
+      "created": "2026-10-06T11:00:00Z",
+      "updated": "2026-10-06T11:00:00Z"
+    },
+    "issue": "ISS-8C4W"
+  },
+  {
+    "at": "2026-10-06T16:00:00Z",
+    "by": "fred",
+    "op": "move",
+    "field": "status",
+    "from": "in_progress",
+    "to": "done",
+    "issue": "ISS-7K3Q"
+  },
+  {
+    "at": "2026-10-07T14:00:00Z",
+    "by": "fred",
+    "op": "create",
+    "to": {
+      "id": "ISS-3F7H",
+      "title": "Empty state for the dashboard",
+      "type": "feature",
+      "status": "backlog",
+      "priority": "low",
+      "estimate": 2,
+      "labels": [
+        "frontend"
+      ],
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "created": "2026-10-07T14:00:00Z",
+      "updated": "2026-10-07T14:00:00Z"
+    },
+    "issue": "ISS-3F7H"
+  },
+  {
+    "at": "2026-10-08T09:00:00Z",
+    "by": "fred",
+    "op": "create",
+    "to": {
+      "id": "ISS-6J0B",
+      "title": "Upgrade the build tooling",
+      "type": "chore",
+      "status": "backlog",
+      "priority": "low",
+      "labels": [],
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "due": "2026-11-30",
+      "created": "2026-10-08T09:00:00Z",
+      "updated": "2026-10-08T09:00:00Z"
+    },
+    "issue": "ISS-6J0B"
+  },
+  {
+    "at": "2026-10-08T17:00:00Z",
+    "by": "ana",
+    "op": "move",
+    "field": "status",
+    "from": "in_progress",
+    "to": "done",
+    "issue": "ISS-4P8A"
+  },
+  {
+    "at": "2026-10-09T10:00:00Z",
+    "by": "fred",
+    "op": "create",
+    "to": {
+      "id": "ISS-0G5E",
+      "title": "Drop the legacy CSV endpoint",
+      "type": "chore",
+      "status": "backlog",
+      "priority": "medium",
+      "labels": [
+        "backend"
+      ],
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "created": "2026-10-09T10:00:00Z",
+      "updated": "2026-10-09T10:00:00Z"
+    },
+    "issue": "ISS-0G5E"
+  },
+  {
+    "at": "2026-10-09T10:00:00Z",
+    "by": "fred",
+    "op": "link",
+    "field": "blocked_by",
+    "to": "ISS-5N1R",
+    "issue": "ISS-2X6D"
+  },
+  {
+    "at": "2026-10-09T10:05:00Z",
+    "by": "fred",
+    "op": "link",
+    "field": "blocked_by",
+    "to": "ISS-7K3Q",
+    "issue": "ISS-8C4W"
+  },
+  {
+    "at": "2026-10-09T10:10:00Z",
+    "by": "ana",
+    "op": "link",
+    "field": "related",
+    "to": "ISS-2X6D",
+    "issue": "ISS-0G5E"
+  },
+  {
+    "at": "2026-10-09T10:10:00Z",
+    "by": "ana",
+    "op": "link",
+    "field": "related",
+    "to": "ISS-0G5E",
+    "issue": "ISS-2X6D"
+  },
+  {
+    "at": "2026-10-13T09:00:00Z",
+    "by": "fred",
+    "op": "create",
+    "to": {
+      "id": "ISS-4M2S",
+      "title": "Fix CSV column order",
+      "type": "task",
+      "status": "todo",
+      "priority": "medium",
+      "estimate": 1,
+      "labels": [
+        "billing"
+      ],
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "sprint": "2026-10-12",
+      "created": "2026-10-13T09:00:00Z",
+      "updated": "2026-10-13T09:00:00Z"
+    },
+    "issue": "ISS-4M2S"
+  },
+  {
+    "at": "2026-10-13T09:10:00Z",
+    "by": "fred",
+    "op": "update",
+    "field": "parent",
+    "from": null,
+    "to": "ISS-2X6D",
+    "issue": "ISS-4M2S"
+  },
+  {
+    "at": "2026-10-13T09:20:00Z",
+    "by": "fred",
+    "op": "assign",
+    "field": "assignee",
+    "from": null,
+    "to": "fred",
+    "issue": "ISS-4M2S"
+  },
+  {
+    "at": "2026-10-14T09:00:00Z",
+    "by": "ana",
+    "op": "move",
+    "field": "status",
+    "from": "todo",
+    "to": "in_progress",
+    "issue": "ISS-2X6D"
+  },
+  {
+    "at": "2026-10-15T09:00:00Z",
+    "by": "ana",
+    "op": "move",
+    "field": "status",
+    "from": "todo",
+    "to": "in_progress",
+    "issue": "ISS-8C4W"
+  },
+  {
+    "at": "2026-10-17T12:00:00Z",
+    "by": "fred",
+    "op": "move",
+    "field": "status",
+    "from": "backlog",
+    "to": "canceled",
+    "issue": "ISS-0G5E"
+  },
+  {
+    "at": "2026-10-17T12:05:00Z",
+    "by": "fred",
+    "op": "assign",
+    "field": "assignee",
+    "from": null,
+    "to": "ana",
+    "issue": "ISS-0G5E"
+  },
+  {
+    "at": "2026-10-20T16:00:00Z",
+    "by": "ana",
+    "op": "create",
+    "to": {
+      "id": "ISS-1V9Z",
+      "title": "Investigate slow login",
+      "type": "bug",
+      "status": "triage",
+      "labels": [],
+      "blocked_by": [],
+      "related": [],
+      "duplicate_of": [],
+      "created": "2026-10-20T16:00:00Z",
+      "updated": "2026-10-20T16:00:00Z"
+    },
+    "issue": "ISS-1V9Z"
+  },
+  {
+    "at": "2026-10-21T14:00:00Z",
+    "by": "ana",
+    "op": "move",
+    "field": "status",
+    "from": "in_progress",
+    "to": "in_review",
+    "issue": "ISS-8C4W"
+  },
+  {
+    "at": "2026-10-22T09:00:00Z",
+    "by": "fred",
+    "op": "move",
+    "field": "status",
+    "from": "todo",
+    "to": "in_progress",
+    "issue": "ISS-5N1R"
+  },
+  {
+    "at": "2026-10-22T17:00:00Z",
+    "by": "fred",
+    "op": "update",
+    "field": "priority",
+    "from": "low",
+    "to": "medium",
+    "issue": "ISS-3F7H"
+  }
+]
+--- stderr
+(empty)

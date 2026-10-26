@@ -1,0 +1,13 @@
+$ pmkit cycle current
+exit 0
+--- stdout
+no active sprint
+--- stderr
+(empty)
+
+$ pmkit cycle current --json
+exit 0
+--- stdout
+null
+--- stderr
+(empty)

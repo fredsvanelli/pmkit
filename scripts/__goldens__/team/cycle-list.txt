@@ -1,0 +1,77 @@
+$ pmkit cycle list
+exit 0
+--- stdout
+ID         | State  | Start      | End        | Name
+-----------|--------|------------|------------|------------------
+2026-09-28 | closed | 2026-09-28 | 2026-10-11 | Sprint 2026-09-28
+2026-10-12 | active | 2026-10-12 | 2026-10-25 | Sprint 2026-10-12
+--- stderr
+(empty)
+
+$ pmkit cycle list --json
+exit 0
+--- stdout
+[
+  {
+    "id": "2026-09-28",
+    "name": "Sprint 2026-09-28",
+    "start": "2026-09-28",
+    "end": "2026-10-11",
+    "goal": "Webhook delivery basics",
+    "state": "closed",
+    "capacity": {
+      "fred": 10,
+      "ana": 8
+    },
+    "daysOff": {}
+  },
+  {
+    "id": "2026-10-12",
+    "name": "Sprint 2026-10-12",
+    "start": "2026-10-12",
+    "end": "2026-10-25",
+    "goal": "Webhook retries and the billing export",
+    "state": "active",
+    "capacity": {
+      "fred": 8,
+      "ana": 10
+    },
+    "daysOff": {
+      "ana": [
+        "2026-10-16"
+      ]
+    }
+  }
+]
+--- stderr
+(empty)
+
+$ pmkit cycle list --state closed
+exit 0
+--- stdout
+ID         | State  | Start      | End        | Name
+-----------|--------|------------|------------|------------------
+2026-09-28 | closed | 2026-09-28 | 2026-10-11 | Sprint 2026-09-28
+--- stderr
+(empty)
+
+$ pmkit cycle list --state closed --json
+exit 0
+--- stdout
+[
+  {
+    "id": "2026-09-28",
+    "name": "Sprint 2026-09-28",
+    "start": "2026-09-28",
+    "end": "2026-10-11",
+    "goal": "Webhook delivery basics",
+    "state": "closed",
+    "capacity": {
+      "fred": 10,
+      "ana": 8
+    },
+    "daysOff": {}
+  }
+]
+--- stderr
+(empty)

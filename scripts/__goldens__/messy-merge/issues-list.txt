@@ -1,0 +1,401 @@
+$ pmkit issues list
+exit 0
+--- stdout
+ID    | Title                         | Status      | Assignee | Estimate | Sprint
+------|-------------------------------|-------------|----------|----------|-----------
+ISS-1 | Sign webhook payloads         | done        | ana      | 5        | 2026-10-05
+ISS-6 | Paginate the events API       | done        | fred     | 3        | 2026-10-05
+ISS-2 | Retry failed deliveries       | in_progress | fred     | 8        | 2026-10-12
+ISS-3 | Document the signature header | backlog     |          | 1        |
+ISS-7 | Dead-letter queue             | in_review   | ana      | 5        | 2026-10-12
+ISS-8 | Slow login report             | triage      |          |          |
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues list --json
+exit 0
+--- stdout
+{
+  "issues": [
+    {
+      "id": "ISS-1",
+      "title": "Sign webhook payloads",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "labels": [
+        "backend"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Add an HMAC signature header so receivers can verify the sender.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-02T10:00:00Z",
+      "updated": "2026-10-09T17:00:00Z",
+      "body": "## Description\n\nAdd an HMAC signature header so receivers can verify the sender.\n",
+      "type": "feature",
+      "priority": "medium",
+      "estimate": 5,
+      "assignee": "ana",
+      "parent": "EPC-1",
+      "sprint": "2026-10-05"
+    },
+    {
+      "id": "ISS-6",
+      "title": "Paginate the events API",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "labels": [
+        "backend"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Return a cursor instead of an offset.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-02T11:00:00Z",
+      "updated": "2026-10-10T16:00:00Z",
+      "body": "## Description\n\nReturn a cursor instead of an offset.\n",
+      "type": "task",
+      "priority": "medium",
+      "estimate": 3,
+      "assignee": "fred",
+      "sprint": "2026-10-05"
+    },
+    {
+      "id": "ISS-2",
+      "title": "Retry failed deliveries",
+      "status": {
+        "name": "in_progress",
+        "category": "in_progress"
+      },
+      "labels": [
+        "backend"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Retry with exponential backoff, up to six attempts.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-09T10:00:00Z",
+      "updated": "2026-10-13T09:00:00Z",
+      "body": "## Description\n\nRetry with exponential backoff, up to six attempts.\n",
+      "type": "feature",
+      "priority": "high",
+      "estimate": 8,
+      "assignee": "fred",
+      "parent": "EPC-1",
+      "sprint": "2026-10-12"
+    },
+    {
+      "id": "ISS-3",
+      "title": "Document the signature header",
+      "status": {
+        "name": "backlog",
+        "category": "backlog"
+      },
+      "labels": [],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Describe how receivers verify the signature.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-09T11:00:00Z",
+      "updated": "2026-10-09T11:00:00Z",
+      "body": "## Description\n\nDescribe how receivers verify the signature.\n",
+      "type": "chore",
+      "priority": "low",
+      "estimate": 1
+    },
+    {
+      "id": "ISS-7",
+      "title": "Dead-letter queue",
+      "status": {
+        "name": "in_review",
+        "category": "in_review"
+      },
+      "labels": [
+        "backend"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Keep deliveries that ran out of retries so support can replay them.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-10T10:00:00Z",
+      "updated": "2026-10-21T14:00:00Z",
+      "body": "## Description\n\nKeep deliveries that ran out of retries so support can replay them.\n",
+      "type": "feature",
+      "priority": "high",
+      "estimate": 5,
+      "assignee": "ana",
+      "parent": "EPC-1",
+      "sprint": "2026-10-12"
+    },
+    {
+      "id": "ISS-8",
+      "title": "Slow login report",
+      "status": {
+        "name": "triage",
+        "category": "triage"
+      },
+      "labels": [],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Some users wait ten seconds after submitting the login form.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-20T16:00:00Z",
+      "updated": "2026-10-20T16:00:00Z",
+      "body": "## Description\n\nSome users wait ten seconds after submitting the login form.\n",
+      "type": "bug",
+      "priority": "medium"
+    }
+  ],
+  "problems": [
+    {
+      "id": "ISS-4",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    },
+    {
+      "id": "ISS-5",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues list --sprint current
+exit 0
+--- stdout
+ID    | Title                   | Status | Assignee | Estimate
+------|-------------------------|--------|----------|---------
+ISS-1 | Sign webhook payloads   | done   | ana      | 5
+ISS-6 | Paginate the events API | done   | fred     | 3
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues list --sprint current --json
+exit 0
+--- stdout
+{
+  "issues": [
+    {
+      "id": "ISS-1",
+      "title": "Sign webhook payloads",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "labels": [
+        "backend"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Add an HMAC signature header so receivers can verify the sender.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-02T10:00:00Z",
+      "updated": "2026-10-09T17:00:00Z",
+      "body": "## Description\n\nAdd an HMAC signature header so receivers can verify the sender.\n",
+      "type": "feature",
+      "priority": "medium",
+      "estimate": 5,
+      "assignee": "ana",
+      "parent": "EPC-1",
+      "sprint": "2026-10-05"
+    },
+    {
+      "id": "ISS-6",
+      "title": "Paginate the events API",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "labels": [
+        "backend"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Return a cursor instead of an offset.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-02T11:00:00Z",
+      "updated": "2026-10-10T16:00:00Z",
+      "body": "## Description\n\nReturn a cursor instead of an offset.\n",
+      "type": "task",
+      "priority": "medium",
+      "estimate": 3,
+      "assignee": "fred",
+      "sprint": "2026-10-05"
+    }
+  ],
+  "problems": [
+    {
+      "id": "ISS-4",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    },
+    {
+      "id": "ISS-5",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues list --blocked
+exit 0
+--- stdout
+no issues
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues list --blocked --json
+exit 0
+--- stdout
+{
+  "issues": [],
+  "problems": [
+    {
+      "id": "ISS-4",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    },
+    {
+      "id": "ISS-5",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues list --category done
+exit 0
+--- stdout
+ID    | Title                   | Status | Assignee | Estimate | Sprint
+------|-------------------------|--------|----------|----------|-----------
+ISS-1 | Sign webhook payloads   | done   | ana      | 5        | 2026-10-05
+ISS-6 | Paginate the events API | done   | fred     | 3        | 2026-10-05
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues list --category done --json
+exit 0
+--- stdout
+{
+  "issues": [
+    {
+      "id": "ISS-1",
+      "title": "Sign webhook payloads",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "labels": [
+        "backend"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Add an HMAC signature header so receivers can verify the sender.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-02T10:00:00Z",
+      "updated": "2026-10-09T17:00:00Z",
+      "body": "## Description\n\nAdd an HMAC signature header so receivers can verify the sender.\n",
+      "type": "feature",
+      "priority": "medium",
+      "estimate": 5,
+      "assignee": "ana",
+      "parent": "EPC-1",
+      "sprint": "2026-10-05"
+    },
+    {
+      "id": "ISS-6",
+      "title": "Paginate the events API",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "labels": [
+        "backend"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Return a cursor instead of an offset.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-02T11:00:00Z",
+      "updated": "2026-10-10T16:00:00Z",
+      "body": "## Description\n\nReturn a cursor instead of an offset.\n",
+      "type": "task",
+      "priority": "medium",
+      "estimate": 3,
+      "assignee": "fred",
+      "sprint": "2026-10-05"
+    }
+  ],
+  "problems": [
+    {
+      "id": "ISS-4",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    },
+    {
+      "id": "ISS-5",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.

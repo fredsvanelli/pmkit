@@ -1,0 +1,88 @@
+$ pmkit discover
+exit 0
+--- stdout
+statuses:
+  triage (triage)
+  backlog (backlog)
+  todo (todo)
+  in_progress (in_progress)
+  in_review (in_review)
+  done (done)
+  canceled (canceled)
+types: feature, bug, task, chore
+priorities: urgent, high, medium, low
+members:
+  fred  Fred Vanelli <fred@example.com>
+estimate: points 1, 2, 3, 5, 8, 13
+--- stderr
+(empty)
+
+$ pmkit discover --json
+exit 0
+--- stdout
+{
+  "statuses": [
+    {
+      "name": "triage",
+      "category": "triage"
+    },
+    {
+      "name": "backlog",
+      "category": "backlog"
+    },
+    {
+      "name": "todo",
+      "category": "todo"
+    },
+    {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    {
+      "name": "in_review",
+      "category": "in_review"
+    },
+    {
+      "name": "done",
+      "category": "done"
+    },
+    {
+      "name": "canceled",
+      "category": "canceled"
+    }
+  ],
+  "types": [
+    "feature",
+    "bug",
+    "task",
+    "chore"
+  ],
+  "priorities": [
+    "urgent",
+    "high",
+    "medium",
+    "low"
+  ],
+  "labels": [],
+  "members": [
+    {
+      "id": "fred",
+      "name": "Fred Vanelli",
+      "email": "fred@example.com",
+      "availability": 1
+    }
+  ],
+  "estimate": {
+    "unit": "points",
+    "scale": [
+      1,
+      2,
+      3,
+      5,
+      8,
+      13
+    ]
+  }
+}
+--- stderr
+(empty)
