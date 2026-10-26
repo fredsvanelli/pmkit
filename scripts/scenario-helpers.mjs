@@ -439,14 +439,13 @@ export async function expectUntilSaved(expect, repo) {
   }
 }
 
-/** Rule 1: command names without a scenario, scenario names without a command, and pending names that have a scenario. */
-export function compareScenarios(commandNames, scenarioNames, pending) {
+/** Rule 1: command names without a scenario, and scenario names without a command. */
+export function compareScenarios(commandNames, scenarioNames) {
   const commands = new Set(commandNames)
   const scenarios = new Set(scenarioNames)
   return {
-    missing: commandNames.filter((name) => !scenarios.has(name) && !pending.has(name)),
+    missing: commandNames.filter((name) => !scenarios.has(name)),
     extra: scenarioNames.filter((name) => !commands.has(name)),
-    pendingWithScenario: [...pending].filter((name) => scenarios.has(name)),
   }
 }
 
@@ -467,13 +466,16 @@ export async function loadScenarios(dir) {
   return loaded
 }
 
-/** Every file under `dir` except the top-level names in `skip`, as posix relative path to UTF-8 text. */
-export function readTree(dir, skip = ['.git']) {
+/** The query index that PMK-7 writes on reads. It is derived data, git ignores it, and a real read or write may create it. */
+export const QUERY_CACHE = '.issues/.cache'
+
+/** Every file under `dir` except the paths in `skip` (relative to `dir`, with `/`), as posix relative path to UTF-8 text. */
+export function readTree(dir, skip = ['.git', QUERY_CACHE]) {
   const files = new Map()
   const walk = (current) => {
     for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
-      if (current === dir && skip.includes(entry.name)) continue
       const full = path.join(current, entry.name)
+      if (skip.includes(path.relative(dir, full).split(path.sep).join('/'))) continue
       if (entry.isDirectory()) walk(full)
       else files.set(path.relative(dir, full).split(path.sep).join('/'), fs.readFileSync(full, 'utf8'))
     }
@@ -616,6 +618,7 @@ const parseJson = (text) => {
  * `rule N:`, or with `runner:` when the scenario itself cannot run (an unknown entry kind, a failing args
  * function, a failing `git` entry or write). `run` replaces `runPmkit`, for the rule 8 tests.
  * Rule 8 compares `hashTree`, which hashes file paths and contents: a new empty folder or a mode change passes.
+ * Reads ignore `.issues/.cache` and so does the snapshot; a dry run does not.
  */
 export async function runScenario(scenario, { name, parsed, cliCommands, fixturesDir, inputsDir, run = runPmkit }) {
   const cliNames = cliCommands.map((command) => command.name)
@@ -675,7 +678,9 @@ export async function runScenario(scenario, { name, parsed, cliCommands, fixture
       if (match.error) problems.push(`rule 5: ${match.error}`)
       else usedKeys.add(match.key)
       const reads = kind !== 'write'
-      const before = reads ? hashTree(root, ['.git']) : null
+      // A real read may create the query index; a dry run may not, so its hash keeps .issues/.cache.
+      const ignored = kind === 'dryRun' ? ['.git'] : ['.git', QUERY_CACHE]
+      const before = reads ? hashTree(root, ignored) : null
       const full = kind === 'dryRun' ? [...args, '--dry-run', '--json'] : [...args, '--json']
       const result = await run(full, root, { env, input: entry.stdin })
       const { json } = parseJson(result.stdout)
@@ -683,7 +688,7 @@ export async function runScenario(scenario, { name, parsed, cliCommands, fixture
       rows.push(entry.expectError ? `exit ${result.code} (expected ${entry.expectError})` : `exit ${result.code}`)
       trace.push({ kind, step: entry.step, args, key: match.key, viaDryRun: match.viaDryRun, expectError: entry.expectError })
       if (reads && json === undefined) problems.push(`rule 8: ${label} did not print JSON on stdout`)
-      if (reads && hashTree(root, ['.git']) !== before) problems.push(`rule 8: ${label} changed the files of the copy outside .git`)
+      if (reads && hashTree(root, ignored) !== before) problems.push(`rule 8: ${label} changed the files of the copy outside .git`)
       if (entry.save) saved[entry.save] = json
       const failure = entry.expectError
         ? (result.code === 0 || json?.error?.code !== entry.expectError) && `did not fail with ${entry.expectError}`

@@ -67,7 +67,7 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
 
   test('every command file has a scenario', async () => {
     const loaded = await loadScenarios(SCENARIOS)
-    const { missing, extra } = compareScenarios(FILES.map((f) => f.name), loaded.map((s) => s.name), new Set())
+    const { missing, extra } = compareScenarios(FILES.map((f) => f.name), loaded.map((s) => s.name))
     const problems = [
       ...missing.map((name) => `rule 1: command file ${name} has no scenario module scripts/__scenarios__/${name}.mjs`),
       ...extra.map((name) => `rule 1: scenario module ${name}.mjs names no command file`),

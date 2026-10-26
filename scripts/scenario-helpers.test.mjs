@@ -267,10 +267,9 @@ test('parseCommandFile counts a flag named only in the prose of a step as a flag
   assert.ok(second.optional.includes('git-host'))
 })
 
-test('compareScenarios reports missing, extra and pending names that have a scenario', () => {
-  const found = compareScenarios(['a', 'b', 'c'], ['b', 'c', 'x'], new Set(['a', 'c']))
-  assert.deepEqual(found, { missing: [], extra: ['x'], pendingWithScenario: ['c'] })
-  assert.deepEqual(compareScenarios(['a', 'b'], ['b'], new Set()).missing, ['a'])
+test('compareScenarios reports missing and extra names', () => {
+  assert.deepEqual(compareScenarios(['a', 'b', 'c'], ['b', 'c', 'x']), { missing: ['a'], extra: ['x'] })
+  assert.deepEqual(compareScenarios(['a', 'b'], ['a', 'b']), { missing: [], extra: [] })
 })
 
 test('staleSnapshots returns snapshots with no entry and leaves _inputs and modules', () => {
@@ -409,6 +408,26 @@ test('runScenario fails a dry run that writes', async () => {
   const { problems } = await runMove(moveOnly([DRY_MOVE], { git: true }), writing)
   assert.equal(problems.length, 1, problems.join('\n'))
   assert.match(problems[0], /^rule 8: dryRun \[step 4\] issues move ISS-2X6D done .*changed/)
+})
+
+const writingCache = async (args, cwd, options) => {
+  fs.mkdirSync(path.join(cwd, '.issues', '.cache'), { recursive: true })
+  fs.writeFileSync(path.join(cwd, '.issues', '.cache', 'index.json'), '{}')
+  return runPmkit(args, cwd, options)
+}
+
+test('runScenario lets a read create .issues/.cache/index.json and keeps it out of the snapshot', async () => {
+  const read = { step: '1', read: ['issues', 'get', 'ISS-2X6D'] }
+  const scenario = moveOnly([read, DRY_MOVE], { skip: { '2 issues get': 'test', '3 discover': 'test' } })
+  const { problems, snapshot } = await runMove(scenario, writingCache)
+  assert.deepEqual(problems.filter((problem) => problem.startsWith('rule 8')), [])
+  assert.ok(!snapshot.includes('.cache'))
+})
+
+test('runScenario fails a dry run that creates .issues/.cache/index.json', async () => {
+  const { problems } = await runMove(moveOnly([DRY_MOVE]), writingCache)
+  assert.equal(problems.length, 1, problems.join('\n'))
+  assert.match(problems[0], /^rule 8: dryRun \[step 4\]/)
 })
 
 test('runScenario lets a dry run change files under .git', async () => {
