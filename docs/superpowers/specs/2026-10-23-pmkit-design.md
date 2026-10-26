@@ -327,8 +327,8 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `whoami` | prints the resolved actor |
 | `issues list [--text t] [--category c,..] [--type t,..] [--assignee me\|none\|id] [--label l,..] [--sprint current\|none\|id] [--parent id] [--blocked] [--updated-before d] [--updated-after d] [--sort s] [--limit n] [--archived]` | searches |
 | `issues get <id> [--comments] [--history]` | one issue |
-| `issues create --title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint] [--due] [--milestone m] [--description-file f] [--criteria-file f]` | creates |
-| `issues update <id> [field flags, including --milestone and --branch] [--description-file f] [--criteria-file f] [--check n] [--uncheck n]` | edits fields and criteria |
+| `issues create --title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint id\|current\|none] [--due] [--milestone m] [--description-file f] [--criteria-file f]` | creates |
+| `issues update <id> [--title] [--type] [--priority] [--estimate] [--label l,..] [--sprint id\|current\|none] [--due] [--milestone] [--branch] [--description-file f] [--criteria-file f] [--check n] [--uncheck n]` | edits fields and criteria |
 | `issues move <id> <category> [--status name]` | changes status by category |
 | `issues assign <id> <member\|none>` | assigns |
 | `issues link <from> <to> --kind blocks\|related\|duplicate [--remove]` | links or unlinks; only the issue whose file changes has to exist, so a dangling reference can be removed **(builder's call)** |

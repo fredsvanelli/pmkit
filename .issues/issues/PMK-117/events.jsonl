@@ -1,2 +1,10 @@
 {"at":"2026-10-26T17:58:03Z","by":"fred","op":"create","to":{"id":"PMK-117","title":"Show --sprint current in the pmkit design spec","type":"task","status":"backlog","priority":"low","labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-26T17:58:03.307Z","updated":"2026-10-26T17:58:03Z"}}
 {"at":"2026-10-26T17:58:03Z","by":"fred","op":"link","field":"related","to":"PMK-114"}
+{"at":"2026-10-26T18:17:18Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-26T18:17:18Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-26T18:17:21Z","by":"fred","op":"update","field":"estimate","from":null,"to":1}
+{"at":"2026-10-26T18:17:21Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-26T18:17:23Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-117-show-sprint-current-in-the-pmkit-design"}
+{"at":"2026-10-26T18:21:48Z","by":"fred","op":"comment","to":"2026-10-26T18-21-48Z-fred.md"}
+{"at":"2026-10-26T18:28:40Z","by":"fred","op":"comment","to":"2026-10-26T18-28-40Z-fred.md"}
+{"at":"2026-10-26T18:28:40Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
