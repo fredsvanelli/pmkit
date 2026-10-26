@@ -9,6 +9,8 @@ import {
 import { ID_STYLES } from './lib/ids.mjs'
 import { CATEGORIES } from './lib/model.mjs'
 import { parseYaml } from './lib/yaml.mjs'
+import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
+import { existsSync } from 'node:fs'
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
 const loadSchema = (name) => JSON.parse(read(`schemas/${name}.config.schema.json`))
@@ -405,5 +407,13 @@ test('the verdict check reports a one-sided change to a numeric bound or to inte
     '.issues/config.yaml (issues) defaults.stale_days = 1000: schema invalid, validator valid',
   ]) {
     assert.ok(mismatches.includes(expected), `missing: ${expected}`)
+  }
+})
+
+test('every file a schema URL names exists in schemas/', () => {
+  for (const file of Object.values(SCHEMA_FILES)) {
+    const url = schemaUrl(file)
+    assert.match(url, /^https:\/\/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/main\/schemas\/[^/]+$/)
+    assert.ok(existsSync(new URL(`../schemas/${url.split('/schemas/')[1]}`, import.meta.url)), `${url} has no file in schemas/`)
   }
 })

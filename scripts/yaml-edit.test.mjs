@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { addMapEntry, setScalar } from './lib/yaml-edit.mjs'
+import { addMapEntry, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 
 test('setScalar changes one value and keeps the comment on that line', () => {
@@ -48,4 +48,37 @@ test('every result parses with parseYaml', () => {
   assert.deepEqual(
     parseYaml(addMapEntry('members:\n  fred: { name: Fred }\n', ['members'], 'ana', { name: 'Ana' })),
     { members: { fred: { name: 'Fred' }, ana: { name: 'Ana' } } })
+})
+
+const URL_NOW = 'https://raw.githubusercontent.com/fredsvanelli/pmkit/main/schemas/pmkit.config.schema.json'
+const LINE = `# yaml-language-server: $schema=${URL_NOW}`
+
+test('setSchemaLine inserts the line first and keeps the rest byte-equal', () => {
+  assert.equal(setSchemaLine('a: 1\n\n# note\nb: 2\n', URL_NOW), `${LINE}\na: 1\n\n# note\nb: 2\n`)
+})
+test('setSchemaLine replaces an old pmkit line with another ref in place', () => {
+  const old = '# yaml-language-server: $schema=https://raw.githubusercontent.com/fredsvanelli/pmkit/v0.1.0/schemas/issues.config.schema.json'
+  assert.equal(setSchemaLine(`${old}\na: 1\n`, URL_NOW), `${LINE}\na: 1\n`)
+  assert.equal(setSchemaLine(`# top\n${old}\na: 1\n`, URL_NOW), `# top\n${LINE}\na: 1\n`)
+})
+test('setSchemaLine leaves a line for another host unchanged', () => {
+  const other = '# yaml-language-server: $schema=https://example.com/my.schema.json\r\na: 1\r\n'
+  assert.equal(setSchemaLine(other, URL_NOW), other)
+  const fork = '# yaml-language-server: $schema=https://raw.githubusercontent.com/someone/else/main/schemas/pmkit.config.schema.json\na: 1\n'
+  assert.equal(setSchemaLine(fork, URL_NOW), fork)
+})
+test('setSchemaLine gives an empty text the line and a newline', () => {
+  assert.equal(setSchemaLine('', URL_NOW), `${LINE}\n`)
+})
+test('setSchemaLine puts the line before another comment', () => {
+  assert.equal(setSchemaLine('# hello\na: 1\n', URL_NOW), `${LINE}\n# hello\na: 1\n`)
+})
+test('setSchemaLine normalizes CRLF and a BOM', () => {
+  const out = setSchemaLine('\uFEFFa: 1\r\nb: 2\r\n', URL_NOW)
+  assert.equal(out, `${LINE}\na: 1\nb: 2\n`)
+  assert.ok(!out.includes('\r') && !out.includes('\uFEFF'))
+})
+test('setSchemaLine twice gives the same text', () => {
+  const once = setSchemaLine('a: 1\n', URL_NOW)
+  assert.equal(setSchemaLine(once, URL_NOW), once)
 })

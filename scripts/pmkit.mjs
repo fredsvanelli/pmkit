@@ -12,7 +12,8 @@ import { changeLines, epicRecord, eventTable, fields, issueRecord, issueTable, s
 import { cycleTimes, lastEntry, summary, velocity } from './lib/metrics.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
-import { addMapEntry, setScalar } from './lib/yaml-edit.mjs'
+import { addMapEntry, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
+import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { lineDiff } from './lib/diff.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, planMigration } from './lib/local/migrations.mjs'
@@ -781,8 +782,13 @@ function runInit(ctx) {
       existing.push(id)
     }
   }
+  pmkit = setSchemaLine(pmkit, schemaUrl(SCHEMA_FILES.pmkit))
+  local = setSchemaLine(local, schemaUrl(SCHEMA_FILES.issues))
   const problems = validateLocalConfig(parsedLocal())
-  if (problems.length > 0) throw usageError(`the ${update ? '' : 'generated '}${slash(issuesConfig)} is not valid: ${problems.join('; ')}`, 'Fix the init flags')
+  if (problems.length > 0) {
+    throw usageError(`the ${update ? '' : 'generated '}${slash(issuesConfig)} is not valid: ${problems.join('; ')}`,
+      update ? `Fix ${slash(issuesConfig)} by hand, then run init --update again` : 'Fix the init flags')
+  }
 
   const replace = new Set(ctx.list('replace').flatMap((item) => String(item).split(',')).map((item) => item.trim().replace(/\\/g, '/')))
   const entries = []
