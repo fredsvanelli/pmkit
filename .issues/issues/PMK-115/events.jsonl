@@ -1,2 +1,7 @@
 {"at":"2026-10-26T17:58:03Z","by":"fred","op":"create","to":{"id":"PMK-115","title":"Cover sprint aliases in the contract suite","type":"task","status":"backlog","priority":"low","labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-26T17:58:03.096Z","updated":"2026-10-26T17:58:03Z"}}
 {"at":"2026-10-26T17:58:03Z","by":"fred","op":"link","field":"related","to":"PMK-114"}
+{"at":"2026-10-26T18:42:32Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-26T18:42:32Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-26T18:42:32Z","by":"fred","op":"update","field":"estimate","from":null,"to":2}
+{"at":"2026-10-26T18:42:32Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-26T18:42:32Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-115-cover-sprint-aliases-in-the-contract"}
