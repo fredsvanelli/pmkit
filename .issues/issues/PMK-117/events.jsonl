@@ -6,3 +6,5 @@
 {"at":"2026-10-26T18:17:21Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-10-26T18:17:23Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-117-show-sprint-current-in-the-pmkit-design"}
 {"at":"2026-10-26T18:21:48Z","by":"fred","op":"comment","to":"2026-10-26T18-21-48Z-fred.md"}
+{"at":"2026-10-26T18:28:40Z","by":"fred","op":"comment","to":"2026-10-26T18-28-40Z-fred.md"}
+{"at":"2026-10-26T18:28:40Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
