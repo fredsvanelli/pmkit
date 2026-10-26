@@ -10,7 +10,7 @@ Arguments: `$ARGUMENTS`
 
 ## Parameters
 
-None. Run `/pmkit:setup` from the root of the repository. The command asks for what it cannot detect: the ID prefix, the ID style, the estimate unit and the members.
+None. Run `/pmkit:setup` from the root of the repository. The command asks for what it cannot detect: the ID prefix, the ID style, the estimate unit, the members and the `needs-criteria` label.
 
 It is safe to run again. When `.pmkit/config.yaml` exists, it only updates and never starts over.
 
@@ -26,13 +26,14 @@ Its first rule (stop when there is no config) does not apply here, because this 
 
 2. Detect the git host. Run `git remote get-url origin`. When the URL points to GitHub, run `gh auth status` and note whether the login works. When there is no remote, or the remote is not GitHub, the git host is `none`.
 3. Collect the members. Run `git log --format='%aN|%aE'`, drop duplicate emails and propose one member per author. Derive the member ID from the name in lowercase with hyphens, for example `ana-souza`.
-4. Ask with `AskUserQuestion`, and only these four questions:
+4. Ask with `AskUserQuestion`, and only these five questions:
    - the ID prefix (default `ISS`, 2 to 5 uppercase letters);
    - the ID style of issues and epics, `random` (`ISS-7K3Q`) or `numbered` (`ISS-1`, `ISS-2`). The recommended option depends on the tracker, and it goes first with "(Recommended)":
      - a local tracker recommends `random`. Two branches that each create an issue get different IDs. With `numbered`, both take the next number, and the merge conflicts;
      - a remote tracker (Linear, Jira, GitHub Issues, GitLab, Azure DevOps) recommends `numbered`, the numbering the tracker gives its own issues;
    - the estimate unit, `points` (default), `hours` or `sizes`;
-   - the members, prefilled from step 3, so the user can remove or fix a row.
+   - the members, prefilled from step 3, so the user can remove or fix a row;
+   - whether to add the `needs-criteria` label, with yes first and marked "(Recommended)". `/pmkit:spec:import` marks the requirements that have no acceptance criteria with this label. On no, setup changes nothing and says in one line that `/pmkit:spec:import` then lists those issues under "needs criteria".
 5. Build the members file as a YAML map and send it on standard input:
 
    ```
@@ -41,9 +42,9 @@ Its first rule (stop when there is no config) does not apply here, because this 
      email: ana@example.com
    ```
 
-6. Preview with `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --git-host <github|none> --prefix <P> --id-style <random|numbered> --estimate-unit <unit> --members-file - --dry-run --json`. Use `--git-host github` only when step 2 found a GitHub remote.
-7. Show one summary: git host, prefix, ID style, estimate unit, the members and the files the dry run lists. When the git host is `none`, add one line naming the commands that lose features: `/pmkit:issues:work`, `/pmkit:issues:mine`, `/pmkit:issues:pause`, `/pmkit:report:status`, `/pmkit:cycle:close` and `/pmkit:team:standup`.
-8. After the user approves, run the same command without `--dry-run`, with the same members file.
+6. Preview with `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --git-host <github|none> --prefix <P> --id-style <random|numbered> --estimate-unit <unit> --members-file - --dry-run --json`. Use `--git-host github` only when step 2 found a GitHub remote. On yes, add `--label needs-criteria` to the same command. A new tracker has no issues, so no labels in use are passed.
+7. Show one summary: git host, prefix, ID style, estimate unit, the members, the label (`needs-criteria` or none) and the files the dry run lists. When the git host is `none`, add one line naming the commands that lose features: `/pmkit:issues:work`, `/pmkit:issues:mine`, `/pmkit:issues:pause`, `/pmkit:report:status`, `/pmkit:cycle:close` and `/pmkit:team:standup`. The first line of each config file is a schema line that points editors at the pmkit schema, and the CLI ignores it.
+8. After the user approves, run the same command without `--dry-run`, with the same members file and the same `--label` flag, if any.
 9. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`, `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`.
 10. Go to "Output".
 
@@ -51,19 +52,27 @@ Its first rule (stop when there is no config) does not apply here, because this 
 
 Never run `init` without `--update` when a config exists.
 
-2. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`. Show each problem with its path and message. A problem does not stop the update, but say that it stays until the user fixes it.
-3. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --dry-run --json`. Add `--git-host`, `--id-style` or `--estimate-unit` only when the user asks to change them. `--update` refuses `--prefix`, so tell the user the prefix cannot change. A new ID style applies to the issues and epics created after it, and the existing IDs stay as they are.
-4. Show every file the dry run marks `change` or `differs` with its diff. List the `create` and `replace` files by path. Say how many files were `keep`.
-5. For each `differs` file, ask with `AskUserQuestion` whether to replace it. A `differs` file is one the user edited, and the command replaces it only when asked.
-6. When no file is `create`, `change`, `replace` or `differs`, say "already up to date", skip the write and go to step 8. Otherwise ask once with `AskUserQuestion` whether to apply the `create`, `change` and `replace` files shown, plus the `differs` files approved in step 5. When the user declines, stop and change nothing.
-7. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --replace <path> --json`, with one `--replace <path>` per approved file and the same flags as the dry run. Without approved files, leave `--replace` out.
-8. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`, `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`. Go to "Output".
+2. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`. Show each problem with its path and message. A problem in `.issues/config.yaml` makes `init --update` refuse, so ask the user to fix that file by hand first (see `/pmkit:local:doctor`) and run the check again. Other problems do not stop the update, but say that they stay until the user fixes them.
+3. Handle the `needs-criteria` label.
+   - Read the `labels` field of `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json`. When it lists `needs-criteria`, skip the question and go to step 4 without label flags.
+   - Otherwise ask once with `AskUserQuestion` whether to add the `needs-criteria` label, with yes first and marked "(Recommended)".
+   - On no, add one line: `/pmkit:spec:import` then lists those issues under "needs criteria". Go to step 4 without label flags.
+   - On yes, and only when `labels` is empty, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues list --archived --json` and take the union of `issues[].labels`. Then split the union:
+     - Names that match `^[a-z0-9][a-z0-9_-]*$` get one `--label` each, next to `--label needs-criteria`, in the commands of steps 4 and 8. Say which labels setup adds besides `needs-criteria`.
+     - Names that do not match are not passed. Name them to the user. Say that once the list has a label, `validate` rejects the issues that use these labels. Offer to rename them. For each issue, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues update <id> --label <labels> --dry-run --json`, show the before and after, and ask once with `AskUserQuestion` for all of them. After approval, run the same commands without `--dry-run`. That flag replaces the whole label list, so pass every label the issue keeps. Then run setup again.
+4. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --dry-run --json`. Add `--git-host`, `--id-style` or `--estimate-unit` only when the user asks to change them. Add the `--label` flags from step 3, when there are any. `--update` refuses `--prefix`, so tell the user the prefix cannot change. When the dry run fails because `.issues/config.yaml` is not valid, it writes nothing and names the problem. Show it and tell the user to fix the file by hand, then run the dry run again. A new ID style applies to the issues and epics created after it, and the existing IDs stay as they are.
+5. Show every file the dry run marks `change` or `differs` with its diff. A one-line `change` on the first line of a config file is the schema line. List the `create` and `replace` files by path. Say how many files were `keep`.
+6. For each `differs` file, ask with `AskUserQuestion` whether to replace it. A `differs` file is one the user edited, and the command replaces it only when asked.
+7. When no file is `create`, `change`, `replace` or `differs`, say "already up to date", skip the write and go to step 9. Otherwise ask once with `AskUserQuestion` whether to apply the `create`, `change` and `replace` files shown, plus the `differs` files approved in step 6. When the user declines, stop and change nothing.
+8. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --replace <path> --json`, with one `--replace <path>` per approved file and the same flags as the dry run. Without approved files, leave `--replace` out.
+9. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`, `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`. Go to "Output".
 
 ## Confirmation points
 
 - First run: the one summary of step 7 of the first run, before any file is written.
-- Existing config: one question per `differs` file (step 5), then one question to apply everything shown (step 6), before `init --update` runs. With nothing to write, there is no question.
-- The questions of step 4 of the first run are inputs, not confirmations.
+- Existing config: one question per `differs` file (step 6), then one question to apply everything shown (step 7), before `init --update` runs. With nothing to write, there is no question.
+- Existing config step 3: the label renames, shown with their dry runs and asked once before any issue changes. Declining leaves the labels as they are.
+- The questions of step 4 of the first run and the label question of step 3 of the existing config are inputs, not confirmations.
 
 ## Output
 

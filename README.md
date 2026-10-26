@@ -40,10 +40,12 @@ Then run `/pmkit:setup` in the project. With the GitHub git host (`git_host.syst
 
 Run `node scripts/pmkit.mjs <command>`. Every command takes `--json` and `--root <dir>`. Every write also takes `--dry-run` and `--as <member>`.
 
+With `auto_commit: true` in `.issues/config.yaml`, each write commits the files it changed as `pmkit: <command> <id>`. With `auto_commit: false`, the default, no command commits. `--dry-run`, `init`, `pr open` and `pr ready` never commit.
+
 | Command | Does |
 |---|---|
-| `init` | writes `.pmkit/config.yaml` and scaffolds `.issues/`; refuses to overwrite. Flags: `--tracker local`, `--git-host github\|none`, `--prefix`, `--id-style random\|numbered`, `--estimate-unit points\|hours\|sizes`, `--member id --name n --email e`, `--members-file f\|-` |
-| `init --update` | edits only the lines its flags name; `--replace <path>` overwrites a template file that differs |
+| `init` | writes `.pmkit/config.yaml` and scaffolds `.issues/`; refuses to overwrite. Flags: `--tracker local`, `--git-host github\|none`, `--prefix`, `--id-style random\|numbered`, `--estimate-unit points\|hours\|sizes`, `--label name`, `--member id --name n --email e`, `--members-file f\|-` |
+| `init --update` | edits only the lines its flags name and adds or updates the schema line in the config files; `--replace <path>` overwrites a template file that differs |
 | `capabilities` | prints the capability manifest |
 | `discover` | prints statuses with categories, types, priorities, labels, members and the estimate scale |
 | `whoami` | prints the resolved actor |
@@ -64,13 +66,16 @@ Run `node scripts/pmkit.mjs <command>`. Every command takes `--json` and `--root
 | `cycle open --start d` | opens a sprint; the end defaults from `sprint_length_days` |
 | `cycle close <id>` | closes a sprint and prints the unfinished issues, with a warning for each issue file it could not read |
 | `cycle add <id...> --to <sprint\|current\|none>` | moves issues into or out of a sprint; `current` is the active sprint |
-| `cycle capacity <id>` | reads or sets capacity (`--set member=n,..`) |
+| `cycle capacity <id>` | reads or sets capacity and days off (`--set member=n,..`, `--days-off member=date+date,..`) |
 | `epic list` | lists epics |
 | `epic get <id>` | shows one epic |
 | `epic progress <id>` | counts the issues under an epic |
 | `epic create --title t` | creates an epic |
 | `epic update-status <id> --health h --body-file f` | publishes a status update |
 | `epic updates <id>` | lists the status updates of an epic, newest first |
+| `milestone list` | lists milestones, by due date |
+| `milestone get <id>` | shows one milestone |
+| `milestone create <id>` | creates a milestone; takes `--name` and `--due` |
 | `docs read <path>` | prints a document under the docs folder |
 | `docs create <path> --body-file f` | creates a document under the docs folder |
 | `metrics velocity` | points or counts done per closed sprint, and the average |
@@ -83,11 +88,14 @@ Run `node scripts/pmkit.mjs <command>`. Every command takes `--json` and `--root
 | `pr sync` | moves `in_review` issues to `done` when their pull request is merged |
 | `changelog --file f --since v` | prints the `CHANGELOG.md` sections newer than a version, oldest first; needs no config |
 | `migrate` | moves the tracker files to the format this pmkit writes; `--dry-run` lists every file it would touch |
+| `reindex` | rebuilds the query index in `.issues/.cache/` from the issue files; changes only files git ignores |
 | `validate` | checks every file and reference; problems are output, not errors |
 
 The `issues branch` and `pr` commands need `git_host.system: github` in `.pmkit/config.yaml` and a logged-in `gh`. Without them they fail with `NOT_SUPPORTED`, `NOT_CONFIGURED` or `AUTH`. Run `node scripts/pmkit.mjs --help` for every flag. A failing command exits with code 2 and, with `--json`, prints one JSON error with a next step. An exception that is not a `PmkitError`, which means a bug in pmkit, has the code `UNEXPECTED` and no next step.
 
 Comments and time logs append an event to the issue's `events.jsonl` but leave `issue.md` alone, so they do not change the issue's `updated` timestamp.
+
+Editors can check the config files against JSON Schemas. The schemas live in `schemas/` (`pmkit.config.schema.json` for `.pmkit/config.yaml` and `issues.config.schema.json` for `.issues/config.yaml`). `/pmkit:setup` and `init` write a `# yaml-language-server: $schema=` line as the first line of each config file. The line points at the schemas on `main` on GitHub. The Red Hat YAML extension in VS Code and JetBrains IDEs read it, and the CLI ignores it.
 
 ## Tests
 

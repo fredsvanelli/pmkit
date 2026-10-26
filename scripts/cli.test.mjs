@@ -236,6 +236,17 @@ test('validate on the broken fixture exits 0 and lists every problem', () => {
   }
 })
 
+test('validate text starts with the counts, milestones included', () => {
+  const root = makeRepo('basic')
+  const dir = path.join(root, '.issues', 'milestones')
+  fs.mkdirSync(dir)
+  fs.writeFileSync(path.join(dir, 'v1.md'), '---\nname: V1\n---\n')
+  const { checked } = json(root, ['validate'])
+  const text = run(root, ['validate'])
+  assert.equal(text.status, 0)
+  assert.equal(text.stdout.split('\n')[0], `checked: ${checked.issues} issues, ${checked.epics} epics, ${checked.sprints} sprints, 1 milestones, ${checked.comments} comments`)
+})
+
 test('capabilities --json lists 20 capabilities', () => {
   const root = makeRepo('basic')
   assert.equal(json(root, ['capabilities']).capabilities.length, 20)
@@ -340,10 +351,71 @@ test('--as acts for another member and a stranger is rejected', () => {
 
 test('cycle capacity reads, and --set takes a list or repeated flags', () => {
   const root = makeRepo('team')
-  assert.deepEqual(json(root, ['cycle', 'capacity', '2026-10-12']), { fred: 8, ana: 10 })
+  assert.deepEqual(json(root, ['cycle', 'capacity', '2026-10-12']), { capacity: { fred: 8, ana: 10 }, days_off: { ana: ['2026-10-16'] } })
   assert.deepEqual(json(root, ['cycle', 'capacity', '2026-10-12', '--set', 'fred=3,ana=4']).after.capacity, { fred: 3, ana: 4 })
   assert.deepEqual(json(root, ['cycle', 'capacity', '2026-10-12', '--set', 'fred=6', '--set', 'ana=7']).after.capacity, { fred: 6, ana: 7 })
   assert.equal(run(root, ['cycle', 'capacity', '2026-10-12', '--set', 'fred']).status, 2)
+})
+
+test('cycle capacity --days-off sets, clears and validates', () => {
+  const root = makeRepo('team')
+  const sprintFile = path.join(root, '.issues/sprints/2026-10-12.yaml')
+  const cap = (...args) => json(root, ['cycle', 'capacity', '2026-10-12', ...args])
+  const set = cap('--days-off', 'fred=2026-10-14+2026-10-13')
+  assert.deepEqual(set.after.daysOff.fred, ['2026-10-13', '2026-10-14'])
+  assert.deepEqual(set.after.daysOff.ana, ['2026-10-16'])
+  const both = cap('--days-off', 'fred=2026-10-14', '--days-off', 'ana=2026-10-19')
+  assert.deepEqual(both.after.daysOff, { fred: ['2026-10-14'], ana: ['2026-10-19'] })
+  assert.equal('ana' in cap('--days-off', 'ana=none').after.daysOff, false)
+  const combined = cap('--set', 'fred=3', '--days-off', 'fred=2026-10-15')
+  assert.equal(combined.after.capacity.fred, 3)
+  assert.deepEqual(combined.after.daysOff.fred, ['2026-10-15'])
+  const before = fs.readFileSync(sprintFile, 'utf8')
+  cap('--days-off', 'fred=2026-10-16', '--dry-run')
+  assert.equal(fs.readFileSync(sprintFile, 'utf8'), before)
+  cap('--days-off', 'ana=2026-10-16')
+  const text = run(root, ['cycle', 'capacity', '2026-10-12'])
+  assert.match(text.stdout, /days off/)
+  assert.match(text.stdout, /ana/)
+  for (const bad of ['fred', '=2026-10-14', 'fred=']) assert.equal(run(root, ['cycle', 'capacity', '2026-10-12', '--days-off', bad]).status, 2, bad)
+  for (const bad of ['fred=2026-10-17', 'nobody=2026-10-14']) {
+    const result = run(root, ['cycle', 'capacity', '2026-10-12', '--days-off', bad, '--json'])
+    assert.equal(result.status, 2, bad)
+    assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT')
+  }
+  assert.equal(fs.readFileSync(sprintFile, 'utf8').includes('2026-10-17'), false)
+})
+
+test('cycle capacity --days-off rejects a member named twice', () => {
+  const root = makeRepo('team')
+  const sprintFile = path.join(root, '.issues/sprints/2026-10-12.yaml')
+  const before = fs.readFileSync(sprintFile, 'utf8')
+  for (const args of [['--days-off', 'fred=2026-10-14', '--days-off', 'fred=2026-10-15'], ['--days-off', 'fred=2026-10-14,fred=2026-10-15']]) {
+    const result = run(root, ['cycle', 'capacity', '2026-10-12', ...args, '--json'])
+    assert.equal(result.status, 2)
+    const error = JSON.parse(result.stdout).error
+    assert.match(error.message, /--days-off names fred twice/)
+    assert.match(error.next ?? error.next_step ?? JSON.stringify(error), /fred=2026-10-14\+2026-10-15/)
+  }
+  assert.equal(fs.readFileSync(sprintFile, 'utf8'), before)
+})
+
+test('cycle capacity reads a hand-edited days_off that is not a map of lists', () => {
+  const root = makeRepo('team')
+  const sprintFile = path.join(root, '.issues/sprints/2026-10-12.yaml')
+  const text = fs.readFileSync(sprintFile, 'utf8').replace(/days_off:[\s\S]*$/, 'days_off:\n  ana: 2026-10-16\n  fred:\n')
+  fs.writeFileSync(sprintFile, text)
+  const result = run(root, ['cycle', 'capacity', '2026-10-12'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /days off ana: 2026-10-16/)
+})
+
+test('cycle capacity --days-off keeps unknown keys of the sprint file', () => {
+  const root = makeRepo('team')
+  const sprintFile = path.join(root, '.issues/sprints/2026-10-12.yaml')
+  fs.appendFileSync(sprintFile, 'custom_note: keep me\n')
+  json(root, ['cycle', 'capacity', '2026-10-12', '--days-off', 'fred=2026-10-14'])
+  assert.match(fs.readFileSync(sprintFile, 'utf8'), /custom_note: keep me/)
 })
 
 test('cycle close prints the unfinished issues', () => {
@@ -525,6 +597,18 @@ test('issues create takes --milestone', () => {
   assert.equal(after.milestone, 'M1')
 })
 
+test('once a milestone file exists, --milestone must name one and --milestone none clears unchecked', () => {
+  const root = makeRepo('basic')
+  const { after } = json(root, ['issues', 'create', '--title', 'T', '--milestone', 'jira'])
+  const dir = path.join(root, '.issues', 'milestones')
+  fs.mkdirSync(dir)
+  fs.writeFileSync(path.join(dir, 'v1.md'), '---\nname: V1\n---\n')
+  const missing = run(root, ['issues', 'update', after.id, '--milestone', 'v2', '--json'])
+  assert.equal(missing.status, 2)
+  assert.deepEqual(JSON.parse(missing.stdout).error, { code: 'INVALID_INPUT', message: 'milestone v2 does not exist', nextStep: 'pmkit milestone create v2' })
+  assert.equal(json(root, ['issues', 'update', after.id, '--milestone', 'none']).after.milestone, undefined)
+})
+
 test('epic updates lists the status updates newest first', () => {
   const root = makeRepo('team')
   assert.deepEqual(json(root, ['epic', 'updates', 'EPC-2M9D']), [])
@@ -601,4 +685,217 @@ test('unlink of a missing blocker previews the blocked_by change on the issue wh
   const text = run(root, [...args, '--dry-run'], { env: { PMKIT_USER: 'fred' } }).stdout
   assert.doesNotMatch(text, /no change/)
   assert.match(text, /ISS-9ZZZ/)
+})
+
+test('milestone list prints no milestones on an empty tracker and a table after a create', () => {
+  const root = makeRepo('basic')
+  assert.equal(run(root, ['milestone', 'list']).stdout.trim(), 'no milestones')
+  assert.deepEqual(json(root, ['milestone', 'list']), [])
+  json(root, ['milestone', 'create', 'local-gaps', '--name', 'Local tracker gaps', '--due', '2026-11-30'])
+  const text = run(root, ['milestone', 'list']).stdout
+  assert.match(text, /ID\s+\| Name\s+\| Due/)
+  assert.match(text, /local-gaps\s+\| Local tracker gaps\s+\| 2026-11-30/)
+  assert.deepEqual(json(root, ['milestone', 'list']).map((m) => m.id), ['local-gaps'])
+})
+
+test('milestone get prints the record and a miss is NOT_FOUND', () => {
+  const root = makeRepo('basic')
+  const dir = path.join(root, '.issues', 'milestones')
+  fs.mkdirSync(dir)
+  fs.writeFileSync(path.join(dir, 'v1.md'), '---\nname: Version one\ndue: 2026-12-01\n---\nShip it.\n')
+  const text = run(root, ['milestone', 'get', 'v1']).stdout
+  assert.match(text, /^id: v1$/m)
+  assert.match(text, /^name: Version one$/m)
+  assert.match(text, /^due: 2026-12-01$/m)
+  assert.match(text, /Ship it\./)
+  const miss = run(root, ['milestone', 'get', 'nope', '--json'])
+  assert.equal(miss.status, 2)
+  assert.deepEqual(JSON.parse(miss.stdout).error, { code: 'NOT_FOUND', message: 'milestone nope does not exist', nextStep: 'pmkit milestone list' })
+})
+
+test('milestone create returns before and after, and --dry-run writes nothing', () => {
+  const root = makeRepo('basic')
+  const before = hashTree(path.join(root, '.issues'))
+  const dry = json(root, ['milestone', 'create', 'local-gaps', '--dry-run'])
+  assert.equal(dry.before, null)
+  assert.equal(dry.after.id, 'local-gaps')
+  assert.deepEqual(hashTree(path.join(root, '.issues')), before)
+  const made = json(root, ['milestone', 'create', 'local-gaps', '--name', 'Local tracker gaps', '--due', '2026-11-30'])
+  assert.equal(made.before, null)
+  assert.deepEqual([made.after.name, made.after.due], ['Local tracker gaps', '2026-11-30'])
+  assert.ok(fs.existsSync(path.join(root, '.issues/milestones/local-gaps.md')))
+})
+
+test('milestone create refuses a bad id with INVALID_INPUT and writes nothing', () => {
+  const root = makeRepo('basic')
+  const result = run(root, ['milestone', 'create', 'Q4 2026', '--json'])
+  assert.equal(result.status, 2)
+  assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT')
+  assert.ok(!fs.existsSync(path.join(root, '.issues/milestones')))
+})
+
+test('milestone create commits as pmkit: milestone create <id> when auto commit is on', () => {
+  const root = makeRepo('basic')
+  const file = path.join(root, '.issues/config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('auto_commit: false', 'auto_commit: true'))
+  git(root, 'init', '-q')
+  git(root, 'config', 'user.name', 'Test')
+  git(root, 'config', 'user.email', 'test@example.com')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-q', '-m', 'init')
+  json(root, ['milestone', 'create', 'local-gaps'])
+  assert.equal(git(root, 'log', '-1', '--format=%s').stdout.trim(), 'pmkit: milestone create local-gaps')
+})
+
+test('milestone create warns on stderr about milestone names that have no file', () => {
+  const root = makeRepo('basic')
+  json(root, ['issues', 'create', '--title', 'A', '--milestone', 'jira'])
+  json(root, ['issues', 'create', '--title', 'B', '--milestone', 'jira'])
+  json(root, ['issues', 'create', '--title', 'C', '--milestone', 'generic-commands'])
+  const { after: epic } = json(root, ['epic', 'create', '--title', 'E'])
+  const epicFile = path.join(root, '.issues/epics', epic.id, 'epic.md')
+  fs.writeFileSync(epicFile, fs.readFileSync(epicFile, 'utf8').replace(/^---\n/, '---\nmilestone: generic-commands\n'))
+  const result = run(root, ['milestone', 'create', 'x', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stderr, /^warning: 2 milestones named by issues or epics have no file: generic-commands \(2\), jira \(2\); run \/pmkit:local:doctor$/m)
+  const body = JSON.parse(result.stdout)
+  assert.deepEqual(Object.keys(body), ['before', 'after'])
+  const dry = run(root, ['milestone', 'create', 'jira', '--dry-run'])
+  assert.match(dry.stderr, /warning: 1 milestone named by issues or epics has no file: generic-commands \(2\); run/)
+  assert.doesNotMatch(dry.stderr, /1 milestones/)
+})
+
+test('milestone create warning counts a milestone that only an archived issue names', () => {
+  const root = makeRepo('basic')
+  const { after: issue } = json(root, ['issues', 'create', '--title', 'A', '--milestone', 'old'])
+  assert.equal(run(root, ['issues', 'archive', issue.id]).status, 0)
+  const result = run(root, ['milestone', 'create', 'x'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stderr, /warning: 1 milestone named by issues or epics has no file: old \(1\); run/)
+})
+
+test('milestone create gives no warning when every name has a file', () => {
+  const root = makeRepo('basic')
+  json(root, ['issues', 'create', '--title', 'A', '--milestone', 'jira'])
+  json(root, ['milestone', 'create', 'jira'])
+  const result = run(root, ['milestone', 'create', 'y'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.doesNotMatch(result.stderr, /warning/)
+})
+
+const canChmod = process.platform !== 'win32' && process.getuid?.() !== 0
+const cacheIn = (root) => path.join(root, '.issues', '.cache')
+
+test('reindex --json rebuilds the index and leaves issues list unchanged', () => {
+  const root = makeRepo('team')
+  try {
+    const before = run(root, ['issues', 'list', '--archived', '--json']).stdout
+    fs.mkdirSync(cacheIn(root), { recursive: true })
+    fs.writeFileSync(path.join(cacheIn(root), 'index.json.tmp-999-0'), 'partial')
+    assert.deepEqual(json(root, ['reindex']), { written: true, path: '.issues/.cache/index.json', issues: 12, problems: 1 })
+    assert.deepEqual(fs.readdirSync(cacheIn(root)).sort(), ['.gitignore', 'index.json'])
+    assert.equal(run(root, ['issues', 'list', '--archived', '--json']).stdout, before)
+    const text = run(root, ['reindex'])
+    assert.equal(text.status, 0)
+    assert.equal(text.stdout, 'indexed 12 issues (1 could not be read) in .issues/.cache/index.json\n')
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('reindex on a read-only tracker exits 0 with written: false', { skip: !canChmod }, () => {
+  const root = makeRepo('team')
+  const dir = path.join(root, '.issues')
+  fs.chmodSync(dir, 0o555)
+  try {
+    const body = json(root, ['reindex'])
+    assert.equal(body.written, false)
+    assert.equal(typeof body.reason, 'string')
+    const text = run(root, ['reindex'])
+    assert.equal(text.status, 0)
+    assert.match(text.stdout, /^the query index was not written: /)
+    assert.match(text.stderr, /^warning: searches still work, they read every issue file$/m)
+  } finally {
+    fs.chmodSync(dir, 0o755)
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('issues list writes the index and CLI dry runs never touch it', () => {
+  const root = makeRepo('team')
+  try {
+    const dryRuns = () => {
+      for (const args of [['issues', 'link', 'ISS-0G5E', 'ISS-1V9Z', '--kind', 'blocks', '--dry-run'], ['cycle', 'close', '2026-10-12', '--dry-run']]) {
+        assert.equal(run(root, [...args, '--json']).status, 0, args.join(' '))
+      }
+    }
+    dryRuns()
+    assert.equal(fs.existsSync(cacheIn(root)), false)
+    json(root, ['issues', 'list'])
+    const file = path.join(cacheIn(root), 'index.json')
+    const bytes = fs.readFileSync(file)
+    dryRuns()
+    assert.deepEqual(fs.readFileSync(file), bytes)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('the index never reaches git status or an auto-commit', () => {
+  const root = makeRepo('team')
+  try {
+    assert.equal(fs.existsSync(path.join(root, '.issues', '.gitignore')), false)
+    git(root, 'init', '-q')
+    git(root, 'config', 'user.name', 'Test')
+    git(root, 'config', 'user.email', 'test@x.dev')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'fixture')
+    json(root, ['issues', 'list'])
+    assert.ok(fs.existsSync(path.join(cacheIn(root), 'index.json')))
+    assert.equal(git(root, 'status', '--porcelain').stdout, '')
+    const config = path.join(root, '.issues', 'config.yaml')
+    fs.writeFileSync(config, fs.readFileSync(config, 'utf8').replace('auto_commit: false', 'auto_commit: true'))
+    git(root, 'commit', '-q', '-am', 'auto commit on')
+    // A blocks link reads through the index in the middle of the write, so the write refreshes the cache.
+    fs.rmSync(cacheIn(root), { recursive: true, force: true })
+    json(root, ['issues', 'link', 'ISS-3F7H', 'ISS-4M2S', '--kind', 'blocks'])
+    assert.ok(fs.existsSync(path.join(cacheIn(root), 'index.json')))
+    const committed = git(root, 'show', '--name-only', '--format=', 'HEAD').stdout
+    assert.match(committed, /issue\.md/)
+    assert.doesNotMatch(committed, /\.cache/)
+    assert.equal(git(root, 'status', '--porcelain').stdout, '')
+    assert.equal(git(root, 'ls-files', '.issues/.cache').stdout, '')
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('reindex on an older tracker format exits 0 with written: false and creates no .cache', () => {
+  const root = makeRepo('team')
+  try {
+    const config = path.join(root, '.issues', 'config.yaml')
+    fs.writeFileSync(config, fs.readFileSync(config, 'utf8').replace(/^version: \d+$/m, 'version: 1'))
+    const body = json(root, ['reindex'])
+    assert.equal(body.written, false)
+    assert.match(body.reason, /tracker format 1; run \/pmkit:upgrade/)
+    const text = run(root, ['reindex'])
+    assert.equal(text.status, 0)
+    assert.match(text.stdout, /^the query index was not written: /)
+    assert.match(text.stderr, /^warning: searches still work, they read every issue file$/m)
+    assert.equal(fs.existsSync(cacheIn(root)), false)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('reindex is not a write: --dry-run and --as are usage errors', () => {
+  const root = makeRepo('team')
+  try {
+    for (const flags of [['--dry-run'], ['--as', 'fred']]) {
+      assert.equal(run(root, ['reindex', ...flags]).status, 2, flags.join(' '))
+    }
+    assert.equal(fs.existsSync(cacheIn(root)), false)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
 })

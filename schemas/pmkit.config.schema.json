@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "pmkit config",
+  "description": "The pmkit config of a repository, in .pmkit/config.yaml. It names the tracker, the git host and the write policy. Keys pmkit does not know are allowed.",
+  "type": "object",
+  "required": ["version", "tracker", "git_host", "write_policy"],
+  "properties": {
+    "version": {
+      "title": "Config version",
+      "description": "The version of this file's format. Always 1.",
+      "const": 1
+    },
+    "tracker": {
+      "title": "Tracker",
+      "description": "Where issues live.",
+      "type": "object",
+      "required": ["system"],
+      "properties": {
+        "system": {
+          "title": "Tracker system",
+          "description": "The tracker pmkit reads and writes. Only local works today; the others are planned.",
+          "enum": ["local", "linear", "jira", "github", "gitlab", "azure-devops"]
+        },
+        "path": {
+          "title": "Tracker path",
+          "description": "The folder of the local tracker, relative to the repository root. When it is missing or empty (null), pmkit uses .issues.",
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "git_host": {
+      "title": "Git host",
+      "description": "Where pull requests are opened.",
+      "type": "object",
+      "required": ["system"],
+      "properties": {
+        "system": {
+          "title": "Git host system",
+          "description": "github opens pull requests with the gh CLI; none turns pull requests off.",
+          "enum": ["github", "none"]
+        },
+        "repo": {
+          "title": "Repository",
+          "description": "The repository on the git host, as owner/repo.",
+          "type": "string"
+        },
+        "default_branch": {
+          "title": "Default branch",
+          "description": "The branch pull requests target, such as main.",
+          "type": "string"
+        }
+      }
+    },
+    "write_policy": {
+      "title": "Write policy",
+      "description": "When pmkit asks before it writes to the tracker.",
+      "type": "object",
+      "required": ["confirm"],
+      "properties": {
+        "confirm": {
+          "title": "Confirm",
+          "description": "When a command asks before a write: all_writes, single_writes or none. none never skips a preview.",
+          "enum": ["all_writes", "single_writes", "none"]
+        },
+        "preview": {
+          "title": "Preview",
+          "description": "The changes that always show a full preview first.",
+          "type": "array",
+          "items": {
+            "enum": ["bulk", "delete", "publish_update", "move_scope"]
+          }
+        }
+      }
+    }
+  }
+}

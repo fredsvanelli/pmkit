@@ -141,6 +141,24 @@ test('pr sync with nothing merged moves nothing and does not commit', () => {
   assert.equal(subjects(root), before)
 })
 
+test('pr sync --dry-run with auto_commit true does not commit', () => {
+  const root = autoCommitRepo()
+  const gh = fakeGh({ [view('merged-branch')]: { stdout: prJson({ number: 11, mergedAt: '2026-10-22T10:00:00Z' }) } })
+  try {
+    const env = envWith(gh)
+    inReview(root, env, 'ISS-2X6D', 'merged-branch')
+    const before = subjects(root)
+    const tree = hashTree(root)
+    const result = callJson(root, env, ['pr', 'sync', '--dry-run'])
+    assert.deepEqual(result.moved, [{ id: 'ISS-2X6D', pr: 11 }])
+    assert.equal(subjects(root), before)
+    assert.equal(hashTree(root), tree)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+    fs.rmSync(gh.dir, { recursive: true, force: true })
+  }
+})
+
 test('pr sync commits with the moved ids when auto_commit is on', () => {
   const root = autoCommitRepo()
   const env = envWith(fakeGh({ [view('merged-branch')]: { stdout: prJson({ number: 11, mergedAt: '2026-10-22T10:00:00Z' }) } }))
@@ -243,6 +261,9 @@ test('pr open --dry-run returns the title, body and branches without pushing or 
   callJson(root, env, ['issues', 'update', 'ISS-2X6D', '--branch', 'feat-x'])
   const before = hashTree(root)
   const result = callJson(root, env, ['pr', 'open', '--issue', 'ISS-2X6D', '--draft', '--dry-run'])
+  // issues get is a read, so it writes the query index: check the tree before it.
+  assert.equal(fs.existsSync(path.join(root, '.issues', '.cache')), false)
+  assert.equal(hashTree(root), before)
   const issue = callJson(root, env, ['issues', 'get', 'ISS-2X6D'])
   assert.equal(result.title, `${issue.title} (ISS-2X6D)`)
   assert.equal(result.head, 'feat-x')
@@ -251,7 +272,6 @@ test('pr open --dry-run returns the title, body and branches without pushing or 
   assert.equal(result.existing, false)
   assert.ok(result.body.startsWith('Tracker issue: ISS-2X6D'))
   for (const item of issue.acceptanceCriteria) assert.ok(result.body.includes(`- [${item.done ? 'x' : ' '}] ${item.text}`))
-  assert.equal(hashTree(root), before)
   assert.deepEqual(ghCalls(gh), [view('feat-x')])
 })
 

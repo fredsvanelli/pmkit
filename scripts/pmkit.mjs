@@ -6,13 +6,14 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { BOOLEANS, parseArgs } from './lib/args.mjs'
 import { requireActor, gitUserEmail } from './lib/actor.mjs'
-import { findRoot, loadConfig, validateLocalConfig } from './lib/config.mjs'
+import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, validateLocalConfig } from './lib/config.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
-import { changeLines, epicRecord, eventTable, fields, issueRecord, issueTable, sprintRecord, table } from './lib/format.mjs'
+import { changeLines, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, sprintRecord, table } from './lib/format.mjs'
 import { cycleTimes, lastEntry, summary, velocity } from './lib/metrics.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
-import { addMapEntry, setScalar } from './lib/yaml-edit.mjs'
+import { addMapEntry, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
+import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { lineDiff } from './lib/diff.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, planMigration } from './lib/local/migrations.mjs'
@@ -153,6 +154,24 @@ function parseCapacity(ctx) {
   return map
 }
 
+function parseDaysOff(ctx) {
+  const map = {}
+  for (const pair of csv(ctx.list('days-off'))) {
+    const fail = () => usageError(`--days-off takes member=date+date pairs, got "${pair}"`, 'Use --days-off ana=2026-10-16+2026-10-19')
+    const match = /^([^=]+)=(.+)$/.exec(pair)
+    if (!match) throw fail()
+    if (Object.hasOwn(map, match[1])) throw usageError(`--days-off names ${match[1]} twice`, `Join the dates with +, for example ${match[1]}=2026-10-14+2026-10-15`)
+    if (match[2] === 'none') {
+      map[match[1]] = null
+      continue
+    }
+    const dates = match[2].split('+')
+    if (dates.some((date) => date === '')) throw fail()
+    map[match[1]] = dates
+  }
+  return map
+}
+
 /** Text of a write: the changed fields, or the new record after a create. */
 function writeText(result, { dryRun, record = issueRecord, header }) {
   const one = (entry) => {
@@ -181,9 +200,9 @@ const problemLine = (problem) => `${problem.id}: ${problem.code} ${problem.messa
 // Command table. `run` returns { data, text, commit }: the JSON value, the plain text and, for a write, the id for the commit message.
 export const COMMANDS = [
   {
-    name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name',
-    usage: '[--tracker local] [--git-host github|none] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
-    flags: ['tracker', 'git-host', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, run: runInit,
+    name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels',
+    usage: '[--tracker local] [--git-host github|none] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--label name ...] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
+    flags: ['tracker', 'git-host', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'label', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, run: runInit,
   },
   {
     name: 'capabilities', summary: 'prints the capability manifest', flags: [],
@@ -357,15 +376,22 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'cycle capacity', summary: 'reads or sets capacity', usage: '<id> [--set member=n,..]', write: true, args: ['id'], flags: ['set'],
+    name: 'cycle capacity', summary: 'reads or sets capacity and days off', usage: '<id> [--set member=n,..] [--days-off member=date+date,..]', write: true, args: ['id'], flags: ['set', 'days-off'],
     run: (ctx) => {
       const tracker = ctx.tracker()
       const [id] = ctx.args
-      if (ctx.opt('set') === undefined) {
+      const set = ctx.opt('set') !== undefined
+      const dayoff = ctx.opt('days-off') !== undefined
+      if (!set && !dayoff) {
         const capacity = tracker.getCapacity(id)
-        return { data: capacity, text: fields(Object.entries(capacity)).join('\n') || 'no capacity set' }
+        const daysOff = tracker.getDaysOff(id)
+        const lines = [
+          ...fields(Object.entries(capacity)),
+          ...Object.entries(daysOff).map(([member, dates]) => `days off ${member}: ${[dates ?? []].flat().join(', ')}`),
+        ]
+        return { data: { capacity, days_off: daysOff }, text: lines.join('\n') || 'no capacity or days off set' }
       }
-      const result = tracker.setCapacity(id, parseCapacity(ctx), ctx.actor(), { dryRun: ctx.dryRun })
+      const result = tracker.updateCycleCapacity(id, { capacity: set ? parseCapacity(ctx) : undefined, daysOff: dayoff ? parseDaysOff(ctx) : undefined }, ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: sprintRecord }), commit: id }
     },
   },
@@ -403,6 +429,33 @@ export const COMMANDS = [
       for (const key of ['start', 'target']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
       const result = ctx.tracker().createDeliverable(input, ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: epicRecord }), commit: result.after.id }
+    },
+  },
+  {
+    name: 'milestone list', summary: 'lists milestones', flags: [],
+    run: (ctx) => {
+      const milestones = ctx.tracker().listMilestones()
+      const text = milestones.length === 0 ? 'no milestones' : table(['ID', 'Name', 'Due'], milestones.map((m) => [m.id, m.name, m.due ?? '']))
+      return { data: milestones, text }
+    },
+  },
+  {
+    name: 'milestone get', summary: 'one milestone', usage: '<id>', args: ['id'], flags: [],
+    run: (ctx) => {
+      const milestone = ctx.tracker().getMilestone(ctx.args[0])
+      return { data: milestone, text: milestoneRecord(milestone) }
+    },
+  },
+  {
+    name: 'milestone create', summary: 'creates a milestone', usage: '<id> [--name n] [--due YYYY-MM-DD]', write: true, args: ['id'], flags: ['name', 'due'],
+    run: (ctx) => {
+      const input = { id: ctx.args[0] }
+      for (const key of ['name', 'due']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
+      const tracker = ctx.tracker()
+      const result = tracker.createMilestone(input, ctx.actor(), { dryRun: ctx.dryRun })
+      const unfiled = tracker.unfiledMilestones(result.after.id)
+      const warnings = unfiled.length === 0 ? [] : [`${unfiled.length} ${unfiled.length === 1 ? 'milestone named by issues or epics has' : 'milestones named by issues or epics have'} no file: ${unfiled.map((u) => `${u.name} (${u.count})`).join(', ')}; run /pmkit:local:doctor`]
+      return { data: result, text: writeText(result, { ...ctx, record: milestoneRecord }), commit: result.after.id, warnings }
     },
   },
   {
@@ -597,11 +650,21 @@ export const COMMANDS = [
     run: (ctx) => runMigrate(ctx.root, { dryRun: ctx.dryRun }),
   },
   {
+    name: 'reindex', summary: 'rebuilds the query index in .issues/.cache/ from the issue files; changes only files git ignores', flags: [],
+    run: (ctx) => {
+      const result = ctx.tracker().reindex()
+      if (!result.written) {
+        return { data: result, text: `the query index was not written: ${result.reason}`, warnings: ['searches still work, they read every issue file'] }
+      }
+      return { data: result, text: `indexed ${result.issues} issues (${result.problems} could not be read) in ${result.path}` }
+    },
+  },
+  {
     name: 'validate', summary: 'checks every file and reference; problems are output, not errors', flags: [],
     run: (ctx) => {
       const result = validateRepo(ctx.root)
       const c = result.checked
-      const head = `checked: ${c.issues} issues, ${c.epics} epics, ${c.sprints} sprints, ${c.comments} comments`
+      const head = `checked: ${c.issues} issues, ${c.epics} epics, ${c.sprints} sprints, ${c.milestones} milestones, ${c.comments} comments`
       const body = result.problems.length === 0 ? 'no problems' : result.problems.map((p) => `${p.path}  ${p.code}  ${p.message}`).join('\n')
       return { data: result, text: `${head}\n${body}` }
     },
@@ -647,7 +710,7 @@ export function runMigrate(root, { dryRun = false, formatVersion = FORMAT_VERSIO
   if (migrated.local.auto_commit !== true) return result(plan.steps)
   const done = result(plan.steps, message)
   try {
-    commitTracker(migrated, message)
+    commitTracker(migrated, message, [trackerPath])
   } catch (error) {
     error.written = { data: done.data, text: done.text }
     throw error
@@ -664,7 +727,6 @@ ${COMMANDS.map((c) => `  ${c.name}${c.usage ? ` ${c.usage}` : ''}\n      ${c.sum
 `
 
 // init is the only command that runs before a config exists.
-const ESTIMATE_UNITS = ['points', 'hours', 'sizes']
 const SIZE_SCALE = ['XS', 'S', 'M', 'L', 'XL']
 const slash = (file) => file.split(path.sep).join('/')
 const normalized = (text) => text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
@@ -700,18 +762,29 @@ function initMembers(opt) {
   return entries
 }
 
+// Label names from --label, deduplicated in flag order.
+function initLabels(ctx) {
+  const names = []
+  for (const name of csv(ctx.list('label'))) {
+    if (!/^[a-z0-9][a-z0-9_-]*$/.test(name)) throw usageError(`label "${name}" must match ^[a-z0-9][a-z0-9_-]*$, like needs-criteria`)
+    if (!names.includes(name)) names.push(name)
+  }
+  return names
+}
+
 function runInit(ctx) {
   const { opt } = ctx
   const update = ctx.flag('update')
   if ((opt('tracker') ?? 'local') !== 'local') throw new PmkitError('NOT_SUPPORTED', `tracker "${opt('tracker')}" is not supported yet`, 'Use --tracker local')
   const host = opt('git-host')
-  if (host !== undefined && !['github', 'none'].includes(host)) throw usageError('--git-host must be github or none')
+  if (host !== undefined && !GIT_HOSTS.includes(host)) throw usageError(`--git-host must be ${GIT_HOSTS.join(' or ')}`)
   const idStyle = opt('id-style')
   if (idStyle !== undefined && !ID_STYLES.includes(idStyle)) throw usageError(`--id-style must be ${ID_STYLES.join(' or ')}`)
   const unit = opt('estimate-unit')
   if (unit !== undefined && !ESTIMATE_UNITS.includes(unit)) throw usageError(`--estimate-unit must be ${ESTIMATE_UNITS.join(', ')}`)
   if (update && opt('prefix') !== undefined) throw usageError('id_prefix cannot change after setup', 'Remove --prefix')
   const members = initMembers(opt)
+  const labels = initLabels(ctx)
 
   const root = ctx.root
   const read = (file) => normalized(fs.readFileSync(path.join(root, file), 'utf8'))
@@ -782,8 +855,21 @@ function runInit(ctx) {
       existing.push(id)
     }
   }
+  // A hand-written `labels: bug` is a string: leave it alone so the validator below refuses it, instead of spreading it into letters or replacing it.
+  const labelsValue = parsedLocal().labels
+  const currentLabels = Array.isArray(labelsValue) ? labelsValue : []
+  const labelsKept = labels.filter((name) => currentLabels.includes(name))
+  const labelsAdded = labels.filter((name) => !currentLabels.includes(name))
+  if (labelsAdded.length > 0 && (labelsValue === undefined || Array.isArray(labelsValue))) {
+    local = edit(issuesConfig, 'labels', () => setScalar(local, ['labels'], [...currentLabels, ...labelsAdded]))
+  }
+  pmkit = setSchemaLine(pmkit, schemaUrl(SCHEMA_FILES.pmkit))
+  local = setSchemaLine(local, schemaUrl(SCHEMA_FILES.issues))
   const problems = validateLocalConfig(parsedLocal())
-  if (problems.length > 0) throw usageError(`the ${update ? '' : 'generated '}${slash(issuesConfig)} is not valid: ${problems.join('; ')}`, 'Fix the init flags')
+  if (problems.length > 0) {
+    throw usageError(`the ${update ? '' : 'generated '}${slash(issuesConfig)} is not valid: ${problems.join('; ')}`,
+      update ? `Fix ${slash(issuesConfig)} by hand, then run init --update again` : 'Fix the init flags')
+  }
 
   const replace = new Set(ctx.list('replace').flatMap((item) => String(item).split(',')).map((item) => item.trim().replace(/\\/g, '/')))
   const entries = []
@@ -821,24 +907,29 @@ function runInit(ctx) {
   const label = { create: 'create', change: 'change', replace: 'replace', differs: 'differs, left as it is', keep: 'keep' }
   const lines = files.map((file) => `  ${file.path}: ${ctx.dryRun && file.action !== 'keep' && file.action !== 'differs' ? 'would ' : ''}${label[file.action]}`)
   return {
-    data: { dryRun: ctx.dryRun, files, kept },
+    data: { dryRun: ctx.dryRun, files, kept, labelsAdded, labelsKept },
     text: [
       ctx.dryRun ? 'files:' : 'wrote:', ...lines,
       ...(kept.length > 0 ? [`members kept as they were: ${kept.join(', ')}`] : []),
+      ...(labelsAdded.length > 0 ? [`labels added: ${labelsAdded.join(', ')}`] : []),
+      ...(labelsKept.length > 0 ? [`labels kept as they were: ${labelsKept.join(', ')}`] : []),
       ...files.filter((file) => file.diff).flatMap((file) => ['', `${file.path}:`, file.diff.trimEnd()]),
       ...(ctx.dryRun ? ['dry run: nothing was written'] : []),
     ].join('\n'),
   }
 }
 
-function commitTracker(config, message) {
-  const rel = (config.pmkit.tracker.path ?? '.issues').split(path.sep).join('/')
-  const git = (...args) => spawnSync('git', args, { cwd: config.root, encoding: 'utf8' })
-  const fail = (result) => new PmkitError('UPSTREAM', `the write succeeded but auto_commit failed: ${(result.stderr || result.stdout).trim()}`, `Commit ${rel} yourself`)
-  const added = git('add', '--', rel)
+/** Commits exactly `paths` (root-relative, `/` separators). Nothing staged for them means no commit. */
+function commitTracker(config, message, paths) {
+  const folder = (config.pmkit.tracker.path ?? '.issues').split(path.sep).join('/')
+  // --literal-pathspecs keeps a name such as notes/[x].md from matching as a glob.
+  const git = (...args) => spawnSync('git', ['--literal-pathspecs', ...args], { cwd: config.root, encoding: 'utf8' })
+  const named = paths.length <= 5 ? paths.join(' ') : folder
+  const fail = (result) => new PmkitError('UPSTREAM', `the write succeeded but auto_commit failed: ${(result.stderr || result.stdout).trim()}`, `Commit ${named} yourself`)
+  const added = git('add', '--', ...paths)
   if (added.status !== 0) throw fail(added)
-  if (git('diff', '--cached', '--quiet', '--', rel).status === 0) return
-  const committed = git('commit', '-m', message, '--', rel)
+  if (git('diff', '--cached', '--quiet', '--', ...paths).status === 0) return
+  const committed = git('commit', '-m', message, '--', ...paths)
   if (committed.status !== 0) throw fail(committed)
 }
 
@@ -904,7 +995,7 @@ export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
       list: (name) => (options[name] === undefined ? [] : [options[name]].flat()),
       flag: (name) => last(options[name]) === true,
       config: () => (loaded ??= loadConfig(root)),
-      tracker: () => (tracker ??= createLocalTracker(root, { config: ctx.config(), now, random, env })),
+      tracker: () => (tracker ??= createLocalTracker(root, { config: ctx.config(), now, random, env, index: dryRun ? 'read' : true })),
       host: () => (host ??= makeHost(ctx)),
       actor: () => (typeof options.as === 'string'
         ? options.as
@@ -912,8 +1003,10 @@ export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
     }
     const result = command.run(ctx)
     if (command.write && !dryRun && result.commit !== undefined && ctx.config().local.auto_commit === true) {
+      // Only the files this command wrote; a write that changed nothing commits nothing.
+      const paths = tracker?.writtenFiles() ?? []
       try {
-        commitTracker(ctx.config(), `pmkit: ${command.name} ${result.commit}`)
+        if (paths.length > 0) commitTracker(ctx.config(), `pmkit: ${command.name} ${result.commit}`, paths)
       } catch (error) {
         // The write succeeded; the caller still gets what was written, in the same single output.
         error.written = { data: result.data, text: result.text }
