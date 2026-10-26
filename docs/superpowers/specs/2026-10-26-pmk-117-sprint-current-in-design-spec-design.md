@@ -89,27 +89,36 @@ The update flag order follows the usage string in `scripts/pmkit.mjs` line 288. 
 
 ## Proof
 
-Run from the repo root after the edit.
+Run from the repo root. Each command shows what it prints today (before the edit) and what it must print after.
 
-1. Criterion 1. The create row contains the new token, and the whole row, with `\|` unescaped, equals the create usage string:
-   - `grep -F 'issues create --title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint id\|current\|none] [--due] [--milestone m] [--description-file f] [--criteria-file f]' docs/superpowers/specs/2026-10-23-pmkit-design.md` prints the row.
-   - `grep -cF -- "--title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint id|current|none] [--due] [--milestone m] [--description-file f] [--criteria-file f]" scripts/pmkit.mjs` prints `1`, so the usage text in the CLI is the same string.
-2. Criterion 2. The same two checks with the update strings. The spec grep uses `issues update <id> [--title] ... [--uncheck n]` with `\|`, and the CLI grep uses the usage string at line 288 with `|`.
-3. Criterion 3.
-   - `grep -F '[--sprint]' docs/superpowers/specs/2026-10-23-pmkit-design.md` prints nothing and exits 1.
-   - `grep -cF '[--sprint id\|current\|none]' docs/superpowers/specs/2026-10-23-pmkit-design.md` prints `2`.
-   - `npm test` passes. Since no test reads the spec, the count of passing tests equals the count on `main`.
-4. Scope check. `git diff --stat main` shows only the design spec and this spec, and the spec diff shows exactly two changed lines.
+1. Criterion 1. The create row matches the create usage string.
+   - `grep -cF 'issues create --title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint id\|current\|none] [--due] [--milestone m] [--description-file f] [--criteria-file f]' docs/superpowers/specs/2026-10-23-pmkit-design.md` prints `0` now and must print `1` after.
+   - `grep -cF -- "--title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint id|current|none] [--due] [--milestone m] [--description-file f] [--criteria-file f]" scripts/pmkit.mjs` prints `1` now and after, so the CLI usage is the same string.
+2. Criterion 2. The update row matches the update usage string.
+   - `grep -cF 'issues update <id> [--title] [--type] [--priority] [--estimate] [--label l,..] [--sprint id\|current\|none] [--due] [--milestone] [--branch] [--description-file f] [--criteria-file f] [--check n] [--uncheck n]' docs/superpowers/specs/2026-10-23-pmkit-design.md` prints `0` now and must print `1` after.
+   - `grep -cF -- '<id> [--title] [--type] [--priority] [--estimate] [--label l,..] [--sprint id|current|none] [--due] [--milestone] [--branch] [--description-file f] [--criteria-file f] [--check n] [--uncheck n]' scripts/pmkit.mjs` prints `1` now and after.
+3. Criteria 1 and 2 together, compared as rendered text. This command reads both files, unescapes `\|` to `|` in the spec, and prints whether each row contains `issues create ` or `issues update ` followed by the usage string from `scripts/pmkit.mjs`. It prints `issues create false` and `issues update false` now, and must print `issues create true` and `issues update true` after. It was run against a copy of the planned rows outside the repo and printed `true` for both.
+
+   ```
+   node -e 'const fs=require("fs");const s=fs.readFileSync("docs/superpowers/specs/2026-10-23-pmkit-design.md","utf8").replace(/\\\|/g,"|");const c=fs.readFileSync("scripts/pmkit.mjs","utf8");for(const n of ["issues create","issues update"]){const u=c.match(new RegExp("name: \x27"+n+"\x27[^\\n]*\\n\\s*usage: \x27([^\x27]*)\x27"))[1];console.log(n,s.includes("\x60"+n+" "+u+"\x60"))}'
+   ```
+4. Criterion 3.
+   - `grep -cF '[--sprint]' docs/superpowers/specs/2026-10-23-pmkit-design.md` prints `1` now (line 330) and must print `0` after, with exit code 1.
+   - `grep -cF '[--sprint id\|current\|none]' docs/superpowers/specs/2026-10-23-pmkit-design.md` prints `0` now and must print `2` after.
+   - `npm test` passes. No test reads the spec, so the count of passing tests equals the count on `main`.
+5. Scope check. This branch also carries the claim commit, which changed `.issues/issues/PMK-117/`, so a plain `git diff main` lists those files. Use these two commands instead.
+   - `git diff --name-only main...HEAD -- . ':(exclude).issues' ':(exclude).superpowers' ':(exclude)docs/superpowers/specs/2026-10-26-pmk-117-sprint-current-in-design-spec-design.md'` prints nothing now and must print only `docs/superpowers/specs/2026-10-23-pmkit-design.md` after the edit is committed.
+   - `git diff -U0 main...HEAD -- docs/superpowers/specs/2026-10-23-pmkit-design.md | grep -c '^[-+]|'` prints `0` now and must print `4` after (two removed rows and two added rows). I confirmed `4` with the planned rows in a copy outside the repo.
 
 ## Decisões
 
 - **Spell out the update usage in full.** The row is meant to match the CLI. A phrase like "field flags" cannot match, and it hid the missing `--sprint`.
 - **Escape the pipes as `\|`.** An unescaped `|` splits the table cell. The rendered text is identical to the usage string, which is what the criteria compare.
 - **Do not touch the Does column.** The wording "creates" and "edits fields and criteria" is still true.
+- **Update a spec that PMK-114 left alone.** The PMK-114 spec called the design spec historical and left it alone. This issue updates it on purpose, because PMK-114 raised the gap.
 - **Leave `cycle add` out.** Its row is stale too, but the issue and its criteria name only `issues create` and `issues update`. Adding it changes the scope, so it is a follow-up candidate.
 - **Do not add a changelog entry or a test.** The edit changes a design document only. The CHANGELOG is written per release (PMK-114 decided the same), and no test reads the spec.
 - **Do not add a tool that checks the spec table against the CLI usage.** It would prevent this kind of drift, but it is a feature of its own. See the follow-up candidates.
-- **Ask no questions.** The brainstorming skill asks the user to choose. This stage runs without answers, so each choice above is the recommended option and its reason.
 
 ## Follow-up candidates
 
