@@ -2,7 +2,7 @@
 id: PMK-114
 title: Accept --sprint current in issues create
 type: bug
-status: in_review
+status: done
 priority: low
 estimate: 1
 assignee: fred
@@ -11,7 +11,7 @@ related: [PMK-10, PMK-115, PMK-116, PMK-117]
 milestone: local-gaps
 branch: pmk-114-accept-sprint-current-in-issues-create
 created: 2026-10-26T15:39:49.505Z
-updated: 2026-10-26T17:58:03Z
+updated: 2026-10-26T18:00:51Z
 ---
 
 ## Description

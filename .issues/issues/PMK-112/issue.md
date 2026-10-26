@@ -2,7 +2,7 @@
 id: PMK-112
 title: Report .pmkit/config.yaml problems in validate and init
 type: bug
-status: in_review
+status: done
 priority: medium
 estimate: 2
 assignee: fred
@@ -11,7 +11,7 @@ related: [PMK-8, PMK-118, PMK-119, PMK-120]
 milestone: local-gaps
 branch: pmk-112-report-pmkit-config-yaml-problems-in
 created: 2026-10-26T15:39:49.360Z
-updated: 2026-10-26T17:58:03Z
+updated: 2026-10-26T18:00:50Z
 ---
 
 ## Description
