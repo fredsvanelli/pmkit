@@ -32,6 +32,10 @@ _Avoid_: subtask, child ticket
 A larger body of work with a status, an optional start and target date, and published status updates. An issue belongs to an epic through `parent`, and the epic's progress counts every issue whose parent chain reaches it.
 _Avoid_: initiative, project, deliverable (that is the contract's name for the operations on an epic)
 
+**Milestone**:
+A named target with an optional due date that issues and epics point to by id.
+_Avoid_: release (PMK-22), phase, version
+
 **Sprint**:
 A time box with a start, an end, a goal, a state (`planned`, `active` or `closed`) and a capacity per member. At most one sprint is `active`. The sprint's id is its start date. The Unified model calls it a cycle, and the CLI command group is `cycle`.
 _Avoid_: iteration, cycle (outside the CLI and contract names)

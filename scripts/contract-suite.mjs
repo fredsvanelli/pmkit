@@ -167,6 +167,32 @@ export function runTrackerContract({ name, setup }) {
       await rejects(() => tracker.getDeliverable('NOPE-999999'), 'NOT_FOUND')
     })
 
+    it('lists no milestones at the start', async ({ tracker }) => {
+      assert.deepEqual(await tracker.listMilestones(), [])
+    })
+
+    it('creates a milestone that list and get agree on', async ({ tracker, actor }) => {
+      const created = await tracker.createMilestone({ id: 'contract-m1', name: 'Contract one', due: '2099-01-31' }, actor)
+      assert.equal(created.before, null)
+      assert.equal(created.after.id, 'contract-m1')
+      assert.equal(created.after.name, 'Contract one')
+      assert.equal(created.after.due, '2099-01-31')
+      assert.deepEqual(await tracker.listMilestones(), [created.after])
+      assert.deepEqual(await tracker.getMilestone('contract-m1'), created.after)
+    })
+
+    it('rejects an unknown milestone with NOT_FOUND', async ({ tracker }) => {
+      await rejects(() => tracker.getMilestone('no-such-milestone'), 'NOT_FOUND')
+    })
+
+    it('a milestone dry run returns after and creates nothing', async ({ tracker, actor }) => {
+      const { before, after } = await tracker.createMilestone({ id: 'contract-dry' }, actor, { dryRun: true })
+      assert.equal(before, null)
+      assert.equal(after.id, 'contract-dry')
+      assert.deepEqual(await tracker.listMilestones(), [])
+      await rejects(() => tracker.getMilestone('contract-dry'), 'NOT_FOUND')
+    })
+
     it('logs time on an issue and shows it in the history and the metric events', async ({ tracker, actor }) => {
       const { id } = (await tracker.createIssue({ title: 'Timed' }, actor)).after
       await tracker.logTime(id, 45, actor)

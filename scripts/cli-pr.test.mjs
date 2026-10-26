@@ -141,6 +141,24 @@ test('pr sync with nothing merged moves nothing and does not commit', () => {
   assert.equal(subjects(root), before)
 })
 
+test('pr sync --dry-run with auto_commit true does not commit', () => {
+  const root = autoCommitRepo()
+  const gh = fakeGh({ [view('merged-branch')]: { stdout: prJson({ number: 11, mergedAt: '2026-10-22T10:00:00Z' }) } })
+  try {
+    const env = envWith(gh)
+    inReview(root, env, 'ISS-2X6D', 'merged-branch')
+    const before = subjects(root)
+    const tree = hashTree(root)
+    const result = callJson(root, env, ['pr', 'sync', '--dry-run'])
+    assert.deepEqual(result.moved, [{ id: 'ISS-2X6D', pr: 11 }])
+    assert.equal(subjects(root), before)
+    assert.equal(hashTree(root), tree)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+    fs.rmSync(gh.dir, { recursive: true, force: true })
+  }
+})
+
 test('pr sync commits with the moved ids when auto_commit is on', () => {
   const root = autoCommitRepo()
   const env = envWith(fakeGh({ [view('merged-branch')]: { stdout: prJson({ number: 11, mergedAt: '2026-10-22T10:00:00Z' }) } }))
