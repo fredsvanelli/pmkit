@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { TRACKERS, unsupportedTracker } from './lib/config.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { hashTree, makeRepo } from './test-helpers.mjs'
 
@@ -60,6 +61,11 @@ test('validateRepo writes nothing', () => {
   const before = hashTree(root)
   validateRepo(root)
   assert.equal(hashTree(root), before)
+  const linear = makeRepo('basic')
+  editPmkit(linear, 'system: local', 'system: linear')
+  const linearBefore = hashTree(linear)
+  validateRepo(linear)
+  assert.equal(hashTree(linear), linearBefore)
 })
 
 function writeIssue(root, id, extra = '') {
@@ -270,13 +276,78 @@ test('a bad .pmkit/config.yaml with .issues/config.yaml missing still throws NOT
   assert.throws(() => validateRepo(root), { code: 'NOT_CONFIGURED' })
 })
 
-test('tracker.system linear alone still throws NOT_SUPPORTED', () => {
+const MSG = 'tracker.system "linear" is not supported yet, set it to local'
+const messages = (result) => result.problems.map((problem) => problem.message)
+
+test('tracker.system linear alone is one config problem, not a throw', () => {
   const root = makeRepo('basic')
   editPmkit(root, 'system: local', 'system: linear')
-  assert.throws(() => validateRepo(root), { code: 'NOT_SUPPORTED' })
+  let result
+  assert.doesNotThrow(() => {
+    result = validateRepo(root)
+  })
+  assert.deepEqual(brief(result), ['config .pmkit/config.yaml'])
+  assert.equal(result.problems[0].message, MSG)
+  assert.deepEqual(result.checked, { issues: 0, epics: 0, sprints: 0, milestones: 0, comments: 0 })
+  assert.ok(MSG.startsWith(unsupportedTracker('linear').message))
+})
+
+test('every known tracker except local is listed', () => {
+  for (const name of TRACKERS.filter((tracker) => tracker !== 'local')) {
+    const root = makeRepo('basic')
+    editPmkit(root, 'system: local', `system: ${name}`)
+    assert.deepEqual(messages(validateRepo(root)), [`tracker.system "${name}" is not supported yet, set it to local`], name)
+  }
+})
+
+test('linear and git_host.system gitlab list both problems', () => {
+  const root = makeRepo('basic')
+  editPmkit(root, 'system: local', 'system: linear')
   editPmkit(root, 'system: none', 'system: gitlab')
+  assert.deepEqual(messages(validateRepo(root)), ['git_host.system must be github or none', MSG])
+})
+
+test('linear and breakPmkit list three problems', () => {
+  const root = makeRepo('basic')
+  editPmkit(root, 'system: local', 'system: linear')
+  breakPmkit(root)
+  const result = validateRepo(root)
+  assert.ok(result.problems.every((problem) => problem.path === '.pmkit/config.yaml' && problem.code === 'config'))
+  assert.deepEqual(messages(result), [
+    'git_host.system must be github or none',
+    'write_policy.confirm must be one of all_writes, single_writes, none',
+    MSG,
+  ])
+})
+
+test('linear with a broken .issues/config.yaml lists only the tracker problem', () => {
+  const root = makeRepo('basic')
+  editPmkit(root, 'system: local', 'system: linear')
+  fs.writeFileSync(path.join(root, '.issues', 'config.yaml'), 'version: 1\nthis line has no colon\n')
   assert.deepEqual(brief(validateRepo(root)), ['config .pmkit/config.yaml'])
-  assert.equal(validateRepo(root).problems[0].message, 'git_host.system must be github or none')
+})
+
+test('tracker.system local with another bad key lists no tracker problem', () => {
+  const root = makeRepo('basic')
+  editPmkit(root, 'system: none', 'system: gitlab')
+  assert.deepEqual(messages(validateRepo(root)), ['git_host.system must be github or none'])
+})
+
+test('an empty .pmkit/config.yaml gets no tracker problem', () => {
+  const root = makeRepo('basic')
+  setPmkit(root, '')
+  assert.deepEqual(messages(validateRepo(root)), [
+    'version must be 1',
+    'tracker.system must be one of local, linear, jira, github, gitlab, azure-devops',
+    'git_host.system must be github or none',
+    'write_policy.confirm must be one of all_writes, single_writes, none',
+  ])
+})
+
+test('tracker as a string gets no tracker problem', () => {
+  const root = makeRepo('basic')
+  editPmkit(root, 'tracker:\n  system: local\n  path: .issues\n', 'tracker: linear\n')
+  assert.deepEqual(messages(validateRepo(root)), ['tracker.system must be one of local, linear, jira, github, gitlab, azure-devops'])
 })
 
 test('every fixture has no .pmkit/config.yaml problem', () => {

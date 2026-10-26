@@ -1,2 +1,10 @@
 {"at":"2026-10-26T17:58:03Z","by":"fred","op":"create","to":{"id":"PMK-119","title":"List tracker.system linear as a problem in validate","type":"bug","status":"backlog","priority":"low","labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-26T17:58:03.483Z","updated":"2026-10-26T17:58:03Z"}}
 {"at":"2026-10-26T17:58:03Z","by":"fred","op":"link","field":"related","to":"PMK-112"}
+{"at":"2026-10-26T19:17:43Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-26T19:17:43Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-26T19:17:43Z","by":"fred","op":"update","field":"estimate","from":null,"to":1}
+{"at":"2026-10-26T19:17:43Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-26T19:17:43Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-119-list-tracker-system-linear-as-a-problem"}
+{"at":"2026-10-26T19:23:19Z","by":"fred","op":"comment","to":"2026-10-26T19-23-19Z-fred.md"}
+{"at":"2026-10-26T19:32:12Z","by":"fred","op":"comment","to":"2026-10-26T19-32-12Z-fred.md"}
+{"at":"2026-10-26T19:32:12Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
