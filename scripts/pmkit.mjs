@@ -182,7 +182,7 @@ const problemLine = (problem) => `${problem.id}: ${problem.code} ${problem.messa
 // Command table. `run` returns { data, text, commit }: the JSON value, the plain text and, for a write, the id for the commit message.
 export const COMMANDS = [
   {
-    name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name',
+    name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line',
     usage: '[--tracker local] [--git-host github|none] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
     flags: ['tracker', 'git-host', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, run: runInit,
   },

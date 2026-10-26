@@ -96,7 +96,7 @@ test('validateLocalConfig accepts a missing id_style and refuses an unknown one'
   delete local.id_style
   assert.deepEqual(validateLocalConfig(local), [])
   local.id_style = 'sequential'
-  assert.deepEqual(validateLocalConfig(local), ['id_style must be random or numbered'])
+  assert.deepEqual(validateLocalConfig(local), ['id_style must be random or numbered, found "sequential"'])
   assert.equal(withLocalDefaults({}).id_style, 'random')
 })
 
@@ -168,20 +168,20 @@ test('localConfigShapeProblems accepts the template and leaves the cross-field r
 
 test('localConfigShapeProblems reports every key the CLI reads', () => {
   const cases = [
-    [{ auto_commit: 'yes' }, 'auto_commit must be true or false'],
-    [{ members: { fred: null } }, 'member fred must be a map'],
-    [{ members: { fred: { name: 1 } } }, 'member fred: name must be a string'],
-    [{ members: { fred: { email: 1 } } }, 'member fred: email must be a string'],
-    [{ members: null }, 'members must be a map'],
-    [{ labels: null }, 'labels must be a list of strings'],
-    [{ labels: [1] }, 'labels must be a list of strings'],
-    [{ estimate: { unit: 'points', scale: null } }, 'estimate.scale must be a list of numbers or strings'],
-    [{ estimate: null }, 'estimate must be a map'],
-    [{ defaults: null }, 'defaults must be a map'],
-    [{ statuses: null }, 'statuses must be a map'],
-    [{ default_status: 1 }, 'default_status must be a string'],
-    [{ version: 0 }, 'version must be a whole number of 1 or more'],
-    [{ version: 1.5 }, 'version must be a whole number of 1 or more'],
+    [{ auto_commit: 'yes' }, 'auto_commit must be true or false, found "yes"'],
+    [{ members: { fred: null } }, 'member fred must be a map, with name, email or availability, found null'],
+    [{ members: { fred: { name: 1 } } }, 'member fred: name must be a string, found 1'],
+    [{ members: { fred: { email: 1 } } }, 'member fred: email must be a string, found 1'],
+    [{ members: null }, 'members must be a map of member IDs, found null'],
+    [{ labels: null }, 'labels must be a list of strings, found null'],
+    [{ labels: [1] }, 'labels must be a list of strings, found [1]'],
+    [{ estimate: { unit: 'points', scale: null } }, 'estimate.scale must be a list of numbers or strings, found null'],
+    [{ estimate: null }, 'estimate must be a map with a unit, found null'],
+    [{ defaults: null }, 'defaults must be a map, found null'],
+    [{ statuses: null }, 'statuses must be a map of status names, each with a category, found null'],
+    [{ default_status: 1 }, 'default_status must be a string, found 1'],
+    [{ version: 0 }, 'version must be a whole number of 1 or more, found 0'],
+    [{ version: 1.5 }, 'version must be a whole number of 1 or more, found 1.5'],
   ]
   for (const [patch, message] of cases) {
     const local = { ...withLocalDefaults(template('issues.config.yaml')), ...patch }

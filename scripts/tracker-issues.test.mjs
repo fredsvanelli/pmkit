@@ -413,7 +413,7 @@ test('a write refuses on auto_commit: "yes" with the new message and the validat
   assert.throws(
     () => tracker.createIssue({ title: 'First' }, 'fred'),
     (error) => error.code === 'INVALID_INPUT' &&
-      error.message === 'the tracker config is not valid, so writes are refused: auto_commit must be true or false' &&
+      error.message === 'the tracker config is not valid, so writes are refused: auto_commit must be true or false, found "yes"' &&
       error.nextStep === 'pmkit validate',
   )
 })

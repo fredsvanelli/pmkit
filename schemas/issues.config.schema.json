@@ -85,7 +85,7 @@
       "properties": {
         "unit": {
           "title": "Estimate unit",
-          "description": "points, hours or sizes.",
+          "description": "What estimates count. With points or hours, scale holds numbers such as 1, 2, 3, 5, 8. With sizes, scale holds strings such as S, M, L.",
           "enum": ["points", "hours", "sizes"],
           "default": "points"
         },
@@ -123,7 +123,7 @@
           },
           "email": {
             "title": "Email",
-            "description": "The member's email.",
+            "description": "The email pmkit matches against the git user email to find the acting member.",
             "type": "string"
           },
           "availability": {
