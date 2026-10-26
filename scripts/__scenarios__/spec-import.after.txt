@@ -1,0 +1,75 @@
+$ pmkit docs read specs/overview.md --json  [step 1, read]
+exit 0
+$ pmkit discover --json  [step 2, read]
+exit 0
+? Step 5  [confirmed]
+$ pmkit epic create --title 'Webhook delivery platform' --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues create --title 'Retry failed deliveries with backoff' --type feature --estimate 3 --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues create --title 'Park exhausted deliveries in a dead-letter queue' --type feature --estimate 5 --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit epic create --title 'Webhook delivery platform' --json  [step 7, write]
+exit 0
+$ pmkit issues create --title 'Retry failed deliveries with backoff' --type feature --estimate 3 --parent EPC-M0GZ --json  [step 8, write]
+exit 0
+$ pmkit issues create --title 'Park exhausted deliveries in a dead-letter queue' --type feature --estimate 5 --parent EPC-M0GZ --json  [step 8, write]
+exit 0
+$ pmkit issues create --title 'Replay a parked delivery' --type task --estimate 2 --parent ISS-Y8KQ --json  [step 8, write]
+exit 0
+$ pmkit issues link ISS-M0GZ ISS-Y8KQ --kind blocks --json  [step 9, write]
+exit 0
+
+--- added .issues/epics/EPC-M0GZ/epic.md
++---
++id: EPC-M0GZ
++title: Webhook delivery platform
++status: backlog
++---
++
+--- added .issues/epics/EPC-M0GZ/events.jsonl
++{"at":"2026-10-23T12:00:00.000Z","by":"fred","op":"create","to":{"id":"EPC-M0GZ","title":"Webhook delivery platform","status":"backlog"}}
+--- added .issues/issues/ISS-DZEF/events.jsonl
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-DZEF","title":"Replay a parked delivery","type":"task","status":"backlog","estimate":2,"labels":[],"parent":"ISS-Y8KQ","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
+--- added .issues/issues/ISS-DZEF/issue.md
++---
++id: ISS-DZEF
++title: Replay a parked delivery
++type: task
++status: backlog
++estimate: 2
++parent: ISS-Y8KQ
++created: 2026-10-23T12:00:00.000Z
++updated: 2026-10-23T12:00:00Z
++---
++
+--- added .issues/issues/ISS-M0GZ/events.jsonl
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-M0GZ","title":"Retry failed deliveries with backoff","type":"feature","status":"backlog","estimate":3,"labels":[],"parent":"EPC-M0GZ","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
+--- added .issues/issues/ISS-M0GZ/issue.md
++---
++id: ISS-M0GZ
++title: Retry failed deliveries with backoff
++type: feature
++status: backlog
++estimate: 3
++parent: EPC-M0GZ
++created: 2026-10-23T12:00:00.000Z
++updated: 2026-10-23T12:00:00Z
++---
++
+--- added .issues/issues/ISS-Y8KQ/events.jsonl
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-Y8KQ","title":"Park exhausted deliveries in a dead-letter queue","type":"feature","status":"backlog","estimate":5,"labels":[],"parent":"EPC-M0GZ","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"blocked_by","to":"ISS-M0GZ"}
+--- added .issues/issues/ISS-Y8KQ/issue.md
++---
++id: ISS-Y8KQ
++title: Park exhausted deliveries in a dead-letter queue
++type: feature
++status: backlog
++estimate: 5
++parent: EPC-M0GZ
++blocked_by: [ISS-M0GZ]
++created: 2026-10-23T12:00:00.000Z
++updated: 2026-10-23T12:00:00Z
++---
++

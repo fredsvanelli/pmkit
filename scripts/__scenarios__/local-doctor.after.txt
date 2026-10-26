@@ -1,0 +1,93 @@
+$ pmkit validate --json  [step 1, read]
+exit 0
+$ pmkit issues get ISS-4 --history --json  [step 2.1, read]
+exit 2 (expected CONFLICT)
+$ pmkit issues get ISS-5 --history --json  [step 2.1, read]
+exit 2 (expected CONFLICT)
+? Step 2.3  [confirmed]
+~ edit .issues/issues/ISS-5/issue.md  [step 2.4]
+$ pmkit validate --json  [step 2.5, read]
+exit 0
+$ pmkit discover --json  [step 4, read]
+exit 0
+$ pmkit issues update ISS-7 --priority high --dry-run --json  [step 4, dry run]
+exit 0
+$ pmkit issues parent ISS-8 none --dry-run --json  [step 4, dry run]
+exit 0
+? Step 5  [confirmed]
+$ pmkit issues update ISS-7 --priority high --json  [step 4, write]
+exit 0
+$ pmkit issues parent ISS-8 none --json  [step 4, write]
+exit 0
+$ pmkit validate --json  [step 6, read]
+exit 0
+
+--- changed .issues/issues/ISS-5/issue.md
+  ---
+  id: ISS-5
+  title: Export invoices as CSV
+  type: feature
+-<<<<<<< HEAD
+-status: in_progress
+-=======
+  status: in_review
+->>>>>>> ana/billing-export
+  priority: medium
+  estimate: 5
+  assignee: fred
+  labels: [billing]
+  sprint: 2026-10-12
+  created: 2026-10-12T10:00:00Z
+  updated: 2026-10-16T09:00:00Z
+  ---
+
+  ## Description
+
+  Finance needs a monthly CSV of invoices.
+--- changed .issues/issues/ISS-7/events.jsonl
+  {"at":"2026-10-10T10:00:00Z","by":"ana","op":"create","to":{"id":"ISS-7","title":"Dead-letter queue","type":"feature","status":"todo","priority":"high","estimate":5,"assignee":"ana","labels":["backend"],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-10T10:00:00Z","updated":"2026-10-10T10:00:00Z"}}
+  {"at":"2026-10-14T09:00:00Z","by":"ana","op":"move","field":"status","from":"todo","to":"in_progress"}
+  {"at":"2026-10-21T14:00:00Z","by":"ana","op":"move","field":"status","from":"in_progress","to":"in_review"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"priority","from":"high","to":"critical","synthetic":true}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"priority","from":"critical","to":"high"}
+--- changed .issues/issues/ISS-7/issue.md
+  ---
+  id: ISS-7
+  title: Dead-letter queue
+  type: feature
+  status: in_review
+-priority: critical
++priority: high
+  estimate: 5
+  assignee: ana
+  labels: [backend]
+  parent: EPC-1
+  sprint: 2026-10-12
+  created: 2026-10-10T10:00:00Z
+-updated: 2026-10-21T14:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Keep deliveries that ran out of retries so support can replay them.
+--- changed .issues/issues/ISS-8/events.jsonl
+  {"at":"2026-10-20T16:00:00Z","by":"ana","op":"create","to":{"id":"ISS-8","title":"Slow login report","type":"bug","status":"triage","priority":"medium","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-20T16:00:00Z","updated":"2026-10-20T16:00:00Z"}}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"parent","to":"EPC-9","synthetic":true}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"parent","from":"EPC-9","to":null}
+--- changed .issues/issues/ISS-8/issue.md
+  ---
+  id: ISS-8
+  title: Slow login report
+  type: bug
+  status: triage
+  priority: medium
+-parent: EPC-9
+  created: 2026-10-20T16:00:00Z
+-updated: 2026-10-20T16:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Some users wait ten seconds after submitting the login form.

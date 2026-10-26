@@ -44,12 +44,6 @@ const UPDATE = process.env.UPDATE_GOLDENS === '1'
 const REGENERATE = 'UPDATE_GOLDENS=1 node --test scripts/scenarios.test.mjs'
 const CLI_NAMES = COMMANDS.map((command) => command.name)
 
-// Scenario names that have no module yet. Each task that adds scenarios removes its names; the last one deletes this set.
-const PENDING = new Set([
-  'local-doctor', 'setup',
-  'spec-import', 'upgrade',
-])
-
 function commandFiles(dir = COMMANDS_DIR, prefix = '') {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     if (entry.isDirectory()) return commandFiles(path.join(dir, entry.name), `${prefix}${entry.name}/`)
@@ -73,11 +67,10 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
 
   test('every command file has a scenario', async () => {
     const loaded = await loadScenarios(SCENARIOS)
-    const { missing, extra, pendingWithScenario } = compareScenarios(FILES.map((f) => f.name), loaded.map((s) => s.name), PENDING)
+    const { missing, extra } = compareScenarios(FILES.map((f) => f.name), loaded.map((s) => s.name), new Set())
     const problems = [
       ...missing.map((name) => `rule 1: command file ${name} has no scenario module scripts/__scenarios__/${name}.mjs`),
       ...extra.map((name) => `rule 1: scenario module ${name}.mjs names no command file`),
-      ...pendingWithScenario.map((name) => `rule 1: ${name} has a scenario module, remove it from PENDING`),
     ]
     assert.deepEqual(problems, [])
   })
