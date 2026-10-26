@@ -207,6 +207,28 @@ export function runTrackerContract({ name, setup }) {
       assert.notEqual(await issueState(tracker, [a, b]), last)
     })
 
+    it('searchIssues with sprint current returns the active sprint issues and sprint none the issues in no sprint', async ({ tracker, actor, today }) => {
+      const active = (await tracker.openCycle({ start: today }, actor)).after
+      const planned = (await tracker.openCycle({ start: '2099-01-01' }, actor)).after
+      const inActive = (await tracker.createIssue({ title: 'In active', sprint: active.id }, actor)).after.id
+      const inPlanned = (await tracker.createIssue({ title: 'In planned', sprint: planned.id }, actor)).after.id
+      const free = (await tracker.createIssue({ title: 'Free' }, actor)).after.id
+
+      assert.deepEqual(ids((await tracker.searchIssues({ sprint: 'current' })).issues), [inActive])
+      assert.deepEqual(ids((await tracker.searchIssues({ sprint: 'none' })).issues), [free])
+      assert.deepEqual(ids((await tracker.searchIssues({ sprint: active.id })).issues), [inActive])
+      assert.deepEqual(ids((await tracker.searchIssues({ sprint: planned.id })).issues), [inPlanned])
+    })
+
+    it('searchIssues with sprint current returns an empty list without an active sprint', async ({ tracker, actor }) => {
+      const planned = (await tracker.openCycle({ start: '2099-01-01' }, actor)).after
+      await tracker.createIssue({ title: 'In planned', sprint: planned.id }, actor)
+      const free = (await tracker.createIssue({ title: 'Free' }, actor)).after.id
+
+      assert.deepEqual((await tracker.searchIssues({ sprint: 'current' })).issues, [])
+      assert.deepEqual(ids((await tracker.searchIssues({ sprint: 'none' })).issues), [free])
+    })
+
     it('sets and reads cycle capacity', async ({ tracker, actor, today }) => {
       const [member] = (await tracker.discover()).members
       const cycle = (await tracker.openCycle({ start: today }, actor)).after
