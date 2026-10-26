@@ -11,7 +11,7 @@ import { NOW, runPmkit } from './golden-helpers.mjs'
 import {
   scenarioName, snapshotFile, parseCommandFile, callKey, unknownFlags,
   matchEntry, coverageProblems, pointProblems, orderProblems, compareScenarios, staleSnapshots,
-  readTree, treeChanges, formatSnapshot, makeRepoView, runScenario,
+  readTree, treeChanges, formatSnapshot, makeRepoView, runScenario, traceFromLog,
 } from './scenario-helpers.mjs'
 import moveScenario from './__scenarios__/issues-move.mjs'
 
@@ -502,4 +502,30 @@ test('the fake gh answers the Nth call of a command with the Nth reply and repea
   } finally {
     fs.rmSync(gh.dir, { recursive: true, force: true })
   }
+})
+
+const PMKIT = 'node "/plugin/scripts/pmkit.mjs"'
+const bash = (rest) => ({ tool: 'Bash', command: `${PMKIT} ${rest}` })
+const QUESTION = { tool: 'AskUserQuestion', questions: [{ question: 'Move ISS-2X6D to done?', options: [{ label: 'Yes' }, { label: 'No' }] }] }
+const LIVE_LOG = [bash('issues get ISS-2X6D --json'), bash('issues move ISS-2X6D done --dry-run --json'), QUESTION, bash('issues move ISS-2X6D done --json')]
+
+test('traceFromLog maps calls and questions', () => {
+  const trace = traceFromLog(LIVE_LOG, COMMANDS)
+  assert.deepEqual(trace.map((row) => row.kind), ['read', 'dryRun', 'confirm', 'write'])
+  assert.deepEqual(trace[1].args, ['issues', 'move', 'ISS-2X6D', 'done'])
+  assert.equal(trace[2].key, undefined)
+  assert.deepEqual(orderProblems(trace), [])
+  const unconfirmed = traceFromLog(LIVE_LOG.filter((line) => line !== QUESTION), COMMANDS)
+  assert.match(orderProblems(unconfirmed)[0], /write .*issues move ISS-2X6D done.*before any confirm/)
+})
+
+test('traceFromLog counts an answer turn as a confirm and init as a write', () => {
+  const trace = traceFromLog([{ tool: 'turn', answer: 'Yes' }, bash('init --prefix ISS --json')], COMMANDS)
+  assert.deepEqual(trace.map((row) => row.kind), ['confirm', 'write'])
+})
+
+test('traceFromLog reads every pmkit call of a compound command, through a variable too', () => {
+  const command = 'cd /tmp/x; P="/plugin/scripts/pmkit.mjs"; node "$P" issues get A --json && node $P issues move A done --dry-run --json; cat .pmkit/config.yaml'
+  const trace = traceFromLog([{ tool: 'Bash', command }, { tool: 'Bash', command: 'git status' }], COMMANDS)
+  assert.deepEqual(trace.map((row) => `${row.kind} ${row.args.join(' ')}`), ['read issues get A', 'dryRun issues move A done'])
 })

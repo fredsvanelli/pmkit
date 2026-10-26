@@ -260,6 +260,78 @@ export function orderProblems(trace) {
   return problems
 }
 
+/**
+ * The simple commands of a shell command line, each as its list of words. It splits on `;`, `&`, `|` and
+ * newlines outside quotes and removes the quotes. It knows no subshells or here documents.
+ */
+function shellCommands(text) {
+  const commands = []
+  let words = []
+  let word = null
+  let quote = null
+  const endWord = () => {
+    if (word !== null) words.push(word)
+    word = null
+  }
+  const endCommand = () => {
+    endWord()
+    if (words.length) commands.push(words)
+    words = []
+  }
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (quote) {
+      if (ch === quote) quote = null
+      else if (ch === '\\' && quote === '"' && i + 1 < text.length) word += text[++i]
+      else word += ch
+    } else if (ch === '"' || ch === "'") {
+      quote = ch
+      word ??= ''
+    } else if (ch === '\\' && i + 1 < text.length) word = (word ?? '') + text[++i]
+    else if (/[;&|\n]/.test(ch)) endCommand()
+    else if (/\s/.test(ch)) endWord()
+    else word = (word ?? '') + ch
+  }
+  endCommand()
+  return commands
+}
+
+/**
+ * The live suite's trace (rule 9) from the hook log of a `claude -p` run. Each `node .../pmkit.mjs` call in a
+ * Bash command gives a row: `dryRun` with `--dry-run`, else `write` when its CLI command writes or is `init`,
+ * else `read`. A call through a variable set earlier in the same command (`P=.../pmkit.mjs; node "$P" ...`)
+ * counts. An `AskUserQuestion` line and an answer `turn` line each give a `confirm` with no key.
+ * Row args drop `--json` and `--dry-run`, as the entry args of `runScenario` do.
+ */
+export function traceFromLog(lines, cliCommands) {
+  const cliNames = cliCommands.map((command) => command.name)
+  const trace = []
+  for (const line of lines) {
+    if (line.tool === 'AskUserQuestion' || line.tool === 'turn') {
+      trace.push({ kind: 'confirm' })
+      continue
+    }
+    if (line.tool !== 'Bash') continue
+    const vars = {}
+    for (const words of shellCommands(line.command)) {
+      const expanded = words.map((word) => word.replace(/\$\{?(\w+)\}?/g, (text, name) => vars[name] ?? text))
+      const assignment = expanded.length === 1 && expanded[0].match(/^(\w+)=(.*)$/s)
+      if (assignment) {
+        vars[assignment[1]] = assignment[2]
+        continue
+      }
+      const at = expanded.findIndex((word) => /(?:^|\/)pmkit\.mjs$/.test(word))
+      if (at < 1 || !/(?:^|\/)node$/.test(expanded[at - 1])) continue
+      const rest = expanded.slice(at + 1)
+      const args = rest.filter((arg) => arg !== '--json' && arg !== '--dry-run')
+      const command = commandOf(args, cliNames)
+      const writes = cliCommands.find((cli) => cli.name === command)?.write || command === 'init'
+      trace.push({ kind: rest.includes('--dry-run') ? 'dryRun' : writes ? 'write' : 'read', step: 'live', args })
+    }
+  }
+  return trace
+}
+
 /** Rule 1: command names without a scenario, scenario names without a command, and pending names that have a scenario. */
 export function compareScenarios(commandNames, scenarioNames, pending) {
   const commands = new Set(commandNames)
@@ -383,10 +455,13 @@ const KINDS = ['read', 'dryRun', 'write', 'confirm', 'edit', 'git']
 const LABELS = { read: 'read', dryRun: 'dry run', write: 'write' }
 
 /**
- * Copies the fixture into `root` and applies `github` and `git`. Returns the fake gh handle, or null.
- * For `github`, it also puts the fake gh first on `env.PATH` and sets `env.PMKIT_FAKE_GH`.
+ * Prepares a run of a scenario in `scratch`: copies the fixture into `<scratch>/repo`, applies `github` and `git`,
+ * runs `setup` and takes the baseline after it. For `github`, it adds a bare origin, puts the fake gh first on
+ * `env.PATH` and sets `env.PMKIT_FAKE_GH`; `gh` is null otherwise. The caller removes `scratch`.
  */
-function prepareCopy(scenario, { root, scratch, fixturesDir, env }) {
+export async function prepareCopy(scenario, { scratch, fixturesDir, run = runPmkit }) {
+  const root = path.join(scratch, 'repo')
+  const env = childEnv()
   if (scenario.fixture) fs.cpSync(path.join(fixturesDir, scenario.fixture), root, { recursive: true })
   else fs.mkdirSync(root)
   if (scenario.github) {
@@ -400,16 +475,24 @@ function prepareCopy(scenario, { root, scratch, fixturesDir, env }) {
     gitOrThrow(root, ['add', '-A'], env)
     gitOrThrow(root, ['commit', '-q', '--allow-empty', '-m', 'initial'], env)
   }
-  if (!scenario.github) return null
-  const remote = path.join(scratch, 'origin.git')
-  fs.mkdirSync(remote)
-  addBareOrigin(root, remote, env)
-  const ghDir = path.join(scratch, 'gh')
-  fs.mkdirSync(ghDir)
-  const gh = fakeGh(scenario.gh ?? {}, ghDir)
-  env.PATH = `${ghDir}${path.delimiter}${env.PATH}`
-  env.PMKIT_FAKE_GH = gh.responses
-  return gh
+  let gh = null
+  if (scenario.github) {
+    const remote = path.join(scratch, 'origin.git')
+    fs.mkdirSync(remote)
+    addBareOrigin(root, remote, env)
+    const ghDir = path.join(scratch, 'gh')
+    fs.mkdirSync(ghDir)
+    gh = fakeGh(scenario.gh ?? {}, ghDir)
+    env.PATH = `${ghDir}${path.delimiter}${env.PATH}`
+    env.PMKIT_FAKE_GH = gh.responses
+  }
+  const pmkit = async (args, { stdin } = {}) => {
+    const result = await run([...args, '--json'], root, { env, input: stdin })
+    if (result.code !== 0) throw new Error(`setup: pmkit ${args.join(' ')} exited ${result.code}: ${result.stdout}${result.stderr}`)
+    return JSON.parse(result.stdout)
+  }
+  await scenario.setup?.({ root, pmkit, git: (...args) => gitOrThrow(root, args, env) })
+  return { root, env, baseline: readTree(root), gh }
 }
 
 const parseJson = (text) => {
@@ -431,7 +514,6 @@ export async function runScenario(scenario, { name, parsed, cliCommands, fixture
   const cliNames = cliCommands.map((command) => command.name)
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-scn-'))
   const root = path.join(scratch, 'repo')
-  const env = childEnv()
   const problems = []
   const rows = []
   const trace = []
@@ -440,14 +522,7 @@ export async function runScenario(scenario, { name, parsed, cliCommands, fixture
   const saved = {}
   const show = (args) => displayArgs(args, { root, inputs: inputsDir }).map(quoteArg).join(' ')
   try {
-    const gh = prepareCopy(scenario, { root, scratch, fixturesDir, env })
-    const pmkit = async (args, { stdin } = {}) => {
-      const result = await run([...args, '--json'], root, { env, input: stdin })
-      if (result.code !== 0) throw new Error(`setup: pmkit ${args.join(' ')} exited ${result.code}: ${result.stdout}${result.stderr}`)
-      return JSON.parse(result.stdout)
-    }
-    await scenario.setup?.({ root, pmkit, git: (...args) => gitOrThrow(root, args, env) })
-    const baseline = readTree(root)
+    const { env, baseline, gh } = await prepareCopy(scenario, { scratch, fixturesDir, run })
 
     let stopped = false
     for (const entry of scenario.steps) {
