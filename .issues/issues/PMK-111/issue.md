@@ -2,7 +2,7 @@
 id: PMK-111
 title: Tests leave temp directories behind
 type: chore
-status: in_review
+status: done
 priority: medium
 estimate: 2
 assignee: fred
@@ -11,7 +11,7 @@ related: [PMK-3]
 milestone: local-gaps
 branch: pmk-111-tests-leave-temp-directories-behind
 created: 2026-10-25T21:50:16.603Z
-updated: 2026-10-26T15:54:35Z
+updated: 2026-10-26T16:04:31Z
 ---
 
 ## Description
