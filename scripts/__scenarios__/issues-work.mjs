@@ -101,10 +101,6 @@ export default {
     'Step 4': 'the working tree is clean',
   },
   expect(repo, saved) {
-    assert.deepEqual(saved.issue.acceptanceCriteria, [], 'the readiness problem that step 3 asks about')
-    assert.equal(saved.openPreview.existing, true)
-    assert.equal(saved.opened.isDraft, true, 'pr open returns the draft, so sub-step 4 runs pr ready')
-    assert.equal(saved.ready.isDraft, false)
     const issue = repo.issue('ISS-4M2S')
     assert.equal(issue.status, 'in_review')
     assert.equal(issue.branch, BRANCH)
@@ -112,6 +108,10 @@ export default {
     assert.match(repo.git('log', '-1', '--format=%s', `origin/${BRANCH}`).trim(), /\(ISS-4M2S\)$/, 'pr open pushed the step 8 commit to origin')
     assert.ok(repo.ghCalls().includes('pr ready 7'), repo.ghCalls().join('\n'))
     assert.equal(repo.newEvents('ISS-4M2S').filter((event) => event.op === 'comment').length, 2, 'the plan and the summary')
+    assert.deepEqual(saved.issue.acceptanceCriteria, [], 'the readiness problem that step 3 asks about')
+    assert.equal(saved.openPreview.existing, true)
+    assert.equal(saved.opened.isDraft, true, 'pr open returns the draft, so sub-step 4 runs pr ready')
+    assert.equal(saved.ready.isDraft, false)
     assert.deepEqual(repo.issue(saved.followUp.after.id).related, ['ISS-4M2S'])
   },
 }

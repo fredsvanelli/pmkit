@@ -30,12 +30,12 @@ export default {
   skip: {},
   notHit: { 'Step 1': 'no in_review issue has a merged PR, so the pr sync preview moves nothing and does not ask' },
   expect(repo, saved) {
+    assert.deepEqual(repo.newEvents('ISS-8C4W'), [], 'a read-only command appends no event')
+    assert.ok(repo.ghCalls().includes('pr checks 9 --json name,state,bucket'), repo.ghCalls().join('\n'))
     assert.deepEqual(saved.sync.moved, [])
     assert.equal(saved.me.id, 'fred')
     assert.ok(saved.open.issues.some((issue) => issue.id === 'ISS-8C4W' && issue.branch === 'feat-dlq'))
     assert.ok(saved.events.every((event) => event.at >= '2026-10-22'), 'the digest period starts on 2026-10-22')
     assert.deepEqual(saved.status.checks.map((check) => check.bucket), ['fail'], 'the failing check goes to needs attention')
-    assert.deepEqual(repo.newEvents('ISS-8C4W'), [], 'a read-only command appends no event')
-    assert.ok(repo.ghCalls().includes('pr checks 9 --json name,state,bucket'), repo.ghCalls().join('\n'))
   },
 }

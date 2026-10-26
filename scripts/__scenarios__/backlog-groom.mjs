@@ -46,14 +46,14 @@ export default {
   skip: {},
   notHit: {},
   expect(repo, saved) {
-    const ids = (list) => list.issues.map((issue) => issue.id).sort()
-    assert.deepEqual(ids(saved.backlogBefore), ['ISS-1V9Z', 'ISS-3F7H', 'ISS-4M2S', 'ISS-6J0B', 'ISS-M0GZ'])
-    assert.deepEqual(ids(saved.backlogAfter), ['ISS-3F7H', 'ISS-4M2S', 'ISS-6J0B', 'ISS-M0GZ'], 'the canceled duplicate leaves the backlog')
-    assert.equal(repo.issue('ISS-6J0B').estimate, 2)
     assert.equal(repo.issue('ISS-3F7H').parent, 'EPC-2M9D')
     assert.equal(repo.issue('ISS-1V9Z').status, 'canceled')
     assert.deepEqual(repo.issue('ISS-1V9Z').duplicate_of, ['ISS-M0GZ'])
     const links = ['ISS-1V9Z', 'ISS-M0GZ'].flatMap((id) => repo.newEvents(id)).filter((event) => event.op === 'link')
     assert.equal(links.length, 1)
+    const ids = (list) => list.issues.map((issue) => issue.id).sort()
+    assert.deepEqual(ids(saved.backlogBefore), ['ISS-1V9Z', 'ISS-3F7H', 'ISS-4M2S', 'ISS-6J0B', 'ISS-M0GZ'])
+    assert.deepEqual(ids(saved.backlogAfter), ['ISS-3F7H', 'ISS-4M2S', 'ISS-6J0B', 'ISS-M0GZ'], 'the canceled duplicate leaves the backlog')
+    assert.equal(repo.issue('ISS-6J0B').estimate, 2)
   },
 }

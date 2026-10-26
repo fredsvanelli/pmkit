@@ -28,14 +28,14 @@ export default {
   skip: { '3 issues list': 'the fixture has an active sprint, so step 3 does not fall back to the list of all assigned issues' },
   notHit: { 'Step 1': 'no in_review issue has a merged PR, so the pr sync preview moves nothing and does not ask' },
   expect(repo, saved) {
+    assert.deepEqual(repo.newEvents('ISS-5N1R'), [], 'a read-only command appends no event')
+    assert.ok(repo.ghCalls().includes(`pr view feat-retries --json ${VIEW}`), repo.ghCalls().join('\n'))
+    assert.ok(repo.ghCalls().includes('pr checks 7 --json name,state,bucket'))
     assert.deepEqual(saved.sync.moved, [])
     const mine = saved.mine.issues.find((issue) => issue.id === 'ISS-5N1R')
     assert.equal(mine.branch, 'feat-retries')
     assert.equal(saved.status.pr.number, 7)
     assert.deepEqual(saved.status.checks.map((check) => check.bucket), ['pass'])
     assert.deepEqual(saved.status.reviews.map((review) => review.state), ['APPROVED'])
-    assert.deepEqual(repo.newEvents('ISS-5N1R'), [], 'a read-only command appends no event')
-    assert.ok(repo.ghCalls().includes(`pr view feat-retries --json ${VIEW}`), repo.ghCalls().join('\n'))
-    assert.ok(repo.ghCalls().includes('pr checks 7 --json name,state,bucket'))
   },
 }

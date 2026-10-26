@@ -75,6 +75,9 @@ export default {
   },
   notHit: { 'Step 3': 'validate reports no config or FORMAT problem' },
   expect(repo, saved) {
+    assert.match(repo.file('.issues/issues/ISS-4/issue.md'), /^<{7} HEAD$/m, 'ISS-4 keeps its markers')
+    assert.equal(repo.issue('ISS-7').priority, 'high')
+    assert.equal(repo.issue('ISS-8').parent, undefined)
     const codes = (result, file) => result.problems.filter((p) => p.path === `.issues/issues/${file}/issue.md`).map((p) => p.code)
     assert.deepEqual(codes(saved.first, 'ISS-5'), ['conflict'])
     assert.ok(codes(saved.first, 'ISS-7').includes('value'), 'setup gives step 4 a value problem')
@@ -85,8 +88,5 @@ export default {
     for (const id of ['ISS-5', 'ISS-7', 'ISS-8']) assert.deepEqual(codes(saved.last, id), [], `${id} has no problem left`)
     assert.doesNotMatch(repo.file('.issues/issues/ISS-5/issue.md'), /^(<{7}|={7}|>{7})/m)
     assert.equal(repo.issue('ISS-5').status, 'in_review')
-    assert.match(repo.file('.issues/issues/ISS-4/issue.md'), /^<{7} HEAD$/m, 'ISS-4 keeps its markers')
-    assert.equal(repo.issue('ISS-7').priority, 'high')
-    assert.equal(repo.issue('ISS-8').parent, undefined)
   },
 }

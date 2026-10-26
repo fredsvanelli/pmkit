@@ -37,11 +37,11 @@ export default [
     },
     notHit: { 'Existing config': 'there is no config, so step 1 takes the first run' },
     expect(repo, saved) {
+      assert.ok(repo.file('.pmkit/config.yaml'), '.pmkit/config.yaml exists')
+      assert.match(repo.file('.issues/config.yaml'), /^id_prefix: ISS$/m)
       assert.ok(saved.preview.files.every((file) => file.action === 'create'), 'every file is new')
       assert.deepEqual(saved.problems.problems, [])
       assert.deepEqual(saved.discovered.members.map((member) => member.id), ['fred'])
-      assert.ok(repo.file('.pmkit/config.yaml'), '.pmkit/config.yaml exists')
-      assert.match(repo.file('.issues/config.yaml'), /^id_prefix: ISS$/m)
     },
   },
   {
@@ -71,10 +71,10 @@ export default [
     },
     notHit: { 'First run': 'the config exists, so step 1 takes the existing config path' },
     expect(repo, saved) {
+      assert.ok(repo.file('.issues/.gitignore'), 'the deleted file is back')
       const changed = saved.preview.files.filter((file) => file.action !== 'keep')
       assert.deepEqual(changed, [{ path: '.issues/.gitignore', action: 'create' }])
       assert.deepEqual(saved.problems.problems, [])
-      assert.ok(repo.file('.issues/.gitignore'), 'the deleted file is back')
     },
   },
 ]

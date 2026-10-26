@@ -46,14 +46,14 @@ export default {
   },
   notHit: { 'Recording the current branch on the issue, when `pr open` finds no branch': 'the issue already has a branch' },
   expect(repo, saved) {
-    assert.equal(saved.preview.existing, false)
-    assert.equal(saved.preview.draft, true)
-    assert.equal(saved.opened.number, 9, 'the view after pr create returns the new PR')
-    assert.equal(saved.opened.existing, false)
     assert.equal(repo.issue('ISS-5N1R').status, 'todo')
     assert.equal(repo.issue('ISS-5N1R').assignee, 'fred')
     assert.equal(repo.newEvents('ISS-5N1R').filter((event) => event.op === 'comment').length, 1)
     assert.match(repo.git('--git-dir', path.join(repo.git('rev-parse', '--show-toplevel'), '..', 'origin.git'), 'branch', '--list', 'feat-retries'), /feat-retries/)
     assert.ok(repo.ghCalls().some((call) => call.startsWith('pr create') && call.endsWith('--draft')), repo.ghCalls().join('\n'))
+    assert.equal(saved.preview.existing, false)
+    assert.equal(saved.preview.draft, true)
+    assert.equal(saved.opened.number, 9, 'the view after pr create returns the new PR')
+    assert.equal(saved.opened.existing, false)
   },
 }

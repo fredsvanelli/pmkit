@@ -35,12 +35,12 @@ export default {
   skip: {},
   notHit: { 'Step 1': 'the team fixture has no planned sprint, so step 1 does not ask whether to plan one' },
   expect(repo, saved) {
-    assert.equal(saved.velocity.average, 10, 'the plan says the velocity comes from one closed sprint')
-    assert.deepEqual(saved.scope.issues.map((issue) => issue.id), ['ISS-3F7H', 'ISS-6J0B'])
     const sprint = repo.sprint('2026-10-26')
     assert.equal(sprint.goal, goal)
     assert.equal(sprint.end, '2026-11-08')
     assert.deepEqual(sprint.capacity, { fred: 8, ana: 6 })
+    assert.equal(saved.velocity.average, 10, 'the plan says the velocity comes from one closed sprint')
+    assert.deepEqual(saved.scope.issues.map((issue) => issue.id), ['ISS-3F7H', 'ISS-6J0B'])
     for (const id of ['ISS-3F7H', 'ISS-6J0B']) assert.equal(repo.issue(id).sprint, '2026-10-26')
   },
 }

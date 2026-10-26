@@ -34,9 +34,9 @@ export default {
     'Step 4': 'the plugin update is a `claude plugin` call, left to the live suite; here it reports no shownCommand',
   },
   expect(repo, saved) {
+    assert.match(repo.file('.issues/config.yaml'), /^version: 2$/m)
     assert.deepEqual(saved.sections.map((section) => section.version), ['0.2.0', '0.3.0'])
     assert.equal(saved.plan.from, 1)
     assert.ok(saved.plan.steps.length > 0, 'the dry run lists the step from format 1')
-    assert.match(repo.file('.issues/config.yaml'), /^version: 2$/m)
   },
 }

@@ -61,14 +61,14 @@ export default {
   skip: {},
   notHit: {},
   expect(repo, saved) {
+    assert.equal(repo.sprint('2026-10-12').state, 'closed')
+    assert.equal(repo.issue('ISS-8C4W').status, 'done')
+    for (const id of ['ISS-4M2S', 'ISS-5N1R']) assert.equal(repo.issue(id).sprint, undefined, `${id} is back in the backlog`)
     assert.deepEqual(saved.syncPreview.moved, [{ id: 'ISS-8C4W', pr: 12 }])
     assert.equal(saved.sprint.id, '2026-10-12')
     assert.deepEqual(saved.planned, [], 'no planned sprint, so the moves go to the backlog')
     const unfinished = saved.issues.filter((issue) => issue.status.category !== 'done').map((issue) => issue.id).sort()
     assert.deepEqual(unfinished, ['ISS-2X6D', 'ISS-4M2S', 'ISS-5N1R'])
-    assert.equal(repo.sprint('2026-10-12').state, 'closed')
-    assert.equal(repo.issue('ISS-8C4W').status, 'done')
-    for (const id of ['ISS-4M2S', 'ISS-5N1R']) assert.equal(repo.issue(id).sprint, undefined, `${id} is back in the backlog`)
     const original = repo.issue('ISS-2X6D')
     assert.equal(original.estimate, 5)
     assert.equal(original.sprint, '2026-10-12', 'the original stays in the closed sprint')

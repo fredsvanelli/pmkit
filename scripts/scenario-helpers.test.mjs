@@ -11,7 +11,7 @@ import { NOW, runPmkit } from './golden-helpers.mjs'
 import {
   scenarioName, snapshotFile, parseCommandFile, callKey, unknownFlags,
   matchEntry, coverageProblems, pointProblems, orderProblems, compareScenarios, staleSnapshots,
-  readTree, treeChanges, formatSnapshot, makeRepoView, runScenario, traceFromLog,
+  readTree, treeChanges, formatSnapshot, makeRepoView, runScenario, traceFromLog, stopProblems, expectUntilSaved,
 } from './scenario-helpers.mjs'
 import moveScenario from './__scenarios__/issues-move.mjs'
 
@@ -528,4 +528,79 @@ test('traceFromLog reads every pmkit call of a compound command, through a varia
   const command = 'cd /tmp/x; P="/plugin/scripts/pmkit.mjs"; node "$P" issues get A --json && node $P issues move A done --dry-run --json; cat .pmkit/config.yaml'
   const trace = traceFromLog([{ tool: 'Bash', command }, { tool: 'Bash', command: 'git status' }], COMMANDS)
   assert.deepEqual(trace.map((row) => `${row.kind} ${row.args.join(' ')}`), ['read issues get A', 'dryRun issues move A done'])
+})
+
+test('traceFromLog fails a write that comes before the question', () => {
+  const [read, dryRun, question, write] = LIVE_LOG
+  assert.match(orderProblems(traceFromLog([read, dryRun, write, question], COMMANDS))[0], /before any confirm/)
+})
+
+test('traceFromLog reads export, node options and bash -c', () => {
+  const kinds = (command) => traceFromLog([{ tool: 'Bash', command }], COMMANDS).map((row) => `${row.kind} ${row.args?.join(' ')}`)
+  const write = ['write issues move A done']
+  assert.deepEqual(kinds('export P=/p/scripts/pmkit.mjs; node "$P" issues move A done --json'), write)
+  assert.deepEqual(kinds('node --no-warnings /p/scripts/pmkit.mjs issues move A done --json'), write)
+  assert.deepEqual(kinds(`bash -c 'node /p/scripts/pmkit.mjs issues move A done --json'`), write)
+  assert.deepEqual(kinds('PMKIT_USER=ana node /p/scripts/pmkit.mjs issues move A done --json'), write)
+})
+
+test('traceFromLog marks a command that names pmkit.mjs in a shape it cannot read', () => {
+  for (const command of ['xargs -n1 node /p/scripts/pmkit.mjs issues get', 'node -r ./x.cjs /p/scripts/pmkit.mjs issues move A done --json', 'cat /p/scripts/pmkit.mjs']) {
+    assert.deepEqual(traceFromLog([{ tool: 'Bash', command }], COMMANDS), [{ kind: 'unparsed', command }], command)
+  }
+})
+
+test('traceFromLog drops redirections from the args', () => {
+  const trace = traceFromLog([{ tool: 'Bash', command: 'node /p/scripts/pmkit.mjs issues get A --json 2>&1 > out.json; node /p/scripts/pmkit.mjs issues comment A --body-file - --json <<\'EOF\'\nhi\nEOF' }], COMMANDS)
+  assert.deepEqual(trace.map((row) => `${row.kind} ${row.args.join(' ')}`), ['read issues get A', 'write issues comment A --body-file -'])
+})
+
+const T = (kind, args) => ({ kind, step: 'live', args, command: `${args[0]} ${args[1]}` })
+const STOP = { kind: 'confirm' }
+const TWO_CONFIRMS = [
+  { step: '1', dryRun: ['issues', 'move', 'A', 'done'] }, { confirm: 'Step 2' }, { step: '1', write: ['issues', 'move', 'A', 'done'] },
+  { step: '3', dryRun: ['issues', 'assign', 'A', 'me'] }, { confirm: 'Step 4' }, { step: '3', write: ['issues', 'assign', 'A', 'me'] },
+]
+const moveA = ['issues', 'move', 'A', 'done']
+const assignA = ['issues', 'assign', 'A', 'me']
+
+test('stopProblems checks every write against the stops the scenario needs before it', () => {
+  const good = [T('dryRun', moveA), STOP, T('write', moveA), T('dryRun', assignA), STOP, T('write', assignA)]
+  assert.deepEqual(stopProblems({ steps: TWO_CONFIRMS, trace: good, trees: ['b', 'c', 'd'], baseline: 'b' }), [])
+  const oneStop = [T('dryRun', moveA), STOP, T('write', moveA), T('dryRun', assignA), T('write', assignA)]
+  const problems = stopProblems({ steps: TWO_CONFIRMS, trace: oneStop, trees: ['b', 'c'], baseline: 'b' })
+  assert.equal(problems.length, 1)
+  assert.match(problems[0], /write issues assign A me came after 1 answer.*needs 2/)
+})
+
+test('stopProblems fails when the files change before the first stop the scenario needs', () => {
+  const trace = [T('read', ['issues', 'get', 'A']), STOP]
+  assert.match(stopProblems({ steps: TWO_CONFIRMS, trace, trees: ['changed', 'changed'], baseline: 'b' })[0], /changed in turn 1, after 0 answers.*needs 1/)
+  assert.deepEqual(stopProblems({ steps: TWO_CONFIRMS, trace, trees: ['b', 'changed'], baseline: 'b' }), [])
+  const readOnly = [{ step: '1', read: ['issues', 'get', 'A'] }]
+  assert.match(stopProblems({ steps: readOnly, trace, trees: ['b', 'changed'], baseline: 'b' })[0], /changed in turn 2.*writes nothing/)
+})
+
+test('stopProblems fails a command it cannot read and a write that differs from its dry run', () => {
+  assert.match(stopProblems({ steps: TWO_CONFIRMS, trace: [{ kind: 'unparsed', command: 'cat x/pmkit.mjs' }], trees: [], baseline: 'b' })[0], /cat x\/pmkit\.mjs/)
+  const other = [T('dryRun', moveA), STOP, T('write', ['issues', 'move', 'A', 'canceled'])]
+  assert.match(stopProblems({ steps: TWO_CONFIRMS, trace: other, trees: ['b', 'c'], baseline: 'b' })[0], /issues move A canceled.*no earlier dry run/)
+})
+
+test('expectUntilSaved runs an expect up to its first saved read', async () => {
+  const seen = []
+  const repo = { issue: (id) => { seen.push(id); return { status: 'done' } } }
+  const stopsAtSaved = (r, saved) => {
+    assert.equal(r.issue('A').status, 'done')
+    assert.equal(saved.preview.existing, true)
+    r.issue('B')
+  }
+  assert.equal(await expectUntilSaved(stopsAtSaved, repo), 'saved.preview')
+  assert.deepEqual(seen, ['A'])
+  assert.equal(await expectUntilSaved((r) => r.issue('C'), repo), null)
+  assert.equal(await expectUntilSaved(undefined, repo), null)
+  await assert.rejects(expectUntilSaved((r, saved) => {
+    assert.equal(r.issue('D').status, 'todo')
+    return saved.x
+  }, repo), /todo/)
 })

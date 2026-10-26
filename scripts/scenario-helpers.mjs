@@ -262,7 +262,8 @@ export function orderProblems(trace) {
 
 /**
  * The simple commands of a shell command line, each as its list of words. It splits on `;`, `&`, `|` and
- * newlines outside quotes and removes the quotes. It knows no subshells or here documents.
+ * newlines outside quotes and removes the quotes. `&` next to `>` stays in the word (`2>&1`, `&>`).
+ * It knows no subshells; the body of a here document becomes commands of its own.
  */
 function shellCommands(text) {
   const commands = []
@@ -288,6 +289,7 @@ function shellCommands(text) {
       quote = ch
       word ??= ''
     } else if (ch === '\\' && i + 1 < text.length) word = (word ?? '') + text[++i]
+    else if (ch === '&' && (word?.endsWith('>') || text[i + 1] === '>')) word = (word ?? '') + ch
     else if (/[;&|\n]/.test(ch)) endCommand()
     else if (/\s/.test(ch)) endWord()
     else word = (word ?? '') + ch
@@ -296,40 +298,145 @@ function shellCommands(text) {
   return commands
 }
 
+// A redirection: an operator alone (its target is the next word) or with its target attached.
+const REDIRECT_ALONE = /^(?:\d*|&)(?:>>?|<<?<?)$/
+const REDIRECT = /^(?:\d*|&)(?:>>?|<<?<?)/
+const PMKIT_SCRIPT = /(?:^|\/)pmkit\.mjs$/
+
+function withoutRedirections(words) {
+  const kept = []
+  for (let i = 0; i < words.length; i++) {
+    if (REDIRECT_ALONE.test(words[i])) i++
+    else if (!REDIRECT.test(words[i])) kept.push(words[i])
+  }
+  return kept
+}
+
 /**
- * The live suite's trace (rule 9) from the hook log of a `claude -p` run. Each `node .../pmkit.mjs` call in a
- * Bash command gives a row: `dryRun` with `--dry-run`, else `write` when its CLI command writes or is `init`,
- * else `read`. A call through a variable set earlier in the same command (`P=.../pmkit.mjs; node "$P" ...`)
- * counts. An `AskUserQuestion` line and an answer `turn` line each give a `confirm` with no key.
- * Row args drop `--json` and `--dry-run`, as the entry args of `runScenario` do.
+ * The rows of one shell command line. A simple command that names `pmkit.mjs` and is not `node [--option ...]
+ * <script> <args>` (after `export`, `VAR=value` prefixes and `bash -c` or `sh -c`) gives an `unparsed` row.
  */
-export function traceFromLog(lines, cliCommands) {
+function shellRows(text, cliCommands, vars = {}) {
   const cliNames = cliCommands.map((command) => command.name)
-  const trace = []
-  for (const line of lines) {
-    if (line.tool === 'AskUserQuestion' || line.tool === 'turn') {
-      trace.push({ kind: 'confirm' })
+  const rows = []
+  for (const words of shellCommands(text)) {
+    let expanded = withoutRedirections(words.map((word) => word.replace(/\$\{?(\w+)\}?/g, (all, name) => vars[name] ?? all)))
+    if (expanded[0] === 'export') expanded = expanded.slice(1)
+    const assignments = []
+    while (expanded.length && /^\w+=/.test(expanded[0])) assignments.push(expanded.shift())
+    if (!expanded.length) {
+      for (const assignment of assignments) {
+        const at = assignment.indexOf('=')
+        vars[assignment.slice(0, at)] = assignment.slice(at + 1)
+      }
       continue
     }
-    if (line.tool !== 'Bash') continue
-    const vars = {}
-    for (const words of shellCommands(line.command)) {
-      const expanded = words.map((word) => word.replace(/\$\{?(\w+)\}?/g, (text, name) => vars[name] ?? text))
-      const assignment = expanded.length === 1 && expanded[0].match(/^(\w+)=(.*)$/s)
-      if (assignment) {
-        vars[assignment[1]] = assignment[2]
-        continue
-      }
-      const at = expanded.findIndex((word) => /(?:^|\/)pmkit\.mjs$/.test(word))
-      if (at < 1 || !/(?:^|\/)node$/.test(expanded[at - 1])) continue
-      const rest = expanded.slice(at + 1)
-      const args = rest.filter((arg) => arg !== '--json' && arg !== '--dry-run')
-      const command = commandOf(args, cliNames)
-      const writes = cliCommands.find((cli) => cli.name === command)?.write || command === 'init'
-      trace.push({ kind: rest.includes('--dry-run') ? 'dryRun' : writes ? 'write' : 'read', step: 'live', args })
+    if (/(?:^|\/)(?:ba)?sh$/.test(expanded[0]) && expanded[1] === '-c' && expanded.length >= 3) {
+      rows.push(...shellRows(expanded[2], cliCommands, { ...vars }))
+      continue
     }
+    if (!expanded.some((word) => word.includes('pmkit.mjs'))) continue
+    let at = 1
+    while (at < expanded.length && /^--[\w-]+(?:=.*)?$/.test(expanded[at])) at++
+    if (!/(?:^|\/)node$/.test(expanded[0]) || !PMKIT_SCRIPT.test(expanded[at] ?? '')) {
+      rows.push({ kind: 'unparsed', command: text })
+      continue
+    }
+    const rest = expanded.slice(at + 1)
+    const args = rest.filter((arg) => arg !== '--json' && arg !== '--dry-run')
+    const command = commandOf(args, cliNames)
+    const writes = cliCommands.find((cli) => cli.name === command)?.write || command === 'init'
+    rows.push({ kind: rest.includes('--dry-run') ? 'dryRun' : writes ? 'write' : 'read', step: 'live', args, command })
+  }
+  return rows
+}
+
+/**
+ * The live suite's trace from the hook log of a `claude -p` run. Each `node .../pmkit.mjs` call in a Bash
+ * command gives a row: `dryRun` with `--dry-run`, else `write` when its CLI command writes or is `init`, else
+ * `read`. Calls through a variable set earlier in the same command (`P=.../pmkit.mjs; node "$P" ...`), with
+ * `export`, node options (`--no-warnings`) or inside `bash -c` count. A command that names `pmkit.mjs` in any
+ * other shape gives `{ kind: 'unparsed', command }`, so a check can fail closed on it. An `AskUserQuestion`
+ * line and an answer `turn` line each give a `confirm` with no key. Row args drop `--json`, `--dry-run` and
+ * redirections, as the entry args of `runScenario` do.
+ */
+export function traceFromLog(lines, cliCommands) {
+  const trace = []
+  for (const line of lines) {
+    if (line.tool === 'AskUserQuestion' || line.tool === 'turn') trace.push({ kind: 'confirm' })
+    else if (line.tool === 'Bash') trace.push(...shellRows(line.command, cliCommands))
   }
   return trace
+}
+
+/**
+ * The live suite's stop checks, which replace rule 9 there. `steps` are the scenario entries, `trace` comes
+ * from traceFromLog (each `confirm` is a stop the agent made and the suite answered), `trees` holds
+ * `hashTree(root, ['.git'])` at each `result` message and `baseline` the hash before the run.
+ * - The n-th write of the trace needs as many stops before it as the scenario has `confirm` entries before its
+ *   n-th `write` or `edit` entry (the last one for any extra write).
+ * - A write whose CLI command had an earlier dry run needs an earlier dry run with the same args.
+ * - An `unparsed` row fails, because its call may be a write the other checks cannot see.
+ * - The files of the copy (outside .git) must not change in a turn that starts with fewer answers than the
+ *   scenario's first write needs, nor in any turn when the scenario writes nothing. This needs no parsing.
+ */
+export function stopProblems({ steps, trace, trees, baseline }) {
+  const need = []
+  let confirms = 0
+  for (const entry of steps) {
+    if ('confirm' in entry) confirms++
+    else if ('write' in entry || 'edit' in entry) need.push(confirms)
+  }
+  const plural = (count) => `${count} answer${count === 1 ? '' : 's'}`
+  const problems = []
+  const dryRuns = []
+  let stops = 0
+  let writes = 0
+  for (const row of trace) {
+    if (row.kind === 'confirm') stops++
+    else if (row.kind === 'unparsed') problems.push(`a Bash command names pmkit.mjs in a shape the log parser cannot read: ${row.command}`)
+    else if (row.kind === 'dryRun') dryRuns.push(row)
+    else if (row.kind === 'write') {
+      const name = `write ${row.args.join(' ')}`
+      const wanted = need.length ? need[Math.min(writes, need.length - 1)] : 1
+      if (stops < wanted) problems.push(`${name} came after ${plural(stops)}; the scenario needs ${wanted} before its write ${writes + 1}`)
+      const previews = dryRuns.filter((dry) => dry.command === row.command)
+      if (previews.length && !previews.some((dry) => JSON.stringify(dry.args) === JSON.stringify(row.args))) {
+        problems.push(`${name} repeats a dry run of ${row.command}, but no earlier dry run has the same args`)
+      }
+      writes++
+    }
+  }
+  trees.forEach((hash, turn) => {
+    if (hash === (turn === 0 ? baseline : trees[turn - 1])) return
+    const where = `the files of the copy changed in turn ${turn + 1}, after ${plural(turn)}`
+    if (!need.length) problems.push(`${where}, and the scenario writes nothing`)
+    else if (turn < need[0]) problems.push(`${where}; the scenario's first write needs ${need[0]}`)
+  })
+  return problems
+}
+
+class SavedRead extends Error {}
+// The `saved` an expect gets in a live run: its first read throws SavedRead.
+const SAVED_STAND_IN = new Proxy({}, {
+  get(_, key) {
+    throw new SavedRead(`saved.${String(key)}`)
+  },
+})
+
+/**
+ * Runs `expect(repo, saved)` for the live suite, which has no saved results: the assertions before the first
+ * `saved` read run, and that read stops it. Returns the read (`'saved.preview'`), or null when the expect ran to
+ * the end. A failing assertion before the read throws as usual.
+ */
+export async function expectUntilSaved(expect, repo) {
+  try {
+    await expect?.(repo, SAVED_STAND_IN)
+    return null
+  } catch (error) {
+    if (error instanceof SavedRead) return error.message
+    throw error
+  }
 }
 
 /** Rule 1: command names without a scenario, scenario names without a command, and pending names that have a scenario. */
@@ -513,16 +620,15 @@ const parseJson = (text) => {
 export async function runScenario(scenario, { name, parsed, cliCommands, fixturesDir, inputsDir, run = runPmkit }) {
   const cliNames = cliCommands.map((command) => command.name)
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-scn-'))
-  const root = path.join(scratch, 'repo')
   const problems = []
   const rows = []
   const trace = []
   const usedKeys = new Set()
   const confirmed = []
   const saved = {}
-  const show = (args) => displayArgs(args, { root, inputs: inputsDir }).map(quoteArg).join(' ')
   try {
-    const { env, baseline, gh } = await prepareCopy(scenario, { scratch, fixturesDir, run })
+    const { root, env, baseline, gh } = await prepareCopy(scenario, { scratch, fixturesDir, run })
+    const show = (args) => displayArgs(args, { root, inputs: inputsDir }).map(quoteArg).join(' ')
 
     let stopped = false
     for (const entry of scenario.steps) {

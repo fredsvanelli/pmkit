@@ -45,10 +45,10 @@ export default [
     },
     notHit: { 'Step 5': 'an epic skips the offer to post the summary' },
     expect(repo, saved) {
+      assert.deepEqual(repo.newEvents('EPC-4H7V'), [])
       assert.equal(saved.epic.title, 'Reliable webhooks')
       assert.deepEqual(saved.updates, [])
       assert.deepEqual(saved.children.issues.map((issue) => issue.id).sort(), ['ISS-2K5P', 'ISS-6R3N'], 'the children the summary lists')
-      assert.deepEqual(repo.newEvents('EPC-4H7V'), [])
     },
   },
 ]
