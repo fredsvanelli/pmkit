@@ -2,8 +2,10 @@
 // and gh answers that its pull request #12 is merged, so step 1 previews, confirms and writes pr sync.
 // The active sprint 2026-10-12 then has one done issue and three unfinished ones. No sprint is planned, so the
 // user sends ISS-4M2S and ISS-5N1R back to the backlog and splits ISS-2X6D: a new issue under EPC-2M9D takes the
-// remaining 3 points in the backlog, and ISS-2X6D stays in the closed sprint with 5 points instead of 8.
-// Step 8 closes the sprint first, then runs the moves and the split.
+// remaining 3 points in the backlog, with a related link to ISS-2X6D, and ISS-2X6D moves to done with 5 points
+// instead of 8 and stays in the closed sprint.
+// Step 8 closes the sprint first, then runs the moves and the split, then reads the sprint's issues again for
+// the delivered numbers.
 import assert from 'node:assert/strict'
 import path from 'node:path'
 
@@ -17,6 +19,7 @@ const toBacklog = ['cycle', 'add', 'ISS-4M2S', 'ISS-5N1R', '--to', 'none']
 // The split keeps the type, priority and labels of ISS-2X6D (feature, high, billing and backend).
 const split = ['issues', 'create', '--title', 'Finish the billing export to CSV', '--type', 'feature', '--estimate', '3', '--parent', 'EPC-2M9D', '--priority', 'high', '--label', 'billing,backend']
 const shrink = ['issues', 'update', 'ISS-2X6D', '--estimate', '5']
+const done = ['issues', 'move', 'ISS-2X6D', 'done']
 const close = ['cycle', 'close', '2026-10-12']
 const writeRetro = ['docs', 'create', 'retros/2026-10-12.md', '--body-file', retro]
 
@@ -46,13 +49,18 @@ export default {
     { step: '7', dryRun: toBacklog },
     { step: '7', dryRun: split },
     { step: '7', dryRun: shrink },
+    { step: '7', dryRun: done },
     { step: '7', dryRun: close },
     { confirm: 'Step 7' },
-    // Step 8: close the sprint, then the same moves and the split without --dry-run.
+    // Step 8: close the sprint, then the same moves and the split without --dry-run: create, link, estimate, move.
     { step: '8', write: close },
     { step: '7', write: toBacklog },
     { step: '7', write: split, save: 'remaining' },
+    { step: '8', write: ({ remaining }) => ['issues', 'link', remaining.after.id, 'ISS-2X6D', '--kind', 'related'] },
     { step: '7', write: shrink },
+    { step: '7', write: done },
+    // Step 8 reads the sprint's issues again, after the writes, for the delivered numbers.
+    { step: '8', read: ['cycle', 'issues', '2026-10-12'], save: 'after' },
     // Step 9: the retro document.
     { step: '9', dryRun: writeRetro },
     { confirm: 'Step 9' },
@@ -71,13 +79,25 @@ export default {
     assert.deepEqual(unfinished, ['ISS-2X6D', 'ISS-4M2S', 'ISS-5N1R'])
     const original = repo.issue('ISS-2X6D')
     assert.equal(original.estimate, 5)
-    assert.equal(original.sprint, '2026-10-12', 'the original stays in the closed sprint')
+    assert.equal(original.status, 'done', 'the split moves the original to done')
+    assert.equal(original.sprint, '2026-10-12', 'the original stays in the closed sprint as the delivered part')
     const remaining = repo.issue(saved.remaining.after.id)
     assert.equal(remaining.estimate, 3)
     assert.equal(remaining.parent, 'EPC-2M9D')
+    // The two facts plan's step 5 query reads: a status in todo or backlog, and no sprint.
+    assert.equal(remaining.status, 'backlog')
     assert.equal(remaining.sprint, undefined, 'the new issue goes to the backlog')
     for (const field of ['type', 'priority']) assert.equal(remaining[field], original[field], `the split keeps the ${field}`)
     assert.deepEqual(remaining.labels, original.labels, 'the split keeps the labels')
-    assert.match(repo.file('.issues/docs/retros/2026-10-12.md'), /Delivered 1 of 3 planned issues/)
+    assert.ok(original.related.includes(saved.remaining.after.id), 'the original links to the new issue')
+    assert.ok(remaining.related.includes('ISS-2X6D'), 'the new issue links to the original')
+    // Criterion 1: no issue stays open in the closed sprint.
+    const open = saved.after.filter((issue) => !['done', 'canceled'].includes(issue.status.category)).map((issue) => issue.id)
+    assert.deepEqual(open, [], 'every issue left in the closed sprint is done or canceled')
+    const delivered = saved.after.filter((issue) => issue.status.category === 'done')
+    assert.deepEqual(delivered.map((issue) => issue.id).sort(), ['ISS-2X6D', 'ISS-8C4W'])
+    assert.equal(delivered.find((issue) => issue.id === 'ISS-2X6D').estimate, 5)
+    assert.equal(delivered.reduce((sum, issue) => sum + issue.estimate, 0), 10)
+    assert.match(repo.file('.issues/docs/retros/2026-10-12.md'), /Delivered 2 of 3 planned issues, 10 of 16 points/)
   },
 }

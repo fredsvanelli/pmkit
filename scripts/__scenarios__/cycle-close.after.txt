@@ -20,6 +20,8 @@ $ pmkit issues create --title 'Finish the billing export to CSV' --type feature 
 exit 0
 $ pmkit issues update ISS-2X6D --estimate 5 --dry-run --json  [step 7, dry run]
 exit 0
+$ pmkit issues move ISS-2X6D done --dry-run --json  [step 7, dry run]
+exit 0
 $ pmkit cycle close 2026-10-12 --dry-run --json  [step 7, dry run]
 exit 0
 ? Step 7  [confirmed]
@@ -29,7 +31,13 @@ $ pmkit cycle add ISS-4M2S ISS-5N1R --to none --json  [step 7, write]
 exit 0
 $ pmkit issues create --title 'Finish the billing export to CSV' --type feature --estimate 3 --parent EPC-2M9D --priority high --label billing,backend --json  [step 7, write]
 exit 0
+$ pmkit issues link ISS-M0GZ ISS-2X6D --kind related --json  [step 8, write]
+exit 0
 $ pmkit issues update ISS-2X6D --estimate 5 --json  [step 7, write]
+exit 0
+$ pmkit issues move ISS-2X6D done --json  [step 7, write]
+exit 0
+$ pmkit cycle issues 2026-10-12 --json  [step 8, read]
 exit 0
 $ pmkit docs create retros/2026-10-12.md --body-file <inputs>/retro.md --dry-run --json  [step 9, dry run]
 exit 0
@@ -44,9 +52,9 @@ exit 0
 +
 +## Numbers
 +
-+- Delivered 1 of 3 planned issues, 5 of 16 points. ISS-8C4W moved to done when its pull request merged.
++- Delivered 2 of 3 planned issues, 10 of 16 points. ISS-8C4W moved to done when its pull request merged, and ISS-2X6D moved to done with the 5 points it delivered.
 +- Scope added: ISS-4M2S (1 point) on 2026-10-13. Scope removed: none.
-+- Carry-over: ISS-5N1R and ISS-4M2S went back to the backlog. ISS-2X6D was split, and its remaining 3 points are a new issue in the backlog.
++- Carry-over: ISS-5N1R and ISS-4M2S went back to the backlog. ISS-2X6D was split. Its 5 delivered points are done, and its remaining 3 points are a new issue in the backlog, linked to it.
 +
 +## What slipped and why
 +
@@ -61,13 +69,16 @@ exit 0
   {"at":"2026-10-09T10:00:00Z","by":"fred","op":"link","field":"blocked_by","to":"ISS-5N1R"}
   {"at":"2026-10-09T10:10:00Z","by":"ana","op":"link","field":"related","to":"ISS-0G5E"}
   {"at":"2026-10-14T09:00:00Z","by":"ana","op":"move","field":"status","from":"todo","to":"in_progress"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"related","to":"ISS-M0GZ"}
 +{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"estimate","from":8,"to":5}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"done"}
 --- changed .issues/issues/ISS-2X6D/issue.md
   ---
   id: ISS-2X6D
   title: Billing export to CSV
   type: feature
-  status: in_progress
+-status: in_progress
++status: done
   priority: high
 -estimate: 8
 +estimate: 5
@@ -75,7 +86,8 @@ exit 0
   labels: [billing, backend]
   parent: EPC-2M9D
   blocked_by: [ISS-5N1R]
-  related: [ISS-0G5E]
+-related: [ISS-0G5E]
++related: [ISS-0G5E, ISS-M0GZ]
   sprint: 2026-10-12
   due: 2026-10-23
   created: 2026-10-05T09:00:00Z
@@ -166,6 +178,7 @@ exit 0
   Store deliveries that exhausted their retries so support can replay them.
 --- added .issues/issues/ISS-M0GZ/events.jsonl
 +{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-M0GZ","title":"Finish the billing export to CSV","type":"feature","status":"backlog","priority":"high","estimate":3,"labels":["billing","backend"],"parent":"EPC-2M9D","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"related","to":"ISS-2X6D"}
 --- added .issues/issues/ISS-M0GZ/issue.md
 +---
 +id: ISS-M0GZ
@@ -176,6 +189,7 @@ exit 0
 +estimate: 3
 +labels: [billing, backend]
 +parent: EPC-2M9D
++related: [ISS-2X6D]
 +created: 2026-10-23T12:00:00.000Z
 +updated: 2026-10-23T12:00:00Z
 +---

@@ -437,6 +437,29 @@ test('cycle close prints the unfinished issues', () => {
   assert.match(run(makeRepo('team'), ['cycle', 'close', '2026-10-12']).stdout, /state: active → closed/)
 })
 
+// A regression guard for PMK-113, not a failing-first test: it calls the CLI directly, and every call it makes
+// existed before the change to commands/cycle/close.md, so it passes before and after it.
+test('a split in cycle close leaves the remaining work for cycle plan', () => {
+  const root = makeRepo('team')
+  // The step 8 writes of the cycle-close scenario: close, create, link, lower the estimate, move to done.
+  json(root, ['cycle', 'close', '2026-10-12'])
+  const { after: remaining } = json(root, ['issues', 'create', '--title', 'Finish the billing export to CSV', '--type', 'feature', '--estimate', '3', '--parent', 'EPC-2M9D', '--priority', 'high', '--label', 'billing,backend'])
+  json(root, ['issues', 'link', remaining.id, 'ISS-2X6D', '--kind', 'related'])
+  json(root, ['issues', 'update', 'ISS-2X6D', '--estimate', '5'])
+  json(root, ['issues', 'move', 'ISS-2X6D', 'done'])
+  // The query of commands/cycle/plan.md step 5.
+  const offered = json(root, ['issues', 'list', '--category', 'todo,backlog', '--sprint', 'none']).issues.map((issue) => issue.id)
+  assert.ok(offered.includes(remaining.id), 'plan offers the remaining work')
+  assert.ok(!offered.includes('ISS-2X6D'), 'plan does not offer the delivered original')
+  const inSprint = json(root, ['cycle', 'issues', '2026-10-12'])
+  assert.equal(inSprint.find((issue) => issue.id === 'ISS-2X6D').status.category, 'done')
+  // ISS-2X6D is the only done issue of the sprint: the test runs no pr sync, so ISS-8C4W stays in in_review.
+  // PMKIT_NOW 2026-10-23 falls before the sprint's end of 2026-10-25, so this proves only a close on time.
+  // No assertion covers a late close, because it would lock in the gap that the velocity follow-up fixes.
+  const velocity = json(root, ['metrics', 'velocity'])
+  assert.deepEqual(velocity.perSprint.find((sprint) => sprint.id === '2026-10-12'), { id: '2026-10-12', points: 5, count: 1 })
+})
+
 test('auto_commit commits only the tracker folder with pmkit: <op> <id>', () => {
   const root = makeRepo('basic')
   const file = path.join(root, '.issues/config.yaml')

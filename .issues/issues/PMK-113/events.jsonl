@@ -1,2 +1,8 @@
 {"at":"2026-10-26T15:39:49Z","by":"fred","op":"create","to":{"id":"PMK-113","title":"Keep the original of a split issue out of the closed sprint","type":"bug","status":"backlog","priority":"medium","estimate":2,"labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-26T15:39:49.436Z","updated":"2026-10-26T15:39:49Z"}}
 {"at":"2026-10-26T15:39:56Z","by":"fred","op":"link","field":"related","to":"PMK-10"}
+{"at":"2026-10-26T17:00:15Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-26T17:00:15Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-26T17:00:24Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-113-keep-the-original-of-a-split-issue-out"}
+{"at":"2026-10-26T17:21:53Z","by":"fred","op":"comment","to":"2026-10-26T17-21-53Z-fred.md"}
+{"at":"2026-10-26T17:40:07Z","by":"fred","op":"comment","to":"2026-10-26T17-40-07Z-fred.md"}
+{"at":"2026-10-26T17:40:07Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
