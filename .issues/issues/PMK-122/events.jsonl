@@ -5,3 +5,4 @@
 {"at":"2026-10-26T21:47:19Z","by":"fred","op":"update","field":"estimate","from":null,"to":2}
 {"at":"2026-10-26T21:47:19Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-10-26T21:47:22Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-122-offer-in-progress-issues-sent-back-to"}
+{"at":"2026-10-26T21:56:40Z","by":"fred","op":"comment","to":"2026-10-26T21-56-40Z-fred.md"}
