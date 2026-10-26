@@ -11,6 +11,6 @@ The files live in the repository, so git versions and shares them. Two people wh
 
 ## Consequences
 
-- The Local tracker has no index, so every search reads every issue file. A query index under `.issues/.cache/` is planned for phase 2.
+- Searches read the query index in `.issues/.cache/index.json` and reparse only the issue files whose stat signature changed (PMK-7). Git ignores the index, and it is never a source of truth.
 - Hand edits to `issue.md` are allowed, so the adapter has to detect drift and record synthetic events before each write.
 - The Local tracker now has gaps. Its eight `absent` capabilities mean that tests against it exercise the `absent` path. A hosted adapter that lacks a capability reports it as `absent` or `conditional` in its manifest.

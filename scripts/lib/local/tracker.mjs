@@ -20,6 +20,7 @@ import { lastEntry } from '../metrics.mjs'
 import { createDocumentFile, readDocumentFile } from './documents.mjs'
 import { hasMilestoneFiles, milestoneStems, parseMilestone, serializeMilestone, sortMilestones, validMilestoneId } from './milestones.mjs'
 import { checkFilter, runQuery } from './query.mjs'
+import { CACHE_DIR, INDEX_FILE, clearIndex, indexHeader, readThroughIndex } from './query-index.mjs'
 import {
   SPRINT_STATES, addDays, overlaps, parseSprint, readSprint, readSprints, requireCapacity, serializeSprint, validDate,
 } from './sprints.mjs'
@@ -87,8 +88,11 @@ function checkKeys(input, allowed) {
   }
 }
 
-export function createLocalTracker(root, { config = loadConfig(root), now = () => new Date(), random, gitEmail, env = process.env } = {}) {
+export function createLocalTracker(root, {
+  config = loadConfig(root), now = () => new Date(), random, gitEmail, env = process.env, index = true, onIndexRead = () => {},
+} = {}) {
   const { local } = config
+  if (![true, 'read', false].includes(index)) throw invalid('index must be true, read or false')
   // An older format is read from its migrated copy; see loadConfig.
   const issuesDir = config.readDir ?? config.issuesDir
   const stamp = () => isoSeconds(now())
@@ -302,7 +306,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   })
 
   /** Every issue that parses, and a problem for each file that does not (conflict markers, bad frontmatter). */
-  function readAll() {
+  function scan() {
     const issues = []
     const problems = []
     for (const id of listIssueIds(issuesDir, local.id_prefix)) {
@@ -316,7 +320,53 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     return { issues, problems }
   }
 
-  const scanIssues = () => readAll().issues
+  // The query index (PMK-7). A tracker on an older format reads a migrated temp copy, so the index is off there.
+  const cacheDir = path.join(issuesDir, CACHE_DIR)
+  const indexMode = config.readDir === undefined ? index : false
+
+  function indexedRead(write) {
+    return readThroughIndex({
+      cacheDir,
+      header: indexHeader(local.statuses),
+      ids: listIssueIds(issuesDir, local.id_prefix),
+      fileOf: (id) => issuePaths(issuesDir, normalizeId(id)).file,
+      read: (id) => readIssue(id).issue,
+      write,
+    })
+  }
+
+  /** Every issue that parses, and a problem for each file that does not (conflict markers, bad frontmatter). `save: false` never writes the index. */
+  function readAll({ save = true } = {}) {
+    if (indexMode === false) return scan()
+    let result
+    try {
+      result = indexedRead(indexMode === true && save)
+    } catch {
+      // The index only makes a read faster. Any error in its path leaves the answer to the plain scan.
+      return scan()
+    }
+    onIndexRead(result.stats)
+    return { issues: result.issues, problems: result.problems }
+  }
+
+  /** Rebuilds the query index from every issue file. Not a write: no actor, no dry run, no event, and only ignored files change. */
+  function reindex() {
+    if (config.readDir !== undefined) {
+      return { written: false, reason: `this repository uses tracker format ${config.format.version}; run /pmkit:upgrade before the index can be written` }
+    }
+    if (indexMode !== true) return { written: false, reason: 'the query index is off for this tracker' }
+    try {
+      clearIndex(cacheDir)
+      const { issues, problems, stats } = indexedRead(true)
+      if (stats.error) throw stats.error
+      const rel = path.relative(root, path.join(cacheDir, INDEX_FILE)).split(path.sep).join('/')
+      return { written: true, path: rel, issues: issues.length, problems: problems.length }
+    } catch (error) {
+      return { written: false, reason: error.message }
+    }
+  }
+
+  const scanIssues = (options) => readAll(options).issues
 
   /** Fills `blocks` and `children` on an issue from the other issues. */
   function withComputed(issue, all = scanIssues()) {
@@ -349,16 +399,20 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   const currentCycle = () => listCycles({ state: 'active' })[0] ?? null
   const activeSprintId = () => currentCycle()?.id ?? null
 
-  function searchIssues(filter = {}) {
+  function search(filter, { save = true } = {}) {
     checkFilter(filter, { types: local.types, members: Object.keys(local.members), sprintExists })
     const resolved = { ...filter }
     if (filter.assignee === 'me') {
       resolved.assignee = requireActor(local, { email: gitEmail ?? gitUserEmail(root), env }).id
     }
     if (filter.sprint === 'current') resolved.sprint = activeSprintId()
-    const { issues, problems } = readAll()
+    const { issues, problems } = readAll({ save })
     const found = runQuery(issues, resolved, { priorities: local.priorities })
     return { issues: found.map((issue) => withComputed(issue, issues)), problems }
+  }
+
+  function searchIssues(filter = {}) {
+    return search(filter)
   }
 
   function createIssue(input, actor, { dryRun = false } = {}) {
@@ -483,7 +537,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     const { field, prop } = LINKS[kind]
     const options = { dryRun }
     if (kind === 'blocks') {
-      const all = scanIssues()
+      const all = scanIssues({ save: !dryRun })
       const blocker = all.find((issue) => issue.id === a)
       const closing = op === 'link' ? blockPath(b, a, all) : null
       if (closing) throw invalid(`${a} blocks ${b} would close a cycle: ${[a, ...closing].join(' → ')}`)
@@ -677,7 +731,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     const before = getSprint(id)
     if (before.state !== 'active') throw invalid(`sprint ${before.id} is not active (it is ${before.state})`, 'pmkit cycle list')
     // An issue that does not parse may belong to the sprint, so it is reported rather than left out silently.
-    const { issues, problems } = searchIssues({ sprint: before.id })
+    const { issues, problems } = search({ sprint: before.id }, { save: !dryRun })
     const { after } = writeSprint(before, { ...before, state: 'closed' }, { dryRun })
     return { sprint: after, unfinished: issues.filter((issue) => !TERMINAL.includes(issue.status.category)), problems }
   }
@@ -896,7 +950,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     listMilestones, getMilestone, createMilestone, unfiledMilestones,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
     comment, listComments, getHistory, logTime, readDocument, createDocument,
-    discover, capabilities, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
+    discover, capabilities, reindex, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
     listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity,
     writtenFiles,
   }

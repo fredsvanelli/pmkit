@@ -721,3 +721,120 @@ test('milestone create gives no warning when every name has a file', () => {
   assert.equal(result.status, 0, result.stderr)
   assert.doesNotMatch(result.stderr, /warning/)
 })
+
+const canChmod = process.platform !== 'win32' && process.getuid?.() !== 0
+const cacheIn = (root) => path.join(root, '.issues', '.cache')
+
+test('reindex --json rebuilds the index and leaves issues list unchanged', () => {
+  const root = makeRepo('team')
+  try {
+    const before = run(root, ['issues', 'list', '--archived', '--json']).stdout
+    fs.mkdirSync(cacheIn(root), { recursive: true })
+    fs.writeFileSync(path.join(cacheIn(root), 'index.json.tmp-999-0'), 'partial')
+    assert.deepEqual(json(root, ['reindex']), { written: true, path: '.issues/.cache/index.json', issues: 12, problems: 1 })
+    assert.deepEqual(fs.readdirSync(cacheIn(root)).sort(), ['.gitignore', 'index.json'])
+    assert.equal(run(root, ['issues', 'list', '--archived', '--json']).stdout, before)
+    const text = run(root, ['reindex'])
+    assert.equal(text.status, 0)
+    assert.equal(text.stdout, 'indexed 12 issues (1 could not be read) in .issues/.cache/index.json\n')
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('reindex on a read-only tracker exits 0 with written: false', { skip: !canChmod }, () => {
+  const root = makeRepo('team')
+  const dir = path.join(root, '.issues')
+  fs.chmodSync(dir, 0o555)
+  try {
+    const body = json(root, ['reindex'])
+    assert.equal(body.written, false)
+    assert.equal(typeof body.reason, 'string')
+    const text = run(root, ['reindex'])
+    assert.equal(text.status, 0)
+    assert.match(text.stdout, /^the query index was not written: /)
+    assert.match(text.stderr, /^warning: searches still work, they read every issue file$/m)
+  } finally {
+    fs.chmodSync(dir, 0o755)
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('issues list writes the index and CLI dry runs never touch it', () => {
+  const root = makeRepo('team')
+  try {
+    const dryRuns = () => {
+      for (const args of [['issues', 'link', 'ISS-0G5E', 'ISS-1V9Z', '--kind', 'blocks', '--dry-run'], ['cycle', 'close', '2026-10-12', '--dry-run']]) {
+        assert.equal(run(root, [...args, '--json']).status, 0, args.join(' '))
+      }
+    }
+    dryRuns()
+    assert.equal(fs.existsSync(cacheIn(root)), false)
+    json(root, ['issues', 'list'])
+    const file = path.join(cacheIn(root), 'index.json')
+    const bytes = fs.readFileSync(file)
+    dryRuns()
+    assert.deepEqual(fs.readFileSync(file), bytes)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('the index never reaches git status or an auto-commit', () => {
+  const root = makeRepo('team')
+  try {
+    assert.equal(fs.existsSync(path.join(root, '.issues', '.gitignore')), false)
+    git(root, 'init', '-q')
+    git(root, 'config', 'user.name', 'Test')
+    git(root, 'config', 'user.email', 'test@x.dev')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'fixture')
+    json(root, ['issues', 'list'])
+    assert.ok(fs.existsSync(path.join(cacheIn(root), 'index.json')))
+    assert.equal(git(root, 'status', '--porcelain').stdout, '')
+    const config = path.join(root, '.issues', 'config.yaml')
+    fs.writeFileSync(config, fs.readFileSync(config, 'utf8').replace('auto_commit: false', 'auto_commit: true'))
+    git(root, 'commit', '-q', '-am', 'auto commit on')
+    // A blocks link reads through the index in the middle of the write, so the write refreshes the cache.
+    fs.rmSync(cacheIn(root), { recursive: true, force: true })
+    json(root, ['issues', 'link', 'ISS-3F7H', 'ISS-4M2S', '--kind', 'blocks'])
+    assert.ok(fs.existsSync(path.join(cacheIn(root), 'index.json')))
+    const committed = git(root, 'show', '--name-only', '--format=', 'HEAD').stdout
+    assert.match(committed, /issue\.md/)
+    assert.doesNotMatch(committed, /\.cache/)
+    assert.equal(git(root, 'status', '--porcelain').stdout, '')
+    assert.equal(git(root, 'ls-files', '.issues/.cache').stdout, '')
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('reindex on an older tracker format exits 0 with written: false and creates no .cache', () => {
+  const root = makeRepo('team')
+  try {
+    const config = path.join(root, '.issues', 'config.yaml')
+    fs.writeFileSync(config, fs.readFileSync(config, 'utf8').replace(/^version: \d+$/m, 'version: 1'))
+    const body = json(root, ['reindex'])
+    assert.equal(body.written, false)
+    assert.match(body.reason, /tracker format 1; run \/pmkit:upgrade/)
+    const text = run(root, ['reindex'])
+    assert.equal(text.status, 0)
+    assert.match(text.stdout, /^the query index was not written: /)
+    assert.match(text.stderr, /^warning: searches still work, they read every issue file$/m)
+    assert.equal(fs.existsSync(cacheIn(root)), false)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('reindex is not a write: --dry-run and --as are usage errors', () => {
+  const root = makeRepo('team')
+  try {
+    for (const flags of [['--dry-run'], ['--as', 'fred']]) {
+      assert.equal(run(root, ['reindex', ...flags]).status, 2, flags.join(' '))
+    }
+    assert.equal(fs.existsSync(cacheIn(root)), false)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})

@@ -21,12 +21,12 @@ describe('assertTracker', () => {
 })
 
 // Fresh clock and ids per setup; the id source is a counter so ids never repeat.
-function setupLocal() {
+function setupLocal(options = {}) {
   const root = makeRepo()
   let counter = 0
   const random = (n) => counter++ % n
   const now = () => new Date('2026-10-23T12:00:00Z')
-  const tracker = createLocalTracker(root, { now, random })
+  const tracker = createLocalTracker(root, { now, random, ...options })
   return { tracker, actor: 'fred', today: '2026-10-23', teardown: () => fs.rmSync(root, { recursive: true, force: true }) }
 }
 
@@ -40,3 +40,5 @@ function setupAsync() {
 }
 
 runTrackerContract({ name: 'Local tracker contract through promises', setup: setupAsync })
+
+runTrackerContract({ name: 'Local tracker contract without the index', setup: () => setupLocal({ index: false }) })
