@@ -495,7 +495,7 @@ test('a split in cycle close leaves the remaining work for cycle plan', () => {
   json(root, ['issues', 'move', 'ISS-2X6D', 'done'])
   json(root, ['cycle', 'close', '2026-10-12'])
   // The query of commands/cycle/plan.md step 5.
-  const offered = json(root, ['issues', 'list', '--category', 'todo,backlog', '--sprint', 'none']).issues.map((issue) => issue.id)
+  const offered = json(root, ['issues', 'list', '--category', 'todo,backlog,in_progress', '--sprint', 'none']).issues.map((issue) => issue.id)
   assert.ok(offered.includes(remaining.id), 'plan offers the remaining work')
   assert.ok(!offered.includes('ISS-2X6D'), 'plan does not offer the delivered original')
   const inSprint = json(root, ['cycle', 'issues', '2026-10-12'])
