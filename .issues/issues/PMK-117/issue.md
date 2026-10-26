@@ -2,7 +2,7 @@
 id: PMK-117
 title: Show --sprint current in the pmkit design spec
 type: task
-status: in_review
+status: done
 priority: low
 estimate: 1
 assignee: fred
@@ -11,7 +11,7 @@ related: [PMK-114]
 milestone: local-gaps
 branch: pmk-117-show-sprint-current-in-the-pmkit-design
 created: 2026-10-26T17:58:03.307Z
-updated: 2026-10-26T18:28:40Z
+updated: 2026-10-26T23:46:25Z
 ---
 
 ## Description

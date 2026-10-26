@@ -2,7 +2,7 @@
 id: PMK-116
 title: Say there is no active sprint in issues list --sprint current
 type: bug
-status: in_review
+status: done
 priority: low
 estimate: 1
 assignee: fred
@@ -11,7 +11,7 @@ related: [PMK-114]
 milestone: local-gaps
 branch: pmk-116-say-there-is-no-active-sprint-in-issues
 created: 2026-10-26T17:58:03.226Z
-updated: 2026-10-26T19:16:41Z
+updated: 2026-10-26T23:46:25Z
 ---
 
 ## Description
