@@ -8,6 +8,7 @@ export const TRACKER_OPERATIONS = [
   'getHistory', 'listComments', 'comment',
   'listCycles', 'currentCycle', 'cycleIssues', 'openCycle', 'closeCycle', 'moveToCycle',
   'listDeliverables', 'getDeliverable', 'deliverableProgress', 'createDeliverable', 'publishStatusUpdate',
+  'listMilestones', 'getMilestone', 'createMilestone',
   'getCapacity', 'setCapacity', 'getDaysOff', 'updateCycleCapacity',
   'metricEvents',
   'readDocument', 'createDocument',

@@ -8,7 +8,7 @@ import { BOOLEANS, parseArgs } from './lib/args.mjs'
 import { requireActor, gitUserEmail } from './lib/actor.mjs'
 import { findRoot, loadConfig, validateLocalConfig } from './lib/config.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
-import { changeLines, epicRecord, eventTable, fields, issueRecord, issueTable, sprintRecord, table } from './lib/format.mjs'
+import { changeLines, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, sprintRecord, table } from './lib/format.mjs'
 import { cycleTimes, lastEntry, summary, velocity } from './lib/metrics.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
@@ -431,6 +431,33 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'milestone list', summary: 'lists milestones', flags: [],
+    run: (ctx) => {
+      const milestones = ctx.tracker().listMilestones()
+      const text = milestones.length === 0 ? 'no milestones' : table(['ID', 'Name', 'Due'], milestones.map((m) => [m.id, m.name, m.due ?? '']))
+      return { data: milestones, text }
+    },
+  },
+  {
+    name: 'milestone get', summary: 'one milestone', usage: '<id>', args: ['id'], flags: [],
+    run: (ctx) => {
+      const milestone = ctx.tracker().getMilestone(ctx.args[0])
+      return { data: milestone, text: milestoneRecord(milestone) }
+    },
+  },
+  {
+    name: 'milestone create', summary: 'creates a milestone', usage: '<id> [--name n] [--due YYYY-MM-DD]', write: true, args: ['id'], flags: ['name', 'due'],
+    run: (ctx) => {
+      const input = { id: ctx.args[0] }
+      for (const key of ['name', 'due']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
+      const tracker = ctx.tracker()
+      const result = tracker.createMilestone(input, ctx.actor(), { dryRun: ctx.dryRun })
+      const unfiled = tracker.unfiledMilestones(result.after.id)
+      const warnings = unfiled.length === 0 ? [] : [`${unfiled.length} ${unfiled.length === 1 ? 'milestone named by issues or epics has' : 'milestones named by issues or epics have'} no file: ${unfiled.map((u) => `${u.name} (${u.count})`).join(', ')}; run /pmkit:local:doctor`]
+      return { data: result, text: writeText(result, { ...ctx, record: milestoneRecord }), commit: result.after.id, warnings }
+    },
+  },
+  {
     name: 'epic update-status', summary: 'publishes a status update', usage: '<id> --health h --body-file f', write: true, args: ['id'], flags: ['health', 'body-file'],
     run: (ctx) => {
       if (ctx.opt('health') === undefined || ctx.opt('body-file') === undefined) throw usageError('epic update-status needs --health and --body-file', 'Health is on_track, at_risk or off_track')
@@ -622,11 +649,21 @@ export const COMMANDS = [
     run: (ctx) => runMigrate(ctx.root, { dryRun: ctx.dryRun }),
   },
   {
+    name: 'reindex', summary: 'rebuilds the query index in .issues/.cache/ from the issue files; changes only files git ignores', flags: [],
+    run: (ctx) => {
+      const result = ctx.tracker().reindex()
+      if (!result.written) {
+        return { data: result, text: `the query index was not written: ${result.reason}`, warnings: ['searches still work, they read every issue file'] }
+      }
+      return { data: result, text: `indexed ${result.issues} issues (${result.problems} could not be read) in ${result.path}` }
+    },
+  },
+  {
     name: 'validate', summary: 'checks every file and reference; problems are output, not errors', flags: [],
     run: (ctx) => {
       const result = validateRepo(ctx.root)
       const c = result.checked
-      const head = `checked: ${c.issues} issues, ${c.epics} epics, ${c.sprints} sprints, ${c.comments} comments`
+      const head = `checked: ${c.issues} issues, ${c.epics} epics, ${c.sprints} sprints, ${c.milestones} milestones, ${c.comments} comments`
       const body = result.problems.length === 0 ? 'no problems' : result.problems.map((p) => `${p.path}  ${p.code}  ${p.message}`).join('\n')
       return { data: result, text: `${head}\n${body}` }
     },
@@ -672,7 +709,7 @@ export function runMigrate(root, { dryRun = false, formatVersion = FORMAT_VERSIO
   if (migrated.local.auto_commit !== true) return result(plan.steps)
   const done = result(plan.steps, message)
   try {
-    commitTracker(migrated, message)
+    commitTracker(migrated, message, [trackerPath])
   } catch (error) {
     error.written = { data: done.data, text: done.text }
     throw error
@@ -856,14 +893,17 @@ function runInit(ctx) {
   }
 }
 
-function commitTracker(config, message) {
-  const rel = (config.pmkit.tracker.path ?? '.issues').split(path.sep).join('/')
-  const git = (...args) => spawnSync('git', args, { cwd: config.root, encoding: 'utf8' })
-  const fail = (result) => new PmkitError('UPSTREAM', `the write succeeded but auto_commit failed: ${(result.stderr || result.stdout).trim()}`, `Commit ${rel} yourself`)
-  const added = git('add', '--', rel)
+/** Commits exactly `paths` (root-relative, `/` separators). Nothing staged for them means no commit. */
+function commitTracker(config, message, paths) {
+  const folder = (config.pmkit.tracker.path ?? '.issues').split(path.sep).join('/')
+  // --literal-pathspecs keeps a name such as notes/[x].md from matching as a glob.
+  const git = (...args) => spawnSync('git', ['--literal-pathspecs', ...args], { cwd: config.root, encoding: 'utf8' })
+  const named = paths.length <= 5 ? paths.join(' ') : folder
+  const fail = (result) => new PmkitError('UPSTREAM', `the write succeeded but auto_commit failed: ${(result.stderr || result.stdout).trim()}`, `Commit ${named} yourself`)
+  const added = git('add', '--', ...paths)
   if (added.status !== 0) throw fail(added)
-  if (git('diff', '--cached', '--quiet', '--', rel).status === 0) return
-  const committed = git('commit', '-m', message, '--', rel)
+  if (git('diff', '--cached', '--quiet', '--', ...paths).status === 0) return
+  const committed = git('commit', '-m', message, '--', ...paths)
   if (committed.status !== 0) throw fail(committed)
 }
 
@@ -929,7 +969,7 @@ export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
       list: (name) => (options[name] === undefined ? [] : [options[name]].flat()),
       flag: (name) => last(options[name]) === true,
       config: () => (loaded ??= loadConfig(root)),
-      tracker: () => (tracker ??= createLocalTracker(root, { config: ctx.config(), now, random, env })),
+      tracker: () => (tracker ??= createLocalTracker(root, { config: ctx.config(), now, random, env, index: dryRun ? 'read' : true })),
       host: () => (host ??= makeHost(ctx)),
       actor: () => (typeof options.as === 'string'
         ? options.as
@@ -937,8 +977,10 @@ export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
     }
     const result = command.run(ctx)
     if (command.write && !dryRun && result.commit !== undefined && ctx.config().local.auto_commit === true) {
+      // Only the files this command wrote; a write that changed nothing commits nothing.
+      const paths = tracker?.writtenFiles() ?? []
       try {
-        commitTracker(ctx.config(), `pmkit: ${command.name} ${result.commit}`)
+        if (paths.length > 0) commitTracker(ctx.config(), `pmkit: ${command.name} ${result.commit}`, paths)
       } catch (error) {
         // The write succeeded; the caller still gets what was written, in the same single output.
         error.written = { data: result.data, text: result.text }

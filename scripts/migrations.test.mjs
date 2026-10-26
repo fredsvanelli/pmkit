@@ -334,6 +334,35 @@ test('migrate with auto_commit commits once with its own message', () => {
   assert.equal(git(root, 'status', '--porcelain').stdout, '')
 })
 
+test('migrate --dry-run with auto_commit true does not commit', () => {
+  const { root, dir } = gitRepo({ autoCommit: true })
+  try {
+    const before = hashTree(dir)
+    const result = runMigrate(root, { dryRun: true, ...options })
+    assert.equal(result.data.commit, undefined)
+    assert.equal(subjects(root), 'initial\n')
+    assert.equal(hashTree(dir), before)
+    assert.equal(git(root, 'status', '--porcelain').stdout, '')
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('migrate with auto_commit keeps a staged outside file staged and out of the commit', () => {
+  const { root } = gitRepo({ autoCommit: true })
+  try {
+    fs.writeFileSync(path.join(root, 'outside.txt'), 'outside\n')
+    assert.equal(git(root, 'add', 'outside.txt').status, 0)
+    runMigrate(root, options)
+    assert.equal(subjects(root), 'pmkit: migrate tracker format 1 to 2\ninitial\n')
+    assert.equal(git(root, 'status', '--porcelain').stdout, 'A  outside.txt\n')
+    const files = git(root, 'show', '--name-only', '--format=', 'HEAD').stdout.trim().split('\n')
+    assert.ok(files.length > 0 && files.every((file) => file.startsWith('.issues/')), files.join(', '))
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('migrate on a newer format throws NOT_SUPPORTED', () => {
   const { root } = gitRepo()
   assert.throws(() => runMigrate(root, { formatVersion: 0, migrations: [] }), (error) => error.code === 'NOT_SUPPORTED' && error.nextStep === '/pmkit:upgrade')
@@ -358,4 +387,18 @@ test('the migration from format 1 to 2 changes only the version in config.yaml',
   assert.equal(fs.readFileSync(path.join(dir, 'config.yaml'), 'utf8'), before.replace(/^version: 1$/m, 'version: 2'))
   assert.equal(git(root, 'status', '--porcelain').stdout, ' M .issues/config.yaml\n')
   assert.deepEqual(MIGRATIONS.map(({ from, to }) => [from, to]), [[1, 2]])
+})
+
+test('planMigration never copies the query index', () => {
+  const { root } = setup()
+  try {
+    const cache = path.join(root, '.issues', '.cache')
+    fs.mkdirSync(cache)
+    fs.writeFileSync(path.join(cache, 'index.json'), '{}')
+    const plan = planMigration({ root, trackerPath: '.issues', from: 1, to: 2, migrations: [renameLogTime] })
+    assert.equal(fs.existsSync(path.join(plan.dir, '.cache')), false)
+    assert.ok(plan.steps[0].changes.every((change) => !change.path.includes('.cache')))
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
 })

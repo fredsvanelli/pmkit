@@ -14,7 +14,8 @@ const DOCTOR = '/pmkit:local:doctor'
 
 const normalize = (text) => text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
 
-function parseFile(text, label) {
+/** Splits a Markdown file with frontmatter into its data map and trimmed body. Throws CONFLICT or INVALID_INPUT with the doctor as next step. */
+export function parseFile(text, label) {
   const normalized = normalize(text)
   if (hasConflictMarkers(normalized)) {
     throw new PmkitError('CONFLICT', `The ${label} file contains git conflict markers.`, DOCTOR)

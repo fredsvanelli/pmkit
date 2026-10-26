@@ -22,7 +22,7 @@ test('broken fixture returns exactly one problem of each kind, at the right path
     'sprint .issues/sprints/2026-10-12.yaml',
     'value .issues/issues/ISS-3VAZ/issue.md',
   ])
-  assert.deepEqual(result.checked, { issues: 9, epics: 0, sprints: 1, comments: 0 })
+  assert.deepEqual(result.checked, { issues: 9, epics: 0, sprints: 1, milestones: 0, comments: 0 })
   const cycle = result.problems.find((problem) => problem.code === 'cycle')
   assert.match(cycle.message, /ISS-5CYA.*ISS-5CYB.*ISS-5CYA/)
 })
@@ -32,7 +32,7 @@ test('team fixture minus its conflicted issue has no problems', () => {
   fs.rmSync(path.join(root, '.issues', 'issues', 'ISS-3Q6T'), { recursive: true })
   const result = validateRepo(root)
   assert.deepEqual(result.problems, [])
-  assert.deepEqual(result.checked, { issues: 12, epics: 1, sprints: 2, comments: 0 })
+  assert.deepEqual(result.checked, { issues: 12, epics: 1, sprints: 2, milestones: 0, comments: 0 })
 })
 
 test('team fixture reports only its conflicted issue', () => {
@@ -66,12 +66,75 @@ test('a parent loop is reported once', () => {
   assert.match(cycles[0].message, /parent/)
 })
 
+function writeMilestone(root, name, text = '---\nname: M\n---\n') {
+  const dir = path.join(root, '.issues', 'milestones')
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, name), text)
+}
+
 test('a milestone is checked only when a milestones folder exists', () => {
   const root = makeRepo('basic')
   writeIssue(root, 'ISS-1AAA', 'milestone: v1\n')
   assert.deepEqual(validateRepo(root).problems, [])
-  fs.mkdirSync(path.join(root, '.issues', 'milestones', 'v2'), { recursive: true })
+  writeMilestone(root, 'v2.md')
+  const result = validateRepo(root)
+  assert.deepEqual(brief(result), ['reference .issues/issues/ISS-1AAA/issue.md'])
+  assert.equal(result.problems[0].message, 'milestone v1 does not exist')
+})
+
+test('an empty milestones folder, a subfolder or a .yaml file turns no check on', () => {
+  const root = makeRepo('basic')
+  writeIssue(root, 'ISS-1AAA', 'milestone: v1\n')
+  fs.mkdirSync(path.join(root, '.issues', 'milestones'), { recursive: true })
+  assert.deepEqual(validateRepo(root).problems, [])
+  fs.mkdirSync(path.join(root, '.issues', 'milestones', 'v2'))
+  writeMilestone(root, 'v3.yaml', 'name: v3\n')
+  const result = validateRepo(root)
+  assert.deepEqual(result.problems, [])
+  assert.equal(result.checked.milestones, 0)
+})
+
+test('a .yaml stem is not a milestone once milestone files exist', () => {
+  const root = makeRepo('basic')
+  writeIssue(root, 'ISS-1AAA', 'milestone: v1\n')
+  writeIssue(root, 'ISS-1BBB', 'milestone: v2\n')
+  writeMilestone(root, 'v1.yaml', 'name: v1\n')
+  writeMilestone(root, 'v2.md')
   assert.deepEqual(brief(validateRepo(root)), ['reference .issues/issues/ISS-1AAA/issue.md'])
+})
+
+test('an epic whose milestone has no file is a reference problem', () => {
+  const root = makeRepo('basic')
+  const dir = path.join(root, '.issues', 'epics', 'EPC-1AAA')
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'epic.md'), '---\nid: EPC-1AAA\ntitle: E\nstatus: backlog\nmilestone: v1\n---\n')
+  assert.deepEqual(validateRepo(root).problems, [])
+  writeMilestone(root, 'v2.md')
+  const result = validateRepo(root)
+  assert.deepEqual(brief(result), ['reference .issues/epics/EPC-1AAA/epic.md'])
+  assert.equal(result.problems[0].message, 'milestone v1 does not exist')
+  fs.renameSync(path.join(root, '.issues', 'milestones', 'v2.md'), path.join(root, '.issues', 'milestones', 'v1.md'))
+  assert.deepEqual(validateRepo(root).problems, [])
+})
+
+test('a milestone file that does not parse, or whose name breaks the id rule, is a milestone problem', () => {
+  const root = makeRepo('basic')
+  writeMilestone(root, 'good.md')
+  writeMilestone(root, 'bad-due.md', '---\ndue: 2026-13-40\n---\n')
+  writeMilestone(root, 'Q4 2026.md')
+  const result = validateRepo(root)
+  assert.deepEqual(brief(result), ['milestone .issues/milestones/Q4 2026.md', 'milestone .issues/milestones/bad-due.md'])
+  assert.match(result.problems.find((p) => p.path.endsWith('bad-due.md')).message, /due/)
+  assert.match(result.problems.find((p) => p.path.endsWith('Q4 2026.md')).message, /Q4 2026/)
+  assert.equal(result.checked.milestones, 3)
+})
+
+test('a milestone file with conflict markers is one conflict problem, as for epics and sprints', () => {
+  const root = makeRepo('basic')
+  writeMilestone(root, 'v1.md', '---\n<<<<<<< HEAD\nname: A\n=======\nname: B\n>>>>>>> other\n---\n')
+  const result = validateRepo(root)
+  assert.deepEqual(brief(result), ['conflict .issues/milestones/v1.md'])
+  assert.equal(result.checked.milestones, 1)
 })
 
 test('two folders with the same normalized id are one id problem', () => {
