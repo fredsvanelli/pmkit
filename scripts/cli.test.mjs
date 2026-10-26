@@ -965,3 +965,67 @@ test('reindex is not a write: --dry-run and --as are usage errors', () => {
     fs.rmSync(root, { recursive: true, force: true })
   }
 })
+
+const NO_SPRINT_WARNING = 'warning: there is no active sprint, so --sprint current matches no issues; run pmkit cycle list'
+
+test('issues list --sprint current says there is no active sprint and still lists nothing', () => {
+  const root = makeRepo('basic')
+  try {
+    assert.equal(run(root, ['issues', 'create', '--title', 'First']).status, 0)
+    const result = run(root, ['issues', 'list', '--sprint', 'current'])
+    assert.equal(result.status, 0)
+    assert.equal(result.stdout, 'no issues\n')
+    assert.equal(result.stderr, `${NO_SPRINT_WARNING}\n`)
+    assert.equal(json(root, ['issues', 'list']).issues.length, 1)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('issues list --sprint current --json keeps parseable stdout and puts the reason in a warning line', () => {
+  const root = makeRepo('basic')
+  try {
+    assert.equal(run(root, ['issues', 'create', '--title', 'First']).status, 0)
+    const result = run(root, ['issues', 'list', '--sprint', 'current', '--json'])
+    assert.equal(result.status, 0)
+    assert.deepEqual(JSON.parse(result.stdout), { issues: [], problems: [] })
+    assert.equal(result.stderr, `${NO_SPRINT_WARNING}\n`)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('issues list --sprint current gives no warning when a sprint is active, and none or an id never warn', () => {
+  const team = makeRepo('team')
+  const basic = makeRepo('basic')
+  try {
+    const active = run(team, ['issues', 'list', '--sprint', 'current', '--json'])
+    assert.equal(active.status, 0)
+    assert.deepEqual(JSON.parse(active.stdout).issues.map((i) => i.id).sort(), ['ISS-2X6D', 'ISS-4M2S', 'ISS-5N1R', 'ISS-8C4W'])
+    assert.doesNotMatch(active.stderr, /no active sprint/)
+    const filtered = run(team, ['issues', 'list', '--sprint', 'current', '--text', 'zzzzzz', '--json'])
+    assert.equal(filtered.status, 0)
+    assert.deepEqual(JSON.parse(filtered.stdout).issues, [])
+    assert.doesNotMatch(filtered.stderr, /no active sprint/)
+
+    for (const args of [['--sprint', 'none'], []]) {
+      const result = run(basic, ['issues', 'list', ...args, '--json'])
+      assert.equal(result.status, 0)
+      assert.equal(result.stderr, '')
+      assert.deepEqual(JSON.parse(result.stdout).issues, [])
+    }
+
+    assert.equal(run(basic, ['cycle', 'open', '--start', '2026-10-26']).status, 0)
+    const planned = run(basic, ['issues', 'list', '--sprint', '2026-10-26', '--json'])
+    assert.equal(planned.status, 0)
+    assert.equal(planned.stderr, '')
+    assert.deepEqual(JSON.parse(planned.stdout).issues, [])
+    const current = run(basic, ['issues', 'list', '--sprint', 'current'])
+    assert.equal(current.status, 0)
+    assert.equal(current.stdout, 'no issues\n')
+    assert.equal(current.stderr, `${NO_SPRINT_WARNING}\n`)
+  } finally {
+    fs.rmSync(team, { recursive: true, force: true })
+    fs.rmSync(basic, { recursive: true, force: true })
+  }
+})

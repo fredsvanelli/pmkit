@@ -20,7 +20,7 @@ exit 0
 --- stdout
 no issues
 --- stderr
-(empty)
+warning: there is no active sprint, so --sprint current matches no issues; run pmkit cycle list
 
 $ pmkit issues list --sprint current --json
 exit 0
@@ -30,7 +30,7 @@ exit 0
   "problems": []
 }
 --- stderr
-(empty)
+warning: there is no active sprint, so --sprint current matches no issues; run pmkit cycle list
 
 $ pmkit issues list --blocked
 exit 0
