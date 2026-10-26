@@ -2,7 +2,7 @@
 id: PMK-8
 title: Publish JSON Schemas for both config files
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 3
 assignee: fred
@@ -10,7 +10,7 @@ parent: EPC-1
 milestone: local-gaps
 branch: pmk-8-publish-json-schemas-for-both-config
 created: 2026-10-25T19:13:19Z
-updated: 2026-10-26T01:04:31Z
+updated: 2026-10-26T15:38:52Z
 ---
 
 ## Description

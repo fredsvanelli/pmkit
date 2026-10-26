@@ -2,7 +2,7 @@
 id: PMK-10
 title: Add command scenario tests
 type: task
-status: in_review
+status: done
 priority: medium
 estimate: 8
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-9]
 milestone: local-gaps
 branch: pmk-10-add-command-scenario-tests
 created: 2026-10-25T19:13:19Z
-updated: 2026-10-26T15:00:45Z
+updated: 2026-10-26T15:38:52Z
 ---
 
 ## Description

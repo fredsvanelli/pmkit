@@ -2,7 +2,7 @@
 id: PMK-7
 title: Add the query index under .issues/.cache/
 type: feature
-status: in_review
+status: done
 priority: medium
 estimate: 5
 assignee: fred
@@ -10,7 +10,7 @@ parent: EPC-1
 milestone: local-gaps
 branch: pmk-7-add-the-query-index-under-issues-cache
 created: 2026-10-25T19:13:19Z
-updated: 2026-10-25T23:00:05Z
+updated: 2026-10-26T15:38:52Z
 ---
 
 ## Description
