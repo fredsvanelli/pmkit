@@ -588,7 +588,39 @@ test('issues assign <id> me assigns the actor and cycle add --to current uses th
   const { after } = json(empty, ['issues', 'create', '--title', 'First'])
   const none = run(empty, ['cycle', 'add', after.id, '--to', 'current', '--json'])
   assert.equal(none.status, 2)
-  assert.equal(JSON.parse(none.stdout).error.code, 'INVALID_INPUT')
+  const { error } = JSON.parse(none.stdout)
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.equal(error.message, 'there is no active sprint')
+  assert.equal(error.nextStep, 'pmkit cycle list')
+})
+
+test('issues create and update resolve --sprint current to the active sprint id', () => {
+  const root = makeRepo('team')
+  const created = run(root, ['issues', 'create', '--title', 'T', '--sprint', 'current', '--json'])
+  assert.equal(created.status, 0, created.stderr)
+  assert.equal(JSON.parse(created.stdout).after.sprint, '2026-10-12')
+  const updated = run(root, ['issues', 'update', 'ISS-3F7H', '--sprint', 'current', '--json'])
+  assert.equal(updated.status, 0, updated.stderr)
+  assert.equal(JSON.parse(updated.stdout).after.sprint, '2026-10-12')
+})
+
+test('issues create and update --sprint current fail with INVALID_INPUT when no sprint is active', () => {
+  const root = makeRepo('basic')
+  const { after } = json(root, ['issues', 'create', '--title', 'First'])
+  for (const args of [['issues', 'create', '--title', 'T', '--sprint', 'current'], ['issues', 'update', after.id, '--sprint', 'current']]) {
+    const result = run(root, [...args, '--json'])
+    assert.equal(result.status, 2, args.join(' '))
+    const { error } = JSON.parse(result.stdout)
+    assert.equal(error.code, 'INVALID_INPUT')
+    assert.equal(error.message, 'there is no active sprint')
+    assert.equal(error.nextStep, 'pmkit cycle list')
+  }
+})
+
+test('issues update --sprint takes an explicit id and none clears it', () => {
+  const root = makeRepo('team')
+  assert.equal(json(root, ['issues', 'update', 'ISS-3F7H', '--sprint', '2026-10-12']).after.sprint, '2026-10-12')
+  assert.equal(json(root, ['issues', 'update', 'ISS-3F7H', '--sprint', 'none']).after.sprint, undefined)
 })
 
 test('issues create takes --milestone', () => {

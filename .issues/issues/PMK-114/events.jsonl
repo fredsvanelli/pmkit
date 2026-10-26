@@ -1,2 +1,8 @@
 {"at":"2026-10-26T15:39:49Z","by":"fred","op":"create","to":{"id":"PMK-114","title":"Accept --sprint current in issues create","type":"bug","status":"backlog","priority":"low","estimate":1,"labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-26T15:39:49.505Z","updated":"2026-10-26T15:39:49Z"}}
 {"at":"2026-10-26T15:39:56Z","by":"fred","op":"link","field":"related","to":"PMK-10"}
+{"at":"2026-10-26T16:14:15Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-26T16:14:15Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-26T16:14:19Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-114-accept-sprint-current-in-issues-create"}
+{"at":"2026-10-26T16:20:02Z","by":"fred","op":"comment","to":"2026-10-26T16-20-02Z-fred.md"}
+{"at":"2026-10-26T16:30:41Z","by":"fred","op":"comment","to":"2026-10-26T16-30-41Z-fred.md"}
+{"at":"2026-10-26T16:30:41Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

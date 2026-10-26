@@ -2,14 +2,16 @@
 id: PMK-114
 title: Accept --sprint current in issues create
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-1
 related: [PMK-10]
 milestone: local-gaps
+branch: pmk-114-accept-sprint-current-in-issues-create
 created: 2026-10-26T15:39:49.505Z
-updated: 2026-10-26T15:39:56Z
+updated: 2026-10-26T16:30:41Z
 ---
 
 ## Description
