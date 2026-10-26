@@ -475,52 +475,53 @@ test('pmkitConfigRefusal words the refusal for a first run and for --update', ()
 
 // Replaces .pmkit/config.yaml in an existing setup, then runs init --update on it.
 function updateWith(dir, text) {
-  fs.writeFileSync(path.join(dir, ".pmkit/config.yaml"), text)
-  return run(dir, ["init", "--update", "--json"])
+  fs.writeFileSync(path.join(dir, '.pmkit/config.yaml'), text)
+  return run(dir, ['init', '--update', '--json'])
 }
 
-test("an empty .pmkit/config.yaml in --update is refused with the file named", () => {
+test('an empty .pmkit/config.yaml in --update is refused with the file named', () => {
   const dir = tmp()
-  assert.equal(run(dir, ["init"]).status, 0)
-  const result = updateWith(dir, "")
+  assert.equal(run(dir, ['init']).status, 0)
+  const result = updateWith(dir, '')
   assert.equal(result.status, 2)
   assert.doesNotMatch(result.stderr, /TypeError/)
   const { error } = JSON.parse(result.stdout)
-  assert.equal(error.code, "INVALID_INPUT")
+  assert.equal(error.code, 'INVALID_INPUT')
   assert.match(error.message, /\.pmkit\/config\.yaml/)
+  assert.match(error.message, /version must be 1/)
 })
 
-test("a non-string tracker.path in --update is refused with the file named", () => {
+test('a non-string tracker.path in --update is refused with the file named', () => {
   const dir = tmp()
-  assert.equal(run(dir, ["init"]).status, 0)
-  const text = read(dir, ".pmkit/config.yaml").replace(/^(\s+path: ).*$/m, "$17")
+  assert.equal(run(dir, ['init']).status, 0)
+  const text = read(dir, '.pmkit/config.yaml').replace(/^(\s+path: ).*$/m, '$17')
   const result = updateWith(dir, text)
   assert.equal(result.status, 2)
   assert.doesNotMatch(result.stderr, /TypeError/)
   const { error } = JSON.parse(result.stdout)
-  assert.equal(error.code, "INVALID_INPUT")
+  assert.equal(error.code, 'INVALID_INPUT')
   assert.match(error.message, /\.pmkit\/config\.yaml/)
   assert.match(error.message, /tracker\.path must be a string/)
 })
 
-test("the same two inputs answer NOT_CONFIGURED when .issues/config.yaml is missing", () => {
+test('the same two inputs answer NOT_CONFIGURED when .issues/config.yaml is missing', () => {
   const dir = tmp()
-  assert.equal(run(dir, ["init"]).status, 0)
-  const valid = read(dir, ".pmkit/config.yaml")
-  fs.rmSync(path.join(dir, ".issues/config.yaml"))
-  for (const text of ["", valid.replace(/^(\s+path: ).*$/m, "$17")]) {
+  assert.equal(run(dir, ['init']).status, 0)
+  const valid = read(dir, '.pmkit/config.yaml')
+  fs.rmSync(path.join(dir, '.issues/config.yaml'))
+  for (const text of ['', valid.replace(/^(\s+path: ).*$/m, '$17')]) {
     const result = updateWith(dir, text)
     assert.doesNotMatch(result.stderr, /TypeError/)
-    assert.equal(JSON.parse(result.stdout).error.code, "NOT_CONFIGURED")
+    assert.equal(JSON.parse(result.stdout).error.code, 'NOT_CONFIGURED')
   }
 })
 
-test("an unparseable .pmkit/config.yaml in --update keeps the is not valid YAML message", () => {
+test('an unparseable .pmkit/config.yaml in --update keeps the is not valid YAML message', () => {
   const dir = tmp()
-  assert.equal(run(dir, ["init"]).status, 0)
-  const result = updateWith(dir, "a: [\n")
+  assert.equal(run(dir, ['init']).status, 0)
+  const result = updateWith(dir, 'a: [\n')
   assert.equal(result.status, 2)
   const { error } = JSON.parse(result.stdout)
-  assert.equal(error.code, "INVALID_INPUT")
+  assert.equal(error.code, 'INVALID_INPUT')
   assert.match(error.message, /is not valid YAML/)
 })

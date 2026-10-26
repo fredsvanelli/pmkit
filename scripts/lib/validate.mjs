@@ -120,7 +120,7 @@ export function validateRepo(root, { config } = {}) {
       try {
         broken = brokenConfigProblem(root, error)
       } catch (rethrown) {
-        if (pmkit.length > 0) return { checked: noneChecked(), problems: pmkit }
+        if (pmkit.length > 0 && rethrown.code !== 'NOT_CONFIGURED') return { checked: noneChecked(), problems: pmkit }
         throw rethrown
       }
       return { checked: noneChecked(), problems: [...pmkit, broken].sort(byPathThenCode) }

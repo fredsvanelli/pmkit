@@ -263,6 +263,13 @@ test('a missing .pmkit/config.yaml still throws NOT_CONFIGURED', () => {
   assert.throws(() => validateRepo(root), { code: 'NOT_CONFIGURED' })
 })
 
+test('a bad .pmkit/config.yaml with .issues/config.yaml missing still throws NOT_CONFIGURED', () => {
+  const root = makeRepo('basic')
+  editPmkit(root, 'system: none', 'system: gitlab')
+  fs.rmSync(path.join(root, '.issues', 'config.yaml'))
+  assert.throws(() => validateRepo(root), { code: 'NOT_CONFIGURED' })
+})
+
 test('tracker.system linear alone still throws NOT_SUPPORTED', () => {
   const root = makeRepo('basic')
   editPmkit(root, 'system: local', 'system: linear')
