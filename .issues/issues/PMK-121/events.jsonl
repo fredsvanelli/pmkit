@@ -1,2 +1,10 @@
 {"at":"2026-10-26T17:58:03Z","by":"fred","op":"create","to":{"id":"PMK-121","title":"Count done issues moved during a late cycle close in velocity","type":"bug","status":"backlog","priority":"medium","labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-26T17:58:03.634Z","updated":"2026-10-26T17:58:03Z"}}
 {"at":"2026-10-26T17:58:03Z","by":"fred","op":"link","field":"related","to":"PMK-113"}
+{"at":"2026-10-26T20:48:41Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-26T20:48:41Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-26T20:48:41Z","by":"fred","op":"update","field":"estimate","from":null,"to":3}
+{"at":"2026-10-26T20:48:41Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-26T20:48:41Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-121-count-done-issues-moved-during-a-late"}
+{"at":"2026-10-26T21:20:20Z","by":"fred","op":"comment","to":"2026-10-26T21-20-20Z-fred.md"}
+{"at":"2026-10-26T21:44:23Z","by":"fred","op":"comment","to":"2026-10-26T21-44-23Z-fred.md"}
+{"at":"2026-10-26T21:44:23Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

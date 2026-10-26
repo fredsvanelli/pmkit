@@ -13,6 +13,8 @@ $ pmkit metrics cycle-time --since 2026-10-12 --until 2026-10-25 --json  [step 5
 exit 0
 $ pmkit cycle list --state planned --json  [step 6, read]
 exit 0
+$ pmkit issues get ISS-0G5E --json  [step 6, read]
+exit 0
 ? Step 7  [confirmed]
 $ pmkit cycle add ISS-4M2S ISS-5N1R --to none --dry-run --json  [step 7, dry run]
 exit 0
@@ -25,8 +27,6 @@ exit 0
 $ pmkit cycle close 2026-10-12 --dry-run --json  [step 7, dry run]
 exit 0
 ? Step 7  [confirmed]
-$ pmkit cycle close 2026-10-12 --json  [step 8, write]
-exit 0
 $ pmkit cycle add ISS-4M2S ISS-5N1R --to none --json  [step 7, write]
 exit 0
 $ pmkit issues create --title 'Finish the billing export to CSV' --type feature --estimate 3 --parent EPC-2M9D --priority high --label billing,backend --json  [step 7, write]
@@ -35,7 +35,9 @@ $ pmkit issues link ISS-M0GZ ISS-2X6D --kind related --json  [step 8, write]
 exit 0
 $ pmkit issues update ISS-2X6D --estimate 5 --json  [step 7, write]
 exit 0
-$ pmkit issues move ISS-2X6D done --json  [step 7, write]
+$ pmkit issues move ISS-2X6D done --json  [step 8, write]
+exit 0
+$ pmkit cycle close 2026-10-12 --json  [step 8, write]
 exit 0
 $ pmkit cycle issues 2026-10-12 --json  [step 8, read]
 exit 0
@@ -201,6 +203,7 @@ exit 0
   goal: Webhook retries and the billing export
 -state: active
 +state: closed
++closed: 2026-10-23T12:00:00Z
   capacity: { fred: 8, ana: 10 }
   days_off:
     ana: [2026-10-16]

@@ -63,7 +63,7 @@ Entities in the MVP:
 | Issue | `id`, `title`, `type`, `status` (`{ name, category }`), `priority`, `estimate`, `assignee`, `labels`, `parent`, `blockedBy`, `blocks` (computed), `related`, `duplicateOf`, `children` (computed), `archived`, `sprint`, `milestone`, `due`, `branch`, `description`, `acceptanceCriteria` (`[{ text, done }]`), `created`, `updated` |
 | Comment | `id`, `issue`, `author`, `body`, `created` |
 | Event | `at`, `by`, `op`, `field`, `from`, `to`, `minutes`, `synthetic` |
-| Sprint | `id`, `name`, `start`, `end`, `goal`, `state` (`planned`, `active`, `closed`), `capacity` (member id → points or hours), `daysOff` (member id → dates) |
+| Sprint | `id`, `name`, `start`, `end`, `goal`, `state` (`planned`, `active`, `closed`), `closed` (optional, ISO timestamp of the close with `Z` or an offset, set by `closeCycle`), `capacity` (member id → points or hours), `daysOff` (member id → dates) |
 | Epic | `id`, `title`, `status`, `start`, `target`, `milestone`, `description` |
 | Milestone | `id`, `name`, `due`, `description` |
 | Status update | `epic`, `at`, `author`, `health` (`on_track`, `at_risk`, `off_track`), `body` |
@@ -250,7 +250,7 @@ One file per comment, `comments/<timestamp>-<author>.md`, with frontmatter `auth
 
 ### Sprints
 
-`sprints/<start date>.yaml`. The file name is the sprint id. At most one sprint is `active`. `currentCycle()` returns the active sprint, or null. `openCycle` refuses a sprint that overlaps another planned or active one, and makes it `active` when its start is today or earlier and no sprint is active **(builder's call)**. `closeCycle` sets `closed` and returns the issues that were not `done` or `canceled`, for the command to move.
+`sprints/<start date>.yaml`. The file name is the sprint id. At most one sprint is `active`. `currentCycle()` returns the active sprint, or null. `openCycle` refuses a sprint that overlaps another planned or active one, and makes it `active` when its start is today or earlier and no sprint is active **(builder's call)**. `closeCycle` sets `state: closed` and `closed`, the time of the close, and returns the issues not in a terminal category. `/pmkit:cycle:close` moves or splits them before the close, so the list is empty after a full run. Velocity counts a done issue of a closed sprint when its last move to `done` is at or before `closed`, and, for a closed sprint without `closed`, when the UTC date of that move is on or before `end`.
 
 ```yaml
 name: Sprint 2026-11-02
