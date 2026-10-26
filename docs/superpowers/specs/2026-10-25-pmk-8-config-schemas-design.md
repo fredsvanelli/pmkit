@@ -213,7 +213,7 @@ A new test file, `scripts/schemas.test.mjs`, and a test helper `scripts/json-sch
 
 **Verdict checks.** For each config file, the test builds a base config from the template, plus one member `fred` with `name`, `email` and `availability` so the member keys have values to change. The base must be valid on both sides. Then, for each key path in the union of the template's paths and the schema's property paths, the test builds one config per probe value and runs it through the schema evaluator and the shape validator (`validatePmkitConfig`, or `localConfigShapeProblems`). The two verdicts, valid or invalid, must be equal. On a mismatch, the assertion message names the file, the key path, the probe and each side's verdict.
 
-The probes are: the key absent, `null`, `''`, `'x'`, `0`, `1`, `-1`, `0.5`, `true`, `[]`, `['x']`, `[1]`, `{}`, `{ x: 1 }`, every value of every enum in the schema and in the exported constants, and strings that test the patterns (`AB`, `ABCDEF`, `ab`, `agent:claude`, `Fred`). For a map keyed by user names (`statuses`, `members`, `defaults`), the test also adds one new key with each probe as its value, and for `members` a key that breaks `MEMBER_ID`.
+The probes are: the key absent, `null`, `''`, `'x'`, `0`, `1`, `-1`, `0.5`, `1.5`, `2`, `1000`, `true`, `[]`, `['x']`, `[1]`, `{}`, `{ x: 1 }`, every value of every enum in the schema and in the exported constants, and strings that test the patterns (`AB`, `ABCDEF`, `ab`, `agent:claude`, `Fred`). For a map keyed by user names (`statuses`, `members`, `defaults`), the test also adds one new key with each probe as its value, and for `members` a key that breaks `MEMBER_ID`.
 
 The verdict compares valid against invalid, not messages, so the schema's wording is free.
 

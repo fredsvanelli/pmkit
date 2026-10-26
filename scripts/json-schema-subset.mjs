@@ -26,6 +26,17 @@ function checkKeywords(schema, at) {
   for (const key of Object.keys(schema)) {
     if (!KEYWORDS.has(key) && !ANNOTATIONS.has(key)) throw new Error(`unsupported keyword ${key} at ${at}`)
   }
+  const bad = (keyword) => new Error(`bad value for ${keyword} at ${at}`)
+  const isStringList = (value) => Array.isArray(value) && value.every((x) => typeof x === 'string')
+  if ('type' in schema && !(typeof schema.type === 'string' || (isStringList(schema.type) && schema.type.length > 0))) throw bad('type')
+  if ('enum' in schema && !Array.isArray(schema.enum)) throw bad('enum')
+  if ('pattern' in schema && typeof schema.pattern !== 'string') throw bad('pattern')
+  for (const key of ['minimum', 'maximum']) {
+    if (key in schema && typeof schema[key] !== 'number') throw bad(key)
+  }
+  if ('minItems' in schema && !(Number.isInteger(schema.minItems) && schema.minItems >= 0)) throw bad('minItems')
+  if ('required' in schema && !isStringList(schema.required)) throw bad('required')
+  if ('properties' in schema && !isMap(schema.properties)) throw bad('properties')
   if ('type' in schema) {
     for (const type of [].concat(schema.type)) {
       if (!Object.hasOwn(TYPES, type)) throw new Error(`unsupported type ${type} at ${at}`)

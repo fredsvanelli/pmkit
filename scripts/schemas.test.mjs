@@ -133,6 +133,17 @@ test('a keyword outside the list throws, even where the value does not reach it'
   assert.doesNotThrow(() => validateSchema({ $schema: 'x', title: 't', description: 'd', default: 1 }, 1))
 })
 
+test('a keyword with a value of the wrong shape throws', () => {
+  const bad = [
+    [{ type: [] }, 'type'], [{ type: 1 }, 'type'], [{ enum: 'a' }, 'enum'], [{ pattern: 1 }, 'pattern'],
+    [{ minimum: '1' }, 'minimum'], [{ maximum: null }, 'maximum'], [{ minItems: -1 }, 'minItems'], [{ minItems: 0.5 }, 'minItems'],
+    [{ required: 'a' }, 'required'], [{ required: [1] }, 'required'], [{ properties: [] }, 'properties'],
+  ]
+  for (const [schema, keyword] of bad) {
+    assert.throws(() => validateSchema(schema, 1), { message: `bad value for ${keyword} at #` }, JSON.stringify(schema))
+  }
+})
+
 // ---------------------------------------------------------------------------
 // Helpers for the schema checks.
 
@@ -182,7 +193,7 @@ function subschemas(schema, at = []) {
 const mapPaths = (schema) => subschemas(schema).filter(([s]) => isMap(s.additionalProperties)).map(([, at]) => at)
 
 const ABSENT = Symbol('absent')
-const BASE_PROBES = [ABSENT, null, '', 'x', 0, 1, -1, 0.5, true, [], ['x'], [1], {}, { x: 1 }, 'AB', 'ABCDEF', 'ab', 'agent:claude', 'Fred']
+const BASE_PROBES = [ABSENT, null, '', 'x', 0, 1, -1, 0.5, 1.5, 2, 1000, true, [], ['x'], [1], {}, { x: 1 }, 'AB', 'ABCDEF', 'ab', 'agent:claude', 'Fred']
 const NEW_KEYS = ['extra', 'agent:claude', 'Fred']
 
 function probesFor(schema) {
@@ -265,7 +276,7 @@ test('no schema object sets additionalProperties to false', () => {
   }
 })
 
-test('the issues schema has a default wherever the config defaults have one, with the same value', () => {
+test('the issues schema has a default exactly where the config defaults have one, with the same value', () => {
   const schema = loadSchema('issues')
   const defaults = withLocalDefaults({})
   delete defaults.statuses
@@ -273,6 +284,8 @@ test('the issues schema has a default wherever the config defaults have one, wit
     const expected = keys.reduce((value, key) => value[key], defaults)
     assert.deepEqual(schemaAt(schema, keys)?.default, expected, `default of ${keys.join('.')}`)
   }
+  const withDefault = subschemas(schema).filter(([s, at]) => 'default' in s && at.length > 0).map(([, at]) => at.join('.'))
+  assert.deepEqual(withDefault.sort(), valuePaths(defaults).map((keys) => keys.join('.')).sort(), 'a schema default with no config default')
 })
 
 const PINNED = {
@@ -375,6 +388,21 @@ test('the verdict check reports a schema that drifts from its validator', () => 
     '.issues/config.yaml (issues) estimate.unit = "sizes": schema invalid, validator valid',
     '.issues/config.yaml (issues) labels = absent: schema invalid, validator valid',
     '.issues/config.yaml (issues) auto_commit = "x": schema valid, validator invalid',
+  ]) {
+    assert.ok(mismatches.includes(expected), `missing: ${expected}`)
+  }
+})
+
+test('the verdict check reports a one-sided change to a numeric bound or to integer against number', () => {
+  const schema = structuredClone(loadSchema('issues'))
+  schema.properties.members.additionalProperties.properties.availability.maximum = 2
+  schema.properties.version.type = 'number'
+  schema.properties.defaults.properties.stale_days.maximum = 365
+  const mismatches = verdictMismatches('issues', schema, FILES.issues)
+  for (const expected of [
+    '.issues/config.yaml (issues) members.fred.availability = 1.5: schema valid, validator invalid',
+    '.issues/config.yaml (issues) version = 1.5: schema valid, validator invalid',
+    '.issues/config.yaml (issues) defaults.stale_days = 1000: schema invalid, validator valid',
   ]) {
     assert.ok(mismatches.includes(expected), `missing: ${expected}`)
   }
