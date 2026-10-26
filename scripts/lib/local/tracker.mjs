@@ -862,7 +862,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     const after = readBack('milestone file', () => parseMilestone(content, id))
     if (!dryRun) {
       fs.mkdirSync(milestonesDir, { recursive: true })
-      writeFileAtomic(path.join(milestonesDir, `${id}.md`), content)
+      writeFile(path.join(milestonesDir, `${id}.md`), content)
     }
     return { before: null, after }
   }
