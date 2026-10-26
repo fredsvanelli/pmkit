@@ -7,11 +7,11 @@ priority: low
 estimate: 1
 assignee: fred
 parent: EPC-1
-related: [PMK-10]
+related: [PMK-10, PMK-115, PMK-116, PMK-117]
 milestone: local-gaps
 branch: pmk-114-accept-sprint-current-in-issues-create
 created: 2026-10-26T15:39:49.505Z
-updated: 2026-10-26T16:30:41Z
+updated: 2026-10-26T17:58:03Z
 ---
 
 ## Description

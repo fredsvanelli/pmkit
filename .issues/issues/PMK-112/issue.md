@@ -7,11 +7,11 @@ priority: medium
 estimate: 2
 assignee: fred
 parent: EPC-1
-related: [PMK-8]
+related: [PMK-8, PMK-118, PMK-119, PMK-120]
 milestone: local-gaps
 branch: pmk-112-report-pmkit-config-yaml-problems-in
 created: 2026-10-26T15:39:49.360Z
-updated: 2026-10-26T16:59:59Z
+updated: 2026-10-26T17:58:03Z
 ---
 
 ## Description

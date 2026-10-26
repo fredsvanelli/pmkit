@@ -7,11 +7,11 @@ priority: medium
 estimate: 2
 assignee: fred
 parent: EPC-1
-related: [PMK-10]
+related: [PMK-10, PMK-121, PMK-122, PMK-123, PMK-124]
 milestone: local-gaps
 branch: pmk-113-keep-the-original-of-a-split-issue-out
 created: 2026-10-26T15:39:49.436Z
-updated: 2026-10-26T17:40:07Z
+updated: 2026-10-26T17:58:03Z
 ---
 
 ## Description
