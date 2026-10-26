@@ -264,3 +264,21 @@ test('staleSnapshots returns snapshots with no entry and leaves _inputs and modu
   const files = ['a.mjs', 'a.after.txt', 'b.0.after.txt', 'b.1.after.txt', 'gone.after.txt', '_inputs']
   assert.deepEqual(staleSnapshots(files, ['a.after.txt', 'b.0.after.txt']), ['b.1.after.txt', 'gone.after.txt'])
 })
+
+test('parseCommandFile attaches a prose flag before the first call of a step to the next call of that step', () => {
+  const text = [
+    '## Steps',
+    '',
+    `1. When the user gave no \`--status\`, run ${call('discover --json')}.`,
+    `2. Run ${call('issues get <id> --json')}.`,
+  ].join('\n')
+  const parsed = parse(text)
+  assert.ok(parsed.calls[0].flags.includes('status'))
+  assert.ok(!parsed.calls[1].flags.includes('status'))
+  assert.deepEqual(parsed.looseFlags, [])
+})
+
+test('parseCommandFile returns a prose flag that has no call in its step as loose', () => {
+  const text = ['## Steps', '', '1. Ask for \`--bogus\`.', `2. Run ${call('discover --json')}.`].join('\n')
+  assert.deepEqual(parse(text).looseFlags, [{ step: '1', section: 'steps', flag: 'bogus' }])
+})

@@ -79,6 +79,7 @@ export function parseCommandFile(text, cliNames) {
   let headingPrefix = null
   let items = []
   let fence = false
+  const proseFlags = []
 
   const stepId = () => {
     if (section === 'missing') return 'missing'
@@ -132,21 +133,31 @@ export function parseCommandFile(text, cliNames) {
     for (const match of line.matchAll(CALL)) {
       const call = readCall(match[1], stepId(), section, cliNames)
       calls.push(call)
-      here.push({ at: match.index, call })
+      here.push({ at: match.index, count: calls.length })
       prose = prose.replace(match[0], ' '.repeat(match[0].length))
     }
     if (fence) continue
-    // A flag named only in the prose of a step, such as "or `--type <value>`", belongs to the call before it
-    // on the line, else to the last earlier call of the same step.
     for (const flag of prose.matchAll(/`--([a-z][\w-]*)[^`]*`/gi)) {
-      const before = here.filter((entry) => entry.at < flag.index).at(-1)?.call
-      const owner = before ?? calls.slice(0, calls.length - here.length).findLast((call) => call.step === stepId() && call.section === section)
-      if (!owner || flag[1] === 'dry-run' || owner.flags.includes(flag[1])) continue
-      owner.flags.push(flag[1])
-      owner.optional.push(flag[1])
+      // `before` counts the calls that precede the flag, so the post-pass can look backward and then forward.
+      const before = here.filter((entry) => entry.at < flag.index).at(-1)?.count ?? calls.length - here.length
+      proseFlags.push({ name: flag[1], step: stepId(), section, before })
     }
   }
-  return { calls, points }
+  // A flag named only in the prose of a step, such as "or `--type <value>`", belongs to the last call before it
+  // in the same step, else to the first call after it. A flag with no call to join is returned in `looseFlags`.
+  // `--dry-run` in prose never marks a call as a preview, so it is skipped.
+  const looseFlags = []
+  for (const { name, step, section: where, before } of proseFlags) {
+    if (name === 'dry-run') continue
+    const same = (call) => call.step === step && call.section === where
+    const owner = calls.slice(0, before).findLast(same) ?? calls.slice(before).find(same)
+    if (!owner) looseFlags.push({ step, section: where, flag: name })
+    else if (!owner.flags.includes(name)) {
+      owner.flags.push(name)
+      owner.optional.push(name)
+    }
+  }
+  return { calls, points, looseFlags }
 }
 
 /** Rule 3: the flags of a call that its CLI command does not take. */

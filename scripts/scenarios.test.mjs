@@ -93,6 +93,14 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
         }
       }
     }
+    // A flag in the prose of a step with no call to join must exist in some command.
+    // `accept-command` is a flag of `claude plugin update` (upgrade.md step 4), not of the pmkit CLI.
+    const known = new Set(['json', 'root', 'dry-run', 'as', 'accept-command', ...COMMANDS.flatMap((c) => [...(c.flags ?? []), ...(c.booleans ?? [])])])
+    for (const { rel, parsed } of FILES) {
+      for (const { step, flag } of parsed.looseFlags) {
+        if (!known.has(flag)) problems.push(`${rel}: step ${step || '(none)'} names --${flag} in its prose, and no CLI command takes it`)
+      }
+    }
     assert.deepEqual(problems, [])
   })
 
@@ -119,6 +127,6 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     assert.ok(has('upgrade.md', '5', 'migrate'), 'upgrade.md 5 migrate')
     assert.ok(has('local/doctor.md', '2.1', 'issues get'), 'local/doctor.md 2.1 issues get')
     assert.ok(has('local/doctor.md', '4', 'issues parent'), 'local/doctor.md 4 issues parent')
-    assert.ok(has('report/status.md', '', 'epic list', 'other') || file('report/status.md').calls.some((c) => c.command === 'epic list' && c.section === 'other'), 'report/status.md epic list in other')
+    assert.ok(file('report/status.md').calls.some((c) => c.command === 'epic list' && c.section === 'other'), 'report/status.md epic list in other')
   })
 })
