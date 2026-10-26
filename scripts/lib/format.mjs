@@ -53,6 +53,12 @@ export function epicRecord(epic) {
   return lines.join('\n')
 }
 
+export function milestoneRecord(milestone) {
+  const lines = fields([['id', milestone.id], ['name', milestone.name], ['due', milestone.due]])
+  if (milestone.description) lines.push('', milestone.description)
+  return lines.join('\n')
+}
+
 export const sprintRecord = (sprint) => fields([
   ['id', sprint.id], ['name', sprint.name], ['state', sprint.state], ['start', sprint.start], ['end', sprint.end],
   ['goal', sprint.goal], ['capacity', sprint.capacity], ['days off', sprint.daysOff],

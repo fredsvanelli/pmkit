@@ -65,6 +65,7 @@ Entities in the MVP:
 | Event | `at`, `by`, `op`, `field`, `from`, `to`, `minutes`, `synthetic` |
 | Sprint | `id`, `name`, `start`, `end`, `goal`, `state` (`planned`, `active`, `closed`), `capacity` (member id → points or hours), `daysOff` (member id → dates) |
 | Epic | `id`, `title`, `status`, `start`, `target`, `milestone`, `description` |
+| Milestone | `id`, `name`, `due`, `description` |
 | Status update | `epic`, `at`, `author`, `health` (`on_track`, `at_risk`, `off_track`), `body` |
 | Member | `id`, `name`, `email`, `availability` (0 to 1) |
 
@@ -90,6 +91,7 @@ The operations the MVP needs, grouped by family. Every write takes an `actor` (a
 | History and comments | `getHistory(id, { since })`, `listComments(id)`, `comment(id, body, actor)` |
 | Cycles | `listCycles({ state })`, `currentCycle()`, `cycleIssues(id)`, `openCycle(input, actor)`, `closeCycle(id, actor)`, `moveToCycle(ids, sprint, actor)` |
 | Deliverables | `listDeliverables()`, `getDeliverable(id)`, `deliverableProgress(id)`, `createDeliverable(input, actor)`, `publishStatusUpdate(update, actor)` |
+| Milestones | `listMilestones()`, `getMilestone(id)`, `createMilestone(input, actor)` |
 | Capacity | `getCapacity(sprint)`, `setCapacity(sprint, capacity, actor)` |
 | Metrics | `metricEvents({ since, until })` |
 | Documents | `readDocument(path)`, `createDocument(path, body, actor)` |
@@ -190,7 +192,7 @@ The current user is the member whose `email` equals `git config user.email`. Wit
 │       ├── events.jsonl
 │       └── updates/2026-10-23-fred.md
 ├── sprints/2026-11-02.yaml
-├── milestones/                # phase 2
+├── milestones/
 ├── docs/
 └── .cache/                    # phase 2: query index
 ```
@@ -264,6 +266,10 @@ days_off:
 ### Epics
 
 `epics/<ID>/epic.md`: frontmatter `id`, `title`, `status`, `start`, `target`, `milestone`, then a Markdown description. Epic statuses use the same status names as issues. Status updates are `epics/<ID>/updates/<date>-<author>.md` with frontmatter `author`, `created`, `health`. An issue belongs to an epic through `parent`. `deliverableProgress` counts the issues whose parent chain reaches the epic: total, done, points, points done.
+
+### Milestones
+
+`milestones/<id>.md`: frontmatter `name` and an optional `due`, then a Markdown description. The file name is the milestone id. The id rule, the reference checks and the `milestone list`, `get` and `create` commands are in `2026-10-25-pmk-3-milestones-design.md`.
 
 ### Writes and commits
 
@@ -340,6 +346,8 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `epic create --title t [--start d] [--target d]` | creates an epic |
 | `epic update-status <id> --health h --body-file f` | publishes a status update |
 | `epic updates <id>` | lists the status updates of an epic, newest first |
+| `milestone list`, `milestone get <id>` | reads milestones |
+| `milestone create <id> [--name n] [--due YYYY-MM-DD]` | creates a milestone |
 | `docs read <path>`, `docs create <path> --body-file f` | reads or creates a document under the docs folder |
 | `metrics velocity [--window n]` | points or counts done per closed sprint, and the average |
 | `metrics cycle-time [--since d] [--until d]` | median and p85 days from first `in_progress` to `done` |
@@ -375,13 +383,13 @@ The MVP ships 24 command files. Commands are user-invoked; the routing skill rea
 | `/pmkit:issues:breakdown <id>` | `commands/issues/breakdown.md` | `issues get`, `discover`, `issues create`, `issues link` |
 | `/pmkit:issues:progress [id]` | `commands/issues/progress.md` | `issues list`, `issues get`, `issues comment`, `issues update`, `issues log-time` |
 | `/pmkit:issues:pause [id]` | `commands/issues/pause.md` | `issues list`, `issues get`, `issues comment`, `issues move`, `issues assign`, `pr open`, `issues update` |
-| `/pmkit:spec:import <file>` | `commands/spec/import.md` | `docs read`, `discover`, `epic get`, `issues list`, `epic create`, `issues create`, `issues link`, `docs create` |
+| `/pmkit:spec:import <file>` | `commands/spec/import.md` | `docs read`, `discover`, `epic get`, `issues list`, `milestone list`, `epic create`, `milestone create`, `issues create`, `issues link`, `docs create` |
 | `/pmkit:backlog:groom` | `commands/backlog/groom.md` | `issues list`, `events`, `validate`, `issues update`, `issues parent`, `issues move`, `issues link` |
 | `/pmkit:report:status <epic>` | `commands/report/status.md` | `epic list`, `pr sync`, `epic get`, `epic progress`, `issues list`, `epic updates`, `events`, `epic update-status` |
 | `/pmkit:cycle:plan` | `commands/cycle/plan.md` | `cycle list`, `discover`, `metrics velocity`, `issues list`, `cycle open`, `cycle capacity`, `cycle add` |
 | `/pmkit:cycle:close` | `commands/cycle/close.md` | `pr sync`, `cycle current`, `cycle issues`, `events`, `metrics cycle-time`, `cycle list`, `cycle add`, `issues create`, `issues update`, `cycle close`, `docs create` |
 | `/pmkit:team:standup` | `commands/team/standup.md` | `pr sync`, `events`, `issues list`, `pr status` |
-| `/pmkit:local:doctor` | `commands/local/doctor.md` | `validate`, `issues get`, `migrate`, `issues update`, `discover`, `issues parent`, `issues link`, `cycle add` |
+| `/pmkit:local:doctor` | `commands/local/doctor.md` | `validate`, `issues get`, `migrate`, `issues update`, `discover`, `issues parent`, `issues link`, `cycle add`, `milestone create` |
 | `/pmkit:upgrade` | `commands/upgrade.md` | `changelog`, `migrate` |
 
 `/pmkit:setup` runs safely more than once. On a configured project it uses `init --update`: it shows the diff of every file it would change and writes only after the user approves, as `/runbooks:setup` does. `/pmkit:local:doctor` edits a file by hand only to remove git conflict markers, one file at a time, after the user approves **(builder's call)**. `/pmkit:upgrade` updates the plugin install, shows the changelog sections since the installed version, and runs `migrate` after approval.

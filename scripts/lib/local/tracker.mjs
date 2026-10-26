@@ -18,6 +18,7 @@ import { hasSectionHeading, parseIssueFile, serializeIssue, toFrontmatter } from
 import { buildCapabilities } from '../capabilities.mjs'
 import { lastEntry } from '../metrics.mjs'
 import { createDocumentFile, readDocumentFile } from './documents.mjs'
+import { hasMilestoneFiles, milestoneStems, parseMilestone, serializeMilestone, sortMilestones, validMilestoneId } from './milestones.mjs'
 import { checkFilter, runQuery } from './query.mjs'
 import {
   SPRINT_STATES, addDays, overlaps, parseSprint, readSprint, readSprints, requireCapacity, serializeSprint, validDate,
@@ -145,6 +146,17 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     return id
   }
 
+  const milestonesDir = path.join(issuesDir, 'milestones')
+
+  // A milestone is free text until milestones/ holds a .md file; from then on it must name one, exactly.
+  function requireMilestone(value) {
+    const milestone = oneLine('milestone', text('milestone')(value))
+    if (hasMilestoneFiles(milestonesDir) && !milestoneStems(milestonesDir).has(milestone)) {
+      throw invalid(`milestone ${milestone} does not exist`, `pmkit milestone create ${milestone}`)
+    }
+    return milestone
+  }
+
   const sprintExists = (id) => /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(String(id)) && fs.existsSync(path.join(issuesDir, 'sprints', `${id}.yaml`))
 
   function requireSprint(value) {
@@ -189,7 +201,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     labels: requireLabels,
     parent: requireParent,
     sprint: requireSprint,
-    milestone: (value) => oneLine('milestone', text('milestone')(value)),
+    milestone: requireMilestone,
     due: (value) => {
       if (!validDate(value)) throw invalid('due must be a date as YYYY-MM-DD')
       return value
@@ -787,6 +799,75 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     return sortUpdates(entries).map((entry) => entry.update)
   }
 
+  const readMilestone = (id) => parseMilestone(fs.readFileSync(path.join(milestonesDir, `${id}.md`), 'utf8'), id)
+
+  function getMilestone(id) {
+    if (!validMilestoneId(id) || !milestoneStems(milestonesDir).has(id)) {
+      throw new PmkitError('NOT_FOUND', `milestone ${id} does not exist`, 'pmkit milestone list')
+    }
+    return readMilestone(id)
+  }
+
+  /** Every milestone that parses. A file that does not parse, or whose stem breaks the id rule, is skipped; validate reports it. */
+  function listMilestones() {
+    const milestones = []
+    for (const id of [...milestoneStems(milestonesDir)].filter(validMilestoneId)) {
+      try {
+        milestones.push(readMilestone(id))
+      } catch (error) {
+        if (!(error instanceof PmkitError)) throw error
+      }
+    }
+    return sortMilestones(milestones)
+  }
+
+  function createMilestone(input, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const allowed = ['id', 'name', 'due']
+    for (const key of Object.keys(input)) {
+      if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+    }
+    const { id } = input
+    if (!validMilestoneId(id)) {
+      throw invalid(`milestone id "${id}" must start and end with a letter or digit and hold only letters, digits, ".", "_" and "-"`, 'Use an id like local-gaps or v1.0')
+    }
+    const clash = [...milestoneStems(milestonesDir)].find((stem) => stem.toLowerCase() === id.toLowerCase())
+    if (clash !== undefined) throw new PmkitError('CONFLICT', `milestone ${clash} already exists`, 'pmkit milestone list')
+    let name = id
+    if (!blank(input.name)) {
+      if (typeof input.name !== 'string' || input.name.trim() === '') throw invalid('name must be a non-empty string')
+      name = oneLine('name', input.name.trim())
+    }
+    const milestone = { name }
+    if (!blank(input.due)) {
+      if (!validDate(input.due)) throw invalid('due must be a date as YYYY-MM-DD')
+      milestone.due = input.due
+    }
+    const content = serializeMilestone(milestone)
+    const after = readBack('milestone file', () => parseMilestone(content, id))
+    if (!dryRun) {
+      fs.mkdirSync(milestonesDir, { recursive: true })
+      writeFileAtomic(path.join(milestonesDir, `${id}.md`), content)
+    }
+    return { before: null, after }
+  }
+
+  /**
+   * Milestone names that issues or epics use and that have no file, with how many of each use them. Archived issues count, as they do in `validate`.
+   * `except` is an id about to be filed. Not a contract operation; the CLI warns with it.
+   */
+  function unfiledMilestones(except) {
+    const filed = milestoneStems(milestonesDir)
+    const counts = new Map()
+    const tally = (name) => {
+      if (name === undefined || name === except || filed.has(name)) return
+      counts.set(name, (counts.get(name) ?? 0) + 1)
+    }
+    for (const issue of searchIssues({ archived: true }).issues) tally(issue.milestone)
+    for (const epic of listDeliverables()) tally(epic.milestone)
+    return [...counts].map(([name, count]) => ({ name, count })).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+  }
+
   const docsDir = path.join(issuesDir, 'docs')
   const readDocument = (docPath) => readDocumentFile(docsDir, docPath)
 
@@ -797,6 +878,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
 
   return {
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
+    listMilestones, getMilestone, createMilestone, unfiledMilestones,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
     comment, listComments, getHistory, logTime, readDocument, createDocument,
     discover, capabilities, categoryOf, eventsByIssue, metricEvents, issuesBySprint,

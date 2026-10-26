@@ -71,6 +71,9 @@ Run `node scripts/pmkit.mjs <command>`. Every command takes `--json` and `--root
 | `epic create --title t` | creates an epic |
 | `epic update-status <id> --health h --body-file f` | publishes a status update |
 | `epic updates <id>` | lists the status updates of an epic, newest first |
+| `milestone list` | lists milestones, by due date |
+| `milestone get <id>` | shows one milestone |
+| `milestone create <id>` | creates a milestone; takes `--name` and `--due` |
 | `docs read <path>` | prints a document under the docs folder |
 | `docs create <path> --body-file f` | creates a document under the docs folder |
 | `metrics velocity` | points or counts done per closed sprint, and the average |

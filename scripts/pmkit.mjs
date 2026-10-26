@@ -8,7 +8,7 @@ import { BOOLEANS, parseArgs } from './lib/args.mjs'
 import { requireActor, gitUserEmail } from './lib/actor.mjs'
 import { findRoot, loadConfig, validateLocalConfig } from './lib/config.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
-import { changeLines, epicRecord, eventTable, fields, issueRecord, issueTable, sprintRecord, table } from './lib/format.mjs'
+import { changeLines, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, sprintRecord, table } from './lib/format.mjs'
 import { cycleTimes, lastEntry, summary, velocity } from './lib/metrics.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
@@ -406,6 +406,33 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'milestone list', summary: 'lists milestones', flags: [],
+    run: (ctx) => {
+      const milestones = ctx.tracker().listMilestones()
+      const text = milestones.length === 0 ? 'no milestones' : table(['ID', 'Name', 'Due'], milestones.map((m) => [m.id, m.name, m.due ?? '']))
+      return { data: milestones, text }
+    },
+  },
+  {
+    name: 'milestone get', summary: 'one milestone', usage: '<id>', args: ['id'], flags: [],
+    run: (ctx) => {
+      const milestone = ctx.tracker().getMilestone(ctx.args[0])
+      return { data: milestone, text: milestoneRecord(milestone) }
+    },
+  },
+  {
+    name: 'milestone create', summary: 'creates a milestone', usage: '<id> [--name n] [--due YYYY-MM-DD]', write: true, args: ['id'], flags: ['name', 'due'],
+    run: (ctx) => {
+      const input = { id: ctx.args[0] }
+      for (const key of ['name', 'due']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
+      const tracker = ctx.tracker()
+      const result = tracker.createMilestone(input, ctx.actor(), { dryRun: ctx.dryRun })
+      const unfiled = tracker.unfiledMilestones(result.after.id)
+      const warnings = unfiled.length === 0 ? [] : [`${unfiled.length} ${unfiled.length === 1 ? 'milestone named by issues or epics has' : 'milestones named by issues or epics have'} no file: ${unfiled.map((u) => `${u.name} (${u.count})`).join(', ')}; run /pmkit:local:doctor`]
+      return { data: result, text: writeText(result, { ...ctx, record: milestoneRecord }), commit: result.after.id, warnings }
+    },
+  },
+  {
     name: 'epic update-status', summary: 'publishes a status update', usage: '<id> --health h --body-file f', write: true, args: ['id'], flags: ['health', 'body-file'],
     run: (ctx) => {
       if (ctx.opt('health') === undefined || ctx.opt('body-file') === undefined) throw usageError('epic update-status needs --health and --body-file', 'Health is on_track, at_risk or off_track')
@@ -601,7 +628,7 @@ export const COMMANDS = [
     run: (ctx) => {
       const result = validateRepo(ctx.root)
       const c = result.checked
-      const head = `checked: ${c.issues} issues, ${c.epics} epics, ${c.sprints} sprints, ${c.comments} comments`
+      const head = `checked: ${c.issues} issues, ${c.epics} epics, ${c.sprints} sprints, ${c.milestones} milestones, ${c.comments} comments`
       const body = result.problems.length === 0 ? 'no problems' : result.problems.map((p) => `${p.path}  ${p.code}  ${p.message}`).join('\n')
       return { data: result, text: `${head}\n${body}` }
     },
