@@ -1,11 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import { appendEvents, driftEvents, readEvents, replay } from './lib/local/events.mjs'
+import { tempDir } from './test-helpers.mjs'
 
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-'))
+const tmp = () => tempDir('pmkit-')
 const write = (dir, name, text) => {
   const file = path.join(dir, name)
   fs.writeFileSync(file, text)

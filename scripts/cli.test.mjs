@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { hashTree, makeRepo } from './test-helpers.mjs'
+import { hashTree, makeRepo, tempDir } from './test-helpers.mjs'
 
 const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), 'pmkit.mjs')
 
@@ -37,7 +37,7 @@ const json = (cwd, args, options) => {
 const git = (cwd, ...args) => spawnSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: '1' } })
 
 test('init scaffolds every file in an empty git repo and refuses a second run with CONFLICT', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-init-'))
+  const dir = tempDir('pmkit-init-')
   git(dir, 'init', '-q')
   const first = run(dir, ['init', '--tracker', 'local', '--member', 'fred', '--name', 'Fred', '--email', 'f@x.dev'])
   assert.equal(first.status, 0, first.stderr)
@@ -54,7 +54,7 @@ test('init scaffolds every file in an empty git repo and refuses a second run wi
 })
 
 test('init --dry-run lists the files and writes nothing', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-init-'))
+  const dir = tempDir('pmkit-init-')
   const result = run(dir, ['init', '--root', dir, '--dry-run'])
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stdout, /\.pmkit\/config\.yaml/)
@@ -62,7 +62,7 @@ test('init --dry-run lists the files and writes nothing', () => {
 })
 
 test('init takes the GitHub repo from the origin remote', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-init-'))
+  const dir = tempDir('pmkit-init-')
   git(dir, 'init', '-q')
   git(dir, 'remote', 'add', 'origin', 'git@github.com:fredsvanelli/skills.git')
   assert.equal(run(dir, ['init', '--git-host', 'github', '--prefix', 'ABC']).status, 0)
@@ -106,7 +106,7 @@ test('issues update --dry-run prints the change and leaves the repo byte-identic
 
 test('every write is byte-identical on --dry-run', () => {
   const root = makeRepo('team')
-  const commentFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-body-')), 'c.md')
+  const commentFile = path.join(tempDir('pmkit-body-'), 'c.md')
   fs.writeFileSync(commentFile, 'A comment.')
   const before = hashTree(root)
   const dry = (...args) => {
@@ -307,7 +307,7 @@ test('criteria come from a file, --check ticks one and --uncheck clears it', () 
 
 test('description file, estimate and labels reach the issue', () => {
   const root = makeRepo('team')
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-body-'))
+  const dir = tempDir('pmkit-body-')
   const file = path.join(dir, 'd.md')
   fs.writeFileSync(file, 'Line one\r\n\r\nLine two\r\n')
   const { after } = json(root, ['issues', 'create', '--title', 'T', '--estimate', '5', '--label', 'backend,billing', '--description-file', file, '--type', 'bug'])
@@ -326,7 +326,7 @@ test('assign, link, comment, log-time, archive and get --comments --history', ()
   assert.deepEqual(json(root, ['issues', 'get', 'ISS-4M2S']).blockedBy, ['ISS-3F7H'])
   json(root, ['issues', 'link', 'ISS-3F7H', 'ISS-4M2S', '--kind', 'blocks', '--remove'])
   assert.deepEqual(json(root, ['issues', 'get', 'ISS-4M2S']).blockedBy, [])
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-body-'))
+  const dir = tempDir('pmkit-body-')
   const file = path.join(dir, 'c.md')
   fs.writeFileSync(file, 'Looks good.')
   assert.equal(run(root, ['issues', 'comment', 'ISS-3F7H', '--body-file', file]).status, 0)

@@ -6,7 +6,7 @@ import path from 'node:path'
 import {
   childEnv, compareNames, displayArgs, expandCase, findCollisions, formatRun, goldenName, makeNormalizer, mapLimit, quoteArg, runPmkit, staleGoldens,
 } from './golden-helpers.mjs'
-import { makeRepo } from './test-helpers.mjs'
+import { makeRepo, tempDir } from './test-helpers.mjs'
 
 test('goldenName turns spaces into hyphens', () => {
   assert.equal(goldenName('issues get'), 'issues-get')
@@ -61,7 +61,7 @@ test("childEnv has no key from the caller's env", () => {
 })
 
 test('makeNormalizer replaces plain, realpath and JSON-escaped roots', () => {
-  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-golden-'))
+  const base = tempDir('pmkit-golden-')
   try {
     const real = path.join(base, 'real')
     fs.mkdirSync(real)
@@ -116,7 +116,7 @@ test('displayArgs shows paths under root or inputs as tokens with slashes', () =
 })
 
 test('a root and inputs folder with a space give an unquoted $ line', () => {
-  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit golden '))
+  const base = tempDir('pmkit golden ')
   try {
     const root = path.join(base, 'copy')
     const inputs = path.join(base, 'in puts')
@@ -148,7 +148,7 @@ test('mapLimit keeps order and never runs more than the limit at once', async ()
 })
 
 test('staleGoldens lists a file that matches no command and ignores _inputs', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-golden-'))
+  const dir = tempDir('pmkit-golden-')
   try {
     fs.writeFileSync(path.join(dir, 'issues-get.txt'), '')
     fs.writeFileSync(path.join(dir, 'ghost.txt'), '')

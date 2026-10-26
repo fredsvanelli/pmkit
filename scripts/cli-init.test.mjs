@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { hashTree } from './test-helpers.mjs'
+import { hashTree, tempDir } from './test-helpers.mjs'
 import { lineDiff } from './lib/diff.mjs'
 import { FORMAT_VERSION } from './lib/local/migrations.mjs'
 import { parseYaml } from './lib/yaml.mjs'
@@ -24,7 +24,7 @@ const json = (cwd, args, options) => {
   return JSON.parse(result.stdout)
 }
 
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-init-'))
+const tmp = () => tempDir('pmkit-init-')
 const read = (dir, file) => fs.readFileSync(path.join(dir, file), 'utf8')
 
 test('lineDiff marks removed and added lines and keeps the common ones', () => {
