@@ -107,7 +107,7 @@ Run from the repo root. Each command shows what it prints today (before the edit
    - `grep -cF '[--sprint id\|current\|none]' docs/superpowers/specs/2026-10-23-pmkit-design.md` prints `0` now and must print `2` after.
    - `npm test` passes. No test reads the spec, so the count of passing tests equals the count on `main`.
 5. Scope check. This branch also carries the claim commit, which changed `.issues/issues/PMK-117/`, so a plain `git diff main` lists those files. Use these two commands instead.
-   - `git diff --name-only main...HEAD -- . ':(exclude).issues' ':(exclude).superpowers' ':(exclude)docs/superpowers/specs/2026-10-26-pmk-117-sprint-current-in-design-spec-design.md'` prints nothing now and must print only `docs/superpowers/specs/2026-10-23-pmkit-design.md` after the edit is committed.
+   - `git diff --name-only main...HEAD -- . ':(exclude).issues' ':(exclude).superpowers' ':(exclude)docs/superpowers/specs/2026-10-26-pmk-117-sprint-current-in-design-spec-design.md' ':(exclude)docs/superpowers/plans/2026-10-26-pmk-117-sprint-current-in-design-spec.md'` prints nothing now and must print only `docs/superpowers/specs/2026-10-23-pmkit-design.md` after the edit is committed.
    - `git diff -U0 main...HEAD -- docs/superpowers/specs/2026-10-23-pmkit-design.md | grep -c '^[-+]|'` prints `0` now and must print `4` after (two removed rows and two added rows). I confirmed `4` with the planned rows in a copy outside the repo.
 
 ## Decisões
