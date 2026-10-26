@@ -42,7 +42,7 @@ Its first rule (stop when there is no config) does not apply here, because this 
    ```
 
 6. Preview with `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --git-host <github|none> --prefix <P> --id-style <random|numbered> --estimate-unit <unit> --members-file - --dry-run --json`. Use `--git-host github` only when step 2 found a GitHub remote.
-7. Show one summary: git host, prefix, ID style, estimate unit, the members and the files the dry run lists. When the git host is `none`, add one line naming the commands that lose features: `/pmkit:issues:work`, `/pmkit:issues:mine`, `/pmkit:issues:pause`, `/pmkit:report:status`, `/pmkit:cycle:close` and `/pmkit:team:standup`.
+7. Show one summary: git host, prefix, ID style, estimate unit, the members and the files the dry run lists. When the git host is `none`, add one line naming the commands that lose features: `/pmkit:issues:work`, `/pmkit:issues:mine`, `/pmkit:issues:pause`, `/pmkit:report:status`, `/pmkit:cycle:close` and `/pmkit:team:standup`. The first line of each config file is a schema line that points editors at the pmkit schema, and the CLI ignores it.
 8. After the user approves, run the same command without `--dry-run`, with the same members file.
 9. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`, `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`.
 10. Go to "Output".
@@ -53,7 +53,7 @@ Never run `init` without `--update` when a config exists.
 
 2. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`. Show each problem with its path and message. A problem does not stop the update, but say that it stays until the user fixes it.
 3. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --dry-run --json`. Add `--git-host`, `--id-style` or `--estimate-unit` only when the user asks to change them. `--update` refuses `--prefix`, so tell the user the prefix cannot change. A new ID style applies to the issues and epics created after it, and the existing IDs stay as they are.
-4. Show every file the dry run marks `change` or `differs` with its diff. List the `create` and `replace` files by path. Say how many files were `keep`.
+4. Show every file the dry run marks `change` or `differs` with its diff. A one-line `change` on the first line of a config file is the schema line. When a config fails a validator check, `init --update` refuses, writes nothing and names the file to fix. List the `create` and `replace` files by path. Say how many files were `keep`.
 5. For each `differs` file, ask with `AskUserQuestion` whether to replace it. A `differs` file is one the user edited, and the command replaces it only when asked.
 6. When no file is `create`, `change`, `replace` or `differs`, say "already up to date", skip the write and go to step 8. Otherwise ask once with `AskUserQuestion` whether to apply the `create`, `change` and `replace` files shown, plus the `differs` files approved in step 5. When the user declines, stop and change nothing.
 7. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --replace <path> --json`, with one `--replace <path>` per approved file and the same flags as the dry run. Without approved files, leave `--replace` out.

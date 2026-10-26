@@ -89,6 +89,8 @@ The `issues branch` and `pr` commands need `git_host.system: github` in `.pmkit/
 
 Comments and time logs append an event to the issue's `events.jsonl` but leave `issue.md` alone, so they do not change the issue's `updated` timestamp.
 
+Editors can check the config files against JSON Schemas. The schemas live in `schemas/` (`pmkit.config.schema.json` for `.pmkit/config.yaml` and `issues.config.schema.json` for `.issues/config.yaml`). `/pmkit:setup` and `init` write a `# yaml-language-server: $schema=` line as the first line of each config file. The line points at the schemas on `main` on GitHub. The Red Hat YAML extension in VS Code and JetBrains IDEs read it, and the CLI ignores it.
+
 ## Tests
 
     npm test
