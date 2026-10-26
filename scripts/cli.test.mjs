@@ -501,6 +501,33 @@ test('a split in cycle close leaves the remaining work for cycle plan', () => {
   assert.deepEqual(velocity.perSprint.find((sprint) => sprint.id === '2026-10-12'), { id: '2026-10-12', points: 5, count: 1 })
 })
 
+test('velocity counts the moves to done made before a late close and not after it', () => {
+  const root = makeRepo('team')
+  const at = (iso) => ({ env: { PMKIT_NOW: iso } })
+  json(root, ['issues', 'move', 'ISS-5N1R', 'done'], at('2026-10-24T15:00:00Z'))
+  // The write pr sync makes when the pull request merges, after the sprint's end.
+  json(root, ['issues', 'move', 'ISS-8C4W', 'done'], at('2026-10-26T10:00:00Z'))
+  const split = at('2026-10-26T11:00:00Z')
+  const { after: remaining } = json(root, ['issues', 'create', '--title', 'Finish the billing export to CSV', '--type', 'feature', '--estimate', '3', '--parent', 'EPC-2M9D', '--priority', 'high', '--label', 'billing,backend'], split)
+  json(root, ['issues', 'link', remaining.id, 'ISS-2X6D', '--kind', 'related'], split)
+  json(root, ['issues', 'update', 'ISS-2X6D', '--estimate', '5'], split)
+  json(root, ['issues', 'move', 'ISS-2X6D', 'done'], split)
+  const closed = json(root, ['cycle', 'close', '2026-10-12'], at('2026-10-26T12:00:00Z'))
+  assert.equal(closed.sprint.closed, '2026-10-26T12:00:00Z')
+  assert.deepEqual(closed.unfinished.map((issue) => issue.id), ['ISS-4M2S'])
+  assert.match(fs.readFileSync(path.join(root, '.issues/sprints/2026-10-12.yaml'), 'utf8'), /^state: closed\nclosed: 2026-10-26T12:00:00Z$/m)
+  const done = json(root, ['cycle', 'issues', '2026-10-12']).filter((issue) => issue.status.category === 'done')
+  assert.deepEqual(done.map((issue) => issue.id).sort(), ['ISS-2X6D', 'ISS-5N1R', 'ISS-8C4W'])
+  const points = done.reduce((sum, issue) => sum + issue.estimate, 0)
+  assert.equal(points, 13)
+  const rows = [{ id: '2026-09-28', points: 10, count: 3 }, { id: '2026-10-12', points: 13, count: 3 }]
+  const velocity = json(root, ['metrics', 'velocity'])
+  assert.deepEqual(velocity.perSprint, rows)
+  assert.deepEqual(velocity.perSprint.find((sprint) => sprint.id === '2026-10-12'), { id: '2026-10-12', points, count: done.length })
+  json(root, ['issues', 'move', 'ISS-4M2S', 'done'], at('2026-10-27T10:00:00Z'))
+  assert.deepEqual(json(root, ['metrics', 'velocity']).perSprint, rows)
+})
+
 test('auto_commit commits only the tracker folder with pmkit: <op> <id>', () => {
   const root = makeRepo('basic')
   const file = path.join(root, '.issues/config.yaml')

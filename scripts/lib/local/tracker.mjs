@@ -738,7 +738,11 @@ export function createLocalTracker(root, {
     if (before.state !== 'active') throw invalid(`sprint ${before.id} is not active (it is ${before.state})`, 'pmkit cycle list')
     // An issue that does not parse may belong to the sprint, so it is reported rather than left out silently.
     const { issues, problems } = search({ sprint: before.id }, { save: !dryRun })
-    const { after } = writeSprint(before, { ...before, state: 'closed' }, { dryRun })
+    // Built in model order, so closed sits right after state, and a closed the file already had is replaced.
+    const { capacity, daysOff, extra, closed: _previous, ...head } = before
+    const { closed: _malformed, ...kept } = extra ?? {}
+    const next = { ...head, state: 'closed', closed: stamp(), capacity, daysOff, ...(Object.keys(kept).length > 0 ? { extra: kept } : {}) }
+    const { after } = writeSprint(before, next, { dryRun })
     return { sprint: after, unfinished: issues.filter((issue) => !TERMINAL.includes(issue.status.category)), problems }
   }
 

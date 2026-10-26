@@ -6,7 +6,7 @@ import { PmkitError } from '../errors.mjs'
 import { parseYaml, stringifyYaml } from '../yaml.mjs'
 
 export const SPRINT_STATES = ['planned', 'active', 'closed']
-const FILE_ORDER = ['name', 'start', 'end', 'goal', 'state', 'capacity', 'days_off']
+const FILE_ORDER = ['name', 'start', 'end', 'goal', 'state', 'closed', 'capacity', 'days_off']
 const DOCTOR = '/pmkit:local:doctor'
 
 export const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -24,6 +24,11 @@ export function addDays(date, days) {
 }
 
 const isMap = (value) => value !== null && typeof value === 'object' && !Array.isArray(value)
+
+const CLOSED = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/
+
+/** A closed value is a timestamp with a real date, a time and a zone (Z or an offset). */
+const validClosed = (value) => typeof value === 'string' && CLOSED.test(value) && validDate(value.slice(0, 10)) && !Number.isNaN(Date.parse(value))
 
 /** Parses the text of sprints/<id>.yaml. A text that does not parse or lacks a start, end or state throws INVALID_INPUT. */
 export function parseSprint(text, id) {
@@ -45,12 +50,16 @@ export function parseSprint(text, id) {
     end: data.end,
     goal: typeof data.goal === 'string' ? data.goal : '',
     state: data.state,
+    ...(validClosed(data.closed) ? { closed: data.closed } : {}),
     capacity: isMap(data.capacity) ? data.capacity : {},
     daysOff: isMap(data.days_off) ? data.days_off : {},
   }
   // Keys pmkit does not know are kept so the next write does not drop them.
-  const unknown = Object.keys(data).filter((key) => !FILE_ORDER.includes(key))
-  if (unknown.length > 0) sprint.extra = Object.fromEntries(unknown.map((key) => [key, data[key]]))
+  const extra = Object.fromEntries(Object.keys(data).filter((key) => !FILE_ORDER.includes(key)).map((key) => [key, data[key]]))
+  // A malformed closed is kept as written too, for validate to list; a missing or empty one is dropped.
+  const missing = data.closed === undefined || data.closed === null || data.closed === ''
+  if (!missing && !validClosed(data.closed)) extra.closed = data.closed
+  if (Object.keys(extra).length > 0) sprint.extra = extra
   return sprint
 }
 

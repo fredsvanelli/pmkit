@@ -23,6 +23,7 @@ exit 0
     "end": "2026-10-25",
     "goal": "Webhook retries",
     "state": "closed",
+    "closed": "2026-10-23T12:00:00Z",
     "capacity": {
       "fred": 8,
       "ana": 10
@@ -130,6 +131,7 @@ exit 0
     "end": "2026-10-25",
     "goal": "Webhook retries",
     "state": "closed",
+    "closed": "2026-10-23T12:00:00Z",
     "capacity": {
       "fred": 8,
       "ana": 10

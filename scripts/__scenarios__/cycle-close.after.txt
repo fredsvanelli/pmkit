@@ -201,6 +201,7 @@ exit 0
   goal: Webhook retries and the billing export
 -state: active
 +state: closed
++closed: 2026-10-23T12:00:00Z
   capacity: { fred: 8, ana: 10 }
   days_off:
     ana: [2026-10-16]

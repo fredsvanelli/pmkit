@@ -303,6 +303,93 @@ test('closeCycle reports the issues it could not read as problems', () => {
   assert.deepEqual(result.problems.map((problem) => [problem.id, problem.code]), [['ISS-3Q6T', 'CONFLICT']])
 })
 
+const raw = (sprints, id) => fs.readFileSync(path.join(sprints, `${id}.yaml`), 'utf8')
+const addLine = (sprints, id, line) => fs.appendFileSync(path.join(sprints, `${id}.yaml`), `${line}\n`)
+const KEYS = ['id', 'name', 'start', 'end', 'goal', 'state', 'closed', 'capacity', 'daysOff']
+const AT = '2026-10-26T12:00:00Z'
+
+test('closeCycle writes closed with the run time and returns it right after state', () => {
+  const { sprints, tracker } = setup('team', AT)
+  const { sprint } = tracker.closeCycle('2026-10-12', 'fred')
+  assert.equal(sprint.closed, AT)
+  assert.deepEqual(Object.keys(sprint), KEYS)
+  assert.ok(raw(sprints, '2026-10-12').includes(`state: closed\nclosed: ${AT}\n`))
+  const listed = tracker.listCycles({ state: 'closed' }).find((cycle) => cycle.id === '2026-10-12')
+  assert.equal(listed.closed, AT)
+})
+
+test('closeCycle with dryRun returns closed and writes nothing', () => {
+  const { root, tracker } = setup('team', AT)
+  const before = hashTree(root)
+  const { sprint } = tracker.closeCycle('2026-10-12', 'fred', { dryRun: true })
+  assert.equal(sprint.closed, AT)
+  assert.deepEqual(Object.keys(sprint), KEYS)
+  assert.deepEqual(hashTree(root), before)
+})
+
+test('a valid closed reads as written and survives a write', () => {
+  for (const value of ['2026-10-26T09:00:00-03:00', '2026-10-26T12:00:00.500Z']) {
+    const { sprints, tracker } = setup()
+    addLine(sprints, '2026-09-28', `closed: ${value}`)
+    const sprint = tracker.listCycles().find((cycle) => cycle.id === '2026-09-28')
+    assert.equal(sprint.closed, value)
+    assert.deepEqual(Object.keys(sprint), KEYS)
+    assert.equal('extra' in sprint, false)
+    tracker.setCapacity('2026-09-28', { fred: 5 }, 'fred')
+    assert.ok(raw(sprints, '2026-09-28').includes(`state: closed\nclosed: ${value}\n`), value)
+  }
+})
+
+test('a missing or empty closed reads as no key', () => {
+  const fixture = setup().tracker.listCycles().find((cycle) => cycle.id === '2026-09-28')
+  assert.equal('closed' in fixture, false)
+  assert.equal('extra' in fixture, false)
+  const { sprints, tracker } = setup()
+  addLine(sprints, '2026-09-28', 'closed:')
+  const sprint = tracker.listCycles().find((cycle) => cycle.id === '2026-09-28')
+  assert.equal('closed' in sprint, false)
+  assert.equal('extra' in sprint, false)
+  tracker.setCapacity('2026-09-28', { fred: 5 }, 'fred')
+  assert.ok(!raw(sprints, '2026-09-28').split('\n').some((line) => line.startsWith('closed')))
+})
+
+test('a malformed closed is kept in extra and does not block reads', () => {
+  for (const value of ['soon', '2026-10-26', '2026-10-26T12:00:00', '2026-10-26 12:00:00Z', '2026-02-30T12:00:00Z', '2026']) {
+    const { sprints, tracker } = setup()
+    addLine(sprints, '2026-10-12', `closed: ${value}`)
+    const expected = value === '2026' ? 2026 : value
+    const sprint = tracker.currentCycle()
+    assert.equal('closed' in sprint, false, value)
+    assert.deepEqual(sprint.extra, { closed: expected }, value)
+    assert.equal(tracker.listCycles().length, 2)
+    tracker.setCapacity('2026-10-12', { fred: 5 }, 'fred')
+    assert.ok(raw(sprints, '2026-10-12').includes(`\nclosed: ${value}\n`), value)
+  }
+})
+
+test('closeCycle replaces a closed the active sprint already had and keeps other hand-added keys', () => {
+  for (const value of ['soon', '2026-10-01T00:00:00Z']) {
+    const { sprints, tracker } = setup('team', AT)
+    addLine(sprints, '2026-10-12', `closed: ${value}`)
+    addLine(sprints, '2026-10-12', 'retro: notes')
+    const { sprint } = tracker.closeCycle('2026-10-12', 'fred')
+    assert.equal(sprint.closed, AT, value)
+    assert.deepEqual(sprint.extra, { retro: 'notes' }, value)
+    const lines = raw(sprints, '2026-10-12').split('\n')
+    assert.deepEqual(lines.filter((line) => line.startsWith('closed:')), [`closed: ${AT}`], value)
+    assert.ok(lines.includes('retro: notes'), value)
+  }
+})
+
+test('updateCycleCapacity on a closed sprint keeps closed', () => {
+  const { sprints, tracker } = setup('team', AT)
+  tracker.closeCycle('2026-10-12', 'fred')
+  tracker.updateCycleCapacity('2026-10-12', { capacity: { fred: 1 } }, 'fred')
+  const data = parseYaml(raw(sprints, '2026-10-12'))
+  assert.equal(data.closed, AT)
+  assert.deepEqual(data.capacity, { fred: 1 })
+})
+
 const MEMBERS = { fred: {}, ana: {} }
 const SPRINT = { start: '2026-10-12', end: '2026-10-25' }
 

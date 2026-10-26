@@ -55,6 +55,7 @@ export const isCategory = (value) => CATEGORIES.includes(value)
  * @property {string} end YYYY-MM-DD
  * @property {string} [goal]
  * @property {'planned' | 'active' | 'closed'} state
+ * @property {string} [closed] ISO timestamp of the close, with Z or an offset, set by closeCycle
  * @property {Object<string, number>} capacity member id to points or hours
  * @property {Object<string, string[]>} daysOff member id to dates
  * @property {Object<string, *>} [extra] sprint file keys pmkit does not know, kept on the next write
