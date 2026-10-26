@@ -37,7 +37,7 @@ A named target with an optional due date that issues and epics point to by id.
 _Avoid_: release (PMK-22), phase, version
 
 **Sprint**:
-A time box with a start, an end, a goal, a state (`planned`, `active` or `closed`) and a capacity per member. At most one sprint is `active`. The sprint's id is its start date. The Unified model calls it a cycle, and the CLI command group is `cycle`.
+A time box with a start, an end, a goal, a state (`planned`, `active` or `closed`) and a capacity per member. At most one sprint is `active`. The sprint's id is its start date. The Unified model calls it a cycle, and the CLI command group is `cycle`. A closed sprint records when it was closed, and velocity counts only the moves to `done` made up to that moment.
 _Avoid_: iteration, cycle (outside the CLI and contract names)
 
 **Status**:
