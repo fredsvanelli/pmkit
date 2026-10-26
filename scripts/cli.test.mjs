@@ -236,6 +236,17 @@ test('validate on the broken fixture exits 0 and lists every problem', () => {
   }
 })
 
+test('validate exits 0 and prints a .pmkit/config.yaml problem as path, code and message', () => {
+  const root = makeRepo('basic')
+  const file = path.join(root, '.pmkit', 'config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/system: none/, 'system: gitlab'))
+  const text = run(root, ['validate'])
+  assert.equal(text.status, 0)
+  assert.match(text.stdout, /^\.pmkit\/config\.yaml {2}config {2}git_host\.system must be github or none$/m)
+  const problem = json(root, ['validate']).problems.find((p) => p.path === '.pmkit/config.yaml')
+  assert.equal(problem.code, 'config')
+})
+
 test('validate text starts with the counts, milestones included', () => {
   const root = makeRepo('basic')
   const dir = path.join(root, '.issues', 'milestones')
