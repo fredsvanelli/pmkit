@@ -1,0 +1,20 @@
+$ pmkit whoami
+exit 0
+--- stdout
+fred (Fred Vanelli)
+--- stderr
+(empty)
+
+$ pmkit whoami --json
+exit 0
+--- stdout
+{
+  "id": "fred",
+  "member": {
+    "name": "Fred Vanelli",
+    "email": "fred@example.com",
+    "availability": 1
+  }
+}
+--- stderr
+(empty)

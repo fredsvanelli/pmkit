@@ -1,0 +1,40 @@
+$ pmkit docs create golden/new.md --body-file <inputs>/doc.md
+exit 0
+--- stdout
+created document golden/new.md
+--- stderr
+(empty)
+
+$ pmkit docs create golden/new.md --body-file <inputs>/doc.md --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "path": "golden/new.md",
+    "body": "# Golden document\n\nA document the golden tests create under the docs folder.\n"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit docs create golden/new.md --body-file <inputs>/doc.md --dry-run
+exit 0
+--- stdout
+would create document golden/new.md
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit docs create golden/new.md --body-file <inputs>/doc.md --dry-run --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "path": "golden/new.md",
+    "body": "# Golden document\n\nA document the golden tests create under the docs folder.\n"
+  }
+}
+--- stderr
+(empty)

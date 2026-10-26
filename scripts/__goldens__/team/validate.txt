@@ -1,0 +1,28 @@
+$ pmkit validate
+exit 0
+--- stdout
+checked: 13 issues, 1 epics, 2 sprints, 0 comments
+.issues/issues/ISS-3Q6T/issue.md  conflict  the file contains git conflict markers
+--- stderr
+(empty)
+
+$ pmkit validate --json
+exit 0
+--- stdout
+{
+  "checked": {
+    "issues": 13,
+    "epics": 1,
+    "sprints": 2,
+    "comments": 0
+  },
+  "problems": [
+    {
+      "path": ".issues/issues/ISS-3Q6T/issue.md",
+      "code": "conflict",
+      "message": "the file contains git conflict markers"
+    }
+  ]
+}
+--- stderr
+(empty)

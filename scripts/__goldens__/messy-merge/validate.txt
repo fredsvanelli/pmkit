@@ -1,0 +1,40 @@
+$ pmkit validate
+exit 0
+--- stdout
+checked: 8 issues, 1 epics, 2 sprints, 0 comments
+.issues/issues/ISS-4/issue.md  conflict  the file contains git conflict markers
+.issues/issues/ISS-5/issue.md  conflict  the file contains git conflict markers
+.issues/sprints/2026-10-12.yaml  sprint  more than one active sprint, 2026-10-05 is active too
+--- stderr
+(empty)
+
+$ pmkit validate --json
+exit 0
+--- stdout
+{
+  "checked": {
+    "issues": 8,
+    "epics": 1,
+    "sprints": 2,
+    "comments": 0
+  },
+  "problems": [
+    {
+      "path": ".issues/issues/ISS-4/issue.md",
+      "code": "conflict",
+      "message": "the file contains git conflict markers"
+    },
+    {
+      "path": ".issues/issues/ISS-5/issue.md",
+      "code": "conflict",
+      "message": "the file contains git conflict markers"
+    },
+    {
+      "path": ".issues/sprints/2026-10-12.yaml",
+      "code": "sprint",
+      "message": "more than one active sprint, 2026-10-05 is active too"
+    }
+  ]
+}
+--- stderr
+(empty)

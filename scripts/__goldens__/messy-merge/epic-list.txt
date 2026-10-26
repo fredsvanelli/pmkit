@@ -1,0 +1,27 @@
+$ pmkit epic list
+exit 0
+--- stdout
+ID    | Title             | Status      | Start      | Target
+------|-------------------|-------------|------------|-----------
+EPC-1 | Reliable webhooks | in_progress | 2026-10-05 | 2026-11-13
+--- stderr
+(empty)
+
+$ pmkit epic list --json
+exit 0
+--- stdout
+[
+  {
+    "id": "EPC-1",
+    "title": "Reliable webhooks",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "start": "2026-10-05",
+    "target": "2026-11-13",
+    "description": "Customers lose events when a delivery fails. This epic covers retries and signing."
+  }
+]
+--- stderr
+(empty)

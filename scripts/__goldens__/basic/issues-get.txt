@@ -1,0 +1,62 @@
+$ pmkit issues get ISS-0000
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: issue ISS-0000 does not exist
+next: pmkit issues list
+
+$ pmkit issues get ISS-0000 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "issue ISS-0000 does not exist",
+    "nextStep": "pmkit issues list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues get ISS-0000 --comments --history
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: issue ISS-0000 does not exist
+next: pmkit issues list
+
+$ pmkit issues get ISS-0000 --comments --history --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "issue ISS-0000 does not exist",
+    "nextStep": "pmkit issues list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues get ISS-0000
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: issue ISS-0000 does not exist
+next: pmkit issues list
+
+$ pmkit issues get ISS-0000 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "issue ISS-0000 does not exist",
+    "nextStep": "pmkit issues list"
+  }
+}
+--- stderr
+(empty)

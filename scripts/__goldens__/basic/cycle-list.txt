@@ -1,0 +1,27 @@
+$ pmkit cycle list
+exit 0
+--- stdout
+no sprints
+--- stderr
+(empty)
+
+$ pmkit cycle list --json
+exit 0
+--- stdout
+[]
+--- stderr
+(empty)
+
+$ pmkit cycle list --state closed
+exit 0
+--- stdout
+no sprints
+--- stderr
+(empty)
+
+$ pmkit cycle list --state closed --json
+exit 0
+--- stdout
+[]
+--- stderr
+(empty)

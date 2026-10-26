@@ -1,0 +1,160 @@
+$ pmkit issues update ISS-5N1R --title Renamed --criteria-file <inputs>/criteria.md
+exit 0
+--- stdout
+ISS-5N1R  Renamed
+title: Paginate the events API → Renamed
+acceptance criteria: (none) → - [ ] The output matches the golden file; - [ ] The JSON output parses
+--- stderr
+(empty)
+
+$ pmkit issues update ISS-5N1R --title Renamed --criteria-file <inputs>/criteria.md --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "ISS-5N1R",
+    "title": "Paginate the events API",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "The export reads events in pages of 500.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-05T09:30:00Z",
+    "updated": "2026-10-22T09:00:00Z",
+    "body": "## Description\n\nThe export reads events in pages of 500.\n",
+    "type": "task",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "fred",
+    "sprint": "2026-10-12"
+  },
+  "after": {
+    "id": "ISS-5N1R",
+    "title": "Renamed",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "The export reads events in pages of 500.",
+    "acceptanceCriteria": [
+      {
+        "text": "The output matches the golden file",
+        "done": false
+      },
+      {
+        "text": "The JSON output parses",
+        "done": false
+      }
+    ],
+    "created": "2026-10-05T09:30:00Z",
+    "updated": "2026-10-23T12:00:00Z",
+    "body": "## Description\n\nThe export reads events in pages of 500.\n\n## Acceptance criteria\n\n- [ ] The output matches the golden file\n- [ ] The JSON output parses\n",
+    "type": "task",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "fred",
+    "sprint": "2026-10-12"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues update ISS-5N1R --title Renamed --criteria-file <inputs>/criteria.md --dry-run
+exit 0
+--- stdout
+ISS-5N1R  Renamed
+title: Paginate the events API → Renamed
+acceptance criteria: (none) → - [ ] The output matches the golden file; - [ ] The JSON output parses
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit issues update ISS-5N1R --title Renamed --criteria-file <inputs>/criteria.md --dry-run --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "ISS-5N1R",
+    "title": "Paginate the events API",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "The export reads events in pages of 500.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-05T09:30:00Z",
+    "updated": "2026-10-22T09:00:00Z",
+    "body": "## Description\n\nThe export reads events in pages of 500.\n",
+    "type": "task",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "fred",
+    "sprint": "2026-10-12"
+  },
+  "after": {
+    "id": "ISS-5N1R",
+    "title": "Renamed",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "The export reads events in pages of 500.",
+    "acceptanceCriteria": [
+      {
+        "text": "The output matches the golden file",
+        "done": false
+      },
+      {
+        "text": "The JSON output parses",
+        "done": false
+      }
+    ],
+    "created": "2026-10-05T09:30:00Z",
+    "updated": "2026-10-23T12:00:00Z",
+    "body": "## Description\n\nThe export reads events in pages of 500.\n\n## Acceptance criteria\n\n- [ ] The output matches the golden file\n- [ ] The JSON output parses\n",
+    "type": "task",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "fred",
+    "sprint": "2026-10-12"
+  }
+}
+--- stderr
+(empty)

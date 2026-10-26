@@ -1,0 +1,18 @@
+$ pmkit metrics velocity
+exit 0
+--- stdout
+no closed sprints
+average: 0 issues
+--- stderr
+(empty)
+
+$ pmkit metrics velocity --json
+exit 0
+--- stdout
+{
+  "perSprint": [],
+  "average": 0,
+  "unit": "issues"
+}
+--- stderr
+(empty)

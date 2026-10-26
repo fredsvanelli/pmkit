@@ -1,0 +1,150 @@
+$ pmkit capabilities
+exit 0
+--- stdout
+tracker: local
+git host: none
+
+Capability           | Path    | Detail
+---------------------|---------|-----------------------------------------------------
+cycles               | native  |
+estimation           | native  | unit=points scale=1/2/3/5/8/13
+multilevel_hierarchy | native  |
+dependencies         | native  |
+native_triage        | native  |
+deliverables         | native  |
+strategic_goals      | native  |
+status_update        | native  |
+releases             | native  |
+capacity             | native  |
+native_metrics       | derived | source=events
+saved_views          | native  |
+documents            | native  |
+demand_signals       | native  |
+request_queue        | native  |
+time_tracking        | native  |
+linked_code          | derived | Set git_host in .pmkit/config.yaml
+agent_delegation     | derived | assignee=agent:<name>
+security_alerts      | derived | source=local scanners
+user_inbox           | derived | source=mentions and assignments since the last check
+--- stderr
+(empty)
+
+$ pmkit capabilities --json
+exit 0
+--- stdout
+{
+  "tracker": "local",
+  "gitHost": "none",
+  "generatedAt": "2026-10-23T12:00:00Z",
+  "capabilities": [
+    {
+      "id": "cycles",
+      "path": "native"
+    },
+    {
+      "id": "estimation",
+      "path": "native",
+      "detail": {
+        "unit": "points",
+        "scale": [
+          1,
+          2,
+          3,
+          5,
+          8,
+          13
+        ]
+      }
+    },
+    {
+      "id": "multilevel_hierarchy",
+      "path": "native"
+    },
+    {
+      "id": "dependencies",
+      "path": "native"
+    },
+    {
+      "id": "native_triage",
+      "path": "native"
+    },
+    {
+      "id": "deliverables",
+      "path": "native"
+    },
+    {
+      "id": "strategic_goals",
+      "path": "native"
+    },
+    {
+      "id": "status_update",
+      "path": "native"
+    },
+    {
+      "id": "releases",
+      "path": "native"
+    },
+    {
+      "id": "capacity",
+      "path": "native"
+    },
+    {
+      "id": "native_metrics",
+      "path": "derived",
+      "detail": {
+        "source": "events"
+      }
+    },
+    {
+      "id": "saved_views",
+      "path": "native"
+    },
+    {
+      "id": "documents",
+      "path": "native"
+    },
+    {
+      "id": "demand_signals",
+      "path": "native"
+    },
+    {
+      "id": "request_queue",
+      "path": "native"
+    },
+    {
+      "id": "time_tracking",
+      "path": "native"
+    },
+    {
+      "id": "linked_code",
+      "path": "derived",
+      "detail": {
+        "source": "git"
+      },
+      "enableHint": "Set git_host in .pmkit/config.yaml"
+    },
+    {
+      "id": "agent_delegation",
+      "path": "derived",
+      "detail": {
+        "assignee": "agent:<name>"
+      }
+    },
+    {
+      "id": "security_alerts",
+      "path": "derived",
+      "detail": {
+        "source": "local scanners"
+      }
+    },
+    {
+      "id": "user_inbox",
+      "path": "derived",
+      "detail": {
+        "source": "mentions and assignments since the last check"
+      }
+    }
+  ]
+}
+--- stderr
+(empty)

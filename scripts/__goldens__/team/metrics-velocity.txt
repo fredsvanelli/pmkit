@@ -1,0 +1,26 @@
+$ pmkit metrics velocity
+exit 0
+--- stdout
+Sprint     | Points | Issues
+-----------|--------|-------
+2026-09-28 | 10     | 3
+average: 10 points
+--- stderr
+(empty)
+
+$ pmkit metrics velocity --json
+exit 0
+--- stdout
+{
+  "perSprint": [
+    {
+      "id": "2026-09-28",
+      "points": 10,
+      "count": 3
+    }
+  ],
+  "average": 10,
+  "unit": "points"
+}
+--- stderr
+(empty)

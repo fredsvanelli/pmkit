@@ -1,0 +1,138 @@
+$ pmkit issues log-time ISS-9B2X 30
+exit 0
+--- stdout
+logged 30 minutes on ISS-9B2X
+--- stderr
+(empty)
+
+$ pmkit issues log-time ISS-9B2X 30 --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "ISS-9B2X",
+    "title": "Dead-letter queue",
+    "status": {
+      "name": "in_review",
+      "category": "in_review"
+    },
+    "labels": [
+      "webhooks",
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "Keep deliveries that ran out of retries so support can replay them.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-06T11:00:00Z",
+    "updated": "2026-10-21T14:00:00Z",
+    "body": "## Description\n\nKeep deliveries that ran out of retries so support can replay them.\n",
+    "type": "feature",
+    "priority": "high",
+    "estimate": 5,
+    "assignee": "ana"
+  },
+  "after": {
+    "id": "ISS-9B2X",
+    "title": "Dead-letter queue",
+    "status": {
+      "name": "in_review",
+      "category": "in_review"
+    },
+    "labels": [
+      "webhooks",
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "Keep deliveries that ran out of retries so support can replay them.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-06T11:00:00Z",
+    "updated": "2026-10-21T14:00:00Z",
+    "body": "## Description\n\nKeep deliveries that ran out of retries so support can replay them.\n",
+    "type": "feature",
+    "priority": "high",
+    "estimate": 5,
+    "assignee": "ana"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues log-time ISS-9B2X 30 --dry-run
+exit 0
+--- stdout
+logged 30 minutes on ISS-9B2X
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit issues log-time ISS-9B2X 30 --dry-run --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "ISS-9B2X",
+    "title": "Dead-letter queue",
+    "status": {
+      "name": "in_review",
+      "category": "in_review"
+    },
+    "labels": [
+      "webhooks",
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "Keep deliveries that ran out of retries so support can replay them.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-06T11:00:00Z",
+    "updated": "2026-10-21T14:00:00Z",
+    "body": "## Description\n\nKeep deliveries that ran out of retries so support can replay them.\n",
+    "type": "feature",
+    "priority": "high",
+    "estimate": 5,
+    "assignee": "ana"
+  },
+  "after": {
+    "id": "ISS-9B2X",
+    "title": "Dead-letter queue",
+    "status": {
+      "name": "in_review",
+      "category": "in_review"
+    },
+    "labels": [
+      "webhooks",
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "Keep deliveries that ran out of retries so support can replay them.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-06T11:00:00Z",
+    "updated": "2026-10-21T14:00:00Z",
+    "body": "## Description\n\nKeep deliveries that ran out of retries so support can replay them.\n",
+    "type": "feature",
+    "priority": "high",
+    "estimate": 5,
+    "assignee": "ana"
+  }
+}
+--- stderr
+(empty)

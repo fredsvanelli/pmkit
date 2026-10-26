@@ -1,0 +1,56 @@
+$ pmkit epic create --title 'Golden epic'
+exit 0
+--- stdout
+EPC-2  Golden epic
+id: EPC-2
+title: Golden epic
+status: backlog (backlog)
+--- stderr
+(empty)
+
+$ pmkit epic create --title 'Golden epic' --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "id": "EPC-2",
+    "title": "Golden epic",
+    "status": {
+      "name": "backlog",
+      "category": "backlog"
+    },
+    "description": ""
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit epic create --title 'Golden epic' --dry-run
+exit 0
+--- stdout
+EPC-2  Golden epic
+id: EPC-2
+title: Golden epic
+status: backlog (backlog)
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit epic create --title 'Golden epic' --dry-run --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "id": "EPC-2",
+    "title": "Golden epic",
+    "status": {
+      "name": "backlog",
+      "category": "backlog"
+    },
+    "description": ""
+  }
+}
+--- stderr
+(empty)

@@ -1,0 +1,94 @@
+$ pmkit issues create --title 'Golden sample' --type task --description-file <inputs>/description.md
+exit 0
+--- stdout
+ISS-9  Golden sample
+id: ISS-9
+title: Golden sample
+type: task
+status: backlog (backlog)
+created: 2026-10-23T12:00:00.000Z
+updated: 2026-10-23T12:00:00Z
+
+A sample issue the golden tests create.
+
+It has two paragraphs so the description keeps its blank line.
+--- stderr
+(empty)
+
+$ pmkit issues create --title 'Golden sample' --type task --description-file <inputs>/description.md --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "id": "ISS-9",
+    "title": "Golden sample",
+    "status": {
+      "name": "backlog",
+      "category": "backlog"
+    },
+    "labels": [],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "A sample issue the golden tests create.\n\nIt has two paragraphs so the description keeps its blank line.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-23T12:00:00.000Z",
+    "updated": "2026-10-23T12:00:00Z",
+    "body": "## Description\n\nA sample issue the golden tests create.\n\nIt has two paragraphs so the description keeps its blank line.\n",
+    "type": "task"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues create --title 'Golden sample' --type task --description-file <inputs>/description.md --dry-run
+exit 0
+--- stdout
+ISS-9  Golden sample
+id: ISS-9
+title: Golden sample
+type: task
+status: backlog (backlog)
+created: 2026-10-23T12:00:00.000Z
+updated: 2026-10-23T12:00:00Z
+
+A sample issue the golden tests create.
+
+It has two paragraphs so the description keeps its blank line.
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit issues create --title 'Golden sample' --type task --description-file <inputs>/description.md --dry-run --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "id": "ISS-9",
+    "title": "Golden sample",
+    "status": {
+      "name": "backlog",
+      "category": "backlog"
+    },
+    "labels": [],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "A sample issue the golden tests create.\n\nIt has two paragraphs so the description keeps its blank line.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-23T12:00:00.000Z",
+    "updated": "2026-10-23T12:00:00Z",
+    "body": "## Description\n\nA sample issue the golden tests create.\n\nIt has two paragraphs so the description keeps its blank line.\n",
+    "type": "task"
+  }
+}
+--- stderr
+(empty)

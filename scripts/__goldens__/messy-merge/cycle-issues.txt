@@ -1,0 +1,73 @@
+$ pmkit cycle issues 2026-10-12
+exit 0
+--- stdout
+ID    | Title                   | Status      | Assignee | Estimate
+------|-------------------------|-------------|----------|---------
+ISS-2 | Retry failed deliveries | in_progress | fred     | 8
+ISS-7 | Dead-letter queue       | in_review   | ana      | 5
+--- stderr
+(empty)
+
+$ pmkit cycle issues 2026-10-12 --json
+exit 0
+--- stdout
+[
+  {
+    "id": "ISS-2",
+    "title": "Retry failed deliveries",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "Retry with exponential backoff, up to six attempts.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-09T10:00:00Z",
+    "updated": "2026-10-13T09:00:00Z",
+    "body": "## Description\n\nRetry with exponential backoff, up to six attempts.\n",
+    "type": "feature",
+    "priority": "high",
+    "estimate": 8,
+    "assignee": "fred",
+    "parent": "EPC-1",
+    "sprint": "2026-10-12"
+  },
+  {
+    "id": "ISS-7",
+    "title": "Dead-letter queue",
+    "status": {
+      "name": "in_review",
+      "category": "in_review"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "Keep deliveries that ran out of retries so support can replay them.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-10T10:00:00Z",
+    "updated": "2026-10-21T14:00:00Z",
+    "body": "## Description\n\nKeep deliveries that ran out of retries so support can replay them.\n",
+    "type": "feature",
+    "priority": "high",
+    "estimate": 5,
+    "assignee": "ana",
+    "parent": "EPC-1",
+    "sprint": "2026-10-12"
+  }
+]
+--- stderr
+(empty)

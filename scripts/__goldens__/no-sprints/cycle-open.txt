@@ -1,0 +1,66 @@
+$ pmkit cycle open --start 2026-10-26
+exit 0
+--- stdout
+2026-10-26
+id: 2026-10-26
+name: Sprint 2026-10-26
+state: planned
+start: 2026-10-26
+end: 2026-11-08
+capacity: {}
+days off: {}
+--- stderr
+(empty)
+
+$ pmkit cycle open --start 2026-10-26 --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "id": "2026-10-26",
+    "name": "Sprint 2026-10-26",
+    "start": "2026-10-26",
+    "end": "2026-11-08",
+    "goal": "",
+    "state": "planned",
+    "capacity": {},
+    "daysOff": {}
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit cycle open --start 2026-10-26 --dry-run
+exit 0
+--- stdout
+2026-10-26
+id: 2026-10-26
+name: Sprint 2026-10-26
+state: planned
+start: 2026-10-26
+end: 2026-11-08
+capacity: {}
+days off: {}
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit cycle open --start 2026-10-26 --dry-run --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "id": "2026-10-26",
+    "name": "Sprint 2026-10-26",
+    "start": "2026-10-26",
+    "end": "2026-11-08",
+    "goal": "",
+    "state": "planned",
+    "capacity": {},
+    "daysOff": {}
+  }
+}
+--- stderr
+(empty)

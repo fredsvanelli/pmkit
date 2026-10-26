@@ -1,0 +1,160 @@
+$ pmkit init
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: .pmkit/config.yaml already exists
+next: Edit it, or delete it to start over
+
+$ pmkit init --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "CONFLICT",
+    "message": ".pmkit/config.yaml already exists",
+    "nextStep": "Edit it, or delete it to start over"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit init --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: .pmkit/config.yaml already exists
+next: Edit it, or delete it to start over
+
+$ pmkit init --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "CONFLICT",
+    "message": ".pmkit/config.yaml already exists",
+    "nextStep": "Edit it, or delete it to start over"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit init --update
+exit 0
+--- stdout
+wrote:
+  .pmkit/config.yaml: keep
+  .issues/config.yaml: keep
+  .issues/.gitattributes: create
+  .issues/.gitignore: create
+  .issues/issues/.gitkeep: create
+  .issues/epics/.gitkeep: create
+  .issues/sprints/.gitkeep: keep
+  .issues/docs/.gitkeep: create
+--- stderr
+(empty)
+
+$ pmkit init --update --json
+exit 0
+--- stdout
+{
+  "dryRun": false,
+  "files": [
+    {
+      "path": ".pmkit/config.yaml",
+      "action": "keep"
+    },
+    {
+      "path": ".issues/config.yaml",
+      "action": "keep"
+    },
+    {
+      "path": ".issues/.gitattributes",
+      "action": "create"
+    },
+    {
+      "path": ".issues/.gitignore",
+      "action": "create"
+    },
+    {
+      "path": ".issues/issues/.gitkeep",
+      "action": "create"
+    },
+    {
+      "path": ".issues/epics/.gitkeep",
+      "action": "create"
+    },
+    {
+      "path": ".issues/sprints/.gitkeep",
+      "action": "keep"
+    },
+    {
+      "path": ".issues/docs/.gitkeep",
+      "action": "create"
+    }
+  ],
+  "kept": []
+}
+--- stderr
+(empty)
+
+$ pmkit init --update --dry-run
+exit 0
+--- stdout
+files:
+  .pmkit/config.yaml: keep
+  .issues/config.yaml: keep
+  .issues/.gitattributes: would create
+  .issues/.gitignore: would create
+  .issues/issues/.gitkeep: would create
+  .issues/epics/.gitkeep: would create
+  .issues/sprints/.gitkeep: keep
+  .issues/docs/.gitkeep: would create
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit init --update --dry-run --json
+exit 0
+--- stdout
+{
+  "dryRun": true,
+  "files": [
+    {
+      "path": ".pmkit/config.yaml",
+      "action": "keep"
+    },
+    {
+      "path": ".issues/config.yaml",
+      "action": "keep"
+    },
+    {
+      "path": ".issues/.gitattributes",
+      "action": "create"
+    },
+    {
+      "path": ".issues/.gitignore",
+      "action": "create"
+    },
+    {
+      "path": ".issues/issues/.gitkeep",
+      "action": "create"
+    },
+    {
+      "path": ".issues/epics/.gitkeep",
+      "action": "create"
+    },
+    {
+      "path": ".issues/sprints/.gitkeep",
+      "action": "keep"
+    },
+    {
+      "path": ".issues/docs/.gitkeep",
+      "action": "create"
+    }
+  ],
+  "kept": []
+}
+--- stderr
+(empty)

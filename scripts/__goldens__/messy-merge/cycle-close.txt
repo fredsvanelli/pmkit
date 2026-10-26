@@ -1,0 +1,212 @@
+$ pmkit cycle close 2026-10-12
+exit 0
+--- stdout
+2026-10-12  Sprint 2026-10-12
+state: active → closed
+unfinished issues:
+ID    | Title                   | Status      | Assignee | Estimate | Sprint
+------|-------------------------|-------------|----------|----------|-----------
+ISS-2 | Retry failed deliveries | in_progress | fred     | 8        | 2026-10-12
+ISS-7 | Dead-letter queue       | in_review   | ana      | 5        | 2026-10-12
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit cycle close 2026-10-12 --json
+exit 0
+--- stdout
+{
+  "sprint": {
+    "id": "2026-10-12",
+    "name": "Sprint 2026-10-12",
+    "start": "2026-10-12",
+    "end": "2026-10-25",
+    "goal": "Webhook retries",
+    "state": "closed",
+    "capacity": {
+      "fred": 8,
+      "ana": 10
+    },
+    "daysOff": {}
+  },
+  "unfinished": [
+    {
+      "id": "ISS-2",
+      "title": "Retry failed deliveries",
+      "status": {
+        "name": "in_progress",
+        "category": "in_progress"
+      },
+      "labels": [
+        "backend"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Retry with exponential backoff, up to six attempts.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-09T10:00:00Z",
+      "updated": "2026-10-13T09:00:00Z",
+      "body": "## Description\n\nRetry with exponential backoff, up to six attempts.\n",
+      "type": "feature",
+      "priority": "high",
+      "estimate": 8,
+      "assignee": "fred",
+      "parent": "EPC-1",
+      "sprint": "2026-10-12"
+    },
+    {
+      "id": "ISS-7",
+      "title": "Dead-letter queue",
+      "status": {
+        "name": "in_review",
+        "category": "in_review"
+      },
+      "labels": [
+        "backend"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Keep deliveries that ran out of retries so support can replay them.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-10T10:00:00Z",
+      "updated": "2026-10-21T14:00:00Z",
+      "body": "## Description\n\nKeep deliveries that ran out of retries so support can replay them.\n",
+      "type": "feature",
+      "priority": "high",
+      "estimate": 5,
+      "assignee": "ana",
+      "parent": "EPC-1",
+      "sprint": "2026-10-12"
+    }
+  ],
+  "problems": [
+    {
+      "id": "ISS-4",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    },
+    {
+      "id": "ISS-5",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit cycle close 2026-10-12 --dry-run
+exit 0
+--- stdout
+2026-10-12  Sprint 2026-10-12
+state: active → closed
+unfinished issues:
+ID    | Title                   | Status      | Assignee | Estimate | Sprint
+------|-------------------------|-------------|----------|----------|-----------
+ISS-2 | Retry failed deliveries | in_progress | fred     | 8        | 2026-10-12
+ISS-7 | Dead-letter queue       | in_review   | ana      | 5        | 2026-10-12
+dry run: nothing was written
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit cycle close 2026-10-12 --dry-run --json
+exit 0
+--- stdout
+{
+  "sprint": {
+    "id": "2026-10-12",
+    "name": "Sprint 2026-10-12",
+    "start": "2026-10-12",
+    "end": "2026-10-25",
+    "goal": "Webhook retries",
+    "state": "closed",
+    "capacity": {
+      "fred": 8,
+      "ana": 10
+    },
+    "daysOff": {}
+  },
+  "unfinished": [
+    {
+      "id": "ISS-2",
+      "title": "Retry failed deliveries",
+      "status": {
+        "name": "in_progress",
+        "category": "in_progress"
+      },
+      "labels": [
+        "backend"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Retry with exponential backoff, up to six attempts.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-09T10:00:00Z",
+      "updated": "2026-10-13T09:00:00Z",
+      "body": "## Description\n\nRetry with exponential backoff, up to six attempts.\n",
+      "type": "feature",
+      "priority": "high",
+      "estimate": 8,
+      "assignee": "fred",
+      "parent": "EPC-1",
+      "sprint": "2026-10-12"
+    },
+    {
+      "id": "ISS-7",
+      "title": "Dead-letter queue",
+      "status": {
+        "name": "in_review",
+        "category": "in_review"
+      },
+      "labels": [
+        "backend"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Keep deliveries that ran out of retries so support can replay them.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-10T10:00:00Z",
+      "updated": "2026-10-21T14:00:00Z",
+      "body": "## Description\n\nKeep deliveries that ran out of retries so support can replay them.\n",
+      "type": "feature",
+      "priority": "high",
+      "estimate": 5,
+      "assignee": "ana",
+      "parent": "EPC-1",
+      "sprint": "2026-10-12"
+    }
+  ],
+  "problems": [
+    {
+      "id": "ISS-4",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    },
+    {
+      "id": "ISS-5",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.

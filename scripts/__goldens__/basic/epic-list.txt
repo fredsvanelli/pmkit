@@ -1,0 +1,13 @@
+$ pmkit epic list
+exit 0
+--- stdout
+no epics
+--- stderr
+(empty)
+
+$ pmkit epic list --json
+exit 0
+--- stdout
+[]
+--- stderr
+(empty)

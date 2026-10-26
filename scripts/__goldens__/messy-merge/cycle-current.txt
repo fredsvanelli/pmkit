@@ -1,0 +1,32 @@
+$ pmkit cycle current
+exit 0
+--- stdout
+id: 2026-10-05
+name: Sprint 2026-10-05
+state: active
+start: 2026-10-05
+end: 2026-10-11
+goal: Webhook delivery basics
+capacity: {"fred":8,"ana":8}
+days off: {}
+--- stderr
+(empty)
+
+$ pmkit cycle current --json
+exit 0
+--- stdout
+{
+  "id": "2026-10-05",
+  "name": "Sprint 2026-10-05",
+  "start": "2026-10-05",
+  "end": "2026-10-11",
+  "goal": "Webhook delivery basics",
+  "state": "active",
+  "capacity": {
+    "fred": 8,
+    "ana": 8
+  },
+  "daysOff": {}
+}
+--- stderr
+(empty)

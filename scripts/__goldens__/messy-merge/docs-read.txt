@@ -1,0 +1,20 @@
+$ pmkit docs read missing.md
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: document missing.md does not exist
+next: Check the path under the docs folder
+
+$ pmkit docs read missing.md --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "document missing.md does not exist",
+    "nextStep": "Check the path under the docs folder"
+  }
+}
+--- stderr
+(empty)

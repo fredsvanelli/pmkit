@@ -1,0 +1,30 @@
+$ pmkit epic get EPC-2M9D
+exit 0
+--- stdout
+id: EPC-2M9D
+title: Reliable webhooks and billing export
+status: in_progress (in_progress)
+start: 2026-09-28
+target: 2026-11-13
+
+Customers lose events when a delivery fails, and finance cannot export invoices.
+This epic covers retries, signing and the CSV export.
+--- stderr
+(empty)
+
+$ pmkit epic get EPC-2M9D --json
+exit 0
+--- stdout
+{
+  "id": "EPC-2M9D",
+  "title": "Reliable webhooks and billing export",
+  "status": {
+    "name": "in_progress",
+    "category": "in_progress"
+  },
+  "start": "2026-09-28",
+  "target": "2026-11-13",
+  "description": "Customers lose events when a delivery fails, and finance cannot export invoices.\nThis epic covers retries, signing and the CSV export."
+}
+--- stderr
+(empty)

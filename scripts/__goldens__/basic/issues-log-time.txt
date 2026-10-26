@@ -1,0 +1,41 @@
+$ pmkit issues log-time ISS-0000 30
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: issue ISS-0000 does not exist
+next: pmkit issues list
+
+$ pmkit issues log-time ISS-0000 30 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "issue ISS-0000 does not exist",
+    "nextStep": "pmkit issues list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues log-time ISS-0000 30 --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: issue ISS-0000 does not exist
+next: pmkit issues list
+
+$ pmkit issues log-time ISS-0000 30 --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "issue ISS-0000 does not exist",
+    "nextStep": "pmkit issues list"
+  }
+}
+--- stderr
+(empty)

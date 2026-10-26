@@ -1,0 +1,40 @@
+$ pmkit issues comment ISS-9B2X --body-file <inputs>/comment.md
+exit 0
+--- stdout
+commented on ISS-9B2X
+--- stderr
+(empty)
+
+$ pmkit issues comment ISS-9B2X --body-file <inputs>/comment.md --json
+exit 0
+--- stdout
+{
+  "id": "2026-10-23T12-00-00Z-fred",
+  "issue": "ISS-9B2X",
+  "author": "fred",
+  "body": "Checked the retry logs. The second attempt succeeds after the backoff.",
+  "created": "2026-10-23T12:00:00Z"
+}
+--- stderr
+(empty)
+
+$ pmkit issues comment ISS-9B2X --body-file <inputs>/comment.md --dry-run
+exit 0
+--- stdout
+commented on ISS-9B2X
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit issues comment ISS-9B2X --body-file <inputs>/comment.md --dry-run --json
+exit 0
+--- stdout
+{
+  "id": "2026-10-23T12-00-00Z-fred",
+  "issue": "ISS-9B2X",
+  "author": "fred",
+  "body": "Checked the retry logs. The second attempt succeeds after the backoff.",
+  "created": "2026-10-23T12:00:00Z"
+}
+--- stderr
+(empty)

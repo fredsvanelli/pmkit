@@ -1,0 +1,150 @@
+$ pmkit issues link ISS-5N1R ISS-4M2S --kind blocks
+exit 0
+--- stdout
+ISS-5N1R  Paginate the events API
+blocks: ISS-2X6D → ISS-2X6D, ISS-4M2S
+--- stderr
+(empty)
+
+$ pmkit issues link ISS-5N1R ISS-4M2S --kind blocks --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "ISS-5N1R",
+    "title": "Paginate the events API",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [
+      "ISS-2X6D"
+    ],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "The export reads events in pages of 500.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-05T09:30:00Z",
+    "updated": "2026-10-22T09:00:00Z",
+    "body": "## Description\n\nThe export reads events in pages of 500.\n",
+    "type": "task",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "fred",
+    "sprint": "2026-10-12"
+  },
+  "after": {
+    "id": "ISS-5N1R",
+    "title": "Paginate the events API",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [
+      "ISS-2X6D",
+      "ISS-4M2S"
+    ],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "The export reads events in pages of 500.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-05T09:30:00Z",
+    "updated": "2026-10-22T09:00:00Z",
+    "body": "## Description\n\nThe export reads events in pages of 500.\n",
+    "type": "task",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "fred",
+    "sprint": "2026-10-12"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues link ISS-5N1R ISS-4M2S --kind blocks --dry-run
+exit 0
+--- stdout
+ISS-5N1R  Paginate the events API
+blocks: ISS-2X6D → ISS-2X6D, ISS-4M2S
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit issues link ISS-5N1R ISS-4M2S --kind blocks --dry-run --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "ISS-5N1R",
+    "title": "Paginate the events API",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [
+      "ISS-2X6D"
+    ],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "The export reads events in pages of 500.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-05T09:30:00Z",
+    "updated": "2026-10-22T09:00:00Z",
+    "body": "## Description\n\nThe export reads events in pages of 500.\n",
+    "type": "task",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "fred",
+    "sprint": "2026-10-12"
+  },
+  "after": {
+    "id": "ISS-5N1R",
+    "title": "Paginate the events API",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [
+      "ISS-2X6D",
+      "ISS-4M2S"
+    ],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "The export reads events in pages of 500.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-05T09:30:00Z",
+    "updated": "2026-10-22T09:00:00Z",
+    "body": "## Description\n\nThe export reads events in pages of 500.\n",
+    "type": "task",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "fred",
+    "sprint": "2026-10-12"
+  }
+}
+--- stderr
+(empty)

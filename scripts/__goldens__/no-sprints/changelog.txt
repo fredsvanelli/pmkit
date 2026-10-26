@@ -1,0 +1,60 @@
+$ pmkit changelog --file <inputs>/CHANGELOG.md --since 0.0.0
+exit 0
+--- stdout
+0.1.0  2026-10-01
+- Adds the first golden sample.
+
+0.2.0  2026-10-10
+- Changes the golden sample output.
+
+0.3.0  2026-10-20
+- Adds the golden sample feature.
+tracker format: 3
+setup: setup asks a golden question.
+--- stderr
+(empty)
+
+$ pmkit changelog --file <inputs>/CHANGELOG.md --since 0.0.0 --json
+exit 0
+--- stdout
+[
+  {
+    "version": "0.1.0",
+    "date": "2026-10-01",
+    "body": "- Adds the first golden sample.",
+    "trackerFormat": null,
+    "setup": []
+  },
+  {
+    "version": "0.2.0",
+    "date": "2026-10-10",
+    "body": "- Changes the golden sample output.",
+    "trackerFormat": null,
+    "setup": []
+  },
+  {
+    "version": "0.3.0",
+    "date": "2026-10-20",
+    "body": "- Adds the golden sample feature.",
+    "trackerFormat": 3,
+    "setup": [
+      "setup asks a golden question."
+    ]
+  }
+]
+--- stderr
+(empty)
+
+$ pmkit changelog --file <inputs>/CHANGELOG.md --since 0.3.0
+exit 0
+--- stdout
+no changes since this version
+--- stderr
+(empty)
+
+$ pmkit changelog --file <inputs>/CHANGELOG.md --since 0.3.0 --json
+exit 0
+--- stdout
+[]
+--- stderr
+(empty)

@@ -1,0 +1,160 @@
+$ pmkit issues update ISS-9B2X --title Renamed --criteria-file <inputs>/criteria.md
+exit 0
+--- stdout
+ISS-9B2X  Renamed
+title: Dead-letter queue → Renamed
+acceptance criteria: (none) → - [ ] The output matches the golden file; - [ ] The JSON output parses
+--- stderr
+(empty)
+
+$ pmkit issues update ISS-9B2X --title Renamed --criteria-file <inputs>/criteria.md --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "ISS-9B2X",
+    "title": "Dead-letter queue",
+    "status": {
+      "name": "in_review",
+      "category": "in_review"
+    },
+    "labels": [
+      "webhooks",
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "Keep deliveries that ran out of retries so support can replay them.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-06T11:00:00Z",
+    "updated": "2026-10-21T14:00:00Z",
+    "body": "## Description\n\nKeep deliveries that ran out of retries so support can replay them.\n",
+    "type": "feature",
+    "priority": "high",
+    "estimate": 5,
+    "assignee": "ana"
+  },
+  "after": {
+    "id": "ISS-9B2X",
+    "title": "Renamed",
+    "status": {
+      "name": "in_review",
+      "category": "in_review"
+    },
+    "labels": [
+      "webhooks",
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "Keep deliveries that ran out of retries so support can replay them.",
+    "acceptanceCriteria": [
+      {
+        "text": "The output matches the golden file",
+        "done": false
+      },
+      {
+        "text": "The JSON output parses",
+        "done": false
+      }
+    ],
+    "created": "2026-10-06T11:00:00Z",
+    "updated": "2026-10-23T12:00:00Z",
+    "body": "## Description\n\nKeep deliveries that ran out of retries so support can replay them.\n\n## Acceptance criteria\n\n- [ ] The output matches the golden file\n- [ ] The JSON output parses\n",
+    "type": "feature",
+    "priority": "high",
+    "estimate": 5,
+    "assignee": "ana"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues update ISS-9B2X --title Renamed --criteria-file <inputs>/criteria.md --dry-run
+exit 0
+--- stdout
+ISS-9B2X  Renamed
+title: Dead-letter queue → Renamed
+acceptance criteria: (none) → - [ ] The output matches the golden file; - [ ] The JSON output parses
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit issues update ISS-9B2X --title Renamed --criteria-file <inputs>/criteria.md --dry-run --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "ISS-9B2X",
+    "title": "Dead-letter queue",
+    "status": {
+      "name": "in_review",
+      "category": "in_review"
+    },
+    "labels": [
+      "webhooks",
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "Keep deliveries that ran out of retries so support can replay them.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-06T11:00:00Z",
+    "updated": "2026-10-21T14:00:00Z",
+    "body": "## Description\n\nKeep deliveries that ran out of retries so support can replay them.\n",
+    "type": "feature",
+    "priority": "high",
+    "estimate": 5,
+    "assignee": "ana"
+  },
+  "after": {
+    "id": "ISS-9B2X",
+    "title": "Renamed",
+    "status": {
+      "name": "in_review",
+      "category": "in_review"
+    },
+    "labels": [
+      "webhooks",
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "Keep deliveries that ran out of retries so support can replay them.",
+    "acceptanceCriteria": [
+      {
+        "text": "The output matches the golden file",
+        "done": false
+      },
+      {
+        "text": "The JSON output parses",
+        "done": false
+      }
+    ],
+    "created": "2026-10-06T11:00:00Z",
+    "updated": "2026-10-23T12:00:00Z",
+    "body": "## Description\n\nKeep deliveries that ran out of retries so support can replay them.\n\n## Acceptance criteria\n\n- [ ] The output matches the golden file\n- [ ] The JSON output parses\n",
+    "type": "feature",
+    "priority": "high",
+    "estimate": 5,
+    "assignee": "ana"
+  }
+}
+--- stderr
+(empty)

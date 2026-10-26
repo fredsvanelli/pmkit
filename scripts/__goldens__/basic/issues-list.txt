@@ -1,0 +1,67 @@
+$ pmkit issues list
+exit 0
+--- stdout
+no issues
+--- stderr
+(empty)
+
+$ pmkit issues list --json
+exit 0
+--- stdout
+{
+  "issues": [],
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit issues list --sprint current
+exit 0
+--- stdout
+no issues
+--- stderr
+(empty)
+
+$ pmkit issues list --sprint current --json
+exit 0
+--- stdout
+{
+  "issues": [],
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit issues list --blocked
+exit 0
+--- stdout
+no issues
+--- stderr
+(empty)
+
+$ pmkit issues list --blocked --json
+exit 0
+--- stdout
+{
+  "issues": [],
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit issues list --category done
+exit 0
+--- stdout
+no issues
+--- stderr
+(empty)
+
+$ pmkit issues list --category done --json
+exit 0
+--- stdout
+{
+  "issues": [],
+  "problems": []
+}
+--- stderr
+(empty)
