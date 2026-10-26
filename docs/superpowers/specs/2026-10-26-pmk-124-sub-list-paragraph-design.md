@@ -94,6 +94,12 @@ commands/issues/pause.md:28:    When the user approves, run the same command wi
 commands/spec/import.md:29:    When one fails, stop, list what was created and
 ```
 
+The check has limits.
+
+- It looks only at the line before, so it flags any indented line that follows a list item and is not a list item itself. A wrapped bullet line or an indented code fence right after a list item would be a false positive. No file has either today.
+- It does not match tab indentation.
+- A wrong path prints nothing, so an empty result alone does not prove the file was read. The before-run must print the two lines above. If it does not, the check is not valid.
+
 Only the two files in the issue match. The scan does not catch a paragraph after a sub-list inside a bullet at deeper indent, or one in another folder such as `docs/`. Those are out of scope.
 
 ## How each criterion is proven
@@ -133,15 +139,19 @@ sed -n 28,30p commands/spec/import.md | cut -c1-30
 ### Criterion 3: nothing else changes, tests pass
 
 ```
-git diff --numstat main -- commands/
+git diff --numstat "$(git merge-base main HEAD)" -- commands/
 ```
 
+The merge base is the commit where the branch left `main` (`e20817c` today). Using it keeps the output the same if `main` gains commits later. The command covers committed and uncommitted changes.
+
+- Before: prints nothing (run today, it printed nothing).
 - After: two lines, `1	0	commands/issues/pause.md` and `1	0	commands/spec/import.md`. Each file gains exactly one line and loses none.
 
 ```
-git diff -U0 main -- commands/ | grep '^[+-]' | grep -v '^+++\|^---'
+git diff -U0 "$(git merge-base main HEAD)" -- commands/ | grep '^[+-]' | grep -v '^+++\|^---'
 ```
 
+- Before: prints nothing (run today, it printed nothing).
 - After: prints two lines, each a lone `+` (an added empty line).
 
 ```
@@ -157,7 +167,7 @@ git status --short scripts/
 
 - After: empty, so no snapshot changed.
 
-The implementation should run the `awk` commands first and see them print the two lines (the failing check), then add the blank lines, then run every command above.
+The implementation should run the `awk` commands first and see them print the two lines (the failing check, which also shows the paths are right), then add the blank lines, then run every command above.
 
 ## Decisões
 
@@ -166,8 +176,8 @@ The implementation should run the `awk` commands first and see them print the tw
 3. Do not add a scenario assertion. Reason: the scenarios read CLI calls and step numbers only, so they cannot see this defect.
 4. Do not add a repo-wide test now. Reason: the scan finds no other instance, so the guard would protect against a future change only. It is a follow-up, not part of the smallest proof of the criteria.
 5. No snapshot regeneration. Reason: the parser ignores blank lines and the snapshots hold no command text. A changed snapshot after the edit is a signal to stop and read it.
-6. Add the blank line to `import.md` before the paragraph, which follows numbered sub-items, not bullets. Reason: the defect is the same. The issue calls them sub-list bullets, but the `import.md` sub-items are numbered, and the scan pattern covers both.
-7. The choices above were made without asking the user, as the stage instructions say. Each is the recommended option.
+6. Add the blank line to `import.md` before the paragraph, which follows numbered sub-items, not bullets. Reason: the defect is the same. Criterion 2 names "the last numbered sub-item", which matches the numbered sub-items in `import.md`, and the scan pattern covers both bullets and numbers.
+7. Use the merge base, not `main`, as the diff base in the proof commands. Reason: `main` can move while the branch is open, and then `git diff main` would show unrelated changes in reverse.
 
 ## Follow-up candidates
 
