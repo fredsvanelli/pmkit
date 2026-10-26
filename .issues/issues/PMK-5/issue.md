@@ -2,7 +2,7 @@
 id: PMK-5
 title: Let setup add labels to the Local tracker
 type: feature
-status: in_progress
+status: in_review
 priority: medium
 estimate: 2
 assignee: fred
@@ -10,7 +10,7 @@ parent: EPC-1
 milestone: local-gaps
 branch: pmk-5-let-setup-add-labels-to-the-local
 created: 2026-10-25T19:13:19Z
-updated: 2026-10-26T00:16:08Z
+updated: 2026-10-26T00:27:30Z
 ---
 
 ## Description
