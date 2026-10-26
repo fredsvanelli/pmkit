@@ -13,7 +13,7 @@ Arguments: `$ARGUMENTS`
 - `id` (required): the issue ID, for example `ISS-7K3Q`.
 - `change` (optional): what to change, in plain words. When it is empty, ask what to change.
 
-This command edits title, type, priority, estimate, labels, sprint, due date, milestone, branch, description and acceptance criteria. For other changes, use the command that owns them:
+This command edits title, type, priority, estimate, labels, sprint (a sprint id, `current` or `none`), due date, milestone, branch, description and acceptance criteria. For other changes, use the command that owns them:
 
 - status: `/pmkit:issues:move`;
 - assignee: `/pmkit:issues:assign`;
@@ -47,4 +47,5 @@ The updated issue as a one-row issue table, and the list of fields that changed.
 - No ID: ask for it.
 - No change: ask what to change.
 - The change is only a parent, a link or an archive: do not run `issues update`. Say which command to use.
+- `--sprint current` with no active sprint: the dry run in step 5 answers `INVALID_INPUT` "there is no active sprint" before the confirmation question. Say so, show no preview, and offer `/pmkit:cycle:plan` or updating the issue without a sprint.
 - An error from the CLI: apply the rules for reading errors in the conventions.
