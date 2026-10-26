@@ -159,6 +159,12 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     assert.match(call.text, /(?:^|\s)--sprint none(?:\s|$)/)
   })
 
+  test('cycle/plan step 8 shows the status of each offered issue', () => {
+    const step8 = fs.readFileSync(path.join(COMMANDS_DIR, 'cycle', 'plan.md'), 'utf8').split('\n').find((line) => line.startsWith('8. '))
+    assert.ok(step8, 'plan.md has a step 8')
+    assert.match(step8, /table \(ID, title, status, estimate, assignee, blocked by\)/)
+  })
+
   for (const { name, entries } of LOADED) {
     entries.forEach((scenario, index) => {
       const file = snapshotFile(name, index, entries.length)
