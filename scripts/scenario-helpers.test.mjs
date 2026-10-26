@@ -349,6 +349,26 @@ test('formatSnapshot puts the gh calls last only when given', () => {
   assert.match(formatSnapshot({ rows, changes: ['(no file changed)'], gh: [] }), /--- gh calls\n\(none\)\n$/)
 })
 
+test('formatSnapshot leaves no line ending in whitespace', () => {
+  const snapshot = formatSnapshot({ rows: ['exit 0'], changes: ['--- changed a.md', '  ', '-x ', '+x'], gh: ['pr view x '] })
+  assert.deepEqual(snapshot.split('\n').filter((line) => /\s$/.test(line)), [])
+  assert.equal(snapshot, 'exit 0\n\n--- changed a.md\n\n-x\n+x\n--- gh calls\npr view x\n')
+})
+
+test('makeRepoView.newEvents names a deleted event log', () => {
+  const root = scratchDir()
+  try {
+    const log = '.issues/issues/ISS-1/events.jsonl'
+    writeFile(root, log, '{"op":"create"}\n')
+    writeFile(root, '.issues/issues/ISS-1/issue.md', '---\nid: ISS-1\n---\n')
+    const baseline = readTree(root)
+    fs.rmSync(path.join(root, log))
+    assert.throws(() => makeRepoView(root, baseline, null).newEvents('ISS-1'), /events\.jsonl was deleted/)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('makeRepoView.newEvents returns only appended events', () => {
   const root = scratchDir()
   try {
@@ -416,10 +436,21 @@ test('runScenario does not let a dry run that failed as expected cover a write',
   assert.match(snapshot, /exit 2 \(expected INVALID_INPUT\)/)
 })
 
+test('runScenario names an entry of no known kind as a runner problem', async () => {
+  const { problems, snapshot } = await runMove(moveOnly([{ step: '1', reed: ['issues', 'get', 'ISS-2X6D'] }]))
+  assert.equal(problems.length, 1, problems.join('\n'))
+  assert.match(problems[0], /^runner: issues-move: entry .*reed.* has none of read/)
+  assert.equal(snapshot, null)
+})
+
+test('runScenario refuses github on a copy without a git_host system: none line', async () => {
+  await assert.rejects(runMove(moveOnly([], { fixture: null, github: true })), /github: .*\.pmkit\/config\.yaml has no `system: none`/)
+})
+
 test('runScenario stops at an entry that fails and names it', async () => {
   const { problems, snapshot } = await runMove(moveOnly([{ step: '1', read: ['issues', 'get', 'ISS-NOPE'] }, DRY_MOVE]))
   assert.equal(problems.length, 1, problems.join('\n'))
-  assert.match(problems[0], /read \[step 1\] issues get ISS-NOPE exited \d/)
+  assert.match(problems[0], /^rule 8: read \[step 1\] issues get ISS-NOPE exited \d/)
   assert.equal(snapshot, null)
 })
 

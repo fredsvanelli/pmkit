@@ -317,11 +317,15 @@ export function treeChanges(before, after) {
   return lines.length ? lines : ['(no file changed)']
 }
 
-/** The snapshot text: trace rows, a blank line, the file changes, then the gh calls when `gh` is a list. */
+/**
+ * The snapshot text: trace rows, a blank line, the file changes, then the gh calls when `gh` is a list.
+ * Every line loses its trailing whitespace (an empty context line of `lineDiff` is two spaces), so an editor
+ * that trims on save cannot break rule 12.
+ */
 export function formatSnapshot({ rows, changes, gh }) {
   const lines = [...rows, '', ...changes]
   if (gh) lines.push('--- gh calls', ...(gh.length ? gh : ['(none)']))
-  return `${lines.join('\n')}\n`
+  return `${lines.map((line) => line.trimEnd()).join('\n')}\n`
 }
 
 const HARNESS_GIT = ['-c', 'user.name=pmkit', '-c', 'user.email=pmkit@example.com']
@@ -336,8 +340,10 @@ function gitOrThrow(root, args, env) {
   return result.stdout
 }
 
-const eventLog = (root, id) =>
-  ['issues', 'epics'].map((kind) => `.issues/${kind}/${id}/events.jsonl`).find((rel) => fs.existsSync(path.join(root, rel)))
+/** The event log of an issue or epic that exists now or existed at the baseline. */
+const eventLog = (root, baseline, id) => ['issues', 'epics']
+  .map((kind) => `.issues/${kind}/${id}/events.jsonl`)
+  .find((rel) => baseline.has(rel) || fs.existsSync(path.join(root, rel)))
 
 /** What `expect(repo)` reads: records parsed from the copy, events appended after the baseline, gh calls and git. */
 export function makeRepoView(root, baseline, gh, env = childEnv()) {
@@ -360,10 +366,11 @@ export function makeRepoView(root, baseline, gh, env = childEnv()) {
     },
     file,
     newEvents(id) {
-      const rel = eventLog(root, id)
+      const rel = eventLog(root, baseline, id)
       if (!rel) return []
       const before = baseline.get(rel) ?? ''
       const after = file(rel)
+      if (after === null) throw new Error(`${rel} was deleted`)
       if (!after.startsWith(before)) throw new Error(`${rel} was rewritten, not appended to`)
       return after.slice(before.length).split('\n').filter(Boolean).map((line) => JSON.parse(line))
     },
@@ -384,7 +391,9 @@ function prepareCopy(scenario, { root, scratch, fixturesDir, env }) {
   else fs.mkdirSync(root)
   if (scenario.github) {
     const config = path.join(root, '.pmkit', 'config.yaml')
-    fs.writeFileSync(config, fs.readFileSync(config, 'utf8').replace('system: none', 'system: github\n  default_branch: main'))
+    const text = fs.existsSync(config) ? fs.readFileSync(config, 'utf8') : ''
+    if (!text.includes('system: none')) throw new Error('github: .pmkit/config.yaml has no `system: none` line to turn into github')
+    fs.writeFileSync(config, text.replace('system: none', 'system: github\n  default_branch: main'))
   }
   if (scenario.git || scenario.github) {
     gitOrThrow(root, ['init', '-q', '-b', 'main'], env)
@@ -413,8 +422,10 @@ const parseJson = (text) => {
 
 /**
  * Runs one scenario entry on a fresh copy of its fixture and applies rules 5 to 11.
- * Returns the problems, each prefixed with its rule, and the snapshot (null when an entry could not run).
- * `run` replaces `runPmkit`, for the rule 8 tests.
+ * Returns the problems and the snapshot (null when an entry could not run). Each problem starts with
+ * `rule N:`, or with `runner:` when the scenario itself cannot run (an unknown entry kind, a failing args
+ * function, a failing `git` entry or write). `run` replaces `runPmkit`, for the rule 8 tests.
+ * Rule 8 compares `hashTree`, which hashes file paths and contents: a new empty folder or a mode change passes.
  */
 export async function runScenario(scenario, { name, parsed, cliCommands, fixturesDir, inputsDir, run = runPmkit }) {
   const cliNames = cliCommands.map((command) => command.name)
@@ -455,7 +466,7 @@ export async function runScenario(scenario, { name, parsed, cliCommands, fixture
         continue
       }
       if (!kind) {
-        problems.push(`${name}: entry ${JSON.stringify(entry)} has none of ${KINDS.join(', ')}`)
+        problems.push(`runner: ${name}: entry ${JSON.stringify(entry)} has none of ${KINDS.join(', ')}`)
         stopped = true
         break
       }
@@ -463,7 +474,7 @@ export async function runScenario(scenario, { name, parsed, cliCommands, fixture
       try {
         args = typeof entry[kind] === 'function' ? entry[kind](saved) : entry[kind]
       } catch (error) {
-        problems.push(`${kind} [step ${entry.step}]: args function failed: ${error.message}`)
+        problems.push(`runner: ${kind} [step ${entry.step}]: args function failed: ${error.message}`)
         stopped = true
         break
       }
@@ -472,7 +483,7 @@ export async function runScenario(scenario, { name, parsed, cliCommands, fixture
         const result = runGit(root, args, env)
         rows.push(`$ git ${show(args)}  [step ${entry.step}, git]`, `exit ${result.status}`)
         if (result.status !== 0) {
-          problems.push(`${label} exited ${result.status}: ${result.stderr}`)
+          problems.push(`runner: ${label} exited ${result.status}: ${result.stderr}`)
           stopped = true
           break
         }
@@ -497,7 +508,7 @@ export async function runScenario(scenario, { name, parsed, cliCommands, fixture
         ? (result.code === 0 || json?.error?.code !== entry.expectError) && `did not fail with ${entry.expectError}`
         : result.code !== 0 && `exited ${result.code}`
       if (failure) {
-        problems.push(`${label} ${failure}: ${result.stdout}${result.stderr}`.trim())
+        problems.push(`${reads ? 'rule 8' : 'runner'}: ${label} ${failure}: ${result.stdout}${result.stderr}`.trim())
         stopped = true
         break
       }
@@ -517,7 +528,7 @@ export async function runScenario(scenario, { name, parsed, cliCommands, fixture
     const normalize = makeNormalizer({ root, inputs: inputsDir })
     const snapshot = normalize(formatSnapshot({ rows, changes, gh: gh ? ghCalls(gh) : null }))
     for (const leak of [scratch, fs.realpathSync(scratch), 'pmkit-scn-']) {
-      if (snapshot.includes(leak)) problems.push(`the snapshot holds the scratch path ${leak}`)
+      if (snapshot.includes(leak)) problems.push(`rule 12: the snapshot holds the scratch path ${leak}`)
     }
     return { problems, snapshot }
   } finally {

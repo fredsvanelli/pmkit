@@ -77,9 +77,9 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     const loaded = await loadScenarios(SCENARIOS)
     const { missing, extra, pendingWithScenario } = compareScenarios(FILES.map((f) => f.name), loaded.map((s) => s.name), PENDING)
     const problems = [
-      ...missing.map((name) => `command file ${name} has no scenario module scripts/__scenarios__/${name}.mjs`),
-      ...extra.map((name) => `scenario module ${name}.mjs names no command file`),
-      ...pendingWithScenario.map((name) => `${name} has a scenario module, remove it from PENDING`),
+      ...missing.map((name) => `rule 1: command file ${name} has no scenario module scripts/__scenarios__/${name}.mjs`),
+      ...extra.map((name) => `rule 1: scenario module ${name}.mjs names no command file`),
+      ...pendingWithScenario.map((name) => `rule 1: ${name} has a scenario module, remove it from PENDING`),
     ]
     assert.deepEqual(problems, [])
   })
@@ -89,7 +89,7 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     const expected = loaded.flatMap(({ name, entries }) => entries.map((_, index) => snapshotFile(name, index, entries.length)))
     const stale = staleSnapshots(fs.readdirSync(SCENARIOS), expected)
     if (UPDATE) for (const file of stale) fs.rmSync(path.join(SCENARIOS, file))
-    else assert.deepEqual(stale, [], `stale snapshots; delete them with ${REGENERATE}`)
+    else assert.deepEqual(stale, [], `rule 2: stale snapshots; delete them with ${REGENERATE}`)
   })
 
   test('every flag of every command file exists in the CLI', () => {
@@ -98,12 +98,12 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
       for (const call of parsed.calls) {
         const command = cliOf(call.command)
         if (!command) {
-          problems.push(`${rel}: step ${call.step || '(none)'} calls \`${call.command}\`, which is not a CLI command`)
+          problems.push(`rule 3: ${rel}: step ${call.step || '(none)'} calls \`${call.command}\`, which is not a CLI command`)
           continue
         }
         if (call.anyFlags) continue
         for (const flag of unknownFlags(call, command)) {
-          problems.push(`${rel}: step ${call.step || '(none)'} \`${call.command}\` has --${flag}, which the CLI does not take`)
+          problems.push(`rule 3: ${rel}: step ${call.step || '(none)'} \`${call.command}\` has --${flag}, which the CLI does not take`)
         }
       }
     }
@@ -112,7 +112,7 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     const known = new Set(['json', 'root', 'dry-run', 'as', 'accept-command', ...COMMANDS.flatMap((c) => [...(c.flags ?? []), ...(c.booleans ?? [])])])
     for (const { rel, parsed } of FILES) {
       for (const { step, flag } of parsed.looseFlags) {
-        if (!known.has(flag)) problems.push(`${rel}: step ${step || '(none)'} names --${flag} in its prose, and no CLI command takes it`)
+        if (!known.has(flag)) problems.push(`rule 3: ${rel}: step ${step || '(none)'} names --${flag} in its prose, and no CLI command takes it`)
       }
     }
     assert.deepEqual(problems, [])
@@ -121,14 +121,14 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
   test('every call ends with --json', () => {
     const problems = FILES.flatMap(({ rel, parsed }) => parsed.calls
       .filter((call) => !call.endsWithJson)
-      .map((call) => `${rel}: step ${call.step || '(none)'} \`${call.text}\` does not end with --json`))
+      .map((call) => `rule 4: ${rel}: step ${call.step || '(none)'} \`${call.text}\` does not end with --json`))
     assert.deepEqual(problems, [])
   })
 
   test('every command file with a write call declares a confirmation point', () => {
     const problems = FILES
       .filter(({ parsed }) => parsed.calls.some(isWrite) && !parsed.points.length)
-      .map(({ rel }) => `${rel} has a write call and no confirmation point in "## Confirmation points"`)
+      .map(({ rel }) => `rule 13: ${rel} has a write call and no confirmation point in "## Confirmation points"`)
     assert.deepEqual(problems, [])
   })
 
@@ -149,8 +149,8 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
       const file = snapshotFile(name, index, entries.length)
       test(`scenario ${file.replace(/\.after\.txt$/, '')}`, async () => {
         const command = FILES.find((f) => f.name === scenarioName(scenario.command))
-        assert.ok(command, `scenario ${name} names commands/${scenario.command}.md, which does not exist`)
-        assert.equal(scenarioName(scenario.command), name, `scenario ${name}.mjs names ${scenario.command}; the module name must be ${scenarioName(scenario.command)}`)
+        assert.ok(command, `rule 1: scenario ${name} names commands/${scenario.command}.md, which does not exist`)
+        assert.equal(scenarioName(scenario.command), name, `rule 1: scenario ${name}.mjs names ${scenario.command}; the module name must be ${scenarioName(scenario.command)}`)
         const { problems, snapshot } = await runScenario(scenario, {
           name, parsed: command.parsed, cliCommands: COMMANDS, fixturesDir: FIXTURES, inputsDir: INPUTS,
         })
@@ -158,8 +158,8 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
         const target = path.join(SCENARIOS, file)
         if (UPDATE) fs.writeFileSync(target, snapshot)
         else {
-          assert.ok(fs.existsSync(target), `${file} does not exist; create it with ${REGENERATE}`)
-          assert.equal(snapshot, fs.readFileSync(target, 'utf8'), `${file} differs from the run; if the change is intended, run ${REGENERATE}`)
+          assert.ok(fs.existsSync(target), `rule 12: ${file} does not exist; create it with ${REGENERATE}`)
+          assert.equal(snapshot, fs.readFileSync(target, 'utf8'), `rule 12: ${file} differs from the run; if the change is intended, run ${REGENERATE}`)
         }
       })
     })
