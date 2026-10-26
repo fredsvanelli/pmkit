@@ -189,7 +189,7 @@ export function pmkitWriteRefusal(problems) {
 }
 
 export function pmkitConfigWarning(problems) {
-  return `.pmkit/config.yaml is not valid, so writes are refused: ${problems.join('; ')}; run pmkit validate`
+  return `${pmkitWriteRefusal(problems).message}; run pmkit validate`
 }
 
 /** `checkFormat: false` reads a tracker of any format as it is, for `migrate`: no refusal, no migrated copy. */
