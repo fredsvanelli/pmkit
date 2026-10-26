@@ -205,6 +205,12 @@ test('metrics velocity on the team fixture', () => {
   assert.match(run(root, ['metrics', 'velocity']).stdout, /2026-09-28\s+\| 10\s+\| 3/)
 })
 
+test('metrics velocity falls back to the end date for a malformed closed', () => {
+  const root = makeRepo('team')
+  fs.appendFileSync(path.join(root, '.issues', 'sprints', '2026-09-28.yaml'), 'closed: 2026-10-26\n')
+  assert.deepEqual(json(root, ['metrics', 'velocity']).perSprint, [{ id: '2026-09-28', points: 10, count: 3 }])
+})
+
 test('metrics cycle-time summarizes done issues in range', () => {
   const root = makeRepo('team')
   const all = json(root, ['metrics', 'cycle-time'])

@@ -42,6 +42,33 @@ test('team fixture reports only its conflicted issue', () => {
   assert.deepEqual(brief(result), ['conflict .issues/issues/ISS-3Q6T/issue.md'])
 })
 
+const addClosed = (root, value) => fs.appendFileSync(path.join(root, '.issues', 'sprints', '2026-09-28.yaml'), `closed: ${value}\n`)
+
+test('a malformed closed in a sprint file is one sprint problem', () => {
+  const root = makeRepo('team')
+  addClosed(root, '2026-10-26')
+  const result = validateRepo(root)
+  assert.deepEqual(brief(result), ['conflict .issues/issues/ISS-3Q6T/issue.md', 'sprint .issues/sprints/2026-09-28.yaml'])
+  assert.deepEqual(result.problems.find((problem) => problem.code === 'sprint'), {
+    path: '.issues/sprints/2026-09-28.yaml',
+    code: 'sprint',
+    message: 'closed "2026-10-26" is not a timestamp with a date, a time and a zone (Z or an offset such as -03:00), so velocity uses the end date',
+  })
+})
+
+test('a malformed closed names the value as written', () => {
+  const root = makeRepo('team')
+  addClosed(root, '2026')
+  const problem = validateRepo(root).problems.find((problem) => problem.code === 'sprint')
+  assert.match(problem.message, /^closed "2026" is not a timestamp/)
+})
+
+test('a valid closed in a sprint file is no problem', () => {
+  const root = makeRepo('team')
+  addClosed(root, '2026-10-12T09:00:00Z')
+  assert.deepEqual(brief(validateRepo(root)), ['conflict .issues/issues/ISS-3Q6T/issue.md'])
+})
+
 const pmkitFile = (root) => path.join(root, '.pmkit', 'config.yaml')
 const setPmkit = (root, text) => fs.writeFileSync(pmkitFile(root), text)
 const editPmkit = (root, from, to) => setPmkit(root, fs.readFileSync(pmkitFile(root), 'utf8').replace(from, to))
