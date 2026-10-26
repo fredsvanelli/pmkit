@@ -14,6 +14,7 @@ import {
   readTree, treeChanges, formatSnapshot, makeRepoView, runScenario, traceFromLog, stopProblems, expectUntilSaved,
 } from './scenario-helpers.mjs'
 import moveScenario from './__scenarios__/issues-move.mjs'
+import { tempDir } from './test-helpers.mjs'
 
 const CLI_NAMES = COMMANDS.map((c) => c.name)
 const cli = (name) => COMMANDS.find((c) => c.name === name)
@@ -304,7 +305,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const FIXTURES = path.join(HERE, '__fixtures__')
 const INPUTS = path.join(HERE, '__scenarios__', '_inputs')
 const MOVE_FILE = parse(fs.readFileSync(path.join(HERE, '..', 'commands', 'issues', 'move.md'), 'utf8'))
-const scratchDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-test-'))
+const scratchDir = () => tempDir('pmkit-test-')
 const writeFile = (root, rel, text) => {
   fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true })
   fs.writeFileSync(path.join(root, rel), text)

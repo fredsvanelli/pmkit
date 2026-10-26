@@ -1,7 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import { loadConfig } from './lib/config.mjs'
 import { PmkitError } from './lib/errors.mjs'
@@ -11,10 +10,10 @@ import {
 } from './lib/local/query-index.mjs'
 import { writeFileAtomic } from './lib/local/store.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
-import { fixedNow, makeRepo } from './test-helpers.mjs'
+import { fixedNow, makeRepo, tempDir } from './test-helpers.mjs'
 
 function withDir(fn) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-index-'))
+  const dir = tempDir('pmkit-index-')
   try {
     return fn(dir)
   } finally {

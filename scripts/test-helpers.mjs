@@ -2,13 +2,33 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { after } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), '__fixtures__')
 
+const made = []
+
+/** Makes a temp folder under os.tmpdir() and records it, so the test run removes it. */
+export function tempDir(prefix = 'pmkit-') {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix))
+  made.push(dir)
+  return dir
+}
+
+/** Removes every folder made by tempDir since the last call. A folder already gone is fine. */
+export function removeTempDirs() {
+  for (const dir of made.splice(0)) fs.rmSync(dir, { recursive: true, force: true })
+}
+
+// Folders live until the file's tests end, so concurrent tests, subtests and file-level setup can use them.
+// The exit hook is the backstop for a file that crashes before the root `after` hook runs.
+after(removeTempDirs)
+process.on('exit', removeTempDirs)
+
 /** Copies a fixture into a fresh temp folder and returns its path. */
 export function makeRepo(name = 'basic') {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-'))
+  const root = tempDir('pmkit-')
   fs.cpSync(path.join(fixtures, name), root, { recursive: true })
   return root
 }

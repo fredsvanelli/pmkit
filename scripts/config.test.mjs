@@ -1,7 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -9,10 +8,11 @@ import {
   findRoot, loadConfig, localConfigShapeProblems, validateLocalConfig, validatePmkitConfig, withLocalDefaults,
 } from './lib/config.mjs'
 import { parseYaml } from './lib/yaml.mjs'
+import { tempDir } from './test-helpers.mjs'
 
 const fixture = fileURLToPath(new URL('./__fixtures__/basic', import.meta.url))
 const template = (name) => parseYaml(readFileSync(new URL(`../templates/${name}`, import.meta.url), 'utf8'))
-const tmp = () => mkdtempSync(join(tmpdir(), 'pmkit-config-'))
+const tmp = () => tempDir('pmkit-config-')
 
 test('the fixture loads with defaults applied', () => {
   const config = loadConfig(fixture)

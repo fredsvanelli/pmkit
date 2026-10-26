@@ -6,12 +6,12 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
 import { branchName } from './lib/ids.mjs'
-import { hashTree, makeRepo } from './test-helpers.mjs'
+import { hashTree, makeRepo, tempDir } from './test-helpers.mjs'
 import { addBareOrigin, fakeGh, ghCalls } from './fake-gh.mjs'
 
 const VIEW = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
 
-const scratch = () => fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-pr-'))
+const scratch = () => tempDir('pmkit-pr-')
 
 const envWith = ({ dir, responses }) => ({
   ...process.env,
