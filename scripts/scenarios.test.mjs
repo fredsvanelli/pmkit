@@ -147,6 +147,30 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     }
   })
 
+  test('cycle/close carries a split\'s open blockers, open sub-issues and unchecked criteria to the new issue', () => {
+    const calls = FILES.find((file) => file.rel === 'cycle/close.md').parsed.calls
+    const create = calls.find((c) => c.step === '7' && c.command === 'issues create' && c.dryRun)
+    assert.ok(create?.flags.includes('criteria-file'), 'the step 7 create carries the unchecked criteria')
+    const step8 = calls.filter((c) => c.step === '8' && !c.dryRun)
+    const move = step8.findIndex((c) => c.command === 'issues move')
+    const blocks = step8.findIndex((c) => c.command === 'issues link' && /--kind blocks(?:\s|$)/.test(c.text))
+    const parent = step8.findIndex((c) => c.command === 'issues parent')
+    assert.ok(blocks >= 0 && blocks < move, 'step 8 links each open blocker to the new issue before the move to done')
+    assert.ok(parent >= 0 && parent < move, 'step 8 moves each open sub-issue to the new issue before the move to done')
+    const text = fs.readFileSync(path.join(COMMANDS_DIR, 'cycle', 'close.md'), 'utf8')
+    assert.match(text, /`blockedBy` and `children` whose status category is not `done` or `canceled`/)
+  })
+
+  test('cycle/close step 7 previews the blocker links and sub-issue moves of a split', () => {
+    const lines = fs.readFileSync(path.join(COMMANDS_DIR, 'cycle', 'close.md'), 'utf8').split('\n')
+    const step7 = lines.slice(lines.findIndex((line) => line.startsWith('7. ')), lines.findIndex((line) => line.startsWith('8. '))).join('\n')
+    assert.match(step7, /a `blocks` link from each open blocker to the new issue/, 'the step 7 preview shows the blocker links')
+    assert.match(step7, /a parent change that moves each open sub-issue from the original to the new issue/, 'the step 7 preview shows the sub-issue moves')
+    assert.doesNotMatch(step7, /The close does not move or copy them/, 'step 7 no longer says the close leaves them on the original')
+    const point = lines.find((line) => line.startsWith('- Step 7: '))
+    assert.match(point, /the blocker links and sub-issue moves/, 'the Step 7 confirmation point names the carry-over writes')
+  })
+
   // The in_review assertion encodes the PMK-122 decision (follow-up 1 of the spec). Change it when that issue lands.
   test('cycle/plan step 5 drafts from todo, backlog and in_progress issues with no sprint', () => {
     const call = FILES.find((file) => file.rel === 'cycle/plan.md').parsed.calls
