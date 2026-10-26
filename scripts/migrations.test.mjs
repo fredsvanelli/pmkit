@@ -432,3 +432,41 @@ test('planMigration never copies the query index', () => {
     fs.rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('the CLI lists a failing migration step as a problem and exits 2 on reads', () => {
+  const { root } = setup()
+  const before = hashTree(root)
+  const script = `
+    const { MIGRATIONS } = await import(${JSON.stringify(new URL('./lib/local/migrations.mjs', import.meta.url).href)})
+    const { run } = await import(${JSON.stringify(new URL('./pmkit.mjs', import.meta.url).href)})
+    MIGRATIONS[0].run = () => { throw new Error('bad event') }
+    const env = { ...process.env, PMKIT_USER: 'fred', PMKIT_NOW: '2026-10-23T12:00:00Z', PMKIT_SEED: '1', GIT_CONFIG_GLOBAL: ${JSON.stringify(os.devNull)}, GIT_CONFIG_NOSYSTEM: '1' }
+    const cwd = ${JSON.stringify(root)}
+    process.stdout.write(JSON.stringify({
+      list: run(['issues', 'list', '--json'], { cwd, env }),
+      validate: run(['validate', '--json'], { cwd, env }),
+    }))
+  `
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  const { list, validate } = JSON.parse(result.stdout)
+  assert.equal(list.code, 2)
+  assert.deepEqual(JSON.parse(list.stdout).error, { code: 'INVALID_INPUT', message: 'migration 1 to 2 failed: bad event', nextStep: 'pmkit validate' })
+  assert.equal(validate.code, 0)
+  assert.deepEqual(JSON.parse(validate.stdout).problems, [{ path: '.issues/config.yaml', code: 'migration', message: 'migration 1 to 2 failed: bad event' }])
+  assert.equal(hashTree(root), before)
+})
+
+test('migrate writes nothing when a later step fails', () => {
+  const { root, dir } = gitRepo()
+  const before = hashTree(dir)
+  const step23 = { from: 2, to: 3, describe: 'bad', run() { throw new Error('boom') } }
+  assert.throws(
+    () => runMigrate(root, { formatVersion: 3, migrations: [renameLogTime, step23] }),
+    (error) => error.code === 'INVALID_INPUT' && error.message === 'migration 2 to 3 failed: boom' && error.details.migration.from === 2 && error.details.migration.to === 3,
+  )
+  assert.equal(hashTree(dir), before)
+  assert.match(fs.readFileSync(path.join(dir, 'config.yaml'), 'utf8'), /^version: 1$/m)
+  assert.equal(git(root, 'status', '--porcelain').stdout, '')
+  assert.equal(subjects(root), 'initial\n')
+})
