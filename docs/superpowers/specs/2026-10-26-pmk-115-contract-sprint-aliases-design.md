@@ -87,7 +87,7 @@ State: active sprint `S` from `openCycle({ start: today })`.
 
 ### Test 2. `moveToCycle with current moves issues into the active sprint, and null takes issues out of their sprint`
 
-State: active sprint `S`. Issues `a`, `b`, `c` with no sprint.
+State: active sprint `S`. Issues `a` and `b` with no sprint.
 
 1. `moveToCycle([a, b], 'current', actor)`. Expect the result to have two entries, each with `after.sprint === S.id`. Expect `cycleIssues(S.id)` ids equal `[a, b]` sorted.
 2. `moveToCycle([a], null, actor)`. Expect `getIssue(a).sprint === undefined` and `cycleIssues(S.id)` ids equal `[b]`.
@@ -125,7 +125,7 @@ State: fresh tracker. Issues `free` (no sprint) and `planned` (in a sprint that 
 
 The test reads `.issues` only. The rest of the result shape (`problems`, or a future note field) is not part of the assertion, so a CLI note or an extra result field in PMK-116 does not break it. A `searchIssues` that throws for `current` with no sprint would break it, and would also break criterion 3.
 
-## How each criterion is proven
+## How the tests prove each criterion
 
 | Criterion | Proof |
 |---|---|
@@ -165,7 +165,7 @@ Why each result holds, from the runs on this branch (the failing test names belo
 
 Observed on this branch, with the five tests written as described above: the five failing test names were `createIssue and updateIssue with sprint current store the active sprint id` (mutation 1), `moveToCycle with current moves issues into the active sprint, and null takes issues out of their sprint` and `sprint current without an active sprint fails with INVALID_INPUT and writes nothing` (mutation 2), `searchIssues with sprint current returns the active sprint issues and sprint none the issues in no sprint` (mutation 3), `sprint current without an active sprint fails with INVALID_INPUT and writes nothing` (mutation 4), and the same test plus `searchIssues with sprint current returns an empty list without an active sprint` (mutation 5). The implementer's test titles may differ, so match by test number.
 
-The tests are written in the order of the plan with `superpowers:test-driven-development`.
+The implementer writes the tests in plan order with `superpowers:test-driven-development`.
 
 ## Decisões
 
@@ -174,8 +174,8 @@ The tests are written in the order of the plan with `superpowers:test-driven-dev
 3. **Five `it` blocks, not one.** Reason: each block needs its own state (active, none, planned), one failure should not hide others, and the file already uses one behavior per `it`.
 4. **The blocks go after the existing cycle test.** Reason: they are cycle tests and use the same `openCycle({ start: today })` setup.
 5. **The active sprint comes from `openCycle({ start: today })`.** Reason: `setup()` documents that this starts the sprint active, and the existing cycle tests do it. It works for any adapter that follows the suite's `today` rule.
-6. **"No active sprint" has three states in test 3 (fresh, planned only, closed).** Reason: criterion 2 says "no active sprint", and a planned or closed sprint is the case where a lazy adapter would return the wrong sprint. This is a small addition that stays inside the criterion. If a hosted adapter cannot open a future sprint, drop step 4 then.
-7. **"Write nothing" is proven with a snapshot of issue, history, search, cycles and metric events, plus a non-vacuous check.** Reason: contract operations are all the suite may use, and this is the pattern the dry-run test already uses.
+6. **"No active sprint" has three states in test 3 (fresh, planned only, closed).** Reason: criterion 2 says "no active sprint", and a planned or closed sprint is the case where a lazy adapter would return the wrong sprint. This is a small addition that stays inside the criterion. Tests 3, 4 and 5 open a future sprint. If a hosted adapter cannot do that, it drops the planned-sprint step in test 3, the planned sprint with its issue in test 4, and the planned sprint with its issue in test 5.
+7. **A snapshot of issue, history, search, cycles and metric events, plus a non-vacuous check, proves "write nothing".** Reason: contract operations are all the suite may use, and this is the pattern the dry-run test already uses.
 8. **No dry-run cases for `current`.** Reason: no criterion asks for them, and the dry-run test would need a state with an active sprint. See the follow-up list.
 9. **No criterion change and no code change.** Reason: the code does what all four criteria say.
 10. **Error assertions check `code` only, not the message.** Reason: `rejects` already does this, and the message text is not part of the contract (the contract lists codes).

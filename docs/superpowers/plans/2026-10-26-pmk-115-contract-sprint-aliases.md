@@ -156,7 +156,7 @@ const issueState = async (tracker, issueIds) => JSON.stringify({
     })
 ```
 
-If a hosted adapter cannot open a future sprint, remove only the planned-sprint pair of lines (spec decision 6).
+Tests 3, 4 and 5 open a future sprint. An adapter that cannot do that removes the planned-sprint pair of lines in test 3, and the planned sprint with its issue in tests 4 and 5 (spec decision 6).
 
 - [ ] **Step 3: Run the focused test.** `node --test scripts/contract.test.mjs`. Expect 68 tests, all passing.
 - [ ] **Step 4: Run the whole suite.** `npm test`. Expect 1020 tests passing and no snapshot or golden change.
