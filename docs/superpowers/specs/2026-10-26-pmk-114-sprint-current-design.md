@@ -19,7 +19,7 @@ Where `current` is resolved today, all in `scripts/lib/local/tracker.mjs`:
 
 Where the field is validated on write:
 
-- `NORMALIZE.sprint` is `requireSprint(value)` (tracker.mjs, near line 177). It accepts a value only when `sprints/<value>.yaml` exists, otherwise it throws `sprint <value> does not exist`. `createIssue` and `updateIssue` both reach it through `applyFields`.
+- `NORMALIZE.sprint` is `requireSprint(value)` (`requireSprint` is at tracker.mjs line 177, the `NORMALIZE` table at lines 206 to 218). It accepts a value only when `sprints/<value>.yaml` exists, otherwise it throws `sprint <value> does not exist`. `createIssue` and `updateIssue` both reach it through `applyFields`.
 - The CLI passes the flag through unchanged: `issuePatch` in `scripts/pmkit.mjs` does `set('sprint', orNull(opt('sprint')))`. `none` already becomes `null`, which clears the sprint.
 
 The CLI is not the only caller of `createIssue` and `updateIssue`. They are contract operations, so the rule belongs where the tracker validates the field.
@@ -46,6 +46,10 @@ C. Resolve in a new shared layer that every operation calls before the tracker (
 | Update `usage` strings in `pmkit.mjs` to `[--sprint id\|current\|none]` for create and update. | The help text should say what the flag accepts, as `issues list` and `cycle add` already do. `none` already works on update; on create it is accepted and means no sprint. Check that no golden contains these strings (a search found none under `scripts/__goldens__` or `scripts/__scenarios__`). |
 | Fix the matching text in `commands/issues/create.md`. | See "Command texts". |
 | No CHANGELOG entry. | The CHANGELOG is written per release. PMK-10 and PMK-111 added none, and the last two entries (`afe5a26`, `2eeac47`) belong to release work. `changelog.test.mjs` only parses the file. The orchestrator can mention a suggested line in the PR, as PMK-10 did. |
+| Place `requireActiveSprintId` next to `activeSprintId` (line 400), without moving code. | `requireSprint` runs only after the tracker is built, so declaration order does not matter. |
+| In `create.md`, replace `NOT_FOUND` with `INVALID_INPUT` for a missing parent, sprint or member. | `requireParent`, `requireMember` and `requireSprint` all throw `INVALID_INPUT`. The text aligns with existing CLI behavior; no behavior changes. No dry runs are needed to confirm it. |
+| The new text in `create.md` and `update.md` says the dry run fails before the confirmation when no sprint is active, and offers `/pmkit:cycle:plan` or going on without a sprint. In `update.md` it goes under "If something is missing". | The failure happens in the dry run, so the agent must not show a preview of something that failed. `update.md` has no sprint error line, and that section is where its errors live. |
+| `scripts/contract-suite.mjs` gets no `current` assertion in this issue. | The suite does not cover `current` for `moveToCycle` or `searchIssues` either. Covering only create and update would be uneven. A follow-up issue can add a "sprint aliases" block for all three. |
 | No tracker format change, no migration. | No stored shape changes. |
 
 ## Design
@@ -62,7 +66,7 @@ C. Resolve in a new shared layer that every operation calls before the tracker (
    }
    ```
 
-   `activeSprintId` is declared after `requireSprint` in the file, but both are only called after the tracker is built, so the order is safe. If the reviewer prefers, move the two `const` lines above `requireSprint`.
+   `activeSprintId` is declared after `requireSprint` in the file, but `requireSprint` only runs after the tracker is built, so the order is safe. The helper stays next to `activeSprintId` and nothing moves.
 
 2. `requireSprint(value)` starts with `if (value === 'current') return requireActiveSprintId()`. The rest is unchanged. `NORMALIZE.sprint` stays `requireSprint`, so `createIssue` and `updateIssue` both get the behavior, including `--dry-run`.
 
@@ -77,8 +81,9 @@ An unreadable sprint file already throws `INVALID_INPUT` naming the file from `l
 
 ### Command texts
 
-- `commands/issues/create.md` line 40 says a sprint that does not exist answers `NOT_FOUND`. The CLI answers `INVALID_INPUT` (the same function throws `INVALID_INPUT` for a missing parent and member as well, so the line is wrong for all three). Fix the code in that line to match what the CLI does, and add: `--sprint current` with no active sprint answers `INVALID_INPUT` "there is no active sprint"; offer `/pmkit:cycle:plan` or create the issue without a sprint. Before editing, confirm the real codes with one dry run for each of parent, sprint and member, and fix only what differs.
-- `commands/issues/update.md`: add the same no-active-sprint line to its error section, and say that `--sprint current` is accepted. The scope-move confirmation rule already covers any `--sprint` change.
+- `commands/issues/create.md` line 40 says a parent, sprint or member that does not exist answers `NOT_FOUND`. The CLI answers `INVALID_INPUT` for all three, because `requireParent`, `requireMember` and `requireSprint` (tracker.mjs lines 129 to 179) throw `INVALID_INPUT`. Replace `NOT_FOUND` with `INVALID_INPUT` in that line. This aligns the text with existing CLI behavior and changes no behavior.
+- In `create.md`, add that the dry run (step 4) already fails with `INVALID_INPUT` "there is no active sprint" before the confirmation question when `--sprint current` finds no active sprint. The agent says so, shows no preview, and offers `/pmkit:cycle:plan` or creating the issue without a sprint.
+- `commands/issues/update.md` has no sprint error line today. Add the same no-active-sprint bullet under "If something is missing" (the dry run fails before the confirmation, offer `/pmkit:cycle:plan` or updating without a sprint), and say that `--sprint current` is accepted. The scope-move confirmation rule already covers any `--sprint` change.
 - Both files: where the text lists `--sprint`, a short note that the value is a sprint id, `current` or `none`. Keep it to one clause.
 - `scripts/scenarios.test.mjs` static checks parse these files (flags, confirmation bullets). Run `npm test` after the edit, and regenerate a golden only if a scenario output really changes, with `UPDATE_GOLDENS=1`, and review the diff.
 - `commands/cycle/plan.md`, `close.md`, `issues/mine.md`, `issues/find.md` already use `current` correctly and stay unchanged.
@@ -102,7 +107,7 @@ In `scripts/cli.test.mjs` (end to end, next to the existing `cycle add --to curr
 7. `issues update <id> --sprint current --json` on `team` does the same for an existing issue.
 8. The same two commands on `basic` exit with status 2 and `error.code === 'INVALID_INPUT'`, with the message `there is no active sprint`.
 9. `issues update <id> --sprint none` still clears the sprint (regression for the `orNull` path), and `--sprint 2026-10-12` still works.
-10. `cycle add --to current` on `basic` keeps its current error (existing test at cli.test.mjs near line 582; extend it with an assertion on the message, which proves the helper refactor changed nothing).
+10. `cycle add --to current` on `basic` keeps its current error (existing test at cli.test.mjs near line 582; extend it with an assertion on the message, and on the next step if the JSON exposes it, which proves the helper refactor changed nothing).
 
 TDD order for the implementer: write tests 1 to 3 and 6 to 8, see them fail with `sprint current does not exist`, then change `tracker.mjs`.
 
@@ -117,10 +122,9 @@ TDD order for the implementer: write tests 1 to 3 and 6 to 8, see them fail with
 
 - `issues list --sprint current` with no active sprint still returns an empty list and no error. Out of scope.
 - `issues create` and `update` do not accept other aliases (`next`, `previous`). Out of scope.
-- A future adapter for another tracker must resolve `current` in its own `createIssue`/`updateIssue`. The contract suite in `scripts/contract-suite.mjs` does not cover sprint aliases today. Adding a contract test for `current` is optional and listed as an open question.
+- A future adapter for another tracker must resolve `current` in its own `createIssue`/`updateIssue`. The contract suite in `scripts/contract-suite.mjs` does not cover sprint aliases today. A "sprint aliases" contract block covering `createIssue`, `updateIssue`, `moveToCycle` and `searchIssues` is a follow-up candidate, not part of this issue.
 - The error message is the same as for `cycle add`, so a scenario or golden that captures it needs no update. If one captures the old `sprint current does not exist` text, update it.
 
 ## Open questions
 
-- Should the contract suite (`scripts/contract-suite.mjs`) assert the `current` behavior for any adapter? Default: no, the Local tracker tests are enough for this issue.
-- The `commands/issues/create.md` error code line may be wrong for parent and member too. The implementer verifies and fixes only the lines that differ.
+None.
