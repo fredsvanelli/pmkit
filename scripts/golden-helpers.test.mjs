@@ -4,8 +4,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import {
-  childEnv, compareNames, displayArgs, expandCase, findCollisions, formatRun, goldenName, makeNormalizer, mapLimit, staleGoldens,
+  childEnv, compareNames, displayArgs, expandCase, findCollisions, formatRun, goldenName, makeNormalizer, mapLimit, quoteArg, runPmkit, staleGoldens,
 } from './golden-helpers.mjs'
+import { makeRepo } from './test-helpers.mjs'
 
 test('goldenName turns spaces into hyphens', () => {
   assert.equal(goldenName('issues get'), 'issues-get')
@@ -157,5 +158,35 @@ test('staleGoldens lists a file that matches no command and ignores _inputs', ()
     assert.deepEqual(staleGoldens(path.join(dir, 'absent'), ['issues get']), [])
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('quoteArg leaves a plain word alone and single-quotes a word with a space or quote', () => {
+  assert.equal(quoteArg('issues'), 'issues')
+  assert.equal(quoteArg('Golden epic'), "'Golden epic'")
+  assert.equal(quoteArg(''), "''")
+  assert.equal(quoteArg("it's"), "'it'\\''s'")
+})
+
+test('runPmkit sends input on stdin', async () => {
+  const root = makeRepo('team')
+  try {
+    const result = await runPmkit(['issues', 'comment', 'ISS-5N1R', '--body-file', '-', '--dry-run', '--json'], root, { input: 'hello\n' })
+    assert.equal(result.code, 0, result.stderr)
+    assert.ok(JSON.parse(result.stdout).body.includes('hello'))
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('runPmkit merges env over childEnv', async () => {
+  const root = makeRepo('team')
+  try {
+    const overridden = await runPmkit(['whoami', '--json'], root, { env: { PMKIT_USER: 'ana' } })
+    assert.equal(JSON.parse(overridden.stdout).id, 'ana')
+    const plain = await runPmkit(['whoami', '--json'], root)
+    assert.equal(JSON.parse(plain.stdout).id, 'fred')
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
   }
 })

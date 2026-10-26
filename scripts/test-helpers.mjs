@@ -24,11 +24,12 @@ export function scriptedRandom(values) {
   }
 }
 
-/** One hash over the relative path and bytes of every file under dir. */
-export function hashTree(dir) {
+/** One hash over the relative path and bytes of every file under dir. The top-level names in `skip` are left out. */
+export function hashTree(dir, skip = []) {
   const hash = crypto.createHash('sha1')
   const walk = (current) => {
     for (const entry of fs.readdirSync(current, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      if (current === dir && skip.includes(entry.name)) continue
       const full = path.join(current, entry.name)
       if (entry.isDirectory()) walk(full)
       else hash.update(path.relative(dir, full)).update(fs.readFileSync(full))
