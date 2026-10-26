@@ -68,7 +68,7 @@ const formatProblem = (root, file, error) => ({ path: relative(root, file), code
 
 // loadConfig throws INVALID_INPUT when the local config.yaml does not parse, and NOT_SUPPORTED when its
 // format is newer than this pmkit's. Both are findings, not failures. So is a failing migration step,
-// listed with code `migration`. Its errors from .pmkit/config.yaml (a bad key, or an unsupported
+// listed with code `migration`. loadConfig's errors from .pmkit/config.yaml (a bad key, or an unsupported
 // tracker.system) are rethrown here. pmkitConfigProblems lists them.
 function brokenConfigProblem(root, error) {
   const format = error?.details?.format !== undefined

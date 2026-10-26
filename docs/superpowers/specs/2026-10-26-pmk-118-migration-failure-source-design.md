@@ -14,7 +14,7 @@ Acceptance criteria:
 
 ## Reproduced behavior
 
-Scratch scripts outside the repo (`/tmp/claude-1000/-home-fred-projects-pmkit/8e89dc6e-0858-4f92-ab5c-b6cee20c5dc2/scratchpad/repro118.mjs` and `repro118b.mjs`) build the `basic` fixture at format 1 in a git repo. The first passes `migrations: [bad]` to the library, where `bad` is `{ from: 1, to: 2, describe: 'bad', run() { throw new Error('bad event') } }`. The second replaces `MIGRATIONS[0].run` with a throw inside its own process and calls the exported `run()`, so it shows the CLI view. Neither touches the repo's `.issues/`.
+Scratch scripts outside the repo build the `basic` fixture at format 1 in a git repo. The first passes `migrations: [bad]` to the library, where `bad` is `{ from: 1, to: 2, describe: 'bad', run() { throw new Error('bad event') } }`. The second replaces `MIGRATIONS[0].run` with a throw inside its own process and calls the exported `run()`, so it shows the CLI view. Neither touches the repo's `.issues/`.
 
 | Call | Today |
 |---|---|
@@ -113,7 +113,7 @@ Criterion 1, `validate` lists it:
 - Its `problems` deep-equal `[{ path: '.issues/config.yaml', code: 'migration', message: 'migration 1 to 2 failed: bad event' }]`.
 - Its `checked` deep-equals zero for every count.
 - A second case with `tracker.path` set to another folder: the problem `path` follows it. Fixture setup copies the `gitRepo({ trackerPath })` rename already in this file.
-- The rule stays narrow. The existing `validate.test.mjs` cases that expect a rethrown error (a bad `tracker.path`, an unsupported `tracker.system`) must keep passing. They need no new case.
+- The rule stays narrow. It changes only the label-prefix guard in `brokenConfigProblem`. A bad `tracker.path` and an unsupported `tracker.system` are `.pmkit/config.yaml` problems that `pmkitConfigProblems` lists (PMK-112, PMK-119), and the existing `validate.test.mjs` cases for them must keep passing.
 
 Criterion 2, the command still fails and its next step works:
 

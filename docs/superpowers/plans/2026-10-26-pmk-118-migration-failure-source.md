@@ -17,7 +17,7 @@
 - `brokenConfigProblem` lists the error when `error?.details?.migration !== undefined`. That condition joins only the label-prefix guard. The first guard (`code !== 'INVALID_INPUT' && !format`) does not change. The `migration` return comes after the `format` return. Update the comment above the function.
 - `validateRepo(root, { config, migrations } = {})` forwards `migrations` to `loadConfig(root, { migrations })`. Production callers pass nothing. There is no hook on `run()` in `pmkit.mjs`, no environment variable, and no mutation of `MIGRATIONS` in the parent test process.
 - For this case `validateRepo` returns `{ checked: noneChecked(), problems }` with all counts zero (`{ issues: 0, epics: 0, sprints: 0, milestones: 0, comments: 0 }`), the `.pmkit/config.yaml` problems merged and sorted as for any broken config.
-- `migrate`, `migrate --dry-run` and every read command keep throwing `INVALID_INPUT` and exit 2, with next step `pmkit validate`. A bad `tracker.path` and an unsupported `tracker.system` are still rethrown by `validateRepo`.
+- `migrate`, `migrate --dry-run` and every read command keep throwing `INVALID_INPUT` and exit 2, with next step `pmkit validate`. A bad `tracker.path` and an unsupported `tracker.system` stay `.pmkit/config.yaml` problems that `pmkitConfigProblems` lists.
 - No change to the built-in `MIGRATIONS`, `FORMAT_VERSION`, command files, schemas or `pmkit.mjs`.
 - Files that may change: `scripts/lib/local/migrations.mjs`, `scripts/lib/validate.mjs`, `scripts/migrations.test.mjs`, and this plan plus the state file. Nothing else.
 - Goldens must not change. Run `npm test` without `UPDATE_GOLDENS=1`. If a golden differs, stop and read the diff line by line. Regenerate only with `UPDATE_GOLDENS=1`, and only if this issue explains the diff (the spec expects none).
@@ -27,7 +27,7 @@
 ## Review Focus
 
 1. A custom `tracker.path` moves the problem's `path`. Pinned in Task 1.
-2. The rule stays narrow, so a bad `tracker.path` and an unsupported `tracker.system` still rethrow. The existing `scripts/validate.test.mjs` cases pin this, and Task 1 runs them.
+2. The rule stays narrow: only the label-prefix guard changes. The existing `scripts/validate.test.mjs` cases for a bad `tracker.path` and an unsupported `tracker.system` pin that, and Task 1 runs them.
 3. A later step that fails after an earlier step changed the copy writes nothing to the tracker folder. Pinned in Task 2.
 4. The real CLI path with the default `migrations` argument gives exit 2 on reads and exit 0 on `validate`. Pinned in Task 2.
 5. `migrate --dry-run` throws the same error as `migrate`. Pinned in Task 1.
