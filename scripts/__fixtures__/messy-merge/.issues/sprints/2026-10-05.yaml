@@ -1,0 +1,6 @@
+name: Sprint 2026-10-05
+start: 2026-10-05
+end: 2026-10-11
+goal: Webhook delivery basics
+state: active
+capacity: { fred: 8, ana: 8 }

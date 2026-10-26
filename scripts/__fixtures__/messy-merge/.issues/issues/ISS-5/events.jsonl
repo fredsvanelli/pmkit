@@ -1,0 +1,3 @@
+{"at":"2026-10-12T10:00:00Z","by":"fred","op":"create","to":{"id":"ISS-5","title":"Export invoices as CSV","type":"feature","status":"todo","priority":"medium","estimate":5,"assignee":"fred","labels":["billing"],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-12T10:00:00Z","updated":"2026-10-12T10:00:00Z"}}
+{"at":"2026-10-16T09:00:00Z","by":"fred","op":"move","field":"status","from":"todo","to":"in_progress"}
+{"at":"2026-10-16T09:00:00Z","by":"ana","op":"move","field":"status","from":"todo","to":"in_review"}

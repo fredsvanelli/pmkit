@@ -1,0 +1,2 @@
+{"at":"2026-10-09T10:00:00Z","by":"fred","op":"create","to":{"id":"ISS-2","title":"Retry failed deliveries","type":"feature","status":"todo","priority":"high","estimate":8,"assignee":"fred","labels":["backend"],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-09T10:00:00Z","updated":"2026-10-09T10:00:00Z"}}
+{"at":"2026-10-13T09:00:00Z","by":"fred","op":"move","field":"status","from":"todo","to":"in_progress"}
