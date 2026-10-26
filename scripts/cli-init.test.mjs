@@ -368,3 +368,22 @@ test('init --label without --update still refuses an existing setup', () => {
     fs.rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('--update --label on a hand-written string labels value refuses with the validator message and writes nothing', () => {
+  const dir = tmp()
+  try {
+    assert.equal(run(dir, ['init']).status, 0)
+    fs.writeFileSync(path.join(dir, '.issues/config.yaml'), read(dir, '.issues/config.yaml').replace('labels: []', 'labels: bug'))
+    const before = hashTree(dir)
+    const result = run(dir, ['init', '--update', '--label', 'x', '--json'])
+    assert.equal(result.status, 2)
+    const error = JSON.parse(result.stdout).error
+    assert.match(error.message, /\.issues\/config\.yaml is not valid/)
+    assert.match(error.message, /labels must be a list of strings/)
+    assert.doesNotMatch(error.message, /"b", "u", "g"|\[b, u, g/)
+    assert.equal(error.nextStep, 'Fix .issues/config.yaml by hand, then run init --update again')
+    assert.equal(hashTree(dir), before)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
