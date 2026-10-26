@@ -262,7 +262,7 @@ export const COMMANDS = [
   },
   {
     name: 'issues create', summary: 'creates an issue', write: true,
-    usage: '--title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint] [--due] [--milestone m] [--description-file f] [--criteria-file f]',
+    usage: '--title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint id|current|none] [--due] [--milestone m] [--description-file f] [--criteria-file f]',
     flags: ['title', 'type', 'priority', 'estimate', 'assignee', 'label', 'parent', 'sprint', 'due', 'milestone', 'description-file', 'criteria-file'],
     run: (ctx) => {
       const patch = issuePatch(ctx, { create: true })
@@ -272,7 +272,7 @@ export const COMMANDS = [
   },
   {
     name: 'issues update', summary: 'edits fields and criteria', write: true, args: ['id'],
-    usage: '<id> [--title] [--type] [--priority] [--estimate] [--label l,..] [--sprint] [--due] [--milestone] [--branch] [--description-file f] [--criteria-file f] [--check n] [--uncheck n]',
+    usage: '<id> [--title] [--type] [--priority] [--estimate] [--label l,..] [--sprint id|current|none] [--due] [--milestone] [--branch] [--description-file f] [--criteria-file f] [--check n] [--uncheck n]',
     flags: ['title', 'type', 'priority', 'estimate', 'label', 'sprint', 'due', 'milestone', 'branch', 'description-file', 'criteria-file', 'check', 'uncheck'],
     run: (ctx) => {
       const [id] = ctx.args
