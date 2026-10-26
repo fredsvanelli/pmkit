@@ -3,6 +3,7 @@ exit 0
 --- stdout
 fred: 8
 ana: 10
+days off ana: 2026-10-16
 --- stderr
 (empty)
 
@@ -10,8 +11,15 @@ $ pmkit cycle capacity 2026-10-12 --json
 exit 0
 --- stdout
 {
-  "fred": 8,
-  "ana": 10
+  "capacity": {
+    "fred": 8,
+    "ana": 10
+  },
+  "days_off": {
+    "ana": [
+      "2026-10-16"
+    ]
+  }
 }
 --- stderr
 (empty)
@@ -21,6 +29,7 @@ exit 0
 --- stdout
 fred: 8
 ana: 10
+days off ana: 2026-10-16
 --- stderr
 (empty)
 
@@ -28,8 +37,15 @@ $ pmkit cycle capacity 2026-10-12 --dry-run --json
 exit 0
 --- stdout
 {
-  "fred": 8,
-  "ana": 10
+  "capacity": {
+    "fred": 8,
+    "ana": 10
+  },
+  "days_off": {
+    "ana": [
+      "2026-10-16"
+    ]
+  }
 }
 --- stderr
 (empty)

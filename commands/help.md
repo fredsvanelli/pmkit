@@ -25,7 +25,7 @@ Its first rule does not apply here. Without a config, this command still answers
 3. A capability: when the argument equals an ID in the manifest, explain what it is, its path in this project (native, derived, conditional or absent), the commands that use it, and how to enable it when it is missing (plan, tier or configuration). Read `${CLAUDE_PLUGIN_ROOT}/README.md` and `${CLAUDE_PLUGIN_ROOT}/CONTEXT.md` for the wording of the terms.
 4. Free text: match the text against command names, their `description` and the capability IDs. Answer with the best one to three matches, each with what it does and two example invocations.
 5. No match: say so, show the closest commands and suggest `/pmkit:help` for the full list.
-6. A capability the manifest marks absent: say which trackers support it.
+6. A capability the manifest marks absent: show its `enableHint`.
 
 ## Confirmation points
 

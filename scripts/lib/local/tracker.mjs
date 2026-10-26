@@ -18,9 +18,11 @@ import { hasSectionHeading, parseIssueFile, serializeIssue, toFrontmatter } from
 import { buildCapabilities } from '../capabilities.mjs'
 import { lastEntry } from '../metrics.mjs'
 import { createDocumentFile, readDocumentFile } from './documents.mjs'
+import { hasMilestoneFiles, milestoneStems, parseMilestone, serializeMilestone, sortMilestones, validMilestoneId } from './milestones.mjs'
 import { checkFilter, runQuery } from './query.mjs'
+import { CACHE_DIR, INDEX_FILE, clearIndex, indexHeader, readThroughIndex } from './query-index.mjs'
 import {
-  SPRINT_STATES, addDays, overlaps, parseSprint, readSprint, readSprints, requireCapacity, serializeSprint, validDate,
+  SPRINT_STATES, addDays, overlaps, parseSprint, readSprint, readSprints, requireCapacity, requireDaysOff, serializeSprint, validDate,
 } from './sprints.mjs'
 import { fileMtimeIso, issuePaths, listIssueIds, writeFileAtomic } from './store.mjs'
 
@@ -86,11 +88,25 @@ function checkKeys(input, allowed) {
   }
 }
 
-export function createLocalTracker(root, { config = loadConfig(root), now = () => new Date(), random, gitEmail, env = process.env } = {}) {
+export function createLocalTracker(root, {
+  config = loadConfig(root), now = () => new Date(), random, gitEmail, env = process.env, index = true, onIndexRead = () => {},
+} = {}) {
   const { local } = config
+  if (![true, 'read', false].includes(index)) throw invalid('index must be true, read or false')
   // An older format is read from its migrated copy; see loadConfig.
   const issuesDir = config.readDir ?? config.issuesDir
   const stamp = () => isoSeconds(now())
+  // Every file this tracker writes, so auto_commit can commit those paths and nothing else.
+  const writtenPaths = new Set()
+  const writeFile = (file, text) => {
+    writeFileAtomic(file, text)
+    writtenPaths.add(file)
+  }
+  const append = (file, events) => {
+    appendEvents(file, events)
+    if (events.length > 0) writtenPaths.add(file)
+  }
+  const writtenFiles = () => [...writtenPaths].map((file) => path.relative(config.root, file).split(path.sep).join('/')).sort()
   // Creation times carry milliseconds, so creates in the same second keep their order. Within one
   // tracker they only grow, so two creates in the same millisecond still differ.
   let lastCreated = 0
@@ -145,6 +161,17 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     return id
   }
 
+  const milestonesDir = path.join(issuesDir, 'milestones')
+
+  // A milestone is free text until milestones/ holds a .md file; from then on it must name one, exactly.
+  function requireMilestone(value) {
+    const milestone = oneLine('milestone', text('milestone')(value))
+    if (hasMilestoneFiles(milestonesDir) && !milestoneStems(milestonesDir).has(milestone)) {
+      throw invalid(`milestone ${milestone} does not exist`, `pmkit milestone create ${milestone}`)
+    }
+    return milestone
+  }
+
   const sprintExists = (id) => /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(String(id)) && fs.existsSync(path.join(issuesDir, 'sprints', `${id}.yaml`))
 
   function requireSprint(value) {
@@ -189,7 +216,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     labels: requireLabels,
     parent: requireParent,
     sprint: requireSprint,
-    milestone: (value) => oneLine('milestone', text('milestone')(value)),
+    milestone: requireMilestone,
     due: (value) => {
       if (!validDate(value)) throw invalid('due must be a date as YYYY-MM-DD')
       return value
@@ -241,8 +268,8 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     }
     if (!dryRun) {
       fs.mkdirSync(paths.dir, { recursive: true })
-      writeFileAtomic(paths.file, content)
-      appendEvents(paths.events, events)
+      writeFile(paths.file, content)
+      append(paths.events, events)
     }
     return after
   }
@@ -258,12 +285,16 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     // Drift is dated max(mtime, newest event), clamped to this write's time.
     const latest = mtime > newest ? mtime : newest
     const drift = driftEvents(toFrontmatter(before), logged, { at: latest < at ? latest : at, by: actor })
-    if (!dryRun) appendEvents(paths.events, drift)
+    if (!dryRun) {
+      append(paths.events, drift)
+      // Drift events describe a hand edit of issue.md, so the commit must carry that edit with them.
+      if (drift.length > 0) writtenPaths.add(paths.file)
+    }
     const next = structuredClone(before)
     const events = edit(next, { at, by: actor }, before)
     if (events.length === 0) return { before, after: before }
     if (eventsOnly) {
-      if (!dryRun) appendEvents(paths.events, events)
+      if (!dryRun) append(paths.events, events)
       return { before, after: before }
     }
     next.updated = at
@@ -275,7 +306,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   })
 
   /** Every issue that parses, and a problem for each file that does not (conflict markers, bad frontmatter). */
-  function readAll() {
+  function scan() {
     const issues = []
     const problems = []
     for (const id of listIssueIds(issuesDir, local.id_prefix)) {
@@ -289,7 +320,53 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     return { issues, problems }
   }
 
-  const scanIssues = () => readAll().issues
+  // The query index (PMK-7). A tracker on an older format reads a migrated temp copy, so the index is off there.
+  const cacheDir = path.join(issuesDir, CACHE_DIR)
+  const indexMode = config.readDir === undefined ? index : false
+
+  function indexedRead(write) {
+    return readThroughIndex({
+      cacheDir,
+      header: indexHeader(local.statuses),
+      ids: listIssueIds(issuesDir, local.id_prefix),
+      fileOf: (id) => issuePaths(issuesDir, normalizeId(id)).file,
+      read: (id) => readIssue(id).issue,
+      write,
+    })
+  }
+
+  /** Every issue that parses, and a problem for each file that does not (conflict markers, bad frontmatter). `save: false` never writes the index. */
+  function readAll({ save = true } = {}) {
+    if (indexMode === false) return scan()
+    let result
+    try {
+      result = indexedRead(indexMode === true && save)
+    } catch {
+      // The index only makes a read faster. Any error in its path leaves the answer to the plain scan.
+      return scan()
+    }
+    onIndexRead(result.stats)
+    return { issues: result.issues, problems: result.problems }
+  }
+
+  /** Rebuilds the query index from every issue file. Not a write: no actor, no dry run, no event, and only ignored files change. */
+  function reindex() {
+    if (config.readDir !== undefined) {
+      return { written: false, reason: `this repository uses tracker format ${config.format.version}; run /pmkit:upgrade before the index can be written` }
+    }
+    if (indexMode !== true) return { written: false, reason: 'the query index is off for this tracker' }
+    try {
+      clearIndex(cacheDir)
+      const { issues, problems, stats } = indexedRead(true)
+      if (stats.error) throw stats.error
+      const rel = path.relative(root, path.join(cacheDir, INDEX_FILE)).split(path.sep).join('/')
+      return { written: true, path: rel, issues: issues.length, problems: problems.length }
+    } catch (error) {
+      return { written: false, reason: error.message }
+    }
+  }
+
+  const scanIssues = (options) => readAll(options).issues
 
   /** Fills `blocks` and `children` on an issue from the other issues. */
   function withComputed(issue, all = scanIssues()) {
@@ -322,16 +399,20 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
   const currentCycle = () => listCycles({ state: 'active' })[0] ?? null
   const activeSprintId = () => currentCycle()?.id ?? null
 
-  function searchIssues(filter = {}) {
+  function search(filter, { save = true } = {}) {
     checkFilter(filter, { types: local.types, members: Object.keys(local.members), sprintExists })
     const resolved = { ...filter }
     if (filter.assignee === 'me') {
       resolved.assignee = requireActor(local, { email: gitEmail ?? gitUserEmail(root), env }).id
     }
     if (filter.sprint === 'current') resolved.sprint = activeSprintId()
-    const { issues, problems } = readAll()
+    const { issues, problems } = readAll({ save })
     const found = runQuery(issues, resolved, { priorities: local.priorities })
     return { issues: found.map((issue) => withComputed(issue, issues)), problems }
+  }
+
+  function searchIssues(filter = {}) {
+    return search(filter)
   }
 
   function createIssue(input, actor, { dryRun = false } = {}) {
@@ -456,7 +537,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     const { field, prop } = LINKS[kind]
     const options = { dryRun }
     if (kind === 'blocks') {
-      const all = scanIssues()
+      const all = scanIssues({ save: !dryRun })
       const blocker = all.find((issue) => issue.id === a)
       const closing = op === 'link' ? blockPath(b, a, all) : null
       if (closing) throw invalid(`${a} blocks ${b} would close a cycle: ${[a, ...closing].join(' → ')}`)
@@ -578,7 +659,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
       written = { id: name, issue: issue.id, author: actor, body: body.trim(), created: meta.at }
       if (!dryRun) {
         fs.mkdirSync(dir, { recursive: true })
-        writeFileAtomic(path.join(dir, `${name}.md`), joinFrontmatter({ author: actor, created: meta.at }, `${written.body}\n`, { order: ['author', 'created'] }))
+        writeFile(path.join(dir, `${name}.md`), joinFrontmatter({ author: actor, created: meta.at }, `${written.body}\n`, { order: ['author', 'created'] }))
       }
       return [{ ...meta, op: 'comment', to: `${name}.md` }]
     })
@@ -614,7 +695,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     readBack('sprint file', () => parseSprint(content, after.id))
     if (!dryRun) {
       fs.mkdirSync(sprintsDir, { recursive: true })
-      writeFileAtomic(path.join(sprintsDir, `${after.id}.yaml`), content)
+      writeFile(path.join(sprintsDir, `${after.id}.yaml`), content)
     }
     return { before, after }
   }
@@ -650,7 +731,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     const before = getSprint(id)
     if (before.state !== 'active') throw invalid(`sprint ${before.id} is not active (it is ${before.state})`, 'pmkit cycle list')
     // An issue that does not parse may belong to the sprint, so it is reported rather than left out silently.
-    const { issues, problems } = searchIssues({ sprint: before.id })
+    const { issues, problems } = search({ sprint: before.id }, { save: !dryRun })
     const { after } = writeSprint(before, { ...before, state: 'closed' }, { dryRun })
     return { sprint: after, unfinished: issues.filter((issue) => !TERMINAL.includes(issue.status.category)), problems }
   }
@@ -668,11 +749,25 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
 
   const getCapacity = (id) => getSprint(id).capacity
 
-  function setCapacity(id, map, actor, { dryRun = false } = {}) {
+  const getDaysOff = (id) => getSprint(id).daysOff
+
+  function updateCycleCapacity(id, { capacity, daysOff } = {}, actor, { dryRun = false } = {}) {
     requireWriter(actor)
     const before = getSprint(id)
-    return writeSprint(before, { ...before, capacity: requireCapacity(map, local.members) }, { dryRun })
+    const next = { ...before }
+    if (capacity !== undefined) next.capacity = requireCapacity(capacity, local.members)
+    if (daysOff !== undefined) {
+      const merged = { ...before.daysOff }
+      for (const [member, dates] of Object.entries(requireDaysOff(daysOff, local.members, before))) {
+        if (dates === null) delete merged[member]
+        else merged[member] = dates
+      }
+      next.daysOff = merged
+    }
+    return writeSprint(before, next, { dryRun })
   }
+
+  const setCapacity = (id, map, actor, opts) => updateCycleCapacity(id, { capacity: map }, actor, opts)
 
   const epicsDir = path.join(issuesDir, 'epics')
 
@@ -726,8 +821,8 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     if (!dryRun) {
       const dir = path.join(epicsDir, epic.id)
       fs.mkdirSync(dir, { recursive: true })
-      writeFileAtomic(path.join(dir, 'epic.md'), content)
-      appendEvents(path.join(dir, 'events.jsonl'), [{ at: createdStamp(), by: actor, op: 'create', to: epicFrontmatter(epic) }])
+      writeFile(path.join(dir, 'epic.md'), content)
+      append(path.join(dir, 'events.jsonl'), [{ at: createdStamp(), by: actor, op: 'create', to: epicFrontmatter(epic) }])
     }
     return { before: null, after }
   }
@@ -772,7 +867,7 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
       let name = base
       for (let n = 2; fs.existsSync(path.join(updates, `${name}.md`)); n++) name = `${base}-${n}`
       fs.mkdirSync(updates, { recursive: true })
-      writeFileAtomic(path.join(updates, `${name}.md`), content)
+      writeFile(path.join(updates, `${name}.md`), content)
     }
     return { before: null, after: update }
   }
@@ -787,19 +882,90 @@ export function createLocalTracker(root, { config = loadConfig(root), now = () =
     return sortUpdates(entries).map((entry) => entry.update)
   }
 
+  const readMilestone = (id) => parseMilestone(fs.readFileSync(path.join(milestonesDir, `${id}.md`), 'utf8'), id)
+
+  function getMilestone(id) {
+    if (!validMilestoneId(id) || !milestoneStems(milestonesDir).has(id)) {
+      throw new PmkitError('NOT_FOUND', `milestone ${id} does not exist`, 'pmkit milestone list')
+    }
+    return readMilestone(id)
+  }
+
+  /** Every milestone that parses. A file that does not parse, or whose stem breaks the id rule, is skipped; validate reports it. */
+  function listMilestones() {
+    const milestones = []
+    for (const id of [...milestoneStems(milestonesDir)].filter(validMilestoneId)) {
+      try {
+        milestones.push(readMilestone(id))
+      } catch (error) {
+        if (!(error instanceof PmkitError)) throw error
+      }
+    }
+    return sortMilestones(milestones)
+  }
+
+  function createMilestone(input, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const allowed = ['id', 'name', 'due']
+    for (const key of Object.keys(input)) {
+      if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+    }
+    const { id } = input
+    if (!validMilestoneId(id)) {
+      throw invalid(`milestone id "${id}" must start and end with a letter or digit and hold only letters, digits, ".", "_" and "-"`, 'Use an id like local-gaps or v1.0')
+    }
+    const clash = [...milestoneStems(milestonesDir)].find((stem) => stem.toLowerCase() === id.toLowerCase())
+    if (clash !== undefined) throw new PmkitError('CONFLICT', `milestone ${clash} already exists`, 'pmkit milestone list')
+    let name = id
+    if (!blank(input.name)) {
+      if (typeof input.name !== 'string' || input.name.trim() === '') throw invalid('name must be a non-empty string')
+      name = oneLine('name', input.name.trim())
+    }
+    const milestone = { name }
+    if (!blank(input.due)) {
+      if (!validDate(input.due)) throw invalid('due must be a date as YYYY-MM-DD')
+      milestone.due = input.due
+    }
+    const content = serializeMilestone(milestone)
+    const after = readBack('milestone file', () => parseMilestone(content, id))
+    if (!dryRun) {
+      fs.mkdirSync(milestonesDir, { recursive: true })
+      writeFile(path.join(milestonesDir, `${id}.md`), content)
+    }
+    return { before: null, after }
+  }
+
+  /**
+   * Milestone names that issues or epics use and that have no file, with how many of each use them. Archived issues count, as they do in `validate`.
+   * `except` is an id about to be filed. Not a contract operation; the CLI warns with it.
+   */
+  function unfiledMilestones(except) {
+    const filed = milestoneStems(milestonesDir)
+    const counts = new Map()
+    const tally = (name) => {
+      if (name === undefined || name === except || filed.has(name)) return
+      counts.set(name, (counts.get(name) ?? 0) + 1)
+    }
+    for (const issue of searchIssues({ archived: true }).issues) tally(issue.milestone)
+    for (const epic of listDeliverables()) tally(epic.milestone)
+    return [...counts].map(([name, count]) => ({ name, count })).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+  }
+
   const docsDir = path.join(issuesDir, 'docs')
   const readDocument = (docPath) => readDocumentFile(docsDir, docPath)
 
   function createDocument(docPath, body, actor, { dryRun = false } = {}) {
     requireWriter(actor)
-    return createDocumentFile(docsDir, docPath, body, { dryRun })
+    return createDocumentFile(docsDir, docPath, body, { dryRun, onWrite: (file) => writtenPaths.add(file) })
   }
 
   return {
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
+    listMilestones, getMilestone, createMilestone, unfiledMilestones,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
     comment, listComments, getHistory, logTime, readDocument, createDocument,
-    discover, capabilities, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
-    listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity,
+    discover, capabilities, reindex, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
+    listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity, getDaysOff, updateCycleCapacity,
+    writtenFiles,
   }
 }

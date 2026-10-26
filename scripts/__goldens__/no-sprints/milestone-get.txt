@@ -1,0 +1,43 @@
+$ pmkit milestone get v1.0
+exit 0
+--- stdout
+id: v1.0
+name: Public webhooks launch
+due: 2026-11-13
+
+Webhooks are open to every customer.
+--- stderr
+(empty)
+
+$ pmkit milestone get v1.0 --json
+exit 0
+--- stdout
+{
+  "id": "v1.0",
+  "name": "Public webhooks launch",
+  "due": "2026-11-13",
+  "description": "Webhooks are open to every customer."
+}
+--- stderr
+(empty)
+
+$ pmkit milestone get missing-milestone
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: milestone missing-milestone does not exist
+next: pmkit milestone list
+
+$ pmkit milestone get missing-milestone --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "milestone missing-milestone does not exist",
+    "nextStep": "pmkit milestone list"
+  }
+}
+--- stderr
+(empty)

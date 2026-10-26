@@ -30,6 +30,19 @@ test('the plugin manifest names pmkit and its version', () => {
   assert.equal(typeof manifest.description, 'string')
 })
 
+test('the plugin manifest has a GitHub repository URL', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/plugin.json'), 'utf8'))
+  assert.match(manifest.repository, /^https:\/\/github\.com\/[^/]+\/[^/]+$/)
+})
+
+test('both config schemas exist and parse as JSON', () => {
+  for (const name of ['pmkit.config.schema.json', 'issues.config.schema.json']) {
+    const file = path.join(ROOT, 'schemas', name)
+    assert.ok(fs.existsSync(file), `schemas/${name} exists`)
+    assert.equal(typeof JSON.parse(fs.readFileSync(file, 'utf8')), 'object', `schemas/${name} parses`)
+  }
+})
+
 test('package.json has no dependencies', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'))
   assert.equal(pkg.dependencies, undefined)

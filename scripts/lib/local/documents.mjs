@@ -29,7 +29,8 @@ export function readDocumentFile(docsDir, docPath) {
   return { path: docPath, body: normalize(fs.readFileSync(file, 'utf8')) }
 }
 
-export function createDocumentFile(docsDir, docPath, body, { dryRun = false } = {}) {
+/** Writes a new document. `onWrite(file)` gets the absolute file once it is written. */
+export function createDocumentFile(docsDir, docPath, body, { dryRun = false, onWrite } = {}) {
   const file = resolveDocPath(docsDir, docPath)
   if (typeof body !== 'string' || body.trim() === '') throw invalid('document body must be a non-empty string')
   if (fs.existsSync(file)) throw new PmkitError('CONFLICT', `document ${docPath} already exists`, 'Pick another path')
@@ -37,6 +38,7 @@ export function createDocumentFile(docsDir, docPath, body, { dryRun = false } = 
   if (!dryRun) {
     fs.mkdirSync(path.dirname(file), { recursive: true })
     writeFileAtomic(file, text)
+    onWrite?.(file)
   }
   return { before: null, after: { path: docPath, body: text } }
 }

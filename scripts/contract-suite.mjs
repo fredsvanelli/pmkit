@@ -149,6 +149,18 @@ export function runTrackerContract({ name, setup }) {
       assert.deepEqual(await tracker.getCapacity(cycle.id), { [member.id]: 8 })
     })
 
+    it('sets, reads and clears days off', async ({ tracker, actor, today }) => {
+      const [member] = (await tracker.discover()).members
+      const cycle = (await tracker.openCycle({ start: today }, actor)).after
+      const date = new Date(`${today}T00:00:00Z`)
+      while (date.getUTCDay() === 0 || date.getUTCDay() === 6) date.setUTCDate(date.getUTCDate() + 1)
+      const weekday = date.toISOString().slice(0, 10)
+      await tracker.updateCycleCapacity(cycle.id, { daysOff: { [member.id]: [weekday] } }, actor)
+      assert.deepEqual(await tracker.getDaysOff(cycle.id), { [member.id]: [weekday] })
+      await tracker.updateCycleCapacity(cycle.id, { daysOff: { [member.id]: null } }, actor)
+      assert.deepEqual(await tracker.getDaysOff(cycle.id), {})
+    })
+
     it('creates an epic, parents an issue and reads progress', async ({ tracker, actor }) => {
       const epic = (await tracker.createDeliverable({ title: 'Launch' }, actor)).after
       assert.equal((await tracker.getDeliverable(epic.id)).title, 'Launch')
@@ -165,6 +177,32 @@ export function runTrackerContract({ name, setup }) {
       await tracker.setParent(second, null, actor)
       assert.equal((await tracker.deliverableProgress(epic.id)).total, 1)
       await rejects(() => tracker.getDeliverable('NOPE-999999'), 'NOT_FOUND')
+    })
+
+    it('lists no milestones at the start', async ({ tracker }) => {
+      assert.deepEqual(await tracker.listMilestones(), [])
+    })
+
+    it('creates a milestone that list and get agree on', async ({ tracker, actor }) => {
+      const created = await tracker.createMilestone({ id: 'contract-m1', name: 'Contract one', due: '2099-01-31' }, actor)
+      assert.equal(created.before, null)
+      assert.equal(created.after.id, 'contract-m1')
+      assert.equal(created.after.name, 'Contract one')
+      assert.equal(created.after.due, '2099-01-31')
+      assert.deepEqual(await tracker.listMilestones(), [created.after])
+      assert.deepEqual(await tracker.getMilestone('contract-m1'), created.after)
+    })
+
+    it('rejects an unknown milestone with NOT_FOUND', async ({ tracker }) => {
+      await rejects(() => tracker.getMilestone('no-such-milestone'), 'NOT_FOUND')
+    })
+
+    it('a milestone dry run returns after and creates nothing', async ({ tracker, actor }) => {
+      const { before, after } = await tracker.createMilestone({ id: 'contract-dry' }, actor, { dryRun: true })
+      assert.equal(before, null)
+      assert.equal(after.id, 'contract-dry')
+      assert.deepEqual(await tracker.listMilestones(), [])
+      await rejects(() => tracker.getMilestone('contract-dry'), 'NOT_FOUND')
     })
 
     it('logs time on an issue and shows it in the history and the metric events', async ({ tracker, actor }) => {

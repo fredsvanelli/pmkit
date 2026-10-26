@@ -1,0 +1,22 @@
+$ pmkit milestone list
+exit 0
+--- stdout
+ID   | Name                   | Due
+-----|------------------------|-----------
+v1.0 | Public webhooks launch | 2026-11-13
+--- stderr
+(empty)
+
+$ pmkit milestone list --json
+exit 0
+--- stdout
+[
+  {
+    "id": "v1.0",
+    "name": "Public webhooks launch",
+    "due": "2026-11-13",
+    "description": "Webhooks are open to every customer."
+  }
+]
+--- stderr
+(empty)

@@ -33,20 +33,20 @@ const input = (name) => path.join(INPUTS, name)
 const FIXTURES = {
   basic: {
     about: 'empty: config files only, no issues, epics, sprints or documents',
-    issue: 'ISS-0000', other: 'ISS-0001', conflicted: 'ISS-0000', epic: 'EPC-0000', sprint: '2026-10-12', doc: 'missing.md',
+    issue: 'ISS-0000', other: 'ISS-0001', conflicted: 'ISS-0000', epic: 'EPC-0000', sprint: '2026-10-12', doc: 'missing.md', milestone: 'v1.0',
   },
   team: {
     about: 'small team: 2 members, 13 issues, 1 epic, a closed and an active sprint, ISS-3Q6T has conflict markers',
-    issue: 'ISS-5N1R', other: 'ISS-4M2S', conflicted: 'ISS-3Q6T', epic: 'EPC-2M9D', sprint: '2026-10-12', doc: 'missing.md',
+    issue: 'ISS-5N1R', other: 'ISS-4M2S', conflicted: 'ISS-3Q6T', epic: 'EPC-2M9D', sprint: '2026-10-12', doc: 'missing.md', milestone: 'v1.0',
   },
   'messy-merge': {
     about: 'after merging two tracker branches: ISS-4 add/add conflict, ISS-5 status conflict, ISS-6 events out of order, two active sprints',
-    issue: 'ISS-1', other: 'ISS-2', conflicted: 'ISS-4', epic: 'EPC-1', sprint: '2026-10-12', doc: 'missing.md',
+    issue: 'ISS-1', other: 'ISS-2', conflicted: 'ISS-4', epic: 'EPC-1', sprint: '2026-10-12', doc: 'missing.md', milestone: 'v1.0',
   },
   'no-sprints': {
-    about: 'a team without sprints: 6 issues, an epic with children, a comment and a document',
-    // ISS-9B2X holds the one comment, is in_review and has no parent, so get --comments, move and parent show real output.
-    issue: 'ISS-9B2X', other: 'ISS-6R3N', conflicted: 'ISS-0000', epic: 'EPC-4H7V', sprint: '2026-10-12', doc: 'specs/overview.md',
+    about: 'a team without sprints: 6 issues, an epic with children, a comment, a document and a milestone',
+    // v1.0 is the one milestone file. ISS-9B2X holds the one comment, is in_review and has no parent, so get --comments, move and parent show real output.
+    issue: 'ISS-9B2X', other: 'ISS-6R3N', conflicted: 'ISS-0000', epic: 'EPC-4H7V', sprint: '2026-10-12', doc: 'specs/overview.md', milestone: 'v1.0',
   },
 }
 
@@ -79,6 +79,10 @@ const CASES = {
   'epic get': (a) => [[a.epic]],
   'epic progress': (a) => [[a.epic]],
   'epic create': () => [['--title', 'Golden epic']],
+  'milestone list': () => [[]],
+  'milestone get': (a) => [[a.milestone], ['missing-milestone']],
+  // A new id, and the anchor again, which is a CONFLICT where the milestone exists.
+  'milestone create': (a) => [['v2.0', '--name', 'Golden milestone', '--due', '2026-12-01'], [a.milestone]],
   'epic update-status': (a) => [[a.epic, '--health', 'on_track', '--body-file', input('update.md')]],
   'epic updates': (a) => [[a.epic]],
   'docs read': (a) => [[a.doc]],
@@ -93,6 +97,7 @@ const CASES = {
   'pr sync': () => [[]],
   changelog: () => [['--file', input('CHANGELOG.md'), '--since', '0.0.0'], ['--file', input('CHANGELOG.md'), '--since', '0.3.0']],
   migrate: () => [[]],
+  reindex: () => [[]],
   validate: () => [[]],
 }
 

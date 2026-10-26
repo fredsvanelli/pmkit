@@ -1,0 +1,97 @@
+$ pmkit milestone create v2.0 --name 'Golden milestone' --due 2026-12-01
+exit 0
+--- stdout
+v2.0
+id: v2.0
+name: Golden milestone
+due: 2026-12-01
+--- stderr
+(empty)
+
+$ pmkit milestone create v2.0 --name 'Golden milestone' --due 2026-12-01 --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "id": "v2.0",
+    "name": "Golden milestone",
+    "due": "2026-12-01",
+    "description": ""
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit milestone create v2.0 --name 'Golden milestone' --due 2026-12-01 --dry-run
+exit 0
+--- stdout
+v2.0
+id: v2.0
+name: Golden milestone
+due: 2026-12-01
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit milestone create v2.0 --name 'Golden milestone' --due 2026-12-01 --dry-run --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "id": "v2.0",
+    "name": "Golden milestone",
+    "due": "2026-12-01",
+    "description": ""
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit milestone create v1.0
+exit 0
+--- stdout
+v1.0
+id: v1.0
+name: v1.0
+--- stderr
+(empty)
+
+$ pmkit milestone create v1.0 --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "id": "v1.0",
+    "name": "v1.0",
+    "description": ""
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit milestone create v1.0 --dry-run
+exit 0
+--- stdout
+v1.0
+id: v1.0
+name: v1.0
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit milestone create v1.0 --dry-run --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "id": "v1.0",
+    "name": "v1.0",
+    "description": ""
+  }
+}
+--- stderr
+(empty)

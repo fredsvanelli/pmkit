@@ -1,7 +1,7 @@
 $ pmkit validate
 exit 0
 --- stdout
-checked: 8 issues, 1 epics, 2 sprints, 0 comments
+checked: 8 issues, 1 epics, 2 sprints, 0 milestones, 0 comments
 .issues/issues/ISS-4/issue.md  conflict  the file contains git conflict markers
 .issues/issues/ISS-5/issue.md  conflict  the file contains git conflict markers
 .issues/sprints/2026-10-12.yaml  sprint  more than one active sprint, 2026-10-05 is active too
@@ -16,6 +16,7 @@ exit 0
     "issues": 8,
     "epics": 1,
     "sprints": 2,
+    "milestones": 0,
     "comments": 0
   },
   "problems": [

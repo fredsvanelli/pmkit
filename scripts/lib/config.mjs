@@ -6,11 +6,14 @@ import { FORMAT_VERSION, MIGRATIONS, formatError, formatState, migratedCopy } fr
 import { CATEGORIES, isCategory } from './model.mjs'
 import { parseYaml } from './yaml.mjs'
 
-const TRACKERS = ['local', 'linear', 'jira', 'github', 'gitlab', 'azure-devops']
-const CONFIRM = ['all_writes', 'single_writes', 'none']
-const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
-const PREFIX = /^[A-Z]{2,5}$/
-const MEMBER_ID = /^([a-z0-9][a-z0-9-]*|agent:[a-z0-9-]+)$/
+export const TRACKERS = ['local', 'linear', 'jira', 'github', 'gitlab', 'azure-devops']
+export const GIT_HOSTS = ['github', 'none']
+export const CONFIRM = ['all_writes', 'single_writes', 'none']
+export const PREVIEW = ['bulk', 'delete', 'publish_update', 'move_scope']
+export const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+export const ESTIMATE_UNITS = ['points', 'hours', 'sizes']
+export const PREFIX = /^[A-Z]{2,5}$/
+export const MEMBER_ID = /^([a-z0-9][a-z0-9-]*|agent:[a-z0-9-]+)$/
 
 const DEFAULTS = {
   default_status: 'backlog',
@@ -35,6 +38,9 @@ const DEFAULTS = {
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value)
 const isStringList = (value) => Array.isArray(value) && value.length > 0 && value.every((x) => typeof x === 'string')
 
+// The value a check found, as it reads in YAML: "True" for a string, True for a boolean.
+const found = (value) => (value === undefined ? 'nothing' : JSON.stringify(value))
+
 const clone = (value) => JSON.parse(JSON.stringify(value))
 
 export function withLocalDefaults(obj) {
@@ -53,61 +59,103 @@ export function validatePmkitConfig(obj) {
   const tracker = obj.tracker
   if (!isObject(tracker) || !TRACKERS.includes(tracker.system)) {
     problems.push(`tracker.system must be one of ${TRACKERS.join(', ')}`)
-  } else if (tracker.system === 'local' && typeof tracker.path !== 'string') {
+  } else if (tracker.path !== undefined && tracker.path !== null && typeof tracker.path !== 'string') {
     problems.push('tracker.path must be a string')
   }
   const host = obj.git_host
-  if (!isObject(host) || !['github', 'none'].includes(host.system)) {
-    problems.push('git_host.system must be github or none')
+  if (!isObject(host) || !GIT_HOSTS.includes(host.system)) {
+    problems.push(`git_host.system must be ${GIT_HOSTS.join(' or ')}`)
+  } else {
+    if (host.repo !== undefined && typeof host.repo !== 'string') problems.push('git_host.repo must be a string')
+    if (host.default_branch !== undefined && typeof host.default_branch !== 'string') problems.push('git_host.default_branch must be a string')
   }
   const policy = obj.write_policy
   if (!isObject(policy) || !CONFIRM.includes(policy.confirm)) {
     problems.push(`write_policy.confirm must be one of ${CONFIRM.join(', ')}`)
-  } else if (policy.preview !== undefined && !Array.isArray(policy.preview)) {
-    problems.push('write_policy.preview must be a list')
+  } else if (policy.preview !== undefined && !(Array.isArray(policy.preview) && policy.preview.every((x) => PREVIEW.includes(x)))) {
+    problems.push(`write_policy.preview must be a list of ${PREVIEW.join(', ')}`)
   }
+  return problems
+}
+
+/** Every per-key check of .issues/config.yaml. The schema mirrors these; the rules between fields live in validateLocalConfig. */
+export function localConfigShapeProblems(obj) {
+  const problems = []
+  if (!Number.isInteger(obj.version) || obj.version < 1) problems.push(`version must be a whole number of 1 or more, found ${found(obj.version)}`)
+  const { id_prefix: idPrefix, epic_prefix: epicPrefix } = obj
+  if (typeof idPrefix !== 'string' || !PREFIX.test(idPrefix)) problems.push(`id_prefix must be 2 to 5 capital letters, found ${found(idPrefix)}`)
+  if (typeof epicPrefix !== 'string' || !PREFIX.test(epicPrefix)) problems.push(`epic_prefix must be 2 to 5 capital letters, found ${found(epicPrefix)}`)
+  if (obj.id_style !== undefined && !ID_STYLES.includes(obj.id_style)) problems.push(`id_style must be ${ID_STYLES.join(' or ')}, found ${found(obj.id_style)}`)
+
+  if (!isObject(obj.statuses)) {
+    problems.push(`statuses must be a map of status names, each with a category, found ${found(obj.statuses)}`)
+  } else {
+    for (const [name, status] of Object.entries(obj.statuses)) {
+      const category = isObject(status) ? status.category : undefined
+      if (!isCategory(category)) problems.push(`status ${name}: unknown category ${category}`)
+    }
+  }
+  if (typeof obj.default_status !== 'string') problems.push(`default_status must be a string, found ${found(obj.default_status)}`)
+
+  if (!isStringList(obj.types)) problems.push(`types must be a non-empty list of strings, found ${found(obj.types)}`)
+  if (!isStringList(obj.priorities)) problems.push(`priorities must be a non-empty list of strings, found ${found(obj.priorities)}`)
+  if (obj.labels !== undefined && !(Array.isArray(obj.labels) && obj.labels.every((x) => typeof x === 'string'))) {
+    problems.push(`labels must be a list of strings, found ${found(obj.labels)}`)
+  }
+
+  if (!isObject(obj.estimate)) {
+    problems.push(`estimate must be a map with a unit, found ${found(obj.estimate)}`)
+  } else {
+    if (!ESTIMATE_UNITS.includes(obj.estimate.unit)) problems.push(`estimate.unit must be ${ESTIMATE_UNITS.slice(0, -1).join(', ')} or ${ESTIMATE_UNITS.at(-1)}, found ${found(obj.estimate.unit)}`)
+    const { scale } = obj.estimate
+    if (scale !== undefined && !(Array.isArray(scale) && scale.every((x) => typeof x === 'string' || typeof x === 'number'))) {
+      problems.push(`estimate.scale must be a list of numbers or strings, found ${found(scale)}`)
+    }
+  }
+
+  if (obj.members !== undefined && !isObject(obj.members)) {
+    problems.push(`members must be a map of member IDs, found ${found(obj.members)}`)
+  } else {
+    for (const [id, member] of Object.entries(obj.members ?? {})) {
+      if (!MEMBER_ID.test(id)) problems.push(`member ${id}: invalid id, use lowercase letters, digits and hyphens, or agent: and a name`)
+      if (!isObject(member)) {
+        problems.push(`member ${id} must be a map, with name, email or availability, found ${found(member)}`)
+        continue
+      }
+      if (member.name !== undefined && typeof member.name !== 'string') problems.push(`member ${id}: name must be a string, found ${found(member.name)}`)
+      if (member.email !== undefined && typeof member.email !== 'string') problems.push(`member ${id}: email must be a string, found ${found(member.email)}`)
+      const { availability } = member
+      if (availability !== undefined && !(typeof availability === 'number' && availability >= 0 && availability <= 1)) {
+        problems.push(`member ${id}: availability must be a number from 0 to 1, found ${found(availability)}`)
+      }
+    }
+  }
+
+  if (obj.defaults !== undefined && !isObject(obj.defaults)) {
+    problems.push(`defaults must be a map, found ${found(obj.defaults)}`)
+  } else {
+    for (const [key, value] of Object.entries(obj.defaults ?? {})) {
+      if (key === 'sprint_start_weekday') {
+        if (!WEEKDAYS.includes(value)) problems.push(`defaults.${key} must be one of ${WEEKDAYS.join(', ')}, found ${found(value)}`)
+      } else if (!Number.isInteger(value) || value <= 0) {
+        problems.push(`defaults.${key} must be a positive integer, found ${found(value)}`)
+      }
+    }
+  }
+  if (obj.auto_commit !== undefined && typeof obj.auto_commit !== 'boolean') problems.push(`auto_commit must be true or false, found ${found(obj.auto_commit)}`)
   return problems
 }
 
 // The format version is checked by loadConfig and validateRepo, before the rest of the config.
 export function validateLocalConfig(obj) {
-  const problems = []
-  const { id_prefix: idPrefix, epic_prefix: epicPrefix } = obj
-  if (typeof idPrefix !== 'string' || !PREFIX.test(idPrefix)) problems.push('id_prefix must be 2 to 5 capital letters')
-  if (typeof epicPrefix !== 'string' || !PREFIX.test(epicPrefix)) problems.push('epic_prefix must be 2 to 5 capital letters')
-  if (idPrefix === epicPrefix) problems.push('id_prefix and epic_prefix must differ')
-  if (obj.id_style !== undefined && !ID_STYLES.includes(obj.id_style)) problems.push(`id_style must be ${ID_STYLES.join(' or ')}`)
-
+  const problems = localConfigShapeProblems(obj)
+  if (obj.id_prefix === obj.epic_prefix) problems.push('id_prefix and epic_prefix must differ')
   const statuses = isObject(obj.statuses) ? obj.statuses : {}
-  for (const [name, status] of Object.entries(statuses)) {
-    const category = isObject(status) ? status.category : undefined
-    if (!isCategory(category)) problems.push(`status ${name}: unknown category ${category}`)
-  }
   const used = new Set(Object.values(statuses).map((s) => (isObject(s) ? s.category : undefined)))
   for (const category of CATEGORIES) {
     if (!used.has(category)) problems.push(`category ${category} has no status`)
   }
-  if (!Object.hasOwn(statuses, obj.default_status)) problems.push('default_status must be a status')
-
-  if (!isStringList(obj.types)) problems.push('types must be a non-empty list of strings')
-  if (!isStringList(obj.priorities)) problems.push('priorities must be a non-empty list of strings')
-  if (!['points', 'hours', 'sizes'].includes(obj.estimate?.unit)) problems.push('estimate.unit must be points, hours or sizes')
-
-  for (const [id, member] of Object.entries(isObject(obj.members) ? obj.members : {})) {
-    if (!MEMBER_ID.test(id)) problems.push(`member ${id}: invalid id`)
-    const availability = isObject(member) ? member.availability : undefined
-    if (availability !== undefined && !(typeof availability === 'number' && availability >= 0 && availability <= 1)) {
-      problems.push(`member ${id}: availability must be a number from 0 to 1`)
-    }
-  }
-
-  for (const [key, value] of Object.entries(isObject(obj.defaults) ? obj.defaults : {})) {
-    if (key === 'sprint_start_weekday') {
-      if (!WEEKDAYS.includes(value)) problems.push(`defaults.${key} must be one of ${WEEKDAYS.join(', ')}`)
-    } else if (!Number.isInteger(value) || value <= 0) {
-      problems.push(`defaults.${key} must be a positive integer`)
-    }
-  }
+  if (typeof obj.default_status === 'string' && !Object.hasOwn(statuses, obj.default_status)) problems.push('default_status must be a status')
   return problems
 }
 
