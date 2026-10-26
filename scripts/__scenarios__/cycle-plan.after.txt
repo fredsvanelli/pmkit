@@ -4,7 +4,7 @@ $ pmkit discover --json  [step 1, read]
 exit 0
 $ pmkit metrics velocity --window 3 --json  [step 3, read]
 exit 0
-$ pmkit issues list --category todo,backlog --sprint none --json  [step 5, read]
+$ pmkit issues list --category todo,backlog,in_progress --sprint none --json  [step 5, read]
 exit 0
 ? Step 6  [confirmed]
 $ pmkit cycle open --start 2026-10-26 --end 2026-11-08 --goal 'Dashboard empty state and build tooling' --dry-run --json  [step 7, dry run]
@@ -13,10 +13,10 @@ $ pmkit cycle open --start 2026-10-26 --end 2026-11-08 --goal 'Dashboard empty s
 exit 0
 $ pmkit cycle capacity 2026-10-26 --set fred=8,ana=6 --json  [step 7, write]
 exit 0
-$ pmkit cycle add ISS-3F7H ISS-6J0B --to 2026-10-26 --dry-run --json  [step 8, dry run]
+$ pmkit cycle add ISS-5N1R ISS-3F7H ISS-6J0B ISS-4M2S --to 2026-10-26 --dry-run --json  [step 8, dry run]
 exit 0
 ? Step 8  [confirmed]
-$ pmkit cycle add ISS-3F7H ISS-6J0B --to 2026-10-26 --json  [step 8, write]
+$ pmkit cycle add ISS-5N1R ISS-3F7H ISS-6J0B ISS-4M2S --to 2026-10-26 --json  [step 8, write]
 exit 0
 
 --- changed .issues/issues/ISS-3F7H/events.jsonl
@@ -41,6 +41,54 @@ exit 0
   ## Description
 
   A new account sees a blank dashboard. Show a short guide instead.
+--- changed .issues/issues/ISS-4M2S/events.jsonl
+  {"at":"2026-10-13T09:00:00Z","by":"fred","op":"create","to":{"id":"ISS-4M2S","title":"Fix CSV column order","type":"task","status":"todo","priority":"medium","estimate":1,"labels":["billing"],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-13T09:00:00Z","updated":"2026-10-13T09:00:00Z"}}
+  {"at":"2026-10-13T09:10:00Z","by":"fred","op":"update","field":"parent","from":null,"to":"ISS-2X6D"}
+  {"at":"2026-10-13T09:20:00Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"sprint","from":"2026-10-12","to":null}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"sprint","from":null,"to":"2026-10-26"}
+--- changed .issues/issues/ISS-4M2S/issue.md
+  ---
+  id: ISS-4M2S
+  title: Fix CSV column order
+  type: task
+  status: todo
+  priority: medium
+  estimate: 1
+  assignee: fred
+  labels: [billing]
+  parent: ISS-2X6D
++sprint: 2026-10-26
+  created: 2026-10-13T09:00:00Z
+  updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Columns follow the finance template: date, invoice, customer, total.
+--- changed .issues/issues/ISS-5N1R/events.jsonl
+  {"at":"2026-10-05T09:30:00Z","by":"fred","op":"create","to":{"id":"ISS-5N1R","title":"Paginate the events API","type":"task","status":"todo","priority":"medium","estimate":3,"assignee":"fred","labels":["backend"],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-05T09:30:00Z","updated":"2026-10-05T09:30:00Z"}}
+  {"at":"2026-10-22T09:00:00Z","by":"fred","op":"move","field":"status","from":"todo","to":"in_progress"}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"sprint","from":"2026-10-12","to":null}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"sprint","from":null,"to":"2026-10-26"}
+--- changed .issues/issues/ISS-5N1R/issue.md
+  ---
+  id: ISS-5N1R
+  title: Paginate the events API
+  type: task
+  status: in_progress
+  priority: medium
+  estimate: 3
+  assignee: fred
+  labels: [backend]
++sprint: 2026-10-26
+  created: 2026-10-05T09:30:00Z
+  updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  The export reads events in pages of 500.
 --- changed .issues/issues/ISS-6J0B/events.jsonl
   {"at":"2026-10-08T09:00:00Z","by":"fred","op":"create","to":{"id":"ISS-6J0B","title":"Upgrade the build tooling","type":"chore","status":"backlog","priority":"low","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"due":"2026-11-30","created":"2026-10-08T09:00:00Z","updated":"2026-10-08T09:00:00Z"}}
 +{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"sprint","from":null,"to":"2026-10-26"}

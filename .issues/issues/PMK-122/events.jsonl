@@ -1,2 +1,10 @@
 {"at":"2026-10-26T17:58:03Z","by":"fred","op":"create","to":{"id":"PMK-122","title":"Offer in-progress issues sent back to the backlog in cycle plan","type":"bug","status":"backlog","priority":"medium","labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-26T17:58:03.712Z","updated":"2026-10-26T17:58:03Z"}}
 {"at":"2026-10-26T17:58:03Z","by":"fred","op":"link","field":"related","to":"PMK-113"}
+{"at":"2026-10-26T21:47:16Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-26T21:47:16Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-26T21:47:19Z","by":"fred","op":"update","field":"estimate","from":null,"to":2}
+{"at":"2026-10-26T21:47:19Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-26T21:47:22Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-122-offer-in-progress-issues-sent-back-to"}
+{"at":"2026-10-26T21:56:40Z","by":"fred","op":"comment","to":"2026-10-26T21-56-40Z-fred.md"}
+{"at":"2026-10-26T22:13:04Z","by":"fred","op":"comment","to":"2026-10-26T22-13-04Z-fred.md"}
+{"at":"2026-10-26T22:13:04Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
