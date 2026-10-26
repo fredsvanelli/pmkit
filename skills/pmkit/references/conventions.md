@@ -29,6 +29,7 @@ Every CLI call ends with `--json`. On a failure the CLI exits with code 2 and pr
 - Show `error.message` as it is.
 - Show `error.nextStep` as the thing to do next, and offer to run it when it is a command.
 - Use `error.code` to decide what to do. `NOT_CONFIGURED` means offer `/pmkit:setup`. `NOT_FOUND` and `INVALID_INPUT` mean ask the user for a corrected value. Do not retry the same call.
+- An error whose `error.message` starts with `.pmkit/config.yaml is not valid` comes from a broken config file, not from a value the user typed. Check for it before the `INVALID_INPUT` rule above, which asks the user for a corrected value. Stop that write and do not retry it. Show `error.message` as it is, and offer `pmkit validate` to list the problems and `/pmkit:local:doctor` to fix them. Then go on with the command's reads, if it has any. While the file stays broken, every write and dry run fails with this error, and reads print `warning: .pmkit/config.yaml is not valid, so writes are refused: ...` on stderr. Show that warning once. If a read fails with this error too, the CLI cannot find the tracker, so stop the command.
 - Never hide an error or guess a fix.
 
 ## Issue tables

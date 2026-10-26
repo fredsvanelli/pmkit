@@ -5,14 +5,26 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   CONFIRM, ESTIMATE_UNITS, GIT_HOSTS, MEMBER_ID, PREFIX, PREVIEW, TRACKERS, WEEKDAYS,
-  findRoot, loadConfig, localConfigShapeProblems, unsupportedTracker, validateLocalConfig, validatePmkitConfig, withLocalDefaults,
+  findRoot, loadConfig, localConfigShapeProblems, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, unsupportedTracker, validateLocalConfig, validatePmkitConfig, withLocalDefaults,
 } from './lib/config.mjs'
 import { parseYaml } from './lib/yaml.mjs'
-import { tempDir } from './test-helpers.mjs'
+import { makeRepo, tempDir } from './test-helpers.mjs'
 
 const fixture = fileURLToPath(new URL('./__fixtures__/basic', import.meta.url))
 const template = (name) => parseYaml(readFileSync(new URL(`../templates/${name}`, import.meta.url), 'utf8'))
 const tmp = () => tempDir('pmkit-config-')
+const TRACKER_MSG = 'tracker.system must be one of local, linear, jira, github, gitlab, azure-devops'
+
+/** A copy of the basic fixture with each [from, to] replacement applied to its .pmkit/config.yaml. */
+function basicWith(...edits) {
+  const root = makeRepo('basic')
+  const file = join(root, '.pmkit', 'config.yaml')
+  let text = readFileSync(file, 'utf8')
+  for (const [from, to] of edits) text = text.replace(from, to)
+  writeFileSync(file, text)
+  return root
+}
+const pmkitText = (root) => readFileSync(join(root, '.pmkit', 'config.yaml'), 'utf8')
 
 test('the fixture loads with defaults applied', () => {
   const config = loadConfig(fixture)
@@ -50,12 +62,91 @@ test('a missing local config throws NOT_CONFIGURED', () => {
   assert.throws(() => loadConfig(root), (error) => error.code === 'NOT_CONFIGURED')
 })
 
-test('unsupportedTracker is null for local and a message and next step for any other tracker', () => {
+test('unsupportedTracker is null for local and for names outside TRACKERS, and gives a message, next step and problem for the others', () => {
   assert.equal(unsupportedTracker('local'), null)
+  assert.equal(unsupportedTracker('trello'), null)
   assert.deepEqual(unsupportedTracker('linear'), {
     message: 'tracker.system "linear" is not supported yet',
     nextStep: 'Set tracker.system to local in .pmkit/config.yaml',
+    problem: 'tracker.system "linear" is not supported yet, set it to local',
   })
+})
+
+test('pmkitConfigMessages adds the unsupported tracker problem to validatePmkitConfig', () => {
+  assert.deepEqual(pmkitConfigMessages(template('pmkit.config.yaml')), [])
+  const linear = template('pmkit.config.yaml')
+  linear.tracker.system = 'linear'
+  assert.deepEqual(pmkitConfigMessages(linear), ['tracker.system "linear" is not supported yet, set it to local'])
+  const trello = template('pmkit.config.yaml')
+  trello.tracker.system = 'trello'
+  assert.deepEqual(pmkitConfigMessages(trello), validatePmkitConfig(trello))
+  assert.deepEqual(pmkitConfigMessages(trello), [TRACKER_MSG])
+  const gitlab = template('pmkit.config.yaml')
+  gitlab.git_host.system = 'gitlab'
+  assert.deepEqual(pmkitConfigMessages(gitlab), ['git_host.system must be github or none'])
+  for (const value of [null, 'local', ['local'], { tracker: 'linear' }]) {
+    assert.deepEqual(pmkitConfigMessages(value), validatePmkitConfig(value), JSON.stringify(value))
+  }
+})
+
+test('loadConfig returns pmkitProblems', () => {
+  assert.deepEqual(loadConfig(fixture).pmkitProblems, [])
+  for (const edit of [['system: none', 'system: gitlab'], ['confirm: single_writes', 'confirm: maybe'], [/^version: 1$/m, 'version: 2']]) {
+    const root = basicWith(edit)
+    const expected = pmkitConfigMessages(parseYaml(pmkitText(root)))
+    assert.equal(expected.length, 1)
+    assert.deepEqual(loadConfig(root).pmkitProblems, expected)
+    assert.deepEqual(loadConfig(root, { checkFormat: false }).pmkitProblems, expected)
+  }
+})
+
+test('loadConfig returns pmkitProblems on an older tracker format', () => {
+  const root = basicWith(['system: none', 'system: gitlab'])
+  const file = join(root, '.issues', 'config.yaml')
+  writeFileSync(file, readFileSync(file, 'utf8').replace(/^version: \d+$/m, 'version: 1'))
+  const config = loadConfig(root)
+  assert.equal(config.format.state, 'behind')
+  assert.deepEqual(config.pmkitProblems, ['git_host.system must be github or none'])
+})
+
+test('a .pmkit/config.yaml with no tracker.system carries its problems', () => {
+  const root = tmp()
+  mkdirSync(join(root, '.pmkit'))
+  const text = 'version: 1\ntracker:\n  path: .pmkit\n'
+  writeFileSync(join(root, '.pmkit', 'config.yaml'), text)
+  assert.throws(() => loadConfig(root), (error) => {
+    assert.equal(error.code, 'INVALID_INPUT')
+    assert.equal(error.message, '.pmkit/config.yaml has no tracker.system')
+    assert.equal(error.nextStep, '/pmkit:setup')
+    assert.deepEqual(error.details.pmkitConfig.problems, pmkitConfigMessages(parseYaml(text)))
+    return true
+  })
+})
+
+test('an unknown tracker.system or a non-string tracker.path is INVALID_INPUT with every problem', () => {
+  const root = basicWith(['system: local', 'system: trello'])
+  assert.throws(() => loadConfig(root), (error) => {
+    assert.equal(error.code, 'INVALID_INPUT')
+    assert.equal(error.message, `.pmkit/config.yaml is not valid: ${TRACKER_MSG}`)
+    assert.equal(error.nextStep, 'pmkit validate')
+    assert.deepEqual(error.details, { pmkitConfig: { problems: [TRACKER_MSG] } })
+    return true
+  })
+  const both = basicWith(['system: local', 'system: trello'], ['system: none', 'system: gitlab'])
+  assert.throws(() => loadConfig(both), (error) => error.code === 'INVALID_INPUT' &&
+    error.message === `.pmkit/config.yaml is not valid: ${TRACKER_MSG}; git_host.system must be github or none`)
+  const path = basicWith(['path: .issues', 'path: 5'])
+  assert.throws(() => loadConfig(path), (error) => error.code === 'INVALID_INPUT' &&
+    error.message === '.pmkit/config.yaml is not valid: tracker.path must be a string' && error.nextStep === 'pmkit validate')
+})
+
+test('pmkitWriteRefusal and pmkitConfigWarning word the refusal', () => {
+  const error = pmkitWriteRefusal(['a', 'b'])
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.equal(error.message, '.pmkit/config.yaml is not valid, so writes are refused: a; b')
+  assert.equal(error.nextStep, 'pmkit validate')
+  assert.deepEqual(error.details, { pmkitConfig: { problems: ['a', 'b'] } })
+  assert.equal(pmkitConfigWarning(['a', 'b']), '.pmkit/config.yaml is not valid, so writes are refused: a; b; run pmkit validate')
 })
 
 test('tracker.system jira throws NOT_SUPPORTED', () => {

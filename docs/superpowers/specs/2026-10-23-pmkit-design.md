@@ -125,7 +125,7 @@ write_policy:
   preview: [bulk, delete, publish_update, move_scope]
 ```
 
-Hosted trackers add `tracker.scope` and a `mappings` map in later phases. The MVP loader rejects any `tracker.system` other than `local` with `NOT_SUPPORTED`.
+Hosted trackers add `tracker.scope` and a `mappings` map in later phases. The MVP loader rejects a known `tracker.system` other than `local` with `NOT_SUPPORTED`, and an unknown one with `INVALID_INPUT`. With any other problem in the file, reads go on with a warning and writes refuse.
 
 ### `.issues/config.yaml`
 

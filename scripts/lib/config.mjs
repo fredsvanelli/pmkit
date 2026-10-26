@@ -169,8 +169,27 @@ function readYaml(file, label) {
 }
 
 export function unsupportedTracker(system) {
-  if (system === 'local') return null
-  return { message: `tracker.system "${system}" is not supported yet`, nextStep: 'Set tracker.system to local in .pmkit/config.yaml' }
+  if (system === 'local' || !TRACKERS.includes(system)) return null
+  const message = `tracker.system "${system}" is not supported yet`
+  return { message, nextStep: 'Set tracker.system to local in .pmkit/config.yaml', problem: `${message}, set it to local` }
+}
+
+/** Every problem in a parsed .pmkit/config.yaml: validatePmkitConfig plus the unsupported tracker. Never throws. */
+export function pmkitConfigMessages(parsed) {
+  const messages = validatePmkitConfig(parsed)
+  if (isObject(parsed) && isObject(parsed.tracker)) {
+    const unsupported = unsupportedTracker(parsed.tracker.system)
+    if (unsupported) messages.push(unsupported.problem)
+  }
+  return messages
+}
+
+export function pmkitWriteRefusal(problems) {
+  return new PmkitError('INVALID_INPUT', `.pmkit/config.yaml is not valid, so writes are refused: ${problems.join('; ')}`, 'pmkit validate', { pmkitConfig: { problems } })
+}
+
+export function pmkitConfigWarning(problems) {
+  return `${pmkitWriteRefusal(problems).message}; run pmkit validate`
 }
 
 /** `checkFormat: false` reads a tracker of any format as it is, for `migrate`: no refusal, no migrated copy. */
@@ -182,12 +201,14 @@ export function loadConfig(root, { formatVersion = FORMAT_VERSION, migrations = 
   const pmkit = readYaml(pmkitFile, '.pmkit/config.yaml')
   const system = isObject(pmkit) && isObject(pmkit.tracker) ? pmkit.tracker.system : undefined
   if (typeof system !== 'string') {
-    throw new PmkitError('INVALID_INPUT', '.pmkit/config.yaml has no tracker.system', '/pmkit:setup')
+    throw new PmkitError('INVALID_INPUT', '.pmkit/config.yaml has no tracker.system', '/pmkit:setup', { pmkitConfig: { problems: pmkitConfigMessages(pmkit) } })
   }
   const unsupported = unsupportedTracker(system)
   if (unsupported) throw new PmkitError('NOT_SUPPORTED', unsupported.message, unsupported.nextStep)
-  if (pmkit.tracker.path !== undefined && pmkit.tracker.path !== null && typeof pmkit.tracker.path !== 'string') {
-    throw new PmkitError('INVALID_INPUT', 'tracker.path in .pmkit/config.yaml must be a folder name such as .issues', 'Fix tracker.path in .pmkit/config.yaml')
+  const pmkitProblems = pmkitConfigMessages(pmkit)
+  const badPath = pmkit.tracker.path !== undefined && pmkit.tracker.path !== null && typeof pmkit.tracker.path !== 'string'
+  if (!TRACKERS.includes(system) || badPath) {
+    throw new PmkitError('INVALID_INPUT', `.pmkit/config.yaml is not valid: ${pmkitProblems.join('; ')}`, 'pmkit validate', { pmkitConfig: { problems: pmkitProblems } })
   }
   const trackerPath = pmkit.tracker.path ?? '.issues'
   const issuesDir = join(root, trackerPath)
@@ -208,14 +229,14 @@ export function loadConfig(root, { formatVersion = FORMAT_VERSION, migrations = 
   // Format 1 is the first format, so no migration leads from a lower number.
   if (version < 1) throw new PmkitError('INVALID_INPUT', `${label}: the tracker format version must be 1 or more, found ${version}`, `Set version in ${label}`)
   const format = { state, version, current: formatVersion }
-  if (!checkFormat) return { pmkit, local: withLocalDefaults(raw), root, issuesDir, format }
+  if (!checkFormat) return { pmkit, local: withLocalDefaults(raw), root, issuesDir, format, pmkitProblems }
   if (state === 'ahead') throw formatError(format)
   if (state === 'behind') {
     const readDir = migratedCopy({ root, trackerPath, from: version, to: formatVersion, migrations })
     const local = withLocalDefaults(readYaml(join(readDir, 'config.yaml'), label))
-    return { pmkit, local, root, issuesDir, readDir, format }
+    return { pmkit, local, root, issuesDir, readDir, format, pmkitProblems }
   }
-  return { pmkit, local: withLocalDefaults(raw), root, issuesDir, format }
+  return { pmkit, local: withLocalDefaults(raw), root, issuesDir, format, pmkitProblems }
 }
 
 export function findRoot(start) {

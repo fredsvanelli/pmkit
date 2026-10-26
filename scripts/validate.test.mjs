@@ -2,7 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { TRACKERS, unsupportedTracker } from './lib/config.mjs'
+import { TRACKERS, pmkitConfigMessages, unsupportedTracker } from './lib/config.mjs'
+import { parseYaml } from './lib/yaml.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { hashTree, makeRepo } from './test-helpers.mjs'
 
@@ -355,4 +356,36 @@ test('every fixture has no .pmkit/config.yaml problem', () => {
     const problems = validateRepo(makeRepo(name)).problems.filter((problem) => problem.path === '.pmkit/config.yaml')
     assert.deepEqual(problems, [], name)
   }
+})
+
+const TRACKER_MSG = 'tracker.system must be one of local, linear, jira, github, gitlab, azure-devops'
+
+test('a bad git_host still checks the whole tracker', () => {
+  const root = makeRepo('team')
+  editPmkit(root, 'system: none', 'system: gitlab')
+  const result = validateRepo(root)
+  assert.ok(result.problems.some((p) => p.path === '.pmkit/config.yaml' && p.code === 'config' && p.message === 'git_host.system must be github or none'))
+  assert.ok(result.checked.issues > 0)
+})
+
+test('trello with tracker.path .pmkit is listed once', () => {
+  const root = makeRepo('basic')
+  editPmkit(root, 'system: local', 'system: trello')
+  editPmkit(root, 'path: .issues', 'path: .pmkit')
+  assert.deepEqual(messages(validateRepo(root)), [TRACKER_MSG])
+})
+
+test('no tracker.system with tracker.path .pmkit is listed once', () => {
+  const root = makeRepo('basic')
+  editPmkit(root, 'tracker:\n  system: local\n  path: .issues\n', 'tracker:\n  path: .pmkit\n')
+  assert.deepEqual(messages(validateRepo(root)), [TRACKER_MSG])
+})
+
+test('validate and loadConfig share one rule list', () => {
+  const root = makeRepo('basic')
+  editPmkit(root, 'system: local', 'system: linear')
+  breakPmkit(root)
+  const listed = validateRepo(root).problems.filter((p) => p.path === '.pmkit/config.yaml').map((p) => p.message)
+  assert.deepEqual(listed, pmkitConfigMessages(parseYaml(fs.readFileSync(pmkitFile(root), 'utf8'))))
+  assert.equal(listed.at(-1), unsupportedTracker('linear').problem)
 })

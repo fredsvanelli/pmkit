@@ -91,7 +91,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `reindex` | rebuilds the query index in `.issues/.cache/` from the issue files; changes only files git ignores |
 | `validate` | checks every file and reference; problems are output, not errors |
 
-The `issues branch` and `pr` commands need `git_host.system: github` in `.pmkit/config.yaml` and a logged-in `gh`. Without them they fail with `NOT_SUPPORTED`, `NOT_CONFIGURED` or `AUTH`. Run `node scripts/pmkit.mjs --help` for every flag. A failing command exits with code 2 and, with `--json`, prints one JSON error with a next step. An exception that is not a `PmkitError`, which means a bug in pmkit, has the code `UNEXPECTED` and no next step.
+The `issues branch` and `pr` commands need `git_host.system: github` in `.pmkit/config.yaml` and a logged-in `gh`. With `git_host.system: none` they fail with `NOT_SUPPORTED`, and without `gh` or its login they fail with `NOT_CONFIGURED` or `AUTH`. A missing or invalid `git_host` makes `.pmkit/config.yaml` invalid. Then `issues branch`, `pr open`, `pr ready` and `pr sync` refuse with `INVALID_INPUT`, as every write does, and `pr status` prints a warning and fails with `NOT_SUPPORTED`. Run `node scripts/pmkit.mjs --help` for every flag. A failing command exits with code 2 and, with `--json`, prints one JSON error with a next step. An exception that is not a `PmkitError`, which means a bug in pmkit, has the code `UNEXPECTED` and no next step.
 
 Comments and time logs append an event to the issue's `events.jsonl` but leave `issue.md` alone, so they do not change the issue's `updated` timestamp.
 
