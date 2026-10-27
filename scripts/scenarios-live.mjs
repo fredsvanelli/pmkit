@@ -2,11 +2,11 @@
 // of its fixture, and the suite checks what the agent did. It costs money, so it never runs by default and
 // `npm test` does not load it (the name does not end in .test.mjs).
 //
-//   PMKIT_LIVE=1 node --test scripts/scenarios-live.mjs        every scenario: 29 runs, up to $1 each
+//   PMKIT_LIVE=1 node --test scripts/scenarios-live.mjs        every scenario: 32 runs, up to $1 each
 //   PMKIT_LIVE=1 node scripts/scenarios-live.mjs issues-move   only the named modules (node --test drops extra args)
 //
 // Each test is skipped unless PMKIT_LIVE is 1 and `claude` is on PATH. Each run passes --max-budget-usd 1, which
-// the docs say can overshoot, so a full run can cost more than $29.
+// the docs say can overshoot, so a full run can cost more than $32.
 //
 // Per scenario entry the suite prepares the copy as scripts/scenarios.test.mjs does (prepareCopy), logs every
 // Bash and AskUserQuestion call through a PreToolUse hook, sends `prompt`, then each of `answers` as a new user
@@ -33,7 +33,7 @@
 //   stop is an answer turn with no key. Every answer counts as a stop, including the answer to a choice of
 //   input (setup's prefix, a status name), so a write after such an answer counts as confirmed.
 // - Rule 8 per call: only the tree hash at each stop.
-// - The part of each expect after its first `saved` read (LIVE_EXPECT_STOPS lists 15 of 29 entries).
+// - The part of each expect after its first `saved` read (LIVE_EXPECT_STOPS lists 18 of 32 entries).
 //
 // Spike findings (claude 2.1.310, 2026-10-26, /pmkit:issues:move ISS-2X6D done on the team fixture, 2 runs):
 // - The plugin command runs under -p despite `disable-model-invocation: true`. The agent read conventions.md,
@@ -88,6 +88,8 @@ const LIVE_EXPECT_STOPS = {
   'cycle-close': 'the sync preview and issue lists, and the split estimates and retro text, which the agent chooses',
   'cycle-plan': 'the velocity and the scope the agent picks for the sprint',
   help: 'the capability manifest, the only thing a read-only help checks',
+  'issues-dependencies.0': 'the dependency map of the scripted run, whose critical path the agent derives',
+  'issues-dependencies.1': 'the dependency map of the scripted run, whose basis the agent derives',
   'issues-find': 'the two result lists, the only thing a read-only find checks',
   'issues-mine': 'the sync, list and PR status results the agent shows',
   'issues-pause': 'the PR preview and view results',
@@ -97,6 +99,7 @@ const LIVE_EXPECT_STOPS = {
   'setup.0': 'the init preview, validate and discover results',
   'setup.1': 'the init preview and validate results',
   'spec-import': 'every check: they find the new epic and issues through the IDs the scripted run saved',
+  'team-risk-radar': 'the risks of the scripted run, which the agent ranks and words itself',
   'team-standup': 'the sync, list, events and PR status results the standup shows',
   upgrade: 'the changelog sections and the migration plan',
 }
