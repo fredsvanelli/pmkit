@@ -77,8 +77,8 @@ Today is the date of the CLI clock (`PMKIT_NOW` in tests), in UTC. N is `default
 Each stalled issue carries a reason:
 
 - `idle`: the rule above.
-- `pr_merged`: the issue is `in_review` and its branch's PR is merged. Listed whatever its idle days, with the next step `pmkit pr sync`.
-- `pr_closed`: the issue is `in_review` and its branch's PR is closed without a merge. Listed whatever its idle days.
+- `pr_merged`: the issue is `in_review` and its branch's PR is merged. The CLI looks for a merged PR only when the issue has been idle for more than N business days with no open PR, so a merged PR on a recently active issue is not listed. The next step is `pmkit pr sync`.
+- `pr_closed`: the issue is `in_review` and its branch's PR is closed without a merge. Found the same way as `pr_merged`.
 
 Without a git host, only `idle` applies, and last activity is the event log alone. The report says the issues are stalled by tracker activity only (criterion 2).
 
@@ -204,7 +204,7 @@ Issues and epics carry `status.category`, so no function needs `categoryOf`. The
 
 ### Tests
 
-- `scripts/risks.test.mjs`: each pure function. The idle boundary (3 days not stalled, 4 stalled, across a weekend). A missing blocker counts as open. A backlog blocked issue in the active sprint is listed, one outside it is not. `pr_merged` and `pr_closed` list whatever the idle days. PR activity clears an idle issue. Epic `late`, `at_risk`, `off_track`, `no_recent_update`, a new epic within W days, a done epic left out. Failing conclusions and states.
+- `scripts/risks.test.mjs`: each pure function. The idle boundary (3 days not stalled, 4 stalled, across a weekend). A missing blocker counts as open. A backlog blocked issue in the active sprint is listed, one outside it is not. `stalledIssues` lists `pr_merged` and `pr_closed` for any issue whose closed PR it is given; `needsPrLookup` picks only idle issues. PR activity clears an idle issue. Epic `late`, `at_risk`, `off_track`, `no_recent_update`, a new epic within W days, a done epic left out. Failing conclusions and states.
 - `scripts/github-host.test.mjs`: `listPullRequests` and `listRuns` with the fake `exec`, the `refArg` check, `AUTH` and a missing `gh`.
 - `scripts/cli-risks.test.mjs`, beside `cli-pr.test.mjs` and with its fake `gh` setup: `risks` with `git_host.system: none`, with a fake `gh` that returns PRs and runs, with `AUTH`, and with an `UPSTREAM` error on `run list` only. Each case checks the JSON shape and the stderr warning.
 - Writes nothing (criterion 3): a CLI test copies a fixture, runs `risks --json` with the fake `gh`, and compares `readTree` of the copy before and after, ignoring `.issues/.cache/`, which git ignores and the query index rewrites on any read. It also checks that the `gh` call log holds only `pr list`, `run list` and `pr view` calls. To show the comparison can fail, the same test then runs one write and asserts the trees differ.
