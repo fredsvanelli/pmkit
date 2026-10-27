@@ -5,7 +5,7 @@ A plugin that gives development agents one set of commands for project work (iss
 ## Language
 
 **Tracker**:
-The system that holds a team's issues, sprints and epics. In the MVP it is the Local tracker. Linear, Jira, GitHub Issues, GitLab and Azure DevOps come later. The `tracker.system` key in `.pmkit/config.yaml` names it.
+The system that holds a team's issues, sprints and epics. In the MVP it is the Local tracker. Linear, Jira, GitHub Issues, GitLab and Azure DevOps come later. The `tracker.system` key in `.pmkit/config.yaml` names it, and `tracker.scope` names the workspace, team or project of a hosted tracker.
 _Avoid_: backend, board, project management tool
 
 **Git host**:
@@ -13,7 +13,7 @@ The service that hosts the repository and its pull requests. It is separate from
 _Avoid_: forge, remote, provider
 
 **Adapter**:
-The code that implements the contract for one tracker or one git host and translates between that system and the common model. Only adapters know a specific system. The Local tracker adapter lives in `scripts/lib/local/`.
+The code that implements the contract for one tracker or one git host and translates between that system and the common model. Only adapters know a specific system. The Local tracker adapter lives in `scripts/lib/local/`. The CLI picks the tracker adapter by `tracker.system` from the registry in `scripts/lib/adapters.mjs`, and commands reach it only through the contract operations.
 _Avoid_: driver, connector, integration
 
 **Issue**:

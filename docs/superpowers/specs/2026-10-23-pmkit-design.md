@@ -91,7 +91,7 @@ The operations the MVP needs, grouped by family. Every write takes an `actor` (a
 | Relations | `link(from, to, kind, actor)`, `unlink(from, to, kind, actor)` with kind `blocks`, `related` or `duplicate`; `setParent(id, parent, actor)` |
 | History and comments | `getHistory(id, { since })`, `listComments(id)`, `comment(id, body, actor)` |
 | Cycles | `listCycles({ state })`, `currentCycle()`, `cycleIssues(id)`, `openCycle(input, actor)`, `closeCycle(id, actor)`, `moveToCycle(ids, sprint, actor)` |
-| Deliverables | `listDeliverables()`, `getDeliverable(id)`, `deliverableProgress(id)`, `createDeliverable(input, actor)`, `publishStatusUpdate(update, actor)` |
+| Deliverables | `listDeliverables()`, `getDeliverable(id)`, `deliverableProgress(id)`, `createDeliverable(input, actor)`, `publishStatusUpdate(update, actor)`, `listStatusUpdates(epic)` |
 | Milestones | `listMilestones()`, `getMilestone(id)`, `createMilestone(input, actor)` |
 | Releases | `listReleases({ state })`, `getRelease(id)`, `releaseIssues(id, { archived })`, `createRelease(input, actor)`, `markReleased(id, actor, { tag })` |
 | Capacity | `getCapacity(sprint)`, `setCapacity(sprint, capacity, actor)` |
@@ -118,6 +118,7 @@ version: 1
 tracker:
   system: local                  # local | linear | jira | github | gitlab | azure-devops
   path: .issues                  # local only
+  scope:                         # hosted trackers only, such as workspace: acme, team: ENG
 git_host:
   system: github                 # github | none in the MVP
   repo: fredsvanelli/my-app      # inferred from the git remote by setup
@@ -125,9 +126,10 @@ git_host:
 write_policy:
   confirm: single_writes         # all_writes | single_writes | none
   preview: [bulk, delete, publish_update, move_scope]
+mappings:                        # hosted trackers only: status and field names of the tracker
 ```
 
-Hosted trackers add `tracker.scope` and a `mappings` map in later phases. The MVP loader rejects a known `tracker.system` other than `local` with `NOT_SUPPORTED`, and an unknown one with `INVALID_INPUT`. With any other problem in the file, reads go on with a warning and writes refuse.
+Hosted trackers add `tracker.scope` and a `mappings` map. The loader rejects a known `tracker.system` that has no adapter with `NOT_SUPPORTED`, and an unknown one with `INVALID_INPUT`. With any other problem in the file, reads go on with a warning and writes refuse.
 
 ### `.issues/config.yaml`
 
