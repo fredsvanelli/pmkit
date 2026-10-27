@@ -1,6 +1,6 @@
 # PMK-23 design: the release-notes command
 
-Issue PMK-23, epic EPC-3 (Phase 2 commands), milestone `phase-2-commands`. Status: draft. Three questions wait for the user under "Open questions". Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
+Issue PMK-23, epic EPC-3 (Phase 2 commands), milestone `phase-2-commands`. Status: approved. The user answered the three questions, recorded under "Decisions on open questions". Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
@@ -70,7 +70,7 @@ With no selector, the CLI tries in order and stops at the first that applies:
 2. **Sprint.** The `cycles` capability is native and the tracker has a closed sprint. The CLI takes the one with the latest `end`.
 3. **Period.** The last `defaults.status_update_window_days` days (14 when the key is missing), ending today.
 
-With a selector, the CLI uses that basis and skips the search. An unknown release or sprint is `NOT_FOUND`, with the next step `pmkit release list` or `pmkit cycle list`. `--release` accepts a planned release. The result is then marked as a draft (see "Open questions", question 2). `--sprint` accepts a sprint in any state. An open sprint is a draft too.
+With a selector, the CLI uses that basis and skips the search. An unknown release or sprint is `NOT_FOUND`, with the next step `pmkit release list` or `pmkit cycle list`. `--release` accepts a planned release. The result is then marked as a draft (see "Decisions on open questions", question 2). `--sprint` accepts a sprint in any state. An open sprint is a draft too.
 
 The result says why the basis is not a release, in `reason`:
 
@@ -94,7 +94,7 @@ All three bases keep archived issues, because an old release or sprint is the us
 
 For the sprint and period bases each issue carries `doneAt`, the time of its last move into done. For the release basis it is `null`, because membership, not time, defines the release.
 
-The module drops canceled issues and counts them in `excluded.canceled`. It counts the issues of the release or sprint that are neither done nor canceled in `excluded.open`, so the command can say "3 issues of this release are not done and are left out".
+The module drops canceled issues and counts them in `excluded.canceled`. It drops done issues of type `chore` and counts them in `excluded.chore`. `counts.done` counts the issues listed in `groups`. It counts the issues of the release or sprint that are neither done nor canceled in `excluded.open`, so the command can say "3 issues of this release are not done and are left out".
 
 ### Grouping
 
@@ -114,7 +114,7 @@ JSON:
   source: { id, name, tag?, released?, target?, start?, end?, state } | null,
   period: { since, until, defaulted } | null,
   groups: [{ type, issues: [...] }],
-  counts: { done, excluded: { open, canceled } },
+  counts: { done, excluded: { open, canceled, chore } },
   skipped: [{ basis, reason }],
   problems: []
 }
@@ -136,8 +136,8 @@ Steps:
 
 1. Run `release-notes --json` with the selector. Every later step reads this result.
 2. Lead with one line that names the basis, in words. When `reason` is not `requested` or `latest`, or `skipped` is not empty, say which step was skipped and why, in the same line or the next, as the second acceptance criterion asks. When `draft` is true, say the release is not released yet or the sprint is open.
-3. Write the notes from `groups`. Each type becomes a heading in plain words (`feature` as "New", `bug` as "Fixed", `task` and untyped as "Improved"). **(builder's call)** `chore` follows question 1. One bullet per issue, rewritten for a user of the product from the title and description: say what the user can now do or no longer suffers, not how it was built. Keep it to one sentence. Do not add a claim the issue does not state. Merge two bullets only when their issues say the same thing, and keep every ID in the table of step 4.
-4. Show a table of the included issues in creation order with the five standard columns from the conventions, so each bullet traces to its issue. Write every ID in full. Whether IDs also appear in the saved document is question 3.
+3. Write the notes from `groups`. Each type becomes a heading in plain words (`feature` as "New", `bug` as "Fixed", `task` and untyped as "Improved"). `chore` issues are left out (question 1) and counted in one line, such as "4 internal changes not listed", read from `counts.excluded.chore`. One bullet per issue, rewritten for a user of the product from the title and description: say what the user can now do or no longer suffers, not how it was built. Keep it to one sentence. Do not add a claim the issue does not state. Merge two bullets only when their issues say the same thing, and keep every ID in the table of step 4.
+4. Show a table of the included issues in creation order with the five standard columns from the conventions, so each bullet traces to its issue. Write every ID in full. The saved document holds the IDs in a final "Included issues" list (question 3), and no bullet carries an ID.
 5. Say how many issues the notes leave out, from `counts.excluded`, when either count is above zero. For the release basis, offer `/pmkit:issues:find` or `release issues <id>` to look at them.
 6. Offer to save the notes. When `capabilities --json` reports `documents` absent, skip this step and offer the text to copy. Otherwise write the notes to a temporary file outside `.issues/` and run `docs create release-notes/<name>.md --body-file <file> --dry-run --json`. `<name>` is the release ID, the sprint ID, or `<since>_<until>`. Show the document and ask once with `AskUserQuestion`, whatever `write_policy.confirm` says, because the document is for readers outside the team. When the user declines, save nothing. After approval, run the same command without `--dry-run`.
 7. Remove the temporary file.
@@ -169,7 +169,7 @@ On a tracker without `releases`, the command still works through `reason: releas
 
 | Criterion | Tests |
 |---|---|
-| 1. Groups completed issues by release, sprint or period | A pure module test file, `scripts/release-notes.test.mjs`: the release basis with a done, an open and a canceled issue, with the counts in `excluded`; the sprint basis; the period basis with a done-then-reopened issue; group order by `types`; an untyped group last; creation order inside a group; archived done issues kept on all three bases. A CLI test for each selector and for two selectors at once (`INVALID_INPUT`). Scenario entry 1: `/pmkit:report:release-notes <release>` on a fixture with a released release, one read step, and an `expect` on the groups. |
+| 1. Groups completed issues by release, sprint or period | A pure module test file, `scripts/release-notes.test.mjs`: the release basis with a done, an open and a canceled issue, with the counts in `excluded`; the sprint basis; the period basis with a done-then-reopened issue; group order by `types`; an untyped group last; creation order inside a group; archived done issues kept on all three bases; a done `chore` issue left out and counted in `excluded.chore`. A CLI test for each selector and for two selectors at once (`INVALID_INPUT`). Scenario entry 1: `/pmkit:report:release-notes <release>` on a fixture with a released release, one read step, and an `expect` on the groups. |
 | 2. Falls back and says so | Unit tests for every `reason`: no released release, `releases` absent, no closed sprint, default window. CLI text test that the second line names the skipped step. Scenario entry 2: the `no-sprints` fixture has no releases and no closed sprint, so the notes use a period and the snapshot says "default window". |
 | 3. Optionally saves after confirmation | Scenario entry 1 continues to a `docs create ... --dry-run`, a confirm at the step 6 point, then the real write. Scenario entry 3 declines and checks that `docs/` has no new file. A test for `CONFLICT` on an existing path. |
 | Contract change | Tracker and contract-suite tests: `releaseIssues(id, { archived: true })` returns an archived issue that the default call leaves out, and `release issues --archived` prints it. |
@@ -199,13 +199,13 @@ Goldens: `goldens.test.mjs` requires a case for every command, so the builder ad
 - A tracker with thousands of done issues in a period makes the period read slow. The Local tracker reads the event log and the query index. A hosted adapter can use its own date filter behind the same operation.
 - `--archived` on `release issues` adds a flag to a command PMK-22 already shipped. A teammate on the older plugin never passes it, so nothing breaks.
 
-## Open questions
+## Decisions on open questions
 
-These are the choices that change what the notes contain. Each has a recommendation and the design above applies it until the user answers.
+The user accepted every recommendation.
 
-1. **What happens to `chore` issues?** Options: (a) leave them out and count them in one line, "4 internal changes not listed"; (b) list them under an "Internal" heading; (c) treat every type alike. Recommendation: (a). Chores rarely change what a user sees, and the count keeps the omission visible.
-2. **Can notes cover a release that is not released yet?** Options: (a) yes with `--release <id>`, marked as a draft, never the default; (b) no, released releases only; (c) yes and also as the default when no release is released. Recommendation: (a). A PM drafts notes before the date, and the draft mark stops a half-done list from passing as final.
-3. **Do the issue IDs appear in the saved document?** Options: (a) in the document, after each bullet; (b) only in the chat view; (c) in a final "Included issues" list. Recommendation: (c). The bullets stay clean for customers, and a reader inside the team can still trace each one.
+1. **What happens to `chore` issues?** Chosen (a): leave them out and count them in one line, "4 internal changes not listed". Chores rarely change what a user sees, and the count keeps the omission visible. The `chore` type is matched by name. A tracker without that type has `excluded.chore` at 0.
+2. **Can notes cover a release that is not released yet?** Chosen (a): yes with `--release <id>`, marked as a draft, never the default. A PM drafts notes before the date, and the draft mark stops a half-done list from passing as final.
+3. **Do the issue IDs appear in the saved document?** Chosen (c): in a final "Included issues" list. The bullets stay clean for customers, and a reader inside the team can still trace each one.
 
 ## Left to the builder
 
