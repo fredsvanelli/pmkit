@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { FILTER_KEYS, checkFilter, runQuery } from './lib/local/query.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { makeRepo, fixedNow, scriptedRandom } from './test-helpers.mjs'
 
@@ -188,4 +189,19 @@ test('a filter value outside the allowed ones is INVALID_INPUT naming them; an u
   assert.throws(() => tracker.searchIssues({ sprint: '2026-10-13' }), naming(/2026-10-13.*current, none/))
   assert.throws(() => tracker.searchIssues({ sort: 'size' }), naming(/priority, updated, created, due/))
   assert.deepEqual(ids({ labels: ['no-such-label'] }), [])
+})
+
+test('the release filter is a string that matches issue.release exactly and skips archived issues', () => {
+  assert.ok(FILTER_KEYS.includes('release'))
+  assert.throws(() => checkFilter({ release: 1 }), (error) => error.code === 'INVALID_INPUT' && error.message === 'release must be a string')
+  const status = { name: 'todo', category: 'todo' }
+  const all = [
+    { id: 'ISS-A', release: '1.2.0', status, labels: [], created: '2026-10-01T00:00:00Z' },
+    { id: 'ISS-B', release: '1.3.0', status, labels: [], created: '2026-10-02T00:00:00Z' },
+    { id: 'ISS-C', status, labels: [], created: '2026-10-03T00:00:00Z' },
+    { id: 'ISS-D', release: '1.2.0', archived: true, status, labels: [], created: '2026-10-04T00:00:00Z' },
+  ]
+  const run = (filter) => runQuery(all, filter, { priorities: [] }).map((issue) => issue.id)
+  assert.deepEqual(run({ release: '1.2.0' }), ['ISS-A'])
+  assert.deepEqual(run({ release: '1.2.0', archived: true }), ['ISS-A', 'ISS-D'])
 })

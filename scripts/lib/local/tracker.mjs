@@ -1012,6 +1012,24 @@ export function createLocalTracker(root, {
     return { before: null, after }
   }
 
+  const releaseIssues = (id) => searchIssues({ release: getRelease(id).id }).issues
+
+  /** Marks a release released now. `tag` replaces the stored tag. `unfinished` lists the members that are not done or canceled. */
+  function markReleased(id, actor, { tag, dryRun = false } = {}) {
+    requireWriter(actor)
+    const before = getRelease(id)
+    if (before.released) throw new PmkitError('CONFLICT', `release ${before.id} was released at ${before.released}`, `pmkit release get ${before.id}`)
+    if (!blank(tag) && !validTag(tag)) throw invalid(`tag "${tag}" is not a valid git tag name`, 'Use a tag like v1.2.0')
+    // An issue that does not parse may belong to the release, so it is reported rather than left out silently.
+    const { issues, problems } = search({ release: before.id }, { save: !dryRun })
+    const { id: _id, state: _state, released: _previous, tag: storedTag, ...rest } = before
+    const next = { ...rest, ...(blank(tag) ? (storedTag === undefined ? {} : { tag: storedTag }) : { tag }), released: stamp() }
+    const content = serializeRelease(next)
+    const after = readBack('release file', () => parseRelease(content, before.id))
+    if (!dryRun) writeFile(path.join(releasesDir, `${before.id}.md`), content)
+    return { before, after, unfinished: issues.filter((issue) => !TERMINAL.includes(issue.status.category)), problems }
+  }
+
   /**
    * Milestone names that issues or epics use and that have no file, with how many of each use them. Archived issues count, as they do in `validate`.
    * `except` is an id about to be filed. Not a contract operation; the CLI warns with it.
@@ -1039,7 +1057,7 @@ export function createLocalTracker(root, {
   return {
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     listMilestones, getMilestone, createMilestone, unfiledMilestones,
-    listReleases, getRelease, createRelease,
+    listReleases, getRelease, createRelease, releaseIssues, markReleased,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
     comment, listComments, getHistory, logTime, readDocument, createDocument,
     discover, capabilities, reindex, categoryOf, eventsByIssue, metricEvents, issuesBySprint,

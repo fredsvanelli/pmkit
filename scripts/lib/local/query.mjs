@@ -5,7 +5,7 @@ import { CATEGORIES, compareTimes, isBlocked } from '../model.mjs'
 import { compareIds, normalizeId } from '../ids.mjs'
 
 export const FILTER_KEYS = [
-  'text', 'categories', 'types', 'assignee', 'labels', 'sprint', 'parent', 'blocked',
+  'text', 'categories', 'types', 'assignee', 'labels', 'sprint', 'release', 'parent', 'blocked',
   'updatedBefore', 'updatedAfter', 'archived', 'sort', 'limit',
 ]
 export const SORTS = ['priority', 'updated', 'created', 'due']
@@ -22,7 +22,7 @@ export function checkFilter(filter, { types = [], members = [], sprintExists = (
   for (const key of Object.keys(filter)) {
     if (!FILTER_KEYS.includes(key)) throw invalid(`unknown filter "${key}"`)
   }
-  for (const key of ['text', 'assignee', 'parent', 'updatedBefore', 'updatedAfter']) {
+  for (const key of ['text', 'assignee', 'release', 'parent', 'updatedBefore', 'updatedAfter']) {
     if (filter[key] !== undefined && typeof filter[key] !== 'string') throw invalid(`${key} must be a string`)
   }
   for (const key of ['categories', 'types', 'labels']) {
@@ -86,6 +86,7 @@ export function runQuery(all, filter, { priorities }) {
     if (filter.assignee !== undefined && (filter.assignee === 'none' ? issue.assignee !== undefined : issue.assignee !== filter.assignee)) return false
     if (filter.labels && !filter.labels.every((label) => issue.labels.includes(label))) return false
     if (filter.sprint !== undefined && (filter.sprint === 'none' ? issue.sprint !== undefined : issue.sprint !== filter.sprint)) return false
+    if (filter.release !== undefined && issue.release !== filter.release) return false
     if (parent !== undefined && issue.parent !== parent) return false
     if (filter.blocked !== undefined && isBlocked(issue, byId) !== filter.blocked) return false
     if (filter.updatedBefore !== undefined && !((issue.updated ?? '') < filter.updatedBefore)) return false

@@ -316,6 +316,24 @@ export function runTrackerContract({ name, setup }) {
       assert.deepEqual(await tracker.listReleases(), [])
     })
 
+    it('lists the issues of a release and marks it released', async ({ tracker, actor }) => {
+      await tracker.createRelease({ id: 'contract-2.0' }, actor)
+      const first = (await tracker.createIssue({ title: 'In release one' }, actor)).after
+      const second = (await tracker.createIssue({ title: 'In release two' }, actor)).after
+      await tracker.updateIssue(first.id, { release: 'contract-2.0' }, actor)
+      await tracker.updateIssue(second.id, { release: 'contract-2.0' }, actor)
+      await tracker.moveToCategory(first.id, 'done', actor)
+      const members = (await tracker.releaseIssues('contract-2.0')).map((issue) => issue.id).sort()
+      assert.deepEqual(members, [first.id, second.id].sort())
+      const dry = await tracker.markReleased('contract-2.0', actor, { dryRun: true })
+      assert.equal(dry.after.state, 'released')
+      assert.equal((await tracker.getRelease('contract-2.0')).state, 'planned')
+      const marked = await tracker.markReleased('contract-2.0', actor)
+      assert.equal(marked.after.state, 'released')
+      assert.deepEqual(marked.unfinished.map((issue) => issue.id), [second.id])
+      await rejects(() => tracker.releaseIssues('no-such-release'), 'NOT_FOUND')
+    })
+
     it('logs time on an issue and shows it in the history and the metric events', async ({ tracker, actor }) => {
       const { id } = (await tracker.createIssue({ title: 'Timed' }, actor)).after
       await tracker.logTime(id, 45, actor)

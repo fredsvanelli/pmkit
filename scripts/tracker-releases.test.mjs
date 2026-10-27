@@ -162,3 +162,80 @@ test('issueRecord shows release on the line after milestone', () => {
   const { after } = tracker.createIssue({ title: 'T', milestone: 'v2', release: '1.2.0' }, 'fred')
   assert.match(issueRecord(after), /^milestone: v2\nrelease: 1\.2\.0$/m)
 })
+
+// A release with a hand-added key and a description, two members in todo and done, and an unrelated issue.
+function released() {
+  const env = setup()
+  const { tracker, write } = env
+  write('1.2.0.md', '---\nname: Webhooks\ntag: v1.2.0\ntarget: 2026-11-30\nowner: ana\n---\n\nWebhook retries.\n')
+  const open = tracker.createIssue({ title: 'Open', release: '1.2.0' }, 'fred').after
+  const done = tracker.createIssue({ title: 'Done', release: '1.2.0' }, 'fred').after
+  tracker.moveToCategory(done.id, 'done', 'fred')
+  const outside = tracker.createIssue({ title: 'Outside' }, 'fred').after
+  return { ...env, open, done, outside }
+}
+
+test('releaseIssues returns the members in creation order, without archived ones or sub-issues with no release', () => {
+  const { tracker, open, done, outside } = released()
+  const sub = tracker.createIssue({ title: 'Sub', parent: open.id }, 'fred').after
+  const archived = tracker.createIssue({ title: 'Archived', release: '1.2.0' }, 'fred').after
+  tracker.archive(archived.id, 'fred')
+  const ids = tracker.releaseIssues('1.2.0').map((issue) => issue.id)
+  assert.deepEqual(ids, [open.id, done.id])
+  assert.ok(!ids.includes(sub.id) && !ids.includes(outside.id))
+  assert.deepEqual(tracker.releaseIssues('1.2.0')[0].children, [sub.id])
+  assert.throws(() => tracker.releaseIssues('nope'), code('NOT_FOUND', /^release nope does not exist$/))
+})
+
+test('markReleased stamps the release, keeps the file and lists the unfinished members', () => {
+  const { tracker, releasesDir, open } = released()
+  const { before, after, unfinished, problems } = tracker.markReleased('1.2.0', 'fred')
+  assert.equal(before.state, 'planned')
+  assert.equal(after.released, '2026-10-23T12:00:00Z')
+  assert.equal(after.state, 'released')
+  assert.deepEqual(unfinished.map((issue) => issue.id), [open.id])
+  assert.deepEqual(problems, [])
+  const text = fs.readFileSync(path.join(releasesDir, '1.2.0.md'), 'utf8')
+  assert.equal(text, '---\nname: Webhooks\ntag: v1.2.0\ntarget: 2026-11-30\nreleased: 2026-10-23T12:00:00Z\nowner: ana\n---\n\nWebhook retries.\n')
+  assert.deepEqual(tracker.getRelease('1.2.0'), after)
+})
+
+test('markReleased with a tag replaces the stored tag, and a bad tag writes nothing', () => {
+  const { tracker, root } = released()
+  const hash = hashTree(root)
+  assert.throws(() => tracker.markReleased('1.2.0', 'fred', { tag: 'v1..2' }),
+    code('INVALID_INPUT', /^tag "v1\.\.2" is not a valid git tag name$/, 'Use a tag like v1.2.0'))
+  assert.equal(hashTree(root), hash)
+  assert.equal(tracker.markReleased('1.2.0', 'fred', { tag: 'v1.2.1' }).after.tag, 'v1.2.1')
+})
+
+test('a second markReleased is a CONFLICT', () => {
+  const { tracker } = released()
+  tracker.markReleased('1.2.0', 'fred')
+  assert.throws(() => tracker.markReleased('1.2.0', 'fred'),
+    code('CONFLICT', /^release 1\.2\.0 was released at 2026-10-23T12:00:00Z$/, 'pmkit release get 1.2.0'))
+})
+
+test('markReleased dry run returns the same result and writes nothing', () => {
+  const { tracker, root, open } = released()
+  const hash = hashTree(root)
+  const { after, unfinished } = tracker.markReleased('1.2.0', 'fred', { dryRun: true })
+  assert.equal(after.state, 'released')
+  assert.deepEqual(unfinished.map((issue) => issue.id), [open.id])
+  assert.equal(hashTree(root), hash)
+  assert.equal(tracker.getRelease('1.2.0').state, 'planned')
+})
+
+test('markReleased reports an issue file with conflict markers as one problem', () => {
+  const { tracker, root, open } = released()
+  const { file } = issuePaths(path.join(root, '.issues'), open.id)
+  fs.writeFileSync(file, '---\n<<<<<<< HEAD\nid: x\n=======\nid: y\n>>>>>>> o\n---\n')
+  const { problems } = tracker.markReleased('1.2.0', 'fred')
+  assert.equal(problems.length, 1)
+  assert.equal(problems[0].code, 'CONFLICT')
+})
+
+test('markReleased checks the actor first', () => {
+  const { tracker } = released()
+  assert.throws(() => tracker.markReleased('nope', 'nobody'), code('INVALID_INPUT', /actor "nobody"/))
+})
