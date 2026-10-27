@@ -2,13 +2,15 @@
 id: PMK-32
 title: Add the user store for caches and personal defaults
 type: feature
-status: backlog
+status: in_progress
 priority: medium
 estimate: 3
+assignee: fred
 parent: EPC-5
 milestone: linear
+branch: pmk-32-add-the-user-store-for-caches-and
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-25T19:13:20Z
+updated: 2026-10-27T22:51:07Z
 ---
 
 ## Description
