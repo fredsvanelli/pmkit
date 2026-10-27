@@ -44,7 +44,10 @@ exit 0
           "parent": "EPC-1",
           "archived": false,
           "doneAt": "2026-10-09T17:00:00Z",
-          "release": null
+          "release": null,
+          "status": "done",
+          "assignee": "ana",
+          "estimate": 5
         }
       ]
     },
@@ -62,7 +65,10 @@ exit 0
           "parent": null,
           "archived": false,
           "doneAt": "2026-10-10T16:00:00Z",
-          "release": null
+          "release": null,
+          "status": "done",
+          "assignee": "fred",
+          "estimate": 3
         }
       ]
     }

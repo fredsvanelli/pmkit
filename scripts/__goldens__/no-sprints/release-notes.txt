@@ -40,7 +40,10 @@ exit 0
           "parent": "EPC-4H7V",
           "archived": false,
           "doneAt": "2026-10-16T15:00:00Z",
-          "release": "1.0.0"
+          "release": "1.0.0",
+          "status": "done",
+          "assignee": "fred",
+          "estimate": 8
         }
       ]
     }
@@ -114,7 +117,10 @@ exit 0
           "parent": "EPC-4H7V",
           "archived": false,
           "doneAt": null,
-          "release": "1.0.0"
+          "release": "1.0.0",
+          "status": "done",
+          "assignee": "fred",
+          "estimate": 8
         }
       ]
     }
