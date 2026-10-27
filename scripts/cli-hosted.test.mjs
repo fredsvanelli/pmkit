@@ -4,9 +4,10 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { run } from './pmkit.mjs'
+import { COMMANDS, run } from './pmkit.mjs'
 import { PmkitError } from './lib/errors.mjs'
-import { childEnv } from './golden-helpers.mjs'
+import { CASES, FIXTURES, INPUTS, takesDryRun } from './golden-cases.mjs'
+import { childEnv, expandCase, makeNormalizer } from './golden-helpers.mjs'
 import { mirrorLinear, useLinear, withLinear } from './fake-hosted.mjs'
 import { hashTree, makeRepo } from './test-helpers.mjs'
 
@@ -117,3 +118,40 @@ test('risks lists an epic whose updates reject, as it does for a throw', async (
   assert.equal(result.code, 0, result.stdout + result.stderr)
   assert.ok(JSON.parse(result.stdout).problems.some((problem) => JSON.stringify(problem) === JSON.stringify({ id: 'EPC-2M9D', code: 'UPSTREAM', message: 'updates failed' })), result.stdout)
 })
+
+// The mirror runs every golden case twice: on a plain copy with the product registry, and on a copy whose
+// .pmkit/config.yaml says linear, over a tracker whose operations all return promises. A missing await, or a call past
+// the contract, makes the two outputs differ.
+const MIRRORED = COMMANDS.filter((command) => !command.local && !command.exempt)
+
+test('every command that is not local or exempt has mirror cases', () => {
+  for (const command of MIRRORED) {
+    assert.ok(CASES[command.name], `${command.name} has a golden case`)
+    assert.ok(Object.values(FIXTURES).every((anchors) => CASES[command.name](anchors).length > 0), `${command.name} has an argument list`)
+  }
+  assert.deepEqual(COMMANDS.filter((command) => command.local).map((command) => command.name), ['render', 'migrate', 'reindex'])
+})
+
+async function runCopy(fixture, argv, { mirror }) {
+  const root = mirror ? mirrorRepo(fixture) : makeRepo(fixture)
+  try {
+    const result = await call(root, argv, mirror ? { adapters: withLinear(mirrorLinear()) } : {})
+    const normalize = makeNormalizer({ root, inputs: INPUTS })
+    return { code: result.code, stdout: normalize(result.stdout), stderr: normalize(result.stderr) }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+}
+
+for (const [fixture, anchors] of Object.entries(FIXTURES)) {
+  test(`mirror: ${fixture}`, async () => {
+    for (const command of MIRRORED) {
+      for (const args of CASES[command.name](anchors).flatMap((list) => expandCase(takesDryRun(command), list))) {
+        const argv = [...command.name.split(' '), ...args]
+        const plain = await runCopy(fixture, argv, { mirror: false })
+        const mirrored = await runCopy(fixture, argv, { mirror: true })
+        assert.deepEqual(mirrored, plain, `${fixture}: ${argv.join(' ')}`)
+      }
+    }
+  })
+}
