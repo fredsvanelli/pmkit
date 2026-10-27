@@ -266,6 +266,23 @@ export function runTrackerContract({ name, setup }) {
       await rejects(() => tracker.getDeliverable('NOPE-999999'), 'NOT_FOUND')
     })
 
+    it('lists the status updates of an epic, newest first', async ({ tracker, actor }) => {
+      const epic = (await tracker.createDeliverable({ title: 'Updates' }, actor)).after
+      assert.deepEqual(await tracker.listStatusUpdates(epic.id), [])
+      await tracker.publishStatusUpdate({ epic: epic.id, health: 'on_track', body: 'first' }, actor)
+      await tracker.publishStatusUpdate({ epic: epic.id, health: 'at_risk', body: 'second' }, actor)
+      const updates = await tracker.listStatusUpdates(epic.id)
+      assert.equal(updates.length, 2)
+      // The suite's clock is fixed, so both updates share one time, and the second comes first.
+      assert.deepEqual(updates.map((update) => update.body), ['second', 'first'])
+      for (const update of updates) {
+        assert.deepEqual(Object.keys(update).sort(), ['at', 'author', 'body', 'epic', 'health'])
+        assert.equal(update.epic, epic.id)
+        assert.equal(update.author, actor)
+      }
+      await rejects(() => tracker.listStatusUpdates('NOPE-999999'), 'NOT_FOUND')
+    })
+
     it('lists no milestones at the start', async ({ tracker }) => {
       assert.deepEqual(await tracker.listMilestones(), [])
     })

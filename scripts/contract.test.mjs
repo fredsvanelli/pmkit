@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import { TRACKER_OPERATIONS, assertTracker } from './lib/contract.mjs'
+import { TRACKER_OPERATIONS, assertTracker, contractView } from './lib/contract.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { runTrackerContract } from './contract-suite.mjs'
 import { makeRepo } from './test-helpers.mjs'
@@ -42,3 +42,35 @@ function setupAsync() {
 runTrackerContract({ name: 'Local tracker contract through promises', setup: setupAsync })
 
 runTrackerContract({ name: 'Local tracker contract without the index', setup: () => setupLocal({ index: false }) })
+
+describe('contractView', () => {
+  test('holds exactly the contract operations and is frozen', () => {
+    const env = setupLocal()
+    try {
+      const view = contractView(env.tracker)
+      assert.deepEqual(Object.keys(view), TRACKER_OPERATIONS)
+      assert.ok(Object.isFrozen(view))
+      for (const name of ['eventsByIssue', 'writtenFiles', 'reindex', 'categoryOf', 'unfiledMilestones']) {
+        assert.equal(view[name], undefined, name)
+      }
+      assert.ok(view.discover().statuses.length > 0)
+    } finally {
+      env.teardown()
+    }
+  })
+
+  test('passes promises through', async () => {
+    const env = setupAsync()
+    try {
+      const pending = contractView(env.tracker).discover()
+      assert.ok(pending instanceof Promise)
+      await pending
+    } finally {
+      env.teardown()
+    }
+  })
+
+  test('refuses a tracker that lacks an operation', () => {
+    assert.throws(() => contractView({ discover() {} }), (error) => error instanceof TypeError && /missing operations/.test(error.message))
+  })
+})
