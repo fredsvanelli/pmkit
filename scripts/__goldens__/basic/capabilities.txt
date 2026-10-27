@@ -14,7 +14,7 @@ native_triage        | native  |
 deliverables         | native  |
 strategic_goals      | absent  | No pmkit command serves strategic_goals in the Local tracker yet
 status_update        | native  |
-releases             | absent  | No pmkit command serves releases in the Local tracker yet
+releases             | native  |
 capacity             | native  |
 native_metrics       | derived | source=events
 saved_views          | absent  | No pmkit command serves saved_views in the Local tracker yet
@@ -83,8 +83,7 @@ exit 0
     },
     {
       "id": "releases",
-      "path": "absent",
-      "enableHint": "No pmkit command serves releases in the Local tracker yet"
+      "path": "native"
     },
     {
       "id": "capacity",

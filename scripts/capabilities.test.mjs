@@ -20,11 +20,11 @@ test('the manifest lists the 20 capabilities in spec order, each with a path', (
   const byPath = (wanted) => manifest.capabilities.filter((entry) => entry.path === wanted).map((entry) => entry.id)
   assert.deepEqual(byPath('native'), [
     'cycles', 'estimation', 'multilevel_hierarchy', 'dependencies', 'native_triage', 'deliverables', 'status_update',
-    'capacity', 'documents', 'time_tracking',
+    'releases', 'capacity', 'documents', 'time_tracking',
   ])
   assert.deepEqual(byPath('derived'), ['native_metrics', 'linked_code'])
   assert.deepEqual(byPath('absent'), [
-    'strategic_goals', 'releases', 'saved_views', 'demand_signals', 'request_queue', 'agent_delegation',
+    'strategic_goals', 'saved_views', 'demand_signals', 'request_queue', 'agent_delegation',
     'security_alerts', 'user_inbox',
   ])
 })
@@ -33,8 +33,9 @@ test('derived capabilities carry their detail and absent ones a hint', () => {
   const byId = Object.fromEntries(tracker().capabilities().capabilities.map((entry) => [entry.id, entry]))
   assert.deepEqual(byId.native_metrics.detail, { source: 'events' })
   assert.deepEqual(byId.linked_code.detail, { source: 'git' })
-  assert.deepEqual(byId.releases, {
-    id: 'releases', path: 'absent', enableHint: 'No pmkit command serves releases in the Local tracker yet',
+  assert.deepEqual(byId.releases, { id: 'releases', path: 'native' })
+  assert.deepEqual(byId.saved_views, {
+    id: 'saved_views', path: 'absent', enableHint: 'No pmkit command serves saved_views in the Local tracker yet',
   })
 })
 
