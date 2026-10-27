@@ -28,7 +28,7 @@ Sources: the Unified model (EM catalog entry `triage`: "Processes untriaged issu
 
 ## Goals
 
-- One command, `/pmkit:backlog:triage` **(builder's call, see question 1)**, that reads the triage queue, proposes one decision per issue and applies the accepted ones.
+- One command, `/pmkit:backlog:triage`, that reads the triage queue, proposes one decision per issue and applies the accepted ones.
 - A decision is one of three kinds.
   - Accept. Set a priority and labels, and move the issue to the backlog.
   - Duplicate. Link it to the issue it repeats and move it to `canceled`.
@@ -67,7 +67,7 @@ None. Every issue in the `triage` category is in scope. An optional `--limit` is
 3. For each issue, run `issues get <id> --comments --json` when the list entry lacks the description, then form a proposal from the title, type, description and comments.
    - Priority. One of the allowed values, with a one-line reason. Leave it empty when the text gives no basis, and say so.
    - Labels. Zero or more values from `discover`. Never a value outside it.
-   - Duplicate. Run `issues list --text "<key words from the title>" --json`, over every category except the issue itself, and judge the matches. Name the likely original and say the match is a guess. When the original is `done` or `canceled`, the proposal is still duplicate, and the table shows the original's status (see question 4).
+   - Duplicate. Run `issues list --text "<key words from the title>" --json`, over every category except the issue itself, and judge the matches. Name the likely original and say the match is a guess. When the original is `done` or `canceled`, the proposal is still duplicate, and the table shows the original's status, as decision 4 says.
    - Decline. Propose it only when the text shows a reason the issue should not be worked, for example it asks for something the project says it will not do. Write the reason in one sentence.
    - Not enough information. When the description cannot support any proposal, propose nothing and leave the issue in triage. Say what is missing.
 4. Show the queue as an issue table (ID, title, status, assignee, estimate) with three extra columns after the five, in this order: proposal (`accept`, `duplicate of <id>`, `decline` or `needs info`), priority and labels. Show the reason for each proposal below the table in one line per issue. Page the table at 10 rows.
@@ -113,37 +113,27 @@ A table of the applied decisions with the full ID, the decision, the new status,
 - The scenario helper compares flag names only, so one test parses `triage.md` and asserts that every `issues move`, `issues link`, `issues update` and `issues comment` call has a `--dry-run` form in step 6 and a write form in step 8, like the existing check for `cycle/close`.
 - `npm test` passes, including `plugin.test.mjs` and `scenarios.test.mjs`.
 
-## Decisions I made
+## Design decisions
 
 - No CLI change. Every call exists, and ADR 0002 keeps judgment in the command.
 - The command lives under `backlog`, not `issues`. The `issues` group holds commands for one issue, and triage works on a queue.
-- An accepted issue moves to `backlog`, not `todo` (see question 2 for the alternative). The backlog is where `cycle:plan` and `backlog:groom` look next.
+- An accepted issue moves to `backlog`, not `todo`, as decision 2 says. The backlog is where `cycle:plan` and `backlog:groom` look next.
 - Labels never invent a value. `issues update` would reject it, and the labels list is project config.
 - Existing labels are kept. The command sends the union of old and accepted labels because `--label` replaces the list.
 - A duplicate follows the groom path: a `duplicate` link, then `canceled`. The link keeps the pointer to the original after the move.
 - An issue without enough information stays in triage. Moving it out would hide it from the queue.
-- Declined issues get a comment (see question 3 for the alternative), so the reason is in the issue history.
+- Declined issues get a comment, as decision 3 says, so the reason is in the issue history.
 - The preview is always full and asked once, because several records change.
 
-## Open questions
+## Decisions on the open questions
 
-1. **Command name and home.** `/pmkit:backlog:triage` (chosen above), `/pmkit:issues:triage`, or a top-level `/pmkit:triage`. The name appears in the README, the skill table, the scenario file name and the user's habits, and is costly to change after release.
-   - Option A: `/pmkit:backlog:triage`, next to `groom`.
-   - Option B: `/pmkit:issues:triage`, with the other issue commands.
-   - Option C: `/pmkit:triage`, as the EM catalog names it.
-   - Recommendation: A.
-2. **Where an accepted issue goes.** The status after accept decides what the next planning command sees.
-   - Option A: `backlog` for every accepted issue.
-   - Option B: `todo` for every accepted issue.
-   - Option C: `backlog` by default, and `todo` when the proposed priority is `urgent` or `high`.
-   - Recommendation: A. Option C adds a rule that the user did not ask for and that `cycle:plan` already handles through priority.
-3. **How a decline is recorded.** The reason has to survive somewhere, and a comment is a second write per declined issue.
-   - Option A: move to `canceled` and post a comment with the reason, shown in the preview.
-   - Option B: move to `canceled` only, and show the reason in the chat.
-   - Option C: ask the user for the reason per declined issue, then post it as a comment.
-   - Recommendation: A. The agent drafts the reason and the user edits it in step 5.
-4. **Duplicate of a finished issue.** The search covers every category. When the original is `done` or `canceled`, the issue may be a regression or a request the project already refused.
-   - Option A: propose duplicate for any match and show the original's status in the table.
-   - Option B: propose duplicate only when the original is open, and propose "needs info" otherwise.
-   - Option C: when the original is `done`, propose accept with a `related` link instead of a duplicate.
-   - Recommendation: A. The user sees the status and can change the decision in step 5, and the command stays free of status-specific rules.
+The user accepted the recommendation for each question.
+
+1. **Command name and home.** `/pmkit:backlog:triage`, `/pmkit:issues:triage` or a top-level `/pmkit:triage`.
+   - Decision: option A, `/pmkit:backlog:triage`, next to `groom`.
+2. **Where an accepted issue goes.**
+   - Decision: option A, `backlog` for every accepted issue. `cycle:plan` already ranks by priority, so the command adds no rule for `urgent` or `high`.
+3. **How a decline is recorded.**
+   - Decision: option A, move to `canceled` and post a comment with the reason, shown in the preview. The agent drafts the reason and the user edits it in step 5.
+4. **Duplicate of a finished issue.**
+   - Decision: option A, propose duplicate for any match and show the original's status in the table. The user can change the decision in step 5.
