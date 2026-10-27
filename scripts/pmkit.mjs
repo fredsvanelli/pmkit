@@ -8,8 +8,9 @@ import { BOOLEANS, parseArgs } from './lib/args.mjs'
 import { requireActor, gitUserEmail } from './lib/actor.mjs'
 import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig } from './lib/config.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
-import { changeLines, dependencyText, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, releaseRecord, sprintRecord, table } from './lib/format.mjs'
+import { changeLines, dependencyText, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, releaseNotesText, releaseRecord, sprintRecord, table } from './lib/format.mjs'
 import { aging, cycleTimes, doneInRange, lastEntry, leadTimes, rangeInstant, summary, throughput, velocity } from './lib/metrics.mjs'
+import { buildNotes, chooseBasis } from './lib/release-notes.mjs'
 import { dependencyMap, serializable } from './lib/dependencies.mjs'
 import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 import { validateRepo } from './lib/validate.mjs'
@@ -550,9 +551,9 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'release issues', summary: 'lists the issues of a release', usage: '<id>', args: ['id'], flags: [],
+    name: 'release issues', summary: 'lists the issues of a release', usage: '<id> [--archived]', args: ['id'], flags: ['archived'],
     run: (ctx) => {
-      const issues = ctx.tracker().releaseIssues(ctx.args[0])
+      const issues = ctx.tracker().releaseIssues(ctx.args[0], { archived: ctx.flag('archived') })
       return { data: issues, text: issueTable(issues) }
     },
   },
@@ -583,6 +584,61 @@ export const COMMANDS = [
         if (warning !== null) warnings.push(warning)
       }
       return { data: result, text, commit: id, warnings }
+    },
+  },
+  {
+    name: 'release-notes', summary: 'the done issues of a release, a sprint or a period, grouped by type', usage: '[--release id | --sprint current|id | --since d [--until d]]', flags: ['release', 'sprint', 'since', 'until'],
+    run: (ctx) => {
+      const tracker = ctx.tracker()
+      const next = 'pmkit release-notes --help'
+      const given = ['release', 'sprint', 'since'].filter((name) => ctx.opt(name) !== undefined)
+      if (given.length > 1) throw usageError(`--${given.join(', --')} exclude each other`, next)
+      if (ctx.opt('until') !== undefined && ctx.opt('since') === undefined) throw usageError('--until needs --since', next)
+      const since = ctx.opt('since') === undefined ? undefined : rangeText('since', ctx.opt('since'))
+      const until = ctx.opt('until') === undefined ? undefined : rangeText('until', ctx.opt('until'))
+      // Without --until the period ends today, so a --since after today is refused too.
+      const effectiveUntil = until ?? ctx.now().toISOString().slice(0, 10)
+      if (since !== undefined && rangeInstant(since) > rangeInstant(effectiveUntil, { endOfDay: true })) throw usageError(until === undefined ? '--since is after today' : '--since is after --until', next)
+      const capabilities = tracker.capabilities().capabilities
+      const on = (id) => capabilities.find((c) => c.id === id).path !== 'absent'
+      const releases = on('releases') ? tracker.listReleases() : null
+      const sprints = on('cycles') ? tracker.listCycles({}) : null
+      let selector = null
+      if (ctx.opt('release') !== undefined) selector = { release: tracker.getRelease(ctx.opt('release')) }
+      else if (ctx.opt('sprint') !== undefined) {
+        // `current` means the active sprint, as in `issues list --sprint current` and the render views.
+        const current = ctx.opt('sprint') === 'current'
+        const sprint = current ? (sprints === null ? null : tracker.currentCycle()) : (sprints ?? []).find((item) => item.id === ctx.opt('sprint'))
+        if (current && sprint === null) throw new PmkitError('INVALID_INPUT', 'there is no active sprint', 'pmkit cycle list')
+        if (sprint === undefined) throw new PmkitError('NOT_FOUND', `sprint ${ctx.opt('sprint')} does not exist`, 'pmkit cycle list')
+        selector = { sprint }
+      } else if (since !== undefined) selector = until === undefined ? { since } : { since, until }
+      const config = ctx.config().local
+      const choice = chooseBasis({ selector, releases, sprints, today: ctx.now().toISOString().slice(0, 10), windowDays: config.defaults.status_update_window_days ?? 14 })
+      const problems = []
+      let candidates
+      if (choice.basis === 'release') {
+        const found = tracker.searchIssues({ release: choice.source.id, archived: true })
+        problems.push(...found.problems)
+        candidates = found.issues.map((issue) => ({ issue, doneAt: null }))
+      } else if (choice.basis === 'sprint') {
+        const events = tracker.eventsByIssue()
+        const found = tracker.searchIssues({ sprint: choice.source.id, archived: true })
+        problems.push(...found.problems)
+        candidates = found.issues.map((issue) => ({ issue, doneAt: lastEntry(events[issue.id] ?? [], 'done', tracker.categoryOf) ?? null }))
+      } else {
+        const inRange = doneInRange(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since: choice.period.since, until: choice.period.until })
+        candidates = []
+        for (const [id, events] of Object.entries(inRange)) {
+          try {
+            candidates.push({ issue: tracker.getIssue(id), doneAt: lastEntry(events, 'done', tracker.categoryOf) ?? null })
+          } catch (error) {
+            problems.push({ id, code: error.code, message: error.message })
+          }
+        }
+      }
+      const result = buildNotes({ choice, candidates, types: config.types, problems })
+      return { data: result, text: releaseNotesText(result), warnings: result.problems.map(problemLine) }
     },
   },
   {

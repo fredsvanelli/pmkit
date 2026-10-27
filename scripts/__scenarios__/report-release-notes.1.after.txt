@@ -1,0 +1,13 @@
+$ pmkit pr sync --dry-run --json  [step 1, dry run]
+exit 0
+$ pmkit release-notes --json  [step 2, read]
+exit 0
+$ pmkit capabilities --json  [step 7, read]
+exit 0
+$ pmkit docs create release-notes/2026-10-09_2026-10-23.md --body-file <inputs>/release-notes.md --dry-run --json  [step 7, dry run]
+exit 0
+? Step 7  [confirmed]
+
+(no file changed)
+--- gh calls
+(none)

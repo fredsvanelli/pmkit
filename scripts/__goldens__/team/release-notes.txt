@@ -1,0 +1,148 @@
+$ pmkit release-notes
+exit 0
+--- stdout
+sprint 2026-09-28 (2026-09-28 to 2026-10-11)
+no released release, so the notes use sprint 2026-09-28
+
+feature (1)
+ID       | Title                 | Done
+---------|-----------------------|-----------
+ISS-4P8A | Sign webhook payloads | 2026-10-08
+
+bug (2)
+ID       | Title                           | Done
+---------|---------------------------------|-----------
+ISS-7K3Q | Retry failed webhook deliveries | 2026-10-06
+ISS-9T2M | Fix rounding in invoice totals  | 2026-10-05
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit release-notes --json
+exit 0
+--- stdout
+{
+  "basis": "sprint",
+  "reason": "no_released_release",
+  "draft": false,
+  "source": {
+    "id": "2026-09-28",
+    "name": "Sprint 2026-09-28",
+    "start": "2026-09-28",
+    "end": "2026-10-11",
+    "goal": "Webhook delivery basics",
+    "state": "closed",
+    "capacity": {
+      "fred": 10,
+      "ana": 8
+    },
+    "daysOff": {}
+  },
+  "period": null,
+  "groups": [
+    {
+      "type": "feature",
+      "issues": [
+        {
+          "id": "ISS-4P8A",
+          "title": "Sign webhook payloads",
+          "description": "Add an HMAC signature header so receivers can verify the sender.",
+          "type": "feature",
+          "labels": [
+            "backend",
+            "webhooks"
+          ],
+          "parent": "EPC-2M9D",
+          "archived": false,
+          "doneAt": "2026-10-08T17:00:00Z",
+          "release": null,
+          "status": "done",
+          "assignee": "ana",
+          "estimate": 5
+        }
+      ]
+    },
+    {
+      "type": "bug",
+      "issues": [
+        {
+          "id": "ISS-7K3Q",
+          "title": "Retry failed webhook deliveries",
+          "description": "Deliveries that fail with 5xx are dropped instead of retried.",
+          "type": "bug",
+          "labels": [
+            "backend",
+            "webhooks"
+          ],
+          "parent": "EPC-2M9D",
+          "archived": false,
+          "doneAt": "2026-10-06T16:00:00Z",
+          "release": null,
+          "status": "done",
+          "assignee": "fred",
+          "estimate": 3
+        },
+        {
+          "id": "ISS-9T2M",
+          "title": "Fix rounding in invoice totals",
+          "description": "Totals are off by one cent when a discount applies to three or more lines.",
+          "type": "bug",
+          "labels": [
+            "billing"
+          ],
+          "parent": null,
+          "archived": false,
+          "doneAt": "2026-10-05T15:00:00Z",
+          "release": null,
+          "status": "done",
+          "assignee": "fred",
+          "estimate": 2
+        }
+      ]
+    }
+  ],
+  "counts": {
+    "done": 3,
+    "excluded": {
+      "open": 0,
+      "canceled": 0,
+      "chore": 0,
+      "after_close": 0
+    }
+  },
+  "skipped": [
+    {
+      "basis": "release",
+      "reason": "no_released_release"
+    }
+  ],
+  "problems": [
+    {
+      "id": "ISS-3Q6T",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit release-notes --release 1.0.0
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: release 1.0.0 does not exist
+next: pmkit release list
+
+$ pmkit release-notes --release 1.0.0 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "release 1.0.0 does not exist",
+    "nextStep": "pmkit release list"
+  }
+}
+--- stderr
+(empty)

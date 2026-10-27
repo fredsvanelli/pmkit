@@ -187,6 +187,15 @@ test('releaseIssues returns the members in creation order, without archived ones
   assert.throws(() => tracker.releaseIssues('nope'), code('NOT_FOUND', /^release nope does not exist$/))
 })
 
+test('releaseIssues keeps archived members only with archived true', () => {
+  const { tracker, open } = released()
+  const archived = tracker.createIssue({ title: 'Archived', release: '1.2.0' }, 'fred').after
+  tracker.archive(archived.id, 'fred')
+  assert.ok(!tracker.releaseIssues('1.2.0').some((issue) => issue.id === archived.id))
+  const ids = tracker.releaseIssues('1.2.0', { archived: true }).map((issue) => issue.id)
+  assert.ok(ids.includes(archived.id) && ids.includes(open.id))
+})
+
 test('markReleased stamps the release, keeps the file and lists the unfinished members', () => {
   const { tracker, releasesDir, open } = released()
   const { before, after, unfinished, problems } = tracker.markReleased('1.2.0', 'fred')

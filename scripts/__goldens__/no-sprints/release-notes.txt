@@ -1,0 +1,142 @@
+$ pmkit release-notes
+exit 0
+--- stdout
+period 2026-10-09 to 2026-10-23 (default window)
+no released release, no closed sprint, so the notes use the last 14 days
+
+feature (1)
+ID       | Title                   | Done
+---------|-------------------------|-----------
+ISS-6R3N | Retry failed deliveries | 2026-10-16
+--- stderr
+(empty)
+
+$ pmkit release-notes --json
+exit 0
+--- stdout
+{
+  "basis": "period",
+  "reason": "no_closed_sprint",
+  "draft": false,
+  "source": null,
+  "period": {
+    "since": "2026-10-09",
+    "until": "2026-10-23",
+    "defaulted": true
+  },
+  "groups": [
+    {
+      "type": "feature",
+      "issues": [
+        {
+          "id": "ISS-6R3N",
+          "title": "Retry failed deliveries",
+          "description": "Retry with exponential backoff, up to six attempts.",
+          "type": "feature",
+          "labels": [
+            "backend",
+            "webhooks"
+          ],
+          "parent": "EPC-4H7V",
+          "archived": false,
+          "doneAt": "2026-10-16T15:00:00Z",
+          "release": "1.0.0",
+          "status": "done",
+          "assignee": "fred",
+          "estimate": 8
+        }
+      ]
+    }
+  ],
+  "counts": {
+    "done": 1,
+    "excluded": {
+      "open": 0,
+      "canceled": 0,
+      "chore": 0,
+      "after_close": 0
+    }
+  },
+  "skipped": [
+    {
+      "basis": "release",
+      "reason": "no_released_release"
+    },
+    {
+      "basis": "sprint",
+      "reason": "no_closed_sprint"
+    }
+  ],
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit release-notes --release 1.0.0
+exit 0
+--- stdout
+release 1.0.0 (planned, target 2026-11-13)
+draft: release 1.0.0 is not released yet
+
+feature (1)
+ID       | Title
+---------|------------------------
+ISS-6R3N | Retry failed deliveries
+
+left out: 1 not done
+--- stderr
+(empty)
+
+$ pmkit release-notes --release 1.0.0 --json
+exit 0
+--- stdout
+{
+  "basis": "release",
+  "reason": "requested",
+  "draft": true,
+  "source": {
+    "id": "1.0.0",
+    "name": "Webhooks GA",
+    "target": "2026-11-13",
+    "state": "planned",
+    "description": "Public webhooks with retries and a dead-letter queue."
+  },
+  "period": null,
+  "groups": [
+    {
+      "type": "feature",
+      "issues": [
+        {
+          "id": "ISS-6R3N",
+          "title": "Retry failed deliveries",
+          "description": "Retry with exponential backoff, up to six attempts.",
+          "type": "feature",
+          "labels": [
+            "backend",
+            "webhooks"
+          ],
+          "parent": "EPC-4H7V",
+          "archived": false,
+          "doneAt": null,
+          "release": "1.0.0",
+          "status": "done",
+          "assignee": "fred",
+          "estimate": 8
+        }
+      ]
+    }
+  ],
+  "counts": {
+    "done": 1,
+    "excluded": {
+      "open": 1,
+      "canceled": 0,
+      "chore": 0,
+      "after_close": 0
+    }
+  },
+  "skipped": [],
+  "problems": []
+}
+--- stderr
+(empty)

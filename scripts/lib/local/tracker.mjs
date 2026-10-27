@@ -1013,7 +1013,7 @@ export function createLocalTracker(root, {
     return { before: null, after }
   }
 
-  const releaseIssues = (id) => searchIssues({ release: getRelease(id).id }).issues
+  const releaseIssues = (id, { archived = false } = {}) => searchIssues({ release: getRelease(id).id, ...(archived ? { archived: true } : {}) }).issues
 
   /** Marks a release released now. `tag` replaces the stored tag. `unfinished` lists the members that are not done or canceled. */
   function markReleased(id, actor, { tag, dryRun = false } = {}) {

@@ -12,7 +12,7 @@ export const CAPABILITIES = [
  * An empty list means no command serves it, so the manifest reports it absent. A test checks every name.
  */
 export const SERVED_BY = {
-  cycles: ['cycle list', 'cycle current', 'cycle issues', 'cycle open', 'cycle close', 'cycle add'],
+  cycles: ['cycle list', 'cycle current', 'cycle issues', 'cycle open', 'cycle close', 'cycle add', 'release-notes'],
   estimation: ['issues create', 'issues update'],
   multilevel_hierarchy: ['issues parent', 'epic list', 'issues dependencies'],
   dependencies: ['issues link', 'issues dependencies'],
@@ -20,7 +20,7 @@ export const SERVED_BY = {
   deliverables: ['epic list', 'epic get', 'epic create', 'epic progress'],
   strategic_goals: [],
   status_update: ['epic update-status', 'epic updates'],
-  releases: ['release list', 'release get', 'release issues', 'release create', 'release mark-released'],
+  releases: ['release list', 'release get', 'release issues', 'release create', 'release mark-released', 'release-notes'],
   capacity: ['cycle capacity'],
   native_metrics: ['metrics velocity', 'metrics cycle-time', 'metrics lead-time', 'metrics throughput', 'metrics aging', 'events'],
   saved_views: [],

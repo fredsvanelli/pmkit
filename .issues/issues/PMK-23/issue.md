@@ -2,14 +2,16 @@
 id: PMK-23
 title: Add the release-notes command
 type: feature
-status: backlog
+status: in_review
 priority: medium
 estimate: 3
+assignee: fred
 parent: EPC-3
 blocked_by: [PMK-22]
 milestone: phase-2-commands
+branch: pmk-23-add-the-release-notes-command
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-25T19:13:24Z
+updated: 2026-10-27T15:31:34Z
 ---
 
 ## Description
@@ -18,6 +20,6 @@ Source: Unified model, PM catalog (`release-notes`: "Completed issues by release
 
 ## Acceptance criteria
 
-- [ ] Groups completed issues by release, sprint or period in user-facing language
-- [ ] Without releases it uses a sprint or a period, and says so
-- [ ] Optionally saves the notes as a document after confirmation
+- [x] Groups completed issues by release, sprint or period in user-facing language
+- [x] Without releases it uses a sprint or a period, and says so
+- [x] Optionally saves the notes as a document after confirmation

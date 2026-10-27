@@ -113,3 +113,8 @@ test('discover lists statuses in config order, the lists and members sorted by i
   ])
   assert.deepEqual(found.estimate, { unit: 'points', scale: [1, 2, 3, 5, 8, 13] })
 })
+
+test('release-notes serves releases and cycles', () => {
+  assert.ok(SERVED_BY.releases.includes('release-notes'))
+  assert.ok(SERVED_BY.cycles.includes('release-notes'))
+})

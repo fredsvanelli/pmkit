@@ -37,6 +37,7 @@ Each command file holds the full procedure. When the user asks for one of these 
 | pick up an issue: claim it, branch, plan, implement, open the PR and move it to review | `/pmkit:issues:work` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/work.md` |
 | check the tracker files, fix what can be fixed and resolve git conflict markers | `/pmkit:local:doctor` | `${CLAUDE_PLUGIN_ROOT}/commands/local/doctor.md` |
 | render a board, roadmap or sprint view as Markdown or HTML to share with people outside the agent | `/pmkit:local:render` | `${CLAUDE_PLUGIN_ROOT}/commands/local/render.md` |
+| write release notes, say what shipped, a changelog for customers | `/pmkit:report:release-notes` | `${CLAUDE_PLUGIN_ROOT}/commands/report/release-notes.md` |
 | draft a status update for an epic and publish it after approval | `/pmkit:report:status` | `${CLAUDE_PLUGIN_ROOT}/commands/report/status.md` |
 | turn a spec or PRD into an epic with milestones, issues, sub-issues, estimates and blockers | `/pmkit:spec:import` | `${CLAUDE_PLUGIN_ROOT}/commands/spec/import.md` |
 | show cycle time, lead time, throughput, aging and bug rate for a period, with the trend against the previous period | `/pmkit:team:flow-metrics` | `${CLAUDE_PLUGIN_ROOT}/commands/team/flow-metrics.md` |

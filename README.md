@@ -35,6 +35,7 @@ Then run `/pmkit:setup` in the project. With the GitHub git host (`git_host.syst
 - `/pmkit:issues:work`: Pick up an issue: claim it, branch, plan, implement, open the PR and move it to review.
 - `/pmkit:local:doctor`: Check the tracker files, fix what can be fixed and resolve git conflict markers.
 - `/pmkit:local:render`: Render a board, roadmap or sprint view of the tracker as Markdown or HTML for people outside the agent.
+- `/pmkit:report:release-notes`: Write release notes for a release, a sprint or a period, and save them after you confirm.
 - `/pmkit:report:status`: Draft a status update for an epic and publish it after approval.
 - `/pmkit:spec:import`: Turn a spec or PRD into an epic with milestones, issues, sub-issues, estimates and blockers.
 - `/pmkit:team:flow-metrics`: Show cycle time, lead time, throughput, aging and bug rate for a period, with the trend against the previous period.
@@ -84,9 +85,10 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `milestone create <id>` | creates a milestone; takes `--name` and `--due` |
 | `release list` | lists releases, oldest version first; `--state planned\|released` |
 | `release get <id>` | shows one release |
-| `release issues <id>` | lists the issues of a release |
+| `release issues <id> [--archived]` | lists the issues of a release; `--archived` keeps the archived ones |
 | `release create <id>` | creates a release; takes `--name`, `--tag` and `--target` |
 | `release mark-released <id>` | marks a release released, lists its unfinished issues and warns when its tag is not in the repository; takes `--tag` |
+| `release-notes [--release id \| --sprint id\|current \| --since d [--until d]]` | the done issues of a release, a sprint or a period, grouped by type, with the basis it used; only reads |
 | `docs read <path>` | prints a document under the docs folder |
 | `docs create <path> --body-file f` | creates a document under the docs folder |
 | `metrics velocity` | points or counts done per closed sprint, and the average |

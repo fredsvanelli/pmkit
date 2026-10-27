@@ -93,7 +93,7 @@ The operations the MVP needs, grouped by family. Every write takes an `actor` (a
 | Cycles | `listCycles({ state })`, `currentCycle()`, `cycleIssues(id)`, `openCycle(input, actor)`, `closeCycle(id, actor)`, `moveToCycle(ids, sprint, actor)` |
 | Deliverables | `listDeliverables()`, `getDeliverable(id)`, `deliverableProgress(id)`, `createDeliverable(input, actor)`, `publishStatusUpdate(update, actor)` |
 | Milestones | `listMilestones()`, `getMilestone(id)`, `createMilestone(input, actor)` |
-| Releases | `listReleases({ state })`, `getRelease(id)`, `releaseIssues(id)`, `createRelease(input, actor)`, `markReleased(id, actor, { tag })` |
+| Releases | `listReleases({ state })`, `getRelease(id)`, `releaseIssues(id, { archived })`, `createRelease(input, actor)`, `markReleased(id, actor, { tag })` |
 | Capacity | `getCapacity(sprint)`, `setCapacity(sprint, capacity, actor)` |
 | Metrics | `metricEvents({ since, until })` |
 | Documents | `readDocument(path)`, `createDocument(path, body, actor)` |
@@ -358,8 +358,9 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `epic updates <id>` | lists the status updates of an epic, newest first |
 | `milestone list`, `milestone get <id>` | reads milestones |
 | `milestone create <id> [--name n] [--due YYYY-MM-DD]` | creates a milestone |
-| `release list [--state planned\|released]`, `release get <id>`, `release issues <id>` | reads releases |
+| `release list [--state planned\|released]`, `release get <id>`, `release issues <id> [--archived]` | reads releases |
 | `release create <id> [--name n] [--tag t] [--target YYYY-MM-DD]`, `release mark-released <id> [--tag t]` | creates a release, marks it released |
+| `release-notes [--release id\|--sprint id\|current\|--since d [--until d]]` | the done issues of a release, a sprint or a period, grouped by type, with the basis it used; only reads |
 | `docs read <path>`, `docs create <path> --body-file f` | reads or creates a document under the docs folder |
 | `metrics velocity [--window n]` | points or counts done per closed sprint, and the average |
 | `metrics cycle-time [--since d] [--until d]` | median and p85 days from first `in_progress` to `done` |
@@ -380,7 +381,7 @@ Bodies come from files (`--description-file`, `--body-file`, `-` for stdin), nev
 
 ## Commands
 
-The MVP shipped 24 command files, and phase 2 adds `/pmkit:issues:dependencies`, `/pmkit:team:risk-radar`, `/pmkit:backlog:triage` and `/pmkit:local:render`. Commands are user-invoked; the routing skill reads the right file when the user asks in their own words.
+The MVP shipped 24 command files, and phase 2 adds `/pmkit:issues:dependencies`, `/pmkit:team:risk-radar`, `/pmkit:backlog:triage`, `/pmkit:local:render` and `/pmkit:report:release-notes`. Commands are user-invoked; the routing skill reads the right file when the user asks in their own words.
 
 | Command | File | Calls |
 |---|---|---|
@@ -404,6 +405,7 @@ The MVP shipped 24 command files, and phase 2 adds `/pmkit:issues:dependencies`,
 | `/pmkit:spec:import <file>` | `commands/spec/import.md` | `docs read`, `discover`, `epic get`, `issues list`, `milestone list`, `epic create`, `milestone create`, `issues create`, `issues link`, `docs create` |
 | `/pmkit:backlog:groom` | `commands/backlog/groom.md` | `issues list`, `events`, `validate`, `issues update`, `issues parent`, `issues move`, `issues link` |
 | `/pmkit:report:status <epic>` | `commands/report/status.md` | `epic list`, `pr sync`, `epic get`, `epic progress`, `issues list`, `epic updates`, `events`, `epic update-status` |
+| `/pmkit:report:release-notes [release\|sprint\|period]` | `commands/report/release-notes.md` | `pr sync`, `release-notes`, `capabilities`, `docs create` |
 | `/pmkit:cycle:plan` | `commands/cycle/plan.md` | `cycle list`, `discover`, `metrics velocity`, `issues list`, `cycle open`, `cycle capacity`, `cycle add` |
 | `/pmkit:cycle:close` | `commands/cycle/close.md` | `pr sync`, `cycle current`, `cycle issues`, `events`, `metrics cycle-time`, `cycle list`, `cycle add`, `issues create`, `issues update`, `cycle close`, `docs create` |
 | `/pmkit:team:standup` | `commands/team/standup.md` | `pr sync`, `events`, `issues list`, `pr status` |

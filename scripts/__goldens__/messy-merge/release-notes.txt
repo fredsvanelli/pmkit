@@ -1,0 +1,119 @@
+$ pmkit release-notes
+exit 0
+--- stdout
+period 2026-10-09 to 2026-10-23 (default window)
+no released release, no closed sprint, so the notes use the last 14 days
+
+feature (1)
+ID    | Title                 | Done
+------|-----------------------|-----------
+ISS-1 | Sign webhook payloads | 2026-10-09
+
+task (1)
+ID    | Title                   | Done
+------|-------------------------|-----------
+ISS-6 | Paginate the events API | 2026-10-10
+--- stderr
+(empty)
+
+$ pmkit release-notes --json
+exit 0
+--- stdout
+{
+  "basis": "period",
+  "reason": "no_closed_sprint",
+  "draft": false,
+  "source": null,
+  "period": {
+    "since": "2026-10-09",
+    "until": "2026-10-23",
+    "defaulted": true
+  },
+  "groups": [
+    {
+      "type": "feature",
+      "issues": [
+        {
+          "id": "ISS-1",
+          "title": "Sign webhook payloads",
+          "description": "Add an HMAC signature header so receivers can verify the sender.",
+          "type": "feature",
+          "labels": [
+            "backend"
+          ],
+          "parent": "EPC-1",
+          "archived": false,
+          "doneAt": "2026-10-09T17:00:00Z",
+          "release": null,
+          "status": "done",
+          "assignee": "ana",
+          "estimate": 5
+        }
+      ]
+    },
+    {
+      "type": "task",
+      "issues": [
+        {
+          "id": "ISS-6",
+          "title": "Paginate the events API",
+          "description": "Return a cursor instead of an offset.",
+          "type": "task",
+          "labels": [
+            "backend"
+          ],
+          "parent": null,
+          "archived": false,
+          "doneAt": "2026-10-10T16:00:00Z",
+          "release": null,
+          "status": "done",
+          "assignee": "fred",
+          "estimate": 3
+        }
+      ]
+    }
+  ],
+  "counts": {
+    "done": 2,
+    "excluded": {
+      "open": 0,
+      "canceled": 0,
+      "chore": 0,
+      "after_close": 0
+    }
+  },
+  "skipped": [
+    {
+      "basis": "release",
+      "reason": "no_released_release"
+    },
+    {
+      "basis": "sprint",
+      "reason": "no_closed_sprint"
+    }
+  ],
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit release-notes --release 1.0.0
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: release 1.0.0 does not exist
+next: pmkit release list
+
+$ pmkit release-notes --release 1.0.0 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "release 1.0.0 does not exist",
+    "nextStep": "pmkit release list"
+  }
+}
+--- stderr
+(empty)
