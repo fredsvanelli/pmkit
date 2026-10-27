@@ -178,6 +178,7 @@ export function createLocalTracker(root, {
   function requireRelease(value) {
     const release = oneLine('release', text('release')(value))
     if (!releaseStems(releasesDir).has(release)) throw invalid(`release ${release} does not exist`, `pmkit release create ${release}`)
+    readRelease(release) // refuses a file that does not parse, so the issue write cannot fail afterwards
     return release
   }
 

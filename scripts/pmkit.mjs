@@ -223,10 +223,15 @@ function writeText(result, { dryRun, record = issueRecord, header }) {
 
 const issueWrite = (ctx, result, id = result.after.id) => ({ data: result, text: writeText(result, ctx), commit: id })
 
-/** The warning for an issue write that puts the issue in a release that is already released. Runs after the write, so the release exists. */
+/** The warning for an issue write that puts the issue in a release that is already released. Runs after the write, so a failure to read the release only drops the warning. */
 function releasedWarnings(ctx, patch) {
   if (typeof patch.release !== 'string') return []
-  return ctx.tracker().getRelease(patch.release).released ? [`release ${patch.release} is already released`] : []
+  try {
+    return ctx.tracker().getRelease(patch.release).released ? [`release ${patch.release} is already released`] : []
+  } catch (error) {
+    if (error instanceof PmkitError) return []
+    throw error
+  }
 }
 const defaultBranch = (ctx) => ctx.config().pmkit.git_host?.default_branch ?? 'main'
 

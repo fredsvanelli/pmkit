@@ -1540,6 +1540,24 @@ test('issues create and update take --release, and a missing release is refused 
   assert.deepEqual(JSON.parse(missing.stdout).error, { code: 'INVALID_INPUT', message: 'release 9.9.9 does not exist', nextStep: 'pmkit release create 9.9.9' })
 })
 
+test('issues update --release refuses a release file that does not parse, before it writes anything', () => {
+  const root = makeRepo('basic')
+  json(root, ['release', 'create', '9.0'])
+  const { after } = json(root, ['issues', 'create', '--title', 'T'])
+  const issueFile = path.join(root, '.issues', 'issues', after.id, 'issue.md')
+  const eventsFile = path.join(root, '.issues', 'issues', after.id, 'events.jsonl')
+  const issueBefore = fs.readFileSync(issueFile, 'utf8')
+  const eventsBefore = fs.readFileSync(eventsFile, 'utf8')
+  fs.writeFileSync(path.join(root, '.issues', 'releases', '9.0.md'), '---\ntag: v1..2\n---\n')
+  const result = run(root, ['issues', 'update', after.id, '--release', '9.0', '--json'])
+  assert.equal(result.status, 2)
+  const error = JSON.parse(result.stdout).error
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.equal(error.nextStep, '/pmkit:local:doctor')
+  assert.equal(fs.readFileSync(issueFile, 'utf8'), issueBefore)
+  assert.equal(fs.readFileSync(eventsFile, 'utf8'), eventsBefore)
+})
+
 // A release 1.2.0 with one issue in todo and one done, plus an issue outside it.
 function releaseWithIssues(tag) {
   const root = makeRepo('basic')
