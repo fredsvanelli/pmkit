@@ -76,3 +76,63 @@ export function assertOutsideRepo(target, options) {
     dir = parent
   }
 }
+
+const CACHE_VERSION = 1
+
+/** Hook for the credential guard. */
+function assertNoCredentials() {}
+
+function cacheFile(scope, key, options) {
+  return path.join(userDir(options), 'cache', checkName('scope', scope), `${checkName('key', key)}.json`)
+}
+
+/** Writes text to file through a temp file and a rename, so a reader sees the old file or the new one. */
+function writeAtomic(file, text, options) {
+  assertOutsideRepo(file, options)
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
+  const temp = `${file}.${process.pid}.tmp`
+  try {
+    fs.writeFileSync(temp, text, { mode: 0o600 })
+    fs.renameSync(temp, file)
+  } catch (error) {
+    fs.rmSync(temp, { force: true })
+    throw error
+  }
+}
+
+/** Reads a cache entry. Returns null when it is missing, expired, unreadable or of another version. */
+export function cacheGet(scope, key, options) {
+  const file = cacheFile(scope, key, options)
+  const { now } = resolve(options)
+  try {
+    const entry = JSON.parse(fs.readFileSync(file, 'utf8'))
+    if (entry?.version !== CACHE_VERSION || !Number.isInteger(entry.ttlSeconds) || !('value' in entry)) return null
+    const storedAt = Date.parse(entry.storedAt)
+    if (Number.isNaN(storedAt)) return null
+    const expires = storedAt + entry.ttlSeconds * 1000
+    if (now().getTime() >= expires) return null
+    return { value: entry.value, storedAt: entry.storedAt, expiresAt: new Date(expires).toISOString() }
+  } catch {
+    return null
+  }
+}
+
+/** Writes a cache entry that expires ttlSeconds after now. */
+export function cachePut(scope, key, value, { ttlSeconds } = {}, options) {
+  const file = cacheFile(scope, key, options)
+  if (!Number.isInteger(ttlSeconds) || ttlSeconds <= 0) {
+    throw new PmkitError('INVALID_INPUT', 'ttlSeconds must be a positive integer.', 'Pass the life of the entry in whole seconds.')
+  }
+  assertNoCredentials(value, 'value')
+  const storedAt = resolve(options).now().toISOString()
+  let text
+  try {
+    text = JSON.stringify({ version: CACHE_VERSION, storedAt, ttlSeconds, value })
+  } catch {
+    throw new PmkitError('INVALID_INPUT', 'The cache value cannot be turned into JSON.', 'Store plain data without circular references.')
+  }
+  if (text === undefined || !text.includes('"value"')) {
+    throw new PmkitError('INVALID_INPUT', 'The cache value is undefined.', 'Store a JSON value.')
+  }
+  writeAtomic(file, `${text}\n`, options)
+}
