@@ -9,6 +9,7 @@ import { parseEpicFile, walkParents } from './local/epics.mjs'
 import { driftEvents, readEvents } from './local/events.mjs'
 import { formatError } from './local/migrations.mjs'
 import { hasMilestoneFiles, milestoneStems, parseMilestone, validMilestoneId } from './local/milestones.mjs'
+import { parseRelease, releaseStems, validReleaseId } from './local/releases.mjs'
 import { hasConflictMarkers, parseIssueFile, toFrontmatter } from './local/issue-file.mjs'
 import { overlaps, readSprint } from './local/sprints.mjs'
 
@@ -62,7 +63,7 @@ function blockedByCycles(graph) {
 }
 
 const relative = (root, file) => path.relative(root, file).split(path.sep).join('/')
-const noneChecked = () => ({ issues: 0, epics: 0, sprints: 0, milestones: 0, comments: 0 })
+const noneChecked = () => ({ issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, comments: 0 })
 // A problem has no next step field, so the format problem carries it in its message.
 const formatProblem = (root, file, error) => ({ path: relative(root, file), code: 'FORMAT', message: `${error.message}; run ${error.nextStep}` })
 
@@ -223,6 +224,24 @@ export function validateRepo(root, { config, migrations } = {}) {
     }
   }
 
+  // Releases
+  const releasesDir = path.join(issuesDir, 'releases')
+  const releaseIds = releaseStems(releasesDir)
+  for (const id of [...releaseIds].sort()) {
+    const file = path.join(releasesDir, `${id}.md`)
+    checked.releases++
+    if (conflicted.has(file)) continue
+    if (!validReleaseId(id)) {
+      add(file, 'release', `release id "${id}" must start and end with a letter or digit and hold only letters, digits, ".", "_" and "-"`)
+      continue
+    }
+    try {
+      parseRelease(read(file), id)
+    } catch (error) {
+      add(file, 'release', error.message)
+    }
+  }
+
   // Issues
   const folders = subdirs(path.join(issuesDir, 'issues'))
   const byNormalized = new Map()
@@ -281,6 +300,7 @@ export function validateRepo(root, { config, migrations } = {}) {
     }
     if (issue.sprint !== undefined && !sprintIds.has(String(issue.sprint))) missing('sprint', issue.sprint)
     if (milestoneMissing(issue.milestone)) missing('milestone', issue.milestone)
+    if (issue.release !== undefined && !releaseIds.has(String(issue.release))) missing('release', issue.release)
   }
   for (const [name, epic] of epics) {
     if (milestoneMissing(epic.milestone)) add(path.join(issuesDir, 'epics', name, 'epic.md'), 'reference', `milestone ${epic.milestone} does not exist`)

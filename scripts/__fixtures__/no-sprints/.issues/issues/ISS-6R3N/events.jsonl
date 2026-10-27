@@ -1,3 +1,4 @@
 {"at":"2026-09-26T11:00:00Z","by":"fred","op":"create","to":{"id":"ISS-6R3N","title":"Retry failed deliveries","type":"feature","status":"todo","priority":"high","estimate":8,"assignee":"fred","labels":["backend","webhooks"],"parent":"EPC-4H7V","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-09-26T11:00:00Z","updated":"2026-09-26T11:00:00Z"}}
 {"at":"2026-10-05T09:00:00Z","by":"fred","op":"move","field":"status","from":"todo","to":"in_progress"}
 {"at":"2026-10-16T15:00:00Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"done"}
+{"at":"2026-10-22T10:00:00Z","by":"fred","op":"update","field":"release","from":null,"to":"1.0.0"}

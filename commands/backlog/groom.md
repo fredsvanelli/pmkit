@@ -25,7 +25,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
    - No parent: no `parent` field.
    - Stale: see step 3.
    - Likely duplicates: pairs with similar titles and descriptions. Say it is a guess.
-   - Broken references: run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json` and list the problems whose message names a parent, blocker, sprint or milestone.
+   - Broken references: run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json` and list the problems whose message names a parent, blocker, sprint, milestone or release.
 5. Group the findings by problem and propose a fix for each, with the counts. The fixes are an estimate from the scale, a drafted list of criteria, an epic as parent, close as stale, and mark as duplicate. Never invent an estimate or a parent without saying it is a proposal.
 6. Ask with `AskUserQuestion` which fixes to apply: all of them, one group, or one by one. Let the user edit the proposals. When the user accepts none, stop and change nothing.
 7. Run the dry run of every accepted fix, so the preview matches what is written.

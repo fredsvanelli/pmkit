@@ -1,7 +1,7 @@
 $ pmkit validate
 exit 0
 --- stdout
-checked: 6 issues, 1 epics, 0 sprints, 1 milestones, 1 comments
+checked: 6 issues, 1 epics, 0 sprints, 1 milestones, 1 releases, 1 comments
 no problems
 --- stderr
 (empty)
@@ -15,6 +15,7 @@ exit 0
     "epics": 1,
     "sprints": 0,
     "milestones": 1,
+    "releases": 1,
     "comments": 1
   },
   "problems": []

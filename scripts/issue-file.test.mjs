@@ -41,9 +41,26 @@ const parse = (text) => parseIssueFile(text, { statuses })
 test('ISSUE_KEYS fixes the frontmatter order', () => {
   assert.deepEqual(ISSUE_KEYS, [
     'id', 'title', 'type', 'status', 'priority', 'estimate', 'assignee', 'labels', 'parent',
-    'blocked_by', 'related', 'duplicate_of', 'sprint', 'milestone', 'due', 'branch', 'archived',
+    'blocked_by', 'related', 'duplicate_of', 'sprint', 'milestone', 'release', 'due', 'branch', 'archived',
     'created', 'updated',
   ])
+})
+
+test('release parses, and serializes on the line after milestone', () => {
+  const text = SPEC_FILE.replace('sprint: 2026-11-02\n', 'sprint: 2026-11-02\nmilestone: v2\nrelease: 1.2.0\n')
+  const issue = parse(text)
+  assert.equal(issue.release, '1.2.0')
+  assert.equal(issue.extra, undefined)
+  assert.equal(toFrontmatter(issue).release, '1.2.0')
+  assert.match(serializeIssue(issue), /^milestone: v2\nrelease: 1\.2\.0\ndue: /m)
+})
+
+test('a release key written after updated by the previous plugin is read as release and moves before due', () => {
+  const text = SPEC_FILE.replace('updated: 2026-10-24T13:40:00Z\n', 'updated: 2026-10-24T13:40:00Z\nrelease: 1.0.0\n')
+  const issue = parse(text)
+  assert.equal(issue.release, '1.0.0')
+  assert.equal(issue.extra, undefined)
+  assert.match(serializeIssue(issue), /^release: 1\.0\.0\ndue: 2026-11-14$/m)
 })
 
 test('the spec issue file parses to the expected Issue', () => {

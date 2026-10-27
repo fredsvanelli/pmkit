@@ -1,0 +1,132 @@
+$ pmkit release mark-released 1.0.0
+exit 0
+--- stdout
+1.0.0
+state: planned → released
+released: (none) → 2026-10-23T12:00:00Z
+unfinished issues:
+ID       | Title                 | Status | Assignee | Estimate | Sprint
+---------|-----------------------|--------|----------|----------|-------
+ISS-3M8D | Billing export as CSV | todo   | fred     | 3        |
+--- stderr
+warning: release 1.0.0 has 1 unfinished issue: ISS-3M8D
+
+$ pmkit release mark-released 1.0.0 --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "1.0.0",
+    "name": "Webhooks GA",
+    "target": "2026-11-13",
+    "state": "planned",
+    "description": "Public webhooks with retries and a dead-letter queue."
+  },
+  "after": {
+    "id": "1.0.0",
+    "name": "Webhooks GA",
+    "target": "2026-11-13",
+    "released": "2026-10-23T12:00:00Z",
+    "state": "released",
+    "description": "Public webhooks with retries and a dead-letter queue."
+  },
+  "unfinished": [
+    {
+      "id": "ISS-3M8D",
+      "title": "Billing export as CSV",
+      "status": {
+        "name": "todo",
+        "category": "todo"
+      },
+      "labels": [
+        "billing"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Finance needs a monthly CSV of invoices.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-12T09:00:00Z",
+      "updated": "2026-10-22T10:00:00Z",
+      "body": "## Description\n\nFinance needs a monthly CSV of invoices.\n",
+      "type": "feature",
+      "priority": "medium",
+      "estimate": 3,
+      "assignee": "fred",
+      "release": "1.0.0"
+    }
+  ],
+  "problems": []
+}
+--- stderr
+warning: release 1.0.0 has 1 unfinished issue: ISS-3M8D
+
+$ pmkit release mark-released 1.0.0 --dry-run
+exit 0
+--- stdout
+1.0.0
+state: planned → released
+released: (none) → 2026-10-23T12:00:00Z
+unfinished issues:
+ID       | Title                 | Status | Assignee | Estimate | Sprint
+---------|-----------------------|--------|----------|----------|-------
+ISS-3M8D | Billing export as CSV | todo   | fred     | 3        |
+dry run: nothing was written
+--- stderr
+warning: release 1.0.0 has 1 unfinished issue: ISS-3M8D
+
+$ pmkit release mark-released 1.0.0 --dry-run --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "1.0.0",
+    "name": "Webhooks GA",
+    "target": "2026-11-13",
+    "state": "planned",
+    "description": "Public webhooks with retries and a dead-letter queue."
+  },
+  "after": {
+    "id": "1.0.0",
+    "name": "Webhooks GA",
+    "target": "2026-11-13",
+    "released": "2026-10-23T12:00:00Z",
+    "state": "released",
+    "description": "Public webhooks with retries and a dead-letter queue."
+  },
+  "unfinished": [
+    {
+      "id": "ISS-3M8D",
+      "title": "Billing export as CSV",
+      "status": {
+        "name": "todo",
+        "category": "todo"
+      },
+      "labels": [
+        "billing"
+      ],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Finance needs a monthly CSV of invoices.",
+      "acceptanceCriteria": [],
+      "created": "2026-10-12T09:00:00Z",
+      "updated": "2026-10-22T10:00:00Z",
+      "body": "## Description\n\nFinance needs a monthly CSV of invoices.\n",
+      "type": "feature",
+      "priority": "medium",
+      "estimate": 3,
+      "assignee": "fred",
+      "release": "1.0.0"
+    }
+  ],
+  "problems": []
+}
+--- stderr
+warning: release 1.0.0 has 1 unfinished issue: ISS-3M8D

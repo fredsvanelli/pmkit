@@ -15,6 +15,8 @@ At                   | Issue    | By   | Op     | Change
 2026-10-16T15:00:00Z | ISS-6R3N | fred | move   | status: in_progress → done
 2026-10-20T16:00:00Z | ISS-1V9Z | ana  | create | Investigate slow login
 2026-10-21T14:00:00Z | ISS-9B2X | ana  | move   | status: in_progress → in_review
+2026-10-22T10:00:00Z | ISS-3M8D | fred | update | release: (none) → 1.0.0
+2026-10-22T10:00:00Z | ISS-6R3N | fred | update | release: (none) → 1.0.0
 --- stderr
 (empty)
 
@@ -209,6 +211,24 @@ exit 0
     "from": "in_progress",
     "to": "in_review",
     "issue": "ISS-9B2X"
+  },
+  {
+    "at": "2026-10-22T10:00:00Z",
+    "by": "fred",
+    "op": "update",
+    "field": "release",
+    "from": null,
+    "to": "1.0.0",
+    "issue": "ISS-3M8D"
+  },
+  {
+    "at": "2026-10-22T10:00:00Z",
+    "by": "fred",
+    "op": "update",
+    "field": "release",
+    "from": null,
+    "to": "1.0.0",
+    "issue": "ISS-6R3N"
   }
 ]
 --- stderr

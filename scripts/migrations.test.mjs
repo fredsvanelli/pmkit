@@ -269,7 +269,7 @@ test('a failing step is INVALID_INPUT for loadConfig and migrate, and validate l
   assert.throws(() => runMigrate(root, { dryRun: true, migrations: [bad] }), check)
   const result = validateRepo(root, { migrations: [bad] })
   assert.deepEqual(result.problems, [problem('.issues/config.yaml')])
-  assert.deepEqual(result.checked, { issues: 0, epics: 0, sprints: 0, milestones: 0, comments: 0 })
+  assert.deepEqual(result.checked, { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, comments: 0 })
 })
 
 test('validate lists a failing step at a custom tracker path', () => {

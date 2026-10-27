@@ -19,6 +19,7 @@ import { buildCapabilities } from '../capabilities.mjs'
 import { lastEntry } from '../metrics.mjs'
 import { createDocumentFile, readDocumentFile } from './documents.mjs'
 import { hasMilestoneFiles, milestoneStems, parseMilestone, serializeMilestone, sortMilestones, validMilestoneId } from './milestones.mjs'
+import { parseRelease, releaseStems, serializeRelease, sortReleases, validReleaseId, validTag } from './releases.mjs'
 import { checkFilter, runQuery } from './query.mjs'
 import { CACHE_DIR, INDEX_FILE, clearIndex, indexHeader, readThroughIndex } from './query-index.mjs'
 import {
@@ -28,10 +29,10 @@ import { fileMtimeIso, issuePaths, listIssueIds, writeFileAtomic } from './store
 
 const CREATE_KEYS = [
   'title', 'type', 'status', 'priority', 'estimate', 'assignee', 'labels', 'parent', 'sprint',
-  'milestone', 'due', 'branch', 'description', 'acceptanceCriteria',
+  'milestone', 'release', 'due', 'branch', 'description', 'acceptanceCriteria',
 ]
 const UPDATE_KEYS = [
-  'title', 'type', 'priority', 'estimate', 'labels', 'sprint', 'milestone', 'due', 'branch',
+  'title', 'type', 'priority', 'estimate', 'labels', 'sprint', 'milestone', 'release', 'due', 'branch',
   'description', 'acceptanceCriteria',
 ]
 // Fields another operation owns, with the command that writes them. An empty string means no next step.
@@ -162,6 +163,7 @@ export function createLocalTracker(root, {
   }
 
   const milestonesDir = path.join(issuesDir, 'milestones')
+  const releasesDir = path.join(issuesDir, 'releases')
 
   // A milestone is free text until milestones/ holds a .md file; from then on it must name one, exactly.
   function requireMilestone(value) {
@@ -170,6 +172,14 @@ export function createLocalTracker(root, {
       throw invalid(`milestone ${milestone} does not exist`, `pmkit milestone create ${milestone}`)
     }
     return milestone
+  }
+
+  // A release must have a file, exactly. Unlike milestones, it is never free text.
+  function requireRelease(value) {
+    const release = oneLine('release', text('release')(value))
+    if (!releaseStems(releasesDir).has(release)) throw invalid(`release ${release} does not exist`, `pmkit release create ${release}`)
+    readRelease(release) // refuses a file that does not parse, so the issue write cannot fail afterwards
+    return release
   }
 
   const sprintExists = (id) => /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(String(id)) && fs.existsSync(path.join(issuesDir, 'sprints', `${id}.yaml`))
@@ -218,6 +228,7 @@ export function createLocalTracker(root, {
     parent: requireParent,
     sprint: requireSprint,
     milestone: requireMilestone,
+    release: requireRelease,
     due: (value) => {
       if (!validDate(value)) throw invalid('due must be a date as YYYY-MM-DD')
       return value
@@ -944,6 +955,82 @@ export function createLocalTracker(root, {
     return { before: null, after }
   }
 
+  const readRelease = (id) => parseRelease(fs.readFileSync(path.join(releasesDir, `${id}.md`), 'utf8'), id)
+
+  function getRelease(id) {
+    if (!validReleaseId(id) || !releaseStems(releasesDir).has(id)) {
+      throw new PmkitError('NOT_FOUND', `release ${id} does not exist`, 'pmkit release list')
+    }
+    return readRelease(id)
+  }
+
+  /** Every release that parses, oldest version first. A file that does not parse, or whose stem breaks the id rule, is skipped; validate reports it. */
+  function listReleases({ state } = {}) {
+    if (state !== undefined && !['planned', 'released'].includes(state)) throw invalid('state must be planned or released', 'pmkit release list')
+    const releases = []
+    for (const id of [...releaseStems(releasesDir)].filter(validReleaseId)) {
+      try {
+        releases.push(readRelease(id))
+      } catch (error) {
+        if (!(error instanceof PmkitError)) throw error
+      }
+    }
+    return sortReleases(releases).filter((release) => state === undefined || release.state === state)
+  }
+
+  function createRelease(input, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const allowed = ['id', 'name', 'tag', 'target']
+    for (const key of Object.keys(input)) {
+      if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+    }
+    const { id } = input
+    if (!validReleaseId(id)) {
+      throw invalid(`release id "${id}" must start and end with a letter or digit and hold only letters, digits, ".", "_" and "-"`, 'Use an id like 1.2.0 or v1.2.0')
+    }
+    const clash = [...releaseStems(releasesDir)].find((stem) => stem.toLowerCase() === id.toLowerCase())
+    if (clash !== undefined) throw new PmkitError('CONFLICT', `release ${clash} already exists`, 'pmkit release list')
+    let name = id
+    if (!blank(input.name)) {
+      if (typeof input.name !== 'string' || input.name.trim() === '') throw invalid('name must be a non-empty string')
+      name = oneLine('name', input.name.trim())
+    }
+    const release = { name }
+    if (!blank(input.tag)) {
+      if (!validTag(input.tag)) throw invalid(`tag "${input.tag}" is not a valid git tag name`, 'Use a tag like v1.2.0')
+      release.tag = input.tag
+    }
+    if (!blank(input.target)) {
+      if (!validDate(input.target)) throw invalid('target must be a date as YYYY-MM-DD')
+      release.target = input.target
+    }
+    const content = serializeRelease(release)
+    const after = readBack('release file', () => parseRelease(content, id))
+    if (!dryRun) {
+      fs.mkdirSync(releasesDir, { recursive: true })
+      writeFile(path.join(releasesDir, `${id}.md`), content)
+    }
+    return { before: null, after }
+  }
+
+  const releaseIssues = (id) => searchIssues({ release: getRelease(id).id }).issues
+
+  /** Marks a release released now. `tag` replaces the stored tag. `unfinished` lists the members that are not done or canceled. */
+  function markReleased(id, actor, { tag, dryRun = false } = {}) {
+    requireWriter(actor)
+    const before = getRelease(id)
+    if (before.released) throw new PmkitError('CONFLICT', `release ${before.id} was released at ${before.released}`, `pmkit release get ${before.id}`)
+    if (!blank(tag) && !validTag(tag)) throw invalid(`tag "${tag}" is not a valid git tag name`, 'Use a tag like v1.2.0')
+    // An issue that does not parse may belong to the release, so it is reported rather than left out silently.
+    const { issues, problems } = search({ release: before.id }, { save: !dryRun })
+    const { id: _id, state: _state, released: _previous, tag: storedTag, ...rest } = before
+    const next = { ...rest, ...(blank(tag) ? (storedTag === undefined ? {} : { tag: storedTag }) : { tag }), released: stamp() }
+    const content = serializeRelease(next)
+    const after = readBack('release file', () => parseRelease(content, before.id))
+    if (!dryRun) writeFile(path.join(releasesDir, `${before.id}.md`), content)
+    return { before, after, unfinished: issues.filter((issue) => !TERMINAL.includes(issue.status.category)), problems }
+  }
+
   /**
    * Milestone names that issues or epics use and that have no file, with how many of each use them. Archived issues count, as they do in `validate`.
    * `except` is an id about to be filed. Not a contract operation; the CLI warns with it.
@@ -971,6 +1058,7 @@ export function createLocalTracker(root, {
   return {
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     listMilestones, getMilestone, createMilestone, unfiledMilestones,
+    listReleases, getRelease, createRelease, releaseIssues, markReleased,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
     comment, listComments, getHistory, logTime, readDocument, createDocument,
     discover, capabilities, reindex, categoryOf, eventsByIssue, metricEvents, issuesBySprint,

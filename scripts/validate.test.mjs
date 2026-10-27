@@ -24,7 +24,7 @@ test('broken fixture returns exactly one problem of each kind, at the right path
     'sprint .issues/sprints/2026-10-12.yaml',
     'value .issues/issues/ISS-3VAZ/issue.md',
   ])
-  assert.deepEqual(result.checked, { issues: 9, epics: 0, sprints: 1, milestones: 0, comments: 0 })
+  assert.deepEqual(result.checked, { issues: 9, epics: 0, sprints: 1, milestones: 0, releases: 0, comments: 0 })
   const cycle = result.problems.find((problem) => problem.code === 'cycle')
   assert.match(cycle.message, /ISS-5CYA.*ISS-5CYB.*ISS-5CYA/)
 })
@@ -34,7 +34,7 @@ test('team fixture minus its conflicted issue has no problems', () => {
   fs.rmSync(path.join(root, '.issues', 'issues', 'ISS-3Q6T'), { recursive: true })
   const result = validateRepo(root)
   assert.deepEqual(result.problems, [])
-  assert.deepEqual(result.checked, { issues: 12, epics: 1, sprints: 2, milestones: 0, comments: 0 })
+  assert.deepEqual(result.checked, { issues: 12, epics: 1, sprints: 2, milestones: 0, releases: 0, comments: 0 })
 })
 
 test('team fixture reports only its conflicted issue', () => {
@@ -323,7 +323,7 @@ test('tracker.system linear alone is one config problem, not a throw', () => {
   })
   assert.deepEqual(brief(result), ['config .pmkit/config.yaml'])
   assert.equal(result.problems[0].message, MSG)
-  assert.deepEqual(result.checked, { issues: 0, epics: 0, sprints: 0, milestones: 0, comments: 0 })
+  assert.deepEqual(result.checked, { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, comments: 0 })
   assert.ok(MSG.startsWith(unsupportedTracker('linear').message))
 })
 
@@ -422,4 +422,43 @@ test('validate and loadConfig share one rule list', () => {
   const listed = validateRepo(root).problems.filter((p) => p.path === '.pmkit/config.yaml').map((p) => p.message)
   assert.deepEqual(listed, pmkitConfigMessages(parseYaml(fs.readFileSync(pmkitFile(root), 'utf8'))))
   assert.equal(listed.at(-1), unsupportedTracker('linear').problem)
+})
+
+function writeRelease(root, name, text = '---\nname: R\n---\n') {
+  const dir = path.join(root, '.issues', 'releases')
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, name), text)
+}
+
+test('a release file that does not parse, or whose name breaks the id rule, is a release problem', () => {
+  const root = makeRepo('basic')
+  writeRelease(root, '1.0.0.md')
+  writeRelease(root, '1.2.0.md', '---\ntarget: 2026-13-40\n---\n')
+  writeRelease(root, 'bad+id.md')
+  writeRelease(root, 'notes.yaml', 'name: x\n')
+  fs.mkdirSync(path.join(root, '.issues', 'releases', 'folder'))
+  const result = validateRepo(root)
+  assert.deepEqual(brief(result), ['release .issues/releases/1.2.0.md', 'release .issues/releases/bad+id.md'])
+  assert.match(result.problems.find((p) => p.path.endsWith('1.2.0.md')).message, /target "2026-13-40"/)
+  assert.match(result.problems.find((p) => p.path.endsWith('bad+id.md')).message, /^release id "bad\+id" must start/)
+  assert.equal(result.checked.releases, 3)
+})
+
+test('a release file with conflict markers is one conflict problem and no release problem', () => {
+  const root = makeRepo('basic')
+  writeRelease(root, '1.0.0.md', '---\n<<<<<<< HEAD\nname: A\n=======\nname: B\n>>>>>>> other\n---\n')
+  const result = validateRepo(root)
+  assert.deepEqual(brief(result), ['conflict .issues/releases/1.0.0.md'])
+  assert.equal(result.checked.releases, 1)
+})
+
+test('an issue, archived or not, whose release has no file is a reference problem, even without a releases folder', () => {
+  const root = makeRepo('basic')
+  writeIssue(root, 'ISS-1AAA', 'release: 9.9.9\n')
+  writeIssue(root, 'ISS-1BBB', 'release: 9.9.9\narchived: true\n')
+  const result = validateRepo(root)
+  assert.deepEqual(brief(result), ['reference .issues/issues/ISS-1AAA/issue.md', 'reference .issues/issues/ISS-1BBB/issue.md'])
+  assert.ok(result.problems.every((p) => p.message === 'release 9.9.9 does not exist'))
+  writeRelease(root, '9.9.9.md')
+  assert.deepEqual(validateRepo(root).problems, [])
 })

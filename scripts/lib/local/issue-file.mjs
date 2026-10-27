@@ -6,7 +6,7 @@ import { FrontmatterError, joinFrontmatter, parseYaml, splitFrontmatter } from '
 
 export const ISSUE_KEYS = [
   'id', 'title', 'type', 'status', 'priority', 'estimate', 'assignee', 'labels', 'parent',
-  'blocked_by', 'related', 'duplicate_of', 'sprint', 'milestone', 'due', 'branch', 'archived',
+  'blocked_by', 'related', 'duplicate_of', 'sprint', 'milestone', 'release', 'due', 'branch', 'archived',
   'created', 'updated',
 ]
 
@@ -112,7 +112,7 @@ export function parseIssueFile(text, { statuses = {} } = {}) {
     updated: data.updated == null ? undefined : String(data.updated),
     body,
   }
-  for (const key of ['type', 'priority', 'estimate', 'assignee', 'parent', 'sprint', 'milestone', 'due', 'branch']) {
+  for (const key of ['type', 'priority', 'estimate', 'assignee', 'parent', 'sprint', 'milestone', 'release', 'due', 'branch']) {
     if (data[key] != null) issue[key] = data[key]
   }
   for (const key of ['created', 'updated']) if (issue[key] === undefined) delete issue[key]
@@ -140,6 +140,7 @@ export function toFrontmatter(issue) {
     duplicate_of: issue.duplicateOf,
     sprint: issue.sprint,
     milestone: issue.milestone,
+    release: issue.release,
     due: issue.due,
     branch: issue.branch,
     archived: issue.archived ? true : undefined,

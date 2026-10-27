@@ -292,6 +292,48 @@ export function runTrackerContract({ name, setup }) {
       await rejects(() => tracker.getMilestone('contract-dry'), 'NOT_FOUND')
     })
 
+    it('lists no releases at the start', async ({ tracker }) => {
+      assert.deepEqual(await tracker.listReleases(), [])
+    })
+
+    it('creates a release that list and get agree on', async ({ tracker, actor }) => {
+      const created = await tracker.createRelease({ id: 'contract-1.0', name: 'Contract one', tag: 'v-contract-1.0', target: '2099-01-31' }, actor)
+      assert.equal(created.before, null)
+      assert.equal(created.after.id, 'contract-1.0')
+      assert.equal(created.after.tag, 'v-contract-1.0')
+      assert.deepEqual(await tracker.listReleases(), [created.after])
+      assert.deepEqual(await tracker.getRelease('contract-1.0'), created.after)
+    })
+
+    it('rejects an unknown release with NOT_FOUND', async ({ tracker }) => {
+      await rejects(() => tracker.getRelease('no-such-release'), 'NOT_FOUND')
+    })
+
+    it('a release dry run returns after and creates nothing', async ({ tracker, actor }) => {
+      const { before, after } = await tracker.createRelease({ id: 'contract-dry' }, actor, { dryRun: true })
+      assert.equal(before, null)
+      assert.equal(after.id, 'contract-dry')
+      assert.deepEqual(await tracker.listReleases(), [])
+    })
+
+    it('lists the issues of a release and marks it released', async ({ tracker, actor }) => {
+      await tracker.createRelease({ id: 'contract-2.0' }, actor)
+      const first = (await tracker.createIssue({ title: 'In release one' }, actor)).after
+      const second = (await tracker.createIssue({ title: 'In release two' }, actor)).after
+      await tracker.updateIssue(first.id, { release: 'contract-2.0' }, actor)
+      await tracker.updateIssue(second.id, { release: 'contract-2.0' }, actor)
+      await tracker.moveToCategory(first.id, 'done', actor)
+      const members = (await tracker.releaseIssues('contract-2.0')).map((issue) => issue.id).sort()
+      assert.deepEqual(members, [first.id, second.id].sort())
+      const dry = await tracker.markReleased('contract-2.0', actor, { dryRun: true })
+      assert.equal(dry.after.state, 'released')
+      assert.equal((await tracker.getRelease('contract-2.0')).state, 'planned')
+      const marked = await tracker.markReleased('contract-2.0', actor)
+      assert.equal(marked.after.state, 'released')
+      assert.deepEqual(marked.unfinished.map((issue) => issue.id), [second.id])
+      await rejects(() => tracker.releaseIssues('no-such-release'), 'NOT_FOUND')
+    })
+
     it('logs time on an issue and shows it in the history and the metric events', async ({ tracker, actor }) => {
       const { id } = (await tracker.createIssue({ title: 'Timed' }, actor)).after
       await tracker.logTime(id, 45, actor)

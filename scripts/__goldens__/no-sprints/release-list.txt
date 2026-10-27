@@ -1,0 +1,37 @@
+$ pmkit release list
+exit 0
+--- stdout
+ID    | Name        | State   | Tag | Target     | Released
+------|-------------|---------|-----|------------|---------
+1.0.0 | Webhooks GA | planned |     | 2026-11-13 |
+--- stderr
+(empty)
+
+$ pmkit release list --json
+exit 0
+--- stdout
+[
+  {
+    "id": "1.0.0",
+    "name": "Webhooks GA",
+    "target": "2026-11-13",
+    "state": "planned",
+    "description": "Public webhooks with retries and a dead-letter queue."
+  }
+]
+--- stderr
+(empty)
+
+$ pmkit release list --state released
+exit 0
+--- stdout
+no releases
+--- stderr
+(empty)
+
+$ pmkit release list --state released --json
+exit 0
+--- stdout
+[]
+--- stderr
+(empty)

@@ -60,12 +60,13 @@ Entities in the MVP:
 
 | Entity | Fields |
 |---|---|
-| Issue | `id`, `title`, `type`, `status` (`{ name, category }`), `priority`, `estimate`, `assignee`, `labels`, `parent`, `blockedBy`, `blocks` (computed), `related`, `duplicateOf`, `children` (computed), `archived`, `sprint`, `milestone`, `due`, `branch`, `description`, `acceptanceCriteria` (`[{ text, done }]`), `created`, `updated` |
+| Issue | `id`, `title`, `type`, `status` (`{ name, category }`), `priority`, `estimate`, `assignee`, `labels`, `parent`, `blockedBy`, `blocks` (computed), `related`, `duplicateOf`, `children` (computed), `archived`, `sprint`, `milestone`, `release`, `due`, `branch`, `description`, `acceptanceCriteria` (`[{ text, done }]`), `created`, `updated` |
 | Comment | `id`, `issue`, `author`, `body`, `created` |
 | Event | `at`, `by`, `op`, `field`, `from`, `to`, `minutes`, `synthetic` |
 | Sprint | `id`, `name`, `start`, `end`, `goal`, `state` (`planned`, `active`, `closed`), `closed` (optional, ISO timestamp of the close with `Z` or an offset, set by `closeCycle`), `capacity` (member id → points or hours), `daysOff` (member id → dates) |
 | Epic | `id`, `title`, `status`, `start`, `target`, `milestone`, `description` |
 | Milestone | `id`, `name`, `due`, `description` |
+| Release | `id`, `name`, `tag`, `target`, `released`, `state` (`planned`, `released`; computed from `released`), `description` |
 | Status update | `epic`, `at`, `author`, `health` (`on_track`, `at_risk`, `off_track`), `body` |
 | Member | `id`, `name`, `email`, `availability` (0 to 1) |
 
@@ -92,6 +93,7 @@ The operations the MVP needs, grouped by family. Every write takes an `actor` (a
 | Cycles | `listCycles({ state })`, `currentCycle()`, `cycleIssues(id)`, `openCycle(input, actor)`, `closeCycle(id, actor)`, `moveToCycle(ids, sprint, actor)` |
 | Deliverables | `listDeliverables()`, `getDeliverable(id)`, `deliverableProgress(id)`, `createDeliverable(input, actor)`, `publishStatusUpdate(update, actor)` |
 | Milestones | `listMilestones()`, `getMilestone(id)`, `createMilestone(input, actor)` |
+| Releases | `listReleases({ state })`, `getRelease(id)`, `releaseIssues(id)`, `createRelease(input, actor)`, `markReleased(id, actor, { tag })` |
 | Capacity | `getCapacity(sprint)`, `setCapacity(sprint, capacity, actor)` |
 | Metrics | `metricEvents({ since, until })` |
 | Documents | `readDocument(path)`, `createDocument(path, body, actor)` |
@@ -193,6 +195,7 @@ The current user is the member whose `email` equals `git config user.email`. Wit
 │       └── updates/2026-10-23-fred.md
 ├── sprints/2026-11-02.yaml
 ├── milestones/
+├── releases/
 ├── docs/
 └── .cache/                    # phase 2: query index
 ```
@@ -229,6 +232,8 @@ Deliveries that fail with 5xx are dropped instead of retried.
 - [ ] Retries with exponential backoff, max 5 attempts
 - [ ] Dead-letter after the last attempt
 ```
+
+When set, `milestone` and `release` sit after `sprint` and before `due`.
 
 Writes rewrite the frontmatter in a fixed key order and drop keys that are empty or absent **(builder's call)**. YAML comments inside an issue's frontmatter are not preserved; comments in config files are, because the adapter never rewrites config files (only `setup` writes them, once).
 
@@ -270,6 +275,10 @@ days_off:
 ### Milestones
 
 `milestones/<id>.md`: frontmatter `name` and an optional `due`, then a Markdown description. The file name is the milestone id. The id rule, the reference checks and the `milestone list`, `get` and `create` commands are in `2026-10-25-pmk-3-milestones-design.md`.
+
+### Releases
+
+`releases/<id>.md`: frontmatter `name`, an optional `tag`, `target` and `released`, then a Markdown description. The file name is the release id and the version. An issue joins a release through `release`. The id rule, the order, the tag check and the commands are in `2026-10-26-pmk-22-local-releases-design.md`.
 
 ### Writes and commits
 
@@ -327,8 +336,8 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `whoami` | prints the resolved actor |
 | `issues list [--text t] [--category c,..] [--type t,..] [--assignee me\|none\|id] [--label l,..] [--sprint current\|none\|id] [--parent id] [--blocked] [--updated-before d] [--updated-after d] [--sort s] [--limit n] [--archived]` | searches |
 | `issues get <id> [--comments] [--history]` | one issue |
-| `issues create --title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint id\|current\|none] [--due] [--milestone m] [--description-file f] [--criteria-file f]` | creates |
-| `issues update <id> [--title] [--type] [--priority] [--estimate] [--label l,..] [--sprint id\|current\|none] [--due] [--milestone] [--branch] [--description-file f] [--criteria-file f] [--check n] [--uncheck n]` | edits fields and criteria |
+| `issues create --title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint id\|current\|none] [--due] [--milestone m] [--release r] [--description-file f] [--criteria-file f]` | creates |
+| `issues update <id> [--title] [--type] [--priority] [--estimate] [--label l,..] [--sprint id\|current\|none] [--due] [--milestone] [--release] [--branch] [--description-file f] [--criteria-file f] [--check n] [--uncheck n]` | edits fields and criteria |
 | `issues move <id> <category> [--status name]` | changes status by category |
 | `issues assign <id> <member\|none>` | assigns |
 | `issues link <from> <to> --kind blocks\|related\|duplicate [--remove]` | links or unlinks; only the issue whose file changes has to exist, so a dangling reference can be removed **(builder's call)** |
@@ -348,6 +357,8 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `epic updates <id>` | lists the status updates of an epic, newest first |
 | `milestone list`, `milestone get <id>` | reads milestones |
 | `milestone create <id> [--name n] [--due YYYY-MM-DD]` | creates a milestone |
+| `release list [--state planned\|released]`, `release get <id>`, `release issues <id>` | reads releases |
+| `release create <id> [--name n] [--tag t] [--target YYYY-MM-DD]`, `release mark-released <id> [--tag t]` | creates a release, marks it released |
 | `docs read <path>`, `docs create <path> --body-file f` | reads or creates a document under the docs folder |
 | `metrics velocity [--window n]` | points or counts done per closed sprint, and the average |
 | `metrics cycle-time [--since d] [--until d]` | median and p85 days from first `in_progress` to `done` |
@@ -392,7 +403,7 @@ The MVP ships 24 command files. Commands are user-invoked; the routing skill rea
 | `/pmkit:cycle:plan` | `commands/cycle/plan.md` | `cycle list`, `discover`, `metrics velocity`, `issues list`, `cycle open`, `cycle capacity`, `cycle add` |
 | `/pmkit:cycle:close` | `commands/cycle/close.md` | `pr sync`, `cycle current`, `cycle issues`, `events`, `metrics cycle-time`, `cycle list`, `cycle add`, `issues create`, `issues update`, `cycle close`, `docs create` |
 | `/pmkit:team:standup` | `commands/team/standup.md` | `pr sync`, `events`, `issues list`, `pr status` |
-| `/pmkit:local:doctor` | `commands/local/doctor.md` | `validate`, `issues get`, `migrate`, `issues update`, `discover`, `issues parent`, `issues link`, `cycle add`, `milestone create` |
+| `/pmkit:local:doctor` | `commands/local/doctor.md` | `validate`, `issues get`, `migrate`, `issues update`, `discover`, `issues parent`, `issues link`, `cycle add`, `milestone create`, `release create` |
 | `/pmkit:upgrade` | `commands/upgrade.md` | `changelog`, `migrate` |
 
 `/pmkit:setup` runs safely more than once. On a configured project it uses `init --update`: it shows the diff of every file it would change and writes only after the user approves, as `/runbooks:setup` does. `/pmkit:local:doctor` edits a file by hand only to remove git conflict markers, one file at a time, after the user approves **(builder's call)**. `/pmkit:upgrade` updates the plugin install, shows the changelog sections since the installed version, and runs `migrate` after approval.

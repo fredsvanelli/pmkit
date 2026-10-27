@@ -1,0 +1,100 @@
+$ pmkit release create 2.0.0 --name 'Golden release' --tag v2.0.0 --target 2026-12-01
+exit 0
+--- stdout
+2.0.0
+id: 2.0.0
+name: Golden release
+state: planned
+tag: v2.0.0
+target: 2026-12-01
+--- stderr
+(empty)
+
+$ pmkit release create 2.0.0 --name 'Golden release' --tag v2.0.0 --target 2026-12-01 --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "id": "2.0.0",
+    "name": "Golden release",
+    "tag": "v2.0.0",
+    "target": "2026-12-01",
+    "state": "planned",
+    "description": ""
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit release create 2.0.0 --name 'Golden release' --tag v2.0.0 --target 2026-12-01 --dry-run
+exit 0
+--- stdout
+2.0.0
+id: 2.0.0
+name: Golden release
+state: planned
+tag: v2.0.0
+target: 2026-12-01
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit release create 2.0.0 --name 'Golden release' --tag v2.0.0 --target 2026-12-01 --dry-run --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "id": "2.0.0",
+    "name": "Golden release",
+    "tag": "v2.0.0",
+    "target": "2026-12-01",
+    "state": "planned",
+    "description": ""
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit release create 1.0.0
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: release 1.0.0 already exists
+next: pmkit release list
+
+$ pmkit release create 1.0.0 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "CONFLICT",
+    "message": "release 1.0.0 already exists",
+    "nextStep": "pmkit release list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit release create 1.0.0 --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: release 1.0.0 already exists
+next: pmkit release list
+
+$ pmkit release create 1.0.0 --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "CONFLICT",
+    "message": "release 1.0.0 already exists",
+    "nextStep": "pmkit release list"
+  }
+}
+--- stderr
+(empty)

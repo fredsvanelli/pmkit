@@ -17,7 +17,7 @@ The code that implements the contract for one tracker or one git host and transl
 _Avoid_: driver, connector, integration
 
 **Issue**:
-A unit of work: a title, a status, an optional type, priority, estimate, assignee, labels, a parent, links to other issues, a sprint, a branch, a description and acceptance criteria. The Local tracker keeps it in `issues/<ID>/issue.md`.
+A unit of work: a title, a status, an optional type, priority, estimate, assignee, labels, a parent, links to other issues, a sprint, a release, a branch, a description and acceptance criteria. The Local tracker keeps it in `issues/<ID>/issue.md`.
 _Avoid_: ticket, task, card
 
 **ID style**:
@@ -34,7 +34,11 @@ _Avoid_: initiative, project, deliverable (that is the contract's name for the o
 
 **Milestone**:
 A named target with an optional due date that issues and epics point to by id.
-_Avoid_: release (PMK-22), phase, version
+_Avoid_: release, phase, version
+
+**Release**:
+A version of the product, kept as `releases/<version>.md`, that issues point to through `release`. It may name a git tag, and it is `planned` until `release mark-released` records when it shipped.
+_Avoid_: milestone (a milestone is a target, not a version), version (outside the file name), deploy
 
 **Sprint**:
 A time box with a start, an end, a goal, a state (`planned`, `active` or `closed`) and a capacity per member. At most one sprint is `active`. The sprint's id is its start date. The Unified model calls it a cycle, and the CLI command group is `cycle`. A closed sprint records when it was closed, and velocity counts only the moves to `done` made up to that moment.

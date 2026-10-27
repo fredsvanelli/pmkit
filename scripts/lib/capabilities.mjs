@@ -20,7 +20,7 @@ export const SERVED_BY = {
   deliverables: ['epic list', 'epic get', 'epic create', 'epic progress'],
   strategic_goals: [],
   status_update: ['epic update-status', 'epic updates'],
-  releases: [],
+  releases: ['release list', 'release get', 'release issues', 'release create', 'release mark-released'],
   capacity: ['cycle capacity'],
   native_metrics: ['metrics velocity', 'metrics cycle-time', 'metrics lead-time', 'metrics throughput', 'metrics aging', 'events'],
   saved_views: [],

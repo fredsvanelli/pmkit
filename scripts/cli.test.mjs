@@ -362,7 +362,7 @@ test('validate lists tracker.system linear as a problem and exits 0', () => {
   useLinear(root)
   const text = run(root, ['validate'])
   assert.equal(text.status, 0)
-  assert.equal(text.stdout.split('\n')[0], 'checked: 0 issues, 0 epics, 0 sprints, 0 milestones, 0 comments')
+  assert.equal(text.stdout.split('\n')[0], 'checked: 0 issues, 0 epics, 0 sprints, 0 milestones, 0 releases, 0 comments')
   assert.match(text.stdout, LINEAR_LINE)
   const problem = json(root, ['validate']).problems[0]
   assert.deepEqual(Object.keys(problem).sort(), ['code', 'message', 'path'])
@@ -397,7 +397,7 @@ test('validate text starts with the counts, milestones included', () => {
   const { checked } = json(root, ['validate'])
   const text = run(root, ['validate'])
   assert.equal(text.status, 0)
-  assert.equal(text.stdout.split('\n')[0], `checked: ${checked.issues} issues, ${checked.epics} epics, ${checked.sprints} sprints, 1 milestones, ${checked.comments} comments`)
+  assert.equal(text.stdout.split('\n')[0], `checked: ${checked.issues} issues, ${checked.epics} epics, ${checked.sprints} sprints, 1 milestones, ${checked.releases} releases, ${checked.comments} comments`)
 })
 
 test('capabilities --json lists 20 capabilities', () => {
@@ -1259,6 +1259,8 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'epic create': ['--title', 'New epic'],
     'epic update-status': ['EPC-2M9D', '--health', 'on_track', '--body-file', input('update.md')],
     'milestone create': ['v2.0'],
+    'release create': ['2.0.0'],
+    'release mark-released': ['1.0.0'],
     'docs create': ['notes/new.md', '--body-file', input('doc.md')],
     'issues branch': ['ISS-5N1R'],
     'pr open': ['--issue', 'ISS-5N1R'],
@@ -1339,6 +1341,9 @@ test('every read goes on with one warning', () => {
     'epic updates': ['EPC-2M9D'],
     'milestone list': [],
     'milestone get': ['v1.0'],
+    'release list': [],
+    'release get': ['1.0.0'],
+    'release issues': ['1.0.0'],
     'docs read': ['missing.md'],
     'metrics velocity': [],
     'metrics cycle-time': [],
@@ -1469,4 +1474,185 @@ test('validate and changelog print no warning', () => {
   const result = run(root, ['changelog', '--file', changelog, '--since', '0.1.0'])
   assert.equal(result.status, 0, result.stderr)
   assert.doesNotMatch(result.stderr, /^warning: \.pmkit/m)
+})
+
+test('release list prints no releases on an empty tracker and a table after a create', () => {
+  const root = makeRepo('basic')
+  assert.equal(run(root, ['release', 'list']).stdout.trim(), 'no releases')
+  assert.deepEqual(json(root, ['release', 'list']), [])
+  json(root, ['release', 'create', '1.2.0', '--name', 'Webhooks', '--tag', 'v1.2.0', '--target', '2026-11-30'])
+  const lines = run(root, ['release', 'list']).stdout.split('\n')
+  assert.match(lines[0], /^ID\s+\| Name\s+\| State\s+\| Tag\s+\| Target\s+\| Released$/)
+  assert.match(lines[2], /^1\.2\.0\s+\| Webhooks\s+\| planned\s+\| v1\.2\.0\s+\| 2026-11-30 \|$/)
+  assert.deepEqual(json(root, ['release', 'list', '--state', 'released']), [])
+  assert.deepEqual(json(root, ['release', 'list', '--state', 'planned']).map((r) => r.id), ['1.2.0'])
+  const bad = run(root, ['release', 'list', '--state', 'open', '--json'])
+  assert.equal(bad.status, 2)
+  assert.equal(JSON.parse(bad.stdout).error.code, 'INVALID_INPUT')
+})
+
+test('release get prints the record and a miss is NOT_FOUND', () => {
+  const root = makeRepo('basic')
+  json(root, ['release', 'create', '1.2.0', '--name', 'Webhooks', '--tag', 'v1.2.0', '--target', '2026-11-30'])
+  const text = run(root, ['release', 'get', '1.2.0']).stdout
+  for (const line of ['id: 1.2.0', 'name: Webhooks', 'state: planned', 'tag: v1.2.0', 'target: 2026-11-30']) assert.ok(text.split('\n').includes(line), line)
+  const miss = run(root, ['release', 'get', 'nope', '--json'])
+  assert.equal(miss.status, 2)
+  assert.deepEqual(JSON.parse(miss.stdout).error, { code: 'NOT_FOUND', message: 'release nope does not exist', nextStep: 'pmkit release list' })
+})
+
+test('release create --dry-run writes nothing, and a bad id is INVALID_INPUT', () => {
+  const root = makeRepo('basic')
+  const before = hashTree(path.join(root, '.issues'))
+  const dry = json(root, ['release', 'create', '1.2.0', '--dry-run'])
+  assert.equal(dry.before, null)
+  assert.equal(dry.after.id, '1.2.0')
+  assert.deepEqual(hashTree(path.join(root, '.issues')), before)
+  const bad = run(root, ['release', 'create', 'bad+id', '--json'])
+  assert.equal(bad.status, 2)
+  assert.equal(JSON.parse(bad.stdout).error.code, 'INVALID_INPUT')
+  assert.ok(!fs.existsSync(path.join(root, '.issues/releases')))
+})
+
+test('release create and mark-released commit as pmkit: release <command> <id> when auto commit is on', () => {
+  const root = makeRepo('basic')
+  const file = path.join(root, '.issues/config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('auto_commit: false', 'auto_commit: true'))
+  git(root, 'init', '-q')
+  git(root, 'config', 'user.name', 'Test')
+  git(root, 'config', 'user.email', 'test@example.com')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-q', '-m', 'init')
+  json(root, ['release', 'create', '1.2.0'])
+  assert.equal(git(root, 'log', '-1', '--format=%s').stdout.trim(), 'pmkit: release create 1.2.0')
+  json(root, ['release', 'mark-released', '1.2.0'])
+  assert.equal(git(root, 'log', '-1', '--format=%s').stdout.trim(), 'pmkit: release mark-released 1.2.0')
+})
+
+test('issues create and update take --release, and a missing release is refused with a next step', () => {
+  const root = makeRepo('basic')
+  json(root, ['release', 'create', '1.2.0'])
+  const { after } = json(root, ['issues', 'create', '--title', 'T', '--release', '1.2.0'])
+  assert.equal(after.release, '1.2.0')
+  assert.equal(json(root, ['issues', 'update', after.id, '--release', 'none']).after.release, undefined)
+  const missing = run(root, ['issues', 'update', after.id, '--release', '9.9.9', '--json'])
+  assert.equal(missing.status, 2)
+  assert.deepEqual(JSON.parse(missing.stdout).error, { code: 'INVALID_INPUT', message: 'release 9.9.9 does not exist', nextStep: 'pmkit release create 9.9.9' })
+})
+
+test('issues update --release refuses a release file that does not parse, before it writes anything', () => {
+  const root = makeRepo('basic')
+  json(root, ['release', 'create', '9.0'])
+  const { after } = json(root, ['issues', 'create', '--title', 'T'])
+  const issueFile = path.join(root, '.issues', 'issues', after.id, 'issue.md')
+  const eventsFile = path.join(root, '.issues', 'issues', after.id, 'events.jsonl')
+  const issueBefore = fs.readFileSync(issueFile, 'utf8')
+  const eventsBefore = fs.readFileSync(eventsFile, 'utf8')
+  fs.writeFileSync(path.join(root, '.issues', 'releases', '9.0.md'), '---\ntag: v1..2\n---\n')
+  const result = run(root, ['issues', 'update', after.id, '--release', '9.0', '--json'])
+  assert.equal(result.status, 2)
+  const error = JSON.parse(result.stdout).error
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.equal(error.nextStep, '/pmkit:local:doctor')
+  assert.equal(fs.readFileSync(issueFile, 'utf8'), issueBefore)
+  assert.equal(fs.readFileSync(eventsFile, 'utf8'), eventsBefore)
+})
+
+// A release 1.2.0 with one issue in todo and one done, plus an issue outside it.
+function releaseWithIssues(tag) {
+  const root = makeRepo('basic')
+  json(root, ['release', 'create', '1.2.0', ...(tag ? ['--tag', tag] : [])])
+  const open = json(root, ['issues', 'create', '--title', 'Open', '--release', '1.2.0']).after
+  const done = json(root, ['issues', 'create', '--title', 'Done', '--release', '1.2.0']).after
+  json(root, ['issues', 'move', done.id, 'done'])
+  const other = json(root, ['issues', 'create', '--title', 'Other']).after
+  return { root, open, done, other }
+}
+
+test('release issues lists the member issues as a table and as JSON', () => {
+  const { root, open, done, other } = releaseWithIssues()
+  const text = run(root, ['release', 'issues', '1.2.0']).stdout
+  assert.ok(text.includes(open.id) && text.includes(done.id) && !text.includes(other.id))
+  assert.deepEqual(json(root, ['release', 'issues', '1.2.0']).map((i) => i.id).sort(), [open.id, done.id].sort())
+})
+
+test('release mark-released prints the unfinished issues and warns, and --dry-run writes nothing', () => {
+  const { root, open, done } = releaseWithIssues()
+  const dry = run(root, ['release', 'mark-released', '1.2.0', '--dry-run'])
+  assert.equal(dry.status, 0, dry.stderr)
+  assert.equal(dry.stdout.trimEnd().split('\n').at(-1), 'dry run: nothing was written')
+  assert.equal(json(root, ['release', 'get', '1.2.0']).state, 'planned')
+  const result = run(root, ['release', 'mark-released', '1.2.0'])
+  assert.equal(result.status, 0, result.stderr)
+  const lines = result.stdout.split('\n')
+  assert.ok(lines.some((line) => line.startsWith('released:')))
+  assert.ok(lines.includes('unfinished issues:'))
+  assert.ok(result.stdout.includes(open.id) && !result.stdout.slice(result.stdout.indexOf('unfinished')).includes(done.id))
+  assert.match(result.stderr, new RegExp(`warning: release 1\\.2\\.0 has 1 unfinished issue: ${open.id}\\n`))
+  assert.equal(json(root, ['release', 'get', '1.2.0']).state, 'released')
+  const again = run(root, ['release', 'mark-released', '1.2.0', '--json'])
+  assert.equal(again.status, 2)
+  assert.equal(JSON.parse(again.stdout).error.code, 'CONFLICT')
+})
+
+test('release mark-released lists several unfinished issues in the warning', () => {
+  const { root, open } = releaseWithIssues()
+  const second = json(root, ['issues', 'create', '--title', 'Second', '--release', '1.2.0']).after
+  const result = run(root, ['release', 'mark-released', '1.2.0'])
+  assert.match(result.stderr, new RegExp(`warning: release 1\\.2\\.0 has 2 unfinished issues: ${[open.id, second.id].sort().join(', ')}\\n`))
+})
+
+test('putting an issue in a released release warns, dry runs included', () => {
+  const { root, other } = releaseWithIssues()
+  json(root, ['release', 'mark-released', '1.2.0'])
+  const update = run(root, ['issues', 'update', other.id, '--release', '1.2.0'])
+  assert.equal(update.status, 0, update.stderr)
+  assert.match(update.stderr, /warning: release 1\.2\.0 is already released\n/)
+  const dry = run(root, ['issues', 'create', '--title', 'N', '--release', '1.2.0', '--dry-run'])
+  assert.match(dry.stderr, /warning: release 1\.2\.0 is already released\n/)
+})
+
+function gitRepoWithCommit(root) {
+  git(root, 'init', '-q')
+  git(root, '-c', 'user.name=T', '-c', 'user.email=t@x.dev', 'commit', '-q', '--allow-empty', '-m', 'init')
+}
+
+test('release mark-released checks the tag against the repository and warns only on a miss', () => {
+  const tagged = releaseWithIssues('v1.2.0')
+  gitRepoWithCommit(tagged.root)
+  git(tagged.root, 'tag', 'v1.2.0')
+  const found = run(tagged.root, ['release', 'mark-released', '1.2.0'])
+  assert.equal(found.status, 0, found.stderr)
+  assert.doesNotMatch(found.stderr, /tag/)
+
+  const missing = releaseWithIssues('v1.2.0')
+  gitRepoWithCommit(missing.root)
+  const result = run(missing.root, ['release', 'mark-released', '1.2.0'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stderr, /warning: tag v1\.2\.0 is not in this repository; create and push it, or run git fetch --tags\n/)
+  assert.equal(json(missing.root, ['release', 'get', '1.2.0']).state, 'released')
+})
+
+test('release mark-released outside a git repository marks the release and warns that the tag cannot be checked', () => {
+  const { root } = releaseWithIssues('v1.2.0')
+  const result = run(root, ['release', 'mark-released', '1.2.0'], { env: { GIT_CEILING_DIRECTORIES: path.dirname(root) } })
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stderr, /warning: cannot check tag v1\.2\.0: not a git repository/)
+  assert.equal(json(root, ['release', 'get', '1.2.0']).state, 'released')
+})
+
+test('release mark-released with no git on PATH marks the release and warns', () => {
+  const { root } = releaseWithIssues('v1.2.0')
+  const empty = tempDir('pmkit-nopath-')
+  const result = spawnSync(process.execPath, [CLI, 'release', 'mark-released', '1.2.0'], { cwd: root, env: { ...baseEnv(), PATH: empty }, encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stderr, /warning: cannot check tag v1\.2\.0: git is not installed or not on PATH\n/)
+  assert.equal(json(root, ['release', 'get', '1.2.0']).state, 'released')
+})
+
+test('release mark-released on a release with no tag runs no git and prints no tag warning', () => {
+  const { root } = releaseWithIssues()
+  const result = run(root, ['release', 'mark-released', '1.2.0'], { env: { GIT_CEILING_DIRECTORIES: path.dirname(root) } })
+  assert.equal(result.status, 0, result.stderr)
+  assert.doesNotMatch(result.stderr, /tag/)
 })

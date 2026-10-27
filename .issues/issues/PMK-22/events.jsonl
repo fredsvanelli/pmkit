@@ -1,2 +1,11 @@
 {"at":"2026-10-25T19:13:20Z","by":"fred","op":"create","to":{"id":"PMK-22","title":"Add releases to the Local tracker","type":"feature","status":"backlog","priority":"medium","estimate":3,"labels":[],"parent":"EPC-3","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"phase-2-commands","created":"2026-10-25T19:13:20Z","updated":"2026-10-25T19:13:20Z"}}
 {"at":"2026-10-25T19:13:24Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-2"}
+{"at":"2026-10-27T00:14:20Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-27T00:14:22Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-27T00:14:24Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-22-add-releases-to-the-local-tracker"}
+{"at":"2026-10-27T01:14:48Z","by":"fred","op":"comment","to":"2026-10-27T01-14-48Z-fred.md"}
+{"at":"2026-10-27T01:51:00Z","by":"fred","op":"comment","to":"2026-10-27T01-51-00Z-fred.md"}
+{"at":"2026-10-27T01:51:04Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-27T01:51:04Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-27T01:51:04Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-27T01:51:07Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

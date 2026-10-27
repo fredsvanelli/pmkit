@@ -34,7 +34,7 @@ export function issueRecord(issue) {
     ['id', issue.id], ['title', issue.title], ['type', issue.type],
     ['status', `${issue.status.name} (${issue.status.category})`],
     ['priority', issue.priority], ['estimate', issue.estimate], ['assignee', issue.assignee], ['labels', issue.labels],
-    ['parent', issue.parent], ['sprint', issue.sprint], ['milestone', issue.milestone], ['due', issue.due], ['branch', issue.branch],
+    ['parent', issue.parent], ['sprint', issue.sprint], ['milestone', issue.milestone], ['release', issue.release], ['due', issue.due], ['branch', issue.branch],
     ['blocked_by', issue.blockedBy], ['blocks', issue.blocks], ['related', issue.related], ['duplicate_of', issue.duplicateOf],
     ['children', issue.children], ['archived', issue.archived ? true : undefined],
     ['created', issue.created], ['updated', issue.updated],
@@ -56,6 +56,14 @@ export function epicRecord(epic) {
 export function milestoneRecord(milestone) {
   const lines = fields([['id', milestone.id], ['name', milestone.name], ['due', milestone.due]])
   if (milestone.description) lines.push('', milestone.description)
+  return lines.join('\n')
+}
+
+export function releaseRecord(release) {
+  const lines = fields([
+    ['id', release.id], ['name', release.name], ['state', release.state], ['tag', release.tag], ['target', release.target], ['released', release.released],
+  ])
+  if (release.description) lines.push('', release.description)
   return lines.join('\n')
 }
 

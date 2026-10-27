@@ -33,20 +33,20 @@ const input = (name) => path.join(INPUTS, name)
 const FIXTURES = {
   basic: {
     about: 'empty: config files only, no issues, epics, sprints or documents',
-    issue: 'ISS-0000', other: 'ISS-0001', conflicted: 'ISS-0000', epic: 'EPC-0000', sprint: '2026-10-12', doc: 'missing.md', milestone: 'v1.0',
+    issue: 'ISS-0000', other: 'ISS-0001', conflicted: 'ISS-0000', epic: 'EPC-0000', sprint: '2026-10-12', doc: 'missing.md', milestone: 'v1.0', release: '1.0.0',
   },
   team: {
     about: 'small team: 2 members, 13 issues, 1 epic, a closed and an active sprint, ISS-3Q6T has conflict markers',
-    issue: 'ISS-5N1R', other: 'ISS-4M2S', conflicted: 'ISS-3Q6T', epic: 'EPC-2M9D', sprint: '2026-10-12', doc: 'missing.md', milestone: 'v1.0',
+    issue: 'ISS-5N1R', other: 'ISS-4M2S', conflicted: 'ISS-3Q6T', epic: 'EPC-2M9D', sprint: '2026-10-12', doc: 'missing.md', milestone: 'v1.0', release: '1.0.0',
   },
   'messy-merge': {
     about: 'after merging two tracker branches: ISS-4 add/add conflict, ISS-5 status conflict, ISS-6 events out of order, two active sprints',
-    issue: 'ISS-1', other: 'ISS-2', conflicted: 'ISS-4', epic: 'EPC-1', sprint: '2026-10-12', doc: 'missing.md', milestone: 'v1.0',
+    issue: 'ISS-1', other: 'ISS-2', conflicted: 'ISS-4', epic: 'EPC-1', sprint: '2026-10-12', doc: 'missing.md', milestone: 'v1.0', release: '1.0.0',
   },
   'no-sprints': {
-    about: 'a team without sprints: 6 issues, an epic with children, a comment, a document and a milestone',
+    about: 'a team without sprints: 6 issues, an epic with children, a comment, a document, a milestone and a release',
     // v1.0 is the one milestone file. ISS-9B2X holds the one comment, is in_review and has no parent, so get --comments, move and parent show real output.
-    issue: 'ISS-9B2X', other: 'ISS-6R3N', conflicted: 'ISS-0000', epic: 'EPC-4H7V', sprint: '2026-10-12', doc: 'specs/overview.md', milestone: 'v1.0',
+    issue: 'ISS-9B2X', other: 'ISS-6R3N', conflicted: 'ISS-0000', epic: 'EPC-4H7V', sprint: '2026-10-12', doc: 'specs/overview.md', milestone: 'v1.0', release: '1.0.0',
   },
 }
 
@@ -83,6 +83,12 @@ const CASES = {
   'milestone get': (a) => [[a.milestone], ['missing-milestone']],
   // A new id, and the anchor again, which is a CONFLICT where the milestone exists.
   'milestone create': (a) => [['v2.0', '--name', 'Golden milestone', '--due', '2026-12-01'], [a.milestone]],
+  'release list': () => [[], ['--state', 'released']],
+  'release get': (a) => [[a.release], ['missing-release']],
+  'release issues': (a) => [[a.release]],
+  // A new id, and the anchor again, which is a CONFLICT where the release exists.
+  'release create': (a) => [['2.0.0', '--name', 'Golden release', '--tag', 'v2.0.0', '--target', '2026-12-01'], [a.release]],
+  'release mark-released': (a) => [[a.release]],
   'epic update-status': (a) => [[a.epic, '--health', 'on_track', '--body-file', input('update.md')]],
   'epic updates': (a) => [[a.epic]],
   'docs read': (a) => [[a.doc]],

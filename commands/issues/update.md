@@ -13,7 +13,7 @@ Arguments: `$ARGUMENTS`
 - `id` (required): the issue ID, for example `ISS-7K3Q`.
 - `change` (optional): what to change, in plain words. When it is empty, ask what to change.
 
-This command edits title, type, priority, estimate, labels, sprint (a sprint id, `current` or `none`), due date, milestone, branch, description and acceptance criteria. For other changes, use the command that owns them:
+This command edits title, type, priority, estimate, labels, sprint (a sprint id, `current` or `none`), due date, milestone, release, branch, description and acceptance criteria. For other changes, use the command that owns them:
 
 - status: `/pmkit:issues:move`;
 - assignee: `/pmkit:issues:assign`;
