@@ -60,6 +60,18 @@ function rangeText(name, value) {
   return value
 }
 
+// The --since and --until bounds of a metrics command, each undefined when not given.
+function rangeOptions(ctx) {
+  const bound = (name) => (ctx.opt(name) === undefined ? undefined : rangeText(name, ctx.opt(name)))
+  return { since: bound('since'), until: bound('until') }
+}
+
+// The count, median and p85 lines of a summary; the median and p85 read n/a when there is no value.
+function summaryLines(stats) {
+  const days = (value) => (value === null ? 'n/a' : `${value} days`)
+  return fields([['count', stats.count], ['median', days(stats.median)], ['p85', days(stats.p85)]])
+}
+
 function mulberry32(seed) {
   let state = seed >>> 0
   return () => {
@@ -534,12 +546,11 @@ export const COMMANDS = [
     name: 'metrics cycle-time', summary: 'median and p85 days from first in_progress to done', usage: '[--since d] [--until d]', flags: ['since', 'until'],
     run: (ctx) => {
       const tracker = ctx.tracker()
-      const since = ctx.opt('since') === undefined ? undefined : rangeText('since', ctx.opt('since'))
-      const until = ctx.opt('until') === undefined ? undefined : rangeText('until', ctx.opt('until'))
+      const { since, until } = rangeOptions(ctx)
       const inRange = doneInRange(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since, until })
       const issues = cycleTimes(inRange, { categoryOf: tracker.categoryOf })
       const stats = summary(issues.map((item) => item.days))
-      const text = fields([['count', stats.count], ['median', stats.median === null ? 'n/a' : `${stats.median} days`], ['p85', stats.p85 === null ? 'n/a' : `${stats.p85} days`]]).join('\n')
+      const text = summaryLines(stats).join('\n')
       return { data: { ...stats, issues }, text }
     },
   },
@@ -547,12 +558,11 @@ export const COMMANDS = [
     name: 'metrics lead-time', summary: 'median and p85 days from creation to done', usage: '[--since d] [--until d]', flags: ['since', 'until'],
     run: (ctx) => {
       const tracker = ctx.tracker()
-      const since = ctx.opt('since') === undefined ? undefined : rangeText('since', ctx.opt('since'))
-      const until = ctx.opt('until') === undefined ? undefined : rangeText('until', ctx.opt('until'))
+      const { since, until } = rangeOptions(ctx)
       const inRange = doneInRange(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since, until })
       const issues = leadTimes(inRange, { categoryOf: tracker.categoryOf })
       const stats = summary(issues.map((item) => item.days))
-      const text = fields([['count', stats.count], ['median', stats.median === null ? 'n/a' : `${stats.median} days`], ['p85', stats.p85 === null ? 'n/a' : `${stats.p85} days`]]).join('\n')
+      const text = summaryLines(stats).join('\n')
       return { data: { ...stats, issues }, text }
     },
   },
@@ -560,8 +570,7 @@ export const COMMANDS = [
     name: 'metrics throughput', summary: 'issues done in a range, by type', usage: '[--since d] [--until d]', flags: ['since', 'until'],
     run: (ctx) => {
       const tracker = ctx.tracker()
-      const since = ctx.opt('since') === undefined ? undefined : rangeText('since', ctx.opt('since'))
-      const until = ctx.opt('until') === undefined ? undefined : rangeText('until', ctx.opt('until'))
+      const { since, until } = rangeOptions(ctx)
       const inRange = doneInRange(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since, until })
       const result = throughput(inRange, { categoryOf: tracker.categoryOf })
       const lines = [`count: ${result.count}`]
@@ -570,7 +579,7 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'metrics aging', summary: 'days in progress of the open work at a date, oldest first', usage: '[--until d]', flags: ['until'],
+    name: 'metrics aging', summary: 'days since work started, per issue in progress or in review at a date, oldest first', usage: '[--until d]', flags: ['until'],
     run: (ctx) => {
       const tracker = ctx.tracker()
       const until = ctx.opt('until') === undefined ? undefined : rangeText('until', ctx.opt('until'))
