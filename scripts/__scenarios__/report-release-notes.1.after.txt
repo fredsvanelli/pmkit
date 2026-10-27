@@ -1,0 +1,9 @@
+$ pmkit release-notes --json  [step 1, read]
+exit 0
+$ pmkit capabilities --json  [step 6, read]
+exit 0
+$ pmkit docs create release-notes/2026-10-09_2026-10-23.md --body-file <inputs>/release-notes.md --dry-run --json  [step 6, dry run]
+exit 0
+? Step 6  [confirmed]
+
+(no file changed)

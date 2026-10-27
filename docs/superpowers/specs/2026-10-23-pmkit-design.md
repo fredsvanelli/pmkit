@@ -381,7 +381,7 @@ Bodies come from files (`--description-file`, `--body-file`, `-` for stdin), nev
 
 ## Commands
 
-The MVP shipped 24 command files, and phase 2 adds `/pmkit:issues:dependencies`, `/pmkit:team:risk-radar`, `/pmkit:backlog:triage` and `/pmkit:local:render`. Commands are user-invoked; the routing skill reads the right file when the user asks in their own words.
+The MVP shipped 24 command files, and phase 2 adds `/pmkit:issues:dependencies`, `/pmkit:team:risk-radar`, `/pmkit:backlog:triage`, `/pmkit:local:render` and `/pmkit:report:release-notes`. Commands are user-invoked; the routing skill reads the right file when the user asks in their own words.
 
 | Command | File | Calls |
 |---|---|---|
@@ -405,6 +405,7 @@ The MVP shipped 24 command files, and phase 2 adds `/pmkit:issues:dependencies`,
 | `/pmkit:spec:import <file>` | `commands/spec/import.md` | `docs read`, `discover`, `epic get`, `issues list`, `milestone list`, `epic create`, `milestone create`, `issues create`, `issues link`, `docs create` |
 | `/pmkit:backlog:groom` | `commands/backlog/groom.md` | `issues list`, `events`, `validate`, `issues update`, `issues parent`, `issues move`, `issues link` |
 | `/pmkit:report:status <epic>` | `commands/report/status.md` | `epic list`, `pr sync`, `epic get`, `epic progress`, `issues list`, `epic updates`, `events`, `epic update-status` |
+| `/pmkit:report:release-notes [release\|sprint\|period]` | `commands/report/release-notes.md` | `release-notes`, `capabilities`, `docs create` |
 | `/pmkit:cycle:plan` | `commands/cycle/plan.md` | `cycle list`, `discover`, `metrics velocity`, `issues list`, `cycle open`, `cycle capacity`, `cycle add` |
 | `/pmkit:cycle:close` | `commands/cycle/close.md` | `pr sync`, `cycle current`, `cycle issues`, `events`, `metrics cycle-time`, `cycle list`, `cycle add`, `issues create`, `issues update`, `cycle close`, `docs create` |
 | `/pmkit:team:standup` | `commands/team/standup.md` | `pr sync`, `events`, `issues list`, `pr status` |

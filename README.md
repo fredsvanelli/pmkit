@@ -35,6 +35,7 @@ Then run `/pmkit:setup` in the project. With the GitHub git host (`git_host.syst
 - `/pmkit:issues:work`: Pick up an issue: claim it, branch, plan, implement, open the PR and move it to review.
 - `/pmkit:local:doctor`: Check the tracker files, fix what can be fixed and resolve git conflict markers.
 - `/pmkit:local:render`: Render a board, roadmap or sprint view of the tracker as Markdown or HTML for people outside the agent.
+- `/pmkit:report:release-notes`: Write release notes for a release, a sprint or a period, and save them after you confirm.
 - `/pmkit:report:status`: Draft a status update for an epic and publish it after approval.
 - `/pmkit:spec:import`: Turn a spec or PRD into an epic with milestones, issues, sub-issues, estimates and blockers.
 - `/pmkit:team:flow-metrics`: Show cycle time, lead time, throughput, aging and bug rate for a period, with the trend against the previous period.
