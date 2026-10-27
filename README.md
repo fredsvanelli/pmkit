@@ -35,7 +35,7 @@ Then run `/pmkit:setup` in the project. With the GitHub git host (`git_host.syst
 - `/pmkit:local:doctor`: Check the tracker files, fix what can be fixed and resolve git conflict markers.
 - `/pmkit:report:status`: Draft a status update for an epic and publish it after approval.
 - `/pmkit:spec:import`: Turn a spec or PRD into an epic with milestones, issues, sub-issues, estimates and blockers.
-- `/pmkit:team:risk-radar`: Blockers, stalled issues and PRs, late or silent epics and broken CI, in one read-only report.
+- `/pmkit:team:risk-radar`: Blockers, stalled issues and PRs, late epics, epics without a recent status update and broken CI, in one read-only report.
 - `/pmkit:team:standup`: Digest of what changed since the last business day, per person, with what needs attention.
 
 ## CLI
@@ -92,7 +92,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `metrics throughput` | issues done in a range, with a count per type |
 | `metrics aging` | days since work started for each issue in `in_progress` or `in_review` at `--until` (default now), oldest first |
 | `events` | prints all events in a range, for digests |
-| `risks` | blockers, stalled issues and PRs, late or silent epics and broken CI; reads only. With `git_host.system: none`, or when `gh` is missing or logged out, it lists issues stalled by tracker activity and marks pull requests and CI as not checked |
+| `risks` | blockers, stalled issues and PRs, late epics, epics without a recent status update and broken CI; reads only. With `git_host.system: none`, or when `gh` is missing or logged out, it lists issues stalled by tracker activity and marks pull requests and CI as not checked |
 | `issues branch <id> [--from branch]` | creates the issue branch from `--from` (default: `git_host.default_branch`) and records it on the issue |
 | `pr open --issue <id> [--draft] [--body-file f]` | pushes the issue branch and opens a pull request; when the branch already has an open one, pushes and returns it with `existing: true` |
 | `pr ready --issue <id>` | marks the open draft pull request of an issue ready for review |

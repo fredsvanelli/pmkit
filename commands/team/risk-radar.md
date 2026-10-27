@@ -1,5 +1,5 @@
 ---
-description: Blockers, stalled issues and PRs, late or silent epics and broken CI, in one read-only report
+description: Blockers, stalled issues and PRs, late epics, epics without a recent status update and broken CI, in one read-only report
 argument-hint: ""
 disable-model-invocation: true
 ---

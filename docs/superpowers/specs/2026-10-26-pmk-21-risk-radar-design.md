@@ -127,7 +127,7 @@ A `null` list means "not checked". An empty list means "checked, nothing found".
 A new entry in `COMMANDS`, not `write: true`, with no flags and no arguments:
 
 ```text
-risks    blockers, stalled issues and PRs, late or silent epics and broken CI; reads only
+risks    blockers, stalled issues and PRs, late epics, epics without a recent status update and broken CI; reads only
 ```
 
 JSON shape (`--json`):
@@ -186,7 +186,7 @@ Issues and epics carry `status.category`, so no function needs `categoryOf`. The
 
 `commands/team/risk-radar.md` (question 4), in the shape of the other command files:
 
-- Frontmatter: `description: Blockers, stalled issues and PRs, late or silent epics and broken CI, in one read-only report`, `argument-hint: ""` (as `commands/local/doctor.md` has, because `scripts/plugin.test.mjs` requires the key), `disable-model-invocation: true`.
+- Frontmatter: `description: Blockers, stalled issues and PRs, late epics, epics without a recent status update and broken CI, in one read-only report`, `argument-hint: ""` (as `commands/local/doctor.md` has, because `scripts/plugin.test.mjs` requires the key), `disable-model-invocation: true`.
 - Parameters: none.
 - Steps: read the conventions. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" risks --json`. When `gitHost.available` is false, say in one line why, and that issues are stalled by tracker activity only. Show each section in the order of criterion 1. For a `pr_merged` row, offer `pmkit pr sync` as the next step, through `/pmkit:team:standup` or by hand, and do not run it.
 - Confirmation points: none. The command only reads.
@@ -195,7 +195,7 @@ Issues and epics carry `status.category`, so no function needs `categoryOf`. The
 
 ### Docs and registration
 
-- `skills/pmkit/SKILL.md`: a table row, "see what could make the team miss: blockers, stalled issues and PRs, late or silent epics, broken CI".
+- `skills/pmkit/SKILL.md`: a table row, "see what could make the team miss: blockers, stalled issues and PRs, late epics, epics without a recent status update, broken CI".
 - `README.md`: the command in the command list and `risks` in the CLI table, with a note that it runs with `git_host.system: none` and degrades.
 - `docs/superpowers/specs/2026-10-23-pmkit-design.md`: `risks` in the CLI table, the command in the Commands table with its call (`risks`), and "The MVP ships 24 command files" left as it is, since this is a phase 2 command. The builder adds a line under the table for phase 2 commands.
 - `CONTEXT.md`: a **Stalled** term. An issue in `in_progress` or `in_review`, or an open PR, with no activity for more than `stuck_business_days` business days. _Avoid_: stale (backlog grooming's term for old backlog issues), idle.

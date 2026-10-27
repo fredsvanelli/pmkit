@@ -693,7 +693,7 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'risks', summary: 'blockers, stalled issues and PRs, late or silent epics and broken CI; reads only', flags: [],
+    name: 'risks', summary: 'blockers, stalled issues and PRs, late epics, epics without a recent status update and broken CI; reads only', flags: [],
     run: (ctx) => runRisks(ctx),
   },
   {
