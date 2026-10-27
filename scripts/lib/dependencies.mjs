@@ -27,8 +27,18 @@ export function dependencyMap(input) {
 
 /** The loop break, the critical path and the printers recurse along a chain; a chain that overflows the stack becomes a PmkitError. */
 export function tooDeep(error) {
-  if (!(error instanceof RangeError)) return error
-  return new PmkitError('INVALID_INPUT', 'The dependency chain is too deep to map.', 'Shorten the blocked_by or parent chain, or run /pmkit:local:doctor.')
+  if (!(error instanceof RangeError) || !/call stack/i.test(error.message)) return error
+  return new PmkitError('INVALID_INPUT', 'The dependency chain is too deep to map.', 'Shorten the blocked_by or parent chain.')
+}
+
+/** JSON.stringify nests more deeply than the map builder, so a map can build and still overflow when printed. Call this before printing it. */
+export function serializable(map) {
+  try {
+    JSON.stringify(map)
+  } catch (error) {
+    throw tooDeep(error)
+  }
+  return map
 }
 
 function buildMap({ target, issues, dependencies = true, unreadable = [], unit = 'points' }) {

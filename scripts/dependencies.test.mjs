@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { dependencyMap } from './lib/dependencies.mjs'
+import { dependencyMap, serializable, tooDeep } from './lib/dependencies.mjs'
 import { dependencyText } from './lib/format.mjs'
 import { PmkitError } from './lib/errors.mjs'
 
@@ -321,4 +321,17 @@ test('a node is outside the target when its parent chain does not reach it', () 
   assert.equal(node(map, 'B').outside, false)
   assert.equal(node(map, 'D').outside, true)
   assert.equal(node(map, 'E').outside, false)
+})
+
+test('the JSON of a hierarchy too deep for JSON.stringify is a PmkitError', () => {
+  let tree = { id: 'N0', children: [] }
+  for (let index = 1; index < 6000; index++) tree = { id: `N${index}`, children: [tree] }
+  assert.throws(() => serializable({ tree }), (error) => error instanceof PmkitError && error.code === 'INVALID_INPUT')
+  assert.doesNotThrow(() => serializable({ tree: [] }))
+})
+
+test('tooDeep passes on a RangeError that is not a stack overflow', () => {
+  const other = new RangeError('Invalid array length')
+  assert.equal(tooDeep(other), other)
+  assert.ok(tooDeep(new RangeError('Maximum call stack size exceeded')) instanceof PmkitError)
 })

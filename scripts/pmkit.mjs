@@ -10,7 +10,7 @@ import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, pmkitConfigWarning, pm
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
 import { changeLines, dependencyText, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, releaseRecord, sprintRecord, table } from './lib/format.mjs'
 import { aging, cycleTimes, doneInRange, leadTimes, rangeInstant, summary, throughput, velocity } from './lib/metrics.mjs'
-import { dependencyMap } from './lib/dependencies.mjs'
+import { dependencyMap, serializable } from './lib/dependencies.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { addMapEntry, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
@@ -324,7 +324,7 @@ export const COMMANDS = [
       const dependencies = tracker.capabilities().capabilities.find((c) => c.id === 'dependencies').path !== 'absent'
       const map = dependencyMap({ target, issues: found.issues, dependencies, unreadable: found.problems.map((p) => p.id), unit: local.estimate.unit })
       const problems = [...found.problems, ...map.problems]
-      return { data: { ...map, problems }, text: dependencyText(map), warnings: problems.map(problemLine) }
+      return { data: serializable({ ...map, problems }), text: dependencyText(map), warnings: problems.map(problemLine) }
     },
   },
   {
