@@ -1,0 +1,2 @@
+{"at":"2026-10-27T19:32:59Z","by":"fred","op":"create","to":{"id":"PMK-142","title":"Show remaining work for in-progress issues in the dependency map","type":"feature","status":"backlog","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-27T19:32:59.041Z","updated":"2026-10-27T19:32:59Z"}}
+{"at":"2026-10-27T19:32:59Z","by":"fred","op":"link","field":"related","to":"PMK-20"}

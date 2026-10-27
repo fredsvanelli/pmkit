@@ -1,0 +1,2 @@
+{"at":"2026-10-27T19:32:58Z","by":"fred","op":"create","to":{"id":"PMK-131","title":"`render --out` fails with UNEXPECTED on a broken parent path","type":"bug","status":"backlog","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-27T19:32:58.076Z","updated":"2026-10-27T19:32:58Z"}}
+{"at":"2026-10-27T19:32:58Z","by":"fred","op":"link","field":"related","to":"PMK-25"}

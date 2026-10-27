@@ -1,0 +1,2 @@
+{"at":"2026-10-27T19:32:58Z","by":"fred","op":"create","to":{"id":"PMK-136","title":"The dependency map walks chains recursively","type":"chore","status":"backlog","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-27T19:32:58.488Z","updated":"2026-10-27T19:32:58Z"}}
+{"at":"2026-10-27T19:32:58Z","by":"fred","op":"link","field":"related","to":"PMK-20"}

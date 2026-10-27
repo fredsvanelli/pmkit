@@ -1,0 +1,2 @@
+{"at":"2026-10-27T19:32:57Z","by":"fred","op":"create","to":{"id":"PMK-130","title":"A reopened issue keeps its last done time in flow metrics","type":"bug","status":"backlog","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-27T19:32:57.996Z","updated":"2026-10-27T19:32:57Z"}}
+{"at":"2026-10-27T19:32:58Z","by":"fred","op":"link","field":"related","to":"PMK-18"}
