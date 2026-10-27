@@ -84,7 +84,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `milestone create <id>` | creates a milestone; takes `--name` and `--due` |
 | `release list` | lists releases, oldest version first; `--state planned\|released` |
 | `release get <id>` | shows one release |
-| `release issues <id>` | lists the issues of a release |
+| `release issues <id> [--archived]` | lists the issues of a release; `--archived` keeps the archived ones |
 | `release create <id>` | creates a release; takes `--name`, `--tag` and `--target` |
 | `release mark-released <id>` | marks a release released, lists its unfinished issues and warns when its tag is not in the repository; takes `--tag` |
 | `docs read <path>` | prints a document under the docs folder |

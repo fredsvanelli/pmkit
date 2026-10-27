@@ -1668,6 +1668,18 @@ test('release get prints the record and a miss is NOT_FOUND', () => {
   assert.deepEqual(JSON.parse(miss.stdout).error, { code: 'NOT_FOUND', message: 'release nope does not exist', nextStep: 'pmkit release list' })
 })
 
+test('release issues --archived lists archived members', () => {
+  const root = makeRepo('basic')
+  json(root, ['release', 'create', '1.2.0'])
+  const ids = [1, 2].map((n) => json(root, ['issues', 'create', '--title', `Member ${n}`]).after.id)
+  for (const id of ids) json(root, ['issues', 'update', id, '--release', '1.2.0'])
+  json(root, ['issues', 'archive', ids[1]])
+  assert.deepEqual(json(root, ['release', 'issues', '1.2.0']).map((i) => i.id), [ids[0]])
+  assert.deepEqual(json(root, ['release', 'issues', '1.2.0', '--archived']).map((i) => i.id).sort(), [...ids].sort())
+  const text = run(root, ['release', 'issues', '1.2.0', '--archived']).stdout
+  for (const id of ids) assert.ok(text.includes(id), id)
+})
+
 test('release create --dry-run writes nothing, and a bad id is INVALID_INPUT', () => {
   const root = makeRepo('basic')
   const before = hashTree(path.join(root, '.issues'))

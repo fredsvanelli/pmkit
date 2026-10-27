@@ -93,7 +93,7 @@ The operations the MVP needs, grouped by family. Every write takes an `actor` (a
 | Cycles | `listCycles({ state })`, `currentCycle()`, `cycleIssues(id)`, `openCycle(input, actor)`, `closeCycle(id, actor)`, `moveToCycle(ids, sprint, actor)` |
 | Deliverables | `listDeliverables()`, `getDeliverable(id)`, `deliverableProgress(id)`, `createDeliverable(input, actor)`, `publishStatusUpdate(update, actor)` |
 | Milestones | `listMilestones()`, `getMilestone(id)`, `createMilestone(input, actor)` |
-| Releases | `listReleases({ state })`, `getRelease(id)`, `releaseIssues(id)`, `createRelease(input, actor)`, `markReleased(id, actor, { tag })` |
+| Releases | `listReleases({ state })`, `getRelease(id)`, `releaseIssues(id, { archived })`, `createRelease(input, actor)`, `markReleased(id, actor, { tag })` |
 | Capacity | `getCapacity(sprint)`, `setCapacity(sprint, capacity, actor)` |
 | Metrics | `metricEvents({ since, until })` |
 | Documents | `readDocument(path)`, `createDocument(path, body, actor)` |
@@ -358,7 +358,7 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `epic updates <id>` | lists the status updates of an epic, newest first |
 | `milestone list`, `milestone get <id>` | reads milestones |
 | `milestone create <id> [--name n] [--due YYYY-MM-DD]` | creates a milestone |
-| `release list [--state planned\|released]`, `release get <id>`, `release issues <id>` | reads releases |
+| `release list [--state planned\|released]`, `release get <id>`, `release issues <id> [--archived]` | reads releases |
 | `release create <id> [--name n] [--tag t] [--target YYYY-MM-DD]`, `release mark-released <id> [--tag t]` | creates a release, marks it released |
 | `docs read <path>`, `docs create <path> --body-file f` | reads or creates a document under the docs folder |
 | `metrics velocity [--window n]` | points or counts done per closed sprint, and the average |

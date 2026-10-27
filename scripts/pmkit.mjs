@@ -550,9 +550,9 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'release issues', summary: 'lists the issues of a release', usage: '<id>', args: ['id'], flags: [],
+    name: 'release issues', summary: 'lists the issues of a release', usage: '<id> [--archived]', args: ['id'], flags: ['archived'],
     run: (ctx) => {
-      const issues = ctx.tracker().releaseIssues(ctx.args[0])
+      const issues = ctx.tracker().releaseIssues(ctx.args[0], { archived: ctx.flag('archived') })
       return { data: issues, text: issueTable(issues) }
     },
   },
