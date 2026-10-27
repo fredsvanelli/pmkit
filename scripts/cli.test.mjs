@@ -362,7 +362,7 @@ test('validate lists tracker.system linear as a problem and exits 0', () => {
   useLinear(root)
   const text = run(root, ['validate'])
   assert.equal(text.status, 0)
-  assert.equal(text.stdout.split('\n')[0], 'checked: 0 issues, 0 epics, 0 sprints, 0 milestones, 0 comments')
+  assert.equal(text.stdout.split('\n')[0], 'checked: 0 issues, 0 epics, 0 sprints, 0 milestones, 0 releases, 0 comments')
   assert.match(text.stdout, LINEAR_LINE)
   const problem = json(root, ['validate']).problems[0]
   assert.deepEqual(Object.keys(problem).sort(), ['code', 'message', 'path'])
@@ -397,7 +397,7 @@ test('validate text starts with the counts, milestones included', () => {
   const { checked } = json(root, ['validate'])
   const text = run(root, ['validate'])
   assert.equal(text.status, 0)
-  assert.equal(text.stdout.split('\n')[0], `checked: ${checked.issues} issues, ${checked.epics} epics, ${checked.sprints} sprints, 1 milestones, ${checked.comments} comments`)
+  assert.equal(text.stdout.split('\n')[0], `checked: ${checked.issues} issues, ${checked.epics} epics, ${checked.sprints} sprints, 1 milestones, ${checked.releases} releases, ${checked.comments} comments`)
 })
 
 test('capabilities --json lists 20 capabilities', () => {
