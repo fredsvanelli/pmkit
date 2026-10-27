@@ -1,6 +1,6 @@
 # PMK-32 design: the user store for caches and personal defaults
 
-Issue PMK-32, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: draft, with open questions at the end. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
+Issue PMK-32, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: ready for planning, open questions resolved. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
@@ -11,7 +11,7 @@ pmkit keeps every file it writes inside the repository (`.pmkit/`, `.issues/`, `
 
 Unified model, Q5 decision A says: "The user store (e.g., `~/.config/pmkit/`) holds the discovery cache with a TTL and personal defaults. Tokens come from the OS keychain, env vars or existing CLI logins, never from the repo file." The Technical spec ("Capability manifest") already places the manifest at `~/.config/pmkit/cache/<repo-hash>/manifest.json`. The Linear tab lists "what to store locally and how to invalidate it" as open, which this issue answers for the cache.
 
-PMK-33 and PMK-47 depend on this issue. PMK-28 (in parallel) decides how pmkit authenticates to Linear. This issue does not decide credential storage.
+PMK-33 and PMK-47 depend on this issue. PMK-28 decided that the Linear key lives in the environment only, so pmkit stores no credential anywhere. The store therefore has no place for credentials and keeps a guard that refuses credential-shaped keys and values.
 
 Acceptance criteria:
 
@@ -31,22 +31,22 @@ Acceptance criteria:
 
 - One module, `scripts/lib/user-store.mjs`, resolves the user folder and reads and writes two kinds of file in it: cache entries with a TTL and a personal defaults file.
 - The resolution follows XDG, so tests and users can move the folder with environment variables.
-- The folder has a reserved place for credentials-related data that this issue leaves empty and unused, so PMK-28 adds to it without moving anything.
 - Nothing in the store, and no existing command, writes a credential into the repository.
 
 ## Non-goals
 
-- Credential storage, token lookup, keychain access and the Linear authentication method (PMK-28, ADR-0005).
+- Credential storage, token lookup and the Linear authentication method (PMK-28, ADR-0005). The key stays in the environment, and the store has no credentials folder and no writer for one.
 - Cache contents and the code that fills it (PMK-33 discovery, PMK-47). This issue stores opaque JSON values.
 - The capability manifest move from `.issues/.cache/` or in-memory into the store. The Technical spec path is reserved by the layout below, and the manifest caller adopts it later.
-- A `pmkit config` command to edit defaults. Open question 3.
+- A `pmkit config` command to edit defaults. Decided: not now.
+- Rejecting credential-shaped keys in `.pmkit/config.yaml` and `.issues/config.yaml` through `validate`. Decided: a follow-up issue.
 - Which personal defaults exist. The store holds a map and validates the file shape, not the keys.
 
 ## Layout
 
 The user folder is, in order of precedence:
 
-1. `$PMKIT_HOME`, when set and non-empty. An explicit override for tests, CI and users who want another place. **(builder's call)**
+1. `$PMKIT_HOME`, when set and non-empty. An explicit override for tests, CI and users who want another place. Decided: yes.
 2. `$XDG_CONFIG_HOME/pmkit`, when `XDG_CONFIG_HOME` is set and is an absolute path (the XDG rule: relative values are ignored).
 3. `<os.homedir()>/.config/pmkit`. `os.homedir()` reads `HOME` on POSIX and `USERPROFILE` on Windows.
 
@@ -57,12 +57,9 @@ The path stays `~/.config/pmkit/` on every platform, as the sources say. A nativ
   defaults.yaml                          personal defaults (YAML, a flat map)
   cache/
     <scope>/<key>.json                   cache entries with a TTL
-  credentials/                           reserved for PMK-28, created by nobody in this issue
 ```
 
 `<scope>` is a short name the caller picks. `repoHash(root)` returns the first 12 hex characters of the SHA-256 of the repository's real path, so `cache/<repoHash>/manifest.json` matches the Technical spec. A global scope such as `linear-<orgUrlKey>` is also valid. `<key>` and `<scope>` must match `^[a-z0-9][a-z0-9._-]*$`. Anything else, including `/` and `..`, throws `INVALID_INPUT`, so a key cannot climb out of the folder.
-
-The reserved `credentials/` name does not mean the store will hold tokens. It marks where PMK-28 may put something (for example a file reference or an OAuth refresh state) if its decision needs a file. The module exports nothing for that folder, and a test asserts the module creates no `credentials/` folder. If PMK-28 chooses keychain and env vars only, the name stays unused.
 
 ## Cache entries
 
@@ -114,14 +111,14 @@ Four layers, from structural to checked:
 3. **Credential-shaped input is rejected.** `defaultsSet` rejects a key that matches `/token|secret|password|passwd|api[_-]?key|credential|authorization/i`. `cachePut` rejects a value that contains a key matching the same pattern at any depth, or a string value that looks like a Linear key (`lin_api_` followed by 20 or more characters) or a bearer header. The error is `INVALID_INPUT` and the message names the key path, never the value. This is a guard against an accident, not a security boundary, and the spec says so in the code comment.
 4. **A test that watches the repository.** A test runs a representative set of CLI commands (the write commands listed in the capability manifest's `servedBy` lists: `init`, `issues create`, `issues update`, `epic create`, `cycle create`, `release create`, `comment add`, plus `pmkit doctor` or `validate` as a read) in a copy of the fixture repository with `PMKIT_HOME` and `HOME` pointing at a temp folder and `LINEAR_API_KEY`, `GITHUB_TOKEN` and `GH_TOKEN` set to a sentinel string (`pmkit-test-sentinel-9f3a`). After the runs it walks the repository copy and fails if any file holds the sentinel. It uses the existing `hashTree` or a walk, and it needs no network. This turns criterion 2 into a regression check for every command that exists today. Later commands (PMK-28's authentication) add themselves to the list of commands the test runs.
 
-The guard also covers `.pmkit/config.yaml`. See open question 2 for validating that file.
+Validating `.pmkit/config.yaml` for credential-shaped keys is not part of this issue. It is a follow-up candidate that needs PMK-28's key names.
 
 ## Approaches compared
 
 | Approach | Description | Verdict |
 | --- | --- | --- |
 | A. One library module with injected env | `user-store.mjs` as above. Tests pass `env` and `homedir`, or set `PMKIT_HOME`. | Chosen. It is the smallest piece that PMK-33 and PMK-47 import, needs no CLI surface, and has no global state to reset between tests. |
-| B. A `pmkit store` CLI group (`get`, `set`, `clear`) with the library behind it | Gives commands and agents a way to read and write the store. | Rejected for now. ADR-0002 says commands are the source for every agent, so a store command would need a manifest entry, a scenario and a golden before anyone needs it. Open question 3 asks whether personal defaults need one. |
+| B. A `pmkit store` CLI group (`get`, `set`, `clear`) with the library behind it | Gives commands and agents a way to read and write the store. | Rejected for now. ADR-0002 says commands are the source for every agent, so a store command would need a manifest entry, a scenario and a golden before anyone needs it. The answer to whether personal defaults need one is no for now. |
 | C. Reuse `.issues/.cache/` with a gitignored `.pmkit/.local/` folder in the repo | No new location, no `HOME` access. | Rejected. It breaks Q5 (the sources want the folder outside the repo), the cache would not be shared across clones of the same repo, and a credential in the repo tree is exactly what criterion 2 forbids. |
 
 ## Testing
@@ -144,7 +141,7 @@ Cases:
 - File and folder modes are 0600 and 0700 (skipped on Windows).
 - A `.tmp` file does not remain after a write. A write over an existing entry replaces it whole.
 - Scope or key with `/`, `..`, an uppercase letter or an empty string throws.
-- `cacheClear(scope)` removes only that scope. `cacheClear()` removes the `cache/` folder and leaves `defaults.yaml` and `credentials/` alone.
+- `cacheClear(scope)` removes only that scope. `cacheClear()` removes the `cache/` folder and leaves `defaults.yaml` alone.
 - `defaultsGet` on a missing file gives `{}`. A malformed file throws with the path. `defaultsSet` keeps a comment in the file.
 - The credential guard: a store path inside a folder with `.git` throws. A `.git` at the fake home is ignored. A key named `apiKey`, `token` or `Authorization` is rejected in `defaultsSet` and in a nested `cachePut` value. A `lin_api_` string is rejected. The error message does not contain the value.
 - The repository sentinel test described under layer 4.
@@ -159,28 +156,17 @@ Cases:
 
 ## Risks and notes
 
-- **PMK-28 overlap.** PMK-28 may want a credential file, a keychain wrapper or OAuth state in the user folder. The `credentials/` name is reserved and the credential guard rejects credential-shaped input in `defaults.yaml` and the cache. PMK-28 will need its own writer that bypasses the guard on purpose, and should say so in ADR-0005. If PMK-28 wants a different folder name, it is a one-line change.
+- **PMK-28.** PMK-28 keeps the Linear key in `$LINEAR_API_KEY`. The store has no credentials folder. If a later issue needs one, it adds its own folder and its own writer, and records the exception in an ADR.
 - **Windows.** `~/.config/pmkit` on Windows is unusual but works. File modes are advisory there.
 - **Shared machines.** The 0600 and 0700 modes keep other local users out of cached team data. The cache holds no secrets by design.
 - **A home that is a git repository.** Handled by ignoring a `.git` found exactly at `os.homedir()`. A `.git` in any other ancestor of the user folder blocks the write.
 - **Concurrency.** Atomic rename makes each write whole. Two processes that write the same entry last-writer-wins, which is fine for a cache.
 - **PMK-111 interplay.** `npm test` runs under a private `TMPDIR`. Because tests put their fake home under `tempDir`, a store write that escapes to the real home would not be caught by the leak check. The `childEnv()` change and the real-`HOME` guard test are the protection.
 
-## Open questions
+## Resolved questions
 
-1. **Should `PMKIT_HOME` exist beside `XDG_CONFIG_HOME`?**
-   - A. Yes. Tests and CI set one variable, and users get an override that does not move their other XDG-aware tools.
-   - B. No. Use `XDG_CONFIG_HOME` only, as the sources imply.
-   - Recommendation: A. It costs one line, and `XDG_CONFIG_HOME` also moves `gh` and other tools in a test child process.
-2. **Should `validate` and `loadConfig` reject credential-shaped keys in `.pmkit/config.yaml` and `.issues/config.yaml`?**
-   - A. Yes, as a validation problem ("config must not hold a token; use an env var"). It turns Q5's "never from the repo file" into a check on the file people edit by hand.
-   - B. No. Only the store guard and the sentinel test.
-   - Recommendation: A, in a follow-up issue so this one stays about the store. The schema owner (PMK-8 area) changes the validator, and it needs PMK-28's key names.
-3. **Does a developer need a command to read and write personal defaults?**
-   - A. No. The store is a library for adapters now. Users edit `defaults.yaml` by hand.
-   - B. Add `pmkit config get|set|unset` for the user store, with a manifest entry, a scenario and a golden.
-   - Recommendation: A until a skill needs a default, then B in its own issue.
-4. **Should the store move the Local query index too?**
-   - A. No. `.issues/.cache/` is repository-scoped, gitignored and rebuilt from timestamps.
-   - B. Move it to `cache/<repoHash>/` to keep the repo tree clean.
-   - Recommendation: A. It works and nothing in the sources asks for the move.
+1. `PMKIT_HOME` exists beside `XDG_CONFIG_HOME`. It wins over it.
+2. `validate` does not check credential-shaped keys in repo configs in this issue. It is a follow-up candidate.
+3. No `config` command for defaults now. Users edit `defaults.yaml` by hand.
+4. The Local query index stays in `.issues/.cache/`.
+5. From PMK-28: the Linear key lives in the environment only. The `credentials/` reservation is dropped, and the credential guard stays.
