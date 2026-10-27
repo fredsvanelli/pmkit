@@ -240,3 +240,9 @@ test('the command file tells the user why an issue done after the sprint closed 
   assert.ok(text.includes('counts.excluded.after_close'))
   assert.ok(text.includes('done after the sprint closed'))
 })
+
+test('the command file marks a draft in the document title and in the saved path', () => {
+  const text = fs.readFileSync(path.join(import.meta.dirname, '..', 'commands/report/release-notes.md'), 'utf8')
+  assert.ok(text.includes('release-notes/<name>-draft.md'))
+  assert.ok(text.includes('"(draft)"'))
+})

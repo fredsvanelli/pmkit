@@ -17,9 +17,9 @@ export default [
       { step: '1', dryRun: ['pr', 'sync'] },
       { step: '2', read: ['release-notes', '--release', '1.0.0'], save: 'notes' },
       { step: '7', read: ['capabilities'] },
-      { step: '7', dryRun: ['docs', 'create', 'release-notes/1.0.0.md', '--body-file', body] },
+      { step: '7', dryRun: ['docs', 'create', 'release-notes/1.0.0-draft.md', '--body-file', body] },
       { confirm: 'Step 7' },
-      { step: '7', write: ['docs', 'create', 'release-notes/1.0.0.md', '--body-file', body] },
+      { step: '7', write: ['docs', 'create', 'release-notes/1.0.0-draft.md', '--body-file', body] },
     ],
     skip: {},
     notHit: { 'Step 1': 'no issue is in review with a branch, so the pr sync preview moves nothing and does not ask' },
@@ -28,8 +28,8 @@ export default [
       assert.deepEqual(saved.notes.groups.flatMap((group) => group.issues.map((issue) => issue.id)), ['ISS-6R3N'])
       assert.equal(saved.notes.counts.excluded.open, 1)
       const added = repo.git('ls-files', '--others', '--exclude-standard').split('\n').filter(Boolean)
-      assert.deepEqual(added.filter((file) => file.endsWith('release-notes/1.0.0.md')).length, 1, added.join('\n'))
-      const file = added.find((name) => name.endsWith('release-notes/1.0.0.md'))
+      assert.deepEqual(added.filter((file) => file.endsWith('release-notes/1.0.0-draft.md')).length, 1, added.join('\n'))
+      const file = added.find((name) => name.endsWith('release-notes/1.0.0-draft.md'))
       assert.ok(file.startsWith('.issues/docs/'), file)
       assert.ok(repo.file(file).includes('ISS-6R3N'))
     },

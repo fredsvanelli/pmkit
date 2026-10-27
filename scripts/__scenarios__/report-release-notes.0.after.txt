@@ -4,13 +4,13 @@ $ pmkit release-notes --release 1.0.0 --json  [step 2, read]
 exit 0
 $ pmkit capabilities --json  [step 7, read]
 exit 0
-$ pmkit docs create release-notes/1.0.0.md --body-file <inputs>/release-notes.md --dry-run --json  [step 7, dry run]
+$ pmkit docs create release-notes/1.0.0-draft.md --body-file <inputs>/release-notes.md --dry-run --json  [step 7, dry run]
 exit 0
 ? Step 7  [confirmed]
-$ pmkit docs create release-notes/1.0.0.md --body-file <inputs>/release-notes.md --json  [step 7, write]
+$ pmkit docs create release-notes/1.0.0-draft.md --body-file <inputs>/release-notes.md --json  [step 7, write]
 exit 0
 
---- added .issues/docs/release-notes/1.0.0.md
+--- added .issues/docs/release-notes/1.0.0-draft.md
 +# Release 1.0.0 (draft)
 +
 +## New
