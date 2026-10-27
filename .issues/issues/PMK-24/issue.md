@@ -2,13 +2,15 @@
 id: PMK-24
 title: Add the triage command
 type: feature
-status: backlog
+status: in_progress
 priority: medium
 estimate: 3
+assignee: fred
 parent: EPC-3
 milestone: phase-2-commands
+branch: pmk-24-add-the-triage-command
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-25T19:13:20Z
+updated: 2026-10-27T00:14:53Z
 ---
 
 ## Description
