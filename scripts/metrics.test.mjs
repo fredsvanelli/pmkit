@@ -291,3 +291,37 @@ test('aging on the team fixture gives the spec numbers', () => {
   ])
   assert.deepEqual(summary(result.map((i) => i.days)), { count: 3, median: 8.1, p85: 8.8 })
 })
+
+function underTimeZone(zone, body) {
+  const before = process.env.TZ
+  process.env.TZ = zone
+  try {
+    body()
+  } finally {
+    if (before === undefined) delete process.env.TZ
+    else process.env.TZ = before
+  }
+}
+
+test('an event time without a zone is UTC whatever the machine time zone', () => {
+  underTimeZone('America/Sao_Paulo', () => {
+    const events = { 'ISS-1': [create('2026-10-01T08:00:00', 'todo'), move('2026-10-01T09:00:00', 'doing'), move('2026-10-08T22:00:00', 'done')] }
+    assert.deepEqual(Object.keys(doneInRange(events, { categoryOf, until: '2026-10-08' })), ['ISS-1'])
+    assert.deepEqual(Object.keys(doneInRange(events, { categoryOf, since: '2026-10-09' })), [])
+    assert.deepEqual(leadTimes(events, { categoryOf }), [{ issue: 'ISS-1', days: 7.6 }])
+    assert.deepEqual(cycleTimes(events, { categoryOf }), [{ issue: 'ISS-1', days: 7.5 }])
+    const two = { 'ISS-2': [move('2026-10-08T23:00:00', 'done')], 'ISS-3': [move('2026-10-08T22:00:00', 'done')] }
+    assert.deepEqual(throughput(two, { categoryOf }).issues.map((i) => i.issue), ['ISS-3', 'ISS-2'])
+    const open = { 'ISS-4': [move('2026-10-10T10:00:00', 'doing')] }
+    assert.equal(aging(open, { categoryOf, asOf: '2026-10-10T12:00:00Z' }).length, 1)
+  })
+})
+
+test('doneInRange, leadTimes and aging skip an event time that is not a date', () => {
+  const events = { 'ISS-1': [create('2026-10-01T08:00:00Z', 'todo'), move('yesterday', 'done')] }
+  assert.deepEqual(Object.keys(doneInRange(events, { categoryOf })), [])
+  assert.deepEqual(Object.keys(doneInRange(events, { categoryOf, until: '2026-10-08' })), [])
+  assert.deepEqual(leadTimes(events, { categoryOf }), [])
+  assert.deepEqual(cycleTimes({ 'ISS-1': [move('2026-10-01T08:00:00Z', 'doing'), move('yesterday', 'done')] }, { categoryOf }), [])
+  assert.deepEqual(aging({ 'ISS-2': [move('yesterday', 'doing')] }, { categoryOf, asOf: AS_OF }), [])
+})

@@ -32,6 +32,13 @@ export function rangeInstant(text, { endOfDay = false } = {}) {
   return Date.parse(value.endsWith('Z') ? value : `${value}Z`)
 }
 
+/** An event `at` as epoch milliseconds, or NaN when it is no date. A time without a zone is UTC, as in rangeInstant. */
+export function eventInstant(at) {
+  const value = String(at)
+  if (!value.includes('T')) return Date.parse(value)
+  return Date.parse(/(Z|[+-]\d{2}(:?\d{2})?)$/i.test(value.slice(value.indexOf('T'))) ? value : `${value}Z`)
+}
+
 /** The issues whose last move into done falls in the range. Same keys order and event arrays as the input. */
 export function doneInRange(eventsByIssue, { categoryOf, since, until }) {
   const from = since === undefined ? undefined : rangeInstant(since)
@@ -40,7 +47,8 @@ export function doneInRange(eventsByIssue, { categoryOf, since, until }) {
   for (const [issue, events] of Object.entries(eventsByIssue)) {
     const doneAt = lastEntry(events, 'done', categoryOf)
     if (doneAt === undefined) continue
-    const instant = Date.parse(doneAt)
+    const instant = eventInstant(doneAt)
+    if (Number.isNaN(instant)) continue
     if ((from !== undefined && instant < from) || (to !== undefined && instant > to)) continue
     result[issue] = events
   }
@@ -81,19 +89,20 @@ export function cycleTimes(eventsByIssue, { categoryOf }) {
     }
     const end = lastEntry(events, 'done', categoryOf)
     if (start === undefined || end === undefined) continue
-    result.push({ issue, days: Math.round(((Date.parse(end) - Date.parse(start)) / DAY_MS) * 10) / 10 })
+    const days = daysBetween(start, end)
+    if (!Number.isNaN(days)) result.push({ issue, days })
   }
   return result
 }
 
-const daysBetween = (start, end) => Math.round(((Date.parse(end) - Date.parse(start)) / DAY_MS) * 10) / 10
+const daysBetween = (start, end) => Math.round(((eventInstant(end) - eventInstant(start)) / DAY_MS) * 10) / 10
 
 /** The `at` of the first create event, or the earliest `at` when the log has none. */
 function createdAt(events) {
   const created = events.find((event) => event.op === 'create')
   if (created !== undefined) return created.at
   let earliest
-  for (const event of events) if (earliest === undefined || Date.parse(event.at) < Date.parse(earliest)) earliest = event.at
+  for (const event of events) if (earliest === undefined || eventInstant(event.at) < eventInstant(earliest)) earliest = event.at
   return earliest
 }
 
@@ -104,7 +113,8 @@ export function leadTimes(eventsByIssue, { categoryOf }) {
     const end = lastEntry(events, 'done', categoryOf)
     const start = createdAt(events)
     if (end === undefined || start === undefined) continue
-    result.push({ issue, days: daysBetween(start, end) })
+    const days = daysBetween(start, end)
+    if (!Number.isNaN(days)) result.push({ issue, days })
   }
   return result
 }
@@ -129,7 +139,7 @@ export function throughput(eventsByIssue, { categoryOf }) {
     const doneAt = lastEntry(events, 'done', categoryOf)
     if (doneAt !== undefined) issues.push({ issue, type: typeOf(events), doneAt })
   }
-  issues.sort((a, b) => (Date.parse(a.doneAt) - Date.parse(b.doneAt)) || (a.issue < b.issue ? -1 : a.issue > b.issue ? 1 : 0))
+  issues.sort((a, b) => (eventInstant(a.doneAt) - eventInstant(b.doneAt)) || (a.issue < b.issue ? -1 : a.issue > b.issue ? 1 : 0))
   const counts = {}
   for (const { type } of issues) counts[type ?? 'none'] = (counts[type ?? 'none'] ?? 0) + 1
   const byType = Object.fromEntries(Object.entries(counts).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
@@ -146,7 +156,7 @@ export function aging(eventsByIssue, { categoryOf, asOf }) {
     let startedAt
     let archived = false
     for (const event of events) {
-      if (Date.parse(event.at) > limit) continue
+      if (eventInstant(event.at) > limit) continue
       if (event.op === 'archive') archived = true
       const moved = movedTo(event)
       if (moved === undefined) continue
@@ -154,7 +164,8 @@ export function aging(eventsByIssue, { categoryOf, asOf }) {
       if (startedAt === undefined && working(moved)) startedAt = event.at
     }
     if (archived || status === undefined || !working(status)) continue
-    result.push({ issue, status, startedAt, days: daysBetween(startedAt, asOf) })
+    const days = daysBetween(startedAt, asOf)
+    if (!Number.isNaN(days)) result.push({ issue, status, startedAt, days })
   }
   return result.sort((a, b) => (b.days - a.days) || (a.issue < b.issue ? -1 : a.issue > b.issue ? 1 : 0))
 }
