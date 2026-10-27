@@ -64,7 +64,7 @@ None. Every issue in the `triage` category is in scope. An optional `--limit` is
 
 1. Run `issues list --category triage --json`. Show each entry of `problems` as a warning, because an unreadable issue is not in the queue. An empty queue ends the command (see "If something is missing").
 2. Run `discover --json` to get the allowed priorities and labels.
-3. For each issue, run `issues get <id> --comments --json` when the list entry lacks the description, then form a proposal from the title, type, description and comments.
+3. For each issue, run `issues get <id> --comments --json`, because `issues list` returns the description but not the comments, then form a proposal from the title, type, description and comments.
    - Priority. One of the allowed values, with a one-line reason. Leave it empty when the text gives no basis, and say so.
    - Labels. Zero or more values from `discover`. Never a value outside it.
    - Duplicate. Run `issues list --text "<key word>" --json` once for each key word of the title, one word per search, over every category except the issue itself, and judge the matches. Name the likely original and say the match is a guess. When the original is `done` or `canceled`, the proposal is still duplicate, and the table shows the original's status, as decision 4 says. Keep one issue of each set of issues that repeat each other: the one outside triage when there is one, otherwise the oldest by `created`. The other issues of the set in the queue are duplicates of the kept one, and the kept issue is never proposed as a duplicate or a decline in the same run.

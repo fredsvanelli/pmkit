@@ -214,6 +214,12 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     assert.match(step3, /`--text` matches one substring of the title or description/)
   })
 
+  test('backlog/triage reads the comments of every issue in the queue', () => {
+    const line = fs.readFileSync(path.join(COMMANDS_DIR, 'backlog', 'triage.md'), 'utf8').split('\n')
+      .find((l) => l.includes('issues get <id> --comments --json'))
+    assert.match(line, /for every issue in the queue, because `issues list` returns the description but not the comments/)
+  })
+
   // Two triage issues that repeat each other must not each be proposed as a duplicate of the other: applying all
   // proposals would cancel both. No scenario has such a pair, so this test pins the rule.
   test('backlog/triage keeps one issue of each set that repeats each other', () => {
