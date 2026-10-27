@@ -2,6 +2,8 @@
 // schema and runs read-only list queries so the API check can be repeated.
 // Results are recorded in API-VERIFICATION.md.
 
+import { fileURLToPath } from 'node:url'
+
 const sorted = (list) => [...list].sort()
 
 export function findMatches(schema, pattern) {
@@ -107,4 +109,50 @@ export async function graphql({ fetch = globalThis.fetch, key, query, variables 
   if (!response.ok) throw new Error(`Linear answered HTTP ${response.status}`)
   if (parsed === undefined) throw new Error(`Linear returned a non-JSON body (HTTP ${response.status})`)
   return parsed
+}
+
+const INTROSPECTION =
+  'query { __schema { queryType { name } mutationType { name } types { name kind fields { name } } } }'
+const WORKSPACE = 'query { organization { urlKey } }'
+
+export async function run({ env, fetch = globalThis.fetch, write }) {
+  if (env.PMKIT_LIVE !== '1') {
+    write('verify-api skipped: set PMKIT_LIVE=1 and LINEAR_API_KEY to run the read-only check.\n')
+    return 0
+  }
+  const key = env.LINEAR_API_KEY
+  if (!key) {
+    write('verify-api needs LINEAR_API_KEY in the environment.\n')
+    return 2
+  }
+  try {
+    const introspection = await graphql({ fetch, key, query: INTROSPECTION })
+    const schema = introspection.data?.__schema
+    if (!schema) {
+      write('verify-api: introspection returned no schema.\n')
+      return 1
+    }
+    const workspace = await graphql({ fetch, key, query: WORKSPACE })
+    const features = []
+    for (const feature of FEATURES) {
+      const liveResults = {}
+      for (const live of feature.liveQueries) {
+        try {
+          liveResults[live.name] = await graphql({ fetch, key, query: live.query })
+        } catch (error) {
+          liveResults[live.name] = { errors: [{ message: error.message, extensions: { code: 'REQUEST_FAILED' } }] }
+        }
+      }
+      features.push(summarize(feature, schema, liveResults))
+    }
+    write(`${JSON.stringify({ organization: workspace.data?.organization ?? null, features }, null, 2)}\n`)
+    return 0
+  } catch (error) {
+    write(`verify-api failed: ${error.message}\n`)
+    return 1
+  }
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  process.exitCode = await run({ env: process.env, fetch: globalThis.fetch, write: (text) => process.stdout.write(text) })
 }

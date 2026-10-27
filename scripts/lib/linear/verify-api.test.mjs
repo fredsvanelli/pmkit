@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { FEATURES, assertQuery, findMatches, graphql, summarize } from './verify-api.mjs'
+import { FEATURES, assertQuery, findMatches, graphql, run, summarize } from './verify-api.mjs'
 
 const schema = {
   queryType: { name: 'Query' },
@@ -124,4 +124,65 @@ test('graphql errors on HTTP failure or a non-JSON body name the status, not the
       (error) => /HTTP/.test(error.message) && !error.message.includes(KEY),
     )
   }
+})
+
+function liveFetch({ failOn } = {}) {
+  const calls = []
+  const answer = (body) => ({ ok: true, status: 200, text: async () => JSON.stringify(body) })
+  const fn = async (url, init) => {
+    const { query } = JSON.parse(init.body)
+    calls.push(query)
+    if (query.includes('__schema')) return answer({ data: { __schema: schema } })
+    if (query.includes('organization')) return answer({ data: { organization: { urlKey: 'acme' } } })
+    if (failOn && query.includes(failOn)) return answer({ errors: [{ message: 'boom', extensions: { code: 'FORBIDDEN' } }] })
+    return answer({ data: { releases: { nodes: [] }, releasePipelines: { nodes: [] }, projectRelations: { nodes: [] }, templates: [], issues: { nodes: [] } } })
+  }
+  fn.calls = calls
+  return fn
+}
+
+function capture() {
+  const out = []
+  return { out, write: (text) => out.push(text) }
+}
+
+test('run skips without PMKIT_LIVE and sends nothing', async () => {
+  const fetch = liveFetch()
+  const { out, write } = capture()
+  const code = await run({ env: {}, fetch, write })
+  assert.equal(code, 0)
+  assert.equal(out.length, 1)
+  assert.match(out[0], /PMKIT_LIVE=1/)
+  assert.equal(fetch.calls.length, 0)
+})
+
+test('run exits 2 without a key and sends nothing', async () => {
+  const fetch = liveFetch()
+  const { out, write } = capture()
+  const code = await run({ env: { PMKIT_LIVE: '1' }, fetch, write })
+  assert.equal(code, 2)
+  assert.equal(out.length, 1)
+  assert.equal(fetch.calls.length, 0)
+})
+
+test('run prints the workspace and one summary per feature, with queries only', async () => {
+  const fetch = liveFetch()
+  const { out, write } = capture()
+  const code = await run({ env: { PMKIT_LIVE: '1', LINEAR_API_KEY: KEY }, fetch, write })
+  assert.equal(code, 0)
+  const text = out.join('')
+  assert.ok(!text.includes(KEY))
+  const report = JSON.parse(text)
+  assert.equal(report.organization.urlKey, 'acme')
+  assert.deepEqual(report.features.map((item) => item.feature), FEATURES.map((item) => item.id))
+  assert.equal(report.features.find((item) => item.feature === 'releases').live, 'empty')
+  for (const query of fetch.calls) assert.match(query.trim(), /^(query\b|\{)/)
+})
+
+test('run reports one failing live query without stopping the others', async () => {
+  const { out, write } = capture()
+  await run({ env: { PMKIT_LIVE: '1', LINEAR_API_KEY: KEY }, fetch: liveFetch({ failOn: 'projectRelations' }), write })
+  const report = JSON.parse(out.join(''))
+  assert.equal(report.features.find((item) => item.feature === 'project_dependencies').live.error.code, 'FORBIDDEN')
+  assert.equal(report.features.find((item) => item.feature === 'releases').live, 'empty')
 })
