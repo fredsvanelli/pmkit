@@ -28,6 +28,7 @@ export const isCategory = (value) => CATEGORIES.includes(value)
  * @property {boolean} archived
  * @property {string} [sprint]
  * @property {string} [milestone]
+ * @property {string} [release]
  * @property {string} [due] YYYY-MM-DD
  * @property {string} [branch]
  * @property {string} description
@@ -74,6 +75,16 @@ export const isCategory = (value) => CATEGORIES.includes(value)
  * @property {string} name
  * @property {string} [due] YYYY-MM-DD
  * @property {string} description
+ *
+ * @typedef {object} Release
+ * @property {string} id the file stem of releases/<id>.md
+ * @property {string} name
+ * @property {string} [tag] a git tag name
+ * @property {string} [target] YYYY-MM-DD
+ * @property {string} [released] ISO timestamp of the release, with Z or an offset
+ * @property {'planned' | 'released'} state computed from `released`
+ * @property {string} description
+ * @property {Object<string, *>} [extra] release file keys pmkit does not know, kept on the next write
  *
  * @typedef {object} StatusUpdate
  * @property {string} epic
