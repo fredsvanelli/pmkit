@@ -1,0 +1,4 @@
+$ pmkit issues list --category triage --json  [step 1, read]
+exit 0
+
+(no file changed)

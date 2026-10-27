@@ -1,0 +1,44 @@
+$ pmkit issues list --category triage --json  [step 1, read]
+exit 0
+$ pmkit discover --json  [step 2, read]
+exit 0
+$ pmkit issues get ISS-1V9Z --comments --json  [step 3, read]
+exit 0
+$ pmkit issues list --text login --json  [step 3, read]
+exit 0
+? Step 5  [confirmed]
+$ pmkit issues update ISS-M0GZ --priority medium --label backend,webhooks --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues move ISS-M0GZ backlog --dry-run --json  [step 6, dry run]
+exit 0
+? Step 7  [confirmed]
+$ pmkit issues update ISS-M0GZ --priority medium --label backend,webhooks --json  [step 6, write]
+exit 0
+$ pmkit issues move ISS-M0GZ backlog --json  [step 6, write]
+exit 0
+$ pmkit issues list --category triage --json  [step 1, read]
+exit 0
+
+--- changed .issues/issues/ISS-M0GZ/events.jsonl
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-M0GZ","title":"Webhook deliveries are not retried","type":"bug","status":"backlog","labels":["webhooks"],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"backlog","to":"triage"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"priority","from":null,"to":"medium"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"labels","from":["webhooks"],"to":["backend","webhooks"]}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"triage","to":"backlog"}
+--- changed .issues/issues/ISS-M0GZ/issue.md
+  ---
+  id: ISS-M0GZ
+  title: Webhook deliveries are not retried
+  type: bug
+-status: triage
+-labels: [webhooks]
++status: backlog
++priority: medium
++labels: [backend, webhooks]
+  created: 2026-10-23T12:00:00.000Z
+  updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  A failed webhook delivery is dropped and never sent again.
