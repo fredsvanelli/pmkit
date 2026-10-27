@@ -167,7 +167,7 @@ Data: `getSprint` through `listCycles`, `cycleIssues(id)` and `getCapacity(id)`.
 
 Markdown:
 
-- GitHub-flavored tables. Every cell and heading escapes `\`, `` ` ``, `*`, `_`, `[`, `]`, `<`, `>` and `|` with a backslash and turns any line break into a space, so an issue title cannot break the table or inject HTML.
+- GitHub-flavored tables. Every cell, heading and paragraph escapes `\`, `` ` ``, `*`, `_`, `[`, `]`, `<`, `>`, `|`, `~` and `&` with a backslash and turns any line break into a space, so an issue title cannot break the table, inject HTML or show an entity as a different character. A paragraph also escapes a leading `#`, `-`, `+` or `=`, and the `.` or `)` after leading digits, so tracker text cannot start a list or a heading, and it drops leading spaces so the text cannot become a code block. A heading escapes a trailing `#` run.
 - No HTML other than the marker comment, and no Mermaid.
 
 HTML:

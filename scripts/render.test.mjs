@@ -96,6 +96,50 @@ test('escapeMarkdown escapes every special character and turns line breaks into 
   assert.equal(escapeMarkdown('a\r\nb\rc'), 'a b c')
 })
 
+test('escapeMarkdown escapes ~ and & wherever they appear', () => {
+  assert.equal(escapeMarkdown('a ~~~ b &lt;b&gt; ~'), 'a \\~\\~\\~ b \\&lt;b\\&gt; \\~')
+})
+
+describe('toMarkdown paragraphs from tracker text', () => {
+  const paragraphs = (...lines) => toMarkdown(sampleDoc({ lead: lines }), 'board').split('\n\n').slice(2, 2 + lines.length)
+
+  test('cannot open a code fence', () => {
+    assert.deepEqual(paragraphs('~~~'), ['\\~\\~\\~'])
+  })
+
+  test('cannot start a list, a heading, a quote, a setext line or an ordered list', () => {
+    assert.deepEqual(paragraphs('- not a list', '+ plus', '# heading', '=== x', '> quote', '1. ordered', '12) ordered'), [
+      '\\- not a list', '\\+ plus', '\\# heading', '\\=== x', '\\> quote', '1\\. ordered', '12\\) ordered',
+    ])
+  })
+
+  test('cannot start an indented code block', () => {
+    assert.deepEqual(paragraphs('    code'), ['code'])
+  })
+
+  test('leaves ordinary text alone, including a dash or a number inside the line', () => {
+    assert.deepEqual(paragraphs('Ship v2 - then 3. rest', '2026-10-12, 2026-10-12 to 2026-10-25'), ['Ship v2 - then 3. rest', '2026-10-12, 2026-10-12 to 2026-10-25'])
+  })
+
+  test('shows an entity as typed', () => {
+    assert.deepEqual(paragraphs('&lt;b&gt;'), ['\\&lt;b\\&gt;'])
+  })
+
+  test('keeps a trailing # run in a heading from closing it', () => {
+    const doc = sampleDoc({ title: 'Plan ##' })
+    doc.sections[0].heading = 'Fix #'
+    const out = toMarkdown(doc, 'board')
+    assert.ok(out.includes('\n# Plan \\##\n'))
+    assert.ok(out.includes('\n## Fix \\#\n'))
+  })
+
+  test('escapes ~ and & in table cells and headings', () => {
+    const doc = sampleDoc()
+    doc.sections[0].table.rows[0][1] = 'A & B ~~~'
+    assert.ok(toMarkdown(doc, 'board').includes('| A \\& B \\~\\~\\~ |'))
+  })
+})
+
 describe('toHtml', () => {
   const text = toHtml(sampleDoc(), 'board')
   const lines = text.split('\n')

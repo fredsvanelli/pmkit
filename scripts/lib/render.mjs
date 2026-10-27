@@ -20,7 +20,13 @@ export function hasMarker(text) {
 const oneLine = (text) => String(text).replace(/\r\n|\r|\n/g, ' ')
 
 /** Escapes the characters that would start Markdown syntax or HTML, and turns line breaks into spaces. */
-export const escapeMarkdown = (text) => oneLine(text).replace(/[\\`*_[\]<>|]/g, (char) => `\\${char}`)
+export const escapeMarkdown = (text) => oneLine(text).replace(/[\\`*_[\]<>|~&]/g, (char) => `\\${char}`)
+
+/** Escapes a paragraph: also the characters that would turn its first characters into a list, heading or code block. */
+const escapeParagraph = (text) => escapeMarkdown(text).replace(/^\s+/, '').replace(/^([#+=-])/, '\\$1').replace(/^(\d+)([.)])/, '$1\\$2')
+
+/** Escapes a heading: a trailing run of # would otherwise be read as the closing sequence. */
+const escapeHeading = (text) => escapeMarkdown(text).replace(/(#+)$/, '\\$1')
 
 const HTML_ENTITIES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
 
@@ -34,11 +40,11 @@ const cellTone = (cell) => (typeof cell === 'object' && cell !== null ? cell.ton
 const finish = (lines) => `${lines.join('\n').replace(/\n+$/, '')}\n`
 
 export function toMarkdown(doc, view) {
-  const out = [marker(view), '', `# ${escapeMarkdown(doc.title)}`]
-  const paragraph = (line) => out.push('', escapeMarkdown(line))
+  const out = [marker(view), '', `# ${escapeHeading(doc.title)}`]
+  const paragraph = (line) => out.push('', escapeParagraph(line))
   doc.lead.forEach(paragraph)
   for (const section of doc.sections) {
-    out.push('', `## ${escapeMarkdown(section.heading)}`)
+    out.push('', `## ${escapeHeading(section.heading)}`)
     section.lines.forEach(paragraph)
     if (section.table !== null && section.table.rows.length > 0) {
       const row = (cells) => `| ${cells.map((cell) => escapeMarkdown(cellText(cell))).join(' | ')} |`
