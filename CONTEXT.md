@@ -64,6 +64,10 @@ _Avoid_: dependency tree, blocking tree
 The heaviest chain of open issues, linked by blocker edges, that ends at an open issue of the target. Its length adds the estimates, as velocity does, or counts the issues when no open issue in the map has a numeric estimate. It is the chain that sets the earliest finish of the target.
 _Avoid_: longest path, critical chain
 
+**Stalled**:
+An issue in `in_progress` or `in_review`, or an open pull request, with no activity for more than `stuck_business_days` business days. An issue's activity is its newest event and, with a git host, the last update of the open pull request of its branch. `pmkit risks` lists stalled issues and pull requests.
+_Avoid_: stale (backlog grooming's term for old backlog issues), idle
+
 **Event**:
 One line of an issue's `events.jsonl`, appended on each write. It has `at`, `by`, `op` (`create`, `update`, `move`, `assign`, `link`, `unlink`, `comment`, `log_time` or `archive`) and the changed field with its old and new values. Replaying the events gives the issue's state and feeds the metrics.
 _Avoid_: log entry, activity, audit record
