@@ -4,12 +4,12 @@ Linear has no official CLI whose login pmkit could reuse. The "reuse existing to
 
 The user creates a personal API key in Linear (Settings, Security & access) and exports it as `LINEAR_API_KEY`. The client reads it from the `env` that `run(argv, { env })` passes in and sends it as `Authorization: <key>`, with no `Bearer` prefix. Linear answers HTTP 400 to a key sent as a Bearer token, and HTTP 401 to a key it does not know. Linear's keys start with `lin_api_`, and pmkit does not check the prefix. pmkit stores no credential anywhere. One module, `scripts/lib/linear/credential.mjs` (PMK-30), is the only reader of the variable. One variable serves every workspace, and a workspace pin catches a wrong key.
 
-pmkit is not a Linear agent in EPC-5. The user chose to leave that for a follow-up.
+pmkit is not a Linear agent in EPC-5. The user chose to leave that for after EPC-5.
 
 ## Considered options
 
 - Personal API key from the environment. Chosen. It adds no stored secret, no refresh and no server, and it works the same in a terminal, in CI and in scheduled runs.
-- OAuth app with PKCE. Rejected for EPC-5. It adds a stored secret, a 24-hour token refresh, a callback port, a registered app and an admin install. It is the only way for pmkit to become a Linear agent (`actor=app` with the `app:assignable` scope), so it stays a later option, tracked as a follow-up issue.
+- OAuth app with PKCE. Rejected for EPC-5. It adds a stored secret, a 24-hour token refresh, a callback port, a registered app and an admin install. It is the only way for pmkit to become a Linear agent (`actor=app` with the `app:assignable` scope), so it stays a later option outside EPC-5, with no issue filed yet.
 - Token of Linear's official MCP. Rejected. pmkit would read a file it does not own, and its place and shape change with each MCP client. Q1 keeps official MCPs out of the critical path.
 - OS keychain storage. Rejected by the user. It needs `security` on macOS and `secret-tool` on Linux, Windows has no built-in reader, and WSL often lacks `secret-tool`.
 - Key file in the user store. Rejected by the user. It puts a secret in a file, which Q5 rules out.

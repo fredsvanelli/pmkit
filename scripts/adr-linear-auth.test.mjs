@@ -63,3 +63,7 @@ test('CONTEXT.md defines Workspace with its config key', () => {
   assert.ok(match, 'Workspace term is missing')
   assert.match(match[1], /tracker\.scope\.workspace/)
 })
+
+test('ADR-0005 does not claim a follow-up issue exists for OAuth', () => {
+  assert.doesNotMatch(adr(), /follow-up issue/i)
+})
