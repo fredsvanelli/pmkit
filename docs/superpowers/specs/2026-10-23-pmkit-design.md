@@ -336,6 +336,7 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `whoami` | prints the resolved actor |
 | `issues list [--text t] [--category c,..] [--type t,..] [--assignee me\|none\|id] [--label l,..] [--sprint current\|none\|id] [--parent id] [--blocked] [--updated-before d] [--updated-after d] [--sort s] [--limit n] [--archived]` | searches |
 | `issues get <id> [--comments] [--history]` | one issue |
+| `issues dependencies <id>` | the blocker chain, the hierarchy and the critical path of an issue or an epic; only reads |
 | `issues create --title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint id\|current\|none] [--due] [--milestone m] [--release r] [--description-file f] [--criteria-file f]` | creates |
 | `issues update <id> [--title] [--type] [--priority] [--estimate] [--label l,..] [--sprint id\|current\|none] [--due] [--milestone] [--release] [--branch] [--description-file f] [--criteria-file f] [--check n] [--uncheck n]` | edits fields and criteria |
 | `issues move <id> <category> [--status name]` | changes status by category |
@@ -377,7 +378,7 @@ Bodies come from files (`--description-file`, `--body-file`, `-` for stdin), nev
 
 ## Commands
 
-The MVP ships 24 command files. Commands are user-invoked; the routing skill reads the right file when the user asks in their own words.
+The MVP shipped 24 command files, and phase 2 adds `/pmkit:issues:dependencies`. Commands are user-invoked; the routing skill reads the right file when the user asks in their own words.
 
 | Command | File | Calls |
 |---|---|---|
@@ -391,6 +392,7 @@ The MVP ships 24 command files. Commands are user-invoked; the routing skill rea
 | `/pmkit:issues:comment <id>` | `commands/issues/comment.md` | `issues comment` |
 | `/pmkit:issues:link <from> <to>` | `commands/issues/link.md` | `issues get`, `issues link`, `issues parent` |
 | `/pmkit:issues:summary <id>` | `commands/issues/summary.md` | `epic get`, `epic updates`, `issues get`, `issues list`, `issues comment` |
+| `/pmkit:issues:dependencies <id>` | `commands/issues/dependencies.md` | `issues dependencies` |
 | `/pmkit:issues:work [id]` | `commands/issues/work.md` | `issues list`, `issues get`, `epic get`, `issues assign`, `issues move`, `issues branch`, `issues comment`, `pr open`, `pr ready`, `issues create`, `issues link` |
 | `/pmkit:issues:mine` | `commands/issues/mine.md` | `pr sync`, `cycle current`, `issues list`, `pr status` |
 | `/pmkit:issues:capture` | `commands/issues/capture.md` | `discover`, `issues list`, `issues create`, `issues link` |
