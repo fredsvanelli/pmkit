@@ -4,3 +4,8 @@
 {"at":"2026-10-27T02:39:41Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-27T02:39:41Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-19-add-the-flow-metrics-command"}
 {"at":"2026-10-27T14:59:28Z","by":"fred","op":"comment","to":"2026-10-27T14-59-28Z-fred.md"}
+{"at":"2026-10-27T15:18:22Z","by":"fred","op":"comment","to":"2026-10-27T15-18-22Z-fred.md"}
+{"at":"2026-10-27T15:18:27Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-27T15:18:27Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-27T15:18:27Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-27T15:18:29Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
