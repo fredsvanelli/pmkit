@@ -102,7 +102,7 @@ A table of the applied decisions with the full ID, the decision, the new status,
 - `skills/pmkit/SKILL.md` and `README.md` list `/pmkit:backlog:triage` with a one-line description.
 - `scripts/plugin.test.mjs` adds `triage` to `COMMANDS.backlog`.
 - `scripts/__scenarios__/backlog-triage.mjs` and its `.after.txt` snapshot cover the command (see Tests).
-- `CHANGELOG.md` gets an entry under the next version. Tracker format and setup do not change, so those lines say so.
+- `CHANGELOG.md` and the plugin version do not change in this issue. The release adds the entry and the bump, as in the other EPC-3 issues.
 - `commands/help.md` reads the command files at run time, so it needs no edit. The `help` scenario snapshot (`scripts/__scenarios__/help.after.txt`) is regenerated if it lists the commands.
 
 ## Tests

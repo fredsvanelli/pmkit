@@ -4,7 +4,7 @@
 
 **Goal:** `/pmkit:backlog:triage` reads the `triage` queue, proposes one decision per issue (accept, duplicate, decline or needs info), and applies the accepted ones after one full preview.
 
-**Architecture:** One new command file, `commands/backlog/triage.md`, built only from CLI calls that exist (ADR 0002: judgment stays in the command, no CLI change). The command table, README, `plugin.test.mjs`, a static test, a scenario module with three entries and the changelog follow it.
+**Architecture:** One new command file, `commands/backlog/triage.md`, built only from CLI calls that exist (ADR 0002: judgment stays in the command, no CLI change). The command table, README, `plugin.test.mjs`, a static test and a scenario module with three entries follow it. The version bump and the changelog entry are left to the release, as in the other EPC-3 issues.
 
 **Tech Stack:** Node 18+ ES modules, no dependencies (ADR 0003), `node:test`. Run the suite with `npm test`.
 
@@ -40,7 +40,7 @@
 - Create `commands/backlog/triage.md`: the procedure.
 - Create `scripts/__scenarios__/backlog-triage.mjs` and its snapshots `backlog-triage.0.after.txt`, `.1.after.txt`, `.2.after.txt`.
 - Modify `skills/pmkit/SKILL.md`, `README.md`: one line each, after the `groom` line.
-- Modify `scripts/plugin.test.mjs` (the `COMMANDS` map), `scripts/scenarios.test.mjs` (file count and a static test), `CHANGELOG.md`, `.claude-plugin/plugin.json` and `scripts/changelog.test.mjs`.
+- Modify `scripts/plugin.test.mjs` (the `COMMANDS` map), `scripts/scenarios.test.mjs` (file count and a static test). `CHANGELOG.md`, `.claude-plugin/plugin.json` and `scripts/changelog.test.mjs` do not change.
 - `commands/help.md` reads the command files at run time. `scripts/__scenarios__/help.after.txt` lists no command, so neither changes.
 
 ---
@@ -208,48 +208,19 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 4: Changelog, version and final check
+### Task 4: Final check
 
-**Files:**
-- Modify: `CHANGELOG.md`, `.claude-plugin/plugin.json`, `scripts/changelog.test.mjs:56-58`
+**Files:** none.
 
-- [ ] **Step 1: Write the failing test change**
-
-In `scripts/changelog.test.mjs` the test `changelog --file --since --json returns the releases oldest first...` expects `[['0.1.0', null], ['0.2.0', 2]]`. Add `['0.3.0', 2]` to that array, and leave `sections[1].setup.length` at 1. Run `node --test scripts/changelog.test.mjs`; expected: FAIL on the missing 0.3.0 section.
-
-- [ ] **Step 2: Add the entry**
-
-On top of `CHANGELOG.md`, above `## 0.2.0`, in the format of the 0.2.0 section:
-
-```markdown
-## 0.3.0 - 2026-10-26
-
-- Adds `/pmkit:backlog:triage`. It lists the issues in the triage category with a proposed priority, labels, duplicate or decline for each, and applies the decisions you accept, in bulk or one by one, after a preview.
-
-Tracker format: 2
-Setup: no change.
-```
-
-Set `"version": "0.3.0"` in `.claude-plugin/plugin.json`. Check how 0.1.0 words an unchanged setup and copy that wording if it differs. The `Setup:` line of 0.3.0 must leave `setup` empty if the parser reads `Setup: no change` as an entry. Then run `grep -rn "0\.2\.0" scripts --include=*.mjs --include=*.txt -l` and update only the tests or goldens that read the manifest version, using `UPDATE_GOLDENS=1` for goldens and reading each diff.
-
-- [ ] **Step 3: Verify the whole change**
+- [ ] **Step 1: Verify the whole change**
 
 Run: `npm test 2>&1 | tail -8`
-Expected: all pass. Then run `node scripts/pmkit.mjs validate --json` and confirm no problem names triage. Tick the issue's acceptance criteria only after the delivery step of `/pmkit:issues:work`, not here.
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add CHANGELOG.md .claude-plugin/plugin.json scripts
-git commit -m "docs: add the triage command to the changelog as 0.3.0 (PMK-24)
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
-```
+Expected: all pass. Then run `node scripts/pmkit.mjs validate --json` and confirm no problem names triage. Tick the issue's acceptance criteria only after the delivery step of `/pmkit:issues:work`, not here. This task makes no commit.
 
 ---
 
 ## Self-review
 
-- Spec coverage: command (Task 1), supporting changes (Tasks 1 and 4), tests (Tasks 1 to 3), all four anti-goals have a test or a text assertion. `help.md` and the `help` snapshot stay unchanged on purpose.
-- Open risk for the reviewer: the version bump to 0.3.0 (Task 4) is a release decision. If the maintainer prefers to release later, keep the section and the `plugin.json` bump out of the commit.
+- Spec coverage: command (Task 1), supporting changes (Task 1), tests (Tasks 1 to 3), all four anti-goals have a test or a text assertion. `help.md` and the `help` snapshot stay unchanged on purpose.
+- The version bump and the changelog entry are not part of this issue. The release adds them, as in the other EPC-3 issues.
 - Deviation from the spec text: the static test checks a dry-run form for each write command in step 6, and that step 8 says "without `--dry-run`", instead of explicit step 8 calls. This is the form `backlog/groom.md` uses and the scenario helpers expect.
