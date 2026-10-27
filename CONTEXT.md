@@ -108,6 +108,10 @@ _Avoid_: file tracker, offline mode
 The cache of parsed issue files in `.issues/.cache/index.json`. Searches rebuild an entry when the stat signature of its `issue.md` changes. Git ignores the index. It is never a source of truth, and deleting it only makes the next search slower.
 _Avoid_: database, search engine
 
+**User store**:
+The per-user folder `~/.config/pmkit/` (moved by `PMKIT_HOME` or `XDG_CONFIG_HOME`) that holds the discovery cache, whose entries expire after a TTL, and the personal defaults in `defaults.yaml`. It lives outside the repository and holds no credential. The code is `scripts/lib/user-store.mjs`.
+_Avoid_: global config, home config
+
 **Write policy**:
 The `write_policy` block of `.pmkit/config.yaml`. `confirm` (`all_writes`, `single_writes` or `none`) says when a command asks before a write, and `preview` lists the changes that always show a full preview first (`bulk`, `delete`, `publish_update`, `move_scope`). `confirm: none` never skips a preview.
 _Avoid_: permissions, approval mode
