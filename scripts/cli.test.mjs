@@ -283,6 +283,12 @@ test('metrics aging takes --until as the as-of date', () => {
   assert.equal(run(root, ['metrics', 'aging', '--until', '2026-09-20']).stdout, 'no work in progress\nas of: 2026-09-20T23:59:59Z\n')
 })
 
+test('metrics aging reports as-of in whole seconds', () => {
+  const root = makeRepo('team')
+  assert.equal(json(root, ['metrics', 'aging'], { env: { PMKIT_NOW: '2026-10-24T12:00:00.167Z' } }).asOf, '2026-10-24T12:00:00Z')
+  assert.equal(json(root, ['metrics', 'aging', '--until', '2026-10-20T10:00:00.5']).asOf, '2026-10-20T10:00:00Z')
+})
+
 test('PMKIT_NOW sets the as-of date of metrics aging', () => {
   const root = makeRepo('team')
   const data = json(root, ['metrics', 'aging'], { env: { PMKIT_NOW: '2026-10-24T12:00:00Z' } })

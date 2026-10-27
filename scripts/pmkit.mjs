@@ -584,13 +584,13 @@ export const COMMANDS = [
       const tracker = ctx.tracker()
       const until = ctx.opt('until') === undefined ? undefined : rangeText('until', ctx.opt('until'))
       const asOfMs = until === undefined ? ctx.now().getTime() : rangeInstant(until, { endOfDay: true })
-      const asOf = new Date(asOfMs).toISOString().replace(/\.000Z$/, 'Z')
+      const asOf = new Date(Math.floor(asOfMs / 1000) * 1000).toISOString().replace(/\.000Z$/, 'Z')
       const issues = aging(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, asOf })
       const stats = summary(issues.map((item) => item.days))
       const lines = issues.length > 0
         ? [
           table(['Issue', 'Status', 'Started', 'Days'], issues.map((item) => [item.issue, item.status, item.startedAt, item.days])),
-          ...fields([['count', stats.count], ['median', `${stats.median} days`], ['p85', `${stats.p85} days`]]),
+          ...summaryLines(stats),
         ]
         : ['no work in progress']
       lines.push(`as of: ${asOf}`)
