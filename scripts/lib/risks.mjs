@@ -7,6 +7,14 @@ const OPEN = (category) => category !== 'done' && category !== 'canceled'
 const WORKING = new Set(['in_progress', 'in_review'])
 const NEAR_TERM = new Set(['todo', 'in_progress', 'in_review'])
 
+const DAY_MS = 86400000
+
+/** Whole UTC calendar days from the date part of `date` to `today`. */
+function daysSince(date, today) {
+  const day = (value) => Date.parse(`${String(value).slice(0, 10)}T00:00:00Z`) / DAY_MS
+  return day(today) - day(date)
+}
+
 /** The row base shared by blocked and stalled issues. */
 function issueRow(issue) {
   return { id: issue.id, title: issue.title, status: issue.status.name, assignee: issue.assignee ?? null, estimate: issue.estimate ?? null }
@@ -77,4 +85,72 @@ export function stalledIssues(issues, { eventsByIssue, openPrsByBranch, closedPr
     }
   }
   return rows
+}
+
+/** Open pull requests, drafts included, with no update for more than N business days, by number. */
+export function stalledPullRequests(prs, { issuesByBranch, today, stuckBusinessDays }) {
+  return prs
+    .map((pr) => ({
+      number: pr.number, title: pr.title, url: pr.url, branch: pr.headRefName, isDraft: pr.isDraft, updatedAt: pr.updatedAt,
+      idleBusinessDays: businessDaysBetween(pr.updatedAt, today), issue: issuesByBranch[pr.headRefName] ?? null,
+    }))
+    .filter((row) => row.idleBusinessDays > stuckBusinessDays)
+    .sort((a, b) => a.number - b.number)
+}
+
+/** Open epics that are late, have an at_risk or off_track update, or are due a status update. `updatesByEpic` lists newest first. */
+export function epicRisks(epics, { updatesByEpic, today, windowDays }) {
+  const rows = []
+  for (const epic of epics) {
+    const category = epic.status.category
+    if (!OPEN(category)) continue
+    const latest = (updatesByEpic[epic.id] ?? [])[0]
+    const startedWithinWindow = Boolean(epic.start) && daysSince(epic.start, today) <= windowDays
+    const checked = category === 'in_progress' || (Boolean(epic.start) && !startedWithinWindow)
+    const reasons = []
+    if (epic.target && epic.target < today) reasons.push('late')
+    if (latest?.health === 'at_risk' || latest?.health === 'off_track') reasons.push(latest.health)
+    if (checked && (latest ? daysSince(latest.at, today) > windowDays : !startedWithinWindow)) reasons.push('no_recent_update')
+    if (reasons.length === 0) continue
+    rows.push({
+      id: epic.id, title: epic.title, status: epic.status.name, target: epic.target ?? null,
+      lastUpdate: latest ? { at: latest.at, health: latest.health } : null, reasons,
+    })
+  }
+  return rows
+}
+
+const FAILED_RUN = new Set(['failure', 'timed_out', 'startup_failure'])
+const FAILED_CHECK = new Set(['FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE', 'ACTION_REQUIRED'])
+const FAILED_STATUS = new Set(['FAILURE', 'ERROR'])
+
+/** The newest completed run of each workflow, and those whose conclusion is a failure, by workflow name. */
+export function failingWorkflows(runs) {
+  const newest = new Map()
+  for (const run of runs) {
+    if (run.status !== 'completed') continue
+    const current = newest.get(run.workflowName)
+    if (current === undefined || Date.parse(run.createdAt) > Date.parse(current.createdAt)) newest.set(run.workflowName, run)
+  }
+  const failing = [...newest.values()]
+    .filter((run) => FAILED_RUN.has(run.conclusion))
+    .map((run) => ({ workflow: run.workflowName, conclusion: run.conclusion, url: run.url, createdAt: run.createdAt, headSha: run.headSha }))
+    .sort((a, b) => (a.workflow < b.workflow ? -1 : a.workflow > b.workflow ? 1 : 0))
+  return { workflows: newest.size, failing }
+}
+
+/** Open pull requests with at least one failing check run or status context, by number. */
+export function failingPullRequests(prs) {
+  const rows = []
+  for (const pr of prs) {
+    const failing = []
+    for (const entry of pr.statusCheckRollup ?? []) {
+      const isStatus = 'context' in entry
+      const failed = isStatus ? FAILED_STATUS.has(entry.state) : FAILED_CHECK.has(entry.conclusion)
+      const name = isStatus ? entry.context : entry.name
+      if (failed && !failing.includes(name)) failing.push(name)
+    }
+    if (failing.length > 0) rows.push({ number: pr.number, title: pr.title, url: pr.url, failing })
+  }
+  return rows.sort((a, b) => a.number - b.number)
 }

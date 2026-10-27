@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { blockedIssues, needsPrLookup, prsByBranch, stalledIssues } from './lib/risks.mjs'
+import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, prsByBranch, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 
 const TODAY = '2026-10-26' // a Monday
 const issue = (id, category, extra = {}) => ({
@@ -10,6 +10,9 @@ const issue = (id, category, extra = {}) => ({
 const ev = (at) => ({ at, by: 'fred', op: 'update' })
 const byIdOf = (list) => new Map(list.map((item) => [item.id, item]))
 const stalledOpts = (extra = {}) => ({ eventsByIssue: {}, openPrsByBranch: {}, closedPrsByBranch: {}, today: TODAY, stuckBusinessDays: 3, ...extra })
+const epic = (id, category, extra = {}) => ({ id, title: `Epic ${id}`, status: { name: category, category }, ...extra })
+const update = (at, health = 'on_track') => ({ at, health })
+const epicOpts = (updatesByEpic) => ({ updatesByEpic, today: TODAY, windowDays: 14 })
 const blockedOpts = (list, extra = {}) => ({ byId: byIdOf(list), problemsById: new Map(), activeSprintId: null, ...extra })
 
 test('blockedIssues names each open blocker, a missing one and an unreadable one', () => {
@@ -137,4 +140,107 @@ test('needsPrLookup returns idle in_review issues with a branch and no open pull
   const openPrsByBranch = { r2: { number: 2, headRefName: 'r2', updatedAt: '2026-10-01T10:00:00Z' } }
   const result = needsPrLookup(list, { eventsByIssue, openPrsByBranch, today: TODAY, stuckBusinessDays: 3 })
   assert.deepEqual(result.map((item) => item.id), ['R1'])
+})
+
+test('stalledPullRequests lists idle pull requests by number, drafts included, with the linked issue', () => {
+  const prs = [
+    { number: 12, title: 'Old', url: 'u12', headRefName: 'feat-x', isDraft: false, updatedAt: '2026-10-15T10:00:00Z' },
+    { number: 3, title: 'Fresh', url: 'u3', headRefName: 'feat-y', isDraft: false, updatedAt: '2026-10-23T10:00:00Z' },
+    { number: 7, title: 'Draft', url: 'u7', headRefName: 'feat-z', isDraft: true, updatedAt: '2026-10-20T10:00:00Z' },
+  ]
+  const result = stalledPullRequests(prs, { issuesByBranch: { 'feat-x': 'ISS-3' }, today: TODAY, stuckBusinessDays: 3 })
+  assert.deepEqual(result, [
+    { number: 7, title: 'Draft', url: 'u7', branch: 'feat-z', isDraft: true, updatedAt: '2026-10-20T10:00:00Z', idleBusinessDays: 4, issue: null },
+    { number: 12, title: 'Old', url: 'u12', branch: 'feat-x', isDraft: false, updatedAt: '2026-10-15T10:00:00Z', idleBusinessDays: 7, issue: 'ISS-3' },
+  ])
+})
+
+test('epicRisks flags a target before today and not one on today', () => {
+  const epics = [epic('E1', 'in_progress', { target: '2026-10-25' }), epic('E2', 'in_progress', { target: '2026-10-26' })]
+  const recent = [update('2026-10-20T10:00:00Z')]
+  assert.deepEqual(epicRisks(epics, epicOpts({ E1: recent, E2: recent })), [{
+    id: 'E1', title: 'Epic E1', status: 'in_progress', target: '2026-10-25',
+    lastUpdate: { at: '2026-10-20T10:00:00Z', health: 'on_track' }, reasons: ['late'],
+  }])
+})
+
+test('epicRisks lists the health of the newest update', () => {
+  const epics = [epic('E3', 'in_progress'), epic('E4', 'in_progress', { target: '2026-10-01' })]
+  const updatesByEpic = {
+    E3: [update('2026-10-20T10:00:00Z', 'off_track'), update('2026-10-10T10:00:00Z', 'at_risk')],
+    E4: [update('2026-10-20T10:00:00Z', 'at_risk')],
+  }
+  assert.deepEqual(epicRisks(epics, epicOpts(updatesByEpic)).map((row) => [row.id, row.reasons]), [['E3', ['off_track']], ['E4', ['late', 'at_risk']]])
+})
+
+test('epicRisks flags an update older than W days and not one W days old', () => {
+  const epics = [epic('E5', 'in_progress'), epic('E6', 'in_progress')]
+  const updatesByEpic = { E5: [update('2026-10-11T10:00:00Z')], E6: [update('2026-10-12T10:00:00Z')] }
+  assert.deepEqual(epicRisks(epics, epicOpts(updatesByEpic)).map((row) => [row.id, row.reasons]), [['E5', ['no_recent_update']]])
+})
+
+test('epicRisks gives a new in_progress epic W days to report', () => {
+  const epics = [
+    epic('N1', 'in_progress', { start: '2026-10-20' }),
+    epic('N2', 'in_progress', { start: '2026-10-12' }),
+    epic('N3', 'in_progress', { start: '2026-10-11' }),
+    epic('N4', 'in_progress'),
+  ]
+  const rows = epicRisks(epics, epicOpts({}))
+  assert.deepEqual(rows.map((row) => [row.id, row.reasons]), [['N3', ['no_recent_update']], ['N4', ['no_recent_update']]])
+  assert.equal(rows[1].lastUpdate, null)
+})
+
+test('epicRisks checks an epic in another open category only when it started more than W days ago', () => {
+  const epics = [epic('O1', 'todo', { start: '2026-10-01' }), epic('O2', 'todo', { start: '2026-10-20' }), epic('O3', 'todo')]
+  assert.deepEqual(epicRisks(epics, epicOpts({})).map((row) => [row.id, row.reasons]), [['O1', ['no_recent_update']]])
+})
+
+test('epicRisks leaves out done and canceled epics, and one with no reason', () => {
+  const epics = [
+    epic('D1', 'done', { target: '2026-10-01' }),
+    epic('D2', 'canceled', { target: '2026-10-01' }),
+    epic('D3', 'in_progress'),
+    epic('D4', 'in_progress'),
+  ]
+  const rows = epicRisks(epics, epicOpts({ D3: [update('2026-10-20T10:00:00Z')], D4: [update('2026-10-20T10:00:00Z', 'at_risk')] }))
+  assert.deepEqual(rows.map((row) => row.id), ['D4'])
+  assert.equal(rows[0].target, null)
+})
+
+test('failingWorkflows takes the newest completed run of each workflow', () => {
+  const testNew = { workflowName: 'test', status: 'completed', conclusion: 'success', createdAt: '2026-10-22T10:00:00Z' }
+  const testOld = { workflowName: 'test', status: 'completed', conclusion: 'failure', createdAt: '2026-10-21T10:00:00Z' }
+  const rest = [
+    { workflowName: 'lint', status: 'in_progress', conclusion: '', createdAt: '2026-10-23T10:00:00Z' },
+    { workflowName: 'lint', status: 'completed', conclusion: 'timed_out', createdAt: '2026-10-20T10:00:00Z', url: 'ul', headSha: 'abc' },
+    { workflowName: 'deploy', status: 'completed', conclusion: 'cancelled', createdAt: '2026-10-20T10:00:00Z' },
+  ]
+  const expected = { workflows: 3, failing: [{ workflow: 'lint', conclusion: 'timed_out', url: 'ul', createdAt: '2026-10-20T10:00:00Z', headSha: 'abc' }] }
+  assert.deepEqual(failingWorkflows([testNew, testOld, ...rest]), expected)
+  assert.deepEqual(failingWorkflows([testOld, testNew, ...rest]), expected)
+})
+
+test('failingWorkflows counts startup_failure and returns zero workflows for no runs', () => {
+  assert.deepEqual(failingWorkflows([]), { workflows: 0, failing: [] })
+  const run = { workflowName: 'ci', status: 'completed', conclusion: 'startup_failure', createdAt: '2026-10-20T10:00:00Z', url: 'u', headSha: 's' }
+  assert.deepEqual(failingWorkflows([run]).failing.map((row) => row.workflow), ['ci'])
+})
+
+test('failingPullRequests names failing check runs and status contexts', () => {
+  const prs = [
+    { number: 14, title: 'T14', url: 'u14', statusCheckRollup: [
+      { __typename: 'CheckRun', name: 'lint', status: 'COMPLETED', conclusion: 'FAILURE' },
+      { __typename: 'StatusContext', context: 'ci/legacy', state: 'ERROR' },
+      { __typename: 'CheckRun', name: 'test', status: 'COMPLETED', conclusion: 'SUCCESS' },
+      { __typename: 'CheckRun', name: 'lint', status: 'COMPLETED', conclusion: 'FAILURE' },
+    ] },
+    { number: 2, title: 'T2', url: 'u2', statusCheckRollup: [{ name: 'e2e', conclusion: 'ACTION_REQUIRED' }] },
+    { number: 5, title: 'T5', url: 'u5', statusCheckRollup: null },
+    { number: 6, title: 'T6', url: 'u6', statusCheckRollup: [{ context: 'ok', state: 'SUCCESS' }, { name: 'slow', status: 'IN_PROGRESS', conclusion: '' }] },
+  ]
+  assert.deepEqual(failingPullRequests(prs), [
+    { number: 2, title: 'T2', url: 'u2', failing: ['e2e'] },
+    { number: 14, title: 'T14', url: 'u14', failing: ['lint', 'ci/legacy'] },
+  ])
 })
