@@ -2,7 +2,7 @@
 id: PMK-22
 title: Add releases to the Local tracker
 type: feature
-status: in_progress
+status: in_review
 priority: medium
 estimate: 3
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-2]
 milestone: phase-2-commands
 branch: pmk-22-add-releases-to-the-local-tracker
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-27T00:14:24Z
+updated: 2026-10-27T01:51:07Z
 ---
 
 ## Description
@@ -20,6 +20,6 @@ Source: Local adapter, Entity mapping ("`releases/<version>.md`, optionally tied
 
 ## Acceptance criteria
 
-- [ ] `releases/<version>.md` holds a release, optionally tied to a git tag
-- [ ] The CLI lists releases, lists the issues of a release and marks a release released
-- [ ] `capabilities` reports `releases` as native
+- [x] `releases/<version>.md` holds a release, optionally tied to a git tag
+- [x] The CLI lists releases, lists the issues of a release and marks a release released
+- [x] `capabilities` reports `releases` as native
