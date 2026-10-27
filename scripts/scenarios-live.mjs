@@ -2,7 +2,7 @@
 // of its fixture, and the suite checks what the agent did. It costs money, so it never runs by default and
 // `npm test` does not load it (the name does not end in .test.mjs).
 //
-//   PMKIT_LIVE=1 node --test scripts/scenarios-live.mjs        every scenario: 32 runs, up to $1 each
+//   PMKIT_LIVE=1 node --test scripts/scenarios-live.mjs        every scenario: 33 runs, up to $1 each
 //   PMKIT_LIVE=1 node scripts/scenarios-live.mjs issues-move   only the named modules (node --test drops extra args)
 //
 // Each test is skipped unless PMKIT_LIVE is 1 and `claude` is on PATH. Each run passes --max-budget-usd 1, which
@@ -33,7 +33,7 @@
 //   stop is an answer turn with no key. Every answer counts as a stop, including the answer to a choice of
 //   input (setup's prefix, a status name), so a write after such an answer counts as confirmed.
 // - Rule 8 per call: only the tree hash at each stop.
-// - The part of each expect after its first `saved` read (LIVE_EXPECT_STOPS lists 18 of 32 entries).
+// - The part of each expect after its first `saved` read (LIVE_EXPECT_STOPS lists 19 of 33 entries).
 //
 // Spike findings (claude 2.1.310, 2026-10-26, /pmkit:issues:move ISS-2X6D done on the team fixture, 2 runs):
 // - The plugin command runs under -p despite `disable-model-invocation: true`. The agent read conventions.md,
@@ -96,6 +96,7 @@ const LIVE_EXPECT_STOPS = {
   'issues-summary.1': 'the epic, update and children results the summary shows',
   'issues-work': 'the readiness, PR preview and PR view results, and the follow-up issue, whose ID the agent gets',
   'local-doctor': 'the doctor results and the ISS-5 conflict resolution, which needs a file edit',
+  'local-render': 'the render result of the scripted run, whose path, overwrite flag and problems the agent reports',
   'setup.0': 'the init preview, validate and discover results',
   'setup.1': 'the init preview and validate results',
   'spec-import': 'every check: they find the new epic and issues through the IDs the scripted run saved',
