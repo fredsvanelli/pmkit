@@ -213,3 +213,46 @@ export function boardDoc(data) {
     columns: true,
   }
 }
+
+const EPIC_HEADER = ['ID', 'Title', 'Status', 'Start', 'Target', 'Progress', 'Health']
+
+function epicProgress(epic, unit) {
+  const issues = `${epic.done}/${epic.total} issues`
+  return epic.points > 0 && addsUp(unit) ? `${issues}, ${epic.pointsDone}/${epic.points} ${unit}` : issues
+}
+
+const healthCell = (epic) => (epic.health === null ? '' : { text: `${epic.health} (${epic.healthDate})`, tone: epic.health })
+
+function epicTable(epics, unit) {
+  return {
+    header: EPIC_HEADER,
+    rows: epics.map((epic) => [epic.id, epic.title, epic.status ?? '', epic.start ?? '', epic.target ?? '', epicProgress(epic, unit), healthCell(epic)]),
+  }
+}
+
+function groupHeading(group) {
+  if (!group.filed) return `${group.name} (no milestone file)`
+  return `${group.name} (${group.id}${group.due ? `, due ${group.due}` : ''})`
+}
+
+export function roadmapDoc(data) {
+  const epicsSection = (heading, lines, epics) => ({
+    heading,
+    lines,
+    table: epics.length > 0 ? epicTable(epics, data.unit) : null,
+    empty: epics.length > 0 ? null : 'No epics',
+  })
+  const sections = data.groups.map((group) => epicsSection(
+    groupHeading(group),
+    [...(group.summary ? [group.summary] : []), `Issues: ${group.issuesDone} of ${group.issuesTotal} done`],
+    group.epics,
+  ))
+  if (data.noMilestone.length > 0) sections.push(epicsSection('No milestone', [], data.noMilestone))
+  return {
+    title: 'Roadmap',
+    lead: [...asOfLines(data), ...(sections.length === 0 ? ['No milestones or epics'] : [])],
+    sections,
+    closing: closingLines(data),
+    columns: false,
+  }
+}

@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { loadConfig } from './lib/config.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
-import { boardData } from './lib/render-data.mjs'
+import { boardData, roadmapData } from './lib/render-data.mjs'
 import { makeRepo } from './test-helpers.mjs'
 
 const NOW = () => new Date('2026-10-23T12:00:00Z')
@@ -69,5 +69,66 @@ describe('boardData', () => {
     const { tracker, local } = open((root) => replaceIn(root, '.issues/issues/ISS-6J0B/issue.md', 'priority: low\n', 'priority: low\nblocked_by: [ISS-7D8K]\n'))
     const row = boardData(tracker, local).statuses[1].issues.find((r) => r.id === 'ISS-6J0B')
     assert.deepEqual(row.blockedBy, [])
+  })
+})
+
+/** Adds `line` after the `key: ...` line of a frontmatter. */
+const addAfter = (root, file, key, line) => {
+  const full = path.join(root, file)
+  const text = fs.readFileSync(full, 'utf8')
+  const next = text.replace(new RegExp(`^(${key}: .*)$`, 'm'), `$1\n${line}`)
+  assert.notEqual(next, text, `${file} has ${key}`)
+  fs.writeFileSync(full, next)
+}
+
+function withMilestones(root) {
+  fs.mkdirSync(path.join(root, '.issues/milestones'), { recursive: true })
+  fs.writeFileSync(path.join(root, '.issues/milestones/v1.0.md'), '---\nname: Public webhooks launch\ndue: 2026-11-13\n---\n\nWebhooks are open to every customer.\n\nSecond paragraph.\n')
+  addAfter(root, '.issues/epics/EPC-2M9D/epic.md', 'status', 'milestone: v1.0')
+  addAfter(root, '.issues/issues/ISS-3F7H/issue.md', 'status', 'milestone: jira')
+  addAfter(root, '.issues/issues/ISS-4P8A/issue.md', 'status', 'milestone: v1.0')
+}
+
+describe('roadmapData', () => {
+  test('groups epics and issues by milestone file, then by unfiled name', () => {
+    const { tracker, local } = open(withMilestones)
+    tracker.publishStatusUpdate({ epic: 'EPC-2M9D', health: 'at_risk', body: 'Late' }, 'fred')
+    const data = roadmapData(tracker, local)
+    assert.deepEqual(data.groups.map((g) => [g.id, g.name, g.filed]), [['v1.0', 'Public webhooks launch', true], [null, 'jira', false]])
+    const [v1, jira] = data.groups
+    assert.equal(v1.due, '2026-11-13')
+    assert.equal(v1.summary, 'Webhooks are open to every customer.')
+    assert.equal(v1.issuesDone, 1)
+    assert.equal(v1.issuesTotal, 1)
+    assert.deepEqual(v1.epics, [{
+      id: 'EPC-2M9D', title: 'Reliable webhooks and billing export', status: 'in_progress', start: '2026-09-28', target: '2026-11-13',
+      done: 2, total: 5, points: 22, pointsDone: 8, health: 'at_risk', healthDate: '2026-10-23',
+    }])
+    assert.equal(jira.issuesTotal, 1)
+    assert.equal(jira.issuesDone, 0)
+    assert.deepEqual(jira.epics, [])
+    assert.deepEqual(data.noMilestone, [])
+    assert.equal(data.unit, 'points')
+    assert.deepEqual(ids(data.problems), ['ISS-3Q6T'])
+  })
+
+  test('puts every epic under No milestone when nothing names one', () => {
+    const { tracker, local } = open()
+    const data = roadmapData(tracker, local)
+    assert.deepEqual(data.groups, [])
+    assert.deepEqual(ids(data.noMilestone), ['EPC-2M9D'])
+    assert.equal(data.noMilestone[0].health, null)
+    assert.equal(data.noMilestone[0].healthDate, null)
+  })
+
+  test('skips names used only by archived issues, and does not count canceled issues', () => {
+    const { tracker, local } = open((root) => {
+      addAfter(root, '.issues/issues/ISS-7D8K/issue.md', 'status', 'milestone: old')
+      addAfter(root, '.issues/issues/ISS-0G5E/issue.md', 'status', 'milestone: jira')
+      addAfter(root, '.issues/issues/ISS-3F7H/issue.md', 'status', 'milestone: jira')
+    })
+    const data = roadmapData(tracker, local)
+    assert.deepEqual(data.groups.map((g) => g.name), ['jira'])
+    assert.equal(data.groups[0].issuesTotal, 1)
   })
 })

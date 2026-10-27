@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  boardDoc, escapeHtml, escapeMarkdown, hasMarker, marker, plural, problemsLine, renderDocument, statusLabel, toHtml, toMarkdown,
+  boardDoc, escapeHtml, roadmapDoc, escapeMarkdown, hasMarker, marker, plural, problemsLine, renderDocument, statusLabel, toHtml, toMarkdown,
 } from './lib/render.mjs'
 
 const HEADER = ['ID', 'Title', 'Type', 'Priority', 'Assignee', 'Estimate', 'Notes']
@@ -240,4 +240,65 @@ test('plural and statusLabel', () => {
   assert.equal(plural(0, 'issue'), '0 issues')
   assert.equal(statusLabel('in_review'), 'In review')
   assert.equal(statusLabel('done'), 'Done')
+})
+
+const epic = (id, overrides = {}) => ({
+  id, title: `Epic ${id}`, status: 'in_progress', start: '2026-09-28', target: '2026-11-13',
+  done: 2, total: 5, points: 22, pointsDone: 8, health: null, healthDate: null, ...overrides,
+})
+
+function roadmapData(overrides = {}) {
+  return {
+    asOf: '2026-10-22T17:00:00Z',
+    problems: [],
+    unit: 'points',
+    groups: [
+      { id: 'v1.0', name: 'Public webhooks launch', due: '2026-11-13', filed: true, summary: 'Webhooks are open to every customer.', issuesDone: 2, issuesTotal: 5,
+        epics: [epic('EPC-2M9D', { health: 'at_risk', healthDate: '2026-10-23' })] },
+      { id: 'v2.0', name: 'Second', due: null, filed: true, summary: '', issuesDone: 0, issuesTotal: 0, epics: [] },
+      { id: null, name: 'jira', due: null, filed: false, summary: '', issuesDone: 0, issuesTotal: 1, epics: [] },
+    ],
+    noMilestone: [epic('EPC-9X9X', { done: 0, total: 0, points: 0, pointsDone: 0, start: null, target: null })],
+    ...overrides,
+  }
+}
+
+describe('roadmapDoc', () => {
+  const doc = roadmapDoc(roadmapData())
+
+  test('has a section per group, then No milestone', () => {
+    assert.equal(doc.title, 'Roadmap')
+    assert.deepEqual(doc.lead, ['Tracker state as of 2026-10-22T17:00:00Z'])
+    assert.deepEqual(doc.sections.map((s) => s.heading), ['Public webhooks launch (v1.0, due 2026-11-13)', 'Second (v2.0)', 'jira (no milestone file)', 'No milestone'])
+    assert.equal(doc.columns, false)
+  })
+
+  test('writes the summary, the issue count and the epic table of a group', () => {
+    const [filed, empty] = doc.sections
+    assert.deepEqual(filed.lines, ['Webhooks are open to every customer.', 'Issues: 2 of 5 done'])
+    assert.deepEqual(filed.table.header, ['ID', 'Title', 'Status', 'Start', 'Target', 'Progress', 'Health'])
+    assert.deepEqual(filed.table.rows[0], ['EPC-2M9D', 'Epic EPC-2M9D', 'in_progress', '2026-09-28', '2026-11-13', '2/5 issues, 8/22 points', { text: 'at_risk (2026-10-23)', tone: 'at_risk' }])
+    assert.deepEqual(empty.lines, ['Issues: 0 of 0 done'])
+    assert.equal(empty.table, null)
+    assert.equal(empty.empty, 'No epics')
+  })
+
+  test('writes 0/0 issues with no points, and an empty health cell with no update', () => {
+    assert.deepEqual(doc.sections[3].table.rows[0], ['EPC-9X9X', 'Epic EPC-9X9X', 'in_progress', '', '', '0/0 issues', ''])
+  })
+
+  test('leaves out the No milestone section when it is empty', () => {
+    const headings = roadmapDoc(roadmapData({ noMilestone: [] })).sections.map((s) => s.heading)
+    assert.ok(!headings.includes('No milestone'))
+  })
+
+  test('says so when there are no milestones or epics', () => {
+    const empty = roadmapDoc(roadmapData({ groups: [], noMilestone: [] }))
+    assert.deepEqual(empty.lead, ['Tracker state as of 2026-10-22T17:00:00Z', 'No milestones or epics'])
+    assert.deepEqual(empty.sections, [])
+  })
+
+  test('colors the health cell in HTML through its tone class', () => {
+    assert.match(toHtml(doc, 'roadmap'), /<td class="tone-at_risk">at_risk \(2026-10-23\)<\/td>/)
+  })
 })

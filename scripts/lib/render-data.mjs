@@ -63,3 +63,52 @@ export function boardData(tracker, local) {
     canceled: count('canceled'),
   }
 }
+
+/** The first paragraph of a description, on one line. */
+const firstParagraph = (text) => (text ?? '').trim().split(/\n\s*\n/)[0].replace(/\s*\n\s*/g, ' ').trim()
+
+function epicRow(tracker, epic) {
+  const progress = tracker.deliverableProgress(epic.id)
+  const update = tracker.listStatusUpdates(epic.id)[0]
+  return {
+    id: epic.id,
+    title: epic.title,
+    status: epic.status?.name ?? '',
+    start: epic.start ?? null,
+    target: epic.target ?? null,
+    done: progress.done,
+    total: progress.total,
+    points: progress.points,
+    pointsDone: progress.pointsDone,
+    health: update?.health ?? null,
+    healthDate: update ? update.at.slice(0, 10) : null,
+  }
+}
+
+/** Milestone files in listMilestones order, then the names issues or epics use without a file, by name, then the epics with no milestone. */
+export function roadmapData(tracker, local) {
+  const read = readTracker(tracker)
+  const epics = tracker.listDeliverables().map((epic) => ({ epic, row: epicRow(tracker, epic) }))
+  const milestones = tracker.listMilestones()
+  const filed = new Set(milestones.map((m) => m.id))
+  const unfiled = [...new Set([...read.live.map((issue) => issue.milestone), ...epics.map(({ epic }) => epic.milestone)])]
+    .filter((name) => typeof name === 'string' && name !== '' && !filed.has(name))
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+  const group = (key, fields) => {
+    const issues = read.live.filter((issue) => issue.milestone === key && issue.status.category !== 'canceled')
+    return {
+      ...fields,
+      issuesDone: issues.filter((issue) => issue.status.category === 'done').length,
+      issuesTotal: issues.length,
+      epics: epics.filter(({ epic }) => epic.milestone === key).map(({ row }) => row),
+    }
+  }
+  return {
+    ...base(read, local),
+    groups: [
+      ...milestones.map((m) => group(m.id, { id: m.id, name: m.name, due: m.due ?? null, filed: true, summary: firstParagraph(m.description) })),
+      ...unfiled.map((name) => group(name, { id: null, name, due: null, filed: false, summary: '' })),
+    ],
+    noMilestone: epics.filter(({ epic }) => !epic.milestone).map(({ row }) => row),
+  }
+}
