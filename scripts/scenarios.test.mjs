@@ -341,6 +341,7 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
       assert.match(step5, /divided by `count`/)
       assert.match(step5, /When `count` is 0, the bug rate is `n\/a`/)
       assert.match(step5, /whole percent/)
+      assert.ok(step5.includes('(0 when the key is missing)'), 'missing byType.bug counts as 0')
     })
 
     test('step 2 sets the previous period to S minus N days through S minus 1 day, and the default window from the config', () => {
@@ -350,6 +351,11 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
       assert.ok(step2.includes('`S` is `U` minus (`defaults.sprint_length_days` minus 1) days'), 'default start has no off-by-one')
       assert.ok(step2.includes('2026-10-14'), 'default window example')
       assert.match(step2, /real calendar days/)
+      assert.ok(step2.includes('`S` to `U` plus 1'), 'N counts both end days')
+      assert.ok(step2.includes('`N` = 3'), 'previous period example has N = 3')
+      assert.ok(stepText(6).includes('from the rounded values for the bug rate'), 'bug rate direction uses rounded values')
+      assert.ok(text.includes('Add the `p85` next to the median.'), 'p85 sits next to the median')
+      assert.ok(text.includes('- No events in the period: say so and show the numbers of the previous period.'), 'no-events edge case')
       assert.match(stepText(1) + text.split('## Parameters')[1].split('## Steps')[0], /14 when missing/)
     })
 
