@@ -62,7 +62,7 @@ Chosen: approach 2. It follows the pattern of `issues dependencies` (PMK-20), ke
 
 ### Choosing the basis
 
-`release-notes [--release <id> | --sprint <id> | --since <date> [--until <date>]]`. The three selectors exclude each other. Two of them are `INVALID_INPUT` with the next step `pmkit release-notes --help`. `--until` alone is also `INVALID_INPUT`.
+`release-notes [--release <id> | --sprint <id> | --since <date> [--until <date>]]`. The three selectors exclude each other. Two of them are `INVALID_INPUT` with the next step `pmkit release-notes --help`. `--until` alone is also `INVALID_INPUT`. So is a `--since` after `--until`, or after today when `--until` is missing.
 
 With no selector, the CLI tries in order and stops at the first that applies:
 
@@ -101,7 +101,7 @@ The module drops canceled issues and counts them in `excluded.canceled`. It drop
 
 Groups follow the tracker's `types` order (`feature`, `bug`, `task`, `chore` in this repository), then a group with `type: null`. Inside a group, issues go in creation order, as the conventions say. An empty group does not appear.
 
-Each issue entry holds `id`, `title`, `description` (the first section of the body, or empty), `type`, `labels`, `parent`, `archived`, `doneAt` and `release` when it has one. The command needs the description to write a line that says more than a title does. **(builder's call)** for the exact set.
+Each issue entry holds `id`, `title`, `description` (the first section of the body, or empty), `type`, `labels`, `parent`, `archived`, `doneAt`, `release` when it has one, and `status` (the name), `assignee` and `estimate` for the table. The command needs the description to write a line that says more than a title does. **(builder's call)** for the exact set.
 
 ### Result
 
@@ -131,19 +131,20 @@ The CLI is a read. It takes no `--dry-run` and no `--as`, and it writes nothing,
 
 `commands/report/release-notes.md`, user-invoked as `/pmkit:report:release-notes [release|sprint|period]`. The file does not exist yet, so this spec names it without the plugin-root prefix.
 
-Parameters: one optional argument. A release ID, a sprint ID, or `since=<date>[,until=<date>]`. The command decides which selector to pass by asking the CLI: it tries `release get`, then `cycle list`, and treats `since=` as a period. **(builder's call)** An empty argument means no selector.
+Parameters: one optional argument. A release ID, a sprint ID, `current` (the active sprint, passed as `--sprint current`), or `since=<date>[,until=<date>]`. The command decides which selector to pass by asking the CLI: it tries `release get`, then `cycle list`, and treats `since=` as a period. **(builder's call)** An empty argument means no selector.
 
 Steps:
 
-1. Run `release-notes --json` with the selector. Every later step reads this result.
-2. Lead with one line that names the basis, in words. When `reason` is not `requested` or `latest`, or `skipped` is not empty, say which step was skipped and why, in the same line or the next, as the second acceptance criterion asks. When `draft` is true, say the release is not released yet or the sprint is open.
-3. Write the notes from `groups`. Each type becomes a heading in plain words (`feature` as "New", `bug` as "Fixed", `task` and untyped as "Improved"). `chore` issues are left out (question 1) and counted in one line, such as "4 internal changes not listed", read from `counts.excluded.chore`. One bullet per issue, rewritten for a user of the product from the title and description: say what the user can now do or no longer suffers, not how it was built. Keep it to one sentence. Do not add a claim the issue does not state. Merge two bullets only when their issues say the same thing, and keep every ID in the table of step 4.
-4. Show a table of the included issues in creation order with the five standard columns from the conventions, so each bullet traces to its issue. Write every ID in full. The saved document holds the IDs in a final "Included issues" list (question 3), and no bullet carries an ID.
-5. Say how many issues the notes leave out, from `counts.excluded`, when either count is above zero. For the release basis, offer `/pmkit:issues:find` or `release issues <id>` to look at them.
-6. Offer to save the notes. When `capabilities --json` reports `documents` absent, skip this step and offer the text to copy. Otherwise write the notes to a temporary file outside `.issues/` and run `docs create release-notes/<name>.md --body-file <file> --dry-run --json`. `<name>` is the release ID, the sprint ID, or `<since>_<until>`. Show the document and ask once with `AskUserQuestion`, whatever `write_policy.confirm` says, because the document is for readers outside the team. When the user declines, save nothing. After approval, run the same command without `--dry-run`.
-7. Remove the temporary file.
+1. Sync merged pull requests, as `report/status` does in its step 1. Run `pr sync --dry-run --json`. When `moved` is empty, go on. Otherwise show each issue with its PR, the change from `in_review` to `done`, and ask once with `AskUserQuestion`, whatever `write_policy.confirm` says. On approval, run `pr sync` without `--dry-run`. When the user declines, change nothing and carry on. Show `problems` as warnings. When the call fails with `NOT_SUPPORTED`, `NOT_CONFIGURED` or `AUTH`, or `.pmkit/config.yaml` is not valid, say in one line that the sync is skipped and go on. Without this step an issue whose PR merged but still sits in `in_review` would be left out of notes that may get published.
+2. Run `release-notes --json` with the selector. Every later step reads this result.
+3. Lead with one line that names the basis, in words. When `reason` is not `requested` or `latest`, or `skipped` is not empty, say which step was skipped and why, in the same line or the next, as the second acceptance criterion asks. When `draft` is true, say the release is not released yet or the sprint is open.
+4. Write the notes from `groups`. Each type becomes a heading in plain words (`feature` as "New", `bug` as "Fixed", `task` and untyped as "Improved"). `chore` issues are left out (question 1) and counted in one line, such as "4 internal changes not listed", read from `counts.excluded.chore`. One bullet per issue, rewritten for a user of the product from the title and description: say what the user can now do or no longer suffers, not how it was built. Keep it to one sentence. Do not add a claim the issue does not state. Merge two bullets only when their issues say the same thing, and keep every ID in the table of step 4.
+5. Show a table of the included issues in creation order with the five standard columns from the conventions (ID, title, status, assignee, estimate) and the type after them, so each bullet traces to its issue. Write every ID in full. The saved document holds the IDs in a final "Included issues" list (question 3), and no bullet carries an ID.
+6. Say how many issues the notes leave out, from `counts.excluded`, when either count is above zero. For the release basis, offer `/pmkit:issues:find` or `release issues <id>` to look at them.
+7. Offer to save the notes. When `capabilities --json` reports `documents` absent, skip this step and offer the text to copy. Otherwise write the notes to a temporary file outside `.issues/` and run `docs create release-notes/<name>.md --body-file <file> --dry-run --json`. `<name>` is the release ID, the sprint ID, or `<since>_<until>`, with both dates cut to `YYYY-MM-DD` so the file name holds no colon. Show the document and ask once with `AskUserQuestion`, whatever `write_policy.confirm` says, because the document is for readers outside the team. When the user declines, save nothing. After approval, run the same command without `--dry-run`.
+8. Remove the temporary file.
 
-Confirmation points: step 6 only, always asked. Producing the notes reads only.
+Confirmation points: step 1 (the `pr sync` preview, when it would move issues) and step 7 (the document, always asked). Producing the notes reads only, apart from those two writes.
 
 If something is missing:
 
@@ -156,7 +157,7 @@ If something is missing:
 
 `SERVED_BY` adds `release-notes` to `releases` and `cycles`. Both read it as a source, so no path changes: `releases` stays native and `cycles` stays native. `capabilities.test.mjs` already checks that every `SERVED_BY` name exists in `COMMANDS`.
 
-On a tracker without `releases`, the command still works through `reason: releases_absent`. This is the degradation the catalog names, "Period or cycle". On a tracker with `documents` absent, step 6 degrades to text.
+On a tracker without `releases`, the command still works through `reason: releases_absent`. This is the degradation the catalog names, "Period or cycle". On a tracker with `documents` absent, step 7 degrades to text.
 
 ### Docs
 
@@ -170,9 +171,9 @@ On a tracker without `releases`, the command still works through `reason: releas
 
 | Criterion | Tests |
 |---|---|
-| 1. Groups completed issues by release, sprint or period | A pure module test file, `scripts/release-notes.test.mjs`: the release basis with a done, an open and a canceled issue, with the counts in `excluded`; the sprint basis; the period basis with a done-then-reopened issue; group order by `types`; an untyped group last; creation order inside a group; archived done issues kept on all three bases; a done `chore` issue left out and counted in `excluded.chore`. A CLI test for each selector and for two selectors at once (`INVALID_INPUT`). Scenario entry 1: `/pmkit:report:release-notes 1.0.0` on `no-sprints`, where 1.0.0 is planned, so the notes are a draft, with an `expect` on the groups. |
+| 1. Groups completed issues by release, sprint or period | A pure module test file, `scripts/release-notes.test.mjs`: the release basis with a done, an open and a canceled issue, with the counts in `excluded`; the sprint basis; the period basis with a done-then-reopened issue; group order by `types`; an untyped group last; creation order inside a group; archived done issues kept on all three bases; a done `chore` issue left out and counted in `excluded.chore`. A CLI test for each selector and for two selectors at once (`INVALID_INPUT`). Scenario entry 1 (both entries start with the `pr sync` preview of step 1, which moves nothing on the fixture): `/pmkit:report:release-notes 1.0.0` on `no-sprints`, where 1.0.0 is planned, so the notes are a draft, with an `expect` on the groups. |
 | 2. Falls back and says so | Unit tests for every `reason`: no released release, `releases` absent, no closed sprint, default window. CLI text test that the second line names the skipped step. Scenario entry 2: `no-sprints` with no argument has no released release and no closed sprint, so the notes use a period and the snapshot says "default window". |
-| 3. Optionally saves after confirmation | Scenario entry 1 continues to a `docs create ... --dry-run`, a confirm at the step 6 point, then the real write. Scenario entry 2 also declines the save and checks that `docs/` has no new file. `CONFLICT` on an existing path is the existing `createDocument` behavior, which the contract suite already checks. |
+| 3. Optionally saves after confirmation | Scenario entry 1 continues to a `docs create ... --dry-run`, a confirm at the step 7 point, then the real write. Scenario entry 2 also declines the save and checks that `docs/` has no new file. `CONFLICT` on an existing path is the existing `createDocument` behavior, which the contract suite already checks. |
 | Contract change | Tracker and contract-suite tests: `releaseIssues(id, { archived: true })` returns an archived issue that the default call leaves out, and `release issues --archived` prints it. |
 
 Goldens: `goldens.test.mjs` requires a case for every command, so the builder adds a `release-notes` case and generates its files. No fixture changes. `team` gives the sprint basis, `no-sprints` gives the period basis, and `--release 1.0.0` on `no-sprints` gives a draft. The tests that need a released release or an archived done issue build them in a `makeRepo` copy with `release mark-released` and `issues archive`.

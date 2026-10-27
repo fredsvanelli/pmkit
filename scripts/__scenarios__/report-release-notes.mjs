@@ -1,3 +1,4 @@
+// Both entries start with the pr sync preview, which moves nothing on this fixture.
 // /pmkit:report:release-notes 1.0.0 on a planned release: a draft with one done issue, saved after the user confirms.
 // /pmkit:report:release-notes with no argument on a tracker with no release and no sprint: the default 14 days, and the user declines to save.
 import assert from 'node:assert/strict'
@@ -9,18 +10,19 @@ export default [
   {
     command: 'report/release-notes',
     fixture: 'no-sprints',
-    git: true,
+    github: true,
     prompt: '/pmkit:report:release-notes 1.0.0',
     answers: ['Save'],
     steps: [
-      { step: '1', read: ['release-notes', '--release', '1.0.0'], save: 'notes' },
-      { step: '6', read: ['capabilities'] },
-      { step: '6', dryRun: ['docs', 'create', 'release-notes/1.0.0.md', '--body-file', body] },
-      { confirm: 'Step 6' },
-      { step: '6', write: ['docs', 'create', 'release-notes/1.0.0.md', '--body-file', body] },
+      { step: '1', dryRun: ['pr', 'sync'] },
+      { step: '2', read: ['release-notes', '--release', '1.0.0'], save: 'notes' },
+      { step: '7', read: ['capabilities'] },
+      { step: '7', dryRun: ['docs', 'create', 'release-notes/1.0.0.md', '--body-file', body] },
+      { confirm: 'Step 7' },
+      { step: '7', write: ['docs', 'create', 'release-notes/1.0.0.md', '--body-file', body] },
     ],
     skip: {},
-    notHit: {},
+    notHit: { 'Step 1': 'no issue is in review with a branch, so the pr sync preview moves nothing and does not ask' },
     expect(repo, saved) {
       assert.equal(saved.notes.draft, true)
       assert.deepEqual(saved.notes.groups.flatMap((group) => group.issues.map((issue) => issue.id)), ['ISS-6R3N'])
@@ -35,17 +37,18 @@ export default [
   {
     command: 'report/release-notes',
     fixture: 'no-sprints',
-    git: true,
+    github: true,
     prompt: '/pmkit:report:release-notes',
     answers: ['Do not save'],
     steps: [
-      { step: '1', read: ['release-notes'], save: 'notes' },
-      { step: '6', read: ['capabilities'] },
-      { step: '6', dryRun: ['docs', 'create', 'release-notes/2026-10-09_2026-10-23.md', '--body-file', body] },
-      { confirm: 'Step 6' },
+      { step: '1', dryRun: ['pr', 'sync'] },
+      { step: '2', read: ['release-notes'], save: 'notes' },
+      { step: '7', read: ['capabilities'] },
+      { step: '7', dryRun: ['docs', 'create', 'release-notes/2026-10-09_2026-10-23.md', '--body-file', body] },
+      { confirm: 'Step 7' },
     ],
     skip: {},
-    notHit: {},
+    notHit: { 'Step 1': 'no issue is in review with a branch, so the pr sync preview moves nothing and does not ask' },
     expect(repo, saved) {
       assert.equal(saved.notes.basis, 'period')
       assert.equal(saved.notes.period.defaulted, true)

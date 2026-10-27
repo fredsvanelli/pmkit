@@ -1,11 +1,13 @@
-$ pmkit release-notes --release 1.0.0 --json  [step 1, read]
+$ pmkit pr sync --dry-run --json  [step 1, dry run]
 exit 0
-$ pmkit capabilities --json  [step 6, read]
+$ pmkit release-notes --release 1.0.0 --json  [step 2, read]
 exit 0
-$ pmkit docs create release-notes/1.0.0.md --body-file <inputs>/release-notes.md --dry-run --json  [step 6, dry run]
+$ pmkit capabilities --json  [step 7, read]
 exit 0
-? Step 6  [confirmed]
-$ pmkit docs create release-notes/1.0.0.md --body-file <inputs>/release-notes.md --json  [step 6, write]
+$ pmkit docs create release-notes/1.0.0.md --body-file <inputs>/release-notes.md --dry-run --json  [step 7, dry run]
+exit 0
+? Step 7  [confirmed]
+$ pmkit docs create release-notes/1.0.0.md --body-file <inputs>/release-notes.md --json  [step 7, write]
 exit 0
 
 --- added .issues/docs/release-notes/1.0.0.md
@@ -18,3 +20,5 @@ exit 0
 +## Included issues
 +
 +- ISS-6R3N
+--- gh calls
+(none)
