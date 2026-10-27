@@ -155,3 +155,38 @@ test('a done issue target with no open sub-issue is the hierarchy only', () => {
   assert.equal(map.reason, 'none')
   assert.deepEqual(map.tree, [{ id: 'T', children: [] }])
 })
+
+test('a blocked_by loop is broken at the edge that closes it', () => {
+  const issues = [
+    issue('S', { parent: 'EPC-1', blockedBy: ['A'] }),
+    issue('A', { blockedBy: ['B'] }),
+    issue('B', { blockedBy: ['A'] }),
+  ]
+  const map = dependencyMap({ target: epic, issues })
+  assert.deepEqual(map.problems, [{ id: 'B', code: 'cycle', message: 'blocked_by loop: A → B → A; run /pmkit:local:doctor' }])
+  assert.deepEqual(node(map, 'S').blockedBy, ['A'])
+  assert.deepEqual(node(map, 'A').blockedBy, ['B'])
+  assert.deepEqual(node(map, 'B').blockedBy, [])
+  assert.equal(map.basis, 'blockers')
+})
+
+test('the loop walk starts from the scope, whatever the creation order', () => {
+  const issues = [
+    issue('B', { blockedBy: ['A'] }),
+    issue('A', { blockedBy: ['B'] }),
+    issue('S', { parent: 'EPC-1', blockedBy: ['A'] }),
+  ]
+  const map = dependencyMap({ target: epic, issues })
+  assert.deepEqual(map.problems, [{ id: 'B', code: 'cycle', message: 'blocked_by loop: A → B → A; run /pmkit:local:doctor' }])
+  assert.deepEqual(node(map, 'S').blockedBy, ['A'])
+  assert.deepEqual(node(map, 'A').blockedBy, ['B'])
+  assert.deepEqual(node(map, 'B').blockedBy, [])
+})
+
+test('a self-loop is dropped, and with no other edge the basis is none', () => {
+  const map = dependencyMap({ target: epic, issues: [issue('S', { parent: 'EPC-1', blockedBy: ['S'] })] })
+  assert.deepEqual(map.problems, [{ id: 'S', code: 'cycle', message: 'blocked_by loop: S → S; run /pmkit:local:doctor' }])
+  assert.deepEqual(node(map, 'S').blockedBy, [])
+  assert.equal(map.basis, 'hierarchy')
+  assert.equal(map.reason, 'none')
+})

@@ -92,7 +92,7 @@ export function dependencyMap({ target, issues, dependencies = true, unreadable 
     return compareIds(a.id, b.id)
   })
 
-  const problems = []
+  const problems = breakLoops(nodes, graph)
 
   let basis = 'blockers'
   let reason = null
@@ -114,6 +114,33 @@ export function dependencyMap({ target, issues, dependencies = true, unreadable 
     related: relatedPairs(scope),
     problems,
   }
+}
+
+/**
+ * Drops each kept edge that closes a blocked_by loop, so the graph is acyclic, and returns one
+ * problem per dropped edge. The walk starts from the open scope issues, then takes the nodes left.
+ */
+function breakLoops(nodes, graph) {
+  const problems = []
+  const visited = new Set()
+  const stack = []
+  const visit = (node) => {
+    visited.add(node.id)
+    stack.push(node.id)
+    for (const id of [...node.blockedBy]) {
+      if (stack.includes(id)) {
+        node.blockedBy = node.blockedBy.filter((other) => other !== id)
+        const loop = [...stack.slice(stack.indexOf(id)), id].join(' → ')
+        problems.push({ id: node.id, code: 'cycle', message: `blocked_by loop: ${loop}; run /pmkit:local:doctor` })
+      } else if (!visited.has(id)) {
+        visit(graph.get(id))
+      }
+    }
+    stack.pop()
+  }
+  const starts = [...nodes.filter((node) => node.scope && node.open), ...nodes]
+  for (const node of starts) if (!visited.has(node.id)) visit(node)
+  return problems
 }
 
 /** The scope issues in creation order: for an epic, the non-archived issues under it; for an issue, itself and its non-archived sub-issues. */
