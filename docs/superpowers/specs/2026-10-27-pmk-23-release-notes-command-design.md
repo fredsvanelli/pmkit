@@ -89,7 +89,7 @@ When both steps 1 and 2 fail, `reason` names the failure of the step just before
 All three bases keep archived issues, because an old release or sprint is the usual case for notes and `/pmkit:backlog:groom` archives done work.
 
 - **Release.** `releaseIssues(id, { archived: true })`, then keep the done ones. This needs an optional `archived` argument on the contract operation and a `--archived` flag on `release issues`, both new here (see "Decisions"). Without it, notes for an old release would miss every done issue archived later. This closes the gap PMK-22's review found.
-- **Sprint.** `searchIssues({ sprint: <id>, archived: true, categories: ['done'] })`. `cycleIssues` stays as it is.
+- **Sprint.** `searchIssues({ sprint: <id>, archived: true })`, with no category filter, so the module can count the issues that are not done. `cycleIssues` stays as it is.
 - **Period.** `metricEvents` and `doneInRange` (the code behind `metrics throughput`) give the IDs whose last move into done falls in the range. `getIssue` reads each one, archived included. An ID that no longer reads goes to `problems`.
 
 For the sprint and period bases each issue carries `doneAt`, the time of its last move into done. For the release basis it is `null`, because membership, not time, defines the release.
@@ -169,12 +169,12 @@ On a tracker without `releases`, the command still works through `reason: releas
 
 | Criterion | Tests |
 |---|---|
-| 1. Groups completed issues by release, sprint or period | A pure module test file, `scripts/release-notes.test.mjs`: the release basis with a done, an open and a canceled issue, with the counts in `excluded`; the sprint basis; the period basis with a done-then-reopened issue; group order by `types`; an untyped group last; creation order inside a group; archived done issues kept on all three bases; a done `chore` issue left out and counted in `excluded.chore`. A CLI test for each selector and for two selectors at once (`INVALID_INPUT`). Scenario entry 1: `/pmkit:report:release-notes <release>` on a fixture with a released release, one read step, and an `expect` on the groups. |
-| 2. Falls back and says so | Unit tests for every `reason`: no released release, `releases` absent, no closed sprint, default window. CLI text test that the second line names the skipped step. Scenario entry 2: the `no-sprints` fixture has no releases and no closed sprint, so the notes use a period and the snapshot says "default window". |
-| 3. Optionally saves after confirmation | Scenario entry 1 continues to a `docs create ... --dry-run`, a confirm at the step 6 point, then the real write. Scenario entry 3 declines and checks that `docs/` has no new file. A test for `CONFLICT` on an existing path. |
+| 1. Groups completed issues by release, sprint or period | A pure module test file, `scripts/release-notes.test.mjs`: the release basis with a done, an open and a canceled issue, with the counts in `excluded`; the sprint basis; the period basis with a done-then-reopened issue; group order by `types`; an untyped group last; creation order inside a group; archived done issues kept on all three bases; a done `chore` issue left out and counted in `excluded.chore`. A CLI test for each selector and for two selectors at once (`INVALID_INPUT`). Scenario entry 1: `/pmkit:report:release-notes 1.0.0` on `no-sprints`, where 1.0.0 is planned, so the notes are a draft, with an `expect` on the groups. |
+| 2. Falls back and says so | Unit tests for every `reason`: no released release, `releases` absent, no closed sprint, default window. CLI text test that the second line names the skipped step. Scenario entry 2: `no-sprints` with no argument has no released release and no closed sprint, so the notes use a period and the snapshot says "default window". |
+| 3. Optionally saves after confirmation | Scenario entry 1 continues to a `docs create ... --dry-run`, a confirm at the step 6 point, then the real write. Scenario entry 2 also declines the save and checks that `docs/` has no new file. `CONFLICT` on an existing path is the existing `createDocument` behavior, which the contract suite already checks. |
 | Contract change | Tracker and contract-suite tests: `releaseIssues(id, { archived: true })` returns an archived issue that the default call leaves out, and `release issues --archived` prints it. |
 
-Goldens: `goldens.test.mjs` requires a case for every command, so the builder adds `release-notes` to the fixtures and regenerates the files that change. One fixture needs a released release with an archived done issue.
+Goldens: `goldens.test.mjs` requires a case for every command, so the builder adds a `release-notes` case and generates its files. No fixture changes. `team` gives the sprint basis, `no-sprints` gives the period basis, and `--release 1.0.0` on `no-sprints` gives a draft. The tests that need a released release or an archived done issue build them in a `makeRepo` copy with `release mark-released` and `issues archive`.
 
 ## Decisions
 
