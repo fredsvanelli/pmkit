@@ -214,6 +214,15 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     assert.match(step3, /`--text` matches one substring of the title or description/)
   })
 
+  // Two triage issues that repeat each other must not each be proposed as a duplicate of the other: applying all
+  // proposals would cancel both. No scenario has such a pair, so this test pins the rule.
+  test('backlog/triage keeps one issue of each set that repeats each other', () => {
+    const step3 = fs.readFileSync(path.join(COMMANDS_DIR, 'backlog', 'triage.md'), 'utf8').split('\n')
+      .find((line) => line.includes('issues list --text'))
+    assert.ok(step3.includes('Keep one issue of each set of issues that repeat each other: the one outside `triage` when there is one, otherwise the oldest by `created`.'), 'step 3 names the kept issue')
+    assert.ok(step3.includes('Never propose `duplicate` or `decline` for a kept issue that is in the queue'), 'step 3 never cancels the kept issue')
+  })
+
   // The in_review assertion encodes the PMK-122 decision (follow-up 1 of the spec). Change it when that issue lands.
   test('cycle/plan step 5 drafts from todo, backlog and in_progress issues with no sprint', () => {
     const call = FILES.find((file) => file.rel === 'cycle/plan.md').parsed.calls

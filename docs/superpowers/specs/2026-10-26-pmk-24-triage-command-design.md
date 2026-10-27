@@ -67,7 +67,7 @@ None. Every issue in the `triage` category is in scope. An optional `--limit` is
 3. For each issue, run `issues get <id> --comments --json` when the list entry lacks the description, then form a proposal from the title, type, description and comments.
    - Priority. One of the allowed values, with a one-line reason. Leave it empty when the text gives no basis, and say so.
    - Labels. Zero or more values from `discover`. Never a value outside it.
-   - Duplicate. Run `issues list --text "<key word>" --json` once for each key word of the title, one word per search, over every category except the issue itself, and judge the matches. Name the likely original and say the match is a guess. When the original is `done` or `canceled`, the proposal is still duplicate, and the table shows the original's status, as decision 4 says.
+   - Duplicate. Run `issues list --text "<key word>" --json` once for each key word of the title, one word per search, over every category except the issue itself, and judge the matches. Name the likely original and say the match is a guess. When the original is `done` or `canceled`, the proposal is still duplicate, and the table shows the original's status, as decision 4 says. Keep one issue of each set of issues that repeat each other: the one outside triage when there is one, otherwise the oldest by `created`. The other issues of the set in the queue are duplicates of the kept one, and the kept issue is never proposed as a duplicate or a decline in the same run.
    - Decline. Propose it only when the text shows a reason the issue should not be worked, for example it asks for something the project says it will not do. Write the reason in one sentence.
    - Not enough information. When the description cannot support any proposal, propose nothing and leave the issue in triage. Say what is missing.
 4. Show the queue as an issue table (ID, title, status, assignee, estimate) with three extra columns after the five, in this order: proposal (`accept`, `duplicate of <id>`, `decline` or `needs info`), priority and labels. Show the reason for each proposal below the table in one line per issue. Page the table at 10 rows.
@@ -121,6 +121,7 @@ A table of the applied decisions with the full ID, the decision, the new status,
 - Labels never invent a value. `issues update` would reject it, and the labels list is project config.
 - Existing labels are kept. The command sends the union of old and accepted labels because `--label` replaces the list.
 - A duplicate follows the groom path: a `duplicate` link, then `canceled`. The link keeps the pointer to the original after the move.
+- One issue of each set that repeats each other is kept. Without this rule, two triage issues that repeat each other could each be proposed as a duplicate of the other, and applying all proposals would cancel both.
 - An issue without enough information stays in triage. Moving it out would hide it from the queue.
 - Declined issues get a comment, as decision 3 says, so the reason is in the issue history.
 - The preview is always full and asked once, because several records change.
