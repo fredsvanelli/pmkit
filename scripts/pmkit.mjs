@@ -974,10 +974,24 @@ const RENDER_FORMATS = ['md', 'html']
 const HTML_EXTENSIONS = ['.html', '.htm']
 const MARKDOWN_EXTENSIONS = ['.md', '.markdown']
 
-/** True when `file` is `dir` or inside it. */
+/** True when `rel`, a relative path, climbs out of its base. A name that only starts with two dots, such as `..board.md`, stays inside. */
+const climbsOut = (rel) => rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)
+
+/** `file` with the symlinks of its nearest existing parent folder resolved, so a link into a folder is seen as that folder. */
+const realParent = (file) => {
+  const rest = []
+  let current = file
+  while (!fs.existsSync(current) && path.dirname(current) !== current) {
+    rest.unshift(path.basename(current))
+    current = path.dirname(current)
+  }
+  return path.join(fs.realpathSync(current), ...rest)
+}
+
+/** True when `file` is `dir` or inside it, by the real location of both. */
 const isInside = (dir, file) => {
-  const rel = path.relative(dir, file)
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
+  const rel = path.relative(realParent(dir), realParent(file))
+  return rel === '' || !climbsOut(rel)
 }
 
 /**
@@ -1013,7 +1027,7 @@ function renderTarget(ctx, view) {
 /** A path relative to the repository root with `/`, or the absolute path when the file is outside the root. */
 const renderPath = (ctx, file) => {
   const rel = path.relative(ctx.root, file)
-  return slash(rel === '' || rel.startsWith('..') || path.isAbsolute(rel) ? file : rel)
+  return slash(rel === '' || climbsOut(rel) ? file : rel)
 }
 
 /** Gathers the view data through tracker reads and renders it to stdout or one file. Changes no tracker file and never replaces a file it did not render. */

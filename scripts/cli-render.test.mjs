@@ -269,6 +269,28 @@ describe('render to a file', () => {
     assert.equal(hashTree(root, INDEX_FILES), before)
   })
 
+  test('--out refuses a file whose name starts with two dots inside the tracker, and one reached through a symlink', () => {
+    const root = makeRepo('team')
+    const before = hashTree(root, INDEX_FILES)
+    const dots = failure(root, ['render', 'board', '--out', '.issues/..board.md'])
+    assert.equal(dots.code, 'INVALID_INPUT')
+    assert.equal(dots.message, '.issues/..board.md is inside the tracker folder .issues/')
+    fs.symlinkSync(path.join(root, '.issues'), path.join(root, 'trk'))
+    const link = failure(root, ['render', 'board', '--out', 'trk/issues/x.md'])
+    assert.equal(link.code, 'INVALID_INPUT')
+    assert.equal(link.nextStep, 'Use --save, or a path outside .issues/')
+    assert.ok(!exists(root, '.issues/issues/x.md'))
+    assert.ok(!exists(root, '.issues/..board.md'))
+    fs.unlinkSync(path.join(root, 'trk'))
+    assert.equal(hashTree(root, INDEX_FILES), before)
+  })
+
+  test('--out shows a file whose name starts with two dots as a path inside the repository', () => {
+    const root = makeRepo('team')
+    const data = json(root, ['render', 'board', '--out', '..board.md'])
+    assert.equal(data.path, '..board.md')
+  })
+
   test('--dry-run with a destination writes nothing and says what it would write', () => {
     const root = makeRepo('team')
     const before = hashTree(root)
