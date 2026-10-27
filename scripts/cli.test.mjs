@@ -1365,6 +1365,30 @@ test('configClass sorts every call into exempt, read or write', () => {
   assert.equal(configClass(cmd('cycle capacity'), { 'days-off': 'fred=2026-10-20' }), 'write')
 })
 
+// A parent chain deep enough that JSON.stringify overflows the stack, while the text printer still copes.
+const chainCtx = (depth, json) => {
+  const status = { name: 'todo', category: 'todo' }
+  const issues = Array.from({ length: depth }, (_, index) => ({
+    id: `N${index}`, title: 't', status, blockedBy: [], related: [], archived: false, parent: index === 0 ? 'EPC-1' : `N${index - 1}`,
+  }))
+  return {
+    args: ['EPC-1'],
+    json,
+    tracker: () => ({
+      getDeliverable: () => ({ id: 'EPC-1', title: 'Epic', status }),
+      searchIssues: () => ({ issues, problems: [] }),
+      capabilities: () => ({ capabilities: [{ id: 'dependencies', path: 'native' }] }),
+    }),
+    config: () => ({ local: { epic_prefix: 'EPC', estimate: { unit: 'points' } } }),
+  }
+}
+
+test('issues dependencies prints a deep chain in text mode and fails only for JSON', () => {
+  const text = cmd('issues dependencies').run(chainCtx(3000, false))
+  assert.ok(text.text.includes('N2999'))
+  assert.throws(() => cmd('issues dependencies').run(chainCtx(3000, true)), (error) => error.code === 'INVALID_INPUT' && /too deep/.test(error.message))
+})
+
 const INPUTS = path.join(path.dirname(fileURLToPath(import.meta.url)), '__goldens__', '_inputs')
 const input = (name) => path.join(INPUTS, name)
 const editPmkit = (root, from, to) => {

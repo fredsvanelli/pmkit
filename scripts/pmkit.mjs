@@ -324,7 +324,9 @@ export const COMMANDS = [
       const dependencies = tracker.capabilities().capabilities.find((c) => c.id === 'dependencies').path !== 'absent'
       const map = dependencyMap({ target, issues: found.issues, dependencies, unreadable: found.problems.map((p) => p.id), unit: local.estimate.unit })
       const problems = [...found.problems, ...map.problems]
-      return { data: serializable({ ...map, problems }), text: dependencyText(map), warnings: problems.map(problemLine) }
+      // Only JSON.stringify can overflow on a map the builder accepted, so check it for JSON output alone. The text printer copes with deeper chains.
+      const data = ctx.json ? serializable({ ...map, problems }) : { ...map, problems }
+      return { data, text: dependencyText(map), warnings: problems.map(problemLine) }
     },
   },
   {
