@@ -869,14 +869,14 @@ function runRisks(ctx) {
   const problemsById = new Map(problems.map((problem) => [problem.id, problem.code]))
   const activeSprintId = tracker.currentCycle()?.id ?? null
   const eventsByIssue = tracker.eventsByIssue()
-  const issuesByBranch = {}
+  const issuesByBranch = Object.create(null)
   for (const issue of all) if (!issue.archived && issue.branch && issuesByBranch[issue.branch] === undefined) issuesByBranch[issue.branch] = issue.id
 
   const system = ctx.config().pmkit.git_host?.system ?? 'none'
   const branch = defaultBranch(ctx)
   let gitHost = { system, available: true }
-  let openPrsByBranch = {}
-  let closedPrsByBranch = {}
+  let openPrsByBranch = Object.create(null)
+  let closedPrsByBranch = Object.create(null)
   // null: not checked because no host is available. { error }: that one call failed.
   let prs = null
   let ci = null
@@ -924,8 +924,8 @@ function runRisks(ctx) {
       warnings.push(`${error.message}, ${NO_HOST_WARNING}; next: ${error.nextStep}`)
     } else throw error
     gitHost = { system, available: false, reason: errorOf(error) }
-    openPrsByBranch = {}
-    closedPrsByBranch = {}
+    openPrsByBranch = Object.create(null)
+    closedPrsByBranch = Object.create(null)
     prs = null
     ci = null
   }

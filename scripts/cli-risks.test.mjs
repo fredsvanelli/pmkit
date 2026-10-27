@@ -117,6 +117,23 @@ test('risks with the GitHub host lists stalled pull requests, merged branches an
   assert.ok(lines[0].startsWith('warning: ISS-3Q6T: CONFLICT'), stderr)
 })
 
+test('risks treats a branch named like an Object property as an ordinary branch', () => {
+  const noHost = teamRepo({ github: false })
+  setBranch(noHost, 'ISS-8C4W', 'constructor')
+  const idle = callJson(noHost, envWith(fakeGh({}), '2026-10-28T12:00:00Z'), ['risks']).data
+  const row = idle.stalledIssues.find((r) => r.id === 'ISS-8C4W')
+  assert.deepEqual([row.reason, row.pr], ['idle', null])
+
+  const root = githubRepo()
+  setBranch(root, 'ISS-2X6D', 'toString')
+  const gh = fakeGh({ ...cannedGh(), [PR_LIST]: { stdout: JSON.stringify([openPr(11, 'toString', '2026-10-01T10:00:00Z')]) } })
+  const { data } = callJson(root, envWith(gh, '2026-10-28T12:00:00Z'), ['risks'])
+  assert.deepEqual(data.stalledPullRequests.map((r) => [r.number, r.issue]), [[11, 'ISS-2X6D']])
+  const unlinked = fakeGh({ ...cannedGh(), [PR_LIST]: { stdout: JSON.stringify([openPr(12, 'valueOf', '2026-10-01T10:00:00Z')]) } })
+  const other = callJson(root, envWith(unlinked, '2026-10-28T12:00:00Z'), ['risks']).data
+  assert.deepEqual(other.stalledPullRequests.map((r) => [r.number, r.issue]), [[12, null]])
+})
+
 test('risks writes nothing', () => {
   const root = githubRepo()
   const gh = fakeGh(cannedGh())

@@ -42,7 +42,7 @@ export function blockedIssues(issues, { byId, problemsById, activeSprintId }) {
 
 /** Open pull requests keyed by head branch. Of two on one branch, the one updated last wins. */
 export function prsByBranch(prs) {
-  const map = {}
+  const map = Object.create(null)
   for (const pr of prs) {
     const current = map[pr.headRefName]
     if (current === undefined || Date.parse(pr.updatedAt) > Date.parse(current.updatedAt)) map[pr.headRefName] = pr

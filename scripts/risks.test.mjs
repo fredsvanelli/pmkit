@@ -136,6 +136,11 @@ test('prsByBranch keeps the newest pull request of a branch', () => {
   assert.equal(reversed.b.number, 2)
 })
 
+test('prsByBranch has no entry for a branch named like an Object property', () => {
+  const map = prsByBranch([{ number: 1, headRefName: 'b', updatedAt: '2026-10-20T10:00:00Z' }])
+  for (const name of ['constructor', 'toString', '__proto__']) assert.equal(map[name], undefined, name)
+})
+
 test('needsPrLookup returns idle in_review issues with a branch and no open pull request', () => {
   const old = [ev('2026-10-20T10:00:00Z')]
   const list = [
