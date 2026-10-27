@@ -223,6 +223,16 @@ test('metrics cycle-time summarizes done issues in range', () => {
   assert.equal(none.median, null)
 })
 
+test('metrics cycle-time refuses a bound that is not a date', () => {
+  const root = makeRepo('team')
+  assert.equal(run(root, ['metrics', 'cycle-time', '--since', '2026-13-40', '--json']).status, 2)
+  const bad = run(root, ['metrics', 'cycle-time', '--until', '2026-10-08T1', '--json'])
+  assert.equal(bad.status, 2)
+  const error = JSON.parse(bad.stdout).error
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.match(error.message, /--until/)
+})
+
 test('events prints the events in a range', () => {
   const root = makeRepo('team')
   const events = json(root, ['events', '--since', '2026-10-01'])

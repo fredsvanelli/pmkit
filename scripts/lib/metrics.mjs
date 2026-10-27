@@ -22,6 +22,31 @@ export function lastEntry(events, category, categoryOf) {
   return found
 }
 
+/**
+ * Turns a --since or --until value into epoch milliseconds, or NaN when it is no date.
+ * A date alone is UTC midnight, or 23:59:59 with `endOfDay`. A time without a zone is UTC.
+ */
+export function rangeInstant(text, { endOfDay = false } = {}) {
+  const value = String(text)
+  if (!value.includes('T')) return Date.parse(`${value}T${endOfDay ? '23:59:59' : '00:00:00'}Z`)
+  return Date.parse(value.endsWith('Z') ? value : `${value}Z`)
+}
+
+/** The issues whose last move into done falls in the range. Same keys order and event arrays as the input. */
+export function doneInRange(eventsByIssue, { categoryOf, since, until }) {
+  const from = since === undefined ? undefined : rangeInstant(since)
+  const to = until === undefined ? undefined : rangeInstant(until, { endOfDay: true })
+  const result = {}
+  for (const [issue, events] of Object.entries(eventsByIssue)) {
+    const doneAt = lastEntry(events, 'done', categoryOf)
+    if (doneAt === undefined) continue
+    const instant = Date.parse(doneAt)
+    if ((from !== undefined && instant < from) || (to !== undefined && instant > to)) continue
+    result[issue] = events
+  }
+  return result
+}
+
 export function velocity(sprints, issuesBySprint, { window, categoryOf }) {
   const closed = sprints.filter((sprint) => sprint.state === 'closed').sort((a, b) => (a.end < b.end ? -1 : a.end > b.end ? 1 : 0))
   const recent = window > 0 ? closed.slice(-window) : []

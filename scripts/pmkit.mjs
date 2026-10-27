@@ -9,7 +9,7 @@ import { requireActor, gitUserEmail } from './lib/actor.mjs'
 import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig } from './lib/config.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
 import { changeLines, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, sprintRecord, table } from './lib/format.mjs'
-import { cycleTimes, lastEntry, summary, velocity } from './lib/metrics.mjs'
+import { cycleTimes, doneInRange, rangeInstant, summary, velocity } from './lib/metrics.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { addMapEntry, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
@@ -48,6 +48,13 @@ function whole(name, value) {
 
 function dateText(name, value) {
   if (!/^\d{4}-\d{2}-\d{2}(T[\d:.]+Z?)?$/.test(String(value))) throw usageError(`--${name} must be a date as YYYY-MM-DD`)
+  return value
+}
+
+// A range bound: a date, or a date and time. Refuses a value that looks like a date but is not one.
+function rangeText(name, value) {
+  dateText(name, value)
+  if (Number.isNaN(rangeInstant(value))) throw usageError(`--${name} must be a date as YYYY-MM-DD`)
   return value
 }
 
@@ -525,15 +532,9 @@ export const COMMANDS = [
     name: 'metrics cycle-time', summary: 'median and p85 days from first in_progress to done', usage: '[--since d] [--until d]', flags: ['since', 'until'],
     run: (ctx) => {
       const tracker = ctx.tracker()
-      const since = ctx.opt('since') === undefined ? undefined : dateText('since', ctx.opt('since'))
-      const until = ctx.opt('until') === undefined ? undefined : dateText('until', ctx.opt('until'))
-      const lastAt = until !== undefined && !until.includes('T') ? `${until}T23:59:59Z` : until
-      const inRange = {}
-      for (const [id, events] of Object.entries(tracker.eventsByIssue())) {
-        const doneAt = lastEntry(events, 'done', tracker.categoryOf)
-        if (doneAt === undefined || (since !== undefined && doneAt < since) || (lastAt !== undefined && doneAt > lastAt)) continue
-        inRange[id] = events
-      }
+      const since = ctx.opt('since') === undefined ? undefined : rangeText('since', ctx.opt('since'))
+      const until = ctx.opt('until') === undefined ? undefined : rangeText('until', ctx.opt('until'))
+      const inRange = doneInRange(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since, until })
       const issues = cycleTimes(inRange, { categoryOf: tracker.categoryOf })
       const stats = summary(issues.map((item) => item.days))
       const text = fields([['count', stats.count], ['median', stats.median === null ? 'n/a' : `${stats.median} days`], ['p85', stats.p85 === null ? 'n/a' : `${stats.p85} days`]]).join('\n')

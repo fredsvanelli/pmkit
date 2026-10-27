@@ -1,10 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { businessDaysBetween, cycleTimes, summary, velocity } from './lib/metrics.mjs'
+import { businessDaysBetween, cycleTimes, doneInRange, rangeInstant, summary, velocity } from './lib/metrics.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { fixedNow, makeRepo } from './test-helpers.mjs'
 
-const categoryOf = (name) => ({ todo: 'todo', doing: 'in_progress', review: 'in_review', done: 'done' })[name] ?? 'backlog'
+const categoryOf = (name) => ({ todo: 'todo', doing: 'in_progress', review: 'in_review', done: 'done', canceled: 'canceled' })[name] ?? 'backlog'
 const sprint = (id, end, state = 'closed') => ({ id, end, state })
 const item = (estimate, doneAt, status = 'done') => ({ id: 'x', estimate, status, doneAt })
 
@@ -83,6 +83,46 @@ test('cycle time runs from the first start to the last done, even after a move b
     'ISS-3': [move('2026-10-01T08:00:00Z', 'doing')],
   }
   assert.deepEqual(cycleTimes(events, { categoryOf }), [{ issue: 'ISS-1', days: 4.5 }])
+})
+
+const create = (at, status, type) => ({ at, by: 'fred', op: 'create', to: { status, type } })
+const move = (at, to) => ({ at, by: 'fred', op: 'move', field: 'status', to })
+
+test('rangeInstant reads a date as the start or the end of the day, and a time without a zone as UTC', () => {
+  assert.equal(rangeInstant('2026-10-06'), Date.parse('2026-10-06T00:00:00Z'))
+  assert.equal(rangeInstant('2026-10-06', { endOfDay: true }), Date.parse('2026-10-06T23:59:59Z'))
+  assert.equal(rangeInstant('2026-10-06T16:00:00'), Date.parse('2026-10-06T16:00:00Z'))
+  assert.equal(rangeInstant('2026-10-06T16:00', { endOfDay: true }), Date.parse('2026-10-06T16:00Z'))
+  assert.ok(Number.isNaN(rangeInstant('2026-10-08T1')))
+  assert.ok(Number.isNaN(rangeInstant('2026-13-40')))
+})
+
+test('doneInRange keeps the issues whose last move into done falls in the range', () => {
+  const events = {
+    'ISS-1': [move('2026-10-05T23:30:00Z', 'done')],
+    'ISS-2': [move('2026-10-06T00:00:00Z', 'done')],
+    'ISS-3': [move('2026-10-08T23:59:59Z', 'done')],
+    'ISS-4': [move('2026-10-09T00:00:00Z', 'done')],
+    'ISS-5': [move('2026-10-05T00:00:00Z', 'todo')],
+  }
+  const keys = (range) => Object.keys(doneInRange(events, { categoryOf, ...range }))
+  assert.deepEqual(keys({ since: '2026-10-06', until: '2026-10-08' }), ['ISS-2', 'ISS-3'])
+  assert.deepEqual(keys({}), ['ISS-1', 'ISS-2', 'ISS-3', 'ISS-4'])
+  assert.deepEqual(keys({ since: '2026-10-09' }), ['ISS-4'])
+  assert.deepEqual(keys({ until: '2026-10-05' }), ['ISS-1'])
+  assert.equal(doneInRange(events, { categoryOf, since: '2026-10-06' })['ISS-2'], events['ISS-2'])
+})
+
+test('doneInRange compares an offset timestamp as an instant', () => {
+  const events = { 'ISS-7': [move('2026-10-08T22:00:00-03:00', 'done')] }
+  assert.deepEqual(Object.keys(doneInRange(events, { categoryOf, until: '2026-10-08' })), [])
+  assert.deepEqual(Object.keys(doneInRange(events, { categoryOf, since: '2026-10-09' })), ['ISS-7'])
+})
+
+test('doneInRange uses the last move into done after a reopen', () => {
+  const events = { 'ISS-8': [move('2026-10-02T10:00:00Z', 'done'), move('2026-10-03T10:00:00Z', 'doing'), move('2026-10-10T10:00:00Z', 'done')] }
+  assert.deepEqual(Object.keys(doneInRange(events, { categoryOf, since: '2026-10-10' })), ['ISS-8'])
+  assert.deepEqual(Object.keys(doneInRange(events, { categoryOf, until: '2026-10-05' })), [])
 })
 
 test('summary gives the median and the 85th percentile by linear interpolation', () => {
