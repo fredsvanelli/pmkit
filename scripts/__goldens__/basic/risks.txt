@@ -1,0 +1,53 @@
+$ pmkit risks
+exit 0
+--- stdout
+risks on 2026-10-23: stalled after 3 business days without activity, status updates due every 14 days
+git host: none, so issues are stalled by tracker activity only and PRs and CI are not checked
+
+blocked issues
+none
+
+stalled issues
+none
+
+stalled pull requests
+not checked: this repository has no git host configured
+
+epics at risk
+none
+
+failing CI on default branch
+not checked: this repository has no git host configured
+
+pull requests with failing checks
+not checked: this repository has no git host configured
+--- stderr
+warning: no git host is configured, so issues are stalled by tracker activity only and pull requests and CI are not checked
+
+$ pmkit risks --json
+exit 0
+--- stdout
+{
+  "today": "2026-10-23",
+  "thresholds": {
+    "stuckBusinessDays": 3,
+    "statusUpdateWindowDays": 14
+  },
+  "gitHost": {
+    "system": "none",
+    "available": false,
+    "reason": {
+      "code": "NOT_SUPPORTED",
+      "message": "this repository has no git host configured",
+      "nextStep": "Set git_host.system to github in .pmkit/config.yaml, or run /pmkit:setup"
+    }
+  },
+  "blocked": [],
+  "stalledIssues": [],
+  "stalledPullRequests": null,
+  "epics": [],
+  "ci": null,
+  "problems": []
+}
+--- stderr
+warning: no git host is configured, so issues are stalled by tracker activity only and pull requests and CI are not checked

@@ -1,0 +1,104 @@
+$ pmkit risks
+exit 0
+--- stdout
+risks on 2026-10-23: stalled after 3 business days without activity, status updates due every 14 days
+git host: none, so issues are stalled by tracker activity only and PRs and CI are not checked
+
+blocked issues (1)
+ID       | Title                 | Status      | Assignee | Estimate | Blocked by
+---------|-----------------------|-------------|----------|----------|-----------------------
+ISS-2X6D | Billing export to CSV | in_progress | ana      | 8        | ISS-5N1R (in_progress)
+
+stalled issues (1)
+ID       | Title                 | Status      | Assignee | Estimate | Idle days | Reason | PR
+---------|-----------------------|-------------|----------|----------|-----------|--------|---
+ISS-2X6D | Billing export to CSV | in_progress | ana      | 8        | 7         | idle   |
+
+stalled pull requests
+not checked: this repository has no git host configured
+
+epics at risk (1)
+ID       | Title                                | Status      | Target     | Last update | Reasons
+---------|--------------------------------------|-------------|------------|-------------|-----------------
+EPC-2M9D | Reliable webhooks and billing export | in_progress | 2026-11-13 | none        | no_recent_update
+
+failing CI on default branch
+not checked: this repository has no git host configured
+
+pull requests with failing checks
+not checked: this repository has no git host configured
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+warning: no git host is configured, so issues are stalled by tracker activity only and pull requests and CI are not checked
+
+$ pmkit risks --json
+exit 0
+--- stdout
+{
+  "today": "2026-10-23",
+  "thresholds": {
+    "stuckBusinessDays": 3,
+    "statusUpdateWindowDays": 14
+  },
+  "gitHost": {
+    "system": "none",
+    "available": false,
+    "reason": {
+      "code": "NOT_SUPPORTED",
+      "message": "this repository has no git host configured",
+      "nextStep": "Set git_host.system to github in .pmkit/config.yaml, or run /pmkit:setup"
+    }
+  },
+  "blocked": [
+    {
+      "id": "ISS-2X6D",
+      "title": "Billing export to CSV",
+      "status": "in_progress",
+      "assignee": "ana",
+      "estimate": 8,
+      "blockers": [
+        {
+          "id": "ISS-5N1R",
+          "category": "in_progress"
+        }
+      ]
+    }
+  ],
+  "stalledIssues": [
+    {
+      "id": "ISS-2X6D",
+      "title": "Billing export to CSV",
+      "status": "in_progress",
+      "assignee": "ana",
+      "estimate": 8,
+      "lastActivity": "2026-10-14T09:00:00Z",
+      "idleBusinessDays": 7,
+      "reason": "idle",
+      "pr": null
+    }
+  ],
+  "stalledPullRequests": null,
+  "epics": [
+    {
+      "id": "EPC-2M9D",
+      "title": "Reliable webhooks and billing export",
+      "status": "in_progress",
+      "target": "2026-11-13",
+      "lastUpdate": null,
+      "reasons": [
+        "no_recent_update"
+      ]
+    }
+  ],
+  "ci": null,
+  "problems": [
+    {
+      "id": "ISS-3Q6T",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+warning: no git host is configured, so issues are stalled by tracker activity only and pull requests and CI are not checked

@@ -100,6 +100,7 @@ const CASES = {
   'metrics throughput': () => [[]],
   'metrics aging': () => [[]],
   events: () => [[]],
+  risks: () => [[]],
   'issues branch': (a) => [[a.issue]],
   'pr open': (a) => [['--issue', a.issue]],
   'pr ready': (a) => [['--issue', a.issue]],
