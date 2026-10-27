@@ -39,7 +39,7 @@ export default {
     assert.equal(saved.aging.median, null)
     assert.equal(saved.prevAging.count, 2)
     assert.equal(saved.prevAging.median, 6.1)
-    const ids = new Set([...saved.cycle.issues, ...saved.prevCycle.issues, ...saved.prevAging.issues].map((i) => i.id ?? i))
+    const ids = new Set([...saved.cycle.issues, ...saved.prevCycle.issues, ...saved.prevAging.issues].map((i) => i.issue))
     for (const id of ids) assert.deepEqual(repo.newEvents(id), [], `a read-only command appends no event to ${id}`)
   },
 }

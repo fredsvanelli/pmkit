@@ -317,7 +317,7 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     test('says the numbers come from the event history, names the DORA gap and the small sample', () => {
       assert.match(text, /event history/)
       assert.match(text, /events\.jsonl/)
-      assert.match(text, /DORA metrics are not included/)
+      assert.match(text, /This report has no DORA metrics, because the tracker holds no deployment data/)
       assert.match(text, /fewer than 5/)
     })
 
@@ -329,6 +329,66 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     test('gives no verdict', () => {
       const output = text.split('## Output')[1].split('## If something is missing')[0]
       assert.doesNotMatch(output, /\b(better|worse)\b/)
+    })
+
+    test('tells the model to give no judgment on a change', () => {
+      assert.ok(text.includes('Give no judgment on whether a change helps or hurts.'))
+    })
+
+    test('step 5 computes the bug rate from byType.bug over count, in whole percent, n/a for a count of 0', () => {
+      const step5 = stepText(5)
+      assert.ok(step5.includes('`byType.bug`'), 'reads byType.bug')
+      assert.match(step5, /divided by `count`/)
+      assert.match(step5, /When `count` is 0, the bug rate is `n\/a`/)
+      assert.match(step5, /whole percent/)
+    })
+
+    test('step 2 sets the previous period to S minus N days through S minus 1 day, and the default window from the config', () => {
+      const step2 = stepText(2)
+      assert.ok(step2.includes('from `S` minus `N` days to `S` minus 1 day'), 'previous period bounds')
+      assert.ok(step2.includes('`defaults.sprint_length_days`'), 'default window comes from the config')
+      assert.ok(step2.includes('`S` is `U` minus (`defaults.sprint_length_days` minus 1) days'), 'default start has no off-by-one')
+      assert.ok(step2.includes('2026-10-14'), 'default window example')
+      assert.match(step2, /real calendar days/)
+      assert.match(stepText(1) + text.split('## Parameters')[1].split('## Steps')[0], /14 when missing/)
+    })
+
+    test('the period calls use <S> and <U>, the previous calls use <previous S> and <previous U>, and aging takes only until', () => {
+      for (const [n, since, until] of [[3, '<S>', '<U>'], [4, '<previous S>', '<previous U>']]) {
+        for (const call of stepCalls(n)) {
+          if (call.command === 'metrics aging') {
+            assert.ok(call.text.includes(`--until ${until} `), `step ${n} aging ends at ${until}`)
+            assert.ok(!call.text.includes('--since'), `step ${n} aging has no since`)
+          } else {
+            assert.ok(call.text.includes(`--since ${since} --until ${until} `), `step ${n} ${call.command} runs from ${since} to ${until}`)
+          }
+        }
+      }
+    })
+
+    test('aging for a period that ends today is measured at the end of that day', () => {
+      assert.match(text, /is today.{0,80}end of that day/)
+    })
+
+    test('the change is n/a for the medians and the bug rate only, and throughput always shows its difference', () => {
+      const step6 = stepText(6)
+      assert.match(step6, /n\/a.{0,60}cycle time, lead time or aging.{0,60}count of 0/)
+      assert.match(step6, /bug rate.{0,60}`count` of 0/)
+      assert.match(step6, /Throughput always shows its difference/)
+    })
+
+    test('step 1 names the manifest path in the source line for another source', () => {
+      assert.match(stepText(1), /name the path from the manifest in the source line/)
+    })
+
+    test('the example table shows p85 as the text says', () => {
+      const example = text.split('```text')[1].split('```')[0]
+      assert.match(example, /p85 \d/)
+    })
+
+    test('has no parser note and no colon-led DORA sentence', () => {
+      assert.ok(!text.includes('in its own sentence'))
+      assert.ok(!text.includes('DORA metrics are not included:'))
     })
   })
 
