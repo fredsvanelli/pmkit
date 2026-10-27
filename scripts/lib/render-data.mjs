@@ -1,6 +1,7 @@
 // Reads the tracker through contract operations and returns the plain data the views in render.mjs take.
 // Every string stays raw tracker text; only the writers escape. Members show by name, never by email.
 
+import { PmkitError } from './errors.mjs'
 import { CATEGORIES, TERMINAL, compareTimes } from './model.mjs'
 
 const OPEN = CATEGORIES.filter((category) => !TERMINAL.includes(category))
@@ -110,5 +111,58 @@ export function roadmapData(tracker, local) {
       ...unfiled.map((name) => group(name, { id: null, name, due: null, filed: false, summary: '' })),
     ],
     noMilestone: epics.filter(({ epic }) => !epic.milestone).map(({ row }) => row),
+  }
+}
+
+function findSprint(tracker, sprint) {
+  if (sprint === 'current') {
+    const active = tracker.currentCycle()
+    if (active === null) throw new PmkitError('INVALID_INPUT', 'there is no active sprint', 'pmkit cycle list')
+    return active
+  }
+  const found = tracker.listCycles().find((s) => s.id === String(sprint))
+  if (found === undefined) throw new PmkitError('NOT_FOUND', `sprint ${sprint} does not exist`, 'pmkit cycle list')
+  return found
+}
+
+const numeric = (value) => (typeof value === 'number' ? value : 0)
+const byId = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
+
+/**
+ * The sprint view of `sprint`, which is `current` or an id. The sprint issues come from the one readTracker read
+ * (`issue.sprint === id`, what cycleIssues returns), so the totals, the as-of line and the problems agree.
+ * Canceled issues count as issues but add no points. Days off do not show.
+ */
+export function sprintData(tracker, local, sprint) {
+  const found = findSprint(tracker, sprint)
+  const read = readTracker(tracker)
+  const members = local.members ?? {}
+  const issues = read.live.filter((issue) => issue.sprint === found.id)
+  const counted = issues.filter((issue) => issue.status.category !== 'canceled')
+  const isDone = (issue) => issue.status.category === 'done'
+  const sum = (list) => list.reduce((total, issue) => total + numeric(issue.estimate), 0)
+  const byCategory = {}
+  for (const category of CATEGORIES) {
+    const n = issues.filter((issue) => issue.status.category === category).length
+    if (n > 0) byCategory[category] = n
+  }
+  const capacityMap = found.capacity ?? {}
+  const assignees = new Set(counted.map((issue) => issue.assignee).filter((id) => id !== undefined && id !== null))
+  const ids = [
+    ...Object.keys(members).filter((id) => id in capacityMap || assignees.has(id)),
+    ...[...new Set([...Object.keys(capacityMap), ...assignees])].filter((id) => !(id in members)).sort(byId),
+  ]
+  const capacityRow = (member, capacity, list) => ({ member, capacity, assigned: sum(list), done: sum(list.filter(isDone)) })
+  const capacity = ids.map((id) => capacityRow(members[id]?.name ?? id, capacityMap[id] ?? null, counted.filter((issue) => issue.assignee === id)))
+  const unassigned = counted.filter((issue) => issue.assignee === undefined || issue.assignee === null)
+  if (unassigned.length > 0) capacity.push(capacityRow('Unassigned', null, unassigned))
+  return {
+    ...base(read, local),
+    sprint: { id: found.id, name: found.name, start: found.start, end: found.end, state: found.state, goal: found.goal ?? null },
+    totals: { issues: issues.length, points: sum(counted), pointsDone: sum(counted.filter(isDone)), byCategory },
+    capacity,
+    sections: CATEGORIES
+      .map((category) => ({ category, issues: issues.filter((issue) => issue.status.category === category).map((issue) => issueRow(issue, read.byId, members)) }))
+      .filter((section) => section.issues.length > 0),
   }
 }

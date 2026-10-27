@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { loadConfig } from './lib/config.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
-import { boardData, roadmapData } from './lib/render-data.mjs'
+import { boardData, roadmapData, sprintData } from './lib/render-data.mjs'
 import { makeRepo } from './test-helpers.mjs'
 
 const NOW = () => new Date('2026-10-23T12:00:00Z')
@@ -130,5 +130,48 @@ describe('roadmapData', () => {
     const data = roadmapData(tracker, local)
     assert.deepEqual(data.groups.map((g) => g.name), ['jira'])
     assert.equal(data.groups[0].issuesTotal, 1)
+  })
+})
+
+describe('sprintData', () => {
+  test('reads the active sprint with its totals, capacity and sections', () => {
+    const { tracker, local } = open()
+    const data = sprintData(tracker, local, 'current')
+    assert.deepEqual(data.sprint, { id: '2026-10-12', name: 'Sprint 2026-10-12', start: '2026-10-12', end: '2026-10-25', state: 'active', goal: 'Webhook retries and the billing export' })
+    assert.deepEqual(data.totals, { issues: 4, points: 17, pointsDone: 0, byCategory: { todo: 1, in_progress: 2, in_review: 1 } })
+    assert.deepEqual(data.capacity, [
+      { member: 'Fred Vanelli', capacity: 8, assigned: 4, done: 0 },
+      { member: 'Ana Souza', capacity: 10, assigned: 13, done: 0 },
+    ])
+    assert.deepEqual(data.sections.map((s) => [s.category, ids(s.issues)]), [['todo', ['ISS-4M2S']], ['in_progress', ['ISS-2X6D', 'ISS-5N1R']], ['in_review', ['ISS-8C4W']]])
+    assert.equal(data.asOf, '2026-10-22T17:00:00Z')
+    assert.deepEqual(ids(data.problems), ['ISS-3Q6T'])
+  })
+
+  test('reads a closed sprint by id', () => {
+    const { tracker, local } = open()
+    const data = sprintData(tracker, local, '2026-09-28')
+    assert.equal(data.sprint.state, 'closed')
+    assert.equal(data.totals.pointsDone, 10)
+  })
+
+  test('adds an Unassigned row last', () => {
+    const { tracker, local } = open()
+    tracker.moveToCycle(['ISS-3F7H'], '2026-10-12', 'fred')
+    assert.deepEqual(sprintData(tracker, local, 'current').capacity.at(-1), { member: 'Unassigned', capacity: null, assigned: 2, done: 0 })
+  })
+
+  test('counts a canceled issue in the issues but not in the points', () => {
+    const { tracker, local } = open((root) => addAfter(root, '.issues/issues/ISS-0G5E/issue.md', 'status', 'sprint: 2026-10-12\nestimate: 5'))
+    const { totals } = sprintData(tracker, local, 'current')
+    assert.equal(totals.issues, 5)
+    assert.equal(totals.byCategory.canceled, 1)
+    assert.equal(totals.points, 17)
+  })
+
+  test('fails with no active sprint, and with an unknown id', () => {
+    const { tracker, local } = open((root) => replaceIn(root, '.issues/sprints/2026-10-12.yaml', 'state: active', 'state: closed'))
+    assert.throws(() => sprintData(tracker, local, 'current'), { code: 'INVALID_INPUT', message: 'there is no active sprint', nextStep: 'pmkit cycle list' })
+    assert.throws(() => sprintData(tracker, local, 'nope'), { code: 'NOT_FOUND', message: 'sprint nope does not exist', nextStep: 'pmkit cycle list' })
   })
 })

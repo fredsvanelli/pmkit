@@ -5,6 +5,8 @@
 // Section { heading, lines: string[], table: { header: string[], rows: Cell[][] } | null, empty: string | null }
 // Cell    string | { text: string, tone: string }
 
+import { CATEGORIES } from './model.mjs'
+
 const MARKER_PREFIX = '<!-- pmkit render '
 
 /** The comment that marks a file as rendered: line 1 of Markdown, line 2 of HTML. */
@@ -251,6 +253,32 @@ export function roadmapDoc(data) {
   return {
     title: 'Roadmap',
     lead: [...asOfLines(data), ...(sections.length === 0 ? ['No milestones or epics'] : [])],
+    sections,
+    closing: closingLines(data),
+    columns: false,
+  }
+}
+
+export function sprintDoc(data) {
+  const { sprint, totals } = data
+  const counts = CATEGORIES.filter((category) => (totals.byCategory[category] ?? 0) > 0).map((category) => `${category} ${totals.byCategory[category]}`)
+  const sizes = [plural(totals.issues, 'issue'), ...(addsUp(data.unit) ? [`${amount(totals.points, data.unit)} planned`, `${amount(totals.pointsDone, data.unit)} done`] : [])]
+  const sections = [{ heading: 'Totals', lines: [sizes.join(', '), ...(counts.length > 0 ? [counts.join(', ')] : [])], table: null, empty: null }]
+  if (data.capacity.length > 0) {
+    const cell = (value) => (value === null ? '' : String(value))
+    sections.push({
+      heading: 'Capacity',
+      lines: [],
+      table: { header: ['Member', 'Capacity', 'Assigned', 'Done'], rows: data.capacity.map((r) => [r.member, cell(r.capacity), cell(r.assigned), cell(r.done)]) },
+      empty: null,
+    })
+  }
+  for (const section of data.sections) {
+    sections.push({ heading: `${statusLabel(section.category)} (${section.issues.length})`, lines: [], table: issueTable(section.issues), empty: null })
+  }
+  return {
+    title: sprint.name,
+    lead: [`${sprint.id}, ${sprint.start} to ${sprint.end}, ${sprint.state}`, ...(sprint.goal ? [`Goal: ${sprint.goal}`] : []), ...asOfLines(data)],
     sections,
     closing: closingLines(data),
     columns: false,

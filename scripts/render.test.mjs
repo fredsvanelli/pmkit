@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  boardDoc, escapeHtml, roadmapDoc, escapeMarkdown, hasMarker, marker, plural, problemsLine, renderDocument, statusLabel, toHtml, toMarkdown,
+  boardDoc, escapeHtml, roadmapDoc, sprintDoc, escapeMarkdown, hasMarker, marker, plural, problemsLine, renderDocument, statusLabel, toHtml, toMarkdown,
 } from './lib/render.mjs'
 
 const HEADER = ['ID', 'Title', 'Type', 'Priority', 'Assignee', 'Estimate', 'Notes']
@@ -300,5 +300,60 @@ describe('roadmapDoc', () => {
 
   test('colors the health cell in HTML through its tone class', () => {
     assert.match(toHtml(doc, 'roadmap'), /<td class="tone-at_risk">at_risk \(2026-10-23\)<\/td>/)
+  })
+})
+
+function sprintData(overrides = {}) {
+  return {
+    asOf: '2026-10-22T09:00:00Z',
+    problems: [],
+    unit: 'points',
+    sprint: { id: '2026-10-12', name: 'Sprint 2026-10-12', start: '2026-10-12', end: '2026-10-25', state: 'active', goal: 'Webhook retries' },
+    totals: { issues: 4, points: 17, pointsDone: 0, byCategory: { todo: 1, in_progress: 2, in_review: 1 } },
+    capacity: [
+      { member: 'Fred Vanelli', capacity: 8, assigned: 4, done: 0 },
+      { member: 'Ana Souza', capacity: 10, assigned: 13, done: 0 },
+      { member: 'Unassigned', capacity: null, assigned: 2, done: 0 },
+    ],
+    sections: [
+      { category: 'todo', issues: [row('ISS-4M2S', { estimate: 1 })] },
+      { category: 'in_progress', issues: [row('ISS-2X6D', { estimate: 8 }), row('ISS-5N1R', { estimate: 3 })] },
+      { category: 'in_review', issues: [row('ISS-8C4W', { estimate: 5 })] },
+    ],
+    ...overrides,
+  }
+}
+
+describe('sprintDoc', () => {
+  const doc = sprintDoc(sprintData())
+
+  test('titles the view with the sprint name and leads with its dates, state, goal and the as-of line', () => {
+    assert.equal(doc.title, 'Sprint 2026-10-12')
+    assert.deepEqual(doc.lead, ['2026-10-12, 2026-10-12 to 2026-10-25, active', 'Goal: Webhook retries', 'Tracker state as of 2026-10-22T09:00:00Z'])
+    const noGoal = sprintDoc(sprintData({ sprint: { ...sprintData().sprint, goal: null } }))
+    assert.deepEqual(noGoal.lead, ['2026-10-12, 2026-10-12 to 2026-10-25, active', 'Tracker state as of 2026-10-22T09:00:00Z'])
+    assert.equal(doc.columns, false)
+  })
+
+  test('writes the totals', () => {
+    const totals = doc.sections[0]
+    assert.equal(totals.heading, 'Totals')
+    assert.deepEqual(totals.lines, ['4 issues, 17 points planned, 0 points done', 'todo 1, in_progress 2, in_review 1'])
+    assert.equal(totals.table, null)
+    assert.deepEqual(sprintDoc(sprintData({ unit: 'sizes' })).sections[0].lines[0], '4 issues')
+  })
+
+  test('writes the capacity rows, and leaves the section out with no capacity', () => {
+    const capacity = doc.sections[1]
+    assert.equal(capacity.heading, 'Capacity')
+    assert.deepEqual(capacity.table.header, ['Member', 'Capacity', 'Assigned', 'Done'])
+    assert.deepEqual(capacity.table.rows, [['Fred Vanelli', '8', '4', '0'], ['Ana Souza', '10', '13', '0'], ['Unassigned', '', '2', '0']])
+    assert.ok(!sprintDoc(sprintData({ capacity: [] })).sections.some((s) => s.heading === 'Capacity'))
+  })
+
+  test('writes one issue section per category with issues', () => {
+    assert.deepEqual(doc.sections.slice(2).map((s) => s.heading), ['Todo (1)', 'In progress (2)', 'In review (1)'])
+    assert.deepEqual(doc.sections[3].table.header, ['ID', 'Title', 'Type', 'Priority', 'Assignee', 'Estimate', 'Notes'])
+    assert.deepEqual(doc.sections[3].table.rows.map((r) => r[0]), ['ISS-2X6D', 'ISS-5N1R'])
   })
 })
