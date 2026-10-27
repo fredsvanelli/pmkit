@@ -1983,3 +1983,33 @@ test('release-notes on a closed sprint leaves out an issue done after the sprint
   assert.ok(!after.groups.flatMap((g) => g.issues.map((i) => i.id)).includes(open))
   assert.equal(after.counts.excluded.open, before.counts.excluded.open + 1)
 })
+
+test('release-notes --sprint current uses the active sprint and refuses when none is active', () => {
+  const team = makeRepo('team')
+  const active = json(team, ['cycle', 'list']).find((s) => s.state === 'active')
+  assert.ok(active)
+  const result = notes(team, ['--sprint', 'current'])
+  assert.equal(result.basis, 'sprint')
+  assert.equal(result.source.id, active.id)
+  assert.equal(result.draft, true)
+  const none = run(makeRepo('no-sprints'), ['release-notes', '--sprint', 'current', '--json'])
+  assert.equal(none.status, 2)
+  const error = JSON.parse(none.stdout).error
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.equal(error.nextStep, 'pmkit cycle list')
+})
+
+test('release-notes keeps archived done issues on the sprint and period bases', () => {
+  const root = makeRepo('team')
+  const sprintIds = notes(root, ['--sprint', '2026-09-28']).groups.flatMap((g) => g.issues.map((i) => i.id))
+  const periodIds = notes(root, ['--since', '2026-09-01', '--until', '2026-10-31']).groups.flatMap((g) => g.issues.map((i) => i.id))
+  assert.ok(sprintIds.includes('ISS-7K3Q') && periodIds.includes('ISS-7K3Q'))
+  json(root, ['issues', 'archive', 'ISS-7K3Q'])
+  const sprint = notes(root, ['--sprint', '2026-09-28'])
+  const period = notes(root, ['--since', '2026-09-01', '--until', '2026-10-31'])
+  for (const result of [sprint, period]) {
+    const entry = result.groups.flatMap((g) => g.issues).find((i) => i.id === 'ISS-7K3Q')
+    assert.ok(entry, result.basis)
+    assert.equal(entry.archived, true)
+  }
+})

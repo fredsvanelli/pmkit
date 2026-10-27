@@ -70,7 +70,7 @@ With no selector, the CLI tries in order and stops at the first that applies:
 2. **Sprint.** The `cycles` capability is native and the tracker has a closed sprint. The CLI takes the one with the latest `end`.
 3. **Period.** The last `defaults.status_update_window_days` days (14 when the key is missing), ending today.
 
-With a selector, the CLI uses that basis and skips the search. An unknown release or sprint is `NOT_FOUND`, with the next step `pmkit release list` or `pmkit cycle list`. `--release` accepts a planned release. The result is then marked as a draft (see "Decisions on open questions", question 2). `--sprint` accepts a sprint in any state. An open sprint is a draft too.
+With a selector, the CLI uses that basis and skips the search. An unknown release or sprint is `NOT_FOUND`, with the next step `pmkit release list` or `pmkit cycle list`. `--release` accepts a planned release. The result is then marked as a draft (see "Decisions on open questions", question 2). `--sprint` accepts a sprint in any state. An open sprint is a draft too. `--sprint current` means the active sprint, as in `issues list --sprint current` and `render`. With no active sprint it is `INVALID_INPUT`, with the next step `pmkit cycle list`.
 
 The result says why the basis is not a release, in `reason`:
 

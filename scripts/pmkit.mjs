@@ -587,7 +587,7 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'release-notes', summary: 'the done issues of a release, a sprint or a period, grouped by type', usage: '[--release id | --sprint id | --since d [--until d]]', flags: ['release', 'sprint', 'since', 'until'],
+    name: 'release-notes', summary: 'the done issues of a release, a sprint or a period, grouped by type', usage: '[--release id | --sprint current|id | --since d [--until d]]', flags: ['release', 'sprint', 'since', 'until'],
     run: (ctx) => {
       const tracker = ctx.tracker()
       const next = 'pmkit release-notes --help'
@@ -606,7 +606,10 @@ export const COMMANDS = [
       let selector = null
       if (ctx.opt('release') !== undefined) selector = { release: tracker.getRelease(ctx.opt('release')) }
       else if (ctx.opt('sprint') !== undefined) {
-        const sprint = (sprints ?? []).find((item) => item.id === ctx.opt('sprint'))
+        // `current` means the active sprint, as in `issues list --sprint current` and the render views.
+        const current = ctx.opt('sprint') === 'current'
+        const sprint = current ? (sprints === null ? null : tracker.currentCycle()) : (sprints ?? []).find((item) => item.id === ctx.opt('sprint'))
+        if (current && sprint === null) throw new PmkitError('INVALID_INPUT', 'there is no active sprint', 'pmkit cycle list')
         if (sprint === undefined) throw new PmkitError('NOT_FOUND', `sprint ${ctx.opt('sprint')} does not exist`, 'pmkit cycle list')
         selector = { sprint }
       } else if (since !== undefined) selector = until === undefined ? { since } : { since, until }
