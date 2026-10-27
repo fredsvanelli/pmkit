@@ -150,3 +150,66 @@ export function toHtml(doc, view) {
 
 /** Writes `doc` as Markdown (`md`) or HTML (`html`). */
 export const renderDocument = (doc, view, format) => (format === 'html' ? toHtml(doc, view) : toMarkdown(doc, view))
+
+// View documents. Each takes the plain data of render-data.mjs; every string in it is raw tracker text.
+
+/** `1 issue`, `2 issues`. */
+export const plural = (n, word) => `${n} ${n === 1 ? word : `${word}s`}`
+
+/** A status or category name as a heading: `in_review` becomes `In review`. */
+export const statusLabel = (name) => {
+  const spaced = String(name).replaceAll('_', ' ')
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
+/** The closing line for issues that could not be read, or null when there are none. */
+export function problemsLine(problems) {
+  if (problems.length === 0) return null
+  return `${plural(problems.length, 'issue')} could not be read: ${problems.map((p) => p.id).join(', ')}; run /pmkit:local:doctor`
+}
+
+const asOfLines = (data) => (data.asOf === null ? [] : [`Tracker state as of ${data.asOf}`])
+const closingLines = (data) => [problemsLine(data.problems)].filter((line) => line !== null)
+
+/** Sizes do not add up, so a total in sizes is left out. */
+export const addsUp = (unit) => unit !== 'sizes'
+const numeric = (value) => (typeof value === 'number' ? value : 0)
+/** `19 points`, `1 hour`. */
+export const amount = (n, unit) => `${n} ${n === 1 ? unit.replace(/s$/, '') : unit}`
+
+const ISSUE_HEADER = ['ID', 'Title', 'Type', 'Priority', 'Assignee', 'Estimate', 'Notes']
+
+function issueNotes(issue) {
+  const notes = []
+  if (issue.blockedBy.length > 0) notes.push(`blocked by ${issue.blockedBy.join(', ')}`)
+  if (issue.labels.length > 0) notes.push(`labels: ${issue.labels.join(', ')}`)
+  return notes.join('; ')
+}
+
+/** The issue table of the board and the sprint view. */
+export function issueTable(issues) {
+  return {
+    header: ISSUE_HEADER,
+    rows: issues.map((issue) => [
+      issue.id, issue.title, issue.type ?? '', issue.priority ?? '', issue.assignee, issue.estimate === null ? '' : String(issue.estimate), issueNotes(issue),
+    ]),
+  }
+}
+
+export function boardDoc(data) {
+  const open = data.statuses.flatMap((status) => status.issues)
+  const points = open.reduce((sum, issue) => sum + numeric(issue.estimate), 0)
+  const summary = [plural(open.length, 'open issue'), ...(addsUp(data.unit) ? [`${amount(points, data.unit)} open`] : []), `done: ${data.done}`, `canceled: ${data.canceled}`]
+  return {
+    title: 'Board',
+    lead: [...asOfLines(data), summary.join(', ')],
+    sections: data.statuses.map((status) => ({
+      heading: `${statusLabel(status.name)} (${status.issues.length})`,
+      lines: [],
+      table: status.issues.length > 0 ? issueTable(status.issues) : null,
+      empty: status.issues.length > 0 ? null : 'No issues',
+    })),
+    closing: closingLines(data),
+    columns: true,
+  }
+}
