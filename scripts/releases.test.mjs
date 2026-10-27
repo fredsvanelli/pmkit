@@ -19,7 +19,7 @@ test('validReleaseId accepts versions and rejects build metadata and edge charac
 
 test('validTag follows the git ref name rules', () => {
   for (const tag of ['v1.2.0', 'release/1.2.0', '1.0.0-rc.1']) assert.equal(validTag(tag), true, tag)
-  for (const tag of ['', 'v1..2', 'v1 2', 'v1\nv2', '-v1', '/v1', 'v1/', 'v1.', 'v1.lock', 'v1~1', 'v1^', 'a:b', 'a?', 'a*', 'a[b', 'a\\b']) {
+  for (const tag of ['', 'v1..2', 'v1 2', 'v1\nv2', '-v1', '/v1', 'v1/', 'v1.', 'v1.lock', 'v1~1', 'v1^', 'a:b', 'a?', 'a*', 'a[b', 'a\\b', '@', 'a@{b', 'a//b', '.v1', 'a/.b', 'a.lock/b', 'a/b.lock']) {
     assert.equal(validTag(tag), false, JSON.stringify(tag))
   }
 })

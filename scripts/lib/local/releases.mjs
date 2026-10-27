@@ -13,6 +13,7 @@ const DOCTOR = '/pmkit:local:doctor'
 /** Whether a string is a valid git tag name: the ref name rules of git check-ref-format, plus control characters. */
 export const validTag = (tag) => typeof tag === 'string' && tag !== ''
   && !/[\s~^:?*[\\\x00-\x1f\x7f]/.test(tag) && !tag.includes('..') && !/^[-/]/.test(tag) && !/(\/|\.|\.lock)$/.test(tag)
+  && tag !== '@' && !tag.includes('@{') && !tag.includes('//') && !tag.split('/').some((part) => part.startsWith('.') || part.endsWith('.lock'))
 
 const compareText = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
 
