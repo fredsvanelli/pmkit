@@ -1,0 +1,20 @@
+$ pmkit metrics aging
+exit 0
+--- stdout
+no work in progress
+as of: 2026-10-23T12:00:00Z
+--- stderr
+(empty)
+
+$ pmkit metrics aging --json
+exit 0
+--- stdout
+{
+  "asOf": "2026-10-23T12:00:00Z",
+  "count": 0,
+  "median": null,
+  "p85": null,
+  "issues": []
+}
+--- stderr
+(empty)

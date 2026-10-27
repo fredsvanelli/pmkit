@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { businessDaysBetween, cycleTimes, doneInRange, leadTimes, rangeInstant, throughput, summary, velocity } from './lib/metrics.mjs'
+import { aging, businessDaysBetween, cycleTimes, doneInRange, leadTimes, rangeInstant, throughput, summary, velocity } from './lib/metrics.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { fixedNow, makeRepo } from './test-helpers.mjs'
 
@@ -235,4 +235,59 @@ test('throughput on the team fixture gives the spec numbers', () => {
   })
   const ranged = doneInRange(events, { categoryOf: tracker.categoryOf, since: '2026-10-06', until: '2026-10-08' })
   assert.deepEqual(Object.keys(ranged), ['ISS-4P8A', 'ISS-7K3Q'])
+})
+
+const AS_OF = '2026-10-10T12:00:00Z'
+
+test('aging lists the issues in work at asOf, oldest first', () => {
+  const events = {
+    'ISS-1': [create('2026-10-01T08:00:00Z', 'todo'), move('2026-10-02T12:00:00Z', 'doing')],
+    'ISS-2': [create('2026-10-05T12:00:00Z', 'review')],
+    'ISS-3': [create('2026-10-01T08:00:00Z', 'todo')],
+    'ISS-4': [move('2026-10-01T12:00:00Z', 'doing'), move('2026-10-03T12:00:00Z', 'done')],
+    'ISS-5': [move('2026-10-06T12:00:00Z', 'doing')],
+    'ISS-6': [move('2026-10-06T12:00:00Z', 'doing')],
+  }
+  assert.deepEqual(aging(events, { categoryOf, asOf: AS_OF }), [
+    { issue: 'ISS-1', status: 'doing', startedAt: '2026-10-02T12:00:00Z', days: 8 },
+    { issue: 'ISS-2', status: 'review', startedAt: '2026-10-05T12:00:00Z', days: 5 },
+    { issue: 'ISS-5', status: 'doing', startedAt: '2026-10-06T12:00:00Z', days: 4 },
+    { issue: 'ISS-6', status: 'doing', startedAt: '2026-10-06T12:00:00Z', days: 4 },
+  ])
+})
+
+test('aging starts at the first move into work and leaves out an issue moved back to todo', () => {
+  const events = {
+    'ISS-1': [move('2026-10-01T12:00:00Z', 'doing'), move('2026-10-03T12:00:00Z', 'review'), move('2026-10-04T12:00:00Z', 'doing')],
+    'ISS-2': [move('2026-10-02T12:00:00Z', 'doing'), move('2026-10-04T12:00:00Z', 'todo')],
+  }
+  assert.deepEqual(aging(events, { categoryOf, asOf: AS_OF }), [{ issue: 'ISS-1', status: 'doing', startedAt: '2026-10-01T12:00:00Z', days: 9 }])
+})
+
+test('aging replays only the events on or before asOf', () => {
+  const events = {
+    'ISS-1': [move('2026-10-01T12:00:00Z', 'doing'), move('2026-10-11T12:00:00Z', 'done')],
+    'ISS-2': [move('2026-10-10T12:00:00Z', 'doing')],
+    'ISS-3': [move('2026-10-10T12:00:01Z', 'doing')],
+  }
+  assert.deepEqual(aging(events, { categoryOf, asOf: AS_OF }).map((i) => [i.issue, i.days]), [['ISS-1', 9], ['ISS-2', 0]])
+})
+
+test('aging leaves out an archived issue from its archive event', () => {
+  const events = {
+    'ISS-1': [move('2026-10-01T12:00:00Z', 'doing'), { at: '2026-10-05T10:00:00Z', by: 'fred', op: 'archive' }],
+    'ISS-2': [move('2026-10-01T12:00:00Z', 'doing'), { at: '2026-10-11T10:00:00Z', by: 'fred', op: 'archive' }],
+  }
+  assert.deepEqual(aging(events, { categoryOf, asOf: AS_OF }).map((i) => [i.issue, i.days]), [['ISS-2', 9]])
+})
+
+test('aging on the team fixture gives the spec numbers', () => {
+  const tracker = createLocalTracker(makeRepo('team'), { now: fixedNow(), random: () => 0 })
+  const result = aging(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, asOf: '2026-10-23T12:00:00Z' })
+  assert.deepEqual(result, [
+    { issue: 'ISS-2X6D', status: 'in_progress', startedAt: '2026-10-14T09:00:00Z', days: 9.1 },
+    { issue: 'ISS-8C4W', status: 'in_review', startedAt: '2026-10-15T09:00:00Z', days: 8.1 },
+    { issue: 'ISS-5N1R', status: 'in_progress', startedAt: '2026-10-22T09:00:00Z', days: 1.1 },
+  ])
+  assert.deepEqual(summary(result.map((i) => i.days)), { count: 3, median: 8.1, p85: 8.8 })
 })

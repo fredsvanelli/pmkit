@@ -261,6 +261,45 @@ test('metrics throughput reads a time without a zone as UTC', () => {
   assert.deepEqual(result.issues.map((i) => i.issue), ['ISS-7K3Q', 'ISS-4P8A'])
 })
 
+test('metrics aging lists the work in progress at the clock', () => {
+  const root = makeRepo('team')
+  const data = json(root, ['metrics', 'aging'])
+  assert.equal(data.asOf, '2026-10-23T12:00:00Z')
+  assert.deepEqual([data.count, data.median, data.p85], [3, 8.1, 8.8])
+  assert.deepEqual(data.issues.map((i) => [i.issue, i.status, i.days]), [['ISS-2X6D', 'in_progress', 9.1], ['ISS-8C4W', 'in_review', 8.1], ['ISS-5N1R', 'in_progress', 1.1]])
+  const text = run(root, ['metrics', 'aging']).stdout
+  assert.match(text, /^ISS-2X6D \| in_progress \| 2026-10-14T09:00:00Z \| 9\.1$/m)
+  assert.ok(text.endsWith('count: 3\nmedian: 8.1 days\np85: 8.8 days\nas of: 2026-10-23T12:00:00Z\n'))
+})
+
+test('metrics aging takes --until as the as-of date', () => {
+  const root = makeRepo('team')
+  const at20 = json(root, ['metrics', 'aging', '--until', '2026-10-20'])
+  assert.equal(at20.asOf, '2026-10-20T23:59:59Z')
+  assert.deepEqual(at20.issues.map((i) => [i.issue, i.status, i.days]), [['ISS-2X6D', 'in_progress', 6.6], ['ISS-8C4W', 'in_progress', 5.6]])
+  const at01 = json(root, ['metrics', 'aging', '--until', '2026-10-01'])
+  assert.deepEqual(at01.issues.map((i) => [i.issue, i.status, i.days]), [['ISS-7K3Q', 'in_progress', 2.6], ['ISS-4P8A', 'in_progress', 1.6], ['ISS-9T2M', 'in_progress', 0.6]])
+  assert.equal(json(root, ['metrics', 'aging', '--until', '2026-10-20T10:00:00']).asOf, '2026-10-20T10:00:00Z')
+  assert.equal(run(root, ['metrics', 'aging', '--until', '2026-09-20']).stdout, 'no work in progress\nas of: 2026-09-20T23:59:59Z\n')
+})
+
+test('PMKIT_NOW sets the as-of date of metrics aging', () => {
+  const root = makeRepo('team')
+  const data = json(root, ['metrics', 'aging'], { env: { PMKIT_NOW: '2026-10-24T12:00:00Z' } })
+  assert.equal(data.asOf, '2026-10-24T12:00:00Z')
+  assert.equal(data.issues.find((i) => i.issue === 'ISS-2X6D').days, 10.1)
+})
+
+test('metrics aging refuses --since and a bad --until', () => {
+  const root = makeRepo('team')
+  const since = run(root, ['metrics', 'aging', '--since', '2026-10-01', '--json'])
+  assert.equal(since.status, 2)
+  const error = JSON.parse(since.stdout).error
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.match(error.message, /--since/)
+  assert.equal(run(root, ['metrics', 'aging', '--until', '2026-10-2']).status, 2)
+})
+
 test('metrics cycle-time refuses a bound that is not a date', () => {
   const root = makeRepo('team')
   assert.equal(run(root, ['metrics', 'cycle-time', '--since', '2026-13-40', '--json']).status, 2)
@@ -377,7 +416,7 @@ test('--help lists every command and exits 2', () => {
     'issues assign', 'issues link', 'issues parent', 'issues comment', 'issues log-time', 'issues archive',
     'cycle list', 'cycle current', 'cycle issues', 'cycle open', 'cycle close', 'cycle add', 'cycle capacity',
     'epic list', 'epic get', 'epic progress', 'epic create', 'epic update-status',
-    'metrics velocity', 'metrics cycle-time', 'metrics lead-time', 'metrics throughput', 'events', 'validate',
+    'metrics velocity', 'metrics cycle-time', 'metrics lead-time', 'metrics throughput', 'metrics aging', 'events', 'validate',
   ]) assert.ok(result.stdout.includes(name), name)
 })
 
@@ -1297,6 +1336,7 @@ test('every read goes on with one warning', () => {
     'metrics cycle-time': [],
     'metrics lead-time': [],
     'metrics throughput': [],
+    'metrics aging': [],
     events: [],
     'pr status': [],
     reindex: [],

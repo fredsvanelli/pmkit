@@ -1,0 +1,46 @@
+$ pmkit metrics aging
+exit 0
+--- stdout
+Issue | Status      | Started              | Days
+------|-------------|----------------------|-----
+ISS-2 | in_progress | 2026-10-13T09:00:00Z | 10.1
+ISS-7 | in_review   | 2026-10-14T09:00:00Z | 9.1
+ISS-5 | in_review   | 2026-10-16T09:00:00Z | 7.1
+count: 3
+median: 9.1 days
+p85: 9.8 days
+as of: 2026-10-23T12:00:00Z
+--- stderr
+(empty)
+
+$ pmkit metrics aging --json
+exit 0
+--- stdout
+{
+  "asOf": "2026-10-23T12:00:00Z",
+  "count": 3,
+  "median": 9.1,
+  "p85": 9.8,
+  "issues": [
+    {
+      "issue": "ISS-2",
+      "status": "in_progress",
+      "startedAt": "2026-10-13T09:00:00Z",
+      "days": 10.1
+    },
+    {
+      "issue": "ISS-7",
+      "status": "in_review",
+      "startedAt": "2026-10-14T09:00:00Z",
+      "days": 9.1
+    },
+    {
+      "issue": "ISS-5",
+      "status": "in_review",
+      "startedAt": "2026-10-16T09:00:00Z",
+      "days": 7.1
+    }
+  ]
+}
+--- stderr
+(empty)

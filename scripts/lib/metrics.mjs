@@ -136,6 +136,29 @@ export function throughput(eventsByIssue, { categoryOf }) {
   return { count: issues.length, byType, issues }
 }
 
+/** The issues in in_progress or in_review at `asOf` (an ISO string), with days since the first move into work, oldest first. */
+export function aging(eventsByIssue, { categoryOf, asOf }) {
+  const limit = Date.parse(asOf)
+  const working = (status) => categoryOf(status) === 'in_progress' || categoryOf(status) === 'in_review'
+  const result = []
+  for (const [issue, events] of Object.entries(eventsByIssue)) {
+    let status
+    let startedAt
+    let archived = false
+    for (const event of events) {
+      if (Date.parse(event.at) > limit) continue
+      if (event.op === 'archive') archived = true
+      const moved = movedTo(event)
+      if (moved === undefined) continue
+      status = moved
+      if (startedAt === undefined && working(moved)) startedAt = event.at
+    }
+    if (archived || status === undefined || !working(status)) continue
+    result.push({ issue, status, startedAt, days: daysBetween(startedAt, asOf) })
+  }
+  return result.sort((a, b) => (b.days - a.days) || (a.issue < b.issue ? -1 : a.issue > b.issue ? 1 : 0))
+}
+
 export function summary(values) {
   if (values.length === 0) return { count: 0, median: null, p85: null }
   const sorted = [...values].sort((a, b) => a - b)

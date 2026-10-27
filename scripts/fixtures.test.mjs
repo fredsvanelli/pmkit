@@ -96,6 +96,17 @@ test('no-sprints: metrics throughput counts two features', async () => {
   })
 })
 
+test('no-sprints: metrics aging lists one issue in review', async () => {
+  await withFixture('no-sprints', async ({ call }) => {
+    const result = await call('metrics', 'aging', '--json')
+    assert.equal(result.code, 0, result.stderr)
+    const data = JSON.parse(result.stdout)
+    assert.equal(data.count, 1)
+    assert.equal(data.issues[0].issue, 'ISS-9B2X')
+    assert.equal(data.issues[0].status, 'in_review')
+  })
+})
+
 test('no-sprints: docs read specs/overview.md exits 0', async () => {
   await withFixture('no-sprints', async ({ call }) => {
     const result = await call('docs', 'read', 'specs/overview.md')

@@ -9,7 +9,7 @@ import { requireActor, gitUserEmail } from './lib/actor.mjs'
 import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig } from './lib/config.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
 import { changeLines, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, sprintRecord, table } from './lib/format.mjs'
-import { cycleTimes, doneInRange, leadTimes, rangeInstant, summary, throughput, velocity } from './lib/metrics.mjs'
+import { aging, cycleTimes, doneInRange, leadTimes, rangeInstant, summary, throughput, velocity } from './lib/metrics.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { addMapEntry, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
@@ -568,6 +568,25 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'metrics aging', summary: 'days in progress of the open work at a date, oldest first', usage: '[--until d]', flags: ['until'],
+    run: (ctx) => {
+      const tracker = ctx.tracker()
+      const until = ctx.opt('until') === undefined ? undefined : rangeText('until', ctx.opt('until'))
+      const asOfMs = until === undefined ? ctx.now().getTime() : rangeInstant(until, { endOfDay: true })
+      const asOf = new Date(asOfMs).toISOString().replace(/\.000Z$/, 'Z')
+      const issues = aging(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, asOf })
+      const stats = summary(issues.map((item) => item.days))
+      const lines = issues.length > 0
+        ? [
+          table(['Issue', 'Status', 'Started', 'Days'], issues.map((item) => [item.issue, item.status, item.startedAt, item.days])),
+          ...fields([['count', stats.count], ['median', `${stats.median} days`], ['p85', `${stats.p85} days`]]),
+        ]
+        : ['no work in progress']
+      lines.push(`as of: ${asOf}`)
+      return { data: { asOf, ...stats, issues }, text: lines.join('\n') }
+    },
+  },
+  {
     name: 'events', summary: 'all events in a range, for digests', usage: '[--since d] [--until d]', flags: ['since', 'until'],
     run: (ctx) => {
       const range = {}
@@ -1052,7 +1071,7 @@ export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
     let tracker
     let host
     const ctx = {
-      root, cwd, env, dryRun, args: parsed.positionals, json,
+      root, cwd, env, dryRun, now, args: parsed.positionals, json,
       opt: (name) => last(options[name]),
       list: (name) => (options[name] === undefined ? [] : [options[name]].flat()),
       flag: (name) => last(options[name]) === true,

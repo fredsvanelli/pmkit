@@ -91,6 +91,7 @@ const CASES = {
   'metrics cycle-time': () => [[]],
   'metrics lead-time': () => [[]],
   'metrics throughput': () => [[]],
+  'metrics aging': () => [[]],
   events: () => [[]],
   'issues branch': (a) => [[a.issue]],
   'pr open': (a) => [['--issue', a.issue]],
