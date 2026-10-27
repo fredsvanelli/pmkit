@@ -61,8 +61,8 @@ const cliOf = (name) => COMMANDS.find((command) => command.name === name)
 const isWrite = (call) => call.dryRun || Boolean(cliOf(call.command)?.write)
 
 describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
-  test('there are 27 command files', () => {
-    assert.equal(FILES.length, 27, FILES.map((file) => file.rel).join(', '))
+  test('there are 28 command files', () => {
+    assert.equal(FILES.length, 28, FILES.map((file) => file.rel).join(', '))
   })
 
   test('every command file has a scenario', async () => {
@@ -132,6 +132,7 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     assert.ok(has('upgrade.md', '5', 'migrate'), 'upgrade.md 5 migrate')
     assert.ok(has('local/doctor.md', '2.1', 'issues get'), 'local/doctor.md 2.1 issues get')
     assert.ok(has('local/doctor.md', '4', 'issues parent'), 'local/doctor.md 4 issues parent')
+    assert.ok(has('local/render.md', '3', 'render'), 'local/render.md 3 render')
     assert.ok(file('report/status.md').calls.some((c) => c.command === 'epic list' && c.section === 'other'), 'report/status.md epic list in other')
   })
 

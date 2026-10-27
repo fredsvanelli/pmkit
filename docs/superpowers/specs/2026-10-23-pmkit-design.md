@@ -373,13 +373,14 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `pr status [--branch b]`, `pr sync` | git host |
 | `migrate [--dry-run]` | moves the tracker files to the current format; see Format and migrations |
 | `changelog --file f --since v` | prints the changelog sections newer than a version |
+| `render <board\|roadmap\|sprint> [--format md\|html] [--sprint id\|current] [--out f \| --save]` | renders a board, roadmap or sprint view as Markdown or HTML; see the PMK-25 spec |
 | `validate` | checks every file and reference, and lists format mismatches; the base of `local-doctor` |
 
 Bodies come from files (`--description-file`, `--body-file`, `-` for stdin), never from long flags, so Markdown survives every shell **(builder's call)**.
 
 ## Commands
 
-The MVP shipped 24 command files, and phase 2 adds `/pmkit:issues:dependencies` and `/pmkit:team:risk-radar`. Commands are user-invoked; the routing skill reads the right file when the user asks in their own words.
+The MVP shipped 24 command files, and phase 2 adds `/pmkit:issues:dependencies`, `/pmkit:team:risk-radar`, `/pmkit:backlog:triage` and `/pmkit:local:render`. Commands are user-invoked; the routing skill reads the right file when the user asks in their own words.
 
 | Command | File | Calls |
 |---|---|---|
@@ -408,6 +409,7 @@ The MVP shipped 24 command files, and phase 2 adds `/pmkit:issues:dependencies` 
 | `/pmkit:team:standup` | `commands/team/standup.md` | `pr sync`, `events`, `issues list`, `pr status` |
 | `/pmkit:team:risk-radar` | `commands/team/risk-radar.md` | `risks` |
 | `/pmkit:local:doctor` | `commands/local/doctor.md` | `validate`, `issues get`, `migrate`, `issues update`, `discover`, `issues parent`, `issues link`, `cycle add`, `milestone create`, `release create` |
+| `/pmkit:local:render [view] [format]` | `commands/local/render.md` | `render` |
 | `/pmkit:upgrade` | `commands/upgrade.md` | `changelog`, `migrate` |
 
 `/pmkit:setup` runs safely more than once. On a configured project it uses `init --update`: it shows the diff of every file it would change and writes only after the user approves, as `/runbooks:setup` does. `/pmkit:local:doctor` edits a file by hand only to remove git conflict markers, one file at a time, after the user approves **(builder's call)**. `/pmkit:upgrade` updates the plugin install, shows the changelog sections since the installed version, and runs `migrate` after approval.

@@ -34,6 +34,7 @@ Then run `/pmkit:setup` in the project. With the GitHub git host (`git_host.syst
 - `/pmkit:issues:update`: Change the title, priority, estimate, labels or acceptance criteria of an issue.
 - `/pmkit:issues:work`: Pick up an issue: claim it, branch, plan, implement, open the PR and move it to review.
 - `/pmkit:local:doctor`: Check the tracker files, fix what can be fixed and resolve git conflict markers.
+- `/pmkit:local:render`: Render a board, roadmap or sprint view of the tracker as Markdown or HTML for people outside the agent.
 - `/pmkit:report:status`: Draft a status update for an epic and publish it after approval.
 - `/pmkit:spec:import`: Turn a spec or PRD into an epic with milestones, issues, sub-issues, estimates and blockers.
 - `/pmkit:team:risk-radar`: Blockers, stalled issues and PRs, late epics, epics without a recent status update and broken CI, in one read-only report.
@@ -102,6 +103,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `changelog --file f --since v` | prints the `CHANGELOG.md` sections newer than a version, oldest first; needs no config |
 | `migrate` | moves the tracker files to the format this pmkit writes; `--dry-run` lists every file it would touch |
 | `reindex` | rebuilds the query index in `.issues/.cache/` from the issue files; changes only files git ignores |
+| `render <board\|roadmap\|sprint>` | renders a view as Markdown or HTML to stdout, to `--out f`, or with `--save` to `.issues/.cache/render/`, which git ignores; never replaces a file it did not render |
 | `validate` | checks every file and reference; problems are output, not errors |
 
 The `issues branch` and `pr` commands need `git_host.system: github` in `.pmkit/config.yaml` and a logged-in `gh`. With `git_host.system: none` they fail with `NOT_SUPPORTED`, and without `gh` or its login they fail with `NOT_CONFIGURED` or `AUTH`. A missing or invalid `git_host` makes `.pmkit/config.yaml` invalid. Then `issues branch`, `pr open`, `pr ready` and `pr sync` refuse with `INVALID_INPUT`, as every write does, and `pr status` prints a warning and fails with `NOT_SUPPORTED`. Run `node scripts/pmkit.mjs --help` for every flag. A failing command exits with code 2 and, with `--json`, prints one JSON error with a next step. An exception that is not a `PmkitError`, which means a bug in pmkit, has the code `UNEXPECTED` and no next step.
