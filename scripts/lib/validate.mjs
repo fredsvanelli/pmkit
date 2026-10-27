@@ -2,6 +2,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { ADAPTERS } from './adapters.mjs'
 import { loadConfig, pmkitConfigMessages, validateLocalConfig } from './config.mjs'
 import { isId, normalizeId } from './ids.mjs'
 import { parseYaml } from './yaml.mjs'
@@ -100,7 +101,7 @@ function brokenConfigProblem(root, error) {
 const byPathThenCode = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.code < b.code ? -1 : a.code > b.code ? 1 : 0)
 
 // The root .pmkit/config.yaml is read here, not through loadConfig, which throws on the first bad key.
-function pmkitConfigProblems(root) {
+function pmkitConfigProblems(root, adapters) {
   const file = path.join(root, '.pmkit', 'config.yaml')
   if (!fs.existsSync(file)) return []
   const text = read(file)
@@ -112,15 +113,15 @@ function pmkitConfigProblems(root) {
   } catch (error) {
     return [{ path: at, code: 'config', message: `config.yaml does not parse: ${error.message}` }]
   }
-  const messages = pmkitConfigMessages(parsed)
+  const messages = pmkitConfigMessages(parsed, adapters)
   return messages.map((message) => ({ path: at, code: 'config', message }))
 }
 
-export function validateRepo(root, { config, migrations } = {}) {
-  const pmkit = pmkitConfigProblems(root)
+export function validateRepo(root, { config, migrations, adapters = ADAPTERS } = {}) {
+  const pmkit = pmkitConfigProblems(root, adapters)
   if (!config) {
     try {
-      config = loadConfig(root, { migrations })
+      config = loadConfig(root, { migrations, adapters })
     } catch (error) {
       let broken
       try {
@@ -132,6 +133,8 @@ export function validateRepo(root, { config, migrations } = {}) {
       return { checked: noneChecked(), problems: [...pmkit, broken].sort(byPathThenCode) }
     }
   }
+  // A hosted tracker has no tracker files here, and validate stays offline: .pmkit/config.yaml is all it checks.
+  if (config.hosted) return { checked: noneChecked(), problems: pmkit }
   const { local, issuesDir } = config
   // An older format is one problem: the other checks assume the current shape.
   if (config.format && config.format.state !== 'current') {
