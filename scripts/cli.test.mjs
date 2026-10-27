@@ -1382,8 +1382,9 @@ const chainCtx = (depth, json) => {
       getDeliverable: () => ({ id: 'EPC-1', title: 'Epic', status }),
       searchIssues: () => ({ issues, problems: [] }),
       capabilities: () => ({ capabilities: [{ id: 'dependencies', path: 'native' }] }),
+      discover: () => ({ estimate: { unit: 'points' } }),
     }),
-    config: () => ({ local: { epic_prefix: 'EPC', estimate: { unit: 'points' } } }),
+    settings: () => ({ epicPrefix: 'EPC' }),
   }
 }
 

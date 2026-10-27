@@ -5,12 +5,15 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { BOOLEANS, parseArgs } from './lib/args.mjs'
-import { requireActor, gitUserEmail } from './lib/actor.mjs'
+import { gitUserEmail, resolveActor } from './lib/actor.mjs'
 import { ADAPTERS, adapterFor } from './lib/adapters.mjs'
-import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig } from './lib/config.mjs'
+import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, loadPmkitConfig, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig } from './lib/config.mjs'
+import { contractView } from './lib/contract.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
 import { changeLines, dependencyText, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, releaseNotesText, releaseRecord, sprintRecord, table } from './lib/format.mjs'
-import { aging, cycleTimes, doneInRange, lastEntry, leadTimes, rangeInstant, summary, throughput, velocity } from './lib/metrics.mjs'
+import {
+  aging, categoryLookup, cycleTimes, doneInRange, groupEventsByIssue, lastEntry, leadTimes, rangeInstant, sprintIssues, summary, throughput, velocity,
+} from './lib/metrics.mjs'
 import { buildNotes, chooseBasis } from './lib/release-notes.mjs'
 import { dependencyMap, serializable } from './lib/dependencies.mjs'
 import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
@@ -157,7 +160,9 @@ async function issuePatch(ctx, { create }) {
   set('title', opt('title'))
   set('type', opt('type'))
   set('priority', create ? opt('priority') : orNull(opt('priority')))
-  if (opt('estimate') !== undefined) patch.estimate = opt('estimate') === 'none' ? null : parseEstimate(opt('estimate'), ctx.config().local.estimate.scale)
+  if (opt('estimate') !== undefined) {
+    patch.estimate = opt('estimate') === 'none' ? null : parseEstimate(opt('estimate'), (await (await ctx.tracker()).discover()).estimate.scale ?? [])
+  }
   if (opt('label') !== undefined) patch.labels = opt('label') === 'none' ? [] : csv(ctx.list('label'))
   set('sprint', orNull(opt('sprint')))
   set('due', orNull(opt('due')))
@@ -252,7 +257,25 @@ function defaultPrBody(issue) {
 }
 const problemLine = (problem) => `${problem.id}: ${problem.code} ${problem.message}`
 
+/** The member the caller is, from the tracker's members: by git email, then PMKIT_USER. Throws NOT_CONFIGURED when none matches. */
+async function requireMember(ctx) {
+  const tracker = await ctx.tracker()
+  const members = Object.fromEntries((await tracker.discover()).members.map(({ id, name, email, availability }) => [id, { name, email, availability }]))
+  const actor = resolveActor({ members }, { email: gitUserEmail(ctx.root), env: ctx.env })
+  if (actor) return actor
+  const nextStep = ctx.config().hosted ? 'Set PMKIT_USER to a member id from pmkit discover' : 'Add yourself to members in .issues/config.yaml or set PMKIT_USER'
+  throw new PmkitError('NOT_CONFIGURED', 'cannot tell which member you are', nextStep)
+}
+
+/** discover().statuses as a categoryOf(statusName), and every issue's events grouped by issue. The flow metrics need each whole log. */
+async function flowInputs(tracker) {
+  const categoryOf = categoryLookup((await tracker.discover()).statuses)
+  return { categoryOf, events: groupEventsByIssue(await tracker.metricEvents()) }
+}
+
 // Command table. `run` returns { data, text, commit }: the JSON value, the plain text and, for a write, the id for the commit message.
+// A command reaches the tracker through ctx.tracker(), which holds only the contract operations. `local: true` marks the commands
+// that work on Local tracker files; they alone use ctx.local(), and the runner refuses them for any other tracker.system.
 export const COMMANDS = [
   {
     name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels',
@@ -282,8 +305,8 @@ export const COMMANDS = [
   },
   {
     name: 'whoami', summary: 'prints the resolved actor', flags: [],
-    run: (ctx) => {
-      const actor = requireActor(ctx.config().local, { email: gitUserEmail(ctx.root), env: ctx.env })
+    run: async (ctx) => {
+      const actor = await requireMember(ctx)
       return { data: actor, text: `${actor.id}${actor.member?.name ? ` (${actor.member.name})` : ''}` }
     },
   },
@@ -323,14 +346,16 @@ export const COMMANDS = [
     name: 'issues dependencies', summary: 'the blocker chain, the hierarchy and the critical path of an issue or an epic', usage: '<id>', args: ['id'], flags: [],
     run: async (ctx) => {
       const tracker = await ctx.tracker()
-      const { local } = ctx.config()
+      // A tracker with no epic prefix, such as a hosted one, treats every id as an issue.
+      const { epicPrefix } = ctx.settings()
       const [id] = ctx.args
-      const target = isId(normalizeId(id), local.epic_prefix)
+      const target = epicPrefix !== null && isId(normalizeId(id), epicPrefix)
         ? { ...(await tracker.getDeliverable(id)), kind: 'epic' }
         : { ...(await tracker.getIssue(id)), kind: 'issue' }
       const found = await tracker.searchIssues({ archived: true })
       const dependencies = (await tracker.capabilities()).capabilities.find((c) => c.id === 'dependencies').path !== 'absent'
-      const map = dependencyMap({ target, issues: found.issues, dependencies, unreadable: found.problems.map((p) => p.id), unit: local.estimate.unit })
+      const { unit } = (await tracker.discover()).estimate
+      const map = dependencyMap({ target, issues: found.issues, dependencies, unreadable: found.problems.map((p) => p.id), unit })
       const problems = [...found.problems, ...map.problems]
       // Only JSON.stringify can overflow on a map the builder accepted, so check it for JSON output alone. The text printer copes with deeper chains.
       const data = ctx.json ? serializable({ ...map, problems }) : { ...map, problems }
@@ -530,9 +555,10 @@ export const COMMANDS = [
     run: async (ctx) => {
       const input = { id: ctx.args[0] }
       for (const key of ['name', 'due']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
-      const tracker = await ctx.tracker()
-      const result = await tracker.createMilestone(input, await ctx.actor(), { dryRun: ctx.dryRun })
-      const unfiled = tracker.unfiledMilestones(result.after.id)
+      const result = await (await ctx.tracker()).createMilestone(input, await ctx.actor(), { dryRun: ctx.dryRun })
+      // Milestone files are a Local tracker check, pointing to /pmkit:local:doctor. A hosted tracker skips it.
+      const local = await ctx.local()
+      const unfiled = local === null ? [] : local.unfiledMilestones(result.after.id)
       const warnings = unfiled.length === 0 ? [] : [`${unfiled.length} ${unfiled.length === 1 ? 'milestone named by issues or epics has' : 'milestones named by issues or epics have'} no file: ${unfiled.map((u) => `${u.name} (${u.count})`).join(', ')}; run /pmkit:local:doctor`]
       return { data: result, text: writeText(result, { ...ctx, record: milestoneRecord }), commit: result.after.id, warnings }
     },
@@ -615,8 +641,10 @@ export const COMMANDS = [
         if (sprint === undefined) throw new PmkitError('NOT_FOUND', `sprint ${ctx.opt('sprint')} does not exist`, 'pmkit cycle list')
         selector = { sprint }
       } else if (since !== undefined) selector = until === undefined ? { since } : { since, until }
-      const config = ctx.config().local
-      const choice = chooseBasis({ selector, releases, sprints, today: ctx.now().toISOString().slice(0, 10), windowDays: config.defaults.status_update_window_days ?? 14 })
+      const { defaults } = ctx.settings()
+      const discovered = await tracker.discover()
+      const categoryOf = categoryLookup(discovered.statuses)
+      const choice = chooseBasis({ selector, releases, sprints, today: ctx.now().toISOString().slice(0, 10), windowDays: defaults.status_update_window_days ?? 14 })
       const problems = []
       let candidates
       if (choice.basis === 'release') {
@@ -624,22 +652,22 @@ export const COMMANDS = [
         problems.push(...found.problems)
         candidates = found.issues.map((issue) => ({ issue, doneAt: null }))
       } else if (choice.basis === 'sprint') {
-        const events = await tracker.eventsByIssue()
+        const events = groupEventsByIssue(await tracker.metricEvents())
         const found = await tracker.searchIssues({ sprint: choice.source.id, archived: true })
         problems.push(...found.problems)
-        candidates = found.issues.map((issue) => ({ issue, doneAt: lastEntry(events[issue.id] ?? [], 'done', tracker.categoryOf) ?? null }))
+        candidates = found.issues.map((issue) => ({ issue, doneAt: lastEntry(events[issue.id] ?? [], 'done', categoryOf) ?? null }))
       } else {
-        const inRange = doneInRange(await tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since: choice.period.since, until: choice.period.until })
+        const inRange = doneInRange(groupEventsByIssue(await tracker.metricEvents()), { categoryOf, since: choice.period.since, until: choice.period.until })
         candidates = []
         for (const [id, events] of Object.entries(inRange)) {
           try {
-            candidates.push({ issue: await tracker.getIssue(id), doneAt: lastEntry(events, 'done', tracker.categoryOf) ?? null })
+            candidates.push({ issue: await tracker.getIssue(id), doneAt: lastEntry(events, 'done', categoryOf) ?? null })
           } catch (error) {
             problems.push({ id, code: error.code, message: error.message })
           }
         }
       }
-      const result = buildNotes({ choice, candidates, types: config.types, problems })
+      const result = buildNotes({ choice, candidates, types: discovered.types, problems })
       return { data: result, text: releaseNotesText(result), warnings: result.problems.map(problemLine) }
     },
   },
@@ -683,8 +711,11 @@ export const COMMANDS = [
     name: 'metrics velocity', summary: 'points or counts done per closed sprint, and the average', usage: '[--window n]', flags: ['window'],
     run: async (ctx) => {
       const tracker = await ctx.tracker()
-      const window = ctx.opt('window') === undefined ? ctx.config().local.defaults.velocity_window : whole('window', ctx.opt('window'))
-      const result = velocity(await tracker.listCycles({ state: 'closed' }), await tracker.issuesBySprint(), { window, categoryOf: tracker.categoryOf })
+      const window = ctx.opt('window') === undefined ? ctx.settings().defaults.velocity_window : whole('window', ctx.opt('window'))
+      const { categoryOf, events } = await flowInputs(tracker)
+      const sprints = await tracker.listCycles({ state: 'closed' })
+      const bySprint = sprintIssues((await tracker.searchIssues({ archived: true })).issues, events, categoryOf)
+      const result = velocity(sprints, bySprint, { window, categoryOf })
       const rows = result.perSprint.map((s) => [s.id, s.points, s.count])
       const text = [rows.length > 0 ? table(['Sprint', 'Points', 'Issues'], rows) : 'no closed sprints', `average: ${result.average} ${result.unit}`].join('\n')
       return { data: result, text }
@@ -695,8 +726,9 @@ export const COMMANDS = [
     run: async (ctx) => {
       const tracker = await ctx.tracker()
       const { since, until } = rangeOptions(ctx)
-      const inRange = doneInRange(await tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since, until })
-      const issues = cycleTimes(inRange, { categoryOf: tracker.categoryOf })
+      const { categoryOf, events } = await flowInputs(tracker)
+      const inRange = doneInRange(events, { categoryOf, since, until })
+      const issues = cycleTimes(inRange, { categoryOf })
       const stats = summary(issues.map((item) => item.days))
       const text = summaryLines(stats).join('\n')
       return { data: { ...stats, issues }, text }
@@ -707,8 +739,9 @@ export const COMMANDS = [
     run: async (ctx) => {
       const tracker = await ctx.tracker()
       const { since, until } = rangeOptions(ctx)
-      const inRange = doneInRange(await tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since, until })
-      const issues = leadTimes(inRange, { categoryOf: tracker.categoryOf })
+      const { categoryOf, events } = await flowInputs(tracker)
+      const inRange = doneInRange(events, { categoryOf, since, until })
+      const issues = leadTimes(inRange, { categoryOf })
       const stats = summary(issues.map((item) => item.days))
       const text = summaryLines(stats).join('\n')
       return { data: { ...stats, issues }, text }
@@ -719,8 +752,9 @@ export const COMMANDS = [
     run: async (ctx) => {
       const tracker = await ctx.tracker()
       const { since, until } = rangeOptions(ctx)
-      const inRange = doneInRange(await tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since, until })
-      const result = throughput(inRange, { categoryOf: tracker.categoryOf })
+      const { categoryOf, events } = await flowInputs(tracker)
+      const inRange = doneInRange(events, { categoryOf, since, until })
+      const result = throughput(inRange, { categoryOf })
       const lines = [`count: ${result.count}`]
       if (result.count > 0) lines.push(table(['Type', 'Issues'], Object.entries(result.byType)))
       return { data: result, text: lines.join('\n') }
@@ -733,7 +767,8 @@ export const COMMANDS = [
       const until = ctx.opt('until') === undefined ? undefined : rangeText('until', ctx.opt('until'))
       const asOfMs = until === undefined ? ctx.now().getTime() : rangeInstant(until, { endOfDay: true })
       const asOf = new Date(Math.floor(asOfMs / 1000) * 1000).toISOString().replace(/\.000Z$/, 'Z')
-      const issues = aging(await tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, asOf })
+      const { categoryOf, events } = await flowInputs(tracker)
+      const issues = aging(events, { categoryOf, asOf })
       const stats = summary(issues.map((item) => item.days))
       const lines = issues.length > 0
         ? [
@@ -873,16 +908,16 @@ export const COMMANDS = [
   {
     name: 'render', summary: 'renders a board, roadmap or sprint view as Markdown or HTML',
     usage: '<board|roadmap|sprint> [--format md|html] [--sprint id|current] [--out f | --save]',
-    args: ['view'], flags: ['format', 'sprint', 'out', 'save'], dryRun: true, run: runRender,
+    args: ['view'], flags: ['format', 'sprint', 'out', 'save'], dryRun: true, local: true, run: runRender,
   },
   {
-    name: 'migrate', summary: 'moves the tracker files to the format this pmkit writes; --dry-run lists every file it would touch', write: true, flags: [],
+    name: 'migrate', summary: 'moves the tracker files to the format this pmkit writes; --dry-run lists every file it would touch', write: true, local: true, flags: [],
     run: (ctx) => runMigrate(ctx.root, { dryRun: ctx.dryRun }),
   },
   {
-    name: 'reindex', summary: 'rebuilds the query index in .issues/.cache/ from the issue files; changes only files git ignores', flags: [],
+    name: 'reindex', summary: 'rebuilds the query index in .issues/.cache/ from the issue files; changes only files git ignores', local: true, flags: [],
     run: async (ctx) => {
-      const result = (await ctx.tracker()).reindex()
+      const result = (await ctx.local()).reindex()
       if (!result.written) {
         return { data: result, text: `the query index was not written: ${result.reason}`, warnings: ['searches still work, they read every issue file'] }
       }
@@ -922,7 +957,7 @@ const errorOf = (error) => ({ code: error.code, message: error.message, nextStep
 /** The risk radar: reads the tracker and, with a git host, the open pull requests and the runs on the default branch. Writes nothing. */
 async function runRisks(ctx) {
   const tracker = await ctx.tracker()
-  const { defaults } = ctx.config().local
+  const { defaults } = ctx.settings()
   const today = ctx.now().toISOString().slice(0, 10)
   const stuckBusinessDays = defaults.stuck_business_days
   const windowDays = defaults.status_update_window_days
@@ -934,7 +969,7 @@ async function runRisks(ctx) {
   const byId = new Map(all.map((issue) => [issue.id, issue]))
   const problemsById = new Map(problems.map((problem) => [problem.id, problem.code]))
   const activeSprintId = (await tracker.currentCycle())?.id ?? null
-  const eventsByIssue = await tracker.eventsByIssue()
+  const eventsByIssue = groupEventsByIssue(await tracker.metricEvents())
   const issuesByBranch = Object.create(null)
   for (const issue of all) if (!issue.archived && issue.branch && issuesByBranch[issue.branch] === undefined) issuesByBranch[issue.branch] = issue.id
 
@@ -1107,7 +1142,7 @@ async function runRender(ctx) {
   if (overwrote && !hasMarker(fs.readFileSync(file, 'utf8'))) {
     throw new PmkitError('CONFLICT', `${display} exists and was not written by pmkit render`, 'Pick another path, or delete the file first')
   }
-  const tracker = await ctx.tracker()
+  const tracker = await ctx.local()
   const { local } = ctx.config()
   const views = {
     board: () => [boardData(tracker, local), boardDoc],
@@ -1479,25 +1514,36 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
       list: (name) => (options[name] === undefined ? [] : [options[name]].flat()),
       flag: (name) => last(options[name]) === true,
       config: () => (loaded ??= loadConfig(root, { adapters })),
-      // Created once per run through the registry. The resolved tracker is kept for auto-commit.
+      // Created once per run through the registry. Commands get the contract view; the raw tracker is kept for ctx.local and auto-commit.
       tracker: () => (pending ??= (async () => {
         const config = ctx.config()
         tracker = await adapterFor(config.system, adapters).create(config, { now, random, env, dryRun })
-        return tracker
+        return contractView(tracker)
       })()),
+      // The raw Local tracker, for the features only it has, or null for any other system.
+      local: async () => {
+        if (ctx.config().system !== 'local') return null
+        await ctx.tracker()
+        return tracker
+      },
+      settings: () => adapterFor(ctx.config().system, adapters).settings(ctx.config()),
       host: () => (host ??= makeHost(ctx)),
-      actor: () => (typeof options.as === 'string'
-        ? options.as
-        : requireActor(ctx.config().local, { email: gitUserEmail(root), env }).id),
+      actor: async () => (typeof options.as === 'string' ? options.as : (await requireMember(ctx)).id),
     }
     kind = configClass(command, options)
+    // Read before the full config: migrate reads a tracker of any format, which ctx.config() would refuse first.
+    if (command.local) {
+      const { system } = loadPmkitConfig(root, { adapters })
+      if (system !== 'local') throw new PmkitError('NOT_SUPPORTED', `${command.name} works only with the Local tracker, and tracker.system is "${system}"`, 'node scripts/pmkit.mjs --help')
+    }
     // migrate refuses in runMigrate: ctx.config() checks the format, which would hide migrate's own format errors.
     if (kind === 'write' && command.name !== 'migrate') {
       const { pmkitProblems } = ctx.config()
       if (pmkitProblems.length > 0) throw pmkitWriteRefusal(pmkitProblems)
     }
     const result = await command.run(ctx)
-    if (command.write && !dryRun && result.commit !== undefined && ctx.config().local.auto_commit === true) {
+    // auto_commit commits Local tracker files, so a hosted tracker never commits.
+    if (command.write && !dryRun && result.commit !== undefined && ctx.config().system === 'local' && ctx.config().local.auto_commit === true) {
       // Only the files this command wrote; a write that changed nothing commits nothing.
       const paths = tracker?.writtenFiles() ?? []
       try {
