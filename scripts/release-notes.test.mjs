@@ -203,3 +203,10 @@ test('no done issue prints no done issues', () => {
   assert.equal(lines.at(-1), 'left out: 1 not done')
   assert.deepEqual(textOf({ release: rel('1.0.0') }).split('\n').slice(1), ['', 'no done issues'])
 })
+
+test('the latest release is the latest instant, not the latest string, when zones differ', () => {
+  const early = rel('2.0.0', { released: '2026-10-23T23:00:00-05:00' }) // 2026-10-24T04:00:00Z
+  const late = rel('2.1.0', { released: '2026-10-24T01:00:00Z' })
+  assert.equal(chooseBasis({ ...base, releases: [early, late] }).source.id, '2.0.0')
+  assert.equal(chooseBasis({ ...base, releases: [late, early] }).source.id, '2.0.0')
+})

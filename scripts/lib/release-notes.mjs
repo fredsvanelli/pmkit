@@ -1,4 +1,5 @@
 import { compareIds } from './ids.mjs'
+import { eventInstant } from './metrics.mjs'
 
 // Pure release notes functions: no file access. The caller passes records it already read from the tracker.
 
@@ -6,12 +7,15 @@ const DAY_MS = 86400000
 
 const dateMinusDays = (today, days) => new Date(Date.parse(`${today}T00:00:00Z`) - days * DAY_MS).toISOString().slice(0, 10)
 
-/** The last item with the greatest key, so a tie goes to the later one in list order. */
+// A value that is no date sorts before every date.
+const instantOf = (value) => (value === undefined || value === null ? -Infinity : eventInstant(value) || -Infinity)
+
+/** The last item with the greatest key as an instant, so a tie goes to the later one in list order. */
 function latestBy(list, key, keep) {
   let found = null
   for (const item of list) {
     if (!keep(item)) continue
-    if (found === null || String(item[key] ?? '') >= String(found[key] ?? '')) found = item
+    if (found === null || instantOf(item[key]) >= instantOf(found[key])) found = item
   }
   return found
 }
