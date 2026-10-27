@@ -280,6 +280,58 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     assert.ok(step5.includes("A blocker counts as selected when it is in the selection, or when step 1 chose an existing `planned` sprint and the blocker's `sprint` is that sprint's ID"), 'step 5 counts a blocker in the planned sprint as selected')
   })
 
+  describe('team/flow-metrics', () => {
+    const file = FILES.find((f) => f.rel === 'team/flow-metrics.md')
+    const text = fs.readFileSync(path.join(COMMANDS_DIR, 'team', 'flow-metrics.md'), 'utf8')
+    const stepText = (n) => text.split('\n').find((line) => line.startsWith(`${n}. `)) ?? ''
+    const stepCalls = (n) => file.parsed.calls.filter((call) => call.step === String(n) && !call.dryRun)
+    const flagsOf = (call) => (Array.isArray(call.flags) ? call.flags : Object.keys(call.flags ?? {}))
+
+    test('reads the four metrics for the period in step 3 and for the previous period in step 4', () => {
+      for (const n of [3, 4]) {
+        const calls = stepCalls(n)
+        assert.deepEqual(calls.map((call) => call.command).sort(), ['metrics aging', 'metrics cycle-time', 'metrics lead-time', 'metrics throughput'], `step ${n}`)
+        for (const call of calls) {
+          const flags = flagsOf(call)
+          assert.ok(flags.includes('until'), `step ${n} ${call.command} has until`)
+          assert.equal(flags.includes('since'), call.command !== 'metrics aging', `step ${n} ${call.command} since`)
+        }
+      }
+      const text3 = stepCalls(3).find((call) => call.command === 'metrics cycle-time').text
+      const text4 = stepCalls(4).find((call) => call.command === 'metrics cycle-time').text
+      assert.notEqual(text3, text4)
+    })
+
+    test('has no write call and no confirmation point', () => {
+      assert.equal(file.parsed.calls.some(isWrite), false)
+      assert.deepEqual(file.parsed.points, [])
+    })
+
+    test('step 2 rejects a since after until and shows the month-end example', () => {
+      const step2 = stepText(2)
+      assert.match(step2, /after `?U`?|after `until`/)
+      assert.ok(step2.includes('2026-10-30') && step2.includes('2026-11-01'), 'month-end example')
+      assert.deepEqual(stepCalls(2), [])
+    })
+
+    test('says the numbers come from the event history, names the DORA gap and the small sample', () => {
+      assert.match(text, /event history/)
+      assert.match(text, /events\.jsonl/)
+      assert.match(text, /DORA metrics are not included/)
+      assert.match(text, /fewer than 5/)
+    })
+
+    test('stops when the tracker has no metrics', () => {
+      assert.match(stepText(1), /absent/)
+      assert.match(stepText(1), /enableHint/)
+    })
+
+    test('gives no verdict', () => {
+      const output = text.split('## Output')[1].split('## If something is missing')[0]
+      assert.doesNotMatch(output, /\b(better|worse)\b/)
+    })
+  })
+
   for (const { name, entries } of LOADED) {
     entries.forEach((scenario, index) => {
       const file = snapshotFile(name, index, entries.length)
