@@ -1,0 +1,73 @@
+$ pmkit release issues 1.0.0
+exit 0
+--- stdout
+ID       | Title                   | Status | Assignee | Estimate | Sprint
+---------|-------------------------|--------|----------|----------|-------
+ISS-6R3N | Retry failed deliveries | done   | fred     | 8        |
+ISS-3M8D | Billing export as CSV   | todo   | fred     | 3        |
+--- stderr
+(empty)
+
+$ pmkit release issues 1.0.0 --json
+exit 0
+--- stdout
+[
+  {
+    "id": "ISS-6R3N",
+    "title": "Retry failed deliveries",
+    "status": {
+      "name": "done",
+      "category": "done"
+    },
+    "labels": [
+      "backend",
+      "webhooks"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "Retry with exponential backoff, up to six attempts.",
+    "acceptanceCriteria": [],
+    "created": "2026-09-26T11:00:00Z",
+    "updated": "2026-10-22T10:00:00Z",
+    "body": "## Description\n\nRetry with exponential backoff, up to six attempts.\n",
+    "type": "feature",
+    "priority": "high",
+    "estimate": 8,
+    "assignee": "fred",
+    "parent": "EPC-4H7V",
+    "release": "1.0.0"
+  },
+  {
+    "id": "ISS-3M8D",
+    "title": "Billing export as CSV",
+    "status": {
+      "name": "todo",
+      "category": "todo"
+    },
+    "labels": [
+      "billing"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "Finance needs a monthly CSV of invoices.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-12T09:00:00Z",
+    "updated": "2026-10-22T10:00:00Z",
+    "body": "## Description\n\nFinance needs a monthly CSV of invoices.\n",
+    "type": "feature",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "fred",
+    "release": "1.0.0"
+  }
+]
+--- stderr
+(empty)

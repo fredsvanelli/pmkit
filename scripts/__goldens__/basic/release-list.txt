@@ -1,0 +1,27 @@
+$ pmkit release list
+exit 0
+--- stdout
+no releases
+--- stderr
+(empty)
+
+$ pmkit release list --json
+exit 0
+--- stdout
+[]
+--- stderr
+(empty)
+
+$ pmkit release list --state released
+exit 0
+--- stdout
+no releases
+--- stderr
+(empty)
+
+$ pmkit release list --state released --json
+exit 0
+--- stdout
+[]
+--- stderr
+(empty)

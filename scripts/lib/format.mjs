@@ -59,6 +59,14 @@ export function milestoneRecord(milestone) {
   return lines.join('\n')
 }
 
+export function releaseRecord(release) {
+  const lines = fields([
+    ['id', release.id], ['name', release.name], ['state', release.state], ['tag', release.tag], ['target', release.target], ['released', release.released],
+  ])
+  if (release.description) lines.push('', release.description)
+  return lines.join('\n')
+}
+
 export const sprintRecord = (sprint) => fields([
   ['id', sprint.id], ['name', sprint.name], ['state', sprint.state], ['start', sprint.start], ['end', sprint.end],
   ['goal', sprint.goal], ['capacity', sprint.capacity], ['days off', sprint.daysOff],

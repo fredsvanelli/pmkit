@@ -8,7 +8,7 @@ import { BOOLEANS, parseArgs } from './lib/args.mjs'
 import { requireActor, gitUserEmail } from './lib/actor.mjs'
 import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig } from './lib/config.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
-import { changeLines, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, sprintRecord, table } from './lib/format.mjs'
+import { changeLines, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, releaseRecord, sprintRecord, table } from './lib/format.mjs'
 import { aging, cycleTimes, doneInRange, leadTimes, rangeInstant, summary, throughput, velocity } from './lib/metrics.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
@@ -158,8 +158,10 @@ function issuePatch(ctx, { create }) {
     set('assignee', opt('assignee'))
     set('parent', opt('parent'))
     set('milestone', opt('milestone'))
+    set('release', opt('release'))
   } else {
     set('milestone', orNull(opt('milestone')))
+    set('release', orNull(opt('release')))
     set('branch', orNull(opt('branch')))
   }
   if (opt('description-file') !== undefined) patch.description = readInput(opt('description-file'))
@@ -220,6 +222,12 @@ function writeText(result, { dryRun, record = issueRecord, header }) {
 }
 
 const issueWrite = (ctx, result, id = result.after.id) => ({ data: result, text: writeText(result, ctx), commit: id })
+
+/** The warning for an issue write that puts the issue in a release that is already released. Runs after the write, so the release exists. */
+function releasedWarnings(ctx, patch) {
+  if (typeof patch.release !== 'string') return []
+  return ctx.tracker().getRelease(patch.release).released ? [`release ${patch.release} is already released`] : []
+}
 const defaultBranch = (ctx) => ctx.config().pmkit.git_host?.default_branch ?? 'main'
 
 function defaultPrBody(issue) {
@@ -299,24 +307,26 @@ export const COMMANDS = [
   },
   {
     name: 'issues create', summary: 'creates an issue', write: true,
-    usage: '--title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint id|current|none] [--due] [--milestone m] [--description-file f] [--criteria-file f]',
-    flags: ['title', 'type', 'priority', 'estimate', 'assignee', 'label', 'parent', 'sprint', 'due', 'milestone', 'description-file', 'criteria-file'],
+    usage: '--title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint id|current|none] [--due] [--milestone m] [--release r] [--description-file f] [--criteria-file f]',
+    flags: ['title', 'type', 'priority', 'estimate', 'assignee', 'label', 'parent', 'sprint', 'due', 'milestone', 'release', 'description-file', 'criteria-file'],
     run: (ctx) => {
       const patch = issuePatch(ctx, { create: true })
       if (patch.title === undefined) throw usageError('issues create needs --title', 'pmkit issues create --title "..."')
-      return issueWrite(ctx, ctx.tracker().createIssue(patch, ctx.actor(), { dryRun: ctx.dryRun }))
+      const result = issueWrite(ctx, ctx.tracker().createIssue(patch, ctx.actor(), { dryRun: ctx.dryRun }))
+      return { ...result, warnings: releasedWarnings(ctx, patch) }
     },
   },
   {
     name: 'issues update', summary: 'edits fields and criteria', write: true, args: ['id'],
-    usage: '<id> [--title] [--type] [--priority] [--estimate] [--label l,..] [--sprint id|current|none] [--due] [--milestone] [--branch] [--description-file f] [--criteria-file f] [--check n] [--uncheck n]',
-    flags: ['title', 'type', 'priority', 'estimate', 'label', 'sprint', 'due', 'milestone', 'branch', 'description-file', 'criteria-file', 'check', 'uncheck'],
+    usage: '<id> [--title] [--type] [--priority] [--estimate] [--label l,..] [--sprint id|current|none] [--due] [--milestone] [--release] [--branch] [--description-file f] [--criteria-file f] [--check n] [--uncheck n]',
+    flags: ['title', 'type', 'priority', 'estimate', 'label', 'sprint', 'due', 'milestone', 'release', 'branch', 'description-file', 'criteria-file', 'check', 'uncheck'],
     run: (ctx) => {
       const [id] = ctx.args
       const patch = issuePatch(ctx, { create: false })
       tickCriteria(ctx, id, patch)
       if (Object.keys(patch).length === 0) throw usageError('issues update needs at least one field flag', 'pmkit issues update <id> --priority high')
-      return issueWrite(ctx, ctx.tracker().updateIssue(id, patch, ctx.actor(), { dryRun: ctx.dryRun }))
+      const result = issueWrite(ctx, ctx.tracker().updateIssue(id, patch, ctx.actor(), { dryRun: ctx.dryRun }))
+      return { ...result, warnings: releasedWarnings(ctx, patch) }
     },
   },
   {
@@ -493,6 +503,57 @@ export const COMMANDS = [
       const unfiled = tracker.unfiledMilestones(result.after.id)
       const warnings = unfiled.length === 0 ? [] : [`${unfiled.length} ${unfiled.length === 1 ? 'milestone named by issues or epics has' : 'milestones named by issues or epics have'} no file: ${unfiled.map((u) => `${u.name} (${u.count})`).join(', ')}; run /pmkit:local:doctor`]
       return { data: result, text: writeText(result, { ...ctx, record: milestoneRecord }), commit: result.after.id, warnings }
+    },
+  },
+  {
+    name: 'release list', summary: 'lists releases, oldest version first', usage: '[--state planned|released]', flags: ['state'],
+    run: (ctx) => {
+      const releases = ctx.tracker().listReleases(ctx.opt('state') === undefined ? {} : { state: ctx.opt('state') })
+      const rows = releases.map((r) => [r.id, r.name, r.state, r.tag ?? '', r.target ?? '', r.released ?? ''])
+      return { data: releases, text: releases.length === 0 ? 'no releases' : table(['ID', 'Name', 'State', 'Tag', 'Target', 'Released'], rows) }
+    },
+  },
+  {
+    name: 'release get', summary: 'one release', usage: '<id>', args: ['id'], flags: [],
+    run: (ctx) => {
+      const release = ctx.tracker().getRelease(ctx.args[0])
+      return { data: release, text: releaseRecord(release) }
+    },
+  },
+  {
+    name: 'release issues', summary: 'lists the issues of a release', usage: '<id>', args: ['id'], flags: [],
+    run: (ctx) => {
+      const issues = ctx.tracker().releaseIssues(ctx.args[0])
+      return { data: issues, text: issueTable(issues) }
+    },
+  },
+  {
+    name: 'release create', summary: 'creates a release', usage: '<id> [--name n] [--tag t] [--target YYYY-MM-DD]', write: true, args: ['id'], flags: ['name', 'tag', 'target'],
+    run: (ctx) => {
+      const input = { id: ctx.args[0] }
+      for (const key of ['name', 'tag', 'target']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
+      const result = ctx.tracker().createRelease(input, ctx.actor(), { dryRun: ctx.dryRun })
+      return { data: result, text: writeText(result, { ...ctx, record: releaseRecord }), commit: result.after.id }
+    },
+  },
+  {
+    name: 'release mark-released', summary: 'marks a release released and lists its unfinished issues', usage: '<id> [--tag t]', write: true, args: ['id'], flags: ['tag'],
+    run: (ctx) => {
+      const input = ctx.opt('tag') === undefined ? {} : { tag: ctx.opt('tag') }
+      const result = ctx.tracker().markReleased(ctx.args[0], ctx.actor(), { ...input, dryRun: ctx.dryRun })
+      const header = writeText(result, { dryRun: false, record: releaseRecord })
+      const text = writeText(null, { dryRun: ctx.dryRun, header: [header, 'unfinished issues:', issueTable(result.unfinished)].join('\n') })
+      const { id, tag } = result.after
+      const warnings = []
+      if (result.unfinished.length > 0) {
+        warnings.push(`release ${id} has ${result.unfinished.length} unfinished ${result.unfinished.length === 1 ? 'issue' : 'issues'}: ${result.unfinished.map((issue) => issue.id).join(', ')}`)
+      }
+      warnings.push(...result.problems.map(problemLine))
+      if (tag !== undefined) {
+        const warning = tagWarning(ctx.root, tag, ctx.env)
+        if (warning !== null) warnings.push(warning)
+      }
+      return { data: result, text, commit: id, warnings }
     },
   },
   {
@@ -743,6 +804,22 @@ export const COMMANDS = [
     },
   },
 ]
+
+/**
+ * Whether `tag` exists in the repository at `root`, as a warning text, or null when it does. Reads git and writes nothing.
+ * `env` lets a test hide git through PATH.
+ */
+export function tagWarning(root, tag, env) {
+  const result = spawnSync('git', ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}`], { cwd: root, env, encoding: 'utf8' })
+  if (result.error) {
+    const reason = result.error.code === 'ENOENT' ? 'git is not installed or not on PATH' : result.error.message
+    return `cannot check tag ${tag}: ${reason}`
+  }
+  if (result.status === 0) return null
+  if (result.status === 1) return `tag ${tag} is not in this repository; create and push it, or run git fetch --tags`
+  const first = (result.stderr ?? '').split('\n')[0].replace(/^fatal: /, '').trim()
+  return `cannot check tag ${tag}: ${first || `git exited with ${result.status}`}`
+}
 
 const gitIn = (root, ...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' })
 

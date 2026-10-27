@@ -1,0 +1,20 @@
+$ pmkit release issues 1.0.0
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: release 1.0.0 does not exist
+next: pmkit release list
+
+$ pmkit release issues 1.0.0 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "release 1.0.0 does not exist",
+    "nextStep": "pmkit release list"
+  }
+}
+--- stderr
+(empty)

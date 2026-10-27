@@ -65,13 +65,14 @@ exit 0
       "description": "Retry with exponential backoff, up to six attempts.",
       "acceptanceCriteria": [],
       "created": "2026-09-26T11:00:00Z",
-      "updated": "2026-10-16T15:00:00Z",
+      "updated": "2026-10-22T10:00:00Z",
       "body": "## Description\n\nRetry with exponential backoff, up to six attempts.\n",
       "type": "feature",
       "priority": "high",
       "estimate": 8,
       "assignee": "fred",
-      "parent": "EPC-4H7V"
+      "parent": "EPC-4H7V",
+      "release": "1.0.0"
     },
     {
       "id": "ISS-9B2X",
@@ -119,12 +120,13 @@ exit 0
       "description": "Finance needs a monthly CSV of invoices.",
       "acceptanceCriteria": [],
       "created": "2026-10-12T09:00:00Z",
-      "updated": "2026-10-12T09:00:00Z",
+      "updated": "2026-10-22T10:00:00Z",
       "body": "## Description\n\nFinance needs a monthly CSV of invoices.\n",
       "type": "feature",
       "priority": "medium",
       "estimate": 3,
-      "assignee": "fred"
+      "assignee": "fred",
+      "release": "1.0.0"
     },
     {
       "id": "ISS-7T4C",
@@ -272,13 +274,14 @@ exit 0
       "description": "Retry with exponential backoff, up to six attempts.",
       "acceptanceCriteria": [],
       "created": "2026-09-26T11:00:00Z",
-      "updated": "2026-10-16T15:00:00Z",
+      "updated": "2026-10-22T10:00:00Z",
       "body": "## Description\n\nRetry with exponential backoff, up to six attempts.\n",
       "type": "feature",
       "priority": "high",
       "estimate": 8,
       "assignee": "fred",
-      "parent": "EPC-4H7V"
+      "parent": "EPC-4H7V",
+      "release": "1.0.0"
     }
   ],
   "problems": []

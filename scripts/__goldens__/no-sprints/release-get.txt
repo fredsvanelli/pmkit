@@ -1,0 +1,45 @@
+$ pmkit release get 1.0.0
+exit 0
+--- stdout
+id: 1.0.0
+name: Webhooks GA
+state: planned
+target: 2026-11-13
+
+Public webhooks with retries and a dead-letter queue.
+--- stderr
+(empty)
+
+$ pmkit release get 1.0.0 --json
+exit 0
+--- stdout
+{
+  "id": "1.0.0",
+  "name": "Webhooks GA",
+  "target": "2026-11-13",
+  "state": "planned",
+  "description": "Public webhooks with retries and a dead-letter queue."
+}
+--- stderr
+(empty)
+
+$ pmkit release get missing-release
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: release missing-release does not exist
+next: pmkit release list
+
+$ pmkit release get missing-release --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "release missing-release does not exist",
+    "nextStep": "pmkit release list"
+  }
+}
+--- stderr
+(empty)
