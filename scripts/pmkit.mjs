@@ -902,7 +902,8 @@ function runRisks(ctx) {
           const pr = host.getPullRequest({ head: issue.branch })
           if (pr !== null && pr.state !== 'OPEN') closedPrsByBranch[issue.branch] = pr
         } catch (error) {
-          if (!affectsOneCall(error)) throw error
+          // A branch hand-edited to something gh rejects (INVALID_INPUT) fails only this lookup.
+          if (!affectsOneCall(error) && !(isPmkitError(error) && error.code === 'INVALID_INPUT')) throw error
           hostWarnings.push(`${issue.id}: the pull request of ${issue.branch} could not be read: ${error.message}`)
         }
       }

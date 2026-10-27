@@ -228,6 +228,17 @@ test('risks keeps an issue idle when its pull request lookup fails', () => {
   assert.ok(stderr.includes('warning: ISS-8C4W: the pull request of feat-dlq could not be read: gh pr view failed: GraphQL: boom'), stderr)
 })
 
+test('risks keeps an issue idle when its branch is not a valid ref', () => {
+  const root = githubRepo()
+  setBranch(root, 'ISS-8C4W', '-x')
+  const gh = fakeGh(cannedGh())
+  const result = call(root, envWith(gh, '2026-10-28T12:00:00Z'), ['risks', '--json'])
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const row = JSON.parse(result.stdout).stalledIssues.find((r) => r.id === 'ISS-8C4W')
+  assert.deepEqual([row.reason, row.pr], ['idle', null])
+  assert.ok(result.stderr.includes('warning: ISS-8C4W: the pull request of -x could not be read'), result.stderr)
+})
+
 test('risks warns when it reads 200 open pull requests', () => {
   const root = teamRepo()
   const prs = Array.from({ length: 200 }, (_, i) => openPr(i + 1, `b${i + 1}`, '2026-10-22T10:00:00Z'))
