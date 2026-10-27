@@ -1,6 +1,6 @@
 # PMK-22 design: releases in the Local tracker
 
-Issue PMK-22, epic EPC-3. Status: draft from an autonomous brainstorm. The "Open questions" section holds the four calls that belong to the user. The design below applies the recommended answer to each, so a plan can start from it once the user confirms or changes them.
+Issue PMK-22, epic EPC-3. Status: approved. The user answered the four questions in "Decided questions" on 2026-10-26 and took the recommended option of each. The design below applies those answers.
 
 ## Problem
 
@@ -49,7 +49,7 @@ The closest existing feature is milestones (PMK-3, `docs/superpowers/specs/2026-
 2. **An `issues:` list inside the release file.** One file holds the whole scope. Two people adding issues to the same release on two branches edit the same line and get a merge conflict. No event records when an issue joined, and the issue file does not show its release.
 3. **Membership derived from git.** `release issues` would read the commits between the previous tag and this tag and collect the issue IDs in their messages. It only works after the tag exists, so it cannot serve a planned release or PMK-69. It also depends on commit message habits.
 
-Recommended: approach 1 (open question 1). It reuses the field, event and validation paths that `sprint` and `milestone` already have, merges cleanly, and serves planned and released releases alike.
+Chosen: approach 1 (question 1). It reuses the field, event and validation paths that `sprint` and `milestone` already have, merges cleanly, and serves planned and released releases alike.
 
 ## Design
 
@@ -109,7 +109,7 @@ The contract gets a Releases family. `scripts/lib/contract.mjs` adds five names 
 - `getRelease(id)` returns the release whose file stem equals `id`. Otherwise it throws `NOT_FOUND` with the next step `pmkit release list`.
 - `releaseIssues(id)` calls `getRelease(id)` first, so an unknown id is `NOT_FOUND`. It returns the issues whose `release` equals `id`, archived ones left out, in creation order, with computed fields, as `cycleIssues` does. It is `searchIssues` with a new filter key, `release`. `FILTER_KEYS` in `query.mjs` gains `release`, `checkFilter` requires a string, and `runQuery` keeps an issue when `issue.release === filter.release`. The key accepts no `none` or `current` forms, because no CLI flag exposes it yet.
 - `createRelease({ id, name, tag, target }, actor, { dryRun })` runs `requireWriter(actor)`, refuses unknown keys, checks the id rule (`INVALID_INPUT`), refuses an id that matches an existing stem when case is ignored (`CONFLICT`, next step `pmkit release list`), trims and checks `name` (default: the id), checks `tag` and `target`, serializes, reads the text back with `readBack`, and, unless `dryRun`, creates the folder and writes the file with `writeFileAtomic`. It returns `{ before: null, after }`. A new release is always `planned`; `createRelease` takes no `released`.
-- `markReleased(id, actor, { tag, dryRun })` runs `requireWriter(actor)` and `getRelease(id)`. A release that already has `released` is `CONFLICT` with the message `release <id> was released at <time>` and the next step `pmkit release get <id>`. The operation sets `released` to the current time in seconds with `Z` (the `stamp()` the tracker already uses). When `tag` is given, it is checked and replaces the stored tag. It keeps unknown keys and the description, writes like `createRelease`, and returns `{ before, after, unfinished, problems }`. `unfinished` is the issues of the release whose category is not terminal. `problems` lists issue files that did not parse, as `closeCycle` does, because such an issue may belong to the release. Marking a release with unfinished issues succeeds (open question 3).
+- `markReleased(id, actor, { tag, dryRun })` runs `requireWriter(actor)` and `getRelease(id)`. A release that already has `released` is `CONFLICT` with the message `release <id> was released at <time>` and the next step `pmkit release get <id>`. The operation sets `released` to the current time in seconds with `Z` (the `stamp()` the tracker already uses). When `tag` is given, it is checked and replaces the stored tag. It keeps unknown keys and the description, writes like `createRelease`, and returns `{ before, after, unfinished, problems }`. `unfinished` is the issues of the release whose category is not terminal. `problems` lists issue files that did not parse, as `closeCycle` does, because such an issue may belong to the release. Marking a release with unfinished issues succeeds (question 3).
 
 Reads use `config.readDir ?? config.issuesDir`, as every other read does, so a tracker on an older format reads its migrated copy. Writes on an older format fail in `requireWriter` first.
 
@@ -129,7 +129,7 @@ Five entries in `COMMANDS`, in a `release` group:
 
 - `release create` and `release mark-released` are `write: true`, so they take `--dry-run` and `--as`. Both return `commit: <id>`, so with `auto_commit` on the commit messages are `pmkit: release create 1.2.0` and `pmkit: release mark-released 1.2.0`.
 - `release mark-released` adds a warning when `unfinished` is not empty: `release 1.2.0 has 3 unfinished issues: PMK-4, PMK-9, PMK-12`. Each entry in `problems` adds a warning through `problemLine`, as `cycle close` does.
-- **Tag check.** When the release has a tag after the change, `release mark-released` runs `git rev-parse --verify --quiet refs/tags/<tag>` in the repository root. When the tag is missing, it adds the warning `tag v1.2.0 is not in this repository; create and push it, or run git fetch --tags`. Outside a git repository, or when `git` is missing, it adds `cannot check tag v1.2.0: <reason>`. The release is marked in every case (open question 4). The check runs on dry runs too, so a confirmation shows the warning before the write. How the CLI runs `git` (the existing spawn helper, or a small one next to `gitUserEmail`) is the builder's call. `release create --tag` does not check, because the tag usually does not exist yet.
+- **Tag check.** When the release has a tag after the change, `release mark-released` runs `git rev-parse --verify --quiet refs/tags/<tag>` in the repository root. When the tag is missing, it adds the warning `tag v1.2.0 is not in this repository; create and push it, or run git fetch --tags`. Outside a git repository, or when `git` is missing, it adds `cannot check tag v1.2.0: <reason>`. The release is marked in every case (question 4). The check runs on dry runs too, so a confirmation shows the warning before the write. How the CLI runs `git` (the existing spawn helper, or a small one next to `gitUserEmail`) is the builder's call. `release create --tag` does not check, because the tag usually does not exist yet.
 - `issues create` and `issues update` gain `--release <id>`. `issues update --release none` clears it. `issuePatch` handles it like `--milestone`.
 - `releaseRecord` goes in `scripts/lib/format.mjs` next to `milestoneRecord`.
 
@@ -195,14 +195,14 @@ Neither needs another operation from this issue.
 - `scripts/validate.test.mjs`: `release` problems, `reference` for a missing release, archived issues checked, and `checked.releases`.
 - `scripts/contract-suite.mjs`: create, list, get, issues, mark released, `NOT_FOUND`, and a dry run that writes nothing.
 - `scripts/capabilities.test.mjs`: as above.
-- Goldens: `goldens.test.mjs` requires a case for every command, so the builder adds a release file and an issue with `release` to one fixture (`basic` is the likely choice) and regenerates the goldens that change.
+- Goldens: `goldens.test.mjs` requires a case for every command, so the builder adds a release file and issues with `release` to one fixture and regenerates the goldens that change.
 
 ## Decisions
 
 | Decision | Reason |
 |---|---|
-| Membership is a `release` field on the issue (open question 1) | It follows `sprint` and `milestone`, gets events and drift for free, and merges without conflicts. |
-| One release per issue (open question 2) | It matches `sprint` and `milestone`. A list would need list events (`link`/`unlink`) and a different filter for one rare case, backports. |
+| Membership is a `release` field on the issue (question 1) | It follows `sprint` and `milestone`, gets events and drift for free, and merges without conflicts. |
+| One release per issue (question 2) | It matches `sprint` and `milestone`. A list would need list events (`link`/`unlink`) and a different filter for one rare case, backports. |
 | The file stem is the release id and the version, with no `id` key | Milestones and sprints work the same way, and the id and the file name cannot disagree. |
 | Reuse the milestone id rule, with a case-insensitive clash check on create | It accepts the common version shapes, keeps file names valid on every OS, and needs no second rule. |
 | `state` is computed from `released`, not stored | One source of truth. A stored `state` could disagree with `released`. |
@@ -211,8 +211,8 @@ Neither needs another operation from this issue.
 | The `release` reference check is always on | Unlike milestones, no tracker has free-text release values to protect. |
 | Adding an issue to a released release is allowed, with a warning | A missed issue is a normal fix after a release. |
 | No event log for releases, and no new event op for issues | Releases have two writes and git history covers them. The issue's `update` event already covers the field. |
-| `markReleased` returns the unfinished issues and does not refuse (open question 3) | It follows `closeCycle`. The command that calls it decides what to do with them, and the CLI warns. |
-| The tag check is in the CLI, warns and never writes to git (open question 4) | The contract must work for hosted trackers. The plugin never writes to git on its own, and a tag may live only on the remote. |
+| `markReleased` returns the unfinished issues and does not refuse (question 3) | It follows `closeCycle`. The command that calls it decides what to do with them, and the CLI warns. |
+| The tag check is in the CLI, warns and never writes to git (question 4) | The contract must work for hosted trackers. The plugin never writes to git on its own, and a tag may live only on the remote. |
 | `releaseIssues` uses a new `release` filter key in `searchIssues` | One query path for every issue list. The key stays out of `issues list` flags for now. |
 | Keep tracker format 2, with no migration | No existing file changes shape, and the previous plugin keeps the new key on its writes. |
 | `release get` and `release create` are in scope | The acceptance criteria need a way to make a release, and `get` is the record the other commands print. Writing `.issues/` by hand is not allowed. |
@@ -227,26 +227,34 @@ Neither needs another operation from this issue.
 | The CLI lists releases, lists the issues of a release and marks a release released | `release list`, `release issues <id>`, `release mark-released <id>` on `listReleases`, `releaseIssues`, `markReleased`, plus `release get`, `release create` and `--release` on issues |
 | `capabilities` reports `releases` as native | `SERVED_BY.releases` lists the five commands, and the manifest becomes 11 native, 2 derived, 7 absent |
 
-## Open questions
+## Decided questions
 
-The design applies the recommendation of each question.
+The user answered these on 2026-10-26 and took the recommended option of each. The design above applies the answers.
 
 1. **How does an issue join a release?**
-   - A. A `release` field on the issue, set with `issues update --release`. (Recommended: it reuses the field, event and validation paths of `sprint` and `milestone`, merges cleanly, and works before the tag exists.)
+   - A. A `release` field on the issue, set with `issues update --release`.
    - B. An `issues:` list in the release file. One place shows the scope, but two branches that add issues conflict, and no event records when an issue joined.
    - C. Derived from git: the issue IDs in the commit messages between the previous tag and this one. No manual step, but it only works once the tag exists and depends on commit message habits.
+
+   Chosen: A. It reuses the field, event and validation paths of `sprint` and `milestone`, merges cleanly, and works before the tag exists.
 2. **Can an issue belong to more than one release?**
-   - A. One release per issue, `release: 1.2.0`. (Recommended: it matches `sprint` and `milestone` and keeps `update` events.)
-   - B. A list, `releases: [1.2.1, 1.3.0]`, as Jira's fix versions allow for backports. Changing from A to B later needs a format bump and a migration, so this is the moment to choose.
+   - A. One release per issue, `release: 1.2.0`.
+   - B. A list, `releases: [1.2.1, 1.3.0]`, as Jira's fix versions allow for backports. Changing from A to B later needs a format bump and a migration.
+
+   Chosen: A. It matches `sprint` and `milestone` and keeps `update` events.
 3. **What does `release mark-released` do when the release still has unfinished issues?**
-   - A. Mark it, list the unfinished issues in the result and warn. (Recommended: it follows `cycle close`, and PMK-69 is the place to stop a release that is not ready.)
+   - A. Mark it, list the unfinished issues in the result and warn.
    - B. Refuse with `CONFLICT` unless `--force` is passed.
    - C. Refuse, and the user moves or removes the issues first.
+
+   Chosen: A. It follows `cycle close`, and PMK-69 is the place to stop a release that is not ready.
 4. **What does `release mark-released` do with the git tag?**
    - A. Record it only, never look at git.
-   - B. Record it and warn when the tag is not in the local repository. (Recommended: the user learns about a missing tag, a tag that lives only on the remote does not block the mark, and the plugin writes nothing to git.)
+   - B. Record it and warn when the tag is not in the local repository.
    - C. Refuse when the tag is not in the local repository.
    - D. Create the tag at `HEAD` when it is missing, after confirmation.
+
+   Chosen: B. The user learns about a missing tag, a tag that lives only on the remote does not block the mark, and the plugin writes nothing to git.
 
 ## Follow-up candidates
 
