@@ -596,7 +596,9 @@ export const COMMANDS = [
       if (ctx.opt('until') !== undefined && ctx.opt('since') === undefined) throw usageError('--until needs --since', next)
       const since = ctx.opt('since') === undefined ? undefined : rangeText('since', ctx.opt('since'))
       const until = ctx.opt('until') === undefined ? undefined : rangeText('until', ctx.opt('until'))
-      if (since !== undefined && until !== undefined && rangeInstant(since) > rangeInstant(until, { endOfDay: true })) throw usageError('--since is after --until', next)
+      // Without --until the period ends today, so a --since after today is refused too.
+      const effectiveUntil = until ?? ctx.now().toISOString().slice(0, 10)
+      if (since !== undefined && rangeInstant(since) > rangeInstant(effectiveUntil, { endOfDay: true })) throw usageError(until === undefined ? '--since is after today' : '--since is after --until', next)
       const capabilities = tracker.capabilities().capabilities
       const on = (id) => capabilities.find((c) => c.id === id).path !== 'absent'
       const releases = on('releases') ? tracker.listReleases() : null

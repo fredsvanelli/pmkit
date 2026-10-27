@@ -1763,7 +1763,7 @@ test('release-notes names an unknown release or sprint NOT_FOUND', () => {
 
 test('release-notes refuses bad selectors', () => {
   const root = makeRepo('team')
-  for (const args of [['--release', '1.0.0', '--sprint', 'x'], ['--release', '1.0.0', '--since', '2026-10-01'], ['--until', '2026-10-01'], ['--since', '2026-10-05', '--until', '2026-10-01'], ['--since', '2026-13-01']]) {
+  for (const args of [['--release', '1.0.0', '--sprint', 'x'], ['--release', '1.0.0', '--since', '2026-10-01'], ['--until', '2026-10-01'], ['--since', '2026-10-05', '--until', '2026-10-01'], ['--since', '2026-12-01'], ['--since', '2026-13-01']]) {
     const result = run(root, ['release-notes', ...args, '--json'])
     assert.equal(result.status, 2, args.join(' '))
     const error = JSON.parse(result.stdout).error
