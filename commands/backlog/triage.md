@@ -32,7 +32,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
    - Duplicate: `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues link <dup> <kept> --kind duplicate --dry-run --json`, then `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues move <dup> canceled --dry-run --json`.
    - Decline: `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues move <id> canceled --dry-run --json`, then `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues comment <id> --body-file <file> --dry-run --json`, with the reason written to a file outside `.issues/`.
    - Skip a write whose `before` equals `after`, and say nothing would change.
-7. This is a bulk change, so show the full preview of all accepted decisions, with before and after per issue and only the fields that change, and ask once with `AskUserQuestion`, whatever `write_policy.confirm` says. When the user declines, change nothing.
+7. This is a bulk change, so show the full preview of all accepted decisions, with before and after per issue and only the fields that change, and the text of each decline comment. Ask once with `AskUserQuestion`, whatever `write_policy.confirm` says. When the user declines, change nothing.
 8. When the user approves, run the same commands without `--dry-run`, issue by issue, in the order of step 6. When one fails, stop, list what was applied and what was not, and do not retry it. Apply the error rules of the conventions.
 9. Run step 1 again and compare the count, then remove the temporary files.
 

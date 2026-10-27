@@ -202,6 +202,9 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     assert.ok(texts.includes('issues move <id> canceled --dry-run --json'), 'a declined issue moves to canceled')
     assert.ok(texts.includes('issues link <dup> <kept> --kind duplicate --dry-run --json'), 'a duplicate gets a duplicate link')
     assert.ok(step6.some((c) => c.command === 'issues comment' && c.flags.includes('body-file')), 'a declined issue gets a comment')
+    // A comment dry run returns the comment record, not a before and after, so the preview names the text itself.
+    const step7 = fs.readFileSync(path.join(COMMANDS_DIR, 'backlog', 'triage.md'), 'utf8').split('\n').find((line) => line.startsWith('7. '))
+    assert.match(step7, /and the text of each decline comment/, 'the step 7 preview shows the decline comment')
   })
 
   // `issues list --text` matches one substring of the title and description, so "login slow" finds nothing

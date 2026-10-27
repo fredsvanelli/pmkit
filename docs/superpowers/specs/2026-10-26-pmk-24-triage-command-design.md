@@ -77,7 +77,7 @@ None. Every issue in the `triage` category is in scope. An optional `--limit` is
    - Duplicate. `issues link <dup> <kept> --kind duplicate --dry-run --json`, then `issues move <dup> canceled --dry-run --json`.
    - Decline. `issues move <id> canceled --dry-run --json`, then `issues comment <id> --body-file <file> --dry-run --json`, with the reason written to a file outside `.issues/`.
    - Skip a write whose `before` equals `after` and say nothing would change.
-7. Show the full preview of all accepted decisions, with before and after per issue and only the fields that change. This is a bulk change, so ask once with `AskUserQuestion`, whatever `write_policy.confirm` says. When the user declines, change nothing.
+7. Show the full preview of all accepted decisions, with before and after per issue and only the fields that change, and the text of each decline comment. A comment dry run returns the comment record, not a before and after. This is a bulk change, so ask once with `AskUserQuestion`, whatever `write_policy.confirm` says. When the user declines, change nothing.
 8. On approval, run the same commands without `--dry-run`, issue by issue, in the order of step 6. When a command fails, stop. List what was applied and what was not, and do not retry the failed call. Apply the error rules of the conventions.
 9. Run step 1 again and compare the count. Remove the temporary files.
 
