@@ -75,6 +75,9 @@ const entryOf = (issue, doneAt) => ({
   archived: issue.archived === true,
   doneAt: doneAt ?? null,
   release: issue.release ?? null,
+  status: issue.status?.name ?? null,
+  assignee: issue.assignee ?? null,
+  estimate: issue.estimate ?? null,
 })
 
 /**

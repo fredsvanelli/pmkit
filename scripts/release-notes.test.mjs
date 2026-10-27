@@ -98,10 +98,10 @@ test('done issues are grouped by type in the order of types, and an empty group 
 })
 
 test('an entry holds the listed fields and keeps the doneAt it was given', () => {
-  const issue = iss('F1', { type: 'feature', description: 'Retries now stop after 5 tries.', labels: ['backend'], parent: 'EPC-1', archived: true, release: '1.0.0' })
+  const issue = iss('F1', { type: 'feature', description: 'Retries now stop after 5 tries.', labels: ['backend'], parent: 'EPC-1', archived: true, release: '1.0.0', assignee: 'ana', estimate: 3 })
   const result = buildNotes({ choice, candidates: [cand(issue, '2026-10-06T16:00:00Z')], types })
   assert.deepEqual(result.groups[0].issues[0], {
-    id: 'F1', title: 'F1', description: 'Retries now stop after 5 tries.', type: 'feature', labels: ['backend'], parent: 'EPC-1', archived: true, doneAt: '2026-10-06T16:00:00Z', release: '1.0.0',
+    id: 'F1', title: 'F1', description: 'Retries now stop after 5 tries.', type: 'feature', labels: ['backend'], parent: 'EPC-1', archived: true, doneAt: '2026-10-06T16:00:00Z', release: '1.0.0', status: 'done', assignee: 'ana', estimate: 3,
   })
 })
 
