@@ -1,0 +1,106 @@
+$ pmkit issues list --category triage --json  [step 1, read]
+exit 0
+$ pmkit discover --json  [step 2, read]
+exit 0
+$ pmkit issues get ISS-1V9Z --comments --json  [step 3, read]
+exit 0
+$ pmkit issues list --text login --json  [step 3, read]
+exit 0
+? Step 5  [confirmed]
+$ pmkit issues update ISS-M0GZ --priority high --label backend,webhooks --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues move ISS-M0GZ backlog --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues link ISS-Y8KQ ISS-4C74 --kind duplicate --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues move ISS-Y8KQ canceled --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues move ISS-DZEF canceled --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues comment ISS-DZEF --body-file - --dry-run --json  [step 6, dry run]
+exit 0
+? Step 7  [confirmed]
+$ pmkit issues update ISS-M0GZ --priority high --label backend,webhooks --json  [step 6, write]
+exit 0
+$ pmkit issues move ISS-M0GZ backlog --json  [step 6, write]
+exit 0
+$ pmkit issues link ISS-Y8KQ ISS-4C74 --kind duplicate --json  [step 6, write]
+exit 0
+$ pmkit issues move ISS-Y8KQ canceled --json  [step 6, write]
+exit 0
+$ pmkit issues move ISS-DZEF canceled --json  [step 6, write]
+exit 0
+$ pmkit issues comment ISS-DZEF --body-file - --json  [step 6, write]
+exit 0
+$ pmkit issues list --category triage --json  [step 1, read]
+exit 0
+
+--- added .issues/issues/ISS-DZEF/comments/2026-10-23T12-00-00Z-fred.md
++---
++author: fred
++created: 2026-10-23T12:00:00Z
++---
++
++pmkit ships Node scripts with no dependencies (ADR 0003), so a Rust rewrite is out of scope.
+--- changed .issues/issues/ISS-DZEF/events.jsonl
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-DZEF","title":"Rewrite the CLI in Rust","type":"feature","status":"backlog","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"backlog","to":"triage"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"triage","to":"canceled"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"comment","to":"2026-10-23T12-00-00Z-fred.md"}
+--- changed .issues/issues/ISS-DZEF/issue.md
+  ---
+  id: ISS-DZEF
+  title: Rewrite the CLI in Rust
+  type: feature
+-status: triage
++status: canceled
+  created: 2026-10-23T12:00:00.000Z
+  updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Rewrite the whole CLI in Rust for speed.
+--- changed .issues/issues/ISS-M0GZ/events.jsonl
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-M0GZ","title":"Webhook deliveries are not retried","type":"bug","status":"backlog","labels":["webhooks"],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"backlog","to":"triage"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"priority","from":null,"to":"high"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"labels","from":["webhooks"],"to":["backend","webhooks"]}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"triage","to":"backlog"}
+--- changed .issues/issues/ISS-M0GZ/issue.md
+  ---
+  id: ISS-M0GZ
+  title: Webhook deliveries are not retried
+  type: bug
+-status: triage
+-labels: [webhooks]
++status: backlog
++priority: high
++labels: [backend, webhooks]
+  created: 2026-10-23T12:00:00.000Z
+  updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  A failed webhook delivery is dropped and never sent again.
+--- changed .issues/issues/ISS-Y8KQ/events.jsonl
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-Y8KQ","title":"Login is slow after I press submit","type":"bug","status":"backlog","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"backlog","to":"triage"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"duplicate_of","to":"ISS-4C74"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"triage","to":"canceled"}
+--- changed .issues/issues/ISS-Y8KQ/issue.md
+  ---
+  id: ISS-Y8KQ
+  title: Login is slow after I press submit
+  type: bug
+-status: triage
++status: canceled
++duplicate_of: [ISS-4C74]
+  created: 2026-10-23T12:00:00.000Z
+  updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  The login form takes about ten seconds after I press submit.

@@ -61,8 +61,8 @@ const cliOf = (name) => COMMANDS.find((command) => command.name === name)
 const isWrite = (call) => call.dryRun || Boolean(cliOf(call.command)?.write)
 
 describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
-  test('there are 26 command files', () => {
-    assert.equal(FILES.length, 26, FILES.map((file) => file.rel).join(', '))
+  test('there are 27 command files', () => {
+    assert.equal(FILES.length, 27, FILES.map((file) => file.rel).join(', '))
   })
 
   test('every command file has a scenario', async () => {
@@ -171,6 +171,26 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     assert.doesNotMatch(step7, /The close does not move or copy them/, 'step 7 no longer says the close leaves them on the original')
     const point = lines.find((line) => line.startsWith('- Step 7: '))
     assert.match(point, /the blocker links and sub-issue moves/, 'the Step 7 confirmation point names the carry-over writes')
+  })
+
+  test('backlog/triage proposes four kinds of decision and previews every write with a dry run', () => {
+    const file = FILES.find((f) => f.rel === 'backlog/triage.md')
+    assert.ok(file, 'commands/backlog/triage.md exists')
+    const lines = fs.readFileSync(path.join(COMMANDS_DIR, 'backlog', 'triage.md'), 'utf8').split('\n')
+    const step = (n) => lines.find((line) => line.startsWith(`${n}. `)) ?? ''
+    const has = (step_, command, dry) => file.parsed.calls.some((c) => c.step === step_ && c.command === command && c.dryRun === dry)
+    assert.ok(has('1', 'issues list', false) && has('2', 'discover', false), 'steps 1 and 2 read the queue and the allowed values')
+    assert.match(file.parsed.calls.find((c) => c.step === '1').text, /--category triage/)
+    assert.match(step(4), /proposal.*priority.*labels/s, 'step 4 shows proposal, priority and labels')
+    for (const kind of ['accept', 'duplicate of', 'decline', 'needs info']) assert.ok(step(4).includes(kind), `step 4 names ${kind}`)
+    for (const command of ['issues update', 'issues move', 'issues link', 'issues comment']) assert.ok(has('6', command, true), `step 6 dry-runs ${command}`)
+    assert.ok(!file.parsed.calls.some((c) => c.step === '6' && !c.dryRun && ['issues update', 'issues move', 'issues link', 'issues comment'].includes(c.command)), 'step 6 has no write without --dry-run')
+    assert.match(step(8), /without `--dry-run`/, 'step 8 runs the step 6 commands as writes')
+    assert.match(step(7), /whatever `write_policy.confirm` says/)
+    assert.match(step(7), /When the user declines, change nothing/)
+    assert.match(step(3), /is a guess/, 'a duplicate match is called a guess')
+    const text = lines.join('\n')
+    for (const needle of ['`discover` lists no labels', 'A proposed original cannot be read']) assert.ok(text.includes(needle), `the missing-cases section names: ${needle}`)
   })
 
   // The in_review assertion encodes the PMK-122 decision (follow-up 1 of the spec). Change it when that issue lands.
