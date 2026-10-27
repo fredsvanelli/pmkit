@@ -303,6 +303,8 @@ test('metrics aging refuses --since and a bad --until', () => {
 test('metrics cycle-time refuses a bound that is not a date', () => {
   const root = makeRepo('team')
   assert.equal(run(root, ['metrics', 'cycle-time', '--since', '2026-13-40', '--json']).status, 2)
+  assert.equal(run(root, ['metrics', 'cycle-time', '--since', '2026-02-30', '--json']).status, 2)
+  assert.equal(run(root, ['metrics', 'aging', '--until', '2026-02-30', '--json']).status, 2)
   const bad = run(root, ['metrics', 'cycle-time', '--until', '2026-10-08T1', '--json'])
   assert.equal(bad.status, 2)
   const error = JSON.parse(bad.stdout).error

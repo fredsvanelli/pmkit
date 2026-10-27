@@ -54,7 +54,9 @@ function dateText(name, value) {
 // A range bound: a date, or a date and time. Refuses a value that looks like a date but is not one.
 function rangeText(name, value) {
   dateText(name, value)
-  if (Number.isNaN(rangeInstant(value))) throw usageError(`--${name} must be a date as YYYY-MM-DD`)
+  const instant = rangeInstant(value)
+  // Date.parse rolls 2026-02-30 over to March 2, so compare the day it read with the day given.
+  if (Number.isNaN(instant) || new Date(instant).toISOString().slice(0, 10) !== String(value).slice(0, 10)) throw usageError(`--${name} must be a date as YYYY-MM-DD`)
   return value
 }
 
