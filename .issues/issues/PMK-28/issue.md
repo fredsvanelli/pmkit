@@ -2,7 +2,7 @@
 id: PMK-28
 title: Decide how pmkit authenticates to Linear
 type: task
-status: in_progress
+status: in_review
 priority: medium
 estimate: 2
 assignee: fred
@@ -10,7 +10,7 @@ parent: EPC-5
 milestone: linear
 branch: pmk-28-decide-how-pmkit-authenticates-to-linear
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-27T22:49:48Z
+updated: 2026-10-27T23:53:44Z
 ---
 
 ## Description
@@ -19,4 +19,4 @@ Source: Linear tab, Open questions ("personal API key or OAuth app. OAuth is req
 
 ## Acceptance criteria
 
-- [ ] An ADR in `docs/adr/` records the choice and the options
+- [x] An ADR in `docs/adr/` records the choice and the options
