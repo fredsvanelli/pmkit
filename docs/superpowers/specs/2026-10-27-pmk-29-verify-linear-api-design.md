@@ -1,6 +1,6 @@
 # PMK-29 design: verify the Linear API for recurring issues, project dependencies, releases and Insights
 
-Issue PMK-29, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: draft, waiting for the answers in "Open questions". Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
+Issue PMK-29, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: approved, with the user's answers applied in "Resolved questions". Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
@@ -44,7 +44,7 @@ The deliverable is a written note, plus the means to repeat the check. No adapte
 2. **Introspection plus read-only live queries, with a re-runnable script.** The script asks the schema for each feature's objects, then runs one list query per object to see whether the workspace answers. Docs evidence covers only the plan gate. Reads are free (Technical spec write policy) and the organization check is not needed for reads.
 3. **Approach 2 plus live writes on a dedicated test team.** Creates a release, a project relation and a template, then reads them back and deletes them. It proves write support and plan gating on creation. It needs a brief that authorizes writes and a new team, and it risks side effects on a real workspace.
 
-Chosen: approach 2. It answers "which API object exposes it" from the schema, which is what the criterion asks for, and needs no write. Approach 3 stays available for a later issue if the note leaves a gate in doubt (question 2).
+Chosen: approach 2. It answers "which API object exposes it" from the schema, which is what the criterion asks for, and needs no write. Approach 3 stays available for a later issue if the note leaves a gate in doubt (question 2, resolved as not now).
 
 ## Design
 
@@ -93,20 +93,21 @@ Observed while writing this spec (read-only introspection on the `acme` workspac
 
 - Releases. `Release`, `ReleasePipeline`, `ReleaseStage`, `releases`, `releasePipelines`, `releaseCreate`, `releaseComplete`, `issueToReleaseCreate` and an `Issue.releases` connection exist. Both list queries answer on the Free workspace (empty lists). Expected `yes`, read and write. The plan that gates creation is not shown by a read.
 - Dependencies between projects. `ProjectRelation` and `projectRelationCreate`, `Update` and `Delete` exist. `projectRelations` answers (empty list). The type has `anchorType` and `relatedAnchorType`, so a relation can also point at a milestone. The enum of `type` is not exposed under the name `ProjectRelationType`, so the builder reads the field's real type name. Expected `yes`, read and write.
-- Recurring issues. `Issue.recurringIssueTemplate` (type `Template`) exists and is not deprecated. `Template` has `templateData` and no schedule field, and the schema has no `RecurringIssueTemplate` type and no mutation with `recurr` in its name. So the API shows the link from an issue to the template that created it, but the schedule, and the creation of a recurring rule, is not visible. Expected: the builder decides between `no` (the API cannot define or read a schedule) and `yes` with access `read` (it reads which template created an issue). The rule "read-only link" above says `yes`, read, with the caveat. The builder checks `Template.type` values and the docs before fixing the answer. This is the weakest row and is question 1.
+- Recurring issues. `Issue.recurringIssueTemplate` (type `Template`) exists and is not deprecated. `Template` has `templateData` and no schedule field, and the schema has no `RecurringIssueTemplate` type and no mutation with `recurr` in its name. So the API shows the link from an issue to the template that created it, but not the schedule, and it cannot create a recurring rule. Decided (question 1, option a): `yes`, access `read`, caveat "schedule and rules are not in the API". The builder still checks the `Template.type` values and the docs and records them in the note; they can add to the caveat but not change the answer unless the schema shows a schedule field.
 - Insights. The schema has no type, query or mutation matching `insight`, `analytic` or `metric`. Expected `no`. The consequence for PMK-33 is that `native_metrics` on Linear is `derived` from issue history, never `native`.
 
 ### Script
 
 `scripts/lib/linear/verify-api.mjs` (builder's call on the name). It:
 
-- reads `process.env.LINEAR_API_KEY` and exits with code 2 and a one-line message when it is missing, without printing any part of it;
+- runs the live checks only when `PMKIT_LIVE=1` is set, in the pattern of `scripts/scenarios-live.mjs`. Without it the script prints one line saying it skipped and exits with code 0, and sends nothing. Its name does not end in `.test.mjs`, so `npm test` never runs it live;
+- with `PMKIT_LIVE=1`, reads `process.env.LINEAR_API_KEY` and exits with code 2 and a one-line message when it is missing, without printing any part of it;
 - sends GraphQL over `fetch` to `https://api.linear.app/graphql`, with the key in the `Authorization` header only;
 - runs the introspection and live queries of the table above and prints one JSON object per feature with `found` (types, fields, queries, mutations) and `live` (`ok`, `empty`, or the error code and message);
 - prints `organization.urlKey` so the note records which workspace was checked;
 - never writes: every operation is a query, and the script refuses to send a document that starts with `mutation`.
 
-A small pure function builds the list of matching names from a `__schema` result, so a unit test can cover the matching without a network. The test lives in `scripts/lib/linear/verify-api.test.mjs`, uses a trimmed schema fixture inline, and makes no network call. The fetch call stays in a separate function the test never calls.
+A small pure function builds the list of matching names from a `__schema` result, so a unit test can cover the matching without a network. The test lives in `scripts/lib/linear/verify-api.test.mjs`, uses a trimmed schema fixture inline, and makes no network call. The fetch call stays in a separate function the test never calls, and the script runs its main function only when it is the entry point, so importing it in the test starts nothing.
 
 ### Paid-plan features on a Free workspace
 
@@ -143,30 +144,16 @@ The Plan column and the Verified by column together tell PMK-33 how sure each an
 
 - The schema changes. Linear adds objects often (Releases appeared recently). The note records the date, and the script is the way to refresh it.
 - Free-plan limits hide a gate. A list query can pass on Free and creation can still fail. The Verified by column says so, and the note does not claim write support from a read.
-- Recurring issues have no clear API shape. The answer may be a judgment call (question 1).
+- Recurring issues have no clear API shape. The answer `yes` with access `read` is a judgment call (question 1), and the caveat states its limit.
 - Introspection could be disabled for a key type or an OAuth app. The personal key works today; PMK-28's auth decision may change the credential, so the script is re-run once after it.
 - `scripts/lib/linear/` holds a script before it holds an adapter. A reader may take it for adapter code. The note's header and the script's first comment say it is a verification tool.
 
-## Open questions
+## Resolved questions
 
-1. **How is "recurring issues" answered if the API only exposes the link from an issue to its template?**
-   - (a) `yes`, access `read`, caveat "schedule and rules are not in the API". PMK-33 can show which issues came from a recurring template but cannot create a recurring rule.
-   - (b) `no`, because the feature is the schedule, and the API neither reads nor writes it.
-   - (c) Hold the answer until a live write on a test team shows whether `templateCreate` accepts a schedule.
-   - Recommendation: (a), after the builder checks the `Template` type values and the docs. It states what the API does, and PMK-33 treats the capability as absent for writes either way.
-2. **Should this issue prove write support and plan gating with a dedicated test team?**
-   - (a) No. Read-only, as in this stage's brief. Gated writes stay `schema, docs`.
-   - (b) Yes, in a follow-up issue with its own brief and a new team, never ACME.
-   - (c) Yes, in this issue.
-   - Recommendation: (a) now, and (b) only if PMK-33 needs a write answer it cannot get from the schema.
-3. **Keep the script in the repository?**
-   - (a) Keep `verify-api.mjs` and its unit test in `scripts/lib/linear/`.
-   - (b) Keep only the note and put the script and its output in the note as text.
-   - Recommendation: (a). The check can be repeated after Linear changes its API or on another plan.
-4. **Where does the folder live if the Linear adapter ends up elsewhere?**
-   - (a) `scripts/lib/linear/`, matching `scripts/lib/github/` and `scripts/lib/local/`.
-   - (b) `scripts/lib/trackers/linear/`, if the epic later groups adapters.
-   - Recommendation: (a). It matches the existing layout, and a later move is one `git mv` plus a path edit in the issues that cite it.
+1. **Recurring issues.** Option (a). `yes`, access `read`, caveat "schedule and rules are not in the API". PMK-33 can show which issues came from a recurring template and treats creating a recurring rule as absent.
+2. **Proof of writes with a test team.** Option (a). None in this issue. Gated writes stay `schema, docs`. A later issue can add them with its own brief and a new team, never ACME.
+3. **The script.** Option (a). `scripts/lib/linear/verify-api.mjs` stays in the repository with its offline unit test. The live run only reads and only runs with `PMKIT_LIVE=1`.
+4. **The folder.** Option (a). `scripts/lib/linear/`, and the note is `scripts/lib/linear/API-VERIFICATION.md`.
 
 ## Left to the builder
 
