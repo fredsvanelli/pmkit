@@ -270,12 +270,15 @@ export function sprintDoc(data) {
   const counts = CATEGORIES.filter((category) => (totals.byCategory[category] ?? 0) > 0).map((category) => `${category} ${totals.byCategory[category]}`)
   const sizes = [plural(totals.issues, 'issue'), ...(addsUp(data.unit) ? [`${amount(totals.points, data.unit)} planned`, `${amount(totals.pointsDone, data.unit)} done`] : [])]
   const sections = [{ heading: 'Totals', lines: [sizes.join(', '), ...(counts.length > 0 ? [counts.join(', ')] : [])], table: null, empty: null }]
-  if (data.capacity.length > 0) {
+  const capacityRows = addsUp(data.unit) ? data.capacity : data.capacity.filter((r) => r.capacity !== null)
+  if (capacityRows.length > 0) {
     const cell = (value) => (value === null ? '' : String(value))
     sections.push({
       heading: 'Capacity',
       lines: [],
-      table: { header: ['Member', 'Capacity', 'Assigned', 'Done'], rows: data.capacity.map((r) => [r.member, cell(r.capacity), cell(r.assigned), cell(r.done)]) },
+      table: addsUp(data.unit)
+        ? { header: ['Member', 'Capacity', 'Assigned', 'Done'], rows: capacityRows.map((r) => [r.member, cell(r.capacity), cell(r.assigned), cell(r.done)]) }
+        : { header: ['Member', 'Capacity'], rows: capacityRows.map((r) => [r.member, cell(r.capacity)]) },
       empty: null,
     })
   }

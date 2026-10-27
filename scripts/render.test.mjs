@@ -395,6 +395,14 @@ describe('sprintDoc', () => {
     assert.ok(!sprintDoc(sprintData({ capacity: [] })).sections.some((s) => s.heading === 'Capacity'))
   })
 
+  test('with sizes, shows the capacity alone: sizes do not add up, so Assigned, Done and the Unassigned row would be wrong', () => {
+    const data = sprintData({ unit: 'sizes', capacity: [{ member: 'Fred Vanelli', capacity: 8, assigned: 0, done: 0 }, { member: 'Unassigned', capacity: null, assigned: 0, done: 0 }] })
+    const capacity = sprintDoc(data).sections[1]
+    assert.deepEqual(capacity.table.header, ['Member', 'Capacity'])
+    assert.deepEqual(capacity.table.rows, [['Fred Vanelli', '8']])
+    assert.ok(!sprintDoc(sprintData({ unit: 'sizes', capacity: [{ member: 'Unassigned', capacity: null, assigned: 0, done: 0 }] })).sections.some((s) => s.heading === 'Capacity'))
+  })
+
   test('writes one issue section per category with issues', () => {
     assert.deepEqual(doc.sections.slice(2).map((s) => s.heading), ['Todo (1)', 'In progress (2)', 'In review (1)'])
     assert.deepEqual(doc.sections[3].table.header, ['ID', 'Title', 'Type', 'Priority', 'Assignee', 'Estimate', 'Notes'])

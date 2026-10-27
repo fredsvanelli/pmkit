@@ -156,7 +156,7 @@ Content, in order:
 
 1. Title: the sprint name, then its id, `start` to `end`, its state, and its goal when it has one. Then the tracker state line.
 2. Totals: issues, points planned, points done, and the number of issues per category.
-3. Capacity, when the sprint has any: one row per member with the capacity, the assigned points and the points done. Members follow the config order. Unassigned points get their own row.
+3. Capacity, when the sprint has any: one row per member with the capacity, the assigned points and the points done. Members follow the config order. Unassigned points get their own row. With `estimate.unit: sizes` the estimates do not add up, so the table has only Member and Capacity, lists only members with a capacity, and the section is left out when none has one.
 4. One section per category with issues in the sprint, in category order, each with the board's issue table. Categories with no issues are left out, since the totals already count them.
 
 Data: `getSprint` through `listCycles`, `cycleIssues(id)` and `getCapacity(id)`. Days off do not show.
