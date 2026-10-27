@@ -12,6 +12,10 @@ _Avoid_: backend, board, project management tool
 The service that hosts the repository and its pull requests. It is separate from the tracker. pmkit reaches GitHub through the `gh` and `git` CLIs and holds no token. `git_host.system` is `github` or `none`.
 _Avoid_: forge, remote, provider
 
+**Workspace**:
+The Linear organization that a personal API key belongs to, named by its URL key in `tracker.scope.workspace`. The key comes from `LINEAR_API_KEY`, and pmkit stores it nowhere.
+_Avoid_: organization, account
+
 **Adapter**:
 The code that implements the contract for one tracker or one git host and translates between that system and the common model. Only adapters know a specific system. The Local tracker adapter lives in `scripts/lib/local/`.
 _Avoid_: driver, connector, integration
