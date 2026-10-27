@@ -324,4 +324,6 @@ test('doneInRange, leadTimes and aging skip an event time that is not a date', (
   assert.deepEqual(leadTimes(events, { categoryOf }), [])
   assert.deepEqual(cycleTimes({ 'ISS-1': [move('2026-10-01T08:00:00Z', 'doing'), move('yesterday', 'done')] }, { categoryOf }), [])
   assert.deepEqual(aging({ 'ISS-2': [move('yesterday', 'doing')] }, { categoryOf, asOf: AS_OF }), [])
+  const later = { 'ISS-3': [move('2026-10-01T08:00:00Z', 'doing'), move('yesterday', 'done')] }
+  assert.deepEqual(aging(later, { categoryOf, asOf: AS_OF }).map((i) => i.issue), ['ISS-3'])
 })

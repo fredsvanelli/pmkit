@@ -156,7 +156,8 @@ export function aging(eventsByIssue, { categoryOf, asOf }) {
     let startedAt
     let archived = false
     for (const event of events) {
-      if (eventInstant(event.at) > limit) continue
+      const instant = eventInstant(event.at)
+      if (Number.isNaN(instant) || instant > limit) continue
       if (event.op === 'archive') archived = true
       const moved = movedTo(event)
       if (moved === undefined) continue
