@@ -50,7 +50,7 @@ Acceptance criteria:
 `$ARGUMENTS` takes `[since <date>] [until <date>]`, both as `YYYY-MM-DD`. `argument-hint: "[since <date>] [until <date>]"`, the same style as `/pmkit:team:standup`.
 
 - `until` defaults to today.
-- `since` defaults to the start of a window of `defaults.sprint_length_days` days that ends on `until` (14 when missing in `.issues/config.yaml`). Decision 1 fixes this default.
+- `since` defaults to `until` minus (`defaults.sprint_length_days` minus 1) days (14 when missing in `.issues/config.yaml`), so 14 days that end on 2026-10-27 start on 2026-10-14. The command counts real calendar days, including February. Decision 1 fixes this default.
 
 A command needs both bounds, because the previous period has to have the same length. A `since` after `until` is a mistake in the input, so the command asks for corrected dates and does not call the CLI.
 
@@ -69,11 +69,11 @@ For `S = 2026-10-06` and `U = 2026-10-08`, `N` is 3 and the previous period runs
 
 Each CLI call ends with `--json`, as the scenario test requires.
 
-1. Read the conventions. Run `capabilities --json` and read `native_metrics`. When its path is `derived` and `detail.source` is `events`, go on and use the line in Output. When the path is `absent`, stop and say the tracker has no metrics, with the manifest's `enableHint`.
+1. Read the conventions. Run `capabilities --json` and read `native_metrics`. When the path is `absent`, stop and say the tracker has no metrics, with the manifest's `enableHint`. Otherwise go on, and name the path from the manifest in the source line (conventions rule 4).
 2. Resolve the period and the previous period from the parameters, as above.
-3. For the period, run `metrics cycle-time --since S --until U`, `metrics lead-time --since S --until U`, `metrics throughput --since S --until U` and `metrics aging --until U`.
+3. For the period, run `metrics cycle-time --since S --until U`, `metrics lead-time --since S --until U`, `metrics throughput --since S --until U` and `metrics aging --until U`. When `U` is today, aging is measured at the end of that day, not at the current time, because the CLI reads a date-only `--until` as the end of that day.
 4. For the previous period, run the same four calls with the previous dates. `metrics aging` takes only `--until`, so the previous call gives the work in progress at the end of the previous period. This is the "aging at the end of each period" that PMK-18 chose for the trend.
-5. Compute bug rate for each period as `byType.bug` (0 when the key is missing) divided by `count` of `metrics throughput`, shown as a percentage with the two counts, for example `50% (1 of 2)`. When `count` is 0, bug rate is `n/a`. PMK-18 defines bug rate as bugs done in the period over issues done in the period.
+5. Compute bug rate for each period as `byType.bug` (0 when the key is missing) divided by `count` of `metrics throughput`, rounded to a whole percent and shown with the two counts, for example `50% (1 of 2)`. When `count` is 0, bug rate is `n/a`. PMK-18 defines bug rate as bugs done in the period over issues done in the period.
 6. Compare each metric with its previous value as the trend.
 
 The command runs the eight calls in the order above, and none writes. The procedure has no confirmation point.
@@ -82,9 +82,9 @@ The command runs the eight calls in the order above, and none writes. The proced
 
 For cycle time, lead time and aging, the number is the median in days, with `p85` next to it and the `count` it comes from. For throughput, the number is `count`. For bug rate, it is the percentage.
 
-The change column is the plain difference of the two values, in the unit of the metric, with a sign: `+1.5 days`, `-2 issues`, `+10 points` for bug rate (percentage points). The word beside it is `up`, `down` or `same`, by comparing the two values as the CLI printed them. The command gives no verdict such as "better" or "worse" (decision 3).
+The change column is the plain difference of the two values, in the unit of the metric, with a sign: `+1.5 days`, `-2 issues`, `+10 points` for bug rate (percentage points). The word beside it is `up`, `down` or `same`, by comparing the two values as the CLI printed them (the rounded values for bug rate). The command gives no verdict such as "better" or "worse" (decision 3).
 
-The change is `n/a` when either period has a count of 0, since a median does not exist then. The command does not turn this into a percentage change, so it does no division beyond bug rate.
+The change is `n/a` for cycle time, lead time and aging when either period has a count of 0, since a median does not exist then, and for bug rate when either period has a throughput `count` of 0. Throughput always shows its difference, so 0 issues against 3 reads `+3 issues, up`. The command does not turn this into a percentage change, so it does no division beyond bug rate.
 
 When either period has fewer than 5 issues behind a metric, the output adds one line saying the sample is small, with the counts.
 
@@ -95,13 +95,13 @@ A table first, then the source line and the short notes.
 ```text
 Flow metrics, 2026-10-06 to 2026-10-08, against 2026-10-03 to 2026-10-05
 
-Metric       | Period            | Previous         | Change
--------------|-------------------|------------------|------------------
-Cycle time   | 7.8 days (n 2)    | 4.3 days (n 1)   | +3.5 days, up
-Lead time    | 11.3 days (n 2)   | 8.3 days (n 1)   | +3.0 days, up
-Throughput   | 2 issues          | 1 issue          | +1 issue, up
-Aging        | none              | 6.1 days (n 2)   | n/a
-Bug rate     | 50% (1 of 2)      | 100% (1 of 1)    | -50 points, down
+Metric       | Period                    | Previous                | Change
+-------------|---------------------------|-------------------------|-------------------
+Cycle time   | 7.8 days (p85 8.2, n 2)   | 4.3 days (p85 4.3, n 1) | +3.5 days, up
+Lead time    | 11.3 days (p85 12.1, n 2) | 8.3 days (p85 8.3, n 1) | +3.0 days, up
+Throughput   | 2 issues                  | 1 issue                 | +1 issue, up
+Aging        | none                      | 6.1 days (p85 7.0, n 2) | n/a
+Bug rate     | 50% (1 of 2)              | 100% (1 of 1)           | -50 points, down
 ```
 
 The cycle time, lead time and throughput rows are illustrative. The scenario run on the `team` fixture fixes the real ones.
@@ -110,7 +110,7 @@ After the table:
 
 - The source line. "Computed from the event history of each issue (`events.jsonl`), not read from a tracker report." It takes this wording from the manifest path `derived` with source `events`, as conventions rule 4 asks.
 - Cycle time and lead time count the issues done in the period. Aging counts the issues in work at the end of the period. Say so in one line, because the two groups answer different questions.
-- "DORA metrics are not included: the tracker holds no deployment data."
+- "This report has no DORA metrics, because the tracker holds no deployment data."
 - The small-sample line, when it applies.
 
 Lead with the table. Write the dates in full, and no issue IDs appear, since the CLI's per-issue lists are not part of the answer.
@@ -129,9 +129,9 @@ The scenario rules match calls by flag names. Each distinct call of the procedur
 
 ### Edge cases for "If something is missing"
 
-- No events in the period: say so, show the previous period's numbers, and give the trend as `n/a`.
+- No events in the period: say so and show the previous period's numbers. The change is `n/a` for the medians and bug rate, and throughput still shows its difference.
 - No work in progress at one end date: aging shows `none`, and the change is `n/a`.
-- A new tracker with no history before the previous period: the previous column is `n/a` and the command says there is no earlier data.
+- All four calls for the previous period return a `count` of 0: the command says there is no earlier data. The change follows the trend rules above.
 - `since` after `until`, or a date that does not exist: ask for corrected dates. A CLI `INVALID_INPUT` follows the conventions' rules for reading errors.
 - `native_metrics` absent: stop, as in step 1.
 - A CLI error: apply the rules for reading errors in the conventions.
