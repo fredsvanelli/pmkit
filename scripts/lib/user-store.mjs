@@ -5,6 +5,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { PmkitError } from './errors.mjs'
+import { setScalar } from './yaml-edit.mjs'
+import { parseYaml } from './yaml.mjs'
 
 const NAME = /^[a-z0-9][a-z0-9._-]*$/
 
@@ -176,4 +178,63 @@ export function cacheDelete(scope, key, options) {
 export function cacheClear(scope, options) {
   const base = path.join(userDir(options), 'cache')
   fs.rmSync(scope === undefined ? base : path.join(base, checkName('scope', scope)), { recursive: true, force: true })
+}
+
+function defaultsFile(options) {
+  return path.join(userDir(options), 'defaults.yaml')
+}
+
+function readDefaultsText(file) {
+  try {
+    return fs.readFileSync(file, 'utf8')
+  } catch (error) {
+    if (error.code === 'ENOENT') return undefined
+    throw error
+  }
+}
+
+function parseDefaults(text, file) {
+  let map
+  try {
+    map = parseYaml(text)
+  } catch (error) {
+    throw new PmkitError('INVALID_INPUT', `The defaults file ${file} does not parse: ${error.message}`, `Fix the file by hand or delete it.`)
+  }
+  if (map === null || typeof map !== 'object' || Array.isArray(map)) {
+    throw new PmkitError('INVALID_INPUT', `The defaults file ${file} is not a map of keys and values.`, 'Fix the file by hand or delete it.')
+  }
+  return map
+}
+
+/** The personal defaults as a map. An absent file gives {}. */
+export function defaultsGet(options) {
+  const file = defaultsFile(options)
+  const text = readDefaultsText(file)
+  return text === undefined ? {} : parseDefaults(text, file)
+}
+
+/** Sets one scalar default and keeps the comments and other keys of the file. */
+export function defaultsSet(key, value, options) {
+  checkName('default key', key)
+  if (isCredentialKey(key)) throw refuse(`key ${key}`)
+  if (!['string', 'number', 'boolean'].includes(typeof value)) {
+    throw new PmkitError('INVALID_INPUT', `The default ${key} must be a string, number or boolean.`, 'Store one scalar per key.')
+  }
+  if (typeof value === 'string' && isCredentialString(value)) throw refuse(`key ${key}`)
+  const file = defaultsFile(options)
+  const text = readDefaultsText(file) ?? ''
+  parseDefaults(text, file)
+  writeAtomic(file, setScalar(text, [key], value), options)
+}
+
+/** Removes one default. A missing key or file is fine. */
+export function defaultsUnset(key, options) {
+  checkName('default key', key)
+  const file = defaultsFile(options)
+  const text = readDefaultsText(file)
+  if (text === undefined) return
+  parseDefaults(text, file)
+  const lines = text.split('\n')
+  const kept = lines.filter((line) => !(line.startsWith(`${key}:`) && (line.length === key.length + 1 || /\s/.test(line[key.length + 1]))))
+  if (kept.length !== lines.length) writeAtomic(file, kept.join('\n'), options)
 }

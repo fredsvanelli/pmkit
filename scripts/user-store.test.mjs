@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { tempDir, userStoreEnv } from './test-helpers.mjs'
-import { isCredentialKey, assertOutsideRepo, cacheClear, cacheDelete, cacheGet, cachePut, repoHash, userDir } from './lib/user-store.mjs'
+import { defaultsGet, defaultsSet, defaultsUnset, isCredentialKey, assertOutsideRepo, cacheClear, cacheDelete, cacheGet, cachePut, repoHash, userDir } from './lib/user-store.mjs'
 
 test('userStoreEnv returns a home folder and the four variables under it', () => {
   const { home, env } = userStoreEnv()
@@ -280,4 +280,73 @@ test('the store never creates a credentials folder', () => {
   cacheClear('s', options())
   assert.equal(fs.existsSync(path.join(dir, 'credentials')), false)
   assert.deepEqual(fs.readdirSync(dir).sort(), ['cache'])
+})
+
+test('defaultsGet returns {} with no file and the parsed map otherwise', () => {
+  const { dir, options } = store()
+  assert.deepEqual(defaultsGet(options()), {})
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'defaults.yaml'), 'output: json\neditor: vim\n')
+  assert.deepEqual(defaultsGet(options()), { output: 'json', editor: 'vim' })
+})
+
+test('defaultsGet throws INVALID_INPUT with the path for a list or an unparseable file', () => {
+  const { dir, options } = store()
+  fs.mkdirSync(dir, { recursive: true })
+  const file = path.join(dir, 'defaults.yaml')
+  for (const text of ['- a\n- b\n', 'key: [unclosed\n', 'just text\n']) {
+    fs.writeFileSync(file, text)
+    assert.throws(() => defaultsGet(options()), (error) => error.code === 'INVALID_INPUT' && error.message.includes(file) && Boolean(error.nextStep), text)
+  }
+})
+
+test('defaultsSet creates the file with mode 0600 in a 0700 folder', { skip: process.platform === 'win32' }, () => {
+  const { dir, options } = store()
+  defaultsSet('output', 'json', options())
+  assert.deepEqual(defaultsGet(options()), { output: 'json' })
+  assert.equal(fs.statSync(dir).mode & 0o777, 0o700)
+  assert.equal(fs.statSync(path.join(dir, 'defaults.yaml')).mode & 0o777, 0o600)
+})
+
+test('defaultsSet keeps comments and other keys and replaces the changed value', () => {
+  const { dir, options } = store()
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'defaults.yaml'), '# note\noutput: text\neditor: vim\n')
+  defaultsSet('output', 'json', options())
+  defaultsSet('pager', true, options())
+  assert.equal(fs.readFileSync(path.join(dir, 'defaults.yaml'), 'utf8'), '# note\noutput: json\neditor: vim\npager: true\n')
+})
+
+test('defaultsUnset removes one key, keeps the rest and tolerates a missing key or file', () => {
+  const { dir, options } = store()
+  defaultsUnset('output', options())
+  assert.equal(fs.existsSync(dir), false)
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'defaults.yaml'), '# note\noutput: json\neditor: vim\n')
+  defaultsUnset('output', options())
+  defaultsUnset('absent', options())
+  assert.equal(fs.readFileSync(path.join(dir, 'defaults.yaml'), 'utf8'), '# note\neditor: vim\n')
+})
+
+test('defaultsSet and defaultsUnset reject bad keys, credentials and non-scalars', () => {
+  const { dir, options } = store()
+  for (const key of ['Upper', 'a b', '', '../x']) assert.throws(() => defaultsSet(key, 'v', options()), (error) => error.code === 'INVALID_INPUT', key)
+  for (const key of ['apiKey', 'token']) {
+    // Credential-shaped names fail the name pattern (uppercase) or the credential check.
+    assert.throws(() => defaultsSet(key, SENTINEL, options()), (error) => error.code === 'INVALID_INPUT' && !error.message.includes(SENTINEL), key)
+    assert.throws(() => defaultsSet(key.toLowerCase(), SENTINEL, options()), (error) => error.code === 'INVALID_INPUT' && !error.message.includes(SENTINEL), key)
+  }
+  const secret = `lin_api_${'q'.repeat(24)}`
+  assert.throws(() => defaultsSet('note', secret, options()), (error) => error.code === 'INVALID_INPUT' && !error.message.includes(secret))
+  for (const value of [{ a: 1 }, ['x'], null, undefined]) assert.throws(() => defaultsSet('output', value, options()), (error) => error.code === 'INVALID_INPUT')
+  assert.throws(() => defaultsUnset('Upper', options()), (error) => error.code === 'INVALID_INPUT')
+  assert.equal(fs.existsSync(dir), false)
+})
+
+test('defaultsSet refuses a store path inside a repository', () => {
+  const repo = tempDir('pmkit-repo-')
+  fs.mkdirSync(path.join(repo, '.git'))
+  const home = tempDir('pmkit-home-')
+  assert.throws(() => defaultsSet('output', 'json', { env: { PMKIT_HOME: path.join(repo, 'store') }, homedir: () => home }), (error) => error.code === 'INVALID_INPUT')
+  assert.equal(fs.existsSync(path.join(repo, 'store')), false)
 })
