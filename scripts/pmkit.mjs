@@ -11,7 +11,7 @@ import { PmkitError, isPmkitError } from './lib/errors.mjs'
 import { changeLines, dependencyText, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, releaseRecord, sprintRecord, table } from './lib/format.mjs'
 import { aging, cycleTimes, doneInRange, lastEntry, leadTimes, rangeInstant, summary, throughput, velocity } from './lib/metrics.mjs'
 import { dependencyMap, serializable } from './lib/dependencies.mjs'
-import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
+import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { addMapEntry, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
@@ -850,7 +850,6 @@ export function tagWarning(root, tag, env) {
   return `cannot check tag ${tag}: ${first || `git exited with ${result.status}`}`
 }
 
-const NO_HOST_WARNING = 'so issues are stalled by tracker activity only and pull requests and CI are not checked'
 const errorOf = (error) => ({ code: error.code, message: error.message, nextStep: error.nextStep })
 
 /** The risk radar: reads the tracker and, with a git host, the open pull requests and the runs on the default branch. Writes nothing. */
@@ -920,9 +919,9 @@ function runRisks(ctx) {
     warnings.push(...hostWarnings)
   } catch (error) {
     if (isPmkitError(error) && error.code === 'NOT_SUPPORTED') {
-      warnings.push(`no git host is configured, ${NO_HOST_WARNING}`)
+      warnings.push(`no git host is configured, ${NO_HOST}`)
     } else if (stopsHost(error)) {
-      warnings.push(`${error.message}, ${NO_HOST_WARNING}; next: ${error.nextStep}`)
+      warnings.push(`${error.message}, ${NO_HOST}; next: ${error.nextStep}`)
     } else throw error
     gitHost = { system, available: false, reason: errorOf(error) }
     openPrsByBranch = Object.create(null)

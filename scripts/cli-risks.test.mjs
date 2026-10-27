@@ -96,7 +96,7 @@ test('risks without a git host lists tracker risks and marks pull requests and C
 
   const text = call(root, env, ['risks'])
   assert.equal(text.code, 0, text.stderr)
-  assert.ok(text.stdout.startsWith('risks on 2026-10-23: stalled after 3 business days without activity, status updates due every 14 days\ngit host: none, so issues are stalled by tracker activity only and PRs and CI are not checked\n'), text.stdout)
+  assert.ok(text.stdout.startsWith('risks on 2026-10-23: stalled after 3 business days without activity, status updates due every 14 days\ngit host: none, so issues are stalled by tracker activity only and pull requests and CI are not checked\n'), text.stdout)
 })
 
 test('risks with the GitHub host lists stalled pull requests, merged branches and failing checks', () => {

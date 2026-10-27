@@ -156,7 +156,8 @@ export function failingPullRequests(prs) {
   return rows.sort((a, b) => a.number - b.number)
 }
 
-const NO_HOST = 'so issues are stalled by tracker activity only and PRs and CI are not checked'
+/** The consequence of having no usable git host, shared by the text head and the CLI warning. */
+export const NO_HOST = 'so issues are stalled by tracker activity only and pull requests and CI are not checked'
 
 function hostLine(gitHost) {
   if (gitHost.available) return `git host: ${gitHost.system}`

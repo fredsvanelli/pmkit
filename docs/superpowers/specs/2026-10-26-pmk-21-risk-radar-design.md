@@ -166,7 +166,7 @@ JSON shape (`--json`):
 - `problems` holds issue files that do not parse, from `searchIssues`, as `issues list` reports them. An unreadable blocker is in the blocker row with its error.
 - Every list goes in creation order, oldest first (conventions, Issue tables). PRs go by number. Epics go in the order of `listDeliverables`.
 
-The text output has one section per list, in the order of criterion 1, each a table or `none` or `not checked: <reason>`. Issue tables use the five convention columns (ID, title, status, assignee, estimate) and add their own: "blocked by" for blockers, "idle days" and "reason" for stalled issues. A head line gives the date, the thresholds and the git host path, for example `git host: none, so issues are stalled by tracker activity only and PRs and CI are not checked`.
+The text output has one section per list, in the order of criterion 1, each a table or `none` or `not checked: <reason>`. Issue tables use the five convention columns (ID, title, status, assignee, estimate) and add their own: "blocked by" for blockers, "idle days" and "reason" for stalled issues. A head line gives the date, the thresholds and the git host path, for example `git host: none, so issues are stalled by tracker activity only and pull requests and CI are not checked`.
 
 ### `scripts/lib/risks.mjs`
 

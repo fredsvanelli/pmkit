@@ -274,7 +274,7 @@ test('risksText says none for an empty list', () => {
 test('risksText without a git host says why and marks the host lists as not checked', () => {
   const reason = { code: 'NOT_SUPPORTED', message: 'this repository has no git host configured', nextStep: 'x' }
   const text = risksText(baseReport({ gitHost: { system: 'none', available: false, reason }, stalledPullRequests: null, ci: null }))
-  assert.equal(text.split('\n')[1], 'git host: none, so issues are stalled by tracker activity only and PRs and CI are not checked')
+  assert.equal(text.split('\n')[1], 'git host: none, so issues are stalled by tracker activity only and pull requests and CI are not checked')
   assert.ok(text.includes('stalled pull requests\nnot checked: this repository has no git host configured'), text)
   assert.ok(text.includes('failing CI on default branch\nnot checked: this repository has no git host configured'), text)
   assert.ok(text.includes('pull requests with failing checks\nnot checked: this repository has no git host configured'), text)
@@ -283,7 +283,7 @@ test('risksText without a git host says why and marks the host lists as not chec
 test('risksText names an unavailable host and its reason', () => {
   const reason = { code: 'AUTH', message: 'GitHub CLI is not logged in', nextStep: 'gh auth login' }
   const text = risksText(baseReport({ gitHost: { system: 'github', available: false, reason }, stalledPullRequests: null, ci: null }))
-  assert.equal(text.split('\n')[1], 'git host: github is not available (GitHub CLI is not logged in), so issues are stalled by tracker activity only and PRs and CI are not checked')
+  assert.equal(text.split('\n')[1], 'git host: github is not available (GitHub CLI is not logged in), so issues are stalled by tracker activity only and pull requests and CI are not checked')
 })
 
 test('risksText shows a failed list with its error', () => {
