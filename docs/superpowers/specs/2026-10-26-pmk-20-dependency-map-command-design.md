@@ -1,6 +1,6 @@
 # PMK-20 design: the dependency-map command
 
-Issue PMK-20, epic EPC-3 (Phase 2 commands), milestone `phase-2-commands`. Status: draft from an autonomous brainstorm, waiting on the open questions at the end. Calls marked **(builder's call)** were made while writing this spec, and the user has not confirmed them.
+Issue PMK-20, epic EPC-3 (Phase 2 commands), milestone `phase-2-commands`. Status: approved. On 2026-10-26 the user answered the four open questions and took the recommended option of each, as recorded under "Answered questions". Calls marked **(builder's call)** were made while writing this spec, and none of them changes an acceptance criterion.
 
 ## Problem
 
@@ -31,7 +31,7 @@ Acceptance criteria:
 
 ## Non-goals
 
-- Downstream impact, meaning what the target blocks outside itself. See open question 4.
+- Downstream impact, meaning what the target blocks outside itself. Question 4 chose upstream only. A "waiting on this" list is a follow-up issue.
 - Dates. The critical path is a length in estimate units or issues, not a forecast. `/pmkit:report:status` already compares progress with the target date.
 - Remaining work on an issue in progress. An open issue counts its full estimate, because the tracker holds no remaining-work field.
 - More than one critical path. When two chains tie, the result names one, by the tie rule below.
@@ -83,7 +83,7 @@ Steps:
 
 Missing and unreadable blockers. A `blockedBy` entry with no issue in `issues` is a node marked `missing`. An entry whose file `searchIssues` reported as a problem (a `CONFLICT` from merge markers, for example) is marked `unreadable`. Both count as open, as **Blocked** already says for a missing blocker. They have no estimate and no blockers of their own.
 
-A sub-issue does not block its parent here. The hierarchy decides the scope, and only blocker edges decide the chain and the critical path. Open question 3 asks whether the user wants sub-issue edges too.
+A sub-issue does not block its parent here. The hierarchy decides the scope, and only blocker edges decide the chain and the critical path (question 3, answer A).
 
 ### Weights
 
@@ -93,11 +93,11 @@ The weight of a node follows the rule `metrics velocity` already uses for its un
 - Otherwise each node weighs 1 and the unit is `issues`.
 - A tracker with `estimate.unit: sizes` and string sizes (`S`, `M`) has no numeric estimates, so it falls to issue counts.
 
-The result lists the nodes on the critical path that have no numeric estimate, so the command can say "ISS-X has no estimate and counts as 0". Open question 1 asks whether this rule is the right one.
+The result lists the nodes on the critical path that have no numeric estimate, so the command can say "ISS-X has no estimate and counts as 0". Question 1 chose this rule (answer A).
 
 ### CLI
 
-One entry in `COMMANDS` in `scripts/pmkit.mjs`, in the `issues` group because it takes an issue or an epic, as `issues list --parent` does **(builder's call on the group; the name follows open question 2)**:
+One entry in `COMMANDS` in `scripts/pmkit.mjs`, in the `issues` group because it takes an issue or an epic, as `issues list --parent` does (question 2, answer A):
 
 | Command | Text output | JSON |
 |---|---|---|
@@ -171,7 +171,7 @@ The second line changes with the reason: `every blocker of EPC-4H7V is done or c
 
 ### The command file
 
-`commands/issues/dependencies.md`, so `/pmkit:issues:dependencies <id>` **(the name follows open question 2)**. It has the six sections `plugin.test.mjs` checks, and its first step reads the conventions.
+`commands/issues/dependencies.md`, so `/pmkit:issues:dependencies <id>` (question 2, answer A). It has the six sections `plugin.test.mjs` checks, and its first step reads the conventions.
 
 - Parameters: `id` (required), an issue ID or an epic ID. Without one, ask for it, as `/pmkit:issues:summary` does.
 - Step 1 runs `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues dependencies <id> --json`.
@@ -216,14 +216,14 @@ The CLI entry is a read. It writes no issue, epic, sprint or event file, and it 
 | Decision | Reason |
 |---|---|
 | Compute in a pure module over `getIssue`, `getDeliverable`, `searchIssues` and `capabilities` | ADR-0002 puts computation in the CLI. `metrics.mjs` set the pure-module pattern. No contract change, so every adapter gets the command. |
-| The hierarchy sets the scope, and blocker edges set the chain (default for open question 3) | `CONTEXT.md` defines **Blocked** by `blocked_by` only. A parent's own estimate often overlaps its sub-issues' estimates, so counting both would inflate the path. |
+| The hierarchy sets the scope, and blocker edges set the chain (question 3, answer A) | `CONTEXT.md` defines **Blocked** by `blocked_by` only. A parent's own estimate often overlaps its sub-issues' estimates, so counting both would inflate the path. |
 | Follow only open blockers. Count resolved edges, do not show them | **Blocked** treats a terminal blocker as no blocker. The count tells the user the links exist. |
 | Missing and unreadable blockers count as open, with no weight | **Blocked** already counts a missing blocker as blocking. Hiding them would break the first anti-goal. |
 | An archived blocker that is not terminal stays in the chain, marked archived | `isBlocked` reads archived issues for the same reason. The scope itself skips archived issues, as `epic progress` does. |
 | Upstream blockers bring their blockers, not their sub-issues | The chain answers "what must finish first". Pulling in sub-issues of an outside blocker would turn the map into the whole tracker. |
 | Break a hand-made loop and warn, instead of failing | The second anti-goal. `validate` and `/pmkit:local:doctor` already own the fix. |
 | A scope issue with no blocker is a chain of one | That is the standard critical path. A large lone issue can set the finish date. |
-| Weights follow the `metrics velocity` unit rule (default for open question 1) | The same tracker then reports one unit across velocity and the critical path. |
+| Weights follow the `metrics velocity` unit rule (question 1, answer A) | The same tracker then reports one unit across velocity and the critical path. |
 | Ties go to creation order | The conventions order every pick by creation, oldest first. |
 | Related links appear only in the hierarchy-only output | The catalog names them as the fallback. With blockers, they add rows that do not change the answer. |
 | No `pr sync` before the map | Acceptance criterion 4. A user who wants fresh PR state runs `/pmkit:issues:mine` or `/pmkit:report:status` first. |
@@ -237,7 +237,9 @@ The CLI entry is a read. It writes no issue, epic, sprint or event file, and it 
 - Partial estimates bend the critical path toward estimated issues. The output names each unestimated node on the path, so the user sees why.
 - The `team` fixture's conflicted ISS-3Q6T has no readable parent, so the map cannot tell whether it belongs to EPC-2M9D. It prints a warning and stays out of the scope. A blocker that points at it shows as unreadable.
 
-## Open questions
+## Answered questions
+
+The user answered these on 2026-10-26 and took the recommended option of each. The options stay for the record.
 
 1. **What length does the critical path measure?** It decides which chain the command calls critical.
    - A. The `metrics velocity` rule: estimates when any open node has a numeric one, unestimated nodes weigh 0 and are named; issue counts otherwise.
@@ -245,7 +247,7 @@ The CLI entry is a read. It writes no issue, epic, sprint or event file, and it 
    - C. Always the number of issues in the chain.
    - D. Both lengths in the result, and the command shows the estimate one first.
 
-   Recommendation: A. It matches the unit velocity already reports, and naming the unestimated nodes keeps the 0 visible. B falls to counts on most real trackers, where some issues lack an estimate.
+   Decision: A. It matches the unit velocity already reports, and naming the unestimated nodes keeps the 0 visible. B falls to counts on most real trackers, where some issues lack an estimate.
 
 2. **What is the command called?** The name is user-facing and the CLI command follows it.
    - A. `/pmkit:issues:dependencies <id>`, CLI `issues dependencies <id>`.
@@ -253,20 +255,20 @@ The CLI entry is a read. It writes no issue, epic, sprint or event file, and it 
    - C. `/pmkit:report:dependencies <id>`, next to `/pmkit:report:status`.
    - D. `/pmkit:dependency-map <id>` at the top level, the catalog name.
 
-   Recommendation: A. It takes an issue or an epic as `/pmkit:issues:summary` does, and "dependencies" covers both the chain and the hierarchy. B reads well for the Linear question but undersells the hierarchy. The top level holds only setup, help and upgrade.
+   Decision: A. It takes an issue or an epic as `/pmkit:issues:summary` does, and "dependencies" covers both the chain and the hierarchy. B reads well for the Linear question but undersells the hierarchy. The top level holds only setup, help and upgrade.
 
 3. **Does a parent issue wait for its open sub-issues in the critical path?**
    - A. No. The hierarchy sets the scope, and only blocker edges form chains.
    - B. Yes. Each open sub-issue is an edge into its parent, so a parent's path includes its slowest sub-issue chain.
 
-   Recommendation: A. pmkit does not require sub-issues to finish before their parent, and a parent's estimate often already covers its sub-issues, so B would count the same work twice.
+   Decision: A. pmkit does not require sub-issues to finish before their parent, and a parent's estimate often already covers its sub-issues, so B would count the same work twice.
 
 4. **Does the map also show what the target blocks?** "What is blocking X" looks upstream, but "who waits on X" is the other half of a dependency map.
    - A. Upstream only. `issues get` already shows the `blocks` field.
    - B. Upstream, plus the open issues outside the scope that the scope blocks directly, in a "waiting on this" list.
    - C. Upstream and the full downstream chain, with its own critical path.
 
-   Recommendation: A for PMK-20, with B as a follow-up issue. The acceptance criteria ask only for the blocker chain, and B adds a second list and a second set of tests.
+   Decision: A for PMK-20. The acceptance criteria ask only for the blocker chain, and B adds a second list and a second set of tests. B, the "waiting on this" list, is a follow-up issue and out of scope here.
 
 ## Left to the builder
 
@@ -280,4 +282,4 @@ The CLI entry is a read. It writes no issue, epic, sprint or event file, and it 
 - Placeholders: none. Each **(builder's call)** above changes no criterion.
 - Consistency: "open" means not `done` and not `canceled` in every section. The scope rule for an epic is the same as `epic progress`. The weight rule is the same as `metrics velocity`. The basis and its three reasons appear with the same names in the computation, the JSON, the text and the command.
 - Scope: one pure module, one CLI read, one `SERVED_BY` change, one command file, the routing row, README, `CONTEXT.md` and the design spec. No contract, tracker file or format change.
-- Builder check, done by reading the spec as the builder (no reviewer agent ran). Four points came up. Which issues form the scope of an issue target: the issue and its sub-issues, now under "Terms". Whether an archived blocker counts: yes, when it is open, now under "Decisions". What the map does with the conflicted fixture issue: a warning, under "Risks". Whether the query index refresh breaks criterion 4: no, under "What "writes nothing" means". Two points remain for the user, open questions 1 and 3, because each changes which chain the command calls critical.
+- Builder check, done by reading the spec as the builder (no reviewer agent ran). Four points came up. Which issues form the scope of an issue target: the issue and its sub-issues, now under "Terms". Whether an archived blocker counts: yes, when it is open, now under "Decisions". What the map does with the conflicted fixture issue: a warning, under "Risks". Whether the query index refresh breaks criterion 4: no, under "What "writes nothing" means". Questions 1 and 3 decide which chain the command calls critical, so they went to the user, who chose A for both.
