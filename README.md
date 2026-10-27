@@ -51,8 +51,8 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `whoami` | prints the resolved actor |
 | `issues list` | searches issues by text, category, type, assignee, label, sprint, parent, blocked state or date, oldest created first unless `--sort` says otherwise |
 | `issues get <id>` | shows one issue, with `--comments` and `--history` |
-| `issues create` | creates an issue; takes `--milestone` |
-| `issues update <id>` | edits fields and acceptance criteria; `--milestone` and `--branch` take `none` to clear |
+| `issues create` | creates an issue; takes `--milestone` and `--release` |
+| `issues update <id>` | edits fields and acceptance criteria; `--milestone`, `--release` and `--branch` take `none` to clear |
 | `issues move <id> <category>` | changes status by category |
 | `issues assign <id> <member\|me\|none>` | assigns an issue; `me` is the actor |
 | `issues link <from> <to> --kind blocks\|related\|duplicate` | links or unlinks (`--remove`) two issues |
@@ -76,6 +76,11 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `milestone list` | lists milestones, by due date |
 | `milestone get <id>` | shows one milestone |
 | `milestone create <id>` | creates a milestone; takes `--name` and `--due` |
+| `release list` | lists releases, oldest version first; `--state planned\|released` |
+| `release get <id>` | shows one release |
+| `release issues <id>` | lists the issues of a release |
+| `release create <id>` | creates a release; takes `--name`, `--tag` and `--target` |
+| `release mark-released <id>` | marks a release released, lists its unfinished issues and warns when its tag is not in the repository; takes `--tag` |
 | `docs read <path>` | prints a document under the docs folder |
 | `docs create <path> --body-file f` | creates a document under the docs folder |
 | `metrics velocity` | points or counts done per closed sprint, and the average |
