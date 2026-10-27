@@ -1,6 +1,6 @@
 # PMK-28 design: how pmkit authenticates to Linear
 
-Issue PMK-28, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: draft, waiting on the answers under "Open questions". Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
+Issue PMK-28, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: approved, with the user's answers applied. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
@@ -27,9 +27,9 @@ Acceptance criteria:
 ## Non-goals
 
 - Code. PMK-28 delivers the ADR and a glossary entry. PMK-30 writes the credential module and the client.
-- An OAuth app, a callback server or token refresh. See "Open questions", question 2.
+- An OAuth app, a callback server or token refresh. See "Decisions from the user", question 2.
 - Jira, GitHub Issues, GitLab and Azure DevOps credentials. PMK-74, PMK-84, PMK-92 and PMK-100 decide those in their own epics.
-- Storage in the OS keychain. See "Open questions", question 1.
+- Storage in the OS keychain or in a file. See "Decisions from the user", question 1.
 
 ## Anti-goals
 
@@ -65,7 +65,7 @@ From Linear's developer docs (`linear.app/developers/oauth-2-0-authentication` a
 2. **OAuth app with PKCE.** pmkit registers a public OAuth app. Setup opens the browser, runs a local callback server, trades the code for a token and stores the access and refresh tokens. That brings a stored secret (keychain or file), a refresh every 24 hours, a callback port, a registered app that pmkit's maintainer owns, and an admin install for `actor=app`. It is the only way pmkit itself becomes a delegate in Linear.
 3. **Reuse the token of Linear's official MCP.** The MCP at `mcp.linear.app` runs its own OAuth flow, and MCP clients keep the token in their own store. pmkit would read a file it does not own, whose shape and place change with each client. Q1 keeps official MCPs out of the critical path.
 
-Chosen: approach 1. It is the only one that adds no stored secret and no long-lived process, and every acceptance criterion of PMK-30 to PMK-43 works with it. The one feature it gives up is pmkit as a Linear agent, which no issue in EPC-5 needs (see question 2). The client takes the header from one function, so an OAuth source can be added later without changing the client.
+Chosen: approach 1. It is the only one that adds no stored secret and no long-lived process, and every acceptance criterion of PMK-30 to PMK-43 works with it. The one feature it gives up is pmkit as a Linear agent, which no issue in EPC-5 needs (see "Decisions from the user", question 2). The client takes the header from one function, so an OAuth source can be added later without changing the client.
 
 ## Design
 
@@ -125,7 +125,7 @@ Every write made with the key appears in Linear as the key's owner. The Linear a
 
 ### Agent delegation
 
-With a personal key pmkit can set `delegateId` on an issue to an agent app that the workspace already installed. pmkit itself cannot be that agent, because that needs an OAuth app with `actor=app` and `app:assignable`. PMK-33 reports `agent_delegation` as `conditional` for Linear, with a `detail` that says delegation targets the installed agents and an `enableHint` that says pmkit is not a Linear agent **(builder's call, pending question 2)**.
+With a personal key pmkit can set `delegateId` on an issue to an agent app that the workspace already installed. pmkit itself cannot be that agent, because that needs an OAuth app with `actor=app` and `app:assignable`. PMK-33 reports `agent_delegation` as `conditional` for Linear, with a `detail` that says delegation targets the installed agents and an `enableHint` that says pmkit is not a Linear agent **(builder's call, consistent with question 2)**.
 
 ### What each dependent issue must do
 
@@ -133,7 +133,7 @@ With a personal key pmkit can set `delegateId` on an issue to an agent app that 
 |---|---|
 | PMK-30, API client | Add `scripts/lib/linear/credential.mjs` as above. Build the client as `createLinearClient({ env, fetch = globalThis.fetch })`, like `createGithubHost({ root, env, exec })`, so `npm test` injects a fake `fetch` and opens no socket. Send `Authorization` from `linearCredential(env)` to `https://api.linear.app/graphql`. Run the workspace check on the first request. Apply the error table. Test that the fake key appears in no output. No dependency, no `process.env` read. |
 | PMK-31, hosted tracker configs | Add `tracker.scope.workspace` to the `.pmkit/config.yaml` schema, required for `linear`. Refuse any key in the config whose name suggests a secret (`token`, `api_key`, `secret`, `password`) with `INVALID_INPUT` **(builder's call)**. |
-| PMK-32, user store | Store no credential. The discovery cache holds API responses only, never the key or a header. Key the Linear cache by workspace URL key and repository hash, so two workspaces never share entries. A test writes the cache with a fake key in `env` and checks that no file under the store contains it. The criterion "No command writes a credential to a file in the repository" holds because no command writes a credential anywhere. |
+| PMK-32, user store | Store no credential, and write no code that could: the user store has no credential field and no credential writer. The discovery cache holds API responses only, never the key or a header. Key the Linear cache by workspace URL key and repository hash, so two workspaces never share entries. A test writes the cache with a fake key in `env` and checks that no file under the store contains it. The criterion "No command writes a credential to a file in the repository" holds because no command writes a credential anywhere. |
 | PMK-33, discover and capabilities | Make `discover --json` return `auth: { source: 'LINEAR_API_KEY', viewer: { id, name }, workspace: { urlKey, name } }` before teams and states. Without a key it fails with `AUTH`, which setup reads. Report `agent_delegation` as in "Agent delegation". |
 | `/pmkit:setup`, Linear branch (PMK-34 adds the mapping questions) | Run `discover --json`. On `AUTH`, stop and tell the user to create a personal key in Linear, Settings, Security & access, with read and write access, and to export `LINEAR_API_KEY` in the shell profile or in `~/.claude/settings.json` under `env`, never in a file inside the repository. Then ask the user to run setup again. On success, show the viewer and the workspace in the summary and write `tracker.scope.workspace`. Never ask for the key in a question. |
 | PMK-39, contract suite against a sandbox | Read the same `LINEAR_API_KEY`. Run only when an opt-in variable is set, like `PMKIT_LIVE` in `scripts/scenarios-live.mjs`, and only against a dedicated sandbox team, never a team that holds real work. The workspace pin guards the workspace. The suite also checks the team key before its first write. |
@@ -164,21 +164,15 @@ With a personal key pmkit can set `delegateId` on an issue to an agent app that 
 | Setup never asks for the key | The transcript is not a safe place for a secret. |
 | `agent_delegation` is `conditional` for Linear | Delegating to installed agents works with a key, and pmkit as the agent needs OAuth. |
 
-## Open questions
+## Decisions from the user
 
-1. **Where does the key live between sessions?**
-   - (a) Only in the environment. The user exports it in the shell profile or in `~/.claude/settings.json`. pmkit stores nothing.
-   - (b) The environment first, then the OS keychain, read through `security find-generic-password` on macOS and `secret-tool lookup` on Linux. Setup offers to store the key there. Windows has no built-in command that reads a stored secret, and WSL often lacks `secret-tool`.
-   - (c) The environment first, then a file in the user store with mode 0600.
-   - Recommendation: (a). It needs no storage code, works in CI and in scheduled runs, and matches Q5. (b) can be a follow-up issue if users ask for it. (c) puts a secret in a file, which Q5 rules out.
-2. **Should pmkit become a Linear agent, the delegate that takes an issue?**
-   - (a) Not in EPC-5. Add a follow-up issue for an OAuth app when Linear delegation to pmkit is planned.
-   - (b) Yes, in EPC-5. Add an issue for an OAuth app with PKCE, `actor=app` and `app:assignable`, a token store and refresh.
-   - Recommendation: (a). No EPC-5 criterion needs it. `delegate-to-agent` (PMK-57) is in EPC-6, and it already has a degraded path that comments instructions for local execution.
-3. **How does a user with two Linear workspaces switch keys?**
-   - (a) One `LINEAR_API_KEY`. The user sets it per shell or per directory, for example with direnv. The workspace pin catches a wrong key.
-   - (b) pmkit also reads `LINEAR_API_KEY_<WORKSPACE>`, the URL key in capitals with hyphens as underscores, such as `LINEAR_API_KEY_acme`, before `LINEAR_API_KEY`.
-   - Recommendation: (a) now. The pin makes a wrong key a clear `AUTH` error, and (b) can come later without breaking (a).
+The user answered the three open questions on 2026-10-27.
+
+1. **Where does the key live between sessions?** Only in the environment (`LINEAR_API_KEY`). There is no OS keychain and no file. pmkit stores no credential anywhere. The user store of PMK-32 holds no credential and needs no writer for one. The ADR records this and lists the keychain and the file as rejected options.
+2. **Should pmkit become a Linear agent?** Not in EPC-5. It is a follow-up. The ADR mentions an OAuth app with PKCE, `actor=app` and `app:assignable` as a later option.
+3. **How does a user with two workspaces switch keys?** One variable, `LINEAR_API_KEY`, for every workspace. The user sets it per shell or per directory, for example with direnv. The workspace pin catches a wrong key. There is no `LINEAR_API_KEY_<WORKSPACE>` lookup.
+
+Also accepted: PMK-31 adds `tracker.scope.workspace` to the config schema and the loader. PMK-30 does the `urlKey` comparison. PMK-28 only writes the decision.
 
 ## Risks
 
@@ -195,7 +189,7 @@ With a personal key pmkit can set `delegateId` on an issue to an agent app that 
 
 ## Self-review
 
-- Placeholders: none. The three open questions do not change the ADR's choice. Question 1 changes only the "Considered options" list if (b) wins. Question 2 changes `agent_delegation` and adds an issue. Question 3 adds a lookup to `linearCredential`.
+- Placeholders: none. The user answered the three open questions, and "Decisions from the user" holds the answers.
 - Consistency: `LINEAR_API_KEY`, `tracker.scope.workspace` and `AUTH` have the same names in every section and in the dependent-issue table.
 - Scope: PMK-28 writes one ADR, one glossary term and this spec. Code belongs to PMK-30, PMK-31, PMK-32 and PMK-33.
 - Builder check: read as the builder, no reviewer agent ran.
