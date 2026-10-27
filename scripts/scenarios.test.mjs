@@ -193,6 +193,16 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     for (const needle of ['`discover` lists no labels', 'A proposed original cannot be read']) assert.ok(text.includes(needle), `the missing-cases section names: ${needle}`)
   })
 
+  test('backlog/triage moves an accepted issue to backlog and a duplicate or declined one to canceled', () => {
+    const step6 = FILES.find((f) => f.rel === 'backlog/triage.md').parsed.calls.filter((c) => c.step === '6' && c.dryRun)
+    const texts = step6.map((c) => c.text)
+    assert.ok(texts.includes('issues move <id> backlog --dry-run --json'), 'an accepted issue moves to backlog')
+    assert.ok(texts.includes('issues move <dup> canceled --dry-run --json'), 'a duplicate moves to canceled')
+    assert.ok(texts.includes('issues move <id> canceled --dry-run --json'), 'a declined issue moves to canceled')
+    assert.ok(texts.includes('issues link <dup> <kept> --kind duplicate --dry-run --json'), 'a duplicate gets a duplicate link')
+    assert.ok(step6.some((c) => c.command === 'issues comment' && c.flags.includes('body-file')), 'a declined issue gets a comment')
+  })
+
   // The in_review assertion encodes the PMK-122 decision (follow-up 1 of the spec). Change it when that issue lands.
   test('cycle/plan step 5 drafts from todo, backlog and in_progress issues with no sprint', () => {
     const call = FILES.find((file) => file.rel === 'cycle/plan.md').parsed.calls
