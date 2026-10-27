@@ -994,6 +994,11 @@ const isInside = (dir, file) => {
   return rel === '' || !climbsOut(rel)
 }
 
+/** Refuses a destination that is a folder, for --out and --save alike. */
+function refuseFolder(ctx, file) {
+  if (fs.existsSync(file) && fs.statSync(file).isDirectory()) throw usageError(`${renderPath(ctx, file)} is a folder`, 'Name a file, such as board.md')
+}
+
 /**
  * The file a render writes and its format, or a null file for stdout. Checks the destination flags before any read.
  * `--save` writes to the real tracker folder, never to the migrated copy of an older format.
@@ -1007,7 +1012,9 @@ function renderTarget(ctx, view) {
   if (out === undefined) {
     const chosen = format ?? 'md'
     if (!save) return { file: null, format: chosen }
-    return { file: path.join(ctx.config().issuesDir, CACHE_DIR, 'render', `${view}.${chosen}`), format: chosen, save: true }
+    const target = path.join(ctx.config().issuesDir, CACHE_DIR, 'render', `${view}.${chosen}`)
+    refuseFolder(ctx, target)
+    return { file: target, format: chosen, save: true }
   }
   const file = path.resolve(ctx.cwd, out)
   const ext = path.extname(file).toLowerCase()
@@ -1020,7 +1027,7 @@ function renderTarget(ctx, view) {
     const tracker = slash(path.relative(ctx.root, issuesDir))
     throw usageError(`${display} is inside the tracker folder ${tracker}/`, `Use --save, or a path outside ${tracker}/`)
   }
-  if (fs.existsSync(file) && fs.statSync(file).isDirectory()) throw usageError(`${display} is a folder`, 'Name a file, such as board.md')
+  refuseFolder(ctx, file)
   return { file, format: format ?? (HTML_EXTENSIONS.includes(ext) ? 'html' : 'md') }
 }
 

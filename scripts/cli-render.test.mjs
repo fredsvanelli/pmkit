@@ -291,6 +291,14 @@ describe('render to a file', () => {
     assert.equal(data.path, '..board.md')
   })
 
+  test('--save onto a folder is refused as a usage error, like --out', () => {
+    const root = makeRepo('team')
+    fs.mkdirSync(path.join(root, '.issues/.cache/render/board.md'), { recursive: true })
+    const error = failure(root, ['render', 'board', '--save'])
+    assert.equal(error.code, 'INVALID_INPUT')
+    assert.equal(error.message, '.issues/.cache/render/board.md is a folder')
+  })
+
   test('--dry-run with a destination writes nothing and says what it would write', () => {
     const root = makeRepo('team')
     const before = hashTree(root)
