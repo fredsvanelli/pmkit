@@ -223,6 +223,20 @@ test('metrics cycle-time summarizes done issues in range', () => {
   assert.equal(none.median, null)
 })
 
+test('metrics lead-time summarizes done issues in range', () => {
+  const root = makeRepo('team')
+  const all = json(root, ['metrics', 'lead-time'])
+  assert.deepEqual([all.count, all.median, all.p85], [3, 10.3, 11.7])
+  assert.deepEqual(all.issues.map((i) => i.issue).sort(), ['ISS-4P8A', 'ISS-7K3Q', 'ISS-9T2M'])
+  assert.equal(json(root, ['metrics', 'lead-time', '--until', '2026-10-07']).count, 2)
+  assert.deepEqual(json(root, ['metrics', 'lead-time', '--since', '2026-10-06', '--until', '2026-10-08']).issues.map((i) => i.issue).sort(), ['ISS-4P8A', 'ISS-7K3Q'])
+  const none = json(root, ['metrics', 'lead-time', '--since', '2030-01-01'])
+  assert.equal(none.count, 0)
+  assert.equal(none.median, null)
+  assert.equal(run(root, ['metrics', 'lead-time', '--since', '2026-10-6']).status, 2)
+  assert.equal(run(root, ['metrics', 'lead-time']).stdout, 'count: 3\nmedian: 10.3 days\np85: 11.7 days\n')
+})
+
 test('metrics cycle-time refuses a bound that is not a date', () => {
   const root = makeRepo('team')
   assert.equal(run(root, ['metrics', 'cycle-time', '--since', '2026-13-40', '--json']).status, 2)
@@ -339,7 +353,7 @@ test('--help lists every command and exits 2', () => {
     'issues assign', 'issues link', 'issues parent', 'issues comment', 'issues log-time', 'issues archive',
     'cycle list', 'cycle current', 'cycle issues', 'cycle open', 'cycle close', 'cycle add', 'cycle capacity',
     'epic list', 'epic get', 'epic progress', 'epic create', 'epic update-status',
-    'metrics velocity', 'metrics cycle-time', 'events', 'validate',
+    'metrics velocity', 'metrics cycle-time', 'metrics lead-time', 'events', 'validate',
   ]) assert.ok(result.stdout.includes(name), name)
 })
 
@@ -1257,6 +1271,7 @@ test('every read goes on with one warning', () => {
     'docs read': ['missing.md'],
     'metrics velocity': [],
     'metrics cycle-time': [],
+    'metrics lead-time': [],
     events: [],
     'pr status': [],
     reindex: [],

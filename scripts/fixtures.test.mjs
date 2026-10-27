@@ -76,6 +76,16 @@ test('no-sprints: metrics cycle-time prints a number', async () => {
   })
 })
 
+test('no-sprints: metrics lead-time gives two issues', async () => {
+  await withFixture('no-sprints', async ({ call }) => {
+    const result = await call('metrics', 'lead-time', '--json')
+    assert.equal(result.code, 0, result.stderr)
+    const data = JSON.parse(result.stdout)
+    assert.equal(data.count, 2)
+    assert.equal(data.median, 16.25)
+  })
+})
+
 test('no-sprints: docs read specs/overview.md exits 0', async () => {
   await withFixture('no-sprints', async ({ call }) => {
     const result = await call('docs', 'read', 'specs/overview.md')

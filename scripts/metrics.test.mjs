@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { businessDaysBetween, cycleTimes, doneInRange, rangeInstant, summary, velocity } from './lib/metrics.mjs'
+import { businessDaysBetween, cycleTimes, doneInRange, leadTimes, rangeInstant, summary, velocity } from './lib/metrics.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { fixedNow, makeRepo } from './test-helpers.mjs'
 
@@ -161,4 +161,29 @@ test('issuesBySprint and velocity on the team fixture give 10 points for the clo
   assert.equal(result.average, 10)
   const times = cycleTimes(tracker.eventsByIssue(), { categoryOf })
   assert.ok(times.some((entry) => entry.issue === 'ISS-7K3Q' && entry.days === 7.3))
+})
+
+test('lead time runs from the create to the last done', () => {
+  const events = {
+    'ISS-1': [create('2026-10-01T08:00:00Z', 'todo'), move('2026-10-02T08:00:00Z', 'doing'), move('2026-10-03T08:00:00Z', 'done'), move('2026-10-04T08:00:00Z', 'doing'), move('2026-10-05T20:00:00Z', 'done')],
+    'ISS-2': [create('2026-10-01T08:00:00Z', 'todo')],
+  }
+  assert.deepEqual(leadTimes(events, { categoryOf }), [{ issue: 'ISS-1', days: 4.5 }])
+})
+
+test('lead time starts at the earliest event when the log has no create', () => {
+  const events = { 'ISS-1': [move('2026-10-03T08:00:00Z', 'doing'), move('2026-10-01T08:00:00Z', 'todo'), move('2026-10-06T08:00:00Z', 'done')] }
+  assert.deepEqual(leadTimes(events, { categoryOf }), [{ issue: 'ISS-1', days: 5 }])
+})
+
+test('lead time starts at the first create when a merge left two', () => {
+  const events = { 'ISS-4': [create('2026-10-14T09:00:00Z', 'todo', 'bug'), create('2026-10-14T11:30:00Z', 'todo', 'bug'), move('2026-10-15T09:00:00Z', 'done')] }
+  assert.deepEqual(leadTimes(events, { categoryOf }), [{ issue: 'ISS-4', days: 1 }])
+})
+
+test('leadTimes on the team fixture gives the spec numbers', () => {
+  const tracker = createLocalTracker(makeRepo('team'), { now: fixedNow(), random: () => 0 })
+  const times = leadTimes(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf })
+  assert.deepEqual(times, [{ issue: 'ISS-4P8A', days: 12.3 }, { issue: 'ISS-7K3Q', days: 10.3 }, { issue: 'ISS-9T2M', days: 8.3 }])
+  assert.deepEqual(summary(times.map((t) => t.days)), { count: 3, median: 10.3, p85: 11.7 })
 })

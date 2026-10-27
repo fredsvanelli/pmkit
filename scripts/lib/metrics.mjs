@@ -86,6 +86,29 @@ export function cycleTimes(eventsByIssue, { categoryOf }) {
   return result
 }
 
+const daysBetween = (start, end) => Math.round(((Date.parse(end) - Date.parse(start)) / DAY_MS) * 10) / 10
+
+/** The `at` of the first create event, or the earliest `at` when the log has none. */
+function createdAt(events) {
+  const created = events.find((event) => event.op === 'create')
+  if (created !== undefined) return created.at
+  let earliest
+  for (const event of events) if (earliest === undefined || Date.parse(event.at) < Date.parse(earliest)) earliest = event.at
+  return earliest
+}
+
+/** Days from creation to the last move into done, for each issue that has one. */
+export function leadTimes(eventsByIssue, { categoryOf }) {
+  const result = []
+  for (const [issue, events] of Object.entries(eventsByIssue)) {
+    const end = lastEntry(events, 'done', categoryOf)
+    const start = createdAt(events)
+    if (end === undefined || start === undefined) continue
+    result.push({ issue, days: daysBetween(start, end) })
+  }
+  return result
+}
+
 export function summary(values) {
   if (values.length === 0) return { count: 0, median: null, p85: null }
   const sorted = [...values].sort((a, b) => a - b)

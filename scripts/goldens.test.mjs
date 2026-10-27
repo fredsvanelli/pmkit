@@ -89,6 +89,7 @@ const CASES = {
   'docs create': () => [['golden/new.md', '--body-file', input('doc.md')]],
   'metrics velocity': () => [[]],
   'metrics cycle-time': () => [[]],
+  'metrics lead-time': () => [[]],
   events: () => [[]],
   'issues branch': (a) => [[a.issue]],
   'pr open': (a) => [['--issue', a.issue]],

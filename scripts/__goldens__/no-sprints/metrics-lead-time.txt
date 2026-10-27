@@ -1,0 +1,29 @@
+$ pmkit metrics lead-time
+exit 0
+--- stdout
+count: 2
+median: 16.25 days
+p85: 19.015 days
+--- stderr
+(empty)
+
+$ pmkit metrics lead-time --json
+exit 0
+--- stdout
+{
+  "count": 2,
+  "median": 16.25,
+  "p85": 19.015,
+  "issues": [
+    {
+      "issue": "ISS-2K5P",
+      "days": 12.3
+    },
+    {
+      "issue": "ISS-6R3N",
+      "days": 20.2
+    }
+  ]
+}
+--- stderr
+(empty)
