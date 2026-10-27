@@ -360,6 +360,7 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `milestone create <id> [--name n] [--due YYYY-MM-DD]` | creates a milestone |
 | `release list [--state planned\|released]`, `release get <id>`, `release issues <id> [--archived]` | reads releases |
 | `release create <id> [--name n] [--tag t] [--target YYYY-MM-DD]`, `release mark-released <id> [--tag t]` | creates a release, marks it released |
+| `release-notes [--release id\|--sprint id\|--since d [--until d]]` | the done issues of a release, a sprint or a period, grouped by type, with the basis it used; only reads |
 | `docs read <path>`, `docs create <path> --body-file f` | reads or creates a document under the docs folder |
 | `metrics velocity [--window n]` | points or counts done per closed sprint, and the average |
 | `metrics cycle-time [--since d] [--until d]` | median and p85 days from first `in_progress` to `done` |

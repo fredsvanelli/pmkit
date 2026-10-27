@@ -1,0 +1,67 @@
+$ pmkit release-notes
+exit 0
+--- stdout
+period 2026-10-09 to 2026-10-23 (default window)
+no released release, no closed sprint, so the notes use the last 14 days
+
+no done issues
+--- stderr
+(empty)
+
+$ pmkit release-notes --json
+exit 0
+--- stdout
+{
+  "basis": "period",
+  "reason": "no_closed_sprint",
+  "draft": false,
+  "source": null,
+  "period": {
+    "since": "2026-10-09",
+    "until": "2026-10-23",
+    "defaulted": true
+  },
+  "groups": [],
+  "counts": {
+    "done": 0,
+    "excluded": {
+      "open": 0,
+      "canceled": 0,
+      "chore": 0
+    }
+  },
+  "skipped": [
+    {
+      "basis": "release",
+      "reason": "no_released_release"
+    },
+    {
+      "basis": "sprint",
+      "reason": "no_closed_sprint"
+    }
+  ],
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit release-notes --release 1.0.0
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: release 1.0.0 does not exist
+next: pmkit release list
+
+$ pmkit release-notes --release 1.0.0 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "release 1.0.0 does not exist",
+    "nextStep": "pmkit release list"
+  }
+}
+--- stderr
+(empty)

@@ -563,7 +563,7 @@ test('--help lists every command and exits 2', () => {
     'init', 'capabilities', 'discover', 'whoami', 'issues list', 'issues get', 'issues dependencies', 'issues create', 'issues update', 'issues move',
     'issues assign', 'issues link', 'issues parent', 'issues comment', 'issues log-time', 'issues archive',
     'cycle list', 'cycle current', 'cycle issues', 'cycle open', 'cycle close', 'cycle add', 'cycle capacity',
-    'epic list', 'epic get', 'epic progress', 'epic create', 'epic update-status',
+    'epic list', 'epic get', 'epic progress', 'epic create', 'epic update-status', 'release-notes',
     'metrics velocity', 'metrics cycle-time', 'metrics lead-time', 'metrics throughput', 'metrics aging', 'events', 'validate',
   ]) assert.ok(result.stdout.includes(name), name)
 })
@@ -1509,6 +1509,7 @@ test('every read goes on with one warning', () => {
     'release list': [],
     'release get': ['1.0.0'],
     'release issues': ['1.0.0'],
+    'release-notes': [],
     'docs read': ['missing.md'],
     'metrics velocity': [],
     'metrics cycle-time': [],
@@ -1678,6 +1679,123 @@ test('release issues --archived lists archived members', () => {
   assert.deepEqual(json(root, ['release', 'issues', '1.2.0', '--archived']).map((i) => i.id).sort(), [...ids].sort())
   const text = run(root, ['release', 'issues', '1.2.0', '--archived']).stdout
   for (const id of ids) assert.ok(text.includes(id), id)
+})
+
+const notes = (root, args = []) => json(root, ['release-notes', ...args])
+
+test('release-notes without a selector uses the latest released release and lists archived done issues', () => {
+  const root = makeRepo('basic')
+  json(root, ['release', 'create', '1.2.0', '--tag', 'v1.2.0'])
+  const ids = {}
+  for (const type of ['feature', 'bug', 'chore']) {
+    ids[type] = json(root, ['issues', 'create', '--title', `A ${type}`, '--type', type]).after.id
+    json(root, ['issues', 'update', ids[type], '--release', '1.2.0'])
+    json(root, ['issues', 'move', ids[type], 'done'])
+  }
+  json(root, ['issues', 'archive', ids.bug])
+  json(root, ['release', 'mark-released', '1.2.0'])
+  const result = notes(root)
+  assert.equal(result.basis, 'release')
+  assert.equal(result.reason, 'latest')
+  assert.equal(result.draft, false)
+  assert.deepEqual(result.groups.map((g) => g.type), ['feature', 'bug'])
+  assert.equal(result.groups[1].issues[0].archived, true)
+  assert.equal(result.counts.excluded.chore, 1)
+  assert.ok(run(root, ['release-notes']).stdout.startsWith('release 1.2.0 (tag v1.2.0, released 2026-10-23)'))
+})
+
+test('release-notes --release on a planned release is a draft', () => {
+  const root = makeRepo('no-sprints')
+  const result = notes(root, ['--release', '1.0.0'])
+  assert.equal(result.draft, true)
+  assert.equal(result.reason, 'requested')
+  assert.deepEqual(result.groups.flatMap((g) => g.issues.map((i) => i.id)), ['ISS-6R3N'])
+  assert.equal(result.counts.excluded.open, 1)
+  assert.ok(run(root, ['release-notes', '--release', '1.0.0']).stdout.split('\n').includes('draft: release 1.0.0 is not released yet'))
+})
+
+test('release-notes falls back to the latest closed sprint', () => {
+  const root = makeRepo('team')
+  const result = notes(root)
+  assert.equal(result.basis, 'sprint')
+  assert.equal(result.source.id, '2026-09-28')
+  assert.equal(result.reason, 'no_released_release')
+  for (const group of result.groups) for (const entry of group.issues) assert.ok(entry.doneAt)
+  assert.equal(run(root, ['release-notes']).stdout.split('\n')[1], 'no released release, so the notes use sprint 2026-09-28')
+})
+
+test('release-notes --sprint on an active sprint is a draft', () => {
+  assert.equal(notes(makeRepo('team'), ['--sprint', '2026-10-12']).draft, true)
+})
+
+test('release-notes falls back to the default period and says so', () => {
+  const root = makeRepo('no-sprints')
+  const result = notes(root)
+  assert.equal(result.basis, 'period')
+  assert.deepEqual(result.period, { since: '2026-10-09', until: '2026-10-23', defaulted: true })
+  assert.equal(result.reason, 'no_closed_sprint')
+  const text = run(root, ['release-notes']).stdout
+  assert.ok(text.includes('period 2026-10-09 to 2026-10-23 (default window)'))
+  assert.ok(text.includes('no released release, no closed sprint, so the notes use the last 14 days'))
+})
+
+test('release-notes --since keeps a done issue and drops a reopened one', () => {
+  const root = makeRepo('team')
+  const listed = () => notes(root, ['--since', '2026-09-01', '--until', '2026-10-31']).groups.flatMap((g) => g.issues.map((i) => i.id))
+  assert.ok(listed().includes('ISS-7K3Q'))
+  json(root, ['issues', 'move', 'ISS-7K3Q', 'in_progress'])
+  const after = notes(root, ['--since', '2026-09-01', '--until', '2026-10-31'])
+  assert.ok(!after.groups.flatMap((g) => g.issues.map((i) => i.id)).includes('ISS-7K3Q'))
+  assert.ok(after.counts.excluded.open >= 1)
+})
+
+test('release-notes names an unknown release or sprint NOT_FOUND', () => {
+  const root = makeRepo('team')
+  const release = run(root, ['release-notes', '--release', 'nope', '--json'])
+  assert.equal(release.status, 2)
+  assert.equal(JSON.parse(release.stdout).error.code, 'NOT_FOUND')
+  assert.equal(JSON.parse(release.stdout).error.nextStep, 'pmkit release list')
+  const sprint = run(root, ['release-notes', '--sprint', 'nope', '--json'])
+  assert.equal(sprint.status, 2)
+  assert.equal(JSON.parse(sprint.stdout).error.code, 'NOT_FOUND')
+  assert.equal(JSON.parse(sprint.stdout).error.nextStep, 'pmkit cycle list')
+})
+
+test('release-notes refuses bad selectors', () => {
+  const root = makeRepo('team')
+  for (const args of [['--release', '1.0.0', '--sprint', 'x'], ['--release', '1.0.0', '--since', '2026-10-01'], ['--until', '2026-10-01'], ['--since', '2026-10-05', '--until', '2026-10-01'], ['--since', '2026-13-01']]) {
+    const result = run(root, ['release-notes', ...args, '--json'])
+    assert.equal(result.status, 2, args.join(' '))
+    const error = JSON.parse(result.stdout).error
+    assert.equal(error.code, 'INVALID_INPUT', args.join(' '))
+    if (!args.includes('2026-13-01')) assert.equal(error.nextStep, 'pmkit release-notes --help', args.join(' '))
+  }
+})
+
+test('release-notes puts an unreadable issue in problems and still answers', () => {
+  const root = makeRepo('team')
+  fs.rmSync(path.join(root, '.issues/issues/ISS-7K3Q/issue.md'), { force: true })
+  const result = run(root, ['release-notes', '--since', '2026-09-01', '--until', '2026-10-31', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.ok(JSON.parse(result.stdout).problems.some((p) => p.id === 'ISS-7K3Q'))
+  assert.match(result.stderr, /^warning: ISS-7K3Q: /m)
+})
+
+test('release-notes writes nothing and takes no write flag', () => {
+  const root = makeRepo('team')
+  git(root, 'init', '-q')
+  git(root, 'config', 'user.name', 'Test')
+  git(root, 'config', 'user.email', 'test@x.dev')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-q', '-m', 'fixture')
+  assert.equal(run(root, ['release-notes']).status, 0)
+  assert.equal(run(root, ['release-notes', '--json']).status, 0)
+  assert.equal(git(root, 'status', '--porcelain').stdout, '')
+  for (const flag of [['--dry-run'], ['--as', 'fred']]) {
+    const result = run(root, ['release-notes', ...flag])
+    assert.equal(result.status, 2)
+    assert.match(result.stderr + result.stdout, /unknown option/)
+  }
 })
 
 test('release create --dry-run writes nothing, and a bad id is INVALID_INPUT', () => {
