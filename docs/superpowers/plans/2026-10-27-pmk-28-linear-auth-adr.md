@@ -1,0 +1,104 @@
+# PMK-28 Linear authentication ADR Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Record how pmkit authenticates to Linear: a personal API key from `LINEAR_API_KEY`, stored nowhere by pmkit. The record is ADR-0005 plus one glossary term. PMK-30, PMK-31, PMK-32, PMK-33 and setup start from it.
+
+**Architecture:** No product code changes. One new test file, `scripts/adr-linear-auth.test.mjs`, checks the ADR and the glossary entry, so the decision cannot lose its key facts silently. The ADR follows ADR-0001 to ADR-0004: a title that states the decision, a prose context and choice, then "Considered options" and "Consequences".
+
+**Tech Stack:** Markdown, Node 18+ ES modules, no dependencies (ADR 0003), `node:test`. Run the suite with `npm test`.
+
+**Spec:** `docs/superpowers/specs/2026-10-27-pmk-28-linear-auth-design.md`. The spec is the authority. Where this plan and the spec differ, the spec wins, and the implementer reports the difference.
+
+## Global Constraints
+
+- The ADR file is `docs/adr/0005-linear-uses-a-personal-api-key-from-the-environment.md`.
+- Decisions from the user, all in the ADR: the key lives in the environment only; pmkit stores no credential, so the PMK-32 user store has no credential field and no writer for one; pmkit is not a Linear agent in EPC-5 and an OAuth app is a later option; one variable, `LINEAR_API_KEY`, serves every workspace.
+- Considered options in the ADR: personal API key from the environment (chosen), OAuth app with PKCE, token of Linear's official MCP, OS keychain storage, key file in the user store. Each rejected option gets its reason from the spec.
+- Consequences in the ADR cover PMK-30, PMK-31, PMK-32, PMK-33, `/pmkit:setup` and PMK-39, with the wording of the spec's table. PMK-31 adds `tracker.scope.workspace`. PMK-30 compares it with `organization.urlKey` and `previousUrlKeys`.
+- The ADR may quote the checked API facts (header without `Bearer`, HTTP 401 and 400 cases, rate limits) or link to the spec. It must contain no real key and no string that starts with `lin_api_` followed by characters. Use the prose `lin_api_` prefix only.
+- The glossary term is **Workspace**: "The Linear organization that a personal API key belongs to, named by its URL key in `tracker.scope.workspace`." Put it after **Git host**.
+- `CHANGELOG.md` does not change on this branch.
+- `npm test` opens no network connection. `package.json` gains no dependency.
+- No write to Linear and no read of `.env`. Nothing here needs the key.
+- Every commit message carries `(PMK-28)` and ends with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- All text follows `~/.claude/skills/unslop/SKILL.md`: no em dashes, no colons as connectors, active voice, plain words.
+
+## Criteria map
+
+| Criterion | Tasks |
+|---|---|
+| 1. An ADR in `docs/adr/` records the choice and the options | Task 1 (check), Task 2 (ADR), Task 4 (verification) |
+
+The glossary term (Task 3) and the key-leak check (Tasks 1 and 4) support criterion 1 and the spec's goals. They add no criterion.
+
+## File Structure
+
+- Create `scripts/adr-linear-auth.test.mjs`. The check for ADR-0005 and the glossary term.
+- Create `docs/adr/0005-linear-uses-a-personal-api-key-from-the-environment.md`.
+- Modify `CONTEXT.md`. One new term.
+
+## Task 1: Write the failing check
+
+**Files:** Create `scripts/adr-linear-auth.test.mjs`.
+
+- [ ] **Step 1: Write the test.** Use `node:test`, `node:assert/strict`, `node:fs` and a root resolved from `import.meta.url`, as `scripts/dependencies.test.mjs` does. Tests:
+  1. The file `docs/adr/0005-linear-uses-a-personal-api-key-from-the-environment.md` exists.
+  2. Its first line is a `# ` heading, and it has `## Considered options` and `## Consequences` headings.
+  3. The text names `LINEAR_API_KEY` and `Authorization` without `Bearer`.
+  4. The text names each considered option: `OAuth`, `MCP`, `keychain`, and a key file.
+  5. The Consequences section names `PMK-30`, `PMK-31`, `PMK-32`, `PMK-33`, `PMK-39` and `/pmkit:setup`, and the text names `tracker.scope.workspace`.
+  6. The text says pmkit stores no credential (match `stores no credential`) and mentions a later OAuth app for a Linear agent (match `actor=app`).
+  7. No file in `docs/adr/` and no line of `CONTEXT.md` matches `/lin_api_[A-Za-z0-9]/`.
+  8. `CONTEXT.md` has a `**Workspace**:` term whose text contains `tracker.scope.workspace`.
+- [ ] **Step 2: Run it and see it fail.** Run `node --test scripts/adr-linear-auth.test.mjs`. Expect failures for tests 1 to 6 and 8, a pass for test 7.
+- [ ] **Step 3: Commit.** `test: check the Linear auth ADR and glossary term (PMK-28)`.
+
+## Task 2: Write ADR-0005
+
+**Files:** Create `docs/adr/0005-linear-uses-a-personal-api-key-from-the-environment.md`.
+
+- [ ] **Step 1: Write the title and the opening paragraphs.** Title: `# Linear uses a personal API key from the environment`. First paragraph, the context: Linear has no official CLI whose login pmkit could reuse, so the "reuse existing tokens" half of the Unified model's Q1 decision D has nothing to reuse, and Q5 decision A says tokens come from the OS keychain, env vars or existing CLI logins, never from the repository file. Second paragraph, the choice: the user creates a personal key in Linear (Settings, Security & access) and exports `LINEAR_API_KEY`. The client reads it from the `env` that `run(argv, { env })` passes in and sends it as `Authorization: <key>`, with no `Bearer` prefix (Linear answers HTTP 400 to a `Bearer` key). pmkit stores no credential anywhere. One module, `scripts/lib/linear/credential.mjs` (PMK-30), is the only reader of the variable. One variable serves every workspace, and a workspace pin catches a wrong key.
+- [ ] **Step 2: Write "Considered options".** One bullet per option, each with its rejection reason from the spec:
+  - Personal API key from the environment. Chosen.
+  - OAuth app with PKCE. Rejected for EPC-5. It adds a stored secret, a 24-hour refresh, a callback port, a registered app and an admin install. It is the only way for pmkit to become a Linear agent (`actor=app`, `app:assignable`), so it stays a later option, as a follow-up issue.
+  - Token of Linear's official MCP. Rejected. pmkit would read a file it does not own, and Q1 keeps official MCPs out of the critical path.
+  - OS keychain. Rejected by the user. It needs `security` on macOS and `secret-tool` on Linux, Windows has no built-in reader, and WSL often lacks `secret-tool`.
+  - Key file in the user store. Rejected by the user. It puts a secret in a file, which Q5 rules out.
+- [ ] **Step 3: Write "Consequences".** Prose bullets, one per topic:
+  - Security rules. The key never appears in output, in an argument, in an error message or its `details`, in a cache file or in the transcript. Setup never asks for it. No `.env` reading.
+  - Workspace pin. `tracker.scope.workspace` holds the URL key. PMK-31 adds it to the schema and loader, required for `linear`. PMK-30 asks `viewer` and `organization { urlKey previousUrlKeys }` on the first request of each run and fails with `AUTH` on a mismatch. A match on `previousUrlKeys` only gives a warning.
+  - Error mapping. Missing key, HTTP 401, foreign workspace and `FORBIDDEN` are `AUTH`, rate limits are `RATE_LIMITED`, network failures and 5xx are `UPSTREAM`.
+  - Authorship. Writes appear as the key's owner. The adapter takes `me` and the actor from `viewer`.
+  - Agent delegation. A key can delegate to agents the workspace installed. pmkit is not a Linear agent in EPC-5. PMK-33 reports `agent_delegation` as `conditional`.
+  - Dependent issues. One bullet each for PMK-30, PMK-31, PMK-32, PMK-33, `/pmkit:setup` and PMK-39, with the "Must do" text of the spec's table. PMK-32 holds no credential and has no writer for one.
+  - Cost. A key has the full rights of its owner, and a key in the shell profile reaches every process the user runs, as a `gh` login does.
+- [ ] **Step 4: Run the check.** `node --test scripts/adr-linear-auth.test.mjs`. Expect tests 1 to 7 to pass and test 8 to fail.
+- [ ] **Step 5: Commit.** `docs: add ADR-0005 for Linear authentication (PMK-28)`.
+
+## Task 3: Add the Workspace term
+
+**Files:** Modify `CONTEXT.md`.
+
+- [ ] **Step 1: Insert the term** after the **Git host** entry, in the same layout as its neighbors:
+
+  ```
+  **Workspace**:
+  The Linear organization that a personal API key belongs to, named by its URL key in `tracker.scope.workspace`. The key comes from `LINEAR_API_KEY`, and pmkit stores it nowhere.
+  _Avoid_: organization, account
+  ```
+- [ ] **Step 2: Run the check.** `node --test scripts/adr-linear-auth.test.mjs`. Expect all eight tests to pass.
+- [ ] **Step 3: Commit.** `docs: add the Workspace term (PMK-28)`.
+
+## Task 4: Verify the whole branch
+
+- [ ] **Step 1: Run the suite.** `npm test`. Expect a pass and no leftover temp entries.
+- [ ] **Step 2: Check for a leak.** `git diff main --stat` shows only the spec, the plan, the ADR, `CONTEXT.md` and the new test. Run `git diff main | grep -n 'lin_api_[A-Za-z0-9]'` and expect no output. Do not open `.env`.
+- [ ] **Step 3: Check the dependency and changelog rules.** `git diff main -- package.json CHANGELOG.md` is empty.
+- [ ] **Step 4: Check the style.** `git diff main -- docs CONTEXT.md | grep -n '—'` returns no match. Read the ADR once against the Unslop rules: no AI vocabulary, no "not just X but Y", no colon connectors, active voice.
+- [ ] **Step 5: Map the criterion.** Open the ADR and confirm it names the personal API key as the choice, lists the OAuth app and the MCP token (and the two storage options) as considered, and lists the consequences for PMK-30, PMK-31, PMK-32, PMK-33, setup and PMK-39.
+- [ ] **Step 6: Fix and commit** any finding with `docs: fix <what> (PMK-28)`. Skip when there is none.
+
+## Delivery
+
+Delivery follows `/pmkit:issues:work` step 9: the PR, the summary comment and the move to `in_review` go through the pmkit CLI. The PR body names the follow-up issues the user asked for: an OAuth app so pmkit can be a Linear agent. Creating issues for PMK-30 to PMK-33 is not part of this branch, because their specs start from the ADR.
