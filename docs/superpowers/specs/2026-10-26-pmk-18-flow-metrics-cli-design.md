@@ -50,7 +50,7 @@ Chosen: approach 1.
 
 ## Definitions
 
-All four metrics replay one issue's `events.jsonl` from `tracker.eventsByIssue()`, in file order, as `metrics cycle-time` does today. The status an event moves the issue into comes from the existing `movedTo(event)` in `metrics.mjs`: the `to` of a `move` on `status`, or `to.status` of a `create`. Categories come from `tracker.categoryOf`, so a renamed status counts by its category in the current config.
+All four metrics replay one issue's `events.jsonl` from `tracker.eventsByIssue()`, in `at` order as `readEvents` returns them (it drops identical lines and sorts by `at`), as `metrics cycle-time` does today. The status an event moves the issue into comes from the existing `movedTo(event)` in `metrics.mjs`: the `to` of a `move` on `status`, or `to.status` of a `create`. Categories come from `tracker.categoryOf`, so a renamed status counts by its category in the current config.
 
 - **Done at.** The `at` of the issue's last move into a status of category `done`, from `lastEntry(events, 'done', categoryOf)`. It is the same moment `metrics cycle-time` and `velocity` use. An issue with no move into `done` has no done time. `canceled` is not done.
 - **In range.** The done time falls on or after `--since` and on or before `--until`. A date-only `--until` means the end of that day, `T23:59:59Z`, as in `metrics cycle-time` and `metricEvents`. A missing flag leaves that side open. The comparison uses `Date.parse`, so a hand-written offset in `at` compares as an instant (PMK-121 did the same for velocity).
@@ -80,7 +80,7 @@ The CLI calls `doneInRange` first and passes its result to `leadTimes` and `thro
 | --- | --- | --- |
 | `metrics lead-time` | `[--since d] [--until d]` | median and p85 days from creation to done |
 | `metrics throughput` | `[--since d] [--until d]` | issues done in a range, by type |
-| `metrics aging` | `[--until d]` | days in progress of the open work at a date, oldest first |
+| `metrics aging` | `[--until d]` | days since work started, per issue in progress or in review at a date, oldest first |
 
 Flags go through `dateText`, so a bad date is a usage error with exit code 2, as in `metrics cycle-time`. `metrics aging` does not accept `--since`, and the CLI's unknown-option check refuses it with `INVALID_INPUT` and exit code 2, as it refuses `--bogus` today.
 
@@ -202,9 +202,8 @@ The user answered these on 2026-10-26 and chose the recommended option of each. 
 ## Follow-up candidates
 
 1. A reopened issue (moved out of `done` and not back) keeps its last done time, so cycle time, lead time and throughput count it, and aging may count it too while it is back in work. A rule such as "count only when the last status move is into `done`" would fix all three. Changing cycle time is out of scope here.
-2. The replay reads events in file order. A `merge=union` merge of two branches can put lines out of order. Sorting each log by `at` before every metric would fix it, for cycle time too.
-3. An issue whose `issue.md` was hand-edited into `in_progress` has no `move` event until the next write records the drift, so aging misses it until then. `/pmkit:local:doctor` could list such issues.
-4. `/pmkit:cycle:close` step 5 could read `metrics throughput --since <start> --until <end>` in place of counting done issues, once the user decides whether sprint throughput means "done in the sprint" or "done in its dates".
+2. An issue whose `issue.md` was hand-edited into `in_progress` has no `move` event until the next write records the drift, so aging misses it until then. `/pmkit:local:doctor` could list such issues.
+3. `/pmkit:cycle:close` step 5 could read `metrics throughput --since <start> --until <end>` in place of counting done issues, once the user decides whether sprint throughput means "done in the sprint" or "done in its dates".
 
 ## Left to the builder
 

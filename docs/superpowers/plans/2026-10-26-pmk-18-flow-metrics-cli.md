@@ -14,10 +14,10 @@
 
 ### Definitions (from the spec)
 
-- Every metric replays one issue's events in file order. The status an event moves the issue into comes from the private `movedTo(event)`: the `to` of a `move` on `status`, or `to.status` of a `create`.
+- Every metric replays one issue's events in `at` order, as `readEvents` returns them (it drops identical lines and sorts by `at`). The status an event moves the issue into comes from the private `movedTo(event)`: the `to` of a `move` on `status`, or `to.status` of a `create`.
 - Done at: `lastEntry(events, 'done', categoryOf)`. `canceled` is not done.
-- Created at: the `at` of the first `create` event in file order. A log with no `create` uses its earliest `at` by `Date.parse`. (The `messy-merge` fixture has an issue with two `create` lines.)
-- Type: replay in file order. A `create` sets it to `to.type`. An `update` with `field: 'type'` sets it to `to`. A missing, `null` or `''` value is no type: `type: null` in `issues`, counted under the key `none` in `byType`.
+- Created at: the `at` of the earliest `create` event. A log with no `create` uses its earliest `at` by `Date.parse`. (The `messy-merge` fixture has an issue with two `create` lines.)
+- Type: replay in `at` order. A `create` sets it to `to.type`. An `update` with `field: 'type'` sets it to `to`. A missing, `null` or `''` value is no type: `type: null` in `issues`, counted under the key `none` in `byType`.
 - In work at `asOf`: replay only the events with `Date.parse(at) <= Date.parse(asOf)`. The last status they move into has category `in_progress` or `in_review`, and none of them is an `archive` event. Started at: the `at` of the first of those events that moves the issue into either category.
 - Days: `Math.round(((Date.parse(end) - Date.parse(start)) / DAY_MS) * 10) / 10`, as `cycleTimes` does today.
 
@@ -53,7 +53,7 @@ Add after `metrics cycle-time` in `COMMANDS`, in this order, with no `write`:
 | --- | --- | --- | --- |
 | `metrics lead-time` | `median and p85 days from creation to done` | `[--since d] [--until d]` | `['since', 'until']` |
 | `metrics throughput` | `issues done in a range, by type` | `[--since d] [--until d]` | `['since', 'until']` |
-| `metrics aging` | `days in progress of the open work at a date, oldest first` | `[--until d]` | `['until']` |
+| `metrics aging` | `days since work started, per issue in progress or in review at a date, oldest first` | `[--until d]` | `['until']` |
 
 - `metrics lead-time`: data `{ ...summary(days), issues }`. Text: the same three `fields` lines as `metrics cycle-time` (`count`, `median: N days`, `p85: N days`, `n/a` when `null`).
 - `metrics throughput`: data is the `throughput` result. Text: `count: N`, then, when N > 0, `table(['Type', 'Issues'], Object.entries(byType))`.
@@ -319,7 +319,7 @@ git commit -m "feat: add metrics aging (PMK-18)" -m "Co-Authored-By: Claude Opus
 - Task order: the shared range rule first (Task 1), so the three commands use it from the start, then one task per command. Each command task carries its function, its command, its manifest entry, its doc rows and its goldens, so a reviewer can reject one metric and keep the others.
 - `rangeText` refuses a bound that `Date.parse` cannot read, for `metrics cycle-time` too. Today `cycle-time --since 2026-13-40` compares strings and returns a result. The spec says a bad date is a usage error, and the move to `Date.parse` would otherwise turn a typo into an empty or full result with exit 0. `dateText` itself and the `issues list` and `events` flags stay as they are.
 - A bound with a time and no zone reads as UTC. The spec chose `Date.parse` and did not name this case, and `Date.parse` reads such a value as local time, so the same command would give different results on two machines.
-- Created at is the first `create` in file order when a merge left two. The spec says "the `create` event". The type still follows the last line that sets it, as the spec's "last value the log gives it" says.
+- Created at is the earliest `create` when a merge left two. The spec says "the `create` event". The type still follows the last line that sets it, as the spec's "last value the log gives it" says.
 - `ctx.now` exposes the clock `main` already builds, so `metrics aging` honors `PMKIT_NOW` with no second parse.
 - Test counts in the "Expected" lines assume one `test()` per bullet. A different count is fine when every listed test exists and passes.
 - No task for `CHANGELOG.md`, `skills/pmkit/SKILL.md` or `commands/help.md`: the spec leaves the changelog line to the release, and the other two list slash commands only.
