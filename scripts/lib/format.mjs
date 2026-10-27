@@ -238,8 +238,8 @@ export function releaseNotesText(result) {
     const header = ['ID', 'Title', ...(withDone ? ['Done'] : [])]
     lines.push(table(header, group.issues.map((i) => [i.id, i.title, ...(withDone ? [String(i.doneAt ?? '').slice(0, 10)] : [])])))
   })
-  const { open, canceled, chore } = result.counts.excluded
-  const parts = [[open, 'not done'], [canceled, 'canceled'], [chore, 'chore']].filter(([n]) => n > 0).map(([n, label]) => `${n} ${label}`)
+  const { open, canceled, chore, after_close: afterClose } = result.counts.excluded
+  const parts = [[open, 'not done'], [afterClose, 'done after the sprint closed'], [canceled, 'canceled'], [chore, 'chore']].filter(([n]) => n > 0).map(([n, label]) => `${n} ${label}`)
   if (parts.length > 0) lines.push('', `left out: ${parts.join(', ')}`)
   return lines.join('\n')
 }

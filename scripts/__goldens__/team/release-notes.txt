@@ -105,7 +105,8 @@ exit 0
     "excluded": {
       "open": 0,
       "canceled": 0,
-      "chore": 0
+      "chore": 0,
+      "after_close": 0
     }
   },
   "skipped": [

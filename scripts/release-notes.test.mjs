@@ -1,5 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
 import { buildNotes, chooseBasis } from './lib/release-notes.mjs'
 import { releaseNotesText } from './lib/format.mjs'
 
@@ -94,7 +96,7 @@ test('done issues are grouped by type in the order of types, and an empty group 
   const result = buildNotes({ choice, candidates, types })
   assert.deepEqual(result.groups.map((g) => g.type), ['feature', 'bug'])
   assert.deepEqual(result.groups[1].issues.map((i) => i.id), ['B1', 'B2'])
-  assert.deepEqual(result.counts, { done: 3, excluded: { open: 0, canceled: 0, chore: 0 } })
+  assert.deepEqual(result.counts, { done: 3, excluded: { open: 0, canceled: 0, chore: 0, after_close: 0 } })
 })
 
 test('an entry holds the listed fields and keeps the doneAt it was given', () => {
@@ -114,7 +116,7 @@ test('open and canceled issues are counted, never listed', () => {
   ]
   const result = buildNotes({ choice, candidates, types })
   assert.equal(result.counts.done, 1)
-  assert.deepEqual(result.counts.excluded, { open: 2, canceled: 1, chore: 0 })
+  assert.deepEqual(result.counts.excluded, { open: 2, canceled: 1, chore: 0, after_close: 0 })
 })
 
 test('a done chore is left out and counted', () => {
@@ -122,7 +124,7 @@ test('a done chore is left out and counted', () => {
   assert.equal(result.counts.done, 1)
   assert.equal(result.counts.excluded.chore, 1)
   const notDone = buildNotes({ choice, candidates: [cand(iss('H', { type: 'chore', status: open }))], types })
-  assert.deepEqual(notDone.counts.excluded, { open: 1, canceled: 0, chore: 0 })
+  assert.deepEqual(notDone.counts.excluded, { open: 1, canceled: 0, chore: 0, after_close: 0 })
 })
 
 test('a done issue reopened inside the period is not listed', () => {
@@ -221,7 +223,8 @@ test('a closed sprint leaves out an issue that finished after it closed, as velo
   ]
   const result = buildNotes({ choice: sprintChoice, candidates, types })
   assert.deepEqual(result.groups[0].issues.map((i) => i.id), ['IN', 'NONE'])
-  assert.equal(result.counts.excluded.open, 1)
+  assert.equal(result.counts.excluded.after_close, 1)
+  assert.equal(result.counts.excluded.open, 0)
   const noClosed = buildNotes({ choice: chooseBasis({ ...base, selector: { sprint: spr('S2', { end: '2026-09-14' }) } }), candidates: [cand(iss('A'), '2026-09-14T23:00:00Z'), cand(iss('B'), '2026-09-15T00:00:00Z')], types })
   assert.deepEqual(noClosed.groups[0].issues.map((i) => i.id), ['A'])
 })
@@ -230,4 +233,10 @@ test('an active sprint keeps every done issue', () => {
   const sprintChoice = chooseBasis({ ...base, selector: { sprint: spr('S3', { state: 'active', closed: '2026-09-15T09:00:00Z' }) } })
   const result = buildNotes({ choice: sprintChoice, candidates: [cand(iss('LATE'), '2026-09-16T10:00:00Z')], types })
   assert.equal(result.counts.done, 1)
+})
+
+test('the command file tells the user why an issue done after the sprint closed is left out', () => {
+  const text = fs.readFileSync(path.join(import.meta.dirname, '..', 'commands/report/release-notes.md'), 'utf8')
+  assert.ok(text.includes('counts.excluded.after_close'))
+  assert.ok(text.includes('done after the sprint closed'))
 })

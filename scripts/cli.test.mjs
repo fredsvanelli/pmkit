@@ -1981,7 +1981,9 @@ test('release-notes on a closed sprint leaves out an issue done after the sprint
   json(root, ['issues', 'move', open, 'done'])
   const after = notes(root, ['--sprint', '2026-09-28'])
   assert.ok(!after.groups.flatMap((g) => g.issues.map((i) => i.id)).includes(open))
-  assert.equal(after.counts.excluded.open, before.counts.excluded.open + 1)
+  assert.equal(after.counts.excluded.after_close, before.counts.excluded.after_close + 1)
+  assert.equal(after.counts.excluded.open, before.counts.excluded.open)
+  assert.match(run(root, ['release-notes', '--sprint', '2026-09-28']).stdout, /left out: .*1 done after the sprint closed/)
 })
 
 test('release-notes --sprint current uses the active sprint and refuses when none is active', () => {

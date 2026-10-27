@@ -88,13 +88,14 @@ const entryOf = (issue, doneAt) => ({
  * @param {object[]} [input.problems=[]]
  */
 export function buildNotes({ choice, candidates, types, problems = [] }) {
-  const excluded = { open: 0, canceled: 0, chore: 0 }
+  const excluded = { open: 0, canceled: 0, chore: 0, after_close: 0 }
   const listed = []
   for (const candidate of [...candidates].sort((a, b) => byCreation(a.issue, b.issue))) {
     const { issue } = candidate
     const category = issue.status?.category
     if (category === 'canceled') excluded.canceled += 1
-    else if (category !== 'done' || finishedAfterClose(choice, candidate.doneAt)) excluded.open += 1
+    else if (category !== 'done') excluded.open += 1
+    else if (finishedAfterClose(choice, candidate.doneAt)) excluded.after_close += 1
     else if (issue.type === 'chore') excluded.chore += 1
     else listed.push(candidate)
   }

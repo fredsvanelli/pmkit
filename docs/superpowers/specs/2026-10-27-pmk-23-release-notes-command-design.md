@@ -90,7 +90,7 @@ All three bases keep archived issues, because an old release or sprint is the us
 
 - **Release.** `releaseIssues(id, { archived: true })`, then keep the done ones. This needs an optional `archived` argument on the contract operation and a `--archived` flag on `release issues`, both new here (see "Decisions"). Without it, notes for an old release would miss every done issue archived later. This closes the gap PMK-22's review found.
 - **Sprint.** `searchIssues({ sprint: <id>, archived: true })`, with no category filter, so the module can count the issues that are not done. `cycleIssues` stays as it is.
-  For a closed sprint the module applies the same cut as velocity. An issue whose last move into done is after the sprint's `closed` time (after `end` when the sprint has no `closed`) did not ship with the sprint, so it is left out and counted in `excluded.open`. An issue with no known `doneAt` stays in. An active or planned sprint keeps every done issue.
+  For a closed sprint the module applies the same cut as velocity. An issue whose last move into done is after the sprint's `closed` time (after `end` when the sprint has no `closed`) did not ship with the sprint, so it is left out and counted in `excluded.after_close`, apart from `excluded.open`, because the issue is done and the user must not read it as unfinished. An issue with no known `doneAt` stays in. An active or planned sprint keeps every done issue.
 - **Period.** `metricEvents` and `doneInRange` (the code behind `metrics throughput`) give the IDs whose last move into done falls in the range. `getIssue` reads each one, archived included. An ID that no longer reads goes to `problems`.
 
 For the sprint and period bases each issue carries `doneAt`, the time of its last move into done. For the release basis it is `null`, because membership, not time, defines the release.
@@ -115,7 +115,7 @@ JSON:
   source: { id, name, tag?, released?, target?, start?, end?, state } | null,
   period: { since, until, defaulted } | null,
   groups: [{ type, issues: [...] }],
-  counts: { done, excluded: { open, canceled, chore } },
+  counts: { done, excluded: { open, canceled, chore, after_close } },
   skipped: [{ basis, reason }],
   problems: []
 }
@@ -140,7 +140,7 @@ Steps:
 3. Lead with one line that names the basis, in words. When `reason` is not `requested` or `latest`, or `skipped` is not empty, say which step was skipped and why, in the same line or the next, as the second acceptance criterion asks. When `draft` is true, say the release is not released yet or the sprint is open.
 4. Write the notes from `groups`. Each type becomes a heading in plain words (`feature` as "New", `bug` as "Fixed", `task` and untyped as "Improved"). `chore` issues are left out (question 1) and counted in one line, such as "4 internal changes not listed", read from `counts.excluded.chore`. One bullet per issue, rewritten for a user of the product from the title and description: say what the user can now do or no longer suffers, not how it was built. Keep it to one sentence. Do not add a claim the issue does not state. Merge two bullets only when their issues say the same thing, and keep every ID in the table of step 4.
 5. Show a table of the included issues in creation order with the five standard columns from the conventions (ID, title, status, assignee, estimate) and the type after them, so each bullet traces to its issue. Write every ID in full. The saved document holds the IDs in a final "Included issues" list (question 3), and no bullet carries an ID.
-6. Say how many issues the notes leave out, from `counts.excluded`, when either count is above zero. For the release basis, offer `/pmkit:issues:find` or `release issues <id>` to look at them.
+6. Say how many issues the notes leave out, from `counts.excluded`, when `open`, `after_close` or `canceled` is above zero. Give the reason for each: not done, done after the sprint closed, or canceled. For the release basis, offer `/pmkit:issues:find` or `release issues <id>` to look at them.
 7. Offer to save the notes. When `capabilities --json` reports `documents` absent, skip this step and offer the text to copy. Otherwise write the notes to a temporary file outside `.issues/` and run `docs create release-notes/<name>.md --body-file <file> --dry-run --json`. `<name>` is the release ID, the sprint ID, or `<since>_<until>`, with both dates cut to `YYYY-MM-DD` so the file name holds no colon. Show the document and ask once with `AskUserQuestion`, whatever `write_policy.confirm` says, because the document is for readers outside the team. When the user declines, save nothing. After approval, run the same command without `--dry-run`.
 8. Remove the temporary file.
 
