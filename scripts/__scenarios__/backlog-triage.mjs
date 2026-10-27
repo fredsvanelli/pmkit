@@ -1,18 +1,28 @@
-// /pmkit:backlog:triage on the team fixture, applying all proposals. Setup files three more triage issues, so the
-// queue holds four with ISS-1V9Z (Investigate slow login), which stays in triage as the "needs info" case.
-//   ACCEPT   ISS-M0GZ, Webhook deliveries are not retried (label webhooks): accept with priority high and labels backend,webhooks.
-//   DUP      ISS-Y8KQ, Login is slow after I press submit: a duplicate of ORIGINAL.
-//   DECLINE  ISS-DZEF, Rewrite the CLI in Rust: decline with a reason.
-//   ORIGINAL ISS-4C74, Login form hangs for ten seconds: stays in backlog.
+// /pmkit:backlog:triage on the team fixture. Setup files three more triage issues and one backlog issue, so the
+// queue holds four. Each proposal follows from the rules of step 3 on this data:
+//   DUP       ISS-1V9Z, Investigate slow login ("Some users wait ten seconds after submitting the login form"):
+//             the search for "login" finds ORIGINAL, which reports the same symptom. ORIGINAL is outside triage,
+//             so the keep-one rule keeps it and ISS-1V9Z is the duplicate.
+//   ACCEPT    ISS-M0GZ, Invoice PDF shows the wrong currency (label billing): accept with priority high and labels
+//             backend,billing. The search for "invoice" finds ISS-9T2M (rounding), ISS-2X6D and ISS-4M2S (the
+//             CSV export), none about the currency, and "pdf" and "currency" find only the issue itself.
+//   DECLINE   ISS-Y8KQ, Rewrite the CLI in Rust: its comment says the CLI stays in Node, so decline with that
+//             reason. The searches for "rust" and "cli" find only the issue itself.
+//   NEEDS     ISS-DZEF, It is broken: the text names no feature and no symptom, so no proposal; it stays in triage.
+//             The search for "broken" finds only the issue itself.
+//   ORIGINAL  ISS-4C74, Login form hangs for ten seconds: stays in backlog.
+// The expect functions check the tracker, not `saved`, so the live suite runs them to the end.
 import assert from 'node:assert/strict'
 
+const DUP = 'ISS-1V9Z'
 const ACCEPT = 'ISS-M0GZ'
-const DUP = 'ISS-Y8KQ'
-const DECLINE = 'ISS-DZEF'
+const DECLINE = 'ISS-Y8KQ'
+const NEEDS_INFO = 'ISS-DZEF'
 const ORIGINAL = 'ISS-4C74'
-const reason = 'pmkit ships Node scripts with no dependencies (ADR 0003), so a Rust rewrite is out of scope.'
+const decision = 'We keep the CLI in Node so it runs with no install step. A rewrite in another language is out of scope.\n'
+const reason = 'The team keeps the CLI in Node so it runs with no install step, so a Rust rewrite is out of scope.'
 
-const update = ['issues', 'update', ACCEPT, '--priority', 'high', '--label', 'backend,webhooks']
+const update = ['issues', 'update', ACCEPT, '--priority', 'high', '--label', 'backend,billing']
 const accept = ['issues', 'move', ACCEPT, 'backlog']
 const link = ['issues', 'link', DUP, ORIGINAL, '--kind', 'duplicate']
 const cancelDup = ['issues', 'move', DUP, 'canceled']
@@ -28,15 +38,27 @@ async function setup({ pmkit }) {
   }
   // The first three go to triage. The fourth stays in backlog (the fixture's default_status) as the original.
   for (const [title, type, text, label] of [
-    ['Webhook deliveries are not retried', 'bug', 'A failed webhook delivery is dropped and never sent again.\n', 'webhooks'],
-    ['Login is slow after I press submit', 'bug', 'The login form takes about ten seconds after I press submit.\n'],
+    ['Invoice PDF shows the wrong currency', 'bug', 'Customers billed in euros get a PDF invoice that prints the amounts in dollars.\n', 'billing'],
     ['Rewrite the CLI in Rust', 'feature', 'Rewrite the whole CLI in Rust for speed.\n'],
+    ['It is broken', 'bug', 'It is broken.\n'],
   ]) {
     const made = await create(title, type, text, label)
     await pmkit(['issues', 'move', made.after.id, 'triage'])
   }
   await create('Login form hangs for ten seconds', 'bug', 'The login form hangs for ten seconds after submit.\n')
+  await pmkit(['issues', 'comment', DECLINE, '--body-file', '-'], { stdin: decision })
 }
+
+// Step 3 in queue order (oldest first, then by ID): one issues get per issue, then one search per key word of its title.
+const proposals = [
+  [DUP, ['slow', 'login']],
+  [NEEDS_INFO, ['broken']],
+  [ACCEPT, ['invoice', 'pdf', 'currency']],
+  [DECLINE, ['rust', 'cli']],
+].flatMap(([id, words]) => [
+  { step: '3', read: ['issues', 'get', id, '--comments'] },
+  ...words.map((word) => ({ step: '3', read: ['issues', 'list', '--text', word] })),
+])
 
 const applyAll = {
   command: 'backlog/triage',
@@ -45,10 +67,9 @@ const applyAll = {
   prompt: '/pmkit:backlog:triage',
   answers: ['Apply all proposals', 'Yes'],
   steps: [
-    { step: '1', read: queue, save: 'queueBefore' },
+    { step: '1', read: queue },
     { step: '2', read: ['discover'] },
-    { step: '3', read: ['issues', 'get', 'ISS-1V9Z', '--comments'] },
-    { step: '3', read: ['issues', 'list', '--text', 'login'] },
+    ...proposals,
     { confirm: 'Step 5' },
     { step: '6', dryRun: update },
     { step: '6', dryRun: accept },
@@ -63,60 +84,58 @@ const applyAll = {
     { step: '6', write: cancelDup },
     { step: '6', write: cancelDecline },
     { step: '6', write: comment, stdin: reason },
-    { step: '1', read: queue, save: 'queueAfter' },
+    { step: '1', read: queue },
   ],
   skip: {},
   notHit: {},
-  expect(repo, saved) {
-    const ids = (list) => list.issues.map((issue) => issue.id).sort()
-    assert.deepEqual(ids(saved.queueBefore), [ACCEPT, DECLINE, DUP, 'ISS-1V9Z'].sort())
-    assert.deepEqual(ids(saved.queueAfter), ['ISS-1V9Z'])
+  expect(repo) {
     const accepted = repo.issue(ACCEPT)
     assert.equal(accepted.status, 'backlog')
     assert.equal(accepted.priority, 'high')
-    assert.deepEqual(accepted.labels, ['backend', 'webhooks'], 'the existing label stays and the accepted one joins it')
+    assert.deepEqual(accepted.labels, ['backend', 'billing'], 'the existing label stays and the accepted one joins it')
     assert.equal(repo.issue(DUP).status, 'canceled')
     assert.deepEqual(repo.issue(DUP).duplicate_of, [ORIGINAL])
+    assert.equal(repo.issue(ORIGINAL).status, 'backlog', 'the kept original is not canceled')
     assert.equal(repo.issue(DECLINE).status, 'canceled')
     assert.equal(repo.newEvents(DECLINE).filter((event) => event.op === 'comment').length, 1)
-    assert.equal(repo.issue('ISS-1V9Z').status, 'triage')
+    assert.equal(repo.issue(NEEDS_INFO).status, 'triage')
+    assert.deepEqual(repo.newEvents(NEEDS_INFO), [])
   },
 }
 
-// The user changes the priority of ACCEPT to medium and skips the other three, so they stay in triage.
+// In queue order the user skips DUP and NEEDS_INFO, accepts ACCEPT with priority medium and skips DECLINE, so three
+// stay in triage.
 const oneByOne = {
   command: 'backlog/triage',
   fixture: 'team',
   setup,
   prompt: '/pmkit:backlog:triage',
-  answers: ['Go through them one by one', 'Accept with priority medium', 'Skip', 'Skip', 'Skip', 'Yes'],
+  answers: ['Go through them one by one', 'Skip', 'Skip', 'Accept with priority medium', 'Skip', 'Yes'],
   steps: [
-    { step: '1', read: queue, save: 'queueBefore' },
+    { step: '1', read: queue },
     { step: '2', read: ['discover'] },
-    { step: '3', read: ['issues', 'get', 'ISS-1V9Z', '--comments'] },
-    { step: '3', read: ['issues', 'list', '--text', 'login'] },
+    ...proposals,
     { confirm: 'Step 5' },
-    { step: '6', dryRun: ['issues', 'update', ACCEPT, '--priority', 'medium', '--label', 'backend,webhooks'] },
+    { step: '6', dryRun: ['issues', 'update', ACCEPT, '--priority', 'medium', '--label', 'backend,billing'] },
     { step: '6', dryRun: accept },
     { confirm: 'Step 7' },
-    { step: '6', write: ['issues', 'update', ACCEPT, '--priority', 'medium', '--label', 'backend,webhooks'] },
+    { step: '6', write: ['issues', 'update', ACCEPT, '--priority', 'medium', '--label', 'backend,billing'] },
     { step: '6', write: accept },
-    { step: '1', read: queue, save: 'queueAfter' },
+    { step: '1', read: queue },
   ],
   skip: {
     '6 issues link': 'this path accepts one issue and skips the rest',
     '6 issues comment': 'this path accepts one issue and skips the rest',
   },
   notHit: {},
-  expect(repo, saved) {
-    const ids = (list) => list.issues.map((issue) => issue.id).sort()
+  expect(repo) {
     const accepted = repo.issue(ACCEPT)
     assert.equal(accepted.status, 'backlog')
     assert.equal(accepted.priority, 'medium')
-    for (const id of [DUP, DECLINE, 'ISS-1V9Z']) assert.equal(repo.issue(id).status, 'triage', `${id} stays in triage`)
-    assert.deepEqual(ids(saved.queueAfter), [DECLINE, DUP, 'ISS-1V9Z'].sort())
-    assert.deepEqual(repo.newEvents(DUP), [])
-    assert.deepEqual(repo.newEvents(DECLINE), [])
+    for (const id of [DUP, DECLINE, NEEDS_INFO]) {
+      assert.equal(repo.issue(id).status, 'triage', `${id} stays in triage`)
+      assert.deepEqual(repo.newEvents(id), [], `${id} is not changed`)
+    }
   },
 }
 
