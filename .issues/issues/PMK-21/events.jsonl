@@ -1,1 +1,4 @@
 {"at":"2026-10-25T19:13:20Z","by":"fred","op":"create","to":{"id":"PMK-21","title":"Add the risk-radar command","type":"feature","status":"backlog","priority":"medium","estimate":5,"labels":[],"parent":"EPC-3","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"phase-2-commands","created":"2026-10-25T19:13:20Z","updated":"2026-10-25T19:13:20Z"}}
+{"at":"2026-10-27T00:13:47Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-27T00:13:49Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-27T00:13:51Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-21-add-the-risk-radar-command"}
