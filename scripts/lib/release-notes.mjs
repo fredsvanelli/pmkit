@@ -1,3 +1,5 @@
+import { compareIds } from './ids.mjs'
+
 // Pure release notes functions: no file access. The caller passes records it already read from the tracker.
 
 const DAY_MS = 86400000
@@ -41,4 +43,49 @@ export function chooseBasis({ selector, releases, sprints, today, windowDays }) 
   if (sprint !== null) return { basis: 'sprint', reason: skipped[0].reason, draft: false, source: sprint, period: null, skipped }
   skipped.push({ basis: 'sprint', reason: 'no_closed_sprint' })
   return { basis: 'period', reason: 'no_closed_sprint', draft: false, source: null, period: { since: dateMinusDays(today, windowDays), until: today, defaulted: true }, skipped }
+}
+
+const byCreation = (a, b) => {
+  const x = String(a.created ?? '')
+  const y = String(b.created ?? '')
+  return x < y ? -1 : x > y ? 1 : compareIds(a.id, b.id)
+}
+
+const entryOf = (issue, doneAt) => ({
+  id: issue.id,
+  title: issue.title,
+  description: issue.description ?? null,
+  type: issue.type ?? null,
+  labels: issue.labels ?? [],
+  parent: issue.parent ?? null,
+  archived: issue.archived === true,
+  doneAt: doneAt ?? null,
+  release: issue.release ?? null,
+})
+
+/**
+ * @param {object} input
+ * @param {object} input.choice the return value of chooseBasis
+ * @param {{issue: object, doneAt: string | null}[]} input.candidates
+ * @param {string[]} input.types the tracker's types, in order
+ * @param {object[]} [input.problems=[]]
+ */
+export function buildNotes({ choice, candidates, types, problems = [] }) {
+  const excluded = { open: 0, canceled: 0, chore: 0 }
+  const listed = []
+  for (const candidate of [...candidates].sort((a, b) => byCreation(a.issue, b.issue))) {
+    const { issue } = candidate
+    const category = issue.status?.category
+    if (category === 'canceled') excluded.canceled += 1
+    else if (category !== 'done') excluded.open += 1
+    else if (issue.type === 'chore') excluded.chore += 1
+    else listed.push(candidate)
+  }
+  const groups = []
+  for (const type of [...types, null]) {
+    const members = listed.filter(({ issue }) => (type === null ? !types.includes(issue.type) : issue.type === type))
+    if (members.length > 0) groups.push({ type, issues: members.map(({ issue, doneAt }) => entryOf(issue, doneAt)) })
+  }
+  const { basis, reason, draft, source, period, skipped } = choice
+  return { basis, reason, draft, source, period, groups, counts: { done: listed.length, excluded }, skipped, problems }
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { chooseBasis } from './lib/release-notes.mjs'
+import { buildNotes, chooseBasis } from './lib/release-notes.mjs'
 
 const rel = (id, fields) => ({ id, name: id, state: 'released', released: '2026-10-01T10:00:00Z', ...fields })
 const spr = (id, fields) => ({ id, name: id, state: 'closed', start: '2026-09-01', end: '2026-09-14', ...fields })
@@ -76,4 +76,81 @@ test('with no closed sprint the period is the last windowDays days', () => {
 
 test('the period math crosses a month and a year', () => {
   assert.equal(chooseBasis({ ...base, today: '2026-01-05' }).period.since, '2025-12-22')
+})
+
+const iss = (id, fields) => ({ id, title: id, description: '', type: 'task', labels: [], parent: null, archived: false, release: null, created: '2026-10-01T10:00:00Z', status: { name: 'done', category: 'done' }, ...fields })
+const cand = (issue, doneAt = null) => ({ issue, doneAt })
+const choice = chooseBasis({ ...base, selector: { release: rel('1.0.0') } })
+const types = ['feature', 'bug', 'task', 'chore']
+const open = { name: 'in_progress', category: 'in_progress' }
+
+test('done issues are grouped by type in the order of types, and an empty group is dropped', () => {
+  const candidates = [
+    cand(iss('B2', { type: 'bug', created: '2026-10-03T10:00:00Z' })),
+    cand(iss('F1', { type: 'feature' })),
+    cand(iss('B1', { type: 'bug', created: '2026-10-02T10:00:00Z' })),
+  ]
+  const result = buildNotes({ choice, candidates, types })
+  assert.deepEqual(result.groups.map((g) => g.type), ['feature', 'bug'])
+  assert.deepEqual(result.groups[1].issues.map((i) => i.id), ['B1', 'B2'])
+  assert.deepEqual(result.counts, { done: 3, excluded: { open: 0, canceled: 0, chore: 0 } })
+})
+
+test('an entry holds the listed fields and keeps the doneAt it was given', () => {
+  const issue = iss('F1', { type: 'feature', description: 'Retries now stop after 5 tries.', labels: ['backend'], parent: 'EPC-1', archived: true, release: '1.0.0' })
+  const result = buildNotes({ choice, candidates: [cand(issue, '2026-10-06T16:00:00Z')], types })
+  assert.deepEqual(result.groups[0].issues[0], {
+    id: 'F1', title: 'F1', description: 'Retries now stop after 5 tries.', type: 'feature', labels: ['backend'], parent: 'EPC-1', archived: true, doneAt: '2026-10-06T16:00:00Z', release: '1.0.0',
+  })
+})
+
+test('open and canceled issues are counted, never listed', () => {
+  const candidates = [
+    cand(iss('D')),
+    cand(iss('P', { status: open })),
+    cand(iss('T', { status: { name: 'todo', category: 'todo' } })),
+    cand(iss('C', { status: { name: 'canceled', category: 'canceled' } })),
+  ]
+  const result = buildNotes({ choice, candidates, types })
+  assert.equal(result.counts.done, 1)
+  assert.deepEqual(result.counts.excluded, { open: 2, canceled: 1, chore: 0 })
+})
+
+test('a done chore is left out and counted', () => {
+  const result = buildNotes({ choice, candidates: [cand(iss('H', { type: 'chore' })), cand(iss('T'))], types })
+  assert.equal(result.counts.done, 1)
+  assert.equal(result.counts.excluded.chore, 1)
+  const notDone = buildNotes({ choice, candidates: [cand(iss('H', { type: 'chore', status: open }))], types })
+  assert.deepEqual(notDone.counts.excluded, { open: 1, canceled: 0, chore: 0 })
+})
+
+test('a done issue reopened inside the period is not listed', () => {
+  const result = buildNotes({ choice, candidates: [cand(iss('R', { status: open }), '2026-10-05T10:00:00Z')], types })
+  assert.deepEqual(result.groups, [])
+  assert.equal(result.counts.excluded.open, 1)
+})
+
+test('an issue with no type or an unknown type goes to a last group with type null', () => {
+  const candidates = [
+    cand(iss('U2', { type: 'epic-ish', created: '2026-10-03T10:00:00Z' })),
+    cand(iss('U1', { type: null, created: '2026-10-02T10:00:00Z' })),
+    cand(iss('B', { type: 'bug' })),
+  ]
+  const result = buildNotes({ choice, candidates, types })
+  assert.deepEqual(result.groups.map((g) => g.type), ['bug', null])
+  assert.deepEqual(result.groups[1].issues.map((i) => i.id), ['U1', 'U2'])
+})
+
+test('no done issue gives no groups', () => {
+  const result = buildNotes({ choice, candidates: [cand(iss('H', { type: 'chore' })), cand(iss('P', { status: open }))], types })
+  assert.deepEqual(result.groups, [])
+  assert.equal(result.counts.done, 0)
+})
+
+test('the result keeps the choice fields and the problems in order', () => {
+  const problems = [{ id: 'X', code: 'NOT_FOUND', message: 'gone' }]
+  const result = buildNotes({ choice, candidates: [], types, problems })
+  assert.deepEqual(Object.keys(result), ['basis', 'reason', 'draft', 'source', 'period', 'groups', 'counts', 'skipped', 'problems'])
+  assert.deepEqual(result.problems, problems)
+  assert.deepEqual(buildNotes({ choice, candidates: [], types }).problems, [])
 })
