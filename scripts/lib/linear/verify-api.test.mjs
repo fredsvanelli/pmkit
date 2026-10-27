@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { FEATURES, findMatches, summarize } from './verify-api.mjs'
+import { FEATURES, assertQuery, findMatches, graphql, summarize } from './verify-api.mjs'
 
 const schema = {
   queryType: { name: 'Query' },
@@ -65,4 +65,63 @@ test('summarize reports skipped without a live query and empty found lists', () 
   const out = summarize(feature('insights'), schema, {})
   assert.equal(out.live, 'skipped')
   assert.deepEqual(out.found, { types: [], queries: [], mutations: [], fields: [] })
+})
+
+test('assertQuery rejects a mutation, even behind whitespace or comments', () => {
+  assert.throws(() => assertQuery('mutation { x }'), /read-only/)
+  assert.throws(() => assertQuery('  mutation M { x }'), /read-only/)
+  assert.throws(() => assertQuery('# note\n\n  mutation { x }'), /read-only/)
+})
+
+test('assertQuery accepts queries', () => {
+  assertQuery('query { viewer { id } }')
+  assertQuery('{ viewer { id } }')
+})
+
+const KEY = 'lin_test_SECRET'
+
+function fakeFetch(response) {
+  const calls = []
+  const fn = async (...args) => {
+    calls.push(args)
+    return response
+  }
+  fn.calls = calls
+  return fn
+}
+
+const reply = (status, text) => ({ ok: status >= 200 && status < 300, status, text: async () => text })
+
+test('graphql posts the query to Linear with the key in the Authorization header only', async () => {
+  const fetch = fakeFetch(reply(200, JSON.stringify({ data: { viewer: { id: '1' } } })))
+  const result = await graphql({ fetch, key: KEY, query: '{ viewer { id } }' })
+  assert.deepEqual(result, { data: { viewer: { id: '1' } } })
+  const [url, init] = fetch.calls[0]
+  assert.equal(url, 'https://api.linear.app/graphql')
+  assert.equal(init.method, 'POST')
+  assert.equal(init.headers.Authorization, KEY)
+  assert.equal(JSON.parse(init.body).query, '{ viewer { id } }')
+  assert.ok(!init.body.includes(KEY))
+  assert.ok(!url.includes(KEY))
+})
+
+test('graphql returns GraphQL errors of a 200 response to the caller', async () => {
+  const fetch = fakeFetch(reply(200, JSON.stringify({ errors: [{ message: 'x' }] })))
+  const result = await graphql({ fetch, key: KEY, query: '{ a }' })
+  assert.equal(result.errors[0].message, 'x')
+})
+
+test('graphql refuses a mutation before any call', async () => {
+  const fetch = fakeFetch(reply(200, '{}'))
+  await assert.rejects(() => graphql({ fetch, key: KEY, query: 'mutation { x }' }), /read-only/)
+  assert.equal(fetch.calls.length, 0)
+})
+
+test('graphql errors on HTTP failure or a non-JSON body name the status, not the key', async () => {
+  for (const response of [reply(401, 'denied'), reply(200, '<html>')]) {
+    await assert.rejects(
+      () => graphql({ fetch: fakeFetch(response), key: KEY, query: '{ a }' }),
+      (error) => /HTTP/.test(error.message) && !error.message.includes(KEY),
+    )
+  }
 })

@@ -77,3 +77,34 @@ function summarizeLive(feature, liveResults) {
 export function summarize(feature, schema, liveResults) {
   return { feature: feature.id, found: findMatches(schema, feature.pattern), live: summarizeLive(feature, liveResults) }
 }
+
+const ENDPOINT = 'https://api.linear.app/graphql'
+
+export function assertQuery(document) {
+  const body = document.replace(/#[^\n]*/g, '').trim()
+  if (/^mutation\b/i.test(body)) throw new Error('verify-api is read-only: refusing to send a mutation')
+}
+
+export async function graphql({ fetch = globalThis.fetch, key, query, variables }) {
+  assertQuery(query)
+  let response
+  try {
+    response = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: key },
+      body: JSON.stringify({ query, variables }),
+    })
+  } catch {
+    throw new Error('Linear request failed before a response (network error)')
+  }
+  const text = await response.text()
+  let parsed
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    parsed = undefined
+  }
+  if (!response.ok) throw new Error(`Linear answered HTTP ${response.status}`)
+  if (parsed === undefined) throw new Error(`Linear returned a non-JSON body (HTTP ${response.status})`)
+  return parsed
+}
