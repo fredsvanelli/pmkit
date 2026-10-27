@@ -59,7 +59,7 @@ Show the change as a number and a direction only. Give no judgment on whether a 
 
 - No events in the period: say so and show the numbers of the previous period. The change is `n/a` for the medians and the bug rate, and throughput still shows its difference.
 - No work in progress at one end date: aging shows `none` and the change is `n/a`.
-- All four calls for the previous period return a `count` of 0: say there is no earlier data. The change follows step 6.
+- All four calls for the previous period return a `count` of 0: say the previous period has no done issues and no work in progress at its end. The change follows step 6.
 - `since` after `until`, or a date that does not exist: ask for corrected dates and make no CLI call. A CLI `INVALID_INPUT` follows the rules for reading errors in the conventions.
 - `native_metrics` is `absent`: stop, as in step 1.
 - An error from the CLI: apply the rules for reading errors in the conventions.

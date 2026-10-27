@@ -131,7 +131,7 @@ The scenario rules match calls by flag names. Each distinct call of the procedur
 
 - No events in the period: say so and show the previous period's numbers. The change is `n/a` for the medians and bug rate, and throughput still shows its difference.
 - No work in progress at one end date: aging shows `none`, and the change is `n/a`.
-- All four calls for the previous period return a `count` of 0: the command says there is no earlier data. The change follows the trend rules above.
+- All four calls for the previous period return a `count` of 0: the command says the previous period has no done issues and no work in progress at its end. The change follows the trend rules above.
 - `since` after `until`, or a date that does not exist: ask for corrected dates. A CLI `INVALID_INPUT` follows the conventions' rules for reading errors.
 - `native_metrics` absent: stop, as in step 1.
 - A CLI error: apply the rules for reading errors in the conventions.
