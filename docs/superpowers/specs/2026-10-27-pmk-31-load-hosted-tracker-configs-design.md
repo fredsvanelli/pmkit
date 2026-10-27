@@ -1,6 +1,6 @@
 # PMK-31: load hosted tracker configs
 
-Decisions from an autonomous brainstorming run on 2026-10-27, with no user dialogue. Every choice below comes from the issue, the code, the ADRs, the Technical spec, the Unified model and the earlier specs. The choices that belong to the user are in "Open questions", each with a recommendation.
+Decisions from an autonomous brainstorming run on 2026-10-27, with no user dialogue. Every choice below comes from the issue, the code, the ADRs, the Technical spec, the Unified model and the earlier specs. The user answered the three open questions on 2026-10-27 and added `tracker.scope.workspace` to the scope. "Answered questions" records the answers, and the design below applies them.
 
 ## Problem
 
@@ -50,7 +50,7 @@ Sources: Technical spec, "Config schemas" (`tracker.scope: z.record(z.string())`
 
 **C. Each adapter owns its whole config load.** `config.mjs` reads only `.pmkit/config.yaml`, and the Local adapter moves the `.issues/config.yaml` read, the format check and the migrated copy into `scripts/lib/local/`. This is the cleanest split, but it moves the format and migration logic that PMK-118 and PMK-120 just settled, and `validate.mjs`, `runMigrate`, `local/tracker.mjs` and many tests import `loadConfig`. The churn buys nothing that the three criteria need. Rejected for now. A later issue can still move it, because A keeps the Local branch in one function.
 
-Inside A there is one more choice. **A1:** the CLI awaits the contract, as the contract suite already assumes. **A2:** the contract stays synchronous and a hosted adapter blocks, for example by running a child `node` process per HTTP request through `spawnSync`, as the GitHub host does with `gh`. A2 costs a Node start for each request (Linear pages its GraphQL results, so a search can take several), sends every error through a child's stdout, and contradicts the suite's comment. Node 18 has `fetch` and `node:https`, and both are async. A1 is chosen. Open question 2 asks whether the user wants the async change in this issue or in its own issue.
+Inside A there is one more choice. **A1:** the CLI awaits the contract, as the contract suite already assumes. **A2:** the contract stays synchronous and a hosted adapter blocks, for example by running a child `node` process per HTTP request through `spawnSync`, as the GitHub host does with `gh`. A2 costs a Node start for each request (Linear pages its GraphQL results, so a search can take several), sends every error through a child's stdout, and contradicts the suite's comment. Node 18 has `fetch` and `node:https`, and both are async. A1 is chosen, and the user confirmed that the async change belongs to this issue (question 2).
 
 Chosen: A with A1.
 
@@ -87,6 +87,8 @@ export const adapterFor = (system, adapters = ADAPTERS) => (Object.hasOwn(adapte
 
 `create` uses a dynamic import, so a hosted adapter's code loads only when a repository uses it. A hosted adapter registers itself by adding one entry. Until then, the product registry holds `local` only, and every hosted system keeps failing as today.
 
+A hosted adapter's `settings` returns the built-in behavior defaults (question 1): `stale_days`, `stuck_business_days`, `sprint_length_days`, `sprint_start_weekday`, `velocity_window` and `status_update_window_days` take the values of `DEFAULTS.defaults` in `config.mjs`, and `.pmkit/config.yaml` gains no `defaults` key. `config.mjs` exports `builtInDefaults()`, which returns a fresh copy of those values, so a hosted descriptor writes `settings: () => ({ defaults: builtInDefaults() })`. `ctx.settings()` stays the one place that changes if a team later needs other values.
+
 Every function that decides support takes an optional `adapters` argument that defaults to `ADAPTERS`. Tests pass their own registry. That is the only seam, as `formatVersion` and `migrations` already are for `loadConfig`.
 
 ### `.pmkit/config.yaml` shape
@@ -96,7 +98,8 @@ Two optional keys, valid for every system:
 ```yaml
 tracker:
   system: linear
-  scope:                         # hosted trackers: team, project, space...
+  scope:                         # hosted trackers: workspace, team, project, space...
+    workspace: acme     # the workspace URL key (PMK-28)
     team: ENG
     default_project: Mobile v2
 mappings:                        # hosted trackers (Q6)
@@ -112,11 +115,14 @@ Rules in `validatePmkitConfig`, mirrored in the JSON Schema:
 | Key | Rule | Schema |
 |---|---|---|
 | `tracker.scope` | absent, or a map whose every value is a string with a non-space character | `type: object`, `additionalProperties: { type: string, pattern: "\\S" }` |
+| `tracker.scope.workspace` | absent, or a workspace URL key: lowercase letters, digits and hyphens, starting with a letter or a digit, such as `acme` | `properties.workspace: { type: string, pattern: "^[a-z0-9][a-z0-9-]*$" }` |
 | `mappings` | absent, or a map; keys other than `status` and `fields` are allowed, as at the root | `type: object` with `properties` |
 | `mappings.status` | absent, or a map; each key is a category or `blocked`; each value is a string with a non-space character | `propertyNames: { enum: STATUS_MAPPING_KEYS }`, `additionalProperties` as above |
 | `mappings.fields` | absent, or a map; each key is a field role; each value is a string with a non-space character | `propertyNames: { enum: FIELD_ROLES }`, `additionalProperties` as above |
 
-`null` is invalid for each of the four, as for every optional key except `tracker.path` (the existing "null for an optional key" test in `schemas.test.mjs`).
+`null` is invalid for each of the five, as for every optional key except `tracker.path` (the existing "null for an optional key" test in `schemas.test.mjs`).
+
+`tracker.scope.workspace` comes from the PMK-28 spec ("Workspace pin"). Setup will write it from `organization.urlKey`, and the Linear client (PMK-30) compares it with `organization.urlKey` and `previousUrlKeys` and fails with `AUTH` on a mismatch. This issue only adds the key to the schema and to `validatePmkitConfig`, for every system, as a shape rule. The rule "Linear needs `tracker.scope.workspace`" is an adapter rule: the Linear descriptor's `configProblems` adds it when an EPC-5 issue registers the adapter. The JSON Schema cannot say "required when `tracker.system` is `linear`", because the schema subset that `schemas.test.mjs` evaluates has no `if` and `then`, and a rule that only one side checks would break the parity test.
 
 New constants in `scripts/lib/model.mjs`:
 
@@ -126,6 +132,7 @@ New constants in `scripts/lib/model.mjs`:
 The messages follow the style of the existing ones. Example wordings, which the builder may adjust while keeping one message per bad key:
 
 - `tracker.scope must be a map of names, such as team: ENG`
+- `tracker.scope.workspace must be the workspace URL key, lowercase letters, digits and hyphens, such as acme`
 - `mappings must be a map with status or fields`
 - `mappings.status must be a map from a category or blocked to a status name`
 - `mappings.status.reviewing: reviewing is not a category or blocked`
@@ -134,7 +141,7 @@ The messages follow the style of the existing ones. Example wordings, which the 
 
 `tracker.scope` and `mappings` under `local`, and `tracker.path` under a hosted system, are valid and ignored **(builder's call)**. Q4 asks for a config shape that can grow, and a team that moves between trackers can keep both keys in the file. The schema's root description already says that keys pmkit does not know are allowed.
 
-Schema text changes: `tracker.system` says "local works today. A hosted system works once pmkit has its adapter." `tracker.path` says "local only". `tracker.scope`, `mappings`, `mappings.status` and `mappings.fields` get a title and a description, as the structural test requires.
+Schema text changes: `tracker.system` says "local works today. A hosted system works once pmkit has its adapter." `tracker.path` says "local only". `tracker.scope`, `tracker.scope.workspace`, `mappings`, `mappings.status` and `mappings.fields` get a title and a description, as the structural test requires.
 
 ### Support and problems
 
@@ -189,7 +196,7 @@ In `scripts/pmkit.mjs`:
 
 ### Local-only commands
 
-`render`, `migrate` and `reindex` get `local: true` in `COMMANDS`. With any other system, the runner refuses them before `command.run` with `NOT_SUPPORTED`, the message `<command> works only with the Local tracker, and tracker.system is "<system>"`, and a next step that names `pmkit --help`. They then use `ctx.local()`, so their code keeps its synchronous calls and `render-data.mjs` does not change. `render` touches the tracker folder for `--save` and for its "inside the tracker folder" guard. Open question 3 asks whether `render` should instead serve hosted trackers now.
+`render`, `migrate` and `reindex` get `local: true` in `COMMANDS`. With any other system, the runner refuses them before `command.run` with `NOT_SUPPORTED`, the message `<command> works only with the Local tracker, and tracker.system is "<system>"`, and a next step that names `pmkit --help`. They then use `ctx.local()`, so their code keeps its synchronous calls and `render-data.mjs` does not change. `render` touches the tracker folder for `--save` and for its "inside the tracker folder" guard. The user kept `render` Local-only for now (question 3). PMK-40 revisits it.
 
 `validate` stays exempt and works for a hosted system as described above. `init` and `changelog` do not change. `init --tracker` still accepts only `local`, because setting up a hosted tracker is PMK-34 and PMK-53.
 
@@ -205,7 +212,7 @@ The rule that criterion 3 checks: **a command reaches the tracker only through `
 
 | Criterion | Design part | Tests |
 |---|---|---|
-| 1. The loader accepts each `tracker.system` that has an adapter and validates `scope` and `mappings` | The registry; `unsupportedTracker` and `loadConfig` step 5; the `scope` and `mappings` rules in `validatePmkitConfig` and the schema; `adapter.configProblems`; `validateRepo` for a hosted config | `config.test.mjs`: with a test registry that holds `linear`, `loadConfig` returns `{ system: 'linear', hosted: true }` and reads no `.issues/`, even when the folder is missing; each `scope` and `mappings` rule, valid and invalid, with its message; an adapter problem joins `pmkitProblems` only when the shape is valid. `schemas.test.mjs`: the parity probes pick up the new keys from the schema, and the null table gains four rows. `validate.test.mjs`: a hosted config with a bad mapping lists it with code `config` and zero counts. CLI test: a hosted config with a bad mapping warns on a read and refuses a write. |
+| 1. The loader accepts each `tracker.system` that has an adapter and validates `scope` and `mappings` | The registry; `unsupportedTracker` and `loadConfig` step 5; the `scope` and `mappings` rules in `validatePmkitConfig` and the schema; `adapter.configProblems`; `validateRepo` for a hosted config | `config.test.mjs`: with a test registry that holds `linear`, `loadConfig` returns `{ system: 'linear', hosted: true }` and reads no `.issues/`, even when the folder is missing; each `scope` and `mappings` rule, valid and invalid, with its message; an adapter problem joins `pmkitProblems` only when the shape is valid. `schemas.test.mjs`: the parity probes pick up the new keys from the schema, and the null table gains five rows. `config.test.mjs` also checks `tracker.scope.workspace`: `acme` and `a1` are valid, and `Acme`, `https://linear.app/acme`, `-acme` and `acme corp` each give the workspace message. `validate.test.mjs`: a hosted config with a bad mapping lists it with code `config` and zero counts. CLI test: a hosted config with a bad mapping warns on a read and refuses a write. |
 | 2. A system without an adapter still fails with `NOT_SUPPORTED` | `unsupportedTracker(system, adapters)` with the product registry; `loadConfig` step 3 unchanged | The existing tests, listed in "Tests that change", keep their assertions. New: with a test registry that holds `linear` only, `jira` still throws today's `NOT_SUPPORTED` message and next step, and `run` with `jira` exits 2 with the same JSON error. |
 | 3. Commands reach the adapter only through the contract | `contractView`; `ctx.tracker()`, `ctx.local()`, `ctx.settings()`, the discover-based actor; the table in "What each command stops doing"; `local: true`; `listStatusUpdates` in the contract; the async runner | `contract.test.mjs`: `contractView` has exactly the `TRACKER_OPERATIONS` keys, is frozen, and has no `eventsByIssue`. A new `scripts/cli-hosted.test.mjs` with a "mirror" adapter (below). Unit tests for `eventsByIssue`, `categoryLookup` and the `issuesBySprint` helper. The contract suite test for `listStatusUpdates` runs in its three setups. |
 
@@ -230,7 +237,7 @@ The cases cover every command in `COMMANDS` that is not `local: true`, `exempt` 
 | `cli.test.mjs` "an unknown tracker.system refuses reads with INVALID_INPUT" | No change. | Step 4 of `loadConfig` is unchanged. |
 | `cli-risks.test.mjs`, `cli-pr.test.mjs`, `fixtures.test.mjs` | `await run(...)`, and their test bodies become `async`. | `run` is async. |
 | `contract.test.mjs` "lists every missing operation" | No change. Its expected list comes from `TRACKER_OPERATIONS`, which now holds `listStatusUpdates`. | |
-| `schemas.test.mjs` "null for an optional key is invalid on both sides" | Four rows: `tracker.scope`, `mappings`, `mappings.status`, `mappings.fields`, each `false`. | New optional keys. |
+| `schemas.test.mjs` "null for an optional key is invalid on both sides" | Five rows: `tracker.scope`, `tracker.scope.workspace`, `mappings`, `mappings.status`, `mappings.fields`, each `false`. | New optional keys. |
 | `migrations.test.mjs` tests on `NOT_SUPPORTED` | No change. | Those are format errors, not tracker support. |
 | `scripts/__goldens__` | No change. | The Local output must stay byte-identical. A difference stops the stage until the diff is read line by line. |
 
@@ -248,6 +255,8 @@ The cases cover every command in `COMMANDS` that is not `local: true`, `exempt` 
 | `scope` and `mappings` are shape-checked for every system, and their meaning is left to the adapter | Only the adapter knows whether its tracker needs a team, a project or an area path. `configProblems` gives it the hook. |
 | `scope` and `mappings` under `local`, and `tracker.path` under a hosted system, are valid and ignored | The shape grows without breaking a file (Q4). An unknown key is already allowed. |
 | `validate` with a hosted tracker checks `.pmkit/config.yaml` only, offline | It has no tracker files to check, and `npm test` must not touch the network. |
+| A hosted tracker uses the built-in behavior defaults | The user's answer to question 1. It adds no key to `.pmkit/config.yaml`, and `ctx.settings()` is the one place to change later. |
+| `tracker.scope.workspace` is a shape rule for every system, and "Linear needs it" is an adapter rule | PMK-28 asks for the key. The schema subset has no conditional keywords, and only the Linear adapter knows that Linear needs it. |
 | `loadLocalConfig` is extracted unchanged | It keeps the PMK-118 and PMK-120 format and migration logic in one function, and the mirror test needs it. |
 
 ## Risks
@@ -260,21 +269,15 @@ The cases cover every command in `COMMANDS` that is not `local: true`, `exempt` 
 - **The Linear switch of the CLI tests.** When an issue registers the Linear adapter, `UNSUPPORTED` becomes `jira`, and the three `cli.test.mjs` tests check `jira` text. That is intended, and their assertions need no edit.
 - **Node 18 and `fetch`.** Node 18 marks `fetch` experimental and can print a warning on stderr. That is PMK-30's concern. This design only makes sure the CLI can await whatever PMK-30 picks.
 
-## Open questions
+## Answered questions
 
-1. **Where do a hosted tracker's behavior defaults come from?** `stale_days`, `stuck_business_days`, `sprint_length_days`, `sprint_start_weekday`, `velocity_window` and `status_update_window_days` live in `.issues/config.yaml` today, and a hosted tracker has no such file.
-   - (a) The built-in values of `DEFAULTS.defaults` in `config.mjs`, with no config key, until a team asks for another value.
-   - (b) An optional `defaults` block in `.pmkit/config.yaml`, validated by this issue and read only for hosted trackers.
-   - (c) Personal defaults in the user store (PMK-32).
-   - Recommendation: (a). It keeps this issue to the keys the Technical spec names, and `ctx.settings()` is the one place that changes when (b) comes. (b) is the natural next step, because Q5 puts shared settings in the repo file, but it creates a second home for keys that `.issues/config.yaml` already holds. (c) fits per-person values, and these are team norms.
-2. **Does the async CLI belong to this issue?** It touches every command in `scripts/pmkit.mjs`, though each change is mechanical.
-   - (a) Keep it here, as designed.
-   - (b) Split it into a new issue that blocks PMK-33. PMK-31 then keeps a synchronous CLI, and its mirror adapter returns values instead of promises.
-   - Recommendation: (a). The contract boundary that PMK-33 and PMK-35 plug into is incomplete without it, and only a promise-returning mirror catches a missing `await`. The estimate of 5 points already covers a change of this size.
-3. **Should `render` serve a hosted tracker now?** Its data comes from contract operations. Only `--save` and the "inside the tracker folder" guard use the Local folder.
-   - (a) `render` is Local-only for now, as designed. PMK-40 ("Exercise the degraded paths of every command against Linear") revisits it.
-   - (b) `render` goes through the contract now. `--save` alone is Local-only, and the folder guard applies only to the Local tracker.
-   - Recommendation: (a). Linear has its own boards and roadmap, so a Linear team gains little before PMK-40, and (a) keeps `render-data.mjs` and its tests untouched.
+The user answered these on 2026-10-27.
+
+1. **Where do a hosted tracker's behavior defaults come from?** (a) The built-in values of `DEFAULTS.defaults` in `config.mjs`, with no config key. The design applies it in "The adapter registry". An optional `defaults` block in `.pmkit/config.yaml` and personal defaults in the user store (PMK-32) stay possible later, through `ctx.settings()`.
+2. **Does the async CLI belong to this issue?** (a) Yes, as designed. The mirror adapter returns promises.
+3. **Should `render` serve a hosted tracker now?** (a) No. `render` is Local-only for now, and PMK-40 ("Exercise the degraded paths of every command against Linear") revisits it.
+
+Added scope: this issue adds `tracker.scope.workspace` to `schemas/pmkit.config.schema.json` and to `validatePmkitConfig`, as the PMK-28 spec asks. The comparison with `organization.urlKey` belongs to PMK-30. See "`.pmkit/config.yaml` shape".
 
 ## Left to the builder
 
@@ -289,4 +292,4 @@ The cases cover every command in `COMMANDS` that is not `local: true`, `exempt` 
 - Placeholders: none. Each builder's call leaves every criterion as designed.
 - Consistency: "hosted" means a registry entry with `hosted: true` everywhere. `ctx.local()` is the only way past the contract, and the same three commands are `local: true` in the design, the map and the tests.
 - Scope: one new module, one new test file, changes to `config.mjs`, `contract.mjs`, `model.mjs`, `validate.mjs`, `metrics.mjs`, `pmkit.mjs`, the pmkit schema, `CONTEXT.md` and the design spec. No hosted adapter, no network, no tracker file format change, no ADR.
-- Builder check: read as the builder, with no reviewer agent, as the brief asks. Points that came up: how a test registers an adapter (decided, the `adapters` argument), how the mirror gets a Local tracker when the file says `linear` (decided, `loadLocalConfig`), what `validate` does for a hosted system (decided), and where the defaults come from (open question 1).
+- Builder check: read as the builder, with no reviewer agent, as the brief asks. Points that came up: how a test registers an adapter (decided, the `adapters` argument), how the mirror gets a Local tracker when the file says `linear` (decided, `loadLocalConfig`), what `validate` does for a hosted system (decided), and where the defaults come from (question 1, answered: built-in values).
