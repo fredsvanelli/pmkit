@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { buildNotes, chooseBasis } from './lib/release-notes.mjs'
+import { releaseNotesText } from './lib/format.mjs'
 
 const rel = (id, fields) => ({ id, name: id, state: 'released', released: '2026-10-01T10:00:00Z', ...fields })
 const spr = (id, fields) => ({ id, name: id, state: 'closed', start: '2026-09-01', end: '2026-09-14', ...fields })
@@ -153,4 +154,52 @@ test('the result keeps the choice fields and the problems in order', () => {
   assert.deepEqual(Object.keys(result), ['basis', 'reason', 'draft', 'source', 'period', 'groups', 'counts', 'skipped', 'problems'])
   assert.deepEqual(result.problems, problems)
   assert.deepEqual(buildNotes({ choice, candidates: [], types }).problems, [])
+})
+
+const textOf = (selector, candidates = [], extra = {}) => releaseNotesText(buildNotes({ choice: chooseBasis({ ...base, selector, ...extra }), candidates, types }))
+
+test('the first line names the basis', () => {
+  const tagged = rel('1.2.0', { tag: 'v1.2.0', released: '2026-11-28T10:00:00Z' })
+  assert.equal(textOf({ release: tagged }).split('\n')[0], 'release 1.2.0 (tag v1.2.0, released 2026-11-28)')
+  assert.equal(textOf({ release: { ...tagged, tag: undefined } }).split('\n')[0], 'release 1.2.0 (released 2026-11-28)')
+  const planned = rel('1.0.0', { state: 'planned', target: '2026-11-13', released: undefined })
+  assert.equal(textOf({ release: planned }).split('\n')[0], 'release 1.0.0 (planned, target 2026-11-13)')
+  assert.equal(textOf({ sprint: spr('s1', { start: '2026-09-28', end: '2026-10-11' }) }).split('\n')[0], 'sprint s1 (2026-09-28 to 2026-10-11)')
+  assert.equal(textOf(null).split('\n')[0], 'period 2026-10-09 to 2026-10-23 (default window)')
+  assert.equal(textOf({ since: '2026-10-01' }).split('\n')[0], 'period 2026-10-01 to 2026-10-23')
+})
+
+test('the second line names every skipped step', () => {
+  assert.equal(textOf(null).split('\n')[1], 'no released release, no closed sprint, so the notes use the last 14 days')
+  assert.equal(textOf(null, [], { releases: null, sprints: [spr('s1')] }).split('\n')[1], 'this tracker has no releases, so the notes use sprint s1')
+  assert.ok(!textOf({ since: '2026-10-01' }).includes('so the notes use'))
+})
+
+test('a draft says why', () => {
+  assert.ok(textOf({ release: rel('1.0.0', { state: 'planned' }) }).split('\n').includes('draft: release 1.0.0 is not released yet'))
+  assert.ok(textOf({ sprint: spr('s2', { state: 'active' }) }).split('\n').includes('draft: sprint s2 is not closed'))
+})
+
+test('each group is a table, with a Done column unless the basis is a release', () => {
+  const candidates = [cand(iss('F1', { type: 'feature', title: 'Retry' }), '2026-10-06T16:00:00Z'), cand(iss('N1', { type: null }), '2026-10-07T16:00:00Z')]
+  const sprintLines = textOf({ sprint: spr('s1') }, candidates).split('\n')
+  assert.ok(sprintLines.includes('feature (1)'))
+  assert.ok(sprintLines.includes('no type (1)'))
+  assert.ok(sprintLines.some((l) => /^ID\s+\| Title\s+\| Done$/.test(l)))
+  assert.ok(sprintLines.some((l) => /^F1\s+\| Retry\s+\| 2026-10-06$/.test(l)))
+  const releaseLines = textOf({ release: rel('1.0.0') }, candidates).split('\n')
+  assert.ok(releaseLines.some((l) => /^ID\s+\| Title$/.test(l)))
+})
+
+test('the left out line keeps the nonzero parts', () => {
+  const candidates = [cand(iss('P', { status: open })), cand(iss('Q', { status: open })), cand(iss('H', { type: 'chore' })), cand(iss('D'))]
+  assert.ok(textOf({ release: rel('1.0.0') }, candidates).split('\n').includes('left out: 2 not done, 1 chore'))
+  assert.ok(!textOf({ release: rel('1.0.0') }, [cand(iss('D'))]).includes('left out'))
+})
+
+test('no done issue prints no done issues', () => {
+  const lines = textOf({ release: rel('1.0.0') }, [cand(iss('P', { status: open }))]).split('\n')
+  assert.deepEqual(lines.slice(1, 3), ['', 'no done issues'])
+  assert.equal(lines.at(-1), 'left out: 1 not done')
+  assert.deepEqual(textOf({ release: rel('1.0.0') }).split('\n').slice(1), ['', 'no done issues'])
 })

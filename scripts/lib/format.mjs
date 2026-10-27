@@ -205,3 +205,41 @@ function treeRows(map, byId, row) {
   print(map.tree, 0, map.target.kind === 'issue')
   return lines
 }
+
+const SKIP_PHRASES = { releases_absent: 'this tracker has no releases', no_released_release: 'no released release', no_closed_sprint: 'no closed sprint' }
+
+function releaseNotesBasis(result) {
+  const { basis, source, period } = result
+  if (basis === 'release') {
+    if (source.state === 'planned') return `release ${source.id} (planned${source.target ? `, target ${source.target}` : ''})`
+    return `release ${source.id} (${source.tag ? `tag ${source.tag}, ` : ''}released ${String(source.released).slice(0, 10)})`
+  }
+  if (basis === 'sprint') return `sprint ${source.id} (${source.start} to ${source.end})`
+  return `period ${period.since} to ${period.until}${period.defaulted ? ' (default window)' : ''}`
+}
+
+/** The text of `release-notes`: the basis, why, the draft flag, one table per type and the counts left out. */
+export function releaseNotesText(result) {
+  const lines = [releaseNotesBasis(result)]
+  if (result.skipped.length > 0) {
+    const phrases = result.skipped.map((step) => SKIP_PHRASES[step.reason]).join(', ')
+    const used = result.basis === 'sprint'
+      ? `sprint ${result.source.id}`
+      : `the last ${Math.round((Date.parse(`${result.period.until}T00:00:00Z`) - Date.parse(`${result.period.since}T00:00:00Z`)) / 86400000)} days`
+    lines.push(`${phrases}, so the notes use ${used}`)
+  }
+  if (result.draft) lines.push(result.basis === 'release' ? `draft: release ${result.source.id} is not released yet` : `draft: sprint ${result.source.id} is not closed`)
+  lines.push('')
+  if (result.groups.length === 0) lines.push('no done issues')
+  const withDone = result.basis !== 'release'
+  result.groups.forEach((group, index) => {
+    if (index > 0) lines.push('')
+    lines.push(`${group.type ?? 'no type'} (${group.issues.length})`)
+    const header = ['ID', 'Title', ...(withDone ? ['Done'] : [])]
+    lines.push(table(header, group.issues.map((i) => [i.id, i.title, ...(withDone ? [String(i.doneAt ?? '').slice(0, 10)] : [])])))
+  })
+  const { open, canceled, chore } = result.counts.excluded
+  const parts = [[open, 'not done'], [canceled, 'canceled'], [chore, 'chore']].filter(([n]) => n > 0).map(([n, label]) => `${n} ${label}`)
+  if (parts.length > 0) lines.push('', `left out: ${parts.join(', ')}`)
+  return lines.join('\n')
+}
