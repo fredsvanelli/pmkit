@@ -101,6 +101,8 @@ export function dependencyMap({ target, issues, dependencies = true, unreadable 
 
   const estimated = nodes.some((node) => node.open && typeof node.estimate === 'number')
   const weight = { unit: estimated ? unit : 'issues' }
+  const criticalPath = basis === 'blockers' ? criticalPathOf(nodes, graph, weight.unit) : null
+  for (const id of criticalPath?.ids ?? []) graph.get(id).critical = true
 
   return {
     target: { id: target.id, kind: target.kind, title: target.title, status: target.status, ancestors },
@@ -109,7 +111,7 @@ export function dependencyMap({ target, issues, dependencies = true, unreadable 
     weight,
     nodes,
     tree,
-    criticalPath: null,
+    criticalPath,
     resolved,
     related: relatedPairs(scope),
     problems,
@@ -141,6 +143,47 @@ function breakLoops(nodes, graph) {
   const starts = [...nodes.filter((node) => node.scope && node.open), ...nodes]
   for (const node of starts) if (!visited.has(node.id)) visit(node)
   return problems
+}
+
+/**
+ * The heaviest chain of nodes, linked by kept blocker edges, that ends at an open scope issue.
+ * The graph is acyclic here. Ties go to the chain whose nodes come first in creation order,
+ * compared from the start of the chain; when one chain is a prefix of the other, the shorter wins.
+ */
+function criticalPathOf(nodes, graph, unit) {
+  const rank = new Map(nodes.map((node, index) => [node.id, index]))
+  const weightOf = (node) => (unit === 'issues' ? 1 : typeof node.estimate === 'number' ? node.estimate : 0)
+  const before = (a, b) => {
+    for (let index = 0; index < Math.min(a.length, b.length); index++) {
+      if (a[index] !== b[index]) return rank.get(a[index]) < rank.get(b[index])
+    }
+    return a.length < b.length
+  }
+  const better = (a, b) => b === undefined || a.length > b.length || (a.length === b.length && before(a.ids, b.ids))
+
+  const memo = new Map()
+  const best = (node) => {
+    if (memo.has(node.id)) return memo.get(node.id)
+    let chain
+    for (const id of node.blockedBy) {
+      const from = best(graph.get(id))
+      const candidate = { ids: [...from.ids, node.id], length: from.length + weightOf(node) }
+      if (better(candidate, chain)) chain = candidate
+    }
+    chain ??= { ids: [node.id], length: weightOf(node) }
+    memo.set(node.id, chain)
+    return chain
+  }
+
+  let path
+  for (const node of nodes) {
+    if (!node.scope || !node.open) continue
+    const chain = best(node)
+    if (better(chain, path)) path = chain
+  }
+  if (path === undefined) return null
+  const unestimated = unit === 'issues' ? [] : path.ids.filter((id) => typeof graph.get(id).estimate !== 'number')
+  return { ids: path.ids, length: path.length, unestimated }
 }
 
 /** The scope issues in creation order: for an epic, the non-archived issues under it; for an issue, itself and its non-archived sub-issues. */

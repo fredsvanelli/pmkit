@@ -71,9 +71,10 @@ test('an edge to a done or canceled blocker is dropped and counted', () => {
 test('a missing and an unreadable blocker are open nodes that are not followed', () => {
   const issues = [issue('A', { parent: 'EPC-1', blockedBy: ['M', 'R'] })]
   const map = dependencyMap({ target: epic, issues, unreadable: ['R'] })
+  // M ends up on the critical path M → A: each node weighs 1, and M sorts before R.
   assert.deepEqual(node(map, 'M'), {
     id: 'M', title: null, status: null, assignee: null, estimate: null, parent: null,
-    scope: false, open: true, archived: false, missing: true, unreadable: false, blockedBy: [], critical: false,
+    scope: false, open: true, archived: false, missing: true, unreadable: false, blockedBy: [], critical: true,
   })
   assert.equal(node(map, 'R').missing, false)
   assert.equal(node(map, 'R').unreadable, true)
@@ -189,4 +190,51 @@ test('a self-loop is dropped, and with no other edge the basis is none', () => {
   assert.deepEqual(node(map, 'S').blockedBy, [])
   assert.equal(map.basis, 'hierarchy')
   assert.equal(map.reason, 'none')
+})
+
+// In the critical path tests, every issue whose ID starts with S is under EPC-1.
+const scoped = (id, fields = {}) => issue(id, id.startsWith('S') ? { parent: 'EPC-1', ...fields } : fields)
+const critical = (map) => map.nodes.filter((entry) => entry.critical).map((entry) => entry.id)
+
+test('the critical path is the heaviest chain that ends at an open scope issue', () => {
+  const issues = [scoped('S1', { estimate: 8, blockedBy: ['U'] }), scoped('U', { estimate: 3 }), scoped('S2', { estimate: 5 })]
+  const map = dependencyMap({ target: epic, issues })
+  assert.deepEqual(map.criticalPath, { ids: ['U', 'S1'], length: 11, unestimated: [] })
+  assert.deepEqual(critical(map), ['S1', 'U'])
+})
+
+test('a lone heavy scope issue can be the critical path', () => {
+  const issues = [scoped('S1', { estimate: 2, blockedBy: ['U'] }), scoped('U', { estimate: 1 }), scoped('S2', { estimate: 5 })]
+  assert.deepEqual(dependencyMap({ target: epic, issues }).criticalPath, { ids: ['S2'], length: 5, unestimated: [] })
+})
+
+test('an unestimated node weighs 0 and is named', () => {
+  const issues = [scoped('S1', { estimate: 5, blockedBy: ['U', 'M'] }), scoped('U'), scoped('S2', { estimate: 3 })]
+  assert.deepEqual(dependencyMap({ target: epic, issues }).criticalPath, { ids: ['U', 'S1'], length: 5, unestimated: ['U'] })
+})
+
+test('with no numeric estimate each issue weighs 1', () => {
+  const issues = [scoped('S1', { blockedBy: ['A'] }), scoped('A', { blockedBy: ['B'] }), scoped('B'), scoped('S2')]
+  const map = dependencyMap({ target: epic, issues })
+  assert.deepEqual(map.weight, { unit: 'issues' })
+  assert.deepEqual(map.criticalPath, { ids: ['B', 'A', 'S1'], length: 3, unestimated: [] })
+})
+
+test('ties go to the chain whose nodes come first in creation order', () => {
+  const blockers = [scoped('X', { estimate: 3 }), scoped('Y', { estimate: 3 }), scoped('S', { estimate: 2, blockedBy: ['Y', 'X'] })]
+  assert.deepEqual(dependencyMap({ target: epic, issues: blockers }).criticalPath.ids, ['X', 'S'])
+  const candidates = [
+    scoped('S1', { estimate: 3 }),
+    scoped('S2', { estimate: 3 }),
+    scoped('S3', { estimate: 1, blockedBy: ['U'] }),
+    scoped('U', { estimate: 1 }),
+  ]
+  assert.deepEqual(dependencyMap({ target: epic, issues: candidates }).criticalPath.ids, ['S1'])
+})
+
+test('the hierarchy basis has no critical path', () => {
+  const map = dependencyMap({ target: epic, issues: [issue('A', { parent: 'EPC-1', blockedBy: ['D'] }), issue('D', { status: st('done') })] })
+  assert.equal(map.reason, 'resolved')
+  assert.equal(map.criticalPath, null)
+  assert.deepEqual(critical(map), [])
 })
