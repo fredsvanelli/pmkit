@@ -11,7 +11,7 @@ import { COMMANDS as CLI_COMMANDS } from './pmkit.mjs'
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const TERMS = [
-  'Tracker', 'Git host', 'Adapter', 'Issue', 'Sub-issue', 'Epic', 'Sprint', 'Status', 'Category', 'Blocked', 'Blocker chain', 'Critical path', 'Event',
+  'Tracker', 'Git host', 'Adapter', 'Issue', 'Sub-issue', 'Epic', 'Sprint', 'Status', 'Category', 'Blocked', 'Blocker chain', 'Critical path', 'Release notes', 'Event',
   'Synthetic event', 'Drift', 'Capability', 'Capability manifest', 'Member', 'Actor', 'Local tracker', 'Write policy', 'Dry run', 'Tracker format', 'Migration',
 ]
 
