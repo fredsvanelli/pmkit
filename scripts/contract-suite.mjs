@@ -292,6 +292,30 @@ export function runTrackerContract({ name, setup }) {
       await rejects(() => tracker.getMilestone('contract-dry'), 'NOT_FOUND')
     })
 
+    it('lists no releases at the start', async ({ tracker }) => {
+      assert.deepEqual(await tracker.listReleases(), [])
+    })
+
+    it('creates a release that list and get agree on', async ({ tracker, actor }) => {
+      const created = await tracker.createRelease({ id: 'contract-1.0', name: 'Contract one', tag: 'v-contract-1.0', target: '2099-01-31' }, actor)
+      assert.equal(created.before, null)
+      assert.equal(created.after.id, 'contract-1.0')
+      assert.equal(created.after.tag, 'v-contract-1.0')
+      assert.deepEqual(await tracker.listReleases(), [created.after])
+      assert.deepEqual(await tracker.getRelease('contract-1.0'), created.after)
+    })
+
+    it('rejects an unknown release with NOT_FOUND', async ({ tracker }) => {
+      await rejects(() => tracker.getRelease('no-such-release'), 'NOT_FOUND')
+    })
+
+    it('a release dry run returns after and creates nothing', async ({ tracker, actor }) => {
+      const { before, after } = await tracker.createRelease({ id: 'contract-dry' }, actor, { dryRun: true })
+      assert.equal(before, null)
+      assert.equal(after.id, 'contract-dry')
+      assert.deepEqual(await tracker.listReleases(), [])
+    })
+
     it('logs time on an issue and shows it in the history and the metric events', async ({ tracker, actor }) => {
       const { id } = (await tracker.createIssue({ title: 'Timed' }, actor)).after
       await tracker.logTime(id, 45, actor)

@@ -19,6 +19,7 @@ import { buildCapabilities } from '../capabilities.mjs'
 import { lastEntry } from '../metrics.mjs'
 import { createDocumentFile, readDocumentFile } from './documents.mjs'
 import { hasMilestoneFiles, milestoneStems, parseMilestone, serializeMilestone, sortMilestones, validMilestoneId } from './milestones.mjs'
+import { parseRelease, releaseStems, serializeRelease, sortReleases, validReleaseId, validTag } from './releases.mjs'
 import { checkFilter, runQuery } from './query.mjs'
 import { CACHE_DIR, INDEX_FILE, clearIndex, indexHeader, readThroughIndex } from './query-index.mjs'
 import {
@@ -944,6 +945,65 @@ export function createLocalTracker(root, {
     return { before: null, after }
   }
 
+  const releasesDir = path.join(issuesDir, 'releases')
+  const readRelease = (id) => parseRelease(fs.readFileSync(path.join(releasesDir, `${id}.md`), 'utf8'), id)
+
+  function getRelease(id) {
+    if (!validReleaseId(id) || !releaseStems(releasesDir).has(id)) {
+      throw new PmkitError('NOT_FOUND', `release ${id} does not exist`, 'pmkit release list')
+    }
+    return readRelease(id)
+  }
+
+  /** Every release that parses, oldest version first. A file that does not parse, or whose stem breaks the id rule, is skipped; validate reports it. */
+  function listReleases({ state } = {}) {
+    if (state !== undefined && !['planned', 'released'].includes(state)) throw invalid('state must be planned or released', 'pmkit release list')
+    const releases = []
+    for (const id of [...releaseStems(releasesDir)].filter(validReleaseId)) {
+      try {
+        releases.push(readRelease(id))
+      } catch (error) {
+        if (!(error instanceof PmkitError)) throw error
+      }
+    }
+    return sortReleases(releases).filter((release) => state === undefined || release.state === state)
+  }
+
+  function createRelease(input, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const allowed = ['id', 'name', 'tag', 'target']
+    for (const key of Object.keys(input)) {
+      if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+    }
+    const { id } = input
+    if (!validReleaseId(id)) {
+      throw invalid(`release id "${id}" must start and end with a letter or digit and hold only letters, digits, ".", "_" and "-"`, 'Use an id like 1.2.0 or v1.2.0')
+    }
+    const clash = [...releaseStems(releasesDir)].find((stem) => stem.toLowerCase() === id.toLowerCase())
+    if (clash !== undefined) throw new PmkitError('CONFLICT', `release ${clash} already exists`, 'pmkit release list')
+    let name = id
+    if (!blank(input.name)) {
+      if (typeof input.name !== 'string' || input.name.trim() === '') throw invalid('name must be a non-empty string')
+      name = oneLine('name', input.name.trim())
+    }
+    const release = { name }
+    if (!blank(input.tag)) {
+      if (!validTag(input.tag)) throw invalid(`tag "${input.tag}" is not a valid git tag name`, 'Use a tag like v1.2.0')
+      release.tag = input.tag
+    }
+    if (!blank(input.target)) {
+      if (!validDate(input.target)) throw invalid('target must be a date as YYYY-MM-DD')
+      release.target = input.target
+    }
+    const content = serializeRelease(release)
+    const after = readBack('release file', () => parseRelease(content, id))
+    if (!dryRun) {
+      fs.mkdirSync(releasesDir, { recursive: true })
+      writeFile(path.join(releasesDir, `${id}.md`), content)
+    }
+    return { before: null, after }
+  }
+
   /**
    * Milestone names that issues or epics use and that have no file, with how many of each use them. Archived issues count, as they do in `validate`.
    * `except` is an id about to be filed. Not a contract operation; the CLI warns with it.
@@ -971,6 +1031,7 @@ export function createLocalTracker(root, {
   return {
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     listMilestones, getMilestone, createMilestone, unfiledMilestones,
+    listReleases, getRelease, createRelease,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
     comment, listComments, getHistory, logTime, readDocument, createDocument,
     discover, capabilities, reindex, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
