@@ -49,7 +49,7 @@ test("childEnv has no key from the caller's env", () => {
     assert.equal(env.GIT_CONFIG_GLOBAL, os.devNull)
     assert.equal(env.GIT_CONFIG_NOSYSTEM, '1')
     assert.equal(env.GIT_CEILING_DIRECTORIES, fs.realpathSync(os.tmpdir()))
-    const expected = ['PATH', 'TZ', 'PMKIT_USER', 'PMKIT_NOW', 'PMKIT_SEED', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM', 'GIT_CEILING_DIRECTORIES']
+    const expected = ['PATH', 'TZ', 'PMKIT_USER', 'PMKIT_NOW', 'PMKIT_SEED', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM', 'GIT_CEILING_DIRECTORIES', 'HOME', 'USERPROFILE', 'XDG_CONFIG_HOME', 'PMKIT_HOME']
     if (process.platform === 'win32') expected.push('SYSTEMROOT')
     assert.deepEqual(Object.keys(env).sort(), expected.sort())
   } finally {
@@ -188,5 +188,17 @@ test('runPmkit merges env over childEnv', async () => {
     assert.equal(JSON.parse(plain.stdout).id, 'fred')
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('childEnv points the user store at a temp folder, the same one on every call', () => {
+  const first = childEnv()
+  const second = childEnv()
+  const tmp = fs.realpathSync(os.tmpdir())
+  for (const name of ['HOME', 'USERPROFILE', 'XDG_CONFIG_HOME', 'PMKIT_HOME']) {
+    assert.ok(first[name], `${name} is set`)
+    assert.ok(first[name].startsWith(tmp), `${name} is inside the temp folder`)
+    assert.equal(first[name], second[name])
+    assert.notEqual(first[name], process.env.HOME)
   }
 })

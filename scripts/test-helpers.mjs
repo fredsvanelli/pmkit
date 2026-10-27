@@ -26,6 +26,16 @@ export function removeTempDirs() {
 after(removeTempDirs)
 process.on('exit', removeTempDirs)
 
+/**
+ * Makes a temp folder to stand in for the user's home and returns it with the
+ * environment variables that point the user store there.
+ */
+export function userStoreEnv() {
+  const home = tempDir('pmkit-home-')
+  const store = path.join(home, '.config', 'pmkit')
+  return { home, env: { HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: path.join(home, '.config'), PMKIT_HOME: store } }
+}
+
 /** Copies a fixture into a fresh temp folder and returns its path. */
 export function makeRepo(name = 'basic') {
   const root = tempDir('pmkit-')
