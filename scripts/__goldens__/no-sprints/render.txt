@@ -1,0 +1,413 @@
+$ pmkit render board
+exit 0
+--- stdout
+<!-- pmkit render board: generated from the tracker files; the next render replaces this file -->
+
+# Board
+
+Tracker state as of 2026-10-22T10:00:00Z
+
+4 open issues, 8 points open, done: 2, canceled: 0
+
+## Triage (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-1V9Z | Investigate slow login | bug |  |  |  |  |
+
+## Backlog (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-7T4C | Document the signature header | chore | low |  |  |  |
+
+## Todo (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-3M8D | Billing export as CSV | feature | medium | Fred Vanelli | 3 | labels: billing |
+
+## In progress (0)
+
+No issues
+
+## In review (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-9B2X | Dead-letter queue | feature | high | Ana Souza | 5 | labels: webhooks, backend |
+--- stderr
+(empty)
+
+$ pmkit render board --json
+exit 0
+--- stdout
+{
+  "view": "board",
+  "format": "md",
+  "path": null,
+  "content": "<!-- pmkit render board: generated from the tracker files; the next render replaces this file -->\n\n# Board\n\nTracker state as of 2026-10-22T10:00:00Z\n\n4 open issues, 8 points open, done: 2, canceled: 0\n\n## Triage (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-1V9Z | Investigate slow login | bug |  |  |  |  |\n\n## Backlog (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-7T4C | Document the signature header | chore | low |  |  |  |\n\n## Todo (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-3M8D | Billing export as CSV | feature | medium | Fred Vanelli | 3 | labels: billing |\n\n## In progress (0)\n\nNo issues\n\n## In review (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-9B2X | Dead-letter queue | feature | high | Ana Souza | 5 | labels: webhooks, backend |\n",
+  "asOf": "2026-10-22T10:00:00Z",
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit render board --dry-run
+exit 0
+--- stdout
+<!-- pmkit render board: generated from the tracker files; the next render replaces this file -->
+
+# Board
+
+Tracker state as of 2026-10-22T10:00:00Z
+
+4 open issues, 8 points open, done: 2, canceled: 0
+
+## Triage (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-1V9Z | Investigate slow login | bug |  |  |  |  |
+
+## Backlog (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-7T4C | Document the signature header | chore | low |  |  |  |
+
+## Todo (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-3M8D | Billing export as CSV | feature | medium | Fred Vanelli | 3 | labels: billing |
+
+## In progress (0)
+
+No issues
+
+## In review (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-9B2X | Dead-letter queue | feature | high | Ana Souza | 5 | labels: webhooks, backend |
+--- stderr
+(empty)
+
+$ pmkit render board --dry-run --json
+exit 0
+--- stdout
+{
+  "view": "board",
+  "format": "md",
+  "path": null,
+  "content": "<!-- pmkit render board: generated from the tracker files; the next render replaces this file -->\n\n# Board\n\nTracker state as of 2026-10-22T10:00:00Z\n\n4 open issues, 8 points open, done: 2, canceled: 0\n\n## Triage (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-1V9Z | Investigate slow login | bug |  |  |  |  |\n\n## Backlog (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-7T4C | Document the signature header | chore | low |  |  |  |\n\n## Todo (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-3M8D | Billing export as CSV | feature | medium | Fred Vanelli | 3 | labels: billing |\n\n## In progress (0)\n\nNo issues\n\n## In review (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-9B2X | Dead-letter queue | feature | high | Ana Souza | 5 | labels: webhooks, backend |\n",
+  "asOf": "2026-10-22T10:00:00Z",
+  "problems": [],
+  "dryRun": true
+}
+--- stderr
+(empty)
+
+$ pmkit render roadmap --format html
+exit 0
+--- stdout
+<!doctype html>
+<!-- pmkit render roadmap: generated from the tracker files; the next render replaces this file -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roadmap</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d1d9e0; --card: #f6f8fa;
+  --on-track: #1a7f37; --at-risk: #9a6700; --off-track: #d1242f;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --card: #151b23;
+    --on-track: #3fb950; --at-risk: #d29922; --off-track: #f85149;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+h1 { margin: 0 0 8px; font-size: 1.6em; }
+h2 { margin: 24px 0 8px; font-size: 1.2em; }
+p { margin: 4px 0; }
+.lead, .closing { color: var(--muted); }
+.empty { color: var(--muted); font-style: italic; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+th { background: var(--card); }
+.columns { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.column { flex: 1 1 220px; min-width: 220px; }
+.column h2 { margin-top: 8px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+.card-id { color: var(--muted); font-size: 0.85em; }
+.card-title { font-weight: 600; }
+.card dl { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; margin: 4px 0 0; font-size: 0.85em; }
+.card dt { color: var(--muted); }
+.card dd { margin: 0; }
+.tone-on_track { color: var(--on-track); font-weight: 600; }
+.tone-at_risk { color: var(--at-risk); font-weight: 600; }
+.tone-off_track { color: var(--off-track); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+<h1>Roadmap</h1>
+<p class="lead">Tracker state as of 2026-10-22T10:00:00Z</p>
+<section>
+<h2>Public webhooks launch (v1.0, due 2026-11-13)</h2>
+<p>Webhooks are open to every customer.</p>
+<p>Issues: 0 of 0 done</p>
+<p class="empty">No epics</p>
+</section>
+<section>
+<h2>No milestone</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Start</th><th>Target</th><th>Progress</th><th>Health</th></tr></thead>
+<tbody>
+<tr><td>EPC-4H7V</td><td>Reliable webhooks</td><td>in_progress</td><td>2026-09-28</td><td>2026-11-13</td><td>2/2 issues, 13/13 points</td><td></td></tr>
+</tbody>
+</table></div>
+</section>
+</main>
+</body>
+</html>
+--- stderr
+(empty)
+
+$ pmkit render roadmap --format html --json
+exit 0
+--- stdout
+{
+  "view": "roadmap",
+  "format": "html",
+  "path": null,
+  "content": "<!doctype html>\n<!-- pmkit render roadmap: generated from the tracker files; the next render replaces this file -->\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Roadmap</title>\n<style>\n:root {\n  color-scheme: light dark;\n  --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d1d9e0; --card: #f6f8fa;\n  --on-track: #1a7f37; --at-risk: #9a6700; --off-track: #d1242f;\n}\n@media (prefers-color-scheme: dark) {\n  :root {\n    --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --card: #151b23;\n    --on-track: #3fb950; --at-risk: #d29922; --off-track: #f85149;\n  }\n}\n* { box-sizing: border-box; }\nbody { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif; }\nmain { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }\nh1 { margin: 0 0 8px; font-size: 1.6em; }\nh2 { margin: 24px 0 8px; font-size: 1.2em; }\np { margin: 4px 0; }\n.lead, .closing { color: var(--muted); }\n.empty { color: var(--muted); font-style: italic; }\n.table-wrap { overflow-x: auto; }\ntable { border-collapse: collapse; width: 100%; }\nth, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }\nth { background: var(--card); }\n.columns { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }\n.column { flex: 1 1 220px; min-width: 220px; }\n.column h2 { margin-top: 8px; }\n.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }\n.card-id { color: var(--muted); font-size: 0.85em; }\n.card-title { font-weight: 600; }\n.card dl { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; margin: 4px 0 0; font-size: 0.85em; }\n.card dt { color: var(--muted); }\n.card dd { margin: 0; }\n.tone-on_track { color: var(--on-track); font-weight: 600; }\n.tone-at_risk { color: var(--at-risk); font-weight: 600; }\n.tone-off_track { color: var(--off-track); font-weight: 600; }\n</style>\n</head>\n<body>\n<main>\n<h1>Roadmap</h1>\n<p class=\"lead\">Tracker state as of 2026-10-22T10:00:00Z</p>\n<section>\n<h2>Public webhooks launch (v1.0, due 2026-11-13)</h2>\n<p>Webhooks are open to every customer.</p>\n<p>Issues: 0 of 0 done</p>\n<p class=\"empty\">No epics</p>\n</section>\n<section>\n<h2>No milestone</h2>\n<div class=\"table-wrap\"><table>\n<thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Start</th><th>Target</th><th>Progress</th><th>Health</th></tr></thead>\n<tbody>\n<tr><td>EPC-4H7V</td><td>Reliable webhooks</td><td>in_progress</td><td>2026-09-28</td><td>2026-11-13</td><td>2/2 issues, 13/13 points</td><td></td></tr>\n</tbody>\n</table></div>\n</section>\n</main>\n</body>\n</html>\n",
+  "asOf": "2026-10-22T10:00:00Z",
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit render roadmap --format html --dry-run
+exit 0
+--- stdout
+<!doctype html>
+<!-- pmkit render roadmap: generated from the tracker files; the next render replaces this file -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roadmap</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d1d9e0; --card: #f6f8fa;
+  --on-track: #1a7f37; --at-risk: #9a6700; --off-track: #d1242f;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --card: #151b23;
+    --on-track: #3fb950; --at-risk: #d29922; --off-track: #f85149;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+h1 { margin: 0 0 8px; font-size: 1.6em; }
+h2 { margin: 24px 0 8px; font-size: 1.2em; }
+p { margin: 4px 0; }
+.lead, .closing { color: var(--muted); }
+.empty { color: var(--muted); font-style: italic; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+th { background: var(--card); }
+.columns { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.column { flex: 1 1 220px; min-width: 220px; }
+.column h2 { margin-top: 8px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+.card-id { color: var(--muted); font-size: 0.85em; }
+.card-title { font-weight: 600; }
+.card dl { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; margin: 4px 0 0; font-size: 0.85em; }
+.card dt { color: var(--muted); }
+.card dd { margin: 0; }
+.tone-on_track { color: var(--on-track); font-weight: 600; }
+.tone-at_risk { color: var(--at-risk); font-weight: 600; }
+.tone-off_track { color: var(--off-track); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+<h1>Roadmap</h1>
+<p class="lead">Tracker state as of 2026-10-22T10:00:00Z</p>
+<section>
+<h2>Public webhooks launch (v1.0, due 2026-11-13)</h2>
+<p>Webhooks are open to every customer.</p>
+<p>Issues: 0 of 0 done</p>
+<p class="empty">No epics</p>
+</section>
+<section>
+<h2>No milestone</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Start</th><th>Target</th><th>Progress</th><th>Health</th></tr></thead>
+<tbody>
+<tr><td>EPC-4H7V</td><td>Reliable webhooks</td><td>in_progress</td><td>2026-09-28</td><td>2026-11-13</td><td>2/2 issues, 13/13 points</td><td></td></tr>
+</tbody>
+</table></div>
+</section>
+</main>
+</body>
+</html>
+--- stderr
+(empty)
+
+$ pmkit render roadmap --format html --dry-run --json
+exit 0
+--- stdout
+{
+  "view": "roadmap",
+  "format": "html",
+  "path": null,
+  "content": "<!doctype html>\n<!-- pmkit render roadmap: generated from the tracker files; the next render replaces this file -->\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Roadmap</title>\n<style>\n:root {\n  color-scheme: light dark;\n  --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d1d9e0; --card: #f6f8fa;\n  --on-track: #1a7f37; --at-risk: #9a6700; --off-track: #d1242f;\n}\n@media (prefers-color-scheme: dark) {\n  :root {\n    --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --card: #151b23;\n    --on-track: #3fb950; --at-risk: #d29922; --off-track: #f85149;\n  }\n}\n* { box-sizing: border-box; }\nbody { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif; }\nmain { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }\nh1 { margin: 0 0 8px; font-size: 1.6em; }\nh2 { margin: 24px 0 8px; font-size: 1.2em; }\np { margin: 4px 0; }\n.lead, .closing { color: var(--muted); }\n.empty { color: var(--muted); font-style: italic; }\n.table-wrap { overflow-x: auto; }\ntable { border-collapse: collapse; width: 100%; }\nth, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }\nth { background: var(--card); }\n.columns { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }\n.column { flex: 1 1 220px; min-width: 220px; }\n.column h2 { margin-top: 8px; }\n.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }\n.card-id { color: var(--muted); font-size: 0.85em; }\n.card-title { font-weight: 600; }\n.card dl { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; margin: 4px 0 0; font-size: 0.85em; }\n.card dt { color: var(--muted); }\n.card dd { margin: 0; }\n.tone-on_track { color: var(--on-track); font-weight: 600; }\n.tone-at_risk { color: var(--at-risk); font-weight: 600; }\n.tone-off_track { color: var(--off-track); font-weight: 600; }\n</style>\n</head>\n<body>\n<main>\n<h1>Roadmap</h1>\n<p class=\"lead\">Tracker state as of 2026-10-22T10:00:00Z</p>\n<section>\n<h2>Public webhooks launch (v1.0, due 2026-11-13)</h2>\n<p>Webhooks are open to every customer.</p>\n<p>Issues: 0 of 0 done</p>\n<p class=\"empty\">No epics</p>\n</section>\n<section>\n<h2>No milestone</h2>\n<div class=\"table-wrap\"><table>\n<thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Start</th><th>Target</th><th>Progress</th><th>Health</th></tr></thead>\n<tbody>\n<tr><td>EPC-4H7V</td><td>Reliable webhooks</td><td>in_progress</td><td>2026-09-28</td><td>2026-11-13</td><td>2/2 issues, 13/13 points</td><td></td></tr>\n</tbody>\n</table></div>\n</section>\n</main>\n</body>\n</html>\n",
+  "asOf": "2026-10-22T10:00:00Z",
+  "problems": [],
+  "dryRun": true
+}
+--- stderr
+(empty)
+
+$ pmkit render sprint
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: there is no active sprint
+next: pmkit cycle list
+
+$ pmkit render sprint --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "there is no active sprint",
+    "nextStep": "pmkit cycle list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit render sprint --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: there is no active sprint
+next: pmkit cycle list
+
+$ pmkit render sprint --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "there is no active sprint",
+    "nextStep": "pmkit cycle list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit render sprint --sprint 2026-10-12
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: sprint 2026-10-12 does not exist
+next: pmkit cycle list
+
+$ pmkit render sprint --sprint 2026-10-12 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "sprint 2026-10-12 does not exist",
+    "nextStep": "pmkit cycle list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit render sprint --sprint 2026-10-12 --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: sprint 2026-10-12 does not exist
+next: pmkit cycle list
+
+$ pmkit render sprint --sprint 2026-10-12 --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "sprint 2026-10-12 does not exist",
+    "nextStep": "pmkit cycle list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit render board --save
+exit 0
+--- stdout
+wrote .issues/.cache/render/board.md (board, md)
+--- stderr
+(empty)
+
+$ pmkit render board --save --json
+exit 0
+--- stdout
+{
+  "view": "board",
+  "format": "md",
+  "path": ".issues/.cache/render/board.md",
+  "overwrote": false,
+  "asOf": "2026-10-22T10:00:00Z",
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit render board --save --dry-run
+exit 0
+--- stdout
+would write .issues/.cache/render/board.md (board, md)
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit render board --save --dry-run --json
+exit 0
+--- stdout
+{
+  "view": "board",
+  "format": "md",
+  "path": ".issues/.cache/render/board.md",
+  "overwrote": false,
+  "asOf": "2026-10-22T10:00:00Z",
+  "problems": [],
+  "dryRun": true
+}
+--- stderr
+(empty)

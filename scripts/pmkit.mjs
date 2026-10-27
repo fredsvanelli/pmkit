@@ -18,10 +18,14 @@ import { addMapEntry, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
 import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { lineDiff } from './lib/diff.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
+import { CACHE_DIR, ensureCacheIgnored } from './lib/local/query-index.mjs'
+import { writeFileAtomic } from './lib/local/store.mjs'
 import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, planMigration } from './lib/local/migrations.mjs'
 import { parseChangelog, sectionsSince } from './lib/changelog.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
 import { ID_STYLES, branchName, isId, normalizeId } from './lib/ids.mjs'
+import { boardDoc, hasMarker, problemsLine, renderDocument, roadmapDoc, sprintDoc } from './lib/render.mjs'
+import { boardData, roadmapData, sprintData } from './lib/render-data.mjs'
 
 const TEMPLATES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates')
 const usageError = (message, nextStep = 'node scripts/pmkit.mjs --help') => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -809,6 +813,11 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'render', summary: 'renders a board, roadmap or sprint view as Markdown or HTML',
+    usage: '<board|roadmap|sprint> [--format md|html] [--sprint id|current] [--out f | --save]',
+    args: ['view'], flags: ['format', 'sprint', 'out', 'save'], dryRun: true, run: runRender,
+  },
+  {
     name: 'migrate', summary: 'moves the tracker files to the format this pmkit writes; --dry-run lists every file it would touch', write: true, flags: [],
     run: (ctx) => runMigrate(ctx.root, { dryRun: ctx.dryRun }),
   },
@@ -957,6 +966,115 @@ function runRisks(ctx) {
     problems,
   }
   return { data: report, text: risksText(report), warnings }
+}
+
+const RENDER_VIEWS = ['board', 'roadmap', 'sprint']
+const RENDER_FORMATS = ['md', 'html']
+
+const HTML_EXTENSIONS = ['.html', '.htm']
+const MARKDOWN_EXTENSIONS = ['.md', '.markdown']
+
+/** True when `rel`, a relative path, climbs out of its base. A name that only starts with two dots, such as `..board.md`, stays inside. */
+const climbsOut = (rel) => rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)
+
+/** `file` with the symlinks of its nearest existing parent folder resolved, so a link into a folder is seen as that folder. */
+const realParent = (file) => {
+  const rest = []
+  let current = file
+  while (!fs.existsSync(current) && path.dirname(current) !== current) {
+    rest.unshift(path.basename(current))
+    current = path.dirname(current)
+  }
+  return path.join(fs.realpathSync(current), ...rest)
+}
+
+/** True when `file` is `dir` or inside it, by the real location of both. */
+const isInside = (dir, file) => {
+  const rel = path.relative(realParent(dir), realParent(file))
+  return rel === '' || !climbsOut(rel)
+}
+
+/** Refuses a destination that is a folder, for --out and --save alike. */
+function refuseFolder(ctx, file) {
+  if (fs.existsSync(file) && fs.statSync(file).isDirectory()) throw usageError(`${renderPath(ctx, file)} is a folder`, 'Name a file, such as board.md')
+}
+
+/**
+ * The file a render writes and its format, or a null file for stdout. Checks the destination flags before any read.
+ * `--save` writes to the real tracker folder, never to the migrated copy of an older format.
+ */
+function renderTarget(ctx, view) {
+  const out = ctx.opt('out')
+  const save = ctx.flag('save')
+  const format = ctx.opt('format')
+  if (format !== undefined && !RENDER_FORMATS.includes(format)) throw usageError('--format must be md or html')
+  if (out !== undefined && save) throw usageError('--out and --save cannot go together', 'Use --save for the default location, or --out <path>')
+  if (out === undefined) {
+    const chosen = format ?? 'md'
+    if (!save) return { file: null, format: chosen }
+    const target = path.join(ctx.config().issuesDir, CACHE_DIR, 'render', `${view}.${chosen}`)
+    refuseFolder(ctx, target)
+    return { file: target, format: chosen, save: true }
+  }
+  const file = path.resolve(ctx.cwd, out)
+  const ext = path.extname(file).toLowerCase()
+  if ((format === 'md' && HTML_EXTENSIONS.includes(ext)) || (format === 'html' && MARKDOWN_EXTENSIONS.includes(ext))) {
+    throw usageError(`--format ${format} does not match the extension of ${out}`, 'Drop --format, or change the --out extension')
+  }
+  const display = renderPath(ctx, file)
+  const { issuesDir } = ctx.config()
+  if (isInside(issuesDir, file)) {
+    const tracker = slash(path.relative(ctx.root, issuesDir))
+    throw usageError(`${display} is inside the tracker folder ${tracker}/`, `Use --save, or a path outside ${tracker}/`)
+  }
+  refuseFolder(ctx, file)
+  return { file, format: format ?? (HTML_EXTENSIONS.includes(ext) ? 'html' : 'md') }
+}
+
+/** A path relative to the repository root with `/`, or the absolute path when the file is outside the root. */
+const renderPath = (ctx, file) => {
+  const rel = path.relative(ctx.root, file)
+  return slash(rel === '' || climbsOut(rel) ? file : rel)
+}
+
+/** Gathers the view data through tracker reads and renders it to stdout or one file. Changes no tracker file and never replaces a file it did not render. */
+function runRender(ctx) {
+  const [view] = ctx.args
+  if (!RENDER_VIEWS.includes(view)) throw usageError(`view must be board, roadmap or sprint, got "${view}"`, 'pmkit render board')
+  const sprint = ctx.opt('sprint')
+  if (sprint !== undefined && view !== 'sprint') throw usageError('--sprint works only with the sprint view', 'pmkit render sprint --sprint <id>')
+  const { file, format, save } = renderTarget(ctx, view)
+  const display = file === null ? null : renderPath(ctx, file)
+  const overwrote = file !== null && fs.existsSync(file)
+  if (overwrote && !hasMarker(fs.readFileSync(file, 'utf8'))) {
+    throw new PmkitError('CONFLICT', `${display} exists and was not written by pmkit render`, 'Pick another path, or delete the file first')
+  }
+  const tracker = ctx.tracker()
+  const { local } = ctx.config()
+  const views = {
+    board: () => [boardData(tracker, local), boardDoc],
+    roadmap: () => [roadmapData(tracker, local), roadmapDoc],
+    sprint: () => [sprintData(tracker, local, sprint ?? 'current'), sprintDoc],
+  }
+  const [viewData, toDoc] = views[view]()
+  const content = renderDocument(toDoc(viewData), view, format)
+  const warnings = [problemsLine(viewData.problems)].filter((line) => line !== null)
+  const meta = { asOf: viewData.asOf, problems: viewData.problems, ...(ctx.dryRun ? { dryRun: true } : {}) }
+  if (file === null) {
+    // The run loop adds the final newline.
+    return { data: { view, format, path: null, content, ...meta }, text: content.replace(/\n$/, ''), warnings }
+  }
+  if (!ctx.dryRun) {
+    if (save) ensureCacheIgnored(path.join(ctx.config().issuesDir, CACHE_DIR))
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    writeFileAtomic(file, content)
+  }
+  const line = `${ctx.dryRun ? 'would write' : 'wrote'} ${display} (${view}, ${format})`
+  return {
+    data: { view, format, path: display, overwrote, ...meta },
+    text: ctx.dryRun ? `${line}\ndry run: nothing was written` : line,
+    warnings,
+  }
 }
 
 const gitIn = (root, ...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' })
