@@ -1,6 +1,7 @@
 // Pure risk radar functions: no file or host access. The CLI reads the tracker and the git host and passes the data in.
 // Issues and epics carry `status.category`. Stalled means more than `stuckBusinessDays` business days without activity.
 
+import { table } from './format.mjs'
 import { businessDaysBetween } from './metrics.mjs'
 
 const OPEN = (category) => category !== 'done' && category !== 'canceled'
@@ -153,4 +154,72 @@ export function failingPullRequests(prs) {
     if (failing.length > 0) rows.push({ number: pr.number, title: pr.title, url: pr.url, failing })
   }
   return rows.sort((a, b) => a.number - b.number)
+}
+
+const NO_HOST = 'so issues are stalled by tracker activity only and PRs and CI are not checked'
+
+function hostLine(gitHost) {
+  if (gitHost.available) return `git host: ${gitHost.system}`
+  if (gitHost.system === 'none') return `git host: none, ${NO_HOST}`
+  return `git host: ${gitHost.system} is not available (${gitHost.reason.message}), ${NO_HOST}`
+}
+
+/** One section: the title, then a table with a count, `none`, or `not checked: <reason>` for a null value or an error. */
+function section(title, value, { notChecked, header, row, empty = 'none', after = () => [] }) {
+  if (value === null || value === undefined) return `${title}\nnot checked: ${notChecked}`
+  if (!Array.isArray(value)) return `${title}\nnot checked: ${value.error.message}`
+  if (value.length === 0) return `${title}\n${empty}`
+  return [`${title} (${value.length})`, table(header, value.map(row)), ...after(value)].join('\n')
+}
+
+const prRef = (number) => (number === null || number === undefined ? '' : `#${number}`)
+const issueCells = (row) => [row.id, row.title, row.status, row.assignee ?? '', row.estimate ?? '']
+const ISSUE_HEADER = ['ID', 'Title', 'Status', 'Assignee', 'Estimate']
+
+/** The text report of the risks command: a two-line head and six sections, joined by blank lines. */
+export function risksText(report) {
+  const { thresholds, gitHost, ci } = report
+  const notChecked = gitHost.reason?.message ?? ''
+  const head = [
+    `risks on ${report.today}: stalled after ${thresholds.stuckBusinessDays} business days without activity, status updates due every ${thresholds.statusUpdateWindowDays} days`,
+    hostLine(gitHost),
+  ].join('\n')
+  const defaultBranch = ci?.defaultBranch ?? null
+  const branchName = defaultBranch?.branch ?? 'default branch'
+  const blocks = [
+    head,
+    section('blocked issues', report.blocked, {
+      header: [...ISSUE_HEADER, 'Blocked by'],
+      row: (row) => [...issueCells(row), row.blockers.map((blocker) => `${blocker.id} (${blocker.category ?? blocker.error})`).join(', ')],
+    }),
+    section('stalled issues', report.stalledIssues, {
+      header: [...ISSUE_HEADER, 'Idle days', 'Reason', 'PR'],
+      row: (row) => [...issueCells(row), row.idleBusinessDays, row.reason, prRef(row.pr)],
+      after: (rows) => (rows.some((row) => row.reason === 'pr_merged') ? ['pr_merged: the pull request is merged; pmkit pr sync moves the issue to done'] : []),
+    }),
+    section('stalled pull requests', report.stalledPullRequests, {
+      notChecked,
+      header: ['PR', 'Title', 'Branch', 'Draft', 'Idle days', 'Issue'],
+      row: (row) => [prRef(row.number), row.title, row.branch, row.isDraft ? 'yes' : '', row.idleBusinessDays, row.issue ?? ''],
+    }),
+    section('epics at risk', report.epics, {
+      header: ['ID', 'Title', 'Status', 'Target', 'Last update', 'Reasons'],
+      row: (row) => [
+        row.id, row.title, row.status, row.target ?? '',
+        row.lastUpdate ? `${row.lastUpdate.at.slice(0, 10)} ${row.lastUpdate.health}` : 'none', row.reasons.join(', '),
+      ],
+    }),
+    section(`failing CI on ${branchName}`, defaultBranch === null ? null : defaultBranch.error ? defaultBranch : defaultBranch.failing, {
+      notChecked,
+      empty: defaultBranch?.workflows === 0 ? `none, no workflow runs on ${branchName}` : 'none',
+      header: ['Workflow', 'Conclusion', 'Created', 'URL'],
+      row: (row) => [row.workflow, row.conclusion, row.createdAt, row.url],
+    }),
+    section('pull requests with failing checks', ci === null ? null : ci.pullRequests, {
+      notChecked,
+      header: ['PR', 'Title', 'Failing checks', 'URL'],
+      row: (row) => [prRef(row.number), row.title, row.failing.join(', '), row.url],
+    }),
+  ]
+  return blocks.join('\n\n')
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, prsByBranch, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
+import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 
 const TODAY = '2026-10-26' // a Monday
 const issue = (id, category, extra = {}) => ({
@@ -13,6 +13,15 @@ const stalledOpts = (extra = {}) => ({ eventsByIssue: {}, openPrsByBranch: {}, c
 const epic = (id, category, extra = {}) => ({ id, title: `Epic ${id}`, status: { name: category, category }, ...extra })
 const update = (at, health = 'on_track') => ({ at, health })
 const epicOpts = (updatesByEpic) => ({ updatesByEpic, today: TODAY, windowDays: 14 })
+const baseReport = (extra = {}) => ({
+  today: '2026-10-23',
+  thresholds: { stuckBusinessDays: 3, statusUpdateWindowDays: 14 },
+  gitHost: { system: 'github', available: true },
+  blocked: [], stalledIssues: [], stalledPullRequests: [], epics: [],
+  ci: { defaultBranch: { branch: 'main', workflows: 2, failing: [] }, pullRequests: [] },
+  problems: [],
+  ...extra,
+})
 const blockedOpts = (list, extra = {}) => ({ byId: byIdOf(list), problemsById: new Map(), activeSprintId: null, ...extra })
 
 test('blockedIssues names each open blocker, a missing one and an unreadable one', () => {
@@ -243,4 +252,56 @@ test('failingPullRequests names failing check runs and status contexts', () => {
     { number: 2, title: 'T2', url: 'u2', failing: ['e2e'] },
     { number: 14, title: 'T14', url: 'u14', failing: ['lint', 'ci/legacy'] },
   ])
+})
+
+test('risksText starts with the date, the thresholds and the git host', () => {
+  const lines = risksText(baseReport()).split('\n')
+  assert.equal(lines[0], 'risks on 2026-10-23: stalled after 3 business days without activity, status updates due every 14 days')
+  assert.equal(lines[1], 'git host: github')
+})
+
+test('risksText says none for an empty list', () => {
+  const text = risksText(baseReport())
+  assert.ok(text.includes('\n\nblocked issues\nnone\n\nstalled issues\nnone\n\nstalled pull requests\nnone\n\nepics at risk\nnone\n\nfailing CI on main\nnone\n\npull requests with failing checks\nnone'), text)
+  assert.ok(!text.endsWith('\n'))
+})
+
+test('risksText without a git host says why and marks the host lists as not checked', () => {
+  const reason = { code: 'NOT_SUPPORTED', message: 'this repository has no git host configured', nextStep: 'x' }
+  const text = risksText(baseReport({ gitHost: { system: 'none', available: false, reason }, stalledPullRequests: null, ci: null }))
+  assert.equal(text.split('\n')[1], 'git host: none, so issues are stalled by tracker activity only and PRs and CI are not checked')
+  assert.ok(text.includes('stalled pull requests\nnot checked: this repository has no git host configured'), text)
+  assert.ok(text.includes('failing CI on default branch\nnot checked: this repository has no git host configured'), text)
+  assert.ok(text.includes('pull requests with failing checks\nnot checked: this repository has no git host configured'), text)
+})
+
+test('risksText names an unavailable host and its reason', () => {
+  const reason = { code: 'AUTH', message: 'GitHub CLI is not logged in', nextStep: 'gh auth login' }
+  const text = risksText(baseReport({ gitHost: { system: 'github', available: false, reason }, stalledPullRequests: null, ci: null }))
+  assert.equal(text.split('\n')[1], 'git host: github is not available (GitHub CLI is not logged in), so issues are stalled by tracker activity only and PRs and CI are not checked')
+})
+
+test('risksText shows a failed list with its error', () => {
+  const failed = risksText(baseReport({ ci: { defaultBranch: { branch: 'main', error: { code: 'UPSTREAM', message: 'gh run list failed: boom' } }, pullRequests: [] } }))
+  assert.ok(failed.includes('failing CI on main\nnot checked: gh run list failed: boom'), failed)
+  const empty = risksText(baseReport({ ci: { defaultBranch: { branch: 'main', workflows: 0, failing: [] }, pullRequests: [] } }))
+  assert.ok(empty.includes('failing CI on main\nnone, no workflow runs on main'), empty)
+})
+
+test('risksText prints a table with a count for a list with rows', () => {
+  const blocked = [{ id: 'ISS-1', title: 'T', status: 'in_progress', assignee: null, estimate: 3, blockers: [{ id: 'ISS-2', category: 'todo' }, { id: 'ISS-9', error: 'NOT_FOUND' }] }]
+  const text = risksText(baseReport({ blocked }))
+  const block = text.split('\n\n').find((part) => part.startsWith('blocked issues'))
+  assert.ok(block.startsWith('blocked issues (1)\nID '), block)
+  assert.equal(block.split('\n')[1].replace(/ +/g, ' '), 'ID | Title | Status | Assignee | Estimate | Blocked by')
+  assert.ok(text.includes('ISS-2 (todo), ISS-9 (NOT_FOUND)'), text)
+})
+
+test('risksText adds the pr sync note under a pr_merged row', () => {
+  const row = (reason, pr) => ({ id: 'ISS-1', title: 'T', status: 'in_review', assignee: 'ana', estimate: 2, lastActivity: '2026-10-19T10:00:00Z', idleBusinessDays: 4, reason, pr })
+  const merged = risksText(baseReport({ stalledIssues: [row('pr_merged', 9)] }))
+  assert.ok(merged.includes('#9'), merged)
+  assert.ok(merged.split('\n').includes('pr_merged: the pull request is merged; pmkit pr sync moves the issue to done'), merged)
+  const idle = risksText(baseReport({ stalledIssues: [row('idle', null)] }))
+  assert.ok(!idle.includes('pr_merged:'), idle)
 })
