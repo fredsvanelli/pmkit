@@ -2,6 +2,8 @@ import { spawnSync } from 'node:child_process'
 import { PmkitError } from '../errors.mjs'
 
 const VIEW_FIELDS = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
+const LIST_FIELDS = 'number,url,title,headRefName,isDraft,updatedAt,author,statusCheckRollup'
+const RUN_FIELDS = 'databaseId,workflowName,status,conclusion,url,createdAt,headSha'
 const INSTALL_STEP = 'Install the GitHub CLI (https://cli.github.com) and run gh auth login'
 
 /** Runs a command in root with spawnSync. A missing binary throws the spawn error (code ENOENT). */
@@ -124,6 +126,15 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
 
     prReviews(number) {
       return parse(check('gh', ['pr', 'view', String(number), '--json', 'reviews,reviewRequests']).stdout, 'the reviews')
+    },
+
+    listPullRequests() {
+      return parse(check('gh', ['pr', 'list', '--state', 'open', '--limit', '200', '--json', LIST_FIELDS]).stdout, 'the pull requests')
+    },
+
+    listRuns({ branch }) {
+      const args = ['run', 'list', '--branch', refArg('branch', branch), '--limit', '50', '--json', RUN_FIELDS]
+      return parse(check('gh', args).stdout, 'the workflow runs')
     },
   }
 }

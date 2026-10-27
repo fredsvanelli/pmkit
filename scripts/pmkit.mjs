@@ -9,8 +9,9 @@ import { requireActor, gitUserEmail } from './lib/actor.mjs'
 import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig } from './lib/config.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
 import { changeLines, dependencyText, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, releaseRecord, sprintRecord, table } from './lib/format.mjs'
-import { aging, cycleTimes, doneInRange, leadTimes, rangeInstant, summary, throughput, velocity } from './lib/metrics.mjs'
+import { aging, cycleTimes, doneInRange, lastEntry, leadTimes, rangeInstant, summary, throughput, velocity } from './lib/metrics.mjs'
 import { dependencyMap, serializable } from './lib/dependencies.mjs'
+import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { addMapEntry, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
@@ -692,6 +693,10 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'risks', summary: 'blockers, stalled issues and PRs, late epics, epics without a recent status update and broken CI; reads only', flags: [],
+    run: (ctx) => runRisks(ctx),
+  },
+  {
     name: 'issues branch', summary: 'creates the issue branch and records it on the issue', usage: '<id> [--from branch]', write: true, args: ['id'], flags: ['from'],
     run: (ctx) => {
       const host = ctx.host()
@@ -843,6 +848,115 @@ export function tagWarning(root, tag, env) {
   if (result.status === 1) return `tag ${tag} is not in this repository; create and push it, or run git fetch --tags`
   const first = (result.stderr ?? '').split('\n')[0].replace(/^fatal: /, '').trim()
   return `cannot check tag ${tag}: ${first || `git exited with ${result.status}`}`
+}
+
+const errorOf = (error) => ({ code: error.code, message: error.message, nextStep: error.nextStep })
+
+/** The risk radar: reads the tracker and, with a git host, the open pull requests and the runs on the default branch. Writes nothing. */
+function runRisks(ctx) {
+  const tracker = ctx.tracker()
+  const { defaults } = ctx.config().local
+  const today = ctx.now().toISOString().slice(0, 10)
+  const stuckBusinessDays = defaults.stuck_business_days
+  const windowDays = defaults.status_update_window_days
+  const warnings = []
+
+  const { issues: all, problems: found } = tracker.searchIssues({ archived: true })
+  const problems = found.map(({ id, code, message }) => ({ id, code, message }))
+  warnings.push(...found.map(problemLine))
+  const byId = new Map(all.map((issue) => [issue.id, issue]))
+  const problemsById = new Map(problems.map((problem) => [problem.id, problem.code]))
+  const activeSprintId = tracker.currentCycle()?.id ?? null
+  const eventsByIssue = tracker.eventsByIssue()
+  const issuesByBranch = Object.create(null)
+  for (const issue of all) if (!issue.archived && issue.branch && issuesByBranch[issue.branch] === undefined) issuesByBranch[issue.branch] = issue.id
+
+  const system = ctx.config().pmkit.git_host?.system ?? 'none'
+  const branch = defaultBranch(ctx)
+  let gitHost = { system, available: true }
+  let openPrsByBranch = Object.create(null)
+  let closedPrsByBranch = Object.create(null)
+  // null: not checked because no host is available. { error }: that one call failed.
+  let prs = null
+  let ci = null
+  const hostWarnings = []
+  // A missing or logged out gh fails every call the same way, so it ends the host phase and drops what it read.
+  const stopsHost = (error) => isPmkitError(error) && (error.code === 'NOT_CONFIGURED' || error.code === 'AUTH')
+  // A rate limit or an upstream failure affects only the call that raised it.
+  const affectsOneCall = (error) => isPmkitError(error) && (error.code === 'RATE_LIMITED' || error.code === 'UPSTREAM')
+  try {
+    const host = ctx.host()
+    try {
+      prs = host.listPullRequests()
+      if (prs.length === 200) hostWarnings.push('only the 200 most recently created open pull requests were read')
+      openPrsByBranch = prsByBranch(prs)
+    } catch (error) {
+      if (!affectsOneCall(error)) throw error
+      prs = { error: errorOf(error) }
+      hostWarnings.push(`pull requests not checked: ${error.message}`)
+    }
+    if (Array.isArray(prs)) {
+      for (const issue of needsPrLookup(all, { eventsByIssue, openPrsByBranch, today, stuckBusinessDays })) {
+        try {
+          const pr = host.getPullRequest({ head: issue.branch })
+          if (pr !== null && pr.state !== 'OPEN') closedPrsByBranch[issue.branch] = pr
+        } catch (error) {
+          // A branch hand-edited to something gh rejects (INVALID_INPUT) fails only this lookup.
+          if (!affectsOneCall(error) && !(isPmkitError(error) && error.code === 'INVALID_INPUT')) throw error
+          hostWarnings.push(`${issue.id}: the pull request of ${issue.branch} could not be read: ${error.message}`)
+        }
+      }
+    }
+    let defaultBranchCi
+    try {
+      defaultBranchCi = { branch, ...failingWorkflows(host.listRuns({ branch })) }
+    } catch (error) {
+      if (!affectsOneCall(error)) throw error
+      defaultBranchCi = { branch, error: errorOf(error) }
+      hostWarnings.push(`CI on ${branch} not checked: ${error.message}`)
+    }
+    ci = { defaultBranch: defaultBranchCi, pullRequests: Array.isArray(prs) ? failingPullRequests(prs) : prs }
+    warnings.push(...hostWarnings)
+  } catch (error) {
+    if (isPmkitError(error) && error.code === 'NOT_SUPPORTED') {
+      warnings.push(`no git host is configured, ${NO_HOST}`)
+    } else if (stopsHost(error)) {
+      warnings.push(`${error.message}, ${NO_HOST}; next: ${error.nextStep}`)
+    } else throw error
+    gitHost = { system, available: false, reason: errorOf(error) }
+    openPrsByBranch = Object.create(null)
+    closedPrsByBranch = Object.create(null)
+    prs = null
+    ci = null
+  }
+
+  const updatesByEpic = {}
+  const epicWarnings = []
+  const epics = tracker.listDeliverables()
+  for (const epic of epics) {
+    try {
+      updatesByEpic[epic.id] = tracker.listStatusUpdates(epic.id)
+    } catch (error) {
+      if (!isPmkitError(error)) throw error
+      updatesByEpic[epic.id] = []
+      problems.push({ id: epic.id, code: error.code, message: error.message })
+      epicWarnings.push(`${epic.id}: ${error.code} ${error.message}`)
+    }
+  }
+  warnings.push(...epicWarnings)
+
+  const report = {
+    today,
+    thresholds: { stuckBusinessDays, statusUpdateWindowDays: windowDays },
+    gitHost,
+    blocked: blockedIssues(all, { byId, problemsById, activeSprintId }),
+    stalledIssues: stalledIssues(all, { eventsByIssue, openPrsByBranch, closedPrsByBranch, today, stuckBusinessDays }),
+    stalledPullRequests: Array.isArray(prs) ? stalledPullRequests(prs, { issuesByBranch, today, stuckBusinessDays }) : prs,
+    epics: epicRisks(epics, { updatesByEpic, today, windowDays }),
+    ci,
+    problems,
+  }
+  return { data: report, text: risksText(report), warnings }
 }
 
 const gitIn = (root, ...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' })

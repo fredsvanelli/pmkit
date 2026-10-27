@@ -367,6 +367,7 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `metrics throughput [--since d] [--until d]` | issues done in a range, with a count per type |
 | `metrics aging [--until d]` | days since work started for each issue in `in_progress` or `in_review` at `--until` (default now), oldest first |
 | `events [--since d] [--until d]` | all events in a range, for digests |
+| `risks` | blockers, stalled issues and PRs, late epics, epics without a recent status update, and broken CI; reads only, and without a git host lists issues stalled by tracker activity **(builder's call)** |
 | `pr open --issue <id> [--draft] [--body-file f]` | pushes the issue branch and opens a pull request; when the branch already has an open one, pushes and returns it with `existing: true` **(builder's call)** |
 | `pr ready --issue <id>` | marks the open draft pull request of an issue ready for review; `INVALID_INPUT` when there is none or it is not a draft **(builder's call)** |
 | `pr status [--branch b]`, `pr sync` | git host |
@@ -378,7 +379,7 @@ Bodies come from files (`--description-file`, `--body-file`, `-` for stdin), nev
 
 ## Commands
 
-The MVP shipped 24 command files, and phase 2 adds `/pmkit:issues:dependencies`. Commands are user-invoked; the routing skill reads the right file when the user asks in their own words.
+The MVP shipped 24 command files, and phase 2 adds `/pmkit:issues:dependencies` and `/pmkit:team:risk-radar`. Commands are user-invoked; the routing skill reads the right file when the user asks in their own words.
 
 | Command | File | Calls |
 |---|---|---|
@@ -405,6 +406,7 @@ The MVP shipped 24 command files, and phase 2 adds `/pmkit:issues:dependencies`.
 | `/pmkit:cycle:plan` | `commands/cycle/plan.md` | `cycle list`, `discover`, `metrics velocity`, `issues list`, `cycle open`, `cycle capacity`, `cycle add` |
 | `/pmkit:cycle:close` | `commands/cycle/close.md` | `pr sync`, `cycle current`, `cycle issues`, `events`, `metrics cycle-time`, `cycle list`, `cycle add`, `issues create`, `issues update`, `cycle close`, `docs create` |
 | `/pmkit:team:standup` | `commands/team/standup.md` | `pr sync`, `events`, `issues list`, `pr status` |
+| `/pmkit:team:risk-radar` | `commands/team/risk-radar.md` | `risks` |
 | `/pmkit:local:doctor` | `commands/local/doctor.md` | `validate`, `issues get`, `migrate`, `issues update`, `discover`, `issues parent`, `issues link`, `cycle add`, `milestone create`, `release create` |
 | `/pmkit:upgrade` | `commands/upgrade.md` | `changelog`, `migrate` |
 

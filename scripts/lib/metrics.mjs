@@ -2,7 +2,8 @@
 
 const DAY_MS = 86400000
 
-const dayNumber = (value) => Math.floor(Date.parse(`${String(value).slice(0, 10)}T00:00:00Z`) / DAY_MS)
+/** Whole UTC days since the epoch of the date part of `value`. */
+export const dayNumber = (value) => Math.floor(Date.parse(`${String(value).slice(0, 10)}T00:00:00Z`) / DAY_MS)
 const mean = (values) => (values.length === 0 ? 0 : Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10)
 
 /** The status an event moved the issue into, or undefined for other events. */

@@ -87,6 +87,41 @@ test('prChecks returns an empty list when gh reports no checks', () => {
   assert.deepEqual(host(exec).prChecks(12), [])
 })
 
+test('listPullRequests calls gh pr list with the open state, the limit and the fields', () => {
+  const { exec, calls } = fakeExec({ stdout: JSON.stringify([pr]) })
+  assert.deepEqual(host(exec).listPullRequests(), [pr])
+  assert.equal(calls[0].cmd, 'gh')
+  assert.deepEqual(calls[0].args, ['pr', 'list', '--state', 'open', '--limit', '200', '--json', 'number,url,title,headRefName,isDraft,updatedAt,author,statusCheckRollup'])
+})
+
+test('listRuns calls gh run list on the branch with the limit and the fields', () => {
+  const { exec, calls } = fakeExec({ stdout: '[]' })
+  assert.deepEqual(host(exec).listRuns({ branch: 'main' }), [])
+  assert.deepEqual(calls[0].args, ['run', 'list', '--branch', 'main', '--limit', '50', '--json', 'databaseId,workflowName,status,conclusion,url,createdAt,headSha'])
+})
+
+test('listRuns refuses a branch that starts with a dash before gh runs', () => {
+  const { exec, calls } = fakeExec()
+  assert.throws(() => host(exec).listRuns({ branch: '-x' }), (e) => e instanceof PmkitError && e.code === 'INVALID_INPUT')
+  assert.deepEqual(calls, [])
+})
+
+test('listPullRequests maps a logged out gh to AUTH and a missing gh to NOT_CONFIGURED', () => {
+  const loggedOut = fakeExec({ status: 4, stderr: 'To get started with GitHub CLI, please run:  gh auth login\n' })
+  assert.throws(() => host(loggedOut.exec).listPullRequests(), (e) => e instanceof PmkitError && e.code === 'AUTH')
+  const missing = fakeExec(() => {
+    throw Object.assign(new Error('spawnSync gh ENOENT'), { code: 'ENOENT' })
+  })
+  assert.throws(() => host(missing.exec).listPullRequests(), (e) => e instanceof PmkitError && e.code === 'NOT_CONFIGURED')
+})
+
+test('listRuns maps a failure to UPSTREAM and unreadable JSON to UPSTREAM', () => {
+  const failed = fakeExec({ status: 1, stderr: 'HTTP 404: Not Found\n' })
+  assert.throws(() => host(failed.exec).listRuns({ branch: 'main' }), (e) => e.code === 'UPSTREAM' && e.message.includes('HTTP 404'))
+  const garbled = fakeExec({ stdout: 'not json' })
+  assert.throws(() => host(garbled.exec).listRuns({ branch: 'main' }), (e) => e.code === 'UPSTREAM')
+})
+
 test('a thrown ENOENT becomes NOT_CONFIGURED', () => {
   const { exec } = fakeExec(() => {
     throw Object.assign(new Error('spawnSync gh ENOENT'), { code: 'ENOENT' })

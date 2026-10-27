@@ -1516,6 +1516,7 @@ test('every read goes on with one warning', () => {
     'metrics throughput': [],
     'metrics aging': [],
     events: [],
+    risks: [],
     'pr status': [],
     reindex: [],
   }
