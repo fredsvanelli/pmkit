@@ -50,6 +50,11 @@ test('every command in SERVED_BY exists in the CLI command table', () => {
   }
 })
 
+test('issues dependencies serves dependencies and multilevel_hierarchy', () => {
+  assert.ok(SERVED_BY.dependencies.includes('issues dependencies'))
+  assert.ok(SERVED_BY.multilevel_hierarchy.includes('issues dependencies'))
+})
+
 test('a native or derived capability has a serving command, an absent one has a hint and no detail', () => {
   for (const entry of tracker().capabilities().capabilities) {
     if (entry.path === 'absent') {

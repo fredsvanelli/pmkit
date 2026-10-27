@@ -8,8 +8,9 @@ import { BOOLEANS, parseArgs } from './lib/args.mjs'
 import { requireActor, gitUserEmail } from './lib/actor.mjs'
 import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig } from './lib/config.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
-import { changeLines, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, releaseRecord, sprintRecord, table } from './lib/format.mjs'
+import { changeLines, dependencyText, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, releaseRecord, sprintRecord, table } from './lib/format.mjs'
 import { aging, cycleTimes, doneInRange, leadTimes, rangeInstant, summary, throughput, velocity } from './lib/metrics.mjs'
+import { dependencyMap } from './lib/dependencies.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { addMapEntry, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
@@ -19,7 +20,7 @@ import { createLocalTracker } from './lib/local/tracker.mjs'
 import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, planMigration } from './lib/local/migrations.mjs'
 import { parseChangelog, sectionsSince } from './lib/changelog.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
-import { ID_STYLES, branchName } from './lib/ids.mjs'
+import { ID_STYLES, branchName, isId, normalizeId } from './lib/ids.mjs'
 
 const TEMPLATES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates')
 const usageError = (message, nextStep = 'node scripts/pmkit.mjs --help') => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -308,6 +309,22 @@ export const COMMANDS = [
         parts.push('', 'history:', eventTable(data.history))
       }
       return { data, text: parts.join('\n') }
+    },
+  },
+  {
+    name: 'issues dependencies', summary: 'the blocker chain, the hierarchy and the critical path of an issue or an epic', usage: '<id>', args: ['id'], flags: [],
+    run: (ctx) => {
+      const tracker = ctx.tracker()
+      const { local } = ctx.config()
+      const [id] = ctx.args
+      const target = isId(normalizeId(id), local.epic_prefix)
+        ? { ...tracker.getDeliverable(id), kind: 'epic' }
+        : { ...tracker.getIssue(id), kind: 'issue' }
+      const found = tracker.searchIssues({ archived: true })
+      const dependencies = tracker.capabilities().capabilities.find((c) => c.id === 'dependencies').path !== 'absent'
+      const map = dependencyMap({ target, issues: found.issues, dependencies, unreadable: found.problems.map((p) => p.id), unit: local.estimate.unit })
+      const problems = [...found.problems, ...map.problems]
+      return { data: { ...map, problems }, text: dependencyText(map), warnings: problems.map(problemLine) }
     },
   },
   {

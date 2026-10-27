@@ -187,6 +187,146 @@ test('epic create, issues parent and epic progress', () => {
   assert.match(run(root, ['epic', 'list']).stdout, new RegExp(`${epic.id}\\s+\\| E`))
 })
 
+const TEAM_EPIC_MAP = `EPC-2M9D  Reliable webhooks and billing export  in_progress
+critical path: ISS-5N1R → ISS-2X6D (11 points)
+
+blocker chain:
+* ISS-2X6D  Billing export to CSV  in_progress  ana  8
+  * ISS-5N1R  Paginate the events API  in_progress  fred  3  (outside EPC-2M9D)
+
+hierarchy:
+* ISS-2X6D  Billing export to CSV  in_progress  ana  8  blocked by ISS-5N1R
+    ISS-4M2S  Fix CSV column order  todo  fred  1
+  ISS-8C4W  Dead-letter queue for webhooks  in_review  ana  5
+  2 done or canceled
+1 resolved blocker not shown
+`
+
+test('issues dependencies on an epic prints the critical path, the blocker chain and the hierarchy', () => {
+  const root = makeRepo('team')
+  const result = run(root, ['issues', 'dependencies', 'EPC-2M9D'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stdout, TEAM_EPIC_MAP)
+  assert.match(result.stderr, /^warning: ISS-3Q6T: CONFLICT /m)
+  const map = json(root, ['issues', 'dependencies', 'EPC-2M9D'])
+  assert.equal(map.basis, 'blockers')
+  assert.equal(map.reason, null)
+  assert.deepEqual(map.weight, { unit: 'points' })
+  assert.deepEqual(map.criticalPath, { ids: ['ISS-5N1R', 'ISS-2X6D'], length: 11, unestimated: [] })
+  assert.equal(map.resolved, 1)
+  assert.deepEqual(map.related, [['ISS-2X6D', 'ISS-0G5E']])
+  assert.deepEqual(map.target.ancestors, [])
+  assert.deepEqual(map.nodes.map((node) => node.id), ['ISS-7K3Q', 'ISS-4P8A', 'ISS-2X6D', 'ISS-5N1R', 'ISS-8C4W', 'ISS-4M2S'])
+  assert.deepEqual(map.problems, [{ id: 'ISS-3Q6T', code: 'CONFLICT', message: 'The issue file contains git conflict markers.' }])
+})
+
+test('issues dependencies on an issue shows its parents and its sub-issues', () => {
+  const root = makeRepo('team')
+  const map = json(root, ['issues', 'dependencies', 'ISS-2X6D'])
+  assert.equal(map.target.kind, 'issue')
+  assert.deepEqual(map.target.ancestors, ['EPC-2M9D'])
+  assert.deepEqual(map.tree, [{ id: 'ISS-2X6D', children: [{ id: 'ISS-4M2S', children: [] }] }])
+  assert.deepEqual(map.criticalPath.ids, ['ISS-5N1R', 'ISS-2X6D'])
+  const { stdout } = run(root, ['issues', 'dependencies', 'ISS-2X6D'])
+  assert.ok(stdout.startsWith('ISS-2X6D  Billing export to CSV  in_progress\nparents: EPC-2M9D\ncritical path: ISS-5N1R → ISS-2X6D (11 points)\n'), stdout)
+  assert.ok(stdout.includes('(outside ISS-2X6D)'), stdout)
+})
+
+test('issues dependencies with no blocker shows the hierarchy only and says why', () => {
+  const root = makeRepo('no-sprints')
+  const result = run(root, ['issues', 'dependencies', 'EPC-4H7V'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stdout, `EPC-4H7V  Reliable webhooks  in_progress
+no blocker links touch EPC-4H7V, so this shows the hierarchy only
+
+hierarchy:
+  2 done or canceled
+`)
+  const map = json(root, ['issues', 'dependencies', 'EPC-4H7V'])
+  assert.equal(map.basis, 'hierarchy')
+  assert.equal(map.reason, 'none')
+  assert.equal(map.criticalPath, null)
+})
+
+test('issues dependencies says when every blocker is done', () => {
+  const root = makeRepo('team')
+  const map = json(root, ['issues', 'dependencies', 'ISS-8C4W'])
+  assert.equal(map.reason, 'resolved')
+  assert.equal(map.resolved, 1)
+  const lines = run(root, ['issues', 'dependencies', 'ISS-8C4W']).stdout.trimEnd().split('\n')
+  assert.deepEqual(lines.slice(0, 3), [
+    'ISS-8C4W  Dead-letter queue for webhooks  in_review',
+    'parents: EPC-2M9D',
+    'every blocker of ISS-8C4W is done or canceled, so this shows the hierarchy only',
+  ])
+  assert.equal(lines.at(-1), '1 resolved blocker not shown')
+})
+
+test('issues dependencies on an unknown id is NOT_FOUND', () => {
+  const root = makeRepo('team')
+  for (const id of ['ISS-ZZZZ', 'EPC-ZZZZ']) {
+    const result = run(root, ['issues', 'dependencies', id, '--json'])
+    assert.equal(result.status, 2, id)
+    assert.equal(JSON.parse(result.stdout).error.code, 'NOT_FOUND', id)
+  }
+})
+
+test('issues dependencies writes nothing and takes no write flag', () => {
+  const root = makeRepo('team')
+  git(root, 'init', '-q')
+  git(root, 'config', 'user.name', 'Test')
+  git(root, 'config', 'user.email', 'test@x.dev')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-q', '-m', 'fixture')
+  for (const id of ['EPC-2M9D', 'ISS-2X6D']) {
+    assert.equal(run(root, ['issues', 'dependencies', id]).status, 0)
+    json(root, ['issues', 'dependencies', id])
+  }
+  assert.equal(git(root, 'status', '--porcelain').stdout, '')
+  const dryRun = run(root, ['issues', 'dependencies', 'EPC-2M9D', '--dry-run'])
+  assert.equal(dryRun.status, 2)
+  assert.match(dryRun.stderr, /unknown option --dry-run/)
+  const as = run(root, ['issues', 'dependencies', 'EPC-2M9D', '--as', 'fred'])
+  assert.equal(as.status, 2)
+  assert.match(as.stderr, /unknown option --as/)
+})
+
+test('issues dependencies breaks a hand-made loop and still answers', () => {
+  const root = makeRepo('team')
+  const file = path.join(root, '.issues', 'issues', 'ISS-5N1R', 'issue.md')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('created:', 'blocked_by: [ISS-2X6D]\ncreated:'))
+  const map = json(root, ['issues', 'dependencies', 'EPC-2M9D'])
+  assert.deepEqual(map.criticalPath.ids, ['ISS-5N1R', 'ISS-2X6D'])
+  const result = run(root, ['issues', 'dependencies', 'EPC-2M9D'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stderr, /^warning: ISS-5N1R: cycle blocked_by loop: ISS-2X6D → ISS-5N1R → ISS-2X6D; run \/pmkit:local:doctor$/m)
+})
+
+test('issues dependencies prints a shared blocker once and a missing one as missing', () => {
+  const root = makeRepo('team')
+  const file = path.join(root, '.issues', 'issues', 'ISS-8C4W', 'issue.md')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('blocked_by: [ISS-7K3Q]', 'blocked_by: [ISS-7K3Q, ISS-5N1R, ISS-ZZZZ]'))
+  const { stdout } = run(root, ['issues', 'dependencies', 'EPC-2M9D'])
+  const lines = stdout.split('\n')
+  assert.equal(lines.filter((line) => line === '  * ISS-5N1R  Paginate the events API  in_progress  fred  3  (outside EPC-2M9D)  (shown above)').length, 1, stdout)
+  assert.ok(lines.includes('    ISS-ZZZZ  (missing)'), stdout)
+  const map = json(root, ['issues', 'dependencies', 'EPC-2M9D'])
+  assert.deepEqual(map.criticalPath.ids, ['ISS-5N1R', 'ISS-2X6D'])
+  assert.equal(map.nodes.filter((node) => node.id === 'ISS-5N1R').length, 1)
+  assert.equal(map.nodes.find((node) => node.id === 'ISS-ZZZZ').missing, true)
+  assert.equal(map.resolved, 1)
+})
+
+test('issues dependencies on an empty epic and on a done issue', () => {
+  const basic = makeRepo('basic')
+  const { after: epic } = json(basic, ['epic', 'create', '--title', 'E'])
+  assert.deepEqual(json(basic, ['issues', 'dependencies', epic.id]).tree, [])
+  assert.ok(run(basic, ['issues', 'dependencies', epic.id]).stdout.endsWith('hierarchy:\n  no issues\n'))
+  const team = makeRepo('team')
+  assert.equal(json(team, ['issues', 'dependencies', 'ISS-7K3Q']).reason, 'none')
+  assert.ok(run(team, ['issues', 'dependencies', 'ISS-7K3Q']).stdout.includes('  ISS-7K3Q  Retry failed webhook deliveries  done  fred  3'))
+})
+
 test('epic update-status publishes the body from stdin', () => {
   const root = makeRepo('team')
   const result = run(root, ['epic', 'update-status', 'EPC-2M9D', '--health', 'at_risk', '--body-file', '-'], { input: 'Late on retries.\n' })
@@ -420,7 +560,7 @@ test('--help lists every command and exits 2', () => {
   const result = run(os.tmpdir(), ['--help'])
   assert.equal(result.status, 2)
   for (const name of [
-    'init', 'capabilities', 'discover', 'whoami', 'issues list', 'issues get', 'issues create', 'issues update', 'issues move',
+    'init', 'capabilities', 'discover', 'whoami', 'issues list', 'issues get', 'issues dependencies', 'issues create', 'issues update', 'issues move',
     'issues assign', 'issues link', 'issues parent', 'issues comment', 'issues log-time', 'issues archive',
     'cycle list', 'cycle current', 'cycle issues', 'cycle open', 'cycle close', 'cycle add', 'cycle capacity',
     'epic list', 'epic get', 'epic progress', 'epic create', 'epic update-status',
@@ -1331,6 +1471,7 @@ test('every read goes on with one warning', () => {
     whoami: [],
     'issues list': [],
     'issues get': ['ISS-5N1R'],
+    'issues dependencies': ['EPC-2M9D'],
     'cycle list': [],
     'cycle current': [],
     'cycle issues': ['2026-10-12'],

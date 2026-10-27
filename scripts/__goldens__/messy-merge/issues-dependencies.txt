@@ -1,0 +1,202 @@
+$ pmkit issues dependencies EPC-1
+exit 0
+--- stdout
+EPC-1  Reliable webhooks  in_progress
+no blocker links touch EPC-1, so this shows the hierarchy only
+
+hierarchy:
+  ISS-2  Retry failed deliveries  in_progress  fred  8
+  ISS-7  Dead-letter queue  in_review  ana  5
+  1 done or canceled
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues dependencies EPC-1 --json
+exit 0
+--- stdout
+{
+  "target": {
+    "id": "EPC-1",
+    "kind": "epic",
+    "title": "Reliable webhooks",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "ancestors": []
+  },
+  "basis": "hierarchy",
+  "reason": "none",
+  "weight": {
+    "unit": "points"
+  },
+  "nodes": [
+    {
+      "id": "ISS-1",
+      "title": "Sign webhook payloads",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "assignee": "ana",
+      "estimate": 5,
+      "parent": "EPC-1",
+      "scope": true,
+      "open": false,
+      "archived": false,
+      "missing": false,
+      "unreadable": false,
+      "blockedBy": [],
+      "critical": false
+    },
+    {
+      "id": "ISS-2",
+      "title": "Retry failed deliveries",
+      "status": {
+        "name": "in_progress",
+        "category": "in_progress"
+      },
+      "assignee": "fred",
+      "estimate": 8,
+      "parent": "EPC-1",
+      "scope": true,
+      "open": true,
+      "archived": false,
+      "missing": false,
+      "unreadable": false,
+      "blockedBy": [],
+      "critical": false
+    },
+    {
+      "id": "ISS-7",
+      "title": "Dead-letter queue",
+      "status": {
+        "name": "in_review",
+        "category": "in_review"
+      },
+      "assignee": "ana",
+      "estimate": 5,
+      "parent": "EPC-1",
+      "scope": true,
+      "open": true,
+      "archived": false,
+      "missing": false,
+      "unreadable": false,
+      "blockedBy": [],
+      "critical": false
+    }
+  ],
+  "tree": [
+    {
+      "id": "ISS-1",
+      "children": []
+    },
+    {
+      "id": "ISS-2",
+      "children": []
+    },
+    {
+      "id": "ISS-7",
+      "children": []
+    }
+  ],
+  "criticalPath": null,
+  "resolved": 0,
+  "related": [],
+  "problems": [
+    {
+      "id": "ISS-4",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    },
+    {
+      "id": "ISS-5",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues dependencies ISS-1
+exit 0
+--- stdout
+ISS-1  Sign webhook payloads  done
+parents: EPC-1
+no blocker links touch ISS-1, so this shows the hierarchy only
+
+hierarchy:
+  ISS-1  Sign webhook payloads  done  ana  5
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues dependencies ISS-1 --json
+exit 0
+--- stdout
+{
+  "target": {
+    "id": "ISS-1",
+    "kind": "issue",
+    "title": "Sign webhook payloads",
+    "status": {
+      "name": "done",
+      "category": "done"
+    },
+    "ancestors": [
+      "EPC-1"
+    ]
+  },
+  "basis": "hierarchy",
+  "reason": "none",
+  "weight": {
+    "unit": "issues"
+  },
+  "nodes": [
+    {
+      "id": "ISS-1",
+      "title": "Sign webhook payloads",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "assignee": "ana",
+      "estimate": 5,
+      "parent": "EPC-1",
+      "scope": true,
+      "open": false,
+      "archived": false,
+      "missing": false,
+      "unreadable": false,
+      "blockedBy": [],
+      "critical": false
+    }
+  ],
+  "tree": [
+    {
+      "id": "ISS-1",
+      "children": []
+    }
+  ],
+  "criticalPath": null,
+  "resolved": 0,
+  "related": [],
+  "problems": [
+    {
+      "id": "ISS-4",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    },
+    {
+      "id": "ISS-5",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
