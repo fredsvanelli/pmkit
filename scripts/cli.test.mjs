@@ -1387,10 +1387,10 @@ const chainCtx = (depth, json) => {
   }
 }
 
-test('issues dependencies prints a deep chain in text mode and fails only for JSON', () => {
-  const text = cmd('issues dependencies').run(chainCtx(3000, false))
+test('issues dependencies prints a deep chain in text mode and fails only for JSON', async () => {
+  const text = await cmd('issues dependencies').run(chainCtx(3000, false))
   assert.ok(text.text.includes('N2999'))
-  assert.throws(() => cmd('issues dependencies').run(chainCtx(3000, true)), (error) => error.code === 'INVALID_INPUT' && /too deep/.test(error.message))
+  await assert.rejects(() => cmd('issues dependencies').run(chainCtx(3000, true)), (error) => error.code === 'INVALID_INPUT' && /too deep/.test(error.message))
 })
 
 const INPUTS = path.join(path.dirname(fileURLToPath(import.meta.url)), '__goldens__', '_inputs')

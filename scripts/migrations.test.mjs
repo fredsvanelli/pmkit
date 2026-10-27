@@ -443,8 +443,8 @@ test('the CLI lists a failing migration step as a problem and exits 2 on reads',
     const env = { ...process.env, PMKIT_USER: 'fred', PMKIT_NOW: '2026-10-23T12:00:00Z', PMKIT_SEED: '1', GIT_CONFIG_GLOBAL: ${JSON.stringify(os.devNull)}, GIT_CONFIG_NOSYSTEM: '1' }
     const cwd = ${JSON.stringify(root)}
     process.stdout.write(JSON.stringify({
-      list: run(['issues', 'list', '--json'], { cwd, env }),
-      validate: run(['validate', '--json'], { cwd, env }),
+      list: await run(['issues', 'list', '--json'], { cwd, env }),
+      validate: await run(['validate', '--json'], { cwd, env }),
     }))
   `
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' })

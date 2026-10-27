@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { BOOLEANS, parseArgs } from './lib/args.mjs'
 import { requireActor, gitUserEmail } from './lib/actor.mjs'
+import { ADAPTERS, adapterFor } from './lib/adapters.mjs'
 import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig } from './lib/config.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
 import { changeLines, dependencyText, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, releaseNotesText, releaseRecord, sprintRecord, table } from './lib/format.mjs'
@@ -18,7 +19,6 @@ import { parseYaml } from './lib/yaml.mjs'
 import { addMapEntry, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
 import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { lineDiff } from './lib/diff.mjs'
-import { createLocalTracker } from './lib/local/tracker.mjs'
 import { CACHE_DIR, ensureCacheIgnored } from './lib/local/query-index.mjs'
 import { writeFileAtomic } from './lib/local/store.mjs'
 import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, planMigration } from './lib/local/migrations.mjs'
@@ -150,7 +150,7 @@ function issueFilter(ctx) {
 }
 
 /** The create or update input from field flags and body files. */
-function issuePatch(ctx, { create }) {
+async function issuePatch(ctx, { create }) {
   const { opt } = ctx
   const patch = {}
   const set = (key, value) => { if (value !== undefined) patch[key] = value }
@@ -176,10 +176,10 @@ function issuePatch(ctx, { create }) {
   return patch
 }
 
-function tickCriteria(ctx, id, patch) {
+async function tickCriteria(ctx, id, patch) {
   const ticks = [['check', true], ['uncheck', false]].flatMap(([name, done]) => ctx.list(name).map((n) => [whole(name, n), done]))
   if (ticks.length === 0) return
-  const criteria = (patch.acceptanceCriteria ?? ctx.tracker().getIssue(id).acceptanceCriteria).map((item) => ({ ...item }))
+  const criteria = (patch.acceptanceCriteria ?? (await (await ctx.tracker()).getIssue(id)).acceptanceCriteria).map((item) => ({ ...item }))
   for (const [n, done] of ticks) {
     if (n < 1 || n > criteria.length) throw usageError(`${id} has ${criteria.length} acceptance criteria, there is no number ${n}`, `pmkit issues get ${id}`)
     criteria[n - 1].done = done
@@ -231,10 +231,11 @@ function writeText(result, { dryRun, record = issueRecord, header }) {
 const issueWrite = (ctx, result, id = result.after.id) => ({ data: result, text: writeText(result, ctx), commit: id })
 
 /** The warning for an issue write that puts the issue in a release that is already released. Runs after the write, so a failure to read the release only drops the warning. */
-function releasedWarnings(ctx, patch) {
+async function releasedWarnings(ctx, patch) {
   if (typeof patch.release !== 'string') return []
   try {
-    return ctx.tracker().getRelease(patch.release).released ? [`release ${patch.release} is already released`] : []
+    const tracker = await ctx.tracker()
+    return (await tracker.getRelease(patch.release)).released ? [`release ${patch.release} is already released`] : []
   } catch (error) {
     if (error instanceof PmkitError) return []
     throw error
@@ -260,16 +261,16 @@ export const COMMANDS = [
   },
   {
     name: 'capabilities', summary: 'prints the capability manifest', flags: [],
-    run: (ctx) => {
-      const manifest = ctx.tracker().capabilities()
+    run: async (ctx) => {
+      const manifest = await (await ctx.tracker()).capabilities()
       const rows = manifest.capabilities.map((c) => [c.id, c.path, c.enableHint ?? (c.detail ? Object.entries(c.detail).map(([k, v]) => `${k}=${[v].flat().join('/')}`).join(' ') : '')])
       return { data: manifest, text: [...fields([['tracker', manifest.tracker], ['git host', manifest.gitHost]]), '', table(['Capability', 'Path', 'Detail'], rows)].join('\n') }
     },
   },
   {
     name: 'discover', summary: 'prints statuses with categories, types, priorities, labels, members and the estimate scale', flags: [],
-    run: (ctx) => {
-      const d = ctx.tracker().discover()
+    run: async (ctx) => {
+      const d = await (await ctx.tracker()).discover()
       const text = [
         'statuses:', ...d.statuses.map((s) => `  ${s.name} (${s.category})`),
         ...fields([['types', d.types], ['priorities', d.priorities], ['labels', d.labels]]),
@@ -290,10 +291,11 @@ export const COMMANDS = [
     name: 'issues list', summary: 'searches issues, oldest created first unless --sort says otherwise',
     usage: '[--text t] [--category c,..] [--type t,..] [--assignee me|none|id] [--label l,..] [--sprint current|none|id] [--parent id] [--blocked] [--updated-before d] [--updated-after d] [--sort s] [--limit n] [--archived]',
     flags: ['text', 'category', 'type', 'assignee', 'label', 'sprint', 'parent', 'blocked', 'updated-before', 'updated-after', 'sort', 'limit', 'archived'],
-    run: (ctx) => {
-      const found = ctx.tracker().searchIssues(issueFilter(ctx))
+    run: async (ctx) => {
+      const tracker = await ctx.tracker()
+      const found = await tracker.searchIssues(issueFilter(ctx))
       const warnings = found.problems.map(problemLine)
-      if (ctx.opt('sprint') === 'current' && found.issues.length === 0 && ctx.tracker().currentCycle() === null) {
+      if (ctx.opt('sprint') === 'current' && found.issues.length === 0 && (await tracker.currentCycle()) === null) {
         warnings.push('there is no active sprint, so --sprint current matches no issues; run pmkit cycle list')
       }
       return { data: found, text: issueTable(found.issues, { sprint: ctx.opt('sprint') === undefined }), warnings }
@@ -301,17 +303,17 @@ export const COMMANDS = [
   },
   {
     name: 'issues get', summary: 'one issue', usage: '<id> [--comments] [--history]', args: ['id'], flags: ['comments', 'history'],
-    run: (ctx) => {
-      const tracker = ctx.tracker()
-      const issue = tracker.getIssue(ctx.args[0])
+    run: async (ctx) => {
+      const tracker = await ctx.tracker()
+      const issue = await tracker.getIssue(ctx.args[0])
       const data = { ...issue }
       const parts = [issueRecord(issue)]
       if (ctx.flag('comments')) {
-        data.comments = tracker.listComments(issue.id)
+        data.comments = await tracker.listComments(issue.id)
         parts.push('', 'comments:', ...(data.comments.length > 0 ? data.comments.map((c) => `${c.created} ${c.author}\n${c.body}`) : ['(none)']))
       }
       if (ctx.flag('history')) {
-        data.history = tracker.getHistory(issue.id)
+        data.history = await tracker.getHistory(issue.id)
         parts.push('', 'history:', eventTable(data.history))
       }
       return { data, text: parts.join('\n') }
@@ -319,15 +321,15 @@ export const COMMANDS = [
   },
   {
     name: 'issues dependencies', summary: 'the blocker chain, the hierarchy and the critical path of an issue or an epic', usage: '<id>', args: ['id'], flags: [],
-    run: (ctx) => {
-      const tracker = ctx.tracker()
+    run: async (ctx) => {
+      const tracker = await ctx.tracker()
       const { local } = ctx.config()
       const [id] = ctx.args
       const target = isId(normalizeId(id), local.epic_prefix)
-        ? { ...tracker.getDeliverable(id), kind: 'epic' }
-        : { ...tracker.getIssue(id), kind: 'issue' }
-      const found = tracker.searchIssues({ archived: true })
-      const dependencies = tracker.capabilities().capabilities.find((c) => c.id === 'dependencies').path !== 'absent'
+        ? { ...(await tracker.getDeliverable(id)), kind: 'epic' }
+        : { ...(await tracker.getIssue(id)), kind: 'issue' }
+      const found = await tracker.searchIssues({ archived: true })
+      const dependencies = (await tracker.capabilities()).capabilities.find((c) => c.id === 'dependencies').path !== 'absent'
       const map = dependencyMap({ target, issues: found.issues, dependencies, unreadable: found.problems.map((p) => p.id), unit: local.estimate.unit })
       const problems = [...found.problems, ...map.problems]
       // Only JSON.stringify can overflow on a map the builder accepted, so check it for JSON output alone. The text printer copes with deeper chains.
@@ -339,104 +341,104 @@ export const COMMANDS = [
     name: 'issues create', summary: 'creates an issue', write: true,
     usage: '--title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint id|current|none] [--due] [--milestone m] [--release r] [--description-file f] [--criteria-file f]',
     flags: ['title', 'type', 'priority', 'estimate', 'assignee', 'label', 'parent', 'sprint', 'due', 'milestone', 'release', 'description-file', 'criteria-file'],
-    run: (ctx) => {
-      const patch = issuePatch(ctx, { create: true })
+    run: async (ctx) => {
+      const patch = await issuePatch(ctx, { create: true })
       if (patch.title === undefined) throw usageError('issues create needs --title', 'pmkit issues create --title "..."')
-      const result = issueWrite(ctx, ctx.tracker().createIssue(patch, ctx.actor(), { dryRun: ctx.dryRun }))
-      return { ...result, warnings: releasedWarnings(ctx, patch) }
+      const result = issueWrite(ctx, await (await ctx.tracker()).createIssue(patch, await ctx.actor(), { dryRun: ctx.dryRun }))
+      return { ...result, warnings: await releasedWarnings(ctx, patch) }
     },
   },
   {
     name: 'issues update', summary: 'edits fields and criteria', write: true, args: ['id'],
     usage: '<id> [--title] [--type] [--priority] [--estimate] [--label l,..] [--sprint id|current|none] [--due] [--milestone] [--release] [--branch] [--description-file f] [--criteria-file f] [--check n] [--uncheck n]',
     flags: ['title', 'type', 'priority', 'estimate', 'label', 'sprint', 'due', 'milestone', 'release', 'branch', 'description-file', 'criteria-file', 'check', 'uncheck'],
-    run: (ctx) => {
+    run: async (ctx) => {
       const [id] = ctx.args
-      const patch = issuePatch(ctx, { create: false })
-      tickCriteria(ctx, id, patch)
+      const patch = await issuePatch(ctx, { create: false })
+      await tickCriteria(ctx, id, patch)
       if (Object.keys(patch).length === 0) throw usageError('issues update needs at least one field flag', 'pmkit issues update <id> --priority high')
-      const result = issueWrite(ctx, ctx.tracker().updateIssue(id, patch, ctx.actor(), { dryRun: ctx.dryRun }))
-      return { ...result, warnings: releasedWarnings(ctx, patch) }
+      const result = issueWrite(ctx, await (await ctx.tracker()).updateIssue(id, patch, await ctx.actor(), { dryRun: ctx.dryRun }))
+      return { ...result, warnings: await releasedWarnings(ctx, patch) }
     },
   },
   {
     name: 'issues move', summary: 'changes status by category', usage: '<id> <category> [--status name]', write: true, args: ['id', 'category'], flags: ['status'],
-    run: (ctx) => issueWrite(ctx, ctx.tracker().moveToCategory(ctx.args[0], ctx.args[1], ctx.actor(), { status: ctx.opt('status'), dryRun: ctx.dryRun })),
+    run: async (ctx) => issueWrite(ctx, await (await ctx.tracker()).moveToCategory(ctx.args[0], ctx.args[1], await ctx.actor(), { status: ctx.opt('status'), dryRun: ctx.dryRun })),
   },
   {
     name: 'issues assign', summary: 'assigns', usage: '<id> <member|me|none>', write: true, args: ['id', 'member'], flags: [],
-    run: (ctx) => issueWrite(ctx, ctx.tracker().assign(ctx.args[0], ctx.args[1] === 'none' ? null : ctx.args[1], ctx.actor(), { dryRun: ctx.dryRun })),
+    run: async (ctx) => issueWrite(ctx, await (await ctx.tracker()).assign(ctx.args[0], ctx.args[1] === 'none' ? null : ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })),
   },
   {
     name: 'issues link', summary: 'links or unlinks', usage: '<from> <to> --kind blocks|related|duplicate [--remove]', write: true, args: ['from', 'to'], flags: ['kind', 'remove'],
-    run: (ctx) => {
+    run: async (ctx) => {
       if (ctx.opt('kind') === undefined) throw usageError('issues link needs --kind', 'Use --kind blocks, related or duplicate')
       const op = ctx.flag('remove') ? 'unlink' : 'link'
-      const result = ctx.tracker()[op](ctx.args[0], ctx.args[1], ctx.opt('kind'), ctx.actor(), { dryRun: ctx.dryRun })
+      const result = await (await ctx.tracker())[op](ctx.args[0], ctx.args[1], ctx.opt('kind'), await ctx.actor(), { dryRun: ctx.dryRun })
       return issueWrite(ctx, result, ctx.args[0])
     },
   },
   {
     name: 'issues parent', summary: 'sets the parent', usage: '<id> <parent|none>', write: true, args: ['id', 'parent'], flags: [],
-    run: (ctx) => issueWrite(ctx, ctx.tracker().setParent(ctx.args[0], ctx.args[1] === 'none' ? null : ctx.args[1], ctx.actor(), { dryRun: ctx.dryRun })),
+    run: async (ctx) => issueWrite(ctx, await (await ctx.tracker()).setParent(ctx.args[0], ctx.args[1] === 'none' ? null : ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })),
   },
   {
     name: 'issues comment', summary: 'comments', usage: '<id> --body-file f', write: true, args: ['id'], flags: ['body-file'],
-    run: (ctx) => {
+    run: async (ctx) => {
       if (ctx.opt('body-file') === undefined) throw usageError('issues comment needs --body-file', 'Pass a file, or - for stdin')
-      const comment = ctx.tracker().comment(ctx.args[0], readInput(ctx.opt('body-file')), ctx.actor(), { dryRun: ctx.dryRun })
+      const comment = await (await ctx.tracker()).comment(ctx.args[0], readInput(ctx.opt('body-file')), await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: comment, text: writeText(null, { dryRun: ctx.dryRun, header: `commented on ${comment.issue}` }), commit: comment.issue }
     },
   },
   {
     name: 'issues log-time', summary: 'logs time', usage: '<id> <minutes>', write: true, args: ['id', 'minutes'], flags: [],
-    run: (ctx) => {
+    run: async (ctx) => {
       const minutes = /^\d+$/.test(ctx.args[1]) ? Number(ctx.args[1]) : NaN
-      const result = ctx.tracker().logTime(ctx.args[0], minutes, ctx.actor(), { dryRun: ctx.dryRun })
+      const result = await (await ctx.tracker()).logTime(ctx.args[0], minutes, await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(null, { dryRun: ctx.dryRun, header: `logged ${minutes} minutes on ${result.after.id}` }), commit: result.after.id }
     },
   },
   {
     name: 'issues archive', summary: 'archives', usage: '<id>', write: true, args: ['id'], flags: [],
-    run: (ctx) => issueWrite(ctx, ctx.tracker().archive(ctx.args[0], ctx.actor(), { dryRun: ctx.dryRun })),
+    run: async (ctx) => issueWrite(ctx, await (await ctx.tracker()).archive(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })),
   },
   {
     name: 'cycle list', summary: 'lists sprints', usage: '[--state s]', flags: ['state'],
-    run: (ctx) => {
-      const sprints = ctx.tracker().listCycles({ state: ctx.opt('state') })
+    run: async (ctx) => {
+      const sprints = await (await ctx.tracker()).listCycles({ state: ctx.opt('state') })
       const text = sprints.length === 0 ? 'no sprints' : table(['ID', 'State', 'Start', 'End', 'Name'], sprints.map((s) => [s.id, s.state, s.start, s.end, s.name]))
       return { data: sprints, text }
     },
   },
   {
     name: 'cycle current', summary: 'prints the active sprint', flags: [],
-    run: (ctx) => {
-      const sprint = ctx.tracker().currentCycle()
+    run: async (ctx) => {
+      const sprint = await (await ctx.tracker()).currentCycle()
       return { data: sprint, text: sprint ? sprintRecord(sprint) : 'no active sprint' }
     },
   },
   {
     name: 'cycle issues', summary: 'lists the issues of a sprint', usage: '<id>', args: ['id'], flags: [],
-    run: (ctx) => {
-      const issues = ctx.tracker().cycleIssues(ctx.args[0])
+    run: async (ctx) => {
+      const issues = await (await ctx.tracker()).cycleIssues(ctx.args[0])
       return { data: issues, text: issueTable(issues, { sprint: false }) }
     },
   },
   {
     name: 'cycle open', summary: 'opens a sprint; the end defaults from sprint_length_days', usage: '--start d [--end d] [--goal g] [--name n]',
     write: true, flags: ['start', 'end', 'goal', 'name'],
-    run: (ctx) => {
+    run: async (ctx) => {
       const input = {}
       for (const key of ['start', 'end', 'goal', 'name']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
       if (input.start === undefined) throw usageError('cycle open needs --start', 'pmkit cycle open --start YYYY-MM-DD')
-      const result = ctx.tracker().openCycle(input, ctx.actor(), { dryRun: ctx.dryRun })
+      const result = await (await ctx.tracker()).openCycle(input, await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: sprintRecord }), commit: result.after.id }
     },
   },
   {
     name: 'cycle close', summary: 'closes a sprint and prints the unfinished issues', usage: '<id>', write: true, args: ['id'], flags: [],
-    run: (ctx) => {
-      const result = ctx.tracker().closeCycle(ctx.args[0], ctx.actor(), { dryRun: ctx.dryRun })
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).closeCycle(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })
       const head = `${result.sprint.id}  ${result.sprint.name}\nstate: active → closed\nunfinished issues:\n${issueTable(result.unfinished)}`
       const warnings = result.problems.map(problemLine)
       return { data: result, text: writeText(null, { dryRun: ctx.dryRun, header: head }), commit: result.sprint.id, warnings }
@@ -444,53 +446,53 @@ export const COMMANDS = [
   },
   {
     name: 'cycle add', summary: 'moves issues into or out of a sprint', usage: '<id...> --to <sprint|current|none>', write: true, rest: 'id', flags: ['to'],
-    run: (ctx) => {
+    run: async (ctx) => {
       if (ctx.opt('to') === undefined) throw usageError('cycle add needs --to', 'Use --to <sprint> or --to none')
       const to = ctx.opt('to') === 'none' ? null : ctx.opt('to')
-      const result = ctx.tracker().moveToCycle(ctx.args, to, ctx.actor(), { dryRun: ctx.dryRun })
+      const result = await (await ctx.tracker()).moveToCycle(ctx.args, to, await ctx.actor(), { dryRun: ctx.dryRun })
       const sprint = to === null ? undefined : result[0].after.sprint
       return { data: result, text: writeText(result, ctx), commit: sprint ?? ctx.args.join(' ') }
     },
   },
   {
     name: 'cycle capacity', summary: 'reads or sets capacity and days off', usage: '<id> [--set member=n,..] [--days-off member=date+date,..]', write: true, readUnless: ['set', 'days-off'], args: ['id'], flags: ['set', 'days-off'],
-    run: (ctx) => {
-      const tracker = ctx.tracker()
+    run: async (ctx) => {
+      const tracker = await ctx.tracker()
       const [id] = ctx.args
       const set = ctx.opt('set') !== undefined
       const dayoff = ctx.opt('days-off') !== undefined
       if (!set && !dayoff) {
-        const capacity = tracker.getCapacity(id)
-        const daysOff = tracker.getDaysOff(id)
+        const capacity = await tracker.getCapacity(id)
+        const daysOff = await tracker.getDaysOff(id)
         const lines = [
           ...fields(Object.entries(capacity)),
           ...Object.entries(daysOff).map(([member, dates]) => `days off ${member}: ${[dates ?? []].flat().join(', ')}`),
         ]
         return { data: { capacity, days_off: daysOff }, text: lines.join('\n') || 'no capacity or days off set' }
       }
-      const result = tracker.updateCycleCapacity(id, { capacity: set ? parseCapacity(ctx) : undefined, daysOff: dayoff ? parseDaysOff(ctx) : undefined }, ctx.actor(), { dryRun: ctx.dryRun })
+      const result = await tracker.updateCycleCapacity(id, { capacity: set ? parseCapacity(ctx) : undefined, daysOff: dayoff ? parseDaysOff(ctx) : undefined }, await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: sprintRecord }), commit: id }
     },
   },
   {
     name: 'epic list', summary: 'lists epics', flags: [],
-    run: (ctx) => {
-      const epics = ctx.tracker().listDeliverables()
+    run: async (ctx) => {
+      const epics = await (await ctx.tracker()).listDeliverables()
       const text = epics.length === 0 ? 'no epics' : table(['ID', 'Title', 'Status', 'Start', 'Target'], epics.map((e) => [e.id, e.title, e.status.name, e.start ?? '', e.target ?? '']))
       return { data: epics, text }
     },
   },
   {
     name: 'epic get', summary: 'one epic', usage: '<id>', args: ['id'], flags: [],
-    run: (ctx) => {
-      const epic = ctx.tracker().getDeliverable(ctx.args[0])
+    run: async (ctx) => {
+      const epic = await (await ctx.tracker()).getDeliverable(ctx.args[0])
       return { data: epic, text: epicRecord(epic) }
     },
   },
   {
     name: 'epic progress', summary: 'counts the issues under an epic', usage: '<id>', args: ['id'], flags: [],
-    run: (ctx) => {
-      const p = ctx.tracker().deliverableProgress(ctx.args[0])
+    run: async (ctx) => {
+      const p = await (await ctx.tracker()).deliverableProgress(ctx.args[0])
       const text = [
         ...fields([['total', p.total], ['done', p.done], ['canceled', p.canceled], ['points', p.points], ['points done', p.pointsDone]]),
         ...Object.entries(p.byCategory).map(([category, count]) => `  ${category}: ${count}`),
@@ -500,36 +502,36 @@ export const COMMANDS = [
   },
   {
     name: 'epic create', summary: 'creates an epic', usage: '--title t [--start d] [--target d]', write: true, flags: ['title', 'start', 'target'],
-    run: (ctx) => {
+    run: async (ctx) => {
       if (ctx.opt('title') === undefined) throw usageError('epic create needs --title', 'pmkit epic create --title "..."')
       const input = { title: ctx.opt('title') }
       for (const key of ['start', 'target']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
-      const result = ctx.tracker().createDeliverable(input, ctx.actor(), { dryRun: ctx.dryRun })
+      const result = await (await ctx.tracker()).createDeliverable(input, await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: epicRecord }), commit: result.after.id }
     },
   },
   {
     name: 'milestone list', summary: 'lists milestones', flags: [],
-    run: (ctx) => {
-      const milestones = ctx.tracker().listMilestones()
+    run: async (ctx) => {
+      const milestones = await (await ctx.tracker()).listMilestones()
       const text = milestones.length === 0 ? 'no milestones' : table(['ID', 'Name', 'Due'], milestones.map((m) => [m.id, m.name, m.due ?? '']))
       return { data: milestones, text }
     },
   },
   {
     name: 'milestone get', summary: 'one milestone', usage: '<id>', args: ['id'], flags: [],
-    run: (ctx) => {
-      const milestone = ctx.tracker().getMilestone(ctx.args[0])
+    run: async (ctx) => {
+      const milestone = await (await ctx.tracker()).getMilestone(ctx.args[0])
       return { data: milestone, text: milestoneRecord(milestone) }
     },
   },
   {
     name: 'milestone create', summary: 'creates a milestone', usage: '<id> [--name n] [--due YYYY-MM-DD]', write: true, args: ['id'], flags: ['name', 'due'],
-    run: (ctx) => {
+    run: async (ctx) => {
       const input = { id: ctx.args[0] }
       for (const key of ['name', 'due']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
-      const tracker = ctx.tracker()
-      const result = tracker.createMilestone(input, ctx.actor(), { dryRun: ctx.dryRun })
+      const tracker = await ctx.tracker()
+      const result = await tracker.createMilestone(input, await ctx.actor(), { dryRun: ctx.dryRun })
       const unfiled = tracker.unfiledMilestones(result.after.id)
       const warnings = unfiled.length === 0 ? [] : [`${unfiled.length} ${unfiled.length === 1 ? 'milestone named by issues or epics has' : 'milestones named by issues or epics have'} no file: ${unfiled.map((u) => `${u.name} (${u.count})`).join(', ')}; run /pmkit:local:doctor`]
       return { data: result, text: writeText(result, { ...ctx, record: milestoneRecord }), commit: result.after.id, warnings }
@@ -537,40 +539,40 @@ export const COMMANDS = [
   },
   {
     name: 'release list', summary: 'lists releases, oldest version first', usage: '[--state planned|released]', flags: ['state'],
-    run: (ctx) => {
-      const releases = ctx.tracker().listReleases(ctx.opt('state') === undefined ? {} : { state: ctx.opt('state') })
+    run: async (ctx) => {
+      const releases = await (await ctx.tracker()).listReleases(ctx.opt('state') === undefined ? {} : { state: ctx.opt('state') })
       const rows = releases.map((r) => [r.id, r.name, r.state, r.tag ?? '', r.target ?? '', r.released ?? ''])
       return { data: releases, text: releases.length === 0 ? 'no releases' : table(['ID', 'Name', 'State', 'Tag', 'Target', 'Released'], rows) }
     },
   },
   {
     name: 'release get', summary: 'one release', usage: '<id>', args: ['id'], flags: [],
-    run: (ctx) => {
-      const release = ctx.tracker().getRelease(ctx.args[0])
+    run: async (ctx) => {
+      const release = await (await ctx.tracker()).getRelease(ctx.args[0])
       return { data: release, text: releaseRecord(release) }
     },
   },
   {
     name: 'release issues', summary: 'lists the issues of a release', usage: '<id> [--archived]', args: ['id'], flags: ['archived'],
-    run: (ctx) => {
-      const issues = ctx.tracker().releaseIssues(ctx.args[0], { archived: ctx.flag('archived') })
+    run: async (ctx) => {
+      const issues = await (await ctx.tracker()).releaseIssues(ctx.args[0], { archived: ctx.flag('archived') })
       return { data: issues, text: issueTable(issues) }
     },
   },
   {
     name: 'release create', summary: 'creates a release', usage: '<id> [--name n] [--tag t] [--target YYYY-MM-DD]', write: true, args: ['id'], flags: ['name', 'tag', 'target'],
-    run: (ctx) => {
+    run: async (ctx) => {
       const input = { id: ctx.args[0] }
       for (const key of ['name', 'tag', 'target']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
-      const result = ctx.tracker().createRelease(input, ctx.actor(), { dryRun: ctx.dryRun })
+      const result = await (await ctx.tracker()).createRelease(input, await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: releaseRecord }), commit: result.after.id }
     },
   },
   {
     name: 'release mark-released', summary: 'marks a release released and lists its unfinished issues', usage: '<id> [--tag t]', write: true, args: ['id'], flags: ['tag'],
-    run: (ctx) => {
+    run: async (ctx) => {
       const input = ctx.opt('tag') === undefined ? {} : { tag: ctx.opt('tag') }
-      const result = ctx.tracker().markReleased(ctx.args[0], ctx.actor(), { ...input, dryRun: ctx.dryRun })
+      const result = await (await ctx.tracker()).markReleased(ctx.args[0], await ctx.actor(), { ...input, dryRun: ctx.dryRun })
       const header = writeText(result, { dryRun: false, record: releaseRecord })
       const text = writeText(null, { dryRun: ctx.dryRun, header: [header, 'unfinished issues:', issueTable(result.unfinished)].join('\n') })
       const { id, tag } = result.after
@@ -588,8 +590,8 @@ export const COMMANDS = [
   },
   {
     name: 'release-notes', summary: 'the done issues of a release, a sprint or a period, grouped by type', usage: '[--release id | --sprint current|id | --since d [--until d]]', flags: ['release', 'sprint', 'since', 'until'],
-    run: (ctx) => {
-      const tracker = ctx.tracker()
+    run: async (ctx) => {
+      const tracker = await ctx.tracker()
       const next = 'pmkit release-notes --help'
       const given = ['release', 'sprint', 'since'].filter((name) => ctx.opt(name) !== undefined)
       if (given.length > 1) throw usageError(`--${given.join(', --')} exclude each other`, next)
@@ -599,16 +601,16 @@ export const COMMANDS = [
       // Without --until the period ends today, so a --since after today is refused too.
       const effectiveUntil = until ?? ctx.now().toISOString().slice(0, 10)
       if (since !== undefined && rangeInstant(since) > rangeInstant(effectiveUntil, { endOfDay: true })) throw usageError(until === undefined ? '--since is after today' : '--since is after --until', next)
-      const capabilities = tracker.capabilities().capabilities
+      const capabilities = (await tracker.capabilities()).capabilities
       const on = (id) => capabilities.find((c) => c.id === id).path !== 'absent'
-      const releases = on('releases') ? tracker.listReleases() : null
-      const sprints = on('cycles') ? tracker.listCycles({}) : null
+      const releases = on('releases') ? await tracker.listReleases() : null
+      const sprints = on('cycles') ? await tracker.listCycles({}) : null
       let selector = null
-      if (ctx.opt('release') !== undefined) selector = { release: tracker.getRelease(ctx.opt('release')) }
+      if (ctx.opt('release') !== undefined) selector = { release: await tracker.getRelease(ctx.opt('release')) }
       else if (ctx.opt('sprint') !== undefined) {
         // `current` means the active sprint, as in `issues list --sprint current` and the render views.
         const current = ctx.opt('sprint') === 'current'
-        const sprint = current ? (sprints === null ? null : tracker.currentCycle()) : (sprints ?? []).find((item) => item.id === ctx.opt('sprint'))
+        const sprint = current ? (sprints === null ? null : await tracker.currentCycle()) : (sprints ?? []).find((item) => item.id === ctx.opt('sprint'))
         if (current && sprint === null) throw new PmkitError('INVALID_INPUT', 'there is no active sprint', 'pmkit cycle list')
         if (sprint === undefined) throw new PmkitError('NOT_FOUND', `sprint ${ctx.opt('sprint')} does not exist`, 'pmkit cycle list')
         selector = { sprint }
@@ -618,20 +620,20 @@ export const COMMANDS = [
       const problems = []
       let candidates
       if (choice.basis === 'release') {
-        const found = tracker.searchIssues({ release: choice.source.id, archived: true })
+        const found = await tracker.searchIssues({ release: choice.source.id, archived: true })
         problems.push(...found.problems)
         candidates = found.issues.map((issue) => ({ issue, doneAt: null }))
       } else if (choice.basis === 'sprint') {
-        const events = tracker.eventsByIssue()
-        const found = tracker.searchIssues({ sprint: choice.source.id, archived: true })
+        const events = await tracker.eventsByIssue()
+        const found = await tracker.searchIssues({ sprint: choice.source.id, archived: true })
         problems.push(...found.problems)
         candidates = found.issues.map((issue) => ({ issue, doneAt: lastEntry(events[issue.id] ?? [], 'done', tracker.categoryOf) ?? null }))
       } else {
-        const inRange = doneInRange(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since: choice.period.since, until: choice.period.until })
+        const inRange = doneInRange(await tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since: choice.period.since, until: choice.period.until })
         candidates = []
         for (const [id, events] of Object.entries(inRange)) {
           try {
-            candidates.push({ issue: tracker.getIssue(id), doneAt: lastEntry(events, 'done', tracker.categoryOf) ?? null })
+            candidates.push({ issue: await tracker.getIssue(id), doneAt: lastEntry(events, 'done', tracker.categoryOf) ?? null })
           } catch (error) {
             problems.push({ id, code: error.code, message: error.message })
           }
@@ -643,18 +645,18 @@ export const COMMANDS = [
   },
   {
     name: 'epic update-status', summary: 'publishes a status update', usage: '<id> --health h --body-file f', write: true, args: ['id'], flags: ['health', 'body-file'],
-    run: (ctx) => {
+    run: async (ctx) => {
       if (ctx.opt('health') === undefined || ctx.opt('body-file') === undefined) throw usageError('epic update-status needs --health and --body-file', 'Health is on_track, at_risk or off_track')
       const input = { epic: ctx.args[0], health: ctx.opt('health'), body: readInput(ctx.opt('body-file')) }
-      const result = ctx.tracker().publishStatusUpdate(input, ctx.actor(), { dryRun: ctx.dryRun })
+      const result = await (await ctx.tracker()).publishStatusUpdate(input, await ctx.actor(), { dryRun: ctx.dryRun })
       const text = [`status update on ${input.epic}`, ...fields([['health', result.after.health], ['by', result.after.author], ['at', result.after.at]]), '', result.after.body].join('\n')
       return { data: result, text: ctx.dryRun ? `${text}\ndry run: nothing was written` : text, commit: input.epic }
     },
   },
   {
     name: 'epic updates', summary: 'lists the status updates of an epic, newest first', usage: '<id>', args: ['id'], flags: [],
-    run: (ctx) => {
-      const updates = ctx.tracker().listStatusUpdates(ctx.args[0])
+    run: async (ctx) => {
+      const updates = await (await ctx.tracker()).listStatusUpdates(ctx.args[0])
       const text = updates.length === 0
         ? 'no status updates'
         : updates.map((u) => [`${u.at}  ${u.health}  ${u.author}`, u.body].join('\n')).join('\n\n')
@@ -663,26 +665,26 @@ export const COMMANDS = [
   },
   {
     name: 'docs read', summary: 'prints a document under the docs folder', usage: '<path>', args: ['path'], flags: [],
-    run: (ctx) => {
-      const doc = ctx.tracker().readDocument(ctx.args[0])
+    run: async (ctx) => {
+      const doc = await (await ctx.tracker()).readDocument(ctx.args[0])
       return { data: doc, text: doc.body }
     },
   },
   {
     name: 'docs create', summary: 'creates a document under the docs folder', usage: '<path> --body-file f', write: true, args: ['path'], flags: ['body-file'],
-    run: (ctx) => {
+    run: async (ctx) => {
       if (ctx.opt('body-file') === undefined) throw usageError('docs create needs --body-file', 'Pass a file, or - for stdin')
-      const result = ctx.tracker().createDocument(ctx.args[0], readInput(ctx.opt('body-file')), ctx.actor(), { dryRun: ctx.dryRun })
+      const result = await (await ctx.tracker()).createDocument(ctx.args[0], readInput(ctx.opt('body-file')), await ctx.actor(), { dryRun: ctx.dryRun })
       const text = `${ctx.dryRun ? 'would create' : 'created'} document ${result.after.path}${ctx.dryRun ? '\ndry run: nothing was written' : ''}`
       return { data: result, text, commit: result.after.path }
     },
   },
   {
     name: 'metrics velocity', summary: 'points or counts done per closed sprint, and the average', usage: '[--window n]', flags: ['window'],
-    run: (ctx) => {
-      const tracker = ctx.tracker()
+    run: async (ctx) => {
+      const tracker = await ctx.tracker()
       const window = ctx.opt('window') === undefined ? ctx.config().local.defaults.velocity_window : whole('window', ctx.opt('window'))
-      const result = velocity(tracker.listCycles({ state: 'closed' }), tracker.issuesBySprint(), { window, categoryOf: tracker.categoryOf })
+      const result = velocity(await tracker.listCycles({ state: 'closed' }), await tracker.issuesBySprint(), { window, categoryOf: tracker.categoryOf })
       const rows = result.perSprint.map((s) => [s.id, s.points, s.count])
       const text = [rows.length > 0 ? table(['Sprint', 'Points', 'Issues'], rows) : 'no closed sprints', `average: ${result.average} ${result.unit}`].join('\n')
       return { data: result, text }
@@ -690,10 +692,10 @@ export const COMMANDS = [
   },
   {
     name: 'metrics cycle-time', summary: 'median and p85 days from first in_progress to done', usage: '[--since d] [--until d]', flags: ['since', 'until'],
-    run: (ctx) => {
-      const tracker = ctx.tracker()
+    run: async (ctx) => {
+      const tracker = await ctx.tracker()
       const { since, until } = rangeOptions(ctx)
-      const inRange = doneInRange(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since, until })
+      const inRange = doneInRange(await tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since, until })
       const issues = cycleTimes(inRange, { categoryOf: tracker.categoryOf })
       const stats = summary(issues.map((item) => item.days))
       const text = summaryLines(stats).join('\n')
@@ -702,10 +704,10 @@ export const COMMANDS = [
   },
   {
     name: 'metrics lead-time', summary: 'median and p85 days from creation to done', usage: '[--since d] [--until d]', flags: ['since', 'until'],
-    run: (ctx) => {
-      const tracker = ctx.tracker()
+    run: async (ctx) => {
+      const tracker = await ctx.tracker()
       const { since, until } = rangeOptions(ctx)
-      const inRange = doneInRange(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since, until })
+      const inRange = doneInRange(await tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since, until })
       const issues = leadTimes(inRange, { categoryOf: tracker.categoryOf })
       const stats = summary(issues.map((item) => item.days))
       const text = summaryLines(stats).join('\n')
@@ -714,10 +716,10 @@ export const COMMANDS = [
   },
   {
     name: 'metrics throughput', summary: 'issues done in a range, by type', usage: '[--since d] [--until d]', flags: ['since', 'until'],
-    run: (ctx) => {
-      const tracker = ctx.tracker()
+    run: async (ctx) => {
+      const tracker = await ctx.tracker()
       const { since, until } = rangeOptions(ctx)
-      const inRange = doneInRange(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since, until })
+      const inRange = doneInRange(await tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since, until })
       const result = throughput(inRange, { categoryOf: tracker.categoryOf })
       const lines = [`count: ${result.count}`]
       if (result.count > 0) lines.push(table(['Type', 'Issues'], Object.entries(result.byType)))
@@ -726,12 +728,12 @@ export const COMMANDS = [
   },
   {
     name: 'metrics aging', summary: 'days since work started, per issue in progress or in review at a date, oldest first', usage: '[--until d]', flags: ['until'],
-    run: (ctx) => {
-      const tracker = ctx.tracker()
+    run: async (ctx) => {
+      const tracker = await ctx.tracker()
       const until = ctx.opt('until') === undefined ? undefined : rangeText('until', ctx.opt('until'))
       const asOfMs = until === undefined ? ctx.now().getTime() : rangeInstant(until, { endOfDay: true })
       const asOf = new Date(Math.floor(asOfMs / 1000) * 1000).toISOString().replace(/\.000Z$/, 'Z')
-      const issues = aging(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, asOf })
+      const issues = aging(await tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, asOf })
       const stats = summary(issues.map((item) => item.days))
       const lines = issues.length > 0
         ? [
@@ -745,10 +747,10 @@ export const COMMANDS = [
   },
   {
     name: 'events', summary: 'all events in a range, for digests', usage: '[--since d] [--until d]', flags: ['since', 'until'],
-    run: (ctx) => {
+    run: async (ctx) => {
       const range = {}
       for (const key of ['since', 'until']) if (ctx.opt(key) !== undefined) range[key] = dateText(key, ctx.opt(key))
-      const events = ctx.tracker().metricEvents(range)
+      const events = await (await ctx.tracker()).metricEvents(range)
       return { data: events, text: eventTable(events) }
     },
   },
@@ -758,27 +760,27 @@ export const COMMANDS = [
   },
   {
     name: 'issues branch', summary: 'creates the issue branch and records it on the issue', usage: '<id> [--from branch]', write: true, args: ['id'], flags: ['from'],
-    run: (ctx) => {
+    run: async (ctx) => {
       const host = ctx.host()
-      const tracker = ctx.tracker()
-      const issue = tracker.getIssue(ctx.args[0])
+      const tracker = await ctx.tracker()
+      const issue = await tracker.getIssue(ctx.args[0])
       const branch = branchName(issue.id, issue.title)
       const from = ctx.opt('from') ?? defaultBranch(ctx)
       // Check the tracker write first, so a refused write leaves git on the branch it was on.
-      const actor = ctx.actor()
-      tracker.updateIssue(issue.id, { branch }, actor, { dryRun: true })
+      const actor = await ctx.actor()
+      await tracker.updateIssue(issue.id, { branch }, actor, { dryRun: true })
       if (ctx.dryRun) return { data: { branch, from }, text: `would create branch ${branch} from ${from}\ndry run: nothing was written` }
       host.createBranch(branch, { from })
-      const result = tracker.updateIssue(issue.id, { branch }, actor)
+      const result = await tracker.updateIssue(issue.id, { branch }, actor)
       return { data: { branch, ...result }, text: `created branch ${branch} from ${from}\n${writeText(result, ctx)}`, commit: issue.id }
     },
   },
   {
     name: 'pr open', summary: 'pushes the issue branch and opens a pull request, or returns the one already open', usage: '--issue <id> [--draft] [--body-file f]', write: true, args: [], flags: ['issue', 'body-file', 'draft'],
-    run: (ctx) => {
+    run: async (ctx) => {
       if (ctx.opt('issue') === undefined) throw usageError('pr open needs --issue', 'pmkit pr open --issue <id>')
       const host = ctx.host()
-      const issue = ctx.tracker().getIssue(ctx.opt('issue'))
+      const issue = await (await ctx.tracker()).getIssue(ctx.opt('issue'))
       if (!issue.branch) throw usageError(`${issue.id} has no branch`, `pmkit issues branch ${issue.id}`)
       const body = ctx.opt('body-file') !== undefined ? readInput(ctx.opt('body-file')) : defaultPrBody(issue)
       const request = { title: `${issue.title} (${issue.id})`, body, head: issue.branch, base: defaultBranch(ctx), draft: ctx.flag('draft') }
@@ -799,10 +801,10 @@ export const COMMANDS = [
   },
   {
     name: 'pr ready', summary: 'marks the open draft pull request of an issue ready for review', usage: '--issue <id>', write: true, args: [], flags: ['issue'],
-    run: (ctx) => {
+    run: async (ctx) => {
       if (ctx.opt('issue') === undefined) throw usageError('pr ready needs --issue', 'pmkit pr ready --issue <id>')
       const host = ctx.host()
-      const issue = ctx.tracker().getIssue(ctx.opt('issue'))
+      const issue = await (await ctx.tracker()).getIssue(ctx.opt('issue'))
       if (!issue.branch) throw usageError(`${issue.id} has no branch`, `pmkit issues branch ${issue.id}`)
       const pr = host.getPullRequest({ head: issue.branch })
       if (pr?.state !== 'OPEN') throw usageError(`${issue.branch} has no open pull request`, `pmkit pr open --issue ${issue.id}`)
@@ -829,11 +831,11 @@ export const COMMANDS = [
   },
   {
     name: 'pr sync', summary: 'moves in_review issues to done when their pull request is merged', write: true, args: [], flags: [],
-    run: (ctx) => {
+    run: async (ctx) => {
       const host = ctx.host()
-      const tracker = ctx.tracker()
-      const actor = ctx.actor()
-      const found = tracker.searchIssues({ categories: ['in_review'] })
+      const tracker = await ctx.tracker()
+      const actor = await ctx.actor()
+      const found = await tracker.searchIssues({ categories: ['in_review'] })
       const candidates = found.issues.filter((issue) => issue.branch)
       const moved = []
       // A file that does not parse may be an in_review issue, so it is reported, not skipped.
@@ -842,7 +844,7 @@ export const COMMANDS = [
         try {
           const pr = host.getPullRequest({ head: issue.branch })
           if (pr?.mergedAt) {
-            tracker.moveToCategory(issue.id, 'done', actor, { dryRun: ctx.dryRun })
+            await tracker.moveToCategory(issue.id, 'done', actor, { dryRun: ctx.dryRun })
             moved.push({ id: issue.id, pr: pr.number })
           }
         } catch (error) {
@@ -879,8 +881,8 @@ export const COMMANDS = [
   },
   {
     name: 'reindex', summary: 'rebuilds the query index in .issues/.cache/ from the issue files; changes only files git ignores', flags: [],
-    run: (ctx) => {
-      const result = ctx.tracker().reindex()
+    run: async (ctx) => {
+      const result = (await ctx.tracker()).reindex()
       if (!result.written) {
         return { data: result, text: `the query index was not written: ${result.reason}`, warnings: ['searches still work, they read every issue file'] }
       }
@@ -890,7 +892,7 @@ export const COMMANDS = [
   {
     name: 'validate', summary: 'checks every file and reference; problems are output, not errors', flags: [], exempt: true,
     run: (ctx) => {
-      const result = validateRepo(ctx.root)
+      const result = validateRepo(ctx.root, { adapters: ctx.adapters })
       const c = result.checked
       const head = `checked: ${c.issues} issues, ${c.epics} epics, ${c.sprints} sprints, ${c.milestones} milestones, ${c.releases} releases, ${c.comments} comments`
       const body = result.problems.length === 0 ? 'no problems' : result.problems.map((p) => `${p.path}  ${p.code}  ${p.message}`).join('\n')
@@ -918,21 +920,21 @@ export function tagWarning(root, tag, env) {
 const errorOf = (error) => ({ code: error.code, message: error.message, nextStep: error.nextStep })
 
 /** The risk radar: reads the tracker and, with a git host, the open pull requests and the runs on the default branch. Writes nothing. */
-function runRisks(ctx) {
-  const tracker = ctx.tracker()
+async function runRisks(ctx) {
+  const tracker = await ctx.tracker()
   const { defaults } = ctx.config().local
   const today = ctx.now().toISOString().slice(0, 10)
   const stuckBusinessDays = defaults.stuck_business_days
   const windowDays = defaults.status_update_window_days
   const warnings = []
 
-  const { issues: all, problems: found } = tracker.searchIssues({ archived: true })
+  const { issues: all, problems: found } = await tracker.searchIssues({ archived: true })
   const problems = found.map(({ id, code, message }) => ({ id, code, message }))
   warnings.push(...found.map(problemLine))
   const byId = new Map(all.map((issue) => [issue.id, issue]))
   const problemsById = new Map(problems.map((problem) => [problem.id, problem.code]))
-  const activeSprintId = tracker.currentCycle()?.id ?? null
-  const eventsByIssue = tracker.eventsByIssue()
+  const activeSprintId = (await tracker.currentCycle())?.id ?? null
+  const eventsByIssue = await tracker.eventsByIssue()
   const issuesByBranch = Object.create(null)
   for (const issue of all) if (!issue.archived && issue.branch && issuesByBranch[issue.branch] === undefined) issuesByBranch[issue.branch] = issue.id
 
@@ -997,10 +999,10 @@ function runRisks(ctx) {
 
   const updatesByEpic = {}
   const epicWarnings = []
-  const epics = tracker.listDeliverables()
+  const epics = await tracker.listDeliverables()
   for (const epic of epics) {
     try {
-      updatesByEpic[epic.id] = tracker.listStatusUpdates(epic.id)
+      updatesByEpic[epic.id] = await tracker.listStatusUpdates(epic.id)
     } catch (error) {
       if (!isPmkitError(error)) throw error
       updatesByEpic[epic.id] = []
@@ -1094,7 +1096,7 @@ const renderPath = (ctx, file) => {
 }
 
 /** Gathers the view data through tracker reads and renders it to stdout or one file. Changes no tracker file and never replaces a file it did not render. */
-function runRender(ctx) {
+async function runRender(ctx) {
   const [view] = ctx.args
   if (!RENDER_VIEWS.includes(view)) throw usageError(`view must be board, roadmap or sprint, got "${view}"`, 'pmkit render board')
   const sprint = ctx.opt('sprint')
@@ -1105,7 +1107,7 @@ function runRender(ctx) {
   if (overwrote && !hasMarker(fs.readFileSync(file, 'utf8'))) {
     throw new PmkitError('CONFLICT', `${display} exists and was not written by pmkit render`, 'Pick another path, or delete the file first')
   }
-  const tracker = ctx.tracker()
+  const tracker = await ctx.tracker()
   const { local } = ctx.config()
   const views = {
     board: () => [boardData(tracker, local), boardDoc],
@@ -1435,8 +1437,8 @@ function makeHost(ctx) {
   return createGithubHost({ root: ctx.root, env: ctx.env })
 }
 
-/** Runs one command line. Returns the text for each stream and the exit code. */
-export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
+/** Runs one command line. Resolves to the text for each stream and the exit code. */
+export async function run(argv, { env = process.env, cwd = process.cwd(), adapters = ADAPTERS } = {}) {
   const stdout = []
   const stderr = []
   let code = 0
@@ -1469,14 +1471,20 @@ export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
     const now = clock(env)
     const random = randomSource(env)
     let tracker
+    let pending
     let host
     const ctx = {
-      root, cwd, env, dryRun, now, args: parsed.positionals, json,
+      root, cwd, env, dryRun, now, args: parsed.positionals, json, adapters,
       opt: (name) => last(options[name]),
       list: (name) => (options[name] === undefined ? [] : [options[name]].flat()),
       flag: (name) => last(options[name]) === true,
-      config: () => (loaded ??= loadConfig(root)),
-      tracker: () => (tracker ??= createLocalTracker(root, { config: ctx.config(), now, random, env, index: dryRun ? 'read' : true })),
+      config: () => (loaded ??= loadConfig(root, { adapters })),
+      // Created once per run through the registry. The resolved tracker is kept for auto-commit.
+      tracker: () => (pending ??= (async () => {
+        const config = ctx.config()
+        tracker = await adapterFor(config.system, adapters).create(config, { now, random, env, dryRun })
+        return tracker
+      })()),
       host: () => (host ??= makeHost(ctx)),
       actor: () => (typeof options.as === 'string'
         ? options.as
@@ -1488,7 +1496,7 @@ export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
       const { pmkitProblems } = ctx.config()
       if (pmkitProblems.length > 0) throw pmkitWriteRefusal(pmkitProblems)
     }
-    const result = command.run(ctx)
+    const result = await command.run(ctx)
     if (command.write && !dryRun && result.commit !== undefined && ctx.config().local.auto_commit === true) {
       // Only the files this command wrote; a write that changed nothing commits nothing.
       const paths = tracker?.writtenFiles() ?? []
@@ -1526,7 +1534,7 @@ export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
 
 const invokedPath = process.argv[1] ? fs.realpathSync(process.argv[1]) : null
 if (invokedPath && invokedPath === fs.realpathSync(fileURLToPath(import.meta.url))) {
-  const result = run(process.argv.slice(2))
+  const result = await run(process.argv.slice(2))
   process.stdout.write(result.stdout)
   process.stderr.write(result.stderr)
   process.exitCode = result.code

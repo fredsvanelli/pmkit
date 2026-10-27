@@ -35,8 +35,8 @@ function teamRepo({ github = true } = {}) {
 }
 
 const call = (root, env, args) => run(args, { env, cwd: root })
-const callJson = (root, env, args) => {
-  const result = call(root, env, [...args, '--json'])
+const callJson = async (root, env, args) => {
+  const result = await call(root, env, [...args, '--json'])
   assert.equal(result.code, 0, result.stdout + result.stderr)
   return { data: JSON.parse(result.stdout), stderr: result.stderr }
 }
@@ -77,10 +77,10 @@ function githubRepo() {
   return root
 }
 
-test('risks without a git host lists tracker risks and marks pull requests and CI as not checked', () => {
+test('risks without a git host lists tracker risks and marks pull requests and CI as not checked', async () => {
   const root = teamRepo({ github: false })
   const env = envWith(fakeGh({}))
-  const { data, stderr } = callJson(root, env, ['risks'])
+  const { data, stderr } = await callJson(root, env, ['risks'])
   assert.equal(data.today, '2026-10-23')
   assert.deepEqual(data.thresholds, { stuckBusinessDays: 3, statusUpdateWindowDays: 14 })
   assert.equal(data.gitHost.system, 'none')
@@ -94,15 +94,15 @@ test('risks without a git host lists tracker risks and marks pull requests and C
   assert.deepEqual(data.problems.map((p) => [p.id, p.code]), [['ISS-3Q6T', 'CONFLICT']])
   assert.ok(stderr.includes('warning: no git host is configured, so issues are stalled by tracker activity only and pull requests and CI are not checked'), stderr)
 
-  const text = call(root, env, ['risks'])
+  const text = await call(root, env, ['risks'])
   assert.equal(text.code, 0, text.stderr)
   assert.ok(text.stdout.startsWith('risks on 2026-10-23: stalled after 3 business days without activity, status updates due every 14 days\ngit host: none, so issues are stalled by tracker activity only and pull requests and CI are not checked\n'), text.stdout)
 })
 
-test('risks with the GitHub host lists stalled pull requests, merged branches and failing checks', () => {
+test('risks with the GitHub host lists stalled pull requests, merged branches and failing checks', async () => {
   const root = githubRepo()
   const gh = fakeGh(cannedGh())
-  const { data, stderr } = callJson(root, envWith(gh, '2026-10-28T12:00:00Z'), ['risks'])
+  const { data, stderr } = await callJson(root, envWith(gh, '2026-10-28T12:00:00Z'), ['risks'])
   assert.deepEqual(data.gitHost, { system: 'github', available: true })
   // ISS-2X6D is not stalled, because PR 11 counts as its activity.
   assert.deepEqual(data.stalledIssues.map((r) => [r.id, r.reason, r.idleBusinessDays, r.pr]), [['ISS-5N1R', 'idle', 4, null], ['ISS-8C4W', 'pr_merged', 5, 9]])
@@ -117,42 +117,42 @@ test('risks with the GitHub host lists stalled pull requests, merged branches an
   assert.ok(lines[0].startsWith('warning: ISS-3Q6T: CONFLICT'), stderr)
 })
 
-test('risks treats a branch named like an Object property as an ordinary branch', () => {
+test('risks treats a branch named like an Object property as an ordinary branch', async () => {
   const noHost = teamRepo({ github: false })
   setBranch(noHost, 'ISS-8C4W', 'constructor')
-  const idle = callJson(noHost, envWith(fakeGh({}), '2026-10-28T12:00:00Z'), ['risks']).data
+  const idle = (await callJson(noHost, envWith(fakeGh({}), '2026-10-28T12:00:00Z'), ['risks'])).data
   const row = idle.stalledIssues.find((r) => r.id === 'ISS-8C4W')
   assert.deepEqual([row.reason, row.pr], ['idle', null])
 
   const root = githubRepo()
   setBranch(root, 'ISS-2X6D', 'toString')
   const gh = fakeGh({ ...cannedGh(), [PR_LIST]: { stdout: JSON.stringify([openPr(11, 'toString', '2026-10-01T10:00:00Z')]) } })
-  const { data } = callJson(root, envWith(gh, '2026-10-28T12:00:00Z'), ['risks'])
+  const { data } = await callJson(root, envWith(gh, '2026-10-28T12:00:00Z'), ['risks'])
   assert.deepEqual(data.stalledPullRequests.map((r) => [r.number, r.issue]), [[11, 'ISS-2X6D']])
   const unlinked = fakeGh({ ...cannedGh(), [PR_LIST]: { stdout: JSON.stringify([openPr(12, 'valueOf', '2026-10-01T10:00:00Z')]) } })
-  const other = callJson(root, envWith(unlinked, '2026-10-28T12:00:00Z'), ['risks']).data
+  const other = (await callJson(root, envWith(unlinked, '2026-10-28T12:00:00Z'), ['risks'])).data
   assert.deepEqual(other.stalledPullRequests.map((r) => [r.number, r.issue]), [[12, null]])
 })
 
-test('risks writes nothing', () => {
+test('risks writes nothing', async () => {
   const root = githubRepo()
   const gh = fakeGh(cannedGh())
   const env = envWith(gh, '2026-10-28T12:00:00Z')
   const before = readTree(root)
-  callJson(root, env, ['risks'])
+  await callJson(root, env, ['risks'])
   assert.deepEqual(readTree(root), before)
   for (const line of ghCalls(gh)) assert.match(line, /^(pr list|pr view|run list) /)
   // The control: a write changes the tree, so the comparison above can fail.
-  callJson(root, env, ['issues', 'assign', 'ISS-5N1R', 'ana'])
+  await callJson(root, env, ['issues', 'assign', 'ISS-5N1R', 'ana'])
   assert.notDeepEqual(readTree(root), before)
 })
 
-test("risks keeps the report when an epic's status updates cannot be read", () => {
+test("risks keeps the report when an epic's status updates cannot be read", async () => {
   const root = teamRepo({ github: false })
   const dir = path.join(root, '.issues/epics/EPC-2M9D/updates')
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(path.join(dir, '2026-10-20-fred.md'), 'not a status update\n')
-  const { data, stderr } = callJson(root, envWith(fakeGh({})), ['risks'])
+  const { data, stderr } = await callJson(root, envWith(fakeGh({})), ['risks'])
   assert.deepEqual(data.epics[0].reasons, ['no_recent_update'])
   assert.equal(data.epics[0].lastUpdate, null)
   assert.ok(data.problems.some((p) => p.id === 'EPC-2M9D' && p.code === 'INVALID_INPUT' && p.message === 'The status update file has no frontmatter.'), JSON.stringify(data.problems))
@@ -161,10 +161,10 @@ test("risks keeps the report when an epic's status updates cannot be read", () =
 
 const LOGGED_OUT = { status: 4, stderr: 'To get started with GitHub CLI, please run:  gh auth login\n' }
 
-test('risks with a logged out gh lists tracker risks and says how to log in', () => {
+test('risks with a logged out gh lists tracker risks and says how to log in', async () => {
   const root = teamRepo()
   const gh = fakeGh({ ...cannedGh(), [PR_LIST]: LOGGED_OUT })
-  const { data, stderr } = callJson(root, envWith(gh), ['risks'])
+  const { data, stderr } = await callJson(root, envWith(gh), ['risks'])
   assert.deepEqual(data.gitHost, { system: 'github', available: false, reason: { code: 'AUTH', message: 'GitHub CLI is not logged in', nextStep: 'gh auth login' } })
   assert.equal(data.stalledPullRequests, null)
   assert.equal(data.ci, null)
@@ -173,18 +173,18 @@ test('risks with a logged out gh lists tracker risks and says how to log in', ()
   assert.ok(stderr.includes('warning: GitHub CLI is not logged in, so issues are stalled by tracker activity only and pull requests and CI are not checked; next: gh auth login'), stderr)
 })
 
-test('risks with no gh on the PATH reports NOT_CONFIGURED', () => {
+test('risks with no gh on the PATH reports NOT_CONFIGURED', async () => {
   const root = teamRepo()
   const env = { ...envWith(fakeGh({})), PATH: tempDir('pmkit-risks-') }
-  const { data } = callJson(root, env, ['risks'])
+  const { data } = await callJson(root, env, ['risks'])
   assert.equal(data.gitHost.reason.code, 'NOT_CONFIGURED')
   assert.equal(data.stalledPullRequests, null)
 })
 
-test('risks drops every host list when gh logs out after pr list', () => {
+test('risks drops every host list when gh logs out after pr list', async () => {
   const root = githubRepo()
   const gh = fakeGh({ ...cannedGh(), [RUN_LIST]: LOGGED_OUT })
-  const { data } = callJson(root, envWith(gh, '2026-10-28T12:00:00Z'), ['risks'])
+  const { data } = await callJson(root, envWith(gh, '2026-10-28T12:00:00Z'), ['risks'])
   assert.equal(data.gitHost.reason.code, 'AUTH')
   assert.equal(data.stalledPullRequests, null)
   assert.equal(data.ci, null)
@@ -192,10 +192,10 @@ test('risks drops every host list when gh logs out after pr list', () => {
   assert.deepEqual(data.stalledIssues.map((r) => [r.id, r.reason, r.pr]), [['ISS-2X6D', 'idle', null], ['ISS-5N1R', 'idle', null], ['ISS-8C4W', 'idle', null]])
 })
 
-test('risks keeps the pull request lists when only run list fails', () => {
+test('risks keeps the pull request lists when only run list fails', async () => {
   const root = githubRepo()
   const gh = fakeGh({ ...cannedGh(), [RUN_LIST]: { status: 1, stderr: 'HTTP 502: Bad Gateway\n' } })
-  const { data, stderr } = callJson(root, envWith(gh, '2026-10-28T12:00:00Z'), ['risks'])
+  const { data, stderr } = await callJson(root, envWith(gh, '2026-10-28T12:00:00Z'), ['risks'])
   assert.equal(data.gitHost.available, true)
   assert.deepEqual(data.stalledPullRequests.map((r) => r.number), [12])
   assert.deepEqual(data.ci.pullRequests.map((r) => r.number), [14])
@@ -206,10 +206,10 @@ test('risks keeps the pull request lists when only run list fails', () => {
   assert.ok(stderr.includes('warning: CI on main not checked: gh run list failed: HTTP 502: Bad Gateway'), stderr)
 })
 
-test('risks keeps the CI on main when only pr list fails', () => {
+test('risks keeps the CI on main when only pr list fails', async () => {
   const root = githubRepo()
   const gh = fakeGh({ ...cannedGh(), [PR_LIST]: { status: 1, stderr: 'API rate limit exceeded\n' } })
-  const { data, stderr } = callJson(root, envWith(gh, '2026-10-28T12:00:00Z'), ['risks'])
+  const { data, stderr } = await callJson(root, envWith(gh, '2026-10-28T12:00:00Z'), ['risks'])
   const error = { error: { code: 'RATE_LIMITED', message: 'GitHub rate limit reached', nextStep: 'Wait a few minutes and retry' } }
   assert.deepEqual(data.stalledPullRequests, error)
   assert.deepEqual(data.ci.pullRequests, error)
@@ -218,31 +218,31 @@ test('risks keeps the CI on main when only pr list fails', () => {
   assert.ok(stderr.includes('warning: pull requests not checked: GitHub rate limit reached'), stderr)
 })
 
-test('risks keeps an issue idle when its pull request lookup fails', () => {
+test('risks keeps an issue idle when its pull request lookup fails', async () => {
   const root = githubRepo()
   const gh = fakeGh({ ...cannedGh(), [view('feat-dlq')]: { status: 1, stderr: 'GraphQL: boom\n' } })
-  const { data, stderr } = callJson(root, envWith(gh, '2026-10-28T12:00:00Z'), ['risks'])
+  const { data, stderr } = await callJson(root, envWith(gh, '2026-10-28T12:00:00Z'), ['risks'])
   const row = data.stalledIssues.find((r) => r.id === 'ISS-8C4W')
   assert.equal(row.reason, 'idle')
   assert.equal(row.pr, null)
   assert.ok(stderr.includes('warning: ISS-8C4W: the pull request of feat-dlq could not be read: gh pr view failed: GraphQL: boom'), stderr)
 })
 
-test('risks keeps an issue idle when its branch is not a valid ref', () => {
+test('risks keeps an issue idle when its branch is not a valid ref', async () => {
   const root = githubRepo()
   setBranch(root, 'ISS-8C4W', '-x')
   const gh = fakeGh(cannedGh())
-  const result = call(root, envWith(gh, '2026-10-28T12:00:00Z'), ['risks', '--json'])
+  const result = await call(root, envWith(gh, '2026-10-28T12:00:00Z'), ['risks', '--json'])
   assert.equal(result.code, 0, result.stdout + result.stderr)
   const row = JSON.parse(result.stdout).stalledIssues.find((r) => r.id === 'ISS-8C4W')
   assert.deepEqual([row.reason, row.pr], ['idle', null])
   assert.ok(result.stderr.includes('warning: ISS-8C4W: the pull request of -x could not be read'), result.stderr)
 })
 
-test('risks warns when it reads 200 open pull requests', () => {
+test('risks warns when it reads 200 open pull requests', async () => {
   const root = teamRepo()
   const prs = Array.from({ length: 200 }, (_, i) => openPr(i + 1, `b${i + 1}`, '2026-10-22T10:00:00Z'))
   const gh = fakeGh({ [PR_LIST]: { stdout: JSON.stringify(prs) }, [RUN_LIST]: { stdout: '[]' } })
-  const { stderr } = callJson(root, envWith(gh), ['risks'])
+  const { stderr } = await callJson(root, envWith(gh), ['risks'])
   assert.ok(stderr.includes('warning: only the 200 most recently created open pull requests were read'), stderr)
 })
