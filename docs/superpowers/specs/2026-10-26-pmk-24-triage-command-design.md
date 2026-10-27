@@ -108,7 +108,7 @@ A table of the applied decisions with the full ID, the decision, the new status,
 ## Tests
 
 - A scenario on a copy of the `team` fixture. Setup files three more triage issues, so the queue holds four: one to accept with a priority and a label, one that repeats an existing issue, one to decline, and the existing `ISS-1V9Z` left alone as "needs info" or skipped. The user applies all proposals once. The scenario checks the dry runs, the single confirmation, the writes in order, and the second `issues list` that ends the run.
-- A second scenario path, or a second scenario file, for the one-by-one choice, if the scenario helpers allow a command with two paths. The builder decides.
+- A second entry in the same scenario module (the helpers take an array, one snapshot per entry) for the one-by-one choice, and a third entry on a fixture with an empty queue.
 - `expect` checks the tracker after the run: the accepted issue is in `backlog` with its priority and labels, the duplicate is `canceled` with a `duplicate` link, the declined issue is `canceled` with a comment, and the skipped issue is still in `triage`.
 - The scenario helper compares flag names only, so one test parses `triage.md` and asserts that every `issues move`, `issues link`, `issues update` and `issues comment` call has a `--dry-run` form in step 6 and a write form in step 8, like the existing check for `cycle/close`.
 - `npm test` passes, including `plugin.test.mjs` and `scenarios.test.mjs`.
