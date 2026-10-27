@@ -76,7 +76,7 @@ test('a missing and an unreadable blocker are open nodes that are not followed',
   // M ends up on the critical path M → A: each node weighs 1, and M sorts before R.
   assert.deepEqual(node(map, 'M'), {
     id: 'M', title: null, status: null, assignee: null, estimate: null, parent: null,
-    scope: false, open: true, archived: false, missing: true, unreadable: false, blockedBy: [], critical: true,
+    scope: false, outside: true, open: true, archived: false, missing: true, unreadable: false, blockedBy: [], critical: true,
   })
   assert.equal(node(map, 'R').missing, false)
   assert.equal(node(map, 'R').unreadable, true)
@@ -307,4 +307,18 @@ test('printing a map too deep for the stack is a PmkitError, not a RangeError', 
     resolved: 0, related: [], problems: [],
   }
   assert.throws(() => dependencyText(map), (error) => error instanceof PmkitError && error.code === 'INVALID_INPUT')
+})
+
+test('a node is outside the target when its parent chain does not reach it', () => {
+  const issues = [
+    issue('A', { parent: 'EPC-1', blockedBy: ['B', 'D', 'E'] }),
+    issue('B', { parent: 'EPC-1', archived: true }),
+    issue('D', { archived: true }),
+    issue('E', { parent: 'B' }),
+  ]
+  const map = dependencyMap({ target: epic, issues })
+  assert.equal(node(map, 'A').outside, false)
+  assert.equal(node(map, 'B').outside, false)
+  assert.equal(node(map, 'D').outside, true)
+  assert.equal(node(map, 'E').outside, false)
 })

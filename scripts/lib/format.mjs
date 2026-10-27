@@ -130,19 +130,10 @@ export function dependencyText(map) {
 function renderDependencies(map) {
   const { target } = map
   const byId = new Map(map.nodes.map((node) => [node.id, node]))
-  // A node is under the target when it is in scope or its parent chain, through the nodes shown, reaches the target.
-  // An archived parent that is not a node cuts the chain, so a node under it reads as outside.
-  const underTarget = (node) => {
-    for (let seen = new Set(), current = node; current && !seen.has(current.id); current = byId.get(current.parent)) {
-      if (current.scope || current.parent === target.id) return true
-      seen.add(current.id)
-    }
-    return false
-  }
   const body = (node) => {
     if (node.missing) return `${node.id}  (missing)`
     if (node.unreadable) return `${node.id}  (unreadable)`
-    const marks = [...(underTarget(node) ? [] : [`outside ${target.id}`]), ...(node.archived ? ['archived'] : [])]
+    const marks = [...(node.outside ? [`outside ${target.id}`] : []), ...(node.archived ? ['archived'] : [])]
     const text = `${node.id}  ${node.title}  ${node.status.name}  ${node.assignee ?? '-'}  ${node.estimate ?? '-'}`
     return marks.length > 0 ? `${text}  (${marks.join(', ')})` : text
   }

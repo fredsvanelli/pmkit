@@ -52,6 +52,7 @@ function buildMap({ target, issues, dependencies = true, unreadable = [], unit =
       estimate: issue?.estimate ?? null,
       parent: issue?.parent ?? null,
       scope: false,
+      outside: false,
       open: issue ? isOpen(issue) : true,
       archived: issue?.archived === true,
       missing: false,
@@ -106,6 +107,20 @@ function buildMap({ target, issues, dependencies = true, unreadable = [], unit =
     if (rb !== undefined) return 1
     return compareIds(a.id, b.id)
   })
+
+  // A node is under the target when it is in scope or its parent chain, through the nodes listed, reaches the target.
+  // An archived parent that is not a node cuts the chain, so a node under it is outside.
+  for (const node of nodes) {
+    let under = false
+    for (let seen = new Set(), current = node; current && !seen.has(current.id); current = graph.get(current.parent)) {
+      if (current.scope || current.parent === target.id) {
+        under = true
+        break
+      }
+      seen.add(current.id)
+    }
+    node.outside = !under
+  }
 
   const problems = breakLoops(nodes, graph)
 
