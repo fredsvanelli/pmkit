@@ -11,7 +11,7 @@ import { COMMANDS as CLI_COMMANDS } from './pmkit.mjs'
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const TERMS = [
-  'Tracker', 'Git host', 'Adapter', 'Issue', 'Sub-issue', 'Epic', 'Sprint', 'Status', 'Category', 'Blocked', 'Event',
+  'Tracker', 'Git host', 'Adapter', 'Issue', 'Sub-issue', 'Epic', 'Sprint', 'Status', 'Category', 'Blocked', 'Blocker chain', 'Critical path', 'Event',
   'Synthetic event', 'Drift', 'Capability', 'Capability manifest', 'Member', 'Actor', 'Local tracker', 'Write policy', 'Dry run', 'Tracker format', 'Migration',
 ]
 
@@ -90,7 +90,7 @@ test('CHANGELOG.md has a section for the plugin version and a Tracker format tha
 })
 
 // Each Task that writes command files adds their names here.
-const COMMANDS = { '': ['setup', 'help', 'upgrade'], issues: ['find', 'create', 'update', 'move', 'assign', 'comment', 'link', 'summary', 'work', 'mine', 'capture', 'breakdown', 'progress', 'pause'], spec: ['import'], backlog: ['groom'], report: ['status'], cycle: ['plan', 'close'], team: ['standup'], local: ['doctor'] }
+const COMMANDS = { '': ['setup', 'help', 'upgrade'], issues: ['find', 'create', 'dependencies', 'update', 'move', 'assign', 'comment', 'link', 'summary', 'work', 'mine', 'capture', 'breakdown', 'progress', 'pause'], spec: ['import'], backlog: ['groom'], report: ['status'], cycle: ['plan', 'close'], team: ['standup'], local: ['doctor'] }
 
 const HEADINGS = ['## Parameters', '## Steps', '## Confirmation points', '## Output', '## If something is missing']
 

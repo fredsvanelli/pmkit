@@ -1,0 +1,275 @@
+$ pmkit issues dependencies EPC-2M9D
+exit 0
+--- stdout
+EPC-2M9D  Reliable webhooks and billing export  in_progress
+critical path: ISS-5N1R → ISS-2X6D (11 points)
+
+blocker chain:
+* ISS-2X6D  Billing export to CSV  in_progress  ana  8
+  * ISS-5N1R  Paginate the events API  in_progress  fred  3  (outside EPC-2M9D)
+
+hierarchy:
+* ISS-2X6D  Billing export to CSV  in_progress  ana  8  blocked by ISS-5N1R
+    ISS-4M2S  Fix CSV column order  todo  fred  1
+  ISS-8C4W  Dead-letter queue for webhooks  in_review  ana  5
+  2 done or canceled
+1 resolved blocker not shown
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues dependencies EPC-2M9D --json
+exit 0
+--- stdout
+{
+  "target": {
+    "id": "EPC-2M9D",
+    "kind": "epic",
+    "title": "Reliable webhooks and billing export",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "ancestors": []
+  },
+  "basis": "blockers",
+  "reason": null,
+  "weight": {
+    "unit": "points"
+  },
+  "nodes": [
+    {
+      "id": "ISS-7K3Q",
+      "title": "Retry failed webhook deliveries",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "assignee": "fred",
+      "estimate": 3,
+      "parent": "EPC-2M9D",
+      "scope": true,
+      "outside": false,
+      "open": false,
+      "archived": false,
+      "missing": false,
+      "unreadable": false,
+      "blockedBy": [],
+      "critical": false
+    },
+    {
+      "id": "ISS-4P8A",
+      "title": "Sign webhook payloads",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "assignee": "ana",
+      "estimate": 5,
+      "parent": "EPC-2M9D",
+      "scope": true,
+      "outside": false,
+      "open": false,
+      "archived": false,
+      "missing": false,
+      "unreadable": false,
+      "blockedBy": [],
+      "critical": false
+    },
+    {
+      "id": "ISS-2X6D",
+      "title": "Billing export to CSV",
+      "status": {
+        "name": "in_progress",
+        "category": "in_progress"
+      },
+      "assignee": "ana",
+      "estimate": 8,
+      "parent": "EPC-2M9D",
+      "scope": true,
+      "outside": false,
+      "open": true,
+      "archived": false,
+      "missing": false,
+      "unreadable": false,
+      "blockedBy": [
+        "ISS-5N1R"
+      ],
+      "critical": true
+    },
+    {
+      "id": "ISS-5N1R",
+      "title": "Paginate the events API",
+      "status": {
+        "name": "in_progress",
+        "category": "in_progress"
+      },
+      "assignee": "fred",
+      "estimate": 3,
+      "parent": null,
+      "scope": false,
+      "outside": true,
+      "open": true,
+      "archived": false,
+      "missing": false,
+      "unreadable": false,
+      "blockedBy": [],
+      "critical": true
+    },
+    {
+      "id": "ISS-8C4W",
+      "title": "Dead-letter queue for webhooks",
+      "status": {
+        "name": "in_review",
+        "category": "in_review"
+      },
+      "assignee": "ana",
+      "estimate": 5,
+      "parent": "EPC-2M9D",
+      "scope": true,
+      "outside": false,
+      "open": true,
+      "archived": false,
+      "missing": false,
+      "unreadable": false,
+      "blockedBy": [],
+      "critical": false
+    },
+    {
+      "id": "ISS-4M2S",
+      "title": "Fix CSV column order",
+      "status": {
+        "name": "todo",
+        "category": "todo"
+      },
+      "assignee": "fred",
+      "estimate": 1,
+      "parent": "ISS-2X6D",
+      "scope": true,
+      "outside": false,
+      "open": true,
+      "archived": false,
+      "missing": false,
+      "unreadable": false,
+      "blockedBy": [],
+      "critical": false
+    }
+  ],
+  "tree": [
+    {
+      "id": "ISS-7K3Q",
+      "children": []
+    },
+    {
+      "id": "ISS-4P8A",
+      "children": []
+    },
+    {
+      "id": "ISS-2X6D",
+      "children": [
+        {
+          "id": "ISS-4M2S",
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "ISS-8C4W",
+      "children": []
+    }
+  ],
+  "criticalPath": {
+    "ids": [
+      "ISS-5N1R",
+      "ISS-2X6D"
+    ],
+    "length": 11,
+    "unestimated": []
+  },
+  "resolved": 1,
+  "related": [
+    [
+      "ISS-2X6D",
+      "ISS-0G5E"
+    ]
+  ],
+  "problems": [
+    {
+      "id": "ISS-3Q6T",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues dependencies ISS-5N1R
+exit 0
+--- stdout
+ISS-5N1R  Paginate the events API  in_progress
+no open issue in the scope of ISS-5N1R has a blocker, so this shows the hierarchy only
+
+hierarchy:
+  ISS-5N1R  Paginate the events API  in_progress  fred  3
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues dependencies ISS-5N1R --json
+exit 0
+--- stdout
+{
+  "target": {
+    "id": "ISS-5N1R",
+    "kind": "issue",
+    "title": "Paginate the events API",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "ancestors": []
+  },
+  "basis": "hierarchy",
+  "reason": "none",
+  "weight": {
+    "unit": "points"
+  },
+  "nodes": [
+    {
+      "id": "ISS-5N1R",
+      "title": "Paginate the events API",
+      "status": {
+        "name": "in_progress",
+        "category": "in_progress"
+      },
+      "assignee": "fred",
+      "estimate": 3,
+      "parent": null,
+      "scope": true,
+      "outside": false,
+      "open": true,
+      "archived": false,
+      "missing": false,
+      "unreadable": false,
+      "blockedBy": [],
+      "critical": false
+    }
+  ],
+  "tree": [
+    {
+      "id": "ISS-5N1R",
+      "children": []
+    }
+  ],
+  "criticalPath": null,
+  "resolved": 0,
+  "related": [],
+  "problems": [
+    {
+      "id": "ISS-3Q6T",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.

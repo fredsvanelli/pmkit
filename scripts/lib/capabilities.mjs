@@ -14,8 +14,8 @@ export const CAPABILITIES = [
 export const SERVED_BY = {
   cycles: ['cycle list', 'cycle current', 'cycle issues', 'cycle open', 'cycle close', 'cycle add'],
   estimation: ['issues create', 'issues update'],
-  multilevel_hierarchy: ['issues parent', 'epic list'],
-  dependencies: ['issues link'],
+  multilevel_hierarchy: ['issues parent', 'epic list', 'issues dependencies'],
+  dependencies: ['issues link', 'issues dependencies'],
   native_triage: ['issues move'],
   deliverables: ['epic list', 'epic get', 'epic create', 'epic progress'],
   strategic_goals: [],

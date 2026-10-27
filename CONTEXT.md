@@ -56,6 +56,14 @@ _Avoid_: status type, stage, phase
 The state of an issue when one of its `blocked_by` issues is not in a terminal category, or is missing. It is computed on each read. It is not a category and not a stored field.
 _Avoid_: on hold, stuck, waiting
 
+**Blocker chain**:
+The open issues that block an issue or the issues under an epic, followed through their own blockers until none is left. A blocker in a terminal category no longer blocks, so the chain stops there. A missing blocker stays in the chain. `/pmkit:issues:dependencies` shows it.
+_Avoid_: dependency tree, blocking tree
+
+**Critical path**:
+The heaviest chain of open issues, linked by blocker edges, that ends at an open issue of the target. Its length adds the estimates, as velocity does, or counts the issues when no open issue in the map has a numeric estimate. It is the chain that sets the earliest finish of the target.
+_Avoid_: longest path, critical chain
+
 **Event**:
 One line of an issue's `events.jsonl`, appended on each write. It has `at`, `by`, `op` (`create`, `update`, `move`, `assign`, `link`, `unlink`, `comment`, `log_time` or `archive`) and the changed field with its old and new values. Replaying the events gives the issue's state and feeds the metrics.
 _Avoid_: log entry, activity, audit record

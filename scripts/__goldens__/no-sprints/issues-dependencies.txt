@@ -1,0 +1,152 @@
+$ pmkit issues dependencies EPC-4H7V
+exit 0
+--- stdout
+EPC-4H7V  Reliable webhooks  in_progress
+no open issue in the scope of EPC-4H7V has a blocker, so this shows the hierarchy only
+
+hierarchy:
+  2 done or canceled
+--- stderr
+(empty)
+
+$ pmkit issues dependencies EPC-4H7V --json
+exit 0
+--- stdout
+{
+  "target": {
+    "id": "EPC-4H7V",
+    "kind": "epic",
+    "title": "Reliable webhooks",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "ancestors": []
+  },
+  "basis": "hierarchy",
+  "reason": "none",
+  "weight": {
+    "unit": "issues"
+  },
+  "nodes": [
+    {
+      "id": "ISS-2K5P",
+      "title": "Sign webhook payloads",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "assignee": "ana",
+      "estimate": 5,
+      "parent": "EPC-4H7V",
+      "scope": true,
+      "outside": false,
+      "open": false,
+      "archived": false,
+      "missing": false,
+      "unreadable": false,
+      "blockedBy": [],
+      "critical": false
+    },
+    {
+      "id": "ISS-6R3N",
+      "title": "Retry failed deliveries",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "assignee": "fred",
+      "estimate": 8,
+      "parent": "EPC-4H7V",
+      "scope": true,
+      "outside": false,
+      "open": false,
+      "archived": false,
+      "missing": false,
+      "unreadable": false,
+      "blockedBy": [],
+      "critical": false
+    }
+  ],
+  "tree": [
+    {
+      "id": "ISS-2K5P",
+      "children": []
+    },
+    {
+      "id": "ISS-6R3N",
+      "children": []
+    }
+  ],
+  "criticalPath": null,
+  "resolved": 0,
+  "related": [],
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit issues dependencies ISS-9B2X
+exit 0
+--- stdout
+ISS-9B2X  Dead-letter queue  in_review
+no open issue in the scope of ISS-9B2X has a blocker, so this shows the hierarchy only
+
+hierarchy:
+  ISS-9B2X  Dead-letter queue  in_review  ana  5
+--- stderr
+(empty)
+
+$ pmkit issues dependencies ISS-9B2X --json
+exit 0
+--- stdout
+{
+  "target": {
+    "id": "ISS-9B2X",
+    "kind": "issue",
+    "title": "Dead-letter queue",
+    "status": {
+      "name": "in_review",
+      "category": "in_review"
+    },
+    "ancestors": []
+  },
+  "basis": "hierarchy",
+  "reason": "none",
+  "weight": {
+    "unit": "points"
+  },
+  "nodes": [
+    {
+      "id": "ISS-9B2X",
+      "title": "Dead-letter queue",
+      "status": {
+        "name": "in_review",
+        "category": "in_review"
+      },
+      "assignee": "ana",
+      "estimate": 5,
+      "parent": null,
+      "scope": true,
+      "outside": false,
+      "open": true,
+      "archived": false,
+      "missing": false,
+      "unreadable": false,
+      "blockedBy": [],
+      "critical": false
+    }
+  ],
+  "tree": [
+    {
+      "id": "ISS-9B2X",
+      "children": []
+    }
+  ],
+  "criticalPath": null,
+  "resolved": 0,
+  "related": [],
+  "problems": []
+}
+--- stderr
+(empty)
