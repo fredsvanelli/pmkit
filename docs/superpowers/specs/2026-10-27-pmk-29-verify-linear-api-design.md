@@ -89,7 +89,7 @@ Summary table columns:
 | Releases | `Release`, `ReleasePipeline`, `ReleaseStage`, `issueToRelease*` mutations, the `releases` field on `Issue` | `releases(first: 1)` and `releasePipelines(first: 1)` |
 | Insights | Any type, query or mutation whose name matches `insight`, `analytic` or `metric` | none when the schema lacks the object |
 
-Observed while writing this spec (read-only introspection on the `acme` workspace, Free plan; the builder repeats it and records it in the note):
+Observed while writing this spec (read-only introspection on the sandbox workspace, Free plan; the builder repeats it and records it in the note):
 
 - Releases. `Release`, `ReleasePipeline`, `ReleaseStage`, `releases`, `releasePipelines`, `releaseCreate`, `releaseComplete`, `issueToReleaseCreate` and an `Issue.releases` connection exist. Both list queries answer on the Free workspace (empty lists). Expected `yes`, read and write. The plan that gates creation is not shown by a read.
 - Dependencies between projects. `ProjectRelation` and `projectRelationCreate`, `Update` and `Delete` exist. `projectRelations` answers (empty list). The type has `anchorType` and `relatedAnchorType`, so a relation can also point at a milestone. The enum of `type` is not exposed under the name `ProjectRelationType`, so the builder reads the field's real type name. Expected `yes`, read and write.
@@ -151,7 +151,7 @@ The Plan column and the Verified by column together tell PMK-33 how sure each an
 ## Resolved questions
 
 1. **Recurring issues.** Option (a). `yes`, access `read`, caveat "schedule and rules are not in the API". PMK-33 can show which issues came from a recurring template and treats creating a recurring rule as absent.
-2. **Proof of writes with a test team.** Option (a). None in this issue. Gated writes stay `schema, docs`. A later issue can add them with its own brief and a new team, never ACME.
+2. **Proof of writes with a test team.** Option (a). None in this issue. Gated writes stay `schema, docs`. A later issue can add them with its own brief and a new team, never the sandbox team.
 3. **The script.** Option (a). `scripts/lib/linear/verify-api.mjs` stays in the repository with its offline unit test. The live run only reads and only runs with `PMKIT_LIVE=1`.
 4. **The folder.** Option (a). `scripts/lib/linear/`, and the note is `scripts/lib/linear/API-VERIFICATION.md`.
 

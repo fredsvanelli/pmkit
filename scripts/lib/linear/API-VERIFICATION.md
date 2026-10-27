@@ -1,11 +1,11 @@
 # Linear API verification
 
-Checked on 2026-10-27 against the workspace `acme` (Free plan) at `https://api.linear.app/graphql`, with a personal API key and no write. `verify-api.mjs` in this folder ran the checks. The folder holds a verification tool and no adapter code yet.
+Checked on 2026-10-27 against the sandbox workspace (Free plan) at `https://api.linear.app/graphql`, with a personal API key and no write. `verify-api.mjs` in this folder ran the checks. The folder holds a verification tool and no adapter code yet.
 
 To repeat the check:
 
 ```
-PMKIT_LIVE=1 LINEAR_API_KEY=<key> node scripts/lib/linear/verify-api.mjs
+set -a; . ./.env; set +a; PMKIT_LIVE=1 node scripts/lib/linear/verify-api.mjs
 ```
 
 Without `PMKIT_LIVE=1` the script sends nothing. It sends only queries and refuses a document that starts with `mutation`. Use the shell to put the key in the environment so it never appears on a command line.

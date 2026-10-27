@@ -123,7 +123,7 @@ test('findMatches returns empty lists when nothing matches', () => {
 **Files:** none changed. Output goes to the scratchpad, not the repository.
 
 - [ ] **Step 1: Run.** `set -a; . /home/fred/projects/pmkit/.env; set +a; PMKIT_LIVE=1 node scripts/lib/linear/verify-api.mjs > <scratchpad>/linear-verify.json`. Never print the environment.
-- [ ] **Step 2: Check the workspace.** `organization.urlKey` in the output is `acme`. If not, stop and report.
+- [ ] **Step 2: Check the workspace.** `organization.urlKey` in the output is the key of the sandbox workspace. If not, stop and report.
 - [ ] **Step 3: Compare with the spec's "Observed" list.** Releases, project relations and recurring issues match; Insights finds nothing. Any difference goes into the note and into the report.
 - [ ] **Step 4: Read the `Template` type and the docs.** From the same output, record the `Template.type` values and the Linear docs page for recurring issues and for releases, with the date. If a schedule field exists on `Template`, stop and report, because it changes the recurring answer.
 - [ ] **Step 5: Confirm no key leaked.** Run `grep -c "lin_api_" <scratchpad>/linear-verify.json` and expect 0. The pattern is a prefix, not the key.
@@ -133,7 +133,7 @@ test('findMatches returns empty lists when nothing matches', () => {
 
 **Files:** Create `scripts/lib/linear/API-VERIFICATION.md`.
 
-- [ ] **Step 1: Header.** Date of the check, workspace plan (Free, `acme`), endpoint, the script name and the command to repeat it. One sentence says the folder holds a verification tool and no adapter code yet. A line `Note path: scripts/lib/linear/API-VERIFICATION.md` is not needed in the note; the path is the file itself.
+- [ ] **Step 1: Header.** Date of the check, workspace plan (Free, the sandbox workspace), endpoint, the script name and the command to repeat it. One sentence says the folder holds a verification tool and no adapter code yet. A line `Note path: scripts/lib/linear/API-VERIFICATION.md` is not needed in the note; the path is the file itself.
 - [ ] **Step 2: Summary table** with the columns Feature, Answer, API object, Access, Plan, Verified by, Caveat, and these rows from the task 5 output:
   - Recurring issues: `yes`, `Issue.recurringIssueTemplate` (`Template`), `read`, caveat "schedule and rules are not in the API".
   - Dependencies between projects: `yes`, `ProjectRelation`, `projectRelations`, `projectRelationCreate`/`Update`/`Delete`, `read/write`.
