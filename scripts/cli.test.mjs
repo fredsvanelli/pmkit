@@ -237,6 +237,30 @@ test('metrics lead-time summarizes done issues in range', () => {
   assert.equal(run(root, ['metrics', 'lead-time']).stdout, 'count: 3\nmedian: 10.3 days\np85: 11.7 days\n')
 })
 
+test('metrics throughput counts done issues by type in range', () => {
+  const root = makeRepo('team')
+  const all = json(root, ['metrics', 'throughput'])
+  assert.deepEqual(all, {
+    count: 3,
+    byType: { bug: 2, feature: 1 },
+    issues: [
+      { issue: 'ISS-9T2M', type: 'bug', doneAt: '2026-10-05T15:00:00Z' },
+      { issue: 'ISS-7K3Q', type: 'bug', doneAt: '2026-10-06T16:00:00Z' },
+      { issue: 'ISS-4P8A', type: 'feature', doneAt: '2026-10-08T17:00:00Z' },
+    ],
+  })
+  assert.equal(json(root, ['metrics', 'throughput', '--since', '2026-10-06', '--until', '2026-10-08']).count, 2)
+  assert.deepEqual(json(root, ['metrics', 'throughput', '--since', '2030-01-01']), { count: 0, byType: {}, issues: [] })
+  assert.equal(run(root, ['metrics', 'throughput']).stdout, 'count: 3\nType    | Issues\n--------|-------\nbug     | 2\nfeature | 1\n')
+  assert.equal(run(root, ['metrics', 'throughput', '--since', '2030-01-01']).stdout, 'count: 0\n')
+})
+
+test('metrics throughput reads a time without a zone as UTC', () => {
+  const root = makeRepo('team')
+  const result = json(root, ['metrics', 'throughput', '--since', '2026-10-06T16:00:00', '--until', '2026-10-08T17:00'], { env: { TZ: 'America/Sao_Paulo' } })
+  assert.deepEqual(result.issues.map((i) => i.issue), ['ISS-7K3Q', 'ISS-4P8A'])
+})
+
 test('metrics cycle-time refuses a bound that is not a date', () => {
   const root = makeRepo('team')
   assert.equal(run(root, ['metrics', 'cycle-time', '--since', '2026-13-40', '--json']).status, 2)
@@ -353,7 +377,7 @@ test('--help lists every command and exits 2', () => {
     'issues assign', 'issues link', 'issues parent', 'issues comment', 'issues log-time', 'issues archive',
     'cycle list', 'cycle current', 'cycle issues', 'cycle open', 'cycle close', 'cycle add', 'cycle capacity',
     'epic list', 'epic get', 'epic progress', 'epic create', 'epic update-status',
-    'metrics velocity', 'metrics cycle-time', 'metrics lead-time', 'events', 'validate',
+    'metrics velocity', 'metrics cycle-time', 'metrics lead-time', 'metrics throughput', 'events', 'validate',
   ]) assert.ok(result.stdout.includes(name), name)
 })
 
@@ -1272,6 +1296,7 @@ test('every read goes on with one warning', () => {
     'metrics velocity': [],
     'metrics cycle-time': [],
     'metrics lead-time': [],
+    'metrics throughput': [],
     events: [],
     'pr status': [],
     reindex: [],

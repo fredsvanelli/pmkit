@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { businessDaysBetween, cycleTimes, doneInRange, leadTimes, rangeInstant, summary, velocity } from './lib/metrics.mjs'
+import { businessDaysBetween, cycleTimes, doneInRange, leadTimes, rangeInstant, throughput, summary, velocity } from './lib/metrics.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { fixedNow, makeRepo } from './test-helpers.mjs'
 
@@ -186,4 +186,53 @@ test('leadTimes on the team fixture gives the spec numbers', () => {
   const times = leadTimes(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf })
   assert.deepEqual(times, [{ issue: 'ISS-4P8A', days: 12.3 }, { issue: 'ISS-7K3Q', days: 10.3 }, { issue: 'ISS-9T2M', days: 8.3 }])
   assert.deepEqual(summary(times.map((t) => t.days)), { count: 3, median: 10.3, p85: 11.7 })
+})
+
+test('throughput counts done issues by type and leaves canceled out', () => {
+  const events = {
+    'ISS-1': [create('2026-10-01T08:00:00Z', 'todo', 'bug'), move('2026-10-05T15:00:00Z', 'done')],
+    'ISS-2': [create('2026-10-01T08:00:00Z', 'todo', 'feature'), move('2026-10-03T10:00:00Z', 'done')],
+    'ISS-3': [create('2026-10-01T08:00:00Z', 'todo', 'bug'), move('2026-10-04T10:00:00Z', 'canceled')],
+    'ISS-4': [create('2026-10-01T08:00:00Z', 'todo', 'bug'), move('2026-10-03T10:00:00Z', 'done')],
+  }
+  assert.deepEqual(throughput(events, { categoryOf }), {
+    count: 3,
+    byType: { bug: 2, feature: 1 },
+    issues: [
+      { issue: 'ISS-2', type: 'feature', doneAt: '2026-10-03T10:00:00Z' },
+      { issue: 'ISS-4', type: 'bug', doneAt: '2026-10-03T10:00:00Z' },
+      { issue: 'ISS-1', type: 'bug', doneAt: '2026-10-05T15:00:00Z' },
+    ],
+  })
+})
+
+test('throughput takes the last type and counts no type under none', () => {
+  const done = move('2026-10-09T08:00:00Z', 'done')
+  const events = {
+    'ISS-1': [create('2026-10-01T08:00:00Z', 'todo', 'feature'), { at: '2026-10-02T08:00:00Z', by: 'fred', op: 'update', field: 'type', from: 'feature', to: 'bug' }, done],
+    'ISS-2': [{ at: '2026-10-01T08:00:00Z', by: 'fred', op: 'create', to: { status: 'todo' } }, done],
+    'ISS-3': [create('2026-10-01T08:00:00Z', 'todo', 'chore'), { at: '2026-10-02T08:00:00Z', by: 'fred', op: 'update', field: 'type', from: 'chore', to: null }, done],
+    'ISS-4': [create('2026-10-01T08:00:00Z', 'todo', 'bug'), create('2026-10-01T09:00:00Z', 'todo', 'adr'), done],
+  }
+  const result = throughput(events, { categoryOf })
+  const types = Object.fromEntries(result.issues.map((item) => [item.issue, item.type]))
+  assert.deepEqual(types, { 'ISS-1': 'bug', 'ISS-2': null, 'ISS-3': null, 'ISS-4': 'adr' })
+  assert.deepEqual(Object.keys(result.byType), ['adr', 'bug', 'none'])
+  assert.deepEqual(result.byType, { adr: 1, bug: 1, none: 2 })
+})
+
+test('throughput on the team fixture gives the spec numbers', () => {
+  const tracker = createLocalTracker(makeRepo('team'), { now: fixedNow(), random: () => 0 })
+  const events = tracker.eventsByIssue()
+  assert.deepEqual(throughput(events, { categoryOf: tracker.categoryOf }), {
+    count: 3,
+    byType: { bug: 2, feature: 1 },
+    issues: [
+      { issue: 'ISS-9T2M', type: 'bug', doneAt: '2026-10-05T15:00:00Z' },
+      { issue: 'ISS-7K3Q', type: 'bug', doneAt: '2026-10-06T16:00:00Z' },
+      { issue: 'ISS-4P8A', type: 'feature', doneAt: '2026-10-08T17:00:00Z' },
+    ],
+  })
+  const ranged = doneInRange(events, { categoryOf: tracker.categoryOf, since: '2026-10-06', until: '2026-10-08' })
+  assert.deepEqual(Object.keys(ranged), ['ISS-4P8A', 'ISS-7K3Q'])
 })

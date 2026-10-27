@@ -86,6 +86,16 @@ test('no-sprints: metrics lead-time gives two issues', async () => {
   })
 })
 
+test('no-sprints: metrics throughput counts two features', async () => {
+  await withFixture('no-sprints', async ({ call }) => {
+    const result = await call('metrics', 'throughput', '--json')
+    assert.equal(result.code, 0, result.stderr)
+    const data = JSON.parse(result.stdout)
+    assert.equal(data.count, 2)
+    assert.deepEqual(data.byType, { feature: 2 })
+  })
+})
+
 test('no-sprints: docs read specs/overview.md exits 0', async () => {
   await withFixture('no-sprints', async ({ call }) => {
     const result = await call('docs', 'read', 'specs/overview.md')

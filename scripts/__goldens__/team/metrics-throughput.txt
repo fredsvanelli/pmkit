@@ -1,0 +1,40 @@
+$ pmkit metrics throughput
+exit 0
+--- stdout
+count: 3
+Type    | Issues
+--------|-------
+bug     | 2
+feature | 1
+--- stderr
+(empty)
+
+$ pmkit metrics throughput --json
+exit 0
+--- stdout
+{
+  "count": 3,
+  "byType": {
+    "bug": 2,
+    "feature": 1
+  },
+  "issues": [
+    {
+      "issue": "ISS-9T2M",
+      "type": "bug",
+      "doneAt": "2026-10-05T15:00:00Z"
+    },
+    {
+      "issue": "ISS-7K3Q",
+      "type": "bug",
+      "doneAt": "2026-10-06T16:00:00Z"
+    },
+    {
+      "issue": "ISS-4P8A",
+      "type": "feature",
+      "doneAt": "2026-10-08T17:00:00Z"
+    }
+  ]
+}
+--- stderr
+(empty)

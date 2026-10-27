@@ -109,6 +109,33 @@ export function leadTimes(eventsByIssue, { categoryOf }) {
   return result
 }
 
+/** The type an issue ends with after replaying its log, or null when it has none. */
+function typeOf(events) {
+  let type = null
+  for (const event of events) {
+    let value
+    if (event.op === 'create') value = event.to?.type
+    else if (event.op === 'update' && event.field === 'type') value = event.to
+    else continue
+    type = value === undefined || value === null || value === '' ? null : value
+  }
+  return type
+}
+
+/** Issues done, as a count, a count per type and the list ordered by done time then id. */
+export function throughput(eventsByIssue, { categoryOf }) {
+  const issues = []
+  for (const [issue, events] of Object.entries(eventsByIssue)) {
+    const doneAt = lastEntry(events, 'done', categoryOf)
+    if (doneAt !== undefined) issues.push({ issue, type: typeOf(events), doneAt })
+  }
+  issues.sort((a, b) => (Date.parse(a.doneAt) - Date.parse(b.doneAt)) || (a.issue < b.issue ? -1 : a.issue > b.issue ? 1 : 0))
+  const counts = {}
+  for (const { type } of issues) counts[type ?? 'none'] = (counts[type ?? 'none'] ?? 0) + 1
+  const byType = Object.fromEntries(Object.entries(counts).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+  return { count: issues.length, byType, issues }
+}
+
 export function summary(values) {
   if (values.length === 0) return { count: 0, median: null, p85: null }
   const sorted = [...values].sort((a, b) => a - b)

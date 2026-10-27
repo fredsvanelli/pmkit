@@ -22,7 +22,7 @@ export const SERVED_BY = {
   status_update: ['epic update-status', 'epic updates'],
   releases: [],
   capacity: ['cycle capacity'],
-  native_metrics: ['metrics velocity', 'metrics cycle-time', 'metrics lead-time', 'events'],
+  native_metrics: ['metrics velocity', 'metrics cycle-time', 'metrics lead-time', 'metrics throughput', 'events'],
   saved_views: [],
   documents: ['docs read', 'docs create'],
   demand_signals: [],

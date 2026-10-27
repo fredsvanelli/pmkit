@@ -9,7 +9,7 @@ import { requireActor, gitUserEmail } from './lib/actor.mjs'
 import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig } from './lib/config.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
 import { changeLines, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, sprintRecord, table } from './lib/format.mjs'
-import { cycleTimes, doneInRange, leadTimes, rangeInstant, summary, velocity } from './lib/metrics.mjs'
+import { cycleTimes, doneInRange, leadTimes, rangeInstant, summary, throughput, velocity } from './lib/metrics.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { addMapEntry, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
@@ -552,6 +552,19 @@ export const COMMANDS = [
       const stats = summary(issues.map((item) => item.days))
       const text = fields([['count', stats.count], ['median', stats.median === null ? 'n/a' : `${stats.median} days`], ['p85', stats.p85 === null ? 'n/a' : `${stats.p85} days`]]).join('\n')
       return { data: { ...stats, issues }, text }
+    },
+  },
+  {
+    name: 'metrics throughput', summary: 'issues done in a range, by type', usage: '[--since d] [--until d]', flags: ['since', 'until'],
+    run: (ctx) => {
+      const tracker = ctx.tracker()
+      const since = ctx.opt('since') === undefined ? undefined : rangeText('since', ctx.opt('since'))
+      const until = ctx.opt('until') === undefined ? undefined : rangeText('until', ctx.opt('until'))
+      const inRange = doneInRange(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since, until })
+      const result = throughput(inRange, { categoryOf: tracker.categoryOf })
+      const lines = [`count: ${result.count}`]
+      if (result.count > 0) lines.push(table(['Type', 'Issues'], Object.entries(result.byType)))
+      return { data: result, text: lines.join('\n') }
     },
   },
   {

@@ -90,6 +90,7 @@ const CASES = {
   'metrics velocity': () => [[]],
   'metrics cycle-time': () => [[]],
   'metrics lead-time': () => [[]],
+  'metrics throughput': () => [[]],
   events: () => [[]],
   'issues branch': (a) => [[a.issue]],
   'pr open': (a) => [['--issue', a.issue]],

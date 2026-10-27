@@ -81,6 +81,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `metrics velocity` | points or counts done per closed sprint, and the average |
 | `metrics cycle-time` | median and p85 days from first `in_progress` to `done` |
 | `metrics lead-time` | median and p85 days from creation to `done` |
+| `metrics throughput` | issues done in a range, with a count per type |
 | `events` | prints all events in a range, for digests |
 | `issues branch <id> [--from branch]` | creates the issue branch from `--from` (default: `git_host.default_branch`) and records it on the issue |
 | `pr open --issue <id> [--draft] [--body-file f]` | pushes the issue branch and opens a pull request; when the branch already has an open one, pushes and returns it with `existing: true` |
