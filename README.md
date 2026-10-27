@@ -22,6 +22,7 @@ Then run `/pmkit:setup` in the project. With the GitHub git host (`git_host.syst
 - `/pmkit:issues:capture`: Open an issue from what the session found (an error, a failing test, a TODO), after a duplicate check.
 - `/pmkit:issues:comment`: Add a comment to an issue.
 - `/pmkit:issues:create`: Create an issue, with the fields checked against the project config.
+- `/pmkit:issues:dependencies`: Show what blocks an issue or an epic, with the blocker chain, the hierarchy and the critical path.
 - `/pmkit:issues:find`: Find issues with a plain-language question, such as "high-priority bugs in the current sprint".
 - `/pmkit:issues:link`: Link two issues (blocks, related, duplicate), remove a link, or set a parent.
 - `/pmkit:issues:mine`: List the issues assigned to the user, with the state of their pull requests and the next one to pick up.
@@ -51,6 +52,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `whoami` | prints the resolved actor |
 | `issues list` | searches issues by text, category, type, assignee, label, sprint, parent, blocked state or date, oldest created first unless `--sort` says otherwise |
 | `issues get <id>` | shows one issue, with `--comments` and `--history` |
+| `issues dependencies <id>` | shows the blocker chain, the hierarchy and the critical path of an issue or an epic; only reads |
 | `issues create` | creates an issue; takes `--milestone` and `--release` |
 | `issues update <id>` | edits fields and acceptance criteria; `--milestone`, `--release` and `--branch` take `none` to clear |
 | `issues move <id> <category>` | changes status by category |
