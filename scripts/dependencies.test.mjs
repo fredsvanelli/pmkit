@@ -323,6 +323,17 @@ test('a node is outside the target when its parent chain does not reach it', () 
   assert.equal(node(map, 'E').outside, false)
 })
 
+test('an archived blocker whose archived parent sits under the target is not outside', () => {
+  const issues = [
+    issue('P', { parent: 'EPC-1', archived: true }),
+    issue('A', { parent: 'EPC-1', blockedBy: ['B'] }),
+    issue('B', { parent: 'P', archived: true }),
+  ]
+  const map = dependencyMap({ target: epic, issues })
+  assert.equal(node(map, 'B').scope, false)
+  assert.equal(node(map, 'B').outside, false)
+})
+
 test('the JSON of a hierarchy too deep for JSON.stringify is a PmkitError', () => {
   let tree = { id: 'N0', children: [] }
   for (let index = 1; index < 6000; index++) tree = { id: `N${index}`, children: [tree] }
