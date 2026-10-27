@@ -2,13 +2,15 @@
 id: PMK-29
 title: "Verify the Linear API for recurring issues, project dependencies, releases and Insights"
 type: task
-status: backlog
+status: in_progress
 priority: medium
 estimate: 2
+assignee: fred
 parent: EPC-5
 milestone: linear
+branch: pmk-29-verify-the-linear-api-for-recurring
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-25T19:13:20Z
+updated: 2026-10-27T22:50:16Z
 ---
 
 ## Description

@@ -1,1 +1,4 @@
 {"at":"2026-10-25T19:13:20Z","by":"fred","op":"create","to":{"id":"PMK-29","title":"Verify the Linear API for recurring issues, project dependencies, releases and Insights","type":"task","status":"backlog","priority":"medium","estimate":2,"labels":[],"parent":"EPC-5","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"linear","created":"2026-10-25T19:13:20Z","updated":"2026-10-25T19:13:20Z"}}
+{"at":"2026-10-27T22:50:16Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-27T22:50:16Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-27T22:50:16Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-29-verify-the-linear-api-for-recurring"}
