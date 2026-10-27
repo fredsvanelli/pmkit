@@ -1,6 +1,6 @@
 # PMK-25: the local-render command
 
-Issue PMK-25, epic EPC-3, milestone `phase-2-commands`. Blocked by PMK-3 (milestones), which is done. Status: written by an agent without a dialogue. The decisions that belong to the user are in "Open questions", each with a recommendation. The rest of the design assumes the recommended answers.
+Issue PMK-25, epic EPC-3, milestone `phase-2-commands`. Blocked by PMK-3 (milestones), which is done. Status: written by an agent without a dialogue. The user answered the three questions in "Answered questions" on 2026-10-26 and took the recommended option each time. The design below follows those answers.
 
 ## Problem
 
@@ -35,7 +35,7 @@ Acceptance criteria:
 - A web UI, a server or a watch mode. The design spec rules them out.
 - Filters on the board (by epic, assignee or label). A later issue can add `--parent` and the other `issues list` flags.
 - Charts: burndown, velocity or cumulative flow. PMK-19 (`flow-metrics`) owns the numbers.
-- A timeline drawing in the roadmap (open question 3 recommends tables only).
+- A timeline drawing in the roadmap. The roadmap is tables only (question 3).
 - Rendering for a hosted tracker. The CLI reads through contract operations, so the code would work, but the default output folder is a Local tracker folder.
 - Publishing the files anywhere (GitHub Pages, a wiki, a chat).
 
@@ -90,7 +90,7 @@ Output:
 
 ### Output location
 
-`--save` writes `<tracker>/.cache/render/<view>.<format>`, so `board.md`, `roadmap.html` or `sprint.md`. `<tracker>` is `tracker.path`, `.issues` by default. This assumes the answer to open question 1.
+`--save` writes `<tracker>/.cache/render/<view>.<format>`, so `board.md`, `roadmap.html` or `sprint.md`. `<tracker>` is `tracker.path`, `.issues` by default. The user chose this location in question 1.
 
 - Git ignores the folder in every tracker made by `init`: the template `.gitignore` lists `.cache/`, and `saveIndex` writes `.cache/.gitignore` with `*`. Render also writes `.cache/.gitignore` with `*` when it is missing or differs, before the first rendered file, so the folder stays ignored in a tracker set up by hand and in a repository that never built the query index. It reuses the `ignoreIsSound` check of `query-index.mjs`, exported or moved to a shared helper, the builder's call.
 - `clearIndex` and `reindex` remove only `index.json` and its temp files, so they never delete a rendered file.
@@ -128,7 +128,7 @@ The same tracker files give the same bytes on every machine and every day.
 
 ### Board
 
-The board shows every non-archived issue in the five open categories, `triage`, `backlog`, `todo`, `in_progress` and `in_review`. Issues in `done` and `canceled` do not show, and the header gives their counts. This scope assumes open question 2.
+The board shows every non-archived issue in the five open categories, `triage`, `backlog`, `todo`, `in_progress` and `in_review`. Issues in `done` and `canceled` do not show, and the header gives their counts. The user chose this scope in question 2.
 
 Content, in order:
 
@@ -248,6 +248,9 @@ No change. No operation is added to the contract, and `SERVED_BY` gains nothing.
 | The Markdown board has one table per status, and the HTML board has columns | A Markdown table cannot hold columns of different lengths. |
 | Empty status sections show on the board, and empty category sections do not show in the sprint view | Board columns that come and go confuse a reader who compares two renders. The sprint totals already count every category. |
 | One fixed file name per view and format under `--save` | The folder holds the current view, never a pile of old ones, and nothing needs deleting. |
+| `--save` writes to `<tracker>/.cache/render/`, which git ignores; sharing goes through `--out` | The user's answer to question 1. Branches never conflict on generated text, and nothing stale lands in a pull request. |
+| The board shows the open categories only, with done and canceled as counts | The user's answer to question 2. The board stays readable as the tracker grows, with no clock. |
+| The roadmap is tables only, in both formats | The user's answer to question 3. Tables cover the criteria, and a later issue can add a drawing. |
 | No CHANGELOG edit and no format bump | No tracker file changes shape. The release writes its line, as with PMK-3. |
 | The heading of this section is "Decisões" | Recent specs use it at the user's request. |
 
@@ -258,19 +261,21 @@ No change. No operation is added to the contract, and `SERVED_BY` gains nothing.
 | Renders a board, a roadmap or a sprint view from the tracker files | CLI `render <board\|roadmap\|sprint>`; sections Board, Roadmap and Sprint view; data from tracker operations only; `/pmkit:local:render` |
 | Writes Markdown or HTML | `--format md\|html`, the Markdown and HTML writers in Formats, `--out` and `--save` in Output location |
 
-## Open questions
+## Answered questions
 
-1. **Where `--save` writes, and whether git tracks the files.** This decides whether a rendered view reaches people through git or by hand.
-   - A. `<tracker>/.cache/render/`, ignored by git. Every branch can render without a merge conflict, and nothing stale lands in a pull request. People get the file by attachment, or through an `--out` path the user commits. Recommended.
+The user answered these on 2026-10-26. Each question keeps its options, and the chosen one is marked.
+
+1. **Where `--save` writes, and whether git tracks the files.** This decides whether a rendered view reaches people through git or by hand. **Chosen: A.** `--save` writes to `<tracker>/.cache/render/`, which git ignores, and sharing goes through `--out`.
+   - A. `<tracker>/.cache/render/`, ignored by git. Every branch can render without a merge conflict, and nothing stale lands in a pull request. People get the file by attachment, or through an `--out` path the user commits. Chosen.
    - B. A committed folder, such as `docs/pmkit/` at the repository root. Anyone who browses the repository on GitHub sees the board. Every branch that renders rewrites the same files, so two branches conflict on generated text, and the files go stale between renders.
    - C. No default. `--save` does not exist, and a file needs `--out` every time. The command asks for a path on each run.
-2. **Which issues the board shows.**
-   - A. Every open issue (the five categories before `done`), with done and canceled as counts in the header. Recommended: the board stays readable as the tracker grows, and no clock is needed.
+2. **Which issues the board shows.** **Chosen: A.** The board shows the open categories only, with done and canceled as counts.
+   - A. Every open issue (the five categories before `done`), with done and canceled as counts in the header. Chosen: the board stays readable as the tracker grows, and no clock is needed.
    - B. Every non-archived issue, done and canceled included. Complete, but the done columns grow forever.
    - C. The active sprint only. It overlaps with the sprint view and shows nothing outside sprints, which leaves out teams without sprints.
    - D. A plus a done column limited to the last N days. A useful view, but it depends on today's date and breaks the determinism rule.
-3. **Whether the roadmap draws a timeline.**
-   - A. Tables only, in both formats. Recommended for this issue: it covers the criteria, and a later issue can add a drawing.
+3. **Whether the roadmap draws a timeline.** **Chosen: A.** The roadmap is tables only, in both formats.
+   - A. Tables only, in both formats. Chosen: it covers the criteria, and a later issue can add a drawing.
    - B. The HTML roadmap adds CSS bars from each epic's start to its target, and the Markdown stays a table. Epics without both dates get no bar.
    - C. B, plus a Mermaid `gantt` block in the Markdown. GitHub draws it, while other Markdown viewers show the code block.
 
@@ -282,7 +287,7 @@ No change. No operation is added to the contract, and `SERVED_BY` gains nothing.
 
 ## Self-review
 
-- Placeholders: none. The open questions each have a recommendation, and the design assumes them.
+- Placeholders: none. The user answered the three questions, and the design follows the answers.
 - Consistency: the marker rule, the tracker-folder refusal and the `--save` path agree in the CLI, Output location, command and test sections. Every order in Determinism matches the conventions and the existing tracker sorts.
 - Scope: one CLI command, one library module, one command file, a scenario, goldens and four doc edits. No contract, capability, format or template change.
 - Builder check, done by the author because this run has no reviewer. The questions a builder would ask have their answers in the sections above. Which sprint renders without `--sprint`: the active one, else the existing error. What happens to an archived done blocker: it does not block, because the id map includes archived issues. What `--save` does on an older-format tracker: it writes to `issuesDir`, not the migrated copy. Whether a rendered file can be committed: yes, through `--out`, and render replaces it on the next run because of the marker.
