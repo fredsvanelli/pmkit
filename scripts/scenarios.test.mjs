@@ -61,8 +61,8 @@ const cliOf = (name) => COMMANDS.find((command) => command.name === name)
 const isWrite = (call) => call.dryRun || Boolean(cliOf(call.command)?.write)
 
 describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
-  test('there are 26 command files', () => {
-    assert.equal(FILES.length, 26, FILES.map((file) => file.rel).join(', '))
+  test('there are 27 command files', () => {
+    assert.equal(FILES.length, 27, FILES.map((file) => file.rel).join(', '))
   })
 
   test('every command file has a scenario', async () => {
@@ -171,6 +171,74 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     assert.doesNotMatch(step7, /The close does not move or copy them/, 'step 7 no longer says the close leaves them on the original')
     const point = lines.find((line) => line.startsWith('- Step 7: '))
     assert.match(point, /the blocker links and sub-issue moves/, 'the Step 7 confirmation point names the carry-over writes')
+  })
+
+  test('backlog/triage proposes four kinds of decision and previews every write with a dry run', () => {
+    const file = FILES.find((f) => f.rel === 'backlog/triage.md')
+    assert.ok(file, 'commands/backlog/triage.md exists')
+    const lines = fs.readFileSync(path.join(COMMANDS_DIR, 'backlog', 'triage.md'), 'utf8').split('\n')
+    const step = (n) => lines.find((line) => line.startsWith(`${n}. `)) ?? ''
+    const has = (step_, command, dry) => file.parsed.calls.some((c) => c.step === step_ && c.command === command && c.dryRun === dry)
+    assert.ok(has('1', 'issues list', false) && has('2', 'discover', false), 'steps 1 and 2 read the queue and the allowed values')
+    assert.match(file.parsed.calls.find((c) => c.step === '1').text, /--category triage/)
+    assert.match(step(4), /proposal.*priority.*labels/s, 'step 4 shows proposal, priority and labels')
+    for (const kind of ['accept', 'duplicate of', 'decline', 'needs info']) assert.ok(step(4).includes(kind), `step 4 names ${kind}`)
+    assert.ok(step(4).includes('`duplicate of <id> (<status>)`'), 'step 4 shows the status of the original')
+    for (const command of ['issues update', 'issues move', 'issues link', 'issues comment']) assert.ok(has('6', command, true), `step 6 dry-runs ${command}`)
+    assert.ok(!file.parsed.calls.some((c) => c.step === '6' && !c.dryRun && ['issues update', 'issues move', 'issues link', 'issues comment'].includes(c.command)), 'step 6 has no write without --dry-run')
+    assert.match(step(8), /without `--dry-run`/, 'step 8 runs the step 6 commands as writes')
+    assert.match(step(7), /whatever `write_policy.confirm` says/)
+    assert.match(step(7), /When the user declines, change nothing/)
+    assert.match(step(3), /is a guess/, 'a duplicate match is called a guess')
+    const text = lines.join('\n')
+    for (const needle of ['`discover` lists no labels', 'A proposed original cannot be read']) assert.ok(text.includes(needle), `the missing-cases section names: ${needle}`)
+  })
+
+  test('backlog/triage moves an accepted issue to backlog and a duplicate or declined one to canceled', () => {
+    const step6 = FILES.find((f) => f.rel === 'backlog/triage.md').parsed.calls.filter((c) => c.step === '6' && c.dryRun)
+    const texts = step6.map((c) => c.text)
+    assert.ok(texts.includes('issues move <id> backlog --dry-run --json'), 'an accepted issue moves to backlog')
+    assert.ok(texts.includes('issues move <dup> canceled --dry-run --json'), 'a duplicate moves to canceled')
+    assert.ok(texts.includes('issues move <id> canceled --dry-run --json'), 'a declined issue moves to canceled')
+    assert.ok(texts.includes('issues link <dup> <kept> --kind duplicate --dry-run --json'), 'a duplicate gets a duplicate link')
+    assert.ok(step6.some((c) => c.command === 'issues comment' && c.flags.includes('body-file')), 'a declined issue gets a comment')
+    // A comment dry run returns the comment record, not a before and after, so the preview names the text itself.
+    const step7 = fs.readFileSync(path.join(COMMANDS_DIR, 'backlog', 'triage.md'), 'utf8').split('\n').find((line) => line.startsWith('7. '))
+    assert.match(step7, /and the text of each decline comment/, 'the step 7 preview shows the decline comment')
+  })
+
+  // `issues list --text` matches one substring of the title and description, so "login slow" finds nothing
+  // where "login" finds the original.
+  test('backlog/triage searches for duplicates one key word at a time', () => {
+    const search = FILES.find((f) => f.rel === 'backlog/triage.md').parsed.calls.find((c) => c.step === '3' && c.command === 'issues list')
+    assert.equal(search?.text, 'issues list --text "<key word>" --json')
+    const step3 = fs.readFileSync(path.join(COMMANDS_DIR, 'backlog', 'triage.md'), 'utf8').split('\n')
+      .find((line) => line.includes('issues list --text'))
+    assert.match(step3, /once for each key word of the title, one word per search/)
+    assert.match(step3, /`--text` matches one substring of the title or description/)
+  })
+
+  test('backlog/triage reads the comments of every issue in the queue', () => {
+    const line = fs.readFileSync(path.join(COMMANDS_DIR, 'backlog', 'triage.md'), 'utf8').split('\n')
+      .find((l) => l.includes('issues get <id> --comments --json'))
+    assert.match(line, /for every issue in the queue, because `issues list` returns the description but not the comments/)
+  })
+
+  // Two triage issues that repeat each other must not each be proposed as a duplicate of the other: applying all
+  // proposals would cancel both. No scenario has such a pair, so this test pins the rule.
+  test('backlog/triage keeps one issue of each set that repeats each other', () => {
+    const step3 = fs.readFileSync(path.join(COMMANDS_DIR, 'backlog', 'triage.md'), 'utf8').split('\n')
+      .find((line) => line.includes('issues list --text'))
+    assert.ok(step3.includes('Keep one issue of each set of issues that repeat each other: the one outside `triage` when there is one, otherwise the oldest by `created`.'), 'step 3 names the kept issue')
+    assert.ok(step3.includes('Never propose `duplicate` or `decline` for a kept issue that is in the queue'), 'step 3 never cancels the kept issue')
+  })
+
+  // The one-by-one answers of the scenario depend on this order: a needs-info issue gets a question like the others.
+  test('backlog/triage one-by-one asks about every issue in queue order, needs-info ones included', () => {
+    const step5 = fs.readFileSync(path.join(COMMANDS_DIR, 'backlog', 'triage.md'), 'utf8').split('\n')
+      .find((line) => line.startsWith('5. '))
+    assert.ok(step5.includes('The one-by-one path asks about every issue in the queue in queue order'), 'step 5 asks about every issue in order')
+    assert.ok(step5.includes('For a needs-info issue the choices are to give a priority and labels, which accepts it, or to skip it.'), 'step 5 covers needs-info issues')
   })
 
   // The in_review assertion encodes the PMK-122 decision (follow-up 1 of the spec). Change it when that issue lands.

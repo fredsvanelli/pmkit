@@ -1,0 +1,127 @@
+$ pmkit issues list --category triage --json  [step 1, read]
+exit 0
+$ pmkit discover --json  [step 2, read]
+exit 0
+$ pmkit issues get ISS-1V9Z --comments --json  [step 3, read]
+exit 0
+$ pmkit issues list --text slow --json  [step 3, read]
+exit 0
+$ pmkit issues list --text login --json  [step 3, read]
+exit 0
+$ pmkit issues get ISS-DZEF --comments --json  [step 3, read]
+exit 0
+$ pmkit issues list --text broken --json  [step 3, read]
+exit 0
+$ pmkit issues get ISS-M0GZ --comments --json  [step 3, read]
+exit 0
+$ pmkit issues list --text invoice --json  [step 3, read]
+exit 0
+$ pmkit issues list --text pdf --json  [step 3, read]
+exit 0
+$ pmkit issues list --text currency --json  [step 3, read]
+exit 0
+$ pmkit issues get ISS-Y8KQ --comments --json  [step 3, read]
+exit 0
+$ pmkit issues list --text rust --json  [step 3, read]
+exit 0
+$ pmkit issues list --text cli --json  [step 3, read]
+exit 0
+? Step 5  [confirmed]
+$ pmkit issues update ISS-M0GZ --priority high --label backend,billing --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues move ISS-M0GZ backlog --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues link ISS-1V9Z ISS-4C74 --kind duplicate --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues move ISS-1V9Z canceled --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues move ISS-Y8KQ canceled --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues comment ISS-Y8KQ --body-file - --dry-run --json  [step 6, dry run]
+exit 0
+? Step 7  [confirmed]
+$ pmkit issues update ISS-M0GZ --priority high --label backend,billing --json  [step 6, write]
+exit 0
+$ pmkit issues move ISS-M0GZ backlog --json  [step 6, write]
+exit 0
+$ pmkit issues link ISS-1V9Z ISS-4C74 --kind duplicate --json  [step 6, write]
+exit 0
+$ pmkit issues move ISS-1V9Z canceled --json  [step 6, write]
+exit 0
+$ pmkit issues move ISS-Y8KQ canceled --json  [step 6, write]
+exit 0
+$ pmkit issues comment ISS-Y8KQ --body-file - --json  [step 6, write]
+exit 0
+$ pmkit issues list --category triage --json  [step 1, read]
+exit 0
+
+--- changed .issues/issues/ISS-1V9Z/events.jsonl
+  {"at":"2026-10-20T16:00:00Z","by":"ana","op":"create","to":{"id":"ISS-1V9Z","title":"Investigate slow login","type":"bug","status":"triage","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-20T16:00:00Z","updated":"2026-10-20T16:00:00Z"}}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"link","field":"duplicate_of","to":"ISS-4C74"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"triage","to":"canceled"}
+--- changed .issues/issues/ISS-1V9Z/issue.md
+  ---
+  id: ISS-1V9Z
+  title: Investigate slow login
+  type: bug
+-status: triage
++status: canceled
++duplicate_of: [ISS-4C74]
+  created: 2026-10-20T16:00:00Z
+-updated: 2026-10-20T16:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Some users wait ten seconds after submitting the login form.
+--- changed .issues/issues/ISS-M0GZ/events.jsonl
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-M0GZ","title":"Invoice PDF shows the wrong currency","type":"bug","status":"backlog","labels":["billing"],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"backlog","to":"triage"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"priority","from":null,"to":"high"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"labels","from":["billing"],"to":["backend","billing"]}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"triage","to":"backlog"}
+--- changed .issues/issues/ISS-M0GZ/issue.md
+  ---
+  id: ISS-M0GZ
+  title: Invoice PDF shows the wrong currency
+  type: bug
+-status: triage
+-labels: [billing]
++status: backlog
++priority: high
++labels: [backend, billing]
+  created: 2026-10-23T12:00:00.000Z
+  updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Customers billed in euros get a PDF invoice that prints the amounts in dollars.
+--- added .issues/issues/ISS-Y8KQ/comments/2026-10-23T12-00-00Z-fred-2.md
++---
++author: fred
++created: 2026-10-23T12:00:00Z
++---
++
++The team keeps the CLI in Node so it runs with no install step, so a Rust rewrite is out of scope.
+--- changed .issues/issues/ISS-Y8KQ/events.jsonl
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-Y8KQ","title":"Rewrite the CLI in Rust","type":"feature","status":"backlog","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"backlog","to":"triage"}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"comment","to":"2026-10-23T12-00-00Z-fred.md"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"triage","to":"canceled"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"comment","to":"2026-10-23T12-00-00Z-fred-2.md"}
+--- changed .issues/issues/ISS-Y8KQ/issue.md
+  ---
+  id: ISS-Y8KQ
+  title: Rewrite the CLI in Rust
+  type: feature
+-status: triage
++status: canceled
+  created: 2026-10-23T12:00:00.000Z
+  updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Rewrite the whole CLI in Rust for speed.

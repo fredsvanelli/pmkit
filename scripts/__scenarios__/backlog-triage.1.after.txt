@@ -1,0 +1,64 @@
+$ pmkit issues list --category triage --json  [step 1, read]
+exit 0
+$ pmkit discover --json  [step 2, read]
+exit 0
+$ pmkit issues get ISS-1V9Z --comments --json  [step 3, read]
+exit 0
+$ pmkit issues list --text slow --json  [step 3, read]
+exit 0
+$ pmkit issues list --text login --json  [step 3, read]
+exit 0
+$ pmkit issues get ISS-DZEF --comments --json  [step 3, read]
+exit 0
+$ pmkit issues list --text broken --json  [step 3, read]
+exit 0
+$ pmkit issues get ISS-M0GZ --comments --json  [step 3, read]
+exit 0
+$ pmkit issues list --text invoice --json  [step 3, read]
+exit 0
+$ pmkit issues list --text pdf --json  [step 3, read]
+exit 0
+$ pmkit issues list --text currency --json  [step 3, read]
+exit 0
+$ pmkit issues get ISS-Y8KQ --comments --json  [step 3, read]
+exit 0
+$ pmkit issues list --text rust --json  [step 3, read]
+exit 0
+$ pmkit issues list --text cli --json  [step 3, read]
+exit 0
+? Step 5  [confirmed]
+$ pmkit issues update ISS-M0GZ --priority medium --label backend,billing --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues move ISS-M0GZ backlog --dry-run --json  [step 6, dry run]
+exit 0
+? Step 7  [confirmed]
+$ pmkit issues update ISS-M0GZ --priority medium --label backend,billing --json  [step 6, write]
+exit 0
+$ pmkit issues move ISS-M0GZ backlog --json  [step 6, write]
+exit 0
+$ pmkit issues list --category triage --json  [step 1, read]
+exit 0
+
+--- changed .issues/issues/ISS-M0GZ/events.jsonl
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-M0GZ","title":"Invoice PDF shows the wrong currency","type":"bug","status":"backlog","labels":["billing"],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"backlog","to":"triage"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"priority","from":null,"to":"medium"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"labels","from":["billing"],"to":["backend","billing"]}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"move","field":"status","from":"triage","to":"backlog"}
+--- changed .issues/issues/ISS-M0GZ/issue.md
+  ---
+  id: ISS-M0GZ
+  title: Invoice PDF shows the wrong currency
+  type: bug
+-status: triage
+-labels: [billing]
++status: backlog
++priority: medium
++labels: [backend, billing]
+  created: 2026-10-23T12:00:00.000Z
+  updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Customers billed in euros get a PDF invoice that prints the amounts in dollars.
