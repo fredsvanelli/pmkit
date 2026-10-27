@@ -1,0 +1,20 @@
+$ pmkit capabilities --json  [step 1, read]
+exit 0
+$ pmkit metrics cycle-time --since 2026-10-06 --until 2026-10-08 --json  [step 3, read]
+exit 0
+$ pmkit metrics lead-time --since 2026-10-06 --until 2026-10-08 --json  [step 3, read]
+exit 0
+$ pmkit metrics throughput --since 2026-10-06 --until 2026-10-08 --json  [step 3, read]
+exit 0
+$ pmkit metrics aging --until 2026-10-08 --json  [step 3, read]
+exit 0
+$ pmkit metrics cycle-time --since 2026-10-03 --until 2026-10-05 --json  [step 4, read]
+exit 0
+$ pmkit metrics lead-time --since 2026-10-03 --until 2026-10-05 --json  [step 4, read]
+exit 0
+$ pmkit metrics throughput --since 2026-10-03 --until 2026-10-05 --json  [step 4, read]
+exit 0
+$ pmkit metrics aging --until 2026-10-05 --json  [step 4, read]
+exit 0
+
+(no file changed)

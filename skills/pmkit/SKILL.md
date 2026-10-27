@@ -39,5 +39,6 @@ Each command file holds the full procedure. When the user asks for one of these 
 | render a board, roadmap or sprint view as Markdown or HTML to share with people outside the agent | `/pmkit:local:render` | `${CLAUDE_PLUGIN_ROOT}/commands/local/render.md` |
 | draft a status update for an epic and publish it after approval | `/pmkit:report:status` | `${CLAUDE_PLUGIN_ROOT}/commands/report/status.md` |
 | turn a spec or PRD into an epic with milestones, issues, sub-issues, estimates and blockers | `/pmkit:spec:import` | `${CLAUDE_PLUGIN_ROOT}/commands/spec/import.md` |
+| show cycle time, lead time, throughput, aging and bug rate for a period, with the trend against the previous period | `/pmkit:team:flow-metrics` | `${CLAUDE_PLUGIN_ROOT}/commands/team/flow-metrics.md` |
 | see what could make the team miss: blockers, stalled issues and PRs, late epics, epics without a recent status update, broken CI | `/pmkit:team:risk-radar` | `${CLAUDE_PLUGIN_ROOT}/commands/team/risk-radar.md` |
 | digest of what changed since the last business day, per person, with what needs attention | `/pmkit:team:standup` | `${CLAUDE_PLUGIN_ROOT}/commands/team/standup.md` |

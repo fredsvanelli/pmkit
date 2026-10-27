@@ -61,8 +61,8 @@ const cliOf = (name) => COMMANDS.find((command) => command.name === name)
 const isWrite = (call) => call.dryRun || Boolean(cliOf(call.command)?.write)
 
 describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
-  test('there are 28 command files', () => {
-    assert.equal(FILES.length, 28, FILES.map((file) => file.rel).join(', '))
+  test('there are 29 command files', () => {
+    assert.equal(FILES.length, 29, FILES.map((file) => file.rel).join(', '))
   })
 
   test('every command file has a scenario', async () => {
@@ -278,6 +278,124 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     const step5 = fs.readFileSync(path.join(COMMANDS_DIR, 'cycle', 'plan.md'), 'utf8').split('\n').find((line) => line.startsWith('5. '))
     assert.ok(step5, 'plan.md has a step 5')
     assert.ok(step5.includes("A blocker counts as selected when it is in the selection, or when step 1 chose an existing `planned` sprint and the blocker's `sprint` is that sprint's ID"), 'step 5 counts a blocker in the planned sprint as selected')
+  })
+
+  describe('team/flow-metrics', () => {
+    const file = FILES.find((f) => f.rel === 'team/flow-metrics.md')
+    const text = fs.readFileSync(path.join(COMMANDS_DIR, 'team', 'flow-metrics.md'), 'utf8')
+    const stepText = (n) => text.split('\n').find((line) => line.startsWith(`${n}. `)) ?? ''
+    const stepCalls = (n) => file.parsed.calls.filter((call) => call.step === String(n) && !call.dryRun)
+    const flagsOf = (call) => (Array.isArray(call.flags) ? call.flags : Object.keys(call.flags ?? {}))
+
+    test('reads the four metrics for the period in step 3 and for the previous period in step 4', () => {
+      for (const n of [3, 4]) {
+        const calls = stepCalls(n)
+        assert.deepEqual(calls.map((call) => call.command).sort(), ['metrics aging', 'metrics cycle-time', 'metrics lead-time', 'metrics throughput'], `step ${n}`)
+        for (const call of calls) {
+          const flags = flagsOf(call)
+          assert.ok(flags.includes('until'), `step ${n} ${call.command} has until`)
+          assert.equal(flags.includes('since'), call.command !== 'metrics aging', `step ${n} ${call.command} since`)
+        }
+      }
+      const text3 = stepCalls(3).find((call) => call.command === 'metrics cycle-time').text
+      const text4 = stepCalls(4).find((call) => call.command === 'metrics cycle-time').text
+      assert.notEqual(text3, text4)
+    })
+
+    test('has no write call and no confirmation point', () => {
+      assert.equal(file.parsed.calls.some(isWrite), false)
+      assert.deepEqual(file.parsed.points, [])
+    })
+
+    test('step 2 rejects a since after until and shows the month-end example', () => {
+      const step2 = stepText(2)
+      assert.match(step2, /after `?U`?|after `until`/)
+      assert.ok(step2.includes('2026-10-30') && step2.includes('2026-11-01'), 'month-end example')
+      assert.deepEqual(stepCalls(2), [])
+    })
+
+    test('says the numbers come from the event history, names the DORA gap and the small sample', () => {
+      assert.match(text, /event history/)
+      assert.match(text, /events\.jsonl/)
+      assert.match(text, /This report has no DORA metrics, because the tracker holds no deployment data/)
+      assert.match(text, /fewer than 5/)
+    })
+
+    test('stops when the tracker has no metrics', () => {
+      assert.match(stepText(1), /absent/)
+      assert.match(stepText(1), /enableHint/)
+    })
+
+    test('gives no verdict', () => {
+      const output = text.split('## Output')[1].split('## If something is missing')[0]
+      assert.doesNotMatch(output, /\b(better|worse)\b/)
+    })
+
+    test('tells the model to give no judgment on a change', () => {
+      assert.ok(text.includes('Give no judgment on whether a change helps or hurts.'))
+    })
+
+    test('step 5 computes the bug rate from byType.bug over count, in whole percent, n/a for a count of 0', () => {
+      const step5 = stepText(5)
+      assert.ok(step5.includes('`byType.bug`'), 'reads byType.bug')
+      assert.match(step5, /divided by `count`/)
+      assert.match(step5, /When `count` is 0, the bug rate is `n\/a`/)
+      assert.match(step5, /whole percent/)
+      assert.ok(step5.includes('(0 when the key is missing)'), 'missing byType.bug counts as 0')
+    })
+
+    test('step 2 sets the previous period to S minus N days through S minus 1 day, and the default window from the config', () => {
+      const step2 = stepText(2)
+      assert.ok(step2.includes('from `S` minus `N` days to `S` minus 1 day'), 'previous period bounds')
+      assert.ok(step2.includes('`defaults.sprint_length_days`'), 'default window comes from the config')
+      assert.ok(step2.includes('`S` is `U` minus (`defaults.sprint_length_days` minus 1) days'), 'default start has no off-by-one')
+      assert.ok(step2.includes('2026-10-14'), 'default window example')
+      assert.match(step2, /real calendar days/)
+      assert.ok(step2.includes('`S` to `U` plus 1'), 'N counts both end days')
+      assert.ok(step2.includes('`N` = 3'), 'previous period example has N = 3')
+      assert.ok(stepText(6).includes('from the rounded values for the bug rate'), 'bug rate direction uses rounded values')
+      assert.ok(text.includes('Add the `p85` next to the median.'), 'p85 sits next to the median')
+      assert.ok(text.includes('- No events in the period: say so and show the numbers of the previous period.'), 'no-events edge case')
+      assert.match(stepText(1) + text.split('## Parameters')[1].split('## Steps')[0], /14 when missing/)
+    })
+
+    test('the period calls use <S> and <U>, the previous calls use <previous S> and <previous U>, and aging takes only until', () => {
+      for (const [n, since, until] of [[3, '<S>', '<U>'], [4, '<previous S>', '<previous U>']]) {
+        for (const call of stepCalls(n)) {
+          if (call.command === 'metrics aging') {
+            assert.ok(call.text.includes(`--until ${until} `), `step ${n} aging ends at ${until}`)
+            assert.ok(!call.text.includes('--since'), `step ${n} aging has no since`)
+          } else {
+            assert.ok(call.text.includes(`--since ${since} --until ${until} `), `step ${n} ${call.command} runs from ${since} to ${until}`)
+          }
+        }
+      }
+    })
+
+    test('aging for a period that ends today is measured at the end of that day', () => {
+      assert.match(text, /is today.{0,80}end of that day/)
+    })
+
+    test('the change is n/a for the medians and the bug rate only, and throughput always shows its difference', () => {
+      const step6 = stepText(6)
+      assert.match(step6, /n\/a.{0,60}cycle time, lead time or aging.{0,60}count of 0/)
+      assert.match(step6, /bug rate.{0,60}`count` of 0/)
+      assert.match(step6, /Throughput always shows its difference/)
+    })
+
+    test('step 1 names the manifest path in the source line for another source', () => {
+      assert.match(stepText(1), /name the path from the manifest in the source line/)
+    })
+
+    test('the example table shows p85 as the text says', () => {
+      const example = text.split('```text')[1].split('```')[0]
+      assert.match(example, /p85 \d/)
+    })
+
+    test('has no parser note and no colon-led DORA sentence', () => {
+      assert.ok(!text.includes('in its own sentence'))
+      assert.ok(!text.includes('DORA metrics are not included:'))
+    })
   })
 
   for (const { name, entries } of LOADED) {
