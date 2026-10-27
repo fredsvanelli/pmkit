@@ -2,19 +2,14 @@
 // Issues and epics carry `status.category`. Stalled means more than `stuckBusinessDays` business days without activity.
 
 import { table } from './format.mjs'
-import { businessDaysBetween } from './metrics.mjs'
+import { businessDaysBetween, dayNumber } from './metrics.mjs'
 
 const OPEN = (category) => category !== 'done' && category !== 'canceled'
 const WORKING = new Set(['in_progress', 'in_review'])
 const NEAR_TERM = new Set(['todo', 'in_progress', 'in_review'])
 
-const DAY_MS = 86400000
-
 /** Whole UTC calendar days from the date part of `date` to `today`. */
-function daysSince(date, today) {
-  const day = (value) => Date.parse(`${String(value).slice(0, 10)}T00:00:00Z`) / DAY_MS
-  return day(today) - day(date)
-}
+const daysSince = (date, today) => dayNumber(today) - dayNumber(date)
 
 /** The row base shared by blocked and stalled issues. */
 function issueRow(issue) {
