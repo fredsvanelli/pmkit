@@ -613,7 +613,9 @@ export const COMMANDS = [
       const problems = []
       let candidates
       if (choice.basis === 'release') {
-        candidates = tracker.releaseIssues(choice.source.id, { archived: true }).map((issue) => ({ issue, doneAt: null }))
+        const found = tracker.searchIssues({ release: choice.source.id, archived: true })
+        problems.push(...found.problems)
+        candidates = found.issues.map((issue) => ({ issue, doneAt: null }))
       } else if (choice.basis === 'sprint') {
         const events = tracker.eventsByIssue()
         const found = tracker.searchIssues({ sprint: choice.source.id, archived: true })

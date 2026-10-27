@@ -1953,3 +1953,20 @@ test('release mark-released on a release with no tag runs no git and prints no t
   assert.equal(result.status, 0, result.stderr)
   assert.doesNotMatch(result.stderr, /tag/)
 })
+
+test('release-notes on a release reports an issue file that does not parse', () => {
+  const root = makeRepo('basic')
+  json(root, ['release', 'create', '1.2.0'])
+  const good = json(root, ['issues', 'create', '--title', 'Good one', '--type', 'feature']).after.id
+  json(root, ['issues', 'update', good, '--release', '1.2.0'])
+  json(root, ['issues', 'move', good, 'done'])
+  const bad = json(root, ['issues', 'create', '--title', 'Bad one']).after.id
+  json(root, ['issues', 'update', bad, '--release', '1.2.0'])
+  fs.writeFileSync(path.join(root, '.issues/issues', bad, 'issue.md'), '---\ntitle: [unclosed\nrelease: 1.2.0\n---\n')
+  const result = run(root, ['release-notes', '--release', '1.2.0', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.ok(data.problems.some((p) => p.id === bad), JSON.stringify(data.problems))
+  assert.match(result.stderr, new RegExp(`^warning: ${bad}: `, 'm'))
+  assert.deepEqual(data.groups.flatMap((g) => g.issues.map((i) => i.id)), [good])
+})
