@@ -1,6 +1,6 @@
 # PMK-18: compute lead time, throughput and aging in the CLI
 
-Decisions from an autonomous brainstorming run on 2026-10-26. No human was available. Every choice below comes from the issue, the code, the ADRs and the earlier specs, except the four items under "Open questions", which wait for the user. The design is written with the recommended answer to each of them, and each question names what changes under the other answers.
+Decisions from an autonomous brainstorming run on 2026-10-26. No human was available. Every choice below comes from the issue, the code, the ADRs and the earlier specs, except the four questions under "Decided questions". The user answered them on 2026-10-26 and took the recommended option of each, and the design below follows those answers.
 
 ## Problem
 
@@ -17,8 +17,8 @@ Acceptance criteria:
 
 - A number per metric for one period, with `--json` output a command can read without arithmetic beyond comparing two runs.
 - The same period flags on every metric, so the command passes one range to every call.
-- A way to show the trend. With the recommended answer to open question 1, PMK-19 runs each metric twice, once for the period and once for the previous period of the same length, and compares the two.
-- Bug rate. With the recommended answer to open question 4, `metrics throughput` returns a count per issue type, so bug rate is `byType.bug / count` for the period.
+- A way to show the trend. PMK-19 runs each metric twice, once for the period and once for the previous period of the same length, and compares the two.
+- Bug rate. `metrics throughput` returns a count per issue type, so bug rate is `byType.bug / count` for the period.
 - "Computed from history". The manifest already says `derived` with `source: events`, and every new command reads only the event logs, so the command can say so from the manifest.
 
 ## Goals
@@ -55,9 +55,9 @@ All four metrics replay one issue's `events.jsonl` from `tracker.eventsByIssue()
 - **Done at.** The `at` of the issue's last move into a status of category `done`, from `lastEntry(events, 'done', categoryOf)`. It is the same moment `metrics cycle-time` and `velocity` use. An issue with no move into `done` has no done time. `canceled` is not done.
 - **In range.** The done time falls on or after `--since` and on or before `--until`. A date-only `--until` means the end of that day, `T23:59:59Z`, as in `metrics cycle-time` and `metricEvents`. A missing flag leaves that side open. The comparison uses `Date.parse`, so a hand-written offset in `at` compares as an instant (PMK-121 did the same for velocity).
 - **Created at.** The `at` of the issue's `create` event. A log with no `create` event uses its earliest `at`. A log written by the adapter always starts with a `create`, real or synthetic.
-- **Lead time.** Done at minus created at, in calendar days rounded to one decimal, for each issue done in range. Open question 3 covers the start point.
-- **Throughput.** The number of issues done in range, with a count per issue type. The type is the last value the log gives it: `to.type` of the `create`, then the `to` of each `update` on `type`. An issue with no type counts under `none`. Open question 4 covers the per-type count.
-- **Aging.** For each issue in work at an instant `asOf`, the calendar days since it started, rounded to one decimal. An issue is in work at `asOf` when its status after replaying the events with `at` on or before `asOf` has category `in_progress` or `in_review`, and the log has no `archive` event on or before `asOf`. It started at its first move into `in_progress` or `in_review` on or before `asOf`. `asOf` is the end of the range, `--until`, and defaults to the CLI clock (`PMKIT_NOW` in tests). Open question 2 covers the range.
+- **Lead time.** Done at minus created at, in calendar days rounded to one decimal, for each issue done in range. Lead time starts at creation (decided question 3).
+- **Throughput.** The number of issues done in range, with a count per issue type. The type is the last value the log gives it: `to.type` of the `create`, then the `to` of each `update` on `type`. An issue with no type counts under `none`. Bug rate is `byType.bug / count` (decided question 4).
+- **Aging.** For each issue in work at an instant `asOf`, the calendar days since it started, rounded to one decimal. An issue is in work at `asOf` when its status after replaying the events with `at` on or before `asOf` has category `in_progress` or `in_review`, and the log has no `archive` event on or before `asOf`. It started at its first move into `in_progress` or `in_review` on or before `asOf`. `asOf` is the end of the range, `--until`, and defaults to the CLI clock (`PMKIT_NOW` in tests). `metrics aging` takes no `--since` (decided question 2).
 
 `in_review` counts as started for aging, so an issue that skipped `in_progress` still has an age. Cycle time keeps its own start, the first move into `in_progress`, unchanged.
 
@@ -82,7 +82,7 @@ The CLI calls `doneInRange` first and passes its result to `leadTimes` and `thro
 | `metrics throughput` | `[--since d] [--until d]` | issues done in a range, by type |
 | `metrics aging` | `[--until d]` | days in progress of the open work at a date, oldest first |
 
-Flags go through `dateText`, so a bad date is a usage error with exit code 2, as in `metrics cycle-time`. With the recommended answer to open question 2, `metrics aging` does not accept `--since`, and the CLI's unknown-option check refuses it with `INVALID_INPUT` and exit code 2, as it refuses `--bogus` today.
+Flags go through `dateText`, so a bad date is a usage error with exit code 2, as in `metrics cycle-time`. `metrics aging` does not accept `--since`, and the CLI's unknown-option check refuses it with `INVALID_INPUT` and exit code 2, as it refuses `--bogus` today.
 
 JSON output:
 
@@ -152,7 +152,7 @@ ISS-3Q6T has no `events.jsonl` (its `issue.md` holds conflict markers), so no me
 | Criterion | Design part |
 | --- | --- |
 | The CLI computes lead time, throughput and aging from the event log | `leadTimes`, `throughput` and `aging` in `metrics.mjs`, fed by `eventsByIssue`; the three commands; the manifest's `SERVED_BY`. |
-| Each metric takes a date range | `--since` and `--until` on `metrics lead-time` and `metrics throughput` through `doneInRange`; `--until` as the as-of date on `metrics aging` (open question 2). |
+| Each metric takes a date range | `--since` and `--until` on `metrics lead-time` and `metrics throughput` through `doneInRange`; `--until` as the as-of date on `metrics aging`, which reads the criterion as "takes the end of the range" (decided question 2). |
 
 ## Tests to write in the plan
 
@@ -163,39 +163,41 @@ ISS-3Q6T has no `events.jsonl` (its `issue.md` holds conflict markers), so no me
   - `aging`: `in_progress` and `in_review` counted, `todo` and `done` not, start at the first move into either category, an issue moved back to `todo` before `asOf` left out, events after `asOf` ignored, an archived issue left out from its `archive` event, oldest first.
   - On the `team` fixture: the numbers in "Expected numbers on the `team` fixture".
 - `scripts/cli.test.mjs`
-  - Each command with and without a range on `team`, a bad date exits 2, `metrics aging --since` exits 2 (open question 2), `PMKIT_NOW` sets `asOf`.
+  - Each command with and without a range on `team`, a bad date exits 2, `metrics aging --since` exits 2, `PMKIT_NOW` sets `asOf`.
   - `metrics cycle-time` keeps its counts for `--until 2026-10-08` and `--until 2026-10-07` after the switch to `doneInRange`.
   - Add the three names to the `--help` list and to the `READS` map.
 - `scripts/fixtures.test.mjs`: `no-sprints` runs the three commands with exit 0.
 - `scripts/goldens.test.mjs`: add the three commands with `() => [[]]`, and generate `metrics-lead-time.txt`, `metrics-throughput.txt` and `metrics-aging.txt` for every golden fixture. Every existing golden stays unchanged, `metrics-cycle-time.txt` and `capabilities.txt` included. `capabilities.txt` prints the path and the detail of `native_metrics`, not `SERVED_BY`.
 
-## Open questions
+## Decided questions
+
+The user answered these on 2026-10-26 and chose the recommended option of each. The options left out stay below as the record of what was weighed.
 
 1. **How PMK-19 gets the trend.** The criterion of PMK-19 says "with the trend".
    - A. Each command reads one range. PMK-19 runs each metric for the period and for the previous period of the same length and compares them. No CLI change for the trend.
    - B. Each command takes `--compare` and adds a `previous` block computed for the range of the same length just before.
    - C. `metrics throughput` takes `--by week` and returns a weekly series, and the trend is the series.
 
-   Recommendation: A. It keeps one output shape per command and needs no new flag. A comparison of two numbers is not a computation ADR-0002 keeps out of commands, since `/pmkit:cycle:close` already compares planned and delivered counts. B or C can come later if PMK-19 needs more than two points.
+   Decided: A. It keeps one output shape per command and needs no new flag. A comparison of two numbers is not a computation ADR-0002 keeps out of commands, since `/pmkit:cycle:close` already compares planned and delivered counts. B or C can come later if PMK-19 needs more than two points.
 
 2. **What a date range means for aging.** Aging is a snapshot of the open work at one instant, and the criterion says each metric takes a range.
    - A. `metrics aging [--until d]`. `--until` is the as-of date and defaults to now. `--since` is refused as an unknown flag.
    - B. `metrics aging [--since d] [--until d]`. The snapshot is at `--until`, and `--since` is accepted and ignored, so PMK-19 passes one range to every call.
    - C. `metrics aging [--since d] [--until d]` lists every issue in work at any moment of the range, aged up to `--until` or up to when it left work.
 
-   Recommendation: A. It gives PMK-19 aging at the end of each period, which is what a trend of aging needs, and it does not accept a flag that does nothing. C mixes finished work into aging and overlaps cycle time. A reads the criterion as "takes the end of the range", so the user should confirm it.
+   Decided: A. It gives PMK-19 aging at the end of each period, which is what a trend of aging needs, and it does not accept a flag that does nothing. C mixes finished work into aging and overlaps cycle time. A reads the criterion as "takes the end of the range", and the user confirmed that reading.
 
 3. **Where lead time starts.**
    - A. At creation, the `create` event.
    - B. At the first move into `todo` or later, when the team committed to the work.
 
-   Recommendation: A. It is the usual definition of lead time (request to delivery), it differs from cycle time, and every issue has a `create`. Under B, an issue created straight into `todo` gives the same number as A, and one that skipped `todo` needs a rule for its start.
+   Decided: A. It is the usual definition of lead time (request to delivery), it differs from cycle time, and every issue has a `create`. Under B, an issue created straight into `todo` gives the same number as A, and one that skipped `todo` needs a rule for its start.
 
 4. **Whether throughput breaks down by type so PMK-19 can show bug rate.**
    - A. Yes. `metrics throughput` returns `byType` and a `type` per issue, and bug rate is `byType.bug / count`.
    - B. No. PMK-19 asks for its own CLI change for bug rate, and bug rate can then mean something else, such as bugs created per period.
 
-   Recommendation: A. It costs one map in the output and lets PMK-19 meet its criterion with no further CLI change. If bug rate should count bugs created rather than bugs done, choose B.
+   Decided: A. It costs one map in the output and lets PMK-19 meet its criterion with no further CLI change. Bug rate counts bugs done in the period, not bugs created.
 
 ## Follow-up candidates
 
@@ -208,11 +210,10 @@ ISS-3Q6T has no `events.jsonl` (its `issue.md` holds conflict markers), so no me
 
 - The names of private helpers, and whether `aging` reuses `movedTo` through a small replay helper shared with `leadTimes`.
 - The exact column widths and the order of the text lines, within the shapes above.
-- Whether `type` for an issue with no type is `null` or the key is left out of the `issues` entry. `byType` uses `none` either way.
 
 ## Self-review
 
-- Each acceptance criterion maps to a design part. The second one depends on open question 2 for aging.
+- Each acceptance criterion maps to a design part. The second one holds for aging through decided question 2.
 - The definitions, the commands, the JSON samples and the decisions agree. The sample numbers come from a check script run on this branch against the `team` fixture at the golden clock.
 - The scope is three read commands, four pure functions, one manifest line, two doc tables and tests. No write, no format change and no migration.
 - Risk: `metrics cycle-time` moves to `doneInRange`, and `/pmkit:cycle:close` reads that command. The existing cycle-time tests and goldens catch any change in its results.
