@@ -63,7 +63,8 @@ export function parseRelease(text, id) {
   if (/[\r\n]/.test(name)) throw bad('has a name with a line break')
   const release = { id, name: name || id }
   if (data.tag != null) {
-    const tag = String(data.tag)
+    if (typeof data.tag !== 'string') throw bad(`has tag ${data.tag}, which is not text. Put the tag in quotes`)
+    const tag = data.tag
     if (!validTag(tag)) throw bad(`has tag "${tag}", expected a git tag name`)
     release.tag = tag
   }

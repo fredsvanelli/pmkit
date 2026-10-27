@@ -57,6 +57,12 @@ test('parseRelease rejects a bad target, released, tag and a name with a line br
   assert.throws(() => parseRelease('---\nname: One\rTwo\n---\n', '1.0'), doctor('INVALID_INPUT'))
 })
 
+test('parseRelease rejects a tag that YAML reads as a number and asks to quote it', () => {
+  assert.throws(() => parseRelease('---\ntag: 2.10\n---\n', '2.10'),
+    doctor('INVALID_INPUT', 'release file 2.10.md has tag 2.1, which is not text. Put the tag in quotes'))
+  assert.equal(parseRelease('---\ntag: "2.10"\n---\n', '2.10').tag, '2.10')
+})
+
 test('parseRelease throws CONFLICT on conflict markers', () => {
   assert.throws(() => parseRelease('---\n<<<<<<< HEAD\nname: A\n=======\nname: B\n>>>>>>> x\n---\n', '1.0'), doctor('CONFLICT'))
 })
