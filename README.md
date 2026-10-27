@@ -37,6 +37,7 @@ Then run `/pmkit:setup` in the project. With the GitHub git host (`git_host.syst
 - `/pmkit:local:render`: Render a board, roadmap or sprint view of the tracker as Markdown or HTML for people outside the agent.
 - `/pmkit:report:status`: Draft a status update for an epic and publish it after approval.
 - `/pmkit:spec:import`: Turn a spec or PRD into an epic with milestones, issues, sub-issues, estimates and blockers.
+- `/pmkit:team:flow-metrics`: Show cycle time, lead time, throughput, aging and bug rate for a period, with the trend against the previous period.
 - `/pmkit:team:risk-radar`: Blockers, stalled issues and PRs, late epics, epics without a recent status update and broken CI, in one read-only report.
 - `/pmkit:team:standup`: Digest of what changed since the last business day, per person, with what needs attention.
 

@@ -33,7 +33,7 @@
 //   stop is an answer turn with no key. Every answer counts as a stop, including the answer to a choice of
 //   input (setup's prefix, a status name), so a write after such an answer counts as confirmed.
 // - Rule 8 per call: only the tree hash at each stop.
-// - The part of each expect after its first `saved` read (LIVE_EXPECT_STOPS lists 19 of 33 entries).
+// - The part of each expect after its first `saved` read (LIVE_EXPECT_STOPS lists 20 of 34 entries).
 //
 // Spike findings (claude 2.1.310, 2026-10-26, /pmkit:issues:move ISS-2X6D done on the team fixture, 2 runs):
 // - The plugin command runs under -p despite `disable-model-invocation: true`. The agent read conventions.md,
@@ -100,6 +100,7 @@ const LIVE_EXPECT_STOPS = {
   'setup.0': 'the init preview, validate and discover results',
   'setup.1': 'the init preview and validate results',
   'spec-import': 'every check: they find the new epic and issues through the IDs the scripted run saved',
+  'team-flow-metrics': 'the metrics results the agent shows',
   'team-risk-radar': 'the risks of the scripted run, which the agent ranks and words itself',
   'team-standup': 'the sync, list, events and PR status results the standup shows',
   upgrade: 'the changelog sections and the migration plan',
