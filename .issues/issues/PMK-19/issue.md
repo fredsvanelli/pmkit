@@ -8,10 +8,11 @@ estimate: 3
 assignee: fred
 parent: EPC-3
 blocked_by: [PMK-18]
+related: [PMK-143, PMK-144, PMK-145]
 milestone: phase-2-commands
 branch: pmk-19-add-the-flow-metrics-command
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-27T19:30:40Z
+updated: 2026-10-27T19:32:59Z
 ---
 
 ## Description

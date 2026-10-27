@@ -8,3 +8,7 @@
 {"at":"2026-10-27T01:39:35Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-10-27T01:39:37Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
 {"at":"2026-10-27T02:38:11Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}
+{"at":"2026-10-27T19:32:57Z","by":"fred","op":"link","field":"related","to":"PMK-128"}
+{"at":"2026-10-27T19:32:57Z","by":"fred","op":"link","field":"related","to":"PMK-129"}
+{"at":"2026-10-27T19:32:58Z","by":"fred","op":"link","field":"related","to":"PMK-130"}
+{"at":"2026-10-27T19:32:58Z","by":"fred","op":"link","field":"related","to":"PMK-137"}

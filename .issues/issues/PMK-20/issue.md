@@ -7,10 +7,11 @@ priority: medium
 estimate: 5
 assignee: fred
 parent: EPC-3
+related: [PMK-126, PMK-127, PMK-136, PMK-138, PMK-142]
 milestone: phase-2-commands
 branch: pmk-20-add-the-dependency-map-command
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-27T14:21:14Z
+updated: 2026-10-27T19:32:59Z
 ---
 
 ## Description

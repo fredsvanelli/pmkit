@@ -8,10 +8,11 @@ estimate: 3
 assignee: fred
 parent: EPC-3
 blocked_by: [PMK-22]
+related: [PMK-125, PMK-132, PMK-133, PMK-151]
 milestone: phase-2-commands
 branch: pmk-23-add-the-release-notes-command
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-27T19:30:41Z
+updated: 2026-10-27T19:32:59Z
 ---
 
 ## Description

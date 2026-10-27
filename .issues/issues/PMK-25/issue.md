@@ -8,10 +8,11 @@ estimate: 8
 assignee: fred
 parent: EPC-3
 blocked_by: [PMK-3]
+related: [PMK-131, PMK-135]
 milestone: phase-2-commands
 branch: pmk-25-add-the-local-render-command
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-27T14:21:17Z
+updated: 2026-10-27T19:32:58Z
 ---
 
 ## Description

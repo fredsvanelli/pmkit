@@ -1,0 +1,2 @@
+{"at":"2026-10-27T19:32:58Z","by":"fred","op":"create","to":{"id":"PMK-141","title":"Make standup read the risk rules from `risks --json`","type":"feature","status":"backlog","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-27T19:32:58.955Z","updated":"2026-10-27T19:32:58Z"}}
+{"at":"2026-10-27T19:32:58Z","by":"fred","op":"link","field":"related","to":"PMK-21"}

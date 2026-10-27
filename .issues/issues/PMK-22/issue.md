@@ -8,10 +8,11 @@ estimate: 3
 assignee: fred
 parent: EPC-3
 blocked_by: [PMK-2]
+related: [PMK-146, PMK-147, PMK-148, PMK-149, PMK-150]
 milestone: phase-2-commands
 branch: pmk-22-add-releases-to-the-local-tracker
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-27T02:38:12Z
+updated: 2026-10-27T19:32:59Z
 ---
 
 ## Description

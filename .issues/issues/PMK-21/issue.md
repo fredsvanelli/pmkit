@@ -7,10 +7,11 @@ priority: medium
 estimate: 5
 assignee: fred
 parent: EPC-3
+related: [PMK-139, PMK-140, PMK-141]
 milestone: phase-2-commands
 branch: pmk-21-add-the-risk-radar-command
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-27T14:21:15Z
+updated: 2026-10-27T19:32:59Z
 ---
 
 ## Description
