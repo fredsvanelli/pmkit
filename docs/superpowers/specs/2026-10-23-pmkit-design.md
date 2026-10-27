@@ -118,7 +118,7 @@ version: 1
 tracker:
   system: local                  # local | linear | jira | github | gitlab | azure-devops
   path: .issues                  # local only
-  scope:                         # hosted trackers only, such as workspace: acme, team: ENG
+  scope: { workspace: acme }   # hosted trackers only, such as team: ENG
 git_host:
   system: github                 # github | none in the MVP
   repo: fredsvanelli/my-app      # inferred from the git remote by setup
