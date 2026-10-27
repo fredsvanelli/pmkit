@@ -1,6 +1,6 @@
 # PMK-21 design: the risk-radar command
 
-Issue PMK-21, epic EPC-3. Status: draft from an autonomous brainstorm. The open questions at the end need the author's answers before the plan.
+Issue PMK-21, epic EPC-3. Status: approved. The author answered the four questions of the brainstorm on 2026-10-26 and took every recommendation. "Answered questions" at the end records them.
 
 ## Problem
 
@@ -28,7 +28,8 @@ PMK-26 ("Run digests on a schedule") is blocked by this issue. It needs risk-rad
 ## Goals
 
 - One CLI read, `pmkit risks`, that returns the six lists of criterion 1 as JSON and as a pasteable text report.
-- One command file, `/pmkit:team:risk-radar` (see open question 4), that runs it and presents the result.
+- One command file, `/pmkit:team:risk-radar` (question 4), that runs it and presents the result.
+- The radar covers the whole tracker. `risks` takes no filter flags (question 3).
 - With `git_host.system: none`, or when `gh` is missing or logged out, the radar still runs. It lists issues stalled by tracker activity alone, marks the PR and CI lists as not checked, and says why in one line.
 - Nothing under `.issues/` changes, no event is appended, and no git or `gh` call writes.
 
@@ -40,7 +41,8 @@ PMK-26 ("Run digests on a schedule") is blocked by this issue. It needs risk-rad
 - Forecasts of whether an epic will meet its target. `/pmkit:report:status` step 5 does that per epic.
 - A schedule or an output destination. That is PMK-26.
 - Milestones past their due date. The criteria name epics. A follow-up can add milestones.
-- CI that does not run on GitHub Actions, for the default branch (see open question 1).
+- CI that does not run on GitHub Actions, for the default branch (question 1).
+- Filters by epic, sprint or person (question 3). A follow-up can add them.
 
 ## Anti-goals
 
@@ -86,11 +88,11 @@ Without a git host, only `idle` applies, and last activity is the event log alon
 
 - `late`: the epic has a `target` before today.
 - `at_risk` or `off_track`: the health of its newest status update.
-- `no_recent_update`: the epic is checked for updates (see open question 2) and its newest status update is more than W calendar days old, or it has none. An epic with no update whose `start` is fewer than W days ago is not flagged, because it has had no time to report.
+- `no_recent_update`: the epic is checked for updates, and its newest status update is more than W calendar days old, or it has none. An epic is checked when it is in `in_progress`, or when it is in another open category and its `start` is more than W calendar days before today (question 2). An epic with no update whose `start` is W or fewer days before today is not flagged, because it has had no time to report.
 
 An epic with no reason is left out.
 
-**Broken CI.** Two lists, see open question 1 for the recommendation they follow:
+**Broken CI.** Two lists (question 1):
 
 - Default branch: for each workflow, the newest completed run on `git_host.default_branch` (`main` when unset). The workflow is failing when that run's conclusion is `failure`, `timed_out` or `startup_failure`.
 - Open PRs: each open PR with at least one failing check in its status check rollup. A check run fails with conclusion `FAILURE`, `TIMED_OUT`, `STARTUP_FAILURE` or `ACTION_REQUIRED`. A status context fails with state `FAILURE` or `ERROR`.
@@ -160,7 +162,7 @@ JSON shape (`--json`):
 }
 ```
 
-- Without a host, `stalledPullRequests` and `ci` are `null`. With a per-call failure, the affected value is `{ "error": { code, message, nextStep } }` instead of a list, so the reader sees why (builder's call on the exact key).
+- Without a host, `stalledPullRequests` and `ci` are `null`. With a per-call failure, the affected value carries `"error": { code, message, nextStep }` in place of its list, so the reader sees why: `stalledPullRequests` and `ci.pullRequests` become `{ "error": ... }`, and `ci.defaultBranch` becomes `{ "branch": "main", "error": ... }`.
 - `problems` holds issue files that do not parse, from `searchIssues`, as `issues list` reports them. An unreadable blocker is in the blocker row with its error.
 - Every list goes in creation order, oldest first (conventions, Issue tables). PRs go by number. Epics go in the order of `listDeliverables`.
 
@@ -170,19 +172,21 @@ The text output has one section per list, in the order of criterion 1, each a ta
 
 Pure functions with no file and no host access, as `metrics.mjs` is. The CLI gathers the inputs and passes them in.
 
-- `blockedIssues(issues, { byId, activeSprint, categoryOf })`
-- `stalledIssues(issues, { eventsByIssue, openPrsByBranch, closedPrsByBranch, today, stuckBusinessDays, categoryOf })`
+- `blockedIssues(issues, { byId, problemsById, activeSprintId })`
+- `prsByBranch(prs)` and `needsPrLookup(issues, { eventsByIssue, openPrsByBranch, today, stuckBusinessDays })`
+- `stalledIssues(issues, { eventsByIssue, openPrsByBranch, closedPrsByBranch, today, stuckBusinessDays })`
 - `stalledPullRequests(prs, { issuesByBranch, today, stuckBusinessDays })`
-- `epicRisks(epics, { updatesByEpic, today, windowDays, categoryOf })`
+- `epicRisks(epics, { updatesByEpic, today, windowDays })`
 - `failingWorkflows(runs)` and `failingPullRequests(prs)`
+- `risksText(report)`, the text output
 
-The names are the builder's call. `businessDaysBetween` comes from `metrics.mjs`. The CLI reads events with `eventsByIssue()`, as `metrics cycle-time` does, and updates with `listStatusUpdates`, as `epic updates` does.
+Issues and epics carry `status.category`, so no function needs `categoryOf`. The plan gives the exact parameters and return shapes. `businessDaysBetween` comes from `metrics.mjs`. The CLI reads events with `eventsByIssue()`, as `metrics cycle-time` does, and updates with `listStatusUpdates`, as `epic updates` does.
 
 ### The command file
 
-`commands/team/risk-radar.md` (name per open question 4), in the shape of the other command files:
+`commands/team/risk-radar.md` (question 4), in the shape of the other command files:
 
-- Frontmatter: `description: Blockers, stalled issues and PRs, late or silent epics and broken CI, in one read-only report`, `disable-model-invocation: true`, no `argument-hint`.
+- Frontmatter: `description: Blockers, stalled issues and PRs, late or silent epics and broken CI, in one read-only report`, `argument-hint: ""` (as `commands/local/doctor.md` has, because `scripts/plugin.test.mjs` requires the key), `disable-model-invocation: true`.
 - Parameters: none.
 - Steps: read the conventions. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" risks --json`. When `gitHost.available` is false, say in one line why, and that issues are stalled by tracker activity only. Show each section in the order of criterion 1. For a `pr_merged` row, offer `pmkit pr sync` as the next step, through `/pmkit:team:standup` or by hand, and do not run it.
 - Confirmation points: none. The command only reads.
@@ -202,9 +206,9 @@ The names are the builder's call. `businessDaysBetween` comes from `metrics.mjs`
 
 - `scripts/risks.test.mjs`: each pure function. The idle boundary (3 days not stalled, 4 stalled, across a weekend). A missing blocker counts as open. A backlog blocked issue in the active sprint is listed, one outside it is not. `pr_merged` and `pr_closed` list whatever the idle days. PR activity clears an idle issue. Epic `late`, `at_risk`, `off_track`, `no_recent_update`, a new epic within W days, a done epic left out. Failing conclusions and states.
 - `scripts/github-host.test.mjs`: `listPullRequests` and `listRuns` with the fake `exec`, the `refArg` check, `AUTH` and a missing `gh`.
-- `scripts/cli.test.mjs`: `risks` with `git_host.system: none`, with a fake `gh` that returns PRs and runs, with `AUTH`, and with an `UPSTREAM` error on `run list` only. Each case checks the JSON shape and the stderr warning.
+- `scripts/cli-risks.test.mjs`, beside `cli-pr.test.mjs` and with its fake `gh` setup: `risks` with `git_host.system: none`, with a fake `gh` that returns PRs and runs, with `AUTH`, and with an `UPSTREAM` error on `run list` only. Each case checks the JSON shape and the stderr warning.
 - Writes nothing (criterion 3): a CLI test copies a fixture, runs `risks --json` with the fake `gh`, and compares `readTree` of the copy before and after, ignoring `.issues/.cache/`, which git ignores and the query index rewrites on any read. It also checks that the `gh` call log holds only `pr list`, `run list` and `pr view` calls. To show the comparison can fail, the same test then runs one write and asserts the trees differ.
-- Goldens: a `risks` case per fixture, so `CASES covers exactly COMMANDS` passes. The `team` fixture runs with the fake `gh`, the others with `git_host.system: none`.
+- Goldens: a `risks` case per fixture, so `CASES covers exactly COMMANDS` passes. Every fixture has `git_host.system: none` and the golden runner has no fake `gh`, so each golden records the report without a host. The fake `gh` cases live in `cli-risks.test.mjs` and the scenario.
 - Scenario `scripts/__scenarios__/team-risk-radar.mjs` on the `team` fixture with `github: true`: one step, `read: ['risks']`. `expect` asserts no new events, no file changes, and that the fake `gh` saw no write. `there are 24 command files` becomes 25.
 
 ## Decisions
@@ -236,22 +240,24 @@ The names are the builder's call. `businessDaysBetween` comes from `metrics.mjs`
 - PMK-18 adds aging (how long an open issue has been in progress) to the CLI. The radar's stalled rule measures time since the last activity, which is a different number, so it does not wait for PMK-18. When PMK-18 lands, the stalled table could add an age column. That is a follow-up.
 - PMK-20 adds the blocker chain and critical path. The radar lists direct blockers only. When PMK-20 lands, the command file can point each blocked row to `dependency-map`. That is a follow-up. Neither sibling's code is on `main`, and this design uses none of it.
 
-## Open questions
+## Answered questions
 
-1. **What counts as broken CI.**
-   - A. The newest completed GitHub Actions run per workflow on the default branch (`gh run list`), plus open PRs with failing checks from `gh pr list`. Recommended.
+The brainstorm left four questions for the author. The author chose option A, the recommendation, for each one on 2026-10-26. The options stay here for the record.
+
+1. **What counts as broken CI.** Answer: A.
+   - A. The newest completed GitHub Actions run per workflow on the default branch (`gh run list`), plus open PRs with failing checks from `gh pr list`. Chosen.
    - B. The check runs and statuses of the default branch's head commit (`gh api repos/{owner}/{repo}/commits/<branch>/check-runs` and `/status`), plus open PRs. It covers CI outside Actions, but a head commit with checks still running shows nothing, and it needs two API calls and more parsing.
    - C. Open PRs with failing checks only. Simplest, but it misses a broken main, which is the usual meaning of "broken CI".
-2. **Which epics must have a recent status update.**
-   - A. Epics in `in_progress`, plus epics in another open category whose `start` is more than W days ago. Recommended: it skips planned epics, and an epic that started without moving its status still gets flagged.
+2. **Which epics must have a recent status update.** Answer: A.
+   - A. Epics in `in_progress`, plus epics in another open category whose `start` is more than W days ago. Chosen: it skips planned epics, and an epic that started without moving its status still gets flagged.
    - B. Every epic in an open category. Simple, but backlog epics such as EPC-3 in this repository would be flagged before anyone works on them.
    - C. Only epics in `in_progress`. Misses an epic whose status nobody moved.
-3. **What the radar covers.**
-   - A. The whole tracker, with no filter flags in this issue. Recommended: a radar is an overview, Local trackers are small, and filters can come later.
+3. **What the radar covers.** Answer: A.
+   - A. The whole tracker, with no filter flags in this issue. Chosen: a radar is an overview, Local trackers are small, and filters can come later.
    - B. The active sprint's issues only, plus every epic and CI. Shorter, but it hides stalled work outside the sprint.
    - C. The whole tracker with `--epic <id>` and `--sprint current` filters on `risks`. More flags to test and to explain in the command.
-4. **The command's name and group.**
-   - A. `/pmkit:team:risk-radar` in `commands/team/`, next to standup, the other EM digest. Recommended: PMK-26 groups the two, and the catalog lists risk-radar for the EM.
+4. **The command's name and group.** Answer: A.
+   - A. `/pmkit:team:risk-radar` in `commands/team/`, next to standup, the other EM digest. Chosen: PMK-26 groups the two, and the catalog lists risk-radar for the EM.
    - B. `/pmkit:report:risk-radar` in `commands/report/`, next to the epic status report.
    - C. `/pmkit:report:risks`, a shorter name that matches the CLI command.
 
@@ -264,7 +270,7 @@ The names are the builder's call. `businessDaysBetween` comes from `metrics.mjs`
 
 ## Self-review
 
-- Placeholders: none. The builder's calls (function names, the exact error key on a failed list, the PR list limit warning, drafts in stalled PRs, the backlog cut for blocked issues) do not change what the user sees in a normal run.
+- Placeholders: none. The builder's calls (the PR list limit warning, drafts in stalled PRs, the backlog cut for blocked issues) do not change what the user sees in a normal run.
 - Consistency: N and W have one meaning in every section. "Not checked" is `null` in JSON and `not checked: <reason>` in text everywhere. The command file never writes and never asks.
 - Scope: one pure module, two host methods, one CLI command, one command file, docs, tests. No config key, no format change, no capability change.
-- Builder check: read as the builder, with no subagent. The questions raised were how "stalled" treats a merged PR (answered: `pr_merged`), how the CLI tells merged from closed (answered: `getPullRequest` for idle `in_review` issues only), what happens when Actions is off (answered: empty runs, "no workflow runs"), and whether `.issues/.cache/` counts as a write (answered: no, git ignores it and every read can rebuild it). The four open questions are the ones only the author can answer.
+- Builder check: read as the builder, with no subagent. The questions raised were how "stalled" treats a merged PR (answered: `pr_merged`), how the CLI tells merged from closed (answered: `getPullRequest` for idle `in_review` issues only), what happens when Actions is off (answered: empty runs, "no workflow runs"), and whether `.issues/.cache/` counts as a write (answered: no, git ignores it and every read can rebuild it). The author answered the four questions only the author could answer (see "Answered questions").
