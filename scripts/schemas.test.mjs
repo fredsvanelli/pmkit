@@ -3,11 +3,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { validateSchema } from './json-schema-subset.mjs'
 import {
-  CONFIRM, ESTIMATE_UNITS, GIT_HOSTS, MEMBER_ID, PREFIX, PREVIEW, TRACKERS, WEEKDAYS,
+  CONFIRM, ESTIMATE_UNITS, GIT_HOSTS, MEMBER_ID, NAME, PREFIX, PREVIEW, TRACKERS, WEEKDAYS, WORKSPACE_KEY,
   localConfigShapeProblems, validatePmkitConfig, withLocalDefaults,
 } from './lib/config.mjs'
 import { ID_STYLES } from './lib/ids.mjs'
-import { CATEGORIES } from './lib/model.mjs'
+import { CATEGORIES, FIELD_ROLES, STATUS_MAPPING_KEYS } from './lib/model.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { existsSync } from 'node:fs'
@@ -19,7 +19,12 @@ const FILES = {
   pmkit: {
     file: '.pmkit/config.yaml',
     validate: validatePmkitConfig,
-    base: () => parseYaml(read('templates/pmkit.config.yaml')),
+    base: () => {
+      const config = parseYaml(read('templates/pmkit.config.yaml'))
+      config.tracker.scope = { workspace: 'acme', team: 'ENG' }
+      config.mappings = { status: { in_review: 'In Review', blocked: 'Blocked' }, fields: { estimate: 'native' } }
+      return config
+    },
   },
   issues: {
     file: '.issues/config.yaml',
@@ -31,7 +36,7 @@ const FILES = {
   },
 }
 
-const CONSTANTS = { TRACKERS, GIT_HOSTS, CONFIRM, PREVIEW, WEEKDAYS, ESTIMATE_UNITS, CATEGORIES, ID_STYLES }
+const CONSTANTS = { TRACKERS, GIT_HOSTS, CONFIRM, PREVIEW, WEEKDAYS, ESTIMATE_UNITS, CATEGORIES, ID_STYLES, FIELD_ROLES, STATUS_MAPPING_KEYS }
 
 const isMap = (value) => value !== null && typeof value === 'object' && !Array.isArray(value)
 
@@ -297,6 +302,12 @@ const PINNED = {
     'git_host.system enum': [(s) => schemaAt(s, ['git_host', 'system']).enum, GIT_HOSTS],
     'write_policy.confirm enum': [(s) => schemaAt(s, ['write_policy', 'confirm']).enum, CONFIRM],
     'write_policy.preview.[] enum': [(s) => schemaAt(s, ['write_policy', 'preview']).items.enum, PREVIEW],
+    'tracker.scope.* pattern': [(s) => s.properties.tracker.properties.scope.additionalProperties.pattern, NAME.source],
+    'tracker.scope.workspace pattern': [(s) => schemaAt(s, ['tracker', 'scope', 'workspace']).pattern, WORKSPACE_KEY.source],
+    'mappings.status.* pattern': [(s) => s.properties.mappings.properties.status.additionalProperties.pattern, NAME.source],
+    'mappings.fields.* pattern': [(s) => s.properties.mappings.properties.fields.additionalProperties.pattern, NAME.source],
+    'mappings.status.<key> enum': [(s) => s.properties.mappings.properties.status.propertyNames.enum, STATUS_MAPPING_KEYS],
+    'mappings.fields.<key> enum': [(s) => s.properties.mappings.properties.fields.propertyNames.enum, FIELD_ROLES],
   },
   issues: {
     'id_prefix pattern': [(s) => s.properties.id_prefix.pattern, PREFIX.source],
@@ -331,8 +342,8 @@ test('every key path of each template has a schema', () => {
   }
 })
 
-test('the user-keyed maps are statuses, members and defaults', () => {
-  assert.deepEqual(mapPaths(loadSchema('pmkit')), [])
+test('the user-keyed maps are tracker.scope, mappings.status and mappings.fields, and statuses, members and defaults', () => {
+  assert.deepEqual(mapPaths(loadSchema('pmkit')).map((keys) => keys.join('.')), ['tracker.scope', 'mappings.status', 'mappings.fields'])
   assert.deepEqual(mapPaths(loadSchema('issues')).map((keys) => keys.join('.')), ['statuses', 'members', 'defaults'])
 })
 
@@ -361,6 +372,11 @@ test('null for an optional key is invalid on both sides, and tracker.path null i
     ['pmkit', ['git_host', 'repo'], false],
     ['pmkit', ['git_host', 'default_branch'], false],
     ['pmkit', ['write_policy', 'preview'], false],
+    ['pmkit', ['tracker', 'scope'], false],
+    ['pmkit', ['tracker', 'scope', 'workspace'], false],
+    ['pmkit', ['mappings'], false],
+    ['pmkit', ['mappings', 'status'], false],
+    ['pmkit', ['mappings', 'fields'], false],
     ['issues', ['id_style'], false],
     ['issues', ['labels'], false],
     ['issues', ['estimate', 'scale'], false],

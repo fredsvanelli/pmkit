@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { ERROR_CODES, PmkitError, isPmkitError } from './lib/errors.mjs'
-import { CATEGORIES, EVENT_OPS, LINK_KINDS, TERMINAL, compareTimes, isBlocked, isCategory } from './lib/model.mjs'
+import { CATEGORIES, EVENT_OPS, FIELD_ROLES, LINK_KINDS, STATUS_MAPPING_KEYS, TERMINAL, compareTimes, isBlocked, isCategory } from './lib/model.mjs'
 
 test('PmkitError carries a code, a message and a next step', () => {
   const error = new PmkitError('NOT_FOUND', 'no ISS-1', 'Run pmkit issues list', { id: 'ISS-1' })
@@ -29,6 +29,11 @@ test('the constants match the common model', () => {
   assert.deepEqual(LINK_KINDS, ['blocks', 'related', 'duplicate'])
   assert.ok(isCategory('todo'))
   assert.ok(!isCategory('blocked'))
+})
+
+test('FIELD_ROLES and STATUS_MAPPING_KEYS list the field roles and the status mapping keys', () => {
+  assert.deepEqual(FIELD_ROLES, ['estimate', 'priority', 'target_date', 'start_date', 'assignee', 'acceptance_criteria', 'time_spent'])
+  assert.deepEqual(STATUS_MAPPING_KEYS, [...CATEGORIES, 'blocked'])
 })
 
 const issue = (id, category, blockedBy = []) => ({ id, status: { name: category, category }, blockedBy })

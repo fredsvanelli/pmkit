@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path'
 import { PmkitError } from './errors.mjs'
 import { ID_STYLES } from './ids.mjs'
 import { FORMAT_VERSION, MIGRATIONS, formatError, formatState, migratedCopy } from './local/migrations.mjs'
-import { CATEGORIES, isCategory } from './model.mjs'
+import { CATEGORIES, FIELD_ROLES, STATUS_MAPPING_KEYS, isCategory } from './model.mjs'
 import { parseYaml } from './yaml.mjs'
 
 export const TRACKERS = ['local', 'linear', 'jira', 'github', 'gitlab', 'azure-devops']
@@ -14,6 +14,8 @@ export const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
 export const ESTIMATE_UNITS = ['points', 'hours', 'sizes']
 export const PREFIX = /^[A-Z]{2,5}$/
 export const MEMBER_ID = /^([a-z0-9][a-z0-9-]*|agent:[a-z0-9-]+)$/
+export const NAME = /\S/
+export const WORKSPACE_KEY = /^[a-z0-9][a-z0-9-]*$/
 
 const DEFAULTS = {
   default_status: 'backlog',
@@ -43,6 +45,48 @@ const found = (value) => (value === undefined ? 'nothing' : JSON.stringify(value
 
 const clone = (value) => JSON.parse(JSON.stringify(value))
 
+const isName = (value) => typeof value === 'string' && NAME.test(value)
+
+function scopeProblems(scope) {
+  if (scope === undefined) return []
+  if (!isObject(scope)) return ['tracker.scope must be a map of names, such as team: ENG']
+  const problems = []
+  for (const [key, value] of Object.entries(scope)) {
+    if (key === 'workspace') {
+      if (typeof value !== 'string' || !WORKSPACE_KEY.test(value)) {
+        problems.push('tracker.scope.workspace must be the workspace URL key, lowercase letters, digits and hyphens, such as acme')
+      }
+    } else if (!isName(value)) {
+      problems.push(`tracker.scope.${key} must be a name`)
+    }
+  }
+  return problems
+}
+
+function mappingsProblems(mappings) {
+  if (mappings === undefined) return []
+  if (!isObject(mappings)) return ['mappings must be a map with status or fields']
+  const problems = []
+  const { status, fields } = mappings
+  if (status !== undefined && !isObject(status)) {
+    problems.push('mappings.status must be a map from a category or blocked to a status name')
+  } else {
+    for (const [key, value] of Object.entries(status ?? {})) {
+      if (!STATUS_MAPPING_KEYS.includes(key)) problems.push(`mappings.status.${key}: ${key} is not a category or blocked`)
+      if (!isName(value)) problems.push(`mappings.status.${key} must be a status name`)
+    }
+  }
+  if (fields !== undefined && !isObject(fields)) {
+    problems.push('mappings.fields must be a map from a field role to a field name or native')
+  } else {
+    for (const [key, value] of Object.entries(fields ?? {})) {
+      if (!FIELD_ROLES.includes(key)) problems.push(`mappings.fields.${key}: ${key} is not a field role, use one of ${FIELD_ROLES.join(', ')}`)
+      if (!isName(value)) problems.push(`mappings.fields.${key} must be a field name or native`)
+    }
+  }
+  return problems
+}
+
 export function withLocalDefaults(obj) {
   const input = isObject(obj) ? obj : {}
   const result = { ...clone(DEFAULTS), ...input }
@@ -62,6 +106,8 @@ export function validatePmkitConfig(obj) {
   } else if (tracker.path !== undefined && tracker.path !== null && typeof tracker.path !== 'string') {
     problems.push('tracker.path must be a string')
   }
+  // Valid for every system: the local tracker ignores scope and mappings, and a hosted one ignores tracker.path.
+  if (isObject(tracker)) problems.push(...scopeProblems(tracker.scope))
   const host = obj.git_host
   if (!isObject(host) || !GIT_HOSTS.includes(host.system)) {
     problems.push(`git_host.system must be ${GIT_HOSTS.join(' or ')}`)
@@ -75,6 +121,7 @@ export function validatePmkitConfig(obj) {
   } else if (policy.preview !== undefined && !(Array.isArray(policy.preview) && policy.preview.every((x) => PREVIEW.includes(x)))) {
     problems.push(`write_policy.preview must be a list of ${PREVIEW.join(', ')}`)
   }
+  problems.push(...mappingsProblems(obj.mappings))
   return problems
 }
 

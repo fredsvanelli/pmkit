@@ -7,6 +7,11 @@ export const LINK_KINDS = ['blocks', 'related', 'duplicate']
 
 export const isCategory = (value) => CATEGORIES.includes(value)
 
+// The field roles of the common model, which a hosted tracker's mappings.fields maps to its own fields.
+export const FIELD_ROLES = ['estimate', 'priority', 'target_date', 'start_date', 'assignee', 'acceptance_criteria', 'time_spent']
+// The keys of mappings.status: a category, or blocked for the status a team uses for blocked work.
+export const STATUS_MAPPING_KEYS = [...CATEGORIES, 'blocked']
+
 /**
  * @typedef {{ name: string, category: string }} Status
  * @typedef {{ text: string, done: boolean }} Criterion

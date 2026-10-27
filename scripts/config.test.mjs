@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  CONFIRM, ESTIMATE_UNITS, GIT_HOSTS, MEMBER_ID, PREFIX, PREVIEW, TRACKERS, WEEKDAYS,
+  CONFIRM, ESTIMATE_UNITS, GIT_HOSTS, MEMBER_ID, NAME, PREFIX, PREVIEW, TRACKERS, WEEKDAYS, WORKSPACE_KEY,
   findRoot, loadConfig, localConfigShapeProblems, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, unsupportedTracker, validateLocalConfig, validatePmkitConfig, withLocalDefaults,
 } from './lib/config.mjs'
 import { parseYaml } from './lib/yaml.mjs'
@@ -255,6 +255,45 @@ test('config.mjs exports the constants the schemas mirror', () => {
   assert.deepEqual(WEEKDAYS, ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'])
   assert.deepEqual(ESTIMATE_UNITS, ['points', 'hours', 'sizes'])
   assert.ok(PREFIX instanceof RegExp && MEMBER_ID instanceof RegExp)
+  assert.equal(NAME.source, '\\S')
+  assert.equal(WORKSPACE_KEY.source, '^[a-z0-9][a-z0-9-]*$')
+})
+
+test('validatePmkitConfig checks tracker.scope, tracker.scope.workspace and mappings', () => {
+  const WORKSPACE_MSG = 'tracker.scope.workspace must be the workspace URL key, lowercase letters, digits and hyphens, such as acme'
+  const check = (edit, expected, label) => {
+    const pmkit = template('pmkit.config.yaml')
+    edit(pmkit)
+    assert.deepEqual(validatePmkitConfig(pmkit), expected, label)
+  }
+  check((c) => {
+    c.tracker.scope = { workspace: 'acme', team: 'ENG' }
+    c.mappings = { status: { in_review: 'In Review', blocked: 'Blocked' }, fields: { estimate: 'native' }, extra: 1 }
+  }, [], 'a full valid config')
+  for (const scope of ['ENG', null, ['ENG']]) {
+    check((c) => { c.tracker.scope = scope }, ['tracker.scope must be a map of names, such as team: ENG'], `scope ${JSON.stringify(scope)}`)
+  }
+  for (const team of ['', '  ', 5]) {
+    check((c) => { c.tracker.scope = { team } }, ['tracker.scope.team must be a name'], `team ${JSON.stringify(team)}`)
+  }
+  check((c) => { c.tracker.scope = { workspace: 'a1' } }, [], 'workspace a1')
+  for (const workspace of ['Acme', 'https://linear.app/acme', '-acme', 'acme corp', '', 5]) {
+    check((c) => { c.tracker.scope = { workspace } }, [WORKSPACE_MSG], `workspace ${JSON.stringify(workspace)}`)
+  }
+  for (const mappings of ['x', null, []]) {
+    check((c) => { c.mappings = mappings }, ['mappings must be a map with status or fields'], `mappings ${JSON.stringify(mappings)}`)
+  }
+  const cases = [
+    [{ status: 'x' }, 'mappings.status must be a map from a category or blocked to a status name'],
+    [{ status: { 'in-review': 'In Review' } }, 'mappings.status.in-review: in-review is not a category or blocked'],
+    [{ status: { in_review: '' } }, 'mappings.status.in_review must be a status name'],
+    [{ fields: 'x' }, 'mappings.fields must be a map from a field role to a field name or native'],
+    [{ fields: { points: 'Story points' } }, 'mappings.fields.points: points is not a field role, use one of estimate, priority, target_date, start_date, assignee, acceptance_criteria, time_spent'],
+    [{ fields: { estimate: 7 } }, 'mappings.fields.estimate must be a field name or native'],
+  ]
+  for (const [mappings, message] of cases) {
+    check((c) => { c.mappings = mappings }, [message], JSON.stringify(mappings))
+  }
 })
 
 test('localConfigShapeProblems accepts the template and leaves the cross-field rules out', () => {
