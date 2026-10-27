@@ -2,7 +2,7 @@ $ pmkit issues dependencies EPC-4H7V
 exit 0
 --- stdout
 EPC-4H7V  Reliable webhooks  in_progress
-no blocker links touch EPC-4H7V, so this shows the hierarchy only
+no open issue in the scope of EPC-4H7V has a blocker, so this shows the hierarchy only
 
 hierarchy:
   2 done or canceled
@@ -88,7 +88,7 @@ $ pmkit issues dependencies ISS-9B2X
 exit 0
 --- stdout
 ISS-9B2X  Dead-letter queue  in_review
-no blocker links touch ISS-9B2X, so this shows the hierarchy only
+no open issue in the scope of ISS-9B2X has a blocker, so this shows the hierarchy only
 
 hierarchy:
   ISS-9B2X  Dead-letter queue  in_review  ana  5

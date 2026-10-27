@@ -77,7 +77,7 @@ Steps:
 1. Build the scope. For an epic, walk each issue's parent chain with `walkParents` from `scripts/lib/local/epics.mjs` and keep the non-archived issues whose chain reaches the epic, as `deliverableProgress` does. For an issue, keep the issue and walk `parent` links down to collect its non-archived sub-issues. Also record the target's ancestors (its parent chain up to the epic), for display only.
 2. Build the blocker graph, unless `dependencies` is `false`. Start from every open scope issue. For each `blockedBy` entry, add the edge "blocker blocks issue" when the blocker is open, missing or unreadable, and follow that blocker's own `blockedBy` in turn. Skip an edge to a blocker in a terminal category, and count it as resolved. A blocker that is not in the scope is upstream. Upstream blockers bring their own blockers, never their sub-issues.
 3. Break loops. A depth-first walk marks an edge that closes a loop, drops it from the graph, and adds a problem `blocked_by loop: A → B → A; run /pmkit:local:doctor`. The rest of the graph stays as it is.
-4. Pick the basis. The basis is `blockers` when the graph has at least one open edge. Otherwise it is `hierarchy`, with one of three reasons. `absent` means the tracker has no `dependencies` capability. `resolved` means blocker links touch the scope, but every blocker is terminal. `none` means no blocker link touches the scope.
+4. Pick the basis. The basis is `blockers` when the graph has at least one open edge. Otherwise it is `hierarchy`, with one of three reasons. `absent` means the tracker has no `dependencies` capability. `resolved` means blocker links touch the scope, but every blocker is terminal. `none` means no open issue in the scope has a blocker.
 5. With the basis `blockers`, compute the critical path. Each open issue in the graph is a node with a weight (see "Weights"). The path is the heaviest chain of nodes, linked by blocker edges, that ends at an open scope issue. A scope issue with no blocker is a chain of one, so with weights by estimate a large lone issue can be the critical path. Ties go to the chain whose nodes come first in creation order, oldest first, comparing from the start of the chain **(builder's call)**. The walk is a longest-path pass over the graph in topological order, which is linear in nodes and edges.
 6. With the basis `hierarchy`, there is no critical path. The result also lists the `related` links of the scope issues, because the catalog names related links as the fallback.
 
@@ -157,7 +157,7 @@ Hierarchy-only text, for `issues dependencies EPC-4H7V` in the `no-sprints` fixt
 
 ```
 EPC-4H7V  Reliable webhooks  ...
-no blocker links touch EPC-4H7V, so this shows the hierarchy only
+no open issue in the scope of EPC-4H7V has a blocker, so this shows the hierarchy only
 
 hierarchy:
   2 done or canceled

@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { dependencyMap } from './lib/dependencies.mjs'
+import { dependencyText } from './lib/format.mjs'
+import { PmkitError } from './lib/errors.mjs'
 
 // The order of the issues array is the creation order.
 const st = (category) => ({ name: category, category })
@@ -237,4 +239,72 @@ test('the hierarchy basis has no critical path', () => {
   assert.equal(map.reason, 'resolved')
   assert.equal(map.criticalPath, null)
   assert.deepEqual(critical(map), [])
+})
+
+test('an open issue under an archived parent hangs from its nearest ancestor in the scope', () => {
+  const issues = [
+    issue('ISS-1', { parent: 'EPC-1', archived: true }),
+    issue('ISS-2', { parent: 'ISS-1', blockedBy: ['ISS-3'] }),
+    issue('ISS-3'),
+    issue('ISS-4', { parent: 'ISS-2' }),
+  ]
+  const map = dependencyMap({ target: epic, issues })
+  assert.deepEqual(map.tree, [{ id: 'ISS-2', children: [{ id: 'ISS-4', children: [] }] }])
+  const T = issue('T')
+  const sub = [T, issue('A', { parent: 'T', archived: true }), issue('B', { parent: 'A' })]
+  const issueMap = dependencyMap({ target: { ...T, kind: 'issue' }, issues: sub })
+  assert.deepEqual(issueMap.tree, [{ id: 'T', children: [{ id: 'B', children: [] }] }])
+})
+
+const text = (target, issues) => dependencyText(dependencyMap({ target, issues }))
+
+test('the text does not claim that no blocker link exists when a done issue has one', () => {
+  const T = issue('T', { status: st('done'), blockedBy: ['O'] })
+  const out = text({ ...T, kind: 'issue' }, [T, issue('O')])
+  assert.ok(!out.includes('no blocker links touch'))
+  assert.match(out, /no open issue in the scope of T has a blocker/)
+})
+
+test('the blocker chain lists a lone critical path issue', () => {
+  const issues = [
+    issue('S1', { parent: 'EPC-1', estimate: 2, blockedBy: ['U'] }),
+    issue('U', { parent: 'EPC-1', estimate: 1 }),
+    issue('S2', { parent: 'EPC-1', estimate: 5 }),
+  ]
+  const out = text(epic, issues)
+  const chain = out.slice(out.indexOf('blocker chain:'), out.indexOf('hierarchy:'))
+  assert.match(out, /critical path: S2 \(5 points\)/)
+  assert.match(chain, /\* {1,2}S2 /)
+})
+
+test('an archived open issue under the target is archived, not outside it', () => {
+  const issues = [
+    issue('A', { parent: 'EPC-1', blockedBy: ['B', 'D'] }),
+    issue('B', { parent: 'EPC-1', archived: true }),
+    issue('D', { archived: true }),
+  ]
+  const out = text(epic, issues)
+  assert.match(out, /B .*\(archived\)/)
+  assert.doesNotMatch(out, /B .*outside/)
+  assert.match(out, /D .*\(outside EPC-1, archived\)/)
+})
+
+const DEEP = 20000
+
+test('a chain too deep for the stack is a PmkitError, not a RangeError', () => {
+  const issues = Array.from({ length: DEEP }, (_, index) => issue(`N${index}`, { parent: 'EPC-1', blockedBy: index < DEEP - 1 ? [`N${index + 1}`] : [] }))
+  assert.throws(() => dependencyMap({ target: epic, issues }), (error) => error instanceof PmkitError && error.code === 'INVALID_INPUT' && /too deep/.test(error.message))
+})
+
+test('printing a map too deep for the stack is a PmkitError, not a RangeError', () => {
+  const nodes = Array.from({ length: DEEP }, (_, index) => ({
+    id: `N${index}`, title: 't', status: st('todo'), assignee: null, estimate: null, parent: 'EPC-1', scope: true, open: true,
+    archived: false, missing: false, unreadable: false, blockedBy: index > 0 ? [`N${index - 1}`] : [], critical: false,
+  }))
+  const map = {
+    target: { id: 'EPC-1', kind: 'epic', title: 'Epic', status: st('todo'), ancestors: [] },
+    basis: 'blockers', reason: null, weight: { unit: 'issues' }, nodes, tree: [], criticalPath: { ids: [`N${DEEP - 1}`], length: DEEP, unestimated: [] },
+    resolved: 0, related: [], problems: [],
+  }
+  assert.throws(() => dependencyText(map), (error) => error instanceof PmkitError && error.code === 'INVALID_INPUT')
 })

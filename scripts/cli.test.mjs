@@ -237,7 +237,7 @@ test('issues dependencies with no blocker shows the hierarchy only and says why'
   const result = run(root, ['issues', 'dependencies', 'EPC-4H7V'])
   assert.equal(result.status, 0, result.stderr)
   assert.equal(result.stdout, `EPC-4H7V  Reliable webhooks  in_progress
-no blocker links touch EPC-4H7V, so this shows the hierarchy only
+no open issue in the scope of EPC-4H7V has a blocker, so this shows the hierarchy only
 
 hierarchy:
   2 done or canceled

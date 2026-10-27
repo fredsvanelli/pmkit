@@ -201,7 +201,7 @@ $ pmkit issues dependencies ISS-5N1R
 exit 0
 --- stdout
 ISS-5N1R  Paginate the events API  in_progress
-no blocker links touch ISS-5N1R, so this shows the hierarchy only
+no open issue in the scope of ISS-5N1R has a blocker, so this shows the hierarchy only
 
 hierarchy:
   ISS-5N1R  Paginate the events API  in_progress  fred  3

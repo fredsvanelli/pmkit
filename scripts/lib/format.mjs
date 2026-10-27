@@ -1,3 +1,5 @@
+import { tooDeep } from './dependencies.mjs'
+
 // Plain-text output for the CLI: tables, key: value records and before → after changes.
 
 const show = (value) => {
@@ -111,19 +113,36 @@ export const eventTable = (events) => (events.length === 0
   ])))
 
 const REASON_LINES = {
-  none: (id) => `no blocker links touch ${id}`,
+  none: (id) => `no open issue in the scope of ${id} has a blocker`,
   resolved: (id) => `every blocker of ${id} is done or canceled`,
   absent: () => 'this tracker has no dependencies capability',
 }
 
 /** The text of `issues dependencies`: the target, the critical path, the blocker chain and the hierarchy. */
 export function dependencyText(map) {
+  try {
+    return renderDependencies(map)
+  } catch (error) {
+    throw tooDeep(error)
+  }
+}
+
+function renderDependencies(map) {
   const { target } = map
   const byId = new Map(map.nodes.map((node) => [node.id, node]))
+  // A node is under the target when it is in scope or its parent chain, through the nodes shown, reaches the target.
+  // An archived parent that is not a node cuts the chain, so a node under it reads as outside.
+  const underTarget = (node) => {
+    for (let seen = new Set(), current = node; current && !seen.has(current.id); current = byId.get(current.parent)) {
+      if (current.scope || current.parent === target.id) return true
+      seen.add(current.id)
+    }
+    return false
+  }
   const body = (node) => {
     if (node.missing) return `${node.id}  (missing)`
     if (node.unreadable) return `${node.id}  (unreadable)`
-    const marks = [...(node.scope ? [] : [`outside ${target.id}`]), ...(node.archived ? ['archived'] : [])]
+    const marks = [...(underTarget(node) ? [] : [`outside ${target.id}`]), ...(node.archived ? ['archived'] : [])]
     const text = `${node.id}  ${node.title}  ${node.status.name}  ${node.assignee ?? '-'}  ${node.estimate ?? '-'}`
     return marks.length > 0 ? `${text}  (${marks.join(', ')})` : text
   }
@@ -151,12 +170,13 @@ export function dependencyText(map) {
   return lines.join('\n')
 }
 
-/** The blocker chain: each open scope issue that no open scope issue waits on, then its blockers, indented. */
+/** The blocker chain: each open scope issue with blockers that no open scope issue waits on, then its blockers, indented. */
 function chainRows(map, byId, row) {
   const open = map.nodes.filter((node) => node.scope && node.open)
   const waitedOn = new Set(open.flatMap((node) => node.blockedBy))
-  const roots = open.filter((node) => node.blockedBy.length > 0 && !waitedOn.has(node.id))
   const end = map.criticalPath.ids.at(-1)
+  // The end of the critical path is a root even with no blocker, so a lone heavy issue shows in the chain.
+  const roots = open.filter((node) => !waitedOn.has(node.id) && (node.blockedBy.length > 0 || node.id === end))
   roots.sort((a, b) => (a.id === end ? -1 : b.id === end ? 1 : 0))
   const lines = []
   const printed = new Set()

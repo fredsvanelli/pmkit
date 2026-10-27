@@ -5,6 +5,7 @@
 import { walkParents } from './local/epics.mjs'
 import { TERMINAL } from './model.mjs'
 import { compareIds } from './ids.mjs'
+import { PmkitError } from './errors.mjs'
 
 const isOpen = (issue) => !TERMINAL.includes(issue.status?.category)
 
@@ -16,14 +17,28 @@ const isOpen = (issue) => !TERMINAL.includes(issue.status?.category)
  * @param {string[]} [input.unreadable=[]] IDs of issue files that did not parse (the ids of searchIssues problems)
  * @param {string} [input.unit='points'] estimate.unit from the local config
  */
-export function dependencyMap({ target, issues, dependencies = true, unreadable = [], unit = 'points' }) {
+export function dependencyMap(input) {
+  try {
+    return buildMap(input)
+  } catch (error) {
+    throw tooDeep(error)
+  }
+}
+
+/** The loop break, the critical path and the printers recurse along a chain; a chain that overflows the stack becomes a PmkitError. */
+export function tooDeep(error) {
+  if (!(error instanceof RangeError)) return error
+  return new PmkitError('INVALID_INPUT', 'The dependency chain is too deep to map.', 'Shorten the blocked_by or parent chain, or run /pmkit:local:doctor.')
+}
+
+function buildMap({ target, issues, dependencies = true, unreadable = [], unit = 'points' }) {
   const byId = new Map(issues.map((issue) => [issue.id, issue]))
   const rank = new Map(issues.map((issue, index) => [issue.id, index]))
   const parentOf = (id) => byId.get(id)?.parent
 
   const scope = scopeOf(target, issues, parentOf)
   const ancestors = ancestorsOf(target, parentOf)
-  const tree = treeOf(target, scope)
+  const tree = treeOf(target, scope, parentOf)
 
   // The graph: one node per scope issue and per blocker reached from an open scope issue.
   const graph = new Map()
@@ -201,12 +216,20 @@ function ancestorsOf(target, parentOf) {
   return chain.slice(1, loop ? -1 : undefined)
 }
 
-/** The hierarchy under the target, children in creation order. An ID already placed is never placed again. */
-function treeOf(target, scope) {
+/**
+ * The hierarchy under the target, children in creation order. An ID already placed is never placed again.
+ * A scope issue whose parent is not in the scope (an archived parent) hangs from its nearest ancestor that is.
+ */
+function treeOf(target, scope, parentOf) {
+  const inScope = new Set([target.id, ...scope.map((issue) => issue.id)])
   const childrenOf = new Map()
   for (const issue of scope) {
-    if (!childrenOf.has(issue.parent)) childrenOf.set(issue.parent, [])
-    childrenOf.get(issue.parent).push(issue.id)
+    if (issue.id === target.id) continue
+    let up = issue.parent
+    for (const seen = new Set([issue.id]); up != null && !inScope.has(up) && !seen.has(up); up = parentOf(up)) seen.add(up)
+    const key = up != null && inScope.has(up) ? up : target.id
+    if (!childrenOf.has(key)) childrenOf.set(key, [])
+    childrenOf.get(key).push(issue.id)
   }
   const placed = new Set()
   const build = (id) => {
