@@ -1,0 +1,319 @@
+$ pmkit render board
+exit 0
+--- stdout
+<!-- pmkit render board: generated from the tracker files; the next render replaces this file -->
+
+# Board
+
+0 open issues, 0 points open, done: 0, canceled: 0
+
+## Triage (0)
+
+No issues
+
+## Backlog (0)
+
+No issues
+
+## Todo (0)
+
+No issues
+
+## In progress (0)
+
+No issues
+
+## In review (0)
+
+No issues
+--- stderr
+(empty)
+
+$ pmkit render board --json
+exit 0
+--- stdout
+{
+  "view": "board",
+  "format": "md",
+  "path": null,
+  "content": "<!-- pmkit render board: generated from the tracker files; the next render replaces this file -->\n\n# Board\n\n0 open issues, 0 points open, done: 0, canceled: 0\n\n## Triage (0)\n\nNo issues\n\n## Backlog (0)\n\nNo issues\n\n## Todo (0)\n\nNo issues\n\n## In progress (0)\n\nNo issues\n\n## In review (0)\n\nNo issues\n",
+  "asOf": null,
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit render board --dry-run
+exit 0
+--- stdout
+<!-- pmkit render board: generated from the tracker files; the next render replaces this file -->
+
+# Board
+
+0 open issues, 0 points open, done: 0, canceled: 0
+
+## Triage (0)
+
+No issues
+
+## Backlog (0)
+
+No issues
+
+## Todo (0)
+
+No issues
+
+## In progress (0)
+
+No issues
+
+## In review (0)
+
+No issues
+--- stderr
+(empty)
+
+$ pmkit render board --dry-run --json
+exit 0
+--- stdout
+{
+  "view": "board",
+  "format": "md",
+  "path": null,
+  "content": "<!-- pmkit render board: generated from the tracker files; the next render replaces this file -->\n\n# Board\n\n0 open issues, 0 points open, done: 0, canceled: 0\n\n## Triage (0)\n\nNo issues\n\n## Backlog (0)\n\nNo issues\n\n## Todo (0)\n\nNo issues\n\n## In progress (0)\n\nNo issues\n\n## In review (0)\n\nNo issues\n",
+  "asOf": null,
+  "problems": [],
+  "dryRun": true
+}
+--- stderr
+(empty)
+
+$ pmkit render roadmap --format html
+exit 0
+--- stdout
+<!doctype html>
+<!-- pmkit render roadmap: generated from the tracker files; the next render replaces this file -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roadmap</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d1d9e0; --card: #f6f8fa;
+  --on-track: #1a7f37; --at-risk: #9a6700; --off-track: #d1242f;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --card: #151b23;
+    --on-track: #3fb950; --at-risk: #d29922; --off-track: #f85149;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+h1 { margin: 0 0 8px; font-size: 1.6em; }
+h2 { margin: 24px 0 8px; font-size: 1.2em; }
+p { margin: 4px 0; }
+.lead, .closing { color: var(--muted); }
+.empty { color: var(--muted); font-style: italic; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+th { background: var(--card); }
+.columns { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.column { flex: 1 1 220px; min-width: 220px; }
+.column h2 { margin-top: 8px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+.card-id { color: var(--muted); font-size: 0.85em; }
+.card-title { font-weight: 600; }
+.card dl { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; margin: 4px 0 0; font-size: 0.85em; }
+.card dt { color: var(--muted); }
+.card dd { margin: 0; }
+.tone-on_track { color: var(--on-track); font-weight: 600; }
+.tone-at_risk { color: var(--at-risk); font-weight: 600; }
+.tone-off_track { color: var(--off-track); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+<h1>Roadmap</h1>
+<p class="lead">No milestones or epics</p>
+</main>
+</body>
+</html>
+--- stderr
+(empty)
+
+$ pmkit render roadmap --format html --json
+exit 0
+--- stdout
+{
+  "view": "roadmap",
+  "format": "html",
+  "path": null,
+  "content": "<!doctype html>\n<!-- pmkit render roadmap: generated from the tracker files; the next render replaces this file -->\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Roadmap</title>\n<style>\n:root {\n  color-scheme: light dark;\n  --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d1d9e0; --card: #f6f8fa;\n  --on-track: #1a7f37; --at-risk: #9a6700; --off-track: #d1242f;\n}\n@media (prefers-color-scheme: dark) {\n  :root {\n    --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --card: #151b23;\n    --on-track: #3fb950; --at-risk: #d29922; --off-track: #f85149;\n  }\n}\n* { box-sizing: border-box; }\nbody { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif; }\nmain { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }\nh1 { margin: 0 0 8px; font-size: 1.6em; }\nh2 { margin: 24px 0 8px; font-size: 1.2em; }\np { margin: 4px 0; }\n.lead, .closing { color: var(--muted); }\n.empty { color: var(--muted); font-style: italic; }\n.table-wrap { overflow-x: auto; }\ntable { border-collapse: collapse; width: 100%; }\nth, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }\nth { background: var(--card); }\n.columns { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }\n.column { flex: 1 1 220px; min-width: 220px; }\n.column h2 { margin-top: 8px; }\n.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }\n.card-id { color: var(--muted); font-size: 0.85em; }\n.card-title { font-weight: 600; }\n.card dl { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; margin: 4px 0 0; font-size: 0.85em; }\n.card dt { color: var(--muted); }\n.card dd { margin: 0; }\n.tone-on_track { color: var(--on-track); font-weight: 600; }\n.tone-at_risk { color: var(--at-risk); font-weight: 600; }\n.tone-off_track { color: var(--off-track); font-weight: 600; }\n</style>\n</head>\n<body>\n<main>\n<h1>Roadmap</h1>\n<p class=\"lead\">No milestones or epics</p>\n</main>\n</body>\n</html>\n",
+  "asOf": null,
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit render roadmap --format html --dry-run
+exit 0
+--- stdout
+<!doctype html>
+<!-- pmkit render roadmap: generated from the tracker files; the next render replaces this file -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roadmap</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d1d9e0; --card: #f6f8fa;
+  --on-track: #1a7f37; --at-risk: #9a6700; --off-track: #d1242f;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --card: #151b23;
+    --on-track: #3fb950; --at-risk: #d29922; --off-track: #f85149;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+h1 { margin: 0 0 8px; font-size: 1.6em; }
+h2 { margin: 24px 0 8px; font-size: 1.2em; }
+p { margin: 4px 0; }
+.lead, .closing { color: var(--muted); }
+.empty { color: var(--muted); font-style: italic; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+th { background: var(--card); }
+.columns { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.column { flex: 1 1 220px; min-width: 220px; }
+.column h2 { margin-top: 8px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+.card-id { color: var(--muted); font-size: 0.85em; }
+.card-title { font-weight: 600; }
+.card dl { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; margin: 4px 0 0; font-size: 0.85em; }
+.card dt { color: var(--muted); }
+.card dd { margin: 0; }
+.tone-on_track { color: var(--on-track); font-weight: 600; }
+.tone-at_risk { color: var(--at-risk); font-weight: 600; }
+.tone-off_track { color: var(--off-track); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+<h1>Roadmap</h1>
+<p class="lead">No milestones or epics</p>
+</main>
+</body>
+</html>
+--- stderr
+(empty)
+
+$ pmkit render roadmap --format html --dry-run --json
+exit 0
+--- stdout
+{
+  "view": "roadmap",
+  "format": "html",
+  "path": null,
+  "content": "<!doctype html>\n<!-- pmkit render roadmap: generated from the tracker files; the next render replaces this file -->\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Roadmap</title>\n<style>\n:root {\n  color-scheme: light dark;\n  --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d1d9e0; --card: #f6f8fa;\n  --on-track: #1a7f37; --at-risk: #9a6700; --off-track: #d1242f;\n}\n@media (prefers-color-scheme: dark) {\n  :root {\n    --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --card: #151b23;\n    --on-track: #3fb950; --at-risk: #d29922; --off-track: #f85149;\n  }\n}\n* { box-sizing: border-box; }\nbody { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif; }\nmain { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }\nh1 { margin: 0 0 8px; font-size: 1.6em; }\nh2 { margin: 24px 0 8px; font-size: 1.2em; }\np { margin: 4px 0; }\n.lead, .closing { color: var(--muted); }\n.empty { color: var(--muted); font-style: italic; }\n.table-wrap { overflow-x: auto; }\ntable { border-collapse: collapse; width: 100%; }\nth, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }\nth { background: var(--card); }\n.columns { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }\n.column { flex: 1 1 220px; min-width: 220px; }\n.column h2 { margin-top: 8px; }\n.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }\n.card-id { color: var(--muted); font-size: 0.85em; }\n.card-title { font-weight: 600; }\n.card dl { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; margin: 4px 0 0; font-size: 0.85em; }\n.card dt { color: var(--muted); }\n.card dd { margin: 0; }\n.tone-on_track { color: var(--on-track); font-weight: 600; }\n.tone-at_risk { color: var(--at-risk); font-weight: 600; }\n.tone-off_track { color: var(--off-track); font-weight: 600; }\n</style>\n</head>\n<body>\n<main>\n<h1>Roadmap</h1>\n<p class=\"lead\">No milestones or epics</p>\n</main>\n</body>\n</html>\n",
+  "asOf": null,
+  "problems": [],
+  "dryRun": true
+}
+--- stderr
+(empty)
+
+$ pmkit render sprint
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: there is no active sprint
+next: pmkit cycle list
+
+$ pmkit render sprint --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "there is no active sprint",
+    "nextStep": "pmkit cycle list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit render sprint --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: there is no active sprint
+next: pmkit cycle list
+
+$ pmkit render sprint --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "there is no active sprint",
+    "nextStep": "pmkit cycle list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit render sprint --sprint 2026-10-12
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: sprint 2026-10-12 does not exist
+next: pmkit cycle list
+
+$ pmkit render sprint --sprint 2026-10-12 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "sprint 2026-10-12 does not exist",
+    "nextStep": "pmkit cycle list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit render sprint --sprint 2026-10-12 --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: sprint 2026-10-12 does not exist
+next: pmkit cycle list
+
+$ pmkit render sprint --sprint 2026-10-12 --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "sprint 2026-10-12 does not exist",
+    "nextStep": "pmkit cycle list"
+  }
+}
+--- stderr
+(empty)

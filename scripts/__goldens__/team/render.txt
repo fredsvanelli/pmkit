@@ -1,0 +1,589 @@
+$ pmkit render board
+exit 0
+--- stdout
+<!-- pmkit render board: generated from the tracker files; the next render replaces this file -->
+
+# Board
+
+Tracker state as of 2026-10-22T17:00:00Z
+
+7 open issues, 19 points open, done: 3, canceled: 1
+
+## Triage (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-1V9Z | Investigate slow login | bug |  |  |  |  |
+
+## Backlog (2)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-3F7H | Empty state for the dashboard | feature | medium |  | 2 | labels: frontend |
+| ISS-6J0B | Upgrade the build tooling | chore | low |  |  |  |
+
+## Todo (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-4M2S | Fix CSV column order | task | medium | Fred Vanelli | 1 | labels: billing |
+
+## In progress (2)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-2X6D | Billing export to CSV | feature | high | Ana Souza | 8 | blocked by ISS-5N1R; labels: billing, backend |
+| ISS-5N1R | Paginate the events API | task | medium | Fred Vanelli | 3 | labels: backend |
+
+## In review (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-8C4W | Dead-letter queue for webhooks | feature | high | Ana Souza | 5 | labels: webhooks, backend |
+
+1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+--- stderr
+warning: 1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+
+$ pmkit render board --json
+exit 0
+--- stdout
+{
+  "view": "board",
+  "format": "md",
+  "path": null,
+  "content": "<!-- pmkit render board: generated from the tracker files; the next render replaces this file -->\n\n# Board\n\nTracker state as of 2026-10-22T17:00:00Z\n\n7 open issues, 19 points open, done: 3, canceled: 1\n\n## Triage (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-1V9Z | Investigate slow login | bug |  |  |  |  |\n\n## Backlog (2)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-3F7H | Empty state for the dashboard | feature | medium |  | 2 | labels: frontend |\n| ISS-6J0B | Upgrade the build tooling | chore | low |  |  |  |\n\n## Todo (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-4M2S | Fix CSV column order | task | medium | Fred Vanelli | 1 | labels: billing |\n\n## In progress (2)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-2X6D | Billing export to CSV | feature | high | Ana Souza | 8 | blocked by ISS-5N1R; labels: billing, backend |\n| ISS-5N1R | Paginate the events API | task | medium | Fred Vanelli | 3 | labels: backend |\n\n## In review (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-8C4W | Dead-letter queue for webhooks | feature | high | Ana Souza | 5 | labels: webhooks, backend |\n\n1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor\n",
+  "asOf": "2026-10-22T17:00:00Z",
+  "problems": [
+    {
+      "id": "ISS-3Q6T",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: 1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+
+$ pmkit render board --dry-run
+exit 0
+--- stdout
+<!-- pmkit render board: generated from the tracker files; the next render replaces this file -->
+
+# Board
+
+Tracker state as of 2026-10-22T17:00:00Z
+
+7 open issues, 19 points open, done: 3, canceled: 1
+
+## Triage (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-1V9Z | Investigate slow login | bug |  |  |  |  |
+
+## Backlog (2)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-3F7H | Empty state for the dashboard | feature | medium |  | 2 | labels: frontend |
+| ISS-6J0B | Upgrade the build tooling | chore | low |  |  |  |
+
+## Todo (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-4M2S | Fix CSV column order | task | medium | Fred Vanelli | 1 | labels: billing |
+
+## In progress (2)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-2X6D | Billing export to CSV | feature | high | Ana Souza | 8 | blocked by ISS-5N1R; labels: billing, backend |
+| ISS-5N1R | Paginate the events API | task | medium | Fred Vanelli | 3 | labels: backend |
+
+## In review (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-8C4W | Dead-letter queue for webhooks | feature | high | Ana Souza | 5 | labels: webhooks, backend |
+
+1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+--- stderr
+warning: 1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+
+$ pmkit render board --dry-run --json
+exit 0
+--- stdout
+{
+  "view": "board",
+  "format": "md",
+  "path": null,
+  "content": "<!-- pmkit render board: generated from the tracker files; the next render replaces this file -->\n\n# Board\n\nTracker state as of 2026-10-22T17:00:00Z\n\n7 open issues, 19 points open, done: 3, canceled: 1\n\n## Triage (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-1V9Z | Investigate slow login | bug |  |  |  |  |\n\n## Backlog (2)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-3F7H | Empty state for the dashboard | feature | medium |  | 2 | labels: frontend |\n| ISS-6J0B | Upgrade the build tooling | chore | low |  |  |  |\n\n## Todo (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-4M2S | Fix CSV column order | task | medium | Fred Vanelli | 1 | labels: billing |\n\n## In progress (2)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-2X6D | Billing export to CSV | feature | high | Ana Souza | 8 | blocked by ISS-5N1R; labels: billing, backend |\n| ISS-5N1R | Paginate the events API | task | medium | Fred Vanelli | 3 | labels: backend |\n\n## In review (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-8C4W | Dead-letter queue for webhooks | feature | high | Ana Souza | 5 | labels: webhooks, backend |\n\n1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor\n",
+  "asOf": "2026-10-22T17:00:00Z",
+  "problems": [
+    {
+      "id": "ISS-3Q6T",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ],
+  "dryRun": true
+}
+--- stderr
+warning: 1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+
+$ pmkit render roadmap --format html
+exit 0
+--- stdout
+<!doctype html>
+<!-- pmkit render roadmap: generated from the tracker files; the next render replaces this file -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roadmap</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d1d9e0; --card: #f6f8fa;
+  --on-track: #1a7f37; --at-risk: #9a6700; --off-track: #d1242f;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --card: #151b23;
+    --on-track: #3fb950; --at-risk: #d29922; --off-track: #f85149;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+h1 { margin: 0 0 8px; font-size: 1.6em; }
+h2 { margin: 24px 0 8px; font-size: 1.2em; }
+p { margin: 4px 0; }
+.lead, .closing { color: var(--muted); }
+.empty { color: var(--muted); font-style: italic; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+th { background: var(--card); }
+.columns { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.column { flex: 1 1 220px; min-width: 220px; }
+.column h2 { margin-top: 8px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+.card-id { color: var(--muted); font-size: 0.85em; }
+.card-title { font-weight: 600; }
+.card dl { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; margin: 4px 0 0; font-size: 0.85em; }
+.card dt { color: var(--muted); }
+.card dd { margin: 0; }
+.tone-on_track { color: var(--on-track); font-weight: 600; }
+.tone-at_risk { color: var(--at-risk); font-weight: 600; }
+.tone-off_track { color: var(--off-track); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+<h1>Roadmap</h1>
+<p class="lead">Tracker state as of 2026-10-22T17:00:00Z</p>
+<section>
+<h2>No milestone</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Start</th><th>Target</th><th>Progress</th><th>Health</th></tr></thead>
+<tbody>
+<tr><td>EPC-2M9D</td><td>Reliable webhooks and billing export</td><td>in_progress</td><td>2026-09-28</td><td>2026-11-13</td><td>2/5 issues, 8/22 points</td><td></td></tr>
+</tbody>
+</table></div>
+</section>
+<p class="closing">1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor</p>
+</main>
+</body>
+</html>
+--- stderr
+warning: 1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+
+$ pmkit render roadmap --format html --json
+exit 0
+--- stdout
+{
+  "view": "roadmap",
+  "format": "html",
+  "path": null,
+  "content": "<!doctype html>\n<!-- pmkit render roadmap: generated from the tracker files; the next render replaces this file -->\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Roadmap</title>\n<style>\n:root {\n  color-scheme: light dark;\n  --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d1d9e0; --card: #f6f8fa;\n  --on-track: #1a7f37; --at-risk: #9a6700; --off-track: #d1242f;\n}\n@media (prefers-color-scheme: dark) {\n  :root {\n    --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --card: #151b23;\n    --on-track: #3fb950; --at-risk: #d29922; --off-track: #f85149;\n  }\n}\n* { box-sizing: border-box; }\nbody { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif; }\nmain { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }\nh1 { margin: 0 0 8px; font-size: 1.6em; }\nh2 { margin: 24px 0 8px; font-size: 1.2em; }\np { margin: 4px 0; }\n.lead, .closing { color: var(--muted); }\n.empty { color: var(--muted); font-style: italic; }\n.table-wrap { overflow-x: auto; }\ntable { border-collapse: collapse; width: 100%; }\nth, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }\nth { background: var(--card); }\n.columns { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }\n.column { flex: 1 1 220px; min-width: 220px; }\n.column h2 { margin-top: 8px; }\n.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }\n.card-id { color: var(--muted); font-size: 0.85em; }\n.card-title { font-weight: 600; }\n.card dl { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; margin: 4px 0 0; font-size: 0.85em; }\n.card dt { color: var(--muted); }\n.card dd { margin: 0; }\n.tone-on_track { color: var(--on-track); font-weight: 600; }\n.tone-at_risk { color: var(--at-risk); font-weight: 600; }\n.tone-off_track { color: var(--off-track); font-weight: 600; }\n</style>\n</head>\n<body>\n<main>\n<h1>Roadmap</h1>\n<p class=\"lead\">Tracker state as of 2026-10-22T17:00:00Z</p>\n<section>\n<h2>No milestone</h2>\n<div class=\"table-wrap\"><table>\n<thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Start</th><th>Target</th><th>Progress</th><th>Health</th></tr></thead>\n<tbody>\n<tr><td>EPC-2M9D</td><td>Reliable webhooks and billing export</td><td>in_progress</td><td>2026-09-28</td><td>2026-11-13</td><td>2/5 issues, 8/22 points</td><td></td></tr>\n</tbody>\n</table></div>\n</section>\n<p class=\"closing\">1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor</p>\n</main>\n</body>\n</html>\n",
+  "asOf": "2026-10-22T17:00:00Z",
+  "problems": [
+    {
+      "id": "ISS-3Q6T",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: 1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+
+$ pmkit render roadmap --format html --dry-run
+exit 0
+--- stdout
+<!doctype html>
+<!-- pmkit render roadmap: generated from the tracker files; the next render replaces this file -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roadmap</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d1d9e0; --card: #f6f8fa;
+  --on-track: #1a7f37; --at-risk: #9a6700; --off-track: #d1242f;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --card: #151b23;
+    --on-track: #3fb950; --at-risk: #d29922; --off-track: #f85149;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+h1 { margin: 0 0 8px; font-size: 1.6em; }
+h2 { margin: 24px 0 8px; font-size: 1.2em; }
+p { margin: 4px 0; }
+.lead, .closing { color: var(--muted); }
+.empty { color: var(--muted); font-style: italic; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+th { background: var(--card); }
+.columns { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.column { flex: 1 1 220px; min-width: 220px; }
+.column h2 { margin-top: 8px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+.card-id { color: var(--muted); font-size: 0.85em; }
+.card-title { font-weight: 600; }
+.card dl { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; margin: 4px 0 0; font-size: 0.85em; }
+.card dt { color: var(--muted); }
+.card dd { margin: 0; }
+.tone-on_track { color: var(--on-track); font-weight: 600; }
+.tone-at_risk { color: var(--at-risk); font-weight: 600; }
+.tone-off_track { color: var(--off-track); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+<h1>Roadmap</h1>
+<p class="lead">Tracker state as of 2026-10-22T17:00:00Z</p>
+<section>
+<h2>No milestone</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Start</th><th>Target</th><th>Progress</th><th>Health</th></tr></thead>
+<tbody>
+<tr><td>EPC-2M9D</td><td>Reliable webhooks and billing export</td><td>in_progress</td><td>2026-09-28</td><td>2026-11-13</td><td>2/5 issues, 8/22 points</td><td></td></tr>
+</tbody>
+</table></div>
+</section>
+<p class="closing">1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor</p>
+</main>
+</body>
+</html>
+--- stderr
+warning: 1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+
+$ pmkit render roadmap --format html --dry-run --json
+exit 0
+--- stdout
+{
+  "view": "roadmap",
+  "format": "html",
+  "path": null,
+  "content": "<!doctype html>\n<!-- pmkit render roadmap: generated from the tracker files; the next render replaces this file -->\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Roadmap</title>\n<style>\n:root {\n  color-scheme: light dark;\n  --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d1d9e0; --card: #f6f8fa;\n  --on-track: #1a7f37; --at-risk: #9a6700; --off-track: #d1242f;\n}\n@media (prefers-color-scheme: dark) {\n  :root {\n    --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --card: #151b23;\n    --on-track: #3fb950; --at-risk: #d29922; --off-track: #f85149;\n  }\n}\n* { box-sizing: border-box; }\nbody { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, \"Segoe UI\", sans-serif; }\nmain { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }\nh1 { margin: 0 0 8px; font-size: 1.6em; }\nh2 { margin: 24px 0 8px; font-size: 1.2em; }\np { margin: 4px 0; }\n.lead, .closing { color: var(--muted); }\n.empty { color: var(--muted); font-style: italic; }\n.table-wrap { overflow-x: auto; }\ntable { border-collapse: collapse; width: 100%; }\nth, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }\nth { background: var(--card); }\n.columns { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }\n.column { flex: 1 1 220px; min-width: 220px; }\n.column h2 { margin-top: 8px; }\n.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }\n.card-id { color: var(--muted); font-size: 0.85em; }\n.card-title { font-weight: 600; }\n.card dl { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; margin: 4px 0 0; font-size: 0.85em; }\n.card dt { color: var(--muted); }\n.card dd { margin: 0; }\n.tone-on_track { color: var(--on-track); font-weight: 600; }\n.tone-at_risk { color: var(--at-risk); font-weight: 600; }\n.tone-off_track { color: var(--off-track); font-weight: 600; }\n</style>\n</head>\n<body>\n<main>\n<h1>Roadmap</h1>\n<p class=\"lead\">Tracker state as of 2026-10-22T17:00:00Z</p>\n<section>\n<h2>No milestone</h2>\n<div class=\"table-wrap\"><table>\n<thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Start</th><th>Target</th><th>Progress</th><th>Health</th></tr></thead>\n<tbody>\n<tr><td>EPC-2M9D</td><td>Reliable webhooks and billing export</td><td>in_progress</td><td>2026-09-28</td><td>2026-11-13</td><td>2/5 issues, 8/22 points</td><td></td></tr>\n</tbody>\n</table></div>\n</section>\n<p class=\"closing\">1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor</p>\n</main>\n</body>\n</html>\n",
+  "asOf": "2026-10-22T17:00:00Z",
+  "problems": [
+    {
+      "id": "ISS-3Q6T",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ],
+  "dryRun": true
+}
+--- stderr
+warning: 1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+
+$ pmkit render sprint
+exit 0
+--- stdout
+<!-- pmkit render sprint: generated from the tracker files; the next render replaces this file -->
+
+# Sprint 2026-10-12
+
+2026-10-12, 2026-10-12 to 2026-10-25, active
+
+Goal: Webhook retries and the billing export
+
+Tracker state as of 2026-10-22T17:00:00Z
+
+## Totals
+
+4 issues, 17 points planned, 0 points done
+
+todo 1, in\_progress 2, in\_review 1
+
+## Capacity
+
+| Member | Capacity | Assigned | Done |
+| --- | --- | --- | --- |
+| Fred Vanelli | 8 | 4 | 0 |
+| Ana Souza | 10 | 13 | 0 |
+
+## Todo (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-4M2S | Fix CSV column order | task | medium | Fred Vanelli | 1 | labels: billing |
+
+## In progress (2)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-2X6D | Billing export to CSV | feature | high | Ana Souza | 8 | blocked by ISS-5N1R; labels: billing, backend |
+| ISS-5N1R | Paginate the events API | task | medium | Fred Vanelli | 3 | labels: backend |
+
+## In review (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-8C4W | Dead-letter queue for webhooks | feature | high | Ana Souza | 5 | labels: webhooks, backend |
+
+1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+--- stderr
+warning: 1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+
+$ pmkit render sprint --json
+exit 0
+--- stdout
+{
+  "view": "sprint",
+  "format": "md",
+  "path": null,
+  "content": "<!-- pmkit render sprint: generated from the tracker files; the next render replaces this file -->\n\n# Sprint 2026-10-12\n\n2026-10-12, 2026-10-12 to 2026-10-25, active\n\nGoal: Webhook retries and the billing export\n\nTracker state as of 2026-10-22T17:00:00Z\n\n## Totals\n\n4 issues, 17 points planned, 0 points done\n\ntodo 1, in\\_progress 2, in\\_review 1\n\n## Capacity\n\n| Member | Capacity | Assigned | Done |\n| --- | --- | --- | --- |\n| Fred Vanelli | 8 | 4 | 0 |\n| Ana Souza | 10 | 13 | 0 |\n\n## Todo (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-4M2S | Fix CSV column order | task | medium | Fred Vanelli | 1 | labels: billing |\n\n## In progress (2)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-2X6D | Billing export to CSV | feature | high | Ana Souza | 8 | blocked by ISS-5N1R; labels: billing, backend |\n| ISS-5N1R | Paginate the events API | task | medium | Fred Vanelli | 3 | labels: backend |\n\n## In review (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-8C4W | Dead-letter queue for webhooks | feature | high | Ana Souza | 5 | labels: webhooks, backend |\n\n1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor\n",
+  "asOf": "2026-10-22T17:00:00Z",
+  "problems": [
+    {
+      "id": "ISS-3Q6T",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: 1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+
+$ pmkit render sprint --dry-run
+exit 0
+--- stdout
+<!-- pmkit render sprint: generated from the tracker files; the next render replaces this file -->
+
+# Sprint 2026-10-12
+
+2026-10-12, 2026-10-12 to 2026-10-25, active
+
+Goal: Webhook retries and the billing export
+
+Tracker state as of 2026-10-22T17:00:00Z
+
+## Totals
+
+4 issues, 17 points planned, 0 points done
+
+todo 1, in\_progress 2, in\_review 1
+
+## Capacity
+
+| Member | Capacity | Assigned | Done |
+| --- | --- | --- | --- |
+| Fred Vanelli | 8 | 4 | 0 |
+| Ana Souza | 10 | 13 | 0 |
+
+## Todo (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-4M2S | Fix CSV column order | task | medium | Fred Vanelli | 1 | labels: billing |
+
+## In progress (2)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-2X6D | Billing export to CSV | feature | high | Ana Souza | 8 | blocked by ISS-5N1R; labels: billing, backend |
+| ISS-5N1R | Paginate the events API | task | medium | Fred Vanelli | 3 | labels: backend |
+
+## In review (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-8C4W | Dead-letter queue for webhooks | feature | high | Ana Souza | 5 | labels: webhooks, backend |
+
+1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+--- stderr
+warning: 1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+
+$ pmkit render sprint --dry-run --json
+exit 0
+--- stdout
+{
+  "view": "sprint",
+  "format": "md",
+  "path": null,
+  "content": "<!-- pmkit render sprint: generated from the tracker files; the next render replaces this file -->\n\n# Sprint 2026-10-12\n\n2026-10-12, 2026-10-12 to 2026-10-25, active\n\nGoal: Webhook retries and the billing export\n\nTracker state as of 2026-10-22T17:00:00Z\n\n## Totals\n\n4 issues, 17 points planned, 0 points done\n\ntodo 1, in\\_progress 2, in\\_review 1\n\n## Capacity\n\n| Member | Capacity | Assigned | Done |\n| --- | --- | --- | --- |\n| Fred Vanelli | 8 | 4 | 0 |\n| Ana Souza | 10 | 13 | 0 |\n\n## Todo (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-4M2S | Fix CSV column order | task | medium | Fred Vanelli | 1 | labels: billing |\n\n## In progress (2)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-2X6D | Billing export to CSV | feature | high | Ana Souza | 8 | blocked by ISS-5N1R; labels: billing, backend |\n| ISS-5N1R | Paginate the events API | task | medium | Fred Vanelli | 3 | labels: backend |\n\n## In review (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-8C4W | Dead-letter queue for webhooks | feature | high | Ana Souza | 5 | labels: webhooks, backend |\n\n1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor\n",
+  "asOf": "2026-10-22T17:00:00Z",
+  "problems": [
+    {
+      "id": "ISS-3Q6T",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ],
+  "dryRun": true
+}
+--- stderr
+warning: 1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+
+$ pmkit render sprint --sprint 2026-10-12
+exit 0
+--- stdout
+<!-- pmkit render sprint: generated from the tracker files; the next render replaces this file -->
+
+# Sprint 2026-10-12
+
+2026-10-12, 2026-10-12 to 2026-10-25, active
+
+Goal: Webhook retries and the billing export
+
+Tracker state as of 2026-10-22T17:00:00Z
+
+## Totals
+
+4 issues, 17 points planned, 0 points done
+
+todo 1, in\_progress 2, in\_review 1
+
+## Capacity
+
+| Member | Capacity | Assigned | Done |
+| --- | --- | --- | --- |
+| Fred Vanelli | 8 | 4 | 0 |
+| Ana Souza | 10 | 13 | 0 |
+
+## Todo (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-4M2S | Fix CSV column order | task | medium | Fred Vanelli | 1 | labels: billing |
+
+## In progress (2)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-2X6D | Billing export to CSV | feature | high | Ana Souza | 8 | blocked by ISS-5N1R; labels: billing, backend |
+| ISS-5N1R | Paginate the events API | task | medium | Fred Vanelli | 3 | labels: backend |
+
+## In review (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-8C4W | Dead-letter queue for webhooks | feature | high | Ana Souza | 5 | labels: webhooks, backend |
+
+1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+--- stderr
+warning: 1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+
+$ pmkit render sprint --sprint 2026-10-12 --json
+exit 0
+--- stdout
+{
+  "view": "sprint",
+  "format": "md",
+  "path": null,
+  "content": "<!-- pmkit render sprint: generated from the tracker files; the next render replaces this file -->\n\n# Sprint 2026-10-12\n\n2026-10-12, 2026-10-12 to 2026-10-25, active\n\nGoal: Webhook retries and the billing export\n\nTracker state as of 2026-10-22T17:00:00Z\n\n## Totals\n\n4 issues, 17 points planned, 0 points done\n\ntodo 1, in\\_progress 2, in\\_review 1\n\n## Capacity\n\n| Member | Capacity | Assigned | Done |\n| --- | --- | --- | --- |\n| Fred Vanelli | 8 | 4 | 0 |\n| Ana Souza | 10 | 13 | 0 |\n\n## Todo (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-4M2S | Fix CSV column order | task | medium | Fred Vanelli | 1 | labels: billing |\n\n## In progress (2)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-2X6D | Billing export to CSV | feature | high | Ana Souza | 8 | blocked by ISS-5N1R; labels: billing, backend |\n| ISS-5N1R | Paginate the events API | task | medium | Fred Vanelli | 3 | labels: backend |\n\n## In review (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-8C4W | Dead-letter queue for webhooks | feature | high | Ana Souza | 5 | labels: webhooks, backend |\n\n1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor\n",
+  "asOf": "2026-10-22T17:00:00Z",
+  "problems": [
+    {
+      "id": "ISS-3Q6T",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: 1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+
+$ pmkit render sprint --sprint 2026-10-12 --dry-run
+exit 0
+--- stdout
+<!-- pmkit render sprint: generated from the tracker files; the next render replaces this file -->
+
+# Sprint 2026-10-12
+
+2026-10-12, 2026-10-12 to 2026-10-25, active
+
+Goal: Webhook retries and the billing export
+
+Tracker state as of 2026-10-22T17:00:00Z
+
+## Totals
+
+4 issues, 17 points planned, 0 points done
+
+todo 1, in\_progress 2, in\_review 1
+
+## Capacity
+
+| Member | Capacity | Assigned | Done |
+| --- | --- | --- | --- |
+| Fred Vanelli | 8 | 4 | 0 |
+| Ana Souza | 10 | 13 | 0 |
+
+## Todo (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-4M2S | Fix CSV column order | task | medium | Fred Vanelli | 1 | labels: billing |
+
+## In progress (2)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-2X6D | Billing export to CSV | feature | high | Ana Souza | 8 | blocked by ISS-5N1R; labels: billing, backend |
+| ISS-5N1R | Paginate the events API | task | medium | Fred Vanelli | 3 | labels: backend |
+
+## In review (1)
+
+| ID | Title | Type | Priority | Assignee | Estimate | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ISS-8C4W | Dead-letter queue for webhooks | feature | high | Ana Souza | 5 | labels: webhooks, backend |
+
+1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+--- stderr
+warning: 1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor
+
+$ pmkit render sprint --sprint 2026-10-12 --dry-run --json
+exit 0
+--- stdout
+{
+  "view": "sprint",
+  "format": "md",
+  "path": null,
+  "content": "<!-- pmkit render sprint: generated from the tracker files; the next render replaces this file -->\n\n# Sprint 2026-10-12\n\n2026-10-12, 2026-10-12 to 2026-10-25, active\n\nGoal: Webhook retries and the billing export\n\nTracker state as of 2026-10-22T17:00:00Z\n\n## Totals\n\n4 issues, 17 points planned, 0 points done\n\ntodo 1, in\\_progress 2, in\\_review 1\n\n## Capacity\n\n| Member | Capacity | Assigned | Done |\n| --- | --- | --- | --- |\n| Fred Vanelli | 8 | 4 | 0 |\n| Ana Souza | 10 | 13 | 0 |\n\n## Todo (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-4M2S | Fix CSV column order | task | medium | Fred Vanelli | 1 | labels: billing |\n\n## In progress (2)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-2X6D | Billing export to CSV | feature | high | Ana Souza | 8 | blocked by ISS-5N1R; labels: billing, backend |\n| ISS-5N1R | Paginate the events API | task | medium | Fred Vanelli | 3 | labels: backend |\n\n## In review (1)\n\n| ID | Title | Type | Priority | Assignee | Estimate | Notes |\n| --- | --- | --- | --- | --- | --- | --- |\n| ISS-8C4W | Dead-letter queue for webhooks | feature | high | Ana Souza | 5 | labels: webhooks, backend |\n\n1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor\n",
+  "asOf": "2026-10-22T17:00:00Z",
+  "problems": [
+    {
+      "id": "ISS-3Q6T",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ],
+  "dryRun": true
+}
+--- stderr
+warning: 1 issue could not be read: ISS-3Q6T; run /pmkit:local:doctor

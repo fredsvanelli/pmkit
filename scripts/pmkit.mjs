@@ -22,6 +22,8 @@ import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, p
 import { parseChangelog, sectionsSince } from './lib/changelog.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
 import { ID_STYLES, branchName, isId, normalizeId } from './lib/ids.mjs'
+import { boardDoc, problemsLine, renderDocument, roadmapDoc, sprintDoc } from './lib/render.mjs'
+import { boardData, roadmapData, sprintData } from './lib/render-data.mjs'
 
 const TEMPLATES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates')
 const usageError = (message, nextStep = 'node scripts/pmkit.mjs --help') => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -809,6 +811,11 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'render', summary: 'renders a board, roadmap or sprint view as Markdown or HTML',
+    usage: '<board|roadmap|sprint> [--format md|html] [--sprint id|current] [--out f | --save]',
+    args: ['view'], flags: ['format', 'sprint', 'out', 'save'], dryRun: true, run: runRender,
+  },
+  {
     name: 'migrate', summary: 'moves the tracker files to the format this pmkit writes; --dry-run lists every file it would touch', write: true, flags: [],
     run: (ctx) => runMigrate(ctx.root, { dryRun: ctx.dryRun }),
   },
@@ -957,6 +964,33 @@ function runRisks(ctx) {
     problems,
   }
   return { data: report, text: risksText(report), warnings }
+}
+
+const RENDER_VIEWS = ['board', 'roadmap', 'sprint']
+const RENDER_FORMATS = ['md', 'html']
+
+/** Gathers the view data through tracker reads and renders it. Changes no tracker file. */
+function runRender(ctx) {
+  const [view] = ctx.args
+  if (!RENDER_VIEWS.includes(view)) throw usageError(`view must be board, roadmap or sprint, got "${view}"`, 'pmkit render board')
+  const sprint = ctx.opt('sprint')
+  if (sprint !== undefined && view !== 'sprint') throw usageError('--sprint works only with the sprint view', 'pmkit render sprint --sprint <id>')
+  const format = ctx.opt('format') ?? 'md'
+  if (!RENDER_FORMATS.includes(format)) throw usageError('--format must be md or html')
+  const tracker = ctx.tracker()
+  const { local } = ctx.config()
+  const views = {
+    board: () => [boardData(tracker, local), boardDoc],
+    roadmap: () => [roadmapData(tracker, local), roadmapDoc],
+    sprint: () => [sprintData(tracker, local, sprint ?? 'current'), sprintDoc],
+  }
+  const [viewData, toDoc] = views[view]()
+  const content = renderDocument(toDoc(viewData), view, format)
+  const warnings = [problemsLine(viewData.problems)].filter((line) => line !== null)
+  const data = { view, format, path: null, content, asOf: viewData.asOf, problems: viewData.problems }
+  if (ctx.dryRun) data.dryRun = true
+  // The run loop adds the final newline.
+  return { data, text: content.replace(/\n$/, ''), warnings }
 }
 
 const gitIn = (root, ...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' })
