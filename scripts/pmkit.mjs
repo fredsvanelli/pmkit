@@ -9,7 +9,7 @@ import { requireActor, gitUserEmail } from './lib/actor.mjs'
 import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig } from './lib/config.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
 import { changeLines, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, sprintRecord, table } from './lib/format.mjs'
-import { cycleTimes, lastEntry, summary, velocity } from './lib/metrics.mjs'
+import { aging, cycleTimes, doneInRange, leadTimes, rangeInstant, summary, throughput, velocity } from './lib/metrics.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { addMapEntry, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
@@ -49,6 +49,27 @@ function whole(name, value) {
 function dateText(name, value) {
   if (!/^\d{4}-\d{2}-\d{2}(T[\d:.]+Z?)?$/.test(String(value))) throw usageError(`--${name} must be a date as YYYY-MM-DD`)
   return value
+}
+
+// A range bound: a date, or a date and time. Refuses a value that looks like a date but is not one.
+function rangeText(name, value) {
+  dateText(name, value)
+  const instant = rangeInstant(value)
+  // Date.parse rolls 2026-02-30 over to March 2, so compare the day it read with the day given.
+  if (Number.isNaN(instant) || new Date(instant).toISOString().slice(0, 10) !== String(value).slice(0, 10)) throw usageError(`--${name} must be a date as YYYY-MM-DD`)
+  return value
+}
+
+// The --since and --until bounds of a metrics command, each undefined when not given.
+function rangeOptions(ctx) {
+  const bound = (name) => (ctx.opt(name) === undefined ? undefined : rangeText(name, ctx.opt(name)))
+  return { since: bound('since'), until: bound('until') }
+}
+
+// The count, median and p85 lines of a summary; the median and p85 read n/a when there is no value.
+function summaryLines(stats) {
+  const days = (value) => (value === null ? 'n/a' : `${value} days`)
+  return fields([['count', stats.count], ['median', days(stats.median)], ['p85', days(stats.p85)]])
 }
 
 function mulberry32(seed) {
@@ -525,19 +546,55 @@ export const COMMANDS = [
     name: 'metrics cycle-time', summary: 'median and p85 days from first in_progress to done', usage: '[--since d] [--until d]', flags: ['since', 'until'],
     run: (ctx) => {
       const tracker = ctx.tracker()
-      const since = ctx.opt('since') === undefined ? undefined : dateText('since', ctx.opt('since'))
-      const until = ctx.opt('until') === undefined ? undefined : dateText('until', ctx.opt('until'))
-      const lastAt = until !== undefined && !until.includes('T') ? `${until}T23:59:59Z` : until
-      const inRange = {}
-      for (const [id, events] of Object.entries(tracker.eventsByIssue())) {
-        const doneAt = lastEntry(events, 'done', tracker.categoryOf)
-        if (doneAt === undefined || (since !== undefined && doneAt < since) || (lastAt !== undefined && doneAt > lastAt)) continue
-        inRange[id] = events
-      }
+      const { since, until } = rangeOptions(ctx)
+      const inRange = doneInRange(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since, until })
       const issues = cycleTimes(inRange, { categoryOf: tracker.categoryOf })
       const stats = summary(issues.map((item) => item.days))
-      const text = fields([['count', stats.count], ['median', stats.median === null ? 'n/a' : `${stats.median} days`], ['p85', stats.p85 === null ? 'n/a' : `${stats.p85} days`]]).join('\n')
+      const text = summaryLines(stats).join('\n')
       return { data: { ...stats, issues }, text }
+    },
+  },
+  {
+    name: 'metrics lead-time', summary: 'median and p85 days from creation to done', usage: '[--since d] [--until d]', flags: ['since', 'until'],
+    run: (ctx) => {
+      const tracker = ctx.tracker()
+      const { since, until } = rangeOptions(ctx)
+      const inRange = doneInRange(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since, until })
+      const issues = leadTimes(inRange, { categoryOf: tracker.categoryOf })
+      const stats = summary(issues.map((item) => item.days))
+      const text = summaryLines(stats).join('\n')
+      return { data: { ...stats, issues }, text }
+    },
+  },
+  {
+    name: 'metrics throughput', summary: 'issues done in a range, by type', usage: '[--since d] [--until d]', flags: ['since', 'until'],
+    run: (ctx) => {
+      const tracker = ctx.tracker()
+      const { since, until } = rangeOptions(ctx)
+      const inRange = doneInRange(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, since, until })
+      const result = throughput(inRange, { categoryOf: tracker.categoryOf })
+      const lines = [`count: ${result.count}`]
+      if (result.count > 0) lines.push(table(['Type', 'Issues'], Object.entries(result.byType)))
+      return { data: result, text: lines.join('\n') }
+    },
+  },
+  {
+    name: 'metrics aging', summary: 'days since work started, per issue in progress or in review at a date, oldest first', usage: '[--until d]', flags: ['until'],
+    run: (ctx) => {
+      const tracker = ctx.tracker()
+      const until = ctx.opt('until') === undefined ? undefined : rangeText('until', ctx.opt('until'))
+      const asOfMs = until === undefined ? ctx.now().getTime() : rangeInstant(until, { endOfDay: true })
+      const asOf = new Date(Math.floor(asOfMs / 1000) * 1000).toISOString().replace(/\.000Z$/, 'Z')
+      const issues = aging(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, asOf })
+      const stats = summary(issues.map((item) => item.days))
+      const lines = issues.length > 0
+        ? [
+          table(['Issue', 'Status', 'Started', 'Days'], issues.map((item) => [item.issue, item.status, item.startedAt, item.days])),
+          ...summaryLines(stats),
+        ]
+        : ['no work in progress']
+      lines.push(`as of: ${asOf}`)
+      return { data: { asOf, ...stats, issues }, text: lines.join('\n') }
     },
   },
   {
@@ -1025,7 +1082,7 @@ export function run(argv, { env = process.env, cwd = process.cwd() } = {}) {
     let tracker
     let host
     const ctx = {
-      root, cwd, env, dryRun, args: parsed.positionals, json,
+      root, cwd, env, dryRun, now, args: parsed.positionals, json,
       opt: (name) => last(options[name]),
       list: (name) => (options[name] === undefined ? [] : [options[name]].flat()),
       flag: (name) => last(options[name]) === true,

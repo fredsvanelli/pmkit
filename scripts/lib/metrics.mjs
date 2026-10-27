@@ -22,6 +22,39 @@ export function lastEntry(events, category, categoryOf) {
   return found
 }
 
+/**
+ * Turns a --since or --until value into epoch milliseconds, or NaN when it is no date.
+ * A date alone is UTC midnight, or 23:59:59 with `endOfDay`. A time without a zone is UTC.
+ */
+export function rangeInstant(text, { endOfDay = false } = {}) {
+  const value = String(text)
+  if (!value.includes('T')) return Date.parse(`${value}T${endOfDay ? '23:59:59' : '00:00:00'}Z`)
+  return Date.parse(value.endsWith('Z') ? value : `${value}Z`)
+}
+
+/** An event `at` as epoch milliseconds, or NaN when it is no date. A time without a zone is UTC, as in rangeInstant. */
+export function eventInstant(at) {
+  const value = String(at)
+  if (!value.includes('T')) return Date.parse(value)
+  return Date.parse(/(Z|[+-]\d{2}(:?\d{2})?)$/i.test(value.slice(value.indexOf('T'))) ? value : `${value}Z`)
+}
+
+/** The issues whose last move into done falls in the range. Same keys order and event arrays as the input. */
+export function doneInRange(eventsByIssue, { categoryOf, since, until }) {
+  const from = since === undefined ? undefined : rangeInstant(since)
+  const to = until === undefined ? undefined : rangeInstant(until, { endOfDay: true })
+  const result = {}
+  for (const [issue, events] of Object.entries(eventsByIssue)) {
+    const doneAt = lastEntry(events, 'done', categoryOf)
+    if (doneAt === undefined) continue
+    const instant = eventInstant(doneAt)
+    if (Number.isNaN(instant)) continue
+    if ((from !== undefined && instant < from) || (to !== undefined && instant > to)) continue
+    result[issue] = events
+  }
+  return result
+}
+
 export function velocity(sprints, issuesBySprint, { window, categoryOf }) {
   const closed = sprints.filter((sprint) => sprint.state === 'closed').sort((a, b) => (a.end < b.end ? -1 : a.end > b.end ? 1 : 0))
   const recent = window > 0 ? closed.slice(-window) : []
@@ -56,9 +89,86 @@ export function cycleTimes(eventsByIssue, { categoryOf }) {
     }
     const end = lastEntry(events, 'done', categoryOf)
     if (start === undefined || end === undefined) continue
-    result.push({ issue, days: Math.round(((Date.parse(end) - Date.parse(start)) / DAY_MS) * 10) / 10 })
+    const days = daysBetween(start, end)
+    if (!Number.isNaN(days)) result.push({ issue, days })
   }
   return result
+}
+
+const daysBetween = (start, end) => Math.round(((eventInstant(end) - eventInstant(start)) / DAY_MS) * 10) / 10
+
+/** The `at` of the first create event, or the earliest `at` when the log has none. */
+function createdAt(events) {
+  const created = events.find((event) => event.op === 'create')
+  if (created !== undefined) return created.at
+  let earliest
+  for (const event of events) if (earliest === undefined || eventInstant(event.at) < eventInstant(earliest)) earliest = event.at
+  return earliest
+}
+
+/** Days from creation to the last move into done, for each issue that has one. */
+export function leadTimes(eventsByIssue, { categoryOf }) {
+  const result = []
+  for (const [issue, events] of Object.entries(eventsByIssue)) {
+    const end = lastEntry(events, 'done', categoryOf)
+    const start = createdAt(events)
+    if (end === undefined || start === undefined) continue
+    const days = daysBetween(start, end)
+    if (!Number.isNaN(days)) result.push({ issue, days })
+  }
+  return result
+}
+
+/** The type an issue ends with after replaying its log, or null when it has none. */
+function typeOf(events) {
+  let type = null
+  for (const event of events) {
+    let value
+    if (event.op === 'create') value = event.to?.type
+    else if (event.op === 'update' && event.field === 'type') value = event.to
+    else continue
+    type = value === undefined || value === null || value === '' ? null : value
+  }
+  return type
+}
+
+/** Issues done, as a count, a count per type and the list ordered by done time then id. */
+export function throughput(eventsByIssue, { categoryOf }) {
+  const issues = []
+  for (const [issue, events] of Object.entries(eventsByIssue)) {
+    const doneAt = lastEntry(events, 'done', categoryOf)
+    if (doneAt !== undefined) issues.push({ issue, type: typeOf(events), doneAt })
+  }
+  issues.sort((a, b) => (eventInstant(a.doneAt) - eventInstant(b.doneAt)) || (a.issue < b.issue ? -1 : a.issue > b.issue ? 1 : 0))
+  const counts = {}
+  for (const { type } of issues) counts[type ?? 'none'] = (counts[type ?? 'none'] ?? 0) + 1
+  const byType = Object.fromEntries(Object.entries(counts).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+  return { count: issues.length, byType, issues }
+}
+
+/** The issues in in_progress or in_review at `asOf` (an ISO string), with days since the first move into work, oldest first. */
+export function aging(eventsByIssue, { categoryOf, asOf }) {
+  const limit = Date.parse(asOf)
+  const working = (status) => categoryOf(status) === 'in_progress' || categoryOf(status) === 'in_review'
+  const result = []
+  for (const [issue, events] of Object.entries(eventsByIssue)) {
+    let status
+    let startedAt
+    let archived = false
+    for (const event of events) {
+      const instant = eventInstant(event.at)
+      if (Number.isNaN(instant) || instant > limit) continue
+      if (event.op === 'archive') archived = true
+      const moved = movedTo(event)
+      if (moved === undefined) continue
+      status = moved
+      if (startedAt === undefined && working(moved)) startedAt = event.at
+    }
+    if (archived || status === undefined || !working(status)) continue
+    const days = daysBetween(startedAt, asOf)
+    if (!Number.isNaN(days)) result.push({ issue, status, startedAt, days })
+  }
+  return result.sort((a, b) => (b.days - a.days) || (a.issue < b.issue ? -1 : a.issue > b.issue ? 1 : 0))
 }
 
 export function summary(values) {

@@ -351,6 +351,9 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `docs read <path>`, `docs create <path> --body-file f` | reads or creates a document under the docs folder |
 | `metrics velocity [--window n]` | points or counts done per closed sprint, and the average |
 | `metrics cycle-time [--since d] [--until d]` | median and p85 days from first `in_progress` to `done` |
+| `metrics lead-time [--since d] [--until d]` | median and p85 days from creation to `done` |
+| `metrics throughput [--since d] [--until d]` | issues done in a range, with a count per type |
+| `metrics aging [--until d]` | days since work started for each issue in `in_progress` or `in_review` at `--until` (default now), oldest first |
 | `events [--since d] [--until d]` | all events in a range, for digests |
 | `pr open --issue <id> [--draft] [--body-file f]` | pushes the issue branch and opens a pull request; when the branch already has an open one, pushes and returns it with `existing: true` **(builder's call)** |
 | `pr ready --issue <id>` | marks the open draft pull request of an issue ready for review; `INVALID_INPUT` when there is none or it is not a draft **(builder's call)** |

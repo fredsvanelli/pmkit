@@ -223,6 +223,101 @@ test('metrics cycle-time summarizes done issues in range', () => {
   assert.equal(none.median, null)
 })
 
+test('metrics lead-time summarizes done issues in range', () => {
+  const root = makeRepo('team')
+  const all = json(root, ['metrics', 'lead-time'])
+  assert.deepEqual([all.count, all.median, all.p85], [3, 10.3, 11.7])
+  assert.deepEqual(all.issues.map((i) => i.issue).sort(), ['ISS-4P8A', 'ISS-7K3Q', 'ISS-9T2M'])
+  assert.equal(json(root, ['metrics', 'lead-time', '--until', '2026-10-07']).count, 2)
+  assert.deepEqual(json(root, ['metrics', 'lead-time', '--since', '2026-10-06', '--until', '2026-10-08']).issues.map((i) => i.issue).sort(), ['ISS-4P8A', 'ISS-7K3Q'])
+  const none = json(root, ['metrics', 'lead-time', '--since', '2030-01-01'])
+  assert.equal(none.count, 0)
+  assert.equal(none.median, null)
+  assert.equal(run(root, ['metrics', 'lead-time', '--since', '2026-10-6']).status, 2)
+  assert.equal(run(root, ['metrics', 'lead-time']).stdout, 'count: 3\nmedian: 10.3 days\np85: 11.7 days\n')
+})
+
+test('metrics throughput counts done issues by type in range', () => {
+  const root = makeRepo('team')
+  const all = json(root, ['metrics', 'throughput'])
+  assert.deepEqual(all, {
+    count: 3,
+    byType: { bug: 2, feature: 1 },
+    issues: [
+      { issue: 'ISS-9T2M', type: 'bug', doneAt: '2026-10-05T15:00:00Z' },
+      { issue: 'ISS-7K3Q', type: 'bug', doneAt: '2026-10-06T16:00:00Z' },
+      { issue: 'ISS-4P8A', type: 'feature', doneAt: '2026-10-08T17:00:00Z' },
+    ],
+  })
+  assert.equal(json(root, ['metrics', 'throughput', '--since', '2026-10-06', '--until', '2026-10-08']).count, 2)
+  assert.deepEqual(json(root, ['metrics', 'throughput', '--since', '2030-01-01']), { count: 0, byType: {}, issues: [] })
+  assert.equal(run(root, ['metrics', 'throughput']).stdout, 'count: 3\nType    | Issues\n--------|-------\nbug     | 2\nfeature | 1\n')
+  assert.equal(run(root, ['metrics', 'throughput', '--since', '2030-01-01']).stdout, 'count: 0\n')
+})
+
+test('metrics throughput reads a time without a zone as UTC', () => {
+  const root = makeRepo('team')
+  const result = json(root, ['metrics', 'throughput', '--since', '2026-10-06T16:00:00', '--until', '2026-10-08T17:00'], { env: { TZ: 'America/Sao_Paulo' } })
+  assert.deepEqual(result.issues.map((i) => i.issue), ['ISS-7K3Q', 'ISS-4P8A'])
+})
+
+test('metrics aging lists the work in progress at the clock', () => {
+  const root = makeRepo('team')
+  const data = json(root, ['metrics', 'aging'])
+  assert.equal(data.asOf, '2026-10-23T12:00:00Z')
+  assert.deepEqual([data.count, data.median, data.p85], [3, 8.1, 8.8])
+  assert.deepEqual(data.issues.map((i) => [i.issue, i.status, i.days]), [['ISS-2X6D', 'in_progress', 9.1], ['ISS-8C4W', 'in_review', 8.1], ['ISS-5N1R', 'in_progress', 1.1]])
+  const text = run(root, ['metrics', 'aging']).stdout
+  assert.match(text, /^ISS-2X6D \| in_progress \| 2026-10-14T09:00:00Z \| 9\.1$/m)
+  assert.ok(text.endsWith('count: 3\nmedian: 8.1 days\np85: 8.8 days\nas of: 2026-10-23T12:00:00Z\n'))
+})
+
+test('metrics aging takes --until as the as-of date', () => {
+  const root = makeRepo('team')
+  const at20 = json(root, ['metrics', 'aging', '--until', '2026-10-20'])
+  assert.equal(at20.asOf, '2026-10-20T23:59:59Z')
+  assert.deepEqual(at20.issues.map((i) => [i.issue, i.status, i.days]), [['ISS-2X6D', 'in_progress', 6.6], ['ISS-8C4W', 'in_progress', 5.6]])
+  const at01 = json(root, ['metrics', 'aging', '--until', '2026-10-01'])
+  assert.deepEqual(at01.issues.map((i) => [i.issue, i.status, i.days]), [['ISS-7K3Q', 'in_progress', 2.6], ['ISS-4P8A', 'in_progress', 1.6], ['ISS-9T2M', 'in_progress', 0.6]])
+  assert.equal(json(root, ['metrics', 'aging', '--until', '2026-10-20T10:00:00']).asOf, '2026-10-20T10:00:00Z')
+  assert.equal(run(root, ['metrics', 'aging', '--until', '2026-09-20']).stdout, 'no work in progress\nas of: 2026-09-20T23:59:59Z\n')
+})
+
+test('metrics aging reports as-of in whole seconds', () => {
+  const root = makeRepo('team')
+  assert.equal(json(root, ['metrics', 'aging'], { env: { PMKIT_NOW: '2026-10-24T12:00:00.167Z' } }).asOf, '2026-10-24T12:00:00Z')
+  assert.equal(json(root, ['metrics', 'aging', '--until', '2026-10-20T10:00:00.5']).asOf, '2026-10-20T10:00:00Z')
+})
+
+test('PMKIT_NOW sets the as-of date of metrics aging', () => {
+  const root = makeRepo('team')
+  const data = json(root, ['metrics', 'aging'], { env: { PMKIT_NOW: '2026-10-24T12:00:00Z' } })
+  assert.equal(data.asOf, '2026-10-24T12:00:00Z')
+  assert.equal(data.issues.find((i) => i.issue === 'ISS-2X6D').days, 10.1)
+})
+
+test('metrics aging refuses --since and a bad --until', () => {
+  const root = makeRepo('team')
+  const since = run(root, ['metrics', 'aging', '--since', '2026-10-01', '--json'])
+  assert.equal(since.status, 2)
+  const error = JSON.parse(since.stdout).error
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.match(error.message, /--since/)
+  assert.equal(run(root, ['metrics', 'aging', '--until', '2026-10-2']).status, 2)
+})
+
+test('metrics cycle-time refuses a bound that is not a date', () => {
+  const root = makeRepo('team')
+  assert.equal(run(root, ['metrics', 'cycle-time', '--since', '2026-13-40', '--json']).status, 2)
+  assert.equal(run(root, ['metrics', 'cycle-time', '--since', '2026-02-30', '--json']).status, 2)
+  assert.equal(run(root, ['metrics', 'aging', '--until', '2026-02-30', '--json']).status, 2)
+  const bad = run(root, ['metrics', 'cycle-time', '--until', '2026-10-08T1', '--json'])
+  assert.equal(bad.status, 2)
+  const error = JSON.parse(bad.stdout).error
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.match(error.message, /--until/)
+})
+
 test('events prints the events in a range', () => {
   const root = makeRepo('team')
   const events = json(root, ['events', '--since', '2026-10-01'])
@@ -329,7 +424,7 @@ test('--help lists every command and exits 2', () => {
     'issues assign', 'issues link', 'issues parent', 'issues comment', 'issues log-time', 'issues archive',
     'cycle list', 'cycle current', 'cycle issues', 'cycle open', 'cycle close', 'cycle add', 'cycle capacity',
     'epic list', 'epic get', 'epic progress', 'epic create', 'epic update-status',
-    'metrics velocity', 'metrics cycle-time', 'events', 'validate',
+    'metrics velocity', 'metrics cycle-time', 'metrics lead-time', 'metrics throughput', 'metrics aging', 'events', 'validate',
   ]) assert.ok(result.stdout.includes(name), name)
 })
 
@@ -1247,6 +1342,9 @@ test('every read goes on with one warning', () => {
     'docs read': ['missing.md'],
     'metrics velocity': [],
     'metrics cycle-time': [],
+    'metrics lead-time': [],
+    'metrics throughput': [],
+    'metrics aging': [],
     events: [],
     'pr status': [],
     reindex: [],

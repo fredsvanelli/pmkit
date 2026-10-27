@@ -1,0 +1,20 @@
+$ pmkit metrics lead-time
+exit 0
+--- stdout
+count: 0
+median: n/a
+p85: n/a
+--- stderr
+(empty)
+
+$ pmkit metrics lead-time --json
+exit 0
+--- stdout
+{
+  "count": 0,
+  "median": null,
+  "p85": null,
+  "issues": []
+}
+--- stderr
+(empty)
