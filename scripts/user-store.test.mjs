@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { tempDir, userStoreEnv } from './test-helpers.mjs'
-import { assertOutsideRepo, cacheGet, cachePut, repoHash, userDir } from './lib/user-store.mjs'
+import { assertOutsideRepo, cacheClear, cacheDelete, cacheGet, cachePut, repoHash, userDir } from './lib/user-store.mjs'
 
 test('userStoreEnv returns a home folder and the four variables under it', () => {
   const { home, env } = userStoreEnv()
@@ -183,4 +183,47 @@ test('cachePut refuses to write inside a repository', () => {
   const options = { env: { PMKIT_HOME: path.join(repo, 'store') }, homedir: () => home, now: at(T0) }
   assert.throws(() => cachePut('s', 'k', 1, { ttlSeconds: 1 }, options), (error) => error.code === 'INVALID_INPUT')
   assert.equal(fs.existsSync(path.join(repo, 'store')), false)
+})
+
+test('cacheDelete removes one entry and ignores a missing one', () => {
+  const { options } = store()
+  cachePut('s', 'a', 1, { ttlSeconds: 60 }, options())
+  cachePut('s', 'b', 2, { ttlSeconds: 60 }, options())
+  cacheDelete('s', 'a', options())
+  cacheDelete('s', 'a', options())
+  assert.equal(cacheGet('s', 'a', options()), null)
+  assert.equal(cacheGet('s', 'b', options()).value, 2)
+})
+
+test('cacheClear(scope) removes that scope only', () => {
+  const { options } = store()
+  cachePut('a', 'k', 1, { ttlSeconds: 60 }, options())
+  cachePut('b', 'k', 2, { ttlSeconds: 60 }, options())
+  cacheClear('a', options())
+  assert.equal(cacheGet('a', 'k', options()), null)
+  assert.equal(cacheGet('b', 'k', options()).value, 2)
+})
+
+test('cacheClear() removes cache/ and leaves defaults.yaml', () => {
+  const { dir, options } = store()
+  cachePut('a', 'k', 1, { ttlSeconds: 60 }, options())
+  fs.writeFileSync(path.join(dir, 'defaults.yaml'), 'output: json\n')
+  cacheClear(undefined, options())
+  assert.equal(fs.existsSync(path.join(dir, 'cache')), false)
+  assert.ok(fs.existsSync(path.join(dir, 'defaults.yaml')))
+})
+
+test('clearing when nothing exists does not throw or create folders', () => {
+  const { home, options } = store()
+  cacheClear('a', options())
+  cacheClear(undefined, options())
+  cacheDelete('a', 'k', options())
+  assert.deepEqual(fs.readdirSync(home), [])
+})
+
+test('cacheDelete and cacheClear reject a bad scope or key', () => {
+  const { options } = store()
+  assert.throws(() => cacheClear('../x', options()), (error) => error.code === 'INVALID_INPUT')
+  assert.throws(() => cacheDelete('..', 'k', options()), (error) => error.code === 'INVALID_INPUT')
+  assert.throws(() => cacheDelete('s', 'A', options()), (error) => error.code === 'INVALID_INPUT')
 })

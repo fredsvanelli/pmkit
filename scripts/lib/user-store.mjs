@@ -136,3 +136,14 @@ export function cachePut(scope, key, value, { ttlSeconds } = {}, options) {
   }
   writeAtomic(file, `${text}\n`, options)
 }
+
+/** Removes one cache entry. A missing entry is fine. */
+export function cacheDelete(scope, key, options) {
+  fs.rmSync(cacheFile(scope, key, options), { force: true })
+}
+
+/** Removes every entry of a scope, or the whole cache folder when scope is omitted. */
+export function cacheClear(scope, options) {
+  const base = path.join(userDir(options), 'cache')
+  fs.rmSync(scope === undefined ? base : path.join(base, checkName('scope', scope)), { recursive: true, force: true })
+}
