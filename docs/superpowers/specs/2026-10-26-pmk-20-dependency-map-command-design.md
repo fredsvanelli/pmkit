@@ -127,7 +127,7 @@ JSON shape:
 ```
 
 - `reason` is `null` with the basis `blockers`, and `none`, `resolved` or `absent` with the basis `hierarchy`.
-- `nodes` holds every scope issue (open or terminal) and every upstream node, in creation order. `blockedBy` on a node lists only the open edges kept in the graph. `critical` is true on the nodes of the critical path. `outside` is true when the node is not in the scope and its parent chain, through the listed nodes, does not reach the target. An archived blocker whose parent is the target has `scope` false and `outside` false. Read `outside`, not `scope`, to call a node outside the target.
+- `nodes` holds every scope issue (open or terminal) and every upstream node, in creation order. `blockedBy` on a node lists only the open edges kept in the graph. `critical` is true on the nodes of the critical path. `outside` is true when the node is not in the scope and its parent chain does not reach the target. An archived blocker whose parent is the target has `scope` false and `outside` false. Read `outside`, not `scope`, to call a node outside the target.
 - `tree` is the hierarchy under the target, children in creation order. For an issue target, the root is the issue itself.
 - `criticalPath` is `null` with the basis `hierarchy`.
 - `resolved` counts the edges dropped because the blocker is terminal.
@@ -177,7 +177,7 @@ The second line changes with the reason: `every blocker of EPC-4H7V is done or c
 - Step 1 runs `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues dependencies <id> --json`.
 - Step 2, basis `blockers`. Lead with the answer in one line: how many open issues block the target, and which of them sit outside the target (`outside` true). Then the critical path on its own line, in bold, as `ISS-A → ISS-B (11 points)`. Then a table of the blocker chain with the five conventional columns, plus "Blocked by" and "Critical path" (`yes` or empty). Rows follow the critical path first, from its start, then the other nodes in creation order. Name each node on the critical path that has no estimate and counts as 0.
 - Step 3, basis `hierarchy`. Say in one line that this is the hierarchy only and why, using `reason`. Show the tree and, when `related` is not empty, the related links.
-- Step 4. In both bases, show the hierarchy as an indented list under the target, with the ancestors of an issue target as one line above it. Mark missing, unreadable, archived and outside-scope nodes in words, not only with symbols.
+- Step 4. In both bases, show the hierarchy as an indented list under the target, with the ancestors of an issue target as one line above it. Mark missing, unreadable, archived nodes and nodes outside the target (`outside` true) in words, not only with symbols.
 - Step 5. Show each warning once. A loop warning offers `/pmkit:local:doctor`.
 - Step 6. End with one next step: the first open node of the critical path, as the issue to unblock first, with `/pmkit:issues:summary <id>` to read it. With the basis `hierarchy`, suggest `/pmkit:issues:link` to record blockers.
 
