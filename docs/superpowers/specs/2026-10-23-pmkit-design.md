@@ -367,7 +367,7 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `metrics throughput [--since d] [--until d]` | issues done in a range, with a count per type |
 | `metrics aging [--until d]` | days since work started for each issue in `in_progress` or `in_review` at `--until` (default now), oldest first |
 | `events [--since d] [--until d]` | all events in a range, for digests |
-| `risks` | blockers, stalled issues and PRs, late or silent epics and broken CI; reads only, and without a git host lists issues stalled by tracker activity **(builder's call)** |
+| `risks` | blockers, stalled issues and PRs, late epics, epics without a recent status update, and broken CI; reads only, and without a git host lists issues stalled by tracker activity **(builder's call)** |
 | `pr open --issue <id> [--draft] [--body-file f]` | pushes the issue branch and opens a pull request; when the branch already has an open one, pushes and returns it with `existing: true` **(builder's call)** |
 | `pr ready --issue <id>` | marks the open draft pull request of an issue ready for review; `INVALID_INPUT` when there is none or it is not a draft **(builder's call)** |
 | `pr status [--branch b]`, `pr sync` | git host |
