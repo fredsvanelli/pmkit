@@ -40,7 +40,7 @@ Acceptance criteria:
 
 ## Facts checked against the Linear API
 
-Read-only calls made on 2026-10-27 against the `acme` workspace, with the key from the environment:
+Read-only calls made on 2026-10-27 against the sandbox workspace, with the key from the environment:
 
 | Check | Result |
 |---|---|
