@@ -90,6 +90,7 @@ All three bases keep archived issues, because an old release or sprint is the us
 
 - **Release.** `releaseIssues(id, { archived: true })`, then keep the done ones. This needs an optional `archived` argument on the contract operation and a `--archived` flag on `release issues`, both new here (see "Decisions"). Without it, notes for an old release would miss every done issue archived later. This closes the gap PMK-22's review found.
 - **Sprint.** `searchIssues({ sprint: <id>, archived: true })`, with no category filter, so the module can count the issues that are not done. `cycleIssues` stays as it is.
+  For a closed sprint the module applies the same cut as velocity. An issue whose last move into done is after the sprint's `closed` time (after `end` when the sprint has no `closed`) did not ship with the sprint, so it is left out and counted in `excluded.open`. An issue with no known `doneAt` stays in. An active or planned sprint keeps every done issue.
 - **Period.** `metricEvents` and `doneInRange` (the code behind `metrics throughput`) give the IDs whose last move into done falls in the range. `getIssue` reads each one, archived included. An ID that no longer reads goes to `problems`.
 
 For the sprint and period bases each issue carries `doneAt`, the time of its last move into done. For the release basis it is `null`, because membership, not time, defines the release.

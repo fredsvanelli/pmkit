@@ -49,6 +49,16 @@ export function chooseBasis({ selector, releases, sprints, today, windowDays }) 
   return { basis: 'period', reason: 'no_closed_sprint', draft: false, source: null, period: { since: dateMinusDays(today, windowDays), until: today, defaulted: true }, skipped }
 }
 
+/**
+ * True when a closed sprint's issue moved to done after the sprint closed, so it did not ship with the sprint.
+ * Same cut as velocity: the `closed` time, or the `end` date when the sprint has no `closed`. An unknown doneAt stays in.
+ */
+function finishedAfterClose({ basis, source }, doneAt) {
+  if (basis !== 'sprint' || source?.state !== 'closed' || doneAt === null || doneAt === undefined) return false
+  if (source.closed !== undefined) return eventInstant(doneAt) > eventInstant(source.closed)
+  return String(doneAt).slice(0, 10) > source.end
+}
+
 const byCreation = (a, b) => {
   const x = String(a.created ?? '')
   const y = String(b.created ?? '')
@@ -81,7 +91,7 @@ export function buildNotes({ choice, candidates, types, problems = [] }) {
     const { issue } = candidate
     const category = issue.status?.category
     if (category === 'canceled') excluded.canceled += 1
-    else if (category !== 'done') excluded.open += 1
+    else if (category !== 'done' || finishedAfterClose(choice, candidate.doneAt)) excluded.open += 1
     else if (issue.type === 'chore') excluded.chore += 1
     else listed.push(candidate)
   }

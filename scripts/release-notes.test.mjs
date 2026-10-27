@@ -182,7 +182,7 @@ test('a draft says why', () => {
 
 test('each group is a table, with a Done column unless the basis is a release', () => {
   const candidates = [cand(iss('F1', { type: 'feature', title: 'Retry' }), '2026-10-06T16:00:00Z'), cand(iss('N1', { type: null }), '2026-10-07T16:00:00Z')]
-  const sprintLines = textOf({ sprint: spr('s1') }, candidates).split('\n')
+  const sprintLines = textOf({ sprint: spr('s1', { end: '2026-10-31' }) }, candidates).split('\n')
   assert.ok(sprintLines.includes('feature (1)'))
   assert.ok(sprintLines.includes('no type (1)'))
   assert.ok(sprintLines.some((l) => /^ID\s+\| Title\s+\| Done$/.test(l)))
@@ -209,4 +209,25 @@ test('the latest release is the latest instant, not the latest string, when zone
   const late = rel('2.1.0', { released: '2026-10-24T01:00:00Z' })
   assert.equal(chooseBasis({ ...base, releases: [early, late] }).source.id, '2.0.0')
   assert.equal(chooseBasis({ ...base, releases: [late, early] }).source.id, '2.0.0')
+})
+
+test('a closed sprint leaves out an issue that finished after it closed, as velocity does', () => {
+  const sprint = spr('S1', { end: '2026-09-14', closed: '2026-09-15T09:00:00Z' })
+  const sprintChoice = chooseBasis({ ...base, selector: { sprint } })
+  const candidates = [
+    cand(iss('IN', { type: 'bug' }), '2026-09-14T12:00:00Z'),
+    cand(iss('LATE', { type: 'bug' }), '2026-09-15T10:00:00Z'),
+    cand(iss('NONE', { type: 'bug' }), null),
+  ]
+  const result = buildNotes({ choice: sprintChoice, candidates, types })
+  assert.deepEqual(result.groups[0].issues.map((i) => i.id), ['IN', 'NONE'])
+  assert.equal(result.counts.excluded.open, 1)
+  const noClosed = buildNotes({ choice: chooseBasis({ ...base, selector: { sprint: spr('S2', { end: '2026-09-14' }) } }), candidates: [cand(iss('A'), '2026-09-14T23:00:00Z'), cand(iss('B'), '2026-09-15T00:00:00Z')], types })
+  assert.deepEqual(noClosed.groups[0].issues.map((i) => i.id), ['A'])
+})
+
+test('an active sprint keeps every done issue', () => {
+  const sprintChoice = chooseBasis({ ...base, selector: { sprint: spr('S3', { state: 'active', closed: '2026-09-15T09:00:00Z' }) } })
+  const result = buildNotes({ choice: sprintChoice, candidates: [cand(iss('LATE'), '2026-09-16T10:00:00Z')], types })
+  assert.equal(result.counts.done, 1)
 })

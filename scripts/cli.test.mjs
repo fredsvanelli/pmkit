@@ -1970,3 +1970,16 @@ test('release-notes on a release reports an issue file that does not parse', () 
   assert.match(result.stderr, new RegExp(`^warning: ${bad}: `, 'm'))
   assert.deepEqual(data.groups.flatMap((g) => g.issues.map((i) => i.id)), [good])
 })
+
+test('release-notes on a closed sprint leaves out an issue done after the sprint closed', () => {
+  const root = makeRepo('team')
+  const before = notes(root, ['--sprint', '2026-09-28'])
+  const ids = before.groups.flatMap((g) => g.issues.map((i) => i.id))
+  assert.ok(ids.length > 0)
+  const open = json(root, ['issues', 'create', '--title', 'Finished late', '--type', 'bug']).after.id
+  json(root, ['issues', 'update', open, '--sprint', '2026-09-28'])
+  json(root, ['issues', 'move', open, 'done'])
+  const after = notes(root, ['--sprint', '2026-09-28'])
+  assert.ok(!after.groups.flatMap((g) => g.issues.map((i) => i.id)).includes(open))
+  assert.equal(after.counts.excluded.open, before.counts.excluded.open + 1)
+})
