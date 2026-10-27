@@ -1,14 +1,15 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   CONFIRM, ESTIMATE_UNITS, GIT_HOSTS, MEMBER_ID, NAME, PREFIX, PREVIEW, TRACKERS, WEEKDAYS, WORKSPACE_KEY,
-  findRoot, loadConfig, localConfigShapeProblems, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, unsupportedTracker, validateLocalConfig, validatePmkitConfig, withLocalDefaults,
+  findRoot, loadConfig, loadPmkitConfig, localConfigShapeProblems, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, unsupportedTracker, validateLocalConfig, validatePmkitConfig, withLocalDefaults,
 } from './lib/config.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { makeRepo, tempDir } from './test-helpers.mjs'
+import { useLinear, withLinear } from './fake-hosted.mjs'
 
 const fixture = fileURLToPath(new URL('./__fixtures__/basic', import.meta.url))
 const template = (name) => parseYaml(readFileSync(new URL(`../templates/${name}`, import.meta.url), 'utf8'))
@@ -70,6 +71,7 @@ test('unsupportedTracker is null for local and for names outside TRACKERS, and g
     nextStep: 'Set tracker.system to local in .pmkit/config.yaml',
     problem: 'tracker.system "linear" is not supported yet, set it to local',
   })
+  assert.equal(unsupportedTracker('linear', withLinear()), null)
 })
 
 test('pmkitConfigMessages adds the unsupported tracker problem to validatePmkitConfig', () => {
@@ -87,6 +89,56 @@ test('pmkitConfigMessages adds the unsupported tracker problem to validatePmkitC
   for (const value of [null, 'local', ['local'], { tracker: 'linear' }]) {
     assert.deepEqual(pmkitConfigMessages(value), validatePmkitConfig(value), JSON.stringify(value))
   }
+  assert.deepEqual(pmkitConfigMessages(linear, withLinear()), ['tracker.scope.workspace is required for linear'])
+  const badShape = template('pmkit.config.yaml')
+  badShape.tracker.system = 'linear'
+  badShape.version = 2
+  assert.deepEqual(pmkitConfigMessages(badShape, withLinear()), ['version must be 1'], 'an adapter rule never runs on a bad shape')
+})
+
+test('loadConfig returns a hosted config and reads nothing under the repository but .pmkit/config.yaml', () => {
+  const root = useLinear(basicWith())
+  rmSync(join(root, '.issues'), { recursive: true, force: true })
+  const expected = (dir) => ({ pmkit: parseYaml(pmkitText(dir)), root: dir, system: 'linear', hosted: true, pmkitProblems: [] })
+  assert.deepEqual(loadConfig(root, { adapters: withLinear() }), expected(root))
+  const ahead = useLinear(basicWith())
+  writeFileSync(join(ahead, '.issues', 'config.yaml'), 'version: 99\n')
+  assert.deepEqual(loadConfig(ahead, { adapters: withLinear() }), expected(ahead))
+})
+
+test('a hosted config with a bad mapping loads with the problem in pmkitProblems', () => {
+  const root = useLinear(basicWith(), 'mappings:\n  status:\n    reviewing: Review\n')
+  assert.deepEqual(loadConfig(root, { adapters: withLinear() }).pmkitProblems, ['mappings.status.reviewing: reviewing is not a category or blocked'])
+})
+
+test('jira throws NOT_SUPPORTED with linear registered', () => {
+  const root = basicWith(['system: local', 'system: jira'])
+  const expected = { code: 'NOT_SUPPORTED', message: 'tracker.system "jira" is not supported yet', nextStep: 'Set tracker.system to local in .pmkit/config.yaml' }
+  assert.throws(() => loadConfig(root, { adapters: withLinear() }), expected)
+  assert.throws(() => loadPmkitConfig(root, { adapters: withLinear() }), expected)
+})
+
+test('a local config says system local and hosted false', () => {
+  const config = loadConfig(fixture)
+  assert.equal(config.system, 'local')
+  assert.equal(config.hosted, false)
+  const root = makeRepo('basic')
+  const file = join(root, '.issues', 'config.yaml')
+  writeFileSync(file, readFileSync(file, 'utf8').replace(/^version: \d+$/m, 'version: 1'))
+  const older = loadConfig(root, { checkFormat: false })
+  assert.equal(older.system, 'local')
+  assert.equal(older.hosted, false)
+  const migrated = loadConfig(root)
+  assert.equal(migrated.format.state, 'behind')
+  assert.equal(migrated.system, 'local')
+  assert.equal(migrated.hosted, false)
+})
+
+test('loadPmkitConfig reads only .pmkit/config.yaml', () => {
+  const root = makeRepo('basic')
+  rmSync(join(root, '.issues', 'config.yaml'))
+  assert.deepEqual(loadPmkitConfig(root), { pmkit: parseYaml(pmkitText(root)), system: 'local', pmkitProblems: [] })
+  assert.throws(() => loadPmkitConfig(tmp()), { code: 'NOT_CONFIGURED' })
 })
 
 test('loadConfig returns pmkitProblems', () => {
