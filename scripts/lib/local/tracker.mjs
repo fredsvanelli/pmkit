@@ -29,10 +29,10 @@ import { fileMtimeIso, issuePaths, listIssueIds, writeFileAtomic } from './store
 
 const CREATE_KEYS = [
   'title', 'type', 'status', 'priority', 'estimate', 'assignee', 'labels', 'parent', 'sprint',
-  'milestone', 'due', 'branch', 'description', 'acceptanceCriteria',
+  'milestone', 'release', 'due', 'branch', 'description', 'acceptanceCriteria',
 ]
 const UPDATE_KEYS = [
-  'title', 'type', 'priority', 'estimate', 'labels', 'sprint', 'milestone', 'due', 'branch',
+  'title', 'type', 'priority', 'estimate', 'labels', 'sprint', 'milestone', 'release', 'due', 'branch',
   'description', 'acceptanceCriteria',
 ]
 // Fields another operation owns, with the command that writes them. An empty string means no next step.
@@ -163,6 +163,7 @@ export function createLocalTracker(root, {
   }
 
   const milestonesDir = path.join(issuesDir, 'milestones')
+  const releasesDir = path.join(issuesDir, 'releases')
 
   // A milestone is free text until milestones/ holds a .md file; from then on it must name one, exactly.
   function requireMilestone(value) {
@@ -171,6 +172,13 @@ export function createLocalTracker(root, {
       throw invalid(`milestone ${milestone} does not exist`, `pmkit milestone create ${milestone}`)
     }
     return milestone
+  }
+
+  // A release must have a file, exactly. Unlike milestones, it is never free text.
+  function requireRelease(value) {
+    const release = oneLine('release', text('release')(value))
+    if (!releaseStems(releasesDir).has(release)) throw invalid(`release ${release} does not exist`, `pmkit release create ${release}`)
+    return release
   }
 
   const sprintExists = (id) => /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(String(id)) && fs.existsSync(path.join(issuesDir, 'sprints', `${id}.yaml`))
@@ -219,6 +227,7 @@ export function createLocalTracker(root, {
     parent: requireParent,
     sprint: requireSprint,
     milestone: requireMilestone,
+    release: requireRelease,
     due: (value) => {
       if (!validDate(value)) throw invalid('due must be a date as YYYY-MM-DD')
       return value
@@ -945,7 +954,6 @@ export function createLocalTracker(root, {
     return { before: null, after }
   }
 
-  const releasesDir = path.join(issuesDir, 'releases')
   const readRelease = (id) => parseRelease(fs.readFileSync(path.join(releasesDir, `${id}.md`), 'utf8'), id)
 
   function getRelease(id) {

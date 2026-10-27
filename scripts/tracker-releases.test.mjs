@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { createLocalTracker } from './lib/local/tracker.mjs'
+import { issueRecord } from './lib/format.mjs'
+import { issuePaths } from './lib/local/store.mjs'
 import { hashTree, makeRepo } from './test-helpers.mjs'
 
 function setup() {
@@ -107,4 +109,56 @@ test('getRelease of an unknown or invalid id is NOT_FOUND', () => {
   const { tracker } = setup()
   assert.throws(() => tracker.getRelease('nope'), code('NOT_FOUND', /^release nope does not exist$/, 'pmkit release list'))
   assert.throws(() => tracker.getRelease('bad+id'), code('NOT_FOUND', /^release bad\+id does not exist$/, 'pmkit release list'))
+})
+
+test('an issue cannot name a release that has no file', () => {
+  const { tracker } = setup()
+  assert.throws(() => tracker.createIssue({ title: 'T', release: '1.2.0' }, 'fred'),
+    code('INVALID_INPUT', /^release 1\.2\.0 does not exist$/, 'pmkit release create 1.2.0'))
+})
+
+test('create and update set release, and update records the event', () => {
+  const { tracker, root } = setup()
+  tracker.createRelease({ id: '1.2.0' }, 'fred')
+  const created = tracker.createIssue({ title: 'T', release: '1.2.0' }, 'fred').after
+  assert.equal(created.release, '1.2.0')
+  const rawEvents = (id) => fs.readFileSync(issuePaths(path.join(root, '.issues'), id).events, 'utf8').trim().split('\n').map((line) => JSON.parse(line))
+  assert.equal(rawEvents(created.id)[0].to.release, '1.2.0')
+  assert.throws(() => tracker.createIssue({ title: 'T', release: 'V1.2.0' }, 'fred'), code('INVALID_INPUT', /^release V1\.2\.0 does not exist$/))
+  const other = tracker.createIssue({ title: 'U' }, 'fred').after
+  tracker.updateIssue(other.id, { release: '1.2.0' }, 'fred')
+  const set = rawEvents(other.id).at(-1)
+  assert.deepEqual({ op: set.op, field: set.field, from: set.from, to: set.to }, { op: 'update', field: 'release', from: null, to: '1.2.0' })
+  assert.equal(tracker.updateIssue(other.id, { release: null }, 'fred').after.release, undefined)
+  assert.equal(rawEvents(other.id).at(-1).to, null)
+})
+
+test('updating another field of an issue whose release file is gone is not checked', () => {
+  const { tracker, releasesDir } = setup()
+  tracker.createRelease({ id: '1.2.0' }, 'fred')
+  const { id } = tracker.createIssue({ title: 'T', release: '1.2.0' }, 'fred').after
+  fs.rmSync(path.join(releasesDir, '1.2.0.md'))
+  const { after } = tracker.updateIssue(id, { priority: 'high' }, 'fred')
+  assert.equal(after.priority, 'high')
+  assert.equal(after.release, '1.2.0')
+})
+
+test('a hand-added release gives a synthetic update event, and getIssue shows it', () => {
+  const { tracker, root } = setup()
+  const { id } = tracker.createIssue({ title: 'T' }, 'fred').after
+  const { file } = issuePaths(path.join(root, '.issues'), id)
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^(due|branch|archived|created): /m, 'release: 1.2.0\n$&'))
+  const edited = new Date('2026-10-23T11:00:00Z')
+  fs.utimesSync(file, edited, edited)
+  tracker.assign(id, 'fred', 'fred')
+  const drift = tracker.getHistory(id).filter((event) => event.synthetic)
+  assert.deepEqual(drift.map((e) => [e.op, e.field, e.from ?? null, e.to]), [['update', 'release', null, '1.2.0']])
+  assert.equal(tracker.getIssue(id).release, '1.2.0')
+})
+
+test('issueRecord shows release on the line after milestone', () => {
+  const { tracker } = setup()
+  tracker.createRelease({ id: '1.2.0' }, 'fred')
+  const { after } = tracker.createIssue({ title: 'T', milestone: 'v2', release: '1.2.0' }, 'fred')
+  assert.match(issueRecord(after), /^milestone: v2\nrelease: 1\.2\.0$/m)
 })
