@@ -2,14 +2,16 @@
 id: PMK-22
 title: Add releases to the Local tracker
 type: feature
-status: backlog
+status: in_progress
 priority: medium
 estimate: 3
+assignee: fred
 parent: EPC-3
 blocked_by: [PMK-2]
 milestone: phase-2-commands
+branch: pmk-22-add-releases-to-the-local-tracker
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-25T19:13:24Z
+updated: 2026-10-27T00:14:24Z
 ---
 
 ## Description
