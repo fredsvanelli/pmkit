@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { tempDir, userStoreEnv } from './test-helpers.mjs'
-import { assertOutsideRepo, cacheClear, cacheDelete, cacheGet, cachePut, repoHash, userDir } from './lib/user-store.mjs'
+import { isCredentialKey, assertOutsideRepo, cacheClear, cacheDelete, cacheGet, cachePut, repoHash, userDir } from './lib/user-store.mjs'
 
 test('userStoreEnv returns a home folder and the four variables under it', () => {
   const { home, env } = userStoreEnv()
@@ -226,4 +226,58 @@ test('cacheDelete and cacheClear reject a bad scope or key', () => {
   assert.throws(() => cacheClear('../x', options()), (error) => error.code === 'INVALID_INPUT')
   assert.throws(() => cacheDelete('..', 'k', options()), (error) => error.code === 'INVALID_INPUT')
   assert.throws(() => cacheDelete('s', 'A', options()), (error) => error.code === 'INVALID_INPUT')
+})
+
+const SENTINEL = 'sentinel-value-7c1d'
+
+test('cachePut rejects credential-shaped keys at depth and inside arrays, without echoing the value', () => {
+  const { dir, options } = store()
+  for (const name of ['apiKey', 'token', 'Authorization', 'client_secret', 'password']) {
+    for (const value of [{ a: { b: { [name]: SENTINEL } } }, { list: [{ [name]: SENTINEL }] }]) {
+      assert.throws(
+        () => cachePut('s', 'k', value, { ttlSeconds: 60 }, options()),
+        (error) => error.code === 'INVALID_INPUT' && error.message.includes(`value.`) && !error.message.includes(SENTINEL) && !(error.nextStep ?? '').includes(SENTINEL),
+        name,
+      )
+    }
+  }
+  assert.equal(fs.existsSync(path.join(dir, 'cache')), false)
+})
+
+test('cachePut names the key path in the error', () => {
+  const { options } = store()
+  assert.throws(() => cachePut('s', 'k', { a: { b: { token: 'x' } } }, { ttlSeconds: 60 }, options()), /value\.a\.b\.token/)
+  assert.throws(() => cachePut('s', 'k', { a: [{ b: 'lin_api_' + 'x'.repeat(20) }] }, { ttlSeconds: 60 }, options()), /value\.a\[0\]\.b/)
+})
+
+test('cachePut rejects a Linear key and a bearer header in a string value', () => {
+  const { options } = store()
+  for (const text of [`lin_api_${'A1'.repeat(15)}`, `Bearer ${SENTINEL}`, `bearer ${SENTINEL}`]) {
+    assert.throws(
+      () => cachePut('s', 'k', { note: text }, { ttlSeconds: 60 }, options()),
+      (error) => error.code === 'INVALID_INPUT' && !error.message.includes(text) && !error.message.includes(SENTINEL),
+      text,
+    )
+  }
+  assert.throws(() => cachePut('s', 'k', `lin_api_${'z'.repeat(25)}`, { ttlSeconds: 60 }, options()), (error) => error.code === 'INVALID_INPUT')
+})
+
+test('cachePut accepts team, states and labels', () => {
+  const { options } = store()
+  const value = { team: { id: 't1', key: 'ACME' }, states: [{ name: 'Todo', type: 'unstarted' }], labels: ['bug', 'lin_api_ short'] }
+  cachePut('s', 'k', value, { ttlSeconds: 60 }, options())
+  assert.deepEqual(cacheGet('s', 'k', options()).value, value)
+})
+
+test('isCredentialKey matches credential-shaped names only', () => {
+  for (const key of ['token', 'apiKey', 'api_key', 'API-KEY', 'Authorization', 'client_secret', 'password', 'passwd', 'credentials']) assert.equal(isCredentialKey(key), true, key)
+  for (const key of ['team', 'states', 'labels', 'output', 'editor']) assert.equal(isCredentialKey(key), false, key)
+})
+
+test('the store never creates a credentials folder', () => {
+  const { dir, options } = store()
+  cachePut('s', 'k', { a: 1 }, { ttlSeconds: 60 }, options())
+  cacheClear('s', options())
+  assert.equal(fs.existsSync(path.join(dir, 'credentials')), false)
+  assert.deepEqual(fs.readdirSync(dir).sort(), ['cache'])
 })

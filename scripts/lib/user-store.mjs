@@ -79,8 +79,38 @@ export function assertOutsideRepo(target, options) {
 
 const CACHE_VERSION = 1
 
-/** Hook for the credential guard. */
-function assertNoCredentials() {}
+// The guard below catches accidents, such as a token pasted into a cache value.
+// It is not a security boundary: a determined caller can encode a secret past it.
+const CREDENTIAL_KEY = /token|secret|password|passwd|api[_-]?key|credential|authorization/i
+const CREDENTIAL_STRING = /^(lin_api_.{20,}|Bearer\s+\S+)/i
+
+/** True when a key name looks like it holds a credential. */
+export function isCredentialKey(key) {
+  return CREDENTIAL_KEY.test(key)
+}
+
+/** True when a string looks like a Linear API key or an Authorization bearer header. */
+function isCredentialString(text) {
+  return CREDENTIAL_STRING.test(text.trim())
+}
+
+function refuse(where) {
+  return new PmkitError('INVALID_INPUT', `The value looks like a credential at ${where}.`, 'The user store holds no credentials. Keep the key in the environment and drop this field.')
+}
+
+/** Throws INVALID_INPUT, naming the key path and never the value, when value holds something credential-shaped. */
+function assertNoCredentials(value, label) {
+  if (typeof value === 'string') {
+    if (isCredentialString(value)) throw refuse(label)
+  } else if (Array.isArray(value)) {
+    value.forEach((item, index) => assertNoCredentials(item, `${label}[${index}]`))
+  } else if (value !== null && typeof value === 'object') {
+    for (const [key, item] of Object.entries(value)) {
+      if (isCredentialKey(key)) throw refuse(`${label}.${key}`)
+      assertNoCredentials(item, `${label}.${key}`)
+    }
+  }
+}
 
 function cacheFile(scope, key, options) {
   return path.join(userDir(options), 'cache', checkName('scope', scope), `${checkName('key', key)}.json`)
@@ -123,7 +153,6 @@ export function cachePut(scope, key, value, { ttlSeconds } = {}, options) {
   if (!Number.isInteger(ttlSeconds) || ttlSeconds <= 0) {
     throw new PmkitError('INVALID_INPUT', 'ttlSeconds must be a positive integer.', 'Pass the life of the entry in whole seconds.')
   }
-  assertNoCredentials(value, 'value')
   const storedAt = resolve(options).now().toISOString()
   let text
   try {
@@ -134,6 +163,7 @@ export function cachePut(scope, key, value, { ttlSeconds } = {}, options) {
   if (text === undefined || !text.includes('"value"')) {
     throw new PmkitError('INVALID_INPUT', 'The cache value is undefined.', 'Store a JSON value.')
   }
+  assertNoCredentials(value, 'value')
   writeAtomic(file, `${text}\n`, options)
 }
 
