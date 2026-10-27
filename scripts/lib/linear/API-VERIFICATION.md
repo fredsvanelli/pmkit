@@ -1,0 +1,73 @@
+# Linear API verification
+
+Checked on 2026-10-27 against the workspace `acme` (Free plan) at `https://api.linear.app/graphql`, with a personal API key and no write. `verify-api.mjs` in this folder ran the checks. The folder holds a verification tool and no adapter code yet.
+
+To repeat the check:
+
+```
+PMKIT_LIVE=1 LINEAR_API_KEY=<key> node scripts/lib/linear/verify-api.mjs
+```
+
+Without `PMKIT_LIVE=1` the script sends nothing. It sends only queries and refuses a document that starts with `mutation`. Use the shell to put the key in the environment so it never appears on a command line.
+
+## Summary
+
+| Feature | Answer | API object | Access | Plan | Verified by | Caveat |
+|---|---|---|---|---|---|---|
+| Recurring issues | yes | `Issue.recurringIssueTemplate` (type `Template`) | read | no page found | schema, live read | Schedule and rules are not in the API. |
+| Dependencies between projects | yes | `ProjectRelation`; `projectRelations`; `projectRelationCreate`, `projectRelationUpdate`, `projectRelationDelete` | read/write | no plan stated | schema, live read, docs | Write access comes from the schema only. A relation can also point at a milestone (`anchorType`, `relatedAnchorType`). |
+| Releases | yes | `Release`, `ReleasePipeline`, `ReleaseStage`; `releases`, `releasePipelines`; `releaseCreate`, `releaseComplete`, `issueToReleaseCreate`; `Issue.releases` | read/write | Business and Enterprise | schema, live read, docs | `Organization.releasesEnabled` is `false` on this workspace. Write access comes from the schema only. |
+| Insights | no | none | none | Business and Enterprise (UI) | schema, docs | PMK-33 treats `native_metrics` as `derived`. |
+
+## Recurring issues
+
+Matches for `recurr`: `Issue.recurringIssueTemplate` and `IssueSearchResult.recurringIssueTemplate`. No type, query or mutation has `recurr` in its name. `Issue.recurringIssueTemplate` is not deprecated and has type `Template`.
+
+`Template` has these fields: `id`, `createdAt`, `updatedAt`, `archivedAt`, `type`, `name`, `description`, `icon`, `color`, `templateData`, `sortOrder`, `lastAppliedAt`, `organization`, `team`, `pipeline`, `creator`, `lastUpdatedBy`, `inheritedFrom`, `content`, `hasFormFields`. None holds a schedule, so the API shows which template created an issue and cannot read or create the rule.
+
+Live: `templates` and `issues(first: 1) { recurringIssueTemplate }` answer without error. The workspace has no templates, so both results are empty.
+
+Docs: `https://linear.app/docs/recurring-issues` returned 404 on 2026-10-27, so no docs page was found for the plan gate or the API. The Plan cell says so.
+
+Answer `yes`, access `read`, by the rule for a feature exposed only as a read-only link.
+
+## Dependencies between projects
+
+Matches for `projectRelation`: types `ProjectRelation`, `ProjectRelationConnection`, `ProjectRelationCreateInput`, `ProjectRelationEdge`, `ProjectRelationPayload`, `ProjectRelationUpdateInput`; queries `projectRelation`, `projectRelations`; mutations `projectRelationCreate`, `projectRelationDelete`, `projectRelationUpdate`.
+
+Live: `projectRelations(first: 1)` answers with an empty list.
+
+Docs: `https://linear.app/docs/project-dependencies` (read 2026-10-27) names no plan restriction.
+
+Answer `yes`, access `read/write`.
+
+## Releases
+
+Matches for `release` include the types `Release`, `ReleasePipeline`, `ReleaseStage`, `IssueToRelease` and `ReleaseNote`; the queries `releases`, `releasePipelines`, `releaseStages`, `issueToReleases`; the mutations `releaseCreate`, `releaseComplete`, `releaseUpdate`, `releasePipelineCreate`, `releaseStageCreate`, `issueToReleaseCreate`, `issueToReleaseDelete`; and the fields `Issue.releases`, `Team.releasePipelines` and `Organization.releasesEnabled`. The full list is in the script output.
+
+Live: `releases(first: 1)` and `releasePipelines(first: 1)` answer with empty lists on the Free workspace. `Organization.releasesEnabled` is `false`, so a read passes while the feature stays off.
+
+Docs: `https://linear.app/docs/releases` (read 2026-10-27) says releases are available on Business and Enterprise plans, and Business allows up to 15 pipelines. It also says a personal API key cannot replace a pipeline access key, which applies to the `*ByAccessKey` mutations.
+
+Answer `yes`, access `read/write`. Creation was not tried, so the Verified by cell does not claim a live write.
+
+## Insights
+
+The schema has no type, query, mutation or field whose name matches `insight`, `analytic` or `metric`. Live queries were skipped because there is no object to query.
+
+Docs: `https://linear.app/docs/insights` (read 2026-10-27) says Insights is available on Business and Enterprise plans. The page mentions no API.
+
+Answer `no`. Absence from the schema is the proof. For PMK-33, `native_metrics` on Linear is `derived` from issue history and never `native`.
+
+## Paid-plan features on a Free workspace
+
+Check a gated feature in this order.
+
+1. Schema. Introspection lists every object whatever the plan. If the object is missing, the answer is `no` on every plan.
+2. Docs. Record the page and the date for the plan that unlocks the feature.
+3. Live read. An empty list proves the query is allowed. A permission error proves a gate and goes into the Caveat.
+4. Live write. Not done in PMK-29. A write that depends on the plan stays `schema, docs` until a later issue tries it on a Business or trial workspace with a dedicated test team.
+
+## Repeat the check
+
+Run the command at the top on another workspace, such as a Business one. Compare `organization.urlKey`, the `found` lists and each `live` value with this note. A `live` error on a feature that is `empty` here points to a plan gate. Run it again after PMK-28 settles the credential type, because introspection may differ for an OAuth app.
