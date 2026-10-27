@@ -25,3 +25,55 @@ export function findMatches(schema, pattern) {
     fields: sorted(fields),
   }
 }
+
+const connection = (name) => (data) => data?.[name]?.nodes ?? []
+
+export const FEATURES = [
+  {
+    id: 'recurring',
+    pattern: /recurr/i,
+    liveQueries: [
+      { name: 'templates', query: '{ templates { id name type } }', nodes: (data) => data?.templates ?? [] },
+      {
+        name: 'recurringIssueTemplate',
+        query: '{ issues(first: 1) { nodes { id recurringIssueTemplate { id name type } } } }',
+        nodes: (data) => (data?.issues?.nodes ?? []).map((issue) => issue.recurringIssueTemplate).filter(Boolean),
+      },
+    ],
+  },
+  {
+    id: 'project_dependencies',
+    pattern: /projectRelation/i,
+    liveQueries: [
+      { name: 'projectRelations', query: '{ projectRelations(first: 1) { nodes { id type } } }', nodes: connection('projectRelations') },
+    ],
+  },
+  {
+    id: 'releases',
+    pattern: /release/i,
+    liveQueries: [
+      { name: 'releases', query: '{ releases(first: 1) { nodes { id } } }', nodes: connection('releases') },
+      { name: 'releasePipelines', query: '{ releasePipelines(first: 1) { nodes { id } } }', nodes: connection('releasePipelines') },
+    ],
+  },
+  { id: 'insights', pattern: /insight|analytic|metric/i, liveQueries: [] },
+]
+
+function summarizeLive(feature, liveResults) {
+  if (feature.liveQueries.length === 0) return 'skipped'
+  let populated = false
+  for (const query of feature.liveQueries) {
+    const result = liveResults[query.name]
+    if (!result || result.errors?.length) {
+      const first = result?.errors?.[0]
+      return { error: { code: first?.extensions?.code ?? first?.extensions?.type ?? 'UNKNOWN', message: first?.message ?? 'no result' } }
+    }
+    if (query.nodes(result.data).length > 0) populated = true
+  }
+  return populated ? 'ok' : 'empty'
+}
+
+// Never decides yes or no. The note's author applies the answer rules.
+export function summarize(feature, schema, liveResults) {
+  return { feature: feature.id, found: findMatches(schema, feature.pattern), live: summarizeLive(feature, liveResults) }
+}
