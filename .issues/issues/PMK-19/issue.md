@@ -2,7 +2,7 @@
 id: PMK-19
 title: Add the flow-metrics command
 type: feature
-status: in_review
+status: done
 priority: medium
 estimate: 3
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-18]
 milestone: phase-2-commands
 branch: pmk-19-add-the-flow-metrics-command
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-27T15:18:29Z
+updated: 2026-10-27T19:30:40Z
 ---
 
 ## Description
