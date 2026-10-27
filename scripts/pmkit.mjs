@@ -873,27 +873,61 @@ function runRisks(ctx) {
   for (const issue of all) if (!issue.archived && issue.branch && issuesByBranch[issue.branch] === undefined) issuesByBranch[issue.branch] = issue.id
 
   const system = ctx.config().pmkit.git_host?.system ?? 'none'
+  const branch = defaultBranch(ctx)
   let gitHost = { system, available: true }
   let openPrsByBranch = {}
-  const closedPrsByBranch = {}
+  let closedPrsByBranch = {}
+  // null: not checked because no host is available. { error }: that one call failed.
   let prs = null
-  let runs = null
-  let host = null
+  let ci = null
+  const hostWarnings = []
+  // A missing or logged out gh fails every call the same way, so it ends the host phase and drops what it read.
+  const stopsHost = (error) => isPmkitError(error) && (error.code === 'NOT_CONFIGURED' || error.code === 'AUTH')
+  // A rate limit or an upstream failure affects only the call that raised it.
+  const affectsOneCall = (error) => isPmkitError(error) && (error.code === 'RATE_LIMITED' || error.code === 'UPSTREAM')
   try {
-    host = ctx.host()
-  } catch (error) {
-    if (!isPmkitError(error) || error.code !== 'NOT_SUPPORTED') throw error
-    gitHost = { system, available: false, reason: errorOf(error) }
-    warnings.push(`no git host is configured, ${NO_HOST_WARNING}`)
-  }
-  if (host !== null) {
-    prs = host.listPullRequests()
-    openPrsByBranch = prsByBranch(prs)
-    for (const issue of needsPrLookup(all, { eventsByIssue, openPrsByBranch, today, stuckBusinessDays })) {
-      const pr = host.getPullRequest({ head: issue.branch })
-      if (pr !== null && pr.state !== 'OPEN') closedPrsByBranch[issue.branch] = pr
+    const host = ctx.host()
+    try {
+      prs = host.listPullRequests()
+      if (prs.length === 200) hostWarnings.push('only the 200 most recently created open pull requests were read')
+      openPrsByBranch = prsByBranch(prs)
+    } catch (error) {
+      if (!affectsOneCall(error)) throw error
+      prs = { error: errorOf(error) }
+      hostWarnings.push(`pull requests not checked: ${error.message}`)
     }
-    runs = host.listRuns({ branch: defaultBranch(ctx) })
+    if (Array.isArray(prs)) {
+      for (const issue of needsPrLookup(all, { eventsByIssue, openPrsByBranch, today, stuckBusinessDays })) {
+        try {
+          const pr = host.getPullRequest({ head: issue.branch })
+          if (pr !== null && pr.state !== 'OPEN') closedPrsByBranch[issue.branch] = pr
+        } catch (error) {
+          if (!affectsOneCall(error)) throw error
+          hostWarnings.push(`${issue.id}: the pull request of ${issue.branch} could not be read: ${error.message}`)
+        }
+      }
+    }
+    let defaultBranchCi
+    try {
+      defaultBranchCi = { branch, ...failingWorkflows(host.listRuns({ branch })) }
+    } catch (error) {
+      if (!affectsOneCall(error)) throw error
+      defaultBranchCi = { branch, error: errorOf(error) }
+      hostWarnings.push(`CI on ${branch} not checked: ${error.message}`)
+    }
+    ci = { defaultBranch: defaultBranchCi, pullRequests: Array.isArray(prs) ? failingPullRequests(prs) : prs }
+    warnings.push(...hostWarnings)
+  } catch (error) {
+    if (isPmkitError(error) && error.code === 'NOT_SUPPORTED') {
+      warnings.push(`no git host is configured, ${NO_HOST_WARNING}`)
+    } else if (stopsHost(error)) {
+      warnings.push(`${error.message}, ${NO_HOST_WARNING}; next: ${error.nextStep}`)
+    } else throw error
+    gitHost = { system, available: false, reason: errorOf(error) }
+    openPrsByBranch = {}
+    closedPrsByBranch = {}
+    prs = null
+    ci = null
   }
 
   const updatesByEpic = {}
@@ -917,12 +951,9 @@ function runRisks(ctx) {
     gitHost,
     blocked: blockedIssues(all, { byId, problemsById, activeSprintId }),
     stalledIssues: stalledIssues(all, { eventsByIssue, openPrsByBranch, closedPrsByBranch, today, stuckBusinessDays }),
-    stalledPullRequests: prs === null ? null : stalledPullRequests(prs, { issuesByBranch, today, stuckBusinessDays }),
+    stalledPullRequests: Array.isArray(prs) ? stalledPullRequests(prs, { issuesByBranch, today, stuckBusinessDays }) : prs,
     epics: epicRisks(epics, { updatesByEpic, today, windowDays }),
-    ci: prs === null ? null : {
-      defaultBranch: { branch: defaultBranch(ctx), ...failingWorkflows(runs) },
-      pullRequests: failingPullRequests(prs),
-    },
+    ci,
     problems,
   }
   return { data: report, text: risksText(report), warnings }

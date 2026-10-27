@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
-import { makeRepo } from './test-helpers.mjs'
+import { makeRepo, tempDir } from './test-helpers.mjs'
 import { fakeGh, ghCalls } from './fake-gh.mjs'
 import { readTree } from './scenario-helpers.mjs'
 
@@ -140,4 +140,81 @@ test("risks keeps the report when an epic's status updates cannot be read", () =
   assert.equal(data.epics[0].lastUpdate, null)
   assert.ok(data.problems.some((p) => p.id === 'EPC-2M9D' && p.code === 'INVALID_INPUT' && p.message === 'The status update file has no frontmatter.'), JSON.stringify(data.problems))
   assert.ok(stderr.includes('warning: EPC-2M9D: INVALID_INPUT The status update file has no frontmatter.'), stderr)
+})
+
+const LOGGED_OUT = { status: 4, stderr: 'To get started with GitHub CLI, please run:  gh auth login\n' }
+
+test('risks with a logged out gh lists tracker risks and says how to log in', () => {
+  const root = teamRepo()
+  const gh = fakeGh({ ...cannedGh(), [PR_LIST]: LOGGED_OUT })
+  const { data, stderr } = callJson(root, envWith(gh), ['risks'])
+  assert.deepEqual(data.gitHost, { system: 'github', available: false, reason: { code: 'AUTH', message: 'GitHub CLI is not logged in', nextStep: 'gh auth login' } })
+  assert.equal(data.stalledPullRequests, null)
+  assert.equal(data.ci, null)
+  assert.deepEqual(data.stalledIssues.map((r) => r.id), ['ISS-2X6D'])
+  assert.deepEqual(ghCalls(gh), [PR_LIST])
+  assert.ok(stderr.includes('warning: GitHub CLI is not logged in, so issues are stalled by tracker activity only and pull requests and CI are not checked; next: gh auth login'), stderr)
+})
+
+test('risks with no gh on the PATH reports NOT_CONFIGURED', () => {
+  const root = teamRepo()
+  const env = { ...envWith(fakeGh({})), PATH: tempDir('pmkit-risks-') }
+  const { data } = callJson(root, env, ['risks'])
+  assert.equal(data.gitHost.reason.code, 'NOT_CONFIGURED')
+  assert.equal(data.stalledPullRequests, null)
+})
+
+test('risks drops every host list when gh logs out after pr list', () => {
+  const root = githubRepo()
+  const gh = fakeGh({ ...cannedGh(), [RUN_LIST]: LOGGED_OUT })
+  const { data } = callJson(root, envWith(gh, '2026-10-28T12:00:00Z'), ['risks'])
+  assert.equal(data.gitHost.reason.code, 'AUTH')
+  assert.equal(data.stalledPullRequests, null)
+  assert.equal(data.ci, null)
+  // Tracker activity only: PR 11 no longer counts for ISS-2X6D, and the merged lookup for ISS-8C4W is dropped.
+  assert.deepEqual(data.stalledIssues.map((r) => [r.id, r.reason, r.pr]), [['ISS-2X6D', 'idle', null], ['ISS-5N1R', 'idle', null], ['ISS-8C4W', 'idle', null]])
+})
+
+test('risks keeps the pull request lists when only run list fails', () => {
+  const root = githubRepo()
+  const gh = fakeGh({ ...cannedGh(), [RUN_LIST]: { status: 1, stderr: 'HTTP 502: Bad Gateway\n' } })
+  const { data, stderr } = callJson(root, envWith(gh, '2026-10-28T12:00:00Z'), ['risks'])
+  assert.equal(data.gitHost.available, true)
+  assert.deepEqual(data.stalledPullRequests.map((r) => r.number), [12])
+  assert.deepEqual(data.ci.pullRequests.map((r) => r.number), [14])
+  assert.deepEqual(data.ci.defaultBranch, {
+    branch: 'main',
+    error: { code: 'UPSTREAM', message: 'gh run list failed: HTTP 502: Bad Gateway', nextStep: 'Check the output of the same command in a terminal' },
+  })
+  assert.ok(stderr.includes('warning: CI on main not checked: gh run list failed: HTTP 502: Bad Gateway'), stderr)
+})
+
+test('risks keeps the CI on main when only pr list fails', () => {
+  const root = githubRepo()
+  const gh = fakeGh({ ...cannedGh(), [PR_LIST]: { status: 1, stderr: 'API rate limit exceeded\n' } })
+  const { data, stderr } = callJson(root, envWith(gh, '2026-10-28T12:00:00Z'), ['risks'])
+  const error = { error: { code: 'RATE_LIMITED', message: 'GitHub rate limit reached', nextStep: 'Wait a few minutes and retry' } }
+  assert.deepEqual(data.stalledPullRequests, error)
+  assert.deepEqual(data.ci.pullRequests, error)
+  assert.equal(data.ci.defaultBranch.workflows, 0)
+  assert.ok(!ghCalls(gh).some((line) => line.startsWith('pr view ')), ghCalls(gh).join('\n'))
+  assert.ok(stderr.includes('warning: pull requests not checked: GitHub rate limit reached'), stderr)
+})
+
+test('risks keeps an issue idle when its pull request lookup fails', () => {
+  const root = githubRepo()
+  const gh = fakeGh({ ...cannedGh(), [view('feat-dlq')]: { status: 1, stderr: 'GraphQL: boom\n' } })
+  const { data, stderr } = callJson(root, envWith(gh, '2026-10-28T12:00:00Z'), ['risks'])
+  const row = data.stalledIssues.find((r) => r.id === 'ISS-8C4W')
+  assert.equal(row.reason, 'idle')
+  assert.equal(row.pr, null)
+  assert.ok(stderr.includes('warning: ISS-8C4W: the pull request of feat-dlq could not be read: gh pr view failed: GraphQL: boom'), stderr)
+})
+
+test('risks warns when it reads 200 open pull requests', () => {
+  const root = teamRepo()
+  const prs = Array.from({ length: 200 }, (_, i) => openPr(i + 1, `b${i + 1}`, '2026-10-22T10:00:00Z'))
+  const gh = fakeGh({ [PR_LIST]: { stdout: JSON.stringify(prs) }, [RUN_LIST]: { stdout: '[]' } })
+  const { stderr } = callJson(root, envWith(gh), ['risks'])
+  assert.ok(stderr.includes('warning: only the 200 most recently created open pull requests were read'), stderr)
 })
