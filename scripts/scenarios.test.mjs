@@ -183,6 +183,7 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     assert.match(file.parsed.calls.find((c) => c.step === '1').text, /--category triage/)
     assert.match(step(4), /proposal.*priority.*labels/s, 'step 4 shows proposal, priority and labels')
     for (const kind of ['accept', 'duplicate of', 'decline', 'needs info']) assert.ok(step(4).includes(kind), `step 4 names ${kind}`)
+    assert.ok(step(4).includes('`duplicate of <id> (<status>)`'), 'step 4 shows the status of the original')
     for (const command of ['issues update', 'issues move', 'issues link', 'issues comment']) assert.ok(has('6', command, true), `step 6 dry-runs ${command}`)
     assert.ok(!file.parsed.calls.some((c) => c.step === '6' && !c.dryRun && ['issues update', 'issues move', 'issues link', 'issues comment'].includes(c.command)), 'step 6 has no write without --dry-run')
     assert.match(step(8), /without `--dry-run`/, 'step 8 runs the step 6 commands as writes')
