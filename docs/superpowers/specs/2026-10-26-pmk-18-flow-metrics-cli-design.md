@@ -53,7 +53,7 @@ Chosen: approach 1.
 All four metrics replay one issue's `events.jsonl` from `tracker.eventsByIssue()`, in `at` order as `readEvents` returns them (it drops identical lines and sorts by `at`), as `metrics cycle-time` does today. The status an event moves the issue into comes from the existing `movedTo(event)` in `metrics.mjs`: the `to` of a `move` on `status`, or `to.status` of a `create`. Categories come from `tracker.categoryOf`, so a renamed status counts by its category in the current config.
 
 - **Done at.** The `at` of the issue's last move into a status of category `done`, from `lastEntry(events, 'done', categoryOf)`. It is the same moment `metrics cycle-time` and `velocity` use. An issue with no move into `done` has no done time. `canceled` is not done.
-- **In range.** The done time falls on or after `--since` and on or before `--until`. A date-only `--until` means the end of that day, `T23:59:59Z`, as in `metrics cycle-time` and `metricEvents`. A missing flag leaves that side open. The comparison uses `Date.parse`, so a hand-written offset in `at` compares as an instant (PMK-121 did the same for velocity).
+- **In range.** The done time falls on or after `--since` and on or before `--until`. A date-only `--until` means the end of that day, `T23:59:59Z`, as in `metrics cycle-time` and `metricEvents`. A missing flag leaves that side open. The comparison uses `eventInstant` (a zoneless time reads as UTC), so a hand-written offset in `at` compares as an instant (PMK-121 did the same for velocity).
 - **Created at.** The `at` of the issue's `create` event. A log with no `create` event uses its earliest `at`. A log written by the adapter always starts with a `create`, real or synthetic.
 - **Lead time.** Done at minus created at, in calendar days rounded to one decimal, for each issue done in range. Lead time starts at creation (decided question 3).
 - **Throughput.** The number of issues done in range, with a count per issue type. The type is the last value the log gives it: `to.type` of the `create`, then the `to` of each `update` on `type`. An issue with no type counts under `none`. Bug rate is `byType.bug / count` (decided question 4).
@@ -82,7 +82,7 @@ The CLI calls `doneInRange` first and passes its result to `leadTimes` and `thro
 | `metrics throughput` | `[--since d] [--until d]` | issues done in a range, by type |
 | `metrics aging` | `[--until d]` | days since work started, per issue in progress or in review at a date, oldest first |
 
-Flags go through `dateText`, so a bad date is a usage error with exit code 2, as in `metrics cycle-time`. `metrics aging` does not accept `--since`, and the CLI's unknown-option check refuses it with `INVALID_INPUT` and exit code 2, as it refuses `--bogus` today.
+Flags go through `rangeText`, which also refuses a date that rolls over such as `2026-13-40`, so a bad date is a usage error with exit code 2, as in `metrics cycle-time`. `metrics aging` does not accept `--since`, and the CLI's unknown-option check refuses it with `INVALID_INPUT` and exit code 2, as it refuses `--bogus` today.
 
 JSON output:
 
@@ -140,7 +140,7 @@ ISS-3Q6T has no `events.jsonl` (its `issue.md` holds conflict markers), so no me
 | Lead time and aging use calendar days with one decimal. | Same unit and rounding as `cycleTimes`. Business days exist in `businessDaysBetween`, but mixing units across the four metrics would mislead. |
 | Aging counts `in_progress` and `in_review` as in work, and starts at the first move into either. | Both are started and unfinished. An issue that skipped `in_progress` still needs an age. |
 | Aging replays only events on or before `asOf`. | An `asOf` in the past then gives the work in progress at that moment, which a trend needs. |
-| The range filter moves into `doneInRange` and uses `Date.parse`. | One rule for cycle time, lead time and throughput. `Date.parse` compares offsets as instants, as PMK-121 did for velocity. For the `Z` timestamps the adapter writes, the result equals today's string comparison. |
+| The range filter moves into `doneInRange` and uses `eventInstant`. | One rule for cycle time, lead time and throughput. `eventInstant` compares offsets as instants, as PMK-121 did for velocity. For the `Z` timestamps the adapter writes, the result equals today's string comparison. |
 | No check that `--since` comes before `--until`. | `metrics cycle-time` and `events` return an empty result for that case. An empty result is a correct answer. |
 | `throughput.issues` carries `type` and `doneAt`, and `byType` counts `none` for an issue with no type. | A command can name the issues behind the count and read bug rate without counting itself. |
 | The type comes from the event log, not from `issue.md`. | The criterion says "from the event log", and the replay gives the type even for an issue whose file no longer parses. |
