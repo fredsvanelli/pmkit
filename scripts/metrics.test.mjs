@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { aging, businessDaysBetween, cycleTimes, doneInRange, leadTimes, rangeInstant, throughput, summary, velocity } from './lib/metrics.mjs'
+import {
+  aging, businessDaysBetween, categoryLookup, cycleTimes, doneInRange, groupEventsByIssue, leadTimes, rangeInstant, sprintIssues, throughput, summary, velocity,
+} from './lib/metrics.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { fixedNow, makeRepo } from './test-helpers.mjs'
 
@@ -326,4 +328,63 @@ test('doneInRange, leadTimes and aging skip an event time that is not a date', (
   assert.deepEqual(aging({ 'ISS-2': [move('yesterday', 'doing')] }, { categoryOf, asOf: AS_OF }), [])
   const later = { 'ISS-3': [move('2026-10-01T08:00:00Z', 'doing'), move('yesterday', 'done')] }
   assert.deepEqual(aging(later, { categoryOf, asOf: AS_OF }).map((i) => i.issue), ['ISS-3'])
+})
+
+test('groupEventsByIssue groups by issue in id order and drops the issue key', () => {
+  const grouped = groupEventsByIssue([{ issue: 'ISS-10', at: 'a' }, { issue: 'ISS-2', at: 'b' }, { issue: 'ISS-2', at: 'c' }])
+  assert.deepEqual(grouped, { 'ISS-2': [{ at: 'b' }, { at: 'c' }], 'ISS-10': [{ at: 'a' }] })
+  assert.deepEqual(Object.keys(grouped), ['ISS-2', 'ISS-10'])
+  assert.deepEqual(groupEventsByIssue([]), {})
+})
+
+test('categoryLookup maps a status name to its category', () => {
+  const categoryOf = categoryLookup([{ name: 'Doing', category: 'in_progress' }])
+  assert.equal(categoryOf('Doing'), 'in_progress')
+  assert.equal(categoryOf('nope'), null)
+  assert.equal(categoryOf('constructor'), null)
+})
+
+test('sprintIssues groups issues by sprint with their last done time', () => {
+  const categoryOf = categoryLookup([{ name: 'Todo', category: 'todo' }, { name: 'Done', category: 'done' }])
+  const issues = [
+    { id: 'ISS-1', sprint: 'S1', estimate: 3, status: { name: 'Done', category: 'done' } },
+    { id: 'ISS-2', sprint: 'S1', status: { name: 'Todo', category: 'todo' } },
+    { id: 'ISS-3', status: { name: 'Done', category: 'done' } },
+  ]
+  const events = {
+    'ISS-1': [{ at: '2026-10-01T00:00:00Z', op: 'move', field: 'status', from: 'Todo', to: 'Done' }],
+    'ISS-3': [{ at: '2026-10-02T00:00:00Z', op: 'move', field: 'status', from: 'Todo', to: 'Done' }],
+  }
+  assert.deepEqual(sprintIssues(issues, events, categoryOf), {
+    S1: [
+      { id: 'ISS-1', estimate: 3, status: 'Done', doneAt: '2026-10-01T00:00:00Z' },
+      { id: 'ISS-2', estimate: undefined, status: 'Todo', doneAt: undefined },
+    ],
+  })
+})
+
+test('the helpers give what the Local tracker gives, on every golden fixture', () => {
+  const byAt = (events) => [...events].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))
+  const byId = (groups) => Object.fromEntries(Object.entries(groups).map(([sprint, list]) => [sprint, [...list].sort((a, b) => (a.id < b.id ? -1 : 1))]))
+  for (const name of ['basic', 'team', 'messy-merge', 'no-sprints']) {
+    const tracker = createLocalTracker(makeRepo(name), { now: fixedNow() })
+    const grouped = groupEventsByIssue(tracker.metricEvents())
+    const local = tracker.eventsByIssue()
+    const categoryOf = categoryLookup(tracker.discover().statuses)
+    assert.deepEqual(Object.keys(grouped), Object.keys(local), `${name} keys`)
+    for (const id of Object.keys(local)) assert.deepEqual(grouped[id], byAt(local[id]), `${name} ${id}`)
+    for (const status of [...tracker.discover().statuses.map((s) => s.name), 'missing']) {
+      assert.equal(categoryOf(status), tracker.categoryOf(status), `${name} ${status}`)
+    }
+    const options = { categoryOf, asOf: '2026-10-23T12:00:00Z' }
+    const localOptions = { categoryOf: tracker.categoryOf, asOf: '2026-10-23T12:00:00Z' }
+    for (const [label, fn] of [['doneInRange', doneInRange], ['cycleTimes', cycleTimes], ['leadTimes', leadTimes], ['throughput', throughput], ['aging', aging]]) {
+      assert.deepEqual(fn(grouped, options), fn(local, localOptions), `${name} ${label}`)
+    }
+    assert.deepEqual(
+      byId(sprintIssues(tracker.searchIssues({ archived: true }).issues, grouped, categoryOf)),
+      byId(tracker.issuesBySprint()),
+      `${name} sprintIssues`,
+    )
+  }
 })
