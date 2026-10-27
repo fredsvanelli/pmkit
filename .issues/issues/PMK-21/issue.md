@@ -2,7 +2,7 @@
 id: PMK-21
 title: Add the risk-radar command
 type: feature
-status: in_review
+status: done
 priority: medium
 estimate: 5
 assignee: fred
@@ -10,7 +10,7 @@ parent: EPC-3
 milestone: phase-2-commands
 branch: pmk-21-add-the-risk-radar-command
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-27T02:03:12Z
+updated: 2026-10-27T14:21:15Z
 ---
 
 ## Description
