@@ -82,7 +82,7 @@ The CLI calls `doneInRange` first and passes its result to `leadTimes` and `thro
 | `metrics throughput` | `[--since d] [--until d]` | issues done in a range, by type |
 | `metrics aging` | `[--until d]` | days since work started, per issue in progress or in review at a date, oldest first |
 
-Flags go through `rangeText`, which also refuses a date that rolls over such as `2026-13-40`, so a bad date is a usage error with exit code 2, as in `metrics cycle-time`. `metrics aging` does not accept `--since`, and the CLI's unknown-option check refuses it with `INVALID_INPUT` and exit code 2, as it refuses `--bogus` today.
+Flags go through `rangeText`, which also refuses a date that rolls over such as `2026-02-30`, so a bad date is a usage error with exit code 2, as in `metrics cycle-time`. `metrics aging` does not accept `--since`, and the CLI's unknown-option check refuses it with `INVALID_INPUT` and exit code 2, as it refuses `--bogus` today.
 
 JSON output:
 
