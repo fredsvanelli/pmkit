@@ -80,10 +80,15 @@ const ignoreIsSound = (cacheDir) => {
   }
 }
 
-/** Writes `.gitignore` first, so git never sees index.json, then the index through a temp file and a rename. */
-export function saveIndex(cacheDir, header, entries) {
+/** Creates the cache folder and writes its `.gitignore` with `*` when the file is missing or differs, so git ignores every file in it. */
+export function ensureCacheIgnored(cacheDir) {
   fs.mkdirSync(cacheDir, { recursive: true })
   if (!ignoreIsSound(cacheDir)) writeFileAtomic(path.join(cacheDir, '.gitignore'), IGNORE_TEXT)
+}
+
+/** Writes `.gitignore` first, so git never sees index.json, then the index through a temp file and a rename. */
+export function saveIndex(cacheDir, header, entries) {
+  ensureCacheIgnored(cacheDir)
   writeFileAtomic(path.join(cacheDir, INDEX_FILE), JSON.stringify({ ...header, issues: Object.fromEntries(entries) }))
 }
 

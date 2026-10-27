@@ -18,11 +18,13 @@ import { addMapEntry, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
 import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { lineDiff } from './lib/diff.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
+import { CACHE_DIR, ensureCacheIgnored } from './lib/local/query-index.mjs'
+import { writeFileAtomic } from './lib/local/store.mjs'
 import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, planMigration } from './lib/local/migrations.mjs'
 import { parseChangelog, sectionsSince } from './lib/changelog.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
 import { ID_STYLES, branchName, isId, normalizeId } from './lib/ids.mjs'
-import { boardDoc, problemsLine, renderDocument, roadmapDoc, sprintDoc } from './lib/render.mjs'
+import { boardDoc, hasMarker, problemsLine, renderDocument, roadmapDoc, sprintDoc } from './lib/render.mjs'
 import { boardData, roadmapData, sprintData } from './lib/render-data.mjs'
 
 const TEMPLATES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates')
@@ -969,14 +971,63 @@ function runRisks(ctx) {
 const RENDER_VIEWS = ['board', 'roadmap', 'sprint']
 const RENDER_FORMATS = ['md', 'html']
 
-/** Gathers the view data through tracker reads and renders it. Changes no tracker file. */
+const HTML_EXTENSIONS = ['.html', '.htm']
+const MARKDOWN_EXTENSIONS = ['.md', '.markdown']
+
+/** True when `file` is `dir` or inside it. */
+const isInside = (dir, file) => {
+  const rel = path.relative(dir, file)
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
+}
+
+/**
+ * The file a render writes and its format, or a null file for stdout. Checks the destination flags before any read.
+ * `--save` writes to the real tracker folder, never to the migrated copy of an older format.
+ */
+function renderTarget(ctx, view) {
+  const out = ctx.opt('out')
+  const save = ctx.flag('save')
+  const format = ctx.opt('format')
+  if (format !== undefined && !RENDER_FORMATS.includes(format)) throw usageError('--format must be md or html')
+  if (out !== undefined && save) throw usageError('--out and --save cannot go together', 'Use --save for the default location, or --out <path>')
+  if (out === undefined) {
+    const chosen = format ?? 'md'
+    if (!save) return { file: null, format: chosen }
+    return { file: path.join(ctx.config().issuesDir, CACHE_DIR, 'render', `${view}.${chosen}`), format: chosen, save: true }
+  }
+  const file = path.resolve(ctx.cwd, out)
+  const ext = path.extname(file).toLowerCase()
+  if ((format === 'md' && HTML_EXTENSIONS.includes(ext)) || (format === 'html' && MARKDOWN_EXTENSIONS.includes(ext))) {
+    throw usageError(`--format ${format} does not match the extension of ${out}`, 'Drop --format, or change the --out extension')
+  }
+  const display = renderPath(ctx, file)
+  const { issuesDir } = ctx.config()
+  if (isInside(issuesDir, file)) {
+    const tracker = slash(path.relative(ctx.root, issuesDir))
+    throw usageError(`${display} is inside the tracker folder ${tracker}/`, `Use --save, or a path outside ${tracker}/`)
+  }
+  if (fs.existsSync(file) && fs.statSync(file).isDirectory()) throw usageError(`${display} is a folder`, 'Name a file, such as board.md')
+  return { file, format: format ?? (HTML_EXTENSIONS.includes(ext) ? 'html' : 'md') }
+}
+
+/** A path relative to the repository root with `/`, or the absolute path when the file is outside the root. */
+const renderPath = (ctx, file) => {
+  const rel = path.relative(ctx.root, file)
+  return slash(rel === '' || rel.startsWith('..') || path.isAbsolute(rel) ? file : rel)
+}
+
+/** Gathers the view data through tracker reads and renders it to stdout or one file. Changes no tracker file and never replaces a file it did not render. */
 function runRender(ctx) {
   const [view] = ctx.args
   if (!RENDER_VIEWS.includes(view)) throw usageError(`view must be board, roadmap or sprint, got "${view}"`, 'pmkit render board')
   const sprint = ctx.opt('sprint')
   if (sprint !== undefined && view !== 'sprint') throw usageError('--sprint works only with the sprint view', 'pmkit render sprint --sprint <id>')
-  const format = ctx.opt('format') ?? 'md'
-  if (!RENDER_FORMATS.includes(format)) throw usageError('--format must be md or html')
+  const { file, format, save } = renderTarget(ctx, view)
+  const display = file === null ? null : renderPath(ctx, file)
+  const overwrote = file !== null && fs.existsSync(file)
+  if (overwrote && !hasMarker(fs.readFileSync(file, 'utf8'))) {
+    throw new PmkitError('CONFLICT', `${display} exists and was not written by pmkit render`, 'Pick another path, or delete the file first')
+  }
   const tracker = ctx.tracker()
   const { local } = ctx.config()
   const views = {
@@ -987,10 +1038,22 @@ function runRender(ctx) {
   const [viewData, toDoc] = views[view]()
   const content = renderDocument(toDoc(viewData), view, format)
   const warnings = [problemsLine(viewData.problems)].filter((line) => line !== null)
-  const data = { view, format, path: null, content, asOf: viewData.asOf, problems: viewData.problems }
-  if (ctx.dryRun) data.dryRun = true
-  // The run loop adds the final newline.
-  return { data, text: content.replace(/\n$/, ''), warnings }
+  const meta = { asOf: viewData.asOf, problems: viewData.problems, ...(ctx.dryRun ? { dryRun: true } : {}) }
+  if (file === null) {
+    // The run loop adds the final newline.
+    return { data: { view, format, path: null, content, ...meta }, text: content.replace(/\n$/, ''), warnings }
+  }
+  if (!ctx.dryRun) {
+    if (save) ensureCacheIgnored(path.join(ctx.config().issuesDir, CACHE_DIR))
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    writeFileAtomic(file, content)
+  }
+  const line = `${ctx.dryRun ? 'would write' : 'wrote'} ${display} (${view}, ${format})`
+  return {
+    data: { view, format, path: display, overwrote, ...meta },
+    text: ctx.dryRun ? `${line}\ndry run: nothing was written` : line,
+    warnings,
+  }
 }
 
 const gitIn = (root, ...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' })

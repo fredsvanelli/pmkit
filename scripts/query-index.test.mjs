@@ -6,7 +6,7 @@ import { loadConfig } from './lib/config.mjs'
 import { PmkitError } from './lib/errors.mjs'
 import { FORMAT_VERSION } from './lib/local/migrations.mjs'
 import {
-  INDEX_FILE, RACY_MS, SCHEMA, clearIndex, indexHeader, isRacy, loadIndex, readThroughIndex,
+  INDEX_FILE, RACY_MS, SCHEMA, clearIndex, ensureCacheIgnored, indexHeader, isRacy, loadIndex, readThroughIndex,
 } from './lib/local/query-index.mjs'
 import { writeFileAtomic } from './lib/local/store.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
@@ -510,5 +510,28 @@ describe('the index and the plain scan give the same results', () => {
     writer.link(x, y, 'blocks', 'fred')
     writer.setParent(z, x, 'fred')
     runStates(root, 'basic')
+  }))
+})
+
+describe('ensureCacheIgnored', () => {
+  test('creates a missing folder with a .gitignore that ignores everything', () => withDir((dir) => {
+    const cacheDir = path.join(dir, 'tracker', '.cache')
+    ensureCacheIgnored(cacheDir)
+    assert.equal(fs.readFileSync(path.join(cacheDir, '.gitignore'), 'utf8'), '*\n')
+  }))
+
+  test('rewrites a .gitignore that ignores less', () => withDir((dir) => {
+    fs.writeFileSync(path.join(dir, '.gitignore'), 'index.json\n')
+    ensureCacheIgnored(dir)
+    assert.equal(fs.readFileSync(path.join(dir, '.gitignore'), 'utf8'), '*\n')
+  }))
+
+  test('leaves a sound .gitignore alone', () => withDir((dir) => {
+    const file = path.join(dir, '.gitignore')
+    fs.writeFileSync(file, '*\n')
+    const past = new Date('2020-01-01T00:00:00Z')
+    fs.utimesSync(file, past, past)
+    ensureCacheIgnored(dir)
+    assert.equal(fs.statSync(file).mtimeMs, past.getTime())
   }))
 })

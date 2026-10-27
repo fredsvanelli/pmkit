@@ -367,3 +367,47 @@ exit 2
 }
 --- stderr
 (empty)
+
+$ pmkit render board --save
+exit 0
+--- stdout
+wrote .issues/.cache/render/board.md (board, md)
+--- stderr
+(empty)
+
+$ pmkit render board --save --json
+exit 0
+--- stdout
+{
+  "view": "board",
+  "format": "md",
+  "path": ".issues/.cache/render/board.md",
+  "overwrote": false,
+  "asOf": "2026-10-21T14:00:00Z",
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit render board --save --dry-run
+exit 0
+--- stdout
+would write .issues/.cache/render/board.md (board, md)
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit render board --save --dry-run --json
+exit 0
+--- stdout
+{
+  "view": "board",
+  "format": "md",
+  "path": ".issues/.cache/render/board.md",
+  "overwrote": false,
+  "asOf": "2026-10-21T14:00:00Z",
+  "problems": [],
+  "dryRun": true
+}
+--- stderr
+(empty)

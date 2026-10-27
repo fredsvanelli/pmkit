@@ -581,3 +581,69 @@ exit 0
 }
 --- stderr
 warning: 2 issues could not be read: ISS-4, ISS-5; run /pmkit:local:doctor
+
+$ pmkit render board --save
+exit 0
+--- stdout
+wrote .issues/.cache/render/board.md (board, md)
+--- stderr
+warning: 2 issues could not be read: ISS-4, ISS-5; run /pmkit:local:doctor
+
+$ pmkit render board --save --json
+exit 0
+--- stdout
+{
+  "view": "board",
+  "format": "md",
+  "path": ".issues/.cache/render/board.md",
+  "overwrote": false,
+  "asOf": "2026-10-21T14:00:00Z",
+  "problems": [
+    {
+      "id": "ISS-4",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    },
+    {
+      "id": "ISS-5",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: 2 issues could not be read: ISS-4, ISS-5; run /pmkit:local:doctor
+
+$ pmkit render board --save --dry-run
+exit 0
+--- stdout
+would write .issues/.cache/render/board.md (board, md)
+dry run: nothing was written
+--- stderr
+warning: 2 issues could not be read: ISS-4, ISS-5; run /pmkit:local:doctor
+
+$ pmkit render board --save --dry-run --json
+exit 0
+--- stdout
+{
+  "view": "board",
+  "format": "md",
+  "path": ".issues/.cache/render/board.md",
+  "overwrote": false,
+  "asOf": "2026-10-21T14:00:00Z",
+  "problems": [
+    {
+      "id": "ISS-4",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    },
+    {
+      "id": "ISS-5",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ],
+  "dryRun": true
+}
+--- stderr
+warning: 2 issues could not be read: ISS-4, ISS-5; run /pmkit:local:doctor
