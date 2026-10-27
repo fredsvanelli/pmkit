@@ -233,6 +233,14 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     assert.ok(step3.includes('Never propose `duplicate` or `decline` for a kept issue that is in the queue'), 'step 3 never cancels the kept issue')
   })
 
+  // The one-by-one answers of the scenario depend on this order: a needs-info issue gets a question like the others.
+  test('backlog/triage one-by-one asks about every issue in queue order, needs-info ones included', () => {
+    const step5 = fs.readFileSync(path.join(COMMANDS_DIR, 'backlog', 'triage.md'), 'utf8').split('\n')
+      .find((line) => line.startsWith('5. '))
+    assert.ok(step5.includes('The one-by-one path asks about every issue in the queue in queue order'), 'step 5 asks about every issue in order')
+    assert.ok(step5.includes('For a needs-info issue the choices are to give a priority and labels, which accepts it, or to skip it.'), 'step 5 covers needs-info issues')
+  })
+
   // The in_review assertion encodes the PMK-122 decision (follow-up 1 of the spec). Change it when that issue lands.
   test('cycle/plan step 5 drafts from todo, backlog and in_progress issues with no sprint', () => {
     const call = FILES.find((file) => file.rel === 'cycle/plan.md').parsed.calls
