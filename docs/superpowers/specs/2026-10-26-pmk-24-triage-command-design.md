@@ -22,7 +22,7 @@ Sources: the Unified model (EM catalog entry `triage`: "Processes untriaged issu
   - `issues move <id> backlog` takes an issue out of triage. `issues comment <id> --body-file f` records a reason.
   - All of them take `--dry-run`, so the preview needs no new code.
 - The conventions already fix the write rules. Several records change in one run, so the command always shows the full preview and asks once, whatever `write_policy.confirm` says. `confirm: none` skips only the single-write question.
-- `issues list --text` is the duplicate search that `issues:capture` step 4 uses. It matches words, so the command still has to judge the match from the titles and descriptions and say it is a guess.
+- `issues list --text` is the duplicate search that `issues:capture` step 4 uses. It matches one substring of the title or description, case-insensitive, so `--text "login slow"` finds nothing where `--text login` finds the match. The command runs one search per key word and still has to judge the matches from the titles and descriptions and say each one is a guess.
 - The repository's own tracker has no issue in triage and no labels in `discover`. The `team` fixture has one triage issue, `ISS-1V9Z` ("Investigate slow login"), which `backlog-groom` uses as a duplicate. The scenario for this command needs its own setup.
 - `scripts/plugin.test.mjs` keeps a list of commands (`COMMANDS`) and checks that `SKILL.md` and `README.md` name each one. `scripts/scenarios.test.mjs` requires a scenario module and a snapshot for every command file.
 
@@ -67,7 +67,7 @@ None. Every issue in the `triage` category is in scope. An optional `--limit` is
 3. For each issue, run `issues get <id> --comments --json` when the list entry lacks the description, then form a proposal from the title, type, description and comments.
    - Priority. One of the allowed values, with a one-line reason. Leave it empty when the text gives no basis, and say so.
    - Labels. Zero or more values from `discover`. Never a value outside it.
-   - Duplicate. Run `issues list --text "<key words from the title>" --json`, over every category except the issue itself, and judge the matches. Name the likely original and say the match is a guess. When the original is `done` or `canceled`, the proposal is still duplicate, and the table shows the original's status, as decision 4 says.
+   - Duplicate. Run `issues list --text "<key word>" --json` once for each key word of the title, one word per search, over every category except the issue itself, and judge the matches. Name the likely original and say the match is a guess. When the original is `done` or `canceled`, the proposal is still duplicate, and the table shows the original's status, as decision 4 says.
    - Decline. Propose it only when the text shows a reason the issue should not be worked, for example it asks for something the project says it will not do. Write the reason in one sentence.
    - Not enough information. When the description cannot support any proposal, propose nothing and leave the issue in triage. Say what is missing.
 4. Show the queue as an issue table (ID, title, status, assignee, estimate) with three extra columns after the five, in this order: proposal (`accept`, `duplicate of <id>`, `decline` or `needs info`), priority and labels. Show the reason for each proposal below the table in one line per issue. Page the table at 10 rows.

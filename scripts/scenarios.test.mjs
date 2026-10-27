@@ -203,6 +203,17 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     assert.ok(step6.some((c) => c.command === 'issues comment' && c.flags.includes('body-file')), 'a declined issue gets a comment')
   })
 
+  // `issues list --text` matches one substring of the title and description, so "login slow" finds nothing
+  // where "login" finds the original.
+  test('backlog/triage searches for duplicates one key word at a time', () => {
+    const search = FILES.find((f) => f.rel === 'backlog/triage.md').parsed.calls.find((c) => c.step === '3' && c.command === 'issues list')
+    assert.equal(search?.text, 'issues list --text "<key word>" --json')
+    const step3 = fs.readFileSync(path.join(COMMANDS_DIR, 'backlog', 'triage.md'), 'utf8').split('\n')
+      .find((line) => line.includes('issues list --text'))
+    assert.match(step3, /once for each key word of the title, one word per search/)
+    assert.match(step3, /`--text` matches one substring of the title or description/)
+  })
+
   // The in_review assertion encodes the PMK-122 decision (follow-up 1 of the spec). Change it when that issue lands.
   test('cycle/plan step 5 drafts from todo, backlog and in_progress issues with no sprint', () => {
     const call = FILES.find((file) => file.rel === 'cycle/plan.md').parsed.calls
