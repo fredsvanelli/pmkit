@@ -38,6 +38,9 @@ export function secretKeyPaths(tracker) {
   return paths.sort()
 }
 
+const SESSION_QUERY = 'query PmkitSession { viewer { id name } organization { urlKey name previousUrlKeys } }'
+const RETRY_STEP = 'Retry, and check status.linear.app if it keeps failing'
+
 export function createLinearClient({
   env,
   tracker,
@@ -61,9 +64,57 @@ export function createLinearClient({
     throw new PmkitError('NOT_CONFIGURED', 'tracker.scope.workspace is not set', '/pmkit:setup')
   }
   const key = linearCredential(env).authorization
+  const headers = { 'Content-Type': 'application/json', Authorization: key }
+
+  // One logical call: a single attempt here. Tasks 5 and 6 add error mapping and retries.
+  async function send(query, variables) {
+    const response = await fetch(LINEAR_ENDPOINT, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ query, variables }),
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+    const body = JSON.parse(await response.text())
+    return body.data
+  }
+
+  let sessionPromise
+  function session() {
+    sessionPromise ??= loadSession()
+    return sessionPromise
+  }
+
+  async function loadSession() {
+    const data = await send(SESSION_QUERY, {})
+    const organization = data?.organization
+    if (!organization) throw new PmkitError('UPSTREAM', 'Linear returned no organization for this key', RETRY_STEP)
+    const viewer = { id: data.viewer?.id, name: data.viewer?.name }
+    const found = { urlKey: organization.urlKey, name: organization.name }
+    const warnings = []
+    if (workspace && organization.urlKey !== workspace) {
+      if (organization.previousUrlKeys?.includes(workspace)) {
+        warnings.push(
+          `Linear renamed workspace ${workspace} to ${organization.urlKey}; set tracker.scope.workspace to ${organization.urlKey} in .pmkit/config.yaml`,
+        )
+      } else {
+        throw new PmkitError(
+          'AUTH',
+          `LINEAR_API_KEY belongs to workspace ${organization.urlKey}, and .pmkit/config.yaml names ${workspace}`,
+          `Export a LINEAR_API_KEY created in the ${workspace} workspace`,
+        )
+      }
+    }
+    return { source: 'LINEAR_API_KEY', viewer, workspace: found, pinned: Boolean(workspace), warnings }
+  }
+
+  async function request(document, variables = {}) {
+    await session()
+    return send(document, variables)
+  }
+
   const unfinished = () => {
     throw new Error('not implemented')
   }
-  void [key, fetch, timeoutMs, retries, sleep, now]
-  return Object.freeze({ request: unfinished, paginate: unfinished, session: unfinished, rateLimit: unfinished })
+  void [retries, sleep, now]
+  return Object.freeze({ request, paginate: unfinished, session, rateLimit: unfinished })
 }
