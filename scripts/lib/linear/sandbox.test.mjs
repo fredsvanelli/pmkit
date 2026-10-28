@@ -4,12 +4,16 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
-import { FAKE_KEY, fakeLinearFetch, json } from '../../fake-linear-api.mjs'
+import { EventEmitter } from 'node:events'
+import fs from 'node:fs'
+import {
+  ACME_STATES, ACME_TEAM, ACME_USERS, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeWorkspace, json,
+} from '../../fake-linear-api.mjs'
 import { createLinearClient, isMutation } from './client.mjs'
 import {
   COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_ARCHIVE, ISSUE_CREATE, ISSUE_UPDATE, RELATION_CREATE, RELATION_DELETE,
 } from './documents.mjs'
-import { runCleanup } from './contract-live.mjs'
+import { buildLiveRun, installSignalHandlers, registerLiveSuite, runCleanup } from './contract-live.mjs'
 import { PROJECT_CREATE, PROJECT_UPDATE_CREATE } from './projects.mjs'
 import { SUITE_ALLOWLIST, TEST_TEAM, createGuardedFetch, findOrCreateTestTeam, listTestTeamItems, preflight, trashTestTeamItems, waitForCycles } from './sandbox.mjs'
 
@@ -135,7 +139,7 @@ test('issueDelete refuses permanentlyDelete', async () => {
 
 const TEAM_CREATE = 'mutation PmkitSandboxTeamCreate($input: TeamCreateInput!) { teamCreate(input: $input) { success team { id key } } }'
 const teamInput = (extra = {}) => ({
-  id: TEAM, name: TEST_TEAM.name, key: TEST_TEAM.key, description: `pmkit contract-test team (marker: ${TEST_TEAM.marker}).`, ...extra,
+  id: TEAM, name: TEST_TEAM.name, key: TEST_TEAM.key, description: `Test team for the pmkit contract tests (marker: ${TEST_TEAM.marker}).`, ...extra,
 })
 
 test('teamCreate passes with the spec inputs when the team is absent', async () => {
@@ -266,7 +270,7 @@ const GOOD_HEADERS = {
   'x-ratelimit-complexity-limit': '3000000', 'x-ratelimit-complexity-remaining': '2900000', 'x-ratelimit-complexity-reset': '1798000000000',
 }
 const teamNode = (extra = {}) => ({
-  id: TEAM, key: TEST_TEAM.key, name: TEST_TEAM.name, description: `pmkit contract-test team (marker: ${TEST_TEAM.marker}).`,
+  id: TEAM, key: TEST_TEAM.key, name: TEST_TEAM.name, description: `Test team for the pmkit contract tests (marker: ${TEST_TEAM.marker}).`,
   archivedAt: null, cyclesEnabled: true, triageEnabled: true, ...extra,
 })
 const label = (id, name) => ({ id, name, isGroup: false, retiredAt: null, team: null })
@@ -429,7 +433,7 @@ test('findOrCreateTestTeam sends one teamCreate with the spec inputs when the te
   assert.equal(sent.length, 1)
   assert.deepEqual(sent[0].body.variables.input, {
     id: 'team-uuid-1', name: 'pmkit-test', key: 'PKT',
-    description: 'pmkit contract-test team (marker: pmkit-contract-team). The pmkit tests create and trash items here. Do not use it for real work.',
+    description: 'Test team for the pmkit contract tests (marker: pmkit-contract-team). They create and trash items here. Do not use it for real work.',
     timezone: 'Etc/UTC', triageEnabled: true, cyclesEnabled: true, cycleDuration: 1, cycleCooldownTime: 0, cycleStartDay: 5, upcomingCycleCount: 2,
     cycleIssueAutoAssignStarted: false, cycleIssueAutoAssignCompleted: false, groupIssueHistory: false,
   })
@@ -661,3 +665,176 @@ test('cleanup with no test team has nothing to do', async () => {
   assert.match(text, /no test team/)
   assert.equal(w.mutations().length, 0)
 })
+
+// Task 9: the live setup, the cycle provider and the signal handlers, over the stateful fake.
+const ACTIVE = { number: 1, team: TEAM, startsAt: '2026-10-19T00:00:00.000Z', endsAt: '2026-11-02T00:00:00.000Z' }
+const PLANNED = { number: 2, team: TEAM, startsAt: '2026-11-02T00:00:00.000Z', endsAt: '2026-11-16T00:00:00.000Z' }
+const FAKE_NOW = new Date('2026-10-27T12:00:00.000Z')
+
+/** The whole sandbox over the fake stores: discovery, issues, projects and the sandbox documents, with rate-limit headers. */
+function liveWorld({ withTeam = true, cycles = [ACTIVE, PLANNED] } = {}) {
+  const pkt = { ...ACME_TEAM, id: TEAM, key: 'PKT', name: TEST_TEAM.name, description: `marker: ${TEST_TEAM.marker}`, archivedAt: null, triageEnabled: true, cyclesEnabled: true }
+  const teams = withTeam ? [pkt] : []
+  const states = [{ id: 'state-triage', name: 'Triage', type: 'triage', position: -1 }, ...ACME_STATES].map((state) => ({ ...state, team: { id: TEAM } }))
+  const labels = [label('label-bug', 'Bug'), label('label-feature', 'Feature')]
+  const users = ACME_USERS.map((user) => ({ ...user, teams: { nodes: [{ id: TEAM }] } }))
+  const issues = fakeLinearIssues({ teams, states, labels, users, cycles })
+  const projects = fakeLinearProjects({ issues, teams, states })
+  const store = { cycleStarts: 0, stateCreates: 0 }
+  const flags = (record) => {
+    const now = FAKE_NOW.getTime()
+    const isFuture = Date.parse(record.startsAt) > now
+    const isPast = Date.parse(record.endsAt) <= now
+    return { ...record, isActive: !isFuture && !isPast, isFuture, isPast }
+  }
+  const sandbox = {
+    PmkitSandboxTeams: () => json({ organization: { subscription: null }, teams: { nodes: teams } }),
+    PmkitSandboxTeam: (body) => json({ teams: { nodes: teams.filter((team) => team.name === body.variables.name) } }),
+    PmkitSandboxTeamById: (body) => json({ teams: { nodes: teams.filter((team) => team.id === body.variables.id) } }),
+    PmkitSandboxTeamCreate: (body) => {
+      teams.push({ ...pkt, id: body.variables.input.id })
+      return json({ teamCreate: { success: true, team: { id: body.variables.input.id, key: 'PKT' } } })
+    },
+    PmkitSandboxStates: () => json({ team: { states: { nodes: states } } }),
+    PmkitSandboxStateCreate: () => {
+      store.stateCreates += 1
+      return json({ workflowStateCreate: { success: true } })
+    },
+    PmkitSandboxCycles: () => json({ team: { cycles: { nodes: issues.cycles.list().map(flags) } } }),
+    PmkitSandboxCycleStart: () => {
+      store.cycleStarts += 1
+      return json({ cycleStartUpcomingCycleToday: { success: true } })
+    },
+    PmkitSandboxLabels: (body) => json({ issueLabels: connection(labels, body) }),
+    PmkitSandboxIssues: (body) => json({ issues: connection(issues.records.map((record) => ({ id: record.id, identifier: record.identifier, trashed: record.trashed, archivedAt: record.archivedAt })), body) }),
+    PmkitSandboxProjects: (body) => json({ projects: connection(projects.projects.map((project) => ({ id: project.id, name: project.name, trashed: false, archivedAt: null, teams: { nodes: project.teamIds.map((id) => ({ id })) } })), body) }),
+    PmkitSandboxIssueDelete: (body) => {
+      issues.records.find((record) => record.id === body.variables.id).trashed = true
+      return json({ issueDelete: { success: true } })
+    },
+    PmkitSandboxProjectDelete: (body) => {
+      projects.projects.splice(projects.projects.findIndex((project) => project.id === body.variables.id), 1)
+      return json({ projectDelete: { success: true } })
+    },
+  }
+  const base = fakeLinearFetch({ ...fakeWorkspace({ teams, states, labels, users }), ...issues.routes, ...projects.routes, ...sandbox })
+  const fetch = async (url, init) => {
+    const reply = await base(url, init)
+    return { status: reply.status, ok: reply.ok, headers: new Headers(GOOD_HEADERS), text: () => reply.text() }
+  }
+  fetch.calls = base.calls
+  const lines = []
+  const sleeps = []
+  const run = buildLiveRun({
+    env: { PMKIT_LIVE: '1', LINEAR_API_KEY: FAKE_KEY, PMKIT_LIVE_WORKSPACE: 'acme' }, fetch, workspace: 'acme', now: () => FAKE_NOW,
+    uuid: () => TEAM, sleep: async (ms) => { sleeps.push(ms) }, write: (line) => lines.push(line),
+  })
+  const mutations = () => fetch.calls.filter((call) => isMutation(call.body.query)).map((call) => call.body.query.match(/(?:mutation )(\w+)/)[1])
+  return { run, fetch, issues, projects, teams, store, lines, sleeps, mutations }
+}
+
+test('before checks the workspace, finds the team, waits for the cycles and fills the discovery cache once', async () => {
+  const w = liveWorld()
+  try {
+    await w.run.before()
+    assert.deepEqual(w.mutations(), [])
+    assert.deepEqual(w.lines, ['found the test team'])
+    const discoveries = w.fetch.calls.filter((call) => call.body.query.includes('PmkitTeams') || /query PmkitTeams/.test(call.body.query))
+    assert.equal(discoveries.length, 1)
+    const { tracker } = await w.run.setup()
+    const before = w.fetch.calls.length
+    await tracker.discover()
+    assert.equal(w.fetch.calls.length - before <= 1, true, 'the tracker reads discovery from the cache')
+  } finally {
+    await w.run.after()
+  }
+})
+
+test('before creates the missing test team once', async () => {
+  const w = liveWorld({ withTeam: false })
+  try {
+    await w.run.before()
+    assert.deepEqual(w.mutations(), ['PmkitSandboxTeamCreate'])
+    assert.deepEqual(w.lines, ['created the test team'])
+  } finally {
+    await w.run.after()
+  }
+})
+
+test('setup returns a tracker, the viewer, the UTC start date and a cycle provider that throws when a cycle is missing', async () => {
+  const w = liveWorld()
+  await w.run.before()
+  try {
+    const setup = await w.run.setup()
+    assert.equal(setup.actor, 'user-1')
+    assert.equal(setup.today, '2026-10-27')
+    assert.deepEqual(Object.keys(setup.cycles), ['active', 'planned'])
+    const active = await setup.cycles.active()
+    assert.deepEqual(Object.keys(active), ['id', 'start', 'end'])
+    assert.equal(active.start, '2026-10-19')
+    assert.equal((await setup.cycles.planned()).start, '2026-11-02')
+    const config = w.run.config.pmkit
+    assert.deepEqual(config.tracker, { system: 'linear', scope: { workspace: 'acme', team: 'PKT' } })
+    assert.deepEqual(config.git_host, { system: 'none' })
+    assert.deepEqual(config.mappings, { status: { in_review: 'In Review' }, types: { bug: 'Bug', feature: 'Feature' } })
+    await setup.teardown()
+  } finally {
+    await w.run.after()
+  }
+})
+
+test('the cycle provider throws "the test team has no <state> cycle" for a missing cycle', async () => {
+  const w = liveWorld({ cycles: [ACTIVE] })
+  // The team has only an active cycle, so before() itself fails on the planned one; the provider is tested on a run that got past it.
+  await assert.rejects(w.run.before(), /the test team has no planned cycle/)
+  await w.run.after()
+})
+
+test('setup fails with "the test team is not empty" when an issue remains', async () => {
+  const w = liveWorld()
+  await w.run.before()
+  try {
+    w.issues.seed({ title: 'left over', teamId: TEAM })
+    await assert.rejects(w.run.setup(), /the test team is not empty/)
+  } finally {
+    await w.run.after()
+  }
+})
+
+test('teardown trashes the items and removes capacity.yaml, and after sweeps once more and removes the folders', async () => {
+  const w = liveWorld()
+  await w.run.before()
+  const setup = await w.run.setup()
+  const root = setup.root
+  await setup.tracker.createIssue({ title: 'One' }, setup.actor)
+  fs.mkdirSync(`${root}/.pmkit`, { recursive: true })
+  fs.writeFileSync(`${root}/.pmkit/capacity.yaml`, 'x: 1\n')
+  await setup.teardown()
+  assert.equal(w.issues.records.every((record) => record.trashed), true)
+  assert.equal(fs.existsSync(`${root}/.pmkit/capacity.yaml`), false)
+  w.issues.seed({ title: 'late', teamId: TEAM })
+  await w.run.after()
+  assert.equal(w.issues.records.every((record) => record.trashed), true)
+  assert.ok(w.lines.some((line) => /last sweep trashed 1 issue and 0 projects/.test(line)))
+  assert.equal(fs.existsSync(root), false)
+})
+
+test('a stop signal stops the guard, runs the finish steps and exits 130, and a second signal exits at once', async () => {
+  const proc = new EventEmitter()
+  const exits = []
+  const events = []
+  const guard = { stop: () => events.push('stop') }
+  installSignalHandlers({ proc, guard, finish: async () => { events.push('finish') }, exit: (code) => exits.push(code) })
+  proc.emit('SIGINT')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(events, ['stop', 'finish'])
+  assert.deepEqual(exits, [130])
+  proc.emit('SIGTERM')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(events, ['stop', 'finish'])
+  assert.deepEqual(exits, [130, 130])
+})
+
+// The whole contract suite, through the guard and the budget, over the fake. This is the run that npm test cannot send to Linear.
+const suiteWorld = liveWorld()
+registerLiveSuite(suiteWorld.run)

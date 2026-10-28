@@ -10,11 +10,22 @@
 // PMKIT_LIVE_WORKSPACE and a usable LINEAR_API_KEY, every test is skipped with one reason and nothing is sent.
 // Running `cleanup --yes` during a live run trashes that run's items too.
 
-import test from 'node:test'
+import { randomUUID } from 'node:crypto'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import test, { after, before, describe } from 'node:test'
 import { pathToFileURL } from 'node:url'
+import { runTrackerContract } from '../../contract-suite.mjs'
 import { createLinearClient } from './client.mjs'
 import { linearCredential } from './credential.mjs'
-import { createGuardedFetch, listTestTeamItems, preflight, trashTestTeamItems } from './sandbox.mjs'
+import {
+  createGuardedFetch, findOrCreateTestTeam, listTestTeamItems, preflight, trashTestTeamItems, waitForCycles,
+} from './sandbox.mjs'
+import { createLinearTracker } from './tracker.mjs'
+
+/** The families the Linear run covers. cycle-lifecycle, time, releases, milestone-writes and document-writes stay out. */
+export const LINEAR_FAMILIES = ['discovery', 'issues', 'relations', 'history', 'cycles', 'deliverables', 'milestones', 'documents']
 
 /** The reason the live run cannot start, or false when the gate is open. */
 export function skipReason(env) {
@@ -58,6 +69,116 @@ export async function runCleanup({ client, env, workspace, guard, yes, write }) 
   return 0
 }
 
+/**
+ * Everything the live run needs, over an injected fetch so a scripted one can drive it. Returns { before, after, setup, totals, guard }.
+ * `before` checks the workspace, finds or creates the test team and fills the discovery cache. `setup` is the contract suite's
+ * setup: a new tracker on an empty test team. `after` sweeps the team once more and removes the temporary folders.
+ */
+export function buildLiveRun({ env, fetch, workspace, sleep, now = () => new Date(), uuid = randomUUID, write = (line) => console.log(line) }) {
+  const { fetch: guarded, guard } = createGuardedFetch({ fetch, workspace })
+  const client = createLinearClient({ env, tracker: { system: 'linear', scope: { workspace } }, fetch: guarded })
+  const run = { guard, client, team: null, viewer: null, today: null, home: null, root: null, env: null, config: null }
+
+  const newTracker = () => createLinearTracker(run.config, { env: run.env, fetch: guarded })
+
+  async function before() {
+    run.home = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-live-'))
+    run.root = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-live-repo-'))
+    run.env = { ...env, PMKIT_HOME: path.join(run.home, 'store'), HOME: run.home, XDG_CONFIG_HOME: path.join(run.home, '.config') }
+    const ready = await preflight({ client, env, workspace, guard })
+    run.viewer = ready.viewer
+    run.today = now().toISOString().slice(0, 10)
+    const found = await findOrCreateTestTeam({ client, guard, now, uuid })
+    run.team = found.team
+    write(found.created ? 'created the test team' : 'found the test team')
+    await waitForCycles({ client, team: run.team, guard, sleep })
+    run.config = {
+      root: run.root,
+      pmkit: {
+        tracker: { system: 'linear', scope: { workspace, team: run.team.key } },
+        git_host: { system: 'none' },
+        mappings: { status: { in_review: 'In Review' }, types: { bug: 'Bug', feature: 'Feature' } },
+      },
+    }
+    await newTracker().discover({ refresh: true })
+  }
+
+  async function sweep() {
+    return trashTestTeamItems({ client, team: run.team, guard })
+  }
+
+  async function setup() {
+    const { issues, projects } = await listTestTeamItems({ client, team: run.team, guard })
+    if (issues.length + projects.length > 0) throw new Error('the test team is not empty')
+    const tracker = newTracker()
+    const pick = (state) => async () => {
+      const [found] = await tracker.listCycles({ state })
+      if (!found) throw new Error(`the test team has no ${state} cycle`)
+      return { id: found.id, start: found.start, end: found.end }
+    }
+    return {
+      tracker, actor: run.viewer.id, today: run.today, env: run.env, root: run.root, cycles: { active: pick('active'), planned: pick('planned') },
+      async teardown() {
+        await sweep()
+        fs.rmSync(path.join(run.root, '.pmkit', 'capacity.yaml'), { force: true })
+      },
+    }
+  }
+
+  async function after() {
+    try {
+      if (run.team) {
+        const counts = await sweep()
+        write(`last sweep trashed ${plural(counts.issues, 'issue')} and ${plural(counts.projects, 'project')}`)
+      }
+    } finally {
+      for (const dir of [run.home, run.root]) if (dir) fs.rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  function totals() {
+    const { requests, writes, complexity, rate, refused } = guard.stats()
+    return [
+      `requests ${requests}, writes ${writes}, complexity ${complexity}`,
+      `left in the window: ${rate.requestsRemaining ?? 'unknown'} requests, ${rate.complexityRemaining ?? 'unknown'} complexity`,
+      ...(refused.length > 0 ? [`the guard refused ${refused.length} requests`, ...refused.slice(0, 10)] : []),
+    ]
+  }
+
+  return { before, after, setup, totals, guard, client, get config() { return run.config } }
+}
+
+/**
+ * Stops the run cleanly on Ctrl-C or SIGTERM. The first signal sets the guard's stopping flag, runs `finish` and exits with 130.
+ * A second signal exits at once and leaves the items for the cleanup command.
+ */
+export function installSignalHandlers({ proc = process, guard, finish, exit = (code) => process.exit(code) }) {
+  let signalled = false
+  const handler = async () => {
+    if (signalled) return exit(130)
+    signalled = true
+    guard.stop()
+    try {
+      await finish()
+    } finally {
+      exit(130)
+    }
+  }
+  for (const name of ['SIGINT', 'SIGTERM']) proc.on(name, handler)
+}
+
+/** Registers the live suite: the hooks of `run`, the contract tests of the Linear families and the run's totals. */
+export function registerLiveSuite(run) {
+  describe('Linear tracker contract against the sandbox workspace', () => {
+    before(() => run.before())
+    after(() => run.after())
+    runTrackerContract({ name: 'contract', families: LINEAR_FAMILIES, setup: run.setup })
+    test('the totals of the run', (t) => {
+      for (const line of run.totals()) t.diagnostic(line)
+    })
+  })
+}
+
 async function main(env, args) {
   const reason = skipReason(env)
   if (args[0] === 'cleanup') {
@@ -74,8 +195,10 @@ async function main(env, args) {
     test('the Linear contract suite against the sandbox workspace', { skip: reason }, () => {})
     return 0
   }
-  console.error('the live contract run is not wired yet')
-  return 1
+  const run = buildLiveRun({ env, fetch: globalThis.fetch, workspace: env.PMKIT_LIVE_WORKSPACE })
+  installSignalHandlers({ guard: run.guard, finish: () => run.after() })
+  registerLiveSuite(run)
+  return 0
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

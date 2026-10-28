@@ -349,7 +349,7 @@ export const TEAM_CREATE = 'mutation PmkitSandboxTeamCreate($input: TeamCreateIn
 export const STATES_QUERY = 'query PmkitSandboxStates($id: String!) { team(id: $id) { states(first: 100) { nodes { id name type } } } }'
 export const STATE_CREATE = 'mutation PmkitSandboxStateCreate($input: WorkflowStateCreateInput!) { workflowStateCreate(input: $input) { success workflowState { id } } }'
 
-const DESCRIPTION = `pmkit contract-test team (marker: ${TEST_TEAM.marker}). The pmkit tests create and trash items here. Do not use it for real work.`
+const DESCRIPTION = `Test team for the pmkit contract tests (marker: ${TEST_TEAM.marker}). They create and trash items here. Do not use it for real work.`
 const REVIEW_STATE = { type: 'started', name: 'In Review', color: '#f2c94c' }
 
 /** The teamCreate input of the spec's table. The first cycle starts today (UTC weekday) and two cycles follow. */
