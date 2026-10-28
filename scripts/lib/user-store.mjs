@@ -92,7 +92,7 @@ export function isCredentialKey(key) {
 }
 
 /** True when a string looks like a Linear API key or an Authorization bearer header. */
-function isCredentialString(text) {
+export function isCredentialString(text) {
   return CREDENTIAL_STRING.test(text.trim())
 }
 

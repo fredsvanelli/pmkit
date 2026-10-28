@@ -165,6 +165,15 @@ test('run exits 2 without a key and sends nothing', async () => {
   assert.equal(fetch.calls.length, 0)
 })
 
+test('run exits 2 with a malformed key and sends nothing', async () => {
+  const fetch = liveFetch()
+  const { out, write } = capture()
+  const code = await run({ env: { PMKIT_LIVE: '1', LINEAR_API_KEY: 'Bearer x' }, fetch, write })
+  assert.equal(code, 2)
+  assert.equal(out.length, 1)
+  assert.equal(fetch.calls.length, 0)
+})
+
 test('run prints the workspace and one summary per feature, with queries only', async () => {
   const fetch = liveFetch()
   const { out, write } = capture()
