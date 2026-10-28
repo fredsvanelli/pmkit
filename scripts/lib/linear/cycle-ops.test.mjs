@@ -23,11 +23,13 @@ const CYCLES = [
 ]
 
 /** The cycle operations over the fake. `teams` decides which teams have cycles on; `cycles` seeds them. */
-async function setup({ teams = [ACME, OPS], cycles = CYCLES, scope = 'ACME' } = {}) {
+async function setup({ teams = [ACME, OPS], cycles = CYCLES, scope = 'ACME', wrap = {} } = {}) {
   const states = ALL_STATES
   const raw = await fakeRaw({ teams, states })
   const fake = fakeLinearIssues({ teams, states, cycles })
-  const fetch = fakeLinearFetch({ ...fakeWorkspace({ teams, states }), ...fake.routes })
+  const routes = { ...fakeWorkspace({ teams, states }), ...fake.routes }
+  for (const [name, wrapper] of Object.entries(wrap)) routes[name] = wrapper(routes[name])
+  const fetch = fakeLinearFetch(routes)
   const client = createLinearClient({ env: { LINEAR_API_KEY: FAKE_KEY }, tracker: { system: 'linear', scope: { workspace: 'acme' } }, fetch })
   const root = tempDir()
   const config = { root, pmkit: { tracker: { system: 'linear', scope: { workspace: 'acme', team: scope } }, mappings: { status: { in_review: 'In Review' }, types: { bug: 'Bug', feature: 'Feature' } } } }
@@ -123,4 +125,109 @@ test('with cycles off every read answers NOT_SUPPORTED with the hint', async () 
   await assert.rejects(ops.currentCycle(), expected)
   await assert.rejects(ops.cycleIssues('2'), expected)
   assert.equal(cycleCalls(fetch), 0)
+})
+
+const mutationCount = (fetch) => names(fetch).filter((name) => name === 'PmkitIssueUpdate').length
+const sprintOf = async (issues, id) => (await issues.getIssue(id)).sprint
+
+test('moveToCycle to a number, to current and to null gives { before, after } per id in order', async () => {
+  const { ops, issues, fake } = await setup()
+  const a = fake.seed({ title: 'A' }).identifier
+  const b = fake.seed({ title: 'B' }).identifier
+  const toThree = await ops.moveToCycle([b, a], '3', ACTOR)
+  assert.deepEqual(toThree.map((entry) => entry.after.id), [b, a])
+  assert.deepEqual(toThree.map((entry) => entry.after.sprint), ['3', '3'])
+  assert.equal('sprint' in toThree[0].before, false)
+  const toCurrent = await ops.moveToCycle([a, b], 'current', ACTOR)
+  assert.deepEqual(toCurrent.map((entry) => [entry.before.sprint, entry.after.sprint]), [['3', '2'], ['3', '2']])
+  assert.equal(await sprintOf(issues, a), '2')
+  const out = await ops.moveToCycle([a], null, ACTOR)
+  assert.equal('sprint' in out[0].after, false)
+  assert.equal(await sprintOf(issues, a), undefined)
+  assert.equal(await sprintOf(issues, b), '2')
+})
+
+test('an issue already in the target cycle sends no mutation', async () => {
+  const { ops, fake, fetch } = await setup()
+  const [, two] = fake.cycles.list()
+  const a = fake.seed({ title: 'A', cycleId: two.id }).identifier
+  const [entry] = await ops.moveToCycle([a], '2', ACTOR)
+  assert.deepEqual(entry.before, entry.after)
+  assert.equal(mutationCount(fetch), 0)
+})
+
+test('current with no active cycle is INVALID_INPUT, and an unknown cycle is NOT_FOUND', async () => {
+  const { ops, fake, fetch } = await setup({ cycles: [CYCLES[0], CYCLES[2]] })
+  const a = fake.seed({ title: 'A' }).identifier
+  await assert.rejects(ops.moveToCycle([a], 'current', ACTOR), { code: 'INVALID_INPUT', message: 'there is no active sprint', nextStep: 'pmkit cycle list' })
+  await assert.rejects(ops.moveToCycle([a], '99', ACTOR), { code: 'NOT_FOUND', message: 'sprint 99 does not exist' })
+  await assert.rejects(ops.moveToCycle([a], 'abc', ACTOR), { code: 'NOT_FOUND' })
+  assert.equal(mutationCount(fetch), 0)
+})
+
+test('an unknown issue is NOT_FOUND and no issue moves', async () => {
+  const { ops, issues, fake, fetch } = await setup()
+  const a = fake.seed({ title: 'A' }).identifier
+  await assert.rejects(ops.moveToCycle([a, 'ACME-99'], '3', ACTOR), { code: 'NOT_FOUND', message: 'issue ACME-99 does not exist' })
+  assert.equal(mutationCount(fetch), 0)
+  assert.equal(await sprintOf(issues, a), undefined)
+})
+
+test('an issue of another team is INVALID_INPUT naming both teams, and no mutation is sent', async () => {
+  const { ops, issues, fake, fetch } = await setup()
+  const a = fake.seed({ title: 'A' }).identifier
+  const foreign = fake.seed({ title: 'Other team', teamId: OPS.id }).identifier
+  await assert.rejects(ops.moveToCycle([a, foreign], '3', ACTOR), {
+    code: 'INVALID_INPUT', message: `issue ${foreign} belongs to team OPS, and cycle 3 belongs to ACME`,
+  })
+  assert.equal(mutationCount(fetch), 0)
+  assert.equal(await sprintOf(issues, a), undefined)
+})
+
+test('an empty or missing ids list is INVALID_INPUT', async () => {
+  const { ops } = await setup()
+  for (const ids of [[], undefined, 'ACME-1']) await assert.rejects(ops.moveToCycle(ids, '3', ACTOR), { code: 'INVALID_INPUT', message: 'ids must be a non-empty list' })
+})
+
+test('an actor other than the viewer is refused before anything is read', async () => {
+  const { ops, fake, fetch } = await setup()
+  const a = fake.seed({ title: 'A' }).identifier
+  await assert.rejects(ops.moveToCycle([a], '3', 'user-2'), { code: 'INVALID_INPUT', message: /owner of LINEAR_API_KEY/ })
+  assert.equal(mutationCount(fetch), 0)
+})
+
+test('a dry run sends no mutation and returns the same after', async () => {
+  const { ops, issues, fake, fetch } = await setup()
+  const a = fake.seed({ title: 'A' }).identifier
+  const dry = await ops.moveToCycle([a], 'current', ACTOR, { dryRun: true })
+  assert.equal(mutationCount(fetch), 0)
+  assert.equal(await sprintOf(issues, a), undefined)
+  const real = await ops.moveToCycle([a], 'current', ACTOR)
+  const untimed = (results) => results.map(({ before, after }) => ({ before, after: { ...after, updated: undefined } }))
+  assert.deepEqual(untimed(dry), untimed(real))
+})
+
+test('a failure halfway stops the loop and lists the ids already moved', async () => {
+  let calls = 0
+  const failSecond = (route) => (body) => (++calls === 2 ? { status: 200, json: { data: null, errors: [{ message: 'Forbidden', extensions: { code: 'FORBIDDEN' } }] } } : route(body))
+  const { ops, issues, fake, fetch } = await setup({ wrap: { PmkitIssueUpdate: failSecond } })
+  const ids3 = ['A', 'B', 'C'].map((title) => fake.seed({ title }).identifier)
+  await assert.rejects(ops.moveToCycle(ids3, '3', ACTOR), (error) => {
+    assert.notEqual(error.code, 'UNKNOWN')
+    assert.deepEqual(error.details.moved, [ids3[0]])
+    assert.equal(error.nextStep, `${ids3[0]} was moved; check Linear before you retry`)
+    return true
+  })
+  assert.equal(mutationCount(fetch), 2)
+  assert.equal(await sprintOf(issues, ids3[0]), '3')
+  assert.equal(await sprintOf(issues, ids3[2]), undefined)
+})
+
+test('with cycles off, a move to a cycle is NOT_SUPPORTED and a move to null changes nothing', async () => {
+  const { ops, fake, fetch } = await setup({ teams: [{ ...ACME, cyclesEnabled: false }, OPS] })
+  const a = fake.seed({ title: 'A' }).identifier
+  await assert.rejects(ops.moveToCycle([a], 'current', ACTOR), { code: 'NOT_SUPPORTED', message: 'team ACME has cycles turned off' })
+  const [entry] = await ops.moveToCycle([a], null, ACTOR)
+  assert.deepEqual(entry.before, entry.after)
+  assert.equal(mutationCount(fetch), 0)
 })

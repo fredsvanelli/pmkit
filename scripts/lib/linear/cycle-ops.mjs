@@ -75,5 +75,50 @@ export function cycleOperations({ client, issues, config }) {
     return (await issues.searchIssues({ sprint: id })).issues
   }
 
-  return { listCycles, currentCycle, cycleIssues }
+  const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
+  const listOf = (items) => (items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items.at(-1)}` : items[0])
+
+  /** The error of a move that failed after others succeeded: the same code, the ids already moved in details and the next step. */
+  function stoppedHalfway(error, moved) {
+    if (moved.length === 0 || !(error instanceof PmkitError)) return error
+    const nextStep = `${listOf(moved)} ${moved.length === 1 ? 'was' : 'were'} moved; check Linear before you retry`
+    return new PmkitError(error.code, error.message, nextStep, { ...error.details, moved })
+  }
+
+  /**
+   * `to` is a cycle id, 'current' for the active cycle, or null to take the issues out of their cycle. The Local order of checks
+   * runs first (spec, "Moving issues"), so a bad id writes nothing. One issueUpdate per issue, in the given order.
+   */
+  async function moveToCycle(ids, to, actor, { dryRun = false } = {}) {
+    await issues.requireViewer(actor)
+    if (!Array.isArray(ids) || ids.length === 0) throw invalid('ids must be a non-empty list')
+    if (to !== null && typeof to !== 'string') throw invalid('to must be a cycle id, current or null')
+    const { scopeTeam: team } = await issues.context()
+    if (!team) throw new PmkitError('NOT_CONFIGURED', 'tracker.scope.team is not set', '/pmkit:setup')
+    let target = null
+    if (to !== null) {
+      if (team.cyclesEnabled !== true) throw cyclesOff(team.key)
+      target = await issues.cycleNodeFor(to, team)
+    }
+    const nodes = []
+    for (const id of ids) nodes.push(await issues.readNode(id))
+    for (const node of target ? nodes : []) {
+      if (node.team.id !== team.id) throw invalid(`issue ${node.identifier} belongs to team ${node.team.key}, and cycle ${target.number} belongs to ${team.key}`, 'pmkit issues list')
+    }
+    const sprint = target ? String(target.number) : null
+    const results = []
+    const moved = []
+    for (const id of ids) {
+      try {
+        results.push(await issues.updateIssue(id, { sprint }, actor, { dryRun }))
+      } catch (error) {
+        throw stoppedHalfway(error, moved)
+      }
+      const { before, after } = results.at(-1)
+      if (before.sprint !== after.sprint) moved.push(after.id)
+    }
+    return results
+  }
+
+  return { listCycles, currentCycle, cycleIssues, moveToCycle }
 }
