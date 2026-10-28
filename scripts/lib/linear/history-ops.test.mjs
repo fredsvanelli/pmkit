@@ -84,3 +84,94 @@ test('a short history has no truncated flag and no request is a mutation', async
   assert.equal(events.truncated, undefined)
   assert.equal(sent(), before)
 })
+
+// listComments and comment
+
+const seedIssue = (fake) => fake.seed({ title: 'Threaded' })
+
+test('listComments returns roots and replies sorted by creation, with parent', async () => {
+  const { fake, history } = await setup()
+  seedIssue(fake)
+  fake.comment('ACME-1', { id: 'c-1', body: ' First ', createdAt: '2026-10-01T00:00:01.000Z' })
+  fake.comment('ACME-1', { id: 'c-3', body: 'Third', createdAt: '2026-10-01T00:00:03.000Z', parentId: 'c-1' })
+  fake.comment('ACME-1', { id: 'c-2', body: 'Second', createdAt: '2026-10-01T00:00:02.000Z' })
+  const comments = await history.listComments('ACME-1')
+  assert.deepEqual(comments.map((c) => [c.id, c.body, c.parent]), [['c-1', 'First', undefined], ['c-2', 'Second', undefined], ['c-3', 'Third', 'c-1']])
+  assert.deepEqual(comments[0], { id: 'c-1', issue: 'ACME-1', author: 'user-1', body: 'First', created: '2026-10-01T00:00:01.000Z' })
+  await assert.rejects(history.listComments('nope'), { code: 'NOT_FOUND' })
+})
+
+test('listComments flags a read cut by the page cap', async () => {
+  const { fake, history } = await setup()
+  seedIssue(fake)
+  for (let n = 0; n < 1001; n += 1) fake.comment('ACME-1', { body: `c${n}`, createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, n)).toISOString() })
+  const comments = await history.listComments('ACME-1')
+  assert.equal(comments.length, 1000)
+  assert.equal(comments.truncated, true)
+  assert.equal(Object.keys(comments).length, 1000)
+})
+
+test('comment returns the viewer as author and sends the trimmed body and nothing else', async () => {
+  const { fake, fetch, history, sent } = await setup()
+  seedIssue(fake)
+  const made = await history.comment('ACME-1', '  Hi there \n', ACTOR)
+  assert.deepEqual(made, { id: 'uuid-1', issue: 'ACME-1', author: ACTOR, body: 'Hi there', created: made.created })
+  assert.equal(sent(), 1)
+  const call = fetch.calls.find((c) => isMutation(c.body.query))
+  assert.deepEqual(call.body.variables.input, { id: 'uuid-1', issueId: 'issue-1', body: 'Hi there' })
+  assert.deepEqual((await history.listComments('ACME-1')).map((c) => c.body), ['Hi there'])
+})
+
+test('comment refuses another actor and a blank body, and sends nothing', async () => {
+  const { fake, history, sent } = await setup()
+  seedIssue(fake)
+  await assert.rejects(history.comment('ACME-1', 'x', 'user-2'), { code: 'INVALID_INPUT' })
+  await assert.rejects(history.comment('ACME-1', '   ', ACTOR), { code: 'INVALID_INPUT', message: 'comment body must be a non-empty string' })
+  assert.equal(sent(), 0)
+})
+
+test('a reply attaches to the root, also when it answers a reply', async () => {
+  const { fake, history } = await setup()
+  seedIssue(fake)
+  const root = await history.comment('ACME-1', 'Question', ACTOR)
+  const reply = await history.comment('ACME-1', 'Answer', ACTOR, { replyTo: root.id })
+  assert.equal(reply.parent, root.id)
+  const nested = await history.comment('ACME-1', 'More', ACTOR, { replyTo: reply.id })
+  assert.equal(nested.parent, root.id)
+  assert.deepEqual((await history.listComments('ACME-1')).map((c) => c.parent), [undefined, root.id, root.id])
+})
+
+test('a reply to a missing comment or a comment of another issue is NOT_FOUND', async () => {
+  const { fake, history, sent } = await setup()
+  seedIssue(fake)
+  fake.seed({ title: 'Other' })
+  fake.comment('ACME-2', { id: 'elsewhere', body: 'x' })
+  await assert.rejects(history.comment('ACME-1', 'x', ACTOR, { replyTo: 'missing' }), { code: 'NOT_FOUND', message: 'comment missing is not on ACME-1' })
+  await assert.rejects(history.comment('ACME-1', 'x', ACTOR, { replyTo: 'elsewhere' }), { code: 'NOT_FOUND', message: 'comment elsewhere is not on ACME-1' })
+  assert.equal(sent(), 0)
+})
+
+test('a dry-run comment sends no mutation and has the keys of the real result', async () => {
+  const { fake, history, sent } = await setup()
+  seedIssue(fake)
+  const root = await history.comment('ACME-1', 'Question', ACTOR)
+  const before = sent()
+  const dry = await history.comment('ACME-1', 'Answer', ACTOR, { dryRun: true, replyTo: root.id })
+  assert.equal(sent(), before)
+  assert.deepEqual(dry, { id: null, issue: 'ACME-1', author: ACTOR, body: 'Answer', created: dry.created, parent: root.id })
+  const real = await history.comment('ACME-1', 'Answer', ACTOR, { replyTo: root.id })
+  assert.deepEqual(Object.keys(dry), Object.keys(real))
+  assert.match(dry.created, /^\d{4}-\d\d-\d\dT/)
+})
+
+test('an unconfirmed create that was applied returns the comment, and one that was not rethrows', async () => {
+  const { fake, history } = await setup()
+  seedIssue(fake)
+  fake.unconfirm('PmkitCommentCreate', { applied: true })
+  const made = await history.comment('ACME-1', 'Once', ACTOR)
+  assert.equal(made.body, 'Once')
+  assert.equal(fake.comments.length, 1)
+  fake.unconfirm('PmkitCommentCreate', { applied: false })
+  await assert.rejects(history.comment('ACME-1', 'Never', ACTOR), { code: 'UPSTREAM' })
+  assert.equal(fake.comments.length, 1)
+})
