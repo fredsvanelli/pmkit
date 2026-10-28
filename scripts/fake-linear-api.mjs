@@ -238,6 +238,7 @@ class FakeValidationError extends Error {}
  * Identifiers count from 1 per team. Every write moves the clock one second from `start`. An unknown filter key or input field
  * answers GRAPHQL_VALIDATION_FAILED, so a translator that emits a clause the fake does not know fails instead of matching everything.
  * `mutations` lists each mutation the fake received. `seed(input)` creates an issue and `relate(type, from, to)` a relation, without recording a mutation.
+ * `comment(ref, input)` seeds a comment (a bot, an external author, a resolved thread) without recording a mutation, and `comments` lists the records.
  * `unconfirm(operation, { applied })` makes the next call of that operation answer HTTP 502, after applying it when `applied` is true.
  */
 export function fakeLinearIssues({
@@ -497,6 +498,65 @@ export function fakeLinearIssues({
     routes[name] = query(name, ({ id, first, after }) => ({ issue: { [field]: connection(nested[field](requireIssue(id)), first, after) } }))
   }
 
+  // PMK-36: comments.
+  const commentRecords = []
+  let commentCount = 0
+  const COMMENT_FIELDS = ['id', 'body', 'issueId', 'parentId']
+  const COMMENT_MISSING = 'Could not find referenced Comment.'
+  const findComment = (id) => commentRecords.find((item) => item.id === id)
+  const commentNode = (item) => ({
+    id: item.id,
+    createdAt: item.createdAt,
+    body: item.body,
+    user: item.userId ? { id: item.userId } : null,
+    botActor: item.botActor ?? null,
+    externalUser: item.externalUser ?? null,
+    parentId: item.parentId ?? null,
+    resolvedAt: item.resolvedAt ?? null,
+    resolvingUser: item.resolvingUserId ? { id: item.resolvingUserId } : null,
+  })
+  const withIssue = (item) => ({ ...commentNode(item), issue: { identifier: find(item.issueId).identifier } })
+  function addComment(input, { author }) {
+    const issue = requireIssue(input.issueId)
+    const parent = input.parentId ? findComment(input.parentId) : undefined
+    if (input.parentId && (!parent || parent.issueId !== issue.id)) throw new FakeInputError(COMMENT_MISSING)
+    if (parent?.parentId) throw new FakeInputError('A reply cannot have a reply.')
+    commentCount += 1
+    const item = {
+      id: input.id ?? `comment-${commentCount}`,
+      issueId: issue.id,
+      body: input.body ?? '',
+      userId: author ? users[0].id : (input.userId ?? null),
+      botActor: input.botActor ?? null,
+      externalUser: input.externalUser ?? null,
+      parentId: parent?.id ?? null,
+      createdAt: input.createdAt ?? stamp(),
+      resolvedAt: input.resolvedAt ?? null,
+      resolvingUserId: input.resolvingUserId ?? null,
+    }
+    commentRecords.push(item)
+    return item
+  }
+  // Newest first, as Linear answers; a tie keeps the later insert first.
+  const newestFirst = (items) => items.map((item, index) => ({ item, index })).sort((a, b) => (a.item.createdAt < b.item.createdAt ? 1 : a.item.createdAt > b.item.createdAt ? -1 : b.index - a.index)).map(({ item }) => item)
+  const commentsOf = (record) => newestFirst(commentRecords.filter((item) => item.issueId === record.id))
+  routes.PmkitIssueComments = query('PmkitIssueComments', ({ id, first, after }) => ({
+    issue: { comments: connection(commentsOf(requireIssue(id)).map(commentNode), first, after) },
+  }))
+  routes.PmkitCommentById = query('PmkitCommentById', ({ id }) => ({ comments: { nodes: commentRecords.filter((item) => item.id === id).map(withIssue) } }))
+  routes.PmkitCommentCreate = mutation('PmkitCommentCreate', ({ input }) => {
+    checkFields(input, COMMENT_FIELDS)
+    return { commentCreate: { success: true, comment: withIssue(addComment(input, { author: true })) } }
+  })
+  routes.PmkitCommentResolve = mutation('PmkitCommentResolve', ({ id }) => {
+    const item = findComment(id)
+    if (!item) throw new FakeInputError(COMMENT_MISSING)
+    if (item.parentId) throw new FakeInputError('Only a top-level comment can be resolved.')
+    item.resolvedAt = stamp()
+    item.resolvingUserId = users[0].id
+    return { commentResolve: { success: true, comment: withIssue(item) } }
+  })
+
   return {
     routes,
     mutations,
@@ -504,6 +564,8 @@ export function fakeLinearIssues({
     seed: (input) => toNode(create({ teamId: teams[0].id, ...input })),
     unconfirm: (operation, { applied }) => pending.set(operation, { applied }),
     relate: (type, from, to) => relate({ type, issueId: from, relatedIssueId: to }),
+    comment: (ref, input) => commentNode(addComment({ ...input, issueId: ref }, { author: input.userId === undefined && input.botActor === undefined && input.externalUser === undefined })),
+    comments: commentRecords,
     records,
     relations,
   }

@@ -65,3 +65,51 @@ export const NESTED_PAGES = Object.fromEntries(
   ]),
 )
 export const NESTED_PAGE_SIZE = NESTED
+
+// PMK-36: history and comments. Added after the PMK-35 documents; ISSUE_FRAGMENT stays as it is.
+const HISTORY_PAGE = 50
+
+/** The fields of one IssueHistory entry. */
+export const HISTORY_FIELDS = `createdAt actor { id } botActor { type name } autoClosed autoArchived archived updatedDescription
+    fromState { id name type } toState { id name type } fromAssigneeId toAssigneeId fromTitle toTitle fromPriority toPriority
+    fromEstimate toEstimate fromDueDate toDueDate
+    addedLabels { id name parent { name } } removedLabels { id name parent { name } }
+    fromParent { identifier } toParent { identifier } relationChanges { identifier type }
+    fromCycle { number } toCycle { number } fromProject { id } toProject { id }
+    fromProjectMilestone { id } toProjectMilestone { id }`
+
+/** The fields of one comment. */
+export const COMMENT_FIELDS = 'id createdAt body user { id } botActor { type name } externalUser { id } parentId resolvedAt resolvingUser { id }'
+
+export const ISSUE_HISTORY_QUERY = `query PmkitIssueHistory($id: String!, $first: Int!, $after: String) {
+  issue(id: $id) { creator { id } botActor { type name } history(first: $first, after: $after) { nodes { ${HISTORY_FIELDS} } ${PAGE_INFO} } }
+}`
+
+export const ISSUE_COMMENTS_QUERY = `query PmkitIssueComments($id: String!, $first: Int!, $after: String) {
+  issue(id: $id) { comments(first: $first, after: $after) { nodes { ${COMMENT_FIELDS} } ${PAGE_INFO} } }
+}`
+
+// Read through the comments filter, not comment(id): Linear answers an unknown comment with an error, which the client reports as UPSTREAM.
+export const COMMENT_BY_ID_QUERY = `query PmkitCommentById($id: ID!) {
+  comments(filter: { id: { eq: $id } }, first: 1) { nodes { ${COMMENT_FIELDS} issue { identifier } } }
+}`
+
+export const COMMENT_CREATE = `mutation PmkitCommentCreate($input: CommentCreateInput!) {
+  commentCreate(input: $input) { success comment { ${COMMENT_FIELDS} issue { identifier } } }
+}`
+
+export const COMMENT_RESOLVE = `mutation PmkitCommentResolve($id: String!) {
+  commentResolve(id: $id) { success comment { ${COMMENT_FIELDS} issue { identifier } } }
+}`
+
+export const ISSUE_EVENTS_QUERY = `${ISSUE_FRAGMENT}
+query PmkitIssueEvents($filter: IssueFilter, $first: Int!, $after: String, $includeArchived: Boolean, $sort: [IssueSortInput!]) {
+  issues(filter: $filter, first: $first, after: $after, includeArchived: $includeArchived, sort: $sort) {
+    nodes {
+      ...PmkitIssueFields creator { id } botActor { type name }
+      history(first: ${HISTORY_PAGE}) { nodes { ${HISTORY_FIELDS} } ${PAGE_INFO} }
+      comments(first: ${HISTORY_PAGE}) { nodes { ${COMMENT_FIELDS} } ${PAGE_INFO} }
+    }
+    ${PAGE_INFO}
+  }
+}`

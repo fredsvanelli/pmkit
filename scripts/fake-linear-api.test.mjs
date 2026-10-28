@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ACME_LABELS, ACME_STATES, ACME_TEAM, ACME_TEAM_ID, ACME_USERS, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeTriage, fakeWorkspace, json, page } from './fake-linear-api.mjs'
 import {
-  BLOCK_GRAPH_QUERY, ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_UPDATE, NESTED_PAGES, PARENT_CHAIN_QUERY, RELATION_CREATE, RELATION_DELETE,
+  BLOCK_GRAPH_QUERY, COMMENT_BY_ID_QUERY, COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_COMMENTS_QUERY, ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_UPDATE, NESTED_PAGES, PARENT_CHAIN_QUERY, RELATION_CREATE, RELATION_DELETE,
 } from './lib/linear/documents.mjs'
 import { operationName } from './lib/linear/client.mjs'
 
@@ -389,4 +389,59 @@ test('unconfirm works for a relation create', async () => {
   fake.unconfirm('PmkitRelationCreate', { applied: true })
   assert.equal((await send(fetch, RELATION_CREATE, { input: { id: 'rel-x', type: 'related', issueId: 'ACME-1', relatedIssueId: 'ACME-2' } })).status, 502)
   assert.deepEqual(fake.relations.map((relation) => relation.id), ['rel-x'])
+})
+
+const commentsOf = async (fetch, id) => (await send(fetch, ISSUE_COMMENTS_QUERY, { id, first: 50, after: null })).body.data.issue.comments
+
+test('comments: create honors the client id and parent, and the list is newest first', async () => {
+  const { fake, fetch } = issueStore()
+  fake.seed({ title: 'A' })
+  const root = (await send(fetch, COMMENT_CREATE, { input: { id: 'c-1', issueId: 'issue-1', body: 'Question' } })).body.data.commentCreate
+  assert.equal(root.success, true)
+  assert.deepEqual(root.comment, {
+    id: 'c-1', createdAt: root.comment.createdAt, body: 'Question', user: { id: 'user-1' }, botActor: null, externalUser: null,
+    parentId: null, resolvedAt: null, resolvingUser: null, issue: { identifier: 'ACME-1' },
+  })
+  const reply = (await send(fetch, COMMENT_CREATE, { input: { id: 'c-2', issueId: 'ACME-1', body: 'Answer', parentId: 'c-1' } })).body.data.commentCreate.comment
+  assert.equal(reply.parentId, 'c-1')
+  const nested = await send(fetch, COMMENT_CREATE, { input: { id: 'c-3', issueId: 'ACME-1', body: 'More', parentId: 'c-2' } })
+  assert.equal(nested.body.errors[0].extensions.code, 'INPUT_ERROR')
+  assert.deepEqual((await commentsOf(fetch, 'issue-1')).nodes.map((c) => c.id), ['c-2', 'c-1'])
+  assert.deepEqual(fake.mutations, ['PmkitCommentCreate', 'PmkitCommentCreate', 'PmkitCommentCreate'])
+})
+
+test('comments: an unknown issue is refused and the list pages', async () => {
+  const { fake, fetch } = issueStore({ nestedPage: 2 })
+  fake.seed({ title: 'A' })
+  assert.equal((await send(fetch, COMMENT_CREATE, { input: { issueId: 'ACME-9', body: 'x' } })).body.errors[0].extensions.code, 'INPUT_ERROR')
+  for (const id of ['c-1', 'c-2', 'c-3']) fake.comment('ACME-1', { id, body: id })
+  const first = (await send(fetch, ISSUE_COMMENTS_QUERY, { id: 'ACME-1', first: 2, after: null })).body.data.issue.comments
+  assert.deepEqual([first.nodes.map((c) => c.id), first.pageInfo.hasNextPage], [['c-3', 'c-2'], true])
+  const second = (await send(fetch, ISSUE_COMMENTS_QUERY, { id: 'ACME-1', first: 2, after: first.pageInfo.endCursor })).body.data.issue.comments
+  assert.deepEqual([second.nodes.map((c) => c.id), second.pageInfo.hasNextPage], [['c-1'], false])
+})
+
+test('comments: resolve marks a root, refuses a reply, and CommentById finds or misses', async () => {
+  const { fake, fetch } = issueStore()
+  fake.seed({ title: 'A' })
+  fake.comment('ACME-1', { id: 'c-1', body: 'Q' })
+  fake.comment('ACME-1', { id: 'c-2', body: 'A', parentId: 'c-1' })
+  const refused = await send(fetch, COMMENT_RESOLVE, { id: 'c-2' })
+  assert.equal(refused.body.errors[0].extensions.code, 'INPUT_ERROR')
+  const done = (await send(fetch, COMMENT_RESOLVE, { id: 'c-1' })).body.data.commentResolve.comment
+  assert.equal(done.resolvingUser.id, 'user-1')
+  assert.equal(typeof done.resolvedAt, 'string')
+  assert.deepEqual((await send(fetch, COMMENT_BY_ID_QUERY, { id: 'c-1' })).body.data.comments.nodes.map((c) => [c.id, c.issue.identifier]), [['c-1', 'ACME-1']])
+  assert.deepEqual((await send(fetch, COMMENT_BY_ID_QUERY, { id: 'nope' })).body.data.comments.nodes, [])
+})
+
+test('comments: seeding records no mutation, and an applied unconfirmed create leaves the comment readable', async () => {
+  const { fake, fetch } = issueStore()
+  fake.seed({ title: 'A' })
+  fake.comment('ACME-1', { id: 'bot', body: 'Hi', userId: null, botActor: { type: 'github', name: 'GitHub' } })
+  assert.deepEqual(fake.mutations, [])
+  fake.unconfirm('PmkitCommentCreate', { applied: true })
+  assert.equal((await send(fetch, COMMENT_CREATE, { input: { id: 'c-9', issueId: 'ACME-1', body: 'x' } })).status, 502)
+  assert.deepEqual((await send(fetch, COMMENT_BY_ID_QUERY, { id: 'c-9' })).body.data.comments.nodes.map((c) => c.id), ['c-9'])
+  assert.equal(fake.comments.length, 2)
 })
