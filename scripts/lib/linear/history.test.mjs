@@ -65,7 +65,10 @@ test('every row of the field table becomes its event', () => {
   assert.deepEqual(run({ fromParent: null, toParent: { identifier: 'ACME-9' } }, { parent: { identifier: 'ACME-9' } }), [{ ...meta, op: 'update', field: 'parent', from: null, to: 'ACME-9' }])
   assert.deepEqual(run({ fromParent: { identifier: 'ACME-9' }, toParent: null }), [{ ...meta, op: 'update', field: 'parent', from: 'ACME-9', to: null }])
   assert.deepEqual(run({ fromCycle: null, toCycle: { number: 4 } }), [{ ...meta, op: 'update', field: 'sprint', from: null, to: '4' }])
-  assert.deepEqual(run({ fromProject: { id: 'p1' }, toProject: null }), [{ ...meta, op: 'update', field: 'project', from: 'p1', to: null }])
+  // The project is named by its epic id: the identifier, else the slug when the identifier has another shape (PMK-38).
+  const project = { id: '00000000-0000-4000-8000-0000000000a1', slugId: 'a1b2c3d4e5f6', identifier: 'P-ACM-1' }
+  assert.deepEqual(run({ fromProject: project, toProject: null }), [{ ...meta, op: 'update', field: 'project', from: 'P-ACM-1', to: null }])
+  assert.deepEqual(run({ fromProject: null, toProject: { ...project, identifier: 'LAUNCH' } }), [{ ...meta, op: 'update', field: 'project', from: null, to: 'a1b2c3d4e5f6' }])
   assert.deepEqual(run({ fromProjectMilestone: null, toProjectMilestone: { id: 'm1' } }), [{ ...meta, op: 'update', field: 'milestone', from: null, to: 'm1' }])
   assert.deepEqual(run({ updatedDescription: true }), [{ ...meta, op: 'update', field: 'description' }])
   assert.deepEqual(run({ archived: true }), [{ ...meta, op: 'archive' }])

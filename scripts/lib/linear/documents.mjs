@@ -76,7 +76,7 @@ export const HISTORY_FIELDS = `createdAt actor { id } botActor { type name } aut
     fromEstimate toEstimate fromDueDate toDueDate
     addedLabels { id name parent { name } } removedLabels { id name parent { name } } addedLabelIds removedLabelIds
     fromParent { identifier } toParent { identifier } relationChanges { identifier type }
-    fromCycle { number } toCycle { number } fromProject { id } toProject { id }
+    fromCycle { number } toCycle { number } fromProject { id slugId identifier } toProject { id slugId identifier }
     fromProjectMilestone { id } toProjectMilestone { id }`
 
 /** The fields of one comment. */

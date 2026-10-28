@@ -451,7 +451,11 @@ export function fakeLinearIssues({
     if (added.length > 0) entry.addedLabels = added.map(labelRef)
     if (removed.length > 0) entry.removedLabels = removed.map(labelRef)
     if (changed('cycleId')) Object.assign(entry, { fromCycle: cycleRef(before.cycleId), toCycle: cycleRef(record.cycleId) })
-    if (changed('projectId')) Object.assign(entry, { fromProject: before.projectId ? { id: before.projectId } : null, toProject: record.projectId ? { id: record.projectId } : null })
+    if (changed('projectId')) {
+      // Linear's entry carries the Project, so the history document can select the keys an epic id is made from.
+      const ref = (id) => (id ? (projectLookup(id) ?? null) : null)
+      Object.assign(entry, { fromProject: ref(before.projectId), toProject: ref(record.projectId) })
+    }
     if (changed('projectMilestoneId')) Object.assign(entry, { fromProjectMilestone: before.projectMilestoneId ? { id: before.projectMilestoneId } : null, toProjectMilestone: record.projectMilestoneId ? { id: record.projectMilestoneId } : null })
     if (changed('description')) entry.updatedDescription = true
     Object.assign(entry, extra)

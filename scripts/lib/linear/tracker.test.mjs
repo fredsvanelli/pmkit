@@ -1066,6 +1066,14 @@ test('setParent with an unknown issue or epic is INVALID_INPUT', async () => {
   assert.equal(mutationsIn(fetch), 0)
 })
 
+test('the history of an issue that joins and leaves an epic names the epic by its id', async () => {
+  const { tracker: linear } = epicSetup()
+  await linear.setParent('ACME-3', 'P-ACM-1', 'user-1')
+  await linear.setParent('ACME-3', null, 'user-1')
+  const moves = (await linear.getHistory('ACME-3')).filter((event) => event.field === 'project')
+  assert.deepEqual(moves.map(({ from, to }) => [from, to]), [[null, 'P-ACM-1'], ['P-ACM-1', null]])
+})
+
 test('createIssue with an epic parent puts the issue in the epic, and updateIssue still refuses parent', async () => {
   const { tracker: linear, fake, fetch } = epicSetup()
   const dry = await linear.createIssue({ title: 'In epic', parent: 'P-ACM-1' }, 'user-1', { dryRun: true })

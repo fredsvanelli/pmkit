@@ -55,3 +55,8 @@ test('the issue fragment selects the project and the project milestone', () => {
   assert.match(documents.ISSUE_FRAGMENT, /project \{ id slugId identifier \}/)
   assert.match(documents.ISSUE_FRAGMENT, /projectMilestone \{ id \}/)
 })
+
+test('the history query selects the keys an epic id is made from', () => {
+  assert.match(documents.ISSUE_HISTORY_QUERY, /fromProject \{ id slugId identifier \} toProject \{ id slugId identifier \}/)
+  assert.match(documents.ISSUE_HISTORY_QUERY, /fromProjectMilestone \{ id \} toProjectMilestone \{ id \}/)
+})

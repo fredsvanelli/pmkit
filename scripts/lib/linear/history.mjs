@@ -2,6 +2,7 @@
 // See docs/superpowers/specs/2026-10-28-pmk-36-linear-history-comments-design.md, "The event normalizer".
 
 import { estimateOf, mappingsOfTeam, priorityOf, toIssue } from './issues.mjs'
+import { epicId } from './projects.mjs'
 
 /**
  * Who did it: the user's id, else `bot:<type>` for a bot, else `external:<id>` for a user synced from outside Linear,
@@ -146,8 +147,8 @@ export function toEvents({ node, origin = {}, entries = [], comments = [] }, con
       state.sprint = from
     }
     if (entry.fromProject || entry.toProject) {
-      const from = entry.fromProject?.id ?? null
-      add('update', 'project', from, entry.toProject?.id ?? null)
+      const epic = (project) => (project ? epicId(project) : null)
+      add('update', 'project', epic(entry.fromProject), epic(entry.toProject))
     }
     if (entry.fromProjectMilestone || entry.toProjectMilestone) {
       const from = entry.fromProjectMilestone?.id ?? null
