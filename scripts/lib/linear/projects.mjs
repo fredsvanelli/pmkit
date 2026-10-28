@@ -76,3 +76,59 @@ export function toMilestone(node) {
 
 /** The pmkit document of a Linear document node. The path is the slug, since Linear documents have no path. */
 export const toDocument = (node) => ({ path: node.slugId, title: node.title, body: node.content ?? '' })
+
+// The GraphQL documents. Every one has a name, and the fake routes by it.
+
+const PAGE_INFO = 'pageInfo { hasNextPage endCursor }'
+const PROJECT_REF = 'project { id slugId identifier }'
+export const LIST_SIZE = 50
+
+const PROJECT_FRAGMENT = `fragment PmkitProjectFields on Project {
+  id slugId identifier name description content health progress scope url startDate targetDate createdAt
+  status { id name type }
+}`
+
+const LISTS = `projectMilestones(first: ${LIST_SIZE}) @include(if: $withLists) { nodes { id name targetDate status } ${PAGE_INFO} }
+    documents(first: ${LIST_SIZE}) @include(if: $withLists) { nodes { slugId title } ${PAGE_INFO} }`
+
+/** Projects by filter. `$withLists` adds the first milestones and documents of each project, for a read of one. */
+export const PROJECTS_QUERY = `${PROJECT_FRAGMENT}
+query PmkitProjects($filter: ProjectFilter, $first: Int!, $after: String, $withLists: Boolean!) {
+  projects(filter: $filter, first: $first, after: $after) { nodes { ...PmkitProjectFields
+    ${LISTS}
+  } ${PAGE_INFO} }
+}`
+
+export const PROJECT_CREATE = `${PROJECT_FRAGMENT}
+mutation PmkitProjectCreate($input: ProjectCreateInput!) {
+  projectCreate(input: $input) { success project { ...PmkitProjectFields } }
+}`
+
+const UPDATE_FIELDS = `id body health createdAt user { id } ${PROJECT_REF}`
+
+export const PROJECT_UPDATE_CREATE = `mutation PmkitProjectUpdateCreate($input: ProjectUpdateCreateInput!) {
+  projectUpdateCreate(input: $input) { success projectUpdate { ${UPDATE_FIELDS} } }
+}`
+
+export const PROJECT_UPDATES_QUERY = `query PmkitProjectUpdates($id: String!, $first: Int!, $after: String) {
+  project(id: $id) { projectUpdates(first: $first, after: $after) { nodes { ${UPDATE_FIELDS} } ${PAGE_INFO} } }
+}`
+
+const MILESTONE_FIELDS = `id name description targetDate status progress ${PROJECT_REF}`
+
+export const PROJECT_MILESTONES_QUERY = `query PmkitProjectMilestones($first: Int!, $after: String) {
+  projectMilestones(first: $first, after: $after) { nodes { ${MILESTONE_FIELDS} } ${PAGE_INFO} }
+}`
+
+export const PROJECT_MILESTONE_QUERY = `query PmkitProjectMilestone($id: String!) {
+  projectMilestone(id: $id) { ${MILESTONE_FIELDS} }
+}`
+
+export const DOCUMENT_QUERY = `query PmkitDocument($filter: DocumentFilter) {
+  documents(filter: $filter, first: 1) { nodes { id slugId title content ${PROJECT_REF} } }
+}`
+
+/** The minimal fields progress counts: the state type for the category, the estimate and the parent for the chain. */
+export const EPIC_ISSUES_QUERY = `query PmkitEpicIssues($filter: IssueFilter, $first: Int!, $after: String) {
+  issues(filter: $filter, first: $first, after: $after) { nodes { identifier archivedAt estimate team { id } state { id type } parent { identifier } } ${PAGE_INFO} }
+}`

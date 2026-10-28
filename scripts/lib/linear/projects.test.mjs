@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { isMutation, operationName } from './client.mjs'
+import * as projects from './projects.mjs'
 import { HEALTH_FROM_LINEAR, HEALTH_TO_LINEAR, STATUS_CATEGORY, epicId, epicKey, toDocument, toEpic, toMilestone, toStatusUpdate } from './projects.mjs'
 
 const UUID = '0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0'
@@ -97,4 +99,26 @@ test('toMilestone drops null keys and names the epic by its canonical id', () =>
 test('toDocument returns the slug as the path', () => {
   assert.deepEqual(toDocument({ slugId: 'abcdef012345', title: 'Plan', content: '# Plan' }), { path: 'abcdef012345', title: 'Plan', body: '# Plan' })
   assert.equal(toDocument({ slugId: 'abcdef012345', title: 'Empty', content: null }).body, '')
+})
+
+test('every project document has a name that operationName reads, and the two mutations start with mutation', () => {
+  const documents = {
+    PmkitProjects: projects.PROJECTS_QUERY,
+    PmkitProjectCreate: projects.PROJECT_CREATE,
+    PmkitProjectUpdateCreate: projects.PROJECT_UPDATE_CREATE,
+    PmkitProjectUpdates: projects.PROJECT_UPDATES_QUERY,
+    PmkitProjectMilestones: projects.PROJECT_MILESTONES_QUERY,
+    PmkitProjectMilestone: projects.PROJECT_MILESTONE_QUERY,
+    PmkitDocument: projects.DOCUMENT_QUERY,
+    PmkitEpicIssues: projects.EPIC_ISSUES_QUERY,
+  }
+  for (const [name, document] of Object.entries(documents)) {
+    assert.equal(operationName(document), name)
+    assert.equal(isMutation(document), name === 'PmkitProjectCreate' || name === 'PmkitProjectUpdateCreate', name)
+  }
+  assert.match(projects.PROJECTS_QUERY, /\$withLists: Boolean!/)
+  assert.match(projects.PROJECT_UPDATE_CREATE, /input: ProjectUpdateCreateInput!/)
+  assert.match(projects.PROJECT_UPDATE_CREATE, /id body health createdAt user \{ id \} project \{ id slugId identifier \}/)
+  assert.match(projects.EPIC_ISSUES_QUERY, /identifier archivedAt estimate/)
+  assert.match(projects.EPIC_ISSUES_QUERY, /\$filter: IssueFilter, \$first: Int!, \$after: String/)
 })
