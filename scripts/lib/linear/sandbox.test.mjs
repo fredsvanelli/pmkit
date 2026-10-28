@@ -7,7 +7,7 @@ import {
   COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_ARCHIVE, ISSUE_CREATE, ISSUE_UPDATE, RELATION_CREATE, RELATION_DELETE,
 } from './documents.mjs'
 import { PROJECT_CREATE, PROJECT_UPDATE_CREATE } from './projects.mjs'
-import { SUITE_ALLOWLIST, TEST_TEAM, createGuardedFetch, preflight } from './sandbox.mjs'
+import { SUITE_ALLOWLIST, TEST_TEAM, createGuardedFetch, findOrCreateTestTeam, preflight } from './sandbox.mjs'
 
 const URL = 'https://api.linear.app/graphql'
 const TEAM = 'team-pkt'
@@ -285,6 +285,7 @@ function world(options = {}) {
     PmkitSandboxProjects: (body) => answer({ team: { projects: connection(state.projects, body) } }),
     PmkitSandboxLabels: (body) => answer({ issueLabels: connection(state.labels, body) }),
     PmkitIssueArchive: answer({}),
+    PmkitIssueCreate: answer({}),
     PmkitSandboxTeamCreate: answer({}),
   }
   state.routes = routes
@@ -368,4 +369,96 @@ test('preflight returns a null team when the test team is absent and a slot is f
   assert.equal(result.team, null)
   const input = { id: TEAM, name: TEST_TEAM.name, key: TEST_TEAM.key, description: `marker: ${TEST_TEAM.marker}` }
   await send(w, 'mutation PmkitSandboxTeamCreate($input: TeamCreateInput!) { teamCreate(input: $input) { success } }', { input })
+})
+
+// Task 5: find or create the test team.
+const STATES = [
+  { id: 's-triage', name: 'Triage', type: 'triage' }, { id: 's-backlog', name: 'Backlog', type: 'backlog' },
+  { id: 's-review', name: 'In Review', type: 'started' }, { id: 's-done', name: 'Done', type: 'completed' },
+]
+
+/** A world whose team lookups, create and state reads answer from `store`. */
+function teamWorld({ team = teamNode(), states = STATES, create } = {}) {
+  const store = { team, states: [...states] }
+  const w = world({
+    routes: {
+      PmkitSandboxTeam: (body) => json({ teams: { nodes: store.team && body.variables.name === store.team.name ? [store.team] : [] } }),
+      PmkitSandboxTeamById: (body) => json({ teams: { nodes: store.team && body.variables.id === store.team.id ? [store.team] : [] } }),
+      PmkitSandboxTeamCreate: (body) => {
+        if (create) return create(body, store)
+        store.team = teamNode({ id: body.variables.input.id })
+        return json({ teamCreate: { success: true, team: { id: store.team.id, key: store.team.key } } })
+      },
+      PmkitSandboxStates: () => json({ team: { states: { nodes: store.states } } }),
+      PmkitSandboxStateCreate: (body) => {
+        store.states.push({ id: body.variables.input.id, name: body.variables.input.name, type: body.variables.input.type })
+        return json({ workflowStateCreate: { success: true, workflowState: { id: body.variables.input.id } } })
+      },
+    },
+  })
+  w.guard.open({ teamExists: Boolean(team), teamId: team?.id ?? null, viewerId: VIEWER, labelIds: LABELS })
+  w.store = store
+  return w
+}
+const FRIDAY = () => new Date('2026-10-30T10:00:00Z')
+const find = (w) => findOrCreateTestTeam({ client: w.client, guard: w.guard, now: FRIDAY, uuid: () => 'team-uuid-1' })
+
+test('findOrCreateTestTeam reuses the team and sends no write', async () => {
+  const w = teamWorld()
+  const result = await find(w)
+  assert.deepEqual(result, { team: { id: TEAM, key: 'PKT' }, created: false })
+  assert.equal(w.mutations().length, 0)
+  await send(w, ISSUE_CREATE, { input: { id: 'i-1', teamId: TEAM, stateId: 's-review' } })
+})
+
+test('findOrCreateTestTeam stops on an existing team that fails a check, without a write', async () => {
+  const w = teamWorld({ team: teamNode({ cyclesEnabled: false }) })
+  await assert.rejects(find(w), /cycles/)
+  assert.equal(w.mutations().length, 0)
+})
+
+test('findOrCreateTestTeam sends one teamCreate with the spec inputs when the team is absent', async () => {
+  const w = teamWorld({ team: null })
+  const result = await find(w)
+  assert.deepEqual(result, { team: { id: 'team-uuid-1', key: 'PKT' }, created: true })
+  const sent = w.mutations()
+  assert.equal(sent.length, 1)
+  assert.deepEqual(sent[0].body.variables.input, {
+    id: 'team-uuid-1', name: 'pmkit-test', key: 'PKT',
+    description: 'pmkit contract-test team (marker: pmkit-contract-team). The pmkit tests create and trash items here. Do not use it for real work.',
+    timezone: 'Etc/UTC', triageEnabled: true, cyclesEnabled: true, cycleDuration: 1, cycleCooldownTime: 0, cycleStartDay: 5, upcomingCycleCount: 2,
+    cycleIssueAutoAssignStarted: false, cycleIssueAutoAssignCompleted: false, groupIssueHistory: false,
+  })
+})
+
+test('findOrCreateTestTeam adds the In Review state only when no started state has that name', async () => {
+  const without = teamWorld({ states: STATES.filter((state) => state.id !== 's-review') })
+  await find(without)
+  const sent = without.mutations()
+  assert.equal(sent.length, 1)
+  assert.deepEqual({ ...sent[0].body.variables.input, id: undefined, color: undefined }, { teamId: TEAM, type: 'started', name: 'In Review', id: undefined, color: undefined })
+  assert.match(sent[0].body.variables.input.color, /^#[0-9a-f]{6}$/)
+  // An "In Review" of another type does not count.
+  const wrongType = teamWorld({ states: STATES.map((state) => (state.id === 's-review' ? { ...state, type: 'unstarted' } : state)) })
+  await find(wrongType)
+  assert.equal(wrongType.mutations().length, 1)
+})
+
+test('findOrCreateTestTeam stops with no write when the team has no triage state', async () => {
+  const w = teamWorld({ states: STATES.filter((state) => state.type !== 'triage') })
+  await assert.rejects(find(w), /the test team has no triage state/)
+  assert.equal(w.mutations().length, 0)
+})
+
+test('an unconfirmed teamCreate is followed by a lookup by the chosen id', async () => {
+  const applied = teamWorld({
+    team: null,
+    create: (body, store) => {
+      store.team = teamNode({ id: body.variables.input.id })
+      return { throws: new Error('socket closed') }
+    },
+  })
+  assert.deepEqual((await find(applied)).team, { id: 'team-uuid-1', key: 'PKT' })
+  const lost = teamWorld({ team: null, create: () => ({ throws: new Error('socket closed') }) })
+  await assert.rejects(find(lost), /did not confirm/)
 })

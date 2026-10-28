@@ -13,6 +13,8 @@
 // The allowlist maps a mutation root field to (variables, context, document) => reason | null. SUITE_ALLOWLIST holds the 14 mutations of
 // the contract run. A caller that needs another mutation passes its own allowlist, built with the exported rule helpers.
 
+import { randomUUID } from 'node:crypto'
+
 import { PmkitError } from '../errors.mjs'
 import { isMutation, operationName } from './client.mjs'
 import { linearCredential } from './credential.mjs'
@@ -339,4 +341,62 @@ export async function preflight({ client, env, workspace, guard, requireEmpty = 
 async function readTeams(client) {
   const data = await client.request(TEAMS_QUERY)
   return { teams: data.teams.nodes, plan: data.organization?.subscription ?? null }
+}
+
+export const TEAM_BY_NAME_QUERY = `query PmkitSandboxTeam($name: String!) { teams(filter: { name: { eq: $name } }, includeArchived: true, first: 5) { nodes { ${TEAM_FIELDS} } } }`
+export const TEAM_BY_ID_QUERY = `query PmkitSandboxTeamById($id: ID!) { teams(filter: { id: { eq: $id } }, includeArchived: true, first: 1) { nodes { ${TEAM_FIELDS} } } }`
+export const TEAM_CREATE = 'mutation PmkitSandboxTeamCreate($input: TeamCreateInput!) { teamCreate(input: $input) { success team { id key } } }'
+export const STATES_QUERY = 'query PmkitSandboxStates($id: String!) { team(id: $id) { states(first: 100) { nodes { id name type } } } }'
+export const STATE_CREATE = 'mutation PmkitSandboxStateCreate($input: WorkflowStateCreateInput!) { workflowStateCreate(input: $input) { success workflowState { id } } }'
+
+const DESCRIPTION = `pmkit contract-test team (marker: ${TEST_TEAM.marker}). The pmkit tests create and trash items here. Do not use it for real work.`
+const REVIEW_STATE = { type: 'started', name: 'In Review', color: '#f2c94c' }
+
+/** The teamCreate input of the spec's table. The first cycle starts today (UTC weekday) and two cycles follow. */
+export function teamCreateInput({ id, now }) {
+  return {
+    id, name: TEST_TEAM.name, key: TEST_TEAM.key, description: DESCRIPTION, timezone: 'Etc/UTC', triageEnabled: true,
+    cyclesEnabled: true, cycleDuration: 1, cycleCooldownTime: 0, cycleStartDay: now.getUTCDay(), upcomingCycleCount: 2,
+    cycleIssueAutoAssignStarted: false, cycleIssueAutoAssignCompleted: false, groupIssueHistory: false,
+  }
+}
+
+async function lookup(client, document, variables) {
+  const [node] = (await client.request(document, variables)).teams.nodes
+  return node
+}
+
+/**
+ * Finds the test team by name or creates it once, then makes sure it has a triage state and an "In Review" started state.
+ * Returns { team: { id, key }, created }. Sends no write when the team and both states exist.
+ */
+export async function findOrCreateTestTeam({ client, guard, now = () => new Date(), uuid = randomUUID }) {
+  let node = await lookup(client, TEAM_BY_NAME_QUERY, { name: TEST_TEAM.name })
+  let created = false
+  if (node) {
+    const reason = checkTestTeam(node)
+    if (reason) throw stop('INVALID_INPUT', reason, 'Fix the team in Linear, or delete it, then run again')
+  } else {
+    const id = uuid()
+    try {
+      await client.request(TEAM_CREATE, { input: teamCreateInput({ id, now: now() }) })
+    } catch (error) {
+      // The run chose the id, so it can tell whether Linear applied a create whose answer never came.
+      node = await lookup(client, TEAM_BY_ID_QUERY, { id }).catch(() => undefined)
+      if (!node) throw error
+    }
+    node ??= { id, key: TEST_TEAM.key }
+    created = true
+  }
+  const team = { id: node.id, key: node.key }
+  await ensureStates(client, team, guard)
+  return { team, created }
+}
+
+async function ensureStates(client, team, guard) {
+  const states = (await client.request(STATES_QUERY, { id: team.id })).team.states.nodes
+  for (const state of states) guard?.own('state', state.id)
+  if (!states.some((state) => state.type === 'triage')) throw stop('INVALID_INPUT', 'the test team has no triage state', 'Turn on triage in the test team in Linear')
+  if (states.some((state) => state.type === 'started' && state.name === REVIEW_STATE.name)) return
+  await client.request(STATE_CREATE, { input: { id: randomUUID(), teamId: team.id, ...REVIEW_STATE } })
 }
