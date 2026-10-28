@@ -1,1 +1,8 @@
 {"at":"2026-10-25T19:13:20Z","by":"fred","op":"create","to":{"id":"PMK-28","title":"Decide how pmkit authenticates to Linear","type":"task","status":"backlog","priority":"medium","estimate":2,"labels":[],"parent":"EPC-5","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"linear","created":"2026-10-25T19:13:20Z","updated":"2026-10-25T19:13:20Z"}}
+{"at":"2026-10-27T22:49:47Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-27T22:49:47Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-27T22:49:48Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-28-decide-how-pmkit-authenticates-to-linear"}
+{"at":"2026-10-27T23:30:16Z","by":"fred","op":"comment","to":"2026-10-27T23-30-16Z-fred.md"}
+{"at":"2026-10-27T23:53:42Z","by":"fred","op":"comment","to":"2026-10-27T23-53-42Z-fred.md"}
+{"at":"2026-10-27T23:53:44Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-27T23:53:44Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
