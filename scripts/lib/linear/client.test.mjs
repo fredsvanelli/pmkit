@@ -553,3 +553,77 @@ test('a caller bug throws TypeError before any request', async () => {
   await assert.rejects(client.paginate(ISSUES), TypeError)
   assert.equal(f.calls.length, 0)
 })
+
+// The key-leak sweep.
+function textsOf(error) {
+  return [error.message, error.nextStep, JSON.stringify(error.details ?? null), String(error), error.stack ?? '']
+}
+
+test('no failure path exposes the key', async () => {
+  const sleep = async () => {}
+  const answers = {
+    401: errorsBody(401, graphqlError('AUTHENTICATION_ERROR')),
+    403: errorsBody(403, graphqlError('FORBIDDEN')),
+    429: { status: 429, headers: { 'x-ratelimit-requests-remaining': '0', 'x-ratelimit-requests-reset': '1793000000000' }, json: {} },
+    ratelimited: errorsBody(400, graphqlError('RATELIMITED')),
+    validation: errorsBody(400, graphqlError('GRAPHQL_VALIDATION_FAILED')),
+    parse: errorsBody(400, graphqlError('GRAPHQL_PARSE_FAILED')),
+    other: errorsBody(200, graphqlError('INPUT_ERROR')),
+    unreadable: { status: 400, text: 'not json' },
+    teapot: { status: 418, json: { data: null } },
+    unavailable: { status: 503, text: '<html>' },
+    network: { throws: econnreset() },
+    quoting: { throws: new Error(`header ${FAKE_KEY}`) },
+    quotingCause: { throws: new TypeError('fetch failed', { cause: new Error(`Authorization: ${FAKE_KEY}`) }) },
+  }
+  const cases = []
+  for (const [name, answer] of Object.entries(answers)) {
+    cases.push([name, async () => (await make({ routes: { Q: answer }, sleep }).client.request('query Q { a }').catch((e) => e))])
+  }
+  cases.push(['hang', async () => make({ routes: { Q: { hang: true } }, timeoutMs: 10, retries: 0 }).client.request('query Q { a }').catch((e) => e)])
+  cases.push(['mutation hang', async () => make({ routes: { M: { hang: true } }, timeoutMs: 10 }).client.request('mutation M { a }').catch((e) => e)])
+  cases.push(['workspace mismatch', async () => make({ fake: { workspace: 'other' } }).client.session().catch((e) => e)])
+  cases.push(['no organization', async () => make({ routes: { PmkitSession: json({}) } }).client.session().catch((e) => e)])
+  cases.push(['secret in tracker', async () => {
+    const tracker = { system: 'linear', scope: { workspace: 'acme', token: FAKE_KEY, note: FAKE_KEY } }
+    try {
+      createLinearClient({ env: ENV, tracker, fetch: fake() })
+    } catch (error) {
+      return error
+    }
+    return assert.fail('did not throw')
+  }])
+  cases.push(['bad credential', async () => {
+    try {
+      createLinearClient({ env: { LINEAR_API_KEY: `Bearer ${FAKE_KEY}` }, tracker: TRACKER, fetch: fake() })
+    } catch (error) {
+      return error
+    }
+    return assert.fail('did not throw')
+  }])
+  cases.push(['broken page', async () => {
+    const { client } = make({ routes: { Issues: json({ issues: null }) } })
+    return client.paginate(ISSUES, {}, { select }).catch((e) => e)
+  }])
+  cases.push(['pre-send rate refusal', async () => {
+    const headers = { 'x-ratelimit-requests-remaining': '0', 'x-ratelimit-requests-reset': String(Date.now() + 60_000) }
+    const { client } = make({ routes: { Q: json({ a: 1 }, { headers }) } })
+    await client.request('query Q { a }')
+    return client.request('query Q { a }').catch((e) => e)
+  }])
+
+  for (const [name, run] of cases) {
+    const error = await run()
+    assert.ok(error instanceof PmkitError, `${name}: expected a PmkitError`)
+    for (const text of textsOf(error)) {
+      assert.ok(!text.includes(FAKE_KEY) && !text.includes('TESTKEY'), `${name} leaks the key`)
+    }
+  }
+
+  const renamed = make({ fake: { workspace: 'acme-new', previousUrlKeys: ['acme'] } })
+  const passing = JSON.stringify(await renamed.client.session()) + JSON.stringify(renamed.client.rateLimit())
+  assert.ok(!passing.includes('TESTKEY'))
+  const limited = make({ routes: { Q: json({ a: 1 }, { headers: LIMIT_HEADERS }) } })
+  await limited.client.request('query Q { a }')
+  assert.ok(!JSON.stringify(limited.client.rateLimit()).includes('TESTKEY'))
+})
