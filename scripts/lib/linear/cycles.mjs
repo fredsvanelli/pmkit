@@ -1,6 +1,8 @@
 // A Linear cycle as a pmkit sprint. Pure: no request and no file.
 // See docs/superpowers/specs/2026-10-28-pmk-37-linear-cycles-to-sprints-design.md, "Which operations are native".
 
+import { PmkitError } from '../errors.mjs'
+
 const CYCLE_NUMBER = /^[1-9][0-9]*$/
 
 /** The cycle number of a pmkit sprint id, or null when the id is not a positive whole number in a string. */
@@ -31,3 +33,7 @@ export function toSprint(node, local = {}) {
     daysOff: local.daysOff ?? {},
   }
 }
+
+/** The NOT_SUPPORTED answer of an operation that needs cycles, for a team that has them turned off. */
+export const cyclesOff = (teamKey) =>
+  new PmkitError('NOT_SUPPORTED', `team ${teamKey} has cycles turned off`, "Turn on cycles in the team's settings in Linear")

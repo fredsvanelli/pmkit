@@ -63,9 +63,31 @@ test('serverLimit only for created order without client steps', () => {
   assert.equal(translateFilter({ limit: 0 }, context).serverLimit, undefined)
   assert.equal(translateFilter({}, context).serverLimit, undefined)
 })
-test('sprint and release are NOT_SUPPORTED', () => {
-  assert.throws(() => translateFilter({ sprint: 'current' }, context), { code: 'NOT_SUPPORTED' })
+test('release is NOT_SUPPORTED', () => {
   assert.throws(() => translateFilter({ release: '1.0' }, context), { code: 'NOT_SUPPORTED' })
+})
+const cycling = { ...context, cyclesEnabled: true }
+const NO_CYCLES = { ...context, cyclesEnabled: false }
+test('sprint: a cycle number, current and none become cycle clauses with no client step', () => {
+  assert.deepEqual(clauses({ sprint: '12' }, cycling)[1], { cycle: { number: { eq: 12 } } })
+  assert.deepEqual(clauses({ sprint: 'current' }, cycling)[1], { cycle: { isActive: { eq: true } } })
+  assert.deepEqual(clauses({ sprint: 'none' }, cycling)[1], { cycle: { null: true } })
+  for (const sprint of ['12', 'current', 'none']) {
+    const translated = translateFilter({ sprint, limit: 3 }, cycling)
+    assert.deepEqual(translated.clientSteps, [], sprint)
+    assert.equal(translated.serverLimit, 3, sprint)
+  }
+})
+test('sprint with cycles off: a number and current are NOT_SUPPORTED, none adds no clause', () => {
+  for (const sprint of ['12', 'current']) {
+    assert.throws(() => translateFilter({ sprint }, NO_CYCLES), {
+      code: 'NOT_SUPPORTED', message: 'team ACME has cycles turned off', nextStep: "Turn on cycles in the team's settings in Linear",
+    })
+  }
+  assert.deepEqual(clauses({ sprint: 'none' }, NO_CYCLES), [{ team: { key: { eq: 'ACME' } } }])
+})
+test('a malformed sprint value is INVALID_INPUT', () => {
+  for (const sprint of ['abc', '0', '1.5', '']) assert.throws(() => translateFilter({ sprint }, cycling), { code: 'INVALID_INPUT' }, sprint)
 })
 test('several keys join with and', () => assert.equal(clauses({ text: 'x', assignee: 'none', labels: ['Docs'] }).length, 4))
 

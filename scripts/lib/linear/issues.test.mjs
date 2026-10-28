@@ -61,6 +61,13 @@ test('makeContext holds the raw discovery, the mappings, the viewer and the scop
   assert.equal(makeContext(raw, pmkit({}, { workspace: 'acme' }), VIEWER).scopeTeam, null)
 })
 
+test('makeContext says whether the scope team has cycles on', async () => {
+  assert.equal(context.cyclesEnabled, false)
+  const on = await contextWithTeam({ cyclesEnabled: true })
+  assert.equal(on.cyclesEnabled, true)
+  assert.equal(makeContext(raw, pmkit({}, { workspace: 'acme' }), VIEWER).cyclesEnabled, null)
+})
+
 test('stateCategory uses the mapped name, then the type, then in_progress', () => {
   assert.equal(stateCategory({ name: 'In Review', type: 'started' }, context), 'in_review')
   assert.equal(stateCategory({ name: 'UAT', type: 'started' }, context), 'in_progress')

@@ -60,6 +60,7 @@ export function buildDescription(description, criteria) {
  *   another team reads its own states and labels under the same mapping names
  * @property {{ id: string, name: string }} viewer the owner of LINEAR_API_KEY
  * @property {object | null} scopeTeam the raw team that tracker.scope.team names, or null
+ * @property {boolean | null} cyclesEnabled whether the scope team has cycles on, null without a scope team
  * @property {string[]} priorities
  */
 
@@ -76,7 +77,7 @@ export function makeContext(raw, pmkit, viewer) {
     return resolved.get(team.id)
   }
   const mappingTeam = scopeTeam ?? (raw.teams.length === 1 ? raw.teams[0] : null)
-  return { raw, mappings: mappingTeam ? mappingsOf(mappingTeam) : null, mappingsOf, viewer, scopeTeam, priorities: ['urgent', 'high', 'medium', 'low'] }
+  return { raw, mappings: mappingTeam ? mappingsOf(mappingTeam) : null, mappingsOf, viewer, scopeTeam, cyclesEnabled: scopeTeam ? scopeTeam.cyclesEnabled === true : null, priorities: ['urgent', 'high', 'medium', 'low'] }
 }
 
 /** The mappings of the team a node or state belongs to, or of the scope team when the team is unknown. */
