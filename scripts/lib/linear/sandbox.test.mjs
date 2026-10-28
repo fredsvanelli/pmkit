@@ -217,3 +217,40 @@ test('a caller passes its own allowlist, and the suite list has the 14 mutations
   assert.equal(inner.calls.length, 1)
   assert.equal(Object.keys(SUITE_ALLOWLIST).length, 14)
 })
+
+const HEADERS = {
+  'x-complexity': '30', 'x-ratelimit-requests-limit': '2500', 'x-ratelimit-requests-remaining': '2400', 'x-ratelimit-requests-reset': '1798000000000',
+  'x-ratelimit-complexity-limit': '3000000', 'x-ratelimit-complexity-remaining': '2999000', 'x-ratelimit-complexity-reset': '1798000000000',
+}
+
+test('stats counts requests, writes and complexity and keeps the last rate-limit values, never the key', async () => {
+  const inner = scripted(() => answer({}, HEADERS))
+  const guarded = createGuardedFetch({ fetch: inner, workspace: 'acme' })
+  guarded.guard.open({ teamExists: true, teamId: TEAM, viewerId: VIEWER, labelIds: LABELS })
+  guarded.guard.own('issue', 'i-1')
+  await send(guarded, QUERY)
+  await send(guarded, ISSUE_ARCHIVE, { id: 'i-1' })
+  const stats = guarded.guard.stats()
+  assert.equal(stats.requests, 2)
+  assert.equal(stats.writes, 1)
+  assert.equal(stats.complexity, 60)
+  assert.equal(stats.rate.requestsRemaining, 2400)
+  assert.equal(stats.rate.complexityRemaining, 2999000)
+  assert.ok(!JSON.stringify(stats).includes(FAKE_KEY))
+})
+
+test('at the cap a suite request is refused, and cleanup requests pass until the reserve is used', async () => {
+  const { inner, ...guarded } = opened({ cap: 3, reserve: 2 })
+  guarded.guard.own('issue', 'i-1')
+  guarded.guard.own('issue', 'i-2')
+  guarded.guard.own('issue', 'i-3')
+  for (let count = 0; count < 3; count += 1) await send(guarded, QUERY)
+  await assert.rejects(send(guarded, QUERY), /the live run used its request budget/)
+  await assert.rejects(send(guarded, ISSUE_UPDATE, { id: 'i-1', input: {} }), /the live run used its request budget/)
+  assert.equal(inner.calls.length, 3)
+  await send(guarded, mutationOf('IssueDelete'), { id: 'i-1' })
+  await send(guarded, 'query PmkitSandboxItems { viewer { id } }')
+  assert.equal(inner.calls.length, 5)
+  await assert.rejects(send(guarded, mutationOf('IssueDelete'), { id: 'i-2' }), /the live run used its request budget/)
+  assert.equal(inner.calls.length, 5)
+})
