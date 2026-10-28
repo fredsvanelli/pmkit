@@ -1,6 +1,6 @@
 # PMK-33 design: discover a Linear workspace and build its capability manifest
 
-Issue PMK-33, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: waiting for the user's answers to "Open questions". Decisions come from an autonomous brainstorming run on 2026-10-27 with no user dialogue, from the issue, ADR-0003, ADR-0005, the PMK-2, PMK-28 to PMK-32 specs, the code, and read-only calls to the sandbox workspace. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion. The design below applies the recommended answer to each open question, and each question says what changes if the user picks another option.
+Issue PMK-33, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: the user answered the three open questions on 2026-10-27, and "Resolved questions" records the answers. Decisions come from an autonomous brainstorming run on 2026-10-27 with no user dialogue, from the issue, ADR-0003, ADR-0005, the PMK-2, PMK-28 to PMK-32 specs, the code, and read-only calls to the sandbox workspace. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion. The design below applies those answers.
 
 ## Problem
 
@@ -24,7 +24,9 @@ User decisions that bind this issue:
 
 - This issue registers `linear` in `ADAPTERS`.
 - The client's page cap is 10 pages when the caller gives no limit.
-- The client is the one place that refuses secret-like config keys.
+- The client is the one place that refuses secret-like config keys. `configProblems` does not list them (resolved question 2).
+- A capability that Linear offers and no pmkit command serves is `absent`, with Linear's path in `detail.workspace` (resolved question 1).
+- `pmkit discover` always refreshes. Other commands use the cache (resolved question 3).
 
 ## Facts checked against the Linear API
 
@@ -54,7 +56,7 @@ Three consequences shape the design:
 - `discover()` returns the common shape the commands already read (`statuses`, `types`, `priorities`, `labels`, `members`, `estimate`), plus `auth`, `workspace` and `teams` with each team's states, labels and estimate scale.
 - `capabilities()` returns the 20 capabilities with a path computed from the workspace plan, the workspace and team settings, the static schema facts, the configured team, `git_host` and the served-by rule.
 - One discovery serves a whole CLI run, and the user store caches it across runs, so an actor lookup, an estimate parse or a release-notes run sends no request while the cache is fresh.
-- The Linear descriptor's `configProblems` reports a missing `tracker.scope.workspace` and secret-like keys, so `pmkit validate` lists them.
+- The Linear descriptor's `configProblems` reports a missing `tracker.scope.workspace`, so `pmkit validate` lists it.
 
 ## Non-goals
 
@@ -102,7 +104,7 @@ Chosen: A. The cache holds API data only, so a config edit needs no invalidation
 
 | File | Change |
 |---|---|
-| `scripts/lib/linear/adapter.mjs` | New. `linearDescriptor({ fetch })` returns the `AdapterDescriptor`. It imports `secretKeyPaths` from `client.mjs` and loads `tracker.mjs` with a dynamic import in `create`. |
+| `scripts/lib/linear/adapter.mjs` | New. `linearDescriptor({ fetch })` returns the `AdapterDescriptor`. It loads `tracker.mjs` with a dynamic import in `create`. |
 | `scripts/lib/linear/tracker.mjs` | New. `createLinearTracker(config, { env, now, fetch })`: the client, the discovery memo and cache, `discover`, `capabilities`, and a `NOT_SUPPORTED` stub for every other operation in `TRACKER_OPERATIONS`. |
 | `scripts/lib/linear/discovery.mjs` | New. The GraphQL documents, `fetchDiscovery(client)`, which returns the raw normalized data, and `discoveryView(raw, pmkit)`, which applies the team scope and the status mappings. |
 | `scripts/lib/linear/manifest.mjs` | New. `LINEAR_CAPABILITIES`, the static table, and `buildLinearCapabilities(raw, pmkit)`. It reuses `CAPABILITIES` and `SERVED_BY` from `scripts/lib/capabilities.mjs`. |
@@ -120,7 +122,7 @@ export function linearDescriptor({ fetch = globalThis.fetch } = {}) {
   return {
     system: 'linear',
     hosted: true,
-    configProblems: (pmkit) => [...workspaceProblems(pmkit), ...secretProblems(pmkit)],
+    configProblems: (pmkit) => workspaceProblems(pmkit),
     settings: () => ({ defaults: builtInDefaults(), epicPrefix: null }),
     create: async (config, { now, env }) => {
       const { createLinearTracker } = await import('./tracker.mjs')
@@ -131,10 +133,10 @@ export function linearDescriptor({ fetch = globalThis.fetch } = {}) {
 ```
 
 - `workspaceProblems` returns `tracker.scope.workspace is required for linear` when the key is missing, the wording `fake-hosted.mjs` already uses. PMK-31 left this rule to the adapter.
-- `secretProblems` returns one line per path from `secretKeyPaths(pmkit.tracker)`, such as `tracker.scope.token looks like a secret; keep the Linear key in LINEAR_API_KEY`. It names the path, never the value. PMK-30's resolved question 1 assigned this step to PMK-33. Open question 2 asks whether it stays.
+- `configProblems` lists no secret-like key. The user kept PMK-30's decision that the client is the one place that reacts to one (resolved question 2), so `pmkit validate` stays silent about it and a Linear command fails with `INVALID_INPUT` when the tracker creates the client.
 - `settings` returns the built-in behavior defaults, as PMK-31 decided for hosted trackers.
 
-`configProblems` feeds `pmkitProblems`, so `pmkit validate` lists both problems, a read prints them as a warning, and a write is refused before the tracker is created. The `INVALID_INPUT` refusal of a secret stays in `createLinearClient`, which runs for reads too.
+`configProblems` feeds `pmkitProblems`, so `pmkit validate` lists a missing workspace, a read prints it as a warning, and a write is refused before the tracker is created. The `INVALID_INPUT` refusal of a secret stays in `createLinearClient`, which runs for reads too.
 
 ### The tracker
 
@@ -185,7 +187,7 @@ The user store caches the raw discovery:
 - Scope `repoHash(config.root)`, key `linear-<workspace>`, so `cache/<repo-hash>/linear-acme.json`. PMK-28 asked for a key by workspace URL key and repository hash. The workspace key already matches the store's name rule.
 - TTL 3600 seconds **(builder's call)**. A refresh costs 7 requests out of the 2,500 per hour the sandbox key shows, and an hour keeps a plan upgrade or a new state from hiding for long. `pmkit discover` refreshes at any time.
 - Read order: the run's memo, then `cacheGet`, then the API. A fetch writes the cache with `cachePut`.
-- `discover({ refresh: true })` skips the memo and the cache, fetches and rewrites both. The `discover` command passes it (open question 3). PMK-34 and PMK-35 pass it when a name the user gave is missing from the cached data, to refresh once before they report the miss.
+- `discover({ refresh: true })` skips the memo and the cache, fetches and rewrites both. The `discover` command always passes it (resolved question 3). PMK-34 and PMK-35 pass it when a name the user gave is missing from the cached data, to refresh once before they report the miss.
 - With no `tracker.scope.workspace`, discovery runs without the cache, because the store has no key for it. Setup is the only caller in that state.
 - The cache holds no `auth`. The viewer belongs to the key, and the key can change between runs while the cache does not notice. `auth` appears only in a fresh result. PMK-35 calls `client.session()` for `me`, which costs one request of 3 complexity per run.
 - A failed `cachePut` (a store inside a repository, a full disk) becomes a warning and the result is still returned. The cache only saves requests **(builder's call)**.
@@ -288,7 +290,7 @@ The rule for a setting: on gives the native or derived path, off gives `absent` 
 | `request_queue` | Conditional (Asks, Business) | no | Plan. No Ask object in the schema; Asks come in through Slack integration settings. | Not served. Linear's answer: `conditional` on Business and Enterprise, else `absent`. | `absent` |
 | `time_tracking` | Absent | yes | Schema: no time entry type | `absent`, hint `Linear has no time tracking`. | `absent` |
 | `linked_code` | Conditional (git integration) | yes | Setting: integrations with service `github` or `gitlab`; pmkit: `git_host` | Integration present gives `native`, `detail: { source: 'integration' }`. Otherwise `derived`, `detail: { source: 'git' }`, with the Local hint `Set git_host in .pmkit/config.yaml` when `git_host` is `none`. | `derived` |
-| `agent_delegation` | Native; ADR-0005 says conditional | no | Setting: users with `app: true` | Not served. Linear's answer: `conditional`, `detail: { agents: [names] }`, as ADR-0005 states. Open question 1. | `absent` |
+| `agent_delegation` | Native; ADR-0005 says conditional | no | Setting: users with `app: true` | Not served. Linear's answer: `conditional`, `detail: { agents: [names] }`. ADR-0005's line now says so (resolved question 1). | `absent` |
 | `security_alerts` | Absent | no | Schema: no alert type | `absent`, hint `Linear has no security alerts`. | `absent` |
 | `user_inbox` | Native | no | Schema: `Notification` | Not served. Linear's answer: `native`. | `absent` |
 
@@ -303,11 +305,11 @@ An entry is `{ id, path: 'absent', enableHint }`, plus `detail.workspace` when L
 3. A team setting keeps it off: `Turn on cycles in the team's settings in Linear`.
 4. No pmkit command serves it: `No pmkit command serves saved_views yet; Linear offers it on this workspace`, or `...; Linear offers it on the Business and Enterprise plans`.
 
-#### Served-by rule (recommended answer to open question 1)
+#### Served-by rule (resolved question 1)
 
 A capability that no command in `SERVED_BY` serves is `absent`, as PMK-2 decided for the Local tracker, so `/pmkit:help` and the commands never promise a path no command has. The path Linear offers on this workspace goes to `detail.workspace`, so help can still say what the plan allows. `unservedCapabilities` from `scripts/lib/capabilities.mjs` returns `[]` for every Linear manifest, and a test checks it.
 
-This affects 7 capabilities: `strategic_goals`, `saved_views`, `demand_signals`, `request_queue`, `agent_delegation`, `security_alerts` and `user_inbox`. `agent_delegation` becomes `absent` with `detail: { workspace: 'conditional', agents: ['Linear'] }`, which departs from ADR-0005's line "PMK-33 reports `agent_delegation` as `conditional`". The question asks the user to confirm that or keep the ADR's wording.
+This affects 7 capabilities: `strategic_goals`, `saved_views`, `demand_signals`, `request_queue`, `agent_delegation`, `security_alerts` and `user_inbox`. `agent_delegation` becomes `absent` with `detail: { workspace: 'conditional', agents: ['Linear'] }`. ADR-0005's line "PMK-33 reports `agent_delegation` as `conditional` for Linear" departs from that, so this issue amends that one line in place to say the manifest reports it `absent` until a pmkit command serves it, with Linear's `conditional` in `detail.workspace`. No new ADR.
 
 The served-by rule does not look at which Linear operations exist yet. During the milestone, `cycles` can be `native` while `cycle list` throws `NOT_SUPPORTED` from a stub. The milestone ships with PMK-35 to PMK-38, and PMK-40 checks every degraded path against Linear.
 
@@ -327,7 +329,7 @@ Every test injects `fakeLinearFetch` with routes from `fakeWorkspace()`, and set
 - `discovery.test.mjs`: each state type maps to its category, `duplicate` included; an unknown type warns; `mappings.status.in_review` turns a started state into `in_review`; a mapping to a missing state warns; the team view and the no-team view; a missing team warns; group labels leave the flat list; apps go to `agents`; inactive users never appear; each estimation type, with `allowZero` and `extended`; a connection with `hasMore: true` sets `truncated` and warns; a `PmkitPlan` answer of `FORBIDDEN` gives `plan: 'unknown'` and keeps the rest.
 - `manifest.test.mjs`: 20 entries in spec order, each with a path; the sandbox description gives the "Sandbox" column above; a Business description with releases and customers on gives `releases: native` and `demand_signals` absent with `detail.workspace: 'native'`; a configured team turns `conditional` into `native` or `absent`; `git_host: none` and a `github` integration for `linked_code`; `unservedCapabilities(manifest, SERVED_BY)` is `[]`; every `absent` entry has a hint and every `detail` value is flat.
 - `tracker.test.mjs`: `assertTracker` passes; a stub throws `NOT_SUPPORTED` and makes no request; a missing key throws `AUTH` before any request; with no workspace, `discover` works and writes no cache, and a stub throws `NOT_CONFIGURED`; two calls in one run send one discovery; a second tracker with the same store sends no discovery request until the TTL passes (injected `now`); `refresh: true` fetches again; a fresh result has `auth` and a cached one does not; a failing `cachePut` warns; no file under the store holds `FAKE_KEY`.
-- `cli-linear.test.mjs`, through `run(argv, { env, adapters })` with `linearDescriptor({ fetch })`: `discover --json` returns `auth` before `teams` and `statuses`; `discover` without a key exits 2 with `AUTH` and the fake key appears in no stdout or stderr; `capabilities --json` reports 20 entries; `validate` lists the missing workspace and a secret-like key by path; the rename warning reaches stderr; `issues list` exits 2 with `NOT_SUPPORTED`.
+- `cli-linear.test.mjs`, through `run(argv, { env, adapters })` with `linearDescriptor({ fetch })`: `discover --json` returns `auth` before `teams` and `statuses`; `discover` without a key exits 2 with `AUTH` and the fake key appears in no stdout or stderr; `capabilities --json` reports 20 entries; `validate` lists the missing workspace and no secret-like key; `discover` with `tracker.scope.token` set exits 2 with `INVALID_INPUT` naming the path and not the value; the rename warning reaches stderr; `issues list` exits 2 with `NOT_SUPPORTED`.
 - Existing tests that use `linear` as the unsupported example (`adapters.test.mjs`, `config.test.mjs`, `cli.test.mjs`) switch to `jira`. Every golden stays byte-identical.
 - An opt-in live case joins `scripts/lib/linear/client-live.mjs` behind `PMKIT_LIVE=1` and `PMKIT_LIVE_WORKSPACE`. It runs `fetchDiscovery` read-only and checks the shape, without printing names. `npm test` does not load it.
 
@@ -365,23 +367,15 @@ Every test injects `fakeLinearFetch` with routes from `fakeWorkspace()`, and set
 - **Linear manifest during the milestone.** With the served-by rule, the manifest promises paths whose Linear operations are still stubs. Nobody can select Linear through `init`, which accepts `local` only, so this reaches only a hand-edited config.
 - **Tests that named `linear` as unsupported.** The cases in `adapters.test.mjs`, `config.test.mjs` and `cli.test.mjs` change to `jira`. The plan should list them so a reviewer sees the change is mechanical.
 
-## Open questions
+## Resolved questions
 
-1. **What path does the Linear manifest give a capability that Linear offers but no pmkit command serves?** This covers `saved_views`, `user_inbox`, `agent_delegation` and four others.
-   - (a) The path Linear offers on this workspace, ignoring `SERVED_BY`. It matches the criterion word for word and ADR-0005's `conditional` for `agent_delegation`, but help would list paths no command has, which PMK-2 fixed for the Local tracker.
-   - (b) `absent`, as for the Local tracker, with Linear's path in `detail.workspace` and in the hint. Help stays honest and still shows what the plan allows. ADR-0005's line on `agent_delegation` then describes `detail.workspace`, not `path`.
-   - (c) As (b), and also `absent` for capabilities whose Linear operations are still stubs. The manifest is right at every commit, but most capabilities read `absent` until PMK-38, and each of PMK-35 to PMK-38 edits a list.
-   - Recommendation: (b). It keeps one rule for both trackers, and the design above uses it. Picking (a) removes one step in `buildLinearCapabilities` and two test cases.
-2. **Does the Linear descriptor list secret-like keys in `configProblems`?** The brief says the client is the one place that refuses them. PMK-30's resolved question 1 said `pmkit validate` lists them once PMK-33 adds `secretKeyPaths` to `configProblems`. Listing them there also refuses a write through `pmkitProblems` before the client runs.
-   - (a) Yes, as PMK-30's answer says. `validate` shows the problem, and the `INVALID_INPUT` refusal stays in the client.
-   - (b) No. Only the client reacts, and `validate` stays silent about secrets.
-   - Recommendation: (a). A user who runs `validate` sees the problem without a network call. The design above uses it.
-3. **Does `pmkit discover` always refresh the cache?**
-   - (a) Always. It is the command a person or setup runs to look at the workspace now, and other commands read the cache.
-   - (b) Only with a new `--refresh` flag, so a plain `discover` is free when the cache is fresh.
-   - Recommendation: (a). Setup needs fresh data, and nobody runs `discover` in a loop. The design above uses it.
+The user answered on 2026-10-27.
 
-No ADR is needed. The choices stay inside the Linear adapter, and ADR-0005 already covers the credential.
+1. **What path does the Linear manifest give a capability that Linear offers but no pmkit command serves?** Answer: `absent`, with Linear's path in `detail.workspace` and in the hint (option b). One rule serves both trackers, and `/pmkit:help` never lists a path no command has. ADR-0005's line on `agent_delegation` is amended in place to describe `detail.workspace`. Rejected: (a) Linear's path ignoring `SERVED_BY`, and (c) `absent` also for capabilities whose Linear operations are stubs.
+2. **Does the Linear descriptor list secret-like keys in `configProblems`?** Answer: no (option b). The refusal stays in the client only, as the user decided in PMK-30. `pmkit validate` says nothing about a secret-like key, and any Linear command fails with `INVALID_INPUT` naming its path.
+3. **Does `pmkit discover` always refresh the cache?** Answer: always (option a). It skips the one-hour cache. Every other command reads the cache.
+
+No new ADR. One line of ADR-0005 changes, as answer 1 says, and ADR-0005 already covers the credential.
 
 ## Left to the builder
 
@@ -393,5 +387,5 @@ No ADR is needed. The choices stay inside the Linear adapter, and ADR-0005 alrea
 
 - Placeholders: none. The estimate scales are marked as values to check, with the page to check them against.
 - Consistency: "discovery" means `fetchDiscovery` plus `discoveryView`. "Linear's answer" and `detail.workspace` mean the same thing. Examples use `acme` and `ACME`.
-- Scope: four new modules, one registry line, two command tweaks, one fake helper and tests. No write to Linear, no schema change, no ADR.
+- Scope: four new modules, one registry line, two command tweaks, one fake helper and tests. No write to Linear, no schema change, no new ADR, one amended line in ADR-0005.
 - Boundaries: `me` goes to PMK-35, mapping questions to PMK-34, triage rotation to PMK-43, degraded paths to PMK-40, and "Non-goals" says so.
