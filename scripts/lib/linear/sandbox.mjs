@@ -434,3 +434,29 @@ export async function waitForCycles({ client, team, guard, sleep = defaultSleep,
   }
   return found
 }
+
+export const ISSUE_DELETE = 'mutation PmkitSandboxIssueDelete($id: String!) { issueDelete(id: $id) { success } }'
+export const PROJECT_DELETE = 'mutation PmkitSandboxProjectDelete($id: String!) { projectDelete(id: $id) { success } }'
+
+/**
+ * What the test team holds: { issues, projects }. Issues are those not trashed, archived ones included. Projects are the open
+ * ones whose only team is the test team. The ids are adopted by the guard, so the deletes below pass it.
+ */
+export async function listTestTeamItems({ client, team, guard }) {
+  const issues = await teamIssues(client, team)
+  const projects = (await teamProjects(client, team)).filter((project) => {
+    const owners = project.teams?.nodes ?? []
+    return owners.length === 1 && owners[0].id === team.id
+  })
+  for (const issue of issues) guard?.own('issue', issue.id)
+  for (const project of projects) guard?.own('project', project.id)
+  return { issues, projects }
+}
+
+/** Trashes the items listTestTeamItems returns: issueDelete without permanentlyDelete, then projectDelete. Returns the counts. */
+export async function trashTestTeamItems({ client, team, guard }) {
+  const { issues, projects } = await listTestTeamItems({ client, team, guard })
+  for (const issue of issues) await client.request(ISSUE_DELETE, { id: issue.id })
+  for (const project of projects) await client.request(PROJECT_DELETE, { id: project.id })
+  return { issues: issues.length, projects: projects.length }
+}

@@ -7,7 +7,7 @@ import {
   COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_ARCHIVE, ISSUE_CREATE, ISSUE_UPDATE, RELATION_CREATE, RELATION_DELETE,
 } from './documents.mjs'
 import { PROJECT_CREATE, PROJECT_UPDATE_CREATE } from './projects.mjs'
-import { SUITE_ALLOWLIST, TEST_TEAM, createGuardedFetch, findOrCreateTestTeam, preflight, waitForCycles } from './sandbox.mjs'
+import { SUITE_ALLOWLIST, TEST_TEAM, createGuardedFetch, findOrCreateTestTeam, listTestTeamItems, preflight, trashTestTeamItems, waitForCycles } from './sandbox.mjs'
 
 const URL = 'https://api.linear.app/graphql'
 const TEAM = 'team-pkt'
@@ -521,4 +521,59 @@ test('waitForCycles adopts the cycles it reads, so the guard accepts them', asyn
   await wait(w)
   w.guard.own('state', 's-1')
   await send(w, ISSUE_CREATE, { input: { id: 'i-1', teamId: TEAM, cycleId: 'c-1' } })
+})
+
+// Task 7: list and trash the team's items.
+const issueNode = (id, extra = {}) => ({ id, identifier: `PKT-${id.slice(2)}`, trashed: false, archivedAt: null, ...extra })
+const projectNode = (id, teams = [TEAM], extra = {}) => ({ id, name: id, trashed: false, archivedAt: null, teams: { nodes: teams.map((team) => ({ id: team })) }, ...extra })
+
+function itemsWorld({ issues = [], projects = [] }) {
+  const w = world({
+    issues, projects,
+    routes: {
+      PmkitSandboxIssueDelete: (body) => {
+        w.state.issues = w.state.issues.map((issue) => (issue.id === body.variables.id ? { ...issue, trashed: true } : issue))
+        return json({ issueDelete: { success: true } })
+      },
+      PmkitSandboxProjectDelete: (body) => {
+        w.state.projects = w.state.projects.map((project) => (project.id === body.variables.id ? { ...project, trashed: true } : project))
+        return json({ projectDelete: { success: true } })
+      },
+    },
+  })
+  w.guard.open({ teamExists: true, teamId: TEAM, viewerId: VIEWER, labelIds: LABELS })
+  return w
+}
+const items = (w) => ({ client: w.client, team: { id: TEAM, key: 'PKT' }, guard: w.guard })
+const ids = (nodes) => nodes.map((node) => node.id)
+
+test('listTestTeamItems returns untrashed issues (archived included) and open projects of the test team alone', async () => {
+  const w = itemsWorld({
+    issues: [issueNode('i-1'), issueNode('i-2', { archivedAt: '2026-01-01T00:00:00.000Z' }), issueNode('i-3', { trashed: true })],
+    projects: [projectNode('p-1'), projectNode('p-2', [TEAM, 'team-other']), projectNode('p-3', [TEAM], { trashed: true }), projectNode('p-4', [TEAM], { archivedAt: '2026-01-01T00:00:00.000Z' })],
+  })
+  const found = await listTestTeamItems(items(w))
+  assert.deepEqual(ids(found.issues), ['i-1', 'i-2'])
+  assert.deepEqual(ids(found.projects), ['p-1'])
+  assert.equal(w.mutations().length, 0)
+})
+
+test('trashTestTeamItems trashes issues, then projects, with no permanent delete, and returns the counts', async () => {
+  const w = itemsWorld({ issues: [issueNode('i-1'), issueNode('i-2', { archivedAt: '2026-01-01T00:00:00.000Z' })], projects: [projectNode('p-1'), projectNode('p-2', [TEAM, 'team-other'])] })
+  const counts = await trashTestTeamItems(items(w))
+  assert.deepEqual(counts, { issues: 2, projects: 1 })
+  const sent = w.mutations().map((call) => [call.body.variables.id, call.body.variables.permanentlyDelete])
+  assert.deepEqual(sent, [['i-1', undefined], ['i-2', undefined], ['p-1', undefined]])
+  assert.equal(w.state.projects.find((project) => project.id === 'p-2').trashed, false)
+})
+
+test('trashTestTeamItems sends nothing when the team is empty, and nothing on a second call', async () => {
+  const empty = itemsWorld({})
+  assert.deepEqual(await trashTestTeamItems(items(empty)), { issues: 0, projects: 0 })
+  assert.equal(empty.mutations().length, 0)
+  const w = itemsWorld({ issues: [issueNode('i-1')], projects: [projectNode('p-1')] })
+  await trashTestTeamItems(items(w))
+  const written = w.mutations().length
+  assert.deepEqual(await trashTestTeamItems(items(w)), { issues: 0, projects: 0 })
+  assert.equal(w.mutations().length, written)
 })
