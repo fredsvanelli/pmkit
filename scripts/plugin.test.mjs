@@ -90,7 +90,7 @@ test('CHANGELOG.md has a section for the plugin version and a Tracker format tha
 })
 
 // Each Task that writes command files adds their names here.
-const COMMANDS = { '': ['setup', 'help', 'upgrade'], issues: ['find', 'create', 'dependencies', 'update', 'move', 'assign', 'comment', 'link', 'summary', 'work', 'mine', 'capture', 'breakdown', 'progress', 'pause'], spec: ['import'], backlog: ['groom', 'triage'], report: ['status', 'release-notes'], cycle: ['plan', 'close'], team: ['flow-metrics', 'standup', 'risk-radar'], local: ['doctor', 'render'] }
+const COMMANDS = { '': ['setup', 'help', 'upgrade'], issues: ['find', 'create', 'dependencies', 'update', 'move', 'assign', 'comment', 'link', 'summary', 'work', 'mine', 'capture', 'breakdown', 'progress', 'pause'], spec: ['import'], backlog: ['groom', 'triage'], report: ['status', 'release-notes'], cycle: ['plan', 'close'], team: ['flow-metrics', 'standup', 'risk-radar'], linear: ['triage-rotation'], local: ['doctor', 'render'] }
 
 const HEADINGS = ['## Parameters', '## Steps', '## Confirmation points', '## Output', '## If something is missing']
 
@@ -129,9 +129,9 @@ test('every pmkit.mjs call in a command names a command of the CLI', () => {
   const bad = []
   for (const file of commandFiles()) {
     const text = fs.readFileSync(file, 'utf8')
-    for (const match of text.matchAll(/pmkit\.mjs" +([^\s`|]+)(?: +([^\s`|-][^\s`|]*))?/g)) {
-      const [, first, second] = match
-      const name = [second ? `${first} ${second}` : null, first].find((candidate) => candidate && known.has(candidate))
+    for (const match of text.matchAll(/pmkit\.mjs" +([^\s`|]+)(?: +([^\s`|-][^\s`|]*))?(?: +([^\s`|-][^\s`|]*))?/g)) {
+      const [, first, second, third] = match
+      const name = [third ? `${first} ${second} ${third}` : null, second ? `${first} ${second}` : null, first].find((candidate) => candidate && known.has(candidate))
       if (!name) bad.push(`${path.relative(ROOT, file)}: ${match[0]}`)
     }
   }
@@ -160,6 +160,15 @@ test('every command is listed in the skill table and in the README', () => {
       }
     }
   }
+})
+
+test('triage-rotation.md previews the set in step 6 and writes it in step 7', () => {
+  const text = fs.readFileSync(path.join(ROOT, 'commands/linear/triage-rotation.md'), 'utf8')
+  const step = (number) => text.split('\n').find((line) => line.startsWith(`${number}. `)) ?? ''
+  const calls = (line) => [...line.matchAll(/pmkit\.mjs" linear triage set[^`]*`/g)].map((match) => match[0])
+  assert.ok(calls(step(6)).length > 0 && calls(step(6)).every((call) => call.includes('--dry-run')), 'step 6 previews with --dry-run')
+  assert.ok(calls(step(7)).length > 0 && calls(step(7)).every((call) => !call.includes('--dry-run')), 'step 7 writes without --dry-run')
+  assert.match(step(5), /AskUserQuestion/)
 })
 
 test('upgrade.md carries the pieces the upgrade flow needs', () => {
