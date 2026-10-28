@@ -110,3 +110,41 @@ export async function fetchDiscovery(client, { now = () => new Date() } = {}) {
     truncated: Object.keys(kinds).filter((kind) => kinds[kind].hasMore),
   }
 }
+
+const CATEGORY_OF_TYPE = {
+  triage: 'triage',
+  backlog: 'backlog',
+  unstarted: 'todo',
+  started: 'in_progress',
+  completed: 'done',
+  canceled: 'canceled',
+  duplicate: 'canceled',
+}
+
+/** The pmkit category of a Linear state type, or null for a type pmkit does not know. */
+export const categoryOfType = (type) => (typeof type === 'string' && Object.hasOwn(CATEGORY_OF_TYPE, type) ? CATEGORY_OF_TYPE[type] : null)
+
+// Linear's estimate scales. Checked on 2026-10-27: linear.app/docs/estimates answered 404, and
+// linear.app/docs/creating-issues gives the t-shirt points XS 1, S 2, M 3, L 5, XL 8, XXL 13, XXXL 21.
+// The point scales and the two values "extended" adds come from a search of Linear's docs the same day.
+const SCALES = {
+  exponential: { base: [1, 2, 4, 8, 16], extended: [32, 64] },
+  fibonacci: { base: [1, 2, 3, 5, 8], extended: [13, 21] },
+  linear: { base: [1, 2, 3, 4, 5], extended: [6, 7] },
+}
+const SIZES = { base: ['XS', 'S', 'M', 'L', 'XL'], extended: ['XXL', 'XXXL'] }
+const SIZE_POINTS = { XS: 1, S: 2, M: 3, L: 5, XL: 8, XXL: 13, XXXL: 21 }
+
+/**
+ * The estimate scale of a team's settings. allowZero puts 0 first in a points scale; t-shirt sizes gain no size,
+ * because Linear stores 0 as no estimate. notUsed and an unknown type give an empty points scale.
+ */
+export function estimateScale({ type, allowZero = false, extended = false } = {}) {
+  if (type === 'tShirt') {
+    const scale = [...SIZES.base, ...(extended ? SIZES.extended : [])]
+    return { unit: 'sizes', scale, values: Object.fromEntries(scale.map((size) => [size, SIZE_POINTS[size]])) }
+  }
+  const points = Object.hasOwn(SCALES, type) ? SCALES[type] : null
+  if (!points) return { unit: 'points', scale: [] }
+  return { unit: 'points', scale: [...(allowZero ? [0] : []), ...points.base, ...(extended ? points.extended : [])] }
+}

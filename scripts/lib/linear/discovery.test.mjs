@@ -3,7 +3,7 @@ import test from 'node:test'
 import { FAKE_KEY, fakeLinearFetch, fakeWorkspace } from '../../fake-linear-api.mjs'
 import { fixedNow } from '../../test-helpers.mjs'
 import { createLinearClient, isMutation, operationName } from './client.mjs'
-import { fetchDiscovery } from './discovery.mjs'
+import { categoryOfType, estimateScale, fetchDiscovery } from './discovery.mjs'
 
 const NOW = fixedNow('2026-10-27T12:00:00Z')
 const DISCOVERY_OPERATIONS = ['PmkitWorkspace', 'PmkitPlan', 'PmkitIntegrations', 'PmkitTeams', 'PmkitStates', 'PmkitLabels', 'PmkitUsers']
@@ -119,4 +119,51 @@ test('an endless connection is truncated at the client cap', async () => {
   const raw = await fetchDiscovery(client, { now: NOW })
   assert.deepEqual(raw.truncated, ['labels'])
   assert.equal(callsOf(fetch, 'PmkitLabels'), 10)
+})
+
+test('categoryOfType maps every Linear state type', () => {
+  const pairs = {
+    triage: 'triage',
+    backlog: 'backlog',
+    unstarted: 'todo',
+    started: 'in_progress',
+    completed: 'done',
+    canceled: 'canceled',
+    duplicate: 'canceled',
+  }
+  for (const [type, category] of Object.entries(pairs)) assert.equal(categoryOfType(type), category, type)
+  assert.equal(categoryOfType('paused'), null)
+  assert.equal(categoryOfType(undefined), null)
+})
+
+test('estimateScale gives each scale', () => {
+  const scale = (type, extended) => estimateScale({ type, allowZero: false, extended })
+  assert.deepEqual(scale('notUsed', false), { unit: 'points', scale: [] })
+  assert.deepEqual(scale('notUsed', true), { unit: 'points', scale: [] })
+  assert.deepEqual(scale('exponential', false), { unit: 'points', scale: [1, 2, 4, 8, 16] })
+  assert.deepEqual(scale('exponential', true), { unit: 'points', scale: [1, 2, 4, 8, 16, 32, 64] })
+  assert.deepEqual(scale('fibonacci', false), { unit: 'points', scale: [1, 2, 3, 5, 8] })
+  assert.deepEqual(scale('fibonacci', true), { unit: 'points', scale: [1, 2, 3, 5, 8, 13, 21] })
+  assert.deepEqual(scale('linear', false), { unit: 'points', scale: [1, 2, 3, 4, 5] })
+  assert.deepEqual(scale('linear', true), { unit: 'points', scale: [1, 2, 3, 4, 5, 6, 7] })
+  assert.deepEqual(scale('tShirt', false), {
+    unit: 'sizes',
+    scale: ['XS', 'S', 'M', 'L', 'XL'],
+    values: { XS: 1, S: 2, M: 3, L: 5, XL: 8 },
+  })
+  assert.deepEqual(scale('tShirt', true), {
+    unit: 'sizes',
+    scale: ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'],
+    values: { XS: 1, S: 2, M: 3, L: 5, XL: 8, XXL: 13, XXXL: 21 },
+  })
+})
+
+test('allowZero puts 0 first', () => {
+  assert.deepEqual(estimateScale({ type: 'fibonacci', allowZero: true, extended: false }).scale, [0, 1, 2, 3, 5, 8])
+  assert.deepEqual(estimateScale({ type: 'tShirt', allowZero: true, extended: false }).scale, ['XS', 'S', 'M', 'L', 'XL'])
+  assert.deepEqual(estimateScale({ type: 'notUsed', allowZero: true, extended: false }).scale, [])
+})
+
+test('an unknown estimation type gives no scale', () => {
+  assert.deepEqual(estimateScale({ type: 'logarithmic' }), { unit: 'points', scale: [] })
 })
