@@ -1,0 +1,86 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeWorkspace } from '../../fake-linear-api.mjs'
+import { createLinearClient, isMutation } from './client.mjs'
+import { fetchDiscovery } from './discovery.mjs'
+import { historyOperations } from './history-ops.mjs'
+import { issueOperations } from './issue-ops.mjs'
+
+const ACTOR = 'user-1'
+const PMKIT = {
+  tracker: { system: 'linear', scope: { workspace: 'acme', team: 'ACME' } },
+  mappings: { status: { in_review: 'In Review' }, types: { bug: 'Bug', feature: 'Feature' } },
+}
+
+/** The Linear operations over the stateful fake, with a counter for the client UUIDs. */
+async function setup(options = {}) {
+  const fake = fakeLinearIssues(options)
+  const fetch = fakeLinearFetch({ ...fakeWorkspace(), ...fake.routes })
+  const client = createLinearClient({ env: { LINEAR_API_KEY: FAKE_KEY }, tracker: PMKIT.tracker, fetch })
+  const raw = await fetchDiscovery(client, { now: () => new Date('2026-10-27T12:00:00Z') })
+  const config = { pmkit: PMKIT }
+  let count = 0
+  const uuid = () => `uuid-${++count}`
+  const ops = issueOperations({ client, discovery: async () => ({ raw }), config, uuid })
+  const history = historyOperations({ client, ops, config })
+  const sent = () => fetch.calls.filter((call) => isMutation(call.body.query)).length
+  return { fake, fetch, ops, history, sent }
+}
+
+test('getHistory returns the create, update, comment and archive events in order', async () => {
+  const { fake, ops, history } = await setup()
+  const { after } = await ops.createIssue({ title: 'First' }, ACTOR)
+  await ops.updateIssue(after.id, { title: 'Second' }, ACTOR)
+  fake.comment(after.id, { id: 'c-1', body: 'Looks fine' })
+  await ops.archive(after.id, ACTOR)
+  const events = await history.getHistory(after.id)
+  assert.deepEqual(events.map((e) => [e.op, e.field]), [['create', undefined], ['update', 'title'], ['comment', undefined], ['archive', undefined]])
+  assert.deepEqual(events[0].to.title, 'First')
+  assert.deepEqual(events[1], { at: events[1].at, by: ACTOR, op: 'update', field: 'title', from: 'First', to: 'Second' })
+  assert.deepEqual(events[2], { at: events[2].at, by: ACTOR, op: 'comment', to: 'c-1' })
+  const stamps = events.map((e) => e.at)
+  assert.deepEqual(stamps, [...stamps].sort())
+})
+
+test('since drops earlier events and keeps the boundary', async () => {
+  const { ops, history } = await setup()
+  const { after } = await ops.createIssue({ title: 'First' }, ACTOR)
+  await ops.updateIssue(after.id, { title: 'Second' }, ACTOR)
+  await ops.updateIssue(after.id, { title: 'Third' }, ACTOR)
+  const all = await history.getHistory(after.id)
+  const boundary = all[1].at
+  assert.deepEqual((await history.getHistory(after.id, { since: boundary })).map((e) => e.to?.title ?? e.to), ['Second', 'Third'])
+})
+
+test('a malformed id sends no request and a trashed issue is NOT_FOUND', async () => {
+  const { fake, fetch, history } = await setup()
+  await assert.rejects(history.getHistory('nope'), { code: 'NOT_FOUND' })
+  const before = fetch.calls.length
+  await assert.rejects(history.getHistory('not an id'), { code: 'NOT_FOUND' })
+  assert.equal(fetch.calls.length, before)
+  fake.seed({ title: 'Gone' })
+  fake.records[0].trashed = true
+  await assert.rejects(history.getHistory('ACME-1'), { code: 'NOT_FOUND' })
+})
+
+test('a history past the page cap carries a hidden truncated flag', async () => {
+  const { fake, history, sent } = await setup()
+  fake.seed({ title: 'Busy' })
+  for (let n = 0; n < 1001; n += 1) fake.history('ACME-1', { createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, n)).toISOString(), updatedDescription: true })
+  const events = await history.getHistory('ACME-1')
+  assert.equal(events.truncated, true)
+  assert.deepEqual(Object.keys(events), events.map((_, index) => String(index)))
+  assert.equal(JSON.stringify(events).includes('truncated'), false)
+  assert.equal(events.filter((e) => e.field === 'description').length, 1000)
+  assert.equal(sent(), 0)
+  assert.equal((await history.getHistory('ACME-1', { since: '2030-01-01' })).truncated, true)
+})
+
+test('a short history has no truncated flag and no request is a mutation', async () => {
+  const { ops, history, sent } = await setup()
+  const { after } = await ops.createIssue({ title: 'First' }, ACTOR)
+  const before = sent()
+  const events = await history.getHistory(after.id)
+  assert.equal(events.truncated, undefined)
+  assert.equal(sent(), before)
+})
