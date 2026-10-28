@@ -149,7 +149,7 @@ The inputs of `teamCreate`:
 | `id` | a UUID the run chooses | The run can find the team even when the answer to `teamCreate` never arrives. |
 | `name` | `pmkit-test` | The fixed name is how every run finds the team. |
 | `key` | `PKT` | A fixed key lets the guard check it. Preflight confirmed no team has it. |
-| `description` | `pmkit contract-test team (marker: pmkit-contract-team). The pmkit tests create and trash items here. Do not use it for real work.` | The marker. The run and cleanup touch a team only when its name, key and marker all match. |
+| `description` | `Test team for the pmkit contract tests (marker: pmkit-contract-team). They create and trash items here. Do not use it for real work.` | The marker. The run and cleanup touch a team only when its name, key and marker all match. |
 | `timezone` | `Etc/UTC` | Cycle dates then match the adapter's UTC date rule. |
 | `triageEnabled` | `true` | Gives a `triage` state, which the suite needs. |
 | `cyclesEnabled`, `cycleDuration`, `cycleCooldownTime`, `cycleStartDay`, `upcomingCycleCount` | `true`, `1`, `0`, today's UTC weekday (`getUTCDay()`), `2` | One-week cycles, no cooldown, the first starting today if Linear allows it, and a planned cycle after the active one. Whether `0` means Sunday is unverified; the fallback below covers a wrong guess. |

@@ -134,6 +134,72 @@ Docs. `https://linear.app/docs/customer-requests` (read 2026-10-28; `https://lin
 
 Answer `yes`, access `read/write`. The three mutations stay `schema` because none was sent. `linear customers` decides from `customersEnabled` in the cached discovery and sends no customer query when it is false. When the flag is false the reason is `customers_off` on every plan, with the hint "An admin can turn on customer requests in the workspace settings.", because the docs say the feature exists on all plans and the docs win over the Linear tab (decided in PMK-42 review).
 
+## Live writes (PMK-39)
+
+The contract suite runs against the sandbox workspace through one fixed test team. Nothing here was measured yet. Every result below is `unverified` until the first live run fills it in. The run is by hand and no CI runs it.
+
+The key comes from `LINEAR_API_KEY` in the shell. Put it there with `set -a; . ./.env; set +a`, so it never appears on a command line. `PMKIT_LIVE_WORKSPACE` holds the URL key the key must belong to.
+
+```
+PMKIT_LIVE=1 PMKIT_LIVE_WORKSPACE=$PMKIT_LIVE_WORKSPACE node scripts/lib/linear/contract-live.mjs
+PMKIT_LIVE=1 PMKIT_LIVE_WORKSPACE=$PMKIT_LIVE_WORKSPACE node scripts/lib/linear/contract-live.mjs cleanup
+PMKIT_LIVE=1 PMKIT_LIVE_WORKSPACE=$PMKIT_LIVE_WORKSPACE node scripts/lib/linear/contract-live.mjs cleanup --yes
+```
+
+`cleanup` lists what the test team holds and writes nothing. `cleanup --yes` trashes it. Without `PMKIT_LIVE=1`, a workspace and a usable key, every test is skipped with one reason and nothing is sent. `npm test` removes `LINEAR_API_KEY` and `PMKIT_LIVE` from the environment of its tests and never loads the live file.
+
+### The test team
+
+The team is named `pmkit-test`, has the key `PKT` and carries the marker `pmkit-contract-team` in its description. The run creates it once and reuses it. It never edits or deletes the team. A team that fails the name, key, marker, archive, cycles or triage check stops the run. Each test starts on an empty team, and the sweep after it trashes the issues with `issueDelete` and the projects with `projectDelete`.
+
+### The test-team helper, for PMK-41
+
+`scripts/lib/linear/sandbox.mjs` exports five names. Each function takes the caller's client, so the caller's guard and request counter apply.
+
+| Export | What it does |
+|---|---|
+| `TEST_TEAM` | `{ name: 'pmkit-test', key: 'PKT', marker: 'pmkit-contract-team' }`. |
+| `findOrCreateTestTeam({ client, guard })` | Finds the team by name or creates it once. Returns `{ team: { id, key }, created }`. Sends no write when the team exists. |
+| `listTestTeamItems({ client, team, guard })` | Returns `{ issues, projects }` that the team holds and are not trashed. |
+| `trashTestTeamItems({ client, team, guard })` | Trashes those issues and projects. Returns the counts. |
+| `createGuardedFetch({ fetch, workspace, allowlist })` | Returns `{ fetch, guard }`. The fetch refuses every mutation the allowlist lacks. The default allowlist is `SUITE_ALLOWLIST`, the 14 mutations of this suite. PMK-41 passes its own allowlist. |
+
+`preflight`, `waitForCycles` and `checkTestTeam` are exported too. The live run calls them in this order: `preflight`, `findOrCreateTestTeam`, `waitForCycles`.
+
+### The write guard
+
+The guard reads each request with `isMutation` and refuses a mutation before it leaves the process unless its root field is on the allowlist and every id it names belongs to the run. The suite allowlist holds `teamCreate`, `workflowStateCreate`, `cycleStartUpcomingCycleToday`, `issueCreate`, `issueUpdate`, `issueArchive`, `issueRelationCreate`, `issueRelationDelete`, `commentCreate`, `commentResolve`, `projectCreate`, `projectUpdateCreate`, `issueDelete` and `projectDelete`. No mutation passes before `preflight` succeeds. After a stop signal only `issueDelete` and `projectDelete` of owned ids pass.
+
+### Request budget
+
+Estimated, not measured. The run aims at under 1,000 requests and stops suite requests at 1,200, with 100 more kept for cleanup. The preflight needs 1,700 requests and 1,500,000 complexity points left in the hour.
+
+| Measure | Estimate | Measured |
+|---|---|---|
+| Requests | about 600 | `unverified` |
+| Writes | about 90 | `unverified` |
+| Complexity points | not estimated | `unverified` |
+
+### Probe results
+
+| Probe | Source | Result |
+|---|---|---|
+| A description with a criteria list round-trips through `updateIssue` and `getIssue` | PMK-35 | `unverified` |
+| Which parts of a comment body survive (marker line, checklist, code fence) | PMK-36 | `unverified` |
+| History codes and sides for `blocks`, `duplicate` and a removed relation | PMK-36 | `unverified` |
+| A new comment moves `updatedAt` | PMK-36 | `unverified` |
+| `endsAt` equals the next `startsAt`, the time of day, `isPast` and `completedAt` | PMK-37 | `unverified` |
+
+### Open facts
+
+| Fact | Status |
+|---|---|
+| `cycleStartDay` 0 means Sunday | `unverified` |
+| `teamCreate` accepts the five-character key `PKT` | `unverified` |
+| `issueDelete` works on an archived issue | `unverified` |
+| Trashed issues count toward the 250 issues of the Free plan | `unverified` |
+| `projects(filter: { accessibleTeams })` and `issues(filter: { team })` with an id comparator accept the test team id | `unverified` |
+
 ## Paid-plan features on a Free workspace
 
 Check a gated feature in this order.

@@ -11,7 +11,7 @@
 //   createGuardedFetch({ fetch, workspace, allowlist }) { fetch, guard }. The fetch refuses every mutation the allowlist lacks.
 //
 // The allowlist maps a mutation root field to (variables, context, document) => reason | null. SUITE_ALLOWLIST holds the 14 mutations of
-// the contract run. A caller that needs another mutation passes its own allowlist, built with the exported rule helpers.
+// the contract run. A caller that needs another mutation passes its own allowlist with rules of the same shape.
 
 import { randomUUID } from 'node:crypto'
 
