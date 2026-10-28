@@ -5,6 +5,10 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { childEnv, displayArgs, makeNormalizer, quoteArg, runPmkit } from './golden-helpers.mjs'
+import { run as runInProcess } from './pmkit.mjs'
+import { ADAPTERS } from './lib/adapters.mjs'
+import { linearDescriptor } from './lib/linear/adapter.mjs'
+import { FAKE_KEY, fakeLinearFetch, fakeWorkspace } from './fake-linear-api.mjs'
 import { addBareOrigin, fakeGh, ghCalls } from './fake-gh.mjs'
 import { hashTree } from './test-helpers.mjs'
 import { lineDiff } from './lib/diff.mjs'
@@ -564,13 +568,35 @@ const KINDS = ['read', 'dryRun', 'write', 'confirm', 'edit', 'git']
 const LABELS = { read: 'read', dryRun: 'dry run', write: 'write' }
 
 /**
+ * The runner of a scenario with a `linear` option: the CLI in this process, with the Linear adapter over a fake fetch
+ * that serves `fakeWorkspace(options)`. No socket opens and no test hook enters the CLI. The environment gets
+ * LINEAR_API_KEY set to FAKE_KEY and a user store under the scratch folder, set by prepareCopy.
+ */
+function linearRunner(options) {
+  const fetch = fakeLinearFetch(fakeWorkspace(options))
+  const adapters = { ...ADAPTERS, linear: linearDescriptor({ fetch }) }
+  return async (args, cwd, { env = {} } = {}) => {
+    // gitUserEmail reads the process environment, so an in-process run needs the git isolation childEnv gives a child.
+    Object.assign(process.env, { GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: '1', GIT_CEILING_DIRECTORIES: fs.realpathSync(os.tmpdir()) })
+    return runInProcess(args, { cwd, env, adapters })
+  }
+}
+
+/**
  * Prepares a run of a scenario in `scratch`: copies the fixture into `<scratch>/repo`, applies `github` and `git`,
  * runs `setup` and takes the baseline after it. For `github`, it adds a bare origin, puts the fake gh first on
- * `env.PATH` and sets `env.PMKIT_FAKE_GH`; `gh` is null otherwise. The caller removes `scratch`.
+ * `env.PATH` and sets `env.PMKIT_FAKE_GH`; `gh` is null otherwise. With `linear`, it points the user store at
+ * `<scratch>/home`, sets LINEAR_API_KEY to FAKE_KEY and returns the in-process runner as `run`. The caller removes `scratch`.
  */
-export async function prepareCopy(scenario, { scratch, fixturesDir, run = runPmkit }) {
+export async function prepareCopy(scenario, { scratch, fixturesDir, run: given = runPmkit }) {
   const root = path.join(scratch, 'repo')
   const env = childEnv()
+  let run = given
+  if (scenario.linear) {
+    const home = path.join(scratch, 'home')
+    Object.assign(env, { HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: path.join(home, '.config'), PMKIT_HOME: path.join(home, '.config', 'pmkit'), LINEAR_API_KEY: FAKE_KEY })
+    run = linearRunner(scenario.linear)
+  }
   if (scenario.fixture) fs.cpSync(path.join(fixturesDir, scenario.fixture), root, { recursive: true })
   else fs.mkdirSync(root)
   if (scenario.github) {
@@ -601,7 +627,7 @@ export async function prepareCopy(scenario, { scratch, fixturesDir, run = runPmk
     return JSON.parse(result.stdout)
   }
   await scenario.setup?.({ root, pmkit, git: (...args) => gitOrThrow(root, args, env) })
-  return { root, env, baseline: readTree(root), gh }
+  return { root, env, baseline: readTree(root), gh, run }
 }
 
 const parseJson = (text) => {
@@ -630,7 +656,7 @@ export async function runScenario(scenario, { name, parsed, cliCommands, fixture
   const confirmed = []
   const saved = {}
   try {
-    const { root, env, baseline, gh } = await prepareCopy(scenario, { scratch, fixturesDir, run })
+    const { root, env, baseline, gh, run: exec } = await prepareCopy(scenario, { scratch, fixturesDir, run })
     const show = (args) => displayArgs(args, { root, inputs: inputsDir }).map(quoteArg).join(' ')
 
     let stopped = false
@@ -682,7 +708,7 @@ export async function runScenario(scenario, { name, parsed, cliCommands, fixture
       const ignored = kind === 'dryRun' ? ['.git'] : ['.git', QUERY_CACHE]
       const before = reads ? hashTree(root, ignored) : null
       const full = kind === 'dryRun' ? [...args, '--dry-run', '--json'] : [...args, '--json']
-      const result = await run(full, root, { env, input: entry.stdin })
+      const result = await exec(full, root, { env, input: entry.stdin })
       const { json } = parseJson(result.stdout)
       rows.push(`$ pmkit ${show(full)}  [step ${entry.step}, ${LABELS[kind]}]`)
       rows.push(entry.expectError ? `exit ${result.code} (expected ${entry.expectError})` : `exit ${result.code}`)

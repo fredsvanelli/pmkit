@@ -14,11 +14,11 @@ const at = (minutes) => () => new Date(START.getTime() + minutes * 60_000)
 const DISCOVERY_OPERATIONS = ['PmkitSession', 'PmkitWorkspace', 'PmkitPlan', 'PmkitIntegrations', 'PmkitTeams', 'PmkitStates', 'PmkitLabels', 'PmkitUsers']
 const callsOf = (fetch, name) => fetch.calls.filter((call) => operationName(call.body.query) === name).length
 
-function setup({ scope = { workspace: 'acme' }, withKey = true, env: extraEnv = {} } = {}) {
+function setup({ scope = { workspace: 'acme', team: 'ACME' }, mappings, withKey = true, env: extraEnv = {} } = {}) {
   const root = tempDir()
   const { env } = userStoreEnv()
   const fullEnv = { ...env, ...(withKey ? { LINEAR_API_KEY: FAKE_KEY } : {}), ...extraEnv }
-  const config = { root, pmkit: { tracker: { system: 'linear', scope }, git_host: { system: 'github' } } }
+  const config = { root, pmkit: { tracker: { system: 'linear', scope }, git_host: { system: 'github' }, ...(mappings ? { mappings } : {}) } }
   return { root, env: fullEnv, config }
 }
 
@@ -33,19 +33,97 @@ test('the tracker passes assertTracker', () => {
   assert.doesNotThrow(() => assertTracker(tracker(setup()).tracker))
 })
 
-test('a stub throws NOT_SUPPORTED and sends no request', async () => {
+test('a stub throws NOT_SUPPORTED once the mapping check passes', async () => {
   const { fetch, tracker: linear } = tracker(setup())
   await assert.rejects(linear.searchIssues({}), {
     code: 'NOT_SUPPORTED',
     message: 'the Linear adapter does not implement searchIssues yet',
     nextStep: 'Set tracker.system to local in .pmkit/config.yaml to use this command now',
   })
-  assert.equal(fetch.calls.length, 0)
+  assert.equal(callsOf(fetch, 'PmkitTeams'), 1)
+  assert.ok(fetch.calls.every((call) => !/mutation/i.test(call.body.query)))
 })
 
 test('a stub without a workspace throws NOT_CONFIGURED', async () => {
   const { tracker: linear } = tracker(setup({ scope: {} }))
   await assert.rejects(linear.getIssue('ACME-1'), { code: 'NOT_CONFIGURED', message: 'tracker.scope.workspace is not set', nextStep: '/pmkit:setup' })
+})
+
+const stubs = {
+  read: (linear) => linear.searchIssues({}),
+  write: (linear) => linear.createIssue({}),
+}
+
+test('a stub with a status removed from the workspace throws NOT_CONFIGURED with details.mappings', async () => {
+  for (const [kind, call] of Object.entries(stubs)) {
+    const context = setup({ mappings: { status: { in_review: 'Peer Review' } } })
+    const { fetch, tracker: linear } = tracker(context)
+    await assert.rejects(call(linear), (error) => {
+      assert.equal(error.code, 'NOT_CONFIGURED', kind)
+      assert.equal(error.message, 'a mapping in .pmkit/config.yaml names something the workspace no longer has: mappings.status.in_review names Peer Review, which team ACME no longer has')
+      assert.equal(error.nextStep, '/pmkit:setup')
+      assert.deepEqual(error.details.mappings, [{ path: 'mappings.status.in_review', value: 'Peer Review', problem: 'mappings.status.in_review names Peer Review, which team ACME no longer has' }])
+      return true
+    })
+    // A fresh fetch is not stale, so there is no second one.
+    assert.equal(callsOf(fetch, 'PmkitTeams'), 1, kind)
+  }
+})
+
+test('a broken mapping in a cached discovery refreshes exactly once, then throws', async () => {
+  const context = setup({ mappings: { status: { in_review: 'Peer Review' } } })
+  await tracker(context).tracker.discover()
+  const { fetch, tracker: linear } = tracker(context, { now: at(1) })
+  await assert.rejects(stubs.read(linear), { code: 'NOT_CONFIGURED' })
+  assert.equal(callsOf(fetch, 'PmkitTeams'), 1)
+  await assert.rejects(stubs.write(linear), { code: 'NOT_CONFIGURED' })
+  assert.equal(callsOf(fetch, 'PmkitTeams'), 1)
+})
+
+test('a state that is back after the refresh lets the call reach NOT_SUPPORTED', async () => {
+  const context = setup({ mappings: { status: { in_review: 'Peer Review' } } })
+  await tracker(context).tracker.discover()
+  const states = [...fakeWorkspaceStates(), { id: 'state-pr', name: 'Peer Review', type: 'started', position: 11, team: { id: 'team-acme' } }]
+  const fetch = fakeLinearFetch(fakeWorkspace({ states }))
+  const { tracker: linear } = tracker(context, { now: at(1), fetch })
+  await assert.rejects(stubs.read(linear), { code: 'NOT_SUPPORTED' })
+  assert.equal(callsOf(fetch, 'PmkitTeams'), 1)
+})
+
+function fakeWorkspaceStates() {
+  return [{ id: 'state-1', name: 'Backlog', type: 'backlog', position: 0, team: { id: 'team-acme' } }]
+}
+
+test('no tracker.scope.team gives the one item "tracker.scope.team is not set" and sends no request', async () => {
+  const { fetch, tracker: linear } = tracker(setup({ scope: { workspace: 'acme' } }))
+  await assert.rejects(stubs.read(linear), (error) => {
+    assert.equal(error.code, 'NOT_CONFIGURED')
+    assert.equal(error.message, 'tracker.scope.team is not set')
+    assert.deepEqual(error.details.mappings, [{ path: 'tracker.scope.team', value: null, problem: 'tracker.scope.team is not set' }])
+    return true
+  })
+  assert.equal(fetch.calls.length, 0)
+})
+
+test('a team the workspace lost and a type label it lost are reported', async () => {
+  const lost = tracker(setup({ scope: { workspace: 'acme', team: 'GONE' } }))
+  await assert.rejects(stubs.read(lost.tracker), (error) => error.details.mappings[0].problem === 'tracker.scope.team names GONE, which this workspace no longer has')
+  const label = tracker(setup({ mappings: { types: { bug: 'Lost' } } }))
+  await assert.rejects(stubs.read(label.tracker), (error) => error.details.mappings[0].problem === 'mappings.types.bug names Lost, which is neither a label of team ACME nor of the workspace')
+})
+
+test('discover and capabilities warn about a broken mapping and do not throw', async () => {
+  const context = setup({ mappings: { status: { in_review: 'Peer Review' } } })
+  const { tracker: linear } = tracker(context)
+  assert.deepEqual((await linear.discover()).warnings, ['mappings.status.in_review names Peer Review, which team ACME does not have'])
+  assert.equal((await linear.capabilities()).capabilities.length, 20)
+})
+
+test('none and absent keys never throw', async () => {
+  const context = setup({ mappings: { status: { in_review: 'none', blocked: 'none' }, fields: { estimate: 'none' }, types: {} } })
+  const { tracker: linear } = tracker(context)
+  await assert.rejects(stubs.read(linear), { code: 'NOT_SUPPORTED' })
+  await assert.rejects(tracker(setup()).tracker.createIssue({}), { code: 'NOT_SUPPORTED' })
 })
 
 test('a missing key throws AUTH before any request', () => {
@@ -155,7 +233,7 @@ test('capabilities returns the manifest object', async () => {
   assert.equal(manifest.generatedAt, '2026-10-27T12:00:00Z')
   assert.equal(manifest.discoveredAt, '2026-10-27T12:00:00.000Z')
   assert.deepEqual(manifest.workspace, { urlKey: 'acme', plan: 'free' })
-  assert.equal(manifest.team, null)
+  assert.equal(manifest.team, 'ACME')
   assert.equal(manifest.capabilities.length, 20)
   assert.deepEqual(manifest.warnings, [])
 })

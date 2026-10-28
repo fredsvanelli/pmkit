@@ -22,7 +22,7 @@ const FILES = {
     base: () => {
       const config = parseYaml(read('templates/pmkit.config.yaml'))
       config.tracker.scope = { workspace: 'acme', team: 'ENG' }
-      config.mappings = { status: { in_review: 'In Review', blocked: 'Blocked' }, fields: { estimate: 'native' } }
+      config.mappings = { status: { in_review: 'In Review', blocked: 'Blocked' }, fields: { estimate: 'native' }, types: { bug: 'Bug' } }
       return config
     },
   },
@@ -307,6 +307,7 @@ const PINNED = {
     'mappings.status.* pattern': [(s) => s.properties.mappings.properties.status.additionalProperties.pattern, NAME.source],
     'mappings.fields.* pattern': [(s) => s.properties.mappings.properties.fields.additionalProperties.pattern, NAME.source],
     'mappings.status.<key> enum': [(s) => s.properties.mappings.properties.status.propertyNames.enum, STATUS_MAPPING_KEYS],
+    'mappings.types.* pattern': [(s) => s.properties.mappings.properties.types.additionalProperties.pattern, NAME.source],
     'mappings.fields.<key> enum': [(s) => s.properties.mappings.properties.fields.propertyNames.enum, FIELD_ROLES],
   },
   issues: {
@@ -342,8 +343,8 @@ test('every key path of each template has a schema', () => {
   }
 })
 
-test('the user-keyed maps are tracker.scope, mappings.status and mappings.fields, and statuses, members and defaults', () => {
-  assert.deepEqual(mapPaths(loadSchema('pmkit')).map((keys) => keys.join('.')), ['tracker.scope', 'mappings.status', 'mappings.fields'])
+test('the user-keyed maps are tracker.scope, mappings.status, mappings.fields and mappings.types, and statuses, members and defaults', () => {
+  assert.deepEqual(mapPaths(loadSchema('pmkit')).map((keys) => keys.join('.')), ['tracker.scope', 'mappings.status', 'mappings.fields', 'mappings.types'])
   assert.deepEqual(mapPaths(loadSchema('issues')).map((keys) => keys.join('.')), ['statuses', 'members', 'defaults'])
 })
 
@@ -377,6 +378,7 @@ test('null for an optional key is invalid on both sides, and tracker.path null i
     ['pmkit', ['mappings'], false],
     ['pmkit', ['mappings', 'status'], false],
     ['pmkit', ['mappings', 'fields'], false],
+    ['pmkit', ['mappings', 'types'], false],
     ['issues', ['id_style'], false],
     ['issues', ['labels'], false],
     ['issues', ['estimate', 'scale'], false],

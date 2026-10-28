@@ -47,6 +47,24 @@ test('the linear descriptor asks for a workspace and lists no secret', () => {
   assert.deepEqual(linear.settings(), { defaults: builtInDefaults(), epicPrefix: null })
 })
 
+test('the linear descriptor checks the estimate and type mappings offline', () => {
+  const linear = linearDescriptor()
+  const base = { tracker: { system: 'linear', scope: { workspace: 'acme' } } }
+  const problems = (mappings) => linear.configProblems({ ...base, mappings })
+  assert.deepEqual(problems({ fields: { estimate: 'Points' } }), ['mappings.fields.estimate must be native or none for linear'])
+  assert.deepEqual(problems({ fields: { estimate: 'native' } }), [])
+  assert.deepEqual(problems({ fields: { estimate: 'none' }, types: { bug: 'Bug' } }), [])
+  assert.deepEqual(problems({ types: { bug: 'none' } }), ['mappings.types.bug cannot be none; leave the type out instead'])
+  assert.deepEqual(problems({ types: {} }), [])
+  assert.deepEqual(linear.configProblems(base), [])
+})
+
+test('the linear descriptor describes a workspace for setup', async () => {
+  const raw = { workspace: { urlKey: 'acme' }, teams: [], states: [], labels: [], users: [] }
+  const description = linearDescriptor().describe(raw, { workspace: { urlKey: 'acme', name: 'Acme', plan: 'free' } }, 'user-1', ['bug'])
+  assert.deepEqual(description, { workspace: { urlKey: 'acme', name: 'Acme', plan: 'free' }, viewerTeams: [], types: ['bug'], teams: [] })
+})
+
 test('the linear descriptor creates a contract tracker from an injected fetch', async () => {
   const { env } = userStoreEnv()
   const config = { root: tempDir(), pmkit: { tracker: { system: 'linear', scope: { workspace: 'acme' } } } }

@@ -117,7 +117,7 @@ test('team settings are conditional across teams and decided by the configured t
 
 test('estimation on a team gives its scale', async () => {
   const data = await raw({ teams: [team('t-acme', 'ACME', { issueEstimationType: 'fibonacci' }), team('t-ops', 'OPS', { issueEstimationType: 'exponential' })] })
-  const acme = byId(buildLinearCapabilities(data, pmkitWith({ team: 'ACME' })))
+  const acme = byId(buildLinearCapabilities(data, { ...pmkitWith({ team: 'ACME' }), mappings: { fields: { estimate: 'native' } } }))
   assert.deepEqual(acme.estimation, { id: 'estimation', path: 'native', detail: { unit: 'points', scale: [1, 2, 3, 5, 8] } })
   const mixed = byId(buildLinearCapabilities(data, pmkitWith()))
   assert.deepEqual(mixed.estimation, { id: 'estimation', path: 'native', detail: { unit: 'points', scale: [] } })
@@ -169,4 +169,21 @@ test('every absent entry has a hint and every detail is flat', async () => {
 test('a workspace with no teams gives absent team capabilities', async () => {
   const entry = byId(buildLinearCapabilities(await raw(WORKSPACES.empty), pmkitWith()))
   for (const id of ['cycles', 'estimation', 'native_triage', 'capacity']) assert.equal(entry[id].path, 'absent', id)
+})
+
+test('estimate: none makes estimation absent with its hint, and native keeps it supported', async () => {
+  const options = { teams: [team('team-a', 'AA', { issueEstimationType: 'fibonacci' })] }
+  const withFields = (estimate) => ({ ...pmkitWith({ team: 'AA' }), mappings: { fields: { estimate } } })
+  const none = byId(buildLinearCapabilities(await raw(options), withFields('none')))
+  assert.deepEqual(none.estimation, { id: 'estimation', path: 'absent', enableHint: 'mappings.fields.estimate is none in .pmkit/config.yaml' })
+  const native = byId(buildLinearCapabilities(await raw(options), withFields('native')))
+  assert.equal(native.estimation.path, 'native')
+})
+
+test('an absent estimate key on the configured team makes estimation absent, as none does', async () => {
+  const options = { teams: [team('team-a', 'AA', { issueEstimationType: 'fibonacci' })] }
+  const absent = byId(buildLinearCapabilities(await raw(options), pmkitWith({ team: 'AA' })))
+  assert.deepEqual(absent.estimation, { id: 'estimation', path: 'absent', enableHint: 'Run /pmkit:setup to set mappings.fields.estimate in .pmkit/config.yaml' })
+  // With no team configured, the manifest describes the workspace, as PMK-33 built it.
+  assert.equal(byId(buildLinearCapabilities(await raw(options), pmkitWith())).estimation.path, 'native')
 })

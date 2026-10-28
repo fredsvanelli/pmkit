@@ -3,9 +3,11 @@
 
 import { TRACKER_OPERATIONS } from '../contract.mjs'
 import { PmkitError } from '../errors.mjs'
+import { brokenMappings } from '../mappings.mjs'
 import { cacheGet, cachePut, repoHash } from '../user-store.mjs'
 import { createLinearClient } from './client.mjs'
 import { discoveryView, fetchDiscovery } from './discovery.mjs'
+import { linearDescription } from './mappings.mjs'
 import { buildLinearCapabilities } from './manifest.mjs'
 
 const CACHE_TTL_SECONDS = 3600
@@ -90,14 +92,48 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     }
   }
 
-  const stub = (operation) => async () => {
-    if (!workspace) throw new PmkitError('NOT_CONFIGURED', 'tracker.scope.workspace is not set', '/pmkit:setup')
-    throw new PmkitError(
-      'NOT_SUPPORTED',
-      `the Linear adapter does not implement ${operation} yet`,
-      'Set tracker.system to local in .pmkit/config.yaml to use this command now',
-    )
+  const TEAM_UNSET = { path: 'tracker.scope.team', value: null, problem: 'tracker.scope.team is not set' }
+
+  /**
+   * Stops on a mapping that names something the workspace no longer has (criterion 4). A broken list from a cached discovery
+   * triggers one refresh and a second check, because a cached miss is often only an old cache.
+   */
+  async function checkMappings() {
+    if (!tracker.scope?.team) throw new PmkitError('NOT_CONFIGURED', TEAM_UNSET.problem, '/pmkit:setup', { mappings: [TEAM_UNSET] })
+    const check = ({ raw }) => brokenMappings(linearDescription(raw, { workspace: raw.workspace }, null, []), config.pmkit)
+    let found = await discovery()
+    let broken = check(found)
+    // A fresh fetch carries the session; a cached one does not.
+    if (broken.length > 0 && found.session === undefined) {
+      found = await discovery({ refresh: true })
+      broken = check(found)
+    }
+    if (broken.length > 0) {
+      throw new PmkitError(
+        'NOT_CONFIGURED',
+        `a mapping in .pmkit/config.yaml names something the workspace no longer has: ${broken.map((item) => item.problem).join('; ')}`,
+        '/pmkit:setup',
+        { mappings: broken },
+      )
+    }
   }
+
+  // Every operation except discover and capabilities runs through here: the workspace check, then the mapping check, then the body.
+  // PMK-35 to PMK-38 replace a stub's body and keep this wrapper.
+  const guarded = (body) => async (...args) => {
+    if (!workspace) throw new PmkitError('NOT_CONFIGURED', 'tracker.scope.workspace is not set', '/pmkit:setup')
+    await checkMappings()
+    return body(...args)
+  }
+
+  const stub = (operation) =>
+    guarded(async () => {
+      throw new PmkitError(
+        'NOT_SUPPORTED',
+        `the Linear adapter does not implement ${operation} yet`,
+        'Set tracker.system to local in .pmkit/config.yaml to use this command now',
+      )
+    })
 
   const implemented = { discover, capabilities }
   return Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)]))

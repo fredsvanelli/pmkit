@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { BOOLEANS, parseArgs } from './lib/args.mjs'
 import { gitUserEmail, resolveActor } from './lib/actor.mjs'
 import { ADAPTERS, adapterFor } from './lib/adapters.mjs'
-import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, loadPmkitConfig, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig } from './lib/config.mjs'
+import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, loadPmkitConfig, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
 import { contractView } from './lib/contract.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
 import { changeLines, dependencyText, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, releaseNotesText, releaseRecord, sprintRecord, table } from './lib/format.mjs'
@@ -19,7 +19,8 @@ import { dependencyMap, serializable } from './lib/dependencies.mjs'
 import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
-import { addMapEntry, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
+import { addMapEntry, setMap, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
+import { parseMappingFlags, proposeMappings } from './lib/mappings.mjs'
 import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { lineDiff } from './lib/diff.mjs'
 import { CACHE_DIR, ensureCacheIgnored } from './lib/local/query-index.mjs'
@@ -278,9 +279,9 @@ async function flowInputs(tracker) {
 // that work on Local tracker files; they alone use ctx.local(), and the runner refuses them for any other tracker.system.
 export const COMMANDS = [
   {
-    name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels',
-    usage: '[--tracker local] [--git-host github|none] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--label name ...] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
-    flags: ['tracker', 'git-host', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'label', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runInit,
+    name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels; --tracker linear writes only .pmkit/config.yaml and returns what setup must ask',
+    usage: '[--tracker local|linear] [--git-host github|none] [--workspace key] [--team KEY] [--status key=name ...] [--field key=value ...] [--type-label type=label ...] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--label name ...] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
+    flags: ['tracker', 'git-host', 'workspace', 'team', 'status', 'field', 'type-label', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'label', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runInit,
   },
   {
     name: 'capabilities', summary: 'prints the capability manifest', flags: [],
@@ -1286,9 +1287,31 @@ function initLabels(ctx) {
   return names
 }
 
+const LINEAR_FLAGS = ['workspace', 'team', 'status', 'field', 'type-label']
+const LOCAL_ONLY_FLAGS = ['prefix', 'id-style', 'estimate-unit', 'label', 'member', 'name', 'email', 'members-file']
+
 function runInit(ctx) {
   const { opt } = ctx
   const update = ctx.flag('update')
+  // A Linear repository takes the hosted branch. setup cannot move a repository from one tracker to another.
+  const requested = opt('tracker')
+  let system = requested ?? 'local'
+  if (update && fs.existsSync(path.join(ctx.root, '.pmkit', 'config.yaml'))) {
+    let filed
+    try {
+      filed = parseYaml(normalized(fs.readFileSync(path.join(ctx.root, '.pmkit', 'config.yaml'), 'utf8')))?.tracker?.system
+    } catch {
+      // A file that does not parse is reported by the update path below.
+    }
+    if (filed === 'linear' || requested === 'linear') {
+      if (requested !== undefined && requested !== filed) throw new PmkitError('NOT_SUPPORTED', 'setup cannot switch trackers', 'Keep tracker.system as it is')
+      system = filed
+    }
+  }
+  if (system === 'linear') return runInitLinear(ctx)
+  for (const flag of LINEAR_FLAGS) {
+    if (opt(flag) !== undefined) throw usageError(`--${flag} applies only with --tracker linear`, `Remove --${flag}`)
+  }
   if ((opt('tracker') ?? 'local') !== 'local') throw new PmkitError('NOT_SUPPORTED', `tracker "${opt('tracker')}" is not supported yet`, 'Use --tracker local')
   const host = opt('git-host')
   if (host !== undefined && !GIT_HOSTS.includes(host)) throw usageError(`--git-host must be ${GIT_HOSTS.join(' or ')}`)
@@ -1438,6 +1461,143 @@ function runInit(ctx) {
   }
 }
 
+// The hosted branch of init: infers what it can from the workspace, returns what it must ask, and writes only .pmkit/config.yaml.
+// See docs/superpowers/specs/2026-10-27-pmk-34-ask-for-mappings-design.md, "The init call for Linear".
+const sameEntries = (a, b) => JSON.stringify(Object.entries(a ?? {}).sort()) === JSON.stringify(Object.entries(b ?? {}).sort())
+
+async function runInitLinear(ctx) {
+  const { opt } = ctx
+  const update = ctx.flag('update')
+  for (const flag of LOCAL_ONLY_FLAGS) {
+    if (opt(flag) !== undefined || ctx.list(flag).length > 0) throw usageError(`Linear sets --${flag} itself`, `Remove --${flag}`)
+  }
+  const host = opt('git-host')
+  if (host !== undefined && !GIT_HOSTS.includes(host)) throw usageError(`--git-host must be ${GIT_HOSTS.join(' or ')}`)
+  const adapter = adapterFor('linear', ctx.adapters)
+
+  const root = ctx.root
+  const pmkitFile = path.join('.pmkit', 'config.yaml')
+  const file = path.join(root, pmkitFile)
+  let before = null
+  let text
+  if (update) {
+    if (!fs.existsSync(file)) throw usageError('.pmkit/config.yaml does not exist, so there is no setup to update', 'Run init without --update')
+    before = normalized(fs.readFileSync(file, 'utf8'))
+    text = before
+  } else {
+    if (fs.existsSync(file)) throw new PmkitError('CONFLICT', `${slash(pmkitFile)} already exists`, 'Edit it, or delete it to start over')
+    const remote = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: root, encoding: 'utf8' })
+    const repo = remote.status === 0 ? /github\.com[:/]([^/\s]+\/[^/\s]+?)(?:\.git)?\/?\s*$/.exec(remote.stdout)?.[1] : undefined
+    text = fs.readFileSync(path.join(TEMPLATES, 'pmkit.config.yaml'), 'utf8')
+      .replace(/tracker:\n {2}system: .*\n {2}path: .*\n/, 'tracker:\n  system: linear\n')
+      .replace(/git_host:\n {2}system: .*\n {2}repo: .*\n {2}default_branch: .*\n/, `git_host:\n  system: ${host ?? 'none'}\n${repo ? `  repo: ${repo}\n` : ''}`)
+  }
+  const edit = (key, change) => {
+    try {
+      return change()
+    } catch (error) {
+      if (isPmkitError(error)) throw error
+      throw new PmkitError('INVALID_INPUT', `cannot set ${key} in ${slash(pmkitFile)}: ${error.message}`, `Edit ${key} in ${slash(pmkitFile)} by hand, then run init --update again`)
+    }
+  }
+  if (update && host !== undefined) text = edit('git_host.system', () => setScalar(text, ['git_host', 'system'], host))
+  let draft
+  try {
+    draft = parseYaml(text)
+  } catch (error) {
+    throw new PmkitError('INVALID_INPUT', `.pmkit/config.yaml is not valid YAML: ${error.message}`, 'Fix the file, then run init --update again')
+  }
+  const current = {
+    scope: draft?.tracker?.scope ?? {},
+    status: draft?.mappings?.status ?? {},
+    fields: draft?.mappings?.fields ?? {},
+    types: draft?.mappings?.types,
+  }
+
+  // Only the workspace pins the key. The team and the mappings are what this call decides, so the discovery ignores them.
+  const workspace = opt('workspace') ?? current.scope.workspace
+  const discoveryConfig = {
+    root,
+    system: 'linear',
+    pmkit: { ...draft, tracker: { system: 'linear', ...(workspace ? { scope: { workspace } } : {}) }, mappings: undefined },
+  }
+  const tracker = await adapter.create(discoveryConfig, { now: ctx.now, env: ctx.env })
+  const view = await tracker.discover({ refresh: true })
+  // A type the file maps by hand joins the list, so a label of it that broke gets the label candidates.
+  const defaults = withLocalDefaults({}).types
+  const types = [...defaults, ...Object.keys(current.types ?? {}).filter((type) => !defaults.includes(type))]
+  const description = adapter.describe(view.raw, view, view.auth?.viewer?.id ?? null, types)
+  const flags = parseMappingFlags(ctx)
+  const proposal = proposeMappings(description, current, { workspace: opt('workspace'), team: opt('team'), ...flags })
+  const { values } = proposal
+
+  // The file: only the lines that differ from what it holds.
+  const put = (keys, value, held) => {
+    if (value !== undefined && value !== held) text = edit(keys.join('.'), () => setScalar(text, keys, value))
+  }
+  put(['tracker', 'scope', 'workspace'], values.scope.workspace, current.scope.workspace)
+  put(['tracker', 'scope', 'team'], values.scope.team, current.scope.team)
+  for (const [key, value] of Object.entries(values.status)) put(['mappings', 'status', key], value, current.status[key])
+  for (const [key, value] of Object.entries(values.fields)) put(['mappings', 'fields', key], value, current.fields[key])
+  if (values.types !== undefined && (current.types === undefined || !sameEntries(values.types, current.types))) {
+    text = edit('mappings.types', () => setMap(text, ['mappings', 'types'], values.types))
+  }
+  text = setSchemaLine(text, schemaUrl(SCHEMA_FILES.pmkit))
+  const refusal = pmkitConfigRefusal(text, { update })
+  if (refusal) throw refusal
+  const problems = adapter.configProblems(parseYaml(text))
+  if (problems.length > 0) {
+    throw usageError(`the ${update ? '' : 'generated '}.pmkit/config.yaml is not valid: ${problems.join('; ')}`,
+      update ? 'Fix .pmkit/config.yaml by hand, then run init --update again' : 'Fix the init flags')
+  }
+
+  if (!ctx.dryRun && proposal.questions.length > 0) {
+    throw new PmkitError('INVALID_INPUT', `setup has unanswered questions: ${proposal.questions.map((q) => q.path).join(', ')}`, '/pmkit:setup')
+  }
+  const entry = before === null
+    ? { path: slash(pmkitFile), action: 'create' }
+    : before === text ? { path: slash(pmkitFile), action: 'keep' } : { path: slash(pmkitFile), action: 'change', diff: lineDiff(before, text) }
+  if (!ctx.dryRun && (entry.action === 'create' || entry.action === 'change')) {
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, text)
+  }
+
+  // The team's statuses as the answers leave them: a state a status mapping names takes that category.
+  const team = description.teams.find((item) => item.key === proposal.team)
+  const named = new Map(Object.entries(values.status).filter(([key, value]) => key !== 'blocked' && value !== 'none').map(([key, value]) => [value, key]))
+  const statuses = (team?.statuses ?? []).map(({ name, category, type }) => ({ name, category: named.get(name) ?? category, type }))
+  const viewer = view.auth?.viewer ? { id: view.auth.viewer.id, name: view.auth.viewer.name } : null
+  const data = {
+    dryRun: ctx.dryRun,
+    tracker: 'linear',
+    workspace: proposal.workspace,
+    viewer,
+    team: proposal.team,
+    applied: proposal.applied,
+    questions: proposal.questions,
+    broken: proposal.broken,
+    statuses,
+    notes: proposal.notes,
+    files: [entry],
+  }
+  const lines = [
+    `workspace: ${proposal.workspace.name} (${proposal.workspace.urlKey}), plan ${proposal.workspace.plan}${viewer ? `, viewer ${viewer.name}` : ''}`,
+    `team: ${proposal.team ?? '(not chosen yet)'}`,
+    ...(proposal.applied.length > 0 ? ['applied:', ...proposal.applied.map((item) => `  ${item.path} = ${item.value} (${item.reason})`)] : []),
+    ...(proposal.broken.length > 0 ? ['broken:', ...proposal.broken.map((item) => `  ${item.problem}`)] : []),
+    ...(proposal.questions.length > 0
+      ? ['questions:', ...proposal.questions.map((q) => `  ${q.path}  ${q.flag}  one of: ${[...q.candidates, 'none'].join(', ')}${q.recommended ? `  (recommended: ${q.recommended})` : ''}`)]
+      : []),
+    ...(statuses.length > 0 ? ['statuses:', ...statuses.map((item) => `  ${item.name}  ${item.category}`)] : []),
+    ...proposal.notes.map((note) => `note: ${note}`),
+    ctx.dryRun ? 'files:' : 'wrote:',
+    `  ${entry.path}: ${ctx.dryRun && entry.action !== 'keep' ? 'would ' : ''}${entry.action}`,
+    ...(entry.diff ? ['', `${entry.path}:`, entry.diff.trimEnd()] : []),
+    ...(ctx.dryRun ? ['dry run: nothing was written'] : []),
+  ]
+  return { data, text: lines.join('\n') }
+}
+
 /** Commits exactly `paths` (root-relative, `/` separators). Nothing staged for them means no commit. */
 function commitTracker(config, message, paths) {
   const folder = (config.pmkit.tracker.path ?? '.issues').split(path.sep).join('/')
@@ -1577,6 +1737,8 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
     if (isPmkitError(error)) {
       if (json) {
         const body = { error: { code: error.code, message: error.message, nextStep: error.nextStep } }
+        // The one detail that reaches the output: the mappings a hosted tracker found broken.
+        if (Array.isArray(error.details?.mappings)) body.error.mappings = error.details.mappings
         if (error.written) body.result = error.written.data
         stdout.push(`${JSON.stringify(body, null, 2)}\n`)
       } else if (error.written) {

@@ -336,7 +336,7 @@ test('validatePmkitConfig checks tracker.scope, tracker.scope.workspace and mapp
     check((c) => { c.tracker.scope = { workspace } }, [WORKSPACE_MSG], `workspace ${JSON.stringify(workspace)}`)
   }
   for (const mappings of ['x', null, []]) {
-    check((c) => { c.mappings = mappings }, ['mappings must be a map with status or fields'], `mappings ${JSON.stringify(mappings)}`)
+    check((c) => { c.mappings = mappings }, ['mappings must be a map with status, fields or types'], `mappings ${JSON.stringify(mappings)}`)
   }
   const cases = [
     [{ status: 'x' }, 'mappings.status must be a map from a category or blocked to a status name'],
@@ -345,10 +345,16 @@ test('validatePmkitConfig checks tracker.scope, tracker.scope.workspace and mapp
     [{ fields: 'x' }, 'mappings.fields must be a map from a field role to a field name or native'],
     [{ fields: { points: 'Story points' } }, 'mappings.fields.points: points is not a field role, use one of estimate, priority, target_date, start_date, assignee, acceptance_criteria, time_spent'],
     [{ fields: { estimate: 7 } }, 'mappings.fields.estimate must be a field name or native'],
+    [{ types: 'Bug' }, 'mappings.types must be a map from an issue type to a label name'],
+    [{ types: ['Bug'] }, 'mappings.types must be a map from an issue type to a label name'],
+    [{ types: { bug: 3 } }, 'mappings.types.bug must be a label name'],
+    [{ types: { bug: '' } }, 'mappings.types.bug must be a label name'],
   ]
   for (const [mappings, message] of cases) {
     check((c) => { c.mappings = mappings }, [message], JSON.stringify(mappings))
   }
+  check((c) => { c.mappings = { types: { bug: 'Bug', feature: 'Feature' } } }, [], 'types with two labels')
+  check((c) => { c.mappings = { types: {} } }, [], 'types: {} is an answer, so it is valid')
 })
 
 test('localConfigShapeProblems accepts the template and leaves the cross-field rules out', () => {
