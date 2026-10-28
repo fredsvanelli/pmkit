@@ -9,7 +9,7 @@ import { ADAPTERS } from './lib/adapters.mjs'
 import { linearDescriptor } from './lib/linear/adapter.mjs'
 import { isMutation, operationName } from './lib/linear/client.mjs'
 import { useLinear } from './fake-hosted.mjs'
-import { ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeTriage, fakeWorkspace } from './fake-linear-api.mjs'
+import { ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeTriage, fakeWorkspace } from './fake-linear-api.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo, userStoreEnv } from './test-helpers.mjs'
 
@@ -129,15 +129,14 @@ test('the workspace rename warning reaches stderr', async () => {
   assert.match(result.stderr, /^warning: Linear renamed workspace acme to acme-new/m)
 })
 
-test('issues list exits 2 with NOT_SUPPORTED', async () => {
-  const fetch = fakeLinearFetch(fakeWorkspace())
-  const result = await cli(setup({ edit: withTeam }), ['issues', 'list', '--json'], fetch)
-  assert.equal(result.code, 2)
-  assert.deepEqual(errorOf(result), {
-    code: 'NOT_SUPPORTED',
-    message: 'the Linear adapter does not implement searchIssues yet',
-    nextStep: 'Set tracker.system to local in .pmkit/config.yaml to use this command now',
-  })
+test('issues list --json returns the issues', async () => {
+  const fake = fakeLinearIssues()
+  fake.seed({ title: 'First' })
+  const result = await cli(setup({ edit: withTeam }), ['issues', 'list', '--json'], fakeLinearFetch({ ...fakeWorkspace(), ...fake.routes }))
+  assert.equal(result.code, 0, result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.deepEqual(data.issues.map((issue) => issue.id), ['ACME-1'])
+  assert.equal(data.hasMore, false)
 })
 
 // ---------------------------------------------------------------------------

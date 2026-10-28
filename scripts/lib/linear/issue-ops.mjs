@@ -2,9 +2,13 @@
 // See docs/superpowers/specs/2026-10-27-pmk-35-linear-issues-relations-search-design.md.
 
 import { PmkitError } from '../errors.mjs'
-import { ISSUE_BY_ID_QUERY, NESTED_PAGES, NESTED_PAGE_SIZE } from './documents.mjs'
-import { isIssueId, issueKey, makeContext, toIssue } from './issues.mjs'
+import { checkFilter } from '../issue-filter.mjs'
+import { ISSUES_QUERY, ISSUE_BY_ID_QUERY, NESTED_PAGES, NESTED_PAGE_SIZE } from './documents.mjs'
+import { finishSearch, translateFilter } from './filter.mjs'
+import { blockedOpen, isIssueId, issueKey, makeContext, toIssue } from './issues.mjs'
 
+const SEARCH_PAGE = 100
+const NOTHING = () => ({ issues: [], problems: [], hasMore: false })
 const notFound = (id) => new PmkitError('NOT_FOUND', `issue ${id} does not exist`, 'pmkit issues list')
 
 /**
@@ -68,5 +72,26 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return toIssue(node, await contextFor([node]))
   }
 
-  return { getIssue, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
+  /** Narrows on the server with every key Linear has, then runs the blocked check, pmkit's order and the limit (spec, approach 2). */
+  async function searchIssues(filter = {}) {
+    requireWorkspace()
+    const current = await context()
+    const members = current.raw.users.filter((user) => !user.app).map((user) => user.id)
+    checkFilter(filter, { types: Object.keys(current.mappings.types), members, sprintExists: () => true })
+    const translated = translateFilter(filter, current)
+    if (filter.limit === 0 || translated.empty) return NOTHING()
+    const { nodes, hasMore } = await client.paginate(ISSUES_QUERY, translated.variables, {
+      select: (data) => data.issues,
+      pageSize: SEARCH_PAGE,
+      limit: translated.serverLimit,
+    })
+    for (const node of nodes) await completeNested(node)
+    const mapping = await contextFor(nodes)
+    const rows = nodes
+      .map((node) => ({ issue: toIssue(node, mapping), blocked: blockedOpen(node, mapping) }))
+      .filter((row) => row.issue !== null)
+    return { issues: finishSearch(rows, filter, mapping), problems: [], hasMore }
+  }
+
+  return { getIssue, searchIssues, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
 }

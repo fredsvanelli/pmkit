@@ -49,9 +49,10 @@ test('a stub without a workspace throws NOT_CONFIGURED', async () => {
   await assert.rejects(linear.getIssue('ACME-1'), { code: 'NOT_CONFIGURED', message: 'tracker.scope.workspace is not set', nextStep: '/pmkit:setup' })
 })
 
+// Two operations that stay stubs after PMK-35, so the mapping check is all these tests reach.
 const stubs = {
-  read: (linear) => linear.searchIssues({}),
-  write: (linear) => linear.createIssue({}),
+  read: (linear) => linear.listComments('ACME-1'),
+  write: (linear) => linear.comment('ACME-1', 'x'),
 }
 
 test('a stub with a status removed from the workspace throws NOT_CONFIGURED with details.mappings', async () => {
@@ -123,7 +124,7 @@ test('none and absent keys never throw', async () => {
   const context = setup({ mappings: { status: { in_review: 'none', blocked: 'none' }, fields: { estimate: 'none' }, types: {} } })
   const { tracker: linear } = tracker(context)
   await assert.rejects(stubs.read(linear), { code: 'NOT_SUPPORTED' })
-  await assert.rejects(tracker(setup()).tracker.createIssue({}), { code: 'NOT_SUPPORTED' })
+  await assert.rejects(stubs.write(tracker(setup()).tracker), { code: 'NOT_SUPPORTED' })
 })
 
 test('a missing key throws AUTH before any request', () => {
@@ -314,4 +315,98 @@ test('an issue operation without a workspace is NOT_CONFIGURED before any reques
   const { tracker: linear, fetch } = tracker(setup({ scope: {} }))
   await assert.rejects(linear.getIssue('ACME-1'), { code: 'NOT_CONFIGURED', message: 'tracker.scope.workspace is not set', nextStep: '/pmkit:setup' })
   assert.equal(fetch.calls.length, 0)
+})
+
+test('search returns oldest first and filters on the server', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  for (const title of ['A', 'B', 'C']) seed(fake, { title })
+  const found = await linear.searchIssues({})
+  assert.deepEqual(found.issues.map((issue) => issue.id), ['ACME-1', 'ACME-2', 'ACME-3'])
+  assert.deepEqual(found.problems, [])
+  assert.equal(found.hasMore, false)
+  assert.deepEqual((await linear.searchIssues({ text: 'b' })).issues.map((issue) => issue.id), ['ACME-2'])
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssues').filter.and[1], { or: [{ title: { containsIgnoreCase: 'b' } }, { description: { containsIgnoreCase: 'b' } }] })
+  assert.equal(lastVariables(fetch, 'PmkitIssues').first, 100)
+})
+
+test('search by category, type, label and blocked', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'Review', stateId: 'state-4', labelIds: ['label-bug'] })
+  seed(fake, { title: 'Docs', labelIds: ['label-docs'] })
+  const ids = async (filter) => (await linear.searchIssues(filter)).issues.map((issue) => issue.id)
+  assert.deepEqual(await ids({ categories: ['in_review'] }), ['ACME-1'])
+  assert.deepEqual(await ids({ types: ['bug'] }), ['ACME-1'])
+  assert.deepEqual(await ids({ labels: ['Docs'] }), ['ACME-2'])
+  assert.deepEqual(await ids({ blocked: false }), ['ACME-1', 'ACME-2'])
+  assert.deepEqual(await ids({ blocked: true }), [])
+})
+
+test('assignee me sends the viewer id, also on a cached discovery', async () => {
+  const context = setup({ scope: { workspace: 'acme', team: 'ACME' } })
+  await tracker(context).tracker.discover()
+  const { tracker: linear, fake, fetch } = linearSetup({ context, now: at(1) })
+  seed(fake, { title: 'Mine', assigneeId: 'user-1' })
+  seed(fake, { title: 'Theirs', assigneeId: 'user-2' })
+  assert.deepEqual((await linear.searchIssues({ assignee: 'me' })).issues.map((issue) => issue.id), ['ACME-1'])
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssues').filter.and[1], { assignee: { id: { eq: 'user-1' } } })
+  assert.equal(callsOf(fetch, 'PmkitTeams'), 0)
+})
+
+test('a priority sort with a limit reads every match, then cuts', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { title: 'Low', priority: 4 })
+  seed(fake, { title: 'Urgent', priority: 1 })
+  assert.deepEqual((await linear.searchIssues({ sort: 'priority', limit: 1 })).issues.map((issue) => issue.id), ['ACME-2'])
+  assert.equal(lastVariables(fetch, 'PmkitIssues').first, 100)
+  await linear.searchIssues({ limit: 1 })
+  assert.equal(lastVariables(fetch, 'PmkitIssues').first, 1)
+})
+
+test('limit 0 and a category with no state send no request', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { title: 'A' })
+  assert.deepEqual(await linear.searchIssues({ limit: 0 }), { issues: [], problems: [], hasMore: false })
+  assert.deepEqual(await linear.searchIssues({ categories: ['triage'] }), { issues: [], problems: [], hasMore: false })
+  assert.equal(callsOf(fetch, 'PmkitIssues'), 0)
+})
+
+test('a trashed issue drops out of search', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'A' })
+  seed(fake, { title: 'B' })
+  fake.records[1].trashed = true
+  assert.deepEqual((await linear.searchIssues({})).issues.map((issue) => issue.id), ['ACME-1'])
+})
+
+test('a state missing from the cached discovery refreshes once in search', async () => {
+  const context = setup({ scope: { workspace: 'acme', team: 'ACME' } })
+  await tracker(context).tracker.discover()
+  const states = [...fakeWorkspace().PmkitStates({ variables: { first: 250 } }).json.data.workflowStates.nodes,
+    { id: 'state-new', name: 'Parked', type: 'started', position: 20, team: { id: 'team-acme' } }]
+  const { tracker: linear, fake, fetch } = linearSetup({ context, workspace: { states }, now: at(1) })
+  seed(fake, { title: 'A', stateId: 'state-new' })
+  seed(fake, { title: 'B', stateId: 'state-new' })
+  assert.deepEqual((await linear.searchIssues({})).issues.map((issue) => issue.status.name), ['Parked', 'Parked'])
+  assert.equal(callsOf(fetch, 'PmkitStates'), 1)
+})
+
+test('the 10-page cap sets hasMore', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  for (let index = 0; index < 1001; index += 1) seed(fake, { title: `Issue ${index}` })
+  const found = await linear.searchIssues({})
+  assert.equal(found.issues.length, 1000)
+  assert.equal(found.hasMore, true)
+})
+
+test('an unknown type or member fails with INVALID_INPUT', async () => {
+  const { tracker: linear } = linearSetup()
+  await assert.rejects(linear.searchIssues({ types: ['epic'] }), { code: 'INVALID_INPUT' })
+  await assert.rejects(linear.searchIssues({ assignee: 'user-4' }), { code: 'INVALID_INPUT' })
+  await assert.rejects(linear.searchIssues({ nope: 1 }), { code: 'INVALID_INPUT' })
+})
+
+test('sprint and release fail with NOT_SUPPORTED', async () => {
+  const { tracker: linear } = linearSetup()
+  await assert.rejects(linear.searchIssues({ sprint: 'current' }), { code: 'NOT_SUPPORTED' })
+  await assert.rejects(linear.searchIssues({ release: '1.0' }), { code: 'NOT_SUPPORTED' })
 })

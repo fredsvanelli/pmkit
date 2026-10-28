@@ -83,7 +83,10 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
   async function discover({ refresh = false } = {}) {
     const { result } = await view({ refresh })
     const { viewer } = await client.session()
-    return { ...result, viewer: { id: viewer.id, name: viewer.name } }
+    const found = { ...result, viewer: { id: viewer.id, name: viewer.name } }
+    // The spread drops the hidden raw discovery that resolveMappings and setup read, so it goes back on.
+    Object.defineProperty(found, 'raw', { value: result.raw, enumerable: false })
+    return found
   }
 
   async function capabilities() {
@@ -144,7 +147,11 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     })
 
   const issues = issueOperations({ client, discovery, config, now, uuid })
-  const implemented = { discover, capabilities, getIssue: guarded(issues.getIssue) }
+  const contract = {
+    getIssue: issues.getIssue,
+    searchIssues: issues.searchIssues,
+  }
+  const implemented = { discover, capabilities, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
   // Linear-only features sit beside the contract operations. contractView ignores them.
   const triage = createTriage({ client, discovery, config })
   return { ...Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)])), triage }
