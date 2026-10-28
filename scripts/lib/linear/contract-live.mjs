@@ -22,6 +22,7 @@ import { linearCredential } from './credential.mjs'
 import {
   createGuardedFetch, findOrCreateTestTeam, listTestTeamItems, preflight, trashTestTeamItems, waitForCycles,
 } from './sandbox.mjs'
+import { PROBES } from './live-probes.mjs'
 import { createLinearTracker } from './tracker.mjs'
 
 /** The families the Linear run covers. cycle-lifecycle, time, releases, milestone-writes and document-writes stay out. */
@@ -145,7 +146,7 @@ export function buildLiveRun({ env, fetch, workspace, sleep, now = () => new Dat
     ]
   }
 
-  return { before, after, setup, totals, guard, client, get config() { return run.config } }
+  return { before, after, setup, totals, guard, client, get config() { return run.config }, get team() { return run.team } }
 }
 
 /**
@@ -167,12 +168,24 @@ export function installSignalHandlers({ proc = process, guard, finish, exit = (c
   for (const name of ['SIGINT', 'SIGTERM']) proc.on(name, handler)
 }
 
-/** Registers the live suite: the hooks of `run`, the contract tests of the Linear families and the run's totals. */
+/** Registers the live suite: the hooks of `run`, the contract tests of the Linear families, the probes and the run's totals. */
 export function registerLiveSuite(run) {
   describe('Linear tracker contract against the sandbox workspace', () => {
     before(() => run.before())
     after(() => run.after())
     runTrackerContract({ name: 'contract', families: LINEAR_FAMILIES, setup: run.setup })
+    for (const [name, probe] of PROBES) {
+      test(`probe: ${name}`, async (t) => {
+        const env = await run.setup()
+        try {
+          const { asserted, recorded } = await probe({ tracker: env.tracker, client: run.client, actor: env.actor, team: run.team })
+          for (const line of asserted) t.diagnostic(`asserted: ${line}`)
+          t.diagnostic(`recorded: ${JSON.stringify(recorded)}`)
+        } finally {
+          await env.teardown()
+        }
+      })
+    }
     test('the totals of the run', (t) => {
       for (const line of run.totals()) t.diagnostic(line)
     })

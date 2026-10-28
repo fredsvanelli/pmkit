@@ -13,6 +13,7 @@ import { createLinearClient, isMutation } from './client.mjs'
 import {
   COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_ARCHIVE, ISSUE_CREATE, ISSUE_UPDATE, RELATION_CREATE, RELATION_DELETE,
 } from './documents.mjs'
+import { PROBES, commentProbe, cycleProbe, descriptionProbe, relationProbe } from './live-probes.mjs'
 import { buildLiveRun, installSignalHandlers, registerLiveSuite, runCleanup } from './contract-live.mjs'
 import { PROJECT_CREATE, PROJECT_UPDATE_CREATE } from './projects.mjs'
 import { SUITE_ALLOWLIST, TEST_TEAM, createGuardedFetch, findOrCreateTestTeam, listTestTeamItems, preflight, trashTestTeamItems, waitForCycles } from './sandbox.mjs'
@@ -833,6 +834,69 @@ test('a stop signal stops the guard, runs the finish steps and exits 130, and a 
   await new Promise((resolve) => setImmediate(resolve))
   assert.deepEqual(events, ['stop', 'finish'])
   assert.deepEqual(exits, [130, 130])
+})
+
+// Task 10: the live probes, over the fake.
+async function withProbeContext(use) {
+  const w = liveWorld()
+  await w.run.before()
+  const env = await w.run.setup()
+  try {
+    return await use({ tracker: env.tracker, client: w.run.client, actor: env.actor, team: w.run.team }, w)
+  } finally {
+    await env.teardown()
+    await w.run.after()
+  }
+}
+
+test('the description probe asserts the round trip and records the raw Markdown', async () => {
+  await withProbeContext(async (context) => {
+    const result = await descriptionProbe(context)
+    assert.equal(result.asserted.length, 1)
+    assert.match(result.recorded.rawDescription, /## Acceptance criteria/)
+    assert.match(result.recorded.rawDescription, /- \[x\] second criterion/)
+  })
+})
+
+test('the comment probe records what survives in a body and whether the comment moves updatedAt', async () => {
+  await withProbeContext(async (context) => {
+    const { recorded } = await commentProbe(context)
+    assert.deepEqual(Object.keys(recorded), ['markerLineSurvives', 'checklistSurvives', 'codeFenceSurvives', 'commentMovesUpdatedAt'])
+    assert.equal(recorded.markerLineSurvives && recorded.checklistSurvives && recorded.codeFenceSurvives, true)
+    assert.equal(typeof recorded.commentMovesUpdatedAt, 'boolean')
+  })
+})
+
+test('the relation probe records the raw codes and sides for blocks, a removed relation and duplicate', async () => {
+  await withProbeContext(async (context) => {
+    const { recorded } = await relationProbe(context)
+    assert.deepEqual(Object.keys(recorded), ['blocks', 'removed', 'duplicate'])
+    for (const seen of Object.values(recorded)) assert.deepEqual(Object.keys(seen), ['onA', 'onB'])
+  })
+})
+
+test('the cycle probe asserts the boundary rule and records the time of day', async () => {
+  await withProbeContext(async (context) => {
+    const result = await cycleProbe(context)
+    assert.equal(result.asserted.length, 1)
+    assert.deepEqual(result.recorded.timesOfDay, ['00:00:00.000Z'])
+    assert.equal(result.recorded.cycles, 2)
+  })
+})
+
+test('the cycle probe fails when a cycle does not end where the next one starts', async () => {
+  const w = liveWorld({ cycles: [ACTIVE, { ...PLANNED, startsAt: '2026-11-03T00:00:00.000Z' }] })
+  await w.run.before()
+  try {
+    await assert.rejects(cycleProbe({ client: w.run.client, team: w.run.team }), /does not end where/)
+  } finally {
+    await w.run.after()
+  }
+})
+
+test('the probes are four and each has a name', () => {
+  assert.equal(PROBES.length, 4)
+  assert.ok(PROBES.every(([name, probe]) => typeof name === 'string' && typeof probe === 'function'))
 })
 
 // The whole contract suite, through the guard and the budget, over the fake. This is the run that npm test cannot send to Linear.
