@@ -4,3 +4,9 @@
 {"at":"2026-10-28T01:55:14Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-28T01:55:14Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-34-ask-for-the-mappings-a-hosted-tracker"}
 {"at":"2026-10-28T02:26:48Z","by":"fred","op":"comment","to":"2026-10-28T02-26-48Z-fred.md"}
+{"at":"2026-10-28T03:12:35Z","by":"fred","op":"comment","to":"2026-10-28T03-12-35Z-fred.md"}
+{"at":"2026-10-28T03:12:52Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-28T03:12:52Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-28T03:12:52Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-28T03:12:52Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-28T03:12:55Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
