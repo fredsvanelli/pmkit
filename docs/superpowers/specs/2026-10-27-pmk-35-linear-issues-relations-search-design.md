@@ -1,6 +1,6 @@
 # PMK-35 design: issues, relations and search for Linear
 
-Issue PMK-35, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: draft with four open questions for the user. Decisions come from an autonomous brainstorming run on 2026-10-27 with no user dialogue, from the issue, ADR-0001, ADR-0003, ADR-0005, the PMK-30 and PMK-33 specs, the code, and read-only calls to the sandbox workspace. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion. Where an open question changes the design, the design below follows the recommended option and says so.
+Issue PMK-35, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: approved. The user answered the four questions on 2026-10-27, and "Resolved questions" records the answers. Decisions come from an autonomous brainstorming run on 2026-10-27 with no user dialogue, from the issue, ADR-0001, ADR-0003, ADR-0005, the PMK-30 and PMK-33 specs, the code, and read-only calls to the sandbox workspace. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
@@ -107,7 +107,7 @@ Chosen: approach 2. It narrows on the server for every key Linear has, and the s
 
 ### Issue model mapping
 
-A. **A pure mapping per direction.** One GraphQL fragment fixes what every read selects. `toIssue(node, context)` builds the pmkit issue, with `context` holding the discovery (state categories per team, labels, the type labels, the estimate scale). Writes go through `toInput(patch, issue, context)`, which builds an `IssueCreateInput` or `IssueUpdateInput`. Fields Linear lacks are mapped to what Linear has: acceptance criteria to a section of the description, the type to a label (open question 1), the branch to Linear's `branchName`.
+A. **A pure mapping per direction.** One GraphQL fragment fixes what every read selects. `toIssue(node, context)` builds the pmkit issue, with `context` holding the discovery (state categories per team, labels, the type labels, the estimate scale). Writes go through `toInput(patch, issue, context)`, which builds an `IssueCreateInput` or `IssueUpdateInput`. Fields Linear lacks are mapped to what Linear has: acceptance criteria to a section of the description, the type to the label that `mappings.types` names, the branch to Linear's `branchName`.
 B. **A hidden pmkit block in the description.** Type, criteria and branch go into an HTML comment or a YAML block inside the description. Every pmkit field round-trips, but the block shows in Linear's editor, breaks when someone edits the description in Linear, and fights the "work in Linear" habit of the team.
 C. **pmkit fields in the user store.** The type and criteria live in `~/.config/pmkit/` keyed by issue. They would differ per teammate and vanish on another machine.
 
@@ -123,19 +123,22 @@ Chosen: approach A. Each field maps to something a Linear user sees and can edit
 | `scripts/lib/linear/filter.mjs` | New. `translateFilter(filter, context)` returns `{ variables, clientSteps, serverLimit }`. Pure. |
 | `scripts/lib/linear/tracker.mjs` | Replaces the stubs of the Issues and Relations operations. Adds `viewer` to `discover()`. Keeps the stubs of every other family. |
 | `scripts/lib/linear/client.mjs` | `operationName` names the first operation definition and skips fragments. |
-| `scripts/lib/linear/adapter.mjs`, `scripts/lib/adapters.mjs` | `settings()` gains `isEpicId(id)` and `trackerBranch`. `epicPrefix` stays for Local readers. |
+| `scripts/lib/linear/read-mappings.mjs` | New. `readMappings(pmkit)` reads `mappings.status`, `mappings.types` and `mappings.fields.estimate` and returns plain values; `none` counts as unset. It is the only module that reads `mappings`. After PMK-34 merges, it gives way to PMK-34's `resolveMappings` where their shapes match. |
+| `scripts/lib/linear/discovery.mjs` | `discoveryView` fills `types` from `mappings.types` and leaves the type labels out of `labels`. |
+| `scripts/lib/linear/adapter.mjs` | The Linear descriptor's `settings()` gains `isEpicId(id)` and `trackerBranch: true`. `epicPrefix` stays `null`. The Local descriptor and the test descriptors do not change: the CLI falls back to the `epicPrefix` test when `isEpicId` is absent. |
 | `scripts/lib/issue-filter.mjs` | New, shared. `FILTER_KEYS`, `SORTS`, `checkFilter` and the sort comparator move here from `scripts/lib/local/query.mjs`, which imports them. Local behavior stays the same **(builder's call)**. |
-| `scripts/lib/config.mjs`, `pmkit.config.schema.json` | `mappings.types`, a list of label names (open question 1). |
-| `scripts/pmkit.mjs` | `requireMember` takes the viewer from `discover()` when present. `issues dependencies` uses `isEpicId`. `issues list` warns when the result has `hasMore`. `issues branch` uses the tracker's branch when `trackerBranch` is set (open question 3). A dry-run create prints `(new)` for an id of `null`. |
+| `scripts/pmkit.mjs` | `requireMember` takes the viewer from `discover()` when present. `issues dependencies` uses `isEpicId`. `issues list` warns when the result has `hasMore`. `issues branch` uses the tracker's branch when `trackerBranch` is set. A dry-run create prints `(new)` for an id of `null`. |
 | `scripts/contract-suite.mjs` | Each test names the families it needs. `runTrackerContract({ name, setup, families })` skips the tests whose families the adapter does not list. |
 | `scripts/fake-linear-api.mjs` | Adds `fakeLinearIssues(options)`, a stateful in-memory issue store that answers pmkit's issue documents. |
-| Tests | `scripts/lib/linear/issues.test.mjs`, `filter.test.mjs`, `contract.test.mjs`, new cases in `tracker.test.mjs`, `client.test.mjs`, `fake-linear-api.test.mjs`, `cli-linear.test.mjs`, `config.test.mjs`. |
+| Tests | `scripts/lib/linear/issues.test.mjs`, `filter.test.mjs`, `read-mappings.test.mjs`, `contract.test.mjs`, new cases in `tracker.test.mjs`, `discovery.test.mjs`, `client.test.mjs`, `fake-linear-api.test.mjs`, `cli-linear.test.mjs`, `adapters.test.mjs`. |
+
+This issue does not change `pmkit.config.schema.json` or `scripts/lib/config.mjs`. PMK-34 adds `mappings.types` to the schema and the setup question. Neither validator refuses an unknown key under `mappings` today, so a config with `mappings.types` already loads.
 
 ### Ids
 
 A Linear issue's pmkit id is its `identifier` in upper case, such as `ACME-12`. `isIssueId(id)` accepts `^[A-Za-z][A-Za-z0-9_]*-[0-9]+$` and the adapter upper-cases it. Any other string passed as an issue id fails with `NOT_FOUND` before a request, because Linear answers a malformed id with a validation error. UUIDs are not accepted as ids **(builder's call)**: no pmkit output prints them, and one id form keeps `blockedBy` and `parent` comparable.
 
-`isEpicId(id)` for Linear is `!isIssueId(id)`. For Local it is the current test, `epicPrefix !== null && isId(normalizeId(id), epicPrefix)`. `issues dependencies` uses it, so on Linear an epic id reaches `getDeliverable`, which throws `NOT_SUPPORTED` until PMK-38 instead of a misleading `NOT_FOUND`.
+`isEpicId(id)` for Linear is `!isIssueId(id)`. A descriptor without `isEpicId`, the Local one included, keeps the current test, `epicPrefix !== null && isId(normalizeId(id), epicPrefix)`, inside the command. `issues dependencies` uses it, so on Linear an epic id reaches `getDeliverable`, which throws `NOT_SUPPORTED` until PMK-38 instead of a misleading `NOT_FOUND`.
 
 ### The issue fragment
 
@@ -168,8 +171,8 @@ When a nested connection reports `hasNextPage`, the adapter reads that connectio
 | `priority` | `1` urgent, `2` high, `3` medium, `4` low. `0` leaves the field unset. |
 | `estimate` | `estimate` as a number on a points team. On a t-shirt team, the size whose value in `estimateScale(...).values` equals it. Unset when `estimate` is null. |
 | `assignee` | `assignee.id`, unset when null. |
-| `labels` | Label names, sorted, without the labels that stand for the type. |
-| `type` | The issue's label that `mappings.types` lists, first in list order when several match. Unset when none does (open question 1). |
+| `labels` | Label names, sorted, without the labels that `mappings.types` names. |
+| `type` | The pmkit type whose label in `mappings.types` the issue has, the first key in map order when several match. Unset when none does. |
 | `parent` | `parent.identifier`. A project is not a parent here; PMK-38 decides how a project shows. |
 | `blockedBy` | `inverseRelations` of type `blocks`, their `issue.identifier`. |
 | `blocks` | `relations` of type `blocks`, their `relatedIssue.identifier`. |
@@ -201,7 +204,7 @@ On a write that sets `description` or `acceptanceCriteria`, `toInput` rebuilds t
 | Key | Create | Update | Linear input |
 |---|---|---|---|
 | `title` | required | yes | `title`, trimmed, one line |
-| `type` | yes | yes | swaps the type label inside `labelIds` (open question 1) |
+| `type` | yes | yes, `null` clears | removes every type label from `labelIds` and adds the label that `mappings.types[type]` names |
 | `status` | yes | owned by `issues move` | `stateId` of the name in the target team |
 | `priority` | yes | yes, `null` clears | `priority` 1 to 4, `0` to clear |
 | `estimate` | yes | yes, `null` clears | `estimate`, checked against the team's scale; a size becomes its value |
@@ -210,7 +213,7 @@ On a write that sets `description` or `acceptanceCriteria`, `toInput` rebuilds t
 | `parent` | an issue id | owned by `issues parent` | `parentId`, the parent's UUID |
 | `due` | yes | yes, `null` clears | `dueDate` |
 | `description`, `acceptanceCriteria` | yes | yes | `description`, rebuilt as above |
-| `branch` | no | yes | none (open question 3) |
+| `branch` | no | yes | none; see "`issues branch` on Linear" |
 | `sprint`, `milestone`, `release` | `null` only | `null` only | none; any other value is `NOT_SUPPORTED` |
 
 The rules:
@@ -242,7 +245,7 @@ ADR-0005 decides the actor. On Linear the actor is the viewer, the owner of `LIN
 2. With `status`, the name must be a state of that team whose category is `category`. Otherwise `INVALID_INPUT` lists the team's states in the category.
 3. Without `status`, the target is:
    - the state that `mappings.status[category]` names, when the key is set;
-   - else the first state by `position` whose category is `category` and whose name no `mappings.status` key names, `blocked` included. For `canceled`, a state of type `canceled` comes before one of type `duplicate`.
+   - else the first state by `position` whose category is `category`. For `canceled`, a state of type `canceled` comes before one of type `duplicate`. A state that another `mappings.status` key names already has that key's category, so it is not a candidate. `mappings.status.blocked` has no effect here.
 4. When the issue already has that state, the result is `{ before, after: before }` and no mutation is sent.
 5. Otherwise `issueUpdate(id, { stateId })`, and `after` is the mapped payload issue.
 
@@ -254,6 +257,7 @@ When step 3 finds nothing:
 |---|---|
 | `mappings.status[category]` names a state the issue's team lacks, after one discovery refresh | `NOT_CONFIGURED`, `mappings.status.in_review names In Review, which team ACME does not have`, next step `/pmkit:setup` |
 | `in_review` with no mapping | `NOT_CONFIGURED`, `team ACME has no state mapped to in_review`, next step `/pmkit:setup` |
+| `mappings.status[category]` is `none` | `NOT_SUPPORTED`, `team ACME has no status in the in_review category`, next step `/pmkit:setup` |
 | `triage` on a team with triage off | `NOT_SUPPORTED`, with the `native_triage` hint `Turn on triage in the team's settings in Linear` |
 | any other category with no state | `INVALID_INPUT`, `team ACME has no state in category <category>` |
 
@@ -289,7 +293,7 @@ When `issueCreate` or `issueRelationCreate` fails with the client's `UPSTREAM` "
 
 ### Search (criterion 3)
 
-`searchIssues(filter)` checks the filter with the shared `checkFilter`, where `types` is `mappings.types` and `members` are the discovered member ids, then calls `translateFilter`.
+`searchIssues(filter)` checks the filter with the shared `checkFilter`, where `types` is `discover().types` and `members` are the discovered member ids, then calls `translateFilter`.
 
 #### The translation table
 
@@ -298,7 +302,7 @@ When `issueCreate` or `issueRelationCreate` fails with the client's `UPSTREAM` "
 | (scope) | `team: { key: { eq: <tracker.scope.team> } }` when a team is set; else the whole workspace | |
 | `text` | `or: [{ title: { containsIgnoreCase } }, { description: { containsIgnoreCase } }]` | |
 | `categories` | `state: { id: { in: <ids> } }`, the ids of every discovered state whose category is listed, in the scoped teams | An empty id list returns `[]` with no request |
-| `types` | `labels: { some: { name: { in: <type labels> } } }` (open question 1) | |
+| `types` | `labels: { some: { name: { in: <the labels mappings.types names for those types> } } }` | |
 | `assignee` | an id or `me`: `assignee: { id: { eq } }`, with the viewer's id for `me`; `none`: `assignee: { null: true }` | |
 | `labels` | one `labels: { some: { name: { eq } } }` per label, inside `and` | |
 | `parent` | an issue id: `parent: { id: { eq: <identifier> } }`. Any other value: `NOT_SUPPORTED` (PMK-38) | |
@@ -326,16 +330,20 @@ The blocked check reads the blocker's state from the relation node and maps it t
 |---|---|---|
 | `mappings.status.<category>` | The category of a state on every read (already in `discoveryView`), the target of `moveToCategory`, and the state ids of the `categories` filter | Reads and filters use the state type. A move to `in_review` fails with `NOT_CONFIGURED`. A move to another category picks the first state by position. |
 | `mappings.status.<category>` naming a state the team lacks | | `discover` warns (PMK-33). A move to that category fails with `NOT_CONFIGURED` after one refresh. Reads and filters use the state type. |
-| `mappings.status.blocked` | Excluded from the default target of every category | Nothing changes. It does not feed the `blocked` filter (open question 4). |
-| `mappings.fields.estimate` | Absent or `native`: Linear's estimate field | Any other value, such as a label group: `estimate` reads as unset and estimate writes fail with `NOT_SUPPORTED` (open question 2). |
-| `mappings.types` | The label names that stand for types (open question 1) | `discover().types` is `[]`, `type` reads as unset, and a `type` write or filter fails with `INVALID_INPUT`, next step `/pmkit:setup`. |
+| `mappings.status.blocked` | None. It changes no category, no move target and no `blocked` filter in this issue. | Nothing changes. |
+| `mappings.fields.estimate` | Absent or `native`: Linear's estimate field | Any other value, `none` or a label group: `estimate` reads as unset and estimate writes fail with `NOT_SUPPORTED`. Size label groups are a follow-up issue. |
+| `mappings.types` | A map from a pmkit type name to one Linear label name, such as `{ bug: Bug, feature: Feature }`. A pmkit type with no label is not a key. `discover().types` lists the keys whose label exists in the scoped team or the workspace, in map order. | Absent: `discover().types` is `[]`, `type` reads as unset, and a `type` write or filter fails with `INVALID_INPUT`, next step `/pmkit:setup`. A key whose label is missing: `discover` warns `mappings.types.bug names Bug, which team ACME does not have`, and the type is left out. A value that is not such a map: `discover` warns and the adapter reads it as absent. |
 
-The adapter reads no other key of `mappings.fields`. Priority, assignee and due date are Linear's own fields, and acceptance criteria always live in the `## Acceptance criteria` section.
+The adapter reads no other key of `mappings.fields`. Priority, assignee and due date are Linear's own fields, and acceptance criteria always live in the `## Acceptance criteria` section. A value of `none`, which PMK-34 reserves for "the team has no such thing", counts as unset in every key.
+
+`readMappings(pmkit)` in `scripts/lib/linear/read-mappings.mjs` is the one reader of these keys. It returns `{ status: { <category>: name }, statusNone: [<category>], blockedStatus, types: [[type, labelName]], estimate: 'native' | null, problems: [] }`. PMK-34's `resolveMappings` is not merged yet and this issue imports nothing from its branch. When PMK-34 merges, `readMappings` switches to `resolveMappings` if their names and shapes differ, and the tests of this issue keep passing as the check.
 
 ### What PMK-34 gets
 
 - The `NOT_CONFIGURED` errors above, all with next step `/pmkit:setup`, as the points where "the command stops and asks". PMK-34 makes setup ask again for the key the error names.
-- `mappings.types` in the schema and the loader (open question 1). PMK-34 asks which labels are types and writes the list. A good default to offer is the labels of a group named `Type`, or the flat labels `Bug` and `Feature` that the sandbox has.
+- `mappings.types` in the schema and the setup question. PMK-34 owns both. The shape is a map from a pmkit type name to one Linear label name. A good default to offer is the labels of a group named `Type`, or the flat labels `Bug` and `Feature` that the sandbox has.
+- An adapter that reads an absent `mappings.fields.estimate` as `native`. PMK-34's rule 4 reads it as no estimate; the switch to `resolveMappings` settles which rule wins.
+- `mappings.status.blocked` with no effect in this issue. PMK-34's rule 3 and a follow-up issue decide when it makes an issue blocked.
 - A rule for `mappings.status.in_progress`: setup can leave it unset when the first `started` state by position is the one the team means.
 
 PMK-34 should not ask for `mappings.fields.acceptance_criteria`, `priority`, `assignee` or `target_date` on Linear, because this adapter ignores them.
@@ -355,7 +363,7 @@ PMK-34 should not ask for `mappings.fields.acceptance_criteria`, `priority`, `as
 | milestones, releases, documents | `milestones`, `releases`, `documents` |
 | every dry run changes nothing | every family |
 
-`scripts/lib/linear/contract.test.mjs` runs the suite with `families: ['discovery', 'issues', 'relations']`. Its `setup()` returns a Linear tracker over `fakeLinearFetch({ ...fakeWorkspace(sandboxLike), ...fakeLinearIssues().routes })`, a fresh `PMKIT_HOME` from `userStoreEnv()`, `env.LINEAR_API_KEY = FAKE_KEY`, and `actor: 'user-1'`, the fake viewer. The workspace description adds a `Triage` state with triage on, `mappings.status.in_review: In Review` and `mappings.types: [Bug, Feature]`, so every category and at least one type exist.
+`scripts/lib/linear/contract.test.mjs` runs the suite with `families: ['discovery', 'issues', 'relations']`. Its `setup()` returns a Linear tracker over `fakeLinearFetch({ ...fakeWorkspace(sandboxLike), ...fakeLinearIssues().routes })`, a fresh `PMKIT_HOME` from `userStoreEnv()`, `env.LINEAR_API_KEY = FAKE_KEY`, and `actor: 'user-1'`, the fake viewer. The workspace description adds a `Triage` state with triage on, `mappings.status.in_review: In Review` and `mappings.types: { bug: Bug, feature: Feature }`, so every category and at least one type exist.
 
 `fakeLinearIssues()` keeps issues and relations in memory and answers the documents listed in "The issue fragment" by operation name. It evaluates the filter clauses that `translateFilter` emits and the `sort` input, pages by `first` and `after`, assigns identifiers `ACME-1`, `ACME-2` and so on, and honors a client-chosen `id`. It answers an unknown filter key with a `GRAPHQL_VALIDATION_FAILED` error, so a translator that emits a clause the fake does not know fails the test instead of matching everything. It records each mutation, so tests can assert that a dry run sent none.
 
@@ -369,7 +377,7 @@ The fake's semantics come from the facts above, not from Linear. PMK-39 runs the
 
 ### `issues branch` on Linear
 
-Linear has no field for a branch and suggests one in `branchName`, and the Linear tab's "Work on issue" flow creates the branch "with the name Linear suggests, which triggers the automatic GitHub or GitLab link". Following open question 3, option a:
+Linear has no field for a branch and suggests one in `branchName`, and the Linear tab's "Work on issue" flow creates the branch "with the name Linear suggests, which triggers the automatic GitHub or GitLab link". The user chose Linear's `branchName`:
 
 - `updateIssue(id, { branch })` on Linear succeeds with no mutation when `branch` equals `branchName`, and fails with `INVALID_INPUT`, `Linear names this issue's branch <branchName>`, otherwise.
 - The Linear descriptor's `settings()` returns `trackerBranch: true`. `issues branch` then names the branch `issue.branch` instead of `branchName(issue.id, issue.title)`. The Local descriptor returns `false`, so Local output stays the same.
@@ -384,7 +392,9 @@ No test opens a socket. Every tracker test injects `fakeLinearFetch` and sets `P
 - `contract.test.mjs` under `scripts/lib/linear/`: the suite with the three families.
 - `client.test.mjs`: `operationName` with a fragment first, with comments, and with an anonymous query after a fragment. `fake-linear-api.test.mjs`: a named mutation after a fragment routes by its name.
 - `cli-linear.test.mjs`: `issues list --assignee me --json` sends the viewer's id; `issues assign ACME-1 me` assigns the viewer; `whoami` prints the viewer; `issues dependencies <non-issue id>` fails with `NOT_SUPPORTED` from `getDeliverable`, not `NOT_FOUND`; `issues list` prints the `hasMore` warning; `issues branch` uses Linear's name.
-- `config.test.mjs`: `mappings.types` accepted as a list of names and refused otherwise.
+- `read-mappings.test.mjs`: `mappings.types` read as a map in key order, a value that is not a map read as absent with a problem, `none` read as unset, an absent estimate read as `native`.
+- `discovery.test.mjs`: `types` from `mappings.types`, a missing label warned and left out, the type labels left out of `labels`.
+- `adapters.test.mjs`: the Linear `settings()` with `isEpicId` and `trackerBranch`, the Local `settings()` unchanged.
 - Every golden stays byte-identical, and the Local contract runs still run every test.
 - An opt-in live case joins `scripts/lib/linear/client-live.mjs` behind `PMKIT_LIVE=1`. It runs `searchIssues` once per translation row against the sandbox, read-only, and checks that Linear accepts each filter. Writes stay for PMK-39.
 
@@ -427,26 +437,14 @@ No test opens a socket. Every tracker test injects `fakeLinearFetch` and sets `P
 - **The fake can drift from Linear.** The suite against the fake proves the adapter matches the fake. The opt-in live read checks the filters, and PMK-39 checks the rest.
 - **Shared filter module.** Moving `checkFilter` and the comparator touches Local code. The Local suite and the goldens must stay unchanged, and the plan should keep the move a separate commit.
 
-## Open questions
+## Resolved questions
 
-1. **How does a Linear issue get a pmkit type?** Linear has no type field; the Unified model maps the type to a label or a template. The contract suite needs at least one type, and release notes group by type.
-   - (a) No types on Linear. `types` is `[]`, `type` reads as unset, `type` writes and filters fail, and the suite's types check becomes conditional.
-   - (b) A label group, named by a new field role `mappings.fields.type`. The type is the issue's label in that group.
-   - (c) A list of label names in a new key `mappings.types`. The type is the issue's first label in the list. It works with flat labels and with the children of a group.
-   - Recommendation: (c). The sandbox's types are flat labels (`Bug`, `Feature`), which (b) cannot express, and a group's children can be listed. PMK-35 adds the key to the schema and reads it; PMK-34 asks for it.
-2. **Does PMK-35 read estimates from a label group?** The sandbox has estimates off and a `Size` label group (XS to XL). PMK-33 hands that group to PMK-34 as an estimate candidate.
-   - (a) No. PMK-35 reads Linear's estimate field only. Any other `mappings.fields.estimate` value leaves `estimate` unset and refuses estimate writes. A follow-up issue adds label-group estimates.
-   - (b) Yes. `mappings.fields.estimate: <group>` makes the estimate the issue's label in that group, with t-shirt names mapped to points and numeric names parsed.
-   - Recommendation: (a), with the follow-up issue filed now, so PMK-34 does not offer the group until then. (b) adds a value mapping and a scale rule to the largest issue of the epic.
-3. **What happens to `branch` on Linear?** Linear cannot store a branch and suggests one in `branchName`.
-   - (a) `branch` reads as `branchName`. An update with that name is a no-op, and any other name is refused. `issues branch` uses Linear's name through `settings().trackerBranch`.
-   - (b) `branch` reads as `branchName`, branch updates are refused, and `issues branch` fails on Linear until PMK-40.
-   - (c) pmkit records its own branch name as an attachment link on the issue.
-   - Recommendation: (a). The Linear tab's dev flow uses Linear's name so the GitHub link appears, and the CLI change is two lines behind a descriptor flag.
-4. **Does `mappings.status.blocked` make an issue blocked?** The Unified model counts "a status mapped as blocked" as blocked. `isBlocked` in `scripts/lib/model.mjs` counts open blockers only, and PMK-33 left the question open.
-   - (a) Not in PMK-35. The mapped state is only excluded from default moves. A follow-up issue changes `isBlocked` for every tracker and every command that reads it.
-   - (b) In PMK-35, for the `blocked` filter only. Search and the dependency map then disagree for an issue in that state.
-   - Recommendation: (a). One definition of blocked serves every command, and changing it touches `risks`, `issues dependencies` and the Local tracker.
+The user answered on 2026-10-27.
+
+1. **How does a Linear issue get a pmkit type?** One key, `mappings.types`, a map from a pmkit type name to one Linear label name, such as `{ bug: Bug, feature: Feature }`. A pmkit type with no label is left out of the map. PMK-34 owns the schema change and the setup question; this issue only reads the key, through `readMappings` until PMK-34's `resolveMappings` is merged.
+2. **Does PMK-35 read estimates from a label group?** No. PMK-35 reads Linear's native estimate field only. Size label groups are a follow-up issue.
+3. **What happens to `branch` on Linear?** `branch` reads as Linear's `branchName`. An update with that name is a no-op, any other name is refused, and `issues branch` uses Linear's name through `settings().trackerBranch`.
+4. **Does `mappings.status.blocked` make an issue blocked?** Not in this issue. A status mapped as `blocked` has no effect: no category, no move target, no filter.
 
 ## Left to the builder
 
@@ -459,5 +457,5 @@ No test opens a socket. Every tracker test injects `fakeLinearFetch` and sets `P
 
 - Placeholders: none. Facts not verified live are in "Risks" with the check that settles them.
 - Consistency: "viewer" is the owner of `LINEAR_API_KEY` everywhere. "Client step" means work the adapter does after Linear answers. Examples use `acme` and `ACME`.
-- Scope: two new adapter modules, one shared module, the tracker's issue and relation operations, a client fix, a suite option, a fake, a schema key and five small CLI changes. No write to Linear, no new ADR.
+- Scope: three new adapter modules, one shared module, the tracker's issue and relation operations, a client fix, a suite option, a fake, a `types` change in the discovery view and five small CLI changes. No schema change, no write to Linear, no new ADR.
 - Boundaries: mappings questions go to PMK-34, history and comments to PMK-36, cycles to PMK-37, projects and milestones to PMK-38, the live suite to PMK-39, degraded paths to PMK-40, triage rotation to PMK-43, and "Non-goals" says so.
