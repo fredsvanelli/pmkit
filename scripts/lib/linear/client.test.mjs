@@ -104,6 +104,31 @@ test('isMutation ignores comments and keyword prefixes', () => {
   assert.equal(isMutation('{ a }'), false)
 })
 
+test('isMutation finds a mutation after a fragment or another operation', () => {
+  assert.equal(isMutation('fragment F on Issue { id } mutation M { issueUpdate { issue { ...F } } }'), true)
+  assert.equal(isMutation('query Q { a } mutation M { b }'), true)
+  assert.equal(isMutation('fragment F on Issue { id } query Q { issue { ...F } }'), false)
+  assert.equal(isMutation('query Q { a { b { c } } }\nfragment F on Issue { id }'), false)
+})
+
+test('isMutation ignores the word mutation inside strings, comments, fields and arguments', () => {
+  assert.equal(isMutation('query Q { issues(filter: { title: { eq: "x } mutation M { y" } }) { id } }'), false)
+  assert.equal(isMutation('query Q { issue(id: """\n} mutation M {\n""") { id } }'), false)
+  assert.equal(isMutation('query Q { a(s: "\\" } mutation M {") }'), false)
+  assert.equal(isMutation('query Q {\n  # } mutation M {\n  a\n}'), false)
+  assert.equal(isMutation('query Q($kind: Kind = mutation) { mutation }'), false)
+  assert.equal(isMutation('query Q @tag(name: mutation) { a }'), false)
+})
+
+test('isMutation counts a document it cannot read as a mutation', () => {
+  assert.equal(isMutation('query Q { a(s: "open) }'), true)
+  assert.equal(isMutation('query Q { a(s: """open) }'), true)
+  assert.equal(isMutation('query Q { a '), true)
+  assert.equal(isMutation('query Q { a } }'), true)
+  assert.equal(isMutation('query Q ( { a }'), true)
+  assert.equal(isMutation('subscribe S { a }'), true)
+})
+
 test('request sends the session query first, then one POST with the key and the body', async () => {
   const { client, f } = make({ routes: { Q: json({ a: 1 }) } })
   const data = await client.request('query Q { a }', { x: 1 })
@@ -368,6 +393,14 @@ test('a mutation that gets HTTP 503 is sent once', async () => {
   const error = await client.request('mutation M { a }').catch((caught) => caught)
   assert.equal(error.message, 'Linear did not confirm the change: HTTP 503')
   assert.equal(callsTo(f, 'M'), 1)
+})
+
+test('a mutation that follows a fragment is sent once', async () => {
+  const document = 'fragment F on Issue { id } mutation M { issueUpdate { issue { ...F } } }'
+  const { client, f } = make({ routes: { '(anonymous)': { status: 503, json: { errors: [{ message: 'down' }] } } }, sleep: async () => {} })
+  const error = await client.request(document).catch((caught) => caught)
+  assert.equal(error.message, 'Linear did not confirm the change: HTTP 503')
+  assert.equal(f.calls.filter((call) => call.body.query === document).length, 1)
 })
 
 test('AUTH, RATE_LIMITED and query errors are sent once with no sleep', async () => {

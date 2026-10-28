@@ -8,9 +8,68 @@ export const LINEAR_ENDPOINT = 'https://api.linear.app/graphql'
 
 const stripComments = (document) => document.replace(/#[^\n]*/g, '').trim()
 
-/** True when the document is a mutation. Comments and leading whitespace do not count. */
+const DEFINITION_KEYWORDS = new Set(['query', 'mutation', 'subscription', 'fragment'])
+
+/**
+ * The keyword that opens each top-level definition, with '{' for an anonymous query, or null
+ * when the document cannot be read: an unclosed string, unbalanced brackets or an unknown keyword.
+ * Strings, block strings and comments are skipped, so a word inside them never counts.
+ */
+function definitionKeywords(document) {
+  const keywords = []
+  const stack = []
+  let expectDefinition = true
+  let index = 0
+  while (index < document.length) {
+    const char = document[index]
+    if (char === '#') {
+      const end = document.indexOf('\n', index)
+      index = end === -1 ? document.length : end + 1
+    } else if (document.startsWith('"""', index)) {
+      let end = index + 3
+      while (end < document.length && !(document.startsWith('"""', end) && document[end - 1] !== '\\')) end += 1
+      if (end >= document.length) return null
+      index = end + 3
+    } else if (char === '"') {
+      let end = index + 1
+      while (end < document.length && document[end] !== '"' && document[end] !== '\n') end += document[end] === '\\' ? 2 : 1
+      if (end >= document.length || document[end] !== '"') return null
+      index = end + 1
+    } else if (char === '{' || char === '(' || char === '[') {
+      if (char === '{' && stack.length === 0 && expectDefinition) {
+        keywords.push('{')
+        expectDefinition = false
+      }
+      stack.push(char)
+      index += 1
+    } else if (char === '}' || char === ')' || char === ']') {
+      const open = stack.pop()
+      if (open !== { '}': '{', ')': '(', ']': '[' }[char]) return null
+      if (char === '}' && stack.length === 0) expectDefinition = true
+      index += 1
+    } else if (/[A-Za-z_]/.test(char)) {
+      const name = /^[A-Za-z_]\w*/.exec(document.slice(index))[0]
+      if (stack.length === 0 && expectDefinition) {
+        const keyword = name.toLowerCase()
+        if (!DEFINITION_KEYWORDS.has(keyword)) return null
+        keywords.push(keyword)
+        expectDefinition = false
+      }
+      index += name.length
+    } else {
+      index += 1
+    }
+  }
+  return stack.length === 0 ? keywords : null
+}
+
+/**
+ * True when any operation in the document is a mutation, so the client sends it once.
+ * A document the lexer cannot read counts as a mutation too: a wrong yes costs a retry, a wrong no can apply a change twice.
+ */
 export function isMutation(document) {
-  return /^mutation\b/i.test(stripComments(document))
+  const keywords = definitionKeywords(document)
+  return keywords === null || keywords.includes('mutation')
 }
 
 /** The operation name of a document, or null when it is anonymous. */
