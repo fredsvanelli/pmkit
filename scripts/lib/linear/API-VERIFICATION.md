@@ -72,6 +72,28 @@ Docs. `https://linear.app/docs/triage` (read 2026-10-27) says triage responsibil
 
 Answer `yes`. Triage responsibility is read/write and suggestions are read-only. The three mutations stay `schema, docs` until a Business or trial workspace with a dedicated test team tries them. `linear triage show` and `suggestions` therefore decide from the plan and `Team.triageEnabled` in the cached discovery and send no triage query on Free.
 
+## Cycles (PMK-37)
+
+Checked on 2026-10-28 against the sandbox workspace, with reads only. The sandbox team has cycles turned off and no cycle, so a fact about a cycle's values stays `unverified` until a workspace with cycles runs `scripts/lib/linear/client-live.mjs`. That file prints the time of day in `startsAt` and `endsAt`, the cycles that ended but are not `isPast`, and how many `isPast` cycles have `completedAt`. The plan is to run it against the dedicated test team that PMK-39 creates.
+
+| Fact | Status | Source |
+|---|---|---|
+| `Mutation` has `cycleUpdate`, `cycleArchive`, `cycleShiftAll`, `cycleStartUpcomingCycleToday` and `teamCyclesDelete`, and no `cycleCreate` | schema | introspection of `Mutation` |
+| `CycleCreateInput` exists and no mutation takes it, so the public API cannot open a cycle | schema | introspection |
+| `CycleUpdateInput` has `name`, `description`, `startsAt`, `endsAt` and `completedAt` | schema | introspection |
+| `Cycle` has `id`, `number` (Float), `name` (nullable), `description`, `startsAt`, `endsAt`, `completedAt`, `isActive`, `isFuture`, `isPast`, `isNext`, `isPrevious`, `progress`, `team`, `issues`, `uncompletedIssuesUponClose` | schema | introspection |
+| `CycleFilter` has `id`, `number`, `name`, `startsAt`, `endsAt`, `completedAt`, `isActive`, `isNext`, `isPrevious`, `isFuture`, `isPast`, `isInCooldown`, `team`, `issues`, `and` and `or` | schema | introspection |
+| `Query` has `cycles(filter, first, after)` and `cycle(id)` | schema | introspection |
+| `Team` has `cyclesEnabled`, `cycleDuration`, `cycleCooldownTime`, `cycleStartDay`, `cycleLockToActive`, `upcomingCycleCount`, `activeCycle` and `cycles` | schema | introspection |
+| `IssueFilter.cycle` takes a `CycleFilter`, so `cycle: { isActive: { eq: true } }`, `cycle: { number: { eq: 12 } }` and `cycle: { null: true }` are valid | schema | introspection |
+| The sandbox team has `cyclesEnabled: false`, `activeCycle: null`, duration 2 weeks and cooldown 0 | read | `teams` |
+| `cycles(first: 5)` answers with an empty list | read | live read |
+| `issues(first: 3, filter: { cycle: { isActive: { eq: true } } })` answers with an empty list and no error | read | live read |
+| `startsAt` and `endsAt` are midnight UTC, so the UTC date part is the cycle's first and last day | unverified | needs a team with cycles |
+| `isPast` is false while a cycle is in cooldown | unverified | needs a team with cycles |
+| `completedAt` is set on a cycle that ended by date | unverified | needs a team with cycles |
+| `issueUpdate` with `cycleId` of another team's cycle is refused | unverified | the fake refuses it from the schema; no write was sent |
+
 ## Paid-plan features on a Free workspace
 
 Check a gated feature in this order.

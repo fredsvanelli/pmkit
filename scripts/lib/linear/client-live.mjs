@@ -1,4 +1,5 @@
-// Opt-in live check of the Linear client, the workspace discovery and the issue filters against the sandbox workspace.
+// Opt-in live check of the Linear client, the workspace discovery, the issue filters, the history and comment reads and the cycle
+// reads against the sandbox workspace.
 // It sends reads only, keeps its discovery cache in a temporary folder it removes, prints no workspace data, and
 // `npm test` does not load it (the name does not end in .test.mjs).
 //
@@ -18,7 +19,7 @@ import { replay } from '../local/events.mjs'
 import { createLinearClient, isMutation, operationName } from './client.mjs'
 import { linearCredential } from './credential.mjs'
 import { categoryOfType, discoveryView, fetchDiscovery } from './discovery.mjs'
-import { COMMENT_BY_ID_QUERY, ISSUE_COMMENTS_QUERY, ISSUE_HISTORY_QUERY } from './documents.mjs'
+import { COMMENT_BY_ID_QUERY, CYCLES_QUERY, ISSUE_COMMENTS_QUERY, ISSUE_HISTORY_QUERY } from './documents.mjs'
 import { buildLinearCapabilities } from './manifest.mjs'
 import { createLinearTracker } from './tracker.mjs'
 
@@ -141,6 +142,38 @@ test('Linear accepts every filter pmkit translates, and getIssue reads a result'
       assert.ok(Array.isArray(found.issues), Object.keys(row).join(', '))
     }
     assert.equal((await linear.getIssue(first.id.toLowerCase())).id, first.id)
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('reads the cycles of a team that has them, and records the time facts of the cycle dates', { skip }, async (t) => {
+  const raw = await fetchDiscovery(client(), { now: () => new Date() })
+  const team = raw.teams.find((item) => item.cyclesEnabled === true)
+  if (!team) return t.skip('no team in the workspace has cycles turned on')
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-live-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-live-repo-'))
+  try {
+    const env = { ...process.env, PMKIT_HOME: path.join(home, 'store'), HOME: home, XDG_CONFIG_HOME: path.join(home, '.config') }
+    const config = { root, pmkit: { tracker: { system: 'linear', scope: { workspace: WORKSPACE, team: team.key } }, git_host: { system: 'none' } } }
+    const linear = createLinearTracker(config, { env, fetch: guardedFetch })
+    const sprints = await linear.listCycles()
+    if (sprints.length === 0) return t.skip('the team has cycles turned on and no cycle')
+    for (const sprint of sprints) {
+      assert.match(sprint.start, /^\d{4}-\d{2}-\d{2}$/)
+      assert.ok(sprint.start <= sprint.end, `cycle ${sprint.id} starts after it ends`)
+    }
+    const current = await linear.currentCycle()
+    if (current) assert.ok(Array.isArray(await linear.cycleIssues(current.id)))
+    // The facts the spec lists as unverified. Only shapes are printed, never a name, id or date.
+    const { nodes } = await client().paginate(CYCLES_QUERY, { filter: { team: { key: { eq: team.key } } } }, { select: (data) => data.cycles, pageSize: 100 })
+    const times = [...new Set(nodes.flatMap((node) => [node.startsAt, node.endsAt]).map((value) => value.slice(11)))]
+    const ended = nodes.filter((node) => Date.parse(node.endsAt) <= Date.now())
+    const past = nodes.filter((node) => node.isPast)
+    t.diagnostic(`time of day in startsAt and endsAt: ${times.join(', ')}`)
+    t.diagnostic(`cycles past their end date but not isPast (cooldown): ${ended.filter((node) => !node.isPast && !node.isActive).length}`)
+    t.diagnostic(`isPast cycles with completedAt set: ${past.filter((node) => node.completedAt).length} of ${past.length}`)
   } finally {
     fs.rmSync(home, { recursive: true, force: true })
     fs.rmSync(root, { recursive: true, force: true })
