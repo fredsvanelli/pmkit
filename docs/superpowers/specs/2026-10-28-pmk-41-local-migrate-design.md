@@ -1,6 +1,6 @@
 # PMK-41 design: move a Local tracker to Linear and back
 
-Issue PMK-41, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: draft, waiting for the answers in "Open questions". Decisions come from an autonomous brainstorming run on 2026-10-28 with no user dialogue, from the issue, ADR-0001, ADR-0002, ADR-0004, ADR-0005, the PMK-30 to PMK-38 specs, the code, and read-only calls to the sandbox workspace. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
+Issue PMK-41, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: answers applied on 2026-10-28 (see "Answers"). Decisions come from an autonomous brainstorming run on 2026-10-28 with no user dialogue, from the issue, ADR-0001, ADR-0002, ADR-0004, ADR-0005, the PMK-30 to PMK-38 specs, the code, and read-only calls to the sandbox workspace. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
@@ -26,7 +26,7 @@ Bound decisions from earlier issues:
 - A Linear sprint id is the cycle number, an epic id is the project identifier (PMK-37, PMK-38).
 - An issue joins an epic through `parent`. A project shows as the parent when the issue has no parent issue (PMK-38, "The parent rule").
 - `.pmkit/capacity.yaml` holds Linear capacity (PMK-37).
-- Tests never write to an existing Linear team. Live tests write only to a new team created for the run and removed after it (user decision, PMK-37 answers).
+- Live tests write only to ONE fixed, reusable test team: a fixed name prefix, cycles on, found or created by PMK-39's helper. A run never creates a team of its own and never writes to any other team. At the end it trashes what it created (user decision, PMK-41 answers, replacing the PMK-37 answer).
 - The tracker format is one integer, and adding a key to an event changes it (ADR-0004). `EVENT_KEYS` in `scripts/lib/local/events.mjs` is fixed.
 
 ## Facts checked against the Linear API
@@ -61,7 +61,8 @@ Consequences for the design:
 - Both directions keep every parent, blocker, related link and duplicate link whose two ends are in the migration.
 - `--dry-run` prints the full preview: every record, where it goes, every field that does not carry over, and the request count against the hour's budget. The run writes nothing a dry run did not list.
 - An ID map file records each old ID and its new ID. A rerun reads it and resumes after a failure, a rate limit or an interruption, without creating a record twice.
-- `pmkit local-migrate status` reads the map, and `pmkit local-migrate undo` removes what an export created.
+- `pmkit local-migrate status` reads the map, and `pmkit local-migrate undo` deletes what an export created, after a full preview.
+- `pmkit local-migrate switch` changes `tracker.system` after a finished migration. It is its own step, with its own dry run, and no other command changes `tracker.system`.
 - `/pmkit:local:migrate` is the command that runs the preview, asks, and runs the move.
 
 ## Non-goals
@@ -84,7 +85,7 @@ Consequences for the design:
 - The real workspace URL key or team key in any file. Examples use `acme` and `ACME`.
 - A record created twice in Linear by a rerun.
 - A write that the preview did not show.
-- A test that writes to a team that existed before the test.
+- A test that writes to any team other than the fixed test team.
 
 ## Approaches
 
@@ -113,9 +114,10 @@ Chosen: a.
 | `pmkit local-migrate export [--workspace acme --team ACME] [--status cat=Name] [--type-label type=Label] [--field estimate=native\|none] [--expect <digest>] [--dry-run]` | Moves `.issues/` to the Linear team. A rerun resumes. |
 | `pmkit local-migrate import [--workspace acme --team ACME] [--path .issues] [--expect <digest>] [--dry-run]` | Copies the Linear team into an empty `.issues/`. |
 | `pmkit local-migrate status [--file <map>]` | Prints the map: direction, counts by state, failures, next step. Sends no request. |
-| `pmkit local-migrate undo [--file <map>] [--dry-run]` | Removes what an export created (open question 3). For an import map it prints the git commands and writes nothing. |
+| `pmkit local-migrate undo [--file <map>] [--expect <digest>] [--dry-run]` | Deletes what an export created (Linear moves it to the trash). For an import map it prints the git commands and writes nothing. |
+| `pmkit local-migrate switch --to linear\|local [--file <map>] [--dry-run]` | Writes `tracker.system`, the scope and the mappings of a finished map to `.pmkit/config.yaml`. Writes nothing else. |
 
-`/pmkit:local:migrate` (`commands/local/migrate.md`) is the procedure. It runs the dry run, shows the preview, asks with `AskUserQuestion` whatever `write_policy.confirm` says, then runs the same command with `--expect <digest>` from the dry run.
+`/pmkit:local:migrate` (`commands/local/migrate.md`) is the procedure. It runs the dry run, shows the preview, asks with `AskUserQuestion` whatever `write_policy.confirm` says, then runs the same command with `--expect <digest>` from the dry run. After a finished migration it offers `switch` as a separate question, with its own dry run.
 
 **Sides.** One side is always the Local tracker. The other side is Linear.
 
@@ -148,7 +150,7 @@ So a Local repository exports and imports with flags, and a Linear repository ex
 | `scripts/lib/local/migrate-writer.mjs` | New. The Local writer: issue, epic, sprint, comment and update files with the original dates and authors, and the config changes. |
 | `scripts/lib/linear/documents.mjs` | New documents: `ISSUES_BY_IDS`, `COMMENTS_BY_IDS`, `LABEL_CREATE`, `ISSUE_DELETE`, `LABEL_DELETE`. The writer reuses `ISSUE_CREATE` (its `IssueCreateInput` already takes `createdAt` and `completedAt`), `RELATION_CREATE`, `COMMENT_CREATE`, `COMMENT_RESOLVE`, `ISSUE_ARCHIVE` and `ISSUE_EVENTS_QUERY`. |
 | `scripts/lib/linear/projects.mjs` | New documents: `PROJECTS_BY_IDS`, `PROJECT_STATUSES`, `PROJECT_DELETE`. The writer reuses `PROJECT_CREATE` and `PROJECT_UPDATE_CREATE`, and the reader `PROJECTS_QUERY` and `PROJECT_UPDATES_QUERY`. |
-| `scripts/pmkit.mjs` | The four commands, the `systems` property, the text output. |
+| `scripts/pmkit.mjs` | The five commands, the `systems` property, the text output, and `details.problems` in a JSON error. |
 | `commands/local/migrate.md` | New. The procedure of `/pmkit:local:migrate`. |
 | `skills/pmkit/SKILL.md` | Routes "move the tracker to Linear", "import from Linear" and similar requests to the command. |
 | `scripts/fake-linear-api.mjs` | The fake learns the new documents, `createdAt` on creates, `id: { in }` on issues, projects and comments, and deletes. |
@@ -205,9 +207,9 @@ records:
   label:
     needs-criteria: { state: done, uuid: 1b2c..., created: true }
   epic:
-    EPC-5: { state: done, uuid: 9a1f..., id: P-ACM-3 }
+    EPC-5: { state: done, uuid: 9a1f..., id: P-ACM-3, at: 2026-10-28T20:00:04Z }
   issue:
-    PMK-38: { state: done, uuid: 5e6d..., id: ACME-12 }
+    PMK-38: { state: done, uuid: 5e6d..., id: ACME-12, at: 2026-10-28T20:00:09Z }
     PMK-39: { state: sent, uuid: 77ab... }
   link:
     "blocks PMK-35 PMK-38": { state: done, uuid: 0c3d... }
@@ -215,7 +217,7 @@ records:
     "PMK-38/2026-10-28T18-11-19Z-fred": { state: failed, uuid: 2f4e..., error: { code: UPSTREAM, message: "..." } }
 ```
 
-- `state` is `sent`, `done` or `failed`, and `removed` after an undo. A record the plan has not reached has no entry.
+- `state` is `sent`, `done` or `failed`, and `removed` after an undo. A record the plan has not reached has no entry. `at` is the time the entry became `done`, which undo compares with Linear's `updatedAt`.
 - On export, `uuid` is the UUID pmkit chose and `id` is what Linear returned (the identifier of an issue, the canonical epic id of a project). On import, the keys are the Linear IDs and `id` is the new Local ID.
 - `people` records the member to user match the run used, and `mappings` the mappings, so a resume uses the same ones and asks nothing again.
 - The file is written after every state change. A crash loses at most the state of the one record in flight, and that record is `sent`.
@@ -236,7 +238,7 @@ Export, in this order. Each step finishes before the next starts.
 | 2. Epics | `projectCreate` with `id`, `name`, `teamIds`, `content`, `startDate`, `targetDate`, `statusId` | 1 per epic | The status comes from the category: `backlog` and `triage` to the `backlog` type, `todo` to `planned`, `in_progress` and `in_review` to `started`, `done` to `completed`, `canceled` to `canceled`. This is PMK-38's map read the other way. |
 | 3. Issues | `issueCreate` with `id`, `teamId`, `title`, `description`, `stateId`, `labelIds`, `priority`, `estimate`, `assigneeId`, `parentId`, `projectId`, `cycleId`, `dueDate`, `createdAt`, `completedAt` | 1 per issue | Parents before children (below). |
 | 4. Links | `issueRelationCreate` with `id`, `type`, `issueId`, `relatedIssueId` | 1 per link | Both ends must be in the map as `done`. |
-| 5. Comments | `commentCreate` with `id`, `issueId`, `body`, `parentId`, `createdAt` | 1 per comment | Roots before replies, oldest first. |
+| 5. Comments | `commentCreate` with `id`, `issueId`, `body`, `parentId`, `createdAt` | 1 per comment | Roots before replies, oldest first. The body starts with the attribution line (below). |
 | 6. Threads | `commentResolve` on the root | 1 per resolved thread | |
 | 7. Status updates | `projectUpdateCreate` with `id`, `projectId`, `body`, `health` | 1 per update | Oldest first, so the project ends with the newest health. |
 | 8. Archive | `issueArchive` | 1 per archived issue | Last, so the links and comments of an archived issue go in first. |
@@ -251,6 +253,7 @@ Export, in this order. Each step finishes before the next starts.
 - `sprint`: the cycle of the team whose `toSprint` start and end equal the sprint's start and end. No match gives no cycle.
 - `description` and `acceptanceCriteria`: `buildDescription` from PMK-35, the same text an update writes.
 - `createdAt`: the Local `created`. `completedAt`: `completed`, only for a `done` issue.
+- Comment `body`: the attribution line `Comment by <name> on <YYYY-MM-DD> in <old id>`, a blank line, then the Local body. `<name>` is the author's `name` in `members` (the member id when the author is not a member), the date is the UTC date of `created`, and `<old id>` is the Local issue ID. Example: `Comment by Ana Souza on 2026-10-28 in ISS-5N1R`.
 
 **Parents first.** Issues go in an order where each parent issue comes before its children, and inside that order by creation time. A parent loop in hand-edited files is a plan problem (below), so the run never starts with one.
 
@@ -264,7 +267,7 @@ The plan builds a `losses` list. Each item names what is lost, how many records 
 |---|---|---|---|
 | Export | Sprints without a Linear cycle of the same dates | The issues get no cycle. The sprint is listed. | Linear creates cycles from the team schedule and the API cannot open one (PMK-37). |
 | Export | History | `events.jsonl` is not replayed. Linear's history starts at the migration, with `createdAt` and `completedAt` set from Local. | Linear's history is written by Linear only. |
-| Export | Comment authors | Every comment is authored by the key owner. See open question 2. | `createAsUser` needs an OAuth app (ADR-0005). |
+| Export | Comment authors | Linear shows the key owner as the author. The attribution line names the original author. | `createAsUser` needs an OAuth app (ADR-0005). |
 | Export | Status update dates and authors | Dated at the migration, authored by the key owner. | `ProjectUpdateCreateInput` has no `createdAt`. |
 | Export | Milestones on issues and epics | Dropped. | A Linear milestone belongs to one project, and pmkit cannot create one (PMK-38). |
 | Export | Releases, time logs, documents | Dropped. | No Linear mapping in pmkit. |
@@ -298,7 +301,9 @@ The reads already bring the history with the issues, so this costs no extra requ
 
 **Export.** A member matches the Linear user with the same email, ignoring case. The preview lists each member with its match or "no Linear user". The run uses the matches it recorded in the map.
 
-**Import.** A Linear user matches the member with the same email. A user with no match is the subject of open question 4. An app user becomes an `agent:<name>` member id, which `MEMBER_ID` allows.
+**Import.** A Linear user matches the member with the same email, ignoring case. Each user that an imported record names (assignee, comment author, history actor, update author) and that matches no member is added to `members` in `.issues/config.yaml` as `{ name, email, availability: 1 }`. The preview lists each one as `new member <id>`. The member id is the part of the email before `@`, lower-cased, with every run of characters outside `a-z`, `0-9` and `-` replaced by one `-`, and leading and trailing `-` removed. A clash with a member id or an id added earlier in the same run gets `-2`, then `-3`. An app user becomes `agent:<id>` by the same rule applied to its name, which `MEMBER_ID` allows, and gets no email. A user with an empty id after the rule gets `user`, then `user-2`.
+
+**Comment authors on import.** A comment whose body starts with an attribution line of exactly the export shape, followed by a blank line, loses those two lines. When `<name>` equals the `name` of exactly one member, that member is the author and the Linear author is ignored. Otherwise the author is the member the Linear user maps to.
 
 ### The preview (criterion 3)
 
@@ -341,7 +346,7 @@ links
 will not carry over
   sprints      3 sprints have no Linear cycle with the same dates; 41 issues will have no cycle
   history      events.jsonl is not replayed; creation and completion dates are kept
-  comments     88 comments will be authored by the key owner
+  comments     88 comments will show the key owner as author; each starts with a line naming the original author
   milestones   12 issues lose their milestone
   ...
 
@@ -393,17 +398,23 @@ requests = 8 + ceil(I / 100) + (issues with a nested list past its first page) +
 
 For 165 issues and 10 projects that is about 25 requests. The Local writes cost none.
 
-An undo of an export needs `10 + I + E + L` requests (open question 3).
+An undo of an export needs `10 + I + E + L` requests.
 
 ### Undo
 
-**Export.** `local-migrate undo` (if open question 3 is answered with A) reads the map and removes what the export created, newest step first: `issueDelete` for each issue, which takes its links and comments with it, `projectDelete` for each project, and `issueLabelDelete` for each label the map marks `created: true`. It first reads every issue by UUID and lists the ones changed in Linear after the export (`updatedAt` later than the map's `done` time) under "changed since the migration". The dry run is the full preview, as for any delete in the write policy. Each removal is written to the map (`state: removed`), so an interrupted undo resumes too.
+**Export.** `local-migrate undo` reads the map and deletes what the export created, newest step first: `issueDelete` for each issue, which takes its links and comments with it, `projectDelete` for each project, and `issueLabelDelete` for each label the map marks `created: true`. It first reads every issue by UUID and lists the ones changed in Linear after the export (`updatedAt` later than the map's `done` time) under "changed since the migration". The dry run is the full preview, as for any delete in the write policy: every issue, project and label it deletes, with the changed ones marked, and a digest. The run takes `--expect` as export does. Each removal is written to the map (`state: removed`), so an interrupted undo resumes too. `issueDelete` is sent without `permanentlyDelete`, so Linear keeps the issue in its trash.
 
 **Import.** The import refused a dirty tracker folder, so the commit before it is the way back. `local-migrate undo` on an import map prints `git restore --source=HEAD -- .issues .pmkit/migrations` and `git clean -fd -- .issues`, and writes nothing.
 
 ### Switching the tracker
 
-A finished export leaves `tracker.system: local`, and a finished import leaves a Linear repository on Linear. Open question 1 decides who changes `.pmkit/config.yaml`. Until then, the command's last step prints the lines to change.
+A finished export leaves `tracker.system: local`, and a finished import leaves a Linear repository on Linear. Export and import never change `tracker.system`. `pmkit local-migrate switch --to linear|local` is the separate step.
+
+- It takes the newest finished map, or `--file`. `--to linear` needs an export map and `--to local` an import map; the other direction is `INVALID_INPUT`, `switch --to linear needs a finished export map`.
+- It refuses with `CONFLICT`, `the migration in <file> is not finished` (or `has <n> failed records`), next step `Run pmkit local-migrate status`, unless `finished` is set and no record is `failed`.
+- `--to linear` writes `tracker.system: linear`, `tracker.scope.workspace`, `tracker.scope.team` and the `mappings` the map used. `--to local` writes `tracker.system: local` and `tracker.path` from the map's Local side. It leaves `tracker.scope` and `mappings` in place, because the Local tracker ignores them (`validatePmkitConfig`). It leaves `.issues/` and `.pmkit/capacity.yaml` alone.
+- `--dry-run` prints the line diff of `.pmkit/config.yaml` and writes nothing. When the file already says the target system, the command says so and writes nothing.
+- It runs on either system, sends no request, and never commits. `/pmkit:local:migrate` asks before it, as a scope move in the write policy.
 
 ## Testing
 
@@ -415,32 +426,34 @@ All tests run in `npm test` over `fakeLinearFetch` and temporary repositories fr
 - Linear writer and reader over the fake: each create sends the fields listed above, with the chosen UUID; the bulk reads page; `exists` reads by UUID.
 - Local writer and reader: the files read back through the Local tracker; dates and authors kept; history replays with no drift; `config.yaml` changes.
 - A round trip over the fake: a Local fixture with a parent chain, an epic, a blocker pair, a related pair, a duplicate, a comment thread, a resolved thread, an archived issue and a sprint. Export, then import into a second empty repository with the export map present, gives back the same IDs, parents, blockers and links. Every difference matches a row of the losses table.
-- CLI cases: the refusals, the text and JSON preview, `status`, `undo --dry-run`.
-- No golden changes.
+- CLI cases: the refusals, the text and JSON preview, `status`, `undo --dry-run`, `switch` and its refusals.
+- Attribution: the export body starts with the line, and an import of that body removes it and gives back the author.
+- People on import: a user with no member becomes one by the id rule, with `-2` on a clash and `agent:` for an app user.
+- No existing golden changes. The five new commands get new golden cases.
 
 ### Live test
 
-`scripts/lib/linear/migrate-live.mjs` runs only when `PMKIT_LIVE=1`, `PMKIT_LIVE_WORKSPACE` and a write opt-in `PMKIT_LIVE_WRITE=1` are all set, and the key is usable. Otherwise every test is skipped with the reason.
+`scripts/lib/linear/migrate-live.mjs` runs only when `PMKIT_LIVE=1`, `PMKIT_LIVE_WORKSPACE` and the write opt-in are all set, and the key is usable. Otherwise every test is skipped with the reason. The write opt-in is `PMKIT_LIVE_WRITE=1`, unless PMK-39's helper names another variable; then this file uses that one.
 
 ```
-set -a; . ./.env; set +a; PMKIT_LIVE=1 PMKIT_LIVE_WRITE=1 PMKIT_LIVE_WORKSPACE=$PMKIT_LIVE_WORKSPACE node --test scripts/lib/linear/migrate-live.mjs
+set -a; . ./.env; set +a; PMKIT_LIVE=1 PMKIT_LIVE_WRITE=1 PMKIT_LIVE_WORKSPACE=$PMKIT_LIVE_WORKSPACE node scripts/lib/linear/migrate-live.mjs
 ```
 
-It writes only to a new team created by the run, and it removes the team in an `after` hook that runs even when a test fails. It keeps the fixture small (five issues, one epic, three links, three comments), so one run costs about 60 requests.
+It writes only to the one fixed, reusable test team: a fixed name prefix and cycles on. PMK-39's helper finds that team, or creates it once when the workspace lacks it. The run never creates a team of its own and never writes to any other team. In an `after` hook that runs even when a test fails, it trashes every issue and deletes every project and label the run created, through the helper, and leaves the team in place. It keeps the fixture small (five issues, one epic, three links, three comments), so one run costs about 60 requests.
 
-1. Create the test team through PMK-39's helper.
+1. Find or create the test team through PMK-39's helper.
 2. Check that the export's target team id equals the id the helper returned, before the first write. Any other team stops the test.
-3. Export the fixture with `--dry-run`, then for real. Read back parents, blockers, links, the project and the dates.
+3. Export the fixture with `--dry-run`, then for real. Read back parents, blockers, links, the project, the dates and the attribution lines.
 4. Interrupt a second export after two mutations with a fetch wrapper that fails, then run it again and check that nothing is created twice.
-5. Import into a new temporary repository, and compare with the losses table.
-6. Undo, and check that the team holds no issue.
-7. Remove the team.
+5. Import into a new temporary repository, and compare with the losses table. The comment authors come back from the attribution lines.
+6. Undo, and check that the team holds no issue the run created.
+7. Trash what is left of the run through the helper. The team stays for the next run.
 
-**What this test reuses from PMK-39, and what it needs.** PMK-39 owns the shared test-team helper. This issue does not depend on its code. The live test imports the helper by a dynamic `import()` and skips with `needs the PMK-39 test-team helper` when the module is missing, so this issue can merge first. It needs from the helper:
+**What this test needs from PMK-39.** PMK-39 merges first and owns the helper. This issue imports no code from its branch: the live test is the one part that waits for the merge, and the plan puts it in a separate last task. It needs from the helper:
 
-- `createTestTeam(client, { purpose })` that creates a new team with a unique key, cycles on, and a state of each category including an In Review state, and returns `{ id, key }`.
-- A `remove()` on the result that sends `teamDelete`, and is safe to call twice.
-- The name of the write opt-in variable, if PMK-39 picks another than `PMKIT_LIVE_WRITE`. This issue then uses that one.
+- A function that finds the fixed test team by its name prefix, or creates it with cycles on and a state of each category including an In Review state, and returns `{ id, key }`.
+- A function that trashes the issues and deletes the projects and labels a run created, safe to call twice.
+- The name of the write opt-in variable, and the list of mutations its write guard allows. Export sends `issueLabelCreate`, `projectUpdateCreate`, `commentResolve`, `issueArchive` and, on undo, `issueLabelDelete`. If the guard refuses one of them, the live task asks the user before the guard changes.
 
 It reuses `guardedFetch`-style wrapping from `client-live.mjs` for its read-only steps, and `assertNoKey` for every error.
 
@@ -463,28 +476,21 @@ It reuses `guardedFetch`-style wrapping from `client-live.mjs` for its read-only
 7. An import gives back the Local IDs of records that an earlier export moved. Reason: branch names and commit messages keep working after a round trip.
 8. Values Linear lacks are losses and go ahead; values that cannot be mapped are problems and stop the run before any write. Reason: the user sees every loss in the preview, and nothing half-maps.
 9. The run checks the plan digest from the preview. Reason: the user approves exactly what runs.
+10. `switch` is the only command that changes `tracker.system`. Reason: moving the team is a separate decision from copying the records.
+11. Exported comments carry an attribution line, and an import removes it and restores the author. Reason: Linear shows the key owner as the author of every comment.
+12. Undo deletes into Linear's trash after a full preview. Reason: it leaves the team as it was, and the live test needs the same code to clean up.
+13. Import adds a member for each unmatched Linear user. Reason: assignees, comment authors and history stay correct, and the preview shows the new members first.
 
-## Open questions
+## Answers
 
-1. **After a finished migration, who switches `tracker.system`?**
-   - A. The migration does it at the end of the run.
-   - B. Never pmkit. The command prints the lines of `.pmkit/config.yaml` to change.
-   - C. A separate `pmkit local-migrate switch --to linear|local`, with its own dry run, allowed only when the map is finished with no failed record. It writes `tracker.system`, the scope and the mappings the map used, and leaves `.issues/` in place.
-   - Recommendation: C. The move of the team is a separate decision from the copy, and the map already holds the exact config to write.
-2. **How do exported comments say who wrote them?**
-   - A. Each comment starts with one line, `Comment by <name> on <date> in <old id>`, and an import removes a first line of exactly that shape.
-   - B. The body goes as it is, and the author is lost.
-   - Recommendation: A. Without it, every comment reads as the key owner's. PMK-36 chose not to mark pmkit's own comments, so this needs your call.
-3. **How does a user undo an export?**
-   - A. `pmkit local-migrate undo` deletes (moves to Linear's trash) the issues, projects and labels the map lists, after a full preview that lists the records changed since the migration.
-   - B. No command. The user removes the records in Linear by hand, using the map.
-   - C. `undo` archives the issues and projects instead of deleting them.
-   - Recommendation: A. It is the only option that leaves the team as it was, and the live test needs the same code to clean up.
-4. **On import, what happens to a Linear user who matches no Local member?**
-   - A. The import adds them to `members` in `.issues/config.yaml`, with an id made from the email name, and the preview lists them.
-   - B. Their issues are unassigned, and their comments and events are authored by the actor.
-   - C. The import stops and asks for a member for each one.
-   - Recommendation: A. Assignees, comment authors and history stay correct, and the user sees the new members before anything is written.
+The user answered the four open questions on 2026-10-28.
+
+1. **Who switches `tracker.system`.** A separate `pmkit local-migrate switch` step, never automatic (option C). See "Switching the tracker".
+2. **How exported comments name their author.** Each exported comment starts with an attribution line naming the original author (option A). See "Field by field (export)" and "People".
+3. **How a user undoes an export.** `pmkit local-migrate undo` deletes the issues, projects and labels the export created, after a full preview (option A). See "Undo".
+4. **Linear users with no Local member on import.** They are added as new members (option A), by the id rule in "People".
+
+The user also changed the live test: one fixed, reusable test team instead of a new team per run. See "Live test".
 
 ## Risks
 
@@ -492,7 +498,8 @@ It reuses `guardedFetch`-style wrapping from `client-live.mjs` for its read-only
 - A second create with an existing UUID is assumed to fail in Linear. The resume reads first, so a wrong assumption costs nothing unless the read misses a record that exists.
 - `issueDelete` moves an issue to the trash. Whether its links and comments go with it, and how long the trash keeps it, is unverified until the live test.
 - The rate-limit response is still unverified live (PMK-30). The reserve stop does not depend on it, since it reads the headers before the limit is reached.
-- PMK-39 builds the test-team helper in parallel. Until it merges, the live test skips, and no write to Linear proves this design.
+- PMK-39 builds the test-team helper in parallel and merges first. Until the live task runs after that merge, no write to Linear proves this design. Its write guard may refuse the label, update, resolve and archive mutations that export sends.
+- The fixed test team is reused. On the Free plan, trashed issues may still count toward the 250-issue limit, which a run of five issues makes slow to reach.
 - PMK-40 rewrites `/pmkit:cycle:plan` and `/pmkit:cycle:close` for Linear and may touch the same `run()` checks. The `systems` property is a small, separate change.
 - A large Linear team makes the import's first read long: one request per 100 issues plus the nested pages, with no partial snapshot if a read fails. Reads are retried by the client (PMK-30), so a failure stops before any file is written.
 - The preview of a large tracker is long. The command shows the summary and the losses first and the record tables after.
@@ -500,7 +507,6 @@ It reuses `guardedFetch`-style wrapping from `client-live.mjs` for its read-only
 ## Left to the builder
 
 - The exact shape of `details.problems` and of the per-record `dropped` list, inside the JSON shape above.
-- The member id rule for open question 4 A (email name lower-cased, with `-2` on a clash).
 - Where the type-label creation and the plain-label creation share code with `requireLabel` in `writes.mjs`.
 
 ## Self-review
