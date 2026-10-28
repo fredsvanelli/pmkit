@@ -278,10 +278,19 @@ async function requireMember(ctx) {
   throw new PmkitError('NOT_CONFIGURED', 'cannot tell which member you are', nextStep)
 }
 
+/** The warning for a Linear read that a page cap cut: `history` and `comments` of one issue, or `issues` for the metric events. */
+function capWarning(kind, id) {
+  if (kind === 'history') return `Linear has more history for ${id} than the 1000 entries pmkit read; the oldest are missing`
+  if (kind === 'comments') return `Linear has more comments for ${id} than the 1000 pmkit read`
+  return 'Linear has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated'
+}
+const capWarnings = (list, kind, id) => (list.truncated === true ? [capWarning(kind, id)] : [])
+
 /** discover().statuses as a categoryOf(statusName), and every issue's events grouped by issue. The flow metrics need each whole log. */
 async function flowInputs(tracker) {
   const categoryOf = categoryLookup((await tracker.discover()).statuses)
-  return { categoryOf, events: groupEventsByIssue(await tracker.metricEvents()) }
+  const list = await tracker.metricEvents()
+  return { categoryOf, events: groupEventsByIssue(list), warnings: capWarnings(list, 'issues') }
 }
 
 // Command table. `run` returns { data, text, commit }: the JSON value, the plain text and, for a write, the id for the commit message.
@@ -361,15 +370,18 @@ export const COMMANDS = [
       const issue = await tracker.getIssue(ctx.args[0])
       const data = { ...issue }
       const parts = [issueRecord(issue)]
+      const warnings = []
       if (ctx.flag('comments')) {
         data.comments = await tracker.listComments(issue.id)
+        warnings.push(...capWarnings(data.comments, 'comments', issue.id))
         parts.push('', 'comments:', ...(data.comments.length > 0 ? data.comments.map(commentText) : ['(none)']))
       }
       if (ctx.flag('history')) {
         data.history = await tracker.getHistory(issue.id)
+        warnings.push(...capWarnings(data.history, 'history', issue.id))
         parts.push('', 'history:', eventTable(data.history))
       }
-      return { data, text: parts.join('\n') }
+      return { data, text: parts.join('\n'), warnings }
     },
   },
   {
@@ -750,13 +762,13 @@ export const COMMANDS = [
     run: async (ctx) => {
       const tracker = await ctx.tracker()
       const window = ctx.opt('window') === undefined ? ctx.settings().defaults.velocity_window : whole('window', ctx.opt('window'))
-      const { categoryOf, events } = await flowInputs(tracker)
+      const { categoryOf, events, warnings } = await flowInputs(tracker)
       const sprints = await tracker.listCycles({ state: 'closed' })
       const bySprint = sprintIssues((await tracker.searchIssues({ archived: true })).issues, events, categoryOf)
       const result = velocity(sprints, bySprint, { window, categoryOf })
       const rows = result.perSprint.map((s) => [s.id, s.points, s.count])
       const text = [rows.length > 0 ? table(['Sprint', 'Points', 'Issues'], rows) : 'no closed sprints', `average: ${result.average} ${result.unit}`].join('\n')
-      return { data: result, text }
+      return { data: result, text, warnings }
     },
   },
   {
@@ -764,12 +776,12 @@ export const COMMANDS = [
     run: async (ctx) => {
       const tracker = await ctx.tracker()
       const { since, until } = rangeOptions(ctx)
-      const { categoryOf, events } = await flowInputs(tracker)
+      const { categoryOf, events, warnings } = await flowInputs(tracker)
       const inRange = doneInRange(events, { categoryOf, since, until })
       const issues = cycleTimes(inRange, { categoryOf })
       const stats = summary(issues.map((item) => item.days))
       const text = summaryLines(stats).join('\n')
-      return { data: { ...stats, issues }, text }
+      return { data: { ...stats, issues }, text, warnings }
     },
   },
   {
@@ -777,12 +789,12 @@ export const COMMANDS = [
     run: async (ctx) => {
       const tracker = await ctx.tracker()
       const { since, until } = rangeOptions(ctx)
-      const { categoryOf, events } = await flowInputs(tracker)
+      const { categoryOf, events, warnings } = await flowInputs(tracker)
       const inRange = doneInRange(events, { categoryOf, since, until })
       const issues = leadTimes(inRange, { categoryOf })
       const stats = summary(issues.map((item) => item.days))
       const text = summaryLines(stats).join('\n')
-      return { data: { ...stats, issues }, text }
+      return { data: { ...stats, issues }, text, warnings }
     },
   },
   {
@@ -790,12 +802,12 @@ export const COMMANDS = [
     run: async (ctx) => {
       const tracker = await ctx.tracker()
       const { since, until } = rangeOptions(ctx)
-      const { categoryOf, events } = await flowInputs(tracker)
+      const { categoryOf, events, warnings } = await flowInputs(tracker)
       const inRange = doneInRange(events, { categoryOf, since, until })
       const result = throughput(inRange, { categoryOf })
       const lines = [`count: ${result.count}`]
       if (result.count > 0) lines.push(table(['Type', 'Issues'], Object.entries(result.byType)))
-      return { data: result, text: lines.join('\n') }
+      return { data: result, text: lines.join('\n'), warnings }
     },
   },
   {
@@ -805,7 +817,7 @@ export const COMMANDS = [
       const until = ctx.opt('until') === undefined ? undefined : rangeText('until', ctx.opt('until'))
       const asOfMs = until === undefined ? ctx.now().getTime() : rangeInstant(until, { endOfDay: true })
       const asOf = new Date(Math.floor(asOfMs / 1000) * 1000).toISOString().replace(/\.000Z$/, 'Z')
-      const { categoryOf, events } = await flowInputs(tracker)
+      const { categoryOf, events, warnings } = await flowInputs(tracker)
       const issues = aging(events, { categoryOf, asOf })
       const stats = summary(issues.map((item) => item.days))
       const lines = issues.length > 0
@@ -815,7 +827,7 @@ export const COMMANDS = [
         ]
         : ['no work in progress']
       lines.push(`as of: ${asOf}`)
-      return { data: { asOf, ...stats, issues }, text: lines.join('\n') }
+      return { data: { asOf, ...stats, issues }, text: lines.join('\n'), warnings }
     },
   },
   {
@@ -824,7 +836,7 @@ export const COMMANDS = [
       const range = {}
       for (const key of ['since', 'until']) if (ctx.opt(key) !== undefined) range[key] = dateText(key, ctx.opt(key))
       const events = await (await ctx.tracker()).metricEvents(range)
-      return { data: events, text: eventTable(events) }
+      return { data: events, text: eventTable(events), warnings: capWarnings(events, 'issues') }
     },
   },
   {
