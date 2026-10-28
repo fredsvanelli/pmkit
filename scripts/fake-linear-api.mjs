@@ -78,3 +78,113 @@ export function fakeLinearFetch(routes = {}, { workspace = 'acme', previousUrlKe
   fetch.unrouted = []
   return fetch
 }
+
+export const ACME_TEAM_ID = 'team-acme'
+
+const acmeTeam = {
+  id: ACME_TEAM_ID,
+  key: 'ACME',
+  name: 'Acme',
+  parent: null,
+  cyclesEnabled: false,
+  triageEnabled: false,
+  issueEstimationType: 'notUsed',
+  issueEstimationAllowZero: false,
+  issueEstimationExtended: false,
+}
+
+const ACME_STATES = [
+  ['Backlog', 'backlog'],
+  ['Todo', 'unstarted'],
+  ['In Progress', 'started'],
+  ['In Review', 'started'],
+  ['Code Review', 'started'],
+  ['UAT', 'started'],
+  ['Ready to ship', 'started'],
+  ['Done', 'completed'],
+  ['Canceled', 'canceled'],
+  ['Duplicate', 'duplicate'],
+].map(([name, type], index) => ({ id: `state-${index + 1}`, name, type, position: index, team: { id: ACME_TEAM_ID } }))
+
+const label = (id, name, { team = ACME_TEAM_ID, parent = null, isGroup = false, retiredAt = null } = {}) => ({
+  id,
+  name,
+  isGroup,
+  retiredAt,
+  team: team === null ? null : { id: team },
+  parent,
+})
+
+const SIZE = { id: 'label-size', name: 'Size' }
+const ACME_LABELS = [
+  label('label-bug', 'Bug'),
+  label('label-feature', 'Feature'),
+  label(SIZE.id, SIZE.name, { isGroup: true }),
+  ...['XS', 'S', 'M', 'L', 'XL'].map((name) => label(`label-${name.toLowerCase()}`, name, { parent: SIZE })),
+  label('label-docs', 'Docs', { team: null }),
+  label('label-old', 'Old', { retiredAt: '2026-01-01T00:00:00.000Z' }),
+]
+
+const user = (id, name, extra = {}) => ({
+  id,
+  name,
+  displayName: name.toLowerCase().replace(/\s+/g, '.'),
+  email: `${id}@example.com`,
+  active: true,
+  guest: false,
+  app: false,
+  teams: { nodes: [{ id: ACME_TEAM_ID }] },
+  ...extra,
+})
+
+const ACME_USERS = [
+  user('user-1', 'Test User'),
+  user('user-2', 'Ada Lovelace', { displayName: 'ada', email: 'ada@example.com' }),
+  user('user-3', 'Gone', { active: false }),
+  user('user-4', 'Linear', { app: true }),
+]
+
+const refused = { status: 200, json: { data: null, errors: [{ message: 'Forbidden', extensions: { code: 'FORBIDDEN' } }] } }
+
+/**
+ * Routes for the discovery operations over a small workspace, shaped like the sandbox workspace with acme names.
+ * Pass them as fakeLinearFetch(fakeWorkspace(options)). Connection routes page by variables.first and variables.after;
+ * the cursor is the index of the next node as a string.
+ */
+export function fakeWorkspace({
+  urlKey = 'acme',
+  name = 'Acme',
+  subscription = null,
+  trialEndsAt = null,
+  releasesEnabled = false,
+  customersEnabled = false,
+  integrations = ['githubCodeAccessPersonal'],
+  teams = [acmeTeam],
+  states = ACME_STATES,
+  labels = ACME_LABELS,
+  users = ACME_USERS,
+  refuse = [],
+  endless = [],
+} = {}) {
+  const connection = (operation, field, nodes) => (body) => {
+    const first = body.variables?.first ?? 50
+    const start = Number(body.variables?.after ?? 0)
+    if (endless.includes(operation)) {
+      return json({ [field]: page(nodes.slice(start, start + first), { hasNextPage: true, endCursor: String(start + first) }) })
+    }
+    const end = start + first
+    const hasNextPage = end < nodes.length
+    return json({ [field]: page(nodes.slice(start, end), { hasNextPage, endCursor: hasNextPage ? String(end) : null }) })
+  }
+  const routes = {
+    PmkitWorkspace: json({ organization: { urlKey, name, releasesEnabled, customersEnabled, trialEndsAt } }),
+    PmkitPlan: json({ organization: { subscription } }),
+    PmkitIntegrations: json({ organization: { integrations: { nodes: integrations.map((service) => ({ service })) } } }),
+    PmkitTeams: connection('PmkitTeams', 'teams', teams),
+    PmkitStates: connection('PmkitStates', 'workflowStates', states),
+    PmkitLabels: connection('PmkitLabels', 'issueLabels', labels),
+    PmkitUsers: connection('PmkitUsers', 'users', users),
+  }
+  for (const operation of refuse) routes[operation] = refused
+  return routes
+}

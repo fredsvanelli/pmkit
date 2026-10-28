@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { FAKE_KEY, fakeLinearFetch, json, page } from './fake-linear-api.mjs'
+import { ACME_TEAM_ID, FAKE_KEY, fakeLinearFetch, fakeWorkspace, json, page } from './fake-linear-api.mjs'
 import { operationName } from './lib/linear/client.mjs'
 
 const ENDPOINT = 'https://api.linear.app/graphql'
@@ -106,4 +106,39 @@ test('page builds a Relay connection', () => {
     nodes: [{ id: 1 }],
   })
   assert.deepEqual(page([]).pageInfo, { hasNextPage: false, endCursor: null })
+})
+
+const DISCOVERY_OPERATIONS = ['PmkitWorkspace', 'PmkitPlan', 'PmkitIntegrations', 'PmkitTeams', 'PmkitStates', 'PmkitLabels', 'PmkitUsers']
+const answer = async (fetch, name, variables = {}) => JSON.parse(await (await post(fetch, `query ${name} { x }`, variables)).text())
+
+test('fakeWorkspace answers every discovery operation with the default data', async () => {
+  const fetch = fakeLinearFetch(fakeWorkspace())
+  for (const name of DISCOVERY_OPERATIONS) assert.ok((await answer(fetch, name, { first: 250 })).data, name)
+  const states = (await answer(fetch, 'PmkitStates', { first: 250 })).data.workflowStates.nodes
+  assert.equal(states.length, 10)
+  assert.equal(states.filter((state) => state.type === 'duplicate').length, 1)
+  assert.ok(states.every((state) => state.team.id === ACME_TEAM_ID))
+  assert.equal((await answer(fetch, 'PmkitPlan')).data.organization.subscription, null)
+})
+
+test('fakeWorkspace pages a connection by first and after', async () => {
+  const fetch = fakeLinearFetch(fakeWorkspace())
+  const first = (await answer(fetch, 'PmkitStates', { first: 4 })).data.workflowStates
+  assert.equal(first.nodes.length, 4)
+  assert.deepEqual(first.pageInfo, { hasNextPage: true, endCursor: '4' })
+  const last = (await answer(fetch, 'PmkitStates', { first: 4, after: '8' })).data.workflowStates
+  assert.equal(last.nodes.length, 2)
+  assert.equal(last.pageInfo.hasNextPage, false)
+})
+
+test('fakeWorkspace refuses and loops on request', async () => {
+  const fetch = fakeLinearFetch(fakeWorkspace({ refuse: ['PmkitPlan'], endless: ['PmkitLabels'] }))
+  assert.equal((await answer(fetch, 'PmkitPlan')).errors[0].extensions.code, 'FORBIDDEN')
+  let after = null
+  for (let index = 0; index < 3; index++) {
+    const labels = (await answer(fetch, 'PmkitLabels', { first: 250, after })).data.issueLabels
+    assert.equal(labels.pageInfo.hasNextPage, true)
+    assert.notEqual(labels.pageInfo.endCursor, after)
+    after = labels.pageInfo.endCursor
+  }
 })
