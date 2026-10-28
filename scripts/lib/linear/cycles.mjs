@@ -19,10 +19,11 @@ export function cycleState(node) {
 const dateOf = (timestamp) => String(timestamp).slice(0, 10)
 
 /**
- * The last day of a cycle. `endsAt` is an exclusive boundary (one cycle's `endsAt` is the next one's `startsAt`), and a
- * Local `end` is inclusive, so the last day is the UTC date of the millisecond before `endsAt`.
+ * The last day of a cycle. `endsAt` is an exclusive boundary (one cycle's `endsAt` is the next one's `startsAt`) and a
+ * Local `end` is inclusive. `start` is the UTC date of `startsAt`, so `end` is the UTC date of `endsAt` minus one calendar
+ * day, which is the day before the next cycle's `start` whatever the time of day.
  */
-const lastDayOf = (endsAt) => new Date(Date.parse(endsAt) - 1).toISOString().slice(0, 10)
+const lastDayOf = (endsAt) => new Date(Date.parse(dateOf(endsAt)) - 86400000).toISOString().slice(0, 10)
 
 /** The pmkit sprint of a cycle node. `local` holds the capacity and days off kept in .pmkit/capacity.yaml. */
 export function toSprint(node, local = {}) {

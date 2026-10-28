@@ -33,10 +33,20 @@ test('fields: id, name, goal and dates in the Local key order', () => {
   assert.equal(sprint.end, '2026-11-12')
 })
 
-test('endsAt is an exclusive boundary, so end is the UTC date of the last millisecond before it', () => {
+test('end is the day before the UTC date of endsAt, whatever the time of day', () => {
   assert.equal(toSprint(node({ endsAt: '2026-11-13T00:00:00.000Z' })).end, '2026-11-12')
-  assert.equal(toSprint(node({ endsAt: '2026-11-13T00:00:00.001Z' })).end, '2026-11-13')
-  assert.equal(toSprint(node({ endsAt: '2026-11-13T09:00:00.000Z' })).end, '2026-11-13')
+  assert.equal(toSprint(node({ endsAt: '2026-11-13T03:00:00.000Z' })).end, '2026-11-12')
+  assert.equal(toSprint(node({ endsAt: '2026-11-13T23:59:59.000Z' })).end, '2026-11-12')
+})
+
+test('consecutive cycles do not overlap, at midnight or at 03:00Z', () => {
+  for (const time of ['00:00:00.000Z', '03:00:00.000Z']) {
+    const first = toSprint(node({ number: 2, startsAt: `2026-10-19T${time}`, endsAt: `2026-11-02T${time}` }))
+    const second = toSprint(node({ number: 3, startsAt: `2026-11-02T${time}`, endsAt: `2026-11-16T${time}` }))
+    assert.equal(first.end, '2026-11-01', time)
+    assert.equal(second.start, '2026-11-02', time)
+    assert.ok(first.end < second.start, time)
+  }
 })
 
 test('a null name gives Cycle <number> and a null description an empty goal', () => {

@@ -136,7 +136,7 @@ The common `Sprint` shape stays what the Local tracker returns: `id`, `name`, `s
 |---|---|
 | `id` | `String(number)` |
 | `name` | `name`, else `Cycle <number>` |
-| `start`, `end` | `start` is the `YYYY-MM-DD` part of `startsAt`, read as UTC **(builder's call)**. `endsAt` is an exclusive boundary (one cycle's `endsAt` is the next one's `startsAt`) and a Local `end` is inclusive, so `end` is the UTC date of `endsAt` minus 1 ms. Consecutive sprints then do not overlap, days off on the next cycle's first day fall outside the sprint, and the weekday count stops before the next cycle. Unverified; see "Risks". |
+| `start`, `end` | `start` is the `YYYY-MM-DD` part of `startsAt`, read as UTC **(builder's call)**. `endsAt` is an exclusive boundary (one cycle's `endsAt` is the next one's `startsAt`) and a Local `end` is inclusive, so `end` is the UTC date of `endsAt` minus one calendar day, which is the day before the next cycle's `start` at any time of day. Consecutive sprints then do not overlap, days off on the next cycle's first day fall outside the sprint, and the weekday count stops before the next cycle. Unverified; see "Risks". |
 | `goal` | `description`, `''` when null |
 | `state` | `active` when `isActive`, `planned` when `isFuture`, `closed` when `isPast`. A cycle that is none of the three counts as `closed`. |
 | `closed` | `completedAt`, set only for a closed cycle that has one |
