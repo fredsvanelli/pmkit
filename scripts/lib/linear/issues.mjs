@@ -6,13 +6,7 @@ import { TERMINAL } from '../model.mjs'
 import { categoryOfType, estimateScale } from './discovery.mjs'
 import { readMappings } from './read-mappings.mjs'
 
-const ISSUE_ID = /^[A-Za-z][A-Za-z0-9_]*-[0-9]+$/
-
-/** True for a Linear identifier such as ACME-12, in any case. A UUID is not an id in pmkit. */
-export const isIssueId = (id) => typeof id === 'string' && ISSUE_ID.test(id)
-
-/** The identifier in upper case. normalizeId is not used: it rewrites I, L and O, which a team key may hold. */
-export const issueKey = (id) => id.toUpperCase()
+export { isIssueId, issueKey } from './ids.mjs'
 
 export const PRIORITY_TO_LINEAR = { urgent: 1, high: 2, medium: 3, low: 4 }
 const PRIORITY_OF_LINEAR = Object.fromEntries(Object.entries(PRIORITY_TO_LINEAR).map(([name, value]) => [value, name]))

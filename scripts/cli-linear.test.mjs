@@ -139,6 +139,35 @@ test('issues list --json returns the issues', async () => {
   assert.equal(data.hasMore, false)
 })
 
+// A fetch over the default workspace and a stateful issue store, with `titles` seeded as ACME-1, ACME-2 and so on.
+function withIssues(titles = []) {
+  const fake = fakeLinearIssues()
+  for (const title of titles) fake.seed({ title })
+  return { fake, fetch: fakeLinearFetch({ ...fakeWorkspace(), ...fake.routes }) }
+}
+
+test('issues dependencies sends a non-issue id to getDeliverable', async () => {
+  const result = await cli(setup({ edit: withTeam }), ['issues', 'dependencies', 'EPC-1x', '--json'], withIssues().fetch)
+  assert.equal(result.code, 2)
+  assert.equal(errorOf(result).code, 'NOT_SUPPORTED')
+  assert.match(errorOf(result).message, /getDeliverable/)
+})
+
+test('issues dependencies reads an issue id as an issue', async () => {
+  const result = await cli(setup({ edit: withTeam }), ['issues', 'dependencies', 'acme-1', '--json'], withIssues(['Fix it']).fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+})
+
+test('issues branch uses the name Linear suggests', async () => {
+  const { fake, fetch } = withIssues(['Fix it'])
+  fake.records[0].branchName = 'ada/acme-1-fix-it'
+  const context = setup({ edit: (text) => withTeam(text.replace('  system: none', '  system: github')) })
+  const result = await cli(context, ['issues', 'branch', 'ACME-1', '--as', 'user-1', '--dry-run', '--json'], fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.equal(JSON.parse(result.stdout).branch, 'ada/acme-1-fix-it')
+  assert.deepEqual(fake.mutations, [])
+})
+
 // ---------------------------------------------------------------------------
 // init --tracker linear
 

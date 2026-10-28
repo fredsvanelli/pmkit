@@ -10,7 +10,8 @@ import { linearDescriptor } from './linear/adapter.mjs'
  * @property {string} system a name in TRACKERS
  * @property {boolean} hosted false only for local
  * @property {(pmkit: object) => string[]} configProblems the adapter's rules on a .pmkit/config.yaml whose shape is valid
- * @property {(config: object) => { defaults: object, epicPrefix: string | null }} settings the behavior defaults commands read
+ * @property {(config: object) => { defaults: object, epicPrefix: string | null, isEpicId?: (id: string) => boolean, trackerBranch?: boolean }} settings
+ *   the behavior defaults commands read. isEpicId, when present, tells an epic id from an issue id; trackerBranch says the tracker names the branch.
  * @property {(config: object, deps: { now: Function, random: Function, env: object, dryRun: boolean }) => Promise<object>} create the tracker
  */
 

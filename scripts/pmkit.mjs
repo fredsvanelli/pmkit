@@ -362,10 +362,11 @@ export const COMMANDS = [
     name: 'issues dependencies', summary: 'the blocker chain, the hierarchy and the critical path of an issue or an epic', usage: '<id>', args: ['id'], flags: [],
     run: async (ctx) => {
       const tracker = await ctx.tracker()
-      // A tracker with no epic prefix, such as a hosted one, treats every id as an issue.
-      const { epicPrefix } = ctx.settings()
+      // The adapter tells an epic id from an issue id when it can; otherwise the epic prefix decides, and no prefix means an issue.
+      const { epicPrefix, isEpicId } = ctx.settings()
+      const isEpic = isEpicId ?? ((value) => epicPrefix !== null && isId(normalizeId(value), epicPrefix))
       const [id] = ctx.args
-      const target = epicPrefix !== null && isId(normalizeId(id), epicPrefix)
+      const target = isEpic(id)
         ? { ...(await tracker.getDeliverable(id)), kind: 'epic' }
         : { ...(await tracker.getIssue(id)), kind: 'issue' }
       const found = await tracker.searchIssues({ archived: true })
@@ -815,7 +816,8 @@ export const COMMANDS = [
       const host = ctx.host()
       const tracker = await ctx.tracker()
       const issue = await tracker.getIssue(ctx.args[0])
-      const branch = branchName(issue.id, issue.title)
+      // A tracker that names branches, such as Linear, keeps its name, so its link to the git host works.
+      const branch = ctx.settings().trackerBranch === true && issue.branch ? issue.branch : branchName(issue.id, issue.title)
       const from = ctx.opt('from') ?? defaultBranch(ctx)
       // Check the tracker write first, so a refused write leaves git on the branch it was on.
       const actor = await ctx.actor()

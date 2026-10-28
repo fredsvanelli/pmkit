@@ -596,12 +596,14 @@ test('a move dry run sends no mutation and matches the real move', async () => {
 test('a mapped state the team lacks refreshes once, then NOT_CONFIGURED', async () => {
   const { tracker: linear, fake, fetch } = linearSetup({ mappings: { status: { in_review: 'Gone' } } })
   seed(fake, { title: 'Move me' })
+  // The PMK-34 mapping check stops the move first. A fresh discovery is not stale, so it fetches once.
   await assert.rejects(linear.moveToCategory('ACME-1', 'in_review', 'user-1'), {
     code: 'NOT_CONFIGURED',
-    message: 'mappings.status.in_review names Gone, which team ACME does not have',
+    message: 'a mapping in .pmkit/config.yaml names something the workspace no longer has: mappings.status.in_review names Gone, which team ACME no longer has',
     nextStep: '/pmkit:setup',
   })
-  assert.equal(callsOf(fetch, 'PmkitStates'), 2)
+  assert.equal(callsOf(fetch, 'PmkitStates'), 1)
+  assert.equal(mutationsIn(fetch), 0)
 })
 
 test('in_review with no mapping or with none is NOT_SUPPORTED', async () => {
@@ -633,10 +635,12 @@ test('another category with no state is NOT_SUPPORTED', async () => {
   await assert.rejects(linear.moveToCategory('ACME-1', 'canceled', 'user-1'), { code: 'NOT_SUPPORTED', message: 'team ACME has no status in the canceled category' })
 })
 
-test('an unknown category is INVALID_INPUT before any read', async () => {
+// The PMK-34 mapping check reads the workspace first; the category is checked before any issue read.
+test('an unknown category is INVALID_INPUT before any issue read', async () => {
   const { tracker: linear, fetch } = linearSetup()
   await assert.rejects(linear.moveToCategory('ACME-1', 'later', 'user-1'), { code: 'INVALID_INPUT' })
-  assert.equal(fetch.calls.length, 0)
+  assert.equal(fetch.calls.filter((call) => /^PmkitIssue/.test(operationName(call.body.query))).length, 0)
+  assert.equal(mutationsIn(fetch), 0)
 })
 
 test('assign takes a member, me or null, and skips an unchanged assignee', async () => {
