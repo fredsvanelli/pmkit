@@ -3,6 +3,7 @@
 // Results are recorded in API-VERIFICATION.md.
 
 import { fileURLToPath } from 'node:url'
+import { linearCredential } from './credential.mjs'
 
 const sorted = (list) => [...list].sort()
 
@@ -120,9 +121,13 @@ export async function run({ env, fetch = globalThis.fetch, write }) {
     write('verify-api skipped: set PMKIT_LIVE=1 and LINEAR_API_KEY to run the read-only check.\n')
     return 0
   }
-  const key = env.LINEAR_API_KEY
-  if (!key) {
-    write('verify-api needs LINEAR_API_KEY in the environment.\n')
+  let key
+  try {
+    key = linearCredential(env).authorization
+  } catch (error) {
+    write(error.message === 'LINEAR_API_KEY is not set'
+      ? 'verify-api needs LINEAR_API_KEY in the environment.\n'
+      : `verify-api: ${error.message}\n`)
     return 2
   }
   try {
