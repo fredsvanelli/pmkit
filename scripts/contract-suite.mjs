@@ -10,6 +10,9 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { assertTracker } from './lib/contract.mjs'
 
+// The contract families. A hosted adapter lists the ones it implements, and the suite skips the tests that need another.
+export const FAMILIES = ['discovery', 'issues', 'relations', 'history', 'time', 'cycles', 'deliverables', 'milestones', 'releases', 'documents']
+
 const CATEGORIES = ['triage', 'backlog', 'todo', 'in_progress', 'in_review', 'done', 'canceled']
 const DOC_PATH = 'contract/notes.md'
 
@@ -22,23 +25,30 @@ const issueState = async (tracker, issueIds) => JSON.stringify({
   metrics: await tracker.metricEvents(),
 })
 
-/** Registers the contract tests inside describe(name). */
-export function runTrackerContract({ name, setup }) {
-  const it = (title, body) => test(title, async () => {
-    const env = await setup()
-    try {
-      await body({ ...env, today: env.today ?? new Date().toISOString().slice(0, 10) })
-    } finally {
-      await env.teardown()
-    }
-  })
+/**
+ * Registers the contract tests inside describe(name). `families` lists the families the adapter implements; a test that
+ * needs another one is registered as skipped, with the family it misses as the reason. Without `families`, every test runs.
+ */
+export function runTrackerContract({ name, setup, families = FAMILIES }) {
+  const it = (title, needs, body) => {
+    const missing = needs.find((family) => !families.includes(family))
+    if (missing !== undefined) return test(title, { skip: `needs the ${missing} family` }, () => {})
+    return test(title, async () => {
+      const env = await setup()
+      try {
+        await body({ ...env, today: env.today ?? new Date().toISOString().slice(0, 10) })
+      } finally {
+        await env.teardown()
+      }
+    })
+  }
 
   describe(name, () => {
-    it('implements every contract operation', async ({ tracker }) => {
+    it('implements every contract operation', ['discovery'], async ({ tracker }) => {
       assertTracker(tracker)
     })
 
-    it('discover lists statuses by category, members and the capability manifest has an entry per capability', async ({ tracker }) => {
+    it('discover lists statuses by category, members and the capability manifest has an entry per capability', ['discovery'], async ({ tracker }) => {
       const found = await tracker.discover()
       for (const category of CATEGORIES) {
         assert.ok(found.statuses.some((status) => status.category === category), `a status in ${category}`)
@@ -50,7 +60,7 @@ export function runTrackerContract({ name, setup }) {
       for (const entry of manifest.capabilities) assert.ok(entry.id && entry.path, `capability ${entry.id} has a path`)
     })
 
-    it('creates, gets, updates, moves through every category, assigns and archives an issue', async ({ tracker, actor }) => {
+    it('creates, gets, updates, moves through every category, assigns and archives an issue', ['issues'], async ({ tracker, actor }) => {
       const { statuses, members, types } = await tracker.discover()
       const created = await tracker.createIssue({ title: 'First', type: types[0] }, actor)
       assert.equal(created.before, null)
@@ -82,13 +92,13 @@ export function runTrackerContract({ name, setup }) {
       assert.deepEqual(ids((await tracker.searchIssues({ archived: true })).issues), [id])
     })
 
-    it('rejects an unknown issue with NOT_FOUND and a bad write with INVALID_INPUT', async ({ tracker, actor }) => {
+    it('rejects an unknown issue with NOT_FOUND and a bad write with INVALID_INPUT', ['issues'], async ({ tracker, actor }) => {
       await rejects(() => tracker.getIssue('NOPE-999999'), 'NOT_FOUND')
       await rejects(() => tracker.createIssue({ title: '' }, actor), 'INVALID_INPUT')
       await rejects(() => tracker.createIssue({ title: 'x' }, 'not-a-member'), 'INVALID_INPUT')
     })
 
-    it('link blocks changes blocked, and unlink restores it', async ({ tracker, actor }) => {
+    it('link blocks changes blocked, and unlink restores it', ['issues', 'relations'], async ({ tracker, actor }) => {
       const a = (await tracker.createIssue({ title: 'Blocker' }, actor)).after.id
       const b = (await tracker.createIssue({ title: 'Blocked' }, actor)).after.id
       assert.deepEqual((await tracker.searchIssues({ blocked: true })).issues, [])
@@ -101,7 +111,7 @@ export function runTrackerContract({ name, setup }) {
       assert.deepEqual((await tracker.searchIssues({ blocked: true })).issues, [])
     })
 
-    it('links related and duplicate issues', async ({ tracker, actor }) => {
+    it('links related and duplicate issues', ['issues', 'relations'], async ({ tracker, actor }) => {
       const a = (await tracker.createIssue({ title: 'A' }, actor)).after.id
       const b = (await tracker.createIssue({ title: 'B' }, actor)).after.id
       await tracker.link(a, b, 'related', actor)
@@ -112,7 +122,7 @@ export function runTrackerContract({ name, setup }) {
       await rejects(() => tracker.link(a, b, 'sibling', actor), 'INVALID_INPUT')
     })
 
-    it('keeps comments and history in the order the writes happened', async ({ tracker, actor }) => {
+    it('keeps comments and history in the order the writes happened', ['history'], async ({ tracker, actor }) => {
       const { id } = (await tracker.createIssue({ title: 'Talked about' }, actor)).after
       await tracker.updateIssue(id, { title: 'Talked about more' }, actor)
       const comment = await tracker.comment(id, 'First thought', actor)
@@ -127,7 +137,7 @@ export function runTrackerContract({ name, setup }) {
       await rejects(() => tracker.logTime(id, 0, actor), 'INVALID_INPUT')
     })
 
-    it('opens a cycle, adds issues, closes it and lists the unfinished ones', async ({ tracker, actor, today }) => {
+    it('opens a cycle, adds issues, closes it and lists the unfinished ones', ['cycles'], async ({ tracker, actor, today }) => {
       const { statuses } = await tracker.discover()
       const open = (await tracker.createIssue({ title: 'Unfinished' }, actor)).after.id
       const finished = (await tracker.createIssue({ title: 'Finished' }, actor)).after.id
@@ -148,7 +158,7 @@ export function runTrackerContract({ name, setup }) {
       assert.equal(await tracker.currentCycle(), null)
     })
 
-    it('createIssue and updateIssue with sprint current store the active sprint id', async ({ tracker, actor, today }) => {
+    it('createIssue and updateIssue with sprint current store the active sprint id', ['cycles'], async ({ tracker, actor, today }) => {
       const sprint = (await tracker.openCycle({ start: today }, actor)).after
       const made = await tracker.createIssue({ title: 'Made current', sprint: 'current' }, actor)
       assert.equal(made.after.sprint, sprint.id)
@@ -163,7 +173,7 @@ export function runTrackerContract({ name, setup }) {
       assert.deepEqual(ids(await tracker.cycleIssues(sprint.id)).sort(), [made.after.id, plain].sort())
     })
 
-    it('moveToCycle with current moves issues into the active sprint, and null takes issues out of their sprint', async ({ tracker, actor, today }) => {
+    it('moveToCycle with current moves issues into the active sprint, and null takes issues out of their sprint', ['cycles'], async ({ tracker, actor, today }) => {
       const sprint = (await tracker.openCycle({ start: today }, actor)).after
       const a = (await tracker.createIssue({ title: 'A' }, actor)).after.id
       const b = (await tracker.createIssue({ title: 'B' }, actor)).after.id
@@ -182,7 +192,7 @@ export function runTrackerContract({ name, setup }) {
       assert.deepEqual(ids(await tracker.cycleIssues(sprint.id)), [])
     })
 
-    it('sprint current without an active sprint fails with INVALID_INPUT and writes nothing', async ({ tracker, actor, today }) => {
+    it('sprint current without an active sprint fails with INVALID_INPUT and writes nothing', ['cycles'], async ({ tracker, actor, today }) => {
       const a = (await tracker.createIssue({ title: 'A' }, actor)).after.id
       const b = (await tracker.createIssue({ title: 'B' }, actor)).after.id
       const expectNothingWritten = async () => {
@@ -207,7 +217,7 @@ export function runTrackerContract({ name, setup }) {
       assert.notEqual(await issueState(tracker, [a, b]), last)
     })
 
-    it('searchIssues with sprint current returns the active sprint issues and sprint none the issues in no sprint', async ({ tracker, actor, today }) => {
+    it('searchIssues with sprint current returns the active sprint issues and sprint none the issues in no sprint', ['cycles'], async ({ tracker, actor, today }) => {
       const active = (await tracker.openCycle({ start: today }, actor)).after
       const planned = (await tracker.openCycle({ start: '2099-01-01' }, actor)).after
       const inActive = (await tracker.createIssue({ title: 'In active', sprint: active.id }, actor)).after.id
@@ -220,7 +230,7 @@ export function runTrackerContract({ name, setup }) {
       assert.deepEqual(ids((await tracker.searchIssues({ sprint: planned.id })).issues), [inPlanned])
     })
 
-    it('searchIssues with sprint current returns an empty list without an active sprint', async ({ tracker, actor }) => {
+    it('searchIssues with sprint current returns an empty list without an active sprint', ['cycles'], async ({ tracker, actor }) => {
       const planned = (await tracker.openCycle({ start: '2099-01-01' }, actor)).after
       await tracker.createIssue({ title: 'In planned', sprint: planned.id }, actor)
       const free = (await tracker.createIssue({ title: 'Free' }, actor)).after.id
@@ -229,14 +239,14 @@ export function runTrackerContract({ name, setup }) {
       assert.deepEqual(ids((await tracker.searchIssues({ sprint: 'none' })).issues), [free])
     })
 
-    it('sets and reads cycle capacity', async ({ tracker, actor, today }) => {
+    it('sets and reads cycle capacity', ['cycles'], async ({ tracker, actor, today }) => {
       const [member] = (await tracker.discover()).members
       const cycle = (await tracker.openCycle({ start: today }, actor)).after
       await tracker.setCapacity(cycle.id, { [member.id]: 8 }, actor)
       assert.deepEqual(await tracker.getCapacity(cycle.id), { [member.id]: 8 })
     })
 
-    it('sets, reads and clears days off', async ({ tracker, actor, today }) => {
+    it('sets, reads and clears days off', ['cycles'], async ({ tracker, actor, today }) => {
       const [member] = (await tracker.discover()).members
       const cycle = (await tracker.openCycle({ start: today }, actor)).after
       const date = new Date(`${today}T00:00:00Z`)
@@ -248,7 +258,7 @@ export function runTrackerContract({ name, setup }) {
       assert.deepEqual(await tracker.getDaysOff(cycle.id), {})
     })
 
-    it('creates an epic, parents an issue and reads progress', async ({ tracker, actor }) => {
+    it('creates an epic, parents an issue and reads progress', ['deliverables', 'relations'], async ({ tracker, actor }) => {
       const epic = (await tracker.createDeliverable({ title: 'Launch' }, actor)).after
       assert.equal((await tracker.getDeliverable(epic.id)).title, 'Launch')
       assert.deepEqual(ids(await tracker.listDeliverables()), [epic.id])
@@ -266,7 +276,7 @@ export function runTrackerContract({ name, setup }) {
       await rejects(() => tracker.getDeliverable('NOPE-999999'), 'NOT_FOUND')
     })
 
-    it('lists the status updates of an epic, newest first', async ({ tracker, actor }) => {
+    it('lists the status updates of an epic, newest first', ['deliverables'], async ({ tracker, actor }) => {
       const epic = (await tracker.createDeliverable({ title: 'Updates' }, actor)).after
       assert.deepEqual(await tracker.listStatusUpdates(epic.id), [])
       await tracker.publishStatusUpdate({ epic: epic.id, health: 'on_track', body: 'first' }, actor)
@@ -283,11 +293,11 @@ export function runTrackerContract({ name, setup }) {
       await rejects(() => tracker.listStatusUpdates('NOPE-999999'), 'NOT_FOUND')
     })
 
-    it('lists no milestones at the start', async ({ tracker }) => {
+    it('lists no milestones at the start', ['milestones'], async ({ tracker }) => {
       assert.deepEqual(await tracker.listMilestones(), [])
     })
 
-    it('creates a milestone that list and get agree on', async ({ tracker, actor }) => {
+    it('creates a milestone that list and get agree on', ['milestones'], async ({ tracker, actor }) => {
       const created = await tracker.createMilestone({ id: 'contract-m1', name: 'Contract one', due: '2099-01-31' }, actor)
       assert.equal(created.before, null)
       assert.equal(created.after.id, 'contract-m1')
@@ -297,11 +307,11 @@ export function runTrackerContract({ name, setup }) {
       assert.deepEqual(await tracker.getMilestone('contract-m1'), created.after)
     })
 
-    it('rejects an unknown milestone with NOT_FOUND', async ({ tracker }) => {
+    it('rejects an unknown milestone with NOT_FOUND', ['milestones'], async ({ tracker }) => {
       await rejects(() => tracker.getMilestone('no-such-milestone'), 'NOT_FOUND')
     })
 
-    it('a milestone dry run returns after and creates nothing', async ({ tracker, actor }) => {
+    it('a milestone dry run returns after and creates nothing', ['milestones'], async ({ tracker, actor }) => {
       const { before, after } = await tracker.createMilestone({ id: 'contract-dry' }, actor, { dryRun: true })
       assert.equal(before, null)
       assert.equal(after.id, 'contract-dry')
@@ -309,11 +319,11 @@ export function runTrackerContract({ name, setup }) {
       await rejects(() => tracker.getMilestone('contract-dry'), 'NOT_FOUND')
     })
 
-    it('lists no releases at the start', async ({ tracker }) => {
+    it('lists no releases at the start', ['releases'], async ({ tracker }) => {
       assert.deepEqual(await tracker.listReleases(), [])
     })
 
-    it('creates a release that list and get agree on', async ({ tracker, actor }) => {
+    it('creates a release that list and get agree on', ['releases'], async ({ tracker, actor }) => {
       const created = await tracker.createRelease({ id: 'contract-1.0', name: 'Contract one', tag: 'v-contract-1.0', target: '2099-01-31' }, actor)
       assert.equal(created.before, null)
       assert.equal(created.after.id, 'contract-1.0')
@@ -322,18 +332,18 @@ export function runTrackerContract({ name, setup }) {
       assert.deepEqual(await tracker.getRelease('contract-1.0'), created.after)
     })
 
-    it('rejects an unknown release with NOT_FOUND', async ({ tracker }) => {
+    it('rejects an unknown release with NOT_FOUND', ['releases'], async ({ tracker }) => {
       await rejects(() => tracker.getRelease('no-such-release'), 'NOT_FOUND')
     })
 
-    it('a release dry run returns after and creates nothing', async ({ tracker, actor }) => {
+    it('a release dry run returns after and creates nothing', ['releases'], async ({ tracker, actor }) => {
       const { before, after } = await tracker.createRelease({ id: 'contract-dry' }, actor, { dryRun: true })
       assert.equal(before, null)
       assert.equal(after.id, 'contract-dry')
       assert.deepEqual(await tracker.listReleases(), [])
     })
 
-    it('lists the issues of a release and marks it released', async ({ tracker, actor }) => {
+    it('lists the issues of a release and marks it released', ['releases'], async ({ tracker, actor }) => {
       await tracker.createRelease({ id: 'contract-2.0' }, actor)
       const first = (await tracker.createIssue({ title: 'In release one' }, actor)).after
       const second = (await tracker.createIssue({ title: 'In release two' }, actor)).after
@@ -355,7 +365,7 @@ export function runTrackerContract({ name, setup }) {
       await rejects(() => tracker.releaseIssues('no-such-release'), 'NOT_FOUND')
     })
 
-    it('logs time on an issue and shows it in the history and the metric events', async ({ tracker, actor }) => {
+    it('logs time on an issue and shows it in the history and the metric events', ['history', 'time'], async ({ tracker, actor }) => {
       const { id } = (await tracker.createIssue({ title: 'Timed' }, actor)).after
       await tracker.logTime(id, 45, actor)
       const logged = (await tracker.getHistory(id)).filter((event) => event.op === 'log_time')
@@ -363,7 +373,7 @@ export function runTrackerContract({ name, setup }) {
       assert.ok((await tracker.metricEvents()).some((event) => event.issue === id && event.op === 'log_time'))
     })
 
-    it('archived issues drop out of search', async ({ tracker, actor }) => {
+    it('archived issues drop out of search', ['issues'], async ({ tracker, actor }) => {
       const keep = (await tracker.createIssue({ title: 'Keep' }, actor)).after.id
       const drop = (await tracker.createIssue({ title: 'Drop' }, actor)).after.id
       await tracker.archive(drop, actor)
@@ -371,7 +381,7 @@ export function runTrackerContract({ name, setup }) {
       assert.deepEqual((await tracker.searchIssues({ text: 'drop' })).issues, [])
     })
 
-    it('creates a document and reads it back, and refuses a second create at the same path', async ({ tracker, actor }) => {
+    it('creates a document and reads it back, and refuses a second create at the same path', ['documents'], async ({ tracker, actor }) => {
       await rejects(() => tracker.readDocument(DOC_PATH), 'NOT_FOUND')
       const created = await tracker.createDocument(DOC_PATH, '# Notes\n\nHello.\n', actor)
       assert.equal(created.before, null)
@@ -383,7 +393,7 @@ export function runTrackerContract({ name, setup }) {
       await rejects(() => tracker.createDocument('../escape.md', 'x', actor), 'INVALID_INPUT')
     })
 
-    it('every dry run changes nothing that a following read can see', async ({ tracker, actor, today }) => {
+    it('every dry run changes nothing that a following read can see', FAMILIES, async ({ tracker, actor, today }) => {
       const { members } = await tracker.discover()
       const a = (await tracker.createIssue({ title: 'Dry A' }, actor)).after.id
       const b = (await tracker.createIssue({ title: 'Dry B' }, actor)).after.id
