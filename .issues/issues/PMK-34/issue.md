@@ -2,14 +2,16 @@
 id: PMK-34
 title: Ask for the mappings a hosted tracker cannot infer
 type: feature
-status: backlog
+status: in_progress
 priority: medium
 estimate: 5
+assignee: fred
 parent: EPC-5
 blocked_by: [PMK-33]
 milestone: linear
+branch: pmk-34-ask-for-the-mappings-a-hosted-tracker
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-25T19:13:25Z
+updated: 2026-10-28T01:55:14Z
 ---
 
 ## Description
