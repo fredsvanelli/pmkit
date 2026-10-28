@@ -671,3 +671,104 @@ test('archive archives once and returns the archived issue', async () => {
   assert.deepEqual((await linear.searchIssues({})).issues, [])
   assert.deepEqual((await linear.searchIssues({ archived: true })).issues.map((issue) => issue.id), ['ACME-1'])
 })
+
+const three = (fake) => {
+  for (const [index, title] of ['One', 'Two', 'Three'].entries()) seed(fake, { id: `uuid-${index + 1}`, title })
+}
+
+test('link blocks, related and duplicate create the Linear relation type', async () => {
+  let n = 0
+  const { tracker: linear, fake, fetch } = linearSetup({ uuid: () => `rel-uuid-${++n}` })
+  three(fake)
+  const blocks = await linear.link('ACME-1', 'ACME-2', 'blocks', 'user-1')
+  assert.deepEqual(lastVariables(fetch, 'PmkitRelationCreate').input, { id: 'rel-uuid-1', type: 'blocks', issueId: 'uuid-1', relatedIssueId: 'uuid-2' })
+  assert.deepEqual(blocks.before.blocks, [])
+  assert.deepEqual(blocks.after.blocks, ['ACME-2'])
+  assert.deepEqual((await linear.getIssue('ACME-2')).blockedBy, ['ACME-1'])
+  await linear.link('ACME-1', 'ACME-3', 'related', 'user-1')
+  assert.equal(lastVariables(fetch, 'PmkitRelationCreate').input.type, 'related')
+  assert.deepEqual((await linear.getIssue('ACME-3')).related, ['ACME-1'])
+  const duplicate = await linear.link('ACME-1', 'ACME-3', 'duplicate', 'user-1')
+  assert.equal(lastVariables(fetch, 'PmkitRelationCreate').input.type, 'duplicate')
+  assert.deepEqual(duplicate.after.duplicateOf, ['ACME-3'])
+})
+
+test('an existing link and an empty unlink send no mutation', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  fake.relate('blocks', 'ACME-1', 'ACME-2')
+  fake.relate('related', 'ACME-3', 'ACME-1')
+  for (const [from, to, kind] of [['ACME-1', 'ACME-2', 'blocks'], ['ACME-1', 'ACME-3', 'related']]) {
+    const result = await linear.link(from, to, kind, 'user-1')
+    assert.equal(result.after, result.before)
+  }
+  const empty = await linear.unlink('ACME-2', 'ACME-3', 'blocks', 'user-1')
+  assert.equal(empty.after, empty.before)
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('unlink removes the relation; related in either direction', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  fake.relate('blocks', 'ACME-1', 'ACME-2')
+  fake.relate('related', 'ACME-2', 'ACME-1')
+  const blocks = await linear.unlink('ACME-1', 'ACME-2', 'blocks', 'user-1')
+  assert.deepEqual(blocks.after.blocks, [])
+  assert.deepEqual((await linear.getIssue('ACME-2')).blockedBy, [])
+  const related = await linear.unlink('ACME-1', 'ACME-2', 'related', 'user-1')
+  assert.deepEqual(related.before.related, ['ACME-2'])
+  assert.deepEqual(related.after.related, [])
+  assert.deepEqual(fake.relations, [])
+  assert.equal(callsOf(fetch, 'PmkitRelationDelete'), 2)
+})
+
+test('a blocks link that closes a loop is refused with the path', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  fake.relate('blocks', 'ACME-1', 'ACME-2')
+  fake.relate('blocks', 'ACME-2', 'ACME-3')
+  await assert.rejects(linear.link('ACME-3', 'ACME-1', 'blocks', 'user-1'), {
+    code: 'INVALID_INPUT',
+    message: 'ACME-3 blocks ACME-1 would close a cycle: ACME-3 → ACME-1 → ACME-2 → ACME-3',
+  })
+  assert.equal(mutationsIn(fetch), 0)
+  assert.equal((await linear.link('ACME-1', 'ACME-3', 'blocks', 'user-1')).after.blocks.length, 2)
+})
+
+test('an unknown kind, a self link and a missing issue fail', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  three(fake)
+  await assert.rejects(linear.link('ACME-1', 'ACME-2', 'sibling', 'user-1'), { code: 'INVALID_INPUT', message: 'kind must be one of blocks, related, duplicate' })
+  await assert.rejects(linear.link('ACME-1', 'acme-1', 'blocks', 'user-1'), { code: 'INVALID_INPUT', message: 'ACME-1 cannot be linked to itself' })
+  await assert.rejects(linear.unlink('ACME-1', 'ACME-99', 'blocks', 'user-1'), { code: 'NOT_FOUND' })
+  await assert.rejects(linear.link('ACME-1', 'ACME-2', 'blocks', 'user-2'), { code: 'INVALID_INPUT' })
+})
+
+test('an unconfirmed relation create that happened returns the link', async () => {
+  const applied = linearSetup({ uuid: () => 'rel-uuid-1' })
+  three(applied.fake)
+  applied.fake.unconfirm('PmkitRelationCreate', { applied: true })
+  assert.deepEqual((await applied.tracker.link('ACME-1', 'ACME-2', 'blocks', 'user-1')).after.blocks, ['ACME-2'])
+  const lost = linearSetup({ uuid: () => 'rel-uuid-2' })
+  three(lost.fake)
+  lost.fake.unconfirm('PmkitRelationCreate', { applied: false })
+  await assert.rejects(lost.tracker.link('ACME-1', 'ACME-2', 'blocks', 'user-1'), { code: 'UPSTREAM' })
+  assert.deepEqual(lost.fake.mutations, ['PmkitRelationCreate'])
+})
+
+test('a dry-run link and unlink send no mutation and return the same after', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  for (const kind of ['blocks', 'related', 'duplicate']) {
+    const dry = await linear.link('ACME-1', 'ACME-2', kind, 'user-1', { dryRun: true })
+    const sent = mutationsIn(fetch)
+    assert.equal(sent, ['blocks', 'related', 'duplicate'].indexOf(kind))
+    const real = await linear.link('ACME-1', 'ACME-2', kind, 'user-1')
+    assert.deepEqual(comparable(dry.after), comparable(real.after))
+  }
+  const sent = mutationsIn(fetch)
+  const dryUnlink = await linear.unlink('ACME-1', 'ACME-2', 'related', 'user-1', { dryRun: true })
+  assert.equal(mutationsIn(fetch), sent)
+  const realUnlink = await linear.unlink('ACME-1', 'ACME-2', 'related', 'user-1')
+  assert.deepEqual(comparable(dryUnlink.after), comparable(realUnlink.after))
+})

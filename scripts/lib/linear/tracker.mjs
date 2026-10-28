@@ -12,6 +12,7 @@ import { createLinearClient } from './client.mjs'
 import { discoveryView, fetchDiscovery } from './discovery.mjs'
 import { issueOperations } from './issue-ops.mjs'
 import { linearDescription } from './mappings.mjs'
+import { relationOperations } from './relation-ops.mjs'
 import { buildLinearCapabilities } from './manifest.mjs'
 import { createTriage } from './triage.mjs'
 
@@ -147,6 +148,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     })
 
   const issues = issueOperations({ client, discovery, config, now, uuid })
+  const relations = relationOperations({ client, ops: issues, uuid })
   const contract = {
     getIssue: issues.getIssue,
     searchIssues: issues.searchIssues,
@@ -155,6 +157,8 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     moveToCategory: issues.moveToCategory,
     assign: issues.assign,
     archive: issues.archive,
+    link: relations.link,
+    unlink: relations.unlink,
   }
   const implemented = { discover, capabilities, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
   // Linear-only features sit beside the contract operations. contractView ignores them.
