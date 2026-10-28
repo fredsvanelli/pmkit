@@ -1,2 +1,11 @@
 {"at":"2026-10-25T19:13:21Z","by":"fred","op":"create","to":{"id":"PMK-42","title":"Add the linear-customers command","type":"feature","status":"backlog","priority":"low","estimate":5,"labels":[],"parent":"EPC-5","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"linear","created":"2026-10-25T19:13:21Z","updated":"2026-10-25T19:13:21Z"}}
 {"at":"2026-10-25T19:13:25Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-35"}
+{"at":"2026-10-28T17:25:54Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-28T17:25:54Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-28T17:25:55Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-42-add-the-linear-customers-command"}
+{"at":"2026-10-28T18:11:19Z","by":"fred","op":"comment","to":"2026-10-28T18-11-19Z-fred.md"}
+{"at":"2026-10-28T19:36:24Z","by":"fred","op":"comment","to":"2026-10-28T19-36-24Z-fred.md"}
+{"at":"2026-10-28T19:36:30Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-28T19:36:30Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-28T19:36:30Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-28T19:36:30Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

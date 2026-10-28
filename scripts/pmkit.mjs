@@ -296,7 +296,7 @@ async function flowInputs(tracker) {
 // Command table. `run` returns { data, text, commit }: the JSON value, the plain text and, for a write, the id for the commit message.
 // A command reaches the tracker through ctx.tracker(), which holds only the contract operations. `local: true` marks the commands
 // that work on Local tracker files; they alone use ctx.local(), and the runner refuses them for any other tracker.system.
-// `linear: true` does the same for Linear-only features (triage rotation): they use ctx.linear().
+// `linear: true` does the same for Linear-only features (triage rotation): they use ctx.linear(feature).
 export const COMMANDS = [
   {
     name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels; --tracker linear writes only .pmkit/config.yaml and returns what setup must ask',
@@ -987,18 +987,44 @@ export const COMMANDS = [
   {
     name: 'linear triage show', summary: 'who is on triage duty for a team; says so when the plan or the team setting lacks the feature',
     usage: '[--team KEY]', linear: true, flags: ['team'],
-    run: async (ctx) => (await ctx.linear()).show({ team: ctx.opt('team') }),
+    run: async (ctx) => (await ctx.linear('triage')).show({ team: ctx.opt('team') }),
   },
   {
     name: 'linear triage suggestions', summary: 'the active Triage Intelligence suggestions for the issues in a team\'s triage inbox',
     usage: '[--team KEY] [--limit n]', linear: true, flags: ['team', 'limit'],
-    run: async (ctx) => (await ctx.linear()).suggestions({ team: ctx.opt('team'), limit: ctx.opt('limit') }),
+    run: async (ctx) => (await ctx.linear('triage')).suggestions({ team: ctx.opt('team'), limit: ctx.opt('limit') }),
   },
   {
     name: 'linear triage set', summary: 'changes the manual triage rotation or its action, or turns the responsibility off; --dry-run previews',
     usage: '(--members id,.. [--action assign|notify] | --action assign|notify | --off) [--team KEY]',
     write: true, linear: true, dryRun: true, flags: ['team', 'members', 'action', 'off'],
-    run: async (ctx) => (await ctx.linear()).set({ team: ctx.opt('team'), members: ctx.opt('members'), action: ctx.opt('action'), off: ctx.flag('off') ? true : undefined, dryRun: ctx.dryRun }),
+    run: async (ctx) => (await ctx.linear('triage')).set({ team: ctx.opt('team'), members: ctx.opt('members'), action: ctx.opt('action'), off: ctx.flag('off') ? true : undefined, dryRun: ctx.dryRun }),
+  },
+  {
+    name: 'linear customers list', summary: 'customers with status, tier, revenue, size and request count, highest revenue first; says so when the workspace has no customers',
+    usage: '[--status NAME] [--tier NAME] [--limit n]', linear: true, flags: ['status', 'tier', 'limit'],
+    run: async (ctx) => (await ctx.linear('customers')).list({ status: ctx.opt('status'), tier: ctx.opt('tier'), limit: ctx.opt('limit') }),
+  },
+  {
+    name: 'linear customers show', summary: 'one customer with its requests, newest first, and what each request is linked to',
+    usage: '--customer ID_OR_NAME', linear: true, flags: ['customer'],
+    run: async (ctx) => (await ctx.linear('customers')).show({ customer: ctx.opt('customer') }),
+  },
+  {
+    name: 'linear customers set', summary: 'edits the status, tier, revenue, size, owner or name of one customer; --dry-run previews',
+    usage: '--customer ID_OR_NAME [--status NAME] [--tier NAME|none] [--revenue n] [--size n] [--owner MEMBER_ID|none] [--name TEXT]',
+    write: true, linear: true, dryRun: true, flags: ['customer', 'status', 'tier', 'revenue', 'size', 'owner', 'name'],
+    run: async (ctx) => (await ctx.linear('customers')).set({
+      customer: ctx.opt('customer'), status: ctx.opt('status'), tier: ctx.opt('tier'), revenue: ctx.opt('revenue'), size: ctx.opt('size'), owner: ctx.opt('owner'), name: ctx.opt('name'), dryRun: ctx.dryRun,
+    }),
+  },
+  {
+    name: 'linear customers link', summary: 'links a customer request to an issue or a project, or moves an existing request with --request; --dry-run previews',
+    usage: '--customer ID_OR_NAME (--issue KEY | --project NAME) [--body TEXT] [--important] [--request ID]',
+    write: true, linear: true, dryRun: true, flags: ['customer', 'issue', 'project', 'request', 'body', 'important'],
+    run: async (ctx) => (await ctx.linear('customers')).link({
+      customer: ctx.opt('customer'), issue: ctx.opt('issue'), project: ctx.opt('project'), request: ctx.opt('request'), body: ctx.opt('body'), important: ctx.flag('important') ? true : undefined, dryRun: ctx.dryRun,
+    }),
   },
   {
     name: 'validate', summary: 'checks every file and reference; problems are output, not errors', flags: [], exempt: true,
@@ -1762,10 +1788,10 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
         return tracker
       },
       // The Linear-only features of the raw Linear tracker, or null for any other system.
-      linear: async () => {
+      linear: async (feature) => {
         if (ctx.config().system !== 'linear') return null
         await ctx.tracker()
-        return tracker.triage
+        return tracker[feature]
       },
       settings: () => adapterFor(ctx.config().system, adapters).settings(ctx.config()),
       host: () => (host ??= makeHost(ctx)),

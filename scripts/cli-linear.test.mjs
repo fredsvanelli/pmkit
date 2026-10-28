@@ -9,7 +9,7 @@ import { ADAPTERS } from './lib/adapters.mjs'
 import { linearDescriptor } from './lib/linear/adapter.mjs'
 import { isMutation, operationName } from './lib/linear/client.mjs'
 import { useLinear } from './fake-hosted.mjs'
-import { ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeTriage, fakeWorkspace } from './fake-linear-api.mjs'
+import { ACME_TEAM, FAKE_KEY, fakeCustomers, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeTriage, fakeWorkspace } from './fake-linear-api.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { epicRecord } from './lib/format.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
@@ -1144,4 +1144,370 @@ test('a milestone, a document and a milestone of an issue are readable', async (
 test('a Local epic prints no health, progress, milestones or documents line', () => {
   const text = epicRecord({ id: 'EPC-1', title: 'Local', status: { name: 'Planned', category: 'todo' }, start: '2026-11-01', description: 'Body' })
   assert.equal(text, 'id: EPC-1\ntitle: Local\nstatus: Planned (todo)\nstart: 2026-11-01\n\nBody')
+})
+
+// Customers (PMK-42). The workspace with customers off is the proof for the absent capability; the workspaces with customers on use the fake.
+const CUSTOMER_OPERATIONS = ['PmkitCustomersList', 'PmkitCustomerShow', 'PmkitCustomerStatuses', 'PmkitCustomerTiers', 'PmkitCustomerIssue', 'PmkitCustomerProjects', 'PmkitCustomerUpdate', 'PmkitCustomerNeedCreate', 'PmkitCustomerNeedUpdate']
+const customerCalls = (fetch) => fetch.calls.filter((call) => CUSTOMER_OPERATIONS.includes(operationName(call.body.query)))
+const customersFetch = ({ workspace = {}, customers = {} } = {}) => fakeLinearFetch({ ...fakeWorkspace(workspace), ...fakeCustomers(customers) })
+const CUSTOMERS_PLAN = { type: 'Business' }
+const ON = { subscription: CUSTOMERS_PLAN, customersEnabled: true }
+const customerNode = (id, name, extra = {}) => ({
+  id,
+  name,
+  status: { id: 'st-1', name: 'Active' },
+  tier: { id: 'tier-1', name: 'Gold' },
+  revenue: 1000,
+  size: 10,
+  owner: { id: 'user-2', name: 'Ada Lovelace' },
+  approximateNeedCount: 0,
+  url: `https://linear.app/acme/customer/${id}`,
+  ...extra,
+})
+const CUSTOMERS = [
+  customerNode('cust-1', 'Globex', { status: { id: 'st-2', name: 'Prospect' }, tier: null, revenue: null, size: 30, approximateNeedCount: 1 }),
+  customerNode('cust-2', 'ACME Corp', { revenue: 120000, size: 450, approximateNeedCount: 7 }),
+  customerNode('cust-3', 'Initech', { tier: { id: 'tier-2', name: 'Silver' }, revenue: 5000 }),
+]
+const onFetch = (customers = {}) => customersFetch({ workspace: ON, customers: { customers: CUSTOMERS, ...customers } })
+
+test('linear customers list on a Free workspace is unavailable and sends no customer query', async () => {
+  const fetch = customersFetch()
+  const json = await cli(setup(), ['linear', 'customers', 'list', '--json'], fetch)
+  assert.equal(json.code, 0, json.stderr)
+  assert.deepEqual(JSON.parse(json.stdout), { available: false, reason: 'customers_off', plan: 'free', enableHint: 'An admin can turn on customer requests in the workspace settings.' })
+  const text = await cli(setup(), ['linear', 'customers', 'list'], fetch)
+  assert.equal(text.stdout, 'customers: unavailable\nreason: customers_off\nplan: free\nenable: An admin can turn on customer requests in the workspace settings.\n')
+  assert.equal(customerCalls(fetch).length, 0)
+  assert.equal(mutationCalls(fetch).length, 0)
+})
+
+test('linear customers list with customers off reports customers_off and sends no customer query', async () => {
+  const fetch = customersFetch({ workspace: { subscription: CUSTOMERS_PLAN } })
+  const data = JSON.parse((await cli(setup(), ['linear', 'customers', 'list', '--json'], fetch)).stdout)
+  assert.deepEqual([data.available, data.reason, data.enableHint], [false, 'customers_off', 'An admin can turn on customer requests in the workspace settings.'])
+  assert.equal(customerCalls(fetch).length, 0)
+})
+
+test('linear customers list reports a stale cache when Linear says customers are not available', async () => {
+  const fetch = customersFetch({ workspace: ON, customers: { disabledError: true } })
+  const result = await cli(setup(), ['linear', 'customers', 'list', '--json'], fetch)
+  assert.equal(result.code, 0, result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.deepEqual([data.available, data.reason], [false, 'stale'])
+  assert.match(data.enableHint, /pmkit discover/)
+  assert.equal(mutationCalls(fetch).length, 0)
+})
+
+test('linear customers list sorts by revenue and prints the aligned lines', async () => {
+  const fetch = onFetch()
+  const json = JSON.parse((await cli(setup(), ['linear', 'customers', 'list', '--json'], fetch)).stdout)
+  assert.equal(json.available, true)
+  assert.equal(json.hasMore, false)
+  assert.deepEqual(json.customers.map((item) => item.name), ['ACME Corp', 'Initech', 'Globex'])
+  assert.deepEqual(json.customers[0], {
+    id: 'cust-2',
+    name: 'ACME Corp',
+    status: { id: 'st-1', name: 'Active' },
+    tier: { id: 'tier-1', name: 'Gold' },
+    revenue: 120000,
+    size: 450,
+    owner: { id: 'user-2', name: 'Ada Lovelace' },
+    requests: 7,
+    url: 'https://linear.app/acme/customer/cust-2',
+  })
+  const text = await cli(setup(), ['linear', 'customers', 'list'], onFetch())
+  assert.match(text.stdout, /^ACME Corp +status Active +tier Gold +revenue 120000 +size 450 +requests 7\n/)
+  assert.match(text.stdout, /\nGlobex +status Prospect +tier - +revenue - +size 30 +requests 1\n$/)
+  assert.equal(mutationCalls(fetch).length, 0)
+})
+
+test('linear customers list filters by status and tier name in the query', async () => {
+  const fetch = onFetch()
+  const byTier = JSON.parse((await cli(setup(), ['linear', 'customers', 'list', '--tier', 'silver', '--json'], fetch)).stdout)
+  assert.deepEqual(byTier.customers.map((item) => item.name), ['Initech'])
+  const call = fetch.calls.find((item) => operationName(item.body.query) === 'PmkitCustomersList')
+  assert.deepEqual(call.body.variables.filter, { tier: { id: { eq: 'tier-2' } } })
+  const byStatus = JSON.parse((await cli(setup(), ['linear', 'customers', 'list', '--status', 'PROSPECT', '--json'], onFetch())).stdout)
+  assert.deepEqual(byStatus.customers.map((item) => item.name), ['Globex'])
+  const unknown = await cli(setup(), ['linear', 'customers', 'list', '--status', 'Nope', '--json'], onFetch())
+  assert.equal(unknown.code, 2)
+  assert.equal(errorOf(unknown).code, 'INVALID_INPUT')
+  assert.match(errorOf(unknown).nextStep, /Active, Prospect, Churned, Lost/)
+})
+
+test('linear customers list limits the page and warns when more customers exist', async () => {
+  const many = Array.from({ length: 120 }, (_, index) => customerNode(`c-${index}`, `Name ${index}`))
+  const fetch = onFetch({ customers: many })
+  const result = await cli(setup(), ['linear', 'customers', 'list', '--json'], fetch)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.customers.length, 50)
+  assert.equal(data.hasMore, true)
+  assert.match(result.stderr, /more customers exist than --limit 50/)
+  const capped = await cli(setup(), ['linear', 'customers', 'list', '--limit', '500', '--json'], onFetch({ customers: many }))
+  assert.equal(JSON.parse(capped.stdout).customers.length, 100)
+  assert.match(capped.stderr, /--limit 500 is above 100; using 100/)
+  const bad = await cli(setup(), ['linear', 'customers', 'list', '--limit', '0', '--json'], onFetch())
+  assert.equal(errorOf(bad).code, 'INVALID_INPUT')
+})
+
+test('linear customers list says there are no customers yet', async () => {
+  const result = await cli(setup(), ['linear', 'customers', 'list'], onFetch({ customers: [] }))
+  assert.equal(result.stdout, 'no customers yet\n')
+})
+
+test('linear customers list on a Local repository exits 2 with NOT_SUPPORTED', async () => {
+  const root = makeRepo('basic')
+  const result = await run(['linear', 'customers', 'list', '--json'], { cwd: root, env: { ...childEnv(), ...userStoreEnv().env } })
+  assert.equal(result.code, 2)
+  assert.equal(errorOf(result).code, 'NOT_SUPPORTED')
+})
+
+test('linear customers list without a key exits 2 with AUTH and sends nothing, and prints no key', async () => {
+  const fetch = onFetch()
+  const result = await cli(setup({ withKey: false }), ['linear', 'customers', 'list', '--json'], fetch)
+  assert.equal(errorOf(result).code, 'AUTH')
+  assert.equal(fetch.calls.length, 0)
+  const ok = await cli(setup(), ['linear', 'customers', 'list', '--json'], onFetch())
+  assert.ok(!ok.stdout.includes(FAKE_KEY) && !ok.stderr.includes(FAKE_KEY))
+})
+
+const NEEDS = [
+  { id: 'need-1', customerId: 'cust-2', body: 'Wants SSO', priority: 1, createdAt: '2026-10-01T00:00:00Z', issue: { id: 'iss-12', identifier: 'ACME-12', title: 'SSO login', archivedAt: null } },
+  { id: 'need-2', customerId: 'cust-2', body: 'Mobile app', priority: 0, createdAt: '2026-10-05T00:00:00Z', project: { id: 'proj-1', name: 'Mobile' } },
+  { id: 'need-3', customerId: 'cust-2', body: 'General wish', priority: 0, createdAt: '2026-10-03T00:00:00Z' },
+  { id: 'need-4', customerId: 'cust-2', body: 'Old', priority: 0, createdAt: '2026-09-01T00:00:00Z', issue: { id: 'iss-3', identifier: 'ACME-3', title: 'Gone', archivedAt: '2026-09-02T00:00:00Z' } },
+  { id: 'need-5', customerId: 'cust-3', body: 'Other', priority: 0, createdAt: '2026-10-02T00:00:00Z' },
+]
+const withNeeds = (extra = {}) => onFetch({ needs: NEEDS, ...extra })
+
+test('linear customers show on a Free workspace is unavailable and sends no customer query', async () => {
+  const fetch = customersFetch()
+  const json = await cli(setup(), ['linear', 'customers', 'show', '--customer', 'acme', '--json'], fetch)
+  assert.equal(json.code, 0, json.stderr)
+  assert.deepEqual(JSON.parse(json.stdout), { available: false, reason: 'customers_off', plan: 'free', enableHint: 'An admin can turn on customer requests in the workspace settings.' })
+  const text = await cli(setup(), ['linear', 'customers', 'show', '--customer', 'acme'], fetch)
+  assert.match(text.stdout, /^customers: unavailable\n/)
+  assert.equal(customerCalls(fetch).length, 0)
+  assert.equal(mutationCalls(fetch).length, 0)
+})
+
+test('linear customers show lists the requests newest first with their targets', async () => {
+  const fetch = withNeeds()
+  const result = await cli(setup(), ['linear', 'customers', 'show', '--customer', 'cust-2', '--json'], fetch)
+  assert.equal(result.code, 0, result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.available, true)
+  assert.equal(data.customer.name, 'ACME Corp')
+  assert.deepEqual(data.requests.map((request) => request.id), ['need-2', 'need-3', 'need-1', 'need-4'])
+  assert.deepEqual(data.requests.map((request) => request.target), [
+    { type: 'project', id: 'proj-1', name: 'Mobile' },
+    null,
+    { type: 'issue', id: 'ACME-12', title: 'SSO login' },
+    { type: 'issue', id: 'ACME-3', title: 'Gone', archived: true },
+  ])
+  assert.deepEqual(data.requests.map((request) => request.important), [false, false, true, false])
+  assert.equal(mutationCalls(fetch).length, 0)
+  const text = await cli(setup(), ['linear', 'customers', 'show', '--customer', 'cust-2'], withNeeds())
+  assert.match(text.stdout, /^ACME Corp +status Active/)
+  assert.match(text.stdout, /\n {2}need-1 +important +issue ACME-12 "SSO login" +Wants SSO\n/)
+  assert.match(text.stdout, /\n {2}need-3 +normal +no target +General wish\n/)
+  assert.match(text.stdout, /\n {2}need-2 +normal +project "Mobile" +Mobile app\n/)
+  assert.match(text.stdout, /\n {2}need-4 +normal +issue ACME-3 "Gone" \(archived\) +Old\n$/)
+})
+
+test('linear customers show matches the id, then the exact name', async () => {
+  const byName = JSON.parse((await cli(setup(), ['linear', 'customers', 'show', '--customer', 'acme corp', '--json'], withNeeds())).stdout)
+  assert.equal(byName.customer.id, 'cust-2')
+  const twins = onFetch({ customers: [customerNode('c-a', 'Twin'), customerNode('c-b', 'twin')] })
+  const ambiguous = await cli(setup(), ['linear', 'customers', 'show', '--customer', 'TWIN', '--json'], twins)
+  assert.equal(errorOf(ambiguous).code, 'INVALID_INPUT')
+  assert.match(errorOf(ambiguous).nextStep, /c-a, c-b/)
+  const missing = await cli(setup(), ['linear', 'customers', 'show', '--customer', 'nobody', '--json'], withNeeds())
+  assert.equal(errorOf(missing).code, 'NOT_FOUND')
+  const none = await cli(setup(), ['linear', 'customers', 'show', '--json'], withNeeds())
+  assert.equal(errorOf(none).code, 'INVALID_INPUT')
+})
+
+const setArgs = (...args) => ['linear', 'customers', 'set', '--customer', 'cust-2', ...args]
+const customerMutations = (fetch) => mutationCalls(fetch).filter((call) => operationName(call.body.query) === 'PmkitCustomerUpdate')
+
+test('linear customers set on a Free workspace is NOT_SUPPORTED, with and without --dry-run, and sends nothing', async () => {
+  for (const extra of [[], ['--dry-run']]) {
+    const fetch = customersFetch()
+    const result = await cli(setup(), ['linear', 'customers', 'set', '--customer', 'acme', '--tier', 'gold', ...extra, '--json'], fetch)
+    assert.equal(result.code, 2, extra.join(' '))
+    assert.equal(errorOf(result).code, 'NOT_SUPPORTED')
+    assert.equal(errorOf(result).message, 'customers are unavailable on this workspace (customers are off)')
+    assert.equal(errorOf(result).nextStep, 'An admin can turn on customer requests in the workspace settings.')
+    assert.equal(customerCalls(fetch).length, 0)
+    assert.equal(mutationCalls(fetch).length, 0)
+  }
+})
+
+test('linear customers set sends one update per field with the ids Linear returned', async () => {
+  const cases = [
+    [['--status', 'prospect'], { statusId: 'st-2' }, (after) => after.status.name === 'Prospect'],
+    [['--tier', 'SILVER'], { tierId: 'tier-2' }, (after) => after.tier.name === 'Silver'],
+    [['--tier', 'none'], { tierId: null }, (after) => after.tier === null],
+    [['--revenue', '5000'], { revenue: 5000 }, (after) => after.revenue === 5000],
+    [['--size', '12'], { size: 12 }, (after) => after.size === 12],
+    [['--owner', 'user-1'], { ownerId: 'user-1' }, (after) => after.owner.name === 'Test User'],
+    [['--name', 'ACME Inc'], { name: 'ACME Inc' }, (after) => after.name === 'ACME Inc'],
+  ]
+  for (const [args, input, check] of cases) {
+    const fetch = withNeeds()
+    const result = await cli(setup(), [...setArgs(...args), '--json'], fetch)
+    assert.equal(result.code, 0, `${args.join(' ')}: ${result.stderr}`)
+    const sent = customerMutations(fetch)
+    assert.equal(sent.length, 1, args.join(' '))
+    assert.deepEqual(sent[0].body.variables, { id: 'cust-2', input })
+    assert.equal(mutationCalls(fetch).length, 1)
+    const data = JSON.parse(result.stdout)
+    assert.equal(data.before.name, 'ACME Corp')
+    assert.ok(check(data.after), args.join(' '))
+    assert.ok(!JSON.stringify(sent[0].body).includes(FAKE_KEY))
+  }
+})
+
+test('linear customers set refuses bad input with INVALID_INPUT and sends nothing', async () => {
+  const cases = [[], ['--status', 'Gone'], ['--tier', 'Bronze'], ['--revenue', '1.5'], ['--revenue', '-1'], ['--size', 'big'], ['--owner', 'user-9'], ['--name', '']]
+  for (const args of cases) {
+    const fetch = withNeeds()
+    const result = await cli(setup(), [...setArgs(...args), '--json'], fetch)
+    assert.equal(result.code, 2, args.join(' '))
+    assert.equal(errorOf(result).code, 'INVALID_INPUT', args.join(' '))
+    assert.equal(mutationCalls(fetch).length, 0)
+  }
+  const unknown = await cli(setup(), ['linear', 'customers', 'set', '--customer', 'nobody', '--tier', 'gold', '--json'], withNeeds())
+  assert.equal(errorOf(unknown).code, 'NOT_FOUND')
+})
+
+test('linear customers set with no change prints nothing to change and sends no mutation', async () => {
+  const fetch = withNeeds()
+  const result = await cli(setup(), setArgs('--tier', 'gold', '--revenue', '120000'), fetch)
+  assert.equal(result.code, 0, result.stderr)
+  assert.match(result.stdout, /\nnothing to change\n$/)
+  assert.equal(mutationCalls(fetch).length, 0)
+})
+
+test('linear customers set --dry-run returns before and after and sends no mutation', async () => {
+  const fetch = withNeeds()
+  const json = JSON.parse((await cli(setup(), [...setArgs('--tier', 'silver', '--owner', 'none'), '--dry-run', '--json'], fetch)).stdout)
+  assert.deepEqual([json.before.tier.name, json.after.tier.name, json.before.owner.id, json.after.owner], ['Gold', 'Silver', 'user-2', null])
+  const text = await cli(setup(), [...setArgs('--revenue', '1'), '--dry-run'], withNeeds())
+  assert.match(text.stdout, /before:\n {2}ACME Corp .*revenue 120000/)
+  assert.match(text.stdout, /after:\n {2}ACME Corp .*revenue 1 /)
+  assert.match(text.stdout, /\ndry run: nothing was written\n$/)
+  assert.equal(mutationCalls(fetch).length, 0)
+})
+
+const LINK_ISSUES = [
+  { id: 'iss-12', identifier: 'ACME-12', title: 'SSO login', archivedAt: null, trashed: false },
+  { id: 'iss-20', identifier: 'ACME-20', title: 'Export', archivedAt: null, trashed: false },
+  { id: 'iss-9', identifier: 'ACME-9', title: 'Deleted', archivedAt: null, trashed: true },
+]
+const LINK_PROJECTS = [
+  { id: 'proj-1', name: 'Mobile', slugId: 'mobile-1a' },
+  { id: 'proj-2', name: 'Web', slugId: 'web-2b' },
+  { id: 'proj-3', name: 'Web Admin', slugId: 'webadmin-3c' },
+  { id: 'proj-4', name: 'Dup', slugId: 'dup-4d' },
+  { id: 'proj-5', name: 'dup', slugId: 'dup-5e' },
+]
+const linkFetch = (extra = {}) => withNeeds({ issues: LINK_ISSUES, projects: LINK_PROJECTS, ...extra })
+const linkArgs = (customer, ...args) => ['linear', 'customers', 'link', '--customer', customer, ...args]
+const writesOf = (fetch, name) => mutationCalls(fetch).filter((call) => operationName(call.body.query) === name)
+
+test('linear customers link on a Free workspace is NOT_SUPPORTED, with and without --dry-run, and sends nothing', async () => {
+  for (const extra of [[], ['--dry-run']]) {
+    const fetch = customersFetch()
+    const result = await cli(setup(), [...linkArgs('acme', '--issue', 'ACME-12', ...extra), '--json'], fetch)
+    assert.equal(result.code, 2, extra.join(' '))
+    assert.equal(errorOf(result).code, 'NOT_SUPPORTED')
+    assert.equal(errorOf(result).message, 'customers are unavailable on this workspace (customers are off)')
+    assert.equal(customerCalls(fetch).length, 0)
+    assert.equal(mutationCalls(fetch).length, 0)
+  }
+})
+
+test('linear customers link creates a request on an issue after reading it', async () => {
+  const fetch = linkFetch()
+  const result = await cli(setup(), [...linkArgs('Initech', '--issue', 'acme-20', '--important', '--body', 'Needs export'), '--json'], fetch)
+  assert.equal(result.code, 0, result.stderr)
+  const sent = writesOf(fetch, 'PmkitCustomerNeedCreate')
+  assert.equal(sent.length, 1)
+  assert.equal(mutationCalls(fetch).length, 1)
+  assert.deepEqual(sent[0].body.variables, { input: { customerId: 'cust-3', issueId: 'iss-20', priority: 1, body: 'Needs export' } })
+  assert.ok(callsOf(fetch, 'PmkitCustomerIssue') >= 1)
+  assert.deepEqual(JSON.parse(result.stdout), {
+    customer: { id: 'cust-3', name: 'Initech' },
+    target: { type: 'issue', id: 'ACME-20', title: 'Export' },
+    request: { kind: 'create', id: 'need-new', from: null },
+  })
+  assert.ok(!JSON.stringify(sent[0].body).includes(FAKE_KEY))
+})
+
+test('linear customers link creates a request on a project matched by exact name or slug', async () => {
+  const fetch = linkFetch()
+  const byName = JSON.parse((await cli(setup(), [...linkArgs('Initech', '--project', 'web'), '--json'], fetch)).stdout)
+  assert.deepEqual(byName.target, { type: 'project', id: 'proj-2', name: 'Web' })
+  assert.deepEqual(writesOf(fetch, 'PmkitCustomerNeedCreate')[0].body.variables.input, { customerId: 'cust-3', projectId: 'proj-2', priority: 0 })
+  const bySlug = JSON.parse((await cli(setup(), [...linkArgs('Initech', '--project', 'webadmin-3c'), '--json'], linkFetch())).stdout)
+  assert.equal(bySlug.target.id, 'proj-3')
+  const none = await cli(setup(), [...linkArgs('Initech', '--project', 'Nowhere'), '--json'], linkFetch())
+  assert.equal(errorOf(none).code, 'NOT_FOUND')
+  assert.match(errorOf(none).nextStep, /slug/)
+  const several = await cli(setup(), [...linkArgs('Initech', '--project', 'DUP'), '--json'], linkFetch())
+  assert.equal(errorOf(several).code, 'INVALID_INPUT')
+  assert.match(errorOf(several).nextStep, /Dup \(dup-4d\), dup \(dup-5e\)/)
+})
+
+test('linear customers link --request moves a request and reports where it was', async () => {
+  const fetch = linkFetch()
+  const result = await cli(setup(), [...linkArgs('cust-2', '--request', 'need-1', '--project', 'Web'), '--json'], fetch)
+  assert.equal(result.code, 0, result.stderr)
+  const sent = writesOf(fetch, 'PmkitCustomerNeedUpdate')
+  assert.equal(sent.length, 1)
+  assert.equal(mutationCalls(fetch).length, 1)
+  assert.deepEqual(sent[0].body.variables, { id: 'need-1', input: { issueId: null, projectId: 'proj-2' } })
+  assert.deepEqual(JSON.parse(result.stdout).request, { kind: 'move', id: 'need-1', from: { type: 'issue', id: 'ACME-12', title: 'SSO login' } })
+})
+
+test('linear customers link refuses bad input without a mutation', async () => {
+  const cases = [
+    [['--issue', 'ACME-12', '--project', 'Web'], 'INVALID_INPUT'],
+    [[], 'INVALID_INPUT'],
+    [['--issue', 'nope'], 'INVALID_INPUT'],
+    [['--issue', 'ACME-99'], 'NOT_FOUND'],
+    [['--issue', 'ACME-9'], 'NOT_FOUND'],
+    [['--request', 'need-1', '--issue', 'ACME-20', '--body', 'x'], 'INVALID_INPUT'],
+    [['--request', 'need-1', '--issue', 'ACME-20', '--important'], 'INVALID_INPUT'],
+    [['--request', 'need-5', '--issue', 'ACME-20'], 'INVALID_INPUT'],
+    [['--issue', 'ACME-12'], 'CONFLICT'],
+  ]
+  for (const [args, code] of cases) {
+    const fetch = linkFetch()
+    const result = await cli(setup(), [...linkArgs('cust-2', ...args), '--json'], fetch)
+    assert.equal(result.code, 2, args.join(' '))
+    assert.equal(errorOf(result).code, code, args.join(' '))
+    assert.equal(mutationCalls(fetch).length, 0, args.join(' '))
+  }
+  const conflict = await cli(setup(), [...linkArgs('cust-2', '--issue', 'ACME-12'), '--json'], linkFetch())
+  assert.match(errorOf(conflict).message, /need-1/)
+  assert.match(errorOf(conflict).nextStep, /--request/)
+  const malformed = linkFetch()
+  await cli(setup(), [...linkArgs('cust-2', '--issue', 'nope'), '--json'], malformed)
+  assert.equal(customerCalls(malformed).length, 0)
+})
+
+test('linear customers link --dry-run resolves with reads and sends no mutation', async () => {
+  const fetch = linkFetch()
+  const create = JSON.parse((await cli(setup(), [...linkArgs('Initech', '--issue', 'ACME-20'), '--dry-run', '--json'], fetch)).stdout)
+  assert.deepEqual(create.request, { kind: 'create', id: null, from: null })
+  const move = JSON.parse((await cli(setup(), [...linkArgs('cust-2', '--request', 'need-3', '--issue', 'ACME-20'), '--dry-run', '--json'], fetch)).stdout)
+  assert.deepEqual(move.request, { kind: 'move', id: 'need-3', from: null })
+  assert.equal(mutationCalls(fetch).length, 0)
+  const text = await cli(setup(), [...linkArgs('Initech', '--issue', 'ACME-20'), '--dry-run'], linkFetch())
+  assert.match(text.stdout, /^customer: Initech\ntarget: issue ACME-20 "Export"\nrequest: create\n/)
+  assert.match(text.stdout, /\ndry run: nothing was written\n$/)
 })

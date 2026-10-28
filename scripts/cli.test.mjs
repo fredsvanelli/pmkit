@@ -1461,6 +1461,8 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'pr open': ['--issue', 'ISS-5N1R'],
     'pr ready': ['--issue', 'ISS-5N1R'],
     'pr sync': [],
+    'linear customers set': ['--customer', 'acme', '--tier', 'gold'],
+    'linear customers link': ['--customer', 'acme', '--issue', 'ACME-1'],
     'linear triage set': ['--off'],
     migrate: [],
   }
@@ -1552,6 +1554,8 @@ test('every read goes on with one warning', () => {
     risks: [],
     'pr status': [],
     reindex: [],
+    'linear customers list': [],
+    'linear customers show': ['--customer', 'acme'],
     'linear triage show': [],
     'linear triage suggestions': [],
     render: ['board'],

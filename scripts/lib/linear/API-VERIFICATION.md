@@ -19,6 +19,7 @@ Without `PMKIT_LIVE=1` the script sends nothing. It sends only queries and refus
 | Releases | yes | `Release`, `ReleasePipeline`, `ReleaseStage`; `releases`, `releasePipelines`; `releaseCreate`, `releaseComplete`, `issueToReleaseCreate`; `Issue.releases` | read/write | Business and Enterprise | schema, live read, docs | `Organization.releasesEnabled` is `false` on this workspace. Write access comes from the schema only. |
 | Insights | no | none | none | Business and Enterprise (UI) | schema, docs | PMK-33 treats `native_metrics` as `derived`. |
 | Triage responsibility and Triage Intelligence | yes | `Team.triageResponsibility`, `TriageResponsibility`, `TimeSchedule`; `triageResponsibilityCreate`, `triageResponsibilityUpdate`, `triageResponsibilityDelete`; `IssueSuggestion`, `Issue.suggestions` | read/write for triage responsibility, read for suggestions | Business and Enterprise | schema, live read, docs | The mutations come from the schema only. Both reads answer on Free, so the plan decides. |
+| Customers and customer requests | yes | `Customer`, `CustomerNeed`, `CustomerStatus`, `CustomerTier`; `customers`, `customerNeeds`, `customerStatuses`, `customerTiers`; `customerUpdate`, `customerNeedCreate`, `customerNeedUpdate`; `Organization.customersEnabled` | read/write | Linear tab says Business and Enterprise; the docs page says all plans, enabled by an admin | schema, live read, docs | The mutations come from the schema only. Customer reads fail when the feature is off, so the `customersEnabled` flag decides, on any plan. |
 
 ## Recurring issues
 
@@ -123,6 +124,16 @@ The adapter's own documents were also sent live on 2026-10-28, with `client-live
 
 Writes are not proven live. `projectCreate` and `projectUpdateCreate` run against the stateful fake in `npm test`, and PMK-39 tries them on a throwaway project. A Free workspace may refuse them, and the refusal reaches the command as `UPSTREAM` with Linear's message.
 
+## Customers and customer requests
+
+Schema. `Customer` has `id`, `name`, `status` (`CustomerStatus`), `tier` (`CustomerTier`, nullable), `revenue` (`Int`, nullable), `size` (`Float`, nullable), `owner` (`User`), `domains`, `externalIds`, `approximateNeedCount`, `slugId`, `url` and `needs`. `CustomerStatus` and `CustomerTier` have `id`, `name`, `displayName`, `color`, `description` and `position`. `CustomerNeed` is the customer request. It has `customer`, `issue`, `project`, `priority` (0 or 1), `body` and `url`, and it may have neither an issue nor a project. The queries are `customers`, `customer`, `customerNeeds`, `customerNeed`, `customerStatuses` and `customerTiers`. The mutations pmkit uses are `customerUpdate` (`id`, input `CustomerUpdateInput`: `name`, `statusId`, `tierId`, `revenue`, `size`, `ownerId`), `customerNeedCreate` (input `CustomerNeedCreateInput`: `customerId`, `issueId`, `projectId`, `priority`, `body`) and `customerNeedUpdate` (`id`, input `CustomerNeedUpdateInput`, which can move a request). Their payloads return `success` and the object. Revenue has no unit in the schema.
+
+Live. On the sandbox workspace (Free), `customers(first: 1)` and `customerNeeds(first: 1)` fail with "Customer requests are not available in this workspace." `customerStatuses` answers with four statuses and `customerTiers` with an empty list. `Organization.customersEnabled` is false. No mutation was sent.
+
+Docs. `https://linear.app/docs/customer-requests` (read 2026-10-28; `https://linear.app/docs/customers` answered 404) says "Customer Requests is available on all currently offered plans", that an admin enables it in workspace settings, and that after that anyone in the workspace except guests can view and edit customers. This differs from the Linear tab, which marks the feature Business. The sandbox result fits the docs: the workspace has the feature off, and customer reads fail until it is on.
+
+Answer `yes`, access `read/write`. The three mutations stay `schema` because none was sent. `linear customers` decides from `customersEnabled` in the cached discovery and sends no customer query when it is false. When the flag is false the reason is `customers_off` on every plan, with the hint "An admin can turn on customer requests in the workspace settings.", because the docs say the feature exists on all plans and the docs win over the Linear tab (decided in PMK-42 review).
+
 ## Paid-plan features on a Free workspace
 
 Check a gated feature in this order.
@@ -132,7 +143,7 @@ Check a gated feature in this order.
 3. Live read. An empty list proves the query is allowed. A permission error proves a gate and goes into the Caveat.
 4. Live write. Not done in PMK-29. A write that depends on the plan stays `schema, docs` until a later issue tries it on a Business or trial workspace with a dedicated test team.
 
-A read passes on Free for triage responsibility and suggestions, so for these objects the plan decides and an empty answer proves nothing.
+A read passes on Free for triage responsibility and suggestions, so for these objects the plan decides and an empty answer proves nothing. Customer reads fail on Free, but the statuses and tiers reads pass, so for customers the `customersEnabled` flag decides.
 
 ## Repeat the check
 

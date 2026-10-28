@@ -19,6 +19,7 @@ import { linearDescription } from './mappings.mjs'
 import { projectOperations } from './project-ops.mjs'
 import { relationOperations } from './relation-ops.mjs'
 import { buildLinearCapabilities } from './manifest.mjs'
+import { createCustomers } from './customers.mjs'
 import { createTriage } from './triage.mjs'
 
 const CACHE_TTL_SECONDS = 3600
@@ -191,5 +192,6 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
   const implemented = { discover, capabilities, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
   // Linear-only features sit beside the contract operations. contractView ignores them.
   const triage = createTriage({ client, discovery, config })
-  return { ...Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)])), triage }
+  const customers = createCustomers({ client, discovery, config })
+  return { ...Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)])), triage, customers }
 }

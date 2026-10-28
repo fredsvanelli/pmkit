@@ -841,3 +841,46 @@ test('mutations lists the project mutations after a call, and unconfirm answers 
   assert.equal((await send(fetch, PROJECT_CREATE, { input: { name: 'Lost', teamIds: ['team-acme'] } })).status, 502)
   assert.equal((await projectsOf(fetch, {})).nodes.length, 1)
 })
+
+import { CUSTOMERS_DISABLED, fakeCustomers } from './fake-linear-api.mjs'
+
+const CUSTOMER = { id: 'cust-1', name: 'ACME Corp', status: { id: 'st-1', name: 'Active' }, tier: null, revenue: 10, size: 5, owner: null, approximateNeedCount: 1, url: 'u' }
+const ISSUE_A = { id: 'iss-1', identifier: 'ACME-12', title: 'Login', archivedAt: null, trashed: false }
+const NEED = { id: 'need-1', customerId: 'cust-1', body: 'b', priority: 0, createdAt: '2026-10-01T00:00:00Z', issueId: 'iss-1' }
+const ask = async (fetch, name, variables = {}) => JSON.parse(await (await post(fetch, `query ${name} { x }`, variables)).text())
+
+test('fakeCustomers answers the queries and the mutation routes echo their variables', async () => {
+  const fetch = fakeLinearFetch(fakeCustomers({ customers: [CUSTOMER], needs: [NEED], issues: [ISSUE_A], projects: [{ id: 'proj-1', name: 'Mobile', slugId: 'mob' }] }))
+  assert.equal((await ask(fetch, 'PmkitCustomersList', { first: 10 })).data.customers.nodes.length, 1)
+  assert.equal((await ask(fetch, 'PmkitCustomersList', { first: 10, filter: { tier: { id: { eq: 'tier-1' } } } })).data.customers.nodes.length, 0)
+  const show = (await ask(fetch, 'PmkitCustomerShow', { id: 'cust-1' })).data.customer
+  assert.deepEqual(show.needs.nodes.map((need) => [need.id, need.customer.id, need.issue.identifier]), [['need-1', 'cust-1', 'ACME-12']])
+  assert.equal((await ask(fetch, 'PmkitCustomerStatuses')).data.customerStatuses.nodes.length, 4)
+  assert.deepEqual((await ask(fetch, 'PmkitCustomerTiers')).data.customerTiers.nodes.map((tier) => tier.name), ['Gold', 'Silver'])
+  assert.equal((await ask(fetch, 'PmkitCustomerIssue', { id: 'acme-12' })).data.issues.nodes[0].id, 'iss-1')
+  assert.deepEqual((await ask(fetch, 'PmkitCustomerIssue', { id: 'ACME-99' })).data.issues.nodes, [])
+  assert.equal((await ask(fetch, 'PmkitCustomerProjects', { name: 'mob' })).data.projects.nodes[0].id, 'proj-1')
+  const update = (await ask(fetch, 'PmkitCustomerUpdate', { id: 'cust-1', input: { tierId: 'tier-2', revenue: 99, ownerId: 'user-2' } })).data.customerUpdate
+  assert.deepEqual([update.success, update.customer.tier, update.customer.revenue, update.customer.owner], [true, { id: 'tier-2', name: 'Silver' }, 99, { id: 'user-2', name: 'Ada Lovelace' }])
+  const created = (await ask(fetch, 'PmkitCustomerNeedCreate', { input: { customerId: 'cust-1', projectId: 'proj-1', priority: 1, body: 'hi' } })).data.customerNeedCreate
+  assert.deepEqual([created.need.id, created.need.priority, created.need.project.name, created.need.issue], ['need-new', 1, 'Mobile', null])
+  const moved = (await ask(fetch, 'PmkitCustomerNeedUpdate', { id: 'need-1', input: { issueId: null, projectId: 'proj-1' } })).data.customerNeedUpdate
+  assert.deepEqual([moved.need.id, moved.need.issue, moved.need.project.id], ['need-1', null, 'proj-1'])
+})
+
+test('fakeCustomers with disabledError fails the two customer queries and keeps statuses and tiers', async () => {
+  const fetch = fakeLinearFetch(fakeCustomers({ disabledError: true }))
+  for (const name of ['PmkitCustomersList', 'PmkitCustomerShow']) assert.equal((await ask(fetch, name, { id: 'x' })).errors[0].message, CUSTOMERS_DISABLED)
+  assert.ok((await ask(fetch, 'PmkitCustomerStatuses')).data)
+})
+
+test('a Free and a Business workspace record each customer operation by name', async () => {
+  const free = fakeLinearFetch({ ...fakeWorkspace(), ...fakeCustomers() })
+  const business = fakeLinearFetch({ ...fakeWorkspace({ customersEnabled: true, subscription: { type: 'Business' } }), ...fakeCustomers() })
+  await ask(free, 'PmkitWorkspace')
+  await ask(business, 'PmkitWorkspace')
+  await ask(business, 'PmkitCustomersList', { first: 5 })
+  assert.deepEqual(free.calls.map((call) => operationName(call.body.query)), ['PmkitWorkspace'])
+  assert.deepEqual(business.calls.map((call) => operationName(call.body.query)), ['PmkitWorkspace', 'PmkitCustomersList'])
+  assert.equal(JSON.parse(await (await post(business, 'query PmkitWorkspace { x }')).text()).data.organization.customersEnabled, true)
+})

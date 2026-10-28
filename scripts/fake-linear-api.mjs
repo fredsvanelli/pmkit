@@ -965,3 +965,107 @@ export function fakeLinearProjects({
     updates,
   }
 }
+
+// Customers (PMK-42). The operation names are the ones lib/linear/customers.mjs sends.
+export const CUSTOMER_STATUSES = [
+  { id: 'st-1', name: 'Active' },
+  { id: 'st-2', name: 'Prospect' },
+  { id: 'st-3', name: 'Churned' },
+  { id: 'st-4', name: 'Lost' },
+]
+export const CUSTOMER_TIERS = [
+  { id: 'tier-1', name: 'Gold' },
+  { id: 'tier-2', name: 'Silver' },
+]
+export const CUSTOMERS_DISABLED = 'Customer requests are not available in this workspace.'
+
+/**
+ * Routes for the customer operations. customers are Customer nodes, needs CustomerNeed nodes with a customerId
+ * (the node the fake returns has customer { id } instead), issues { id, identifier, title, archivedAt, trashed } and
+ * projects { id, name, slugId }. The mutation routes echo an object built from their variables.
+ * With disabledError the two customer queries answer a GraphQL error, as Linear does on a plan without customers.
+ */
+export function fakeCustomers({ customers = [], statuses = CUSTOMER_STATUSES, tiers = CUSTOMER_TIERS, needs = [], issues = [], projects = [], users = ACME_USERS, disabledError = false } = {}) {
+  const ref = (list, id) => {
+    const found = list.find((item) => item.id === id)
+    return found ? { id: found.id, name: found.name } : null
+  }
+  const issueNode = (id) => issues.find((item) => item.id === id || item.identifier === id) ?? null
+  const projectNode = (id) => projects.find((item) => item.id === id) ?? null
+  const needNode = (need) => {
+    const { customerId, issueId, projectId, ...rest } = need
+    return {
+      ...rest,
+      customer: { id: customerId },
+      issue: need.issue !== undefined ? need.issue : (issueId ? issueNode(issueId) : null),
+      project: need.project !== undefined ? need.project : (projectId ? projectNode(projectId) : null),
+    }
+  }
+  const disabled = () => graphqlError(CUSTOMERS_DISABLED, 'FEATURE_NOT_ACCESSIBLE')
+  const customerOf = (id) => customers.find((item) => item.id === id)
+  const FIELD_OF_INPUT = {
+    name: (value) => ({ name: value }),
+    statusId: (value) => ({ status: ref(statuses, value) }),
+    tierId: (value) => ({ tier: value === null ? null : ref(tiers, value) }),
+    revenue: (value) => ({ revenue: value }),
+    size: (value) => ({ size: value }),
+    ownerId: (value) => ({ owner: value === null ? null : ref(users, value) }),
+  }
+  const mutation = (field, payload) => (body) => {
+    try {
+      return json({ [field]: payload(body.variables ?? {}) })
+    } catch (error) {
+      if (error instanceof FakeInputError) return graphqlError(error.message, 'INPUT_ERROR')
+      throw error
+    }
+  }
+  return {
+    PmkitCustomersList: (body) => {
+      if (disabledError) return disabled()
+      const { first = 50, after = null, filter = {} } = body.variables ?? {}
+      const wantedStatus = filter.status?.id?.eq
+      const wantedTier = filter.tier?.id?.eq
+      const matching = customers.filter((item) => (wantedStatus === undefined || item.status?.id === wantedStatus) && (wantedTier === undefined || item.tier?.id === wantedTier))
+      const start = Number(after ?? 0)
+      const end = start + first
+      const hasNextPage = end < matching.length
+      return json({ customers: page(matching.slice(start, end), { hasNextPage, endCursor: hasNextPage ? String(end) : null }) })
+    },
+    PmkitCustomerShow: (body) => {
+      if (disabledError) return disabled()
+      const found = customerOf(body.variables?.id)
+      if (!found) return graphqlError('Entity not found: Customer', 'INPUT_ERROR')
+      const mine = needs.filter((need) => need.customerId === found.id).sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))
+      return json({ customer: { ...found, needs: page(mine.map(needNode)) } })
+    },
+    PmkitCustomerStatuses: json({ customerStatuses: page(statuses) }),
+    PmkitCustomerTiers: json({ customerTiers: page(tiers) }),
+    PmkitCustomerIssue: (body) => {
+      const found = issueNode(String(body.variables?.id ?? '').toUpperCase()) ?? issueNode(body.variables?.id)
+      return json({ issues: { nodes: found ? [found] : [] } })
+    },
+    PmkitCustomerProjects: (body) => {
+      const { name = '', first = 25 } = body.variables ?? {}
+      const wanted = String(name).toLowerCase()
+      const matching = projects.filter((item) => item.name.toLowerCase().includes(wanted) || item.slugId === name)
+      return json({ projects: page(matching.slice(0, first), { hasNextPage: matching.length > first, endCursor: matching.length > first ? String(first) : null }) })
+    },
+    PmkitCustomerUpdate: mutation('customerUpdate', ({ id, input = {} }) => {
+      const found = customerOf(id)
+      if (!found) throw new FakeInputError('Entity not found: Customer')
+      const changes = Object.entries(input).reduce((all, [key, value]) => ({ ...all, ...(FIELD_OF_INPUT[key]?.(value) ?? {}) }), {})
+      return { success: true, customer: { ...found, ...changes } }
+    }),
+    PmkitCustomerNeedCreate: mutation('customerNeedCreate', ({ input = {} }) => {
+      if (!customerOf(input.customerId)) throw new FakeInputError('Entity not found: Customer')
+      const need = { id: 'need-new', body: input.body ?? '', priority: input.priority ?? 0, createdAt: '2026-10-28T12:00:00.000Z', customerId: input.customerId, issueId: input.issueId, projectId: input.projectId }
+      return { success: true, need: needNode(need) }
+    }),
+    PmkitCustomerNeedUpdate: mutation('customerNeedUpdate', ({ id, input = {} }) => {
+      const found = needs.find((item) => item.id === id)
+      if (!found) throw new FakeInputError('Entity not found: CustomerNeed')
+      const moved = { ...found, issue: undefined, project: undefined, issueId: input.issueId ?? null, projectId: input.projectId ?? null }
+      return { success: true, need: needNode(moved) }
+    }),
+  }
+}

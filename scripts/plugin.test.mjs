@@ -90,7 +90,7 @@ test('CHANGELOG.md has a section for the plugin version and a Tracker format tha
 })
 
 // Each Task that writes command files adds their names here.
-const COMMANDS = { '': ['setup', 'help', 'upgrade'], issues: ['find', 'create', 'dependencies', 'update', 'move', 'assign', 'comment', 'link', 'summary', 'work', 'mine', 'capture', 'breakdown', 'progress', 'pause'], spec: ['import'], backlog: ['groom', 'triage'], report: ['status', 'release-notes'], cycle: ['plan', 'close'], team: ['flow-metrics', 'standup', 'risk-radar'], linear: ['triage-rotation'], local: ['doctor', 'render'] }
+const COMMANDS = { '': ['setup', 'help', 'upgrade'], issues: ['find', 'create', 'dependencies', 'update', 'move', 'assign', 'comment', 'link', 'summary', 'work', 'mine', 'capture', 'breakdown', 'progress', 'pause'], spec: ['import'], backlog: ['groom', 'triage'], report: ['status', 'release-notes'], cycle: ['plan', 'close'], team: ['flow-metrics', 'standup', 'risk-radar'], linear: ['triage-rotation', 'customers'], local: ['doctor', 'render'] }
 
 const HEADINGS = ['## Parameters', '## Steps', '## Confirmation points', '## Output', '## If something is missing']
 
@@ -168,6 +168,18 @@ test('triage-rotation.md previews the set in step 6 and writes it in step 7', ()
   const calls = (line) => [...line.matchAll(/pmkit\.mjs" linear triage set[^`]*`/g)].map((match) => match[0])
   assert.ok(calls(step(6)).length > 0 && calls(step(6)).every((call) => call.includes('--dry-run')), 'step 6 previews with --dry-run')
   assert.ok(calls(step(7)).length > 0 && calls(step(7)).every((call) => !call.includes('--dry-run')), 'step 7 writes without --dry-run')
+  assert.match(step(5), /AskUserQuestion/)
+})
+
+test('customers.md previews set and link in step 5 and writes them in step 6', () => {
+  const text = fs.readFileSync(path.join(ROOT, 'commands/linear/customers.md'), 'utf8')
+  const step = (number) => text.split('\n').find((line) => line.startsWith(`${number}. `)) ?? ''
+  const calls = (line, verb) => [...line.matchAll(new RegExp(`pmkit\\.mjs" linear customers ${verb}[^\`]*\``, 'g'))].map((match) => match[0])
+  for (const verb of ['set', 'link']) {
+    assert.ok(calls(step(5), verb).length > 0 && calls(step(5), verb).every((call) => call.includes('--dry-run')), `step 5 previews ${verb} with --dry-run`)
+    assert.ok(calls(step(6), verb).length > 0 && calls(step(6), verb).every((call) => !call.includes('--dry-run')), `step 6 writes ${verb} without --dry-run`)
+  }
+  assert.match(step(4), /AskUserQuestion/)
   assert.match(step(5), /AskUserQuestion/)
 })
 
