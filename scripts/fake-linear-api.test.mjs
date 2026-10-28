@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ACME_LABELS, ACME_STATES, ACME_TEAM, ACME_TEAM_ID, ACME_USERS, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeTriage, fakeWorkspace, json, page } from './fake-linear-api.mjs'
+import { ACME_LABELS, ACME_STATES, ACME_TEAM, ACME_TEAM_ID, ACME_USERS, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeTriage, fakeWorkspace, json, page } from './fake-linear-api.mjs'
 import {
   BLOCK_GRAPH_QUERY, COMMENT_BY_ID_QUERY, COMMENT_CREATE, COMMENT_RESOLVE, CYCLE_BY_NUMBER_QUERY, CYCLES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_COMMENTS_QUERY, ISSUE_CREATE, ISSUE_EVENTS_QUERY, ISSUE_HISTORY_QUERY, ISSUE_UPDATE, ISSUES_QUERY, NESTED_PAGES, PARENT_CHAIN_QUERY, RELATION_CREATE, RELATION_DELETE,
 } from './lib/linear/documents.mjs'
 import { operationName } from './lib/linear/client.mjs'
+import {
+  DOCUMENT_QUERY, EPIC_ISSUES_QUERY, PROJECTS_QUERY, PROJECT_CREATE, PROJECT_MILESTONES_QUERY, PROJECT_MILESTONE_QUERY, PROJECT_UPDATES_QUERY, PROJECT_UPDATE_CREATE,
+} from './lib/linear/projects.mjs'
 
 const ENDPOINT = 'https://api.linear.app/graphql'
 const post = (fetch, query, variables = {}, extra = {}) =>
@@ -700,4 +703,141 @@ test('the project and parent filters match by project, null parent and a list of
   assert.deepEqual(await find({ parent: { id: { eq: 'ACME-1' } } }), ['ACME-2'])
   const unknown = await send(fetch, ISSUES_QUERY, { filter: { and: [{ projectMilestone: { id: { eq: 'x' } } }] }, first: 5 })
   assert.equal(unknown.body.errors[0].extensions.code, 'GRAPHQL_VALIDATION_FAILED')
+})
+
+function projectStore(options = {}) {
+  const issues = fakeLinearIssues()
+  const fake = fakeLinearProjects({ issues, ...options })
+  return { issues, fake, fetch: fakeLinearFetch({ ...issues.routes, ...fake.routes }) }
+}
+const created = async (fetch, input) => (await send(fetch, PROJECT_CREATE, { input })).body.data.projectCreate.project
+const projectsOf = async (fetch, filter, extra = {}) =>
+  (await send(fetch, PROJECTS_QUERY, { filter, first: 50, withLists: false, ...extra })).body.data.projects
+
+test('projectCreate makes a backlog project with an identifier and a slug', async () => {
+  const { fake, fetch } = projectStore()
+  const project = await created(fetch, { id: 'proj-uuid', name: 'Launch', teamIds: ['team-acme'], content: 'Body', startDate: '2026-11-01', targetDate: '2026-12-01' })
+  assert.equal(project.id, 'proj-uuid')
+  assert.equal(project.name, 'Launch')
+  assert.equal(project.identifier, 'P-ACM-1')
+  assert.match(project.slugId, /^[0-9a-f]{12}$/)
+  assert.deepEqual(project.status, { id: 'project-status-backlog', name: 'Backlog', type: 'backlog' })
+  assert.equal(project.health, null)
+  assert.equal(project.progress, 0)
+  assert.equal(project.content, 'Body')
+  assert.equal(project.startDate, '2026-11-01')
+  assert.equal((await created(fetch, { name: 'Second', teamIds: ['team-acme'] })).identifier, 'P-ACM-2')
+  assert.deepEqual(fake.mutations, ['PmkitProjectCreate', 'PmkitProjectCreate'])
+})
+
+test('a project without identifiers has a null identifier', async () => {
+  const { fetch } = projectStore({ identifiers: false })
+  assert.equal((await created(fetch, { name: 'Plain', teamIds: ['team-acme'] })).identifier, null)
+})
+
+test('projectCreate answers a validation error for an unknown field and INPUT_ERROR for an unknown team', async () => {
+  const { fetch } = projectStore()
+  assert.equal((await send(fetch, PROJECT_CREATE, { input: { name: 'x', teamIds: ['team-acme'], lead: 'y' } })).body.errors[0].extensions.code, 'GRAPHQL_VALIDATION_FAILED')
+  assert.equal((await send(fetch, PROJECT_CREATE, { input: { name: 'x', teamIds: ['team-gone'] } })).body.errors[0].extensions.code, 'INPUT_ERROR')
+  assert.equal((await send(fetch, PROJECT_CREATE, { input: { teamIds: ['team-acme'] } })).body.errors[0].extensions.code, 'INPUT_ERROR')
+})
+
+test('projects are found by id (UUID or identifier in any case) or by slug, and a slug in id finds nothing', async () => {
+  const { fetch } = projectStore()
+  const project = await created(fetch, { id: 'proj-uuid', name: 'Launch', teamIds: ['team-acme'] })
+  await created(fetch, { name: 'Other', teamIds: ['team-acme'] })
+  const ids = async (filter) => (await projectsOf(fetch, filter)).nodes.map((node) => node.name)
+  assert.deepEqual(await ids({ id: { eq: 'proj-uuid' } }), ['Launch'])
+  assert.deepEqual(await ids({ id: { eq: 'p-acm-1' } }), ['Launch'])
+  assert.deepEqual(await ids({ id: { eq: 'P-ACM-1' } }), ['Launch'])
+  assert.deepEqual(await ids({ slugId: { eq: project.slugId } }), ['Launch'])
+  assert.deepEqual(await ids({ id: { eq: project.slugId } }), [])
+  assert.deepEqual(await ids({ accessibleTeams: { some: { key: { eq: 'ACME' } } } }), ['Launch', 'Other'])
+  assert.deepEqual(await ids({ accessibleTeams: { some: { key: { eq: 'NOPE' } } } }), [])
+  assert.equal((await send(fetch, PROJECTS_QUERY, { filter: { lead: { id: { eq: 'x' } } }, first: 5, withLists: false })).body.errors[0].extensions.code, 'GRAPHQL_VALIDATION_FAILED')
+})
+
+test('projects page by first and after', async () => {
+  const { fetch } = projectStore()
+  for (const name of ['A', 'B', 'C']) await created(fetch, { name, teamIds: ['team-acme'] })
+  const first = await projectsOf(fetch, {}, { first: 2 })
+  assert.deepEqual(first.nodes.map((node) => node.name), ['A', 'B'])
+  assert.equal(first.pageInfo.hasNextPage, true)
+  const second = await projectsOf(fetch, {}, { first: 2, after: first.pageInfo.endCursor })
+  assert.deepEqual(second.nodes.map((node) => node.name), ['C'])
+  assert.equal(second.pageInfo.hasNextPage, false)
+})
+
+test('a project update stores the update, sets the health and lists newest first', async () => {
+  const { fake, fetch } = projectStore()
+  await created(fetch, { id: 'proj-uuid', name: 'Launch', teamIds: ['team-acme'] })
+  const first = (await send(fetch, PROJECT_UPDATE_CREATE, { input: { id: 'up-1', projectId: 'proj-uuid', body: 'one', health: 'onTrack' } })).body.data.projectUpdateCreate.projectUpdate
+  assert.equal(first.user.id, 'user-1')
+  assert.equal(first.health, 'onTrack')
+  assert.deepEqual(first.project, { id: 'proj-uuid', slugId: first.project.slugId, identifier: 'P-ACM-1' })
+  await send(fetch, PROJECT_UPDATE_CREATE, { input: { id: 'up-2', projectId: 'P-ACM-1', body: 'two', health: 'atRisk' } })
+  assert.equal((await projectsOf(fetch, { id: { eq: 'proj-uuid' } })).nodes[0].health, 'atRisk')
+  const listed = (await send(fetch, PROJECT_UPDATES_QUERY, { id: 'proj-uuid', first: 50 })).body.data.project.projectUpdates
+  assert.deepEqual(listed.nodes.map((node) => node.body), ['two', 'one'])
+  const missing = await send(fetch, PROJECT_UPDATE_CREATE, { input: { id: 'up-3', projectId: 'nope', body: 'x', health: 'onTrack' } })
+  assert.equal(missing.body.errors[0].extensions.code, 'INPUT_ERROR')
+  assert.deepEqual(fake.mutations, ['PmkitProjectCreate', 'PmkitProjectUpdateCreate', 'PmkitProjectUpdateCreate', 'PmkitProjectUpdateCreate'])
+})
+
+test('two updates stamped the same second list in a stable order by id', async () => {
+  const { fake, fetch } = projectStore()
+  await created(fetch, { id: 'proj-uuid', name: 'Launch', teamIds: ['team-acme'] })
+  fake.seedUpdate('proj-uuid', { id: 'b', body: 'b', health: 'onTrack', createdAt: '2026-10-28T10:00:00.000Z' })
+  fake.seedUpdate('proj-uuid', { id: 'a', body: 'a', health: 'onTrack', createdAt: '2026-10-28T10:00:00.000Z' })
+  const listed = (await send(fetch, PROJECT_UPDATES_QUERY, { id: 'proj-uuid', first: 50 })).body.data.project.projectUpdates
+  assert.deepEqual(listed.nodes.map((node) => node.id), ['a', 'b'])
+})
+
+test('seeded milestones and documents are listed, read by id and found by slug', async () => {
+  const { fake, fetch } = projectStore()
+  await created(fetch, { id: 'proj-uuid', name: 'Launch', teamIds: ['team-acme'] })
+  fake.seedMilestone('proj-uuid', { id: 'm-2', name: 'Beta', targetDate: '2026-12-01', status: 'unstarted' })
+  fake.seedMilestone('P-ACM-1', { id: 'm-1', name: 'Alpha', targetDate: '2026-11-01', status: 'next', progress: 0.5 })
+  fake.seedDocument('proj-uuid', { slugId: 'abcdef012345', title: 'Plan', content: '# Plan' })
+  const milestones = (await send(fetch, PROJECT_MILESTONES_QUERY, { first: 50 })).body.data.projectMilestones.nodes
+  assert.deepEqual(milestones.map((node) => node.id), ['m-2', 'm-1'])
+  assert.equal(milestones[0].project.identifier, 'P-ACM-1')
+  assert.equal(milestones[1].progress, 0.5)
+  assert.equal((await send(fetch, PROJECT_MILESTONE_QUERY, { id: 'm-1' })).body.data.projectMilestone.name, 'Alpha')
+  const missing = await send(fetch, PROJECT_MILESTONE_QUERY, { id: 'm-9' })
+  assert.equal(missing.body.errors[0].extensions.code, 'INPUT_ERROR')
+  assert.match(missing.body.errors[0].message, /not found/i)
+  const documents = (await send(fetch, DOCUMENT_QUERY, { filter: { slugId: { eq: 'abcdef012345' } } })).body.data.documents.nodes
+  assert.equal(documents[0].title, 'Plan')
+  assert.equal(documents[0].project.slugId, (await projectsOf(fetch, {})).nodes[0].slugId)
+  assert.deepEqual((await send(fetch, DOCUMENT_QUERY, { filter: { slugId: { eq: 'ffffffffffff' } } })).body.data.documents.nodes, [])
+  const withLists = (await projectsOf(fetch, {}, { withLists: true })).nodes[0]
+  assert.deepEqual(withLists.projectMilestones.nodes.map((node) => node.id), ['m-2', 'm-1'])
+  assert.deepEqual(withLists.documents.nodes, [{ slugId: 'abcdef012345', title: 'Plan' }])
+  assert.equal('projectMilestones' in (await projectsOf(fetch, {})).nodes[0], false)
+})
+
+test('PmkitEpicIssues answers over the issue store and progress is the share of done issues', async () => {
+  const { issues, fetch } = projectStore()
+  await created(fetch, { id: 'proj-uuid', name: 'Launch', teamIds: ['team-acme'] })
+  issues.seed({ title: 'A', projectId: 'proj-uuid', stateId: 'state-8' })
+  issues.seed({ title: 'B', projectId: 'proj-uuid' })
+  issues.seed({ title: 'C' })
+  const found = (await send(fetch, EPIC_ISSUES_QUERY, { filter: { project: { id: { eq: 'proj-uuid' } } }, first: 10 })).body.data.issues.nodes
+  assert.deepEqual(found.map((node) => node.identifier).sort(), ['ACME-1', 'ACME-2'])
+  assert.equal((await projectsOf(fetch, {})).nodes[0].progress, 0.5)
+})
+
+test('mutations lists the project mutations after a call, and unconfirm answers 502 after applying', async () => {
+  const { fake, fetch } = projectStore()
+  assert.deepEqual(fake.mutations, [])
+  await created(fetch, { id: 'proj-uuid', name: 'Launch', teamIds: ['team-acme'] })
+  fake.unconfirm('PmkitProjectUpdateCreate', { applied: true })
+  const answer = await send(fetch, PROJECT_UPDATE_CREATE, { input: { id: 'up-1', projectId: 'proj-uuid', body: 'x', health: 'onTrack' } })
+  assert.equal(answer.status, 502)
+  const listed = (await send(fetch, PROJECT_UPDATES_QUERY, { id: 'proj-uuid', first: 50 })).body.data.project.projectUpdates
+  assert.deepEqual(listed.nodes.map((node) => node.id), ['up-1'])
+  fake.unconfirm('PmkitProjectCreate', { applied: false })
+  assert.equal((await send(fetch, PROJECT_CREATE, { input: { name: 'Lost', teamIds: ['team-acme'] } })).status, 502)
+  assert.equal((await projectsOf(fetch, {})).nodes.length, 1)
 })
