@@ -14,7 +14,7 @@ const PAGE_INFO = 'pageInfo { hasNextPage endCursor }'
 
 export const ISSUE_FRAGMENT = `fragment PmkitIssueFields on Issue {
   id identifier title description priority estimate dueDate branchName archivedAt trashed createdAt updatedAt
-  team { id key } state { id name type } assignee { id } parent { identifier }
+  team { id key } state { id name type } assignee { id } parent { identifier } project { id slugId identifier } projectMilestone { id }
   cycle { id number }
 ${Object.entries(NODE_FIELDS).map(([field, fields]) => `  ${field}(first: ${NESTED}) { nodes { ${fields} } ${PAGE_INFO} }`).join('\n')}
 }`

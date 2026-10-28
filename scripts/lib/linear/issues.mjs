@@ -5,6 +5,7 @@ import { compareIds } from '../ids.mjs'
 import { TERMINAL } from '../model.mjs'
 import { categoryOfType, estimateScale } from './discovery.mjs'
 import { resolveMappings } from './mappings.mjs'
+import { epicId } from './projects.mjs'
 
 export { isIssueId, issueKey } from './ids.mjs'
 
@@ -128,7 +129,10 @@ export function toIssue(node, context) {
   if (estimate !== undefined) issue.estimate = estimate
   if (node.assignee?.id) issue.assignee = node.assignee.id
   issue.labels = [...new Set(labelNames.filter((name) => !typeLabels.has(name)))].sort()
+  // The parent issue wins; an issue with only a project shows the project as its parent (PMK-38).
   if (node.parent?.identifier) issue.parent = node.parent.identifier
+  else if (node.project) issue.parent = epicId(node.project)
+  if (node.projectMilestone?.id) issue.milestone = node.projectMilestone.id
   if (node.cycle) issue.sprint = String(node.cycle.number)
   issue.blockedBy = identifiers(inverse.filter((item) => item.type === 'blocks').map((item) => item.issue.identifier))
   issue.blocks = identifiers(out.filter((item) => item.type === 'blocks').map((item) => item.relatedIssue.identifier))

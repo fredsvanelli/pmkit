@@ -149,3 +149,19 @@ test('blockedOpen counts open blockers and blockers without a state', () => {
   assert.equal(blockedOpen(node({ inverseRelations: conn([inv('blocks', 'ACME-2', null)]) }), context), true)
   assert.equal(blockedOpen(node({ inverseRelations: conn([inv('related', 'ACME-2')]) }), context), false)
 })
+
+const EPIC = { id: 'project-uuid', slugId: 'a1b2c3d4e5f6', identifier: 'P-ABC-12' }
+
+test('parent is the parent issue, else the epic id of the project, else absent', () => {
+  assert.equal(toIssue(node({ parent: { identifier: 'ACME-1' }, project: EPIC }), context).parent, 'ACME-1')
+  assert.equal(toIssue(node({ project: EPIC }), context).parent, 'P-ABC-12')
+  assert.equal(toIssue(node({ project: { ...EPIC, identifier: null } }), context).parent, 'a1b2c3d4e5f6')
+  assert.equal('parent' in toIssue(node({ project: null }), context), false)
+  assert.equal('parent' in toIssue(node(), context), false)
+})
+
+test('milestone is the id of the project milestone, absent when none', () => {
+  assert.equal(toIssue(node({ projectMilestone: { id: 'milestone-1' } }), context).milestone, 'milestone-1')
+  assert.equal('milestone' in toIssue(node({ projectMilestone: null }), context), false)
+  assert.equal('milestone' in toIssue(node(), context), false)
+})
