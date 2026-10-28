@@ -189,4 +189,25 @@ test('replaying the events gives the current issue for the fields the events cov
   assert.deepEqual(state.labels ?? [], issue.labels)
   assert.deepEqual(state.related ?? [], issue.related)
   assert.deepEqual(events.map((e) => e.at), [...events.map((e) => e.at)].sort())
+  // The undo of each field gives the create event's values and each event's `from`. Dropping one undo line changes these.
+  assert.deepEqual(events[0].to, { id: 'ACME-1', title: 'Start', status: 'Backlog', created: at(1) })
+  assert.deepEqual(events.slice(1).map((e) => [e.at.slice(9, 10), e.op, e.field, e.from, e.to]), [
+    ['2', 'move', 'status', 'Backlog', 'Todo'],
+    ['2', 'assign', 'assignee', null, 'user-1'],
+    ['3', 'update', 'title', 'Start', 'Mid'],
+    ['3', 'update', 'priority', null, 'medium'],
+    ['3', 'update', 'type', null, 'feature'],
+    ['3', 'update', 'labels', [], ['Docs']],
+    ['4', 'update', 'estimate', null, 3],
+    ['4', 'update', 'due', null, '2026-11-01'],
+    ['4', 'update', 'parent', null, 'ACME-9'],
+    ['4', 'link', 'related', undefined, 'ACME-4'],
+    ['5', 'move', 'status', 'Todo', 'Done'],
+    ['5', 'assign', 'assignee', 'user-1', 'user-2'],
+    ['5', 'update', 'title', 'Mid', 'Final'],
+    ['5', 'update', 'priority', 'medium', 'high'],
+    ['5', 'update', 'estimate', 3, 5],
+    ['5', 'update', 'due', '2026-11-01', '2026-12-01'],
+    ['5', 'update', 'type', 'feature', 'bug'],
+  ])
 })

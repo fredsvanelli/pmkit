@@ -324,3 +324,33 @@ test('an INPUT_ERROR from the by-id read means the comment is not on the issue, 
   seedIssue(other.fake)
   await assert.rejects(other.history.comment('ACME-1', 'x', ACTOR, { replyTo: 'nope' }), { code: 'UPSTREAM' })
 })
+
+const queries = (fetch, name) => fetch.calls.filter((call) => call.body.query.includes(`query ${name}`)).length
+
+test('a comment id with characters no Linear id has sends no by-id request', async () => {
+  const { fake, fetch, history } = await setup()
+  seedIssue(fake)
+  for (const bad of ['bad id', 'x"y', '', 7, null]) {
+    await assert.rejects(history.comment('ACME-1', 'x', ACTOR, { replyTo: bad }), { code: 'NOT_FOUND' })
+    await assert.rejects(history.resolveThread('ACME-1', bad, ACTOR), { code: 'NOT_FOUND' })
+  }
+  assert.equal(queries(fetch, 'PmkitCommentById'), 0)
+})
+
+test('metricEvents reads no history or comments for a trashed issue', async () => {
+  const { fake, fetch, history } = await setup({ nestedPage: 2 })
+  fake.seed({ title: 'Gone' })
+  fake.history('ACME-1', { fromTitle: 'a', toTitle: 'b' })
+  for (const id of ['c-1', 'c-2', 'c-3']) fake.comment('ACME-1', { id, body: 'x' })
+  fake.records[0].trashed = true
+  assert.deepEqual(await history.metricEvents(), [])
+  assert.equal(queries(fetch, 'PmkitIssueHistory') + queries(fetch, 'PmkitIssueComments'), 0)
+})
+
+test('metricEvents completes a comment list longer than its page', async () => {
+  const { fake, history } = await setup({ nestedPage: 2 })
+  fake.seed({ title: 'Talked' })
+  for (const id of ['c-1', 'c-2', 'c-3', 'c-4', 'c-5']) fake.comment('ACME-1', { id, body: 'x' })
+  const comments = (await history.metricEvents()).filter((event) => event.op === 'comment')
+  assert.deepEqual(comments.map((event) => event.to).sort(), ['c-1', 'c-2', 'c-3', 'c-4', 'c-5'])
+})
