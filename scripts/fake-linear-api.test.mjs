@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ACME_LABELS, ACME_STATES, ACME_TEAM, ACME_TEAM_ID, ACME_USERS, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeTriage, fakeWorkspace, json, page } from './fake-linear-api.mjs'
 import {
-  BLOCK_GRAPH_QUERY, COMMENT_BY_ID_QUERY, COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_COMMENTS_QUERY, ISSUE_HISTORY_QUERY, ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_UPDATE, NESTED_PAGES, PARENT_CHAIN_QUERY, RELATION_CREATE, RELATION_DELETE,
+  BLOCK_GRAPH_QUERY, COMMENT_BY_ID_QUERY, COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_COMMENTS_QUERY, ISSUE_EVENTS_QUERY, ISSUE_HISTORY_QUERY, ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_UPDATE, NESTED_PAGES, PARENT_CHAIN_QUERY, RELATION_CREATE, RELATION_DELETE,
 } from './lib/linear/documents.mjs'
 import { operationName } from './lib/linear/client.mjs'
 
@@ -494,4 +494,38 @@ test('history: a seeded entry records no mutation and pages', async () => {
   assert.equal(page1.pageInfo.hasNextPage, true)
   const page2 = (await historyOf(fetch, 'ACME-1', { first: 2, after: page1.pageInfo.endCursor })).history
   assert.deepEqual([page2.nodes.length, page2.pageInfo.hasNextPage], [1, false])
+})
+
+test('events: issues come by updatedAt descending with gte, and the nested lists page and run newest first', async () => {
+  const { fake, fetch } = issueStore({ nestedPage: 2 })
+  fake.seed({ title: 'A' })
+  fake.seed({ title: 'B' })
+  for (const title of ['x', 'y', 'z']) await send(fetch, ISSUE_UPDATE, { id: 'ACME-1', input: { title } })
+  fake.comment('ACME-1', { id: 'c-1', body: 'one' })
+  fake.comment('ACME-1', { id: 'c-2', body: 'two' })
+  fake.comment('ACME-1', { id: 'c-3', body: 'three' })
+  const before = fake.mutations.length
+  const all = (await send(fetch, ISSUE_EVENTS_QUERY, { first: 10, includeArchived: true, sort: [{ updatedAt: { order: 'Descending' } }] })).body.data.issues
+  assert.deepEqual(all.nodes.map((n) => n.identifier), ['ACME-1', 'ACME-2'])
+  const [a] = all.nodes
+  assert.deepEqual(a.history.nodes.map((n) => n.toTitle), ['z', 'y'])
+  assert.equal(a.history.pageInfo.hasNextPage, true)
+  assert.deepEqual(a.comments.nodes.map((c) => c.id), ['c-3', 'c-2'])
+  assert.equal(a.comments.pageInfo.hasNextPage, true)
+  assert.deepEqual(a.creator, { id: 'user-1' })
+  assert.equal(a.title, 'z')
+  const since = a.updatedAt
+  const filtered = (await send(fetch, ISSUE_EVENTS_QUERY, { first: 10, filter: { and: [{ team: { key: { eq: 'ACME' } } }, { updatedAt: { gte: since } }] } })).body.data.issues
+  assert.deepEqual(filtered.nodes.map((n) => n.identifier), ['ACME-1'])
+  const paged = (await send(fetch, ISSUE_EVENTS_QUERY, { first: 1 })).body.data.issues
+  assert.deepEqual([paged.nodes.length, paged.pageInfo.hasNextPage], [1, true])
+  assert.equal(fake.mutations.length, before)
+})
+
+test('events: archived issues need includeArchived', async () => {
+  const { fake, fetch } = issueStore()
+  fake.seed({ title: 'A' })
+  await send(fetch, ISSUE_ARCHIVE, { id: 'ACME-1' })
+  assert.equal((await send(fetch, ISSUE_EVENTS_QUERY, { first: 10 })).body.data.issues.nodes.length, 0)
+  assert.equal((await send(fetch, ISSUE_EVENTS_QUERY, { first: 10, includeArchived: true })).body.data.issues.nodes.length, 1)
 })

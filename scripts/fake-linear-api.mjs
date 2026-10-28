@@ -448,7 +448,9 @@ export function fakeLinearIssues({
     },
     hasBlockedByRelations: (record, c) => relations.some((relation) => relation.type === 'blocks' && relation.relatedIssueId === record.id) === c.eq,
     updatedAt: (record, c) =>
-      (c.lt === undefined || Date.parse(record.updatedAt) < Date.parse(c.lt)) && (c.gt === undefined || Date.parse(record.updatedAt) > Date.parse(c.gt)),
+      (c.lt === undefined || Date.parse(record.updatedAt) < Date.parse(c.lt))
+      && (c.gt === undefined || Date.parse(record.updatedAt) > Date.parse(c.gt))
+      && (c.gte === undefined || Date.parse(record.updatedAt) >= Date.parse(c.gte)),
   }
   function matches(record, filter) {
     return Object.entries(filter ?? {}).every(([key, value]) => {
@@ -598,6 +600,22 @@ export function fakeLinearIssues({
   // Newest first, as Linear answers; a tie keeps the later insert first.
   const newestFirst = (items) => items.map((item, index) => ({ item, index })).sort((a, b) => (a.item.createdAt < b.item.createdAt ? 1 : a.item.createdAt > b.item.createdAt ? -1 : b.index - a.index)).map(({ item }) => item)
   const commentsOf = (record) => newestFirst(commentRecords.filter((item) => item.issueId === record.id))
+  const eventNode = (record) => ({
+    ...toNode(record),
+    creator: record.creatorId ? { id: record.creatorId } : null,
+    botActor: record.botActor,
+    history: connection(newestFirst(historyRecords.filter((item) => item.issueId === record.id)).map(historyNode)),
+    comments: connection(commentsOf(record).map(commentNode)),
+  })
+  routes.PmkitIssueEvents = query('PmkitIssueEvents', ({ filter, first = 50, after = null, includeArchived = false, sort }) => {
+    checkFilter(filter)
+    const byUpdate = sort?.[0]?.updatedAt?.order
+    const found = records
+      .filter((record) => (includeArchived || record.archivedAt === null) && matches(record, filter))
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
+    if (byUpdate) found.sort((a, b) => (a.updatedAt < b.updatedAt ? -1 : a.updatedAt > b.updatedAt ? 1 : 0) * (byUpdate === 'Ascending' ? 1 : -1))
+    return { issues: connection(found.map(eventNode), first, after) }
+  })
   routes.PmkitIssueHistory = query('PmkitIssueHistory', ({ id, first, after }) => {
     const record = requireIssue(id)
     return {
