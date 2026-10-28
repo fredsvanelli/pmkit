@@ -2,7 +2,7 @@
 id: PMK-38
 title: Map Linear projects to epics
 type: feature
-status: in_review
+status: done
 priority: medium
 estimate: 5
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-35]
 milestone: linear
 branch: pmk-38-map-linear-projects-to-epics
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-28T18:46:53Z
+updated: 2026-10-28T20:01:30Z
 ---
 
 ## Description
