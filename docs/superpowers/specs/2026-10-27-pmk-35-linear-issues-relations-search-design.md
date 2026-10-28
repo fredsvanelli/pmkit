@@ -245,7 +245,7 @@ ADR-0005 decides the actor. On Linear the actor is the viewer, the owner of `LIN
 2. With `status`, the name must be a state of that team whose category is `category`. Otherwise `INVALID_INPUT` lists the team's states in the category.
 3. Without `status`, the target is:
    - `resolveMappings(...).targetState(category)` for the issue's team (PMK-34 rule 2): the state that `mappings.status[category]` names, when set and not `none`;
-   - else the first state by `position` whose category is `category`, whatever its Linear type. A state that another `mappings.status` key names already has that key's category, so it is not a candidate. `mappings.status.blocked` has no effect here.
+   - else the first state by `position` whose category is `category`, with states of Linear type `duplicate` last. On a team whose Duplicate state comes before Canceled, a move to `canceled` still picks Canceled, so it never marks the issue Duplicate without a duplicate link. A state that another `mappings.status` key names already has that key's category, so it is not a candidate. `mappings.status.blocked` has no effect here.
 4. When the issue already has that state, the result is `{ before, after: before }` and no mutation is sent.
 5. Otherwise `issueUpdate(id, { stateId })`, and `after` is the mapped payload issue.
 
@@ -328,7 +328,7 @@ The blocked check reads the blocker's state from the relation node and maps it t
 
 | Key | Use | When missing |
 |---|---|---|
-| `mappings.status.<category>` | The category of a state on every read (already in `discoveryView`), the target of `moveToCategory`, and the state ids of the `categories` filter | Reads and filters use the state type. A move to `in_review` fails with `NOT_SUPPORTED`. A move to another category picks the first state by position. |
+| `mappings.status.<category>` | The category of a state on every read (already in `discoveryView`), the target of `moveToCategory`, and the state ids of the `categories` filter | Reads and filters use the state type. A move to `in_review` fails with `NOT_SUPPORTED`. A move to another category picks the first state by position, with `duplicate` states last. |
 | `mappings.status.<category>` naming a state the team lacks | | `discover` warns (PMK-33). Every operation but `discover` and `capabilities` fails with PMK-34's `NOT_CONFIGURED` and `details.mappings`. |
 | `mappings.status.blocked` | None. It changes no category, no move target and no `blocked` filter in this issue. | Nothing changes. |
 | `mappings.fields.estimate` | `native`: Linear's estimate field | Absent, any other value, `none` or a label group: `estimate` reads as unset and estimate writes fail with `NOT_SUPPORTED`. Size label groups are a follow-up issue. |

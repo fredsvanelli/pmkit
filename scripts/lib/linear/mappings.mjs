@@ -142,7 +142,9 @@ export function resolveMappings(view, pmkit, raw = view?.raw) {
     },
     targetState: (category) => {
       const named = stateNamed(mappings.status?.[category])
-      const found = named ?? states.find((state) => categoryOfState(state) === category)
+      // States of type duplicate come last, so a plain move to canceled never marks an issue Duplicate without a duplicate link.
+      const candidates = states.filter((state) => categoryOfState(state) === category)
+      const found = named ?? candidates.find((state) => state.type !== 'duplicate') ?? candidates[0]
       return found ? pick(found) : null
     },
     blockedState: blocked ? pick(blocked) : null,

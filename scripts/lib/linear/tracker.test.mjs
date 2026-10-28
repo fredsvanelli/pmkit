@@ -551,10 +551,19 @@ test('the mapped state wins; else the first state by position', async () => {
   assert.equal((await linear.getIssue('ACME-1')).status.name, 'Canceled')
 })
 
-// PMK-34 rule 2 picks the first state of the category by position, whatever its Linear type.
-test('canceled picks the first state of the category by position', async () => {
+// PMK-34 rule 2 takes the first state of the category by position, with states of type duplicate last.
+test('canceled skips a Duplicate state that comes first by position', async () => {
   const states = fakeWorkspace().PmkitStates({ variables: { first: 250 } }).json.data.workflowStates.nodes
     .map((state) => (state.type === 'duplicate' ? { ...state, position: -5 } : state))
+  const { tracker: linear, fake } = linearSetup({ workspace: { states } })
+  seed(fake, { title: 'Move me' })
+  assert.equal(await moved(linear, 'ACME-1', 'canceled'), 'Canceled')
+  assert.deepEqual((await linear.getIssue('ACME-1')).duplicateOf, [])
+})
+
+test('canceled falls back to a Duplicate state when the team has no other canceled state', async () => {
+  const states = fakeWorkspace().PmkitStates({ variables: { first: 250 } }).json.data.workflowStates.nodes
+    .filter((state) => state.type !== 'canceled')
   const { tracker: linear, fake } = linearSetup({ workspace: { states } })
   seed(fake, { title: 'Move me' })
   assert.equal(await moved(linear, 'ACME-1', 'canceled'), 'Duplicate')
