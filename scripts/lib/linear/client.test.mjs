@@ -301,6 +301,13 @@ test('another non-2xx status maps to UPSTREAM', async () => {
   expectError(await failure({ status: 418, json: { data: null } }), 'UPSTREAM', 'Linear answered HTTP 418', RETRY)
 })
 
+test('a mutation with another non-2xx status and no errors is unconfirmed and not retried', async () => {
+  const { client, f } = make({ routes: { M: { status: 418, json: { data: null } } }, sleep: async () => {} })
+  const error = await client.request('mutation M { a }').catch((e) => e)
+  expectError(error, 'UPSTREAM', 'Linear did not confirm the change: HTTP 418', 'Check in Linear whether the change was applied before you retry')
+  assert.equal(f.calls.filter((call) => /mutation M/.test(call.body.query)).length, 1)
+})
+
 test('errors with partial data still throw', async () => {
   const error = await failure({ status: 200, json: { data: { a: 1 }, errors: [{ message: 'partial' }] } })
   assert.equal(error.code, 'UPSTREAM')

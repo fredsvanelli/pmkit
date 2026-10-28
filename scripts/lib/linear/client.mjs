@@ -229,6 +229,8 @@ function classify(status, headers, text, mutation) {
   if (errors.length > 0) {
     return fail('UPSTREAM', `Linear answered with an error: ${linearMessage(errors)}`, "Check the request against Linear's message")
   }
+  // A mutation that got an odd status may still have been applied.
+  if (!ok && mutation) return unconfirmed(`HTTP ${status}`, true, details)
   if (!ok) return fail('UPSTREAM', `Linear answered HTTP ${status}`, RETRY_STEP)
   return { data: body.data }
 }

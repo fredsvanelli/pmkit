@@ -166,7 +166,8 @@ The client checks the rows in order and stops at the first match. The first thre
 | Any other GraphQL error | `UPSTREAM` | `Linear answered with an error: <Linear message>` | `Check the request against Linear's message` | no |
 | A body that is not JSON, or JSON with neither `data` nor `errors` | `UPSTREAM` | `Linear returned an unreadable answer (HTTP <status>)` | `Retry, and check status.linear.app if it keeps failing` | queries only when HTTP 5xx |
 | The same, on a mutation, at any status | `UPSTREAM` | `Linear did not confirm the change: unreadable answer (HTTP <status>)` | `Check in Linear whether the change was applied before you retry` | no |
-| Any other HTTP status that is not 2xx | `UPSTREAM` | `Linear answered HTTP <status>` | `Retry, and check status.linear.app if it keeps failing` | no |
+| Any other HTTP status that is not 2xx, with an envelope and no errors | `UPSTREAM` | `Linear answered HTTP <status>` | `Retry, and check status.linear.app if it keeps failing` | no |
+| The same, on a mutation | `UPSTREAM` | `Linear did not confirm the change: HTTP <status>` | `Check in Linear whether the change was applied before you retry` | no |
 
 Rules that apply to every row:
 
