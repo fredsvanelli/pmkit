@@ -174,3 +174,116 @@ test('without a workspace and with requireWorkspace false, the session is not pi
   assert.equal(session.pinned, false)
   assert.deepEqual(session.warnings, [])
 })
+
+// Error mapping. Each row of the spec's table, run on a query after a passing session.
+async function failure(answer, options = {}) {
+  const { client } = make({ routes: { Q: answer }, ...options })
+  const error = await client.request('query Q { a }').catch((caught) => caught)
+  assert.ok(error instanceof PmkitError, `expected a PmkitError, got ${error}`)
+  return error
+}
+
+const graphqlError = (code, extra = {}) => ({ message: `${code} happened`, extensions: { code }, ...extra })
+const errorsBody = (status, ...errors) => ({ status, json: { errors } })
+const expectError = (error, code, message, nextStep) => {
+  assert.equal(error.code, code)
+  assert.equal(error.message, message)
+  assert.equal(error.nextStep, nextStep)
+}
+
+const REJECTED = 'Create a key in Linear, Settings, Security & access, and export it as LINEAR_API_KEY'
+const FORBIDDEN_STEP = "Check the key's permissions in Linear, Settings, Security & access"
+const RETRY = 'Retry, and check status.linear.app if it keeps failing'
+
+test('HTTP 401 and AUTHENTICATION_ERROR map to AUTH', async () => {
+  for (const answer of [errorsBody(401, graphqlError('AUTHENTICATION_ERROR')), errorsBody(200, graphqlError('AUTHENTICATION_ERROR'))]) {
+    expectError(await failure(answer), 'AUTH', 'Linear rejected LINEAR_API_KEY', REJECTED)
+  }
+  expectError(await failure({ status: 401, text: '' }), 'AUTH', 'Linear rejected LINEAR_API_KEY', REJECTED)
+})
+
+test('HTTP 403 and FORBIDDEN map to AUTH', async () => {
+  for (const answer of [errorsBody(403, graphqlError('FORBIDDEN')), errorsBody(200, graphqlError('FORBIDDEN'))]) {
+    expectError(await failure(answer), 'AUTH', 'Linear refused the request for this key', FORBIDDEN_STEP)
+  }
+})
+
+test('HTTP 429 and RATELIMITED map to RATE_LIMITED and name the bucket and the reset', async () => {
+  const requestsOut = { 'x-ratelimit-requests-remaining': '0', 'x-ratelimit-requests-reset': '1793000000000' }
+  for (const answer of [
+    { status: 429, headers: requestsOut, json: { errors: [] } },
+    { status: 400, headers: requestsOut, json: { errors: [graphqlError('RATELIMITED')] } },
+  ]) {
+    expectError(await failure(answer), 'RATE_LIMITED', "Linear's requests limit for this key is used up", 'Wait until 2026-10-26T07:33:20.000Z and retry')
+  }
+  const complexityOut = { 'x-ratelimit-complexity-remaining': '0', 'x-ratelimit-complexity-reset': '1793000000000' }
+  expectError(
+    await failure({ status: 429, headers: complexityOut, json: {} }),
+    'RATE_LIMITED',
+    "Linear's complexity limit for this key is used up",
+    'Wait until 2026-10-26T07:33:20.000Z and retry',
+  )
+  expectError(await failure({ status: 429, json: {} }), 'RATE_LIMITED', "Linear's requests limit for this key is used up", 'Wait a few minutes and retry')
+})
+
+test('validation and parse errors map to UPSTREAM naming the query', async () => {
+  for (const code of ['GRAPHQL_VALIDATION_FAILED', 'GRAPHQL_PARSE_FAILED']) {
+    const error = await failure(errorsBody(400, { message: 'bad field', extensions: { code } }))
+    expectError(error, 'UPSTREAM', "Linear rejected pmkit's query: bad field", 'Update pmkit; if it still fails, report the query error')
+  }
+})
+
+test('another GraphQL error maps to UPSTREAM and keeps the detail for callers', async () => {
+  const error = await failure({
+    status: 200,
+    json: {
+      data: null,
+      errors: [
+        {
+          message: 'Entity not found: Issue',
+          path: ['issue'],
+          extensions: { code: 'INPUT_ERROR', type: 'invalid input', userError: true, userPresentableMessage: 'Could not find referenced Issue.' },
+        },
+      ],
+    },
+  })
+  assert.equal(error.code, 'UPSTREAM')
+  assert.equal(error.message, 'Linear answered with an error: Could not find referenced Issue.')
+  assert.equal(error.nextStep, "Check the request against Linear's message")
+  assert.deepEqual(error.details.linear.errors[0], { code: 'INPUT_ERROR', type: 'invalid input', path: ['issue'], userError: true })
+  assert.equal(error.details.linear.status, 200)
+})
+
+test('userPresentableMessage at the error level is read too', async () => {
+  const error = await failure(errorsBody(200, { message: 'internal', userPresentableMessage: 'Could not find referenced Issue.', extensions: { code: 'INPUT_ERROR' } }))
+  assert.equal(error.message, 'Linear answered with an error: Could not find referenced Issue.')
+})
+
+test('an unreadable answer maps to UPSTREAM with the status', async () => {
+  expectError(await failure({ status: 400, text: 'not json' }), 'UPSTREAM', 'Linear returned an unreadable answer (HTTP 400)', RETRY)
+  expectError(await failure({ status: 200, json: {} }), 'UPSTREAM', 'Linear returned an unreadable answer (HTTP 200)', RETRY)
+})
+
+test('another non-2xx status maps to UPSTREAM', async () => {
+  expectError(await failure({ status: 418, json: { data: null } }), 'UPSTREAM', 'Linear answered HTTP 418', RETRY)
+})
+
+test('errors with partial data still throw', async () => {
+  const error = await failure({ status: 200, json: { data: { a: 1 }, errors: [{ message: 'partial' }] } })
+  assert.equal(error.code, 'UPSTREAM')
+  assert.equal(error.message, 'Linear answered with an error: partial')
+})
+
+test('data with an empty errors list is a success', async () => {
+  const { client } = make({ routes: { Q: { status: 200, json: { data: { a: 1 }, errors: [] } } } })
+  assert.deepEqual(await client.request('query Q { a }'), { a: 1 })
+})
+
+test('an error with no extensions, no message or a long message still gives a one-line message', async () => {
+  const bare = await failure(errorsBody(200, {}))
+  assert.equal(bare.message, 'Linear answered with an error: no message')
+  const long = await failure(errorsBody(200, { message: `${'x'.repeat(150)}\n${'y'.repeat(150)}` }))
+  const text = long.message.slice('Linear answered with an error: '.length)
+  assert.equal(text.length, 200)
+  assert.ok(!/\n/.test(long.message))
+})
