@@ -277,6 +277,6 @@ The spec implies these inputs, and no row of its tables names them. Each line ha
 
 - [ ] **Step 1:** Run `npm test`. Expect every test to pass, `plugin.test.mjs` included (`package.json` unchanged), and no leftover temp entries.
 - [ ] **Step 2:** Run `git diff --stat main -- scripts package.json`. Expect only the files in the File Map, and no change to `package.json` or `scripts/lib/adapters.mjs`.
-- [ ] **Step 3:** Run `git grep -niE 'cheap.?courier|\bCHE\b'`. Expect no output.
+- [ ] **Step 3:** Run the private-name check. Expect no output.
 - [ ] **Step 4:** Run `git grep -n 'process.env' -- scripts/lib/linear/client.mjs scripts/lib/linear/credential.mjs`. Expect no output.
 - [ ] **Step 5: Commit** only if a check needed a fix, with a subject that names the fix and `(PMK-30)`.

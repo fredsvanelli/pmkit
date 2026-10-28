@@ -175,7 +175,7 @@ A new CLI command needs, in this plan: the entry in `COMMANDS` with `summary`, `
 ## Task 13: Verify
 
 - [ ] Run `npm test` and read the end of the output. All tests pass and no test opens a socket.
-- [ ] Run `git grep -niE 'cheap.?courier|\bCHE\b'` and fix any hit.
+- [ ] Run the private-name check and fix any hit.
 - [ ] By hand, outside `npm test`: with the key loaded by the shell, run `node scripts/pmkit.mjs linear triage show --json` and `... suggestions --json` against the sandbox workspace. Expect `available: false`, `reason: plan`. Record the answer in the PR. Never print or pass the key.
 - [ ] Run `superpowers:verification-before-completion` before calling the work done.
 
