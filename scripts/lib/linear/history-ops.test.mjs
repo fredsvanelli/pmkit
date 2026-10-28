@@ -282,6 +282,14 @@ test('a date-only until includes the whole day', async () => {
   assert.equal((await history.metricEvents({ until: `${after.created.slice(0, 19)}Z` })).length, 1)
 })
 
+test('a date-only until keeps an event in the last second of the day', async () => {
+  const { fake, ops, history } = await setup({ start: '2026-10-05T10:00:00.000Z' })
+  const { after } = await ops.createIssue({ title: 'Today' }, ACTOR)
+  fake.comment(after.id, { id: 'late', body: 'Late', createdAt: '2026-10-05T23:59:59.500Z' })
+  const events = await history.metricEvents({ until: '2026-10-05' })
+  assert.ok(events.some((event) => event.op === 'comment' && event.to === 'late'))
+})
+
 test('trashed and archived issues: trashed are skipped, archived are read', async () => {
   const { fake, ops, history } = await setup()
   const kept = (await ops.createIssue({ title: 'Kept' }, ACTOR)).after.id

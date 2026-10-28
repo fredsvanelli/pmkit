@@ -145,7 +145,7 @@ export function historyOperations({ client, ops }) {
       if (node.comments?.pageInfo?.hasNextPage === true) node.comments = { nodes: (await readCommentNodes(node)).nodes }
     }
     const context = await ops.contextFor(live)
-    const last = until !== undefined && !until.includes('T') ? `${until}T23:59:59Z` : until
+    const last = until !== undefined && !until.includes('T') ? `${until}T23:59:59.999Z` : until
     const events = live
       .flatMap((node) => toEvents({ node, origin: { creator: node.creator, botActor: node.botActor }, entries: node.history?.nodes ?? [], comments: node.comments?.nodes ?? [] }, context)
         .map((event, index) => ({ event: { ...event, issue: node.identifier }, index })))

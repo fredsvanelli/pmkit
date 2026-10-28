@@ -122,7 +122,7 @@ The user chose where thread resolution lives (resolved question 1): a contract o
 
 #### What each history field becomes
 
-The running state starts as the current issue: `toIssue(node)`, plus `sprint`, `project` and `milestone` from the node when PMK-37 and PMK-38 add them. An entry yields the events below, in the order of the table. Each event's `to` is the running value, and its `from` is the value the entry says came before. Then the entry is undone on the running state.
+The running state starts as the current issue: `toIssue(node)`, plus `sprint` and `milestone` from the node when PMK-37 and PMK-38 add them. An entry yields the events below, in the order of the table. Each event's `to` is the running value, and its `from` is the value the entry says came before. Then the entry is undone on the running state.
 
 | Linear entry fields | pmkit event | Values |
 |---|---|---|
