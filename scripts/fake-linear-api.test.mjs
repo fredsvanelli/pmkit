@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ACME_TEAM_ID, FAKE_KEY, fakeLinearFetch, fakeWorkspace, json, page } from './fake-linear-api.mjs'
+import { ACME_TEAM_ID, FAKE_KEY, fakeLinearFetch, fakeTriage, fakeWorkspace, json, page } from './fake-linear-api.mjs'
 import { operationName } from './lib/linear/client.mjs'
 
 const ENDPOINT = 'https://api.linear.app/graphql'
@@ -140,5 +140,27 @@ test('fakeWorkspace refuses and loops on request', async () => {
     assert.equal(labels.pageInfo.hasNextPage, true)
     assert.notEqual(labels.pageInfo.endCursor, after)
     after = labels.pageInfo.endCursor
+  }
+})
+
+test('fakeTriage answers the five triage operations and records them by name', async () => {
+  const responsibility = { id: 'tr-1', action: 'assign', manualSelection: { userIds: ['user-2'], assignmentIndex: 0 }, timeSchedule: null, currentUser: { id: 'user-2', name: 'Ada Lovelace' } }
+  const issues = [{ identifier: 'ACME-1', title: 'One', suggestions: { nodes: [] } }, { identifier: 'ACME-2', title: 'Two', suggestions: { nodes: [] } }]
+  for (const subscription of [null, { type: 'Business' }]) {
+    const fetch = fakeLinearFetch({ ...fakeWorkspace({ subscription }), ...fakeTriage({ responsibility, issues }) })
+    const read = async (query, variables) => (await (await post(fetch, query, variables)).text().then(JSON.parse)).data
+    assert.deepEqual((await read('query PmkitTriageShow($teamId: String!) { x }', { teamId: ACME_TEAM_ID })).team.triageResponsibility, responsibility)
+    const found = (await read('query PmkitTriageSuggestions($first: Int!) { x }', { first: 1 })).issues
+    assert.deepEqual(found.nodes.map((node) => node.identifier), ['ACME-1'])
+    assert.equal(found.pageInfo.hasNextPage, true)
+    const created = await read('mutation PmkitTriageCreate($input: TriageResponsibilityCreateInput!) { x }', {
+      input: { teamId: ACME_TEAM_ID, action: 'notify', manualSelection: { userIds: ['user-2', 'user-3'], assignmentIndex: 1 } },
+    })
+    assert.deepEqual(created.triageResponsibilityCreate.triageResponsibility.currentUser, { id: 'user-3', name: 'Gone' })
+    assert.equal(created.triageResponsibilityCreate.triageResponsibility.action, 'notify')
+    const updated = await read('mutation PmkitTriageUpdate($id: String!, $input: TriageResponsibilityUpdateInput!) { x }', { id: 'tr-1', input: { action: 'notify' } })
+    assert.equal(updated.triageResponsibilityUpdate.triageResponsibility.id, 'tr-1')
+    assert.equal((await read('mutation PmkitTriageDelete($id: String!) { x }', { id: 'tr-1' })).triageResponsibilityDelete.success, true)
+    assert.deepEqual(fetch.calls.map((call) => operationName(call.body.query)), ['PmkitTriageShow', 'PmkitTriageSuggestions', 'PmkitTriageCreate', 'PmkitTriageUpdate', 'PmkitTriageDelete'])
   }
 })

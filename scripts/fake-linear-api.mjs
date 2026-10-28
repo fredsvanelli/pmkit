@@ -81,7 +81,7 @@ export function fakeLinearFetch(routes = {}, { workspace = 'acme', previousUrlKe
 
 export const ACME_TEAM_ID = 'team-acme'
 
-const acmeTeam = {
+export const acmeTeam = {
   id: ACME_TEAM_ID,
   key: 'ACME',
   name: 'Acme',
@@ -187,4 +187,37 @@ export function fakeWorkspace({
   }
   for (const operation of refuse) routes[operation] = refused
   return routes
+}
+
+/**
+ * Routes for the triage operations. `responsibility` is the TriageResponsibility node the team has (null for none),
+ * `issues` the nodes of the triage inbox query. The mutation routes echo a responsibility built from their variables.
+ * Names come from `users`, so the new current person has the name discovery shows.
+ */
+export function fakeTriage({ responsibility = null, issues = [], users = ACME_USERS } = {}) {
+  const person = (id) => {
+    const found = users.find((item) => item.id === id)
+    return found ? { id: found.id, name: found.name } : null
+  }
+  const built = (id, input, base = {}) => {
+    const selection = input.manualSelection ?? base.manualSelection ?? null
+    return {
+      id,
+      action: input.action ?? base.action ?? 'assign',
+      manualSelection: selection,
+      timeSchedule: input.timeScheduleId ? { id: input.timeScheduleId, name: 'Schedule', externalUrl: null, integration: null } : (selection ? null : (base.timeSchedule ?? null)),
+      currentUser: selection ? person(selection.userIds[selection.assignmentIndex ?? 0]) : (base.currentUser ?? null),
+    }
+  }
+  const mutation = (field, payload) => (body) => json({ [field]: payload(body.variables ?? {}) })
+  return {
+    PmkitTriageShow: json({ team: { triageResponsibility: responsibility } }),
+    PmkitTriageSuggestions: (body) => {
+      const first = body.variables?.first ?? 50
+      return json({ issues: page(issues.slice(0, first), { hasNextPage: issues.length > first, endCursor: issues.length > first ? String(first) : null }) })
+    },
+    PmkitTriageCreate: mutation('triageResponsibilityCreate', (v) => ({ success: true, triageResponsibility: built('tr-new', v.input ?? {}) })),
+    PmkitTriageUpdate: mutation('triageResponsibilityUpdate', (v) => ({ success: true, triageResponsibility: built(v.id, v.input ?? {}, responsibility ?? {}) })),
+    PmkitTriageDelete: mutation('triageResponsibilityDelete', () => ({ success: true })),
+  }
 }

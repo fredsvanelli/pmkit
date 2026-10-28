@@ -33,6 +33,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 - `/pmkit:issues:summary`: Summarize an issue or an epic from its record, comments and history.
 - `/pmkit:issues:update`: Change the title, priority, estimate, labels or acceptance criteria of an issue.
 - `/pmkit:issues:work`: Pick up an issue: claim it, branch, plan, implement, open the PR and move it to review.
+- `/pmkit:linear:triage-rotation`: See who is on triage duty in Linear, change the rotation, and read Linear's Triage Intelligence suggestions.
 - `/pmkit:local:doctor`: Check the tracker files, fix what can be fixed and resolve git conflict markers.
 - `/pmkit:local:render`: Render a board, roadmap or sprint view of the tracker as Markdown or HTML for people outside the agent.
 - `/pmkit:report:release-notes`: Write release notes for a release, a sprint or a period, and save them after you confirm.

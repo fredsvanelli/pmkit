@@ -21,7 +21,7 @@ export const LINEAR_CAPABILITIES = Object.freeze({
   user_inbox: { path: 'native' },
 })
 
-const BUSINESS_PLANS = ['business', 'enterprise', 'trial']
+export const BUSINESS_PLANS = ['business', 'enterprise', 'trial']
 const GIT_INTEGRATIONS = ['github', 'gitlab']
 const ENABLE_GIT_HINT = 'Set git_host in .pmkit/config.yaml'
 const unservedHint = (id) => `No pmkit command serves ${id} yet; Linear offers it on this workspace`

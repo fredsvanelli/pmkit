@@ -1435,6 +1435,7 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'pr open': ['--issue', 'ISS-5N1R'],
     'pr ready': ['--issue', 'ISS-5N1R'],
     'pr sync': [],
+    'linear triage set': ['--off'],
     migrate: [],
   }
   assert.deepEqual(Object.keys(WRITES).sort(), COMMANDS.filter((c) => c.write).map((c) => c.name).sort())
@@ -1525,6 +1526,8 @@ test('every read goes on with one warning', () => {
     risks: [],
     'pr status': [],
     reindex: [],
+    'linear triage show': [],
+    'linear triage suggestions': [],
     render: ['board'],
   }
   assert.deepEqual(Object.keys(READS).sort(), [...COMMANDS.filter((c) => !c.write && !['init', 'changelog', 'validate'].includes(c.name)).map((c) => c.name), 'cycle capacity'].sort())

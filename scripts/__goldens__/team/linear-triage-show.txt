@@ -1,0 +1,20 @@
+$ pmkit linear triage show
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: `linear triage show` works only with the Linear tracker, and tracker.system is "local"
+next: node scripts/pmkit.mjs --help
+
+$ pmkit linear triage show --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_SUPPORTED",
+    "message": "`linear triage show` works only with the Linear tracker, and tracker.system is \"local\"",
+    "nextStep": "node scripts/pmkit.mjs --help"
+  }
+}
+--- stderr
+(empty)

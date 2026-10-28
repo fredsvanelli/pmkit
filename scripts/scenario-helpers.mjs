@@ -35,8 +35,10 @@ const FLAG_TOKEN = /\[|\]|"[^"]*"|(?<![\w-])--([a-z][\w-]*)/gi
 // A placeholder that stands for any number of flags, such as `<flags>` or `<fields>`.
 const ANY_FLAGS = /^<[^<>]*\b(?:flags|fields)>$/
 
-/** The CLI command named by the first words of a call or an entry: two words when they name a command, else one. */
+/** The CLI command named by the first words of a call or an entry: three words or two when they name a command, else one. */
 function commandOf(words, cliNames) {
+  const three = words.slice(0, 3).join(' ')
+  if (cliNames.includes(three)) return three
   const two = words.slice(0, 2).join(' ')
   return cliNames.includes(two) ? two : words[0]
 }

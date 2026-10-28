@@ -122,7 +122,7 @@ test('risks lists an epic whose updates reject, as it does for a throw', async (
 // The mirror runs every golden case twice: on a plain copy with the product registry, and on a copy whose
 // .pmkit/config.yaml says linear, over a tracker whose operations all return promises. A missing await, or a call past
 // the contract, makes the two outputs differ.
-const MIRRORED = COMMANDS.filter((command) => !command.local && !command.exempt)
+const MIRRORED = COMMANDS.filter((command) => !command.local && !command.linear && !command.exempt)
 
 test('every command that is not local or exempt has mirror cases', () => {
   for (const command of MIRRORED) {
@@ -130,6 +130,11 @@ test('every command that is not local or exempt has mirror cases', () => {
     assert.ok(Object.values(FIXTURES).every((anchors) => CASES[command.name](anchors).length > 0), `${command.name} has an argument list`)
   }
   assert.deepEqual(COMMANDS.filter((command) => command.local).map((command) => command.name), ['render', 'migrate', 'reindex'])
+})
+
+test('the linear commands are the three triage commands and stay out of the mirror', () => {
+  assert.deepEqual(COMMANDS.filter((command) => command.linear).map((command) => command.name), ['linear triage show', 'linear triage suggestions', 'linear triage set'])
+  assert.ok(MIRRORED.every((command) => !command.linear))
 })
 
 async function runCopy(fixture, argv, { mirror }) {

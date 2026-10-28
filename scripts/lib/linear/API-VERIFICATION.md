@@ -18,6 +18,7 @@ Without `PMKIT_LIVE=1` the script sends nothing. It sends only queries and refus
 | Dependencies between projects | yes | `ProjectRelation`; `projectRelations`; `projectRelationCreate`, `projectRelationUpdate`, `projectRelationDelete` | read/write | no plan stated | schema, live read, docs | Write access comes from the schema only. A relation can also point at a milestone (`anchorType`, `relatedAnchorType`). |
 | Releases | yes | `Release`, `ReleasePipeline`, `ReleaseStage`; `releases`, `releasePipelines`; `releaseCreate`, `releaseComplete`, `issueToReleaseCreate`; `Issue.releases` | read/write | Business and Enterprise | schema, live read, docs | `Organization.releasesEnabled` is `false` on this workspace. Write access comes from the schema only. |
 | Insights | no | none | none | Business and Enterprise (UI) | schema, docs | PMK-33 treats `native_metrics` as `derived`. |
+| Triage responsibility and Triage Intelligence | yes | `Team.triageResponsibility`, `TriageResponsibility`, `TimeSchedule`; `triageResponsibilityCreate`, `triageResponsibilityUpdate`, `triageResponsibilityDelete`; `IssueSuggestion`, `Issue.suggestions` | read/write for triage responsibility, read for suggestions | Business and Enterprise | schema, live read, docs | The mutations come from the schema only. Both reads answer on Free, so the plan decides. |
 
 ## Recurring issues
 
@@ -59,6 +60,18 @@ Docs: `https://linear.app/docs/insights` (read 2026-10-27) says Insights is avai
 
 Answer `no`. Absence from the schema is the proof. For PMK-33, `native_metrics` on Linear is `derived` from issue history and never `native`.
 
+## Triage responsibility and Triage Intelligence
+
+Checked 2026-10-27 for PMK-43, by introspection and reads only.
+
+Schema. `Team.triageResponsibility` has type `TriageResponsibility` (`id`, `action`, `manualSelection`, `team`, `timeSchedule`, `currentUser`) and is null when the team has none. `action` is `assign` or `notify`. `manualSelection` holds `userIds` and `assignmentIndex`. `TimeSchedule` has an `integration` when a service such as PagerDuty syncs it. `Team.triageEnabled` is a separate setting. The queries are `triageResponsibilities` and `triageResponsibility`. The mutations are `triageResponsibilityCreate` (input `TriageResponsibilityCreateInput`: `teamId`, `action`, `manualSelection`, `timeScheduleId`), `triageResponsibilityUpdate` (`id`, input `TriageResponsibilityUpdateInput`) and `triageResponsibilityDelete` (`id`). `IssueSuggestion` has `type` (`team`, `project`, `assignee`, `label`, `similarIssue`, `relatedIssue`), `state` (`active`, `stale`, `accepted`, `dismissed`), `metadata` (`score`, `classification`, `reasons`), `presentedReasons` and the suggested team, project, user, label and issue. The schema has no accept or dismiss mutation.
+
+Live. `triageResponsibilities(first: 5)` and `Issue.suggestions` answer with empty lists on the Free workspace, and `Team.triageResponsibility` is null. No mutation was sent.
+
+Docs. `https://linear.app/docs/triage` (read 2026-10-27) says triage responsibility and Triage Intelligence are available on the Business and Enterprise plans.
+
+Answer `yes`. Triage responsibility is read/write and suggestions are read-only. The three mutations stay `schema, docs` until a Business or trial workspace with a dedicated test team tries them. `linear triage show` and `suggestions` therefore decide from the plan and `Team.triageEnabled` in the cached discovery and send no triage query on Free.
+
 ## Paid-plan features on a Free workspace
 
 Check a gated feature in this order.
@@ -67,6 +80,8 @@ Check a gated feature in this order.
 2. Docs. Record the page and the date for the plan that unlocks the feature.
 3. Live read. An empty list proves the query is allowed. A permission error proves a gate and goes into the Caveat.
 4. Live write. Not done in PMK-29. A write that depends on the plan stays `schema, docs` until a later issue tries it on a Business or trial workspace with a dedicated test team.
+
+A read passes on Free for triage responsibility and suggestions, so for these objects the plan decides and an empty answer proves nothing.
 
 ## Repeat the check
 
