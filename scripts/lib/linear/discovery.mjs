@@ -257,7 +257,7 @@ export function discoveryView(raw, pmkit = {}, { session } = {}) {
     ...(raw.integrations === null ? ["Linear refused to list this workspace's integrations for this key; linked_code assumes git only"] : []),
   ]
 
-  return {
+  const view = {
     ...(session
       ? { auth: { source: session.source, viewer: { id: session.viewer.id, name: session.viewer.name }, workspace: { urlKey: session.workspace.urlKey, name: session.workspace.name } } }
       : {}),
@@ -274,4 +274,7 @@ export function discoveryView(raw, pmkit = {}, { session } = {}) {
     discoveredAt: raw.discoveredAt,
     warnings,
   }
+  // The raw discovery rides along, hidden, so resolveMappings can read Linear's ids from the view alone.
+  Object.defineProperty(view, 'raw', { value: raw, enumerable: false })
+  return view
 }

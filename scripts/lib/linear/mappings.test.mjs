@@ -5,7 +5,7 @@ import { fixedNow } from '../../test-helpers.mjs'
 import { brokenMappings, proposeMappings } from '../mappings.mjs'
 import { createLinearClient } from './client.mjs'
 import { discoveryView, fetchDiscovery } from './discovery.mjs'
-import { linearDescription } from './mappings.mjs'
+import { linearDescription, resolveMappings } from './mappings.mjs'
 
 const TYPES = ['feature', 'bug', 'task', 'chore']
 
@@ -133,4 +133,81 @@ test('the Linear description feeds the generic rules', async () => {
     'mappings.status.in_review names Gone, which team ACME no longer has',
     'mappings.types.bug names Lost, which is neither a label of team ACME nor of the workspace',
   ])
+})
+
+// resolveMappings
+
+async function resolve(mappings, options = {}) {
+  const raw = await discover(options)
+  const pmkit = pmkitWith(mappings)
+  return resolveMappings(discoveryView(raw, pmkit), pmkit)
+}
+
+test('rule 1: a mapped in_review state takes the category, blocked and none never change one', async () => {
+  const mapped = await resolve({ status: { in_review: 'Code Review', blocked: 'In Progress' } })
+  assert.equal(mapped.team, 'ACME')
+  assert.equal(mapped.categoryOf('Code Review'), 'in_review')
+  assert.equal(mapped.categoryOf('In Review'), 'in_progress')
+  assert.equal(mapped.categoryOf('In Progress'), 'in_progress')
+  assert.equal(mapped.categoryOf('Duplicate'), 'canceled')
+  assert.equal(mapped.categoryOf('Nope'), null)
+  const none = await resolve({ status: { in_review: 'none', blocked: 'none' } })
+  assert.equal(none.categoryOf('In Review'), 'in_progress')
+  assert.equal(none.categoryOf('none'), null)
+})
+
+test('rule 2: the move target is the mapped state, else the first by position, else null', async () => {
+  const mapped = await resolve({ status: { in_review: 'Code Review' } })
+  assert.deepEqual(mapped.targetState('in_review'), { id: 'state-5', name: 'Code Review' })
+  assert.deepEqual(mapped.targetState('in_progress'), { id: 'state-3', name: 'In Progress' })
+  const unmapped = await resolve({})
+  assert.equal(unmapped.targetState('in_review'), null)
+  assert.deepEqual(unmapped.targetState('todo'), { id: 'state-2', name: 'Todo' })
+  assert.deepEqual((await resolve({ status: { in_review: 'none' } })).targetState('in_review'), null)
+  assert.deepEqual(unmapped.targetState('done'), { id: 'state-8', name: 'Done' })
+})
+
+test('rule 3: the blocked state keeps its type category', async () => {
+  const mapped = await resolve({ status: { blocked: 'UAT' } })
+  assert.deepEqual(mapped.blockedState, { id: 'state-6', name: 'UAT' })
+  assert.equal(mapped.categoryOf('UAT'), 'in_progress')
+  assert.equal((await resolve({ status: { blocked: 'none' } })).blockedState, null)
+  assert.equal((await resolve({})).blockedState, null)
+})
+
+test('rule 4: native gives native, none, absent or estimates off give null', async () => {
+  const on = { teams: [{ id: ACME_TEAM_ID, key: 'ACME', name: 'Acme', issueEstimationType: 'fibonacci' }] }
+  assert.equal((await resolve({ fields: { estimate: 'native' } }, on)).estimate, 'native')
+  assert.equal((await resolve({ fields: { estimate: 'none' } }, on)).estimate, null)
+  assert.equal((await resolve({}, on)).estimate, null)
+  assert.equal((await resolve({ fields: { estimate: 'native' } })).estimate, null)
+})
+
+test('rule 5: types hold id and name, typeOf follows the file order and a team label wins', async () => {
+  const mapped = await resolve({ types: { bug: 'Bug', feature: 'Feature', chore: 'Docs' } })
+  assert.deepEqual(mapped.types, { bug: { id: 'label-bug', name: 'Bug' }, feature: { id: 'label-feature', name: 'Feature' }, chore: { id: 'label-docs', name: 'Docs' } })
+  assert.equal(mapped.typeOf(['Bug', 'Docs']), 'bug')
+  assert.equal(mapped.typeOf(['Docs', 'Feature']), 'feature')
+  assert.equal(mapped.typeOf(['XS']), null)
+  assert.equal(mapped.typeOf([]), null)
+  const labels = [...fakeWorkspaceLabels(), { id: 'label-ws-bug', name: 'Bug', isGroup: false, retiredAt: null, team: null, parent: null }]
+  assert.equal((await resolve({ types: { bug: 'Bug' } }, { labels })).types.bug.id, 'label-bug')
+  const absent = await resolve({})
+  assert.deepEqual(absent.types, {})
+  assert.equal(absent.typeOf(['Bug']), null)
+})
+
+test('resolveMappings takes the raw discovery as a third argument and needs a team', async () => {
+  const raw = await discover()
+  const pmkit = pmkitWith({ types: { bug: 'Bug' } })
+  assert.equal(resolveMappings({ ...discoveryView(raw, pmkit) }, pmkit, raw).types.bug.id, 'label-bug')
+  assert.throws(() => resolveMappings({}, pmkit), TypeError)
+  assert.throws(() => resolveMappings(discoveryView(raw, pmkit), { tracker: { scope: {} } }), (error) => error.code === 'NOT_CONFIGURED')
+})
+
+test('the view keeps its keys: the raw discovery is hidden', async () => {
+  const raw = await discover()
+  const view = discoveryView(raw, pmkitWith())
+  assert.ok(!Object.keys(view).includes('raw'))
+  assert.ok(!JSON.stringify(view).includes('state-1'))
 })
