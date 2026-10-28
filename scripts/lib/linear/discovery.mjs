@@ -148,3 +148,130 @@ export function estimateScale({ type, allowZero = false, extended = false } = {}
   if (!points) return { unit: 'points', scale: [] }
   return { unit: 'points', scale: [...(allowZero ? [0] : []), ...points.base, ...(extended ? points.extended : [])] }
 }
+
+const PRIORITIES = ['urgent', 'high', 'medium', 'low']
+const KEPT_PER_KIND = PAGE_SIZE * 10
+const byName = (a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+const sameScale = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+const NO_SCALE = { unit: 'points', scale: [] }
+
+/** The category each mapped state name takes, from mappings.status. blocked is not a category, so it is left for later issues. */
+function mappedCategories(pmkit) {
+  const status = pmkit?.mappings?.status ?? {}
+  return Object.entries(status).filter(([category, name]) => category !== 'blocked' && typeof name === 'string')
+}
+
+/**
+ * The discover result: the common keys every command reads, plus the workspace and each team.
+ * pmkit is config.pmkit (tracker.scope.team and mappings.status). session is the client's session on a fresh fetch.
+ */
+export function discoveryView(raw, pmkit = {}, { session } = {}) {
+  const mappings = mappedCategories(pmkit)
+  const mappedName = new Map(mappings.map(([category, name]) => [name, category]))
+  const unknownTypes = []
+  const teamKeys = new Map(raw.teams.map((team) => [team.id, team.key]))
+  const workspaceLabels = raw.labels.filter((label) => label.team === null && !label.isGroup)
+
+  const teams = raw.teams.map((team) => {
+    const states = raw.states.filter((item) => item.team === team.id).sort((a, b) => a.position - b.position)
+    const statuses = states.map((item) => {
+      let category = mappedName.get(item.name) ?? categoryOfType(item.type)
+      if (category === null) {
+        category = 'in_progress'
+        unknownTypes.push(`Linear state ${item.name} on team ${team.key} has type ${item.type}, which pmkit does not know; it counts as in_progress`)
+      }
+      return { name: item.name, category, type: item.type }
+    })
+    const labels = [...raw.labels.filter((label) => label.team === team.id && !label.isGroup), ...workspaceLabels]
+      .sort(byName)
+      .map((label) => ({ name: label.name, group: label.group }))
+    return {
+      key: team.key,
+      name: team.name,
+      parent: team.parent,
+      cycles: team.cyclesEnabled,
+      triage: team.triageEnabled,
+      statuses,
+      labels,
+      estimate: { ...estimateScale(team.estimation), type: team.estimation.type },
+    }
+  })
+
+  const configured = pmkit?.tracker?.scope?.team
+  const chosen = configured ? (teams.find((team) => team.key === configured) ?? null) : null
+  const scoped = chosen ? [chosen] : teams
+
+  const statuses = []
+  const seenStatus = new Set()
+  for (const team of scoped) {
+    for (const { name, category } of team.statuses) {
+      const id = JSON.stringify([name, category])
+      if (seenStatus.has(id)) continue
+      seenStatus.add(id)
+      statuses.push({ name, category })
+    }
+  }
+
+  const labelNames = chosen
+    ? chosen.labels.map((label) => label.name)
+    : raw.labels.filter((label) => !label.isGroup).map((label) => label.name)
+  const labels = [...new Set(labelNames)].sort()
+
+  let estimate
+  const withoutType = ({ type, ...scale }) => scale
+  if (chosen) estimate = withoutType(chosen.estimate)
+  else {
+    const used = raw.teams.filter((team) => team.estimation.type !== 'notUsed').map((team) => estimateScale(team.estimation))
+    estimate = used.length > 0 && used.every((scale) => sameScale(scale, used[0])) ? used[0] : NO_SCALE
+  }
+
+  const members = raw.users
+    .filter((user) => !user.app)
+    .sort(byId)
+    .map((user) => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      handle: user.displayName,
+      guest: user.guest,
+      teams: user.teams.filter((id) => teamKeys.has(id)).map((id) => teamKeys.get(id)),
+    }))
+  const agents = raw.users.filter((user) => user.app).sort(byId).map((user) => ({ id: user.id, name: user.name }))
+
+  const mappingWarnings = mappings
+    .filter(([, name]) => !scoped.some((team) => team.statuses.some((status) => status.name === name)))
+    .map(([category, name]) =>
+      chosen
+        ? `mappings.status.${category} names ${name}, which team ${chosen.key} does not have`
+        : `mappings.status.${category} names ${name}, which no team has`,
+    )
+
+  const warnings = [
+    ...(session?.warnings ?? []),
+    ...raw.truncated.map((kind) => `Linear has more than ${KEPT_PER_KIND} ${kind}; discovery kept the first ${KEPT_PER_KIND}`),
+    ...unknownTypes,
+    ...mappingWarnings,
+    ...(configured && !chosen ? [`tracker.scope.team names ${configured}, which this workspace does not have`] : []),
+    ...(raw.workspace.plan === 'unknown' ? ['Linear did not say which plan this workspace has; capability hints assume the Free plan'] : []),
+    ...(raw.integrations === null ? ["Linear refused to list this workspace's integrations for this key; linked_code assumes git only"] : []),
+  ]
+
+  return {
+    ...(session
+      ? { auth: { source: session.source, viewer: { id: session.viewer.id, name: session.viewer.name }, workspace: { urlKey: session.workspace.urlKey, name: session.workspace.name } } }
+      : {}),
+    workspace: { urlKey: raw.workspace.urlKey, name: raw.workspace.name, plan: raw.workspace.plan },
+    team: chosen ? chosen.key : null,
+    teams,
+    statuses,
+    types: [],
+    priorities: [...PRIORITIES],
+    labels,
+    members,
+    agents,
+    estimate,
+    discoveredAt: raw.discoveredAt,
+    warnings,
+  }
+}
