@@ -8,7 +8,7 @@ The Unified model lists `linear-customers` as a Linear (Business) skill: "Manage
 
 Three facts shape the work.
 
-- Customers need Linear's Business plan, and the sandbox workspace is on Free with `customersEnabled` false. The command cannot be proven end to end here. The proof of this issue is the path where the capability is absent, plus tests of the present path against a fake.
+- An admin turns customers on in any plan, and the sandbox workspace has the flag off (`customersEnabled` false). The command cannot be proven end to end here. The proof of this issue is the path where the capability is absent, plus tests of the present path against a fake.
 - Unlike triage responsibility, customer queries fail on Free (see the facts below). A live read cannot be the availability test, and the command must not send one.
 - A command reaches the tracker through `ctx.tracker()`, which holds the contract operations only. Customers exist in Linear and in no other tracker. In the Unified model, other systems have a demand signal, not an entity.
 
@@ -201,7 +201,7 @@ enable: An admin can turn on customer requests in the workspace settings.
 }
 ```
 
-The write commands (`set`, `link`, with or without `--dry-run`) exit 2 with `NOT_SUPPORTED`, the message "customers are unavailable on this workspace (plan free)" and the same `enableHint` as the next step. They send no query and no mutation. This follows PMK-43 (question 1 there, answered A). A read answers a question, and "this workspace has no customers" is an answer. A write that cannot happen is an error. An agent that reads the JSON branches on `available`.
+The write commands (`set`, `link`, with or without `--dry-run`) exit 2 with `NOT_SUPPORTED`, the message "customers are unavailable on this workspace (customers are off)" and the same `enableHint` as the next step. They send no query and no mutation. This follows PMK-43 (question 1 there, answered A). A read answers a question, and "this workspace has no customers" is an answer. A write that cannot happen is an error. An agent that reads the JSON branches on `available`.
 
 `set` rules, with the capability present:
 
@@ -275,7 +275,7 @@ Nothing from PMK-36, PMK-37 or PMK-38, and no operation from PMK-35. It reads th
 | A `linear: true` extension in `customers.mjs`, not contract operations | Customers exist only in Linear. The contract and every other tracker stay unchanged, and PMK-43 set the pattern. |
 | `ctx.linear(feature)` picks `triage` or `customers` | Two features now share the hook. Returning one object of features would work too, but the argument keeps each call site explicit (builder's call). |
 | Availability from `raw.flags.customersEnabled`, with the plan only choosing the hint | Linear enforces the flag, the live reads fail on Free, and the manifest uses the same flag for `demand_signals`. No request is needed. |
-| Reads exit 0 with `available: false`, writes exit 2 with `NOT_SUPPORTED` | It follows PMK-43 and the Linear tab's "degrade on Free". |
+| Reads exit 0 with `available: false`, writes exit 2 with `NOT_SUPPORTED` | It follows PMK-43 and the Linear tab's rule to report `customers_off` on every plan. |
 | No manifest change | `demand_signals` already reports `native` or `absent` from the same flag. |
 | Names, not ids, for status, tier, customer and project | A user does not hold Linear ids. An ambiguous or unknown name fails with the valid choices. |
 | `link` creates or moves a request and never deletes one | The acceptance criterion says link. A destructive change on customer data needs its own decision (resolved question 1). |
@@ -298,7 +298,7 @@ Nothing from PMK-36, PMK-37 or PMK-38, and no operation from PMK-35. It reads th
 - The discovery cache lasts an hour. A user who turned customers on sees "unavailable" until `pmkit discover` runs. The hint says so.
 - A project name filter may behave differently on a workspace with archived or many projects. The command reads one page of 25 and reports `hasMore` as a warning, so a miss is `NOT_FOUND` with the hint to use the slug.
 - The `ctx.linear(feature)` change touches the PMK-43 call sites. PMK-36, PMK-37 and PMK-38 are parallel and may edit the same part of `pmkit.mjs`, so a merge conflict is possible and small.
-- The sandbox workspace stays on Free. Nobody can run the present path live until a Business workspace or a trial exists, and a workspace on a trial plan with customers on is the cheapest way to close that gap.
+- The sandbox workspace keeps the flag off. Nobody can run the present path live until a workspace with customers turned on exists.
 
 ## Self-review
 

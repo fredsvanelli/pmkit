@@ -1146,11 +1146,12 @@ test('a Local epic prints no health, progress, milestones or documents line', ()
   assert.equal(text, 'id: EPC-1\ntitle: Local\nstatus: Planned (todo)\nstart: 2026-11-01\n\nBody')
 })
 
-// Customers (PMK-42). The Free workspace is the proof for the absent capability; the Business ones use the fake.
+// Customers (PMK-42). The workspace with customers off is the proof for the absent capability; the workspaces with customers on use the fake.
 const CUSTOMER_OPERATIONS = ['PmkitCustomersList', 'PmkitCustomerShow', 'PmkitCustomerStatuses', 'PmkitCustomerTiers', 'PmkitCustomerIssue', 'PmkitCustomerProjects', 'PmkitCustomerUpdate', 'PmkitCustomerNeedCreate', 'PmkitCustomerNeedUpdate']
 const customerCalls = (fetch) => fetch.calls.filter((call) => CUSTOMER_OPERATIONS.includes(operationName(call.body.query)))
 const customersFetch = ({ workspace = {}, customers = {} } = {}) => fakeLinearFetch({ ...fakeWorkspace(workspace), ...fakeCustomers(customers) })
-const ON = { subscription: BUSINESS, customersEnabled: true }
+const CUSTOMERS_PLAN = { type: 'Business' }
+const ON = { subscription: CUSTOMERS_PLAN, customersEnabled: true }
 const customerNode = (id, name, extra = {}) => ({
   id,
   name,
@@ -1182,7 +1183,7 @@ test('linear customers list on a Free workspace is unavailable and sends no cust
 })
 
 test('linear customers list with customers off reports customers_off and sends no customer query', async () => {
-  const fetch = customersFetch({ workspace: { subscription: BUSINESS } })
+  const fetch = customersFetch({ workspace: { subscription: CUSTOMERS_PLAN } })
   const data = JSON.parse((await cli(setup(), ['linear', 'customers', 'list', '--json'], fetch)).stdout)
   assert.deepEqual([data.available, data.reason, data.enableHint], [false, 'customers_off', 'An admin can turn on customer requests in the workspace settings.'])
   assert.equal(customerCalls(fetch).length, 0)
