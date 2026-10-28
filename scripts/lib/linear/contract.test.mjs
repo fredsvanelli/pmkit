@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
 import { runTrackerContract } from '../../contract-suite.mjs'
-import { ACME_STATES, ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeWorkspace } from '../../fake-linear-api.mjs'
+import { ACME_STATES, ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeWorkspace } from '../../fake-linear-api.mjs'
 import { tempDir, userStoreEnv } from '../../test-helpers.mjs'
 import { createLinearTracker } from './tracker.mjs'
 
@@ -18,7 +18,8 @@ function linearContract({ cycles = [ACTIVE, PLANNED] } = {}) {
   const teams = [{ ...ACME_TEAM, triageEnabled: true, cyclesEnabled: true }]
   const states = [{ id: 'state-triage', name: 'Triage', type: 'triage', position: -1, team: { id: ACME_TEAM.id } }, ...ACME_STATES]
   const fake = fakeLinearIssues({ teams, states, cycles })
-  const fetch = fakeLinearFetch({ ...fakeWorkspace({ teams, states }), ...fake.routes })
+  const projects = fakeLinearProjects({ issues: fake, teams, states })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace({ teams, states }), ...fake.routes, ...projects.routes })
   const root = tempDir()
   const { env } = userStoreEnv()
   const config = {
@@ -43,7 +44,7 @@ function linearContract({ cycles = [ACTIVE, PLANNED] } = {}) {
 }
 
 // The cycle-lifecycle family stays out: Linear has no call that opens or closes a cycle.
-runTrackerContract({ name: 'Linear tracker contract over the fake', families: ['discovery', 'issues', 'relations', 'history', 'cycles'], setup: linearContract })
+runTrackerContract({ name: 'Linear tracker contract over the fake', families: ['discovery', 'issues', 'relations', 'history', 'cycles', 'deliverables', 'milestones', 'documents'], setup: linearContract })
 
 test('openCycle and closeCycle answer NOT_SUPPORTED and name the schedule of Linear', async () => {
   const { tracker, actor, teardown } = linearContract()
