@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { after, afterEach, test } from 'node:test'
-import { FAKE_KEY, fakeLinearFetch, json } from '../../fake-linear-api.mjs'
+import { FAKE_KEY, fakeLinearFetch, json, page } from '../../fake-linear-api.mjs'
 import { PmkitError } from '../errors.mjs'
 import { LINEAR_ENDPOINT, createLinearClient, isMutation, secretKeyPaths } from './client.mjs'
 
@@ -433,4 +433,123 @@ test('missing, partial or unreadable rate headers never block and never leak NaN
     assert.equal(client.rateLimit().requests.resetAt, null)
     assert.equal(client.rateLimit().requests.limit, null)
   }
+})
+
+// Paging.
+const ISSUES =
+  'query Issues($first: Int!, $after: String) { issues(first: $first, after: $after) { pageInfo { hasNextPage endCursor } nodes { id } } }'
+
+// A connection of `total` nodes (Infinity for no end). The cursor is the offset after the page.
+function issuesRoute(total) {
+  return (body) => {
+    const start = body.variables.after ? Number(body.variables.after.slice(1)) : 0
+    const end = Math.min(start + body.variables.first, total)
+    const nodes = Array.from({ length: end - start }, (_, index) => ({ id: `i${start + index}` }))
+    return json({ issues: page(nodes, { hasNextPage: end < total, endCursor: `c${end}` }) })
+  }
+}
+
+const select = (data) => data.issues
+const firsts = (f) => f.calls.filter((call) => call.body.query.includes('Issues')).map((call) => call.body.variables.first)
+
+test('paginate returns the pages in order and chains the cursors', async () => {
+  const { client, f } = make({ routes: { Issues: issuesRoute(250) } })
+  const result = await client.paginate(ISSUES, { teamId: 't1' }, { select, pageSize: 100 })
+  assert.equal(result.nodes.length, 250)
+  assert.deepEqual(result.nodes.map((node) => node.id).slice(0, 3), ['i0', 'i1', 'i2'])
+  assert.equal(result.hasMore, false)
+  const issueCalls = f.calls.filter((call) => call.body.query.includes('Issues'))
+  assert.equal(issueCalls[0].body.variables.after ?? null, null)
+  assert.deepEqual(issueCalls.map((call) => call.body.variables.after ?? null), [null, 'c100', 'c200'])
+  for (const call of issueCalls) assert.equal(call.body.variables.teamId, 't1')
+})
+
+test('limit trims the last page and sets hasMore', async () => {
+  const { client, f } = make({ routes: { Issues: issuesRoute(Infinity) } })
+  const result = await client.paginate(ISSUES, {}, { select, pageSize: 100, limit: 250 })
+  assert.deepEqual(firsts(f), [100, 100, 50])
+  assert.equal(result.nodes.length, 250)
+  assert.equal(result.hasMore, true)
+})
+
+test('with no limit, paging stops after 10 pages', async () => {
+  const { client, f } = make({ routes: { Issues: issuesRoute(Infinity) } })
+  const result = await client.paginate(ISSUES, {}, { select })
+  assert.equal(firsts(f).length, 10)
+  assert.equal(result.nodes.length, 1000)
+  assert.equal(result.hasMore, true)
+})
+
+test('a limit of 1500 runs 15 pages', async () => {
+  const { client, f } = make({ routes: { Issues: issuesRoute(Infinity) } })
+  const result = await client.paginate(ISSUES, {}, { select, pageSize: 100, limit: 1500 })
+  assert.equal(firsts(f).length, 15)
+  assert.equal(result.nodes.length, 1500)
+  assert.equal(result.hasMore, true)
+})
+
+test('maxPages caps the loop, and a last page without a next page ends it', async () => {
+  const capped = make({ routes: { Issues: issuesRoute(Infinity) } })
+  const result = await capped.client.paginate(ISSUES, {}, { select, maxPages: 2 })
+  assert.equal(firsts(capped.f).length, 2)
+  assert.equal(result.hasMore, true)
+  const single = make({ routes: { Issues: issuesRoute(5) } })
+  assert.deepEqual(await single.client.paginate(ISSUES, {}, { select }), { nodes: ['i0', 'i1', 'i2', 'i3', 'i4'].map((id) => ({ id })), hasMore: false })
+  assert.equal(firsts(single.f).length, 1)
+})
+
+test('select can reach a nested connection', async () => {
+  const route = json({ team: { issues: page([{ id: 'a' }]) } })
+  const { client } = make({ routes: { Issues: route } })
+  const result = await client.paginate(ISSUES, {}, { select: (data) => data.team.issues })
+  assert.deepEqual(result, { nodes: [{ id: 'a' }], hasMore: false })
+})
+
+test('a broken page is UPSTREAM', async () => {
+  const broken = [
+    json({ issues: { nodes: [] } }),
+    json({ issues: { pageInfo: { hasNextPage: false, endCursor: null } } }),
+    json({ issues: page([{ id: 'a' }], { hasNextPage: true, endCursor: null }) }),
+    json({ issues: null }),
+    json({}),
+  ]
+  for (const route of broken) {
+    const { client } = make({ routes: { Issues: route } })
+    const error = await client.paginate(ISSUES, {}, { select }).catch((caught) => caught)
+    expectError(error, 'UPSTREAM', 'Linear returned a broken page for Issues', RETRY)
+  }
+  const returnsNull = make({ routes: { Issues: json({ team: null }) } })
+  for (const pick of [() => null, () => undefined, (data) => data.team.issues]) {
+    const error = await returnsNull.client.paginate(ISSUES, {}, { select: pick }).catch((caught) => caught)
+    assert.equal(error.message, 'Linear returned a broken page for Issues')
+  }
+})
+
+test('a repeated cursor stops the loop with UPSTREAM', async () => {
+  const route = json({ issues: page([{ id: 'a' }], { hasNextPage: true, endCursor: 'same' }) })
+  const { client, f } = make({ routes: { Issues: route } })
+  const error = await client.paginate(ISSUES, {}, { select }).catch((caught) => caught)
+  assert.equal(error.message, 'Linear returned a broken page for Issues')
+  assert.equal(firsts(f).length, 2)
+})
+
+test('an anonymous document is named as such in the broken-page message', async () => {
+  const { client } = make({ routes: { '(anonymous)': json({ issues: null }) } })
+  const error = await client.paginate('{ issues { nodes { id } } }', {}, { select }).catch((caught) => caught)
+  assert.equal(error.message, 'Linear returned a broken page for an anonymous query')
+})
+
+test('a caller bug throws TypeError before any request', async () => {
+  const { client, f } = make({ routes: { Issues: issuesRoute(5) } })
+  const bad = [
+    { select, pageSize: 0 },
+    { select, pageSize: 251 },
+    { select, pageSize: 1.5 },
+    { select, maxPages: 0 },
+    { select, limit: 0 },
+    {},
+  ]
+  for (const options of bad) await assert.rejects(client.paginate(ISSUES, {}, options), TypeError)
+  await assert.rejects(client.paginate(ISSUES), TypeError)
+  assert.equal(f.calls.length, 0)
 })
