@@ -251,6 +251,15 @@ test('a mutation passes only when its arguments are id: $id and input: $input, w
   ])
 })
 
+test('a mutation with a fragment in its root selection, or a fragment on Mutation, is refused', async () => {
+  await refusesAll([
+    ['mutation F($id: String!) { issueArchive(id: $id) { success } ...F } fragment F on Mutation { teamDelete(id: "T") { success } }', { id: 'i-1' }],
+    ['mutation F($id: String!) { issueArchive(id: $id) { success } ... @include(if: true) { teamDelete(id: "T") { success } } }', { id: 'i-1' }],
+    ['mutation F($id: String!) { issueArchive(id: $id) { success } ... { teamDelete(id: "T") { success } } }', { id: 'i-1' }],
+    ['mutation F($id: String!) { issueArchive(id: $id) { success } } fragment G on Mutation { teamDelete(id: "T") { success } }', { id: 'i-1' }],
+  ])
+})
+
 test('issueDelete refuses permanentlyDelete passed through a variable default', async () => {
   await refusesAll([
     ['mutation D($id: String!, $p: Boolean = true) { issueDelete(id: $id, permanentlyDelete: $p) { success } }', { id: 'i-1' }],

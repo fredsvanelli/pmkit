@@ -53,7 +53,8 @@ class Unread extends Error {}
  * Reads a mutation document for the guard. Returns { root, variables, reason }: `root` the one root field, `variables` the names the
  * operation defines, `reason` why the guard refuses the shape, or null. The accepted shape is one mutation operation whose root
  * selection is one unaliased field with no directive, whose arguments are `id: $id` and/or `input: $input`, and whose variables are
- * `$id` and/or `$input` with no default. Fragment definitions may follow for the selections below the root field.
+ * `$id` and/or `$input` with no default. The root selection holds no fragment, and no fragment is defined on Mutation; fragments
+ * below the root field stay allowed.
  */
 export function readMutation(document) {
   const tokens = typeof document === 'string' ? tokenize(document) : null
@@ -97,7 +98,7 @@ export function readMutation(document) {
       if (keyword === 'fragment') {
         name()
         expect('on')
-        name()
+        if (name() === 'Mutation') throw new Unread('a fragment is defined on Mutation')
         while (peek() !== '{') next()
         skipGroup()
         continue
@@ -121,20 +122,8 @@ export function readMutation(document) {
       if (peek() === '@') throw new Unread('the operation has a directive')
       expect('{')
       while (peek() !== '}') {
-        if (peek() === '...') {
-          next()
-          if (peek() === 'on') {
-            next()
-            name()
-          } else if (peek() !== '{' && peek() !== '@') name()
-          while (peek() === '@') {
-            next()
-            name()
-            if (peek() === '(') skipGroup()
-          }
-          if (peek() === '{') skipGroup()
-          continue
-        }
+        // A spread or an inline fragment here could add a second root field the guard never sees.
+        if (peek() === '...') throw new Unread('the root selection holds a fragment')
         const field = { name: name(), args: [] }
         if (peek() === ':') throw new Unread('the root field has an alias')
         if (peek() === '(') {
