@@ -69,7 +69,13 @@ export function historyOperations({ client, ops, config }) {
   /** The comment node of an id, with its issue's identifier, or undefined. An id with characters no Linear id has sends no request. */
   async function commentNodeById(commentId) {
     if (typeof commentId !== 'string' || !COMMENT_ID.test(commentId)) return undefined
-    return (await client.request(COMMENT_BY_ID_QUERY, { id: commentId }))?.comments?.nodes?.[0]
+    try {
+      return (await client.request(COMMENT_BY_ID_QUERY, { id: commentId }))?.comments?.nodes?.[0]
+    } catch (error) {
+      // Linear answers an id it cannot read as a UUID with INPUT_ERROR, which is a comment that does not exist.
+      if (error instanceof PmkitError && error.details?.linear?.errors?.[0]?.code === 'INPUT_ERROR') return undefined
+      throw error
+    }
   }
 
   /** The comment `commentId` on the issue of `node`, or NOT_FOUND. */

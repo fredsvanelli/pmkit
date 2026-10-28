@@ -14,9 +14,11 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { isPmkitError } from '../errors.mjs'
-import { createLinearClient, isMutation } from './client.mjs'
+import { replay } from '../local/events.mjs'
+import { createLinearClient, isMutation, operationName } from './client.mjs'
 import { linearCredential } from './credential.mjs'
 import { categoryOfType, discoveryView, fetchDiscovery } from './discovery.mjs'
+import { COMMENT_BY_ID_QUERY, ISSUE_COMMENTS_QUERY, ISSUE_HISTORY_QUERY } from './documents.mjs'
 import { buildLinearCapabilities } from './manifest.mjs'
 import { createLinearTracker } from './tracker.mjs'
 
@@ -143,4 +145,90 @@ test('Linear accepts every filter pmkit translates, and getIssue reads a result'
     fs.rmSync(home, { recursive: true, force: true })
     fs.rmSync(root, { recursive: true, force: true })
   }
+})
+
+// PMK-36: history, comments and metric events. Reads only: guardedFetch refuses any mutation.
+
+/** The tracker of the sandbox workspace and a private home, which `use` removes afterwards. */
+async function withTracker(use, fetch = guardedFetch) {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-live-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-live-repo-'))
+  try {
+    const env = { ...process.env, PMKIT_HOME: path.join(home, 'store'), HOME: home, XDG_CONFIG_HOME: path.join(home, '.config') }
+    // The team comes from the workspace, so no team key is written here.
+    const { teams } = await fetchDiscovery(client(), { now: () => new Date() })
+    const scope = { workspace: WORKSPACE, team: teams[0].key }
+    const config = { root, pmkit: { tracker: { system: 'linear', scope }, git_host: { system: 'none' } } }
+    return await use(createLinearTracker(config, { env, fetch }), env)
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+}
+
+const REPLAYED = [['title', 'title'], ['type', 'type'], ['priority', 'priority'], ['estimate', 'estimate'], ['assignee', 'assignee'], ['parent', 'parent'], ['due', 'due']]
+const normal = (value) => (value === undefined ? null : value)
+
+test('getHistory on up to 10 sandbox issues gives sorted events whose replay matches getIssue', { skip }, async () => {
+  const session = await client().session()
+  assert.equal(session.workspace.urlKey, WORKSPACE, 'the key belongs to the expected workspace')
+  await withTracker(async (linear) => {
+    const { issues } = await linear.searchIssues({ limit: 10, archived: true })
+    assert.ok(issues.length > 0, 'the workspace has an issue')
+    let entries = 0
+    let mappedEvents = 0
+    for (const issue of issues) {
+      const events = await linear.getHistory(issue.id)
+      assert.equal(events[0].op, 'create', `${issue.id} starts with create`)
+      const stamps = events.map((event) => event.at)
+      assert.deepEqual(stamps, [...stamps].sort(), `${issue.id} is sorted`)
+      const state = replay(events)
+      for (const [key, field] of REPLAYED) assert.deepEqual(normal(state[key]), normal(issue[field]), `${issue.id} ${key}`)
+      assert.equal(state.status, issue.status.name, `${issue.id} status`)
+      assert.deepEqual(state.labels ?? [], issue.labels, `${issue.id} labels`)
+      assert.deepEqual([...(state.related ?? [])].sort(), issue.related, `${issue.id} related`)
+      // The entries pmkit reads (history entries with no mapped field give no event, as the spec's no-equivalent table says).
+      const read = await client().paginate(ISSUE_HISTORY_QUERY, { id: issue.id }, { pageSize: 100, select: (data) => data.issue.history })
+      entries += read.nodes.length
+      mappedEvents += events.filter((event) => !['create', 'comment'].includes(event.op)).length
+    }
+    console.log(`live history: ${issues.length} issues, ${entries} entries, ${mappedEvents} events from them`)
+  })
+})
+
+test('comments of a sandbox issue read back through the by-id document', { skip }, async () => {
+  await withTracker(async (linear) => {
+    const { issues } = await linear.searchIssues({ limit: 10, archived: true })
+    let found = 0
+    for (const issue of issues) {
+      const comments = await linear.listComments(issue.id)
+      for (const comment of comments.slice(0, 1)) {
+        const node = (await client().request(COMMENT_BY_ID_QUERY, { id: comment.id })).comments.nodes[0]
+        assert.equal(node.issue.identifier, issue.id)
+        assert.equal(node.id, comment.id)
+        found += 1
+      }
+      const direct = await client().paginate(ISSUE_COMMENTS_QUERY, { id: issue.id }, { pageSize: 100, select: (data) => data.issue.comments })
+      assert.equal(direct.nodes.length, comments.length)
+    }
+    const missing = await client().request(COMMENT_BY_ID_QUERY, { id: '00000000-0000-4000-8000-000000000000' })
+    assert.deepEqual(missing.comments.nodes, [], 'an unknown comment id is an empty list, not an error')
+    console.log(`live comments: ${found} read by id`)
+  })
+})
+
+test('metricEvents reads every issue of the team in a few pages', { skip }, async () => {
+  const counting = async (url, init) => {
+    if (operationName(JSON.parse(init.body).query) === 'PmkitIssueEvents') counting.pages += 1
+    return guardedFetch(url, init)
+  }
+  counting.pages = 0
+  await withTracker(async (linear) => {
+    const events = await linear.metricEvents()
+    const stamps = events.map((event) => event.at)
+    assert.ok(events.length > 0)
+    assert.deepEqual(stamps, [...stamps].sort())
+    assert.ok(events.every((event) => typeof event.issue === 'string'))
+    console.log(`live metric events: ${events.length} events, ${counting.pages} pages, truncated ${events.truncated === true}`)
+  }, counting)
 })

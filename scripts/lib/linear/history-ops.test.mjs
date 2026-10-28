@@ -13,9 +13,9 @@ const PMKIT = {
 }
 
 /** The Linear operations over the stateful fake, with a counter for the client UUIDs. */
-async function setup(options = {}) {
+async function setup({ routes, ...options } = {}) {
   const fake = fakeLinearIssues(options)
-  const fetch = fakeLinearFetch({ ...fakeWorkspace(), ...fake.routes })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace(), ...fake.routes, ...routes })
   const client = createLinearClient({ env: { LINEAR_API_KEY: FAKE_KEY }, tracker: PMKIT.tracker, fetch })
   const raw = await fetchDiscovery(client, { now: () => new Date('2026-10-27T12:00:00Z') })
   const config = { pmkit: PMKIT }
@@ -312,4 +312,15 @@ test('a short read has no truncated flag', async () => {
   const { fake, history } = await setup()
   fake.seed({ title: 'One' })
   assert.equal((await history.metricEvents()).truncated, undefined)
+})
+
+test('an INPUT_ERROR from the by-id read means the comment is not on the issue, and another error propagates', async () => {
+  const refused = (code) => ({ status: 200, json: { data: null, errors: [{ message: 'Argument Validation Error', extensions: { code } }] } })
+  const input = await setup({ routes: { PmkitCommentById: refused('INPUT_ERROR') } })
+  seedIssue(input.fake)
+  await assert.rejects(input.history.comment('ACME-1', 'x', ACTOR, { replyTo: 'nope' }), { code: 'NOT_FOUND', message: 'comment nope is not on ACME-1' })
+  await assert.rejects(input.history.resolveThread('ACME-1', 'nope', ACTOR), { code: 'NOT_FOUND' })
+  const other = await setup({ routes: { PmkitCommentById: refused('INTERNAL_SERVER_ERROR') } })
+  seedIssue(other.fake)
+  await assert.rejects(other.history.comment('ACME-1', 'x', ACTOR, { replyTo: 'nope' }), { code: 'UPSTREAM' })
 })
