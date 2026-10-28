@@ -2,7 +2,7 @@
 id: PMK-37
 title: Map Linear cycles to sprints
 type: feature
-status: in_progress
+status: in_review
 priority: medium
 estimate: 5
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-35]
 milestone: linear
 branch: pmk-37-map-linear-cycles-to-sprints
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-28T17:25:45Z
+updated: 2026-10-28T19:20:56Z
 ---
 
 ## Description
@@ -20,6 +20,6 @@ Source: Unified model, contract family Cycles ("Open and close only where the sy
 
 ## Acceptance criteria
 
-- [ ] The adapter lists cycles, finds the current one, lists its issues and moves issues between cycles
-- [ ] Opening or closing a cycle returns `NOT_SUPPORTED` with the reason
-- [ ] Capacity is kept in local context
+- [x] The adapter lists cycles, finds the current one, lists its issues and moves issues between cycles
+- [x] Opening or closing a cycle returns `NOT_SUPPORTED` with the reason
+- [x] Capacity is kept in local context
