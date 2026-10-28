@@ -16,7 +16,10 @@ import {
 import { PROBES, commentProbe, cycleProbe, descriptionProbe, relationProbe } from './live-probes.mjs'
 import { buildLiveRun, installSignalHandlers, registerLiveSuite, runCleanup } from './contract-live.mjs'
 import { PROJECT_CREATE, PROJECT_UPDATE_CREATE } from './projects.mjs'
-import { SUITE_ALLOWLIST, TEST_TEAM, createGuardedFetch, findOrCreateTestTeam, listTestTeamItems, preflight, trashTestTeamItems, waitForCycles } from './sandbox.mjs'
+import {
+  CYCLE_START, ISSUE_DELETE, PROJECT_DELETE, STATE_CREATE, SUITE_ALLOWLIST, TEAM_CREATE, TEST_TEAM, createGuardedFetch, findOrCreateTestTeam, listTestTeamItems, preflight,
+  readMutation, trashTestTeamItems, waitForCycles,
+} from './sandbox.mjs'
 
 const URL = 'https://api.linear.app/graphql'
 const TEAM = 'team-pkt'
@@ -134,11 +137,11 @@ test('issueDelete refuses permanentlyDelete', async () => {
   const remove = 'mutation PmkitSandboxIssueDelete($id: String!, $permanentlyDelete: Boolean) { issueDelete(id: $id, permanentlyDelete: $permanentlyDelete) { success } }'
   await assert.rejects(send(guarded, remove, { id: 'i-1', permanentlyDelete: true }), REFUSED)
   await assert.rejects(send(guarded, 'mutation Literal { issueDelete(id: "i-1", permanentlyDelete: true) { success } }'), REFUSED)
-  await send(guarded, remove, { id: 'i-1' })
+  await assert.rejects(send(guarded, remove, { id: 'i-1' }), REFUSED)
+  await send(guarded, ISSUE_DELETE, { id: 'i-1' })
   assert.equal(inner.calls.length, 1)
 })
 
-const TEAM_CREATE = 'mutation PmkitSandboxTeamCreate($input: TeamCreateInput!) { teamCreate(input: $input) { success team { id key } } }'
 const teamInput = (extra = {}) => ({
   id: TEAM, name: TEST_TEAM.name, key: TEST_TEAM.key, description: `Test team for the pmkit contract tests (marker: ${TEST_TEAM.marker}).`, ...extra,
 })
@@ -226,6 +229,45 @@ test('a caller passes its own allowlist, and the suite list has the 14 mutations
   await assert.rejects(send(guarded, ISSUE_CREATE, { input: { teamId: TEAM } }), REFUSED)
   assert.equal(inner.calls.length, 1)
   assert.equal(Object.keys(SUITE_ALLOWLIST).length, 14)
+})
+
+/** Sends each [document, variables] attack through a guard that owns i-1, and checks that none reaches the fetch. */
+async function refusesAll(attacks) {
+  const { inner, ...guarded } = opened()
+  guarded.guard.own('issue', 'i-1')
+  for (const [query, variables] of attacks) await assert.rejects(send(guarded, query, variables), REFUSED, query)
+  assert.equal(inner.calls.length, 0)
+}
+
+test('a mutation passes only when its arguments are id: $id and input: $input, with no defaults and no other variables', async () => {
+  await refusesAll([
+    ['mutation A($id: String!, $x: String!) { issueDelete(id: $x) { success } }', { id: 'i-1', x: 'i-foreign' }],
+    ['mutation B { issueArchive(id: "FOREIGN") { success } }', { id: 'i-1' }],
+    ['mutation C($id: String!) { issueUpdate(id: $id, input: { teamId: "OTHER" }) { success } }', { id: 'i-1' }],
+    ['mutation E($id: String = "FOREIGN") { issueArchive(id: $id) { success } }', {}],
+    ['mutation G($id: String!) { issueArchive(id: $id) { success } }', { id: 'i-1', extra: 'x' }],
+    ['mutation H($input: String!) { issueArchive(id: $input) { success } }', { input: 'i-1' }],
+    ['mutation I($id: String!) { issueArchive(id: $id, id: "FOREIGN") { success } }', { id: 'i-1' }],
+  ])
+})
+
+test('issueDelete refuses permanentlyDelete passed through a variable default', async () => {
+  await refusesAll([
+    ['mutation D($id: String!, $p: Boolean = true) { issueDelete(id: $id, permanentlyDelete: $p) { success } }', { id: 'i-1' }],
+  ])
+})
+
+test('every mutation document the adapter and the run send has the shape the guard accepts', () => {
+  const documents = [
+    ISSUE_CREATE, ISSUE_UPDATE, ISSUE_ARCHIVE, RELATION_CREATE, RELATION_DELETE, COMMENT_CREATE, COMMENT_RESOLVE, PROJECT_CREATE,
+    PROJECT_UPDATE_CREATE, TEAM_CREATE, STATE_CREATE, CYCLE_START, ISSUE_DELETE, PROJECT_DELETE,
+  ]
+  const roots = documents.map((document) => {
+    const read = readMutation(document)
+    assert.equal(read.reason, null, document)
+    return read.root
+  })
+  assert.deepEqual(roots.sort(), Object.keys(SUITE_ALLOWLIST).sort())
 })
 
 const HEADERS = {

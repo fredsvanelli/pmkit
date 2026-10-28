@@ -27,46 +27,154 @@ const BUDGET = 'the live run used its request budget'
 const CLEANUP_MUTATIONS = new Set(['issueDelete', 'projectDelete'])
 const SANDBOX_QUERY = /^PmkitSandbox/
 
-/** The root fields of a document's operations, read without a full parser. Strings and comments are blanked first. */
-export function rootFields(document) {
-  const text = document
-    .replace(/#[^\n\r]*/g, '')
-    .replace(/"""[\s\S]*?"""/g, '""')
-    .replace(/"(?:[^"\\\n]|\\.)*"/g, '""')
-  const fields = []
-  let depth = 0
-  let parens = 0
-  let aliased = false
-  let definitionStart = true
-  let fragment = false
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index]
-    if (char === '{') depth += 1
-    else if (char === '}') {
-      depth -= 1
-      if (depth === 0) definitionStart = true
-    } else if (char === '(') parens += 1
-    else if (char === ')') parens -= 1
-    else if (depth === 0 && parens === 0 && definitionStart && /[A-Za-z_]/.test(char)) {
-      const name = /^[A-Za-z_]\w*/.exec(text.slice(index))[0]
-      fragment = name === 'fragment'
-      definitionStart = false
-      index += name.length - 1
-    } else if (depth === 1 && parens === 0 && !fragment && /[A-Za-z_]/.test(char)) {
-      const name = /^[A-Za-z_]\w*/.exec(text.slice(index))[0]
-      const before = text.slice(0, index).trimEnd().slice(-1)
-      const after = text.slice(index + name.length).trimStart()[0]
-      index += name.length - 1
-      if (before === '@' || before === '.') continue
-      if (after === ':') {
-        aliased = true
-        continue
-      }
-      aliased = false
-      fields.push(name)
+const TOKEN = /[\s,\uFEFF]+|#[^\n\r]*|"""(?:[^"\\]|\\[\s\S]|"(?!""))*"""|"(?:[^"\\\n\r]|\\.)*"|\.\.\.|[!$&():=@[\]{|}]|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[A-Za-z_]\w*/y
+
+/** The tokens of a GraphQL document, without blanks, commas and comments. Null when a character fits no token. */
+function tokenize(document) {
+  const tokens = []
+  TOKEN.lastIndex = 0
+  while (TOKEN.lastIndex < document.length) {
+    const match = TOKEN.exec(document)
+    if (!match) return null
+    const text = match[0]
+    if (/^[\s,\uFEFF#]/.test(text)) continue
+    tokens.push(text)
+  }
+  return tokens
+}
+
+const NAME = /^[A-Za-z_]\w*$/
+/** The only arguments a mutation's root field may take, each bound to the variable of the same name. */
+const ROOT_ARGUMENTS = new Set(['id', 'input'])
+
+class Unread extends Error {}
+
+/**
+ * Reads a mutation document for the guard. Returns { root, variables, reason }: `root` the one root field, `variables` the names the
+ * operation defines, `reason` why the guard refuses the shape, or null. The accepted shape is one mutation operation whose root
+ * selection is one unaliased field with no directive, whose arguments are `id: $id` and/or `input: $input`, and whose variables are
+ * `$id` and/or `$input` with no default. Fragment definitions may follow for the selections below the root field.
+ */
+export function readMutation(document) {
+  const tokens = typeof document === 'string' ? tokenize(document) : null
+  if (tokens === null) return { root: null, variables: [], reason: 'the document cannot be read' }
+  let at = 0
+  const peek = () => tokens[at]
+  const next = () => {
+    if (at >= tokens.length) throw new Unread('the document ends early')
+    return tokens[at++]
+  }
+  const expect = (token) => {
+    if (next() !== token) throw new Unread(`expected ${token}`)
+  }
+  const name = () => {
+    const token = next()
+    if (!NAME.test(token)) throw new Unread(`expected a name, found ${token}`)
+    return token
+  }
+  /** Skips a balanced group that opens at the current token. */
+  const skipGroup = () => {
+    const open = next()
+    const close = { '{': '}', '(': ')', '[': ']' }[open]
+    if (!close) throw new Unread(`expected a group, found ${open}`)
+    for (let depth = 1; depth > 0;) {
+      const token = next()
+      if (token === open) depth += 1
+      else if (token === close) depth -= 1
     }
   }
-  return aliased ? [] : fields
+  const skipType = () => {
+    if (peek() === '[') skipGroup()
+    else name()
+    if (peek() === '!') next()
+  }
+
+  const operations = []
+  try {
+    while (at < tokens.length) {
+      if (peek() === '{') throw new Unread('a query shorthand in a mutation document')
+      const keyword = name()
+      if (keyword === 'fragment') {
+        name()
+        expect('on')
+        name()
+        while (peek() !== '{') next()
+        skipGroup()
+        continue
+      }
+      if (!['query', 'mutation', 'subscription'].includes(keyword)) throw new Unread(`unknown definition ${keyword}`)
+      const operation = { keyword, variables: [], fields: [] }
+      operations.push(operation)
+      if (NAME.test(peek())) name()
+      if (peek() === '(') {
+        next()
+        while (peek() !== ')') {
+          expect('$')
+          operation.variables.push(name())
+          expect(':')
+          skipType()
+          if (peek() === '=') throw new Unread(`the variable $${operation.variables.at(-1)} has a default`)
+          if (peek() === '@') throw new Unread('a variable has a directive')
+        }
+        next()
+      }
+      if (peek() === '@') throw new Unread('the operation has a directive')
+      expect('{')
+      while (peek() !== '}') {
+        if (peek() === '...') {
+          next()
+          if (peek() === 'on') {
+            next()
+            name()
+          } else if (peek() !== '{' && peek() !== '@') name()
+          while (peek() === '@') {
+            next()
+            name()
+            if (peek() === '(') skipGroup()
+          }
+          if (peek() === '{') skipGroup()
+          continue
+        }
+        const field = { name: name(), args: [] }
+        if (peek() === ':') throw new Unread('the root field has an alias')
+        if (peek() === '(') {
+          next()
+          while (peek() !== ')') {
+            const argument = name()
+            expect(':')
+            if (next() !== '$') throw new Unread(`the argument ${argument} is not a variable`)
+            field.args.push([argument, name()])
+          }
+          next()
+        }
+        if (peek() === '@') throw new Unread('the root field has a directive')
+        if (peek() === '{') skipGroup()
+        operation.fields.push(field)
+      }
+      next()
+    }
+  } catch (error) {
+    if (error instanceof Unread) return { root: null, variables: [], reason: error.message }
+    throw error
+  }
+
+  const refused = (reason) => ({ root: null, variables: [], reason })
+  if (operations.length !== 1 || operations[0].keyword !== 'mutation') return refused('the document must hold one mutation and no other operation')
+  const [{ variables, fields }] = operations
+  if (fields.length !== 1) return refused('a mutation must have one root field')
+  const [field] = fields
+  for (const variable of variables) {
+    if (!ROOT_ARGUMENTS.has(variable)) return refused(`the variable $${variable} is not $id or $input`)
+  }
+  if (new Set(variables).size !== variables.length) return refused('a variable is defined twice')
+  const seen = new Set()
+  for (const [argument, variable] of field.args) {
+    if (!ROOT_ARGUMENTS.has(argument) || argument !== variable) return refused(`the argument ${argument}: $${variable} is not id: $id or input: $input`)
+    if (seen.has(argument)) return refused(`the argument ${argument} is given twice`)
+    if (!variables.includes(variable)) return refused(`the variable $${variable} is not defined`)
+    seen.add(argument)
+  }
+  return { root: field.name, variables, reason: null }
 }
 
 const asList = (value) => (Array.isArray(value) ? value : [])
@@ -113,10 +221,8 @@ export const SUITE_ALLOWLIST = Object.freeze({
     return teams.length === 1 && teams[0] === ctx.teamId ? null : 'teamIds must be exactly the test team'
   },
   projectUpdateCreate: (variables, ctx) => rules.owns(ctx, 'project', variables.input?.projectId, 'project'),
-  issueDelete: (variables, ctx, document) =>
-    variables.permanentlyDelete || /permanentlyDelete\s*:\s*true/.test(document)
-      ? 'permanentlyDelete is not allowed'
-      : rules.owns(ctx, 'issue', variables.id, 'issue'),
+  // readMutation lets through no argument but id, so permanentlyDelete cannot be sent.
+  issueDelete: (variables, ctx) => rules.owns(ctx, 'issue', variables.id, 'issue'),
   projectDelete: (variables, ctx) => rules.owns(ctx, 'project', variables.id, 'project'),
 })
 
@@ -198,9 +304,12 @@ export function createGuardedFetch({ fetch, workspace, allowlist = SUITE_ALLOWLI
     const mutation = isMutation(query)
     let root = null
     if (mutation) {
-      const fields = rootFields(query)
-      root = fields.length === 1 ? fields[0] : null
-      if (root === null) refuse(`refusing ${name}: a mutation must have one root field`)
+      const read = readMutation(query)
+      if (read.reason) refuse(`refusing ${name}: ${read.reason}`)
+      root = read.root
+      if (variables === null || typeof variables !== 'object' || Array.isArray(variables)) refuse(`refusing ${name}: the variables are not an object`)
+      const extra = Object.keys(variables).find((key) => !read.variables.includes(key))
+      if (extra !== undefined) refuse(`refusing ${name}: the variable ${extra} is not one the document defines`)
       const cleanup = CLEANUP_MUTATIONS.has(root)
       if (!state.opened || !Object.hasOwn(allowlist, root)) refuse(NOT_LISTED(name))
       if (state.stopping && !cleanup) refuse(`refusing ${name}: the live run is stopping`)
