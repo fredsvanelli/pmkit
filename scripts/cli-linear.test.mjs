@@ -360,6 +360,21 @@ test('--update after the workspace drops the in-review state lists it as the onl
   assert.equal(read(context, '.pmkit/config.yaml'), WALKTHROUGH.replace('in_review: In Review', 'in_review: Code Review'))
 })
 
+test('--update asks again for a hand-written status and type that broke, and the answers repair them', async () => {
+  const context = await written()
+  const edited = WALKTHROUGH.replace('    blocked: none\n', '    blocked: none\n    done: Shipped\n').replace('  types: {}\n', '  types:\n    spike: Research\n')
+  fs.writeFileSync(path.join(context.root, '.pmkit', 'config.yaml'), edited)
+  const dry = dataOf(await cli(context, ['init', '--update', '--dry-run', '--json']))
+  assert.deepEqual(dry.broken.map((item) => item.path), ['mappings.status.done', 'mappings.types.spike'])
+  assert.deepEqual(dry.questions.map((q) => q.path), ['mappings.status.done', 'mappings.types.spike'])
+  const [done, spike] = dry.questions
+  assert.deepEqual(done.candidates, ['Backlog', 'Todo', 'In Progress', 'In Review', 'Code Review', 'UAT', 'Ready to ship', 'Done', 'Canceled', 'Duplicate'])
+  assert.deepEqual(done.broken, { was: 'Shipped', problem: 'mappings.status.done names Shipped, which team ACME no longer has' })
+  assert.deepEqual(spike.candidates, ['Bug', 'Feature', 'L', 'M', 'S', 'XL', 'XS', 'Docs'])
+  dataOf(await cli(context, ['init', '--update', '--status', 'done=Done', '--type-label', 'spike=none', '--json']))
+  assert.deepEqual(parseYaml(read(context, '.pmkit/config.yaml')).mappings, { status: { in_review: 'In Review', blocked: 'none', done: 'Done' }, types: {} })
+})
+
 test('--update with another tracker fails with NOT_SUPPORTED in both directions', async () => {
   const linear = await written()
   const toLocal = await cli(linear, ['init', '--update', '--tracker', 'local', '--dry-run', '--json'])

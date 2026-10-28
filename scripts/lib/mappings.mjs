@@ -18,10 +18,10 @@ export const SCOPE_TEAM = 'tracker.scope.team'
 const STATUS_KEYS = ['in_review', 'blocked']
 const FIELD_KEYS = ['estimate']
 
-const NONE_LABELS = {
-  'mappings.status.in_review': 'No status means in review',
-  'mappings.status.blocked': 'No status means blocked',
-  'mappings.fields.estimate': 'No field holds the estimate',
+const words = (key) => key.replace(/_/g, ' ')
+const NONE_LABEL = {
+  status: (key) => `No status means ${words(key)}`,
+  fields: (key) => `No field holds the ${words(key)}`,
 }
 
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -89,6 +89,9 @@ const flagOf = {
   types: (key) => `--type-label ${key}=<value>`,
 }
 
+/** The keys setup asks, then the other keys the file sets by hand, which setup asks again only when they break. */
+const keysOf = (asked, held) => [...asked, ...Object.keys(held ?? {}).filter((key) => !asked.includes(key) && isSet(held[key]))]
+
 function checkKeys(group, answers, allowed, flag) {
   for (const key of Object.keys(answers ?? {})) {
     if (!allowed.includes(key)) throw invalid(`${flag} ${key} is not something setup maps`, `Use ${flag} with one of: ${allowed.join(', ')}`)
@@ -107,9 +110,12 @@ export function proposeMappings(description, current = {}, answers = {}) {
   const fields = current.fields ?? {}
   const types = current.types
   const given = { status: answers.status ?? {}, fields: answers.fields ?? {}, types: answers.types ?? {} }
-  checkKeys('status', given.status, STATUS_KEYS, '--status')
-  checkKeys('fields', given.fields, FIELD_KEYS, '--field')
-  checkKeys('types', given.types, description.types ?? [], '--type-label')
+  const statusKeys = keysOf(STATUS_KEYS, status)
+  const fieldKeys = keysOf(FIELD_KEYS, fields)
+  const typeKeys = keysOf(description.types ?? [], types)
+  checkKeys('status', given.status, statusKeys, '--status')
+  checkKeys('fields', given.fields, fieldKeys, '--field')
+  checkKeys('types', given.types, typeKeys, '--type-label')
 
   const applied = []
   const questions = []
@@ -156,8 +162,10 @@ export function proposeMappings(description, current = {}, answers = {}) {
   const brokenAt = (path) => brokenAll.find((item) => item.path === path)
   for (const item of brokenAll) result.broken.push(item)
 
-  // Statuses and fields: an answer, kept, broken, always asked, applied, asked, nothing.
-  const decide = (path, flagGroup, key, { always, none }) => {
+  // Statuses and fields: an answer, kept, broken, always asked, applied, asked, nothing. A hand-written key is always
+  // set in the file, so it is kept, or asked when broken.
+  const decide = (path, flagGroup, key, { always }) => {
+    const none = NONE_LABEL[flagGroup](key)
     const group = flagGroup === 'status' ? status : fields
     const candidates = team.candidates[path] ?? []
     const answer = given[flagGroup][key]
@@ -193,23 +201,24 @@ export function proposeMappings(description, current = {}, answers = {}) {
     return undefined
   }
 
-  const inReview = decide('mappings.status.in_review', 'status', 'in_review', { always: true, none: NONE_LABELS['mappings.status.in_review'] })
-  if (inReview !== undefined) result.values.status.in_review = inReview
-  const blocked = decide('mappings.status.blocked', 'status', 'blocked', { always: true, none: NONE_LABELS['mappings.status.blocked'] })
-  if (blocked !== undefined) {
-    if (blocked !== NONE && blocked === inReview) throw invalid(`status ${blocked} cannot mean both in review and blocked`, 'Pass a different status for one of them')
-    result.values.status.blocked = blocked
+  for (const key of statusKeys) {
+    const value = decide(`mappings.status.${key}`, 'status', key, { always: STATUS_KEYS.includes(key) })
+    if (value === undefined) continue
+    if (key === 'blocked' && value !== NONE && value === result.values.status.in_review) {
+      throw invalid(`status ${value} cannot mean both in review and blocked`, 'Pass a different status for one of them')
+    }
+    result.values.status[key] = value
   }
-  for (const [key, value] of Object.entries(status)) if (!(key in result.values.status) && !STATUS_KEYS.includes(key) && isSet(value)) result.values.status[key] = value
-  const estimate = decide('mappings.fields.estimate', 'fields', 'estimate', { always: false, none: NONE_LABELS['mappings.fields.estimate'] })
-  if (estimate !== undefined) result.values.fields.estimate = estimate
-  for (const [key, value] of Object.entries(fields)) if (!(key in result.values.fields) && !FIELD_KEYS.includes(key) && isSet(value)) result.values.fields[key] = value
+  for (const key of fieldKeys) {
+    const value = decide(`mappings.fields.${key}`, 'fields', key, { always: false })
+    if (value !== undefined) result.values.fields[key] = value
+  }
 
   // Types: asked while the object is absent from the file; a label that broke is asked again.
   const typeValues = {}
   let pending = false
   const taken = new Set()
-  for (const type of description.types ?? []) {
+  for (const type of typeKeys) {
     const path = `mappings.types.${type}`
     const options = (team.candidates[path] ?? []).filter((label) => !taken.has(label))
     const answer = given.types[type]
@@ -241,9 +250,6 @@ export function proposeMappings(description, current = {}, answers = {}) {
       typeValues[type] = value
       taken.add(value)
     }
-  }
-  for (const [type, value] of Object.entries(types ?? {})) {
-    if (!(description.types ?? []).includes(type) && isSet(value)) typeValues[type] = value
   }
   if (!pending) result.values.types = typeValues
   return result

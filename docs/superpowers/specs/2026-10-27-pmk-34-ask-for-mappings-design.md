@@ -141,7 +141,7 @@ Reading rules. Names compare exactly, with Linear's case.
 3. **Blocked.** An issue is blocked when one of its blockers is open, as today, or when its state is the one `mappings.status.blocked` names. The state keeps the category of its type, so a blocked issue in a `started` state still counts as `in_progress`.
 4. **Estimate.** `native` reads and writes `Issue.estimate` with the team's scale from discovery. `none`, an absent key, or a team with estimates off gives `estimate: null` on every issue.
 5. **Type.** The type of an issue is the pmkit type whose mapped label the issue carries. When an issue carries labels of two types, the type that comes first in `mappings.types` wins. Setup writes that object in the order of the repository's `types` list. Setting a type adds the mapped label and removes the labels of the other mapped types. A team label wins over a workspace label with the same name. With no `mappings.types`, `types` is `[]` and every issue has `type: null`.
-6. **Other categories.** A hand-written `mappings.status.<category>` for any other category follows rule 1. Setup does not ask for them.
+6. **Other categories.** A hand-written `mappings.status.<category>` for any other category follows rule 1. Setup does not ask for them until one breaks.
 
 `resolveMappings(view, pmkit)` in `scripts/lib/linear/mappings.mjs` returns the result of these rules for the configured team, so PMK-35 never reads `mappings` itself:
 
@@ -193,6 +193,7 @@ The name, the arguments and this return shape are the contract with PMK-35. A ch
 | `mappings.status.blocked` | The team's states in `backlog`, `todo` and `in_progress`. A state already given for in review fails with `INVALID_INPUT`. | The first by position whose name contains "block", ignoring case. Else `none`. |
 | `mappings.fields.estimate` | `native` when the team's estimation type is not `notUsed`. Else empty. Size label groups do not join: native is the only estimate on Linear, and groups are a follow-up. | The only candidate. |
 | `mappings.types.<type>` | The labels of the team and the workspace that are not groups, team first, then by name. A label another type already took is left out. | The label whose name equals the pmkit type, ignoring case. Else `none`, which leaves the type out of the file. |
+| `mappings.status.<category>` for any other category | Every state of the team, by position. Setup reads them only for a hand-written key that broke. | `none`. |
 
 ### The inference rule
 
@@ -200,7 +201,7 @@ The name, the arguments and this return shape are the contract with PMK-35. A ch
 
 1. **An answer.** A flag gave a value. It must be a candidate, `none`, or for the team any team key of the workspace. Otherwise the call fails with `INVALID_INPUT`, `--status in_review=Review is not a status of team ACME`, next step `Pass one of: In Review, In Progress, UAT, Ready to ship, Code Review, or none`.
 2. **Kept.** The file holds a value and `brokenMappings` does not list it. Nothing is asked again (Q6, "re-asked only when it breaks").
-3. **Broken.** The file holds a value that the workspace no longer has. The key becomes a question with `broken: { was, problem }`.
+3. **Broken.** The file holds a value that the workspace no longer has. The key becomes a question with `broken: { was, problem }`. This holds for every key the file sets, including a hand-written status, field or type that setup never asks for, so every item of `broken` is also a question and setup can repair it. The question for a hand-written key takes its candidates from the description, or offers only `none` when the description has none for that path, and its flag accepts that key. `init` passes the types the file maps by hand to `describe` after the repository's `types` list, so their labels are candidates.
 4. **Always asked.** `mappings.status.in_review` and `mappings.status.blocked` become questions, even with one candidate or none. A key with no candidate offers only `none`.
 5. **Applied.** The workspace from the key's organization. The team when the viewer is in exactly one. A field with exactly one candidate. These go to `applied` with a reason and into the file.
 6. **Asked.** A field or the team with two or more candidates. Every `mappings.types.<type>`, while `mappings.types` is absent from the file, with the recommended label first and `none` as the last option.

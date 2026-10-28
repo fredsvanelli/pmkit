@@ -175,6 +175,50 @@ test('a broken value becomes a question with broken, and a broken team a team qu
   assert.equal(lost.questions[0].broken.was, 'ZZ')
 })
 
+test('a broken hand-written key of each kind becomes a question that an answer repairs', () => {
+  const d = describe()
+  d.teams[0].exists = (path, value) => value !== 'Gone'
+  d.teams[0].candidates['mappings.status.done'] = ['Shipped', 'Doing']
+  d.teams[0].candidates['mappings.types.epic'] = ['Feature', 'Bug', 'Docs']
+  const current = {
+    scope: { workspace: 'acme', team: 'AA' },
+    status: { in_review: 'Review', blocked: NONE, done: 'Gone' },
+    fields: { points: 'Gone' },
+    types: { bug: 'Bug', epic: 'Gone' },
+  }
+  const result = proposeMappings(d, current, {})
+  const asked = ['mappings.status.done', 'mappings.fields.points', 'mappings.types.epic']
+  assert.deepEqual(paths(result), asked)
+  assert.deepEqual(result.broken.map((item) => item.path), asked)
+  const [done, points, epic] = result.questions
+  assert.deepEqual([done.flag, done.candidates, done.recommended, done.none, done.broken.was], ['--status done=<value>', ['Shipped', 'Doing'], NONE, 'No status means done', 'Gone'])
+  assert.deepEqual([points.flag, points.candidates, points.recommended, points.none], ['--field points=<value>', [], NONE, 'No field holds the points'])
+  // Bug is taken by the bug type, so the epic question does not offer it.
+  assert.deepEqual([epic.flag, epic.candidates, epic.none], ['--type-label epic=<value>', ['Feature', 'Docs'], 'No label stands for this type'])
+  assert.equal(result.values.types, undefined)
+
+  const fixed = proposeMappings(d, current, { status: { done: 'Shipped' }, fields: { points: NONE }, types: { epic: NONE } })
+  assert.deepEqual(fixed.questions, [])
+  assert.equal(fixed.values.status.done, 'Shipped')
+  assert.equal(fixed.values.fields.points, NONE)
+  assert.deepEqual(fixed.values.types, { bug: 'Bug' })
+  assert.throws(() => proposeMappings(d, current, { status: { done: 'Nope' } }), (error) => {
+    assert.equal(error.code, 'INVALID_INPUT')
+    assert.equal(error.message, '--status done=Nope is not a status of team AA')
+    assert.equal(error.nextStep, 'Pass one of: Shipped, Doing, none')
+    return true
+  })
+})
+
+test('a hand-written key that still exists is kept and not asked', () => {
+  const current = { scope: { workspace: 'acme', team: 'AA' }, status: { in_review: 'Review', blocked: NONE, done: 'Shipped' }, fields: { points: 'Size' }, types: { epic: 'Docs' } }
+  const result = proposeMappings(describe(), current, {})
+  assert.deepEqual(result.questions, [])
+  assert.equal(result.values.status.done, 'Shipped')
+  assert.equal(result.values.fields.points, 'Size')
+  assert.deepEqual(result.values.types, { epic: 'Docs' })
+})
+
 test('parseMappingFlags keeps spaces, accepts repeated flags and refuses a flag without a value', () => {
   const ctx = (lists) => ({ list: (name) => lists[name] ?? [] })
   assert.deepEqual(parseMappingFlags(ctx({ status: ['in_review=In Review', 'blocked=none'], field: ['estimate=native'], 'type-label': ['bug=Bug', 'bug=Defect'] })),

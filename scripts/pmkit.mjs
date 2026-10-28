@@ -1523,7 +1523,9 @@ async function runInitLinear(ctx) {
   }
   const tracker = await adapter.create(discoveryConfig, { now: ctx.now, env: ctx.env })
   const view = await tracker.discover({ refresh: true })
-  const types = withLocalDefaults({}).types
+  // A type the file maps by hand joins the list, so a label of it that broke gets the label candidates.
+  const defaults = withLocalDefaults({}).types
+  const types = [...defaults, ...Object.keys(current.types ?? {}).filter((type) => !defaults.includes(type))]
   const description = adapter.describe(view.raw, view, view.auth?.viewer?.id ?? null, types)
   const flags = parseMappingFlags(ctx)
   const proposal = proposeMappings(description, current, { workspace: opt('workspace'), team: opt('team'), ...flags })

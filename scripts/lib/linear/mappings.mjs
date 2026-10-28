@@ -3,6 +3,7 @@
 
 import { PmkitError } from '../errors.mjs'
 import { NONE } from '../mappings.mjs'
+import { CATEGORIES } from '../model.mjs'
 import { categoryOfType } from './discovery.mjs'
 
 const byName = (a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
@@ -52,6 +53,9 @@ export function linearDescription(raw, view, viewerId, types = []) {
       [BLOCKED]: recommendedFirst(blocked, blockedPick(blocked)),
       [ESTIMATE]: estimates ? ['native'] : [],
     }
+    // Setup asks for no other category, but a hand-written one that broke is asked again, and any state can take it (rule 1).
+    const all = stateNames(states, states.map((state) => state.type))
+    for (const category of CATEGORIES) if (category !== 'in_review') candidates[`mappings.status.${category}`] = all
     const recommended = { [IN_REVIEW]: inReviewPick(inReview), [BLOCKED]: blockedPick(blocked), [ESTIMATE]: estimates ? 'native' : NONE }
     for (const type of types) {
       const same = labels.find((name) => name.toLowerCase() === type.toLowerCase())

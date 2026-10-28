@@ -51,6 +51,14 @@ test('a team with one started state offers no in-review candidate', async () => 
   assert.equal(team.recommended['mappings.status.in_review'], 'none')
 })
 
+test('a status key for another category offers every state of the team, so setup can repair a hand-written one', async () => {
+  const team = describeRaw(await discover({ states: SANDBOX_STATES })).teams[0]
+  const names = SANDBOX_STATES.map((state) => state.name)
+  for (const category of ['triage', 'backlog', 'todo', 'in_progress', 'done', 'canceled']) {
+    assert.deepEqual(team.candidates[`mappings.status.${category}`], names, category)
+  }
+})
+
 test('blocked offers the backlog, todo and in progress states and recommends one with block in its name', async () => {
   const team = describeRaw(await discover({ states: SANDBOX_STATES })).teams[0]
   assert.deepEqual(team.candidates['mappings.status.blocked'], ['Backlog', 'Todo', 'In Progress', 'UAT', 'Ready to ship', 'Code Review', 'In Review'])
