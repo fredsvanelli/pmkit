@@ -1,6 +1,6 @@
 # PMK-34 design: ask for the mappings a hosted tracker cannot infer
 
-Issue PMK-34, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: draft, four open questions for the user. Decisions come from an autonomous brainstorming run on 2026-10-27 with no user dialogue, from the issue, ADR-0002, ADR-0003, ADR-0005, the PMK-31 and PMK-33 specs, the code, and read-only calls to the sandbox workspace. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
+Issue PMK-34, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: the user answered the four open questions on 2026-10-27, and the design applies the answers. Decisions come from an autonomous brainstorming run on 2026-10-27 with no user dialogue, from the issue, ADR-0002, ADR-0003, ADR-0005, the PMK-31 and PMK-33 specs, the code, and read-only calls to the sandbox workspace. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
@@ -29,12 +29,9 @@ One read-only query on 2026-10-27 against the sandbox workspace (Free plan): `vi
 - One team, and the viewer belongs to it.
 - Estimates are off (`notUsed`).
 - Ten states. Five are `started`, in this position order: In Progress, UAT, Ready to ship, Code Review, In Review. No state name contains "block".
-- Two team label groups: a size group whose children are XS, S, M, L and XL, and a difficulty group with three children. No group is named Type.
+- Two team label groups: a size group whose children are XS, S, M, L and XL, and a difficulty group with three children. No label is named after a pmkit type.
 
-Two consequences shape the rules below:
-
-- "Code Review" comes before "In Review" by position, so a rule that recommends the first name containing "review" picks the wrong one. The rule prefers the exact name first.
-- A size group looks like a type group to a naive rule. The type candidates leave out groups whose children are all size or number names.
+One consequence shapes the rules below: "Code Review" comes before "In Review" by position, so a rule that recommends the first name containing "review" picks the wrong one. The rule prefers the exact name first.
 
 ## Goals
 
@@ -73,14 +70,16 @@ Chosen: B. It follows the pattern of the Local first run (dry run, summary, the 
 
 ### What goes into the file
 
-1. **The answers, the scope and the inferred field roles.** `tracker.scope.workspace`, `tracker.scope.team`, `mappings.status.in_review`, `mappings.status.blocked`, and `mappings.fields.estimate` and `mappings.fields.type` when they have a value. Native state categories stay computed from each state's type on every read.
+1. **The answers, the scope and the inferred field roles.** `tracker.scope.workspace`, `tracker.scope.team`, `mappings.status.in_review`, `mappings.status.blocked`, `mappings.fields.estimate` when it has a value, and `mappings.types`. Native state categories stay computed from each state's type on every read.
 2. **Every mapping, inferred ones included.** A line per category, naming the state that category moves to. The file then repeats what Linear already says, and a renamed state breaks a mapping nobody chose.
 
 Chosen: 1. It is the shape of the Q5 example, and only the names a person chose or that a check can verify go in the file.
 
 ### How "answered, nothing" is recorded
 
-A team with no review status or no blocked status still needs an answer, or every later setup run asks again. Leaving the key out cannot tell "never asked" from "answered with nothing". Chosen: the reserved value `none`, as `native` is already reserved in `mappings.fields`. Setup refuses to map to a Linear state or group literally named `none` **(builder's call)**.
+A team with no review status or no blocked status still needs an answer, or every later setup run asks again. Leaving the key out cannot tell "never asked" from "answered with nothing". Chosen: the reserved value `none`, as `native` is already reserved in `mappings.fields`. Setup refuses to map to a Linear state literally named `none` **(builder's call)**.
+
+`mappings.types` has no `none` value, because a type without a label is left out of the object. The key as a whole carries the answer: `types` absent means setup never asked, and `types: {}` or a partial object means the user answered. A type the user answered with nothing stays out, and later runs do not ask for it again. Setup asks only for the pmkit types in the repository's `types` list that the object lacks while `types` is absent, and for a type whose label broke.
 
 ## Design
 
@@ -90,14 +89,13 @@ A team with no review status or no blocked status still needs an answer, or ever
 |---|---|
 | `scripts/lib/mappings.mjs` | New. The generic rules: `proposeMappings(description, current, answers)`, `brokenMappings(description, pmkit)`, `parseMappingFlags(ctx)` and `NONE`. No Linear name appears in it. |
 | `scripts/lib/linear/mappings.mjs` | New. `linearDescription(raw, view, viewerId)` turns PMK-33's discovery into the generic description. `resolveMappings(view, pmkit)` is the reader PMK-35 uses. |
-| `scripts/lib/linear/discovery.mjs` | `discoveryView` skips `none` values, fills `types` from the mapped type group, and leaves that group's children out of `labels`. |
+| `scripts/lib/linear/discovery.mjs` | `discoveryView` skips `none` values, fills `types` with the keys of `mappings.types`, and leaves the mapped labels out of `labels`. |
 | `scripts/lib/linear/manifest.mjs` | `estimation` is `absent` with the hint `mappings.fields.estimate is none in .pmkit/config.yaml` when the estimate is mapped to `none`. |
 | `scripts/lib/linear/tracker.mjs` | The mapping check before every operation except `discover` and `capabilities`. |
 | `scripts/lib/linear/adapter.mjs` | `configProblems` adds the offline Linear rules on `mappings.fields`. The descriptor gains `describe(raw, view, viewerId)`, which calls `linearDescription`. |
-| `scripts/lib/model.mjs` | `FIELD_ROLES` gains `type` (open question 1). |
 | `schemas/pmkit.config.schema.json` | See "Schema changes". |
 | `scripts/lib/yaml-edit.mjs` | `setScalar` creates missing parent maps, so `--update` can add `mappings.status.blocked` to a file with no `mappings` block. |
-| `scripts/pmkit.mjs` | `init` gains `--tracker linear`, `--workspace`, `--team`, `--status` and `--field`, and a hosted branch. A JSON error whose details hold `mappings` prints that list. |
+| `scripts/pmkit.mjs` | `init` gains `--tracker linear`, `--workspace`, `--team`, `--status`, `--field` and `--type-label`, and a hosted branch. A JSON error whose details hold `mappings` prints that list. |
 | `commands/setup.md` | The tracker question in step 1, "Linear first run", "Existing Linear config", their confirmation points and the missing-key case. |
 | `skills/pmkit/references/conventions.md` | One rule for a broken mapping. |
 | `CONTEXT.md` | The term **Mapping**. |
@@ -108,11 +106,12 @@ A team with no review status or no blocked status still needs an answer, or ever
 
 ### Schema changes
 
-- `mappings.fields.propertyNames.enum` gains `type`. The description of `mappings.fields` says: "A field role to the tracker's field name, native for the tracker's own field, or none for no field. On Linear, type names the label group that holds the issue type." This change depends on open question 1.
+- `mappings` gains `types`, the only schema change of this wave, owned by this issue: an object from a pmkit type name to one label name of the tracker, such as `{ bug: Bug, feature: Feature }`. Every value is a non-empty string. A type without a label is left out. PMK-35 reads it through `resolveMappings`.
+- The description of `mappings.fields` says: "A field role to the tracker's field name, native for the tracker's own field, or none for no field."
 - The descriptions of `mappings.status` and its values say that `none` means "this team has no such status".
 - Nothing else. `tracker.scope.team` already passes through `additionalProperties`, and one status name per key is enough for the questions this issue asks.
 
-`validatePmkitConfig` follows `FIELD_ROLES`, so its message for an unknown role lists `type`. The parity test in `schemas.test.mjs` reads the enum from the schema and needs no new row.
+`validatePmkitConfig` in `scripts/lib/config.mjs` gets a matching check: `mappings.types` must be a map whose values are non-empty strings. The parity test in `schemas.test.mjs` needs a row for `mappings.types`.
 
 ### The mappings contract
 
@@ -130,7 +129,9 @@ mappings:
     blocked: none            # a state of the team, or none
   fields:
     estimate: native         # native or none; absent when the team has estimates off
-    type: Type               # a label group of the team or the workspace, or none
+  types:
+    bug: Bug                 # a label of the team or the workspace; a type with no label is left out
+    feature: Feature
 ```
 
 Reading rules. Names compare exactly, with Linear's case.
@@ -139,7 +140,7 @@ Reading rules. Names compare exactly, with Linear's case.
 2. **Target of `move_to_category(c)`.** The state that `mappings.status.c` names, when set and not `none`. Otherwise the first state of the team by `position` whose category is `c`. With no such state, the move fails with `NOT_SUPPORTED`, `team ACME has no status in the in_review category`, next step `/pmkit:setup`.
 3. **Blocked.** An issue is blocked when one of its blockers is open, as today, or when its state is the one `mappings.status.blocked` names. The state keeps the category of its type, so a blocked issue in a `started` state still counts as `in_progress`.
 4. **Estimate.** `native` reads and writes `Issue.estimate` with the team's scale from discovery. `none`, an absent key, or a team with estimates off gives `estimate: null` on every issue.
-5. **Type.** The type of an issue is the name of its label whose parent is the mapped group. Linear allows one label per group on an issue. Setting a type replaces that label. A team group wins over a workspace group with the same name. With `none` or no key, `types` is `[]` and every issue has `type: null`.
+5. **Type.** The type of an issue is the pmkit type whose mapped label the issue carries. When an issue carries labels of two types, the type that comes first in the repository's `types` list wins. Setting a type adds the mapped label and removes the labels of the other mapped types. A team label wins over a workspace label with the same name. With no `mappings.types`, `types` is `[]` and every issue has `type: null`.
 6. **Other categories.** A hand-written `mappings.status.<category>` for any other category follows rule 1. Setup does not ask for them.
 
 `resolveMappings(view, pmkit)` in `scripts/lib/linear/mappings.mjs` returns the result of these rules for the configured team, so PMK-35 never reads `mappings` itself:
@@ -151,9 +152,12 @@ Reading rules. Names compare exactly, with Linear's case.
   targetState: (category) => ({ id, name }),  // rule 2, null when the team has none
   blockedState: { id, name } | null,          // rule 3
   estimate: 'native' | null,                  // rule 4
-  typeGroup: { id, name, children: [{ id, name }] } | null,  // rule 5
+  types: { bug: { id, name } },               // rule 5, only the types with a label
+  typeOf: (labelNames) => 'bug' | null,       // rule 5
 }
 ```
+
+The name, the arguments and this return shape are the contract with PMK-35. A change to them needs a note in PMK-35's spec and the changelog.
 
 `resolveMappings` needs the Linear ids of states and labels, which `discoveryView` does not return today. It reads them from the raw discovery that the tracker already holds, so the builder passes `raw` too or adds `id` to the team view **(builder's call)**.
 
@@ -172,7 +176,7 @@ Reading rules. Names compare exactly, with Linear's case.
       'mappings.status.in_review': ['In Review', 'In Progress', 'UAT', 'Ready to ship', 'Code Review'],
       'mappings.status.blocked': [...],
       'mappings.fields.estimate': [],          // ['native'] when the team uses estimates
-      'mappings.fields.type': ['Difficulty'],
+      'mappings.types.bug': ['Bug', 'Improvement', 'Difficulty'],   // one entry per pmkit type
     },
     recommended: { 'mappings.status.in_review': 'In Review', 'mappings.status.blocked': 'none', ... },
     exists: (path, value) => boolean,          // for brokenMappings
@@ -187,19 +191,19 @@ Reading rules. Names compare exactly, with Linear's case.
 | `tracker.scope.team` | The viewer's teams. When the viewer is in no team, every team. | None. |
 | `mappings.status.in_review` | The team's `started` states. Empty when the team has only one, because mapping it would leave `in_progress` with no status. | The state named "In Review", ignoring case. Else the first by position whose name contains "review". Else `none`. |
 | `mappings.status.blocked` | The team's states in `backlog`, `todo` and `in_progress`. A state already given for in review fails with `INVALID_INPUT`. | The first by position whose name contains "block", ignoring case. Else `none`. |
-| `mappings.fields.estimate` | `native` when the team's estimation type is not `notUsed`. Else empty. Open question 2 asks whether size label groups join. | The only candidate. |
-| `mappings.fields.type` | Label groups of the team and the workspace, without groups whose children are all size names (XS to XXXL) or numbers. | The group named "Type", "Types" or "Issue type", ignoring case. Else `none`. |
+| `mappings.fields.estimate` | `native` when the team's estimation type is not `notUsed`. Else empty. Size label groups do not join: native is the only estimate on Linear, and groups are a follow-up. | The only candidate. |
+| `mappings.types.<type>` | The labels of the team and the workspace that are not groups, team first, then by name. A label another type already took is left out. | The label whose name equals the pmkit type, ignoring case. Else `none`, which leaves the type out of the file. |
 
 ### The inference rule
 
-`proposeMappings(description, current, answers)` walks the keys in this order: `tracker.scope.workspace`, `tracker.scope.team`, then, once the team is known, `mappings.status.in_review`, `mappings.status.blocked`, `mappings.fields.estimate` and `mappings.fields.type`. `current` is the mappings already in the file (empty on a first run) and `answers` is what the flags gave. For each key, the first rule that matches wins:
+`proposeMappings(description, current, answers)` walks the keys in this order: `tracker.scope.workspace`, `tracker.scope.team`, then, once the team is known, `mappings.status.in_review`, `mappings.status.blocked`, `mappings.fields.estimate` and one `mappings.types.<type>` for each type of the repository's `types` list. `current` is the mappings already in the file (empty on a first run) and `answers` is what the flags gave. For each key, the first rule that matches wins:
 
 1. **An answer.** A flag gave a value. It must be a candidate, `none`, or for the team any team key of the workspace. Otherwise the call fails with `INVALID_INPUT`, `--status in_review=Review is not a status of team ACME`, next step `Pass one of: In Review, In Progress, UAT, Ready to ship, Code Review, or none`.
 2. **Kept.** The file holds a value and `brokenMappings` does not list it. Nothing is asked again (Q6, "re-asked only when it breaks").
 3. **Broken.** The file holds a value that the workspace no longer has. The key becomes a question with `broken: { was, problem }`.
 4. **Always asked.** `mappings.status.in_review` and `mappings.status.blocked` become questions, even with one candidate or none. A key with no candidate offers only `none`.
 5. **Applied.** The workspace from the key's organization. The team when the viewer is in exactly one. A field with exactly one candidate. These go to `applied` with a reason and into the file.
-6. **Asked.** A field or the team with two or more candidates.
+6. **Asked.** A field or the team with two or more candidates. Every `mappings.types.<type>`, while `mappings.types` is absent from the file, with the recommended label first and `none` as the last option.
 7. **Nothing.** A field with no candidate is neither asked nor written. The summary says why, for example "team ACME has estimates off; turn them on in the team's settings in Linear and run setup again".
 
 Rule 5 answers criterion 1 for the scope and the fields. The plan, the tier and the version are not mappings and never reach the file. The plan comes from discovery and shapes the manifest, and Linear has no tier or version. Native categories come from the state types on every read, and the proposal lists them so the summary can show them.
@@ -209,10 +213,10 @@ Rule 5 answers criterion 1 for the scope and the fields. The plan, the tier and 
 ```
 init --tracker linear [--git-host github|none] [--workspace <key>] [--team <KEY>]
      [--status in_review=<name|none>] [--status blocked=<name|none>]
-     [--field estimate=<native|none>] [--field type=<group|none>] [--update] [--dry-run]
+     [--field estimate=<native|none>] [--type-label <type>=<label|none>] [--update] [--dry-run]
 ```
 
-- `--status` and `--field` repeat, and each takes `<key>=<value>`. The value runs to the end of the argument, so `--status "in_review=In Review"` keeps the space.
+- `--status`, `--field` and `--type-label` repeat, and each takes `<key>=<value>`. The value runs to the end of the argument, so `--status "in_review=In Review"` keeps the space.
 - With `--tracker linear`, `init` refuses `--prefix`, `--id-style`, `--estimate-unit`, `--label`, `--member`, `--name`, `--email` and `--members-file` with `INVALID_INPUT`, `Linear sets <flag> itself`, next step `Remove <flag>`.
 - On a first run, `.pmkit/config.yaml` must not exist (`CONFLICT`, as for Local). `init` writes only that file and no `.issues/` folder.
 - `--update` reads `tracker.system` from the file. With `linear` it takes the hosted branch and refuses `--tracker` with another value (`NOT_SUPPORTED`, `setup cannot switch trackers`, next step `Keep tracker.system as it is`). A Local config with `--tracker linear` gets the same refusal.
@@ -264,7 +268,7 @@ A missing `tracker.scope.team` is one item of that list, `tracker.scope.team is 
 - `tracker.scope.team names ACME, which this workspace no longer has`
 - `mappings.status.in_review names In Review, which team ACME no longer has`
 - `mappings.fields.estimate is native, but team ACME has estimates off`
-- `mappings.fields.type names Type, which is not a label group of team ACME`
+- `mappings.types.bug names Bug, which is neither a label of team ACME nor of the workspace`
 
 `none` and absent keys are never broken. `discover` and `capabilities` keep PMK-33's warnings instead of throwing, because setup needs them to fix the file. The check also runs on reads (open question 4), because a missing review status changes the category of every issue that a read returns.
 
@@ -278,13 +282,13 @@ ADR-0002 makes the command files the source for every agent, so the text below i
 
 A new item in "Reading errors", placed before the `NOT_CONFIGURED` item:
 
-> - `NOT_CONFIGURED` with an `error.mappings` list means `.pmkit/config.yaml` maps a team, status, field or label group that the tracker no longer has. Stop the command before any other call. Show the `problem` of each item. Ask once with `AskUserQuestion` whether to run `/pmkit:setup` now, which asks again only for these mappings. Never pick a replacement yourself, and do not retry the call.
+> - `NOT_CONFIGURED` with an `error.mappings` list means `.pmkit/config.yaml` maps a team, status, field or label that the tracker no longer has. Stop the command before any other call. Show the `problem` of each item. Ask once with `AskUserQuestion` whether to run `/pmkit:setup` now, which asks again only for these mappings. Never pick a replacement yourself, and do not retry the call.
 
 #### `commands/setup.md`
 
 "Parameters" names both question sets:
 
-> None. Run `/pmkit:setup` from the root of the repository. The command asks for what it cannot detect. With the Local tracker, that is the ID prefix, the ID style, the estimate unit, the members and the `needs-criteria` label. With Linear, it is the team when you belong to several, the status that means in review, the status that means blocked, and a field or label group only when the workspace offers more than one.
+> None. Run `/pmkit:setup` from the root of the repository. The command asks for what it cannot detect. With the Local tracker, that is the ID prefix, the ID style, the estimate unit, the members and the `needs-criteria` label. With Linear, it is the team when you belong to several, the status that means in review, the status that means blocked, the label for each issue type, and a field only when the workspace offers more than one.
 
 Step 1 becomes:
 
@@ -297,8 +301,8 @@ The step numbers of "First run" and "Existing config" stay as they are. Two sect
 > 2. Detect the git host as in step 2 of "First run".
 > 3. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --tracker linear --git-host <github|none> --dry-run --json`. It reads the workspace with the key in `LINEAR_API_KEY` and writes nothing. On `AUTH`, tell the user to create a personal API key in Linear (Settings, Security & access) with read and write access and to export it as `LINEAR_API_KEY` in the shell profile or in `~/.claude/settings.json`, never in a file inside the repository. Never ask for the key and never write it. Then stop and ask the user to run setup again.
 > 4. When `questions` holds `tracker.scope.team`, ask it alone with `AskUserQuestion`. Offer up to four of its `candidates`; the user can type another team key. Then run the dry run of step 3 again with `--workspace <workspace.urlKey> --team <key>`.
-> 5. Ask every other item of `questions` in one `AskUserQuestion` call, one question per item, in the order given. Name what each one decides: which status means in review, which status means blocked, which field holds the estimate, which label group holds the issue type. Offer `recommended` first with "(Recommended)", then the next `candidates`, then `none` with the label the item gives, four options at most. The user can type another candidate in the free-text answer.
-> 6. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --tracker linear --git-host <github|none> --workspace <key> --team <key> --status <key>=<value> --field <key>=<value> --dry-run --json`, with one `--status` or `--field` per answer and the team from step 3 or 4. On `INVALID_INPUT` naming a value, ask that question again with the values its next step lists.
+> 5. Ask every other item of `questions` with `AskUserQuestion`, one question per item, in batches of four, in the order given. Name what each one decides: which status means in review, which status means blocked, which field holds the estimate, which label stands for each issue type. AskUserQuestion takes four questions per call, so ask them in batches of four, in the order given. Offer `recommended` first with "(Recommended)", then the next `candidates`, then `none` with the label the item gives, four options at most. The user can type another candidate in the free-text answer.
+> 6. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --tracker linear --git-host <github|none> --workspace <key> --team <key> --status <key>=<value> --field <key>=<value> --dry-run --json`, with one `--status`, `--field` or `--type-label` per answer and the team from step 3 or 4. On `INVALID_INPUT` naming a value, ask that question again with the values its next step lists.
 > 7. Show one summary: the workspace and its plan, the team, the git host, each status of the team with its category, the status that means blocked, the estimate, the type, the `notes`, and `.pmkit/config.yaml` as the dry run would create it. Say that Linear numbers its own issues, so setup asks for no prefix and no ID style, and that setup creates no label in Linear.
 > 8. After the user approves, run the command of step 6 without `--dry-run`.
 > 9. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`, `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`. Go to "Output".
@@ -306,9 +310,9 @@ The step numbers of "First run" and "Existing config" stay as they are. Two sect
 > ### Existing Linear config
 >
 > 2. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`. A problem in `.pmkit/config.yaml` makes `init --update` refuse, so ask the user to fix the file by hand first and run the check again.
-> 3. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --dry-run --json`. On `AUTH`, follow step 3 of "Linear first run". `broken` lists each mapping that names a team, status, field or label group the workspace no longer has, and `questions` holds each of them plus any mapping never answered. Add `--git-host`, `--team`, `--status` or `--field` only when the user asks to change them.
+> 3. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --dry-run --json`. On `AUTH`, follow step 3 of "Linear first run". `broken` lists each mapping that names a team, status, field or label the workspace no longer has, and `questions` holds each of them plus any mapping never answered. Add `--git-host`, `--team`, `--status` or `--field` only when the user asks to change them.
 > 4. When `questions` is empty and no file is `change`, say "already up to date" and go to step 7. Otherwise ask the questions as steps 4 and 5 of "Linear first run" do. For a broken mapping, name its old value and its `problem` in the question.
-> 5. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --team <key> --status <key>=<value> --field <key>=<value> --dry-run --json` with the answers of step 4 and the flags of step 3. Show the diff of `.pmkit/config.yaml` and the summary of step 7 of "Linear first run", and ask once with `AskUserQuestion` whether to apply it. When the user declines, stop and change nothing.
+> 5. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --team <key> --status <key>=<value> --field <key>=<value> --type-label <type>=<value> --dry-run --json` with the answers of step 4 and the flags of step 3. Show the diff of `.pmkit/config.yaml` and the summary of step 7 of "Linear first run", and ask once with `AskUserQuestion` whether to apply it. When the user declines, stop and change nothing.
 > 6. After the user approves, run the command of step 5 without `--dry-run`.
 > 7. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`, `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`. Go to "Output".
 
@@ -329,15 +333,15 @@ The calls in this text are what the scenario rules check: every flag exists in t
 A new term after **Category**:
 
 > **Mapping**:
-> A line under `mappings` in `.pmkit/config.yaml` that ties a pmkit category, `blocked` or a field role to a hosted tracker's own name, such as `in_review: In Review`. Setup writes the mappings it infers and the ones the user answers. `none` means the team has no such status or field. When a mapping names something the tracker no longer has, every command stops and offers `/pmkit:setup`.
+> A line under `mappings` in `.pmkit/config.yaml` that ties a pmkit category, `blocked`, a field role or an issue type to a hosted tracker's own name, such as `in_review: In Review` or `bug: Bug`. Setup writes the mappings it infers and the ones the user answers. `none` means the team has no such status or field. When a mapping names something the tracker no longer has, every command stops and offers `/pmkit:setup`.
 > _Avoid_: binding, alias
 
 ## The sandbox, end to end
 
 With the sandbox facts above, the Linear first run goes like this:
 
-1. Step 3's dry run applies the workspace and team `ACME` (one team, the viewer is in it). `notes` says estimates are off. The type candidates are the difficulty group only, because the size group has only size names.
-2. Step 5 asks three questions. In review offers "In Review (Recommended)", "In Progress", "UAT" and "No status means in review". Blocked offers "No status means blocked (Recommended)" and three states. Type offers "No label group holds the type (Recommended)" and the difficulty group.
+1. Step 3's dry run applies the workspace and team `ACME` (one team, the viewer is in it). `notes` says estimates are off. The type candidates are the team's labels, including those of the size and difficulty groups.
+2. Step 5 asks six questions, in two batches of four and two. In review offers "In Review (Recommended)", "In Progress", "UAT" and "No status means in review". Blocked offers "No status means blocked (Recommended)" and three states. Each of the four types (feature, bug, task, chore) offers "No label stands for this type (Recommended)" and the team's labels, because no label is named after a type.
 3. With the recommended answers, the file is:
 
 ```yaml
@@ -358,8 +362,7 @@ mappings:
   status:
     in_review: In Review
     blocked: none
-  fields:
-    type: none
+  types: {}
 ```
 
 If someone later renames "In Review" in Linear, the next `issues list` refreshes the cache once, still misses the name, and fails with `NOT_CONFIGURED` and `error.mappings`. The command offers `/pmkit:setup`, whose `init --update` dry run lists the broken mapping as the only question.
@@ -369,12 +372,12 @@ If someone later renames "In Review" in Linear, the next `issues list` refreshes
 Every test injects `fakeLinearFetch` with routes from `fakeWorkspace()` and sets `PMKIT_HOME` with `userStoreEnv()`. No test opens a socket.
 
 - `scripts/lib/mappings.test.mjs`, on hand-written descriptions: one viewer team is applied; two give a team question with only those teams; no viewer team gives every team; in review and blocked are asked with one candidate and with none; one estimate candidate is applied, two are asked, none gives a note; an answer outside the candidates fails with `INVALID_INPUT` naming them; a kept value is not asked again; a broken value is asked with `broken`; `none` is never broken; a write with questions left fails.
-- `scripts/lib/linear/mappings.test.mjs`: the sandbox-like fake gives "In Review" over "Code Review"; a team with one `started` state offers no in-review candidate; a size group is not a type candidate and a group named Type is applied; `resolveMappings` follows rules 1 to 5, the move target falls back to the first state by position, and a blocked state keeps its type's category.
-- `discovery.test.mjs`: `in_review: none` gives no warning; a type group fills `types` and leaves `labels`; a team group wins over a workspace group with the same name.
+- `scripts/lib/linear/mappings.test.mjs`: the sandbox-like fake gives "In Review" over "Code Review"; a team with one `started` state offers no in-review candidate; a label named like a pmkit type is applied to it, ignoring case, and a group label is not a candidate; `resolveMappings` follows rules 1 to 5, the move target falls back to the first state by position, and a blocked state keeps its type's category.
+- `discovery.test.mjs`: `in_review: none` gives no warning; the keys of `mappings.types` fill `types` and the mapped labels leave `labels`; a team label wins over a workspace label with the same name.
 - `manifest.test.mjs`: `estimate: none` makes `estimation` absent with its hint.
 - `tracker.test.mjs`: a stub with a broken status mapping throws `NOT_CONFIGURED` with `details.mappings` after exactly one refresh; a state that is back after the refresh lets the call through; no team gives the `tracker.scope.team is not set` item; `discover` and `capabilities` warn and do not throw.
 - `cli-linear.test.mjs`, through `run(argv, { env, adapters })`: the first dry run's JSON shape; the write creates `.pmkit/config.yaml` with the exact text above and no `.issues/`; a write with questions left exits 2; Local-only flags are refused; `--update` with a removed state lists it in `broken` and `questions`; a value with a space survives; the error JSON of a broken mapping has `mappings`; `FAKE_KEY` appears in no output and in no file.
-- `config.test.mjs` and `schemas.test.mjs`: `mappings.fields.type` is valid on both sides, and the unknown-role message lists `type`.
+- `config.test.mjs` and `schemas.test.mjs`: `mappings.types` is valid on both sides, and a non-string value is refused on both sides.
 - `yaml-edit.test.mjs`: `setScalar` adds `mappings.status.blocked` to a file with no `mappings` block and keeps the comments.
 - Scenarios: `scripts/scenario-helpers.mjs` gains a `linear` option. A scenario with `linear: { ...fakeWorkspace options }` runs the CLI with the in-process `run` and `adapters: { ...ADAPTERS, linear: linearDescriptor({ fetch }) }`, with `LINEAR_API_KEY` set to `FAKE_KEY` and `PMKIT_HOME` under the scratch folder. No test hook enters `scripts/pmkit.mjs`. Entry 2 is a Linear first run on a workspace where the viewer is in two teams, so it covers steps 3 to 9 with the team question. Entry 3 is an existing Linear config whose in-review state is gone, so it covers steps 2 to 7 with a broken mapping. Entries 0 and 1 gain "Local (Recommended)" as their first answer, and their calls and snapshots stay as they are.
 - Every golden stays byte-identical.
@@ -396,7 +399,7 @@ Every test injects `fakeLinearFetch` with routes from `fakeWorkspace()` and sets
 | Only answers, the scope and inferred field roles go in the file | The Q5 example has that shape, and computed categories survive renames. |
 | `none` records "answered, nothing" | Otherwise setup cannot tell a skipped question from an empty answer, and Q6 asks again only when something breaks. |
 | The in-review recommendation prefers the exact name | The sandbox puts "Code Review" before "In Review" by position. |
-| Size groups are not type candidates | The sandbox's size group would otherwise be offered as the issue type. |
+| `mappings.types` maps a pmkit type to one label name | The user chose it (answer to question 1). A type without a label is left out, and the key's presence records that setup asked. |
 | `init` always refreshes discovery | Setup runs right after the user changes Linear. |
 | A write refuses while questions remain | Criterion 2 then holds for any caller of the CLI, not only for setup. |
 | The run-time check refreshes once before it throws | A cached miss is often only an old cache, as PMK-33 planned. |
@@ -409,31 +412,20 @@ Every test injects `fakeLinearFetch` with routes from `fakeWorkspace()` and sets
 
 - **PMK-35 in parallel.** Its spec is being written now. It should read the mappings through `resolveMappings` and the rules in "The mappings contract". If PMK-35 lands first, its own reading of `mappings` needs to move to the helper.
 - **Several review states.** A team with "Code Review" and "In Review" can map only one to `in_review`. The other stays `in_progress`. A list per key would change the schema, so this issue leaves it out.
-- **Contract suite.** PMK-39 requires a status in every category and at least one type. A sandbox with `in_review: none` or `type: none` fails those checks. PMK-39 should map both in its sandbox team, or the suite should accept `none` for a hosted tracker.
+- **Contract suite.** PMK-39 requires a status in every category and at least one type. A sandbox with `in_review: none` or an empty `types` fails those checks. PMK-39 should map both in its sandbox team, or the suite should accept `none` for a hosted tracker.
 - **Status names across teams.** The rules key everything to one team. A second team in the same repository is PMK-53's or a later issue's problem.
 - **AskUserQuestion has four options.** A team with many `started` states shows three of them plus `none`. The free-text answer covers the rest, and the CLI checks it.
 - **In-process scenarios.** `gitUserEmail` reads `process.env`, so the harness needs the git isolation that `cli-linear.test.mjs` sets.
 - **Non-admin keys.** PMK-33 noted that a member's key may not list integrations. Setup does not need them, but the live check should run with a member's key before the milestone ships.
 
-## Open questions
+## Answered questions
 
-1. **Does PMK-34 add a type mapping?** PMK-33 left `types` empty for this issue, but no criterion names the type.
-   - (a) Add `type` to the field roles. `mappings.fields.type` names a label group. A group named Type is applied, other groups are asked, size groups are left out. One schema change.
-   - (b) No type mapping here. `types` stays `[]`, and PMK-35 decides. No schema change.
-   - (c) Map types from Linear's issue templates instead of a label group.
-   - Recommendation: (a). The Unified model maps Linear's type to a label, the contract suite needs a type, and the question costs nothing when no group qualifies.
-2. **Can a label group be the estimate on Linear?** Linear's native estimate is the only standard field, so with (a) the "several candidates" question never fires on Linear, and only the generic rule and its tests cover it.
-   - (a) Native only. A team with estimates off has `estimation` absent and a note on how to turn it on.
-   - (b) Native plus label groups of sizes or numbers. Setup asks, and PMK-35 and PMK-37 read and write the group's label as the estimate.
-   - Recommendation: (a). Option (b) adds a second estimate path to PMK-35 and to velocity for a case that Linear's own setting already covers.
-3. **How does setup pick Linear?**
-   - (a) A tracker question in step 1, Local first and recommended. The Local scenarios gain one answer.
-   - (b) An argument, `/pmkit:setup linear`, with Local when none is given. No new question, but nothing tells a user that Linear exists.
-   - Recommendation: (a).
-4. **Does a broken mapping stop reads too?**
-   - (a) Every operation except `discover` and `capabilities` stops. A read with a wrong review status would put every reviewed issue in `in_progress`.
-   - (b) Writes stop, and reads print a warning on stderr and go on.
-   - Recommendation: (a). Q6 says the skill stops instead of guessing, and a read feeds metrics and reports.
+The user answered on 2026-10-27, and the design above applies each answer.
+
+1. **Types.** Add one field, `mappings.types`, the only schema change of this wave. Its shape is an object from a pmkit type name to one Linear label name, for example `{ bug: Bug, feature: Feature }`. A type without a label is left out. Setup asks for it and writes it. PMK-35 reads it through `resolveMappings`, whose name and return shape stay stable and documented.
+2. **Estimate.** Linear's native estimate field only. Size label groups are a follow-up.
+3. **How setup picks Linear.** A tracker question in step 1 of `commands/setup.md`, not an argument.
+4. **Broken mappings.** A broken mapping stops reads as well as writes.
 
 No ADR. ADR-0005 already says setup runs discovery and writes the workspace, and this design follows it.
 
@@ -445,7 +437,7 @@ No ADR. ADR-0005 already says setup runs discovery and writes the workspace, and
 
 ## Self-review
 
-- Placeholders: none. The open questions mark where the user decides, and the design states the recommended answer throughout.
+- Placeholders: none. The user's four answers are applied.
 - Consistency: "proposal" is the `applied`, `questions`, `broken` and `notes` of an `init` dry run. "Broken" always means a value the workspace no longer has. Examples use `acme` and `ACME`.
 - Scope: two new modules, small changes to four Linear modules, `init` flags, one schema enum value, one yaml-edit change, two command files, one glossary term, a harness option and tests. No write to Linear, no new dependency, no ADR.
 - Boundaries: operations go to PMK-35, the contract suite to PMK-39, tracker switching to PMK-41, `link-repo` to PMK-53, and triage rotation to PMK-43.
