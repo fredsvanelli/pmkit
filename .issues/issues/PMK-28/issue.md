@@ -2,7 +2,7 @@
 id: PMK-28
 title: Decide how pmkit authenticates to Linear
 type: task
-status: in_review
+status: done
 priority: medium
 estimate: 2
 assignee: fred
@@ -10,7 +10,7 @@ parent: EPC-5
 milestone: linear
 branch: pmk-28-decide-how-pmkit-authenticates-to-linear
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-27T23:53:44Z
+updated: 2026-10-28T00:13:41Z
 ---
 
 ## Description
