@@ -120,6 +120,14 @@ test('isMutation ignores the word mutation inside strings, comments, fields and 
   assert.equal(isMutation('query Q @tag(name: mutation) { a }'), false)
 })
 
+test('isMutation ends a comment at \\r, \\r\\n or \\n', () => {
+  assert.equal(isMutation('query Q { a } # x\rmutation M { b }'), true)
+  assert.equal(isMutation('query Q { a } # x\r\nmutation M { b }'), true)
+  assert.equal(isMutation('query Q { a } # x\nmutation M { b }'), true)
+  assert.equal(isMutation('# mutation note\rquery Q { a }'), false)
+  assert.equal(isMutation('# mutation note\r\nquery Q { a }'), false)
+})
+
 test('isMutation counts a document it cannot read as a mutation', () => {
   assert.equal(isMutation('query Q { a(s: "open) }'), true)
   assert.equal(isMutation('query Q { a(s: """open) }'), true)

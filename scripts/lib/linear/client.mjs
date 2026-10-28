@@ -6,7 +6,7 @@ import { linearCredential } from './credential.mjs'
 
 export const LINEAR_ENDPOINT = 'https://api.linear.app/graphql'
 
-const stripComments = (document) => document.replace(/#[^\n]*/g, '').trim()
+const stripComments = (document) => document.replace(/#[^\n\r]*/g, '').trim()
 
 const DEFINITION_KEYWORDS = new Set(['query', 'mutation', 'subscription', 'fragment'])
 
@@ -23,8 +23,9 @@ function definitionKeywords(document) {
   while (index < document.length) {
     const char = document[index]
     if (char === '#') {
-      const end = document.indexOf('\n', index)
-      index = end === -1 ? document.length : end + 1
+      let end = index + 1
+      while (end < document.length && document[end] !== '\n' && document[end] !== '\r') end += 1
+      index = end
     } else if (document.startsWith('"""', index)) {
       let end = index + 3
       while (end < document.length && !(document.startsWith('"""', end) && document[end - 1] !== '\\')) end += 1
