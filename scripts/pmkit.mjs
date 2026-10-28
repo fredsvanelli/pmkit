@@ -945,6 +945,11 @@ export const COMMANDS = [
     run: async (ctx) => (await ctx.linear()).show({ team: ctx.opt('team') }),
   },
   {
+    name: 'linear triage suggestions', summary: 'the active Triage Intelligence suggestions for the issues in a team\'s triage inbox',
+    usage: '[--team KEY] [--limit n]', linear: true, flags: ['team', 'limit'],
+    run: async (ctx) => (await ctx.linear()).suggestions({ team: ctx.opt('team'), limit: ctx.opt('limit') }),
+  },
+  {
     name: 'validate', summary: 'checks every file and reference; problems are output, not errors', flags: [], exempt: true,
     run: (ctx) => {
       const result = validateRepo(ctx.root, { adapters: ctx.adapters })

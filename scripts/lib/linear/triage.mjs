@@ -104,6 +104,27 @@ export function suggestionsText(view) {
 const RESPONSIBILITY_FIELDS = 'id action manualSelection { userIds assignmentIndex } timeSchedule { id name externalUrl integration { service } } currentUser { id name }'
 export const SHOW_QUERY = `query PmkitTriageShow($teamId: String!) { team(id: $teamId) { triageResponsibility { ${RESPONSIBILITY_FIELDS} } } }`
 
+const SUGGESTION_FIELDS =
+  'type state metadata { score reasons } presentedReasons suggestedTeam { id key name } suggestedProject { id name } suggestedUser { id name } suggestedLabel { id name } suggestedIssue { id identifier title }'
+export const SUGGESTIONS_QUERY = `query PmkitTriageSuggestions($first: Int!, $after: String, $teamKey: String!) { issues(first: $first, after: $after, orderBy: createdAt, filter: { team: { key: { eq: $teamKey } }, state: { type: { eq: "triage" } } }) { nodes { identifier title createdAt suggestions(filter: { state: { eq: active } }) { nodes { ${SUGGESTION_FIELDS} } } } pageInfo { hasNextPage endCursor } } }`
+
+const DEFAULT_LIMIT = 25
+const MAX_LIMIT = 100
+
+/** The --limit value: 25 by default, at most 100. A larger value is clamped with a warning. */
+function parseLimit(value, warnings) {
+  if (value === undefined) return DEFAULT_LIMIT
+  const number = Number(value)
+  if (typeof value !== 'string' || !/^\d+$/.test(value) || number < 1) {
+    throw new PmkitError('INVALID_INPUT', `--limit takes a whole number of at least 1, got "${value}"`, 'Pass --limit 25')
+  }
+  if (number > MAX_LIMIT) {
+    warnings.push(`--limit ${number} is above ${MAX_LIMIT}; using ${MAX_LIMIT}`)
+    return MAX_LIMIT
+  }
+  return number
+}
+
 /** The team a command works on: --team, then tracker.scope.team, then the only team of the workspace. */
 export function chooseTeam(raw, flag, config) {
   const keys = raw.teams.map((team) => team.key)
@@ -152,5 +173,18 @@ export function createTriage({ client, discovery, config }) {
     }
   }
 
-  return Object.freeze({ show })
+  async function suggestions({ team: flag, limit: limitFlag } = {}) {
+    const { team, warnings, availability } = await context(flag)
+    if (!availability.available) return { ...unavailable(team, availability), warnings }
+    const all = [...warnings]
+    const limit = parseLimit(limitFlag, all)
+    const found = await client.paginate(SUGGESTIONS_QUERY, { teamKey: team.key }, { select: (data) => data.issues, pageSize: limit, limit })
+    // Linear returns the newest first; the list reads oldest first.
+    const nodes = [...found.nodes].sort((a, b) => String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')))
+    if (found.hasMore) all.push(`more issues are waiting in triage than --limit ${limit} shows; the newest ${limit} are listed`)
+    const view = suggestionsView(nodes)
+    return { data: { available: true, team: team.key, ...view }, text: suggestionsText(view), warnings: all }
+  }
+
+  return Object.freeze({ show, suggestions })
 }

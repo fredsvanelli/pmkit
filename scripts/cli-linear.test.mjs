@@ -242,3 +242,56 @@ test('linear triage show prints no key', async () => {
   const result = await cli(setup(), ['linear', 'triage', 'show', '--json'], fetch)
   assert.ok(!result.stdout.includes(FAKE_KEY) && !result.stderr.includes(FAKE_KEY))
 })
+
+const sug = (type, extra = {}) => ({ type, state: 'active', metadata: { score: 0.9, reasons: ['why'] }, presentedReasons: null, ...extra })
+const inboxIssue = (identifier, createdAt, suggestions = []) => ({ identifier, title: `Title ${identifier}`, createdAt, suggestions: { nodes: suggestions } })
+const label = { suggestedLabel: { id: 'l1', name: 'Bug' } }
+
+test('linear triage suggestions on a Free workspace is unavailable and sends no query', async () => {
+  const fetch = triageFetch()
+  const result = await cli(setup(), ['linear', 'triage', 'suggestions', '--json'], fetch)
+  assert.equal(result.code, 0, result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.available, false)
+  assert.equal(data.reason, 'plan')
+  assert.equal(triageCalls(fetch).length, 0)
+})
+
+test('linear triage suggestions lists active suggestions, oldest issue first, and drops stale ones', async () => {
+  const issues = [
+    inboxIssue('ACME-2', '2026-10-02T00:00:00Z', [sug('label', label), sug('label', { ...label, state: 'stale' })]),
+    inboxIssue('ACME-1', '2026-10-01T00:00:00Z', [sug('assignee', { suggestedUser: { id: 'user-2', name: 'Ada Lovelace' }, metadata: { score: 0.5, reasons: [] } })]),
+    inboxIssue('ACME-3', '2026-10-03T00:00:00Z', []),
+  ]
+  const json = JSON.parse((await cli(setup(), ['linear', 'triage', 'suggestions', '--json'], businessFetch({ issues }))).stdout)
+  assert.equal(json.available, true)
+  assert.deepEqual(json.issues.map((issue) => issue.id), ['ACME-1', 'ACME-2'])
+  assert.equal(json.issues[1].suggestions.length, 1)
+  assert.deepEqual(json.issues[1].suggestions[0], { type: 'label', target: { id: 'l1', name: 'Bug' }, score: 0.9, reasons: ['why'] })
+  assert.equal(json.withoutSuggestions, 1)
+  const text = await cli(setup(), ['linear', 'triage', 'suggestions'], businessFetch({ issues }))
+  assert.match(text.stdout, /^ACME-1 {2}Title ACME-1\n {2}assignee Ada Lovelace \(score 0\.5\)\nACME-2 /)
+})
+
+test('linear triage suggestions on an empty inbox says so', async () => {
+  const result = await cli(setup(), ['linear', 'triage', 'suggestions'], businessFetch({ issues: [] }))
+  assert.equal(result.code, 0, result.stderr)
+  assert.equal(result.stdout, 'no issue is waiting in triage\n')
+})
+
+test('linear triage suggestions defaults --limit to 25, clamps it to 100 and warns when issues are left out', async () => {
+  const issues = Array.from({ length: 30 }, (_, index) => inboxIssue(`ACME-${index + 1}`, `2026-10-01T00:${String(index).padStart(2, '0')}:00Z`, [sug('label', label)]))
+  const firstOf = (fetch) => triageCalls(fetch)[0].body.variables.first
+  const fetch = businessFetch({ issues })
+  const base = await cli(setup(), ['linear', 'triage', 'suggestions', '--json'], fetch)
+  assert.equal(firstOf(fetch), 25)
+  assert.equal(JSON.parse(base.stdout).issues.length, 25)
+  assert.match(base.stderr, /^warning: more issues are waiting in triage than --limit 25 shows/m)
+  const huge = businessFetch({ issues })
+  const clamped = await cli(setup(), ['linear', 'triage', 'suggestions', '--json', '--limit', '500'], huge)
+  assert.equal(firstOf(huge), 100)
+  assert.equal(JSON.parse(clamped.stdout).issues.length, 30)
+  assert.match(clamped.stderr, /^warning: --limit 500 is above 100; using 100$/m)
+  const bad = await cli(setup(), ['linear', 'triage', 'suggestions', '--json', '--limit', '0'], businessFetch({ issues }))
+  assert.equal(errorOf(bad).code, 'INVALID_INPUT')
+})
