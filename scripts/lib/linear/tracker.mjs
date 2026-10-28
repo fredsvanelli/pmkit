@@ -15,6 +15,7 @@ import { discoveryView, fetchDiscovery } from './discovery.mjs'
 import { historyOperations } from './history-ops.mjs'
 import { issueOperations } from './issue-ops.mjs'
 import { linearDescription } from './mappings.mjs'
+import { projectOperations } from './project-ops.mjs'
 import { relationOperations } from './relation-ops.mjs'
 import { buildLinearCapabilities } from './manifest.mjs'
 import { createTriage } from './triage.mjs'
@@ -150,7 +151,8 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
       )
     })
 
-  const issues = issueOperations({ client, discovery, config, now, uuid })
+  const projects = projectOperations({ client, discovery, config, now, uuid })
+  const issues = issueOperations({ client, discovery, config, now, uuid, resolveEpic: projects.resolveEpic })
   const relations = relationOperations({ client, ops: issues, uuid })
   const history = historyOperations({ client, ops: issues })
   const cycles = cycleOperations({ client, discovery, issues, config })

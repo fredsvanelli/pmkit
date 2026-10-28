@@ -7,8 +7,8 @@ import { LINK_KINDS } from '../model.mjs'
 import { BLOCK_GRAPH_QUERY, PARENT_CHAIN_QUERY, RELATION_CREATE, RELATION_DELETE } from './documents.mjs'
 import { isUnconfirmed } from './issue-ops.mjs'
 import { isIssueId, issueKey, toIssue } from './issues.mjs'
-// Task 7 of PMK-38 replaces this check.
-const NOT_EPICS = 'Linear projects are not epics in pmkit yet'
+import { epicId } from './projects.mjs'
+import { parentInput } from './writes.mjs'
 
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
 const BLOCK_DEPTH = 10
@@ -108,15 +108,19 @@ export function relationOperations({ client, ops, uuid }) {
     return chain
   }
 
-  /** `parent` is an issue id or null. A Linear project is not a parent in pmkit until PMK-38. */
+  /**
+   * `parent` is an issue id, an epic key or null. An issue parent keeps the project, an epic sets the project and clears the
+   * parent issue, and null clears both (spec, "The parent rule").
+   */
   async function setParent(id, parent, actor, { dryRun = false } = {}) {
     ops.requireWorkspace()
     await ops.requireViewer(actor)
     const node = await ops.readNode(id)
     const self = node.identifier
-    if (parent !== null && !isIssueId(parent)) throw new PmkitError('NOT_SUPPORTED', NOT_EPICS, 'Use an issue id as the parent')
-    if (parent !== null && issueKey(parent) === self) throw invalid(`${self} cannot be its own parent`)
-    const parentNode = parent === null ? null : await ops.parentNodeOf(parent)
+    if (parent !== null && isIssueId(parent) && issueKey(parent) === self) throw invalid(`${self} cannot be its own parent`)
+    const target = parent === null ? undefined : await ops.parentNodeOf(parent)
+    const parentNode = target?.kind === 'issue' ? target.node : undefined
+    const epicNode = target?.kind === 'epic' ? target.node : undefined
     if (parentNode) {
       const chain = await ancestry(parentNode.identifier)
       const at = chain.indexOf(self)
@@ -124,9 +128,9 @@ export function relationOperations({ client, ops, uuid }) {
     }
     const context = await ops.contextFor([node])
     const before = toIssue(node, context)
-    const next = parentNode?.identifier ?? null
+    const next = parentNode ? parentNode.identifier : epicNode ? epicId(epicNode) : null
     if ((before.parent ?? null) === next) return { before, after: before }
-    return ops.writeUpdate(node, before, { parentId: parentNode?.id ?? null }, context, dryRun, next)
+    return ops.writeUpdate(node, before, parentInput({ parentNode, epicNode }), context, dryRun, { parent: parentNode?.identifier ?? null, project: epicNode })
   }
 
   return { link, unlink, setParent }

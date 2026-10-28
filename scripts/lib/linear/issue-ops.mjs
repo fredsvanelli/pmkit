@@ -21,9 +21,10 @@ const notFound = (id) => new PmkitError('NOT_FOUND', `issue ${id} does not exist
 
 /**
  * The issue operations over one client. `discovery({ refresh })` is the tracker's memo of the raw discovery.
+ * `resolveEpic(key)` returns the raw project node of an epic key, or null; without it a parent must be an issue.
  * Besides the contract operations, the result holds the helpers the relation operations use.
  */
-export function issueOperations({ client, discovery, config, now = () => new Date(), uuid }) {
+export function issueOperations({ client, discovery, config, now = () => new Date(), uuid, resolveEpic }) {
   const workspace = config.pmkit?.tracker?.scope?.workspace
 
   function requireWorkspace() {
@@ -117,14 +118,23 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return toIssue(node, await contextFor([node]))
   }
 
+  /**
+   * The node a parent id names: { kind: 'issue', node } or { kind: 'epic', node }, or undefined when no parent is given.
+   * An id that is neither an existing issue nor an existing epic is INVALID_INPUT.
+   */
   async function parentNodeOf(parent) {
-    if (parent === undefined || parent === null || !isIssueId(parent)) return undefined
+    if (parent === undefined || parent === null) return undefined
+    const missing = () => new PmkitError('INVALID_INPUT', `parent ${parent} is not an existing issue or epic`, 'pmkit issues list')
+    if (!isIssueId(parent)) {
+      if (!resolveEpic) throw new PmkitError('NOT_SUPPORTED', 'Linear projects are not epics in pmkit yet', 'Use an issue id as the parent')
+      const node = await resolveEpic(parent)
+      if (!node) throw missing()
+      return { kind: 'epic', node }
+    }
     try {
-      return await readNode(parent)
+      return { kind: 'issue', node: await readNode(parent) }
     } catch (error) {
-      if (error instanceof PmkitError && error.code === 'NOT_FOUND') {
-        throw new PmkitError('INVALID_INPUT', `parent ${parent} is not an existing issue`, 'pmkit issues list')
-      }
+      if (error instanceof PmkitError && error.code === 'NOT_FOUND') throw missing()
       throw error
     }
   }
@@ -155,14 +165,17 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
 
   async function createIssue(input, actor, { dryRun = false } = {}) {
     await requireViewer(actor)
-    const parentNode = await parentNodeOf(input?.parent)
+    const target = await parentNodeOf(input?.parent)
+    const parentNode = target?.kind === 'issue' ? target.node : undefined
+    const epicNode = target?.kind === 'epic' ? target.node : undefined
     const { team, linearInput, current, cycleNode } = await withRefresh(async (ctx) => {
-      const target = createTeam(ctx)
-      const cycle = await cycleNodeFor(input?.sprint, target)
-      return { team: target, linearInput: toInput(input, { mode: 'create', team: target, context: ctx, parentNode, cycleNode: cycle }), current: ctx, cycleNode: cycle }
+      const teamNode = createTeam(ctx)
+      const cycle = await cycleNodeFor(input?.sprint, teamNode)
+      const linear = toInput(input, { mode: 'create', team: teamNode, context: ctx, parentNode, epicNode, cycleNode: cycle })
+      return { team: teamNode, linearInput: linear, current: ctx, cycleNode: cycle }
     })
     if (dryRun) {
-      const preview = applyInput(skeletonNode(team, now().toISOString(), current), linearInput, current, { parent: parentNode?.identifier, cycle: cycleNode })
+      const preview = applyInput(skeletonNode(team, now().toISOString(), current), linearInput, current, { parent: parentNode?.identifier, project: epicNode, cycle: cycleNode })
       return { before: null, after: { ...toIssue(preview, current), id: null } }
     }
     const id = uuid()
@@ -190,12 +203,15 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
       throw new PmkitError('INVALID_INPUT', `Linear names this issue's branch ${beforeNode.branchName}`, `Use the branch name ${beforeNode.branchName}`)
     }
     if (Object.keys(linearInput).length === 0) return { before, after: before }
-    return writeUpdate(beforeNode, before, linearInput, current, dryRun, before.parent, cycleNode)
+    return writeUpdate(beforeNode, before, linearInput, current, dryRun, { cycle: cycleNode })
   }
 
-  /** Sends one issueUpdate unless the preview equals the issue; a dry run returns the preview. */
-  async function writeUpdate(beforeNode, before, linearInput, current, dryRun, parent = before.parent, cycle) {
-    const preview = toIssue(applyInput(beforeNode, linearInput, current, { parent, cycle }), current)
+  /**
+   * Sends one issueUpdate unless the preview equals the issue; a dry run returns the preview. `refs` names what ids in the input point
+   * to: `parent` the parent's identifier for a parentId, `project` the project node for a projectId, `cycle` the { id, number } for a cycleId.
+   */
+  async function writeUpdate(beforeNode, before, linearInput, current, dryRun, { parent = before.parent, project, cycle } = {}) {
+    const preview = toIssue(applyInput(beforeNode, linearInput, current, { parent, project, cycle }), current)
     if (same(preview, before)) return { before, after: before }
     if (dryRun) return { before, after: preview }
     const node = (await client.request(ISSUE_UPDATE, { id: beforeNode.id, input: linearInput })).issueUpdate.issue
