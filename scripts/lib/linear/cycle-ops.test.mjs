@@ -53,16 +53,30 @@ test('listCycles returns sprints sorted by number, with the Local shape', async 
   assert.equal(sprints[0].closed, '2026-10-19T00:00:00.000Z')
 })
 
-test('listCycles with a state sends the matching flag and returns only those', async () => {
+test('listCycles with a state returns only those, filtering the cycles of the team by sprint state', async () => {
   const { ops, fetch } = await setup()
   assert.deepEqual(ids(await ops.listCycles({ state: 'active' })), ['2'])
   assert.deepEqual(ids(await ops.listCycles({ state: 'planned' })), ['3'])
   assert.deepEqual(ids(await ops.listCycles({ state: 'closed' })), ['1'])
-  const filters = fetch.calls.filter((call) => operationName(call.body.query) === 'PmkitCycles').map((call) => JSON.stringify(call.body.variables.filter))
-  assert.match(filters[0], /"isActive":\{"eq":true\}/)
-  assert.match(filters[1], /"isFuture":\{"eq":true\}/)
-  assert.match(filters[2], /"isPast":\{"eq":true\}/)
-  assert.ok(filters.every((filter) => filter.includes('"key":{"eq":"ACME"}')))
+  const filters = fetch.calls.filter((call) => operationName(call.body.query) === 'PmkitCycles').map((call) => call.body.variables.filter)
+  assert.deepEqual(filters, Array(3).fill({ and: [{ team: { key: { eq: 'ACME' } } }] }))
+})
+
+test('a cycle with no flag (cooldown) is closed in the full list and in the closed filter alike', async () => {
+  // Linear may answer isPast false while a team is in cooldown (spec, "Risks"); cycle 1 here has no flag at all.
+  const cooldown = (route) => (body) => {
+    const answer = route(body)
+    const cycles = answer.json?.data?.cycles
+    if (!cycles) return answer
+    const flagged = /"is(Active|Future|Past)"/.test(JSON.stringify(body.variables.filter))
+    cycles.nodes = cycles.nodes.filter((node) => !(flagged && node.number === 1))
+    for (const node of cycles.nodes) if (node.number === 1) Object.assign(node, { isActive: false, isFuture: false, isPast: false })
+    return answer
+  }
+  const { ops } = await setup({ wrap: { PmkitCycles: cooldown } })
+  assert.equal((await ops.listCycles())[0].state, 'closed')
+  assert.deepEqual(ids(await ops.listCycles({ state: 'closed' })), ['1'])
+  assert.deepEqual(ids(await ops.listCycles({ state: 'active' })), ['2'])
 })
 
 test('listCycles refuses a bad state before any request', async () => {

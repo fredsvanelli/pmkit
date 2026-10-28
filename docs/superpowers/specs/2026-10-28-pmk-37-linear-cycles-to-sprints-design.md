@@ -120,7 +120,7 @@ Chosen: a.
 
 | Operation | Linear | How |
 |---|---|---|
-| `listCycles({ state })` | native | `cycles(filter)` for the scope team. `state` becomes `isFuture`, `isActive` or `isPast`. |
+| `listCycles({ state })` | native | `cycles(filter)` for the scope team. The adapter keeps the cycles whose sprint state is `state`. |
 | `currentCycle()` | native | `cycles` with `isActive: { eq: true }`. `null` when the team is between cycles. |
 | `cycleIssues(id)` | native | Checks the cycle exists, then `searchIssues({ sprint: id })`. |
 | `moveToCycle(ids, to)` | native | `issueUpdate(id, { cycleId })` per issue, `cycleId: null` for `to === null`. |
@@ -175,7 +175,7 @@ Commands check the `cycles` capability first, so this answer is the adapter's ba
 
 ### Reading cycles (criterion 1)
 
-`listCycles({ state })` checks `state` against `planned`, `active`, `closed` (`INVALID_INPUT` otherwise, as Local does), then pages `CYCLES_QUERY` with the team filter and, for a `state`, the matching flag:
+`listCycles({ state })` checks `state` against `planned`, `active`, `closed` (`INVALID_INPUT` otherwise, as Local does), then pages `CYCLES_QUERY` with the team filter and keeps the cycles whose sprint state (the `state` row of the table above) is `state`. The filter runs in the adapter, not as an `isPast` clause, so a cycle with no flag (cooldown) is `closed` in the full list and in the `closed` filter alike:
 
 ```graphql
 query PmkitCycles($filter: CycleFilter, $first: Int!, $after: String) {
@@ -186,7 +186,7 @@ query PmkitCycles($filter: CycleFilter, $first: Int!, $after: String) {
 }
 ```
 
-The adapter sorts by `number` ascending. That is the Local order (by start date, which is the id). It reads at most the client's page cap (10 pages of 100). A team with more than 1000 cycles loses the oldest ones from `closed`; the filter for `planned` and `active` is not affected.
+The adapter sorts by `number` ascending. That is the Local order (by start date, which is the id). It reads at most the client's page cap (10 pages of 100). A team with more than 1000 cycles loses the cycles past the cap from every list, since the state filter runs after the read.
 
 `currentCycle()` sends the same document with `isActive: { eq: true }` and returns the first node, or `null`. Linear has one active cycle per team.
 

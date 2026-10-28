@@ -3,11 +3,10 @@
 
 import { PmkitError } from '../errors.mjs'
 import { entryFor, readCapacity, writeEntry } from './capacity-store.mjs'
-import { cycleKey, cyclesOff, toSprint } from './cycles.mjs'
+import { cycleKey, cycleState, cyclesOff, toSprint } from './cycles.mjs'
 import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY } from './documents.mjs'
 
 const SPRINT_STATES = ['planned', 'active', 'closed']
-const FLAG_OF_STATE = { planned: 'isFuture', active: 'isActive', closed: 'isPast' }
 
 const notFound = (id) => new PmkitError('NOT_FOUND', `sprint ${id} does not exist`, 'pmkit cycle list')
 
@@ -28,9 +27,9 @@ export function cycleOperations({ client, issues, config }) {
 
   const teamClause = (team) => ({ team: { key: { eq: team.key } } })
 
-  /** The cycle nodes of the scope team, with the clauses added, sorted by number. */
-  async function readCycles(team, clauses = []) {
-    const { nodes } = await client.paginate(CYCLES_QUERY, { filter: { and: [teamClause(team), ...clauses] } }, { select: (data) => data.cycles, pageSize: 100 })
+  /** The cycle nodes of the scope team, sorted by number. */
+  async function readCycles(team) {
+    const { nodes } = await client.paginate(CYCLES_QUERY, { filter: { and: [teamClause(team)] } }, { select: (data) => data.cycles, pageSize: 100 })
     return nodes.sort((a, b) => a.number - b.number)
   }
 
@@ -55,7 +54,9 @@ export function cycleOperations({ client, issues, config }) {
     if (state !== undefined && !SPRINT_STATES.includes(state)) throw new PmkitError('INVALID_INPUT', `state must be one of ${SPRINT_STATES.join(', ')}`)
     const { team } = await scope()
     const local = entries(team)
-    const nodes = await readCycles(team, state === undefined ? [] : [{ [FLAG_OF_STATE[state]]: { eq: true } }])
+    // The state filter runs here, with cycleState, so a cycle with no flag (cooldown) is closed in both the full list and the
+    // closed filter. An isPast clause would leave it out of the second.
+    const nodes = (await readCycles(team)).filter((node) => state === undefined || cycleState(node) === state)
     return nodes.map((node) => toSprint(node, entryFor(local, String(node.number))))
   }
 
