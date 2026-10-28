@@ -2,7 +2,7 @@
 // See docs/superpowers/specs/2026-10-28-pmk-36-linear-history-comments-design.md.
 
 import { PmkitError } from '../errors.mjs'
-import { COMMENT_BY_ID_QUERY, COMMENT_CREATE, ISSUE_COMMENTS_QUERY, ISSUE_HISTORY_QUERY } from './documents.mjs'
+import { COMMENT_BY_ID_QUERY, COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_COMMENTS_QUERY, ISSUE_HISTORY_QUERY } from './documents.mjs'
 import { toComment, toEvents } from './history.mjs'
 import { isUnconfirmed } from './issue-ops.mjs'
 
@@ -93,5 +93,18 @@ export function historyOperations({ client, ops, config }) {
     return toComment(created, node.identifier)
   }
 
-  return { getHistory, listComments, comment }
+  /** Resolves the thread that holds `commentId`: the root gets the resolution. A resolved root sends nothing. */
+  async function resolveThread(id, commentId, actor, { dryRun = false } = {}) {
+    await ops.requireViewer(actor)
+    const node = await ops.readNode(id)
+    const found = await commentOnIssue(node, commentId)
+    const root = found.parentId ? await commentOnIssue(node, found.parentId) : found
+    const before = toComment(root, node.identifier)
+    if (before.resolved) return { before, after: before }
+    if (dryRun) return { before, after: { ...before, resolved: { at: ops.now().toISOString(), by: actor } } }
+    const payload = (await client.request(COMMENT_RESOLVE, { id: root.id })).commentResolve.comment
+    return { before, after: toComment(payload, node.identifier) }
+  }
+
+  return { getHistory, listComments, comment, resolveThread }
 }

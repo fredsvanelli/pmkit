@@ -175,3 +175,61 @@ test('an unconfirmed create that was applied returns the comment, and one that w
   await assert.rejects(history.comment('ACME-1', 'Never', ACTOR), { code: 'UPSTREAM' })
   assert.equal(fake.comments.length, 1)
 })
+
+// resolveThread
+
+test('resolveThread marks the root and returns before and after', async () => {
+  const { fake, history } = await setup()
+  seedIssue(fake)
+  const root = await history.comment('ACME-1', 'Question', ACTOR)
+  const { before, after } = await history.resolveThread('ACME-1', root.id, ACTOR)
+  assert.equal(before.resolved, undefined)
+  assert.deepEqual(after, { ...root, resolved: { at: after.resolved.at, by: ACTOR } })
+  assert.deepEqual((await history.listComments('ACME-1')).map((c) => c.resolved?.by), [ACTOR])
+})
+
+test('resolving through a reply resolves the root and not the reply', async () => {
+  const { fake, history } = await setup()
+  seedIssue(fake)
+  const root = await history.comment('ACME-1', 'Question', ACTOR)
+  const reply = await history.comment('ACME-1', 'Answer', ACTOR, { replyTo: root.id })
+  const { after } = await history.resolveThread('ACME-1', reply.id, ACTOR)
+  assert.equal(after.id, root.id)
+  assert.deepEqual((await history.listComments('ACME-1')).map((c) => c.resolved?.by), [ACTOR, undefined])
+})
+
+test('resolving twice sends one mutation', async () => {
+  const { fake, history, sent } = await setup()
+  seedIssue(fake)
+  const root = await history.comment('ACME-1', 'Question', ACTOR)
+  await history.resolveThread('ACME-1', root.id, ACTOR)
+  const count = sent()
+  const again = await history.resolveThread('ACME-1', root.id, ACTOR)
+  assert.deepEqual(again.after, again.before)
+  assert.equal(sent(), count)
+})
+
+test('resolveThread refuses a missing comment, a comment of another issue and another actor', async () => {
+  const { fake, history, sent } = await setup()
+  seedIssue(fake)
+  fake.seed({ title: 'Other' })
+  fake.comment('ACME-2', { id: 'elsewhere', body: 'x' })
+  await assert.rejects(history.resolveThread('ACME-1', 'missing', ACTOR), { code: 'NOT_FOUND' })
+  await assert.rejects(history.resolveThread('ACME-1', 'elsewhere', ACTOR), { code: 'NOT_FOUND' })
+  await assert.rejects(history.resolveThread('ACME-1', 'elsewhere', 'user-2'), { code: 'INVALID_INPUT' })
+  assert.equal(sent(), 0)
+})
+
+test('a dry-run resolve has the shape of the real one and sends nothing', async () => {
+  const { fake, history, sent } = await setup()
+  seedIssue(fake)
+  const root = await history.comment('ACME-1', 'Question', ACTOR)
+  const count = sent()
+  const dry = await history.resolveThread('ACME-1', root.id, ACTOR, { dryRun: true })
+  assert.equal(sent(), count)
+  assert.equal(dry.after.resolved.by, ACTOR)
+  const real = await history.resolveThread('ACME-1', root.id, ACTOR)
+  assert.deepEqual(Object.keys(dry.after), Object.keys(real.after))
+  assert.deepEqual(Object.keys(dry.after.resolved), Object.keys(real.after.resolved))
+  assert.deepEqual(dry.before, real.before)
+})
