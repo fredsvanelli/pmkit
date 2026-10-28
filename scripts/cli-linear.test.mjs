@@ -9,8 +9,9 @@ import { ADAPTERS } from './lib/adapters.mjs'
 import { linearDescriptor } from './lib/linear/adapter.mjs'
 import { isMutation, operationName } from './lib/linear/client.mjs'
 import { useLinear } from './fake-hosted.mjs'
-import { ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeTriage, fakeWorkspace } from './fake-linear-api.mjs'
+import { ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeTriage, fakeWorkspace } from './fake-linear-api.mjs'
 import { childEnv } from './golden-helpers.mjs'
+import { epicRecord } from './lib/format.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { categoryLookup, cycleTimes, doneInRange, groupEventsByIssue } from './lib/metrics.mjs'
 import { makeRepo, userStoreEnv } from './test-helpers.mjs'
@@ -1051,4 +1052,81 @@ test('metrics velocity on Linear counts the issues done in each closed cycle bef
   assert.equal(result.code, 0, result.stdout + result.stderr)
   assert.deepEqual(JSON.parse(result.stdout), { perSprint: [{ id: '1', points: 0, count: 1 }], average: 1, unit: 'issues' })
   assert.deepEqual(fake.mutations, [])
+})
+
+const PROJECT_ID = '00000000-0000-4000-8000-0000000000a1'
+const MILESTONE = '11111111-1111-4111-8111-111111111111'
+
+// A project P-ACM-1 with health on_track, progress 0.5 (one of two issues done), one milestone and one document.
+function withProjects() {
+  const issues = fakeLinearIssues()
+  const projects = fakeLinearProjects({ issues })
+  const project = projects.seed({ id: PROJECT_ID, name: 'Launch', teamIds: ['team-acme'], startDate: '2026-11-01' })
+  issues.seed({ title: 'Done one', projectId: project.id, stateId: 'state-8' })
+  issues.seed({ title: 'Open one', projectId: project.id })
+  projects.seedUpdate(PROJECT_ID, { id: 'update-1', body: 'All good', health: 'onTrack', createdAt: '2026-10-27T10:00:00.000Z' })
+  projects.seedMilestone(PROJECT_ID, { id: MILESTONE, name: 'Alpha', targetDate: '2026-11-15', status: 'next' })
+  projects.seedDocument(PROJECT_ID, { slugId: 'abcdef012345', title: 'Plan', content: '# Plan' })
+  return { issues, projects, fetch: fakeLinearFetch({ ...fakeWorkspace(), ...issues.routes, ...projects.routes }) }
+}
+
+test('epic list holds health and progress in the JSON and in two columns', async () => {
+  const { fetch } = withProjects()
+  const json = await cli(setup({ edit: withTeam }), ['epic', 'list', '--json'], fetch)
+  assert.equal(json.code, 0, json.stdout + json.stderr)
+  const [epic] = JSON.parse(json.stdout)
+  assert.equal(epic.id, 'P-ACM-1')
+  assert.equal(epic.health, 'on_track')
+  assert.equal(epic.progress, 0.5)
+  const text = await cli(setup({ edit: withTeam }), ['epic', 'list'], fetch)
+  assert.match(text.stdout, /^ID\s+\| Title\s+\| Status\s+\| Start\s+\| Target\s+\| Health\s+\| Progress$/m)
+  assert.match(text.stdout, /P-ACM-1\s+\| Launch\s+\| Backlog\s+\| 2026-11-01\s+\|\s+\| on_track\s+\| 50%$/m)
+})
+
+test('epic get prints health, progress, the milestones and the documents', async () => {
+  const result = await cli(setup({ edit: withTeam }), ['epic', 'get', 'p-acm-1'], withProjects().fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.match(result.stdout, /^id: P-ACM-1$/m)
+  assert.match(result.stdout, /^health: on_track$/m)
+  assert.match(result.stdout, /^progress: 50%$/m)
+  assert.match(result.stdout, new RegExp(`^milestones:\\n {2}${MILESTONE} {2}Alpha {2}due 2026-11-15 {2}next$`, 'm'))
+  assert.match(result.stdout, /^documents:\n {2}abcdef012345 {2}Plan$/m)
+})
+
+test('epic create, progress, update-status and updates run over the fake', async () => {
+  const { fetch } = withProjects()
+  const context = setup({ edit: withTeam })
+  const created = await cli(context, ['epic', 'create', '--title', 'Second', '--as', 'user-1', '--json'], fetch)
+  assert.equal(created.code, 0, created.stdout + created.stderr)
+  assert.equal(JSON.parse(created.stdout).after.id, 'P-ACM-2')
+  const progress = await cli(context, ['epic', 'progress', 'P-ACM-1'], fetch)
+  assert.equal(progress.code, 0, progress.stdout + progress.stderr)
+  assert.match(progress.stdout, /^total: 2$/m)
+  assert.match(progress.stdout, /^done: 1$/m)
+  const body = path.join(tempDir(), 'body.md')
+  fs.writeFileSync(body, 'Slipping a week')
+  const published = await cli(context, ['epic', 'update-status', 'P-ACM-1', '--health', 'at_risk', '--body-file', body, '--as', 'user-1'], fetch)
+  assert.equal(published.code, 0, published.stdout + published.stderr)
+  assert.match(published.stdout, /^health: at_risk$/m)
+  const updates = await cli(context, ['epic', 'updates', 'P-ACM-1'], fetch)
+  assert.equal(updates.code, 0, updates.stdout + updates.stderr)
+  assert.ok(updates.stdout.indexOf('Slipping a week') < updates.stdout.indexOf('All good'))
+  const again = await cli(context, ['epic', 'get', 'P-ACM-1', '--json'], fetch)
+  assert.equal(JSON.parse(again.stdout).health, 'at_risk')
+})
+
+test('a milestone, a document and a milestone of an issue are readable', async () => {
+  const { fetch } = withProjects()
+  const context = setup({ edit: withTeam })
+  const list = await cli(context, ['milestone', 'list', '--json'], fetch)
+  assert.equal(list.code, 0, list.stdout + list.stderr)
+  assert.equal(JSON.parse(list.stdout)[0].id, MILESTONE)
+  const docs = await cli(context, ['docs', 'read', 'abcdef012345'], fetch)
+  assert.equal(docs.code, 0, docs.stdout + docs.stderr)
+  assert.equal(docs.stdout.trim(), '# Plan')
+})
+
+test('a Local epic prints no health, progress, milestones or documents line', () => {
+  const text = epicRecord({ id: 'EPC-1', title: 'Local', status: { name: 'Planned', category: 'todo' }, start: '2026-11-01', description: 'Body' })
+  assert.equal(text, 'id: EPC-1\ntitle: Local\nstatus: Planned (todo)\nstart: 2026-11-01\n\nBody')
 })

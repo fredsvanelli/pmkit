@@ -1,5 +1,5 @@
-// Opt-in live check of the Linear client, the workspace discovery, the issue filters, the history and comment reads and the cycle
-// reads against the sandbox workspace.
+// Opt-in live check of the Linear client, the workspace discovery, the issue filters, the history and comment reads, the cycle
+// reads and the project reads against the sandbox workspace.
 // It sends reads only, keeps its discovery cache in a temporary folder it removes, prints no workspace data, and
 // `npm test` does not load it (the name does not end in .test.mjs).
 //
@@ -21,6 +21,9 @@ import { linearCredential } from './credential.mjs'
 import { categoryOfType, discoveryView, fetchDiscovery } from './discovery.mjs'
 import { COMMENT_BY_ID_QUERY, CYCLES_QUERY, ISSUE_COMMENTS_QUERY, ISSUE_HISTORY_QUERY } from './documents.mjs'
 import { buildLinearCapabilities } from './manifest.mjs'
+import {
+  DOCUMENT_QUERY, EPIC_ISSUES_QUERY, PROJECTS_QUERY, PROJECT_MILESTONES_QUERY, PROJECT_UPDATES_QUERY, epicKey, toEpic,
+} from './projects.mjs'
 import { createLinearTracker } from './tracker.mjs'
 
 const WORKSPACE = process.env.PMKIT_LIVE_WORKSPACE
@@ -186,6 +189,45 @@ test('reads the cycles of a team that has them, and records the time facts of th
     for (const [previous, next] of sprints.slice(1).map((sprint, index) => [sprints[index], sprint])) {
       assert.ok(previous.end < next.start, `sprint ${previous.id} overlaps sprint ${next.id}`)
     }
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Linear accepts every project document pmkit reads, and the epic reads agree', { skip }, async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-live-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-live-repo-'))
+  try {
+    const env = { ...process.env, PMKIT_HOME: path.join(home, 'store'), HOME: home, XDG_CONFIG_HOME: path.join(home, '.config') }
+    const linear = client()
+    const { nodes: found } = await linear.paginate(PROJECTS_QUERY, { withLists: true }, { select: (data) => data.projects, pageSize: 1, limit: 1 })
+    // Reads of milestones, documents and issues that need no project.
+    await linear.paginate(PROJECT_MILESTONES_QUERY, {}, { select: (data) => data.projectMilestones, pageSize: 1, limit: 1 })
+    assert.deepEqual((await linear.request(DOCUMENT_QUERY, { filter: { slugId: { eq: 'ffffffffffff' } } })).documents.nodes, [])
+    await linear.paginate(EPIC_ISSUES_QUERY, { filter: { parent: { null: true } } }, { select: (data) => data.issues, pageSize: 1, limit: 1 })
+    if (found.length === 0) return
+    const project = found[0]
+    assert.ok(Array.isArray(project.projectMilestones.nodes))
+    assert.ok(Array.isArray(project.documents.nodes))
+    await linear.paginate(PROJECT_UPDATES_QUERY, { id: project.id }, { select: (data) => data.project.projectUpdates, pageSize: 1, limit: 1 })
+    await linear.paginate(EPIC_ISSUES_QUERY, { filter: { project: { id: { eq: project.id } } } }, { select: (data) => data.issues, pageSize: 1, limit: 1 })
+    const epic = toEpic(project)
+    const bare = createLinearTracker({ root, pmkit: { tracker: tracker(WORKSPACE), git_host: { system: 'none' } } }, { env, fetch: guardedFetch })
+    const [team] = (await bare.discover()).teams
+    const scoped = { system: 'linear', scope: { workspace: WORKSPACE, team: team.key } }
+    const adapter = createLinearTracker({ root, pmkit: { tracker: scoped, git_host: { system: 'none' } } }, { env, fetch: guardedFetch })
+    assert.ok(Array.isArray(await adapter.listDeliverables()))
+    assert.ok(Array.isArray(await adapter.listMilestones()))
+    // The three keys of one project find it and answer one id.
+    for (const key of [project.id, project.slugId, ...(project.identifier ? [project.identifier, project.identifier.toLowerCase()] : [])]) {
+      assert.notEqual(epicKey(key).kind, 'other', 'a project key has a shape epicKey does not know')
+      assert.equal((await adapter.getDeliverable(key)).id, epic.id)
+    }
+    const progress = await adapter.deliverableProgress(epic.id)
+    assert.equal(typeof progress.total, 'number')
+    assert.ok(Array.isArray(await adapter.listStatusUpdates(epic.id)))
+    assert.ok(Array.isArray(await adapter.searchIssues({ parent: epic.id, limit: 1 }).then((result) => result.issues)))
   } finally {
     fs.rmSync(home, { recursive: true, force: true })
     fs.rmSync(root, { recursive: true, force: true })
