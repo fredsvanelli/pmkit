@@ -158,11 +158,10 @@ function withIssues(titles = []) {
   return { fake, fetch: fakeLinearFetch({ ...fakeWorkspace(), ...fake.routes }) }
 }
 
-test('issues dependencies sends a non-issue id to getDeliverable', async () => {
+test('issues dependencies sends a non-issue id to getDeliverable, which finds no such epic', async () => {
   const result = await cli(setup({ edit: withTeam }), ['issues', 'dependencies', 'EPC-1x', '--json'], withIssues().fetch)
-  assert.equal(result.code, 2)
-  assert.equal(errorOf(result).code, 'NOT_SUPPORTED')
-  assert.match(errorOf(result).message, /getDeliverable/)
+  assert.equal(errorOf(result).code, 'NOT_FOUND')
+  assert.equal(errorOf(result).message, 'epic EPC-1x does not exist')
 })
 
 test('issues dependencies reads an issue id as an issue', async () => {

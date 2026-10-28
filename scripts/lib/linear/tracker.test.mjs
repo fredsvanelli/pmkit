@@ -35,9 +35,9 @@ test('the tracker passes assertTracker', () => {
 
 test('a stub throws NOT_SUPPORTED once the mapping check passes', async () => {
   const { fetch, tracker: linear } = tracker(setup())
-  await assert.rejects(linear.listMilestones(), {
+  await assert.rejects(linear.listReleases(), {
     code: 'NOT_SUPPORTED',
-    message: 'the Linear adapter does not implement listMilestones yet',
+    message: 'the Linear adapter does not implement listReleases yet',
     nextStep: 'Set tracker.system to local in .pmkit/config.yaml to use this command now',
   })
   assert.equal(callsOf(fetch, 'PmkitTeams'), 1)
@@ -49,9 +49,9 @@ test('a stub without a workspace throws NOT_CONFIGURED', async () => {
   await assert.rejects(linear.getIssue('ACME-1'), { code: 'NOT_CONFIGURED', message: 'tracker.scope.workspace is not set', nextStep: '/pmkit:setup' })
 })
 
-// Two operations that stay stubs after PMK-37, so the mapping check is all these tests reach.
+// Two operations that stay stubs after PMK-38, so the mapping check is all these tests reach.
 const stubs = {
-  read: (linear) => linear.listMilestones(),
+  read: (linear) => linear.listReleases(),
   write: (linear) => linear.logTime('ACME-1', 5, 'x'),
 }
 
@@ -1098,4 +1098,40 @@ test('searchIssues by epic returns the issues whose shown parent is the epic', a
   const before = namesOf(fetch).filter((name) => name === 'PmkitIssues').length
   assert.deepEqual(await linear.searchIssues({ parent: 'P-ZZZ-9' }), { issues: [], problems: [], hasMore: false })
   assert.equal(namesOf(fetch).filter((name) => name === 'PmkitIssues').length, before)
+})
+
+const PROJECT_OPERATIONS = {
+  listDeliverables: [],
+  getDeliverable: ['P-ACM-1'],
+  deliverableProgress: ['P-ACM-1'],
+  createDeliverable: [{ title: 'New' }, 'user-1', { dryRun: true }],
+  publishStatusUpdate: [{ epic: 'P-ACM-1', health: 'on_track', body: 'Fine' }, 'user-1', { dryRun: true }],
+  listStatusUpdates: ['P-ACM-1'],
+  listMilestones: [],
+  getMilestone: ['11111111-1111-4111-8111-111111111111'],
+  readDocument: ['abcdef012345'],
+}
+
+test('the project operations are implemented and the milestone and document writes are NOT_SUPPORTED', async () => {
+  const { tracker: linear } = epicSetup()
+  for (const [operation, args] of Object.entries(PROJECT_OPERATIONS)) {
+    try {
+      await linear[operation](...args)
+    } catch (error) {
+      assert.ok(!/does not implement/.test(error.message), operation)
+      assert.equal(error.code, 'NOT_FOUND', operation)
+    }
+  }
+  assert.equal((await linear.listDeliverables())[0].id, 'P-ACM-1')
+  await assert.rejects(linear.createMilestone({ id: 'm' }, 'user-1'), { code: 'NOT_SUPPORTED', nextStep: 'Create the milestone in Linear' })
+  await assert.rejects(linear.createDocument('a.md', 'x', 'user-1'), { code: 'NOT_SUPPORTED', nextStep: 'Create the document in Linear' })
+})
+
+test('a broken mapping stops each project operation through guarded', async () => {
+  const context = setup({ mappings: { status: { in_review: 'Peer Review' } } })
+  const { tracker: linear, fetch } = tracker(context)
+  for (const [operation, args] of Object.entries({ ...PROJECT_OPERATIONS, createMilestone: [{}, 'user-1'], createDocument: ['a.md', 'x', 'user-1'] })) {
+    await assert.rejects(linear[operation](...args), { code: 'NOT_CONFIGURED' }, operation)
+  }
+  assert.ok(!namesOf(fetch).some((name) => /Project|Epic|Document/.test(name)))
 })

@@ -260,7 +260,7 @@ export function projectOperations({ client, discovery, config, now = () => new D
   }
 
   const notWritable = (what) => async () => {
-    throw new PmkitError('NOT_SUPPORTED', `pmkit reads Linear project ${what}s but does not create them`, `Create the ${what} in Linear`)
+    throw new PmkitError('NOT_SUPPORTED', `the Linear adapter reads project ${what}s but does not create them`, `Create the ${what} in Linear`)
   }
 
   return { listDeliverables, getDeliverable, deliverableProgress, createDeliverable, listMilestones, getMilestone, readDocument, createMilestone: notWritable('milestone'), createDocument: notWritable('document'), publishStatusUpdate, listStatusUpdates, resolveEpic, requireWorkspace, now, uuid, discovery }
