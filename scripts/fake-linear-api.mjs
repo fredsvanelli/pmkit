@@ -1001,7 +1001,7 @@ export function fakeCustomers({ customers = [], statuses = CUSTOMER_STATUSES, ti
       project: need.project !== undefined ? need.project : (projectId ? projectNode(projectId) : null),
     }
   }
-  const disabled = () => graphqlError(CUSTOMERS_DISABLED, 'FORBIDDEN')
+  const disabled = () => graphqlError(CUSTOMERS_DISABLED, 'FEATURE_NOT_ACCESSIBLE')
   const customerOf = (id) => customers.find((item) => item.id === id)
   const FIELD_OF_INPUT = {
     name: (value) => ({ name: value }),

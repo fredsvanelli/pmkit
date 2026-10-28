@@ -1001,6 +1001,11 @@ export const COMMANDS = [
     run: async (ctx) => (await ctx.linear('triage')).set({ team: ctx.opt('team'), members: ctx.opt('members'), action: ctx.opt('action'), off: ctx.flag('off') ? true : undefined, dryRun: ctx.dryRun }),
   },
   {
+    name: 'linear customers list', summary: 'customers with status, tier, revenue, size and request count, highest revenue first; says so when the workspace has no customers',
+    usage: '[--status NAME] [--tier NAME] [--limit n]', linear: true, flags: ['status', 'tier', 'limit'],
+    run: async (ctx) => (await ctx.linear('customers')).list({ status: ctx.opt('status'), tier: ctx.opt('tier'), limit: ctx.opt('limit') }),
+  },
+  {
     name: 'validate', summary: 'checks every file and reference; problems are output, not errors', flags: [], exempt: true,
     run: (ctx) => {
       const result = validateRepo(ctx.root, { adapters: ctx.adapters })

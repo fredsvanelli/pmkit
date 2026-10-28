@@ -190,3 +190,77 @@ export function planLink({ customer, requests, flags, target }) {
   if (sameTarget(owned, target)) throw bad(`request ${owned.id} is already on ${label}`, 'Pass another target')
   return { kind, id: owned.id, from: owned.target, input: { issueId: target.type === 'issue' ? target.linearId : null, projectId: target.type === 'project' ? target.linearId : null } }
 }
+
+const PAGE_INFO = 'pageInfo { hasNextPage endCursor }'
+const CUSTOMER_FIELDS = 'id name status { id name } tier { id name } revenue size owner { id name } approximateNeedCount url'
+export const LIST_QUERY = `query PmkitCustomersList($first: Int!, $after: String, $filter: CustomerFilter) { customers(first: $first, after: $after, filter: $filter) { nodes { ${CUSTOMER_FIELDS} } ${PAGE_INFO} } }`
+export const STATUSES_QUERY = `query PmkitCustomerStatuses($first: Int!, $after: String) { customerStatuses(first: $first, after: $after) { nodes { id name } ${PAGE_INFO} } }`
+export const TIERS_QUERY = `query PmkitCustomerTiers($first: Int!, $after: String) { customerTiers(first: $first, after: $after) { nodes { id name } ${PAGE_INFO} } }`
+
+const DEFAULT_LIMIT = 50
+const MAX_LIMIT = 100
+const STALE_HINT = 'Linear says this workspace has no customers. Run pmkit discover to refresh the workspace flags'
+
+/** The --limit value: 50 by default, at most 100. A larger value is clamped with a warning. */
+function parseLimit(value, warnings) {
+  if (value === undefined) return DEFAULT_LIMIT
+  const number = Number(value)
+  if (typeof value !== 'string' || !/^\d+$/.test(value) || number < 1) throw bad(`--limit takes a whole number of at least 1, got "${value === true ? '' : value}"`, 'Pass --limit 50')
+  if (number > MAX_LIMIT) {
+    warnings.push(`--limit ${number} is above ${MAX_LIMIT}; using ${MAX_LIMIT}`)
+    return MAX_LIMIT
+  }
+  return number
+}
+
+/** True for the GraphQL error Linear gives a workspace without customers. */
+const isNotAvailable = (error) => error instanceof PmkitError && error.code === 'UPSTREAM' && /not available/i.test(error.message)
+
+function unavailable({ reason, plan, enableHint }, warnings = []) {
+  return {
+    data: { available: false, reason, plan, enableHint },
+    text: `customers: unavailable\nreason: ${reason}\nplan: ${plan}\nenable: ${enableHint}`,
+    warnings,
+  }
+}
+
+/**
+ * The customer operations of the Linear tracker. discovery is the tracker's cached discovery, client the Linear client.
+ * Every method returns { data, text, warnings? }, the shape a command returns.
+ */
+export function createCustomers({ client, discovery }) {
+  async function context() {
+    const { raw, warnings } = await discovery()
+    return { raw, warnings, availability: customersAvailability(raw) }
+  }
+
+  const readNames = async (document, field) => (await client.paginate(document, {}, { select: (data) => data[field], pageSize: 100, maxPages: 5 })).nodes
+
+  /** Runs a read that needs customers. A "not available" answer means the cached flag is stale. */
+  async function guarded(raw, warnings, read) {
+    try {
+      return await read()
+    } catch (error) {
+      if (!isNotAvailable(error)) throw error
+      return unavailable({ reason: 'stale', plan: raw.workspace.plan, enableHint: STALE_HINT }, warnings)
+    }
+  }
+
+  async function list({ status, tier, limit: limitFlag } = {}) {
+    const { raw, warnings, availability } = await context()
+    if (!availability.available) return unavailable(availability, warnings)
+    const all = [...warnings]
+    const limit = parseLimit(limitFlag, all)
+    const filter = {}
+    if (status !== undefined) filter.status = { id: { eq: pickByName(await readNames(STATUSES_QUERY, 'customerStatuses'), status, 'status').id } }
+    if (tier !== undefined) filter.tier = { id: { eq: pickByName(await readNames(TIERS_QUERY, 'customerTiers'), tier, 'tier').id } }
+    return guarded(raw, all, async () => {
+      const found = await client.paginate(LIST_QUERY, Object.keys(filter).length === 0 ? {} : { filter }, { select: (data) => data.customers, pageSize: limit, limit })
+      if (found.hasMore) all.push(`more customers exist than --limit ${limit} shows; the first ${limit} are listed`)
+      const customers = sortCustomers(found.nodes.map(customerView))
+      return { data: { available: true, customers, hasMore: found.hasMore }, text: customersText(customers), warnings: all }
+    })
+  }
+
+  return Object.freeze({ list })
+}

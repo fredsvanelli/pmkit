@@ -9,7 +9,7 @@ import { ADAPTERS } from './lib/adapters.mjs'
 import { linearDescriptor } from './lib/linear/adapter.mjs'
 import { isMutation, operationName } from './lib/linear/client.mjs'
 import { useLinear } from './fake-hosted.mjs'
-import { ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeTriage, fakeWorkspace } from './fake-linear-api.mjs'
+import { ACME_TEAM, FAKE_KEY, fakeCustomers, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeTriage, fakeWorkspace } from './fake-linear-api.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { epicRecord } from './lib/format.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
@@ -1144,4 +1144,129 @@ test('a milestone, a document and a milestone of an issue are readable', async (
 test('a Local epic prints no health, progress, milestones or documents line', () => {
   const text = epicRecord({ id: 'EPC-1', title: 'Local', status: { name: 'Planned', category: 'todo' }, start: '2026-11-01', description: 'Body' })
   assert.equal(text, 'id: EPC-1\ntitle: Local\nstatus: Planned (todo)\nstart: 2026-11-01\n\nBody')
+})
+
+// Customers (PMK-42). The Free workspace is the proof for the absent capability; the Business ones use the fake.
+const CUSTOMER_OPERATIONS = ['PmkitCustomersList', 'PmkitCustomerShow', 'PmkitCustomerStatuses', 'PmkitCustomerTiers', 'PmkitCustomerIssue', 'PmkitCustomerProjects', 'PmkitCustomerUpdate', 'PmkitCustomerNeedCreate', 'PmkitCustomerNeedUpdate']
+const customerCalls = (fetch) => fetch.calls.filter((call) => CUSTOMER_OPERATIONS.includes(operationName(call.body.query)))
+const customersFetch = ({ workspace = {}, customers = {} } = {}) => fakeLinearFetch({ ...fakeWorkspace(workspace), ...fakeCustomers(customers) })
+const ON = { subscription: BUSINESS, customersEnabled: true }
+const customerNode = (id, name, extra = {}) => ({
+  id,
+  name,
+  status: { id: 'st-1', name: 'Active' },
+  tier: { id: 'tier-1', name: 'Gold' },
+  revenue: 1000,
+  size: 10,
+  owner: { id: 'user-2', name: 'Ada Lovelace' },
+  approximateNeedCount: 0,
+  url: `https://linear.app/acme/customer/${id}`,
+  ...extra,
+})
+const CUSTOMERS = [
+  customerNode('cust-1', 'Globex', { status: { id: 'st-2', name: 'Prospect' }, tier: null, revenue: null, size: 30, approximateNeedCount: 1 }),
+  customerNode('cust-2', 'ACME Corp', { revenue: 120000, size: 450, approximateNeedCount: 7 }),
+  customerNode('cust-3', 'Initech', { tier: { id: 'tier-2', name: 'Silver' }, revenue: 5000 }),
+]
+const onFetch = (customers = {}) => customersFetch({ workspace: ON, customers: { customers: CUSTOMERS, ...customers } })
+
+test('linear customers list on a Free workspace is unavailable and sends no customer query', async () => {
+  const fetch = customersFetch()
+  const json = await cli(setup(), ['linear', 'customers', 'list', '--json'], fetch)
+  assert.equal(json.code, 0, json.stderr)
+  assert.deepEqual(JSON.parse(json.stdout), { available: false, reason: 'plan', plan: 'free', enableHint: 'Linear customers need the Business or Enterprise plan' })
+  const text = await cli(setup(), ['linear', 'customers', 'list'], fetch)
+  assert.equal(text.stdout, 'customers: unavailable\nreason: plan\nplan: free\nenable: Linear customers need the Business or Enterprise plan\n')
+  assert.equal(customerCalls(fetch).length, 0)
+  assert.equal(mutationCalls(fetch).length, 0)
+})
+
+test('linear customers list with customers off reports customers_off and sends no customer query', async () => {
+  const fetch = customersFetch({ workspace: { subscription: BUSINESS } })
+  const data = JSON.parse((await cli(setup(), ['linear', 'customers', 'list', '--json'], fetch)).stdout)
+  assert.deepEqual([data.available, data.reason, data.enableHint], [false, 'customers_off', 'Turn on customers in the workspace settings in Linear'])
+  assert.equal(customerCalls(fetch).length, 0)
+})
+
+test('linear customers list reports a stale cache when Linear says customers are not available', async () => {
+  const fetch = customersFetch({ workspace: ON, customers: { disabledError: true } })
+  const result = await cli(setup(), ['linear', 'customers', 'list', '--json'], fetch)
+  assert.equal(result.code, 0, result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.deepEqual([data.available, data.reason], [false, 'stale'])
+  assert.match(data.enableHint, /pmkit discover/)
+  assert.equal(mutationCalls(fetch).length, 0)
+})
+
+test('linear customers list sorts by revenue and prints the aligned lines', async () => {
+  const fetch = onFetch()
+  const json = JSON.parse((await cli(setup(), ['linear', 'customers', 'list', '--json'], fetch)).stdout)
+  assert.equal(json.available, true)
+  assert.equal(json.hasMore, false)
+  assert.deepEqual(json.customers.map((item) => item.name), ['ACME Corp', 'Initech', 'Globex'])
+  assert.deepEqual(json.customers[0], {
+    id: 'cust-2',
+    name: 'ACME Corp',
+    status: { id: 'st-1', name: 'Active' },
+    tier: { id: 'tier-1', name: 'Gold' },
+    revenue: 120000,
+    size: 450,
+    owner: { id: 'user-2', name: 'Ada Lovelace' },
+    requests: 7,
+    url: 'https://linear.app/acme/customer/cust-2',
+  })
+  const text = await cli(setup(), ['linear', 'customers', 'list'], onFetch())
+  assert.match(text.stdout, /^ACME Corp +status Active +tier Gold +revenue 120000 +size 450 +requests 7\n/)
+  assert.match(text.stdout, /\nGlobex +status Prospect +tier - +revenue - +size 30 +requests 1\n$/)
+  assert.equal(mutationCalls(fetch).length, 0)
+})
+
+test('linear customers list filters by status and tier name in the query', async () => {
+  const fetch = onFetch()
+  const byTier = JSON.parse((await cli(setup(), ['linear', 'customers', 'list', '--tier', 'silver', '--json'], fetch)).stdout)
+  assert.deepEqual(byTier.customers.map((item) => item.name), ['Initech'])
+  const call = fetch.calls.find((item) => operationName(item.body.query) === 'PmkitCustomersList')
+  assert.deepEqual(call.body.variables.filter, { tier: { id: { eq: 'tier-2' } } })
+  const byStatus = JSON.parse((await cli(setup(), ['linear', 'customers', 'list', '--status', 'PROSPECT', '--json'], onFetch())).stdout)
+  assert.deepEqual(byStatus.customers.map((item) => item.name), ['Globex'])
+  const unknown = await cli(setup(), ['linear', 'customers', 'list', '--status', 'Nope', '--json'], onFetch())
+  assert.equal(unknown.code, 2)
+  assert.equal(errorOf(unknown).code, 'INVALID_INPUT')
+  assert.match(errorOf(unknown).nextStep, /Active, Prospect, Churned, Lost/)
+})
+
+test('linear customers list limits the page and warns when more customers exist', async () => {
+  const many = Array.from({ length: 120 }, (_, index) => customerNode(`c-${index}`, `Name ${index}`))
+  const fetch = onFetch({ customers: many })
+  const result = await cli(setup(), ['linear', 'customers', 'list', '--json'], fetch)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.customers.length, 50)
+  assert.equal(data.hasMore, true)
+  assert.match(result.stderr, /more customers exist than --limit 50/)
+  const capped = await cli(setup(), ['linear', 'customers', 'list', '--limit', '500', '--json'], onFetch({ customers: many }))
+  assert.equal(JSON.parse(capped.stdout).customers.length, 100)
+  assert.match(capped.stderr, /--limit 500 is above 100; using 100/)
+  const bad = await cli(setup(), ['linear', 'customers', 'list', '--limit', '0', '--json'], onFetch())
+  assert.equal(errorOf(bad).code, 'INVALID_INPUT')
+})
+
+test('linear customers list says there are no customers yet', async () => {
+  const result = await cli(setup(), ['linear', 'customers', 'list'], onFetch({ customers: [] }))
+  assert.equal(result.stdout, 'no customers yet\n')
+})
+
+test('linear customers list on a Local repository exits 2 with NOT_SUPPORTED', async () => {
+  const root = makeRepo('basic')
+  const result = await run(['linear', 'customers', 'list', '--json'], { cwd: root, env: { ...childEnv(), ...userStoreEnv().env } })
+  assert.equal(result.code, 2)
+  assert.equal(errorOf(result).code, 'NOT_SUPPORTED')
+})
+
+test('linear customers list without a key exits 2 with AUTH and sends nothing, and prints no key', async () => {
+  const fetch = onFetch()
+  const result = await cli(setup({ withKey: false }), ['linear', 'customers', 'list', '--json'], fetch)
+  assert.equal(errorOf(result).code, 'AUTH')
+  assert.equal(fetch.calls.length, 0)
+  const ok = await cli(setup(), ['linear', 'customers', 'list', '--json'], onFetch())
+  assert.ok(!ok.stdout.includes(FAKE_KEY) && !ok.stderr.includes(FAKE_KEY))
 })
