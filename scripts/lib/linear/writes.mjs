@@ -6,6 +6,7 @@ import { PmkitError } from '../errors.mjs'
 import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
 import { validDate } from '../local/sprints.mjs'
 import { estimateScale } from './discovery.mjs'
+import { cyclesOff } from './cycles.mjs'
 import { CRITERIA_HEADING, PRIORITY_TO_LINEAR, buildDescription, isIssueId, parseDescription } from './issues.mjs'
 
 const invalid = (message, nextStep, details) => new PmkitError('INVALID_INPUT', message, nextStep, details)
@@ -13,7 +14,6 @@ const invalid = (message, nextStep, details) => new PmkitError('INVALID_INPUT', 
 const stale = (message, nextStep) => invalid(message, nextStep, { stale: true })
 const LABEL_STEP = 'Create the label in Linear, then run pmkit discover'
 const LATER = {
-  sprint: 'Linear cycles are not mapped yet (PMK-37)',
   milestone: 'Linear project milestones are not mapped yet (PMK-38)',
   release: 'Linear releases are not mapped yet',
 }
@@ -126,9 +126,9 @@ function descriptionOf(value) {
 
 /**
  * The Linear input of a patch. mode is create or update. beforeNode is the issue's node (update), team the raw team (create),
- * parentNode the node of patch.parent (create). Throws before any request; a name discovery may not know yet throws with details.stale.
+ * parentNode the node of patch.parent (create), cycleNode the { id, number } of the cycle patch.sprint names (the caller resolves it). Throws before any request; a name discovery may not know yet throws with details.stale.
  */
-export function toInput(patch, { mode, beforeNode, team: givenTeam, context, parentNode }) {
+export function toInput(patch, { mode, beforeNode, team: givenTeam, context, parentNode, cycleNode }) {
   checkKeys(patch, mode === 'create' ? CREATE_KEYS : UPDATE_KEYS)
   const team = givenTeam ?? teamOf(context, beforeNode?.team?.id)
   const input = mode === 'create' ? { teamId: team.id } : {}
@@ -170,14 +170,23 @@ export function toInput(patch, { mode, beforeNode, team: givenTeam, context, par
   if (mode === 'create' && patch.branch !== undefined && patch.branch !== null) {
     throw invalid('Linear names the branch of a new issue itself', 'Drop branch; pmkit issues branch uses the name Linear picks')
   }
+  if (patch.sprint !== undefined) {
+    if (team.cyclesEnabled !== true) {
+      if (patch.sprint !== null) throw cyclesOff(team.key)
+    } else if (patch.sprint === null) {
+      if (mode === 'update') input.cycleId = null
+    } else {
+      input.cycleId = cycleNode.id
+    }
+  }
   for (const key of Object.keys(LATER)) {
     if (patch[key] !== undefined && patch[key] !== null) throw new PmkitError('NOT_SUPPORTED', LATER[key], `Leave ${key} out on Linear`)
   }
   return input
 }
 
-/** The node with a Linear input applied, so toIssue of it is the after of a dry run. `parent` is the parent's identifier for a parentId. */
-export function applyInput(node, input, context, { parent } = {}) {
+/** The node with a Linear input applied, so toIssue of it is the after of a dry run. `parent` is the parent's identifier for a parentId, `cycle` the { id, number } for a cycleId. */
+export function applyInput(node, input, context, { parent, cycle } = {}) {
   const next = structuredClone(node)
   if (input.title !== undefined) next.title = input.title
   if (input.description !== undefined) next.description = input.description
@@ -197,6 +206,7 @@ export function applyInput(node, input, context, { parent } = {}) {
     next.labels = { nodes, pageInfo: { hasNextPage: false, endCursor: null } }
   }
   if (input.parentId !== undefined) next.parent = input.parentId === null ? null : { identifier: parent }
+  if (input.cycleId !== undefined) next.cycle = input.cycleId === null ? null : { id: cycle.id, number: cycle.number }
   return next
 }
 
@@ -210,6 +220,6 @@ export function skeletonNode(team, at, context) {
     archivedAt: null, trashed: false, createdAt: at, updatedAt: at,
     team: { id: team.id, key: team.key },
     state: state === null ? { id: null, name: null, type: null } : { id: state.id, name: state.name, type: state.type },
-    assignee: null, parent: null, labels: empty(), children: empty(), relations: empty(), inverseRelations: empty(),
+    assignee: null, parent: null, cycle: null, labels: empty(), children: empty(), relations: empty(), inverseRelations: empty(),
   }
 }
