@@ -3,3 +3,4 @@
 {"at":"2026-10-28T17:25:37Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-10-28T17:25:37Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-28T17:25:37Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-36-read-history-and-comments-from-linear"}
+{"at":"2026-10-28T18:11:05Z","by":"fred","op":"comment","to":"2026-10-28T18-11-05Z-fred.md"}
