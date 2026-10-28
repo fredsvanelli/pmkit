@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ACME_STATES, ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeWorkspace } from '../../fake-linear-api.mjs'
+import { ACME_STATES, ACME_TEAM, FAKE_KEY, fakeLinearFetch, json, fakeLinearIssues, fakeLinearProjects, fakeWorkspace } from '../../fake-linear-api.mjs'
 import { createLinearClient, isMutation, operationName } from './client.mjs'
 import { fetchDiscovery } from './discovery.mjs'
 import { PARENT_CHAIN_DEPTH } from './documents.mjs'
@@ -10,12 +10,12 @@ const TWO = { ...ACME_TEAM, id: 'team-two', key: 'TWO', name: 'Two' }
 const NOW = new Date('2026-10-28T12:00:00Z')
 
 /** Fakes, a client and a projectOperations instance for scope team `team`. `options` reach fakeLinearProjects. */
-function kit({ team = 'ACME', identifiers = true, points = false } = {}) {
+function kit({ team = 'ACME', identifiers = true, points = false, routes = (table) => table } = {}) {
   const teams = [points ? { ...ACME_TEAM, issueEstimationType: 'fibonacci' } : ACME_TEAM, TWO]
   const states = [...ACME_STATES, ...ACME_STATES.map((state) => ({ ...state, id: `${state.id}-two`, team: { id: TWO.id } }))]
   const issues = fakeLinearIssues({ teams, states })
   const fake = fakeLinearProjects({ issues, teams, states, identifiers })
-  const fetch = fakeLinearFetch({ ...fakeWorkspace({ teams, states }), ...issues.routes, ...fake.routes })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace({ teams, states }), ...issues.routes, ...routes(fake.routes) })
   const config = { pmkit: { tracker: { system: 'linear', scope: { workspace: 'acme', team } }, ...(points ? { mappings: { fields: { estimate: 'native' } } } : {}) } }
   const client = createLinearClient({ env: { LINEAR_API_KEY: FAKE_KEY }, tracker: config.pmkit.tracker, fetch })
   let memo
@@ -140,6 +140,15 @@ test('deliverableProgress counts through the parent chain with the Local rules',
   for (const key of LOCAL_PROGRESS_KEYS) assert.ok(key in progress, key)
 })
 
+test('deliverableProgress leaves out a project issue whose parent is outside the epic', async () => {
+  const { fake, issues, ops } = kit()
+  seedProject(fake, 'Launch', { id: PID })
+  const outside = issues.seed({ title: 'Outside parent' })
+  issues.seed({ title: 'Child', projectId: PID, parentId: outside.id })
+  issues.seed({ title: 'Direct', projectId: PID })
+  assert.equal((await ops.deliverableProgress('P-ACM-1')).total, 1)
+})
+
 test('a parent chain deeper than PARENT_CHAIN_DEPTH stops there', async () => {
   const { fake, issues, ops } = kit()
   seedProject(fake, 'Launch', { id: PID })
@@ -176,6 +185,12 @@ test('createDeliverable sends projectCreate once with a client id, reads the pro
   assert.equal(mutationsSent(), 1)
   assert.deepEqual(sentInput(sent, 'PmkitProjectCreate'), { id: 'generated-1', name: 'Launch', teamIds: ['team-acme'], content: 'Why', startDate: '2026-11-01', targetDate: '2026-12-01' })
   assert.deepEqual((await ops.listDeliverables()).map((epic) => epic.id), ['P-ACM-1'])
+})
+
+test('createDeliverable throws UPSTREAM when the readback finds no project', async () => {
+  const empty = (table) => ({ ...table, PmkitProjects: (body) => (body.variables.filter?.id ? json({ projects: { nodes: [] } }) : table.PmkitProjects(body)) })
+  const { ops } = kit({ routes: empty })
+  await assert.rejects(ops.createDeliverable({ title: 'Launch' }, ACTOR), (error) => error.code === 'UPSTREAM' && /read/.test(error.message))
 })
 
 test('createDeliverable refuses another actor, a milestone, an unknown field and bad input before any write', async () => {

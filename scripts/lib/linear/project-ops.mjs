@@ -75,14 +75,14 @@ export function projectOperations({ client, discovery, config, now = () => new D
     client.paginate(EPIC_ISSUES_QUERY, { filter }, { select: (data) => data.issues, pageSize: PROGRESS_PAGE, maxPages: PROGRESS_PAGES })
 
   /**
-   * The Local progress shape over the issues of the epic: the ones in the project, then their sub-issues level by level up to
+   * The Local progress shape over the issues of the epic: the ones in the project without a parent issue, then their sub-issues level by level up to
    * PARENT_CHAIN_DEPTH levels (spec, "Progress"). `native` holds Linear's own number and scope. hasMore is true when the first
    * step stopped at its page cap.
    */
   async function deliverableProgress(id) {
     const project = await findProject(id)
     if (!project) throw notFound(id)
-    const first = await readIssues({ project: { id: { eq: project.id } } })
+    const first = await readIssues({ project: { id: { eq: project.id } }, parent: { null: true } })
     const seen = new Map(first.nodes.map((node) => [node.identifier, node]))
     let level = first.nodes
     for (let depth = 0; depth < PARENT_CHAIN_DEPTH && level.length > 0; depth += 1) {
@@ -186,6 +186,7 @@ export function projectOperations({ client, discovery, config, now = () => new D
     }
     // The payload can lack the identifier Linear assigns after the request, so the project is read again.
     node ??= await readById(id)
+    if (!node) throw new PmkitError('UPSTREAM', `Linear created project ${id} but a read of it found nothing`, 'pmkit epic list')
     return { before: null, after: toEpic(node) }
   }
 
