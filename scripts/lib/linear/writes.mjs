@@ -48,17 +48,17 @@ function requireLabel(context, team, name) {
 }
 
 function typeLabel(context, team, type) {
-  const name = context.mappings.types[type]
-  if (name === undefined) {
-    const known = Object.keys(context.mappings.types)
+  const { types } = context.mappingsOf(team)
+  if (types[type] === undefined) {
+    const known = Object.keys(types)
     throw invalid(`type "${type}" has no label in mappings.types${known.length > 0 ? ` (${known.join(', ')})` : ''}`, '/pmkit:setup')
   }
-  return requireLabel(context, team, name)
+  return requireLabel(context, team, types[type].name)
 }
 
 /** The labelIds of a write: the explicit or kept labels without type labels, plus the new or kept type label. Two labels of one group are refused. */
 function labelIds(patch, { beforeNode, team, context }) {
-  const typeNames = new Set(Object.values(context.mappings.types))
+  const typeNames = new Set(Object.values(context.mappingsOf(team).types).map((label) => label.name))
   const beforeLabels = beforeNode?.labels?.nodes ?? []
   let plain
   if (patch.labels !== undefined && patch.labels !== null) {
@@ -90,7 +90,7 @@ function labelIds(patch, { beforeNode, team, context }) {
 function estimateValue(value, team, context) {
   if (value === null) return null
   if (team.estimation.type === 'notUsed') throw invalid(`team ${team.key} has estimates off`, "Turn on estimates in the team's settings in Linear")
-  if (context.mappings.estimate !== 'native') {
+  if (context.mappingsOf(team).estimate !== 'native') {
     throw new PmkitError('NOT_SUPPORTED', 'mappings.fields.estimate is not native in .pmkit/config.yaml, so pmkit does not write estimates', '/pmkit:setup')
   }
   const scale = estimateScale(team.estimation)

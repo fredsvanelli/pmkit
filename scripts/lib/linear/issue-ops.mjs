@@ -84,7 +84,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     requireWorkspace()
     const current = await context()
     const members = current.raw.users.filter((user) => !user.app).map((user) => user.id)
-    checkFilter(filter, { types: Object.keys(current.mappings.types), members, sprintExists: () => true })
+    checkFilter(filter, { types: Object.keys(current.mappings?.types ?? {}), members, sprintExists: () => true })
     const translated = translateFilter(filter, current)
     if (filter.limit === 0 || translated.empty) return NOTHING()
     const { nodes, hasMore } = await client.paginate(ISSUES_QUERY, translated.variables, {
@@ -173,26 +173,13 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return { before, after: await mapped(node) }
   }
 
-  /** The state of the issue's team a move without --status goes to (spec "moveToCategory", PMK-34 rule 2), or an error. */
-  async function moveTarget(team, category, current) {
-    if (current.mappings.statusNone.includes(category)) {
-      throw new PmkitError('NOT_SUPPORTED', `team ${team.key} has no status in the ${category} category`, '/pmkit:setup')
-    }
-    const named = current.mappings.status[category]
-    if (named !== undefined) {
-      let ctx = current
-      let state = teamStates(ctx, team).find((item) => item.name === named)
-      if (!state) {
-        ctx = await context({ refresh: true })
-        state = teamStates(ctx, teamOf(ctx, team.id) ?? team).find((item) => item.name === named)
-      }
-      if (!state) throw new PmkitError('NOT_CONFIGURED', `mappings.status.${category} names ${named}, which team ${team.key} does not have`, '/pmkit:setup')
-      return state
-    }
-    const candidates = teamStates(current, team).filter((item) => stateCategory(item, current) === category)
-    // Linear's canceled type comes before its duplicate type, whatever their positions.
-    if (category === 'canceled') candidates.sort((a, b) => (a.type === 'duplicate') - (b.type === 'duplicate'))
-    if (candidates.length > 0) return candidates[0]
+  /**
+   * The state of the issue's team a move without --status goes to: resolveMappings' targetState (PMK-34 rule 2), or NOT_SUPPORTED.
+   * For the scope team, the tracker's mapping check already stopped on a mapped state the team lacks, so no refresh happens here.
+   */
+  function moveTarget(team, category, current) {
+    const target = current.mappingsOf(team).targetState(category)
+    if (target) return teamStates(current, team).find((item) => item.id === target.id)
     const nextStep = category === 'triage' && !team.triageEnabled ? "Turn on triage in the team's settings in Linear" : '/pmkit:setup'
     throw new PmkitError('NOT_SUPPORTED', `team ${team.key} has no status in the ${category} category`, nextStep)
   }
@@ -208,11 +195,11 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     let target
     if (status !== undefined) {
       const inCategory = teamStates(current, team).filter((item) => stateCategory(item, current) === category)
-      if (inCategory.length === 0) await moveTarget(team, category, current)
+      if (inCategory.length === 0) moveTarget(team, category, current)
       target = inCategory.find((item) => item.name === status)
       if (!target) throw new PmkitError('INVALID_INPUT', `status ${status} is not in category ${category}`, `Use one of: ${inCategory.map((item) => item.name).join(', ')}`)
     } else {
-      target = await moveTarget(team, category, current)
+      target = moveTarget(team, category, current)
     }
     if (beforeNode.state.id === target.id) return { before, after: before }
     return writeUpdate(beforeNode, before, { stateId: target.id }, await context(), dryRun)

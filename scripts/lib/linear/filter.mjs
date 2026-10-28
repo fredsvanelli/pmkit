@@ -27,7 +27,7 @@ export function translateFilter(filter, context) {
     if (ids.length === 0) empty = true
     and.push({ state: { id: { in: ids } } })
   }
-  if (filter.types !== undefined) and.push({ labels: { some: { name: { in: filter.types.map((type) => context.mappings.types[type]) } } } })
+  if (filter.types !== undefined) and.push({ labels: { some: { name: { in: filter.types.map((type) => context.mappings.types[type].name) } } } })
   if (filter.assignee !== undefined) {
     if (filter.assignee === 'none') and.push({ assignee: { null: true } })
     else and.push({ assignee: { id: { eq: filter.assignee === 'me' ? context.viewer.id : filter.assignee } } })

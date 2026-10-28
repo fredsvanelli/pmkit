@@ -4,7 +4,7 @@
 import { compareIds } from '../ids.mjs'
 import { TERMINAL } from '../model.mjs'
 import { categoryOfType, estimateScale } from './discovery.mjs'
-import { readMappings } from './read-mappings.mjs'
+import { resolveMappings } from './mappings.mjs'
 
 export { isIssueId, issueKey } from './ids.mjs'
 
@@ -55,7 +55,9 @@ export function buildDescription(description, criteria) {
 /**
  * @typedef {object} LinearContext
  * @property {object} raw the raw discovery: teams, states, labels, users
- * @property {ReturnType<typeof readMappings>} mappings
+ * @property {ReturnType<typeof resolveMappings> | null} mappings resolveMappings for the scope team, else for the only team, else null
+ * @property {(team: object) => ReturnType<typeof resolveMappings>} mappingsOf resolveMappings for a raw team, so an issue of
+ *   another team reads its own states and labels under the same mapping names
  * @property {{ id: string, name: string }} viewer the owner of LINEAR_API_KEY
  * @property {object | null} scopeTeam the raw team that tracker.scope.team names, or null
  * @property {string[]} priorities
@@ -65,16 +67,32 @@ export function buildDescription(description, criteria) {
 export function makeContext(raw, pmkit, viewer) {
   const key = pmkit?.tracker?.scope?.team
   const scopeTeam = key ? (raw.teams.find((team) => team.key === key) ?? null) : null
-  return { raw, mappings: readMappings(pmkit), viewer, scopeTeam, priorities: ['urgent', 'high', 'medium', 'low'] }
+  const resolved = new Map()
+  const mappingsOf = (team) => {
+    if (!resolved.has(team.id)) {
+      const tracker = pmkit?.tracker ?? {}
+      resolved.set(team.id, resolveMappings(null, { ...pmkit, tracker: { ...tracker, scope: { ...tracker.scope, team: team.key } } }, raw))
+    }
+    return resolved.get(team.id)
+  }
+  const mappingTeam = scopeTeam ?? (raw.teams.length === 1 ? raw.teams[0] : null)
+  return { raw, mappings: mappingTeam ? mappingsOf(mappingTeam) : null, mappingsOf, viewer, scopeTeam, priorities: ['urgent', 'high', 'medium', 'low'] }
+}
+
+/** The mappings of the team a node or state belongs to, or of the scope team when the team is unknown. */
+const mappingsOfTeam = (teamId, context) => {
+  const team = context.raw.teams.find((item) => item.id === teamId)
+  return team ? context.mappingsOf(team) : context.mappings
 }
 
 /**
- * The pmkit category of a Linear state: mappings.status by name, else the state type, else in_progress, as discoveryView decides.
- * A relation node's state has no name, so the name comes from the discovered state with the same id.
+ * The pmkit category of a Linear state: resolveMappings' categoryOf on the state's team (PMK-34 rule 1), else the state type,
+ * else in_progress. A relation node's state has no name, so the name and team come from the discovered state with the same id.
  */
 export function stateCategory(state, context) {
-  const name = state.name ?? context.raw.states.find((item) => item.id === state.id)?.name
-  const mapped = Object.keys(context.mappings.status).find((category) => context.mappings.status[category] === name)
+  const known = state.id ? context.raw.states.find((item) => item.id === state.id) : undefined
+  const name = state.name ?? known?.name
+  const mapped = name === undefined ? null : (mappingsOfTeam(known?.team, context)?.categoryOf(name) ?? null)
   return mapped ?? categoryOfType(state.type) ?? 'in_progress'
 }
 
@@ -83,7 +101,7 @@ const nodesOf = (connection) => connection?.nodes ?? []
 
 /** The pmkit estimate of a node: a number on a points team, a size on a t-shirt team, undefined when the estimate is not native. */
 function estimateOf(node, context) {
-  if (context.mappings.estimate !== 'native' || typeof node.estimate !== 'number') return undefined
+  if (mappingsOfTeam(node.team?.id, context)?.estimate !== 'native' || typeof node.estimate !== 'number') return undefined
   const team = context.raw.teams.find((item) => item.id === node.team?.id)
   const scale = estimateScale(team?.estimation)
   if (scale.unit !== 'sizes') return node.estimate
@@ -94,12 +112,13 @@ function estimateOf(node, context) {
 export function toIssue(node, context) {
   if (node.trashed === true) return null
   const labelNames = nodesOf(node.labels).map((label) => label.name)
-  const typeLabels = new Set(Object.values(context.mappings.types))
+  const mappings = mappingsOfTeam(node.team?.id, context)
+  const typeLabels = new Set(Object.values(mappings?.types ?? {}).map((label) => label.name))
   const out = nodesOf(node.relations)
   const inverse = nodesOf(node.inverseRelations)
   const { description, acceptanceCriteria } = parseDescription(node.description)
   const issue = { id: node.identifier, title: node.title }
-  const type = context.mappings.typeOf(labelNames)
+  const type = mappings?.typeOf(labelNames) ?? null
   if (type !== null) issue.type = type
   issue.status = { name: node.state.name, category: stateCategory(node.state, context) }
   const priority = priorityOf(node.priority)

@@ -551,12 +551,13 @@ test('the mapped state wins; else the first state by position', async () => {
   assert.equal((await linear.getIssue('ACME-1')).status.name, 'Canceled')
 })
 
-test('canceled picks a state of type canceled before one of type duplicate', async () => {
+// PMK-34 rule 2 picks the first state of the category by position, whatever its Linear type.
+test('canceled picks the first state of the category by position', async () => {
   const states = fakeWorkspace().PmkitStates({ variables: { first: 250 } }).json.data.workflowStates.nodes
     .map((state) => (state.type === 'duplicate' ? { ...state, position: -5 } : state))
   const { tracker: linear, fake } = linearSetup({ workspace: { states } })
   seed(fake, { title: 'Move me' })
-  assert.equal(await moved(linear, 'ACME-1', 'canceled'), 'Canceled')
+  assert.equal(await moved(linear, 'ACME-1', 'canceled'), 'Duplicate')
 })
 
 test('status names a state of the category; another name lists the choices', async () => {
@@ -618,14 +619,11 @@ test('in_review with no mapping or with none is NOT_SUPPORTED', async () => {
   }
 })
 
-test('a category set to none is NOT_SUPPORTED even when the team has a state for it', async () => {
+// PMK-34 rule 2: none names no state, so the move falls back to the first state of the category by position.
+test('a category set to none moves to the first state of that category', async () => {
   const { tracker: linear, fake } = linearSetup({ mappings: { status: { backlog: 'none' } } })
-  seed(fake, { title: 'Move me' })
-  await assert.rejects(linear.moveToCategory('ACME-1', 'backlog', 'user-1'), {
-    code: 'NOT_SUPPORTED',
-    message: 'team ACME has no status in the backlog category',
-    nextStep: '/pmkit:setup',
-  })
+  seed(fake, { title: 'Move me', stateId: 'state-2' })
+  assert.equal(await moved(linear, 'ACME-1', 'backlog'), 'Backlog')
 })
 
 test('a caller limit sent to Linear does not set hasMore', async () => {

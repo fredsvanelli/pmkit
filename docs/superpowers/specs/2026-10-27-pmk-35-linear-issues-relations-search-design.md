@@ -123,14 +123,14 @@ Chosen: approach A. Each field maps to something a Linear user sees and can edit
 | `scripts/lib/linear/filter.mjs` | New. `translateFilter(filter, context)` returns `{ variables, clientSteps, serverLimit }`. Pure. |
 | `scripts/lib/linear/tracker.mjs` | Replaces the stubs of the Issues and Relations operations. Adds `viewer` to `discover()`. Keeps the stubs of every other family. |
 | `scripts/lib/linear/client.mjs` | `operationName` names the first operation definition and skips fragments. |
-| `scripts/lib/linear/read-mappings.mjs` | New. `readMappings(pmkit)` reads `mappings.status`, `mappings.types` and `mappings.fields.estimate` and returns plain values; `none` counts as unset. It is the only module that reads `mappings`. After PMK-34 merges, it gives way to PMK-34's `resolveMappings` where their shapes match. |
+| `scripts/lib/linear/mappings.mjs` | PMK-34's. `makeContext` calls its `resolveMappings` once per team, and every PMK-35 module reads `mappings` through that result. The provisional `read-mappings.mjs` was removed after the rebase on PMK-34. |
 | `scripts/lib/linear/discovery.mjs` | `discoveryView` fills `types` from `mappings.types` and leaves the type labels out of `labels`. |
 | `scripts/lib/linear/adapter.mjs` | The Linear descriptor's `settings()` gains `isEpicId(id)` and `trackerBranch: true`. `epicPrefix` stays `null`. The Local descriptor and the test descriptors do not change: the CLI falls back to the `epicPrefix` test when `isEpicId` is absent. |
 | `scripts/lib/issue-filter.mjs` | New, shared. `FILTER_KEYS`, `SORTS`, `checkFilter` and the sort comparator move here from `scripts/lib/local/query.mjs`, which imports them. Local behavior stays the same **(builder's call)**. |
 | `scripts/pmkit.mjs` | `requireMember` takes the viewer from `discover()` when present. `issues dependencies` uses `isEpicId`. `issues list` warns when the result has `hasMore`. `issues branch` uses the tracker's branch when `trackerBranch` is set. A dry-run create prints `(new)` for an id of `null`. |
 | `scripts/contract-suite.mjs` | Each test names the families it needs. `runTrackerContract({ name, setup, families })` skips the tests whose families the adapter does not list. |
 | `scripts/fake-linear-api.mjs` | Adds `fakeLinearIssues(options)`, a stateful in-memory issue store that answers pmkit's issue documents. |
-| Tests | `scripts/lib/linear/issues.test.mjs`, `filter.test.mjs`, `read-mappings.test.mjs`, `contract.test.mjs`, new cases in `tracker.test.mjs`, `discovery.test.mjs`, `client.test.mjs`, `fake-linear-api.test.mjs`, `cli-linear.test.mjs`, `adapters.test.mjs`. |
+| Tests | `scripts/lib/linear/issues.test.mjs`, `filter.test.mjs`, `contract.test.mjs`, new cases in `tracker.test.mjs`, `discovery.test.mjs`, `client.test.mjs`, `fake-linear-api.test.mjs`, `cli-linear.test.mjs`, `adapters.test.mjs`. |
 
 This issue does not change `pmkit.config.schema.json` or `scripts/lib/config.mjs`. PMK-34 adds `mappings.types` to the schema and the setup question. Neither validator refuses an unknown key under `mappings` today, so a config with `mappings.types` already loads.
 
@@ -219,7 +219,7 @@ On a write that sets `description` or `acceptanceCriteria`, `toInput` rebuilds t
 The rules:
 
 - Unknown keys and keys another operation owns fail as in the Local tracker, with the same messages and next steps. The key lists move with the shared filter code, or the builder copies them **(builder's call)**.
-- The team of a new issue is `tracker.scope.team`. With no team set, the only team of the workspace. With several teams and none set, `NOT_CONFIGURED`, `tracker.scope.team is not set and the workspace has 3 teams`, next step `/pmkit:setup`.
+- The team of a new issue is `tracker.scope.team`. PMK-34's mapping check runs before every operation and stops with `NOT_CONFIGURED`, `tracker.scope.team is not set`, when no team is set.
 - A label name resolves among the target team's labels first, then the workspace labels. Two labels from one Linear label group are refused with `INVALID_INPUT`, because Linear allows one label per group. An unknown name refreshes the discovery once, then fails with `INVALID_INPUT`, next step `Create the label in Linear, then run pmkit discover`.
 - An assignee must be a discovered member; an app user is refused. An unknown id refreshes once, as labels do.
 - An estimate on a team with estimates off fails with `INVALID_INPUT` and the hint PMK-33 uses for `estimation`.
@@ -244,8 +244,8 @@ ADR-0005 decides the actor. On Linear the actor is the viewer, the owner of `LIN
 1. Check `category` against `CATEGORIES`, then read the issue (`before`). Its team decides the states.
 2. With `status`, the name must be a state of that team whose category is `category`. Otherwise `INVALID_INPUT` lists the team's states in the category.
 3. Without `status`, the target is:
-   - the state that `mappings.status[category]` names, when the key is set;
-   - else the first state by `position` whose category is `category`. For `canceled`, a state of type `canceled` comes before one of type `duplicate`. A state that another `mappings.status` key names already has that key's category, so it is not a candidate. `mappings.status.blocked` has no effect here.
+   - `resolveMappings(...).targetState(category)` for the issue's team (PMK-34 rule 2): the state that `mappings.status[category]` names, when set and not `none`;
+   - else the first state by `position` whose category is `category`, whatever its Linear type. A state that another `mappings.status` key names already has that key's category, so it is not a candidate. `mappings.status.blocked` has no effect here.
 4. When the issue already has that state, the result is `{ before, after: before }` and no mutation is sent.
 5. Otherwise `issueUpdate(id, { stateId })`, and `after` is the mapped payload issue.
 
@@ -255,11 +255,11 @@ When step 3 finds nothing:
 
 | Case | Error |
 |---|---|
-| `mappings.status[category]` names a state the issue's team lacks, after one discovery refresh | `NOT_CONFIGURED`, `mappings.status.in_review names In Review, which team ACME does not have`, next step `/pmkit:setup` |
-| `in_review` with no mapping | `NOT_CONFIGURED`, `team ACME has no state mapped to in_review`, next step `/pmkit:setup` |
-| `mappings.status[category]` is `none` | `NOT_SUPPORTED`, `team ACME has no status in the in_review category`, next step `/pmkit:setup` |
-| `triage` on a team with triage off | `NOT_SUPPORTED`, with the `native_triage` hint `Turn on triage in the team's settings in Linear` |
-| any other category with no state | `INVALID_INPUT`, `team ACME has no state in category <category>` |
+| `mappings.status[category]` names a state the scope team lacks | PMK-34's mapping check stops first: `NOT_CONFIGURED`, `a mapping in .pmkit/config.yaml names something the workspace no longer has: ...`, next step `/pmkit:setup` |
+| no state in the category, `in_review` with no mapping or with `none` included | `NOT_SUPPORTED`, `team ACME has no status in the in_review category`, next step `/pmkit:setup` |
+| `triage` on a team with triage off | `NOT_SUPPORTED`, same message, with the `native_triage` hint `Turn on triage in the team's settings in Linear` |
+
+A category set to `none` while the team has a state of that category moves to that state, as PMK-34 rule 2 says.
 
 ### `assign` and `archive`
 
@@ -328,15 +328,15 @@ The blocked check reads the blocker's state from the relation node and maps it t
 
 | Key | Use | When missing |
 |---|---|---|
-| `mappings.status.<category>` | The category of a state on every read (already in `discoveryView`), the target of `moveToCategory`, and the state ids of the `categories` filter | Reads and filters use the state type. A move to `in_review` fails with `NOT_CONFIGURED`. A move to another category picks the first state by position. |
-| `mappings.status.<category>` naming a state the team lacks | | `discover` warns (PMK-33). A move to that category fails with `NOT_CONFIGURED` after one refresh. Reads and filters use the state type. |
+| `mappings.status.<category>` | The category of a state on every read (already in `discoveryView`), the target of `moveToCategory`, and the state ids of the `categories` filter | Reads and filters use the state type. A move to `in_review` fails with `NOT_SUPPORTED`. A move to another category picks the first state by position. |
+| `mappings.status.<category>` naming a state the team lacks | | `discover` warns (PMK-33). Every operation but `discover` and `capabilities` fails with PMK-34's `NOT_CONFIGURED` and `details.mappings`. |
 | `mappings.status.blocked` | None. It changes no category, no move target and no `blocked` filter in this issue. | Nothing changes. |
 | `mappings.fields.estimate` | `native`: Linear's estimate field | Absent, any other value, `none` or a label group: `estimate` reads as unset and estimate writes fail with `NOT_SUPPORTED`. Size label groups are a follow-up issue. |
-| `mappings.types` | A map from a pmkit type name to one Linear label name, such as `{ bug: Bug, feature: Feature }`. A pmkit type with no label is not a key. `discover().types` lists every key, in map order. | Absent: `discover().types` is `[]`, `type` reads as unset, and a `type` write or filter fails with `INVALID_INPUT`, next step `/pmkit:setup`. A key whose label is missing: `discover` warns `mappings.types.bug names Bug, which team ACME does not have`, and the type stays in `discover().types`. A value that is not such a map: `discover` warns and the adapter reads it as absent. |
+| `mappings.types` | A map from a pmkit type name to one Linear label name, such as `{ bug: Bug, feature: Feature }`. A pmkit type with no label is not a key. `discover().types` lists every key, in map order. | Absent: `discover().types` is `[]`, `type` reads as unset, and a `type` write or filter fails with `INVALID_INPUT`, next step `/pmkit:setup`. A key whose label is missing: PMK-34's mapping check stops every operation but `discover` and `capabilities`. A value that is not such a map fails config validation. |
 
 The adapter reads no other key of `mappings.fields`. Priority, assignee and due date are Linear's own fields, and acceptance criteria always live in the `## Acceptance criteria` section. A value of `none`, which PMK-34 reserves for "the team has no such thing", counts as unset in every key.
 
-`readMappings(pmkit)` in `scripts/lib/linear/read-mappings.mjs` is the one reader of these keys. It returns `{ status: { <category>: name }, statusNone: [<category>], blockedStatus, types: { <type>: labelName }, typeOf, estimate: 'native' | null, problems: [] }`. PMK-34's `resolveMappings` is not merged yet and this issue imports nothing from its branch. When PMK-34 merges, `readMappings` switches to `resolveMappings` if their names and shapes differ, and the tests of this issue keep passing as the check.
+PMK-34's `resolveMappings` in `scripts/lib/linear/mappings.mjs` is the one reader of these keys. `makeContext` resolves it for the scope team and, through `mappingsOf(team)`, for the team of any issue it reads. The adapter uses `categoryOf`, `targetState`, `estimate`, `types` and `typeOf`.
 
 ### What PMK-34 gets
 
@@ -392,7 +392,6 @@ No test opens a socket. Every tracker test injects `fakeLinearFetch` and sets `P
 - `contract.test.mjs` under `scripts/lib/linear/`: the suite with the three families.
 - `client.test.mjs`: `operationName` with a fragment first, with comments, and with an anonymous query after a fragment. `fake-linear-api.test.mjs`: a named mutation after a fragment routes by its name.
 - `cli-linear.test.mjs`: `issues list --assignee me --json` sends the viewer's id; `issues assign ACME-1 me` assigns the viewer; `whoami` prints the viewer; `issues dependencies <non-issue id>` fails with `NOT_SUPPORTED` from `getDeliverable`, not `NOT_FOUND`; `issues list` prints the `hasMore` warning; `issues branch` uses Linear's name.
-- `read-mappings.test.mjs`: `mappings.types` read as a map in key order, a value that is not a map read as absent with a problem, `none` read as unset, an absent estimate read as no estimate.
 - `discovery.test.mjs`: `types` from `mappings.types`, a missing label warned and kept, the type labels left out of `labels`.
 - `adapters.test.mjs`: the Linear `settings()` with `isEpicId` and `trackerBranch`, the Local `settings()` unchanged.
 - Every golden stays byte-identical, and the Local contract runs still run every test.
