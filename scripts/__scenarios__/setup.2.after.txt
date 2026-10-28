@@ -1,5 +1,7 @@
 $ pmkit init --tracker linear --git-host none --dry-run --json  [step Linear first run 3, dry run]
 exit 0
+$ pmkit init --tracker linear --git-host none --workspace acme --team ACME --dry-run --json  [step Linear first run 4, dry run]
+exit 0
 $ pmkit init --tracker linear --git-host none --workspace acme --team ACME --status 'in_review=In Review' --status blocked=none --type-label feature=Feature --type-label bug=Bug --type-label task=none --type-label chore=none --dry-run --json  [step Linear first run 6, dry run]
 exit 0
 ? Linear first run  [confirmed]

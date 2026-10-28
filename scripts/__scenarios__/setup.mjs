@@ -8,9 +8,9 @@
 // the `create` of `.issues/.gitignore` and the `change` of `.issues/config.yaml`, no `differs` file, so step 6 asks
 // nothing.
 // Entry 2, Linear first run: an empty git repository with no remote (git host `none`) and a fake workspace where the
-// viewer belongs to two teams. The first dry run returns only the team question. The user picks ACME, accepts In Review,
-// says no status means blocked, and maps two types to labels and two to none, so the one dry run of step 6 has no
-// question left. The user confirms the summary and step 6 writes `.pmkit/config.yaml` and no `.issues/`.
+// viewer belongs to two teams. The first dry run returns only the team question. The user picks ACME, and the dry run
+// of step 4 returns the status and type questions. The user accepts In Review, says no status means blocked, and maps
+// two types to labels and two to none, so the one dry run of step 6 has no question left. The user confirms the summary and step 6 writes `.pmkit/config.yaml` and no `.issues/`.
 // Entry 3, existing Linear config: a repository whose `.pmkit/config.yaml` maps in review to a state the workspace no
 // longer has. The `init --update` dry run lists it in `broken` and as the only question; the user picks In Review,
 // confirms the diff, and step 5 writes it.
@@ -26,9 +26,9 @@ const existing = 'the config exists, so step 1 takes the existing config path'
 const notLinear = 'the user picks the Local tracker, so step 1 never reaches the Linear paths'
 const linearOnly = 'the config names the Local tracker, so step 1 never reaches the Linear paths'
 const localOnly = 'the tracker is Linear, so step 1 never reaches the Local paths'
-const LINEAR_FIRST = ['Linear first run 3 init', 'Linear first run 6 init', 'Linear first run 9 validate', 'Linear first run 9 discover', 'Linear first run 9 capabilities']
+const LINEAR_FIRST = ['Linear first run 3 init', 'Linear first run 4 init', 'Linear first run 6 init', 'Linear first run 9 validate', 'Linear first run 9 discover', 'Linear first run 9 capabilities']
 const LINEAR_EXISTING = [
-  'Existing Linear config 2 validate', 'Existing Linear config 3 init', 'Existing Linear config 5 init',
+  'Existing Linear config 2 validate', 'Existing Linear config 3 init', 'Existing Linear config 4 init', 'Existing Linear config 5 init',
   'Existing Linear config 7 validate', 'Existing Linear config 7 discover', 'Existing Linear config 7 capabilities',
 ]
 const LOCAL_CALLS = [
@@ -174,6 +174,8 @@ export default [
     steps: [
       // Step 3: the team is the only question, because the viewer belongs to two teams.
       { step: 'Linear first run 3', dryRun: linearInit, save: 'first' },
+      // Step 4: the dry run with the team returns the questions that step 5 asks.
+      { step: 'Linear first run 4', dryRun: [...linearInit, '--workspace', 'acme', '--team', 'ACME'], save: 'team' },
       // Step 6: one dry run with every answer, shown as the one summary of step 7. Step 8 writes.
       { step: 'Linear first run 6', dryRun: linearWrite, save: 'preview' },
       { confirm: 'Linear first run' },
@@ -189,6 +191,11 @@ export default [
     expect(repo, saved) {
       assert.deepEqual(saved.first.questions.map((q) => q.path), ['tracker.scope.team'])
       assert.deepEqual(saved.first.questions[0].candidates, ['ACME', 'BETA'])
+      assert.deepEqual(saved.team.questions.map((q) => q.path), [
+        'mappings.status.in_review', 'mappings.status.blocked',
+        'mappings.types.feature', 'mappings.types.bug', 'mappings.types.task', 'mappings.types.chore',
+      ])
+      assert.deepEqual(saved.team.questions.map((q) => q.recommended), ['In Review', 'none', 'Feature', 'Bug', 'none', 'none'])
       assert.deepEqual(saved.preview.questions, [])
       assert.deepEqual(saved.preview.files, [{ path: '.pmkit/config.yaml', action: 'create' }])
       assert.ok(!repo.file('.issues/config.yaml'), 'Linear setup creates no .issues/')
@@ -225,6 +232,7 @@ export default [
     ],
     skip: {
       ...skipAll([...LOCAL_CALLS, ...LINEAR_FIRST], linearConfigExists),
+      'Existing Linear config 4 init': 'the file names a team the workspace still has, so there is no team question',
     },
     notHit: { 'First run': existing, 'Existing config': linearConfigExists, 'Existing config step 3': linearConfigExists, 'Linear first run': existing },
     expect(repo, saved) {
