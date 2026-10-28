@@ -11,6 +11,14 @@ export function findLeaks(dir) {
   return fs.readdirSync(dir).sort()
 }
 
+/** Returns the environment for the test child: no Linear key, no live gate, temp folders in privateDir. */
+export function childEnv(env, privateDir) {
+  const copy = { ...env }
+  delete copy.LINEAR_API_KEY
+  delete copy.PMKIT_LIVE
+  return { ...copy, TMPDIR: privateDir, TMP: privateDir, TEMP: privateDir }
+}
+
 /** Reports leftovers in the private folder, removes it, and returns the exit code. */
 export function finish(privateDir, status) {
   const leaks = findLeaks(privateDir)
@@ -25,7 +33,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const result = spawnSync(process.execPath, ['--test', 'scripts/**/*.test.mjs'], {
     stdio: 'inherit',
     cwd: root,
-    env: { ...process.env, TMPDIR: privateDir, TMP: privateDir, TEMP: privateDir },
+    env: childEnv(process.env, privateDir),
   })
   process.exit(finish(privateDir, result.status ?? 1))
 }
