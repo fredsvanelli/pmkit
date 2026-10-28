@@ -1525,6 +1525,7 @@ test('every read goes on with one warning', () => {
     risks: [],
     'pr status': [],
     reindex: [],
+    'linear triage show': [],
     render: ['board'],
   }
   assert.deepEqual(Object.keys(READS).sort(), [...COMMANDS.filter((c) => !c.write && !['init', 'changelog', 'validate'].includes(c.name)).map((c) => c.name), 'cycle capacity'].sort())

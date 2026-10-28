@@ -1,9 +1,9 @@
 import { PmkitError } from './errors.mjs'
 
 // Flags that never take a value, so `--dry-run ISS-1` keeps ISS-1 as a positional.
-export const BOOLEANS = new Set(['json', 'dry-run', 'help', 'blocked', 'archived', 'comments', 'history', 'remove', 'draft', 'update', 'save'])
+export const BOOLEANS = new Set(['json', 'dry-run', 'help', 'blocked', 'archived', 'comments', 'history', 'remove', 'draft', 'update', 'save', 'off'])
 // Commands with a second word: `issues move`, `cycle open`.
-export const GROUPS = new Set(['issues', 'cycle', 'epic', 'milestone', 'release', 'metrics', 'pr', 'docs'])
+export const GROUPS = new Set(['issues', 'cycle', 'epic', 'milestone', 'release', 'metrics', 'pr', 'docs', 'linear'])
 
 /**
  * Splits argv into a command (one or two words), options and positionals.
@@ -43,6 +43,7 @@ export function parseArgs(argv, { booleans = BOOLEANS, groups = GROUPS } = {}) {
     }
   }
   const grouped = words.length > 0 && groups.has(words[0]) && words.length > 1
-  const command = grouped ? `${words[0]} ${words[1]}` : words[0]
-  return { command, options, positionals: words.slice(grouped ? 2 : 1) }
+  // `linear triage show` has three words.
+  const depth = grouped ? (words[0] === 'linear' && words.length > 2 ? 3 : 2) : 1
+  return { command: words.slice(0, depth).join(' ') || undefined, options, positionals: words.slice(depth) }
 }

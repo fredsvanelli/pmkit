@@ -7,6 +7,7 @@ import { cacheGet, cachePut, repoHash } from '../user-store.mjs'
 import { createLinearClient } from './client.mjs'
 import { discoveryView, fetchDiscovery } from './discovery.mjs'
 import { buildLinearCapabilities } from './manifest.mjs'
+import { createTriage } from './triage.mjs'
 
 const CACHE_TTL_SECONDS = 3600
 const isoSeconds = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z')
@@ -100,5 +101,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
   }
 
   const implemented = { discover, capabilities }
-  return Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)]))
+  // Linear-only features sit beside the contract operations. contractView ignores them.
+  const triage = createTriage({ client, discovery, config })
+  return { ...Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)])), triage }
 }

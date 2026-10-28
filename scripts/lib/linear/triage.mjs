@@ -1,6 +1,7 @@
 // Linear triage rotation and Triage Intelligence suggestions: the queries, the views and createTriage.
 // See docs/superpowers/specs/2026-10-27-pmk-43-linear-triage-rotation-design.md.
 
+import { PmkitError } from '../errors.mjs'
 import { BUSINESS_PLANS } from './manifest.mjs'
 
 const PLAN_HINT = 'Triage responsibility needs the Business or Enterprise plan'
@@ -98,4 +99,58 @@ export function suggestionsText(view) {
   }
   lines.push('These are suggestions from Linear. Apply one with a normal issue edit.')
   return lines.join('\n')
+}
+
+const RESPONSIBILITY_FIELDS = 'id action manualSelection { userIds assignmentIndex } timeSchedule { id name externalUrl integration { service } } currentUser { id name }'
+export const SHOW_QUERY = `query PmkitTriageShow($teamId: String!) { team(id: $teamId) { triageResponsibility { ${RESPONSIBILITY_FIELDS} } } }`
+
+/** The team a command works on: --team, then tracker.scope.team, then the only team of the workspace. */
+export function chooseTeam(raw, flag, config) {
+  const keys = raw.teams.map((team) => team.key)
+  const wanted = flag ?? config.pmkit?.tracker?.scope?.team
+  if (wanted !== undefined) {
+    const found = raw.teams.find((team) => team.key === wanted)
+    if (!found) throw new PmkitError('INVALID_INPUT', `no team has the key ${wanted}`, `Use one of: ${keys.join(', ')}`)
+    return found
+  }
+  if (raw.teams.length === 1) return raw.teams[0]
+  throw new PmkitError('INVALID_INPUT', raw.teams.length === 0 ? 'the workspace has no team' : 'several teams exist and none is chosen', `Pass --team with one of: ${keys.join(', ')}`)
+}
+
+function unavailable(team, availability) {
+  const { reason, plan, enableHint } = availability
+  return {
+    data: { available: false, reason, plan, team: team.key, enableHint },
+    text: `triage rotation: unavailable\nreason: ${reason}\nplan: ${plan}\nenable: ${enableHint}`,
+  }
+}
+
+/**
+ * The triage operations of the Linear tracker. discovery is the tracker's cached discovery, client the Linear client.
+ * Every method returns { data, text, warnings? }, the shape a command returns.
+ */
+export function createTriage({ client, discovery, config }) {
+  async function context(flag) {
+    const { raw, warnings } = await discovery()
+    const team = chooseTeam(raw, flag, config)
+    return { raw, team, warnings, availability: triageAvailability(raw, team) }
+  }
+
+  async function readDuty(raw, team) {
+    const data = await client.request(SHOW_QUERY, { teamId: team.id })
+    return { node: data?.team?.triageResponsibility ?? null, ...dutyView(data?.team?.triageResponsibility ?? null, raw) }
+  }
+
+  async function show({ team: flag } = {}) {
+    const { raw, team, warnings, availability } = await context(flag)
+    if (!availability.available) return { ...unavailable(team, availability), warnings }
+    const view = await readDuty(raw, team)
+    return {
+      data: { available: true, team: team.key, duty: view.duty },
+      text: dutyText(team.key, view.duty),
+      warnings: [...warnings, ...view.warnings],
+    }
+  }
+
+  return Object.freeze({ show })
 }

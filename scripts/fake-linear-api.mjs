@@ -81,7 +81,7 @@ export function fakeLinearFetch(routes = {}, { workspace = 'acme', previousUrlKe
 
 export const ACME_TEAM_ID = 'team-acme'
 
-const acmeTeam = {
+export const acmeTeam = {
   id: ACME_TEAM_ID,
   key: 'ACME',
   name: 'Acme',

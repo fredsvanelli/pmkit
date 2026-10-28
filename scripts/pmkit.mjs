@@ -276,6 +276,7 @@ async function flowInputs(tracker) {
 // Command table. `run` returns { data, text, commit }: the JSON value, the plain text and, for a write, the id for the commit message.
 // A command reaches the tracker through ctx.tracker(), which holds only the contract operations. `local: true` marks the commands
 // that work on Local tracker files; they alone use ctx.local(), and the runner refuses them for any other tracker.system.
+// `linear: true` does the same for Linear-only features (triage rotation): they use ctx.linear().
 export const COMMANDS = [
   {
     name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels',
@@ -939,6 +940,11 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'linear triage show', summary: 'who is on triage duty for a team; says so when the plan or the team setting lacks the feature',
+    usage: '[--team KEY]', linear: true, flags: ['team'],
+    run: async (ctx) => (await ctx.linear()).show({ team: ctx.opt('team') }),
+  },
+  {
     name: 'validate', summary: 'checks every file and reference; problems are output, not errors', flags: [], exempt: true,
     run: (ctx) => {
       const result = validateRepo(ctx.root, { adapters: ctx.adapters })
@@ -1540,6 +1546,12 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
         await ctx.tracker()
         return tracker
       },
+      // The Linear-only features of the raw Linear tracker, or null for any other system.
+      linear: async () => {
+        if (ctx.config().system !== 'linear') return null
+        await ctx.tracker()
+        return tracker.triage
+      },
       settings: () => adapterFor(ctx.config().system, adapters).settings(ctx.config()),
       host: () => (host ??= makeHost(ctx)),
       actor: async () => (typeof options.as === 'string' ? options.as : (await requireMember(ctx)).id),
@@ -1549,6 +1561,10 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
     if (command.local) {
       const { system } = loadPmkitConfig(root, { adapters })
       if (system !== 'local') throw new PmkitError('NOT_SUPPORTED', `${command.name} works only with the Local tracker, and tracker.system is "${system}"`, 'node scripts/pmkit.mjs --help')
+    }
+    if (command.linear) {
+      const { system } = ctx.config()
+      if (system !== 'linear') throw new PmkitError('NOT_SUPPORTED', `\`${command.name}\` works only with the Linear tracker, and tracker.system is "${system}"`, 'node scripts/pmkit.mjs --help')
     }
     // migrate refuses in runMigrate: ctx.config() checks the format, which would hide migrate's own format errors.
     if (kind === 'write' && command.name !== 'migrate') {

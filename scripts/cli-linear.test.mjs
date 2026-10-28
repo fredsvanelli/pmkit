@@ -7,9 +7,9 @@ import path from 'node:path'
 import { run } from './pmkit.mjs'
 import { ADAPTERS } from './lib/adapters.mjs'
 import { linearDescriptor } from './lib/linear/adapter.mjs'
-import { operationName } from './lib/linear/client.mjs'
+import { isMutation, operationName } from './lib/linear/client.mjs'
 import { useLinear } from './fake-hosted.mjs'
-import { FAKE_KEY, fakeLinearFetch, fakeWorkspace } from './fake-linear-api.mjs'
+import { FAKE_KEY, acmeTeam, fakeLinearFetch, fakeTriage, fakeWorkspace } from './fake-linear-api.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo, userStoreEnv } from './test-helpers.mjs'
 
@@ -138,4 +138,107 @@ test('issues list exits 2 with NOT_SUPPORTED', async () => {
     nextStep: 'Set tracker.system to local in .pmkit/config.yaml to use this command now',
   })
   assert.equal(fetch.calls.length, 0)
+})
+
+// Triage rotation (PMK-43). The Free workspace is the proof for the absent capability; the paid ones use the fake.
+const BUSINESS = { type: 'Business' }
+const paidTeam = (extra = {}) => ({ ...acmeTeam, triageEnabled: true, ...extra })
+const MANUAL = {
+  id: 'tr-1',
+  action: 'assign',
+  manualSelection: { userIds: ['user-2', 'user-1'], assignmentIndex: 0 },
+  timeSchedule: null,
+  currentUser: { id: 'user-2', name: 'Ada Lovelace' },
+}
+const SCHEDULED = {
+  id: 'tr-2',
+  action: 'notify',
+  manualSelection: null,
+  timeSchedule: { id: 'ts-1', name: 'On call', externalUrl: 'https://example.com/s', integration: { service: 'pagerDuty' } },
+  currentUser: { id: 'user-1', name: 'Test User' },
+}
+const triageFetch = ({ workspace = {}, triage = {} } = {}) => fakeLinearFetch({ ...fakeWorkspace(workspace), ...fakeTriage(triage) })
+const businessFetch = (triage = {}, workspace = {}) => triageFetch({ workspace: { subscription: BUSINESS, teams: [paidTeam()], ...workspace }, triage })
+const TRIAGE_OPERATIONS = ['PmkitTriageShow', 'PmkitTriageSuggestions', 'PmkitTriageCreate', 'PmkitTriageUpdate', 'PmkitTriageDelete']
+const triageCalls = (fetch) => fetch.calls.filter((call) => TRIAGE_OPERATIONS.includes(operationName(call.body.query)))
+const mutationCalls = (fetch) => fetch.calls.filter((call) => isMutation(call.body.query))
+
+test('linear triage show on a Free workspace says it is unavailable and sends no triage query', async () => {
+  const fetch = triageFetch()
+  const json = await cli(setup(), ['linear', 'triage', 'show', '--json'], fetch)
+  assert.equal(json.code, 0, json.stderr)
+  assert.deepEqual(JSON.parse(json.stdout), {
+    available: false,
+    reason: 'plan',
+    plan: 'free',
+    team: 'ACME',
+    enableHint: 'Triage responsibility needs the Business or Enterprise plan',
+  })
+  const text = await cli(setup(), ['linear', 'triage', 'show'], fetch)
+  assert.equal(text.code, 0, text.stderr)
+  assert.equal(text.stdout, 'triage rotation: unavailable\nreason: plan\nplan: free\nenable: Triage responsibility needs the Business or Enterprise plan\n')
+  assert.equal(triageCalls(fetch).length, 0)
+  assert.equal(mutationCalls(fetch).length, 0)
+})
+
+test('linear triage show with triage off reports triage_off and sends no triage query', async () => {
+  const fetch = triageFetch({ workspace: { subscription: BUSINESS } })
+  const result = await cli(setup(), ['linear', 'triage', 'show', '--json'], fetch)
+  assert.equal(result.code, 0, result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.reason, 'triage_off')
+  assert.equal(data.enableHint, "Turn on triage in the team's settings in Linear")
+  assert.equal(triageCalls(fetch).length, 0)
+})
+
+test('linear triage show prints a manual rotation, a schedule and no responsibility', async () => {
+  const manual = await cli(setup(), ['linear', 'triage', 'show'], businessFetch({ responsibility: MANUAL }))
+  assert.equal(manual.code, 0, manual.stderr)
+  assert.equal(manual.stdout, 'team: ACME\naction: assign\nsource: manual\non duty: Ada Lovelace\nrotation: Ada Lovelace (current), Test User\n')
+  const json = JSON.parse((await cli(setup(), ['linear', 'triage', 'show', '--json'], businessFetch({ responsibility: MANUAL }))).stdout)
+  assert.equal(json.available, true)
+  assert.equal(json.team, 'ACME')
+  assert.deepEqual(json.duty.members.map((member) => member.id), ['user-2', 'user-1'])
+  const scheduled = await cli(setup(), ['linear', 'triage', 'show'], businessFetch({ responsibility: SCHEDULED }))
+  assert.equal(scheduled.stdout, 'team: ACME\naction: notify\nsource: schedule\non duty: Test User\nschedule: On call (pagerduty)\n')
+  const none = await cli(setup(), ['linear', 'triage', 'show'], businessFetch({ responsibility: null }))
+  assert.equal(none.stdout, 'team: ACME\nnobody is on triage duty\n')
+})
+
+test('linear triage show picks the team from --team, then the scope, then the only team', async () => {
+  const second = paidTeam({ id: 'team-two', key: 'TWO', name: 'Two' })
+  const fetch = () => businessFetch({ responsibility: null }, { teams: [paidTeam(), second] })
+  const teamOf = async (context, args) => JSON.parse((await cli(context, ['linear', 'triage', 'show', '--json', ...args], fetch())).stdout).team
+  assert.equal(await teamOf(setup(), ['--team', 'TWO']), 'TWO')
+  const scoped = setup({ edit: (text) => text.replace('    workspace: acme', '    workspace: acme\n    team: TWO') })
+  assert.equal(await teamOf(scoped, []), 'TWO')
+  assert.equal(await teamOf(scoped, ['--team', 'ACME']), 'ACME')
+  const many = await cli(setup(), ['linear', 'triage', 'show', '--json'], fetch())
+  assert.equal(many.code, 2)
+  assert.equal(errorOf(many).code, 'INVALID_INPUT')
+  assert.match(errorOf(many).nextStep, /ACME, TWO/)
+  const unknown = await cli(setup(), ['linear', 'triage', 'show', '--json', '--team', 'NOPE'], fetch())
+  assert.equal(errorOf(unknown).code, 'INVALID_INPUT')
+})
+
+test('linear triage show on a Local repository exits 2 with NOT_SUPPORTED', async () => {
+  const root = makeRepo('basic')
+  const result = await run(['linear', 'triage', 'show', '--json'], { cwd: root, env: { ...childEnv(), ...userStoreEnv().env } })
+  assert.equal(result.code, 2)
+  assert.deepEqual(errorOf(result).code, 'NOT_SUPPORTED')
+  assert.equal(errorOf(result).message, '`linear triage show` works only with the Linear tracker, and tracker.system is "local"')
+})
+
+test('linear triage show without a key exits 2 with AUTH and sends nothing', async () => {
+  const fetch = businessFetch()
+  const result = await cli(setup({ withKey: false }), ['linear', 'triage', 'show', '--json'], fetch)
+  assert.equal(result.code, 2)
+  assert.equal(errorOf(result).code, 'AUTH')
+  assert.equal(fetch.calls.length, 0)
+})
+
+test('linear triage show prints no key', async () => {
+  const fetch = businessFetch({ responsibility: MANUAL })
+  const result = await cli(setup(), ['linear', 'triage', 'show', '--json'], fetch)
+  assert.ok(!result.stdout.includes(FAKE_KEY) && !result.stderr.includes(FAKE_KEY))
 })
