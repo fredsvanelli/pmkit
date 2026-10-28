@@ -97,3 +97,117 @@ test('customersText aligns the columns and says when there is no customer', () =
   )
   assert.equal(customersText([]), 'no customers yet')
 })
+
+import { planCustomerEdit, planLink, resolveCustomer } from './customers.mjs'
+
+const STATUSES = [{ id: 'st-1', name: 'Active' }, { id: 'st-2', name: 'Prospect' }]
+const TIERS = [{ id: 'tier-1', name: 'Gold' }, { id: 'tier-2', name: 'Silver' }]
+const MEMBERS = ['user-1', 'user-2']
+const CURRENT = customerView(node())
+const edit = (flags) => planCustomerEdit(CURRENT, flags, STATUSES, TIERS, MEMBERS)
+const code = (fn) => {
+  try {
+    fn()
+  } catch (error) {
+    return error
+  }
+  assert.fail('expected an error')
+}
+
+test('planCustomerEdit builds one input from each flag, resolving names case-insensitively', () => {
+  assert.deepEqual(edit({ status: 'prospect' }), { changed: true, input: { statusId: 'st-2' } })
+  assert.deepEqual(edit({ tier: 'SILVER' }), { changed: true, input: { tierId: 'tier-2' } })
+  assert.deepEqual(edit({ revenue: '5000' }), { changed: true, input: { revenue: 5000 } })
+  assert.deepEqual(edit({ size: '12' }), { changed: true, input: { size: 12 } })
+  assert.deepEqual(edit({ owner: 'user-1' }), { changed: true, input: { ownerId: 'user-1' } })
+  assert.deepEqual(edit({ name: 'ACME Inc' }), { changed: true, input: { name: 'ACME Inc' } })
+  assert.deepEqual(edit({ status: 'prospect', revenue: '0' }).input, { statusId: 'st-2', revenue: 0 })
+})
+
+test('planCustomerEdit clears the tier and the owner with none', () => {
+  assert.deepEqual(edit({ tier: 'none' }).input, { tierId: null })
+  assert.deepEqual(edit({ owner: 'none' }).input, { ownerId: null })
+})
+
+test('planCustomerEdit rejects bad input with INVALID_INPUT', () => {
+  const cases = [
+    {},
+    { status: 'Gone' },
+    { tier: 'Bronze' },
+    { revenue: '1.5' },
+    { revenue: '-3' },
+    { revenue: 'lots' },
+    { size: '2.5' },
+    { size: 'x' },
+    { owner: 'user-9' },
+    { name: '' },
+    { revenue: true },
+  ]
+  for (const flags of cases) assert.equal(code(() => edit(flags)).code, 'INVALID_INPUT', JSON.stringify(flags))
+  assert.match(code(() => edit({ status: 'Gone' })).nextStep, /Active, Prospect/)
+  assert.match(code(() => edit({ tier: 'Bronze' })).nextStep, /Gold, Silver/)
+})
+
+test('planCustomerEdit returns changed false when nothing differs', () => {
+  assert.deepEqual(edit({ status: 'active', tier: 'gold', revenue: '120000', size: '450', owner: 'user-2', name: 'ACME Corp' }), { changed: false })
+  const bare = planCustomerEdit(customerView(node({ tier: null, owner: null })), { tier: 'none', owner: 'none' }, STATUSES, TIERS, MEMBERS)
+  assert.deepEqual(bare, { changed: false })
+})
+
+test('resolveCustomer matches the id, then the exact name', () => {
+  const list = [customerView(node()), customerView(node({ id: 'cust-2', name: 'Globex' })), customerView(node({ id: 'cust-3', name: 'Dup' })), customerView(node({ id: 'cust-4', name: 'dup' }))]
+  assert.equal(resolveCustomer(list, 'cust-2').name, 'Globex')
+  assert.equal(resolveCustomer(list, 'acme corp').id, 'cust-1')
+  const ambiguous = code(() => resolveCustomer(list, 'DUP'))
+  assert.equal(ambiguous.code, 'INVALID_INPUT')
+  assert.match(ambiguous.nextStep, /cust-3/)
+  assert.match(ambiguous.nextStep, /cust-4/)
+  assert.equal(code(() => resolveCustomer(list, 'nobody')).code, 'NOT_FOUND')
+})
+
+const ISSUE = { type: 'issue', id: 'ACME-12', linearId: 'iss-12', title: 'Login' }
+const PROJECT = { type: 'project', id: 'proj-1', linearId: 'proj-1', name: 'Mobile' }
+const OWNED = [
+  requestView({ id: 'need-1', body: 'a', priority: 0, issue: { id: 'iss-9', identifier: 'ACME-9', title: 'Old' } }),
+  requestView({ id: 'need-2', body: 'b', priority: 1, project: { id: 'proj-2', name: 'Web' } }),
+]
+const link = (flags, target, requests = OWNED) => planLink({ customer: CURRENT, requests, flags, target })
+
+test('planLink creates a request on an issue or a project', () => {
+  assert.deepEqual(link({ issue: 'ACME-12' }, ISSUE), { kind: 'create', input: { customerId: 'cust-1', issueId: 'iss-12', priority: 0 } })
+  assert.deepEqual(link({ project: 'Mobile', important: true, body: 'Wants it' }, PROJECT), {
+    kind: 'create',
+    input: { customerId: 'cust-1', projectId: 'proj-1', priority: 1, body: 'Wants it' },
+  })
+})
+
+test('planLink reports CONFLICT for a second request on the same target', () => {
+  const error = code(() => link({ issue: 'ACME-9' }, { type: 'issue', id: 'ACME-9', linearId: 'iss-9', title: 'Old' }))
+  assert.equal(error.code, 'CONFLICT')
+  assert.match(error.message, /need-1/)
+  assert.match(error.nextStep, /--request/)
+})
+
+test('planLink moves a request the customer owns', () => {
+  assert.deepEqual(link({ request: 'need-1', project: 'Mobile' }, PROJECT), {
+    kind: 'move',
+    id: 'need-1',
+    from: { type: 'issue', id: 'ACME-9', title: 'Old' },
+    input: { issueId: null, projectId: 'proj-1' },
+  })
+  assert.deepEqual(link({ request: 'need-2', issue: 'ACME-12' }, ISSUE).input, { issueId: 'iss-12', projectId: null })
+})
+
+test('planLink rejects bad combinations with INVALID_INPUT', () => {
+  const cases = [
+    [{ issue: 'ACME-12', project: 'Mobile' }, ISSUE],
+    [{}, undefined],
+    [{ request: 'need-1' }, undefined],
+    [{ request: 'need-9', issue: 'ACME-12' }, ISSUE],
+    [{ request: 'need-1', issue: 'ACME-12', body: 'x' }, ISSUE],
+    [{ request: 'need-1', issue: 'ACME-12', important: true }, ISSUE],
+    [{ issue: 'not a key' }, undefined],
+    [{ request: 'need-1', issue: 'ACME-9' }, { type: 'issue', id: 'ACME-9', linearId: 'iss-9', title: 'Old' }],
+  ]
+  for (const [flags, target] of cases) assert.equal(code(() => link(flags, target)).code, 'INVALID_INPUT', JSON.stringify(flags))
+})
