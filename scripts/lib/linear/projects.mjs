@@ -27,8 +27,8 @@ export function epicKey(input) {
   return { kind: 'other', value: input }
 }
 
-/** The canonical epic id of a project node: the identifier in upper case, or the slug in lower case when it has none. */
-export const epicId = (node) => (node.identifier ? node.identifier.toUpperCase() : node.slugId.toLowerCase())
+/** The canonical epic id of a project node: the identifier in upper case when epicKey knows its shape, else the slug in lower case. */
+export const epicId = (node) => (node.identifier && epicKey(node.identifier).kind === 'identifier' ? node.identifier.toUpperCase() : node.slugId.toLowerCase())
 
 const nodesOf = (connection) => connection?.nodes ?? []
 const compact = (object) => Object.fromEntries(Object.entries(object).filter(([, value]) => value !== null && value !== undefined))

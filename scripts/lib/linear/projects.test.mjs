@@ -36,6 +36,11 @@ test('epicId is the identifier in upper case, else the slug in lower case', () =
   assert.equal(epicId(project({ identifier: null, slugId: 'A1B2C3D4E5F6' })), 'a1b2c3d4e5f6')
 })
 
+test('epicId uses the slug when the identifier has a shape epicKey does not know', () => {
+  assert.equal(epicId(project({ identifier: 'ACME-1', slugId: 'A1B2C3D4E5F6' })), 'a1b2c3d4e5f6')
+  assert.equal(epicKey(epicId(project({ identifier: 'ACME-1' }))).kind, 'slug')
+})
+
 test('toEpic maps every status type to a category and keeps the status name', () => {
   const expected = { backlog: 'backlog', planned: 'todo', started: 'in_progress', completed: 'done', canceled: 'canceled', paused: 'backlog' }
   assert.deepEqual(STATUS_CATEGORY, expected)
