@@ -102,7 +102,7 @@ const pick = ({ id, name }) => ({ id, name })
  *                   Rule 1: a state named by mappings.status.<category> takes that category; every other state takes
  *                   the category of its Linear type. blocked and none never change a category.
  *   targetState(category)   { id, name } of the state a move to `category` sets. Rule 2: the state mappings.status.<category>
- *                   names, else the first state of the team by position in that category, else null. A null target is a
+ *                   names, else the first state of the team by position in that category. States of type duplicate come last and the fallback never picks one alone: a category with only duplicate states gives null, and duplicateOnly(category) is true. Setting mappings.status.<category> to the Duplicate state allows the move. Otherwise null. A null target is a
  *                   NOT_SUPPORTED error for the caller: `team ACME has no status in the in_review category`, next step /pmkit:setup.
  *   blockedState    { id, name } of the state mappings.status.blocked names, or null. Rule 3: an issue in this state is blocked,
  *                   and the state keeps the category of its type.
