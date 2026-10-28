@@ -6,6 +6,10 @@ import { createLocalTracker } from './lib/local/tracker.mjs'
 import { runTrackerContract } from './contract-suite.mjs'
 import { makeRepo } from './test-helpers.mjs'
 
+test('resolveThread is a contract operation next to comment', () => {
+  assert.equal(TRACKER_OPERATIONS.indexOf('resolveThread'), TRACKER_OPERATIONS.indexOf('comment') + 1)
+})
+
 describe('assertTracker', () => {
   test('lists every missing operation', () => {
     const partial = { discover() {}, getIssue() {} }

@@ -35,9 +35,9 @@ test('the tracker passes assertTracker', () => {
 
 test('a stub throws NOT_SUPPORTED once the mapping check passes', async () => {
   const { fetch, tracker: linear } = tracker(setup())
-  await assert.rejects(linear.getHistory('ACME-1'), {
+  await assert.rejects(linear.listCycles(), {
     code: 'NOT_SUPPORTED',
-    message: 'the Linear adapter does not implement getHistory yet',
+    message: 'the Linear adapter does not implement listCycles yet',
     nextStep: 'Set tracker.system to local in .pmkit/config.yaml to use this command now',
   })
   assert.equal(callsOf(fetch, 'PmkitTeams'), 1)
@@ -49,10 +49,10 @@ test('a stub without a workspace throws NOT_CONFIGURED', async () => {
   await assert.rejects(linear.getIssue('ACME-1'), { code: 'NOT_CONFIGURED', message: 'tracker.scope.workspace is not set', nextStep: '/pmkit:setup' })
 })
 
-// Two operations that stay stubs after PMK-35, so the mapping check is all these tests reach.
+// Two operations that stay stubs after PMK-36, so the mapping check is all these tests reach.
 const stubs = {
-  read: (linear) => linear.listComments('ACME-1'),
-  write: (linear) => linear.comment('ACME-1', 'x'),
+  read: (linear) => linear.listCycles(),
+  write: (linear) => linear.logTime('ACME-1', 5, 'x'),
 }
 
 test('a stub with a status removed from the workspace throws NOT_CONFIGURED with details.mappings', async () => {
