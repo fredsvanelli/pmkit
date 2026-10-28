@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { after, afterEach, test } from 'node:test'
 import { FAKE_KEY, fakeLinearFetch, json, page } from '../../fake-linear-api.mjs'
 import { PmkitError } from '../errors.mjs'
-import { LINEAR_ENDPOINT, createLinearClient, isMutation, secretKeyPaths } from './client.mjs'
+import { LINEAR_ENDPOINT, createLinearClient, isMutation, operationName, secretKeyPaths } from './client.mjs'
 
 // A client built without an injected fetch must fail loudly, not reach the network.
 let realFetchCalls = 0
@@ -94,6 +94,13 @@ test('a valid client sends nothing at creation and is frozen with four methods',
   assert.equal(f.calls.length, 0)
   assert.ok(Object.isFrozen(client))
   assert.deepEqual(Object.keys(client).sort(), ['paginate', 'rateLimit', 'request', 'session'])
+})
+
+test('operationName names the first operation after a fragment', () => {
+  assert.equal(operationName('fragment F on Issue { id } mutation PmkitIssueUpdate($id: String!) { x }'), 'PmkitIssueUpdate')
+  assert.equal(operationName('# c\nfragment F on Issue { id }\n# d\nquery PmkitIssues { x }'), 'PmkitIssues')
+  assert.equal(operationName('fragment F on Issue { id } { viewer { id } }'), null)
+  assert.equal(operationName('fragment F on Issue { id '), null)
 })
 
 test('isMutation ignores comments and keyword prefixes', () => {
@@ -430,7 +437,7 @@ test('a mutation with an unreadable answer is sent once and asks the user to che
 
 test('a mutation that follows a fragment is sent once', async () => {
   const document = 'fragment F on Issue { id } mutation M { issueUpdate { issue { ...F } } }'
-  const { client, f } = make({ routes: { '(anonymous)': { status: 503, json: { errors: [{ message: 'down' }] } } }, sleep: async () => {} })
+  const { client, f } = make({ routes: { M: { status: 503, json: { errors: [{ message: 'down' }] } } }, sleep: async () => {} })
   const error = await client.request(document).catch((caught) => caught)
   assert.equal(error.message, 'Linear did not confirm the change: HTTP 503')
   assert.equal(f.calls.filter((call) => call.body.query === document).length, 1)

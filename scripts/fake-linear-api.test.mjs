@@ -19,6 +19,13 @@ test('operationName reads the name and skips comments', () => {
   assert.equal(operationName('# note\nquery Q { x }'), 'Q')
 })
 
+test('a named mutation after a fragment routes by its name', async () => {
+  const fetch = fakeLinearFetch({ PmkitIssueUpdate: json({ ok: true }) })
+  const response = await post(fetch, 'fragment F on Issue { id } mutation PmkitIssueUpdate { x }')
+  assert.deepEqual(JSON.parse(await response.text()), { data: { ok: true } })
+  assert.deepEqual(fetch.unrouted, [])
+})
+
 test('the fake records each call with plain headers and a parsed body', async () => {
   const fetch = fakeLinearFetch({ Q: json({ a: 1 }) })
   await post(fetch, 'query Q { a }', { x: 1 })
