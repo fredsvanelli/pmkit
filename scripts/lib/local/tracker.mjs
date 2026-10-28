@@ -680,6 +680,26 @@ export function createLocalTracker(root, {
       .sort((a, b) => (a.created < b.created ? -1 : a.created > b.created ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   }
 
+  /** Resolves the thread that holds `commentId`: the root gains `resolved` and `resolved_by`. A resolved thread is left alone. */
+  function resolveThread(id, commentId, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const found = findComment(id, commentId)
+    const before = found.parent === undefined ? found : findComment(id, found.parent)
+    if (before.resolved) return { before, after: before }
+    let after
+    change(id, actor, { dryRun, eventsOnly: true }, (issue, meta) => {
+      after = { ...before, resolved: { at: meta.at, by: actor } }
+      const file = path.join(issuePaths(issuesDir, issue.id).comments, `${before.id}.md`)
+      if (!dryRun) {
+        const split = splitFrontmatter(fs.readFileSync(file, 'utf8'))
+        const data = { ...parseYaml(split.yaml), resolved: meta.at, resolved_by: actor }
+        writeFile(file, joinFrontmatter(data, `${split.body.trim()}\n`, { order: ['author', 'created', 'reply_to', 'resolved', 'resolved_by'] }))
+      }
+      return [{ ...meta, op: 'comment', field: 'resolved', to: `${before.id}.md` }]
+    })
+    return { before, after }
+  }
+
   function getHistory(id, { since } = {}) {
     const { events } = readEvents(readIssue(id).paths.events)
     return since === undefined ? events : events.filter((event) => event.at >= since)
@@ -1048,7 +1068,7 @@ export function createLocalTracker(root, {
     listMilestones, getMilestone, createMilestone, unfiledMilestones,
     listReleases, getRelease, createRelease, releaseIssues, markReleased,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
-    comment, listComments, getHistory, logTime, readDocument, createDocument,
+    comment, resolveThread, listComments, getHistory, logTime, readDocument, createDocument,
     discover, capabilities, reindex, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
     listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity, getDaysOff, updateCycleCapacity,
     writtenFiles,

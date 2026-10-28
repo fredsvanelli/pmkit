@@ -143,3 +143,43 @@ test('a dry-run reply returns the comment and writes nothing', () => {
   assert.equal(tracker.comment(id, 'answer', 'fred', { dryRun: true, replyTo: parent.id }).parent, parent.id)
   assert.deepEqual(hashTree(root), before)
 })
+
+test('resolveThread marks the root, logs one event and reads back', () => {
+  const { tracker, id, paths, rawEvents, setNow } = setup()
+  const root = tracker.comment(id, 'question', 'fred')
+  setNow('2026-10-23T12:00:05Z')
+  const reply = tracker.comment(id, 'answer', 'fred', { replyTo: root.id })
+  setNow('2026-10-23T12:00:09Z')
+  const { before, after } = tracker.resolveThread(id, reply.id, 'fred')
+  assert.equal(before.resolved, undefined)
+  assert.deepEqual(after, { ...root, resolved: { at: '2026-10-23T12:00:09Z', by: 'fred' } })
+  assert.deepEqual(tracker.listComments(id).map((c) => c.resolved?.by), ['fred', undefined])
+  const last = rawEvents().at(-1)
+  assert.deepEqual([last.op, last.field, last.to], ['comment', 'resolved', `${root.id}.md`])
+  assert.match(fs.readFileSync(path.join(paths.comments, `${root.id}.md`), 'utf8'), /resolved_by: fred/)
+})
+
+test('resolving a resolved thread writes nothing', () => {
+  const { tracker, id, root: repo } = setup()
+  const c = tracker.comment(id, 'q', 'fred')
+  tracker.resolveThread(id, c.id, 'fred')
+  const before = hashTree(repo)
+  const again = tracker.resolveThread(id, c.id, 'fred')
+  assert.deepEqual(again.after, again.before)
+  assert.deepEqual(hashTree(repo), before)
+})
+
+test('a dry-run resolve returns the result and writes nothing', () => {
+  const { tracker, id, root: repo } = setup()
+  const c = tracker.comment(id, 'q', 'fred')
+  const before = hashTree(repo)
+  assert.equal(tracker.resolveThread(id, c.id, 'fred', { dryRun: true }).after.resolved.by, 'fred')
+  assert.deepEqual(hashTree(repo), before)
+})
+
+test('resolveThread on an unknown comment is NOT_FOUND, and an unknown actor is refused', () => {
+  const { tracker, id } = setup()
+  assert.throws(() => tracker.resolveThread(id, 'nope', 'fred'), { code: 'NOT_FOUND' })
+  const c = tracker.comment(id, 'q', 'fred')
+  assert.throws(() => tracker.resolveThread(id, c.id, 'stranger'), { code: 'INVALID_INPUT' })
+})
