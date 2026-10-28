@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ACME_TEAM_ID, FAKE_KEY, fakeLinearFetch, fakeTriage, fakeWorkspace, json, page } from './fake-linear-api.mjs'
+import { ACME_LABELS, ACME_STATES, ACME_TEAM, ACME_TEAM_ID, ACME_USERS, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeTriage, fakeWorkspace, json, page } from './fake-linear-api.mjs'
+import { ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_UPDATE, NESTED_PAGES } from './lib/linear/documents.mjs'
 import { operationName } from './lib/linear/client.mjs'
 
 const ENDPOINT = 'https://api.linear.app/graphql'
@@ -170,4 +171,154 @@ test('fakeTriage answers the five triage operations and records them by name', a
     assert.equal((await read('mutation PmkitTriageDelete($id: String!) { x }', { id: 'tr-1' })).triageResponsibilityDelete.success, true)
     assert.deepEqual(fetch.calls.map((call) => operationName(call.body.query)), ['PmkitTriageShow', 'PmkitTriageSuggestions', 'PmkitTriageCreate', 'PmkitTriageUpdate', 'PmkitTriageDelete'])
   }
+})
+
+const send = (fetch, query, variables) =>
+  post(fetch, query, variables).then(async (response) => ({ status: response.status, body: response.status === 200 ? JSON.parse(await response.text()) : null }))
+const idsOf = (body) => body.data.issues.nodes.map((node) => node.identifier)
+
+function issueStore(options) {
+  const fake = fakeLinearIssues(options)
+  return { fake, fetch: fakeLinearFetch(fake.routes) }
+}
+
+test('the acme fixtures are exported for tests to extend', () => {
+  assert.equal(ACME_TEAM.id, ACME_TEAM_ID)
+  assert.equal(ACME_STATES.length, 10)
+  assert.ok(ACME_LABELS.some((label) => label.name === 'Docs' && label.team === null))
+  assert.ok(ACME_USERS.some((user) => user.id === 'user-1'))
+})
+
+test('create assigns identifiers, honors a client id, and records the mutation', async () => {
+  const { fake, fetch } = issueStore()
+  const first = await send(fetch, ISSUE_CREATE, { input: { id: 'uuid-1', teamId: 'team-acme', title: 'A' } })
+  assert.equal(first.body.data.issueCreate.issue.identifier, 'ACME-1')
+  assert.equal(first.body.data.issueCreate.issue.id, 'uuid-1')
+  assert.equal(first.body.data.issueCreate.issue.branchName, 'acme-1-a')
+  assert.deepEqual(first.body.data.issueCreate.issue.state, { id: 'state-1', name: 'Backlog', type: 'backlog' })
+  assert.equal(first.body.data.issueCreate.issue.createdAt, '2026-10-27T12:00:01.000Z')
+  const second = await send(fetch, ISSUE_CREATE, { input: { teamId: 'team-acme', title: 'B', stateId: 'state-2', labelIds: ['label-bug'] } })
+  assert.equal(second.body.data.issueCreate.issue.identifier, 'ACME-2')
+  assert.equal(second.body.data.issueCreate.issue.state.name, 'Todo')
+  assert.deepEqual(second.body.data.issueCreate.issue.labels.nodes, [{ id: 'label-bug', name: 'Bug', parent: null }])
+  assert.deepEqual(fake.mutations, ['PmkitIssueCreate', 'PmkitIssueCreate'])
+  assert.equal(fake.nodes().length, 2)
+})
+
+test('an unknown input field fails with GRAPHQL_VALIDATION_FAILED', async () => {
+  const { fetch } = issueStore()
+  const { body } = await send(fetch, ISSUE_CREATE, { input: { teamId: 'team-acme', title: 'A', branch: 'x' } })
+  assert.equal(body.errors[0].extensions.code, 'GRAPHQL_VALIDATION_FAILED')
+})
+
+test('by id matches lowercase identifiers, UUIDs and archived issues; a missing one is an empty list', async () => {
+  const { fake, fetch } = issueStore()
+  fake.seed({ id: 'uuid-1', title: 'One' })
+  await send(fetch, ISSUE_ARCHIVE, { id: 'ACME-1' })
+  assert.deepEqual(idsOf((await send(fetch, ISSUE_BY_ID_QUERY, { id: 'acme-1' })).body), ['ACME-1'])
+  assert.deepEqual(idsOf((await send(fetch, ISSUE_BY_ID_QUERY, { id: 'uuid-1' })).body), ['ACME-1'])
+  assert.deepEqual(idsOf((await send(fetch, ISSUE_BY_ID_QUERY, { id: 'ACME-99' })).body), [])
+})
+
+test('search filters, sorts oldest first and pages by first and after', async () => {
+  const { fake, fetch } = issueStore()
+  for (const title of ['Alpha', 'Beta', 'Gamma']) fake.seed({ title })
+  const sort = [{ createdAt: { order: 'Ascending' } }]
+  const one = (await send(fetch, ISSUES_QUERY, { filter: { and: [{ team: { key: { eq: 'ACME' } } }] }, first: 2, sort })).body.data.issues
+  assert.deepEqual(one.nodes.map((node) => node.identifier), ['ACME-1', 'ACME-2'])
+  assert.deepEqual(one.pageInfo, { hasNextPage: true, endCursor: '2' })
+  const two = (await send(fetch, ISSUES_QUERY, { filter: { and: [] }, first: 2, after: '2', sort })).body.data.issues
+  assert.deepEqual(two.nodes.map((node) => node.identifier), ['ACME-3'])
+  assert.equal(two.pageInfo.hasNextPage, false)
+  const newest = (await send(fetch, ISSUES_QUERY, { first: 5, sort: [{ createdAt: { order: 'Descending' } }] })).body
+  assert.deepEqual(idsOf(newest), ['ACME-3', 'ACME-2', 'ACME-1'])
+  const text = { or: [{ title: { containsIgnoreCase: 'ET' } }, { description: { containsIgnoreCase: 'ET' } }] }
+  assert.deepEqual(idsOf((await send(fetch, ISSUES_QUERY, { filter: { and: [text] }, first: 5, sort })).body), ['ACME-2'])
+})
+
+test('search evaluates every clause pmkit sends', async () => {
+  const { fake, fetch } = issueStore()
+  fake.seed({ title: 'A', stateId: 'state-3', assigneeId: 'user-2', labelIds: ['label-bug', 'label-xs'] })
+  fake.seed({ title: 'B', parentId: 'ACME-1' })
+  const sort = [{ createdAt: { order: 'Ascending' } }]
+  const find = async (clause) => idsOf((await send(fetch, ISSUES_QUERY, { filter: { and: [clause] }, first: 10, sort })).body)
+  assert.deepEqual(await find({ id: { in: ['acme-2'] } }), ['ACME-2'])
+  assert.deepEqual(await find({ state: { id: { in: ['state-3'] } } }), ['ACME-1'])
+  assert.deepEqual(await find({ labels: { some: { name: { in: ['Bug'] } } } }), ['ACME-1'])
+  assert.deepEqual(await find({ labels: { some: { name: { eq: 'XS' } } } }), ['ACME-1'])
+  assert.deepEqual(await find({ assignee: { id: { eq: 'user-2' } } }), ['ACME-1'])
+  assert.deepEqual(await find({ assignee: { null: true } }), ['ACME-2'])
+  assert.deepEqual(await find({ parent: { id: { eq: 'ACME-1' } } }), ['ACME-2'])
+  assert.deepEqual(await find({ hasBlockedByRelations: { eq: true } }), [])
+  assert.deepEqual(await find({ updatedAt: { gt: '2026-10-27T12:00:01.500Z' } }), ['ACME-2'])
+  assert.deepEqual(await find({ updatedAt: { lt: '2026-10-27T12:00:01.500Z' } }), ['ACME-1'])
+})
+
+test('an unknown filter key fails with GRAPHQL_VALIDATION_FAILED', async () => {
+  const { fetch } = issueStore()
+  const { body } = await send(fetch, ISSUES_QUERY, { filter: { and: [{ priority: { eq: 1 } }] }, first: 5 })
+  assert.equal(body.errors[0].extensions.code, 'GRAPHQL_VALIDATION_FAILED')
+  assert.equal(body.errors[0].message, 'Unknown filter priority')
+})
+
+test('update sets state, assignee, labels, parent and clears with null', async () => {
+  const { fake, fetch } = issueStore()
+  fake.seed({ id: 'uuid-1', title: 'Parent' })
+  fake.seed({ title: 'Child', assigneeId: 'user-2' })
+  const input = { stateId: 'state-8', assigneeId: null, labelIds: ['label-feature'], parentId: 'uuid-1', title: 'Renamed', priority: 2, dueDate: '2026-11-01' }
+  const issue = (await send(fetch, ISSUE_UPDATE, { id: 'ACME-2', input })).body.data.issueUpdate.issue
+  assert.equal(issue.state.name, 'Done')
+  assert.equal(issue.assignee, null)
+  assert.deepEqual(issue.labels.nodes.map((label) => label.name), ['Feature'])
+  assert.deepEqual(issue.parent, { identifier: 'ACME-1' })
+  assert.equal(issue.title, 'Renamed')
+  assert.equal(issue.priority, 2)
+  assert.equal(issue.dueDate, '2026-11-01')
+  assert.equal(issue.updatedAt, '2026-10-27T12:00:03.000Z')
+  const parent = (await send(fetch, ISSUE_BY_ID_QUERY, { id: 'ACME-1' })).body.data.issues.nodes[0]
+  assert.deepEqual(parent.children.nodes, [{ identifier: 'ACME-2' }])
+  const cleared = (await send(fetch, ISSUE_UPDATE, { id: 'ACME-2', input: { parentId: null, dueDate: null } })).body.data.issueUpdate.issue
+  assert.equal(cleared.parent, null)
+  assert.equal(cleared.dueDate, null)
+})
+
+test('a mutation on an unknown issue answers INPUT_ERROR', async () => {
+  const { fetch } = issueStore()
+  const { body } = await send(fetch, ISSUE_UPDATE, { id: 'ACME-9', input: { title: 'x' } })
+  assert.equal(body.errors[0].extensions.code, 'INPUT_ERROR')
+  assert.equal(body.errors[0].message, 'Could not find referenced Issue.')
+})
+
+test('archive hides the issue from search without includeArchived', async () => {
+  const { fake, fetch } = issueStore()
+  fake.seed({ title: 'Kept' })
+  fake.seed({ title: 'Gone' })
+  assert.equal((await send(fetch, ISSUE_ARCHIVE, { id: 'ACME-2' })).body.data.issueArchive.success, true)
+  assert.deepEqual(idsOf((await send(fetch, ISSUES_QUERY, { first: 5, sort: [{ createdAt: { order: 'Ascending' } }] })).body), ['ACME-1'])
+  const all = (await send(fetch, ISSUES_QUERY, { first: 5, includeArchived: true, sort: [{ createdAt: { order: 'Ascending' } }] })).body
+  assert.deepEqual(idsOf(all), ['ACME-1', 'ACME-2'])
+  assert.notEqual(all.data.issues.nodes[1].archivedAt, null)
+})
+
+test('nested connections page at nestedPage and the page documents read the rest', async () => {
+  const { fake, fetch } = issueStore({ nestedPage: 1 })
+  fake.seed({ id: 'uuid-1', title: 'Two labels', labelIds: ['label-docs', 'label-s'] })
+  const node = (await send(fetch, ISSUE_BY_ID_QUERY, { id: 'ACME-1' })).body.data.issues.nodes[0]
+  assert.deepEqual(node.labels.nodes.map((label) => label.name), ['Docs'])
+  assert.deepEqual(node.labels.pageInfo, { hasNextPage: true, endCursor: '1' })
+  const rest = (await send(fetch, NESTED_PAGES.labels, { id: 'uuid-1', first: 50, after: '1' })).body.data.issue.labels
+  assert.deepEqual(rest.nodes, [{ id: 'label-s', name: 'S', parent: { name: 'Size' } }])
+  assert.equal(rest.pageInfo.hasNextPage, false)
+})
+
+test('unconfirm answers 502 once, with or without applying', async () => {
+  const { fake, fetch } = issueStore()
+  fake.unconfirm('PmkitIssueCreate', { applied: true })
+  assert.equal((await send(fetch, ISSUE_CREATE, { input: { teamId: 'team-acme', title: 'A' } })).status, 502)
+  assert.equal(fake.nodes().length, 1)
+  fake.unconfirm('PmkitIssueCreate', { applied: false })
+  assert.equal((await send(fetch, ISSUE_CREATE, { input: { teamId: 'team-acme', title: 'B' } })).status, 502)
+  assert.equal(fake.nodes().length, 1)
+  assert.equal((await send(fetch, ISSUE_CREATE, { input: { teamId: 'team-acme', title: 'C' } })).status, 200)
+  assert.deepEqual(fake.mutations, ['PmkitIssueCreate', 'PmkitIssueCreate', 'PmkitIssueCreate'])
 })

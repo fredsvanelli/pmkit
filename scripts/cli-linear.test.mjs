@@ -9,7 +9,7 @@ import { ADAPTERS } from './lib/adapters.mjs'
 import { linearDescriptor } from './lib/linear/adapter.mjs'
 import { isMutation, operationName } from './lib/linear/client.mjs'
 import { useLinear } from './fake-hosted.mjs'
-import { FAKE_KEY, acmeTeam, fakeLinearFetch, fakeTriage, fakeWorkspace } from './fake-linear-api.mjs'
+import { ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeTriage, fakeWorkspace } from './fake-linear-api.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo, userStoreEnv } from './test-helpers.mjs'
 
@@ -426,7 +426,7 @@ test('a broken mapping reaches the JSON error as error.mappings', async () => {
 
 // Triage rotation (PMK-43). The Free workspace is the proof for the absent capability; the paid ones use the fake.
 const BUSINESS = { type: 'Business' }
-const paidTeam = (extra = {}) => ({ ...acmeTeam, triageEnabled: true, ...extra })
+const paidTeam = (extra = {}) => ({ ...ACME_TEAM, triageEnabled: true, ...extra })
 const MANUAL = {
   id: 'tr-1',
   action: 'assign',
