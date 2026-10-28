@@ -1553,6 +1553,7 @@ test('every read goes on with one warning', () => {
     'pr status': [],
     reindex: [],
     'linear customers list': [],
+    'linear customers show': ['--customer', 'acme'],
     'linear triage show': [],
     'linear triage suggestions': [],
     render: ['board'],

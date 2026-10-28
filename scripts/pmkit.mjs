@@ -1006,6 +1006,11 @@ export const COMMANDS = [
     run: async (ctx) => (await ctx.linear('customers')).list({ status: ctx.opt('status'), tier: ctx.opt('tier'), limit: ctx.opt('limit') }),
   },
   {
+    name: 'linear customers show', summary: 'one customer with its requests, newest first, and what each request is linked to',
+    usage: '--customer ID_OR_NAME', linear: true, flags: ['customer'],
+    run: async (ctx) => (await ctx.linear('customers')).show({ customer: ctx.opt('customer') }),
+  },
+  {
     name: 'validate', summary: 'checks every file and reference; problems are output, not errors', flags: [], exempt: true,
     run: (ctx) => {
       const result = validateRepo(ctx.root, { adapters: ctx.adapters })

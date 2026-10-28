@@ -197,6 +197,10 @@ export const LIST_QUERY = `query PmkitCustomersList($first: Int!, $after: String
 export const STATUSES_QUERY = `query PmkitCustomerStatuses($first: Int!, $after: String) { customerStatuses(first: $first, after: $after) { nodes { id name } ${PAGE_INFO} } }`
 export const TIERS_QUERY = `query PmkitCustomerTiers($first: Int!, $after: String) { customerTiers(first: $first, after: $after) { nodes { id name } ${PAGE_INFO} } }`
 
+export const SHOW_QUERY = `query PmkitCustomerShow($id: String!) { customer(id: $id) { ${CUSTOMER_FIELDS} needs(first: 50) { nodes { id body priority createdAt issue { id identifier title archivedAt } project { id name } } ${PAGE_INFO} } } }`
+
+const LOOKUP_LIMIT = 250
+
 const DEFAULT_LIMIT = 50
 const MAX_LIMIT = 100
 const STALE_HINT = 'Linear says this workspace has no customers. Run pmkit discover to refresh the workspace flags'
@@ -224,6 +228,26 @@ function unavailable({ reason, plan, enableHint }, warnings = []) {
   }
 }
 
+function targetText(target) {
+  if (!target) return 'no target'
+  if (target.type === 'project') return `project "${target.name}"`
+  return `issue ${target.id} "${target.title}"${target.archived ? ' (archived)' : ''}`
+}
+
+/** The plain text of one customer with its requests. */
+export function customerText(customer, requests) {
+  const lines = [customersText([customer]), customer.url ?? '']
+  if (customer.owner) lines[1] = `owner ${customer.owner.name}  ${customer.url ?? ''}`.trim()
+  if (requests.length === 0) return [...lines, 'no requests yet'].join('\n')
+  const targets = requests.map((request) => targetText(request.target))
+  const width = Math.max(...targets.map((text) => text.length))
+  return [
+    ...lines,
+    'requests:',
+    ...requests.map((request, index) => `  ${request.id}  ${request.important ? 'important' : 'normal   '}  ${targets[index].padEnd(width)}  ${request.body}`.trimEnd()),
+  ].join('\n')
+}
+
 /**
  * The customer operations of the Linear tracker. discovery is the tracker's cached discovery, client the Linear client.
  * Every method returns { data, text, warnings? }, the shape a command returns.
@@ -246,6 +270,13 @@ export function createCustomers({ client, discovery }) {
     }
   }
 
+  /** Every customer (up to LOOKUP_LIMIT) as views, for resolving a name. */
+  async function lookup(warnings) {
+    const found = await client.paginate(LIST_QUERY, {}, { select: (data) => data.customers, pageSize: 100, limit: LOOKUP_LIMIT })
+    if (found.hasMore) warnings.push(`the workspace has more than ${LOOKUP_LIMIT} customers; only the first ${LOOKUP_LIMIT} can be matched by name. Use the id`)
+    return found.nodes.map(customerView)
+  }
+
   async function list({ status, tier, limit: limitFlag } = {}) {
     const { raw, warnings, availability } = await context()
     if (!availability.available) return unavailable(availability, warnings)
@@ -262,5 +293,21 @@ export function createCustomers({ client, discovery }) {
     })
   }
 
-  return Object.freeze({ list })
+  async function show({ customer: ref } = {}) {
+    const { raw, warnings, availability } = await context()
+    if (!availability.available) return unavailable(availability, warnings)
+    const all = [...warnings]
+    return guarded(raw, all, async () => {
+      const chosen = resolveCustomer(await lookup(all), ref)
+      const node = (await client.request(SHOW_QUERY, { id: chosen.id }))?.customer
+      if (!node) throw new PmkitError('NOT_FOUND', `Linear no longer returns customer ${chosen.id}`, 'Run linear customers list')
+      const needs = [...(node.needs?.nodes ?? [])].sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))
+      if (node.needs?.pageInfo?.hasNextPage) all.push('the customer has more requests than the 50 shown; the newest are listed')
+      const customer = customerView(node)
+      const requests = needs.map(requestView)
+      return { data: { available: true, customer, requests }, text: customerText(customer, requests), warnings: all }
+    })
+  }
+
+  return Object.freeze({ list, show })
 }

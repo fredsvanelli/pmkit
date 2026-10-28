@@ -1270,3 +1270,60 @@ test('linear customers list without a key exits 2 with AUTH and sends nothing, a
   const ok = await cli(setup(), ['linear', 'customers', 'list', '--json'], onFetch())
   assert.ok(!ok.stdout.includes(FAKE_KEY) && !ok.stderr.includes(FAKE_KEY))
 })
+
+const NEEDS = [
+  { id: 'need-1', customerId: 'cust-2', body: 'Wants SSO', priority: 1, createdAt: '2026-10-01T00:00:00Z', issue: { id: 'iss-12', identifier: 'ACME-12', title: 'SSO login', archivedAt: null } },
+  { id: 'need-2', customerId: 'cust-2', body: 'Mobile app', priority: 0, createdAt: '2026-10-05T00:00:00Z', project: { id: 'proj-1', name: 'Mobile' } },
+  { id: 'need-3', customerId: 'cust-2', body: 'General wish', priority: 0, createdAt: '2026-10-03T00:00:00Z' },
+  { id: 'need-4', customerId: 'cust-2', body: 'Old', priority: 0, createdAt: '2026-09-01T00:00:00Z', issue: { id: 'iss-3', identifier: 'ACME-3', title: 'Gone', archivedAt: '2026-09-02T00:00:00Z' } },
+  { id: 'need-5', customerId: 'cust-3', body: 'Other', priority: 0, createdAt: '2026-10-02T00:00:00Z' },
+]
+const withNeeds = (extra = {}) => onFetch({ needs: NEEDS, ...extra })
+
+test('linear customers show on a Free workspace is unavailable and sends no customer query', async () => {
+  const fetch = customersFetch()
+  const json = await cli(setup(), ['linear', 'customers', 'show', '--customer', 'acme', '--json'], fetch)
+  assert.equal(json.code, 0, json.stderr)
+  assert.deepEqual(JSON.parse(json.stdout), { available: false, reason: 'plan', plan: 'free', enableHint: 'Linear customers need the Business or Enterprise plan' })
+  const text = await cli(setup(), ['linear', 'customers', 'show', '--customer', 'acme'], fetch)
+  assert.match(text.stdout, /^customers: unavailable\n/)
+  assert.equal(customerCalls(fetch).length, 0)
+  assert.equal(mutationCalls(fetch).length, 0)
+})
+
+test('linear customers show lists the requests newest first with their targets', async () => {
+  const fetch = withNeeds()
+  const result = await cli(setup(), ['linear', 'customers', 'show', '--customer', 'cust-2', '--json'], fetch)
+  assert.equal(result.code, 0, result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.available, true)
+  assert.equal(data.customer.name, 'ACME Corp')
+  assert.deepEqual(data.requests.map((request) => request.id), ['need-2', 'need-3', 'need-1', 'need-4'])
+  assert.deepEqual(data.requests.map((request) => request.target), [
+    { type: 'project', id: 'proj-1', name: 'Mobile' },
+    null,
+    { type: 'issue', id: 'ACME-12', title: 'SSO login' },
+    { type: 'issue', id: 'ACME-3', title: 'Gone', archived: true },
+  ])
+  assert.deepEqual(data.requests.map((request) => request.important), [false, false, true, false])
+  assert.equal(mutationCalls(fetch).length, 0)
+  const text = await cli(setup(), ['linear', 'customers', 'show', '--customer', 'cust-2'], withNeeds())
+  assert.match(text.stdout, /^ACME Corp +status Active/)
+  assert.match(text.stdout, /\n {2}need-1 +important +issue ACME-12 "SSO login" +Wants SSO\n/)
+  assert.match(text.stdout, /\n {2}need-3 +normal +no target +General wish\n/)
+  assert.match(text.stdout, /\n {2}need-2 +normal +project "Mobile" +Mobile app\n/)
+  assert.match(text.stdout, /\n {2}need-4 +normal +issue ACME-3 "Gone" \(archived\) +Old\n$/)
+})
+
+test('linear customers show matches the id, then the exact name', async () => {
+  const byName = JSON.parse((await cli(setup(), ['linear', 'customers', 'show', '--customer', 'acme corp', '--json'], withNeeds())).stdout)
+  assert.equal(byName.customer.id, 'cust-2')
+  const twins = onFetch({ customers: [customerNode('c-a', 'Twin'), customerNode('c-b', 'twin')] })
+  const ambiguous = await cli(setup(), ['linear', 'customers', 'show', '--customer', 'TWIN', '--json'], twins)
+  assert.equal(errorOf(ambiguous).code, 'INVALID_INPUT')
+  assert.match(errorOf(ambiguous).nextStep, /c-a, c-b/)
+  const missing = await cli(setup(), ['linear', 'customers', 'show', '--customer', 'nobody', '--json'], withNeeds())
+  assert.equal(errorOf(missing).code, 'NOT_FOUND')
+  const none = await cli(setup(), ['linear', 'customers', 'show', '--json'], withNeeds())
+  assert.equal(errorOf(none).code, 'INVALID_INPUT')
+})
