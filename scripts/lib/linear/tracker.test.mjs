@@ -2,11 +2,11 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
-import { FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeWorkspace } from '../../fake-linear-api.mjs'
+import { ACME_LABELS, ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeWorkspace } from '../../fake-linear-api.mjs'
 import { tempDir, userStoreEnv } from '../../test-helpers.mjs'
 import { assertTracker } from '../contract.mjs'
 import { cachePut, repoHash } from '../user-store.mjs'
-import { operationName } from './client.mjs'
+import { isMutation, operationName } from './client.mjs'
 import { createLinearTracker } from './tracker.mjs'
 
 const START = new Date('2026-10-27T12:00:00Z')
@@ -409,4 +409,131 @@ test('sprint and release fail with NOT_SUPPORTED', async () => {
   const { tracker: linear } = linearSetup()
   await assert.rejects(linear.searchIssues({ sprint: 'current' }), { code: 'NOT_SUPPORTED' })
   await assert.rejects(linear.searchIssues({ release: '1.0' }), { code: 'NOT_SUPPORTED' })
+})
+
+const mutationsIn = (fetch) => fetch.calls.filter((call) => isMutation(call.body.query)).length
+const comparable = ({ id, created, updated, branch, ...rest }) => rest
+
+test('create sends a client UUID and returns the new issue', async () => {
+  const { tracker: linear, fetch } = linearSetup({ uuid: () => 'uuid-7' })
+  const { before, after } = await linear.createIssue({ title: 'New', type: 'bug', labels: ['Docs'], priority: 'high', acceptanceCriteria: ['works'] }, 'user-1')
+  assert.equal(before, null)
+  assert.equal(after.id, 'ACME-1')
+  assert.equal(after.type, 'bug')
+  assert.deepEqual(after.labels, ['Docs'])
+  assert.equal(after.priority, 'high')
+  assert.deepEqual(after.acceptanceCriteria, [{ text: 'works', done: false }])
+  assert.equal(after.branch, 'acme-1-new')
+  const sent = lastVariables(fetch, 'PmkitIssueCreate').input
+  assert.equal(sent.id, 'uuid-7')
+  assert.equal(sent.teamId, 'team-acme')
+  assert.deepEqual(sent.labelIds.sort(), ['label-bug', 'label-docs'])
+})
+
+test('an unconfirmed create that happened returns it; one that did not rethrows', async () => {
+  const applied = linearSetup({ uuid: () => 'uuid-7' })
+  applied.fake.unconfirm('PmkitIssueCreate', { applied: true })
+  assert.equal((await applied.tracker.createIssue({ title: 'A' }, 'user-1')).after.id, 'ACME-1')
+  assert.deepEqual(applied.fake.mutations, ['PmkitIssueCreate'])
+  const lost = linearSetup({ uuid: () => 'uuid-8' })
+  lost.fake.unconfirm('PmkitIssueCreate', { applied: false })
+  await assert.rejects(lost.tracker.createIssue({ title: 'B' }, 'user-1'), {
+    code: 'UPSTREAM',
+    nextStep: 'Check in Linear whether the change was applied before you retry',
+  })
+  assert.deepEqual(lost.fake.mutations, ['PmkitIssueCreate'])
+  assert.equal(callsOf(lost.fetch, 'PmkitIssueById'), 1)
+})
+
+test('a dry run sends no mutation and matches the real write', async () => {
+  const { tracker: linear, fetch } = linearSetup()
+  const input = { title: 'New', type: 'feature', labels: ['Docs'], priority: 'low', due: '2026-11-01', description: 'Body', acceptanceCriteria: ['a'] }
+  const dry = await linear.createIssue(input, 'user-1', { dryRun: true })
+  assert.equal(mutationsIn(fetch), 0)
+  assert.equal(dry.after.id, null)
+  const real = await linear.createIssue(input, 'user-1')
+  assert.deepEqual(comparable(dry.after), comparable(real.after))
+
+  const patch = { title: 'Renamed', priority: null, acceptanceCriteria: [{ text: 'a', done: true }], labels: [] }
+  const sent = mutationsIn(fetch)
+  const dryUpdate = await linear.updateIssue('ACME-1', patch, 'user-1', { dryRun: true })
+  assert.equal(mutationsIn(fetch), sent)
+  assert.equal(dryUpdate.before.title, 'New')
+  const realUpdate = await linear.updateIssue('ACME-1', patch, 'user-1')
+  assert.deepEqual(comparable(dryUpdate.after), comparable(realUpdate.after))
+  assert.equal(realUpdate.after.title, 'Renamed')
+  assert.equal(realUpdate.after.type, 'feature')
+  assert.deepEqual(realUpdate.after.labels, [])
+  assert.deepEqual(realUpdate.after.acceptanceCriteria, [{ text: 'a', done: true }])
+  assert.equal(realUpdate.after.description, 'Body')
+})
+
+test('an update that changes nothing sends no mutation', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { title: 'Same', priority: 2 })
+  const result = await linear.updateIssue('ACME-1', { title: 'Same', priority: 'high' }, 'user-1')
+  assert.equal(result.after, result.before)
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('--as another member is refused before any mutation', async () => {
+  const { tracker: linear, fetch } = linearSetup()
+  await assert.rejects(linear.createIssue({ title: 'x' }, 'user-2'), {
+    code: 'INVALID_INPUT',
+    message: 'Linear records every write as the owner of LINEAR_API_KEY (Test User)',
+    nextStep: 'Drop --as, or use a key created by that member',
+  })
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('an unknown label refreshes the discovery once, then fails', async () => {
+  const { tracker: linear, fetch } = linearSetup()
+  await assert.rejects(linear.createIssue({ title: 'x', labels: ['Nope'] }, 'user-1'), { code: 'INVALID_INPUT', nextStep: 'Create the label in Linear, then run pmkit discover' })
+  assert.equal(callsOf(fetch, 'PmkitLabels'), 2)
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('a label created in Linear after the cache is found after the refresh', async () => {
+  const labels = [...ACME_LABELS, { id: 'label-new', name: 'New', isGroup: false, retiredAt: null, team: { id: 'team-acme' }, parent: null }]
+  const fake = fakeLinearIssues({ labels })
+  const workspace = fakeWorkspace()
+  const later = fakeWorkspace({ labels }).PmkitLabels
+  let calls = 0
+  const fetch = fakeLinearFetch({ ...workspace, ...fake.routes, PmkitLabels: (body) => (calls++ === 0 ? workspace.PmkitLabels(body) : later(body)) })
+  const context = setup({ scope: { workspace: 'acme', team: 'ACME' } })
+  const linear = createLinearTracker(context.config, { env: context.env, now: at(0), fetch })
+  assert.deepEqual((await linear.createIssue({ title: 'x', labels: ['New'] }, 'user-1')).after.labels, ['New'])
+  assert.equal(calls, 2)
+})
+
+test('update with branch equal to branchName is a no-op; another name is refused', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { title: 'New' })
+  const same = await linear.updateIssue('ACME-1', { branch: 'acme-1-new' }, 'user-1')
+  assert.equal(same.after, same.before)
+  assert.equal(mutationsIn(fetch), 0)
+  await assert.rejects(linear.updateIssue('ACME-1', { branch: 'other' }, 'user-1'), { code: 'INVALID_INPUT', message: "Linear names this issue's branch acme-1-new" })
+})
+
+// The PMK-34 mapping check runs first and needs tracker.scope.team, so no workspace size gets past it.
+test('create with several teams and no scope team is NOT_CONFIGURED', async () => {
+  const teams = [ACME_TEAM, { ...ACME_TEAM, id: 'team-two', key: 'TWO', name: 'Two' }]
+  const { tracker: linear } = linearSetup({ scope: { workspace: 'acme' }, workspace: { teams } })
+  await assert.rejects(linear.createIssue({ title: 'x' }, 'user-1'), { code: 'NOT_CONFIGURED', message: 'tracker.scope.team is not set' })
+})
+
+test('create with parent sends the parent UUID', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { id: 'uuid-parent', title: 'Parent' })
+  const { after } = await linear.createIssue({ title: 'Child', parent: 'acme-1' }, 'user-1')
+  assert.equal(after.parent, 'ACME-1')
+  assert.equal(lastVariables(fetch, 'PmkitIssueCreate').input.parentId, 'uuid-parent')
+  const dry = await linear.createIssue({ title: 'Child', parent: 'ACME-1' }, 'user-1', { dryRun: true })
+  assert.equal(dry.after.parent, 'ACME-1')
+  await assert.rejects(linear.createIssue({ title: 'Orphan', parent: 'ACME-99' }, 'user-1'), { code: 'INVALID_INPUT', message: 'parent ACME-99 is not an existing issue' })
+})
+
+test('update of a missing issue is NOT_FOUND', async () => {
+  const { tracker: linear } = linearSetup()
+  await assert.rejects(linear.updateIssue('ACME-9', { title: 'x' }, 'user-1'), { code: 'NOT_FOUND' })
 })

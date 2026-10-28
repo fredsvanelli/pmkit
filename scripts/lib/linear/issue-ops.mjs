@@ -3,12 +3,18 @@
 
 import { PmkitError } from '../errors.mjs'
 import { checkFilter } from '../issue-filter.mjs'
-import { ISSUES_QUERY, ISSUE_BY_ID_QUERY, NESTED_PAGES, NESTED_PAGE_SIZE } from './documents.mjs'
+import { ISSUES_QUERY, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE } from './documents.mjs'
 import { finishSearch, translateFilter } from './filter.mjs'
 import { blockedOpen, isIssueId, issueKey, makeContext, toIssue } from './issues.mjs'
+import { applyInput, createTeam, skeletonNode, toInput } from './writes.mjs'
 
 const SEARCH_PAGE = 100
 const NOTHING = () => ({ issues: [], problems: [], hasMore: false })
+/** True for the client's error on a mutation whose answer never came, so the change may or may not exist. */
+export const isUnconfirmed = (error) =>
+  error instanceof PmkitError && error.code === 'UPSTREAM' && error.message.startsWith('Linear did not confirm the change')
+
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 const notFound = (id) => new PmkitError('NOT_FOUND', `issue ${id} does not exist`, 'pmkit issues list')
 
 /**
@@ -93,5 +99,71 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return { issues: finishSearch(rows, filter, mapping), problems: [], hasMore }
   }
 
-  return { getIssue, searchIssues, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
+  /** ADR-0005: Linear records every write as the key's owner, so any other actor would make pmkit's output disagree with Linear. */
+  async function requireViewer(actor) {
+    requireWorkspace()
+    const { viewer } = await context()
+    if (actor !== viewer.id) {
+      throw new PmkitError('INVALID_INPUT', `Linear records every write as the owner of LINEAR_API_KEY (${viewer.name})`, 'Drop --as, or use a key created by that member')
+    }
+  }
+
+  /** The node and the issue a write returns, with every nested list complete. */
+  async function mapped(node) {
+    await completeNested(node)
+    return toIssue(node, await contextFor([node]))
+  }
+
+  async function parentNodeOf(parent) {
+    if (parent === undefined || parent === null || !isIssueId(parent)) return undefined
+    try {
+      return await readNode(parent)
+    } catch (error) {
+      if (error instanceof PmkitError && error.code === 'NOT_FOUND') {
+        throw new PmkitError('INVALID_INPUT', `parent ${parent} is not an existing issue`, 'pmkit issues list')
+      }
+      throw error
+    }
+  }
+
+  async function createIssue(input, actor, { dryRun = false } = {}) {
+    await requireViewer(actor)
+    const parentNode = await parentNodeOf(input?.parent)
+    const { team, linearInput, current } = await withRefresh((ctx) => {
+      const target = createTeam(ctx)
+      return { team: target, linearInput: toInput(input, { mode: 'create', team: target, context: ctx, parentNode }), current: ctx }
+    })
+    if (dryRun) {
+      const preview = applyInput(skeletonNode(team, now().toISOString(), current), linearInput, current, { parent: parentNode?.identifier })
+      return { before: null, after: { ...toIssue(preview, current), id: null } }
+    }
+    const id = uuid()
+    let node
+    try {
+      node = (await client.request(ISSUE_CREATE, { input: { id, ...linearInput } })).issueCreate.issue
+    } catch (error) {
+      if (!isUnconfirmed(error)) throw error
+      // The UUID pmkit chose tells whether the create happened. One read, then the original error.
+      node = (await client.request(ISSUE_BY_ID_QUERY, { id }))?.issues?.nodes?.[0]
+      if (!node) throw error
+    }
+    return { before: null, after: await mapped(node) }
+  }
+
+  async function updateIssue(id, patch, actor, { dryRun = false } = {}) {
+    await requireViewer(actor)
+    const beforeNode = await readNode(id)
+    const before = toIssue(beforeNode, await contextFor([beforeNode]))
+    const { linearInput, current } = await withRefresh((ctx) => ({ linearInput: toInput(patch, { mode: 'update', beforeNode, context: ctx }), current: ctx }))
+    if (patch.branch !== undefined && patch.branch !== beforeNode.branchName) {
+      throw new PmkitError('INVALID_INPUT', `Linear names this issue's branch ${beforeNode.branchName}`, `Use the branch name ${beforeNode.branchName}`)
+    }
+    const preview = toIssue(applyInput(beforeNode, linearInput, current, { parent: before.parent }), current)
+    if (Object.keys(linearInput).length === 0 || same(preview, before)) return { before, after: before }
+    if (dryRun) return { before, after: preview }
+    const node = (await client.request(ISSUE_UPDATE, { id: beforeNode.id, input: linearInput })).issueUpdate.issue
+    return { before, after: await mapped(node) }
+  }
+
+  return { getIssue, searchIssues, createIssue, updateIssue, requireViewer, mapped, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
 }
