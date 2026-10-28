@@ -6,7 +6,10 @@ export class FrontmatterError extends Error {}
 
 // A key may hold a colon that is not followed by a space, as in `agent:claude`.
 const KEY = '[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)*'
-const KEY_LINE = new RegExp(`^(${KEY}):(?:\\s+(.*))?$`)
+// A block key that is not a plain word is written in double quotes, as in `"blocks PMK-35 PMK-38":`.
+const QUOTED_KEY = '"(?:[^"\\\\]|\\\\.)*"'
+const KEY_LINE = new RegExp(`^(${KEY}|${QUOTED_KEY}):(?:\\s+(.*))?$`)
+const unquoteKey = (key) => (key.startsWith('"') ? key.slice(1, -1).replace(/\\(.)/g, '$1') : key)
 const PLAIN_KEY = new RegExp(`^${KEY}$`)
 
 export function splitFrontmatter(text) {
@@ -182,7 +185,8 @@ function parseBlock(lines, start, indent) {
     }
     const match = line.text.match(KEY_LINE)
     if (!match) throw new FrontmatterError(`line ${line.no}: expected "key: value"`)
-    const [, key, rest] = match
+    const [, rawKey, rest] = match
+    const key = unquoteKey(rawKey)
     i++
     if (rest) {
       result[key] = parseFlow(rest, line.no)
@@ -297,16 +301,16 @@ function writeBlock(map, indent, keys) {
   for (const key of keys) {
     const value = map[key]
     if (isEmpty(value)) continue
-    if (!PLAIN_KEY.test(key)) throw new TypeError(`key "${key}" cannot be written as a block key`)
-    if (Array.isArray(value)) lines.push(`${pad}${key}: ${formatList(value)}`)
+    const name = PLAIN_KEY.test(key) ? key : `"${key.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+    if (Array.isArray(value)) lines.push(`${pad}${name}: ${formatList(value)}`)
     else if (isPlainObject(value)) {
       const entries = Object.values(value).filter((entry) => !isEmpty(entry))
-      if (entries.every(isScalar)) lines.push(`${pad}${key}: ${formatFlowMap(value)}`)
+      if (entries.every(isScalar)) lines.push(`${pad}${name}: ${formatFlowMap(value)}`)
       else {
-        lines.push(`${pad}${key}:`)
+        lines.push(`${pad}${name}:`)
         lines.push(...writeBlock(value, indent + 2, Object.keys(value)))
       }
-    } else if (isScalar(value)) lines.push(`${pad}${key}: ${formatScalar(value)}`)
+    } else if (isScalar(value)) lines.push(`${pad}${name}: ${formatScalar(value)}`)
     else throw new TypeError(`cannot write ${typeof value} for "${key}"`)
   }
   return lines
