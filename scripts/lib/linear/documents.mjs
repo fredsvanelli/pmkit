@@ -124,3 +124,22 @@ export const CYCLES_QUERY = `query PmkitCycles($filter: CycleFilter, $first: Int
 export const CYCLE_BY_NUMBER_QUERY = `query PmkitCycleByNumber($filter: CycleFilter) {
   cycles(filter: $filter, first: 1) { nodes { ${CYCLE_FIELDS} } }
 }`
+
+// PMK-41: the reads by UUID that tell a migration rerun which creates happened, and the creates and deletes no other command sends.
+
+export const ISSUES_BY_IDS = `query PmkitIssuesByIds($ids: [ID!]) {
+  issues(filter: { id: { in: $ids } }, includeArchived: true, first: 100) { nodes { id identifier updatedAt archivedAt trashed relations(first: ${NESTED}) { nodes { id } } } }
+}`
+
+export const COMMENTS_BY_IDS = `query PmkitCommentsByIds($ids: [ID!]) {
+  comments(filter: { id: { in: $ids } }, first: 100) { nodes { id resolvedAt } }
+}`
+
+export const LABEL_CREATE = `mutation PmkitLabelCreate($input: IssueLabelCreateInput!) {
+  issueLabelCreate(input: $input) { success issueLabel { id name } }
+}`
+
+export const LABEL_DELETE = 'mutation PmkitLabelDelete($id: String!) { issueLabelDelete(id: $id) { success } }'
+
+// Without permanentlyDelete, Linear moves the issue to its trash.
+export const ISSUE_DELETE = 'mutation PmkitIssueDelete($id: String!) { issueDelete(id: $id) { success } }'

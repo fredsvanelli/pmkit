@@ -132,3 +132,14 @@ export const DOCUMENT_QUERY = `query PmkitDocument($filter: DocumentFilter) {
 export const EPIC_ISSUES_QUERY = `query PmkitEpicIssues($filter: IssueFilter, $first: Int!, $after: String) {
   issues(filter: $filter, first: $first, after: $after) { nodes { identifier archivedAt estimate team { id } state { id type } parent { identifier } } ${PAGE_INFO} }
 }`
+
+// PMK-41: the migration documents.
+export const PROJECTS_BY_IDS = `query PmkitProjectsByIds($ids: [ID!]) {
+  projects(filter: { id: { in: $ids } }, first: 100) { nodes { id slugId identifier updatedAt } }
+}`
+
+export const PROJECT_STATUSES = `query PmkitProjectStatuses {
+  projectStatuses { nodes { id name type position } }
+}`
+
+export const PROJECT_DELETE = 'mutation PmkitProjectDelete($id: String!) { projectDelete(id: $id) { success } }'
