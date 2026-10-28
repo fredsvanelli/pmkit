@@ -1,5 +1,8 @@
-// The Linear tracker. discover and capabilities read the workspace; every other contract operation is a stub
-// until PMK-35 to PMK-38. See docs/superpowers/specs/2026-10-27-pmk-33-linear-discovery-design.md, "The tracker".
+// The Linear tracker. discover and capabilities read the workspace (PMK-33); the Issues and Relations families read and
+// write issues (PMK-35). Every other contract operation is a stub until PMK-36 to PMK-38.
+// See docs/superpowers/specs/2026-10-27-pmk-33-linear-discovery-design.md, "The tracker".
+
+import { randomUUID } from 'node:crypto'
 
 import { TRACKER_OPERATIONS } from '../contract.mjs'
 import { PmkitError } from '../errors.mjs'
@@ -7,7 +10,9 @@ import { brokenMappings } from '../mappings.mjs'
 import { cacheGet, cachePut, repoHash } from '../user-store.mjs'
 import { createLinearClient } from './client.mjs'
 import { discoveryView, fetchDiscovery } from './discovery.mjs'
+import { issueOperations } from './issue-ops.mjs'
 import { linearDescription } from './mappings.mjs'
+import { relationOperations } from './relation-ops.mjs'
 import { buildLinearCapabilities } from './manifest.mjs'
 import { createTriage } from './triage.mjs'
 
@@ -18,7 +23,7 @@ const isoSeconds = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z')
 const isRawDiscovery = (value) =>
   value?.version === 1 && ['teams', 'states', 'labels', 'users'].every((kind) => Array.isArray(value[kind])) && value.workspace !== undefined
 
-export function createLinearTracker(config, { env, now = () => new Date(), fetch } = {}) {
+export function createLinearTracker(config, { env, now = () => new Date(), fetch, uuid = randomUUID } = {}) {
   const tracker = config.pmkit?.tracker ?? {}
   // Created now, so a missing key (AUTH) or a secret-like config key (INVALID_INPUT) fails before any request or cache read.
   const client = createLinearClient({ env, tracker, requireWorkspace: false, fetch })
@@ -75,8 +80,14 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     return { raw, result }
   }
 
+  // The viewer comes from the session on a cached read too, so the actor and `me` never come from the cache.
   async function discover({ refresh = false } = {}) {
-    return (await view({ refresh })).result
+    const { result } = await view({ refresh })
+    const { viewer } = await client.session()
+    const found = { ...result, viewer: { id: viewer.id, name: viewer.name } }
+    // The spread drops the hidden raw discovery that resolveMappings and setup read, so it goes back on.
+    Object.defineProperty(found, 'raw', { value: result.raw, enumerable: false })
+    return found
   }
 
   async function capabilities() {
@@ -136,7 +147,21 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
       )
     })
 
-  const implemented = { discover, capabilities }
+  const issues = issueOperations({ client, discovery, config, now, uuid })
+  const relations = relationOperations({ client, ops: issues, uuid })
+  const contract = {
+    getIssue: issues.getIssue,
+    searchIssues: issues.searchIssues,
+    createIssue: issues.createIssue,
+    updateIssue: issues.updateIssue,
+    moveToCategory: issues.moveToCategory,
+    assign: issues.assign,
+    archive: issues.archive,
+    link: relations.link,
+    unlink: relations.unlink,
+    setParent: relations.setParent,
+  }
+  const implemented = { discover, capabilities, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
   // Linear-only features sit beside the contract operations. contractView ignores them.
   const triage = createTriage({ client, discovery, config })
   return { ...Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)])), triage }

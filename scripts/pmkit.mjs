@@ -225,7 +225,8 @@ function parseDaysOff(ctx) {
 function writeText(result, { dryRun, record = issueRecord, header }) {
   const one = (entry) => {
     const { before, after } = entry
-    const head = `${after.id}${after.title ? `  ${after.title}` : ''}`
+    // A hosted tracker picks the id of a new issue, so a dry-run create has none yet.
+    const head = `${after.id ?? '(new)'}${after.title ? `  ${after.title}` : ''}`
     if (before === null) return [head, record(after)].join('\n')
     const lines = changeLines(before, after)
     return [head, ...(lines.length > 0 ? lines : ['no change'])].join('\n')
@@ -258,10 +259,15 @@ function defaultPrBody(issue) {
 }
 const problemLine = (problem) => `${problem.id}: ${problem.code} ${problem.message}`
 
-/** The member the caller is, from the tracker's members: by git email, then PMKIT_USER. Throws NOT_CONFIGURED when none matches. */
+/**
+ * The member the caller is. A tracker whose discover() names a viewer, such as Linear, writes as that viewer (ADR-0005).
+ * Otherwise from the tracker's members: by git email, then PMKIT_USER. Throws NOT_CONFIGURED when none matches.
+ */
 async function requireMember(ctx) {
   const tracker = await ctx.tracker()
-  const members = Object.fromEntries((await tracker.discover()).members.map(({ id, name, email, availability }) => [id, { name, email, availability }]))
+  const found = await tracker.discover()
+  if (found.viewer) return { id: found.viewer.id, member: { name: found.viewer.name } }
+  const members = Object.fromEntries(found.members.map(({ id, name, email, availability }) => [id, { name, email, availability }]))
   const actor = resolveActor({ members }, { email: gitUserEmail(ctx.root), env: ctx.env })
   if (actor) return actor
   const nextStep = ctx.config().hosted ? 'Set PMKIT_USER to a member id from pmkit discover' : 'Add yourself to members in .issues/config.yaml or set PMKIT_USER'
@@ -334,6 +340,10 @@ export const COMMANDS = [
       const tracker = await ctx.tracker()
       const found = await tracker.searchIssues(issueFilter(ctx))
       const warnings = found.problems.map(problemLine)
+      if (found.hasMore === true) {
+        const order = (ctx.opt('sort') ?? 'created') === 'created' ? '' : '; the order covers the issues read'
+        warnings.push(`Linear has more matching issues than the 1000 pmkit read; narrow the filter${order}`)
+      }
       if (ctx.opt('sprint') === 'current' && found.issues.length === 0 && (await tracker.currentCycle()) === null) {
         warnings.push('there is no active sprint, so --sprint current matches no issues; run pmkit cycle list')
       }
@@ -362,10 +372,11 @@ export const COMMANDS = [
     name: 'issues dependencies', summary: 'the blocker chain, the hierarchy and the critical path of an issue or an epic', usage: '<id>', args: ['id'], flags: [],
     run: async (ctx) => {
       const tracker = await ctx.tracker()
-      // A tracker with no epic prefix, such as a hosted one, treats every id as an issue.
-      const { epicPrefix } = ctx.settings()
+      // The adapter tells an epic id from an issue id when it can; otherwise the epic prefix decides, and no prefix means an issue.
+      const { epicPrefix, isEpicId } = ctx.settings()
+      const isEpic = isEpicId ?? ((value) => epicPrefix !== null && isId(normalizeId(value), epicPrefix))
       const [id] = ctx.args
-      const target = epicPrefix !== null && isId(normalizeId(id), epicPrefix)
+      const target = isEpic(id)
         ? { ...(await tracker.getDeliverable(id)), kind: 'epic' }
         : { ...(await tracker.getIssue(id)), kind: 'issue' }
       const found = await tracker.searchIssues({ archived: true })
@@ -815,7 +826,8 @@ export const COMMANDS = [
       const host = ctx.host()
       const tracker = await ctx.tracker()
       const issue = await tracker.getIssue(ctx.args[0])
-      const branch = branchName(issue.id, issue.title)
+      // A tracker that names branches, such as Linear, keeps its name, so its link to the git host works.
+      const branch = ctx.settings().trackerBranch === true && issue.branch ? issue.branch : branchName(issue.id, issue.title)
       const from = ctx.opt('from') ?? defaultBranch(ctx)
       // Check the tracker write first, so a refused write leaves git on the branch it was on.
       const actor = await ctx.actor()

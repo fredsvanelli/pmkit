@@ -21,32 +21,13 @@ import { createDocumentFile, readDocumentFile } from './documents.mjs'
 import { hasMilestoneFiles, milestoneStems, parseMilestone, serializeMilestone, sortMilestones, validMilestoneId } from './milestones.mjs'
 import { parseRelease, releaseStems, serializeRelease, sortReleases, validReleaseId, validTag } from './releases.mjs'
 import { checkFilter, runQuery } from './query.mjs'
+import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
 import { CACHE_DIR, INDEX_FILE, clearIndex, indexHeader, readThroughIndex } from './query-index.mjs'
 import {
   SPRINT_STATES, addDays, overlaps, parseSprint, readSprint, readSprints, requireCapacity, requireDaysOff, serializeSprint, validDate,
 } from './sprints.mjs'
 import { fileMtimeIso, issuePaths, listIssueIds, writeFileAtomic } from './store.mjs'
 
-const CREATE_KEYS = [
-  'title', 'type', 'status', 'priority', 'estimate', 'assignee', 'labels', 'parent', 'sprint',
-  'milestone', 'release', 'due', 'branch', 'description', 'acceptanceCriteria',
-]
-const UPDATE_KEYS = [
-  'title', 'type', 'priority', 'estimate', 'labels', 'sprint', 'milestone', 'release', 'due', 'branch',
-  'description', 'acceptanceCriteria',
-]
-// Fields another operation owns, with the command that writes them. An empty string means no next step.
-const OWNED = {
-  id: '',
-  created: '',
-  status: 'pmkit issues move',
-  assignee: 'pmkit issues assign',
-  parent: 'pmkit issues parent',
-  blockedBy: 'pmkit issues link',
-  related: 'pmkit issues link',
-  duplicateOf: 'pmkit issues link',
-  archived: 'pmkit issues archive',
-}
 const LINKS = {
   blocks: { field: 'blocked_by', prop: 'blockedBy' },
   related: { field: 'related', prop: 'related' },
@@ -78,14 +59,6 @@ function readBack(label, parse) {
     if (!(error instanceof PmkitError)) throw error
     const step = error.code === 'CONFLICT' ? 'Put example conflict markers inside a fenced code block' : undefined
     throw invalid(`the ${label} would not read back after this write: ${error.message}`, step)
-  }
-}
-
-function checkKeys(input, allowed) {
-  for (const key of Object.keys(input)) {
-    if (allowed.includes(key)) continue
-    if (Object.hasOwn(OWNED, key)) throw invalid(`${key} cannot be set here`, OWNED[key])
-    throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
   }
 }
 

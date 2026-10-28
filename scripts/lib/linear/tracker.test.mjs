@@ -2,11 +2,11 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
-import { FAKE_KEY, fakeLinearFetch, fakeWorkspace } from '../../fake-linear-api.mjs'
+import { ACME_LABELS, ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeWorkspace } from '../../fake-linear-api.mjs'
 import { tempDir, userStoreEnv } from '../../test-helpers.mjs'
 import { assertTracker } from '../contract.mjs'
 import { cachePut, repoHash } from '../user-store.mjs'
-import { operationName } from './client.mjs'
+import { isMutation, operationName } from './client.mjs'
 import { createLinearTracker } from './tracker.mjs'
 
 const START = new Date('2026-10-27T12:00:00Z')
@@ -35,9 +35,9 @@ test('the tracker passes assertTracker', () => {
 
 test('a stub throws NOT_SUPPORTED once the mapping check passes', async () => {
   const { fetch, tracker: linear } = tracker(setup())
-  await assert.rejects(linear.searchIssues({}), {
+  await assert.rejects(linear.getHistory('ACME-1'), {
     code: 'NOT_SUPPORTED',
-    message: 'the Linear adapter does not implement searchIssues yet',
+    message: 'the Linear adapter does not implement getHistory yet',
     nextStep: 'Set tracker.system to local in .pmkit/config.yaml to use this command now',
   })
   assert.equal(callsOf(fetch, 'PmkitTeams'), 1)
@@ -49,9 +49,10 @@ test('a stub without a workspace throws NOT_CONFIGURED', async () => {
   await assert.rejects(linear.getIssue('ACME-1'), { code: 'NOT_CONFIGURED', message: 'tracker.scope.workspace is not set', nextStep: '/pmkit:setup' })
 })
 
+// Two operations that stay stubs after PMK-35, so the mapping check is all these tests reach.
 const stubs = {
-  read: (linear) => linear.searchIssues({}),
-  write: (linear) => linear.createIssue({}),
+  read: (linear) => linear.listComments('ACME-1'),
+  write: (linear) => linear.comment('ACME-1', 'x'),
 }
 
 test('a stub with a status removed from the workspace throws NOT_CONFIGURED with details.mappings', async () => {
@@ -123,7 +124,7 @@ test('none and absent keys never throw', async () => {
   const context = setup({ mappings: { status: { in_review: 'none', blocked: 'none' }, fields: { estimate: 'none' }, types: {} } })
   const { tracker: linear } = tracker(context)
   await assert.rejects(stubs.read(linear), { code: 'NOT_SUPPORTED' })
-  await assert.rejects(tracker(setup()).tracker.createIssue({}), { code: 'NOT_SUPPORTED' })
+  await assert.rejects(stubs.write(tracker(setup()).tracker), { code: 'NOT_SUPPORTED' })
 })
 
 test('a missing key throws AUTH before any request', () => {
@@ -151,7 +152,7 @@ test('a second tracker on the same store sends no request until the TTL passes',
   await tracker(context).tracker.discover()
   const fresh = tracker(context, { now: at(59) })
   assert.equal((await fresh.tracker.discover()).statuses.length, 10)
-  assert.equal(fresh.fetch.calls.length, 0)
+  assert.deepEqual(fresh.fetch.calls.map((call) => operationName(call.body.query)), ['PmkitSession'])
   const stale = tracker(context, { now: at(61) })
   await stale.tracker.discover()
   for (const name of DISCOVERY_OPERATIONS) assert.equal(callsOf(stale.fetch, name), 1, name)
@@ -166,7 +167,7 @@ test('refresh fetches again and rewrites the cache', async () => {
   assert.equal(callsOf(fetch, 'PmkitTeams'), 2)
   const next = tracker(context, { now: at(80) })
   await next.tracker.discover()
-  assert.equal(next.fetch.calls.length, 0)
+  assert.deepEqual(next.fetch.calls.map((call) => operationName(call.body.query)), ['PmkitSession'])
 })
 
 test('a fresh result has auth and a cached one does not', async () => {
@@ -244,4 +245,615 @@ test('no file under the store holds the key', async () => {
   const files = filesUnder(context.env.PMKIT_HOME)
   assert.equal(files.length, 1)
   for (const file of files) assert.ok(!fs.readFileSync(file, 'utf8').includes(FAKE_KEY), file)
+})
+
+// A Linear tracker over the stateful fake, scoped to team ACME, with in_review and two types mapped.
+function linearSetup({ mappings = { status: { in_review: 'In Review' }, types: { bug: 'Bug', feature: 'Feature' } }, scope = { workspace: 'acme', team: 'ACME' },
+  workspace = {}, issues = {}, nestedPage, uuid, now = at(0), context = setup({ scope }) } = {}) {
+  const fake = fakeLinearIssues({ ...workspace, ...issues, ...(nestedPage ? { nestedPage } : {}) })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace(workspace), ...fake.routes })
+  context.config.pmkit.mappings = mappings
+  const linear = createLinearTracker(context.config, { env: context.env, now, fetch, ...(uuid ? { uuid } : {}) })
+  return { tracker: linear, fake, fetch, context }
+}
+const seed = (fake, input) => fake.seed(input)
+const namesOf = (fetch) => fetch.calls.map((call) => operationName(call.body.query))
+const lastVariables = (fetch, name) => fetch.calls.filter((call) => operationName(call.body.query) === name).at(-1).body.variables
+
+test('getIssue reads by identifier, ignoring case', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'One', labelIds: ['label-bug', 'label-docs'] })
+  const issue = await linear.getIssue('acme-1')
+  assert.equal(issue.id, 'ACME-1')
+  assert.equal(issue.title, 'One')
+  assert.equal(issue.type, 'bug')
+  assert.deepEqual(issue.labels, ['Docs'])
+  assert.deepEqual(issue.status, { name: 'Backlog', category: 'backlog' })
+})
+
+test('getIssue fails with NOT_FOUND for a missing, malformed or trashed id', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  await assert.rejects(linear.getIssue('ACME-99'), { code: 'NOT_FOUND', message: 'issue ACME-99 does not exist' })
+  const sent = fetch.calls.length
+  await assert.rejects(linear.getIssue('not an id'), { code: 'NOT_FOUND' })
+  await assert.rejects(linear.getIssue('00000000-0000-0000-0000-000000000000'), { code: 'NOT_FOUND' })
+  assert.equal(fetch.calls.length, sent)
+  seed(fake, { title: 'Trashed' })
+  fake.records[0].trashed = true
+  await assert.rejects(linear.getIssue('ACME-1'), { code: 'NOT_FOUND' })
+})
+
+test('getIssue reads the rest of a nested connection', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup({ nestedPage: 1 })
+  seed(fake, { title: 'Two labels', labelIds: ['label-docs', 'label-s'] })
+  assert.deepEqual((await linear.getIssue('ACME-1')).labels, ['Docs', 'S'])
+  assert.equal(callsOf(fetch, 'PmkitIssueLabelsPage') >= 1, true)
+})
+
+test('a state missing from the cached discovery refreshes once', async () => {
+  const context = setup({ scope: { workspace: 'acme', team: 'ACME' } })
+  await tracker(context).tracker.discover()
+  const states = [...fakeWorkspace().PmkitStates({ variables: { first: 250 } }).json.data.workflowStates.nodes,
+    { id: 'state-new', name: 'Parked', type: 'started', position: 20, team: { id: 'team-acme' } }]
+  const { tracker: linear, fake, fetch } = linearSetup({ context, workspace: { states }, now: at(1) })
+  seed(fake, { title: 'Parked one', stateId: 'state-new' })
+  assert.deepEqual((await linear.getIssue('ACME-1')).status, { name: 'Parked', category: 'in_progress' })
+  assert.equal(callsOf(fetch, 'PmkitStates'), 1)
+})
+
+test('discover adds the viewer on a fresh and on a cached read', async () => {
+  const context = setup()
+  const fresh = await tracker(context).tracker.discover()
+  assert.deepEqual(fresh.viewer, { id: 'user-1', name: 'Test User' })
+  assert.equal(Object.keys(fresh).at(-1), 'viewer')
+  const cached = tracker(context, { now: at(1) })
+  assert.deepEqual((await cached.tracker.discover()).viewer, { id: 'user-1', name: 'Test User' })
+  assert.deepEqual(namesOf(cached.fetch), ['PmkitSession'])
+})
+
+test('an issue operation without a workspace is NOT_CONFIGURED before any request', async () => {
+  const { tracker: linear, fetch } = tracker(setup({ scope: {} }))
+  await assert.rejects(linear.getIssue('ACME-1'), { code: 'NOT_CONFIGURED', message: 'tracker.scope.workspace is not set', nextStep: '/pmkit:setup' })
+  assert.equal(fetch.calls.length, 0)
+})
+
+test('search returns oldest first and filters on the server', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  for (const title of ['A', 'B', 'C']) seed(fake, { title })
+  const found = await linear.searchIssues({})
+  assert.deepEqual(found.issues.map((issue) => issue.id), ['ACME-1', 'ACME-2', 'ACME-3'])
+  assert.deepEqual(found.problems, [])
+  assert.equal(found.hasMore, false)
+  assert.deepEqual((await linear.searchIssues({ text: 'b' })).issues.map((issue) => issue.id), ['ACME-2'])
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssues').filter.and[1], { or: [{ title: { containsIgnoreCase: 'b' } }, { description: { containsIgnoreCase: 'b' } }] })
+  assert.equal(lastVariables(fetch, 'PmkitIssues').first, 100)
+})
+
+test('search by category, type, label and blocked', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'Review', stateId: 'state-4', labelIds: ['label-bug'] })
+  seed(fake, { title: 'Docs', labelIds: ['label-docs'] })
+  const ids = async (filter) => (await linear.searchIssues(filter)).issues.map((issue) => issue.id)
+  assert.deepEqual(await ids({ categories: ['in_review'] }), ['ACME-1'])
+  assert.deepEqual(await ids({ types: ['bug'] }), ['ACME-1'])
+  assert.deepEqual(await ids({ labels: ['Docs'] }), ['ACME-2'])
+  assert.deepEqual(await ids({ blocked: false }), ['ACME-1', 'ACME-2'])
+  assert.deepEqual(await ids({ blocked: true }), [])
+})
+
+test('assignee me sends the viewer id, also on a cached discovery', async () => {
+  const context = setup({ scope: { workspace: 'acme', team: 'ACME' } })
+  await tracker(context).tracker.discover()
+  const { tracker: linear, fake, fetch } = linearSetup({ context, now: at(1) })
+  seed(fake, { title: 'Mine', assigneeId: 'user-1' })
+  seed(fake, { title: 'Theirs', assigneeId: 'user-2' })
+  assert.deepEqual((await linear.searchIssues({ assignee: 'me' })).issues.map((issue) => issue.id), ['ACME-1'])
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssues').filter.and[1], { assignee: { id: { eq: 'user-1' } } })
+  assert.equal(callsOf(fetch, 'PmkitTeams'), 0)
+})
+
+test('a priority sort with a limit reads every match, then cuts', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { title: 'Low', priority: 4 })
+  seed(fake, { title: 'Urgent', priority: 1 })
+  assert.deepEqual((await linear.searchIssues({ sort: 'priority', limit: 1 })).issues.map((issue) => issue.id), ['ACME-2'])
+  assert.equal(lastVariables(fetch, 'PmkitIssues').first, 100)
+  await linear.searchIssues({ limit: 1 })
+  assert.equal(lastVariables(fetch, 'PmkitIssues').first, 1)
+})
+
+test('limit 0 and a category with no state send no request', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { title: 'A' })
+  assert.deepEqual(await linear.searchIssues({ limit: 0 }), { issues: [], problems: [], hasMore: false })
+  assert.deepEqual(await linear.searchIssues({ categories: ['triage'] }), { issues: [], problems: [], hasMore: false })
+  assert.equal(callsOf(fetch, 'PmkitIssues'), 0)
+})
+
+test('a trashed issue drops out of search', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'A' })
+  seed(fake, { title: 'B' })
+  fake.records[1].trashed = true
+  assert.deepEqual((await linear.searchIssues({})).issues.map((issue) => issue.id), ['ACME-1'])
+})
+
+test('a state missing from the cached discovery refreshes once in search', async () => {
+  const context = setup({ scope: { workspace: 'acme', team: 'ACME' } })
+  await tracker(context).tracker.discover()
+  const states = [...fakeWorkspace().PmkitStates({ variables: { first: 250 } }).json.data.workflowStates.nodes,
+    { id: 'state-new', name: 'Parked', type: 'started', position: 20, team: { id: 'team-acme' } }]
+  const { tracker: linear, fake, fetch } = linearSetup({ context, workspace: { states }, now: at(1) })
+  seed(fake, { title: 'A', stateId: 'state-new' })
+  seed(fake, { title: 'B', stateId: 'state-new' })
+  assert.deepEqual((await linear.searchIssues({})).issues.map((issue) => issue.status.name), ['Parked', 'Parked'])
+  assert.equal(callsOf(fetch, 'PmkitStates'), 1)
+})
+
+test('the 10-page cap sets hasMore', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  for (let index = 0; index < 1001; index += 1) seed(fake, { title: `Issue ${index}` })
+  const found = await linear.searchIssues({})
+  assert.equal(found.issues.length, 1000)
+  assert.equal(found.hasMore, true)
+})
+
+test('an unknown type or member fails with INVALID_INPUT', async () => {
+  const { tracker: linear } = linearSetup()
+  await assert.rejects(linear.searchIssues({ types: ['epic'] }), { code: 'INVALID_INPUT' })
+  await assert.rejects(linear.searchIssues({ assignee: 'user-4' }), { code: 'INVALID_INPUT' })
+  await assert.rejects(linear.searchIssues({ nope: 1 }), { code: 'INVALID_INPUT' })
+})
+
+test('sprint and release fail with NOT_SUPPORTED', async () => {
+  const { tracker: linear } = linearSetup()
+  await assert.rejects(linear.searchIssues({ sprint: 'current' }), { code: 'NOT_SUPPORTED' })
+  await assert.rejects(linear.searchIssues({ release: '1.0' }), { code: 'NOT_SUPPORTED' })
+})
+
+const mutationsIn = (fetch) => fetch.calls.filter((call) => isMutation(call.body.query)).length
+const comparable = ({ id, created, updated, branch, ...rest }) => rest
+
+test('create sends a client UUID and returns the new issue', async () => {
+  const { tracker: linear, fetch } = linearSetup({ uuid: () => 'uuid-7' })
+  const { before, after } = await linear.createIssue({ title: 'New', type: 'bug', labels: ['Docs'], priority: 'high', acceptanceCriteria: ['works'] }, 'user-1')
+  assert.equal(before, null)
+  assert.equal(after.id, 'ACME-1')
+  assert.equal(after.type, 'bug')
+  assert.deepEqual(after.labels, ['Docs'])
+  assert.equal(after.priority, 'high')
+  assert.deepEqual(after.acceptanceCriteria, [{ text: 'works', done: false }])
+  assert.equal(after.branch, 'acme-1-new')
+  const sent = lastVariables(fetch, 'PmkitIssueCreate').input
+  assert.equal(sent.id, 'uuid-7')
+  assert.equal(sent.teamId, 'team-acme')
+  assert.deepEqual(sent.labelIds.sort(), ['label-bug', 'label-docs'])
+})
+
+test('an unconfirmed create that happened returns it; one that did not rethrows', async () => {
+  const applied = linearSetup({ uuid: () => 'uuid-7' })
+  applied.fake.unconfirm('PmkitIssueCreate', { applied: true })
+  assert.equal((await applied.tracker.createIssue({ title: 'A' }, 'user-1')).after.id, 'ACME-1')
+  assert.deepEqual(applied.fake.mutations, ['PmkitIssueCreate'])
+  const lost = linearSetup({ uuid: () => 'uuid-8' })
+  lost.fake.unconfirm('PmkitIssueCreate', { applied: false })
+  await assert.rejects(lost.tracker.createIssue({ title: 'B' }, 'user-1'), {
+    code: 'UPSTREAM',
+    nextStep: 'Check in Linear whether the change was applied before you retry',
+  })
+  assert.deepEqual(lost.fake.mutations, ['PmkitIssueCreate'])
+  assert.equal(callsOf(lost.fetch, 'PmkitIssueById'), 1)
+})
+
+test('a dry run sends no mutation and matches the real write', async () => {
+  const { tracker: linear, fetch } = linearSetup()
+  const input = { title: 'New', type: 'feature', labels: ['Docs'], priority: 'low', due: '2026-11-01', description: 'Body', acceptanceCriteria: ['a'] }
+  const dry = await linear.createIssue(input, 'user-1', { dryRun: true })
+  assert.equal(mutationsIn(fetch), 0)
+  assert.equal(dry.after.id, null)
+  const real = await linear.createIssue(input, 'user-1')
+  assert.deepEqual(comparable(dry.after), comparable(real.after))
+
+  const patch = { title: 'Renamed', priority: null, acceptanceCriteria: [{ text: 'a', done: true }], labels: [] }
+  const sent = mutationsIn(fetch)
+  const dryUpdate = await linear.updateIssue('ACME-1', patch, 'user-1', { dryRun: true })
+  assert.equal(mutationsIn(fetch), sent)
+  assert.equal(dryUpdate.before.title, 'New')
+  const realUpdate = await linear.updateIssue('ACME-1', patch, 'user-1')
+  assert.deepEqual(comparable(dryUpdate.after), comparable(realUpdate.after))
+  assert.equal(realUpdate.after.title, 'Renamed')
+  assert.equal(realUpdate.after.type, 'feature')
+  assert.deepEqual(realUpdate.after.labels, [])
+  assert.deepEqual(realUpdate.after.acceptanceCriteria, [{ text: 'a', done: true }])
+  assert.equal(realUpdate.after.description, 'Body')
+})
+
+test('an update that changes nothing sends no mutation', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { title: 'Same', priority: 2 })
+  const result = await linear.updateIssue('ACME-1', { title: 'Same', priority: 'high' }, 'user-1')
+  assert.equal(result.after, result.before)
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('--as another member is refused before any mutation', async () => {
+  const { tracker: linear, fetch } = linearSetup()
+  await assert.rejects(linear.createIssue({ title: 'x' }, 'user-2'), {
+    code: 'INVALID_INPUT',
+    message: 'Linear records every write as the owner of LINEAR_API_KEY (Test User)',
+    nextStep: 'Drop --as, or use a key created by that member',
+  })
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('an unknown label refreshes the discovery once, then fails', async () => {
+  const { tracker: linear, fetch } = linearSetup()
+  await assert.rejects(linear.createIssue({ title: 'x', labels: ['Nope'] }, 'user-1'), { code: 'INVALID_INPUT', nextStep: 'Create the label in Linear, then run pmkit discover' })
+  assert.equal(callsOf(fetch, 'PmkitLabels'), 2)
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('a label created in Linear after the cache is found after the refresh', async () => {
+  const labels = [...ACME_LABELS, { id: 'label-new', name: 'New', isGroup: false, retiredAt: null, team: { id: 'team-acme' }, parent: null }]
+  const fake = fakeLinearIssues({ labels })
+  const workspace = fakeWorkspace()
+  const later = fakeWorkspace({ labels }).PmkitLabels
+  let calls = 0
+  const fetch = fakeLinearFetch({ ...workspace, ...fake.routes, PmkitLabels: (body) => (calls++ === 0 ? workspace.PmkitLabels(body) : later(body)) })
+  const context = setup({ scope: { workspace: 'acme', team: 'ACME' } })
+  const linear = createLinearTracker(context.config, { env: context.env, now: at(0), fetch })
+  assert.deepEqual((await linear.createIssue({ title: 'x', labels: ['New'] }, 'user-1')).after.labels, ['New'])
+  assert.equal(calls, 2)
+})
+
+test('update with branch equal to branchName is a no-op; another name is refused', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { title: 'New' })
+  const same = await linear.updateIssue('ACME-1', { branch: 'acme-1-new' }, 'user-1')
+  assert.equal(same.after, same.before)
+  assert.equal(mutationsIn(fetch), 0)
+  await assert.rejects(linear.updateIssue('ACME-1', { branch: 'other' }, 'user-1'), { code: 'INVALID_INPUT', message: "Linear names this issue's branch acme-1-new" })
+})
+
+// The PMK-34 mapping check runs first and needs tracker.scope.team, so no workspace size gets past it.
+test('create with several teams and no scope team is NOT_CONFIGURED', async () => {
+  const teams = [ACME_TEAM, { ...ACME_TEAM, id: 'team-two', key: 'TWO', name: 'Two' }]
+  const { tracker: linear } = linearSetup({ scope: { workspace: 'acme' }, workspace: { teams } })
+  await assert.rejects(linear.createIssue({ title: 'x' }, 'user-1'), { code: 'NOT_CONFIGURED', message: 'tracker.scope.team is not set' })
+})
+
+test('create with parent sends the parent UUID', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { id: 'uuid-parent', title: 'Parent' })
+  const { after } = await linear.createIssue({ title: 'Child', parent: 'acme-1' }, 'user-1')
+  assert.equal(after.parent, 'ACME-1')
+  assert.equal(lastVariables(fetch, 'PmkitIssueCreate').input.parentId, 'uuid-parent')
+  const dry = await linear.createIssue({ title: 'Child', parent: 'ACME-1' }, 'user-1', { dryRun: true })
+  assert.equal(dry.after.parent, 'ACME-1')
+  await assert.rejects(linear.createIssue({ title: 'Orphan', parent: 'ACME-99' }, 'user-1'), { code: 'INVALID_INPUT', message: 'parent ACME-99 is not an existing issue' })
+})
+
+test('update of a missing issue is NOT_FOUND', async () => {
+  const { tracker: linear } = linearSetup()
+  await assert.rejects(linear.updateIssue('ACME-9', { title: 'x' }, 'user-1'), { code: 'NOT_FOUND' })
+})
+
+const moved = async (linear, id, category, options) => (await linear.moveToCategory(id, category, 'user-1', options)).after.status.name
+
+test('the mapped state wins; else the first state by position', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'Move me' })
+  assert.equal(await moved(linear, 'ACME-1', 'in_review'), 'In Review')
+  assert.equal(await moved(linear, 'ACME-1', 'in_progress'), 'In Progress')
+  assert.equal(await moved(linear, 'ACME-1', 'todo'), 'Todo')
+  assert.equal(await moved(linear, 'ACME-1', 'done'), 'Done')
+  assert.equal(await moved(linear, 'ACME-1', 'canceled'), 'Canceled')
+  assert.equal((await linear.getIssue('ACME-1')).status.name, 'Canceled')
+})
+
+// PMK-34 rule 2 takes the first state of the category by position, with states of type duplicate last.
+test('canceled skips a Duplicate state that comes first by position', async () => {
+  const states = fakeWorkspace().PmkitStates({ variables: { first: 250 } }).json.data.workflowStates.nodes
+    .map((state) => (state.type === 'duplicate' ? { ...state, position: -5 } : state))
+  const { tracker: linear, fake } = linearSetup({ workspace: { states } })
+  seed(fake, { title: 'Move me' })
+  assert.equal(await moved(linear, 'ACME-1', 'canceled'), 'Canceled')
+  assert.deepEqual((await linear.getIssue('ACME-1')).duplicateOf, [])
+})
+
+test('canceled with only a Duplicate state is NOT_SUPPORTED and says to map it explicitly', async () => {
+  const states = fakeWorkspace().PmkitStates({ variables: { first: 250 } }).json.data.workflowStates.nodes
+    .filter((state) => state.type !== 'canceled')
+  const { tracker: linear, fake } = linearSetup({ workspace: { states } })
+  seed(fake, { title: 'Move me' })
+  await assert.rejects(linear.moveToCategory('ACME-1', 'canceled', 'user-1'), {
+    code: 'NOT_SUPPORTED',
+    message: 'team ACME has no status in the canceled category except Duplicate',
+    nextStep: 'Set mappings.status.canceled explicitly, for example mappings.status.canceled: Duplicate, to allow it',
+  })
+})
+
+test('an explicit mapping to Duplicate still moves to it', async () => {
+  const states = fakeWorkspace().PmkitStates({ variables: { first: 250 } }).json.data.workflowStates.nodes
+    .filter((state) => state.type !== 'canceled')
+  const { tracker: linear, fake } = linearSetup({ workspace: { states }, mappings: { status: { canceled: 'Duplicate' } } })
+  seed(fake, { title: 'Move me' })
+  assert.equal(await moved(linear, 'ACME-1', 'canceled'), 'Duplicate')
+})
+
+test('status names a state of the category; another name lists the choices', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'Move me' })
+  assert.equal(await moved(linear, 'ACME-1', 'in_progress', { status: 'UAT' }), 'UAT')
+  await assert.rejects(linear.moveToCategory('ACME-1', 'in_progress', 'user-1', { status: 'Done' }), {
+    code: 'INVALID_INPUT',
+    message: 'status Done is not in category in_progress',
+    nextStep: 'Use one of: In Progress, Code Review, UAT, Ready to ship',
+  })
+})
+
+test('mappings.status.blocked changes no target', async () => {
+  const { tracker: linear, fake } = linearSetup({ mappings: { status: { in_review: 'In Review', blocked: 'In Progress' } } })
+  seed(fake, { title: 'Move me' })
+  assert.equal(await moved(linear, 'ACME-1', 'in_progress'), 'In Progress')
+})
+
+test('the same state sends no mutation', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { title: 'Stay' })
+  const result = await linear.moveToCategory('ACME-1', 'backlog', 'user-1')
+  assert.equal(result.after, result.before)
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('a move dry run sends no mutation and matches the real move', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { title: 'Move me' })
+  const dry = await linear.moveToCategory('ACME-1', 'done', 'user-1', { dryRun: true })
+  assert.equal(mutationsIn(fetch), 0)
+  const real = await linear.moveToCategory('ACME-1', 'done', 'user-1')
+  assert.deepEqual(comparable(dry.after), comparable(real.after))
+})
+
+test('a mapped state the team lacks stops the move with NOT_CONFIGURED', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup({ mappings: { status: { in_review: 'Gone' } } })
+  seed(fake, { title: 'Move me' })
+  // The PMK-34 mapping check stops the move first. A fresh discovery is not stale, so it fetches once.
+  await assert.rejects(linear.moveToCategory('ACME-1', 'in_review', 'user-1'), {
+    code: 'NOT_CONFIGURED',
+    message: 'a mapping in .pmkit/config.yaml names something the workspace no longer has: mappings.status.in_review names Gone, which team ACME no longer has',
+    nextStep: '/pmkit:setup',
+  })
+  assert.equal(callsOf(fetch, 'PmkitStates'), 1)
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('in_review with no mapping or with none is NOT_SUPPORTED', async () => {
+  for (const mappings of [{}, { status: { in_review: 'none' } }]) {
+    const { tracker: linear, fake } = linearSetup({ mappings })
+    seed(fake, { title: 'Move me' })
+    await assert.rejects(linear.moveToCategory('ACME-1', 'in_review', 'user-1'), {
+      code: 'NOT_SUPPORTED',
+      message: 'team ACME has no status in the in_review category',
+      nextStep: '/pmkit:setup',
+    })
+  }
+})
+
+// PMK-34 rule 2: none names no state, so the move falls back to the first state of the category by position.
+test('a category set to none moves to the first state of that category', async () => {
+  const { tracker: linear, fake } = linearSetup({ mappings: { status: { backlog: 'none' } } })
+  seed(fake, { title: 'Move me', stateId: 'state-2' })
+  assert.equal(await moved(linear, 'ACME-1', 'backlog'), 'Backlog')
+})
+
+test('a caller limit sent to Linear does not set hasMore', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  for (const title of ['A', 'B', 'C']) seed(fake, { title })
+  const found = await linear.searchIssues({ limit: 1 })
+  assert.deepEqual(found.issues.map((issue) => issue.id), ['ACME-1'])
+  assert.equal(found.hasMore, false)
+})
+
+test('triage on a team with triage off is NOT_SUPPORTED with the hint', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'Move me' })
+  await assert.rejects(linear.moveToCategory('ACME-1', 'triage', 'user-1'), {
+    code: 'NOT_SUPPORTED',
+    message: 'team ACME has no status in the triage category',
+    nextStep: "Turn on triage in the team's settings in Linear",
+  })
+})
+
+test('another category with no state is NOT_SUPPORTED', async () => {
+  const states = fakeWorkspace().PmkitStates({ variables: { first: 250 } }).json.data.workflowStates.nodes.filter((state) => !['canceled', 'duplicate'].includes(state.type))
+  const { tracker: linear, fake } = linearSetup({ workspace: { states } })
+  seed(fake, { title: 'Move me' })
+  await assert.rejects(linear.moveToCategory('ACME-1', 'canceled', 'user-1'), { code: 'NOT_SUPPORTED', message: 'team ACME has no status in the canceled category' })
+})
+
+// The PMK-34 mapping check reads the workspace first; the category is checked before any issue read.
+test('an unknown category is INVALID_INPUT before any issue read', async () => {
+  const { tracker: linear, fetch } = linearSetup()
+  await assert.rejects(linear.moveToCategory('ACME-1', 'later', 'user-1'), { code: 'INVALID_INPUT' })
+  assert.equal(fetch.calls.filter((call) => /^PmkitIssue/.test(operationName(call.body.query))).length, 0)
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('assign takes a member, me or null, and skips an unchanged assignee', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { title: 'Assign me' })
+  assert.equal((await linear.assign('ACME-1', 'me', 'user-1')).after.assignee, 'user-1')
+  assert.equal((await linear.assign('ACME-1', 'user-2', 'user-1')).after.assignee, 'user-2')
+  const sent = mutationsIn(fetch)
+  const again = await linear.assign('ACME-1', 'user-2', 'user-1')
+  assert.equal(again.after, again.before)
+  assert.equal(mutationsIn(fetch), sent)
+  const dry = await linear.assign('ACME-1', null, 'user-1', { dryRun: true })
+  assert.equal('assignee' in dry.after, false)
+  assert.equal(mutationsIn(fetch), sent)
+  assert.equal('assignee' in (await linear.assign('ACME-1', null, 'user-1')).after, false)
+  await assert.rejects(linear.assign('ACME-1', 'user-4', 'user-1'), { code: 'INVALID_INPUT' })
+  await assert.rejects(linear.assign('ACME-1', 'user-9', 'user-1'), { code: 'INVALID_INPUT' })
+})
+
+test('archive archives once and returns the archived issue', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { title: 'Archive me' })
+  const dry = await linear.archive('ACME-1', 'user-1', { dryRun: true })
+  assert.equal(dry.after.archived, true)
+  assert.equal(mutationsIn(fetch), 0)
+  const { after } = await linear.archive('ACME-1', 'user-1')
+  assert.equal(after.archived, true)
+  assert.equal(mutationsIn(fetch), 1)
+  const again = await linear.archive('ACME-1', 'user-1')
+  assert.equal(again.after, again.before)
+  assert.equal(mutationsIn(fetch), 1)
+  assert.deepEqual((await linear.searchIssues({})).issues, [])
+  assert.deepEqual((await linear.searchIssues({ archived: true })).issues.map((issue) => issue.id), ['ACME-1'])
+})
+
+const three = (fake) => {
+  for (const [index, title] of ['One', 'Two', 'Three'].entries()) seed(fake, { id: `uuid-${index + 1}`, title })
+}
+
+test('link blocks, related and duplicate create the Linear relation type', async () => {
+  let n = 0
+  const { tracker: linear, fake, fetch } = linearSetup({ uuid: () => `rel-uuid-${++n}` })
+  three(fake)
+  const blocks = await linear.link('ACME-1', 'ACME-2', 'blocks', 'user-1')
+  assert.deepEqual(lastVariables(fetch, 'PmkitRelationCreate').input, { id: 'rel-uuid-1', type: 'blocks', issueId: 'uuid-1', relatedIssueId: 'uuid-2' })
+  assert.deepEqual(blocks.before.blocks, [])
+  assert.deepEqual(blocks.after.blocks, ['ACME-2'])
+  assert.deepEqual((await linear.getIssue('ACME-2')).blockedBy, ['ACME-1'])
+  await linear.link('ACME-1', 'ACME-3', 'related', 'user-1')
+  assert.equal(lastVariables(fetch, 'PmkitRelationCreate').input.type, 'related')
+  assert.deepEqual((await linear.getIssue('ACME-3')).related, ['ACME-1'])
+  const duplicate = await linear.link('ACME-1', 'ACME-3', 'duplicate', 'user-1')
+  assert.equal(lastVariables(fetch, 'PmkitRelationCreate').input.type, 'duplicate')
+  assert.deepEqual(duplicate.after.duplicateOf, ['ACME-3'])
+})
+
+test('an existing link and an empty unlink send no mutation', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  fake.relate('blocks', 'ACME-1', 'ACME-2')
+  fake.relate('related', 'ACME-3', 'ACME-1')
+  for (const [from, to, kind] of [['ACME-1', 'ACME-2', 'blocks'], ['ACME-1', 'ACME-3', 'related']]) {
+    const result = await linear.link(from, to, kind, 'user-1')
+    assert.equal(result.after, result.before)
+  }
+  const empty = await linear.unlink('ACME-2', 'ACME-3', 'blocks', 'user-1')
+  assert.equal(empty.after, empty.before)
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('unlink removes the relation; related in either direction', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  fake.relate('blocks', 'ACME-1', 'ACME-2')
+  fake.relate('related', 'ACME-2', 'ACME-1')
+  const blocks = await linear.unlink('ACME-1', 'ACME-2', 'blocks', 'user-1')
+  assert.deepEqual(blocks.after.blocks, [])
+  assert.deepEqual((await linear.getIssue('ACME-2')).blockedBy, [])
+  const related = await linear.unlink('ACME-1', 'ACME-2', 'related', 'user-1')
+  assert.deepEqual(related.before.related, ['ACME-2'])
+  assert.deepEqual(related.after.related, [])
+  assert.deepEqual(fake.relations, [])
+  assert.equal(callsOf(fetch, 'PmkitRelationDelete'), 2)
+})
+
+test('a blocks link that closes a loop is refused with the path', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  fake.relate('blocks', 'ACME-1', 'ACME-2')
+  fake.relate('blocks', 'ACME-2', 'ACME-3')
+  await assert.rejects(linear.link('ACME-3', 'ACME-1', 'blocks', 'user-1'), {
+    code: 'INVALID_INPUT',
+    message: 'ACME-3 blocks ACME-1 would close a cycle: ACME-3 → ACME-1 → ACME-2 → ACME-3',
+  })
+  assert.equal(mutationsIn(fetch), 0)
+  assert.equal((await linear.link('ACME-1', 'ACME-3', 'blocks', 'user-1')).after.blocks.length, 2)
+})
+
+test('an unknown kind, a self link and a missing issue fail', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  three(fake)
+  await assert.rejects(linear.link('ACME-1', 'ACME-2', 'sibling', 'user-1'), { code: 'INVALID_INPUT', message: 'kind must be one of blocks, related, duplicate' })
+  await assert.rejects(linear.link('ACME-1', 'acme-1', 'blocks', 'user-1'), { code: 'INVALID_INPUT', message: 'ACME-1 cannot be linked to itself' })
+  await assert.rejects(linear.unlink('ACME-1', 'ACME-99', 'blocks', 'user-1'), { code: 'NOT_FOUND' })
+  await assert.rejects(linear.link('ACME-1', 'ACME-2', 'blocks', 'user-2'), { code: 'INVALID_INPUT' })
+})
+
+test('an unconfirmed relation create that happened returns the link', async () => {
+  const applied = linearSetup({ uuid: () => 'rel-uuid-1' })
+  three(applied.fake)
+  applied.fake.unconfirm('PmkitRelationCreate', { applied: true })
+  assert.deepEqual((await applied.tracker.link('ACME-1', 'ACME-2', 'blocks', 'user-1')).after.blocks, ['ACME-2'])
+  const lost = linearSetup({ uuid: () => 'rel-uuid-2' })
+  three(lost.fake)
+  lost.fake.unconfirm('PmkitRelationCreate', { applied: false })
+  await assert.rejects(lost.tracker.link('ACME-1', 'ACME-2', 'blocks', 'user-1'), { code: 'UPSTREAM' })
+  assert.deepEqual(lost.fake.mutations, ['PmkitRelationCreate'])
+})
+
+test('a dry-run link and unlink send no mutation and return the same after', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  for (const kind of ['blocks', 'related', 'duplicate']) {
+    const dry = await linear.link('ACME-1', 'ACME-2', kind, 'user-1', { dryRun: true })
+    const sent = mutationsIn(fetch)
+    assert.equal(sent, ['blocks', 'related', 'duplicate'].indexOf(kind))
+    const real = await linear.link('ACME-1', 'ACME-2', kind, 'user-1')
+    assert.deepEqual(comparable(dry.after), comparable(real.after))
+  }
+  const sent = mutationsIn(fetch)
+  const dryUnlink = await linear.unlink('ACME-1', 'ACME-2', 'related', 'user-1', { dryRun: true })
+  assert.equal(mutationsIn(fetch), sent)
+  const realUnlink = await linear.unlink('ACME-1', 'ACME-2', 'related', 'user-1')
+  assert.deepEqual(comparable(dryUnlink.after), comparable(realUnlink.after))
+})
+
+test('setParent sets and clears the parent', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  const set = await linear.setParent('ACME-2', 'acme-1', 'user-1')
+  assert.equal(set.before.parent, undefined)
+  assert.equal(set.after.parent, 'ACME-1')
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssueUpdate').input, { parentId: 'uuid-1' })
+  assert.deepEqual((await linear.getIssue('ACME-1')).children, ['ACME-2'])
+  const cleared = await linear.setParent('ACME-2', null, 'user-1')
+  assert.equal('parent' in cleared.after, false)
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssueUpdate').input, { parentId: null })
+})
+
+test('a parent that is not an issue id is NOT_SUPPORTED; a missing one is INVALID_INPUT', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  three(fake)
+  await assert.rejects(linear.setParent('ACME-2', 'EPC-1x', 'user-1'), { code: 'NOT_SUPPORTED', message: 'Linear projects are not epics in pmkit yet' })
+  await assert.rejects(linear.setParent('ACME-2', 'ACME-99', 'user-1'), { code: 'INVALID_INPUT', message: 'parent ACME-99 is not an existing issue' })
+})
+
+test('a self parent and a loop are refused', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  fake.records[1].parentId = 'uuid-1'
+  fake.records[2].parentId = 'uuid-2'
+  await assert.rejects(linear.setParent('ACME-1', 'acme-1', 'user-1'), { code: 'INVALID_INPUT', message: 'ACME-1 cannot be its own parent' })
+  await assert.rejects(linear.setParent('ACME-1', 'ACME-2', 'user-1'), { code: 'INVALID_INPUT', message: 'parent loop: ACME-1 → ACME-2 → ACME-1' })
+  await assert.rejects(linear.setParent('ACME-1', 'ACME-3', 'user-1'), { code: 'INVALID_INPUT', message: 'parent loop: ACME-1 → ACME-3 → ACME-2 → ACME-1' })
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('an unchanged parent sends no mutation, and a dry run matches the real write', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  fake.records[1].parentId = 'uuid-1'
+  const same = await linear.setParent('ACME-2', 'ACME-1', 'user-1')
+  assert.equal(same.after, same.before)
+  assert.equal(mutationsIn(fetch), 0)
+  const dry = await linear.setParent('ACME-3', 'ACME-1', 'user-1', { dryRun: true })
+  assert.equal(mutationsIn(fetch), 0)
+  const real = await linear.setParent('ACME-3', 'ACME-1', 'user-1')
+  assert.deepEqual(comparable(dry.after), comparable(real.after))
 })

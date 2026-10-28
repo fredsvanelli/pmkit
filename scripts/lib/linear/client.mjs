@@ -6,17 +6,17 @@ import { linearCredential } from './credential.mjs'
 
 export const LINEAR_ENDPOINT = 'https://api.linear.app/graphql'
 
-const stripComments = (document) => document.replace(/#[^\n\r]*/g, '').trim()
 
 const DEFINITION_KEYWORDS = new Set(['query', 'mutation', 'subscription', 'fragment'])
 
 /**
- * The keyword that opens each top-level definition, with '{' for an anonymous query, or null
- * when the document cannot be read: an unclosed string, unbalanced brackets or an unknown keyword.
+ * Each top-level definition as { keyword, name }, with keyword '{' for an anonymous query and name null when none follows,
+ * or null when the document cannot be read: an unclosed string, unbalanced brackets or an unknown keyword.
  * Strings, block strings and comments are skipped, so a word inside them never counts.
  */
-function definitionKeywords(document) {
-  const keywords = []
+function definitions(document) {
+  const found = []
+  let expectName = false
   const stack = []
   let expectDefinition = true
   let index = 0
@@ -37,8 +37,9 @@ function definitionKeywords(document) {
       if (end >= document.length || document[end] !== '"') return null
       index = end + 1
     } else if (char === '{' || char === '(' || char === '[') {
+      expectName = false
       if (char === '{' && stack.length === 0 && expectDefinition) {
-        keywords.push('{')
+        found.push({ keyword: '{', name: null })
         expectDefinition = false
       }
       stack.push(char)
@@ -53,15 +54,20 @@ function definitionKeywords(document) {
       if (stack.length === 0 && expectDefinition) {
         const keyword = name.toLowerCase()
         if (!DEFINITION_KEYWORDS.has(keyword)) return null
-        keywords.push(keyword)
+        found.push({ keyword, name: null })
         expectDefinition = false
+        expectName = true
+      } else if (stack.length === 0 && expectName) {
+        found[found.length - 1].name = name
+        expectName = false
       }
       index += name.length
     } else {
+      if (!/\s|,/.test(char)) expectName = false
       index += 1
     }
   }
-  return stack.length === 0 ? keywords : null
+  return stack.length === 0 ? found : null
 }
 
 /**
@@ -69,14 +75,14 @@ function definitionKeywords(document) {
  * A document the lexer cannot read counts as a mutation too: a wrong yes costs a retry, a wrong no can apply a change twice.
  */
 export function isMutation(document) {
-  const keywords = definitionKeywords(document)
-  return keywords === null || keywords.includes('mutation')
+  const found = definitions(document)
+  return found === null || found.some((definition) => definition.keyword === 'mutation')
 }
 
-/** The operation name of a document, or null when it is anonymous. */
+/** The name of the first operation in a document, skipping fragments, or null when it is anonymous or the document cannot be read. */
 export function operationName(document) {
-  const match = /^(?:query|mutation|subscription)\s+([A-Za-z_]\w*)/.exec(stripComments(document))
-  return match ? match[1] : null
+  const operation = definitions(document)?.find((definition) => definition.keyword !== 'fragment')
+  return operation?.name ?? null
 }
 
 /** The paths of secret-like keys and values in the tracker block, sorted. Values are never included. */

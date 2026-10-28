@@ -1,0 +1,1408 @@
+# PMK-35 Linear issues, relations and search implementation plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development or superpowers:executing-plans, as the user picks, to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Replace the Linear stubs of `searchIssues`, `getIssue`, `createIssue`, `updateIssue`, `moveToCategory`, `assign`, `archive`, `link`, `unlink` and `setParent` with operations that read and write Linear and return the common `Issue` shape.
+
+**Architecture:** Pure modules map in each direction: `documents.mjs` holds the GraphQL text, `issues.mjs` turns a Linear node into a pmkit issue, `writes.mjs` turns a pmkit patch into a Linear input, and `filter.mjs` turns a pmkit filter into an `IssueFilter` plus client steps. `issue-ops.mjs` and `relation-ops.mjs` hold the operations that send requests, and `tracker.mjs` merges them with the existing discovery. A stateful fake (`fakeLinearIssues`) answers the documents by operation name, so the contract suite runs its `discovery`, `issues` and `relations` families in `npm test`.
+
+**Tech stack:** Node.js ESM, `node:test`, `node:crypto` `randomUUID`, the PMK-30 client (`request`, `paginate`, `session`), the PMK-33 discovery and user-store cache, `fakeLinearFetch` from `scripts/fake-linear-api.mjs`.
+
+**Spec:** `docs/superpowers/specs/2026-10-27-pmk-35-linear-issues-relations-search-design.md`
+
+## Global constraints
+
+- `npm test` opens no socket. Every Linear test injects `fakeLinearFetch`, and every test that reaches the user store sets `PMKIT_HOME` through `userStoreEnv()`.
+- `package.json` gains no dependency (ADR-0003).
+- Every Local tracker output stays byte-identical. The goldens and the three Local contract runs still run every test.
+- The key never appears in output, an error, a cache file or a command line. Tests use `FAKE_KEY`.
+- No file, commit or comment holds the real workspace URL key or team key. Examples use `acme` and `ACME`. Docs say "the sandbox workspace".
+- No task writes to Linear. The live check (Task 21) is read-only, runs behind `PMKIT_LIVE=1`, and refuses any mutation in its fetch wrapper.
+- The client retries only documents with no mutation, and the adapter never loops over a mutation.
+- The client's page cap is 10 pages when the caller gives no limit; `hasMore` signals the cut. Search pages hold 100 nodes.
+- Only the client refuses secret-like config keys.
+- The actor and `me` are the owner of `LINEAR_API_KEY` (the viewer). An actor other than the viewer's id fails with `INVALID_INPUT`.
+- `mappings.types` is a map from a pmkit type name to one Linear label name. This issue does not change `schemas/pmkit.config.schema.json` or `scripts/lib/config.mjs`, and imports nothing from the unmerged PMK-34 branch.
+- `mappings.status.blocked` has no effect. Estimates come from Linear's native `estimate` field only. `branch` reads as Linear's `branchName`.
+- Every commit message carries `(PMK-35)` and ends with exactly `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- Code, comments and messages follow `~/.claude/skills/unslop/SKILL.md`.
+
+## Review focus
+
+1. A description edited in Linear's editor, with `*` bullets, `[X]` marks or prose inside the criteria section. A read must keep every line. Task 5 tests it.
+2. An id typed in lowercase, such as `acme-1`. It must find `ACME-1`, and output must print `ACME-1`. Task 11 tests it.
+3. A label name that exists in the team and in the workspace. The write must pick the team's label. Task 8 tests it.
+4. `issues list --sort priority --limit 1` when the best match is not the oldest. The adapter must read every match before it cuts, so it cannot stop early. Task 9 tests `serverLimit`, and Task 12 tests the result.
+5. `issues list --assignee me` on a run whose discovery comes from the cache. The viewer must still come from the session, not from the cache. Task 12 tests it.
+
+## Files
+
+| File | Change | Task |
+|---|---|---|
+| `scripts/lib/linear/client.mjs` | `operationName` skips fragments | 1 |
+| `scripts/lib/issue-filter.mjs` | New: `FILTER_KEYS`, `SORTS`, `checkFilter`, `issueComparator` | 2 |
+| `scripts/lib/issue-fields.mjs` | New: `CREATE_KEYS`, `UPDATE_KEYS`, `OWNED`, `checkKeys` | 2 |
+| `scripts/lib/local/query.mjs`, `scripts/lib/local/tracker.mjs` | Import the moved code | 2 |
+| `scripts/lib/linear/read-mappings.mjs` | New: `readMappings` | 3 |
+| `scripts/lib/linear/discovery.mjs` | `types` from `mappings.types`, type labels out of `labels` | 4 |
+| `scripts/lib/linear/issues.mjs` | New: ids, priorities, criteria, `makeContext`, `stateCategory`, `toIssue`, `blockedOpen` | 5, 6, 7 |
+| `scripts/lib/linear/documents.mjs` | New: the fragment and every named document | 6 |
+| `scripts/lib/linear/writes.mjs` | New: `createTeam`, `toInput`, `applyInput`, `skeletonNode` | 8 |
+| `scripts/lib/linear/filter.mjs` | New: `translateFilter`, `finishSearch` | 9 |
+| `scripts/fake-linear-api.mjs` | Exports the acme fixtures; adds `fakeLinearIssues` | 10, 15 |
+| `scripts/lib/linear/issue-ops.mjs` | New: context, viewer check, reads, issue writes | 11 to 14 |
+| `scripts/lib/linear/relation-ops.mjs` | New: `link`, `unlink`, `setParent` | 16, 17 |
+| `scripts/lib/linear/tracker.mjs` | Merges the operations; `discover()` adds `viewer` | 11 |
+| `scripts/contract-suite.mjs` | `families` option | 18 |
+| `scripts/lib/linear/contract.test.mjs` | New: the suite over the fake | 18 |
+| `scripts/lib/linear/adapter.mjs` | `settings()` gains `isEpicId` and `trackerBranch` | 19 |
+| `scripts/pmkit.mjs` | Viewer as actor, `isEpicId`, `trackerBranch`, `hasMore` warning, `(new)` | 19, 20 |
+| `scripts/lib/linear/client-live.mjs` | One read per translation row | 21 |
+
+## Acceptance criteria map
+
+| Criterion | Tasks |
+|---|---|
+| 1. The adapter implements the Issues and Relations operations of the contract | 5 to 8 (mapping), 10 and 15 (fake), 11 (`getIssue`), 12 (`searchIssues`), 13 (`createIssue`, `updateIssue`), 14 (`assign`, `archive`), 16 (`link`, `unlink`), 17 (`setParent`), 18 (the contract suite's `issues` and `relations` families), 19 and 20 (CLI) |
+| 2. `move_to_category` sets the workflow state mapped to the category | 3 (`mappings.status`), 14 (`moveToCategory` with every row of the spec's error table), 18 (the contract test that moves through all seven categories) |
+| 3. Issue filters translate to Linear filters | 9 (`translateFilter`, one test per row of the translation table), 10 (the fake refuses an unknown filter key), 12 (search through the client), 21 (Linear accepts each row, read-only) |
+
+## Shared types
+
+Later tasks rely on these shapes. Each task's Interfaces block names the ones it uses.
+
+```js
+/** @typedef {{ status: Object<string,string>, statusNone: string[], blockedStatus: string|null,
+ *   types: Array<[string, string]>, estimate: 'native'|null, problems: string[] }} Mappings */
+
+/** @typedef {{ raw: object, mappings: Mappings, viewer: { id: string, name: string },
+ *   scopeTeam: object|null, priorities: string[] }} LinearContext
+ * raw is the raw discovery (teams, states, labels, users). scopeTeam is the raw team that tracker.scope.team names, or null. */
+```
+
+A Linear node is the object the fragment selects (see Task 6). The pmkit `Issue` is the typedef in `scripts/lib/model.mjs`.
+
+---
+
+### Task 1: `operationName` skips fragments
+
+**Files:**
+- Modify: `scripts/lib/linear/client.mjs:76-80`
+- Test: `scripts/lib/linear/client.test.mjs`, `scripts/fake-linear-api.test.mjs`
+
+**Interfaces:**
+- Produces: `operationName(document: string): string | null`, the name after the first `query`, `mutation` or `subscription` keyword at the top level. Later tasks place `fragment PmkitIssueFields` first in every document.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `client.test.mjs`:
+
+```js
+test('operationName names the first operation after a fragment', () => {
+  assert.equal(operationName('fragment F on Issue { id } mutation PmkitIssueUpdate($id: String!) { x }'), 'PmkitIssueUpdate')
+  assert.equal(operationName('# c\nfragment F on Issue { id }\n# d\nquery PmkitIssues { x }'), 'PmkitIssues')
+  assert.equal(operationName('fragment F on Issue { id } { viewer { id } }'), null)
+  assert.equal(operationName('fragment F on Issue { id '), null)
+})
+```
+
+In `fake-linear-api.test.mjs`:
+
+```js
+test('a named mutation after a fragment routes by its name', async () => {
+  const fetch = fakeLinearFetch({ PmkitIssueUpdate: json({ ok: true }) })
+  const body = JSON.stringify({ query: 'fragment F on Issue { id } mutation PmkitIssueUpdate { x }' })
+  const response = await fetch('u', { method: 'POST', headers: {}, body })
+  assert.deepEqual(JSON.parse(await response.text()), { data: { ok: true } })
+  assert.deepEqual(fetch.unrouted, [])
+})
+```
+
+- [ ] **Step 2: Run the tests to see them fail**
+
+Run: `node --test scripts/lib/linear/client.test.mjs scripts/fake-linear-api.test.mjs`
+Expected: FAIL, `operationName` returns `null` for the fragment cases.
+
+- [ ] **Step 3: Implement**
+
+Reuse the lexer behind `definitionKeywords`: give it a way to return the name that follows each keyword (for example, return `[{ keyword, name }]`), keep `isMutation` on the keywords, and make `operationName` return the name of the first entry whose keyword is not `fragment` and not `{`. An unreadable document gives `null`.
+
+- [ ] **Step 4: Run the tests to see them pass**
+
+Run: `node --test scripts/lib/linear/client.test.mjs scripts/fake-linear-api.test.mjs`
+Expected: PASS, and the existing `operationName` and `isMutation` cases still pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/lib/linear/client.mjs scripts/lib/linear/client.test.mjs scripts/fake-linear-api.test.mjs
+git commit -m "fix(linear): name the operation after a fragment (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 2: Shared filter and write-key modules
+
+A move with no behavior change, in its own commit, as the spec's last risk asks.
+
+**Files:**
+- Create: `scripts/lib/issue-filter.mjs`, `scripts/lib/issue-fields.mjs`
+- Modify: `scripts/lib/local/query.mjs`, `scripts/lib/local/tracker.mjs:30-89`
+- Test: `scripts/query.test.mjs` (unchanged), `scripts/tracker-issues.test.mjs` (unchanged), goldens
+
+**Interfaces:**
+- Produces: from `issue-filter.mjs`, `FILTER_KEYS`, `SORTS`, `checkFilter(filter, { types, members, sprintExists })` and `issueComparator(sort: string, priorities: string[]): (a: Issue, b: Issue) => number` (today's `comparator`, renamed and exported). From `issue-fields.mjs`, `CREATE_KEYS`, `UPDATE_KEYS`, `OWNED` and `checkKeys(input, allowed)`, with the same messages and next steps.
+- `query.mjs` keeps exporting `FILTER_KEYS`, `SORTS` and `checkFilter` (re-exported), so no other importer changes.
+
+- [ ] **Step 1: Move the code**
+
+Cut the definitions out of `query.mjs` and `local/tracker.mjs`, paste them into the new modules, and import them back. `runQuery` calls `issueComparator`.
+
+- [ ] **Step 2: Run the full suite**
+
+Run: `npm test`
+Expected: PASS with the same test count as before the move, goldens included.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add scripts/lib/issue-filter.mjs scripts/lib/issue-fields.mjs scripts/lib/local/query.mjs scripts/lib/local/tracker.mjs
+git commit -m "refactor: share the issue filter and write keys (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 3: Read the mappings
+
+**Files:**
+- Create: `scripts/lib/linear/read-mappings.mjs`
+- Test: `scripts/lib/linear/read-mappings.test.mjs`
+
+**Interfaces:**
+- Produces: `readMappings(pmkit): Mappings` (see "Shared types"). The file's header comment says: "Reads mappings for the Linear adapter. When PMK-34 merges, switch to its resolveMappings where the names or shapes differ."
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+const read = (mappings) => readMappings({ mappings })
+
+test('status keeps categories, drops blocked and none', () => {
+  const found = read({ status: { in_review: 'In Review', blocked: 'Blocked', triage: 'none' } })
+  assert.deepEqual(found.status, { in_review: 'In Review' })
+  assert.deepEqual(found.statusNone, ['triage'])
+  assert.equal(found.blockedStatus, 'Blocked')
+})
+
+test('types is the map in key order, without none', () => {
+  assert.deepEqual(read({ types: { feature: 'Feature', bug: 'Bug', chore: 'none' } }).types, [['feature', 'Feature'], ['bug', 'Bug']])
+})
+
+test('a types value that is not a map of names reads as absent with a problem', () => {
+  for (const types of [['Bug'], 'Bug', { bug: 3 }, { bug: '' }]) {
+    const found = read({ types })
+    assert.deepEqual(found.types, [])
+    assert.deepEqual(found.problems, ['mappings.types must be a map from a pmkit type to a Linear label name'])
+  }
+})
+
+test('the estimate is native when absent or native, else null', () => {
+  assert.equal(read({}).estimate, 'native')
+  assert.equal(read({ fields: { estimate: 'native' } }).estimate, 'native')
+  assert.equal(read({ fields: { estimate: 'none' } }).estimate, null)
+  assert.equal(read({ fields: { estimate: 'Size' } }).estimate, null)
+})
+
+test('no mappings gives empty values', () => {
+  assert.deepEqual(readMappings({}), { status: {}, statusNone: [], blockedStatus: null, types: [], estimate: 'native', problems: [] })
+})
+```
+
+- [ ] **Step 2: Run to see it fail**
+
+Run: `node --test scripts/lib/linear/read-mappings.test.mjs`
+Expected: FAIL, module not found.
+
+- [ ] **Step 3: Implement `readMappings` in `scripts/lib/linear/read-mappings.mjs`**
+
+A value counts as a name when it is a string with a non-space character. `none` is compared exactly.
+
+- [ ] **Step 4: Run to see it pass**
+
+Run: `node --test scripts/lib/linear/read-mappings.test.mjs`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/lib/linear/read-mappings.mjs scripts/lib/linear/read-mappings.test.mjs
+git commit -m "feat(linear): read the mappings the adapter uses (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 4: `discover().types` from `mappings.types`
+
+**Files:**
+- Modify: `scripts/lib/linear/discovery.mjs` (`discoveryView`)
+- Test: `scripts/lib/linear/discovery.test.mjs`
+
+**Interfaces:**
+- Consumes: `readMappings` (Task 3).
+- Produces: `discoveryView(raw, pmkit).types`, the keys of `mappings.types` whose label exists in scope, in map order. `labels` leaves out the label names that `mappings.types` names. `mappedCategories` reads `readMappings(pmkit).status`, so `none` gives no warning.
+
+- [ ] **Step 1: Write the failing tests**
+
+Use the existing helper that builds `raw` from `fakeWorkspace()` in `discovery.test.mjs`.
+
+```js
+test('mappings.types fills types and leaves its labels out of labels', async () => {
+  const view = discoveryView(await rawOf(), { tracker: { scope: { team: 'ACME' } }, mappings: { types: { bug: 'Bug', feature: 'Feature' } } })
+  assert.deepEqual(view.types, ['bug', 'feature'])
+  assert.ok(!view.labels.includes('Bug') && !view.labels.includes('Feature'))
+  assert.ok(view.labels.includes('Docs'))
+})
+
+test('a type whose label is missing warns and is left out', async () => {
+  const view = discoveryView(await rawOf(), { tracker: { scope: { team: 'ACME' } }, mappings: { types: { bug: 'Bug', chore: 'Chore' } } })
+  assert.deepEqual(view.types, ['bug'])
+  assert.ok(view.warnings.includes('mappings.types.chore names Chore, which team ACME does not have'))
+})
+
+test('a bad mappings.types warns and gives no types', async () => {
+  const view = discoveryView(await rawOf(), { mappings: { types: ['Bug'] } })
+  assert.deepEqual(view.types, [])
+  assert.ok(view.warnings.includes('mappings.types must be a map from a pmkit type to a Linear label name'))
+})
+
+test('mappings.status none gives no warning', async () => {
+  const view = discoveryView(await rawOf(), { mappings: { status: { in_review: 'none' } } })
+  assert.equal(view.warnings.some((line) => line.includes('in_review')), false)
+})
+```
+
+Without a team, the missing-label message ends `which no team has`, as the status warning does.
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `node --test scripts/lib/linear/discovery.test.mjs`
+Expected: FAIL, `types` is `[]`.
+
+- [ ] **Step 3: Implement in `discoveryView`**
+
+A type's label exists when a non-group label with that name belongs to the chosen team or the workspace (`team === null`). With no chosen team, any non-group label counts.
+
+- [ ] **Step 4: Run to see them pass**
+
+Run: `node --test scripts/lib/linear/discovery.test.mjs scripts/lib/linear/tracker.test.mjs scripts/cli-linear.test.mjs`
+Expected: PASS. Configs without `mappings.types` give the same output as before.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/lib/linear/discovery.mjs scripts/lib/linear/discovery.test.mjs
+git commit -m "feat(linear): list types from mappings.types (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 5: Ids, priorities and the criteria section
+
+**Files:**
+- Create: `scripts/lib/linear/issues.mjs`
+- Test: `scripts/lib/linear/issues.test.mjs`
+
+**Interfaces:**
+- Produces:
+  - `isIssueId(id: unknown): boolean`, true for a string matching `^[A-Za-z][A-Za-z0-9_]*-[0-9]+$`.
+  - `issueKey(id: string): string`, the id in upper case. It does not use `normalizeId`, which rewrites `I`, `L` and `O`.
+  - `PRIORITY_TO_LINEAR = { urgent: 1, high: 2, medium: 3, low: 4 }` and `priorityOf(value: number): string | undefined` (`0` and unknown values give `undefined`).
+  - `CRITERIA_HEADING = '## Acceptance criteria'`.
+  - `parseDescription(text: string | null): { description: string, acceptanceCriteria: Criterion[] }`.
+  - `buildDescription(description: string, criteria: Criterion[]): string`.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+test('isIssueId accepts identifiers only', () => {
+  for (const id of ['ACME-1', 'acme-12', 'A_B2-3']) assert.equal(isIssueId(id), true, id)
+  for (const id of ['ACME', 'ACME-', '1-2', 'ACME-1a', '00000000-0000-0000-0000-000000000000', '', null]) assert.equal(isIssueId(id), false, String(id))
+  assert.equal(issueKey('acme-1'), 'ACME-1')
+  assert.equal(issueKey('ACMEOIL-1'), 'ACMEOIL-1')
+})
+
+test('priorities map both ways', () => {
+  assert.deepEqual([1, 2, 3, 4].map(priorityOf), ['urgent', 'high', 'medium', 'low'])
+  assert.equal(priorityOf(0), undefined)
+})
+
+test('the criteria section parses -, *, [x] and [X], and keeps other lines in place', () => {
+  const text = 'Intro\n\n## Acceptance criteria\n\n- [ ] one\n* [x] two\nA note\n- [X] three\n\n## Notes\n\nTail'
+  assert.deepEqual(parseDescription(text), {
+    description: 'Intro\n\nA note\n\n## Notes\n\nTail',
+    acceptanceCriteria: [{ text: 'one', done: false }, { text: 'two', done: true }, { text: 'three', done: true }],
+  })
+})
+
+test('null and a description without the section', () => {
+  assert.deepEqual(parseDescription(null), { description: '', acceptanceCriteria: [] })
+  assert.deepEqual(parseDescription('  Body  '), { description: 'Body', acceptanceCriteria: [] })
+})
+
+test('buildDescription writes the section and parses back unchanged', () => {
+  const criteria = [{ text: 'one', done: false }, { text: 'two', done: true }]
+  assert.equal(buildDescription('Body', criteria), 'Body\n\n## Acceptance criteria\n\n- [ ] one\n- [x] two')
+  assert.equal(buildDescription('Body', []), 'Body')
+  assert.equal(buildDescription('', criteria), '## Acceptance criteria\n\n- [ ] one\n- [x] two')
+  assert.deepEqual(parseDescription(buildDescription('Body', criteria)), { description: 'Body', acceptanceCriteria: criteria })
+})
+```
+
+The kept lines stay where they were. The description is the text outside the section, plus the non-checklist lines inside it, with runs of blank lines left as the source had them and the result trimmed.
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `node --test scripts/lib/linear/issues.test.mjs`
+Expected: FAIL, module not found.
+
+- [ ] **Step 3: Implement the functions in `scripts/lib/linear/issues.mjs`**
+
+A checklist line matches `^[-*] \[( |x|X)\] (.*)$`. The section ends at the next line starting with `## ` or at the end.
+
+- [ ] **Step 4: Run to see them pass**
+
+Run: `node --test scripts/lib/linear/issues.test.mjs`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/lib/linear/issues.mjs scripts/lib/linear/issues.test.mjs
+git commit -m "feat(linear): map ids, priorities and acceptance criteria (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 6: The documents
+
+**Files:**
+- Create: `scripts/lib/linear/documents.mjs`
+- Test: `scripts/lib/linear/documents.test.mjs`
+
+**Interfaces:**
+- Produces these exports, each a string that starts with `ISSUE_FRAGMENT` when it selects issue fields:
+  - `ISSUE_FRAGMENT`: `fragment PmkitIssueFields on Issue { ... }` with exactly the fields of the spec's "The issue fragment".
+  - `ISSUES_QUERY`, `PmkitIssues($filter: IssueFilter, $first: Int!, $after: String, $includeArchived: Boolean, $sort: [IssueSortInput!])`, selecting `issues(...) { nodes { ...PmkitIssueFields } pageInfo { hasNextPage endCursor } }`.
+  - `ISSUE_BY_ID_QUERY`, `PmkitIssueById($id: ID!)`, selecting `issues(filter: { id: { eq: $id } }, includeArchived: true, first: 1) { nodes { ...PmkitIssueFields } }`.
+  - `ISSUE_CREATE`, `PmkitIssueCreate($input: IssueCreateInput!)`, `issueCreate(input: $input) { success issue { ...PmkitIssueFields } }`.
+  - `ISSUE_UPDATE`, `PmkitIssueUpdate($id: String!, $input: IssueUpdateInput!)`, `issueUpdate(id: $id, input: $input) { success issue { ...PmkitIssueFields } }`.
+  - `ISSUE_ARCHIVE`, `PmkitIssueArchive($id: String!)`, `issueArchive(id: $id) { success }`.
+  - `RELATION_CREATE`, `PmkitRelationCreate($input: IssueRelationCreateInput!)`, `issueRelationCreate(input: $input) { success issueRelation { id } }`.
+  - `RELATION_DELETE`, `PmkitRelationDelete($id: String!)`, `issueRelationDelete(id: $id) { success }`.
+  - `BLOCK_GRAPH_QUERY`, `PmkitBlockGraph($ids: [ID!])`, `issues(filter: { id: { in: $ids } }, includeArchived: true, first: 250) { nodes { identifier relations(first: 50) { nodes { type relatedIssue { identifier } } } } }`.
+  - `PARENT_CHAIN_QUERY`, `PmkitParentChain($id: ID!)`, the issue by `id: { eq }` with `parent { identifier parent { ... } }` nested 10 levels.
+  - `NESTED_PAGES`: `{ labels, children, relations, inverseRelations }`, each a document `PmkitIssueLabelsPage`, `PmkitIssueChildrenPage`, `PmkitIssueRelationsPage`, `PmkitIssueInverseRelationsPage` with `($id: String!, $first: Int!, $after: String)`, selecting `issue(id: $id) { <connection>(first: $first, after: $after) { nodes { <the fragment's node fields> } pageInfo { hasNextPage endCursor } } }`.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+const DOCUMENTS = { ISSUES_QUERY: 'PmkitIssues', ISSUE_BY_ID_QUERY: 'PmkitIssueById', ISSUE_CREATE: 'PmkitIssueCreate', ISSUE_UPDATE: 'PmkitIssueUpdate',
+  ISSUE_ARCHIVE: 'PmkitIssueArchive', RELATION_CREATE: 'PmkitRelationCreate', RELATION_DELETE: 'PmkitRelationDelete',
+  BLOCK_GRAPH_QUERY: 'PmkitBlockGraph', PARENT_CHAIN_QUERY: 'PmkitParentChain' }
+
+test('every document has its name and the right kind', () => {
+  for (const [key, name] of Object.entries(DOCUMENTS)) {
+    assert.equal(operationName(documents[key]), name, key)
+    assert.equal(isMutation(documents[key]), /CREATE|UPDATE|ARCHIVE|DELETE/.test(key), key)
+  }
+  for (const [field, document] of Object.entries(documents.NESTED_PAGES)) assert.match(operationName(document), /^PmkitIssue\w+Page$/, field)
+})
+
+test('the parent chain nests 10 levels', () => {
+  assert.equal(documents.PARENT_CHAIN_QUERY.match(/parent \{/g).length, 10)
+})
+```
+
+- [ ] **Step 2: Run to see it fail**
+
+Run: `node --test scripts/lib/linear/documents.test.mjs`
+Expected: FAIL, module not found.
+
+- [ ] **Step 3: Write `scripts/lib/linear/documents.mjs`**
+
+- [ ] **Step 4: Run to see it pass**
+
+Run: `node --test scripts/lib/linear/documents.test.mjs`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/lib/linear/documents.mjs scripts/lib/linear/documents.test.mjs
+git commit -m "feat(linear): add the issue documents (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 7: `toIssue`
+
+**Files:**
+- Modify: `scripts/lib/linear/issues.mjs`
+- Test: `scripts/lib/linear/issues.test.mjs`
+
+**Interfaces:**
+- Consumes: `readMappings` (Task 3), `categoryOfType` and `estimateScale` from `discovery.mjs`, `compareIds` from `scripts/lib/ids.mjs`.
+- Produces:
+  - `makeContext(raw, pmkit, viewer): LinearContext`, with `priorities: ['urgent', 'high', 'medium', 'low']` and `scopeTeam` from `pmkit.tracker.scope.team`.
+  - `stateCategory(state: { name, type }, context): string`, from `mappings.status` by name, else `categoryOfType`, else `'in_progress'`.
+  - `toIssue(node, context): Issue | null`, `null` for a trashed node, every row of the spec's "The issue model" table otherwise.
+  - `blockedOpen(node, context): boolean`, true when an inverse `blocks` relation's issue has a state whose category is not `done` or `canceled`, or has no state.
+
+- [ ] **Step 1: Write the failing tests**
+
+Build nodes with a local `node(overrides)` helper that returns a full fragment-shaped object (`team: { id: 'team-acme', key: 'ACME' }`, empty connections). Build the context from `fetchDiscovery` over `fakeWorkspace()`, or from a hand-written `raw` with one team.
+
+```js
+test('toIssue maps the scalar fields', () => {
+  const issue = toIssue(node({ identifier: 'ACME-3', priority: 2, dueDate: '2026-11-01', branchName: 'acme-3-x', assignee: { id: 'user-2' },
+    createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-02T00:00:00.000Z', state: { id: 'state-4', name: 'In Review', type: 'started' } }), context)
+  assert.equal(issue.id, 'ACME-3')
+  assert.equal(issue.priority, 'high')
+  assert.equal(issue.due, '2026-11-01')
+  assert.equal(issue.branch, 'acme-3-x')
+  assert.equal(issue.assignee, 'user-2')
+  assert.deepEqual(issue.status, { name: 'In Review', category: 'in_review' }) // context maps in_review: In Review
+  assert.equal(issue.archived, false)
+  assert.equal(issue.created, '2026-10-01T00:00:00.000Z')
+})
+
+test('relations in both directions, related without duplicates, similar ignored, sorted', () => {
+  const issue = toIssue(node({
+    relations: conn([rel('blocks', 'ACME-9'), rel('blocks', 'ACME-10'), rel('related', 'ACME-5'), rel('duplicate', 'ACME-6'), rel('similar', 'ACME-7')]),
+    inverseRelations: conn([inv('blocks', 'ACME-2'), inv('related', 'ACME-5'), inv('duplicate', 'ACME-8')]),
+  }), context)
+  assert.deepEqual(issue.blocks, ['ACME-9', 'ACME-10'])
+  assert.deepEqual(issue.blockedBy, ['ACME-2'])
+  assert.deepEqual(issue.related, ['ACME-5'])
+  assert.deepEqual(issue.duplicateOf, ['ACME-6'])
+})
+
+test('type comes from mappings.types and leaves labels', () => {
+  const issue = toIssue(node({ labels: conn([lab('Feature'), lab('Docs'), lab('Bug')]) }), contextWith({ types: { bug: 'Bug', feature: 'Feature' } }))
+  assert.equal(issue.type, 'bug')
+  assert.deepEqual(issue.labels, ['Docs'])
+})
+
+test('estimate: points as a number, t-shirt as a size, unset when off or mapped elsewhere', () => {
+  assert.equal(toIssue(node({ estimate: 3 }), contextWithTeam({ issueEstimationType: 'fibonacci' })).estimate, 3)
+  assert.equal(toIssue(node({ estimate: 5 }), contextWithTeam({ issueEstimationType: 'tShirt' })).estimate, 'L')
+  assert.equal(toIssue(node({ estimate: 3 }), contextWith({ fields: { estimate: 'Size' } })).estimate, undefined)
+  assert.equal(toIssue(node({ estimate: null }), context).estimate, undefined)
+})
+
+test('criteria come out of the description; a trashed node is null; archivedAt reads as archived', () => {
+  const issue = toIssue(node({ description: 'Body\n\n## Acceptance criteria\n\n- [x] done' }), context)
+  assert.equal(issue.description, 'Body')
+  assert.deepEqual(issue.acceptanceCriteria, [{ text: 'done', done: true }])
+  assert.equal(toIssue(node({ trashed: true }), context), null)
+  assert.equal(toIssue(node({ archivedAt: '2026-10-03T00:00:00.000Z' }), context).archived, true)
+})
+
+test('blockedOpen counts open blockers and blockers without a state', () => {
+  assert.equal(blockedOpen(node({ inverseRelations: conn([inv('blocks', 'ACME-2', { type: 'completed' })]) }), context), false)
+  assert.equal(blockedOpen(node({ inverseRelations: conn([inv('blocks', 'ACME-2', { type: 'started' })]) }), context), true)
+  assert.equal(blockedOpen(node({ inverseRelations: conn([inv('blocks', 'ACME-2', null)]) }), context), true)
+})
+```
+
+`sprint`, `milestone` and `release` stay unset; one assertion checks that `'sprint' in issue` is false.
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `node --test scripts/lib/linear/issues.test.mjs`
+Expected: FAIL, `toIssue` is not exported.
+
+- [ ] **Step 3: Implement `makeContext`, `stateCategory`, `toIssue`, `blockedOpen`**
+
+The team's estimate scale comes from `estimateScale(team.estimation)` of the raw team whose id is `node.team.id`. Unset fields are absent keys, as in the Local tracker.
+
+- [ ] **Step 4: Run to see them pass**
+
+Run: `node --test scripts/lib/linear/issues.test.mjs`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/lib/linear/issues.mjs scripts/lib/linear/issues.test.mjs
+git commit -m "feat(linear): map a Linear issue to a pmkit issue (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 8: `toInput` and the dry-run preview
+
+**Files:**
+- Create: `scripts/lib/linear/writes.mjs`
+- Test: `scripts/lib/linear/writes.test.mjs`
+
+**Interfaces:**
+- Consumes: `checkKeys`, `CREATE_KEYS`, `UPDATE_KEYS` (Task 2); `buildDescription`, `CRITERIA_HEADING`, `PRIORITY_TO_LINEAR`, `isIssueId`, `issueKey`, `toIssue` (Tasks 5 and 7).
+- Produces:
+  - `createTeam(context): object`, the raw team for a new issue: `scopeTeam`, else the only team, else `PmkitError('NOT_CONFIGURED', 'tracker.scope.team is not set and the workspace has <n> teams', '/pmkit:setup')`.
+  - `toInput(patch, { mode: 'create' | 'update', beforeNode, team, context, parentNode }): object`, the `IssueCreateInput` or `IssueUpdateInput` without `id`. It throws before any request. `parentNode` is the parent issue's node when `patch.parent` is an id (create only); the input gets `parentId: parentNode.id`.
+  - A reference that discovery may not know yet (a label name, an assignee id) throws `PmkitError('INVALID_INPUT', ..., ..., { stale: true })`. Task 13 refreshes once and calls `toInput` again.
+  - `applyInput(node, input, context): node`, the node with the input applied (state, assignee, labels, title, description, priority, estimate, dueDate, parent), so `toIssue(applyInput(...))` is the dry-run `after`.
+  - `skeletonNode(team, at: string): node`, a node with `identifier: null`, the team, the first state of the team by position whose type is `backlog` (else the first state), `createdAt` and `updatedAt` set to `at`.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+test('create needs a one-line title and sends the team', () => {
+  assert.throws(() => toInput({}, create), { code: 'INVALID_INPUT', message: 'title is required' })
+  assert.throws(() => toInput({ title: 'a\nb' }, create), { code: 'INVALID_INPUT' })
+  assert.deepEqual(toInput({ title: ' T ' }, create), { teamId: 'team-acme', title: 'T' })
+})
+
+test('unknown and owned keys fail as in the Local tracker', () => {
+  assert.throws(() => toInput({ nope: 1 }, update), { code: 'INVALID_INPUT', message: 'unknown field "nope"' })
+  assert.throws(() => toInput({ status: 'Done' }, update), { code: 'INVALID_INPUT', message: 'status cannot be set here', nextStep: 'pmkit issues move' })
+})
+
+test('type swaps the type label and keeps the others', () => {
+  const before = node({ labels: conn([lab('Bug', 'label-bug'), lab('Docs', 'label-docs')]) })
+  assert.deepEqual(toInput({ type: 'feature' }, { ...update, beforeNode: before }).labelIds.sort(), ['label-docs', 'label-feature'])
+  assert.deepEqual(toInput({ type: null }, { ...update, beforeNode: before }).labelIds, ['label-docs'])
+  assert.throws(() => toInput({ type: 'epic' }, update), { code: 'INVALID_INPUT', nextStep: '/pmkit:setup' })
+})
+
+test('labels resolve to the team label first, refuse two of one group, and mark an unknown name stale', () => {
+  // the test raw has a team label Docs (label-docs-team) and a workspace label Docs (label-docs)
+  assert.deepEqual(toInput({ labels: ['Docs'] }, update).labelIds, ['label-docs-team'])
+  assert.throws(() => toInput({ labels: ['S', 'M'] }, update), { code: 'INVALID_INPUT', message: 'labels S and M are in the same Linear label group Size' })
+  assert.throws(() => toInput({ labels: ['Nope'] }, update), (error) => error.code === 'INVALID_INPUT' && error.details.stale === true
+    && error.nextStep === 'Create the label in Linear, then run pmkit discover')
+})
+
+test('assignee must be a member, not an app; an unknown id is stale', () => {
+  assert.equal(toInput({ title: 'T', assignee: 'user-2' }, create).assigneeId, 'user-2')
+  assert.throws(() => toInput({ title: 'T', assignee: 'user-4' }, create), { code: 'INVALID_INPUT' })
+  assert.throws(() => toInput({ title: 'T', assignee: 'user-9' }, create), (error) => error.details.stale === true)
+})
+
+test('priority, estimate, due and null clears', () => {
+  assert.deepEqual(toInput({ priority: 'urgent', due: '2026-11-01' }, update), { priority: 1, dueDate: '2026-11-01' })
+  assert.deepEqual(toInput({ priority: null, due: null }, update), { priority: 0, dueDate: null })
+  assert.throws(() => toInput({ estimate: 3 }, update), { code: 'INVALID_INPUT', nextStep: "Turn on estimates in the team's settings in Linear" })
+  assert.equal(toInput({ estimate: 'L' }, updateOnTShirtTeam).estimate, 5)
+  assert.throws(() => toInput({ estimate: 3 }, updateWithEstimateMappedToSize), { code: 'NOT_SUPPORTED' })
+})
+
+test('description and criteria rebuild the whole description; the heading is refused', () => {
+  const before = node({ description: 'Old\n\n## Acceptance criteria\n\n- [ ] a' })
+  assert.equal(toInput({ description: 'New' }, { ...update, beforeNode: before }).description, 'New\n\n## Acceptance criteria\n\n- [ ] a')
+  assert.equal(toInput({ acceptanceCriteria: [] }, { ...update, beforeNode: before }).description, 'Old')
+  assert.throws(() => toInput({ description: 'x\n## Acceptance criteria' }, update), { code: 'INVALID_INPUT' })
+})
+
+test('sprint, milestone and release take only null', () => {
+  assert.deepEqual(toInput({ sprint: null, milestone: null, release: null }, update), {})
+  for (const key of ['sprint', 'milestone', 'release']) assert.throws(() => toInput({ [key]: 'x' }, update), { code: 'NOT_SUPPORTED' })
+})
+
+test('branch is not an input', () => {
+  assert.deepEqual(toInput({ branch: 'acme-1-x' }, update), {})
+})
+
+test('createTeam picks the scoped team, the only team, or fails', () => {
+  assert.equal(createTeam(contextWithTeams(1)).key, 'ACME')
+  assert.throws(() => createTeam(contextWithTeams(3)), { code: 'NOT_CONFIGURED', message: 'tracker.scope.team is not set and the workspace has 3 teams', nextStep: '/pmkit:setup' })
+})
+
+test('applyInput then toIssue gives the dry-run after', () => {
+  const after = toIssue(applyInput(node({ identifier: 'ACME-1' }), { title: 'New', priority: 2, labelIds: ['label-docs'] }, context), context)
+  assert.equal(after.title, 'New')
+  assert.equal(after.priority, 'high')
+  assert.deepEqual(after.labels, ['Docs'])
+})
+```
+
+The branch rule (equal to `branchName` or refused) needs the issue, so Task 13 checks it in `updateIssue`, not here.
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `node --test scripts/lib/linear/writes.test.mjs`
+Expected: FAIL, module not found.
+
+- [ ] **Step 3: Implement `createTeam`, `toInput`, `applyInput`, `skeletonNode` in `scripts/lib/linear/writes.mjs`**
+
+Labels of the target team are non-group labels with `team === team.id`; the workspace labels have `team === null`. The `NOT_SUPPORTED` messages name the later issue: `sprint` "Linear cycles are not mapped yet (PMK-37)", `milestone` "Linear project milestones are not mapped yet (PMK-38)", `release` "Linear releases are not mapped yet".
+
+- [ ] **Step 4: Run to see them pass**
+
+Run: `node --test scripts/lib/linear/writes.test.mjs`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/lib/linear/writes.mjs scripts/lib/linear/writes.test.mjs
+git commit -m "feat(linear): build issue inputs from a pmkit patch (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 9: `translateFilter` and `finishSearch` (criterion 3)
+
+**Files:**
+- Create: `scripts/lib/linear/filter.mjs`
+- Test: `scripts/lib/linear/filter.test.mjs`
+
+**Interfaces:**
+- Consumes: `stateCategory`, `isIssueId`, `issueKey` (Tasks 5 and 7); `issueComparator` (Task 2); `isBlocked` is not used, `blockedOpen` (Task 7) is.
+- Produces:
+  - `translateFilter(filter, context): { variables: { filter: object, includeArchived: boolean, sort: object[] }, clientSteps: string[], serverLimit: number | undefined, empty: boolean }`. It assumes `checkFilter` already ran. `clientSteps` holds `'blocked'` and `'sort'` as they apply. `empty` is true when `categories` matches no state, and the caller then sends no request.
+  - `finishSearch(rows: Array<{ issue: Issue, blocked: boolean }>, filter, { priorities }): Issue[]`, which applies the `blocked` check, sorts with `issueComparator(filter.sort ?? 'created', priorities)`, and cuts to `limit`.
+
+- [ ] **Step 1: Write the failing tests, one per row of the spec's translation table**
+
+```js
+const clauses = (filter, ctx = context) => translateFilter(filter, ctx).variables.filter.and
+
+test('scope: the team key when set, nothing for the workspace', () => {
+  assert.deepEqual(clauses({}), [{ team: { key: { eq: 'ACME' } } }])
+  assert.deepEqual(clauses({}, workspaceContext), [])
+})
+test('text', () => assert.deepEqual(clauses({ text: 'Drop' })[1], { or: [{ title: { containsIgnoreCase: 'Drop' } }, { description: { containsIgnoreCase: 'Drop' } }] }))
+test('categories become the state ids of the scoped team', () => assert.deepEqual(clauses({ categories: ['in_review'] })[1], { state: { id: { in: ['state-4'] } } }))
+test('categories with no state give empty', () => assert.equal(translateFilter({ categories: ['triage'] }, context).empty, true))
+test('types become their label names', () => assert.deepEqual(clauses({ types: ['bug'] })[1], { labels: { some: { name: { in: ['Bug'] } } } }))
+test('assignee id, me and none', () => {
+  assert.deepEqual(clauses({ assignee: 'user-2' })[1], { assignee: { id: { eq: 'user-2' } } })
+  assert.deepEqual(clauses({ assignee: 'me' })[1], { assignee: { id: { eq: 'user-1' } } })
+  assert.deepEqual(clauses({ assignee: 'none' })[1], { assignee: { null: true } })
+})
+test('labels, one clause each', () => assert.deepEqual(clauses({ labels: ['Docs', 'S'] }).slice(1), [{ labels: { some: { name: { eq: 'Docs' } } } }, { labels: { some: { name: { eq: 'S' } } } }]))
+test('parent by identifier; anything else is NOT_SUPPORTED', () => {
+  assert.deepEqual(clauses({ parent: 'acme-2' })[1], { parent: { id: { eq: 'ACME-2' } } })
+  assert.throws(() => translateFilter({ parent: 'EPC-1x' }, context), { code: 'NOT_SUPPORTED' })
+})
+test('blocked true narrows on the server and checks on the client; false is client only', () => {
+  const yes = translateFilter({ blocked: true }, context)
+  assert.deepEqual(yes.variables.filter.and[1], { hasBlockedByRelations: { eq: true } })
+  assert.deepEqual(yes.clientSteps, ['blocked'])
+  const no = translateFilter({ blocked: false }, context)
+  assert.equal(no.variables.filter.and.length, 1)
+  assert.deepEqual(no.clientSteps, ['blocked'])
+})
+test('updated before and after', () => assert.deepEqual(clauses({ updatedBefore: '2026-10-02', updatedAfter: '2026-10-01' }).slice(1),
+  [{ updatedAt: { lt: '2026-10-02' } }, { updatedAt: { gt: '2026-10-01' } }]))
+test('archived sets includeArchived', () => {
+  assert.equal(translateFilter({ archived: true }, context).variables.includeArchived, true)
+  assert.equal(translateFilter({}, context).variables.includeArchived, false)
+})
+test('sort is always createdAt ascending on the server; another sort is a client step', () => {
+  assert.deepEqual(translateFilter({ sort: 'priority' }, context).variables.sort, [{ createdAt: { order: 'Ascending' } }])
+  assert.deepEqual(translateFilter({ sort: 'priority' }, context).clientSteps, ['sort'])
+})
+test('serverLimit only for created order without client steps', () => {
+  assert.equal(translateFilter({ limit: 5 }, context).serverLimit, 5)
+  assert.equal(translateFilter({ limit: 5, sort: 'priority' }, context).serverLimit, undefined)
+  assert.equal(translateFilter({ limit: 5, blocked: false }, context).serverLimit, undefined)
+  assert.equal(translateFilter({ limit: 0 }, context).serverLimit, undefined)
+})
+test('sprint and release are NOT_SUPPORTED', () => {
+  assert.throws(() => translateFilter({ sprint: 'current' }, context), { code: 'NOT_SUPPORTED' })
+  assert.throws(() => translateFilter({ release: '1.0' }, context), { code: 'NOT_SUPPORTED' })
+})
+test('several keys join with and', () => assert.equal(clauses({ text: 'x', assignee: 'none', labels: ['Docs'] }).length, 4))
+
+test('finishSearch applies blocked, the sort and the limit', () => {
+  const rows = [row('ACME-1', { priority: 'low' }, true), row('ACME-2', { priority: 'urgent' }, false), row('ACME-3', { priority: 'high' }, true)]
+  assert.deepEqual(finishSearch(rows, { blocked: true }, { priorities }).map((i) => i.id), ['ACME-1', 'ACME-3'])
+  assert.deepEqual(finishSearch(rows, { blocked: false }, { priorities }).map((i) => i.id), ['ACME-2'])
+  assert.deepEqual(finishSearch(rows, { sort: 'priority', limit: 1 }, { priorities }).map((i) => i.id), ['ACME-2'])
+})
+```
+
+`limit: 0` returns `[]` with no request; the caller checks it, and `serverLimit` stays `undefined` because the client's `limit` needs at least 1.
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `node --test scripts/lib/linear/filter.test.mjs`
+Expected: FAIL, module not found.
+
+- [ ] **Step 3: Implement `translateFilter` and `finishSearch` in `scripts/lib/linear/filter.mjs`**
+
+The `categories` ids come from the raw states of the scoped team (every team when `scopeTeam` is null) whose `stateCategory` is listed.
+
+- [ ] **Step 4: Run to see them pass**
+
+Run: `node --test scripts/lib/linear/filter.test.mjs`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/lib/linear/filter.mjs scripts/lib/linear/filter.test.mjs
+git commit -m "feat(linear): translate pmkit filters to Linear filters (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 10: The stateful fake, reads and issue mutations
+
+**Files:**
+- Modify: `scripts/fake-linear-api.mjs`
+- Test: `scripts/fake-linear-api.test.mjs`
+
+**Interfaces:**
+- Consumes: the document names and variables of Task 6, the filter clauses of Task 9.
+- Produces:
+  - Exports `ACME_TEAM`, `ACME_STATES`, `ACME_LABELS`, `ACME_USERS` (the existing fixtures, renamed from their private names), so tests can extend them.
+  - `fakeLinearIssues({ teams = [ACME_TEAM], states = ACME_STATES, labels = ACME_LABELS, users = ACME_USERS, nestedPage = 50, start = '2026-10-27T12:00:00.000Z' } = {}): { routes, nodes(): object[], mutations: string[], unconfirm(operation: string, { applied: boolean }): void }`.
+  - `routes` answers `PmkitIssues`, `PmkitIssueById`, `PmkitIssueCreate`, `PmkitIssueUpdate`, `PmkitIssueArchive` and the four `NESTED_PAGES` names. Use it as `fakeLinearFetch({ ...fakeWorkspace(options), ...fake.routes })`.
+  - Identifiers are `<team key>-<n>`, counting from 1 per team. Every write moves the clock one second from `start`, and sets `updatedAt`; a create also sets `createdAt`.
+  - The filter evaluator supports `and`, `or`, `id: { eq, in }` (identifier ignoring case, or the UUID), `team: { key: { eq } }`, `title` and `description` `containsIgnoreCase`, `state: { id: { in } }`, `labels: { some: { name: { eq | in } } }`, `assignee: { id: { eq } }`, `assignee: { null: true }`, `parent: { id: { eq } }`, `hasBlockedByRelations: { eq }`, `updatedAt: { lt, gt }`. Any other key answers `{ errors: [{ message: 'Unknown filter <key>', extensions: { code: 'GRAPHQL_VALIDATION_FAILED' } }] }`.
+  - Archived issues appear only with `includeArchived: true` (or in `PmkitIssueById`, which sets it).
+  - A create without `stateId` takes the team's first `backlog` state by position, as `skeletonNode` does, so a dry run and the real create agree.
+  - A create sets `branchName` to `branchName(identifier.toLowerCase(), title)` from `scripts/lib/ids.mjs`.
+  - An unknown issue in a mutation answers `INPUT_ERROR` with "Could not find referenced Issue."
+  - `unconfirm(operation, { applied })` makes the next call of that operation answer HTTP 502 with an empty body, after applying the change when `applied` is true.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+const send = (fetch, query, variables) => fetch('u', { method: 'POST', headers: {}, body: JSON.stringify({ query, variables }) }).then(async (r) => ({ status: r.status, body: r.status === 200 ? JSON.parse(await r.text()) : null }))
+
+test('create assigns identifiers, honors a client id, and records the mutation', async () => {
+  const fake = fakeLinearIssues()
+  const fetch = fakeLinearFetch(fake.routes)
+  const first = await send(fetch, ISSUE_CREATE, { input: { id: 'uuid-1', teamId: 'team-acme', title: 'A' } })
+  assert.equal(first.body.data.issueCreate.issue.identifier, 'ACME-1')
+  assert.equal(first.body.data.issueCreate.issue.id, 'uuid-1')
+  assert.equal((await send(fetch, ISSUE_CREATE, { input: { teamId: 'team-acme', title: 'B' } })).body.data.issueCreate.issue.identifier, 'ACME-2')
+  assert.deepEqual(fake.mutations, ['PmkitIssueCreate', 'PmkitIssueCreate'])
+})
+
+test('by id matches lowercase identifiers and archived issues; a missing one is an empty list', async () => { /* acme-1 found, ACME-99 gives nodes [] */ })
+test('search filters, sorts oldest first and pages by first and after', async () => { /* 3 issues, first: 2, then after */ })
+test('an unknown filter key fails with GRAPHQL_VALIDATION_FAILED', async () => { /* filter: { and: [{ priority: { eq: 1 } }] } */ })
+test('update sets state, assignee, labels, parent and clears with null', async () => { /* stateId, assigneeId null, parentId by UUID */ })
+test('archive hides the issue from search without includeArchived', async () => {})
+test('nested connections page at nestedPage and the page documents read the rest', async () => { /* nestedPage: 1, two labels */ })
+test('unconfirm answers 502 once, with or without applying', async () => {})
+```
+
+Write each body with concrete identifiers and `assert.deepEqual` on the returned `identifier` lists; the comments above name the data.
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `node --test scripts/fake-linear-api.test.mjs`
+Expected: FAIL, `fakeLinearIssues` is not exported.
+
+- [ ] **Step 3: Implement `fakeLinearIssues` in `scripts/fake-linear-api.mjs`**
+
+Keep records as plain objects with Linear's field names and build each answer node from the record, the state, label and user lists, and the relation list (Task 15 adds relations; keep `relations: []` and `inverseRelations: []` until then). Generate missing UUIDs as `issue-<n>`.
+
+- [ ] **Step 4: Run to see them pass**
+
+Run: `node --test scripts/fake-linear-api.test.mjs`
+Expected: PASS, and the existing fake tests still pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/fake-linear-api.mjs scripts/fake-linear-api.test.mjs
+git commit -m "test(linear): add a stateful fake for issues (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 11: Tracker context, viewer and `getIssue`
+
+**Files:**
+- Create: `scripts/lib/linear/issue-ops.mjs`
+- Modify: `scripts/lib/linear/tracker.mjs`
+- Test: `scripts/lib/linear/tracker.test.mjs`
+
+**Interfaces:**
+- Consumes: `makeContext`, `toIssue`, `isIssueId`, `issueKey` (Tasks 5 and 7); `ISSUE_BY_ID_QUERY`, `NESTED_PAGES` (Task 6); `fakeLinearIssues` (Task 10).
+- Produces:
+  - `issueOperations({ client, discovery, config, now, uuid }): object` in `issue-ops.mjs`, where `discovery({ refresh })` is the tracker's existing memo function. It returns the operations of Tasks 11 to 14 and these helpers for Task 16 and 17: `context({ refresh }): Promise<LinearContext>`, `readNode(id): Promise<node>` (throws `NOT_FOUND`), `requireViewer(actor): Promise<void>`, `withRefresh(build: (context) => T): Promise<T>`.
+  - `createLinearTracker(config, { env, now, fetch, uuid = randomUUID })`. `discover()` returns the PMK-33 result plus `viewer: { id, name }` as the last key, from `client.session()`.
+  - Every issue operation without `tracker.scope.workspace` throws `NOT_CONFIGURED`, `tracker.scope.workspace is not set`, `/pmkit:setup`, before any request.
+  - `requireViewer(actor)` throws `PmkitError('INVALID_INPUT', 'Linear records every write as the owner of LINEAR_API_KEY (<viewer name>)', 'Drop --as, or use a key created by that member')` when `actor` is not the viewer's id.
+
+- [ ] **Step 1: Write the failing tests**
+
+Add a `linearSetup({ mappings, issues })` helper in `tracker.test.mjs` that builds a `fakeLinearIssues()`, routes `fakeLinearFetch({ ...fakeWorkspace(), ...fake.routes })`, and sets `config.pmkit.tracker.scope = { workspace: 'acme', team: 'ACME' }` and `config.pmkit.mappings = { status: { in_review: 'In Review' }, types: { bug: 'Bug', feature: 'Feature' } }`. A `seed(fake, input)` helper creates an issue through the fake's routes.
+
+```js
+test('getIssue reads by identifier, ignoring case', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  await seed(fake, { title: 'One' })
+  assert.equal((await linear.getIssue('acme-1')).id, 'ACME-1')
+})
+
+test('getIssue fails with NOT_FOUND for a missing, malformed or trashed id', async () => {
+  const { tracker: linear, fetch } = linearSetup()
+  await assert.rejects(linear.getIssue('ACME-99'), { code: 'NOT_FOUND' })
+  const sent = fetch.calls.length
+  await assert.rejects(linear.getIssue('not an id'), { code: 'NOT_FOUND' })
+  assert.equal(fetch.calls.length, sent)
+  // a trashed record from the fake reads as NOT_FOUND too
+})
+
+test('getIssue reads the rest of a nested connection', async () => {
+  const { tracker: linear, fake } = linearSetup({ nestedPage: 1 })
+  await seed(fake, { title: 'Two labels', labelIds: ['label-docs', 'label-s'] })
+  assert.deepEqual((await linear.getIssue('ACME-1')).labels, ['Docs', 'S'])
+})
+
+test('discover adds the viewer on a fresh and on a cached read', async () => {
+  const context = setup()
+  assert.deepEqual((await tracker(context).tracker.discover()).viewer, { id: 'user-1', name: 'Test User' })
+  const cached = tracker(context, { now: at(1) })
+  assert.deepEqual((await cached.tracker.discover()).viewer, { id: 'user-1', name: 'Test User' })
+  assert.deepEqual(cached.fetch.calls.map((call) => operationName(call.body.query)), ['PmkitSession'])
+})
+
+test('an issue operation without a workspace is NOT_CONFIGURED', async () => {
+  await assert.rejects(tracker(setup({ scope: {} })).tracker.getIssue('ACME-1'), { code: 'NOT_CONFIGURED' })
+})
+```
+
+Update the existing tests that this changes:
+- `a stub throws NOT_SUPPORTED and sends no request` uses `getHistory` instead of `searchIssues`.
+- `a second tracker on the same store sends no request until the TTL passes` asserts that the cached run sends only `PmkitSession`.
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `node --test scripts/lib/linear/tracker.test.mjs`
+Expected: FAIL, `getIssue` is still a stub and `viewer` is missing.
+
+- [ ] **Step 3: Implement**
+
+`context()` builds `makeContext(raw, config.pmkit, session.viewer)` from `discovery()` and `client.session()`. `readNode` sends `ISSUE_BY_ID_QUERY` with `issueKey(id)`, then, for each connection whose `pageInfo.hasNextPage` is true, reads the rest with `client.paginate(NESTED_PAGES[field], { id: node.id }, { select, pageSize: 50 })` and appends the nodes. `tracker.mjs` merges `issueOperations(...)` over the stubs, so the families PMK-36 to PMK-38 own keep their stubs.
+
+- [ ] **Step 4: Run to see them pass**
+
+Run: `node --test scripts/lib/linear/tracker.test.mjs`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/lib/linear/issue-ops.mjs scripts/lib/linear/tracker.mjs scripts/lib/linear/tracker.test.mjs
+git commit -m "feat(linear): read one issue and the viewer (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 12: `searchIssues` (criterion 3)
+
+**Files:**
+- Modify: `scripts/lib/linear/issue-ops.mjs`
+- Test: `scripts/lib/linear/tracker.test.mjs`
+
+**Interfaces:**
+- Consumes: `checkFilter` (Task 2), `translateFilter`, `finishSearch` (Task 9), `toIssue`, `blockedOpen` (Task 7), `ISSUES_QUERY` (Task 6).
+- Produces: `searchIssues(filter = {}): Promise<{ issues: Issue[], problems: [], hasMore: boolean }>`.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+test('search returns oldest first and filters on the server', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  for (const title of ['A', 'B', 'C']) await seed(fake, { title })
+  assert.deepEqual((await linear.searchIssues({})).issues.map((i) => i.id), ['ACME-1', 'ACME-2', 'ACME-3'])
+  await linear.searchIssues({ text: 'b' })
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssues').filter.and[1], { or: [{ title: { containsIgnoreCase: 'b' } }, { description: { containsIgnoreCase: 'b' } }] })
+})
+
+test('assignee me sends the viewer id, also on a cached discovery', async () => { /* second tracker on the same store, then { assignee: 'me' } */ })
+test('a priority sort with a limit reads every match, then cuts', async () => { /* ACME-1 low, ACME-2 urgent; { sort: 'priority', limit: 1 } gives ACME-2 and the request has no limit */ })
+test('limit 0 and a category with no state send no request', async () => {})
+test('a state missing from the cached discovery refreshes once', async () => { /* seed a node in a state id not in the cache, assert PmkitStates sent twice in total */ })
+test('the 10-page cap sets hasMore', async () => { /* 1001 seeded records, pageSize 100, hasMore true and 1000 issues */ })
+test('an unknown type or member fails with INVALID_INPUT', async () => {})
+test('sprint and release fail with NOT_SUPPORTED', async () => {})
+```
+
+Each body asserts identifiers and, where the test says so, the variables of the last `PmkitIssues` call.
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `node --test scripts/lib/linear/tracker.test.mjs`
+Expected: FAIL, `searchIssues` is a stub.
+
+- [ ] **Step 3: Implement `searchIssues`**
+
+Call `checkFilter(filter, { types: discover types, members: member ids, sprintExists: () => true })`, then `translateFilter`. Page with `client.paginate(ISSUES_QUERY, variables, { select: (data) => data.issues, pageSize: 100, limit: serverLimit })`. Complete nested connections as `readNode` does. Map with `toIssue`, drop `null`, then `finishSearch` on `{ issue, blocked: blockedOpen(node, context) }`. A node whose state id is missing from `context.raw.states` triggers `context({ refresh: true })` once per call.
+
+- [ ] **Step 4: Run to see them pass**
+
+Run: `node --test scripts/lib/linear/tracker.test.mjs`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/lib/linear/issue-ops.mjs scripts/lib/linear/tracker.test.mjs
+git commit -m "feat(linear): search issues with Linear filters (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 13: `createIssue` and `updateIssue`
+
+**Files:**
+- Modify: `scripts/lib/linear/issue-ops.mjs`
+- Test: `scripts/lib/linear/tracker.test.mjs`
+
+**Interfaces:**
+- Consumes: `createTeam`, `toInput`, `applyInput`, `skeletonNode` (Task 8); `ISSUE_CREATE`, `ISSUE_UPDATE`, `ISSUE_BY_ID_QUERY` (Task 6); `requireViewer`, `readNode`, `withRefresh` (Task 11).
+- Produces:
+  - `createIssue(input, actor, { dryRun = false } = {}): Promise<{ before: null, after: Issue }>`. A dry run returns `after.id: null`.
+  - `updateIssue(id, patch, actor, { dryRun = false } = {}): Promise<{ before: Issue, after: Issue }>`. An empty input sends no mutation and returns `{ before, after: before }`.
+  - `isUnconfirmed(error): boolean`, true for an `UPSTREAM` error whose message starts with `Linear did not confirm the change`. Task 16 uses it.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+test('create sends a client UUID and returns the new issue', async () => {
+  const { tracker: linear, fetch } = linearSetup({ uuid: () => 'uuid-7' })
+  const { before, after } = await linear.createIssue({ title: 'New', type: 'bug', labels: ['Docs'] }, 'user-1')
+  assert.equal(before, null)
+  assert.equal(after.id, 'ACME-1')
+  assert.equal(after.type, 'bug')
+  assert.equal(lastVariables(fetch, 'PmkitIssueCreate').input.id, 'uuid-7')
+})
+
+test('an unconfirmed create that happened returns it; one that did not rethrows', async () => {
+  // fake.unconfirm('PmkitIssueCreate', { applied: true }) then create: returns ACME-1, one mutation sent
+  // fake.unconfirm('PmkitIssueCreate', { applied: false }) then create: rejects UPSTREAM with "Check in Linear whether the change was applied before you retry"
+})
+
+test('a dry run sends no mutation and matches the real write', async () => {
+  // create, update and updateIssue with criteria: dry first, then real; compare after without id, created and updated; mutations counted with isMutation over fetch.calls
+})
+
+test('--as another member is refused before any mutation', async () => {
+  await assert.rejects(linearSetup().tracker.createIssue({ title: 'x' }, 'user-2'), { code: 'INVALID_INPUT', message: 'Linear records every write as the owner of LINEAR_API_KEY (Test User)', nextStep: 'Drop --as, or use a key created by that member' })
+})
+
+test('an unknown label refreshes the discovery once, then fails', async () => { /* PmkitLabels sent twice, INVALID_INPUT */ })
+test('a label created in Linear after the cache is found after the refresh', async () => { /* second PmkitLabels answer includes it; create succeeds */ })
+test('update with branch equal to branchName is a no-op; another name is refused', async () => {
+  // fake's branchName for ACME-1 is 'acme-1-new'
+  // updateIssue('ACME-1', { branch: 'acme-1-new' }) → after equals before, no mutation
+  // updateIssue('ACME-1', { branch: 'other' }) → INVALID_INPUT 'Linear names this issue\'s branch acme-1-new'
+})
+test('create with several teams and no scope team is NOT_CONFIGURED', async () => {})
+test('create with parent sends the parent UUID', async () => {})
+```
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `node --test scripts/lib/linear/tracker.test.mjs`
+Expected: FAIL, the operations are stubs.
+
+- [ ] **Step 3: Implement**
+
+Order inside each write: `requireViewer`, read `before` (update), `withRefresh(() => toInput(...))`, then either the dry-run preview or one mutation. `withRefresh` calls `build(context)`; on an error with `details.stale`, it refreshes once and calls `build` again, so the second failure propagates. On `isUnconfirmed(error)` after `ISSUE_CREATE`, read `ISSUE_BY_ID_QUERY` with the sent UUID once; return the node when found, else rethrow the original error.
+
+- [ ] **Step 4: Run to see them pass**
+
+Run: `node --test scripts/lib/linear/tracker.test.mjs`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/lib/linear/issue-ops.mjs scripts/lib/linear/tracker.test.mjs
+git commit -m "feat(linear): create and update issues (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 14: `moveToCategory`, `assign` and `archive` (criterion 2)
+
+**Files:**
+- Modify: `scripts/lib/linear/issue-ops.mjs`
+- Test: `scripts/lib/linear/tracker.test.mjs`
+
+**Interfaces:**
+- Consumes: `stateCategory` (Task 7), `readMappings` output in `context.mappings` (Task 3), `ISSUE_UPDATE`, `ISSUE_ARCHIVE` (Task 6), Task 11 helpers.
+- Produces: `moveToCategory(id, category, actor, { status, dryRun } = {})`, `assign(id, who, actor, { dryRun } = {})`, `archive(id, actor, { dryRun } = {})`, each `Promise<{ before, after }>`.
+
+- [ ] **Step 1: Write the failing tests, one per row of the spec's `moveToCategory` section**
+
+```js
+test('the mapped state wins; else the first state by position', async () => {
+  // in_review → In Review (mapped); in_progress → In Progress; done → Done; canceled → Canceled (type canceled before duplicate)
+})
+test('status names a state of the category; another name lists the choices', async () => {
+  // moveToCategory(id, 'in_progress', actor, { status: 'UAT' }) → UAT
+  // { status: 'Done' } → INVALID_INPUT 'status Done is not in category in_progress', nextStep 'Use one of: In Progress, Code Review, UAT, Ready to ship'
+})
+test('mappings.status.blocked changes no target', async () => {
+  // mappings.status.blocked: 'In Progress' still moves in_progress to In Progress
+})
+test('the same state sends no mutation', async () => {})
+test('a mapped state the team lacks refreshes once, then NOT_CONFIGURED', async () => {
+  // mappings.status.in_review: 'Gone' → PmkitStates sent twice, NOT_CONFIGURED 'mappings.status.in_review names Gone, which team ACME does not have', '/pmkit:setup'
+})
+test('in_review with no mapping is NOT_CONFIGURED; with none it is NOT_SUPPORTED', async () => {
+  // no mapping → 'team ACME has no state mapped to in_review'
+  // in_review: none → NOT_SUPPORTED 'team ACME has no status in the in_review category'
+})
+test('triage on a team with triage off is NOT_SUPPORTED with the hint', async () => {
+  // nextStep "Turn on triage in the team's settings in Linear"
+})
+test('another category with no state is INVALID_INPUT', async () => { /* a team without a canceled state */ })
+test('an unknown category is INVALID_INPUT before any read', async () => {})
+
+test('assign takes a member, me or null, and skips an unchanged assignee', async () => {
+  // assign(id, 'me', 'user-1') → assignee user-1; assign(id, null) → unset; assign twice → one mutation; assign(id, 'user-4') → INVALID_INPUT
+})
+test('archive archives once and returns the archived issue', async () => {
+  // after.archived true; a second archive sends no mutation; searchIssues({}) drops it
+})
+```
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `node --test scripts/lib/linear/tracker.test.mjs`
+Expected: FAIL, the operations are stubs.
+
+- [ ] **Step 3: Implement the three operations**
+
+The candidate states are the raw states of `before`'s team sorted by `position`. For `canceled`, sort type `canceled` before type `duplicate`. `archive` sends `ISSUE_ARCHIVE` and reads the issue again with `readNode`.
+
+- [ ] **Step 4: Run to see them pass**
+
+Run: `node --test scripts/lib/linear/tracker.test.mjs`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/lib/linear/issue-ops.mjs scripts/lib/linear/tracker.test.mjs
+git commit -m "feat(linear): move, assign and archive issues (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 15: The fake's relations, block graph and parent chain
+
+**Files:**
+- Modify: `scripts/fake-linear-api.mjs`
+- Test: `scripts/fake-linear-api.test.mjs`
+
+**Interfaces:**
+- Produces: `fakeLinearIssues().routes` also answers `PmkitRelationCreate` (honors a client `id`, else `relation-<n>`), `PmkitRelationDelete`, `PmkitBlockGraph` and `PmkitParentChain`. Each node's `relations` and `inverseRelations` come from the relation list, with the other issue's `identifier` and `state { id type }`. `unconfirm` works for `PmkitRelationCreate` too.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+test('a relation shows on both issues and goes away on delete', async () => {
+  // create ACME-1 and ACME-2, relation blocks 1→2: ACME-1.relations has ACME-2, ACME-2.inverseRelations has ACME-1; delete clears both
+})
+test('the block graph returns the blocks relations of the ids', async () => {})
+test('the parent chain nests the ancestors', async () => { /* ACME-3 parent ACME-2 parent ACME-1 */ })
+test('hasBlockedByRelations filters on inverse blocks relations', async () => {})
+```
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `node --test scripts/fake-linear-api.test.mjs`
+Expected: FAIL, no route for `PmkitRelationCreate`.
+
+- [ ] **Step 3: Implement the routes**
+
+- [ ] **Step 4: Run to see them pass**
+
+Run: `node --test scripts/fake-linear-api.test.mjs`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/fake-linear-api.mjs scripts/fake-linear-api.test.mjs
+git commit -m "test(linear): add relations to the stateful fake (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 16: `link` and `unlink` (criterion 1)
+
+**Files:**
+- Create: `scripts/lib/linear/relation-ops.mjs`
+- Modify: `scripts/lib/linear/tracker.mjs`
+- Test: `scripts/lib/linear/tracker.test.mjs`
+
+**Interfaces:**
+- Consumes: `LINK_KINDS` from `scripts/lib/model.mjs`; `RELATION_CREATE`, `RELATION_DELETE`, `BLOCK_GRAPH_QUERY` (Task 6); `context`, `readNode`, `requireViewer`, `isUnconfirmed` (Tasks 11 and 13).
+- Produces: `relationOperations({ client, ops, uuid }): { link, unlink, setParent }`, where `ops` is the object `issueOperations` returns. `link(from, to, kind, actor, { dryRun } = {})` and `unlink(...)` return `{ before, after }` of `from`.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+test('link blocks, related and duplicate create the Linear relation type', async () => {
+  // link(ACME-1, ACME-2, 'blocks') → input { id, type: 'blocks', issueId: <uuid of 1>, relatedIssueId: <uuid of 2> }; after.blocks ['ACME-2']
+  // related → type related; duplicate → type duplicate and after.duplicateOf ['ACME-2']
+})
+test('an existing link and an empty unlink send no mutation', async () => {})
+test('unlink related removes the relation in either direction', async () => { /* relation created 2→1, unlink(1, 2, related) deletes it */ })
+test('a blocks link that closes a loop is refused with the path', async () => {
+  // 1 blocks 2, 2 blocks 3; link(3, 1, 'blocks') → INVALID_INPUT 'ACME-3 blocks ACME-1 would close a cycle: ACME-3 → ACME-1 → ACME-2 → ACME-3'
+})
+test('an unknown kind, a self link and a missing issue fail', async () => {
+  // 'sibling' → INVALID_INPUT; link(1, 1) → INVALID_INPUT 'ACME-1 cannot be linked to itself'; unlink(1, 'ACME-99', 'blocks') → NOT_FOUND
+})
+test('an unconfirmed relation create that happened returns the link', async () => {})
+test('a dry-run link sends no mutation and returns the same after', async () => {})
+```
+
+The loop message matches the Local tracker's: `${a} blocks ${b} would close a cycle: ${[a, ...path].join(' → ')}`, where `path` runs from `b` to `a` along `blocks` edges.
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `node --test scripts/lib/linear/tracker.test.mjs`
+Expected: FAIL, `link` is a stub.
+
+- [ ] **Step 3: Implement**
+
+The loop check walks `BLOCK_GRAPH_QUERY` breadth first from `b`, one request per level, for at most 10 levels, keeping each identifier's predecessor to rebuild the path. After the mutation, `after` is `readNode(from)` mapped with `toIssue`. On an unconfirmed create, read `from` once and look for the sent relation id in its relations.
+
+- [ ] **Step 4: Run to see them pass**
+
+Run: `node --test scripts/lib/linear/tracker.test.mjs`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/lib/linear/relation-ops.mjs scripts/lib/linear/tracker.mjs scripts/lib/linear/tracker.test.mjs
+git commit -m "feat(linear): link and unlink issues (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 17: `setParent`
+
+**Files:**
+- Modify: `scripts/lib/linear/relation-ops.mjs`
+- Test: `scripts/lib/linear/tracker.test.mjs`
+
+**Interfaces:**
+- Consumes: `PARENT_CHAIN_QUERY`, `ISSUE_UPDATE` (Task 6); Task 11 helpers; `isIssueId` (Task 5).
+- Produces: `setParent(id, parent, actor, { dryRun } = {}): Promise<{ before, after }>`.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+test('setParent sets and clears the parent', async () => { /* after.parent 'ACME-1', then null → unset; parentId is the UUID */ })
+test('a parent that is not an issue id is NOT_SUPPORTED', async () => {
+  // setParent('ACME-2', 'EPC-1x') → NOT_SUPPORTED 'Linear projects are not epics in pmkit yet'
+})
+test('a self parent and a loop are refused', async () => {
+  // setParent(1, 1) → INVALID_INPUT 'ACME-1 cannot be its own parent'
+  // 2 under 1; setParent(1, 2) → INVALID_INPUT 'parent loop: ACME-1 → ACME-2 → ACME-1'
+})
+test('an unchanged parent sends no mutation', async () => {})
+```
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `node --test scripts/lib/linear/tracker.test.mjs`
+Expected: FAIL, `setParent` is a stub.
+
+- [ ] **Step 3: Implement `setParent`**
+
+Read the new parent's ancestors with one `PARENT_CHAIN_QUERY`. The chain is the new parent followed by its ancestors; when it contains `id`, the message is `parent loop: ${[id, ...chain up to id].join(' → ')}`, as in the Local tracker.
+
+- [ ] **Step 4: Run to see them pass**
+
+Run: `node --test scripts/lib/linear/tracker.test.mjs`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/lib/linear/relation-ops.mjs scripts/lib/linear/tracker.test.mjs
+git commit -m "feat(linear): set and clear an issue parent (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 18: Contract suite families and the Linear run
+
+**Files:**
+- Modify: `scripts/contract-suite.mjs`
+- Create: `scripts/lib/linear/contract.test.mjs`
+- Test: `scripts/contract.test.mjs` (unchanged), the new file
+
+**Interfaces:**
+- Consumes: `createLinearTracker` (Task 11), `fakeLinearIssues` and the exported acme fixtures (Tasks 10 and 15).
+- Produces: `runTrackerContract({ name, setup, families })`. `FAMILIES = ['discovery', 'issues', 'relations', 'history', 'time', 'cycles', 'deliverables', 'milestones', 'releases', 'documents']`. The local helper becomes `it(title, needs: string[], body)`. A test whose `needs` are not all in `families` registers with `{ skip: 'needs the <family> family' }`, naming the first missing one. Without `families`, every test runs.
+
+- [ ] **Step 1: Tag every test**
+
+Use the spec's "Contract suite against the fake" table: `discovery` for the operation check and discover; `issues` for the create-to-archive test, the rejects test and the archived test; `relations` for the two link tests; `history` for comments and history; `history`, `time` for log time; `cycles` for every sprint, cycle, capacity and days-off test; `deliverables`, `relations` for epics; `deliverables` for status updates; `milestones`, `releases` and `documents` for theirs; `FAMILIES` for the dry-run test.
+
+- [ ] **Step 2: Run the Local suite**
+
+Run: `node --test scripts/contract.test.mjs`
+Expected: PASS with no skipped test.
+
+- [ ] **Step 3: Write `scripts/lib/linear/contract.test.mjs`**
+
+```js
+runTrackerContract({
+  name: 'Linear tracker contract over the fake',
+  families: ['discovery', 'issues', 'relations'],
+  setup: () => {
+    const teams = [{ ...ACME_TEAM, triageEnabled: true }]
+    const states = [{ id: 'state-triage', name: 'Triage', type: 'triage', position: -1, team: { id: ACME_TEAM.id } }, ...ACME_STATES]
+    const fake = fakeLinearIssues({ teams, states })
+    const fetch = fakeLinearFetch({ ...fakeWorkspace({ teams, states }), ...fake.routes })
+    const root = tempDir()
+    const { env } = userStoreEnv()
+    const config = { root, pmkit: { tracker: { system: 'linear', scope: { workspace: 'acme', team: 'ACME' } }, git_host: { system: 'github' },
+      mappings: { status: { in_review: 'In Review' }, types: { bug: 'Bug', feature: 'Feature' } } } }
+    const tracker = createLinearTracker(config, { env: { ...env, LINEAR_API_KEY: FAKE_KEY }, fetch })
+    return { tracker, actor: 'user-1', teardown: () => fs.rmSync(root, { recursive: true, force: true }) }
+  },
+})
+```
+
+Add one plain test in the same file that no file under `PMKIT_HOME` holds `FAKE_KEY` after a create.
+
+- [ ] **Step 4: Run it**
+
+Run: `node --test scripts/lib/linear/contract.test.mjs`
+Expected: PASS for the `discovery`, `issues` and `relations` tests, every other test skipped with its reason. Fix the adapter, not the suite, when a test fails.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/contract-suite.mjs scripts/lib/linear/contract.test.mjs
+git commit -m "test(linear): run the contract suite over the fake (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 19: Descriptor settings, `issues dependencies` and `issues branch`
+
+**Files:**
+- Modify: `scripts/lib/linear/adapter.mjs`, `scripts/lib/adapters.mjs` (typedef only), `scripts/pmkit.mjs:361-367` and `:811-826`
+- Test: `scripts/adapters.test.mjs`, `scripts/cli-linear.test.mjs`
+
+**Interfaces:**
+- Consumes: `isIssueId` (Task 5).
+- Produces: the Linear `settings()` returns `{ defaults, epicPrefix: null, isEpicId: (id) => !isIssueId(id), trackerBranch: true }`. In the CLI, `issues dependencies` uses `settings.isEpicId ?? ((id) => epicPrefix !== null && isId(normalizeId(id), epicPrefix))`, and `issues branch` names the branch `issue.branch` when `settings.trackerBranch` is true and `issue.branch` is set, else `branchName(issue.id, issue.title)`.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `adapters.test.mjs`, replace the `deepEqual` on the Linear `settings()`:
+
+```js
+const settings = linear.settings()
+assert.deepEqual(settings.defaults, builtInDefaults())
+assert.equal(settings.epicPrefix, null)
+assert.equal(settings.trackerBranch, true)
+assert.equal(settings.isEpicId('ACME-1'), false)
+assert.equal(settings.isEpicId('EPC-1x'), true)
+```
+
+In `cli-linear.test.mjs`, add a `withIssues()` helper that builds the fetch from `fakeWorkspace()` and `fakeLinearIssues().routes` and seeds issues.
+
+```js
+test('issues dependencies sends a non-issue id to getDeliverable', async () => {
+  const result = await cli(setup(), ['issues', 'dependencies', 'EPC-1x', '--json'], withIssues().fetch)
+  assert.equal(result.code, 2)
+  assert.equal(errorOf(result).code, 'NOT_SUPPORTED')
+  assert.match(errorOf(result).message, /getDeliverable/)
+})
+
+test('issues branch uses the name Linear suggests', async () => {
+  // seed ACME-1 'Fix it'; run with a fake host or --dry-run; data.branch is the fake's branchName 'acme-1-fix-it'
+})
+```
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `node --test scripts/adapters.test.mjs scripts/cli-linear.test.mjs`
+Expected: FAIL.
+
+- [ ] **Step 3: Implement the descriptor fields and the two CLI changes**
+
+- [ ] **Step 4: Run to see them pass**
+
+Run: `node --test scripts/adapters.test.mjs scripts/cli-linear.test.mjs scripts/cli.test.mjs`
+Expected: PASS. `cli.test.mjs`'s chain test still passes through the `epicPrefix` fallback.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/lib/linear/adapter.mjs scripts/lib/adapters.mjs scripts/pmkit.mjs scripts/adapters.test.mjs scripts/cli-linear.test.mjs
+git commit -m "feat(cli): ask the adapter for epic ids and the branch name (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 20: The viewer as actor, `me`, the `hasMore` warning and `(new)`
+
+**Files:**
+- Modify: `scripts/pmkit.mjs` (`requireMember`, `issues list`, `writeText`)
+- Test: `scripts/cli-linear.test.mjs`
+
+**Interfaces:**
+- Consumes: `discover().viewer` (Task 11), `searchIssues().hasMore` (Task 12).
+- Produces: `requireMember(ctx)` returns `{ id: viewer.id, member: { name: viewer.name } }` when `discover()` has `viewer`, before the git email and `PMKIT_USER`. `issues list` adds the warning `Linear has more matching issues than the 1000 pmkit read; narrow the filter` when `found.hasMore` is true, and with a `--sort` other than `created` it adds `; the order covers the issues read`. `writeText` prints `(new)` for an `after.id` of `null`.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+test('whoami prints the viewer', async () => {
+  const result = await cli(setup(), ['whoami', '--json'], withIssues().fetch)
+  assert.equal(JSON.parse(result.stdout).id, 'user-1')
+})
+test('issues list --assignee me sends the viewer id', async () => { /* last PmkitIssues filter has { assignee: { id: { eq: 'user-1' } } } */ })
+test('issues assign ACME-1 me assigns the viewer', async () => {})
+test('--as another member exits 2 with INVALID_INPUT', async () => {})
+test('issues list warns when Linear has more', async () => { /* 1001 seeded issues; stderr has the warning */ })
+test('a dry-run create prints (new)', async () => { /* stdout starts with '(new)  Title' and ends with 'dry run: nothing was written' */ })
+```
+
+Replace the old `issues list exits 2 with NOT_SUPPORTED` test with `issues list --json returns the issues`.
+
+- [ ] **Step 2: Run to see them fail**
+
+Run: `node --test scripts/cli-linear.test.mjs`
+Expected: FAIL.
+
+- [ ] **Step 3: Implement the three CLI changes**
+
+- [ ] **Step 4: Run to see them pass, then the full suite**
+
+Run: `node --test scripts/cli-linear.test.mjs && npm test`
+Expected: PASS, goldens byte-identical.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/pmkit.mjs scripts/cli-linear.test.mjs
+git commit -m "feat(cli): use the Linear viewer as actor and warn on a cut search (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 21: The opt-in live read and the final checks
+
+**Files:**
+- Modify: `scripts/lib/linear/client-live.mjs`
+
+**Interfaces:**
+- Consumes: `createLinearTracker` (Task 11), the existing `guardedFetch` and `skip`.
+
+- [ ] **Step 1: Add the live case**
+
+Behind the existing `skip` (`PMKIT_LIVE=1` and `PMKIT_LIVE_WORKSPACE`), build a tracker with `fetch: guardedFetch`, a temporary `PMKIT_HOME`, and `scope: { workspace: WORKSPACE }`. Run `searchIssues` once per row of the translation table with `limit: 1`: `{}`, `{ text: 'a' }`, `{ categories: ['done'] }`, `{ assignee: 'me' }`, `{ assignee: 'none' }`, `{ labels: [<first discovered label>] }`, `{ blocked: true }`, `{ updatedAfter: '2026-01-01' }`, `{ archived: true }`, `{ sort: 'priority', limit: 1 }`. Run `getIssue` on the first result's id. Each call must resolve. The test prints no workspace data and asserts that no error holds the key.
+
+- [ ] **Step 2: Check that `npm test` skips it**
+
+Run: `npm test`
+Expected: PASS; `client-live.mjs` is not loaded (its name does not end in `.test.mjs`).
+
+- [ ] **Step 3: Optional live run, read-only**
+
+Run only when the session has the key in `/home/fred/projects/pmkit/.env`:
+`set -a; . /home/fred/projects/pmkit/.env; set +a; PMKIT_LIVE=1 PMKIT_LIVE_WORKSPACE=<sandbox url key> node --test scripts/lib/linear/client-live.mjs`
+Expected: PASS. Never print the file or the key. A failure on the `parent` or the `id` filter goes into the PR as a finding for PMK-39.
+
+- [ ] **Step 4: Final checks**
+
+Run: `npm test`
+Expected: PASS.
+
+Run the private-name check.
+Expected: no output.
+
+Run: `git grep -n FAKE_KEY -- ':!scripts/*.test.mjs' ':!scripts/**/*.test.mjs' ':!scripts/fake-linear-api.mjs'`
+Expected: no output outside test code.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/lib/linear/client-live.mjs
+git commit -m "test(linear): check each filter against the sandbox, read-only (PMK-35)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+## After PMK-34 merges
+
+- Replace `readMappings` with PMK-34's `resolveMappings` where the names or shapes differ, and keep `read-mappings.test.mjs` as the check, or delete it when `resolveMappings` has the same cases.
+- PMK-34 also edits `discoveryView` to fill `types`. The second branch to merge resolves the conflict in Task 4's lines.
+- PMK-34 reads an absent `mappings.fields.estimate` as no estimate and a move with no state as `NOT_SUPPORTED`; this plan reads the first as `native` and the second, for `in_review`, as `NOT_CONFIGURED`. The switch to `resolveMappings` settles both.

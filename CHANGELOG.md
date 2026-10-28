@@ -6,6 +6,7 @@
 - Adds `mappings.types` to `.pmkit/config.yaml`: a pmkit issue type to the name of one Linear label, such as `bug: Bug`. `none` is a valid value for `mappings.status` and `mappings.fields`.
 - Every Linear operation except `discover` and `capabilities` stops with `NOT_CONFIGURED` and `error.mappings` when a mapping names a team, status, field or label the workspace no longer has.
 - Adds `resolveMappings(view, pmkit)` in `scripts/lib/linear/mappings.mjs`, the one reader of `mappings` for Linear issue operations.
+- The Linear tracker supports issues, relations and search (PMK-35). A move to a category whose only state is Duplicate is refused until `mappings.status.<category>` names it.
 
 ## 0.2.0 - 2026-10-25
 

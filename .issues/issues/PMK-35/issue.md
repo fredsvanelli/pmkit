@@ -2,14 +2,16 @@
 id: PMK-35
 title: "Implement issues, relations and search for Linear"
 type: feature
-status: backlog
+status: in_review
 priority: medium
 estimate: 8
+assignee: fred
 parent: EPC-5
 blocked_by: [PMK-33]
 milestone: linear
+branch: pmk-35-implement-issues-relations-and-search
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-25T19:13:25Z
+updated: 2026-10-28T03:09:53Z
 ---
 
 ## Description
@@ -18,6 +20,6 @@ Source: Unified model, Adapter operations contract (Issues, Native search, Relat
 
 ## Acceptance criteria
 
-- [ ] The adapter implements the Issues and Relations operations of the contract
-- [ ] `move_to_category` sets the workflow state mapped to the category
-- [ ] Issue filters translate to Linear filters
+- [x] The adapter implements the Issues and Relations operations of the contract
+- [x] `move_to_category` sets the workflow state mapped to the category
+- [x] Issue filters translate to Linear filters

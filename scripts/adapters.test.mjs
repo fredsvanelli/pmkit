@@ -44,7 +44,13 @@ test('the linear descriptor asks for a workspace and lists no secret', () => {
   assert.equal(linear.system, 'linear')
   assert.deepEqual(linear.configProblems({ tracker: { system: 'linear' } }), ['tracker.scope.workspace is required for linear'])
   assert.deepEqual(linear.configProblems({ tracker: { system: 'linear', scope: { workspace: 'acme', token: 'plainvalue' } } }), [])
-  assert.deepEqual(linear.settings(), { defaults: builtInDefaults(), epicPrefix: null })
+  const settings = linear.settings()
+  assert.deepEqual(settings.defaults, builtInDefaults())
+  assert.equal(settings.epicPrefix, null)
+  assert.equal(settings.trackerBranch, true)
+  assert.equal(settings.isEpicId('ACME-1'), false)
+  assert.equal(settings.isEpicId('acme-12'), false)
+  assert.equal(settings.isEpicId('EPC-1x'), true)
 })
 
 test('the linear descriptor checks the estimate and type mappings offline', () => {
