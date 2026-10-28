@@ -537,3 +537,137 @@ test('update of a missing issue is NOT_FOUND', async () => {
   const { tracker: linear } = linearSetup()
   await assert.rejects(linear.updateIssue('ACME-9', { title: 'x' }, 'user-1'), { code: 'NOT_FOUND' })
 })
+
+const moved = async (linear, id, category, options) => (await linear.moveToCategory(id, category, 'user-1', options)).after.status.name
+
+test('the mapped state wins; else the first state by position', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'Move me' })
+  assert.equal(await moved(linear, 'ACME-1', 'in_review'), 'In Review')
+  assert.equal(await moved(linear, 'ACME-1', 'in_progress'), 'In Progress')
+  assert.equal(await moved(linear, 'ACME-1', 'todo'), 'Todo')
+  assert.equal(await moved(linear, 'ACME-1', 'done'), 'Done')
+  assert.equal(await moved(linear, 'ACME-1', 'canceled'), 'Canceled')
+  assert.equal((await linear.getIssue('ACME-1')).status.name, 'Canceled')
+})
+
+test('canceled picks a state of type canceled before one of type duplicate', async () => {
+  const states = fakeWorkspace().PmkitStates({ variables: { first: 250 } }).json.data.workflowStates.nodes
+    .map((state) => (state.type === 'duplicate' ? { ...state, position: -5 } : state))
+  const { tracker: linear, fake } = linearSetup({ workspace: { states } })
+  seed(fake, { title: 'Move me' })
+  assert.equal(await moved(linear, 'ACME-1', 'canceled'), 'Canceled')
+})
+
+test('status names a state of the category; another name lists the choices', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'Move me' })
+  assert.equal(await moved(linear, 'ACME-1', 'in_progress', { status: 'UAT' }), 'UAT')
+  await assert.rejects(linear.moveToCategory('ACME-1', 'in_progress', 'user-1', { status: 'Done' }), {
+    code: 'INVALID_INPUT',
+    message: 'status Done is not in category in_progress',
+    nextStep: 'Use one of: In Progress, Code Review, UAT, Ready to ship',
+  })
+})
+
+test('mappings.status.blocked changes no target', async () => {
+  const { tracker: linear, fake } = linearSetup({ mappings: { status: { in_review: 'In Review', blocked: 'In Progress' } } })
+  seed(fake, { title: 'Move me' })
+  assert.equal(await moved(linear, 'ACME-1', 'in_progress'), 'In Progress')
+})
+
+test('the same state sends no mutation', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { title: 'Stay' })
+  const result = await linear.moveToCategory('ACME-1', 'backlog', 'user-1')
+  assert.equal(result.after, result.before)
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('a move dry run sends no mutation and matches the real move', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { title: 'Move me' })
+  const dry = await linear.moveToCategory('ACME-1', 'done', 'user-1', { dryRun: true })
+  assert.equal(mutationsIn(fetch), 0)
+  const real = await linear.moveToCategory('ACME-1', 'done', 'user-1')
+  assert.deepEqual(comparable(dry.after), comparable(real.after))
+})
+
+test('a mapped state the team lacks refreshes once, then NOT_CONFIGURED', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup({ mappings: { status: { in_review: 'Gone' } } })
+  seed(fake, { title: 'Move me' })
+  await assert.rejects(linear.moveToCategory('ACME-1', 'in_review', 'user-1'), {
+    code: 'NOT_CONFIGURED',
+    message: 'mappings.status.in_review names Gone, which team ACME does not have',
+    nextStep: '/pmkit:setup',
+  })
+  assert.equal(callsOf(fetch, 'PmkitStates'), 2)
+})
+
+test('in_review with no mapping or with none is NOT_SUPPORTED', async () => {
+  for (const mappings of [{}, { status: { in_review: 'none' } }]) {
+    const { tracker: linear, fake } = linearSetup({ mappings })
+    seed(fake, { title: 'Move me' })
+    await assert.rejects(linear.moveToCategory('ACME-1', 'in_review', 'user-1'), {
+      code: 'NOT_SUPPORTED',
+      message: 'team ACME has no status in the in_review category',
+      nextStep: '/pmkit:setup',
+    })
+  }
+})
+
+test('triage on a team with triage off is NOT_SUPPORTED with the hint', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'Move me' })
+  await assert.rejects(linear.moveToCategory('ACME-1', 'triage', 'user-1'), {
+    code: 'NOT_SUPPORTED',
+    message: 'team ACME has no status in the triage category',
+    nextStep: "Turn on triage in the team's settings in Linear",
+  })
+})
+
+test('another category with no state is NOT_SUPPORTED', async () => {
+  const states = fakeWorkspace().PmkitStates({ variables: { first: 250 } }).json.data.workflowStates.nodes.filter((state) => !['canceled', 'duplicate'].includes(state.type))
+  const { tracker: linear, fake } = linearSetup({ workspace: { states } })
+  seed(fake, { title: 'Move me' })
+  await assert.rejects(linear.moveToCategory('ACME-1', 'canceled', 'user-1'), { code: 'NOT_SUPPORTED', message: 'team ACME has no status in the canceled category' })
+})
+
+test('an unknown category is INVALID_INPUT before any read', async () => {
+  const { tracker: linear, fetch } = linearSetup()
+  await assert.rejects(linear.moveToCategory('ACME-1', 'later', 'user-1'), { code: 'INVALID_INPUT' })
+  assert.equal(fetch.calls.length, 0)
+})
+
+test('assign takes a member, me or null, and skips an unchanged assignee', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { title: 'Assign me' })
+  assert.equal((await linear.assign('ACME-1', 'me', 'user-1')).after.assignee, 'user-1')
+  assert.equal((await linear.assign('ACME-1', 'user-2', 'user-1')).after.assignee, 'user-2')
+  const sent = mutationsIn(fetch)
+  const again = await linear.assign('ACME-1', 'user-2', 'user-1')
+  assert.equal(again.after, again.before)
+  assert.equal(mutationsIn(fetch), sent)
+  const dry = await linear.assign('ACME-1', null, 'user-1', { dryRun: true })
+  assert.equal('assignee' in dry.after, false)
+  assert.equal(mutationsIn(fetch), sent)
+  assert.equal('assignee' in (await linear.assign('ACME-1', null, 'user-1')).after, false)
+  await assert.rejects(linear.assign('ACME-1', 'user-4', 'user-1'), { code: 'INVALID_INPUT' })
+  await assert.rejects(linear.assign('ACME-1', 'user-9', 'user-1'), { code: 'INVALID_INPUT' })
+})
+
+test('archive archives once and returns the archived issue', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { title: 'Archive me' })
+  const dry = await linear.archive('ACME-1', 'user-1', { dryRun: true })
+  assert.equal(dry.after.archived, true)
+  assert.equal(mutationsIn(fetch), 0)
+  const { after } = await linear.archive('ACME-1', 'user-1')
+  assert.equal(after.archived, true)
+  assert.equal(mutationsIn(fetch), 1)
+  const again = await linear.archive('ACME-1', 'user-1')
+  assert.equal(again.after, again.before)
+  assert.equal(mutationsIn(fetch), 1)
+  assert.deepEqual((await linear.searchIssues({})).issues, [])
+  assert.deepEqual((await linear.searchIssues({ archived: true })).issues.map((issue) => issue.id), ['ACME-1'])
+})

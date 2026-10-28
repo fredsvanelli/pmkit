@@ -2,11 +2,12 @@
 // See docs/superpowers/specs/2026-10-27-pmk-35-linear-issues-relations-search-design.md.
 
 import { PmkitError } from '../errors.mjs'
+import { CATEGORIES } from '../model.mjs'
 import { checkFilter } from '../issue-filter.mjs'
-import { ISSUES_QUERY, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE } from './documents.mjs'
+import { ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE } from './documents.mjs'
 import { finishSearch, translateFilter } from './filter.mjs'
-import { blockedOpen, isIssueId, issueKey, makeContext, toIssue } from './issues.mjs'
-import { applyInput, createTeam, skeletonNode, toInput } from './writes.mjs'
+import { blockedOpen, isIssueId, issueKey, makeContext, stateCategory, toIssue } from './issues.mjs'
+import { applyInput, createTeam, requireAssignee, skeletonNode, teamOf, teamStates, toInput } from './writes.mjs'
 
 const SEARCH_PAGE = 100
 const NOTHING = () => ({ issues: [], problems: [], hasMore: false })
@@ -158,12 +159,83 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     if (patch.branch !== undefined && patch.branch !== beforeNode.branchName) {
       throw new PmkitError('INVALID_INPUT', `Linear names this issue's branch ${beforeNode.branchName}`, `Use the branch name ${beforeNode.branchName}`)
     }
+    if (Object.keys(linearInput).length === 0) return { before, after: before }
+    return writeUpdate(beforeNode, before, linearInput, current, dryRun)
+  }
+
+  /** Sends one issueUpdate unless the preview equals the issue; a dry run returns the preview. */
+  async function writeUpdate(beforeNode, before, linearInput, current, dryRun) {
     const preview = toIssue(applyInput(beforeNode, linearInput, current, { parent: before.parent }), current)
-    if (Object.keys(linearInput).length === 0 || same(preview, before)) return { before, after: before }
+    if (same(preview, before)) return { before, after: before }
     if (dryRun) return { before, after: preview }
     const node = (await client.request(ISSUE_UPDATE, { id: beforeNode.id, input: linearInput })).issueUpdate.issue
     return { before, after: await mapped(node) }
   }
 
-  return { getIssue, searchIssues, createIssue, updateIssue, requireViewer, mapped, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
+  /** The state of the issue's team a move without --status goes to (spec "moveToCategory", PMK-34 rule 2), or an error. */
+  async function moveTarget(team, category, current) {
+    const named = current.mappings.status[category]
+    if (named !== undefined) {
+      let ctx = current
+      let state = teamStates(ctx, team).find((item) => item.name === named)
+      if (!state) {
+        ctx = await context({ refresh: true })
+        state = teamStates(ctx, teamOf(ctx, team.id) ?? team).find((item) => item.name === named)
+      }
+      if (!state) throw new PmkitError('NOT_CONFIGURED', `mappings.status.${category} names ${named}, which team ${team.key} does not have`, '/pmkit:setup')
+      return state
+    }
+    const candidates = teamStates(current, team).filter((item) => stateCategory(item, current) === category)
+    // Linear's canceled type comes before its duplicate type, whatever their positions.
+    if (category === 'canceled') candidates.sort((a, b) => (a.type === 'duplicate') - (b.type === 'duplicate'))
+    if (candidates.length > 0) return candidates[0]
+    const nextStep = category === 'triage' && !team.triageEnabled ? "Turn on triage in the team's settings in Linear" : '/pmkit:setup'
+    throw new PmkitError('NOT_SUPPORTED', `team ${team.key} has no status in the ${category} category`, nextStep)
+  }
+
+  async function moveToCategory(id, category, actor, { status, dryRun = false } = {}) {
+    requireWorkspace()
+    if (!CATEGORIES.includes(category)) throw new PmkitError('INVALID_INPUT', `category must be one of ${CATEGORIES.join(', ')}`)
+    await requireViewer(actor)
+    const beforeNode = await readNode(id)
+    const current = await contextFor([beforeNode])
+    const before = toIssue(beforeNode, current)
+    const team = teamOf(current, beforeNode.team.id)
+    let target
+    if (status !== undefined) {
+      const inCategory = teamStates(current, team).filter((item) => stateCategory(item, current) === category)
+      if (inCategory.length === 0) await moveTarget(team, category, current)
+      target = inCategory.find((item) => item.name === status)
+      if (!target) throw new PmkitError('INVALID_INPUT', `status ${status} is not in category ${category}`, `Use one of: ${inCategory.map((item) => item.name).join(', ')}`)
+    } else {
+      target = await moveTarget(team, category, current)
+    }
+    if (beforeNode.state.id === target.id) return { before, after: before }
+    return writeUpdate(beforeNode, before, { stateId: target.id }, await context(), dryRun)
+  }
+
+  /** `who` is a member id, 'me' for the actor, or null to unassign. */
+  async function assign(id, who, actor, { dryRun = false } = {}) {
+    await requireViewer(actor)
+    const member = who === 'me' ? actor : who
+    if (member !== null) await withRefresh((ctx) => requireAssignee(ctx, member))
+    const beforeNode = await readNode(id)
+    const current = await contextFor([beforeNode])
+    const before = toIssue(beforeNode, current)
+    if ((before.assignee ?? null) === member) return { before, after: before }
+    return writeUpdate(beforeNode, before, { assigneeId: member }, current, dryRun)
+  }
+
+  async function archive(id, actor, { dryRun = false } = {}) {
+    await requireViewer(actor)
+    const beforeNode = await readNode(id)
+    const before = toIssue(beforeNode, await contextFor([beforeNode]))
+    if (before.archived) return { before, after: before }
+    if (dryRun) return { before, after: { ...before, archived: true } }
+    await client.request(ISSUE_ARCHIVE, { id: beforeNode.id })
+    // The archive payload has no issue fields, so the issue is read again; readNode includes archived issues.
+    return { before, after: await mapped(await readNode(id)) }
+  }
+
+  return { getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, requireViewer, mapped, writeUpdate, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
 }

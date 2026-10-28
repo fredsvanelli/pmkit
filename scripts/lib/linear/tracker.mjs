@@ -152,6 +152,9 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     searchIssues: issues.searchIssues,
     createIssue: issues.createIssue,
     updateIssue: issues.updateIssue,
+    moveToCategory: issues.moveToCategory,
+    assign: issues.assign,
+    archive: issues.archive,
   }
   const implemented = { discover, capabilities, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
   // Linear-only features sit beside the contract operations. contractView ignores them.

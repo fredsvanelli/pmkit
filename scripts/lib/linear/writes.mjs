@@ -27,8 +27,8 @@ export function createTeam(context) {
   throw new PmkitError('NOT_CONFIGURED', `tracker.scope.team is not set and the workspace has ${teams.length} teams`, '/pmkit:setup')
 }
 
-const teamOf = (context, id) => context.raw.teams.find((team) => team.id === id)
-const teamStates = (context, team) => context.raw.states.filter((state) => state.team === team.id).sort((a, b) => a.position - b.position)
+export const teamOf = (context, id) => context.raw.teams.find((team) => team.id === id)
+export const teamStates = (context, team) => context.raw.states.filter((state) => state.team === team.id).sort((a, b) => a.position - b.position)
 
 function oneLine(field, value) {
   if (/[\r\n]/.test(value)) throw invalid(`${field} must not contain a line break`)
@@ -98,7 +98,8 @@ function estimateValue(value, team, context) {
   return scale.unit === 'sizes' ? scale.values[value] : value
 }
 
-function requireAssignee(context, id) {
+/** A member id that may be assigned: a discovered user that is not an app. An unknown id is stale. */
+export function requireAssignee(context, id) {
   const user = context.raw.users.find((item) => item.id === id)
   if (!user) throw stale(`assignee "${id}" is not a member of this workspace`, 'pmkit discover')
   if (user.app) throw invalid(`assignee "${id}" is an app user, not a member`, 'pmkit discover')
