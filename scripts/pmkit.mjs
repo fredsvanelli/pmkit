@@ -1019,6 +1019,14 @@ export const COMMANDS = [
     }),
   },
   {
+    name: 'linear customers link', summary: 'links a customer request to an issue or a project, or moves an existing request with --request; --dry-run previews',
+    usage: '--customer ID_OR_NAME (--issue KEY | --project NAME) [--body TEXT] [--important] [--request ID]',
+    write: true, linear: true, dryRun: true, flags: ['customer', 'issue', 'project', 'request', 'body', 'important'],
+    run: async (ctx) => (await ctx.linear('customers')).link({
+      customer: ctx.opt('customer'), issue: ctx.opt('issue'), project: ctx.opt('project'), request: ctx.opt('request'), body: ctx.opt('body'), important: ctx.flag('important') ? true : undefined, dryRun: ctx.dryRun,
+    }),
+  },
+  {
     name: 'validate', summary: 'checks every file and reference; problems are output, not errors', flags: [], exempt: true,
     run: (ctx) => {
       const result = validateRepo(ctx.root, { adapters: ctx.adapters })

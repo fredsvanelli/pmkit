@@ -201,6 +201,13 @@ export const SHOW_QUERY = `query PmkitCustomerShow($id: String!) { customer(id: 
 
 export const UPDATE_MUTATION = `mutation PmkitCustomerUpdate($id: String!, $input: CustomerUpdateInput!) { customerUpdate(id: $id, input: $input) { success customer { ${CUSTOMER_FIELDS} } } }`
 
+const NEED_FIELDS = 'id body priority issue { id identifier title archivedAt } project { id name }'
+export const ISSUE_QUERY = 'query PmkitCustomerIssue($id: ID!) { issues(filter: { id: { eq: $id } }, includeArchived: true, first: 1) { nodes { id identifier title archivedAt trashed } } }'
+export const PROJECTS_QUERY = `query PmkitCustomerProjects($name: String!, $first: Int!) { projects(first: $first, filter: { or: [{ name: { containsIgnoreCase: $name } }, { slugId: { eq: $name } }] }) { nodes { id name slugId } ${PAGE_INFO} } }`
+export const NEED_CREATE_MUTATION = `mutation PmkitCustomerNeedCreate($input: CustomerNeedCreateInput!) { customerNeedCreate(input: $input) { success need { ${NEED_FIELDS} } } }`
+export const NEED_UPDATE_MUTATION = `mutation PmkitCustomerNeedUpdate($id: String!, $input: CustomerNeedUpdateInput!) { customerNeedUpdate(id: $id, input: $input) { success need { ${NEED_FIELDS} } } }`
+
+const PROJECT_PAGE = 25
 const LOOKUP_LIMIT = 250
 
 const DEFAULT_LIMIT = 50
@@ -363,5 +370,55 @@ export function createCustomers({ client, discovery }) {
     }
   }
 
-  return Object.freeze({ list, show, set })
+  /** The issue or project a link points at, resolved with reads. */
+  async function resolveTarget(flags, warnings) {
+    if (flags.issue !== undefined) {
+      const key = flags.issue.toUpperCase()
+      const node = (await client.request(ISSUE_QUERY, { id: key }))?.issues?.nodes?.[0]
+      if (!node || node.trashed === true) throw new PmkitError('NOT_FOUND', `issue ${key} does not exist`, 'Check the key in Linear')
+      return { type: 'issue', id: node.identifier, linearId: node.id, title: node.title }
+    }
+    const found = await client.request(PROJECTS_QUERY, { name: flags.project, first: PROJECT_PAGE })
+    const nodes = found?.projects?.nodes ?? []
+    if (found?.projects?.pageInfo?.hasNextPage) warnings.push(`more than ${PROJECT_PAGE} projects match "${flags.project}"; only the first ${PROJECT_PAGE} were checked`)
+    const exact = nodes.filter((node) => sameName(node.name, flags.project) || node.slugId === flags.project)
+    if (exact.length === 0) throw new PmkitError('NOT_FOUND', `no project is named "${flags.project}"`, 'Pass the exact project name, or its slug from the project URL')
+    if (exact.length > 1) throw bad(`${exact.length} projects are named "${flags.project}"`, `Pass the slug of one of: ${exact.map((node) => `${node.name} (${node.slugId})`).join(', ')}`)
+    return { type: 'project', id: exact[0].id, linearId: exact[0].id, name: exact[0].name }
+  }
+
+  async function link({ customer: ref, dryRun = false, ...flags } = {}) {
+    const { raw, warnings, availability } = await context()
+    if (!availability.available) refuseWrite(availability)
+    checkLinkFlags(flags)
+    const all = [...warnings]
+    try {
+      const chosen = resolveCustomer(await lookup(all), ref)
+      const node = (await client.request(SHOW_QUERY, { id: chosen.id }))?.customer
+      if (node?.needs?.pageInfo?.hasNextPage) all.push('the customer has more requests than the 50 read; a duplicate request beyond them is not detected')
+      const requests = (node?.needs?.nodes ?? []).map(requestView)
+      const target = await resolveTarget(flags, all)
+      const plan = planLink({ customer: chosen, requests, flags, target })
+      let id = plan.kind === 'move' ? plan.id : null
+      if (!dryRun) {
+        const payload =
+          plan.kind === 'create'
+            ? (await client.request(NEED_CREATE_MUTATION, { input: plan.input })).customerNeedCreate
+            : (await client.request(NEED_UPDATE_MUTATION, { id: plan.id, input: plan.input })).customerNeedUpdate
+        if (payload?.success !== true || !payload.need) throw new PmkitError('UPSTREAM', 'Linear did not apply the customer request', 'Run linear customers show to see the current requests')
+        id = payload.need.id
+      }
+      const { linearId, ...shown } = target
+      const request = { kind: plan.kind, id, from: plan.kind === 'move' ? plan.from : null }
+      const lines = [`customer: ${chosen.name}`, `target: ${targetText(shown)}`, `request: ${plan.kind}${plan.kind === 'create' && flags.important ? ', important' : ''}`]
+      if (plan.kind === 'move') lines.push(`from: ${targetText(plan.from)}`)
+      if (dryRun) lines.push('dry run: nothing was written')
+      return { data: { customer: { id: chosen.id, name: chosen.name }, target: shown, request }, text: lines.join('\n'), commit: chosen.name, warnings: all }
+    } catch (error) {
+      if (isNotAvailable(error)) refuseWrite({ reason: 'stale', plan: raw.workspace.plan, enableHint: STALE_HINT })
+      throw error
+    }
+  }
+
+  return Object.freeze({ list, show, set, link })
 }

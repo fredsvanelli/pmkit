@@ -1400,3 +1400,113 @@ test('linear customers set --dry-run returns before and after and sends no mutat
   assert.match(text.stdout, /\ndry run: nothing was written\n$/)
   assert.equal(mutationCalls(fetch).length, 0)
 })
+
+const LINK_ISSUES = [
+  { id: 'iss-12', identifier: 'ACME-12', title: 'SSO login', archivedAt: null, trashed: false },
+  { id: 'iss-20', identifier: 'ACME-20', title: 'Export', archivedAt: null, trashed: false },
+  { id: 'iss-9', identifier: 'ACME-9', title: 'Deleted', archivedAt: null, trashed: true },
+]
+const LINK_PROJECTS = [
+  { id: 'proj-1', name: 'Mobile', slugId: 'mobile-1a' },
+  { id: 'proj-2', name: 'Web', slugId: 'web-2b' },
+  { id: 'proj-3', name: 'Web Admin', slugId: 'webadmin-3c' },
+  { id: 'proj-4', name: 'Dup', slugId: 'dup-4d' },
+  { id: 'proj-5', name: 'dup', slugId: 'dup-5e' },
+]
+const linkFetch = (extra = {}) => withNeeds({ issues: LINK_ISSUES, projects: LINK_PROJECTS, ...extra })
+const linkArgs = (customer, ...args) => ['linear', 'customers', 'link', '--customer', customer, ...args]
+const writesOf = (fetch, name) => mutationCalls(fetch).filter((call) => operationName(call.body.query) === name)
+
+test('linear customers link on a Free workspace is NOT_SUPPORTED, with and without --dry-run, and sends nothing', async () => {
+  for (const extra of [[], ['--dry-run']]) {
+    const fetch = customersFetch()
+    const result = await cli(setup(), [...linkArgs('acme', '--issue', 'ACME-12', ...extra), '--json'], fetch)
+    assert.equal(result.code, 2, extra.join(' '))
+    assert.equal(errorOf(result).code, 'NOT_SUPPORTED')
+    assert.equal(errorOf(result).message, 'customers are unavailable on this workspace (plan free)')
+    assert.equal(customerCalls(fetch).length, 0)
+    assert.equal(mutationCalls(fetch).length, 0)
+  }
+})
+
+test('linear customers link creates a request on an issue after reading it', async () => {
+  const fetch = linkFetch()
+  const result = await cli(setup(), [...linkArgs('Initech', '--issue', 'acme-20', '--important', '--body', 'Needs export'), '--json'], fetch)
+  assert.equal(result.code, 0, result.stderr)
+  const sent = writesOf(fetch, 'PmkitCustomerNeedCreate')
+  assert.equal(sent.length, 1)
+  assert.equal(mutationCalls(fetch).length, 1)
+  assert.deepEqual(sent[0].body.variables, { input: { customerId: 'cust-3', issueId: 'iss-20', priority: 1, body: 'Needs export' } })
+  assert.ok(callsOf(fetch, 'PmkitCustomerIssue') >= 1)
+  assert.deepEqual(JSON.parse(result.stdout), {
+    customer: { id: 'cust-3', name: 'Initech' },
+    target: { type: 'issue', id: 'ACME-20', title: 'Export' },
+    request: { kind: 'create', id: 'need-new', from: null },
+  })
+  assert.ok(!JSON.stringify(sent[0].body).includes(FAKE_KEY))
+})
+
+test('linear customers link creates a request on a project matched by exact name or slug', async () => {
+  const fetch = linkFetch()
+  const byName = JSON.parse((await cli(setup(), [...linkArgs('Initech', '--project', 'web'), '--json'], fetch)).stdout)
+  assert.deepEqual(byName.target, { type: 'project', id: 'proj-2', name: 'Web' })
+  assert.deepEqual(writesOf(fetch, 'PmkitCustomerNeedCreate')[0].body.variables.input, { customerId: 'cust-3', projectId: 'proj-2', priority: 0 })
+  const bySlug = JSON.parse((await cli(setup(), [...linkArgs('Initech', '--project', 'webadmin-3c'), '--json'], linkFetch())).stdout)
+  assert.equal(bySlug.target.id, 'proj-3')
+  const none = await cli(setup(), [...linkArgs('Initech', '--project', 'Nowhere'), '--json'], linkFetch())
+  assert.equal(errorOf(none).code, 'NOT_FOUND')
+  assert.match(errorOf(none).nextStep, /slug/)
+  const several = await cli(setup(), [...linkArgs('Initech', '--project', 'DUP'), '--json'], linkFetch())
+  assert.equal(errorOf(several).code, 'INVALID_INPUT')
+  assert.match(errorOf(several).nextStep, /Dup \(dup-4d\), dup \(dup-5e\)/)
+})
+
+test('linear customers link --request moves a request and reports where it was', async () => {
+  const fetch = linkFetch()
+  const result = await cli(setup(), [...linkArgs('cust-2', '--request', 'need-1', '--project', 'Web'), '--json'], fetch)
+  assert.equal(result.code, 0, result.stderr)
+  const sent = writesOf(fetch, 'PmkitCustomerNeedUpdate')
+  assert.equal(sent.length, 1)
+  assert.equal(mutationCalls(fetch).length, 1)
+  assert.deepEqual(sent[0].body.variables, { id: 'need-1', input: { issueId: null, projectId: 'proj-2' } })
+  assert.deepEqual(JSON.parse(result.stdout).request, { kind: 'move', id: 'need-1', from: { type: 'issue', id: 'ACME-12', title: 'SSO login' } })
+})
+
+test('linear customers link refuses bad input without a mutation', async () => {
+  const cases = [
+    [['--issue', 'ACME-12', '--project', 'Web'], 'INVALID_INPUT'],
+    [[], 'INVALID_INPUT'],
+    [['--issue', 'nope'], 'INVALID_INPUT'],
+    [['--issue', 'ACME-99'], 'NOT_FOUND'],
+    [['--issue', 'ACME-9'], 'NOT_FOUND'],
+    [['--request', 'need-1', '--issue', 'ACME-20', '--body', 'x'], 'INVALID_INPUT'],
+    [['--request', 'need-1', '--issue', 'ACME-20', '--important'], 'INVALID_INPUT'],
+    [['--request', 'need-5', '--issue', 'ACME-20'], 'INVALID_INPUT'],
+    [['--issue', 'ACME-12'], 'CONFLICT'],
+  ]
+  for (const [args, code] of cases) {
+    const fetch = linkFetch()
+    const result = await cli(setup(), [...linkArgs('cust-2', ...args), '--json'], fetch)
+    assert.equal(result.code, 2, args.join(' '))
+    assert.equal(errorOf(result).code, code, args.join(' '))
+    assert.equal(mutationCalls(fetch).length, 0, args.join(' '))
+  }
+  const conflict = await cli(setup(), [...linkArgs('cust-2', '--issue', 'ACME-12'), '--json'], linkFetch())
+  assert.match(errorOf(conflict).message, /need-1/)
+  assert.match(errorOf(conflict).nextStep, /--request/)
+  const malformed = linkFetch()
+  await cli(setup(), [...linkArgs('cust-2', '--issue', 'nope'), '--json'], malformed)
+  assert.equal(customerCalls(malformed).length, 0)
+})
+
+test('linear customers link --dry-run resolves with reads and sends no mutation', async () => {
+  const fetch = linkFetch()
+  const create = JSON.parse((await cli(setup(), [...linkArgs('Initech', '--issue', 'ACME-20'), '--dry-run', '--json'], fetch)).stdout)
+  assert.deepEqual(create.request, { kind: 'create', id: null, from: null })
+  const move = JSON.parse((await cli(setup(), [...linkArgs('cust-2', '--request', 'need-3', '--issue', 'ACME-20'), '--dry-run', '--json'], fetch)).stdout)
+  assert.deepEqual(move.request, { kind: 'move', id: 'need-3', from: null })
+  assert.equal(mutationCalls(fetch).length, 0)
+  const text = await cli(setup(), [...linkArgs('Initech', '--issue', 'ACME-20'), '--dry-run'], linkFetch())
+  assert.match(text.stdout, /^customer: Initech\ntarget: issue ACME-20 "Export"\nrequest: create\n/)
+  assert.match(text.stdout, /\ndry run: nothing was written\n$/)
+})
