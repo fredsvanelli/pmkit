@@ -5,13 +5,19 @@
 // at least one member and no issues. `today` is the YYYY-MM-DD date the tracker treats as today
 // (default: the real date); the suite opens its cycle on that day so the cycle starts active.
 // The suite awaits every operation, so an adapter may return values or promises.
+//
+// setup() may also return `cycles: { active(), planned() }`, two async functions that return a cycle (an object with `id`, and
+// `start` and `end` when a test needs them) or null. The tests that need a cycle but do not open or close one ask for it with
+// `cycle('active')` or `cycle('planned')`. Without a provider the helper opens the cycle with openCycle, as the Local tracker
+// does. A provider that returns null skips the test, and the reason says which cycle is missing. A hosted adapter that cannot
+// open a cycle leaves out the `cycle-lifecycle` family and supplies a provider.
 
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { assertTracker } from './lib/contract.mjs'
 
 // The contract families. A hosted adapter lists the ones it implements, and the suite skips the tests that need another.
-export const FAMILIES = ['discovery', 'issues', 'relations', 'history', 'time', 'cycles', 'deliverables', 'milestones', 'releases', 'documents']
+export const FAMILIES = ['discovery', 'issues', 'relations', 'history', 'time', 'cycles', 'cycle-lifecycle', 'deliverables', 'milestones', 'releases', 'documents']
 
 const CATEGORIES = ['triage', 'backlog', 'todo', 'in_progress', 'in_review', 'done', 'canceled']
 const DOC_PATH = 'contract/notes.md'
@@ -25,6 +31,24 @@ const issueState = async (tracker, issueIds) => JSON.stringify({
   metrics: await tracker.metricEvents(),
 })
 
+const WANTED = { active: { reason: 'needs an active cycle', start: (today) => today }, planned: { reason: 'needs a planned cycle', start: () => '2099-01-01' } }
+
+/** `cycle(kind)` for a test: the provider's cycle, else a cycle opened with openCycle, else null after t.skip(reason). */
+export function cycleHelper({ tracker, actor, today, cycles }, t) {
+  return async (kind) => {
+    const wanted = WANTED[kind]
+    if (cycles) {
+      const found = await cycles[kind]()
+      if (found === null || found === undefined) {
+        t.skip(wanted.reason)
+        return null
+      }
+      return found
+    }
+    return (await tracker.openCycle({ start: wanted.start(today) }, actor)).after
+  }
+}
+
 /**
  * Registers the contract tests inside describe(name). `families` lists the families the adapter implements; a test that
  * needs another one is registered as skipped, with the family it misses as the reason. Without `families`, every test runs.
@@ -33,10 +57,11 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
   const it = (title, needs, body) => {
     const missing = needs.find((family) => !families.includes(family))
     if (missing !== undefined) return test(title, { skip: `needs the ${missing} family` }, () => {})
-    return test(title, async () => {
+    return test(title, async (t) => {
       const env = await setup()
       try {
-        await body({ ...env, today: env.today ?? new Date().toISOString().slice(0, 10) })
+        const today = env.today ?? new Date().toISOString().slice(0, 10)
+        await body({ ...env, today, cycle: cycleHelper({ ...env, today }, t) })
       } finally {
         await env.teardown()
       }
@@ -170,7 +195,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.deepEqual((await tracker.metricEvents({ since: last })).map((e) => e.at).filter((at) => at < last), [])
     })
 
-    it('opens a cycle, adds issues, closes it and lists the unfinished ones', ['cycles'], async ({ tracker, actor, today }) => {
+    it('opens a cycle, adds issues, closes it and lists the unfinished ones', ['cycles', 'cycle-lifecycle'], async ({ tracker, actor, today }) => {
       const { statuses } = await tracker.discover()
       const open = (await tracker.createIssue({ title: 'Unfinished' }, actor)).after.id
       const finished = (await tracker.createIssue({ title: 'Finished' }, actor)).after.id
@@ -191,8 +216,9 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.equal(await tracker.currentCycle(), null)
     })
 
-    it('createIssue and updateIssue with sprint current store the active sprint id', ['cycles'], async ({ tracker, actor, today }) => {
-      const sprint = (await tracker.openCycle({ start: today }, actor)).after
+    it('createIssue and updateIssue with sprint current store the active sprint id', ['cycles'], async ({ tracker, actor, cycle }) => {
+      const sprint = await cycle('active')
+      if (sprint === null) return
       const made = await tracker.createIssue({ title: 'Made current', sprint: 'current' }, actor)
       assert.equal(made.after.sprint, sprint.id)
       assert.equal((await tracker.getIssue(made.after.id)).sprint, sprint.id)
@@ -206,8 +232,9 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.deepEqual(ids(await tracker.cycleIssues(sprint.id)).sort(), [made.after.id, plain].sort())
     })
 
-    it('moveToCycle with current moves issues into the active sprint, and null takes issues out of their sprint', ['cycles'], async ({ tracker, actor, today }) => {
-      const sprint = (await tracker.openCycle({ start: today }, actor)).after
+    it('moveToCycle with current moves issues into the active sprint, and null takes issues out of their sprint', ['cycles'], async ({ tracker, actor, cycle }) => {
+      const sprint = await cycle('active')
+      if (sprint === null) return
       const a = (await tracker.createIssue({ title: 'A' }, actor)).after.id
       const b = (await tracker.createIssue({ title: 'B' }, actor)).after.id
 
@@ -225,7 +252,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.deepEqual(ids(await tracker.cycleIssues(sprint.id)), [])
     })
 
-    it('sprint current without an active sprint fails with INVALID_INPUT and writes nothing', ['cycles'], async ({ tracker, actor, today }) => {
+    it('sprint current without an active sprint fails with INVALID_INPUT and writes nothing', ['cycles', 'cycle-lifecycle'], async ({ tracker, actor, today }) => {
       const a = (await tracker.createIssue({ title: 'A' }, actor)).after.id
       const b = (await tracker.createIssue({ title: 'B' }, actor)).after.id
       const expectNothingWritten = async () => {
@@ -250,9 +277,10 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.notEqual(await issueState(tracker, [a, b]), last)
     })
 
-    it('searchIssues with sprint current returns the active sprint issues and sprint none the issues in no sprint', ['cycles'], async ({ tracker, actor, today }) => {
-      const active = (await tracker.openCycle({ start: today }, actor)).after
-      const planned = (await tracker.openCycle({ start: '2099-01-01' }, actor)).after
+    it('searchIssues with sprint current returns the active sprint issues and sprint none the issues in no sprint', ['cycles'], async ({ tracker, actor, cycle }) => {
+      const active = await cycle('active')
+      const planned = await cycle('planned')
+      if (active === null || planned === null) return
       const inActive = (await tracker.createIssue({ title: 'In active', sprint: active.id }, actor)).after.id
       const inPlanned = (await tracker.createIssue({ title: 'In planned', sprint: planned.id }, actor)).after.id
       const free = (await tracker.createIssue({ title: 'Free' }, actor)).after.id
@@ -263,7 +291,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.deepEqual(ids((await tracker.searchIssues({ sprint: planned.id })).issues), [inPlanned])
     })
 
-    it('searchIssues with sprint current returns an empty list without an active sprint', ['cycles'], async ({ tracker, actor }) => {
+    it('searchIssues with sprint current returns an empty list without an active sprint', ['cycles', 'cycle-lifecycle'], async ({ tracker, actor }) => {
       const planned = (await tracker.openCycle({ start: '2099-01-01' }, actor)).after
       await tracker.createIssue({ title: 'In planned', sprint: planned.id }, actor)
       const free = (await tracker.createIssue({ title: 'Free' }, actor)).after.id
@@ -272,17 +300,19 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.deepEqual(ids((await tracker.searchIssues({ sprint: 'none' })).issues), [free])
     })
 
-    it('sets and reads cycle capacity', ['cycles'], async ({ tracker, actor, today }) => {
+    it('sets and reads cycle capacity', ['cycles'], async ({ tracker, actor, cycle: wanted }) => {
       const [member] = (await tracker.discover()).members
-      const cycle = (await tracker.openCycle({ start: today }, actor)).after
+      const cycle = await wanted('active')
+      if (cycle === null) return
       await tracker.setCapacity(cycle.id, { [member.id]: 8 }, actor)
       assert.deepEqual(await tracker.getCapacity(cycle.id), { [member.id]: 8 })
     })
 
-    it('sets, reads and clears days off', ['cycles'], async ({ tracker, actor, today }) => {
+    it('sets, reads and clears days off', ['cycles'], async ({ tracker, actor, today, cycle: wanted }) => {
       const [member] = (await tracker.discover()).members
-      const cycle = (await tracker.openCycle({ start: today }, actor)).after
-      const date = new Date(`${today}T00:00:00Z`)
+      const cycle = await wanted('active')
+      if (cycle === null) return
+      const date = new Date(`${cycle.start ?? today}T00:00:00Z`)
       while (date.getUTCDay() === 0 || date.getUTCDay() === 6) date.setUTCDate(date.getUTCDate() + 1)
       const weekday = date.toISOString().slice(0, 10)
       await tracker.updateCycleCapacity(cycle.id, { daysOff: { [member.id]: [weekday] } }, actor)
