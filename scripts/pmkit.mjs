@@ -287,20 +287,34 @@ export const COMMANDS = [
     run: async (ctx) => {
       const manifest = await (await ctx.tracker()).capabilities()
       const rows = manifest.capabilities.map((c) => [c.id, c.path, c.enableHint ?? (c.detail ? Object.entries(c.detail).map(([k, v]) => `${k}=${[v].flat().join('/')}`).join(' ') : '')])
-      return { data: manifest, text: [...fields([['tracker', manifest.tracker], ['git host', manifest.gitHost]]), '', table(['Capability', 'Path', 'Detail'], rows)].join('\n') }
+      // A hosted manifest names its workspace; the Local one has none, so its output stays as it was.
+      const hosted = manifest.workspace
+        ? [['workspace', `${manifest.workspace.urlKey} (${manifest.workspace.plan})`], ['team', manifest.team ?? '(none)'], ['discovered', manifest.discoveredAt]]
+        : []
+      const head = fields([['tracker', manifest.tracker], ['git host', manifest.gitHost], ...hosted])
+      return { data: manifest, text: [...head, '', table(['Capability', 'Path', 'Detail'], rows)].join('\n'), warnings: manifest.warnings ?? [] }
     },
   },
   {
     name: 'discover', summary: 'prints statuses with categories, types, priorities, labels, members and the estimate scale', flags: [],
     run: async (ctx) => {
-      const d = await (await ctx.tracker()).discover()
+      // discover always refreshes a hosted tracker's cache; the Local tracker ignores the argument.
+      const d = await (await ctx.tracker()).discover({ refresh: true })
+      const onOff = (on) => (on ? 'on' : 'off')
+      const hosted = d.workspace
+        ? [
+            `workspace: ${d.workspace.name} (${d.workspace.urlKey}), plan ${d.workspace.plan}${d.auth ? `, viewer ${d.auth.viewer.name}` : ''}`,
+            'teams:', ...(d.teams.length > 0 ? d.teams.map((t) => `  ${t.key}  ${t.name}  cycles ${onOff(t.cycles)}, triage ${onOff(t.triage)}, estimate ${t.estimate.type}`) : ['  (none)']),
+          ]
+        : []
       const text = [
+        ...hosted,
         'statuses:', ...d.statuses.map((s) => `  ${s.name} (${s.category})`),
         ...fields([['types', d.types], ['priorities', d.priorities], ['labels', d.labels]]),
         'members:', ...(d.members.length > 0 ? d.members.map((m) => `  ${m.id}  ${m.name ?? ''} <${m.email ?? ''}>`) : ['  (none)']),
         `estimate: ${d.estimate.unit}${d.estimate.scale ? ` ${d.estimate.scale.join(', ')}` : ''}`,
       ].join('\n')
-      return { data: d, text }
+      return { data: d, text, warnings: d.warnings ?? [] }
     },
   },
   {

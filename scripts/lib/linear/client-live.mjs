@@ -1,5 +1,5 @@
-// Opt-in live check of the Linear client against the sandbox workspace. It sends reads only, and `npm test`
-// does not load it (the name does not end in .test.mjs).
+// Opt-in live check of the Linear client and the workspace discovery against the sandbox workspace. It sends reads
+// only, writes no cache, prints no workspace data, and `npm test` does not load it (the name does not end in .test.mjs).
 //
 //   set -a; . ./.env; set +a; PMKIT_LIVE=1 PMKIT_LIVE_WORKSPACE=<url key> node --test scripts/lib/linear/client-live.mjs
 //
@@ -12,6 +12,8 @@ import test from 'node:test'
 import { isPmkitError } from '../errors.mjs'
 import { createLinearClient, isMutation } from './client.mjs'
 import { linearCredential } from './credential.mjs'
+import { categoryOfType, discoveryView, fetchDiscovery } from './discovery.mjs'
+import { buildLinearCapabilities } from './manifest.mjs'
 
 const WORKSPACE = process.env.PMKIT_LIVE_WORKSPACE
 
@@ -93,4 +95,17 @@ test('an unknown issue id is UPSTREAM with INPUT_ERROR', { skip }, async () => {
   assert.equal(error.code, 'UPSTREAM')
   assert.equal(error.details.linear.errors[0].code, 'INPUT_ERROR')
   assertNoKey(error)
+})
+
+test('discovery reads the workspace and builds 20 capabilities', { skip }, async () => {
+  const raw = await fetchDiscovery(client(), { now: () => new Date() })
+  assert.equal(raw.workspace.urlKey, WORKSPACE)
+  assert.ok(raw.teams.length >= 1, 'the workspace has a team')
+  for (const state of raw.states) assert.notEqual(categoryOfType(state.type), null, 'a state has a type pmkit does not know')
+  const view = discoveryView(raw, {})
+  assert.deepEqual(Object.keys(view), [
+    'workspace', 'team', 'teams', 'statuses', 'types', 'priorities', 'labels', 'members', 'agents', 'estimate', 'discoveredAt', 'warnings',
+  ])
+  assert.equal(buildLinearCapabilities(raw, {}).length, 20)
+  assert.ok(!JSON.stringify(raw).includes(KEY))
 })

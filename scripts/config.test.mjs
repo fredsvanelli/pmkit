@@ -66,19 +66,22 @@ test('a missing local config throws NOT_CONFIGURED', () => {
 test('unsupportedTracker is null for local and for names outside TRACKERS, and gives a message, next step and problem for the others', () => {
   assert.equal(unsupportedTracker('local'), null)
   assert.equal(unsupportedTracker('trello'), null)
-  assert.deepEqual(unsupportedTracker('linear'), {
-    message: 'tracker.system "linear" is not supported yet',
+  assert.equal(unsupportedTracker('linear'), null)
+  assert.deepEqual(unsupportedTracker('jira'), {
+    message: 'tracker.system "jira" is not supported yet',
     nextStep: 'Set tracker.system to local in .pmkit/config.yaml',
-    problem: 'tracker.system "linear" is not supported yet, set it to local',
+    problem: 'tracker.system "jira" is not supported yet, set it to local',
   })
   assert.equal(unsupportedTracker('linear', withLinear()), null)
 })
 
 test('pmkitConfigMessages adds the unsupported tracker problem to validatePmkitConfig', () => {
   assert.deepEqual(pmkitConfigMessages(template('pmkit.config.yaml')), [])
+  const jira = template('pmkit.config.yaml')
+  jira.tracker.system = 'jira'
+  assert.deepEqual(pmkitConfigMessages(jira), ['tracker.system "jira" is not supported yet, set it to local'])
   const linear = template('pmkit.config.yaml')
   linear.tracker.system = 'linear'
-  assert.deepEqual(pmkitConfigMessages(linear), ['tracker.system "linear" is not supported yet, set it to local'])
   const trello = template('pmkit.config.yaml')
   trello.tracker.system = 'trello'
   assert.deepEqual(pmkitConfigMessages(trello), validatePmkitConfig(trello))
