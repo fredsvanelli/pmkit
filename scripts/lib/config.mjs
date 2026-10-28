@@ -1,9 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import { ADAPTERS, adapterFor } from './adapters.mjs'
 import { PmkitError } from './errors.mjs'
 import { ID_STYLES } from './ids.mjs'
 import { FORMAT_VERSION, MIGRATIONS, formatError, formatState, migratedCopy } from './local/migrations.mjs'
-import { CATEGORIES, isCategory } from './model.mjs'
+import { CATEGORIES, FIELD_ROLES, STATUS_MAPPING_KEYS, isCategory } from './model.mjs'
 import { parseYaml } from './yaml.mjs'
 
 export const TRACKERS = ['local', 'linear', 'jira', 'github', 'gitlab', 'azure-devops']
@@ -14,6 +15,8 @@ export const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
 export const ESTIMATE_UNITS = ['points', 'hours', 'sizes']
 export const PREFIX = /^[A-Z]{2,5}$/
 export const MEMBER_ID = /^([a-z0-9][a-z0-9-]*|agent:[a-z0-9-]+)$/
+export const NAME = /\S/
+export const WORKSPACE_KEY = /^[a-z0-9][a-z0-9-]*$/
 
 const DEFAULTS = {
   default_status: 'backlog',
@@ -43,6 +46,51 @@ const found = (value) => (value === undefined ? 'nothing' : JSON.stringify(value
 
 const clone = (value) => JSON.parse(JSON.stringify(value))
 
+const isName = (value) => typeof value === 'string' && NAME.test(value)
+
+function scopeProblems(scope) {
+  if (scope === undefined) return []
+  if (!isObject(scope)) return ['tracker.scope must be a map of names, such as team: ENG']
+  const problems = []
+  for (const [key, value] of Object.entries(scope)) {
+    if (key === 'workspace') {
+      if (typeof value !== 'string' || !WORKSPACE_KEY.test(value)) {
+        problems.push('tracker.scope.workspace must be the workspace URL key, lowercase letters, digits and hyphens, such as acme')
+      }
+    } else if (!isName(value)) {
+      problems.push(`tracker.scope.${key} must be a name`)
+    }
+  }
+  return problems
+}
+
+function mappingsProblems(mappings) {
+  if (mappings === undefined) return []
+  if (!isObject(mappings)) return ['mappings must be a map with status or fields']
+  const problems = []
+  const { status, fields } = mappings
+  if (status !== undefined && !isObject(status)) {
+    problems.push('mappings.status must be a map from a category or blocked to a status name')
+  } else {
+    for (const [key, value] of Object.entries(status ?? {})) {
+      if (!STATUS_MAPPING_KEYS.includes(key)) problems.push(`mappings.status.${key}: ${key} is not a category or blocked`)
+      if (!isName(value)) problems.push(`mappings.status.${key} must be a status name`)
+    }
+  }
+  if (fields !== undefined && !isObject(fields)) {
+    problems.push('mappings.fields must be a map from a field role to a field name or native')
+  } else {
+    for (const [key, value] of Object.entries(fields ?? {})) {
+      if (!FIELD_ROLES.includes(key)) problems.push(`mappings.fields.${key}: ${key} is not a field role, use one of ${FIELD_ROLES.join(', ')}`)
+      if (!isName(value)) problems.push(`mappings.fields.${key} must be a field name or native`)
+    }
+  }
+  return problems
+}
+
+/** A fresh copy of the built-in behavior defaults, which a hosted tracker uses. */
+export const builtInDefaults = () => clone(DEFAULTS.defaults)
+
 export function withLocalDefaults(obj) {
   const input = isObject(obj) ? obj : {}
   const result = { ...clone(DEFAULTS), ...input }
@@ -62,6 +110,8 @@ export function validatePmkitConfig(obj) {
   } else if (tracker.path !== undefined && tracker.path !== null && typeof tracker.path !== 'string') {
     problems.push('tracker.path must be a string')
   }
+  // Valid for every system: the local tracker ignores scope and mappings, and a hosted one ignores tracker.path.
+  if (isObject(tracker)) problems.push(...scopeProblems(tracker.scope))
   const host = obj.git_host
   if (!isObject(host) || !GIT_HOSTS.includes(host.system)) {
     problems.push(`git_host.system must be ${GIT_HOSTS.join(' or ')}`)
@@ -75,6 +125,7 @@ export function validatePmkitConfig(obj) {
   } else if (policy.preview !== undefined && !(Array.isArray(policy.preview) && policy.preview.every((x) => PREVIEW.includes(x)))) {
     problems.push(`write_policy.preview must be a list of ${PREVIEW.join(', ')}`)
   }
+  problems.push(...mappingsProblems(obj.mappings))
   return problems
 }
 
@@ -168,18 +219,24 @@ function readYaml(file, label) {
   }
 }
 
-export function unsupportedTracker(system) {
-  if (system === 'local' || !TRACKERS.includes(system)) return null
+/** null for a system outside TRACKERS or with an adapter; for any other known system, the NOT_SUPPORTED wording. */
+export function unsupportedTracker(system, adapters = ADAPTERS) {
+  if (!TRACKERS.includes(system) || adapterFor(system, adapters) !== null) return null
   const message = `tracker.system "${system}" is not supported yet`
   return { message, nextStep: 'Set tracker.system to local in .pmkit/config.yaml', problem: `${message}, set it to local` }
 }
 
-/** Every problem in a parsed .pmkit/config.yaml: validatePmkitConfig plus the unsupported tracker. Never throws. */
-export function pmkitConfigMessages(parsed) {
+/**
+ * Every problem in a parsed .pmkit/config.yaml: validatePmkitConfig, the unsupported tracker, then the adapter's own rules,
+ * which run only on a valid shape. Never throws.
+ */
+export function pmkitConfigMessages(parsed, adapters = ADAPTERS) {
   const messages = validatePmkitConfig(parsed)
   if (isObject(parsed) && isObject(parsed.tracker)) {
-    const unsupported = unsupportedTracker(parsed.tracker.system)
+    const unsupported = unsupportedTracker(parsed.tracker.system, adapters)
     if (unsupported) messages.push(unsupported.problem)
+    const adapter = adapterFor(parsed.tracker.system, adapters)
+    if (adapter && messages.length === 0) messages.push(...adapter.configProblems(parsed))
   }
   return messages
 }
@@ -192,8 +249,8 @@ export function pmkitConfigWarning(problems) {
   return `${pmkitWriteRefusal(problems).message}; run pmkit validate`
 }
 
-/** `checkFormat: false` reads a tracker of any format as it is, for `migrate`: no refusal, no migrated copy. */
-export function loadConfig(root, { formatVersion = FORMAT_VERSION, migrations = MIGRATIONS, checkFormat = true } = {}) {
+/** Reads and checks .pmkit/config.yaml alone: no file under the tracker folder. Throws as loadConfig does for this file. */
+export function loadPmkitConfig(root, { adapters = ADAPTERS } = {}) {
   const pmkitFile = join(root, '.pmkit', 'config.yaml')
   if (!existsSync(pmkitFile)) {
     throw new PmkitError('NOT_CONFIGURED', `no .pmkit/config.yaml in ${root}`, '/pmkit:setup')
@@ -201,15 +258,30 @@ export function loadConfig(root, { formatVersion = FORMAT_VERSION, migrations = 
   const pmkit = readYaml(pmkitFile, '.pmkit/config.yaml')
   const system = isObject(pmkit) && isObject(pmkit.tracker) ? pmkit.tracker.system : undefined
   if (typeof system !== 'string') {
-    throw new PmkitError('INVALID_INPUT', '.pmkit/config.yaml has no tracker.system', '/pmkit:setup', { pmkitConfig: { problems: pmkitConfigMessages(pmkit) } })
+    throw new PmkitError('INVALID_INPUT', '.pmkit/config.yaml has no tracker.system', '/pmkit:setup', { pmkitConfig: { problems: pmkitConfigMessages(pmkit, adapters) } })
   }
-  const unsupported = unsupportedTracker(system)
+  const unsupported = unsupportedTracker(system, adapters)
   if (unsupported) throw new PmkitError('NOT_SUPPORTED', unsupported.message, unsupported.nextStep)
-  const pmkitProblems = pmkitConfigMessages(pmkit)
+  const pmkitProblems = pmkitConfigMessages(pmkit, adapters)
   const badPath = pmkit.tracker.path !== undefined && pmkit.tracker.path !== null && typeof pmkit.tracker.path !== 'string'
   if (!TRACKERS.includes(system) || badPath) {
     throw new PmkitError('INVALID_INPUT', `.pmkit/config.yaml is not valid: ${pmkitProblems.join('; ')}`, 'pmkit validate', { pmkitConfig: { problems: pmkitProblems } })
   }
+  return { pmkit, system, pmkitProblems }
+}
+
+/**
+ * The config of a repository. A hosted tracker gets { pmkit, root, system, hosted: true, pmkitProblems } and nothing under the
+ * repository is read but .pmkit/config.yaml. The local tracker gets loadLocalConfig.
+ */
+export function loadConfig(root, { adapters = ADAPTERS, ...options } = {}) {
+  const { pmkit, system, pmkitProblems } = loadPmkitConfig(root, { adapters })
+  if (adapterFor(system, adapters).hosted) return { pmkit, root, system, hosted: true, pmkitProblems }
+  return loadLocalConfig(root, pmkit, pmkitProblems, options)
+}
+
+/** `checkFormat: false` reads a tracker of any format as it is, for `migrate`: no refusal, no migrated copy. */
+export function loadLocalConfig(root, pmkit, pmkitProblems, { formatVersion = FORMAT_VERSION, migrations = MIGRATIONS, checkFormat = true } = {}) {
   const trackerPath = pmkit.tracker.path ?? '.issues'
   const issuesDir = join(root, trackerPath)
   const localFile = join(issuesDir, 'config.yaml')
@@ -229,14 +301,15 @@ export function loadConfig(root, { formatVersion = FORMAT_VERSION, migrations = 
   // Format 1 is the first format, so no migration leads from a lower number.
   if (version < 1) throw new PmkitError('INVALID_INPUT', `${label}: the tracker format version must be 1 or more, found ${version}`, `Set version in ${label}`)
   const format = { state, version, current: formatVersion }
-  if (!checkFormat) return { pmkit, local: withLocalDefaults(raw), root, issuesDir, format, pmkitProblems }
+  const base = { pmkit, root, issuesDir, format, pmkitProblems, system: 'local', hosted: false }
+  if (!checkFormat) return { ...base, local: withLocalDefaults(raw) }
   if (state === 'ahead') throw formatError(format)
   if (state === 'behind') {
     const readDir = migratedCopy({ root, trackerPath, from: version, to: formatVersion, migrations })
     const local = withLocalDefaults(readYaml(join(readDir, 'config.yaml'), label))
-    return { pmkit, local, root, issuesDir, readDir, format, pmkitProblems }
+    return { ...base, local, readDir }
   }
-  return { pmkit, local: withLocalDefaults(raw), root, issuesDir, format, pmkitProblems }
+  return { ...base, local: withLocalDefaults(raw) }
 }
 
 export function findRoot(start) {

@@ -7,6 +7,8 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { hashTree, makeRepo, tempDir } from './test-helpers.mjs'
 import { COMMANDS, configClass } from './pmkit.mjs'
+import { adapterFor } from './lib/adapters.mjs'
+import { TRACKERS } from './lib/config.mjs'
 import { fakeGh, ghCalls } from './fake-gh.mjs'
 
 const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), 'pmkit.mjs')
@@ -490,43 +492,45 @@ test('validate exits 0 and prints a .pmkit/config.yaml problem as path, code and
   assert.equal(problem.code, 'config')
 })
 
-const LINEAR_LINE = /^\.pmkit\/config\.yaml {2}config {2}tracker\.system "linear" is not supported yet, set it to local$/m
-const useLinear = (root) => {
+// The CLI runs as a child process here, so it uses the product registry: these tests take the first known system with no adapter.
+const UNSUPPORTED = TRACKERS.find((name) => !adapterFor(name))
+const UNSUPPORTED_LINE = new RegExp(`^\\.pmkit/config\\.yaml {2}config {2}tracker\\.system "${UNSUPPORTED}" is not supported yet, set it to local$`, 'm')
+const useUnsupported = (root) => {
   const file = path.join(root, '.pmkit', 'config.yaml')
-  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/system: local/, 'system: linear'))
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/system: local/, `system: ${UNSUPPORTED}`))
   return file
 }
 
 test('validate lists tracker.system linear as a problem and exits 0', () => {
   const root = makeRepo('basic')
-  useLinear(root)
+  useUnsupported(root)
   const text = run(root, ['validate'])
   assert.equal(text.status, 0)
   assert.equal(text.stdout.split('\n')[0], 'checked: 0 issues, 0 epics, 0 sprints, 0 milestones, 0 releases, 0 comments')
-  assert.match(text.stdout, LINEAR_LINE)
+  assert.match(text.stdout, UNSUPPORTED_LINE)
   const problem = json(root, ['validate']).problems[0]
   assert.deepEqual(Object.keys(problem).sort(), ['code', 'message', 'path'])
-  assert.deepEqual(problem, { path: '.pmkit/config.yaml', code: 'config', message: 'tracker.system "linear" is not supported yet, set it to local' })
+  assert.deepEqual(problem, { path: '.pmkit/config.yaml', code: 'config', message: `tracker.system "${UNSUPPORTED}" is not supported yet, set it to local` })
 })
 
 test('validate with linear and a bad git_host lists both and exits 0', () => {
   const root = makeRepo('basic')
-  const file = useLinear(root)
+  const file = useUnsupported(root)
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/system: none/, 'system: gitlab'))
   const text = run(root, ['validate'])
   assert.equal(text.status, 0)
-  assert.match(text.stdout, LINEAR_LINE)
+  assert.match(text.stdout, UNSUPPORTED_LINE)
   assert.match(text.stdout, /^\.pmkit\/config\.yaml {2}config {2}git_host\.system must be github or none$/m)
 })
 
 test('issues list with linear still exits 2 with NOT_SUPPORTED', () => {
   const root = makeRepo('basic')
-  useLinear(root)
+  useUnsupported(root)
   const result = run(root, ['issues', 'list', '--json'])
   assert.equal(result.status, 2)
   const { error } = JSON.parse(result.stdout)
   assert.equal(error.code, 'NOT_SUPPORTED')
-  assert.equal(error.message, 'tracker.system "linear" is not supported yet')
+  assert.equal(error.message, `tracker.system "${UNSUPPORTED}" is not supported yet`)
 })
 
 test('validate text starts with the counts, milestones included', () => {
@@ -1378,15 +1382,16 @@ const chainCtx = (depth, json) => {
       getDeliverable: () => ({ id: 'EPC-1', title: 'Epic', status }),
       searchIssues: () => ({ issues, problems: [] }),
       capabilities: () => ({ capabilities: [{ id: 'dependencies', path: 'native' }] }),
+      discover: () => ({ estimate: { unit: 'points' } }),
     }),
-    config: () => ({ local: { epic_prefix: 'EPC', estimate: { unit: 'points' } } }),
+    settings: () => ({ epicPrefix: 'EPC' }),
   }
 }
 
-test('issues dependencies prints a deep chain in text mode and fails only for JSON', () => {
-  const text = cmd('issues dependencies').run(chainCtx(3000, false))
+test('issues dependencies prints a deep chain in text mode and fails only for JSON', async () => {
+  const text = await cmd('issues dependencies').run(chainCtx(3000, false))
   assert.ok(text.text.includes('N2999'))
-  assert.throws(() => cmd('issues dependencies').run(chainCtx(3000, true)), (error) => error.code === 'INVALID_INPUT' && /too deep/.test(error.message))
+  await assert.rejects(() => cmd('issues dependencies').run(chainCtx(3000, true)), (error) => error.code === 'INVALID_INPUT' && /too deep/.test(error.message))
 })
 
 const INPUTS = path.join(path.dirname(fileURLToPath(import.meta.url)), '__goldens__', '_inputs')

@@ -6,6 +6,8 @@ import { TRACKERS, pmkitConfigMessages, unsupportedTracker } from './lib/config.
 import { parseYaml } from './lib/yaml.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { hashTree, makeRepo } from './test-helpers.mjs'
+import { adapterFor } from './lib/adapters.mjs'
+import { useLinear, withLinear } from './fake-hosted.mjs'
 
 const brief = (result) => result.problems.map(({ path: file, code }) => `${code} ${file}`).sort()
 
@@ -327,12 +329,27 @@ test('tracker.system linear alone is one config problem, not a throw', () => {
   assert.ok(MSG.startsWith(unsupportedTracker('linear').message))
 })
 
-test('every known tracker except local is listed', () => {
-  for (const name of TRACKERS.filter((tracker) => tracker !== 'local')) {
+test('every known tracker without an adapter is listed', () => {
+  for (const name of TRACKERS.filter((tracker) => !adapterFor(tracker))) {
     const root = makeRepo('basic')
     editPmkit(root, 'system: local', `system: ${name}`)
     assert.deepEqual(messages(validateRepo(root)), [`tracker.system "${name}" is not supported yet, set it to local`], name)
   }
+})
+
+test('a hosted config lists only .pmkit/config.yaml problems and checks no tracker file', () => {
+  const root = useLinear(makeRepo('team'), 'mappings:\n  status:\n    reviewing: Review\n')
+  const before = hashTree(root)
+  assert.deepEqual(validateRepo(root, { adapters: withLinear() }), {
+    checked: { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, comments: 0 },
+    problems: [{ path: '.pmkit/config.yaml', code: 'config', message: 'mappings.status.reviewing: reviewing is not a category or blocked' }],
+  })
+  assert.equal(hashTree(root), before)
+})
+
+test('a valid hosted config has no problems', () => {
+  const root = useLinear(makeRepo('team'))
+  assert.deepEqual(validateRepo(root, { adapters: withLinear() }).problems, [])
 })
 
 test('linear and git_host.system gitlab list both problems', () => {

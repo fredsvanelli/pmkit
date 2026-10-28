@@ -1,4 +1,6 @@
-// Pure metric functions: no file access. The caller passes `categoryOf(statusName)` from the config.
+// Pure metric functions: no file access. The caller passes `categoryOf(statusName)`, such as categoryLookup(discover().statuses).
+
+import { compareIds } from './ids.mjs'
 
 const DAY_MS = 86400000
 
@@ -21,6 +23,33 @@ export function lastEntry(events, category, categoryOf) {
     if (status !== undefined && categoryOf(status) === category) found = event.at
   }
   return found
+}
+
+/** metricEvents() output grouped by issue: keys in id order, each list in input order, each event without its issue key. */
+export function groupEventsByIssue(events) {
+  const groups = new Map()
+  for (const { issue, ...event } of events) {
+    if (!groups.has(issue)) groups.set(issue, [])
+    groups.get(issue).push(event)
+  }
+  return Object.fromEntries([...groups.keys()].sort(compareIds).map((id) => [id, groups.get(id)]))
+}
+
+/** A categoryOf(statusName) over discover().statuses: the category, or null for a name it does not hold. */
+export function categoryLookup(statuses) {
+  const categories = new Map(statuses.map((status) => [status.name, status.category]))
+  return (name) => categories.get(name) ?? null
+}
+
+/** The issuesBySprint input of velocity: issues by their current sprint, with the time each last reached a done status. */
+export function sprintIssues(issues, eventsByIssue, categoryOf) {
+  const grouped = {}
+  for (const issue of issues) {
+    if (!issue.sprint) continue
+    const doneAt = lastEntry(eventsByIssue[issue.id] ?? [], 'done', categoryOf)
+    ;(grouped[issue.sprint] ??= []).push({ id: issue.id, estimate: issue.estimate, status: issue.status.name, doneAt })
+  }
+  return grouped
 }
 
 /**

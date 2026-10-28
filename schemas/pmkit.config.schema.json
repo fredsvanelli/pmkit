@@ -18,13 +18,32 @@
       "properties": {
         "system": {
           "title": "Tracker system",
-          "description": "The tracker pmkit reads and writes. Only local works today; the others are planned.",
+          "description": "The tracker pmkit reads and writes. local works today. A hosted system works once pmkit has its adapter.",
           "enum": ["local", "linear", "jira", "github", "gitlab", "azure-devops"]
         },
         "path": {
           "title": "Tracker path",
-          "description": "The folder of the local tracker, relative to the repository root. When it is missing or empty (null), pmkit uses .issues.",
+          "description": "Local only. The folder of the local tracker, relative to the repository root. When it is missing or empty (null), pmkit uses .issues.",
           "type": ["string", "null"]
+        },
+        "scope": {
+          "title": "Tracker scope",
+          "description": "Hosted trackers only: the names that pick the team, project or space, such as team: ENG. Ignored by the local tracker.",
+          "type": "object",
+          "properties": {
+            "workspace": {
+              "title": "Workspace",
+              "description": "The workspace of a hosted tracker, as the URL key in its web address, such as acme.",
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]*$"
+            }
+          },
+          "additionalProperties": {
+            "title": "Scope name",
+            "description": "The name of the team, project or space this key picks, such as ENG.",
+            "type": "string",
+            "pattern": "\\S"
+          }
         }
       }
     },
@@ -68,6 +87,41 @@
           "type": "array",
           "items": {
             "enum": ["bulk", "delete", "publish_update", "move_scope"]
+          }
+        }
+      }
+    },
+    "mappings": {
+      "title": "Mappings",
+      "description": "Hosted trackers only: how pmkit's statuses and field roles map to the tracker's own names.",
+      "type": "object",
+      "properties": {
+        "status": {
+          "title": "Status mappings",
+          "description": "A category, or blocked, to the tracker's status name, such as in_review: In Review.",
+          "type": "object",
+          "propertyNames": {
+            "enum": ["triage", "backlog", "todo", "in_progress", "in_review", "done", "canceled", "blocked"]
+          },
+          "additionalProperties": {
+            "title": "Status name",
+            "description": "The name of the tracker's status for this category.",
+            "type": "string",
+            "pattern": "\\S"
+          }
+        },
+        "fields": {
+          "title": "Field mappings",
+          "description": "A field role to the tracker's field name, or native for the tracker's own field.",
+          "type": "object",
+          "propertyNames": {
+            "enum": ["estimate", "priority", "target_date", "start_date", "assignee", "acceptance_criteria", "time_spent"]
+          },
+          "additionalProperties": {
+            "title": "Field name",
+            "description": "The name of the tracker's field for this role, or native for the tracker's own field.",
+            "type": "string",
+            "pattern": "\\S"
           }
         }
       }
