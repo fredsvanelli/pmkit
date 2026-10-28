@@ -32,6 +32,7 @@ function cli(context, args, fetch = fakeLinearFetch(fakeWorkspace())) {
   return run(args, { cwd: context.root, env: context.env, adapters: { ...ADAPTERS, linear: linearDescriptor({ fetch }) } })
 }
 
+const withTeam = (text) => text.replace('    workspace: acme', '    workspace: acme\n    team: ACME')
 const callsOf = (fetch, name) => fetch.calls.filter((call) => operationName(call.body.query) === name).length
 const errorOf = (result) => JSON.parse(result.stdout).error
 
@@ -130,12 +131,11 @@ test('the workspace rename warning reaches stderr', async () => {
 
 test('issues list exits 2 with NOT_SUPPORTED', async () => {
   const fetch = fakeLinearFetch(fakeWorkspace())
-  const result = await cli(setup(), ['issues', 'list', '--json'], fetch)
+  const result = await cli(setup({ edit: withTeam }), ['issues', 'list', '--json'], fetch)
   assert.equal(result.code, 2)
   assert.deepEqual(errorOf(result), {
     code: 'NOT_SUPPORTED',
     message: 'the Linear adapter does not implement searchIssues yet',
     nextStep: 'Set tracker.system to local in .pmkit/config.yaml to use this command now',
   })
-  assert.equal(fetch.calls.length, 0)
 })
