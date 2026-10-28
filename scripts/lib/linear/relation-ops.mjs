@@ -7,7 +7,8 @@ import { LINK_KINDS } from '../model.mjs'
 import { BLOCK_GRAPH_QUERY, PARENT_CHAIN_QUERY, RELATION_CREATE, RELATION_DELETE } from './documents.mjs'
 import { isUnconfirmed } from './issue-ops.mjs'
 import { isIssueId, issueKey, toIssue } from './issues.mjs'
-import { NOT_EPICS } from './writes.mjs'
+// Task 7 of PMK-38 replaces this check.
+const NOT_EPICS = 'Linear projects are not epics in pmkit yet'
 
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
 const BLOCK_DEPTH = 10
