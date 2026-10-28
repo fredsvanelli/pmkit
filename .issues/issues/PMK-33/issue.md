@@ -2,14 +2,16 @@
 id: PMK-33
 title: Discover a Linear workspace and build its capability manifest
 type: feature
-status: backlog
+status: in_progress
 priority: medium
 estimate: 5
+assignee: fred
 parent: EPC-5
 blocked_by: [PMK-30, PMK-31, PMK-32]
 milestone: linear
+branch: pmk-33-discover-a-linear-workspace-and-build
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-25T19:13:25Z
+updated: 2026-10-28T01:02:26Z
 ---
 
 ## Description

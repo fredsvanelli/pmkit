@@ -2,3 +2,6 @@
 {"at":"2026-10-25T19:13:24Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-30"}
 {"at":"2026-10-25T19:13:25Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-31"}
 {"at":"2026-10-25T19:13:25Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-32"}
+{"at":"2026-10-28T01:02:24Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-28T01:02:24Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-28T01:02:26Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-33-discover-a-linear-workspace-and-build"}
