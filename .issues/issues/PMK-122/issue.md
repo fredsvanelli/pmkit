@@ -7,11 +7,11 @@ priority: medium
 estimate: 2
 assignee: fred
 parent: EPC-1
-related: [PMK-113]
+related: [PMK-113, PMK-164, PMK-165]
 milestone: local-gaps
 branch: pmk-122-offer-in-progress-issues-sent-back-to
 created: 2026-10-26T17:58:03.712Z
-updated: 2026-10-26T23:46:29Z
+updated: 2026-10-28T00:11:40Z
 ---
 
 ## Description

@@ -1,0 +1,2 @@
+{"at":"2026-10-28T00:11:38Z","by":"fred","op":"create","to":{"id":"PMK-154","title":"Say when a current reader finds no active sprint","type":"task","status":"backlog","priority":"low","labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-28T00:11:38.633Z","updated":"2026-10-28T00:11:38Z"}}
+{"at":"2026-10-28T00:11:38Z","by":"fred","op":"link","field":"related","to":"PMK-116"}

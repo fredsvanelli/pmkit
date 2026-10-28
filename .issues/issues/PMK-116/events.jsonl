@@ -9,3 +9,4 @@
 {"at":"2026-10-26T19:16:41Z","by":"fred","op":"comment","to":"2026-10-26T19-16-41Z-fred.md"}
 {"at":"2026-10-26T19:16:41Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
 {"at":"2026-10-26T23:46:25Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}
+{"at":"2026-10-28T00:11:38Z","by":"fred","op":"link","field":"related","to":"PMK-154"}

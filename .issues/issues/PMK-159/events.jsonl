@@ -1,0 +1,2 @@
+{"at":"2026-10-28T00:11:39Z","by":"fred","op":"create","to":{"id":"PMK-159","title":"Stop cycle close from proposing moves it cannot run on an invalid config","type":"bug","status":"backlog","priority":"medium","labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-28T00:11:39.689Z","updated":"2026-10-28T00:11:39Z"}}
+{"at":"2026-10-28T00:11:39Z","by":"fred","op":"link","field":"related","to":"PMK-120"}

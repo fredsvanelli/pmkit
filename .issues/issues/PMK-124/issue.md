@@ -7,11 +7,11 @@ priority: low
 estimate: 1
 assignee: fred
 parent: EPC-1
-related: [PMK-113]
+related: [PMK-113, PMK-163]
 milestone: local-gaps
 branch: pmk-124-separate-the-paragraph-after-a-sub-list
 created: 2026-10-26T17:58:03.864Z
-updated: 2026-10-26T23:46:31Z
+updated: 2026-10-28T00:11:40Z
 ---
 
 ## Description
