@@ -74,3 +74,10 @@ describe('contractView', () => {
     assert.throws(() => contractView({ discover() {} }), (error) => error instanceof TypeError && /missing operations/.test(error.message))
   })
 })
+
+test('the contract carries no triage operation and a view hides the Linear extension', () => {
+  assert.ok(!TRACKER_OPERATIONS.some((name) => /triage/i.test(name)))
+  const tracker = Object.fromEntries(TRACKER_OPERATIONS.map((name) => [name, () => {}]))
+  const view = contractView({ ...tracker, triage: { show() {} } })
+  assert.deepEqual(Object.keys(view), TRACKER_OPERATIONS)
+})
