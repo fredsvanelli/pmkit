@@ -400,3 +400,37 @@ async function ensureStates(client, team, guard) {
   if (states.some((state) => state.type === 'started' && state.name === REVIEW_STATE.name)) return
   await client.request(STATE_CREATE, { input: { id: randomUUID(), teamId: team.id, ...REVIEW_STATE } })
 }
+
+export const CYCLES_QUERY = 'query PmkitSandboxCycles($id: String!) { team(id: $id) { cycles(first: 10) { nodes { id number startsAt endsAt isActive isFuture isPast completedAt } } } }'
+export const CYCLE_START = 'mutation PmkitSandboxCycleStart($id: String!) { cycleStartUpcomingCycleToday(id: $id) { success } }'
+
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Waits until the test team has an active and a planned cycle. The team's schedule makes them. When a planned cycle exists and none
+ * is active after the reads, it sends one cycleStartUpcomingCycleToday with the next cycle's id and reads again.
+ * Returns { active, planned } as the cycle nodes. Fails with the missing state.
+ */
+export async function waitForCycles({ client, team, guard, sleep = defaultSleep, reads = 10, intervalMs = 2000 }) {
+  async function readUntilBoth() {
+    let latest = {}
+    for (let read = 0; read < reads; read += 1) {
+      const nodes = (await client.request(CYCLES_QUERY, { id: team.id })).team.cycles.nodes
+      for (const node of nodes) guard?.own('cycle', node.id)
+      const planned = nodes.filter((node) => node.isFuture === true).sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))
+      latest = { active: nodes.find((node) => node.isActive === true), planned: planned[0] }
+      if (latest.active && latest.planned) return latest
+      if (read + 1 < reads) await sleep(intervalMs)
+    }
+    return latest
+  }
+  let found = await readUntilBoth()
+  if (!found.active && found.planned) {
+    await client.request(CYCLE_START, { id: found.planned.id })
+    found = await readUntilBoth()
+  }
+  for (const state of ['active', 'planned']) {
+    if (!found[state]) throw stop('INVALID_INPUT', `the test team has no ${state} cycle`, 'Check the cycle settings of the test team in Linear')
+  }
+  return found
+}

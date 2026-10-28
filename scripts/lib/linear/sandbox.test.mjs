@@ -7,7 +7,7 @@ import {
   COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_ARCHIVE, ISSUE_CREATE, ISSUE_UPDATE, RELATION_CREATE, RELATION_DELETE,
 } from './documents.mjs'
 import { PROJECT_CREATE, PROJECT_UPDATE_CREATE } from './projects.mjs'
-import { SUITE_ALLOWLIST, TEST_TEAM, createGuardedFetch, findOrCreateTestTeam, preflight } from './sandbox.mjs'
+import { SUITE_ALLOWLIST, TEST_TEAM, createGuardedFetch, findOrCreateTestTeam, preflight, waitForCycles } from './sandbox.mjs'
 
 const URL = 'https://api.linear.app/graphql'
 const TEAM = 'team-pkt'
@@ -461,4 +461,64 @@ test('an unconfirmed teamCreate is followed by a lookup by the chosen id', async
   assert.deepEqual((await find(applied)).team, { id: 'team-uuid-1', key: 'PKT' })
   const lost = teamWorld({ team: null, create: () => ({ throws: new Error('socket closed') }) })
   await assert.rejects(find(lost), /did not confirm/)
+})
+
+// Task 6: wait for the cycles.
+const cycle = (id, extra = {}) => ({ id, number: Number(id.slice(2)), startsAt: '2026-10-26T00:00:00.000Z', endsAt: '2026-11-02T00:00:00.000Z', isActive: false, isFuture: false, isPast: false, completedAt: null, ...extra })
+
+function cycleWorld(reads) {
+  const w = world({
+    routes: {
+      PmkitSandboxCycles: () => json({ team: { cycles: { nodes: reads[Math.min(w.reads++, reads.length - 1)] } } }),
+      PmkitSandboxCycleStart: () => json({ cycleStartUpcomingCycleToday: { success: true } }),
+    },
+  })
+  w.reads = 0
+  w.guard.open({ teamExists: true, teamId: TEAM, viewerId: VIEWER, labelIds: LABELS })
+  return w
+}
+const wait = (w) => waitForCycles({ client: w.client, team: { id: TEAM, key: 'PKT' }, guard: w.guard, sleep: async () => {} })
+
+test('waitForCycles returns at once when both cycles exist', async () => {
+  const w = cycleWorld([[cycle('c-1', { isActive: true }), cycle('c-2', { isFuture: true })]])
+  const found = await wait(w)
+  assert.equal(found.active.id, 'c-1')
+  assert.equal(found.planned.id, 'c-2')
+  assert.equal(w.reads, 1)
+  assert.equal(w.mutations().length, 0)
+})
+
+test('waitForCycles waits for cycles the schedule has not made yet', async () => {
+  const w = cycleWorld([[], [], [cycle('c-1', { isActive: true }), cycle('c-2', { isFuture: true })]])
+  await wait(w)
+  assert.equal(w.reads, 3)
+  assert.equal(w.mutations().length, 0)
+})
+
+test('waitForCycles starts the upcoming cycle once when none is active', async () => {
+  const planned = [cycle('c-2', { isFuture: true, startsAt: '2026-11-02T00:00:00.000Z' }), cycle('c-3', { isFuture: true, startsAt: '2026-11-09T00:00:00.000Z' })]
+  const w = cycleWorld([planned, planned, planned, planned, planned, planned, planned, planned, planned, planned, [cycle('c-2', { isActive: true }), cycle('c-3', { isFuture: true })]])
+  const found = await wait(w)
+  assert.equal(found.active.id, 'c-2')
+  const sent = w.mutations()
+  assert.equal(sent.length, 1)
+  assert.deepEqual(sent[0].body.variables, { id: 'c-2' })
+})
+
+test('waitForCycles names the missing state after its reads and starts no second cycle', async () => {
+  const planned = [cycle('c-2', { isFuture: true })]
+  const noActive = cycleWorld([planned])
+  await assert.rejects(wait(noActive), /the test team has no active cycle/)
+  assert.equal(noActive.mutations().length, 1)
+  assert.equal(noActive.reads, 20)
+  const noPlanned = cycleWorld([[cycle('c-1', { isActive: true })]])
+  await assert.rejects(wait(noPlanned), /the test team has no planned cycle/)
+  assert.equal(noPlanned.mutations().length, 0)
+})
+
+test('waitForCycles adopts the cycles it reads, so the guard accepts them', async () => {
+  const w = cycleWorld([[cycle('c-1', { isActive: true }), cycle('c-2', { isFuture: true })]])
+  await wait(w)
+  w.guard.own('state', 's-1')
+  await send(w, ISSUE_CREATE, { input: { id: 'i-1', teamId: TEAM, cycleId: 'c-1' } })
 })
