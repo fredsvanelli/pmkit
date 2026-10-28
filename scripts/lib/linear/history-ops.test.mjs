@@ -22,7 +22,7 @@ async function setup({ routes, ...options } = {}) {
   let count = 0
   const uuid = () => `uuid-${++count}`
   const ops = issueOperations({ client, discovery: async () => ({ raw }), config, uuid })
-  const history = historyOperations({ client, ops, config })
+  const history = historyOperations({ client, ops })
   const sent = () => fetch.calls.filter((call) => isMutation(call.body.query)).length
   return { fake, fetch, ops, history, sent }
 }
@@ -315,7 +315,7 @@ test('a short read has no truncated flag', async () => {
 })
 
 test('an INPUT_ERROR from the by-id read means the comment is not on the issue, and another error propagates', async () => {
-  const refused = (code) => ({ status: 200, json: { data: null, errors: [{ message: 'Argument Validation Error', extensions: { code } }] } })
+  const refused = (code, path = ['comments']) => ({ status: 200, json: { data: null, errors: [{ message: 'Argument Validation Error', path, extensions: { code } }] } })
   const input = await setup({ routes: { PmkitCommentById: refused('INPUT_ERROR') } })
   seedIssue(input.fake)
   await assert.rejects(input.history.comment('ACME-1', 'x', ACTOR, { replyTo: 'nope' }), { code: 'NOT_FOUND', message: 'comment nope is not on ACME-1' })
@@ -323,6 +323,9 @@ test('an INPUT_ERROR from the by-id read means the comment is not on the issue, 
   const other = await setup({ routes: { PmkitCommentById: refused('INTERNAL_SERVER_ERROR') } })
   seedIssue(other.fake)
   await assert.rejects(other.history.comment('ACME-1', 'x', ACTOR, { replyTo: 'nope' }), { code: 'UPSTREAM' })
+  const elsewhere = await setup({ routes: { PmkitCommentById: refused('INPUT_ERROR', ['issue']) } })
+  seedIssue(elsewhere.fake)
+  await assert.rejects(elsewhere.history.comment('ACME-1', 'x', ACTOR, { replyTo: 'nope' }), { code: 'UPSTREAM' })
 })
 
 const queries = (fetch, name) => fetch.calls.filter((call) => call.body.query.includes(`query ${name}`)).length

@@ -213,6 +213,11 @@ test('comments of a sandbox issue read back through the by-id document', { skip 
     }
     const missing = await client().request(COMMENT_BY_ID_QUERY, { id: '00000000-0000-4000-8000-000000000000' })
     assert.deepEqual(missing.comments.nodes, [], 'an unknown comment id is an empty list, not an error')
+    // history-ops reads this error to tell a malformed comment id from another failure, so the live answer must keep its code and path.
+    const malformed = await client().request(COMMENT_BY_ID_QUERY, { id: 'not-a-uuid' }).catch((caught) => caught)
+    assert.equal(malformed.code, 'UPSTREAM')
+    assert.equal(malformed.details.linear.errors[0].code, 'INPUT_ERROR')
+    assert.equal(malformed.details.linear.errors[0].path[0], 'comments')
     console.log(`live comments: ${found} read by id`)
   })
 })

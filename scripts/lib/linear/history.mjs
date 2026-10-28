@@ -37,6 +37,13 @@ export const RELATION_CODES = { ar: { op: 'link', field: 'related' } }
 
 const has = (value) => value !== null && value !== undefined
 const changed = (from, to) => has(from) || has(to)
+/** Label names of an entry side: the label objects Linear returns, plus the names of ids it returns without an object (a deleted label has no object). An id the discovery does not know adds nothing. */
+function namesOfLabels(labels, ids, context) {
+  const named = labels ?? []
+  const known = new Set(named.map((label) => label.id))
+  const extra = (ids ?? []).filter((id) => !known.has(id)).map((id) => context.raw.labels.find((label) => label.id === id)?.name).filter(has)
+  return [...named.map((label) => label.name), ...extra]
+}
 const sortedNames = (names) => [...names].sort()
 
 /** The create event's `to`: the Local frontmatter keys, in Local order, without the keys that have no value. */
@@ -114,8 +121,8 @@ export function toEvents({ node, origin = {}, entries = [], comments = [] }, con
       add('update', 'due', entry.fromDueDate ?? null, state.due)
       state.due = entry.fromDueDate ?? null
     }
-    const added = (entry.addedLabels ?? []).map((label) => label.name)
-    const removed = (entry.removedLabels ?? []).map((label) => label.name)
+    const added = namesOfLabels(entry.addedLabels, entry.addedLabelIds, context)
+    const removed = namesOfLabels(entry.removedLabels, entry.removedLabelIds, context)
     if (added.length > 0 || removed.length > 0) {
       const before = [...new Set([...state.labelNames.filter((name) => !added.includes(name)), ...removed])]
       const plain = (names) => sortedNames(names.filter((name) => !typeLabels.has(name)))

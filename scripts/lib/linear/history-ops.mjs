@@ -33,7 +33,7 @@ function flagTruncated(list, truncated) {
  * The history and comment operations over one client. `ops` is what issueOperations returns: readNode, contextFor,
  * requireViewer, completeNested and the helpers they share.
  */
-export function historyOperations({ client, ops, config }) {
+export function historyOperations({ client, ops }) {
   /** Every history entry of the issue, newest first, with the issue's origin from the first page. */
   async function readHistory(node) {
     let origin = {}
@@ -72,8 +72,9 @@ export function historyOperations({ client, ops, config }) {
     try {
       return (await client.request(COMMENT_BY_ID_QUERY, { id: commentId }))?.comments?.nodes?.[0]
     } catch (error) {
-      // Linear answers an id it cannot read as a UUID with INPUT_ERROR, which is a comment that does not exist.
-      if (error instanceof PmkitError && error.details?.linear?.errors?.[0]?.code === 'INPUT_ERROR') return undefined
+      // Linear answers an id it cannot read as a UUID with INPUT_ERROR on the `comments` field, which is a comment that does not exist.
+      const first = error instanceof PmkitError ? error.details?.linear?.errors?.[0] : undefined
+      if (first?.code === 'INPUT_ERROR' && first.path?.[0] === 'comments') return undefined
       throw error
     }
   }

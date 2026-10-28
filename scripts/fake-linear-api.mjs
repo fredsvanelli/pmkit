@@ -385,7 +385,7 @@ export function fakeLinearIssues({
   const HISTORY_DEFAULTS = {
     autoClosed: false, autoArchived: false, archived: false, updatedDescription: false,
     fromState: null, toState: null, fromAssigneeId: null, toAssigneeId: null, fromTitle: null, toTitle: null, fromPriority: null, toPriority: null,
-    fromEstimate: null, toEstimate: null, fromDueDate: null, toDueDate: null, addedLabels: null, removedLabels: null,
+    fromEstimate: null, toEstimate: null, fromDueDate: null, toDueDate: null, addedLabels: null, removedLabels: null, addedLabelIds: null, removedLabelIds: null,
     fromParent: null, toParent: null, relationChanges: null, fromCycle: null, toCycle: null, fromProject: null, toProject: null,
     fromProjectMilestone: null, toProjectMilestone: null,
   }

@@ -73,7 +73,7 @@ const HISTORY_PAGE = 50
 export const HISTORY_FIELDS = `createdAt actor { id } botActor { type name } autoClosed autoArchived archived updatedDescription
     fromState { id name type } toState { id name type } fromAssigneeId toAssigneeId fromTitle toTitle fromPriority toPriority
     fromEstimate toEstimate fromDueDate toDueDate
-    addedLabels { id name parent { name } } removedLabels { id name parent { name } }
+    addedLabels { id name parent { name } } removedLabels { id name parent { name } } addedLabelIds removedLabelIds
     fromParent { identifier } toParent { identifier } relationChanges { identifier type }
     fromCycle { number } toCycle { number } fromProject { id } toProject { id }
     fromProjectMilestone { id } toProjectMilestone { id }`

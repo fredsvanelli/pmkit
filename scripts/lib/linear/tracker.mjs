@@ -150,7 +150,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
 
   const issues = issueOperations({ client, discovery, config, now, uuid })
   const relations = relationOperations({ client, ops: issues, uuid })
-  const history = historyOperations({ client, ops: issues, config })
+  const history = historyOperations({ client, ops: issues })
   const contract = {
     getIssue: issues.getIssue,
     searchIssues: issues.searchIssues,

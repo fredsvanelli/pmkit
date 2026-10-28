@@ -105,6 +105,14 @@ test('a type label change is a type event only, and a plain label change is a la
   assert.deepEqual(both.map((e) => e.field), ['type', 'labels'])
 })
 
+test('label ids with no label object fall back to the discovery names, and an unknown id adds nothing', () => {
+  const current = node({ labels: conn([lab('Bug')]) })
+  const byId = entry(at(2), { addedLabelIds: ['label-bug'], removedLabelIds: ['label-feature', 'label-gone'] })
+  assert.deepEqual(without(toEvents({ node: current, origin, entries: [byId] }, context)).map((e) => [e.field, e.from, e.to]), [['type', 'feature', 'bug']])
+  const both = entry(at(2), { addedLabels: [lab('Bug')], addedLabelIds: ['label-bug'] })
+  assert.deepEqual(without(toEvents({ node: current, origin, entries: [both] }, context)).map((e) => [e.field, e.from, e.to]), [['type', null, 'bug']])
+})
+
 test('estimates map like toIssue, and a non-native mapping gives no estimate event', async () => {
   const change = entry(at(2), { fromEstimate: 3, toEstimate: 5 })
   const tshirt = await contextWithTeam({ issueEstimationType: 'tShirt' })
