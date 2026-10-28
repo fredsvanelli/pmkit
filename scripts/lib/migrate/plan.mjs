@@ -89,7 +89,7 @@ export function planMigration({ direction, source, target, snapshot, mapped, map
         unconfirmed++
       }
       if (!entry && old) return { ...record, action: 'skip', target: old.id ?? old.uuid ?? record.target }
-      return { ...record, action: 'create' }
+      return entry ? { ...record, action: 'create', entryState: entry.state } : { ...record, action: 'create' }
     })
     checks += Math.ceil(unconfirmed / CHECK_PAGE)
   }
