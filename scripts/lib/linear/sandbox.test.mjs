@@ -1,11 +1,15 @@
 // Tests of the Linear sandbox helper over scripted fetches. No test here opens a socket.
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { FAKE_KEY, fakeLinearFetch, json } from '../../fake-linear-api.mjs'
 import { createLinearClient, isMutation } from './client.mjs'
 import {
   COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_ARCHIVE, ISSUE_CREATE, ISSUE_UPDATE, RELATION_CREATE, RELATION_DELETE,
 } from './documents.mjs'
+import { runCleanup } from './contract-live.mjs'
 import { PROJECT_CREATE, PROJECT_UPDATE_CREATE } from './projects.mjs'
 import { SUITE_ALLOWLIST, TEST_TEAM, createGuardedFetch, findOrCreateTestTeam, listTestTeamItems, preflight, trashTestTeamItems, waitForCycles } from './sandbox.mjs'
 
@@ -281,8 +285,8 @@ function world(options = {}) {
   const answer = (data) => json(data, { headers: state.headers })
   const routes = {
     PmkitSandboxTeams: () => answer({ organization: { subscription: state.subscription }, teams: { nodes: state.teams } }),
-    PmkitSandboxIssues: (body) => answer({ team: { issues: connection(state.issues, body) } }),
-    PmkitSandboxProjects: (body) => answer({ team: { projects: connection(state.projects, body) } }),
+    PmkitSandboxIssues: (body) => answer({ issues: connection(state.issues, body) }),
+    PmkitSandboxProjects: (body) => answer({ projects: connection(state.projects, body) }),
     PmkitSandboxLabels: (body) => answer({ issueLabels: connection(state.labels, body) }),
     PmkitIssueArchive: answer({}),
     PmkitIssueCreate: answer({}),
@@ -576,4 +580,84 @@ test('trashTestTeamItems sends nothing when the team is empty, and nothing on a 
   const written = w.mutations().length
   assert.deepEqual(await trashTestTeamItems(items(w)), { issues: 0, projects: 0 })
   assert.equal(w.mutations().length, written)
+})
+
+// Task 8: the opt-in entry and its cleanup mode.
+const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
+const ENTRY = 'scripts/lib/linear/contract-live.mjs'
+
+function spawnEntry(args, extra = {}) {
+  const env = { ...process.env, ...extra }
+  delete env.NODE_TEST_CONTEXT
+  for (const name of ['PMKIT_LIVE', 'PMKIT_LIVE_WORKSPACE', 'LINEAR_API_KEY']) if (!(name in extra)) delete env[name]
+  return spawnSync(process.execPath, [ENTRY, ...args], { cwd: root, env, encoding: 'utf8' })
+}
+
+const skippedCount = (output) => Number(/^# skipped (\d+)/m.exec(output)?.[1])
+const SKIP_LINE = /# SKIP (.+)$/gm
+
+test('with the gate closed, the entry skips every test with one reason and exits 0', () => {
+  const result = spawnEntry([])
+  assert.equal(result.status, 0, result.stderr)
+  const reasons = new Set([...result.stdout.matchAll(SKIP_LINE)].map((match) => match[1]))
+  assert.equal(reasons.size, 1)
+  assert.match([...reasons][0], /PMKIT_LIVE=1/)
+  assert.ok(skippedCount(result.stdout) >= 1)
+  assert.match(result.stdout, /^# pass 0$/m)
+  assert.match(result.stdout, /^# fail 0$/m)
+})
+
+test('cleanup with the gate closed prints the reason and writes nothing', () => {
+  const result = spawnEntry(['cleanup', '--yes'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /set PMKIT_LIVE=1/)
+})
+
+test('a fake key and workspace without PMKIT_LIVE stay skipped, and the output never holds the key', () => {
+  for (const args of [[], ['cleanup']]) {
+    const result = spawnEntry(args, { LINEAR_API_KEY: FAKE_KEY, PMKIT_LIVE_WORKSPACE: 'acme' })
+    assert.equal(result.status, 0, result.stderr)
+    assert.match(result.stdout, /PMKIT_LIVE=1/)
+    assert.ok(!result.stdout.includes(FAKE_KEY) && !result.stderr.includes(FAKE_KEY))
+  }
+})
+
+function cleanupRun(w, yes) {
+  const lines = []
+  return runCleanup({ client: w.client, env: w.env, workspace: 'acme', guard: w.guard, yes, write: (line) => lines.push(line) }).then((code) => ({ code, text: lines.join('\n') }))
+}
+
+test('cleanup without --yes lists the items and sends no mutation', async () => {
+  const w = itemsWorld({ issues: [issueNode('i-1'), issueNode('i-2')], projects: [projectNode('p-1')] })
+  const { code, text } = await cleanupRun(w, false)
+  assert.equal(code, 0)
+  assert.match(text, /2 issues and 1 project/)
+  assert.match(text, /PKT-1/)
+  assert.equal(w.mutations().length, 0)
+})
+
+test('cleanup --yes trashes the items and reports the counts', async () => {
+  const w = itemsWorld({ issues: [issueNode('i-1')], projects: [projectNode('p-1')] })
+  const { code, text } = await cleanupRun(w, true)
+  assert.equal(code, 0)
+  assert.match(text, /trashed 1 issue and 1 project/)
+  assert.equal(w.mutations().length, 2)
+})
+
+test('cleanup --yes refuses a test team that fails a check, and names it', async () => {
+  const w = itemsWorld({ issues: [issueNode('i-1')] })
+  w.state.teams = [teamNode({ key: 'ABC' })]
+  const { code, text } = await cleanupRun(w, true)
+  assert.equal(code, 1)
+  assert.match(text, /pmkit-test/)
+  assert.equal(w.mutations().length, 0)
+})
+
+test('cleanup with no test team has nothing to do', async () => {
+  const w = itemsWorld({})
+  w.state.teams = []
+  const { code, text } = await cleanupRun(w, true)
+  assert.equal(code, 0)
+  assert.match(text, /no test team/)
+  assert.equal(w.mutations().length, 0)
 })

@@ -231,11 +231,11 @@ const PAGE_INFO = 'pageInfo { hasNextPage endCursor }'
 const TEAM_FIELDS = 'id key name description archivedAt cyclesEnabled triageEnabled'
 
 export const TEAMS_QUERY = `query PmkitSandboxTeams { organization { subscription { id } } teams(includeArchived: true, first: 100) { nodes { ${TEAM_FIELDS} } } }`
-export const TEAM_ISSUES_QUERY = `query PmkitSandboxIssues($id: String!, $first: Int!, $after: String) {
-  team(id: $id) { issues(includeArchived: true, first: $first, after: $after) { nodes { id identifier trashed archivedAt } ${PAGE_INFO} } }
+export const TEAM_ISSUES_QUERY = `query PmkitSandboxIssues($id: ID!, $first: Int!, $after: String) {
+  issues(filter: { team: { id: { eq: $id } } }, includeArchived: true, first: $first, after: $after) { nodes { id identifier trashed archivedAt } ${PAGE_INFO} }
 }`
-export const TEAM_PROJECTS_QUERY = `query PmkitSandboxProjects($id: String!, $first: Int!, $after: String) {
-  team(id: $id) { projects(includeArchived: true, first: $first, after: $after) { nodes { id name trashed archivedAt teams { nodes { id } } } ${PAGE_INFO} } }
+export const TEAM_PROJECTS_QUERY = `query PmkitSandboxProjects($id: ID!, $first: Int!, $after: String) {
+  projects(filter: { accessibleTeams: { some: { id: { eq: $id } } } }, includeArchived: true, first: $first, after: $after) { nodes { id name trashed archivedAt teams { nodes { id } } } ${PAGE_INFO} }
 }`
 export const LABELS_QUERY = `query PmkitSandboxLabels($first: Int!, $after: String) {
   issueLabels(first: $first, after: $after) { nodes { id name isGroup retiredAt team { id } } ${PAGE_INFO} }
@@ -264,13 +264,13 @@ const stop = (code, message, nextStep) => new PmkitError(code, message, nextStep
 
 /** The issues of the team that are not trashed, archived ones included. */
 async function teamIssues(client, team) {
-  const { nodes } = await client.paginate(TEAM_ISSUES_QUERY, { id: team.id }, { select: (data) => data.team.issues, pageSize: 100, maxPages: 20 })
+  const { nodes } = await client.paginate(TEAM_ISSUES_QUERY, { id: team.id }, { select: (data) => data.issues, pageSize: 100, maxPages: 20 })
   return nodes.filter((node) => node.trashed !== true)
 }
 
 /** The open projects of the team: not trashed, not archived. */
 async function teamProjects(client, team) {
-  const { nodes } = await client.paginate(TEAM_PROJECTS_QUERY, { id: team.id }, { select: (data) => data.team.projects, pageSize: 100, maxPages: 20 })
+  const { nodes } = await client.paginate(TEAM_PROJECTS_QUERY, { id: team.id }, { select: (data) => data.projects, pageSize: 100, maxPages: 20 })
   return nodes.filter((node) => node.trashed !== true && !node.archivedAt)
 }
 
