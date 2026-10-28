@@ -2,13 +2,25 @@
 // See docs/superpowers/specs/2026-10-28-pmk-36-linear-history-comments-design.md.
 
 import { PmkitError } from '../errors.mjs'
-import { COMMENT_BY_ID_QUERY, COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_COMMENTS_QUERY, ISSUE_HISTORY_QUERY } from './documents.mjs'
+import { compareIds } from '../ids.mjs'
+import { COMMENT_BY_ID_QUERY, COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_COMMENTS_QUERY, ISSUE_EVENTS_QUERY, ISSUE_HISTORY_QUERY } from './documents.mjs'
+import { translateFilter } from './filter.mjs'
 import { toComment, toEvents } from './history.mjs'
 import { isUnconfirmed } from './issue-ops.mjs'
 
 const PAGE = 100
 const COMMENT_ID = /^[A-Za-z0-9-]+$/
 const notOnIssue = (commentId, id) => new PmkitError('NOT_FOUND', `comment ${commentId} is not on ${id}`, `pmkit issues get ${id} --comments`)
+const ISSUE_CAP_PAGE = 100
+
+/** Compares an event time with a range bound by instant, so `2026-10-05T10:00:00Z` equals `2026-10-05T10:00:00.000Z`. */
+function compareAt(at, bound) {
+  const a = Date.parse(at)
+  const b = Date.parse(bound)
+  if (Number.isNaN(a) || Number.isNaN(b)) return at < bound ? -1 : at > bound ? 1 : 0
+  return Math.sign(a - b)
+}
+
 const byCreated = (a, b) => (a.created < b.created ? -1 : a.created > b.created ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 
 /** The array with a non-enumerable `truncated: true` when a page cap cut the read, so JSON output and deepEqual never see it. */
@@ -45,7 +57,7 @@ export function historyOperations({ client, ops, config }) {
     const { entries, origin, hasMore: moreHistory } = await readHistory(node)
     const { nodes: comments, hasMore: moreComments } = await readCommentNodes(node)
     const events = toEvents({ node, origin, entries, comments }, await ops.contextFor([node]))
-    return flagTruncated(since === undefined ? events : events.filter((event) => event.at >= since), moreHistory || moreComments)
+    return flagTruncated(since === undefined ? events : events.filter((event) => compareAt(event.at, since) >= 0), moreHistory || moreComments)
   }
 
   async function listComments(id) {
@@ -106,5 +118,35 @@ export function historyOperations({ client, ops, config }) {
     return { before, after: toComment(payload, node.identifier) }
   }
 
-  return { getHistory, listComments, comment, resolveThread }
+  /**
+   * Every issue of the scope team with its history and comments, as one tagged list of events. Linear's updatedAt filter narrows
+   * the read, and the sort puts the most recently updated issues first, so a cut keeps the ones the metrics need most.
+   */
+  async function metricEvents({ since, until } = {}) {
+    const current = await ops.context()
+    const { variables } = translateFilter({}, current)
+    const and = since === undefined ? variables.filter.and : [...variables.filter.and, { updatedAt: { gte: since } }]
+    const { nodes, hasMore } = await client.paginate(
+      ISSUE_EVENTS_QUERY,
+      { filter: { and }, includeArchived: true, sort: [{ updatedAt: { order: 'Descending' } }] },
+      { pageSize: ISSUE_CAP_PAGE, select: (data) => data.issues },
+    )
+    const live = nodes.filter((node) => node.trashed !== true)
+    for (const node of live) {
+      await ops.completeNested(node)
+      if (node.history?.pageInfo?.hasNextPage === true) node.history = { nodes: (await readHistory(node)).entries }
+      if (node.comments?.pageInfo?.hasNextPage === true) node.comments = { nodes: (await readCommentNodes(node)).nodes }
+    }
+    const context = await ops.contextFor(live)
+    const last = until !== undefined && !until.includes('T') ? `${until}T23:59:59Z` : until
+    const events = live
+      .flatMap((node) => toEvents({ node, origin: { creator: node.creator, botActor: node.botActor }, entries: node.history?.nodes ?? [], comments: node.comments?.nodes ?? [] }, context)
+        .map((event, index) => ({ event: { ...event, issue: node.identifier }, index })))
+      .filter(({ event }) => (since === undefined || compareAt(event.at, since) >= 0) && (last === undefined || compareAt(event.at, last) <= 0))
+      .sort((a, b) => compareAt(a.event.at, b.event.at) || compareIds(a.event.issue, b.event.issue) || a.index - b.index)
+      .map(({ event }) => event)
+    return flagTruncated(events, hasMore)
+  }
+
+  return { getHistory, listComments, comment, resolveThread, metricEvents }
 }

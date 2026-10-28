@@ -233,3 +233,83 @@ test('a dry-run resolve has the shape of the real one and sends nothing', async 
   assert.deepEqual(Object.keys(dry.after.resolved), Object.keys(real.after.resolved))
   assert.deepEqual(dry.before, real.before)
 })
+
+// metricEvents
+
+const eventsCalls = (fetch) => fetch.calls.filter((c) => /query PmkitIssueEvents/.test(c.body.query))
+
+test('metricEvents tags the events of every issue with its id and sorts them', async () => {
+  const { ops, history } = await setup()
+  const a = (await ops.createIssue({ title: 'First' }, ACTOR)).after.id
+  const b = (await ops.createIssue({ title: 'Second' }, ACTOR)).after.id
+  await ops.updateIssue(a, { title: 'First, renamed' }, ACTOR)
+  const all = await history.metricEvents()
+  assert.deepEqual(all.map((e) => [e.issue, e.op]), [[a, 'create'], [b, 'create'], [a, 'update']])
+  const stamps = all.map((e) => e.at)
+  assert.deepEqual(stamps, [...stamps].sort())
+  assert.deepEqual(Object.keys(all[2]), ['at', 'by', 'op', 'field', 'from', 'to', 'issue'])
+})
+
+test('a nested list longer than its page is completed', async () => {
+  const { ops, history } = await setup({ nestedPage: 2 })
+  const { after } = await ops.createIssue({ title: 'T0' }, ACTOR)
+  for (const title of ['T1', 'T2', 'T3', 'T4']) await ops.updateIssue(after.id, { title }, ACTOR)
+  const events = await history.metricEvents()
+  assert.deepEqual(events.filter((e) => e.field === 'title').map((e) => e.to), ['T1', 'T2', 'T3', 'T4'])
+  assert.equal(events[0].to.title, 'T0')
+})
+
+test('since goes to Linear as updatedAt gte and also drops earlier events', async () => {
+  const { fetch, ops, history } = await setup()
+  const a = (await ops.createIssue({ title: 'Old' }, ACTOR)).after.id
+  const b = (await ops.createIssue({ title: 'Newer' }, ACTOR)).after.id
+  const since = (await ops.updateIssue(b, { title: 'Newest' }, ACTOR)).after.updated
+  const events = await history.metricEvents({ since })
+  assert.deepEqual(events.map((e) => [e.issue, e.op]), [[b, 'update']])
+  const sent = eventsCalls(fetch).at(-1).body.variables
+  assert.deepEqual(sent.filter.and.at(-1), { updatedAt: { gte: since } })
+  assert.deepEqual(sent.filter.and[0], { team: { key: { eq: 'ACME' } } })
+  assert.equal(sent.includeArchived, true)
+  assert.deepEqual(sent.sort, [{ updatedAt: { order: 'Descending' } }])
+  assert.ok(a)
+})
+
+test('a date-only until includes the whole day', async () => {
+  const { ops, history } = await setup({ start: '2026-10-05T10:00:00.000Z' })
+  const { after } = await ops.createIssue({ title: 'Today' }, ACTOR)
+  assert.equal((await history.metricEvents({ until: '2026-10-05' })).length, 1)
+  assert.equal((await history.metricEvents({ until: '2026-10-04' })).length, 0)
+  assert.equal((await history.metricEvents({ until: `${after.created.slice(0, 19)}Z` })).length, 1)
+})
+
+test('trashed and archived issues: trashed are skipped, archived are read', async () => {
+  const { fake, ops, history } = await setup()
+  const kept = (await ops.createIssue({ title: 'Kept' }, ACTOR)).after.id
+  await ops.archive(kept, ACTOR)
+  fake.seed({ title: 'Gone' })
+  fake.records.find((r) => r.title === 'Gone').trashed = true
+  const events = await history.metricEvents()
+  assert.deepEqual([...new Set(events.map((e) => e.issue))], [kept])
+  assert.ok(events.some((e) => e.op === 'archive'))
+})
+
+test('equal times order by issue id as numbers', async () => {
+  const { fake, history } = await setup()
+  for (let n = 0; n < 10; n += 1) fake.seed({ title: `I${n}` }, { createdAt: '2026-10-01T00:00:00.000Z' })
+  assert.deepEqual((await history.metricEvents()).map((e) => e.issue), Array.from({ length: 10 }, (_, n) => `ACME-${n + 1}`))
+})
+
+test('the 1000-issue cap sets a hidden truncated flag', async () => {
+  const { fake, history } = await setup()
+  for (let n = 0; n < 1001; n += 1) fake.seed({ title: `I${n}` })
+  const events = await history.metricEvents()
+  assert.equal(events.truncated, true)
+  assert.equal(new Set(events.map((e) => e.issue)).size, 1000)
+  assert.equal(Object.keys(events).length, events.length)
+})
+
+test('a short read has no truncated flag', async () => {
+  const { fake, history } = await setup()
+  fake.seed({ title: 'One' })
+  assert.equal((await history.metricEvents()).truncated, undefined)
+})
