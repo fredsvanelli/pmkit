@@ -375,6 +375,18 @@ test('--update asks again for a hand-written status and type that broke, and the
   assert.deepEqual(parseYaml(read(context, '.pmkit/config.yaml')).mappings, { status: { in_review: 'In Review', blocked: 'none', done: 'Done' }, types: {} })
 })
 
+test('--update repairs a lost team through to the write', async () => {
+  const context = await written()
+  const lost = WALKTHROUGH.replace('    team: ACME\n', '    team: GONE\n')
+  fs.writeFileSync(path.join(context.root, '.pmkit', 'config.yaml'), lost)
+  const dry = dataOf(await cli(context, ['init', '--update', '--dry-run', '--json']))
+  assert.deepEqual(dry.questions.map((q) => q.path), ['tracker.scope.team'])
+  assert.deepEqual(dry.questions[0].candidates, ['ACME'])
+  const write = dataOf(await cli(context, ['init', '--update', '--team', 'ACME', '--json']))
+  assert.equal(write.files[0].action, 'change')
+  assert.equal(read(context, '.pmkit/config.yaml'), WALKTHROUGH)
+})
+
 test('--update with another tracker fails with NOT_SUPPORTED in both directions', async () => {
   const linear = await written()
   const toLocal = await cli(linear, ['init', '--update', '--tracker', 'local', '--dry-run', '--json'])
