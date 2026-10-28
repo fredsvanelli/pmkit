@@ -440,7 +440,7 @@ No test opens a socket. Every tracker test injects `fakeLinearFetch` and sets `P
 
 The user answered on 2026-10-27.
 
-1. **How does a Linear issue get a pmkit type?** One key, `mappings.types`, a map from a pmkit type name to one Linear label name, such as `{ bug: Bug, feature: Feature }`. A pmkit type with no label is left out of the map. PMK-34 owns the schema change and the setup question; this issue only reads the key, through `readMappings` until PMK-34's `resolveMappings` is merged.
+1. **How does a Linear issue get a pmkit type?** One key, `mappings.types`, a map from a pmkit type name to one Linear label name, such as `{ bug: Bug, feature: Feature }`. A pmkit type with no label is left out of the map. PMK-34 owns the schema change and the setup question; this issue only reads the key, through `resolveMappings`.
 2. **Does PMK-35 read estimates from a label group?** No. PMK-35 reads Linear's native estimate field only. Size label groups are a follow-up issue.
 3. **What happens to `branch` on Linear?** `branch` reads as Linear's `branchName`. An update with that name is a no-op, any other name is refused, and `issues branch` uses Linear's name through `settings().trackerBranch`.
 4. **Does `mappings.status.blocked` make an issue blocked?** Not in this issue. A status mapped as `blocked` has no effect: no category, no move target, no filter.

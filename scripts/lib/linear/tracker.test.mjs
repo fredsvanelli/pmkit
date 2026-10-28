@@ -603,7 +603,7 @@ test('a move dry run sends no mutation and matches the real move', async () => {
   assert.deepEqual(comparable(dry.after), comparable(real.after))
 })
 
-test('a mapped state the team lacks refreshes once, then NOT_CONFIGURED', async () => {
+test('a mapped state the team lacks stops the move with NOT_CONFIGURED', async () => {
   const { tracker: linear, fake, fetch } = linearSetup({ mappings: { status: { in_review: 'Gone' } } })
   seed(fake, { title: 'Move me' })
   // The PMK-34 mapping check stops the move first. A fresh discovery is not stale, so it fetches once.
