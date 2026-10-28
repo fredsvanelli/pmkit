@@ -238,6 +238,7 @@ class FakeValidationError extends Error {}
  * Identifiers count from 1 per team. Every write moves the clock one second from `start`. An unknown filter key or input field
  * answers GRAPHQL_VALIDATION_FAILED, so a translator that emits a clause the fake does not know fails instead of matching everything.
  * `mutations` lists each mutation the fake received. `seed(input)` creates an issue and `relate(type, from, to)` a relation, without recording a mutation.
+ * `history(ref, entry)` seeds a history entry the same way (a bot, an auto-close, a team move, an unknown relation code).
  * `comment(ref, input)` seeds a comment (a bot, an external author, a resolved thread) without recording a mutation, and `comments` lists the records.
  * `unconfirm(operation, { applied })` makes the next call of that operation answer HTTP 502, after applying it when `applied` is true.
  */
@@ -342,7 +343,53 @@ export function fakeLinearIssues({
     if (input.assigneeId !== undefined) record.assigneeId = input.assigneeId
     if (input.labelIds !== undefined) record.labelIds = [...input.labelIds]
     if (input.parentId !== undefined) record.parentId = input.parentId === null ? null : requireIssue(input.parentId).id
+    for (const [key, field] of [['cycleId', 'cycleId'], ['projectId', 'projectId'], ['projectMilestoneId', 'milestoneId']]) if (input[key] !== undefined) record[field] = input[key]
   }
+
+  // PMK-36: history. recordHistory is the one place that turns a change of an issue into an entry, so a later issue can add a field row here.
+  const historyRecords = []
+  const snapshot = (record) => ({ ...record, labelIds: [...record.labelIds] })
+  const labelRef = (id) => {
+    const label = labels.find((item) => item.id === id)
+    return { id, name: label.name, parent: label.parent ? { name: label.parent.name } : null }
+  }
+  const cycleRef = (id) => (id ? { number: Number(/(\d+)$/.exec(id)?.[1] ?? 0) } : null)
+  function recordHistory(record, before, at, extra = {}) {
+    const entry = {}
+    const changed = (key) => before[key] !== record[key]
+    if (changed('stateId')) {
+      const ref = (id) => { const state = stateById(id); return state ? { id: state.id, name: state.name, type: state.type } : null }
+      Object.assign(entry, { fromState: ref(before.stateId), toState: ref(record.stateId) })
+    }
+    if (changed('assigneeId')) Object.assign(entry, { fromAssigneeId: before.assigneeId, toAssigneeId: record.assigneeId })
+    if (changed('title')) Object.assign(entry, { fromTitle: before.title, toTitle: record.title })
+    if (changed('priority')) Object.assign(entry, { fromPriority: before.priority, toPriority: record.priority })
+    if (changed('estimate')) Object.assign(entry, { fromEstimate: before.estimate, toEstimate: record.estimate })
+    if (changed('dueDate')) Object.assign(entry, { fromDueDate: before.dueDate, toDueDate: record.dueDate })
+    if (changed('parentId')) {
+      const ref = (id) => (id ? { identifier: find(id).identifier } : null)
+      Object.assign(entry, { fromParent: ref(before.parentId), toParent: ref(record.parentId) })
+    }
+    const added = record.labelIds.filter((id) => !before.labelIds.includes(id))
+    const removed = before.labelIds.filter((id) => !record.labelIds.includes(id))
+    if (added.length > 0) entry.addedLabels = added.map(labelRef)
+    if (removed.length > 0) entry.removedLabels = removed.map(labelRef)
+    if (changed('cycleId')) Object.assign(entry, { fromCycle: cycleRef(before.cycleId), toCycle: cycleRef(record.cycleId) })
+    if (changed('projectId')) Object.assign(entry, { fromProject: before.projectId ? { id: before.projectId } : null, toProject: record.projectId ? { id: record.projectId } : null })
+    if (changed('milestoneId')) Object.assign(entry, { fromProjectMilestone: before.milestoneId ? { id: before.milestoneId } : null, toProjectMilestone: record.milestoneId ? { id: record.milestoneId } : null })
+    if (changed('description')) entry.updatedDescription = true
+    Object.assign(entry, extra)
+    if (Object.keys(entry).length === 0) return
+    historyRecords.push({ issueId: record.id, createdAt: at, actorId: users[0].id, botActor: null, ...entry })
+  }
+  const HISTORY_DEFAULTS = {
+    autoClosed: false, autoArchived: false, archived: false, updatedDescription: false,
+    fromState: null, toState: null, fromAssigneeId: null, toAssigneeId: null, fromTitle: null, toTitle: null, fromPriority: null, toPriority: null,
+    fromEstimate: null, toEstimate: null, fromDueDate: null, toDueDate: null, addedLabels: null, removedLabels: null,
+    fromParent: null, toParent: null, relationChanges: null, fromCycle: null, toCycle: null, fromProject: null, toProject: null,
+    fromProjectMilestone: null, toProjectMilestone: null,
+  }
+  const historyNode = ({ issueId, actorId, ...entry }) => ({ ...HISTORY_DEFAULTS, ...entry, actor: actorId ? { id: actorId } : null })
 
   function create(input) {
     checkFields(input, CREATE_FIELDS)
@@ -372,6 +419,8 @@ export function fakeLinearIssues({
       assigneeId: null,
       parentId: null,
       labelIds: [],
+      creatorId: users[0].id,
+      botActor: null,
     }
     const { id, teamId, title, ...rest } = input
     applyFields(record, rest)
@@ -455,8 +504,10 @@ export function fakeLinearIssues({
     PmkitIssueUpdate: mutation('PmkitIssueUpdate', ({ id, input }) => {
       checkFields(input, UPDATE_FIELDS)
       const record = requireIssue(id)
+      const before = snapshot(record)
       applyFields(record, input)
       record.updatedAt = stamp()
+      recordHistory(record, before, record.updatedAt)
       return { issueUpdate: { success: true, issue: toNode(record) } }
     }),
     PmkitIssueArchive: mutation('PmkitIssueArchive', ({ id }) => {
@@ -464,6 +515,7 @@ export function fakeLinearIssues({
       const at = stamp()
       record.archivedAt = at
       record.updatedAt = at
+      recordHistory(record, snapshot(record), at, { archived: true })
       return { issueArchive: { success: true } }
     }),
   }
@@ -474,6 +526,12 @@ export function fakeLinearIssues({
     if (!RELATION_TYPES.includes(input.type)) throw new FakeValidationError(`Unknown relation type ${input.type}`)
     const relation = { id: input.id ?? `relation-${++relationCount}`, type: input.type, issueId: requireIssue(input.issueId).id, relatedIssueId: requireIssue(input.relatedIssueId).id }
     relations.push(relation)
+    if (relation.type === 'related') {
+      const at = stamp()
+      const [from, to] = [find(relation.issueId), find(relation.relatedIssueId)]
+      recordHistory(from, snapshot(from), at, { relationChanges: [{ identifier: to.identifier, type: 'ar' }] })
+      recordHistory(to, snapshot(to), at, { relationChanges: [{ identifier: from.identifier, type: 'ar' }] })
+    }
     return relation
   }
   const chainOf = (record, depth) => {
@@ -540,6 +598,16 @@ export function fakeLinearIssues({
   // Newest first, as Linear answers; a tie keeps the later insert first.
   const newestFirst = (items) => items.map((item, index) => ({ item, index })).sort((a, b) => (a.item.createdAt < b.item.createdAt ? 1 : a.item.createdAt > b.item.createdAt ? -1 : b.index - a.index)).map(({ item }) => item)
   const commentsOf = (record) => newestFirst(commentRecords.filter((item) => item.issueId === record.id))
+  routes.PmkitIssueHistory = query('PmkitIssueHistory', ({ id, first, after }) => {
+    const record = requireIssue(id)
+    return {
+      issue: {
+        creator: record.creatorId ? { id: record.creatorId } : null,
+        botActor: record.botActor,
+        history: connection(newestFirst(historyRecords.filter((item) => item.issueId === record.id)).map(historyNode), first, after),
+      },
+    }
+  })
   routes.PmkitIssueComments = query('PmkitIssueComments', ({ id, first, after }) => ({
     issue: { comments: connection(commentsOf(requireIssue(id)).map(commentNode), first, after) },
   }))
@@ -561,7 +629,14 @@ export function fakeLinearIssues({
     routes,
     mutations,
     nodes: () => records.map(toNode),
-    seed: (input) => toNode(create({ teamId: teams[0].id, ...input })),
+    // `extra` sets what no input can: createdAt, creatorId and botActor.
+    seed: (input, extra = {}) => toNode(Object.assign(create({ teamId: teams[0].id, ...input }), extra)),
+    history: (ref, entry) => {
+      const record = requireIssue(ref)
+      const { actor, ...rest } = entry
+      historyRecords.push({ issueId: record.id, createdAt: stamp(), actorId: actor === null ? null : (actor?.id ?? users[0].id), botActor: null, ...rest })
+    },
+    historyRecords,
     unconfirm: (operation, { applied }) => pending.set(operation, { applied }),
     relate: (type, from, to) => relate({ type, issueId: from, relatedIssueId: to }),
     comment: (ref, input) => commentNode(addComment({ ...input, issueId: ref }, { author: input.userId === undefined && input.botActor === undefined && input.externalUser === undefined })),

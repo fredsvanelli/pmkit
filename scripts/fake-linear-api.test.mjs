@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ACME_LABELS, ACME_STATES, ACME_TEAM, ACME_TEAM_ID, ACME_USERS, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeTriage, fakeWorkspace, json, page } from './fake-linear-api.mjs'
 import {
-  BLOCK_GRAPH_QUERY, COMMENT_BY_ID_QUERY, COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_COMMENTS_QUERY, ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_UPDATE, NESTED_PAGES, PARENT_CHAIN_QUERY, RELATION_CREATE, RELATION_DELETE,
+  BLOCK_GRAPH_QUERY, COMMENT_BY_ID_QUERY, COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_COMMENTS_QUERY, ISSUE_HISTORY_QUERY, ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_UPDATE, NESTED_PAGES, PARENT_CHAIN_QUERY, RELATION_CREATE, RELATION_DELETE,
 } from './lib/linear/documents.mjs'
 import { operationName } from './lib/linear/client.mjs'
 
@@ -444,4 +444,54 @@ test('comments: seeding records no mutation, and an applied unconfirmed create l
   assert.equal((await send(fetch, COMMENT_CREATE, { input: { id: 'c-9', issueId: 'ACME-1', body: 'x' } })).status, 502)
   assert.deepEqual((await send(fetch, COMMENT_BY_ID_QUERY, { id: 'c-9' })).body.data.comments.nodes.map((c) => c.id), ['c-9'])
   assert.equal(fake.comments.length, 2)
+})
+
+const historyOf = async (fetch, id, variables = {}) => (await send(fetch, ISSUE_HISTORY_QUERY, { id, first: 50, after: null, ...variables })).body.data.issue
+
+test('history: an update with two fields is one entry, creation has none, and the list is newest first', async () => {
+  const { fake, fetch } = issueStore()
+  fake.seed({ title: 'A' })
+  assert.deepEqual((await historyOf(fetch, 'ACME-1')).history.nodes, [])
+  await send(fetch, ISSUE_UPDATE, { id: 'ACME-1', input: { stateId: 'state-3', assigneeId: 'user-2' } })
+  await send(fetch, ISSUE_UPDATE, { id: 'ACME-1', input: { title: 'B', priority: 2, labelIds: ['label-bug'] } })
+  await send(fetch, ISSUE_UPDATE, { id: 'ACME-1', input: { title: 'B' } })
+  const issue = await historyOf(fetch, 'ACME-1')
+  assert.deepEqual(issue.creator, { id: 'user-1' })
+  assert.equal(issue.botActor, null)
+  const [newer, older] = issue.history.nodes
+  assert.ok(newer.createdAt > older.createdAt)
+  assert.deepEqual([older.fromState.name, older.toState.name, older.fromAssigneeId, older.toAssigneeId], ['Backlog', 'In Progress', null, 'user-2'])
+  assert.deepEqual([newer.fromTitle, newer.toTitle, newer.fromPriority, newer.toPriority], ['A', 'B', 0, 2])
+  assert.deepEqual(newer.addedLabels, [{ id: 'label-bug', name: 'Bug', parent: null }])
+  assert.equal(newer.fromState, null)
+  assert.equal(issue.history.nodes.length, 2)
+  assert.deepEqual(newer.actor, { id: 'user-1' })
+})
+
+test('history: archive and a related relation add entries, a blocks relation adds none', async () => {
+  const { fake, fetch } = issueStore()
+  fake.seed({ title: 'A' })
+  fake.seed({ title: 'B' })
+  await send(fetch, RELATION_CREATE, { input: { type: 'related', issueId: 'ACME-1', relatedIssueId: 'ACME-2' } })
+  await send(fetch, RELATION_CREATE, { input: { type: 'blocks', issueId: 'ACME-1', relatedIssueId: 'ACME-2' } })
+  await send(fetch, ISSUE_ARCHIVE, { id: 'ACME-1' })
+  const first = (await historyOf(fetch, 'ACME-1')).history.nodes
+  assert.equal(first[0].archived, true)
+  assert.deepEqual(first[1].relationChanges, [{ identifier: 'ACME-2', type: 'ar' }])
+  assert.equal(first.length, 2)
+  assert.deepEqual((await historyOf(fetch, 'ACME-2')).history.nodes[0].relationChanges, [{ identifier: 'ACME-1', type: 'ar' }])
+})
+
+test('history: a seeded entry records no mutation and pages', async () => {
+  const { fake, fetch } = issueStore({ nestedPage: 2 })
+  fake.seed({ title: 'A' })
+  for (const n of [1, 2, 3]) fake.history('ACME-1', { createdAt: `2026-09-0${n}T00:00:00.000Z`, actor: null, botActor: { type: 'github', name: 'GitHub' }, fromTeam: { id: `t${n}` } })
+  assert.deepEqual(fake.mutations, [])
+  const page1 = (await historyOf(fetch, 'ACME-1', { first: 2 })).history
+  assert.deepEqual(page1.nodes.map((n) => n.createdAt.slice(0, 10)), ['2026-09-03', '2026-09-02'])
+  assert.equal(page1.nodes[0].botActor.name, 'GitHub')
+  assert.equal(page1.nodes[0].actor, null)
+  assert.equal(page1.pageInfo.hasNextPage, true)
+  const page2 = (await historyOf(fetch, 'ACME-1', { first: 2, after: page1.pageInfo.endCursor })).history
+  assert.deepEqual([page2.nodes.length, page2.pageInfo.hasNextPage], [1, false])
 })
