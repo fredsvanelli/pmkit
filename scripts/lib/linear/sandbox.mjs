@@ -170,10 +170,12 @@ const asList = (value) => (Array.isArray(value) ? value : [])
 
 /** The rule helpers: each returns a reason string or null. */
 const rules = {
+  /** A string equal to the test team's id. A null id never matches, even while the team does not exist yet. */
+  team: (ctx, id) => (typeof id === 'string' && id === ctx.teamId ? null : 'the team is not the test team'),
   owns: (ctx, kind, id, what) => (ctx.owned(kind, id) ? null : `${what} ${id} is not one the run owns`),
   /** The first reason among the checks that the ids a create or update input carries belong to the run. */
   issueInput(ctx, input = {}) {
-    if (input.teamId !== undefined && input.teamId !== ctx.teamId) return 'the team is not the test team'
+    if (input.teamId !== undefined && rules.team(ctx, input.teamId)) return 'the team is not the test team'
     for (const [field, kind] of [['projectId', 'project'], ['parentId', 'issue'], ['cycleId', 'cycle'], ['stateId', 'state']]) {
       if (input[field] !== undefined && input[field] !== null && !ctx.owned(kind, input[field])) return `${field} is not one the run owns`
     }
@@ -193,9 +195,9 @@ export const SUITE_ALLOWLIST = Object.freeze({
     if (typeof input.description !== 'string' || !input.description.includes(TEST_TEAM.marker)) return 'the description lacks the marker'
     return null
   },
-  workflowStateCreate: (variables, ctx) => (variables.input?.teamId === ctx.teamId ? null : 'the team is not the test team'),
+  workflowStateCreate: (variables, ctx) => rules.team(ctx, variables.input?.teamId),
   cycleStartUpcomingCycleToday: (variables, ctx) => rules.owns(ctx, 'cycle', variables.id, 'cycle'),
-  issueCreate: (variables, ctx) => rules.issueInput(ctx, variables.input) ?? (variables.input?.teamId === ctx.teamId ? null : 'the team is not the test team'),
+  issueCreate: (variables, ctx) => rules.issueInput(ctx, variables.input) ?? rules.team(ctx, variables.input?.teamId),
   issueUpdate: (variables, ctx) => rules.owns(ctx, 'issue', variables.id, 'issue') ?? rules.issueInput(ctx, variables.input),
   issueArchive: (variables, ctx) => rules.owns(ctx, 'issue', variables.id, 'issue'),
   issueRelationCreate: (variables, ctx) =>
@@ -207,7 +209,7 @@ export const SUITE_ALLOWLIST = Object.freeze({
   commentResolve: (variables, ctx) => rules.owns(ctx, 'comment', variables.id, 'comment'),
   projectCreate(variables, ctx) {
     const teams = asList(variables.input?.teamIds)
-    return teams.length === 1 && teams[0] === ctx.teamId ? null : 'teamIds must be exactly the test team'
+    return teams.length === 1 && rules.team(ctx, teams[0]) === null ? null : 'teamIds must be exactly the test team'
   },
   projectUpdateCreate: (variables, ctx) => rules.owns(ctx, 'project', variables.input?.projectId, 'project'),
   // readMutation lets through no argument but id, so permanentlyDelete cannot be sent.
@@ -215,14 +217,26 @@ export const SUITE_ALLOWLIST = Object.freeze({
   projectDelete: (variables, ctx) => rules.owns(ctx, 'project', variables.id, 'project'),
 })
 
-/** Ids a passing create makes the run's own: [rootField, kind, where the id sits]. */
+/** The kind of id a create makes the run's own, and the payload field of its answer that carries the new node. */
 const CREATES = {
-  issueCreate: ['issue', (variables) => variables.input?.id],
-  projectCreate: ['project', (variables) => variables.input?.id],
-  commentCreate: ['comment', (variables) => variables.input?.id],
-  issueRelationCreate: ['relation', (variables) => variables.input?.id],
-  workflowStateCreate: ['state', (variables) => variables.input?.id],
-  teamCreate: ['team', (variables) => variables.input?.id],
+  issueCreate: ['issue', 'issue'],
+  projectCreate: ['project', 'project'],
+  commentCreate: ['comment', 'comment'],
+  issueRelationCreate: ['relation', 'issueRelation'],
+  workflowStateCreate: ['state', 'workflowState'],
+  teamCreate: ['team', 'team'],
+}
+
+/** The id of the node a create answer reports, or null unless the answer says success: true and carries a string id. */
+function createdId(text, root) {
+  let payload
+  try {
+    payload = JSON.parse(text)?.data?.[root]
+  } catch {
+    return null
+  }
+  const id = payload?.[CREATES[root][1]]?.id
+  return payload?.success === true && typeof id === 'string' ? id : null
 }
 
 const number = (value) => {
@@ -311,15 +325,20 @@ export function createGuardedFetch({ fetch, workspace, allowlist = SUITE_ALLOWLI
     if (mutation) totals.writes += 1
     const response = await fetch(url, init)
     recordRate(response.headers)
-    if (mutation && CREATES[root]) {
-      const [kind, pick] = CREATES[root]
-      guard.own(kind, pick(variables))
-      if (root === 'teamCreate') {
-        state.teamId = variables.input?.id ?? state.teamId
-        state.teamExists = true
-      }
+    if (!mutation || !CREATES[root]) return response
+    // The guard reads the answer once and hands the client a copy, so the client can still read the text.
+    let text
+    try {
+      text = await response.text()
+    } catch (error) {
+      return { status: response.status, ok: response.ok, headers: response.headers, text: async () => { throw error } }
     }
-    return response
+    const id = createdId(text, root)
+    if (id !== null) {
+      guard.own(CREATES[root][0], id)
+      if (root === 'teamCreate') Object.assign(state, { teamId: id, teamExists: true })
+    }
+    return { status: response.status, ok: response.ok, headers: response.headers, text: async () => text }
   }
 
   return { fetch: guarded, guard }

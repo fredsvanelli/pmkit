@@ -42,6 +42,13 @@ function scripted(reply = () => answer({})) {
   return inner
 }
 
+const PAYLOADS = { issueCreate: 'issue', projectCreate: 'project', commentCreate: 'comment', issueRelationCreate: 'issueRelation', workflowStateCreate: 'workflowState', teamCreate: 'team' }
+/** A reply that confirms every create with the id its input chose, as Linear does, and answers anything else with empty data. */
+const confirmCreates = (body) => {
+  const { root } = readMutation(body.query)
+  return answer(PAYLOADS[root] ? { [root]: { success: true, [PAYLOADS[root]]: { id: body.variables.input.id } } } : {})
+}
+
 const send = (guarded, query, variables = {}) =>
   guarded.fetch(URL, { method: 'POST', headers: { Authorization: FAKE_KEY }, body: JSON.stringify({ query, variables }) })
 
@@ -50,7 +57,7 @@ const QUERY = 'query PmkitAny { viewer { id } }'
 const REFUSED = /refusing /
 
 function opened(options = {}) {
-  const inner = scripted()
+  const inner = scripted(confirmCreates)
   const guarded = createGuardedFetch({ fetch: inner, workspace: 'acme', ...options })
   guarded.guard.open({ teamExists: true, teamId: TEAM, viewerId: VIEWER, labelIds: LABELS })
   return { inner, ...guarded }
@@ -147,7 +154,7 @@ const teamInput = (extra = {}) => ({
 })
 
 test('teamCreate passes with the spec inputs when the team is absent', async () => {
-  const inner = scripted()
+  const inner = scripted(confirmCreates)
   const guarded = createGuardedFetch({ fetch: inner, workspace: 'acme' })
   guarded.guard.open({ teamExists: false, viewerId: VIEWER, labelIds: LABELS })
   await send(guarded, TEAM_CREATE, { input: teamInput() })
@@ -277,6 +284,46 @@ test('every mutation document the adapter and the run send has the shape the gua
     return read.root
   })
   assert.deepEqual(roots.sort(), Object.keys(SUITE_ALLOWLIST).sort())
+})
+
+test('a create makes its id the run own only when the answer says success and carries the id', async () => {
+  const replies = [
+    answer({ issueCreate: { success: false, issue: { id: 'i-new' } } }),
+    { status: 200, ok: true, headers: new Headers(), text: async () => JSON.stringify({ errors: [{ message: 'no' }] }) },
+    answer({ issueCreate: { success: true, issue: null } }),
+    answer({ issueCreate: { success: true, issue: { id: 'i-new' } } }),
+  ]
+  const inner = scripted(() => replies.shift() ?? answer({}))
+  const guarded = createGuardedFetch({ fetch: inner, workspace: 'acme' })
+  guarded.guard.open({ teamExists: true, teamId: TEAM, viewerId: VIEWER, labelIds: LABELS })
+  const update = [ISSUE_UPDATE, { id: 'i-new', input: { title: 'x' } }]
+  for (let failed = 0; failed < 3; failed += 1) {
+    await send(guarded, ISSUE_CREATE, { input: { id: 'i-new', teamId: TEAM, title: 'x' } })
+    await assert.rejects(send(guarded, ...update), REFUSED)
+  }
+  await send(guarded, ISSUE_CREATE, { input: { id: 'i-new', teamId: TEAM, title: 'x' } })
+  await send(guarded, ...update)
+  assert.equal(inner.calls.length, 5)
+})
+
+test('a failed teamCreate leaves the guard without a test team', async () => {
+  const inner = scripted((body) => (/teamCreate/.test(body.query) ? answer({ teamCreate: { success: false } }) : answer({})))
+  const guarded = createGuardedFetch({ fetch: inner, workspace: 'acme' })
+  guarded.guard.open({ teamExists: false, viewerId: VIEWER, labelIds: LABELS })
+  await send(guarded, TEAM_CREATE, { input: teamInput() })
+  await assert.rejects(send(guarded, STATE_CREATE, { input: { teamId: teamInput().id, name: 'In Review' } }), REFUSED)
+  await send(guarded, TEAM_CREATE, { input: teamInput() })
+  assert.equal(inner.calls.length, 2)
+})
+
+test('a null team id is refused while the test team does not exist', async () => {
+  const inner = scripted()
+  const guarded = createGuardedFetch({ fetch: inner, workspace: 'acme' })
+  guarded.guard.open({ teamExists: false, viewerId: VIEWER, labelIds: LABELS })
+  await assert.rejects(send(guarded, ISSUE_CREATE, { input: { id: 'i-9', teamId: null, title: 'x' } }), REFUSED)
+  await assert.rejects(send(guarded, STATE_CREATE, { input: { id: 's-9', teamId: null, name: 'In Review' } }), REFUSED)
+  await assert.rejects(send(guarded, PROJECT_CREATE, { input: { id: 'p-9', name: 'x', teamIds: [null] } }), REFUSED)
+  assert.equal(inner.calls.length, 0)
 })
 
 const HEADERS = {
