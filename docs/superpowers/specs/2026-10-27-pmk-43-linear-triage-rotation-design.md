@@ -1,6 +1,6 @@
 # PMK-43 design: add the linear-triage-rotation command
 
-Issue PMK-43, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: draft, with four open questions at the end. Decisions come from an autonomous brainstorming run on 2026-10-27 with no user dialogue, from the issue, ADR-0002, ADR-0005, the PMK-29 and PMK-33 specs, the code, and read-only schema calls to the sandbox workspace. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
+Issue PMK-43, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: approved. The four open questions at the end are resolved. Decisions come from an autonomous brainstorming run on 2026-10-27 with no user dialogue, from the issue, ADR-0002, ADR-0005, the PMK-29 and PMK-33 specs, the code, and read-only schema calls to the sandbox workspace. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
@@ -49,7 +49,7 @@ Consequences:
 
 - A live read does not prove the plan. The reads pass on Free, as PMK-33 found for initiatives and views. The command cannot treat a successful empty read as "no rotation configured" when the plan has no rotation. The plan and the team's `triageEnabled` flag decide first.
 - Which plan strings Linear returns for Business and Enterprise is still unverified. PMK-33's `BUSINESS_PLANS` list (`business`, `enterprise`, `trial`) is the one source, and this command reuses it.
-- The Business gate on triage responsibility and on Triage Intelligence comes from the Linear tab and the Unified model. The schema shows the objects exist on every plan. No docs page was read in this run for the exact plan names **(builder's call)**. Stage 2 repeats the PMK-29 docs check for triage responsibility and Triage Intelligence and records the page and date in `API-VERIFICATION.md`.
+- The Business gate on triage responsibility and on Triage Intelligence comes from the Linear tab and the Unified model, and the public docs confirm it. Linear's triage docs page (`https://linear.app/docs/triage`, read 2026-10-27) says both features are available on the Business and Enterprise plans. The schema shows the objects exist on every plan, so the gate is a plan rule and not a schema difference. The docs name the plans but not the plan strings the API returns, so `BUSINESS_PLANS` stays the source. Stage 3 records the page and date in `API-VERIFICATION.md`.
 - Triage Intelligence is read-only. The Linear tab marks it "R".
 
 ## Goals
@@ -61,11 +61,11 @@ Consequences:
 
 ## Non-goals
 
-- Connecting PagerDuty or building a schedule. `show` reads a schedule that already exists. `set` does not create or change one (open question 3).
+- Connecting PagerDuty or building a schedule. `show` reads a schedule that already exists. `set` does not create or change one (question 3, answered A).
 - Accepting or dismissing a suggestion in Linear. The schema has no mutation for it.
 - Applying a suggestion to an issue (team, project, assignee, label, duplicate). That is `issues update` and `issues link`, which Linear gets in PMK-35. This command needs nothing from PMK-34 or PMK-35 and does not use their code.
-- Changing `/pmkit:backlog:triage` so it reads suggestions (open question 4).
-- A new capability ID. The Technical spec fixes the 20 IDs (open question 2).
+- Changing `/pmkit:backlog:triage` so it reads suggestions (question 4, answered A).
+- A new capability ID. The Technical spec fixes the 20 IDs (question 2, answered A).
 - Any write to Linear while building or testing on Free.
 
 ## Anti-goals
@@ -186,7 +186,7 @@ enable: Triage responsibility needs the Business or Enterprise plan
 }
 ```
 
-A read answers a question, and "nobody can be on duty here" is an answer. An agent or a command that reads the JSON branches on `available` and needs no error handling. The Linear tab asks every skill to degrade on Free, and this is the degraded result **(builder's call, open question 1)**.
+A read answers a question, and "nobody can be on duty here" is an answer. An agent or a command that reads the JSON branches on `available` and needs no error handling. The Linear tab asks every skill to degrade on Free, and this is the degraded result **(question 1, answered A)**.
 
 `set` on a workspace without the capability exits 2 with `NOT_SUPPORTED`, the message "triage rotation is unavailable on this workspace (plan free)", and the same `enableHint` as the next step. It sends no mutation. A write that cannot happen is an error, as the other commands treat a refused write.
 
@@ -196,7 +196,7 @@ A read answers a question, and "nobody can be on duty here" is an answer. An age
 - `--action` takes `assign` or `notify`. Alone, it changes the action and keeps the members. If the team has no responsibility yet, `--action` alone is `INVALID_INPUT`, because there is nobody to assign or notify.
 - `--off` removes the responsibility (`triageResponsibilityDelete`). It excludes the other flags.
 - A responsibility that already exists is updated with `triageResponsibilityUpdate`. A team without one gets `triageResponsibilityCreate`, with `action` defaulting to `assign`.
-- A team whose current responsibility comes from a schedule is not edited. `set --members` on it fails with `CONFLICT` and the next step names the schedule and says to change it in Linear. `--off` is allowed, and so is `--action` (open question 3).
+- A team whose current responsibility comes from a schedule is not edited. `set --members` on it fails with `CONFLICT` and the next step names the schedule and says to change it in Linear. `--off` is allowed, and so is `--action` (question 3, answered A).
 - `--dry-run` reads the current responsibility with the same query as `show`, builds the change and returns `{ before, after }`. It sends no mutation. Text ends with "dry run: nothing was written".
 - A write returns `{ before, after }` in the shape `show` uses for `duty`, with `after` read back from the mutation payload. The commit id (`commit`) is the team key. A hosted tracker never auto-commits, so it has no effect.
 
@@ -305,27 +305,14 @@ Nothing from PMK-34 (mappings and setup) or PMK-35 (issues, relations and search
 - Triage Intelligence may need a separate setting on Business. The schema shows no organization flag for it. If suggestions are off, the list is empty and the command says "no active suggestions", which cannot tell "off" from "none yet".
 - The `linear: true` flag is a second system-specific escape from the contract. If later issues add more Linear skills, a shared `linear` extension object may replace the per-feature `triage` object.
 
-## Open questions
+## Resolved questions
 
-1. **What a read prints on Free.**
-   - A. Exit 0 with `available: false`, the reason and the hint. A write exits 2 with `NOT_SUPPORTED`.
-   - B. Exit 2 with `NOT_SUPPORTED` for all three commands.
-   - C. Exit 0 with an empty result and a warning.
-   - Recommendation: A. The Linear tab asks skills to degrade, a command can branch on `available`, and a read stays safe to call in a loop.
-2. **Whether the manifest reports rotation.**
-   - A. No change. The command reports its own availability.
-   - B. Add `detail: { rotation: true | false }` to `native_triage` on Linear.
-   - C. Add a 21st capability ID, `triage_rotation`.
-   - Recommendation: A. B changes a manifest entry that other commands read, and C changes the fixed list in the Technical spec. Both can follow once a second system has a similar feature.
-3. **How far "adjusts" goes.**
-   - A. Manual rotation and action only. A schedule (PagerDuty) is read, and `--off` and `--action` work on it.
-   - B. A plus `--schedule <id>` to switch to an existing schedule.
-   - C. B plus connecting PagerDuty.
-   - Recommendation: A. The schedule mutations cannot be tried on Free, and connecting PagerDuty is a Linear integration setup that needs a PagerDuty account.
-4. **Whether `/pmkit:backlog:triage` uses the suggestions.**
-   - A. No. Suggestions appear only in this command, and PMK-35 or a later issue wires them into `backlog:triage`.
-   - B. Add an optional step to `/pmkit:backlog:triage` that calls `linear triage suggestions` when the tracker is Linear.
-   - Recommendation: A. `backlog:triage` reads the queue through `issues list`, which the Linear tracker does not implement until PMK-35, so B would be dead code today.
+The user accepted the recommendation on all four.
+
+1. A read on Free exits 0 with `available: false`, the reason and the hint. `set` exits 2 with `NOT_SUPPORTED` and sends no mutation.
+2. No manifest change. The command reports its own availability.
+3. "Adjusts" means the manual rotation and the action only. A schedule (PagerDuty) is read, and `--off` and `--action` work on it. No `--schedule`, no PagerDuty connection.
+4. `/pmkit:backlog:triage` does not use the suggestions. They appear only in `linear triage suggestions`.
 
 ## Self-review
 
