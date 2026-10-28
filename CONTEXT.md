@@ -80,6 +80,10 @@ _Avoid_: longest path, critical chain
 An issue in `in_progress` or `in_review`, or an open pull request, with no activity for more than `stuck_business_days` business days. An issue's activity is its newest event and, with a git host, the last update of the open pull request of its branch. `pmkit risks` lists stalled issues and pull requests.
 _Avoid_: stale (backlog grooming's term for old backlog issues), idle
 
+**Thread**:
+A root comment and its replies. Replies attach to the root, so a thread is one level deep. A thread is resolved as a whole: `resolveThread` marks the root, and a reply resolves the root of its thread.
+_Avoid_: conversation, discussion
+
 **Event**:
 One line of an issue's `events.jsonl`, appended on each write. It has `at`, `by`, `op` (`create`, `update`, `move`, `assign`, `link`, `unlink`, `comment`, `log_time` or `archive`) and the changed field with its old and new values. Replaying the events gives the issue's state and feeds the metrics.
 _Avoid_: log entry, activity, audit record

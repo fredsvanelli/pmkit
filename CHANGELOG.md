@@ -7,6 +7,9 @@
 - Every Linear operation except `discover` and `capabilities` stops with `NOT_CONFIGURED` and `error.mappings` when a mapping names a team, status, field or label the workspace no longer has.
 - Adds `resolveMappings(view, pmkit)` in `scripts/lib/linear/mappings.mjs`, the one reader of `mappings` for Linear issue operations.
 - The Linear tracker supports issues, relations and search (PMK-35). A move to a category whose only state is Duplicate is refused until `mappings.status.<category>` names it.
+- The Linear tracker supports history, comments and metric events (PMK-36). `issues get --history`, `issues get --comments`, `events` and the flow metrics (`cycle-time`, `lead-time`, `throughput`, `aging`) work on Linear.
+- Adds `issues comment --reply-to <comment>` and `issues resolve <id> <comment>` for comment threads, on the Local and Linear trackers.
+- A Local comment file may hold `reply_to`, `resolved` and `resolved_by`. The keys are optional, and the tracker format stays 2.
 
 ## 0.2.0 - 2026-10-25
 

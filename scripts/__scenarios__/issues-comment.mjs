@@ -14,7 +14,7 @@ export default {
     { step: '2', write: ['issues', 'comment', 'ISS-5N1R', '--body-file', '-'], stdin: text },
   ],
   skip: {},
-  notHit: {},
+  notHit: { Resolving: 'the scenario posts a comment, so the resolve path does not run' },
   expect(repo) {
     const comment = repo.file('.issues/issues/ISS-5N1R/comments/2026-10-23T12-00-00Z-fred.md')
     assert.ok(comment?.includes(text), 'the comment file holds the text')
