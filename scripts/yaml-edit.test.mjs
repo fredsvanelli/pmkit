@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { addMapEntry, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
+import { addMapEntry, setMap, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 
 test('setScalar changes one value and keeps the comment on that line', () => {
@@ -21,8 +21,41 @@ test('setScalar writes an array as a flow list', () => {
 })
 test('setScalar adds a top-level key and rejects a missing parent or a flow map crossing', () => {
   assert.equal(setScalar('a: 1\n# end\n', ['b'], 2), 'a: 1\nb: 2\n# end\n')
-  assert.throws(() => setScalar('a: 1\n', ['x', 'y'], 1), /x/)
+  assert.throws(() => setScalar('a: 1\n', ['a', 'y'], 1), /a/)
   assert.throws(() => setScalar('m: { a: 1 }\n', ['m', 'a'], 2), /m\.a/)
+})
+test('setScalar adds mappings.status.blocked to a file with no mappings block and keeps the comments', () => {
+  const text = '# top\nversion: 1\nwrite_policy:\n  confirm: none   # none | all_writes\n# end\n'
+  const out = setScalar(text, ['mappings', 'status', 'blocked'], 'none')
+  assert.equal(out, '# top\nversion: 1\nwrite_policy:\n  confirm: none   # none | all_writes\nmappings:\n  status:\n    blocked: none\n# end\n')
+  assert.deepEqual(parseYaml(out).mappings, { status: { blocked: 'none' } })
+})
+test('setScalar adds a key under an existing mappings.status and a status block under existing mappings', () => {
+  assert.equal(setScalar('mappings:\n  status:\n    in_review: In Review\nother: 1\n', ['mappings', 'status', 'blocked'], 'none'),
+    'mappings:\n  status:\n    in_review: In Review\n    blocked: none\nother: 1\n')
+  assert.equal(setScalar('mappings:\n  fields:\n    estimate: native\n', ['mappings', 'status', 'blocked'], 'none'),
+    'mappings:\n  fields:\n    estimate: native\n  status:\n    blocked: none\n')
+})
+test('setMap writes mappings.types with two entries in the given order', () => {
+  const out = setMap('version: 1\nmappings:\n  status:\n    in_review: In Review\n', ['mappings', 'types'], { feature: 'Feature', bug: 'Bug' })
+  assert.equal(out, 'version: 1\nmappings:\n  status:\n    in_review: In Review\n  types:\n    feature: Feature\n    bug: Bug\n')
+  assert.deepEqual(Object.keys(parseYaml(out).mappings.types), ['feature', 'bug'])
+})
+test('setMap writes an empty object as "types: {}"', () => {
+  const out = setMap('version: 1\n', ['mappings', 'types'], {})
+  assert.equal(out, 'version: 1\nmappings:\n  types: {}\n')
+  assert.deepEqual(parseYaml(out).mappings.types, {})
+})
+test('setMap quotes a label the YAML subset would misread', () => {
+  const out = setMap('a: 1\n', ['types'], { bug: 'Bug: severe' })
+  assert.deepEqual(parseYaml(out).types, { bug: 'Bug: severe' })
+})
+test('setMap replaces an existing types block and leaves the lines around it', () => {
+  const text = 'mappings:\n  status:\n    blocked: none\n  types:\n    bug: Bug\n    task: Task\n  # kept\nafter: 1\n'
+  assert.equal(setMap(text, ['mappings', 'types'], { chore: 'Chore' }),
+    'mappings:\n  status:\n    blocked: none\n  types:\n    chore: Chore\n  # kept\nafter: 1\n')
+  assert.equal(setMap('mappings:\n  types: {}\nz: 1\n', ['mappings', 'types'], { bug: 'Bug' }), 'mappings:\n  types:\n    bug: Bug\nz: 1\n')
+  assert.equal(setMap('mappings:\n  types:\n    bug: Bug\nz: 1\n', ['mappings', 'types'], {}), 'mappings:\n  types: {}\nz: 1\n')
 })
 test('addMapEntry turns an empty flow map into a block map', () => {
   assert.equal(addMapEntry('members: {}\nauto_commit: false\n', ['members'], 'ana', { name: 'Ana', email: 'ana@x.io' }),

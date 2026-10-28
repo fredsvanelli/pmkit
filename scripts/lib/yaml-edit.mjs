@@ -40,15 +40,16 @@ function block(lines, header) {
   return { children, last, childIndent: childIndent ?? parentIndent + 2 }
 }
 
-// Header line of each key in the path, or an error naming the path.
-function walk(lines, keyPath, { lastMayBeMissing }) {
+// Header line of each key in the path, or an error naming the path. With createParents, a missing key
+// at any depth gives { parent, depth } for the first one: the line it belongs under and its place in the path.
+function walk(lines, keyPath, { lastMayBeMissing, createParents = false }) {
   let header = -1
   for (let depth = 0; depth < keyPath.length; depth++) {
     const key = keyPath[depth]
     const { children } = block(lines, header)
     const found = children.find((i) => hasKey(lines[i], key))
     if (found === undefined) {
-      if (lastMayBeMissing && depth === keyPath.length - 1) return { parent: header, missing: key }
+      if (createParents || (lastMayBeMissing && depth === keyPath.length - 1)) return { parent: header, missing: key, depth }
       throw new Error(`key path ${keyPath.slice(0, depth + 1).join('.')} not found`)
     }
     if (depth < keyPath.length - 1 && stripComment(lines[found]).trim().slice(key.length + 1).trim() !== '') {
@@ -63,23 +64,31 @@ function insertAfter(lines, parent, line) {
   const { last, childIndent } = block(lines, parent)
   const at = parent < 0 && last < 0 ? lines.filter(isContent).length === 0 ? 0 : last + 1 : last + 1
   lines.splice(at, 0, ' '.repeat(parent < 0 ? 0 : childIndent) + line)
+  return at
 }
 
 function ensureTrailingNewline(lines) {
   if (lines.length === 0 || lines[lines.length - 1] !== '') lines.push('')
 }
 
+// Adds the parent maps of keyPath that the file lacks and returns the line of the last one (-1 for the root).
+function createParents(lines, keyPath, found) {
+  let parent = found.parent
+  if (parent >= 0 && stripComment(lines[parent]).trim().slice(keyPath[found.depth - 1].length + 1).trim() !== '') {
+    throw new Error(`key path ${keyPath.join('.')} crosses a value that is not a block map`)
+  }
+  for (let depth = found.depth; depth < keyPath.length - 1; depth++) parent = insertAfter(lines, parent, `${keyPath[depth]}:`)
+  return parent
+}
+
 export function setScalar(text, keyPath, value) {
   if (keyPath.length === 0) throw new Error('key path is empty')
   const lines = split(text)
-  const found = walk(lines, keyPath, { lastMayBeMissing: true })
+  const found = walk(lines, keyPath, { lastMayBeMissing: true, createParents: true })
   const formatted = formatValue(value)
   const key = keyPath[keyPath.length - 1]
   if (found.missing !== undefined) {
-    if (found.parent >= 0 && stripComment(lines[found.parent]).trim().slice(keyPath[keyPath.length - 2].length + 1).trim() !== '') {
-      throw new Error(`key path ${keyPath.join('.')} crosses a value that is not a block map`)
-    }
-    insertAfter(lines, found.parent, `${key}: ${formatted}`)
+    insertAfter(lines, createParents(lines, keyPath, found), `${key}: ${formatted}`)
     ensureTrailingNewline(lines)
     return join(lines)
   }
@@ -88,6 +97,35 @@ export function setScalar(text, keyPath, value) {
   if (children.length > 0) throw new Error(`key path ${keyPath.join('.')} holds a block, not a scalar`)
   const rest = line.slice(stripComment(line).trimEnd().length)
   lines[found.header] = `${' '.repeat(indentOf(line))}${key}: ${formatted}${rest}`
+  return join(lines)
+}
+
+/**
+ * Sets keyPath to a map of scalars, creating the parent maps. An empty object is written as `key: {}`.
+ * An existing block or flow value at keyPath is replaced, and the lines around it stay.
+ */
+export function setMap(text, keyPath, object) {
+  if (keyPath.length === 0) throw new Error('key path is empty')
+  const lines = split(text)
+  const key = keyPath[keyPath.length - 1]
+  const entries = Object.entries(object).map(([name, value]) => {
+    const entry = stringifyYaml({ [name]: value }).replace(/\n$/, '')
+    if (entry.includes('\n')) throw new Error(`cannot write ${name} as one line`)
+    return entry
+  })
+  const found = walk(lines, keyPath, { lastMayBeMissing: true, createParents: true })
+  let header
+  if (found.missing !== undefined) {
+    header = insertAfter(lines, createParents(lines, keyPath, found), `${key}:`)
+  } else {
+    header = found.header
+    const { last } = block(lines, header)
+    lines.splice(header + 1, last - header)
+    lines[header] = `${' '.repeat(indentOf(lines[header]))}${key}:`
+  }
+  if (entries.length === 0) lines[header] = `${lines[header]} {}`
+  else lines.splice(header + 1, 0, ...entries.map((entry) => ' '.repeat(indentOf(lines[header]) + 2) + entry))
+  ensureTrailingNewline(lines)
   return join(lines)
 }
 
