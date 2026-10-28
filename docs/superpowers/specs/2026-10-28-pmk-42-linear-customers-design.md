@@ -50,7 +50,7 @@ Consequences:
 - The feature flag is the test. `customersEnabled` false means the workspace has no customers, whatever the plan string says, and the failing reads confirm it. The command checks `raw.flags.customersEnabled` in the cached discovery and sends nothing when it is false. This is the same rule the manifest uses for `demand_signals`, so the command and `capabilities` agree.
 - `customerStatuses` and `customerTiers` answer on Free, so they prove nothing, as the triage reads did. They are also not needed to decide availability.
 - The schema shows no unit for `revenue`. The Linear UI treats it as the annual contract value. The command shows and sets the integer as Linear stores it and does not convert (builder's call).
-- `size` is read as a float and written as an integer. The command accepts a whole number.
+- `size` is a Float in the schema. The command accepts a number of at least 0 with an optional decimal part. `revenue` stays a whole number.
 - Linear's docs page for customers was not read in this run. Stage 3 records the page and date in `API-VERIFICATION.md`, as PMK-43 did for triage. The docs say all plans, so the plan gate in the Linear tab and the Unified model does not apply.
 
 ## Goals
@@ -207,8 +207,8 @@ The write commands (`set`, `link`, with or without `--dry-run`) exit 2 with `NOT
 
 - At least one field flag is required, or the command is `INVALID_INPUT`.
 - `--status` and `--tier` resolve a name to an id through `customerStatuses` and `customerTiers`, case-insensitive. `--tier none` clears the tier (`tierId` null). An unknown name is `INVALID_INPUT` and lists the valid names. The command creates no status or tier (resolved question 1).
-- `--revenue` and `--size` take a whole number of at least 0. A decimal, a negative number or text is `INVALID_INPUT`. There is no way to clear them in the first version (builder's call).
-- `--owner` takes a member id from `pmkit discover` that is not an app user, or `none`.
+- `--revenue` takes a whole number of at least 0, and `--size` takes a number of at least 0 that may be a decimal such as 2.5. A decimal revenue, a negative number or text is `INVALID_INPUT`. There is no way to clear them in the first version (builder's call).
+- `--owner` takes a member id from `pmkit discover` that is not an app user, or `none`. `none` is case-insensitive, like `--tier none`.
 - `--dry-run` reads the customer, builds the change and returns `{ before, after }` in the shape `list` uses for one customer. It sends no mutation. The text ends with "dry run: nothing was written".
 - A real run sends one `customerUpdate` and returns `{ before, after }` with `after` taken from the mutation payload. A change that equals the current values sends nothing and prints "nothing to change". The commit id is the customer name. A hosted tracker never auto-commits, so it has no effect.
 
@@ -245,7 +245,7 @@ Nothing from PMK-36, PMK-37 or PMK-38, and no operation from PMK-35. It reads th
 
 ## Tests
 
-- `customers.test.mjs`. `customersAvailability` for each row of the table, including `trial`, an unknown plan and a Business plan, each with the flag off. `customerView` and `requestView` for each target type, a missing tier, revenue and size, and an archived issue. `planCustomerEdit` for each flag, `--tier none`, an unknown status or tier, a no-op, a decimal revenue and a request that is not the customer's.
+- `customers.test.mjs`. `customersAvailability` for each row of the table, including `trial`, an unknown plan and a Business plan, each with the flag off. `customerView` and `requestView` for each target type, a missing tier, revenue and size, and an archived issue. `planCustomerEdit` for each flag, `--tier none` and `--owner none` in any case, a decimal size, an unknown status or tier, a no-op, a decimal revenue and a request that is not the customer's.
 - CLI tests in `cli-linear.test.mjs` over `fakeLinearFetch(fakeWorkspace({ ... }))` plus the customer routes.
   - Free workspace (the proof for this issue). `list` and `show` exit 0 with `available: false`, `reason: customers_off` and the hint, in text and JSON. `set`, `link` and each with `--dry-run` exit 2 with `NOT_SUPPORTED`. The fetch log shows no customer query and no mutation in any of the six runs.
   - Business workspace with customers off. The same `reason: customers_off`.

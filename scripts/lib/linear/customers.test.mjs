@@ -120,6 +120,13 @@ test('planCustomerEdit builds one input from each flag, resolving names case-ins
 test('planCustomerEdit clears the tier and the owner with none', () => {
   assert.deepEqual(edit({ tier: 'none' }).input, { tierId: null })
   assert.deepEqual(edit({ owner: 'none' }).input, { ownerId: null })
+  assert.deepEqual(edit({ owner: 'NONE' }).input, { ownerId: null })
+  assert.deepEqual(edit({ tier: 'None' }).input, { tierId: null })
+})
+
+test('planCustomerEdit accepts a decimal size', () => {
+  assert.deepEqual(edit({ size: '2.5' }), { changed: true, input: { size: 2.5 } })
+  assert.deepEqual(edit({ size: '0.25' }).input, { size: 0.25 })
 })
 
 test('planCustomerEdit rejects bad input with INVALID_INPUT', () => {
@@ -130,7 +137,8 @@ test('planCustomerEdit rejects bad input with INVALID_INPUT', () => {
     { revenue: '1.5' },
     { revenue: '-3' },
     { revenue: 'lots' },
-    { size: '2.5' },
+    { size: '2.' },
+    { size: '-1' },
     { size: 'x' },
     { owner: 'user-9' },
     { name: '' },

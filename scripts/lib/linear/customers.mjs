@@ -134,11 +134,11 @@ export function planCustomerEdit(current, flags, statuses, tiers, memberIds) {
     if (value !== current.revenue) input.revenue = value
   }
   if (size !== undefined) {
-    const value = wholeNumber(size, 'size')
+    const value = decimalNumber(size, 'size')
     if (value !== current.size) input.size = value
   }
   if (owner !== undefined) {
-    if (owner === 'none') {
+    if (typeof owner === 'string' && owner.toLowerCase() === 'none') {
       if (current.owner) input.ownerId = null
     } else {
       if (!memberIds.includes(owner)) throw bad(`not a member of the workspace: ${owner}`, 'Use a member id from pmkit discover, or none')
