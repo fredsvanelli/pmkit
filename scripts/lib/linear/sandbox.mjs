@@ -12,6 +12,8 @@
 //
 // The allowlist maps a mutation root field to (variables, context, document) => reason | null. SUITE_ALLOWLIST holds the 14 mutations of
 // the contract run. A caller that needs another mutation passes its own allowlist with rules of the same shape.
+// Before any rule runs, readMutation refuses a document whose root field takes anything but `id: $id` and/or `input: $input`.
+// Each suite rule also refuses an input key off SUITE_INPUT_KEYS, so an id the rules do not check never reaches Linear.
 
 import { randomUUID } from 'node:crypto'
 
@@ -179,14 +181,45 @@ const rules = {
     for (const [field, kind] of [['projectId', 'project'], ['parentId', 'issue'], ['cycleId', 'cycle'], ['stateId', 'state']]) {
       if (input[field] !== undefined && input[field] !== null && !ctx.owned(kind, input[field])) return `${field} is not one the run owns`
     }
+    if (input.labelIds !== undefined && !Array.isArray(input.labelIds)) return 'labelIds is not a list'
     for (const id of asList(input.labelIds)) if (!ctx.labelIds.includes(id)) return `label ${id} is not one of the run's type labels`
     if (input.assigneeId !== undefined && input.assigneeId !== null && input.assigneeId !== ctx.viewerId) return 'assigneeId is not the key owner'
     return null
   },
 }
 
-/** The 14 mutations of the contract run. */
-export const SUITE_ALLOWLIST = Object.freeze({
+/** The fields of an issue input the adapter sends (writes.mjs toInput). Every id among them is checked by rules.issueInput. */
+const ISSUE_KEYS = ['title', 'description', 'priority', 'estimate', 'dueDate', 'stateId', 'labelIds', 'assigneeId', 'parentId', 'projectId', 'cycleId']
+
+/**
+ * The input keys each mutation may carry: the ones the adapter and the run send. A key off the list is refused, so an id the guard
+ * does not check never reaches Linear. `id` is the id the run chooses for a new node.
+ */
+export const SUITE_INPUT_KEYS = Object.freeze({
+  teamCreate: ['id', 'name', 'key', 'description', 'timezone', 'triageEnabled', 'cyclesEnabled', 'cycleDuration', 'cycleCooldownTime', 'cycleStartDay',
+    'upcomingCycleCount', 'cycleIssueAutoAssignStarted', 'cycleIssueAutoAssignCompleted', 'groupIssueHistory'],
+  workflowStateCreate: ['id', 'teamId', 'type', 'name', 'color'],
+  issueCreate: ['id', 'teamId', ...ISSUE_KEYS],
+  issueUpdate: ISSUE_KEYS,
+  issueRelationCreate: ['id', 'type', 'issueId', 'relatedIssueId'],
+  commentCreate: ['id', 'issueId', 'body', 'parentId'],
+  projectCreate: ['id', 'name', 'startDate', 'targetDate', 'content', 'teamIds'],
+  projectUpdateCreate: ['id', 'projectId', 'body', 'health'],
+})
+
+/** Wraps a rule so it first refuses an input that is not an object or holds a key off the mutation's list, or any input when the list is absent. */
+function checked(root, rule) {
+  const keys = SUITE_INPUT_KEYS[root]
+  return (variables, ctx, document) => {
+    const { input } = variables
+    if (!keys) return input === undefined ? rule(variables, ctx, document) : `${root} takes no input`
+    if (input === null || typeof input !== 'object' || Array.isArray(input)) return 'the input is not an object'
+    const extra = Object.keys(input).find((key) => !keys.includes(key))
+    return extra === undefined ? rule(variables, ctx, document) : `the input key ${extra} is not one ${root} may carry`
+  }
+}
+
+const SUITE_RULES = {
   teamCreate(variables, ctx) {
     const input = variables.input ?? {}
     if (ctx.teamExists) return 'the test team exists'
@@ -215,7 +248,10 @@ export const SUITE_ALLOWLIST = Object.freeze({
   // readMutation lets through no argument but id, so permanentlyDelete cannot be sent.
   issueDelete: (variables, ctx) => rules.owns(ctx, 'issue', variables.id, 'issue'),
   projectDelete: (variables, ctx) => rules.owns(ctx, 'project', variables.id, 'project'),
-})
+}
+
+/** The 14 mutations of the contract run, each behind its input-key check. */
+export const SUITE_ALLOWLIST = Object.freeze(Object.fromEntries(Object.entries(SUITE_RULES).map(([root, rule]) => [root, checked(root, rule)])))
 
 /** The kind of id a create makes the run's own, and the payload field of its answer that carries the new node. */
 const CREATES = {

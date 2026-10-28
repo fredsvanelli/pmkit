@@ -267,6 +267,22 @@ test('a mutation with a fragment in its root selection, or a fragment on Mutatio
   ])
 })
 
+test('an input key the mutation does not list is refused, ids included', async () => {
+  const stateCreate = mutationOf('WorkflowStateCreate', '$input: WorkflowStateCreateInput!', 'input: $input')
+  await refusesAll([
+    [ISSUE_CREATE, { input: { id: 'i-9', teamId: TEAM, title: 'x', templateId: 'tpl-foreign' } }],
+    [ISSUE_UPDATE, { id: 'i-1', input: { addedLabelIds: ['label-foreign'] } }],
+    [ISSUE_UPDATE, { id: 'i-1', input: { projectMilestoneId: 'm-foreign' } }],
+    [ISSUE_UPDATE, { id: 'i-1', input: { teamId: TEAM } }],
+    [ISSUE_UPDATE, { id: 'i-1', input: { labelIds: 'label-foreign' } }],
+    [COMMENT_CREATE, { input: { id: 'cm-9', issueId: 'i-1', body: 'x', documentContentId: 'd-foreign' } }],
+    [RELATION_CREATE, { input: { id: 'r-9', type: 'blocks', issueId: 'i-1', relatedIssueId: 'i-1', issueIds: ['i-foreign'] } }],
+    [PROJECT_CREATE, { input: { id: 'p-9', name: 'x', teamIds: [TEAM], leadId: 'user-foreign' } }],
+    [stateCreate, { input: { id: 's-9', teamId: TEAM, name: 'x', inheritedFromId: 's-foreign' } }],
+    ['mutation PmkitIssueArchive($id: String!, $input: String) { issueArchive(id: $id, input: $input) { success } }', { id: 'i-1', input: 'x' }],
+  ])
+})
+
 test('issueDelete refuses permanentlyDelete passed through a variable default', async () => {
   await refusesAll([
     ['mutation D($id: String!, $p: Boolean = true) { issueDelete(id: $id, permanentlyDelete: $p) { success } }', { id: 'i-1' }],
