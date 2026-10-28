@@ -1011,6 +1011,14 @@ export const COMMANDS = [
     run: async (ctx) => (await ctx.linear('customers')).show({ customer: ctx.opt('customer') }),
   },
   {
+    name: 'linear customers set', summary: 'edits the status, tier, revenue, size, owner or name of one customer; --dry-run previews',
+    usage: '--customer ID_OR_NAME [--status NAME] [--tier NAME|none] [--revenue n] [--size n] [--owner MEMBER_ID|none] [--name TEXT]',
+    write: true, linear: true, dryRun: true, flags: ['customer', 'status', 'tier', 'revenue', 'size', 'owner', 'name'],
+    run: async (ctx) => (await ctx.linear('customers')).set({
+      customer: ctx.opt('customer'), status: ctx.opt('status'), tier: ctx.opt('tier'), revenue: ctx.opt('revenue'), size: ctx.opt('size'), owner: ctx.opt('owner'), name: ctx.opt('name'), dryRun: ctx.dryRun,
+    }),
+  },
+  {
     name: 'validate', summary: 'checks every file and reference; problems are output, not errors', flags: [], exempt: true,
     run: (ctx) => {
       const result = validateRepo(ctx.root, { adapters: ctx.adapters })

@@ -1327,3 +1327,76 @@ test('linear customers show matches the id, then the exact name', async () => {
   const none = await cli(setup(), ['linear', 'customers', 'show', '--json'], withNeeds())
   assert.equal(errorOf(none).code, 'INVALID_INPUT')
 })
+
+const setArgs = (...args) => ['linear', 'customers', 'set', '--customer', 'cust-2', ...args]
+const customerMutations = (fetch) => mutationCalls(fetch).filter((call) => operationName(call.body.query) === 'PmkitCustomerUpdate')
+
+test('linear customers set on a Free workspace is NOT_SUPPORTED, with and without --dry-run, and sends nothing', async () => {
+  for (const extra of [[], ['--dry-run']]) {
+    const fetch = customersFetch()
+    const result = await cli(setup(), ['linear', 'customers', 'set', '--customer', 'acme', '--tier', 'gold', ...extra, '--json'], fetch)
+    assert.equal(result.code, 2, extra.join(' '))
+    assert.equal(errorOf(result).code, 'NOT_SUPPORTED')
+    assert.equal(errorOf(result).message, 'customers are unavailable on this workspace (plan free)')
+    assert.equal(errorOf(result).nextStep, 'Linear customers need the Business or Enterprise plan')
+    assert.equal(customerCalls(fetch).length, 0)
+    assert.equal(mutationCalls(fetch).length, 0)
+  }
+})
+
+test('linear customers set sends one update per field with the ids Linear returned', async () => {
+  const cases = [
+    [['--status', 'prospect'], { statusId: 'st-2' }, (after) => after.status.name === 'Prospect'],
+    [['--tier', 'SILVER'], { tierId: 'tier-2' }, (after) => after.tier.name === 'Silver'],
+    [['--tier', 'none'], { tierId: null }, (after) => after.tier === null],
+    [['--revenue', '5000'], { revenue: 5000 }, (after) => after.revenue === 5000],
+    [['--size', '12'], { size: 12 }, (after) => after.size === 12],
+    [['--owner', 'user-1'], { ownerId: 'user-1' }, (after) => after.owner.name === 'Test User'],
+    [['--name', 'ACME Inc'], { name: 'ACME Inc' }, (after) => after.name === 'ACME Inc'],
+  ]
+  for (const [args, input, check] of cases) {
+    const fetch = withNeeds()
+    const result = await cli(setup(), [...setArgs(...args), '--json'], fetch)
+    assert.equal(result.code, 0, `${args.join(' ')}: ${result.stderr}`)
+    const sent = customerMutations(fetch)
+    assert.equal(sent.length, 1, args.join(' '))
+    assert.deepEqual(sent[0].body.variables, { id: 'cust-2', input })
+    assert.equal(mutationCalls(fetch).length, 1)
+    const data = JSON.parse(result.stdout)
+    assert.equal(data.before.name, 'ACME Corp')
+    assert.ok(check(data.after), args.join(' '))
+    assert.ok(!JSON.stringify(sent[0].body).includes(FAKE_KEY))
+  }
+})
+
+test('linear customers set refuses bad input with INVALID_INPUT and sends nothing', async () => {
+  const cases = [[], ['--status', 'Gone'], ['--tier', 'Bronze'], ['--revenue', '1.5'], ['--revenue', '-1'], ['--size', 'big'], ['--owner', 'user-9'], ['--name', '']]
+  for (const args of cases) {
+    const fetch = withNeeds()
+    const result = await cli(setup(), [...setArgs(...args), '--json'], fetch)
+    assert.equal(result.code, 2, args.join(' '))
+    assert.equal(errorOf(result).code, 'INVALID_INPUT', args.join(' '))
+    assert.equal(mutationCalls(fetch).length, 0)
+  }
+  const unknown = await cli(setup(), ['linear', 'customers', 'set', '--customer', 'nobody', '--tier', 'gold', '--json'], withNeeds())
+  assert.equal(errorOf(unknown).code, 'NOT_FOUND')
+})
+
+test('linear customers set with no change prints nothing to change and sends no mutation', async () => {
+  const fetch = withNeeds()
+  const result = await cli(setup(), setArgs('--tier', 'gold', '--revenue', '120000'), fetch)
+  assert.equal(result.code, 0, result.stderr)
+  assert.match(result.stdout, /\nnothing to change\n$/)
+  assert.equal(mutationCalls(fetch).length, 0)
+})
+
+test('linear customers set --dry-run returns before and after and sends no mutation', async () => {
+  const fetch = withNeeds()
+  const json = JSON.parse((await cli(setup(), [...setArgs('--tier', 'silver', '--owner', 'none'), '--dry-run', '--json'], fetch)).stdout)
+  assert.deepEqual([json.before.tier.name, json.after.tier.name, json.before.owner.id, json.after.owner], ['Gold', 'Silver', 'user-2', null])
+  const text = await cli(setup(), [...setArgs('--revenue', '1'), '--dry-run'], withNeeds())
+  assert.match(text.stdout, /before:\n {2}ACME Corp .*revenue 120000/)
+  assert.match(text.stdout, /after:\n {2}ACME Corp .*revenue 1 /)
+  assert.match(text.stdout, /\ndry run: nothing was written\n$/)
+  assert.equal(mutationCalls(fetch).length, 0)
+})

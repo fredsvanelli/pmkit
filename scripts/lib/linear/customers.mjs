@@ -199,6 +199,8 @@ export const TIERS_QUERY = `query PmkitCustomerTiers($first: Int!, $after: Strin
 
 export const SHOW_QUERY = `query PmkitCustomerShow($id: String!) { customer(id: $id) { ${CUSTOMER_FIELDS} needs(first: 50) { nodes { id body priority createdAt issue { id identifier title archivedAt } project { id name } } ${PAGE_INFO} } } }`
 
+export const UPDATE_MUTATION = `mutation PmkitCustomerUpdate($id: String!, $input: CustomerUpdateInput!) { customerUpdate(id: $id, input: $input) { success customer { ${CUSTOMER_FIELDS} } } }`
+
 const LOOKUP_LIMIT = 250
 
 const DEFAULT_LIMIT = 50
@@ -247,6 +249,30 @@ export function customerText(customer, requests) {
     ...requests.map((request, index) => `  ${request.id}  ${request.important ? 'important' : 'normal   '}  ${targets[index].padEnd(width)}  ${request.body}`.trimEnd()),
   ].join('\n')
 }
+
+/** The view a customer would have after an update input, for a dry run. users are the workspace members. */
+function projected(before, input, { statuses, tiers, users }) {
+  const named = (list, id) => {
+    const found = list.find((item) => item.id === id)
+    return found ? { id: found.id, name: found.name } : null
+  }
+  const after = { ...before }
+  if ('name' in input) after.name = input.name
+  if ('statusId' in input) after.status = named(statuses, input.statusId)
+  if ('tierId' in input) after.tier = input.tierId === null ? null : named(tiers, input.tierId)
+  if ('revenue' in input) after.revenue = input.revenue
+  if ('size' in input) after.size = input.size
+  if ('ownerId' in input) after.owner = input.ownerId === null ? null : named(users, input.ownerId)
+  return after
+}
+
+/** Throws NOT_SUPPORTED for a write on a workspace without customers. */
+function refuseWrite({ reason, plan, enableHint }) {
+  const why = reason === 'plan' ? `plan ${plan}` : reason === 'stale' ? 'Linear reports none' : 'customers are off'
+  throw new PmkitError('NOT_SUPPORTED', `customers are unavailable on this workspace (${why})`, enableHint)
+}
+
+const indent = (text) => text.split('\n').map((line) => `  ${line}`).join('\n')
 
 /**
  * The customer operations of the Linear tracker. discovery is the tracker's cached discovery, client the Linear client.
@@ -309,5 +335,33 @@ export function createCustomers({ client, discovery }) {
     })
   }
 
-  return Object.freeze({ list, show })
+  async function set({ customer: ref, dryRun = false, ...flags } = {}) {
+    const { raw, warnings, availability } = await context()
+    if (!availability.available) refuseWrite(availability)
+    const all = [...warnings]
+    try {
+      const before = resolveCustomer(await lookup(all), ref)
+      const statuses = await readNames(STATUSES_QUERY, 'customerStatuses')
+      const tiers = await readNames(TIERS_QUERY, 'customerTiers')
+      const users = raw.users.filter((user) => !user.app)
+      const plan = planCustomerEdit(before, flags, statuses, tiers, users.map((user) => user.id))
+      let after = before
+      if (plan.changed && dryRun) {
+        after = projected(before, plan.input, { statuses, tiers, users })
+      } else if (plan.changed) {
+        const payload = (await client.request(UPDATE_MUTATION, { id: before.id, input: plan.input })).customerUpdate
+        if (payload?.success !== true || !payload.customer) throw new PmkitError('UPSTREAM', 'Linear did not apply the customer change', 'Run linear customers show to see the current values')
+        after = customerView(payload.customer)
+      }
+      const lines = ['before:', indent(customersText([before])), 'after:', indent(customersText([after]))]
+      if (dryRun) lines.push('dry run: nothing was written')
+      else if (!plan.changed) lines.push('nothing to change')
+      return { data: { before, after }, text: lines.join('\n'), commit: before.name, warnings: all }
+    } catch (error) {
+      if (isNotAvailable(error)) refuseWrite({ reason: 'stale', plan: raw.workspace.plan, enableHint: STALE_HINT })
+      throw error
+    }
+  }
+
+  return Object.freeze({ list, show, set })
 }

@@ -1461,6 +1461,7 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'pr open': ['--issue', 'ISS-5N1R'],
     'pr ready': ['--issue', 'ISS-5N1R'],
     'pr sync': [],
+    'linear customers set': ['--customer', 'acme', '--tier', 'gold'],
     'linear triage set': ['--off'],
     migrate: [],
   }

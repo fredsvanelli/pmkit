@@ -133,7 +133,7 @@ test('every command that is not local or exempt has mirror cases', () => {
 })
 
 test('the linear commands are the three triage commands and stay out of the mirror', () => {
-  assert.deepEqual(COMMANDS.filter((command) => command.linear).map((command) => command.name), ['linear triage show', 'linear triage suggestions', 'linear triage set'])
+  assert.deepEqual(COMMANDS.filter((command) => command.linear).map((command) => command.name), ['linear triage show', 'linear triage suggestions', 'linear triage set', 'linear customers list', 'linear customers show', 'linear customers set'])
   assert.ok(MIRRORED.every((command) => !command.linear))
 })
 
