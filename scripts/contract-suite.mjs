@@ -404,6 +404,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       const logged = (await tracker.getHistory(id)).filter((event) => event.op === 'log_time')
       assert.deepEqual(logged.map((event) => event.minutes), [45])
       assert.ok((await tracker.metricEvents()).some((event) => event.issue === id && event.op === 'log_time'))
+      await rejects(() => tracker.logTime(id, 0, actor), 'INVALID_INPUT')
     })
 
     it('archived issues drop out of search', ['issues'], async ({ tracker, actor }) => {
