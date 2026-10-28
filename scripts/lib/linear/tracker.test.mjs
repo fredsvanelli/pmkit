@@ -144,7 +144,7 @@ test('a failing cache write warns and still returns the result', async () => {
   const context = setup({ env: { PMKIT_HOME: path.join(repo, 'store') } })
   const result = await tracker(context).tracker.discover()
   assert.equal(result.statuses.length, 10)
-  assert.ok(result.warnings.some((warning) => warning.startsWith('pmkit could not write the Linear discovery cache: ')))
+  assert.ok(result.warnings.some((warning) => warning.startsWith('could not write the Linear discovery cache: ')))
 })
 
 test('capabilities returns the manifest object', async () => {

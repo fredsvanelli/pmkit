@@ -313,12 +313,12 @@ test('a bad .pmkit/config.yaml with .issues/config.yaml missing still throws NOT
   assert.throws(() => validateRepo(root), { code: 'NOT_CONFIGURED' })
 })
 
-const MSG = 'tracker.system "linear" is not supported yet, set it to local'
+const MSG = 'tracker.system "jira" is not supported yet, set it to local'
 const messages = (result) => result.problems.map((problem) => problem.message)
 
-test('tracker.system linear alone is one config problem, not a throw', () => {
+test('tracker.system jira alone is one config problem, not a throw', () => {
   const root = makeRepo('basic')
-  editPmkit(root, 'system: local', 'system: linear')
+  editPmkit(root, 'system: local', 'system: jira')
   let result
   assert.doesNotThrow(() => {
     result = validateRepo(root)
@@ -326,7 +326,7 @@ test('tracker.system linear alone is one config problem, not a throw', () => {
   assert.deepEqual(brief(result), ['config .pmkit/config.yaml'])
   assert.equal(result.problems[0].message, MSG)
   assert.deepEqual(result.checked, { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, comments: 0 })
-  assert.ok(MSG.startsWith(unsupportedTracker('linear').message))
+  assert.ok(MSG.startsWith(unsupportedTracker('jira').message))
 })
 
 test('every known tracker without an adapter is listed', () => {
@@ -352,16 +352,16 @@ test('a valid hosted config has no problems', () => {
   assert.deepEqual(validateRepo(root, { adapters: withLinear() }).problems, [])
 })
 
-test('linear and git_host.system gitlab list both problems', () => {
+test('jira and git_host.system gitlab list both problems', () => {
   const root = makeRepo('basic')
-  editPmkit(root, 'system: local', 'system: linear')
+  editPmkit(root, 'system: local', 'system: jira')
   editPmkit(root, 'system: none', 'system: gitlab')
   assert.deepEqual(messages(validateRepo(root)), ['git_host.system must be github or none', MSG])
 })
 
-test('linear and breakPmkit list three problems', () => {
+test('jira and breakPmkit list three problems', () => {
   const root = makeRepo('basic')
-  editPmkit(root, 'system: local', 'system: linear')
+  editPmkit(root, 'system: local', 'system: jira')
   breakPmkit(root)
   const result = validateRepo(root)
   assert.ok(result.problems.every((problem) => problem.path === '.pmkit/config.yaml' && problem.code === 'config'))
@@ -372,9 +372,9 @@ test('linear and breakPmkit list three problems', () => {
   ])
 })
 
-test('linear with a broken .issues/config.yaml lists only the tracker problem', () => {
+test('jira with a broken .issues/config.yaml lists only the tracker problem', () => {
   const root = makeRepo('basic')
-  editPmkit(root, 'system: local', 'system: linear')
+  editPmkit(root, 'system: local', 'system: jira')
   fs.writeFileSync(path.join(root, '.issues', 'config.yaml'), 'version: 1\nthis line has no colon\n')
   assert.deepEqual(brief(validateRepo(root)), ['config .pmkit/config.yaml'])
 })
@@ -434,11 +434,11 @@ test('no tracker.system with tracker.path .pmkit is listed once', () => {
 
 test('validate and loadConfig share one rule list', () => {
   const root = makeRepo('basic')
-  editPmkit(root, 'system: local', 'system: linear')
+  editPmkit(root, 'system: local', 'system: jira')
   breakPmkit(root)
   const listed = validateRepo(root).problems.filter((p) => p.path === '.pmkit/config.yaml').map((p) => p.message)
   assert.deepEqual(listed, pmkitConfigMessages(parseYaml(fs.readFileSync(pmkitFile(root), 'utf8'))))
-  assert.equal(listed.at(-1), unsupportedTracker('linear').problem)
+  assert.equal(listed.at(-1), unsupportedTracker('jira').problem)
 })
 
 function writeRelease(root, name, text = '---\nname: R\n---\n') {

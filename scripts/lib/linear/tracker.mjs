@@ -41,7 +41,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
       try {
         cachePut(repoHash(config.root), cacheKey, raw, { ttlSeconds: CACHE_TTL_SECONDS }, store)
       } catch (error) {
-        warnings.push(`pmkit could not write the Linear discovery cache: ${error.message}`)
+        warnings.push(`could not write the Linear discovery cache: ${error.message}`)
       }
     }
     return { raw, session, warnings }
