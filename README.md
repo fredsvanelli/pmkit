@@ -7,7 +7,7 @@ Project management for development agents: issues, sprints and epics in one comm
     claude plugin marketplace add fredsvanelli/skills
     claude plugin install pmkit@fredsvanelli
 
-Then run `/pmkit:setup` in the project. With the GitHub git host (`git_host.system: github`), pmkit creates issue branches and opens, reads and syncs pull requests through the GitHub CLI (`gh`). Terms are defined in [CONTEXT.md](CONTEXT.md), and the decisions are in [docs/adr](docs/adr).
+Then run `/pmkit:setup` in the project. It asks whether the issues live in the Local tracker or in a Linear workspace. The Linear path needs a personal API key in `LINEAR_API_KEY` and asks for the team, the status that means in review, the status that means blocked and the label of each issue type. With the GitHub git host (`git_host.system: github`), pmkit creates issue branches and opens, reads and syncs pull requests through the GitHub CLI (`gh`). Terms are defined in [CONTEXT.md](CONTEXT.md), and the decisions are in [docs/adr](docs/adr).
 
 ## Commands
 
@@ -50,7 +50,8 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 
 | Command | Does |
 |---|---|
-| `init` | writes `.pmkit/config.yaml` and scaffolds `.issues/`; refuses to overwrite. Flags: `--tracker local`, `--git-host github\|none`, `--prefix`, `--id-style random\|numbered`, `--estimate-unit points\|hours\|sizes`, `--label name`, `--member id --name n --email e`, `--members-file f\|-` |
+| `init` | writes `.pmkit/config.yaml` and scaffolds `.issues/`; refuses to overwrite. Flags: `--tracker local\|linear`, `--git-host github\|none`, `--workspace`, `--team`, `--status key=name`, `--field key=value`, `--type-label type=label`, `--prefix`, `--id-style random\|numbered`, `--estimate-unit points\|hours\|sizes`, `--label name`, `--member id --name n --email e`, `--members-file f\|-` |
+| `init --tracker linear` | reads the Linear workspace with the key in `LINEAR_API_KEY`, applies what it can infer, lists what it must ask and writes only `.pmkit/config.yaml`. `--dry-run` returns `applied`, `questions` and `broken`; the answers go back as `--team`, `--status`, `--field` and `--type-label` |
 | `init --update` | edits only the lines its flags name and adds or updates the schema line in the config files; `--replace <path>` overwrites a template file that differs |
 | `capabilities` | prints the capability manifest |
 | `discover` | prints statuses with categories, types, priorities, labels, members and the estimate scale |

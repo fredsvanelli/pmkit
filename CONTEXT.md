@@ -60,6 +60,10 @@ _Avoid_: state (a sprint has a state, an issue has a status), column
 One of seven fixed groups of statuses, in this order: `triage`, `backlog`, `todo`, `in_progress`, `in_review`, `done`, `canceled`. Every adapter maps its statuses to categories. `done` and `canceled` are the terminal ones.
 _Avoid_: status type, stage, phase
 
+**Mapping**:
+A line under `mappings` in `.pmkit/config.yaml` that ties a pmkit category, `blocked`, a field role or an issue type to a hosted tracker's own name, such as `in_review: In Review` or `bug: Bug`. Setup writes the mappings it infers and the ones the user answers. `none` means the team has no such status or field. When a mapping names something the tracker no longer has, every command stops and offers `/pmkit:setup`.
+_Avoid_: binding, alias
+
 **Blocked**:
 The state of an issue when one of its `blocked_by` issues is not in a terminal category, or is missing. It is computed on each read. It is not a category and not a stored field.
 _Avoid_: on hold, stuck, waiting

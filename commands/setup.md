@@ -10,7 +10,7 @@ Arguments: `$ARGUMENTS`
 
 ## Parameters
 
-None. Run `/pmkit:setup` from the root of the repository. The command asks for what it cannot detect: the ID prefix, the ID style, the estimate unit, the members and the `needs-criteria` label.
+None. Run `/pmkit:setup` from the root of the repository. The command asks for what it cannot detect. With the Local tracker, that is the ID prefix, the ID style, the estimate unit, the members and the `needs-criteria` label. With Linear, it is the team when you belong to several, the status that means in review, the status that means blocked, the label for each issue type, and a field only when the workspace offers more than one.
 
 It is safe to run again. When `.pmkit/config.yaml` exists, it only updates and never starts over.
 
@@ -20,7 +20,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 
 Its first rule (stop when there is no config) does not apply here, because this command creates the config.
 
-1. Check whether `.pmkit/config.yaml` exists. When it does, go to "Existing config" below. Otherwise continue with "First run".
+1. Check whether `.pmkit/config.yaml` exists. When it does, read its `tracker.system`. `local` goes to "Existing config" and `linear` goes to "Existing Linear config". When it does not exist, ask with `AskUserQuestion` which tracker holds the issues. Offer "Local (Recommended)", for files in this repository, and "Linear", for a Linear workspace reached with a personal API key. Local continues with "First run". Linear goes to "Linear first run".
 
 ### First run
 
@@ -67,12 +67,34 @@ Never run `init` without `--update` when a config exists.
 8. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update [--label <name>] --replace <path> --json`, with one `--replace <path>` per approved file and the same flags as the dry run. Without approved files, leave `--replace` out.
 9. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`, `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`. Go to "Output".
 
+### Linear first run
+
+2. Detect the git host as in step 2 of "First run".
+3. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --tracker linear --git-host <github|none> --dry-run --json`. It reads the workspace with the key in `LINEAR_API_KEY` and writes nothing. On `AUTH`, tell the user to create a personal API key in Linear (Settings, Security & access) with read and write access and to export it as `LINEAR_API_KEY` in the shell profile or in `~/.claude/settings.json`, never in a file inside the repository. Never ask for the key and never write it. Then stop and ask the user to run setup again.
+4. When `questions` holds `tracker.scope.team`, ask it alone with `AskUserQuestion`. Offer up to four of its `candidates`, and the user can type another team key. Then run the dry run of step 3 again with `--workspace <workspace.urlKey> --team <key>`.
+5. Ask every other item of `questions` with `AskUserQuestion`, one question per item, in the order given. Name what each one decides: which status means in review, which status means blocked, which field holds the estimate, which label stands for each issue type. `AskUserQuestion` takes four questions per call, so ask them in batches of four. Offer `recommended` first with "(Recommended)", then the next `candidates`, then `none` with the label the item gives, four options at most. The user can type another candidate in the free-text answer.
+6. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --tracker linear --git-host <github|none> --workspace <key> --team <key> --status <key>=<value> --field <key>=<value> --type-label <type>=<value> --dry-run --json`, with one `--status`, `--field` or `--type-label` per answer and the team from step 3 or 4. On `INVALID_INPUT` naming a value, ask that question again with the values its next step lists.
+7. Show one summary: the workspace and its plan, the team, the git host, each status of the team with its category, the status that means blocked, the estimate, the label of each type, the `notes`, and `.pmkit/config.yaml` as the dry run would create it. Say that Linear numbers its own issues, so setup asks for no prefix and no ID style, and that setup creates no label in Linear.
+8. After the user approves, run the command of step 6 without `--dry-run`.
+9. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`, `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`. Go to "Output".
+
+### Existing Linear config
+
+2. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`. A problem in `.pmkit/config.yaml` makes `init --update` refuse, so ask the user to fix the file by hand first and run the check again.
+3. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --dry-run --json`. On `AUTH`, follow step 3 of "Linear first run". `broken` lists each mapping that names a team, status, field or label the workspace no longer has, and `questions` holds each of them plus any mapping never answered. Add `--git-host`, `--team`, `--status` or `--field` only when the user asks to change them.
+4. When `questions` is empty and the file is `keep`, say "already up to date" and go to step 7. Otherwise ask the questions as steps 4 and 5 of "Linear first run" do. For a broken mapping, name its old value and its `problem` in the question.
+5. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" init --update --team <key> --status <key>=<value> --field <key>=<value> --type-label <type>=<value> --dry-run --json` with the answers of step 4 and the flags of step 3. Show the diff of `.pmkit/config.yaml` and the summary of step 7 of "Linear first run", and ask once with `AskUserQuestion` whether to apply it. When the user declines, stop and change nothing.
+6. After the user approves, run the command of step 5 without `--dry-run`.
+7. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" validate --json`, `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` and `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`. Go to "Output".
+
 ## Confirmation points
 
 - First run: the one summary of step 7 of the first run, before any file is written.
 - Existing config: one question per `differs` file (step 6), then one question to apply everything shown (step 7), before `init --update` runs. With nothing to write, there is no question.
 - Existing config step 3: the label renames, shown with their dry runs and asked once before any issue changes. Declining leaves the labels as they are.
-- The questions of step 4 of the first run and the label question of step 3 of the existing config are inputs, not confirmations.
+- Linear first run: the one summary of step 7, before `.pmkit/config.yaml` is written.
+- Existing Linear config: one question in step 5 before `init --update` writes. With nothing to write, there is no question.
+- The tracker question of step 1, the questions of step 4 of the first run, the label question of step 3 of the existing config, the questions of steps 4 and 5 of the Linear first run and the questions of step 4 of the existing Linear config are inputs, not confirmations.
 
 ## Output
 
@@ -87,4 +109,5 @@ Lead with what was created or updated. Then:
 - `gh` is not installed or not logged in: continue with the git host `github` when the remote is GitHub, and say that pull request features need `gh auth login`.
 - No GitHub remote: run with `--git-host none` and name the commands that lose features, as in step 7 of the first run.
 - Not a git repository: say that `/pmkit:upgrade` and the commit step need git, and continue only if the user wants a tracker without it.
+- `LINEAR_API_KEY` is not set, or belongs to another workspace: follow step 3 of "Linear first run". Never ask for the key.
 - An error from the CLI: apply the rules for reading errors in the conventions.
