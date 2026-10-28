@@ -2,13 +2,15 @@
 id: PMK-29
 title: "Verify the Linear API for recurring issues, project dependencies, releases and Insights"
 type: task
-status: backlog
+status: in_review
 priority: medium
 estimate: 2
+assignee: fred
 parent: EPC-5
 milestone: linear
+branch: pmk-29-verify-the-linear-api-for-recurring
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-25T19:13:20Z
+updated: 2026-10-27T23:51:49Z
 ---
 
 ## Description
@@ -17,4 +19,4 @@ Source: Linear tab, Open questions ("Verify in the API: recurring issues, depend
 
 ## Acceptance criteria
 
-- [ ] Each of the four has a yes or no with the API object that exposes it, recorded next to the Linear adapter
+- [x] Each of the four has a yes or no with the API object that exposes it, recorded next to the Linear adapter
