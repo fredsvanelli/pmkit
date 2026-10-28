@@ -283,6 +283,17 @@ test('an input key the mutation does not list is refused, ids included', async (
   ])
 })
 
+test('a batch body, or a body whose query is not a string, is refused on purpose', async () => {
+  const { inner, ...guarded } = opened()
+  guarded.guard.own('issue', 'i-1')
+  const post = (body) => guarded.fetch(URL, { method: 'POST', body: JSON.stringify(body) })
+  await assert.rejects(post([{ query: ISSUE_ARCHIVE, variables: { id: 'i-1' } }, { query: QUERY }]), /refusing a batch request/)
+  await assert.rejects(post([]), /refusing a batch request/)
+  await assert.rejects(post({ query: 42 }), /refusing a request whose query is not a string/)
+  await assert.rejects(post(null), /refusing a request whose query is not a string/)
+  assert.equal(inner.calls.length, 0)
+})
+
 test('issueDelete refuses permanentlyDelete passed through a variable default', async () => {
   await refusesAll([
     ['mutation D($id: String!, $p: Boolean = true) { issueDelete(id: $id, permanentlyDelete: $p) { success } }', { id: 'i-1' }],

@@ -338,6 +338,9 @@ export function createGuardedFetch({ fetch, workspace, allowlist = SUITE_ALLOWLI
     } catch {
       return refuse('refusing a request whose body is not JSON')
     }
+    // Linear runs each entry of an array body, and the checks below read one operation, so a batch never passes.
+    if (Array.isArray(body)) return refuse('refusing a batch request')
+    if (typeof body?.query !== 'string') return refuse('refusing a request whose query is not a string')
     const { query, variables = {} } = body
     const name = operationName(query) ?? '(anonymous)'
     const mutation = isMutation(query)
