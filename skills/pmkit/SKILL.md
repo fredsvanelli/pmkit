@@ -35,6 +35,7 @@ Each command file holds the full procedure. When the user asks for one of these 
 | summarize an issue or an epic from its record, comments and history | `/pmkit:issues:summary` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/summary.md` |
 | change the title, priority, estimate, labels or acceptance criteria of an issue | `/pmkit:issues:update` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/update.md` |
 | pick up an issue: claim it, branch, plan, implement, open the PR and move it to review | `/pmkit:issues:work` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/work.md` |
+| list or edit Linear customers, see who asks for a feature, or link a customer request to an issue or a project | `/pmkit:linear:customers` | `${CLAUDE_PLUGIN_ROOT}/commands/linear/customers.md` |
 | see who is on triage duty in Linear, change the triage rotation, or read Triage Intelligence suggestions | `/pmkit:linear:triage-rotation` | `${CLAUDE_PLUGIN_ROOT}/commands/linear/triage-rotation.md` |
 | check the tracker files, fix what can be fixed and resolve git conflict markers | `/pmkit:local:doctor` | `${CLAUDE_PLUGIN_ROOT}/commands/local/doctor.md` |
 | render a board, roadmap or sprint view as Markdown or HTML to share with people outside the agent | `/pmkit:local:render` | `${CLAUDE_PLUGIN_ROOT}/commands/local/render.md` |
