@@ -1,6 +1,6 @@
 # PMK-37 design: map Linear cycles to sprints
 
-Issue PMK-37, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: draft, waiting for the answers to "Open questions". Decisions come from an autonomous brainstorming run on 2026-10-28 with no user dialogue, from the issue, ADR-0001, ADR-0003, ADR-0005, the PMK-33 and PMK-35 specs, the code, and read-only calls to the sandbox workspace. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
+Issue PMK-37, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: approved. The user answered the open questions on 2026-10-28; see "Open questions". Decisions come from an autonomous brainstorming run on 2026-10-28 with no user dialogue, from the issue, ADR-0001, ADR-0003, ADR-0005, the PMK-33 and PMK-35 specs, the code, and read-only calls to the sandbox workspace. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
@@ -334,10 +334,12 @@ No test opens a socket. Every tracker test injects `fakeLinearFetch` and sets `P
 
 ## Open questions
 
-1. **The sandbox needs cycles for PMK-39.** The sandbox team has cycles turned off and no cycle, so the contract suite's `cycles` tests cannot run against it. Turning cycles on is a team setting in Linear, an administration change this repository must not make. Options: (a) you turn cycles on for the sandbox team and let it schedule two or more upcoming cycles, so one is active and one is next; (b) PMK-39 accepts that the cycle tests skip against the sandbox and relies on the fake for them; (c) a second sandbox team with cycles on. Recommendation: (a). It is one setting, and it is the only way to check the time-of-day facts in "Risks" before PMK-39. The skip in (b) works as a fallback because the provider reports what is missing.
-2. **Should `closeCycle` stay `NOT_SUPPORTED`?** The schema lets `cycleUpdate` set `completedAt`, which might end a cycle early. No workspace can check that, and the issue says close answers `NOT_SUPPORTED`. Options: (a) keep `NOT_SUPPORTED`, as this spec does; (b) implement close with `cycleUpdate` and `completedAt` once a sandbox with cycles shows what it does; (c) implement it now, unverified. Recommendation: (a). A follow-up issue can take (b) after question 1 is answered. (c) writes a field whose effect on rollover and on the team's schedule nobody has seen.
-3. **Where does capacity live?** Options: (a) `.pmkit/capacity.yaml`, committed and shared by the team, as this spec does; (b) the user store under `~/.config/pmkit/`, per user and never committed; (c) inside `.pmkit/config.yaml`. Recommendation: (a). Capacity and days off are team data that `/pmkit:cycle:plan` and `team-load` read for everyone, and the Unified model's Q5 puts shared settings in a committed file. (b) would give each teammate a different plan. (c) would make `config.yaml` change every cycle and need a schema for data that is not configuration.
-4. **What should an unknown cycle in a filter do?** `issues list --sprint 99` on Local fails with `INVALID_INPUT`. This spec lets Linear return an empty list, to save a request on every filtered search. Options: (a) empty list, as this spec does; (b) one extra `cycles` read per search that uses a cycle id, then `INVALID_INPUT`. Recommendation: (a). A typo gives an empty list and the next step in `cycleIssues` and `cycle list` is one command away. (b) costs a request only on that rare filter, so it is also fine if you want strict parity with Local.
+All four are answered.
+
+1. **Cycles for PMK-39.** Answer: PMK-39 creates a dedicated test team with cycles turned on and one cycle, runs the suite there, and deletes the team at the end. The real team is never touched. This issue builds the suite's cycle provider so that PMK-39 can supply that team's cycle. This issue creates no team and changes no Linear setting. The sandbox provider skips with a reason when the team has no cycle. The unverified time-of-day facts in "Risks" are checked in that test team.
+2. **`closeCycle`.** Answer: it stays `NOT_SUPPORTED`, as this spec does.
+3. **Capacity.** Answer: it lives in the committed `.pmkit/capacity.yaml`, using the Local validators, as this spec does.
+4. **Unknown cycle in a filter.** Answer: an empty list, as this spec does.
 
 ## Decisions
 
