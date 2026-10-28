@@ -142,10 +142,13 @@ export function resolveMappings(view, pmkit, raw = view?.raw) {
     },
     targetState: (category) => {
       const named = stateNamed(mappings.status?.[category])
-      // States of type duplicate come last, so a plain move to canceled never marks an issue Duplicate without a duplicate link.
-      const candidates = states.filter((state) => categoryOfState(state) === category)
-      const found = named ?? candidates.find((state) => state.type !== 'duplicate') ?? candidates[0]
+      // The fallback never picks a state of type duplicate, so a plain move to canceled cannot mark an issue Duplicate without a duplicate link.
+      const found = named ?? states.find((state) => categoryOfState(state) === category && state.type !== 'duplicate')
       return found ? pick(found) : null
+    },
+    duplicateOnly: (category) => {
+      const candidates = states.filter((state) => categoryOfState(state) === category)
+      return !stateNamed(mappings.status?.[category]) && candidates.length > 0 && candidates.every((state) => state.type === 'duplicate')
     },
     blockedState: blocked ? pick(blocked) : null,
     estimate: mappings.fields?.estimate === 'native' && team.estimation.type !== 'notUsed' ? 'native' : null,

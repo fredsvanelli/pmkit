@@ -180,6 +180,13 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
   function moveTarget(team, category, current) {
     const target = current.mappingsOf(team).targetState(category)
     if (target) return teamStates(current, team).find((item) => item.id === target.id)
+    if (current.mappingsOf(team).duplicateOnly(category)) {
+      throw new PmkitError(
+        'NOT_SUPPORTED',
+        `team ${team.key} has no status in the ${category} category except Duplicate`,
+        `Set mappings.status.${category} explicitly, for example mappings.status.${category}: Duplicate, to allow it`,
+      )
+    }
     const nextStep = category === 'triage' && !team.triageEnabled ? "Turn on triage in the team's settings in Linear" : '/pmkit:setup'
     throw new PmkitError('NOT_SUPPORTED', `team ${team.key} has no status in the ${category} category`, nextStep)
   }

@@ -561,10 +561,22 @@ test('canceled skips a Duplicate state that comes first by position', async () =
   assert.deepEqual((await linear.getIssue('ACME-1')).duplicateOf, [])
 })
 
-test('canceled falls back to a Duplicate state when the team has no other canceled state', async () => {
+test('canceled with only a Duplicate state is NOT_SUPPORTED and says to map it explicitly', async () => {
   const states = fakeWorkspace().PmkitStates({ variables: { first: 250 } }).json.data.workflowStates.nodes
     .filter((state) => state.type !== 'canceled')
   const { tracker: linear, fake } = linearSetup({ workspace: { states } })
+  seed(fake, { title: 'Move me' })
+  await assert.rejects(linear.moveToCategory('ACME-1', 'canceled', 'user-1'), {
+    code: 'NOT_SUPPORTED',
+    message: 'team ACME has no status in the canceled category except Duplicate',
+    nextStep: 'Set mappings.status.canceled explicitly, for example mappings.status.canceled: Duplicate, to allow it',
+  })
+})
+
+test('an explicit mapping to Duplicate still moves to it', async () => {
+  const states = fakeWorkspace().PmkitStates({ variables: { first: 250 } }).json.data.workflowStates.nodes
+    .filter((state) => state.type !== 'canceled')
+  const { tracker: linear, fake } = linearSetup({ workspace: { states }, mappings: { status: { canceled: 'Duplicate' } } })
   seed(fake, { title: 'Move me' })
   assert.equal(await moved(linear, 'ACME-1', 'canceled'), 'Duplicate')
 })
