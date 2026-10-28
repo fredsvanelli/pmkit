@@ -3,18 +3,20 @@ import test from 'node:test'
 import { ACME_STATES, ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeWorkspace } from '../../fake-linear-api.mjs'
 import { createLinearClient, isMutation, operationName } from './client.mjs'
 import { fetchDiscovery } from './discovery.mjs'
+import { PARENT_CHAIN_DEPTH } from './documents.mjs'
 import { projectOperations } from './project-ops.mjs'
 
 const TWO = { ...ACME_TEAM, id: 'team-two', key: 'TWO', name: 'Two' }
 const NOW = new Date('2026-10-28T12:00:00Z')
 
 /** Fakes, a client and a projectOperations instance for scope team `team`. `options` reach fakeLinearProjects. */
-function kit({ team = 'ACME', teams = [ACME_TEAM, TWO], identifiers = true } = {}) {
+function kit({ team = 'ACME', identifiers = true, points = false } = {}) {
+  const teams = [points ? { ...ACME_TEAM, issueEstimationType: 'fibonacci' } : ACME_TEAM, TWO]
   const states = [...ACME_STATES, ...ACME_STATES.map((state) => ({ ...state, id: `${state.id}-two`, team: { id: TWO.id } }))]
   const issues = fakeLinearIssues({ teams, states })
   const fake = fakeLinearProjects({ issues, teams, states, identifiers })
   const fetch = fakeLinearFetch({ ...fakeWorkspace({ teams, states }), ...issues.routes, ...fake.routes })
-  const config = { pmkit: { tracker: { system: 'linear', scope: { workspace: 'acme', team } } } }
+  const config = { pmkit: { tracker: { system: 'linear', scope: { workspace: 'acme', team } }, ...(points ? { mappings: { fields: { estimate: 'native' } } } : {}) } }
   const client = createLinearClient({ env: { LINEAR_API_KEY: FAKE_KEY }, tracker: config.pmkit.tracker, fetch })
   let memo
   const discovery = () => (memo ??= fetchDiscovery(client, { now: () => NOW }).then((raw) => ({ raw })))
@@ -109,4 +111,53 @@ test('resolveEpic returns the raw node or null with one request per call', async
   assert.equal(sent('PmkitProjects').length, 2)
   assert.equal(await ops.resolveEpic('ACME-1'), null)
   assert.equal(sent('PmkitProjects').length, 2)
+})
+
+const PID = '00000000-0000-4000-8000-0000000000a1'
+const LOCAL_PROGRESS_KEYS = ['byCategory', 'canceled', 'done', 'points', 'pointsDone', 'total']
+
+test('deliverableProgress counts through the parent chain with the Local rules', async () => {
+  const { fake, issues, ops } = kit({ points: true })
+  seedProject(fake, 'Launch', { id: PID })
+  const a = issues.seed({ title: 'A', projectId: PID, stateId: 'state-8', estimate: 2 })
+  issues.seed({ title: 'B', projectId: PID, stateId: 'state-2', estimate: 3 })
+  issues.seed({ title: 'C', projectId: PID, stateId: 'state-9', estimate: 8 })
+  const d = issues.seed({ title: 'D', projectId: PID, stateId: 'state-8', estimate: 5 })
+  issues.records.find((record) => record.id === d.id).archivedAt = '2026-10-28T00:00:00.000Z'
+  const e = issues.seed({ title: 'E', parentId: a.id, stateId: 'state-2', estimate: 1 })
+  issues.seed({ title: 'F', parentId: e.id, stateId: 'state-3' })
+  issues.seed({ title: 'Outside', stateId: 'state-8' })
+  const progress = await ops.deliverableProgress('p-acm-1')
+  assert.deepEqual(
+    { ...progress, native: undefined },
+    {
+      total: 4, done: 1, canceled: 1, points: 6, pointsDone: 2, native: undefined,
+      byCategory: { triage: 0, backlog: 0, todo: 2, in_progress: 1, in_review: 0, done: 1, canceled: 1 },
+    },
+  )
+  assert.deepEqual(progress.native, { progress: (await ops.getDeliverable('P-ACM-1')).progress, scope: 3 })
+  assert.equal('hasMore' in progress, false)
+  for (const key of LOCAL_PROGRESS_KEYS) assert.ok(key in progress, key)
+})
+
+test('a parent chain deeper than PARENT_CHAIN_DEPTH stops there', async () => {
+  const { fake, issues, ops } = kit()
+  seedProject(fake, 'Launch', { id: PID })
+  let parent = issues.seed({ title: 'Root', projectId: PID })
+  for (let level = 1; level <= PARENT_CHAIN_DEPTH + 2; level += 1) parent = issues.seed({ title: `Level ${level}`, parentId: parent.id })
+  assert.equal((await ops.deliverableProgress('P-ACM-1')).total, PARENT_CHAIN_DEPTH + 1)
+})
+
+test('a first step that fills 10 pages sets hasMore', async () => {
+  const { fake, issues, ops } = kit()
+  seedProject(fake, 'Launch', { id: PID })
+  for (let n = 0; n < 1001; n += 1) issues.seed({ title: `I${n}`, projectId: PID })
+  const progress = await ops.deliverableProgress('P-ACM-1')
+  assert.equal(progress.hasMore, true)
+  assert.equal(progress.total, 1000)
+})
+
+test('deliverableProgress of an unknown epic is NOT_FOUND', async () => {
+  const { ops } = kit()
+  await assert.rejects(ops.deliverableProgress('P-ZZZ-9'), { code: 'NOT_FOUND', nextStep: 'pmkit epic list' })
 })

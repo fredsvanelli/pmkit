@@ -4,9 +4,14 @@
 
 import { PmkitError } from '../errors.mjs'
 import { sortEpics } from '../local/epics.mjs'
-import { PROJECTS_QUERY, epicKey, toEpic } from './projects.mjs'
+import { CATEGORIES } from '../model.mjs'
+import { PARENT_CHAIN_DEPTH } from './documents.mjs'
+import { estimateOf, makeContext, stateCategory } from './issues.mjs'
+import { EPIC_ISSUES_QUERY, PROJECTS_QUERY, epicKey, toEpic } from './projects.mjs'
 
 const LIST_PAGE = 100
+const PROGRESS_PAGE = 100
+const PROGRESS_PAGES = 10
 const notFound = (id) => new PmkitError('NOT_FOUND', `epic ${id} does not exist`, 'pmkit epic list')
 
 /** The filter that finds a project by one key. The identifier and the UUID go through `id`, and the slug through `slugId`. */
@@ -49,5 +54,62 @@ export function projectOperations({ client, discovery, config, now = () => new D
     return toEpic(node)
   }
 
-  return { listDeliverables, getDeliverable, resolveEpic, requireWorkspace, now, uuid, discovery }
+  /** The mapping context of this run. The viewer always comes from the session, never from the cache. */
+  async function context() {
+    const { raw } = await discovery()
+    return makeContext(raw, config.pmkit, (await client.session()).viewer)
+  }
+
+  /** The issues of a filter, up to PROGRESS_PAGES pages. */
+  const readIssues = (filter) =>
+    client.paginate(EPIC_ISSUES_QUERY, { filter }, { select: (data) => data.issues, pageSize: PROGRESS_PAGE, maxPages: PROGRESS_PAGES })
+
+  /**
+   * The Local progress shape over the issues of the epic: the ones in the project, then their sub-issues level by level up to
+   * PARENT_CHAIN_DEPTH levels (spec, "Progress"). `native` holds Linear's own number and scope. hasMore is true when the first
+   * step stopped at its page cap.
+   */
+  async function deliverableProgress(id) {
+    const project = await findProject(id)
+    if (!project) throw notFound(id)
+    const first = await readIssues({ project: { id: { eq: project.id } } })
+    const seen = new Map(first.nodes.map((node) => [node.identifier, node]))
+    let level = first.nodes
+    for (let depth = 0; depth < PARENT_CHAIN_DEPTH && level.length > 0; depth += 1) {
+      const parents = level.map((node) => node.identifier)
+      const next = []
+      for (let at = 0; at < parents.length; at += PROGRESS_PAGE) {
+        const { nodes } = await readIssues({ parent: { id: { in: parents.slice(at, at + PROGRESS_PAGE) } } })
+        for (const node of nodes) {
+          if (seen.has(node.identifier)) continue
+          seen.set(node.identifier, node)
+          next.push(node)
+        }
+      }
+      level = next
+    }
+    const mapping = await context()
+    const progress = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: Object.fromEntries(CATEGORIES.map((category) => [category, 0])) }
+    for (const node of seen.values()) {
+      if (node.archivedAt) continue
+      const category = stateCategory(node.state, mapping)
+      if (category in progress.byCategory) progress.byCategory[category] += 1
+      if (category === 'canceled') {
+        progress.canceled += 1
+        continue
+      }
+      progress.total += 1
+      if (category === 'done') progress.done += 1
+      const estimate = estimateOf(node, mapping)
+      if (typeof estimate === 'number') {
+        progress.points += estimate
+        if (category === 'done') progress.pointsDone += estimate
+      }
+    }
+    progress.native = { progress: project.progress, scope: project.scope }
+    if (first.hasMore) progress.hasMore = true
+    return progress
+  }
+
+  return { listDeliverables, getDeliverable, deliverableProgress, resolveEpic, requireWorkspace, now, uuid, discovery }
 }
