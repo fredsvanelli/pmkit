@@ -270,7 +270,7 @@ A missing `tracker.scope.team` is one item of that list, `tracker.scope.team is 
 - `mappings.fields.estimate is native, but team ACME has estimates off`
 - `mappings.types.bug names Bug, which is neither a label of team ACME nor of the workspace`
 
-`none` and absent keys are never broken. `discover` and `capabilities` keep PMK-33's warnings instead of throwing, because setup needs them to fix the file. The check also runs on reads (open question 4), because a missing review status changes the category of every issue that a read returns.
+`none` and absent keys are never broken. `discover` and `capabilities` keep PMK-33's warnings instead of throwing, because setup needs them to fix the file. The check also runs on reads, because a missing review status changes the category of every issue that a read returns.
 
 The CLI prints `details.mappings` as `error.mappings` in the JSON error. No other `details` key reaches the output, so nothing else changes in the error shape.
 
