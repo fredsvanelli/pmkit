@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
-import { FAKE_KEY, fakeLinearFetch, fakeWorkspace } from '../../fake-linear-api.mjs'
+import { FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeWorkspace } from '../../fake-linear-api.mjs'
 import { tempDir, userStoreEnv } from '../../test-helpers.mjs'
 import { assertTracker } from '../contract.mjs'
 import { cachePut, repoHash } from '../user-store.mjs'
@@ -35,9 +35,9 @@ test('the tracker passes assertTracker', () => {
 
 test('a stub throws NOT_SUPPORTED once the mapping check passes', async () => {
   const { fetch, tracker: linear } = tracker(setup())
-  await assert.rejects(linear.searchIssues({}), {
+  await assert.rejects(linear.getHistory('ACME-1'), {
     code: 'NOT_SUPPORTED',
-    message: 'the Linear adapter does not implement searchIssues yet',
+    message: 'the Linear adapter does not implement getHistory yet',
     nextStep: 'Set tracker.system to local in .pmkit/config.yaml to use this command now',
   })
   assert.equal(callsOf(fetch, 'PmkitTeams'), 1)
@@ -151,7 +151,7 @@ test('a second tracker on the same store sends no request until the TTL passes',
   await tracker(context).tracker.discover()
   const fresh = tracker(context, { now: at(59) })
   assert.equal((await fresh.tracker.discover()).statuses.length, 10)
-  assert.equal(fresh.fetch.calls.length, 0)
+  assert.deepEqual(fresh.fetch.calls.map((call) => operationName(call.body.query)), ['PmkitSession'])
   const stale = tracker(context, { now: at(61) })
   await stale.tracker.discover()
   for (const name of DISCOVERY_OPERATIONS) assert.equal(callsOf(stale.fetch, name), 1, name)
@@ -166,7 +166,7 @@ test('refresh fetches again and rewrites the cache', async () => {
   assert.equal(callsOf(fetch, 'PmkitTeams'), 2)
   const next = tracker(context, { now: at(80) })
   await next.tracker.discover()
-  assert.equal(next.fetch.calls.length, 0)
+  assert.deepEqual(next.fetch.calls.map((call) => operationName(call.body.query)), ['PmkitSession'])
 })
 
 test('a fresh result has auth and a cached one does not', async () => {
@@ -244,4 +244,74 @@ test('no file under the store holds the key', async () => {
   const files = filesUnder(context.env.PMKIT_HOME)
   assert.equal(files.length, 1)
   for (const file of files) assert.ok(!fs.readFileSync(file, 'utf8').includes(FAKE_KEY), file)
+})
+
+// A Linear tracker over the stateful fake, scoped to team ACME, with in_review and two types mapped.
+function linearSetup({ mappings = { status: { in_review: 'In Review' }, types: { bug: 'Bug', feature: 'Feature' } }, scope = { workspace: 'acme', team: 'ACME' },
+  workspace = {}, issues = {}, nestedPage, uuid, now = at(0), context = setup({ scope }) } = {}) {
+  const fake = fakeLinearIssues({ ...workspace, ...issues, ...(nestedPage ? { nestedPage } : {}) })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace(workspace), ...fake.routes })
+  context.config.pmkit.mappings = mappings
+  const linear = createLinearTracker(context.config, { env: context.env, now, fetch, ...(uuid ? { uuid } : {}) })
+  return { tracker: linear, fake, fetch, context }
+}
+const seed = (fake, input) => fake.seed(input)
+const namesOf = (fetch) => fetch.calls.map((call) => operationName(call.body.query))
+const lastVariables = (fetch, name) => fetch.calls.filter((call) => operationName(call.body.query) === name).at(-1).body.variables
+
+test('getIssue reads by identifier, ignoring case', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'One', labelIds: ['label-bug', 'label-docs'] })
+  const issue = await linear.getIssue('acme-1')
+  assert.equal(issue.id, 'ACME-1')
+  assert.equal(issue.title, 'One')
+  assert.equal(issue.type, 'bug')
+  assert.deepEqual(issue.labels, ['Docs'])
+  assert.deepEqual(issue.status, { name: 'Backlog', category: 'backlog' })
+})
+
+test('getIssue fails with NOT_FOUND for a missing, malformed or trashed id', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  await assert.rejects(linear.getIssue('ACME-99'), { code: 'NOT_FOUND', message: 'issue ACME-99 does not exist' })
+  const sent = fetch.calls.length
+  await assert.rejects(linear.getIssue('not an id'), { code: 'NOT_FOUND' })
+  await assert.rejects(linear.getIssue('00000000-0000-0000-0000-000000000000'), { code: 'NOT_FOUND' })
+  assert.equal(fetch.calls.length, sent)
+  seed(fake, { title: 'Trashed' })
+  fake.records[0].trashed = true
+  await assert.rejects(linear.getIssue('ACME-1'), { code: 'NOT_FOUND' })
+})
+
+test('getIssue reads the rest of a nested connection', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup({ nestedPage: 1 })
+  seed(fake, { title: 'Two labels', labelIds: ['label-docs', 'label-s'] })
+  assert.deepEqual((await linear.getIssue('ACME-1')).labels, ['Docs', 'S'])
+  assert.equal(callsOf(fetch, 'PmkitIssueLabelsPage') >= 1, true)
+})
+
+test('a state missing from the cached discovery refreshes once', async () => {
+  const context = setup({ scope: { workspace: 'acme', team: 'ACME' } })
+  await tracker(context).tracker.discover()
+  const states = [...fakeWorkspace().PmkitStates({ variables: { first: 250 } }).json.data.workflowStates.nodes,
+    { id: 'state-new', name: 'Parked', type: 'started', position: 20, team: { id: 'team-acme' } }]
+  const { tracker: linear, fake, fetch } = linearSetup({ context, workspace: { states }, now: at(1) })
+  seed(fake, { title: 'Parked one', stateId: 'state-new' })
+  assert.deepEqual((await linear.getIssue('ACME-1')).status, { name: 'Parked', category: 'in_progress' })
+  assert.equal(callsOf(fetch, 'PmkitStates'), 1)
+})
+
+test('discover adds the viewer on a fresh and on a cached read', async () => {
+  const context = setup()
+  const fresh = await tracker(context).tracker.discover()
+  assert.deepEqual(fresh.viewer, { id: 'user-1', name: 'Test User' })
+  assert.equal(Object.keys(fresh).at(-1), 'viewer')
+  const cached = tracker(context, { now: at(1) })
+  assert.deepEqual((await cached.tracker.discover()).viewer, { id: 'user-1', name: 'Test User' })
+  assert.deepEqual(namesOf(cached.fetch), ['PmkitSession'])
+})
+
+test('an issue operation without a workspace is NOT_CONFIGURED before any request', async () => {
+  const { tracker: linear, fetch } = tracker(setup({ scope: {} }))
+  await assert.rejects(linear.getIssue('ACME-1'), { code: 'NOT_CONFIGURED', message: 'tracker.scope.workspace is not set', nextStep: '/pmkit:setup' })
+  assert.equal(fetch.calls.length, 0)
 })
