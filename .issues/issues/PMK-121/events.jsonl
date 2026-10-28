@@ -9,3 +9,6 @@
 {"at":"2026-10-26T21:44:23Z","by":"fred","op":"comment","to":"2026-10-26T21-44-23Z-fred.md"}
 {"at":"2026-10-26T21:44:23Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
 {"at":"2026-10-26T23:46:29Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}
+{"at":"2026-10-28T00:11:39Z","by":"fred","op":"link","field":"related","to":"PMK-160"}
+{"at":"2026-10-28T00:11:40Z","by":"fred","op":"link","field":"related","to":"PMK-165"}
+{"at":"2026-10-28T00:11:41Z","by":"fred","op":"link","field":"related","to":"PMK-166"}

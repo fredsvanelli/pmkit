@@ -1,0 +1,3 @@
+{"at":"2026-10-28T00:11:39Z","by":"fred","op":"create","to":{"id":"PMK-160","title":"Let a cycle close rerun find and finish every half-done split","type":"bug","status":"backlog","priority":"medium","labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-28T00:11:39.878Z","updated":"2026-10-28T00:11:39Z"}}
+{"at":"2026-10-28T00:11:39Z","by":"fred","op":"link","field":"related","to":"PMK-121"}
+{"at":"2026-10-28T00:11:40Z","by":"fred","op":"link","field":"related","to":"PMK-123"}

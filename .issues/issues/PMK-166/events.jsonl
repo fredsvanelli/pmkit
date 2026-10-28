@@ -1,0 +1,2 @@
+{"at":"2026-10-28T00:11:41Z","by":"fred","op":"create","to":{"id":"PMK-166","title":"Refuse cycle add into a closed sprint and check closed in adapters","type":"bug","status":"backlog","priority":"low","labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-28T00:11:41.052Z","updated":"2026-10-28T00:11:41Z"}}
+{"at":"2026-10-28T00:11:41Z","by":"fred","op":"link","field":"related","to":"PMK-121"}

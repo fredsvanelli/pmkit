@@ -1,0 +1,2 @@
+{"at":"2026-10-28T00:11:40Z","by":"fred","op":"create","to":{"id":"PMK-164","title":"Offer in-review issues sent back to no sprint in cycle plan","type":"bug","status":"backlog","priority":"medium","labels":[],"parent":"EPC-1","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"local-gaps","created":"2026-10-28T00:11:40.739Z","updated":"2026-10-28T00:11:40Z"}}
+{"at":"2026-10-28T00:11:40Z","by":"fred","op":"link","field":"related","to":"PMK-122"}

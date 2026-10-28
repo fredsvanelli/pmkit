@@ -7,11 +7,11 @@ priority: low
 estimate: 1
 assignee: fred
 parent: EPC-1
-related: [PMK-114]
+related: [PMK-114, PMK-155]
 milestone: local-gaps
 branch: pmk-117-show-sprint-current-in-the-pmkit-design
 created: 2026-10-26T17:58:03.307Z
-updated: 2026-10-26T23:46:25Z
+updated: 2026-10-28T00:11:38Z
 ---
 
 ## Description

@@ -7,11 +7,11 @@ priority: medium
 estimate: 3
 assignee: fred
 parent: EPC-1
-related: [PMK-112]
+related: [PMK-112, PMK-158, PMK-159]
 milestone: local-gaps
 branch: pmk-120-check-pmkit-config-yaml-in-loadconfig
 created: 2026-10-26T17:58:03.560Z
-updated: 2026-10-26T23:46:28Z
+updated: 2026-10-28T00:11:39Z
 ---
 
 ## Description

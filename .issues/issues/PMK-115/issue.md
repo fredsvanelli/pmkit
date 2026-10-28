@@ -7,11 +7,11 @@ priority: low
 estimate: 2
 assignee: fred
 parent: EPC-1
-related: [PMK-114]
+related: [PMK-114, PMK-152, PMK-153]
 milestone: local-gaps
 branch: pmk-115-cover-sprint-aliases-in-the-contract
 created: 2026-10-26T17:58:03.096Z
-updated: 2026-10-26T23:46:24Z
+updated: 2026-10-28T00:11:38Z
 ---
 
 ## Description

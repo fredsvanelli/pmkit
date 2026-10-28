@@ -7,11 +7,11 @@ priority: low
 estimate: 3
 assignee: fred
 parent: EPC-1
-related: [PMK-113]
+related: [PMK-113, PMK-160, PMK-161, PMK-162]
 milestone: local-gaps
 branch: pmk-123-carry-blockers-sub-issues-and-criteria
 created: 2026-10-26T17:58:03.785Z
-updated: 2026-10-26T23:46:30Z
+updated: 2026-10-28T00:11:40Z
 ---
 
 ## Description

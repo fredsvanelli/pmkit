@@ -7,11 +7,11 @@ priority: low
 estimate: 1
 assignee: fred
 parent: EPC-1
-related: [PMK-114]
+related: [PMK-114, PMK-154]
 milestone: local-gaps
 branch: pmk-116-say-there-is-no-active-sprint-in-issues
 created: 2026-10-26T17:58:03.226Z
-updated: 2026-10-26T23:46:25Z
+updated: 2026-10-28T00:11:38Z
 ---
 
 ## Description
