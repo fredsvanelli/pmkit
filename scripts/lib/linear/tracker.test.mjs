@@ -964,3 +964,39 @@ test('an unchanged parent sends no mutation, and a dry run matches the real writ
   const real = await linear.setParent('ACME-3', 'ACME-1', 'user-1')
   assert.deepEqual(comparable(dry.after), comparable(real.after))
 })
+
+const CYCLE_OPERATIONS = {
+  listCycles: (linear) => linear.listCycles(),
+  currentCycle: (linear) => linear.currentCycle(),
+  cycleIssues: (linear) => linear.cycleIssues('2'),
+  moveToCycle: (linear) => linear.moveToCycle(['ACME-1'], '2', 'user-1'),
+  openCycle: (linear) => linear.openCycle({ start: '2026-11-16' }, 'user-1'),
+  closeCycle: (linear) => linear.closeCycle('2', 'user-1'),
+  getCapacity: (linear) => linear.getCapacity('2'),
+  setCapacity: (linear) => linear.setCapacity('2', {}, 'user-1'),
+  getDaysOff: (linear) => linear.getDaysOff('2'),
+  updateCycleCapacity: (linear) => linear.updateCycleCapacity('2', { capacity: {} }, 'user-1'),
+}
+
+test('every cycle and capacity operation runs through guarded: no workspace gives NOT_CONFIGURED', async () => {
+  const { tracker: linear, fetch } = tracker(setup({ scope: {} }))
+  for (const [name, call] of Object.entries(CYCLE_OPERATIONS)) {
+    await assert.rejects(call(linear), { code: 'NOT_CONFIGURED', message: 'tracker.scope.workspace is not set' }, name)
+  }
+  assert.equal(fetch.calls.length, 0)
+})
+
+test('every cycle and capacity operation checks the mappings first', async () => {
+  const context = setup({ mappings: { status: { in_review: 'Peer Review' } } })
+  for (const [name, call] of Object.entries(CYCLE_OPERATIONS)) {
+    await assert.rejects(call(tracker(context).tracker), { code: 'NOT_CONFIGURED', nextStep: '/pmkit:setup' }, name)
+  }
+})
+
+test('the cycle operations are wired: open and close are final NOT_SUPPORTED answers, and reads reach the cycles', async () => {
+  const { tracker: linear } = cycling()
+  await assert.rejects(linear.openCycle({ start: '2026-11-16' }, 'user-1'), { code: 'NOT_SUPPORTED', message: /Linear creates cycles from the team's schedule/ })
+  await assert.rejects(linear.closeCycle('2', 'user-1'), { code: 'NOT_SUPPORTED', message: /Linear ends a cycle on its end date/ })
+  assert.deepEqual((await linear.listCycles()).map((sprint) => sprint.id), ['1', '2', '3'])
+  assert.equal((await linear.currentCycle()).id, '2')
+})
