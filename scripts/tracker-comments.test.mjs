@@ -108,3 +108,38 @@ test('dry run writes nothing for comment and logTime, and they validate the acto
   assert.throws(() => tracker.comment(id, 'x', 'nobody'), (error) => error.code === 'INVALID_INPUT')
   assert.throws(() => tracker.logTime('ISS-ZZZZ', 5, 'fred'), (error) => error.code === 'NOT_FOUND')
 })
+
+test('a reply writes reply_to and reads back as parent', () => {
+  const { tracker, id, paths, setNow } = setup()
+  const root = tracker.comment(id, 'question', 'fred')
+  setNow('2026-10-23T12:00:05Z')
+  const reply = tracker.comment(id, 'answer', 'fred', { replyTo: root.id })
+  assert.equal(reply.parent, root.id)
+  assert.equal(root.parent, undefined)
+  assert.match(fs.readFileSync(path.join(paths.comments, `${reply.id}.md`), 'utf8'), new RegExp(`reply_to: ${root.id}`))
+  assert.deepEqual(tracker.listComments(id).map((c) => c.parent), [undefined, root.id])
+})
+
+test('a reply to a reply attaches to the root', () => {
+  const { tracker, id, setNow } = setup()
+  const root = tracker.comment(id, 'question', 'fred')
+  setNow('2026-10-23T12:00:05Z')
+  const reply = tracker.comment(id, 'answer', 'fred', { replyTo: root.id })
+  setNow('2026-10-23T12:00:09Z')
+  assert.equal(tracker.comment(id, 'more', 'fred', { replyTo: reply.id }).parent, root.id)
+})
+
+test('a reply to an unknown comment is NOT_FOUND and writes nothing', () => {
+  const { tracker, id, root } = setup()
+  const before = hashTree(root)
+  assert.throws(() => tracker.comment(id, 'x', 'fred', { replyTo: 'nope' }), (e) => e.code === 'NOT_FOUND' && e.message === `comment nope is not on ${id}`)
+  assert.deepEqual(hashTree(root), before)
+})
+
+test('a dry-run reply returns the comment and writes nothing', () => {
+  const { tracker, id, root } = setup()
+  const parent = tracker.comment(id, 'question', 'fred')
+  const before = hashTree(root)
+  assert.equal(tracker.comment(id, 'answer', 'fred', { dryRun: true, replyTo: parent.id }).parent, parent.id)
+  assert.deepEqual(hashTree(root), before)
+})

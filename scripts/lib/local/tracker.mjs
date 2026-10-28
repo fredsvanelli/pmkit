@@ -584,6 +584,8 @@ export function createLocalTracker(root, {
       author: String(data.author ?? ''),
       body: split ? split.body.trim() : '',
       created: String(data.created ?? ''),
+      ...(data.reply_to === undefined ? {} : { parent: String(data.reply_to) }),
+      ...(data.resolved === undefined ? {} : { resolved: { at: String(data.resolved), by: String(data.resolved_by ?? '') } }),
     }
   }
 
@@ -636,9 +638,21 @@ export function createLocalTracker(root, {
     return { tracker: 'local', gitHost, generatedAt: stamp(), capabilities: buildCapabilities({ estimate: local.estimate, gitHost }) }
   }
 
-  function comment(id, body, actor, { dryRun = false } = {}) {
+  /** The comment `commentId` on issue `id`, or NOT_FOUND. */
+  function findComment(id, commentId) {
+    const found = listComments(id).find((c) => c.id === commentId)
+    if (!found) throw new PmkitError('NOT_FOUND', `comment ${commentId} is not on ${id}`, `pmkit issues get ${id} --comments`)
+    return found
+  }
+
+  function comment(id, body, actor, { dryRun = false, replyTo } = {}) {
     requireWriter(actor)
     if (typeof body !== 'string' || body.trim() === '') throw invalid('comment body must be a non-empty string')
+    let root
+    if (replyTo !== undefined) {
+      const found = findComment(id, replyTo)
+      root = found.parent ?? found.id
+    }
     let written
     // Settles drift and logs the event without rewriting issue.md; the comment lives in its own file.
     change(id, actor, { dryRun, eventsOnly: true }, (issue, meta) => {
@@ -646,10 +660,11 @@ export function createLocalTracker(root, {
       const base = `${fileSafe(meta.at)}-${fileSafe(actor)}`
       let name = base
       for (let n = 2; fs.existsSync(path.join(dir, `${name}.md`)); n++) name = `${base}-${n}`
-      written = { id: name, issue: issue.id, author: actor, body: body.trim(), created: meta.at }
+      written = { id: name, issue: issue.id, author: actor, body: body.trim(), created: meta.at, ...(root === undefined ? {} : { parent: root }) }
       if (!dryRun) {
         fs.mkdirSync(dir, { recursive: true })
-        writeFile(path.join(dir, `${name}.md`), joinFrontmatter({ author: actor, created: meta.at }, `${written.body}\n`, { order: ['author', 'created'] }))
+        const data = { author: actor, created: meta.at, ...(root === undefined ? {} : { reply_to: root }) }
+        writeFile(path.join(dir, `${name}.md`), joinFrontmatter(data, `${written.body}\n`, { order: ['author', 'created', 'reply_to'] }))
       }
       return [{ ...meta, op: 'comment', to: `${name}.md` }]
     })
