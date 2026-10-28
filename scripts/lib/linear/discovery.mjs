@@ -278,7 +278,7 @@ export function discoveryView(raw, pmkit = {}, { session } = {}) {
     discoveredAt: raw.discoveredAt,
     warnings,
   }
-  // The raw discovery rides along, hidden, so resolveMappings can read Linear's ids from the view alone.
+  // The view keeps the raw discovery as a hidden property, so resolveMappings can read Linear's ids from the view alone.
   Object.defineProperty(view, 'raw', { value: raw, enumerable: false })
   return view
 }
