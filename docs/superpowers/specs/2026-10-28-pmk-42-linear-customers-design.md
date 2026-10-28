@@ -51,7 +51,7 @@ Consequences:
 - `customerStatuses` and `customerTiers` answer on Free, so they prove nothing, as the triage reads did. They are also not needed to decide availability.
 - The schema shows no unit for `revenue`. The Linear UI treats it as the annual contract value. The command shows and sets the integer as Linear stores it and does not convert (builder's call).
 - `size` is read as a float and written as an integer. The command accepts a whole number.
-- Linear's docs page for customers was not read in this run. Stage 3 records the page and date in `API-VERIFICATION.md`, as PMK-43 did for triage. Until then the plan gate is the one in the Linear tab and the Unified model.
+- Linear's docs page for customers was not read in this run. Stage 3 records the page and date in `API-VERIFICATION.md`, as PMK-43 did for triage. The docs say all plans, so the plan gate in the Linear tab and the Unified model does not apply.
 
 ## Goals
 
@@ -143,10 +143,9 @@ A customer matches by id first, then by exact name, case-insensitive. Two custom
 | Order | Condition | `reason` | `enableHint` |
 |---|---|---|---|
 | 1 | `raw.flags.customersEnabled` is true | none, available | none |
-| 2 | The plan is not in `BUSINESS_PLANS` | `plan` | Linear customers need the Business or Enterprise plan |
-| 3 | The plan is in `BUSINESS_PLANS` | `customers_off` | Turn on customers in the workspace settings in Linear |
+| 2 | The flag is not true, on any plan | `customers_off` | An admin can turn on customer requests in the workspace settings. |
 
-`BUSINESS_PLANS` is the list the manifest exports. The plan is checked second because the flag is the fact Linear enforces. The plan only picks the hint that helps. The check reads the cached discovery (one hour, refreshed by `pmkit discover`). A user who has just upgraded runs `pmkit discover`.
+Linear's docs say Customer Requests exist on all plans and an admin turns them on. The user decided in the PMK-42 review that the docs win over the Linear tab, so the plan never changes the reason or the hint. The result still carries `plan` for display. The check reads the cached discovery (one hour, refreshed by `pmkit discover`). A user whose admin has just turned the feature on runs `pmkit discover`.
 
 ### What each command prints and returns
 
@@ -188,17 +187,17 @@ Globex      status Prospect tier -        revenue -        size 30    requests 1
 
 ```
 customers: unavailable
-reason: plan
+reason: customers_off
 plan: free
-enable: Linear customers need the Business or Enterprise plan
+enable: An admin can turn on customer requests in the workspace settings.
 ```
 
 ```json
 {
   "available": false,
-  "reason": "plan",
+  "reason": "customers_off",
   "plan": "free",
-  "enableHint": "Linear customers need the Business or Enterprise plan"
+  "enableHint": "An admin can turn on customer requests in the workspace settings."
 }
 ```
 
@@ -228,7 +227,7 @@ The write commands (`set`, `link`, with or without `--dry-run`) exit 2 with `NOT
 `commands/linear/customers.md` has the frontmatter and the five sections that `plugin.test.mjs` checks. `argument-hint` is `"[list|show|set|link]"`.
 
 1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`. When `tracker` is not `linear`, say the command works only with Linear and stop. This is the step the scenario runs on a Local fixture.
-2. Run `linear customers list --json`. When `available` is false, print the reason and the `enableHint`, and stop. Say that the Free and Basic plans have no customers.
+2. Run `linear customers list --json`. When `available` is false, print the reason and the `enableHint`, and stop. Say that an admin can turn on customer requests in the workspace settings on any plan.
 3. Show the customers with status, tier, revenue, size and request count. For one customer the user names, run `linear customers show` and show its requests and their targets.
 4. Ask with `AskUserQuestion` what to do next. The choices are edit a customer, link a request, or stop.
 5. For an edit, run `linear customers set ... --dry-run --json`, show `before` and `after`, and ask once to apply. For a link, run `linear customers link ... --dry-run --json`, show the customer, the target and whether it creates or moves a request, and ask once to apply. The preview is shown whatever `write_policy.confirm` says, because both writes change data the sales and product teams read.
@@ -238,7 +237,7 @@ Confirmation points are the next action (step 4) and the preview (step 5). Decli
 
 Output is the customers, what changed, and for a link the request and its target.
 
-If something is missing, no `LINEAR_API_KEY` is `AUTH` and the conventions say what to tell the user. A Local tracker stops at step 1. A Free workspace stops at step 2 with the hint.
+If something is missing, no `LINEAR_API_KEY` is `AUTH` and the conventions say what to tell the user. A Local tracker stops at step 1. A workspace with customers off stops at step 2 with the hint.
 
 ### What this command needs from other issues
 
@@ -246,10 +245,10 @@ Nothing from PMK-36, PMK-37 or PMK-38, and no operation from PMK-35. It reads th
 
 ## Tests
 
-- `customers.test.mjs`. `customersAvailability` for each row of the table, including `trial`, an unknown plan and a Business plan with the flag off. `customerView` and `requestView` for each target type, a missing tier, revenue and size, and an archived issue. `planCustomerEdit` for each flag, `--tier none`, an unknown status or tier, a no-op, a decimal revenue and a request that is not the customer's.
+- `customers.test.mjs`. `customersAvailability` for each row of the table, including `trial`, an unknown plan and a Business plan, each with the flag off. `customerView` and `requestView` for each target type, a missing tier, revenue and size, and an archived issue. `planCustomerEdit` for each flag, `--tier none`, an unknown status or tier, a no-op, a decimal revenue and a request that is not the customer's.
 - CLI tests in `cli-linear.test.mjs` over `fakeLinearFetch(fakeWorkspace({ ... }))` plus the customer routes.
-  - Free workspace (the proof for this issue). `list` and `show` exit 0 with `available: false`, `reason: plan` and the hint, in text and JSON. `set`, `link` and each with `--dry-run` exit 2 with `NOT_SUPPORTED`. The fetch log shows no customer query and no mutation in any of the six runs.
-  - Business workspace with customers off. `reason: customers_off`.
+  - Free workspace (the proof for this issue). `list` and `show` exit 0 with `available: false`, `reason: customers_off` and the hint, in text and JSON. `set`, `link` and each with `--dry-run` exit 2 with `NOT_SUPPORTED`. The fetch log shows no customer query and no mutation in any of the six runs.
+  - Business workspace with customers off. The same `reason: customers_off`.
   - Stale cache. The flag says on and the fake answers with Linear's "not available" error. The result is `available: false` with `reason: stale`, and no mutation goes out.
   - Present path. `list` with a filter, a limit and the sort. `show` with requests on an issue, on a project and on neither. `set` for each field, `--tier none` and each `INVALID_INPUT` case. `link` as create on an issue and on a project, as move with `--request`, and each `NOT_FOUND`, `INVALID_INPUT` and `CONFLICT` case. `--dry-run` sends no mutation, and each real write sends exactly one.
   - The mutation carries the ids Linear returned and no key in any body, log line or error.

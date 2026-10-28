@@ -3,20 +3,16 @@
 
 import { PmkitError } from '../errors.mjs'
 import { isIssueId } from './ids.mjs'
-import { BUSINESS_PLANS } from './manifest.mjs'
 
-const PLAN_HINT = 'Linear customers need the Business or Enterprise plan'
-const CUSTOMERS_OFF_HINT = 'Turn on customers in the workspace settings in Linear'
+const CUSTOMERS_OFF_HINT = 'An admin can turn on customer requests in the workspace settings.'
 
 /**
- * Whether the workspace has customers. raw is the cached discovery. The flag is the fact Linear enforces;
- * the plan only picks the reason and the hint.
+ * Whether the workspace has customers. raw is the cached discovery. The flag is the fact Linear enforces. Linear's
+ * docs say Customer Requests exist on all plans and an admin turns them on, so the plan changes nothing.
  */
 export function customersAvailability(raw) {
   if (raw.flags?.customersEnabled === true) return { available: true }
-  const plan = raw.workspace.plan
-  if (!BUSINESS_PLANS.includes(plan)) return { available: false, reason: 'plan', plan, enableHint: PLAN_HINT }
-  return { available: false, reason: 'customers_off', plan, enableHint: CUSTOMERS_OFF_HINT }
+  return { available: false, reason: 'customers_off', plan: raw.workspace.plan, enableHint: CUSTOMERS_OFF_HINT }
 }
 
 const name = (item) => (item ? { id: item.id, name: item.name } : null)
@@ -102,6 +98,12 @@ function pickByName(items, value, flag) {
 
 function wholeNumber(value, flag) {
   if (typeof value !== 'string' || !/^\d+$/.test(value)) throw bad(`--${flag} takes a whole number of at least 0, got "${value === true ? '' : value}"`, `Pass --${flag} 1000`)
+  return Number(value)
+}
+
+/** A number of at least 0 with an optional decimal part, for the Float fields. */
+function decimalNumber(value, flag) {
+  if (typeof value !== 'string' || !/^\d+(\.\d+)?$/.test(value)) throw bad(`--${flag} takes a number of at least 0, got "${value === true ? '' : value}"`, `Pass --${flag} 450`)
   return Number(value)
 }
 
@@ -274,8 +276,8 @@ function projected(before, input, { statuses, tiers, users }) {
 }
 
 /** Throws NOT_SUPPORTED for a write on a workspace without customers. */
-function refuseWrite({ reason, plan, enableHint }) {
-  const why = reason === 'plan' ? `plan ${plan}` : reason === 'stale' ? 'Linear reports none' : 'customers are off'
+function refuseWrite({ reason, enableHint }) {
+  const why = reason === 'stale' ? 'Linear reports none' : 'customers are off'
   throw new PmkitError('NOT_SUPPORTED', `customers are unavailable on this workspace (${why})`, enableHint)
 }
 
