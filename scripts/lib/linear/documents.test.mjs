@@ -31,10 +31,11 @@ test('documents that select issue fields start with the fragment', () => {
   assert.match(documents.ISSUE_FRAGMENT, /^fragment PmkitIssueFields on Issue \{/)
 })
 
-test('ISSUE_FRAGMENT is unchanged by PMK-36', () => {
+test('ISSUE_FRAGMENT is unchanged by PMK-36 and gains only the cycle in PMK-37', () => {
   assert.equal(documents.ISSUE_FRAGMENT, `fragment PmkitIssueFields on Issue {
   id identifier title description priority estimate dueDate branchName archivedAt trashed createdAt updatedAt
   team { id key } state { id name type } assignee { id } parent { identifier }
+  cycle { id number }
   labels(first: 50) { nodes { id name parent { name } } pageInfo { hasNextPage endCursor } }
   children(first: 50) { nodes { identifier } pageInfo { hasNextPage endCursor } }
   relations(first: 50) { nodes { id type relatedIssue { identifier state { id type } } } pageInfo { hasNextPage endCursor } }
