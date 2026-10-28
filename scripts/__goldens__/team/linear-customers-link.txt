@@ -1,0 +1,41 @@
+$ pmkit linear customers link --customer acme --issue ISS-1
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: `linear customers link` works only with the Linear tracker, and tracker.system is "local"
+next: node scripts/pmkit.mjs --help
+
+$ pmkit linear customers link --customer acme --issue ISS-1 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_SUPPORTED",
+    "message": "`linear customers link` works only with the Linear tracker, and tracker.system is \"local\"",
+    "nextStep": "node scripts/pmkit.mjs --help"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit linear customers link --customer acme --issue ISS-1 --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: `linear customers link` works only with the Linear tracker, and tracker.system is "local"
+next: node scripts/pmkit.mjs --help
+
+$ pmkit linear customers link --customer acme --issue ISS-1 --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_SUPPORTED",
+    "message": "`linear customers link` works only with the Linear tracker, and tracker.system is \"local\"",
+    "nextStep": "node scripts/pmkit.mjs --help"
+  }
+}
+--- stderr
+(empty)
