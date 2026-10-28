@@ -331,18 +331,18 @@ The blocked check reads the blocker's state from the relation node and maps it t
 | `mappings.status.<category>` | The category of a state on every read (already in `discoveryView`), the target of `moveToCategory`, and the state ids of the `categories` filter | Reads and filters use the state type. A move to `in_review` fails with `NOT_CONFIGURED`. A move to another category picks the first state by position. |
 | `mappings.status.<category>` naming a state the team lacks | | `discover` warns (PMK-33). A move to that category fails with `NOT_CONFIGURED` after one refresh. Reads and filters use the state type. |
 | `mappings.status.blocked` | None. It changes no category, no move target and no `blocked` filter in this issue. | Nothing changes. |
-| `mappings.fields.estimate` | Absent or `native`: Linear's estimate field | Any other value, `none` or a label group: `estimate` reads as unset and estimate writes fail with `NOT_SUPPORTED`. Size label groups are a follow-up issue. |
-| `mappings.types` | A map from a pmkit type name to one Linear label name, such as `{ bug: Bug, feature: Feature }`. A pmkit type with no label is not a key. `discover().types` lists the keys whose label exists in the scoped team or the workspace, in map order. | Absent: `discover().types` is `[]`, `type` reads as unset, and a `type` write or filter fails with `INVALID_INPUT`, next step `/pmkit:setup`. A key whose label is missing: `discover` warns `mappings.types.bug names Bug, which team ACME does not have`, and the type is left out. A value that is not such a map: `discover` warns and the adapter reads it as absent. |
+| `mappings.fields.estimate` | `native`: Linear's estimate field | Absent, any other value, `none` or a label group: `estimate` reads as unset and estimate writes fail with `NOT_SUPPORTED`. Size label groups are a follow-up issue. |
+| `mappings.types` | A map from a pmkit type name to one Linear label name, such as `{ bug: Bug, feature: Feature }`. A pmkit type with no label is not a key. `discover().types` lists every key, in map order. | Absent: `discover().types` is `[]`, `type` reads as unset, and a `type` write or filter fails with `INVALID_INPUT`, next step `/pmkit:setup`. A key whose label is missing: `discover` warns `mappings.types.bug names Bug, which team ACME does not have`, and the type stays in `discover().types`. A value that is not such a map: `discover` warns and the adapter reads it as absent. |
 
 The adapter reads no other key of `mappings.fields`. Priority, assignee and due date are Linear's own fields, and acceptance criteria always live in the `## Acceptance criteria` section. A value of `none`, which PMK-34 reserves for "the team has no such thing", counts as unset in every key.
 
-`readMappings(pmkit)` in `scripts/lib/linear/read-mappings.mjs` is the one reader of these keys. It returns `{ status: { <category>: name }, statusNone: [<category>], blockedStatus, types: [[type, labelName]], estimate: 'native' | null, problems: [] }`. PMK-34's `resolveMappings` is not merged yet and this issue imports nothing from its branch. When PMK-34 merges, `readMappings` switches to `resolveMappings` if their names and shapes differ, and the tests of this issue keep passing as the check.
+`readMappings(pmkit)` in `scripts/lib/linear/read-mappings.mjs` is the one reader of these keys. It returns `{ status: { <category>: name }, statusNone: [<category>], blockedStatus, types: { <type>: labelName }, typeOf, estimate: 'native' | null, problems: [] }`. PMK-34's `resolveMappings` is not merged yet and this issue imports nothing from its branch. When PMK-34 merges, `readMappings` switches to `resolveMappings` if their names and shapes differ, and the tests of this issue keep passing as the check.
 
 ### What PMK-34 gets
 
 - The `NOT_CONFIGURED` errors above, all with next step `/pmkit:setup`, as the points where "the command stops and asks". PMK-34 makes setup ask again for the key the error names.
 - `mappings.types` in the schema and the setup question. PMK-34 owns both. The shape is a map from a pmkit type name to one Linear label name. A good default to offer is the labels of a group named `Type`, or the flat labels `Bug` and `Feature` that the sandbox has.
-- An adapter that reads an absent `mappings.fields.estimate` as `native`. PMK-34's rule 4 reads it as no estimate; the switch to `resolveMappings` settles which rule wins.
+- An absent `mappings.fields.estimate` reads as no estimate, which matches PMK-34's rule 4. The switch to `resolveMappings` confirms the two agree.
 - `mappings.status.blocked` with no effect in this issue. PMK-34's rule 3 and a follow-up issue decide when it makes an issue blocked.
 - A rule for `mappings.status.in_progress`: setup can leave it unset when the first `started` state by position is the one the team means.
 
@@ -392,8 +392,8 @@ No test opens a socket. Every tracker test injects `fakeLinearFetch` and sets `P
 - `contract.test.mjs` under `scripts/lib/linear/`: the suite with the three families.
 - `client.test.mjs`: `operationName` with a fragment first, with comments, and with an anonymous query after a fragment. `fake-linear-api.test.mjs`: a named mutation after a fragment routes by its name.
 - `cli-linear.test.mjs`: `issues list --assignee me --json` sends the viewer's id; `issues assign ACME-1 me` assigns the viewer; `whoami` prints the viewer; `issues dependencies <non-issue id>` fails with `NOT_SUPPORTED` from `getDeliverable`, not `NOT_FOUND`; `issues list` prints the `hasMore` warning; `issues branch` uses Linear's name.
-- `read-mappings.test.mjs`: `mappings.types` read as a map in key order, a value that is not a map read as absent with a problem, `none` read as unset, an absent estimate read as `native`.
-- `discovery.test.mjs`: `types` from `mappings.types`, a missing label warned and left out, the type labels left out of `labels`.
+- `read-mappings.test.mjs`: `mappings.types` read as a map in key order, a value that is not a map read as absent with a problem, `none` read as unset, an absent estimate read as no estimate.
+- `discovery.test.mjs`: `types` from `mappings.types`, a missing label warned and kept, the type labels left out of `labels`.
 - `adapters.test.mjs`: the Linear `settings()` with `isEpicId` and `trackerBranch`, the Local `settings()` unchanged.
 - Every golden stays byte-identical, and the Local contract runs still run every test.
 - An opt-in live case joins `scripts/lib/linear/client-live.mjs` behind `PMKIT_LIVE=1`. It runs `searchIssues` once per translation row against the sandbox, read-only, and checks that Linear accepts each filter. Writes stay for PMK-39.
