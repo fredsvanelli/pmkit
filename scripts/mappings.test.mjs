@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { NONE, proposeMappings } from './lib/mappings.mjs'
+import { NONE, brokenMappings, parseMappingFlags, proposeMappings } from './lib/mappings.mjs'
 
 // A hand-written description. Nothing here names a tracker.
 function describe({ viewerTeams = ['AA'], teams, types = ['feature', 'bug'] } = {}) {
@@ -128,4 +128,60 @@ test('a kept value is not asked again and an answer wins over it', () => {
   const current = { scope: { workspace: 'acme', team: 'AA' }, status: { in_review: 'Review', blocked: 'Todo' }, types: {} }
   assert.deepEqual(paths(proposeMappings(describe(), current, {})), [])
   assert.equal(proposeMappings(describe(), current, { status: { blocked: NONE } }).values.status.blocked, NONE)
+})
+
+// brokenMappings and parseMappingFlags.
+const fileOf = (extra = {}) => ({ tracker: { scope: { workspace: 'acme', team: 'AA' } }, mappings: {}, ...extra })
+
+test('a missing team is one item and hides the rest', () => {
+  assert.deepEqual(brokenMappings(describe(), { tracker: { scope: {} }, mappings: { status: { in_review: 'x' } } }),
+    [{ path: 'tracker.scope.team', value: null, problem: 'tracker.scope.team is not set' }])
+  assert.deepEqual(brokenMappings(describe(), {}).map((item) => item.problem), ['tracker.scope.team is not set'])
+})
+
+test('a team the workspace lost, a status, a field and a label each give their problem', () => {
+  assert.deepEqual(brokenMappings(describe(), fileOf({ tracker: { scope: { team: 'ZZ' } } })),
+    [{ path: 'tracker.scope.team', value: 'ZZ', problem: 'tracker.scope.team names ZZ, which this workspace no longer has' }])
+  const d = describe()
+  d.teams[0].exists = (path, value) => !['Gone', 'native', 'Lost'].includes(value)
+  d.teams[0].problem = (path, value) => (path === 'mappings.fields.estimate' ? `${path} is ${value}, but team AA has estimates off` : undefined)
+  const items = brokenMappings(d, fileOf({
+    mappings: { status: { in_review: 'Gone', blocked: 'Fine' }, fields: { estimate: 'native' }, types: { bug: 'Lost', feature: 'Feature' } },
+  }))
+  assert.deepEqual(items.map((item) => [item.path, item.problem]), [
+    ['mappings.status.in_review', 'mappings.status.in_review names Gone, which team AA no longer has'],
+    ['mappings.fields.estimate', 'mappings.fields.estimate is native, but team AA has estimates off'],
+    ['mappings.types.bug', 'mappings.types.bug names Lost, which team AA no longer has'],
+  ])
+})
+
+test('none and absent keys are never broken, and a types entry is broken only when its label is missing', () => {
+  const d = describe()
+  d.teams[0].exists = () => false
+  assert.deepEqual(brokenMappings(d, fileOf({ mappings: { status: { in_review: NONE, blocked: NONE }, fields: { estimate: NONE }, types: {} } })), [])
+  assert.deepEqual(brokenMappings(d, fileOf()), [])
+})
+
+test('a broken value becomes a question with broken, and a broken team a team question', () => {
+  const d = describe()
+  d.teams[0].exists = (path, value) => value !== 'Gone'
+  const current = { scope: { workspace: 'acme', team: 'AA' }, status: { in_review: 'Gone', blocked: NONE }, types: {} }
+  const result = proposeMappings(d, current, {})
+  assert.deepEqual(result.questions.map((q) => q.path), ['mappings.status.in_review'])
+  assert.deepEqual(result.questions[0].broken, { was: 'Gone', problem: 'mappings.status.in_review names Gone, which team AA no longer has' })
+  assert.deepEqual(result.broken.map((item) => item.path), ['mappings.status.in_review'])
+  const lost = proposeMappings(d, { scope: { workspace: 'acme', team: 'ZZ' } }, {})
+  assert.deepEqual(lost.questions.map((q) => q.path), ['tracker.scope.team'])
+  assert.equal(lost.questions[0].broken.was, 'ZZ')
+})
+
+test('parseMappingFlags keeps spaces, accepts repeated flags and refuses a flag without a value', () => {
+  const ctx = (lists) => ({ list: (name) => lists[name] ?? [] })
+  assert.deepEqual(parseMappingFlags(ctx({ status: ['in_review=In Review', 'blocked=none'], field: ['estimate=native'], 'type-label': ['bug=Bug', 'bug=Defect'] })),
+    { status: { in_review: 'In Review', blocked: 'none' }, fields: { estimate: 'native' }, types: { bug: 'Defect' } })
+  assert.deepEqual(parseMappingFlags(ctx({ status: ['a=b=c'] })).status, { a: 'b=c' })
+  for (const flag of ['status', 'field', 'type-label']) {
+    assert.throws(() => parseMappingFlags(ctx({ [flag]: ['in_review'] })), (error) => error.code === 'INVALID_INPUT')
+    assert.throws(() => parseMappingFlags(ctx({ [flag]: ['=x'] })), (error) => error.code === 'INVALID_INPUT')
+  }
 })

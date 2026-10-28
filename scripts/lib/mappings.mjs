@@ -28,11 +28,56 @@ const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, 
 const isSet = (value) => typeof value === 'string' && value !== ''
 const pass = (candidates) => `Pass one of: ${[...candidates, NONE].join(', ')}`
 
-/** Broken items that name a team, status, field or label the tracker lacks. The team must exist. */
+const text = (value) => (typeof value === 'string' && value.trim() !== '' ? value : null)
+
+/** Broken items below the team: a status, field or label the team or the workspace no longer has. The team must exist. */
 function brokenItems(description, pmkit) {
-  void description
-  void pmkit
-  return []
+  const key = pmkit?.tracker?.scope?.team
+  const team = description.teams.find((item) => item.key === key)
+  if (!team) return []
+  const groups = [['status', pmkit?.mappings?.status], ['fields', pmkit?.mappings?.fields], ['types', pmkit?.mappings?.types]]
+  const items = []
+  for (const [group, entries] of groups) {
+    for (const [name, value] of Object.entries(entries ?? {})) {
+      if (text(value) === null || value === NONE) continue
+      const path = `mappings.${group}.${name}`
+      if (team.exists(path, value)) continue
+      items.push({ path, value, problem: team.problem?.(path, value) ?? `${path} names ${value}, which team ${team.key} no longer has` })
+    }
+  }
+  return items
+}
+
+/**
+ * Everything in a config that the tracker no longer has, as [{ path, value, problem }]. A missing team is one item,
+ * and it hides the rest because every other check needs the team. none and absent keys are never broken.
+ * pmkit is config.pmkit.
+ */
+export function brokenMappings(description, pmkit) {
+  const key = text(pmkit?.tracker?.scope?.team)
+  if (key === null) return [{ path: SCOPE_TEAM, value: null, problem: `${SCOPE_TEAM} is not set` }]
+  if (!description.teams.some((team) => team.key === key)) {
+    return [{ path: SCOPE_TEAM, value: key, problem: `${SCOPE_TEAM} names ${key}, which this workspace no longer has` }]
+  }
+  return brokenItems(description, pmkit)
+}
+
+/**
+ * The repeated --status, --field and --type-label options as { status, fields, types }. Each option is key=value:
+ * the value runs to the end of the argument, spaces included. A later option for the same key wins.
+ */
+export function parseMappingFlags(ctx) {
+  const read = (flag) => {
+    const out = {}
+    for (const item of ctx.list(flag)) {
+      const value = String(item)
+      const eq = value.indexOf('=')
+      if (eq <= 0 || eq === value.length - 1) throw invalid(`--${flag} ${value} needs the form key=value`, `Pass --${flag} <key>=<value>`)
+      out[value.slice(0, eq).trim()] = value.slice(eq + 1)
+    }
+    return out
+  }
+  return { status: read('status'), fields: read('field'), types: read('type-label') }
 }
 
 /** The team of the description whose key is `key`, or undefined. */
@@ -65,10 +110,6 @@ export function proposeMappings(description, current = {}, answers = {}) {
   checkKeys('status', given.status, STATUS_KEYS, '--status')
   checkKeys('fields', given.fields, FIELD_KEYS, '--field')
   checkKeys('types', given.types, description.types ?? [], '--type-label')
-
-  const pmkit = { tracker: { scope }, mappings: { status, fields, ...(types === undefined ? {} : { types }) } }
-  const brokenAll = brokenItems(description, pmkit)
-  const brokenAt = (path) => brokenAll.find((item) => item.path === path)
 
   const applied = []
   const questions = []
@@ -110,6 +151,9 @@ export function proposeMappings(description, current = {}, answers = {}) {
   result.team = teamKey
   result.values.scope.team = teamKey
   const team = teamOf(description, teamKey)
+  // Checked against the team the run ends with, which an answer may have changed.
+  const brokenAll = brokenItems(description, { tracker: { scope: { team: teamKey } }, mappings: { status, fields, ...(types === undefined ? {} : { types }) } })
+  const brokenAt = (path) => brokenAll.find((item) => item.path === path)
   for (const item of brokenAll) result.broken.push(item)
 
   // Statuses and fields: an answer, kept, broken, always asked, applied, asked, nothing.
