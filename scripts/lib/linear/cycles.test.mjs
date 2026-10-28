@@ -30,7 +30,13 @@ test('fields: id, name, goal and dates in the Local key order', () => {
   assert.equal(sprint.name, 'Autumn')
   assert.equal(sprint.goal, 'Ship it')
   assert.equal(sprint.start, '2026-11-02')
-  assert.equal(sprint.end, '2026-11-13')
+  assert.equal(sprint.end, '2026-11-12')
+})
+
+test('endsAt is an exclusive boundary, so end is the UTC date of the last millisecond before it', () => {
+  assert.equal(toSprint(node({ endsAt: '2026-11-13T00:00:00.000Z' })).end, '2026-11-12')
+  assert.equal(toSprint(node({ endsAt: '2026-11-13T00:00:00.001Z' })).end, '2026-11-13')
+  assert.equal(toSprint(node({ endsAt: '2026-11-13T09:00:00.000Z' })).end, '2026-11-13')
 })
 
 test('a null name gives Cycle <number> and a null description an empty goal', () => {

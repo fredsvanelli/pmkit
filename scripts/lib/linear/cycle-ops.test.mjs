@@ -6,6 +6,8 @@ import test from 'node:test'
 import { fakeRaw } from '../../fake-linear-nodes.mjs'
 import { ACME_STATES, ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeWorkspace } from '../../fake-linear-api.mjs'
 import { tempDir } from '../../test-helpers.mjs'
+import { overlaps } from '../local/sprints.mjs'
+import { businessDaysBetween } from '../metrics.mjs'
 import { createLinearClient, operationName } from './client.mjs'
 import { cycleOperations } from './cycle-ops.mjs'
 import { issueOperations } from './issue-ops.mjs'
@@ -47,7 +49,7 @@ test('listCycles returns sprints sorted by number, with the Local shape', async 
   const sprints = await ops.listCycles()
   assert.deepEqual(ids(sprints), ['1', '2', '3'])
   assert.deepEqual(sprints.map((sprint) => sprint.state), ['closed', 'active', 'planned'])
-  assert.deepEqual(sprints[1], { id: '2', name: 'Autumn', start: '2026-10-19', end: '2026-11-02', goal: 'Ship it', state: 'active', capacity: {}, daysOff: {} })
+  assert.deepEqual(sprints[1], { id: '2', name: 'Autumn', start: '2026-10-19', end: '2026-11-01', goal: 'Ship it', state: 'active', capacity: {}, daysOff: {} })
   assert.equal(sprints[0].closed, '2026-10-19T00:00:00.000Z')
 })
 
@@ -67,6 +69,22 @@ test('listCycles refuses a bad state before any request', async () => {
   const { ops, fetch } = await setup()
   await assert.rejects(ops.listCycles({ state: 'open' }), { code: 'INVALID_INPUT', message: 'state must be one of planned, active, closed' })
   assert.equal(fetch.calls.length, 0)
+})
+
+test('a cycle ends the day before the next one starts, so consecutive sprints do not overlap', async () => {
+  const { ops } = await setup()
+  const [one, two, three] = await ops.listCycles()
+  assert.deepEqual([one.end, two.end, three.end], ['2026-10-18', '2026-11-01', '2026-11-12'])
+  assert.equal(overlaps(one, two), false)
+  assert.equal(overlaps(two, three), false)
+})
+
+test('the weekdays of a sprint stop before the next cycle starts', async () => {
+  const { ops } = await setup()
+  const two = (await ops.listCycles())[1]
+  // businessDaysBetween counts the days after its first argument, so start from the day before the sprint.
+  const before = new Date(Date.parse(`${two.start}T00:00:00Z`) - 86400000).toISOString().slice(0, 10)
+  assert.equal(businessDaysBetween(before, two.end), 10)
 })
 
 test('listCycles reads only the cycles of the scope team', async () => {
@@ -296,6 +314,14 @@ test('capacity writes check members and dates, and refuse an actor that is not t
   await assert.rejects(ops.setCapacity('2', { 'user-1': 3 }, 'user-2'), { code: 'INVALID_INPUT', message: /owner of LINEAR_API_KEY/ })
   await assert.rejects(ops.setCapacity('99', { 'user-1': 3 }, ACTOR), { code: 'NOT_FOUND' })
   assert.equal(fs.existsSync(path.join(root, CAPACITY_FILE)), false)
+})
+
+test('a day off on the day of endsAt is outside the sprint, and the day before is inside', async () => {
+  const { ops } = await setup()
+  await assert.rejects(ops.updateCycleCapacity('2', { daysOff: { 'user-1': ['2026-11-02'] } }, ACTOR), { code: 'INVALID_INPUT', message: /outside the sprint 2026-10-19 to 2026-11-01/ })
+  await assert.rejects(ops.updateCycleCapacity('3', { daysOff: { 'user-1': ['2026-11-13'] } }, ACTOR), { code: 'INVALID_INPUT', message: /outside the sprint 2026-11-02 to 2026-11-12/ })
+  const last = await ops.updateCycleCapacity('3', { daysOff: { 'user-1': ['2026-11-12'] } }, ACTOR)
+  assert.deepEqual(last.after.daysOff, { 'user-1': ['2026-11-12'] })
 })
 
 test('a dry run on capacity returns the after and writes no file', async () => {

@@ -18,6 +18,12 @@ export function cycleState(node) {
 /** The UTC date part of a Linear timestamp. Whether Linear stores midnight UTC is unverified (spec, "Risks"). */
 const dateOf = (timestamp) => String(timestamp).slice(0, 10)
 
+/**
+ * The last day of a cycle. `endsAt` is an exclusive boundary (one cycle's `endsAt` is the next one's `startsAt`), and a
+ * Local `end` is inclusive, so the last day is the UTC date of the millisecond before `endsAt`.
+ */
+const lastDayOf = (endsAt) => new Date(Date.parse(endsAt) - 1).toISOString().slice(0, 10)
+
 /** The pmkit sprint of a cycle node. `local` holds the capacity and days off kept in .pmkit/capacity.yaml. */
 export function toSprint(node, local = {}) {
   const state = cycleState(node)
@@ -25,7 +31,7 @@ export function toSprint(node, local = {}) {
     id: String(node.number),
     name: node.name ?? `Cycle ${node.number}`,
     start: dateOf(node.startsAt),
-    end: dateOf(node.endsAt),
+    end: lastDayOf(node.endsAt),
     goal: node.description ?? '',
     state,
     ...(state === 'closed' && node.completedAt ? { closed: node.completedAt } : {}),

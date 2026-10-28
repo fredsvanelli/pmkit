@@ -583,6 +583,16 @@ test('the clock moves the flags', async () => {
   assert.deepEqual(cycleNumbers(active.body), [3])
 })
 
+test('endsAt is an exclusive boundary: at the instant one cycle ends the next is active', async () => {
+  const { fake, fetch } = cycleStore()
+  const activeAt = async (instant) => {
+    fake.cycles.setClock(instant)
+    return cycleNumbers((await send(fetch, CYCLES_QUERY, { filter: { and: [teamFilter('ACME'), { isActive: { eq: true } }] }, first: 10 })).body)
+  }
+  assert.deepEqual(await activeAt('2026-11-01T23:59:59.999Z'), [2])
+  assert.deepEqual(await activeAt('2026-11-02T00:00:00.000Z'), [3])
+})
+
 test('PmkitCycleByNumber returns the cycle with that number or an empty list', async () => {
   const { fetch } = cycleStore()
   const hit = await send(fetch, CYCLE_BY_NUMBER_QUERY, { filter: { and: [teamFilter('ACME'), { number: { eq: 2 } }] } })

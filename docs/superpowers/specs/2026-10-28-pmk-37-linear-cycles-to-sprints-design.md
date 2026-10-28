@@ -136,7 +136,7 @@ The common `Sprint` shape stays what the Local tracker returns: `id`, `name`, `s
 |---|---|
 | `id` | `String(number)` |
 | `name` | `name`, else `Cycle <number>` |
-| `start`, `end` | The `YYYY-MM-DD` part of `startsAt` and `endsAt`, read as UTC **(builder's call)**. Unverified; see "Risks". |
+| `start`, `end` | `start` is the `YYYY-MM-DD` part of `startsAt`, read as UTC **(builder's call)**. `endsAt` is an exclusive boundary (one cycle's `endsAt` is the next one's `startsAt`) and a Local `end` is inclusive, so `end` is the UTC date of `endsAt` minus 1 ms. Consecutive sprints then do not overlap, days off on the next cycle's first day fall outside the sprint, and the weekday count stops before the next cycle. Unverified; see "Risks". |
 | `goal` | `description`, `''` when null |
 | `state` | `active` when `isActive`, `planned` when `isFuture`, `closed` when `isPast`. A cycle that is none of the three counts as `closed`. |
 | `closed` | `completedAt`, set only for a closed cycle that has one |
@@ -312,7 +312,7 @@ The Linear contract run lists `['discovery', 'issues', 'relations', 'cycles']`. 
 
 No test opens a socket. Every tracker test injects `fakeLinearFetch` and sets `PMKIT_HOME` with `userStoreEnv()`.
 
-- `cycles.test.mjs`: `toSprint` for an active, a future and a past cycle, a null name, a null description, dates from `startsAt` and `endsAt`, `cycleKey` on good and bad shapes.
+- `cycles.test.mjs`: `toSprint` for an active, a future and a past cycle, a null name, a null description, dates from `startsAt` and `endsAt` (with `end` the day before `endsAt`), `cycleKey` on good and bad shapes.
 - `cycle-ops.test.mjs`: each read against the fake, including `state` filters and the order; `cycleIssues` of an unknown cycle gives `NOT_FOUND`; every `moveToCycle` case (to a number, `current`, `null`, no active cycle, an issue of another team, an unknown issue, a dry run that sends no mutation, a failure halfway that lists the ids moved); `openCycle` and `closeCycle` give `NOT_SUPPORTED` with their next steps and send no request; cycles off gives the `NOT_SUPPORTED` hint for reads and for the `sprint` filter and accepts `none` and `null`.
 - `capacity-store.test.mjs`: read with no file, write creates the file, a second cycle keeps the first, `member=null` clears days off, a date outside the cycle is refused, a bad `version` or YAML is refused and left untouched, a dry run writes no file, the output bytes are stable, and no file under the repository holds the key.
 - `filter.test.mjs`: the three `sprint` rows. `issues.test.mjs`: `sprint` from the fragment. `writes.test.mjs`: `sprint` on create and update, `null`, and the cycles-off answers.
@@ -355,7 +355,7 @@ All four are answered.
 
 ## Risks
 
-- The sandbox has no cycle, so every cycle read here is checked against a fake built from the schema. Three facts are unverified: the time of day in `startsAt` and `endsAt` (a UTC date may be one day off for a team in another time zone, and `end` may be the day after the last day), the value of `isPast` while a team is in cooldown, and whether `completedAt` is set on a cycle that ended by date. The date rule can be wrong by a day until a workspace with cycles confirms it. The opt-in live read records the answer in `API-VERIFICATION.md`.
+- The sandbox has no cycle, so every cycle read here is checked against a fake built from the schema. Four facts are unverified: that `endsAt` is an exclusive boundary equal to the next cycle's `startsAt` (the fixtures and the fake assume it, and the live read checks it), the time of day in `startsAt` and `endsAt` (a UTC date may be one day off for a team in another time zone), the value of `isPast` while a team is in cooldown, and whether `completedAt` is set on a cycle that ended by date. The date rule can be wrong by a day until a workspace with cycles confirms it. The opt-in live read records the answer in `API-VERIFICATION.md`.
 - The unfinished-issue rollover of Linear (a team setting) moves issues out of a cycle on its own. `/pmkit:cycle:close` assumes pmkit does the moves. PMK-40 and PMK-41 need to decide how the command behaves when Linear moves them first, and they must not rely on `closeCycle` succeeding.
 - `moveToCycle` can stop halfway. The error lists the issues already moved, and the caller sees the rest with `cycle issues`.
 - Capacity lives in a file under `.pmkit/`. A team that uses the sandbox or one Linear workspace from several repositories has several capacity files. A repository that changes its scope team keeps the old team's entries under the old key.

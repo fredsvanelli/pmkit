@@ -74,7 +74,7 @@ Answer `yes`. Triage responsibility is read/write and suggestions are read-only.
 
 ## Cycles (PMK-37)
 
-Checked on 2026-10-28 against the sandbox workspace, with reads only. The sandbox team has cycles turned off and no cycle, so a fact about a cycle's values stays `unverified` until a workspace with cycles runs `scripts/lib/linear/client-live.mjs`. That file prints the time of day in `startsAt` and `endsAt`, the cycles that ended but are not `isPast`, and how many `isPast` cycles have `completedAt`. The plan is to run it against the dedicated test team that PMK-39 creates.
+Checked on 2026-10-28 against the sandbox workspace, with reads only. The sandbox team has cycles turned off and no cycle, so a fact about a cycle's values stays `unverified` until a workspace with cycles runs `scripts/lib/linear/client-live.mjs`. That file checks that each cycle's `endsAt` is the next cycle's `startsAt` when the team has no cooldown, and prints the time of day in `startsAt` and `endsAt`, the cycles that ended but are not `isPast`, and how many `isPast` cycles have `completedAt`. The plan is to run it against the dedicated test team that PMK-39 creates.
 
 | Fact | Status | Source |
 |---|---|---|
@@ -89,7 +89,7 @@ Checked on 2026-10-28 against the sandbox workspace, with reads only. The sandbo
 | The sandbox team has `cyclesEnabled: false`, `activeCycle: null`, duration 2 weeks and cooldown 0 | read | `teams` |
 | `cycles(first: 5)` answers with an empty list | read | live read |
 | `issues(first: 3, filter: { cycle: { isActive: { eq: true } } })` answers with an empty list and no error | read | live read |
-| `startsAt` and `endsAt` are midnight UTC, so the UTC date part is the cycle's first and last day | unverified | needs a team with cycles |
+| `startsAt` is the cycle's first instant and `endsAt` an exclusive boundary (with no cooldown, one cycle's `endsAt` is the next cycle's `startsAt`), so a sprint's `start` is the UTC date of `startsAt` and its `end` the UTC date of `endsAt` minus 1 ms. Whether both are midnight UTC is also open | unverified | needs a team with cycles; `client-live.mjs` checks the boundary |
 | `isPast` is false while a cycle is in cooldown | unverified | needs a team with cycles |
 | `completedAt` is set on a cycle that ended by date | unverified | needs a team with cycles |
 | `issueUpdate` with `cycleId` of another team's cycle is refused | unverified | the fake refuses it from the schema; no write was sent |

@@ -931,7 +931,7 @@ test('cycle list, current and issues read Linear cycles as sprints', async () =>
   const list = await cycleCli(context, ['cycle', 'list'], fetch)
   assert.equal(list.code, 0, list.stderr)
   assert.deepEqual(JSON.parse(list.stdout).map((sprint) => [sprint.id, sprint.state, sprint.start, sprint.end]), [
-    ['1', 'closed', '2026-10-05', '2026-10-19'], ['2', 'active', '2026-10-19', '2026-11-02'], ['3', 'planned', '2026-11-02', '2026-11-13'],
+    ['1', 'closed', '2026-10-05', '2026-10-18'], ['2', 'active', '2026-10-19', '2026-11-01'], ['3', 'planned', '2026-11-02', '2026-11-12'],
   ])
   const planned = await cycleCli(context, ['cycle', 'list', '--state', 'planned'], fetch)
   assert.deepEqual(JSON.parse(planned.stdout).map((sprint) => sprint.id), ['3'])
@@ -940,7 +940,7 @@ test('cycle list, current and issues read Linear cycles as sprints', async () =>
   const issues = await cycleCli(context, ['cycle', 'issues', '2'], fetch)
   assert.deepEqual(JSON.parse(issues.stdout).map((issue) => issue.id), ['ACME-1'])
   const text = await cli(context, ['cycle', 'list'], fetch)
-  assert.match(text.stdout, /^2 +\| active +\| 2026-10-19 \| 2026-11-02 \| Autumn$/m)
+  assert.match(text.stdout, /^2 +\| active +\| 2026-10-19 \| 2026-11-01 \| Autumn$/m)
 })
 
 test('cycle issues of an unknown cycle exits 2 with NOT_FOUND', async () => {

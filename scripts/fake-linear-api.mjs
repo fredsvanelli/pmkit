@@ -243,6 +243,7 @@ class FakeValidationError extends Error {}
  * `unconfirm(operation, { applied })` makes the next call of that operation answer HTTP 502, after applying it when `applied` is true.
  * `cycles` seeds cycles ({ number, team, name, description, startsAt, endsAt, completedAt }; `team` is a team id, default the first team).
  * `fake.cycles` adds more, lists them and moves the cycle clock (`setClock`), which starts at the `clock` option (default `start`) and decides isActive, isFuture and isPast.
+ * `endsAt` is an exclusive boundary, as on Linear: at the instant `endsAt` a cycle is past, so a cycle that starts there is the active one.
  * A team with `cyclesEnabled: false` returns no cycles and takes no `cycleId`.
  */
 export function fakeLinearIssues({

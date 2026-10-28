@@ -168,6 +168,18 @@ test('reads the cycles of a team that has them, and records the time facts of th
     if (current) assert.ok(Array.isArray(await linear.cycleIssues(current.id)))
     // The facts the spec lists as unverified. Only shapes are printed, never a name, id or date.
     const { nodes } = await client().paginate(CYCLES_QUERY, { filter: { team: { key: { eq: team.key } } } }, { select: (data) => data.cycles, pageSize: 100 })
+    // endsAt is an exclusive boundary: with no cooldown, a cycle's endsAt is the next cycle's startsAt, and a sprint's end
+    // is the day before. A cooldown leaves a gap, so the check there is only that the next cycle does not start earlier.
+    const cooldown = (await client().request(`query PmkitLiveCooldown($id: String!) { team(id: $id) { cycleCooldownTime } }`, { id: team.id }))?.team?.cycleCooldownTime ?? 0
+    nodes.sort((a, b) => a.number - b.number)
+    for (const [previous, next] of nodes.slice(1).map((node, index) => [nodes[index], node])) {
+      if (next.number !== previous.number + 1) continue
+      if (cooldown === 0) assert.equal(previous.endsAt, next.startsAt, `cycle ${previous.number} does not end where cycle ${next.number} starts`)
+      else assert.ok(Date.parse(previous.endsAt) <= Date.parse(next.startsAt), `cycle ${previous.number} ends after cycle ${next.number} starts`)
+    }
+    for (const [previous, next] of sprints.slice(1).map((sprint, index) => [sprints[index], sprint])) {
+      assert.ok(previous.end < next.start, `sprint ${previous.id} overlaps sprint ${next.id}`)
+    }
     const times = [...new Set(nodes.flatMap((node) => [node.startsAt, node.endsAt]).map((value) => value.slice(11)))]
     const ended = nodes.filter((node) => Date.parse(node.endsAt) <= Date.now())
     const past = nodes.filter((node) => node.isPast)
