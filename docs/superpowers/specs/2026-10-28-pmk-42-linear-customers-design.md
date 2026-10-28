@@ -1,6 +1,6 @@
 # PMK-42 design: add the linear-customers command
 
-Issue PMK-42, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: draft, waiting for the answers in "Open questions". Decisions come from an autonomous brainstorming run on 2026-10-28 with no user dialogue, from the issue, ADR-0002, ADR-0005, the PMK-33 and PMK-43 specs, the code, and read-only schema calls to the sandbox workspace. Calls marked (builder's call) were made while writing this spec and change no acceptance criterion.
+Issue PMK-42, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: approved. The user accepted every recommendation in "Open questions" (all four answers are A). Decisions come from an autonomous brainstorming run on 2026-10-28 with no user dialogue, from the issue, ADR-0002, ADR-0005, the PMK-33 and PMK-43 specs, the code, and read-only schema calls to the sandbox workspace. Calls marked (builder's call) were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
@@ -62,7 +62,7 @@ Consequences:
 
 ## Non-goals
 
-- Creating, deleting, merging or archiving customers, and creating tiers or statuses (question 1).
+- Creating, deleting, merging or archiving customers, and creating tiers or statuses (resolved question 1).
 - Deleting, archiving or unlinking a request. `link` creates a request or moves one.
 - Customer-based prioritization (the generic `prioritize-by-demand` skill). It would read this command's output and is a separate issue.
 - Asks, and the Zendesk, Intercom and Front integrations. They are separate rows in domain 11.
@@ -207,7 +207,7 @@ The write commands (`set`, `link`, with or without `--dry-run`) exit 2 with `NOT
 `set` rules, with the capability present:
 
 - At least one field flag is required, or the command is `INVALID_INPUT`.
-- `--status` and `--tier` resolve a name to an id through `customerStatuses` and `customerTiers`, case-insensitive. `--tier none` clears the tier (`tierId` null). An unknown name is `INVALID_INPUT` and lists the valid names. The command creates no status or tier (question 1).
+- `--status` and `--tier` resolve a name to an id through `customerStatuses` and `customerTiers`, case-insensitive. `--tier none` clears the tier (`tierId` null). An unknown name is `INVALID_INPUT` and lists the valid names. The command creates no status or tier (resolved question 1).
 - `--revenue` and `--size` take a whole number of at least 0. A decimal, a negative number or text is `INVALID_INPUT`. There is no way to clear them in the first version (builder's call).
 - `--owner` takes a member id from `pmkit discover` that is not an app user, or `none`.
 - `--dry-run` reads the customer, builds the change and returns `{ before, after }` in the shape `list` uses for one customer. It sends no mutation. The text ends with "dry run: nothing was written".
@@ -279,17 +279,17 @@ Nothing from PMK-36, PMK-37 or PMK-38, and no operation from PMK-35. It reads th
 | Reads exit 0 with `available: false`, writes exit 2 with `NOT_SUPPORTED` | It follows PMK-43 and the Linear tab's "degrade on Free". |
 | No manifest change | `demand_signals` already reports `native` or `absent` from the same flag. |
 | Names, not ids, for status, tier, customer and project | A user does not hold Linear ids. An ambiguous or unknown name fails with the valid choices. |
-| `link` creates or moves a request and never deletes one | The acceptance criterion says link. A destructive change on customer data needs its own decision (question 1). |
+| `link` creates or moves a request and never deletes one | The acceptance criterion says link. A destructive change on customer data needs its own decision (resolved question 1). |
 | The command always previews and asks once before `set` and `link` | Both change data other teams read. The criterion says "after confirmation". |
 | Revenue and size are plain integers as Linear stores them | The schema states no unit, and a conversion would invent one. |
 | The command uses `isIssueId` from PMK-35 and no issue operation | It checks a key without a dependency on the issue write path. |
 
-## Open questions
+## Resolved questions
 
-1. Should the command create and delete customers, tiers and statuses? The criterion says "lists and edits". Options. A) No. `set` edits only the fields of an existing customer with an existing tier and status (this spec). B) Add `linear customers create`, which needs name, status and tier. C) Add create and delete too. Recommendation A. Customers usually arrive from Slack, Intercom and Zendesk syncs, and create and delete cannot be tried on Free. B can follow once a Business workspace is available.
-2. Can `link` move an existing request to another issue or project with `--request`? The criterion says "links". Options. A) Yes, as designed, since a request that was filed on the wrong issue is the common case. B) Create only, and say to move it in Linear. Recommendation A, because the move uses one more mutation of the same family and the same preview.
-3. What does `link` do when the customer already has a request on the target? Options. A) Stop with `CONFLICT` and name the request (this spec). B) Add a second request. C) Update the existing one silently. Recommendation A. Linear allows several requests per customer and issue, but an agent that adds a second one by mistake pollutes the count that prioritization reads.
-4. Should `list` sort by revenue, or keep Linear's order? Options. A) Revenue, highest first, done in code (this spec), so the list reads as "who matters most". B) Linear's order, with `--sort` later. Recommendation A, because the Linear tab names the use "Impact-based prioritization". It costs one pass over at most 100 customers.
+1. Create and delete of customers, tiers and statuses: no. `set` edits only an existing customer with an existing tier and status. Create can follow once a Business workspace is available.
+2. `link` can move an existing request to another issue or project with `--request`.
+3. A request that already exists on the same target answers `CONFLICT` and names the request.
+4. `list` sorts by revenue, highest first, in code.
 
 ## Risks
 
