@@ -1,6 +1,11 @@
 // A Linear issue as a pmkit issue: ids, priorities and the acceptance criteria section of the description.
 // See docs/superpowers/specs/2026-10-27-pmk-35-linear-issues-relations-search-design.md, "The issue model".
 
+import { compareIds } from '../ids.mjs'
+import { TERMINAL } from '../model.mjs'
+import { categoryOfType, estimateScale } from './discovery.mjs'
+import { readMappings } from './read-mappings.mjs'
+
 const ISSUE_ID = /^[A-Za-z][A-Za-z0-9_]*-[0-9]+$/
 
 /** True for a Linear identifier such as ACME-12, in any case. A UUID is not an id in pmkit. */
@@ -51,4 +56,86 @@ export function parseDescription(text) {
 export function buildDescription(description, criteria) {
   const section = criteria.length === 0 ? '' : [CRITERIA_HEADING, '', ...criteria.map((item) => `- [${item.done ? 'x' : ' '}] ${item.text}`)].join('\n')
   return [description.trim(), section].filter((part) => part !== '').join('\n\n')
+}
+
+/**
+ * @typedef {object} LinearContext
+ * @property {object} raw the raw discovery: teams, states, labels, users
+ * @property {ReturnType<typeof readMappings>} mappings
+ * @property {{ id: string, name: string }} viewer the owner of LINEAR_API_KEY
+ * @property {object | null} scopeTeam the raw team that tracker.scope.team names, or null
+ * @property {string[]} priorities
+ */
+
+/** @returns {LinearContext} */
+export function makeContext(raw, pmkit, viewer) {
+  const key = pmkit?.tracker?.scope?.team
+  const scopeTeam = key ? (raw.teams.find((team) => team.key === key) ?? null) : null
+  return { raw, mappings: readMappings(pmkit), viewer, scopeTeam, priorities: ['urgent', 'high', 'medium', 'low'] }
+}
+
+/**
+ * The pmkit category of a Linear state: mappings.status by name, else the state type, else in_progress, as discoveryView decides.
+ * A relation node's state has no name, so the name comes from the discovered state with the same id.
+ */
+export function stateCategory(state, context) {
+  const name = state.name ?? context.raw.states.find((item) => item.id === state.id)?.name
+  const mapped = Object.keys(context.mappings.status).find((category) => context.mappings.status[category] === name)
+  return mapped ?? categoryOfType(state.type) ?? 'in_progress'
+}
+
+const identifiers = (nodes) => [...new Set(nodes)].sort(compareIds)
+const nodesOf = (connection) => connection?.nodes ?? []
+
+/** The pmkit estimate of a node: a number on a points team, a size on a t-shirt team, undefined when the estimate is not native. */
+function estimateOf(node, context) {
+  if (context.mappings.estimate !== 'native' || typeof node.estimate !== 'number') return undefined
+  const team = context.raw.teams.find((item) => item.id === node.team?.id)
+  const scale = estimateScale(team?.estimation)
+  if (scale.unit !== 'sizes') return node.estimate
+  return Object.keys(scale.values).find((size) => scale.values[size] === node.estimate) ?? node.estimate
+}
+
+/** The pmkit issue of a fragment-shaped node, or null for an issue in Linear's trash. Unset fields are absent keys. */
+export function toIssue(node, context) {
+  if (node.trashed === true) return null
+  const labelNames = nodesOf(node.labels).map((label) => label.name)
+  const typeLabels = new Set(Object.values(context.mappings.types))
+  const out = nodesOf(node.relations)
+  const inverse = nodesOf(node.inverseRelations)
+  const { description, acceptanceCriteria } = parseDescription(node.description)
+  const issue = { id: node.identifier, title: node.title }
+  const type = context.mappings.typeOf(labelNames)
+  if (type !== null) issue.type = type
+  issue.status = { name: node.state.name, category: stateCategory(node.state, context) }
+  const priority = priorityOf(node.priority)
+  if (priority !== undefined) issue.priority = priority
+  const estimate = estimateOf(node, context)
+  if (estimate !== undefined) issue.estimate = estimate
+  if (node.assignee?.id) issue.assignee = node.assignee.id
+  issue.labels = [...new Set(labelNames.filter((name) => !typeLabels.has(name)))].sort()
+  if (node.parent?.identifier) issue.parent = node.parent.identifier
+  issue.blockedBy = identifiers(inverse.filter((item) => item.type === 'blocks').map((item) => item.issue.identifier))
+  issue.blocks = identifiers(out.filter((item) => item.type === 'blocks').map((item) => item.relatedIssue.identifier))
+  issue.related = identifiers([
+    ...out.filter((item) => item.type === 'related').map((item) => item.relatedIssue.identifier),
+    ...inverse.filter((item) => item.type === 'related').map((item) => item.issue.identifier),
+  ])
+  issue.duplicateOf = identifiers(out.filter((item) => item.type === 'duplicate').map((item) => item.relatedIssue.identifier))
+  issue.children = identifiers(nodesOf(node.children).map((child) => child.identifier))
+  issue.archived = node.archivedAt !== null && node.archivedAt !== undefined
+  if (node.dueDate) issue.due = node.dueDate
+  if (node.branchName) issue.branch = node.branchName
+  issue.description = description
+  issue.acceptanceCriteria = acceptanceCriteria
+  issue.created = node.createdAt
+  issue.updated = node.updatedAt
+  return issue
+}
+
+/** True when a blocks relation into the node comes from an issue that is open, or whose state Linear did not return. */
+export function blockedOpen(node, context) {
+  return nodesOf(node.inverseRelations).some(
+    (item) => item.type === 'blocks' && (!item.issue?.state || !TERMINAL.includes(stateCategory(item.issue.state, context))),
+  )
 }
