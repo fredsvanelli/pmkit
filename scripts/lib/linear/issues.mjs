@@ -80,7 +80,7 @@ export function makeContext(raw, pmkit, viewer) {
 }
 
 /** The mappings of the team a node or state belongs to, or of the scope team when the team is unknown. */
-const mappingsOfTeam = (teamId, context) => {
+export const mappingsOfTeam = (teamId, context) => {
   const team = context.raw.teams.find((item) => item.id === teamId)
   return team ? context.mappingsOf(team) : context.mappings
 }
@@ -100,7 +100,7 @@ const identifiers = (nodes) => [...new Set(nodes)].sort(compareIds)
 const nodesOf = (connection) => connection?.nodes ?? []
 
 /** The pmkit estimate of a node: a number on a points team, a size on a t-shirt team, undefined when the estimate is not native. */
-function estimateOf(node, context) {
+export function estimateOf(node, context) {
   if (mappingsOfTeam(node.team?.id, context)?.estimate !== 'native' || typeof node.estimate !== 'number') return undefined
   const team = context.raw.teams.find((item) => item.id === node.team?.id)
   const scale = estimateScale(team?.estimation)
