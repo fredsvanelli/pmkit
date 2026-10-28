@@ -2,14 +2,16 @@
 id: PMK-30
 title: Add the Linear API client
 type: feature
-status: backlog
+status: in_progress
 priority: medium
 estimate: 5
+assignee: fred
 parent: EPC-5
 blocked_by: [PMK-28]
 milestone: linear
+branch: pmk-30-add-the-linear-api-client
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-25T19:13:24Z
+updated: 2026-10-28T00:14:27Z
 ---
 
 ## Description
