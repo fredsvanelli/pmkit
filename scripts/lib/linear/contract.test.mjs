@@ -1,4 +1,4 @@
-// The tracker contract suite against the Linear adapter over the stateful fake. Only the families PMK-35 implements run.
+// The tracker contract suite against the Linear adapter over the stateful fake. Only the families PMK-35 and PMK-36 implement run.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -28,7 +28,7 @@ function linearContract() {
   return { tracker, env, fake, actor: 'user-1', teardown: () => fs.rmSync(root, { recursive: true, force: true }) }
 }
 
-runTrackerContract({ name: 'Linear tracker contract over the fake', families: ['discovery', 'issues', 'relations'], setup: linearContract })
+runTrackerContract({ name: 'Linear tracker contract over the fake', families: ['discovery', 'issues', 'relations', 'history'], setup: linearContract })
 
 test('no file under PMKIT_HOME holds the key after a create', async () => {
   const { tracker, env, actor, teardown } = linearContract()

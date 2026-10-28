@@ -127,14 +127,47 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       await tracker.updateIssue(id, { title: 'Talked about more' }, actor)
       const comment = await tracker.comment(id, 'First thought', actor)
       assert.equal(comment.body, 'First thought')
-      await tracker.logTime(id, 30, actor)
       assert.deepEqual((await tracker.listComments(id)).map((entry) => entry.body), ['First thought'])
       const history = await tracker.getHistory(id)
-      assert.deepEqual(history.map((event) => event.op), ['create', 'update', 'comment', 'log_time'])
+      assert.deepEqual(history.map((event) => event.op), ['create', 'update', 'comment'])
       const stamps = history.map((event) => event.at)
       assert.deepEqual(stamps, [...stamps].sort())
       await rejects(() => tracker.comment(id, '   ', actor), 'INVALID_INPUT')
-      await rejects(() => tracker.logTime(id, 0, actor), 'INVALID_INPUT')
+    })
+
+    it('lists, replies to and resolves comment threads', ['history'], async ({ tracker, actor }) => {
+      const { id } = (await tracker.createIssue({ title: 'Threaded' }, actor)).after
+      const root = await tracker.comment(id, 'Question', actor)
+      const reply = await tracker.comment(id, 'Answer', actor, { replyTo: root.id })
+      assert.equal(reply.parent, root.id)
+      assert.equal(root.parent, undefined)
+      const listed = await tracker.listComments(id)
+      assert.deepEqual(listed.map((c) => c.body), ['Question', 'Answer'])
+      assert.deepEqual(listed.map((c) => c.parent), [undefined, root.id])
+      const nested = await tracker.comment(id, 'More', actor, { replyTo: reply.id })
+      assert.equal(nested.parent, root.id)
+      const first = await tracker.resolveThread(id, reply.id, actor)
+      assert.equal(first.after.id, root.id)
+      assert.equal(first.after.resolved.by, actor)
+      const again = await tracker.resolveThread(id, root.id, actor)
+      assert.deepEqual(again.after, again.before)
+      await rejects(() => tracker.resolveThread(id, 'missing', actor), 'NOT_FOUND')
+      await rejects(() => tracker.comment(id, 'x', actor, { replyTo: 'missing' }), 'NOT_FOUND')
+      const resolvedEvents = (await tracker.getHistory(id)).filter((e) => e.op === 'comment' && e.field === 'resolved')
+      assert.equal(resolvedEvents.length, 1)
+      assert.equal((await tracker.listComments(id)).find((c) => c.id === root.id).resolved.by, actor)
+    })
+
+    it('returns the events of every issue, tagged and sorted', ['history'], async ({ tracker, actor }) => {
+      const a = (await tracker.createIssue({ title: 'First' }, actor)).after.id
+      const b = (await tracker.createIssue({ title: 'Second' }, actor)).after.id
+      await tracker.updateIssue(a, { title: 'First, renamed' }, actor)
+      const all = await tracker.metricEvents()
+      assert.ok(all.some((e) => e.issue === a) && all.some((e) => e.issue === b))
+      const stamps = all.map((e) => e.at)
+      assert.deepEqual(stamps, [...stamps].sort())
+      const last = all.at(-1).at
+      assert.deepEqual((await tracker.metricEvents({ since: last })).map((e) => e.at).filter((at) => at < last), [])
     })
 
     it('opens a cycle, adds issues, closes it and lists the unfinished ones', ['cycles'], async ({ tracker, actor, today }) => {
@@ -371,6 +404,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       const logged = (await tracker.getHistory(id)).filter((event) => event.op === 'log_time')
       assert.deepEqual(logged.map((event) => event.minutes), [45])
       assert.ok((await tracker.metricEvents()).some((event) => event.issue === id && event.op === 'log_time'))
+      await rejects(() => tracker.logTime(id, 0, actor), 'INVALID_INPUT')
     })
 
     it('archived issues drop out of search', ['issues'], async ({ tracker, actor }) => {

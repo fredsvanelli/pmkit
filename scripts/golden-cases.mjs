@@ -46,6 +46,8 @@ export const CASES = {
   'issues link': (a) => [[a.issue, a.other, '--kind', 'blocks']],
   'issues parent': (a) => [[a.issue, a.epic]],
   'issues comment': (a) => [[a.issue, '--body-file', input('comment.md')]],
+  // No fixture issue has a thread to resolve, so the case is the refusal for a comment that is not there.
+  'issues resolve': (a) => [[a.issue, 'missing-comment']],
   'issues log-time': (a) => [[a.issue, '30']],
   'issues archive': (a) => [[a.issue]],
   'cycle list': () => [[], ['--state', 'closed']],

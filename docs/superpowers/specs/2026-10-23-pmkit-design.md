@@ -61,7 +61,7 @@ Entities in the MVP:
 | Entity | Fields |
 |---|---|
 | Issue | `id`, `title`, `type`, `status` (`{ name, category }`), `priority`, `estimate`, `assignee`, `labels`, `parent`, `blockedBy`, `blocks` (computed), `related`, `duplicateOf`, `children` (computed), `archived`, `sprint`, `milestone`, `release`, `due`, `branch`, `description`, `acceptanceCriteria` (`[{ text, done }]`), `created`, `updated` |
-| Comment | `id`, `issue`, `author`, `body`, `created` |
+| Comment | `id`, `issue`, `author`, `body`, `created`, and two optional thread keys: `parent` (the root comment, on a reply only) and `resolved` (`{ at, by }`, on a resolved root only) |
 | Event | `at`, `by`, `op`, `field`, `from`, `to`, `minutes`, `synthetic` |
 | Sprint | `id`, `name`, `start`, `end`, `goal`, `state` (`planned`, `active`, `closed`), `closed` (optional, ISO timestamp of the close with `Z` or an offset, set by `closeCycle`), `capacity` (member id → points or hours), `daysOff` (member id → dates) |
 | Epic | `id`, `title`, `status`, `start`, `target`, `milestone`, `description` |
@@ -89,7 +89,7 @@ The operations the MVP needs, grouped by family. Every write takes an `actor` (a
 | Discovery | `discover()` → statuses, types, priorities, labels, members, estimate scale; `capabilities()` |
 | Issues | `searchIssues(filter)`, `getIssue(id)`, `createIssue(input, actor)`, `updateIssue(id, patch, actor)`, `moveToCategory(id, category, actor, { status })`, `assign(id, member, actor)`, `archive(id, actor)` |
 | Relations | `link(from, to, kind, actor)`, `unlink(from, to, kind, actor)` with kind `blocks`, `related` or `duplicate`; `setParent(id, parent, actor)` |
-| History and comments | `getHistory(id, { since })`, `listComments(id)`, `comment(id, body, actor)` |
+| History and comments | `getHistory(id, { since })`, `listComments(id)`, `comment(id, body, actor, { replyTo })`, `resolveThread(id, commentId, actor)` |
 | Cycles | `listCycles({ state })`, `currentCycle()`, `cycleIssues(id)`, `openCycle(input, actor)`, `closeCycle(id, actor)`, `moveToCycle(ids, sprint, actor)` |
 | Deliverables | `listDeliverables()`, `getDeliverable(id)`, `deliverableProgress(id)`, `createDeliverable(input, actor)`, `publishStatusUpdate(update, actor)`, `listStatusUpdates(epic)` |
 | Milestones | `listMilestones()`, `getMilestone(id)`, `createMilestone(input, actor)` |
@@ -250,6 +250,8 @@ Archived issues keep their folder and get `archived: true`. Searches skip them u
 ### Comments
 
 One file per comment, `comments/<timestamp>-<author>.md`, with frontmatter `author` and `created`. The timestamp uses `-` instead of `:` so the name is valid on Windows. Two people commenting at once never touch the same file.
+
+A reply adds `reply_to: <root comment id>` to its frontmatter. A reply to a reply takes the root, so threads are one level deep. Resolving a thread adds `resolved: <timestamp>` and `resolved_by: <member>` to the root's file and logs a `comment` event with field `resolved`. The three keys are optional, so a comment file without them reads as before and the tracker format stays 2.
 
 ### IDs
 

@@ -11,6 +11,8 @@ import { isMutation, operationName } from './lib/linear/client.mjs'
 import { useLinear } from './fake-hosted.mjs'
 import { ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeTriage, fakeWorkspace } from './fake-linear-api.mjs'
 import { childEnv } from './golden-helpers.mjs'
+import { createLocalTracker } from './lib/local/tracker.mjs'
+import { categoryLookup, cycleTimes, doneInRange, groupEventsByIssue } from './lib/metrics.mjs'
 import { makeRepo, userStoreEnv } from './test-helpers.mjs'
 
 // gitUserEmail reads the process environment, so the in-process runs need the same git isolation as childEnv.
@@ -786,5 +788,121 @@ test('only the three set paths send a mutation', async () => {
     const result = await cli(setup(), ['linear', 'triage', ...args, '--json'], fetch)
     assert.equal(result.code, 0, `${args.join(' ')}: ${result.stderr}`)
     assert.equal(mutationCalls(fetch).length, 0, args.join(' '))
+  }
+})
+
+// PMK-36: history, comments, threads and metrics over the fake.
+
+const STATE = { backlog: { id: 'state-1', name: 'Backlog', type: 'backlog' }, progress: { id: 'state-3', name: 'In Progress', type: 'started' }, done: { id: 'state-8', name: 'Done', type: 'completed' } }
+const linear = (fetch, args) => cli(setup({ edit: withTeam }), args, fetch)
+const bodyFile = (text) => {
+  const file = path.join(tempDir('pmkit-body-'), 'c.md')
+  fs.writeFileSync(file, text)
+  return file
+}
+
+test('issues get --history and --comments read Linear, with thread lines in the text', async () => {
+  const { fake, fetch } = withIssues()
+  fake.seed({ title: 'Talk' }, { createdAt: '2026-10-01T00:00:00.000Z' })
+  fake.history('ACME-1', { createdAt: '2026-10-02T00:00:00.000Z', fromTitle: 'Chat', toTitle: 'Talk' })
+  fake.comment('ACME-1', { id: 'c-1', body: 'Question?', createdAt: '2026-10-03T00:00:00.000Z', resolvedAt: '2026-10-05T00:00:00.000Z', resolvingUserId: 'user-1' })
+  fake.comment('ACME-1', { id: 'c-2', body: 'Answer.', createdAt: '2026-10-04T00:00:00.000Z', parentId: 'c-1' })
+  const json = await linear(fetch, ['issues', 'get', 'ACME-1', '--history', '--comments', '--json'])
+  assert.equal(json.code, 0, json.stderr)
+  const data = JSON.parse(json.stdout)
+  assert.deepEqual(data.history.map((e) => [e.op, e.field]), [['create', undefined], ['update', 'title'], ['comment', undefined], ['comment', undefined], ['comment', 'resolved']])
+  assert.deepEqual(data.comments.map((c) => [c.id, c.parent, c.resolved?.by]), [['c-1', undefined, 'user-1'], ['c-2', 'c-1', undefined]])
+  const text = await linear(fetch, ['issues', 'get', 'ACME-1', '--history', '--comments'])
+  assert.equal(text.code, 0, text.stderr)
+  assert.match(text.stdout, /^2026-10-04T00:00:00\.000Z user-1 \(reply to c-1\)$/m)
+  assert.match(text.stdout, /^resolved 2026-10-05T00:00:00\.000Z by user-1$/m)
+  assert.match(text.stdout, /^comments:$/m)
+  assert.match(text.stdout, /^history:$/m)
+  assert.equal(text.stderr, '')
+})
+
+test('issues comment --reply-to and issues resolve write to Linear, and their dry runs write nothing', async () => {
+  const { fake, fetch } = withIssues(['Talk'])
+  const context = setup({ edit: withTeam })
+  const root = JSON.parse((await cli(context, ['issues', 'comment', 'ACME-1', '--body-file', bodyFile('Question?'), '--json'], fetch)).stdout)
+  const reply = JSON.parse((await cli(context, ['issues', 'comment', 'ACME-1', '--body-file', bodyFile('Answer.'), '--reply-to', root.id, '--json'], fetch)).stdout)
+  assert.equal(reply.parent, root.id)
+  assert.deepEqual(fake.mutations, ['PmkitCommentCreate', 'PmkitCommentCreate'])
+  const dryComment = await cli(context, ['issues', 'comment', 'ACME-1', '--body-file', bodyFile('Draft'), '--dry-run', '--json'], fetch)
+  assert.equal(dryComment.code, 0, dryComment.stderr)
+  const dryResolve = await cli(context, ['issues', 'resolve', 'ACME-1', reply.id, '--dry-run'], fetch)
+  assert.equal(dryResolve.code, 0, dryResolve.stderr)
+  assert.match(dryResolve.stdout, new RegExp(`^resolved the thread ${root.id} on ACME-1`))
+  assert.match(dryResolve.stdout, /dry run: nothing was written/)
+  assert.equal(fake.mutations.length, 2)
+  const done = await cli(context, ['issues', 'resolve', 'ACME-1', reply.id, '--json'], fetch)
+  assert.equal(done.code, 0, done.stderr)
+  assert.equal(JSON.parse(done.stdout).after.resolved.by, 'user-1')
+  assert.deepEqual(fake.mutations.slice(2), ['PmkitCommentResolve'])
+})
+
+test('issues comment with --as another member exits 2 with INVALID_INPUT and writes nothing', async () => {
+  const { fake, fetch } = withIssues(['Talk'])
+  const result = await linear(fetch, ['issues', 'comment', 'ACME-1', '--body-file', bodyFile('x'), '--as', 'user-2', '--json'])
+  assert.equal(result.code, 2)
+  assert.equal(errorOf(result).code, 'INVALID_INPUT')
+  assert.deepEqual(fake.mutations, [])
+})
+
+test('metrics cycle-time on Linear gives the days Local gives for the same moves', async () => {
+  const { fake, fetch } = withIssues()
+  fake.seed({ title: 'Flow', stateId: STATE.done.id }, { createdAt: '2026-10-01T00:00:00.000Z' })
+  fake.history('ACME-1', { createdAt: '2026-10-02T00:00:00.000Z', fromState: STATE.backlog, toState: STATE.progress })
+  fake.history('ACME-1', { createdAt: '2026-10-05T12:00:00.000Z', fromState: STATE.progress, toState: STATE.done })
+  const result = await linear(fetch, ['metrics', 'cycle-time', '--since', '2026-10-01', '--until', '2026-10-31', '--json'])
+  assert.equal(result.code, 0, result.stderr)
+  const days = JSON.parse(result.stdout).issues.map((item) => item.days)
+
+  const root = makeRepo('basic')
+  let current = '2026-10-01T00:00:00Z'
+  const local = createLocalTracker(root, { now: () => new Date(current) })
+  const { id } = local.createIssue({ title: 'Flow' }, 'fred').after
+  current = '2026-10-02T00:00:00Z'
+  local.moveToCategory(id, 'in_progress', 'fred')
+  current = '2026-10-05T12:00:00Z'
+  local.moveToCategory(id, 'done', 'fred')
+  const categoryOf = categoryLookup(local.discover().statuses)
+  const expected = cycleTimes(doneInRange(groupEventsByIssue(local.metricEvents()), { categoryOf, since: '2026-10-01', until: '2026-10-31' }), { categoryOf }).map((item) => item.days)
+  assert.deepEqual(expected, [3.5])
+  assert.deepEqual(days, expected)
+})
+
+test('events lists the Linear events of every issue', async () => {
+  const { fake, fetch } = withIssues(['A', 'B'])
+  fake.comment('ACME-2', { body: 'Hi', createdAt: '2026-10-30T00:00:00.000Z' })
+  const result = await linear(fetch, ['events', '--json'])
+  assert.equal(result.code, 0, result.stderr)
+  assert.deepEqual(JSON.parse(result.stdout).map((e) => [e.issue, e.op]), [['ACME-1', 'create'], ['ACME-2', 'create'], ['ACME-2', 'comment']])
+  assert.equal(result.stderr, '')
+})
+
+test('a history, a comment list and a metrics read cut by the cap warn on stderr and leave the JSON alone', async () => {
+  const { fake, fetch } = withIssues(['Busy'])
+  for (let n = 0; n < 1001; n += 1) {
+    const at = new Date(Date.UTC(2026, 0, 1, 0, 0, n)).toISOString()
+    fake.history('ACME-1', { createdAt: at, updatedDescription: true })
+    fake.comment('ACME-1', { body: `c${n}`, createdAt: at })
+  }
+  const history = await linear(fetch, ['issues', 'get', 'ACME-1', '--history', '--json'])
+  assert.equal(history.stderr, 'warning: Linear has more history for ACME-1 than the 1000 entries pmkit read; the oldest are missing\n')
+  assert.equal('truncated' in JSON.parse(history.stdout), false)
+  const comments = await linear(fetch, ['issues', 'get', 'ACME-1', '--comments', '--json'])
+  assert.equal(comments.stderr, 'warning: Linear has more comments for ACME-1 than the 1000 pmkit read\n')
+  assert.equal(JSON.parse(comments.stdout).comments.length, 1000)
+})
+
+test('events and the metrics commands warn when Linear has more than 1000 issues', async () => {
+  const { fake, fetch } = withIssues()
+  for (let n = 0; n < 1001; n += 1) fake.seed({ title: `Issue ${n}` })
+  const warning = 'warning: Linear has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated\n'
+  for (const args of [['events', '--json'], ['metrics', 'cycle-time', '--json'], ['metrics', 'lead-time', '--json'], ['metrics', 'throughput', '--json'], ['metrics', 'aging', '--json']]) {
+    const result = await linear(fetch, args)
+    assert.equal(result.code, 0, `${args.join(' ')}: ${result.stderr}`)
+    assert.equal(result.stderr, warning, args.join(' '))
   }
 })

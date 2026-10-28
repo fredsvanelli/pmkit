@@ -1,0 +1,41 @@
+$ pmkit issues resolve ISS-9B2X missing-comment
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: comment missing-comment is not on ISS-9B2X
+next: pmkit issues get ISS-9B2X --comments
+
+$ pmkit issues resolve ISS-9B2X missing-comment --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "comment missing-comment is not on ISS-9B2X",
+    "nextStep": "pmkit issues get ISS-9B2X --comments"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues resolve ISS-9B2X missing-comment --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: comment missing-comment is not on ISS-9B2X
+next: pmkit issues get ISS-9B2X --comments
+
+$ pmkit issues resolve ISS-9B2X missing-comment --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "comment missing-comment is not on ISS-9B2X",
+    "nextStep": "pmkit issues get ISS-9B2X --comments"
+  }
+}
+--- stderr
+(empty)
