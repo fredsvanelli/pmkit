@@ -118,8 +118,8 @@ test('an answer that is not a candidate fails with INVALID_INPUT and names the c
   assert.throws(() => proposeMappings(describe(), {}, { workspace: 'other' }), (error) => error.code === 'INVALID_INPUT')
 })
 
-test('a state cannot mean both in review and blocked', () => {
-  assert.throws(() => proposeMappings(describe(), {}, { status: { in_review: 'Doing', blocked: 'Doing' } }), (error) => error.code === 'INVALID_INPUT')
+test('a state cannot mean both in review and blocked, and the next step lists the blocked values', () => {
+  assert.throws(() => proposeMappings(describe(), {}, { status: { in_review: 'Doing', blocked: 'Doing' } }), (error) => error.code === 'INVALID_INPUT' && error.nextStep.includes('Todo') && !error.nextStep.includes('Doing'))
 })
 
 test('a type answered none is left out of the result and not asked again', () => {

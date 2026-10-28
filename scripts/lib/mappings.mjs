@@ -205,7 +205,7 @@ export function proposeMappings(description, current = {}, answers = {}) {
     const value = decide(`mappings.status.${key}`, 'status', key, { always: STATUS_KEYS.includes(key) })
     if (value === undefined) continue
     if (key === 'blocked' && value !== NONE && value === result.values.status.in_review) {
-      throw invalid(`status ${value} cannot mean both in review and blocked`, 'Pass a different status for one of them')
+      throw invalid(`status ${value} cannot mean both in review and blocked`, `Pass --status blocked=<value> with one of: ${[...(team.candidates['mappings.status.blocked'] ?? []).filter((candidate) => candidate !== value), NONE].join(', ')}`)
     }
     result.values.status[key] = value
   }
