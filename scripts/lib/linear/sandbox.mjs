@@ -13,7 +13,9 @@
 // The allowlist maps a mutation root field to (variables, context, document) => reason | null. SUITE_ALLOWLIST holds the 14 mutations of
 // the contract run. A caller that needs another mutation passes its own allowlist, built with the exported rule helpers.
 
+import { PmkitError } from '../errors.mjs'
 import { isMutation, operationName } from './client.mjs'
+import { linearCredential } from './credential.mjs'
 
 export const TEST_TEAM = Object.freeze({ name: 'pmkit-test', key: 'PKT', marker: 'pmkit-contract-team' })
 
@@ -221,4 +223,120 @@ export function createGuardedFetch({ fetch, workspace, allowlist = SUITE_ALLOWLI
   }
 
   return { fetch: guarded, guard }
+}
+
+const PAGE_INFO = 'pageInfo { hasNextPage endCursor }'
+const TEAM_FIELDS = 'id key name description archivedAt cyclesEnabled triageEnabled'
+
+export const TEAMS_QUERY = `query PmkitSandboxTeams { organization { subscription { id } } teams(includeArchived: true, first: 100) { nodes { ${TEAM_FIELDS} } } }`
+export const TEAM_ISSUES_QUERY = `query PmkitSandboxIssues($id: String!, $first: Int!, $after: String) {
+  team(id: $id) { issues(includeArchived: true, first: $first, after: $after) { nodes { id identifier trashed archivedAt } ${PAGE_INFO} } }
+}`
+export const TEAM_PROJECTS_QUERY = `query PmkitSandboxProjects($id: String!, $first: Int!, $after: String) {
+  team(id: $id) { projects(includeArchived: true, first: $first, after: $after) { nodes { id name trashed archivedAt teams { nodes { id } } } ${PAGE_INFO} } }
+}`
+export const LABELS_QUERY = `query PmkitSandboxLabels($first: Int!, $after: String) {
+  issueLabels(first: $first, after: $after) { nodes { id name isGroup retiredAt team { id } } ${PAGE_INFO} }
+}`
+
+const TYPE_LABELS = [['bug', 'Bug'], ['feature', 'Feature']]
+const MIN_REQUESTS = 1700
+const MIN_COMPLEXITY = 1_500_000
+
+/**
+ * The reason a team node is not the test team, or null when it is. The run never edits the team, so a mismatch stops it.
+ * The name is the lookup key, so only key, marker, archive date, cycles and triage are checked here.
+ */
+export function checkTestTeam(node) {
+  if (node.key !== TEST_TEAM.key) return `the test team ${TEST_TEAM.name} has the key ${node.key}, not ${TEST_TEAM.key}`
+  if (typeof node.description !== 'string' || !node.description.includes(TEST_TEAM.marker)) {
+    return `the test team ${TEST_TEAM.name} has no ${TEST_TEAM.marker} marker in its description`
+  }
+  if (node.archivedAt) return `the test team ${TEST_TEAM.name} is archived`
+  if (node.cyclesEnabled !== true) return `the test team ${TEST_TEAM.name} has cycles turned off`
+  if (node.triageEnabled !== true) return `the test team ${TEST_TEAM.name} has triage turned off`
+  return null
+}
+
+const stop = (code, message, nextStep) => new PmkitError(code, message, nextStep)
+
+/** The issues of the team that are not trashed, archived ones included. */
+async function teamIssues(client, team) {
+  const { nodes } = await client.paginate(TEAM_ISSUES_QUERY, { id: team.id }, { select: (data) => data.team.issues, pageSize: 100, maxPages: 20 })
+  return nodes.filter((node) => node.trashed !== true)
+}
+
+/** The open projects of the team: not trashed, not archived. */
+async function teamProjects(client, team) {
+  const { nodes } = await client.paginate(TEAM_PROJECTS_QUERY, { id: team.id }, { select: (data) => data.team.projects, pageSize: 100, maxPages: 20 })
+  return nodes.filter((node) => node.trashed !== true && !node.archivedAt)
+}
+
+/**
+ * The checks that run before the first write. Sends queries only. Returns { team: null | { id, key }, viewer, labels }
+ * and opens the guard. With requireEmpty false (the cleanup command) a team that holds items passes.
+ */
+export async function preflight({ client, env, workspace, guard, requireEmpty = true }) {
+  if (env.PMKIT_LIVE !== '1') throw stop('NOT_CONFIGURED', 'set PMKIT_LIVE=1 to run the live check', 'Export PMKIT_LIVE=1')
+  if (!workspace) throw stop('NOT_CONFIGURED', 'set PMKIT_LIVE_WORKSPACE to the sandbox workspace URL key', 'Export PMKIT_LIVE_WORKSPACE')
+  try {
+    linearCredential(env)
+  } catch (error) {
+    throw stop('AUTH', `LINEAR_API_KEY is not usable: ${error.message}`, 'Export LINEAR_API_KEY')
+  }
+  const notSandbox = () => stop('AUTH', 'the key does not belong to the sandbox workspace named by PMKIT_LIVE_WORKSPACE', 'Export a key created in the sandbox workspace')
+  let session
+  try {
+    session = await client.session()
+  } catch (error) {
+    if (error?.code === 'AUTH' && /belongs to workspace/.test(error.message)) throw notSandbox()
+    throw error
+  }
+  if (session.workspace.urlKey !== workspace || session.warnings.length > 0) throw notSandbox()
+
+  const { teams, plan } = await readTeams(client)
+  const found = teams.find((node) => node.name === TEST_TEAM.name)
+  if (found) {
+    const reason = checkTestTeam(found)
+    if (reason) throw stop('INVALID_INPUT', reason, 'Fix the team in Linear, or delete it, then run again')
+  } else {
+    const keyed = teams.find((node) => node.key === TEST_TEAM.key)
+    if (keyed) throw stop('INVALID_INPUT', `a team that is not ${TEST_TEAM.name} uses the key ${TEST_TEAM.key}`, 'Rename or delete that team in Linear')
+    if (plan === null && teams.length >= 2) {
+      throw stop('INVALID_INPUT', 'the Free plan allows two teams, the workspace has two, and the test team does not exist', 'Delete a team in Linear, or upgrade the plan')
+    }
+  }
+  if (found && requireEmpty) {
+    const [issues, projects] = [await teamIssues(client, found), await teamProjects(client, found)]
+    if (issues.length > 0 || projects.length > 0) {
+      throw stop('CONFLICT', 'the test team holds items from an earlier run; run contract-live.mjs cleanup', 'node scripts/lib/linear/contract-live.mjs cleanup')
+    }
+  }
+
+  const { nodes: labelNodes } = await client.paginate(LABELS_QUERY, {}, { select: (data) => data.issueLabels, pageSize: 100 })
+  const labels = {}
+  for (const [key, name] of TYPE_LABELS) {
+    const match = labelNodes.find((node) => node.name === name && !node.team && !node.isGroup && !node.retiredAt)
+    if (!match) throw stop('INVALID_INPUT', `the workspace has no label named ${name}`, `Create a ${name} label in Linear`)
+    labels[key] = match.id
+  }
+
+  const rate = client.rateLimit()
+  if (!rate) throw stop('UPSTREAM', 'Linear sent no rate-limit headers', 'Run again; if it keeps failing, check status.linear.app')
+  for (const [bucket, minimum] of [['requests', MIN_REQUESTS], ['complexity', MIN_COMPLEXITY]]) {
+    const left = rate[bucket].remaining
+    if (left !== null && left < minimum) {
+      const reset = rate[bucket].resetAt ?? 'the window resets'
+      throw stop('RATE_LIMITED', `only ${left} ${bucket} are left, the live run needs ${minimum}; the window resets at ${reset}`, `Wait until ${reset} and run again`)
+    }
+  }
+
+  const team = found ? { id: found.id, key: found.key } : null
+  guard.open({ teamExists: Boolean(found), teamId: team?.id ?? null, viewerId: session.viewer.id, labelIds: Object.values(labels) })
+  return { team, viewer: session.viewer, labels }
+}
+
+async function readTeams(client) {
+  const data = await client.request(TEAMS_QUERY)
+  return { teams: data.teams.nodes, plan: data.organization?.subscription ?? null }
 }

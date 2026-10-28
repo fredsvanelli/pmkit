@@ -1,12 +1,13 @@
 // Tests of the Linear sandbox helper over scripted fetches. No test here opens a socket.
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { FAKE_KEY } from '../../fake-linear-api.mjs'
+import { FAKE_KEY, fakeLinearFetch, json } from '../../fake-linear-api.mjs'
+import { createLinearClient, isMutation } from './client.mjs'
 import {
   COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_ARCHIVE, ISSUE_CREATE, ISSUE_UPDATE, RELATION_CREATE, RELATION_DELETE,
 } from './documents.mjs'
 import { PROJECT_CREATE, PROJECT_UPDATE_CREATE } from './projects.mjs'
-import { SUITE_ALLOWLIST, TEST_TEAM, createGuardedFetch } from './sandbox.mjs'
+import { SUITE_ALLOWLIST, TEST_TEAM, createGuardedFetch, preflight } from './sandbox.mjs'
 
 const URL = 'https://api.linear.app/graphql'
 const TEAM = 'team-pkt'
@@ -253,4 +254,118 @@ test('at the cap a suite request is refused, and cleanup requests pass until the
   assert.equal(inner.calls.length, 5)
   await assert.rejects(send(guarded, mutationOf('IssueDelete'), { id: 'i-2' }), /the live run used its request budget/)
   assert.equal(inner.calls.length, 5)
+})
+
+// A scripted workspace: routes keyed by operation name, over the fake fetch, behind the guard.
+const GOOD_HEADERS = {
+  'x-ratelimit-requests-limit': '2500', 'x-ratelimit-requests-remaining': '2400', 'x-ratelimit-requests-reset': '1798000000000',
+  'x-ratelimit-complexity-limit': '3000000', 'x-ratelimit-complexity-remaining': '2900000', 'x-ratelimit-complexity-reset': '1798000000000',
+}
+const teamNode = (extra = {}) => ({
+  id: TEAM, key: TEST_TEAM.key, name: TEST_TEAM.name, description: `pmkit contract-test team (marker: ${TEST_TEAM.marker}).`,
+  archivedAt: null, cyclesEnabled: true, triageEnabled: true, ...extra,
+})
+const label = (id, name) => ({ id, name, isGroup: false, retiredAt: null, team: null })
+const connection = (nodes, body) => {
+  const first = body.variables?.first ?? 50
+  const start = Number(body.variables?.after ?? 0)
+  const end = start + first
+  return { pageInfo: { hasNextPage: end < nodes.length, endCursor: end < nodes.length ? String(end) : null }, nodes: nodes.slice(start, end) }
+}
+
+function world(options = {}) {
+  const state = {
+    workspace: 'acme', previousUrlKeys: [], subscription: null, teams: [teamNode()], issues: [], projects: [],
+    labels: [label('label-bug', 'Bug'), label('label-feature', 'Feature'), label('label-other', 'Improvement')], headers: GOOD_HEADERS, ...options,
+  }
+  const answer = (data) => json(data, { headers: state.headers })
+  const routes = {
+    PmkitSandboxTeams: () => answer({ organization: { subscription: state.subscription }, teams: { nodes: state.teams } }),
+    PmkitSandboxIssues: (body) => answer({ team: { issues: connection(state.issues, body) } }),
+    PmkitSandboxProjects: (body) => answer({ team: { projects: connection(state.projects, body) } }),
+    PmkitSandboxLabels: (body) => answer({ issueLabels: connection(state.labels, body) }),
+    PmkitIssueArchive: answer({}),
+    PmkitSandboxTeamCreate: answer({}),
+  }
+  state.routes = routes
+  const inner = fakeLinearFetch({ ...routes, ...options.routes }, { workspace: state.workspace, previousUrlKeys: state.previousUrlKeys })
+  const guarded = createGuardedFetch({ fetch: inner, workspace: 'acme' })
+  const client = createLinearClient({ env: { LINEAR_API_KEY: FAKE_KEY }, tracker: { system: 'linear', scope: { workspace: 'acme' } }, fetch: guarded.fetch })
+  const env = { PMKIT_LIVE: '1', LINEAR_API_KEY: FAKE_KEY }
+  const mutations = () => inner.calls.filter((call) => isMutation(call.body.query))
+  return { ...guarded, inner, client, env, state, mutations }
+}
+
+const run = (w, overrides = {}) => preflight({ client: w.client, env: w.env, workspace: 'acme', guard: w.guard, ...overrides })
+
+async function stops(w, message, overrides) {
+  await assert.rejects(run(w, overrides), message)
+  assert.equal(w.mutations().length, 0)
+  await assert.rejects(send(w, ISSUE_CREATE, { input: { id: 'i-1', teamId: TEAM } }), /refusing /, 'the guard stays closed')
+}
+
+test('preflight stops when the gate is closed', async () => {
+  await stops(world(), /PMKIT_LIVE/, { env: { LINEAR_API_KEY: FAKE_KEY } })
+  await stops(world(), /PMKIT_LIVE_WORKSPACE/, { workspace: undefined })
+  await stops(world(), /LINEAR_API_KEY is not usable/, { env: { PMKIT_LIVE: '1' } })
+})
+
+test('preflight stops when the URL key differs, or matches only a previous one', async () => {
+  await stops(world({ workspace: 'other' }), /does not belong to the sandbox workspace/)
+  await stops(world({ workspace: 'other', previousUrlKeys: ['acme'] }), /does not belong to the sandbox workspace/)
+})
+
+test('preflight stops on a test team that fails a check, and names the field', async () => {
+  const cases = [
+    [{ key: 'ABC' }, /key/], [{ description: 'no marker' }, /marker/], [{ cyclesEnabled: false }, /cycles/],
+    [{ triageEnabled: false }, /triage/], [{ archivedAt: '2026-01-01T00:00:00.000Z' }, /archived/],
+  ]
+  for (const [extra, message] of cases) await stops(world({ teams: [teamNode(extra)] }), message)
+  await stops(world({ teams: [teamNode({ name: 'other' })] }), /key PKT/)
+})
+
+test('preflight stops when the test team holds an issue or an open project, and names cleanup', async () => {
+  await stops(world({ issues: [{ id: 'i-1', identifier: 'PKT-1', trashed: false, archivedAt: '2026-01-01T00:00:00.000Z' }] }), /cleanup/)
+  await stops(world({ projects: [{ id: 'p-1', name: 'x', trashed: false, archivedAt: null, teams: { nodes: [{ id: TEAM }] } }] }), /cleanup/)
+})
+
+test('preflight ignores trashed issues, and skips the emptiness check for cleanup', async () => {
+  const trashed = { id: 'i-1', identifier: 'PKT-1', trashed: true, archivedAt: null }
+  await run(world({ issues: [trashed] }))
+  const full = world({ issues: [{ ...trashed, trashed: false }] })
+  assert.deepEqual((await run(full, { requireEmpty: false })).team, { id: TEAM, key: 'PKT' })
+})
+
+test('preflight stops on a Free workspace with two teams and no test team', async () => {
+  const others = [{ ...teamNode({ name: 'a', key: 'AAA' }), id: 't-a' }, { ...teamNode({ name: 'b', key: 'BBB' }), id: 't-b' }]
+  await stops(world({ teams: others }), /two teams/)
+})
+
+test('preflight stops when the type labels are missing', async () => {
+  await stops(world({ labels: [label('label-bug', 'Bug')] }), /Feature/)
+  await stops(world({ labels: [label('label-feature', 'Feature')] }), /Bug/)
+})
+
+test('preflight stops when the headers show too little budget, and names the reset time', async () => {
+  await stops(world({ headers: { ...GOOD_HEADERS, 'x-ratelimit-requests-remaining': '1699' } }), /2027-|20\d\d-/)
+  await stops(world({ headers: { ...GOOD_HEADERS, 'x-ratelimit-complexity-remaining': '1499999' } }), /complexity/)
+})
+
+test('preflight in the good case returns the team and opens the guard', async () => {
+  const w = world()
+  const result = await run(w)
+  assert.deepEqual(result.team, { id: TEAM, key: 'PKT' })
+  assert.equal(result.viewer.id, 'user-1')
+  assert.deepEqual(result.labels, { bug: 'label-bug', feature: 'label-feature' })
+  assert.equal(w.mutations().length, 0)
+  w.guard.own('issue', 'i-1')
+  await send(w, ISSUE_ARCHIVE, { id: 'i-1' })
+})
+
+test('preflight returns a null team when the test team is absent and a slot is free', async () => {
+  const w = world({ teams: [{ ...teamNode({ name: 'a', key: 'AAA' }), id: 't-a' }] })
+  const result = await run(w)
+  assert.equal(result.team, null)
+  const input = { id: TEAM, name: TEST_TEAM.name, key: TEST_TEAM.key, description: `marker: ${TEST_TEAM.marker}` }
+  await send(w, 'mutation PmkitSandboxTeamCreate($input: TeamCreateInput!) { teamCreate(input: $input) { success } }', { input })
 })
