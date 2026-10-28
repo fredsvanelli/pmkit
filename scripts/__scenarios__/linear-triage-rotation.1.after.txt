@@ -1,0 +1,4 @@
+$ pmkit capabilities --json  [step 1, read]
+exit 2 (expected AUTH)
+
+(no file changed)
