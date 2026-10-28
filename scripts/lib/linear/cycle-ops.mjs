@@ -2,7 +2,7 @@
 // See docs/superpowers/specs/2026-10-28-pmk-37-linear-cycles-to-sprints-design.md.
 
 import { PmkitError } from '../errors.mjs'
-import { entryFor, readCapacity } from './capacity-store.mjs'
+import { entryFor, readCapacity, writeEntry } from './capacity-store.mjs'
 import { cycleKey, cyclesOff, toSprint } from './cycles.mjs'
 import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY } from './documents.mjs'
 
@@ -120,5 +120,44 @@ export function cycleOperations({ client, issues, config }) {
     return results
   }
 
-  return { listCycles, currentCycle, cycleIssues, moveToCycle }
+  // Linear has no call that creates or ends a cycle, so these two answer the same way whatever the input (spec, "Opening and closing").
+  async function openCycle() {
+    throw new PmkitError(
+      'NOT_SUPPORTED',
+      "Linear creates cycles from the team's schedule, so pmkit cannot open one",
+      "Set the schedule in the team's cycle settings in Linear (duration, start day, upcoming cycles)",
+    )
+  }
+
+  async function closeCycle() {
+    throw new PmkitError(
+      'NOT_SUPPORTED',
+      'Linear ends a cycle on its end date, so pmkit cannot close one',
+      'Move the unfinished issues with pmkit cycle add --to <cycle|none>; Linear closes the cycle on its end date',
+    )
+  }
+
+  async function readEntry(id) {
+    const { team } = await scope()
+    await requireCycle(team, id)
+    return entryFor(entries(team), id)
+  }
+
+  const getCapacity = async (id) => (await readEntry(id)).capacity
+  const getDaysOff = async (id) => (await readEntry(id)).daysOff
+
+  /** Capacity and days off live in .pmkit/capacity.yaml, so Linear is not written and the viewer check only keeps --as honest. */
+  async function updateCycleCapacity(id, { capacity, daysOff } = {}, actor, { dryRun = false } = {}) {
+    await issues.requireViewer(actor)
+    const { context, team } = await scope()
+    const node = await requireCycle(team, id)
+    const sprint = toSprint(node)
+    const members = context.raw.users.filter((user) => !user.app).map((user) => user.id)
+    const { before, after } = writeEntry(config.root, team.key, String(node.number), { capacity, daysOff }, { sprint, members, dryRun })
+    return { before: toSprint(node, before), after: toSprint(node, after) }
+  }
+
+  const setCapacity = (id, map, actor, options) => updateCycleCapacity(id, { capacity: map }, actor, options)
+
+  return { listCycles, currentCycle, cycleIssues, moveToCycle, openCycle, closeCycle, getCapacity, getDaysOff, setCapacity, updateCycleCapacity }
 }

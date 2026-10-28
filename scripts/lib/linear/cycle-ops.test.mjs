@@ -231,3 +231,85 @@ test('with cycles off, a move to a cycle is NOT_SUPPORTED and a move to null cha
   assert.deepEqual(entry.before, entry.after)
   assert.equal(mutationCount(fetch), 0)
 })
+
+test('openCycle and closeCycle are NOT_SUPPORTED with their reason and next step, and send no request', async () => {
+  const { ops, fetch } = await setup()
+  await assert.rejects(ops.openCycle({ start: '2026-11-16' }, ACTOR), {
+    code: 'NOT_SUPPORTED',
+    message: "Linear creates cycles from the team's schedule, so pmkit cannot open one",
+    nextStep: "Set the schedule in the team's cycle settings in Linear (duration, start day, upcoming cycles)",
+  })
+  await assert.rejects(ops.closeCycle('2', ACTOR), {
+    code: 'NOT_SUPPORTED',
+    message: 'Linear ends a cycle on its end date, so pmkit cannot close one',
+    nextStep: 'Move the unfinished issues with pmkit cycle add --to <cycle|none>; Linear closes the cycle on its end date',
+  })
+  assert.equal(fetch.calls.length, 0)
+})
+
+test('openCycle and closeCycle do not validate their input', async () => {
+  const { ops } = await setup()
+  for (const call of [() => ops.openCycle(undefined), () => ops.openCycle({ start: 'garbage', nope: 1 }, 'user-2', { dryRun: true }), () => ops.closeCycle(undefined), () => ops.closeCycle('abc', 'user-2')]) {
+    await assert.rejects(call(), { code: 'NOT_SUPPORTED' })
+  }
+})
+
+const CAPACITY_FILE = '.pmkit/capacity.yaml'
+const WEDNESDAY = '2026-10-21'
+
+test('getCapacity and getDaysOff read the entry, and an unknown cycle is NOT_FOUND', async () => {
+  const { ops, root } = await setup()
+  assert.deepEqual(await ops.getCapacity('2'), {})
+  assert.deepEqual(await ops.getDaysOff('2'), {})
+  fs.mkdirSync(path.join(root, '.pmkit'))
+  fs.writeFileSync(path.join(root, CAPACITY_FILE), `version: 1\ncycles:\n  ACME:\n    2:\n      capacity: { user-1: 8 }\n      days_off:\n        user-1: [${WEDNESDAY}]\n`)
+  assert.deepEqual(await ops.getCapacity('2'), { 'user-1': 8 })
+  assert.deepEqual(await ops.getDaysOff('2'), { 'user-1': [WEDNESDAY] })
+  for (const call of [() => ops.getCapacity('99'), () => ops.getDaysOff('99'), () => ops.getCapacity('abc')]) {
+    await assert.rejects(call(), { code: 'NOT_FOUND', nextStep: 'pmkit cycle list' })
+  }
+})
+
+test('setCapacity and updateCycleCapacity return { before, after } as sprints, write the file and send no mutation', async () => {
+  const { ops, root, fetch } = await setup()
+  const set = await ops.setCapacity('2', { 'user-1': 8, 'user-2': 5 }, ACTOR)
+  assert.deepEqual(set.before.capacity, {})
+  assert.deepEqual(set.after.capacity, { 'user-1': 8, 'user-2': 5 })
+  assert.equal(set.after.id, '2')
+  assert.equal(set.after.state, 'active')
+  const off = await ops.updateCycleCapacity('2', { daysOff: { 'user-1': [WEDNESDAY] } }, ACTOR)
+  assert.deepEqual(off.before.capacity, { 'user-1': 8, 'user-2': 5 })
+  assert.deepEqual(off.after.daysOff, { 'user-1': [WEDNESDAY] })
+  assert.deepEqual(off.after.capacity, { 'user-1': 8, 'user-2': 5 })
+  assert.ok(fs.existsSync(path.join(root, CAPACITY_FILE)))
+  assert.deepEqual(await ops.getCapacity('2'), { 'user-1': 8, 'user-2': 5 })
+  await ops.updateCycleCapacity('2', { daysOff: { 'user-1': null } }, ACTOR)
+  assert.deepEqual(await ops.getDaysOff('2'), {})
+  assert.ok(names(fetch).every((name) => !/Create|Update|Archive|Delete/.test(name)))
+  assert.deepEqual((await ops.listCycles())[1].capacity, { 'user-1': 8, 'user-2': 5 })
+})
+
+test('capacity writes check members and dates, and refuse an actor that is not the viewer', async () => {
+  const { ops, root } = await setup()
+  await assert.rejects(ops.setCapacity('2', { stranger: 3 }, ACTOR), { code: 'INVALID_INPUT', message: /not a member/ })
+  await assert.rejects(ops.updateCycleCapacity('2', { daysOff: { 'user-1': ['2026-12-01'] } }, ACTOR), { code: 'INVALID_INPUT', message: /outside the sprint/ })
+  await assert.rejects(ops.setCapacity('2', { 'user-1': 3 }, 'user-2'), { code: 'INVALID_INPUT', message: /owner of LINEAR_API_KEY/ })
+  await assert.rejects(ops.setCapacity('99', { 'user-1': 3 }, ACTOR), { code: 'NOT_FOUND' })
+  assert.equal(fs.existsSync(path.join(root, CAPACITY_FILE)), false)
+})
+
+test('a dry run on capacity returns the after and writes no file', async () => {
+  const { ops, root } = await setup()
+  const dry = await ops.setCapacity('2', { 'user-1': 8 }, ACTOR, { dryRun: true })
+  assert.deepEqual(dry.after.capacity, { 'user-1': 8 })
+  assert.equal(fs.existsSync(path.join(root, '.pmkit')), false)
+})
+
+test('with cycles off, the capacity operations answer NOT_SUPPORTED', async () => {
+  const { ops } = await setup({ teams: [{ ...ACME, cyclesEnabled: false }, OPS] })
+  const expected = { code: 'NOT_SUPPORTED', message: 'team ACME has cycles turned off' }
+  await assert.rejects(ops.getCapacity('2'), expected)
+  await assert.rejects(ops.getDaysOff('2'), expected)
+  await assert.rejects(ops.setCapacity('2', {}, ACTOR), expected)
+  await assert.rejects(ops.updateCycleCapacity('2', { capacity: {} }, ACTOR), expected)
+})
