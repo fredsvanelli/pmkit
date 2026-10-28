@@ -164,8 +164,8 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
   }
 
   /** Sends one issueUpdate unless the preview equals the issue; a dry run returns the preview. */
-  async function writeUpdate(beforeNode, before, linearInput, current, dryRun) {
-    const preview = toIssue(applyInput(beforeNode, linearInput, current, { parent: before.parent }), current)
+  async function writeUpdate(beforeNode, before, linearInput, current, dryRun, parent = before.parent) {
+    const preview = toIssue(applyInput(beforeNode, linearInput, current, { parent }), current)
     if (same(preview, before)) return { before, after: before }
     if (dryRun) return { before, after: preview }
     const node = (await client.request(ISSUE_UPDATE, { id: beforeNode.id, input: linearInput })).issueUpdate.issue
@@ -237,5 +237,5 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return { before, after: await mapped(await readNode(id)) }
   }
 
-  return { getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, requireViewer, mapped, writeUpdate, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
+  return { getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, requireViewer, mapped, writeUpdate, parentNodeOf, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
 }

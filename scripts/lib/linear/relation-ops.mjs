@@ -4,9 +4,10 @@
 import { PmkitError } from '../errors.mjs'
 import { compareIds } from '../ids.mjs'
 import { LINK_KINDS } from '../model.mjs'
-import { BLOCK_GRAPH_QUERY, RELATION_CREATE, RELATION_DELETE } from './documents.mjs'
+import { BLOCK_GRAPH_QUERY, PARENT_CHAIN_QUERY, RELATION_CREATE, RELATION_DELETE } from './documents.mjs'
 import { isUnconfirmed } from './issue-ops.mjs'
-import { toIssue } from './issues.mjs'
+import { isIssueId, issueKey, toIssue } from './issues.mjs'
+import { NOT_EPICS } from './writes.mjs'
 
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
 const BLOCK_DEPTH = 10
@@ -95,5 +96,37 @@ export function relationOperations({ client, ops, uuid }) {
     return { before, after: await ops.mapped(await ops.readNode(from)) }
   }
 
-  return { link, unlink }
+  /** The parent's identifier followed by its ancestors', from one query nested PARENT_CHAIN_DEPTH levels. */
+  async function ancestry(identifier) {
+    const chain = []
+    let current = (await client.request(PARENT_CHAIN_QUERY, { id: identifier }))?.issues?.nodes?.[0]
+    while (current) {
+      chain.push(current.identifier)
+      current = current.parent
+    }
+    return chain
+  }
+
+  /** `parent` is an issue id or null. A Linear project is not a parent in pmkit until PMK-38. */
+  async function setParent(id, parent, actor, { dryRun = false } = {}) {
+    ops.requireWorkspace()
+    await ops.requireViewer(actor)
+    const node = await ops.readNode(id)
+    const self = node.identifier
+    if (parent !== null && !isIssueId(parent)) throw new PmkitError('NOT_SUPPORTED', NOT_EPICS, 'Use an issue id as the parent')
+    if (parent !== null && issueKey(parent) === self) throw invalid(`${self} cannot be its own parent`)
+    const parentNode = parent === null ? null : await ops.parentNodeOf(parent)
+    if (parentNode) {
+      const chain = await ancestry(parentNode.identifier)
+      const at = chain.indexOf(self)
+      if (at >= 0) throw invalid(`parent loop: ${[self, ...chain.slice(0, at + 1)].join(' → ')}`)
+    }
+    const context = await ops.contextFor([node])
+    const before = toIssue(node, context)
+    const next = parentNode?.identifier ?? null
+    if ((before.parent ?? null) === next) return { before, after: before }
+    return ops.writeUpdate(node, before, { parentId: parentNode?.id ?? null }, context, dryRun, next)
+  }
+
+  return { link, unlink, setParent }
 }

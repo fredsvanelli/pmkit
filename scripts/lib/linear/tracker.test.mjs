@@ -772,3 +772,47 @@ test('a dry-run link and unlink send no mutation and return the same after', asy
   const realUnlink = await linear.unlink('ACME-1', 'ACME-2', 'related', 'user-1')
   assert.deepEqual(comparable(dryUnlink.after), comparable(realUnlink.after))
 })
+
+test('setParent sets and clears the parent', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  const set = await linear.setParent('ACME-2', 'acme-1', 'user-1')
+  assert.equal(set.before.parent, undefined)
+  assert.equal(set.after.parent, 'ACME-1')
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssueUpdate').input, { parentId: 'uuid-1' })
+  assert.deepEqual((await linear.getIssue('ACME-1')).children, ['ACME-2'])
+  const cleared = await linear.setParent('ACME-2', null, 'user-1')
+  assert.equal('parent' in cleared.after, false)
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssueUpdate').input, { parentId: null })
+})
+
+test('a parent that is not an issue id is NOT_SUPPORTED; a missing one is INVALID_INPUT', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  three(fake)
+  await assert.rejects(linear.setParent('ACME-2', 'EPC-1x', 'user-1'), { code: 'NOT_SUPPORTED', message: 'Linear projects are not epics in pmkit yet' })
+  await assert.rejects(linear.setParent('ACME-2', 'ACME-99', 'user-1'), { code: 'INVALID_INPUT', message: 'parent ACME-99 is not an existing issue' })
+})
+
+test('a self parent and a loop are refused', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  fake.records[1].parentId = 'uuid-1'
+  fake.records[2].parentId = 'uuid-2'
+  await assert.rejects(linear.setParent('ACME-1', 'acme-1', 'user-1'), { code: 'INVALID_INPUT', message: 'ACME-1 cannot be its own parent' })
+  await assert.rejects(linear.setParent('ACME-1', 'ACME-2', 'user-1'), { code: 'INVALID_INPUT', message: 'parent loop: ACME-1 → ACME-2 → ACME-1' })
+  await assert.rejects(linear.setParent('ACME-1', 'ACME-3', 'user-1'), { code: 'INVALID_INPUT', message: 'parent loop: ACME-1 → ACME-3 → ACME-2 → ACME-1' })
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('an unchanged parent sends no mutation, and a dry run matches the real write', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  fake.records[1].parentId = 'uuid-1'
+  const same = await linear.setParent('ACME-2', 'ACME-1', 'user-1')
+  assert.equal(same.after, same.before)
+  assert.equal(mutationsIn(fetch), 0)
+  const dry = await linear.setParent('ACME-3', 'ACME-1', 'user-1', { dryRun: true })
+  assert.equal(mutationsIn(fetch), 0)
+  const real = await linear.setParent('ACME-3', 'ACME-1', 'user-1')
+  assert.deepEqual(comparable(dry.after), comparable(real.after))
+})
