@@ -287,3 +287,150 @@ test('an error with no extensions, no message or a long message still gives a on
   assert.equal(text.length, 200)
   assert.ok(!/\n/.test(long.message))
 })
+
+// Network failures, retries, timeouts and the rate state.
+const econnreset = () => new TypeError('fetch failed', { cause: { code: 'ECONNRESET' } })
+
+function sleeper() {
+  const slept = []
+  return { slept, sleep: async (ms) => void slept.push(ms) }
+}
+
+const callsTo = (f, name) => f.calls.filter((call) => call.body.query.includes(` ${name}`)).length
+
+test('a query is retried after network errors with the 500 then 2000 ms delays', async () => {
+  const { slept, sleep } = sleeper()
+  const { client, f } = make({ routes: { Q: [{ throws: econnreset() }, { throws: econnreset() }, json({ a: 1 })] }, sleep })
+  assert.deepEqual(await client.request('query Q { a }'), { a: 1 })
+  assert.deepEqual(slept, [500, 2000])
+  assert.equal(callsTo(f, 'Q'), 3)
+})
+
+test('three network failures end in UPSTREAM', async () => {
+  const { slept, sleep } = sleeper()
+  const error = await failure({ throws: econnreset() }, { sleep })
+  expectError(error, 'UPSTREAM', 'Linear did not answer: ECONNRESET', RETRY)
+  assert.deepEqual(slept, [500, 2000])
+})
+
+test('a lower-case cause code, no cause, or a message with the key gives "network error"', async () => {
+  for (const thrown of [
+    new TypeError('fetch failed', { cause: { code: 'econnreset' } }),
+    new TypeError('fetch failed'),
+    new Error(`header ${FAKE_KEY}`),
+  ]) {
+    const error = await failure({ throws: thrown }, { sleep: async () => {} })
+    assert.equal(error.message, 'Linear did not answer: network error')
+    assert.ok(!error.message.includes('TESTKEY'))
+  }
+})
+
+test('HTTP 503 on a query is retried', async () => {
+  const { slept, sleep } = sleeper()
+  const error = await failure({ status: 503, json: { errors: [{ message: 'down' }] } }, { sleep })
+  expectError(error, 'UPSTREAM', 'Linear did not answer: HTTP 503', RETRY)
+  assert.deepEqual(slept, [500, 2000])
+})
+
+test('HTTP 503 with an unreadable body is retried and ends unreadable', async () => {
+  const { slept, sleep } = sleeper()
+  const error = await failure({ status: 503, text: '<html>' }, { sleep })
+  expectError(error, 'UPSTREAM', 'Linear returned an unreadable answer (HTTP 503)', RETRY)
+  assert.deepEqual(slept, [500, 2000])
+})
+
+test('a hung query times out', async () => {
+  const error = await failure({ hang: true }, { timeoutMs: 20, retries: 0 })
+  expectError(error, 'UPSTREAM', 'Linear did not answer: timed out after 0.02 s', RETRY)
+})
+
+test('a body that fails to arrive is a network failure and is retried', async () => {
+  const { slept, sleep } = sleeper()
+  const { client } = make({ routes: { Q: [{ textRejects: true, status: 200 }, json({ a: 1 })] }, sleep })
+  assert.deepEqual(await client.request('query Q { a }'), { a: 1 })
+  assert.deepEqual(slept, [500])
+})
+
+test('a mutation is sent once and its timeout asks the user to check', async () => {
+  const { client, f } = make({ routes: { M: { hang: true } }, timeoutMs: 20 })
+  const error = await client.request('mutation M { a }').catch((caught) => caught)
+  expectError(
+    error,
+    'UPSTREAM',
+    'Linear did not confirm the change: timed out after 0.02 s',
+    'Check in Linear whether the change was applied before you retry',
+  )
+  assert.equal(callsTo(f, 'M'), 1)
+})
+
+test('a mutation that gets HTTP 503 is sent once', async () => {
+  const { client, f } = make({ routes: { M: { status: 503, json: { errors: [{ message: 'down' }] } } }, sleep: async () => {} })
+  const error = await client.request('mutation M { a }').catch((caught) => caught)
+  assert.equal(error.message, 'Linear did not confirm the change: HTTP 503')
+  assert.equal(callsTo(f, 'M'), 1)
+})
+
+test('AUTH, RATE_LIMITED and query errors are sent once with no sleep', async () => {
+  for (const answer of [
+    errorsBody(401, graphqlError('AUTHENTICATION_ERROR')),
+    { status: 429, json: {} },
+    errorsBody(400, graphqlError('RATELIMITED')),
+    errorsBody(400, graphqlError('GRAPHQL_VALIDATION_FAILED')),
+  ]) {
+    const { slept, sleep } = sleeper()
+    const { client, f } = make({ routes: { Q: answer }, sleep })
+    await client.request('query Q { a }').catch(() => {})
+    assert.equal(callsTo(f, 'Q'), 1)
+    assert.deepEqual(slept, [])
+  }
+})
+
+const LIMIT_HEADERS = {
+  'x-ratelimit-requests-limit': '2500',
+  'x-ratelimit-requests-remaining': '2400',
+  'x-ratelimit-requests-reset': '1793000000000',
+  'x-ratelimit-complexity-limit': '3000000',
+  'x-ratelimit-complexity-remaining': '2999000',
+  'x-ratelimit-complexity-reset': '1793000060000',
+  'x-complexity': '3',
+}
+
+test('rateLimit is null before any response and reads the headers after', async () => {
+  const { client } = make({ routes: { Q: json({ a: 1 }, { headers: LIMIT_HEADERS }) } })
+  assert.equal(client.rateLimit(), null)
+  await client.request('query Q { a }')
+  assert.deepEqual(client.rateLimit(), {
+    requests: { limit: 2500, remaining: 2400, resetAt: '2026-10-26T07:33:20.000Z' },
+    complexity: { limit: 3000000, remaining: 2999000, resetAt: '2026-10-26T07:34:20.000Z' },
+    lastComplexity: 3,
+  })
+})
+
+test('a bucket at zero with a future reset stops the next request before it is sent', async () => {
+  let time = 1_000_000
+  const headers = { 'x-ratelimit-requests-remaining': '0', 'x-ratelimit-requests-reset': String(time + 60_000) }
+  const { client, f } = make({ routes: { Q: json({ a: 1 }, { headers }) }, now: () => time })
+  await client.request('query Q { a }')
+  const before = f.calls.length
+  const error = await client.request('query Q { a }').catch((caught) => caught)
+  expectError(error, 'RATE_LIMITED', "Linear's requests limit for this key is used up", `Wait until ${new Date(time + 60_000).toISOString()} and retry`)
+  assert.equal(f.calls.length, before)
+  time += 61_000
+  assert.deepEqual(await client.request('query Q { a }'), { a: 1 })
+})
+
+test('missing, partial or unreadable rate headers never block and never leak NaN', async () => {
+  for (const headers of [
+    { 'x-ratelimit-requests-remaining': 'abc' },
+    { 'x-ratelimit-requests-remaining': '0' },
+    { 'x-ratelimit-requests-remaining': '0', 'x-ratelimit-requests-reset': 'soon' },
+  ]) {
+    const { client } = make({ routes: { Q: json({ a: 1 }, { headers }) } })
+    await client.request('query Q { a }')
+    assert.deepEqual(await client.request('query Q { a }'), { a: 1 })
+    const text = JSON.stringify(client.rateLimit())
+    assert.ok(!/NaN|Invalid Date/.test(text))
+    assert.equal(client.rateLimit().requests.resetAt, null)
+    assert.equal(client.rateLimit().requests.limit, null)
+  }
+})

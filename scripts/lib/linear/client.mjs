@@ -73,9 +73,7 @@ function resetTime(headers, bucket) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString()
 }
 
-function rateLimited(headers, details) {
-  const bucket = headers.get('x-ratelimit-requests-remaining')?.trim() !== '0' && headers.get('x-ratelimit-complexity-remaining')?.trim() === '0' ? 'complexity' : 'requests'
-  const resetAt = resetTime(headers, bucket)
+function rateLimitError(bucket, resetAt, details) {
   return new PmkitError(
     'RATE_LIMITED',
     `Linear's ${bucket} limit for this key is used up`,
@@ -84,11 +82,57 @@ function rateLimited(headers, details) {
   )
 }
 
+/** The bucket a rate-limited answer ran out of: complexity only when requests are not the empty one. */
+function rateLimited(headers, details) {
+  const empty = (bucket) => headers.get(`x-ratelimit-${bucket}-remaining`)?.trim() === '0'
+  const bucket = !empty('requests') && empty('complexity') ? 'complexity' : 'requests'
+  return rateLimitError(bucket, resetTime(headers, bucket), details)
+}
+
+const number = (raw) => {
+  if (raw === null || raw.trim() === '') return null
+  const value = Number(raw)
+  return Number.isFinite(value) ? value : null
+}
+
+const BUCKETS = ['requests', 'complexity']
+
+/** Reads the rate-limit headers. Returns null when the response has none. */
+function readRateHeaders(headers) {
+  const names = [...BUCKETS.flatMap((bucket) => ['limit', 'remaining', 'reset'].map((part) => `x-ratelimit-${bucket}-${part}`)), 'x-complexity']
+  if (names.every((name) => headers.get(name) === null)) return null
+  const state = { lastComplexity: number(headers.get('x-complexity')) }
+  for (const bucket of BUCKETS) {
+    const resetMs = number(headers.get(`x-ratelimit-${bucket}-reset`))
+    const date = resetMs === null ? null : new Date(resetMs)
+    state[bucket] = {
+      limit: number(headers.get(`x-ratelimit-${bucket}-limit`)),
+      remaining: number(headers.get(`x-ratelimit-${bucket}-remaining`)),
+      resetMs: date && !Number.isNaN(date.getTime()) ? resetMs : null,
+    }
+  }
+  return state
+}
+
+/** A failure where the answer never came: retryable for a query, a hand-off to the user for a mutation. */
+function unconfirmed(reason, mutation, details) {
+  if (mutation) {
+    const error = new PmkitError(
+      'UPSTREAM',
+      `Linear did not confirm the change: ${reason}`,
+      'Check in Linear whether the change was applied before you retry',
+      details,
+    )
+    return { error, retry: false }
+  }
+  return { error: new PmkitError('UPSTREAM', `Linear did not answer: ${reason}`, RETRY_STEP, details), retry: true }
+}
+
 /**
  * Reads one HTTP answer. Returns { data } on success, or { error, retry } where retry says
  * whether a query may be sent again. Rows are checked in the order of the spec's error table.
  */
-function classify(status, headers, text) {
+function classify(status, headers, text, mutation) {
   let body
   try {
     body = JSON.parse(text)
@@ -116,7 +160,7 @@ function classify(status, headers, text) {
   if (!hasEnvelope || (ok && errors.length === 0 && !dataIsObject)) {
     return fail('UPSTREAM', `Linear returned an unreadable answer (HTTP ${status})`, RETRY_STEP, serverError)
   }
-  if (serverError) return fail('UPSTREAM', `Linear did not answer: HTTP ${status}`, RETRY_STEP, true)
+  if (serverError) return unconfirmed(`HTTP ${status}`, mutation, details)
   if (codes.includes('GRAPHQL_VALIDATION_FAILED') || codes.includes('GRAPHQL_PARSE_FAILED')) {
     return fail('UPSTREAM', `Linear rejected pmkit's query: ${linearMessage(errors)}`, 'Update pmkit; if it still fails, report the query error')
   }
@@ -152,17 +196,56 @@ export function createLinearClient({
   const key = linearCredential(env).authorization
   const headers = { 'Content-Type': 'application/json', Authorization: key }
 
-  // One logical call: a single attempt here. Tasks 5 and 6 add error mapping and retries.
+  const delays = [500, 2000]
+  let rate = null
+
+  function recordRate(responseHeaders) {
+    const read = readRateHeaders(responseHeaders)
+    if (read) rate = read
+  }
+
+  /** Throws RATE_LIMITED, with no request, when the last response said a bucket is empty until a future time. */
+  function assertRoom() {
+    for (const bucket of BUCKETS) {
+      const state = rate?.[bucket]
+      if (state?.remaining === 0 && state.resetMs !== null && state.resetMs > now()) {
+        throw rateLimitError(bucket, new Date(state.resetMs).toISOString())
+      }
+    }
+  }
+
+  /** The reason a request failed without an answer. It never copies the fetch error's message, which can quote a header. */
+  function reasonOf(error, signal) {
+    if (error?.name === 'TimeoutError' || signal.reason?.name === 'TimeoutError') return `timed out after ${timeoutMs / 1000} s`
+    const code = error?.cause?.code
+    return typeof code === 'string' && /^[A-Z][A-Z0-9_]*$/.test(code) ? code : 'network error'
+  }
+
+  async function attempt(query, variables, mutation) {
+    const signal = AbortSignal.timeout(timeoutMs)
+    let response
+    let text
+    try {
+      response = await fetch(LINEAR_ENDPOINT, { method: 'POST', headers, body: JSON.stringify({ query, variables }), signal })
+      recordRate(response.headers)
+      text = await response.text()
+    } catch (error) {
+      return unconfirmed(reasonOf(error, signal), mutation)
+    }
+    return classify(response.status, response.headers, text, mutation)
+  }
+
+  // One logical call. A query is sent again after a network failure, a timeout or HTTP 5xx.
   async function send(query, variables) {
-    const response = await fetch(LINEAR_ENDPOINT, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ query, variables }),
-      signal: AbortSignal.timeout(timeoutMs),
-    })
-    const result = classify(response.status, response.headers, await response.text())
-    if (result.error) throw result.error
-    return result.data
+    const mutation = isMutation(query)
+    const attempts = mutation ? 1 : retries + 1
+    for (let index = 0; ; index += 1) {
+      assertRoom()
+      const result = await attempt(query, variables, mutation)
+      if (!result.error) return result.data
+      if (!result.retry || index + 1 >= attempts) throw result.error
+      await sleep(delays[Math.min(index, 1)])
+    }
   }
 
   let sessionPromise
@@ -202,6 +285,15 @@ export function createLinearClient({
   const unfinished = () => {
     throw new Error('not implemented')
   }
-  void [retries, sleep, now]
-  return Object.freeze({ request, paginate: unfinished, session, rateLimit: unfinished })
+  function rateLimit() {
+    if (!rate) return null
+    const bucket = (state) => ({
+      limit: state.limit,
+      remaining: state.remaining,
+      resetAt: state.resetMs === null ? null : new Date(state.resetMs).toISOString(),
+    })
+    return { requests: bucket(rate.requests), complexity: bucket(rate.complexity), lastComplexity: rate.lastComplexity }
+  }
+
+  return Object.freeze({ request, paginate: unfinished, session, rateLimit })
 }
