@@ -274,3 +274,55 @@ test('listStatusUpdates returns newest first with a stable order for updates of 
   assert.deepEqual(updates[0], { epic: 'P-ACM-1', at: '2026-10-28T10:00:00.000Z', author: ACTOR, health: 'off_track', body: 'a' })
   await assert.rejects(ops.listStatusUpdates('P-ZZZ-9'), { code: 'NOT_FOUND' })
 })
+
+const M1 = '11111111-1111-4111-8111-111111111111'
+const M2 = '22222222-2222-4222-8222-222222222222'
+const M3 = '33333333-3333-4333-8333-333333333333'
+
+function milestoneKit() {
+  const { fake, ...rest } = kit()
+  const launch = seedProject(fake, 'Launch', { id: PID })
+  const other = fake.seed({ name: 'Elsewhere', teamIds: ['team-two'] })
+  fake.seedMilestone(launch.id, { id: M2, name: 'Beta', targetDate: '2026-12-01', status: 'unstarted', progress: 0.1, description: 'Second' })
+  fake.seedMilestone(launch.id, { id: M1, name: 'Alpha', targetDate: '2026-11-01', status: 'next', progress: 0.5 })
+  fake.seedMilestone(other.id, { id: M3, name: 'Foreign', targetDate: '2026-10-01', status: 'overdue' })
+  return { fake, ...rest }
+}
+
+test('listMilestones returns the milestones of the team projects by due date, with the canonical epic id', async () => {
+  const { ops } = milestoneKit()
+  assert.deepEqual(await ops.listMilestones(), [
+    { id: M1, name: 'Alpha', due: '2026-11-01', epic: 'P-ACM-1', status: 'next', progress: 0.5 },
+    { id: M2, name: 'Beta', due: '2026-12-01', description: 'Second', epic: 'P-ACM-1', status: 'unstarted', progress: 0.1 },
+  ])
+})
+
+test('getMilestone returns what listMilestones holds, NOT_FOUND for an unknown UUID, and NOT_FOUND with no request for a non-UUID', async () => {
+  const { ops, fetch } = milestoneKit()
+  const [first] = await ops.listMilestones()
+  assert.deepEqual(await ops.getMilestone(M1), first)
+  await assert.rejects(ops.getMilestone('99999999-9999-4999-8999-999999999999'), { code: 'NOT_FOUND', nextStep: 'pmkit milestone list' })
+  const before = fetch.calls.length
+  await assert.rejects(ops.getMilestone('alpha'), { code: 'NOT_FOUND', message: 'milestone alpha does not exist', nextStep: 'pmkit milestone list' })
+  assert.equal(fetch.calls.length, before)
+})
+
+test('readDocument returns path, title and body for a slug or a document URL, and NOT_FOUND for an unknown slug', async () => {
+  const { fake, ops } = kit()
+  const project = seedProject(fake, 'Launch')
+  fake.seedDocument(project.id, { slugId: 'abcdef012345', title: 'Plan', content: '# Plan\n\nBody.' })
+  const expected = { path: 'abcdef012345', title: 'Plan', body: '# Plan\n\nBody.' }
+  assert.deepEqual(await ops.readDocument('abcdef012345'), expected)
+  assert.deepEqual(await ops.readDocument('https://linear.app/acme/document/plan-abcdef012345'), expected)
+  await assert.rejects(ops.readDocument('ffffffffffff'), { code: 'NOT_FOUND' })
+  await assert.rejects(ops.readDocument('notes/plan.md'), { code: 'NOT_FOUND' })
+})
+
+test('createMilestone and createDocument are NOT_SUPPORTED and send no request', async () => {
+  const { ops, fetch } = kit()
+  const before = fetch.calls.length
+  await assert.rejects(ops.createMilestone({ id: 'm' }, ACTOR), { code: 'NOT_SUPPORTED', nextStep: 'Create the milestone in Linear' })
+  await assert.rejects(ops.createDocument('notes/plan.md', 'x', ACTOR), { code: 'NOT_SUPPORTED', nextStep: 'Create the document in Linear' })
+  await assert.rejects(ops.createMilestone({ id: 'm' }, ACTOR, { dryRun: true }), { code: 'NOT_SUPPORTED' })
+  assert.equal(fetch.calls.length, before)
+})

@@ -4,18 +4,23 @@
 
 import { PmkitError } from '../errors.mjs'
 import { HEALTH, sortEpics } from '../local/epics.mjs'
+import { sortMilestones } from '../local/milestones.mjs'
 import { validDate } from '../local/sprints.mjs'
 import { CATEGORIES } from '../model.mjs'
 import { PARENT_CHAIN_DEPTH } from './documents.mjs'
 import { isUnconfirmed } from './issue-ops.mjs'
 import { estimateOf, makeContext, stateCategory } from './issues.mjs'
 import {
-  EPIC_ISSUES_QUERY, HEALTH_TO_LINEAR, PROJECTS_QUERY, PROJECT_CREATE, PROJECT_UPDATES_QUERY, PROJECT_UPDATE_CREATE, epicId, epicKey, toEpic, toStatusUpdate,
+  DOCUMENT_QUERY, EPIC_ISSUES_QUERY, HEALTH_TO_LINEAR, PROJECTS_QUERY, PROJECT_CREATE, PROJECT_MILESTONES_QUERY, PROJECT_MILESTONE_QUERY, PROJECT_UPDATES_QUERY,
+  PROJECT_UPDATE_CREATE, epicId, epicKey, toDocument, toEpic, toMilestone, toStatusUpdate,
 } from './projects.mjs'
 
 const LIST_PAGE = 100
 const PROGRESS_PAGE = 100
 const PROGRESS_PAGES = 10
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const DOCUMENT_SLUG = /^[0-9a-z]{12}$/i
+const DOCUMENT_URL_SLUG = /([0-9a-z]{12})\/?$/i
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
 const notFound = (id) => new PmkitError('NOT_FOUND', `epic ${id} does not exist`, 'pmkit epic list')
 
@@ -216,5 +221,47 @@ export function projectOperations({ client, discovery, config, now = () => new D
     return (await readUpdates(project)).map((node) => toStatusUpdate(node))
   }
 
-  return { listDeliverables, getDeliverable, deliverableProgress, createDeliverable, publishStatusUpdate, listStatusUpdates, resolveEpic, requireWorkspace, now, uuid, discovery }
+  async function listMilestones() {
+    requireWorkspace()
+    const filter = { accessibleTeams: { some: { key: { eq: scope.team } } } }
+    const projects = await client.paginate(PROJECTS_QUERY, { filter, withLists: false }, { select: (data) => data.projects, pageSize: LIST_PAGE, maxPages: 100 })
+    const ids = new Set(projects.nodes.map((node) => node.id))
+    // Linear rejects a project filter on milestones when the value is not a real id, so the team is applied here.
+    const { nodes } = await client.paginate(PROJECT_MILESTONES_QUERY, {}, { select: (data) => data.projectMilestones, pageSize: LIST_PAGE, maxPages: 100 })
+    return sortMilestones(nodes.filter((node) => ids.has(node.project?.id)).map(toMilestone))
+  }
+
+  async function getMilestone(id) {
+    requireWorkspace()
+    const missing = () => new PmkitError('NOT_FOUND', `milestone ${id} does not exist`, 'pmkit milestone list')
+    if (typeof id !== 'string' || !UUID.test(id)) throw missing()
+    let node
+    try {
+      node = (await client.request(PROJECT_MILESTONE_QUERY, { id })).projectMilestone
+    } catch (error) {
+      // Linear answers an unknown id with an "Entity not found" error.
+      if (error instanceof PmkitError && /not found/i.test(error.message)) throw missing()
+      throw error
+    }
+    if (!node) throw missing()
+    return toMilestone(node)
+  }
+
+  /** `docPath` is a document slug or the URL of a document, which ends in the slug. */
+  async function readDocument(docPath) {
+    requireWorkspace()
+    const slug = typeof docPath !== 'string' ? null : /^https?:\/\//i.test(docPath) ? DOCUMENT_URL_SLUG.exec(docPath)?.[1] : DOCUMENT_SLUG.test(docPath) ? docPath : null
+    const missing = () => new PmkitError('NOT_FOUND', `document ${docPath} does not exist`, 'pmkit epic get shows the documents of an epic')
+    if (!slug) throw missing()
+    const data = await client.request(DOCUMENT_QUERY, { filter: { slugId: { eq: slug } } })
+    const node = data?.documents?.nodes?.[0]
+    if (!node) throw missing()
+    return toDocument(node)
+  }
+
+  const notWritable = (what) => async () => {
+    throw new PmkitError('NOT_SUPPORTED', `pmkit reads Linear project ${what}s but does not create them`, `Create the ${what} in Linear`)
+  }
+
+  return { listDeliverables, getDeliverable, deliverableProgress, createDeliverable, listMilestones, getMilestone, readDocument, createMilestone: notWritable('milestone'), createDocument: notWritable('document'), publishStatusUpdate, listStatusUpdates, resolveEpic, requireWorkspace, now, uuid, discovery }
 }
