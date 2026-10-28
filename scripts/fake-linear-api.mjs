@@ -226,6 +226,9 @@ export function fakeTriage({ responsibility = null, issues = [], users = ACME_US
 const graphqlError = (message, code) => ({ status: 200, json: { data: null, errors: [{ message, extensions: { code } }] } })
 const validation = (message) => graphqlError(message, 'GRAPHQL_VALIDATION_FAILED')
 const NOT_FOUND = 'Could not find referenced Issue.'
+const failProject = () => {
+  throw new FakeInputError('Could not find referenced Project.')
+}
 const CREATE_FIELDS = ['id', 'title', 'description', 'assigneeId', 'parentId', 'priority', 'estimate', 'labelIds', 'teamId', 'stateId', 'dueDate', 'cycleId', 'projectId', 'projectMilestoneId']
 const UPDATE_FIELDS = CREATE_FIELDS.filter((field) => field !== 'id')
 
@@ -264,6 +267,7 @@ export function fakeLinearIssues({
   let tick = 0
   let issueCount = 0
   let relationCount = 0
+  let projectLookup = () => undefined
   const stamp = () => new Date(Date.parse(start) + ++tick * 1000).toISOString()
 
   const teamById = (id) => teams.find((team) => team.id === id)
@@ -382,6 +386,8 @@ export function fakeLinearIssues({
       assignee: record.assigneeId ? { id: record.assigneeId } : null,
       parent: parent ? { identifier: parent.identifier } : null,
       cycle: cycleOf(record) ? { id: cycleOf(record).id, number: cycleOf(record).number } : null,
+      project: record.projectId ? projectLookup(record.projectId) : null,
+      projectMilestone: record.projectMilestoneId ? { id: record.projectMilestoneId } : null,
       ...Object.fromEntries(Object.entries(nested).map(([field, build]) => [field, connection(build(record))])),
     }
   }
@@ -410,7 +416,8 @@ export function fakeLinearIssues({
         record.cycleId = cycle.id
       }
     }
-    for (const [key, field] of [['projectId', 'projectId'], ['projectMilestoneId', 'milestoneId']]) if (input[key] !== undefined) record[field] = input[key]
+    if (input.projectId !== undefined) record.projectId = input.projectId === null ? null : (projectLookup(input.projectId)?.id ?? failProject())
+    if (input.projectMilestoneId !== undefined) record.projectMilestoneId = input.projectMilestoneId
   }
 
   // PMK-36: history. recordHistory is the one place that turns a change of an issue into an entry, so a later issue can add a field row here.
@@ -443,7 +450,7 @@ export function fakeLinearIssues({
     if (removed.length > 0) entry.removedLabels = removed.map(labelRef)
     if (changed('cycleId')) Object.assign(entry, { fromCycle: cycleRef(before.cycleId), toCycle: cycleRef(record.cycleId) })
     if (changed('projectId')) Object.assign(entry, { fromProject: before.projectId ? { id: before.projectId } : null, toProject: record.projectId ? { id: record.projectId } : null })
-    if (changed('milestoneId')) Object.assign(entry, { fromProjectMilestone: before.milestoneId ? { id: before.milestoneId } : null, toProjectMilestone: record.milestoneId ? { id: record.milestoneId } : null })
+    if (changed('projectMilestoneId')) Object.assign(entry, { fromProjectMilestone: before.projectMilestoneId ? { id: before.projectMilestoneId } : null, toProjectMilestone: record.projectMilestoneId ? { id: record.projectMilestoneId } : null })
     if (changed('description')) entry.updatedDescription = true
     Object.assign(entry, extra)
     if (Object.keys(entry).length === 0) return
@@ -489,6 +496,8 @@ export function fakeLinearIssues({
       cycleId: null,
       creatorId: users[0].id,
       botActor: null,
+      projectId: null,
+      projectMilestoneId: null,
     }
     const { id, teamId, title, ...rest } = input
     applyFields(record, rest)
@@ -513,8 +522,10 @@ export function fakeLinearIssues({
     cycle: (record, c) => cycleMatches(cycleOf(record), c),
     parent: (record, c) => {
       const parent = record.parentId ? find(record.parentId) : null
-      return parent !== null && idMatches(parent, c.id.eq)
+      if (c.null === true) return parent === null
+      return parent !== null && (c.id.eq === undefined || idMatches(parent, c.id.eq)) && (c.id.in === undefined || c.id.in.some((value) => idMatches(parent, value)))
     },
+    project: (record, c) => record.projectId !== null && record.projectId === (projectLookup(c.id.eq)?.id ?? c.id.eq),
     hasBlockedByRelations: (record, c) => relations.some((relation) => relation.type === 'blocks' && relation.relatedIssueId === record.id) === c.eq,
     updatedAt: (record, c) =>
       (c.lt === undefined || Date.parse(record.updatedAt) < Date.parse(c.lt))
@@ -737,6 +748,9 @@ export function fakeLinearIssues({
     },
     historyRecords,
     unconfirm: (operation, { applied }) => pending.set(operation, { applied }),
+    useProjects: ({ byRef }) => {
+      projectLookup = byRef
+    },
     relate: (type, from, to) => relate({ type, issueId: from, relatedIssueId: to }),
     comment: (ref, input) => commentNode(addComment({ ...input, issueId: ref }, { author: input.userId === undefined && input.botActor === undefined && input.externalUser === undefined })),
     comments: commentRecords,

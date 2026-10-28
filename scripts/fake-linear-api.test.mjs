@@ -659,3 +659,45 @@ test('a cycle of another team, or an unknown cycle, gets an INPUT_ERROR', async 
   assert.equal(unknown.body.errors[0].extensions.code, 'INPUT_ERROR')
   assert.equal(fake.nodes()[0].cycle, null)
 })
+
+const PROJECT = { id: 'proj-1', slugId: 'a1b2c3d4e5f6', identifier: 'P-ACM-1' }
+const withProjects = (options) => {
+  const store = issueStore(options)
+  store.fake.useProjects({ byRef: (ref) => (ref === PROJECT.id || ref === PROJECT.slugId || String(ref).toUpperCase() === PROJECT.identifier ? PROJECT : undefined) })
+  return store
+}
+
+test('without useProjects an issue has no project and no milestone', async () => {
+  const { fake } = issueStore()
+  const node = fake.seed({ title: 'A' })
+  assert.equal(node.project, null)
+  assert.equal(node.projectMilestone, null)
+})
+
+test('an issue created or updated with projectId reads back its project', async () => {
+  const { fake, fetch } = withProjects()
+  const created = (await send(fetch, ISSUE_CREATE, { input: { teamId: 'team-acme', title: 'A', projectId: 'proj-1', projectMilestoneId: 'milestone-1' } })).body.data.issueCreate.issue
+  assert.deepEqual(created.project, PROJECT)
+  assert.deepEqual(created.projectMilestone, { id: 'milestone-1' })
+  fake.seed({ title: 'B' })
+  const updated = (await send(fetch, ISSUE_UPDATE, { id: 'ACME-2', input: { projectId: 'P-ACM-1' } })).body.data.issueUpdate.issue
+  assert.deepEqual(updated.project, PROJECT)
+  const cleared = (await send(fetch, ISSUE_UPDATE, { id: 'ACME-2', input: { projectId: null } })).body.data.issueUpdate.issue
+  assert.equal(cleared.project, null)
+  const unknown = await send(fetch, ISSUE_UPDATE, { id: 'ACME-2', input: { projectId: 'proj-9' } })
+  assert.equal(unknown.body.errors[0].extensions.code, 'INPUT_ERROR')
+})
+
+test('the project and parent filters match by project, null parent and a list of parents', async () => {
+  const { fake, fetch } = withProjects()
+  fake.seed({ id: 'uuid-1', title: 'Root', projectId: 'proj-1' })
+  fake.seed({ title: 'Child', parentId: 'uuid-1', projectId: 'proj-1' })
+  fake.seed({ title: 'Outside' })
+  const find = async (clause) => idsOf((await send(fetch, ISSUES_QUERY, { filter: { and: [clause] }, first: 10, sort: [{ createdAt: { order: 'Ascending' } }] })).body)
+  assert.deepEqual(await find({ project: { id: { eq: 'proj-1' } } }), ['ACME-1', 'ACME-2'])
+  assert.deepEqual(await find({ parent: { null: true } }), ['ACME-1', 'ACME-3'])
+  assert.deepEqual(await find({ parent: { id: { in: ['ACME-1', 'ACME-3'] } } }), ['ACME-2'])
+  assert.deepEqual(await find({ parent: { id: { eq: 'ACME-1' } } }), ['ACME-2'])
+  const unknown = await send(fetch, ISSUES_QUERY, { filter: { and: [{ projectMilestone: { id: { eq: 'x' } } }] }, first: 5 })
+  assert.equal(unknown.body.errors[0].extensions.code, 'GRAPHQL_VALIDATION_FAILED')
+})
