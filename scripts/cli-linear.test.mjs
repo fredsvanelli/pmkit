@@ -168,6 +168,73 @@ test('issues branch uses the name Linear suggests', async () => {
   assert.deepEqual(fake.mutations, [])
 })
 
+const lastFilter = (fetch) => fetch.calls.filter((call) => operationName(call.body.query) === 'PmkitIssues').at(-1).body.variables.filter
+
+test('whoami prints the viewer', async () => {
+  const json = await cli(setup({ edit: withTeam }), ['whoami', '--json'], withIssues().fetch)
+  assert.equal(json.code, 0, json.stdout + json.stderr)
+  assert.equal(JSON.parse(json.stdout).id, 'user-1')
+  const text = await cli(setup({ edit: withTeam }), ['whoami'], withIssues().fetch)
+  assert.equal(text.stdout, 'user-1 (Test User)\n')
+})
+
+test('issues list --assignee me sends the viewer id', async () => {
+  const { fake, fetch } = withIssues()
+  fake.seed({ title: 'Mine', assigneeId: 'user-1' })
+  fake.seed({ title: 'Theirs', assigneeId: 'user-2' })
+  const result = await cli(setup({ edit: withTeam }), ['issues', 'list', '--assignee', 'me', '--json'], fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.deepEqual(JSON.parse(result.stdout).issues.map((issue) => issue.id), ['ACME-1'])
+  assert.deepEqual(lastFilter(fetch).and, [{ team: { key: { eq: 'ACME' } } }, { assignee: { id: { eq: 'user-1' } } }])
+})
+
+test('issues assign ACME-1 me assigns the viewer', async () => {
+  const { fake, fetch } = withIssues(['Assign me'])
+  const result = await cli(setup({ edit: withTeam }), ['issues', 'assign', 'ACME-1', 'me', '--json'], fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.equal(JSON.parse(result.stdout).after.assignee, 'user-1')
+  assert.deepEqual(fake.mutations, ['PmkitIssueUpdate'])
+})
+
+test('--as another member exits 2 with INVALID_INPUT', async () => {
+  const { fake, fetch } = withIssues(['Assign me'])
+  const result = await cli(setup({ edit: withTeam }), ['issues', 'assign', 'ACME-1', 'me', '--as', 'user-2', '--json'], fetch)
+  assert.equal(result.code, 2)
+  assert.deepEqual(errorOf(result), {
+    code: 'INVALID_INPUT',
+    message: 'Linear records every write as the owner of LINEAR_API_KEY (Test User)',
+    nextStep: 'Drop --as, or use a key created by that member',
+  })
+  assert.deepEqual(fake.mutations, [])
+})
+
+test('issues list warns when Linear has more', async () => {
+  const { fake, fetch } = withIssues()
+  for (let index = 0; index < 1001; index += 1) fake.seed({ title: `Issue ${index}` })
+  const plain = await cli(setup({ edit: withTeam }), ['issues', 'list', '--json'], fetch)
+  assert.equal(plain.code, 0, plain.stderr)
+  assert.equal(plain.stderr, 'warning: Linear has more matching issues than the 1000 pmkit read; narrow the filter\n')
+  const sorted = await cli(setup({ edit: withTeam }), ['issues', 'list', '--sort', 'priority', '--json'], fetch)
+  assert.equal(sorted.stderr, 'warning: Linear has more matching issues than the 1000 pmkit read; narrow the filter; the order covers the issues read\n')
+})
+
+test('a dry-run create prints (new)', async () => {
+  const { fake, fetch } = withIssues()
+  const result = await cli(setup({ edit: withTeam }), ['issues', 'create', '--title', 'Fresh', '--dry-run'], fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.ok(result.stdout.startsWith('(new)  Fresh\n'), result.stdout)
+  assert.ok(result.stdout.endsWith('dry run: nothing was written\n'), result.stdout)
+  assert.deepEqual(fake.mutations, [])
+})
+
+test('a create prints the new id and no key', async () => {
+  const { fetch } = withIssues()
+  const result = await cli(setup({ edit: withTeam }), ['issues', 'create', '--title', 'Fresh'], fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.ok(result.stdout.startsWith('ACME-1  Fresh\n'), result.stdout)
+  assert.ok(!result.stdout.includes(FAKE_KEY) && !result.stderr.includes(FAKE_KEY))
+})
+
 // ---------------------------------------------------------------------------
 // init --tracker linear
 
