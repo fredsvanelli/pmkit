@@ -295,3 +295,107 @@ test('linear triage suggestions defaults --limit to 25, clamps it to 100 and war
   const bad = await cli(setup(), ['linear', 'triage', 'suggestions', '--json', '--limit', '0'], businessFetch({ issues }))
   assert.equal(errorOf(bad).code, 'INVALID_INPUT')
 })
+
+const set = (context, args, fetch) => cli(context, ['linear', 'triage', 'set', '--json', ...args], fetch)
+
+test('linear triage set on a Free workspace exits 2 with NOT_SUPPORTED and sends nothing', async () => {
+  for (const args of [['--off'], ['--members', 'user-2', '--dry-run']]) {
+    const fetch = triageFetch({ triage: { responsibility: MANUAL } })
+    const result = await set(setup(), args, fetch)
+    assert.equal(result.code, 2, args.join(' '))
+    assert.deepEqual(errorOf(result), {
+      code: 'NOT_SUPPORTED',
+      message: 'triage rotation is unavailable on this workspace (plan free)',
+      nextStep: 'Triage responsibility needs the Business or Enterprise plan',
+    })
+    assert.equal(triageCalls(fetch).length, 0)
+    assert.equal(mutationCalls(fetch).length, 0)
+  }
+})
+
+test('linear triage set creates a manual rotation with exactly one mutation', async () => {
+  const fetch = businessFetch({ responsibility: null })
+  const result = await set(setup(), ['--members', 'user-2,user-1'], fetch)
+  assert.equal(result.code, 0, result.stderr)
+  const calls = mutationCalls(fetch)
+  assert.equal(calls.length, 1)
+  assert.equal(operationName(calls[0].body.query), 'PmkitTriageCreate')
+  assert.deepEqual(calls[0].body.variables.input, {
+    teamId: 'team-acme',
+    action: 'assign',
+    manualSelection: { userIds: ['user-2', 'user-1'], assignmentIndex: 0 },
+  })
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.before.source, 'none')
+  assert.equal(data.after.source, 'manual')
+  assert.deepEqual(data.after.current, { id: 'user-2', name: 'Ada Lovelace' })
+  assert.ok(!JSON.stringify(calls[0].body).includes(FAKE_KEY))
+  assert.ok(!result.stdout.includes(FAKE_KEY) && !result.stderr.includes(FAKE_KEY))
+})
+
+test('linear triage set updates the rotation, the action, and turns the responsibility off', async () => {
+  const members = businessFetch({ responsibility: MANUAL })
+  const updated = await set(setup(), ['--members', 'user-1,user-2'], members)
+  assert.equal(updated.code, 0, updated.stderr)
+  const [update] = mutationCalls(members)
+  assert.equal(operationName(update.body.query), 'PmkitTriageUpdate')
+  assert.equal(update.body.variables.id, 'tr-1')
+  assert.deepEqual(update.body.variables.input, { manualSelection: { userIds: ['user-1', 'user-2'], assignmentIndex: 1 } })
+  assert.equal(JSON.parse(updated.stdout).after.current.id, 'user-2')
+
+  const action = businessFetch({ responsibility: MANUAL })
+  const notify = await set(setup(), ['--action', 'notify'], action)
+  assert.equal(mutationCalls(action).length, 1)
+  assert.deepEqual(mutationCalls(action)[0].body.variables.input, { action: 'notify' })
+  assert.equal(JSON.parse(notify.stdout).after.action, 'notify')
+  assert.equal(JSON.parse(notify.stdout).before.action, 'assign')
+
+  const off = businessFetch({ responsibility: MANUAL })
+  const removed = await set(setup(), ['--off'], off)
+  assert.equal(removed.code, 0, removed.stderr)
+  assert.equal(operationName(mutationCalls(off)[0].body.query), 'PmkitTriageDelete')
+  assert.equal(mutationCalls(off).length, 1)
+  assert.equal(JSON.parse(removed.stdout).after.source, 'none')
+})
+
+test('linear triage set --dry-run reads, previews and sends no mutation', async () => {
+  const fetch = businessFetch({ responsibility: MANUAL })
+  const json = await set(setup(), ['--action', 'notify', '--dry-run'], fetch)
+  assert.equal(json.code, 0, json.stderr)
+  assert.equal(JSON.parse(json.stdout).after.action, 'notify')
+  const text = await cli(setup(), ['linear', 'triage', 'set', '--members', 'user-1', '--dry-run'], fetch)
+  assert.match(text.stdout, /^before:\n {2}action: assign/m)
+  assert.match(text.stdout, /\nafter:\n {2}action: assign\n {2}source: manual\n {2}on duty: Test User\n/)
+  assert.ok(text.stdout.endsWith('dry run: nothing was written\n'), text.stdout)
+  assert.equal(mutationCalls(fetch).length, 0)
+  assert.equal(callsOf(fetch, 'PmkitTriageShow'), 2)
+})
+
+test('linear triage set rejects a bad input before any mutation', async () => {
+  const cases = [
+    [['--members', 'user-9'], MANUAL, 'INVALID_INPUT'],
+    [['--members', 'user-3'], MANUAL, 'INVALID_INPUT'],
+    [['--action', 'notify'], null, 'INVALID_INPUT'],
+    [[], MANUAL, 'INVALID_INPUT'],
+    [['--off', '--action', 'notify'], MANUAL, 'INVALID_INPUT'],
+    [['--members', 'user-1'], SCHEDULED, 'CONFLICT'],
+  ]
+  for (const [args, responsibility, code] of cases) {
+    const fetch = businessFetch({ responsibility })
+    const result = await set(setup(), args, fetch)
+    assert.equal(result.code, 2, args.join(' '))
+    assert.equal(errorOf(result).code, code, args.join(' '))
+    assert.equal(mutationCalls(fetch).length, 0, args.join(' '))
+  }
+  const schedule = await set(setup(), ['--members', 'user-1'], businessFetch({ responsibility: SCHEDULED }))
+  assert.match(errorOf(schedule).nextStep, /On call/)
+})
+
+test('only the three set paths send a mutation', async () => {
+  for (const args of [['show'], ['suggestions'], ['set', '--off', '--dry-run'], ['set', '--members', 'user-1', '--dry-run']]) {
+    const fetch = businessFetch({ responsibility: MANUAL })
+    const result = await cli(setup(), ['linear', 'triage', ...args, '--json'], fetch)
+    assert.equal(result.code, 0, `${args.join(' ')}: ${result.stderr}`)
+    assert.equal(mutationCalls(fetch).length, 0, args.join(' '))
+  }
+})

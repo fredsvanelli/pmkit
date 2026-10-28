@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { dutyText, dutyView, suggestionsText, suggestionsView, triageAvailability } from './triage.mjs'
+import { dutyText, dutyView, planChange, suggestionsText, suggestionsView, triageAvailability } from './triage.mjs'
 
 const raw = (plan) => ({ workspace: { plan } })
 const team = (triageEnabled) => ({ key: 'ACME', triageEnabled })
@@ -136,4 +136,53 @@ test('suggestionsText prints one block per issue and the empty inbox', () => {
   )
   assert.equal(suggestionsText(suggestionsView([])), 'no issue is waiting in triage')
   assert.equal(suggestionsText(suggestionsView([issueNode('ACME-4', [])])), 'no active suggestions for 1 issue in triage')
+})
+
+const MEMBERS = ['user-1', 'user-2', 'user-3']
+const plan = (node, flags) => planChange(node, flags, MEMBERS)
+const fails = (node, flags, code) => assert.throws(() => plan(node, flags), { code })
+
+test('planChange updates a manual rotation and keeps the current person when still listed', () => {
+  assert.deepEqual(plan(manual(['user-2', 'user-3']), { members: 'user-3,user-2,user-1' }), {
+    kind: 'update',
+    id: 'tr-1',
+    input: { manualSelection: { userIds: ['user-3', 'user-2', 'user-1'], assignmentIndex: 1 } },
+  })
+  assert.equal(plan(manual(['user-2', 'user-3']), { members: 'user-3,user-1' }).input.manualSelection.assignmentIndex, 0)
+  assert.equal(plan(manual(['user-2']), { members: 'user-1', action: 'notify' }).input.action, 'notify')
+})
+
+test('planChange creates a responsibility with assign as the default action', () => {
+  assert.deepEqual(plan(null, { members: 'user-1,user-2' }), {
+    kind: 'create',
+    input: { action: 'assign', manualSelection: { userIds: ['user-1', 'user-2'], assignmentIndex: 0 } },
+  })
+  assert.equal(plan(null, { members: 'user-1', action: 'notify' }).input.action, 'notify')
+})
+
+test('planChange with only --action keeps the members and needs a responsibility', () => {
+  assert.deepEqual(plan(manual(['user-2']), { action: 'notify' }), { kind: 'update', id: 'tr-1', input: { action: 'notify' } })
+  fails(null, { action: 'notify' }, 'INVALID_INPUT')
+})
+
+test('planChange --off deletes and excludes the other flags', () => {
+  assert.deepEqual(plan(manual(['user-2']), { off: true }), { kind: 'delete', id: 'tr-1' })
+  assert.deepEqual(plan(null, { off: true }), { kind: 'none' })
+  fails(manual(['user-2']), { off: true, members: 'user-1' }, 'INVALID_INPUT')
+  fails(manual(['user-2']), { off: true, action: 'notify' }, 'INVALID_INPUT')
+})
+
+test('planChange refuses to edit the members of a schedule but allows --off and --action', () => {
+  const node = scheduled({ service: 'pagerDuty' })
+  assert.throws(() => plan(node, { members: 'user-1' }), (error) => error.code === 'CONFLICT' && error.nextStep.includes('On call'))
+  assert.equal(plan(node, { off: true }).kind, 'delete')
+  assert.deepEqual(plan(node, { action: 'assign' }), { kind: 'update', id: 'tr-2', input: { action: 'assign' } })
+})
+
+test('planChange rejects a bad input', () => {
+  fails(null, {}, 'INVALID_INPUT')
+  fails(null, { members: 'user-9' }, 'INVALID_INPUT')
+  fails(null, { members: '' }, 'INVALID_INPUT')
+  fails(null, { members: 'user-1', action: 'page' }, 'INVALID_INPUT')
+  fails(manual(['user-2']), { members: true }, 'INVALID_INPUT')
 })

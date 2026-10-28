@@ -45,13 +45,18 @@ export function dutyView(node, raw) {
   return { duty: { action: node.action ?? null, source, current: person(node.currentUser), members, schedule }, warnings }
 }
 
-/** The plain text of a duty view. */
-export function dutyText(team, duty) {
-  if (duty.source === 'none') return `team: ${team}\nnobody is on triage duty`
-  const lines = [`team: ${team}`, `action: ${duty.action}`, `source: ${duty.source}`, `on duty: ${duty.current?.name ?? '(nobody)'}`]
+/** The lines of a duty view without the team line. */
+function dutyLines(duty) {
+  if (duty.source === 'none') return ['nobody is on triage duty']
+  const lines = [`action: ${duty.action}`, `source: ${duty.source}`, `on duty: ${duty.current?.name ?? '(nobody)'}`]
   if (duty.source === 'schedule') lines.push(`schedule: ${duty.schedule.name} (${duty.schedule.provider})`)
   else lines.push(`rotation: ${duty.members.map((member) => (member.id === duty.current?.id ? `${member.name} (current)` : member.name)).join(', ')}`)
-  return lines.join('\n')
+  return lines
+}
+
+/** The plain text of a duty view. */
+export function dutyText(team, duty) {
+  return [`team: ${team}`, ...dutyLines(duty)].join('\n')
 }
 
 const TARGETS = {
@@ -125,6 +130,59 @@ function parseLimit(value, warnings) {
   return number
 }
 
+const ACTIONS = ['assign', 'notify']
+const bad = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
+
+/**
+ * What `set` has to do, from the current TriageResponsibility node (or null), the flags and the ids of the team's members.
+ * Returns { kind: 'create' | 'update' | 'delete' | 'none', id?, input? }. The create input has no teamId; set adds it.
+ */
+export function planChange(current, flags, memberIds) {
+  const { members, action, off } = flags
+  if (off === true) {
+    if (members !== undefined || action !== undefined) throw bad('--off cannot be combined with --members or --action', 'Run set --off alone')
+    return current ? { kind: 'delete', id: current.id } : { kind: 'none' }
+  }
+  if (members === undefined && action === undefined) throw bad('set needs --members, --action or --off', 'Pass at least one of them')
+  if (action !== undefined && !ACTIONS.includes(action)) throw bad(`--action takes assign or notify, got "${action}"`, 'Pass --action assign or --action notify')
+  if (members === undefined) {
+    if (!current) throw bad('the team has no triage responsibility, so there is nobody to assign or notify', 'Pass --members with the ids from pmkit discover')
+    return { kind: 'update', id: current.id, input: { action } }
+  }
+  if (typeof members !== 'string') throw bad('--members needs a comma-separated list of member ids', 'Pass --members with the ids from pmkit discover')
+  const ids = [...new Set(members.split(',').map((id) => id.trim()).filter((id) => id !== ''))]
+  if (ids.length === 0) throw bad('--members is empty', 'Pass --members with the ids from pmkit discover')
+  const outside = ids.filter((id) => !memberIds.includes(id))
+  if (outside.length > 0) throw bad(`not a member of the team: ${outside.join(', ')}`, 'Use the member ids from pmkit discover')
+  if (current?.timeSchedule) {
+    throw new PmkitError('CONFLICT', 'the rotation comes from a schedule, and pmkit does not edit schedules', `Change the schedule "${current.timeSchedule.name}" in Linear, or run set --off`)
+  }
+  const index = current?.currentUser ? ids.indexOf(current.currentUser.id) : -1
+  const manualSelection = { userIds: ids, assignmentIndex: Math.max(index, 0) }
+  if (!current) return { kind: 'create', input: { action: action ?? 'assign', manualSelection } }
+  return { kind: 'update', id: current.id, input: { manualSelection, ...(action === undefined ? {} : { action }) } }
+}
+
+/** The node a plan would leave behind, for a dry run. names come from raw.users. */
+function projected(current, plan, raw) {
+  if (plan.kind === 'none' || plan.kind === 'delete') return null
+  const selection = plan.input.manualSelection ?? current?.manualSelection ?? null
+  const id = selection?.userIds[selection.assignmentIndex ?? 0]
+  const named = raw.users.find((user) => user.id === id)
+  return {
+    id: plan.id ?? 'new',
+    action: plan.input.action ?? current?.action ?? 'assign',
+    manualSelection: plan.input.manualSelection ? selection : (current?.manualSelection ?? null),
+    timeSchedule: plan.input.manualSelection ? null : (current?.timeSchedule ?? null),
+    currentUser: plan.input.manualSelection ? (named ? { id: named.id, name: named.name } : null) : (current?.currentUser ?? null),
+  }
+}
+
+const PAYLOAD = `success triageResponsibility { ${RESPONSIBILITY_FIELDS} }`
+export const CREATE_MUTATION = `mutation PmkitTriageCreate($input: TriageResponsibilityCreateInput!) { triageResponsibilityCreate(input: $input) { ${PAYLOAD} } }`
+export const UPDATE_MUTATION = `mutation PmkitTriageUpdate($id: String!, $input: TriageResponsibilityUpdateInput!) { triageResponsibilityUpdate(id: $id, input: $input) { ${PAYLOAD} } }`
+export const DELETE_MUTATION = 'mutation PmkitTriageDelete($id: String!) { triageResponsibilityDelete(id: $id) { success } }'
+
 /** The team a command works on: --team, then tracker.scope.team, then the only team of the workspace. */
 export function chooseTeam(raw, flag, config) {
   const keys = raw.teams.map((team) => team.key)
@@ -186,5 +244,41 @@ export function createTriage({ client, discovery, config }) {
     return { data: { available: true, team: team.key, ...view }, text: suggestionsText(view), warnings: all }
   }
 
-  return Object.freeze({ show, suggestions })
+  async function set({ team: flag, members, action, off, dryRun = false } = {}) {
+    const { raw, team, warnings, availability } = await context(flag)
+    if (!availability.available) {
+      const why = availability.reason === 'plan' ? `plan ${availability.plan}` : `triage is off for team ${team.key}`
+      throw new PmkitError('NOT_SUPPORTED', `triage rotation is unavailable on this workspace (${why})`, availability.enableHint)
+    }
+    const before = await readDuty(raw, team)
+    const memberIds = raw.users.filter((user) => !user.app && user.teams.includes(team.id)).map((user) => user.id)
+    const plan = planChange(before.node, { members, action, off }, memberIds)
+    let after
+    if (dryRun || plan.kind === 'none') {
+      after = dutyView(projected(before.node, plan, raw), raw)
+    } else {
+      let payload
+      if (plan.kind === 'create') {
+        payload = (await client.request(CREATE_MUTATION, { input: { teamId: team.id, ...plan.input } })).triageResponsibilityCreate
+      } else if (plan.kind === 'update') {
+        payload = (await client.request(UPDATE_MUTATION, { id: plan.id, input: plan.input })).triageResponsibilityUpdate
+      } else {
+        payload = (await client.request(DELETE_MUTATION, { id: plan.id })).triageResponsibilityDelete
+      }
+      if (payload?.success !== true) throw new PmkitError('UPSTREAM', 'Linear did not apply the triage change', 'Run linear triage show to see the current rotation')
+      after = dutyView(payload.triageResponsibility ?? null, raw)
+    }
+    const body = (duty) => dutyLines(duty).map((line) => `  ${line}`)
+    const lines = [`team: ${team.key}`, 'before:', ...body(before.duty), 'after:', ...body(after.duty)]
+    if (dryRun) lines.push('dry run: nothing was written')
+    else if (plan.kind === 'none') lines.push('nothing to change')
+    return {
+      data: { before: before.duty, after: after.duty },
+      text: lines.join('\n'),
+      commit: team.key,
+      warnings: [...warnings, ...before.warnings, ...after.warnings],
+    }
+  }
+
+  return Object.freeze({ show, suggestions, set })
 }

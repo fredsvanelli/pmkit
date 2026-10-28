@@ -950,6 +950,12 @@ export const COMMANDS = [
     run: async (ctx) => (await ctx.linear()).suggestions({ team: ctx.opt('team'), limit: ctx.opt('limit') }),
   },
   {
+    name: 'linear triage set', summary: 'changes the manual triage rotation or its action, or turns the responsibility off; --dry-run previews',
+    usage: '(--members id,.. [--action assign|notify] | --action assign|notify | --off) [--team KEY]',
+    write: true, linear: true, dryRun: true, flags: ['team', 'members', 'action', 'off'],
+    run: async (ctx) => (await ctx.linear()).set({ team: ctx.opt('team'), members: ctx.opt('members'), action: ctx.opt('action'), off: ctx.flag('off') ? true : undefined, dryRun: ctx.dryRun }),
+  },
+  {
     name: 'validate', summary: 'checks every file and reference; problems are output, not errors', flags: [], exempt: true,
     run: (ctx) => {
       const result = validateRepo(ctx.root, { adapters: ctx.adapters })
@@ -1567,14 +1573,14 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
       const { system } = loadPmkitConfig(root, { adapters })
       if (system !== 'local') throw new PmkitError('NOT_SUPPORTED', `${command.name} works only with the Local tracker, and tracker.system is "${system}"`, 'node scripts/pmkit.mjs --help')
     }
-    if (command.linear) {
-      const { system } = ctx.config()
-      if (system !== 'linear') throw new PmkitError('NOT_SUPPORTED', `\`${command.name}\` works only with the Linear tracker, and tracker.system is "${system}"`, 'node scripts/pmkit.mjs --help')
-    }
     // migrate refuses in runMigrate: ctx.config() checks the format, which would hide migrate's own format errors.
     if (kind === 'write' && command.name !== 'migrate') {
       const { pmkitProblems } = ctx.config()
       if (pmkitProblems.length > 0) throw pmkitWriteRefusal(pmkitProblems)
+    }
+    if (command.linear) {
+      const { system } = ctx.config()
+      if (system !== 'linear') throw new PmkitError('NOT_SUPPORTED', `\`${command.name}\` works only with the Linear tracker, and tracker.system is "${system}"`, 'node scripts/pmkit.mjs --help')
     }
     const result = await command.run(ctx)
     // auto_commit commits Local tracker files, so a hosted tracker never commits.

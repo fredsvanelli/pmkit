@@ -1435,6 +1435,7 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'pr open': ['--issue', 'ISS-5N1R'],
     'pr ready': ['--issue', 'ISS-5N1R'],
     'pr sync': [],
+    'linear triage set': ['--off'],
     migrate: [],
   }
   assert.deepEqual(Object.keys(WRITES).sort(), COMMANDS.filter((c) => c.write).map((c) => c.name).sort())
