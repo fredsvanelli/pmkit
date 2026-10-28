@@ -1,5 +1,6 @@
-// Opt-in live check of the Linear client and the workspace discovery against the sandbox workspace. It sends reads
-// only, writes no cache, prints no workspace data, and `npm test` does not load it (the name does not end in .test.mjs).
+// Opt-in live check of the Linear client, the workspace discovery and the issue filters against the sandbox workspace.
+// It sends reads only, keeps its discovery cache in a temporary folder it removes, prints no workspace data, and
+// `npm test` does not load it (the name does not end in .test.mjs).
 //
 //   set -a; . ./.env; set +a; PMKIT_LIVE=1 PMKIT_LIVE_WORKSPACE=<url key> node --test scripts/lib/linear/client-live.mjs
 //
@@ -8,12 +9,16 @@
 // LINEAR_API_KEY is usable.
 
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import test from 'node:test'
 import { isPmkitError } from '../errors.mjs'
 import { createLinearClient, isMutation } from './client.mjs'
 import { linearCredential } from './credential.mjs'
 import { categoryOfType, discoveryView, fetchDiscovery } from './discovery.mjs'
 import { buildLinearCapabilities } from './manifest.mjs'
+import { createLinearTracker } from './tracker.mjs'
 
 const WORKSPACE = process.env.PMKIT_LIVE_WORKSPACE
 
@@ -108,4 +113,34 @@ test('discovery reads the workspace and builds 20 capabilities', { skip }, async
   ])
   assert.equal(buildLinearCapabilities(raw, {}).length, 20)
   assert.ok(!JSON.stringify(raw).includes(KEY))
+})
+
+test('Linear accepts every filter pmkit translates, and getIssue reads a result', { skip }, async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-live-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-live-repo-'))
+  try {
+    const env = { ...process.env, PMKIT_HOME: path.join(home, 'store'), HOME: home, XDG_CONFIG_HOME: path.join(home, '.config') }
+    const config = { root, pmkit: { tracker: tracker(WORKSPACE), git_host: { system: 'none' } } }
+    const linear = createLinearTracker(config, { env, fetch: guardedFetch })
+    const { labels } = await linear.discover()
+    const first = (await linear.searchIssues({ limit: 1 })).issues[0]
+    assert.ok(first, 'the workspace has an issue')
+    const rows = [
+      {}, { text: 'a' }, { categories: ['done'] }, { assignee: 'me' }, { assignee: 'none' },
+      ...(labels.length > 0 ? [{ labels: [labels[0]] }] : []),
+      { blocked: true }, { updatedAfter: '2026-01-01' }, { updatedBefore: '2099-01-01' }, { archived: true }, { sort: 'priority' },
+      { parent: first.id },
+    ]
+    for (const row of rows) {
+      const found = await linear.searchIssues({ ...row, limit: 1 }).catch((error) => {
+        assertNoKey(error)
+        throw new Error(`filter ${Object.keys(row).join(', ') || '(none)'} failed: ${error.code} ${error.message}`)
+      })
+      assert.ok(Array.isArray(found.issues), Object.keys(row).join(', '))
+    }
+    assert.equal((await linear.getIssue(first.id.toLowerCase())).id, first.id)
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+    fs.rmSync(root, { recursive: true, force: true })
+  }
 })
