@@ -387,7 +387,7 @@ Tests that used `linear` as the unsupported example. A trial run that registered
 - [ ] **Step 1: Add the test** `discovery reads the workspace and builds 20 capabilities`, with `{ skip }`. It runs `fetchDiscovery(client(), { now: () => new Date() })` through the file's `guardedFetch`, then checks `raw.workspace.urlKey === WORKSPACE`, `raw.teams.length >= 1`, that every state has a known `categoryOfType`, that `discoveryView(raw, {})` holds the keys of Task 4, that `buildLinearCapabilities(raw, {}).length === 20`, and that `JSON.stringify(raw)` does not include `KEY`. It prints no names. Update the comment at the top to say the file also checks discovery.
 - [ ] **Step 2: Run** `node --test scripts/lib/linear/client-live.mjs` without `PMKIT_LIVE`. Expected: every test skipped.
 - [ ] **Step 3 (optional, read-only):** run it live with the sandbox workspace passed only on the command line, never in a file: `set -a; . /home/fred/projects/pmkit/.env; set +a; PMKIT_LIVE=1 PMKIT_LIVE_WORKSPACE=<url key> node --test scripts/lib/linear/client-live.mjs`. Expected: PASS. If a member key is available, run it with that key too, as the spec's "Non-admin keys" risk asks. Report the result without names.
-- [ ] **Step 4: Run** `npm test`, then `git grep -niE 'cheap.?courier|\bCHE\b'`. Expected: every test passes, and the grep prints nothing.
+- [ ] **Step 4: Run** `npm test`, then the private-name check. Expected: every test passes, and the grep prints nothing.
 - [ ] **Step 5: Commit** with `test(linear): add a live discovery check (PMK-33)`.
 
 ## Self-review
