@@ -71,6 +71,28 @@ test('a stub with a status removed from the workspace throws NOT_CONFIGURED with
   }
 })
 
+test('the history and comment operations are guarded by the mapping check', async () => {
+  const calls = {
+    getHistory: (linear) => linear.getHistory('ACME-1'),
+    listComments: (linear) => linear.listComments('ACME-1'),
+    comment: (linear) => linear.comment('ACME-1', 'x', 'user-1'),
+    resolveThread: (linear) => linear.resolveThread('ACME-1', 'c-1', 'user-1'),
+    metricEvents: (linear) => linear.metricEvents(),
+  }
+  for (const [name, call] of Object.entries(calls)) {
+    const { fetch, tracker: linear } = tracker(setup({ mappings: { status: { in_review: 'Peer Review' } } }))
+    await assert.rejects(call(linear), (error) => error.code === 'NOT_CONFIGURED' && error.details.mappings[0].path === 'mappings.status.in_review', name)
+    assert.ok(fetch.calls.every((c) => !/mutation/i.test(c.body.query)), name)
+  }
+  const { tracker: noWorkspace } = tracker(setup({ scope: {} }))
+  for (const [name, call] of Object.entries(calls)) await assert.rejects(call(noWorkspace), { code: 'NOT_CONFIGURED', message: 'tracker.scope.workspace is not set' }, name)
+})
+
+test('logTime stays a stub with its NOT_SUPPORTED message', async () => {
+  const { tracker: linear } = tracker(setup())
+  await assert.rejects(linear.logTime('ACME-1', 5, 'user-1'), { code: 'NOT_SUPPORTED', message: 'the Linear adapter does not implement logTime yet' })
+})
+
 test('a broken mapping in a cached discovery refreshes exactly once, then throws', async () => {
   const context = setup({ mappings: { status: { in_review: 'Peer Review' } } })
   await tracker(context).tracker.discover()

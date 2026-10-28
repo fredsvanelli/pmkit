@@ -1,5 +1,5 @@
 // The Linear tracker. discover and capabilities read the workspace (PMK-33); the Issues and Relations families read and
-// write issues (PMK-35). Every other contract operation is a stub until PMK-36 to PMK-38.
+// write issues (PMK-35), and the History and Comments families (PMK-36). Every other contract operation is a stub until PMK-37 and PMK-38.
 // See docs/superpowers/specs/2026-10-27-pmk-33-linear-discovery-design.md, "The tracker".
 
 import { randomUUID } from 'node:crypto'
@@ -10,6 +10,7 @@ import { brokenMappings } from '../mappings.mjs'
 import { cacheGet, cachePut, repoHash } from '../user-store.mjs'
 import { createLinearClient } from './client.mjs'
 import { discoveryView, fetchDiscovery } from './discovery.mjs'
+import { historyOperations } from './history-ops.mjs'
 import { issueOperations } from './issue-ops.mjs'
 import { linearDescription } from './mappings.mjs'
 import { relationOperations } from './relation-ops.mjs'
@@ -131,7 +132,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
   }
 
   // Every operation except discover and capabilities runs through here: the workspace check, then the mapping check, then the body.
-  // PMK-35 to PMK-38 replace a stub's body and keep this wrapper.
+  // PMK-37 and PMK-38 replace a stub's body and keep this wrapper.
   const guarded = (body) => async (...args) => {
     if (!workspace) throw new PmkitError('NOT_CONFIGURED', 'tracker.scope.workspace is not set', '/pmkit:setup')
     await checkMappings()
@@ -149,6 +150,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
 
   const issues = issueOperations({ client, discovery, config, now, uuid })
   const relations = relationOperations({ client, ops: issues, uuid })
+  const history = historyOperations({ client, ops: issues, config })
   const contract = {
     getIssue: issues.getIssue,
     searchIssues: issues.searchIssues,
@@ -160,6 +162,11 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     link: relations.link,
     unlink: relations.unlink,
     setParent: relations.setParent,
+    getHistory: history.getHistory,
+    listComments: history.listComments,
+    comment: history.comment,
+    resolveThread: history.resolveThread,
+    metricEvents: history.metricEvents,
   }
   const implemented = { discover, capabilities, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
   // Linear-only features sit beside the contract operations. contractView ignores them.
