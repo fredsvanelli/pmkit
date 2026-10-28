@@ -2,7 +2,7 @@
 id: PMK-36
 title: Read history and comments from Linear
 type: feature
-status: in_review
+status: done
 priority: medium
 estimate: 5
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-35]
 milestone: linear
 branch: pmk-36-read-history-and-comments-from-linear
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-28T19:24:00Z
+updated: 2026-10-28T20:01:29Z
 ---
 
 ## Description

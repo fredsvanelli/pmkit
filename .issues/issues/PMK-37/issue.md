@@ -2,7 +2,7 @@
 id: PMK-37
 title: Map Linear cycles to sprints
 type: feature
-status: in_review
+status: done
 priority: medium
 estimate: 5
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-35]
 milestone: linear
 branch: pmk-37-map-linear-cycles-to-sprints
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-28T19:20:56Z
+updated: 2026-10-28T20:01:30Z
 ---
 
 ## Description
