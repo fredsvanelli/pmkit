@@ -1070,7 +1070,7 @@ test('the history of an issue that joins and leaves an epic names the epic by it
   const { tracker: linear } = epicSetup()
   await linear.setParent('ACME-3', 'P-ACM-1', 'user-1')
   await linear.setParent('ACME-3', null, 'user-1')
-  const moves = (await linear.getHistory('ACME-3')).filter((event) => event.field === 'project')
+  const moves = (await linear.getHistory('ACME-3')).filter((event) => event.field === 'parent')
   assert.deepEqual(moves.map(({ from, to }) => [from, to]), [[null, 'P-ACM-1'], ['P-ACM-1', null]])
 })
 

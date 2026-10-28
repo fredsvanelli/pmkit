@@ -130,6 +130,7 @@ Chosen: approach C **(builder's call)**. The canonical id is the identifier in u
 | `scripts/lib/linear/writes.mjs` | `toInput` accepts an epic id as `parent`. `LATER.milestone` and `NOT_EPICS` change or go. |
 | `scripts/lib/linear/relation-ops.mjs` | `setParent` accepts an epic id or null by "The parent rule". |
 | `scripts/lib/linear/filter.mjs` | `parent: <epic id>` becomes a project filter plus "no parent issue". |
+| `scripts/lib/linear/history.mjs` | `toEvents` emits the shown parent by "The parent rule" in place of a `project` field. |
 | `scripts/lib/linear/manifest.mjs` | Adds `detail` to `deliverables`, `status_update` and `documents`. |
 | `scripts/lib/linear/adapter.mjs` | Fixes the comment on `isEpicId`. The test `!isIssueId(id)` stays, because no project key has the shape of an issue id. |
 | `scripts/lib/format.mjs` | `epicRecord` prints `health` and `progress` when present, plus the `milestones` and `documents` lists. |
@@ -184,6 +185,7 @@ An issue has an optional parent issue and an optional project. pmkit has one `pa
 - `createIssue` with `parent` does the same as `setParent`. `updateIssue` refuses `parent`, as Local does (`OWNED` in `scripts/lib/issue-fields.mjs`); `setParent` is the way to move an issue.
 - An id that is neither a known issue nor a known project is `INVALID_INPUT`, with the message "parent X is not an existing issue or epic".
 - `searchIssues` with `parent: <epic id>` sends `project: { id: { eq } }` together with `parent: { null: true }`, so it returns the issues whose shown parent is that epic and no others. The adapter resolves the project's UUID first.
+- `getHistory` shows the same parent (done). `toEvents` in `scripts/lib/linear/history.mjs` undoes the parent issue and the project as two values and emits `{ op: 'update', field: 'parent', from, to }` only when the shown parent changes. It emits no `project` field. The create event's `parent` is the shown parent at creation, so replaying the events gives the `parent` of `getIssue`.
 
 The dependency map and `epic progress` follow `parent` upward, so a sub-issue of an issue in the epic reaches the epic through its parent's `parent`. This matches Local.
 
