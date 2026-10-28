@@ -1,2 +1,5 @@
 {"at":"2026-10-25T19:13:21Z","by":"fred","op":"create","to":{"id":"PMK-37","title":"Map Linear cycles to sprints","type":"feature","status":"backlog","priority":"medium","estimate":5,"labels":[],"parent":"EPC-5","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"linear","created":"2026-10-25T19:13:21Z","updated":"2026-10-25T19:13:21Z"}}
 {"at":"2026-10-25T19:13:25Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-35"}
+{"at":"2026-10-28T17:25:45Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-28T17:25:45Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-28T17:25:45Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-37-map-linear-cycles-to-sprints"}
