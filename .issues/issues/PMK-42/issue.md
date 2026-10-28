@@ -2,14 +2,16 @@
 id: PMK-42
 title: Add the linear-customers command
 type: feature
-status: backlog
+status: in_progress
 priority: low
 estimate: 5
+assignee: fred
 parent: EPC-5
 blocked_by: [PMK-35]
 milestone: linear
+branch: pmk-42-add-the-linear-customers-command
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-25T19:13:25Z
+updated: 2026-10-28T17:25:55Z
 ---
 
 ## Description
