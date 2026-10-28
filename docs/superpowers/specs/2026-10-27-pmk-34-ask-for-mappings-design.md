@@ -140,7 +140,7 @@ Reading rules. Names compare exactly, with Linear's case.
 2. **Target of `move_to_category(c)`.** The state that `mappings.status.c` names, when set and not `none`. Otherwise the first state of the team by `position` whose category is `c`. With no such state, the move fails with `NOT_SUPPORTED`, `team ACME has no status in the in_review category`, next step `/pmkit:setup`.
 3. **Blocked.** An issue is blocked when one of its blockers is open, as today, or when its state is the one `mappings.status.blocked` names. The state keeps the category of its type, so a blocked issue in a `started` state still counts as `in_progress`.
 4. **Estimate.** `native` reads and writes `Issue.estimate` with the team's scale from discovery. `none`, an absent key, or a team with estimates off gives `estimate: null` on every issue.
-5. **Type.** The type of an issue is the pmkit type whose mapped label the issue carries. When an issue carries labels of two types, the type that comes first in the repository's `types` list wins. Setting a type adds the mapped label and removes the labels of the other mapped types. A team label wins over a workspace label with the same name. With no `mappings.types`, `types` is `[]` and every issue has `type: null`.
+5. **Type.** The type of an issue is the pmkit type whose mapped label the issue carries. When an issue carries labels of two types, the type that comes first in `mappings.types` wins. Setup writes that object in the order of the repository's `types` list. Setting a type adds the mapped label and removes the labels of the other mapped types. A team label wins over a workspace label with the same name. With no `mappings.types`, `types` is `[]` and every issue has `type: null`.
 6. **Other categories.** A hand-written `mappings.status.<category>` for any other category follows rule 1. Setup does not ask for them.
 
 `resolveMappings(view, pmkit)` in `scripts/lib/linear/mappings.mjs` returns the result of these rules for the configured team, so PMK-35 never reads `mappings` itself:
@@ -159,7 +159,7 @@ Reading rules. Names compare exactly, with Linear's case.
 
 The name, the arguments and this return shape are the contract with PMK-35. A change to them needs a note in PMK-35's spec and the changelog.
 
-`resolveMappings` needs the Linear ids of states and labels, which `discoveryView` does not return today. It reads them from the raw discovery that the tracker already holds, so the builder passes `raw` too or adds `id` to the team view **(builder's call)**.
+`resolveMappings` needs the Linear ids of states and labels, which `discoveryView` does not return today. It reads them from the raw discovery that the tracker already holds, so `discoveryView` keeps its output and attaches the raw discovery to the view as a hidden property (`view.raw`, not enumerable, so it never reaches JSON). `resolveMappings(view, pmkit)` reads the ids from it, and takes the raw discovery as an optional third argument for a view that was copied **(builder's call, made while building)**.
 
 ### The generic description
 
@@ -221,6 +221,7 @@ init --tracker linear [--git-host github|none] [--workspace <key>] [--team <KEY>
 - On a first run, `.pmkit/config.yaml` must not exist (`CONFLICT`, as for Local). `init` writes only that file and no `.issues/` folder.
 - `--update` reads `tracker.system` from the file. With `linear` it takes the hosted branch and refuses `--tracker` with another value (`NOT_SUPPORTED`, `setup cannot switch trackers`, next step `Keep tracker.system as it is`). A Local config with `--tracker linear` gets the same refusal.
 - `init` builds a draft config in memory from the file (on `--update`) or from the template (on a first run), applies the flags, creates the tracker with `adapterFor('linear').create(draft, { env, now })`, and calls `discover({ refresh: true })`. A missing key fails with `AUTH` before any request, as PMK-33 built. The client's workspace pin checks `--workspace` or the file's workspace, so a key from another workspace fails with `AUTH`.
+- `init` writes the default git host block with the system and the repo only, without `default_branch`, which the code reads as `main` when it is absent **(builder's call)**.
 - `init` always refreshes, as `discover` does. Setup is the moment the user fixes things, and a stale cache would hide the change they just made in Linear **(builder's call)**.
 - A write (no `--dry-run`) refuses while the proposal still has questions: `INVALID_INPUT`, `setup has unanswered questions: mappings.status.in_review, mappings.status.blocked`, next step `/pmkit:setup`. This makes criterion 2 hold for any caller, not only for setup.
 - The final text passes `validatePmkitConfig` and the Linear `configProblems` before anything is written, as Local's `pmkitConfigRefusal` does today.
@@ -263,7 +264,7 @@ The Linear tracker runs `brokenMappings(description, config.pmkit)` before every
 3. When it is not empty and the discovery came from the cache, refresh once (`discover({ refresh: true })`) and check again. PMK-33 planned this refresh "when a name the user gave is missing from the cached data".
 4. When it is still not empty, throw `NOT_CONFIGURED`, `a mapping in .pmkit/config.yaml names something the workspace no longer has: <problems joined by "; ">`, next step `/pmkit:setup`, with `details.mappings` set to the list.
 
-A missing `tracker.scope.team` is one item of that list, `tracker.scope.team is not set`. The problems read:
+A missing `tracker.scope.team` is one item of that list, `tracker.scope.team is not set`. It needs no request, and its error message is that sentence alone. The problems read:
 
 - `tracker.scope.team names ACME, which this workspace no longer has`
 - `mappings.status.in_review names In Review, which team ACME no longer has`
