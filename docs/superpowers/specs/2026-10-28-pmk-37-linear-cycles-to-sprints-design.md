@@ -255,7 +255,7 @@ cycles:
 - The format is the sprint file's `capacity` and `days_off`, so the validators of the Local tracker apply: `requireCapacity(value, members)` and `requireDaysOff(value, members, sprint)` from `scripts/lib/local/sprints.mjs`, with `members` built from the discovered members and `sprint` from `toSprint`. `member=null` removes a member's days off, as in Local. Dates must fall inside the cycle's `start` and `end`.
 - `serializeCapacity` writes the keys in a fixed order, with the cycle ids in numeric order, so two writes of the same data produce the same bytes and git merges stay small.
 - A file that does not parse, or has another `version`, fails with `INVALID_INPUT`, `.pmkit/capacity.yaml is not valid: <why>`, next step `Fix or delete the file`. It is never overwritten.
-- A write reads the file, changes the one cycle, and writes the whole file in one `fs.writeFileSync` through a temporary file and a rename. A dry run builds the new content, parses it back as the Local `writeSprint` does, and writes nothing.
+- A write reads the file, changes the one cycle, runs the full read on the new text (as the Local `writeSprint` parses a sprint file), and writes the whole file with the Local `writeFileAtomic`: a temporary file and a rename, with the temporary file removed when either step fails. A text that fails the read is `INVALID_INPUT`, `the capacity file would not read back after this write: <why>`, and nothing is written. A dry run runs the same read and writes nothing.
 
 **Operations.**
 

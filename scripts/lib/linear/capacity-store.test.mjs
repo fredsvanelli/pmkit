@@ -103,6 +103,28 @@ test('a write goes through a temporary file and leaves none behind', () => {
   assert.deepEqual(fs.readdirSync(path.join(root, '.pmkit')), ['capacity.yaml'])
 })
 
+test('a write whose text would not pass the full read is refused and writes nothing', () => {
+  // requireCapacity accepts 1e21, the YAML writer gives 1e+21, and the parser reads that back as a string.
+  const root = tempDir()
+  write(root, { capacity: { [ADA]: 8 } })
+  const before = text(root)
+  assert.throws(() => write(root, { capacity: { [ADA]: 1e21 } }), { code: 'INVALID_INPUT', message: /would not read back after this write: .*not a non-negative number/ })
+  assert.equal(text(root), before)
+  assert.deepEqual(readCapacity(root, 'ACME')[SPRINT.id].capacity, { [ADA]: 8 })
+})
+
+test('a write that fails at the rename removes its temporary file', (t) => {
+  const root = tempDir()
+  write(root, { capacity: { [ADA]: 8 } })
+  t.mock.method(fs, 'renameSync', () => {
+    throw Object.assign(new Error('EXDEV: cross-device link not permitted'), { code: 'EXDEV' })
+  })
+  assert.throws(() => write(root, { capacity: { [ADA]: 9 } }), { code: 'EXDEV' })
+  t.mock.restoreAll()
+  assert.deepEqual(fs.readdirSync(path.join(root, '.pmkit')), ['capacity.yaml'])
+  assert.deepEqual(readCapacity(root, 'ACME')[SPRINT.id].capacity, { [ADA]: 8 })
+})
+
 test('no file under the root holds the key', () => {
   const root = tempDir()
   write(root, { capacity: { [ADA]: 8 } })

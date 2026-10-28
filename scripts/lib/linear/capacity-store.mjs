@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { PmkitError } from '../errors.mjs'
 import { requireCapacity, requireDaysOff, validDate } from '../local/sprints.mjs'
+import { writeFileAtomic } from '../local/store.mjs'
 import { parseYaml, stringifyYaml } from '../yaml.mjs'
 
 export const CAPACITY_FILE = '.pmkit/capacity.yaml'
@@ -40,6 +41,11 @@ function readFile(root) {
     if (error.code === 'ENOENT') return {}
     throw error
   }
+  return parseFile(content)
+}
+
+/** The text of the file as { team: { cycleId: { capacity, daysOff } } }, with every check of a read. */
+function parseFile(content) {
   let data
   try {
     data = parseYaml(content.replace(/^\uFEFF/, ''))
@@ -103,21 +109,18 @@ export function writeEntry(root, team, id, { capacity, daysOff }, { sprint, memb
     }
   }
   const content = serialize({ ...teams, [team]: { ...teams[team], [id]: after } })
-  // The text must read back as the data it was built from, as the Local tracker checks its sprint files.
-  const again = (() => {
-    try {
-      return parseYaml(content)
-    } catch (error) {
-      throw new PmkitError('INVALID_INPUT', `the capacity file would not read back after this write: ${error.message}`)
-    }
-  })()
-  if (again.version !== VERSION) throw new PmkitError('INVALID_INPUT', 'the capacity file would not read back after this write')
+  // The text must pass the full read, as the Local tracker parses its sprint files before it writes them.
+  try {
+    parseFile(content)
+  } catch (error) {
+    if (!(error instanceof PmkitError)) throw error
+    throw new PmkitError('INVALID_INPUT', `the capacity file would not read back after this write: ${error.message}`)
+  }
   if (!dryRun) {
     const target = path.join(root, CAPACITY_FILE)
     fs.mkdirSync(path.dirname(target), { recursive: true })
-    const temporary = `${target}.${process.pid}.tmp`
-    fs.writeFileSync(temporary, content)
-    fs.renameSync(temporary, target)
+    // Writes a temporary file and renames it, and removes the temporary file when either step fails.
+    writeFileAtomic(target, content)
   }
   return { before, after }
 }
