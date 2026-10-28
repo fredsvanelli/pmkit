@@ -66,9 +66,9 @@ function scopeProblems(scope) {
 
 function mappingsProblems(mappings) {
   if (mappings === undefined) return []
-  if (!isObject(mappings)) return ['mappings must be a map with status or fields']
+  if (!isObject(mappings)) return ['mappings must be a map with status, fields or types']
   const problems = []
-  const { status, fields } = mappings
+  const { status, fields, types } = mappings
   if (status !== undefined && !isObject(status)) {
     problems.push('mappings.status must be a map from a category or blocked to a status name')
   } else {
@@ -83,6 +83,13 @@ function mappingsProblems(mappings) {
     for (const [key, value] of Object.entries(fields ?? {})) {
       if (!FIELD_ROLES.includes(key)) problems.push(`mappings.fields.${key}: ${key} is not a field role, use one of ${FIELD_ROLES.join(', ')}`)
       if (!isName(value)) problems.push(`mappings.fields.${key} must be a field name or native`)
+    }
+  }
+  if (types !== undefined && !isObject(types)) {
+    problems.push('mappings.types must be a map from an issue type to a label name')
+  } else {
+    for (const [key, value] of Object.entries(types ?? {})) {
+      if (!isName(value)) problems.push(`mappings.types.${key} must be a label name`)
     }
   }
   return problems

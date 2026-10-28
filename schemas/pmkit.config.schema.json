@@ -98,28 +98,39 @@
       "properties": {
         "status": {
           "title": "Status mappings",
-          "description": "A category, or blocked, to the tracker's status name, such as in_review: In Review.",
+          "description": "A category, or blocked, to the tracker's status name, such as in_review: In Review. none means this team has no such status.",
           "type": "object",
           "propertyNames": {
             "enum": ["triage", "backlog", "todo", "in_progress", "in_review", "done", "canceled", "blocked"]
           },
           "additionalProperties": {
             "title": "Status name",
-            "description": "The name of the tracker's status for this category.",
+            "description": "The name of the tracker's status for this category, or none when the team has no such status.",
             "type": "string",
             "pattern": "\\S"
           }
         },
         "fields": {
           "title": "Field mappings",
-          "description": "A field role to the tracker's field name, or native for the tracker's own field.",
+          "description": "A field role to the tracker's field name, native for the tracker's own field, or none for no field.",
           "type": "object",
           "propertyNames": {
             "enum": ["estimate", "priority", "target_date", "start_date", "assignee", "acceptance_criteria", "time_spent"]
           },
           "additionalProperties": {
             "title": "Field name",
-            "description": "The name of the tracker's field for this role, or native for the tracker's own field.",
+            "description": "The name of the tracker's field for this role, native for the tracker's own field, or none for no field.",
+            "type": "string",
+            "pattern": "\\S"
+          }
+        },
+        "types": {
+          "title": "Type mappings",
+          "description": "A pmkit issue type to the name of one label of the tracker, such as bug: Bug. A type without a label is left out.",
+          "type": "object",
+          "additionalProperties": {
+            "title": "Label name",
+            "description": "The name of the tracker's label for this issue type.",
             "type": "string",
             "pattern": "\\S"
           }
