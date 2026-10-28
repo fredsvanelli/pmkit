@@ -165,6 +165,7 @@ The client checks the rows in order and stops at the first match. The first thre
 | `GRAPHQL_VALIDATION_FAILED` or `GRAPHQL_PARSE_FAILED` | `UPSTREAM` | `Linear rejected pmkit's query: <Linear message>` | `Update pmkit; if it still fails, report the query error` | no |
 | Any other GraphQL error | `UPSTREAM` | `Linear answered with an error: <Linear message>` | `Check the request against Linear's message` | no |
 | A body that is not JSON, or JSON with neither `data` nor `errors` | `UPSTREAM` | `Linear returned an unreadable answer (HTTP <status>)` | `Retry, and check status.linear.app if it keeps failing` | queries only when HTTP 5xx |
+| The same, on a mutation, at any status | `UPSTREAM` | `Linear did not confirm the change: unreadable answer (HTTP <status>)` | `Check in Linear whether the change was applied before you retry` | no |
 | Any other HTTP status that is not 2xx | `UPSTREAM` | `Linear answered HTTP <status>` | `Retry, and check status.linear.app if it keeps failing` | no |
 
 Rules that apply to every row:
@@ -179,7 +180,7 @@ Rules that apply to every row:
 
 - One attempt waits up to `timeoutMs`, 30 s by default. The two calls PMK-28 measured took 0.3 s to 1.1 s, so 30 s leaves room for a slow page and still stops a hung socket.
 - A query that fails with a network error, a timeout or HTTP 5xx is sent again, at most `retries` times (2 by default), after 500 ms and then 2000 ms through the injected `sleep`. The worst case is 3 attempts and about 92 s.
-- A mutation is sent once. A timeout or a 5xx after the body left gives no way to tell whether Linear applied the change, so the client hands that choice to the user through the next step.
+- A mutation is sent once. A timeout, a 5xx or an unreadable answer after the body left gives no way to tell whether Linear applied the change, so the client hands that choice to the user through the next step.
 - `isMutation(document)` decides. A document is safe to retry only when it holds no `mutation` operation at all. The client reads the keyword that opens each top-level definition (`query`, `mutation`, `subscription`, `fragment`, or `{` for an anonymous query), and skips strings, block strings and `#` comments, so `fragment F on Issue { id } mutation M { ... }` counts as a mutation and a `"mutation"` inside a string does not. A document it cannot read counts as a mutation: an unclosed string, unbalanced brackets or an unknown keyword. A wrong yes costs a retry. A wrong no can apply a change twice. PMK-35 will send documents that hold fragments.
 - The client never retries `AUTH`, `RATE_LIMITED` or a GraphQL error, and never sleeps until a rate-limit reset. A personal key's window is one hour, which is longer than a CLI run should wait.
 

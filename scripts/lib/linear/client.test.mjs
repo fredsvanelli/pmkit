@@ -395,6 +395,24 @@ test('a mutation that gets HTTP 503 is sent once', async () => {
   assert.equal(callsTo(f, 'M'), 1)
 })
 
+test('a mutation with an unreadable answer is sent once and asks the user to check', async () => {
+  for (const [answer, status] of [
+    [{ status: 503, text: '<html>Service Unavailable</html>' }, 503],
+    [{ status: 200, text: 'not json' }, 200],
+    [{ status: 200, json: {} }, 200],
+  ]) {
+    const { client, f } = make({ routes: { M: answer }, sleep: async () => {} })
+    const error = await client.request('mutation M { a }').catch((caught) => caught)
+    expectError(
+      error,
+      'UPSTREAM',
+      `Linear did not confirm the change: unreadable answer (HTTP ${status})`,
+      'Check in Linear whether the change was applied before you retry',
+    )
+    assert.equal(callsTo(f, 'M'), 1)
+  }
+})
+
 test('a mutation that follows a fragment is sent once', async () => {
   const document = 'fragment F on Issue { id } mutation M { issueUpdate { issue { ...F } } }'
   const { client, f } = make({ routes: { '(anonymous)': { status: 503, json: { errors: [{ message: 'down' }] } } }, sleep: async () => {} })

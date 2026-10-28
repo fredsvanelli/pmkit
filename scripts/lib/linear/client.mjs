@@ -217,6 +217,8 @@ function classify(status, headers, text, mutation) {
   const serverError = status >= 500
   // A 2xx answer with no errors must carry data to be a success.
   if (!hasEnvelope || (ok && errors.length === 0 && !dataIsObject)) {
+    // An unreadable answer to a mutation does not say whether Linear applied the change.
+    if (mutation) return unconfirmed(`unreadable answer (HTTP ${status})`, true, details)
     return fail('UPSTREAM', `Linear returned an unreadable answer (HTTP ${status})`, RETRY_STEP, serverError)
   }
   if (serverError) return unconfirmed(`HTTP ${status}`, mutation, details)
