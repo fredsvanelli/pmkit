@@ -2,7 +2,7 @@
 id: PMK-42
 title: Add the linear-customers command
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 5
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-35]
 milestone: linear
 branch: pmk-42-add-the-linear-customers-command
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-28T19:36:30Z
+updated: 2026-10-28T20:04:50Z
 ---
 
 ## Description
