@@ -47,6 +47,14 @@ test('no viewer team offers every team', () => {
   assert.deepEqual(proposeMappings(d, {}, {}).questions[0].candidates, ['AA', 'BB'])
 })
 
+test('a lost team with one candidate still gives a team question with that single candidate', () => {
+  const lost = proposeMappings(describe(), { scope: { workspace: 'acme', team: 'ZZ' } }, {})
+  assert.deepEqual(lost.questions.map((q) => q.path), ['tracker.scope.team'])
+  assert.deepEqual(lost.questions[0].candidates, ['AA'])
+  const none = describe({ viewerTeams: [] })
+  assert.deepEqual(proposeMappings(none, {}, {}).questions[0].candidates, ['AA'])
+})
+
 test('a team answer may be any team of the workspace and a stranger fails', () => {
   const d = describe({ viewerTeams: ['AA', 'BB'] })
   d.teams = [d.team('AA'), d.team('BB'), d.team('CC')]
