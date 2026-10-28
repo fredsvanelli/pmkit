@@ -29,6 +29,9 @@ const TEAM_DEFAULTS = { parent: null, cyclesEnabled: false, triageEnabled: false
 const team = (id, key, extra = {}) => ({ ...TEAM_DEFAULTS, id, key, name: key, ...extra })
 const BUSINESS = { subscription: { type: 'business' }, releasesEnabled: true, customersEnabled: true }
 
+// Linear creates its cycles from the team schedule, so the adapter has no open and no close.
+const RITUAL = { open: false, close: false, schedule: 'team' }
+
 test('LINEAR_CAPABILITIES names only known capabilities', () => {
   assert.ok(Object.keys(LINEAR_CAPABILITIES).every((id) => CAPABILITIES.includes(id)))
 })
@@ -104,13 +107,13 @@ test('team settings are conditional across teams and decided by the configured t
   const teams = [team('t-acme', 'ACME', { cyclesEnabled: true }), team('t-ops', 'OPS')]
   const data = await raw({ teams })
   const none = byId(buildLinearCapabilities(data, pmkitWith()))
-  assert.deepEqual(none.cycles, { id: 'cycles', path: 'conditional', detail: { teams: ['ACME'] } })
-  assert.deepEqual(none.capacity, { id: 'capacity', path: 'derived', detail: { source: 'local' } })
+  assert.deepEqual(none.cycles, { id: 'cycles', path: 'conditional', detail: { teams: ['ACME'], ...RITUAL } })
+  assert.deepEqual(none.capacity, { id: 'capacity', path: 'derived', detail: { source: 'local', file: '.pmkit/capacity.yaml' } })
   const ops = byId(buildLinearCapabilities(data, pmkitWith({ team: 'OPS' })))
   assert.equal(ops.cycles.path, 'absent')
   assert.equal(ops.capacity.path, 'absent')
   const acme = byId(buildLinearCapabilities(data, pmkitWith({ team: 'ACME' })))
-  assert.deepEqual(acme.cycles, { id: 'cycles', path: 'native' })
+  assert.deepEqual(acme.cycles, { id: 'cycles', path: 'native', detail: RITUAL })
   const missing = byId(buildLinearCapabilities(data, pmkitWith({ team: 'NOPE' })))
   assert.equal(missing.cycles.path, 'conditional')
 })
@@ -186,4 +189,14 @@ test('an absent estimate key on the configured team makes estimation absent, as 
   assert.deepEqual(absent.estimation, { id: 'estimation', path: 'absent', enableHint: 'Run /pmkit:setup to set mappings.fields.estimate in .pmkit/config.yaml' })
   // With no team configured, the manifest describes the workspace, as PMK-33 built it.
   assert.equal(byId(buildLinearCapabilities(await raw(options), pmkitWith())).estimation.path, 'native')
+})
+
+test('cycles carries detail.open, close and schedule when native, and none when absent', async () => {
+  const data = await raw({ teams: [team('t-acme', 'ACME', { cyclesEnabled: true })] })
+  const entry = byId(buildLinearCapabilities(data, pmkitWith({ team: 'ACME' })))
+  assert.deepEqual(entry.cycles.detail, { open: false, close: false, schedule: 'team' })
+  assert.deepEqual(entry.capacity.detail, { source: 'local', file: '.pmkit/capacity.yaml' })
+  const off = byId(buildLinearCapabilities(await raw(), pmkitWith({ team: 'ACME' })))
+  assert.equal(off.cycles.detail, undefined)
+  assert.deepEqual(off.capacity, { id: 'capacity', path: 'absent', enableHint: 'Capacity needs cycles' })
 })

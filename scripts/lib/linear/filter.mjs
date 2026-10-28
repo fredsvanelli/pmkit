@@ -3,16 +3,31 @@
 
 import { PmkitError } from '../errors.mjs'
 import { issueComparator } from '../issue-filter.mjs'
+import { cycleKey, cyclesOff } from './cycles.mjs'
 import { isIssueId, issueKey, stateCategory } from './issues.mjs'
 
 const notSupported = (message) => new PmkitError('NOT_SUPPORTED', message, 'Leave this filter out on Linear')
+
+/**
+ * The issue clause of a sprint value. With cycles off no issue is in a cycle, so none matches every issue (no clause)
+ * and any other value is NOT_SUPPORTED. An unknown cycle number is not checked here: it matches nothing.
+ */
+function cycleClause(sprint, context) {
+  const off = context.cyclesEnabled === false
+  if (sprint === 'none') return off ? null : { cycle: { null: true } }
+  const number = sprint === 'current' ? null : cycleKey(sprint)
+  if (sprint !== 'current' && number === null) {
+    throw new PmkitError('INVALID_INPUT', `sprint "${sprint}" is not current, none or a cycle number`, 'pmkit cycle list')
+  }
+  if (off) throw cyclesOff(context.scopeTeam.key)
+  return { cycle: sprint === 'current' ? { isActive: { eq: true } } : { number: { eq: number } } }
+}
 
 /**
  * Translates a filter that checkFilter accepted. `clientSteps` holds 'blocked' and 'sort' when the adapter must finish them.
  * `serverLimit` is set only when Linear's order is the final order. `empty` says no state matches `categories`, so no request is needed.
  */
 export function translateFilter(filter, context) {
-  if (filter.sprint !== undefined) throw notSupported('Linear cycles are not mapped yet (PMK-37), so --sprint does not work on Linear')
   if (filter.release !== undefined) throw notSupported('Linear releases are not mapped yet, so --release does not work on Linear')
   const and = []
   const clientSteps = []
@@ -36,6 +51,10 @@ export function translateFilter(filter, context) {
   if (filter.parent !== undefined) {
     if (!isIssueId(filter.parent)) throw new PmkitError('NOT_SUPPORTED', 'Linear projects are not epics in pmkit yet', 'Use an issue id as the parent')
     and.push({ parent: { id: { eq: issueKey(filter.parent) } } })
+  }
+  if (filter.sprint !== undefined && filter.sprint !== null) {
+    const clause = cycleClause(filter.sprint, context)
+    if (clause !== null) and.push(clause)
   }
   if (filter.blocked === true) and.push({ hasBlockedByRelations: { eq: true } })
   if (filter.blocked !== undefined) clientSteps.push('blocked')

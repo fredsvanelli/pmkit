@@ -10,6 +10,8 @@
 - The Linear tracker supports history, comments and metric events (PMK-36). `issues get --history`, `issues get --comments`, `events` and the flow metrics (`cycle-time`, `lead-time`, `throughput`, `aging`) work on Linear.
 - Adds `issues comment --reply-to <comment>` and `issues resolve <id> <comment>` for comment threads, on the Local and Linear trackers.
 - A Local comment file may hold `reply_to`, `resolved` and `resolved_by`. The keys are optional, and the tracker format stays 2.
+- The Linear tracker maps cycles to sprints (PMK-37). `cycle list`, `cycle current`, `cycle issues` and `cycle add` work on a team with cycles on, and `--sprint` and the `sprint` field of an issue take a cycle number, `current` or `none`. The sprint id is the cycle number. `cycle open` and `cycle close` answer `NOT_SUPPORTED`, because Linear creates and ends cycles from the team schedule. The `cycles` capability carries `detail.open: false` and `detail.close: false` so a command can check before it offers either.
+- Capacity and days off of a Linear cycle live in `.pmkit/capacity.yaml`, a file you commit. `cycle capacity` reads and writes it, and Linear is never written.
 
 ## 0.2.0 - 2026-10-25
 

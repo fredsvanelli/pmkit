@@ -2,6 +2,7 @@
 // See "The capability manifest" in docs/superpowers/specs/2026-10-27-pmk-33-linear-discovery-design.md.
 
 import { CAPABILITIES, SERVED_BY } from '../capabilities.mjs'
+import { CAPACITY_FILE } from './capacity-store.mjs'
 import { estimateScale } from './discovery.mjs'
 
 /**
@@ -81,6 +82,8 @@ export function buildLinearCapabilities(raw, pmkit = {}) {
 
   const answers = { ...LINEAR_CAPABILITIES, ...workspaceAnswers(raw) }
   for (const [id, setting] of Object.entries(TEAM_SETTINGS)) answers[id] = teamSetting(teams, setting)
+  // Linear creates cycles from the team schedule and has no call to open or close one (PMK-37), so a skill reads these before it offers either.
+  if (answers.cycles.path !== 'absent') answers.cycles = { ...answers.cycles, detail: { ...answers.cycles.detail, open: false, close: false, schedule: 'team' } }
   if (answers.estimation.path === 'native') answers.estimation = { path: 'native', detail: sharedScale(teams) }
   // An absent key means none for every reader (resolveMappings gives estimate: null). Without a configured team the
   // manifest describes the workspace, so only the configured team's file decides.
@@ -90,7 +93,7 @@ export function buildLinearCapabilities(raw, pmkit = {}) {
   } else if (estimate === undefined && chosen && answers.estimation.path !== 'absent') {
     answers.estimation = { path: 'absent', enableHint: 'Run /pmkit:setup to set mappings.fields.estimate in .pmkit/config.yaml' }
   }
-  answers.capacity = answers.cycles.path === 'absent' ? { path: 'absent', enableHint: 'Capacity needs cycles' } : { path: 'derived', detail: { source: 'local' } }
+  answers.capacity = answers.cycles.path === 'absent' ? { path: 'absent', enableHint: 'Capacity needs cycles' } : { path: 'derived', detail: { source: 'local', file: CAPACITY_FILE } }
   answers.linked_code = (raw.integrations ?? []).some((service) => GIT_INTEGRATIONS.includes(service))
     ? { path: 'native', detail: { source: 'integration' } }
     : { path: 'derived', detail: { source: 'git' }, ...(gitHost === 'none' ? { enableHint: ENABLE_GIT_HINT } : {}) }

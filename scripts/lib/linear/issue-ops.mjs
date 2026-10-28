@@ -4,7 +4,8 @@
 import { PmkitError } from '../errors.mjs'
 import { CATEGORIES } from '../model.mjs'
 import { checkFilter } from '../issue-filter.mjs'
-import { ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE } from './documents.mjs'
+import { cycleKey } from './cycles.mjs'
+import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE } from './documents.mjs'
 import { finishSearch, translateFilter } from './filter.mjs'
 import { blockedOpen, isIssueId, issueKey, makeContext, stateCategory, toIssue } from './issues.mjs'
 import { applyInput, createTeam, requireAssignee, skeletonNode, teamOf, teamStates, toInput } from './writes.mjs'
@@ -84,7 +85,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     requireWorkspace()
     const current = await context()
     const members = current.raw.users.filter((user) => !user.app).map((user) => user.id)
-    checkFilter(filter, { types: Object.keys(current.mappings?.types ?? {}), members, sprintExists: () => true })
+    checkFilter(filter, { types: Object.keys(current.mappings?.types ?? {}), members, sprintExists: (id) => cycleKey(id) !== null })
     const translated = translateFilter(filter, current)
     if (filter.limit === 0 || translated.empty) return NOTHING()
     const { nodes, hasMore } = await client.paginate(ISSUES_QUERY, translated.variables, {
@@ -128,15 +129,40 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     }
   }
 
+  /**
+   * The { id, number } node of the cycle a sprint value names in `team`: 'current' is the active cycle, else a cycle number.
+   * Returns undefined for no value, for null and for a team with cycles off, where toInput decides. Reads the cycle, so a
+   * bad value fails before the write: NOT_FOUND for an unknown cycle, INVALID_INPUT for no active one.
+   */
+  async function cycleNodeFor(sprint, team) {
+    if (sprint === undefined || sprint === null || team.cyclesEnabled !== true) return undefined
+    if (typeof sprint !== 'string') throw new PmkitError('INVALID_INPUT', 'sprint must be a string')
+    const teamClause = { team: { key: { eq: team.key } } }
+    if (sprint === 'current') {
+      const data = await client.request(CYCLES_QUERY, { filter: { and: [teamClause, { isActive: { eq: true } }] }, first: 1 })
+      const active = data?.cycles?.nodes?.[0]
+      if (!active) throw new PmkitError('INVALID_INPUT', 'there is no active sprint', 'pmkit cycle list')
+      return { id: active.id, number: active.number }
+    }
+    const number = cycleKey(sprint)
+    const missing = new PmkitError('NOT_FOUND', `sprint ${sprint} does not exist`, 'pmkit cycle list')
+    if (number === null) throw missing
+    const data = await client.request(CYCLE_BY_NUMBER_QUERY, { filter: { and: [teamClause, { number: { eq: number } }] } })
+    const found = data?.cycles?.nodes?.[0]
+    if (!found) throw missing
+    return { id: found.id, number: found.number }
+  }
+
   async function createIssue(input, actor, { dryRun = false } = {}) {
     await requireViewer(actor)
     const parentNode = await parentNodeOf(input?.parent)
-    const { team, linearInput, current } = await withRefresh((ctx) => {
+    const { team, linearInput, current, cycleNode } = await withRefresh(async (ctx) => {
       const target = createTeam(ctx)
-      return { team: target, linearInput: toInput(input, { mode: 'create', team: target, context: ctx, parentNode }), current: ctx }
+      const cycle = await cycleNodeFor(input?.sprint, target)
+      return { team: target, linearInput: toInput(input, { mode: 'create', team: target, context: ctx, parentNode, cycleNode: cycle }), current: ctx, cycleNode: cycle }
     })
     if (dryRun) {
-      const preview = applyInput(skeletonNode(team, now().toISOString(), current), linearInput, current, { parent: parentNode?.identifier })
+      const preview = applyInput(skeletonNode(team, now().toISOString(), current), linearInput, current, { parent: parentNode?.identifier, cycle: cycleNode })
       return { before: null, after: { ...toIssue(preview, current), id: null } }
     }
     const id = uuid()
@@ -156,17 +182,20 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     await requireViewer(actor)
     const beforeNode = await readNode(id)
     const before = toIssue(beforeNode, await contextFor([beforeNode]))
-    const { linearInput, current } = await withRefresh((ctx) => ({ linearInput: toInput(patch, { mode: 'update', beforeNode, context: ctx }), current: ctx }))
+    const { linearInput, current, cycleNode } = await withRefresh(async (ctx) => {
+      const cycle = await cycleNodeFor(patch.sprint, teamOf(ctx, beforeNode.team.id))
+      return { linearInput: toInput(patch, { mode: 'update', beforeNode, context: ctx, cycleNode: cycle }), current: ctx, cycleNode: cycle }
+    })
     if (patch.branch !== undefined && patch.branch !== beforeNode.branchName) {
       throw new PmkitError('INVALID_INPUT', `Linear names this issue's branch ${beforeNode.branchName}`, `Use the branch name ${beforeNode.branchName}`)
     }
     if (Object.keys(linearInput).length === 0) return { before, after: before }
-    return writeUpdate(beforeNode, before, linearInput, current, dryRun)
+    return writeUpdate(beforeNode, before, linearInput, current, dryRun, before.parent, cycleNode)
   }
 
   /** Sends one issueUpdate unless the preview equals the issue; a dry run returns the preview. */
-  async function writeUpdate(beforeNode, before, linearInput, current, dryRun, parent = before.parent) {
-    const preview = toIssue(applyInput(beforeNode, linearInput, current, { parent }), current)
+  async function writeUpdate(beforeNode, before, linearInput, current, dryRun, parent = before.parent, cycle) {
+    const preview = toIssue(applyInput(beforeNode, linearInput, current, { parent, cycle }), current)
     if (same(preview, before)) return { before, after: before }
     if (dryRun) return { before, after: preview }
     const node = (await client.request(ISSUE_UPDATE, { id: beforeNode.id, input: linearInput })).issueUpdate.issue
@@ -235,5 +264,5 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return { before, after: await mapped(await readNode(id)) }
   }
 
-  return { getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, requireViewer, mapped, writeUpdate, parentNodeOf, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
+  return { getIssue, searchIssues, cycleNodeFor, createIssue, updateIssue, moveToCategory, assign, archive, requireViewer, mapped, writeUpdate, parentNodeOf, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
 }

@@ -106,9 +106,36 @@ test('description and criteria rebuild the whole description; the heading is ref
   assert.throws(() => toInput({ acceptanceCriteria: [{ text: '' }] }, update), { code: 'INVALID_INPUT' })
 })
 
-test('sprint, milestone and release take only null', () => {
-  assert.deepEqual(toInput({ sprint: null, milestone: null, release: null }, update), {})
-  for (const key of ['sprint', 'milestone', 'release']) assert.throws(() => toInput({ [key]: 'x' }, update), { code: 'NOT_SUPPORTED' })
+test('milestone and release take only null', () => {
+  assert.deepEqual(toInput({ milestone: null, release: null }, update), {})
+  for (const key of ['milestone', 'release']) assert.throws(() => toInput({ [key]: 'x' }, update), { code: 'NOT_SUPPORTED' })
+})
+
+const cycleRaw = await fakeRaw({ labels: LABELS, teams: [teamRecord({ cyclesEnabled: true })] })
+const cycleContext = makeContext(cycleRaw, pmkit(), VIEWER)
+const cycleNode = { id: 'cycle-uuid', number: 12 }
+const withCycles = (mode) => (mode === 'create' ? { mode, team: cycleRaw.teams[0], context: cycleContext } : { mode, beforeNode: node(), context: cycleContext })
+
+test('sprint sets cycleId from the resolved cycle on create and update, and null clears it', () => {
+  assert.equal(toInput({ sprint: '12' }, { ...withCycles('update'), cycleNode }).cycleId, 'cycle-uuid')
+  assert.equal(toInput({ title: 'T', sprint: '12' }, { ...withCycles('create'), cycleNode }).cycleId, 'cycle-uuid')
+  assert.equal(toInput({ sprint: null }, withCycles('update')).cycleId, null)
+  assert.equal('cycleId' in toInput({ title: 'T', sprint: null }, withCycles('create')), false)
+})
+
+test('sprint with cycles off: a value is NOT_SUPPORTED and null changes nothing', () => {
+  assert.throws(() => toInput({ sprint: '12' }, update), {
+    code: 'NOT_SUPPORTED', message: 'team ACME has cycles turned off', nextStep: "Turn on cycles in the team's settings in Linear",
+  })
+  assert.throws(() => toInput({ sprint: 'current' }, update), { code: 'NOT_SUPPORTED' })
+  assert.deepEqual(toInput({ sprint: null }, update), {})
+})
+
+test('applyInput reflects the cycle so toIssue reads it back', () => {
+  const set = applyInput(node(), { cycleId: 'cycle-uuid' }, cycleContext, { cycle: cycleNode })
+  assert.equal(toIssue(set, cycleContext).sprint, '12')
+  const cleared = applyInput(node({ cycle: cycleNode }), { cycleId: null }, cycleContext)
+  assert.equal('sprint' in toIssue(cleared, cycleContext), false)
 })
 
 test('branch is not an input', () => {

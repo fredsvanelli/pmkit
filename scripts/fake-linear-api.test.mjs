@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ACME_LABELS, ACME_STATES, ACME_TEAM, ACME_TEAM_ID, ACME_USERS, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeTriage, fakeWorkspace, json, page } from './fake-linear-api.mjs'
 import {
-  BLOCK_GRAPH_QUERY, COMMENT_BY_ID_QUERY, COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_COMMENTS_QUERY, ISSUE_EVENTS_QUERY, ISSUE_HISTORY_QUERY, ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_UPDATE, NESTED_PAGES, PARENT_CHAIN_QUERY, RELATION_CREATE, RELATION_DELETE,
+  BLOCK_GRAPH_QUERY, COMMENT_BY_ID_QUERY, COMMENT_CREATE, COMMENT_RESOLVE, CYCLE_BY_NUMBER_QUERY, CYCLES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_COMMENTS_QUERY, ISSUE_CREATE, ISSUE_EVENTS_QUERY, ISSUE_HISTORY_QUERY, ISSUE_UPDATE, ISSUES_QUERY, NESTED_PAGES, PARENT_CHAIN_QUERY, RELATION_CREATE, RELATION_DELETE,
 } from './lib/linear/documents.mjs'
 import { operationName } from './lib/linear/client.mjs'
 
@@ -528,4 +528,134 @@ test('events: archived issues need includeArchived', async () => {
   await send(fetch, ISSUE_ARCHIVE, { id: 'ACME-1' })
   assert.equal((await send(fetch, ISSUE_EVENTS_QUERY, { first: 10 })).body.data.issues.nodes.length, 0)
   assert.equal((await send(fetch, ISSUE_EVENTS_QUERY, { first: 10, includeArchived: true })).body.data.issues.nodes.length, 1)
+})
+
+const CYCLES_TEAM = { ...ACME_TEAM, cyclesEnabled: true }
+const OTHER_TEAM = { ...ACME_TEAM, id: 'team-ops', key: 'OPS', name: 'Ops', cyclesEnabled: true }
+// Now is 2026-10-27T12:00Z: cycle 1 ended, cycle 2 runs, cycle 3 is ahead.
+const CYCLES = [
+  { number: 1, startsAt: '2026-10-05T00:00:00.000Z', endsAt: '2026-10-19T00:00:00.000Z', completedAt: '2026-10-19T00:00:00.000Z' },
+  { number: 2, name: 'Autumn', description: 'Ship it', startsAt: '2026-10-19T00:00:00.000Z', endsAt: '2026-11-02T00:00:00.000Z' },
+  { number: 3, startsAt: '2026-11-02T00:00:00.000Z', endsAt: '2026-11-16T00:00:00.000Z' },
+]
+
+function cycleStore(options = {}) {
+  const fake = fakeLinearIssues({ teams: [CYCLES_TEAM, OTHER_TEAM], cycles: CYCLES, ...options })
+  return { fake, fetch: fakeLinearFetch(fake.routes) }
+}
+const cycleNumbers = (body) => body.data.cycles.nodes.map((node) => node.number)
+const teamFilter = (key) => ({ team: { key: { eq: key } } })
+
+test('PmkitCycles returns the cycles of a team with flags computed from the clock', async () => {
+  const { fetch } = cycleStore()
+  const { body } = await send(fetch, CYCLES_QUERY, { filter: teamFilter('ACME'), first: 10 })
+  assert.deepEqual(cycleNumbers(body), [1, 2, 3])
+  const flags = body.data.cycles.nodes.map((node) => [node.isActive, node.isFuture, node.isPast])
+  assert.deepEqual(flags, [[false, false, true], [true, false, false], [false, true, false]])
+  const second = body.data.cycles.nodes[1]
+  assert.deepEqual(Object.keys(second).sort(), ['completedAt', 'description', 'endsAt', 'id', 'isActive', 'isFuture', 'isPast', 'name', 'number', 'startsAt'])
+  assert.equal(second.name, 'Autumn')
+  assert.equal(body.data.cycles.nodes[0].name, null)
+  assert.equal(body.data.cycles.nodes[0].description, null)
+})
+
+test('PmkitCycles honors the isActive, isFuture, isPast and team filters, and pages', async () => {
+  const { fake, fetch } = cycleStore()
+  fake.cycles.add({ number: 1, team: 'team-ops', startsAt: '2026-10-19T00:00:00.000Z', endsAt: '2026-11-02T00:00:00.000Z' })
+  const find = async (clause, team = 'ACME') => cycleNumbers((await send(fetch, CYCLES_QUERY, { filter: { and: [teamFilter(team), clause] }, first: 10 })).body)
+  assert.deepEqual(await find({ isActive: { eq: true } }), [2])
+  assert.deepEqual(await find({ isFuture: { eq: true } }), [3])
+  assert.deepEqual(await find({ isPast: { eq: true } }), [1])
+  assert.deepEqual(await find({ isActive: { eq: true } }, 'OPS'), [1])
+  assert.deepEqual(await find({ number: { eq: 3 } }), [3])
+  const one = (await send(fetch, CYCLES_QUERY, { filter: teamFilter('ACME'), first: 2 })).body.data.cycles
+  assert.deepEqual(one.nodes.map((node) => node.number), [1, 2])
+  assert.deepEqual(one.pageInfo, { hasNextPage: true, endCursor: '2' })
+  const two = (await send(fetch, CYCLES_QUERY, { filter: teamFilter('ACME'), first: 2, after: '2' })).body.data.cycles
+  assert.deepEqual(two.nodes.map((node) => node.number), [3])
+  assert.equal(two.pageInfo.hasNextPage, false)
+})
+
+test('the clock moves the flags', async () => {
+  const { fake, fetch } = cycleStore()
+  fake.cycles.setClock('2026-11-03T00:00:00.000Z')
+  const active = await send(fetch, CYCLES_QUERY, { filter: { and: [teamFilter('ACME'), { isActive: { eq: true } }] }, first: 10 })
+  assert.deepEqual(cycleNumbers(active.body), [3])
+})
+
+test('endsAt is an exclusive boundary: at the instant one cycle ends the next is active', async () => {
+  const { fake, fetch } = cycleStore()
+  const activeAt = async (instant) => {
+    fake.cycles.setClock(instant)
+    return cycleNumbers((await send(fetch, CYCLES_QUERY, { filter: { and: [teamFilter('ACME'), { isActive: { eq: true } }] }, first: 10 })).body)
+  }
+  assert.deepEqual(await activeAt('2026-11-01T23:59:59.999Z'), [2])
+  assert.deepEqual(await activeAt('2026-11-02T00:00:00.000Z'), [3])
+})
+
+test('PmkitCycleByNumber returns the cycle with that number or an empty list', async () => {
+  const { fetch } = cycleStore()
+  const hit = await send(fetch, CYCLE_BY_NUMBER_QUERY, { filter: { and: [teamFilter('ACME'), { number: { eq: 2 } }] } })
+  assert.deepEqual(cycleNumbers(hit.body), [2])
+  const miss = await send(fetch, CYCLE_BY_NUMBER_QUERY, { filter: { and: [teamFilter('ACME'), { number: { eq: 99 } }] } })
+  assert.deepEqual(cycleNumbers(miss.body), [])
+})
+
+test('a team with cycles off has no cycles', async () => {
+  const fake = fakeLinearIssues({ teams: [ACME_TEAM], cycles: CYCLES })
+  const fetch = fakeLinearFetch(fake.routes)
+  assert.deepEqual(cycleNumbers((await send(fetch, CYCLES_QUERY, { filter: teamFilter('ACME'), first: 10 })).body), [])
+})
+
+test('an unknown cycle filter key fails with GRAPHQL_VALIDATION_FAILED', async () => {
+  const { fetch } = cycleStore()
+  const { body } = await send(fetch, CYCLES_QUERY, { filter: { and: [{ progress: { gt: 1 } }] }, first: 10 })
+  assert.equal(body.errors[0].extensions.code, 'GRAPHQL_VALIDATION_FAILED')
+})
+
+test('the issue filter evaluates the cycle clauses', async () => {
+  const { fake, fetch } = cycleStore()
+  const [, two] = fake.cycles.list()
+  fake.seed({ title: 'In two', cycleId: two.id })
+  fake.seed({ title: 'Free' })
+  const find = async (clause) => idsOf((await send(fetch, ISSUES_QUERY, { filter: { and: [clause] }, first: 10 })).body).sort()
+  assert.deepEqual(await find({ cycle: { isActive: { eq: true } } }), ['ACME-1'])
+  assert.deepEqual(await find({ cycle: { number: { eq: 2 } } }), ['ACME-1'])
+  assert.deepEqual(await find({ cycle: { number: { eq: 3 } } }), [])
+  assert.deepEqual(await find({ cycle: { null: true } }), ['ACME-2'])
+  const { body } = await send(fetch, ISSUES_QUERY, { filter: { and: [{ cycle: { progress: { gt: 1 } } }] }, first: 10 })
+  assert.equal(body.errors[0].extensions.code, 'GRAPHQL_VALIDATION_FAILED')
+})
+
+test('issues carry their cycle, and update sets and clears it', async () => {
+  const { fake, fetch } = cycleStore()
+  const [, two, three] = fake.cycles.list()
+  fake.seed({ title: 'A' })
+  assert.equal((await send(fetch, ISSUE_BY_ID_QUERY, { id: 'ACME-1' })).body.data.issues.nodes[0].cycle, null)
+  const set = await send(fetch, ISSUE_UPDATE, { id: 'ACME-1', input: { cycleId: two.id } })
+  assert.deepEqual(set.body.data.issueUpdate.issue.cycle, { id: two.id, number: 2 })
+  const moved = await send(fetch, ISSUE_UPDATE, { id: 'ACME-1', input: { cycleId: three.id } })
+  assert.equal(moved.body.data.issueUpdate.issue.cycle.number, 3)
+  const cleared = await send(fetch, ISSUE_UPDATE, { id: 'ACME-1', input: { cycleId: null } })
+  assert.equal(cleared.body.data.issueUpdate.issue.cycle, null)
+})
+
+test('create honors cycleId', async () => {
+  const { fake, fetch } = cycleStore()
+  const [, two] = fake.cycles.list()
+  const created = await send(fetch, ISSUE_CREATE, { input: { teamId: 'team-acme', title: 'A', cycleId: two.id } })
+  assert.equal(created.body.data.issueCreate.issue.cycle.number, 2)
+})
+
+test('a cycle of another team, or an unknown cycle, gets an INPUT_ERROR', async () => {
+  const { fake, fetch } = cycleStore()
+  fake.cycles.add({ number: 7, team: 'team-ops', startsAt: '2026-10-19T00:00:00.000Z', endsAt: '2026-11-02T00:00:00.000Z' })
+  const foreign = fake.cycles.list().find((cycle) => cycle.teamId === 'team-ops')
+  fake.seed({ title: 'A' })
+  const other = await send(fetch, ISSUE_UPDATE, { id: 'ACME-1', input: { cycleId: foreign.id } })
+  assert.equal(other.body.errors[0].extensions.code, 'INPUT_ERROR')
+  assert.match(other.body.errors[0].message, /another team|belong/i)
+  const unknown = await send(fetch, ISSUE_UPDATE, { id: 'ACME-1', input: { cycleId: 'nope' } })
+  assert.equal(unknown.body.errors[0].extensions.code, 'INPUT_ERROR')
+  assert.equal(fake.nodes()[0].cycle, null)
 })

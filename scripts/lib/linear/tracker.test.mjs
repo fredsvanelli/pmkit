@@ -35,9 +35,9 @@ test('the tracker passes assertTracker', () => {
 
 test('a stub throws NOT_SUPPORTED once the mapping check passes', async () => {
   const { fetch, tracker: linear } = tracker(setup())
-  await assert.rejects(linear.listCycles(), {
+  await assert.rejects(linear.listMilestones(), {
     code: 'NOT_SUPPORTED',
-    message: 'the Linear adapter does not implement listCycles yet',
+    message: 'the Linear adapter does not implement listMilestones yet',
     nextStep: 'Set tracker.system to local in .pmkit/config.yaml to use this command now',
   })
   assert.equal(callsOf(fetch, 'PmkitTeams'), 1)
@@ -49,9 +49,9 @@ test('a stub without a workspace throws NOT_CONFIGURED', async () => {
   await assert.rejects(linear.getIssue('ACME-1'), { code: 'NOT_CONFIGURED', message: 'tracker.scope.workspace is not set', nextStep: '/pmkit:setup' })
 })
 
-// Two operations that stay stubs after PMK-36, so the mapping check is all these tests reach.
+// Two operations that stay stubs after PMK-37, so the mapping check is all these tests reach.
 const stubs = {
-  read: (linear) => linear.listCycles(),
+  read: (linear) => linear.listMilestones(),
   write: (linear) => linear.logTime('ACME-1', 5, 'x'),
 }
 
@@ -427,10 +427,95 @@ test('an unknown type or member fails with INVALID_INPUT', async () => {
   await assert.rejects(linear.searchIssues({ nope: 1 }), { code: 'INVALID_INPUT' })
 })
 
-test('sprint and release fail with NOT_SUPPORTED', async () => {
+test('release fails with NOT_SUPPORTED', async () => {
   const { tracker: linear } = linearSetup()
-  await assert.rejects(linear.searchIssues({ sprint: 'current' }), { code: 'NOT_SUPPORTED' })
   await assert.rejects(linear.searchIssues({ release: '1.0' }), { code: 'NOT_SUPPORTED' })
+})
+
+const CYCLE_TEAM = { ...ACME_TEAM, cyclesEnabled: true }
+const CYCLE_SEEDS = [
+  { number: 1, startsAt: '2026-10-05T00:00:00.000Z', endsAt: '2026-10-19T00:00:00.000Z' },
+  { number: 2, startsAt: '2026-10-19T00:00:00.000Z', endsAt: '2026-11-02T00:00:00.000Z' },
+  { number: 3, startsAt: '2026-11-02T00:00:00.000Z', endsAt: '2026-11-13T00:00:00.000Z' },
+]
+const cycling = ({ cycles = CYCLE_SEEDS } = {}) => linearSetup({ workspace: { teams: [CYCLE_TEAM] }, issues: { cycles } })
+
+test('createIssue and updateIssue with sprint store the cycle, and getIssue reads it back', async () => {
+  const { tracker: linear, fetch } = cycling()
+  const made = await linear.createIssue({ title: 'Made current', sprint: 'current' }, 'user-1')
+  assert.equal(made.after.sprint, '2')
+  assert.equal((await linear.getIssue(made.after.id)).sprint, '2')
+  const plain = (await linear.createIssue({ title: 'Plain' }, 'user-1')).after.id
+  const moved = await linear.updateIssue(plain, { sprint: '3' }, 'user-1')
+  assert.equal('sprint' in moved.before, false)
+  assert.equal(moved.after.sprint, '3')
+  assert.equal(lastVariables(fetch, 'PmkitIssueUpdate').input.cycleId.startsWith('cycle-'), true)
+  const cleared = await linear.updateIssue(plain, { sprint: null }, 'user-1')
+  assert.equal('sprint' in cleared.after, false)
+  assert.equal('sprint' in (await linear.getIssue(plain)), false)
+})
+
+test('sprint current with no active cycle is INVALID_INPUT and writes nothing', async () => {
+  const { tracker: linear, fake } = cycling({ cycles: [CYCLE_SEEDS[0], CYCLE_SEEDS[2]] })
+  const a = (await linear.createIssue({ title: 'A' }, 'user-1')).after.id
+  const before = fake.mutations.length
+  const expected = { code: 'INVALID_INPUT', message: 'there is no active sprint', nextStep: 'pmkit cycle list' }
+  await assert.rejects(linear.createIssue({ title: 'Never', sprint: 'current' }, 'user-1'), expected)
+  await assert.rejects(linear.updateIssue(a, { sprint: 'current' }, 'user-1'), expected)
+  assert.equal(fake.mutations.length, before)
+  assert.equal(fake.nodes().length, 1)
+})
+
+test('an unknown or malformed sprint on a write is NOT_FOUND', async () => {
+  const { tracker: linear, fake } = cycling()
+  const a = (await linear.createIssue({ title: 'A' }, 'user-1')).after.id
+  const before = fake.mutations.length
+  for (const sprint of ['99', 'abc']) {
+    await assert.rejects(linear.updateIssue(a, { sprint }, 'user-1'), { code: 'NOT_FOUND', nextStep: 'pmkit cycle list' }, sprint)
+    await assert.rejects(linear.createIssue({ title: 'Never', sprint }, 'user-1'), { code: 'NOT_FOUND' }, sprint)
+  }
+  assert.equal(fake.mutations.length, before)
+})
+
+test('a dry run with sprint shows the cycle and sends no mutation', async () => {
+  const { tracker: linear, fake } = cycling()
+  const a = (await linear.createIssue({ title: 'A' }, 'user-1')).after.id
+  const before = fake.mutations.length
+  assert.equal((await linear.updateIssue(a, { sprint: 'current' }, 'user-1', { dryRun: true })).after.sprint, '2')
+  assert.equal((await linear.createIssue({ title: 'B', sprint: '3' }, 'user-1', { dryRun: true })).after.sprint, '3')
+  assert.equal(fake.mutations.length, before)
+})
+
+test('with cycles off a sprint write is NOT_SUPPORTED, except null', async () => {
+  const { tracker: linear, fetch } = linearSetup()
+  const a = (await linear.createIssue({ title: 'A' }, 'user-1')).after.id
+  const expected = { code: 'NOT_SUPPORTED', message: 'team ACME has cycles turned off', nextStep: "Turn on cycles in the team's settings in Linear" }
+  await assert.rejects(linear.updateIssue(a, { sprint: 'current' }, 'user-1'), expected)
+  await assert.rejects(linear.createIssue({ title: 'B', sprint: '2' }, 'user-1'), expected)
+  assert.equal((await linear.updateIssue(a, { sprint: null }, 'user-1')).after.title, 'A')
+  assert.ok(!namesOf(fetch).some((name) => /Cycle/.test(name)))
+})
+
+test('searchIssues by sprint: a number, current and none, and an unknown cycle gives an empty list', async () => {
+  const { tracker: linear } = cycling()
+  const inTwo = (await linear.createIssue({ title: 'In two', sprint: '2' }, 'user-1')).after.id
+  const inThree = (await linear.createIssue({ title: 'In three', sprint: '3' }, 'user-1')).after.id
+  const free = (await linear.createIssue({ title: 'Free' }, 'user-1')).after.id
+  const found = async (sprint) => (await linear.searchIssues({ sprint })).issues.map((issue) => issue.id)
+  assert.deepEqual(await found('current'), [inTwo])
+  assert.deepEqual(await found('2'), [inTwo])
+  assert.deepEqual(await found('3'), [inThree])
+  assert.deepEqual(await found('none'), [free])
+  assert.deepEqual(await found('99'), [])
+  await assert.rejects(linear.searchIssues({ sprint: 'abc' }), { code: 'INVALID_INPUT' })
+})
+
+test('searchIssues by sprint with cycles off: current is NOT_SUPPORTED and none matches every issue', async () => {
+  const { tracker: linear } = linearSetup()
+  const a = (await linear.createIssue({ title: 'A' }, 'user-1')).after.id
+  await assert.rejects(linear.searchIssues({ sprint: 'current' }), { code: 'NOT_SUPPORTED', message: 'team ACME has cycles turned off' })
+  await assert.rejects(linear.searchIssues({ sprint: '2' }), { code: 'NOT_SUPPORTED' })
+  assert.deepEqual((await linear.searchIssues({ sprint: 'none' })).issues.map((issue) => issue.id), [a])
 })
 
 const mutationsIn = (fetch) => fetch.calls.filter((call) => isMutation(call.body.query)).length
@@ -878,4 +963,40 @@ test('an unchanged parent sends no mutation, and a dry run matches the real writ
   assert.equal(mutationsIn(fetch), 0)
   const real = await linear.setParent('ACME-3', 'ACME-1', 'user-1')
   assert.deepEqual(comparable(dry.after), comparable(real.after))
+})
+
+const CYCLE_OPERATIONS = {
+  listCycles: (linear) => linear.listCycles(),
+  currentCycle: (linear) => linear.currentCycle(),
+  cycleIssues: (linear) => linear.cycleIssues('2'),
+  moveToCycle: (linear) => linear.moveToCycle(['ACME-1'], '2', 'user-1'),
+  openCycle: (linear) => linear.openCycle({ start: '2026-11-16' }, 'user-1'),
+  closeCycle: (linear) => linear.closeCycle('2', 'user-1'),
+  getCapacity: (linear) => linear.getCapacity('2'),
+  setCapacity: (linear) => linear.setCapacity('2', {}, 'user-1'),
+  getDaysOff: (linear) => linear.getDaysOff('2'),
+  updateCycleCapacity: (linear) => linear.updateCycleCapacity('2', { capacity: {} }, 'user-1'),
+}
+
+test('every cycle and capacity operation runs through guarded: no workspace gives NOT_CONFIGURED', async () => {
+  const { tracker: linear, fetch } = tracker(setup({ scope: {} }))
+  for (const [name, call] of Object.entries(CYCLE_OPERATIONS)) {
+    await assert.rejects(call(linear), { code: 'NOT_CONFIGURED', message: 'tracker.scope.workspace is not set' }, name)
+  }
+  assert.equal(fetch.calls.length, 0)
+})
+
+test('every cycle and capacity operation checks the mappings first', async () => {
+  const context = setup({ mappings: { status: { in_review: 'Peer Review' } } })
+  for (const [name, call] of Object.entries(CYCLE_OPERATIONS)) {
+    await assert.rejects(call(tracker(context).tracker), { code: 'NOT_CONFIGURED', nextStep: '/pmkit:setup' }, name)
+  }
+})
+
+test('the cycle operations are wired: open and close are final NOT_SUPPORTED answers, and reads reach the cycles', async () => {
+  const { tracker: linear } = cycling()
+  await assert.rejects(linear.openCycle({ start: '2026-11-16' }, 'user-1'), { code: 'NOT_SUPPORTED', message: /Linear creates cycles from the team's schedule/ })
+  await assert.rejects(linear.closeCycle('2', 'user-1'), { code: 'NOT_SUPPORTED', message: /Linear ends a cycle on its end date/ })
+  assert.deepEqual((await linear.listCycles()).map((sprint) => sprint.id), ['1', '2', '3'])
+  assert.equal((await linear.currentCycle()).id, '2')
 })

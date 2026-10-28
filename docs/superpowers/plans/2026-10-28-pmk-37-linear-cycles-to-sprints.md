@@ -1,0 +1,225 @@
+# PMK-37 Linear cycles to sprints implementation plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development or superpowers:executing-plans, as the user picks, to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Make the Linear adapter read cycles as sprints, move issues between cycles, answer `NOT_SUPPORTED` for open and close, and keep capacity and days off in `.pmkit/capacity.yaml`.
+
+**Architecture:** Pure mapping goes in `cycles.mjs`. The operations that send requests go in `cycle-ops.mjs`, which `tracker.mjs` wraps in `guarded`. `capacity-store.mjs` reads and writes the committed capacity file with the Local validators. The `sprint` key of the issue filter, `toInput` and `toIssue` get real meanings. The fake gains a cycle store. The contract suite gains a `cycle-lifecycle` family and a cycle provider, so the Linear run covers the `cycles` family against the fake and PMK-39 can supply a cycle from its test team.
+
+**Tech stack:** Node.js ESM, `node:test`, the PMK-30 client, the PMK-35 issue operations, `requireCapacity` and `requireDaysOff` from `scripts/lib/local/sprints.mjs`, `fakeLinearFetch` from `scripts/fake-linear-api.mjs`.
+
+**Spec:** `docs/superpowers/specs/2026-10-28-pmk-37-linear-cycles-to-sprints-design.md`
+
+## Global constraints
+
+- `npm test` opens no socket. Every Linear test injects `fakeLinearFetch` and sets `PMKIT_HOME` through `userStoreEnv()`.
+- `package.json` gains no dependency (ADR-0003).
+- Every Local tracker output stays byte-identical. The goldens and the three Local contract runs still run every test.
+- The key never appears in output, an error, a cache file, the capacity file or a command line. Tests use `FAKE_KEY`.
+- No file, commit or comment holds the real workspace URL key or team key. Examples use `acme` and `ACME`. Docs say "the sandbox workspace". The plan names the check only as "the private-name check". Any live command writes the workspace as `$PMKIT_LIVE_WORKSPACE`.
+- No task writes to Linear, creates a team or changes a Linear setting. PMK-39 creates the test team with cycles and deletes it. The live check (Task 15) is read-only and behind `PMKIT_LIVE=1`.
+- The client never retries a mutation, and the adapter never retries one either.
+- `closeCycle` stays `NOT_SUPPORTED` and `openCycle` answers `NOT_SUPPORTED`. An unknown cycle in a filter returns an empty list.
+- Parallel issues PMK-36 (merges first) and PMK-38 edit `tracker.mjs`, the fake, `cli-linear.test.mjs`, `contract-suite.mjs` and maybe `ISSUE_FRAGMENT`. Each task keeps its edit to those files small and in one block. Rebase on `main` before Task 3 and again before Task 12.
+- Every commit message carries `(PMK-37)` and ends with exactly `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- Code, comments and messages follow `~/.claude/skills/unslop/SKILL.md`.
+
+## Review focus
+
+1. The date rule for `start` and `end` (UTC part of `startsAt` and `endsAt`). Task 1 tests it and Task 15 records the live answer in the test team.
+2. A bad id (`abc`, `0`, `1.5`) must give `NOT_FOUND` before any request. Task 1 and Task 7.
+3. `moveToCycle` must check every issue before the first mutation and must list the moved ids when one fails. Task 8.
+4. `cycles` off must refuse reads and non-empty `sprint` values, and must accept `sprint: 'none'` and a `null` write. Tasks 4, 5 and 7.
+5. The Local contract runs must still run every test. Task 12.
+6. A bad `.pmkit/capacity.yaml` must never be overwritten. Task 6.
+
+## Files
+
+| File | Change | Task |
+|---|---|---|
+| `scripts/lib/linear/cycles.mjs` | New: `cycleKey`, `toSprint`, state and date mapping | 1 |
+| `scripts/lib/linear/documents.mjs` | `cycle { id number }` in `ISSUE_FRAGMENT`; `CYCLES_QUERY`, `CYCLE_BY_NUMBER_QUERY` | 2 |
+| `scripts/lib/linear/issues.mjs` | `toIssue` sets `sprint` | 2 |
+| `scripts/fake-linear-api.mjs` | Cycle store, routes, `cycle` clause, `cycleId` | 3 |
+| `scripts/lib/linear/filter.mjs` | `sprint` becomes a `cycle` clause | 4 |
+| `scripts/lib/linear/writes.mjs` | `toInput` accepts `sprint` with a `cycleNode` | 5 |
+| `scripts/lib/linear/capacity-store.mjs` | New: read and write `.pmkit/capacity.yaml` | 6 |
+| `scripts/lib/linear/cycle-ops.mjs` | New: reads, move, open, close, capacity | 7, 8, 9 |
+| `scripts/lib/linear/issue-ops.mjs` | `sprint` resolved on create and update; `sprintExists` | 10 |
+| `scripts/lib/linear/tracker.mjs` | Wires the cycle operations through `guarded` | 11 |
+| `scripts/lib/linear/manifest.mjs` | `detail` on `cycles` and `capacity` | 11 |
+| `scripts/contract-suite.mjs` | `cycle-lifecycle` family, cycle provider | 12 |
+| `scripts/lib/linear/contract.test.mjs` | `cycles` family, provider, two Linear cases | 13 |
+| `scripts/lib/linear/cli-linear.test.mjs` | Cycle commands through the CLI | 14 |
+| `scripts/lib/linear/client-live.mjs`, `API-VERIFICATION.md` | Read-only live cycle read, rows | 15 |
+| Docs that list Linear cycles as unsupported | Update | 16 |
+
+Test files sit beside the file they test, as in PMK-35: `cycles.test.mjs`, `cycle-ops.test.mjs`, `capacity-store.test.mjs`, and new cases in `filter.test.mjs`, `issues.test.mjs`, `writes.test.mjs`, `manifest.test.mjs`, `tracker.test.mjs`, `documents.test.mjs` and `fake-linear-api.test.mjs`. Locate `cli-linear.test.mjs` with `ls scripts/**/cli-linear.test.mjs` before Task 14.
+
+## Acceptance criteria map
+
+| Criterion | Tasks |
+|---|---|
+| 1. The adapter lists cycles, finds the current one, lists its issues and moves issues between cycles | 1 to 5, 7, 8, 10, 11, 13, 14 |
+| 2. Opening or closing a cycle returns `NOT_SUPPORTED` with the reason | 9, 11 (manifest `detail`), 12, 13, 14 |
+| 3. Capacity is kept in local context | 6, 9, 11 (manifest `file`), 13, 14 |
+
+---
+
+### Task 1: Pure cycle mapping
+
+**Files:** create `scripts/lib/linear/cycles.mjs` and `scripts/lib/linear/cycles.test.mjs`.
+
+- [ ] **Step 1: Write the failing tests.** `cycleKey('12')` returns `12`; `cycleKey('abc')`, `'0'`, `'1.5'`, `'-3'`, `''` and a number type return `null`. `toSprint` of an active node gives `state: 'active'`; `isFuture` gives `planned`; `isPast` gives `closed`; a node with no flag gives `closed`. A null `name` gives `Cycle 12`. A null `description` gives `goal: ''`. `startsAt: '2026-11-02T00:00:00.000Z'` gives `start: '2026-11-02'`. `closed` is set from `completedAt` only for a closed cycle. `capacity` and `daysOff` come from the `local` argument and default to `{}`. A fractional `number` (`12.5`) makes `cycleKey(String(...))` return `null`.
+- [ ] **Step 2: Run** `node --test scripts/lib/linear/cycles.test.mjs`. Expected: fails, module missing.
+- [ ] **Step 3: Implement** `cycleKey(id)` (regex `^[1-9][0-9]*$`), `cycleState(node)`, `toSprint(node, local = {})` returning `{ id, name, start, end, goal, state, capacity, daysOff, closed? }` in the Local key order.
+- [ ] **Step 4: Run** the same command. Expected: pass.
+- [ ] **Step 5: Commit** `feat(linear): map a Linear cycle to a sprint (PMK-37)`.
+
+### Task 2: Cycle documents and `issue.sprint`
+
+**Files:** modify `scripts/lib/linear/documents.mjs`, `scripts/lib/linear/issues.mjs`, `documents.test.mjs`, `issues.test.mjs`.
+
+- [ ] **Step 1: Write the failing tests.** `documents.test.mjs`: `CYCLES_QUERY` is named `PmkitCycles` and `CYCLE_BY_NUMBER_QUERY` is named `PmkitCycleByNumber`, and `operationName` finds both; `ISSUE_FRAGMENT` selects `cycle { id number }`. `issues.test.mjs`: a node with `cycle: { id, number: 12 }` gives `issue.sprint === '12'`; a node with `cycle: null` has no `sprint` key.
+- [ ] **Step 2: Run** `node --test scripts/lib/linear/documents.test.mjs scripts/lib/linear/issues.test.mjs`. Expected: fails.
+- [ ] **Step 3: Implement.** Add `cycle { id number }` to the fragment as one new line (PMK-36 may add a line too, so keep it separate). Add the two queries from the spec ("Reading cycles"). `toIssue` sets `sprint: String(node.cycle.number)` only when the node has a cycle.
+- [ ] **Step 4: Run** the same command, then `npm test`. Expected: pass. The PMK-35 fake ignores the new field, so the existing tests stay green.
+- [ ] **Step 5: Commit** `feat(linear): read the cycle of an issue (PMK-37)`.
+
+### Task 3: Cycles in the fake
+
+**Files:** modify `scripts/fake-linear-api.mjs`, `scripts/fake-linear-api.test.mjs` (or the fake's existing test file).
+
+- [ ] **Step 1: Write the failing tests.** With `fakeLinearIssues({ cycles: [...], clock })`: `PmkitCycles` returns the team's cycles with `isActive`, `isFuture`, `isPast` computed from the clock, and honors the `isActive`, `isFuture`, `isPast` and `team` filter keys and pagination; `PmkitCycleByNumber` returns the cycle with that number or an empty list; the issue filter clauses `cycle: { isActive: { eq: true } }`, `cycle: { number: { eq } }` and `cycle: { null: true }` select the right issues; `issueUpdate` with `cycleId` sets and clears the cycle, and a cycle of another team gets a Linear-style error; `issueCreate` honors `cycleId`; an unknown cycle clause gives `GRAPHQL_VALIDATION_FAILED`; a team with `cyclesEnabled: false` returns no cycles. Add a `cycles` handle (`fake.cycles`) so tests can add a cycle and move the clock.
+- [ ] **Step 2: Run** the fake's test file. Expected: fails.
+- [ ] **Step 3: Implement** in one block inside `fakeLinearIssues`, following the PMK-35 route and clause style. Rebase on `main` first and keep the diff to the cycle block, the `cycle` clause branch, and `cycleId` in create and update.
+- [ ] **Step 4: Run** the fake's tests and `npm test`. Expected: pass.
+- [ ] **Step 5: Commit** `test(linear): add cycles to the fake (PMK-37)`.
+
+### Task 4: The `sprint` filter
+
+**Files:** modify `scripts/lib/linear/filter.mjs`, `filter.test.mjs`.
+
+- [ ] **Step 1: Write the failing tests.** `sprint: '12'` gives `cycle: { number: { eq: 12 } }`; `current` gives `cycle: { isActive: { eq: true } }`; `none` gives `cycle: { null: true }`; none of them adds a client step, so `serverLimit` still applies. With `context.cyclesEnabled === false`, `12` and `current` throw `NOT_SUPPORTED` (`team ACME has cycles turned off`, next step `Turn on cycles in the team's settings in Linear`) and `none` produces no clause. A malformed value (`abc`) throws `INVALID_INPUT`.
+- [ ] **Step 2: Run** `node --test scripts/lib/linear/filter.test.mjs`. Expected: fails (the filter throws on `sprint` today).
+- [ ] **Step 3: Implement.** Remove the `sprint` refusal, add the three rows, read `cyclesEnabled` from the context (Task 10 supplies it).
+- [ ] **Step 4: Run** the same command. Expected: pass.
+- [ ] **Step 5: Commit** `feat(linear): filter issues by cycle (PMK-37)`.
+
+### Task 5: `sprint` in writes
+
+**Files:** modify `scripts/lib/linear/writes.mjs`, `writes.test.mjs`.
+
+- [ ] **Step 1: Write the failing tests.** `toInput({ sprint: '12' }, { ..., cycleNode })` sets `cycleId` to the node's id on create and update; `{ sprint: null }` sets `cycleId: null`; `LATER.sprint` no longer refuses. With cycles off, a non-null value throws `NOT_SUPPORTED` with the same message as Task 4 and `null` changes nothing. `applyInput` reflects the cycle on the node so `toIssue` reads it back.
+- [ ] **Step 2: Run** `node --test scripts/lib/linear/writes.test.mjs`. Expected: fails.
+- [ ] **Step 3: Implement.** Accept `cycleNode` the way `parentNode` works. `toInput` stays free of requests.
+- [ ] **Step 4: Run** the same command. Expected: pass.
+- [ ] **Step 5: Commit** `feat(linear): write the cycle of an issue (PMK-37)`.
+
+### Task 6: Capacity store
+
+**Files:** create `scripts/lib/linear/capacity-store.mjs` and `capacity-store.test.mjs`.
+
+- [ ] **Step 1: Write the failing tests** in a temp repository root. Read with no file returns `{}` for a cycle. A write creates `.pmkit/capacity.yaml` with `version: 1` and the shape in the spec. A second cycle keeps the first. Cycle ids sort numerically and two writes of the same data give the same bytes. `member=null` clears a member's days off. A day off outside the cycle's `start` and `end` is refused with `INVALID_INPUT`, as is a capacity key that is not a member. A file with bad YAML or another `version` fails with `INVALID_INPUT` (`.pmkit/capacity.yaml is not valid: ...`, next step `Fix or delete the file`) and is left byte-identical after a write attempt. A dry run builds `after` and writes no file. The write goes through a temporary file and a rename. No file under the root holds `FAKE_KEY`.
+- [ ] **Step 2: Run** `node --test scripts/lib/linear/capacity-store.test.mjs`. Expected: fails.
+- [ ] **Step 3: Implement** `readCapacity(root, team)`, `entryFor(file, team, id)` and `writeEntry(root, team, id, { capacity, daysOff }, { sprint, members, dryRun })`, using `requireCapacity` and `requireDaysOff` from `scripts/lib/local/sprints.mjs`, `serializeCapacity` with fixed key order, and the repository's existing YAML reader and writer (no new dependency).
+- [ ] **Step 4: Run** the same command. Expected: pass.
+- [ ] **Step 5: Commit** `feat(linear): keep cycle capacity in .pmkit/capacity.yaml (PMK-37)`.
+
+### Task 7: Cycle reads
+
+**Files:** create `scripts/lib/linear/cycle-ops.mjs` and `cycle-ops.test.mjs`.
+
+- [ ] **Step 1: Write the failing tests** against the fake. `listCycles()` returns sprints sorted by number ascending; `listCycles({ state: 'active' })`, `planned` and `closed` send the matching flag and return only those; a bad `state` is `INVALID_INPUT`. `currentCycle()` returns the active sprint, or `null` between cycles. `cycleIssues('12')` returns that cycle's issues; `cycleIssues('99')` and `cycleIssues('abc')` give `NOT_FOUND` with next step `pmkit cycle list`, and `abc` sends no request. Sprints carry `capacity` and `daysOff` from a capacity file, read once per call. With cycles off, every read gives the `NOT_SUPPORTED` hint.
+- [ ] **Step 2: Run** `node --test scripts/lib/linear/cycle-ops.test.mjs`. Expected: fails.
+- [ ] **Step 3: Implement** `cycleOperations({ client, discovery, issues, config })` with `listCycles`, `currentCycle`, `cycleIssues`, using `client.paginate` and `cycleKey`, `toSprint` and the store. `cycleIssues` checks the cycle, then calls `issues.searchIssues({ sprint: id })`.
+- [ ] **Step 4: Run** the same command. Expected: pass.
+- [ ] **Step 5: Commit** `feat(linear): list cycles, find the current one and list its issues (PMK-37)`.
+
+### Task 8: `moveToCycle`
+
+**Files:** modify `cycle-ops.mjs`, `cycle-ops.test.mjs`.
+
+- [ ] **Step 1: Write the failing tests.** Move to a number, to `current`, and to `null`; the result is `{ before, after }` per id in the given order. An issue already in the target cycle sends no mutation. `current` with no active cycle gives `INVALID_INPUT` (`there is no active sprint`, next step `pmkit cycle list`). An unknown cycle is `NOT_FOUND`. An unknown issue is `NOT_FOUND` and no issue moves. An issue of another team gives `INVALID_INPUT` naming both teams and no mutation is sent. An empty `ids` is `INVALID_INPUT`. An actor other than the viewer is refused. A dry run sends no mutation and returns the same `after`. When the second of three mutations fails, the loop stops, the error keeps its code, `details.moved` lists the first id, and the next step names it.
+- [ ] **Step 2: Run** `node --test scripts/lib/linear/cycle-ops.test.mjs`. Expected: new cases fail.
+- [ ] **Step 3: Implement** with the Local check order from the spec ("Moving issues"). Each move calls `issues.updateIssue(id, { sprint })`, one `issueUpdate` per issue.
+- [ ] **Step 4: Run** the same command. Expected: pass.
+- [ ] **Step 5: Commit** `feat(linear): move issues between cycles (PMK-37)`.
+
+### Task 9: Open, close and capacity operations
+
+**Files:** modify `cycle-ops.mjs`, `cycle-ops.test.mjs`.
+
+- [ ] **Step 1: Write the failing tests.** `openCycle` gives `NOT_SUPPORTED` with the message `Linear creates cycles from the team's schedule, so pmkit cannot open one` and the schedule next step; `closeCycle` gives the close message and next step; neither sends a request (count the fake's calls) and neither validates its input. `getCapacity`, `getDaysOff` read the entry and give `NOT_FOUND` for an unknown cycle. `setCapacity(id, map, actor)` and `updateCycleCapacity(id, { capacity, daysOff }, actor, { dryRun })` return `{ before, after }` as sprints, write `.pmkit/capacity.yaml`, refuse a non-viewer actor, and send no mutation to Linear. A dry run writes no file. Cycles off gives the `NOT_SUPPORTED` hint.
+- [ ] **Step 2: Run** `node --test scripts/lib/linear/cycle-ops.test.mjs`. Expected: new cases fail.
+- [ ] **Step 3: Implement** the six operations on top of `capacity-store.mjs`. The members come from the discovery.
+- [ ] **Step 4: Run** the same command. Expected: pass.
+- [ ] **Step 5: Commit** `feat(linear): answer open and close with NOT_SUPPORTED and keep capacity locally (PMK-37)`.
+
+### Task 10: `sprint` on create and update, and the filter check
+
+**Files:** modify `scripts/lib/linear/issue-ops.mjs`, `scripts/lib/linear/tracker.test.mjs` or a new `issue-ops` cycle test file.
+
+- [ ] **Step 1: Write the failing tests.** `createIssue({ title, sprint: 'current' })` and `updateIssue(id, { sprint: '12' })` store the cycle and `getIssue` returns `sprint: '12'`; `sprint: null` clears it; `current` with no active cycle is `INVALID_INPUT` and writes nothing; an unknown cycle is `NOT_FOUND`; cycles off gives the Task 5 answers. `searchIssues({ sprint: '99' })` returns an empty list, with no `INVALID_INPUT`. `searchIssues({ sprint: 'current' })` with cycles off gives `NOT_SUPPORTED`.
+- [ ] **Step 2: Run** the test file. Expected: fails.
+- [ ] **Step 3: Implement.** Resolve `sprint` to a `cycleNode` before `toInput`. Give `checkFilter` a `sprintExists` that checks the shape only. Put `cyclesEnabled` in the context that the filter and writes read. Keep the edit in `issue-ops.mjs` to the resolution helper and its two call sites.
+- [ ] **Step 4: Run** the test file and `npm test`. Expected: pass.
+- [ ] **Step 5: Commit** `feat(linear): set and filter the cycle of an issue (PMK-37)`.
+
+### Task 11: Wire the tracker and the manifest
+
+**Files:** modify `scripts/lib/linear/tracker.mjs`, `scripts/lib/linear/manifest.mjs`, `tracker.test.mjs`, `manifest.test.mjs`.
+
+- [ ] **Step 1: Write the failing tests.** `tracker.test.mjs`: with no workspace set, each of the ten cycle and capacity operations gives `NOT_CONFIGURED`; with a broken mapping, `NOT_CONFIGURED` too (that is `guarded`). `manifest.test.mjs`: `cycles` carries `detail: { open: false, close: false, schedule: 'team' }` when native and when conditional (the `teams` key stays); `capacity` carries `detail.source === 'local'` and `detail.file === '.pmkit/capacity.yaml'`; with cycles off `capacity` stays `absent` with the hint `Capacity needs cycles`.
+- [ ] **Step 2: Run** `node --test scripts/lib/linear/tracker.test.mjs scripts/lib/linear/manifest.test.mjs`. Expected: fails.
+- [ ] **Step 3: Implement.** In `tracker.mjs`, add one block that builds `cycleOperations(...)` and adds its ten operations to `contract`. Rebase on `main` first so PMK-36's lines are in place.
+- [ ] **Step 4: Run** the same command and `npm test`. Expected: pass.
+- [ ] **Step 5: Commit** `feat(linear): wire the cycle operations and report open and close in the manifest (PMK-37)`.
+
+### Task 12: Contract suite family and cycle provider
+
+**Files:** modify `scripts/contract-suite.mjs`, `scripts/contract.test.mjs` only if a Local run needs a change.
+
+- [ ] **Step 1: Write the failing tests.** Add a small test of the suite itself, or extend the Linear contract file in Task 13, that proves: `FAMILIES` includes `cycle-lifecycle`; a `setup()` that returns `cycles: { active, planned }` makes `cycle('active')` call the provider; a provider that returns `null` skips with `needs an active cycle`; without a provider the helper calls `openCycle` with the exact arguments the tests use today.
+- [ ] **Step 2: Run** `node --test scripts/contract.test.mjs`. Expected: Local runs still pass before the change.
+- [ ] **Step 3: Implement.** Add `cycle-lifecycle`; move the lifecycle, `sprint current` without an active sprint, and the empty-list tests to `['cycles', 'cycle-lifecycle']`; add `cycle('active')` and `cycle('planned')` to the test context; switch the remaining `cycles` tests (create and update with `sprint current`, `moveToCycle`, `searchIssues`, capacity, days off) to the helper. Use `t.skip` for a `null` provider result. Keep the dry-run test on every family. The edit stays inside the cycle tests and the context builder.
+- [ ] **Step 4: Run** `npm test`. Expected: pass, with the same Local test count and no new skips in Local runs.
+- [ ] **Step 5: Commit** `test(contract): add the cycle-lifecycle family and a cycle provider (PMK-37)`.
+
+### Task 13: Linear contract run
+
+**Files:** modify `scripts/lib/linear/contract.test.mjs`.
+
+- [ ] **Step 1: Write the failing tests.** The run lists `['discovery', 'issues', 'relations', 'cycles']`, and `setup` returns a provider backed by the fake's cycle store: one active cycle that contains `today`, one future cycle, `cyclesEnabled: true`. Two Linear cases sit beside it: `openCycle` and `closeCycle` give `NOT_SUPPORTED` with a message that names Linear's schedule; on a fake with no active cycle, `sprint current` on create fails with `INVALID_INPUT` and writes nothing, and a search returns an empty list. One more case checks that no file under `PMKIT_HOME` or `.pmkit/` holds `FAKE_KEY` after a capacity write.
+- [ ] **Step 2: Run** `node --test scripts/lib/linear/contract.test.mjs`. Expected: fails until the family list changes.
+- [ ] **Step 3: Implement** the setup change. The `workspace description` gets `cyclesEnabled` on. Leave a comment that PMK-39 supplies a provider that reads its test team through `listCycles`, and that a missing cycle makes the tests skip with a reason.
+- [ ] **Step 4: Run** the same command and `npm test`. Expected: pass.
+- [ ] **Step 5: Commit** `test(linear): run the cycles contract over the fake (PMK-37)`.
+
+### Task 14: CLI
+
+**Files:** modify the Linear CLI test file (`cli-linear.test.mjs`, located with the `ls` in the note under the file table). Touch `scripts/pmkit.mjs` only if a command fails for a reason the adapter cannot fix.
+
+- [ ] **Step 1: Write the failing tests.** Through the CLI with the fake and `--json`: `cycle list`, `cycle current`, `cycle issues 12`, `cycle add ACME-1 --to current`, `cycle add ACME-1 --to none`, `cycle capacity 12 --set` and `--days-off`, `issues list --sprint current`. `cycle open` and `cycle close` exit with the `NOT_SUPPORTED` code and print the reason and the next step. Group the new cases in one `describe`.
+- [ ] **Step 2: Run** the file. Expected: fails.
+- [ ] **Step 3: Implement** only what the failures show. Expected: nothing in `pmkit.mjs`, because the commands already call the contract.
+- [ ] **Step 4: Run** the file and `npm test`. Expected: pass.
+- [ ] **Step 5: Commit** `test(linear): cover the cycle commands through the CLI (PMK-37)`.
+
+### Task 15: Read-only live check and API notes
+
+**Files:** modify `scripts/lib/linear/client-live.mjs`, `scripts/lib/linear/API-VERIFICATION.md`.
+
+- [ ] **Step 1: Add a test** to `client-live.mjs`, skipped unless `PMKIT_LIVE=1`, `$PMKIT_LIVE_WORKSPACE` and a key are set. It lists the cycles of the scope team, reads the issues of the active one when there is one, uses the fetch wrapper that refuses any mutation, and prints no workspace data. When the team has cycles off or no cycle, it skips with that reason. It records the time-of-day of `startsAt` and `endsAt`, `isPast` during cooldown and `completedAt` on a date-ended cycle. PMK-39's test team is the place those facts get checked; this task does not create or change any team.
+- [ ] **Step 2: Add rows** to `API-VERIFICATION.md` for each fact in the spec's "Facts" table, marked `schema` or `read`, and the three unverified facts marked `unverified`.
+- [ ] **Step 3: Run** `node --test scripts/lib/linear/client-live.mjs` without `PMKIT_LIVE`. Expected: every test skipped, nothing sent. Run `npm test`. Expected: pass and no socket.
+- [ ] **Step 4: Commit** `docs(linear): add the cycle live check and API notes (PMK-37)`.
+
+### Task 16: Docs and final verification
+
+**Files:** the docs that say Linear cycles or capacity are unsupported (find them with `grep -rn "cycle" README.md docs skills --include=*.md -il`), and the changelog if the repository keeps one.
+
+- [ ] **Step 1: Update** each mention that cycles or capacity are `NOT_SUPPORTED` on Linear: state what works, that open and close answer `NOT_SUPPORTED`, and where capacity lives. Do not edit the PMK-40 and PMK-41 command texts.
+- [ ] **Step 2: Run the full checks.** `npm test` (expected: pass, no socket), `git diff main --stat -- package.json package-lock.json` (expected: empty), the Local golden tests (expected: unchanged), and the private-name check, `/home/fred/projects/pmkit-worktrees/check-private-names.sh` (expected: only the three accepted hits under `.issues/`).
+- [ ] **Step 3: Verify** with `superpowers:verification-before-completion` that each acceptance criterion's tasks ran green.
+- [ ] **Step 4: Commit** `docs: describe Linear cycles and capacity (PMK-37)`.

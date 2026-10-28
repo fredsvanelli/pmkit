@@ -906,3 +906,150 @@ test('events and the metrics commands warn when Linear has more than 1000 issues
     assert.equal(result.stderr, warning, args.join(' '))
   }
 })
+
+// The cycle commands over a team with cycles on. The fake's clock is 2026-10-27, so cycle 2 is active and cycle 3 is next.
+const CYCLE_TEAM = { ...ACME_TEAM, cyclesEnabled: true }
+const CYCLES = [
+  { number: 1, startsAt: '2026-10-05T00:00:00.000Z', endsAt: '2026-10-19T00:00:00.000Z', completedAt: '2026-10-19T00:00:00.000Z' },
+  { number: 2, name: 'Autumn', startsAt: '2026-10-19T00:00:00.000Z', endsAt: '2026-11-02T00:00:00.000Z' },
+  { number: 3, startsAt: '2026-11-02T00:00:00.000Z', endsAt: '2026-11-13T00:00:00.000Z' },
+]
+
+function withCycles(titles = []) {
+  const teams = [CYCLE_TEAM]
+  const fake = fakeLinearIssues({ teams, cycles: CYCLES })
+  for (const title of titles) fake.seed({ title })
+  return { fake, fetch: fakeLinearFetch({ ...fakeWorkspace({ teams }), ...fake.routes }) }
+}
+
+const cycleCli = (context, args, fetch) => cli(context, [...args, '--json'], fetch)
+
+test('cycle list, current and issues read Linear cycles as sprints', async () => {
+  const { fake, fetch } = withCycles(['In two', 'Free'])
+  fake.records[0].cycleId = fake.cycles.list()[1].id
+  const context = setup({ edit: withTeam })
+  const list = await cycleCli(context, ['cycle', 'list'], fetch)
+  assert.equal(list.code, 0, list.stderr)
+  assert.deepEqual(JSON.parse(list.stdout).map((sprint) => [sprint.id, sprint.state, sprint.start, sprint.end]), [
+    ['1', 'closed', '2026-10-05', '2026-10-18'], ['2', 'active', '2026-10-19', '2026-11-01'], ['3', 'planned', '2026-11-02', '2026-11-12'],
+  ])
+  const planned = await cycleCli(context, ['cycle', 'list', '--state', 'planned'], fetch)
+  assert.deepEqual(JSON.parse(planned.stdout).map((sprint) => sprint.id), ['3'])
+  const current = await cycleCli(context, ['cycle', 'current'], fetch)
+  assert.equal(JSON.parse(current.stdout).name, 'Autumn')
+  const issues = await cycleCli(context, ['cycle', 'issues', '2'], fetch)
+  assert.deepEqual(JSON.parse(issues.stdout).map((issue) => issue.id), ['ACME-1'])
+  const text = await cli(context, ['cycle', 'list'], fetch)
+  assert.match(text.stdout, /^2 +\| active +\| 2026-10-19 \| 2026-11-01 \| Autumn$/m)
+})
+
+test('cycle issues of an unknown cycle exits 2 with NOT_FOUND', async () => {
+  const result = await cycleCli(setup({ edit: withTeam }), ['cycle', 'issues', '99'], withCycles().fetch)
+  assert.equal(result.code, 2)
+  assert.deepEqual(errorOf(result), { code: 'NOT_FOUND', message: 'sprint 99 does not exist', nextStep: 'pmkit cycle list' })
+})
+
+test('cycle add moves an issue to current and out with none, one mutation each', async () => {
+  const { fake, fetch } = withCycles(['Move me'])
+  const context = setup({ edit: withTeam })
+  const into = await cycleCli(context, ['cycle', 'add', 'ACME-1', '--to', 'current'], fetch)
+  assert.equal(into.code, 0, into.stdout + into.stderr)
+  assert.equal(JSON.parse(into.stdout)[0].after.sprint, '2')
+  assert.deepEqual(fake.mutations, ['PmkitIssueUpdate'])
+  const out = await cycleCli(context, ['cycle', 'add', 'ACME-1', '--to', 'none'], fetch)
+  assert.equal(out.code, 0, out.stdout + out.stderr)
+  assert.equal('sprint' in JSON.parse(out.stdout)[0].after, false)
+  assert.deepEqual(fake.mutations, ['PmkitIssueUpdate', 'PmkitIssueUpdate'])
+})
+
+test('cycle add --dry-run sends no mutation', async () => {
+  const { fake, fetch } = withCycles(['Move me'])
+  const result = await cycleCli(setup({ edit: withTeam }), ['cycle', 'add', 'ACME-1', '--to', '3', '--dry-run'], fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.deepEqual(fake.mutations, [])
+})
+
+test('issues list --sprint current lists the active cycle', async () => {
+  const { fake, fetch } = withCycles(['In two', 'Free'])
+  fake.records[0].cycleId = fake.cycles.list()[1].id
+  const result = await cli(setup({ edit: withTeam }), ['issues', 'list', '--sprint', 'current', '--json'], fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.deepEqual(JSON.parse(result.stdout).issues.map((issue) => issue.id), ['ACME-1'])
+})
+
+test('cycle capacity --set and --days-off write .pmkit/capacity.yaml and read back, with no mutation to Linear', async () => {
+  const { fake, fetch } = withCycles()
+  const context = setup({ edit: withTeam })
+  const set = await cycleCli(context, ['cycle', 'capacity', '2', '--set', 'user-1=8'], fetch)
+  assert.equal(set.code, 0, set.stdout + set.stderr)
+  assert.deepEqual(JSON.parse(set.stdout).after.capacity, { 'user-1': 8 })
+  const off = await cycleCli(context, ['cycle', 'capacity', '2', '--days-off', 'user-1=2026-10-21'], fetch)
+  assert.equal(off.code, 0, off.stdout + off.stderr)
+  const read = await cycleCli(context, ['cycle', 'capacity', '2'], fetch)
+  assert.deepEqual(JSON.parse(read.stdout), { capacity: { 'user-1': 8 }, days_off: { 'user-1': ['2026-10-21'] } })
+  const file = fs.readFileSync(path.join(context.root, '.pmkit', 'capacity.yaml'), 'utf8')
+  assert.match(file, /^version: 1$/m)
+  assert.ok(!file.includes(FAKE_KEY))
+  assert.deepEqual(fake.mutations, [])
+})
+
+test('cycle open and cycle close exit 2 with NOT_SUPPORTED, the reason and the next step', async () => {
+  const { fake, fetch } = withCycles()
+  const context = setup({ edit: withTeam })
+  const open = await cycleCli(context, ['cycle', 'open', '--start', '2026-11-16'], fetch)
+  assert.equal(open.code, 2)
+  assert.deepEqual(errorOf(open), {
+    code: 'NOT_SUPPORTED',
+    message: "Linear creates cycles from the team's schedule, so pmkit cannot open one",
+    nextStep: "Set the schedule in the team's cycle settings in Linear (duration, start day, upcoming cycles)",
+  })
+  const close = await cycleCli(context, ['cycle', 'close', '2'], fetch)
+  assert.equal(close.code, 2)
+  assert.equal(errorOf(close).code, 'NOT_SUPPORTED')
+  assert.match(errorOf(close).message, /Linear ends a cycle on its end date/)
+  assert.deepEqual(fake.mutations, [])
+  const text = await cli(context, ['cycle', 'close', '2'], fetch)
+  assert.match(text.stderr, /Linear ends a cycle on its end date/)
+  assert.match(text.stderr, /Move the unfinished issues/)
+})
+
+test('capabilities --json says open and close are unavailable on a team with cycles', async () => {
+  const result = await cli(setup({ edit: withTeam }), ['capabilities', '--json'], withCycles().fetch)
+  assert.equal(result.code, 0, result.stderr)
+  const cycles = JSON.parse(result.stdout).capabilities.find((entry) => entry.id === 'cycles')
+  assert.deepEqual(cycles.detail, { open: false, close: false, schedule: 'team' })
+})
+
+test('a cycle move shows in the history with the sprint ids cycle list gives', async () => {
+  const { fake, fetch } = withCycles(['Move me'])
+  // Cycle 7 is the fourth cycle the fake stores, so its node id does not end in its number.
+  fake.cycles.add({ number: 7, startsAt: '2026-11-16T00:00:00.000Z', endsAt: '2026-11-30T00:00:00.000Z' })
+  const context = setup({ edit: withTeam })
+  for (const to of ['3', '7']) {
+    const moved = await cycleCli(context, ['cycle', 'add', 'ACME-1', '--to', to], fetch)
+    assert.equal(moved.code, 0, moved.stdout + moved.stderr)
+  }
+  const ids = JSON.parse((await cycleCli(context, ['cycle', 'list'], fetch)).stdout).map((sprint) => sprint.id)
+  assert.deepEqual(ids, ['1', '2', '3', '7'])
+  const got = await cycleCli(context, ['issues', 'get', 'ACME-1', '--history'], fetch)
+  assert.equal(got.code, 0, got.stderr)
+  const moves = JSON.parse(got.stdout).history.filter((event) => event.field === 'sprint').map((event) => [event.from, event.to])
+  assert.deepEqual(moves, [[null, '3'], ['3', '7']])
+})
+
+test('metrics velocity on Linear counts the issues done in each closed cycle before it completed', async () => {
+  // The team has estimates off, so velocity counts issues.
+  const { fake, fetch } = withCycles()
+  const [one, two] = fake.cycles.list()
+  const created = { createdAt: '2026-10-06T00:00:00.000Z' }
+  fake.seed({ title: 'In time', stateId: STATE.done.id, cycleId: one.id }, created)
+  fake.history('ACME-1', { createdAt: '2026-10-10T00:00:00.000Z', fromState: STATE.backlog, toState: STATE.done })
+  fake.seed({ title: 'Too late', stateId: STATE.done.id, cycleId: one.id }, created)
+  fake.history('ACME-2', { createdAt: '2026-10-20T00:00:00.000Z', fromState: STATE.backlog, toState: STATE.done })
+  fake.seed({ title: 'Still open', stateId: STATE.done.id, cycleId: two.id }, created)
+  fake.history('ACME-3', { createdAt: '2026-10-21T00:00:00.000Z', fromState: STATE.backlog, toState: STATE.done })
+  const result = await cli(setup({ edit: withTeam }), ['metrics', 'velocity', '--json'], fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.deepEqual(JSON.parse(result.stdout), { perSprint: [{ id: '1', points: 0, count: 1 }], average: 1, unit: 'issues' })
+  assert.deepEqual(fake.mutations, [])
+})

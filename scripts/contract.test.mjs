@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { TRACKER_OPERATIONS, assertTracker, contractView } from './lib/contract.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
-import { runTrackerContract } from './contract-suite.mjs'
+import { FAMILIES, cycleHelper, runTrackerContract } from './contract-suite.mjs'
 import { makeRepo } from './test-helpers.mjs'
 
 test('resolveThread is a contract operation next to comment', () => {
@@ -84,4 +84,44 @@ test('the contract carries no triage operation and a view hides the Linear exten
   const tracker = Object.fromEntries(TRACKER_OPERATIONS.map((name) => [name, () => {}]))
   const view = contractView({ ...tracker, triage: { show() {} } })
   assert.deepEqual(Object.keys(view), TRACKER_OPERATIONS)
+})
+
+describe('the cycle helper of the suite', () => {
+  const fakeTest = () => ({ reasons: [], skip(reason) { this.reasons.push(reason) } })
+  const recording = () => {
+    const calls = []
+    const tracker = { openCycle: async (input, actor) => { calls.push([input, actor]); return { after: { id: `opened-${calls.length}` } } } }
+    return { calls, tracker }
+  }
+
+  test('FAMILIES lists cycle-lifecycle', () => {
+    assert.ok(FAMILIES.includes('cycle-lifecycle'))
+    assert.ok(FAMILIES.includes('cycles'))
+  })
+
+  test('without a provider it opens a cycle with the arguments the tests used before', async () => {
+    const { calls, tracker } = recording()
+    const cycle = cycleHelper({ tracker, actor: 'fred', today: '2026-10-23' }, fakeTest())
+    assert.equal((await cycle('active')).id, 'opened-1')
+    assert.equal((await cycle('planned')).id, 'opened-2')
+    assert.deepEqual(calls, [[{ start: '2026-10-23' }, 'fred'], [{ start: '2099-01-01' }, 'fred']])
+  })
+
+  test('a provider supplies the cycle and openCycle is not called', async () => {
+    const { calls, tracker } = recording()
+    const cycles = { active: async () => ({ id: '7', start: '2026-10-19', end: '2026-11-02' }), planned: async () => ({ id: '8' }) }
+    const cycle = cycleHelper({ tracker, actor: 'fred', today: '2026-10-23', cycles }, fakeTest())
+    assert.equal((await cycle('active')).id, '7')
+    assert.equal((await cycle('planned')).id, '8')
+    assert.deepEqual(calls, [])
+  })
+
+  test('a provider that returns null skips the test with the reason', async () => {
+    const { tracker } = recording()
+    const t = fakeTest()
+    const cycle = cycleHelper({ tracker, actor: 'fred', today: '2026-10-23', cycles: { active: async () => null, planned: async () => null } }, t)
+    assert.equal(await cycle('active'), null)
+    assert.equal(await cycle('planned'), null)
+    assert.deepEqual(t.reasons, ['needs an active cycle', 'needs a planned cycle'])
+  })
 })

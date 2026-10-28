@@ -241,6 +241,10 @@ class FakeValidationError extends Error {}
  * `history(ref, entry)` seeds a history entry the same way (a bot, an auto-close, a team move, an unknown relation code).
  * `comment(ref, input)` seeds a comment (a bot, an external author, a resolved thread) without recording a mutation, and `comments` lists the records.
  * `unconfirm(operation, { applied })` makes the next call of that operation answer HTTP 502, after applying it when `applied` is true.
+ * `cycles` seeds cycles ({ number, team, name, description, startsAt, endsAt, completedAt }; `team` is a team id, default the first team).
+ * `fake.cycles` adds more, lists them and moves the cycle clock (`setClock`), which starts at the `clock` option (default `start`) and decides isActive, isFuture and isPast.
+ * `endsAt` is an exclusive boundary, as on Linear: at the instant `endsAt` a cycle is past, so a cycle that starts there is the active one.
+ * A team with `cyclesEnabled: false` returns no cycles and takes no `cycleId`.
  */
 export function fakeLinearIssues({
   teams = [ACME_TEAM],
@@ -249,6 +253,8 @@ export function fakeLinearIssues({
   users = ACME_USERS,
   nestedPage = 50,
   start = '2026-10-27T12:00:00.000Z',
+  cycles: seededCycles = [],
+  clock: startClock = start,
 } = {}) {
   const records = []
   const relations = []
@@ -271,6 +277,55 @@ export function fakeLinearIssues({
     if (!record) throw new FakeInputError(NOT_FOUND)
     return record
   }
+
+  // The cycle store. Flags come from the cycle clock, as Linear computes them from the current time.
+  let cycleCount = 0
+  let clock = startClock
+  const cycleRecords = []
+  function addCycle({ number, team, name = null, description = null, startsAt, endsAt, completedAt = null }) {
+    cycleCount += 1
+    const record = { id: `cycle-${cycleCount}`, teamId: team ?? teams[0].id, number, name, description, startsAt, endsAt, completedAt }
+    cycleRecords.push(record)
+    return record
+  }
+  const cycleNode = (record) => {
+    const now = Date.parse(clock)
+    const isFuture = Date.parse(record.startsAt) > now
+    const isPast = Date.parse(record.endsAt) <= now
+    const { teamId, ...fields } = record
+    return { ...fields, isActive: !isFuture && !isPast, isFuture, isPast }
+  }
+  const cyclesOn = (record) => teamById(record.teamId)?.cyclesEnabled === true
+  const cycleComparators = {
+    team: (record, c) => teamById(record.teamId).key === c.key.eq,
+    number: (record, c) => record.number === c.eq,
+    isActive: (record, c) => cycleNode(record).isActive === c.eq,
+    isFuture: (record, c) => cycleNode(record).isFuture === c.eq,
+    isPast: (record, c) => cycleNode(record).isPast === c.eq,
+  }
+  function cycleMatches(record, filter) {
+    return Object.entries(filter ?? {}).every(([key, value]) => {
+      if (key === 'and') return value.every((part) => cycleMatches(record, part))
+      if (key === 'or') return value.some((part) => cycleMatches(record, part))
+      if (key === 'null') return value === (record === null)
+      if (record === null) return false
+      if (!Object.hasOwn(cycleComparators, key)) throw new FakeValidationError(`Unknown cycle filter ${key}`)
+      return cycleComparators[key](record, value)
+    })
+  }
+  // Walks the filter before any record is read, so an unknown key fails on an empty store too.
+  function checkCycleFilter(filter) {
+    for (const [key, value] of Object.entries(filter ?? {})) {
+      if (key === 'and' || key === 'or') value.forEach(checkCycleFilter)
+      else if (key !== 'null' && !Object.hasOwn(cycleComparators, key)) throw new FakeValidationError(`Unknown cycle filter ${key}`)
+    }
+  }
+  function searchCycles({ filter, first = 50, after = null }) {
+    checkCycleFilter(filter)
+    const found = cycleRecords.filter((record) => cyclesOn(record) && cycleMatches(record, filter)).sort((a, b) => a.number - b.number)
+    return connection(found.map(cycleNode), first, after)
+  }
+  const cycleOf = (record) => (record.cycleId ? cycleRecords.find((cycle) => cycle.id === record.cycleId) : null)
 
   const connection = (nodes, first = nestedPage, after = null) => {
     const from = Number(after ?? 0)
@@ -326,6 +381,7 @@ export function fakeLinearIssues({
       state: { id: state.id, name: state.name, type: state.type },
       assignee: record.assigneeId ? { id: record.assigneeId } : null,
       parent: parent ? { identifier: parent.identifier } : null,
+      cycle: cycleOf(record) ? { id: cycleOf(record).id, number: cycleOf(record).number } : null,
       ...Object.fromEntries(Object.entries(nested).map(([field, build]) => [field, connection(build(record))])),
     }
   }
@@ -343,7 +399,18 @@ export function fakeLinearIssues({
     if (input.assigneeId !== undefined) record.assigneeId = input.assigneeId
     if (input.labelIds !== undefined) record.labelIds = [...input.labelIds]
     if (input.parentId !== undefined) record.parentId = input.parentId === null ? null : requireIssue(input.parentId).id
-    for (const [key, field] of [['cycleId', 'cycleId'], ['projectId', 'projectId'], ['projectMilestoneId', 'milestoneId']]) if (input[key] !== undefined) record[field] = input[key]
+    if (input.cycleId !== undefined) {
+      if (input.cycleId === null) {
+        record.cycleId = null
+      } else {
+        const cycle = cycleRecords.find((item) => item.id === input.cycleId)
+        if (!cycle) throw new FakeInputError('Could not find referenced Cycle.')
+        if (cycle.teamId !== record.teamId) throw new FakeInputError("Cycle does not belong to the issue's team.")
+        if (!cyclesOn(cycle)) throw new FakeInputError('Cycles are not enabled for this team.')
+        record.cycleId = cycle.id
+      }
+    }
+    for (const [key, field] of [['projectId', 'projectId'], ['projectMilestoneId', 'milestoneId']]) if (input[key] !== undefined) record[field] = input[key]
   }
 
   // PMK-36: history. recordHistory is the one place that turns a change of an issue into an entry, so a later issue can add a field row here.
@@ -353,7 +420,7 @@ export function fakeLinearIssues({
     const label = labels.find((item) => item.id === id)
     return { id, name: label.name, parent: label.parent ? { name: label.parent.name } : null }
   }
-  const cycleRef = (id) => (id ? { number: Number(/(\d+)$/.exec(id)?.[1] ?? 0) } : null)
+  const cycleRef = (id) => (id ? { number: cycleRecords.find((cycle) => cycle.id === id).number } : null)
   function recordHistory(record, before, at, extra = {}) {
     const entry = {}
     const changed = (key) => before[key] !== record[key]
@@ -419,6 +486,7 @@ export function fakeLinearIssues({
       assigneeId: null,
       parentId: null,
       labelIds: [],
+      cycleId: null,
       creatorId: users[0].id,
       botActor: null,
     }
@@ -442,6 +510,7 @@ export function fakeLinearIssues({
       return names.some((name) => (eq === undefined || name === eq) && (list === undefined || list.includes(name)))
     },
     assignee: (record, c) => (c.null === true ? record.assigneeId === null : record.assigneeId === c.id.eq),
+    cycle: (record, c) => cycleMatches(cycleOf(record), c),
     parent: (record, c) => {
       const parent = record.parentId ? find(record.parentId) : null
       return parent !== null && idMatches(parent, c.id.eq)
@@ -466,6 +535,7 @@ export function fakeLinearIssues({
     for (const [key, value] of Object.entries(filter ?? {})) {
       if (key === 'and' || key === 'or') value.forEach(checkFilter)
       else if (!Object.hasOwn(comparators, key)) throw new FakeValidationError(`Unknown filter ${key}`)
+      else if (key === 'cycle') checkCycleFilter(value)
     }
   }
 
@@ -541,6 +611,8 @@ export function fakeLinearIssues({
     if (depth === 0) return { identifier: record.identifier }
     return { identifier: record.identifier, parent: parent ? chainOf(parent, depth - 1) : null }
   }
+  routes.PmkitCycles = query('PmkitCycles', (variables) => ({ cycles: searchCycles(variables) }))
+  routes.PmkitCycleByNumber = query('PmkitCycleByNumber', ({ filter }) => ({ cycles: searchCycles({ filter, first: 1 }) }))
   routes.PmkitRelationCreate = mutation('PmkitRelationCreate', ({ input }) => ({ issueRelationCreate: { success: true, issueRelation: { id: relate(input).id } } }))
   routes.PmkitRelationDelete = mutation('PmkitRelationDelete', ({ id }) => {
     const index = relations.findIndex((relation) => relation.id === id)
@@ -643,9 +715,18 @@ export function fakeLinearIssues({
     return { commentResolve: { success: true, comment: withIssue(item) } }
   })
 
+  seededCycles.forEach(addCycle)
+
   return {
     routes,
     mutations,
+    cycles: {
+      add: addCycle,
+      list: () => cycleRecords.map((record) => ({ ...record })),
+      setClock: (iso) => {
+        clock = iso
+      },
+    },
     nodes: () => records.map(toNode),
     // `extra` sets what no input can: createdAt, creatorId and botActor.
     seed: (input, extra = {}) => toNode(Object.assign(create({ teamId: teams[0].id, ...input }), extra)),

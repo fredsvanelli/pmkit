@@ -61,6 +61,13 @@ test('makeContext holds the raw discovery, the mappings, the viewer and the scop
   assert.equal(makeContext(raw, pmkit({}, { workspace: 'acme' }), VIEWER).scopeTeam, null)
 })
 
+test('makeContext says whether the scope team has cycles on', async () => {
+  assert.equal(context.cyclesEnabled, false)
+  const on = await contextWithTeam({ cyclesEnabled: true })
+  assert.equal(on.cyclesEnabled, true)
+  assert.equal(makeContext(raw, pmkit({}, { workspace: 'acme' }), VIEWER).cyclesEnabled, null)
+})
+
 test('stateCategory uses the mapped name, then the type, then in_progress', () => {
   assert.equal(stateCategory({ name: 'In Review', type: 'started' }, context), 'in_review')
   assert.equal(stateCategory({ name: 'UAT', type: 'started' }, context), 'in_progress')
@@ -86,6 +93,12 @@ test('toIssue maps the scalar fields', () => {
   assert.equal(issue.created, '2026-10-01T00:00:00.000Z')
   assert.equal(issue.updated, '2026-10-02T00:00:00.000Z')
   for (const key of ['sprint', 'milestone', 'release', 'type', 'estimate']) assert.equal(key in issue, false, key)
+})
+
+test('sprint is the cycle number as a string, and absent without a cycle', () => {
+  assert.equal(toIssue(node({ cycle: { id: 'cycle-uuid', number: 12 } }), context).sprint, '12')
+  assert.equal('sprint' in toIssue(node({ cycle: null }), context), false)
+  assert.equal('sprint' in toIssue(node(), context), false)
 })
 
 test('unset fields are absent keys', () => {
