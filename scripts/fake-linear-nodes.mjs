@@ -36,6 +36,7 @@ export function node(overrides = {}) {
     state: { id: 'state-1', name: 'Backlog', type: 'backlog' },
     assignee: null,
     parent: null,
+    cycle: null,
     labels: conn([]),
     children: conn([]),
     relations: conn([]),

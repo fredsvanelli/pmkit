@@ -88,6 +88,12 @@ test('toIssue maps the scalar fields', () => {
   for (const key of ['sprint', 'milestone', 'release', 'type', 'estimate']) assert.equal(key in issue, false, key)
 })
 
+test('sprint is the cycle number as a string, and absent without a cycle', () => {
+  assert.equal(toIssue(node({ cycle: { id: 'cycle-uuid', number: 12 } }), context).sprint, '12')
+  assert.equal('sprint' in toIssue(node({ cycle: null }), context), false)
+  assert.equal('sprint' in toIssue(node(), context), false)
+})
+
 test('unset fields are absent keys', () => {
   const issue = toIssue(node(), context)
   for (const key of ['priority', 'assignee', 'parent', 'due']) assert.equal(key in issue, false, key)

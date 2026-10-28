@@ -128,6 +128,7 @@ export function toIssue(node, context) {
   if (node.assignee?.id) issue.assignee = node.assignee.id
   issue.labels = [...new Set(labelNames.filter((name) => !typeLabels.has(name)))].sort()
   if (node.parent?.identifier) issue.parent = node.parent.identifier
+  if (node.cycle) issue.sprint = String(node.cycle.number)
   issue.blockedBy = identifiers(inverse.filter((item) => item.type === 'blocks').map((item) => item.issue.identifier))
   issue.blocks = identifiers(out.filter((item) => item.type === 'blocks').map((item) => item.relatedIssue.identifier))
   issue.related = identifiers([

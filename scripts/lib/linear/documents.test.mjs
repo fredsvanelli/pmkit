@@ -9,6 +9,7 @@ const DOCUMENTS = {
   BLOCK_GRAPH_QUERY: 'PmkitBlockGraph', PARENT_CHAIN_QUERY: 'PmkitParentChain',
   ISSUE_HISTORY_QUERY: 'PmkitIssueHistory', ISSUE_COMMENTS_QUERY: 'PmkitIssueComments', COMMENT_BY_ID_QUERY: 'PmkitCommentById',
   COMMENT_CREATE: 'PmkitCommentCreate', COMMENT_RESOLVE: 'PmkitCommentResolve', ISSUE_EVENTS_QUERY: 'PmkitIssueEvents',
+  CYCLES_QUERY: 'PmkitCycles', CYCLE_BY_NUMBER_QUERY: 'PmkitCycleByNumber',
 }
 
 test('every document has its name and the right kind', () => {
@@ -43,4 +44,8 @@ test('ISSUE_FRAGMENT is unchanged by PMK-36', () => {
 
 test('the parent chain nests 10 levels', () => {
   assert.equal(documents.PARENT_CHAIN_QUERY.match(/parent \{/g).length, 10)
+})
+
+test('the issue fragment selects the cycle', () => {
+  assert.match(documents.ISSUE_FRAGMENT, /cycle \{ id number \}/)
 })

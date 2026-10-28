@@ -15,6 +15,7 @@ const PAGE_INFO = 'pageInfo { hasNextPage endCursor }'
 export const ISSUE_FRAGMENT = `fragment PmkitIssueFields on Issue {
   id identifier title description priority estimate dueDate branchName archivedAt trashed createdAt updatedAt
   team { id key } state { id name type } assignee { id } parent { identifier }
+  cycle { id number }
 ${Object.entries(NODE_FIELDS).map(([field, fields]) => `  ${field}(first: ${NESTED}) { nodes { ${fields} } ${PAGE_INFO} }`).join('\n')}
 }`
 
@@ -66,7 +67,7 @@ export const NESTED_PAGES = Object.fromEntries(
 )
 export const NESTED_PAGE_SIZE = NESTED
 
-// PMK-36: history and comments. Added after the PMK-35 documents; ISSUE_FRAGMENT stays as it is.
+// PMK-36: history and comments, added after the PMK-35 documents.
 const HISTORY_PAGE = 50
 
 /** The fields of one IssueHistory entry. */
@@ -112,4 +113,14 @@ query PmkitIssueEvents($filter: IssueFilter, $first: Int!, $after: String, $incl
     }
     ${PAGE_INFO}
   }
+}`
+
+const CYCLE_FIELDS = 'id number name description startsAt endsAt completedAt isActive isFuture isPast'
+
+export const CYCLES_QUERY = `query PmkitCycles($filter: CycleFilter, $first: Int!, $after: String) {
+  cycles(filter: $filter, first: $first, after: $after) { nodes { ${CYCLE_FIELDS} } ${PAGE_INFO} }
+}`
+
+export const CYCLE_BY_NUMBER_QUERY = `query PmkitCycleByNumber($filter: CycleFilter) {
+  cycles(filter: $filter, first: 1) { nodes { ${CYCLE_FIELDS} } }
 }`
