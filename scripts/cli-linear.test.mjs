@@ -1019,3 +1019,37 @@ test('capabilities --json says open and close are unavailable on a team with cyc
   const cycles = JSON.parse(result.stdout).capabilities.find((entry) => entry.id === 'cycles')
   assert.deepEqual(cycles.detail, { open: false, close: false, schedule: 'team' })
 })
+
+test('a cycle move shows in the history with the sprint ids cycle list gives', async () => {
+  const { fake, fetch } = withCycles(['Move me'])
+  // Cycle 7 is the fourth cycle the fake stores, so its node id does not end in its number.
+  fake.cycles.add({ number: 7, startsAt: '2026-11-16T00:00:00.000Z', endsAt: '2026-11-30T00:00:00.000Z' })
+  const context = setup({ edit: withTeam })
+  for (const to of ['3', '7']) {
+    const moved = await cycleCli(context, ['cycle', 'add', 'ACME-1', '--to', to], fetch)
+    assert.equal(moved.code, 0, moved.stdout + moved.stderr)
+  }
+  const ids = JSON.parse((await cycleCli(context, ['cycle', 'list'], fetch)).stdout).map((sprint) => sprint.id)
+  assert.deepEqual(ids, ['1', '2', '3', '7'])
+  const got = await cycleCli(context, ['issues', 'get', 'ACME-1', '--history'], fetch)
+  assert.equal(got.code, 0, got.stderr)
+  const moves = JSON.parse(got.stdout).history.filter((event) => event.field === 'sprint').map((event) => [event.from, event.to])
+  assert.deepEqual(moves, [[null, '3'], ['3', '7']])
+})
+
+test('metrics velocity on Linear counts the issues done in each closed cycle before it completed', async () => {
+  // The team has estimates off, so velocity counts issues.
+  const { fake, fetch } = withCycles()
+  const [one, two] = fake.cycles.list()
+  const created = { createdAt: '2026-10-06T00:00:00.000Z' }
+  fake.seed({ title: 'In time', stateId: STATE.done.id, cycleId: one.id }, created)
+  fake.history('ACME-1', { createdAt: '2026-10-10T00:00:00.000Z', fromState: STATE.backlog, toState: STATE.done })
+  fake.seed({ title: 'Too late', stateId: STATE.done.id, cycleId: one.id }, created)
+  fake.history('ACME-2', { createdAt: '2026-10-20T00:00:00.000Z', fromState: STATE.backlog, toState: STATE.done })
+  fake.seed({ title: 'Still open', stateId: STATE.done.id, cycleId: two.id }, created)
+  fake.history('ACME-3', { createdAt: '2026-10-21T00:00:00.000Z', fromState: STATE.backlog, toState: STATE.done })
+  const result = await cli(setup({ edit: withTeam }), ['metrics', 'velocity', '--json'], fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.deepEqual(JSON.parse(result.stdout), { perSprint: [{ id: '1', points: 0, count: 1 }], average: 1, unit: 'issues' })
+  assert.deepEqual(fake.mutations, [])
+})
