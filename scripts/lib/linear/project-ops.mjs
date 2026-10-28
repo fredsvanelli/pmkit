@@ -3,15 +3,20 @@
 // See docs/superpowers/specs/2026-10-28-pmk-38-linear-projects-as-epics-design.md, "Operations".
 
 import { PmkitError } from '../errors.mjs'
-import { sortEpics } from '../local/epics.mjs'
+import { HEALTH, sortEpics } from '../local/epics.mjs'
+import { validDate } from '../local/sprints.mjs'
 import { CATEGORIES } from '../model.mjs'
 import { PARENT_CHAIN_DEPTH } from './documents.mjs'
+import { isUnconfirmed } from './issue-ops.mjs'
 import { estimateOf, makeContext, stateCategory } from './issues.mjs'
-import { EPIC_ISSUES_QUERY, PROJECTS_QUERY, epicKey, toEpic } from './projects.mjs'
+import {
+  EPIC_ISSUES_QUERY, HEALTH_TO_LINEAR, PROJECTS_QUERY, PROJECT_CREATE, PROJECT_UPDATES_QUERY, PROJECT_UPDATE_CREATE, epicId, epicKey, toEpic, toStatusUpdate,
+} from './projects.mjs'
 
 const LIST_PAGE = 100
 const PROGRESS_PAGE = 100
 const PROGRESS_PAGES = 10
+const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
 const notFound = (id) => new PmkitError('NOT_FOUND', `epic ${id} does not exist`, 'pmkit epic list')
 
 /** The filter that finds a project by one key. The identifier and the UUID go through `id`, and the slug through `slugId`. */
@@ -111,5 +116,105 @@ export function projectOperations({ client, discovery, config, now = () => new D
     return progress
   }
 
-  return { listDeliverables, getDeliverable, deliverableProgress, resolveEpic, requireWorkspace, now, uuid, discovery }
+  /** ADR-0005: Linear records every write as the owner of the key, so any other actor would make pmkit's output disagree with Linear. */
+  async function requireViewer(actor) {
+    requireWorkspace()
+    const { viewer } = await context()
+    if (actor !== viewer.id) {
+      throw invalid(`Linear records every write as the owner of LINEAR_API_KEY (${viewer.name})`, 'Drop --as, or use a key created by that member')
+    }
+  }
+
+  const CREATE_KEYS = ['title', 'start', 'target', 'milestone', 'description']
+
+  /** The Linear input of a new epic, after every check that needs no request. */
+  function projectInput(input) {
+    for (const key of Object.keys(input ?? {})) {
+      if (!CREATE_KEYS.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${CREATE_KEYS.join(', ')}`)
+    }
+    if (input.milestone !== undefined && input.milestone !== null && input.milestone !== '') {
+      throw new PmkitError('NOT_SUPPORTED', 'a Linear project has no parent milestone', 'Leave milestone out on Linear')
+    }
+    if (typeof input.title !== 'string' || input.title.trim() === '') throw invalid('title is required')
+    if (/[\r\n]/.test(input.title)) throw invalid('title must not contain a line break')
+    const result = { name: input.title.trim() }
+    for (const [key, field] of [['start', 'startDate'], ['target', 'targetDate']]) {
+      if (input[key] === undefined || input[key] === null || input[key] === '') continue
+      if (!validDate(input[key])) throw invalid(`${key} must be a date as YYYY-MM-DD`)
+      result[field] = input[key]
+    }
+    if (input.description !== undefined && input.description !== null && input.description !== '') {
+      if (typeof input.description !== 'string') throw invalid('description must be a string')
+      result.content = input.description.trim()
+    }
+    return result
+  }
+
+  /** The project node with this UUID, read back after a create. */
+  async function readById(id) {
+    const data = await client.request(PROJECTS_QUERY, { filter: { id: { eq: id } }, first: 1, withLists: false })
+    return data?.projects?.nodes?.[0] ?? null
+  }
+
+  async function createDeliverable(input, actor, { dryRun = false } = {}) {
+    await requireViewer(actor)
+    const fields = projectInput(input)
+    const { raw } = await discovery()
+    const team = raw.teams.find((item) => item.key === scope.team)
+    if (!team) throw new PmkitError('NOT_CONFIGURED', `tracker.scope.team names ${scope.team}, which this workspace does not have`, '/pmkit:setup')
+    if (dryRun) {
+      const preview = { id: null, title: fields.name, status: { name: 'Backlog', category: 'backlog' } }
+      if (fields.startDate) preview.start = fields.startDate
+      if (fields.targetDate) preview.target = fields.targetDate
+      if (fields.content) preview.description = fields.content
+      return { before: null, after: preview }
+    }
+    const id = uuid()
+    let node = null
+    try {
+      await client.request(PROJECT_CREATE, { input: { id, ...fields, teamIds: [team.id] } })
+    } catch (error) {
+      if (!isUnconfirmed(error)) throw error
+      // The UUID pmkit chose tells whether the create happened. One read, then the original error.
+      node = await readById(id)
+      if (!node) throw error
+    }
+    // The payload can lack the identifier Linear assigns after the request, so the project is read again.
+    node ??= await readById(id)
+    return { before: null, after: toEpic(node) }
+  }
+
+  async function publishStatusUpdate(input, actor, { dryRun = false } = {}) {
+    if (!HEALTH.includes(input?.health)) throw invalid(`health must be one of ${HEALTH.join(', ')}`)
+    if (typeof input.body !== 'string' || input.body.trim() === '') throw invalid('status update body must be a non-empty string')
+    await requireViewer(actor)
+    const project = await findProject(input.epic)
+    if (!project) throw notFound(input.epic)
+    const body = input.body.trim()
+    if (dryRun) return { before: null, after: { epic: epicId(project), at: now().toISOString(), author: actor, health: input.health, body } }
+    const id = uuid()
+    let node
+    try {
+      node = (await client.request(PROJECT_UPDATE_CREATE, { input: { id, projectId: project.id, body, health: HEALTH_TO_LINEAR[input.health] } })).projectUpdateCreate.projectUpdate
+    } catch (error) {
+      if (!isUnconfirmed(error)) throw error
+      node = (await readUpdates(project)).find((item) => item.id === id)
+      if (!node) throw error
+    }
+    return { before: null, after: toStatusUpdate(node) }
+  }
+
+  /** The update nodes of a project, newest first with the id as the tie-break. */
+  async function readUpdates(project) {
+    const { nodes } = await client.paginate(PROJECT_UPDATES_QUERY, { id: project.id }, { select: (data) => data.project.projectUpdates, pageSize: LIST_PAGE })
+    return nodes.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  }
+
+  async function listStatusUpdates(id) {
+    const project = await findProject(id)
+    if (!project) throw notFound(id)
+    return (await readUpdates(project)).map((node) => toStatusUpdate(node))
+  }
+
+  return { listDeliverables, getDeliverable, deliverableProgress, createDeliverable, publishStatusUpdate, listStatusUpdates, resolveEpic, requireWorkspace, now, uuid, discovery }
 }

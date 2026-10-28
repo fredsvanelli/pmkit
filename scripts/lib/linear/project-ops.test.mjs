@@ -161,3 +161,116 @@ test('deliverableProgress of an unknown epic is NOT_FOUND', async () => {
   const { ops } = kit()
   await assert.rejects(ops.deliverableProgress('P-ZZZ-9'), { code: 'NOT_FOUND', nextStep: 'pmkit epic list' })
 })
+
+const ACTOR = 'user-1'
+const sentInput = (sent, name) => sent(name).at(-1).body.variables.input
+
+test('createDeliverable sends projectCreate once with a client id, reads the project back and returns the canonical id', async () => {
+  const { ops, sent, mutationsSent } = kit()
+  const { before, after } = await ops.createDeliverable({ title: ' Launch ', start: '2026-11-01', target: '2026-12-01', description: 'Why' }, ACTOR)
+  assert.equal(before, null)
+  assert.equal(after.id, 'P-ACM-1')
+  assert.equal(after.title, 'Launch')
+  assert.equal(after.start, '2026-11-01')
+  assert.equal(after.description, 'Why')
+  assert.equal(mutationsSent(), 1)
+  assert.deepEqual(sentInput(sent, 'PmkitProjectCreate'), { id: 'generated-1', name: 'Launch', teamIds: ['team-acme'], content: 'Why', startDate: '2026-11-01', targetDate: '2026-12-01' })
+  assert.deepEqual((await ops.listDeliverables()).map((epic) => epic.id), ['P-ACM-1'])
+})
+
+test('createDeliverable refuses another actor, a milestone, an unknown field and bad input before any write', async () => {
+  const { ops, mutationsSent } = kit()
+  await assert.rejects(ops.createDeliverable({ title: 'x' }, 'user-2'), { code: 'INVALID_INPUT' })
+  await assert.rejects(ops.createDeliverable({ title: 'x', milestone: 'x' }, ACTOR), { code: 'NOT_SUPPORTED' })
+  await assert.rejects(ops.createDeliverable({ title: 'x', lead: 'y' }, ACTOR), { code: 'INVALID_INPUT' })
+  await assert.rejects(ops.createDeliverable({ title: '  ' }, ACTOR), { code: 'INVALID_INPUT' })
+  await assert.rejects(ops.createDeliverable({ title: 'x', start: 'soon' }, ACTOR), { code: 'INVALID_INPUT' })
+  assert.equal(mutationsSent(), 0)
+})
+
+test('a createDeliverable dry run sends no mutation and returns a placeholder id', async () => {
+  const { ops, mutationsSent } = kit()
+  const { before, after } = await ops.createDeliverable({ title: 'Launch' }, ACTOR, { dryRun: true })
+  assert.equal(before, null)
+  assert.equal(after.id, null)
+  assert.equal(after.title, 'Launch')
+  assert.deepEqual(after.status, { name: 'Backlog', category: 'backlog' })
+  assert.equal(mutationsSent(), 0)
+  assert.deepEqual(await ops.listDeliverables(), [])
+})
+
+test('an unconfirmed createDeliverable that happened returns the project; one that did not rethrows', async () => {
+  const applied = kit()
+  applied.fake.unconfirm('PmkitProjectCreate', { applied: true })
+  assert.equal((await applied.ops.createDeliverable({ title: 'Launch' }, ACTOR)).after.title, 'Launch')
+  assert.equal(applied.mutationsSent(), 1)
+  const lost = kit()
+  lost.fake.unconfirm('PmkitProjectCreate', { applied: false })
+  await assert.rejects(lost.ops.createDeliverable({ title: 'Launch' }, ACTOR), { code: 'UPSTREAM' })
+  assert.equal(lost.mutationsSent(), 1)
+})
+
+test('publishStatusUpdate sends projectUpdateCreate once and the health shows on the epic', async () => {
+  const { fake, ops, sent, mutationsSent } = kit()
+  seedProject(fake, 'Launch', { id: PID })
+  const { before, after } = await ops.publishStatusUpdate({ epic: 'p-acm-1', health: 'at_risk', body: ' Behind ' }, ACTOR)
+  assert.equal(before, null)
+  assert.deepEqual(Object.keys(after).sort(), ['at', 'author', 'body', 'epic', 'health'])
+  assert.equal(after.epic, 'P-ACM-1')
+  assert.equal(after.author, ACTOR)
+  assert.equal(after.health, 'at_risk')
+  assert.equal(after.body, 'Behind')
+  assert.equal(mutationsSent(), 1)
+  assert.deepEqual(sentInput(sent, 'PmkitProjectUpdateCreate'), { id: 'generated-1', projectId: PID, body: 'Behind', health: 'atRisk' })
+  assert.equal((await ops.getDeliverable('P-ACM-1')).health, 'at_risk')
+})
+
+test('publishStatusUpdate refuses a bad health, an empty body and an unknown epic before any write', async () => {
+  const { fake, ops, mutationsSent, fetch } = kit()
+  seedProject(fake, 'Launch')
+  const before = fetch.calls.length
+  await assert.rejects(ops.publishStatusUpdate({ epic: 'P-ACM-1', health: 'fine', body: 'x' }, ACTOR), { code: 'INVALID_INPUT' })
+  await assert.rejects(ops.publishStatusUpdate({ epic: 'P-ACM-1', health: 'on_track', body: '  ' }, ACTOR), { code: 'INVALID_INPUT' })
+  assert.equal(fetch.calls.length, before)
+  await assert.rejects(ops.publishStatusUpdate({ epic: 'P-ZZZ-9', health: 'on_track', body: 'x' }, ACTOR), { code: 'NOT_FOUND', nextStep: 'pmkit epic list' })
+  await assert.rejects(ops.publishStatusUpdate({ epic: 'P-ACM-1', health: 'on_track', body: 'x' }, 'user-2'), { code: 'INVALID_INPUT' })
+  assert.equal(mutationsSent(), 0)
+})
+
+test('a publishStatusUpdate dry run returns the update from the clock and the actor and sends nothing', async () => {
+  const { fake, ops, mutationsSent } = kit()
+  seedProject(fake, 'Launch')
+  const { before, after } = await ops.publishStatusUpdate({ epic: 'P-ACM-1', health: 'off_track', body: 'Late' }, ACTOR, { dryRun: true })
+  assert.equal(before, null)
+  assert.deepEqual(after, { epic: 'P-ACM-1', at: NOW.toISOString(), author: ACTOR, health: 'off_track', body: 'Late' })
+  assert.equal(mutationsSent(), 0)
+  assert.deepEqual(await ops.listStatusUpdates('P-ACM-1'), [])
+})
+
+test('an unconfirmed publishStatusUpdate reads the update by its id; one that did not happen rethrows', async () => {
+  const applied = kit()
+  seedProject(applied.fake, 'Launch')
+  applied.fake.unconfirm('PmkitProjectUpdateCreate', { applied: true })
+  const { after } = await applied.ops.publishStatusUpdate({ epic: 'P-ACM-1', health: 'on_track', body: 'Fine' }, ACTOR)
+  assert.equal(after.body, 'Fine')
+  assert.equal(applied.mutationsSent(), 1)
+  assert.equal((await applied.ops.listStatusUpdates('P-ACM-1')).length, 1)
+  const lost = kit()
+  seedProject(lost.fake, 'Launch')
+  lost.fake.unconfirm('PmkitProjectUpdateCreate', { applied: false })
+  await assert.rejects(lost.ops.publishStatusUpdate({ epic: 'P-ACM-1', health: 'on_track', body: 'Fine' }, ACTOR), { code: 'UPSTREAM' })
+  assert.equal(lost.mutationsSent(), 1)
+})
+
+test('listStatusUpdates returns newest first with a stable order for updates of one second, and NOT_FOUND for an unknown epic', async () => {
+  const { fake, ops } = kit()
+  seedProject(fake, 'Launch', { id: PID })
+  assert.deepEqual(await ops.listStatusUpdates('P-ACM-1'), [])
+  fake.seedUpdate(PID, { id: 'old', body: 'old', health: 'onTrack', createdAt: '2026-10-27T10:00:00.000Z' })
+  fake.seedUpdate(PID, { id: 'b', body: 'b', health: 'atRisk', createdAt: '2026-10-28T10:00:00.000Z' })
+  fake.seedUpdate(PID, { id: 'a', body: 'a', health: 'offTrack', createdAt: '2026-10-28T10:00:00.000Z' })
+  const updates = await ops.listStatusUpdates('p-acm-1')
+  assert.deepEqual(updates.map((update) => update.body), ['a', 'b', 'old'])
+  assert.deepEqual(updates[0], { epic: 'P-ACM-1', at: '2026-10-28T10:00:00.000Z', author: ACTOR, health: 'off_track', body: 'a' })
+  await assert.rejects(ops.listStatusUpdates('P-ZZZ-9'), { code: 'NOT_FOUND' })
+})
