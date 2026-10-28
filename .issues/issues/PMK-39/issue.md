@@ -2,14 +2,16 @@
 id: PMK-39
 title: Run the contract suite against a Linear sandbox
 type: task
-status: backlog
+status: in_progress
 priority: medium
 estimate: 3
+assignee: fred
 parent: EPC-5
 blocked_by: [PMK-36, PMK-37, PMK-38]
 milestone: linear
+branch: pmk-39-run-the-contract-suite-against-a-linear
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-25T19:13:25Z
+updated: 2026-10-28T20:01:48Z
 ---
 
 ## Description

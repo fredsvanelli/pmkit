@@ -2,3 +2,6 @@
 {"at":"2026-10-25T19:13:25Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-36"}
 {"at":"2026-10-25T19:13:25Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-37"}
 {"at":"2026-10-25T19:13:25Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-38"}
+{"at":"2026-10-28T20:01:48Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-28T20:01:48Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-28T20:01:48Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-39-run-the-contract-suite-against-a-linear"}
