@@ -565,7 +565,7 @@ test('--help lists every command and exits 2', () => {
   assert.equal(result.status, 2)
   for (const name of [
     'init', 'capabilities', 'discover', 'whoami', 'issues list', 'issues get', 'issues dependencies', 'issues create', 'issues update', 'issues move',
-    'issues assign', 'issues link', 'issues parent', 'issues comment', 'issues log-time', 'issues archive',
+    'issues assign', 'issues link', 'issues parent', 'issues comment', 'issues resolve', 'issues log-time', 'issues archive',
     'cycle list', 'cycle current', 'cycle issues', 'cycle open', 'cycle close', 'cycle add', 'cycle capacity',
     'epic list', 'epic get', 'epic progress', 'epic create', 'epic update-status', 'release-notes',
     'metrics velocity', 'metrics cycle-time', 'metrics lead-time', 'metrics throughput', 'metrics aging', 'events', 'validate',
@@ -636,6 +636,31 @@ test('assign, link, comment, log-time, archive and get --comments --history', ()
   const text = run(root, ['issues', 'get', 'ISS-3F7H', '--comments', '--history']).stdout
   assert.match(text, /Looks good\./)
   assert.match(text, /log_time/)
+})
+
+test('issues comment --reply-to, issues resolve and the thread lines of get --comments', () => {
+  const root = makeRepo('team')
+  const file = path.join(tempDir('pmkit-body-'), 'c.md')
+  fs.writeFileSync(file, 'Question?')
+  const first = json(root, ['issues', 'comment', 'ISS-3F7H', '--body-file', file])
+  const plain = run(root, ['issues', 'comment', 'ISS-3F7H', '--body-file', file])
+  assert.equal(plain.status, 0, plain.stderr)
+  assert.equal(plain.stdout, 'commented on ISS-3F7H\n')
+  const reply = json(root, ['issues', 'comment', 'ISS-3F7H', '--body-file', file, '--reply-to', first.id])
+  assert.equal(reply.parent, first.id)
+  const before = hashTree(root)
+  const dry = run(root, ['issues', 'resolve', 'ISS-3F7H', reply.id, '--dry-run'])
+  assert.equal(dry.status, 0, dry.stderr)
+  assert.match(dry.stdout, /dry run/)
+  assert.equal(hashTree(root), before)
+  const done = run(root, ['issues', 'resolve', 'ISS-3F7H', reply.id])
+  assert.equal(done.status, 0, done.stderr)
+  assert.match(done.stdout, new RegExp(`^resolved the thread ${first.id} on ISS-3F7H`))
+  const text = run(root, ['issues', 'get', 'ISS-3F7H', '--comments']).stdout
+  assert.match(text, /\(reply to .+\)/)
+  assert.match(text, /^resolved \S+ by fred$/m)
+  const listed = json(root, ['issues', 'get', 'ISS-3F7H', '--comments']).comments
+  assert.equal(listed.find((c) => c.id === first.id).resolved.by, 'fred')
 })
 
 test('--as acts for another member and a stranger is rejected', () => {
@@ -1419,6 +1444,7 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'issues link': ['ISS-5N1R', 'ISS-4M2S', '--kind', 'blocks'],
     'issues parent': ['ISS-5N1R', 'EPC-2M9D'],
     'issues comment': ['ISS-5N1R', '--body-file', input('comment.md')],
+    'issues resolve': ['ISS-5N1R', 'some-comment'],
     'issues log-time': ['ISS-5N1R', '30'],
     'issues archive': ['ISS-5N1R'],
     'cycle open': ['--start', '2026-10-26'],
