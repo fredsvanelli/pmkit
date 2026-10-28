@@ -175,6 +175,9 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
 
   /** The state of the issue's team a move without --status goes to (spec "moveToCategory", PMK-34 rule 2), or an error. */
   async function moveTarget(team, category, current) {
+    if (current.mappings.statusNone.includes(category)) {
+      throw new PmkitError('NOT_SUPPORTED', `team ${team.key} has no status in the ${category} category`, '/pmkit:setup')
+    }
     const named = current.mappings.status[category]
     if (named !== undefined) {
       let ctx = current

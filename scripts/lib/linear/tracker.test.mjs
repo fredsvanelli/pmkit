@@ -618,6 +618,16 @@ test('in_review with no mapping or with none is NOT_SUPPORTED', async () => {
   }
 })
 
+test('a category set to none is NOT_SUPPORTED even when the team has a state for it', async () => {
+  const { tracker: linear, fake } = linearSetup({ mappings: { status: { backlog: 'none' } } })
+  seed(fake, { title: 'Move me' })
+  await assert.rejects(linear.moveToCategory('ACME-1', 'backlog', 'user-1'), {
+    code: 'NOT_SUPPORTED',
+    message: 'team ACME has no status in the backlog category',
+    nextStep: '/pmkit:setup',
+  })
+})
+
 test('a caller limit sent to Linear does not set hasMore', async () => {
   const { tracker: linear, fake } = linearSetup()
   for (const title of ['A', 'B', 'C']) seed(fake, { title })
