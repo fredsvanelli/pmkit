@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ACME_LABELS, ACME_STATES, ACME_TEAM, ACME_TEAM_ID, ACME_USERS, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeTriage, fakeWorkspace, json, page } from './fake-linear-api.mjs'
-import { ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_UPDATE, NESTED_PAGES } from './lib/linear/documents.mjs'
+import {
+  BLOCK_GRAPH_QUERY, ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_UPDATE, NESTED_PAGES, PARENT_CHAIN_QUERY, RELATION_CREATE, RELATION_DELETE,
+} from './lib/linear/documents.mjs'
 import { operationName } from './lib/linear/client.mjs'
 
 const ENDPOINT = 'https://api.linear.app/graphql'
@@ -321,4 +323,70 @@ test('unconfirm answers 502 once, with or without applying', async () => {
   assert.equal(fake.nodes().length, 1)
   assert.equal((await send(fetch, ISSUE_CREATE, { input: { teamId: 'team-acme', title: 'C' } })).status, 200)
   assert.deepEqual(fake.mutations, ['PmkitIssueCreate', 'PmkitIssueCreate', 'PmkitIssueCreate'])
+})
+
+test('a relation shows on both issues and goes away on delete', async () => {
+  const { fake, fetch } = issueStore()
+  fake.seed({ id: 'uuid-1', title: 'A' })
+  fake.seed({ id: 'uuid-2', title: 'B', stateId: 'state-8' })
+  const created = await send(fetch, RELATION_CREATE, { input: { id: 'rel-1', type: 'blocks', issueId: 'uuid-1', relatedIssueId: 'uuid-2' } })
+  assert.deepEqual(created.body.data.issueRelationCreate, { success: true, issueRelation: { id: 'rel-1' } })
+  const byId = async (id) => (await send(fetch, ISSUE_BY_ID_QUERY, { id })).body.data.issues.nodes[0]
+  assert.deepEqual((await byId('ACME-1')).relations.nodes, [{ id: 'rel-1', type: 'blocks', relatedIssue: { identifier: 'ACME-2', state: { id: 'state-8', type: 'completed' } } }])
+  assert.deepEqual((await byId('ACME-2')).inverseRelations.nodes, [{ id: 'rel-1', type: 'blocks', issue: { identifier: 'ACME-1', state: { id: 'state-1', type: 'backlog' } } }])
+  const second = await send(fetch, RELATION_CREATE, { input: { type: 'related', issueId: 'ACME-2', relatedIssueId: 'ACME-1' } })
+  assert.equal(second.body.data.issueRelationCreate.issueRelation.id, 'relation-1')
+  assert.equal((await send(fetch, RELATION_DELETE, { id: 'rel-1' })).body.data.issueRelationDelete.success, true)
+  assert.deepEqual((await byId('ACME-1')).relations.nodes, [])
+  assert.deepEqual((await byId('ACME-2')).inverseRelations.nodes, [])
+  assert.equal((await send(fetch, RELATION_DELETE, { id: 'rel-1' })).body.errors[0].extensions.code, 'INPUT_ERROR')
+  assert.deepEqual(fake.mutations, ['PmkitRelationCreate', 'PmkitRelationCreate', 'PmkitRelationDelete', 'PmkitRelationDelete'])
+})
+
+test('a relation to a missing issue answers INPUT_ERROR', async () => {
+  const { fake, fetch } = issueStore()
+  fake.seed({ title: 'A' })
+  const { body } = await send(fetch, RELATION_CREATE, { input: { type: 'blocks', issueId: 'ACME-1', relatedIssueId: 'ACME-9' } })
+  assert.equal(body.errors[0].extensions.code, 'INPUT_ERROR')
+})
+
+test('the block graph returns the blocks relations of the ids', async () => {
+  const { fake, fetch } = issueStore()
+  for (const title of ['A', 'B', 'C']) fake.seed({ title })
+  fake.relate('blocks', 'ACME-1', 'ACME-2')
+  fake.relate('related', 'ACME-1', 'ACME-3')
+  fake.relate('blocks', 'ACME-2', 'ACME-3')
+  const nodes = (await send(fetch, BLOCK_GRAPH_QUERY, { ids: ['ACME-1', 'acme-2'] })).body.data.issues.nodes
+  assert.deepEqual(nodes.map((node) => [node.identifier, node.relations.nodes.map((item) => `${item.type}:${item.relatedIssue.identifier}`)]), [
+    ['ACME-1', ['blocks:ACME-2', 'related:ACME-3']],
+    ['ACME-2', ['blocks:ACME-3']],
+  ])
+})
+
+test('the parent chain nests the ancestors', async () => {
+  const { fake, fetch } = issueStore()
+  fake.seed({ title: 'A' })
+  fake.seed({ title: 'B', parentId: 'ACME-1' })
+  fake.seed({ title: 'C', parentId: 'ACME-2' })
+  const [node] = (await send(fetch, PARENT_CHAIN_QUERY, { id: 'ACME-3' })).body.data.issues.nodes
+  assert.deepEqual(node, { identifier: 'ACME-3', parent: { identifier: 'ACME-2', parent: { identifier: 'ACME-1', parent: null } } })
+})
+
+test('hasBlockedByRelations filters on inverse blocks relations', async () => {
+  const { fake, fetch } = issueStore()
+  for (const title of ['A', 'B', 'C']) fake.seed({ title })
+  fake.relate('blocks', 'ACME-1', 'ACME-2')
+  fake.relate('related', 'ACME-1', 'ACME-3')
+  const find = async (eq) => idsOf((await send(fetch, ISSUES_QUERY, { filter: { and: [{ hasBlockedByRelations: { eq } }] }, first: 10, sort: [{ createdAt: { order: 'Ascending' } }] })).body)
+  assert.deepEqual(await find(true), ['ACME-2'])
+  assert.deepEqual(await find(false), ['ACME-1', 'ACME-3'])
+})
+
+test('unconfirm works for a relation create', async () => {
+  const { fake, fetch } = issueStore()
+  fake.seed({ title: 'A' })
+  fake.seed({ title: 'B' })
+  fake.unconfirm('PmkitRelationCreate', { applied: true })
+  assert.equal((await send(fetch, RELATION_CREATE, { input: { id: 'rel-x', type: 'related', issueId: 'ACME-1', relatedIssueId: 'ACME-2' } })).status, 502)
+  assert.deepEqual(fake.relations.map((relation) => relation.id), ['rel-x'])
 })

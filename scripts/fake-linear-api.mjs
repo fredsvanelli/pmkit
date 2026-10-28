@@ -237,7 +237,7 @@ class FakeValidationError extends Error {}
  * Use it as fakeLinearFetch({ ...fakeWorkspace(options), ...fake.routes }) with the same teams, states, labels and users.
  * Identifiers count from 1 per team. Every write moves the clock one second from `start`. An unknown filter key or input field
  * answers GRAPHQL_VALIDATION_FAILED, so a translator that emits a clause the fake does not know fails instead of matching everything.
- * `mutations` lists each mutation the fake received. `seed(input)` creates an issue without recording a mutation.
+ * `mutations` lists each mutation the fake received. `seed(input)` creates an issue and `relate(type, from, to)` a relation, without recording a mutation.
  * `unconfirm(operation, { applied })` makes the next call of that operation answer HTTP 502, after applying it when `applied` is true.
  */
 export function fakeLinearIssues({
@@ -466,6 +466,32 @@ export function fakeLinearIssues({
       return { issueArchive: { success: true } }
     }),
   }
+  const RELATION_FIELDS = ['id', 'type', 'issueId', 'relatedIssueId']
+  const RELATION_TYPES = ['blocks', 'duplicate', 'related', 'similar']
+  function relate(input) {
+    checkFields(input, RELATION_FIELDS)
+    if (!RELATION_TYPES.includes(input.type)) throw new FakeValidationError(`Unknown relation type ${input.type}`)
+    const relation = { id: input.id ?? `relation-${++relationCount}`, type: input.type, issueId: requireIssue(input.issueId).id, relatedIssueId: requireIssue(input.relatedIssueId).id }
+    relations.push(relation)
+    return relation
+  }
+  const chainOf = (record, depth) => {
+    const parent = record.parentId ? find(record.parentId) : null
+    if (depth === 0) return { identifier: record.identifier }
+    return { identifier: record.identifier, parent: parent ? chainOf(parent, depth - 1) : null }
+  }
+  routes.PmkitRelationCreate = mutation('PmkitRelationCreate', ({ input }) => ({ issueRelationCreate: { success: true, issueRelation: { id: relate(input).id } } }))
+  routes.PmkitRelationDelete = mutation('PmkitRelationDelete', ({ id }) => {
+    const index = relations.findIndex((relation) => relation.id === id)
+    if (index < 0) throw new FakeInputError('Could not find referenced IssueRelation.')
+    relations.splice(index, 1)
+    return { issueRelationDelete: { success: true } }
+  })
+  routes.PmkitBlockGraph = query('PmkitBlockGraph', ({ ids }) => ({ issues: search({ filter: { id: { in: ids } }, includeArchived: true, first: 250, sort: [{ createdAt: { order: 'Ascending' } }] }) }))
+  routes.PmkitParentChain = query('PmkitParentChain', ({ id }) => {
+    const record = records.find((item) => idMatches(item, id))
+    return { issues: { nodes: record ? [chainOf(record, 10)] : [] } }
+  })
   for (const field of Object.keys(nested)) {
     const name = `PmkitIssue${field[0].toUpperCase()}${field.slice(1)}Page`
     routes[name] = query(name, ({ id, first, after }) => ({ issue: { [field]: connection(nested[field](requireIssue(id)), first, after) } }))
@@ -477,10 +503,8 @@ export function fakeLinearIssues({
     nodes: () => records.map(toNode),
     seed: (input) => toNode(create({ teamId: teams[0].id, ...input })),
     unconfirm: (operation, { applied }) => pending.set(operation, { applied }),
+    relate: (type, from, to) => relate({ type, issueId: from, relatedIssueId: to }),
     records,
     relations,
-    stamp,
-    find,
-    newRelationId: () => `relation-${++relationCount}`,
   }
 }
