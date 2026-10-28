@@ -1,6 +1,6 @@
 # PMK-38 design: map Linear projects to epics
 
-Issue PMK-38, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: draft, waiting for the answers in "Open questions". Decisions come from an autonomous brainstorming run on 2026-10-28 with no user dialogue, from the issue, ADR-0001, ADR-0003, ADR-0005, the PMK-33 and PMK-35 specs, the code, and read-only calls to the sandbox workspace. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
+Issue PMK-38, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: approved, the answers are in "Answered questions". Decisions come from an autonomous brainstorming run on 2026-10-28 with no user dialogue, from the issue, ADR-0001, ADR-0003, ADR-0005, the PMK-33 and PMK-35 specs, the code, and read-only calls to the sandbox workspace. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
@@ -80,7 +80,7 @@ Consequences for the design:
 
 - Project dependencies (`ProjectRelation`). The contract has no operation for them, and `link` is an issue operation. `issues dependencies` on an epic keeps counting issues only. A follow-up issue can add `epic link` to the contract.
 - Initiatives and `strategic_goals`. The contract has no goal operation and `SERVED_BY.strategic_goals` is empty, so the manifest keeps the capability absent with Linear's path in `detail.workspace`.
-- `createMilestone` and `createDocument`. See "Operations" and open question 1.
+- `createMilestone` and `createDocument`. See "Operations" and answered question 1.
 - Writing `milestone` on an issue. It stays `NOT_SUPPORTED`, with a corrected message.
 - Changing a project's status, health or dates from pmkit. The contract has no update operation for epics. Health changes only through a status update.
 - Project labels, members, lead, priority, templates, resources and update reminders.
@@ -163,7 +163,7 @@ The package gains no dependency, and no config schema changes.
 
 `toEpic(node)` returns the Local shape, `{ id, title, status, start, target, description }`, plus three optional keys.
 
-- `status` is `{ name, category }`. `name` is the project status name. `category` comes from the status type: `backlog` to `backlog`, `planned` to `todo`, `started` to `in_progress`, `completed` to `done`, `canceled` to `canceled`, `paused` to `backlog` (open question 3). The map is fixed and needs no mapping question.
+- `status` is `{ name, category }`. `name` is the project status name. `category` comes from the status type: `backlog` to `backlog`, `planned` to `todo`, `started` to `in_progress`, `completed` to `done`, `canceled` to `canceled`, `paused` to `backlog` (answered question 3). The map is fixed and needs no mapping question.
 - `start` and `target` come from `startDate` and `targetDate`. A null stays out.
 - `description` is `content` when it is set, else `description`.
 - `health` is `on_track`, `at_risk` or `off_track`, and the key is absent when Linear's is null.
@@ -180,7 +180,7 @@ An issue has an optional parent issue and an optional project. pmkit has one `pa
 - `getIssue` and `searchIssues` return `parent` as the parent issue's identifier when it exists. Otherwise they return the project's canonical id. They return no `parent` when neither exists.
 - `setParent(id, <issue id>)` sets `parentId` and leaves the project as it is.
 - `setParent(id, <epic id>)` sets `projectId` and clears `parentId`, so `parent` reads back as the epic.
-- `setParent(id, null)` clears both `parentId` and `projectId` (open question 2).
+- `setParent(id, null)` clears both `parentId` and `projectId` (answered question 2).
 - `createIssue` and `updateIssue` with `parent` do the same as `setParent`.
 - An id that is neither a known issue nor a known project is `INVALID_INPUT`, with the message "parent X is not an existing issue or epic".
 - `searchIssues` with `parent: <epic id>` sends `project: { id: { eq } }` together with `parent: { null: true }`, so it returns the issues whose shown parent is that epic and no others. The adapter resolves the project's UUID first.
@@ -210,7 +210,7 @@ The update changes the project's `health`, so the next `getDeliverable` shows it
 
 A milestone's id is its UUID. Linear has nothing shorter. `epic get` prints the ids, so a person reaches `milestone get <id>` from there. `listMilestones` returns `{ id, name, due, description, epic, status, progress }`, where `epic` is the project's canonical id. Local milestones have no `epic`, `status` or `progress`, and the milestone commands print only the Local keys. The extra keys reach `--json`.
 
-`issue.milestone` is the id of `projectMilestone`. Writing it stays `NOT_SUPPORTED`, with the message "set the milestone in Linear" (open question 1).
+`issue.milestone` is the id of `projectMilestone`. Writing it stays `NOT_SUPPORTED`, with the message "set the milestone in Linear" (answered question 1).
 
 A document's path is its `slugId`. `docs read <slugId>` prints the content. `epic get` lists the project's documents with their paths. A document that belongs to no project is readable by `slugId` as well, and nothing lists it.
 
@@ -263,25 +263,12 @@ The Linear milestone and document reads are proven in `project-ops.test.mjs` aga
 7. Milestone ids are UUIDs and document paths are slugs. Reason: Linear has nothing shorter for a milestone, and `Document` has no path.
 8. The manifest reports limits in `detail` lists. Reason: the capability ids are fixed at 20, and `detail` is free-form.
 
-## Open questions
+## Answered questions
 
-1. **Should pmkit create milestones and documents on Linear in this issue?** The criterion says "readable". The Local contract creates both from a path or an id that Linear does not have.
-   - A. Read only, `createMilestone` and `createDocument` return `NOT_SUPPORTED` with a next step. This is the design above.
-   - B. Add an optional `epic` key to `createMilestone` and a `title` plus `epic` to `createDocument`, then implement both. It adds about two operations, two fake routes and a contract change.
-   - C. Read only now, and open one follow-up issue for the writes.
-   - Recommendation: C. It keeps PMK-38 at its criteria and records the work.
-2. **What does `setParent(id, null)` clear when an issue has both a parent issue and a project?**
-   - A. Both. After the call `parent` is empty, as it is on Local. An issue loses its project membership as a side effect.
-   - B. Only the parent issue. The issue keeps its project, so `parent` then reads as the epic, and a second call is needed to clear it.
-   - Recommendation: A. A call that leaves `parent` set after "set to null" breaks the contract, and the dry run shows the project change in `before` and `after`.
-3. **Which category does a paused project get?** Free has no Paused status, and paid plans do.
-   - A. `backlog`. Risk radar does not flag a paused project as late.
-   - B. `in_progress`. A paused project past its target shows as late.
-   - Recommendation: A. A paused project has no one working on it.
-4. **Should `epic list` show every project of the workspace or only the configured team's?**
-   - A. The configured team's projects. This is the design above.
-   - B. Every project in the workspace, with the team key in the output.
-   - Recommendation: A. A project that spans two teams shows in both, and a workspace with many projects does not flood the report commands.
+1. Milestones and documents are read only in this issue. `createMilestone` and `createDocument` return `NOT_SUPPORTED`, and the manifest `detail` says so. Writes are a follow-up issue (option C).
+2. `setParent(id, null)` clears both the parent issue and the project (option A).
+3. A paused project maps to `backlog` (option A).
+4. `epic list` is scoped to the configured team (option A).
 
 ## Risks
 
