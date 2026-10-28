@@ -796,7 +796,7 @@ test('only the three set paths send a mutation', async () => {
 const STATE = { backlog: { id: 'state-1', name: 'Backlog', type: 'backlog' }, progress: { id: 'state-3', name: 'In Progress', type: 'started' }, done: { id: 'state-8', name: 'Done', type: 'completed' } }
 const linear = (fetch, args) => cli(setup({ edit: withTeam }), args, fetch)
 const bodyFile = (text) => {
-  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-body-')), 'c.md')
+  const file = path.join(tempDir('pmkit-body-'), 'c.md')
   fs.writeFileSync(file, text)
   return file
 }
