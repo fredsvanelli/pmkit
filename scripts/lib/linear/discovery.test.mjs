@@ -284,3 +284,28 @@ test('a workspace with no teams gives empty lists', async () => {
   assert.deepEqual(view.estimate, { unit: 'points', scale: [] })
   assert.deepEqual(view.members[0].teams, [])
 })
+
+test('in_review: none and blocked: none give no warning and change no category', async () => {
+  const view = discoveryView(await raw(), pmkitWith({ team: 'ACME', status: { in_review: 'none', blocked: 'none' } }))
+  assert.deepEqual(view.warnings, [])
+  assert.equal(statusOf(view.statuses, 'In Review').category, 'in_progress')
+  assert.ok(!view.statuses.some((status) => status.name === 'none'))
+})
+
+test('the keys of mappings.types fill types in file order and the mapped labels leave labels', async () => {
+  const pmkit = { ...pmkitWith({ team: 'ACME' }), mappings: { types: { feature: 'Feature', bug: 'Bug' } } }
+  const view = discoveryView(await raw(), pmkit)
+  assert.deepEqual(view.types, ['feature', 'bug'])
+  assert.deepEqual(view.labels, ['Docs', 'L', 'M', 'S', 'XL', 'XS'])
+  assert.deepEqual(discoveryView(await raw(), { ...pmkit, mappings: { types: {} } }).types, [])
+})
+
+test('a team label wins over a workspace label with the same name', async () => {
+  const labels = [
+    { id: 'label-team-docs', name: 'Docs', isGroup: false, retiredAt: null, team: { id: 'team-acme' }, parent: { id: 'g', name: 'Kind' } },
+    { id: 'label-ws-docs', name: 'Docs', isGroup: false, retiredAt: null, team: null, parent: null },
+  ]
+  const view = discoveryView(await raw({ labels }), pmkitWith({ team: 'ACME' }))
+  assert.deepEqual(view.teams[0].labels, [{ name: 'Docs', group: 'Kind' }])
+  assert.deepEqual(view.labels, ['Docs'])
+})

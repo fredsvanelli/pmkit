@@ -156,10 +156,10 @@ const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 const sameScale = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 const NO_SCALE = { unit: 'points', scale: [] }
 
-/** The category each mapped state name takes, from mappings.status. blocked is not a category, so it is left for later issues. */
+/** The category each mapped state name takes, from mappings.status. blocked is not a category, and none means the team has no such state. */
 function mappedCategories(pmkit) {
   const status = pmkit?.mappings?.status ?? {}
-  return Object.entries(status).filter(([category, name]) => category !== 'blocked' && typeof name === 'string')
+  return Object.entries(status).filter(([category, name]) => category !== 'blocked' && typeof name === 'string' && name !== 'none')
 }
 
 /**
@@ -183,7 +183,10 @@ export function discoveryView(raw, pmkit = {}, { session } = {}) {
       }
       return { name: item.name, category, type: item.type }
     })
-    const labels = [...raw.labels.filter((label) => label.team === team.id && !label.isGroup), ...workspaceLabels]
+    // A team label wins over a workspace label with the same name.
+    const own = raw.labels.filter((label) => label.team === team.id && !label.isGroup)
+    const ownNames = new Set(own.map((label) => label.name))
+    const labels = [...own, ...workspaceLabels.filter((label) => !ownNames.has(label.name))]
       .sort(byName)
       .map((label) => ({ name: label.name, group: label.group }))
     return {
@@ -216,7 +219,8 @@ export function discoveryView(raw, pmkit = {}, { session } = {}) {
   const labelNames = chosen
     ? chosen.labels.map((label) => label.name)
     : raw.labels.filter((label) => !label.isGroup).map((label) => label.name)
-  const labels = [...new Set(labelNames)].sort()
+  const typeLabels = new Set(Object.values(pmkit?.mappings?.types ?? {}))
+  const labels = [...new Set(labelNames)].filter((name) => !typeLabels.has(name)).sort()
 
   let estimate
   const withoutType = ({ type, ...scale }) => scale
@@ -265,7 +269,7 @@ export function discoveryView(raw, pmkit = {}, { session } = {}) {
     team: chosen ? chosen.key : null,
     teams,
     statuses,
-    types: [],
+    types: Object.keys(pmkit?.mappings?.types ?? {}),
     priorities: [...PRIORITIES],
     labels,
     members,

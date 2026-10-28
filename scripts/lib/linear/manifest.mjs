@@ -82,6 +82,9 @@ export function buildLinearCapabilities(raw, pmkit = {}) {
   const answers = { ...LINEAR_CAPABILITIES, ...workspaceAnswers(raw) }
   for (const [id, setting] of Object.entries(TEAM_SETTINGS)) answers[id] = teamSetting(teams, setting)
   if (answers.estimation.path === 'native') answers.estimation = { path: 'native', detail: sharedScale(teams) }
+  if (pmkit?.mappings?.fields?.estimate === 'none') {
+    answers.estimation = { path: 'absent', enableHint: 'mappings.fields.estimate is none in .pmkit/config.yaml' }
+  }
   answers.capacity = answers.cycles.path === 'absent' ? { path: 'absent', enableHint: 'Capacity needs cycles' } : { path: 'derived', detail: { source: 'local' } }
   answers.linked_code = (raw.integrations ?? []).some((service) => GIT_INTEGRATIONS.includes(service))
     ? { path: 'native', detail: { source: 'integration' } }

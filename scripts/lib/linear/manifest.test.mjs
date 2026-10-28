@@ -170,3 +170,13 @@ test('a workspace with no teams gives absent team capabilities', async () => {
   const entry = byId(buildLinearCapabilities(await raw(WORKSPACES.empty), pmkitWith()))
   for (const id of ['cycles', 'estimation', 'native_triage', 'capacity']) assert.equal(entry[id].path, 'absent', id)
 })
+
+test('estimate: none makes estimation absent with its hint, and native keeps it supported', async () => {
+  const options = { teams: [team('team-a', 'AA', { issueEstimationType: 'fibonacci' })] }
+  const withFields = (estimate) => ({ ...pmkitWith({ team: 'AA' }), mappings: { fields: { estimate } } })
+  const none = byId(buildLinearCapabilities(await raw(options), withFields('none')))
+  assert.deepEqual(none.estimation, { id: 'estimation', path: 'absent', enableHint: 'mappings.fields.estimate is none in .pmkit/config.yaml' })
+  const native = byId(buildLinearCapabilities(await raw(options), withFields('native')))
+  assert.equal(native.estimation.path, 'native')
+  assert.equal(byId(buildLinearCapabilities(await raw(options), pmkitWith({ team: 'AA' }))).estimation.path, 'native')
+})
