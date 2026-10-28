@@ -177,6 +177,7 @@ test('replaying the events gives the current issue for the fields the events cov
   const current = node({
     title: 'Final', state: STATES.Done, priority: 2, estimate: 5, assignee: { id: 'user-2' }, dueDate: '2026-12-01', parent: { identifier: 'ACME-9' },
     labels: conn([lab('Bug'), lab('Docs')]), relations: conn([rel('related', 'ACME-4')]),
+    cycle: { number: 4 }, projectMilestone: { id: 'm1' },
   })
   const entries = [
     entry(at(2), { fromState: STATES.Backlog, toState: STATES.Todo, fromAssigneeId: null, toAssigneeId: 'user-1' }),
@@ -186,6 +187,7 @@ test('replaying the events gives the current issue for the fields the events cov
       fromState: STATES.Todo, toState: STATES.Done, fromAssigneeId: 'user-1', toAssigneeId: 'user-2', fromTitle: 'Mid', toTitle: 'Final', fromPriority: 3, toPriority: 2,
       fromEstimate: 3, toEstimate: 5, fromDueDate: '2026-11-01', toDueDate: '2026-12-01', addedLabels: [lab('Bug')], removedLabels: [lab('Feature')],
     }),
+    entry(at(6), { fromCycle: { number: 3 }, toCycle: { number: 4 }, fromProjectMilestone: { id: 'm0' }, toProjectMilestone: { id: 'm1' } }),
   ]
   const events = toEvents({ node: current, origin, entries, comments: [] }, ctx)
   const state = replay(events)
@@ -198,7 +200,7 @@ test('replaying the events gives the current issue for the fields the events cov
   assert.deepEqual(state.related ?? [], issue.related)
   assert.deepEqual(events.map((e) => e.at), [...events.map((e) => e.at)].sort())
   // The undo of each field gives the create event's values and each event's `from`. Dropping one undo line changes these.
-  assert.deepEqual(events[0].to, { id: 'ACME-1', title: 'Start', status: 'Backlog', created: at(1) })
+  assert.deepEqual(events[0].to, { id: 'ACME-1', title: 'Start', status: 'Backlog', created: at(1), sprint: '3', milestone: 'm0' })
   assert.deepEqual(events.slice(1).map((e) => [e.at.slice(9, 10), e.op, e.field, e.from, e.to]), [
     ['2', 'move', 'status', 'Backlog', 'Todo'],
     ['2', 'assign', 'assignee', null, 'user-1'],
@@ -217,5 +219,7 @@ test('replaying the events gives the current issue for the fields the events cov
     ['5', 'update', 'estimate', 3, 5],
     ['5', 'update', 'due', '2026-11-01', '2026-12-01'],
     ['5', 'update', 'type', 'feature', 'bug'],
+    ['6', 'update', 'sprint', '3', '4'],
+    ['6', 'update', 'milestone', 'm0', 'm1'],
   ])
 })
