@@ -1,6 +1,6 @@
 # PMK-36 design: history and comments for Linear
 
-Issue PMK-36, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: draft, waiting on the answers to "Open questions". Decisions come from an autonomous brainstorming run on 2026-10-28 with no user dialogue, from the issue, ADR-0001, ADR-0003, ADR-0005, the PMK-35 spec, the code, and read-only calls to the sandbox workspace. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
+Issue PMK-36, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: approved. The user answered the three open questions (see "Resolved questions"). Decisions come from an autonomous brainstorming run on 2026-10-28 with no user dialogue, from the issue, ADR-0001, ADR-0003, ADR-0005, the PMK-35 spec, the code, and read-only calls to the sandbox workspace. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
@@ -91,7 +91,7 @@ The core choice is how Linear's change records become pmkit events.
 
 Chosen: approach 2. It is the only one whose output has the Local shape for every field, and the replay check makes it testable against the fake and the sandbox.
 
-A second choice, where thread resolution lives, belongs to the user (open question 1). The design below follows the recommendation, a contract operation that the Local tracker implements first.
+The user chose where thread resolution lives (resolved question 1): a contract operation that the Local tracker implements first.
 
 ## Design
 
@@ -103,12 +103,12 @@ A second choice, where thread resolution lives, belongs to the user (open questi
 | `scripts/lib/linear/history-ops.mjs` | New. `getHistory`, `listComments`, `comment`, `resolveThread` and `metricEvents` over the client, built on `issueOperations` (`readNode`, `contextFor`, `requireViewer`, `completeNested`). |
 | `scripts/lib/linear/documents.mjs` | New documents: `PmkitIssueHistory`, `PmkitIssueComments`, `PmkitCommentById`, `PmkitCommentCreate`, `PmkitCommentResolve`, `PmkitIssueEvents`. `ISSUE_FRAGMENT` does not change. |
 | `scripts/lib/linear/tracker.mjs` | Puts the five operations in the `contract` map, so `guarded` wraps them. |
-| `scripts/lib/contract.mjs` | `resolveThread` joins `TRACKER_OPERATIONS` (open question 1). |
-| `scripts/lib/local/tracker.mjs` | `comment` takes `{ replyTo }`, `resolveThread` is new, `readComment` reads the thread keys (open question 1). |
+| `scripts/lib/contract.mjs` | `resolveThread` joins `TRACKER_OPERATIONS` (resolved question 1). |
+| `scripts/lib/local/tracker.mjs` | `comment` takes `{ replyTo }`, `resolveThread` is new, `readComment` reads the thread keys (resolved question 1). |
 | `scripts/pmkit.mjs` | `issues comment --reply-to <comment>`, `issues resolve <id> <comment>`, thread lines in the `issues get --comments` text when a comment has them, and the cap warnings. |
 | `scripts/contract-suite.mjs` | The `log_time` steps leave the `history` test, and a thread test joins it. |
 | `scripts/fake-linear-api.mjs` | `fakeLinearIssues` records history entries and comments and answers the new documents. |
-| `commands/issues/comment.md` | A reply and a resolve path (open question 1). |
+| `commands/issues/comment.md` | A reply and a resolve path (resolved question 1). |
 | Docs | The pmkit design spec (Comment entity, the contract table), `CONTEXT.md` (a **Thread** entry), `CHANGELOG.md`. |
 | Tests | `scripts/lib/linear/history.test.mjs` (new), `tracker.test.mjs`, `contract.test.mjs`, `fake-linear-api.test.mjs`, `cli-linear.test.mjs`, `scripts/tracker-comments.test.mjs`, `scripts/contract.test.mjs`, an opt-in case in `client-live.mjs`. |
 
@@ -246,9 +246,9 @@ A Local comment without the thread keys keeps today's shape, so every Local outp
 
 pmkit adds nothing to a body. It sends the trimmed text the user saw in the dry run, and reads Linear's `body` back. A comment pmkit wrote reads back with the same text as long as Linear's editor keeps the Markdown. Linear stores the comment as a document (`bodyData`) and regenerates `body`, so it may rewrite bullets, escapes or HTML.
 
-No pmkit feature depends on a marker inside a comment. A retry after an unconfirmed create finds the comment by its client UUID. Every comment pmkit writes has the viewer as author, so there is no other author to recover. A body that holds a marker, such as a line starting with `<!-- pmkit`, goes to Linear as written, and no sandbox comment shows whether Linear keeps an HTML comment. PMK-39 posts one comment with a marker line, a checklist and a code fence, reads it back and records which survive. Open question 3 asks whether pmkit should mark its own comments.
+No pmkit feature depends on a marker inside a comment. A retry after an unconfirmed create finds the comment by its client UUID. Every comment pmkit writes has the viewer as author, so there is no other author to recover. A body that holds a marker, such as a line starting with `<!-- pmkit`, goes to Linear as written, and no sandbox comment shows whether Linear keeps an HTML comment. PMK-39 posts one comment with a marker line, a checklist and a code fence, reads it back and records which survive. Resolved question 3: pmkit does not mark its comments.
 
-### The Local tracker and threads (open question 1)
+### The Local tracker and threads (resolved question 1)
 
 With the recommended answer, the Local tracker defines what threads mean before Linear implements them (ADR-0001):
 
@@ -308,7 +308,7 @@ No test opens a socket.
 | Criterion | Design part |
 |---|---|
 | 1. `get_history` returns status changes as events in the common shape | "The event normalizer" (the field table, `move` on `status` with state names, the `create` event by rewinding, no-equivalent rows, relation codes), "Status by category", "`getHistory`" (paging, cap, `since`), "`metricEvents`" for the metrics that read history; the replay check in `history.test.mjs`; the `history` family of the suite against the fake; the opt-in live replay check |
-| 2. The adapter lists, adds and resolves comment threads | "Comments and threads" (`toComment`, `listComments`, `comment` with `replyTo`, `resolveThread`, markers), "The Local tracker and threads", "CLI"; the suite's thread test on Local and Linear; open question 1 |
+| 2. The adapter lists, adds and resolves comment threads | "Comments and threads" (`toComment`, `listComments`, `comment` with `replyTo`, `resolveThread`, markers), "The Local tracker and threads", "CLI"; the suite's thread test on Local and Linear; resolved question 1 |
 
 ## Decisions
 
@@ -318,12 +318,12 @@ No test opens a socket.
 | State names in `move` events, categories through `discover().statuses` | The metrics already work that way, and `discover()` applies `mappings.status`, so no metric code knows Linear. |
 | Comments merged into the history as `comment` events | Local logs one per comment, and `stalled` and the standup digest count them. |
 | Only the verified relation code | A guessed code could invert a blocker. PMK-39 extends the table from real writes. |
-| `metricEvents` in this issue | The manifest already reports `native_metrics` as derived from history, and no other issue owns the operation (open question 2). |
+| `metricEvents` in this issue | The manifest already reports `native_metrics` as derived from history, and no other issue owns the operation (resolved question 2). |
 | Newest updated issues first in `metricEvents` | A cut at 1000 issues keeps the issues the metrics weigh most. |
 | A non-enumerable `truncated` flag on the arrays | The contract returns arrays, and `discover()` already carries hidden data the same way. |
 | Client UUID on `commentCreate` | An unconfirmed create is checked with one read instead of risking a duplicate comment. |
 | `ISSUE_FRAGMENT` untouched | PMK-37 and PMK-38 change it in parallel. |
-| No marker added to bodies | The body is what the user confirmed, and no feature needs to recognize pmkit's comments (open question 3). |
+| No marker added to bodies | The body is what the user confirmed, and no feature needs to recognize pmkit's comments (resolved question 3). |
 
 ## Risks
 
@@ -337,22 +337,11 @@ No test opens a socket.
 - **Local comment files become writable.** Resolving rewrites a root comment file, which can conflict in git (see "The Local tracker and threads").
 - **The fake can drift from Linear.** The fake records history the way this spec assumes. The opt-in live read checks the mapping on real entries, and PMK-39 checks entries that writes produce.
 
-## Open questions
+## Resolved questions
 
-1. **Where does resolving a thread live?** The Unified model puts `resolve_thread` in the Comments family, the MVP skills spec lists it as "not yet", and the Local tracker has no threads.
-   - (a) A contract operation `resolveThread(id, commentId, actor)` and `comment(..., { replyTo })`, implemented first by the Local tracker with optional comment frontmatter keys, then by Linear. The contract suite tests both.
-   - (b) A Linear-only operation beside the contract, as `triage` is (PMK-43), with `issues resolve` refusing on Local. Smaller, but commands then depend on the tracker, and the suite cannot test it.
-   - (c) Linear reads threads (`parent`, `resolved`) and nothing resolves them; resolving moves to a follow-up issue. It leaves criterion 2 partly unmet.
-   - Recommendation: (a). ADR-0001 makes the Local tracker the reference, and the cost on Local is two optional keys and one write.
-2. **Does PMK-36 build `metricEvents` for Linear?** No issue in EPC-5 names it, and the PMK-37 spec says it belongs to a later issue.
-   - (a) Yes, in this issue, as designed above.
-   - (b) A follow-up issue. PMK-36 ships `getHistory` and comments, and every metrics command, `events`, `risks` and the standup keep failing on Linear until then.
-   - Recommendation: (a). It reuses the normalizer and adds one document, and the manifest already promises derived metrics on Linear.
-3. **Should pmkit mark the comments it writes?**
-   - (a) No marker. The body is exactly what the user confirmed.
-   - (b) A visible last line, such as `Posted with pmkit`, so readers in Linear see which comments an agent wrote.
-   - (c) A hidden HTML comment, which may not survive Linear's editor.
-   - Recommendation: (a). Every write already shows the key's owner as author, and nothing in pmkit reads a marker. (b) can come later as a setting.
+1. **Where does resolving a thread live?** Answer: (a). Thread resolution is a contract operation, `resolveThread(id, commentId, actor)`, with `comment(..., { replyTo })`. The Local tracker implements it first, because Local is the reference (ADR-0001), then Linear. Every test double that lacks `resolveThread` is fixed in the same change.
+2. **Does PMK-36 build `metricEvents` for Linear?** Answer: (a). Yes, in this issue, as designed above.
+3. **Should pmkit mark the comments it writes?** Answer: (a). No marker. The body is exactly what the user confirmed.
 
 ## Left to the builder
 
