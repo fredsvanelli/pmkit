@@ -1,6 +1,6 @@
 # PMK-30 design: the Linear API client
 
-Issue PMK-30, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: ready for planning once the open questions are answered. Decisions come from an autonomous brainstorming run on 2026-10-27 with no user dialogue, from the issue, ADR-0003, ADR-0005, the PMK-28, PMK-29, PMK-31 and PMK-32 specs, the code, and read-only calls to the sandbox workspace. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
+Issue PMK-30, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: ready for planning. The user answered the three open questions on 2026-10-27, and "Resolved questions" records the answers. Decisions come from an autonomous brainstorming run on 2026-10-27 with no user dialogue, from the issue, ADR-0003, ADR-0005, the PMK-28, PMK-29, PMK-31 and PMK-32 specs, the code, and read-only calls to the sandbox workspace. Calls marked **(builder's call)** were made while writing this spec and change no acceptance criterion.
 
 ## Problem
 
@@ -51,7 +51,7 @@ PMK-28 recorded the rest: HTTP 401 with `AUTHENTICATION_ERROR` for an unknown ke
 ## Non-goals
 
 - Discovery queries for teams, states, labels, members and estimate scales, the capability manifest and the user-store cache (PMK-33).
-- Registering `linear` in `ADAPTERS` in `scripts/lib/adapters.mjs` (PMK-33, see question 3).
+- Registering `linear` in `ADAPTERS` in `scripts/lib/adapters.mjs` (PMK-33, resolved question 3). Until then `tracker.system: linear` keeps failing with `NOT_SUPPORTED`.
 - GraphQL documents for issues, relations and search, and the mapping of Linear errors to `NOT_FOUND`, `INVALID_INPUT` or `CONFLICT` (PMK-35).
 - The contract suite against a sandbox team (PMK-39).
 - Any CLI command. No user-visible behavior changes in this issue.
@@ -191,16 +191,16 @@ Linear lists are Relay connections. The caller writes the document with `$first:
 await client.paginate(
   'query Issues($teamId: ID, $first: Int!, $after: String) { issues(first: $first, after: $after, filter: { team: { id: { eq: $teamId } } }) { pageInfo { hasNextPage endCursor } nodes { id identifier } } }',
   { teamId },
-  { select: (data) => data.issues, pageSize: 100, limit: 500, maxPages: 50 },
+  { select: (data) => data.issues, pageSize: 100, limit: 500 },
 ) // => { nodes, hasMore }
 ```
 
 - `select(data)` returns the connection. The caller picks it because a connection can sit at any depth, such as `team.issues`.
 - Each page asks for `first = min(pageSize, limit - nodes so far)` and passes the last `endCursor` as `after`. Pages run one after another.
 - `pageSize` defaults to 100 and must be an integer from 1 to 250, Linear's maximum. A value outside that range throws a `TypeError` before any request, because it is a bug in the caller.
-- The loop stops when `hasNextPage` is false, when it holds `limit` nodes, or after `maxPages` pages. `hasMore` is true when it stopped while Linear still had a next page. PMK-35 turns that into a warning or passes `limit` through from `IssueFilter.limit`.
+- The loop stops when `hasNextPage` is false, when it holds `limit` nodes, or after `maxPages` pages. `hasMore` is true when it stopped while Linear still had a next page, so `hasMore: true` is how the result says it was truncated. PMK-35 turns that into a warning or passes `limit` through from `IssueFilter.limit`.
 - A connection without `pageInfo` or `nodes`, a next page with no `endCursor`, or an `endCursor` equal to the one before throws `UPSTREAM`, `Linear returned a broken page for <operation name>`. The last check stops a loop that would never end.
-- `maxPages` defaults to 50, so an unbounded call stops at 5000 nodes and 50 requests, 2% of the hourly budget. Question 2 asks about the value.
+- When the caller gives no `limit`, `maxPages` defaults to 10, so an unbounded call stops at 10 requests and at most 1000 nodes with the default page size, 0.4% of the hourly budget, and returns `hasMore: true` when Linear had more. When the caller gives a `limit`, the limit bounds the loop and there is no default page cap. An explicit `maxPages` applies in both cases and must be an integer of at least 1, or `paginate` throws a `TypeError` before any request (resolved question 2).
 
 ### Keeping the key out of output
 
@@ -230,7 +230,7 @@ set -a; . ./.env; set +a; PMKIT_LIVE=1 PMKIT_LIVE_WORKSPACE=<url key> node --tes
 | Criterion | Design part | Tests |
 |---|---|---|
 | 1. Calls the Linear GraphQL API with the credential chosen in the auth decision | "The credential", "The client", "Sending a request", "Workspace pin" | `credential.test.mjs`: the header equals the key with no `Bearer`; missing and empty keys give `AUTH` with `/pmkit:setup`; a key with a space, a newline or a `Bearer ` prefix gives `AUTH` and the message holds no part of the value. `client.test.mjs`: one request is a `POST` to `LINEAR_ENDPOINT` with the two headers and a body of `{ query, variables }`; creating a client sends nothing; a missing key fails at creation with zero calls; the session query goes first and only once, also for two concurrent calls; each row of the pin table; `requireWorkspace: false`. A test reads every `.mjs` file under `scripts/` and finds `env.LINEAR_API_KEY` or `env['LINEAR_API_KEY']` only in `credential.mjs` and in test files **(builder's call)**. |
-| 2. Pages through results | "Paging" | Three pages of a fake connection come back in order, with each `after` equal to the previous `endCursor`; `limit` cuts the last page's `first` and sets `hasMore`; `maxPages` sets `hasMore`; `hasNextPage: false` stops; a missing `pageInfo`, a null cursor and a repeated cursor give `UPSTREAM`; `pageSize` 0, 251 and 1.5 throw `TypeError` with zero calls; a nested `select` works. |
+| 2. Pages through results | "Paging" | Three pages of a fake connection come back in order, with each `after` equal to the previous `endCursor`; `limit` cuts the last page's `first` and sets `hasMore`; with no `limit`, the loop stops after 10 pages and sets `hasMore`; with a `limit` of 1500 and `pageSize` 100, it runs 15 pages; an explicit `maxPages` sets `hasMore`; `maxPages` 0 throws `TypeError`; `hasNextPage: false` stops; a missing `pageInfo`, a null cursor and a repeated cursor give `UPSTREAM`; `pageSize` 0, 251 and 1.5 throw `TypeError` with zero calls; a nested `select` works. |
 | 3. Maps failures to `AUTH`, `RATE_LIMITED` and `UPSTREAM` with a next step | "Error mapping", "Retries and timeouts" | One test per table row asserts the code, the message and the next step. Retries: a query that fails twice with `ECONNRESET` and then passes resolves after two `sleep` calls of 500 and 2000; three failures give `UPSTREAM`; a mutation that times out gives the mutation message after one call; 401, 429, `RATELIMITED` and a validation error get one call each. A `hang` route with `timeoutMs: 20` gives `timed out`. A 0 remaining header makes the next request fail with zero calls until `now` passes the reset. `rateLimit()` reads the headers. A sweep runs every failure path with the fake key `lin_api_TESTKEYTESTKEYTESTKEY` and asserts that the key is in no message, next step, `JSON.stringify(details)`, `String(error)` or warning, including a `fetch` that throws an error whose message holds the key. |
 | 4. `package.json` gains no dependency | Global `fetch` and `AbortSignal.timeout`, string documents | `plugin.test.mjs` already fails on a `dependencies` or `devDependencies` key. No new test. |
 | Binding decision: secret-like keys in the tracker config | "The tracker config" | `secretKeyPaths` finds `tracker.token`, `tracker.scope.api_key`, `tracker.scope.apiKey` and a `lin_api_` value under `tracker.scope`; finds nothing in `{ system: 'linear', scope: { workspace: 'acme', team: 'ACME' } }`; `createLinearClient` throws `INVALID_INPUT` naming the path and not the value, with zero calls. |
@@ -243,7 +243,7 @@ set -a; . ./.env; set +a; PMKIT_LIVE=1 PMKIT_LIVE_WORKSPACE=<url key> node --tes
 |---|---|
 | A thin client with string documents (approach 1) | It is the smallest code that meets the criteria with no dependency, and PMK-35 writes each document once. |
 | The client takes the `tracker` block, not a bare workspace string | It needs `scope.workspace` and must refuse secrets in the same block. One argument covers both. |
-| The secret refusal throws at client creation, for reads and writes | A secret in a committed file needs attention before pmkit runs on it. Question 1 asks whether `validate` and other systems should catch it too. |
+| The secret refusal throws at client creation, for reads and writes | A secret in a committed file needs attention before pmkit runs on it. Resolved question 1 keeps it in the client only. |
 | `requireWorkspace` defaults to true | Every command except setup's `discover` must run pinned. Setup needs one call before it knows the URL key. |
 | Retry queries on network errors, timeouts and 5xx, twice | PMK-28 saw one `ETIMEDOUT` pass on retry. A query has no side effect, so a retry is safe. |
 | Never retry a mutation | After a timeout or a 5xx, nobody can tell whether Linear applied the change. A blind retry could create an issue twice. |
@@ -251,6 +251,7 @@ set -a; . ./.env; set +a; PMKIT_LIVE=1 PMKIT_LIVE_WORKSPACE=<url key> node --tes
 | GraphQL errors outside `AUTH` and `RATE_LIMITED` become `UPSTREAM` with `details.linear` | The client cannot tell a missing issue from a bad filter without the operation's context. PMK-35 has that context and remaps. |
 | Default page size 100, cap 250 | Linear counts complexity on returned data, so the 2500 requests per hour budget is the tighter limit, and bigger pages spend fewer requests. 250 is Linear's maximum. |
 | `paginate` returns `{ nodes, hasMore }` | A caller with a `limit` or a page cap needs to know that results were cut. |
+| A default cap of 10 pages applies only when no `limit` is given | The user chose 10 pages over the 50 this spec first proposed. A careless query then costs at most 10 requests, and a caller that wants more passes a `limit` or a `maxPages`. |
 | `verify-api.mjs` reads the key through `linearCredential` | ADR-0005 allows one reader of `LINEAR_API_KEY`. The tool then gets the same malformed-key check. |
 | The live check uses `PMKIT_LIVE`, plus `PMKIT_LIVE_WORKSPACE` | `PMKIT_LIVE` already gates both live tools in the repository. The workspace comes from the environment, so the real URL key stays out of the public repository. |
 | No ADR | ADR-0005 already records the credential, the pin and the error codes. The rest is design inside one module. |
@@ -264,22 +265,13 @@ set -a; . ./.env; set +a; PMKIT_LIVE=1 PMKIT_LIVE_WORKSPACE=<url key> node --tes
 - The secret check matches key names by substring, as the user store does, so a scope key such as `tokenizer` is refused. No Linear scope key needs such a name.
 - No CLI command uses the client yet, so the CLI-level check "the fake key appears in no stdout or stderr" from the PMK-28 spec runs at the error level here and repeats in PMK-33 with `discover`.
 
-## Open questions
+## Resolved questions
 
-1. **Where else should the secret-key refusal run?**
-   - A. Only in `createLinearClient`, as designed. Every Linear command fails with `INVALID_INPUT` before any request. `pmkit validate` does not list it until PMK-33 adds `secretKeyPaths` to the Linear descriptor's `configProblems`.
-   - B. Also in `validatePmkitConfig`, for every system and the whole file, with a `propertyNames` pattern in the schema to keep the parity test green. A Local repository with `tracker.token` then gets a warning on reads and a refusal on writes.
-   - C. Like B, but limited to the `tracker` block.
-   - Recommendation: A. It is what the brief asks, it needs no schema change, and PMK-33 reaches `validate` through the descriptor.
-2. **What is the default page cap of `paginate` when the caller gives no `limit`?**
-   - A. 50 pages, 5000 nodes, 2% of the hourly request budget, with `hasMore` set when it stops.
-   - B. No cap. A call reads the whole connection, and only the repeated-cursor check stops a broken API.
-   - C. A lower cap, such as 10 pages and 1000 nodes, so a careless query costs little.
-   - Recommendation: A. It reads every issue of a mid-sized team in one search and still stops a runaway loop early.
-3. **Which issue registers `linear` in `ADAPTERS`?**
-   - A. PMK-33, together with `discover`, the first command that uses the client.
-   - B. This issue, with a descriptor whose `configProblems` requires `tracker.scope.workspace` and whose tracker throws `NOT_SUPPORTED` for each operation until PMK-33 and PMK-35 fill them in.
-   - Recommendation: A. With B, `tracker.system: linear` stops failing at load and every command fails one step later instead, which helps nobody while no operation exists.
+The user answered these on 2026-10-27.
+
+1. **Where else should the secret-key refusal run?** Only in `createLinearClient`. `validatePmkitConfig` and the schema do not change. `pmkit validate` lists the problem once PMK-33 adds `secretKeyPaths` to the Linear descriptor's `configProblems`.
+2. **What is the default page cap of `paginate` when the caller gives no `limit`?** 10 pages, not the 50 this spec first recommended. Past the cap, the result returns `hasMore: true` to say it was truncated. See "Paging".
+3. **Which issue registers `linear` in `ADAPTERS`?** PMK-33. Until then `tracker.system: linear` stays `NOT_SUPPORTED`, and this issue does not touch `scripts/lib/adapters.mjs`.
 
 ## Left to the builder
 
