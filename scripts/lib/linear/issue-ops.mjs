@@ -97,7 +97,8 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     const rows = nodes
       .map((node) => ({ issue: toIssue(node, mapping), blocked: blockedOpen(node, mapping) }))
       .filter((row) => row.issue !== null)
-    return { issues: finishSearch(rows, filter, mapping), problems: [], hasMore }
+    // With a caller limit sent to Linear, paginate's hasMore says the limit cut the read. hasMore means the page cap cut it.
+    return { issues: finishSearch(rows, filter, mapping), problems: [], hasMore: translated.serverLimit === undefined && hasMore }
   }
 
   /** ADR-0005: Linear records every write as the key's owner, so any other actor would make pmkit's output disagree with Linear. */

@@ -618,6 +618,14 @@ test('in_review with no mapping or with none is NOT_SUPPORTED', async () => {
   }
 })
 
+test('a caller limit sent to Linear does not set hasMore', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  for (const title of ['A', 'B', 'C']) seed(fake, { title })
+  const found = await linear.searchIssues({ limit: 1 })
+  assert.deepEqual(found.issues.map((issue) => issue.id), ['ACME-1'])
+  assert.equal(found.hasMore, false)
+})
+
 test('triage on a team with triage off is NOT_SUPPORTED with the hint', async () => {
   const { tracker: linear, fake } = linearSetup()
   seed(fake, { title: 'Move me' })

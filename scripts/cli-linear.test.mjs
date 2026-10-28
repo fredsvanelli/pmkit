@@ -139,6 +139,16 @@ test('issues list --json returns the issues', async () => {
   assert.equal(data.hasMore, false)
 })
 
+test('issues list --limit does not warn about the page cap', async () => {
+  const { fetch } = withIssues(['A', 'B', 'C'])
+  const result = await cli(setup({ edit: withTeam }), ['issues', 'list', '--limit', '2', '--json'], fetch)
+  assert.equal(result.code, 0, result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.deepEqual(data.issues.map((issue) => issue.id), ['ACME-1', 'ACME-2'])
+  assert.equal(data.hasMore, false)
+  assert.equal(result.stderr, '')
+})
+
 // A fetch over the default workspace and a stateful issue store, with `titles` seeded as ACME-1, ACME-2 and so on.
 function withIssues(titles = []) {
   const fake = fakeLinearIssues()
