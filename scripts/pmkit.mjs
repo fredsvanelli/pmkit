@@ -578,8 +578,10 @@ export const COMMANDS = [
       const text = [
         ...fields([['total', p.total], ['done', p.done], ['canceled', p.canceled], ['points', p.points], ['points done', p.pointsDone]]),
         ...Object.entries(p.byCategory).map(([category, count]) => `  ${category}: ${count}`),
+        ...(p.native ? [`native: ${percent(p.native.progress)} of ${p.native.scope} issues in Linear's own count`] : []),
       ].join('\n')
-      return { data: p, text }
+      const warnings = p.hasMore === true ? ['Linear has more issues in this epic than the 1000 pmkit read; the counts cover the first 1000'] : []
+      return { data: p, text, warnings }
     },
   },
   {

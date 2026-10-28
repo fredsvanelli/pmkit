@@ -71,7 +71,7 @@ Consequences for the design:
 
 - `listDeliverables`, `getDeliverable`, `deliverableProgress`, `createDeliverable`, `publishStatusUpdate` and `listStatusUpdates` work on Linear, with the Local shapes and the contract suite's `deliverables` tests passing over the fake.
 - A project's epic shape carries its `health` and its `progress`, and `epic get` and `epic list` print them.
-- An issue joins an epic through `setParent` and through the `parent` field of `createIssue` and `updateIssue`. `searchIssues` with `parent: <epic id>` returns the epic's direct members.
+- An issue joins an epic through `setParent` and through the `parent` field of `createIssue`. `searchIssues` with `parent: <epic id>` returns the epic's direct members.
 - `listMilestones`, `getMilestone` and `readDocument` read Linear project milestones and documents. `epic get` lists the milestones and documents of one project.
 - `issue.milestone` reads the issue's project milestone.
 - `capabilities` states which operations are native, derived or unsupported for the projects entity.
@@ -181,7 +181,7 @@ An issue has an optional parent issue and an optional project. pmkit has one `pa
 - `setParent(id, <issue id>)` sets `parentId` and leaves the project as it is.
 - `setParent(id, <epic id>)` sets `projectId` and clears `parentId`, so `parent` reads back as the epic.
 - `setParent(id, null)` clears both `parentId` and `projectId` (answered question 2).
-- `createIssue` and `updateIssue` with `parent` do the same as `setParent`.
+- `createIssue` with `parent` does the same as `setParent`. `updateIssue` refuses `parent`, as Local does (`OWNED` in `scripts/lib/issue-fields.mjs`); `setParent` is the way to move an issue.
 - An id that is neither a known issue nor a known project is `INVALID_INPUT`, with the message "parent X is not an existing issue or epic".
 - `searchIssues` with `parent: <epic id>` sends `project: { id: { eq } }` together with `parent: { null: true }`, so it returns the issues whose shown parent is that epic and no others. The adapter resolves the project's UUID first.
 

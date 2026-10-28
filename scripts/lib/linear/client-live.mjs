@@ -126,8 +126,10 @@ test('Linear accepts every filter pmkit translates, and getIssue reads a result'
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-live-repo-'))
   try {
     const env = { ...process.env, PMKIT_HOME: path.join(home, 'store'), HOME: home, XDG_CONFIG_HOME: path.join(home, '.config') }
-    const config = { root, pmkit: { tracker: tracker(WORKSPACE), git_host: { system: 'none' } } }
-    const linear = createLinearTracker(config, { env, fetch: guardedFetch })
+    const bare = createLinearTracker({ root, pmkit: { tracker: tracker(WORKSPACE), git_host: { system: 'none' } } }, { env, fetch: guardedFetch })
+    const [team] = (await bare.discover()).teams
+    const scoped = { system: 'linear', scope: { workspace: WORKSPACE, team: team.key } }
+    const linear = createLinearTracker({ root, pmkit: { tracker: scoped, git_host: { system: 'none' } } }, { env, fetch: guardedFetch })
     const { labels } = await linear.discover()
     const first = (await linear.searchIssues({ limit: 1 })).issues[0]
     assert.ok(first, 'the workspace has an issue')

@@ -161,6 +161,7 @@ function withIssues(titles = []) {
 
 test('issues dependencies sends a non-issue id to getDeliverable, which finds no such epic', async () => {
   const result = await cli(setup({ edit: withTeam }), ['issues', 'dependencies', 'EPC-1x', '--json'], withIssues().fetch)
+  assert.equal(result.code, 2)
   assert.equal(errorOf(result).code, 'NOT_FOUND')
   assert.equal(errorOf(result).message, 'epic EPC-1x does not exist')
 })
@@ -1062,7 +1063,7 @@ function withProjects() {
   const issues = fakeLinearIssues()
   const projects = fakeLinearProjects({ issues })
   const project = projects.seed({ id: PROJECT_ID, name: 'Launch', teamIds: ['team-acme'], startDate: '2026-11-01' })
-  issues.seed({ title: 'Done one', projectId: project.id, stateId: 'state-8' })
+  issues.seed({ title: 'Done one', projectId: project.id, stateId: 'state-8', projectMilestoneId: MILESTONE })
   issues.seed({ title: 'Open one', projectId: project.id })
   projects.seedUpdate(PROJECT_ID, { id: 'update-1', body: 'All good', health: 'onTrack', createdAt: '2026-10-27T10:00:00.000Z' })
   projects.seedMilestone(PROJECT_ID, { id: MILESTONE, name: 'Alpha', targetDate: '2026-11-15', status: 'next' })
@@ -1091,6 +1092,17 @@ test('epic get prints health, progress, the milestones and the documents', async
   assert.match(result.stdout, /^progress: 50%$/m)
   assert.match(result.stdout, new RegExp(`^milestones:\\n {2}${MILESTONE} {2}Alpha {2}due 2026-11-15 {2}next$`, 'm'))
   assert.match(result.stdout, /^documents:\n {2}abcdef012345 {2}Plan$/m)
+})
+
+test('epic progress prints the native number and the hasMore warning', async () => {
+  const { issues, fetch } = withProjects()
+  const context = setup({ edit: withTeam })
+  const before = await cli(context, ['epic', 'progress', 'P-ACM-1'], fetch)
+  assert.match(before.stdout, /^native: 50% of 2 issues in Linear's own count$/m)
+  assert.equal(before.stderr, '')
+  for (let n = 0; n < 1000; n += 1) issues.seed({ title: `I${n}`, projectId: PROJECT_ID })
+  const after = await cli(context, ['epic', 'progress', 'P-ACM-1'], fetch)
+  assert.match(after.stderr, /Linear has more issues in this epic than the 1000 pmkit read/)
 })
 
 test('epic create, progress, update-status and updates run over the fake', async () => {
@@ -1124,6 +1136,9 @@ test('a milestone, a document and a milestone of an issue are readable', async (
   const docs = await cli(context, ['docs', 'read', 'abcdef012345'], fetch)
   assert.equal(docs.code, 0, docs.stdout + docs.stderr)
   assert.equal(docs.stdout.trim(), '# Plan')
+  const attached = await cli(context, ['issues', 'get', 'ACME-1', '--json'], fetch)
+  assert.equal(attached.code, 0, attached.stdout + attached.stderr)
+  assert.equal(JSON.parse(attached.stdout).milestone, MILESTONE)
 })
 
 test('a Local epic prints no health, progress, milestones or documents line', () => {
