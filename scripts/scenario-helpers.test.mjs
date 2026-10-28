@@ -11,7 +11,7 @@ import { NOW, runPmkit } from './golden-helpers.mjs'
 import {
   scenarioName, snapshotFile, parseCommandFile, callKey, unknownFlags,
   matchEntry, coverageProblems, pointProblems, orderProblems, compareScenarios, staleSnapshots,
-  readTree, treeChanges, formatSnapshot, makeRepoView, runScenario, traceFromLog, stopProblems, expectUntilSaved,
+  readTree, treeChanges, formatSnapshot, makeRepoView, prepareCopy, runScenario, traceFromLog, stopProblems, expectUntilSaved,
 } from './scenario-helpers.mjs'
 import moveScenario from './__scenarios__/issues-move.mjs'
 import { tempDir } from './test-helpers.mjs'
@@ -628,4 +628,30 @@ test('expectUntilSaved runs an expect up to its first saved read', async () => {
     assert.equal(r.issue('D').status, 'todo')
     return saved.x
   }, repo), /todo/)
+})
+
+const LINEAR_CONFIG = 'version: 1\ntracker:\n  system: linear\n  scope:\n    workspace: acme\n    team: ACME\ngit_host:\n  system: none\nwrite_policy:\n  confirm: single_writes\n'
+
+test('a scenario with linear runs the CLI in process over the fake workspace', async () => {
+  const scratch = tempDir()
+  const setup = ({ root }) => {
+    fs.mkdirSync(path.join(root, '.pmkit'))
+    fs.writeFileSync(path.join(root, '.pmkit', 'config.yaml'), LINEAR_CONFIG)
+  }
+  const { root, env, run } = await prepareCopy({ fixture: null, linear: {}, setup }, { scratch, fixturesDir: FIXTURES })
+  assert.equal(env.LINEAR_API_KEY, 'lin_api_TESTKEYTESTKEYTESTKEY')
+  assert.ok(env.PMKIT_HOME.startsWith(scratch), env.PMKIT_HOME)
+  const result = await run(['discover', '--json'], root, { env })
+  assert.equal(result.code, 0, result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.workspace.urlKey, 'acme')
+  assert.equal(data.team, 'ACME')
+  const custom = await prepareCopy({ fixture: null, linear: { name: 'Other' }, setup }, { scratch: tempDir(), fixturesDir: FIXTURES })
+  assert.equal(JSON.parse((await custom.run(['discover', '--json'], custom.root, { env: custom.env })).stdout).workspace.name, 'Other')
+})
+
+test('a scenario without linear still runs the CLI as a child process', async () => {
+  const prepared = await prepareCopy({ fixture: 'basic' }, { scratch: tempDir(), fixturesDir: FIXTURES })
+  assert.equal(prepared.run, runPmkit)
+  assert.equal(prepared.env.LINEAR_API_KEY, undefined)
 })

@@ -215,7 +215,7 @@ describe('live scenarios', () => {
   for (const { name, entries } of LOADED) {
     entries.forEach((scenario, index) => {
       const label = snapshotFile(name, index, entries.length).replace(/\.after\.txt$/, '')
-      test(`live ${label}`, { skip: SKIP ?? false }, async (t) => {
+      test(`live ${label}`, { skip: SKIP ?? (scenario.linear ? 'a Linear scenario runs only on the fake workspace' : false) }, async (t) => {
         const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-live-'))
         try {
           const { root, env, baseline, gh } = await prepareCopy(scenario, { scratch, fixturesDir: FIXTURES })

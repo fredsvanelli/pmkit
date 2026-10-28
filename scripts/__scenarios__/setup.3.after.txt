@@ -1,0 +1,35 @@
+$ pmkit validate --json  [step Existing Linear config 2, read]
+exit 0
+$ pmkit init --update --dry-run --json  [step Existing Linear config 3, dry run]
+exit 0
+$ pmkit init --update --status 'in_review=In Review' --dry-run --json  [step Existing Linear config 5, dry run]
+exit 0
+? Existing Linear config  [confirmed]
+$ pmkit init --update --status 'in_review=In Review' --json  [step Existing Linear config 5, write]
+exit 0
+$ pmkit validate --json  [step Existing Linear config 7, read]
+exit 0
+$ pmkit discover --json  [step Existing Linear config 7, read]
+exit 0
+$ pmkit capabilities --json  [step Existing Linear config 7, read]
+exit 0
+
+--- changed .pmkit/config.yaml
++# yaml-language-server: $schema=https://raw.githubusercontent.com/fredsvanelli/pmkit/main/schemas/pmkit.config.schema.json
+  version: 1
+  tracker:
+    system: linear
+    scope:
+      workspace: acme
+      team: ACME
+  git_host:
+    system: none
+  write_policy:
+    confirm: single_writes
+    preview: [bulk, delete, publish_update, move_scope]
+  mappings:
+    status:
+-    in_review: Peer Review
++    in_review: In Review
+      blocked: none
+    types: {}

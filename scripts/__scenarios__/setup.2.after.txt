@@ -1,0 +1,34 @@
+$ pmkit init --tracker linear --git-host none --dry-run --json  [step Linear first run 3, dry run]
+exit 0
+$ pmkit init --tracker linear --git-host none --workspace acme --team ACME --status 'in_review=In Review' --status blocked=none --type-label feature=Feature --type-label bug=Bug --type-label task=none --type-label chore=none --dry-run --json  [step Linear first run 6, dry run]
+exit 0
+? Linear first run  [confirmed]
+$ pmkit init --tracker linear --git-host none --workspace acme --team ACME --status 'in_review=In Review' --status blocked=none --type-label feature=Feature --type-label bug=Bug --type-label task=none --type-label chore=none --json  [step Linear first run 6, write]
+exit 0
+$ pmkit validate --json  [step Linear first run 9, read]
+exit 0
+$ pmkit discover --json  [step Linear first run 9, read]
+exit 0
+$ pmkit capabilities --json  [step Linear first run 9, read]
+exit 0
+
+--- added .pmkit/config.yaml
++# yaml-language-server: $schema=https://raw.githubusercontent.com/fredsvanelli/pmkit/main/schemas/pmkit.config.schema.json
++version: 1
++tracker:
++  system: linear
++  scope:
++    workspace: acme
++    team: ACME
++git_host:
++  system: none
++write_policy:
++  confirm: single_writes
++  preview: [bulk, delete, publish_update, move_scope]
++mappings:
++  status:
++    in_review: In Review
++    blocked: none
++  types:
++    feature: Feature
++    bug: Bug
