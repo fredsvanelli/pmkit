@@ -86,7 +86,6 @@ export function toEvents({ node, origin = {}, entries = [], comments = [] }, con
     related: [...issue.related],
     due: issue.due ?? null,
     sprint: has(node.cycle?.number) ? String(node.cycle.number) : null,
-    project: node.project?.id ?? null,
     milestone: node.projectMilestone?.id ?? null,
   }
   const newestFirst = entries.map((entry, index) => ({ entry, index })).sort((a, b) => (a.entry.createdAt < b.entry.createdAt ? 1 : a.entry.createdAt > b.entry.createdAt ? -1 : a.index - b.index)).map(({ entry }) => entry)
@@ -149,7 +148,6 @@ export function toEvents({ node, origin = {}, entries = [], comments = [] }, con
     if (entry.fromProject || entry.toProject) {
       const from = entry.fromProject?.id ?? null
       add('update', 'project', from, entry.toProject?.id ?? null)
-      state.project = from
     }
     if (entry.fromProjectMilestone || entry.toProjectMilestone) {
       const from = entry.fromProjectMilestone?.id ?? null

@@ -81,7 +81,7 @@ An issue in `in_progress` or `in_review`, or an open pull request, with no activ
 _Avoid_: stale (backlog grooming's term for old backlog issues), idle
 
 **Thread**:
-A root comment and its replies. Replies attach to the root, so a thread is one level deep. A thread is resolved as a whole: `resolveThread` marks the root, and a reply resolves the root of its thread.
+A root comment and its replies. Replies attach to the root, so a thread is one level deep. Resolving a thread resolves all of it. `resolveThread` marks the root, and a reply resolves the root of its thread.
 _Avoid_: conversation, discussion
 
 **Event**:
