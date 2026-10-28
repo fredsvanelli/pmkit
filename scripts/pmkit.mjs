@@ -10,7 +10,7 @@ import { ADAPTERS, adapterFor } from './lib/adapters.mjs'
 import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, loadPmkitConfig, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
 import { contractView } from './lib/contract.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
-import { changeLines, dependencyText, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, releaseNotesText, releaseRecord, sprintRecord, table } from './lib/format.mjs'
+import { changeLines, dependencyText, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, percent, releaseNotesText, releaseRecord, sprintRecord, table } from './lib/format.mjs'
 import {
   aging, categoryLookup, cycleTimes, doneInRange, groupEventsByIssue, lastEntry, leadTimes, rangeInstant, sprintIssues, summary, throughput, velocity,
 } from './lib/metrics.mjs'
@@ -553,7 +553,14 @@ export const COMMANDS = [
     name: 'epic list', summary: 'lists epics', flags: [],
     run: async (ctx) => {
       const epics = await (await ctx.tracker()).listDeliverables()
-      const text = epics.length === 0 ? 'no epics' : table(['ID', 'Title', 'Status', 'Start', 'Target'], epics.map((e) => [e.id, e.title, e.status.name, e.start ?? '', e.target ?? '']))
+      // Health and progress are Linear fields. Their columns appear only when an epic carries one, so Local output is unchanged.
+      const extra = epics.some((e) => e.health !== undefined || e.progress !== undefined)
+      const text = epics.length === 0
+        ? 'no epics'
+        : table(
+          ['ID', 'Title', 'Status', 'Start', 'Target', ...(extra ? ['Health', 'Progress'] : [])],
+          epics.map((e) => [e.id, e.title, e.status.name, e.start ?? '', e.target ?? '', ...(extra ? [e.health ?? '', e.progress === undefined ? '' : percent(e.progress)] : [])]),
+        )
       return { data: epics, text }
     },
   },
@@ -571,8 +578,10 @@ export const COMMANDS = [
       const text = [
         ...fields([['total', p.total], ['done', p.done], ['canceled', p.canceled], ['points', p.points], ['points done', p.pointsDone]]),
         ...Object.entries(p.byCategory).map(([category, count]) => `  ${category}: ${count}`),
+        ...(p.native ? [`native: ${percent(p.native.progress)} of ${p.native.scope} issues in Linear's own count`] : []),
       ].join('\n')
-      return { data: p, text }
+      const warnings = p.hasMore === true ? ['Linear has more issues in this epic than the 1000 pmkit read; the counts cover the first 1000'] : []
+      return { data: p, text, warnings }
     },
   },
   {

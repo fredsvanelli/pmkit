@@ -7,17 +7,16 @@ import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
 import { validDate } from '../local/sprints.mjs'
 import { estimateScale } from './discovery.mjs'
 import { cyclesOff } from './cycles.mjs'
-import { CRITERIA_HEADING, PRIORITY_TO_LINEAR, buildDescription, isIssueId, parseDescription } from './issues.mjs'
+import { CRITERIA_HEADING, PRIORITY_TO_LINEAR, buildDescription, parseDescription } from './issues.mjs'
 
 const invalid = (message, nextStep, details) => new PmkitError('INVALID_INPUT', message, nextStep, details)
 // A name discovery may not know yet. The caller refreshes the discovery once and builds the input again.
 const stale = (message, nextStep) => invalid(message, nextStep, { stale: true })
 const LABEL_STEP = 'Create the label in Linear, then run pmkit discover'
 const LATER = {
-  milestone: 'Linear project milestones are not mapped yet (PMK-38)',
+  milestone: 'set the milestone in Linear',
   release: 'Linear releases are not mapped yet',
 }
-export const NOT_EPICS = 'Linear projects are not epics in pmkit yet'
 
 /** The raw team a new issue goes to: the scope team, else the only team of the workspace. */
 export function createTeam(context) {
@@ -125,10 +124,21 @@ function descriptionOf(value) {
 }
 
 /**
- * The Linear input of a patch. mode is create or update. beforeNode is the issue's node (update), team the raw team (create),
- * parentNode the node of patch.parent (create), cycleNode the { id, number } of the cycle patch.sprint names (the caller resolves it). Throws before any request; a name discovery may not know yet throws with details.stale.
+ * The input that sets the parent: a parent issue sets parentId and leaves the project, an epic sets the project and clears the
+ * parent issue, and neither (a clear) sets both to null. Only createIssue and setParent use it, because updateIssue refuses `parent`.
  */
-export function toInput(patch, { mode, beforeNode, team: givenTeam, context, parentNode, cycleNode }) {
+export function parentInput({ parentNode, epicNode } = {}) {
+  if (parentNode) return { parentId: parentNode.id }
+  if (epicNode) return { projectId: epicNode.id, parentId: null }
+  return { parentId: null, projectId: null }
+}
+
+/**
+ * The Linear input of a patch. mode is create or update. beforeNode is the issue's node (update), team the raw team (create),
+ * parentNode the node of patch.parent when it is an issue, epicNode the project node when it is an epic,
+ * cycleNode the { id, number } of the cycle patch.sprint names (the caller resolves it). Throws before any request; a name discovery may not know yet throws with details.stale.
+ */
+export function toInput(patch, { mode, beforeNode, team: givenTeam, context, parentNode, epicNode, cycleNode }) {
   checkKeys(patch, mode === 'create' ? CREATE_KEYS : UPDATE_KEYS)
   const team = givenTeam ?? teamOf(context, beforeNode?.team?.id)
   const input = mode === 'create' ? { teamId: team.id } : {}
@@ -154,8 +164,8 @@ export function toInput(patch, { mode, beforeNode, team: givenTeam, context, par
   if (patch.estimate !== undefined) input.estimate = estimateValue(patch.estimate, team, context)
   if (patch.assignee !== undefined && patch.assignee !== null) input.assigneeId = requireAssignee(context, patch.assignee)
   if (patch.parent !== undefined && patch.parent !== null) {
-    if (!isIssueId(patch.parent)) throw new PmkitError('NOT_SUPPORTED', NOT_EPICS, 'Use an issue id as the parent')
-    input.parentId = parentNode.id
+    if (!parentNode && !epicNode) throw invalid(`parent ${patch.parent} was not resolved to an issue or an epic`)
+    Object.assign(input, parentInput({ parentNode, epicNode }))
   }
   if (patch.due !== undefined) {
     if (patch.due !== null && !validDate(patch.due)) throw invalid('due must be a date as YYYY-MM-DD')
@@ -185,8 +195,11 @@ export function toInput(patch, { mode, beforeNode, team: givenTeam, context, par
   return input
 }
 
-/** The node with a Linear input applied, so toIssue of it is the after of a dry run. `parent` is the parent's identifier for a parentId, `cycle` the { id, number } for a cycleId. */
-export function applyInput(node, input, context, { parent, cycle } = {}) {
+/**
+ * The node with a Linear input applied, so toIssue of it is the after of a dry run. `parent` is the parent's identifier for a parentId,
+ * `project` the project reference for a projectId, `cycle` the { id, number } for a cycleId.
+ */
+export function applyInput(node, input, context, { parent, project, cycle } = {}) {
   const next = structuredClone(node)
   if (input.title !== undefined) next.title = input.title
   if (input.description !== undefined) next.description = input.description
@@ -207,6 +220,7 @@ export function applyInput(node, input, context, { parent, cycle } = {}) {
   }
   if (input.parentId !== undefined) next.parent = input.parentId === null ? null : { identifier: parent }
   if (input.cycleId !== undefined) next.cycle = input.cycleId === null ? null : { id: cycle.id, number: cycle.number }
+  if (input.projectId !== undefined) next.project = input.projectId === null ? null : project
   return next
 }
 
@@ -220,6 +234,6 @@ export function skeletonNode(team, at, context) {
     archivedAt: null, trashed: false, createdAt: at, updatedAt: at,
     team: { id: team.id, key: team.key },
     state: state === null ? { id: null, name: null, type: null } : { id: state.id, name: state.name, type: state.type },
-    assignee: null, parent: null, cycle: null, labels: empty(), children: empty(), relations: empty(), inverseRelations: empty(),
+    assignee: null, parent: null, project: null, projectMilestone: null, cycle: null, labels: empty(), children: empty(), relations: empty(), inverseRelations: empty(),
   }
 }

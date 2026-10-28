@@ -2,6 +2,8 @@
 // A route is a response, a list of responses (the Nth call gets item N, the last repeats),
 // or a function of the parsed body that returns a response.
 // A response is { status, headers, json | text }, { throws: error }, { hang: true } or { textRejects: true }.
+import { createHash } from 'node:crypto'
+
 import { branchName } from './lib/ids.mjs'
 import { operationName } from './lib/linear/client.mjs'
 
@@ -226,6 +228,9 @@ export function fakeTriage({ responsibility = null, issues = [], users = ACME_US
 const graphqlError = (message, code) => ({ status: 200, json: { data: null, errors: [{ message, extensions: { code } }] } })
 const validation = (message) => graphqlError(message, 'GRAPHQL_VALIDATION_FAILED')
 const NOT_FOUND = 'Could not find referenced Issue.'
+const failProject = () => {
+  throw new FakeInputError('Could not find referenced Project.')
+}
 const CREATE_FIELDS = ['id', 'title', 'description', 'assigneeId', 'parentId', 'priority', 'estimate', 'labelIds', 'teamId', 'stateId', 'dueDate', 'cycleId', 'projectId', 'projectMilestoneId']
 const UPDATE_FIELDS = CREATE_FIELDS.filter((field) => field !== 'id')
 
@@ -264,6 +269,7 @@ export function fakeLinearIssues({
   let tick = 0
   let issueCount = 0
   let relationCount = 0
+  let projectLookup = () => undefined
   const stamp = () => new Date(Date.parse(start) + ++tick * 1000).toISOString()
 
   const teamById = (id) => teams.find((team) => team.id === id)
@@ -382,6 +388,8 @@ export function fakeLinearIssues({
       assignee: record.assigneeId ? { id: record.assigneeId } : null,
       parent: parent ? { identifier: parent.identifier } : null,
       cycle: cycleOf(record) ? { id: cycleOf(record).id, number: cycleOf(record).number } : null,
+      project: record.projectId ? projectLookup(record.projectId) : null,
+      projectMilestone: record.projectMilestoneId ? { id: record.projectMilestoneId } : null,
       ...Object.fromEntries(Object.entries(nested).map(([field, build]) => [field, connection(build(record))])),
     }
   }
@@ -410,7 +418,8 @@ export function fakeLinearIssues({
         record.cycleId = cycle.id
       }
     }
-    for (const [key, field] of [['projectId', 'projectId'], ['projectMilestoneId', 'milestoneId']]) if (input[key] !== undefined) record[field] = input[key]
+    if (input.projectId !== undefined) record.projectId = input.projectId === null ? null : (projectLookup(input.projectId)?.id ?? failProject())
+    if (input.projectMilestoneId !== undefined) record.projectMilestoneId = input.projectMilestoneId
   }
 
   // PMK-36: history. recordHistory is the one place that turns a change of an issue into an entry, so a later issue can add a field row here.
@@ -442,8 +451,12 @@ export function fakeLinearIssues({
     if (added.length > 0) entry.addedLabels = added.map(labelRef)
     if (removed.length > 0) entry.removedLabels = removed.map(labelRef)
     if (changed('cycleId')) Object.assign(entry, { fromCycle: cycleRef(before.cycleId), toCycle: cycleRef(record.cycleId) })
-    if (changed('projectId')) Object.assign(entry, { fromProject: before.projectId ? { id: before.projectId } : null, toProject: record.projectId ? { id: record.projectId } : null })
-    if (changed('milestoneId')) Object.assign(entry, { fromProjectMilestone: before.milestoneId ? { id: before.milestoneId } : null, toProjectMilestone: record.milestoneId ? { id: record.milestoneId } : null })
+    if (changed('projectId')) {
+      // Linear's entry carries the Project, so the history document can select the keys an epic id is made from.
+      const ref = (id) => (id ? (projectLookup(id) ?? null) : null)
+      Object.assign(entry, { fromProject: ref(before.projectId), toProject: ref(record.projectId) })
+    }
+    if (changed('projectMilestoneId')) Object.assign(entry, { fromProjectMilestone: before.projectMilestoneId ? { id: before.projectMilestoneId } : null, toProjectMilestone: record.projectMilestoneId ? { id: record.projectMilestoneId } : null })
     if (changed('description')) entry.updatedDescription = true
     Object.assign(entry, extra)
     if (Object.keys(entry).length === 0) return
@@ -489,6 +502,8 @@ export function fakeLinearIssues({
       cycleId: null,
       creatorId: users[0].id,
       botActor: null,
+      projectId: null,
+      projectMilestoneId: null,
     }
     const { id, teamId, title, ...rest } = input
     applyFields(record, rest)
@@ -513,8 +528,10 @@ export function fakeLinearIssues({
     cycle: (record, c) => cycleMatches(cycleOf(record), c),
     parent: (record, c) => {
       const parent = record.parentId ? find(record.parentId) : null
-      return parent !== null && idMatches(parent, c.id.eq)
+      if (c.null === true) return parent === null
+      return parent !== null && (c.id.eq === undefined || idMatches(parent, c.id.eq)) && (c.id.in === undefined || c.id.in.some((value) => idMatches(parent, value)))
     },
+    project: (record, c) => record.projectId !== null && record.projectId === (projectLookup(c.id.eq)?.id ?? c.id.eq),
     hasBlockedByRelations: (record, c) => relations.some((relation) => relation.type === 'blocks' && relation.relatedIssueId === record.id) === c.eq,
     updatedAt: (record, c) =>
       (c.lt === undefined || Date.parse(record.updatedAt) < Date.parse(c.lt))
@@ -737,10 +754,214 @@ export function fakeLinearIssues({
     },
     historyRecords,
     unconfirm: (operation, { applied }) => pending.set(operation, { applied }),
+    useProjects: ({ byRef }) => {
+      projectLookup = byRef
+    },
     relate: (type, from, to) => relate({ type, issueId: from, relatedIssueId: to }),
     comment: (ref, input) => commentNode(addComment({ ...input, issueId: ref }, { author: input.userId === undefined && input.botActor === undefined && input.externalUser === undefined })),
     comments: commentRecords,
     records,
     relations,
+  }
+}
+
+const PROJECT_CREATE_FIELDS = ['id', 'name', 'teamIds', 'content', 'description', 'startDate', 'targetDate', 'statusId', 'leadId']
+const HEALTH_VALUES = ['onTrack', 'atRisk', 'offTrack']
+const projectNotFound = (what) => new FakeInputError(`Entity not found: ${what}`)
+
+/**
+ * A stateful in-memory Linear project store that answers pmkit's project documents by operation name. Build it over a
+ * fakeLinearIssues store and merge both: fakeLinearFetch({ ...fakeWorkspace(), ...issues.routes, ...fake.routes }).
+ * A project starts in the Backlog status with no health. Its identifier is P-<first three letters of the team key>-<n>, or null
+ * when `identifiers` is false, and its slug is 12 hexadecimal characters. The project `progress` is the share of its issues in a
+ * completed state. `seedMilestone`, `seedDocument` and `seedUpdate` add data without recording a mutation, because the
+ * adapter only reads milestones and documents. `mutations` and `unconfirm` work as in fakeLinearIssues.
+ */
+export function fakeLinearProjects({
+  issues,
+  teams = [ACME_TEAM],
+  states = ACME_STATES,
+  viewer = 'user-1',
+  identifiers = true,
+  listPage = 50,
+  start = '2026-10-28T09:00:00.000Z',
+} = {}) {
+  const projects = []
+  const updates = []
+  const milestones = []
+  const documents = []
+  const counts = new Map()
+  const mutations = []
+  const pending = new Map()
+  let tick = 0
+  const stamp = () => new Date(Date.parse(start) + ++tick * 1000).toISOString()
+
+  const refOf = (project) => ({ id: project.id, slugId: project.slugId, identifier: project.identifier })
+  const byRef = (ref) => {
+    if (typeof ref !== 'string') return undefined
+    return projects.find((project) => project.id === ref || project.slugId === ref || (project.identifier !== null && project.identifier === ref.toUpperCase()))
+  }
+  issues.useProjects({ byRef: (ref) => {
+    const found = byRef(ref)
+    return found ? refOf(found) : undefined
+  } })
+  const requireProject = (ref) => byRef(ref) ?? failProject()
+  const connection = (nodes, first = listPage, after = null) => {
+    const from = Number(after ?? 0)
+    const end = from + first
+    const hasNextPage = end < nodes.length
+    return page(nodes.slice(from, end), { hasNextPage, endCursor: hasNextPage ? String(end) : null })
+  }
+
+  const progressOf = (project) => {
+    const own = issues.records.filter((record) => record.projectId === project.id && record.archivedAt === null)
+    const done = own.filter((record) => states.find((state) => state.id === record.stateId)?.type === 'completed').length
+    return { progress: own.length === 0 ? 0 : done / own.length, scope: own.length }
+  }
+  const milestoneNode = (milestone) => ({
+    id: milestone.id,
+    name: milestone.name,
+    description: milestone.description ?? null,
+    targetDate: milestone.targetDate ?? null,
+    status: milestone.status ?? 'unstarted',
+    progress: milestone.progress ?? 0,
+    project: refOf(milestone.project),
+  })
+  const projectNode = (project, withLists) => ({
+    ...refOf(project),
+    name: project.name,
+    description: project.description,
+    content: project.content,
+    health: project.health,
+    ...progressOf(project),
+    url: `https://linear.app/acme/project/${project.slugId}`,
+    startDate: project.startDate,
+    targetDate: project.targetDate,
+    createdAt: project.createdAt,
+    status: { id: 'project-status-backlog', name: 'Backlog', type: 'backlog' },
+    ...(withLists
+      ? {
+          projectMilestones: connection(milestones.filter((item) => item.project === project).map((item) => ({ id: item.id, name: item.name, targetDate: item.targetDate ?? null, status: item.status ?? 'unstarted' }))),
+          documents: connection(documents.filter((item) => item.project === project).map((item) => ({ slugId: item.slugId, title: item.title }))),
+        }
+      : {}),
+  })
+  const updateNode = (update) => ({
+    id: update.id,
+    body: update.body,
+    health: update.health,
+    createdAt: update.createdAt,
+    user: { id: update.userId },
+    project: refOf(update.project),
+  })
+
+  const comparators = {
+    id: (project, c) => project.id === c.eq || (project.identifier !== null && project.identifier === String(c.eq).toUpperCase()),
+    slugId: (project, c) => project.slugId === c.eq,
+    accessibleTeams: (project, c) => project.teamIds.some((id) => teams.find((team) => team.id === id)?.key === c.some.key.eq),
+  }
+  function checkFilter(filter) {
+    for (const key of Object.keys(filter ?? {})) if (!Object.hasOwn(comparators, key)) throw new FakeValidationError(`Unknown filter ${key}`)
+  }
+  function search({ filter, first = 50, after = null, withLists = false }) {
+    checkFilter(filter)
+    const found = projects.filter((project) => Object.entries(filter ?? {}).every(([key, value]) => comparators[key](project, value)))
+    return connection(found.map((project) => projectNode(project, withLists)), first, after)
+  }
+
+  function create(input) {
+    for (const key of Object.keys(input ?? {})) if (!PROJECT_CREATE_FIELDS.includes(key)) throw new FakeValidationError(`Unknown input field ${key}`)
+    if (typeof input.name !== 'string' || input.name === '') throw new FakeInputError('name is required')
+    const team = teams.find((item) => item.id === input.teamIds?.[0])
+    if (!team || !input.teamIds.every((id) => teams.some((item) => item.id === id))) throw new FakeInputError('Could not find referenced Team.')
+    const number = (counts.get(team.id) ?? 0) + 1
+    counts.set(team.id, number)
+    const id = input.id ?? `project-${projects.length + 1}`
+    const project = {
+      id,
+      slugId: createHash('sha1').update(id).digest('hex').slice(0, 12),
+      identifier: identifiers ? `P-${team.key.slice(0, 3).toUpperCase()}-${number}` : null,
+      name: input.name,
+      description: input.description ?? '',
+      content: input.content ?? null,
+      health: null,
+      startDate: input.startDate ?? null,
+      targetDate: input.targetDate ?? null,
+      createdAt: stamp(),
+      teamIds: [...input.teamIds],
+    }
+    projects.push(project)
+    return project
+  }
+
+  function addUpdate(input, { checkHealth = true } = {}) {
+    const project = requireProject(input.projectId)
+    if (checkHealth && !HEALTH_VALUES.includes(input.health)) throw new FakeValidationError(`Unknown health ${input.health}`)
+    const update = { id: input.id ?? `update-${updates.length + 1}`, project, body: input.body, health: input.health, createdAt: input.createdAt ?? stamp(), userId: viewer }
+    updates.push(update)
+    project.health = input.health
+    return update
+  }
+
+  const answerOf = (operation, body, run) => {
+    try {
+      const plan = pending.get(operation)
+      if (plan) {
+        pending.delete(operation)
+        if (plan.applied) run(body.variables ?? {})
+        return { status: 502, text: '' }
+      }
+      return json(run(body.variables ?? {}))
+    } catch (error) {
+      if (error instanceof FakeValidationError) return validation(error.message)
+      if (error instanceof FakeInputError) return graphqlError(error.message, 'INPUT_ERROR')
+      throw error
+    }
+  }
+  const query = (operation, run) => (body) => answerOf(operation, body, run)
+  const mutation = (operation, run) => (body) => {
+    mutations.push(operation)
+    return answerOf(operation, body, run)
+  }
+  const newestFirst = (a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+
+  const routes = {
+    PmkitProjects: query('PmkitProjects', (variables) => ({ projects: search(variables) })),
+    PmkitProjectCreate: mutation('PmkitProjectCreate', ({ input }) => ({ projectCreate: { success: true, project: projectNode(create(input), false) } })),
+    PmkitProjectUpdateCreate: mutation('PmkitProjectUpdateCreate', ({ input }) => ({ projectUpdateCreate: { success: true, projectUpdate: updateNode(addUpdate(input)) } })),
+    PmkitProjectUpdates: query('PmkitProjectUpdates', ({ id, first, after }) => {
+      const project = byRef(id)
+      if (!project) throw projectNotFound('Project')
+      const own = updates.filter((update) => update.project === project).sort(newestFirst).map(updateNode)
+      return { project: { projectUpdates: connection(own, first, after) } }
+    }),
+    PmkitProjectMilestones: query('PmkitProjectMilestones', ({ first, after }) => ({ projectMilestones: connection(milestones.map(milestoneNode), first, after) })),
+    PmkitProjectMilestone: query('PmkitProjectMilestone', ({ id }) => {
+      const found = milestones.find((item) => item.id === id)
+      if (!found) throw projectNotFound('ProjectMilestone')
+      return { projectMilestone: milestoneNode(found) }
+    }),
+    PmkitDocument: query('PmkitDocument', ({ filter }) => {
+      for (const key of Object.keys(filter ?? {})) if (key !== 'slugId') throw new FakeValidationError(`Unknown filter ${key}`)
+      const found = documents.filter((item) => item.slugId === filter?.slugId?.eq).slice(0, 1)
+      return { documents: { nodes: found.map((item) => ({ id: item.id, slugId: item.slugId, title: item.title, content: item.content ?? null, project: refOf(item.project) })) } }
+    }),
+    PmkitEpicIssues: (body) => issues.routes.PmkitIssues(body),
+  }
+
+  return {
+    routes,
+    mutations,
+    unconfirm: (operation, { applied }) => pending.set(operation, { applied }),
+    seed: (input) => projectNode(create(input), false),
+    seedMilestone: (ref, input) => {
+      milestones.push({ ...input, project: requireProject(ref) })
+    },
+    seedDocument: (ref, input) => {
+      documents.push({ id: input.id ?? `document-${documents.length + 1}`, ...input, project: requireProject(ref) })
+    },
+    seedUpdate: (ref, input) => addUpdate({ ...input, projectId: requireProject(ref).id }, { checkHealth: false }),
+    projects,
+    updates,
   }
 }

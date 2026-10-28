@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { conn, fakeRaw, lab, node } from '../../fake-linear-nodes.mjs'
 import { makeContext, toIssue } from './issues.mjs'
-import { applyInput, createTeam, skeletonNode, toInput } from './writes.mjs'
+import * as writes from './writes.mjs'
+import { parentInput, applyInput, createTeam, skeletonNode, toInput } from './writes.mjs'
 
 const TEAM = 'team-acme'
 const label = (id, name, { team = TEAM, parent = null, isGroup = false } = {}) => ({ id, name, isGroup, retiredAt: null, team: team === null ? null : { id: team }, parent })
@@ -79,9 +80,37 @@ test('assignee must be a member, not an app; an unknown id is stale', () => {
   assert.throws(() => toInput({ title: 'T', assignee: 'user-9' }, create), (error) => error.details.stale === true)
 })
 
-test('parent on create is an issue node; anything else is NOT_SUPPORTED', () => {
-  assert.equal(toInput({ title: 'T', parent: 'ACME-2' }, { ...create, parentNode: node({ id: 'uuid-2', identifier: 'ACME-2' }) }).parentId, 'uuid-2')
-  assert.throws(() => toInput({ title: 'T', parent: 'EPC-1x' }, create), { code: 'NOT_SUPPORTED', message: 'Linear projects are not epics in pmkit yet' })
+test('parent on create is an issue node or an epic node', () => {
+  const issue = toInput({ title: 'T', parent: 'ACME-3' }, { ...create, parentNode: node({ id: 'uuid-3', identifier: 'ACME-3' }) })
+  assert.equal(issue.parentId, 'uuid-3')
+  assert.equal('projectId' in issue, false)
+  const epic = toInput({ title: 'T', parent: 'P-ABC-12' }, { ...create, epicNode: { id: 'project-uuid' } })
+  assert.equal(epic.projectId, 'project-uuid')
+  assert.equal(epic.parentId, null)
+  assert.throws(() => toInput({ title: 'T', parent: 'P-ABC-12' }, create), { code: 'INVALID_INPUT' })
+})
+
+test('parentInput sets an issue parent, an epic, or clears both', () => {
+  assert.deepEqual(parentInput({ parentNode: { id: 'uuid-2' } }), { parentId: 'uuid-2' })
+  assert.deepEqual(parentInput({ epicNode: { id: 'project-uuid' } }), { projectId: 'project-uuid', parentId: null })
+  assert.deepEqual(parentInput({}), { parentId: null, projectId: null })
+  assert.deepEqual(parentInput(), { parentId: null, projectId: null })
+})
+
+test('a milestone is NOT_SUPPORTED with the Linear message, and NOT_EPICS is gone', () => {
+  assert.throws(() => toInput({ milestone: 'x' }, update), { code: 'NOT_SUPPORTED', message: 'set the milestone in Linear' })
+  assert.equal('NOT_EPICS' in writes, false)
+})
+
+test('applyInput sets the project from the project option and the parent from the parent option', () => {
+  const project = { id: 'project-uuid', slugId: 'a1b2c3d4e5f6', identifier: 'P-ABC-12' }
+  const withProject = applyInput(node({ parent: { identifier: 'ACME-2' } }), { projectId: 'project-uuid', parentId: null }, context, { project })
+  assert.deepEqual(withProject.project, project)
+  assert.equal(withProject.parent, null)
+  assert.equal(toIssue(withProject, context).parent, 'P-ABC-12')
+  const cleared = applyInput(node({ project }), { projectId: null, parentId: null }, context)
+  assert.equal(cleared.project, null)
+  assert.equal(applyInput(node(), { parentId: 'uuid-2' }, context, { parent: 'ACME-2' }).parent.identifier, 'ACME-2')
 })
 
 test('priority, estimate, due and null clears', () => {

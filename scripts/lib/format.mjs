@@ -46,11 +46,25 @@ export function issueRecord(issue) {
   return lines.join('\n')
 }
 
+/** A share from 0 to 1 as a whole percent. */
+export const percent = (share) => `${Math.round(share * 100)}%`
+
+/** The milestones or documents of an epic as an indented list under a heading, or nothing when it has none. */
+function listLines(heading, items, line, more) {
+  if (!Array.isArray(items) || items.length === 0) return []
+  return ['', `${heading}:`, ...items.map((item) => `  ${line(item)}`), ...(more ? ['  (more in Linear)'] : [])]
+}
+
 export function epicRecord(epic) {
   const lines = fields([
     ['id', epic.id], ['title', epic.title], ['status', `${epic.status.name} (${epic.status.category})`],
     ['start', epic.start], ['target', epic.target], ['milestone', epic.milestone],
+    ['health', epic.health], ['progress', epic.progress === undefined ? undefined : percent(epic.progress)], ['url', epic.url],
   ])
+  lines.push(
+    ...listLines('milestones', epic.milestones, (m) => [m.id, m.name, ...(m.due ? [`due ${m.due}`] : []), ...(m.status ? [m.status] : [])].join('  '), epic.milestonesMore),
+    ...listLines('documents', epic.documents, (d) => `${d.path}  ${d.title}`, epic.documentsMore),
+  )
   if (epic.description) lines.push('', epic.description)
   return lines.join('\n')
 }

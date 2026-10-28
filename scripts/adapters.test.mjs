@@ -51,6 +51,8 @@ test('the linear descriptor asks for a workspace and lists no secret', () => {
   assert.equal(settings.isEpicId('ACME-1'), false)
   assert.equal(settings.isEpicId('acme-12'), false)
   assert.equal(settings.isEpicId('EPC-1x'), true)
+  assert.equal(settings.isEpicId('P-ABC-12'), true)
+  assert.equal(settings.isEpicId('a1b2c3d4e5f6'), true)
 })
 
 test('the linear descriptor checks the estimate and type mappings offline', () => {

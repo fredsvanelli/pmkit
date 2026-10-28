@@ -1,6 +1,7 @@
 // The Linear tracker. discover and capabilities read the workspace (PMK-33). The Issues and Relations families read and
-// write issues (PMK-35), the History and Comments families read history and comments (PMK-36), and the Cycles and Capacity
-// families map cycles to sprints (PMK-37). Every other contract operation is a stub until PMK-38.
+// write issues (PMK-35), the History and Comments families read history and comments (PMK-36), the Cycles and Capacity
+// families map cycles to sprints (PMK-37), and projects are epics with status updates, milestones and documents (PMK-38).
+// Every other contract operation is a stub.
 // See docs/superpowers/specs/2026-10-27-pmk-33-linear-discovery-design.md, "The tracker".
 
 import { randomUUID } from 'node:crypto'
@@ -15,6 +16,7 @@ import { discoveryView, fetchDiscovery } from './discovery.mjs'
 import { historyOperations } from './history-ops.mjs'
 import { issueOperations } from './issue-ops.mjs'
 import { linearDescription } from './mappings.mjs'
+import { projectOperations } from './project-ops.mjs'
 import { relationOperations } from './relation-ops.mjs'
 import { buildLinearCapabilities } from './manifest.mjs'
 import { createTriage } from './triage.mjs'
@@ -150,7 +152,8 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
       )
     })
 
-  const issues = issueOperations({ client, discovery, config, now, uuid })
+  const projects = projectOperations({ client, discovery, config, now, uuid })
+  const issues = issueOperations({ client, discovery, config, now, uuid, resolveEpic: projects.resolveEpic })
   const relations = relationOperations({ client, ops: issues, uuid })
   const history = historyOperations({ client, ops: issues })
   const cycles = cycleOperations({ client, discovery, issues, config })
@@ -173,6 +176,17 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     ...Object.fromEntries(
       ['listCycles', 'currentCycle', 'cycleIssues', 'moveToCycle', 'openCycle', 'closeCycle', 'getCapacity', 'setCapacity', 'getDaysOff', 'updateCycleCapacity'].map((name) => [name, cycles[name]]),
     ),
+    listDeliverables: projects.listDeliverables,
+    getDeliverable: projects.getDeliverable,
+    deliverableProgress: projects.deliverableProgress,
+    createDeliverable: projects.createDeliverable,
+    publishStatusUpdate: projects.publishStatusUpdate,
+    listStatusUpdates: projects.listStatusUpdates,
+    listMilestones: projects.listMilestones,
+    getMilestone: projects.getMilestone,
+    createMilestone: projects.createMilestone,
+    readDocument: projects.readDocument,
+    createDocument: projects.createDocument,
   }
   const implemented = { discover, capabilities, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
   // Linear-only features sit beside the contract operations. contractView ignores them.

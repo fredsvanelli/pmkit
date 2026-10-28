@@ -94,6 +94,35 @@ Checked on 2026-10-28 against the sandbox workspace, with reads only. The sandbo
 | `completedAt` is set on a cycle that ended by date | unverified | needs a team with cycles |
 | `issueUpdate` with `cycleId` of another team's cycle is refused | unverified | the fake refuses it from the schema; no write was sent |
 
+## Projects, project updates, milestones and documents
+
+Checked 2026-10-28 for PMK-38, by introspection and reads only, through a fetch wrapper that refuses any document starting with `mutation`. The workspace holds projects that belong to real work, so this section gives shapes and counts and no names.
+
+| Call | Result |
+|---|---|
+| `__type(Project)` | `id`, `slugId`, `identifier`, `previousIdentifiers`, `name`, `description` (short), `content` (long, Markdown), `status`, `health` (nullable), `healthUpdatedAt`, `progress` (Float), `scope`, `startDate`, `targetDate`, `lead`, `url`, `teams`, `issues`, `projectMilestones`, `documents`, `projectUpdates`, `relations`, `initiatives`. |
+| `__type(ProjectStatusType)` | `backlog`, `planned`, `started`, `paused`, `completed`, `canceled`. |
+| `projectStatuses(first: 20)` | Five statuses on Free (Backlog, Planned, In Progress, Completed, Canceled). None has the type `paused`. |
+| `__type(ProjectUpdateHealthType)` | `onTrack`, `atRisk`, `offTrack`. |
+| `__type(ProjectUpdate)` | `id`, `body`, `health` (required), `user`, `project`, `createdAt`, `url`. |
+| `__type(ProjectUpdateCreateInput)` | `id` (client-chosen), `projectId` (required), `body`, `health`. |
+| `__type(ProjectCreateInput)` | `id` (client-chosen), `name` (required), `teamIds` (required), `content`, `description`, `startDate`, `targetDate`, `statusId`, `leadId`. |
+| `__type(ProjectMilestone)` | `id`, `name`, `description`, `targetDate`, `status` (`unstarted`, `next`, `overdue`, `done`), `progress`, `project`. No slug and no short identifier. |
+| `__type(Document)` | `id`, `slugId`, `title`, `content` (Markdown), `project`, `initiative`, `team`, `issue`, `url`. |
+| `__type(DocumentCreateInput)` | `title` (required), `content`, and one container such as `projectId`. No path. |
+| `projects(first: 50)` | Four projects. Every `slugId` has 12 hexadecimal characters. Every `identifier` is set and has the shape letter, hyphen, three letters, hyphen, number. No `previousIdentifiers`. All four have `health: null` and the status type `backlog`. One has milestones, none has documents. |
+| `project(id:)` with the UUID, the `slugId` and the `identifier` | All three answer. The identifier answers in lower case too. |
+| `projects(filter: { id: { eq: "<identifier>" } })` | One match. The same filter with a `slugId` gives none. `projects(filter: { slugId: { eq } })` gives one. |
+| `projects(filter: { accessibleTeams: { some: { key: { eq } } } })` | Answers. |
+| `issues(filter: { project: { id: { eq: "<uuid>" } } })` | Answers. |
+| `projectMilestones(first: 50)` | Answers, with `project { slugId }`. A `project: { id: { eq } }` filter fails with "Argument Validation Error" when the value is not a real id, so the adapter filters on the client. |
+| `documents(first: 50)`, `documents(filter: { slugId: { eq } })` | Answer. The workspace has no document. |
+| `initiatives(first: 5)`, `projectRelations(first: 5)` | Answer with an empty list on Free. |
+
+The adapter's own documents were also sent live on 2026-10-28, with `client-live.mjs`: the project list with milestones and documents, the three key forms through `getDeliverable`, `projectMilestones`, the document filter, `projectUpdates`, the issue filters on `project` and on a null `parent`, and `deliverableProgress`. Linear accepted every one, and the three keys answered the same canonical id.
+
+Writes are not proven live. `projectCreate` and `projectUpdateCreate` run against the stateful fake in `npm test`, and PMK-39 tries them on a throwaway project. A Free workspace may refuse them, and the refusal reaches the command as `UPSTREAM` with Linear's message.
+
 ## Paid-plan features on a Free workspace
 
 Check a gated feature in this order.

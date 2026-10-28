@@ -2,6 +2,7 @@
 // See docs/superpowers/specs/2026-10-28-pmk-36-linear-history-comments-design.md, "The event normalizer".
 
 import { estimateOf, mappingsOfTeam, priorityOf, toIssue } from './issues.mjs'
+import { epicId } from './projects.mjs'
 
 /**
  * Who did it: the user's id, else `bot:<type>` for a bot, else `external:<id>` for a user synced from outside Linear,
@@ -45,13 +46,16 @@ function namesOfLabels(labels, ids, context) {
   return [...named.map((label) => label.name), ...extra]
 }
 const sortedNames = (names) => [...names].sort()
+/** The parent pmkit shows: the parent issue, else the project's epic id (PMK-38, "The parent rule"). */
+const shownParent = (state) => state.parentIssue ?? state.project ?? null
+const epicOf = (project) => (project ? epicId(project) : null)
 
 /** The create event's `to`: the Local frontmatter keys, in Local order, without the keys that have no value. */
 function frontmatterOf(state, issue, node, type) {
   const typeNames = state.typeLabels
   const pairs = [
     ['id', issue.id], ['title', state.title], ['type', type], ['status', state.status], ['priority', state.priority], ['estimate', state.estimate],
-    ['assignee', state.assignee], ['labels', sortedNames(state.labelNames.filter((name) => !typeNames.has(name)))], ['parent', state.parent],
+    ['assignee', state.assignee], ['labels', sortedNames(state.labelNames.filter((name) => !typeNames.has(name)))], ['parent', shownParent(state)],
     ['blocked_by', issue.blockedBy], ['related', state.related], ['duplicate_of', issue.duplicateOf], ['sprint', state.sprint],
     ['milestone', state.milestone], ['due', state.due], ['created', node.createdAt],
   ]
@@ -82,7 +86,8 @@ export function toEvents({ node, origin = {}, entries = [], comments = [] }, con
     assignee: issue.assignee ?? null,
     labelNames,
     typeLabels,
-    parent: issue.parent ?? null,
+    parentIssue: node.parent?.identifier ?? null,
+    project: epicOf(node.project),
     related: [...issue.related],
     due: issue.due ?? null,
     sprint: has(node.cycle?.number) ? String(node.cycle.number) : null,
@@ -129,11 +134,11 @@ export function toEvents({ node, origin = {}, entries = [], comments = [] }, con
       if (JSON.stringify(plain(before)) !== JSON.stringify(plain(state.labelNames))) add('update', 'labels', plain(before), plain(state.labelNames))
       state.labelNames = before
     }
-    if (entry.fromParent || entry.toParent) {
-      const from = entry.fromParent?.identifier ?? null
-      add('update', 'parent', from, state.parent)
-      state.parent = from
-    }
+    // The parent issue and the project undo apart. One `parent` event shows the change of the shown parent, if any.
+    const shownAfter = shownParent(state)
+    if (entry.fromParent || entry.toParent) state.parentIssue = entry.fromParent?.identifier ?? null
+    if (entry.fromProject || entry.toProject) state.project = epicOf(entry.fromProject)
+    if (shownParent(state) !== shownAfter) add('update', 'parent', shownParent(state), shownAfter)
     for (const change of entry.relationChanges ?? []) {
       const known = RELATION_CODES[change.type]
       if (!known) continue
@@ -144,10 +149,6 @@ export function toEvents({ node, origin = {}, entries = [], comments = [] }, con
       const from = entry.fromCycle ? String(entry.fromCycle.number) : null
       add('update', 'sprint', from, entry.toCycle ? String(entry.toCycle.number) : null)
       state.sprint = from
-    }
-    if (entry.fromProject || entry.toProject) {
-      const from = entry.fromProject?.id ?? null
-      add('update', 'project', from, entry.toProject?.id ?? null)
     }
     if (entry.fromProjectMilestone || entry.toProjectMilestone) {
       const from = entry.fromProjectMilestone?.id ?? null

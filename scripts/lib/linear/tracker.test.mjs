@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
-import { ACME_LABELS, ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeWorkspace } from '../../fake-linear-api.mjs'
+import { ACME_LABELS, ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeWorkspace } from '../../fake-linear-api.mjs'
 import { tempDir, userStoreEnv } from '../../test-helpers.mjs'
 import { assertTracker } from '../contract.mjs'
 import { cachePut, repoHash } from '../user-store.mjs'
@@ -35,9 +35,9 @@ test('the tracker passes assertTracker', () => {
 
 test('a stub throws NOT_SUPPORTED once the mapping check passes', async () => {
   const { fetch, tracker: linear } = tracker(setup())
-  await assert.rejects(linear.listMilestones(), {
+  await assert.rejects(linear.listReleases(), {
     code: 'NOT_SUPPORTED',
-    message: 'the Linear adapter does not implement listMilestones yet',
+    message: 'the Linear adapter does not implement listReleases yet',
     nextStep: 'Set tracker.system to local in .pmkit/config.yaml to use this command now',
   })
   assert.equal(callsOf(fetch, 'PmkitTeams'), 1)
@@ -49,9 +49,9 @@ test('a stub without a workspace throws NOT_CONFIGURED', async () => {
   await assert.rejects(linear.getIssue('ACME-1'), { code: 'NOT_CONFIGURED', message: 'tracker.scope.workspace is not set', nextStep: '/pmkit:setup' })
 })
 
-// Two operations that stay stubs after PMK-37, so the mapping check is all these tests reach.
+// Two operations that stay stubs after PMK-38, so the mapping check is all these tests reach.
 const stubs = {
-  read: (linear) => linear.listMilestones(),
+  read: (linear) => linear.listReleases(),
   write: (linear) => linear.logTime('ACME-1', 5, 'x'),
 }
 
@@ -273,10 +273,11 @@ test('no file under the store holds the key', async () => {
 function linearSetup({ mappings = { status: { in_review: 'In Review' }, types: { bug: 'Bug', feature: 'Feature' } }, scope = { workspace: 'acme', team: 'ACME' },
   workspace = {}, issues = {}, nestedPage, uuid, now = at(0), context = setup({ scope }) } = {}) {
   const fake = fakeLinearIssues({ ...workspace, ...issues, ...(nestedPage ? { nestedPage } : {}) })
-  const fetch = fakeLinearFetch({ ...fakeWorkspace(workspace), ...fake.routes })
+  const projects = fakeLinearProjects({ issues: fake, teams: workspace.teams, states: workspace.states })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace(workspace), ...fake.routes, ...projects.routes })
   context.config.pmkit.mappings = mappings
   const linear = createLinearTracker(context.config, { env: context.env, now, fetch, ...(uuid ? { uuid } : {}) })
-  return { tracker: linear, fake, fetch, context }
+  return { tracker: linear, fake, projects, fetch, context }
 }
 const seed = (fake, input) => fake.seed(input)
 const namesOf = (fetch) => fetch.calls.map((call) => operationName(call.body.query))
@@ -637,7 +638,7 @@ test('create with parent sends the parent UUID', async () => {
   assert.equal(lastVariables(fetch, 'PmkitIssueCreate').input.parentId, 'uuid-parent')
   const dry = await linear.createIssue({ title: 'Child', parent: 'ACME-1' }, 'user-1', { dryRun: true })
   assert.equal(dry.after.parent, 'ACME-1')
-  await assert.rejects(linear.createIssue({ title: 'Orphan', parent: 'ACME-99' }, 'user-1'), { code: 'INVALID_INPUT', message: 'parent ACME-99 is not an existing issue' })
+  await assert.rejects(linear.createIssue({ title: 'Orphan', parent: 'ACME-99' }, 'user-1'), { code: 'INVALID_INPUT', message: 'parent ACME-99 is not an existing issue or epic' })
 })
 
 test('update of a missing issue is NOT_FOUND', async () => {
@@ -931,14 +932,14 @@ test('setParent sets and clears the parent', async () => {
   assert.deepEqual((await linear.getIssue('ACME-1')).children, ['ACME-2'])
   const cleared = await linear.setParent('ACME-2', null, 'user-1')
   assert.equal('parent' in cleared.after, false)
-  assert.deepEqual(lastVariables(fetch, 'PmkitIssueUpdate').input, { parentId: null })
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssueUpdate').input, { parentId: null, projectId: null })
 })
 
-test('a parent that is not an issue id is NOT_SUPPORTED; a missing one is INVALID_INPUT', async () => {
+test('a parent that is neither an issue nor an epic is INVALID_INPUT', async () => {
   const { tracker: linear, fake } = linearSetup()
   three(fake)
-  await assert.rejects(linear.setParent('ACME-2', 'EPC-1x', 'user-1'), { code: 'NOT_SUPPORTED', message: 'Linear projects are not epics in pmkit yet' })
-  await assert.rejects(linear.setParent('ACME-2', 'ACME-99', 'user-1'), { code: 'INVALID_INPUT', message: 'parent ACME-99 is not an existing issue' })
+  await assert.rejects(linear.setParent('ACME-2', 'EPC-1x', 'user-1'), { code: 'INVALID_INPUT', message: 'parent EPC-1x is not an existing issue or epic' })
+  await assert.rejects(linear.setParent('ACME-2', 'ACME-99', 'user-1'), { code: 'INVALID_INPUT', message: 'parent ACME-99 is not an existing issue or epic' })
 })
 
 test('a self parent and a loop are refused', async () => {
@@ -999,4 +1000,146 @@ test('the cycle operations are wired: open and close are final NOT_SUPPORTED ans
   await assert.rejects(linear.closeCycle('2', 'user-1'), { code: 'NOT_SUPPORTED', message: /Linear ends a cycle on its end date/ })
   assert.deepEqual((await linear.listCycles()).map((sprint) => sprint.id), ['1', '2', '3'])
   assert.equal((await linear.currentCycle()).id, '2')
+})
+
+// One project (P-ACM-1) and three issues, with the issue and project stores wired together.
+const PID = '00000000-0000-4000-8000-0000000000a1'
+function epicSetup() {
+  const setupResult = linearSetup()
+  setupResult.projects.seed({ id: PID, name: 'Launch', teamIds: ['team-acme'] })
+  three(setupResult.fake)
+  return setupResult
+}
+
+test('setParent with an epic id sets the project, clears the parent issue and reads back as the epic', async () => {
+  const { tracker: linear, fake, fetch } = epicSetup()
+  fake.records[2].parentId = 'uuid-2'
+  const set = await linear.setParent('ACME-3', 'P-ACM-1', 'user-1')
+  assert.equal(set.before.parent, 'ACME-2')
+  assert.equal(set.after.parent, 'P-ACM-1')
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssueUpdate').input, { projectId: PID, parentId: null })
+  assert.equal(fake.records[2].parentId, null)
+  assert.equal((await linear.getIssue('ACME-3')).parent, 'P-ACM-1')
+})
+
+test('setParent with an issue id on an issue in an epic keeps the project', async () => {
+  const { tracker: linear, fake, fetch } = epicSetup()
+  await linear.setParent('ACME-3', 'P-ACM-1', 'user-1')
+  const set = await linear.setParent('ACME-3', 'ACME-2', 'user-1')
+  assert.equal(set.before.parent, 'P-ACM-1')
+  assert.equal(set.after.parent, 'ACME-2')
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssueUpdate').input, { parentId: 'uuid-2' })
+  assert.equal(fake.records[2].projectId, PID)
+})
+
+test('setParent null clears the parent issue and the project', async () => {
+  const { tracker: linear, fake, fetch } = epicSetup()
+  fake.records[2].parentId = 'uuid-2'
+  fake.records[2].projectId = PID
+  const cleared = await linear.setParent('ACME-3', null, 'user-1')
+  assert.equal('parent' in cleared.after, false)
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssueUpdate').input, { parentId: null, projectId: null })
+  assert.equal(fake.records[2].projectId, null)
+  assert.equal(fake.records[2].parentId, null)
+  assert.equal(mutationsIn(fetch), 1)
+  await linear.setParent('ACME-3', null, 'user-1')
+  assert.equal(mutationsIn(fetch), 1)
+})
+
+test('an epic parent dry run returns before and after and sends no mutation', async () => {
+  const { tracker: linear, fetch } = epicSetup()
+  const dry = await linear.setParent('ACME-3', 'P-ACM-1', 'user-1', { dryRun: true })
+  assert.equal(mutationsIn(fetch), 0)
+  assert.equal('parent' in dry.before, false)
+  assert.equal(dry.after.parent, 'P-ACM-1')
+  const real = await linear.setParent('ACME-3', 'P-ACM-1', 'user-1')
+  assert.deepEqual(comparable(dry.after), comparable(real.after))
+  const same = await linear.setParent('ACME-3', 'P-ACM-1', 'user-1')
+  assert.equal(same.after, same.before)
+  assert.equal(mutationsIn(fetch), 1)
+})
+
+test('setParent with an unknown issue or epic is INVALID_INPUT', async () => {
+  const { tracker: linear, fetch } = epicSetup()
+  await assert.rejects(linear.setParent('ACME-3', 'NOPE-77', 'user-1'), { code: 'INVALID_INPUT', message: 'parent NOPE-77 is not an existing issue or epic' })
+  await assert.rejects(linear.setParent('ACME-3', 'P-ZZZ-9', 'user-1'), { code: 'INVALID_INPUT', message: 'parent P-ZZZ-9 is not an existing issue or epic' })
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('the history of an issue that joins and leaves an epic names the epic by its id', async () => {
+  const { tracker: linear } = epicSetup()
+  await linear.setParent('ACME-3', 'P-ACM-1', 'user-1')
+  await linear.setParent('ACME-3', null, 'user-1')
+  const moves = (await linear.getHistory('ACME-3')).filter((event) => event.field === 'parent')
+  assert.deepEqual(moves.map(({ from, to }) => [from, to]), [[null, 'P-ACM-1'], ['P-ACM-1', null]])
+})
+
+test('createIssue with an epic parent puts the issue in the epic, and updateIssue still refuses parent', async () => {
+  const { tracker: linear, fake, fetch } = epicSetup()
+  const dry = await linear.createIssue({ title: 'In epic', parent: 'P-ACM-1' }, 'user-1', { dryRun: true })
+  assert.equal(dry.after.parent, 'P-ACM-1')
+  assert.equal(mutationsIn(fetch), 0)
+  const { after } = await linear.createIssue({ title: 'In epic', parent: 'p-acm-1' }, 'user-1')
+  assert.equal(after.parent, 'P-ACM-1')
+  assert.equal(lastVariables(fetch, 'PmkitIssueCreate').input.projectId, PID)
+  assert.equal(fake.records.at(-1).projectId, PID)
+  await assert.rejects(linear.updateIssue('ACME-1', { parent: 'P-ACM-1' }, 'user-1'), { code: 'INVALID_INPUT', message: 'parent cannot be set here' })
+})
+
+test('each of the three project keys works as a parent and reads back as the canonical id', async () => {
+  const { tracker: linear, projects } = epicSetup()
+  const slug = projects.projects[0].slugId
+  for (const [index, key] of ['P-ACM-1', slug, PID].entries()) {
+    const issue = `ACME-${index + 1}`
+    assert.equal((await linear.setParent(issue, key, 'user-1')).after.parent, 'P-ACM-1', key)
+  }
+})
+
+test('searchIssues by epic returns the issues whose shown parent is the epic', async () => {
+  const { tracker: linear, fake, fetch } = epicSetup()
+  fake.records[0].projectId = PID
+  fake.records[1].projectId = PID
+  fake.records[1].parentId = 'uuid-3'
+  assert.deepEqual((await linear.searchIssues({ parent: 'P-ACM-1' })).issues.map((issue) => issue.id), ['ACME-1'])
+  assert.deepEqual((await linear.searchIssues({ parent: 'p-acm-1' })).issues.map((issue) => issue.id), ['ACME-1'])
+  assert.deepEqual((await linear.searchIssues({ parent: 'ACME-3' })).issues.map((issue) => issue.id), ['ACME-2'])
+  const before = namesOf(fetch).filter((name) => name === 'PmkitIssues').length
+  assert.deepEqual(await linear.searchIssues({ parent: 'P-ZZZ-9' }), { issues: [], problems: [], hasMore: false })
+  assert.equal(namesOf(fetch).filter((name) => name === 'PmkitIssues').length, before)
+})
+
+const PROJECT_OPERATIONS = {
+  listDeliverables: [],
+  getDeliverable: ['P-ACM-1'],
+  deliverableProgress: ['P-ACM-1'],
+  createDeliverable: [{ title: 'New' }, 'user-1', { dryRun: true }],
+  publishStatusUpdate: [{ epic: 'P-ACM-1', health: 'on_track', body: 'Fine' }, 'user-1', { dryRun: true }],
+  listStatusUpdates: ['P-ACM-1'],
+  listMilestones: [],
+  getMilestone: ['11111111-1111-4111-8111-111111111111'],
+  readDocument: ['abcdef012345'],
+}
+
+test('the project operations are implemented and the milestone and document writes are NOT_SUPPORTED', async () => {
+  const { tracker: linear } = epicSetup()
+  for (const [operation, args] of Object.entries(PROJECT_OPERATIONS)) {
+    try {
+      await linear[operation](...args)
+    } catch (error) {
+      assert.ok(!/does not implement/.test(error.message), operation)
+      assert.equal(error.code, 'NOT_FOUND', operation)
+    }
+  }
+  assert.equal((await linear.listDeliverables())[0].id, 'P-ACM-1')
+  await assert.rejects(linear.createMilestone({ id: 'm' }, 'user-1'), { code: 'NOT_SUPPORTED', nextStep: 'Create the milestone in Linear' })
+  await assert.rejects(linear.createDocument('a.md', 'x', 'user-1'), { code: 'NOT_SUPPORTED', nextStep: 'Create the document in Linear' })
+})
+
+test('a broken mapping stops each project operation through guarded', async () => {
+  const context = setup({ mappings: { status: { in_review: 'Peer Review' } } })
+  const { tracker: linear, fetch } = tracker(context)
+  for (const [operation, args] of Object.entries({ ...PROJECT_OPERATIONS, createMilestone: [{}, 'user-1'], createDocument: ['a.md', 'x', 'user-1'] })) {
+    await assert.rejects(linear[operation](...args), { code: 'NOT_CONFIGURED' }, operation)
+  }
+  assert.ok(!namesOf(fetch).some((name) => /Project|Epic|Document/.test(name)))
 })

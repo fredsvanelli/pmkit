@@ -31,7 +31,8 @@ export function linearDescriptor({ fetch = globalThis.fetch } = {}) {
     configProblems: (pmkit) => [...workspaceProblems(pmkit), ...mappingProblems(pmkit)],
     // The description that scripts/lib/mappings.mjs reads. view is the discover result, viewerId the key owner's id, types the repository's type list.
     describe: (raw, view, viewerId, types) => linearDescription(raw, view, viewerId, types),
-    // Any id that is not a Linear identifier is an epic id, so getDeliverable answers it (PMK-38). Linear names each issue's branch.
+    // An epic id is a project identifier (P-ABC-12) or a project slug, and neither has the shape of an issue id (ACME-1), so any
+    // id that is not an issue id goes to getDeliverable. Linear names each issue's branch.
     settings: () => ({ defaults: builtInDefaults(), epicPrefix: null, isEpicId: (id) => !isIssueId(id), trackerBranch: true }),
     create: async (config, { now, env }) => {
       const { createLinearTracker } = await import('./tracker.mjs')

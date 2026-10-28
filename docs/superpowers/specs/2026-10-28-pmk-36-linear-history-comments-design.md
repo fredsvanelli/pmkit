@@ -133,10 +133,9 @@ The running state starts as the current issue: `toIssue(node)`, plus `sprint` an
 | `fromEstimate`, `toEstimate` | `update`, field `estimate` | The number, or the size on a t-shirt team, as `toIssue` maps it. No event when `resolveMappings(...).estimate` is not `native`, because the issue then reads with no estimate. |
 | `fromDueDate`, `toDueDate` | `update`, field `due` | `YYYY-MM-DD` or `null`. |
 | `addedLabels`, `removedLabels` (ids as fallback) | `update`, field `type`, then `update`, field `labels` | `type` through `typeOf` on the label set before and after, only when it changes. `labels` as the whole sorted list before and after without the type labels, only when it changes. This is the Local shape. |
-| `fromParent`, `toParent` | `update`, field `parent` | Identifiers or `null`. |
+| `fromParent`, `toParent`, `fromProject`, `toProject` | `update`, field `parent` | The shown parent: the parent issue's identifier, else the project's epic id, else `null`. The walk undoes the parent issue and the project apart and emits one event only when the shown parent changes (PMK-38, done). |
 | `relationChanges` with a known code | `link` or `unlink`, field `blocked_by`, `related` or `duplicate_of` | `to` is the other issue's identifier, as Local logs it. |
 | `fromCycle`, `toCycle` | `update`, field `sprint` | `String(cycle.number)`, PMK-37's sprint id, or `null`. |
-| `fromProject`, `toProject` | `update`, field `project` | The project's id, or `null` (see "What PMK-37 and PMK-38 get"). |
 | `fromProjectMilestone`, `toProjectMilestone` | `update`, field `milestone` | The milestone's id, or `null`. |
 | `updatedDescription: true` | `update`, field `description` | No `from` or `to`, as the Local body fields. Linear keeps acceptance criteria in the description (PMK-35), so a change to them reads as a description change. |
 | `archived: true` | `archive` | None. `autoArchived` entries count, with `by` from the actor rule. |
@@ -299,7 +298,7 @@ No test opens a socket.
 ## What PMK-37 and PMK-38 get
 
 - Cycle changes emit `{ op: 'update', field: 'sprint', from, to }` with `String(cycle.number)`, the sprint id the PMK-37 spec chose, so `sprintIssues` and `velocity` read Linear history as they read Local. If PMK-37 changes the id, one function in `history.mjs` changes, and nothing is stored, because Linear history is read fresh on each call.
-- Project changes emit `{ op: 'update', field: 'project', from, to }` with the project's id, and milestone changes `{ op: 'update', field: 'milestone', from, to }` with the project milestone's id. Assumed: PMK-38 maps a project to an epic and a project milestone to a milestone, each by one id function. If PMK-38 shows a project as the issue's `parent`, it renames the field in one table row.
+- Milestone changes emit `{ op: 'update', field: 'milestone', from, to }` with the project milestone's id. Done in PMK-38: a project shows as the issue's `parent` when the issue has no parent issue, so project changes emit no `project` field. They emit `{ op: 'update', field: 'parent', from, to }` with the shown parents, and only when the shown parent changes. The create event's `parent` comes from both values at creation.
 - When `toIssue` starts to fill `sprint`, `milestone` or the project, the replay check in `history.test.mjs` gains those fields.
 - The history documents select their fields beside `...PmkitIssueFields`, so neither merge conflicts on the fragment.
 

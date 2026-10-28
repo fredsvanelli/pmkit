@@ -31,10 +31,10 @@ test('documents that select issue fields start with the fragment', () => {
   assert.match(documents.ISSUE_FRAGMENT, /^fragment PmkitIssueFields on Issue \{/)
 })
 
-test('ISSUE_FRAGMENT is unchanged by PMK-36 and gains only the cycle in PMK-37', () => {
+test('ISSUE_FRAGMENT is unchanged by PMK-36, gains the cycle in PMK-37 and the project in PMK-38', () => {
   assert.equal(documents.ISSUE_FRAGMENT, `fragment PmkitIssueFields on Issue {
   id identifier title description priority estimate dueDate branchName archivedAt trashed createdAt updatedAt
-  team { id key } state { id name type } assignee { id } parent { identifier }
+  team { id key } state { id name type } assignee { id } parent { identifier } project { id slugId identifier } projectMilestone { id }
   cycle { id number }
   labels(first: 50) { nodes { id name parent { name } } pageInfo { hasNextPage endCursor } }
   children(first: 50) { nodes { identifier } pageInfo { hasNextPage endCursor } }
@@ -49,4 +49,14 @@ test('the parent chain nests 10 levels', () => {
 
 test('the issue fragment selects the cycle', () => {
   assert.match(documents.ISSUE_FRAGMENT, /cycle \{ id number \}/)
+})
+
+test('the issue fragment selects the project and the project milestone', () => {
+  assert.match(documents.ISSUE_FRAGMENT, /project \{ id slugId identifier \}/)
+  assert.match(documents.ISSUE_FRAGMENT, /projectMilestone \{ id \}/)
+})
+
+test('the history query selects the keys an epic id is made from', () => {
+  assert.match(documents.ISSUE_HISTORY_QUERY, /fromProject \{ id slugId identifier \} toProject \{ id slugId identifier \}/)
+  assert.match(documents.ISSUE_HISTORY_QUERY, /fromProjectMilestone \{ id \} toProjectMilestone \{ id \}/)
 })

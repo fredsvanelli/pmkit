@@ -17,7 +17,8 @@ import assert from 'node:assert/strict'
 import { assertTracker } from './lib/contract.mjs'
 
 // The contract families. A hosted adapter lists the ones it implements, and the suite skips the tests that need another.
-export const FAMILIES = ['discovery', 'issues', 'relations', 'history', 'time', 'cycles', 'cycle-lifecycle', 'deliverables', 'milestones', 'releases', 'documents']
+// milestone-writes and document-writes cover creating a milestone or a document, which a tracker can leave out while it reads them.
+export const FAMILIES = ['discovery', 'issues', 'relations', 'history', 'time', 'cycles', 'cycle-lifecycle', 'deliverables', 'milestones', 'milestone-writes', 'releases', 'documents', 'document-writes']
 
 const CATEGORIES = ['triage', 'backlog', 'todo', 'in_progress', 'in_review', 'done', 'canceled']
 const DOC_PATH = 'contract/notes.md'
@@ -360,7 +361,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.deepEqual(await tracker.listMilestones(), [])
     })
 
-    it('creates a milestone that list and get agree on', ['milestones'], async ({ tracker, actor }) => {
+    it('creates a milestone that list and get agree on', ['milestones', 'milestone-writes'], async ({ tracker, actor }) => {
       const created = await tracker.createMilestone({ id: 'contract-m1', name: 'Contract one', due: '2099-01-31' }, actor)
       assert.equal(created.before, null)
       assert.equal(created.after.id, 'contract-m1')
@@ -374,7 +375,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       await rejects(() => tracker.getMilestone('no-such-milestone'), 'NOT_FOUND')
     })
 
-    it('a milestone dry run returns after and creates nothing', ['milestones'], async ({ tracker, actor }) => {
+    it('a milestone dry run returns after and creates nothing', ['milestones', 'milestone-writes'], async ({ tracker, actor }) => {
       const { before, after } = await tracker.createMilestone({ id: 'contract-dry' }, actor, { dryRun: true })
       assert.equal(before, null)
       assert.equal(after.id, 'contract-dry')
@@ -445,7 +446,11 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.deepEqual((await tracker.searchIssues({ text: 'drop' })).issues, [])
     })
 
-    it('creates a document and reads it back, and refuses a second create at the same path', ['documents'], async ({ tracker, actor }) => {
+    it('rejects an unknown document with NOT_FOUND', ['documents'], async ({ tracker }) => {
+      await rejects(() => tracker.readDocument(DOC_PATH), 'NOT_FOUND')
+    })
+
+    it('creates a document and reads it back, and refuses a second create at the same path', ['documents', 'document-writes'], async ({ tracker, actor }) => {
       await rejects(() => tracker.readDocument(DOC_PATH), 'NOT_FOUND')
       const created = await tracker.createDocument(DOC_PATH, '# Notes\n\nHello.\n', actor)
       assert.equal(created.before, null)

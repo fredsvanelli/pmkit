@@ -65,7 +65,13 @@ test('every row of the field table becomes its event', () => {
   assert.deepEqual(run({ fromParent: null, toParent: { identifier: 'ACME-9' } }, { parent: { identifier: 'ACME-9' } }), [{ ...meta, op: 'update', field: 'parent', from: null, to: 'ACME-9' }])
   assert.deepEqual(run({ fromParent: { identifier: 'ACME-9' }, toParent: null }), [{ ...meta, op: 'update', field: 'parent', from: 'ACME-9', to: null }])
   assert.deepEqual(run({ fromCycle: null, toCycle: { number: 4 } }), [{ ...meta, op: 'update', field: 'sprint', from: null, to: '4' }])
-  assert.deepEqual(run({ fromProject: { id: 'p1' }, toProject: null }), [{ ...meta, op: 'update', field: 'project', from: 'p1', to: null }])
+  // With no parent issue the project shows as the parent, named by its epic id: the identifier, else the slug when the
+  // identifier has another shape (PMK-38). Behind a parent issue a project change shows no event.
+  const project = { id: '00000000-0000-4000-8000-0000000000a1', slugId: 'a1b2c3d4e5f6', identifier: 'P-ACM-1' }
+  const launch = { ...project, identifier: 'LAUNCH' }
+  assert.deepEqual(run({ fromProject: project, toProject: null }), [{ ...meta, op: 'update', field: 'parent', from: 'P-ACM-1', to: null }])
+  assert.deepEqual(run({ fromProject: null, toProject: launch }, { project: launch }), [{ ...meta, op: 'update', field: 'parent', from: null, to: 'a1b2c3d4e5f6' }])
+  assert.deepEqual(run({ fromProject: null, toProject: project }, { project, parent: { identifier: 'ACME-9' } }), [])
   assert.deepEqual(run({ fromProjectMilestone: null, toProjectMilestone: { id: 'm1' } }), [{ ...meta, op: 'update', field: 'milestone', from: null, to: 'm1' }])
   assert.deepEqual(run({ updatedDescription: true }), [{ ...meta, op: 'update', field: 'description' }])
   assert.deepEqual(run({ archived: true }), [{ ...meta, op: 'archive' }])
@@ -222,4 +228,38 @@ test('replaying the events gives the current issue for the fields the events cov
     ['6', 'update', 'sprint', '3', '4'],
     ['6', 'update', 'milestone', 'm0', 'm1'],
   ])
+})
+
+// The shown parent is the parent issue, else the project's epic id. History undoes the two apart and shows only the result.
+const EPIC = { id: '00000000-0000-4000-8000-0000000000a1', slugId: 'a1b2c3d4e5f6', identifier: 'P-ACM-1' }
+const OTHER_EPIC = { id: '00000000-0000-4000-8000-0000000000a2', slugId: 'b2c3d4e5f6a1', identifier: 'P-ACM-2' }
+const parentEvents = (events) => events.filter((e) => e.field === 'parent').map(({ from, to }) => [from, to])
+function assertReplay(current, entries) {
+  const events = toEvents({ node: current, origin, entries, comments: [] }, context)
+  const state = replay(events)
+  assert.equal(state.parent, toIssue(current, context).parent)
+  assert.equal('project' in state, false)
+  assert.equal(events.some((e) => e.field === 'project'), false)
+  return events
+}
+
+test('an issue with only an epic that joined later has no parent at creation', () => {
+  const events = assertReplay(node({ project: EPIC }), [entry(at(3), { fromProject: null, toProject: EPIC })])
+  assert.equal(events[0].to.parent, undefined)
+  assert.deepEqual(parentEvents(events), [[null, 'P-ACM-1']])
+})
+
+test('an issue created in an epic that later got a parent issue shows the epic at creation', () => {
+  const events = assertReplay(node({ project: EPIC, parent: { identifier: 'ACME-9' } }), [entry(at(3), { fromParent: null, toParent: { identifier: 'ACME-9' } })])
+  assert.equal(events[0].to.parent, 'P-ACM-1')
+  assert.deepEqual(parentEvents(events), [['P-ACM-1', 'ACME-9']])
+})
+
+test('an issue that keeps its parent issue while its project changes has no parent event', () => {
+  const events = assertReplay(node({ project: OTHER_EPIC, parent: { identifier: 'ACME-9' } }), [
+    entry(at(2), { fromParent: null, toParent: { identifier: 'ACME-9' } }),
+    entry(at(3), { fromProject: EPIC, toProject: OTHER_EPIC }),
+  ])
+  assert.equal(events[0].to.parent, 'P-ACM-1')
+  assert.deepEqual(parentEvents(events), [['P-ACM-1', 'ACME-9']])
 })
