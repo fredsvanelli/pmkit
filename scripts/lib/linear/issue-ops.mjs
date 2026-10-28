@@ -87,7 +87,12 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     const current = await context()
     const members = current.raw.users.filter((user) => !user.app).map((user) => user.id)
     checkFilter(filter, { types: Object.keys(current.mappings?.types ?? {}), members, sprintExists: (id) => cycleKey(id) !== null })
-    const translated = translateFilter(filter, current)
+    let epicProject
+    if (filter.parent !== undefined && !isIssueId(filter.parent) && resolveEpic) {
+      epicProject = await resolveEpic(filter.parent)
+      if (!epicProject) return NOTHING()
+    }
+    const translated = translateFilter(filter, { ...current, epicProject })
     if (filter.limit === 0 || translated.empty) return NOTHING()
     const { nodes, hasMore } = await client.paginate(ISSUES_QUERY, translated.variables, {
       select: (data) => data.issues,

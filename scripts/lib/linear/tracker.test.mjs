@@ -1086,3 +1086,16 @@ test('each of the three project keys works as a parent and reads back as the can
     assert.equal((await linear.setParent(issue, key, 'user-1')).after.parent, 'P-ACM-1', key)
   }
 })
+
+test('searchIssues by epic returns the issues whose shown parent is the epic', async () => {
+  const { tracker: linear, fake, fetch } = epicSetup()
+  fake.records[0].projectId = PID
+  fake.records[1].projectId = PID
+  fake.records[1].parentId = 'uuid-3'
+  assert.deepEqual((await linear.searchIssues({ parent: 'P-ACM-1' })).issues.map((issue) => issue.id), ['ACME-1'])
+  assert.deepEqual((await linear.searchIssues({ parent: 'p-acm-1' })).issues.map((issue) => issue.id), ['ACME-1'])
+  assert.deepEqual((await linear.searchIssues({ parent: 'ACME-3' })).issues.map((issue) => issue.id), ['ACME-2'])
+  const before = namesOf(fetch).filter((name) => name === 'PmkitIssues').length
+  assert.deepEqual(await linear.searchIssues({ parent: 'P-ZZZ-9' }), { issues: [], problems: [], hasMore: false })
+  assert.equal(namesOf(fetch).filter((name) => name === 'PmkitIssues').length, before)
+})

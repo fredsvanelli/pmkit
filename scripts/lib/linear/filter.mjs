@@ -25,7 +25,7 @@ function cycleClause(sprint, context) {
 
 /**
  * Translates a filter that checkFilter accepted. `clientSteps` holds 'blocked' and 'sort' when the adapter must finish them.
- * `serverLimit` is set only when Linear's order is the final order. `empty` says no state matches `categories`, so no request is needed.
+ * `context.epicProject` is the project node of an epic filter. `serverLimit` is set only when Linear's order is the final order. `empty` says no state matches `categories`, so no request is needed.
  */
 export function translateFilter(filter, context) {
   if (filter.release !== undefined) throw notSupported('Linear releases are not mapped yet, so --release does not work on Linear')
@@ -49,8 +49,14 @@ export function translateFilter(filter, context) {
   }
   for (const name of filter.labels ?? []) and.push({ labels: { some: { name: { eq: name } } } })
   if (filter.parent !== undefined) {
-    if (!isIssueId(filter.parent)) throw new PmkitError('NOT_SUPPORTED', 'Linear projects are not epics in pmkit yet', 'Use an issue id as the parent')
-    and.push({ parent: { id: { eq: issueKey(filter.parent) } } })
+    if (isIssueId(filter.parent)) {
+      and.push({ parent: { id: { eq: issueKey(filter.parent) } } })
+    } else if (context.epicProject) {
+      // An epic's members are the issues in its project that have no parent issue, as getIssue shows them (spec, "The parent rule").
+      and.push({ project: { id: { eq: context.epicProject.id } } }, { parent: { null: true } })
+    } else {
+      throw new PmkitError('INVALID_INPUT', `parent ${filter.parent} is not an existing issue or epic`, 'pmkit issues list')
+    }
   }
   if (filter.sprint !== undefined && filter.sprint !== null) {
     const clause = cycleClause(filter.sprint, context)

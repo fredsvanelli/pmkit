@@ -32,9 +32,13 @@ test('assignee id, me and none', () => {
   assert.deepEqual(clauses({ assignee: 'none' })[1], { assignee: { null: true } })
 })
 test('labels, one clause each', () => assert.deepEqual(clauses({ labels: ['Docs', 'S'] }).slice(1), [{ labels: { some: { name: { eq: 'Docs' } } } }, { labels: { some: { name: { eq: 'S' } } } }]))
-test('parent by identifier; anything else is NOT_SUPPORTED', () => {
+test('parent by issue identifier gives the parent clause', () => {
   assert.deepEqual(clauses({ parent: 'acme-2' })[1], { parent: { id: { eq: 'ACME-2' } } })
-  assert.throws(() => translateFilter({ parent: 'EPC-1x' }, context), { code: 'NOT_SUPPORTED' })
+})
+test('parent by epic id gives the project clause and no parent issue', () => {
+  const found = clauses({ parent: 'P-ABC-12' }, { ...context, epicProject: { id: 'project-uuid' } })
+  assert.deepEqual(found.slice(1), [{ project: { id: { eq: 'project-uuid' } } }, { parent: { null: true } }])
+  assert.throws(() => translateFilter({ parent: 'P-ABC-12' }, context), { code: 'INVALID_INPUT' })
 })
 test('blocked true narrows on the server and checks on the client; false is client only', () => {
   const yes = translateFilter({ blocked: true }, context)
