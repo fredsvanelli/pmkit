@@ -51,7 +51,7 @@ Consequences:
 - `customerStatuses` and `customerTiers` answer on Free, so they prove nothing, as the triage reads did. They are also not needed to decide availability.
 - The schema shows no unit for `revenue`. The Linear UI treats it as the annual contract value. The command shows and sets the integer as Linear stores it and does not convert (builder's call).
 - `size` is a Float in the schema. The command accepts a number of at least 0 with an optional decimal part. `revenue` stays a whole number.
-- Linear's docs page for customers was not read in this run. Stage 3 records the page and date in `API-VERIFICATION.md`, as PMK-43 did for triage. The docs say all plans, so the plan gate in the Linear tab and the Unified model does not apply.
+- Linear's docs page for customers was read on 2026-10-28. Stage 3 records the page and date in `API-VERIFICATION.md`, as PMK-43 did for triage. The docs say all plans, so the plan gate in the Linear tab and the Unified model does not apply.
 
 ## Goals
 
@@ -91,7 +91,7 @@ Chosen: approach 2. It is the pattern the code already has, and the only change 
 ### How the command decides the capability is absent
 
 1. A live probe of `customers`. It fails on Free with a GraphQL error, so it would work, but it sends a request that the cache already answers and it relies on Linear's message text. Rejected as the test.
-2. The cached flag `raw.flags.customersEnabled`, with the plan only choosing the reason and the hint. No extra request, and the answer matches the manifest.
+2. The cached flag `raw.flags.customersEnabled`, with the plan never changing the reason or the hint. No extra request, and the answer matches the manifest.
 3. A new manifest capability. It changes the fixed list of 20 IDs for one system-specific skill. Rejected, as in PMK-43.
 
 Chosen: approach 2. A stale cache can say "enabled" when Linear has turned customers off. The command then catches the "Customer requests are not available" GraphQL error and returns the same absent result with `reason: stale` and the hint to run `pmkit discover` (builder's call).
@@ -274,7 +274,7 @@ Nothing from PMK-36, PMK-37 or PMK-38, and no operation from PMK-35. It reads th
 |---|---|
 | A `linear: true` extension in `customers.mjs`, not contract operations | Customers exist only in Linear. The contract and every other tracker stay unchanged, and PMK-43 set the pattern. |
 | `ctx.linear(feature)` picks `triage` or `customers` | Two features now share the hook. Returning one object of features would work too, but the argument keeps each call site explicit (builder's call). |
-| Availability from `raw.flags.customersEnabled`, with the plan only choosing the hint | Linear enforces the flag, the live reads fail on Free, and the manifest uses the same flag for `demand_signals`. No request is needed. |
+| Availability from `raw.flags.customersEnabled`, with the plan never changing the hint | Linear enforces the flag, the live reads fail on Free, and the manifest uses the same flag for `demand_signals`. No request is needed. |
 | Reads exit 0 with `available: false`, writes exit 2 with `NOT_SUPPORTED` | It follows PMK-43 and the Linear tab's rule to report `customers_off` on every plan. |
 | No manifest change | `demand_signals` already reports `native` or `absent` from the same flag. |
 | Names, not ids, for status, tier, customer and project | A user does not hold Linear ids. An ambiguous or unknown name fails with the valid choices. |
