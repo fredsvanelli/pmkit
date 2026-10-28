@@ -2,7 +2,7 @@
 id: PMK-35
 title: "Implement issues, relations and search for Linear"
 type: feature
-status: in_review
+status: done
 priority: medium
 estimate: 8
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-33]
 milestone: linear
 branch: pmk-35-implement-issues-relations-and-search
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-28T03:09:53Z
+updated: 2026-10-28T17:25:21Z
 ---
 
 ## Description

@@ -2,7 +2,7 @@
 id: PMK-43
 title: Add the linear-triage-rotation command
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 3
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-33]
 milestone: linear
 branch: pmk-43-add-the-linear-triage-rotation-command
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-28T02:43:32Z
+updated: 2026-10-28T17:25:22Z
 ---
 
 ## Description
