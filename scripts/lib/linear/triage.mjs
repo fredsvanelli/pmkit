@@ -52,3 +52,50 @@ export function dutyText(team, duty) {
   else lines.push(`rotation: ${duty.members.map((member) => (member.id === duty.current?.id ? `${member.name} (current)` : member.name)).join(', ')}`)
   return lines.join('\n')
 }
+
+const TARGETS = {
+  team: (node) => node.suggestedTeam && { id: node.suggestedTeam.id, name: node.suggestedTeam.key ?? node.suggestedTeam.name },
+  project: (node) => node.suggestedProject && { id: node.suggestedProject.id, name: node.suggestedProject.name },
+  assignee: (node) => node.suggestedUser && { id: node.suggestedUser.id, name: node.suggestedUser.name },
+  label: (node) => node.suggestedLabel && { id: node.suggestedLabel.id, name: node.suggestedLabel.name },
+  similarIssue: (node) => node.suggestedIssue && { id: node.suggestedIssue.identifier, name: node.suggestedIssue.title },
+}
+TARGETS.relatedIssue = TARGETS.similarIssue
+
+function suggestionOf(node) {
+  const reasons = node.presentedReasons ?? node.metadata?.reasons ?? []
+  return { type: node.type, target: TARGETS[node.type]?.(node) ?? null, score: node.metadata?.score ?? null, reasons }
+}
+
+/** The active suggestions per issue, in input order, and how many issues have none. nodes are the issues of the inbox query. */
+export function suggestionsView(nodes) {
+  const issues = []
+  let withoutSuggestions = 0
+  for (const node of nodes) {
+    const active = (node.suggestions?.nodes ?? []).filter((item) => item.state === undefined || item.state === 'active')
+    if (active.length === 0) withoutSuggestions += 1
+    else issues.push({ id: node.identifier, title: node.title, suggestions: active.map(suggestionOf) })
+  }
+  return { issues, withoutSuggestions }
+}
+
+const TYPE_LABEL = { similarIssue: 'similar issue', relatedIssue: 'related issue' }
+
+/** The plain text of a suggestions view. */
+export function suggestionsText(view) {
+  if (view.issues.length === 0) {
+    if (view.withoutSuggestions === 0) return 'no issue is waiting in triage'
+    return `no active suggestions for ${view.withoutSuggestions} ${view.withoutSuggestions === 1 ? 'issue' : 'issues'} in triage`
+  }
+  const lines = []
+  for (const issue of view.issues) {
+    lines.push(`${issue.id}  ${issue.title}`)
+    for (const item of issue.suggestions) {
+      const score = item.score === null ? '' : ` (score ${item.score})`
+      const name = item.type in TYPE_LABEL ? item.target?.id : item.target?.name
+      lines.push(`  ${TYPE_LABEL[item.type] ?? item.type} ${name ?? '(unknown)'}${score}`)
+    }
+  }
+  lines.push('These are suggestions from Linear. Apply one with a normal issue edit.')
+  return lines.join('\n')
+}
