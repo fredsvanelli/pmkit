@@ -4,6 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { userStoreEnv } from './test-helpers.mjs'
 
 export const NOW = '2026-10-23T12:00:00Z'
 export const SEED = '1'
@@ -27,6 +28,10 @@ export function compareNames(caseNames, commandNames) {
   return { missing: commandNames.filter((name) => !cases.has(name)), extra: caseNames.filter((name) => !commands.has(name)) }
 }
 
+let storeEnv
+// One fake home per test process, made on first use, so a spawned CLI never reaches the real one.
+const childStoreEnv = () => (storeEnv ??= userStoreEnv().env)
+
 /**
  * The environment of every child run, built from scratch so nothing from the
  * developer's shell (PMKIT_USER, git identity, global git config) reaches the CLI.
@@ -42,6 +47,7 @@ export function childEnv() {
     GIT_CONFIG_NOSYSTEM: '1',
     // Stops git from reading the config of a repository that contains the temp folder.
     GIT_CEILING_DIRECTORIES: fs.realpathSync(os.tmpdir()),
+    ...childStoreEnv(),
   }
   if (process.platform === 'win32') env.SYSTEMROOT = process.env.SYSTEMROOT ?? ''
   return env
