@@ -222,7 +222,7 @@ A mutation that fails after others succeeded stops the loop. The error keeps its
 
 ### Opening and closing (criterion 2)
 
-Both operations run after the usual checks (workspace, mappings, and for a write, the viewer) and then answer, with no request:
+Both operations run after the workspace and mappings checks and then answer, with no request:
 
 | Operation | Error |
 |---|---|
