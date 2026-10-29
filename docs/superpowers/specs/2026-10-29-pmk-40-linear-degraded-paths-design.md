@@ -1,6 +1,6 @@
 # PMK-40 design: exercise the degraded paths of every command against Linear
 
-Issue PMK-40, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: draft. An autonomous run wrote it without dialogue, and "Open questions" holds the choices that belong to the user.
+Issue PMK-40, epic EPC-5 (Linear tracker adapter), milestone `linear`. Status: answered. An autonomous run wrote it without dialogue, and the user answered the three open questions (see "Answers").
 
 ## Problem
 
@@ -99,7 +99,7 @@ The sandbox reaches every path except `conditional`. A conditional entry needs t
 | --- | --- |
 | `scripts/lib/path-notes.mjs` | New. `pathNote(entry, facts)` returns one line or `null` for a native entry. One phrase per capability (table below). |
 | `scripts/pmkit.mjs` | Each command in the list below returns `notes`. The runner prints `note: <line>` on stderr for each, after the warnings, in text and `--json` modes. |
-| `scripts/lib/linear/tracker.mjs` | `logTime` and the five release operations throw `NOT_SUPPORTED` with the manifest's reason and `enableHint`, not the stub text. Release reads follow "Open questions", question 1. |
+| `scripts/lib/linear/tracker.mjs` | `logTime` and the five release operations throw `NOT_SUPPORTED` with the manifest's reason and `enableHint`, not the stub text. Release reads answer with an empty result and a note (answer 1). |
 | `scripts/lib/linear/triage.mjs`, `customers.mjs` | The unavailable answer adds one note: "triage rotation is unavailable on this workspace (plan free); <hint>". The four text lines stay. |
 | `scripts/lib/linear/degraded-live.mjs` | New. The opt-in live run (see "The live run"). `npm test` does not load it. |
 | `scripts/cli-degraded.test.mjs` | New. The offline coverage test over the fake Linear API. |
@@ -146,7 +146,7 @@ A refusal is one line too. The CLI prints `error: NOT_SUPPORTED <message>` and `
 | `epic update-status`, `epic updates` | `status_update` | native | the updates, no note | `updates` yes |
 | `milestone list`, `milestone get` | `deliverables` | native | the milestones, no note | yes |
 | `milestone create` | `deliverables`, `unsupported: [createMilestone]` | native, operation unsupported | refuses `the Linear adapter reads project milestones but does not create them` | yes |
-| `release list`, `release get`, `release issues` | `releases` | absent | question 1: an empty answer with `note: releases is absent: <hint>`, or a refusal | yes |
+| `release list`, `release get`, `release issues` | `releases` | absent | an empty answer with `note: releases is absent: <hint>` (answer 1) | yes |
 | `release create`, `release mark-released` | `releases` | absent | refuses `NOT_SUPPORTED` with the plan hint | yes |
 | `release-notes` | `releases`, `cycles` | releases absent | `--release` refuses; `--sprint current` builds notes with `note: release notes built from sprint <id>: <hint>` | yes |
 | `docs read` | `documents` | native | the document, no note | no, needs a document |
@@ -184,7 +184,7 @@ Counted from operations, not measured: preflight 4, team and states 3, cycles 1,
 - `scripts/lib/path-notes.test.mjs`: one case per row of "The note phrases", and `null` for native.
 - `scripts/cli-degraded.test.mjs`: for each capability in `SERVED_BY` and each command that serves it, a fake manifest sets the capability to `derived`, `conditional` and `absent` in turn. The command must print exactly one `note:` line or refuse with `NOT_SUPPORTED` whose message names the capability's reason. A list of exempt commands (the native write commands PMK-39 covers) needs a reason per entry. The Linear-only commands run against `fakeWorkspace` on Free.
 - The test fails when a command joins `SERVED_BY` without a case, so a new command cannot skip rule 4.
-- Existing goldens and `cli.test.mjs` keep their stdout. Local tests that check stderr gain the Local note for `native_metrics` and `linked_code` if question 2 is answered A.
+- Existing goldens and `cli.test.mjs` keep their stdout. Local tests that check stderr gain the Local note for `native_metrics` and `linked_code` (answer 2).
 
 ## Acceptance criteria map
 
@@ -201,11 +201,11 @@ Counted from operations, not measured: preflight 4, team and states 3, cycles 1,
 - The native write commands that PMK-39 already exercises stay out of the live run.
 - `epic progress` runs offline only. A live case would need `projectCreate`, which `SUITE_ALLOWLIST` does not hold.
 
-## Open questions
+## Answers
 
-1. **Release reads on a workspace without releases.** A: `release list`, `get` and `issues` answer with the empty shape their schema has, plus `note: releases is absent: <hint>`, as triage and customers answer on Free. B: all five release commands refuse with `NOT_SUPPORTED` and the hint. Recommendation: A, because skills that list releases then need no error branch, and the writes still refuse.
-2. **The note on the Local tracker.** A: print it on every tracker, so Local `metrics` and `pr` commands say "computed from .issues/events.jsonl" and "read from git". B: print it on hosted trackers only. Recommendation: A, because rule 4 does not depend on the tracker. Some Local stderr assertions change.
-3. **Who runs the live check.** The run sends 4 seed mutations to the test team. A: the implementation stage runs it once and records the numbers. B: the user runs it. Recommendation: A, inside the guard and the cap.
+1. Release reads (`release list`, `get`, `issues`) on a workspace without releases, such as the Free plan, answer with the empty shape their schema has plus `note: releases is absent: <hint>`. The writes still refuse with `NOT_SUPPORTED`.
+2. The `note:` line prints on every tracker, Local included, by the same rule. Local `metrics` and `pr` commands say "computed from .issues/events.jsonl" and "read from git". Local tests that assert stderr change.
+3. The implementation stage does not run the live check. A separate agent runs it in stage 6, so the plan's last task is the live run, marked "not run in stage 3".
 
 ## Risks
 
