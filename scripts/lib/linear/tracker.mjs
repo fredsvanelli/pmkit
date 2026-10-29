@@ -160,7 +160,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
       )
     })
 
-  // Release reads on a workspace without releases (the Free plan) answer with the empty shape, and the command prints the manifest's note. No release query is sent.
+  // Release reads on a workspace without releases (the Free plan) answer with the empty shape (a get is NOT_FOUND), and the command prints the manifest's note. No release query is sent.
   const releasesAbsent = async () => (await capabilities()).capabilities.find((c) => c.id === 'releases')?.path === 'absent'
   const releaseRead = (operation, empty) => {
     const unimplemented = stub(operation)
@@ -168,7 +168,10 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
   }
   const releaseReads = {
     listReleases: releaseRead('listReleases', () => []),
-    getRelease: releaseRead('getRelease', (id) => ({ id, name: id, state: 'planned', description: '' })),
+    // Without releases no id can exist, so a get is a miss, as on Local.
+    getRelease: releaseRead('getRelease', (id) => {
+      throw new PmkitError('NOT_FOUND', `release ${id} does not exist`, 'pmkit release list')
+    }),
     releaseIssues: releaseRead('releaseIssues', () => []),
   }
 

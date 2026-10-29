@@ -1521,7 +1521,7 @@ test('linear customers link --dry-run resolves with reads and sends no mutation'
   assert.match(text.stdout, /\ndry run: nothing was written\n$/)
 })
 
-test('release list, get and issues on the Free plan answer empty with a note and send no release query', async () => {
+test('release list and issues on the Free plan answer empty with a note, release get is NOT_FOUND, and no release query is sent', async () => {
   const { fetch } = withIssues(['A'])
   const note = 'note: releases is absent: Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings\n'
   const list = await linear(fetch, ['release', 'list', '--json'])
@@ -1529,9 +1529,8 @@ test('release list, get and issues on the Free plan answer empty with a note and
   assert.deepEqual(JSON.parse(list.stdout), [])
   assert.equal(list.stderr, note)
   const get = await linear(fetch, ['release', 'get', '1.0', '--json'])
-  assert.equal(get.code, 0, get.stderr)
-  assert.deepEqual(JSON.parse(get.stdout), { id: '1.0', name: '1.0', state: 'planned', description: '' })
-  assert.equal(get.stderr, note)
+  assert.equal(get.code, 2, get.stderr)
+  assert.deepEqual(JSON.parse(get.stdout).error, { code: 'NOT_FOUND', message: 'release 1.0 does not exist', nextStep: 'pmkit release list' })
   const issues = await linear(fetch, ['release', 'issues', '1.0', '--json'])
   assert.equal(issues.code, 0, issues.stderr)
   assert.deepEqual(JSON.parse(issues.stdout), [])
