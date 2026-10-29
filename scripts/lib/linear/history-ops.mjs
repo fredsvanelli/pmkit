@@ -72,9 +72,10 @@ export function historyOperations({ client, ops }) {
     try {
       return (await client.request(COMMENT_BY_ID_QUERY, { id: commentId }))?.comments?.nodes?.[0]
     } catch (error) {
-      // Linear answers an id it cannot read as a UUID with INPUT_ERROR on the `comments` field, which is a comment that does not exist.
+      // Linear answers an id it cannot read as a UUID with an error on the `comments` field, which is a comment that does not exist.
+      // The live run (PMK-39) recorded the code INVALID_INPUT, type 'invalid input', message 'Argument Validation Error'.
       const first = error instanceof PmkitError ? error.details?.linear?.errors?.[0] : undefined
-      if (first?.code === 'INPUT_ERROR' && first.path?.[0] === 'comments') return undefined
+      if ((first?.code === 'INPUT_ERROR' || first?.code === 'INVALID_INPUT') && first.path?.[0] === 'comments') return undefined
       throw error
     }
   }

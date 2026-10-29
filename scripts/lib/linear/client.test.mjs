@@ -372,6 +372,16 @@ test('a lower-case cause code, no cause, or a message with the key gives "networ
   }
 })
 
+test('a write guard refusal surfaces as INVALID_INPUT that names the guard and the rule, not as a network error', async () => {
+  const refusal = Object.assign(new Error('refusing PmkitIssueUpdate: assigneeId is not the key owner'), { guardRefusal: true })
+  const { client } = make({ routes: { PmkitIssueUpdate: { throws: refusal } } })
+  const error = await client.request('mutation PmkitIssueUpdate($id: String!) { x }', { id: '1' }).catch((caught) => caught)
+  assert.ok(error instanceof PmkitError)
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.match(error.message, /write guard refused the request: refusing PmkitIssueUpdate: assigneeId is not the key owner/)
+  assert.ok(!/network error/.test(error.message))
+})
+
 test('HTTP 503 on a query is retried', async () => {
   const { slept, sleep } = sleeper()
   const error = await failure({ status: 503, json: { errors: [{ message: 'down' }] } }, { sleep })

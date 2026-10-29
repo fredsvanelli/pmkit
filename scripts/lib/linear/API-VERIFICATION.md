@@ -187,7 +187,9 @@ Estimated, not measured. The run aims at under 1,000 requests and stops suite re
 | A description with a criteria list round-trips through `updateIssue` and `getIssue` | PMK-35 | `unverified` |
 | Which parts of a comment body survive (marker line, checklist, code fence) | PMK-36 | `unverified` |
 | History codes and sides for `blocks`, `duplicate` and a removed relation | PMK-36 | `unverified` |
-| A new comment moves `updatedAt` | PMK-36 | `unverified` |
+| A new comment moves `updatedAt` | PMK-36 | A comment does not change the issue's `updatedAt` (PMK-39 live run) |
+| A missing comment id | PMK-36 | `comments(filter: { id })` answers HTTP 200 with `errors[0]` holding `message: 'Argument Validation Error'`, `path: ['comments']`, and extensions `code: 'INVALID_INPUT'`, `type: 'invalid input'`, `userError: true`. The code is not `INPUT_ERROR`. The adapter maps this answer to NOT_FOUND. |
+| An update right after create | PMK-39 | The history had no `update` entry for a title change made seconds after create, so the suite sets `mergesQuickEdits` on Linear. Not probed further. |
 | `endsAt` equals the next `startsAt`, the time of day, `isPast` and `completedAt` | PMK-37 | `unverified` |
 
 ### Open facts

@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import test from 'node:test'
+import test, { after } from 'node:test'
 import { runTrackerContract } from '../../contract-suite.mjs'
 import { ACME_STATES, ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeWorkspace } from '../../fake-linear-api.mjs'
 import { tempDir, userStoreEnv } from '../../test-helpers.mjs'
@@ -97,3 +97,21 @@ test('no file under PMKIT_HOME holds the key after a create', async () => {
     teardown()
   }
 })
+
+// The live run is a shared workspace: the suite may assign only to the key owner, and Linear may merge a quick edit into the
+// create entry of the history. A setup states both with `assignee` and `mergesQuickEdits`.
+const assigned = []
+runTrackerContract({
+  name: 'Linear tracker contract with assignee and mergesQuickEdits',
+  families: ['discovery', 'issues', 'history'],
+  setup() {
+    const env = linearContract()
+    const assign = env.tracker.assign
+    const tracker = Object.assign(Object.create(env.tracker), {
+      assign: (id, who, ...rest) => { assigned.push(who); return assign(id, who, ...rest) },
+    })
+    return { ...env, tracker, assignee: 'user-2', mergesQuickEdits: true }
+  },
+})
+
+after(() => assert.deepEqual([...new Set(assigned.filter((who) => who !== null))], ['user-2']))

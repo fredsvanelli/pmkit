@@ -395,7 +395,7 @@ export function createGuardedFetch({ fetch, workspace, allowlist = SUITE_ALLOWLI
 
   function refuse(message) {
     totals.refused.push(message)
-    throw new Error(message)
+    throw Object.assign(new Error(message), { guardRefusal: true })
   }
 
   function recordRate(headers) {

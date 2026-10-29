@@ -118,7 +118,7 @@ export function buildLiveRun({ env, fetch, workspace, sleep, now = () => new Dat
       return { id: found.id, start: found.start, end: found.end }
     }
     return {
-      tracker, actor: run.viewer.id, today: run.today, env: run.env, root: run.root, cycles: { active: pick('active'), planned: pick('planned') },
+      tracker, actor: run.viewer.id, assignee: run.viewer.id, mergesQuickEdits: true, today: run.today, env: run.env, root: run.root, cycles: { active: pick('active'), planned: pick('planned') },
       async teardown() {
         await sweep()
         fs.rmSync(path.join(run.root, '.pmkit', 'capacity.yaml'), { force: true })
