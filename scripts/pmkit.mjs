@@ -707,6 +707,8 @@ export const COMMANDS = [
       if (since !== undefined && rangeInstant(since) > rangeInstant(effectiveUntil, { endOfDay: true })) throw usageError(until === undefined ? '--since is after today' : '--since is after --until', next)
       const capabilities = (await tracker.capabilities()).capabilities
       const on = (id) => capabilities.find((c) => c.id === id).path !== 'absent'
+      const releasesEntry = capabilities.find((c) => c.id === 'releases')
+      if (!on('releases') && ctx.opt('release') !== undefined) throw new PmkitError('NOT_SUPPORTED', 'release notes by release need releases, which this workspace does not have', releasesEntry.enableHint)
       const releases = on('releases') ? await tracker.listReleases() : null
       const sprints = on('cycles') ? await tracker.listCycles({}) : null
       let selector = null
@@ -746,7 +748,8 @@ export const COMMANDS = [
         }
       }
       const result = buildNotes({ choice, candidates, types: discovered.types, problems })
-      return { data: result, text: releaseNotesText(result), warnings: result.problems.map(problemLine) }
+      const note = !on('releases') && choice.basis === 'sprint' ? pathNote(releasesEntry, { releaseNotesFrom: choice.source.id }) : null
+      return { data: result, text: releaseNotesText(result), warnings: result.problems.map(problemLine), notes: note === null ? [] : [note] }
     },
   },
   {

@@ -1529,3 +1529,20 @@ test('release list, get and issues on the Free plan answer empty with a note and
   assert.equal(issues.stderr, note)
   assert.ok(!fetch.calls.some((call) => /\breleases?\(|\breleaseIssue|mutation/i.test(call.body.query)))
 })
+
+const RELEASES_HINT = 'Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings'
+
+test('release-notes on Linear without releases refuses --release', async () => {
+  const result = await cycleCli(setup({ edit: withTeam }), ['release-notes', '--release', '1.0'], withCycles(['A']).fetch)
+  assert.equal(result.code, 2)
+  assert.deepEqual(errorOf(result), { code: 'NOT_SUPPORTED', message: 'release notes by release need releases, which this workspace does not have', nextStep: RELEASES_HINT })
+})
+
+test('release-notes on Linear without releases builds from the sprint and says so', async () => {
+  for (const args of [['release-notes', '--sprint', '1'], ['release-notes']]) {
+    const result = await cycleCli(setup({ edit: withTeam }), args, withCycles(['A']).fetch)
+    assert.equal(result.code, 0, result.stderr)
+    assert.equal(JSON.parse(result.stdout).basis, 'sprint', args.join(' '))
+    assert.equal(result.stderr, `note: release notes built from sprint 1: ${RELEASES_HINT}\n`, args.join(' '))
+  }
+})
