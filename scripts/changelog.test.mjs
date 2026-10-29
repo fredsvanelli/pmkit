@@ -53,6 +53,6 @@ test('changelog --file --since --json returns the releases oldest first, with th
   const result = spawnSync(process.execPath, [CLI, 'changelog', '--file', 'CHANGELOG.md', '--since', '0.0.0', '--json'], { cwd: ROOT, encoding: 'utf8' })
   assert.equal(result.status, 0, result.stderr)
   const sections = JSON.parse(result.stdout)
-  assert.deepEqual(sections.map((section) => [section.version, section.trackerFormat]), [['0.1.0', null], ['0.2.0', 2]])
+  assert.deepEqual(sections.map((section) => [section.version, section.trackerFormat]), [['0.1.0', null], ['0.2.0', 2], ['0.3.0', 2]])
   assert.equal(sections[1].setup.length, 1)
 })
