@@ -14,8 +14,9 @@ import { childEnv } from './golden-helpers.mjs'
 import { buildMigrationFixture, commitAll, git } from './migrate-fixture.mjs'
 import { PmkitError } from './lib/errors.mjs'
 import { parseYaml } from './lib/yaml.mjs'
-import { loadPmkitConfig } from './lib/config.mjs'
+import { loadConfig, loadPmkitConfig } from './lib/config.mjs'
 import { createLocalWriter } from './lib/local/migrate-writer.mjs'
+import { readLocalSnapshot } from './lib/local/migrate-reader.mjs'
 import { hashTree, makeRepo, userStoreEnv } from './test-helpers.mjs'
 
 // gitUserEmail reads the process environment, so the in-process runs need the same git isolation as childEnv.
@@ -683,6 +684,74 @@ test('switch --to local writes the system and the path and keeps scope and mappi
   assert.equal(after.tracker.path, '.issues')
   assert.deepEqual(after.tracker.scope, { workspace: 'acme', team: 'ACME' })
   assert.deepEqual(after.mappings, { status: { in_review: 'In Review' } })
+})
+
+/** A second repository from `basic` with the export map and the tracker config of the exported one, committed. */
+function secondRepository(source) {
+  const { file } = onlyMap(source.root)
+  const target = setup({ fixture: false })
+  fs.mkdirSync(path.join(target.root, '.pmkit', 'migrations'), { recursive: true })
+  fs.copyFileSync(path.join(source.root, file), path.join(target.root, file))
+  fs.copyFileSync(path.join(source.root, '.issues', 'config.yaml'), path.join(target.root, '.issues', 'config.yaml'))
+  commitAll(target.root, 'export map')
+  return target
+}
+
+test('import into a Local repository takes the mappings of the export map', async () => {
+  const { context: source, fake } = await exported()
+  const target = secondRepository(source)
+  const result = await cli(target, [...IMPORT, '--dry-run'], { fetch: fake.fetch })
+  assert.equal(result.code, 0, result.stdout)
+  const { records } = JSON.parse(result.stdout)
+  const measured = records.issue.find((record) => record.fields.title === 'Measure the rate limit')
+  assert.equal(measured.fields.type, 'task')
+  assert.equal(measured.fields.estimate, 3)
+  assert.deepEqual(measured.fields.labels ?? [], [])
+})
+
+// The fields that may differ after a round trip, each a row of the losses tables. Linear replaces the history, so an
+// issue loses the completion time that Local reads from its events, and an epic its creation time. Linear names the
+// branch, the export drops issue milestones, and an estimate outside the scale is dropped. Status updates are dated at
+// the migration and authored by the key owner, so the test compares only their health and body. The export reuses the
+// cycle of the sprint's dates and writes neither its name nor its goal (no row covers this yet).
+const ROUND_TRIP_LOSSES = { issues: ['completed', 'branch', 'milestone', 'estimate'], epics: ['created', 'updates'], sprints: ['name', 'goal'] }
+
+/** The fields of two records with the same id that differ, minus the allowed losses. */
+function changedFields(before, after, allowed) {
+  return Object.keys({ ...before, ...after }).filter((key) => !allowed.includes(key) && JSON.stringify(before[key]) !== JSON.stringify(after[key]))
+}
+
+test('export then import gives back the ids, parents, blockers and links', async () => {
+  const { context: source, fake } = await exported()
+  const target = secondRepository(source)
+  const result = await cli(target, IMPORT, { fetch: fake.fetch })
+  assert.equal(result.code, 0, result.stdout)
+  const read = (root) => readLocalSnapshot({ root, config: loadConfig(root) })
+  const before = read(source.root)
+  const after = read(target.root)
+  const byId = (list) => new Map(list.map((record) => [record.id, record]))
+
+  for (const kind of ['issues', 'epics', 'sprints']) {
+    const back = byId(after[kind])
+    assert.deepEqual([...back.keys()].sort(), before[kind].map((record) => record.id).sort(), `the ${kind} ids round-trip`)
+    for (const record of before[kind]) assert.deepEqual(changedFields(record, back.get(record.id), ROUND_TRIP_LOSSES[kind]), [], `${kind} ${record.id}`)
+  }
+  const issues = byId(after.issues)
+  const role = Object.fromEntries(before.issues.map((issue) => [issue.title, issue.id]))
+  assert.equal(issues.get(role['Add the config loader']).parent, before.epics[0].id)
+  assert.equal(issues.get(role['Parse the YAML subset']).parent, role['Read the config file'])
+  assert.equal(issues.get(role['Old spike']).archived, true)
+  assert.deepEqual(after.links, before.links)
+  assert.ok(after.links.length >= 3)
+  assert.deepEqual(after.sprints.map(({ start, end }) => [start, end]), [['2026-11-02', '2026-11-15']])
+
+  const comment = ({ id, ...rest }) => rest
+  assert.deepEqual(after.comments.map(comment), before.comments.map(comment), 'bodies, authors, replies and the resolved thread')
+  assert.ok(after.comments.some((entry) => entry.author === 'ada' && entry.resolved))
+  const updates = (snapshot) => snapshot.epics.flatMap((epic) => epic.updates.map(({ health, body }) => ({ health, body })))
+  assert.deepEqual(updates(after), updates(before))
+  const people = byId(after.people)
+  for (const person of before.people) assert.deepEqual(people.get(person.id), person)
 })
 
 test('no output holds the key', () => {

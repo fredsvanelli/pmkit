@@ -230,12 +230,15 @@ export async function runImport(ctx) {
     throw new PmkitError('CONFLICT', 'import needs a Local tracker with no issues and no epics',
       `Move the old records out with git rm -r ${local.path}/issues ${local.path}/epics ${local.path}/sprints, commit, and run the import again`)
   }
+  const source = { system: 'linear', workspace: linear.workspace, team: linear.team }
+  const exportMaps = listMaps(ctx.root).filter((entry) => entry.map.direction === 'export' && sameTarget(entry.map.target, source)).map((entry) => entry.map)
+  // A Local repository has no mappings in its config. The map being resumed, else the newest finished export map of the
+  // same team, gives them, so the type labels and the native estimate come back.
+  if (Object.keys(linear.mappings).length === 0) linear.mappings = chosen.resume?.map.mappings ?? exportMaps.find((map) => map.finished)?.mappings ?? {}
   const handle = await linearHandle(ctx, linear)
   const { client, discovery } = handle
   const { viewer } = await client.session()
   const { snapshot, readRequests } = await readLinearSnapshot({ client, discovery, teamKey: linear.team, pmkit: handle.pmkit, now: () => new Date(ctx.now()) })
-  const source = { system: 'linear', workspace: linear.workspace, team: linear.team }
-  const exportMaps = listMaps(ctx.root).filter((entry) => entry.map.direction === 'export' && sameTarget(entry.map.target, source)).map((entry) => entry.map)
   const target = importTarget({ local: local.config.local, mappings: linear.mappings, exportMaps })
   const mapped = mapImport(snapshot, target, { readRequests })
 
