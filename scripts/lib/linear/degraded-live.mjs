@@ -104,7 +104,7 @@ export function buildDegradedRun({ env, fetch, workspace, sleep, write = (line) 
     fs.mkdirSync(path.join(state.root, '.pmkit'), { recursive: true })
     fs.writeFileSync(path.join(state.root, '.pmkit', 'config.yaml'), [
       'version: 1', 'tracker:', '  system: linear', '  scope:', `    workspace: ${workspace}`, `    team: ${state.team.key}`,
-      'git_host:', '  system: none', 'mappings:', '  status:', '    in_review: In Review', '  types:', '    bug: Bug', '    feature: Feature', '',
+      'git_host:', '  system: none', 'write_policy:', '  confirm: none', 'mappings:', '  status:', '    in_review: In Review', '  types:', '    bug: Bug', '    feature: Feature', '',
     ].join('\n'))
     state.body = path.join(state.home, 'body.md')
     fs.writeFileSync(state.body, 'text\n')
@@ -116,8 +116,8 @@ export function buildDegradedRun({ env, fetch, workspace, sleep, write = (line) 
   async function seed() {
     for (const key of ['A', 'B']) {
       const made = await exec(['issues', 'create', '--title', `degraded-path seed ${key}`, '--json'])
-      assert.equal(made.code, 0, made.stderr)
-      state.ids[key] = JSON.parse(made.stdout).data.id
+      assert.equal(made.code, 0, made.stderr || made.stdout)
+      state.ids[key] = JSON.parse(made.stdout).after.id
     }
     for (const category of ['in_progress', 'done']) {
       const moved = await exec(['issues', 'move', state.ids.A, category, '--json'])
