@@ -146,7 +146,8 @@ A refusal is one line too. The CLI prints `error: NOT_SUPPORTED <message>` and `
 | `epic update-status`, `epic updates` | `status_update` | native | the updates, no note | `updates` yes |
 | `milestone list`, `milestone get` | `deliverables` | native | the milestones, no note | yes |
 | `milestone create` | `deliverables`, `unsupported: [createMilestone]` | native, operation unsupported | refuses `the Linear adapter reads project milestones but does not create them` | yes |
-| `release list`, `release get`, `release issues` | `releases` | absent | an empty answer with `note: releases is absent: <hint>` (answer 1) | yes |
+| `release list`, `release issues` | `releases` | absent | an empty answer with `note: releases is absent: <hint>` (answer 1) | yes |
+| `release get` | `releases` | absent | `NOT_FOUND` with `release <id> does not exist: releases is absent: <hint>` (answer 1) | yes |
 | `release create`, `release mark-released` | `releases` | absent | refuses `NOT_SUPPORTED` with the plan hint | yes |
 | `release-notes` | `releases`, `cycles` | releases absent | `--release` refuses; `--sprint current` builds notes with `note: release notes built from sprint <id>: <hint>` | yes |
 | `docs read` | `documents` | native | the document, no note | no, needs a document |
