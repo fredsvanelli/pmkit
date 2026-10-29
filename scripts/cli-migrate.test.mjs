@@ -231,6 +231,18 @@ test('export without --expect refuses before any write and names the dry run', a
   assert.ok(!fs.existsSync(path.join(context.root, '.pmkit', 'migrations')), 'no map is written')
 })
 
+test('export with an empty --expect refuses before any write', async () => {
+  for (const empty of [['--expect='], ['--expect', '']]) {
+    const context = setup()
+    const fake = linearFake()
+    const result = await cli(context, [...READY, ...empty], { fetch: fake.fetch })
+    assert.equal(result.code, 2, result.stdout)
+    assert.equal(errorOf(result).code, 'INVALID_INPUT')
+    assert.deepEqual(fake.mutations(), [])
+    assert.ok(!fs.existsSync(path.join(context.root, '.pmkit', 'migrations')), 'no map is written')
+  }
+})
+
 test('export writes the map and every record', async () => {
   const context = setup()
   const fake = linearFake()
@@ -396,6 +408,17 @@ test('import without --expect refuses before any write and names the dry run', a
   assert.equal(hashTree(context.root), before)
 })
 
+test('import with an empty --expect refuses before any write', async () => {
+  for (const empty of [['--expect='], ['--expect', '']]) {
+    const { context, fake } = importSetup()
+    const before = hashTree(context.root)
+    const result = await cli(context, [...IMPORT, ...empty], { fetch: fake.fetch })
+    assert.equal(result.code, 2, result.stdout)
+    assert.equal(errorOf(result).code, 'INVALID_INPUT')
+    assert.equal(hashTree(context.root), before)
+  }
+})
+
 test('import writes every record and validates', async () => {
   const { context, fake } = importSetup()
   const result = await confirmed(context, IMPORT, { fetch: fake.fetch })
@@ -547,6 +570,17 @@ test('undo without --expect refuses before any delete', async () => {
   assert.equal(result.code, 2, result.stdout)
   assert.match(errorOf(result).nextStep ?? errorOf(result).next_step ?? '', /--dry-run/)
   assert.equal(fake.mutations().length, before)
+})
+
+test('undo with an empty --expect refuses before any delete', async () => {
+  for (const empty of [['--expect='], ['--expect', '']]) {
+    const { context, fake } = await exported()
+    const before = fake.mutations().length
+    const result = await cli(context, [...UNDO, ...empty], { fetch: fake.fetch })
+    assert.equal(result.code, 2, result.stdout)
+    assert.equal(errorOf(result).code, 'INVALID_INPUT')
+    assert.equal(fake.mutations().length, before)
+  }
 })
 
 test('undo deletes what the export created', async () => {

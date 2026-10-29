@@ -186,6 +186,7 @@ test('checkExpect refuses a changed plan before any write', () => {
   const plan = planOf(three())
   assert.doesNotThrow(() => checkExpect(plan, plan.digest))
   assert.doesNotThrow(() => checkExpect(plan, undefined))
+  assert.throws(() => checkExpect(plan, ''), (error) => error.code === 'CONFLICT')
   assert.throws(() => checkExpect(plan, 'sha256:0000'), (error) => {
     assert.equal(error.code, 'CONFLICT')
     assert.equal(error.message, 'the plan changed since the preview')

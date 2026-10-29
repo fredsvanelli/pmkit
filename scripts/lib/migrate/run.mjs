@@ -16,7 +16,7 @@ import { RESERVE } from './plan.mjs'
  */
 
 export function checkExpect(plan, expect) {
-  if (expect && expect !== plan.digest) {
+  if (typeof expect === 'string' && expect !== plan.digest) {
     throw new PmkitError('CONFLICT', 'the plan changed since the preview', 'Run the dry run again and confirm the new preview', { expected: expect, digest: plan.digest })
   }
 }

@@ -118,7 +118,8 @@ function headerOf(snapshot, local, linear, target) {
 
 /** A real export or import writes only after its preview: without --expect it refuses before the first write. */
 function requireExpect(ctx, command, writes) {
-  if (ctx.dryRun || typeof ctx.opt('expect') === 'string') return
+  const expect = ctx.opt('expect')
+  if (ctx.dryRun || (typeof expect === 'string' && expect !== '')) return
   throw new PmkitError('INVALID_INPUT', `local-migrate ${command} writes ${writes} and needs the digest of its preview`,
     `Run pmkit local-migrate ${command} --dry-run with the same flags, then pass its digest with --expect`)
 }
@@ -407,7 +408,7 @@ export async function runUndo(ctx) {
   if (ctx.dryRun) return { data, text: undoText(file, map, removals, requests, digest, { dryRun: true }) }
 
   const expect = ctx.opt('expect')
-  if (typeof expect !== 'string') {
+  if (typeof expect !== 'string' || expect === '') {
     throw new PmkitError('INVALID_INPUT', 'local-migrate undo deletes records in Linear and needs the digest of its preview', 'Run pmkit local-migrate undo --dry-run, then pass its digest with --expect')
   }
   checkExpect({ digest }, expect)
