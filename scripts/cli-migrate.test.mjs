@@ -14,6 +14,7 @@ import { childEnv } from './golden-helpers.mjs'
 import { buildMigrationFixture, commitAll, git } from './migrate-fixture.mjs'
 import { PmkitError } from './lib/errors.mjs'
 import { parseYaml } from './lib/yaml.mjs'
+import { loadPmkitConfig } from './lib/config.mjs'
 import { createLocalWriter } from './lib/local/migrate-writer.mjs'
 import { hashTree, makeRepo, userStoreEnv } from './test-helpers.mjs'
 
@@ -564,6 +565,124 @@ test('undo on an import map prints the git commands and writes nothing', async (
   assert.deepEqual(JSON.parse(result.stdout).commands, ['git restore --source=HEAD -- .issues .pmkit/migrations', 'git clean -fd -- .issues'])
   assert.deepEqual(counting.calls, [])
   assert.equal(hashTree(context.root), before)
+})
+
+const SWITCH = ['local-migrate', 'switch', '--json']
+const CONFIG = '.pmkit/config.yaml'
+const readConfig = (root) => fs.readFileSync(path.join(root, CONFIG), 'utf8')
+const onlyMap = (root) => {
+  const dir = path.join(root, '.pmkit', 'migrations')
+  const [name] = fs.readdirSync(dir)
+  return { file: `.pmkit/migrations/${name}`, map: parseYaml(fs.readFileSync(path.join(dir, name), 'utf8')) }
+}
+async function imported() {
+  const { context, fake } = importSetup()
+  assert.equal((await cli(context, IMPORT, { fetch: fake.fetch })).code, 0)
+  return { context, fake }
+}
+
+test('switch --to linear --dry-run prints the diff and writes nothing', async () => {
+  const { context } = await exported()
+  const before = hashTree(context.root)
+  const counting = fakeLinearFetch(fakeWorkspace())
+  const result = await cli(context, [...SWITCH, '--to', 'linear', '--dry-run'], { fetch: counting })
+  assert.equal(result.code, 0, result.stdout)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.from, 'local')
+  assert.equal(data.to, 'linear')
+  assert.equal(data.written, false)
+  assert.ok(data.changes.includes('tracker.system'))
+  assert.match(data.diff, /^-  system: local$/m)
+  assert.match(data.diff, /^\+  system: linear$/m)
+  assert.equal(hashTree(context.root), before)
+  assert.deepEqual(counting.calls, [], 'switch sends no request')
+  const text = (await cli(context, ['local-migrate', 'switch', '--to', 'linear', '--dry-run'], { fetch: counting })).stdout
+  assert.match(text, /\+ {2}system: linear/)
+  assert.match(text, /nothing written/)
+})
+
+test('switch --to linear writes the system, the scope and the mappings', async () => {
+  const { context } = await exported()
+  const { file, map } = onlyMap(context.root)
+  const issues = hashTree(path.join(context.root, '.issues'))
+  const result = await cli(context, [...SWITCH, '--to', 'linear'])
+  assert.equal(result.code, 0, result.stdout)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.file, file)
+  assert.equal(data.written, true)
+  const { pmkit, system } = loadPmkitConfig(context.root, { adapters: { ...ADAPTERS, linear: linearDescriptor({ fetch: fakeLinearFetch(fakeWorkspace()) }) } })
+  assert.equal(system, 'linear')
+  assert.deepEqual(pmkit.tracker.scope, { workspace: 'acme', team: 'ACME' })
+  for (const key of ['status', 'fields', 'types']) if (map.mappings[key] !== undefined) assert.deepEqual(pmkit.mappings[key], map.mappings[key], key)
+  assert.equal(hashTree(path.join(context.root, '.issues')), issues)
+  assert.equal(git(context.root, 'status', '--porcelain', '--', CONFIG).trim(), `M ${CONFIG}`, 'switch never commits')
+})
+
+test('switch refuses an unfinished map', async () => {
+  const { context } = await exported()
+  const { file } = onlyMap(context.root)
+  edit(context.root, file, /^finished: .*$/m, 'finished: null')
+  const before = readConfig(context.root)
+  const result = await cli(context, [...SWITCH, '--to', 'linear'])
+  assert.notEqual(result.code, 0)
+  assert.equal(errorOf(result).code, 'CONFLICT')
+  assert.equal(errorOf(result).message, `the migration in ${file} is not finished`)
+  assert.equal(errorOf(result).nextStep, 'Run pmkit local-migrate status')
+  assert.equal(readConfig(context.root), before)
+})
+
+test('switch refuses a map with failed records', async () => {
+  const { context } = await exported()
+  const { file } = onlyMap(context.root)
+  edit(context.root, file, /state: done/, 'state: failed')
+  const before = readConfig(context.root)
+  const result = await cli(context, [...SWITCH, '--to', 'linear', '--file', file])
+  assert.notEqual(result.code, 0)
+  assert.equal(errorOf(result).code, 'CONFLICT')
+  assert.equal(errorOf(result).message, `the migration in ${file} has 1 failed record`)
+  assert.equal(errorOf(result).nextStep, 'Run pmkit local-migrate status')
+  assert.equal(readConfig(context.root), before)
+})
+
+test('switch --to local needs an import map', async () => {
+  const { context } = await exported()
+  const before = readConfig(context.root)
+  for (const args of [['--to', 'local'], ['--to', 'local', '--file', onlyMap(context.root).file]]) {
+    const result = await cli(context, [...SWITCH, ...args])
+    assert.notEqual(result.code, 0)
+    assert.equal(errorOf(result).code, 'INVALID_INPUT')
+    assert.equal(errorOf(result).message, 'switch --to local needs a finished import map')
+  }
+  const bad = await cli(context, [...SWITCH, '--to', 'jira'])
+  assert.equal(errorOf(bad).code, 'INVALID_INPUT')
+  assert.equal(readConfig(context.root), before)
+})
+
+test('switch to the system the file already names writes nothing and says so', async () => {
+  const { context } = await imported()
+  const before = hashTree(context.root)
+  const result = await cli(context, [...SWITCH, '--to', 'local'])
+  assert.equal(result.code, 0, result.stdout)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.written, false)
+  assert.deepEqual(data.changes, [])
+  assert.equal(hashTree(context.root), before)
+  const text = (await cli(context, ['local-migrate', 'switch', '--to', 'local'])).stdout
+  assert.match(text, /tracker\.system is already local/)
+})
+
+test('switch --to local writes the system and the path and keeps scope and mappings', async () => {
+  const { context } = await imported()
+  edit(context.root, CONFIG, /^ {2}system: local\n {2}path: \.issues$/m, '  system: linear\n  scope:\n    workspace: acme\n    team: ACME')
+  fs.appendFileSync(path.join(context.root, CONFIG), 'mappings:\n  status:\n    in_review: In Review\n')
+  const result = await cli(context, [...SWITCH, '--to', 'local'])
+  assert.equal(result.code, 0, result.stdout)
+  assert.equal(JSON.parse(result.stdout).written, true)
+  const after = parseYaml(readConfig(context.root))
+  assert.equal(after.tracker.system, 'local')
+  assert.equal(after.tracker.path, '.issues')
+  assert.deepEqual(after.tracker.scope, { workspace: 'acme', team: 'ACME' })
+  assert.deepEqual(after.mappings, { status: { in_review: 'In Review' } })
 })
 
 test('no output holds the key', () => {

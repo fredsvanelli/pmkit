@@ -7,6 +7,9 @@ import { randomUUID } from 'node:crypto'
 import { adapterFor } from '../adapters.mjs'
 import { loadLocalConfig, loadPmkitConfig, withLocalDefaults } from '../config.mjs'
 import { PmkitError } from '../errors.mjs'
+import { lineDiff } from '../diff.mjs'
+import { setMap, setScalar } from '../yaml-edit.mjs'
+import { parseYaml } from '../yaml.mjs'
 import { parseMappingFlags, proposeMappings } from '../mappings.mjs'
 import { formatError } from '../local/migrations.mjs'
 import { readLocalSnapshot } from '../local/migrate-reader.mjs'
@@ -403,4 +406,66 @@ export async function runUndo(ctx) {
   }
   const next = `commit ${file}`
   return { data: { ...data, removed, next }, text: [undoText(file, map, removals, requests, digest, { dryRun: false }), '', `removed: ${removed} of ${removals.length}`, `next: ${next}`].join('\n') }
+}
+
+const CONFIG_FILE = '.pmkit/config.yaml'
+const SWITCH_DIRECTION = { linear: 'export', local: 'import' }
+
+/** The map switch reads: --file, else the newest map of the direction --to needs. No map is NOT_FOUND; a map of the other direction is INVALID_INPUT. */
+function switchMap(ctx, to) {
+  const wrong = new PmkitError('INVALID_INPUT', `switch --to ${to} needs a finished ${SWITCH_DIRECTION[to]} map`, 'Run pmkit local-migrate status to list the maps')
+  const file = ctx.opt('file')
+  // With no map at all, pickMap gives the NOT_FOUND of status and undo.
+  const picked = typeof file === 'string' ? pickMap(ctx) : (listMaps(ctx.root).length === 0 ? pickMap(ctx) : listMaps(ctx.root).find((entry) => entry.map.direction === SWITCH_DIRECTION[to]))
+  if (!picked || picked.map.direction !== SWITCH_DIRECTION[to]) throw wrong
+  const { failed } = mapCounts(picked.map)
+  if (!picked.map.finished) throw new PmkitError('CONFLICT', `the migration in ${picked.file} is not finished`, 'Run pmkit local-migrate status')
+  if (failed.length > 0) throw new PmkitError('CONFLICT', `the migration in ${picked.file} has ${plural(failed.length, 'failed record')}`, 'Run pmkit local-migrate status')
+  return picked
+}
+
+/** The edits of .pmkit/config.yaml for the switch, as [key path, edit] pairs. */
+function switchEdits(map, to) {
+  if (to === 'local') return [[['tracker', 'system'], (text, key) => setScalar(text, key, 'local')], [['tracker', 'path'], (text, key) => setScalar(text, key, map.target.path ?? '.issues')]]
+  const edits = [
+    [['tracker', 'system'], (text, key) => setScalar(text, key, 'linear')],
+    [['tracker', 'scope', 'workspace'], (text, key) => setScalar(text, key, map.target.workspace)],
+    [['tracker', 'scope', 'team'], (text, key) => setScalar(text, key, map.target.team)],
+  ]
+  for (const name of ['status', 'fields', 'types']) {
+    const value = map.mappings?.[name]
+    if (value && typeof value === 'object' && !Array.isArray(value)) edits.push([['mappings', name], (text, key) => setMap(text, key, value)])
+  }
+  return edits
+}
+
+/**
+ * local-migrate switch: writes tracker.system and the side of a finished map to .pmkit/config.yaml. --to linear writes
+ * the scope and the mappings, --to local the path. It sends no request, writes no other file and never commits.
+ */
+export async function runSwitch(ctx) {
+  const to = ctx.opt('to')
+  if (!Object.hasOwn(SWITCH_DIRECTION, to)) throw new PmkitError('INVALID_INPUT', 'local-migrate switch needs --to linear or --to local', 'Run pmkit local-migrate switch --to linear --dry-run or pmkit local-migrate switch --to local --dry-run')
+  const { file, map } = switchMap(ctx, to)
+  const full = path.join(ctx.root, CONFIG_FILE)
+  const before = fs.readFileSync(full, 'utf8')
+  const from = parseYaml(before)?.tracker?.system ?? null
+  if (from === to) {
+    const data = { file, from, to, changes: [], diff: '', written: false }
+    return { data, text: `tracker.system is already ${to} in ${CONFIG_FILE}; nothing to write` }
+  }
+  let after = before
+  const changes = []
+  for (const [key, apply] of switchEdits(map, to)) {
+    const next = apply(after, key)
+    if (next !== after) changes.push(key.join('.'))
+    after = next
+  }
+  const diff = lineDiff(before, after)
+  const written = !ctx.dryRun
+  if (written) fs.writeFileSync(full, after)
+  const next = written ? `Commit ${CONFIG_FILE}` : `Run pmkit local-migrate switch --to ${to} to write it`
+  const data = { file, from, to, changes, diff, written, next }
+  const text = [`switch ${CONFIG_FILE} from ${from} to ${to}, from ${file}`, '', diff.trimEnd(), '', written ? `written: ${CONFIG_FILE}` : 'dry run: nothing written', `next: ${next}`]
+  return { data, text: text.join('\n') }
 }

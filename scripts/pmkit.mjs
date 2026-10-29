@@ -27,7 +27,7 @@ import { CACHE_DIR, ensureCacheIgnored } from './lib/local/query-index.mjs'
 import { writeFileAtomic } from './lib/local/store.mjs'
 import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, planMigration } from './lib/local/migrations.mjs'
 import { parseChangelog, sectionsSince } from './lib/changelog.mjs'
-import { runExport, runImport, runStatus, runUndo } from './lib/migrate/cli.mjs'
+import { runExport, runImport, runStatus, runSwitch, runUndo } from './lib/migrate/cli.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
 import { ID_STYLES, branchName, isId, normalizeId } from './lib/ids.mjs'
 import { boardDoc, hasMarker, problemsLine, renderDocument, roadmapDoc, sprintDoc } from './lib/render.mjs'
@@ -993,6 +993,11 @@ export const COMMANDS = [
     name: 'local-migrate undo', summary: 'deletes what an export created, after the full preview; for an import map prints the git commands',
     usage: '[--file .pmkit/migrations/<map>.yaml] [--expect <digest>] [--dry-run]',
     flags: ['file', 'expect'], write: true, dryRun: true, systems: ['local', 'linear'], run: runUndo,
+  },
+  {
+    name: 'local-migrate switch', summary: 'writes tracker.system, the scope and the mappings of a finished map to .pmkit/config.yaml; sends no request',
+    usage: '--to linear|local [--file .pmkit/migrations/<map>.yaml] [--dry-run]',
+    flags: ['to', 'file'], write: true, dryRun: true, systems: ['local', 'linear'], run: runSwitch,
   },
   {
     name: 'reindex', summary: 'rebuilds the query index in .issues/.cache/ from the issue files; changes only files git ignores', local: true, flags: [],

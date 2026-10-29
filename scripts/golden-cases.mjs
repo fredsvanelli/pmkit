@@ -103,6 +103,7 @@ export const CASES = {
   'local-migrate import': () => [['--workspace', 'acme', '--team', 'ACME']],
   'local-migrate status': () => [[]],
   'local-migrate undo': () => [[]],
+  'local-migrate switch': () => [['--to', 'linear']],
   validate: () => [[]],
 }
 
