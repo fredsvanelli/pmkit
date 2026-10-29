@@ -85,6 +85,16 @@ test('risks prints one history note on Linear', async () => {
   assert.deepEqual(noteLines(result.stderr), ['note: stalled-issue history computed from Linear issue history'])
 })
 
+test('risks on a Linear team with cycles off reads no sprint and says so in a note', async () => {
+  const result = await linear(['risks', '--json'])
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.deepEqual(noteLines(result.stderr), [
+    "note: cycles is absent: Turn on cycles in the team's settings in Linear",
+    'note: stalled-issue history computed from Linear issue history',
+  ])
+  assert.ok(Array.isArray(JSON.parse(result.stdout).blocked))
+})
+
 test('pr status refuses without a git host, on Local and on Linear', async () => {
   for (const result of [await run(['pr', 'status', '--branch', 'x'], { cwd: makeRepo('basic') }), await linear(['pr', 'status', '--branch', 'x'])]) {
     assert.equal(result.code, 2)

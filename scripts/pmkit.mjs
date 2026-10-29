@@ -1093,7 +1093,15 @@ async function runRisks(ctx) {
   warnings.push(...found.map(problemLine))
   const byId = new Map(all.map((issue) => [issue.id, issue]))
   const problemsById = new Map(problems.map((problem) => [problem.id, problem.code]))
-  const activeSprintId = (await tracker.currentCycle())?.id ?? null
+  // A Linear team with cycles off has no active sprint: risks goes on without one, and the cycles note says why.
+  let activeSprintId = null
+  const cycleNotes = []
+  try {
+    activeSprintId = (await tracker.currentCycle())?.id ?? null
+  } catch (error) {
+    if (!isPmkitError(error) || error.code !== 'NOT_SUPPORTED') throw error
+    cycleNotes.push(...(await capabilityNotes(tracker, 'cycles')))
+  }
   const eventsByIssue = groupEventsByIssue(await tracker.metricEvents())
   const issuesByBranch = Object.create(null)
   for (const issue of all) if (!issue.archived && issue.branch && issuesByBranch[issue.branch] === undefined) issuesByBranch[issue.branch] = issue.id
@@ -1183,7 +1191,7 @@ async function runRisks(ctx) {
     ci,
     problems,
   }
-  return { data: report, text: risksText(report), warnings, notes: await metricNotes(tracker, 'stalled-issue history') }
+  return { data: report, text: risksText(report), warnings, notes: [...cycleNotes, ...(await metricNotes(tracker, 'stalled-issue history'))] }
 }
 
 const RENDER_VIEWS = ['board', 'roadmap', 'sprint']
