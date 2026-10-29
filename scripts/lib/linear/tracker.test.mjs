@@ -88,10 +88,6 @@ test('the history and comment operations are guarded by the mapping check', asyn
   for (const [name, call] of Object.entries(calls)) await assert.rejects(call(noWorkspace), { code: 'NOT_CONFIGURED', message: 'tracker.scope.workspace is not set' }, name)
 })
 
-test('logTime stays a stub with its NOT_SUPPORTED message', async () => {
-  const { tracker: linear } = tracker(setup())
-  await assert.rejects(linear.logTime('ACME-1', 5, 'user-1'), { code: 'NOT_SUPPORTED', message: 'the Linear adapter does not implement logTime yet' })
-})
 
 test('a broken mapping in a cached discovery refreshes exactly once, then throws', async () => {
   const context = setup({ mappings: { status: { in_review: 'Peer Review' } } })
@@ -1151,4 +1147,13 @@ test('a broken mapping stops each project operation through guarded', async () =
     await assert.rejects(linear[operation](...args), { code: 'NOT_CONFIGURED' }, operation)
   }
   assert.ok(!namesOf(fetch).some((name) => /Project|Epic|Document/.test(name)))
+})
+
+test('logTime, createRelease and markReleased refuse with the manifest reason and send no request after discovery', async () => {
+  const { fetch, tracker: linear } = tracker(setup())
+  await assert.rejects(linear.logTime('ACME-1', 5, 'x'), { code: 'NOT_SUPPORTED', message: 'Linear has no time tracking', nextStep: 'Linear has no time tracking' })
+  for (const call of [() => linear.createRelease({ name: 'r' }), () => linear.markReleased('r')]) {
+    await assert.rejects(call(), (error) => error.code === 'NOT_SUPPORTED' && /needs releases/.test(error.message) && /Business or Enterprise plan/.test(error.nextStep))
+  }
+  assert.ok(fetch.calls.every((call) => !/mutation/i.test(call.body.query)))
 })
