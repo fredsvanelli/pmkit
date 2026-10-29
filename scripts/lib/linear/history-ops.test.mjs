@@ -336,6 +336,18 @@ test('an INPUT_ERROR from the by-id read means the comment is not on the issue, 
   await assert.rejects(elsewhere.history.comment('ACME-1', 'x', ACTOR, { replyTo: 'nope' }), { code: 'UPSTREAM' })
 })
 
+test('the INVALID_INPUT answer Linear gave for a missing comment id means the comment is not on the issue', async () => {
+  // The shape recorded in the PMK-39 live run: HTTP 200, errors[0] with code INVALID_INPUT and path ['comments'].
+  const logged = (path) => ({ status: 200, json: { data: null, errors: [{ message: 'Argument Validation Error', path, extensions: { code: 'INVALID_INPUT', type: 'invalid input', userError: true } }] } })
+  const missing = await setup({ routes: { PmkitCommentById: logged(['comments']) } })
+  seedIssue(missing.fake)
+  await assert.rejects(missing.history.comment('ACME-1', 'x', ACTOR, { replyTo: 'nope' }), { code: 'NOT_FOUND', message: 'comment nope is not on ACME-1' })
+  await assert.rejects(missing.history.resolveThread('ACME-1', 'nope', ACTOR), { code: 'NOT_FOUND' })
+  const elsewhere = await setup({ routes: { PmkitCommentById: logged(['issue']) } })
+  seedIssue(elsewhere.fake)
+  await assert.rejects(elsewhere.history.comment('ACME-1', 'x', ACTOR, { replyTo: 'nope' }), { code: 'UPSTREAM' })
+})
+
 const queries = (fetch, name) => fetch.calls.filter((call) => call.body.query.includes(`query ${name}`)).length
 
 test('a comment id with characters no Linear id has sends no by-id request', async () => {

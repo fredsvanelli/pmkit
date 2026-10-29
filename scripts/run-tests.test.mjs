@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
-import { findLeaks, finish } from './run-tests.mjs'
+import { childEnv, findLeaks, finish } from './run-tests.mjs'
 import { tempDir } from './test-helpers.mjs'
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -39,4 +39,14 @@ test('finish returns the exit code and removes the private folder', () => {
 test('package.json test script runs the runner', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
   assert.equal(pkg.scripts.test, 'node scripts/run-tests.mjs')
+})
+
+test('childEnv drops the Linear key and the live gate and points the temp folders at the private folder', () => {
+  const env = childEnv({ LINEAR_API_KEY: 'k', PMKIT_LIVE: '1', PATH: 'p' }, '/tmp/x')
+  assert.equal('LINEAR_API_KEY' in env, false)
+  assert.equal('PMKIT_LIVE' in env, false)
+  assert.equal(env.PATH, 'p')
+  assert.equal(env.TMPDIR, '/tmp/x')
+  assert.equal(env.TMP, '/tmp/x')
+  assert.equal(env.TEMP, '/tmp/x')
 })

@@ -4,6 +4,11 @@
 // setup() returns { tracker, actor, teardown, today? }. The tracker has every status category,
 // at least one member and no issues. `today` is the YYYY-MM-DD date the tracker treats as today
 // (default: the real date); the suite opens its cycle on that day so the cycle starts active.
+// setup() may name `assignee`, the member id the suite assigns issues to (default: the first member). A shared workspace
+// returns the key owner so the suite never assigns a person who would be notified.
+// The test body runs setup(t) with the node:test context, so a setup may tell tests apart by `t.name`.
+// setup() may set `foldsQuickEdits: true` when the tracker folds an update made right after a create into the create entry
+// of its history. The history test then still requires create before comment and the updated value, but no 'update' entry.
 // The suite awaits every operation, so an adapter may return values or promises.
 //
 // setup() may also return `cycles: { active(), planned() }`, two async functions that return a cycle (an object with `id`, and
@@ -59,7 +64,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
     const missing = needs.find((family) => !families.includes(family))
     if (missing !== undefined) return test(title, { skip: `needs the ${missing} family` }, () => {})
     return test(title, async (t) => {
-      const env = await setup()
+      const env = await setup(t)
       try {
         const today = env.today ?? new Date().toISOString().slice(0, 10)
         await body({ ...env, today, cycle: cycleHelper({ ...env, today }, t) })
@@ -86,7 +91,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       for (const entry of manifest.capabilities) assert.ok(entry.id && entry.path, `capability ${entry.id} has a path`)
     })
 
-    it('creates, gets, updates, moves through every category, assigns and archives an issue', ['issues'], async ({ tracker, actor }) => {
+    it('creates, gets, updates, moves through every category, assigns and archives an issue', ['issues'], async ({ tracker, actor, assignee }) => {
       const { statuses, members, types } = await tracker.discover()
       const created = await tracker.createIssue({ title: 'First', type: types[0] }, actor)
       assert.equal(created.before, null)
@@ -106,9 +111,10 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
         assert.deepEqual(ids((await tracker.searchIssues({ categories: [category] })).issues), [id])
       }
 
-      await tracker.assign(id, members[0].id, actor)
-      assert.equal((await tracker.getIssue(id)).assignee, members[0].id)
-      assert.deepEqual(ids((await tracker.searchIssues({ assignee: members[0].id })).issues), [id])
+      const who = assignee ?? members[0].id
+      await tracker.assign(id, who, actor)
+      assert.equal((await tracker.getIssue(id)).assignee, who)
+      assert.deepEqual(ids((await tracker.searchIssues({ assignee: who })).issues), [id])
       await tracker.assign(id, null, actor)
       assert.equal((await tracker.getIssue(id)).assignee, undefined)
 
@@ -148,14 +154,21 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       await rejects(() => tracker.link(a, b, 'sibling', actor), 'INVALID_INPUT')
     })
 
-    it('keeps comments and history in the order the writes happened', ['history'], async ({ tracker, actor }) => {
+    it('keeps comments and history in the order the writes happened', ['history'], async ({ tracker, actor, foldsQuickEdits }) => {
       const { id } = (await tracker.createIssue({ title: 'Talked about' }, actor)).after
       await tracker.updateIssue(id, { title: 'Talked about more' }, actor)
       const comment = await tracker.comment(id, 'First thought', actor)
       assert.equal(comment.body, 'First thought')
       assert.deepEqual((await tracker.listComments(id)).map((entry) => entry.body), ['First thought'])
       const history = await tracker.getHistory(id)
-      assert.deepEqual(history.map((event) => event.op), ['create', 'update', 'comment'])
+      const ops = history.map((event) => event.op)
+      if (foldsQuickEdits) {
+        assert.equal(ops[0], 'create')
+        assert.equal(ops.at(-1), 'comment')
+        assert.equal((await tracker.getIssue(id)).title, 'Talked about more')
+      } else {
+        assert.deepEqual(ops, ['create', 'update', 'comment'])
+      }
       const stamps = history.map((event) => event.at)
       assert.deepEqual(stamps, [...stamps].sort())
       await rejects(() => tracker.comment(id, '   ', actor), 'INVALID_INPUT')
@@ -462,7 +475,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       await rejects(() => tracker.createDocument('../escape.md', 'x', actor), 'INVALID_INPUT')
     })
 
-    it('every dry run changes nothing that a following read can see', FAMILIES, async ({ tracker, actor, today }) => {
+    it('every dry run changes nothing that a following read can see', FAMILIES, async ({ tracker, actor, today, assignee }) => {
       const { members } = await tracker.discover()
       const a = (await tracker.createIssue({ title: 'Dry A' }, actor)).after.id
       const b = (await tracker.createIssue({ title: 'Dry B' }, actor)).after.id
@@ -504,7 +517,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
         () => tracker.createIssue({ title: 'Never' }, actor, dry),
         () => tracker.updateIssue(a, { title: 'Changed' }, actor, dry),
         () => tracker.moveToCategory(a, 'done', actor, dry),
-        () => tracker.assign(a, members[0].id, actor, dry),
+        () => tracker.assign(a, assignee ?? members[0].id, actor, dry),
         () => tracker.archive(a, actor, dry),
         () => tracker.link(a, b, 'blocks', actor, dry),
         () => tracker.link(a, b, 'related', actor, dry),

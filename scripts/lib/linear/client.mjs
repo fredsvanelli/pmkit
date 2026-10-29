@@ -300,6 +300,10 @@ export function createLinearClient({
       recordRate(response.headers)
       text = await response.text()
     } catch (error) {
+      if (error?.guardRefusal === true) {
+        const refused = new PmkitError('INVALID_INPUT', `The write guard refused the request: ${error.message}`, 'Change the call so it stays inside the live run guard rules; nothing was sent')
+        return { error: refused, retry: false }
+      }
       return unconfirmed(reasonOf(error, signal), mutation)
     }
     return classify(response.status, response.headers, text, mutation)
