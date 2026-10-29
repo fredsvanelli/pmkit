@@ -266,7 +266,9 @@ The plan builds a `losses` list. Each item names what is lost, how many records 
 | Direction | What | What happens | Why |
 |---|---|---|---|
 | Export | Sprints without a Linear cycle of the same dates | The issues get no cycle. The sprint is listed. | Linear creates cycles from the team schedule and the API cannot open one (PMK-37). |
+| Export | Sprint names and goals | Lost. The Linear cycle of the same dates keeps its own name. An import names the sprint after the cycle. | The export reuses a cycle and does not rename it. |
 | Export | History | `events.jsonl` is not replayed. Linear's history starts at the migration, with `createdAt` and `completedAt` set from Local. | Linear's history is written by Linear only. |
+| Export | Epic creation time | The project shows the migration time. | The export sends no `createdAt` for a project. |
 | Export | Comment authors | Linear shows the key owner as the author. The attribution line names the original author. | `createAsUser` needs an OAuth app (ADR-0005). |
 | Export | Status update dates and authors | Dated at the migration, authored by the key owner. | `ProjectUpdateCreateInput` has no `createdAt`. |
 | Export | Milestones on issues and epics | Dropped. | A Linear milestone belongs to one project, and pmkit cannot create one (PMK-38). |

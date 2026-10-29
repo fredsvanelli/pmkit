@@ -16,7 +16,7 @@ export const PROJECT_TYPE_OF_CATEGORY = Object.freeze({
 })
 
 export const EXPORT_LOSSES = [
-  'sprints', 'history', 'comments', 'status updates', 'milestones', 'releases', 'time logs', 'documents',
+  'sprints', 'sprint names', 'history', 'epic dates', 'comments', 'status updates', 'milestones', 'releases', 'time logs', 'documents',
   'branch names', 'ids', 'estimates', 'members', 'links', 'capacity',
 ]
 
@@ -317,6 +317,10 @@ export function mapExport(snapshot, target) {
   const out = snapshot.outOfScope ?? {}
   const issueIds = snapshot.issues.map((issue) => issue.id).sort(compareIds)
   losses.set('history', snapshot.issues.length, issueIds, 'events.jsonl is not replayed; creation and completion dates are kept')
+  const sprintIds = snapshot.sprints.map((sprint) => sprint.id).sort()
+  losses.set('sprint names', sprintIds.length, sprintIds, `${plural(sprintIds.length, 'sprint')} lose their name and goal; the Linear cycle of the same dates keeps its own`)
+  const epicIds = snapshot.epics.map((epic) => epic.id).sort(compareIds)
+  losses.set('epic dates', epicIds.length, epicIds, `${plural(epicIds.length, 'epic')} get the migration time as their creation time; the export sends no creation time for a project`)
   const commentCount = records.comment.length
   losses.set('comments', commentCount, [], `${plural(commentCount, 'comment')} will show the key owner as author; each starts with a line naming the original author`)
   losses.set('status updates', records.update.length, records.update.map((record) => record.key), `${plural(records.update.length, 'status update')} will be dated at the migration and authored by the key owner`)

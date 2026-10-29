@@ -208,6 +208,21 @@ test('every export row of "What does not round-trip" appears in losses when its 
   }
 })
 
+test('the sprint names and goals and the epic creation times are losses', async () => {
+  const mapped = mapExport(snapshot({
+    people: [],
+    sprints: [{ id: '2026-10-12', name: 'B', start: '2026-10-12', end: '2026-10-25', goal: 'Ship', state: 'closed', closed: null }],
+    epics: [{ id: 'EPC-1', title: 'Epic', status: status('todo'), start: null, target: null, milestone: null, description: '', created: '2026-10-01T10:00:00Z', updates: [] }],
+    issues: [],
+  }), await target())
+  const names = mapped.losses.find((loss) => loss.what === 'sprint names')
+  assert.deepEqual([names.count, names.ids], [1, ['2026-10-12']])
+  assert.match(names.why, /name and goal/)
+  const dates = mapped.losses.find((loss) => loss.what === 'epic dates')
+  assert.deepEqual([dates.count, dates.ids], [1, ['EPC-1']])
+  assert.match(dates.why, /creation time/)
+})
+
 test('an empty tracker has no losses, and only the type labels the team lacks to create', async () => {
   const mapped = mapExport(snapshot({ people: [] }), await target())
   assert.deepEqual(mapped.losses, [])
