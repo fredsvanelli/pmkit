@@ -14,6 +14,7 @@
 - Capacity and days off of a Linear cycle live in `.pmkit/capacity.yaml`, a file you commit. `cycle capacity` reads and writes it, and Linear is never written.
 - Linear projects work as pmkit epics (PMK-38), with progress, health and project updates, read-only milestones and documents, and issue history shows the epic as the issue's `parent`.
 - Adds an opt-in live run of the tracker contract suite against a Linear sandbox workspace (PMK-39), `scripts/lib/linear/contract-live.mjs`, with a fixed test team, a write guard, a request budget and a `cleanup` command. `npm test` stays offline and now removes `LINEAR_API_KEY` and `PMKIT_LIVE` from the environment of its tests.
+- Linear history can miss an edit made right after the create. Linear folds it into the create entry, so `events` shows no `update` for it (PMK-39).
 
 ## 0.2.0 - 2026-10-25
 

@@ -7,6 +7,8 @@
 // setup() may name `assignee`, the member id the suite assigns issues to (default: the first member). A shared workspace
 // returns the key owner so the suite never assigns a person who would be notified.
 // The test body runs setup(t) with the node:test context, so a setup may tell tests apart by `t.name`.
+// setup() may set `foldsQuickEdits: true` when the tracker folds an update made right after a create into the create entry
+// of its history. The history test then still requires create before comment and the updated value, but no 'update' entry.
 // The suite awaits every operation, so an adapter may return values or promises.
 //
 // setup() may also return `cycles: { active(), planned() }`, two async functions that return a cycle (an object with `id`, and
@@ -152,14 +154,21 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       await rejects(() => tracker.link(a, b, 'sibling', actor), 'INVALID_INPUT')
     })
 
-    it('keeps comments and history in the order the writes happened', ['history'], async ({ tracker, actor }) => {
+    it('keeps comments and history in the order the writes happened', ['history'], async ({ tracker, actor, foldsQuickEdits }) => {
       const { id } = (await tracker.createIssue({ title: 'Talked about' }, actor)).after
       await tracker.updateIssue(id, { title: 'Talked about more' }, actor)
       const comment = await tracker.comment(id, 'First thought', actor)
       assert.equal(comment.body, 'First thought')
       assert.deepEqual((await tracker.listComments(id)).map((entry) => entry.body), ['First thought'])
       const history = await tracker.getHistory(id)
-      assert.deepEqual(history.map((event) => event.op), ['create', 'update', 'comment'])
+      const ops = history.map((event) => event.op)
+      if (foldsQuickEdits) {
+        assert.equal(ops[0], 'create')
+        assert.equal(ops.at(-1), 'comment')
+        assert.equal((await tracker.getIssue(id)).title, 'Talked about more')
+      } else {
+        assert.deepEqual(ops, ['create', 'update', 'comment'])
+      }
       const stamps = history.map((event) => event.at)
       assert.deepEqual(stamps, [...stamps].sort())
       await rejects(() => tracker.comment(id, '   ', actor), 'INVALID_INPUT')

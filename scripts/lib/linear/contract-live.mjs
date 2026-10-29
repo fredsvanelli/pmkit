@@ -3,11 +3,12 @@
 // `npm test` does not load it (the name does not end in .test.mjs).
 //
 //   set -a; . ./.env; set +a; PMKIT_LIVE=1 PMKIT_LIVE_WORKSPACE=<url key> node scripts/lib/linear/contract-live.mjs
-//   ... node scripts/lib/linear/contract-live.mjs cleanup          lists what the test team holds, writes nothing
-//   ... node scripts/lib/linear/contract-live.mjs cleanup --yes    trashes those items
+//   ... PMKIT_LIVE=1 PMKIT_LIVE_WORKSPACE=<url key> node scripts/lib/linear/contract-live.mjs cleanup          lists what the test team holds, writes nothing
+//   ... PMKIT_LIVE=1 PMKIT_LIVE_WORKSPACE=<url key> node scripts/lib/linear/contract-live.mjs cleanup --yes    trashes those items
 //
 // It runs with node, not node --test, so the tests and the signal handlers share one process. Without PMKIT_LIVE=1, a set
 // PMKIT_LIVE_WORKSPACE and a usable LINEAR_API_KEY, every test is skipped with one reason and nothing is sent.
+// `cleanup` needs PMKIT_LIVE=1 too, with or without --yes.
 // Running `cleanup --yes` during a live run trashes that run's items too.
 
 import { randomUUID } from 'node:crypto'
@@ -148,7 +149,7 @@ export function buildLiveRun({ env, fetch, workspace, sleep, now = () => new Dat
       return { id: found.id, start: found.start, end: found.end }
     }
     return {
-      tracker, actor: run.viewer.id, assignee: run.viewer.id, today: run.today, env: run.env, root: run.root, cycles: { active: pick('active'), planned: pick('planned') },
+      tracker, foldsQuickEdits: true, actor: run.viewer.id, assignee: run.viewer.id, today: run.today, env: run.env, root: run.root, cycles: { active: pick('active'), planned: pick('planned') },
       async teardown() {
         await sweep()
         fs.rmSync(path.join(run.root, '.pmkit', 'capacity.yaml'), { force: true })

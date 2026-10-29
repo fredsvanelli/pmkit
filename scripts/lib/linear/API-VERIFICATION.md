@@ -202,6 +202,10 @@ Estimated, not measured. The run aims at under 1,000 requests and stops suite re
 | Trashed issues count toward the 250 issues of the Free plan | `unverified` |
 | `projects(filter: { accessibleTeams })` and `issues(filter: { team })` with an id comparator accept the test team id | `unverified` |
 
+### History folds a quick edit into the create entry
+
+Second live run, 2026-10-28 (scratchpad log run2.log), test "keeps comments and history in the order the writes happened". The test created an issue, updated its title right away and commented. `issue.history` returned one entry for the create, with no from/to field set, and no separate update entry. Linear folds an update made right after a create into the create entry. The live setup sets `foldsQuickEdits`, so that test requires create first, the comment last and the updated title, but no `update` entry. The Local run still requires `create`, `update`, `comment`.
+
 ## Paid-plan features on a Free workspace
 
 Check a gated feature in this order.
