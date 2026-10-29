@@ -1,0 +1,2 @@
+{"at":"2026-10-29T02:47:18Z","by":"fred","op":"create","to":{"id":"PMK-170","title":"Reject credential-shaped keys in repo configs with validate","type":"feature","status":"backlog","priority":"medium","estimate":3,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-29T02:47:18.185Z","updated":"2026-10-29T02:47:18Z"}}
+{"at":"2026-10-29T02:47:18Z","by":"fred","op":"link","field":"related","to":"PMK-32"}

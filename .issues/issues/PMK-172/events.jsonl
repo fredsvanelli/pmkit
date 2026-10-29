@@ -1,0 +1,2 @@
+{"at":"2026-10-29T02:47:21Z","by":"fred","op":"create","to":{"id":"PMK-172","title":"Fix the open correctness findings in the Linear adapter","type":"bug","status":"backlog","priority":"medium","estimate":8,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-29T02:47:21.600Z","updated":"2026-10-29T02:47:21Z"}}
+{"at":"2026-10-29T02:47:21Z","by":"fred","op":"link","field":"related","to":"PMK-30"}

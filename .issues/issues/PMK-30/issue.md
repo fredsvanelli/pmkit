@@ -8,10 +8,11 @@ estimate: 5
 assignee: fred
 parent: EPC-5
 blocked_by: [PMK-28]
+related: [PMK-172]
 milestone: linear
 branch: pmk-30-add-the-linear-api-client
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-28T01:01:50Z
+updated: 2026-10-29T02:47:21Z
 ---
 
 ## Description
