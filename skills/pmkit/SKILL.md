@@ -39,6 +39,7 @@ Each command file holds the full procedure. When the user asks for one of these 
 | see who is on triage duty in Linear, change the triage rotation, or read Triage Intelligence suggestions | `/pmkit:linear:triage-rotation` | `${CLAUDE_PLUGIN_ROOT}/commands/linear/triage-rotation.md` |
 | check the tracker files, fix what can be fixed and resolve git conflict markers | `/pmkit:local:doctor` | `${CLAUDE_PLUGIN_ROOT}/commands/local/doctor.md` |
 | render a board, roadmap or sprint view as Markdown or HTML to share with people outside the agent | `/pmkit:local:render` | `${CLAUDE_PLUGIN_ROOT}/commands/local/render.md` |
+| move the tracker to Linear, import a Linear team into .issues/, undo or finish a migration | `/pmkit:local:migrate` | `${CLAUDE_PLUGIN_ROOT}/commands/local/migrate.md` |
 | write release notes, say what shipped, a changelog for customers | `/pmkit:report:release-notes` | `${CLAUDE_PLUGIN_ROOT}/commands/report/release-notes.md` |
 | draft a status update for an epic and publish it after approval | `/pmkit:report:status` | `${CLAUDE_PLUGIN_ROOT}/commands/report/status.md` |
 | turn a spec or PRD into an epic with milestones, issues, sub-issues, estimates and blockers | `/pmkit:spec:import` | `${CLAUDE_PLUGIN_ROOT}/commands/spec/import.md` |
