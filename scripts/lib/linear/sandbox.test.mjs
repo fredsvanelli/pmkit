@@ -77,6 +77,25 @@ test('the guard refuses every mutation before open() and sends nothing', async (
   assert.equal(inner.calls.length, 0)
 })
 
+test('the guard refuses a subscription, and a query whose root field is a mutation, and sends nothing', async () => {
+  const { inner, ...guarded } = opened()
+  const documents = [
+    'subscription Watch { teamDelete(id: "t-1") { success } }',
+    'query Sneaky { teamDelete(id: "t-1") { success } }',
+    '{ teamDelete(id: "t-1") { success } }',
+    'query Aliased { gone: issueArchive(id: "i-1") { success } }',
+    'query Mixed { viewer { id } fooUpdate { success } }',
+  ]
+  for (const document of documents) await assert.rejects(send(guarded, document), REFUSED, document)
+  assert.equal(inner.calls.length, 0)
+})
+
+test('the guard still passes a query with literal arguments and nested fields', async () => {
+  const { inner, ...guarded } = opened()
+  await send(guarded, 'query Page($after: String = "x") { issues(first: 10, after: $after) @include(if: true) { nodes { id } } viewer { id } }')
+  assert.equal(inner.calls.length, 1)
+})
+
 test('the guard refuses a root field off the list', async () => {
   const { inner, ...guarded } = opened()
   for (const name of ['TeamUpdate', 'CycleUpdate', 'IssueLabelCreate', 'TeamDelete']) {

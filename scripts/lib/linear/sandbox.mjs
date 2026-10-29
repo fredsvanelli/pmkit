@@ -170,6 +170,83 @@ export function readMutation(document) {
 
 const asList = (value) => (Array.isArray(value) ? value : [])
 
+/**
+ * Reads a document that is not a mutation. Returns { subscription, fields, reason }: `subscription` is true when any operation is a
+ * subscription, `fields` the root field names of every operation, `reason` why the document cannot be read, or null. Arguments and
+ * variable defaults may hold literals here, since a query takes them. A fragment spread in a root selection cannot be read.
+ */
+function readRoots(document) {
+  const tokens = typeof document === 'string' ? tokenize(document) : null
+  if (tokens === null) return { subscription: false, fields: [], reason: 'the document cannot be read' }
+  let at = 0
+  const next = () => {
+    if (at >= tokens.length) throw new Unread('the document ends early')
+    return tokens[at++]
+  }
+  const skipGroup = () => {
+    const open = next()
+    const close = { '{': '}', '(': ')', '[': ']' }[open]
+    if (!close) throw new Unread(`expected a group, found ${open}`)
+    for (let depth = 1; depth > 0;) {
+      const token = next()
+      if (token === open) depth += 1
+      else if (token === close) depth -= 1
+    }
+  }
+  const skipDirectives = () => {
+    while (tokens[at] === '@') {
+      next()
+      next()
+      if (tokens[at] === '(') skipGroup()
+    }
+  }
+  const fields = []
+  let subscription = false
+  try {
+    while (at < tokens.length) {
+      const keyword = tokens[at] === '{' ? 'query' : next()
+      if (keyword === 'fragment') {
+        next()
+        next()
+        if (next() === 'Mutation') throw new Unread('a fragment is defined on Mutation')
+        skipDirectives()
+        skipGroup()
+        continue
+      }
+      if (!['query', 'mutation', 'subscription'].includes(keyword)) throw new Unread(`unknown definition ${keyword}`)
+      if (keyword === 'subscription') subscription = true
+      if (NAME.test(tokens[at] ?? '')) next()
+      if (tokens[at] === '(') skipGroup()
+      skipDirectives()
+      if (tokens[at] !== '{') throw new Unread('expected a selection')
+      next()
+      while (tokens[at] !== '}') {
+        if (at >= tokens.length) throw new Unread('the document ends early')
+        if (tokens[at] === '...') throw new Unread('the root selection holds a fragment')
+        let name = next()
+        if (!NAME.test(name)) throw new Unread(`expected a name, found ${name}`)
+        if (tokens[at] === ':') {
+          next()
+          fields.push(name)
+          name = next()
+        }
+        fields.push(name)
+        if (tokens[at] === '(') skipGroup()
+        skipDirectives()
+        if (tokens[at] === '{') skipGroup()
+      }
+      next()
+    }
+  } catch (error) {
+    if (error instanceof Unread) return { subscription, fields, reason: error.message }
+    throw error
+  }
+  return { subscription, fields, reason: null }
+}
+
+const MUTATION_NAME = /(Create|Update|Delete|Archive|Unarchive)$/
+const isMutationName = (name, allowlist) => Object.hasOwn(allowlist, name) || Object.hasOwn(SUITE_INPUT_KEYS, name) || MUTATION_NAME.test(name)
+
 /** The rule helpers: each returns a reason string or null. */
 const rules = {
   /** A string equal to the test team's id. A null id never matches, even while the team does not exist yet. */
@@ -345,6 +422,13 @@ export function createGuardedFetch({ fetch, workspace, allowlist = SUITE_ALLOWLI
     const name = operationName(query) ?? '(anonymous)'
     const mutation = isMutation(query)
     let root = null
+    if (!mutation) {
+      const read = readRoots(query)
+      if (read.reason) refuse(`refusing ${name}: ${read.reason}`)
+      if (read.subscription) refuse(`refusing ${name}: a subscription is not sent`)
+      const field = read.fields.find((candidate) => isMutationName(candidate, allowlist))
+      if (field !== undefined) refuse(`refusing ${name}: the query names the mutation field ${field}`)
+    }
     if (mutation) {
       const read = readMutation(query)
       if (read.reason) refuse(`refusing ${name}: ${read.reason}`)
