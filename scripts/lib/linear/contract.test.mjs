@@ -98,7 +98,7 @@ test('no file under PMKIT_HOME holds the key after a create', async () => {
   }
 })
 
-// The live run is a shared workspace: the suite may assign only to the key owner, A setup states it with `assignee`.
+// The live run is a shared workspace: the suite may assign only to the key owner. A setup states it with `assignee`.
 const assigned = []
 runTrackerContract({
   name: 'Linear tracker contract with assignee',
@@ -110,6 +110,20 @@ runTrackerContract({
       assign: (id, who, ...rest) => { assigned.push(who); return assign(id, who, ...rest) },
     })
     return { ...env, tracker, assignee: 'user-2' }
+  },
+})
+
+// Linear folds an update made right after a create into the create entry. The fake keeps both entries, so this setup hides
+// the 'update' entries and the history test takes its foldsQuickEdits branch.
+runTrackerContract({
+  name: 'Linear tracker contract with folded quick edits',
+  families: ['discovery', 'issues', 'history'],
+  setup() {
+    const env = linearContract()
+    const tracker = Object.assign(Object.create(env.tracker), {
+      getHistory: async (...args) => (await env.tracker.getHistory(...args)).filter((event) => event.op !== 'update'),
+    })
+    return { ...env, tracker, foldsQuickEdits: true }
   },
 })
 
