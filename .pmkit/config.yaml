@@ -5,7 +5,7 @@ tracker:
 git_host:
   system: github
   repo: fredsvanelli/pmkit
-  default_branch: main
+  default_branch: develop
 write_policy:
   confirm: single_writes
   preview: [bulk, delete, publish_update, move_scope]
