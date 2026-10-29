@@ -1828,6 +1828,7 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
     stdout.push(json ? `${JSON.stringify(result.data, null, 2)}\n` : `${result.text}\n`)
     readWarning()
     for (const warning of result.warnings ?? []) stderr.push(`warning: ${warning}\n`)
+    for (const note of result.notes ?? []) stderr.push(`note: ${note}\n`)
   } catch (error) {
     code = 2
     readWarning()
