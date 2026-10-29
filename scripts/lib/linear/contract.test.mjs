@@ -98,11 +98,10 @@ test('no file under PMKIT_HOME holds the key after a create', async () => {
   }
 })
 
-// The live run is a shared workspace: the suite may assign only to the key owner, and Linear may merge a quick edit into the
-// create entry of the history. A setup states both with `assignee` and `mergesQuickEdits`.
+// The live run is a shared workspace: the suite may assign only to the key owner, A setup states it with `assignee`.
 const assigned = []
 runTrackerContract({
-  name: 'Linear tracker contract with assignee and mergesQuickEdits',
+  name: 'Linear tracker contract with assignee',
   families: ['discovery', 'issues', 'history'],
   setup() {
     const env = linearContract()
@@ -110,7 +109,7 @@ runTrackerContract({
     const tracker = Object.assign(Object.create(env.tracker), {
       assign: (id, who, ...rest) => { assigned.push(who); return assign(id, who, ...rest) },
     })
-    return { ...env, tracker, assignee: 'user-2', mergesQuickEdits: true }
+    return { ...env, tracker, assignee: 'user-2' }
   },
 })
 

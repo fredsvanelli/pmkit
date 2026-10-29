@@ -14,7 +14,7 @@ import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import test, { after, before, describe } from 'node:test'
+import test, { after, afterEach, before, describe } from 'node:test'
 import { pathToFileURL } from 'node:url'
 import { runTrackerContract } from '../../contract-suite.mjs'
 import { createLinearClient } from './client.mjs'
@@ -22,6 +22,7 @@ import { linearCredential } from './credential.mjs'
 import {
   createGuardedFetch, findOrCreateTestTeam, listTestTeamItems, preflight, trashTestTeamItems, waitForCycles,
 } from './sandbox.mjs'
+import { ISSUE_HISTORY_QUERY } from './documents.mjs'
 import { PROBES } from './live-probes.mjs'
 import { createLinearTracker } from './tracker.mjs'
 
@@ -38,6 +39,16 @@ export function skipReason(env) {
     return `LINEAR_API_KEY is not usable: ${error.message}`
   }
   return false
+}
+
+const HISTORY_ORDER_TEST = 'keeps comments and history in the order the writes happened'
+
+/** One raw history entry as a line: its createdAt, then each from/to field that is set, with its value. */
+export function describeEntry(entry) {
+  const fields = Object.entries(entry)
+    .filter(([key, value]) => /^(from|to)[A-Z]/.test(key) && value !== null && value !== undefined)
+    .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+  return `  ${entry.createdAt} ${fields.length > 0 ? fields.join(' ') : '(no from/to field set)'}`
 }
 
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`
@@ -78,7 +89,7 @@ export async function runCleanup({ client, env, workspace, guard, yes, write }) 
 export function buildLiveRun({ env, fetch, workspace, sleep, now = () => new Date(), uuid = randomUUID, write = (line) => console.log(line) }) {
   const { fetch: guarded, guard } = createGuardedFetch({ fetch, workspace })
   const client = createLinearClient({ env, tracker: { system: 'linear', scope: { workspace } }, fetch: guarded })
-  const run = { guard, client, team: null, viewer: null, today: null, home: null, root: null, env: null, config: null }
+  const run = { historyWatch: null, guard, client, team: null, viewer: null, today: null, home: null, root: null, env: null, config: null }
 
   const newTracker = () => createLinearTracker(run.config, { env: run.env, fetch: guarded })
 
@@ -104,21 +115,40 @@ export function buildLiveRun({ env, fetch, workspace, sleep, now = () => new Dat
     await newTracker().discover({ refresh: true })
   }
 
+  // Wraps getHistory of the order test's tracker so the issue it read can be dumped raw if the test fails.
+  function watchHistory(tracker, name) {
+    const read = tracker.getHistory
+    tracker.getHistory = async (id, ...rest) => {
+      run.historyWatch = { name, id }
+      return read.call(tracker, id, ...rest)
+    }
+  }
+
+  /** The raw history entries of the watched issue as lines, or [] when the test passed or watched nothing. */
+  async function historyReport(passed) {
+    const watch = run.historyWatch
+    run.historyWatch = null
+    if (passed || !watch) return []
+    const { nodes } = await client.paginate(ISSUE_HISTORY_QUERY, { id: watch.id }, { select: (data) => data.issue.history, pageSize: 100 })
+    return [`raw Linear history of ${watch.id} (${nodes.length} entries, newest first), test "${watch.name}"`, ...nodes.map(describeEntry)]
+  }
+
   async function sweep() {
     return trashTestTeamItems({ client, team: run.team, guard })
   }
 
-  async function setup() {
+  async function setup(t) {
     const { issues, projects } = await listTestTeamItems({ client, team: run.team, guard })
     if (issues.length + projects.length > 0) throw new Error('the test team is not empty')
     const tracker = newTracker()
+    if (t?.name === HISTORY_ORDER_TEST) watchHistory(tracker, t.name)
     const pick = (state) => async () => {
       const [found] = await tracker.listCycles({ state })
       if (!found) throw new Error(`the test team has no ${state} cycle`)
       return { id: found.id, start: found.start, end: found.end }
     }
     return {
-      tracker, actor: run.viewer.id, assignee: run.viewer.id, mergesQuickEdits: true, today: run.today, env: run.env, root: run.root, cycles: { active: pick('active'), planned: pick('planned') },
+      tracker, actor: run.viewer.id, assignee: run.viewer.id, today: run.today, env: run.env, root: run.root, cycles: { active: pick('active'), planned: pick('planned') },
       async teardown() {
         await sweep()
         fs.rmSync(path.join(run.root, '.pmkit', 'capacity.yaml'), { force: true })
@@ -146,7 +176,7 @@ export function buildLiveRun({ env, fetch, workspace, sleep, now = () => new Dat
     ]
   }
 
-  return { before, after, setup, totals, guard, client, get config() { return run.config }, get team() { return run.team } }
+  return { before, after, setup, historyReport, totals, guard, client, get config() { return run.config }, get team() { return run.team } }
 }
 
 /**
@@ -173,6 +203,9 @@ export function registerLiveSuite(run) {
   describe('Linear tracker contract against the sandbox workspace', () => {
     before(() => run.before())
     after(() => run.after())
+    afterEach(async (t) => {
+      for (const line of await run.historyReport(t.passed)) console.log(line)
+    })
     runTrackerContract({ name: 'contract', families: LINEAR_FAMILIES, setup: run.setup })
     for (const [name, probe] of PROBES) {
       test(`probe: ${name}`, async (t) => {

@@ -5,9 +5,8 @@
 // at least one member and no issues. `today` is the YYYY-MM-DD date the tracker treats as today
 // (default: the real date); the suite opens its cycle on that day so the cycle starts active.
 // setup() may name `assignee`, the member id the suite assigns issues to (default: the first member). A shared workspace
-// returns the key owner so the suite never assigns a person who would be notified. It may also set `mergesQuickEdits: true`
-// when the tracker folds an edit made right after create into the create entry of the history, so the suite does not demand
-// an 'update' entry there.
+// returns the key owner so the suite never assigns a person who would be notified.
+// The test body runs setup(t) with the node:test context, so a setup may tell tests apart by `t.name`.
 // The suite awaits every operation, so an adapter may return values or promises.
 //
 // setup() may also return `cycles: { active(), planned() }`, two async functions that return a cycle (an object with `id`, and
@@ -63,7 +62,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
     const missing = needs.find((family) => !families.includes(family))
     if (missing !== undefined) return test(title, { skip: `needs the ${missing} family` }, () => {})
     return test(title, async (t) => {
-      const env = await setup()
+      const env = await setup(t)
       try {
         const today = env.today ?? new Date().toISOString().slice(0, 10)
         await body({ ...env, today, cycle: cycleHelper({ ...env, today }, t) })
@@ -153,14 +152,14 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       await rejects(() => tracker.link(a, b, 'sibling', actor), 'INVALID_INPUT')
     })
 
-    it('keeps comments and history in the order the writes happened', ['history'], async ({ tracker, actor, mergesQuickEdits }) => {
+    it('keeps comments and history in the order the writes happened', ['history'], async ({ tracker, actor }) => {
       const { id } = (await tracker.createIssue({ title: 'Talked about' }, actor)).after
       await tracker.updateIssue(id, { title: 'Talked about more' }, actor)
       const comment = await tracker.comment(id, 'First thought', actor)
       assert.equal(comment.body, 'First thought')
       assert.deepEqual((await tracker.listComments(id)).map((entry) => entry.body), ['First thought'])
       const history = await tracker.getHistory(id)
-      assert.deepEqual(history.map((event) => event.op).filter((op) => !mergesQuickEdits || op !== 'update'), mergesQuickEdits ? ['create', 'comment'] : ['create', 'update', 'comment'])
+      assert.deepEqual(history.map((event) => event.op), ['create', 'update', 'comment'])
       const stamps = history.map((event) => event.at)
       assert.deepEqual(stamps, [...stamps].sort())
       await rejects(() => tracker.comment(id, '   ', actor), 'INVALID_INPUT')
