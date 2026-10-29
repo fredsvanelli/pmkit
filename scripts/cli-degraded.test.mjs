@@ -8,7 +8,7 @@ import { run } from './pmkit.mjs'
 import { ADAPTERS } from './lib/adapters.mjs'
 import { linearDescriptor } from './lib/linear/adapter.mjs'
 import { useLinear } from './fake-hosted.mjs'
-import { ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeWorkspace } from './fake-linear-api.mjs'
+import { ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeWorkspace } from './fake-linear-api.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo, userStoreEnv } from './test-helpers.mjs'
 
@@ -22,7 +22,8 @@ function linear(args, { teams, cycles } = {}) {
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('    workspace: acme', '    workspace: acme\n    team: ACME'))
   const env = { ...childEnv(), ...userStoreEnv().env, LINEAR_API_KEY: FAKE_KEY }
   const fake = fakeLinearIssues({ ...(teams ? { teams } : {}), ...(cycles ? { cycles } : {}) })
-  const fetch = fakeLinearFetch({ ...fakeWorkspace(teams ? { teams } : {}), ...fake.routes })
+  const projects = fakeLinearProjects({ issues: fake, ...(teams ? { teams } : {}) })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace(teams ? { teams } : {}), ...fake.routes, ...projects.routes })
   return run(args, { cwd: root, env, adapters: { ...ADAPTERS, linear: linearDescriptor({ fetch }) } })
 }
 
@@ -76,6 +77,12 @@ test('risks prints one events note on Local', async () => {
   const result = await run(['risks'], { cwd: makeRepo('basic') })
   assert.equal(result.code, 0, result.stderr)
   assert.deepEqual(noteLines(result.stderr), ['note: stalled-issue history computed from .issues/events.jsonl'])
+})
+
+test('risks prints one history note on Linear', async () => {
+  const result = await linear(['risks'], { teams: [{ ...ACME_TEAM, cyclesEnabled: true }] })
+  assert.equal(result.code, 0, result.stderr)
+  assert.deepEqual(noteLines(result.stderr), ['note: stalled-issue history computed from Linear issue history'])
 })
 
 test('pr status refuses without a git host, on Local and on Linear', async () => {
