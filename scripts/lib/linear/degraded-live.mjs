@@ -115,7 +115,7 @@ export function buildDegradedRun({ env, fetch, workspace, sleep, write = (line) 
   /** 2 issues, one moved to in_progress and then done, so the metrics have an entry. 4 mutations. */
   async function seed() {
     for (const key of ['A', 'B']) {
-      const made = await exec(['issues', 'create', '--title', `pmkit degraded ${key}`, '--json'])
+      const made = await exec(['issues', 'create', '--title', `degraded-path seed ${key}`, '--json'])
       assert.equal(made.code, 0, made.stderr)
       state.ids[key] = JSON.parse(made.stdout).data.id
     }
