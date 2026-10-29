@@ -302,6 +302,11 @@ async function capabilityNotes(tracker, id) {
   return note === null ? [] : [note]
 }
 
+/** The linked_code note of a command that reads git. */
+async function linkedCodeNotes(ctx) {
+  return capabilityNotes(await ctx.tracker(), 'linked_code')
+}
+
 /** discover().statuses as a categoryOf(statusName), and every issue's events grouped by issue. The flow metrics need each whole log. */
 async function flowInputs(tracker) {
   const categoryOf = categoryLookup((await tracker.discover()).statuses)
@@ -890,7 +895,7 @@ export const COMMANDS = [
       if (ctx.dryRun) return { data: { branch, from }, text: `would create branch ${branch} from ${from}\ndry run: nothing was written` }
       host.createBranch(branch, { from })
       const result = await tracker.updateIssue(issue.id, { branch }, actor)
-      return { data: { branch, ...result }, text: `created branch ${branch} from ${from}\n${writeText(result, ctx)}`, commit: issue.id, notes: await capabilityNotes(tracker, 'linked_code') }
+      return { data: { branch, ...result }, text: `created branch ${branch} from ${from}\n${writeText(result, ctx)}`, commit: issue.id, notes: await linkedCodeNotes(ctx) }
     },
   },
   {
@@ -909,12 +914,12 @@ export const COMMANDS = [
         const text = open
           ? `would push ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`
           : `would open a pull request ${request.head} to ${request.base}\n${request.title}\n\n${body}`
-        return { data: { ...request, existing: open !== null, pr: open }, text: `${text}\ndry run: nothing was written` }
+        return { data: { ...request, existing: open !== null, pr: open }, text: `${text}\ndry run: nothing was written`, notes: await linkedCodeNotes(ctx) }
       }
       host.push(issue.branch)
-      if (open) return { data: { ...open, existing: true }, text: `pushed ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}` }
+      if (open) return { data: { ...open, existing: true }, text: `pushed ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`, notes: await linkedCodeNotes(ctx) }
       const pr = host.openPullRequest(request)
-      return { data: { ...pr, existing: false }, text: `opened pull request #${pr.number} ${pr.url}` }
+      return { data: { ...pr, existing: false }, text: `opened pull request #${pr.number} ${pr.url}`, notes: await linkedCodeNotes(ctx) }
     },
   },
   {
@@ -927,9 +932,9 @@ export const COMMANDS = [
       const pr = host.getPullRequest({ head: issue.branch })
       if (pr?.state !== 'OPEN') throw usageError(`${issue.branch} has no open pull request`, `pmkit pr open --issue ${issue.id}`)
       if (!pr.isDraft) throw usageError(`pull request #${pr.number} is not a draft, it is already ready for review`, `pmkit pr status --branch ${issue.branch}`)
-      if (ctx.dryRun) return { data: { ...pr, isDraft: false }, text: `would mark pull request #${pr.number} ready for review ${pr.url}\ndry run: nothing was written` }
+      if (ctx.dryRun) return { data: { ...pr, isDraft: false }, text: `would mark pull request #${pr.number} ready for review ${pr.url}\ndry run: nothing was written`, notes: await linkedCodeNotes(ctx) }
       const ready = host.markReady(pr.number)
-      return { data: ready, text: `marked pull request #${ready.number} ready for review ${ready.url}` }
+      return { data: ready, text: `marked pull request #${ready.number} ready for review ${ready.url}`, notes: await linkedCodeNotes(ctx) }
     },
   },
   {
@@ -944,7 +949,7 @@ export const COMMANDS = [
       const lines = pr
         ? [`#${pr.number} ${pr.title} (${pr.state}${pr.isDraft ? ', draft' : ''})`, pr.url, `checks: ${checks.length === 0 ? '(none)' : checks.map((c) => `${c.name} ${c.bucket ?? c.state}`).join(', ')}`, `reviews: ${reviews.length === 0 ? '(none)' : reviews.map((r) => r.state).join(', ')}`]
         : [`no pull request for ${branch}`]
-      return { data: { branch, pr, checks, reviews }, text: lines.join('\n'), notes: await capabilityNotes(await ctx.tracker(), 'linked_code') }
+      return { data: { branch, pr, checks, reviews }, text: lines.join('\n'), notes: await linkedCodeNotes(ctx) }
     },
   },
   {
@@ -974,7 +979,7 @@ export const COMMANDS = [
       const lines = [`checked ${candidates.length} in_review issues, moved ${moved.length} to done`, ...moved.map((m) => `  ${m.id} merged in #${m.pr}`), ...problems.map((p) => `  ${problemLine(p)}`)]
       if (ctx.dryRun) lines.push('dry run: nothing was written')
       const data = { checked: candidates.length, moved, problems }
-      return { data, text: lines.join('\n'), commit: moved.length > 0 ? moved.map((m) => m.id).join(' ') : undefined }
+      return { data, text: lines.join('\n'), commit: moved.length > 0 ? moved.map((m) => m.id).join(' ') : undefined, notes: await linkedCodeNotes(ctx) }
     },
   },
   {

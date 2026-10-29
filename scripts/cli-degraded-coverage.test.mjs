@@ -65,7 +65,7 @@ const COVERED = {
   'release list': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'release get': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'release issues': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'release create': 'REFUSALS', 'release mark-released': 'REFUSALS',
   'metrics velocity': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics cycle-time': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics lead-time': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics throughput': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics aging': 'cli-linear.test.mjs or cli-degraded.test.mjs', events: 'cli-linear.test.mjs or cli-degraded.test.mjs',
   'docs read': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'docs create': 'REFUSALS',
-  'pr open': 'native write, PMK-39', 'pr ready': 'native write, PMK-39', 'pr status': 'PATH_CASES', 'pr sync': 'native write, PMK-39',
+  'pr open': 'PATH_CASES', 'pr ready': 'PATH_CASES', 'pr status': 'PATH_CASES', 'pr sync': 'PATH_CASES',
 }
 
 test('every command a capability names has a degraded-path case or an exemption', () => {
@@ -92,13 +92,13 @@ test('every COVERED place names a case that exists', () => {
 
 // A forged manifest: the tracker reports the entry we choose for one capability, and the command must print its note or refuse.
 // With `github`, the repository is a git repository on GitHub, a fake gh answers that branch x has no pull request, and ACME-1 exists.
-function forged(id, entry, { github = false } = {}) {
+function forged(id, entry, { github = false, gh: extra = {} } = {}) {
   const root = useLinear(makeRepo('basic'))
   const file = path.join(root, '.pmkit', 'config.yaml')
   let config = fs.readFileSync(file, 'utf8').replace('    workspace: acme', '    workspace: acme\n    team: ACME')
   if (github) config = config.replace('  system: none', '  system: github\n  default_branch: main')
   fs.writeFileSync(file, config)
-  const gh = github ? fakeGh({ [`pr view x --json ${PR_VIEW}`]: { status: 1, stderr: 'no pull requests found for branch "x"\n' } }) : null
+  const gh = github ? fakeGh({ [`pr view x --json ${PR_VIEW}`]: { status: 1, stderr: 'no pull requests found for branch "x"\n' }, ...extra }) : null
   const env = { ...childEnv(), ...userStoreEnv().env, LINEAR_API_KEY: FAKE_KEY, ...(gh ? { PATH: `${gh.dir}${path.delimiter}${process.env.PATH}`, PMKIT_FAKE_GH: gh.responses } : {}) }
   if (github) {
     for (const args of [['init', '-q', '-b', 'main'], ['-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'init']]) {
@@ -128,6 +128,7 @@ function forged(id, entry, { github = false } = {}) {
 const PR_VIEW = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
 const noteLines = (stderr) => stderr.split('\n').filter((line) => line.startsWith('note: '))
 const ABSENT = { path: 'absent', enableHint: 'Use the Business plan' }
+const ISSUE_BRANCH = 'acme-1-fix-it'
 const CONDITIONAL = { path: 'conditional', detail: { teams: ['OPS'] } }
 
 // For each capability that has a note on a command, one forged entry per path. The expected line is the phrase of that path.
@@ -147,17 +148,23 @@ const PATH_CASES = [
     [CONDITIONAL, 'note: releases is on for teams OPS only'],
     [ABSENT, 'note: releases is absent: Use the Business plan'],
   ] },
-  ...[['issues', 'branch', 'ACME-1'], ['pr', 'status', '--branch', 'x']].map((argv) => ({ id: 'linked_code', argv, github: true, cases: [
+  ...[
+    { argv: ['issues', 'branch', 'ACME-1'] },
+    { argv: ['pr', 'status', '--branch', 'x'] },
+    { argv: ['pr', 'open', '--issue', 'ACME-1', '--dry-run'], gh: { [`pr view ${ISSUE_BRANCH} --json ${PR_VIEW}`]: { status: 1, stderr: `no pull requests found for branch "${ISSUE_BRANCH}"\n` } } },
+    { argv: ['pr', 'ready', '--issue', 'ACME-1', '--dry-run'], gh: { [`pr view ${ISSUE_BRANCH} --json ${PR_VIEW}`]: { stdout: JSON.stringify({ number: 7, url: 'https://github.com/o/r/pull/7', title: 'Fix it', state: 'OPEN', isDraft: true, headRefName: ISSUE_BRANCH, author: { login: 'a' }, mergedAt: null }) } } },
+    { argv: ['pr', 'sync'] },
+  ].map(({ argv, gh }) => ({ id: 'linked_code', argv, github: true, gh, cases: [
     [{ path: 'derived', detail: { source: 'git' } }, 'note: branch and PR state read from git, not from the tracker'],
     [CONDITIONAL, 'note: linked_code is on for teams OPS only'],
     [ABSENT, 'note: linked_code is absent: Use the Business plan'],
   ] })),
 ]
 
-for (const { id, argv, github, cases } of PATH_CASES) {
+for (const { id, argv, github, gh, cases } of PATH_CASES) {
   for (const [entry, line] of cases) {
     test(`${argv.join(' ')} with ${id} ${entry.path}${entry.detail?.source ? ` (${entry.detail.source})` : ''} prints one note line`, async () => {
-      const result = await forged(id, entry, { github }).run(argv)
+      const result = await forged(id, entry, { github, gh }).run(argv)
       assert.equal(result.code, 0, result.stderr)
       assert.deepEqual(noteLines(result.stderr), [line])
     })
