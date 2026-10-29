@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 - 2026-10-28
 
 - `/pmkit:setup` sets up a Linear repository. It infers the workspace and the team, asks which status means in review and blocked and which label stands for each issue type, and writes them to `.pmkit/config.yaml` after one approval.
 - Adds `mappings.types` to `.pmkit/config.yaml`: a pmkit issue type to the name of one Linear label, such as `bug: Bug`. `none` is a valid value for `mappings.status` and `mappings.fields`.
