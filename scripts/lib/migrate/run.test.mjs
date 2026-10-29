@@ -144,6 +144,16 @@ test('the map says sent before the create goes out', async () => {
   assert.deepEqual(seen, [[{ state: 'sent', uuid: 'uuid-1' }, 'uuid-1']])
 })
 
+test('a label the export creates says created in its sent entry and keeps it when the lookup confirms it', async () => {
+  const { root, store } = storeOf()
+  const seen = []
+  const writer = fakeWriter({ unconfirmed: { at: 1, applied: true }, onCreate: (rec) => seen.push(readMap(root, FILE).records.label[rec.key]) })
+  await runPlan({ plan: planOf({ label: [record('type:bug')] }), store, writer, known: {}, now })
+  assert.deepEqual(seen, [{ state: 'sent', uuid: 'uuid-1', created: true }])
+  assert.equal(store.entry('label', 'type:bug').state, 'done')
+  assert.equal(store.entry('label', 'type:bug').created, true)
+})
+
 test('the reserve stops the run before a write', async () => {
   const reset = '2026-10-28T21:06:00Z'
   for (const rates of [

@@ -329,29 +329,45 @@ export const UNDO_READ_REQUESTS = 10
 const UNDO_KINDS = [['issue', 'issues'], ['epic', 'projects'], ['label', 'labels']]
 const IMPORT_UNDO = ['git restore --source=HEAD -- .issues .pmkit/migrations', 'git clean -fd -- .issues']
 
+const UNDO_STATES = ['done', 'sent', 'failed']
+
 /**
- * The removals of an export undo, newest first within a kind: every `done` issue, project, and label the export
- * created. An issue Linear no longer has, or has in its trash, is `gone` and costs no request.
+ * The removals of an export undo, newest first within a kind: every `done`, `sent` and `failed` issue, project, and
+ * label the export created. The migration chose each UUID and wrote it to the map before the create, so a `sent` or
+ * `failed` entry Linear has is the export's record. An issue Linear no longer has, or has in its trash, is `gone`, and so
+ * is a `sent` or `failed` project or label the lookup does not find; a gone record costs no request. `lookups` counts
+ * the reads beyond UNDO_READ_REQUESTS.
  */
-async function undoRemovals(client, map) {
-  const doneOf = (kind) => Object.entries(map.records[kind] ?? {})
-    .filter(([, entry]) => entry.state === 'done' && entry.uuid && (kind !== 'label' || entry.created === true))
+async function undoRemovals(client, writer, map) {
+  const entriesOf = (kind) => Object.entries(map.records[kind] ?? {})
+    .filter(([, entry]) => UNDO_STATES.includes(entry.state) && entry.uuid && (kind !== 'label' || entry.created === true))
     .reverse()
-  const issues = doneOf('issue')
+  const issues = entriesOf('issue')
   const nodes = new Map()
   const ids = issues.map(([, entry]) => entry.uuid)
   for (let i = 0; i < ids.length; i += 100) {
     for (const node of (await client.request(ISSUES_BY_IDS, { ids: ids.slice(i, i + 100) })).issues.nodes) nodes.set(node.id, node)
   }
-  return UNDO_KINDS.flatMap(([kind]) => doneOf(kind).map(([key, entry]) => {
+  let lookups = 0
+  const found = new Map()
+  for (const kind of ['epic', 'label']) {
+    const open = entriesOf(kind).filter(([, entry]) => entry.state !== 'done')
+    if (open.length === 0) continue
+    lookups++
+    found.set(kind, await writer.exists(kind, open.map(([key, entry]) => ({ key, uuid: entry.uuid, entry }))))
+  }
+  const removals = UNDO_KINDS.flatMap(([kind]) => entriesOf(kind).map(([key, entry]) => {
     const removal = { kind, key, uuid: entry.uuid, id: entry.id ?? entry.uuid, changed: false, gone: false }
     if (kind === 'issue') {
       const node = nodes.get(entry.uuid)
       removal.gone = !node || node.trashed === true
       removal.changed = !removal.gone && Boolean(entry.at) && Date.parse(node.updatedAt) > Date.parse(entry.at)
+    } else if (entry.state !== 'done') {
+      removal.gone = !found.get(kind).has(key)
     }
     return removal
   }))
+  return { removals, lookups }
 }
 
 function undoText(file, map, removals, requests, digest, { dryRun }) {
@@ -369,8 +385,8 @@ function undoText(file, map, removals, requests, digest, { dryRun }) {
 }
 
 /**
- * local-migrate undo. On an export map: the full preview of every issue, project and created label it deletes, then,
- * with --expect, one delete at a time, each written to the map as `removed`, so a rerun resumes. On an import map:
+ * local-migrate undo. On an export map: the full preview of every issue, project and created label it deletes, `sent`
+ * and `failed` entries included, then, with --expect, one delete at a time, each written to the map as `removed`, so a rerun resumes. On an import map:
  * the git commands that restore the tracker; nothing is written.
  */
 export async function runUndo(ctx) {
@@ -381,9 +397,10 @@ export async function runUndo(ctx) {
   }
   const linear = { workspace: map.target.workspace, team: map.target.team, mappings: {} }
   const { client, discovery } = await linearHandle(ctx, linear)
-  const removals = await undoRemovals(client, map)
+  const writer = createLinearWriter({ client, discovery, uuid: () => randomUUID() })
+  const { removals, lookups } = await undoRemovals(client, writer, map)
   const sent = removals.filter((removal) => !removal.gone)
-  const requests = UNDO_READ_REQUESTS + sent.length
+  const requests = UNDO_READ_REQUESTS + lookups + sent.length
   const digest = `sha256:${sha256(stableStringify({ undo: file, removals: removals.map(({ kind, key, uuid, changed, gone }) => ({ kind, key, uuid, changed, gone })) }))}`
   const strip = (removal) => ({ kind: removal.kind, key: removal.key, uuid: removal.uuid, id: removal.id, changed: removal.changed, gone: removal.gone })
   const data = { file, direction: 'export', removals: removals.map(strip), changed: removals.filter((removal) => removal.changed).length, requests, digest }
@@ -395,7 +412,6 @@ export async function runUndo(ctx) {
   }
   checkExpect({ digest }, expect)
   const store = createMapStore(ctx.root, file, map)
-  const writer = createLinearWriter({ client, discovery, uuid: () => randomUUID() })
   let removed = 0
   for (const removal of removals) {
     const entry = store.entry(removal.kind, removal.key)

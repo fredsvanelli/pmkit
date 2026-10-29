@@ -14,6 +14,7 @@ import { childEnv } from './golden-helpers.mjs'
 import { buildMigrationFixture, commitAll, git } from './migrate-fixture.mjs'
 import { PmkitError } from './lib/errors.mjs'
 import { parseYaml } from './lib/yaml.mjs'
+import { createMapStore, readMap } from './lib/migrate/id-map.mjs'
 import { loadConfig, loadPmkitConfig } from './lib/config.mjs'
 import { createLocalWriter } from './lib/local/migrate-writer.mjs'
 import { readLocalSnapshot } from './lib/local/migrate-reader.mjs'
@@ -562,6 +563,40 @@ test('undo deletes what the export created', async () => {
   const entries = [...Object.values(records.issue), ...Object.values(records.epic), ...Object.values(records.label).filter((entry) => entry.created)]
   assert.ok(entries.every((entry) => entry.state === 'removed'), 'each entry is removed')
   assert.equal(JSON.parse(result.stdout).removed, entries.length)
+})
+
+test('undo looks up sent and failed entries by UUID and skips removed ones', async () => {
+  const { context, fake } = await exported()
+  const file = '.pmkit/migrations/2026-10-23-export-linear.yaml'
+  const store = createMapStore(context.root, file, readMap(context.root, file))
+  const [sent, failed, removed] = Object.keys(store.map.records.issue)
+  const [epic] = Object.keys(store.map.records.epic)
+  const mark = (kind, key, state, extra = {}) => store.set(kind, key, { state, uuid: store.entry(kind, key).uuid, ...extra })
+  mark('issue', sent, 'sent')
+  mark('issue', failed, 'failed', { error: { code: 'UPSTREAM', message: 'Linear did not confirm the change' } })
+  mark('issue', removed, 'removed')
+  mark('epic', epic, 'sent')
+  store.set('issue', 'ISS-LOST', { state: 'sent', uuid: '00000000-0000-4000-8000-000000000000' })
+  commitAll(context.root, 'unconfirmed entries')
+
+  const dry = JSON.parse((await cli(context, [...UNDO, '--dry-run'], { fetch: fake.fetch })).stdout)
+  const find = (kind, key) => dry.removals.find((removal) => removal.kind === kind && removal.key === key)
+  assert.equal(find('issue', sent)?.gone, false, 'a sent issue Linear has is deleted')
+  assert.equal(find('issue', failed)?.gone, false, 'a failed issue Linear has is deleted')
+  assert.equal(find('epic', epic)?.gone, false, 'a sent project Linear has is deleted')
+  assert.equal(find('issue', 'ISS-LOST')?.gone, true, 'a sent issue Linear lacks is gone')
+  assert.equal(find('issue', removed), undefined, 'a removed entry is not deleted again')
+
+  const result = await cli(context, [...UNDO, '--expect', dry.digest], { fetch: fake.fetch })
+  assert.equal(result.code, 0, result.stdout)
+  const deleted = (name) => fake.fetch.calls.map((call) => call.body).filter((body) => new RegExp(`mutation ${name}`).test(body.query)).map((body) => body.variables.id)
+  const uuid = (kind, key) => store.map.records[kind][key].uuid
+  assert.ok(deleted('PmkitIssueDelete').includes(uuid('issue', sent)))
+  assert.ok(deleted('PmkitIssueDelete').includes(uuid('issue', failed)))
+  assert.ok(!deleted('PmkitIssueDelete').includes(uuid('issue', removed)))
+  assert.ok(deleted('PmkitProjectDelete').includes(uuid('epic', epic)))
+  const after = readMap(context.root, file).records
+  for (const [kind, key] of [['issue', sent], ['issue', failed], ['epic', epic], ['issue', 'ISS-LOST']]) assert.equal(after[kind][key].state, 'removed', `${kind} ${key}`)
 })
 
 test('undo resumes after an interruption', async () => {

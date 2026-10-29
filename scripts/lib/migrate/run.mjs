@@ -96,7 +96,9 @@ export async function runPlan({ plan, store, writer, known = {}, now = () => new
     const entry = store.entry(kind, record.key)
     const chosenId = idOf(entry) ?? writer.chooseId(kind, record)
     const fields = resolveFields(record, store, known)
-    store.set(kind, record.key, { state: 'sent', [field]: chosenId })
+    // Every label in the plan is one the export creates: undo deletes only labels whose entry says `created`.
+    const created = kind === 'label' && writer.system === 'linear' ? { created: true } : {}
+    store.set(kind, record.key, { state: 'sent', [field]: chosenId, ...created })
     let result
     try {
       result = await writer.create(kind, record, chosenId, fields)
@@ -104,12 +106,12 @@ export async function runPlan({ plan, store, writer, known = {}, now = () => new
       if (writer.isUnconfirmed(caught)) {
         const found = await writer.exists(kind, [{ key: record.key, uuid: chosenId, record }], lookup)
         if (found.has(record.key)) {
-          store.set(kind, record.key, { state: 'done', [field]: chosenId, id: found.get(record.key).id ?? chosenId, at: now() })
+          store.set(kind, record.key, { state: 'done', [field]: chosenId, id: found.get(record.key).id ?? chosenId, at: now(), ...created })
           continue
         }
       }
       const error = isPmkitError(caught) ? caught : new PmkitError('UPSTREAM', caught.message, nextStepOf(plan))
-      store.set(kind, record.key, { state: 'failed', [field]: chosenId, error: { code: error.code, message: error.message } })
+      store.set(kind, record.key, { state: 'failed', [field]: chosenId, ...created, error: { code: error.code, message: error.message } })
       error.written = counts()
       error.nextStep = nextStepOf(plan)
       throw error
