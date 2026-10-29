@@ -2,7 +2,7 @@
 id: PMK-40
 title: Exercise the degraded paths of every command against Linear
 type: task
-status: in_review
+status: done
 priority: medium
 estimate: 3
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-39]
 milestone: linear
 branch: pmk-40-exercise-the-degraded-paths-of-every
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-29T02:10:04Z
+updated: 2026-10-29T02:12:09Z
 ---
 
 ## Description
