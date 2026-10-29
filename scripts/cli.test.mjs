@@ -1466,6 +1466,7 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'linear triage set': ['--off'],
     migrate: [],
     'local-migrate export': ['--workspace', 'acme', '--team', 'ACME'],
+    'local-migrate import': ['--workspace', 'acme', '--team', 'ACME'],
   }
   assert.deepEqual(Object.keys(WRITES).sort(), COMMANDS.filter((c) => c.write).map((c) => c.name).sort())
   const root = makeRepo('team')

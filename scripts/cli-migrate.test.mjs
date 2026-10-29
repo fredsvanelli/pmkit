@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
 import { ADAPTERS } from './lib/adapters.mjs'
 import { linearDescriptor } from './lib/linear/adapter.mjs'
@@ -278,6 +279,72 @@ test('export stops at the reserve', async () => {
   const map = fs.readFileSync(path.join(context.root, '.pmkit', 'migrations', '2026-10-23-export-linear.yaml'), 'utf8')
   assert.match(map, /state: done/)
   assert.doesNotMatch(map, /^finished: \d/m)
+})
+
+const IMPORT = ['local-migrate', 'import', '--workspace', 'acme', '--team', 'ACME', '--json']
+
+// An empty Local tracker in git, and a Linear team with issues, a relation, and a project with an update and a child.
+function importSetup() {
+  const context = setup({ fixture: false })
+  commitAll(context.root, 'empty tracker')
+  const fake = linearFake()
+  const a = fake.issues.seed({ title: 'Read the config' })
+  const b = fake.issues.seed({ title: 'Write the config' })
+  fake.issues.relate('blocks', a.id, b.id)
+  fake.projects.seed({ id: 'p-1', name: 'Config epic', teamIds: [ACME_TEAM.id] })
+  fake.projects.seedUpdate('p-1', { id: 'u-1', body: 'Fine', health: 'onTrack' })
+  fake.issues.seed({ title: 'Ship the config', projectId: 'p-1' })
+  return { context, fake }
+}
+
+test('import refuses a tracker that holds issues', async () => {
+  const context = setup()
+  const fake = linearFake()
+  const result = await cli(context, IMPORT, { fetch: fake.fetch })
+  assert.equal(result.code, 2, result.stdout)
+  assert.deepEqual(errorOf(result), {
+    code: 'CONFLICT',
+    message: 'import needs a Local tracker with no issues and no epics',
+    nextStep: 'Move the old records out with git rm -r .issues/issues .issues/epics .issues/sprints, commit, and run the import again',
+  })
+})
+
+test('import --dry-run lists new members and writes nothing', async () => {
+  const { context, fake } = importSetup()
+  const before = hashTree(context.root)
+  const result = await cli(context, IMPORT.filter((arg) => arg !== '--json').concat('--dry-run'), { fetch: fake.fetch })
+  assert.equal(result.code, 0, result.stderr || result.stdout)
+  assert.match(result.stdout, /new member/)
+  assert.match(result.stdout, /dry run: nothing was written/)
+  assert.equal(hashTree(context.root), before)
+  assert.deepEqual(fake.mutations(), [])
+})
+
+test('import writes every record and validates', async () => {
+  const { context, fake } = importSetup()
+  const result = await cli(context, IMPORT, { fetch: fake.fetch })
+  assert.equal(result.code, 0, result.stdout)
+  assert.deepEqual(fake.mutations(), [])
+  const validated = await run(['validate', '--json'], { cwd: context.root, env: context.env })
+  assert.equal(validated.code, 0, validated.stdout)
+  const listed = await run(['issues', 'list', '--json'], { cwd: context.root, env: context.env })
+  const issues = JSON.parse(listed.stdout).issues ?? JSON.parse(listed.stdout)
+  assert.equal(issues.length, 3)
+  const reader = issues.find((issue) => issue.title === 'Read the config')
+  const writer = issues.find((issue) => issue.title === 'Write the config')
+  assert.ok(fs.readFileSync(path.join(context.root, issueFile(context.root, writer.id)), 'utf8').includes(reader.id), 'the blocked issue names its blocker')
+  assert.match(JSON.parse(result.stdout).next, /^commit \.issues\/ and \.pmkit\/migrations\/2026-10-23-import-linear\.yaml$/)
+})
+
+test('import never commits', async () => {
+  const { context, fake } = importSetup()
+  assert.equal((await cli(context, IMPORT, { fetch: fake.fetch })).code, 0)
+  const git = (...args) => spawnSync('git', args, { cwd: context.root, encoding: 'utf8' }).stdout
+  const changed = git('status', '--porcelain', '--untracked-files=all').split('\n').filter(Boolean).map((line) => line.slice(3))
+  assert.ok(changed.length > 0)
+  assert.ok(changed.every((file) => file.startsWith('.issues/') || file === '.pmkit/migrations/2026-10-23-import-linear.yaml'), changed.join('\n'))
+  assert.ok(changed.includes('.pmkit/migrations/2026-10-23-import-linear.yaml'))
+  assert.equal(git('rev-list', '--count', 'HEAD').trim(), '1')
 })
 
 test('no output holds the key', () => {

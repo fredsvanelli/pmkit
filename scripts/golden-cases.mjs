@@ -100,6 +100,7 @@ export const CASES = {
   migrate: () => [[]],
   reindex: () => [[]],
   'local-migrate export': () => [['--workspace', 'acme', '--team', 'ACME']],
+  'local-migrate import': () => [['--workspace', 'acme', '--team', 'ACME']],
   validate: () => [[]],
 }
 

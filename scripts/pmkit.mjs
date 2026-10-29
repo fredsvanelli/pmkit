@@ -27,7 +27,7 @@ import { CACHE_DIR, ensureCacheIgnored } from './lib/local/query-index.mjs'
 import { writeFileAtomic } from './lib/local/store.mjs'
 import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, planMigration } from './lib/local/migrations.mjs'
 import { parseChangelog, sectionsSince } from './lib/changelog.mjs'
-import { runExport } from './lib/migrate/cli.mjs'
+import { runExport, runImport } from './lib/migrate/cli.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
 import { ID_STYLES, branchName, isId, normalizeId } from './lib/ids.mjs'
 import { boardDoc, hasMarker, problemsLine, renderDocument, roadmapDoc, sprintDoc } from './lib/render.mjs'
@@ -979,6 +979,11 @@ export const COMMANDS = [
     name: 'local-migrate export', summary: 'moves .issues/ to the Linear team; a rerun resumes; --dry-run prints the preview and its digest',
     usage: '[--workspace acme --team ACME] [--status cat=Name] [--type-label type=Label] [--field estimate=native|none] [--expect <digest>] [--dry-run]',
     flags: ['workspace', 'team', 'path', 'status', 'type-label', 'field', 'expect'], write: true, dryRun: true, systems: ['local', 'linear'], run: runExport,
+  },
+  {
+    name: 'local-migrate import', summary: 'copies the Linear team into an empty .issues/; a rerun resumes; --dry-run prints the preview and its digest',
+    usage: '[--workspace acme --team ACME] [--path .issues] [--expect <digest>] [--dry-run]',
+    flags: ['workspace', 'team', 'path', 'expect'], write: true, dryRun: true, systems: ['local', 'linear'], run: runImport,
   },
   {
     name: 'reindex', summary: 'rebuilds the query index in .issues/.cache/ from the issue files; changes only files git ignores', local: true, flags: [],
