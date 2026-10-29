@@ -1844,8 +1844,9 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
     if (isPmkitError(error)) {
       if (json) {
         const body = { error: { code: error.code, message: error.message, nextStep: error.nextStep } }
-        // The one detail that reaches the output: the mappings a hosted tracker found broken.
+        // The details that reach the output: the mappings a hosted tracker found broken, and the problems a migration plan found.
         if (Array.isArray(error.details?.mappings)) body.error.mappings = error.details.mappings
+        if (Array.isArray(error.details?.problems)) body.error.problems = error.details.problems
         if (error.written) body.result = error.written.data
         stdout.push(`${JSON.stringify(body, null, 2)}\n`)
       } else if (error.written) {

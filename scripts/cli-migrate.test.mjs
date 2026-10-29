@@ -8,10 +8,10 @@ import { run } from './pmkit.mjs'
 import { ADAPTERS } from './lib/adapters.mjs'
 import { linearDescriptor } from './lib/linear/adapter.mjs'
 import { fakeLinear, useLinear } from './fake-hosted.mjs'
-import { FAKE_KEY, fakeLinearFetch, fakeWorkspace } from './fake-linear-api.mjs'
+import { ACME_LABELS, ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeWorkspace } from './fake-linear-api.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { buildMigrationFixture, commitAll } from './migrate-fixture.mjs'
-import { makeRepo, userStoreEnv } from './test-helpers.mjs'
+import { hashTree, makeRepo, userStoreEnv } from './test-helpers.mjs'
 
 // gitUserEmail reads the process environment, so the in-process runs need the same git isolation as childEnv.
 process.env.GIT_CONFIG_GLOBAL = os.devNull
@@ -22,9 +22,9 @@ const outputs = []
 
 function setup({ fixture = true } = {}) {
   const root = makeRepo('basic')
-  if (fixture) buildMigrationFixture(root)
+  const ids = fixture ? buildMigrationFixture(root).ids : null
   const env = { ...childEnv(), ...userStoreEnv().env, LINEAR_API_KEY: FAKE_KEY }
-  return { root, env }
+  return { root, env, ids }
 }
 
 async function cli(context, args, { fetch = fakeLinearFetch(fakeWorkspace()), adapters = {} } = {}) {
@@ -40,6 +40,13 @@ const edit = (root, file, from, to) => {
   assert.match(text, from)
   fs.writeFileSync(full, text.replace(from, to))
 }
+/** The root-relative path of the file that holds a Local issue. */
+function issueFile(root, id) {
+  const file = path.join('.issues', 'issues', id, 'issue.md')
+  assert.ok(fs.existsSync(path.join(root, file)), `no file for ${id}`)
+  return file
+}
+
 const EXPORT = ['local-migrate', 'export', '--workspace', 'acme', '--team', 'ACME', '--json']
 
 test('export refuses another tracker', async () => {
@@ -103,6 +110,174 @@ test('export without a Linear side asks for the workspace and the team', async (
   assert.equal(error.code, 'NOT_CONFIGURED')
   assert.equal(error.message, 'local-migrate export needs the Linear workspace and team')
   assert.equal(error.nextStep, 'Pass --workspace <key> --team <KEY>, or run it from a repository whose tracker.scope names them')
+})
+
+// A Linear workspace for the export: cycles on, a Fibonacci scale, and a cycle on the fixture sprint's dates.
+function linearFake({ headers } = {}) {
+  const teams = [{ ...ACME_TEAM, cyclesEnabled: true, issueEstimationType: 'fibonacci' }]
+  const labels = [...ACME_LABELS, { ...ACME_LABELS[0], id: 'label-task', name: 'Task' }, { ...ACME_LABELS[0], id: 'label-chore', name: 'Chore' }]
+  const issues = fakeLinearIssues({ teams, labels })
+  const projects = fakeLinearProjects({ issues, teams })
+  issues.cycles.add({ number: 1, startsAt: '2026-11-02T00:00:00.000Z', endsAt: '2026-11-16T00:00:00.000Z' })
+  const routes = { ...fakeWorkspace({ teams, labels }), ...issues.routes, ...projects.routes }
+  if (headers) {
+    for (const [name, route] of Object.entries(routes)) {
+      routes[name] = (body) => {
+        const answer = typeof route === 'function' ? route(body) : route
+        return { ...answer, headers: { ...answer.headers, ...(typeof headers === 'function' ? headers() : headers) } }
+      }
+    }
+  }
+  const fetch = fakeLinearFetch(routes)
+  const mutations = () => [...issues.mutations, ...(projects.mutations ?? [])]
+  return { issues, projects, fetch, mutations }
+}
+
+const TYPES = ['--status', 'in_review=In Review', '--status', 'blocked=In Progress', '--type-label', 'feature=Feature', '--type-label', 'bug=Bug', '--type-label', 'task=Task', '--type-label', 'chore=Chore']
+const READY = [...EXPORT, ...TYPES]
+const preview = async (context, fake) => JSON.parse((await cli(context, [...READY, '--dry-run'], { fetch: fake.fetch })).stdout)
+
+test('export refuses another actor', async () => {
+  const context = setup()
+  const fake = linearFake()
+  const result = await cli(context, [...READY, '--as', 'ana'], { fetch: fake.fetch })
+  assert.equal(result.code, 2, result.stdout)
+  assert.equal(errorOf(result).code, 'INVALID_INPUT')
+  assert.match(errorOf(result).message, /^Linear records every write as the owner of LINEAR_API_KEY/)
+  assert.deepEqual(fake.mutations(), [])
+})
+
+test('export asks for open mappings', async () => {
+  const context = setup()
+  const result = await cli(context, EXPORT, { fetch: linearFake().fetch })
+  assert.equal(result.code, 2, result.stdout)
+  const error = errorOf(result)
+  assert.equal(error.code, 'NOT_CONFIGURED')
+  assert.ok(error.mappings.some((question) => question.path.startsWith('mappings.types')), JSON.stringify(error.mappings))
+})
+
+test('export --dry-run prints the full preview and writes nothing', async () => {
+  const context = setup()
+  const fake = linearFake()
+  const before = hashTree(context.root)
+  const result = await cli(context, READY.filter((arg) => arg !== '--json').concat('--dry-run'), { fetch: fake.fetch })
+  assert.equal(result.code, 0, result.stderr || result.stdout)
+  for (const section of ['export .issues/', 'source: ', 'target: ', 'labels', 'epics', 'issues', 'links', 'comments', 'will not carry over', 'digest: ', 'dry run: nothing was written']) {
+    assert.ok(result.stdout.includes(section), `${section} in\n${result.stdout}`)
+  }
+  assert.equal(hashTree(context.root), before)
+  assert.equal(fs.existsSync(path.join(context.root, '.pmkit', 'migrations')), false)
+  assert.deepEqual(fake.mutations(), [])
+})
+
+test('export --dry-run --json has the preview keys and the digest', async () => {
+  const context = setup()
+  const data = await preview(context, linearFake())
+  assert.equal(data.direction, 'export')
+  assert.match(data.digest, /^sha256:[0-9a-f]{64}$/)
+  assert.ok(data.records.issue.length > 0)
+})
+
+test('problems refuse the run with all of them in the JSON error', async () => {
+  const context = setup()
+  const { ids } = context
+  edit(context.root, issueFile(context.root, ids.root), /^parent: .*$/m, `parent: ${ids.grandchild}`)
+  commitAll(context.root, 'loop')
+  const fake = linearFake()
+  const result = await cli(context, READY, { fetch: fake.fetch })
+  assert.equal(result.code, 2, result.stdout)
+  const error = errorOf(result)
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.ok(error.problems.length >= 1)
+  assert.ok(error.message.includes(error.problems[0].message))
+  assert.deepEqual(fake.mutations(), [])
+})
+
+test('export --expect with a changed plan refuses before any write', async () => {
+  const context = setup()
+  const fake = linearFake()
+  const { digest } = (await preview(context, fake))
+  edit(context.root, issueFile(context.root, context.ids.child), /^title: .*$/m, 'title: Read the config file again')
+  commitAll(context.root, 'retitle')
+  const result = await cli(context, [...READY, '--expect', digest], { fetch: fake.fetch })
+  assert.equal(result.code, 2, result.stdout)
+  assert.equal(errorOf(result).code, 'CONFLICT')
+  assert.deepEqual(fake.mutations(), [])
+})
+
+test('export writes the map and every record', async () => {
+  const context = setup()
+  const fake = linearFake()
+  const { digest, records } = (await preview(context, fake))
+  const result = await cli(context, [...READY, '--expect', digest], { fetch: fake.fetch })
+  assert.equal(result.code, 0, result.stdout)
+  const file = path.join(context.root, '.pmkit', 'migrations', '2026-10-23-export-linear.yaml')
+  assert.ok(fs.existsSync(file), JSON.parse(result.stdout).map)
+  const text = fs.readFileSync(file, 'utf8')
+  assert.match(text, /^finished: \S+/m)
+  const total = Object.values(records).reduce((sum, list) => sum + list.filter((record) => record.action === 'create').length, 0)
+  assert.equal((text.match(/state: done/g) ?? []).length, total)
+  const nodes = fake.issues.nodes()
+  assert.equal(nodes.length, records.issue.length)
+  const child = nodes.find((node) => node.title === 'Read the config file')
+  assert.ok(child.parent, 'the child keeps its parent')
+  assert.ok(child.cycle, 'the child sits in the cycle')
+  assert.ok(nodes.every((node) => node.createdAt), 'every issue has createdAt')
+  assert.ok(fake.mutations().includes('PmkitRelationCreate'))
+  assert.match(JSON.parse(result.stdout).next, /^commit \.pmkit\/migrations\/2026-10-23-export-linear\.yaml$/)
+})
+
+test('a failed export resumes and creates nothing twice', async () => {
+  const context = setup()
+  const fake = linearFake()
+  const { digest } = (await preview(context, fake))
+  fake.issues.unconfirm('PmkitRelationCreate', { applied: false })
+  const failed = await cli(context, [...READY, '--expect', digest], { fetch: fake.fetch })
+  assert.equal(failed.code, 2, failed.stdout)
+  const file = path.join(context.root, '.pmkit', 'migrations', '2026-10-23-export-linear.yaml')
+  assert.match(fs.readFileSync(file, 'utf8'), /state: failed/)
+  const issues = fake.issues.nodes().length
+  const again = await cli(context, READY, { fetch: fake.fetch })
+  assert.equal(again.code, 0, again.stdout)
+  assert.equal(fake.issues.nodes().length, issues)
+  assert.match(fs.readFileSync(file, 'utf8'), /^finished: \S+/m)
+})
+
+test('a second export sends only the new issues and links them to the old ones', async () => {
+  const context = setup()
+  const fake = linearFake()
+  assert.equal((await cli(context, READY, { fetch: fake.fetch })).code, 0)
+  commitAll(context.root, 'map')
+  const { blocker } = context.ids
+  const created = await run(['issues', 'create', '--title', 'Follow the blocker', '--type', 'task', '--as', 'fred', '--json'], { cwd: context.root, env: context.env })
+  assert.equal(created.code, 0, created.stdout)
+  const id = JSON.parse(created.stdout).after?.id ?? JSON.parse(created.stdout).id
+  const linked = await run(['issues', 'link', blocker, id, '--kind', 'blocks', '--as', 'fred', '--json'], { cwd: context.root, env: context.env })
+  assert.equal(linked.code, 0, linked.stdout)
+  commitAll(context.root, 'new issue')
+  const before = { issues: fake.issues.mutations.length, projects: fake.projects.mutations.length }
+  const result = await cli(context, READY, { fetch: fake.fetch })
+  assert.equal(result.code, 0, result.stdout)
+  assert.ok(fs.existsSync(path.join(context.root, '.pmkit', 'migrations', '2026-10-23-export-linear-2.yaml')))
+  assert.deepEqual(fake.issues.mutations.slice(before.issues), ['PmkitIssueCreate', 'PmkitRelationCreate'])
+  assert.deepEqual(fake.projects.mutations.slice(before.projects), [])
+  const first = fs.readFileSync(path.join(context.root, '.pmkit', 'migrations', '2026-10-23-export-linear.yaml'), 'utf8')
+  const relation = fake.fetch.calls.map((call) => call.body).filter((body) => /mutation PmkitRelationCreate/.test(body.query)).at(-1)
+  const ends = [relation.variables.input.issueId, relation.variables.input.relatedIssueId]
+  assert.ok(ends.some((uuid) => first.includes(uuid)), `one end of ${ends} comes from the first map`)
+})
+
+test('export stops at the reserve', async () => {
+  const context = setup()
+  // Linear counts down from 119, so the reads leave a few writes before the reserve of 100.
+  let remaining = 120
+  const fake = linearFake({ headers: () => ({ 'x-ratelimit-requests-remaining': String(--remaining), 'x-ratelimit-requests-reset': String(Date.parse('2026-10-23T13:00:00Z')) }) })
+  const result = await cli(context, READY, { fetch: fake.fetch })
+  assert.equal(result.code, 2, result.stdout)
+  assert.equal(errorOf(result).code, 'RATE_LIMITED')
+  const map = fs.readFileSync(path.join(context.root, '.pmkit', 'migrations', '2026-10-23-export-linear.yaml'), 'utf8')
+  assert.match(map, /state: done/)
+  assert.doesNotMatch(map, /^finished: \d/m)
 })
 
 test('no output holds the key', () => {

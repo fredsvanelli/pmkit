@@ -2,9 +2,21 @@
 // See docs/superpowers/specs/2026-10-28-pmk-41-local-migrate-design.md, "Commands" and "Sides".
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { loadLocalConfig, loadPmkitConfig } from '../config.mjs'
+import { randomUUID } from 'node:crypto'
+import { adapterFor } from '../adapters.mjs'
+import { loadLocalConfig, loadPmkitConfig, withLocalDefaults } from '../config.mjs'
 import { PmkitError } from '../errors.mjs'
+import { parseMappingFlags, proposeMappings } from '../mappings.mjs'
 import { formatError } from '../local/migrations.mjs'
+import { readLocalSnapshot } from '../local/migrate-reader.mjs'
+import { CYCLES_QUERY } from '../linear/documents.mjs'
+import { PROJECT_STATUSES } from '../linear/projects.mjs'
+import { exportTarget, mapExport } from '../linear/migrate-fields.mjs'
+import { createLinearWriter } from '../linear/migrate-writer.mjs'
+import { chooseMap, createMapStore, mapFileName, memoryMapStore, newMap } from './id-map.mjs'
+import { planBudget, planMigration } from './plan.mjs'
+import { previewJson, previewText } from './preview.mjs'
+import { checkExpect, reconcile, runPlan } from './run.mjs'
 
 const gitIn = (root, ...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' })
 
@@ -43,8 +55,109 @@ export function resolveSides(ctx, { direction }) {
   return { local: { root: ctx.root, path: localPath, config }, linear: { workspace, team, mappings: system === 'linear' ? pmkit.mappings ?? {} : {} } }
 }
 
+/**
+ * The Linear tracker of the migration, from a config that names the workspace, the team and the mappings. Returns its
+ * migration handle and a refreshed discovery, because the plan must see the team as it is.
+ */
+export async function linearHandle(ctx, linear) {
+  const adapter = adapterFor('linear', ctx.adapters)
+  const pmkit = { tracker: { system: 'linear', scope: { workspace: linear.workspace, team: linear.team } }, mappings: linear.mappings }
+  const tracker = await adapter.create({ root: ctx.root, system: 'linear', pmkit }, { now: ctx.now, env: ctx.env })
+  const view = await tracker.discover({ refresh: true })
+  return { ...tracker.migration, view, raw: view.raw, pmkit, adapter }
+}
+
+/** The mappings of the export: the file's, then the flags'. An open question stops with NOT_CONFIGURED and the questions. */
+function answerMappings(ctx, handle, linear, localConfig) {
+  const defaults = withLocalDefaults({}).types
+  const held = localConfig.local?.types ?? []
+  const names = Array.isArray(held) ? held.map((type) => (typeof type === 'string' ? type : type?.name)) : Object.keys(held)
+  const types = [...new Set([...defaults, ...names.filter((name) => typeof name === 'string')])]
+  const description = handle.adapter.describe(handle.raw, handle.view, handle.view.viewer?.id ?? null, types)
+  const current = { scope: { workspace: linear.workspace, team: linear.team }, status: linear.mappings.status ?? {}, fields: linear.mappings.fields ?? {}, types: linear.mappings.types }
+  const proposal = proposeMappings(description, current, { workspace: linear.workspace, team: linear.team, ...parseMappingFlags(ctx) })
+  if (proposal.questions.length > 0) {
+    throw new PmkitError('NOT_CONFIGURED', `local-migrate export has open mapping questions: ${proposal.questions.map((question) => question.path).join(', ')}`,
+      'Answer them with --type-label, --status or --field, then run the same command again', { mappings: proposal.questions })
+  }
+  const { status, fields, types: typeLabels } = proposal.values
+  return { status, fields, types: typeLabels }
+}
+
+/** The records of the finished maps of the same target, by kind and key, so a second export links to them. */
+function knownRecords(finished) {
+  const known = {}
+  for (const { map } of finished) {
+    for (const [kind, entries] of Object.entries(map.records ?? {})) {
+      for (const [key, entry] of Object.entries(entries)) if (entry.state === 'done') (known[kind] ??= {})[key] = entry
+    }
+  }
+  return known
+}
+
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+
+function headerOf(snapshot, local, linear, target) {
+  const updates = (snapshot.epics ?? []).reduce((sum, epic) => sum + (epic.updates?.length ?? 0), 0)
+  return {
+    source: `${local.path}/${snapshot.commit ? ` (commit ${snapshot.commit.slice(0, 7)})` : ''}`,
+    target: `Linear team ${linear.team} in workspace ${linear.workspace}`,
+    sourceCounts: [plural(snapshot.issues.length, 'issue'), plural(snapshot.epics.length, 'epic'), plural(snapshot.sprints.length, 'sprint'),
+      plural(snapshot.links.length, 'link'), plural(snapshot.comments.length, 'comment'), plural(updates, 'status update')].join(', '),
+    targetCounts: `team ${linear.team} has ${plural(target.states.length, 'state')}, ${plural(target.labels.size, 'label')} and ${plural(target.cycles.length, 'cycle')}`,
+  }
+}
+
+/**
+ * local-migrate export: the checks of resolveSides, the reads of step 0, the Local snapshot, the plan, then the dry run,
+ * or the --expect check, the problem refusal, and the run that writes the map after every record.
+ */
 export async function runExport(ctx) {
-  resolveSides(ctx, { direction: 'export' })
-  // The Linear reads, the plan and the run come in the rest of Task 13.
-  throw new PmkitError('NOT_SUPPORTED', 'local-migrate export stops after its checks in this build', 'node scripts/pmkit.mjs --help')
+  const { local, linear } = resolveSides(ctx, { direction: 'export' })
+  const handle = await linearHandle(ctx, linear)
+  const { client, discovery } = handle
+  const { viewer } = await client.session()
+  const as = ctx.opt('as')
+  if (typeof as === 'string' && as !== viewer.id) {
+    throw new PmkitError('INVALID_INPUT', `Linear records every write as the owner of LINEAR_API_KEY (${viewer.name})`, 'Drop --as, or use a key created by that member')
+  }
+  const mappings = answerMappings(ctx, handle, linear, local.config)
+  const pmkit = { ...handle.pmkit, mappings }
+  const team = handle.raw.teams.find((item) => item.key === linear.team)
+  if (!team) throw new PmkitError('NOT_CONFIGURED', `the workspace has no team ${linear.team}`, 'Pass --team with a key the workspace has')
+  const projectStatuses = (await client.request(PROJECT_STATUSES, {})).projectStatuses.nodes
+  const cycles = team.cyclesEnabled
+    ? (await client.paginate(CYCLES_QUERY, { filter: { and: [{ team: { key: { eq: team.key } } }] } }, { select: (data) => data.cycles, pageSize: 100 })).nodes
+    : []
+  const target = exportTarget({ raw: handle.raw, view: handle.view, pmkit, teamKey: linear.team, projectStatuses, cycles })
+
+  const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ctx.root, encoding: 'utf8' })
+  const snapshot = readLocalSnapshot({ root: ctx.root, config: local.config, commit: head.status === 0 ? head.stdout.trim() : null, now: () => new Date(ctx.now()) })
+  const source = { system: 'local', path: local.path }
+  const targetSide = { system: 'linear', workspace: linear.workspace, team: linear.team }
+  const chosen = chooseMap(ctx.root, { direction: 'export', target: targetSide })
+  const known = knownRecords(chosen.finished)
+  const started = new Date(ctx.now()).toISOString()
+  const at = () => new Date(ctx.now()).toISOString()
+  const file = chosen.resume?.file ?? mapFileName(ctx.root, { date: started.slice(0, 10), direction: 'export', system: 'linear' })
+  const map = chosen.resume?.map ?? newMap({ direction: 'export', started, source, target: targetSide, mappings })
+  const store = ctx.dryRun ? memoryMapStore(file, structuredClone(map)) : createMapStore(ctx.root, file, map)
+  const writer = createLinearWriter({ client, discovery, uuid: () => randomUUID() })
+  if (chosen.resume) await reconcile(store, writer, { now: at })
+
+  const mapped = mapExport(snapshot, target)
+  const plan = planMigration({ direction: 'export', source, target: targetSide, snapshot, mapped, map: chosen.resume ? { file, map: store.map } : null, known })
+  const budget = planBudget(plan, client.rateLimit())
+  const header = headerOf(snapshot, local, linear, target)
+  if (ctx.dryRun) return { data: previewJson(plan, budget), text: previewText(plan, budget, { dryRun: true, header }) }
+
+  checkExpect(plan, ctx.opt('expect'))
+  if (plan.problems.length > 0) {
+    throw new PmkitError('INVALID_INPUT', `the export has ${plural(plan.problems.length, 'problem')}, the first: ${plan.problems[0].key} ${plan.problems[0].message}`,
+      'Fix the problems in the Local tracker, commit, and run the dry run again', { problems: plan.problems })
+  }
+  const written = await runPlan({ plan, store, writer, known, now: at })
+  const next = `commit ${file}`
+  const text = [previewText(plan, budget, { header }), '', `done: ${written.done} of ${written.total}`, `next: ${next}`].join('\n')
+  return { data: { ...previewJson(plan, budget), map: file, done: written.done, total: written.total, next }, text }
 }
