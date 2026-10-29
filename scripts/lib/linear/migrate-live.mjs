@@ -392,15 +392,7 @@ export async function trashCreated({ client, team, created, labels }) {
   for (const issue of issues.filter((item) => ours.issue.has(item.id))) await remove(ISSUE_DELETE, issue.id, 'issues')
   for (const project of projects.filter((item) => ours.project.has(item.id))) await remove(PROJECT_DELETE, project.id, 'projects')
   if (labels) {
-    // A label the undo deleted, or one Linear never created, fails here; only the count of the others matters.
-    for (const id of created('label')) {
-      try {
-        await client.request(LABEL_DELETE, { id })
-        removed.labels += 1
-      } catch {
-        // Nothing to remove.
-      }
-    }
+    for (const id of created('label')) await remove(LABEL_DELETE, id, 'labels')
   }
   const foreign = issues.filter((item) => !ours.issue.has(item.id)).length + projects.filter((item) => !ours.project.has(item.id)).length
   return { removed, failed, foreign }

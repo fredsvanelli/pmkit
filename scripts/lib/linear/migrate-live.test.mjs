@@ -316,6 +316,32 @@ test('trashCreated deletes only the issues, projects and labels the run created'
   assert.deepEqual(guard.stats().refused, [])
 })
 
+test('trashCreated reports the labels it could not delete', async () => {
+  const page = (nodes) => ({ nodes, pageInfo: { hasNextPage: false, endCursor: null } })
+  const answers = {
+    PmkitSession: { viewer: { id: 'user-1', name: 'Ada' }, organization: { urlKey: 'acme', name: 'Acme', previousUrlKeys: [] } },
+    PmkitSandboxIssues: { issues: page([]) },
+    PmkitSandboxProjects: { projects: page([]) },
+  }
+  const stub = async (url, init) => {
+    const body = JSON.parse(init.body)
+    const name = /(?:query|mutation)\s+(\w+)/.exec(body.query)[1]
+    const data = answers[name] ?? { [readMutation(body.query).root]: { success: true } }
+    const errors = readMutation(body.query)?.root === 'issueLabelDelete' && body.variables.id === 'label-2' ? [{ message: 'Entity not found' }] : undefined
+    return { status: 200, ok: true, headers: new Headers(), text: async () => JSON.stringify(errors ? { errors } : { data }) }
+  }
+  const { fetch, guard, created } = migrateGuardedFetch({ fetch: stub, workspace: 'acme' })
+  guard.open({ teamExists: true, teamId: TEAM, viewerId: 'user-1', labelIds: [] })
+  const env = { ...childEnv(), LINEAR_API_KEY: FAKE_KEY }
+  const client = createLinearClient({ env, tracker: { system: 'linear', scope: { workspace: 'acme' } }, fetch })
+  const send = (query, variables) => fetch('https://api.linear.app/graphql', { method: 'POST', body: JSON.stringify({ query, variables }) })
+  await send(LABEL_CREATE, { input: { id: 'label-1', name: 'x', teamId: TEAM } })
+  await send(LABEL_CREATE, { input: { id: 'label-2', name: 'y', teamId: TEAM } })
+  const result = await trashCreated({ client, team: { id: TEAM, key: 'PKT' }, created, labels: true })
+  assert.deepEqual(result.removed.labels, 1)
+  assert.deepEqual(result.failed, ['label-2'])
+})
+
 const RATE_HEADERS = {
   'x-ratelimit-requests-limit': '2500', 'x-ratelimit-requests-remaining': '2400', 'x-ratelimit-requests-reset': '1798000000000',
   'x-ratelimit-complexity-limit': '3000000', 'x-ratelimit-complexity-remaining': '2900000', 'x-ratelimit-complexity-reset': '1798000000000',
