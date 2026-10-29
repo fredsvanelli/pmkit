@@ -29,6 +29,7 @@ not checked: this repository has no git host configured
 warning: ISS-4: CONFLICT The issue file contains git conflict markers.
 warning: ISS-5: CONFLICT The issue file contains git conflict markers.
 warning: no git host is configured, so issues are stalled by tracker activity only and pull requests and CI are not checked
+note: stalled-issue history computed from .issues/events.jsonl
 
 $ pmkit risks --json
 exit 0
@@ -96,3 +97,4 @@ exit 0
 warning: ISS-4: CONFLICT The issue file contains git conflict markers.
 warning: ISS-5: CONFLICT The issue file contains git conflict markers.
 warning: no git host is configured, so issues are stalled by tracker activity only and pull requests and CI are not checked
+note: stalled-issue history computed from .issues/events.jsonl

@@ -295,6 +295,13 @@ async function metricNotes(tracker, metric, extra = {}) {
   return note === null ? [] : [note]
 }
 
+/** The note for one capability's path (capacity, deliverables, linked_code), as a list of zero or one lines. */
+async function capabilityNotes(tracker, id) {
+  const entry = (await tracker.capabilities()).capabilities.find((c) => c.id === id)
+  const note = entry === undefined ? null : pathNote(entry)
+  return note === null ? [] : [note]
+}
+
 /** discover().statuses as a categoryOf(statusName), and every issue's events grouped by issue. The flow metrics need each whole log. */
 async function flowInputs(tracker) {
   const categoryOf = categoryLookup((await tracker.discover()).statuses)
@@ -552,7 +559,7 @@ export const COMMANDS = [
           ...fields(Object.entries(capacity)),
           ...Object.entries(daysOff).map(([member, dates]) => `days off ${member}: ${[dates ?? []].flat().join(', ')}`),
         ]
-        return { data: { capacity, days_off: daysOff }, text: lines.join('\n') || 'no capacity or days off set' }
+        return { data: { capacity, days_off: daysOff }, text: lines.join('\n') || 'no capacity or days off set', notes: await capabilityNotes(tracker, 'capacity') }
       }
       const result = await tracker.updateCycleCapacity(id, { capacity: set ? parseCapacity(ctx) : undefined, daysOff: dayoff ? parseDaysOff(ctx) : undefined }, await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: sprintRecord }), commit: id }
@@ -590,7 +597,7 @@ export const COMMANDS = [
         ...(p.native ? [`native: ${percent(p.native.progress)} of ${p.native.scope} issues in Linear's own count`] : []),
       ].join('\n')
       const warnings = p.hasMore === true ? ['Linear has more issues in this epic than the 1000 pmkit read; the counts cover the first 1000'] : []
-      return { data: p, text, warnings }
+      return { data: p, text, warnings, notes: await capabilityNotes(await ctx.tracker(), 'deliverables') }
     },
   },
   {
@@ -877,7 +884,7 @@ export const COMMANDS = [
       if (ctx.dryRun) return { data: { branch, from }, text: `would create branch ${branch} from ${from}\ndry run: nothing was written` }
       host.createBranch(branch, { from })
       const result = await tracker.updateIssue(issue.id, { branch }, actor)
-      return { data: { branch, ...result }, text: `created branch ${branch} from ${from}\n${writeText(result, ctx)}`, commit: issue.id }
+      return { data: { branch, ...result }, text: `created branch ${branch} from ${from}\n${writeText(result, ctx)}`, commit: issue.id, notes: await capabilityNotes(tracker, 'linked_code') }
     },
   },
   {
@@ -921,7 +928,7 @@ export const COMMANDS = [
   },
   {
     name: 'pr status', summary: 'pull request, checks and reviews of a branch', usage: '[--branch b]', args: [], flags: ['branch'],
-    run: (ctx) => {
+    run: async (ctx) => {
       const host = ctx.host()
       const branch = ctx.opt('branch') ?? host.currentBranch()
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
@@ -931,7 +938,7 @@ export const COMMANDS = [
       const lines = pr
         ? [`#${pr.number} ${pr.title} (${pr.state}${pr.isDraft ? ', draft' : ''})`, pr.url, `checks: ${checks.length === 0 ? '(none)' : checks.map((c) => `${c.name} ${c.bucket ?? c.state}`).join(', ')}`, `reviews: ${reviews.length === 0 ? '(none)' : reviews.map((r) => r.state).join(', ')}`]
         : [`no pull request for ${branch}`]
-      return { data: { branch, pr, checks, reviews }, text: lines.join('\n') }
+      return { data: { branch, pr, checks, reviews }, text: lines.join('\n'), notes: await capabilityNotes(await ctx.tracker(), 'linked_code') }
     },
   },
   {
@@ -1170,7 +1177,7 @@ async function runRisks(ctx) {
     ci,
     problems,
   }
-  return { data: report, text: risksText(report), warnings }
+  return { data: report, text: risksText(report), warnings, notes: await metricNotes(tracker, 'stalled-issue history') }
 }
 
 const RENDER_VIEWS = ['board', 'roadmap', 'sprint']

@@ -27,7 +27,8 @@ function derivedNote(entry, facts) {
  * facts: metric, sprints and estimation (velocity), issue and team (conditional), releaseNotesFrom (release-notes).
  */
 export function pathNote(entry, facts = {}) {
-  if (entry.path === 'native') return null
+  // deliverables is native on Linear, but its progress counts are derived from the project's issues.
+  if (entry.path === 'native') return entry.id === 'deliverables' ? derivedNote(entry, facts) : null
   if (entry.path === 'conditional') return conditionalNote(entry, facts)
   if (entry.path === 'derived') return derivedNote(entry, facts)
   if (entry.path === 'absent') {

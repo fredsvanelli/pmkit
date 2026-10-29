@@ -64,3 +64,24 @@ test('metrics velocity names the closed sprints it used, and the estimates when 
   assert.equal(lines.length, 1)
   assert.equal(lines[0], "note: velocity computed from the last 1 closed sprints; counted issues: estimates are off (Turn on estimates in the team's settings in Linear)")
 })
+
+test('cycle capacity says Linear has no capacity field', async () => {
+  const cycles = [{ number: 1, startsAt: '2026-10-05T00:00:00.000Z', endsAt: '2026-10-19T00:00:00.000Z', completedAt: '2026-10-19T00:00:00.000Z' }]
+  const result = await linear(['cycle', 'capacity', '1'], { teams: [{ ...ACME_TEAM, cyclesEnabled: true }], cycles })
+  assert.equal(result.code, 0, result.stderr)
+  assert.deepEqual(noteLines(result.stderr), ['note: capacity read from .pmkit/capacity.yaml; Linear has no capacity field'])
+})
+
+test('risks prints one events note on Local', async () => {
+  const result = await run(['risks'], { cwd: makeRepo('basic') })
+  assert.equal(result.code, 0, result.stderr)
+  assert.deepEqual(noteLines(result.stderr), ['note: stalled-issue history computed from .issues/events.jsonl'])
+})
+
+test('pr status refuses without a git host, on Local and on Linear', async () => {
+  for (const result of [await run(['pr', 'status', '--branch', 'x'], { cwd: makeRepo('basic') }), await linear(['pr', 'status', '--branch', 'x'])]) {
+    assert.equal(result.code, 2)
+    assert.match(result.stderr, /this repository has no git host configured/)
+    assert.deepEqual(noteLines(result.stderr), [])
+  }
+})
