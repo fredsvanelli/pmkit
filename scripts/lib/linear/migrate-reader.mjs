@@ -104,7 +104,7 @@ export async function readLinearSnapshot({ client: given, discovery, teamKey, pm
   })))
 
   // With the milestone and document lists of 50 each, a page of 50 projects went over Linear's limit of 10000 complexity
-  // points (Linear answered 17420). A page of 10 is about a fifth of that.
+  // points (Linear answered 17420). A page of 10 costs about 3500 points if cost scales with page size.
   const { nodes: projectNodes } = await client.paginate(PROJECTS_QUERY, { filter: { accessibleTeams: { some: { key: { eq: teamKey } } } }, withLists: true }, {
     select: (data) => data.projects, pageSize: PROJECT_PAGE, maxPages: 100000,
   })
