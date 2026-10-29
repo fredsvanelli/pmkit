@@ -220,3 +220,13 @@ A read passes on Free for triage responsibility and suggestions, so for these ob
 ## Repeat the check
 
 Run the command at the top on another workspace, such as a Business one. Compare `organization.urlKey`, the `found` lists and each `live` value with this note. A `live` error on a feature that is `empty` here points to a plan gate. Run it again after PMK-28 settles the credential type, because introspection may differ for an OAuth app.
+
+## Degraded paths (PMK-40)
+
+PMK-40 checks that each command on Linear prints a `note:` line or refuses with `NOT_SUPPORTED` when the workspace lacks the capability. The offline tests cover every command. The live run script degraded-live.mjs arrives in Task 12 of the plan and is started with:
+
+```sh
+set -a; . ./.env; set +a; PMKIT_LIVE=1 PMKIT_LIVE_WORKSPACE=<workspace> node --test scripts/lib/linear/degraded-live.mjs
+```
+
+request count: filled in by the live run
