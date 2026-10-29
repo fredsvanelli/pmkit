@@ -116,6 +116,13 @@ function headerOf(snapshot, local, linear, target) {
   }
 }
 
+/** A real export or import writes only after its preview: without --expect it refuses before the first write. */
+function requireExpect(ctx, command, writes) {
+  if (ctx.dryRun || typeof ctx.opt('expect') === 'string') return
+  throw new PmkitError('INVALID_INPUT', `local-migrate ${command} writes ${writes} and needs the digest of its preview`,
+    `Run pmkit local-migrate ${command} --dry-run with the same flags, then pass its digest with --expect`)
+}
+
 /**
  * local-migrate export: the checks of resolveSides, the reads of step 0, the Local snapshot, the plan, then the dry run,
  * or the --expect check, the problem refusal, and the run that writes the map after every record.
@@ -149,6 +156,7 @@ export async function runExport(ctx) {
   const at = () => new Date(ctx.now()).toISOString()
   const file = chosen.resume?.file ?? mapFileName(ctx.root, { date: started.slice(0, 10), direction: 'export', system: 'linear' })
   const map = chosen.resume?.map ?? newMap({ direction: 'export', started, source, target: targetSide, mappings })
+  requireExpect(ctx, 'export', 'to Linear')
   const store = ctx.dryRun ? memoryMapStore(file, structuredClone(map)) : createMapStore(ctx.root, file, map)
   const writer = createLinearWriter({ client, discovery, uuid: () => randomUUID() })
   if (chosen.resume) await reconcile(store, writer, { now: at })
@@ -247,6 +255,7 @@ export async function runImport(ctx) {
   const at = () => new Date(ctx.now()).toISOString()
   const file = chosen.resume?.file ?? mapFileName(ctx.root, { date: started.slice(0, 10), direction: 'import', system: 'linear' })
   const map = chosen.resume?.map ?? newMap({ direction: 'import', started, source, target: { ...targetSide, commit }, mappings: linear.mappings })
+  requireExpect(ctx, 'import', 'the Local tracker')
   const store = ctx.dryRun ? memoryMapStore(file, structuredClone(map)) : createMapStore(ctx.root, file, map)
   const makeWriter = ctx.adapters?.local?.migrateWriter ?? createLocalWriter
   const writer = makeWriter({ root: ctx.root, config: local.config, actor: actorOf(mapped, viewer), now: () => new Date(ctx.now()) })

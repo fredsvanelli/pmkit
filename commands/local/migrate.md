@@ -51,4 +51,5 @@ After a write: the direction, `done` of `total`, the map path and the next step,
 - `NOT_CONFIGURED` about the Linear key: send the user to `/pmkit:setup`.
 - `CONFLICT` on an import: the Local tracker already holds issues or epics. An import writes only into an empty tracker.
 - `CONFLICT` on `--expect`: the trackers changed since the preview. Run the dry run again and show the new preview.
+- `INVALID_INPUT` about the digest: an export, an import or an undo without `--expect` writes nothing. Run the dry run (step 4 for an export or an import, step 11 for an undo), show the preview, and pass its `digest`.
 - An error from the CLI: apply the rules for reading errors in the conventions.

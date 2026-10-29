@@ -142,6 +142,13 @@ function linearFake({ headers, start } = {}) {
 const TYPES = ['--status', 'in_review=In Review', '--status', 'blocked=In Progress', '--type-label', 'feature=Feature', '--type-label', 'bug=Bug', '--type-label', 'task=Task', '--type-label', 'chore=Chore']
 const READY = [...EXPORT, ...TYPES]
 const preview = async (context, fake) => JSON.parse((await cli(context, [...READY, '--dry-run'], { fetch: fake.fetch })).stdout)
+/** The real run as the command doc runs it: the dry run, then the same flags with its digest. A refused dry run is the result. */
+async function confirmed(context, args, options = {}) {
+  const dry = await cli(context, [...args, '--dry-run'], options)
+  if (dry.code !== 0) return dry
+  options.between?.()
+  return cli(context, [...args, '--expect', JSON.parse(dry.stdout).digest], options)
+}
 
 test('export refuses another actor', async () => {
   const context = setup()
@@ -190,7 +197,7 @@ test('problems refuse the run with all of them in the JSON error', async () => {
   edit(context.root, issueFile(context.root, ids.root), /^parent: .*$/m, `parent: ${ids.grandchild}`)
   commitAll(context.root, 'loop')
   const fake = linearFake()
-  const result = await cli(context, READY, { fetch: fake.fetch })
+  const result = await confirmed(context, READY, { fetch: fake.fetch })
   assert.equal(result.code, 2, result.stdout)
   const error = errorOf(result)
   assert.equal(error.code, 'INVALID_INPUT')
@@ -209,6 +216,18 @@ test('export --expect with a changed plan refuses before any write', async () =>
   assert.equal(result.code, 2, result.stdout)
   assert.equal(errorOf(result).code, 'CONFLICT')
   assert.deepEqual(fake.mutations(), [])
+})
+
+test('export without --expect refuses before any write and names the dry run', async () => {
+  const context = setup()
+  const fake = linearFake()
+  const result = await cli(context, READY, { fetch: fake.fetch })
+  assert.equal(result.code, 2, result.stdout)
+  const error = errorOf(result)
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.match(error.nextStep, /pmkit local-migrate export --dry-run/)
+  assert.deepEqual(fake.mutations(), [])
+  assert.ok(!fs.existsSync(path.join(context.root, '.pmkit', 'migrations')), 'no map is written')
 })
 
 test('export writes the map and every record', async () => {
@@ -250,7 +269,7 @@ test('a failed export resumes and creates nothing twice', async () => {
   const file = path.join(context.root, '.pmkit', 'migrations', '2026-10-23-export-linear.yaml')
   assert.match(fs.readFileSync(file, 'utf8'), /state: failed/)
   const issues = fake.issues.nodes().length
-  const again = await cli(context, READY, { fetch: fake.fetch })
+  const again = await confirmed(context, READY, { fetch: fake.fetch })
   assert.equal(again.code, 0, again.stdout)
   assert.equal(fake.issues.nodes().length, issues)
   assert.match(fs.readFileSync(file, 'utf8'), /^finished: \S+/m)
@@ -259,7 +278,7 @@ test('a failed export resumes and creates nothing twice', async () => {
 test('a second export sends only the new issues and links them to the old ones', async () => {
   const context = setup()
   const fake = linearFake()
-  assert.equal((await cli(context, READY, { fetch: fake.fetch })).code, 0)
+  assert.equal((await confirmed(context, READY, { fetch: fake.fetch })).code, 0)
   commitAll(context.root, 'map')
   const { blocker } = context.ids
   const created = await run(['issues', 'create', '--title', 'Follow the blocker', '--type', 'task', '--as', 'fred', '--json'], { cwd: context.root, env: context.env })
@@ -269,7 +288,7 @@ test('a second export sends only the new issues and links them to the old ones',
   assert.equal(linked.code, 0, linked.stdout)
   commitAll(context.root, 'new issue')
   const before = { issues: fake.issues.mutations.length, projects: fake.projects.mutations.length }
-  const result = await cli(context, READY, { fetch: fake.fetch })
+  const result = await confirmed(context, READY, { fetch: fake.fetch })
   assert.equal(result.code, 0, result.stdout)
   assert.ok(fs.existsSync(path.join(context.root, '.pmkit', 'migrations', '2026-10-23-export-linear-2.yaml')))
   assert.deepEqual(fake.issues.mutations.slice(before.issues), ['PmkitIssueCreate', 'PmkitRelationCreate'])
@@ -285,7 +304,7 @@ test('export stops at the reserve', async () => {
   // Linear counts down from 119, so the reads leave a few writes before the reserve of 100.
   let remaining = 120
   const fake = linearFake({ headers: () => ({ 'x-ratelimit-requests-remaining': String(--remaining), 'x-ratelimit-requests-reset': String(Date.parse('2026-10-23T13:00:00Z')) }) })
-  const result = await cli(context, READY, { fetch: fake.fetch })
+  const result = await confirmed(context, READY, { fetch: fake.fetch, between: () => { remaining = 120 } })
   assert.equal(result.code, 2, result.stdout)
   assert.equal(errorOf(result).code, 'RATE_LIMITED')
   const map = fs.readFileSync(path.join(context.root, '.pmkit', 'migrations', '2026-10-23-export-linear.yaml'), 'utf8')
@@ -345,7 +364,7 @@ function commentFiles(root) {
 test('import refuses a tracker that holds issues', async () => {
   const context = setup()
   const fake = linearFake()
-  const result = await cli(context, IMPORT, { fetch: fake.fetch })
+  const result = await confirmed(context, IMPORT, { fetch: fake.fetch })
   assert.equal(result.code, 2, result.stdout)
   assert.deepEqual(errorOf(result), {
     code: 'CONFLICT',
@@ -365,9 +384,20 @@ test('import --dry-run lists new members and writes nothing', async () => {
   assert.deepEqual(fake.mutations(), [])
 })
 
+test('import without --expect refuses before any write and names the dry run', async () => {
+  const { context, fake } = importSetup()
+  const before = hashTree(context.root)
+  const result = await cli(context, IMPORT, { fetch: fake.fetch })
+  assert.equal(result.code, 2, result.stdout)
+  const error = errorOf(result)
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.match(error.nextStep, /pmkit local-migrate import --dry-run/)
+  assert.equal(hashTree(context.root), before)
+})
+
 test('import writes every record and validates', async () => {
   const { context, fake } = importSetup()
-  const result = await cli(context, IMPORT, { fetch: fake.fetch })
+  const result = await confirmed(context, IMPORT, { fetch: fake.fetch })
   assert.equal(result.code, 0, result.stdout)
   assert.deepEqual(fake.mutations(), [])
   const validated = await run(['validate', '--json'], { cwd: context.root, env: context.env })
@@ -389,7 +419,7 @@ test('import writes every record and validates', async () => {
 
 test('import never commits', async () => {
   const { context, fake } = importSetup()
-  assert.equal((await cli(context, IMPORT, { fetch: fake.fetch })).code, 0)
+  assert.equal((await confirmed(context, IMPORT, { fetch: fake.fetch })).code, 0)
   const git = (...args) => spawnSync('git', args, { cwd: context.root, encoding: 'utf8' }).stdout
   const changed = git('status', '--porcelain', '--untracked-files=all').split('\n').filter(Boolean).map((line) => line.slice(3))
   assert.ok(changed.length > 0)
@@ -400,7 +430,7 @@ test('import never commits', async () => {
 
 test('imported history gives flow metrics', async () => {
   const { context, fake } = importSetup()
-  assert.equal((await cli(context, IMPORT, { fetch: fake.fetch })).code, 0)
+  assert.equal((await confirmed(context, IMPORT, { fetch: fake.fetch })).code, 0)
   const result = await run(['metrics', 'cycle-time', '--since', '2026-10-01', '--until', '2026-10-31', '--json'], { cwd: context.root, env: context.env })
   assert.equal(result.code, 0, result.stdout)
   const listed = JSON.parse((await run(['issues', 'list', '--json'], { cwd: context.root, env: context.env })).stdout)
@@ -410,10 +440,10 @@ test('imported history gives flow metrics', async () => {
 
 test('import resumes over its own uncommitted files', async () => {
   const { context, fake } = importSetup()
-  const failed = await cli(context, IMPORT, { fetch: fake.fetch, adapters: failingLocal })
+  const failed = await confirmed(context, IMPORT, { fetch: fake.fetch, adapters: failingLocal })
   assert.equal(failed.code, 2, failed.stdout)
   assert.equal(commentFiles(context.root).length, 2)
-  const resumed = await cli(context, IMPORT, { fetch: fake.fetch })
+  const resumed = await confirmed(context, IMPORT, { fetch: fake.fetch })
   assert.equal(resumed.code, 0, resumed.stdout)
   assert.equal(commentFiles(context.root).length, 3, commentFiles(context.root).join('\n'))
   assert.match(fs.readFileSync(path.join(context.root, '.pmkit', 'migrations', '2026-10-23-import-linear.yaml'), 'utf8'), /^finished: \S+/m)
@@ -422,11 +452,11 @@ test('import resumes over its own uncommitted files', async () => {
 
 test('a resume refuses when HEAD moved', async () => {
   const { context, fake } = importSetup()
-  assert.equal((await cli(context, IMPORT, { fetch: fake.fetch, adapters: failingLocal })).code, 2)
+  assert.equal((await confirmed(context, IMPORT, { fetch: fake.fetch, adapters: failingLocal })).code, 2)
   fs.writeFileSync(path.join(context.root, 'NOTES.md'), 'notes\n')
   git(context.root, 'add', 'NOTES.md')
   git(context.root, 'commit', '-q', '-m', 'notes')
-  const result = await cli(context, IMPORT, { fetch: fake.fetch })
+  const result = await confirmed(context, IMPORT, { fetch: fake.fetch })
   assert.equal(result.code, 2, result.stdout)
   assert.deepEqual(errorOf(result), { code: 'CONFLICT', message: 'there are uncommitted changes under .issues', nextStep: 'Commit or discard the changes under .issues first' })
 })
@@ -438,7 +468,7 @@ test('import on a Linear repository uses --path', async () => {
   commitAll(context.root, 'linear tracker')
   const fake = linearFake()
   fake.issues.seed({ title: 'Read the config' })
-  const result = await cli(context, ['local-migrate', 'import', '--path', '.issues', '--json'], { fetch: fake.fetch })
+  const result = await confirmed(context, ['local-migrate', 'import', '--path', '.issues', '--json'], { fetch: fake.fetch })
   assert.equal(result.code, 0, result.stdout)
   assert.equal(heldIssues(context.root).length, 1)
   assert.match(JSON.parse(result.stdout).next, /^commit \.issues\/ and /)
@@ -452,7 +482,7 @@ async function exported() {
   const context = setup()
   const fake = linearFake({ start: '2026-10-23T00:00:00.000Z' })
   const { records } = await preview(context, fake)
-  const result = await cli(context, READY, { fetch: fake.fetch })
+  const result = await confirmed(context, READY, { fetch: fake.fetch })
   assert.equal(result.code, 0, result.stdout)
   const created = (kind) => records[kind].filter((record) => record.action === 'create').length
   return { context, fake, counts: { issue: created('issue'), epic: created('epic'), label: created('label') } }
@@ -462,7 +492,7 @@ test('status prints the counts and the next step of an unfinished map', async ()
   const context = setup()
   const fake = linearFake()
   fake.issues.unconfirm('PmkitRelationCreate', { applied: false })
-  assert.equal((await cli(context, READY, { fetch: fake.fetch })).code, 2)
+  assert.equal((await confirmed(context, READY, { fetch: fake.fetch })).code, 2)
   const counting = fakeLinearFetch(fakeWorkspace())
   const result = await cli(context, STATUS, { fetch: counting })
   assert.equal(result.code, 0, result.stdout)
@@ -558,7 +588,7 @@ test('undo resumes after an interruption', async () => {
 
 test('undo on an import map prints the git commands and writes nothing', async () => {
   const { context, fake } = importSetup()
-  assert.equal((await cli(context, IMPORT, { fetch: fake.fetch })).code, 0)
+  assert.equal((await confirmed(context, IMPORT, { fetch: fake.fetch })).code, 0)
   const before = hashTree(context.root)
   const counting = fakeLinearFetch(fakeWorkspace())
   const result = await cli(context, UNDO, { fetch: counting })
@@ -578,7 +608,7 @@ const onlyMap = (root) => {
 }
 async function imported() {
   const { context, fake } = importSetup()
-  assert.equal((await cli(context, IMPORT, { fetch: fake.fetch })).code, 0)
+  assert.equal((await confirmed(context, IMPORT, { fetch: fake.fetch })).code, 0)
   return { context, fake }
 }
 
@@ -724,7 +754,7 @@ function changedFields(before, after, allowed) {
 test('export then import gives back the ids, parents, blockers and links', async () => {
   const { context: source, fake } = await exported()
   const target = secondRepository(source)
-  const result = await cli(target, IMPORT, { fetch: fake.fetch })
+  const result = await confirmed(target, IMPORT, { fetch: fake.fetch })
   assert.equal(result.code, 0, result.stdout)
   const read = (root) => readLocalSnapshot({ root, config: loadConfig(root) })
   const before = read(source.root)
