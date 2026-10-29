@@ -99,6 +99,11 @@ export const CASES = {
   render: (a) => [['board'], ['roadmap', '--format', 'html'], ['sprint'], ['sprint', '--sprint', a.sprint], ['board', '--save']],
   migrate: () => [[]],
   reindex: () => [[]],
+  'local-migrate export': () => [['--workspace', 'acme', '--team', 'ACME']],
+  'local-migrate import': () => [['--workspace', 'acme', '--team', 'ACME']],
+  'local-migrate status': () => [[]],
+  'local-migrate undo': () => [[]],
+  'local-migrate switch': () => [['--to', 'linear']],
   validate: () => [[]],
 }
 

@@ -231,8 +231,10 @@ const NOT_FOUND = 'Could not find referenced Issue.'
 const failProject = () => {
   throw new FakeInputError('Could not find referenced Project.')
 }
-const CREATE_FIELDS = ['id', 'title', 'description', 'assigneeId', 'parentId', 'priority', 'estimate', 'labelIds', 'teamId', 'stateId', 'dueDate', 'cycleId', 'projectId', 'projectMilestoneId']
-const UPDATE_FIELDS = CREATE_FIELDS.filter((field) => field !== 'id')
+const UPDATE_FIELDS = ['title', 'description', 'assigneeId', 'parentId', 'priority', 'estimate', 'labelIds', 'teamId', 'stateId', 'dueDate', 'cycleId', 'projectId', 'projectMilestoneId']
+// PMK-41: a create may carry the dates of the record it migrates.
+const CREATE_FIELDS = ['id', ...UPDATE_FIELDS, 'createdAt', 'completedAt']
+const LABEL_FIELDS = ['id', 'name', 'teamId', 'parentId', 'isGroup']
 
 class FakeInputError extends Error {}
 class FakeValidationError extends Error {}
@@ -261,6 +263,7 @@ export function fakeLinearIssues({
   cycles: seededCycles = [],
   clock: startClock = start,
 } = {}) {
+  if (labels === ACME_LABELS) labels = [...ACME_LABELS]
   const records = []
   const relations = []
   const numbers = new Map()
@@ -483,6 +486,7 @@ export function fakeLinearIssues({
     const at = stamp()
     const record = {
       id: input.id ?? `issue-${issueCount}`,
+      completedAt: input.completedAt ?? null,
       identifier,
       teamId: team.id,
       title: input.title,
@@ -493,7 +497,7 @@ export function fakeLinearIssues({
       branchName: branchName(identifier.toLowerCase(), input.title ?? ''),
       archivedAt: null,
       trashed: false,
-      createdAt: at,
+      createdAt: input.createdAt ?? at,
       updatedAt: at,
       stateId: (backlog.find((state) => state.type === 'backlog') ?? backlog[0]).id,
       assigneeId: null,
@@ -505,7 +509,7 @@ export function fakeLinearIssues({
       projectId: null,
       projectMilestoneId: null,
     }
-    const { id, teamId, title, ...rest } = input
+    const { id, teamId, title, createdAt, completedAt, ...rest } = input
     applyFields(record, rest)
     records.push(record)
     return record
@@ -650,7 +654,7 @@ export function fakeLinearIssues({
   // PMK-36: comments.
   const commentRecords = []
   let commentCount = 0
-  const COMMENT_FIELDS = ['id', 'body', 'issueId', 'parentId']
+  const COMMENT_FIELDS = ['id', 'body', 'issueId', 'parentId', 'createdAt']
   const COMMENT_MISSING = 'Could not find referenced Comment.'
   const findComment = (id) => commentRecords.find((item) => item.id === id)
   const commentNode = (item) => ({
@@ -732,6 +736,32 @@ export function fakeLinearIssues({
     return { commentResolve: { success: true, comment: withIssue(item) } }
   })
 
+  // PMK-41: the migration documents. A delete moves the issue to the trash: archived and trashed, so a plain search skips it.
+  routes.PmkitIssuesByIds = query('PmkitIssuesByIds', ({ ids }) => ({ issues: search({ filter: { id: { in: ids ?? [] } }, includeArchived: true, first: 100 }) }))
+  routes.PmkitIssueDelete = mutation('PmkitIssueDelete', ({ id }) => {
+    const record = requireIssue(id)
+    const at = stamp()
+    record.trashed = true
+    record.archivedAt ??= at
+    record.updatedAt = at
+    return { issueDelete: { success: true } }
+  })
+  routes.PmkitCommentsByIds = query('PmkitCommentsByIds', ({ ids }) => ({ comments: { nodes: commentRecords.filter((item) => (ids ?? []).includes(item.id)).map(commentNode) } }))
+  // Created labels go into `labels`, so pass one array to fakeWorkspace and fakeLinearIssues and discovery lists them.
+  routes.PmkitLabelCreate = mutation('PmkitLabelCreate', ({ input }) => {
+    checkFields(input, LABEL_FIELDS)
+    if (typeof input.name !== 'string' || input.name === '') throw new FakeInputError('name is required')
+    const created = { id: input.id ?? `label-${labels.length + 1}`, name: input.name, isGroup: input.isGroup ?? false, retiredAt: null, team: input.teamId ? { id: input.teamId } : null, parent: null }
+    labels.push(created)
+    return { issueLabelCreate: { success: true, issueLabel: { id: created.id, name: created.name } } }
+  })
+  routes.PmkitLabelDelete = mutation('PmkitLabelDelete', ({ id }) => {
+    const index = labels.findIndex((item) => item.id === id)
+    if (index < 0) throw new FakeInputError('Could not find referenced IssueLabel.')
+    labels.splice(index, 1)
+    return { issueLabelDelete: { success: true } }
+  })
+
   seededCycles.forEach(addCycle)
 
   return {
@@ -766,6 +796,9 @@ export function fakeLinearIssues({
 }
 
 const PROJECT_CREATE_FIELDS = ['id', 'name', 'teamIds', 'content', 'description', 'startDate', 'targetDate', 'statusId', 'leadId']
+// PMK-41: one project status per type. The backlog id is the one every project had before statuses were kept.
+export const PROJECT_STATUS_NODES = ['backlog', 'planned', 'started', 'paused', 'completed', 'canceled']
+  .map((type, position) => ({ id: `project-status-${type}`, name: type === 'started' ? 'In Progress' : `${type[0].toUpperCase()}${type.slice(1)}`, type, position }))
 const HEALTH_VALUES = ['onTrack', 'atRisk', 'offTrack']
 const projectNotFound = (what) => new FakeInputError(`Entity not found: ${what}`)
 
@@ -838,7 +871,7 @@ export function fakeLinearProjects({
     startDate: project.startDate,
     targetDate: project.targetDate,
     createdAt: project.createdAt,
-    status: { id: 'project-status-backlog', name: 'Backlog', type: 'backlog' },
+    status: (({ position, ...status }) => status)(PROJECT_STATUS_NODES.find((status) => status.id === project.statusId) ?? PROJECT_STATUS_NODES[0]),
     ...(withLists
       ? {
           projectMilestones: connection(milestones.filter((item) => item.project === project).map((item) => ({ id: item.id, name: item.name, targetDate: item.targetDate ?? null, status: item.status ?? 'unstarted' }))),
@@ -856,7 +889,10 @@ export function fakeLinearProjects({
   })
 
   const comparators = {
-    id: (project, c) => project.id === c.eq || (project.identifier !== null && project.identifier === String(c.eq).toUpperCase()),
+    id: (project, c) => {
+      const one = (value) => project.id === value || (project.identifier !== null && project.identifier === String(value).toUpperCase())
+      return (c.eq === undefined || one(c.eq)) && (c.in === undefined || c.in.some(one))
+    },
     slugId: (project, c) => project.slugId === c.eq,
     accessibleTeams: (project, c) => project.teamIds.some((id) => teams.find((team) => team.id === id)?.key === c.some.key.eq),
   }
@@ -888,6 +924,7 @@ export function fakeLinearProjects({
       startDate: input.startDate ?? null,
       targetDate: input.targetDate ?? null,
       createdAt: stamp(),
+      statusId: input.statusId ?? null,
       teamIds: [...input.teamIds],
     }
     projects.push(project)
@@ -947,6 +984,16 @@ export function fakeLinearProjects({
       return { documents: { nodes: found.map((item) => ({ id: item.id, slugId: item.slugId, title: item.title, content: item.content ?? null, project: refOf(item.project) })) } }
     }),
     PmkitEpicIssues: (body) => issues.routes.PmkitIssues(body),
+    PmkitProjectsByIds: query('PmkitProjectsByIds', ({ ids }) => ({
+      projects: { nodes: projects.filter((project) => (ids ?? []).includes(project.id)).map((project) => ({ ...refOf(project), updatedAt: project.updatedAt ?? project.createdAt })) },
+    })),
+    PmkitProjectStatuses: query('PmkitProjectStatuses', () => ({ projectStatuses: { nodes: PROJECT_STATUS_NODES } })),
+    PmkitProjectDelete: mutation('PmkitProjectDelete', ({ id }) => {
+      const index = projects.findIndex((project) => project.id === id)
+      if (index < 0) throw projectNotFound('Project')
+      projects.splice(index, 1)
+      return { projectDelete: { success: true } }
+    }),
   }
 
   return {

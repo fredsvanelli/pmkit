@@ -2,11 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ACME_LABELS, ACME_STATES, ACME_TEAM, ACME_TEAM_ID, ACME_USERS, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeTriage, fakeWorkspace, json, page } from './fake-linear-api.mjs'
 import {
-  BLOCK_GRAPH_QUERY, COMMENT_BY_ID_QUERY, COMMENT_CREATE, COMMENT_RESOLVE, CYCLE_BY_NUMBER_QUERY, CYCLES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_COMMENTS_QUERY, ISSUE_CREATE, ISSUE_EVENTS_QUERY, ISSUE_HISTORY_QUERY, ISSUE_UPDATE, ISSUES_QUERY, NESTED_PAGES, PARENT_CHAIN_QUERY, RELATION_CREATE, RELATION_DELETE,
+  BLOCK_GRAPH_QUERY, COMMENT_BY_ID_QUERY, COMMENTS_BY_IDS, ISSUE_DELETE, ISSUES_BY_IDS, LABEL_CREATE, LABEL_DELETE, COMMENT_CREATE, COMMENT_RESOLVE, CYCLE_BY_NUMBER_QUERY, CYCLES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_COMMENTS_QUERY, ISSUE_CREATE, ISSUE_EVENTS_QUERY, ISSUE_HISTORY_QUERY, ISSUE_UPDATE, ISSUES_QUERY, NESTED_PAGES, PARENT_CHAIN_QUERY, RELATION_CREATE, RELATION_DELETE,
 } from './lib/linear/documents.mjs'
 import { operationName } from './lib/linear/client.mjs'
 import {
-  DOCUMENT_QUERY, EPIC_ISSUES_QUERY, PROJECTS_QUERY, PROJECT_CREATE, PROJECT_MILESTONES_QUERY, PROJECT_MILESTONE_QUERY, PROJECT_UPDATES_QUERY, PROJECT_UPDATE_CREATE,
+  DOCUMENT_QUERY, EPIC_ISSUES_QUERY, PROJECTS_BY_IDS, PROJECT_DELETE, PROJECT_STATUSES, PROJECTS_QUERY, PROJECT_CREATE, PROJECT_MILESTONES_QUERY, PROJECT_MILESTONE_QUERY, PROJECT_UPDATES_QUERY, PROJECT_UPDATE_CREATE,
 } from './lib/linear/projects.mjs'
 
 const ENDPOINT = 'https://api.linear.app/graphql'
@@ -883,4 +883,107 @@ test('a Free and a Business workspace record each customer operation by name', a
   assert.deepEqual(free.calls.map((call) => operationName(call.body.query)), ['PmkitWorkspace'])
   assert.deepEqual(business.calls.map((call) => operationName(call.body.query)), ['PmkitWorkspace', 'PmkitCustomersList'])
   assert.equal(JSON.parse(await (await post(business, 'query PmkitWorkspace { x }')).text()).data.organization.customersEnabled, true)
+})
+
+test('migration: issueCreate keeps a given createdAt and completedAt', async () => {
+  const issues = fakeLinearIssues()
+  const fetch = fakeLinearFetch({ ...issues.routes })
+  const response = await post(fetch, ISSUE_CREATE, { input: { id: 'u-1', teamId: ACME_TEAM_ID, title: 'Old', createdAt: '2026-01-02T03:04:05Z', completedAt: '2026-02-03T04:05:06Z' } })
+  const body = JSON.parse(await response.text())
+  assert.equal(body.data.issueCreate.issue.createdAt, '2026-01-02T03:04:05Z')
+  assert.equal(issues.records[0].completedAt, '2026-02-03T04:05:06Z')
+})
+
+test('migration: issues by ids returns only the listed ids, archived included', async () => {
+  const issues = fakeLinearIssues()
+  const fetch = fakeLinearFetch({ ...issues.routes })
+  const a = issues.seed({ title: 'a' })
+  issues.seed({ title: 'b' })
+  const c = issues.seed({ title: 'c' })
+  await post(fetch, ISSUE_ARCHIVE, { id: c.id })
+  const body = JSON.parse(await (await post(fetch, ISSUES_BY_IDS, { ids: [a.id, c.id, 'missing'] })).text())
+  assert.deepEqual(body.data.issues.nodes.map((node) => node.id).sort(), [a.id, c.id].sort())
+  assert.ok(body.data.issues.nodes.find((node) => node.id === c.id).archivedAt)
+})
+
+test('migration: issueDelete trashes the issue and searches skip it', async () => {
+  const issues = fakeLinearIssues()
+  const fetch = fakeLinearFetch({ ...issues.routes })
+  const a = issues.seed({ title: 'a' })
+  const answer = JSON.parse(await (await post(fetch, ISSUE_DELETE, { id: a.id })).text())
+  assert.deepEqual(answer.data, { issueDelete: { success: true } })
+  assert.equal(issues.records[0].trashed, true)
+  const listed = JSON.parse(await (await post(fetch, ISSUES_QUERY, { first: 50 })).text())
+  assert.deepEqual(listed.data.issues.nodes, [])
+  const byIds = JSON.parse(await (await post(fetch, ISSUES_BY_IDS, { ids: [a.id] })).text())
+  assert.equal(byIds.data.issues.nodes[0].trashed, true)
+  assert.ok(issues.mutations.includes('PmkitIssueDelete'))
+})
+
+test('migration: comments by ids returns the listed comments with resolvedAt', async () => {
+  const issues = fakeLinearIssues()
+  const fetch = fakeLinearFetch({ ...issues.routes })
+  const a = issues.seed({ title: 'a' })
+  const root = issues.comment(a.id, { body: 'root', resolvedAt: '2026-10-28T00:00:00Z' })
+  issues.comment(a.id, { body: 'other' })
+  const body = JSON.parse(await (await post(fetch, COMMENTS_BY_IDS, { ids: [root.id] })).text())
+  assert.deepEqual(body.data.comments.nodes, [{ ...body.data.comments.nodes[0], id: root.id, resolvedAt: '2026-10-28T00:00:00Z' }])
+  assert.equal(body.data.comments.nodes.length, 1)
+})
+
+test('migration: comment create keeps a given createdAt', async () => {
+  const issues = fakeLinearIssues()
+  const fetch = fakeLinearFetch({ ...issues.routes })
+  const a = issues.seed({ title: 'a' })
+  const body = JSON.parse(await (await post(fetch, COMMENT_CREATE, { input: { id: 'c-1', issueId: a.id, body: 'x', createdAt: '2026-01-01T00:00:00Z' } })).text())
+  assert.equal(body.data.commentCreate.comment.createdAt, '2026-01-01T00:00:00Z')
+})
+
+test('migration: labelCreate adds a team label that discovery lists, and labelDelete removes it', async () => {
+  const labels = [...ACME_LABELS]
+  const issues = fakeLinearIssues({ labels })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace({ labels }), ...issues.routes })
+  const created = JSON.parse(await (await post(fetch, LABEL_CREATE, { input: { id: 'label-new', name: 'needs-criteria', teamId: ACME_TEAM_ID } })).text())
+  assert.deepEqual(created.data.issueLabelCreate, { success: true, issueLabel: { id: 'label-new', name: 'needs-criteria' } })
+  const listed = JSON.parse(await (await post(fetch, 'query PmkitLabels($first: Int!, $after: String) { x }', { first: 50 })).text())
+  assert.ok(listed.data.issueLabels.nodes.some((node) => node.id === 'label-new' && node.team.id === ACME_TEAM_ID))
+  assert.equal(ACME_LABELS.some((label) => label.id === 'label-new'), false)
+  await post(fetch, LABEL_DELETE, { id: 'label-new' })
+  assert.equal(labels.some((label) => label.id === 'label-new'), false)
+  assert.deepEqual(issues.mutations, ['PmkitLabelCreate', 'PmkitLabelDelete'])
+})
+
+test('migration: projectStatuses lists one status per type, and a project keeps its status', async () => {
+  const issues = fakeLinearIssues()
+  const projects = fakeLinearProjects({ issues })
+  const fetch = fakeLinearFetch({ ...issues.routes, ...projects.routes })
+  const statuses = JSON.parse(await (await post(fetch, PROJECT_STATUSES, {})).text()).data.projectStatuses.nodes
+  assert.deepEqual(statuses.map((status) => status.type), ['backlog', 'planned', 'started', 'paused', 'completed', 'canceled'])
+  const started = statuses.find((status) => status.type === 'started')
+  const created = JSON.parse(await (await post(fetch, PROJECT_CREATE, { input: { id: 'p-1', name: 'P', teamIds: [ACME_TEAM_ID], statusId: started.id } })).text())
+  assert.deepEqual(created.data.projectCreate.project.status, { id: started.id, name: started.name, type: 'started' })
+})
+
+test('migration: projects by ids and projectDelete', async () => {
+  const issues = fakeLinearIssues()
+  const projects = fakeLinearProjects({ issues })
+  const fetch = fakeLinearFetch({ ...issues.routes, ...projects.routes })
+  const a = projects.seed({ id: 'p-a', name: 'A', teamIds: [ACME_TEAM_ID] })
+  projects.seed({ id: 'p-b', name: 'B', teamIds: [ACME_TEAM_ID] })
+  const found = JSON.parse(await (await post(fetch, PROJECTS_BY_IDS, { ids: [a.id, 'missing'] })).text()).data.projects.nodes
+  assert.deepEqual(found.map((node) => node.id), ['p-a'])
+  assert.ok(found[0].updatedAt)
+  await post(fetch, PROJECT_DELETE, { id: 'p-a' })
+  const after = JSON.parse(await (await post(fetch, PROJECTS_QUERY, { first: 50, withLists: false })).text()).data.projects.nodes
+  assert.deepEqual(after.map((node) => node.id), ['p-b'])
+  assert.deepEqual(projects.mutations, ['PmkitProjectDelete'])
+})
+
+test('migration: an unknown input field still fails validation', async () => {
+  const issues = fakeLinearIssues()
+  const fetch = fakeLinearFetch({ ...issues.routes })
+  const body = JSON.parse(await (await post(fetch, ISSUE_CREATE, { input: { teamId: ACME_TEAM_ID, title: 'x', number: 4 } })).text())
+  assert.equal(body.errors[0].extensions.code, 'GRAPHQL_VALIDATION_FAILED')
+  const label = JSON.parse(await (await post(fetch, LABEL_CREATE, { input: { name: 'x', color: 'red' } })).text())
+  assert.equal(label.errors[0].extensions.code, 'GRAPHQL_VALIDATION_FAILED')
 })

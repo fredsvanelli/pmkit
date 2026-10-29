@@ -15,6 +15,9 @@
 - Linear projects work as pmkit epics (PMK-38), with progress, health and project updates, read-only milestones and documents, and issue history shows the epic as the issue's `parent`.
 - Adds an opt-in live run of the tracker contract suite against a Linear sandbox workspace (PMK-39), `scripts/lib/linear/contract-live.mjs`, with a fixed test team, a write guard, a request budget and a `cleanup` command. `npm test` stays offline and now removes `LINEAR_API_KEY` and `PMKIT_LIVE` from the environment of its tests.
 - Linear history can miss an edit made right after the create. Linear folds it into the create entry, so `events` shows no `update` for it (PMK-39).
+- Adds `/pmkit:local:migrate` and five commands (PMK-41). `local-migrate export` copies `.issues/` to a Linear team, `local-migrate import` copies a Linear team into an empty `.issues/`, `local-migrate status` reports the newest ID map, `local-migrate undo` deletes what an export created after a full preview, and `local-migrate switch` points `.pmkit/config.yaml` at the new tracker. Every write shows a full preview first and needs its digest, and a rerun resumes from the ID map under `.pmkit/migrations/`. An export loses the event history, the comment and status update authors, the status update dates, milestones, releases, time logs, documents, branch names, the old IDs, estimates outside the team's scale, sprint names and goals, and epic creation times. The tracker format stays 2.
+
+Tracker format: 2
 
 ## 0.2.0 - 2026-10-25
 

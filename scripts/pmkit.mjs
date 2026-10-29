@@ -28,6 +28,7 @@ import { CACHE_DIR, ensureCacheIgnored } from './lib/local/query-index.mjs'
 import { writeFileAtomic } from './lib/local/store.mjs'
 import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, planMigration } from './lib/local/migrations.mjs'
 import { parseChangelog, sectionsSince } from './lib/changelog.mjs'
+import { runExport, runImport, runStatus, runSwitch, runUndo } from './lib/migrate/cli.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
 import { ID_STYLES, branchName, isId, normalizeId } from './lib/ids.mjs'
 import { boardDoc, hasMarker, problemsLine, renderDocument, roadmapDoc, sprintDoc } from './lib/render.mjs'
@@ -1007,6 +1008,30 @@ export const COMMANDS = [
     run: (ctx) => runMigrate(ctx.root, { dryRun: ctx.dryRun }),
   },
   {
+    name: 'local-migrate export', summary: 'moves .issues/ to the Linear team; a rerun resumes; --dry-run prints the preview and its digest',
+    usage: '[--workspace acme --team ACME] [--status cat=Name] [--type-label type=Label] [--field estimate=native|none] [--expect <digest>] [--dry-run]',
+    flags: ['workspace', 'team', 'path', 'status', 'type-label', 'field', 'expect'], write: true, dryRun: true, systems: ['local', 'linear'], run: runExport,
+  },
+  {
+    name: 'local-migrate import', summary: 'copies the Linear team into an empty .issues/; a rerun resumes; --dry-run prints the preview and its digest',
+    usage: '[--workspace acme --team ACME] [--path .issues] [--expect <digest>] [--dry-run]',
+    flags: ['workspace', 'team', 'path', 'expect'], write: true, dryRun: true, systems: ['local', 'linear'], run: runImport,
+  },
+  {
+    name: 'local-migrate status', summary: 'prints the newest migration map: direction, counts by state, failures and the next step; sends no request',
+    usage: '[--file .pmkit/migrations/<map>.yaml]', flags: ['file'], systems: ['local', 'linear'], run: runStatus,
+  },
+  {
+    name: 'local-migrate undo', summary: 'deletes what an export created, after the full preview; for an import map prints the git commands',
+    usage: '[--file .pmkit/migrations/<map>.yaml] [--expect <digest>] [--dry-run]',
+    flags: ['file', 'expect'], write: true, dryRun: true, systems: ['local', 'linear'], run: runUndo,
+  },
+  {
+    name: 'local-migrate switch', summary: 'writes tracker.system, the scope and the mappings of a finished map to .pmkit/config.yaml; sends no request',
+    usage: '--to linear|local [--file .pmkit/migrations/<map>.yaml] [--dry-run]',
+    flags: ['to', 'file'], write: true, dryRun: true, systems: ['local', 'linear'], run: runSwitch,
+  },
+  {
     name: 'reindex', summary: 'rebuilds the query index in .issues/.cache/ from the issue files; changes only files git ignores', local: true, flags: [],
     run: async (ctx) => {
       const result = (await ctx.local()).reindex()
@@ -1843,6 +1868,10 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
       const { system } = loadPmkitConfig(root, { adapters })
       if (system !== 'local') throw new PmkitError('NOT_SUPPORTED', `${command.name} works only with the Local tracker, and tracker.system is "${system}"`, 'node scripts/pmkit.mjs --help')
     }
+    if (command.systems) {
+      const { system } = loadPmkitConfig(root, { adapters })
+      if (!command.systems.includes(system)) throw new PmkitError('NOT_SUPPORTED', `\`${command.name}\` works only with the Local or Linear tracker, and tracker.system is "${system}"`, 'node scripts/pmkit.mjs --help')
+    }
     // migrate refuses in runMigrate: ctx.config() checks the format, which would hide migrate's own format errors.
     if (kind === 'write' && command.name !== 'migrate') {
       const { pmkitProblems } = ctx.config()
@@ -1875,8 +1904,9 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
     if (isPmkitError(error)) {
       if (json) {
         const body = { error: { code: error.code, message: error.message, nextStep: error.nextStep } }
-        // The one detail that reaches the output: the mappings a hosted tracker found broken.
+        // The details that reach the output: the mappings a hosted tracker found broken, and the problems a migration plan found.
         if (Array.isArray(error.details?.mappings)) body.error.mappings = error.details.mappings
+        if (Array.isArray(error.details?.problems)) body.error.problems = error.details.problems
         if (error.written) body.result = error.written.data
         stdout.push(`${JSON.stringify(body, null, 2)}\n`)
       } else if (error.written) {

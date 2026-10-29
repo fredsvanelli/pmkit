@@ -1,0 +1,4 @@
+$ pmkit local-migrate undo --dry-run --json  [step 11, dry run]
+exit 0
+
+(no file changed)

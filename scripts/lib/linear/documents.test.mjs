@@ -60,3 +60,23 @@ test('the history query selects the keys an epic id is made from', () => {
   assert.match(documents.ISSUE_HISTORY_QUERY, /fromProject \{ id slugId identifier \} toProject \{ id slugId identifier \}/)
   assert.match(documents.ISSUE_HISTORY_QUERY, /fromProjectMilestone \{ id \} toProjectMilestone \{ id \}/)
 })
+
+test('the migration documents name their operation', async () => {
+  const projects = await import('./projects.mjs')
+  const named = {
+    ISSUES_BY_IDS: [documents, 'PmkitIssuesByIds'], COMMENTS_BY_IDS: [documents, 'PmkitCommentsByIds'], LABEL_CREATE: [documents, 'PmkitLabelCreate'],
+    LABEL_DELETE: [documents, 'PmkitLabelDelete'], ISSUE_DELETE: [documents, 'PmkitIssueDelete'],
+    PROJECTS_BY_IDS: [projects, 'PmkitProjectsByIds'], PROJECT_STATUSES: [projects, 'PmkitProjectStatuses'], PROJECT_DELETE: [projects, 'PmkitProjectDelete'],
+  }
+  for (const [key, [module, name]] of Object.entries(named)) {
+    assert.equal(operationName(module[key]), name, key)
+    assert.equal(isMutation(module[key]), /CREATE|DELETE/.test(key), key)
+  }
+  assert.match(documents.ISSUES_BY_IDS, /includeArchived: true, first: 100/)
+  assert.match(documents.ISSUES_BY_IDS, /updatedAt archivedAt trashed relations\(first: 50\) \{ nodes \{ id \} \}/)
+})
+
+test('ISSUE_DELETE sends no permanentlyDelete', () => {
+  assert.doesNotMatch(documents.ISSUE_DELETE, /permanentlyDelete/)
+  assert.match(documents.ISSUE_DELETE, /\$id: String!/)
+})

@@ -224,3 +224,11 @@ test('stringifyYaml refuses NaN and Infinity, which would not read back as numbe
     assert.throws(() => stringifyYaml({ list: [1, value] }), TypeError, String(value))
   }
 })
+
+test('a block key that is not a plain word is written in double quotes and reads back', () => {
+  const object = { records: { link: { 'blocks PMK-35 PMK-38': { state: 'done', uuid: 'u1' } }, comment: { 'PMK-38/2026-10-28T18-11-19Z-fred': { state: 'failed', error: { code: 'UPSTREAM', message: 'no: answer' } } } } }
+  const text = stringifyYaml(object)
+  assert.match(text, /^ {4}"blocks PMK-35 PMK-38": \{ state: done, uuid: u1 \}$/m)
+  assert.match(text, /^ {4}"PMK-38\/2026-10-28T18-11-19Z-fred":$/m)
+  assert.deepEqual(parseYaml(text), object)
+})

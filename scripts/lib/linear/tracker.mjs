@@ -218,5 +218,5 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
   // Linear-only features sit beside the contract operations. contractView ignores them.
   const triage = createTriage({ client, discovery, config })
   const customers = createCustomers({ client, discovery, config })
-  return { ...Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)])), triage, customers }
+  return { ...Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)])), triage, customers, migration: { client, discovery } }
 }

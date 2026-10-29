@@ -138,4 +138,16 @@ _Avoid_: schema version, plugin version (the plugin has its own version in `plug
 
 **Migration**:
 One step that takes the tracker format from one number to the next. Steps run in order and each one is one-way. `pmkit migrate` lists every file it would change with `--dry-run`, then applies the steps. It refuses outside git and while the tracker folder has uncommitted changes.
-_Avoid_: upgrade (that is the command that updates the plugin and then runs the migrations), conversion
+_Avoid_: upgrade (that is the command that updates the plugin and then runs the migrations), conversion, moving records between trackers, which is an export or an import
+
+**Export**:
+Copying the Local tracker's records to a hosted tracker with `pmkit local-migrate export`. The records in `.issues/` stay where they are. `pmkit local-migrate switch` is a separate step that points the repository at the new tracker.
+_Avoid_: migration (that is a tracker format step), sync, push
+
+**Import**:
+Copying a hosted team's records into an empty Local tracker with `pmkit local-migrate import`. It refuses a tracker that already holds an issue or an epic.
+_Avoid_: migration, sync, pull
+
+**ID map**:
+The file under `.pmkit/migrations/` that pairs each old ID with its new one and records the state of each record. A rerun reads it to resume, `local-migrate undo` reads it to find what an export created, and you commit it.
+_Avoid_: mapping (that is `mappings` in `.pmkit/config.yaml`), migration log

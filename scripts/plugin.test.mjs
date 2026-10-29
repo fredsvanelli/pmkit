@@ -90,7 +90,7 @@ test('CHANGELOG.md has a section for the plugin version and a Tracker format tha
 })
 
 // Each Task that writes command files adds their names here.
-const COMMANDS = { '': ['setup', 'help', 'upgrade'], issues: ['find', 'create', 'dependencies', 'update', 'move', 'assign', 'comment', 'link', 'summary', 'work', 'mine', 'capture', 'breakdown', 'progress', 'pause'], spec: ['import'], backlog: ['groom', 'triage'], report: ['status', 'release-notes'], cycle: ['plan', 'close'], team: ['flow-metrics', 'standup', 'risk-radar'], linear: ['triage-rotation', 'customers'], local: ['doctor', 'render'] }
+const COMMANDS = { '': ['setup', 'help', 'upgrade'], issues: ['find', 'create', 'dependencies', 'update', 'move', 'assign', 'comment', 'link', 'summary', 'work', 'mine', 'capture', 'breakdown', 'progress', 'pause'], spec: ['import'], backlog: ['groom', 'triage'], report: ['status', 'release-notes'], cycle: ['plan', 'close'], team: ['flow-metrics', 'standup', 'risk-radar'], linear: ['triage-rotation', 'customers'], local: ['doctor', 'render', 'migrate'] }
 
 const HEADINGS = ['## Parameters', '## Steps', '## Confirmation points', '## Output', '## If something is missing']
 
@@ -181,6 +181,25 @@ test('customers.md previews set and link in step 5 and writes them in step 6', (
   }
   assert.match(step(4), /AskUserQuestion/)
   assert.match(step(5), /AskUserQuestion/)
+})
+
+test('migrate.md previews before every write', () => {
+  const text = fs.readFileSync(path.join(ROOT, 'commands/local/migrate.md'), 'utf8')
+  const lines = text.split('\n')
+  const steps = lines.slice(lines.indexOf('## Steps') + 1, lines.indexOf('## Confirmation points')).join('\n').split(/\n(?=\d+\. )/)
+  const calls = (step) => [...step.matchAll(/pmkit\.mjs" local-migrate (export|import|undo|switch)[^`]*`/g)].map((match) => ({ verb: match[1], call: match[0] }))
+  let writes = 0
+  steps.forEach((step, index) => {
+    for (const { verb, call } of calls(step).filter(({ call }) => !call.includes('--dry-run'))) {
+      writes += 1
+      const preview = steps.slice(0, index).findIndex((earlier) => calls(earlier).some((found) => found.verb === verb && found.call.includes('--dry-run')))
+      assert.ok(preview >= 0, `${call} has an earlier --dry-run`)
+      const asks = steps.slice(preview, index + 1).some((between) => /AskUserQuestion/.test(between))
+      assert.ok(asks, `${call} asks with AskUserQuestion after its preview`)
+      if (verb !== 'switch') assert.ok(call.includes('--expect'), `${call} carries --expect`)
+    }
+  })
+  assert.ok(writes >= 4, 'the export, import, undo and switch writes are all there')
 })
 
 test('upgrade.md carries the pieces the upgrade flow needs', () => {

@@ -1465,6 +1465,10 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'linear customers link': ['--customer', 'acme', '--issue', 'ACME-1'],
     'linear triage set': ['--off'],
     migrate: [],
+    'local-migrate export': ['--workspace', 'acme', '--team', 'ACME'],
+    'local-migrate import': ['--workspace', 'acme', '--team', 'ACME'],
+    'local-migrate undo': [],
+    'local-migrate switch': ['--to', 'linear'],
   }
   assert.deepEqual(Object.keys(WRITES).sort(), COMMANDS.filter((c) => c.write).map((c) => c.name).sort())
   const root = makeRepo('team')
@@ -1558,6 +1562,7 @@ test('every read goes on with one warning', () => {
     'linear customers show': ['--customer', 'acme'],
     'linear triage show': [],
     'linear triage suggestions': [],
+    'local-migrate status': [],
     render: ['board'],
   }
   assert.deepEqual(Object.keys(READS).sort(), [...COMMANDS.filter((c) => !c.write && !['init', 'changelog', 'validate'].includes(c.name)).map((c) => c.name), 'cycle capacity'].sort())
