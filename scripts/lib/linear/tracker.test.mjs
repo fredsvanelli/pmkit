@@ -169,6 +169,15 @@ test('discover and capabilities in one run share one discovery', async () => {
   for (const name of DISCOVERY_OPERATIONS) assert.equal(callsOf(fetch, name), 1, name)
 })
 
+test('capabilities() after a discover() sends no extra request', async () => {
+  const { fetch, tracker: linear } = tracker(setup())
+  await linear.discover()
+  const before = fetch.calls.length
+  await linear.capabilities()
+  await linear.capabilities()
+  assert.equal(fetch.calls.length, before)
+})
+
 test('a second tracker on the same store sends no request until the TTL passes', async () => {
   const context = setup()
   await tracker(context).tracker.discover()
