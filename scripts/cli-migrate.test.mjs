@@ -11,7 +11,9 @@ import { linearDescriptor } from './lib/linear/adapter.mjs'
 import { fakeLinear, useLinear } from './fake-hosted.mjs'
 import { ACME_LABELS, ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeWorkspace } from './fake-linear-api.mjs'
 import { childEnv } from './golden-helpers.mjs'
-import { buildMigrationFixture, commitAll } from './migrate-fixture.mjs'
+import { buildMigrationFixture, commitAll, git } from './migrate-fixture.mjs'
+import { PmkitError } from './lib/errors.mjs'
+import { createLocalWriter } from './lib/local/migrate-writer.mjs'
 import { hashTree, makeRepo, userStoreEnv } from './test-helpers.mjs'
 
 // gitUserEmail reads the process environment, so the in-process runs need the same git isolation as childEnv.
@@ -225,6 +227,13 @@ test('export writes the map and every record', async () => {
   assert.ok(child.cycle, 'the child sits in the cycle')
   assert.ok(nodes.every((node) => node.createdAt), 'every issue has createdAt')
   assert.ok(fake.mutations().includes('PmkitRelationCreate'))
+  const measured = nodes.find((node) => node.title === 'Measure the rate limit')
+  assert.equal(measured.estimate, 3)
+  const creates = fake.fetch.calls.map((call) => call.body).filter((body) => /mutation PmkitIssueCreate/.test(body.query)).map((body) => body.variables.input)
+  assert.match(creates.find((input) => input.title === 'Measure the rate limit').completedAt ?? '', /^\d{4}-\d{2}-\d{2}T/, 'the done issue keeps completedAt')
+  const bodies = fake.issues.comments.map((comment) => comment.body)
+  assert.ok(bodies.length > 0)
+  assert.ok(bodies.every((body) => /^Comment by \S.* on \d{4}-\d{2}-\d{2} in \S+\n\n/.test(body)), bodies.join('\n---\n'))
   assert.match(JSON.parse(result.stdout).next, /^commit \.pmkit\/migrations\/2026-10-23-export-linear\.yaml$/)
 })
 
@@ -283,7 +292,10 @@ test('export stops at the reserve', async () => {
 
 const IMPORT = ['local-migrate', 'import', '--workspace', 'acme', '--team', 'ACME', '--json']
 
-// An empty Local tracker in git, and a Linear team with issues, a relation, and a project with an update and a child.
+const STATE = { backlog: { id: 'state-1', name: 'Backlog', type: 'backlog' }, progress: { id: 'state-3', name: 'In Progress', type: 'started' }, done: { id: 'state-8', name: 'Done', type: 'completed' } }
+
+// An empty Local tracker in git, and a Linear team with issues, relations of each kind, a project with an update and a
+// child, a comment thread with a resolved root, a history move, and a user (user-1) that no Local member names.
 function importSetup() {
   const context = setup({ fixture: false })
   commitAll(context.root, 'empty tracker')
@@ -293,8 +305,38 @@ function importSetup() {
   fake.issues.relate('blocks', a.id, b.id)
   fake.projects.seed({ id: 'p-1', name: 'Config epic', teamIds: [ACME_TEAM.id] })
   fake.projects.seedUpdate('p-1', { id: 'u-1', body: 'Fine', health: 'onTrack' })
-  fake.issues.seed({ title: 'Ship the config', projectId: 'p-1' })
+  const c = fake.issues.seed({ title: 'Ship the config', projectId: 'p-1', stateId: STATE.done.id }, { createdAt: '2026-10-01T00:00:00.000Z' })
+  fake.issues.history(c.id, { createdAt: '2026-10-02T00:00:00.000Z', fromState: STATE.backlog, toState: STATE.progress })
+  fake.issues.history(c.id, { createdAt: '2026-10-05T12:00:00.000Z', fromState: STATE.progress, toState: STATE.done })
+  fake.issues.relate('related', a.id, c.id)
+  const d = fake.issues.seed({ title: 'Read the config twice' })
+  fake.issues.relate('duplicate', d.id, a.id)
+  const root = fake.issues.comment(a.id, { body: 'Which file?', resolvedAt: '2026-10-03T00:00:00.000Z' })
+  fake.issues.comment(a.id, { body: 'config.yaml', parentId: root.id })
+  fake.issues.comment(a.id, { body: 'Done reading' })
   return { context, fake }
+}
+
+/** Wraps a writer so the nth create of one kind throws UPSTREAM, as a dropped connection would. */
+function failOnCall(writer, kind, nth) {
+  let calls = 0
+  return {
+    ...writer,
+    async create(name, ...rest) {
+      if (name === kind && ++calls === nth) throw new PmkitError('UPSTREAM', `the test writer fails on ${kind} ${nth}`, 'Run it again')
+      return writer.create(name, ...rest)
+    },
+  }
+}
+const failingLocal = { local: { ...ADAPTERS.local, migrateWriter: (deps) => failOnCall(createLocalWriter(deps), 'comment', 3) } }
+
+/** The issue folders of the Local tracker. */
+const heldIssues = (root) => fs.readdirSync(path.join(root, '.issues', 'issues'), { withFileTypes: true }).filter((entry) => entry.isDirectory())
+
+/** Every comment file of the Local tracker, root-relative. */
+function commentFiles(root) {
+  const base = path.join(root, '.issues')
+  return fs.readdirSync(base, { recursive: true }).filter((file) => file.split(path.sep).includes('comments') && file.endsWith('.md'))
 }
 
 test('import refuses a tracker that holds issues', async () => {
@@ -314,7 +356,7 @@ test('import --dry-run lists new members and writes nothing', async () => {
   const before = hashTree(context.root)
   const result = await cli(context, IMPORT.filter((arg) => arg !== '--json').concat('--dry-run'), { fetch: fake.fetch })
   assert.equal(result.code, 0, result.stderr || result.stdout)
-  assert.match(result.stdout, /new member/)
+  assert.match(result.stdout, /new member user-1/)
   assert.match(result.stdout, /dry run: nothing was written/)
   assert.equal(hashTree(context.root), before)
   assert.deepEqual(fake.mutations(), [])
@@ -329,10 +371,16 @@ test('import writes every record and validates', async () => {
   assert.equal(validated.code, 0, validated.stdout)
   const listed = await run(['issues', 'list', '--json'], { cwd: context.root, env: context.env })
   const issues = JSON.parse(listed.stdout).issues ?? JSON.parse(listed.stdout)
-  assert.equal(issues.length, 3)
-  const reader = issues.find((issue) => issue.title === 'Read the config')
-  const writer = issues.find((issue) => issue.title === 'Write the config')
-  assert.ok(fs.readFileSync(path.join(context.root, issueFile(context.root, writer.id)), 'utf8').includes(reader.id), 'the blocked issue names its blocker')
+  assert.equal(issues.length, 4)
+  const byTitle = (title) => issues.find((issue) => issue.title === title)
+  const reader = byTitle('Read the config')
+  const text = (issue) => fs.readFileSync(path.join(context.root, issueFile(context.root, issue.id)), 'utf8')
+  assert.match(text(byTitle('Write the config')), new RegExp(`blocked_by:[\\s\\S]*${reader.id}`), 'the blocked issue names its blocker')
+  assert.match(text(byTitle('Ship the config')) + text(reader), new RegExp(`related:[\\s\\S]*(${reader.id}|${byTitle('Ship the config').id})`))
+  assert.match(text(byTitle('Read the config twice')), new RegExp(`duplicate_of:[\\s\\S]*${reader.id}`))
+  const committed = spawnSync('git', ['show', 'HEAD:.issues/config.yaml'], { cwd: context.root, encoding: 'utf8' }).stdout
+  assert.doesNotMatch(committed, /Test User/)
+  assert.match(fs.readFileSync(path.join(context.root, '.issues', 'config.yaml'), 'utf8'), /Test User/, 'user-1 becomes a new member')
   assert.match(JSON.parse(result.stdout).next, /^commit \.issues\/ and \.pmkit\/migrations\/2026-10-23-import-linear\.yaml$/)
 })
 
@@ -345,6 +393,52 @@ test('import never commits', async () => {
   assert.ok(changed.every((file) => file.startsWith('.issues/') || file === '.pmkit/migrations/2026-10-23-import-linear.yaml'), changed.join('\n'))
   assert.ok(changed.includes('.pmkit/migrations/2026-10-23-import-linear.yaml'))
   assert.equal(git('rev-list', '--count', 'HEAD').trim(), '1')
+})
+
+test('imported history gives flow metrics', async () => {
+  const { context, fake } = importSetup()
+  assert.equal((await cli(context, IMPORT, { fetch: fake.fetch })).code, 0)
+  const result = await run(['metrics', 'cycle-time', '--since', '2026-10-01', '--until', '2026-10-31', '--json'], { cwd: context.root, env: context.env })
+  assert.equal(result.code, 0, result.stdout)
+  const listed = JSON.parse((await run(['issues', 'list', '--json'], { cwd: context.root, env: context.env })).stdout)
+  const shipped = (listed.issues ?? listed).find((issue) => issue.title === 'Ship the config')
+  assert.match(result.stdout, new RegExp(shipped.id))
+})
+
+test('import resumes over its own uncommitted files', async () => {
+  const { context, fake } = importSetup()
+  const failed = await cli(context, IMPORT, { fetch: fake.fetch, adapters: failingLocal })
+  assert.equal(failed.code, 2, failed.stdout)
+  assert.equal(commentFiles(context.root).length, 2)
+  const resumed = await cli(context, IMPORT, { fetch: fake.fetch })
+  assert.equal(resumed.code, 0, resumed.stdout)
+  assert.equal(commentFiles(context.root).length, 3, commentFiles(context.root).join('\n'))
+  assert.match(fs.readFileSync(path.join(context.root, '.pmkit', 'migrations', '2026-10-23-import-linear.yaml'), 'utf8'), /^finished: \S+/m)
+  assert.equal((await run(['validate', '--json'], { cwd: context.root, env: context.env })).code, 0)
+})
+
+test('a resume refuses when HEAD moved', async () => {
+  const { context, fake } = importSetup()
+  assert.equal((await cli(context, IMPORT, { fetch: fake.fetch, adapters: failingLocal })).code, 2)
+  fs.writeFileSync(path.join(context.root, 'NOTES.md'), 'notes\n')
+  git(context.root, 'add', 'NOTES.md')
+  git(context.root, 'commit', '-q', '-m', 'notes')
+  const result = await cli(context, IMPORT, { fetch: fake.fetch })
+  assert.equal(result.code, 2, result.stdout)
+  assert.deepEqual(errorOf(result), { code: 'CONFLICT', message: 'there are uncommitted changes under .issues', nextStep: 'Commit or discard the changes under .issues first' })
+})
+
+test('import on a Linear repository uses --path', async () => {
+  const context = setup({ fixture: false })
+  useLinear(context.root)
+  edit(context.root, '.pmkit/config.yaml', /^ {4}workspace: acme$/m, '    workspace: acme\n    team: ACME')
+  commitAll(context.root, 'linear tracker')
+  const fake = linearFake()
+  fake.issues.seed({ title: 'Read the config' })
+  const result = await cli(context, ['local-migrate', 'import', '--path', '.issues', '--json'], { fetch: fake.fetch })
+  assert.equal(result.code, 0, result.stdout)
+  assert.equal(heldIssues(context.root).length, 1)
+  assert.match(JSON.parse(result.stdout).next, /^commit \.issues\/ and /)
 })
 
 test('no output holds the key', () => {

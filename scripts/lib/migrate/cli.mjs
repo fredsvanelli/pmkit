@@ -42,14 +42,14 @@ function requireClean(root, trackerPath) {
  * The Local side and the Linear side of a migration, checked in the order of the spec: git, the Local tracker and its format,
  * the clean tree, then the Linear side. The Local side is tracker.path on a Local repository and --path on any other.
  */
-export function resolveSides(ctx, { direction }) {
+export function resolveSides(ctx, { direction, allowDirty = false }) {
   const name = `local-migrate ${direction}`
   requireGit(ctx.root, name)
   const { pmkit, system, pmkitProblems } = loadPmkitConfig(ctx.root, { adapters: ctx.adapters })
   const localPath = (system === 'local' ? pmkit.tracker.path ?? '.issues' : ctx.opt('path') ?? '.issues').split(path.sep).join('/')
   const config = loadLocalConfig(ctx.root, { ...pmkit, tracker: { system: 'local', path: localPath } }, pmkitProblems, { checkFormat: false })
   if (config.format.state !== 'current') throw formatError(config.format)
-  requireClean(ctx.root, localPath)
+  if (!allowDirty) requireClean(ctx.root, localPath)
   const scope = system === 'linear' ? pmkit.tracker.scope ?? {} : {}
   const workspace = ctx.opt('workspace') ?? scope.workspace
   const team = ctx.opt('team') ?? scope.team
@@ -177,6 +177,30 @@ function heldRecords(root, trackerPath) {
   return held
 }
 
+/** The Local IDs an import map wrote or started to write, so a resume accepts them. */
+function writtenTargets(map) {
+  const ids = []
+  for (const entries of Object.values(map.records ?? {})) {
+    for (const entry of Object.values(entries)) if ((entry.state === 'sent' || entry.state === 'done') && typeof entry.id === 'string') ids.push(entry.id)
+  }
+  return ids
+}
+
+/**
+ * A resume accepts its own uncommitted writes (plan Decision 9): HEAD must still be the commit the map recorded, and every
+ * changed path must sit under the tracker folder or be the map file. Anything else gives the clean-tree CONFLICT.
+ */
+function requireOwnChanges(root, trackerPath, resume, commit) {
+  const refuse = () => {
+    throw new PmkitError('CONFLICT', `there are uncommitted changes under ${trackerPath}`, `Commit or discard the changes under ${trackerPath} first`)
+  }
+  if (!resume.map.target?.commit || resume.map.target.commit !== commit) refuse()
+  const status = gitIn(root, 'status', '--porcelain', '--untracked-files=all')
+  if (status.status !== 0) refuse()
+  const changed = status.stdout.split('\n').filter(Boolean).map((line) => line.slice(3).replace(/^"|"$/g, ''))
+  if (!changed.every((file) => file.startsWith(`${trackerPath}/`) || file === resume.file)) refuse()
+}
+
 /** The Local member the owner of LINEAR_API_KEY becomes after the people step, or null when no record names that user. */
 function actorOf(mapped, viewer) {
   const created = mapped.records.member.find((record) => record.key === viewer.id)
@@ -190,8 +214,15 @@ function actorOf(mapped, viewer) {
  * or the --expect check, the problem refusal, and the run that writes the Local files and the map after every record.
  */
 export async function runImport(ctx) {
-  const { local, linear } = resolveSides(ctx, { direction: 'import' })
-  if (heldRecords(ctx.root, local.path).length > 0) {
+  const { local, linear } = resolveSides(ctx, { direction: 'import', allowDirty: true })
+  const targetSide = { system: 'local', path: local.path }
+  const chosen = chooseMap(ctx.root, { direction: 'import', target: targetSide })
+  const head = gitIn(ctx.root, 'rev-parse', 'HEAD')
+  const commit = head.status === 0 ? head.stdout.trim() : null
+  if (chosen.resume) requireOwnChanges(ctx.root, local.path, chosen.resume, commit)
+  else requireClean(ctx.root, local.path)
+  const own = new Set(chosen.resume ? writtenTargets(chosen.resume.map) : [])
+  if (heldRecords(ctx.root, local.path).some((name) => !own.has(name))) {
     throw new PmkitError('CONFLICT', 'import needs a Local tracker with no issues and no epics',
       `Move the old records out with git rm -r ${local.path}/issues ${local.path}/epics ${local.path}/sprints, commit, and run the import again`)
   }
@@ -200,17 +231,15 @@ export async function runImport(ctx) {
   const { viewer } = await client.session()
   const { snapshot, readRequests } = await readLinearSnapshot({ client, discovery, teamKey: linear.team, pmkit: handle.pmkit, now: () => new Date(ctx.now()) })
   const source = { system: 'linear', workspace: linear.workspace, team: linear.team }
-  const targetSide = { system: 'local', path: local.path }
   const exportMaps = listMaps(ctx.root).filter((entry) => entry.map.direction === 'export' && sameTarget(entry.map.target, source)).map((entry) => entry.map)
   const target = importTarget({ local: local.config.local, mappings: linear.mappings, exportMaps })
   const mapped = mapImport(snapshot, target, { readRequests })
 
-  const chosen = chooseMap(ctx.root, { direction: 'import', target: targetSide })
   const known = knownRecords(chosen.finished)
   const started = new Date(ctx.now()).toISOString()
   const at = () => new Date(ctx.now()).toISOString()
   const file = chosen.resume?.file ?? mapFileName(ctx.root, { date: started.slice(0, 10), direction: 'import', system: 'linear' })
-  const map = chosen.resume?.map ?? newMap({ direction: 'import', started, source, target: targetSide, mappings: linear.mappings })
+  const map = chosen.resume?.map ?? newMap({ direction: 'import', started, source, target: { ...targetSide, commit }, mappings: linear.mappings })
   const store = ctx.dryRun ? memoryMapStore(file, structuredClone(map)) : createMapStore(ctx.root, file, map)
   const makeWriter = ctx.adapters?.local?.migrateWriter ?? createLocalWriter
   const writer = makeWriter({ root: ctx.root, config: local.config, actor: actorOf(mapped, viewer), now: () => new Date(ctx.now()) })
