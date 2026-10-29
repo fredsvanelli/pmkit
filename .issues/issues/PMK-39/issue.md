@@ -11,7 +11,7 @@ blocked_by: [PMK-36, PMK-37, PMK-38]
 milestone: linear
 branch: pmk-39-run-the-contract-suite-against-a-linear
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-29T00:30:53Z
+updated: 2026-10-29T00:32:45Z
 ---
 
 ## Description
@@ -23,4 +23,4 @@ Open: where the sandbox workspace and its credential live.
 ## Acceptance criteria
 
 - [x] The contract suite passes against a Linear sandbox workspace
-- [ ] `npm test` still runs the Local suite with no network
+- [x] `npm test` still runs the Local suite with no network
