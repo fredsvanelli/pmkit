@@ -223,7 +223,7 @@ Run the command at the top on another workspace, such as a Business one. Compare
 
 ## Degraded paths (PMK-40)
 
-PMK-40 checks that each command on Linear prints a `note:` line or refuses with `NOT_SUPPORTED` when the workspace lacks the capability. The offline tests cover every command. The live run script degraded-live.mjs arrives in Task 12 of the plan and is started with:
+PMK-40 checks that each command on Linear prints a `note:` line or refuses with `NOT_SUPPORTED` when the workspace lacks the capability. The offline tests check that every command a capability names has a degraded-path case or a written exemption, and run one case per note path for the commands that print one. The live run script degraded-live.mjs exists but has not run yet. Start it with:
 
 ```sh
 set -a; . ./.env; set +a; PMKIT_LIVE=1 PMKIT_LIVE_WORKSPACE=<workspace> node --test scripts/lib/linear/degraded-live.mjs
