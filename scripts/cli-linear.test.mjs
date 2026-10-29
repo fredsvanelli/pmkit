@@ -1511,3 +1511,21 @@ test('linear customers link --dry-run resolves with reads and sends no mutation'
   assert.match(text.stdout, /^customer: Initech\ntarget: issue ACME-20 "Export"\nrequest: create\n/)
   assert.match(text.stdout, /\ndry run: nothing was written\n$/)
 })
+
+test('release list, get and issues on the Free plan answer empty with a note and send no release query', async () => {
+  const { fetch } = withIssues(['A'])
+  const note = 'note: releases is absent: Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings\n'
+  const list = await linear(fetch, ['release', 'list', '--json'])
+  assert.equal(list.code, 0, list.stderr)
+  assert.deepEqual(JSON.parse(list.stdout), [])
+  assert.equal(list.stderr, note)
+  const get = await linear(fetch, ['release', 'get', '1.0', '--json'])
+  assert.equal(get.code, 0, get.stderr)
+  assert.deepEqual(JSON.parse(get.stdout), { id: '1.0', name: '1.0', state: 'planned', description: '' })
+  assert.equal(get.stderr, note)
+  const issues = await linear(fetch, ['release', 'issues', '1.0', '--json'])
+  assert.equal(issues.code, 0, issues.stderr)
+  assert.deepEqual(JSON.parse(issues.stdout), [])
+  assert.equal(issues.stderr, note)
+  assert.ok(!fetch.calls.some((call) => /\breleases?\(|\breleaseIssue|mutation/i.test(call.body.query)))
+})

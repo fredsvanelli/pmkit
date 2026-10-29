@@ -34,7 +34,7 @@ test('the tracker passes assertTracker', () => {
 })
 
 test('a stub throws NOT_SUPPORTED once the mapping check passes', async () => {
-  const { fetch, tracker: linear } = tracker(setup())
+  const { fetch, tracker: linear } = tracker(setup(), { fetch: fakeLinearFetch(fakeWorkspace({ releasesEnabled: true })) })
   await assert.rejects(linear.listReleases(), {
     code: 'NOT_SUPPORTED',
     message: 'the Linear adapter does not implement listReleases yet',
@@ -50,6 +50,7 @@ test('a stub without a workspace throws NOT_CONFIGURED', async () => {
 })
 
 // Two operations that stay stubs after PMK-38, so the mapping check is all these tests reach.
+// listReleases is a stub only where the workspace has releases; on Free it answers empty (PMK-40).
 const stubs = {
   read: (linear) => linear.listReleases(),
   write: (linear) => linear.logTime('ACME-1', 5, 'x'),
@@ -103,7 +104,7 @@ test('a state that is back after the refresh lets the call reach NOT_SUPPORTED',
   const context = setup({ mappings: { status: { in_review: 'Peer Review' } } })
   await tracker(context).tracker.discover()
   const states = [...fakeWorkspaceStates(), { id: 'state-pr', name: 'Peer Review', type: 'started', position: 11, team: { id: 'team-acme' } }]
-  const fetch = fakeLinearFetch(fakeWorkspace({ states }))
+  const fetch = fakeLinearFetch(fakeWorkspace({ states, releasesEnabled: true }))
   const { tracker: linear } = tracker(context, { now: at(1), fetch })
   await assert.rejects(stubs.read(linear), { code: 'NOT_SUPPORTED' })
   assert.equal(callsOf(fetch, 'PmkitTeams'), 1)
@@ -140,7 +141,7 @@ test('discover and capabilities warn about a broken mapping and do not throw', a
 
 test('none and absent keys never throw', async () => {
   const context = setup({ mappings: { status: { in_review: 'none', blocked: 'none' }, fields: { estimate: 'none' }, types: {} } })
-  const { tracker: linear } = tracker(context)
+  const { tracker: linear } = tracker(context, { fetch: fakeLinearFetch(fakeWorkspace({ releasesEnabled: true })) })
   await assert.rejects(stubs.read(linear), { code: 'NOT_SUPPORTED' })
   await assert.rejects(stubs.write(tracker(setup()).tracker), { code: 'NOT_SUPPORTED' })
 })
@@ -1156,4 +1157,13 @@ test('logTime, createRelease and markReleased refuse with the manifest reason an
     await assert.rejects(call(), (error) => error.code === 'NOT_SUPPORTED' && /needs releases/.test(error.message) && /Business or Enterprise plan/.test(error.nextStep))
   }
   assert.ok(fetch.calls.every((call) => !/mutation/i.test(call.body.query)))
+})
+
+test('release reads on a workspace without releases answer empty and send no release query', async () => {
+  const { fetch, tracker: linear } = tracker(setup())
+  assert.deepEqual(await linear.listReleases(), [])
+  assert.deepEqual(await linear.listReleases({ state: 'planned' }), [])
+  assert.deepEqual(await linear.releaseIssues('1.0', { archived: false }), [])
+  assert.deepEqual(await linear.getRelease('1.0'), { id: '1.0', name: '1.0', state: 'planned', description: '' })
+  assert.ok(!namesOf(fetch).some((name) => /Release/.test(name)))
 })

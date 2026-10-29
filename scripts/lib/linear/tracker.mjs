@@ -160,6 +160,18 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
       )
     })
 
+  // Release reads on a workspace without releases (the Free plan) answer with the empty shape, and the command prints the manifest's note. No release query is sent.
+  const releasesAbsent = async () => (await capabilities()).capabilities.find((c) => c.id === 'releases')?.path === 'absent'
+  const releaseRead = (operation, empty) => {
+    const unimplemented = stub(operation)
+    return guarded(async (...args) => ((await releasesAbsent()) ? empty(...args) : unimplemented(...args)))
+  }
+  const releaseReads = {
+    listReleases: releaseRead('listReleases', () => []),
+    getRelease: releaseRead('getRelease', (id) => ({ id, name: id, state: 'planned', description: '' })),
+    releaseIssues: releaseRead('releaseIssues', () => []),
+  }
+
   const projects = projectOperations({ client, discovery, config, now, uuid })
   const issues = issueOperations({ client, discovery, config, now, uuid, resolveEpic: projects.resolveEpic })
   const relations = relationOperations({ client, ops: issues, uuid })
@@ -196,7 +208,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     readDocument: projects.readDocument,
     createDocument: projects.createDocument,
   }
-  const implemented = { discover, capabilities, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
+  const implemented = { discover, capabilities, ...releaseReads, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
   // Linear-only features sit beside the contract operations. contractView ignores them.
   const triage = createTriage({ client, discovery, config })
   const customers = createCustomers({ client, discovery, config })

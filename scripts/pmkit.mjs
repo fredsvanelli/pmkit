@@ -641,23 +641,26 @@ export const COMMANDS = [
   {
     name: 'release list', summary: 'lists releases, oldest version first', usage: '[--state planned|released]', flags: ['state'],
     run: async (ctx) => {
-      const releases = await (await ctx.tracker()).listReleases(ctx.opt('state') === undefined ? {} : { state: ctx.opt('state') })
+      const tracker = await ctx.tracker()
+      const releases = await tracker.listReleases(ctx.opt('state') === undefined ? {} : { state: ctx.opt('state') })
       const rows = releases.map((r) => [r.id, r.name, r.state, r.tag ?? '', r.target ?? '', r.released ?? ''])
-      return { data: releases, text: releases.length === 0 ? 'no releases' : table(['ID', 'Name', 'State', 'Tag', 'Target', 'Released'], rows) }
+      return { data: releases, text: releases.length === 0 ? 'no releases' : table(['ID', 'Name', 'State', 'Tag', 'Target', 'Released'], rows), notes: await capabilityNotes(tracker, 'releases') }
     },
   },
   {
     name: 'release get', summary: 'one release', usage: '<id>', args: ['id'], flags: [],
     run: async (ctx) => {
-      const release = await (await ctx.tracker()).getRelease(ctx.args[0])
-      return { data: release, text: releaseRecord(release) }
+      const tracker = await ctx.tracker()
+      const release = await tracker.getRelease(ctx.args[0])
+      return { data: release, text: releaseRecord(release), notes: await capabilityNotes(tracker, 'releases') }
     },
   },
   {
     name: 'release issues', summary: 'lists the issues of a release', usage: '<id> [--archived]', args: ['id'], flags: ['archived'],
     run: async (ctx) => {
-      const issues = await (await ctx.tracker()).releaseIssues(ctx.args[0], { archived: ctx.flag('archived') })
-      return { data: issues, text: issueTable(issues) }
+      const tracker = await ctx.tracker()
+      const issues = await tracker.releaseIssues(ctx.args[0], { archived: ctx.flag('archived') })
+      return { data: issues, text: issueTable(issues), notes: await capabilityNotes(tracker, 'releases') }
     },
   },
   {
