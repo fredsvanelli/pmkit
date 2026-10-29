@@ -18,7 +18,7 @@ At                   | Issue    | By   | Op     | Change
 2026-10-22T10:00:00Z | ISS-3M8D | fred | update | release: (none) → 1.0.0
 2026-10-22T10:00:00Z | ISS-6R3N | fred | update | release: (none) → 1.0.0
 --- stderr
-(empty)
+note: events computed from .issues/events.jsonl
 
 $ pmkit events --json
 exit 0
@@ -232,4 +232,4 @@ exit 0
   }
 ]
 --- stderr
-(empty)
+note: events computed from .issues/events.jsonl

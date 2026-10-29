@@ -5,7 +5,7 @@ count: 2
 median: 7.75 days
 p85: 8.065 days
 --- stderr
-(empty)
+note: lead-time computed from .issues/events.jsonl
 
 $ pmkit metrics lead-time --json
 exit 0
@@ -26,4 +26,4 @@ exit 0
   ]
 }
 --- stderr
-(empty)
+note: lead-time computed from .issues/events.jsonl

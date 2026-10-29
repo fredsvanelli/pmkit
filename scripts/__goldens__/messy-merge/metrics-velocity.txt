@@ -4,7 +4,7 @@ exit 0
 no closed sprints
 average: 0 issues
 --- stderr
-(empty)
+note: velocity computed from the last 0 closed sprints
 
 $ pmkit metrics velocity --json
 exit 0
@@ -15,4 +15,4 @@ exit 0
   "unit": "issues"
 }
 --- stderr
-(empty)
+note: velocity computed from the last 0 closed sprints

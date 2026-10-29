@@ -37,7 +37,7 @@ At                   | Issue    | By   | Op      | Change
 2026-10-22T09:00:00Z | ISS-5N1R | fred | move    | status: todo → in_progress
 2026-10-22T17:00:00Z | ISS-3F7H | fred | update  | priority: low → medium
 --- stderr
-(empty)
+note: events computed from .issues/events.jsonl
 
 $ pmkit events --json
 exit 0
@@ -507,4 +507,4 @@ exit 0
   }
 ]
 --- stderr
-(empty)
+note: events computed from .issues/events.jsonl

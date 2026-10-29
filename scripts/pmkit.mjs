@@ -17,6 +17,7 @@ import {
 import { buildNotes, chooseBasis } from './lib/release-notes.mjs'
 import { dependencyMap, serializable } from './lib/dependencies.mjs'
 import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
+import { pathNote } from './lib/path-notes.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { addMapEntry, setMap, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
@@ -285,6 +286,14 @@ function capWarning(kind, id) {
   return 'Linear has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated'
 }
 const capWarnings = (list, kind, id) => (list.truncated === true ? [capWarning(kind, id)] : [])
+
+/** The one note for a metric command: the path native_metrics took, and for velocity the sprint count and the estimates. */
+async function metricNotes(tracker, metric, extra = {}) {
+  const capabilities = (await tracker.capabilities()).capabilities
+  const entry = capabilities.find((c) => c.id === 'native_metrics')
+  const note = pathNote(entry, { metric, estimation: capabilities.find((c) => c.id === 'estimation'), ...extra })
+  return note === null ? [] : [note]
+}
 
 /** discover().statuses as a categoryOf(statusName), and every issue's events grouped by issue. The flow metrics need each whole log. */
 async function flowInputs(tracker) {
@@ -777,7 +786,7 @@ export const COMMANDS = [
       const result = velocity(sprints, bySprint, { window, categoryOf })
       const rows = result.perSprint.map((s) => [s.id, s.points, s.count])
       const text = [rows.length > 0 ? table(['Sprint', 'Points', 'Issues'], rows) : 'no closed sprints', `average: ${result.average} ${result.unit}`].join('\n')
-      return { data: result, text, warnings }
+      return { data: result, text, warnings, notes: await metricNotes(tracker, 'velocity', { sprints: result.perSprint.length }) }
     },
   },
   {
@@ -790,7 +799,7 @@ export const COMMANDS = [
       const issues = cycleTimes(inRange, { categoryOf })
       const stats = summary(issues.map((item) => item.days))
       const text = summaryLines(stats).join('\n')
-      return { data: { ...stats, issues }, text, warnings }
+      return { data: { ...stats, issues }, text, warnings, notes: await metricNotes(tracker, 'cycle-time') }
     },
   },
   {
@@ -803,7 +812,7 @@ export const COMMANDS = [
       const issues = leadTimes(inRange, { categoryOf })
       const stats = summary(issues.map((item) => item.days))
       const text = summaryLines(stats).join('\n')
-      return { data: { ...stats, issues }, text, warnings }
+      return { data: { ...stats, issues }, text, warnings, notes: await metricNotes(tracker, 'lead-time') }
     },
   },
   {
@@ -816,7 +825,7 @@ export const COMMANDS = [
       const result = throughput(inRange, { categoryOf })
       const lines = [`count: ${result.count}`]
       if (result.count > 0) lines.push(table(['Type', 'Issues'], Object.entries(result.byType)))
-      return { data: result, text: lines.join('\n'), warnings }
+      return { data: result, text: lines.join('\n'), warnings, notes: await metricNotes(tracker, 'throughput') }
     },
   },
   {
@@ -836,7 +845,7 @@ export const COMMANDS = [
         ]
         : ['no work in progress']
       lines.push(`as of: ${asOf}`)
-      return { data: { asOf, ...stats, issues }, text: lines.join('\n'), warnings }
+      return { data: { asOf, ...stats, issues }, text: lines.join('\n'), warnings, notes: await metricNotes(tracker, 'aging') }
     },
   },
   {
@@ -844,8 +853,9 @@ export const COMMANDS = [
     run: async (ctx) => {
       const range = {}
       for (const key of ['since', 'until']) if (ctx.opt(key) !== undefined) range[key] = dateText(key, ctx.opt(key))
-      const events = await (await ctx.tracker()).metricEvents(range)
-      return { data: events, text: eventTable(events), warnings: capWarnings(events, 'issues') }
+      const tracker = await ctx.tracker()
+      const events = await tracker.metricEvents(range)
+      return { data: events, text: eventTable(events), warnings: capWarnings(events, 'issues'), notes: await metricNotes(tracker, 'events') }
     },
   },
   {

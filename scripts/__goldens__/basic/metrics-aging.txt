@@ -4,7 +4,7 @@ exit 0
 no work in progress
 as of: 2026-10-23T12:00:00Z
 --- stderr
-(empty)
+note: aging computed from .issues/events.jsonl
 
 $ pmkit metrics aging --json
 exit 0
@@ -17,4 +17,4 @@ exit 0
   "issues": []
 }
 --- stderr
-(empty)
+note: aging computed from .issues/events.jsonl

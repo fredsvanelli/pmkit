@@ -5,7 +5,7 @@ count: 0
 median: n/a
 p85: n/a
 --- stderr
-(empty)
+note: lead-time computed from .issues/events.jsonl
 
 $ pmkit metrics lead-time --json
 exit 0
@@ -17,4 +17,4 @@ exit 0
   "issues": []
 }
 --- stderr
-(empty)
+note: lead-time computed from .issues/events.jsonl

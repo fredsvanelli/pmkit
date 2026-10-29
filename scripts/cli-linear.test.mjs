@@ -879,7 +879,7 @@ test('events lists the Linear events of every issue', async () => {
   const result = await linear(fetch, ['events', '--json'])
   assert.equal(result.code, 0, result.stderr)
   assert.deepEqual(JSON.parse(result.stdout).map((e) => [e.issue, e.op]), [['ACME-1', 'create'], ['ACME-2', 'create'], ['ACME-2', 'comment']])
-  assert.equal(result.stderr, '')
+  assert.equal(result.stderr, 'note: events computed from Linear issue history\n')
 })
 
 test('a history, a comment list and a metrics read cut by the cap warn on stderr and leave the JSON alone', async () => {
@@ -904,7 +904,7 @@ test('events and the metrics commands warn when Linear has more than 1000 issues
   for (const args of [['events', '--json'], ['metrics', 'cycle-time', '--json'], ['metrics', 'lead-time', '--json'], ['metrics', 'throughput', '--json'], ['metrics', 'aging', '--json']]) {
     const result = await linear(fetch, args)
     assert.equal(result.code, 0, `${args.join(' ')}: ${result.stderr}`)
-    assert.equal(result.stderr, warning, args.join(' '))
+    assert.equal(result.stderr, `${warning}note: ${args[0] === 'events' ? 'events' : args[1]} computed from Linear issue history\n`, args.join(' '))
   }
 })
 
