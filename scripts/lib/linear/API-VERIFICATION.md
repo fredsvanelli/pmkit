@@ -136,7 +136,7 @@ Answer `yes`, access `read/write`. The three mutations stay `schema` because non
 
 ## Live writes (PMK-39)
 
-The contract suite runs against the sandbox workspace through one fixed test team. Nothing here was measured yet. Every result below is `unverified` until the first live run fills it in. The run is by hand and no CI runs it.
+The contract suite runs against the sandbox workspace through one fixed test team. The third live run, on 2026-10-29, ran 38 tests: 25 passed, 0 failed and 13 were skipped. The skipped tests belong to the families cycle-lifecycle, milestone-writes, releases, time and document-writes, which the Linear adapter does not run. The test team was empty afterwards. The run is by hand and no CI runs it.
 
 The key comes from `LINEAR_API_KEY` in the shell. Put it there with `set -a; . ./.env; set +a`, so it never appears on a command line. `PMKIT_LIVE_WORKSPACE` holds the URL key the key must belong to.
 
@@ -176,35 +176,35 @@ Estimated, not measured. The run aims at under 1,000 requests and stops suite re
 
 | Measure | Estimate | Measured |
 |---|---|---|
-| Requests | about 600 | `unverified` |
-| Writes | about 90 | `unverified` |
-| Complexity points | not estimated | `unverified` |
+| Requests | about 600 | 409 |
+| Writes | about 90 | 90 |
+| Complexity points | not estimated | 178133 |
 
 ### Probe results
 
 | Probe | Source | Result |
 |---|---|---|
-| A description with a criteria list round-trips through `updateIssue` and `getIssue` | PMK-35 | `unverified` |
-| Which parts of a comment body survive (marker line, checklist, code fence) | PMK-36 | `unverified` |
-| History codes and sides for `blocks`, `duplicate` and a removed relation | PMK-36 | `unverified` |
+| A description with a criteria list round-trips through `updateIssue` and `getIssue` | PMK-35 | The description and the criteria equal what `updateIssue` sent (third live run) |
+| Which parts of a comment body survive (marker line, checklist, code fence) | PMK-36 | The marker line, the checklist and the code fence all survive (third live run) |
+| History codes and sides for `blocks`, `duplicate` and a removed relation | PMK-36 | `blocks` gives code `ax` on the blocking issue and `ab` on the blocked one. A removed relation adds `rx` and `rb`. `duplicate` gives `ad` on the duplicate and `am` on the original (third live run) |
 | A new comment moves `updatedAt` | PMK-36 | A comment does not change the issue's `updatedAt` (PMK-39 live run) |
 | A missing comment id | PMK-36 | `comments(filter: { id })` answers HTTP 200 with `errors[0]` holding `message: 'Argument Validation Error'`, `path: ['comments']`, and extensions `code: 'INVALID_INPUT'`, `type: 'invalid input'`, `userError: true`. The code is not `INPUT_ERROR`. The adapter maps this answer to NOT_FOUND. |
-| An update right after create | PMK-39 | The history had no `update` entry for a title change made seconds after create, so the order test failed on Linear. The live run now prints the raw history entries of that test's issue when it fails. |
-| `endsAt` equals the next `startsAt`, the time of day, `isPast` and `completedAt` | PMK-37 | `unverified` |
+| An update right after create | PMK-39 | The history had no `update` entry for a title change made seconds after create. Linear folds it into the create entry. See the section on folded quick edits below. |
+| `endsAt` equals the next `startsAt`, the time of day, `isPast` and `completedAt` | PMK-37 | `endsAt` equals the next `startsAt` on the 2 cycles read. Every time of day is `00:00:00.000Z`. No cycle was `isPast` and none had `completedAt` (third live run) |
 
 ### Open facts
 
 | Fact | Status |
 |---|---|
 | `cycleStartDay` 0 means Sunday | `unverified` |
-| `teamCreate` accepts the five-character key `PKT` | `unverified` |
+| `teamCreate` accepts the five-character key `PKT` | Yes, the third live run created issues PKT-71 and PKT-72 |
 | `issueDelete` works on an archived issue | `unverified` |
 | Trashed issues count toward the 250 issues of the Free plan | `unverified` |
 | `projects(filter: { accessibleTeams })` and `issues(filter: { team })` with an id comparator accept the test team id | `unverified` |
 
 ### History folds a quick edit into the create entry
 
-Second live run, 2026-10-28 (scratchpad log run2.log), test "keeps comments and history in the order the writes happened". The test created an issue, updated its title right away and commented. `issue.history` returned one entry for the create, with no from/to field set, and no separate update entry. Linear folds an update made right after a create into the create entry. The live setup sets `foldsQuickEdits`, so that test requires create first, the comment last and the updated title, but no `update` entry. The Local run still requires `create`, `update`, `comment`.
+Second live run, 2026-10-28, test "keeps comments and history in the order the writes happened". The test created an issue, updated its title right away and commented. `issue.history` returned one entry for the create, with no from/to field set, and no separate update entry. Linear folds an update made right after a create into the create entry. The live setup sets `foldsQuickEdits`, so that test requires create first, the comment last and the updated title, but no `update` entry. The Local run still requires `create`, `update`, `comment`.
 
 ## Paid-plan features on a Free workspace
 
