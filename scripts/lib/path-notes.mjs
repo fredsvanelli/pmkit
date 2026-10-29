@@ -22,6 +22,12 @@ function derivedNote(entry, facts) {
   return null
 }
 
+// A derived entry that has no phrase of its own, such as a new source, still says it took the derived path.
+function genericDerivedNote(entry) {
+  const source = entry.detail?.source
+  return source ? `${entry.id} is derived from ${source}, not read natively` : `${entry.id} is derived, not read natively`
+}
+
 /**
  * The note for a manifest entry, or null when the entry is native.
  * facts: metric, sprints and estimation (velocity), issue and team (conditional), releaseNotesFrom (release-notes).
@@ -30,7 +36,7 @@ export function pathNote(entry, facts = {}) {
   // deliverables is native on Linear, but its progress counts are derived from the project's issues.
   if (entry.path === 'native') return entry.id === 'deliverables' ? derivedNote(entry, facts) : null
   if (entry.path === 'conditional') return conditionalNote(entry, facts)
-  if (entry.path === 'derived') return derivedNote(entry, facts)
+  if (entry.path === 'derived') return derivedNote(entry, facts) ?? genericDerivedNote(entry)
   if (entry.path === 'absent') {
     if (facts.releaseNotesFrom) return `release notes built from sprint ${facts.releaseNotesFrom}: ${entry.enableHint}`
     return `${entry.id} is absent: ${entry.enableHint}`

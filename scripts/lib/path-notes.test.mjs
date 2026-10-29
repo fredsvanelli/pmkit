@@ -59,3 +59,12 @@ test('an absent entry answered empty gives the hint', () => {
   const entry = { id: 'releases', path: 'absent', enableHint: 'Linear releases need the Business plan' }
   assert.equal(pathNote(entry, {}), 'releases is absent: Linear releases need the Business plan')
 })
+
+test('a derived entry with no phrase of its own still gets a note, with its source when it has one', () => {
+  assert.equal(pathNote({ id: 'linked_code', path: 'derived', detail: { source: 'webhook' } }, {}), 'linked_code is derived from webhook, not read natively')
+  assert.equal(pathNote({ id: 'request_queue', path: 'derived' }, {}), 'request_queue is derived, not read natively')
+})
+
+test('native deliverables without derived progress has no note', () => {
+  assert.equal(pathNote({ id: 'deliverables', path: 'native' }, {}), null)
+})
