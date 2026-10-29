@@ -1164,6 +1164,6 @@ test('release reads on a workspace without releases answer empty, getRelease is 
   assert.deepEqual(await linear.listReleases(), [])
   assert.deepEqual(await linear.listReleases({ state: 'planned' }), [])
   assert.deepEqual(await linear.releaseIssues('1.0', { archived: false }), [])
-  await assert.rejects(linear.getRelease('1.0'), { code: 'NOT_FOUND', message: 'release 1.0 does not exist', nextStep: 'pmkit release list' })
+  await assert.rejects(linear.getRelease('1.0'), { code: 'NOT_FOUND', message: 'release 1.0 does not exist: releases is absent: Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings', nextStep: 'pmkit release list' })
   assert.ok(!namesOf(fetch).some((name) => /Release/.test(name)))
 })

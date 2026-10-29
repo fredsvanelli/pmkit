@@ -1530,7 +1530,7 @@ test('release list and issues on the Free plan answer empty with a note, release
   assert.equal(list.stderr, note)
   const get = await linear(fetch, ['release', 'get', '1.0', '--json'])
   assert.equal(get.code, 2, get.stderr)
-  assert.deepEqual(JSON.parse(get.stdout).error, { code: 'NOT_FOUND', message: 'release 1.0 does not exist', nextStep: 'pmkit release list' })
+  assert.deepEqual(JSON.parse(get.stdout).error, { code: 'NOT_FOUND', message: 'release 1.0 does not exist: releases is absent: Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings', nextStep: 'pmkit release list' })
   const issues = await linear(fetch, ['release', 'issues', '1.0', '--json'])
   assert.equal(issues.code, 0, issues.stderr)
   assert.deepEqual(JSON.parse(issues.stdout), [])
