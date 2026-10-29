@@ -4,11 +4,13 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
 import { ADAPTERS } from './lib/adapters.mjs'
 import { SERVED_BY } from './lib/capabilities.mjs'
 import { linearDescriptor } from './lib/linear/adapter.mjs'
 import { isMutation } from './lib/linear/client.mjs'
+import { fakeGh } from './fake-gh.mjs'
 import { useLinear } from './fake-hosted.mjs'
 import { ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeWorkspace } from './fake-linear-api.mjs'
 import { childEnv } from './golden-helpers.mjs'
@@ -57,33 +59,57 @@ const COVERED = {
   'cycle list': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'cycle current': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'cycle issues': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'cycle open': 'REFUSALS', 'cycle close': 'REFUSALS',
   'cycle add': 'native write, PMK-39', 'cycle capacity': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'release-notes': 'cli-linear.test.mjs or cli-degraded.test.mjs',
   'issues create': 'native write, PMK-39', 'issues update': 'native write, PMK-39', 'issues parent': 'native write, PMK-39', 'issues link': 'native write, PMK-39',
-  'issues dependencies': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'issues move': 'native write, PMK-39', 'issues branch': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'issues log-time': 'REFUSALS',
+  'issues dependencies': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'issues move': 'native write, PMK-39', 'issues branch': 'PATH_CASES', 'issues log-time': 'REFUSALS',
   'epic list': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'epic get': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'epic create': 'native write, PMK-39', 'epic progress': 'cli-linear.test.mjs or cli-degraded.test.mjs',
   'epic update-status': 'native write, PMK-39', 'epic updates': 'cli-linear.test.mjs or cli-degraded.test.mjs',
   'release list': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'release get': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'release issues': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'release create': 'REFUSALS', 'release mark-released': 'REFUSALS',
   'metrics velocity': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics cycle-time': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics lead-time': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics throughput': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics aging': 'cli-linear.test.mjs or cli-degraded.test.mjs', events: 'cli-linear.test.mjs or cli-degraded.test.mjs',
   'docs read': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'docs create': 'REFUSALS',
-  'pr open': 'native write, PMK-39', 'pr ready': 'native write, PMK-39', 'pr status': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'pr sync': 'native write, PMK-39',
+  'pr open': 'native write, PMK-39', 'pr ready': 'native write, PMK-39', 'pr status': 'PATH_CASES', 'pr sync': 'native write, PMK-39',
 }
 
 test('every command a capability names has a degraded-path case or an exemption', () => {
   const named = [...new Set(Object.values(SERVED_BY).flat())]
   assert.deepEqual(named.filter((command) => !(command in COVERED)), [])
+})
+
+// The argv literal of a command as a test writes it: 'pr status' is ['pr', 'status'.
+const argvLiteral = (command) => `[${command.split(' ').map((word) => `'${word}'`).join(', ')}`
+const FILES = 'cli-linear.test.mjs or cli-degraded.test.mjs'
+const EXEMPT = 'native write, PMK-39'
+
+test('every COVERED place names a case that exists', () => {
   const refusals = new Set(REFUSALS.map((args) => args.slice(0, 2).join(' ')))
+  const pathCases = new Set(PATH_CASES.map(({ argv }) => argv.slice(0, 2).join(' ')))
+  const sources = FILES.split(' or ').map((file) => fs.readFileSync(new URL(file, import.meta.url), 'utf8'))
   for (const [command, where] of Object.entries(COVERED)) {
-    if (where === 'REFUSALS') assert.ok(refusals.has(command), `${command} is listed as a refusal case but REFUSALS lacks it`)
+    if (where === 'REFUSALS') assert.ok(refusals.has(command), `${command} is listed under REFUSALS but REFUSALS lacks it`)
+    else if (where === 'PATH_CASES') assert.ok(pathCases.has(command), `${command} is listed under PATH_CASES but PATH_CASES lacks it`)
+    else if (where === FILES) assert.ok(sources.some((source) => source.includes(argvLiteral(command))), `${command} is listed under ${FILES} but neither file runs it`)
+    else assert.equal(where, EXEMPT, `${command} has an unknown COVERED place`)
   }
 })
 
 // A forged manifest: the tracker reports the entry we choose for one capability, and the command must print its note or refuse.
-function forged(id, entry) {
+// With `github`, the repository is a git repository on GitHub, a fake gh answers that branch x has no pull request, and ACME-1 exists.
+function forged(id, entry, { github = false } = {}) {
   const root = useLinear(makeRepo('basic'))
   const file = path.join(root, '.pmkit', 'config.yaml')
-  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('    workspace: acme', '    workspace: acme\n    team: ACME'))
-  const env = { ...childEnv(), ...userStoreEnv().env, LINEAR_API_KEY: FAKE_KEY }
+  let config = fs.readFileSync(file, 'utf8').replace('    workspace: acme', '    workspace: acme\n    team: ACME')
+  if (github) config = config.replace('  system: none', '  system: github\n  default_branch: main')
+  fs.writeFileSync(file, config)
+  const gh = github ? fakeGh({ [`pr view x --json ${PR_VIEW}`]: { status: 1, stderr: 'no pull requests found for branch "x"\n' } }) : null
+  const env = { ...childEnv(), ...userStoreEnv().env, LINEAR_API_KEY: FAKE_KEY, ...(gh ? { PATH: `${gh.dir}${path.delimiter}${process.env.PATH}`, PMKIT_FAKE_GH: gh.responses } : {}) }
+  if (github) {
+    for (const args of [['init', '-q', '-b', 'main'], ['-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'init']]) {
+      const result = spawnSync('git', args, { cwd: root, encoding: 'utf8', env })
+      assert.equal(result.status, 0, result.stderr)
+    }
+  }
   const cycles = [{ number: 1, startsAt: '2026-10-05T00:00:00.000Z', endsAt: '2026-10-19T00:00:00.000Z', completedAt: '2026-10-19T00:00:00.000Z' }]
   const teams = [{ ...ACME_TEAM, cyclesEnabled: true }]
   const fake = fakeLinearIssues({ teams, cycles })
+  if (github) fake.seed({ title: 'Fix it' })
   const fetch = fakeLinearFetch({ ...fakeWorkspace({ teams }), ...fake.routes })
   const base = linearDescriptor({ fetch })
   const linear = {
@@ -99,6 +125,7 @@ function forged(id, entry) {
   return { fetch, run: (args) => run(args, { cwd: root, env, adapters: { ...ADAPTERS, linear } }) }
 }
 
+const PR_VIEW = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
 const noteLines = (stderr) => stderr.split('\n').filter((line) => line.startsWith('note: '))
 const ABSENT = { path: 'absent', enableHint: 'Use the Business plan' }
 const CONDITIONAL = { path: 'conditional', detail: { teams: ['OPS'] } }
@@ -120,12 +147,17 @@ const PATH_CASES = [
     [CONDITIONAL, 'note: releases is on for teams OPS only'],
     [ABSENT, 'note: releases is absent: Use the Business plan'],
   ] },
+  ...[['issues', 'branch', 'ACME-1'], ['pr', 'status', '--branch', 'x']].map((argv) => ({ id: 'linked_code', argv, github: true, cases: [
+    [{ path: 'derived', detail: { source: 'git' } }, 'note: branch and PR state read from git, not from the tracker'],
+    [CONDITIONAL, 'note: linked_code is on for teams OPS only'],
+    [ABSENT, 'note: linked_code is absent: Use the Business plan'],
+  ] })),
 ]
 
-for (const { id, argv, cases } of PATH_CASES) {
+for (const { id, argv, github, cases } of PATH_CASES) {
   for (const [entry, line] of cases) {
     test(`${argv.join(' ')} with ${id} ${entry.path}${entry.detail?.source ? ` (${entry.detail.source})` : ''} prints one note line`, async () => {
-      const result = await forged(id, entry).run(argv)
+      const result = await forged(id, entry, { github }).run(argv)
       assert.equal(result.code, 0, result.stderr)
       assert.deepEqual(noteLines(result.stderr), [line])
     })
