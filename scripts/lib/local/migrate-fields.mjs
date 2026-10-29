@@ -16,6 +16,12 @@ const lower = (value) => String(value ?? '').toLowerCase()
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 const byText = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
 const fileSafe = (text) => String(text).replaceAll(':', '-')
+/**
+ * A timestamp in the form Local writes it: whole seconds and Z. Other values pass through unchanged. An issue's own
+ * `created` is the exception: Local keeps its milliseconds there to tell two creates apart (tracker.mjs, createdStamp).
+ */
+const FRACTIONAL = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+(Z|[+-]\d{2}:\d{2})$/
+const seconds = (value) => (typeof value === 'string' && FRACTIONAL.test(value) && !Number.isNaN(Date.parse(value)) ? new Date(value).toISOString().replace(/\.\d{3}Z$/, 'Z') : value)
 const slug = (text) => lower(text).replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '')
 
 /** The Local member id of a Linear user, by the rule in "People". `taken` holds the ids already in use. */
@@ -197,7 +203,7 @@ export function mapImport(snapshot, target, { readRequests = 0 } = {}) {
       key: String(sprint.id),
       source: { id: String(sprint.id), title: sprint.name, summary: `${sprint.start} to ${sprint.end}` },
       target: sprint.start,
-      fields: { name: sprint.name, start: sprint.start, end: sprint.end, goal: sprint.goal ?? '', state: sprint.state, ...(sprint.closed ? { closed: sprint.closed } : {}) },
+      fields: { name: sprint.name, start: sprint.start, end: sprint.end, goal: sprint.goal ?? '', state: sprint.state, ...(sprint.closed ? { closed: seconds(sprint.closed) } : {}) },
       refs: {},
       dropped: [],
     })
@@ -231,7 +237,7 @@ export function mapImport(snapshot, target, { readRequests = 0 } = {}) {
       key: epic.id,
       source: { id: epic.id, title: epic.title, summary: epic.status?.name ?? '' },
       target: idOf.get(epic.id),
-      fields: { id: idOf.get(epic.id), title: epic.title, status: statusOf(epic.status, epic.id), start: epic.start ?? null, target: epic.target ?? null, description: epic.description ?? '', created: epic.created ?? null },
+      fields: { id: idOf.get(epic.id), title: epic.title, status: statusOf(epic.status, epic.id), start: epic.start ?? null, target: epic.target ?? null, description: epic.description ?? '', created: seconds(epic.created ?? null) },
       refs: {},
       dropped: epic.milestones > 0 ? ['milestones'] : [],
     })
@@ -246,7 +252,7 @@ export function mapImport(snapshot, target, { readRequests = 0 } = {}) {
         key: update.id,
         source: { id: update.id, title: `${update.health} by ${author}`, summary: String(update.at).slice(0, 10) },
         target: stem,
-        fields: { epic: idOf.get(epic.id), at: update.at, author, health: update.health, body: update.body },
+        fields: { epic: idOf.get(epic.id), at: seconds(update.at), author, health: update.health, body: update.body },
         refs: {},
         dropped: [],
       })
@@ -279,7 +285,7 @@ export function mapImport(snapshot, target, { readRequests = 0 } = {}) {
     const author = owners.length === 1 ? owners[0].id : named(comment.author) ?? 'user'
     const issueId = localId(comment.issue)
     const taken = commentStems.get(issueId) ?? new Set()
-    const base = `${fileSafe(comment.created)}-${fileSafe(author)}`
+    const base = `${fileSafe(seconds(comment.created))}-${fileSafe(author)}`
     let stem = base
     for (let n = 2; taken.has(stem); n++) stem = `${base}-${n}`
     taken.add(stem)
@@ -290,7 +296,7 @@ export function mapImport(snapshot, target, { readRequests = 0 } = {}) {
       key: comment.id,
       source: { id: comment.id, title: `by ${author} on ${String(comment.created).slice(0, 10)}`, summary: comment.parent ? 'reply' : '' },
       target: stem,
-      fields: { issue: issueId, author, created: comment.created, body: stripped ? stripped.body : comment.body, ...(replyTo ? { reply_to: replyTo } : {}), ...(comment.resolved && !comment.parent ? { resolved: true } : {}) },
+      fields: { issue: issueId, author, created: seconds(comment.created), body: stripped ? stripped.body : comment.body, ...(replyTo ? { reply_to: replyTo } : {}), ...(comment.resolved && !comment.parent ? { resolved: true } : {}) },
       refs: {},
       dropped: [],
     })
@@ -309,7 +315,7 @@ export function mapImport(snapshot, target, { readRequests = 0 } = {}) {
     return value
   }
   const mapEvent = (event) => {
-    const out = { ...event, by: named(event.by) ?? 'user' }
+    const out = { ...event, at: seconds(event.at), by: named(event.by) ?? 'user' }
     if (event.op === 'create' && event.to && typeof event.to === 'object') {
       const to = {}
       for (const [key, value] of Object.entries(event.to)) {

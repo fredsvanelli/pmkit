@@ -485,6 +485,31 @@ test('a resume refuses when HEAD moved', async () => {
   assert.deepEqual(errorOf(result), { code: 'CONFLICT', message: 'there are uncommitted changes under .issues', nextStep: 'Commit or discard the changes under .issues first' })
 })
 
+test('import writes comment, update, epic and history timestamps in whole seconds, as Local writes them', async () => {
+  const { context, fake } = importSetup()
+  const result = await confirmed(context, IMPORT, { fetch: fake.fetch })
+  assert.equal(result.code, 0, result.stdout)
+  const base = path.join(context.root, '.issues')
+  const files = fs.readdirSync(base, { recursive: true, withFileTypes: true }).filter((entry) => entry.isFile()).map((entry) => path.join(entry.parentPath, entry.name))
+  const FRACTION = /\d{2}:\d{2}:\d{2}\.\d+Z/
+  const checked = { comment: 0, update: 0, event: 0 }
+  for (const file of files) {
+    const text = fs.readFileSync(file, 'utf8')
+    const name = path.relative(base, file)
+    if (file.endsWith('.jsonl')) {
+      for (const line of text.split('\n').filter(Boolean)) {
+        assert.doesNotMatch(String(JSON.parse(line).at), FRACTION, `${name} has an event with fractional seconds`)
+        checked.event++
+      }
+    } else if (name.includes(`${path.sep}comments${path.sep}`) || name.includes(`${path.sep}updates${path.sep}`)) {
+      assert.doesNotMatch(name, /-\d{2}-\d{2}-\d{2}-\d{3}Z/, `${name} is named after a millisecond stamp`)
+      assert.doesNotMatch(text, FRACTION, `${name} holds fractional seconds`)
+      checked[name.includes('comments') ? 'comment' : 'update']++
+    }
+  }
+  assert.ok(checked.comment > 0 && checked.update > 0 && checked.event > 0, JSON.stringify(checked))
+})
+
 test('import on a Linear repository uses --path', async () => {
   const context = setup({ fixture: false })
   useLinear(context.root)
