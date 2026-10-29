@@ -7,10 +7,11 @@ priority: medium
 estimate: 2
 assignee: fred
 parent: EPC-5
+related: [PMK-169, PMK-173]
 milestone: linear
 branch: pmk-28-decide-how-pmkit-authenticates-to-linear
 created: 2026-10-25T19:13:20Z
-updated: 2026-10-28T00:13:41Z
+updated: 2026-10-29T02:47:21Z
 ---
 
 ## Description

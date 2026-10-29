@@ -8,10 +8,11 @@ estimate: 5
 assignee: fred
 parent: EPC-5
 blocked_by: [PMK-33]
+related: [PMK-168]
 milestone: linear
 branch: pmk-34-ask-for-the-mappings-a-hosted-tracker
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-28T17:25:20Z
+updated: 2026-10-29T02:47:14Z
 ---
 
 ## Description

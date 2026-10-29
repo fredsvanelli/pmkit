@@ -8,10 +8,11 @@ estimate: 5
 assignee: fred
 parent: EPC-5
 blocked_by: [PMK-35]
+related: [PMK-167]
 milestone: linear
 branch: pmk-38-map-linear-projects-to-epics
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-28T20:01:30Z
+updated: 2026-10-29T02:47:09Z
 ---
 
 ## Description
