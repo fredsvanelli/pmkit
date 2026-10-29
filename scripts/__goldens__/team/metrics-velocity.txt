@@ -6,7 +6,7 @@ Sprint     | Points | Issues
 2026-09-28 | 10     | 3
 average: 10 points
 --- stderr
-(empty)
+note: velocity computed from the last 1 closed sprints
 
 $ pmkit metrics velocity --json
 exit 0
@@ -23,4 +23,4 @@ exit 0
   "unit": "points"
 }
 --- stderr
-(empty)
+note: velocity computed from the last 1 closed sprints

@@ -1,2 +1,10 @@
 {"at":"2026-10-25T19:13:21Z","by":"fred","op":"create","to":{"id":"PMK-40","title":"Exercise the degraded paths of every command against Linear","type":"task","status":"backlog","priority":"medium","estimate":3,"labels":[],"parent":"EPC-5","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"linear","created":"2026-10-25T19:13:21Z","updated":"2026-10-25T19:13:21Z"}}
 {"at":"2026-10-25T19:13:25Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-39"}
+{"at":"2026-10-29T00:34:49Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-29T00:34:49Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-29T00:34:49Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-40-exercise-the-degraded-paths-of-every"}
+{"at":"2026-10-29T00:49:08Z","by":"fred","op":"comment","to":"2026-10-29T00-49-08Z-fred.md"}
+{"at":"2026-10-29T02:10:01Z","by":"fred","op":"comment","to":"2026-10-29T02-10-01Z-fred.md"}
+{"at":"2026-10-29T02:10:04Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-29T02:10:04Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-29T02:10:04Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

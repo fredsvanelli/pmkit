@@ -34,7 +34,7 @@ test('the tracker passes assertTracker', () => {
 })
 
 test('a stub throws NOT_SUPPORTED once the mapping check passes', async () => {
-  const { fetch, tracker: linear } = tracker(setup())
+  const { fetch, tracker: linear } = tracker(setup(), { fetch: fakeLinearFetch(fakeWorkspace({ releasesEnabled: true })) })
   await assert.rejects(linear.listReleases(), {
     code: 'NOT_SUPPORTED',
     message: 'the Linear adapter does not implement listReleases yet',
@@ -50,6 +50,7 @@ test('a stub without a workspace throws NOT_CONFIGURED', async () => {
 })
 
 // Two operations that stay stubs after PMK-38, so the mapping check is all these tests reach.
+// listReleases is a stub only where the workspace has releases; on Free it answers empty (PMK-40).
 const stubs = {
   read: (linear) => linear.listReleases(),
   write: (linear) => linear.logTime('ACME-1', 5, 'x'),
@@ -88,10 +89,6 @@ test('the history and comment operations are guarded by the mapping check', asyn
   for (const [name, call] of Object.entries(calls)) await assert.rejects(call(noWorkspace), { code: 'NOT_CONFIGURED', message: 'tracker.scope.workspace is not set' }, name)
 })
 
-test('logTime stays a stub with its NOT_SUPPORTED message', async () => {
-  const { tracker: linear } = tracker(setup())
-  await assert.rejects(linear.logTime('ACME-1', 5, 'user-1'), { code: 'NOT_SUPPORTED', message: 'the Linear adapter does not implement logTime yet' })
-})
 
 test('a broken mapping in a cached discovery refreshes exactly once, then throws', async () => {
   const context = setup({ mappings: { status: { in_review: 'Peer Review' } } })
@@ -107,7 +104,7 @@ test('a state that is back after the refresh lets the call reach NOT_SUPPORTED',
   const context = setup({ mappings: { status: { in_review: 'Peer Review' } } })
   await tracker(context).tracker.discover()
   const states = [...fakeWorkspaceStates(), { id: 'state-pr', name: 'Peer Review', type: 'started', position: 11, team: { id: 'team-acme' } }]
-  const fetch = fakeLinearFetch(fakeWorkspace({ states }))
+  const fetch = fakeLinearFetch(fakeWorkspace({ states, releasesEnabled: true }))
   const { tracker: linear } = tracker(context, { now: at(1), fetch })
   await assert.rejects(stubs.read(linear), { code: 'NOT_SUPPORTED' })
   assert.equal(callsOf(fetch, 'PmkitTeams'), 1)
@@ -144,7 +141,7 @@ test('discover and capabilities warn about a broken mapping and do not throw', a
 
 test('none and absent keys never throw', async () => {
   const context = setup({ mappings: { status: { in_review: 'none', blocked: 'none' }, fields: { estimate: 'none' }, types: {} } })
-  const { tracker: linear } = tracker(context)
+  const { tracker: linear } = tracker(context, { fetch: fakeLinearFetch(fakeWorkspace({ releasesEnabled: true })) })
   await assert.rejects(stubs.read(linear), { code: 'NOT_SUPPORTED' })
   await assert.rejects(stubs.write(tracker(setup()).tracker), { code: 'NOT_SUPPORTED' })
 })
@@ -167,6 +164,15 @@ test('discover and capabilities in one run share one discovery', async () => {
   await Promise.all([linear.discover(), linear.capabilities()])
   await linear.discover()
   for (const name of DISCOVERY_OPERATIONS) assert.equal(callsOf(fetch, name), 1, name)
+})
+
+test('capabilities() after a discover() sends no extra request', async () => {
+  const { fetch, tracker: linear } = tracker(setup())
+  await linear.discover()
+  const before = fetch.calls.length
+  await linear.capabilities()
+  await linear.capabilities()
+  assert.equal(fetch.calls.length, before)
 })
 
 test('a second tracker on the same store sends no request until the TTL passes', async () => {
@@ -1142,4 +1148,22 @@ test('a broken mapping stops each project operation through guarded', async () =
     await assert.rejects(linear[operation](...args), { code: 'NOT_CONFIGURED' }, operation)
   }
   assert.ok(!namesOf(fetch).some((name) => /Project|Epic|Document/.test(name)))
+})
+
+test('logTime, createRelease and markReleased refuse with the manifest reason and send no request after discovery', async () => {
+  const { fetch, tracker: linear } = tracker(setup())
+  await assert.rejects(linear.logTime('ACME-1', 5, 'x'), { code: 'NOT_SUPPORTED', message: 'Linear has no time tracking', nextStep: 'Linear has no time tracking' })
+  for (const call of [() => linear.createRelease({ name: 'r' }), () => linear.markReleased('r')]) {
+    await assert.rejects(call(), (error) => error.code === 'NOT_SUPPORTED' && /needs releases/.test(error.message) && /Business or Enterprise plan/.test(error.nextStep))
+  }
+  assert.ok(fetch.calls.every((call) => !/mutation/i.test(call.body.query)))
+})
+
+test('release reads on a workspace without releases answer empty, getRelease is NOT_FOUND, and no release query is sent', async () => {
+  const { fetch, tracker: linear } = tracker(setup())
+  assert.deepEqual(await linear.listReleases(), [])
+  assert.deepEqual(await linear.listReleases({ state: 'planned' }), [])
+  assert.deepEqual(await linear.releaseIssues('1.0', { archived: false }), [])
+  await assert.rejects(linear.getRelease('1.0'), { code: 'NOT_FOUND', message: 'release 1.0 does not exist: releases is absent: Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings', nextStep: 'pmkit release list' })
+  assert.ok(!namesOf(fetch).some((name) => /Release/.test(name)))
 })

@@ -196,9 +196,12 @@ export function chooseTeam(raw, flag, config) {
   throw new PmkitError('INVALID_INPUT', raw.teams.length === 0 ? 'the workspace has no team' : 'several teams exist and none is chosen', `Pass --team with one of: ${keys.join(', ')}`)
 }
 
+const whyText = (team, { reason, plan }) => (reason === 'plan' ? `plan ${plan}` : `triage is off for team ${team.key}`)
+
 function unavailable(team, availability) {
   const { reason, plan, enableHint } = availability
   return {
+    notes: [`triage rotation is unavailable on this workspace (${whyText(team, availability)}); ${enableHint}`],
     data: { available: false, reason, plan, team: team.key, enableHint },
     text: `triage rotation: unavailable\nreason: ${reason}\nplan: ${plan}\nenable: ${enableHint}`,
   }
@@ -247,8 +250,7 @@ export function createTriage({ client, discovery, config }) {
   async function set({ team: flag, members, action, off, dryRun = false } = {}) {
     const { raw, team, warnings, availability } = await context(flag)
     if (!availability.available) {
-      const why = availability.reason === 'plan' ? `plan ${availability.plan}` : `triage is off for team ${team.key}`
-      throw new PmkitError('NOT_SUPPORTED', `triage rotation is unavailable on this workspace (${why})`, availability.enableHint)
+      throw new PmkitError('NOT_SUPPORTED', `triage rotation is unavailable on this workspace (${whyText(team, availability)})`, availability.enableHint)
     }
     const before = await readDuty(raw, team)
     const memberIds = raw.users.filter((user) => !user.app && user.teams.includes(team.id)).map((user) => user.id)

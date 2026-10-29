@@ -5,7 +5,7 @@ count: 3
 median: 7.3 days
 p85: 8 days
 --- stderr
-(empty)
+note: cycle-time computed from .issues/events.jsonl
 
 $ pmkit metrics cycle-time --json
 exit 0
@@ -30,4 +30,4 @@ exit 0
   ]
 }
 --- stderr
-(empty)
+note: cycle-time computed from .issues/events.jsonl

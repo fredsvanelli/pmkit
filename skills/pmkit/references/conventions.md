@@ -7,7 +7,7 @@ Every `/pmkit:*` command applies these rules. Read this file before the first st
 1. Read the config first. Load `.pmkit/config.yaml` and the capability manifest. If either is missing, stop and offer `/pmkit:setup`.
 2. Talk in categories and call in operations. Commands use the common model (status categories, issue fields) and the CLI commands. They never use adapter details.
 3. Confirm by risk, as the write policy below says. Reads run freely.
-4. Say which path was used. When a result is derived or degraded, say so in one line, for example "velocity computed from the last 3 sprints".
+4. Say which path was used. When a result is derived or degraded, say so in one line, for example "velocity computed from the last 3 sprints". The CLI prints the line as `note:`. Repeat it, do not rephrase it.
 5. Keep the output short. Lead with the answer. Show a list of issues as a table. Write every issue ID in full so the user can copy it.
 6. Fail with a next step. An error names what went wrong and what to do, for example "no sprint is active; create one with `/pmkit:cycle:plan`".
 

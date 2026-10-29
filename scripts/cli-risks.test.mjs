@@ -112,7 +112,7 @@ test('risks with the GitHub host lists stalled pull requests, merged branches an
     pullRequests: [{ number: 14, title: 'PR 14', url: 'https://github.com/o/r/pull/14', failing: ['lint'] }],
   })
   assert.deepEqual(ghCalls(gh), [PR_LIST, view('feat-dlq'), RUN_LIST])
-  const lines = stderr.trim().split('\n')
+  const lines = stderr.trim().split('\n').filter((line) => !line.startsWith('note: '))
   assert.equal(lines.length, 1, stderr)
   assert.ok(lines[0].startsWith('warning: ISS-3Q6T: CONFLICT'), stderr)
 })

@@ -144,14 +144,39 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     return body(...args)
   }
 
+  // Operations whose capability the manifest can mark absent. The refusal then carries the manifest's hint, not the generic text.
+  const STUB_CAPABILITY = { logTime: 'time_tracking', createRelease: 'releases', markReleased: 'releases' }
   const stub = (operation) =>
     guarded(async () => {
+      const entry = STUB_CAPABILITY[operation] && (await capabilities()).capabilities.find((c) => c.id === STUB_CAPABILITY[operation])
+      if (entry?.path === 'absent') {
+        const message = entry.id === 'time_tracking' ? entry.enableHint : `${operation} needs releases, which this workspace does not have`
+        throw new PmkitError('NOT_SUPPORTED', message, entry.enableHint)
+      }
       throw new PmkitError(
         'NOT_SUPPORTED',
         `the Linear adapter does not implement ${operation} yet`,
         'Set tracker.system to local in .pmkit/config.yaml to use this command now',
       )
     })
+
+  // Release reads on a workspace without releases (the Free plan) answer with the empty shape (a get is NOT_FOUND), and the command prints the manifest's note. No release query is sent.
+  const releasesEntry = async () => (await capabilities()).capabilities.find((c) => c.id === 'releases')
+  const releaseRead = (operation, empty) => {
+    const unimplemented = stub(operation)
+    return guarded(async (...args) => {
+      const entry = await releasesEntry()
+      return entry?.path === 'absent' ? empty(entry, ...args) : unimplemented(...args)
+    })
+  }
+  const releaseReads = {
+    listReleases: releaseRead('listReleases', () => []),
+    // Without releases no id can exist, so a get is a miss, as on Local.
+    getRelease: releaseRead('getRelease', (entry, id) => {
+      throw new PmkitError('NOT_FOUND', `release ${id} does not exist: releases is absent: ${entry.enableHint}`, 'pmkit release list')
+    }),
+    releaseIssues: releaseRead('releaseIssues', () => []),
+  }
 
   const projects = projectOperations({ client, discovery, config, now, uuid })
   const issues = issueOperations({ client, discovery, config, now, uuid, resolveEpic: projects.resolveEpic })
@@ -189,7 +214,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     readDocument: projects.readDocument,
     createDocument: projects.createDocument,
   }
-  const implemented = { discover, capabilities, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
+  const implemented = { discover, capabilities, ...releaseReads, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
   // Linear-only features sit beside the contract operations. contractView ignores them.
   const triage = createTriage({ client, discovery, config })
   const customers = createCustomers({ client, discovery, config })

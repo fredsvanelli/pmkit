@@ -3,11 +3,11 @@ exit 0
 --- stdout
 no events
 --- stderr
-(empty)
+note: events computed from .issues/events.jsonl
 
 $ pmkit events --json
 exit 0
 --- stdout
 []
 --- stderr
-(empty)
+note: events computed from .issues/events.jsonl

@@ -22,7 +22,7 @@ At                   | Issue | By   | Op     | Change
 2026-10-20T16:00:00Z | ISS-8 | ana  | create | Slow login report
 2026-10-21T14:00:00Z | ISS-7 | ana  | move   | status: in_progress → in_review
 --- stderr
-(empty)
+note: events computed from .issues/events.jsonl
 
 $ pmkit events --json
 exit 0
@@ -321,4 +321,4 @@ exit 0
   }
 ]
 --- stderr
-(empty)
+note: events computed from .issues/events.jsonl

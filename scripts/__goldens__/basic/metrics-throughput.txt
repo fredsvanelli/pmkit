@@ -3,7 +3,7 @@ exit 0
 --- stdout
 count: 0
 --- stderr
-(empty)
+note: throughput computed from .issues/events.jsonl
 
 $ pmkit metrics throughput --json
 exit 0
@@ -14,4 +14,4 @@ exit 0
   "issues": []
 }
 --- stderr
-(empty)
+note: throughput computed from .issues/events.jsonl

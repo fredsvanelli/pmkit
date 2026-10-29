@@ -231,8 +231,11 @@ function parseLimit(value, warnings) {
 /** True for the GraphQL error Linear gives a workspace without customers. */
 const isNotAvailable = (error) => error instanceof PmkitError && error.code === 'UPSTREAM' && /not available/i.test(error.message)
 
+const whyText = (reason) => (reason === 'stale' ? 'Linear reports none' : 'customers are off')
+
 function unavailable({ reason, plan, enableHint }, warnings = []) {
   return {
+    notes: [`customers are unavailable on this workspace (${whyText(reason)}); ${enableHint}`],
     data: { available: false, reason, plan, enableHint },
     text: `customers: unavailable\nreason: ${reason}\nplan: ${plan}\nenable: ${enableHint}`,
     warnings,
@@ -277,8 +280,7 @@ function projected(before, input, { statuses, tiers, users }) {
 
 /** Throws NOT_SUPPORTED for a write on a workspace without customers. */
 function refuseWrite({ reason, enableHint }) {
-  const why = reason === 'stale' ? 'Linear reports none' : 'customers are off'
-  throw new PmkitError('NOT_SUPPORTED', `customers are unavailable on this workspace (${why})`, enableHint)
+  throw new PmkitError('NOT_SUPPORTED', `customers are unavailable on this workspace (${whyText(reason)})`, enableHint)
 }
 
 const indent = (text) => text.split('\n').map((line) => `  ${line}`).join('\n')

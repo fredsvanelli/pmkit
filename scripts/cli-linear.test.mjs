@@ -569,6 +569,10 @@ test('linear triage show on a Free workspace says it is unavailable and sends no
   const text = await cli(setup(), ['linear', 'triage', 'show'], fetch)
   assert.equal(text.code, 0, text.stderr)
   assert.equal(text.stdout, 'triage rotation: unavailable\nreason: plan\nplan: free\nenable: Triage responsibility needs the Business or Enterprise plan\n')
+  assert.equal(text.stderr, 'note: triage rotation is unavailable on this workspace (plan free); Triage responsibility needs the Business or Enterprise plan\n')
+  const suggestions = await cli(setup(), ['linear', 'triage', 'suggestions'], fetch)
+  assert.equal(suggestions.stdout, text.stdout)
+  assert.equal(suggestions.stderr, text.stderr)
   assert.equal(triageCalls(fetch).length, 0)
   assert.equal(mutationCalls(fetch).length, 0)
 })
@@ -879,7 +883,7 @@ test('events lists the Linear events of every issue', async () => {
   const result = await linear(fetch, ['events', '--json'])
   assert.equal(result.code, 0, result.stderr)
   assert.deepEqual(JSON.parse(result.stdout).map((e) => [e.issue, e.op]), [['ACME-1', 'create'], ['ACME-2', 'create'], ['ACME-2', 'comment']])
-  assert.equal(result.stderr, '')
+  assert.equal(result.stderr, 'note: events computed from Linear issue history\n')
 })
 
 test('a history, a comment list and a metrics read cut by the cap warn on stderr and leave the JSON alone', async () => {
@@ -904,7 +908,7 @@ test('events and the metrics commands warn when Linear has more than 1000 issues
   for (const args of [['events', '--json'], ['metrics', 'cycle-time', '--json'], ['metrics', 'lead-time', '--json'], ['metrics', 'throughput', '--json'], ['metrics', 'aging', '--json']]) {
     const result = await linear(fetch, args)
     assert.equal(result.code, 0, `${args.join(' ')}: ${result.stderr}`)
-    assert.equal(result.stderr, warning, args.join(' '))
+    assert.equal(result.stderr, `${warning}note: ${args[0] === 'events' ? 'events' : args[1]} computed from Linear issue history\n`, args.join(' '))
   }
 })
 
@@ -1099,7 +1103,7 @@ test('epic progress prints the native number and the hasMore warning', async () 
   const context = setup({ edit: withTeam })
   const before = await cli(context, ['epic', 'progress', 'P-ACM-1'], fetch)
   assert.match(before.stdout, /^native: 50% of 2 issues in Linear's own count$/m)
-  assert.equal(before.stderr, '')
+  assert.equal(before.stderr, "note: progress computed from the project's issues\n")
   for (let n = 0; n < 1000; n += 1) issues.seed({ title: `I${n}`, projectId: PROJECT_ID })
   const after = await cli(context, ['epic', 'progress', 'P-ACM-1'], fetch)
   assert.match(after.stderr, /Linear has more issues in this epic than the 1000 pmkit read/)
@@ -1178,6 +1182,11 @@ test('linear customers list on a Free workspace is unavailable and sends no cust
   assert.deepEqual(JSON.parse(json.stdout), { available: false, reason: 'customers_off', plan: 'free', enableHint: 'An admin can turn on customer requests in the workspace settings.' })
   const text = await cli(setup(), ['linear', 'customers', 'list'], fetch)
   assert.equal(text.stdout, 'customers: unavailable\nreason: customers_off\nplan: free\nenable: An admin can turn on customer requests in the workspace settings.\n')
+  const note = 'note: customers are unavailable on this workspace (customers are off); An admin can turn on customer requests in the workspace settings.\n'
+  assert.equal(text.stderr, note)
+  const show = await cli(setup(), ['linear', 'customers', 'show', '--customer', 'Initech'], fetch)
+  assert.equal(show.code, 0, show.stderr)
+  assert.equal(show.stderr, note)
   assert.equal(customerCalls(fetch).length, 0)
   assert.equal(mutationCalls(fetch).length, 0)
 })
@@ -1510,4 +1519,38 @@ test('linear customers link --dry-run resolves with reads and sends no mutation'
   const text = await cli(setup(), [...linkArgs('Initech', '--issue', 'ACME-20'), '--dry-run'], linkFetch())
   assert.match(text.stdout, /^customer: Initech\ntarget: issue ACME-20 "Export"\nrequest: create\n/)
   assert.match(text.stdout, /\ndry run: nothing was written\n$/)
+})
+
+test('release list and issues on the Free plan answer empty with a note, release get is NOT_FOUND, and no release query is sent', async () => {
+  const { fetch } = withIssues(['A'])
+  const note = 'note: releases is absent: Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings\n'
+  const list = await linear(fetch, ['release', 'list', '--json'])
+  assert.equal(list.code, 0, list.stderr)
+  assert.deepEqual(JSON.parse(list.stdout), [])
+  assert.equal(list.stderr, note)
+  const get = await linear(fetch, ['release', 'get', '1.0', '--json'])
+  assert.equal(get.code, 2, get.stderr)
+  assert.deepEqual(JSON.parse(get.stdout).error, { code: 'NOT_FOUND', message: 'release 1.0 does not exist: releases is absent: Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings', nextStep: 'pmkit release list' })
+  const issues = await linear(fetch, ['release', 'issues', '1.0', '--json'])
+  assert.equal(issues.code, 0, issues.stderr)
+  assert.deepEqual(JSON.parse(issues.stdout), [])
+  assert.equal(issues.stderr, note)
+  assert.ok(!fetch.calls.some((call) => /\breleases?\(|\breleaseIssue|mutation/i.test(call.body.query)))
+})
+
+const RELEASES_HINT = 'Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings'
+
+test('release-notes on Linear without releases refuses --release', async () => {
+  const result = await cycleCli(setup({ edit: withTeam }), ['release-notes', '--release', '1.0'], withCycles(['A']).fetch)
+  assert.equal(result.code, 2)
+  assert.deepEqual(errorOf(result), { code: 'NOT_SUPPORTED', message: 'release notes by release need releases, which this workspace does not have', nextStep: RELEASES_HINT })
+})
+
+test('release-notes on Linear without releases builds from the sprint and says so', async () => {
+  for (const args of [['release-notes', '--sprint', '1'], ['release-notes']]) {
+    const result = await cycleCli(setup({ edit: withTeam }), args, withCycles(['A']).fetch)
+    assert.equal(result.code, 0, result.stderr)
+    assert.equal(JSON.parse(result.stdout).basis, 'sprint', args.join(' '))
+    assert.equal(result.stderr, `note: release notes built from sprint 1: ${RELEASES_HINT}\n`, args.join(' '))
+  }
 })

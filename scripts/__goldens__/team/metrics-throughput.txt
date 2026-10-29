@@ -7,7 +7,7 @@ Type    | Issues
 bug     | 2
 feature | 1
 --- stderr
-(empty)
+note: throughput computed from .issues/events.jsonl
 
 $ pmkit metrics throughput --json
 exit 0
@@ -37,4 +37,4 @@ exit 0
   ]
 }
 --- stderr
-(empty)
+note: throughput computed from .issues/events.jsonl

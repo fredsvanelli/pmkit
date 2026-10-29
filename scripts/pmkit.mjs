@@ -17,6 +17,7 @@ import {
 import { buildNotes, chooseBasis } from './lib/release-notes.mjs'
 import { dependencyMap, serializable } from './lib/dependencies.mjs'
 import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
+import { pathNote } from './lib/path-notes.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { addMapEntry, setMap, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
@@ -286,6 +287,30 @@ function capWarning(kind, id) {
 }
 const capWarnings = (list, kind, id) => (list.truncated === true ? [capWarning(kind, id)] : [])
 
+/** The one note for a metric command: the path native_metrics took, and for velocity the sprint count and the estimates. */
+async function metricNotes(tracker, metric, extra = {}) {
+  const capabilities = (await tracker.capabilities()).capabilities
+  const entry = capabilities.find((c) => c.id === 'native_metrics')
+  const note = pathNote(entry, { metric, estimation: capabilities.find((c) => c.id === 'estimation'), ...extra })
+  return note === null ? [] : [note]
+}
+
+/** The note for one capability's path (capacity, deliverables, linked_code), as a list of zero or one lines. */
+async function capabilityNotes(tracker, id) {
+  const entry = (await tracker.capabilities()).capabilities.find((c) => c.id === id)
+  const note = entry === undefined ? null : pathNote(entry)
+  return note === null ? [] : [note]
+}
+
+/** The linked_code note of a command that reads git. A tracker that cannot load or report its manifest costs the note, not the command. */
+async function linkedCodeNotes(ctx) {
+  try {
+    return await capabilityNotes(await ctx.tracker(), 'linked_code')
+  } catch {
+    return []
+  }
+}
+
 /** discover().statuses as a categoryOf(statusName), and every issue's events grouped by issue. The flow metrics need each whole log. */
 async function flowInputs(tracker) {
   const categoryOf = categoryLookup((await tracker.discover()).statuses)
@@ -543,7 +568,7 @@ export const COMMANDS = [
           ...fields(Object.entries(capacity)),
           ...Object.entries(daysOff).map(([member, dates]) => `days off ${member}: ${[dates ?? []].flat().join(', ')}`),
         ]
-        return { data: { capacity, days_off: daysOff }, text: lines.join('\n') || 'no capacity or days off set' }
+        return { data: { capacity, days_off: daysOff }, text: lines.join('\n') || 'no capacity or days off set', notes: await capabilityNotes(tracker, 'capacity') }
       }
       const result = await tracker.updateCycleCapacity(id, { capacity: set ? parseCapacity(ctx) : undefined, daysOff: dayoff ? parseDaysOff(ctx) : undefined }, await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: sprintRecord }), commit: id }
@@ -581,7 +606,7 @@ export const COMMANDS = [
         ...(p.native ? [`native: ${percent(p.native.progress)} of ${p.native.scope} issues in Linear's own count`] : []),
       ].join('\n')
       const warnings = p.hasMore === true ? ['Linear has more issues in this epic than the 1000 pmkit read; the counts cover the first 1000'] : []
-      return { data: p, text, warnings }
+      return { data: p, text, warnings, notes: await capabilityNotes(await ctx.tracker(), 'deliverables') }
     },
   },
   {
@@ -625,23 +650,26 @@ export const COMMANDS = [
   {
     name: 'release list', summary: 'lists releases, oldest version first', usage: '[--state planned|released]', flags: ['state'],
     run: async (ctx) => {
-      const releases = await (await ctx.tracker()).listReleases(ctx.opt('state') === undefined ? {} : { state: ctx.opt('state') })
+      const tracker = await ctx.tracker()
+      const releases = await tracker.listReleases(ctx.opt('state') === undefined ? {} : { state: ctx.opt('state') })
       const rows = releases.map((r) => [r.id, r.name, r.state, r.tag ?? '', r.target ?? '', r.released ?? ''])
-      return { data: releases, text: releases.length === 0 ? 'no releases' : table(['ID', 'Name', 'State', 'Tag', 'Target', 'Released'], rows) }
+      return { data: releases, text: releases.length === 0 ? 'no releases' : table(['ID', 'Name', 'State', 'Tag', 'Target', 'Released'], rows), notes: await capabilityNotes(tracker, 'releases') }
     },
   },
   {
     name: 'release get', summary: 'one release', usage: '<id>', args: ['id'], flags: [],
     run: async (ctx) => {
-      const release = await (await ctx.tracker()).getRelease(ctx.args[0])
-      return { data: release, text: releaseRecord(release) }
+      const tracker = await ctx.tracker()
+      const release = await tracker.getRelease(ctx.args[0])
+      return { data: release, text: releaseRecord(release), notes: await capabilityNotes(tracker, 'releases') }
     },
   },
   {
     name: 'release issues', summary: 'lists the issues of a release', usage: '<id> [--archived]', args: ['id'], flags: ['archived'],
     run: async (ctx) => {
-      const issues = await (await ctx.tracker()).releaseIssues(ctx.args[0], { archived: ctx.flag('archived') })
-      return { data: issues, text: issueTable(issues) }
+      const tracker = await ctx.tracker()
+      const issues = await tracker.releaseIssues(ctx.args[0], { archived: ctx.flag('archived') })
+      return { data: issues, text: issueTable(issues), notes: await capabilityNotes(tracker, 'releases') }
     },
   },
   {
@@ -688,6 +716,8 @@ export const COMMANDS = [
       if (since !== undefined && rangeInstant(since) > rangeInstant(effectiveUntil, { endOfDay: true })) throw usageError(until === undefined ? '--since is after today' : '--since is after --until', next)
       const capabilities = (await tracker.capabilities()).capabilities
       const on = (id) => capabilities.find((c) => c.id === id).path !== 'absent'
+      const releasesEntry = capabilities.find((c) => c.id === 'releases')
+      if (!on('releases') && ctx.opt('release') !== undefined) throw new PmkitError('NOT_SUPPORTED', 'release notes by release need releases, which this workspace does not have', releasesEntry.enableHint)
       const releases = on('releases') ? await tracker.listReleases() : null
       const sprints = on('cycles') ? await tracker.listCycles({}) : null
       let selector = null
@@ -727,7 +757,8 @@ export const COMMANDS = [
         }
       }
       const result = buildNotes({ choice, candidates, types: discovered.types, problems })
-      return { data: result, text: releaseNotesText(result), warnings: result.problems.map(problemLine) }
+      const note = !on('releases') && choice.basis === 'sprint' ? pathNote(releasesEntry, { releaseNotesFrom: choice.source.id }) : null
+      return { data: result, text: releaseNotesText(result), warnings: result.problems.map(problemLine), notes: note === null ? [] : [note] }
     },
   },
   {
@@ -777,7 +808,7 @@ export const COMMANDS = [
       const result = velocity(sprints, bySprint, { window, categoryOf })
       const rows = result.perSprint.map((s) => [s.id, s.points, s.count])
       const text = [rows.length > 0 ? table(['Sprint', 'Points', 'Issues'], rows) : 'no closed sprints', `average: ${result.average} ${result.unit}`].join('\n')
-      return { data: result, text, warnings }
+      return { data: result, text, warnings, notes: await metricNotes(tracker, 'velocity', { sprints: result.perSprint.length }) }
     },
   },
   {
@@ -790,7 +821,7 @@ export const COMMANDS = [
       const issues = cycleTimes(inRange, { categoryOf })
       const stats = summary(issues.map((item) => item.days))
       const text = summaryLines(stats).join('\n')
-      return { data: { ...stats, issues }, text, warnings }
+      return { data: { ...stats, issues }, text, warnings, notes: await metricNotes(tracker, 'cycle-time') }
     },
   },
   {
@@ -803,7 +834,7 @@ export const COMMANDS = [
       const issues = leadTimes(inRange, { categoryOf })
       const stats = summary(issues.map((item) => item.days))
       const text = summaryLines(stats).join('\n')
-      return { data: { ...stats, issues }, text, warnings }
+      return { data: { ...stats, issues }, text, warnings, notes: await metricNotes(tracker, 'lead-time') }
     },
   },
   {
@@ -816,7 +847,7 @@ export const COMMANDS = [
       const result = throughput(inRange, { categoryOf })
       const lines = [`count: ${result.count}`]
       if (result.count > 0) lines.push(table(['Type', 'Issues'], Object.entries(result.byType)))
-      return { data: result, text: lines.join('\n'), warnings }
+      return { data: result, text: lines.join('\n'), warnings, notes: await metricNotes(tracker, 'throughput') }
     },
   },
   {
@@ -836,7 +867,7 @@ export const COMMANDS = [
         ]
         : ['no work in progress']
       lines.push(`as of: ${asOf}`)
-      return { data: { asOf, ...stats, issues }, text: lines.join('\n'), warnings }
+      return { data: { asOf, ...stats, issues }, text: lines.join('\n'), warnings, notes: await metricNotes(tracker, 'aging') }
     },
   },
   {
@@ -844,8 +875,9 @@ export const COMMANDS = [
     run: async (ctx) => {
       const range = {}
       for (const key of ['since', 'until']) if (ctx.opt(key) !== undefined) range[key] = dateText(key, ctx.opt(key))
-      const events = await (await ctx.tracker()).metricEvents(range)
-      return { data: events, text: eventTable(events), warnings: capWarnings(events, 'issues') }
+      const tracker = await ctx.tracker()
+      const events = await tracker.metricEvents(range)
+      return { data: events, text: eventTable(events), warnings: capWarnings(events, 'issues'), notes: await metricNotes(tracker, 'events') }
     },
   },
   {
@@ -867,7 +899,7 @@ export const COMMANDS = [
       if (ctx.dryRun) return { data: { branch, from }, text: `would create branch ${branch} from ${from}\ndry run: nothing was written` }
       host.createBranch(branch, { from })
       const result = await tracker.updateIssue(issue.id, { branch }, actor)
-      return { data: { branch, ...result }, text: `created branch ${branch} from ${from}\n${writeText(result, ctx)}`, commit: issue.id }
+      return { data: { branch, ...result }, text: `created branch ${branch} from ${from}\n${writeText(result, ctx)}`, commit: issue.id, notes: await linkedCodeNotes(ctx) }
     },
   },
   {
@@ -886,12 +918,12 @@ export const COMMANDS = [
         const text = open
           ? `would push ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`
           : `would open a pull request ${request.head} to ${request.base}\n${request.title}\n\n${body}`
-        return { data: { ...request, existing: open !== null, pr: open }, text: `${text}\ndry run: nothing was written` }
+        return { data: { ...request, existing: open !== null, pr: open }, text: `${text}\ndry run: nothing was written`, notes: await linkedCodeNotes(ctx) }
       }
       host.push(issue.branch)
-      if (open) return { data: { ...open, existing: true }, text: `pushed ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}` }
+      if (open) return { data: { ...open, existing: true }, text: `pushed ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`, notes: await linkedCodeNotes(ctx) }
       const pr = host.openPullRequest(request)
-      return { data: { ...pr, existing: false }, text: `opened pull request #${pr.number} ${pr.url}` }
+      return { data: { ...pr, existing: false }, text: `opened pull request #${pr.number} ${pr.url}`, notes: await linkedCodeNotes(ctx) }
     },
   },
   {
@@ -904,14 +936,14 @@ export const COMMANDS = [
       const pr = host.getPullRequest({ head: issue.branch })
       if (pr?.state !== 'OPEN') throw usageError(`${issue.branch} has no open pull request`, `pmkit pr open --issue ${issue.id}`)
       if (!pr.isDraft) throw usageError(`pull request #${pr.number} is not a draft, it is already ready for review`, `pmkit pr status --branch ${issue.branch}`)
-      if (ctx.dryRun) return { data: { ...pr, isDraft: false }, text: `would mark pull request #${pr.number} ready for review ${pr.url}\ndry run: nothing was written` }
+      if (ctx.dryRun) return { data: { ...pr, isDraft: false }, text: `would mark pull request #${pr.number} ready for review ${pr.url}\ndry run: nothing was written`, notes: await linkedCodeNotes(ctx) }
       const ready = host.markReady(pr.number)
-      return { data: ready, text: `marked pull request #${ready.number} ready for review ${ready.url}` }
+      return { data: ready, text: `marked pull request #${ready.number} ready for review ${ready.url}`, notes: await linkedCodeNotes(ctx) }
     },
   },
   {
     name: 'pr status', summary: 'pull request, checks and reviews of a branch', usage: '[--branch b]', args: [], flags: ['branch'],
-    run: (ctx) => {
+    run: async (ctx) => {
       const host = ctx.host()
       const branch = ctx.opt('branch') ?? host.currentBranch()
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
@@ -921,7 +953,7 @@ export const COMMANDS = [
       const lines = pr
         ? [`#${pr.number} ${pr.title} (${pr.state}${pr.isDraft ? ', draft' : ''})`, pr.url, `checks: ${checks.length === 0 ? '(none)' : checks.map((c) => `${c.name} ${c.bucket ?? c.state}`).join(', ')}`, `reviews: ${reviews.length === 0 ? '(none)' : reviews.map((r) => r.state).join(', ')}`]
         : [`no pull request for ${branch}`]
-      return { data: { branch, pr, checks, reviews }, text: lines.join('\n') }
+      return { data: { branch, pr, checks, reviews }, text: lines.join('\n'), notes: await linkedCodeNotes(ctx) }
     },
   },
   {
@@ -951,7 +983,7 @@ export const COMMANDS = [
       const lines = [`checked ${candidates.length} in_review issues, moved ${moved.length} to done`, ...moved.map((m) => `  ${m.id} merged in #${m.pr}`), ...problems.map((p) => `  ${problemLine(p)}`)]
       if (ctx.dryRun) lines.push('dry run: nothing was written')
       const data = { checked: candidates.length, moved, problems }
-      return { data, text: lines.join('\n'), commit: moved.length > 0 ? moved.map((m) => m.id).join(' ') : undefined }
+      return { data, text: lines.join('\n'), commit: moved.length > 0 ? moved.map((m) => m.id).join(' ') : undefined, notes: await linkedCodeNotes(ctx) }
     },
   },
   {
@@ -1070,7 +1102,15 @@ async function runRisks(ctx) {
   warnings.push(...found.map(problemLine))
   const byId = new Map(all.map((issue) => [issue.id, issue]))
   const problemsById = new Map(problems.map((problem) => [problem.id, problem.code]))
-  const activeSprintId = (await tracker.currentCycle())?.id ?? null
+  // A Linear team with cycles off has no active sprint: risks goes on without one, and the cycles note says why.
+  let activeSprintId = null
+  const cycleNotes = []
+  try {
+    activeSprintId = (await tracker.currentCycle())?.id ?? null
+  } catch (error) {
+    if (!isPmkitError(error) || error.code !== 'NOT_SUPPORTED') throw error
+    cycleNotes.push(...(await capabilityNotes(tracker, 'cycles')))
+  }
   const eventsByIssue = groupEventsByIssue(await tracker.metricEvents())
   const issuesByBranch = Object.create(null)
   for (const issue of all) if (!issue.archived && issue.branch && issuesByBranch[issue.branch] === undefined) issuesByBranch[issue.branch] = issue.id
@@ -1160,7 +1200,7 @@ async function runRisks(ctx) {
     ci,
     problems,
   }
-  return { data: report, text: risksText(report), warnings }
+  return { data: report, text: risksText(report), warnings, notes: [...cycleNotes, ...(await metricNotes(tracker, 'stalled-issue history'))] }
 }
 
 const RENDER_VIEWS = ['board', 'roadmap', 'sprint']
@@ -1828,6 +1868,7 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
     stdout.push(json ? `${JSON.stringify(result.data, null, 2)}\n` : `${result.text}\n`)
     readWarning()
     for (const warning of result.warnings ?? []) stderr.push(`warning: ${warning}\n`)
+    for (const note of result.notes ?? []) stderr.push(`note: ${note}\n`)
   } catch (error) {
     code = 2
     readWarning()
