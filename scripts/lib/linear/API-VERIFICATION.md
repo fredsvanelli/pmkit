@@ -206,6 +206,22 @@ Estimated, not measured. The run aims at under 1,000 requests and stops suite re
 
 Second live run, 2026-10-28, test "keeps comments and history in the order the writes happened". The test created an issue, updated its title right away and commented. `issue.history` returned one entry for the create, with no from/to field set, and no separate update entry. Linear folds an update made right after a create into the create entry. The live setup sets `foldsQuickEdits`, so that test requires create first, the comment last and the updated title, but no `update` entry. The Local run still requires `create`, `update`, `comment`.
 
+## Migration between the Local tracker and Linear (PMK-41)
+
+Checked 2026-10-28 by read-only introspection, through a fetch wrapper that refused any mutation. The schema says which fields a create takes. It does not prove that a personal key may set them, so each caveat waits for the live test of PMK-41.
+
+| Fact | API object | Verified by | Caveat |
+|---|---|---|---|
+| Every create takes a client-chosen `id`, so a rerun reads by UUID to learn whether a create happened. | `IssueCreateInput`, `CommentCreateInput`, `ProjectCreateInput`, `IssueRelationCreateInput`, `IssueLabelCreateInput`, `ProjectUpdateCreateInput` | schema | The live test checks that Linear keeps the `id` it was sent. |
+| No create takes a number or an identifier, so an export always gives new IDs. | `IssueCreateInput` | schema | None. |
+| An issue create takes `createdAt` and `completedAt`, and a comment create takes `createdAt`. | `IssueCreateInput`, `CommentCreateInput` | schema | Whether a personal key may set them waits for the live test. |
+| `createAsUser` exists on issue and comment creates. | `IssueCreateInput`, `CommentCreateInput` | schema | Only an OAuth app may use it (ADR-0005), so comments arrive authored by the key owner. |
+| A project create takes no `createdAt`. | `ProjectCreateInput` | schema | An exported epic shows the migration time as its creation time. |
+| A project update create takes no `createdAt`. | `ProjectUpdateCreateInput` | schema | A migrated status update is dated at the migration. |
+| An undo can delete what an export created. | `issueDelete`, `projectDelete`, `commentDelete`, `issueRelationDelete`, `issueLabelDelete` | schema | The live test runs the undo on a throwaway team. |
+| One read checks many UUIDs. | `IssueFilter.id` (`IssueIDComparator`) | schema | None. |
+| The request budget is 2500 requests an hour. | `x-ratelimit-requests-limit`, `x-ratelimit-complexity-limit` | live read (PMK-30) | A large tracker may need more than one hour, and a rerun resumes after the reset time. |
+
 ## Paid-plan features on a Free workspace
 
 Check a gated feature in this order.
