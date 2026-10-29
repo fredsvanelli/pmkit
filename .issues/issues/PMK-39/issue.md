@@ -2,7 +2,7 @@
 id: PMK-39
 title: Run the contract suite against a Linear sandbox
 type: task
-status: in_review
+status: done
 priority: medium
 estimate: 3
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-36, PMK-37, PMK-38]
 milestone: linear
 branch: pmk-39-run-the-contract-suite-against-a-linear
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-29T00:32:45Z
+updated: 2026-10-29T00:34:29Z
 ---
 
 ## Description
