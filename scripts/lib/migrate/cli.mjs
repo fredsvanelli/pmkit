@@ -13,14 +13,15 @@ import { readLocalSnapshot } from '../local/migrate-reader.mjs'
 import { importTarget, mapImport } from '../local/migrate-fields.mjs'
 import { createLocalWriter } from '../local/migrate-writer.mjs'
 import { readLinearSnapshot } from '../linear/migrate-reader.mjs'
-import { CYCLES_QUERY } from '../linear/documents.mjs'
+import { CYCLES_QUERY, ISSUES_BY_IDS } from '../linear/documents.mjs'
 import { PROJECT_STATUSES } from '../linear/projects.mjs'
 import { exportTarget, mapExport } from '../linear/migrate-fields.mjs'
 import { createLinearWriter } from '../linear/migrate-writer.mjs'
-import { chooseMap, createMapStore, listMaps, mapFileName, memoryMapStore, newMap, sameTarget } from './id-map.mjs'
+import { MIGRATIONS_DIR, chooseMap, createMapStore, listMaps, mapCounts, mapFileName, memoryMapStore, newMap, readMap, sameTarget } from './id-map.mjs'
+import { sha256, stableStringify } from './snapshot.mjs'
 import { planBudget, planMigration } from './plan.mjs'
 import { previewJson, previewText } from './preview.mjs'
-import { checkExpect, reconcile, runPlan } from './run.mjs'
+import { checkExpect, lowBudget, reconcile, runPlan } from './run.mjs'
 
 const gitIn = (root, ...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' })
 
@@ -265,4 +266,141 @@ export async function runImport(ctx) {
   const next = `commit ${local.path}/ and ${file}`
   const text = [previewText(plan, budget, { header }), '', `done: ${written.done} of ${written.total}`, `next: ${next}`].join('\n')
   return { data: { ...previewJson(plan, budget), map: file, done: written.done, total: written.total, next }, text }
+}
+
+/** The map of status and undo: the one --file names, else the newest under .pmkit/migrations/. */
+function pickMap(ctx) {
+  const file = ctx.opt('file')
+  if (typeof file === 'string') return { file, map: readMap(ctx.root, file) }
+  const maps = listMaps(ctx.root)
+  if (maps.length === 0) {
+    throw new PmkitError('NOT_FOUND', `no migration map in ${MIGRATIONS_DIR}`, 'Run pmkit local-migrate export --dry-run or pmkit local-migrate import --dry-run')
+  }
+  return maps[0]
+}
+
+const sideName = (side) => (side.system === 'local' ? `Local ${side.path ?? '.issues'}/` : `Linear team ${side.team} in workspace ${side.workspace}`)
+
+function nextOf(file, map, counts) {
+  if (!map.finished) return `Run pmkit local-migrate ${map.direction} again to resume`
+  const kinds = Object.values(counts.kinds)
+  if (kinds.length > 0 && kinds.every((kind) => kind.done === 0 && kind.sent === 0 && kind.failed === 0)) return 'Nothing: pmkit local-migrate undo removed what the map lists'
+  return `Commit ${file}, then run pmkit local-migrate switch`
+}
+
+/** local-migrate status: the map's sides, its counts by kind and state, its failures and the next step. It sends no request. */
+export async function runStatus(ctx) {
+  // Loading the config lets a read print the config warning before its own error, as every read does.
+  ctx.config()
+  const { file, map } = pickMap(ctx)
+  const counts = mapCounts(map)
+  const next = nextOf(file, map, counts)
+  const data = { file, direction: map.direction, source: map.source, target: map.target, started: map.started, finished: map.finished, kinds: counts.kinds, failed: counts.failed, next }
+  const text = [
+    `map: ${file}`,
+    `${map.direction} ${sideName(map.source)} ${map.direction === 'export' ? 'to' : 'into'} ${sideName(map.target)}`,
+    `started: ${map.started}`,
+    `finished: ${map.finished ?? 'not finished'}`,
+    '',
+    ...Object.entries(counts.kinds).map(([kind, c]) => `${kind.padEnd(8)} ${c.done} done, ${c.sent} sent, ${c.failed} failed, ${c.removed} removed`),
+    ...(counts.failed.length > 0 ? ['', 'failed', ...counts.failed.map((item) => `  ${item.kind} ${item.key}: ${item.error?.code ?? 'UPSTREAM'} ${item.error?.message ?? ''}`.trimEnd())] : []),
+    '',
+    `next: ${next}`,
+  ]
+  return { data, text: text.join('\n') }
+}
+
+export const UNDO_READ_REQUESTS = 10
+const UNDO_KINDS = [['issue', 'issues'], ['epic', 'projects'], ['label', 'labels']]
+const IMPORT_UNDO = ['git restore --source=HEAD -- .issues .pmkit/migrations', 'git clean -fd -- .issues']
+
+/**
+ * The removals of an export undo, newest first within a kind: every `done` issue, project, and label the export
+ * created. An issue Linear no longer has, or has in its trash, is `gone` and costs no request.
+ */
+async function undoRemovals(client, map) {
+  const doneOf = (kind) => Object.entries(map.records[kind] ?? {})
+    .filter(([, entry]) => entry.state === 'done' && entry.uuid && (kind !== 'label' || entry.created === true))
+    .reverse()
+  const issues = doneOf('issue')
+  const nodes = new Map()
+  const ids = issues.map(([, entry]) => entry.uuid)
+  for (let i = 0; i < ids.length; i += 100) {
+    for (const node of (await client.request(ISSUES_BY_IDS, { ids: ids.slice(i, i + 100) })).issues.nodes) nodes.set(node.id, node)
+  }
+  return UNDO_KINDS.flatMap(([kind]) => doneOf(kind).map(([key, entry]) => {
+    const removal = { kind, key, uuid: entry.uuid, id: entry.id ?? entry.uuid, changed: false, gone: false }
+    if (kind === 'issue') {
+      const node = nodes.get(entry.uuid)
+      removal.gone = !node || node.trashed === true
+      removal.changed = !removal.gone && Boolean(entry.at) && Date.parse(node.updatedAt) > Date.parse(entry.at)
+    }
+    return removal
+  }))
+}
+
+function undoText(file, map, removals, requests, digest, { dryRun }) {
+  const out = [`undo ${file}: delete what the export created in ${sideName(map.target)}`, `requests: ${requests}`]
+  for (const [kind, title] of UNDO_KINDS) {
+    const list = removals.filter((removal) => removal.kind === kind)
+    if (list.length === 0) continue
+    const width = Math.max(...list.map((removal) => removal.id.length))
+    out.push('', title, ...list.map((removal) => `  ${removal.id.padEnd(width)}  ${removal.key}${removal.gone ? '  already gone' : ''}${removal.changed ? '  changed since the migration' : ''}`))
+  }
+  if (removals.length === 0) out.push('', 'nothing to delete')
+  out.push('', `digest: ${digest}`)
+  if (dryRun) out.push('dry run: nothing was written')
+  return out.join('\n')
+}
+
+/**
+ * local-migrate undo. On an export map: the full preview of every issue, project and created label it deletes, then,
+ * with --expect, one delete at a time, each written to the map as `removed`, so a rerun resumes. On an import map:
+ * the git commands that restore the tracker; nothing is written.
+ */
+export async function runUndo(ctx) {
+  const { file, map } = pickMap(ctx)
+  if (map.direction === 'import') {
+    const text = ['The import wrote only files git can restore. Run:', ...IMPORT_UNDO.map((command) => `  ${command}`), '', 'This command writes nothing.'].join('\n')
+    return { data: { file, direction: 'import', commands: IMPORT_UNDO }, text }
+  }
+  const linear = { workspace: map.target.workspace, team: map.target.team, mappings: {} }
+  const { client, discovery } = await linearHandle(ctx, linear)
+  const removals = await undoRemovals(client, map)
+  const sent = removals.filter((removal) => !removal.gone)
+  const requests = UNDO_READ_REQUESTS + sent.length
+  const digest = `sha256:${sha256(stableStringify({ undo: file, removals: removals.map(({ kind, key, uuid, changed, gone }) => ({ kind, key, uuid, changed, gone })) }))}`
+  const strip = (removal) => ({ kind: removal.kind, key: removal.key, uuid: removal.uuid, id: removal.id, changed: removal.changed, gone: removal.gone })
+  const data = { file, direction: 'export', removals: removals.map(strip), changed: removals.filter((removal) => removal.changed).length, requests, digest }
+  if (ctx.dryRun) return { data, text: undoText(file, map, removals, requests, digest, { dryRun: true }) }
+
+  const expect = ctx.opt('expect')
+  if (typeof expect !== 'string') {
+    throw new PmkitError('INVALID_INPUT', 'local-migrate undo deletes records in Linear and needs the digest of its preview', 'Run pmkit local-migrate undo --dry-run, then pass its digest with --expect')
+  }
+  checkExpect({ digest }, expect)
+  const store = createMapStore(ctx.root, file, map)
+  const writer = createLinearWriter({ client, discovery, uuid: () => randomUUID() })
+  let removed = 0
+  for (const removal of removals) {
+    const entry = store.entry(removal.kind, removal.key)
+    if (!removal.gone) {
+      const rate = client.rateLimit()
+      if (lowBudget(rate)) {
+        const resetAt = rate.requests?.resetAt ?? rate.complexity?.resetAt ?? 'the reset'
+        throw new PmkitError('RATE_LIMITED', `stopped before Linear's request limit: ${removed} of ${removals.length} records are removed`, `Run pmkit local-migrate undo --dry-run again after ${resetAt} to resume`)
+      }
+      try {
+        await writer.remove(removal.kind, entry)
+      } catch (caught) {
+        const error = caught instanceof PmkitError ? caught : new PmkitError('UPSTREAM', caught.message, 'Fix the cause, then run pmkit local-migrate undo --dry-run again to resume')
+        error.nextStep = 'Fix the cause, then run pmkit local-migrate undo --dry-run again to resume'
+        throw error
+      }
+    }
+    store.set(removal.kind, removal.key, { ...entry, state: 'removed' })
+    removed++
+  }
+  const next = `commit ${file}`
+  return { data: { ...data, removed, next }, text: [undoText(file, map, removals, requests, digest, { dryRun: false }), '', `removed: ${removed} of ${removals.length}`, `next: ${next}`].join('\n') }
 }

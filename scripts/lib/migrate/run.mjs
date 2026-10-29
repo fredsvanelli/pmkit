@@ -67,7 +67,7 @@ export function resolveFields(record, store, known) {
 
 const nextStepOf = (plan) => `Fix the cause and run pmkit local-migrate ${plan.direction} again to resume`
 
-function lowBudget(rate) {
+export function lowBudget(rate) {
   if (!rate) return false
   const requests = rate.requests?.remaining
   const complexity = rate.complexity?.remaining

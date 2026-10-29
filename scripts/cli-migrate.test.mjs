@@ -13,6 +13,7 @@ import { ACME_LABELS, ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fa
 import { childEnv } from './golden-helpers.mjs'
 import { buildMigrationFixture, commitAll, git } from './migrate-fixture.mjs'
 import { PmkitError } from './lib/errors.mjs'
+import { parseYaml } from './lib/yaml.mjs'
 import { createLocalWriter } from './lib/local/migrate-writer.mjs'
 import { hashTree, makeRepo, userStoreEnv } from './test-helpers.mjs'
 
@@ -116,10 +117,10 @@ test('export without a Linear side asks for the workspace and the team', async (
 })
 
 // A Linear workspace for the export: cycles on, a Fibonacci scale, and a cycle on the fixture sprint's dates.
-function linearFake({ headers } = {}) {
+function linearFake({ headers, start } = {}) {
   const teams = [{ ...ACME_TEAM, cyclesEnabled: true, issueEstimationType: 'fibonacci' }]
   const labels = [...ACME_LABELS, { ...ACME_LABELS[0], id: 'label-task', name: 'Task' }, { ...ACME_LABELS[0], id: 'label-chore', name: 'Chore' }]
-  const issues = fakeLinearIssues({ teams, labels })
+  const issues = fakeLinearIssues({ teams, labels, ...(start ? { start } : {}) })
   const projects = fakeLinearProjects({ issues, teams })
   issues.cycles.add({ number: 1, startsAt: '2026-11-02T00:00:00.000Z', endsAt: '2026-11-16T00:00:00.000Z' })
   const routes = { ...fakeWorkspace({ teams, labels }), ...issues.routes, ...projects.routes }
@@ -439,6 +440,130 @@ test('import on a Linear repository uses --path', async () => {
   assert.equal(result.code, 0, result.stdout)
   assert.equal(heldIssues(context.root).length, 1)
   assert.match(JSON.parse(result.stdout).next, /^commit \.issues\/ and /)
+})
+
+const STATUS = ['local-migrate', 'status', '--json']
+const UNDO = ['local-migrate', 'undo', '--json']
+
+/** An export over a fake whose clock starts before NOW, so only a later edit counts as a change. */
+async function exported() {
+  const context = setup()
+  const fake = linearFake({ start: '2026-10-23T00:00:00.000Z' })
+  const { records } = await preview(context, fake)
+  const result = await cli(context, READY, { fetch: fake.fetch })
+  assert.equal(result.code, 0, result.stdout)
+  const created = (kind) => records[kind].filter((record) => record.action === 'create').length
+  return { context, fake, counts: { issue: created('issue'), epic: created('epic'), label: created('label') } }
+}
+
+test('status prints the counts and the next step of an unfinished map', async () => {
+  const context = setup()
+  const fake = linearFake()
+  fake.issues.unconfirm('PmkitRelationCreate', { applied: false })
+  assert.equal((await cli(context, READY, { fetch: fake.fetch })).code, 2)
+  const counting = fakeLinearFetch(fakeWorkspace())
+  const result = await cli(context, STATUS, { fetch: counting })
+  assert.equal(result.code, 0, result.stdout)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.file, '.pmkit/migrations/2026-10-23-export-linear.yaml')
+  assert.equal(data.direction, 'export')
+  assert.equal(data.finished, null)
+  assert.ok(data.kinds.issue.done > 0)
+  assert.equal(data.failed.length, 1)
+  assert.match(data.next, /local-migrate export/)
+  assert.deepEqual(counting.calls, [], 'status sends no request')
+  const text = (await cli(context, ['local-migrate', 'status'], { fetch: counting })).stdout
+  assert.match(text, /not finished/)
+  assert.match(text, /next: /)
+})
+
+test('status without a map is NOT_FOUND', async () => {
+  const context = setup()
+  const result = await cli(context, STATUS)
+  assert.notEqual(result.code, 0)
+  assert.equal(errorOf(result).code, 'NOT_FOUND')
+  assert.match(errorOf(result).message, /no migration map in \.pmkit\/migrations/)
+})
+
+test('undo --dry-run lists every record it deletes and marks the changed ones', async () => {
+  const { context, fake, counts } = await exported()
+  const changed = fake.issues.records.find((record) => record.title === 'Measure the rate limit')
+  changed.updatedAt = '2026-10-24T09:00:00.000Z'
+  const before = fake.mutations().length
+  const result = await cli(context, [...UNDO, '--dry-run'], { fetch: fake.fetch })
+  assert.equal(result.code, 0, result.stdout)
+  const data = JSON.parse(result.stdout)
+  const byKind = (kind) => data.removals.filter((removal) => removal.kind === kind)
+  assert.equal(byKind('issue').length, counts.issue)
+  assert.equal(byKind('epic').length, counts.epic)
+  assert.equal(byKind('label').length, counts.label)
+  assert.deepEqual(data.removals.filter((removal) => removal.changed).map((removal) => removal.uuid), [changed.id])
+  assert.equal(data.requests, 10 + counts.issue + counts.epic + counts.label)
+  assert.match(data.digest, /^sha256:/)
+  assert.equal(fake.mutations().length, before, 'no mutation')
+  const text = (await cli(context, ['local-migrate', 'undo', '--dry-run'], { fetch: fake.fetch })).stdout
+  assert.match(text, /changed since the migration/)
+  assert.match(text, /dry run: nothing was written/)
+  assert.doesNotMatch(fs.readFileSync(path.join(context.root, '.pmkit', 'migrations', '2026-10-23-export-linear.yaml'), 'utf8'), /state: removed/)
+})
+
+test('undo without --expect refuses before any delete', async () => {
+  const { context, fake } = await exported()
+  const before = fake.mutations().length
+  const result = await cli(context, UNDO, { fetch: fake.fetch })
+  assert.equal(result.code, 2, result.stdout)
+  assert.match(errorOf(result).nextStep ?? errorOf(result).next_step ?? '', /--dry-run/)
+  assert.equal(fake.mutations().length, before)
+})
+
+test('undo deletes what the export created', async () => {
+  const { context, fake } = await exported()
+  const { digest } = JSON.parse((await cli(context, [...UNDO, '--dry-run'], { fetch: fake.fetch })).stdout)
+  const result = await cli(context, [...UNDO, '--expect', digest], { fetch: fake.fetch })
+  assert.equal(result.code, 0, result.stdout)
+  assert.ok(fake.issues.records.every((record) => record.trashed), 'every exported issue is in the trash')
+  assert.ok(fake.mutations().includes('PmkitProjectDelete'))
+  const deleted = fake.fetch.calls.map((call) => call.body).filter((body) => /mutation PmkitLabelDelete/.test(body.query)).map((body) => body.variables.id)
+  assert.ok(deleted.length > 0, 'the created label is deleted')
+  assert.ok(!deleted.some((id) => ACME_LABELS.some((label) => label.id === id) || id === 'label-task' || id === 'label-chore'), 'a label the team had stays')
+  const { records } = parseYaml(fs.readFileSync(path.join(context.root, '.pmkit', 'migrations', '2026-10-23-export-linear.yaml'), 'utf8'))
+  const entries = [...Object.values(records.issue), ...Object.values(records.epic), ...Object.values(records.label).filter((entry) => entry.created)]
+  assert.ok(entries.every((entry) => entry.state === 'removed'), 'each entry is removed')
+  assert.equal(JSON.parse(result.stdout).removed, entries.length)
+})
+
+test('undo resumes after an interruption', async () => {
+  const { context, fake } = await exported()
+  const { digest } = JSON.parse((await cli(context, [...UNDO, '--dry-run'], { fetch: fake.fetch })).stdout)
+  let deletes = 0
+  const failing = async (url, init) => {
+    if (/mutation PmkitIssueDelete/.test(JSON.parse(init.body).query) && ++deletes === 2) {
+      return new Response(JSON.stringify({ errors: [{ message: 'boom', extensions: { code: 'INVALID_INPUT' } }] }), { status: 400, headers: { 'content-type': 'application/json' } })
+    }
+    return fake.fetch(url, init)
+  }
+  const failed = await cli(context, [...UNDO, '--expect', digest], { fetch: failing })
+  assert.equal(failed.code, 2, failed.stdout)
+  const map = path.join(context.root, '.pmkit', 'migrations', '2026-10-23-export-linear.yaml')
+  assert.equal((fs.readFileSync(map, 'utf8').match(/state: removed/g) ?? []).length, 1)
+  const again = JSON.parse((await cli(context, [...UNDO, '--dry-run'], { fetch: fake.fetch })).stdout)
+  const result = await cli(context, [...UNDO, '--expect', again.digest], { fetch: fake.fetch })
+  assert.equal(result.code, 0, result.stdout)
+  const ids = fake.fetch.calls.map((call) => call.body).filter((body) => /mutation PmkitIssueDelete/.test(body.query)).map((body) => body.variables.id)
+  assert.equal(ids.length, new Set(ids).size, 'each delete once')
+  assert.ok(fake.issues.records.every((record) => record.trashed))
+})
+
+test('undo on an import map prints the git commands and writes nothing', async () => {
+  const { context, fake } = importSetup()
+  assert.equal((await cli(context, IMPORT, { fetch: fake.fetch })).code, 0)
+  const before = hashTree(context.root)
+  const counting = fakeLinearFetch(fakeWorkspace())
+  const result = await cli(context, UNDO, { fetch: counting })
+  assert.equal(result.code, 0, result.stdout)
+  assert.deepEqual(JSON.parse(result.stdout).commands, ['git restore --source=HEAD -- .issues .pmkit/migrations', 'git clean -fd -- .issues'])
+  assert.deepEqual(counting.calls, [])
+  assert.equal(hashTree(context.root), before)
 })
 
 test('no output holds the key', () => {
