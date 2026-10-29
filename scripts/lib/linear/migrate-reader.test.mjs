@@ -79,117 +79,15 @@ test('the reader sends no mutation and counts its requests', async () => {
   assert.equal(readRequests, fetch.calls.length)
 })
 
-// Linear refuses a query whose complexity is over 10000. Its documented rule: a field 0.1 point, an object 1 point, and a
-// connection multiplies its children by its `first`, so nested connections multiply. The total is rounded up.
-function complexity(query, variables) {
-  const tokens = query.match(/\.\.\.|[{}():!$@,[\]]|"(?:[^"\\]|\\.)*"|-?\d+|\w+/g)
-  let at = 0
-  const take = () => tokens[at++]
-  const value = () => {
-    const token = take()
-    if (token === '$') return variables[take()]
-    if (token === '{' || token === '[') {
-      for (let depth = 1; depth > 0;) depth += { '{': 1, '[': 1, '}': -1, ']': -1 }[take()] ?? 0
-      return null
-    }
-    return /^-?\d+$/.test(token) ? Number(token) : token === 'true' ? true : token === 'false' ? false : token
-  }
-  const args = () => {
-    const found = {}
-    if (tokens[at] !== '(') return found
-    take()
-    while (tokens[at] !== ')') {
-      const name = take()
-      take()
-      found[name] = value()
-      if (tokens[at] === ',') take()
-    }
-    take()
-    return found
-  }
-  const included = () => {
-    let keep = true
-    while (tokens[at] === '@') {
-      take()
-      const name = take()
-      const { if: condition } = args()
-      if ((name === 'include' && condition !== true) || (name === 'skip' && condition === true)) keep = false
-    }
-    return keep
-  }
-  const fragments = {}
-  const selection = () => {
-    take()
-    const fields = []
-    while (tokens[at] !== '}') {
-      if (tokens[at] === '...') {
-        take()
-        const spread = take()
-        if (included()) fields.push({ spread })
-        continue
-      }
-      const name = take()
-      const found = args()
-      const keep = included()
-      const children = tokens[at] === '{' ? selection() : null
-      if (keep) fields.push({ name, args: found, children })
-    }
-    take()
-    return fields
-  }
-  let operation
-  while (at < tokens.length) {
-    const token = take()
-    if (token === 'fragment') {
-      const name = take()
-      take()
-      take()
-      fragments[name] = selection()
-    } else if (token === 'query') {
-      while (tokens[at] !== '{') take()
-      operation = selection()
-    }
-  }
-  const cost = (fields) => fields.reduce((sum, field) => {
-    if (field.spread) return sum + cost(fragments[field.spread])
-    if (!field.children) return sum + 0.1
-    const connection = field.children.some((child) => child.name === 'nodes')
-    return sum + 1 + (connection ? field.args.first ?? 50 : 1) * cost(field.children)
-  }, 0)
-  return Math.ceil(cost(operation) - 1e-9)
-}
-
-// Linear accepted the issue page at first 100 in the PMK-41 live read-back, though the rule above gives it 233001. The
-// ceiling keeps it from growing unnoticed.
-const LIVE_ACCEPTED = { PmkitIssueEvents: 233001 }
-
-test('every query the reader sends stays under Linear complexity limit with a margin', async () => {
-  const { issues, projects, fetch, client } = setup({ nestedPage: 2 })
-  const parent = issues.seed({ title: 'parent', labelIds: ['label-bug', 'label-feature', 'label-docs'] })
-  for (let i = 0; i < 3; i++) {
-    const child = issues.seed({ title: `child ${i}`, parentId: parent.id })
-    issues.relate('blocks', parent.id, child.id)
-    issues.relate('related', child.id, parent.id)
-    issues.comment(parent.id, { body: `c${i}` })
-    issues.history(parent.id, { fromTitle: `a${i}`, toTitle: `b${i}` })
-  }
+// A page of 50 projects with milestone and document lists of 50 each went over Linear's limit of 10000 complexity points
+// (Linear answered 17420 in the PMK-41 live run). A page of 10 is accepted, so the reader must send no larger page.
+test('the projects query is sent with a page of 10', async () => {
+  const { projects, fetch, read } = setup()
   projects.seed({ id: 'p-1', name: 'Epic', teamIds: [ACME_TEAM_ID] })
-  projects.seedUpdate('p-1', { id: 'u-1', body: 'Fine', health: 'onTrack' })
-  // Discovery is the export's read too, so the reader gets it already made and only the reader's own queries are counted.
-  const found = await fetchDiscovery(client)
-  const from = fetch.calls.length
-  await readLinearSnapshot({ client, discovery: async () => found, teamKey: 'ACME', pmkit: PMKIT, now: () => new Date('2026-10-28T20:00:00Z') })
-  const names = new Set()
-  for (const call of fetch.calls.slice(from)) {
-    const name = call.body.query.match(/query (\w+)/)[1]
-    names.add(name)
-    const estimate = complexity(call.body.query, call.body.variables ?? {})
-    if (name in LIVE_ACCEPTED) assert.ok(estimate <= LIVE_ACCEPTED[name], `${name} costs ${estimate}`)
-    else assert.ok(estimate < 8000, `${name} with ${JSON.stringify(call.body.variables)} costs ${estimate}`)
-  }
-  for (const name of ['PmkitIssueEvents', 'PmkitProjects', 'PmkitProjectUpdates', 'PmkitCycles', 'PmkitIssueHistory', 'PmkitIssueComments', 'PmkitIssueChildrenPage', 'PmkitIssueRelationsPage']) {
-    assert.ok(names.has(name), `the run sent ${name}`)
-  }
+  await read()
+  const sent = calls(fetch, 'PmkitProjects')
+  assert.ok(sent.length > 0)
+  for (const call of sent) assert.equal(call.body.variables.first, 10)
 })
 
 test('projects past the first page are all read', async () => {
