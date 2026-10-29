@@ -27,6 +27,7 @@ import { CACHE_DIR, ensureCacheIgnored } from './lib/local/query-index.mjs'
 import { writeFileAtomic } from './lib/local/store.mjs'
 import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, planMigration } from './lib/local/migrations.mjs'
 import { parseChangelog, sectionsSince } from './lib/changelog.mjs'
+import { runExport } from './lib/migrate/cli.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
 import { ID_STYLES, branchName, isId, normalizeId } from './lib/ids.mjs'
 import { boardDoc, hasMarker, problemsLine, renderDocument, roadmapDoc, sprintDoc } from './lib/render.mjs'
@@ -975,6 +976,11 @@ export const COMMANDS = [
     run: (ctx) => runMigrate(ctx.root, { dryRun: ctx.dryRun }),
   },
   {
+    name: 'local-migrate export', summary: 'moves .issues/ to the Linear team; a rerun resumes; --dry-run prints the preview and its digest',
+    usage: '[--workspace acme --team ACME] [--status cat=Name] [--type-label type=Label] [--field estimate=native|none] [--expect <digest>] [--dry-run]',
+    flags: ['workspace', 'team', 'path', 'status', 'type-label', 'field', 'expect'], write: true, dryRun: true, systems: ['local', 'linear'], run: runExport,
+  },
+  {
     name: 'reindex', summary: 'rebuilds the query index in .issues/.cache/ from the issue files; changes only files git ignores', local: true, flags: [],
     run: async (ctx) => {
       const result = (await ctx.local()).reindex()
@@ -1802,6 +1808,10 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
     if (command.local) {
       const { system } = loadPmkitConfig(root, { adapters })
       if (system !== 'local') throw new PmkitError('NOT_SUPPORTED', `${command.name} works only with the Local tracker, and tracker.system is "${system}"`, 'node scripts/pmkit.mjs --help')
+    }
+    if (command.systems) {
+      const { system } = loadPmkitConfig(root, { adapters })
+      if (!command.systems.includes(system)) throw new PmkitError('NOT_SUPPORTED', `\`${command.name}\` works only with the Local or Linear tracker, and tracker.system is "${system}"`, 'node scripts/pmkit.mjs --help')
     }
     // migrate refuses in runMigrate: ctx.config() checks the format, which would hide migrate's own format errors.
     if (kind === 'write' && command.name !== 'migrate') {

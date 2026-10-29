@@ -1,0 +1,41 @@
+$ pmkit local-migrate export --workspace acme --team ACME
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: this folder is not a git repository, or git is not installed
+next: local-migrate export needs a git repository: git history is the only way back from a migration
+
+$ pmkit local-migrate export --workspace acme --team ACME --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_CONFIGURED",
+    "message": "this folder is not a git repository, or git is not installed",
+    "nextStep": "local-migrate export needs a git repository: git history is the only way back from a migration"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit local-migrate export --workspace acme --team ACME --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: this folder is not a git repository, or git is not installed
+next: local-migrate export needs a git repository: git history is the only way back from a migration
+
+$ pmkit local-migrate export --workspace acme --team ACME --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_CONFIGURED",
+    "message": "this folder is not a git repository, or git is not installed",
+    "nextStep": "local-migrate export needs a git repository: git history is the only way back from a migration"
+  }
+}
+--- stderr
+(empty)

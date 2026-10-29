@@ -122,7 +122,7 @@ test('risks lists an epic whose updates reject, as it does for a throw', async (
 // The mirror runs every golden case twice: on a plain copy with the product registry, and on a copy whose
 // .pmkit/config.yaml says linear, over a tracker whose operations all return promises. A missing await, or a call past
 // the contract, makes the two outputs differ.
-const MIRRORED = COMMANDS.filter((command) => !command.local && !command.linear && !command.exempt)
+const MIRRORED = COMMANDS.filter((command) => !command.local && !command.linear && !command.exempt && !command.systems)
 
 test('every command that is not local or exempt has mirror cases', () => {
   for (const command of MIRRORED) {
