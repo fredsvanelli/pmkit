@@ -6,3 +6,8 @@
 {"at":"2026-10-28T20:01:57Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-28T20:01:57Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-41-add-local-migrate-between-the-local"}
 {"at":"2026-10-28T23:30:06Z","by":"fred","op":"comment","to":"2026-10-28T23-30-06Z-fred.md"}
+{"at":"2026-10-29T02:26:57Z","by":"fred","op":"comment","to":"2026-10-29T02-26-57Z-fred.md"}
+{"at":"2026-10-29T02:27:00Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-29T02:27:02Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-29T02:27:02Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-29T02:27:02Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
