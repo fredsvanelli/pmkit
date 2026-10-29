@@ -302,9 +302,13 @@ async function capabilityNotes(tracker, id) {
   return note === null ? [] : [note]
 }
 
-/** The linked_code note of a command that reads git. */
+/** The linked_code note of a command that reads git. A tracker that cannot load or report its manifest costs the note, not the command. */
 async function linkedCodeNotes(ctx) {
-  return capabilityNotes(await ctx.tracker(), 'linked_code')
+  try {
+    return await capabilityNotes(await ctx.tracker(), 'linked_code')
+  } catch {
+    return []
+  }
 }
 
 /** discover().statuses as a categoryOf(statusName), and every issue's events grouped by issue. The flow metrics need each whole log. */

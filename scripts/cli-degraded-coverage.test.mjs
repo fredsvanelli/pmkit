@@ -92,7 +92,7 @@ test('every COVERED place names a case that exists', () => {
 
 // A forged manifest: the tracker reports the entry we choose for one capability, and the command must print its note or refuse.
 // With `github`, the repository is a git repository on GitHub, a fake gh answers that branch x has no pull request, and ACME-1 exists.
-function forged(id, entry, { github = false, gh: extra = {} } = {}) {
+function forged(id, entry, { github = false, gh: extra = {}, failManifest = false } = {}) {
   const root = useLinear(makeRepo('basic'))
   const file = path.join(root, '.pmkit', 'config.yaml')
   let config = fs.readFileSync(file, 'utf8').replace('    workspace: acme', '    workspace: acme\n    team: ACME')
@@ -117,6 +117,7 @@ function forged(id, entry, { github = false, gh: extra = {} } = {}) {
     create: async (...args) => {
       const tracker = await base.create(...args)
       return { ...tracker, capabilities: async () => {
+        if (failManifest) throw new Error('capabilities are not reachable')
         const manifest = await tracker.capabilities()
         return { ...manifest, capabilities: manifest.capabilities.map((c) => (c.id === id ? { ...c, ...entry } : c)) }
       } }
@@ -169,6 +170,14 @@ for (const { id, argv, github, gh, cases } of PATH_CASES) {
       assert.deepEqual(noteLines(result.stderr), [line])
     })
   }
+}
+
+for (const argv of [['pr', 'status', '--branch', 'x'], ['pr', 'sync']]) {
+  test(`${argv.slice(0, 2).join(' ')} still works and prints no note when the tracker cannot report its capabilities`, async () => {
+    const result = await forged('linked_code', {}, { github: true, failManifest: true }).run(argv)
+    assert.equal(result.code, 0, result.stderr)
+    assert.deepEqual(noteLines(result.stderr), [])
+  })
 }
 
 test('issues create --estimate 3 refuses on a team with estimates off and sends no mutation', async () => {
