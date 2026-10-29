@@ -132,6 +132,11 @@ test('every command that is not local or exempt has mirror cases', () => {
   assert.deepEqual(COMMANDS.filter((command) => command.local).map((command) => command.name), ['render', 'migrate', 'reindex'])
 })
 
+test('the commands with systems are the five local-migrate commands and stay out of the mirror', () => {
+  assert.deepEqual(COMMANDS.filter((command) => command.systems).map((command) => command.name), ['local-migrate export', 'local-migrate import', 'local-migrate status', 'local-migrate undo', 'local-migrate switch'])
+  assert.ok(MIRRORED.every((command) => !command.systems))
+})
+
 test('the linear commands are the triage and customers commands and stay out of the mirror', () => {
   assert.deepEqual(COMMANDS.filter((command) => command.linear).map((command) => command.name), ['linear triage show', 'linear triage suggestions', 'linear triage set', 'linear customers list', 'linear customers show', 'linear customers set', 'linear customers link'])
   assert.ok(MIRRORED.every((command) => !command.linear))

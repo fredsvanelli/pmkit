@@ -1,0 +1,18 @@
+version: 1
+direction: import
+started: 2026-10-28T09:00:00Z
+finished: 2026-10-28T09:05:00Z
+source:
+  system: linear
+  workspace: acme
+  team: ACME
+target:
+  system: local
+  path: .issues
+mappings: {}
+people: {}
+records:
+  issue:
+    ACME-1:
+      state: done
+      id: PMK-1

@@ -1,0 +1,4 @@
+$ pmkit local-migrate status --json  [step 3, read]
+exit 2 (expected NOT_FOUND)
+
+(no file changed)
