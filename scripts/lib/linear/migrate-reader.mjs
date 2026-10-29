@@ -9,6 +9,7 @@ import { toSprint } from './cycles.mjs'
 const isoSeconds = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z')
 const LINK_TYPES = ['blocks', 'related', 'duplicate']
 const DISCOVERY_REQUESTS = 8
+const PROJECT_PAGE = 10
 
 /** A client that counts the requests it sends, pages included. */
 function counting(client) {
@@ -102,8 +103,10 @@ export async function readLinearSnapshot({ client: given, discovery, teamKey, pm
     created: comment.createdAt, body: comment.body ?? '', parent: comment.parentId ?? null, resolved: Boolean(comment.resolvedAt),
   })))
 
+  // With the milestone and document lists of 50 each, a page of 50 projects went over Linear's limit of 10000 complexity
+  // points (Linear answered 17420). A page of 10 is about a fifth of that.
   const { nodes: projectNodes } = await client.paginate(PROJECTS_QUERY, { filter: { accessibleTeams: { some: { key: { eq: teamKey } } } }, withLists: true }, {
-    select: (data) => data.projects, pageSize: 50, maxPages: 100000,
+    select: (data) => data.projects, pageSize: PROJECT_PAGE, maxPages: 100000,
   })
   const epics = []
   for (const node of projectNodes) {
