@@ -1159,11 +1159,11 @@ test('logTime, createRelease and markReleased refuse with the manifest reason an
   assert.ok(fetch.calls.every((call) => !/mutation/i.test(call.body.query)))
 })
 
-test('release reads on a workspace without releases answer empty and send no release query', async () => {
+test('release reads on a workspace without releases answer empty, getRelease is NOT_FOUND, and no release query is sent', async () => {
   const { fetch, tracker: linear } = tracker(setup())
   assert.deepEqual(await linear.listReleases(), [])
   assert.deepEqual(await linear.listReleases({ state: 'planned' }), [])
   assert.deepEqual(await linear.releaseIssues('1.0', { archived: false }), [])
-  assert.deepEqual(await linear.getRelease('1.0'), { id: '1.0', name: '1.0', state: 'planned', description: '' })
+  await assert.rejects(linear.getRelease('1.0'), { code: 'NOT_FOUND', message: 'release 1.0 does not exist', nextStep: 'pmkit release list' })
   assert.ok(!namesOf(fetch).some((name) => /Release/.test(name)))
 })
