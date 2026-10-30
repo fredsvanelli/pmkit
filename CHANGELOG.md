@@ -4,6 +4,7 @@
 
 - Adds `pmkit docs list`, which lists the documents under `.issues/docs/` (PMK-50). The Local tracker lists them, and Linear answers `NOT_SUPPORTED`. A docs path that is a file answers `CONFLICT` with a next step.
 - Adds `deploys list` and `ci logs` (PMK-49), and `listDeploys` and `ciLogs` on the GitHub git host. `deploys list` prints the repository deployments with the state of the latest status of each. `ci logs` prints the log of the failed steps of a run, either the one `--run` names or the newest failed run of a branch, and keeps the last `--tail` lines (default 200). A run that failed, timed out or never started counts as failed.
+- Adds `issues time-entries <id>` (PMK-51), which lists the time logged on an issue with the total in minutes, as a table or with `--json`. On Linear it answers `NOT_SUPPORTED`, because Linear has no time tracking.
 
 ## 0.4.0 - 2026-10-30
 
