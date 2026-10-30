@@ -10,7 +10,7 @@ parent: EPC-6
 milestone: generic-commands
 branch: pmk-57-add-the-delegate-to-agent-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-30T22:09:09Z
+updated: 2026-10-30T22:30:26Z
 ---
 
 ## Description
@@ -19,5 +19,5 @@ Source: Unified model, Foundation catalog (`delegate-to-agent`; degradation "Ass
 
 ## Acceptance criteria
 
-- [ ] Assigns the issue to `agent:<name>` after confirmation
-- [ ] Without native delegation it comments the instructions for local execution
+- [x] Assigns the issue to `agent:<name>` after confirmation
+- [x] Without native delegation it comments the instructions for local execution

@@ -3,3 +3,4 @@
 {"at":"2026-10-30T22:09:00Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-30T22:09:09Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-57-add-the-delegate-to-agent-command"}
 {"at":"2026-10-30T22:15:19Z","by":"fred","op":"comment","to":"2026-10-30T22-15-19Z-fred.md"}
+{"at":"2026-10-30T22:30:26Z","by":"fred","op":"update","field":"acceptance_criteria"}
