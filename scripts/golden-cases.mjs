@@ -104,6 +104,7 @@ export const CASES = {
   events: () => [[]],
   risks: () => [[]],
   'alerts list': () => [[]],
+  'todos scan': () => [[]],
   'issues branch': (a) => [[a.issue]],
   'pr open': (a) => [['--issue', a.issue]],
   'pr ready': (a) => [['--issue', a.issue]],

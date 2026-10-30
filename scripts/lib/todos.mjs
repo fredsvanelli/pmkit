@@ -90,7 +90,8 @@ const SKIPPED = (file) => file.split('/').some((part) => part === 'node_modules'
 export function scanRepo(root, { path: prefix } = {}) {
   const listed = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: root, maxBuffer: GIT_MAX_BUFFER })
   if (listed.error || listed.status !== 0) {
-    const why = listed.error?.code === 'ENOBUFS' ? 'git printed more than 256 MiB' : String(listed.stderr ?? '').trim() || listed.error?.message || 'git failed'
+    const stderr = String(listed.stderr ?? '').trim()
+    const why = listed.error?.code === 'ENOBUFS' ? 'git printed more than 256 MiB' : /not a git repository/.test(stderr) ? 'not a git repository' : stderr || listed.error?.message || 'git failed'
     throw new PmkitError('INVALID_INPUT', `cannot list the files of ${root}: ${why}`, 'Run the scan inside a git repository, so it can honor .gitignore')
   }
   const files = [...new Set(listed.stdout.toString('utf8').split('\0').filter(Boolean))].sort()

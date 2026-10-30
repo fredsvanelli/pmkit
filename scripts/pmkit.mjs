@@ -20,6 +20,7 @@ import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsP
 import { pathNote } from './lib/path-notes.mjs'
 import { localRunLine } from './lib/delegation.mjs'
 import { SCANNERS, SEVERITIES, collectAlerts } from './lib/alerts.mjs'
+import { groupTodos, matchTodos, scanRepo } from './lib/todos.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { addMapEntry, setMap, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
@@ -1024,6 +1025,22 @@ export const COMMANDS = [
       // A failed scanner left part of the scan unread, so the text never reads as a clean result.
       if (failed.length > 0) text = [text, ...failed.map((scanner) => `incomplete: ${scanner.id} failed (${scanner.error}), so this result may miss alerts`)].join('\n')
       return { data: { incomplete: failed.length > 0, scanners, alerts }, text, warnings: found.warnings }
+    },
+  },
+  {
+    name: 'todos scan', summary: 'TODO and FIXME comments in the files git lists, minus the ones an existing issue matches; reads only', usage: '[--path prefix]', flags: ['path'],
+    run: async (ctx) => {
+      const tracker = await ctx.tracker()
+      const { found, files, skippedEmpty } = scanRepo(ctx.root, { path: ctx.opt('path') })
+      const existing = await tracker.searchIssues({ archived: true })
+      const { candidates, matched } = matchTodos(groupTodos(found), existing.issues)
+      const warnings = existing.problems.map(problemLine)
+      if (existing.hasMore === true) warnings.push('Linear has more issues than the 1000 pmkit read, so a match may be missed')
+      if (skippedEmpty > 0) warnings.push(`${skippedEmpty} TODO or FIXME comments have no text and were skipped`)
+      const parts = []
+      if (candidates.length > 0) parts.push(table(['Key', 'Tag', 'Location', 'Text'], candidates.map((c) => [c.key, c.tag, c.locations.length > 1 ? `${c.locations[0]} (+${c.locations.length - 1})` : c.locations[0], c.title])))
+      if (matched.length > 0) parts.push(`already in the tracker:\n${table(['Issue', 'Status', 'Reason', 'Text'], matched.map((m) => [m.issue, m.status ?? '', m.reason, m.text]))}`)
+      return { data: { files, skippedEmpty, candidates, matched }, text: parts.length > 0 ? parts.join('\n\n') : 'no TODO or FIXME found', warnings }
     },
   },
   {
