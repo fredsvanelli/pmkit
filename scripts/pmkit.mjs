@@ -20,7 +20,7 @@ import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsP
 import { pathNote } from './lib/path-notes.mjs'
 import { localRunLine } from './lib/delegation.mjs'
 import { SCANNERS, SEVERITIES, collectAlerts } from './lib/alerts.mjs'
-import { groupTodos, matchTodos, scanRepo } from './lib/todos.mjs'
+import { READ_LIMIT, groupTodos, matchTodos, readExistingIssues, scanRepo } from './lib/todos.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { addMapEntry, setMap, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
@@ -1030,17 +1030,20 @@ export const COMMANDS = [
   {
     name: 'todos scan', summary: 'TODO and FIXME comments in the files git lists, minus the ones an existing issue matches; reads only', usage: '[--path prefix]', flags: ['path'],
     run: async (ctx) => {
-      const tracker = await ctx.tracker()
-      const { found, files, skippedEmpty } = scanRepo(ctx.root, { path: ctx.opt('path') })
-      const existing = await tracker.searchIssues({ archived: true })
+      // The tracker folder is data, not code. A hosted tracker has no folder, so it adds nothing to skip.
+      const { issuesDir } = ctx.config()
+      const relative = issuesDir ? path.relative(ctx.root, issuesDir).split(path.sep).join('/') : ''
+      const skip = relative !== '' && !relative.startsWith('..') ? [relative] : []
+      const { found, files, skippedEmpty } = scanRepo(ctx.root, { path: ctx.opt('path'), skip, env: ctx.env })
+      const existing = await readExistingIssues(await ctx.tracker())
       const { candidates, matched } = matchTodos(groupTodos(found), existing.issues)
       const warnings = existing.problems.map(problemLine)
-      if (existing.hasMore === true) warnings.push('Linear has more issues than the 1000 pmkit read, so a match may be missed')
+      if (existing.incomplete) warnings.push(`incomplete: the tracker has more issues than the ${READ_LIMIT} pmkit read, so a comment that an issue covers may show as new. Do not create issues from this list`)
       if (skippedEmpty > 0) warnings.push(`${skippedEmpty} TODO or FIXME comments have no text and were skipped`)
       const parts = []
       if (candidates.length > 0) parts.push(table(['Key', 'Tag', 'Location', 'Text'], candidates.map((c) => [c.key, c.tag, c.locations.length > 1 ? `${c.locations[0]} (+${c.locations.length - 1})` : c.locations[0], c.title])))
       if (matched.length > 0) parts.push(`already in the tracker:\n${table(['Issue', 'Status', 'Reason', 'Text'], matched.map((m) => [m.issue, m.status ?? '', m.reason, m.text]))}`)
-      return { data: { files, skippedEmpty, candidates, matched }, text: parts.length > 0 ? parts.join('\n\n') : 'no TODO or FIXME found', warnings }
+      return { data: { files, skippedEmpty, incomplete: existing.incomplete, candidates, matched }, text: parts.length > 0 ? parts.join('\n\n') : 'no TODO or FIXME found', warnings }
     },
   },
   {

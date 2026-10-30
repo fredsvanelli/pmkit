@@ -31,7 +31,7 @@ Chosen: approach 1. It mirrors `alerts list` (reads the repository, never writes
 
 The git call uses a 256 MiB `maxBuffer`, as `MAX_OUTPUT` does in the GitHub host, and no timeout on a read it can finish. A repository that is not a git repository fails with `INVALID_INPUT`, because there is no way to honor `.gitignore`.
 
-A line is a TODO when it has a comment leader (`//`, `#`, `/*`, `*`, `<!--`, `--`, `;`, `%`) followed later on the line by `TODO` or `FIXME` in capitals as a whole word, then an optional `(owner)`, an optional `:` and the text. The leader rule keeps prose such as "TODO and FIXME become issues" in docs from matching, and a word like `TODOS` does not match. The text is the rest of the line without a trailing `*/` or `-->`. A TODO with no text is skipped and counted in `skippedEmpty`.
+A TODO is a `TODO` or `FIXME` in capitals that is the first word of a comment, then an optional `(owner)`, an optional `:` and the text (see "Changes after review" for the comment rules). A word like `TODOS` or `TODO-1` does not match. A TODO with no text is skipped and counted in `skippedEmpty`.
 
 ### Identity and matching (my call)
 
@@ -39,11 +39,10 @@ The normalized text is the text lowercased, with whitespace collapsed and surrou
 
 Repeats in the same scan share a key, so they become one candidate with every location listed (`locations: ["src/a.mjs:12", "src/b.mjs:40"]`, in path then line order). The candidate tag is FIXME when any location is a FIXME, else TODO.
 
-A candidate matches an existing issue, whatever its status or archived flag, when one of these holds. The first that holds is the reason.
+A candidate matches an existing issue, whatever its status or archived flag, when one of these holds. The first that holds is the reason. A `file:line` never matches.
 
 1. `key`: the issue description or body has the line `todo-key: <key>`. Issues this command creates carry it, so a second run creates nothing.
-2. `source`: the description or body contains one of the candidate's `file:line` locations.
-3. `text`: the normalized title, description or body contains the normalized text, and the text is at least 15 characters. The minimum stops a short text such as `fix` from matching everything.
+2. `text`: the normalized title, description or body contains the normalized text as whole words, and the text is at least 15 characters. The minimum stops a short text such as `fix` from matching everything.
 
 Matching reads closed and archived issues too, so a TODO whose issue is `done` still shows as matched (reason and issue status are in the data). The user sees the case and decides. This is my call: a done issue with the TODO still in code is a signal, but creating a duplicate silently is worse.
 
@@ -95,3 +94,14 @@ None that need the author.
 - The command file gives a FIXME the type `bug` and a TODO the type `task`, when the tracker allows them.
 - The command file runs the dry runs before the preview and asks once after it, so the user sees records that already passed validation.
 - `--path` drops a leading `./`.
+
+## Changes after review
+
+- **Comments are parsed, not matched by line.** `findTodos(source, file)` picks the comment syntax from the file name: `//` and `/* */` for js, mjs, cjs, jsx, ts, tsx, java, kt, swift, c, cpp and cs; `//`, `/* */` and character literals for go and rs; `/* */` for css; `#` for py (with triple quotes), sh, bash, zsh, rb, yaml, yml, toml, Makefile and Dockerfile; `<!-- -->` for html, xml, svg and vue; and `<!-- -->` only for md, with fenced code and inline code blanked first. A file type not listed is not read.
+- **A mark inside a string is not a comment.** `//` after a colon (a URL) is not a mark, and `#` counts only at the start of a line or after a space. Template literals, Python triple quotes and Go raw strings can span lines.
+- **The tag is the first word of the comment**, so the first tag wins (`// FIXME: TODO items` is a FIXME with the text `TODO items`) and prose that names a TODO in passing is not one. `TODO:fix` with no space counts.
+- **No `file:line` match.** An issue that lists an old line does not cover a new comment on that line. The matches are `key`, and `text` on whole words. A moved-back row of `matched` keeps its `title` and `description` in the data.
+- **The tracker read is complete or flagged.** `readExistingIssues` asks for up to 100000 issues, which makes the Linear adapter read every page. A read the tracker cut, or one that reached the limit, sets `incomplete: true` in the data and prints a warning. The command file stops before any create.
+- **The scan never follows symbolic links** (`lstat`), skips the tracker folder from the config (`tracker.path`) in place of a fixed `.issues/`, and answers `INVALID_INPUT` for a `--path` outside the repository. `--path src` matches `src/` and `src` but not `src2/`.
+- **A missing git** answers `NOT_CONFIGURED` with the message "git was not found".
+- A test scans the pmkit repository and expects no candidate.
