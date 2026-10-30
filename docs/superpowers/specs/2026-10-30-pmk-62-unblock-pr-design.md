@@ -34,6 +34,15 @@ The Dev catalog lists `unblock-pr`: "Pending checks, reviews, conflicts, threads
 - Only reads, so no timeouts. The graphql call uses the shared `MAX_OUTPUT`.
 - The command file finds the issue branch as `issues:review` does and gives a next step per blocker kind (`ci logs`, `/pmkit:issues:progress`, a rebase).
 
+## Review changes (round 3)
+
+- `blocked` is `true`, `false` or `null`. `null` means nothing known blocks the merge but a read is missing or GitHub has not computed the merge state (`mergeable` or `mergeStateStatus` `UNKNOWN`). That case adds an `unchecked` entry for `conflicts` with the hint to run the command again in a few seconds.
+- The result has `blocking` and `pending`, lists of `{ area, message }`. Blocking holds what the protection requires (approvals, required checks, conversation resolution, strict up to date), merge conflicts, a draft, requested changes and a rule GitHub enforces that the command does not read (`mergeStateStatus` `BLOCKED` with nothing else to explain it). Pending holds requested reviewers nobody requires, checks that are not required, `BEHIND` without strict protection and unresolved threads when conversation resolution is not required.
+- `draft` is a top-level field read from the pull request. It no longer lives in `policies`.
+- `threads` has `open` and `outdated`, both unresolved. The conversation rule counts both.
+- Only a 403 or 404 style refusal becomes `unchecked`. A network error or a 5xx fails the command with `UPSTREAM`.
+- The command file offers `pr ready --issue <id>` (dry run, then one confirmation) only when it has an issue ID.
+
 ## Acceptance criteria map
 
 1. Lists the pending checks, reviews, conflicts, open threads and policies: the fields `checks`, `reviews`, `conflicts`, `threads` and `policies` of `pr blockers`, rendered by the command file.
