@@ -46,6 +46,9 @@ export function createDocumentFile(docsDir, docPath, body, { dryRun = false, onW
 /** The regular files under the docs folder, as { path } sorted by path. Hidden entries and symlinks are skipped, and a missing folder lists nothing. */
 export function listDocumentFiles(docsDir) {
   if (!fs.existsSync(docsDir)) return []
+  if (!fs.statSync(docsDir).isDirectory()) {
+    throw new PmkitError('CONFLICT', 'the docs folder is a file, not a folder', 'Rename or remove that file so pmkit can keep its docs folder there')
+  }
   const found = []
   const walk = (dir, prefix) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

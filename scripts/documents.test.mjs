@@ -110,3 +110,12 @@ test('listDocuments writes nothing', () => {
   tracker.listDocuments()
   assert.equal(hashTree(root), before)
 })
+
+test('listDocuments answers CONFLICT with a next step when the docs path is a file', () => {
+  const { tracker, docs, root } = setup()
+  fs.rmSync(docs, { recursive: true, force: true })
+  fs.writeFileSync(docs, 'not a folder')
+  assert.throws(() => tracker.listDocuments(), (error) => error.code === 'CONFLICT' && /next|rename|remove/i.test(error.nextStep))
+  assert.equal(fs.readFileSync(docs, 'utf8'), 'not a folder')
+  assert.equal(fs.existsSync(path.join(root, '.issues', 'issues')), true)
+})
