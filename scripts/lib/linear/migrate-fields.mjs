@@ -16,7 +16,7 @@ export const PROJECT_TYPE_OF_CATEGORY = Object.freeze({
 })
 
 export const EXPORT_LOSSES = [
-  'sprints', 'sprint names', 'history', 'epic dates', 'comments', 'status updates', 'milestones', 'releases', 'time logs', 'documents',
+  'sprints', 'sprint names', 'history', 'epic dates', 'comments', 'status updates', 'milestones', 'releases', 'time logs', 'documents', 'views',
   'branch names', 'ids', 'estimates', 'members', 'links', 'capacity',
 ]
 
@@ -332,6 +332,7 @@ export function mapExport(snapshot, target) {
   else if (out.releases > 0) losses.set('releases', out.releases, [], `${plural(out.releases, 'release')} stay in .issues/releases/; pmkit has no Linear release mapping`)
   losses.set('time logs', out.timeLogs ?? 0, [], `${plural(out.timeLogs ?? 0, 'time log')} stay in events.jsonl; Linear has no time tracking`)
   losses.set('documents', out.documents ?? 0, [], `${plural(out.documents ?? 0, 'document')} stay in .issues/docs/`)
+  losses.set('views', out.views ?? 0, [], `${plural(out.views ?? 0, 'view')} stay in .issues/views/; pmkit does not create Linear views`)
   const branches = losses.get('branch names')
   if (branches) branches.why = `${plural(branches.count, 'issue')} get the branch name Linear gives them; the map keeps the old id`
   const ids = snapshot.issues.length + snapshot.epics.length

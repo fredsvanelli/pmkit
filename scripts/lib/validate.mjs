@@ -11,8 +11,10 @@ import { driftEvents, readEvents } from './local/events.mjs'
 import { formatError } from './local/migrations.mjs'
 import { hasMilestoneFiles, milestoneStems, parseMilestone, validMilestoneId } from './local/milestones.mjs'
 import { parseRelease, releaseStems, validReleaseId } from './local/releases.mjs'
+import { checkFilter } from './local/query.mjs'
+import { parseView, validViewName, viewStems } from './local/views.mjs'
 import { hasConflictMarkers, parseIssueFile, toFrontmatter } from './local/issue-file.mjs'
-import { overlaps, readSprint } from './local/sprints.mjs'
+import { overlaps, readSprint, sprintFileExists } from './local/sprints.mjs'
 
 const LIST_REFS = ['blocked_by', 'related', 'duplicate_of']
 const read = (file) => fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
@@ -242,6 +244,23 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
       parseRelease(read(file), id)
     } catch (error) {
       add(file, 'release', error.message)
+    }
+  }
+
+  // Views
+  const viewsDir = path.join(issuesDir, 'views')
+  for (const name of [...viewStems(viewsDir)].sort()) {
+    const file = path.join(viewsDir, `${name}.yaml`)
+    if (conflicted.has(file)) continue
+    if (!validViewName(name)) {
+      add(file, 'view', `view name "${name}" must start and end with a letter or digit and hold only letters, digits, ".", "_" and "-"`)
+      continue
+    }
+    try {
+      const { filter } = parseView(read(file), name)
+      checkFilter(filter, { types: local.types, members: Object.keys(local.members), sprintExists: (id) => sprintFileExists(issuesDir, id) })
+    } catch (error) {
+      add(file, 'view', error.message)
     }
   }
 

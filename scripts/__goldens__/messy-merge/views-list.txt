@@ -1,0 +1,13 @@
+$ pmkit views list
+exit 0
+--- stdout
+no views
+--- stderr
+(empty)
+
+$ pmkit views list --json
+exit 0
+--- stdout
+[]
+--- stderr
+(empty)

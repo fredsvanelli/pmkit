@@ -5,6 +5,8 @@ import { CAPABILITIES, SERVED_BY } from '../capabilities.mjs'
 import { CAPACITY_FILE } from './capacity-store.mjs'
 import { estimateScale } from './discovery.mjs'
 
+const unservedHint = (id) => `No pmkit command serves ${id} yet; Linear offers it on this workspace`
+
 /**
  * What the Linear API has, whatever the workspace: PMK-29's API check and the introspection the spec records.
  * Capabilities missing here depend on a setting, the plan or pmkit, and buildLinearCapabilities decides them.
@@ -15,7 +17,7 @@ export const LINEAR_CAPABILITIES = Object.freeze({
   deliverables: { path: 'native', detail: { entity: 'project', derived: ['deliverableProgress'], unsupported: ['createMilestone'] } },
   status_update: { path: 'native', detail: { entity: 'project update' } },
   native_metrics: { path: 'derived', detail: { source: 'history' } },
-  saved_views: { path: 'native' },
+  saved_views: { path: 'absent', detail: { workspace: 'native' }, enableHint: unservedHint('saved_views') },
   documents: { path: 'native', detail: { scope: 'project', unsupported: ['createDocument', 'listDocuments'] } },
   time_tracking: { path: 'absent', enableHint: 'Linear has no time tracking' },
   security_alerts: { path: 'derived', detail: { source: 'scanners' } },
@@ -25,7 +27,6 @@ export const LINEAR_CAPABILITIES = Object.freeze({
 export const BUSINESS_PLANS = ['business', 'enterprise', 'trial']
 const GIT_INTEGRATIONS = ['github', 'gitlab']
 const ENABLE_GIT_HINT = 'Set git_host in .pmkit/config.yaml'
-const unservedHint = (id) => `No pmkit command serves ${id} yet; Linear offers it on this workspace`
 
 const TEAM_SETTINGS = {
   cycles: { on: (team) => team.cyclesEnabled, hint: "Turn on cycles in the team's settings in Linear" },

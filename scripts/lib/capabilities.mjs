@@ -23,7 +23,7 @@ export const SERVED_BY = {
   releases: ['release list', 'release get', 'release issues', 'release create', 'release mark-released', 'release-notes'],
   capacity: ['cycle capacity'],
   native_metrics: ['metrics velocity', 'metrics cycle-time', 'metrics lead-time', 'metrics throughput', 'metrics aging', 'events'],
-  saved_views: [],
+  saved_views: ['views list', 'views save', 'views run'],
   documents: ['docs list', 'docs read', 'docs create'],
   demand_signals: [],
   request_queue: [],

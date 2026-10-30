@@ -1143,6 +1143,11 @@ test('a milestone, a document and a milestone of an issue are readable', async (
   const listed = await cli(context, ['docs', 'list', '--json'], fetch)
   assert.equal(listed.code, 2, listed.stdout + listed.stderr)
   assert.equal(JSON.parse(listed.stdout).error.code, 'NOT_SUPPORTED')
+  for (const args of [['views', 'list'], ['views', 'save', 'v', '--category', 'done'], ['views', 'run', 'v']]) {
+    const refused = await cli(context, [...args, '--json'], fetch)
+    assert.equal(refused.code, 2, refused.stdout + refused.stderr)
+    assert.equal(JSON.parse(refused.stdout).error.code, 'NOT_SUPPORTED', args.join(' '))
+  }
   const attached = await cli(context, ['issues', 'get', 'ACME-1', '--json'], fetch)
   assert.equal(attached.code, 0, attached.stdout + attached.stderr)
   assert.equal(JSON.parse(attached.stdout).milestone, MILESTONE)

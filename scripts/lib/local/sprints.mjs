@@ -5,6 +5,9 @@ import path from 'node:path'
 import { PmkitError } from '../errors.mjs'
 import { parseYaml, stringifyYaml } from '../yaml.mjs'
 
+/** Whether a sprint file exists for an id. An id that is not a plain name, such as `../config`, never does. */
+export const sprintFileExists = (issuesDir, id) => /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(String(id)) && fs.existsSync(path.join(issuesDir, 'sprints', `${id}.yaml`))
+
 export const SPRINT_STATES = ['planned', 'active', 'closed']
 const FILE_ORDER = ['name', 'start', 'end', 'goal', 'state', 'closed', 'capacity', 'days_off']
 const DOCTOR = '/pmkit:local:doctor'

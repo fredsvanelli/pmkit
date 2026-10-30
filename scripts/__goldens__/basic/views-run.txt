@@ -1,0 +1,20 @@
+$ pmkit views run golden-view
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: view golden-view does not exist
+next: pmkit views list
+
+$ pmkit views run golden-view --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "view golden-view does not exist",
+    "nextStep": "pmkit views list"
+  }
+}
+--- stderr
+(empty)

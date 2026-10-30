@@ -27,11 +27,11 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 4. Show the flags in one line, for example "Filter: --type bug --sprint current --sort priority", so the user can correct them. Do not wait for an answer. When the user corrects the filter, rerun from step 3 with the correction.
 5. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues list <flags> --json`.
 6. Show the result as an issue table and the count.
-7. When the user has asked this kind of question before in this conversation, offer to save it as a view. Saving a view is not available yet, so say that and only offer the flags to reuse.
+7. When the user has asked this kind of question before in this conversation, offer to save it as a view, but only when `capabilities --json` reports `saved_views` as `native`. Otherwise offer only the flags to reuse. Ask for a name, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" views save <name> <flags> --dry-run --json`, show the filter, and ask once following "How to show a write" in the conventions. After approval, run it without `--dry-run`. Tell the user that `views run <name>` runs the view again and `views list` lists the views.
 
 ## Confirmation points
 
-None. The command only reads. The question of step 3 is a choice between matches, not a confirmation.
+- Step 7: the name of the view, then the filter to save, before `views save` runs. `write_policy.confirm: none` skips the second question. The search itself only reads, and the question of step 3 is a choice between matches.
 
 ## Output
 
@@ -41,4 +41,5 @@ The one-line filter, the issue table (see the conventions), and "N issues". When
 
 - No sprint is active and the question says "current sprint": say that no sprint is active and offer `/pmkit:cycle:plan`.
 - The question names a field the tracker has no flag for: run the closest filter and say which part of the question it does not cover.
+- `views save` answers `CONFLICT` because the name exists: ask for another name, or offer `--overwrite`.
 - An error from the CLI: apply the rules for reading errors in the conventions.

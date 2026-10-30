@@ -101,6 +101,9 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `docs list` | lists the documents under the docs folder |
 | `docs read <path>` | prints a document under the docs folder |
 | `docs create <path> --body-file f` | creates a document under the docs folder |
+| `views save <name> [filter flags] [--overwrite]` | saves an issue filter as `.issues/views/<name>.yaml`; takes the flags of `issues list`, and refuses a name that exists unless `--overwrite` |
+| `views list` | lists the saved views with their filters |
+| `views run <name>` | runs a saved view and lists its issues; `sprint: current` and `assignee: me` stay symbolic, so they resolve when the view runs |
 | `metrics velocity` | points or counts done per closed sprint, and the average |
 | `metrics cycle-time` | median and p85 days from first `in_progress` to `done` |
 | `metrics lead-time` | median and p85 days from creation to `done` |

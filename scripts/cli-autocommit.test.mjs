@@ -139,6 +139,7 @@ const WRITES = [
   { args: ['epic', 'create', '--title', 'E'], expectedMessage: /^pmkit: epic create EPC-[0-9A-Z]{4}$/ },
   { args: ['epic', 'update-status', 'EPC-2M9D', '--health', 'at_risk', '--body-file', '-'], input: 'Late on retries.\n', expectedMessage: 'pmkit: epic update-status EPC-2M9D' },
   { args: ['docs', 'create', 'notes.md', '--body-file', '-'], input: 'hello\n', expectedMessage: 'pmkit: docs create notes.md' },
+  { args: ['views', 'save', 'mine', '--category', 'done'], expectedMessage: 'pmkit: views save mine' },
 ]
 
 const head = (root) => git(root, 'rev-parse', 'HEAD').stdout.trim()

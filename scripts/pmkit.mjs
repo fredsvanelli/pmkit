@@ -157,6 +157,22 @@ function issueFilter(ctx) {
   return filter
 }
 
+/** A filter as one line, key=value pairs in the order they were stored. */
+const filterText = (filter) => Object.entries(filter).map(([key, value]) => `${key}=${[value].flat().join(',')}`).join(' ')
+
+/** The result of an issue search as the CLI prints it: the table and the warnings. `sort` and `sprint` are the filter values. */
+async function issueSearchResult(tracker, found, { sort, sprint }) {
+  const warnings = found.problems.map(problemLine)
+  if (found.hasMore === true) {
+    const order = (sort ?? 'created') === 'created' ? '' : '; the order covers the issues read'
+    warnings.push(`Linear has more matching issues than the 1000 pmkit read; narrow the filter${order}`)
+  }
+  if (sprint === 'current' && found.issues.length === 0 && (await tracker.currentCycle()) === null) {
+    warnings.push('there is no active sprint, so --sprint current matches no issues; run pmkit cycle list')
+  }
+  return { data: found, text: issueTable(found.issues, { sprint: sprint === undefined }), warnings }
+}
+
 /** The create or update input from field flags and body files. */
 async function issuePatch(ctx, { create }) {
   const { opt } = ctx
@@ -379,16 +395,34 @@ export const COMMANDS = [
     flags: ['text', 'category', 'type', 'assignee', 'label', 'sprint', 'parent', 'blocked', 'updated-before', 'updated-after', 'sort', 'limit', 'archived'],
     run: async (ctx) => {
       const tracker = await ctx.tracker()
-      const found = await tracker.searchIssues(issueFilter(ctx))
-      const warnings = found.problems.map(problemLine)
-      if (found.hasMore === true) {
-        const order = (ctx.opt('sort') ?? 'created') === 'created' ? '' : '; the order covers the issues read'
-        warnings.push(`Linear has more matching issues than the 1000 pmkit read; narrow the filter${order}`)
-      }
-      if (ctx.opt('sprint') === 'current' && found.issues.length === 0 && (await tracker.currentCycle()) === null) {
-        warnings.push('there is no active sprint, so --sprint current matches no issues; run pmkit cycle list')
-      }
-      return { data: found, text: issueTable(found.issues, { sprint: ctx.opt('sprint') === undefined }), warnings }
+      return issueSearchResult(tracker, await tracker.searchIssues(issueFilter(ctx)), { sort: ctx.opt('sort'), sprint: ctx.opt('sprint') })
+    },
+  },
+  {
+    name: 'views save', summary: 'saves an issue filter under a name', usage: '<name> [issues list filter flags] [--overwrite]', write: true, args: ['name'],
+    flags: ['text', 'category', 'type', 'assignee', 'label', 'sprint', 'parent', 'blocked', 'updated-before', 'updated-after', 'sort', 'limit', 'archived', 'overwrite'],
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).saveView(ctx.args[0], issueFilter(ctx), await ctx.actor(), { dryRun: ctx.dryRun, replace: ctx.flag('overwrite') })
+      const record = (view) => `view ${view.name}\nfilter: ${filterText(view.filter)}`
+      const replaced = result.before?.unreadable === undefined ? filterText(result.before?.filter ?? {}) : `a file that could not be read (${result.before.unreadable})`
+      const text = result.before === null ? record(result.after) : `${record(result.after)}\nreplaces: ${replaced}`
+      return { data: result, text: ctx.dryRun ? `${text}\ndry run: nothing was written` : text, commit: result.after.name }
+    },
+  },
+  {
+    name: 'views list', summary: 'lists the saved views', usage: '', flags: [],
+    run: async (ctx) => {
+      const { views, problems } = await (await ctx.tracker()).listViews()
+      const warnings = problems.map((problem) => `${problemLine(problem)}; run pmkit validate`)
+      return { data: views, text: views.length === 0 ? 'no views' : table(['Name', 'Filter'], views.map((view) => [view.name, filterText(view.filter)])), warnings }
+    },
+  },
+  {
+    name: 'views run', summary: 'runs a saved view and lists its issues', usage: '<name>', args: ['name'], flags: [],
+    run: async (ctx) => {
+      const tracker = await ctx.tracker()
+      const found = await tracker.runView(ctx.args[0])
+      return issueSearchResult(tracker, found, { sort: found.view.filter.sort, sprint: found.view.filter.sprint })
     },
   },
   {

@@ -31,7 +31,7 @@ function snapshot(overrides = {}) {
     system: 'local', scope: { path: '.issues' }, commit: 'abc1234',
     people: [{ id: 'fred', name: 'Fred', email: 'User-1@Example.com', app: false }, { id: 'ana', name: 'Ana Souza', email: 'ana@example.com', app: false }],
     labels: [], epics: [], sprints: [], issues: [], links: [], comments: [],
-    outOfScope: { releases: 0, timeLogs: 0, documents: 0, milestones: 0 },
+    outOfScope: { releases: 0, timeLogs: 0, documents: 0, milestones: 0, views: 0 },
     ...overrides,
   }
 }
@@ -199,13 +199,20 @@ test('every export row of "What does not round-trip" appears in losses when its 
     issues: [issue('ISS-1', { sprint: '2026-10-12', milestone: 'v1', release: '1.0', branch: 'iss-1-x', estimate: 21, assignee: 'bea' })],
     links: [{ kind: 'blocks', from: 'ISS-1', to: 'ISS-9' }],
     comments: [{ id: 'ISS-1/a', issue: 'ISS-1', author: 'bea', created: '2026-10-28T18:11:19Z', body: 'x', parent: null, resolved: false }],
-    outOfScope: { releases: 1, timeLogs: 2, documents: 3, milestones: 1 },
+    outOfScope: { releases: 1, timeLogs: 2, documents: 3, milestones: 1, views: 4 },
   }), await target())
   assert.deepEqual(mapped.losses.map((loss) => loss.what).sort(), [...EXPORT_LOSSES].sort())
   for (const loss of mapped.losses) {
     assert.ok(loss.count > 0, loss.what)
     assert.ok(loss.why.length > 0, loss.what)
   }
+})
+
+test('views are a loss that names the folder they stay in', async () => {
+  const mapped = mapExport(snapshot({ people: [], sprints: [], epics: [], issues: [], outOfScope: { releases: 0, timeLogs: 0, documents: 0, milestones: 0, views: 5 } }), await target())
+  const views = mapped.losses.find((loss) => loss.what === 'views')
+  assert.equal(views.count, 5)
+  assert.equal(views.why, '5 views stay in .issues/views/; pmkit does not create Linear views')
 })
 
 test('the sprint names and goals and the epic creation times are losses', async () => {

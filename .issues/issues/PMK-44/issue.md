@@ -2,14 +2,16 @@
 id: PMK-44
 title: Add saved views to the Local tracker
 type: feature
-status: backlog
+status: in_review
 priority: medium
 estimate: 3
+assignee: fred
 parent: EPC-6
 blocked_by: [PMK-2]
 milestone: generic-commands
+branch: pmk-44-add-saved-views-to-the-local-tracker
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-25T19:13:25Z
+updated: 2026-10-30T22:29:02Z
 ---
 
 ## Description
@@ -18,7 +20,7 @@ Source: Local adapter, Entity mapping ("`views/<name>.yaml` with a query"); MVP 
 
 ## Acceptance criteria
 
-- [ ] `views/<name>.yaml` stores an issue filter
-- [ ] The CLI saves, lists and runs a view
-- [ ] `/pmkit:issues:find` offers to save a repeated query as a view
-- [ ] `capabilities` reports `saved_views` as native
+- [x] `views/<name>.yaml` stores an issue filter
+- [x] The CLI saves, lists and runs a view
+- [x] `/pmkit:issues:find` offers to save a repeated query as a view
+- [x] `capabilities` reports `saved_views` as native
