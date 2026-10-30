@@ -201,3 +201,84 @@ test('the default exec returns status, stdout and stderr', () => {
   const result = run(process.execPath, ['-e', 'process.stdin.pipe(process.stdout)'], { input: 'hi' })
   assert.deepEqual(result, { status: 0, stdout: 'hi', stderr: '' })
 })
+
+const depList = [
+  { id: 5, environment: 'production', ref: 'main', sha: 'abc', created_at: '2026-10-29T10:00:00Z' },
+  { id: 4, environment: 'staging', ref: 'main', sha: 'def', created_at: '2026-10-28T10:00:00Z' },
+]
+
+test('listDeploys reads the deployments, then the latest status of each', () => {
+  const { exec, calls } = fakeExec(
+    { stdout: JSON.stringify(depList) },
+    { stdout: JSON.stringify([{ state: 'success', log_url: 'https://l/5', target_url: null }]) },
+    { stdout: '[]' },
+  )
+  const result = host(exec).listDeploys({})
+  assert.deepEqual(calls.map((c) => c.args), [
+    ['api', 'repos/{owner}/{repo}/deployments?per_page=20'],
+    ['api', 'repos/{owner}/{repo}/deployments/5/statuses?per_page=1'],
+    ['api', 'repos/{owner}/{repo}/deployments/4/statuses?per_page=1'],
+  ])
+  assert.deepEqual(result, [
+    { id: 5, environment: 'production', ref: 'main', sha: 'abc', createdAt: '2026-10-29T10:00:00Z', state: 'success', url: 'https://l/5' },
+    { id: 4, environment: 'staging', ref: 'main', sha: 'def', createdAt: '2026-10-28T10:00:00Z', state: 'pending', url: null },
+  ])
+})
+
+test('listDeploys encodes the environment and checks the limit', () => {
+  const { exec, calls } = fakeExec({ stdout: '[]' })
+  host(exec).listDeploys({ environment: 'a b&c', limit: 5 })
+  assert.deepEqual(calls[0].args, ['api', 'repos/{owner}/{repo}/deployments?per_page=5&environment=a%20b%26c'])
+  for (const limit of [0, 101, 1.5, 'x']) {
+    assert.throws(() => host(exec).listDeploys({ limit }), (e) => e.code === 'INVALID_INPUT')
+  }
+  assert.equal(calls.length, 1)
+})
+
+test('ciLogs with a run id reads the failed steps of that run', () => {
+  const { exec, calls } = fakeExec({ stdout: 'step failed\n' })
+  const result = host(exec).ciLogs({ runId: 99 })
+  assert.deepEqual(calls[0].args, ['run', 'view', '99', '--log-failed'])
+  assert.deepEqual(result, { runId: 99, workflowName: null, url: null, log: 'step failed\n' })
+})
+
+test('ciLogs without a run id takes the newest failed run of the branch', () => {
+  const runs = [
+    { databaseId: 3, workflowName: 'CI', conclusion: 'success', url: 'u3' },
+    { databaseId: 2, workflowName: 'CI', conclusion: 'failure', url: 'u2' },
+    { databaseId: 1, workflowName: 'CI', conclusion: 'failure', url: 'u1' },
+  ]
+  const { exec, calls } = fakeExec({ stdout: JSON.stringify(runs) }, { stdout: 'boom\n' })
+  const result = host(exec).ciLogs({ branch: 'main' })
+  assert.deepEqual(calls[1].args, ['run', 'view', '2', '--log-failed'])
+  assert.deepEqual(result, { runId: 2, workflowName: 'CI', url: 'u2', log: 'boom\n' })
+})
+
+test('ciLogs counts timed_out and startup_failure runs as failed', () => {
+  for (const conclusion of ['timed_out', 'startup_failure']) {
+    const { exec, calls } = fakeExec({ stdout: JSON.stringify([{ databaseId: 7, workflowName: 'CI', conclusion, url: 'u' }]) }, { stdout: 'x' })
+    assert.equal(host(exec).ciLogs({ branch: 'main' }).runId, 7)
+    assert.deepEqual(calls[1].args, ['run', 'view', '7', '--log-failed'])
+  }
+})
+
+test('a log that overflows the buffer becomes an UPSTREAM error', () => {
+  const { exec } = fakeExec(() => { throw Object.assign(new Error('spawnSync gh ENOBUFS'), { code: 'ENOBUFS' }) })
+  assert.throws(() => host(exec).ciLogs({ runId: 9 }), (e) => e instanceof PmkitError && e.code === 'UPSTREAM' && /too large/.test(e.message))
+})
+
+test('the default exec reads more than 1 MiB of output', () => {
+  const run = defaultExec({ root: process.cwd(), env: process.env })
+  const result = run(process.execPath, ['-e', "process.stdout.write('x'.repeat(3 * 1024 * 1024))"])
+  assert.equal(result.stdout.length, 3 * 1024 * 1024)
+})
+
+test('ciLogs returns null when no run of the branch failed, and refuses bad input', () => {
+  const { exec, calls } = fakeExec({ stdout: JSON.stringify([{ databaseId: 3, conclusion: 'success' }]) })
+  assert.equal(host(exec).ciLogs({ branch: 'main' }), null)
+  const before = calls.length
+  assert.throws(() => host(exec).ciLogs({ branch: '-x' }), (e) => e.code === 'INVALID_INPUT')
+  assert.throws(() => host(exec).ciLogs({ runId: 'abc' }), (e) => e.code === 'INVALID_INPUT')
+  assert.throws(() => host(exec).ciLogs({}), (e) => e.code === 'INVALID_INPUT')
+  assert.equal(calls.length, before)
+})

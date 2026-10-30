@@ -108,6 +108,8 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `pr ready --issue <id>` | marks the open draft pull request of an issue ready for review |
 | `pr status [--branch b]` | the pull request, checks and reviews of a branch (default: the current branch) |
 | `pr sync` | moves `in_review` issues to `done` when their pull request is merged |
+| `deploys list [--environment e] [--limit n]` | the repository deployments (default 20, at most 100) with the state of the latest status of each; reads only |
+| `ci logs [--branch b] [--run id] [--tail n]` | the log of the failed steps of a workflow run: `--run`, or the newest failed run of a branch (default: the current branch); keeps the last `--tail` lines (default 200); reads only |
 | `changelog --file f --since v` | prints the `CHANGELOG.md` sections newer than a version, oldest first; needs no config |
 | `migrate` | moves the tracker files to the format this pmkit writes; `--dry-run` lists every file it would touch |
 | `reindex` | rebuilds the query index in `.issues/.cache/` from the issue files; changes only files git ignores |
