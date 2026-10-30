@@ -27,7 +27,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 4. Show the flags in one line, for example "Filter: --type bug --sprint current --sort priority", so the user can correct them. Do not wait for an answer. When the user corrects the filter, rerun from step 3 with the correction.
 5. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues list <flags> --json`.
 6. Show the result as an issue table and the count.
-7. When the user has asked this kind of question before in this conversation, offer to save it as a view, but only when `capabilities --json` reports `saved_views` as `native` without `saveView` in its `detail.unsupported`. Otherwise offer only the flags to reuse. Ask for a name, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" views save <name> <flags> --dry-run --json`, show the filter, and ask once following "How to show a write" in the conventions. After approval, run it without `--dry-run`. Tell the user that `views run <name>` runs the view again and `views list` lists the views.
+7. When the user has asked this kind of question before in this conversation, offer to save it as a view, but only when `capabilities --json` reports `saved_views` as `native`. Otherwise offer only the flags to reuse. Ask for a name, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" views save <name> <flags> --dry-run --json`, show the filter, and ask once following "How to show a write" in the conventions. After approval, run it without `--dry-run`. Tell the user that `views run <name>` runs the view again and `views list` lists the views.
 
 ## Confirmation points
 

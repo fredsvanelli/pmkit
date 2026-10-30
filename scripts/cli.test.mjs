@@ -1109,6 +1109,21 @@ test('views save, list and run store a filter and run it', () => {
   assert.equal(JSON.parse(empty.stdout).error.code, 'INVALID_INPUT')
 })
 
+test('views list skips a broken file with a warning, and views save --overwrite replaces it', () => {
+  const root = makeRepo('team')
+  json(root, ['views', 'save', 'good', '--blocked'])
+  fs.writeFileSync(path.join(root, '.issues/views/broken.yaml'), 'filter: 3\n')
+  const listed = run(root, ['views', 'list', '--json'])
+  assert.equal(listed.status, 0, listed.stderr)
+  assert.deepEqual(JSON.parse(listed.stdout).map((view) => view.name), ['good'])
+  assert.match(listed.stderr, /broken: INVALID_INPUT .*needs a "filter" map; run pmkit validate/)
+  const dry = run(root, ['views', 'save', 'broken', '--archived', '--overwrite', '--dry-run'])
+  assert.equal(dry.status, 0, dry.stderr)
+  assert.match(dry.stdout, /replaces: a file that could not be read \(.*needs a "filter" map\)/)
+  json(root, ['views', 'save', 'broken', '--archived', '--overwrite'])
+  assert.equal(run(root, ['views', 'list']).stderr, '')
+})
+
 test('views save --dry-run writes nothing', () => {
   const root = makeRepo('team')
   const before = hashTree(root)

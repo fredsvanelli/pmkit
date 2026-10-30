@@ -36,7 +36,7 @@ test('saveView writes views/<name>.yaml, listViews lists it and runView runs the
   const saved = tracker.saveView('active', filter, 'fred')
   assert.deepEqual(saved, { before: null, after: { name: 'active', filter } })
   assert.equal(fs.readFileSync(path.join(views, 'active.yaml'), 'utf8'), 'filter:\n  categories: [in_progress]\n  sort: created\n')
-  assert.deepEqual(tracker.listViews(), [{ name: 'active', filter }])
+  assert.deepEqual(tracker.listViews(), { views: [{ name: 'active', filter }], problems: [] })
   const run = tracker.runView('active')
   assert.deepEqual(run.issues.map((i) => i.id), tracker.searchIssues(filter).issues.map((i) => i.id))
   assert.ok(run.issues.length > 0)
@@ -44,10 +44,10 @@ test('saveView writes views/<name>.yaml, listViews lists it and runView runs the
 
 test('listViews is empty without a views folder and sorted by name otherwise', () => {
   const { tracker } = setup()
-  assert.deepEqual(tracker.listViews(), [])
+  assert.deepEqual(tracker.listViews(), { views: [], problems: [] })
   tracker.saveView('b', { blocked: true }, 'fred')
   tracker.saveView('a', { blocked: true }, 'fred')
-  assert.deepEqual(tracker.listViews().map((v) => v.name), ['a', 'b'])
+  assert.deepEqual(tracker.listViews().views.map((v) => v.name), ['a', 'b'])
 })
 
 test('saveView refuses an existing name, a name that differs by case and an invalid name, and replace overwrites', () => {
@@ -60,7 +60,7 @@ test('saveView refuses an existing name, a name that differs by case and an inva
   const other = fs.readFileSync(path.join(views, 'other.yaml'), 'utf8')
   const result = tracker.saveView('Mine', { blocked: true }, 'fred', { replace: true })
   assert.deepEqual(result.before, { name: 'Mine', filter: { assignee: 'me' } })
-  assert.deepEqual(tracker.listViews().map((v) => v.name), ['Mine', 'other'])
+  assert.deepEqual(tracker.listViews().views.map((v) => v.name), ['Mine', 'other'])
   assert.equal(fs.readFileSync(path.join(views, 'other.yaml'), 'utf8'), other)
 })
 
@@ -85,4 +85,44 @@ test('runView of a missing view is NOT_FOUND and of a view with a stale value is
   assert.throws(() => tracker.runView('stale'), code('INVALID_INPUT'))
   fs.writeFileSync(path.join(views, 'broken.yaml'), 'filter: 3\n')
   assert.throws(() => tracker.runView('broken'), code('INVALID_INPUT'))
+})
+
+test('listViews skips a file that does not parse and reports it as a problem', () => {
+  const { tracker, views } = setup()
+  tracker.saveView('good', { blocked: true }, 'fred')
+  fs.writeFileSync(path.join(views, 'conf.yaml'), 'filter:\n<<<<<<< HEAD\n  blocked: true\n=======\n>>>>>>> x\n')
+  fs.writeFileSync(path.join(views, 'scalar.yaml'), 'filter: 3\n')
+  const { views: listed, problems } = tracker.listViews()
+  assert.deepEqual(listed.map((v) => v.name), ['good'])
+  assert.deepEqual(problems.map((p) => [p.id, p.code]), [['conf', 'INVALID_INPUT'], ['scalar', 'INVALID_INPUT']])
+  assert.match(problems[1].message, /needs a "filter" map/)
+})
+
+test('saveView with replace overwrites a view that does not parse and marks the old file as unreadable', () => {
+  const { tracker, views } = setup()
+  fs.mkdirSync(views, { recursive: true })
+  fs.writeFileSync(path.join(views, 'broken.yaml'), 'filter: 3\n')
+  assert.throws(() => tracker.saveView('broken', { blocked: true }, 'fred'), code('CONFLICT'))
+  const result = tracker.saveView('broken', { blocked: true }, 'fred', { replace: true })
+  assert.deepEqual(result.after, { name: 'broken', filter: { blocked: true } })
+  assert.equal(result.before.name, 'broken')
+  assert.match(result.before.unreadable, /needs a "filter" map/)
+  assert.equal(fs.readFileSync(path.join(views, 'broken.yaml'), 'utf8'), 'filter: { blocked: true }\n')
+})
+
+test('saveView names the problem of an empty value and refuses a filter that would not read back the same', () => {
+  const { tracker, root } = setup()
+  const before = hashTree(root)
+  const refused = (filter, pattern) => assert.throws(() => tracker.saveView('x', filter, 'fred'), (error) => error.code === 'INVALID_INPUT' && pattern.test(error.message))
+  refused({ text: '' }, /text must not be empty/)
+  refused({ labels: [] }, /labels must not be empty/)
+  refused({ text: 'foo\nbar' }, /text would not read back as saved/)
+  assert.equal(hashTree(root), before)
+})
+
+test('runView of a view with a stale value names the view and says to save it again', () => {
+  const { tracker, views } = setup()
+  fs.mkdirSync(views, { recursive: true })
+  fs.writeFileSync(path.join(views, 'stale.yaml'), 'filter:\n  types: [gone]\n')
+  assert.throws(() => tracker.runView('stale'), (error) => /^view stale is out of date: .*gone/.test(error.message) && /--overwrite/.test(error.nextStep))
 })

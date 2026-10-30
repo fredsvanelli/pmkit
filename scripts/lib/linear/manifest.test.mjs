@@ -56,7 +56,7 @@ test('the default workspace gives the sandbox column', async () => {
     releases: 'absent',
     capacity: 'absent',
     native_metrics: 'derived',
-    saved_views: 'native',
+    saved_views: 'absent',
     documents: 'native',
     demand_signals: 'absent',
     request_queue: 'absent',
@@ -84,7 +84,8 @@ test('the default workspace gives the sandbox column', async () => {
   assert.equal(entry.request_queue.enableHint, 'Linear Asks need the Business or Enterprise plan')
   assert.equal(entry.time_tracking.enableHint, 'Linear has no time tracking')
   assert.deepEqual(entry.security_alerts, { id: 'security_alerts', path: 'derived', detail: { source: 'scanners' } })
-  assert.deepEqual(entry.saved_views, { id: 'saved_views', path: 'native', detail: { unsupported: ['saveView', 'listViews', 'runView'] } })
+  assert.deepEqual(entry.saved_views.detail, { workspace: 'native' })
+  assert.equal(entry.saved_views.enableHint, 'No pmkit command serves saved_views yet; Linear offers it on this workspace')
   assert.deepEqual(entry.user_inbox.detail, { workspace: 'native' })
   assert.deepEqual(entry.deliverables.detail, { entity: 'project', derived: ['deliverableProgress'], unsupported: ['createMilestone'] })
   assert.deepEqual(entry.status_update.detail, { entity: 'project update' })

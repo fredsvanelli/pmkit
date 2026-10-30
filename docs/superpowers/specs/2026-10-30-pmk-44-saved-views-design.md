@@ -29,11 +29,11 @@ filter:
 
 Three new operations in `TRACKER_OPERATIONS`:
 
-- `saveView(name, filter, actor, { dryRun, replace })` returns `{ before, after }` with `{ name, filter }`. It refuses an empty filter, an invalid filter (the same checks as `searchIssues`) and an existing name (`CONFLICT`) unless `replace` is true.
-- `listViews()` returns `[{ name, filter }]` sorted by name.
+- `saveView(name, filter, actor, { dryRun, replace })` returns `{ before, after }` with `{ name, filter }`. With `replace`, a file that does not parse is overwritten and `before` is `{ name, unreadable: message }`. It refuses an empty filter, an invalid filter (the same checks as `searchIssues`) and an existing name (`CONFLICT`) unless `replace` is true.
+- `listViews()` returns `{ views: [{ name, filter }], problems }`, sorted by name. A file that does not parse is skipped and reported in `problems`, and `pmkit validate` reports it as a `view` problem.
 - `runView(name)` returns what `searchIssues` returns for the stored filter. A missing view is `NOT_FOUND`. A file that does not parse is `INVALID_INPUT` with a next step of `/pmkit:local:doctor`.
 
-The Linear adapter gets the generic stubs, which answer `NOT_SUPPORTED`. The Linear manifest lists `saveView`, `listViews` and `runView` under `saved_views.detail.unsupported`.
+The Linear adapter gets the generic stubs, which answer `NOT_SUPPORTED`. The Linear manifest keeps `saved_views` as `absent` with `detail.workspace: native`, because no operation works there.
 
 ### CLI
 

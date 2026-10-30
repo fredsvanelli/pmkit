@@ -1091,35 +1091,71 @@ export function createLocalTracker(root, {
 
   const viewsDir = path.join(issuesDir, 'views')
 
-  function readView(name) {
+  function requireViewName(name) {
     if (!validViewName(name)) throw invalid(`view name "${name}" must start and end with a letter or digit and hold only letters, digits, ".", "_" and "-"`, 'Use a name like open-bugs')
+  }
+
+  function readView(name) {
+    requireViewName(name)
     if (!viewStems(viewsDir).has(name)) throw new PmkitError('NOT_FOUND', `view ${name} does not exist`, 'pmkit views list')
     return parseView(fs.readFileSync(path.join(viewsDir, `${name}.yaml`), 'utf8'), name)
   }
 
-  /** Saved views by name. A file that does not parse fails the list with the doctor as next step. */
-  const listViews = () => [...viewStems(viewsDir)].filter(validViewName).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).map(readView)
+  /** Saved views by name. A file that does not parse is skipped and reported in `problems`; `pmkit validate` lists it too. */
+  function listViews() {
+    const views = []
+    const problems = []
+    for (const name of [...viewStems(viewsDir)].filter(validViewName).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) {
+      try {
+        views.push(readView(name))
+      } catch (error) {
+        if (!(error instanceof PmkitError)) throw error
+        problems.push({ id: name, code: error.code, message: error.message })
+      }
+    }
+    return { views, problems }
+  }
 
-  /** Runs the stored filter as a search. The stored values are checked again, so a view that names a removed type fails. */
-  const runView = (name) => {
+  /** Runs the stored filter as a search. The stored values are checked again, so a view that names a removed type says it is out of date. */
+  function runView(name) {
     const view = readView(name)
-    return { ...search(view.filter), view }
+    try {
+      return { ...search(view.filter), view }
+    } catch (error) {
+      if (!(error instanceof PmkitError) || error.code !== 'INVALID_INPUT') throw error
+      throw invalid(`view ${name} is out of date: ${error.message}`, `Save it again with pmkit views save ${name} <filter flags> --overwrite`)
+    }
   }
 
   function saveView(name, filter, actor, { dryRun = false, replace = false } = {}) {
     requireWriter(actor)
-    if (!validViewName(name)) throw invalid(`view name "${name}" must start and end with a letter or digit and hold only letters, digits, ".", "_" and "-"`, 'Use a name like open-bugs')
+    requireViewName(name)
     if (filter === null || typeof filter !== 'object' || Array.isArray(filter) || Object.keys(filter).length === 0) {
       throw invalid('a view needs at least one filter', 'Pass filter flags such as --category in_progress')
+    }
+    for (const [key, value] of Object.entries(filter)) {
+      if (value === '' || (Array.isArray(value) && value.length === 0)) throw invalid(`${key} must not be empty`, 'Leave the flag out, or give it a value')
     }
     checkFilter(filter, { types: local.types, members: Object.keys(local.members), sprintExists })
     const clash = [...viewStems(viewsDir)].find((stem) => stem.toLowerCase() === name.toLowerCase())
     if (clash !== undefined && !(replace && clash === name)) {
-      throw new PmkitError('CONFLICT', `view ${clash} already exists`, clash === name ? `Pass --overwrite to replace it, or pick another name` : 'Pick another name')
+      throw new PmkitError('CONFLICT', `view ${clash} already exists`, clash === name ? 'Pass --overwrite to replace it, or pick another name' : 'Pick another name')
     }
     const content = serializeView(filter)
     const after = readBack('view file', () => parseView(content, name))
-    const before = clash === undefined ? null : readView(clash)
+    for (const key of Object.keys(filter)) {
+      if (JSON.stringify(filter[key]) !== JSON.stringify(after.filter[key])) throw invalid(`${key} would not read back as saved`, 'Use a value on one line')
+    }
+    let before = null
+    if (clash !== undefined) {
+      try {
+        before = readView(clash)
+      } catch (error) {
+        if (!(error instanceof PmkitError)) throw error
+        // A file that does not parse is replaced, and the result says what was lost.
+        before = { name: clash, unreadable: error.message }
+      }
+    }
     if (!dryRun) {
       fs.mkdirSync(viewsDir, { recursive: true })
       writeFile(path.join(viewsDir, `${name}.yaml`), content)
@@ -1133,7 +1169,7 @@ export function createLocalTracker(root, {
     listMilestones, getMilestone, createMilestone, unfiledMilestones,
     listReleases, getRelease, createRelease, releaseIssues, markReleased,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, delegate, archive, link, unlink, setParent,
-    comment, resolveThread, listComments, getHistory, logTime, listTimeEntries, readDocument, createDocument, listDocuments, saveView, listViews, runView,
+    comment, resolveThread, listComments, getHistory, logTime, listTimeEntries, readDocument, createDocument, listDocuments,
     discover, capabilities, reindex, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
     listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity, getDaysOff, updateCycleCapacity,
     writtenFiles,

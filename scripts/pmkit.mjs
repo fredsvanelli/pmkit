@@ -404,15 +404,17 @@ export const COMMANDS = [
     run: async (ctx) => {
       const result = await (await ctx.tracker()).saveView(ctx.args[0], issueFilter(ctx), await ctx.actor(), { dryRun: ctx.dryRun, replace: ctx.flag('overwrite') })
       const record = (view) => `view ${view.name}\nfilter: ${filterText(view.filter)}`
-      const text = result.before === null ? record(result.after) : `${record(result.after)}\nreplaces: ${filterText(result.before.filter)}`
+      const replaced = result.before?.unreadable === undefined ? filterText(result.before?.filter ?? {}) : `a file that could not be read (${result.before.unreadable})`
+      const text = result.before === null ? record(result.after) : `${record(result.after)}\nreplaces: ${replaced}`
       return { data: result, text: ctx.dryRun ? `${text}\ndry run: nothing was written` : text, commit: result.after.name }
     },
   },
   {
     name: 'views list', summary: 'lists the saved views', usage: '', flags: [],
     run: async (ctx) => {
-      const views = await (await ctx.tracker()).listViews()
-      return { data: views, text: views.length === 0 ? 'no views' : table(['Name', 'Filter'], views.map((view) => [view.name, filterText(view.filter)])) }
+      const { views, problems } = await (await ctx.tracker()).listViews()
+      const warnings = problems.map((problem) => `${problemLine(problem)}; run pmkit validate`)
+      return { data: views, text: views.length === 0 ? 'no views' : table(['Name', 'Filter'], views.map((view) => [view.name, filterText(view.filter)])), warnings }
     },
   },
   {

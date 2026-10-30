@@ -10,13 +10,13 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-30-pmk-44-saved-views-design.md`
 
-## Global Constraints
+## Global constraints
 
 - Every commit message carries `(PMK-44)`.
 - Edits to `README.md`, `CHANGELOG.md`, `commands/help.md`, `skills/pmkit/` and `scripts/lib/capabilities.mjs` stay small.
 - Goldens regenerate with `UPDATE_GOLDENS=1 node --test scripts/goldens.test.mjs` and the diff gets read.
 
-## Review Focus
+## Review focus
 
 - A filter with `sprint: current` stays symbolic in the file (task 1).
 - A name with `..` or `/` is refused (task 1).
