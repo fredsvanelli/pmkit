@@ -92,6 +92,7 @@ export const CASES = {
   'metrics aging': () => [[]],
   events: () => [[]],
   risks: () => [[]],
+  'alerts list': () => [[]],
   'issues branch': (a) => [[a.issue]],
   'pr open': (a) => [['--issue', a.issue]],
   'pr ready': (a) => [['--issue', a.issue]],

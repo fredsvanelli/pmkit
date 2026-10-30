@@ -18,6 +18,7 @@ import { buildNotes, chooseBasis } from './lib/release-notes.mjs'
 import { dependencyMap, serializable } from './lib/dependencies.mjs'
 import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 import { pathNote } from './lib/path-notes.mjs'
+import { SCANNERS, SEVERITIES, collectAlerts } from './lib/alerts.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { addMapEntry, setMap, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
@@ -903,6 +904,23 @@ export const COMMANDS = [
   {
     name: 'risks', summary: 'blockers, stalled issues and PRs, late epics, epics without a recent status update and broken CI; reads only', flags: [],
     run: (ctx) => runRisks(ctx),
+  },
+  {
+    name: 'alerts list', summary: 'security alerts from the scanners the repository has (npm audit), highest severity first; reads only', usage: '[--severity critical,high,medium,low]', flags: ['severity'],
+    run: (ctx) => {
+      ctx.config() // loads and checks .pmkit/config.yaml like every command, though alerts never read the tracker
+      const wanted = csv(ctx.list('severity'))
+      const unknown = wanted.filter((value) => !SEVERITIES.includes(value))
+      if (unknown.length > 0) throw usageError(`--severity must be one of ${SEVERITIES.join(', ')}, not ${unknown.join(', ')}`)
+      const found = collectAlerts(ctx.root, { env: ctx.env })
+      const alerts = wanted.length === 0 ? found.alerts : found.alerts.filter((alert) => wanted.includes(alert.severity))
+      let text
+      if (!found.scanners.some((scanner) => scanner.detected)) {
+        text = `no scanners found in this repository (looked for: ${SCANNERS.map((scanner) => `${scanner.id} needs ${scanner.needs}`).join('; ')})`
+      } else if (alerts.length === 0) text = 'no alerts'
+      else text = table(['ID', 'Severity', 'Package', 'Title'], alerts.map((alert) => [alert.id, alert.severity, alert.package, alert.title]))
+      return { data: { scanners: found.scanners, alerts }, text, warnings: found.warnings }
+    },
   },
   {
     name: 'issues branch', summary: 'creates the issue branch and records it on the issue', usage: '<id> [--from branch]', write: true, args: ['id'], flags: ['from'],

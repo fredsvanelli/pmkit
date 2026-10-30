@@ -1,0 +1,22 @@
+$ pmkit alerts list
+exit 0
+--- stdout
+no scanners found in this repository (looked for: npm-audit needs package-lock.json)
+--- stderr
+(empty)
+
+$ pmkit alerts list --json
+exit 0
+--- stdout
+{
+  "scanners": [
+    {
+      "id": "npm-audit",
+      "detected": false,
+      "alerts": 0
+    }
+  ],
+  "alerts": []
+}
+--- stderr
+(empty)

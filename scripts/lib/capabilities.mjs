@@ -30,7 +30,7 @@ export const SERVED_BY = {
   time_tracking: ['issues log-time', 'issues time-entries'],
   linked_code: ['issues branch', 'pr open', 'pr ready', 'pr status', 'pr sync', 'deploys list', 'ci logs'],
   agent_delegation: [],
-  security_alerts: [],
+  security_alerts: ['alerts list'],
   user_inbox: [],
 }
 
@@ -46,6 +46,7 @@ export function unservedCapabilities(entries, servedBy) {
 export function buildCapabilities({ estimate, gitHost }) {
   const derived = {
     native_metrics: { detail: { source: 'events' } },
+    security_alerts: { detail: { source: 'scanners' } },
     linked_code: { detail: { source: 'git' }, ...(gitHost === 'none' ? { enableHint: ENABLE_GIT_HINT } : {}) },
   }
   return CAPABILITIES.map((id) => {
