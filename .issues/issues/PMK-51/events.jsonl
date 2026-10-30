@@ -3,3 +3,5 @@
 {"at":"2026-10-30T21:29:35Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-30T21:29:39Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-51-list-the-time-entries-of-an-issue"}
 {"at":"2026-10-30T21:31:10Z","by":"fred","op":"comment","to":"2026-10-30T21-31-10Z-fred.md"}
+{"at":"2026-10-30T21:39:55Z","by":"fred","op":"comment","to":"2026-10-30T21-39-55Z-fred.md"}
+{"at":"2026-10-30T21:39:57Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
