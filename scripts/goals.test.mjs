@@ -92,6 +92,22 @@ test('setEpicGoal links an epic, normalizes the id, logs an update event and get
   assert.deepEqual(hashTree(root), unchanged)
 })
 
+test('setEpicGoal keeps the frontmatter keys pmkit does not know and the body', () => {
+  const { root, tracker } = setup()
+  const file = path.join(root, '.issues', 'epics', 'EPC-2M9D', 'epic.md')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('target: 2026-11-13\n', 'target: 2026-11-13\nowner: ana\n'))
+  const body = fs.readFileSync(file, 'utf8').split('---\n').slice(2).join('---\n')
+  const { id } = tracker.createGoal({ title: 'Trust' }, 'fred').after
+  tracker.setEpicGoal('EPC-2M9D', id, 'fred')
+  const text = fs.readFileSync(file, 'utf8')
+  assert.match(text, /^owner: ana$/m)
+  assert.match(text, new RegExp(`^goal: ${id}$`, 'm'))
+  assert.equal(text.split('---\n').slice(2).join('---\n'), body)
+  tracker.setEpicGoal('EPC-2M9D', null, 'fred')
+  assert.match(fs.readFileSync(file, 'utf8'), /^owner: ana$/m)
+  assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /^goal:/m)
+})
+
 test('setEpicGoal and createDeliverable refuse a goal that does not exist, and a dry run writes nothing', () => {
   const { root, tracker } = setup()
   assert.throws(() => tracker.setEpicGoal('EPC-2M9D', 'GOAL-ZZZZ', 'fred'), code('INVALID_INPUT'))

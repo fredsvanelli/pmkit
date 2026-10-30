@@ -12,7 +12,7 @@ import { CATEGORIES, LINK_KINDS, TERMINAL } from '../model.mjs'
 import { appendEvents, driftEvents, readEvents } from './events.mjs'
 import { formatError } from './migrations.mjs'
 import {
-  HEALTH, epicFrontmatter, parseEpicFile, parseUpdateFile, serializeEpic, serializeUpdate, sortEpics, sortUpdates, walkParents,
+  EPIC_KEYS, HEALTH, epicFrontmatter, parseEpicFile, parseFile, parseUpdateFile, serializeEpic, serializeUpdate, sortEpics, sortUpdates, walkParents,
 } from './epics.mjs'
 import { hasSectionHeading, parseIssueFile, serializeIssue, toFrontmatter } from './issue-file.mjs'
 import { buildCapabilities } from '../capabilities.mjs'
@@ -1027,10 +1027,15 @@ export function createLocalTracker(root, {
     requireWriter(actor)
     const { epic: before, dir } = readEpic(epicId)
     const next = blank(goal) || goal === '' ? undefined : requireGoal(goal)
-    const { goal: _old, ...rest } = before
-    const after = readBack('epic file', () => parseEpicFile(serializeEpic(next === undefined ? rest : { ...rest, goal: next }), { statuses: local.statuses }))
+    // The stored map is edited, not the parsed epic, so keys pmkit does not know and the body stay as they are.
+    const file = path.join(dir, 'epic.md')
+    const { data, body } = parseFile(fs.readFileSync(file, 'utf8'), 'epic')
+    delete data.goal
+    if (next !== undefined) data.goal = next
+    const content = joinFrontmatter(data, body ? `${body}\n` : '', { order: EPIC_KEYS })
+    const after = readBack('epic file', () => parseEpicFile(content, { statuses: local.statuses }))
     if (before.goal === after.goal || dryRun) return { before, after }
-    writeFile(path.join(dir, 'epic.md'), serializeEpic(after))
+    writeFile(file, content)
     append(path.join(dir, 'events.jsonl'), [{ at: stamp(), by: actor, op: 'update', field: 'goal', from: before.goal ?? null, to: after.goal ?? null }])
     return { before, after }
   }
