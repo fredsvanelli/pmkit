@@ -2,13 +2,15 @@
 id: PMK-49
 title: Add deploys and CI logs to the GitHub git host
 type: feature
-status: backlog
+status: in_progress
 priority: medium
 estimate: 3
+assignee: fred
 parent: EPC-6
 milestone: generic-commands
+branch: pmk-49-add-deploys-and-ci-logs-to-the-github
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-25T19:13:21Z
+updated: 2026-10-30T21:29:30Z
 ---
 
 ## Description
