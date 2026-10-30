@@ -32,6 +32,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 - `/pmkit:issues:move`: Move an issue to a status category: in progress, in review, done.
 - `/pmkit:issues:pause`: Pause work on an issue, leave a handoff note and push a draft PR when there is code.
 - `/pmkit:issues:progress`: Post what was done on an issue as a comment, tick acceptance criteria and log the time spent.
+- `/pmkit:issues:review`: Review the pull request of an issue against its acceptance criteria, flag the gaps and post the result after approval.
 - `/pmkit:issues:summary`: Summarize an issue or an epic from its record, comments and history.
 - `/pmkit:issues:update`: Change the title, priority, estimate, labels or acceptance criteria of an issue.
 - `/pmkit:issues:work`: Pick up an issue: claim it, branch, plan, implement, open the PR and move it to review.
@@ -112,6 +113,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `pr open --issue <id> [--draft] [--body-file f]` | pushes the issue branch and opens a pull request; when the branch already has an open one, pushes and returns it with `existing: true` |
 | `pr ready --issue <id>` | marks the open draft pull request of an issue ready for review |
 | `pr status [--branch b]` | the pull request, checks and reviews of a branch (default: the current branch) |
+| `pr diff [--branch b] [--base b] [--max-lines n]` | the diff of the pull request of a branch (default: the current branch), or the local diff against `--base` (default: `git_host.default_branch`) when it has none; keeps the first `--max-lines` lines (default 2000); reads only |
 | `pr sync` | moves `in_review` issues to `done` when their pull request is merged |
 | `deploys list [--environment e] [--limit n]` | the repository deployments (default 20, at most 100) with the state of the latest status of each; reads only |
 | `ci logs [--branch b] [--run id] [--tail n]` | the log of the failed steps of a workflow run: `--run`, or the newest failed run of a branch (default: the current branch); keeps the last `--tail` lines (default 200); reads only |
