@@ -1,0 +1,76 @@
+# Unblock a pull request Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** `/pmkit:issues:unblock` lists what blocks a pull request from merging.
+
+**Architecture:** Three read methods on `createGithubHost`, a module `scripts/lib/pr-blockers.mjs` that classifies them, one CLI read `pr blockers`, one command file.
+
+**Tech Stack:** Node test runner, the fake `gh` of `scripts/fake-gh.mjs`.
+
+**Spec:** `docs/superpowers/specs/2026-10-30-pmk-62-unblock-pr-design.md`
+
+## Global Constraints
+
+- Tests never call the real GitHub.
+- Edits in `scripts/lib/capabilities.mjs`, goldens, README, CHANGELOG and `skills/pmkit/SKILL.md` stay small (PMK-45, PMK-64 and PMK-71 touch them in parallel).
+- No change to the Local tracker store.
+- Every commit message carries `PMK-62`.
+
+## Review Focus
+
+- A refused branch protection or graphql read gives `unchecked` and the rest of the result, not a failed command (Task 2, Task 3).
+- An unprotected branch is `policies.protected: false`, not unchecked (Task 1, Task 2).
+- Only the latest review of each author counts for changes requested (Task 2).
+- A merged or closed pull request is `blocked: false` with no extra reads (Task 2).
+- A branch with no pull request is `pr: null`, not an error (Task 3).
+
+### Task 1: Host reads
+
+**Files:** Modify `scripts/lib/github/host.mjs`. Test `scripts/github-host.test.mjs`.
+
+**Interfaces:**
+- Produces: `prMergeState(number) -> { mergeable, mergeStateStatus, reviewDecision, baseRefName }`, `prThreads(number) -> { threads: [{ isResolved, isOutdated, path, line, url, author, body }], incomplete: boolean }`, `branchProtection(base) -> object | null` (null when the branch is not protected).
+
+- [ ] Write failing tests: `prMergeState(12)` calls `gh pr view 12 --json mergeable,mergeStateStatus,reviewDecision,baseRefName`; `prThreads(12)` calls `gh api graphql` with `-F owner={owner} -F repo={repo} -F number=12` and flattens the nodes, `incomplete` follows `pageInfo.hasNextPage`; `branchProtection('main')` calls `gh api repos/{owner}/{repo}/branches/main/protection`, returns null on stderr "Branch not protected", throws `UPSTREAM` on "HTTP 403"; a base starting with a dash is `INVALID_INPUT`.
+- [ ] Run `node --test scripts/github-host.test.mjs`, expect FAIL.
+- [ ] Implement the three methods with `check`, `run`, `parse` and `refArg`.
+- [ ] Run it again, expect PASS. Commit.
+
+### Task 2: Classification
+
+**Files:** Create `scripts/lib/pr-blockers.mjs`. Test `scripts/pr-blockers.test.mjs`.
+
+**Interfaces:**
+- Consumes: Task 1 methods plus `prChecks(number)` and `prReviews(number)`.
+- Produces: `collectBlockers(host, pr) -> { blocked, state, draft, checks, reviews, conflicts, threads, policies, unchecked }` with the section shapes of the spec.
+
+- [ ] Write failing tests with a stub host: failing and pending checks; changes requested by the latest review only; requested reviewers; conflicting and behind; open threads skip resolved and outdated; required approvals and required checks unmet; conversation resolution; unprotected branch; `UPSTREAM` in threads gives `threads: null` and one `unchecked` entry; `AUTH` propagates; merged pull request makes no other call.
+- [ ] Run `node --test scripts/pr-blockers.test.mjs`, expect FAIL.
+- [ ] Implement `collectBlockers`.
+- [ ] Run, expect PASS. Commit.
+
+### Task 3: `pr blockers` command and capability
+
+**Files:** Modify `scripts/pmkit.mjs` (after `pr diff`), `scripts/lib/capabilities.mjs` (`SERVED_BY.linked_code`), the four `capabilities.txt` goldens and the new `pr-blockers.txt` goldens, `scripts/golden-cases.mjs`, `scripts/cli.test.mjs`, `scripts/cli-degraded-coverage.test.mjs`. Test `scripts/cli-pr.test.mjs`.
+
+**Interfaces:**
+- Consumes: `collectBlockers`.
+- Produces: `pr blockers [--branch b]`, data `{ branch, pr, ...collectBlockers }`.
+
+- [ ] Write failing CLI tests with `fakeGh`: full result for a blocked pull request; protection refused gives `unchecked` and exit 0; no pull request; detached HEAD is `INVALID_INPUT`; `git_host: none` is `NOT_SUPPORTED`.
+- [ ] Run `node --test scripts/cli-pr.test.mjs`, expect FAIL.
+- [ ] Add the command, the capability entry and the shared table rows, refresh the goldens as the earlier `pr diff` commit did.
+- [ ] Run `npm test`, expect PASS. Commit.
+
+### Task 4: Command file, scenario and docs
+
+**Files:** Create `commands/issues/unblock.md`, `scripts/__scenarios__/issues-unblock.mjs` and its `.after.txt`. Modify `scripts/scenarios.test.mjs`, `scripts/scenarios-live.mjs`, `scripts/plugin.test.mjs`, `README.md`, `CHANGELOG.md`, `skills/pmkit/SKILL.md`.
+
+- [ ] Write the command file (steps, confirmation points none, output, if something is missing), the scenario, the count bumps, the README rows, the top CHANGELOG line and the SKILL.md routing row.
+- [ ] Run `npm test`, expect PASS. Commit.
+
+### Task 5: Close out
+
+- [ ] Tick criterion 1 with `issues update PMK-62 --check 1`, commit `.issues/`.
+- [ ] Run `npm test`, open the PR, post the summary comment, move to `in_review`.
