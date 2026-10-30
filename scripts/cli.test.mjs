@@ -632,6 +632,20 @@ test('time-entries lists the logged time and the total, text and JSON', () => {
   assert.match(missing.stdout + missing.stderr, /ISS-9ZZZ|not found/i)
 })
 
+test('time-entries prints the empty text, and a note when log_time events are ignored', () => {
+  const root = makeRepo('team')
+  const empty = run(root, ['issues', 'time-entries', 'ISS-5N1R'])
+  assert.equal(empty.status, 0)
+  assert.match(empty.stdout, /^no time logged on ISS-5N1R\ntotal: 0 minutes\n?$/)
+  assert.equal(empty.stderr, '')
+  const events = path.join(root, '.issues', 'issues', 'ISS-5N1R', 'events.jsonl')
+  fs.appendFileSync(events, `${JSON.stringify({ at: '2026-10-24T10:00:00Z', by: 'fred', op: 'log_time', minutes: '30' })}\n`)
+  const noted = run(root, ['issues', 'time-entries', 'ISS-5N1R'])
+  assert.equal(noted.status, 0)
+  assert.match(noted.stdout, /total: 0 minutes/)
+  assert.match(noted.stderr, /^note: 1 log_time event ignored: minutes is not a positive integer\n/)
+})
+
 test('assign, link, comment, log-time, archive and get --comments --history', () => {
   const root = makeRepo('team')
   assert.match(run(root, ['issues', 'assign', 'ISS-3F7H', 'ana']).stdout, /assignee: .* → ana/)

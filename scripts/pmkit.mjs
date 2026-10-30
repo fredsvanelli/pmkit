@@ -506,7 +506,8 @@ export const COMMANDS = [
       const text = result.entries.length === 0
         ? `no time logged on ${result.issue}\ntotal: 0 minutes`
         : [table(['At', 'By', 'Minutes'], result.entries.map((entry) => [entry.at, entry.by, String(entry.minutes)])), `total: ${result.total} minutes`].join('\n')
-      return { data: result, text }
+      const notes = result.ignored > 0 ? [`${result.ignored} log_time ${result.ignored === 1 ? 'event' : 'events'} ignored: minutes is not a positive integer`] : []
+      return { data: result, text, notes }
     },
   },
   {

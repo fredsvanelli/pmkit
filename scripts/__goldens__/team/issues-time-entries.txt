@@ -12,7 +12,8 @@ exit 0
 {
   "issue": "ISS-5N1R",
   "entries": [],
-  "total": 0
+  "total": 0,
+  "ignored": 0
 }
 --- stderr
 (empty)

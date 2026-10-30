@@ -711,11 +711,12 @@ export function createLocalTracker(root, {
     return change(id, actor, { dryRun, eventsOnly: true }, (issue, meta) => [{ ...meta, op: 'log_time', minutes }])
   }
 
+  // A hand-edited log_time event whose minutes is not a positive integer is left out of the entries and the total, and counted in `ignored`.
   function listTimeEntries(id) {
-    const entries = getHistory(id)
-      .filter((event) => event.op === 'log_time')
-      .map((event) => ({ at: event.at, by: event.by, minutes: event.minutes }))
-    return { issue: id, entries, total: entries.reduce((sum, entry) => sum + entry.minutes, 0) }
+    const logged = getHistory(id).filter((event) => event.op === 'log_time')
+    const valid = logged.filter((event) => Number.isInteger(event.minutes) && event.minutes > 0)
+    const entries = valid.map((event) => ({ at: event.at, by: event.by, minutes: event.minutes }))
+    return { issue: id, entries, total: entries.reduce((sum, entry) => sum + entry.minutes, 0), ignored: logged.length - valid.length }
   }
 
   function cycleIssues(id) {
