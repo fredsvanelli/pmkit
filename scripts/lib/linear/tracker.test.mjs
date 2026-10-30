@@ -1160,6 +1160,13 @@ test('logTime, createRelease and markReleased refuse with the manifest reason an
   assert.ok(fetch.calls.every((call) => !/mutation/i.test(call.body.query)))
 })
 
+test('delegate refuses with the agent_delegation hint and sends no mutation', async () => {
+  const { fetch, tracker: linear } = tracker(setup())
+  const hint = 'The Linear adapter does not delegate to agents yet; Linear offers it on this workspace'
+  await assert.rejects(linear.delegate('ACME-1', 'agent:claude', 'Do it.', 'x'), { code: 'NOT_SUPPORTED', message: hint, nextStep: hint })
+  assert.ok(fetch.calls.every((call) => !/mutation/i.test(call.body.query)))
+})
+
 test('release reads on a workspace without releases answer empty, getRelease is NOT_FOUND, and no release query is sent', async () => {
   const { fetch, tracker: linear } = tracker(setup())
   assert.deepEqual(await linear.listReleases(), [])
