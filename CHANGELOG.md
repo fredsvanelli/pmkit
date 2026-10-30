@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Adds `/pmkit:issues:delegate` and `pmkit issues delegate <id> <agent:name>` (PMK-57). The Local tracker assigns the issue to the agent member and posts a comment with the instructions and the steps to run the agent locally through `/pmkit:issues:work` with `--as <agent>`. The command always asks before it delegates and before it runs the agent. `agent_delegation` is derived on the Local tracker (`source=assignee`, `run=local`). Linear answers `NOT_SUPPORTED` and lists `delegate` under `detail.unsupported`.
 - Adds `/pmkit:issues:estimate` (PMK-59). It proposes an estimate from the code an issue affects and from similar completed issues, and saves it with `issues update --estimate` after one confirmation. When the tracker has no estimate field (the `estimation` capability is `absent`), it posts the estimate as a comment.
 - Adds `pmkit docs list`, which lists the documents under `.issues/docs/` (PMK-50). The Local tracker lists them, and Linear answers `NOT_SUPPORTED`. A docs path that is a file answers `CONFLICT` with a next step.
 - Adds `deploys list` and `ci logs` (PMK-49), and `listDeploys` and `ciLogs` on the GitHub git host. `deploys list` prints the repository deployments with the state of the latest status of each. `ci logs` prints the log of the failed steps of a run, either the one `--run` names or the newest failed run of a branch, and keeps the last `--tail` lines (default 200). A run that failed, timed out or never started counts as failed.

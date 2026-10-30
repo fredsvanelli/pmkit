@@ -23,6 +23,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 - `/pmkit:issues:capture`: Open an issue from what the session found (an error, a failing test, a TODO), after a duplicate check.
 - `/pmkit:issues:comment`: Add a comment to an issue.
 - `/pmkit:issues:create`: Create an issue from an idea, refined into context, scope, tasks and acceptance criteria, with the fields checked against the project config.
+- `/pmkit:issues:delegate`: Delegate an issue to an agent: assign it to `agent:<name>`, post the instructions, and run the agent locally only when you say so.
 - `/pmkit:issues:dependencies`: Show what blocks an issue or an epic, with the blocker chain, the hierarchy and the critical path.
 - `/pmkit:issues:estimate`: Propose an estimate for an issue from the code it affects and from similar completed issues, and save it after confirmation.
 - `/pmkit:issues:find`: Find issues with a plain-language question, such as "high-priority bugs in the current sprint".
@@ -67,6 +68,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `issues update <id>` | edits fields and acceptance criteria; `--milestone`, `--release` and `--branch` take `none` to clear |
 | `issues move <id> <category>` | changes status by category |
 | `issues assign <id> <member\|me\|none>` | assigns an issue; `me` is the actor |
+| `issues delegate <id> <agent:name>` | assigns an issue to an agent member and comments the instructions for local execution; `--instructions-file` holds them |
 | `issues link <from> <to> --kind blocks\|related\|duplicate` | links or unlinks (`--remove`) two issues |
 | `issues parent <id> <parent\|none>` | sets the parent |
 | `issues comment <id> --body-file f` | adds a comment |
