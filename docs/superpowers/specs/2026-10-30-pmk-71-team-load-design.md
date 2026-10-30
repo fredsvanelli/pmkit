@@ -35,7 +35,7 @@ Members:
 - Human members come from `discover().members`, in config order. A member with no open work shows a row of zeros, and is listed in `noWork`.
 - Unassigned issues form one row, `unassigned`, outside the average and the flags.
 - Agent members (`agent:<name>`, PMK-57) show as rows with `agent: true`. They are counted in neither the average, nor `noWork`, nor the imbalance flags, and are never a reassign target. An agent does not have a capacity or a workload the team manages, and delegation to an agent has its own command (`/pmkit:issues:delegate`).
-- An assignee that is not a member (for example a Linear user that left) shows as a row with `member: false`, counted like a human but never a target.
+- An assignee that is not a member (for example a Linear user that left) shows as a row with `isMember: false`. Like an agent, it stays out of the average and the flags, and is never a target.
 
 Imbalances (`imbalances`), computed on the unit's load among human members who are members:
 
