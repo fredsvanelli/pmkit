@@ -1,2 +1,5 @@
 {"at":"2026-10-25T19:13:21Z","by":"fred","op":"create","to":{"id":"PMK-44","title":"Add saved views to the Local tracker","type":"feature","status":"backlog","priority":"medium","estimate":3,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"generic-commands","created":"2026-10-25T19:13:21Z","updated":"2026-10-25T19:13:21Z"}}
 {"at":"2026-10-25T19:13:25Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-2"}
+{"at":"2026-10-30T22:07:37Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-30T22:07:37Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-30T22:07:45Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-44-add-saved-views-to-the-local-tracker"}
