@@ -42,3 +42,19 @@ export function createDocumentFile(docsDir, docPath, body, { dryRun = false, onW
   }
   return { before: null, after: { path: docPath, body: text } }
 }
+
+/** The regular files under the docs folder, as { path } sorted by path. Hidden entries and symlinks are skipped, and a missing folder lists nothing. */
+export function listDocumentFiles(docsDir) {
+  if (!fs.existsSync(docsDir)) return []
+  const found = []
+  const walk = (dir, prefix) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith('.') || entry.isSymbolicLink()) continue
+      const relative = [...prefix, entry.name]
+      if (entry.isDirectory()) walk(path.join(dir, entry.name), relative)
+      else if (entry.isFile()) found.push({ path: relative.join('/') })
+    }
+  }
+  walk(docsDir, [])
+  return found.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+}

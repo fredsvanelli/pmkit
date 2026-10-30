@@ -12,7 +12,7 @@ export const TRACKER_OPERATIONS = [
   'listReleases', 'getRelease', 'createRelease', 'releaseIssues', 'markReleased',
   'getCapacity', 'setCapacity', 'getDaysOff', 'updateCycleCapacity',
   'metricEvents',
-  'readDocument', 'createDocument',
+  'readDocument', 'createDocument', 'listDocuments',
   'logTime',
 ]
 

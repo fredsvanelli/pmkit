@@ -17,7 +17,7 @@ import {
 import { hasSectionHeading, parseIssueFile, serializeIssue, toFrontmatter } from './issue-file.mjs'
 import { buildCapabilities } from '../capabilities.mjs'
 import { lastEntry } from '../metrics.mjs'
-import { createDocumentFile, readDocumentFile } from './documents.mjs'
+import { createDocumentFile, listDocumentFiles, readDocumentFile } from './documents.mjs'
 import { hasMilestoneFiles, milestoneStems, parseMilestone, serializeMilestone, sortMilestones, validMilestoneId } from './milestones.mjs'
 import { parseRelease, releaseStems, serializeRelease, sortReleases, validReleaseId, validTag } from './releases.mjs'
 import { checkFilter, runQuery } from './query.mjs'
@@ -1057,6 +1057,7 @@ export function createLocalTracker(root, {
 
   const docsDir = path.join(issuesDir, 'docs')
   const readDocument = (docPath) => readDocumentFile(docsDir, docPath)
+  const listDocuments = () => listDocumentFiles(docsDir)
 
   function createDocument(docPath, body, actor, { dryRun = false } = {}) {
     requireWriter(actor)
@@ -1068,7 +1069,7 @@ export function createLocalTracker(root, {
     listMilestones, getMilestone, createMilestone, unfiledMilestones,
     listReleases, getRelease, createRelease, releaseIssues, markReleased,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
-    comment, resolveThread, listComments, getHistory, logTime, readDocument, createDocument,
+    comment, resolveThread, listComments, getHistory, logTime, readDocument, createDocument, listDocuments,
     discover, capabilities, reindex, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
     listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity, getDaysOff, updateCycleCapacity,
     writtenFiles,
