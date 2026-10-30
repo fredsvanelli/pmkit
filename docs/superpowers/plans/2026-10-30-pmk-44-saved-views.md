@@ -21,7 +21,7 @@
 - A filter with `sprint: current` stays symbolic in the file (task 1).
 - A name with `..` or `/` is refused (task 1).
 - A view whose stored filter turned invalid (a type removed from the config) fails `views run` with `INVALID_INPUT`, not a crash (task 2).
-- `--replace` keeps one file and leaves the other views untouched (task 2).
+- `--overwrite` keeps one file and leaves the other views untouched (task 2).
 - Linear answers `NOT_SUPPORTED` on all three commands (task 3).
 
 ### Task 1: view files

@@ -1091,6 +1091,33 @@ test('docs read refuses a path outside the docs folder', () => {
   assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT')
 })
 
+test('views save, list and run store a filter and run it', () => {
+  const root = makeRepo('team')
+  assert.equal(run(root, ['views', 'list']).stdout.trim(), 'no views')
+  const saved = json(root, ['views', 'save', 'active', '--category', 'in_progress', '--sort', 'created'])
+  assert.deepEqual(saved.after, { name: 'active', filter: { categories: ['in_progress'], sort: 'created' } })
+  assert.equal(fs.readFileSync(path.join(root, '.issues/views/active.yaml'), 'utf8'), 'filter:\n  categories: [in_progress]\n  sort: created\n')
+  assert.match(run(root, ['views', 'list']).stdout, /active +\| categories=in_progress sort=created/)
+  const ran = json(root, ['views', 'run', 'active'])
+  assert.deepEqual(ran.issues.map((issue) => issue.id), json(root, ['issues', 'list', '--category', 'in_progress', '--sort', 'created']).issues.map((issue) => issue.id))
+  const again = run(root, ['views', 'save', 'active', '--category', 'done', '--json'])
+  assert.equal(again.status, 2)
+  assert.equal(JSON.parse(again.stdout).error.code, 'CONFLICT')
+  const overwritten = json(root, ['views', 'save', 'active', '--category', 'done', '--overwrite'])
+  assert.deepEqual(overwritten.before.filter, { categories: ['in_progress'], sort: 'created' })
+  const empty = run(root, ['views', 'save', 'none', '--json'])
+  assert.equal(JSON.parse(empty.stdout).error.code, 'INVALID_INPUT')
+})
+
+test('views save --dry-run writes nothing', () => {
+  const root = makeRepo('team')
+  const before = hashTree(root)
+  const result = run(root, ['views', 'save', 'x', '--blocked', '--dry-run'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /dry run/)
+  assert.equal(hashTree(root), before)
+})
+
 function fixConfig(root) {
   const file = path.join(root, '.issues/config.yaml')
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/stale_days:.*/, 'stale_days: 60'))
@@ -1488,6 +1515,7 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'release create': ['2.0.0'],
     'release mark-released': ['1.0.0'],
     'docs create': ['notes/new.md', '--body-file', input('doc.md')],
+    'views save': ['mine', '--category', 'done'],
     'issues branch': ['ISS-5N1R'],
     'pr open': ['--issue', 'ISS-5N1R'],
     'pr ready': ['--issue', 'ISS-5N1R'],
@@ -1581,6 +1609,8 @@ test('every read goes on with one warning', () => {
     'release issues': ['1.0.0'],
     'release-notes': [],
     'docs list': [],
+    'views list': [],
+    'views run': ['missing'],
     'docs read': ['missing.md'],
     'metrics velocity': [],
     'metrics cycle-time': [],
@@ -1627,7 +1657,7 @@ test('every read goes on with one warning', () => {
     assert.equal(count(second.stderr), 1, first.name)
     assert.equal(second.stderr, `${WARNING(CONFIRM_MSG)}\n${first.stderr}`, first.name)
   }
-  for (const name of ['milestone get', 'docs read', 'pr status']) {
+  for (const name of ['milestone get', 'docs read', 'views run', 'pr status']) {
     assert.equal(invalid.find((r) => r.name === name).status, 2, name)
   }
 })

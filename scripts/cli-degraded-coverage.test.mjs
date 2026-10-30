@@ -44,6 +44,9 @@ const REFUSALS = [
   ['issues', 'log-time', 'ACME-1', '5'],
   ['issues', 'time-entries', 'ACME-1'],
   ['issues', 'delegate', 'ACME-1', 'agent:claude'],
+  ['views', 'list'],
+  ['views', 'save', 'v', '--category', 'done'],
+  ['views', 'run', 'v'],
 ]
 
 for (const args of REFUSALS) {
@@ -68,6 +71,7 @@ const COVERED = {
   'metrics velocity': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics cycle-time': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics lead-time': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics throughput': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics aging': 'cli-linear.test.mjs or cli-degraded.test.mjs', events: 'cli-linear.test.mjs or cli-degraded.test.mjs',
   'docs list': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'docs read': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'docs create': 'REFUSALS',
   'pr open': 'PATH_CASES', 'pr ready': 'PATH_CASES', 'pr status': 'PATH_CASES', 'pr sync': 'PATH_CASES', 'deploys list': 'PATH_CASES', 'ci logs': 'PATH_CASES', 'pr diff': 'PATH_CASES',
+  'views list': 'REFUSALS', 'views save': 'REFUSALS', 'views run': 'REFUSALS',
   'alerts list': 'REPO_SCAN',
   'issues delegate': 'REFUSALS',
 }

@@ -17,7 +17,7 @@ status_update        | native  |
 releases             | native  |
 capacity             | native  |
 native_metrics       | derived | source=events
-saved_views          | absent  | No pmkit command serves saved_views in the Local tracker yet
+saved_views          | native  |
 documents            | native  |
 demand_signals       | absent  | No pmkit command serves demand_signals in the Local tracker yet
 request_queue        | absent  | No pmkit command serves request_queue in the Local tracker yet
@@ -98,8 +98,7 @@ exit 0
     },
     {
       "id": "saved_views",
-      "path": "absent",
-      "enableHint": "No pmkit command serves saved_views in the Local tracker yet"
+      "path": "native"
     },
     {
       "id": "documents",

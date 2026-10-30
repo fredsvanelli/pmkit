@@ -1101,7 +1101,10 @@ export function createLocalTracker(root, {
   const listViews = () => [...viewStems(viewsDir)].filter(validViewName).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).map(readView)
 
   /** Runs the stored filter as a search. The stored values are checked again, so a view that names a removed type fails. */
-  const runView = (name) => search(readView(name).filter)
+  const runView = (name) => {
+    const view = readView(name)
+    return { ...search(view.filter), view }
+  }
 
   function saveView(name, filter, actor, { dryRun = false, replace = false } = {}) {
     requireWriter(actor)
@@ -1112,7 +1115,7 @@ export function createLocalTracker(root, {
     checkFilter(filter, { types: local.types, members: Object.keys(local.members), sprintExists })
     const clash = [...viewStems(viewsDir)].find((stem) => stem.toLowerCase() === name.toLowerCase())
     if (clash !== undefined && !(replace && clash === name)) {
-      throw new PmkitError('CONFLICT', `view ${clash} already exists`, clash === name ? `Pass --replace to overwrite it, or pick another name` : 'Pick another name')
+      throw new PmkitError('CONFLICT', `view ${clash} already exists`, clash === name ? `Pass --overwrite to replace it, or pick another name` : 'Pick another name')
     }
     const content = serializeView(filter)
     const after = readBack('view file', () => parseView(content, name))

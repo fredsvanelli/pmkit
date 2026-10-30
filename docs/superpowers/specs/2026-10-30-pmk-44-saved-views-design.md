@@ -37,7 +37,7 @@ The Linear adapter gets the generic stubs, which answer `NOT_SUPPORTED`. The Lin
 
 ### CLI
 
-- `views save <name> [filter flags] [--replace]` (a write). The filter flags are the ones of `issues list`, with the same parsing.
+- `views save <name> [filter flags] [--overwrite]` (a write). The filter flags are the ones of `issues list`, with the same parsing.
 - `views list` prints a table with name and filter, or `no views`.
 - `views run <name>` prints the issue table like `issues list`, with the same warnings.
 
@@ -52,5 +52,5 @@ The Linear adapter gets the generic stubs, which answer `NOT_SUPPORTED`. The Lin
 ## Decisions taken without the user
 
 - File layout (`filter:` key) and the name rule.
-- `--replace` instead of a silent overwrite.
+- `--overwrite` instead of a silent overwrite.
 - No delete command in this issue.
