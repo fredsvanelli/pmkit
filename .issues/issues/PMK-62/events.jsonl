@@ -3,3 +3,4 @@
 {"at":"2026-10-30T23:12:33Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-30T23:12:35Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-62-add-the-unblock-pr-command"}
 {"at":"2026-10-30T23:14:26Z","by":"fred","op":"comment","to":"2026-10-30T23-14-26Z-fred.md"}
+{"at":"2026-10-30T23:20:51Z","by":"fred","op":"update","field":"acceptance_criteria"}
