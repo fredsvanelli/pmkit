@@ -1,0 +1,60 @@
+$ pmkit capabilities --json  [step 1, read]
+exit 0
+$ pmkit discover --json  [step 2, read]
+exit 0
+$ pmkit issues get ISS-5N1R --comments --json  [step 3, read]
+exit 0
+? Step 3  [confirmed]
+$ pmkit issues delegate ISS-5N1R agent:claude --instructions-file <inputs>/delegate-instructions.md --dry-run --json  [step 5, dry run]
+exit 0
+? Step 5  [confirmed]
+$ pmkit issues delegate ISS-5N1R agent:claude --instructions-file <inputs>/delegate-instructions.md --json  [step 6, write]
+exit 0
+? Step 7  [confirmed]
+
+--- added .issues/issues/ISS-5N1R/comments/2026-10-23T12-00-00Z-fred.md
++---
++author: fred
++created: 2026-10-23T12:00:00Z
++---
++
++Delegated to agent:claude by fred, to run locally.
++
++## Instructions
++
++Make the events export read pages of 500 events through the new cursor.
++Done means the acceptance criteria on the issue hold and the tests of the events API pass.
++Do not change the public shape of the events response.
++
++## Run it locally
++
++This tracker does not start agents. To run this issue:
++
++1. Open a session of the agent in this repository.
++2. Run `/pmkit:issues:work ISS-5N1R` and add `--as agent:claude` to every pmkit write, so the claim, the branch and the PR are recorded as the agent's.
++3. The work command asks before the plan, the branch, the PR and each tracker write. Nothing runs without those answers.
+--- changed .issues/issues/ISS-5N1R/events.jsonl
+  {"at":"2026-10-05T09:30:00Z","by":"fred","op":"create","to":{"id":"ISS-5N1R","title":"Paginate the events API","type":"task","status":"todo","priority":"medium","estimate":3,"assignee":"fred","labels":["backend"],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-05T09:30:00Z","updated":"2026-10-05T09:30:00Z"}}
+  {"at":"2026-10-22T09:00:00Z","by":"fred","op":"move","field":"status","from":"todo","to":"in_progress"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"assign","field":"assignee","from":"fred","to":"agent:claude"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"comment","to":"2026-10-23T12-00-00Z-fred.md"}
+--- changed .issues/issues/ISS-5N1R/issue.md
+  ---
+  id: ISS-5N1R
+  title: Paginate the events API
+  type: task
+  status: in_progress
+  priority: medium
+  estimate: 3
+-assignee: fred
++assignee: agent:claude
+  labels: [backend]
+  sprint: 2026-10-12
+  created: 2026-10-05T09:30:00Z
+-updated: 2026-10-22T09:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  The export reads events in pages of 500.

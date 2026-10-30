@@ -22,9 +22,9 @@ test('the manifest lists the 20 capabilities in spec order, each with a path', (
     'cycles', 'estimation', 'multilevel_hierarchy', 'dependencies', 'native_triage', 'deliverables', 'status_update',
     'releases', 'capacity', 'documents', 'time_tracking',
   ])
-  assert.deepEqual(byPath('derived'), ['native_metrics', 'linked_code', 'security_alerts'])
+  assert.deepEqual(byPath('derived'), ['native_metrics', 'linked_code', 'agent_delegation', 'security_alerts'])
   assert.deepEqual(byPath('absent'), [
-    'strategic_goals', 'saved_views', 'demand_signals', 'request_queue', 'agent_delegation', 'user_inbox',
+    'strategic_goals', 'saved_views', 'demand_signals', 'request_queue', 'user_inbox',
   ])
 })
 
@@ -33,6 +33,7 @@ test('derived capabilities carry their detail and absent ones a hint', () => {
   assert.deepEqual(byId.native_metrics.detail, { source: 'events' })
   assert.deepEqual(byId.linked_code.detail, { source: 'git' })
   assert.deepEqual(byId.security_alerts.detail, { source: 'scanners' })
+  assert.deepEqual(byId.agent_delegation, { id: 'agent_delegation', path: 'derived', detail: { source: 'assignee', run: 'local' } })
   assert.deepEqual(byId.releases, { id: 'releases', path: 'native' })
   assert.deepEqual(byId.saved_views, {
     id: 'saved_views', path: 'absent', enableHint: 'No pmkit command serves saved_views in the Local tracker yet',

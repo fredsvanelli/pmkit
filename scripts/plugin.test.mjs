@@ -90,7 +90,7 @@ test('CHANGELOG.md has a section for the plugin version and a Tracker format tha
 })
 
 // Each Task that writes command files adds their names here.
-const COMMANDS = { '': ['setup', 'help', 'upgrade'], issues: ['find', 'create', 'dependencies', 'update', 'move', 'assign', 'comment', 'link', 'summary', 'work', 'mine', 'capture', 'breakdown', 'progress', 'pause', 'estimate'], spec: ['import'], backlog: ['groom', 'triage'], report: ['status', 'release-notes'], cycle: ['plan', 'close'], team: ['flow-metrics', 'standup', 'risk-radar'], linear: ['triage-rotation', 'customers'], local: ['doctor', 'render', 'migrate'] }
+const COMMANDS = { '': ['setup', 'help', 'upgrade'], issues: ['find', 'create', 'dependencies', 'update', 'move', 'assign', 'comment', 'link', 'summary', 'work', 'mine', 'capture', 'breakdown', 'progress', 'pause', 'estimate', 'delegate'], spec: ['import'], backlog: ['groom', 'triage'], report: ['status', 'release-notes'], cycle: ['plan', 'close'], team: ['flow-metrics', 'standup', 'risk-radar'], linear: ['triage-rotation', 'customers'], local: ['doctor', 'render', 'migrate'] }
 
 const HEADINGS = ['## Parameters', '## Steps', '## Confirmation points', '## Output', '## If something is missing']
 
@@ -160,6 +160,19 @@ test('every command is listed in the skill table and in the README', () => {
       }
     }
   }
+})
+
+test('delegate.md previews in step 5, writes in step 6, always asks, and runs the agent only after a question', () => {
+  const text = fs.readFileSync(path.join(ROOT, 'commands/issues/delegate.md'), 'utf8')
+  const step = (number) => text.split('\n').find((line) => line.startsWith(`${number}. `)) ?? ''
+  const calls = (line) => [...line.matchAll(/pmkit\.mjs" issues delegate[^`]*`/g)].map((match) => match[0])
+  assert.ok(calls(step(5)).length > 0 && calls(step(5)).every((call) => call.includes('--dry-run')), 'step 5 previews with --dry-run')
+  assert.ok(calls(step(6)).length > 0 && calls(step(6)).every((call) => !call.includes('--dry-run')), 'step 6 writes without --dry-run')
+  assert.match(step(5), /AskUserQuestion/)
+  assert.match(step(5), /write_policy\.confirm: none/)
+  assert.match(step(7), /AskUserQuestion/)
+  assert.match(step(7), /--as <agent>/)
+  assert.match(step(7), /commands\/issues\/work\.md/)
 })
 
 test('triage-rotation.md previews the set in step 6 and writes it in step 7', () => {

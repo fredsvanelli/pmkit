@@ -1471,6 +1471,7 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'issues update': ['ISS-5N1R', '--title', 'Renamed'],
     'issues move': ['ISS-5N1R', 'done'],
     'issues assign': ['ISS-5N1R', 'fred'],
+    'issues delegate': ['ISS-5N1R', 'agent:claude'],
     'issues link': ['ISS-5N1R', 'ISS-4M2S', '--kind', 'blocks'],
     'issues parent': ['ISS-5N1R', 'EPC-2M9D'],
     'issues comment': ['ISS-5N1R', '--body-file', input('comment.md')],

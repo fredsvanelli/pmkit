@@ -17,6 +17,7 @@ import {
 import { hasSectionHeading, parseIssueFile, serializeIssue, toFrontmatter } from './issue-file.mjs'
 import { buildCapabilities } from '../capabilities.mjs'
 import { lastEntry } from '../metrics.mjs'
+import { AGENT_ID, delegationComment } from '../delegation.mjs'
 import { createDocumentFile, listDocumentFiles, readDocumentFile } from './documents.mjs'
 import { hasMilestoneFiles, milestoneStems, parseMilestone, serializeMilestone, sortMilestones, validMilestoneId } from './milestones.mjs'
 import { parseRelease, releaseStems, serializeRelease, sortReleases, validReleaseId, validTag } from './releases.mjs'
@@ -474,6 +475,21 @@ export function createLocalTracker(root, {
       else issue.assignee = member
       return [fieldEvent('assign', 'assignee', before, issue, meta)]
     })
+  }
+
+  /**
+   * Hands an issue to an agent member: assigns it and posts the delegation comment with the instructions for local execution.
+   * The Local tracker never starts the agent, so `run` is always 'local'.
+   */
+  function delegate(id, agent, instructions, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const agents = Object.keys(local.members).filter((member) => AGENT_ID.test(member))
+    const nextStep = agents.length > 0 ? `Use one of: ${agents.join(', ')}` : 'Add an agent member such as agent:claude with /pmkit:setup'
+    if (typeof agent !== 'string' || !AGENT_ID.test(agent)) throw invalid(`"${agent}" is not an agent: an agent member id starts with agent:`, nextStep)
+    if (!agents.includes(agent)) throw invalid(`agent "${agent}" is not a member`, nextStep)
+    const assigned = assign(id, agent, actor, { dryRun })
+    const posted = comment(assigned.after.id, delegationComment({ issue: assigned.after.id, agent, by: actor, instructions }), actor, { dryRun })
+    return { before: assigned.before, after: assigned.after, comment: posted, run: 'local' }
   }
 
   function archive(id, actor, { dryRun } = {}) {
@@ -1076,7 +1092,7 @@ export function createLocalTracker(root, {
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     listMilestones, getMilestone, createMilestone, unfiledMilestones,
     listReleases, getRelease, createRelease, releaseIssues, markReleased,
-    getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
+    getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, delegate, archive, link, unlink, setParent,
     comment, resolveThread, listComments, getHistory, logTime, listTimeEntries, readDocument, createDocument, listDocuments,
     discover, capabilities, reindex, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
     listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity, getDaysOff, updateCycleCapacity,

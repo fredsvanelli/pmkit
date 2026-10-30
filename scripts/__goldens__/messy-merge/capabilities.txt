@@ -5,7 +5,7 @@ tracker: local
 git host: none
 
 Capability           | Path    | Detail
----------------------|---------|------------------------------------------------------------------
+---------------------|---------|-----------------------------------------------------------------
 cycles               | native  |
 estimation           | native  | unit=points scale=1/2/3/5/8/13
 multilevel_hierarchy | native  |
@@ -23,7 +23,7 @@ demand_signals       | absent  | No pmkit command serves demand_signals in the L
 request_queue        | absent  | No pmkit command serves request_queue in the Local tracker yet
 time_tracking        | native  |
 linked_code          | derived | Set git_host in .pmkit/config.yaml
-agent_delegation     | absent  | No pmkit command serves agent_delegation in the Local tracker yet
+agent_delegation     | derived | source=assignee run=local
 security_alerts      | derived | source=scanners
 user_inbox           | absent  | No pmkit command serves user_inbox in the Local tracker yet
 --- stderr
@@ -129,8 +129,11 @@ exit 0
     },
     {
       "id": "agent_delegation",
-      "path": "absent",
-      "enableHint": "No pmkit command serves agent_delegation in the Local tracker yet"
+      "path": "derived",
+      "detail": {
+        "source": "assignee",
+        "run": "local"
+      }
     },
     {
       "id": "security_alerts",

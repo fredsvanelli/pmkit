@@ -67,8 +67,12 @@ test('the default workspace gives the sandbox column', async () => {
     user_inbox: 'absent',
   })
   const entry = byId(entries)
-  assert.deepEqual(entry.agent_delegation.detail, { workspace: 'conditional', agents: ['Linear'] })
-  assert.equal(entry.agent_delegation.enableHint, 'No pmkit command serves agent_delegation yet; Linear offers it on this workspace')
+  assert.deepEqual(entry.agent_delegation, {
+    id: 'agent_delegation',
+    path: 'absent',
+    detail: { workspace: 'conditional', agents: ['Linear'], unsupported: ['delegate'] },
+    enableHint: 'The Linear adapter does not delegate to agents yet; Linear offers it on this workspace',
+  })
   assert.equal(entry.cycles.enableHint, "Turn on cycles in the team's settings in Linear")
   assert.equal(entry.estimation.enableHint, "Turn on estimates in the team's settings in Linear")
   assert.equal(entry.native_triage.enableHint, "Turn on triage in the team's settings in Linear")

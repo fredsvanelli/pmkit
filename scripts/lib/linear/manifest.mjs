@@ -65,7 +65,12 @@ function workspaceAnswers(raw) {
       ? { path: 'native' }
       : { path: 'absent', enableHint: 'Linear customer requests need the Business or Enterprise plan and customers turned on in the workspace settings' },
     request_queue: business ? { path: 'conditional' } : { path: 'absent', enableHint: 'Linear Asks need the Business or Enterprise plan' },
-    agent_delegation: { path: 'conditional', detail: { agents: raw.users.filter((user) => user.app).map((user) => user.name) } },
+    // Linear delegates to installed app agents, but the adapter does not call it yet (PMK-57), so pmkit reports it absent.
+    agent_delegation: {
+      path: 'absent',
+      detail: { workspace: 'conditional', agents: raw.users.filter((user) => user.app).map((user) => user.name), unsupported: ['delegate'] },
+      enableHint: 'The Linear adapter does not delegate to agents yet; Linear offers it on this workspace',
+    },
   }
 }
 

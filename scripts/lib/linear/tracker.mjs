@@ -145,12 +145,12 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
   }
 
   // Operations whose capability the manifest can mark absent. The refusal then carries the manifest's hint, not the generic text.
-  const STUB_CAPABILITY = { logTime: 'time_tracking', listTimeEntries: 'time_tracking', createRelease: 'releases', markReleased: 'releases' }
+  const STUB_CAPABILITY = { logTime: 'time_tracking', listTimeEntries: 'time_tracking', createRelease: 'releases', markReleased: 'releases', delegate: 'agent_delegation' }
   const stub = (operation) =>
     guarded(async () => {
       const entry = STUB_CAPABILITY[operation] && (await capabilities()).capabilities.find((c) => c.id === STUB_CAPABILITY[operation])
       if (entry?.path === 'absent') {
-        const message = entry.id === 'time_tracking' ? entry.enableHint : `${operation} needs releases, which this workspace does not have`
+        const message = entry.id === 'releases' ? `${operation} needs releases, which this workspace does not have` : entry.enableHint
         throw new PmkitError('NOT_SUPPORTED', message, entry.enableHint)
       }
       throw new PmkitError(
