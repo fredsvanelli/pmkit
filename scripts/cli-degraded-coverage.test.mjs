@@ -67,7 +67,7 @@ const COVERED = {
   'release list': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'release get': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'release issues': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'release create': 'REFUSALS', 'release mark-released': 'REFUSALS',
   'metrics velocity': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics cycle-time': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics lead-time': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics throughput': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics aging': 'cli-linear.test.mjs or cli-degraded.test.mjs', events: 'cli-linear.test.mjs or cli-degraded.test.mjs',
   'docs list': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'docs read': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'docs create': 'REFUSALS',
-  'pr open': 'PATH_CASES', 'pr ready': 'PATH_CASES', 'pr status': 'PATH_CASES', 'pr sync': 'PATH_CASES', 'deploys list': 'PATH_CASES', 'ci logs': 'PATH_CASES',
+  'pr open': 'PATH_CASES', 'pr ready': 'PATH_CASES', 'pr status': 'PATH_CASES', 'pr sync': 'PATH_CASES', 'deploys list': 'PATH_CASES', 'ci logs': 'PATH_CASES', 'pr diff': 'PATH_CASES',
   'alerts list': 'REPO_SCAN',
   'issues delegate': 'REFUSALS',
 }
@@ -159,6 +159,7 @@ const PATH_CASES = [
     { argv: ['pr', 'status', '--branch', 'x'] },
     { argv: ['pr', 'open', '--issue', 'ACME-1', '--dry-run'], gh: { [`pr view ${ISSUE_BRANCH} --json ${PR_VIEW}`]: { status: 1, stderr: `no pull requests found for branch "${ISSUE_BRANCH}"\n` } } },
     { argv: ['pr', 'ready', '--issue', 'ACME-1', '--dry-run'], gh: { [`pr view ${ISSUE_BRANCH} --json ${PR_VIEW}`]: { stdout: JSON.stringify({ number: 7, url: 'https://github.com/o/r/pull/7', title: 'Fix it', state: 'OPEN', isDraft: true, headRefName: ISSUE_BRANCH, author: { login: 'a' }, mergedAt: null }) } } },
+    { argv: ['pr', 'diff', '--branch', 'x'], gh: { [`pr view x --json ${PR_VIEW}`]: { stdout: JSON.stringify({ number: 7, url: 'https://github.com/o/r/pull/7', title: 'Fix it', state: 'OPEN', isDraft: false, headRefName: 'x', author: { login: 'a' }, mergedAt: null }) }, 'pr diff 7 --color never': { stdout: 'diff\n' } } },
     { argv: ['pr', 'sync'] },
     { argv: ['deploys', 'list'], gh: { 'api repos/{owner}/{repo}/deployments?per_page=20': { stdout: '[]' } } },
     { argv: ['ci', 'logs', '--run', '9'], gh: { 'run view 9 --log-failed': { stdout: 'failed\n' } } },

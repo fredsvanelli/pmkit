@@ -1593,6 +1593,7 @@ test('every read goes on with one warning', () => {
     'pr status': [],
     'deploys list': [],
     'ci logs': ['--run', '9'],
+    'pr diff': ['--branch', 'x'],
     reindex: [],
     'linear customers list': [],
     'linear customers show': ['--customer', 'acme'],

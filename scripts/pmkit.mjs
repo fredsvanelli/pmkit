@@ -1044,6 +1044,27 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'pr diff', summary: 'diff of the pull request of a branch, or the local diff against the base branch when it has none', usage: '[--branch b] [--base b] [--max-lines n]', args: [], flags: ['branch', 'base', 'max-lines'],
+    run: async (ctx) => {
+      const maxLines = ctx.opt('max-lines') === undefined ? 2000 : whole('max-lines', ctx.opt('max-lines'))
+      if (maxLines < 1) throw usageError('--max-lines must be at least 1')
+      const requested = ctx.opt('base')
+      if (requested !== undefined && (requested === '' || requested.startsWith('-'))) throw new PmkitError('INVALID_INPUT', `base "${requested}" is not a valid branch name`, 'Use a branch name that does not start with -')
+      const host = ctx.host()
+      const branch = ctx.opt('branch') ?? host.currentBranch()
+      if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
+      const pr = host.getPullRequest({ head: branch })
+      const base = pr ? null : ctx.opt('base') ?? defaultBranch(ctx)
+      const full = pr ? host.prDiff(pr.number) : host.localDiff({ branch, base })
+      const all = full === '' ? [] : full.replace(/\n$/, '').split('\n')
+      const truncated = all.length > maxLines
+      const diff = truncated ? `${all.slice(0, maxLines).join('\n')}\n` : full
+      const size = truncated ? `first ${maxLines} of ${all.length} lines` : `${all.length} lines`
+      const head = pr ? `pull request #${pr.number}, ${size}` : `local diff of ${branch} against ${base}, ${size}`
+      return { data: { branch, source: pr ? 'pull_request' : 'local', pr, base, diff, truncated, lines: all.length }, text: `${head}\n${diff}`, notes: await linkedCodeNotes(ctx) }
+    },
+  },
+  {
     name: 'pr sync', summary: 'moves in_review issues to done when their pull request is merged', write: true, args: [], flags: [],
     run: async (ctx) => {
       const host = ctx.host()

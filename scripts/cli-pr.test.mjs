@@ -377,3 +377,91 @@ test('issues branch with no actor leaves no branch behind and stays on the curre
   assert.equal(git(root, 'branch', '--show-current').stdout.trim(), start)
   assert.equal(git(root, 'branch', '--list', branchName('ISS-2X6D', title)).stdout.trim(), '')
 })
+
+function branchWithChange(root) {
+  const commit = (message) => git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '-qam', message)
+  fs.writeFileSync(path.join(root, 'a.txt'), 'one\n')
+  git(root, 'add', 'a.txt')
+  commit('init')
+  const base = git(root, 'branch', '--show-current').stdout.trim()
+  git(root, 'switch', '-qc', 'feat')
+  fs.writeFileSync(path.join(root, 'a.txt'), 'one\ntwo\nthree\nfour\n')
+  commit('change')
+  return base
+}
+
+const NO_PR = { status: 1, stderr: 'no pull requests found for branch "feat"\n' }
+
+test('pr diff returns the pull request diff when the branch has a pull request', async () => {
+  const root = teamRepo()
+  const gh = fakeGh({
+    [view('feat')]: { stdout: prJson({ number: 7 }) },
+    'pr diff 7 --color never': { stdout: 'diff --git a/a b/a\n+x\n' },
+  })
+  const data = await callJson(root, envWith(gh), ['pr', 'diff', '--branch', 'feat'])
+  assert.deepEqual(data, { branch: 'feat', source: 'pull_request', pr: JSON.parse(prJson({ number: 7 })), base: null, diff: 'diff --git a/a b/a\n+x\n', truncated: false, lines: 2 })
+  const text = (await call(root, envWith(gh), ['pr', 'diff', '--branch', 'feat'])).stdout
+  assert.match(text, /^pull request #7, 2 lines\ndiff --git a\/a b\/a\n\+x\n/)
+})
+
+test('pr diff reads the local diff when the branch has no pull request', async () => {
+  const root = teamRepo()
+  const base = branchWithChange(root)
+  const gh = fakeGh({ [view('feat')]: NO_PR })
+  const data = await callJson(root, envWith(gh), ['pr', 'diff', '--branch', 'feat', '--base', base])
+  assert.equal(data.source, 'local')
+  assert.equal(data.pr, null)
+  assert.equal(data.base, base)
+  assert.match(data.diff, /^diff --git a\/a\.txt b\/a\.txt/)
+  assert.match(data.diff, /\+two\n\+three\n\+four\n/)
+  assert.equal(data.truncated, false)
+  assert.match((await call(root, envWith(gh), ['pr', 'diff', '--branch', 'feat', '--base', base])).stdout, new RegExp(`^local diff of feat against ${base}, `))
+})
+
+test('pr diff uses the current branch and git_host.default_branch by default', async () => {
+  const root = teamRepo()
+  const base = branchWithChange(root)
+  const file = path.join(root, '.pmkit/config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('default_branch: main', `default_branch: ${base}`))
+  const gh = fakeGh({ [view('feat')]: NO_PR })
+  const data = await callJson(root, envWith(gh), ['pr', 'diff'])
+  assert.equal(data.branch, 'feat')
+  assert.equal(data.base, base)
+  assert.equal(data.source, 'local')
+})
+
+test('pr diff keeps the first --max-lines lines and says it cut the rest', async () => {
+  const root = teamRepo()
+  const log = `${Array.from({ length: 10 }, (_, i) => `line ${i}`).join('\n')}\n`
+  const gh = fakeGh({ [view('feat')]: { stdout: prJson({ number: 7 }) }, 'pr diff 7 --color never': { stdout: log } })
+  const data = await callJson(root, envWith(gh), ['pr', 'diff', '--branch', 'feat', '--max-lines', '3'])
+  assert.equal(data.truncated, true)
+  assert.equal(data.lines, 10)
+  assert.equal(data.diff, 'line 0\nline 1\nline 2\n')
+  assert.match((await call(root, envWith(gh), ['pr', 'diff', '--branch', 'feat', '--max-lines', '3'])).stdout, /^pull request #7, first 3 of 10 lines\n/)
+})
+
+test('pr diff of an empty diff has no lines', async () => {
+  const root = teamRepo()
+  const gh = fakeGh({ [view('feat')]: { stdout: prJson({ number: 7 }) }, 'pr diff 7 --color never': { stdout: '' } })
+  const data = await callJson(root, envWith(gh), ['pr', 'diff', '--branch', 'feat'])
+  assert.deepEqual([data.diff, data.lines, data.truncated], ['', 0, false])
+})
+
+test('pr diff refuses bad flags before gh or git runs', async () => {
+  const root = teamRepo()
+  const gh = fakeGh({})
+  for (const args of [['--max-lines', '0'], ['--max-lines', 'x'], ['--branch', '-x'], ['--branch', 'feat', '--base', '-y']]) {
+    const result = await call(root, envWith(gh), ['pr', 'diff', ...args, '--json'])
+    assert.equal(result.code, 2, args.join(' '))
+    assert.equal(errorOf(result).code, 'INVALID_INPUT', args.join(' '))
+  }
+  assert.deepEqual(ghCalls(gh), [])
+})
+
+test('pr diff refuses a repository with no git host', async () => {
+  const root = teamRepo({ github: false })
+  const result = await call(root, envWith(fakeGh({})), ['pr', 'diff', '--branch', 'feat', '--json'])
+  assert.equal(result.code, 2)
+  assert.equal(errorOf(result).code, 'NOT_SUPPORTED')
+})
