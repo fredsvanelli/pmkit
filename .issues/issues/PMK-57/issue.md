@@ -2,7 +2,7 @@
 id: PMK-57
 title: Add the delegate-to-agent command
 type: feature
-status: in_progress
+status: in_review
 priority: medium
 estimate: 3
 assignee: fred
@@ -10,7 +10,7 @@ parent: EPC-6
 milestone: generic-commands
 branch: pmk-57-add-the-delegate-to-agent-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-30T22:30:26Z
+updated: 2026-10-30T22:32:59Z
 ---
 
 ## Description
