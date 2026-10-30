@@ -51,9 +51,9 @@ Matching reads closed and archived issues too, so a TODO whose issue is `done` s
 `todos scan` reads only. Data:
 
 ```
-{ files: n, skippedEmpty: n,
+{ files: n, skippedEmpty: n, incomplete: false, skipped: { unsupported: { ".txt": 3 } },
   candidates: [{ key, tag, text, locations, title, description }],
-  matched: [{ key, tag, text, locations, issue: "ISS-1", status: "done", reason: "key" }] }
+  matched: [{ key, tag, text, locations, title, description, issue: "ISS-1", status: "done", reason: "key" }] }
 ```
 
 `title` is the text cut to 80 characters (a cut ends in `...`). `description` is the text the new issue gets:
@@ -71,7 +71,7 @@ Text output is a table of candidates (key, tag, location, text) and a table of m
 
 ### Command file
 
-`commands/issues/todos.md` is `/pmkit:issues:todos [path]`. It runs `todos scan`, shows the matched ones as information and the candidates as a table, lets the user drop rows or edit a title, and always asks before creating (a bulk write, whatever `write_policy.confirm` says). After approval it runs `issues create` with `--description-file` for each candidate, dry run first, and stops at the first failure. One candidate alone still shows the full preview. An optional `path` argument filters locations by prefix, passed as `--path`.
+`commands/issues/todos.md` is `/pmkit:issues:todos [path]`. It runs `todos scan`, shows the matched ones as information and the candidates as a table, lets the user drop rows or edit a title, and always asks before creating (a bulk write, whatever `write_policy.confirm` says). After approval it runs `issues create` with `--description-file` for each candidate, dry run first, and stops at the first failure. One candidate alone still shows the full preview. An optional `path` argument limits the scan to one folder or one file, passed as `--path`.
 
 ### Capability manifest
 
@@ -83,7 +83,7 @@ Unit tests cover the line parser, the normalization and key, the grouping, and t
 
 ### Non-goals
 
-Blame or owner lookups, other tags (HACK, XXX), removing the TODO from the code after the issue exists, labeling the issue, comment parsing per language.
+Blame or owner lookups, other tags (HACK, XXX), removing the TODO from the code after the issue exists, labeling the issue, and a full parser for every language (see "Known limits").
 
 ## Open choices for the builder
 
@@ -105,3 +105,22 @@ None that need the author.
 - **The scan never follows symbolic links** (`lstat`), skips the tracker folder from the config (`tracker.path`) in place of a fixed `.issues/`, and answers `INVALID_INPUT` for a `--path` outside the repository. `--path src` matches `src/` and `src` but not `src2/`.
 - **A missing git** answers `NOT_CONFIGURED` with the message "git was not found".
 - A test scans the pmkit repository and expects no candidate.
+
+## Changes after the second review
+
+- A file with CRLF line endings is read: `findTodos` turns `\r\n` into `\n` first, as `config.mjs` does for YAML.
+- The scan counts the files it did not read because their type has no comment syntax, by extension (or by file name when there is none), in `skipped.unsupported`. The text prints a warning, and the command file shows it before the preview.
+- More types: php and Terraform (`//` and `#`), scala, dart, gradle, kts, scss and less (as JavaScript), svelte (as html), r, pl, ex, exs, ps1, mk, Containerfile, Gemfile and Rakefile (`#`), and sql, lua and hs (`--`).
+- Matching builds one index of the issues (the `todo-key` lines in a map, and the issues per word of the normalized text) and checks each candidate against the issues that share its rarest word. The first issue in list order still wins.
+- `--path` takes one folder (with everything under it) or one file inside the repository, not a text prefix.
+- The test that looks for false candidates reads only the docs, tests and library that quote these comments on purpose. It does not forbid a real TODO elsewhere and does not read untracked files. This replaces the whole-repository scan of the first review.
+
+## Known limits
+
+These are gaps of the parser. They stay as a follow-up and are not solved here.
+
+- Only the first word of a comment counts, so `// NOTE: TODO fix this` is not found.
+- `@todo` tags and Python docstrings do not count.
+- A comment inside a `<script>` or `<style>` block of an html, vue or svelte file is not read.
+- A stray quote on a line can hide a comment that follows it on the same line.
+- A file type with no known comment syntax is not read. The warning lists those files.

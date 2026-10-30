@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { run } from './pmkit.mjs'
 import { ADAPTERS } from './lib/adapters.mjs'
-import { scanRepo } from './lib/todos.mjs'
+import { findTodos } from './lib/todos.mjs'
 import { makeRepo, tempDir } from './test-helpers.mjs'
 
 const ENV = { ...process.env, GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: '1', PMKIT_USER: 'fred' }
@@ -190,11 +190,23 @@ test('todos scan says git was not found when git is not installed', async () => 
   assert.doesNotMatch(error.message, /repository/)
 })
 
-test('the pmkit repository has no false TODO or FIXME candidates', () => {
-  const git = spawnSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: REPO_ROOT, env: ENV })
-  if (git.status !== 0) return
-  // scripts/__fixtures__ and the goldens hold sample comments on purpose, and the tracker folder is not code.
-  const { found, files } = scanRepo(REPO_ROOT, { skip: ['.issues'], env: ENV })
-  assert.ok(files > 50, `the scan read ${files} files`)
-  assert.deepEqual(found, [])
+test('todos scan counts the files it cannot read by type and warns', async () => {
+  const root = repo({ 'a.mjs': '// TODO build the export\n', 'notes.txt': '// TODO in text\n', 'more.txt': 'x\n', 'data.JSON': '{}\n', LICENSE: 'text\n', 'node_modules/x/y.txt': 'x\n' })
+  const { data } = await scan(root)
+  assert.deepEqual(data.skipped, { unsupported: { '.json': 1, '.txt': 2, LICENSE: 1 } })
+  assert.deepEqual(data.candidates.map((c) => c.text), ['build the export'])
+  const text = await run(['todos', 'scan'], { env: ENV, cwd: root })
+  assert.match(text.stderr, /warning: 4 files .*not read.*\.txt \(2\)/)
+  const none = await scan(repo({ 'a.mjs': '// TODO build the export\n' }))
+  assert.deepEqual(none.data.skipped, { unsupported: {} })
+  assert.doesNotMatch((await run(['todos', 'scan'], { env: ENV, cwd: repo({ 'a.mjs': 'x\n' }) })).stderr, /not read/)
+})
+
+test('the files that hold sample comments on purpose give no candidate', () => {
+  // Docs, tests and the library quote TODO and FIXME comments in prose, strings and fences. None of them is a comment.
+  const files = [
+    'README.md', 'CHANGELOG.md', 'skills/pmkit/SKILL.md', 'commands/issues/todos.md', 'scripts/lib/todos.mjs', 'scripts/todos.test.mjs', 'scripts/cli-todos.test.mjs',
+    'docs/superpowers/specs/2026-10-30-pmk-64-todos-to-issues-design.md', 'docs/superpowers/plans/2026-10-30-pmk-64-todos-to-issues.md',
+  ]
+  for (const file of files) assert.deepEqual(findTodos(fs.readFileSync(path.join(REPO_ROOT, file), 'utf8'), file), [], file)
 })

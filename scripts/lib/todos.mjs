@@ -23,6 +23,8 @@ const HASH = { line: ['#'], strings: ['"', "'"] }
 const MARKUP = { block: [['<!--', '-->']] }
 const STYLES = {
   c: C_LIKE,
+  c_hash: { ...C_LIKE, line: ['//', '#'] }, // php and Terraform take both marks
+  dash: { line: ['--'], strings: ['"', "'"] },
   go: { line: ['//'], block: [['/*', '*/']], strings: ['"', '`'], chars: true },
   rs: { line: ['//'], block: [['/*', '*/']], strings: ['"'], chars: true },
   css: { block: [['/*', '*/']] },
@@ -32,17 +34,19 @@ const STYLES = {
   md: { ...MARKUP, markdown: true },
 }
 const EXTENSIONS = {
-  c: ['js', 'mjs', 'cjs', 'jsx', 'ts', 'tsx', 'mts', 'cts', 'java', 'kt', 'swift', 'c', 'h', 'cc', 'cpp', 'hpp', 'cs'],
+  c: ['js', 'mjs', 'cjs', 'jsx', 'ts', 'tsx', 'mts', 'cts', 'java', 'kt', 'kts', 'swift', 'c', 'h', 'cc', 'cpp', 'hpp', 'cs', 'scala', 'dart', 'gradle', 'scss', 'less'],
+  c_hash: ['php', 'tf'],
+  dash: ['sql', 'lua', 'hs'],
   go: ['go'],
   rs: ['rs'],
   css: ['css'],
   py: ['py'],
-  hash: ['sh', 'bash', 'zsh', 'rb', 'yaml', 'yml', 'toml'],
-  markup: ['html', 'htm', 'xml', 'svg', 'vue'],
+  hash: ['sh', 'bash', 'zsh', 'rb', 'yaml', 'yml', 'toml', 'r', 'pl', 'ex', 'exs', 'ps1', 'mk'],
+  markup: ['html', 'htm', 'xml', 'svg', 'vue', 'svelte'],
   md: ['md', 'markdown'],
 }
 const BY_EXTENSION = new Map(Object.entries(EXTENSIONS).flatMap(([style, list]) => list.map((ext) => [ext, STYLES[style]])))
-const BY_NAME = new Map([['Makefile', STYLES.hash], ['Dockerfile', STYLES.hash]])
+const BY_NAME = new Map(['Makefile', 'Dockerfile', 'Containerfile', 'Gemfile', 'Rakefile'].map((name) => [name, STYLES.hash]))
 
 /** The comment syntax of a file, chosen by its name, or null for a file type the scan does not read. */
 export function commentStyle(file) {
@@ -50,7 +54,7 @@ export function commentStyle(file) {
   return BY_NAME.get(name) ?? BY_EXTENSION.get(name.includes('.') ? name.split('.').pop().toLowerCase() : '') ?? null
 }
 
-// A line comment starts at the mark. `//` after a colon is a URL, and `#` after code that is not a space is not a mark.
+// A line comment starts at the mark. `//` after a colon is a URL, and `#` or `--` after code that is not a space is not a mark.
 const markOk = (mark, source, i) => (mark === '//' ? source[i - 1] !== ':' : i === 0 || /\s/.test(source[i - 1]))
 
 /** Markdown keeps its code blocks and inline code out of the scan: they become blanks of the same length. */
@@ -165,7 +169,9 @@ export function findTodos(source, file) {
   const style = commentStyle(file)
   if (!style) return []
   const found = []
-  for (const { line, content } of commentLines(style.markdown ? blankMarkdownCode(source) : source, style)) {
+  // Line endings first, as config.mjs does for YAML: a \r left at the end of a line would end up in the text.
+  const text = source.replace(/\r\n?/g, '\n')
+  for (const { line, content } of commentLines(style.markdown ? blankMarkdownCode(text) : text, style)) {
     const match = TAG.exec(content.replace(/^[\s*/!#]+/, ''))
     if (match) found.push({ line, tag: match[1], owner: match[2] ?? '', text: match[3].trim() })
   }
@@ -204,32 +210,56 @@ export function groupTodos(found) {
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-/** The reason an issue covers a candidate, or null. The locations never match: a line number ages with the code. */
-function matchReason(candidate, issue) {
-  const haystack = `${issue.description ?? ''}\n${issue.body ?? ''}`
-  if (new RegExp(`^todo-key:\\s*${candidate.key}\\s*$`, 'm').test(haystack)) return 'key'
+const KEY_LINE = /^todo-key:[ \t]*([0-9a-f]{12})[ \t]*\r?$/gm
+const WORD = /[^\p{L}\p{N}]+/u
+
+/**
+ * Reads the issues once: the issue that holds each `todo-key:` line, and for each word the issues whose title, description
+ * or body has it. A candidate then checks the few issues that share its rarest word, not every issue.
+ */
+function indexIssues(issues) {
+  const keys = new Map()
+  const words = new Map()
+  const fields = issues.map((issue, index) => {
+    for (const [, key] of `${issue.description ?? ''}\n${issue.body ?? ''}`.matchAll(KEY_LINE)) if (!keys.has(key)) keys.set(key, issue)
+    const normalized = [issue.title ?? '', issue.description ?? '', issue.body ?? ''].map(normalizeText)
+    for (const word of new Set(normalized.flatMap((field) => field.split(WORD)).filter(Boolean))) {
+      const list = words.get(word)
+      if (list) list.push(index)
+      else words.set(word, [index])
+    }
+    return normalized
+  })
+  return { keys, words, fields }
+}
+
+/** The first issue, in list order, that holds the text as whole words, or undefined. The locations never match: a line number ages with the code. */
+function textMatch(candidate, { words, fields }, issues) {
   const text = normalizeText(candidate.text)
-  if (text.length < MIN_TEXT_MATCH) return null
-  const word = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegex(text)}(?![\\p{L}\\p{N}])`, 'u')
-  return [issue.title ?? '', issue.description ?? '', issue.body ?? ''].some((field) => word.test(normalizeText(field))) ? 'text' : null
+  if (text.length < MIN_TEXT_MATCH) return undefined
+  let rarest
+  for (const word of text.split(WORD).filter(Boolean)) {
+    const list = words.get(word)
+    if (!list) return undefined
+    if (!rarest || list.length < rarest.length) rarest = list
+  }
+  if (!rarest) return undefined
+  const whole = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegex(text)}(?![\\p{L}\\p{N}])`, 'u')
+  const position = rarest.find((index) => fields[index].some((field) => whole.test(field)))
+  return position === undefined ? undefined : issues[position]
 }
 
 /** Splits candidates into the ones no issue matches and the matched ones. Every issue counts, whatever its status. */
 export function matchTodos(candidates, issues) {
+  const index = indexIssues(issues)
   const kept = []
   const matched = []
   for (const candidate of candidates) {
-    let hit = null
-    for (const reason of ['key', 'text']) {
-      const issue = issues.find((item) => matchReason(candidate, item) === reason)
-      if (issue) {
-        hit = { issue, reason }
-        break
-      }
-    }
-    if (hit) {
+    const byKey = index.keys.get(candidate.key)
+    const issue = byKey ?? textMatch(candidate, index, issues)
+    if (issue) {
       const { key, tag, text, locations, title, description } = candidate
-      matched.push({ key, tag, text, locations, title, description, issue: hit.issue.id, status: hit.issue.status?.name ?? null, reason: hit.reason })
+      matched.push({ key, tag, text, locations, title, description, issue: issue.id, status: issue.status?.name ?? null, reason: byKey ? 'key' : 'text' })
     } else kept.push(candidate)
   }
   return { candidates: kept, matched }
@@ -261,7 +291,8 @@ function pathPrefix(given) {
 /**
  * Reads every file git lists (tracked, and untracked but not ignored) and returns its TODO and FIXME comments.
  * `path` keeps the files at or under that folder. `skip` lists folders to leave out, relative to `root`, besides
- * node_modules and .pmkit. Symbolic links and file types without a comment syntax are left out.
+ * node_modules and .pmkit. Symbolic links are left out. File types without a comment syntax are left out too, and
+ * `skipped.unsupported` counts them by extension (or by file name when there is none).
  */
 export function scanRepo(root, { path: given, skip = [], env = process.env } = {}) {
   const prefix = pathPrefix(given)
@@ -277,8 +308,16 @@ export function scanRepo(root, { path: given, skip = [], env = process.env } = {
   const found = []
   let read = 0
   let skippedEmpty = 0
+  const unsupported = {}
   for (const file of files) {
-    if (file.split('/').includes('node_modules') || left.some((dir) => inside(file, dir)) || (prefix !== null && !inside(file, prefix)) || !commentStyle(file)) continue
+    if (file.split('/').includes('node_modules') || left.some((dir) => inside(file, dir)) || (prefix !== null && !inside(file, prefix))) continue
+    if (!commentStyle(file)) {
+      // A file type with no comment syntax is not read. The count by extension tells the user what the scan left out.
+      const name = file.split('/').pop()
+      const extension = path.extname(name).toLowerCase() || name
+      unsupported[extension] = (unsupported[extension] ?? 0) + 1
+      continue
+    }
     const full = path.join(root, file)
     let buffer
     try {
@@ -295,5 +334,5 @@ export function scanRepo(root, { path: given, skip = [], env = process.env } = {
       else found.push({ file, line: todo.line, tag: todo.tag, text: todo.text })
     }
   }
-  return { found, files: read, skippedEmpty }
+  return { found, files: read, skippedEmpty, skipped: { unsupported } }
 }

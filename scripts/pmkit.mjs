@@ -1028,22 +1028,27 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'todos scan', summary: 'TODO and FIXME comments in the files git lists, minus the ones an existing issue matches; reads only', usage: '[--path prefix]', flags: ['path'],
+    name: 'todos scan', summary: 'TODO and FIXME comments in the files git lists, minus the ones an existing issue matches; reads only', usage: '[--path folder-or-file]', flags: ['path'],
     run: async (ctx) => {
       // The tracker folder is data, not code. A hosted tracker has no folder, so it adds nothing to skip.
       const { issuesDir } = ctx.config()
-      const relative = issuesDir ? path.relative(ctx.root, issuesDir).split(path.sep).join('/') : ''
-      const skip = relative !== '' && !relative.startsWith('..') ? [relative] : []
-      const { found, files, skippedEmpty } = scanRepo(ctx.root, { path: ctx.opt('path'), skip, env: ctx.env })
+      const relative = issuesDir ? path.relative(ctx.root, issuesDir) : ''
+      const skip = relative !== '' && !climbsOut(relative) ? [slash(relative)] : []
+      const { found, files, skippedEmpty, skipped } = scanRepo(ctx.root, { path: ctx.opt('path'), skip, env: ctx.env })
       const existing = await readExistingIssues(await ctx.tracker())
       const { candidates, matched } = matchTodos(groupTodos(found), existing.issues)
       const warnings = existing.problems.map(problemLine)
       if (existing.incomplete) warnings.push(`incomplete: the tracker has more issues than the ${READ_LIMIT} pmkit read, so a comment that an issue covers may show as new. Do not create issues from this list`)
       if (skippedEmpty > 0) warnings.push(`${skippedEmpty} TODO or FIXME comments have no text and were skipped`)
+      const unread = Object.entries(skipped.unsupported).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+      if (unread.length > 0) {
+        const total = unread.reduce((sum, [, count]) => sum + count, 0)
+        warnings.push(`${total} files of types the scan cannot read were not read: ${unread.map(([type, count]) => `${type} (${count})`).join(', ')}`)
+      }
       const parts = []
       if (candidates.length > 0) parts.push(table(['Key', 'Tag', 'Location', 'Text'], candidates.map((c) => [c.key, c.tag, c.locations.length > 1 ? `${c.locations[0]} (+${c.locations.length - 1})` : c.locations[0], c.title])))
       if (matched.length > 0) parts.push(`already in the tracker:\n${table(['Issue', 'Status', 'Reason', 'Text'], matched.map((m) => [m.issue, m.status ?? '', m.reason, m.text]))}`)
-      return { data: { files, skippedEmpty, incomplete: existing.incomplete, candidates, matched }, text: parts.length > 0 ? parts.join('\n\n') : 'no TODO or FIXME found', warnings }
+      return { data: { files, skippedEmpty, skipped, incomplete: existing.incomplete, candidates, matched }, text: parts.length > 0 ? parts.join('\n\n') : 'no TODO or FIXME found', warnings }
     },
   },
   {

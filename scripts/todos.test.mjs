@@ -143,3 +143,39 @@ test('readExistingIssues reads with a large limit and flags a read the tracker c
   const full = Array.from({ length: 5 }, (_, i) => issue(`ISS-${i}`))
   assert.equal((await readExistingIssues(tracker({ issues: full, problems: [] }), { limit: 5 })).incomplete, true)
 })
+
+test('findTodos reads a file with CRLF line endings', () => {
+  assert.deepEqual(tags('// TODO: fix the cache\r\n', 'a.mjs'), [[1, 'TODO', 'fix the cache']])
+  assert.equal(findTodos('// TODO\r\n', 'a.mjs')[0].text, '')
+  assert.deepEqual(tags('/*\r\n * FIXME: second\r\n */\r\nx # TODO: no\r\n', 'a.ts'), [[2, 'FIXME', 'second']])
+  assert.deepEqual(tags('a = 1\r\n# TODO: py line two\r\n', 'a.py'), [[2, 'TODO', 'py line two']])
+})
+
+test('findTodos knows more languages', () => {
+  const cases = {
+    'a.php': ['// TODO: php slash', '# TODO: php hash'], 'a.scala': ['// TODO: x'], 'a.dart': ['// TODO: x'], 'a.gradle': ['// TODO: x'], 'a.kts': ['// TODO: x'],
+    'a.scss': ['// TODO: x'], 'a.less': ['// TODO: x'], 'a.svelte': ['<!-- TODO: x -->'], 'a.tf': ['# TODO: x', '// TODO: y'], 'a.r': ['# TODO: x'], 'a.pl': ['# TODO: x'],
+    'a.ex': ['# TODO: x'], 'a.exs': ['# TODO: x'], 'a.ps1': ['# TODO: x'], 'a.mk': ['# TODO: x'], Containerfile: ['# TODO: x'], Gemfile: ['# TODO: x'], Rakefile: ['# TODO: x'],
+    'a.sql': ['-- TODO: x'], 'a.lua': ['-- TODO: x'], 'a.hs': ['-- TODO: x'],
+  }
+  for (const [file, lines] of Object.entries(cases)) for (const line of lines) assert.equal(findTodos(`code\n${line}\n`, file).length, 1, `${file}: ${line}`)
+  assert.deepEqual(findTodos('SELECT 1; a--b TODO: x', 'a.sql'), [])
+})
+
+test('matchTodos stays fast with 500 candidates and 5000 issues', () => {
+  const candidates = groupTodos(Array.from({ length: 500 }, (_, i) => ({ file: 'f.mjs', line: i + 1, tag: 'TODO', text: `rework the module number ${i} before the release` })))
+  const issues = Array.from({ length: 5000 }, (_, i) => issue(`ISS-${i}`, { title: `issue ${i}`, body: `a long body about the module and the release ${i} with the usual words` }))
+  issues[10] = issue('ISS-KEY', { description: `todo-key: ${candidates[0].key}` })
+  issues[20] = issue('ISS-TEXT', { body: 'Please rework the module number 7 before the release, thanks.' })
+  const started = Date.now()
+  const result = matchTodos(candidates, issues)
+  assert.ok(Date.now() - started < 5000, `took ${Date.now() - started} ms`)
+  assert.deepEqual(result.matched.map((m) => [m.issue, m.reason]).sort(), [['ISS-KEY', 'key'], ['ISS-TEXT', 'text']])
+  assert.equal(result.candidates.length, 498)
+})
+
+test('matchTodos picks the first issue in list order when several match', () => {
+  const candidates = groupTodos([{ file: 'a', line: 1, tag: 'TODO', text: 'refresh the documentation index' }])
+  const result = matchTodos(candidates, [issue('ISS-1', { body: 'x' }), issue('ISS-2', { body: 'refresh the documentation index' }), issue('ISS-3', { title: 'refresh the documentation index' })])
+  assert.equal(result.matched[0].issue, 'ISS-2')
+})

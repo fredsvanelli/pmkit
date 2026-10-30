@@ -10,13 +10,13 @@ Arguments: `$ARGUMENTS`
 
 ## Parameters
 
-- `path` (optional): a folder or file prefix, such as `src/`, to scan instead of the whole repository.
+- `path` (optional): one folder, such as `src/` (everything under it), or one file to scan instead of the whole repository. It must be inside the repository.
 
 ## Steps
 
 Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 
-1. Scan the repository. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" todos scan [--path <path>] --json`. The CLI reads the files git lists, so it respects `.gitignore` and skips `node_modules`, the tracker folder, `.pmkit/`, symbolic links, binary files, files over 1 MiB and file types with no known comment syntax. It counts a TODO or FIXME only as the first word of a real comment, not in prose, strings or URLs. It groups a comment that repeats in several places into one candidate with every location, and it drops the candidates an existing issue matches, whatever that issue's status. A match is the `todo-key:` line of an issue this command created (`key`), or the comment text as whole words inside the issue title or text (`text`). A `file:line` never matches, because line numbers age. When `incomplete` is `true`, the tracker has more issues than the CLI read, so a comment that an issue covers may look new. Show the warning and stop before any create. When `candidates` is empty, show the `matched` list, say there is nothing to create and stop.
+1. Scan the repository. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" todos scan [--path <path>] --json`. The CLI reads the files git lists, so it respects `.gitignore` and skips `node_modules`, the tracker folder, `.pmkit/`, symbolic links, binary files, files over 1 MiB and file types with no known comment syntax. It counts a TODO or FIXME only as the first word of a real comment, not in prose, strings or URLs. It groups a comment that repeats in several places into one candidate with every location, and it drops the candidates an existing issue matches, whatever that issue's status. A match is the `todo-key:` line of an issue this command created (`key`), or the comment text as whole words inside the issue title or text (`text`). A `file:line` never matches, because line numbers age. When `incomplete` is `true`, the tracker has more issues than the CLI read, so a comment that an issue covers may look new. Show the warning and stop before any create. When `skipped.unsupported` is not empty, the CLI printed a warning that lists the file types it did not read, such as `.txt (3)`. Show that warning before the preview, because a TODO in those files is not in the list. When `candidates` is empty, show the `matched` list, say there is nothing to create and stop.
 2. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` for the allowed types.
 3. Draft one issue per candidate. The title is the candidate `title`. The type is `bug` for a FIXME and `task` for a TODO, when the tracker allows them, else the first allowed type. The description is the candidate `description` as it is, because its `todo-key:` line is what keeps a second run from creating the issue again. Write each description to a temporary file outside `.issues/`.
 4. Run the dry run of each issue: `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues create --title "<title>" --type <type> --description-file <file> --dry-run --json`. When a dry run fails, show the error and ask for a corrected value.
@@ -32,6 +32,16 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 ## Output
 
 A table of the created issues (full ID, title, type, location), then the comments that already had an issue, with the issue ID and the reason. Mention that running the command again creates nothing for these comments, because each issue holds its `todo-key:` line.
+
+## Known limits of the scan
+
+The parser reads comment marks by file type. It is a heuristic, and these cases are known gaps, kept as a follow-up:
+
+- Only the first word of a comment counts, so `// NOTE: TODO fix this` is not found.
+- `@todo` tags and Python docstrings (`"""TODO: ..."""`) do not count.
+- A comment inside a `<script>` or `<style>` block of an html, vue or svelte file is not read, because those files are read with the markup syntax.
+- A stray quote on a line can hide a comment that follows it on the same line.
+- A file type with no known comment syntax is not read. The warning of step 1 counts those files.
 
 ## If something is missing
 
