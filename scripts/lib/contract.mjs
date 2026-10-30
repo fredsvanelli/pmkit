@@ -13,7 +13,7 @@ export const TRACKER_OPERATIONS = [
   'getCapacity', 'setCapacity', 'getDaysOff', 'updateCycleCapacity',
   'metricEvents',
   'readDocument', 'createDocument', 'listDocuments',
-  'logTime',
+  'logTime', 'listTimeEntries',
 ]
 
 /** Throws a TypeError that lists every contract operation the object lacks. */

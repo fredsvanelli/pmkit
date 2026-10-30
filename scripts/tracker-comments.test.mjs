@@ -73,6 +73,24 @@ test('history returns every event, or those at or after since (a date or a times
   assert.deepEqual(tracker.getHistory(id, { since: '2026-10-24T10:00:00Z' }).map((event) => event.op), ['log_time'])
 })
 
+test('listTimeEntries returns the log_time events in order with the total', () => {
+  const { tracker, id, setNow } = setup()
+  assert.deepEqual(tracker.listTimeEntries(id), { issue: id, entries: [], total: 0 })
+  setNow('2026-10-24T10:00:00Z')
+  tracker.logTime(id, 30, 'fred')
+  tracker.comment(id, 'between', 'fred')
+  tracker.logTime(id, 15, 'fred')
+  assert.deepEqual(tracker.listTimeEntries(id), {
+    issue: id,
+    entries: [
+      { at: '2026-10-24T10:00:00Z', by: 'fred', minutes: 30 },
+      { at: '2026-10-24T10:00:00Z', by: 'fred', minutes: 15 },
+    ],
+    total: 45,
+  })
+  assert.throws(() => tracker.listTimeEntries('NOPE-1'), (error) => error.code === 'NOT_FOUND')
+})
+
 test('logTime writes one log_time event with the minutes', () => {
   const { tracker, id, rawEvents } = setup()
   tracker.logTime(id, 45, 'fred')
