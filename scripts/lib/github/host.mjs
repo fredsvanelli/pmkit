@@ -1,5 +1,9 @@
 import { spawnSync } from 'node:child_process'
 import { PmkitError } from '../errors.mjs'
+import { FAILED_RUN } from '../risks.mjs'
+
+// A failed run log can pass the 1 MiB default of spawnSync. 256 MiB leaves room for the largest logs.
+const MAX_OUTPUT = 256 * 1024 * 1024
 
 const VIEW_FIELDS = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
 const LIST_FIELDS = 'number,url,title,headRefName,isDraft,updatedAt,author,statusCheckRollup'
@@ -10,7 +14,7 @@ const INSTALL_STEP = 'Install the GitHub CLI (https://cli.github.com) and run gh
 export const defaultExec =
   ({ root, env }) =>
   (cmd, args, { input } = {}) => {
-    const result = spawnSync(cmd, args, { cwd: root, env, encoding: 'utf8', input })
+    const result = spawnSync(cmd, args, { cwd: root, env, encoding: 'utf8', input, maxBuffer: MAX_OUTPUT })
     if (result.error) throw result.error
     return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
   }
@@ -45,6 +49,9 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
     } catch (error) {
       if (error?.code === 'ENOENT') {
         throw new PmkitError('NOT_CONFIGURED', `${cmd} is not installed`, INSTALL_STEP)
+      }
+      if (error?.code === 'ENOBUFS') {
+        throw new PmkitError('UPSTREAM', `${cmd} ${args.slice(0, 2).join(' ')} output is too large to read`, 'Read the log in the GitHub web UI')
       }
       throw error
     }
@@ -162,7 +169,7 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
       if (runId !== undefined) {
         if (!Number.isInteger(runId) || runId < 1) throw new PmkitError('INVALID_INPUT', `run id "${runId}" is not valid`, 'Pass the number of a workflow run')
       } else {
-        const failed = listRuns({ branch }).find((r) => r.conclusion === 'failure')
+        const failed = listRuns({ branch }).find((r) => FAILED_RUN.has(r.conclusion))
         if (!failed) return null
         run = failed
       }

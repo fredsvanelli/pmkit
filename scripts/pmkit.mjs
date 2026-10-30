@@ -970,6 +970,7 @@ export const COMMANDS = [
     run: async (ctx) => {
       const limit = ctx.opt('limit') === undefined ? undefined : whole('limit', ctx.opt('limit'))
       if (limit !== undefined && (limit < 1 || limit > 100)) throw usageError('--limit must be from 1 to 100')
+      if (ctx.opt('environment') === '') throw usageError('--environment must not be empty')
       const deploys = ctx.host().listDeploys({ environment: ctx.opt('environment'), limit })
       const lines = deploys.map((d) => `${d.environment} ${d.state} ${d.ref} ${d.sha.slice(0, 7)} ${d.createdAt}${d.url ? ` ${d.url}` : ''}`)
       return { data: { deploys }, text: lines.length === 0 ? 'no deployments' : lines.join('\n'), notes: await linkedCodeNotes(ctx) }
@@ -980,6 +981,7 @@ export const COMMANDS = [
     run: async (ctx) => {
       const runId = ctx.opt('run') === undefined ? undefined : whole('run', ctx.opt('run'))
       if (runId === 0) throw usageError('--run must be a run id')
+      if (runId !== undefined && ctx.opt('branch') !== undefined) throw usageError('--run and --branch exclude each other', 'Pass one of them')
       const tail = ctx.opt('tail') === undefined ? 200 : whole('tail', ctx.opt('tail'))
       if (tail < 1) throw usageError('--tail must be at least 1')
       const host = ctx.host()

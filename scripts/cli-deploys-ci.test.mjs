@@ -109,6 +109,17 @@ test('ci logs refuses bad --run and --tail values before gh runs', async () => {
   assert.deepEqual(ghCalls(gh), [])
 })
 
+test('ci logs refuses --run with --branch, and deploys list refuses an empty --environment', async () => {
+  const root = teamRepo()
+  const gh = fakeGh({})
+  for (const args of [['ci', 'logs', '--run', '9', '--branch', 'main'], ['deploys', 'list', '--environment', '']]) {
+    const result = await call(root, envWith(gh), args)
+    assert.equal(result.code, 2, args.join(' '))
+    assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT')
+  }
+  assert.deepEqual(ghCalls(gh), [])
+})
+
 test('both commands answer NOT_SUPPORTED without a git host', async () => {
   const root = teamRepo({ github: false })
   const gh = fakeGh({})

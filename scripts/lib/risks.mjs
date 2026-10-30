@@ -116,7 +116,7 @@ export function epicRisks(epics, { updatesByEpic, today, windowDays }) {
   return rows
 }
 
-const FAILED_RUN = new Set(['failure', 'timed_out', 'startup_failure'])
+export const FAILED_RUN =new Set(['failure', 'timed_out', 'startup_failure'])
 const FAILED_CHECK = new Set(['FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE', 'ACTION_REQUIRED'])
 const FAILED_STATUS = new Set(['FAILURE', 'ERROR'])
 

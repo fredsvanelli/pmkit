@@ -254,6 +254,25 @@ test('ciLogs without a run id takes the newest failed run of the branch', () => 
   assert.deepEqual(result, { runId: 2, workflowName: 'CI', url: 'u2', log: 'boom\n' })
 })
 
+test('ciLogs counts timed_out and startup_failure runs as failed', () => {
+  for (const conclusion of ['timed_out', 'startup_failure']) {
+    const { exec, calls } = fakeExec({ stdout: JSON.stringify([{ databaseId: 7, workflowName: 'CI', conclusion, url: 'u' }]) }, { stdout: 'x' })
+    assert.equal(host(exec).ciLogs({ branch: 'main' }).runId, 7)
+    assert.deepEqual(calls[1].args, ['run', 'view', '7', '--log-failed'])
+  }
+})
+
+test('a log that overflows the buffer becomes an UPSTREAM error', () => {
+  const { exec } = fakeExec(() => { throw Object.assign(new Error('spawnSync gh ENOBUFS'), { code: 'ENOBUFS' }) })
+  assert.throws(() => host(exec).ciLogs({ runId: 9 }), (e) => e instanceof PmkitError && e.code === 'UPSTREAM' && /too large/.test(e.message))
+})
+
+test('the default exec reads more than 1 MiB of output', () => {
+  const run = defaultExec({ root: process.cwd(), env: process.env })
+  const result = run(process.execPath, ['-e', "process.stdout.write('x'.repeat(3 * 1024 * 1024))"])
+  assert.equal(result.stdout.length, 3 * 1024 * 1024)
+})
+
 test('ciLogs returns null when no run of the branch failed, and refuses bad input', () => {
   const { exec, calls } = fakeExec({ stdout: JSON.stringify([{ databaseId: 3, conclusion: 'success' }]) })
   assert.equal(host(exec).ciLogs({ branch: 'main' }), null)
