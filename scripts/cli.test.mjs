@@ -616,6 +616,22 @@ test('description file, estimate and labels reach the issue', () => {
   assert.match(got.stdout, /Line two/)
 })
 
+test('time-entries lists the logged time and the total, text and JSON', () => {
+  const root = makeRepo('team')
+  assert.equal(run(root, ['issues', 'log-time', 'ISS-3F7H', '45']).status, 0)
+  assert.equal(run(root, ['issues', 'log-time', 'ISS-3F7H', '15']).status, 0)
+  const text = run(root, ['issues', 'time-entries', 'ISS-3F7H']).stdout
+  assert.match(text, /45/)
+  assert.match(text, /total: 60 minutes/)
+  const got = json(root, ['issues', 'time-entries', 'ISS-3F7H'])
+  assert.equal(got.issue, 'ISS-3F7H')
+  assert.equal(got.total, 60)
+  assert.deepEqual(got.entries.map((entry) => entry.minutes), [45, 15])
+  const missing = run(root, ['issues', 'time-entries', 'ISS-9ZZZ'])
+  assert.notEqual(missing.status, 0)
+  assert.match(missing.stdout + missing.stderr, /ISS-9ZZZ|not found/i)
+})
+
 test('assign, link, comment, log-time, archive and get --comments --history', () => {
   const root = makeRepo('team')
   assert.match(run(root, ['issues', 'assign', 'ISS-3F7H', 'ana']).stdout, /assignee: .* → ana/)
@@ -1534,6 +1550,7 @@ test('every read goes on with one warning', () => {
     'issues list': [],
     'issues get': ['ISS-5N1R'],
     'issues dependencies': ['EPC-2M9D'],
+    'issues time-entries': ['ISS-5N1R'],
     'cycle list': [],
     'cycle current': [],
     'cycle issues': ['2026-10-12'],

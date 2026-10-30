@@ -1,0 +1,18 @@
+$ pmkit issues time-entries ISS-5N1R
+exit 0
+--- stdout
+no time logged on ISS-5N1R
+total: 0 minutes
+--- stderr
+(empty)
+
+$ pmkit issues time-entries ISS-5N1R --json
+exit 0
+--- stdout
+{
+  "issue": "ISS-5N1R",
+  "entries": [],
+  "total": 0
+}
+--- stderr
+(empty)
