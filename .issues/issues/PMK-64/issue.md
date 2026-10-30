@@ -2,7 +2,7 @@
 id: PMK-64
 title: Add the todos-to-issues command
 type: feature
-status: in_progress
+status: in_review
 priority: medium
 estimate: 3
 assignee: fred
@@ -10,7 +10,7 @@ parent: EPC-6
 milestone: generic-commands
 branch: pmk-64-add-the-todos-to-issues-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-30T23:22:35Z
+updated: 2026-10-30T23:24:19Z
 ---
 
 ## Description
