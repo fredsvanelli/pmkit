@@ -35,3 +35,11 @@ test('a view file with conflict markers is one conflict problem and no view prob
   writeView(root, 'mine.yaml', 'filter:\n<<<<<<< HEAD\n  blocked: true\n=======\n  archived: true\n>>>>>>> other\n')
   assert.deepEqual(brief(validateRepo(root)), ['conflict .issues/views/mine.yaml'])
 })
+
+test('a view whose sprint is not a valid sprint id is a view problem, as it is for the tracker', () => {
+  const root = makeRepo('team')
+  writeView(root, 'escape.yaml', 'filter:\n  sprint: ../config\n')
+  writeView(root, 'missing.yaml', 'filter:\n  sprint: 2099-01-01\n')
+  writeView(root, 'current.yaml', 'filter:\n  sprint: current\n')
+  assert.deepEqual(brief(validateRepo(root)), ['view .issues/views/escape.yaml', 'view .issues/views/missing.yaml'])
+})

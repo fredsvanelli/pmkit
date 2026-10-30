@@ -14,7 +14,7 @@ import { parseRelease, releaseStems, validReleaseId } from './local/releases.mjs
 import { checkFilter } from './local/query.mjs'
 import { parseView, validViewName, viewStems } from './local/views.mjs'
 import { hasConflictMarkers, parseIssueFile, toFrontmatter } from './local/issue-file.mjs'
-import { overlaps, readSprint } from './local/sprints.mjs'
+import { overlaps, readSprint, sprintFileExists } from './local/sprints.mjs'
 
 const LIST_REFS = ['blocked_by', 'related', 'duplicate_of']
 const read = (file) => fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
@@ -258,8 +258,7 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
     }
     try {
       const { filter } = parseView(read(file), name)
-      const sprintExists = (id) => fs.existsSync(path.join(issuesDir, 'sprints', `${id}.yaml`))
-      checkFilter(filter, { types: local.types, members: Object.keys(local.members), sprintExists })
+      checkFilter(filter, { types: local.types, members: Object.keys(local.members), sprintExists: (id) => sprintFileExists(issuesDir, id) })
     } catch (error) {
       add(file, 'view', error.message)
     }
