@@ -24,7 +24,7 @@ Each command file holds the full procedure. When the user asks for one of these 
 | break an issue into sub-issues with estimates, order and blockers | `/pmkit:issues:breakdown` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/breakdown.md` |
 | open an issue from what the session found (an error, a failing test, a TODO), after a duplicate check | `/pmkit:issues:capture` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/capture.md` |
 | add a comment to an issue | `/pmkit:issues:comment` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/comment.md` |
-| create an issue, with the fields checked against the project config | `/pmkit:issues:create` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/create.md` |
+| create an issue from an idea, refined into context, scope, tasks and acceptance criteria, with the fields checked against the project config | `/pmkit:issues:create` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/create.md` |
 | show what blocks an issue or an epic, with the blocker chain, the hierarchy and the critical path | `/pmkit:issues:dependencies` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/dependencies.md` |
 | find issues with a plain-language question, such as "high-priority bugs in the current sprint" | `/pmkit:issues:find` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/find.md` |
 | link two issues (blocks, related, duplicate), remove a link, or set a parent | `/pmkit:issues:link` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/link.md` |
