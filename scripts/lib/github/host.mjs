@@ -10,6 +10,7 @@ const DIFF_TIMEOUT_MS = 120 * 1000
 const VIEW_FIELDS = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
 const LIST_FIELDS = 'number,url,title,headRefName,isDraft,updatedAt,author,statusCheckRollup'
 const RUN_FIELDS = 'databaseId,workflowName,status,conclusion,url,createdAt,headSha'
+const THREADS_QUERY = 'query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { pageInfo { hasNextPage } nodes { isResolved isOutdated path line comments(first: 1) { nodes { url body author { login } } } } } } } }'
 const INSTALL_STEP = 'Install the GitHub CLI (https://cli.github.com) and run gh auth login'
 
 /** Runs a command in root with spawnSync. A missing binary throws the spawn error (code ENOENT). */
@@ -143,6 +144,33 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
 
     prReviews(number) {
       return parse(check('gh', ['pr', 'view', String(number), '--json', 'reviews,reviewRequests']).stdout, 'the reviews')
+    },
+
+    prMergeState(number) {
+      return parse(check('gh', ['pr', 'view', String(number), '--json', 'mergeable,mergeStateStatus,reviewDecision,baseRefName']).stdout, 'the merge state')
+    },
+
+    /** The review threads of a pull request (first 100). `incomplete` is true when there are more. */
+    prThreads(number) {
+      const args = ['api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-F', `number=${number}`, '-f', `query=${THREADS_QUERY}`]
+      const reply = parse(check('gh', args).stdout, 'the review threads')
+      if (reply?.errors?.length > 0) throw new PmkitError('UPSTREAM', `gh api graphql failed: ${reply.errors[0].message}`, 'Check the access of the GitHub token to the repository')
+      const connection = reply?.data?.repository?.pullRequest?.reviewThreads
+      if (!connection) throw new PmkitError('UPSTREAM', 'gh api graphql returned no review threads', 'Update the GitHub CLI and retry')
+      const threads = connection.nodes.map((t) => {
+        const first = t.comments?.nodes?.[0]
+        return { isResolved: t.isResolved, isOutdated: t.isOutdated, path: t.path ?? null, line: t.line ?? null, url: first?.url ?? null, author: first?.author?.login ?? null, body: first?.body ?? '' }
+      })
+      return { threads, incomplete: connection.pageInfo?.hasNextPage === true }
+    },
+
+    /** The branch protection of a base branch, or null when it has none. */
+    branchProtection(base) {
+      const args = ['api', `repos/{owner}/{repo}/branches/${encodeURIComponent(refArg('base', base))}/protection`]
+      const result = run('gh', args)
+      if (result.status === 0) return parse(result.stdout, 'the branch protection')
+      if (/branch not protected/i.test(result.stderr ?? '')) return null
+      throw failure('gh', args, result)
     },
 
     listPullRequests() {

@@ -391,3 +391,41 @@ test('unpushedCommits counts the commits of a local branch that origin lacks, an
   assert.equal(host(mapExec({}).exec).unpushedCommits('feat/x'), null)
 })
 
+
+test('prMergeState reads the merge fields with gh pr view', () => {
+  const state = { mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY', reviewDecision: 'REVIEW_REQUIRED', baseRefName: 'main' }
+  const { exec, calls } = fakeExec({ stdout: JSON.stringify(state) })
+  assert.deepEqual(host(exec).prMergeState(12), state)
+  assert.deepEqual(calls[0].args, ['pr', 'view', '12', '--json', 'mergeable,mergeStateStatus,reviewDecision,baseRefName'])
+})
+
+test('prThreads asks the review threads with one graphql call, flattens them and reports a second page', () => {
+  const node = (id, extra = {}) => ({ isResolved: false, isOutdated: false, path: 'a.js', line: 3, comments: { nodes: [{ url: `https://x/${id}`, body: `c${id}`, author: { login: 'bob' } }] }, ...extra })
+  const reply = { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: true }, nodes: [node(1), node(2, { isResolved: true })] } } } } }
+  const { exec, calls } = fakeExec({ stdout: JSON.stringify(reply) })
+  const result = host(exec).prThreads(12)
+  assert.deepEqual(calls[0].args.slice(0, 2), ['api', 'graphql'])
+  for (const part of ['owner={owner}', 'repo={repo}', 'number=12']) assert.ok(calls[0].args.includes(part), part)
+  assert.equal(result.incomplete, true)
+  assert.deepEqual(result.threads[0], { isResolved: false, isOutdated: false, path: 'a.js', line: 3, url: 'https://x/1', author: 'bob', body: 'c1' })
+  assert.equal(result.threads[1].isResolved, true)
+})
+
+test('prThreads maps a graphql error reply to UPSTREAM', () => {
+  const { exec } = fakeExec({ stdout: JSON.stringify({ errors: [{ message: 'Resource not accessible' }] }) })
+  assert.throws(() => host(exec).prThreads(12), (e) => e.code === 'UPSTREAM' && /not accessible/.test(e.message))
+})
+
+test('branchProtection reads the protection of the base, returns null when unprotected and UPSTREAM on a refusal', () => {
+  const rules = { required_pull_request_reviews: { required_approving_review_count: 2 } }
+  const ok = fakeExec({ stdout: JSON.stringify(rules) })
+  assert.deepEqual(host(ok.exec).branchProtection('main'), rules)
+  assert.deepEqual(ok.calls[0].args, ['api', 'repos/{owner}/{repo}/branches/main/protection'])
+  const open = fakeExec({ status: 1, stderr: 'gh: Branch not protected (HTTP 404)\n' })
+  assert.equal(host(open.exec).branchProtection('main'), null)
+  const refused = fakeExec({ status: 1, stderr: 'gh: Resource not accessible by integration (HTTP 403)\n' })
+  assert.throws(() => host(refused.exec).branchProtection('main'), (e) => e.code === 'UPSTREAM')
+  const bad = fakeExec()
+  assert.throws(() => host(bad.exec).branchProtection('-x'), (e) => e.code === 'INVALID_INPUT')
+  assert.equal(bad.calls.length, 0)
+})
