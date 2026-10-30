@@ -3,3 +3,5 @@
 {"at":"2026-10-30T21:29:19Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-30T21:29:30Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-49-add-deploys-and-ci-logs-to-the-github"}
 {"at":"2026-10-30T21:30:27Z","by":"fred","op":"comment","to":"2026-10-30T21-30-27Z-fred.md"}
+{"at":"2026-10-30T21:37:30Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-30T21:37:30Z","by":"fred","op":"update","field":"acceptance_criteria"}
