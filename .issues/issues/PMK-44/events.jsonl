@@ -3,3 +3,4 @@
 {"at":"2026-10-30T22:07:37Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-10-30T22:07:37Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-30T22:07:45Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-44-add-saved-views-to-the-local-tracker"}
+{"at":"2026-10-30T22:09:42Z","by":"fred","op":"comment","to":"2026-10-30T22-09-42Z-fred.md"}
