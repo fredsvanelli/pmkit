@@ -22,7 +22,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 - `/pmkit:issues:breakdown`: Break an issue into sub-issues with estimates, order and blockers.
 - `/pmkit:issues:capture`: Open an issue from what the session found (an error, a failing test, a TODO), after a duplicate check.
 - `/pmkit:issues:comment`: Add a comment to an issue.
-- `/pmkit:issues:create`: Create an issue, with the fields checked against the project config.
+- `/pmkit:issues:create`: Create an issue from an idea, refined into context, scope, tasks and acceptance criteria, with the fields checked against the project config.
 - `/pmkit:issues:dependencies`: Show what blocks an issue or an epic, with the blocker chain, the hierarchy and the critical path.
 - `/pmkit:issues:find`: Find issues with a plain-language question, such as "high-priority bugs in the current sprint".
 - `/pmkit:issues:link`: Link two issues (blocks, related, duplicate), remove a link, or set a parent.

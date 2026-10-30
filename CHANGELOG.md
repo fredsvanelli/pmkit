@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 - 2026-10-30
+
+- `/pmkit:issues:create` turns an idea into a full ticket before it creates anything. It reads the README, the docs, similar issues, the epics and the code, warns about likely duplicates, asks 2 or 3 short questions on context and scope, and drafts the description with `### Context`, `### Scope (in)`, `### Out of scope` and `### Tasks`, with the acceptance criteria in their own field. It always shows the full ticket for approval before it creates it.
+
+Tracker format: 2
+
 ## 0.3.0 - 2026-10-28
 
 - `/pmkit:setup` sets up a Linear repository. It infers the workspace and the team, asks which status means in review and blocked and which label stands for each issue type, and writes them to `.pmkit/config.yaml` after one approval.
