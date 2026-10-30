@@ -429,3 +429,18 @@ test('branchProtection reads the protection of the base, returns null when unpro
   assert.throws(() => host(bad.exec).branchProtection('-x'), (e) => e.code === 'INVALID_INPUT')
   assert.equal(bad.calls.length, 0)
 })
+
+test('a gh api failure carries the HTTP status of the reply, read from the status marker and not from the free text', () => {
+  const status = (stderr) => { try { host(fakeExec({ status: 1, stderr }).exec).branchProtection('fix-404') } catch (e) { return e.httpStatus } }
+  assert.equal(status('gh: Resource not accessible by integration (HTTP 403)\n'), 403)
+  assert.equal(status('gh: Not Found (HTTP 404)\n'), 404)
+  assert.equal(status('HTTP 502: Bad Gateway (https://api.github.com/repos/o/r/branches/fix-404/protection)\n'), 502)
+  assert.equal(status('error connecting to api.github.com/repos/o/r/branches/fix-404/protection\n'), undefined)
+})
+
+test('prThreads marks a FORBIDDEN or NOT_FOUND graphql error with the matching HTTP status', () => {
+  const status = (type) => { try { host(fakeExec({ stdout: JSON.stringify({ errors: [{ type, message: 'nope' }] }) }).exec).prThreads(1) } catch (e) { return e.httpStatus } }
+  assert.equal(status('FORBIDDEN'), 403)
+  assert.equal(status('NOT_FOUND'), 404)
+  assert.equal(status('INTERNAL'), undefined)
+})

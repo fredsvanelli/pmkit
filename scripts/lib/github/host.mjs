@@ -33,7 +33,11 @@ function failure(cmd, args, result) {
     return new PmkitError('RATE_LIMITED', 'GitHub rate limit reached', 'Wait a few minutes and retry')
   }
   const detail = firstLine(stderr) || `exit status ${result.status}`
-  return new PmkitError('UPSTREAM', `${cmd} ${args.slice(0, 2).join(' ')} failed: ${detail}`, 'Check the output of the same command in a terminal')
+  const error = new PmkitError('UPSTREAM', `${cmd} ${args.slice(0, 2).join(' ')} failed: ${detail}`, 'Check the output of the same command in a terminal')
+  // gh api ends its error line with "(HTTP 404)" or starts it with "HTTP 502:". The free text may name a branch, so only these two spots count.
+  const http = /\(HTTP (\d{3})\)\s*$/.exec(detail) ?? /^(?:gh: )?HTTP (\d{3})\b/.exec(detail)
+  if (http) error.httpStatus = Number(http[1])
+  return error
 }
 
 /** Refuses a ref that git or gh would read as an option. */
@@ -154,7 +158,12 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
     prThreads(number) {
       const args = ['api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-F', `number=${number}`, '-f', `query=${THREADS_QUERY}`]
       const reply = parse(check('gh', args).stdout, 'the review threads')
-      if (reply?.errors?.length > 0) throw new PmkitError('UPSTREAM', `gh api graphql failed: ${reply.errors[0].message}`, 'Check the access of the GitHub token to the repository')
+      if (reply?.errors?.length > 0) {
+        const error = new PmkitError('UPSTREAM', `gh api graphql failed: ${reply.errors[0].message}`, 'Check the access of the GitHub token to the repository')
+        const httpStatus = { FORBIDDEN: 403, NOT_FOUND: 404 }[reply.errors[0].type]
+        if (httpStatus) error.httpStatus = httpStatus
+        throw error
+      }
       const connection = reply?.data?.repository?.pullRequest?.reviewThreads
       if (!connection) throw new PmkitError('UPSTREAM', 'gh api graphql returned no review threads', 'Update the GitHub CLI and retry')
       const threads = connection.nodes.map((t) => {

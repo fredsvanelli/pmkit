@@ -1210,7 +1210,7 @@ export const COMMANDS = [
       const branch = ctx.opt('branch') ?? host.currentBranch()
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
       const pr = host.getPullRequest({ head: branch })
-      if (!pr) return { data: { branch, pr: null, blocked: false }, text: `no pull request for ${branch}`, notes: await linkedCodeNotes(ctx) }
+      if (!pr) return { data: { branch, pr: null, blocked: null }, text: `no pull request for ${branch}`, notes: await linkedCodeNotes(ctx) }
       const found = collectBlockers(host, pr)
       return { data: { branch, pr, ...found }, text: blockersText(pr, found), notes: await linkedCodeNotes(ctx) }
     },

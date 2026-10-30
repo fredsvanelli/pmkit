@@ -1,15 +1,16 @@
 // What blocks a pull request from merging. Reads through the git host and classifies the answers.
 // `blocking` holds what stops the merge: what the branch protection requires, merge conflicts, a draft and requested changes.
 // `pending` holds what is open but that nothing requires, such as a reviewer nobody needs or a check that is not required.
-// A read that GitHub refuses with a permission error (403, 404) leaves its section null and adds an `unchecked` entry.
+// `unknown` holds what may block, but the command cannot tell because the branch protection could not be read.
+// A read that GitHub refuses with HTTP 403 or 404 leaves its section null and adds an `unchecked` entry.
 // Any other failure, such as a network error or a 5xx, fails the read.
 
 import { PmkitError } from './errors.mjs'
 
 const FAILING = new Set(['fail', 'cancel'])
 const PASSING = new Set(['pass', 'skipping'])
-const REFUSED = /\b(403|404)\b|not accessible|forbidden|not found/i
 const UNREAD_RULE = 'GitHub blocks the merge by a rule this command does not read (for example a ruleset)'
+const UNREAD_PROTECTION = 'GitHub blocks the merge by a rule this command could not read (branch protection or a ruleset)'
 
 /** The latest review of each author, in the order gh lists them. COMMENTED and PENDING do not change a verdict. */
 function latestVerdicts(reviews) {
@@ -28,26 +29,27 @@ const names = (items, label = (i) => i) => items.map(label).join(', ')
 
 /**
  * Reads checks, reviews, merge state, review threads and branch protection of `pr` and returns
- * { blocked, blocking, pending, state, draft, checks, reviews, conflicts, threads, policies, unchecked }.
- * `blocked` is true when something in `blocking`, false when nothing is blocking and every read worked, and null when
- * nothing is blocking but a read is missing or the merge state is not computed yet.
+ * { blocked, blocking, pending, unknown, state, draft, checks, reviews, conflicts, threads, policies, unchecked }.
+ * `blocked` is true when something is in `blocking`, false when nothing is blocking and every read worked, and null when
+ * nothing is blocking but `unknown` has items, a read is missing or the merge state is not computed yet.
  * A merged or closed pull request has nothing to unblock: it returns blocked false and reads nothing.
  */
 export function collectBlockers(host, pr) {
   const unchecked = []
   const blocking = []
   const pending = []
+  const unknown = []
   const attempt = (area, read) => {
     try {
       return read()
     } catch (error) {
-      if (!(error instanceof PmkitError) || error.code !== 'UPSTREAM' || !REFUSED.test(error.message)) throw error
+      if (!(error instanceof PmkitError) || error.code !== 'UPSTREAM' || ![403, 404].includes(error.httpStatus)) throw error
       unchecked.push({ area, code: error.code, message: error.message, nextStep: error.nextStep })
       return null
     }
   }
   if (pr.state !== 'OPEN') {
-    return { blocked: false, blocking, pending, state: pr.state, draft: false, checks: null, reviews: null, conflicts: null, threads: null, policies: null, unchecked }
+    return { blocked: false, blocking, pending, unknown, state: pr.state, draft: false, checks: null, reviews: null, conflicts: null, threads: null, policies: null, unchecked }
   }
   const draft = pr.isDraft === true
 
@@ -59,15 +61,15 @@ export function collectBlockers(host, pr) {
 
   const mergeState = attempt('conflicts', () => host.prMergeState(pr.number))
   // GitHub answers UNKNOWN while it computes the merge, for example right after a push.
-  const unknown = mergeState !== null && (mergeState.mergeable === 'UNKNOWN' || mergeState.mergeStateStatus === 'UNKNOWN') && mergeState.mergeable !== 'CONFLICTING' && mergeState.mergeStateStatus !== 'DIRTY'
+  const notComputed = mergeState !== null && (mergeState.mergeable === 'UNKNOWN' || mergeState.mergeStateStatus === 'UNKNOWN') && mergeState.mergeable !== 'CONFLICTING' && mergeState.mergeStateStatus !== 'DIRTY'
   const conflicts = mergeState && {
     mergeable: mergeState.mergeable,
     mergeStateStatus: mergeState.mergeStateStatus,
     conflicting: mergeState.mergeable === 'CONFLICTING' || mergeState.mergeStateStatus === 'DIRTY',
     behind: mergeState.mergeStateStatus === 'BEHIND',
-    unknown,
+    unknown: notComputed,
   }
-  if (unknown) unchecked.push({ area: 'conflicts', code: 'NOT_READY', message: 'GitHub has not computed the merge state yet', nextStep: 'Run the command again in a few seconds' })
+  if (notComputed) unchecked.push({ area: 'conflicts', code: 'NOT_READY', message: 'GitHub has not computed the merge state yet', nextStep: 'Run the command again in a few seconds' })
 
   const reviewData = attempt('reviews', () => host.prReviews(pr.number))
   const verdicts = reviewData ? latestVerdicts(reviewData.reviews ?? []) : new Map()
@@ -111,35 +113,44 @@ export function collectBlockers(host, pr) {
   }
 
   // What blocks.
+  const protectionKnown = policiesRead
   if (draft) blocking.push({ area: 'draft', message: 'the pull request is a draft' })
   if (conflicts?.conflicting) blocking.push({ area: 'conflicts', message: 'merge conflicts with the base branch' })
   if (conflicts?.behind && statusChecks?.strict === true) blocking.push({ area: 'conflicts', message: 'the branch is behind the base branch and the protection requires it to be up to date' })
-  if (reviews && (reviews.changesRequested.length > 0 || reviews.decision === 'CHANGES_REQUESTED')) {
-    blocking.push({ area: 'reviews', message: reviews.changesRequested.length > 0 ? `changes requested by ${names(reviews.changesRequested)}` : 'changes are requested' })
+  // GitHub reviewDecision is the word of GitHub, so it blocks without the protection.
+  if (reviews?.decision === 'CHANGES_REQUESTED') blocking.push({ area: 'reviews', message: reviews.changesRequested.length > 0 ? `changes requested by ${names(reviews.changesRequested)}` : 'changes are requested' })
+  else if (reviews?.changesRequested.length > 0) {
+    const message = `changes requested by ${names(reviews.changesRequested)}`
+    if (policies?.requiredApprovals != null) blocking.push({ area: 'reviews', message })
+    else if (protectionKnown) pending.push({ area: 'reviews', message })
+    else unknown.push({ area: 'reviews', message })
   }
   for (const message of policies?.unmet ?? []) blocking.push({ area: 'policies', message })
   if (reviews?.decision === 'REVIEW_REQUIRED' && !(policies?.unmet ?? []).some((m) => m.startsWith('needs '))) blocking.push({ area: 'reviews', message: 'a review is required' })
   if (mergeState?.mergeStateStatus === 'BLOCKED' && blocking.length === 0) {
-    blocking.push({ area: 'policies', message: UNREAD_RULE })
+    blocking.push({ area: 'policies', message: protectionKnown ? UNREAD_RULE : UNREAD_PROTECTION })
     if (policies) policies.unreadRule = true
   }
 
-  // What is open but not required.
+  // What is open. With the protection read, what it does not require is pending. Without it, the command cannot tell.
+  const open = protectionKnown ? pending : unknown
   if (checks) {
-    const optional = (c) => !policiesRead || !requiredChecks.includes(c.name)
+    const optional = (c) => !protectionKnown || !requiredChecks.includes(c.name)
     const failing = checks.failing.filter(optional)
     const waiting = checks.pending.filter(optional)
-    if (failing.length > 0) pending.push({ area: 'checks', message: `failing ${names(failing, (c) => c.name)}` })
-    if (waiting.length > 0) pending.push({ area: 'checks', message: `pending ${names(waiting, (c) => c.name)}` })
+    if (failing.length > 0) open.push({ area: 'checks', message: `failing ${names(failing, (c) => c.name)}` })
+    if (waiting.length > 0) open.push({ area: 'checks', message: `pending ${names(waiting, (c) => c.name)}` })
   }
-  if (reviews?.requested.length > 0) pending.push({ area: 'reviews', message: `waiting for ${names(reviews.requested)}` })
-  if (conflicts?.behind && statusChecks?.strict !== true) pending.push({ area: 'conflicts', message: 'the branch is behind the base branch' })
+  if (reviews?.requested.length > 0) open.push({ area: 'reviews', message: `waiting for ${names(reviews.requested)}` })
+  if (conflicts?.behind && statusChecks?.strict !== true) open.push({ area: 'conflicts', message: 'the branch is behind the base branch' })
   if (threads && unresolved.length > 0 && !conversationRequired) {
-    pending.push({ area: 'threads', message: `${plural(threads.open.length, 'open thread')}${threads.outdated.length > 0 ? ` and ${plural(threads.outdated.length, 'outdated thread')}` : ''}` })
+    open.push({ area: 'threads', message: `${plural(threads.open.length, 'open thread')}${threads.outdated.length > 0 ? ` and ${plural(threads.outdated.length, 'outdated thread')}` : ''}` })
   }
+  // Past 100 threads the conversation rule cannot be checked against the whole list.
+  if (conversationRequired && threads?.incomplete) unknown.push({ area: 'threads', message: 'only the first 100 threads were read and conversation resolution is required' })
 
-  const blocked = blocking.length > 0 ? true : unchecked.length > 0 ? null : false
-  return { blocked, blocking, pending, state: pr.state, draft, checks, reviews, conflicts, threads, policies, unchecked }
+  const blocked = blocking.length > 0 ? true : unchecked.length > 0 || unknown.length > 0 ? null : false
+  return { blocked, blocking, pending, unknown, state: pr.state, draft, checks, reviews, conflicts, threads, policies, unchecked }
 }
 
 /** The text of `pr blockers`: the pull request line, the verdict, what blocks, what is pending, then one line per area. */
@@ -147,10 +158,11 @@ export function blockersText(pr, found) {
   const head = `#${pr.number} ${pr.title} (${pr.state}${pr.isDraft ? ', draft' : ''})`
   if (found.state !== 'OPEN') return `${head}\nnothing to unblock`
   const notChecked = (area) => `${area}: not checked (${found.unchecked.find((u) => u.area === area)?.message ?? 'no data'})`
-  const verdict = found.blocked === true ? 'blocked' : found.blocked === false ? 'nothing blocks the merge' : 'nothing known blocks the merge, but part of it was not checked'
+  const verdict = found.blocked === true ? 'blocked' : found.blocked === false ? 'nothing blocks the merge' : 'nothing known blocks the merge, but part of it could not be checked'
   const lines = [head, pr.url, verdict]
   if (found.blocking.length > 0) lines.push(`blocking: ${found.blocking.map((b) => b.message).join('; ')}`)
   if (found.pending.length > 0) lines.push(`pending: ${found.pending.map((p) => p.message).join('; ')}`)
+  if (found.unknown.length > 0) lines.push(`may block (the protection could not be read or a read is incomplete): ${found.unknown.map((u) => u.message).join('; ')}`)
   const { checks, reviews, conflicts, threads, policies } = found
   if (checks === null) lines.push(notChecked('checks'))
   else if (checks.failing.length + checks.pending.length === 0) lines.push('checks: none failing or pending')

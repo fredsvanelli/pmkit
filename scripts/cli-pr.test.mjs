@@ -589,12 +589,12 @@ test('pr blockers reports a refused protection read as not checked and still exi
   assert.match(text, /policies: not checked/)
 })
 
-test('pr blockers of a branch without a pull request is not blocked and not an error', async () => {
+test('pr blockers of a branch without a pull request has no verdict (blocked null) and is not an error', async () => {
   const root = teamRepo()
   const gh = fakeGh({ [view('none')]: { status: 1, stderr: 'no pull requests found for branch "none"\n' } })
   const data = await callJson(root, envWith(gh), ['pr', 'blockers', '--branch', 'none'])
   assert.equal(data.pr, null)
-  assert.equal(data.blocked, false)
+  assert.equal(data.blocked, null)
   assert.match((await call(root, envWith(gh), ['pr', 'blockers', '--branch', 'none'])).stdout, /no pull request for none/)
 })
 
