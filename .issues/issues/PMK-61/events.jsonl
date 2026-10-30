@@ -3,3 +3,6 @@
 {"at":"2026-10-30T22:08:58Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-30T22:09:03Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-61-add-the-review-pr-against-issue-command"}
 {"at":"2026-10-30T22:09:43Z","by":"fred","op":"comment","to":"2026-10-30T22-09-43Z-fred.md"}
+{"at":"2026-10-30T22:22:18Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-30T22:22:19Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-30T22:22:19Z","by":"fred","op":"update","field":"acceptance_criteria"}

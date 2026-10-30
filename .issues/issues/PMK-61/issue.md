@@ -10,7 +10,7 @@ parent: EPC-6
 milestone: generic-commands
 branch: pmk-61-add-the-review-pr-against-issue-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-30T22:09:03Z
+updated: 2026-10-30T22:22:19Z
 ---
 
 ## Description
@@ -19,6 +19,6 @@ Source: Unified model, Dev catalog (`review-pr-against-issue`: "Compares the dif
 
 ## Acceptance criteria
 
-- [ ] Compares the pull request diff with each acceptance criterion and flags the gaps
-- [ ] Without a pull request it reads the local diff
-- [ ] Optionally comments the result after confirmation
+- [x] Compares the pull request diff with each acceptance criterion and flags the gaps
+- [x] Without a pull request it reads the local diff
+- [x] Optionally comments the result after confirmation
