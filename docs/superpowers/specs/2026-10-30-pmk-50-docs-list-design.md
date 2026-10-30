@@ -20,10 +20,10 @@
 ## Decisions (made by the implementer, no partner answer)
 
 1. **Which files count.** Every regular file under the docs folder counts, whatever its extension, because `docs read` also accepts any path. Hidden entries (names starting with `.`, such as `.gitkeep`) and hidden folders are skipped.
-2. **Missing or empty folder.** Both return an empty list, not an error. `init` creates the folder, but a tracker without it still answers `docs list` with no documents.
+2. **Missing or empty folder.** Both return an empty list, not an error. `init` creates the folder, but a tracker without it still answers `docs list` with no documents. When `.issues/docs` is a file, the command answers `CONFLICT` with a next step (rename or remove the file), not a raw `ENOTDIR`.
 3. **Order and separators.** Paths are relative to the docs folder, use `/` on every platform, and are sorted by plain string comparison.
 4. **Text output.** One path per line. An empty list prints `no documents`, as `epic updates` prints `no status updates`.
-5. **Linear.** `listDocuments` is not added to the Linear manifest's `unsupported` list in this change. That file is out of scope. The stub's `NOT_SUPPORTED` answer covers the gap, and a follow-up can make the manifest say so.
+5. **Linear.** `listDocuments` is added to the Linear manifest's `unsupported` list for `documents` (`scripts/lib/linear/manifest.mjs`), so a skill reading the manifest does not offer `docs list` on Linear. The adapter's stub still answers `NOT_SUPPORTED` if the command runs anyway.
 
 ## Shape of the change
 
@@ -32,6 +32,8 @@
 - `scripts/lib/contract.mjs`: `listDocuments` added to `TRACKER_OPERATIONS` after `createDocument`.
 - `scripts/pmkit.mjs`: new `docs list` command after `docs read`.
 - `scripts/lib/capabilities.mjs`: `documents` gains `'docs list'` in `SERVED_BY`. The goldens do not print `servedBy`, so `capabilities.txt` does not change.
+- `scripts/lib/linear/manifest.mjs`: `documents` lists `listDocuments` in `unsupported` (decision 5).
+- `CHANGELOG.md`: a line under `## Unreleased`.
 - `scripts/golden-cases.mjs`: a `docs list` case. Its golden files are generated.
 - `scripts/documents.test.mjs`: tests for the local operation.
 - `README.md`: a row for `docs list`.
