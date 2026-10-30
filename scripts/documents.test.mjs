@@ -77,3 +77,45 @@ test('a dry run returns the document and writes nothing, not even folders', () =
   assert.equal(hashTree(root), before)
   assert.equal(fs.existsSync(path.join(root, '.issues', 'docs', 'deep')), false)
 })
+
+test('listDocuments returns the regular files under the docs folder, sorted, with / separators', () => {
+  const { tracker, docs } = setup()
+  fs.mkdirSync(path.join(docs, 'plans'), { recursive: true })
+  fs.writeFileSync(path.join(docs, 'zeta.md'), 'z')
+  fs.writeFileSync(path.join(docs, 'plans', 'launch.md'), 'l')
+  fs.writeFileSync(path.join(docs, 'alpha.txt'), 'a')
+  assert.deepEqual(tracker.listDocuments(), [{ path: 'alpha.txt' }, { path: 'plans/launch.md' }, { path: 'zeta.md' }])
+})
+
+test('listDocuments skips hidden entries and does not follow symlinks', () => {
+  const { tracker, docs, root } = setup()
+  fs.writeFileSync(path.join(docs, '.gitkeep'), '')
+  fs.mkdirSync(path.join(docs, '.hidden'))
+  fs.writeFileSync(path.join(docs, '.hidden', 'x.md'), 'x')
+  fs.writeFileSync(path.join(docs, 'a.md'), 'a')
+  fs.symlinkSync(docs, path.join(docs, 'loop'))
+  fs.symlinkSync(path.join(root, 'package.json'), path.join(docs, 'link.md'))
+  assert.deepEqual(tracker.listDocuments(), [{ path: 'a.md' }])
+})
+
+test('listDocuments returns an empty list when the docs folder is missing', () => {
+  const { tracker, root } = setup()
+  fs.rmSync(path.join(root, '.issues', 'docs'), { recursive: true, force: true })
+  assert.deepEqual(tracker.listDocuments(), [])
+})
+
+test('listDocuments writes nothing', () => {
+  const { tracker, root } = setup()
+  const before = hashTree(root)
+  tracker.listDocuments()
+  assert.equal(hashTree(root), before)
+})
+
+test('listDocuments answers CONFLICT with a next step when the docs path is a file', () => {
+  const { tracker, docs, root } = setup()
+  fs.rmSync(docs, { recursive: true, force: true })
+  fs.writeFileSync(docs, 'not a folder')
+  assert.throws(() => tracker.listDocuments(), (error) => error.code === 'CONFLICT' && /next|rename|remove/i.test(error.nextStep))
+  assert.equal(fs.readFileSync(docs, 'utf8'), 'not a folder')
+  assert.equal(fs.existsSync(path.join(root, '.issues', 'issues')), true)
+})

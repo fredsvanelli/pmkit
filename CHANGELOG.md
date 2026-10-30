@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Adds `pmkit docs list`, which lists the documents under `.issues/docs/` (PMK-50). The Local tracker lists them, and Linear answers `NOT_SUPPORTED`. A docs path that is a file answers `CONFLICT` with a next step.
+
 ## 0.4.0 - 2026-10-30
 
 - `/pmkit:issues:create` turns an idea into a full ticket before it creates anything. It reads the README, the docs, similar issues, the epics and the code, warns about likely duplicates, asks 2 or 3 short questions on context and scope, and drafts the description with `### Context`, `### Scope (in)`, `### Out of scope` and `### Tasks`, with the acceptance criteria in their own field. It always shows the full ticket for approval before it creates it.

@@ -84,7 +84,7 @@ test('the default workspace gives the sandbox column', async () => {
   assert.deepEqual(entry.user_inbox.detail, { workspace: 'native' })
   assert.deepEqual(entry.deliverables.detail, { entity: 'project', derived: ['deliverableProgress'], unsupported: ['createMilestone'] })
   assert.deepEqual(entry.status_update.detail, { entity: 'project update' })
-  assert.deepEqual(entry.documents.detail, { scope: 'project', unsupported: ['createDocument'] })
+  assert.deepEqual(entry.documents.detail, { scope: 'project', unsupported: ['createDocument', 'listDocuments'] })
   assert.deepEqual(entry.native_metrics.detail, { source: 'history' })
   assert.deepEqual(entry.linked_code, { id: 'linked_code', path: 'derived', detail: { source: 'git' } })
 })
