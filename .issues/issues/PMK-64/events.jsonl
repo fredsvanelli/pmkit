@@ -1,1 +1,4 @@
 {"at":"2026-10-25T19:13:22Z","by":"fred","op":"create","to":{"id":"PMK-64","title":"Add the todos-to-issues command","type":"feature","status":"backlog","priority":"medium","estimate":3,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"generic-commands","created":"2026-10-25T19:13:22Z","updated":"2026-10-25T19:13:22Z"}}
+{"at":"2026-10-30T23:12:46Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-30T23:12:46Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-30T23:12:52Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-64-add-the-todos-to-issues-command"}
