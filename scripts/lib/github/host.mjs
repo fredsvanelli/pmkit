@@ -80,6 +80,11 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
     return parse(result.stdout, 'the pull request')
   }
 
+  const listRuns = ({ branch }) => {
+    const args = ['run', 'list', '--branch', refArg('branch', branch), '--limit', '50', '--json', RUN_FIELDS]
+    return parse(check('gh', args).stdout, 'the workflow runs')
+  }
+
   return {
     currentBranch: () => check('git', ['branch', '--show-current']).stdout.trim(),
 
@@ -132,9 +137,39 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
       return parse(check('gh', ['pr', 'list', '--state', 'open', '--limit', '200', '--json', LIST_FIELDS]).stdout, 'the pull requests')
     },
 
-    listRuns({ branch }) {
-      const args = ['run', 'list', '--branch', refArg('branch', branch), '--limit', '50', '--json', RUN_FIELDS]
-      return parse(check('gh', args).stdout, 'the workflow runs')
+    listDeploys({ environment, limit = 20 } = {}) {
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+        throw new PmkitError('INVALID_INPUT', `limit "${limit}" is not valid`, 'Use a whole number from 1 to 100')
+      }
+      const env = environment === undefined ? '' : `&environment=${encodeURIComponent(environment)}`
+      const deployments = parse(check('gh', ['api', `repos/{owner}/{repo}/deployments?per_page=${limit}${env}`]).stdout, 'the deployments')
+      return deployments.map((d) => {
+        const [status] = parse(check('gh', ['api', `repos/{owner}/{repo}/deployments/${d.id}/statuses?per_page=1`]).stdout, 'the deployment status')
+        return {
+          id: d.id,
+          environment: d.environment,
+          ref: d.ref,
+          sha: d.sha,
+          createdAt: d.created_at,
+          state: status?.state ?? 'pending',
+          url: status?.log_url ?? status?.target_url ?? null,
+        }
+      })
     },
+
+    ciLogs({ branch, runId } = {}) {
+      let run = { databaseId: runId, workflowName: null, url: null }
+      if (runId !== undefined) {
+        if (!Number.isInteger(runId) || runId < 1) throw new PmkitError('INVALID_INPUT', `run id "${runId}" is not valid`, 'Pass the number of a workflow run')
+      } else {
+        const failed = listRuns({ branch }).find((r) => r.conclusion === 'failure')
+        if (!failed) return null
+        run = failed
+      }
+      const log = check('gh', ['run', 'view', String(run.databaseId), '--log-failed']).stdout
+      return { runId: run.databaseId, workflowName: run.workflowName ?? null, url: run.url ?? null, log }
+    },
+
+    listRuns,
   }
 }
