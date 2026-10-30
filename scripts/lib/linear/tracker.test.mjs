@@ -1153,6 +1153,7 @@ test('a broken mapping stops each project operation through guarded', async () =
 test('logTime, createRelease and markReleased refuse with the manifest reason and send no request after discovery', async () => {
   const { fetch, tracker: linear } = tracker(setup())
   await assert.rejects(linear.logTime('ACME-1', 5, 'x'), { code: 'NOT_SUPPORTED', message: 'Linear has no time tracking', nextStep: 'Linear has no time tracking' })
+  await assert.rejects(linear.listTimeEntries('ACME-1'), { code: 'NOT_SUPPORTED', message: 'Linear has no time tracking' })
   for (const call of [() => linear.createRelease({ name: 'r' }), () => linear.markReleased('r')]) {
     await assert.rejects(call(), (error) => error.code === 'NOT_SUPPORTED' && /needs releases/.test(error.message) && /Business or Enterprise plan/.test(error.nextStep))
   }

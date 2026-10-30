@@ -145,7 +145,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
   }
 
   // Operations whose capability the manifest can mark absent. The refusal then carries the manifest's hint, not the generic text.
-  const STUB_CAPABILITY = { logTime: 'time_tracking', createRelease: 'releases', markReleased: 'releases' }
+  const STUB_CAPABILITY = { logTime: 'time_tracking', listTimeEntries: 'time_tracking', createRelease: 'releases', markReleased: 'releases' }
   const stub = (operation) =>
     guarded(async () => {
       const entry = STUB_CAPABILITY[operation] && (await capabilities()).capabilities.find((c) => c.id === STUB_CAPABILITY[operation])
