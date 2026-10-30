@@ -2,7 +2,7 @@
 id: PMK-48
 title: Turn local scanner output into security alerts
 type: feature
-status: in_progress
+status: in_review
 priority: medium
 estimate: 3
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-2]
 milestone: generic-commands
 branch: pmk-48-turn-local-scanner-output-into-security
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-30T21:37:36Z
+updated: 2026-10-30T21:39:32Z
 ---
 
 ## Description
