@@ -26,6 +26,7 @@ Each command file holds the full procedure. When the user asks for one of these 
 | add a comment to an issue | `/pmkit:issues:comment` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/comment.md` |
 | create an issue from an idea, refined into context, scope, tasks and acceptance criteria, with the fields checked against the project config | `/pmkit:issues:create` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/create.md` |
 | show what blocks an issue or an epic, with the blocker chain, the hierarchy and the critical path | `/pmkit:issues:dependencies` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/dependencies.md` |
+| propose an estimate for an issue from the code it affects and from similar completed issues, and save it after confirmation | `/pmkit:issues:estimate` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/estimate.md` |
 | find issues with a plain-language question, such as "high-priority bugs in the current sprint" | `/pmkit:issues:find` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/find.md` |
 | link two issues (blocks, related, duplicate), remove a link, or set a parent | `/pmkit:issues:link` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/link.md` |
 | list the issues assigned to the user, with the state of their pull requests and the next one to pick up | `/pmkit:issues:mine` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/mine.md` |

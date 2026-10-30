@@ -1,1 +1,10 @@
 {"at":"2026-10-25T19:13:22Z","by":"fred","op":"create","to":{"id":"PMK-59","title":"Add the estimate-issue command","type":"feature","status":"backlog","priority":"medium","estimate":3,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"generic-commands","created":"2026-10-25T19:13:22Z","updated":"2026-10-25T19:13:22Z"}}
+{"at":"2026-10-30T22:08:01Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-30T22:08:01Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-30T22:08:06Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-59-add-the-estimate-issue-command"}
+{"at":"2026-10-30T22:09:14Z","by":"fred","op":"comment","to":"2026-10-30T22-09-14Z-fred.md"}
+{"at":"2026-10-30T22:15:48Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-30T22:15:49Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-30T22:15:49Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-30T22:16:37Z","by":"fred","op":"comment","to":"2026-10-30T22-16-37Z-fred.md"}
+{"at":"2026-10-30T22:16:43Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
