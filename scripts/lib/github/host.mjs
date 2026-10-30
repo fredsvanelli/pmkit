@@ -4,6 +4,8 @@ import { FAILED_RUN } from '../risks.mjs'
 
 // A failed run log can pass the 1 MiB default of spawnSync. 256 MiB leaves room for the largest logs.
 const MAX_OUTPUT = 256 * 1024 * 1024
+// A gh or git call that hangs would hang the command, so every call has this limit.
+const TIMEOUT_MS = 120 * 1000
 
 const VIEW_FIELDS = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
 const LIST_FIELDS = 'number,url,title,headRefName,isDraft,updatedAt,author,statusCheckRollup'
@@ -12,9 +14,9 @@ const INSTALL_STEP = 'Install the GitHub CLI (https://cli.github.com) and run gh
 
 /** Runs a command in root with spawnSync. A missing binary throws the spawn error (code ENOENT). */
 export const defaultExec =
-  ({ root, env }) =>
+  ({ root, env, timeout = TIMEOUT_MS }) =>
   (cmd, args, { input } = {}) => {
-    const result = spawnSync(cmd, args, { cwd: root, env, encoding: 'utf8', input, maxBuffer: MAX_OUTPUT })
+    const result = spawnSync(cmd, args, { cwd: root, env, encoding: 'utf8', input, maxBuffer: MAX_OUTPUT, timeout })
     if (result.error) throw result.error
     return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
   }
@@ -52,6 +54,9 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
       }
       if (error?.code === 'ENOBUFS') {
         throw new PmkitError('UPSTREAM', `${cmd} ${args.slice(0, 2).join(' ')} output is too large to read`, 'Read the log in the GitHub web UI')
+      }
+      if (error?.code === 'ETIMEDOUT') {
+        throw new PmkitError('UPSTREAM', `${cmd} ${args.slice(0, 2).join(' ')} timed out`, 'Check the network and retry')
       }
       throw error
     }
@@ -175,6 +180,21 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
       }
       const log = check('gh', ['run', 'view', String(run.databaseId), '--log-failed']).stdout
       return { runId: run.databaseId, workflowName: run.workflowName ?? null, url: run.url ?? null, log }
+    },
+
+    prDiff(number) {
+      if (!Number.isInteger(number) || number < 1) throw new PmkitError('INVALID_INPUT', `pull request number "${number}" is not valid`, 'Pass a pull request number')
+      return check('gh', ['pr', 'diff', String(number), '--color', 'never']).stdout
+    },
+
+    /** The changes of branch since it left base: git diff base...branch. Uses origin/<base> when the local base ref is missing. */
+    localDiff({ branch, base }) {
+      refArg('branch', branch)
+      refArg('base', base)
+      const exists = (ref) => run('git', ['rev-parse', '--verify', '--quiet', ref]).status === 0
+      const from = [base, `origin/${base}`].find(exists)
+      if (from === undefined) throw new PmkitError('INVALID_INPUT', `the base branch "${base}" does not exist here or on origin`, 'Pass --base <branch>, or run git fetch origin')
+      return check('git', ['diff', '--no-color', `${from}...${branch}`]).stdout
     },
 
     listRuns,

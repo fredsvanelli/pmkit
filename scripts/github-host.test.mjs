@@ -282,3 +282,46 @@ test('ciLogs returns null when no run of the branch failed, and refuses bad inpu
   assert.throws(() => host(exec).ciLogs({}), (e) => e.code === 'INVALID_INPUT')
   assert.equal(calls.length, before)
 })
+
+test('prDiff calls gh pr diff without color and returns the text', () => {
+  const { exec, calls } = fakeExec({ stdout: 'diff --git a/x b/x\n' })
+  assert.equal(host(exec).prDiff(7), 'diff --git a/x b/x\n')
+  assert.deepEqual(calls[0].args, ['pr', 'diff', '7', '--color', 'never'])
+  assert.throws(() => host(exec).prDiff('x'), (e) => e.code === 'INVALID_INPUT')
+  assert.equal(calls.length, 1)
+})
+
+test('localDiff diffs the merge base of the base ref with the branch', () => {
+  const { exec, calls } = fakeExec({ status: 0 }, { stdout: 'local diff\n' })
+  assert.equal(host(exec).localDiff({ branch: 'feat/x', base: 'main' }), 'local diff\n')
+  assert.deepEqual(calls.map((c) => [c.cmd, ...c.args]), [
+    ['git', 'rev-parse', '--verify', '--quiet', 'main'],
+    ['git', 'diff', '--no-color', 'main...feat/x'],
+  ])
+})
+
+test('localDiff falls back to origin/<base> when the base ref does not exist', () => {
+  const { exec, calls } = fakeExec({ status: 1 }, { status: 0 }, { stdout: 'd\n' })
+  assert.equal(host(exec).localDiff({ branch: 'feat/x', base: 'develop' }), 'd\n')
+  assert.deepEqual(calls[2].args, ['diff', '--no-color', 'origin/develop...feat/x'])
+})
+
+test('localDiff says so when neither the base nor origin/<base> exists', () => {
+  const { exec } = fakeExec({ status: 1 }, { status: 1 })
+  assert.throws(() => host(exec).localDiff({ branch: 'x', base: 'develop' }), (e) => e.code === 'INVALID_INPUT' && /develop/.test(e.message))
+})
+
+test('localDiff refuses a branch or base that starts with a dash before git runs', () => {
+  const { exec, calls } = fakeExec()
+  for (const args of [{ branch: '-x', base: 'main' }, { branch: 'x', base: '--output=f' }, { branch: '', base: 'main' }]) {
+    assert.throws(() => host(exec).localDiff(args), (e) => e.code === 'INVALID_INPUT')
+  }
+  assert.equal(calls.length, 0)
+})
+
+test('the default exec times out a slow command, and the host reports UPSTREAM', () => {
+  const run = defaultExec({ root: process.cwd(), env: process.env, timeout: 100 })
+  assert.throws(() => run(process.execPath, ['-e', 'setTimeout(() => {}, 5000)']), (e) => e.code === 'ETIMEDOUT')
+  const { exec } = fakeExec(() => { throw Object.assign(new Error('spawnSync gh ETIMEDOUT'), { code: 'ETIMEDOUT' }) })
+  assert.throws(() => host(exec).prDiff(1), (e) => e.code === 'UPSTREAM' && /timed out/.test(e.message))
+})
