@@ -10,7 +10,7 @@ parent: EPC-6
 milestone: generic-commands
 branch: pmk-51-list-the-time-entries-of-an-issue
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-30T21:39:57Z
+updated: 2026-10-30T21:47:31Z
 ---
 
 ## Description
@@ -19,4 +19,4 @@ Source: MVP skills, Contract operations ("Time: Not yet `list_time_entries`").
 
 ## Acceptance criteria
 
-- [ ] The CLI lists the `log_time` events of an issue with the total
+- [x] The CLI lists the `log_time` events of an issue with the total
