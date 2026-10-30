@@ -4,3 +4,4 @@
 {"at":"2026-10-30T21:29:13Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-30T21:29:23Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-48-turn-local-scanner-output-into-security"}
 {"at":"2026-10-30T21:30:48Z","by":"fred","op":"comment","to":"2026-10-30T21-30-48Z-fred.md"}
+{"at":"2026-10-30T21:37:36Z","by":"fred","op":"update","field":"acceptance_criteria"}
