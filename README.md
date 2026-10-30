@@ -86,7 +86,8 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `epic list` | lists epics |
 | `epic get <id>` | shows one epic |
 | `epic progress <id>` | counts the issues under an epic |
-| `epic create --title t` | creates an epic |
+| `epic create --title t` | creates an epic; `--goal <id>` links it to a goal |
+| `epic goal <id> <goal\|none>` | links an epic to a goal, or removes the link with `none` |
 | `epic update-status <id> --health h --body-file f` | publishes a status update |
 | `epic updates <id>` | lists the status updates of an epic, newest first |
 | `milestone list` | lists milestones, by due date |
@@ -103,6 +104,10 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `docs create <path> --body-file f` | creates a document under the docs folder |
 | `views save <name> [filter flags] [--overwrite]` | saves an issue filter as `.issues/views/<name>.yaml`; takes the flags of `issues list`, and refuses a name that exists unless `--overwrite` |
 | `views list` | lists the saved views with their filters |
+| `goal list` | lists the goals in `.issues/goals/` with the epics linked to each |
+| `goal get <id>` | shows one goal and its epics |
+| `goal create --title t [--target YYYY-MM-DD]` | creates a goal as `.issues/goals/<ID>.md`; the ID is `GOAL-` and a code that follows `id_style` |
+| `goal progress <id>` | adds up the progress of the epics linked to a goal, as `epic progress` counts each one |
 | `views run <name>` | runs a saved view and lists its issues; `sprint: current` and `assignee: me` stay symbolic, so they resolve when the view runs |
 | `metrics velocity` | points or counts done per closed sprint, and the average |
 | `metrics cycle-time` | median and p85 days from first `in_progress` to `done` |

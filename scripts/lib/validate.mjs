@@ -13,6 +13,7 @@ import { hasMilestoneFiles, milestoneStems, parseMilestone, validMilestoneId } f
 import { parseRelease, releaseStems, validReleaseId } from './local/releases.mjs'
 import { checkFilter } from './local/query.mjs'
 import { parseView, validViewName, viewStems } from './local/views.mjs'
+import { GOAL_PREFIX, goalStems, parseGoal } from './local/goals.mjs'
 import { hasConflictMarkers, parseIssueFile, toFrontmatter } from './local/issue-file.mjs'
 import { overlaps, readSprint, sprintFileExists } from './local/sprints.mjs'
 
@@ -264,6 +265,23 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
     }
   }
 
+  // Goals
+  const goalsDir = path.join(issuesDir, 'goals')
+  const goalIds = goalStems(goalsDir)
+  for (const id of [...goalIds].sort()) {
+    const file = path.join(goalsDir, `${id}.md`)
+    if (conflicted.has(file)) continue
+    if (!isId(id, GOAL_PREFIX)) {
+      add(file, 'goal', `goal file ${id}.md is not named after a goal id such as ${GOAL_PREFIX}-1`)
+      continue
+    }
+    try {
+      parseGoal(read(file), id)
+    } catch (error) {
+      add(file, 'goal', error.message)
+    }
+  }
+
   // Issues
   const folders = subdirs(path.join(issuesDir, 'issues'))
   const byNormalized = new Map()
@@ -326,6 +344,7 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
   }
   for (const [name, epic] of epics) {
     if (milestoneMissing(epic.milestone)) add(path.join(issuesDir, 'epics', name, 'epic.md'), 'reference', `milestone ${epic.milestone} does not exist`)
+    if (epic.goal !== undefined && !goalIds.has(epic.goal)) add(path.join(issuesDir, 'epics', name, 'epic.md'), 'reference', `goal ${epic.goal} does not exist`)
   }
 
   // Cycles

@@ -112,6 +112,7 @@ export function readLocalSnapshot({ root, config, tracker, commit = null, now = 
       documents: countFiles(path.join(issuesDir, 'docs')),
       milestones: local.listMilestones().length,
       views: countFiles(path.join(issuesDir, 'views')),
+      goals: countFiles(path.join(issuesDir, 'goals')),
     },
   }
 }

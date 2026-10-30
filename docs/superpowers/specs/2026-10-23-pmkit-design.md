@@ -64,7 +64,8 @@ Entities in the MVP:
 | Comment | `id`, `issue`, `author`, `body`, `created`, and two optional thread keys: `parent` (the root comment, on a reply only) and `resolved` (`{ at, by }`, on a resolved root only) |
 | Event | `at`, `by`, `op`, `field`, `from`, `to`, `minutes`, `synthetic` |
 | Sprint | `id`, `name`, `start`, `end`, `goal`, `state` (`planned`, `active`, `closed`), `closed` (optional, ISO timestamp of the close with `Z` or an offset, set by `closeCycle`), `capacity` (member id → points or hours), `daysOff` (member id → dates) |
-| Epic | `id`, `title`, `status`, `start`, `target`, `milestone`, `description` |
+| Epic | `id`, `title`, `status`, `start`, `target`, `milestone`, `goal`, `description` |
+| Goal | `id`, `title`, `target`, `description`, `epics` (computed from the epics whose `goal` names it) |
 | Milestone | `id`, `name`, `due`, `description` |
 | Release | `id`, `name`, `tag`, `target`, `released`, `state` (`planned`, `released`; computed from `released`), `description` |
 | Status update | `epic`, `at`, `author`, `health` (`on_track`, `at_risk`, `off_track`), `body` |
@@ -93,6 +94,7 @@ The operations the MVP needs, grouped by family. Every write takes an `actor` (a
 | Cycles | `listCycles({ state })`, `currentCycle()`, `cycleIssues(id)`, `openCycle(input, actor)`, `closeCycle(id, actor)`, `moveToCycle(ids, sprint, actor)` |
 | Deliverables | `listDeliverables()`, `getDeliverable(id)`, `deliverableProgress(id)`, `createDeliverable(input, actor)`, `publishStatusUpdate(update, actor)`, `listStatusUpdates(epic)` |
 | Milestones | `listMilestones()`, `getMilestone(id)`, `createMilestone(input, actor)` |
+| Goals | `listGoals()`, `getGoal(id)`, `createGoal(input, actor)`, `goalProgress(id)`, `setEpicGoal(epic, goal, actor)` |
 | Releases | `listReleases({ state })`, `getRelease(id)`, `releaseIssues(id, { archived })`, `createRelease(input, actor)`, `markReleased(id, actor, { tag })` |
 | Capacity | `getCapacity(sprint)`, `setCapacity(sprint, capacity, actor)` |
 | Metrics | `metricEvents({ since, until })` |
