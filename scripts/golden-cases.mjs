@@ -81,6 +81,7 @@ export const CASES = {
   'release-notes': (a) => [[], ['--release', a.release]],
   'epic update-status': (a) => [[a.epic, '--health', 'on_track', '--body-file', input('update.md')]],
   'epic updates': (a) => [[a.epic]],
+  'docs list': () => [[]],
   'docs read': (a) => [[a.doc]],
   'docs create': () => [['golden/new.md', '--body-file', input('doc.md')]],
   'metrics velocity': () => [[]],

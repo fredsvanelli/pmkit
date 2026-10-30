@@ -790,6 +790,14 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'docs list', summary: 'lists the documents under the docs folder', usage: '', args: [], flags: [],
+    run: async (ctx) => {
+      const docs = await (await ctx.tracker()).listDocuments()
+      const text = docs.length === 0 ? 'no documents' : docs.map((doc) => doc.path).join('\n')
+      return { data: docs, text }
+    },
+  },
+  {
     name: 'docs create', summary: 'creates a document under the docs folder', usage: '<path> --body-file f', write: true, args: ['path'], flags: ['body-file'],
     run: async (ctx) => {
       if (ctx.opt('body-file') === undefined) throw usageError('docs create needs --body-file', 'Pass a file, or - for stdin')

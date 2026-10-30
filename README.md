@@ -93,6 +93,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `release create <id>` | creates a release; takes `--name`, `--tag` and `--target` |
 | `release mark-released <id>` | marks a release released, lists its unfinished issues and warns when its tag is not in the repository; takes `--tag` |
 | `release-notes [--release id \| --sprint id\|current \| --since d [--until d]]` | the done issues of a release, a sprint or a period, grouped by type, with the basis it used; only reads |
+| `docs list` | lists the documents under the docs folder |
 | `docs read <path>` | prints a document under the docs folder |
 | `docs create <path> --body-file f` | creates a document under the docs folder |
 | `metrics velocity` | points or counts done per closed sprint, and the average |
