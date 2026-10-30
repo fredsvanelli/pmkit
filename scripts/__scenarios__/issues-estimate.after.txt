@@ -1,0 +1,40 @@
+$ pmkit capabilities --json  [step 1, read]
+exit 0
+$ pmkit issues get ISS-4M2S --json  [step 2, read]
+exit 0
+$ pmkit discover --json  [step 3, read]
+exit 0
+$ pmkit issues list --category done --text Fix --json  [step 5, read]
+exit 0
+$ pmkit issues update ISS-4M2S --estimate 2 --dry-run --json  [step 7.1, dry run]
+exit 0
+? Step 7  [confirmed]
+$ pmkit issues update ISS-4M2S --estimate 2 --json  [step 7.3, write]
+exit 0
+
+--- changed .issues/issues/ISS-4M2S/events.jsonl
+  {"at":"2026-10-13T09:00:00Z","by":"fred","op":"create","to":{"id":"ISS-4M2S","title":"Fix CSV column order","type":"task","status":"todo","priority":"medium","estimate":1,"labels":["billing"],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-13T09:00:00Z","updated":"2026-10-13T09:00:00Z"}}
+  {"at":"2026-10-13T09:10:00Z","by":"fred","op":"update","field":"parent","from":null,"to":"ISS-2X6D"}
+  {"at":"2026-10-13T09:20:00Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"estimate","from":1,"to":2}
+--- changed .issues/issues/ISS-4M2S/issue.md
+  ---
+  id: ISS-4M2S
+  title: Fix CSV column order
+  type: task
+  status: todo
+  priority: medium
+-estimate: 1
++estimate: 2
+  assignee: fred
+  labels: [billing]
+  parent: ISS-2X6D
+  sprint: 2026-10-12
+  created: 2026-10-13T09:00:00Z
+-updated: 2026-10-13T09:20:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Columns follow the finance template: date, invoice, customer, total.
