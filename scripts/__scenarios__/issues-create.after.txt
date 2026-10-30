@@ -1,23 +1,56 @@
 $ pmkit discover --json  [step 1, read]
 exit 0
-$ pmkit issues create --title 'Add a health check endpoint' --type task --priority high --estimate 3 --sprint 2026-10-12 --dry-run --json  [step 4, dry run]
+$ pmkit issues list --text webhook --json  [step 2, read]
 exit 0
-? Step 5  [confirmed]
-$ pmkit issues create --title 'Add a health check endpoint' --type task --priority high --estimate 3 --sprint 2026-10-12 --json  [step 4, write]
+$ pmkit epic list --json  [step 2, read]
+exit 0
+? Step 3  [confirmed]
+$ pmkit issues create --title 'Show the delivery history of a webhook' --type feature --priority medium --estimate 3 --parent EPC-2M9D --sprint 2026-10-12 --description-file <inputs>/webhook-history-description.md --criteria-file <inputs>/webhook-history-criteria.md --dry-run --json  [step 6, dry run]
+exit 0
+? Step 7  [confirmed]
+$ pmkit issues create --title 'Show the delivery history of a webhook' --type feature --priority medium --estimate 3 --parent EPC-2M9D --sprint 2026-10-12 --description-file <inputs>/webhook-history-description.md --criteria-file <inputs>/webhook-history-criteria.md --json  [step 6, write]
 exit 0
 
 --- added .issues/issues/ISS-M0GZ/events.jsonl
-+{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-M0GZ","title":"Add a health check endpoint","type":"task","status":"backlog","priority":"high","estimate":3,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-M0GZ","title":"Show the delivery history of a webhook","type":"feature","status":"backlog","priority":"medium","estimate":3,"labels":[],"parent":"EPC-2M9D","blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
 --- added .issues/issues/ISS-M0GZ/issue.md
 +---
 +id: ISS-M0GZ
-+title: Add a health check endpoint
-+type: task
++title: Show the delivery history of a webhook
++type: feature
 +status: backlog
-+priority: high
++priority: medium
 +estimate: 3
++parent: EPC-2M9D
 +sprint: 2026-10-12
 +created: 2026-10-23T12:00:00.000Z
 +updated: 2026-10-23T12:00:00Z
 +---
 +
++## Description
++
++### Context
++
++Support cannot tell a customer whether a webhook reached their endpoint. Today they ask an engineer to search the logs.
++
++### Scope (in)
++
++- A delivery history for each webhook in the dashboard
++- The status, the response code and the time of each attempt
++
++### Out of scope
++
++- Resending a delivery by hand
++- Deliveries older than 30 days
++
++### Tasks
++
++- [ ] Record each delivery attempt with its status, response code and time
++- [ ] Show the delivery history on the webhook page in the dashboard
++- [ ] Hide attempts older than 30 days
++
++## Acceptance criteria
++
++- [ ] The webhook page lists the last 30 days of delivery attempts, newest first
++- [ ] Each attempt shows its status, response code and time
++- [ ] A webhook with no attempts shows an empty state
