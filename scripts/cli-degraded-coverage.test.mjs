@@ -67,6 +67,7 @@ const COVERED = {
   'metrics velocity': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics cycle-time': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics lead-time': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics throughput': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics aging': 'cli-linear.test.mjs or cli-degraded.test.mjs', events: 'cli-linear.test.mjs or cli-degraded.test.mjs',
   'docs list': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'docs read': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'docs create': 'REFUSALS',
   'pr open': 'PATH_CASES', 'pr ready': 'PATH_CASES', 'pr status': 'PATH_CASES', 'pr sync': 'PATH_CASES', 'deploys list': 'PATH_CASES', 'ci logs': 'PATH_CASES',
+  'alerts list': 'REPO_SCAN',
 }
 
 test('every command a capability names has a degraded-path case or an exemption', () => {
@@ -86,6 +87,7 @@ test('every COVERED place names a case that exists', () => {
   for (const [command, where] of Object.entries(COVERED)) {
     if (where === 'REFUSALS') assert.ok(refusals.has(command), `${command} is listed under REFUSALS but REFUSALS lacks it`)
     else if (where === 'PATH_CASES') assert.ok(pathCases.has(command), `${command} is listed under PATH_CASES but PATH_CASES lacks it`)
+    else if (where === 'REPO_SCAN') assert.ok(fs.readFileSync(new URL('cli-alerts.test.mjs', import.meta.url), 'utf8').includes(argvLiteral(command)), `${command} is listed under REPO_SCAN but cli-alerts.test.mjs does not run it`)
     else if (where === FILES) assert.ok(sources.some((source) => source.includes(argvLiteral(command))), `${command} is listed under ${FILES} but neither file runs it`)
     else assert.equal(where, EXEMPT, `${command} has an unknown COVERED place`)
   }

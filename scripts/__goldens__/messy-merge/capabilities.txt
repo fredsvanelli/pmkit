@@ -24,7 +24,7 @@ request_queue        | absent  | No pmkit command serves request_queue in the Lo
 time_tracking        | native  |
 linked_code          | derived | Set git_host in .pmkit/config.yaml
 agent_delegation     | absent  | No pmkit command serves agent_delegation in the Local tracker yet
-security_alerts      | absent  | No pmkit command serves security_alerts in the Local tracker yet
+security_alerts      | derived | source=scanners
 user_inbox           | absent  | No pmkit command serves user_inbox in the Local tracker yet
 --- stderr
 (empty)
@@ -134,8 +134,10 @@ exit 0
     },
     {
       "id": "security_alerts",
-      "path": "absent",
-      "enableHint": "No pmkit command serves security_alerts in the Local tracker yet"
+      "path": "derived",
+      "detail": {
+        "source": "scanners"
+      }
     },
     {
       "id": "user_inbox",

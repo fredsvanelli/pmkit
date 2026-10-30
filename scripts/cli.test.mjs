@@ -1588,6 +1588,7 @@ test('every read goes on with one warning', () => {
     'metrics aging': [],
     events: [],
     risks: [],
+    'alerts list': [],
     'pr status': [],
     'deploys list': [],
     'ci logs': ['--run', '9'],
