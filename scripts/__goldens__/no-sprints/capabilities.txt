@@ -5,14 +5,14 @@ tracker: local
 git host: none
 
 Capability           | Path    | Detail
----------------------|---------|-----------------------------------------------------------------
+---------------------|---------|----------------------------------------------------------------
 cycles               | native  |
 estimation           | native  | unit=points scale=1/2/3/5/8/13
 multilevel_hierarchy | native  |
 dependencies         | native  |
 native_triage        | native  |
 deliverables         | native  |
-strategic_goals      | absent  | No pmkit command serves strategic_goals in the Local tracker yet
+strategic_goals      | native  |
 status_update        | native  |
 releases             | native  |
 capacity             | native  |
@@ -74,8 +74,7 @@ exit 0
     },
     {
       "id": "strategic_goals",
-      "path": "absent",
-      "enableHint": "No pmkit command serves strategic_goals in the Local tracker yet"
+      "path": "native"
     },
     {
       "id": "status_update",

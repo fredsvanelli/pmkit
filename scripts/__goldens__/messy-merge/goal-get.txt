@@ -1,0 +1,20 @@
+$ pmkit goal get GOAL-8K2W
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: goal GOAL-8K2W does not exist
+next: pmkit goal list
+
+$ pmkit goal get GOAL-8K2W --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "goal GOAL-8K2W does not exist",
+    "nextStep": "pmkit goal list"
+  }
+}
+--- stderr
+(empty)

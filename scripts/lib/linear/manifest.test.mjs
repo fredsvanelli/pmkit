@@ -101,7 +101,12 @@ test('a Business workspace with releases and customers on', async () => {
   assert.equal(entry.demand_signals.detail.workspace, 'native')
   assert.equal(entry.strategic_goals.detail.workspace, 'native')
   assert.equal(entry.request_queue.detail.workspace, 'conditional')
-  assert.equal(entry.strategic_goals.enableHint, 'No pmkit command serves strategic_goals yet; Linear offers it on this workspace')
+  assert.deepEqual(entry.strategic_goals, {
+    id: 'strategic_goals',
+    path: 'absent',
+    detail: { workspace: 'native', unsupported: ['listGoals', 'getGoal', 'createGoal', 'goalProgress', 'setEpicGoal'] },
+    enableHint: 'The Linear adapter does not serve initiatives yet; Linear offers them on this workspace',
+  })
 })
 
 test('a trial counts as a Business plan and releases follow the setting', async () => {

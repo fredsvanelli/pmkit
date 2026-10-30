@@ -1,0 +1,79 @@
+$ pmkit goal progress GOAL-8K2W
+exit 0
+--- stdout
+GOAL-8K2W  Customers trust our webhooks
+total: 2
+done: 2
+canceled: 0
+points: 13
+points done: 13
+  triage: 0
+  backlog: 0
+  todo: 0
+  in_progress: 0
+  in_review: 0
+  done: 2
+  canceled: 0
+
+Epic     | Title             | Status      | Done | Total | Points done | Points
+---------|-------------------|-------------|------|-------|-------------|-------
+EPC-4H7V | Reliable webhooks | in_progress | 2    | 2     | 13          | 13
+--- stderr
+(empty)
+
+$ pmkit goal progress GOAL-8K2W --json
+exit 0
+--- stdout
+{
+  "goal": {
+    "id": "GOAL-8K2W",
+    "title": "Customers trust our webhooks",
+    "target": "2026-12-31",
+    "description": "No customer loses an event because a delivery failed.",
+    "epics": [
+      "EPC-4H7V"
+    ]
+  },
+  "epics": [
+    {
+      "id": "EPC-4H7V",
+      "title": "Reliable webhooks",
+      "status": {
+        "name": "in_progress",
+        "category": "in_progress"
+      },
+      "progress": {
+        "total": 2,
+        "done": 2,
+        "canceled": 0,
+        "points": 13,
+        "pointsDone": 13,
+        "byCategory": {
+          "triage": 0,
+          "backlog": 0,
+          "todo": 0,
+          "in_progress": 0,
+          "in_review": 0,
+          "done": 2,
+          "canceled": 0
+        }
+      }
+    }
+  ],
+  "total": 2,
+  "done": 2,
+  "canceled": 0,
+  "points": 13,
+  "pointsDone": 13,
+  "byCategory": {
+    "triage": 0,
+    "backlog": 0,
+    "todo": 0,
+    "in_progress": 0,
+    "in_review": 0,
+    "done": 2,
+    "canceled": 0
+  }
+}
+--- stderr
+(empty)

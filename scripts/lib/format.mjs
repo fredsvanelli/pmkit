@@ -58,7 +58,7 @@ function listLines(heading, items, line, more) {
 export function epicRecord(epic) {
   const lines = fields([
     ['id', epic.id], ['title', epic.title], ['status', `${epic.status.name} (${epic.status.category})`],
-    ['start', epic.start], ['target', epic.target], ['milestone', epic.milestone],
+    ['start', epic.start], ['target', epic.target], ['milestone', epic.milestone], ['goal', epic.goal],
     ['health', epic.health], ['progress', epic.progress === undefined ? undefined : percent(epic.progress)], ['url', epic.url],
   ])
   lines.push(
@@ -66,6 +66,12 @@ export function epicRecord(epic) {
     ...listLines('documents', epic.documents, (d) => `${d.path}  ${d.title}`, epic.documentsMore),
   )
   if (epic.description) lines.push('', epic.description)
+  return lines.join('\n')
+}
+
+export function goalRecord(goal) {
+  const lines = fields([['id', goal.id], ['title', goal.title], ['target', goal.target], ['epics', goal.epics]])
+  if (goal.description) lines.push('', goal.description)
   return lines.join('\n')
 }
 

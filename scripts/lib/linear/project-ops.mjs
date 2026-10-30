@@ -130,7 +130,7 @@ export function projectOperations({ client, discovery, config, now = () => new D
     }
   }
 
-  const CREATE_KEYS = ['title', 'start', 'target', 'milestone', 'description']
+  const CREATE_KEYS = ['title', 'start', 'target', 'milestone', 'goal', 'description']
 
   /** The Linear input of a new epic, after every check that needs no request. */
   function projectInput(input) {
@@ -139,6 +139,9 @@ export function projectOperations({ client, discovery, config, now = () => new D
     }
     if (input.milestone !== undefined && input.milestone !== null && input.milestone !== '') {
       throw new PmkitError('NOT_SUPPORTED', 'a Linear project has no parent milestone', 'Leave milestone out on Linear')
+    }
+    if (input.goal !== undefined && input.goal !== null && input.goal !== '') {
+      throw new PmkitError('NOT_SUPPORTED', 'the Linear adapter does not link projects to initiatives yet', 'Leave --goal out on Linear')
     }
     if (typeof input.title !== 'string' || input.title.trim() === '') throw invalid('title is required')
     if (/[\r\n]/.test(input.title)) throw invalid('title must not contain a line break')

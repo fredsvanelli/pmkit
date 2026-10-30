@@ -10,7 +10,7 @@ import { ADAPTERS, adapterFor } from './lib/adapters.mjs'
 import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, loadPmkitConfig, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
 import { contractView } from './lib/contract.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
-import { changeLines, dependencyText, epicRecord, eventTable, fields, issueRecord, issueTable, milestoneRecord, percent, releaseNotesText, releaseRecord, sprintRecord, table } from './lib/format.mjs'
+import { changeLines, dependencyText, epicRecord, eventTable, fields, goalRecord, issueRecord, issueTable, milestoneRecord, percent, releaseNotesText, releaseRecord, sprintRecord, table } from './lib/format.mjs'
 import {
   aging, categoryLookup, cycleTimes, doneInRange, groupEventsByIssue, lastEntry, leadTimes, rangeInstant, sprintIssues, summary, throughput, velocity,
 } from './lib/metrics.mjs'
@@ -639,11 +639,16 @@ export const COMMANDS = [
       const epics = await (await ctx.tracker()).listDeliverables()
       // Health and progress are Linear fields. Their columns appear only when an epic carries one, so Local output is unchanged.
       const extra = epics.some((e) => e.health !== undefined || e.progress !== undefined)
+      // The Goal column appears only when an epic links to a goal, so output without goals is unchanged.
+      const goals = epics.some((e) => e.goal !== undefined)
       const text = epics.length === 0
         ? 'no epics'
         : table(
-          ['ID', 'Title', 'Status', 'Start', 'Target', ...(extra ? ['Health', 'Progress'] : [])],
-          epics.map((e) => [e.id, e.title, e.status.name, e.start ?? '', e.target ?? '', ...(extra ? [e.health ?? '', e.progress === undefined ? '' : percent(e.progress)] : [])]),
+          ['ID', 'Title', 'Status', 'Start', 'Target', ...(extra ? ['Health', 'Progress'] : []), ...(goals ? ['Goal'] : [])],
+          epics.map((e) => [
+            e.id, e.title, e.status.name, e.start ?? '', e.target ?? '',
+            ...(extra ? [e.health ?? '', e.progress === undefined ? '' : percent(e.progress)] : []), ...(goals ? [e.goal ?? ''] : []),
+          ]),
         )
       return { data: epics, text }
     },
@@ -669,13 +674,61 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'epic create', summary: 'creates an epic', usage: '--title t [--start d] [--target d]', write: true, flags: ['title', 'start', 'target'],
+    name: 'epic create', summary: 'creates an epic', usage: '--title t [--start d] [--target d] [--goal id]', write: true, flags: ['title', 'start', 'target', 'goal'],
     run: async (ctx) => {
       if (ctx.opt('title') === undefined) throw usageError('epic create needs --title', 'pmkit epic create --title "..."')
       const input = { title: ctx.opt('title') }
-      for (const key of ['start', 'target']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
+      for (const key of ['start', 'target', 'goal']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
       const result = await (await ctx.tracker()).createDeliverable(input, await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: epicRecord }), commit: result.after.id }
+    },
+  },
+  {
+    name: 'epic goal', summary: 'links an epic to a goal, or removes the link', usage: '<id> <goal|none>', write: true, args: ['id', 'goal'], flags: [],
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).setEpicGoal(ctx.args[0], ctx.args[1] === 'none' ? null : ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })
+      return { data: result, text: writeText(result, { ...ctx, record: epicRecord }), commit: result.after.id }
+    },
+  },
+  {
+    name: 'goal list', summary: 'lists the strategic goals with their epics', flags: [],
+    run: async (ctx) => {
+      const { goals, problems } = await (await ctx.tracker()).listGoals()
+      const warnings = problems.map((problem) => `${problemLine(problem)}; run pmkit validate`)
+      const rows = goals.map((goal) => [goal.id, goal.title, goal.target ?? '', goal.epics.join(', ')])
+      return { data: goals, text: goals.length === 0 ? 'no goals' : table(['ID', 'Title', 'Target', 'Epics'], rows), warnings }
+    },
+  },
+  {
+    name: 'goal get', summary: 'one goal with its epics', usage: '<id>', args: ['id'], flags: [],
+    run: async (ctx) => {
+      const goal = await (await ctx.tracker()).getGoal(ctx.args[0])
+      return { data: goal, text: goalRecord(goal) }
+    },
+  },
+  {
+    name: 'goal create', summary: 'creates a strategic goal', usage: '--title t [--target YYYY-MM-DD]', write: true, flags: ['title', 'target'],
+    run: async (ctx) => {
+      if (ctx.opt('title') === undefined) throw usageError('goal create needs --title', 'pmkit goal create --title "..."')
+      const input = { title: ctx.opt('title') }
+      if (ctx.opt('target') !== undefined) input.target = ctx.opt('target')
+      const result = await (await ctx.tracker()).createGoal(input, await ctx.actor(), { dryRun: ctx.dryRun })
+      return { data: result, text: writeText(result, { ...ctx, record: goalRecord }), commit: result.after.id }
+    },
+  },
+  {
+    name: 'goal progress', summary: 'rolls up the progress of the epics of a goal', usage: '<id>', args: ['id'], flags: [],
+    run: async (ctx) => {
+      const p = await (await ctx.tracker()).goalProgress(ctx.args[0])
+      const rows = p.epics.map((e) => [e.id, e.title, e.status.name, e.progress.done, e.progress.total, e.progress.pointsDone, e.progress.points])
+      const text = [
+        `${p.goal.id}  ${p.goal.title}`,
+        ...fields([['total', p.total], ['done', p.done], ['canceled', p.canceled], ['points', p.points], ['points done', p.pointsDone]]),
+        ...Object.entries(p.byCategory).map(([category, count]) => `  ${category}: ${count}`),
+        '',
+        p.epics.length === 0 ? 'no epics' : table(['Epic', 'Title', 'Status', 'Done', 'Total', 'Points done', 'Points'], rows),
+      ].join('\n')
+      return { data: p, text }
     },
   },
   {

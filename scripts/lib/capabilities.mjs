@@ -18,7 +18,7 @@ export const SERVED_BY = {
   dependencies: ['issues link', 'issues dependencies'],
   native_triage: ['issues move'],
   deliverables: ['epic list', 'epic get', 'epic create', 'epic progress'],
-  strategic_goals: [],
+  strategic_goals: ['goal list', 'goal get', 'goal create', 'goal progress', 'epic goal'],
   status_update: ['epic update-status', 'epic updates'],
   releases: ['release list', 'release get', 'release issues', 'release create', 'release mark-released', 'release-notes'],
   capacity: ['cycle capacity'],

@@ -1531,6 +1531,8 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'release mark-released': ['1.0.0'],
     'docs create': ['notes/new.md', '--body-file', input('doc.md')],
     'views save': ['mine', '--category', 'done'],
+    'goal create': ['--title', 'New goal'],
+    'epic goal': ['EPC-2M9D', 'none'],
     'issues branch': ['ISS-5N1R'],
     'pr open': ['--issue', 'ISS-5N1R'],
     'pr ready': ['--issue', 'ISS-5N1R'],
@@ -1626,6 +1628,9 @@ test('every read goes on with one warning', () => {
     'docs list': [],
     'views list': [],
     'views run': ['missing'],
+    'goal list': [],
+    'goal get': ['GOAL-1'],
+    'goal progress': ['GOAL-1'],
     'docs read': ['missing.md'],
     'metrics velocity': [],
     'metrics cycle-time': [],
@@ -2139,4 +2144,52 @@ test('release-notes keeps archived done issues on the sprint and period bases', 
     assert.ok(entry, result.basis)
     assert.equal(entry.archived, true)
   }
+})
+
+test('goal create, list, get, progress and epic goal link a goal to an epic and roll up its progress', () => {
+  const root = makeRepo('team')
+  assert.equal(run(root, ['goal', 'list']).stdout.trim(), 'no goals')
+  const created = json(root, ['goal', 'create', '--title', 'Trust our webhooks', '--target', '2026-12-31'])
+  const { id } = created.after
+  assert.match(id, /^GOAL-[0-9A-Z]{4}$/)
+  assert.deepEqual(json(root, ['goal', 'list']), [{ id, title: 'Trust our webhooks', target: '2026-12-31', description: '', epics: [] }])
+  const linked = run(root, ['epic', 'goal', 'EPC-2M9D', id])
+  assert.equal(linked.status, 0, linked.stderr)
+  assert.match(linked.stdout, new RegExp(`goal: \\(none\\) → ${id}`))
+  assert.match(run(root, ['epic', 'get', 'EPC-2M9D']).stdout, new RegExp(`^goal: ${id}$`, 'm'))
+  assert.match(run(root, ['epic', 'list']).stdout, /\| Goal/)
+  assert.match(run(root, ['goal', 'list']).stdout, new RegExp(`${id} +\\| Trust our webhooks +\\| 2026-12-31 +\\| EPC-2M9D`))
+  assert.deepEqual(json(root, ['goal', 'get', id]).epics, ['EPC-2M9D'])
+  const progress = json(root, ['goal', 'progress', id])
+  const epic = json(root, ['epic', 'progress', 'EPC-2M9D'])
+  assert.deepEqual(progress.epics.map((e) => [e.id, e.progress]), [['EPC-2M9D', epic]])
+  assert.equal(progress.total, epic.total)
+  const text = run(root, ['goal', 'progress', id]).stdout
+  assert.match(text, /^total: \d+$/m)
+  assert.match(text, /EPC-2M9D +\| Reliable webhooks and billing export +\| in_progress/)
+  const removed = json(root, ['epic', 'goal', 'EPC-2M9D', 'none'])
+  assert.equal(removed.after.goal, undefined)
+  const epicWithGoal = json(root, ['epic', 'create', '--title', 'Signing', '--goal', id.toLowerCase()])
+  assert.equal(epicWithGoal.after.goal, id)
+})
+
+test('goal get of a missing goal is NOT_FOUND and epic goal of a missing goal is INVALID_INPUT', () => {
+  const root = makeRepo('team')
+  const missing = run(root, ['goal', 'get', 'GOAL-ZZZZ', '--json'])
+  assert.equal(missing.status, 2)
+  assert.equal(JSON.parse(missing.stdout).error.code, 'NOT_FOUND')
+  const before = hashTree(root)
+  const bad = run(root, ['epic', 'goal', 'EPC-2M9D', 'GOAL-ZZZZ', '--json'])
+  assert.equal(JSON.parse(bad.stdout).error.code, 'INVALID_INPUT')
+  assert.deepEqual(hashTree(root), before)
+})
+
+test('goal list warns about a goal file that does not parse', () => {
+  const root = makeRepo('team')
+  fs.mkdirSync(path.join(root, '.issues', 'goals'))
+  fs.writeFileSync(path.join(root, '.issues', 'goals', 'GOAL-1.md'), '---\ntarget: soon\n---\n')
+  const result = run(root, ['goal', 'list'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stdout.trim(), 'no goals')
+  assert.match(result.stderr, /GOAL-1.*run pmkit validate/)
 })
