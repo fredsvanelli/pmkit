@@ -7,6 +7,7 @@
 // setup() may name `assignee`, the member id the suite assigns issues to (default: the first member). A shared workspace
 // returns the key owner so the suite never assigns a person who would be notified.
 // The test body runs setup(t) with the node:test context, so a setup may tell tests apart by `t.name`.
+// setup() may name `agent`, an agent member id (`agent:<name>`) for the agents family; without one the delegate test skips.
 // setup() may set `foldsQuickEdits: true` when the tracker folds an update made right after a create into the create entry
 // of its history. The history test then still requires create before comment and the updated value, but no 'update' entry.
 // The suite awaits every operation, so an adapter may return values or promises.
@@ -20,10 +21,11 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { assertTracker } from './lib/contract.mjs'
+import { parseDelegation } from './lib/delegation.mjs'
 
 // The contract families. A hosted adapter lists the ones it implements, and the suite skips the tests that need another.
 // milestone-writes and document-writes cover creating a milestone or a document, which a tracker can leave out while it reads them.
-export const FAMILIES = ['discovery', 'issues', 'relations', 'history', 'time', 'cycles', 'cycle-lifecycle', 'deliverables', 'milestones', 'milestone-writes', 'releases', 'documents', 'document-writes']
+export const FAMILIES = ['discovery', 'issues', 'relations', 'history', 'time', 'cycles', 'cycle-lifecycle', 'deliverables', 'milestones', 'milestone-writes', 'releases', 'documents', 'document-writes', 'agents']
 
 const CATEGORIES = ['triage', 'backlog', 'todo', 'in_progress', 'in_review', 'done', 'canceled']
 const DOC_PATH = 'contract/notes.md'
@@ -67,7 +69,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       const env = await setup(t)
       try {
         const today = env.today ?? new Date().toISOString().slice(0, 10)
-        await body({ ...env, today, cycle: cycleHelper({ ...env, today }, t) })
+        await body({ ...env, today, t, cycle: cycleHelper({ ...env, today }, t) })
       } finally {
         await env.teardown()
       }
@@ -122,6 +124,24 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.equal((await tracker.getIssue(id)).archived, true)
       assert.deepEqual((await tracker.searchIssues({})).issues, [])
       assert.deepEqual(ids((await tracker.searchIssues({ archived: true })).issues), [id])
+    })
+
+    it('delegates an issue to an agent member with a delegation comment', ['issues', 'agents'], async (env) => {
+      const { tracker, actor, agent, t } = env
+      if (!agent) return t.skip('needs an agent member')
+      const id = (await tracker.createIssue({ title: 'For the agent' }, actor)).after.id
+      const first = await tracker.delegate(id, agent, 'Do it.', actor)
+      assert.equal(first.after.assignee, agent)
+      assert.equal(first.run, 'local')
+      assert.deepEqual(parseDelegation(first.comment.body), { agent, by: actor, run: 'local' })
+      assert.equal((await tracker.getIssue(id)).assignee, agent)
+      assert.deepEqual((await tracker.listComments(id)).map((comment) => comment.id), [first.comment.id])
+      const again = await tracker.delegate(id, agent, 'Do it again.', actor)
+      assert.equal(again.before.assignee, again.after.assignee)
+      assert.equal((await tracker.listComments(id)).length, 2)
+      await rejects(() => tracker.delegate(id, actor, 'x', actor), 'INVALID_INPUT')
+      await rejects(() => tracker.delegate(id, 'agent:nobody', 'x', actor), 'INVALID_INPUT')
+      assert.equal((await tracker.listComments(id)).length, 2)
     })
 
     it('rejects an unknown issue with NOT_FOUND and a bad write with INVALID_INPUT', ['issues'], async ({ tracker, actor }) => {
@@ -478,7 +498,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       await rejects(() => tracker.createDocument('../escape.md', 'x', actor), 'INVALID_INPUT')
     })
 
-    it('every dry run changes nothing that a following read can see', FAMILIES, async ({ tracker, actor, today, assignee }) => {
+    it('every dry run changes nothing that a following read can see', FAMILIES, async ({ tracker, actor, today, assignee, agent }) => {
       const { members } = await tracker.discover()
       const a = (await tracker.createIssue({ title: 'Dry A' }, actor)).after.id
       const b = (await tracker.createIssue({ title: 'Dry B' }, actor)).after.id
@@ -535,6 +555,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
         () => tracker.createDeliverable({ title: 'Never epic' }, actor, dry),
         () => tracker.publishStatusUpdate({ epic, health: 'on_track', body: 'dry update' }, actor, dry),
         () => tracker.createDocument('dry/new.md', 'never', actor, dry),
+        ...(agent ? [() => tracker.delegate(a, agent, 'Never', actor, dry)] : []),
       ]
       for (const write of writes) {
         await write()
