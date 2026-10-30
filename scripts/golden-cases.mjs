@@ -112,6 +112,7 @@ export const CASES = {
   'deploys list': () => [[]],
   'ci logs': () => [['--run', '9']],
   'pr diff': () => [['--branch', 'x']],
+  'pr blockers': () => [['--branch', 'x']],
   'pr sync': () => [[]],
   changelog: () => [['--file', input('CHANGELOG.md'), '--since', '0.0.0'], ['--file', input('CHANGELOG.md'), '--since', '0.3.0']],
   render: (a) => [['board'], ['roadmap', '--format', 'html'], ['sprint'], ['sprint', '--sprint', a.sprint], ['board', '--save']],

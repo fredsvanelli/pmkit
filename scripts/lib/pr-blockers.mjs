@@ -102,3 +102,39 @@ export function collectBlockers(host, pr) {
 
   return { blocked, state: pr.state, draft: pr.isDraft === true, checks, reviews, conflicts, threads, policies, unchecked }
 }
+
+const names = (items, label = (i) => i) => items.map(label).join(', ')
+
+/** The text of `pr blockers`: the pull request line, then one line per area. */
+export function blockersText(pr, found) {
+  const head = `#${pr.number} ${pr.title} (${pr.state}${pr.isDraft ? ', draft' : ''})`
+  if (found.state !== 'OPEN') return `${head}\nnothing to unblock`
+  const notChecked = (area) => `${area}: not checked (${found.unchecked.find((u) => u.area === area)?.message ?? 'no data'})`
+  const lines = [head, pr.url]
+  const { checks, reviews, conflicts, threads, policies } = found
+  if (checks === null) lines.push(notChecked('checks'))
+  else if (checks.failing.length + checks.pending.length === 0) lines.push('checks: none failing or pending')
+  else lines.push(`checks: ${[checks.failing.length > 0 && `failing ${names(checks.failing, (c) => c.name)}`, checks.pending.length > 0 && `pending ${names(checks.pending, (c) => c.name)}`].filter(Boolean).join('; ')}`)
+  if (reviews === null) lines.push(notChecked('reviews'))
+  else {
+    const parts = []
+    if (reviews.changesRequested.length > 0) parts.push(`changes requested by ${names(reviews.changesRequested)}`)
+    if (reviews.requested.length > 0) parts.push(`waiting for ${names(reviews.requested)}`)
+    if (parts.length === 0 && reviews.decision === 'REVIEW_REQUIRED') parts.push('a review is required')
+    lines.push(`reviews: ${parts.length > 0 ? parts.join('; ') : 'nothing pending'}`)
+  }
+  if (conflicts === null) lines.push(notChecked('conflicts'))
+  else lines.push(`conflicts: ${conflicts.conflicting ? 'merge conflicts with the base branch' : conflicts.behind ? 'the branch is behind the base branch' : 'none'}`)
+  if (threads === null) lines.push(notChecked('threads'))
+  else if (threads.open.length === 0) lines.push(`threads: none open${threads.incomplete ? ' in the first 100' : ''}`)
+  else {
+    lines.push(`threads: ${threads.open.length} open${threads.incomplete ? ' in the first 100' : ''}`)
+    for (const t of threads.open) lines.push(`  ${t.path ?? '(no file)'}${t.line ? `:${t.line}` : ''} ${t.author ?? ''} ${t.url ?? ''}`.trimEnd())
+  }
+  if (policies === null) lines.push(notChecked('policies'))
+  else {
+    const parts = [...policies.unmet, ...(policies.draft ? ['the pull request is a draft'] : [])]
+    lines.push(`policies: ${parts.length > 0 ? parts.join('; ') : policies.protected ? 'all met' : 'the base branch has no protection'}`)
+  }
+  return lines.join('\n')
+}

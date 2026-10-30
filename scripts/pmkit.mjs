@@ -27,6 +27,7 @@ import { addMapEntry, setMap, setScalar, setSchemaLine } from './lib/yaml-edit.m
 import { parseMappingFlags, proposeMappings } from './lib/mappings.mjs'
 import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { lineDiff } from './lib/diff.mjs'
+import { blockersText, collectBlockers } from './lib/pr-blockers.mjs'
 import { CACHE_DIR, ensureCacheIgnored } from './lib/local/query-index.mjs'
 import { writeFileAtomic } from './lib/local/store.mjs'
 import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, planMigration } from './lib/local/migrations.mjs'
@@ -1200,6 +1201,18 @@ export const COMMANDS = [
       const size = truncated ? `first ${maxLines} of ${all.length} lines` : `${all.length} lines`
       const head = source === 'pull_request' ? `pull request #${pr.number}, ${size}` : `local diff of ${branch} against ${base}, ${size}`
       return { data: { branch, source, pr: source === 'pull_request' ? pr : null, base, uncommitted: local?.uncommitted ?? false, diff, truncated, lines: all.length }, text: `${head}\n${diff}`, notes: [...notes, ...(await linkedCodeNotes(ctx))] }
+    },
+  },
+  {
+    name: 'pr blockers', summary: 'what blocks the pull request of a branch: checks, reviews, conflicts, open threads and policies; reads only', usage: '[--branch b]', args: [], flags: ['branch'],
+    run: async (ctx) => {
+      const host = ctx.host()
+      const branch = ctx.opt('branch') ?? host.currentBranch()
+      if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
+      const pr = host.getPullRequest({ head: branch })
+      if (!pr) return { data: { branch, pr: null, blocked: false }, text: `no pull request for ${branch}`, notes: await linkedCodeNotes(ctx) }
+      const found = collectBlockers(host, pr)
+      return { data: { branch, pr, ...found }, text: blockersText(pr, found), notes: await linkedCodeNotes(ctx) }
     },
   },
   {
