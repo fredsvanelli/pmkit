@@ -8,7 +8,7 @@ import { FrontmatterError, joinFrontmatter, parseYaml, splitFrontmatter } from '
 import { hasConflictMarkers } from './issue-file.mjs'
 
 export const HEALTH = ['on_track', 'at_risk', 'off_track']
-export const EPIC_KEYS = ['id', 'title', 'status', 'start', 'target', 'milestone']
+export const EPIC_KEYS = ['id', 'title', 'status', 'start', 'target', 'milestone', 'goal']
 const UPDATE_ORDER = ['author', 'created', 'health']
 const DOCTOR = '/pmkit:local:doctor'
 
@@ -43,14 +43,14 @@ export function parseEpicFile(text, { statuses = {} } = {}) {
     title: String(data.title ?? ''),
     status: { name, category: statuses[name]?.category ?? null },
   }
-  for (const key of ['start', 'target', 'milestone']) if (data[key] != null) epic[key] = String(data[key])
+  for (const key of ['start', 'target', 'milestone', 'goal']) if (data[key] != null) epic[key] = String(data[key])
   epic.description = body
   return epic
 }
 
 /** The frontmatter values of an epic, keyed as written to the file. */
 export const epicFrontmatter = (epic) => ({
-  id: epic.id, title: epic.title, status: epic.status.name, start: epic.start, target: epic.target, milestone: epic.milestone,
+  id: epic.id, title: epic.title, status: epic.status.name, start: epic.start, target: epic.target, milestone: epic.milestone, goal: epic.goal,
 })
 
 export const serializeEpic = (epic) =>

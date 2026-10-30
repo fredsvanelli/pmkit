@@ -14,6 +14,7 @@ export const TRACKER_OPERATIONS = [
   'metricEvents',
   'readDocument', 'createDocument', 'listDocuments',
   'saveView', 'listViews', 'runView',
+  'listGoals', 'getGoal', 'createGoal', 'goalProgress', 'setEpicGoal',
   'logTime', 'listTimeEntries',
 ]
 

@@ -33,8 +33,12 @@ An issue whose `parent` names another issue or an epic. The parent's `children` 
 _Avoid_: subtask, child ticket
 
 **Epic**:
-A larger body of work with a status, an optional start and target date, and published status updates. An issue belongs to an epic through `parent`, and the epic's progress counts every issue whose parent chain reaches it.
+A larger body of work with a status, an optional start and target date, an optional goal, and published status updates. An issue belongs to an epic through `parent`, and the epic's progress counts every issue whose parent chain reaches it.
 _Avoid_: initiative, project, deliverable (that is the contract's name for the operations on an epic)
+
+**Goal**:
+A strategic outcome, kept as `goals/<ID>.md` with a title, an optional target date and a description. Epics link to it through their `goal` key, and its progress adds up the progress of those epics. Its ID is `GOAL-` and a code that follows the ID style. A sprint's `goal` is a sentence about that sprint, not a Goal.
+_Avoid_: initiative (Linear's name for it), objective, OKR
 
 **Milestone**:
 A named target with an optional due date that issues and epics point to by id.

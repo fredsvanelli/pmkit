@@ -12,7 +12,7 @@ import { CATEGORIES, LINK_KINDS, TERMINAL } from '../model.mjs'
 import { appendEvents, driftEvents, readEvents } from './events.mjs'
 import { formatError } from './migrations.mjs'
 import {
-  HEALTH, epicFrontmatter, parseEpicFile, parseUpdateFile, serializeEpic, serializeUpdate, sortEpics, sortUpdates, walkParents,
+  EPIC_KEYS, HEALTH, epicFrontmatter, parseEpicFile, parseFile, parseUpdateFile, serializeEpic, serializeUpdate, sortEpics, sortUpdates, walkParents,
 } from './epics.mjs'
 import { hasSectionHeading, parseIssueFile, serializeIssue, toFrontmatter } from './issue-file.mjs'
 import { buildCapabilities } from '../capabilities.mjs'
@@ -22,6 +22,7 @@ import { createDocumentFile, listDocumentFiles, readDocumentFile } from './docum
 import { hasMilestoneFiles, milestoneStems, parseMilestone, serializeMilestone, sortMilestones, validMilestoneId } from './milestones.mjs'
 import { parseRelease, releaseStems, serializeRelease, sortReleases, validReleaseId, validTag } from './releases.mjs'
 import { parseView, serializeView, validViewName, viewStems } from './views.mjs'
+import { GOAL_PREFIX, goalStems, parseGoal, serializeGoal, sortGoals } from './goals.mjs'
 import { checkFilter, runQuery } from './query.mjs'
 import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
 import { CACHE_DIR, INDEX_FILE, clearIndex, indexHeader, readThroughIndex } from './query-index.mjs'
@@ -856,7 +857,7 @@ export function createLocalTracker(root, {
 
   function createDeliverable(input, actor, { dryRun = false } = {}) {
     requireWriter(actor)
-    const allowed = ['title', 'start', 'target', 'milestone', 'description']
+    const allowed = ['title', 'start', 'target', 'milestone', 'goal', 'description']
     for (const key of Object.keys(input)) {
       if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
     }
@@ -867,6 +868,7 @@ export function createLocalTracker(root, {
       epic[key] = input[key]
     }
     if (!blank(input.milestone)) epic.milestone = NORMALIZE.milestone(input.milestone)
+    if (!blank(input.goal)) epic.goal = requireGoal(input.goal)
     if (!blank(input.description)) epic.description = plainText('description', input.description)
     epic.id = nextId(local.epic_prefix, epicsDir)
     const content = serializeEpic(epic)
@@ -880,10 +882,10 @@ export function createLocalTracker(root, {
     return { before: null, after }
   }
 
-  /** Counts the non-archived issues whose parent chain reaches the epic. */
-  function deliverableProgress(id) {
-    const { id: epic } = getDeliverable(id)
-    const issues = scanIssues()
+  const deliverableProgress = (id) => progressOf(getDeliverable(id).id, scanIssues())
+
+  /** Counts the non-archived issues whose parent chain reaches the epic. Canceled issues are counted apart, outside `total`. */
+  function progressOf(epic, issues) {
     const byId = new Map(issues.map((issue) => [issue.id, issue]))
     const parentOf = (key) => byId.get(key)?.parent
     const progress = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: Object.fromEntries(CATEGORIES.map((category) => [category, 0])) }
@@ -933,6 +935,109 @@ export function createLocalTracker(root, {
       .filter((name) => name.endsWith('.md'))
       .map((name) => ({ name, update: parseUpdateFile(fs.readFileSync(path.join(updates, name), 'utf8'), epic.id) }))
     return sortUpdates(entries).map((entry) => entry.update)
+  }
+
+  const goalsDir = path.join(issuesDir, 'goals')
+  const goalNotFound = (id) => new PmkitError('NOT_FOUND', `goal ${id} does not exist`, 'pmkit goal list')
+
+  /** The goal file as stored, without its epics. A stem that is not a goal id is never a goal. */
+  function readGoalFile(id) {
+    const normalized = normalizeId(String(id))
+    if (!isId(normalized, GOAL_PREFIX) || !goalStems(goalsDir).has(normalized)) throw goalNotFound(id)
+    return parseGoal(fs.readFileSync(path.join(goalsDir, `${normalized}.md`), 'utf8'), normalized)
+  }
+
+  /** A goal record: the file and the ids of the epics whose `goal` names it, in epic list order. */
+  const withEpics = (goal, epics = listDeliverables()) => ({ ...goal, epics: epics.filter((epic) => epic.goal === goal.id).map((epic) => epic.id) })
+
+  const getGoal = (id) => withEpics(readGoalFile(id))
+
+  /** The normalized id of a goal that exists and parses, for an epic's `goal` field. */
+  function requireGoal(value) {
+    try {
+      return readGoalFile(text('goal')(value)).id
+    } catch (error) {
+      if (error instanceof PmkitError && error.code === 'NOT_FOUND') throw invalid(`goal ${value} does not exist`, 'pmkit goal list')
+      throw error
+    }
+  }
+
+  /** Goals by target date, then id. A file that does not parse, or whose stem is not a goal id, is skipped and reported in `problems`. */
+  function listGoals() {
+    const goals = []
+    const problems = []
+    for (const stem of [...goalStems(goalsDir)].sort()) {
+      if (!isId(stem, GOAL_PREFIX)) {
+        problems.push({ id: stem, code: 'INVALID_INPUT', message: `goal file ${stem}.md is not named after a goal id such as ${GOAL_PREFIX}-1` })
+        continue
+      }
+      try {
+        goals.push(parseGoal(fs.readFileSync(path.join(goalsDir, `${stem}.md`), 'utf8'), stem))
+      } catch (error) {
+        if (!(error instanceof PmkitError)) throw error
+        problems.push({ id: stem, code: error.code, message: error.message })
+      }
+    }
+    const epics = listDeliverables()
+    return { goals: sortGoals(goals).map((goal) => withEpics(goal, epics)), problems }
+  }
+
+  function createGoal(input, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const allowed = ['title', 'target', 'description']
+    for (const key of Object.keys(input)) {
+      if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+    }
+    const goal = { title: NORMALIZE.title(input.title), description: '' }
+    if (!blank(input.target)) {
+      if (!validDate(input.target)) throw invalid('target must be a date as YYYY-MM-DD')
+      goal.target = input.target
+    }
+    if (!blank(input.description)) goal.description = plainText('description', input.description)
+    const stems = goalStems(goalsDir)
+    const id = local.id_style === 'numbered'
+      ? nextNumberedId(GOAL_PREFIX, [...stems])
+      : newId(GOAL_PREFIX, { random, exists: (candidate) => stems.has(candidate) })
+    const content = serializeGoal(goal)
+    const after = readBack('goal file', () => parseGoal(content, id))
+    if (!dryRun) {
+      fs.mkdirSync(goalsDir, { recursive: true })
+      writeFile(path.join(goalsDir, `${id}.md`), content)
+    }
+    return { before: null, after: { ...after, epics: [] } }
+  }
+
+  /** The progress of each linked epic, as deliverableProgress counts it, and the sums. An issue reaches at most one epic, so none counts twice. */
+  function goalProgress(id) {
+    const goal = getGoal(id)
+    const issues = scanIssues()
+    const sum = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: Object.fromEntries(CATEGORIES.map((category) => [category, 0])) }
+    const epics = goal.epics.map((epicId) => {
+      const { title, status } = getDeliverable(epicId)
+      const progress = progressOf(epicId, issues)
+      for (const key of ['total', 'done', 'canceled', 'points', 'pointsDone']) sum[key] += progress[key]
+      for (const category of CATEGORIES) sum.byCategory[category] += progress.byCategory[category]
+      return { id: epicId, title, status, progress }
+    })
+    return { goal, epics, ...sum }
+  }
+
+  /** Links an epic to a goal, or removes the link with a null goal. An unchanged link writes nothing. */
+  function setEpicGoal(epicId, goal, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const { epic: before, dir } = readEpic(epicId)
+    const next = blank(goal) || goal === '' ? undefined : requireGoal(goal)
+    // The stored map is edited, not the parsed epic, so keys pmkit does not know and the body stay as they are.
+    const file = path.join(dir, 'epic.md')
+    const { data, body } = parseFile(fs.readFileSync(file, 'utf8'), 'epic')
+    delete data.goal
+    if (next !== undefined) data.goal = next
+    const content = joinFrontmatter(data, body ? `${body}\n` : '', { order: EPIC_KEYS })
+    const after = readBack('epic file', () => parseEpicFile(content, { statuses: local.statuses }))
+    if (before.goal === after.goal || dryRun) return { before, after }
+    writeFile(file, content)
+    append(path.join(dir, 'events.jsonl'), [{ at: stamp(), by: actor, op: 'update', field: 'goal', from: before.goal ?? null, to: after.goal ?? null }])
+    return { before, after }
   }
 
   const readMilestone = (id) => parseMilestone(fs.readFileSync(path.join(milestonesDir, `${id}.md`), 'utf8'), id)
@@ -1165,6 +1270,7 @@ export function createLocalTracker(root, {
 
   return {
     saveView, listViews, runView,
+    listGoals, getGoal, createGoal, goalProgress, setEpicGoal,
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     listMilestones, getMilestone, createMilestone, unfiledMilestones,
     listReleases, getRelease, createRelease, releaseIssues, markReleased,

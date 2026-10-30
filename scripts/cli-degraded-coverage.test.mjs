@@ -47,6 +47,12 @@ const REFUSALS = [
   ['views', 'list'],
   ['views', 'save', 'v', '--category', 'done'],
   ['views', 'run', 'v'],
+  ['goal', 'list'],
+  ['goal', 'get', 'GOAL-1'],
+  ['goal', 'create', '--title', 'G'],
+  ['goal', 'progress', 'GOAL-1'],
+  ['epic', 'goal', 'P-ACM-1', 'GOAL-1'],
+  ['epic', 'create', '--title', 'E', '--goal', 'GOAL-1'],
 ]
 
 for (const args of REFUSALS) {
@@ -72,6 +78,7 @@ const COVERED = {
   'docs list': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'docs read': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'docs create': 'REFUSALS',
   'pr open': 'PATH_CASES', 'pr ready': 'PATH_CASES', 'pr status': 'PATH_CASES', 'pr sync': 'PATH_CASES', 'deploys list': 'PATH_CASES', 'ci logs': 'PATH_CASES', 'pr diff': 'PATH_CASES',
   'views list': 'REFUSALS', 'views save': 'REFUSALS', 'views run': 'REFUSALS',
+  'goal list': 'REFUSALS', 'goal get': 'REFUSALS', 'goal create': 'REFUSALS', 'goal progress': 'REFUSALS', 'epic goal': 'REFUSALS',
   'alerts list': 'REPO_SCAN',
   'issues delegate': 'REFUSALS',
 }

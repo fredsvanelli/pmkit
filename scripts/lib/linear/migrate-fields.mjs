@@ -16,7 +16,7 @@ export const PROJECT_TYPE_OF_CATEGORY = Object.freeze({
 })
 
 export const EXPORT_LOSSES = [
-  'sprints', 'sprint names', 'history', 'epic dates', 'comments', 'status updates', 'milestones', 'releases', 'time logs', 'documents', 'views',
+  'sprints', 'sprint names', 'history', 'epic dates', 'comments', 'status updates', 'milestones', 'releases', 'time logs', 'documents', 'views', 'goals',
   'branch names', 'ids', 'estimates', 'members', 'links', 'capacity',
 ]
 
@@ -333,6 +333,7 @@ export function mapExport(snapshot, target) {
   losses.set('time logs', out.timeLogs ?? 0, [], `${plural(out.timeLogs ?? 0, 'time log')} stay in events.jsonl; Linear has no time tracking`)
   losses.set('documents', out.documents ?? 0, [], `${plural(out.documents ?? 0, 'document')} stay in .issues/docs/`)
   losses.set('views', out.views ?? 0, [], `${plural(out.views ?? 0, 'view')} stay in .issues/views/; pmkit does not create Linear views`)
+  losses.set('goals', out.goals ?? 0, [], `${plural(out.goals ?? 0, 'goal')} stay in .issues/goals/; pmkit does not create Linear initiatives, so epics lose their goal links`)
   const branches = losses.get('branch names')
   if (branches) branches.why = `${plural(branches.count, 'issue')} get the branch name Linear gives them; the map keeps the old id`
   const ids = snapshot.issues.length + snapshot.epics.length

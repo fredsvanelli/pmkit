@@ -1,0 +1,52 @@
+$ pmkit goal create --title 'Golden goal' --target 2026-12-31
+exit 0
+--- stdout
+GOAL-1  Golden goal
+id: GOAL-1
+title: Golden goal
+target: 2026-12-31
+--- stderr
+(empty)
+
+$ pmkit goal create --title 'Golden goal' --target 2026-12-31 --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "id": "GOAL-1",
+    "title": "Golden goal",
+    "target": "2026-12-31",
+    "description": "",
+    "epics": []
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit goal create --title 'Golden goal' --target 2026-12-31 --dry-run
+exit 0
+--- stdout
+GOAL-1  Golden goal
+id: GOAL-1
+title: Golden goal
+target: 2026-12-31
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit goal create --title 'Golden goal' --target 2026-12-31 --dry-run --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "id": "GOAL-1",
+    "title": "Golden goal",
+    "target": "2026-12-31",
+    "description": "",
+    "epics": []
+  }
+}
+--- stderr
+(empty)

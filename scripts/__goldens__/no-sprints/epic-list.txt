@@ -1,9 +1,9 @@
 $ pmkit epic list
 exit 0
 --- stdout
-ID       | Title             | Status      | Start      | Target
----------|-------------------|-------------|------------|-----------
-EPC-4H7V | Reliable webhooks | in_progress | 2026-09-28 | 2026-11-13
+ID       | Title             | Status      | Start      | Target     | Goal
+---------|-------------------|-------------|------------|------------|----------
+EPC-4H7V | Reliable webhooks | in_progress | 2026-09-28 | 2026-11-13 | GOAL-8K2W
 --- stderr
 (empty)
 
@@ -20,6 +20,7 @@ exit 0
     },
     "start": "2026-09-28",
     "target": "2026-11-13",
+    "goal": "GOAL-8K2W",
     "description": "Customers lose events when a delivery fails. This epic covers retries and signing."
   }
 ]

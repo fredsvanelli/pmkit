@@ -58,7 +58,14 @@ function workspaceAnswers(raw) {
   const business = BUSINESS_PLANS.includes(raw.workspace.plan)
   const { releasesEnabled, customersEnabled } = raw.flags
   return {
-    strategic_goals: business ? { path: 'native' } : { path: 'absent', enableHint: 'Linear initiatives need the Business or Enterprise plan' },
+    // Linear has initiatives on these plans, but the adapter does not read them yet (PMK-45), so pmkit reports it absent.
+    strategic_goals: business
+      ? {
+        path: 'absent',
+        detail: { workspace: 'native', unsupported: ['listGoals', 'getGoal', 'createGoal', 'goalProgress', 'setEpicGoal'] },
+        enableHint: 'The Linear adapter does not serve initiatives yet; Linear offers them on this workspace',
+      }
+      : { path: 'absent', enableHint: 'Linear initiatives need the Business or Enterprise plan' },
     releases: releasesEnabled
       ? { path: 'native' }
       : { path: 'absent', enableHint: 'Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings' },

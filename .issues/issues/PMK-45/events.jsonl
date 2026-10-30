@@ -1,2 +1,9 @@
 {"at":"2026-10-25T19:13:21Z","by":"fred","op":"create","to":{"id":"PMK-45","title":"Add strategic goals to the Local tracker","type":"feature","status":"backlog","priority":"medium","estimate":3,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"generic-commands","created":"2026-10-25T19:13:21Z","updated":"2026-10-25T19:13:21Z"}}
 {"at":"2026-10-25T19:13:25Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-2"}
+{"at":"2026-10-30T23:12:26Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-30T23:12:27Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-30T23:12:40Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-45-add-strategic-goals-to-the-local-tracker"}
+{"at":"2026-10-30T23:19:19Z","by":"fred","op":"comment","to":"2026-10-30T23-19-19Z-fred.md"}
+{"at":"2026-10-30T23:35:02Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-30T23:35:38Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-10-30T23:35:54Z","by":"fred","op":"comment","to":"2026-10-30T23-35-54Z-fred.md"}

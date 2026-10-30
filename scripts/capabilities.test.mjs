@@ -19,12 +19,12 @@ test('the manifest lists the 20 capabilities in spec order, each with a path', (
   assert.equal(manifest.generatedAt, '2026-10-23T12:00:00Z')
   const byPath = (wanted) => manifest.capabilities.filter((entry) => entry.path === wanted).map((entry) => entry.id)
   assert.deepEqual(byPath('native'), [
-    'cycles', 'estimation', 'multilevel_hierarchy', 'dependencies', 'native_triage', 'deliverables', 'status_update',
+    'cycles', 'estimation', 'multilevel_hierarchy', 'dependencies', 'native_triage', 'deliverables', 'strategic_goals', 'status_update',
     'releases', 'capacity', 'saved_views', 'documents', 'time_tracking',
   ])
   assert.deepEqual(byPath('derived'), ['native_metrics', 'linked_code', 'agent_delegation', 'security_alerts'])
   assert.deepEqual(byPath('absent'), [
-    'strategic_goals', 'demand_signals', 'request_queue', 'user_inbox',
+    'demand_signals', 'request_queue', 'user_inbox',
   ])
 })
 
@@ -36,8 +36,9 @@ test('derived capabilities carry their detail and absent ones a hint', () => {
   assert.deepEqual(byId.agent_delegation, { id: 'agent_delegation', path: 'derived', detail: { source: 'assignee', run: 'local' } })
   assert.deepEqual(byId.releases, { id: 'releases', path: 'native' })
   assert.deepEqual(byId.saved_views, { id: 'saved_views', path: 'native' })
-  assert.deepEqual(byId.strategic_goals, {
-    id: 'strategic_goals', path: 'absent', enableHint: 'No pmkit command serves strategic_goals in the Local tracker yet',
+  assert.deepEqual(byId.strategic_goals, { id: 'strategic_goals', path: 'native' })
+  assert.deepEqual(byId.user_inbox, {
+    id: 'user_inbox', path: 'absent', enableHint: 'No pmkit command serves user_inbox in the Local tracker yet',
   })
 })
 
@@ -73,8 +74,8 @@ test('a native or derived capability has a serving command, an absent one has a 
 test('unservedCapabilities flags a native or derived capability with no serving command', () => {
   const entries = tracker().capabilities().capabilities
   assert.deepEqual(unservedCapabilities(entries, SERVED_BY), [])
-  const doctored = entries.map((entry) => (entry.id === 'strategic_goals' ? { id: entry.id, path: 'native' } : entry))
-  assert.deepEqual(unservedCapabilities(doctored, SERVED_BY), ['strategic_goals'])
+  const doctored = entries.map((entry) => (entry.id === 'user_inbox' ? { id: entry.id, path: 'native' } : entry))
+  assert.deepEqual(unservedCapabilities(doctored, SERVED_BY), ['user_inbox'])
 })
 
 function withGitHost(system) {
