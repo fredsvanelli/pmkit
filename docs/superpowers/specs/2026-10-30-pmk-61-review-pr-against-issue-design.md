@@ -21,14 +21,16 @@ The Dev catalog lists `review-pr-against-issue`: it compares the diff with the a
 ## Decisions
 
 - Command name: `/pmkit:issues:review`, file `commands/issues/review.md`. The catalog name is `review-pr-against-issue`, and the other commands drop the object they work on (`capture` for `create-issue-from-context`). My call.
-- `pr diff` asks the host for the pull request of the branch (`getPullRequest({ head })`). When it finds an open or merged one, it runs `gh pr diff <number> --color never` and reports `source: "pull_request"`. When there is none, it runs `git diff --no-color <base>...<branch>` and reports `source: "local"`. `<base>` is `--base`, else `git_host.default_branch`, else `main`. When the local base ref does not exist, the host tries `origin/<base>`.
+- `pr diff` asks the host for the pull request of the branch (`getPullRequest({ head })`). When it finds an open or merged one, it runs `gh pr diff <number> --color never` and reports `source: "pull_request"`. When there is none, it runs the local diff described below and reports `source: "local"`. `<base>` is `--base`, else `git_host.default_branch`, else `main`.
 - A diff can be huge. The CLI keeps the first `--max-lines` lines (default 2000) and reports `truncated` and `lines`, the full line count. The command says when the diff was cut and which criteria it could not check.
 - `pr diff` needs a git host like every `pr` command. With `git_host.system: none` it answers `NOT_SUPPORTED`. The command file then runs `git diff <default>...<branch>` itself and says so.
 - The issue comes from `issues get <id>`. Without a `branch` the command stops with a next step (`/pmkit:issues:work`), because there is nothing to diff.
 - The report covers each criterion in the order of the issue, with the evidence (file and hunk) and one line per gap. It also lists changes in the diff that match no criterion, as "outside the criteria", without judging them.
 - Posting uses `issues comment <id> --body-file - --dry-run --json`, then the real run after one confirmation, as `/pmkit:issues:summary` does.
 - Linear: `pr diff` is a git host read, so the tracker manifest has nothing to declare. `issues comment` works on Linear.
-- Every `gh` and `git` call of the host now has a timeout of 120 seconds, and a timed out call is `UPSTREAM`. Diffs share the 256 MiB output cap of `MAX_OUTPUT`.
+- Only the two diff reads (`prDiff`, `localDiff`) have a timeout of 120 seconds. A push or a PR create can run a pre-push hook or git-lfs for longer. A timed out call is `UPSTREAM`. Diffs share the 256 MiB output cap of `MAX_OUTPUT`.
+- A pull request counts only when it is open or merged. A closed one falls back to the local diff, with a `note:`. When `gh pr diff` fails with HTTP 406 (diff over the GitHub limit), the command also falls back to the local diff, with a `note:`.
+- The local diff starts at `origin/<base>` when it exists and uses the local base only without a remote. It reads `origin/<branch>` when only origin has the branch. For the checked out branch it runs from the merge base to the working tree, so commits, index and tracked working tree changes are in. With a pull request, a `note:` says when local commits are not on origin.
 
 ## Acceptance criteria map
 

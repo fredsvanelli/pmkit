@@ -113,7 +113,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `pr open --issue <id> [--draft] [--body-file f]` | pushes the issue branch and opens a pull request; when the branch already has an open one, pushes and returns it with `existing: true` |
 | `pr ready --issue <id>` | marks the open draft pull request of an issue ready for review |
 | `pr status [--branch b]` | the pull request, checks and reviews of a branch (default: the current branch) |
-| `pr diff [--branch b] [--base b] [--max-lines n]` | the diff of the pull request of a branch (default: the current branch), or the local diff against `--base` (default: `git_host.default_branch`) when it has none; keeps the first `--max-lines` lines (default 2000); reads only |
+| `pr diff [--branch b] [--base b] [--max-lines n]` | the diff of the open or merged pull request of a branch (default: the current branch). Without one, or when GitHub refuses a diff that is too large, the local diff against `origin/<base>` (default `git_host.default_branch`), with the uncommitted changes of tracked files for the checked out branch. A `note:` says which case applied. Keeps the first `--max-lines` lines (default 2000); reads only |
 | `pr sync` | moves `in_review` issues to `done` when their pull request is merged |
 | `deploys list [--environment e] [--limit n]` | the repository deployments (default 20, at most 100) with the state of the latest status of each; reads only |
 | `ci logs [--branch b] [--run id] [--tail n]` | the log of the failed steps of a workflow run: `--run`, or the newest failed run of a branch (default: the current branch); keeps the last `--tail` lines (default 200); reads only |
