@@ -483,12 +483,10 @@ export function createLocalTracker(root, {
    */
   function delegate(id, agent, instructions, actor, { dryRun = false } = {}) {
     requireWriter(actor)
-    if (typeof agent !== 'string' || !AGENT_ID.test(agent)) {
-      const agents = Object.keys(local.members).filter((member) => AGENT_ID.test(member))
-      const nextStep = agents.length > 0 ? `Use one of: ${agents.join(', ')}` : 'Add an agent member such as agent:claude with /pmkit:setup'
-      throw invalid(`"${agent}" is not an agent: an agent member id starts with agent:`, nextStep)
-    }
-    requireMember(agent, 'agent')
+    const agents = Object.keys(local.members).filter((member) => AGENT_ID.test(member))
+    const nextStep = agents.length > 0 ? `Use one of: ${agents.join(', ')}` : 'Add an agent member such as agent:claude with /pmkit:setup'
+    if (typeof agent !== 'string' || !AGENT_ID.test(agent)) throw invalid(`"${agent}" is not an agent: an agent member id starts with agent:`, nextStep)
+    if (!agents.includes(agent)) throw invalid(`agent "${agent}" is not a member`, nextStep)
     const assigned = assign(id, agent, actor, { dryRun })
     const posted = comment(assigned.after.id, delegationComment({ issue: assigned.after.id, agent, by: actor, instructions }), actor, { dryRun })
     return { before: assigned.before, after: assigned.after, comment: posted, run: 'local' }

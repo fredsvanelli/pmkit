@@ -18,7 +18,7 @@ export function delegationComment({ issue, agent, by, instructions }) {
     '',
     '## Run it locally',
     '',
-    'pmkit does not start agents on this tracker. To run this issue:',
+    'This tracker does not start agents. To run this issue:',
     '',
     '1. Open a session of the agent in this repository.',
     `2. Run \`/pmkit:issues:work ${issue}\` and add \`--as ${agent}\` to every pmkit write, so the claim, the branch and the PR are recorded as the agent's.`,

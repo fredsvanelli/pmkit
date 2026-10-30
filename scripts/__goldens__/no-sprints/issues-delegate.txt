@@ -1,0 +1,41 @@
+$ pmkit issues delegate ISS-9B2X agent:claude --instructions-file <inputs>/instructions.md
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: agent "agent:claude" is not a member
+next: Add an agent member such as agent:claude with /pmkit:setup
+
+$ pmkit issues delegate ISS-9B2X agent:claude --instructions-file <inputs>/instructions.md --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "agent \"agent:claude\" is not a member",
+    "nextStep": "Add an agent member such as agent:claude with /pmkit:setup"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues delegate ISS-9B2X agent:claude --instructions-file <inputs>/instructions.md --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: agent "agent:claude" is not a member
+next: Add an agent member such as agent:claude with /pmkit:setup
+
+$ pmkit issues delegate ISS-9B2X agent:claude --instructions-file <inputs>/instructions.md --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "agent \"agent:claude\" is not a member",
+    "nextStep": "Add an agent member such as agent:claude with /pmkit:setup"
+  }
+}
+--- stderr
+(empty)

@@ -47,7 +47,7 @@ These are my calls, made without a live user.
 
    ## Run it locally
 
-   pmkit does not start agents on this tracker. To run this issue:
+   This tracker does not start agents. To run this issue:
 
    1. Open a session of the agent in this repository.
    2. Run `/pmkit:issues:work ISS-1` and add `--as agent:claude` to every pmkit write, so the claim, the branch and the PR are recorded as the agent's.

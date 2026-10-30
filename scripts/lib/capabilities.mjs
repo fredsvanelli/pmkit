@@ -29,7 +29,7 @@ export const SERVED_BY = {
   request_queue: [],
   time_tracking: ['issues log-time', 'issues time-entries'],
   linked_code: ['issues branch', 'pr open', 'pr ready', 'pr status', 'pr sync', 'deploys list', 'ci logs'],
-  agent_delegation: [],
+  agent_delegation: ['issues delegate'],
   security_alerts: ['alerts list'],
   user_inbox: [],
 }
@@ -47,6 +47,7 @@ export function buildCapabilities({ estimate, gitHost }) {
   const derived = {
     native_metrics: { detail: { source: 'events' } },
     security_alerts: { detail: { source: 'scanners' } },
+    agent_delegation: { detail: { source: 'assignee', run: 'local' } },
     linked_code: { detail: { source: 'git' }, ...(gitHost === 'none' ? { enableHint: ENABLE_GIT_HINT } : {}) },
   }
   return CAPABILITIES.map((id) => {

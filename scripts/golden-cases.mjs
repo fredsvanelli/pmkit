@@ -43,6 +43,8 @@ export const CASES = {
   'issues update': (a) => [[a.issue, '--title', 'Renamed', '--criteria-file', input('criteria.md')]],
   'issues move': (a) => [[a.issue, 'done'], [a.conflicted, 'done']],
   'issues assign': (a) => [[a.issue, 'fred']],
+  // No fixture has an agent member, so the goldens record the refusal; scripts/cli-delegate.test.mjs covers a real delegation.
+  'issues delegate': (a) => [[a.issue, 'agent:claude', '--instructions-file', input('instructions.md')]],
   'issues link': (a) => [[a.issue, a.other, '--kind', 'blocks']],
   'issues parent': (a) => [[a.issue, a.epic]],
   'issues comment': (a) => [[a.issue, '--body-file', input('comment.md')]],

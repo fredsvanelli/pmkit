@@ -18,6 +18,7 @@ import { buildNotes, chooseBasis } from './lib/release-notes.mjs'
 import { dependencyMap, serializable } from './lib/dependencies.mjs'
 import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 import { pathNote } from './lib/path-notes.mjs'
+import { localRunLine } from './lib/delegation.mjs'
 import { SCANNERS, SEVERITIES, collectAlerts } from './lib/alerts.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
@@ -463,6 +464,17 @@ export const COMMANDS = [
   {
     name: 'issues assign', summary: 'assigns', usage: '<id> <member|me|none>', write: true, args: ['id', 'member'], flags: [],
     run: async (ctx) => issueWrite(ctx, await (await ctx.tracker()).assign(ctx.args[0], ctx.args[1] === 'none' ? null : ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })),
+  },
+  {
+    name: 'issues delegate', summary: 'assigns an issue to an agent member and comments the instructions for local execution', usage: '<id> <agent:name> [--instructions-file f]', write: true, args: ['id', 'agent'], flags: ['instructions-file'],
+    run: async (ctx) => {
+      const instructions = ctx.opt('instructions-file') !== undefined ? readInput(ctx.opt('instructions-file')) : undefined
+      const result = await (await ctx.tracker()).delegate(ctx.args[0], ctx.args[1], instructions, await ctx.actor(), { dryRun: ctx.dryRun })
+      const lines = [writeText(result, { dryRun: false }), `${ctx.dryRun ? 'would comment' : 'commented'} ${result.comment.id}`]
+      if (result.run === 'local') lines.push(localRunLine(result.after.id, result.after.assignee))
+      if (ctx.dryRun) lines.push('dry run: nothing was written')
+      return { data: result, text: lines.join('\n'), commit: result.after.id }
+    },
   },
   {
     name: 'issues link', summary: 'links or unlinks', usage: '<from> <to> --kind blocks|related|duplicate [--remove]', write: true, args: ['from', 'to'], flags: ['kind', 'remove'],
