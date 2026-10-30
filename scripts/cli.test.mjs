@@ -1639,6 +1639,7 @@ test('every read goes on with one warning', () => {
     'metrics aging': [],
     events: [],
     risks: [],
+    'team load': [],
     'alerts list': [],
     'todos scan': [],
     'pr status': [],
