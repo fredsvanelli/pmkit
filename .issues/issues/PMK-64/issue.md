@@ -10,7 +10,7 @@ parent: EPC-6
 milestone: generic-commands
 branch: pmk-64-add-the-todos-to-issues-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-30T23:12:52Z
+updated: 2026-10-30T23:22:35Z
 ---
 
 ## Description
@@ -19,6 +19,6 @@ Source: Unified model, Dev catalog (`todos-to-issues`: "TODO and FIXME become de
 
 ## Acceptance criteria
 
-- [ ] Scans the repository for TODO and FIXME
-- [ ] Drops the ones that match an existing issue
-- [ ] Creates the rest after a full preview
+- [x] Scans the repository for TODO and FIXME
+- [x] Drops the ones that match an existing issue
+- [x] Creates the rest after a full preview
