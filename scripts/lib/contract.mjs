@@ -13,6 +13,7 @@ export const TRACKER_OPERATIONS = [
   'getCapacity', 'setCapacity', 'getDaysOff', 'updateCycleCapacity',
   'metricEvents',
   'readDocument', 'createDocument', 'listDocuments',
+  'saveView', 'listViews', 'runView',
   'logTime', 'listTimeEntries',
 ]
 

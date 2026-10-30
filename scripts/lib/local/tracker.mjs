@@ -21,6 +21,7 @@ import { AGENT_ID, delegationComment } from '../delegation.mjs'
 import { createDocumentFile, listDocumentFiles, readDocumentFile } from './documents.mjs'
 import { hasMilestoneFiles, milestoneStems, parseMilestone, serializeMilestone, sortMilestones, validMilestoneId } from './milestones.mjs'
 import { parseRelease, releaseStems, serializeRelease, sortReleases, validReleaseId, validTag } from './releases.mjs'
+import { parseView, serializeView, validViewName, viewStems } from './views.mjs'
 import { checkFilter, runQuery } from './query.mjs'
 import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
 import { CACHE_DIR, INDEX_FILE, clearIndex, indexHeader, readThroughIndex } from './query-index.mjs'
@@ -1088,12 +1089,48 @@ export function createLocalTracker(root, {
     return createDocumentFile(docsDir, docPath, body, { dryRun, onWrite: (file) => writtenPaths.add(file) })
   }
 
+  const viewsDir = path.join(issuesDir, 'views')
+
+  function readView(name) {
+    if (!validViewName(name)) throw invalid(`view name "${name}" must start and end with a letter or digit and hold only letters, digits, ".", "_" and "-"`, 'Use a name like open-bugs')
+    if (!viewStems(viewsDir).has(name)) throw new PmkitError('NOT_FOUND', `view ${name} does not exist`, 'pmkit views list')
+    return parseView(fs.readFileSync(path.join(viewsDir, `${name}.yaml`), 'utf8'), name)
+  }
+
+  /** Saved views by name. A file that does not parse fails the list with the doctor as next step. */
+  const listViews = () => [...viewStems(viewsDir)].filter(validViewName).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).map(readView)
+
+  /** Runs the stored filter as a search. The stored values are checked again, so a view that names a removed type fails. */
+  const runView = (name) => search(readView(name).filter)
+
+  function saveView(name, filter, actor, { dryRun = false, replace = false } = {}) {
+    requireWriter(actor)
+    if (!validViewName(name)) throw invalid(`view name "${name}" must start and end with a letter or digit and hold only letters, digits, ".", "_" and "-"`, 'Use a name like open-bugs')
+    if (filter === null || typeof filter !== 'object' || Array.isArray(filter) || Object.keys(filter).length === 0) {
+      throw invalid('a view needs at least one filter', 'Pass filter flags such as --category in_progress')
+    }
+    checkFilter(filter, { types: local.types, members: Object.keys(local.members), sprintExists })
+    const clash = [...viewStems(viewsDir)].find((stem) => stem.toLowerCase() === name.toLowerCase())
+    if (clash !== undefined && !(replace && clash === name)) {
+      throw new PmkitError('CONFLICT', `view ${clash} already exists`, clash === name ? `Pass --replace to overwrite it, or pick another name` : 'Pick another name')
+    }
+    const content = serializeView(filter)
+    const after = readBack('view file', () => parseView(content, name))
+    const before = clash === undefined ? null : readView(clash)
+    if (!dryRun) {
+      fs.mkdirSync(viewsDir, { recursive: true })
+      writeFile(path.join(viewsDir, `${name}.yaml`), content)
+    }
+    return { before, after }
+  }
+
   return {
+    saveView, listViews, runView,
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     listMilestones, getMilestone, createMilestone, unfiledMilestones,
     listReleases, getRelease, createRelease, releaseIssues, markReleased,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, delegate, archive, link, unlink, setParent,
-    comment, resolveThread, listComments, getHistory, logTime, listTimeEntries, readDocument, createDocument, listDocuments,
+    comment, resolveThread, listComments, getHistory, logTime, listTimeEntries, readDocument, createDocument, listDocuments, saveView, listViews, runView,
     discover, capabilities, reindex, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
     listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity, getDaysOff, updateCycleCapacity,
     writtenFiles,
