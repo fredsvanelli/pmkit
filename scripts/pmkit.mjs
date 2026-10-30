@@ -18,6 +18,7 @@ import { buildNotes, chooseBasis } from './lib/release-notes.mjs'
 import { dependencyMap, serializable } from './lib/dependencies.mjs'
 import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 import { pathNote } from './lib/path-notes.mjs'
+import { chooseUnit, suggestMoves, teamLoad } from './lib/team-load.mjs'
 import { localRunLine } from './lib/delegation.mjs'
 import { SCANNERS, SEVERITIES, collectAlerts } from './lib/alerts.mjs'
 import { READ_LIMIT, groupTodos, matchTodos, readExistingIssues, scanRepo } from './lib/todos.mjs'
@@ -1007,6 +1008,11 @@ export const COMMANDS = [
     run: (ctx) => runRisks(ctx),
   },
   {
+    name: 'team load', summary: 'issues, estimates and work in progress per member for the active sprint (or all open work without one), with imbalances, members with no work and a move proposal; reads only',
+    usage: '[--sprint current|id]', flags: ['sprint'],
+    run: (ctx) => runTeamLoad(ctx),
+  },
+  {
     name: 'alerts list', summary: 'security alerts from the scanners the repository has (npm audit), highest severity first; reads only', usage: '[--severity critical,high,medium,low]', flags: ['severity'],
     run: (ctx) => {
       ctx.config() // loads and checks .pmkit/config.yaml like every command, though alerts never read the tracker
@@ -1484,6 +1490,69 @@ async function runRisks(ctx) {
     problems,
   }
   return { data: report, text: risksText(report), warnings, notes: [...cycleNotes, ...(await metricNotes(tracker, 'stalled-issue history'))] }
+}
+
+const LOAD_CATEGORIES = ['todo', 'in_progress', 'in_review']
+
+/** Calls a tracker read that a tracker may not have, and returns `fallback` on NOT_SUPPORTED. */
+async function orSupported(read, fallback) {
+  try {
+    return await read()
+  } catch (error) {
+    if (!isPmkitError(error) || error.code !== 'NOT_SUPPORTED') throw error
+    return fallback
+  }
+}
+
+/** The load per member for the active sprint, or for all open work without one. Writes nothing. */
+async function runTeamLoad(ctx) {
+  const tracker = await ctx.tracker()
+  const notes = []
+  const wanted = ctx.opt('sprint') ?? 'current'
+  let sprint = null
+  if (wanted === 'current') {
+    sprint = await orSupported(() => tracker.currentCycle(), null)
+    if (sprint === null) notes.push('no active sprint: counted every open issue in todo, in_progress and in_review')
+  } else {
+    sprint = (await orSupported(() => tracker.listCycles({}), [])).find((item) => item.id === wanted) ?? null
+    if (sprint === null) throw new PmkitError('NOT_FOUND', `sprint ${wanted} does not exist`, 'pmkit cycle list')
+  }
+  const found = await tracker.searchIssues({ categories: LOAD_CATEGORIES, ...(sprint ? { sprint: sprint.id } : {}) })
+  const warnings = found.problems.map(problemLine)
+  const capabilities = (await tracker.capabilities()).capabilities
+  const estimation = capabilities.find((c) => c.id === 'estimation')
+  const choice = chooseUnit(found.issues, estimation?.path)
+  if (choice.unit === 'issues') notes.push(`counted issues, not points: ${choice.reason}${estimation?.path === 'absent' && estimation.enableHint ? ` (${estimation.enableHint})` : ''}`)
+  const capacity = sprint ? await orSupported(() => tracker.getCapacity(sprint.id), {}) : {}
+  const daysOff = sprint ? await orSupported(() => tracker.getDaysOff(sprint.id), {}) : {}
+  if (sprint) notes.push(...(await capabilityNotes(tracker, 'capacity')))
+  const { categoryOf, events, warnings: capped } = await flowInputs(tracker)
+  warnings.push(...capped)
+  const asOf = ctx.now().toISOString().replace(/\.\d{3}Z$/, 'Z')
+  const report = teamLoad(found.issues, { members: (await tracker.discover()).members, aging: aging(events, { categoryOf, asOf }), capacity, daysOff, unit: choice.unit })
+  if (choice.unit === 'points' && report.unassigned.unestimated + report.rows.reduce((sum, row) => sum + row.unestimated, 0) > 0) {
+    warnings.push('some issues have no estimate and count 0 points; the Unestimated column shows how many per member')
+  }
+  notes.push(...(await metricNotes(tracker, 'aging')))
+  const suggestions = suggestMoves(report, found.issues)
+  const data = { sprint: sprint ? { id: sprint.id, name: sprint.name, start: sprint.start, end: sprint.end } : null, ...report, suggestions }
+  return { data, text: teamLoadText(data), warnings, notes }
+}
+
+function teamLoadText(data) {
+  const points = data.unit === 'points'
+  const rows = [...data.rows, { ...data.unassigned, member: 'unassigned', wip: '', oldestWipDays: null, capacity: null, flags: [] }]
+  const lines = [
+    data.sprint ? `sprint ${data.sprint.id} (${data.sprint.start} to ${data.sprint.end}), load in ${data.unit}, average ${data.average}` : `no sprint, load in ${data.unit}, average ${data.average}`,
+    table(
+      ['Member', 'Issues', ...(points ? ['Points', 'Unestimated'] : []), 'WIP', 'Oldest WIP days', ...(points ? ['Capacity'] : []), 'Flags'],
+      rows.map((row) => [row.member + (row.agent ? ' (agent)' : '') + (row.isMember === false ? ' (not a member)' : ''), row.issues, ...(points ? [row.points, row.unestimated] : []), row.wip, row.oldestWipDays ?? '', ...(points ? [row.capacity ?? ''] : []), (row.flags ?? []).join(', ')]),
+    ),
+  ]
+  if (data.imbalances.length > 0) lines.push('imbalances:', ...data.imbalances.map((item) => `  ${item.member}: ${item.flag}, load ${item.load}, limit ${item.limit}`))
+  if (data.noWork.length > 0) lines.push(`no work in scope: ${data.noWork.map((item) => item.member + (item.daysOff.length > 0 ? ` (days off ${item.daysOff.join(', ')})` : '')).join(', ')}`)
+  if (data.suggestions.length > 0) lines.push('proposed moves:', ...data.suggestions.map((move) => `  ${move.issue}: ${move.from} to ${move.to}`))
+  return lines.join('\n')
 }
 
 const RENDER_VIEWS = ['board', 'roadmap', 'sprint']
