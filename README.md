@@ -35,6 +35,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 - `/pmkit:issues:review`: Review the pull request of an issue against its acceptance criteria, flag the gaps and post the result after approval.
 - `/pmkit:issues:todos`: Turn the TODO and FIXME comments of the repository into issues, dropping the ones an issue already covers, after a full preview.
 - `/pmkit:issues:summary`: Summarize an issue or an epic from its record, comments and history.
+- `/pmkit:issues:unblock`: List what blocks a pull request from merging (checks, reviews, conflicts, open threads and policies) and the next step for each.
 - `/pmkit:issues:update`: Change the title, priority, estimate, labels or acceptance criteria of an issue.
 - `/pmkit:issues:work`: Pick up an issue: claim it, branch, plan, implement, open the PR and move it to review.
 - `/pmkit:linear:customers`: List and edit Linear customers (tier, revenue, size, status) and link customer requests to issues and projects.
@@ -123,6 +124,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `pr ready --issue <id>` | marks the open draft pull request of an issue ready for review |
 | `pr status [--branch b]` | the pull request, checks and reviews of a branch (default: the current branch) |
 | `todos scan [--path folder-or-file]` | TODO and FIXME comments in the files the repository lists (tracked, and untracked but not ignored), grouped by text. A tag counts only as the first word of a comment in a known language, and Markdown only inside `<!-- -->`. It skips `node_modules`, the tracker folder, symbolic links, binaries and files over 1 MiB, and drops the comments an issue matches by its `todo-key:` line or by the comment text as whole words. `--path` takes one folder (with everything under it) or one file inside the repository. A skipped-type count (`skipped.unsupported`) and a warning list the files it did not read. `incomplete` in the JSON says the tracker read was cut; reads only |
+| `pr blockers [--branch b]` | what blocks the pull request of a branch: failing and pending checks, changes requested and requested reviewers, merge conflicts, open review threads and unmet branch protection rules. A read GitHub refuses, such as branch protection without admin rights, is listed in `unchecked` |
 | `pr diff [--branch b] [--base b] [--max-lines n]` | the diff of the open or merged pull request of a branch (default: the current branch). Without one, or when GitHub refuses a diff that is too large, the local diff against `origin/<base>` (default `git_host.default_branch`), with the uncommitted changes of tracked files for the checked out branch. A `note:` says which case applied. Keeps the first `--max-lines` lines (default 2000); reads only |
 | `pr sync` | moves `in_review` issues to `done` when their pull request is merged |
 | `deploys list [--environment e] [--limit n]` | the repository deployments (default 20, at most 100) with the state of the latest status of each; reads only |
