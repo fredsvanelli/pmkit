@@ -73,6 +73,37 @@ test('history returns every event, or those at or after since (a date or a times
   assert.deepEqual(tracker.getHistory(id, { since: '2026-10-24T10:00:00Z' }).map((event) => event.op), ['log_time'])
 })
 
+test('listTimeEntries returns the log_time events in order with the total', () => {
+  const { tracker, id, setNow } = setup()
+  assert.deepEqual(tracker.listTimeEntries(id), { issue: id, entries: [], total: 0, ignored: 0 })
+  setNow('2026-10-24T10:00:00Z')
+  tracker.logTime(id, 30, 'fred')
+  tracker.comment(id, 'between', 'fred')
+  tracker.logTime(id, 15, 'fred')
+  assert.deepEqual(tracker.listTimeEntries(id), {
+    issue: id,
+    entries: [
+      { at: '2026-10-24T10:00:00Z', by: 'fred', minutes: 30 },
+      { at: '2026-10-24T10:00:00Z', by: 'fred', minutes: 15 },
+    ],
+    total: 45,
+    ignored: 0,
+  })
+  assert.throws(() => tracker.listTimeEntries('NOPE-1'), (error) => error.code === 'NOT_FOUND')
+})
+
+test('listTimeEntries leaves out log_time events whose minutes is not a positive integer, and counts them', () => {
+  const { tracker, id, paths } = setup()
+  tracker.logTime(id, 30, 'fred')
+  const at = '2026-10-24T10:00:00Z'
+  const bad = [{}, { minutes: '30' }, { minutes: 0 }, { minutes: -5 }, { minutes: 1.5 }]
+  fs.appendFileSync(paths.events, bad.map((extra) => `${JSON.stringify({ at, by: 'fred', op: 'log_time', ...extra })}\n`).join(''))
+  const got = tracker.listTimeEntries(id)
+  assert.deepEqual(got.entries, [{ at: got.entries[0].at, by: 'fred', minutes: 30 }])
+  assert.equal(got.total, 30)
+  assert.equal(got.ignored, 5)
+})
+
 test('logTime writes one log_time event with the minutes', () => {
   const { tracker, id, rawEvents } = setup()
   tracker.logTime(id, 45, 'fred')

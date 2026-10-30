@@ -49,6 +49,7 @@ export const CASES = {
   // No fixture issue has a thread to resolve, so the case is the refusal for a comment that is not there.
   'issues resolve': (a) => [[a.issue, 'missing-comment']],
   'issues log-time': (a) => [[a.issue, '30']],
+  'issues time-entries': (a) => [[a.issue]],
   'issues archive': (a) => [[a.issue]],
   'cycle list': () => [[], ['--state', 'closed']],
   'cycle current': () => [[]],

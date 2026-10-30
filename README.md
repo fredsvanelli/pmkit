@@ -70,6 +70,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `issues parent <id> <parent\|none>` | sets the parent |
 | `issues comment <id> --body-file f` | adds a comment |
 | `issues log-time <id> <minutes>` | logs time |
+| `issues time-entries <id>` | lists the time logged on an issue, with the total |
 | `issues archive <id>` | archives an issue |
 | `cycle list` | lists sprints |
 | `cycle current` | prints the active sprint |

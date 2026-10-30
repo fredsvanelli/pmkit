@@ -1,0 +1,19 @@
+$ pmkit issues time-entries ISS-9B2X
+exit 0
+--- stdout
+no time logged on ISS-9B2X
+total: 0 minutes
+--- stderr
+(empty)
+
+$ pmkit issues time-entries ISS-9B2X --json
+exit 0
+--- stdout
+{
+  "issue": "ISS-9B2X",
+  "entries": [],
+  "total": 0,
+  "ignored": 0
+}
+--- stderr
+(empty)

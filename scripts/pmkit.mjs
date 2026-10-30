@@ -500,6 +500,17 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'issues time-entries', summary: 'lists the time logged on an issue, with the total', usage: '<id>', args: ['id'], flags: [],
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).listTimeEntries(ctx.args[0])
+      const text = result.entries.length === 0
+        ? `no time logged on ${result.issue}\ntotal: 0 minutes`
+        : [table(['At', 'By', 'Minutes'], result.entries.map((entry) => [entry.at, entry.by, String(entry.minutes)])), `total: ${result.total} minutes`].join('\n')
+      const notes = result.ignored > 0 ? [`${result.ignored} log_time ${result.ignored === 1 ? 'event' : 'events'} ignored: minutes is not a positive integer`] : []
+      return { data: result, text, notes }
+    },
+  },
+  {
     name: 'issues archive', summary: 'archives', usage: '<id>', write: true, args: ['id'], flags: [],
     run: async (ctx) => issueWrite(ctx, await (await ctx.tracker()).archive(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })),
   },

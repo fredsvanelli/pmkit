@@ -711,6 +711,14 @@ export function createLocalTracker(root, {
     return change(id, actor, { dryRun, eventsOnly: true }, (issue, meta) => [{ ...meta, op: 'log_time', minutes }])
   }
 
+  // A hand-edited log_time event whose minutes is not a positive integer is left out of the entries and the total, and counted in `ignored`.
+  function listTimeEntries(id) {
+    const logged = getHistory(id).filter((event) => event.op === 'log_time')
+    const valid = logged.filter((event) => Number.isInteger(event.minutes) && event.minutes > 0)
+    const entries = valid.map((event) => ({ at: event.at, by: event.by, minutes: event.minutes }))
+    return { issue: id, entries, total: entries.reduce((sum, entry) => sum + entry.minutes, 0), ignored: logged.length - valid.length }
+  }
+
   function cycleIssues(id) {
     return searchIssues({ sprint: getSprint(id).id }).issues
   }
@@ -1069,7 +1077,7 @@ export function createLocalTracker(root, {
     listMilestones, getMilestone, createMilestone, unfiledMilestones,
     listReleases, getRelease, createRelease, releaseIssues, markReleased,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, archive, link, unlink, setParent,
-    comment, resolveThread, listComments, getHistory, logTime, readDocument, createDocument, listDocuments,
+    comment, resolveThread, listComments, getHistory, logTime, listTimeEntries, readDocument, createDocument, listDocuments,
     discover, capabilities, reindex, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
     listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity, getDaysOff, updateCycleCapacity,
     writtenFiles,
