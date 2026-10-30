@@ -76,7 +76,7 @@ Event ops: `create`, `update`, `move`, `assign`, `link`, `unlink`, `comment`, `l
 
 The 20 capabilities of the Unified model (`cycles`, `estimation`, `multilevel_hierarchy`, `dependencies`, `native_triage`, `deliverables`, `strategic_goals`, `status_update`, `releases`, `capacity`, `native_metrics`, `saved_views`, `documents`, `demand_signals`, `request_queue`, `time_tracking`, `linked_code`, `agent_delegation`, `security_alerts`, `user_inbox`). Each has a path (`native`, `derived`, `conditional`, `absent`), an optional `detail` map and an optional `enableHint`.
 
-The Local tracker serves 12 of the 20: 10 native and 2 derived (`native_metrics`, `linked_code`). It reports the other eight as `absent`, each with an `enableHint`. The served-by table and the full split are in `2026-10-25-pmk-2-capability-manifest-design.md`. In the MVP the manifest is computed on each run from the config **(builder's call)**: it is cheap for the Local tracker, and caching starts with the first hosted adapter.
+The Local tracker serves 14 of the 20: 11 native and 3 derived (`native_metrics`, `linked_code`, `security_alerts`). It reports the other six as `absent`, each with an `enableHint`. The served-by table and the full split are in `2026-10-25-pmk-2-capability-manifest-design.md`. In the MVP the manifest is computed on each run from the config **(builder's call)**: it is cheap for the Local tracker, and caching starts with the first hosted adapter.
 
 `pmkit capabilities [--json]` prints it. `/pmkit:help` reads it.
 
@@ -373,6 +373,7 @@ Merged PRs are detected by an explicit `pmkit pr sync` **(builder's call)**: for
 | `metrics aging [--until d]` | days since work started for each issue in `in_progress` or `in_review` at `--until` (default now), oldest first |
 | `events [--since d] [--until d]` | all events in a range, for digests |
 | `risks` | blockers, stalled issues and PRs, late epics, epics without a recent status update, and broken CI; reads only, and without a git host lists issues stalled by tracker activity **(builder's call)** |
+| `alerts list [--severity s,..]` | security alerts from the scanners the repository has (`npm audit`), with a severity of `critical`, `high`, `medium` or `low`; reads only and never calls the tracker **(builder's call)** |
 | `pr open --issue <id> [--draft] [--body-file f]` | pushes the issue branch and opens a pull request; when the branch already has an open one, pushes and returns it with `existing: true` **(builder's call)** |
 | `pr ready --issue <id>` | marks the open draft pull request of an issue ready for review; `INVALID_INPUT` when there is none or it is not a draft **(builder's call)** |
 | `pr status [--branch b]`, `pr sync` | git host |

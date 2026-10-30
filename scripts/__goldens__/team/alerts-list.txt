@@ -1,7 +1,7 @@
 $ pmkit alerts list
 exit 0
 --- stdout
-no scanners found in this repository (looked for: npm-audit needs package-lock.json)
+no scanners found in this repository (looked for: npm-audit needs package-lock.json or npm-shrinkwrap.json)
 --- stderr
 (empty)
 
@@ -9,6 +9,7 @@ $ pmkit alerts list --json
 exit 0
 --- stdout
 {
+  "incomplete": false,
   "scanners": [
     {
       "id": "npm-audit",

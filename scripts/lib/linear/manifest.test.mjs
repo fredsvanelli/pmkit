@@ -63,7 +63,7 @@ test('the default workspace gives the sandbox column', async () => {
     time_tracking: 'absent',
     linked_code: 'derived',
     agent_delegation: 'absent',
-    security_alerts: 'absent',
+    security_alerts: 'derived',
     user_inbox: 'absent',
   })
   const entry = byId(entries)
@@ -79,7 +79,7 @@ test('the default workspace gives the sandbox column', async () => {
   assert.equal(entry.demand_signals.enableHint, 'Linear customer requests need the Business or Enterprise plan and customers turned on in the workspace settings')
   assert.equal(entry.request_queue.enableHint, 'Linear Asks need the Business or Enterprise plan')
   assert.equal(entry.time_tracking.enableHint, 'Linear has no time tracking')
-  assert.equal(entry.security_alerts.enableHint, 'Linear has no security alerts')
+  assert.deepEqual(entry.security_alerts, { id: 'security_alerts', path: 'derived', detail: { source: 'scanners' } })
   assert.deepEqual(entry.saved_views.detail, { workspace: 'native' })
   assert.deepEqual(entry.user_inbox.detail, { workspace: 'native' })
   assert.deepEqual(entry.deliverables.detail, { entity: 'project', derived: ['deliverableProgress'], unsupported: ['createMilestone'] })

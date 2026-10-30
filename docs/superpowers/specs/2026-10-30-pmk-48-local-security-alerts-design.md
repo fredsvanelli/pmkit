@@ -48,3 +48,13 @@ Tests put a fake `npm` first on `PATH` (the pattern of `fake-gh.mjs`) so no test
 ### Non-goals
 
 Creating issues from alerts (PMK-73), GitHub Dependabot alerts (PMK-49 to PMK-51 cover other host data), scanners other than npm audit.
+
+## Changes after review
+
+- npm output is read with a 256 MiB buffer (the limit of the GitHub host) and a 60 s timeout. A timeout, an overflow and a missing npm are warnings that name the cause.
+- Detection also accepts `npm-shrinkwrap.json`. On Windows the command is `npm.cmd`.
+- When npm prints `{ message, error: { code } }`, the warning is `npm audit failed (<code>): <message>`.
+- A failed scanner puts `incomplete: true` in the data and an `incomplete: <id> failed (...)` line in the text, which never prints `no alerts` for it.
+- With `--severity`, `scanners[].alerts` counts the alerts left after the filter, so it adds up to `alerts.length`.
+- An advisory with an empty `via` has the title `no advisory details from npm audit`.
+- The Linear manifest also reports `security_alerts` as derived with `source=scanners`, because the command reads the repository.

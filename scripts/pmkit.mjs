@@ -914,12 +914,17 @@ export const COMMANDS = [
       if (unknown.length > 0) throw usageError(`--severity must be one of ${SEVERITIES.join(', ')}, not ${unknown.join(', ')}`)
       const found = collectAlerts(ctx.root, { env: ctx.env })
       const alerts = wanted.length === 0 ? found.alerts : found.alerts.filter((alert) => wanted.includes(alert.severity))
+      // The per-scanner count follows the filter, so scanners[].alerts always adds up to alerts.length.
+      const scanners = found.scanners.map((scanner) => ({ ...scanner, alerts: alerts.filter((alert) => alert.scanner === scanner.id).length }))
+      const failed = scanners.filter((scanner) => scanner.error !== undefined)
       let text
-      if (!found.scanners.some((scanner) => scanner.detected)) {
+      if (!scanners.some((scanner) => scanner.detected)) {
         text = `no scanners found in this repository (looked for: ${SCANNERS.map((scanner) => `${scanner.id} needs ${scanner.needs}`).join('; ')})`
-      } else if (alerts.length === 0) text = 'no alerts'
-      else text = table(['ID', 'Severity', 'Package', 'Title'], alerts.map((alert) => [alert.id, alert.severity, alert.package, alert.title]))
-      return { data: { scanners: found.scanners, alerts }, text, warnings: found.warnings }
+      } else if (alerts.length > 0) text = table(['ID', 'Severity', 'Package', 'Title'], alerts.map((alert) => [alert.id, alert.severity, alert.package, alert.title]))
+      else text = failed.length === 0 ? 'no alerts' : 'no alerts read'
+      // A failed scanner left part of the scan unread, so the text never reads as a clean result.
+      if (failed.length > 0) text = [text, ...failed.map((scanner) => `incomplete: ${scanner.id} failed (${scanner.error}), so this result may miss alerts`)].join('\n')
+      return { data: { incomplete: failed.length > 0, scanners, alerts }, text, warnings: found.warnings }
     },
   },
   {

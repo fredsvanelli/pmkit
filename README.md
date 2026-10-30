@@ -104,6 +104,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `metrics aging` | days since work started for each issue in `in_progress` or `in_review` at `--until` (default now), oldest first |
 | `events` | prints all events in a range, for digests |
 | `risks` | blockers, stalled issues and PRs, late epics, epics without a recent status update and broken CI; reads only. With `git_host.system: none`, or when `gh` is missing or logged out, it lists issues stalled by tracker activity and marks pull requests and CI as not checked |
+| `alerts list [--severity s,..]` | security alerts from the scanners the repository has, highest severity first: `npm audit` when there is a `package-lock.json` or `npm-shrinkwrap.json`. Severity is `critical`, `high`, `medium` or `low`. A scanner that fails is a warning, and the text output says the result is incomplete; reads only |
 | `issues branch <id> [--from branch]` | creates the issue branch from `--from` (default: `git_host.default_branch`) and records it on the issue |
 | `pr open --issue <id> [--draft] [--body-file f]` | pushes the issue branch and opens a pull request; when the branch already has an open one, pushes and returns it with `existing: true` |
 | `pr ready --issue <id>` | marks the open draft pull request of an issue ready for review |

@@ -18,6 +18,11 @@ export function parseNpmAudit(stdout) {
   } catch {
     throw new Error('npm audit output is not valid JSON')
   }
+  // npm prints { message, error: { code, summary, detail } } when it cannot audit, for example without a lockfile.
+  if (report && typeof report === 'object' && report.error && typeof report.error === 'object') {
+    const code = report.error.code ? ` (${report.error.code})` : ''
+    throw new Error(`npm audit failed${code}: ${report.message ?? report.error.summary ?? 'no message'}`)
+  }
   if (!report || typeof report.vulnerabilities !== 'object' || report.vulnerabilities === null) {
     throw new Error('npm audit output has no vulnerabilities object')
   }
@@ -36,7 +41,7 @@ export function parseNpmAudit(stdout) {
       id: `npm-audit:${name}`,
       scanner: 'npm-audit',
       package: name,
-      title: advisory?.title ?? `vulnerable through ${names.join(', ')}`,
+      title: advisory?.title ?? (names.length > 0 ? `vulnerable through ${names.join(', ')}` : 'no advisory details from npm audit'),
       severity,
       url: advisory?.url ?? null,
       fixAvailable: Boolean(entry.fixAvailable),
@@ -45,17 +50,30 @@ export function parseNpmAudit(stdout) {
   return { alerts, warnings }
 }
 
+/** The most output one scanner may print, in bytes. The same limit as the GitHub host. */
+export const NPM_MAX_BUFFER = 256 * 1024 * 1024
+/** The longest one scanner may run, in milliseconds. */
+export const NPM_TIMEOUT_MS = 60000
+
+/** The npm executable name: Windows needs the .cmd shim, which spawnSync does not resolve on its own. */
+export const npmCommand = (platform = process.platform) => (platform === 'win32' ? 'npm.cmd' : 'npm')
+
+const LOCKFILES = ['package-lock.json', 'npm-shrinkwrap.json']
+
 /** The scanners, in the order they run. `detect` says whether the repository has the scanner. */
 export const SCANNERS = [
   {
     id: 'npm-audit',
-    needs: 'package-lock.json',
-    detect: (root) => fs.existsSync(path.join(root, 'package-lock.json')),
+    needs: LOCKFILES.join(' or '),
+    detect: (root) => LOCKFILES.some((file) => fs.existsSync(path.join(root, file))),
     // npm exits 1 when it finds vulnerabilities, so the output counts whatever the exit code is.
-    run: (root, env) => {
-      const result = spawnSync('npm', ['audit', '--json'], { cwd: root, env, encoding: 'utf8' })
+    run: (root, env, { timeoutMs }) => {
+      const result = spawnSync(npmCommand(), ['audit', '--json'], { cwd: root, env, encoding: 'utf8', maxBuffer: NPM_MAX_BUFFER, timeout: timeoutMs })
       if (result.error) {
-        throw new Error(result.error.code === 'ENOENT' ? 'npm is not installed or not on PATH' : result.error.message)
+        if (result.error.code === 'ENOENT') throw new Error('npm is not installed or not on PATH')
+        if (result.error.code === 'ETIMEDOUT') throw new Error(`npm audit timed out after ${timeoutMs / 1000} s`)
+        if (result.error.code === 'ENOBUFS') throw new Error(`npm audit printed more than ${NPM_MAX_BUFFER / 1024 / 1024} MiB`)
+        throw new Error(result.error.message)
       }
       return parseNpmAudit(result.stdout)
     },
@@ -68,7 +86,7 @@ const rank = (alert) => SEVERITIES.indexOf(alert.severity)
  * Runs every scanner the repository at `root` has. A scanner that fails is reported in `scanners` and `warnings`,
  * never thrown. Alerts sort by severity, then package.
  */
-export function collectAlerts(root, { env = process.env } = {}) {
+export function collectAlerts(root, { env = process.env, timeoutMs = NPM_TIMEOUT_MS } = {}) {
   const scanners = []
   const alerts = []
   const warnings = []
@@ -78,7 +96,7 @@ export function collectAlerts(root, { env = process.env } = {}) {
       continue
     }
     try {
-      const found = scanner.run(root, env)
+      const found = scanner.run(root, env, { timeoutMs })
       alerts.push(...found.alerts)
       warnings.push(...found.warnings)
       scanners.push({ id: scanner.id, detected: true, alerts: found.alerts.length })

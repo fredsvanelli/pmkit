@@ -18,7 +18,7 @@ export const LINEAR_CAPABILITIES = Object.freeze({
   saved_views: { path: 'native' },
   documents: { path: 'native', detail: { scope: 'project', unsupported: ['createDocument', 'listDocuments'] } },
   time_tracking: { path: 'absent', enableHint: 'Linear has no time tracking' },
-  security_alerts: { path: 'absent', enableHint: 'Linear has no security alerts' },
+  security_alerts: { path: 'derived', detail: { source: 'scanners' } },
   user_inbox: { path: 'native' },
 })
 
