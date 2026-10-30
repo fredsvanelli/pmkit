@@ -28,7 +28,7 @@ export const SERVED_BY = {
   demand_signals: [],
   request_queue: [],
   time_tracking: ['issues log-time'],
-  linked_code: ['issues branch', 'pr open', 'pr ready', 'pr status', 'pr sync'],
+  linked_code: ['issues branch', 'pr open', 'pr ready', 'pr status', 'pr sync', 'deploys list', 'ci logs'],
   agent_delegation: [],
   security_alerts: [],
   user_inbox: [],

@@ -966,6 +966,36 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'deploys list', summary: 'deployments of the repository with the state of the latest status of each', usage: '[--environment e] [--limit n]', args: [], flags: ['environment', 'limit'],
+    run: async (ctx) => {
+      const limit = ctx.opt('limit') === undefined ? undefined : whole('limit', ctx.opt('limit'))
+      if (limit !== undefined && (limit < 1 || limit > 100)) throw usageError('--limit must be from 1 to 100')
+      const deploys = ctx.host().listDeploys({ environment: ctx.opt('environment'), limit })
+      const lines = deploys.map((d) => `${d.environment} ${d.state} ${d.ref} ${d.sha.slice(0, 7)} ${d.createdAt}${d.url ? ` ${d.url}` : ''}`)
+      return { data: { deploys }, text: lines.length === 0 ? 'no deployments' : lines.join('\n'), notes: await linkedCodeNotes(ctx) }
+    },
+  },
+  {
+    name: 'ci logs', summary: 'log of the failed steps of a workflow run: the given run, or the newest failed run of a branch', usage: '[--branch b] [--run id] [--tail n]', args: [], flags: ['branch', 'run', 'tail'],
+    run: async (ctx) => {
+      const runId = ctx.opt('run') === undefined ? undefined : whole('run', ctx.opt('run'))
+      if (runId === 0) throw usageError('--run must be a run id')
+      const tail = ctx.opt('tail') === undefined ? 200 : whole('tail', ctx.opt('tail'))
+      if (tail < 1) throw usageError('--tail must be at least 1')
+      const host = ctx.host()
+      const branch = runId === undefined ? ctx.opt('branch') ?? host.currentBranch() : undefined
+      if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch> or --run <id>, or switch to a branch')
+      const found = host.ciLogs({ branch, runId })
+      if (found === null) return { data: { branch, run: null, truncated: false }, text: `no failed run on ${branch}`, notes: await linkedCodeNotes(ctx) }
+      const lines = found.log.split('\n')
+      const hasFinalNewline = found.log.endsWith('\n')
+      const body = hasFinalNewline ? lines.slice(0, -1) : lines
+      const truncated = body.length > tail
+      const log = truncated ? `${body.slice(-tail).join('\n')}${hasFinalNewline ? '\n' : ''}` : found.log
+      return { data: { branch, run: { ...found, log }, truncated }, text: `run ${found.runId}${found.workflowName ? ` ${found.workflowName}` : ''}${truncated ? `, last ${tail} lines` : ''}\n${log}`, notes: await linkedCodeNotes(ctx) }
+    },
+  },
+  {
     name: 'pr sync', summary: 'moves in_review issues to done when their pull request is merged', write: true, args: [], flags: [],
     run: async (ctx) => {
       const host = ctx.host()
