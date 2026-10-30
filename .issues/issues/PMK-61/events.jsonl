@@ -1,1 +1,10 @@
 {"at":"2026-10-25T19:13:22Z","by":"fred","op":"create","to":{"id":"PMK-61","title":"Add the review-pr-against-issue command","type":"feature","status":"backlog","priority":"medium","estimate":3,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"generic-commands","created":"2026-10-25T19:13:22Z","updated":"2026-10-25T19:13:22Z"}}
+{"at":"2026-10-30T22:08:58Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-30T22:08:58Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-30T22:09:03Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-61-add-the-review-pr-against-issue-command"}
+{"at":"2026-10-30T22:09:43Z","by":"fred","op":"comment","to":"2026-10-30T22-09-43Z-fred.md"}
+{"at":"2026-10-30T22:22:18Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-30T22:22:19Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-30T22:22:19Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-30T22:24:43Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-10-30T22:24:55Z","by":"fred","op":"comment","to":"2026-10-30T22-24-55Z-fred.md"}

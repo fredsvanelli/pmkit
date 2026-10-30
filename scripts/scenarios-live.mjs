@@ -2,7 +2,7 @@
 // of its fixture, and the suite checks what the agent did. It costs money, so it never runs by default and
 // `npm test` does not load it (the name does not end in .test.mjs).
 //
-//   PMKIT_LIVE=1 node --test scripts/scenarios-live.mjs        every scenario: 38 runs, up to $1 each
+//   PMKIT_LIVE=1 node --test scripts/scenarios-live.mjs        every scenario: 39 runs, up to $1 each
 //   PMKIT_LIVE=1 node scripts/scenarios-live.mjs issues-move   only the named modules (node --test drops extra args)
 //
 // Each test is skipped unless PMKIT_LIVE is 1 and `claude` is on PATH. Each run passes --max-budget-usd 1, which

@@ -282,3 +282,112 @@ test('ciLogs returns null when no run of the branch failed, and refuses bad inpu
   assert.throws(() => host(exec).ciLogs({}), (e) => e.code === 'INVALID_INPUT')
   assert.equal(calls.length, before)
 })
+
+/** An exec that answers by the joined arguments. A call with no entry fails with status 1. */
+function mapExec(answers) {
+  const calls = []
+  const exec = (cmd, args, options = {}) => {
+    calls.push({ cmd, args, ...options })
+    const answer = answers[args.join(' ')]
+    return { status: answer ? 0 : 1, stdout: '', stderr: '', ...answer }
+  }
+  return { exec, calls }
+}
+
+test('prDiff calls gh pr diff without color and returns the text', () => {
+  const { exec, calls } = fakeExec({ stdout: 'diff --git a/x b/x\n' })
+  assert.equal(host(exec).prDiff(7), 'diff --git a/x b/x\n')
+  assert.deepEqual(calls[0].args, ['pr', 'diff', '7', '--color', 'never'])
+  assert.throws(() => host(exec).prDiff('x'), (e) => e.code === 'INVALID_INPUT')
+  assert.equal(calls.length, 1)
+})
+
+test('prDiff returns null when GitHub refuses a diff over its limit (HTTP 406)', () => {
+  const stderr = 'could not find pull request diff: HTTP 406: Sorry, the diff exceeded the maximum number of lines (20000)\n'
+  assert.equal(host(fakeExec({ status: 1, stderr }).exec).prDiff(7), null)
+  assert.throws(() => host(fakeExec({ status: 1, stderr: 'boom\n' }).exec).prDiff(7), (e) => e.code === 'UPSTREAM')
+})
+
+test('only the diff reads get a timeout, and the push does not', () => {
+  const { exec, calls } = fakeExec({}, { stdout: 'd' }, { status: 0 }, { status: 0 }, { stdout: 'b\n' }, { stdout: 'mb\n' }, { stdout: 'd' })
+  const h = host(exec)
+  h.push('feat/x')
+  h.prDiff(7)
+  assert.equal(calls[0].timeout, undefined, 'git push')
+  assert.ok(calls[1].timeout >= 1000, 'gh pr diff')
+  h.localDiff({ branch: 'feat/x', base: 'main' })
+  assert.ok(calls.slice(2).every((c) => c.timeout >= 1000), 'every call of localDiff')
+})
+
+test('the default exec passes a per-call timeout, none by default, and the host reports UPSTREAM when it fires', () => {
+  const run = defaultExec({ root: process.cwd(), env: process.env })
+  assert.throws(() => run(process.execPath, ['-e', 'setTimeout(() => {}, 5000)'], { timeout: 100 }), (e) => e.code === 'ETIMEDOUT')
+  assert.equal(run(process.execPath, ['-e', 'setTimeout(() => process.stdout.write("ok"), 300)']).stdout, 'ok')
+  const { exec } = fakeExec(() => { throw Object.assign(new Error('spawnSync gh ETIMEDOUT'), { code: 'ETIMEDOUT' }) })
+  assert.throws(() => host(exec).prDiff(1), (e) => e.code === 'UPSTREAM' && /timed out/.test(e.message))
+})
+
+test('an output that overflows the buffer is UPSTREAM with a message that fits a diff and a log', () => {
+  const { exec } = fakeExec(() => { throw Object.assign(new Error('spawnSync gh ENOBUFS'), { code: 'ENOBUFS' }) })
+  assert.throws(() => host(exec).prDiff(9), (e) => e.code === 'UPSTREAM' && /too large/.test(e.message) && !/log/i.test(e.message) && !/log/i.test(e.nextStep))
+})
+
+const REFS = 'rev-parse --verify --quiet'
+
+test('localDiff of a branch that is not checked out diffs origin/<base> with the branch', () => {
+  const { exec, calls } = mapExec({
+    [`${REFS} refs/remotes/origin/main`]: {}, [`${REFS} refs/heads/feat/x`]: {}, 'branch --show-current': { stdout: 'other\n' },
+    'diff --no-color origin/main...feat/x': { stdout: 'local diff\n' },
+  })
+  const result = host(exec).localDiff({ branch: 'feat/x', base: 'main' })
+  assert.deepEqual(result, { diff: 'local diff\n', base: 'origin/main', ref: 'feat/x', uncommitted: false })
+  assert.deepEqual(calls.map((c) => [c.cmd, ...c.args]).at(-1), ['git', 'diff', '--no-color', 'origin/main...feat/x'])
+})
+
+test('localDiff prefers origin/<base> and uses the local base only when there is no remote one', () => {
+  const answers = { [`${REFS} refs/heads/develop`]: {}, [`${REFS} refs/heads/feat/x`]: {}, 'branch --show-current': { stdout: 'other\n' } }
+  const both = mapExec({ ...answers, [`${REFS} refs/remotes/origin/develop`]: {}, 'diff --no-color origin/develop...feat/x': { stdout: 'remote\n' } })
+  assert.equal(host(both.exec).localDiff({ branch: 'feat/x', base: 'develop' }).diff, 'remote\n')
+  const localOnly = mapExec({ ...answers, 'diff --no-color develop...feat/x': { stdout: 'local\n' } })
+  assert.deepEqual(host(localOnly.exec).localDiff({ branch: 'feat/x', base: 'develop' }), { diff: 'local\n', base: 'develop', ref: 'feat/x', uncommitted: false })
+})
+
+test('localDiff of the checked out branch includes the commits, the index and the working tree', () => {
+  const { exec, calls } = mapExec({
+    [`${REFS} refs/remotes/origin/main`]: {}, [`${REFS} refs/heads/feat/x`]: {}, 'branch --show-current': { stdout: 'feat/x\n' },
+    'merge-base origin/main feat/x': { stdout: 'abc123\n' }, 'diff --no-color abc123': { stdout: 'all changes\n' },
+  })
+  assert.deepEqual(host(exec).localDiff({ branch: 'feat/x', base: 'main' }), { diff: 'all changes\n', base: 'origin/main', ref: 'feat/x', uncommitted: true })
+  assert.deepEqual(calls.map((c) => c.args.join(' ')).slice(-2), ['merge-base origin/main feat/x', 'diff --no-color abc123'])
+})
+
+test('localDiff uses origin/<branch> when the branch exists only on origin, and never adds the working tree', () => {
+  const { exec } = mapExec({
+    [`${REFS} refs/remotes/origin/main`]: {}, [`${REFS} refs/remotes/origin/feat/x`]: {},
+    'diff --no-color origin/main...origin/feat/x': { stdout: 'remote branch\n' },
+  })
+  assert.deepEqual(host(exec).localDiff({ branch: 'feat/x', base: 'main' }), { diff: 'remote branch\n', base: 'origin/main', ref: 'origin/feat/x', uncommitted: false })
+})
+
+test('localDiff names the missing base or branch', () => {
+  const noBase = mapExec({})
+  assert.throws(() => host(noBase.exec).localDiff({ branch: 'x', base: 'develop' }), (e) => e.code === 'INVALID_INPUT' && /develop/.test(e.message))
+  const noBranch = mapExec({ [`${REFS} refs/remotes/origin/main`]: {} })
+  assert.throws(() => host(noBranch.exec).localDiff({ branch: 'gone', base: 'main' }), (e) => e.code === 'INVALID_INPUT' && /gone/.test(e.message))
+})
+
+test('localDiff refuses a branch or base that starts with a dash before git runs', () => {
+  const { exec, calls } = fakeExec()
+  for (const args of [{ branch: '-x', base: 'main' }, { branch: 'x', base: '--output=f' }, { branch: '', base: 'main' }]) {
+    assert.throws(() => host(exec).localDiff(args), (e) => e.code === 'INVALID_INPUT')
+  }
+  assert.equal(calls.length, 0)
+})
+
+test('unpushedCommits counts the commits of a local branch that origin lacks, and is null without an origin branch', () => {
+  const answers = { [`${REFS} refs/heads/feat/x`]: {}, [`${REFS} refs/remotes/origin/feat/x`]: {}, 'rev-list --count origin/feat/x..feat/x': { stdout: '2\n' } }
+  assert.equal(host(mapExec(answers).exec).unpushedCommits('feat/x'), 2)
+  assert.equal(host(mapExec({ [`${REFS} refs/heads/feat/x`]: {} }).exec).unpushedCommits('feat/x'), null)
+  assert.equal(host(mapExec({}).exec).unpushedCommits('feat/x'), null)
+})
+

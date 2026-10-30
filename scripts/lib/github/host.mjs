@@ -4,6 +4,8 @@ import { FAILED_RUN } from '../risks.mjs'
 
 // A failed run log can pass the 1 MiB default of spawnSync. 256 MiB leaves room for the largest logs.
 const MAX_OUTPUT = 256 * 1024 * 1024
+// Only the diff reads have a time limit. A push can run a pre-push hook or git-lfs for longer, and a timeout would kill git but not the hook.
+const DIFF_TIMEOUT_MS = 120 * 1000
 
 const VIEW_FIELDS = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
 const LIST_FIELDS = 'number,url,title,headRefName,isDraft,updatedAt,author,statusCheckRollup'
@@ -13,8 +15,8 @@ const INSTALL_STEP = 'Install the GitHub CLI (https://cli.github.com) and run gh
 /** Runs a command in root with spawnSync. A missing binary throws the spawn error (code ENOENT). */
 export const defaultExec =
   ({ root, env }) =>
-  (cmd, args, { input } = {}) => {
-    const result = spawnSync(cmd, args, { cwd: root, env, encoding: 'utf8', input, maxBuffer: MAX_OUTPUT })
+  (cmd, args, { input, timeout } = {}) => {
+    const result = spawnSync(cmd, args, { cwd: root, env, encoding: 'utf8', input, maxBuffer: MAX_OUTPUT, timeout })
     if (result.error) throw result.error
     return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
   }
@@ -51,7 +53,10 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
         throw new PmkitError('NOT_CONFIGURED', `${cmd} is not installed`, INSTALL_STEP)
       }
       if (error?.code === 'ENOBUFS') {
-        throw new PmkitError('UPSTREAM', `${cmd} ${args.slice(0, 2).join(' ')} output is too large to read`, 'Read the log in the GitHub web UI')
+        throw new PmkitError('UPSTREAM', `${cmd} ${args.slice(0, 2).join(' ')} output is too large to read`, 'Read it in the GitHub web UI, or run the same command in a terminal and page the output')
+      }
+      if (error?.code === 'ETIMEDOUT') {
+        throw new PmkitError('UPSTREAM', `${cmd} ${args.slice(0, 2).join(' ')} timed out`, 'Check the network and retry')
       }
       throw error
     }
@@ -175,6 +180,53 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
       }
       const log = check('gh', ['run', 'view', String(run.databaseId), '--log-failed']).stdout
       return { runId: run.databaseId, workflowName: run.workflowName ?? null, url: run.url ?? null, log }
+    },
+
+    prDiff(number) {
+      if (!Number.isInteger(number) || number < 1) throw new PmkitError('INVALID_INPUT', `pull request number "${number}" is not valid`, 'Pass a pull request number')
+      const args = ['pr', 'diff', String(number), '--color', 'never']
+      const result = run('gh', args, { timeout: DIFF_TIMEOUT_MS })
+      if (result.status === 0) return result.stdout
+      // GitHub refuses a diff over its size limit with HTTP 406. The caller reads the local diff instead.
+      if (/HTTP 406|diff exceeded the maximum/i.test(result.stderr ?? '')) return null
+      throw failure('gh', args, result)
+    },
+
+    /**
+     * The changes of a branch since it left its base. The base is origin/<base> when that exists, so commits of other people
+     * on a stale local base stay out. The branch is the local one, or origin/<branch> when only origin has it. For the branch
+     * that is checked out the diff also holds the index and the working tree (tracked files), because it starts at the
+     * merge base and ends at the working tree. Returns { diff, base, ref, uncommitted }.
+     */
+    localDiff({ branch, base }) {
+      refArg('branch', branch)
+      refArg('base', base)
+      const git = (args) => run('git', args, { timeout: DIFF_TIMEOUT_MS })
+      const exists = (ref) => git(['rev-parse', '--verify', '--quiet', ref]).status === 0
+      const from = [[`refs/remotes/origin/${base}`, `origin/${base}`], [`refs/heads/${base}`, base], [base, base]].find(([ref]) => exists(ref))?.[1]
+      if (from === undefined) throw new PmkitError('INVALID_INPUT', `the base branch "${base}" does not exist here or on origin`, 'Pass --base <branch>, or run git fetch origin')
+      const local = exists(`refs/heads/${branch}`)
+      if (!local && !exists(`refs/remotes/origin/${branch}`)) throw new PmkitError('INVALID_INPUT', `the branch "${branch}" does not exist here or on origin`, 'Pass --branch <branch>, or run git fetch origin')
+      const ref = local ? branch : `origin/${branch}`
+      const uncommitted = local && git(['branch', '--show-current']).stdout.trim() === branch
+      const diffOf = (args) => {
+        const result = git(args)
+        if (result.status !== 0) throw failure('git', args, result)
+        return result.stdout
+      }
+      if (!uncommitted) return { diff: diffOf(['diff', '--no-color', `${from}...${ref}`]), base: from, ref, uncommitted }
+      const mergeBase = diffOf(['merge-base', from, ref]).trim()
+      return { diff: diffOf(['diff', '--no-color', mergeBase]), base: from, ref, uncommitted }
+    },
+
+    /** The commits of the local branch that origin/<branch> lacks, or null when either ref is missing. */
+    unpushedCommits(branch) {
+      refArg('branch', branch)
+      const git = (args) => run('git', args, { timeout: DIFF_TIMEOUT_MS })
+      if (git(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]).status !== 0) return null
+      if (git(['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`]).status !== 0) return null
+      const result = git(['rev-list', '--count', `origin/${branch}..${branch}`])
+      return result.status === 0 ? Number(result.stdout.trim()) : null
     },
 
     listRuns,

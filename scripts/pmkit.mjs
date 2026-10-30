@@ -1044,6 +1044,47 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'pr diff', summary: 'diff of the pull request of a branch, or the local diff against the base branch when it has none', usage: '[--branch b] [--base b] [--max-lines n]', args: [], flags: ['branch', 'base', 'max-lines'],
+    run: async (ctx) => {
+      const maxLines = ctx.opt('max-lines') === undefined ? 2000 : whole('max-lines', ctx.opt('max-lines'))
+      if (maxLines < 1) throw usageError('--max-lines must be at least 1')
+      const requested = ctx.opt('base')
+      if (requested !== undefined && (requested === '' || requested.startsWith('-'))) throw new PmkitError('INVALID_INPUT', `base "${requested}" is not a valid branch name`, 'Use a branch name that does not start with -')
+      const host = ctx.host()
+      const branch = ctx.opt('branch') ?? host.currentBranch()
+      if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
+      const found = host.getPullRequest({ head: branch })
+      const notes = []
+      // Only an open or merged pull request holds the work of the branch. A closed one is not what the review looks at.
+      const pr = found && (found.state === 'OPEN' || found.state === 'MERGED') ? found : null
+      if (found && !pr) notes.push(`pull request #${found.number} is closed without merge, so this is the local diff`)
+      let full = null
+      let local = null
+      if (pr) {
+        full = host.prDiff(pr.number)
+        if (full === null) {
+          notes.push(`GitHub refused the diff of pull request #${pr.number} because it is too large, so this is the local diff`)
+        } else {
+          const unpushed = host.unpushedCommits(branch)
+          if (unpushed > 0) notes.push(unpushed === 1 ? `${branch} has 1 local commit that is not on origin, so the pull request diff does not include it` : `${branch} has ${unpushed} local commits that are not on origin, so the pull request diff does not include them`)
+        }
+      }
+      const source = full === null ? 'local' : 'pull_request'
+      if (full === null) {
+        local = host.localDiff({ branch, base: requested ?? defaultBranch(ctx) })
+        full = local.diff
+        if (local.uncommitted) notes.push('the local diff includes the uncommitted changes of tracked files')
+      }
+      const base = local?.base ?? null
+      const all = full === '' ? [] : full.replace(/\n$/, '').split('\n')
+      const truncated = all.length > maxLines
+      const diff = truncated ? `${all.slice(0, maxLines).join('\n')}\n` : full
+      const size = truncated ? `first ${maxLines} of ${all.length} lines` : `${all.length} lines`
+      const head = source === 'pull_request' ? `pull request #${pr.number}, ${size}` : `local diff of ${branch} against ${base}, ${size}`
+      return { data: { branch, source, pr: source === 'pull_request' ? pr : null, base, uncommitted: local?.uncommitted ?? false, diff, truncated, lines: all.length }, text: `${head}\n${diff}`, notes: [...notes, ...(await linkedCodeNotes(ctx))] }
+    },
+  },
+  {
     name: 'pr sync', summary: 'moves in_review issues to done when their pull request is merged', write: true, args: [], flags: [],
     run: async (ctx) => {
       const host = ctx.host()

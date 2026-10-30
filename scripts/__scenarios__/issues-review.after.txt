@@ -1,0 +1,33 @@
+$ pmkit issues get ISS-5N1R --comments --json  [step 2, read]
+exit 0
+$ pmkit pr diff --branch iss-5n1r-paginate-the-events-api --json  [step 3, read]
+exit 0
+? Step 6  [confirmed]
+$ pmkit issues comment ISS-5N1R --body-file <inputs>/review.md --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues comment ISS-5N1R --body-file <inputs>/review.md --json  [step 6, write]
+exit 0
+
+--- added .issues/issues/ISS-5N1R/comments/2026-10-23T12-00-00Z-fred.md
++---
++author: fred
++created: 2026-10-23T12:00:00Z
++---
++
++Review of the pull request #7 against the acceptance criteria.
++
++1 covered, 1 gap.
++
++1. covered: src/events.mjs adds the cursor parameter.
++2. gap: the diff holds no test for the last page.
++
++Outside the criteria: none.
+--- changed .issues/issues/ISS-5N1R/events.jsonl
+  {"at":"2026-10-05T09:30:00Z","by":"fred","op":"create","to":{"id":"ISS-5N1R","title":"Paginate the events API","type":"task","status":"todo","priority":"medium","estimate":3,"assignee":"fred","labels":["backend"],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-05T09:30:00Z","updated":"2026-10-05T09:30:00Z"}}
+  {"at":"2026-10-22T09:00:00Z","by":"fred","op":"move","field":"status","from":"todo","to":"in_progress"}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"branch","from":null,"to":"iss-5n1r-paginate-the-events-api"}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"acceptance_criteria"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"comment","to":"2026-10-23T12-00-00Z-fred.md"}
+--- gh calls
+pr view iss-5n1r-paginate-the-events-api --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr diff 7 --color never
