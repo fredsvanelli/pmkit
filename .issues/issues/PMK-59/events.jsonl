@@ -3,3 +3,6 @@
 {"at":"2026-10-30T22:08:01Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-30T22:08:06Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-59-add-the-estimate-issue-command"}
 {"at":"2026-10-30T22:09:14Z","by":"fred","op":"comment","to":"2026-10-30T22-09-14Z-fred.md"}
+{"at":"2026-10-30T22:15:48Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-30T22:15:49Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-30T22:15:49Z","by":"fred","op":"update","field":"acceptance_criteria"}
