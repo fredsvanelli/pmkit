@@ -87,7 +87,8 @@ const SKIPPED = (file) => file.split('/').some((part) => part === 'node_modules'
  * `path` keeps only the files under that prefix. A directory outside a git repository is an INVALID_INPUT error,
  * because without git the scan cannot honor .gitignore.
  */
-export function scanRepo(root, { path: prefix } = {}) {
+export function scanRepo(root, { path: given } = {}) {
+  const prefix = typeof given === 'string' ? given.replace(/^(\.\/)+/, '') : ''
   const listed = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: root, maxBuffer: GIT_MAX_BUFFER })
   if (listed.error || listed.status !== 0) {
     const stderr = String(listed.stderr ?? '').trim()

@@ -1,0 +1,53 @@
+$ pmkit todos scan --json  [step 1, read]
+exit 0
+$ pmkit discover --json  [step 2, read]
+exit 0
+$ pmkit issues create --title 'fix the cache' --type bug --description-file <inputs>/todo-cache.md --dry-run --json  [step 4, dry run]
+exit 0
+$ pmkit issues create --title 'unique work item' --type task --description-file <inputs>/todo-unique.md --dry-run --json  [step 4, dry run]
+exit 0
+? Step 5  [confirmed]
+$ pmkit issues create --title 'fix the cache' --type bug --description-file <inputs>/todo-cache.md --json  [step 6, write]
+exit 0
+$ pmkit issues create --title 'unique work item' --type task --description-file <inputs>/todo-unique.md --json  [step 6, write]
+exit 0
+
+--- added .issues/issues/ISS-DZEF/events.jsonl
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-DZEF","title":"unique work item","type":"task","status":"backlog","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
+--- added .issues/issues/ISS-DZEF/issue.md
++---
++id: ISS-DZEF
++title: unique work item
++type: task
++status: backlog
++created: 2026-10-23T12:00:00.000Z
++updated: 2026-10-23T12:00:00Z
++---
++
++## Description
++
++unique work item
++
++Source: `src/b.mjs:2`
++
++todo-key: ee48ce71c74f
+--- added .issues/issues/ISS-Y8KQ/events.jsonl
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-Y8KQ","title":"fix the cache","type":"bug","status":"backlog","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
+--- added .issues/issues/ISS-Y8KQ/issue.md
++---
++id: ISS-Y8KQ
++title: fix the cache
++type: bug
++status: backlog
++created: 2026-10-23T12:00:00.000Z
++updated: 2026-10-23T12:00:00Z
++---
++
++## Description
++
++fix the cache
++
++Source: `src/a.mjs:2`
++Also at: `src/b.mjs:1`
++
++todo-key: 60191fa02c98

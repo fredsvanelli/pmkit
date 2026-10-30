@@ -89,3 +89,9 @@ Blame or owner lookups, other tags (HACK, XXX), removing the TODO from the code 
 ## Open choices for the builder
 
 None that need the author.
+
+## Calls made while building
+
+- The command file gives a FIXME the type `bug` and a TODO the type `task`, when the tracker allows them.
+- The command file runs the dry runs before the preview and asks once after it, so the user sees records that already passed validation.
+- `--path` drops a leading `./`.
