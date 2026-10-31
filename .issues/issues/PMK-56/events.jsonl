@@ -3,3 +3,5 @@
 {"at":"2026-10-31T17:02:34Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-31T17:02:37Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-56-add-the-bulk-operation-command"}
 {"at":"2026-10-31T17:05:08Z","by":"fred","op":"comment","to":"2026-10-31T17-05-08Z-fred.md"}
+{"at":"2026-10-31T17:27:46Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-31T17:27:47Z","by":"fred","op":"update","field":"acceptance_criteria"}
