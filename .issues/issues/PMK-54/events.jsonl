@@ -7,3 +7,5 @@
 {"at":"2026-10-31T19:36:10Z","by":"fred","op":"comment","to":"2026-10-31T19-36-10Z-fred.md"}
 {"at":"2026-10-31T19:36:10Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
 {"at":"2026-10-31T19:43:21Z","by":"fred","op":"comment","to":"2026-10-31T19-43-21Z-fred.md"}
+{"at":"2026-10-31T20:35:28Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}
+{"at":"2026-10-31T20:35:31Z","by":"fred","op":"link","field":"related","to":"PMK-200"}
