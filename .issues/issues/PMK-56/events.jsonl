@@ -7,3 +7,5 @@
 {"at":"2026-10-31T17:27:47Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-10-31T17:28:35Z","by":"fred","op":"comment","to":"2026-10-31T17-28-35Z-fred.md"}
 {"at":"2026-10-31T17:28:36Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-10-31T19:29:34Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}
+{"at":"2026-10-31T19:29:36Z","by":"fred","op":"link","field":"related","to":"PMK-196"}

@@ -1,6 +1,6 @@
 # EPC-6 follow-ups
 
-The implementers and reviewers of EPC-6 ("Remaining generic commands") suggested these improvements. None of them is a defect. The defects found in the same reviews are issues PMK-175 to PMK-191. This list stays here until each item becomes an issue or is dropped.
+The implementers and reviewers of EPC-6 ("Remaining generic commands") suggested these improvements. None of them is a defect. The defects found in the same reviews are issues PMK-175 to PMK-196. This list stays here until each item becomes an issue or is dropped.
 
 ## PMK-48: alerts list
 
@@ -116,6 +116,36 @@ The implementers and reviewers of EPC-6 ("Remaining generic commands") suggested
 - Recompute the capacity when the days off change. Today the command only says the capacity does not change by itself.
 - `--sprint current` in `cycle capacity`, and the team check there on Linear (`writeEntry` takes any workspace user).
 - Build the load report once on the write path.
+
+## PMK-47: user inbox
+
+- Key the inbox check by git remote instead of checkout path, so two worktrees of one repository share it.
+- Read Linear `Notification` objects, so the Linear adapter can serve `user_inbox`.
+- Count review requests and status changes, which PMK-55 may need.
+- Add a `/pmkit` command file and a scenario for the inbox, together with PMK-55.
+- Show the mention text and whether an item was seen in the text table.
+- Lock the user store file on write, so two `mark-read` calls at once cannot drop each other's check.
+
+## PMK-56: bulk operation
+
+- `due`, `type` and `archive` as bulk changes.
+- Resume a stopped batch.
+- Linear `milestone` and `release`.
+- Keep the digest and the filter in one object, so the agent does not pass the flags twice.
+- A cheaper preview for very large sets, and a cheaper `link --kind blocks` on Local.
+
+## PMK-60: log-time
+
+- A scenario against a Linear fixture for the comment path.
+- Show the time in readable form (`1h30`) in `time-entries`.
+- Make `progress` step 8 follow `log-time` directly, if scenario rule 5 (explicit CLI calls per step) is relaxed.
+
+## PMK-65: record-decision
+
+- A `validate` or `/pmkit:local:doctor` check that no two ADRs share a number.
+- A `docs` field on issues, so a link to an ADR is not only a comment.
+- A command to change the status of an existing ADR (superseded, deprecated).
+- Read `origin/HEAD` when `default_branch` is not set.
 
 ## PMK-175: alerts list on Windows
 
