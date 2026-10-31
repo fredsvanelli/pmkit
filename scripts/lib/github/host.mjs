@@ -10,6 +10,7 @@ const DIFF_TIMEOUT_MS = 120 * 1000
 const VIEW_FIELDS = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
 const LIST_FIELDS = 'number,url,title,headRefName,isDraft,updatedAt,author,statusCheckRollup'
 const RUN_FIELDS = 'databaseId,workflowName,status,conclusion,url,createdAt,headSha'
+const THREADS_QUERY = 'query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { pageInfo { hasNextPage } nodes { isResolved isOutdated path line comments(first: 1) { nodes { url body author { login } } } } } } } }'
 const INSTALL_STEP = 'Install the GitHub CLI (https://cli.github.com) and run gh auth login'
 
 /** Runs a command in root with spawnSync. A missing binary throws the spawn error (code ENOENT). */
@@ -32,7 +33,13 @@ function failure(cmd, args, result) {
     return new PmkitError('RATE_LIMITED', 'GitHub rate limit reached', 'Wait a few minutes and retry')
   }
   const detail = firstLine(stderr) || `exit status ${result.status}`
-  return new PmkitError('UPSTREAM', `${cmd} ${args.slice(0, 2).join(' ')} failed: ${detail}`, 'Check the output of the same command in a terminal')
+  const error = new PmkitError('UPSTREAM', `${cmd} ${args.slice(0, 2).join(' ')} failed: ${detail}`, 'Check the output of the same command in a terminal')
+  // gh api ends its error line with "(HTTP 404)" or starts it with "HTTP 502:". The free text may name a branch, so only these two spots count.
+  const http = /\(HTTP (\d{3})\)\s*$/.exec(detail) ?? /^(?:gh: )?HTTP (\d{3})\b/.exec(detail)
+  if (http) error.httpStatus = Number(http[1])
+  // gh pr view and gh pr checks report a token that cannot read the data as "GraphQL: Resource not accessible ...", with no HTTP status.
+  else if (/^GraphQL: Resource not accessible/.test(detail)) error.httpStatus = 403
+  return error
 }
 
 /** Refuses a ref that git or gh would read as an option. */
@@ -143,6 +150,42 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
 
     prReviews(number) {
       return parse(check('gh', ['pr', 'view', String(number), '--json', 'reviews,reviewRequests']).stdout, 'the reviews')
+    },
+
+    prMergeState(number) {
+      return parse(check('gh', ['pr', 'view', String(number), '--json', 'mergeable,mergeStateStatus,reviewDecision,baseRefName']).stdout, 'the merge state')
+    },
+
+    /** The review threads of a pull request (first 100). `incomplete` is true when there are more. */
+    prThreads(number) {
+      const args = ['api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-F', `number=${number}`, '-f', `query=${THREADS_QUERY}`]
+      const result = run('gh', args)
+      if (result.status !== 0) {
+        // A graphql error makes gh exit 1 with the reply on stdout and "gh: <message>" on stderr.
+        const error = failure('gh', args, result)
+        let type
+        try { type = JSON.parse(result.stdout)?.errors?.[0]?.type } catch {}
+        const httpStatus = { FORBIDDEN: 403, NOT_FOUND: 404 }[type]
+        if (httpStatus) error.httpStatus = httpStatus
+        throw error
+      }
+      const reply = parse(result.stdout, 'the review threads')
+      const connection = reply?.data?.repository?.pullRequest?.reviewThreads
+      if (!connection) throw new PmkitError('UPSTREAM', 'gh api graphql returned no review threads', 'Update the GitHub CLI and retry')
+      const threads = connection.nodes.map((t) => {
+        const first = t.comments?.nodes?.[0]
+        return { isResolved: t.isResolved, isOutdated: t.isOutdated, path: t.path ?? null, line: t.line ?? null, url: first?.url ?? null, author: first?.author?.login ?? null, body: first?.body ?? '' }
+      })
+      return { threads, incomplete: connection.pageInfo?.hasNextPage === true }
+    },
+
+    /** The branch protection of a base branch, or null when it has none. */
+    branchProtection(base) {
+      const args = ['api', `repos/{owner}/{repo}/branches/${encodeURIComponent(refArg('base', base))}/protection`]
+      const result = run('gh', args)
+      if (result.status === 0) return parse(result.stdout, 'the branch protection')
+      if (/branch not protected/i.test(result.stderr ?? '')) return null
+      throw failure('gh', args, result)
     },
 
     listPullRequests() {

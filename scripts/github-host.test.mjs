@@ -391,3 +391,70 @@ test('unpushedCommits counts the commits of a local branch that origin lacks, an
   assert.equal(host(mapExec({}).exec).unpushedCommits('feat/x'), null)
 })
 
+
+test('prMergeState reads the merge fields with gh pr view', () => {
+  const state = { mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY', reviewDecision: 'REVIEW_REQUIRED', baseRefName: 'main' }
+  const { exec, calls } = fakeExec({ stdout: JSON.stringify(state) })
+  assert.deepEqual(host(exec).prMergeState(12), state)
+  assert.deepEqual(calls[0].args, ['pr', 'view', '12', '--json', 'mergeable,mergeStateStatus,reviewDecision,baseRefName'])
+})
+
+test('prThreads asks the review threads with one graphql call, flattens them and reports a second page', () => {
+  const node = (id, extra = {}) => ({ isResolved: false, isOutdated: false, path: 'a.js', line: 3, comments: { nodes: [{ url: `https://x/${id}`, body: `c${id}`, author: { login: 'bob' } }] }, ...extra })
+  const reply = { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: true }, nodes: [node(1), node(2, { isResolved: true })] } } } } }
+  const { exec, calls } = fakeExec({ stdout: JSON.stringify(reply) })
+  const result = host(exec).prThreads(12)
+  assert.deepEqual(calls[0].args.slice(0, 2), ['api', 'graphql'])
+  for (const part of ['owner={owner}', 'repo={repo}', 'number=12']) assert.ok(calls[0].args.includes(part), part)
+  assert.equal(result.incomplete, true)
+  assert.deepEqual(result.threads[0], { isResolved: false, isOutdated: false, path: 'a.js', line: 3, url: 'https://x/1', author: 'bob', body: 'c1' })
+  assert.equal(result.threads[1].isResolved, true)
+})
+
+test('prThreads maps the failed graphql call of gh, with its JSON on stdout and its message on stderr, to UPSTREAM', () => {
+  const stdout = JSON.stringify({ errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible by integration' }] })
+  const { exec } = fakeExec({ status: 1, stdout, stderr: 'gh: Resource not accessible by integration\n' })
+  assert.throws(() => host(exec).prThreads(12), (e) => e.code === 'UPSTREAM' && /not accessible/.test(e.message))
+})
+
+test('branchProtection reads the protection of the base, returns null when unprotected and UPSTREAM on a refusal', () => {
+  const rules = { required_pull_request_reviews: { required_approving_review_count: 2 } }
+  const ok = fakeExec({ stdout: JSON.stringify(rules) })
+  assert.deepEqual(host(ok.exec).branchProtection('main'), rules)
+  assert.deepEqual(ok.calls[0].args, ['api', 'repos/{owner}/{repo}/branches/main/protection'])
+  const open = fakeExec({ status: 1, stderr: 'gh: Branch not protected (HTTP 404)\n' })
+  assert.equal(host(open.exec).branchProtection('main'), null)
+  const refused = fakeExec({ status: 1, stderr: 'gh: Resource not accessible by integration (HTTP 403)\n' })
+  assert.throws(() => host(refused.exec).branchProtection('main'), (e) => e.code === 'UPSTREAM')
+  const bad = fakeExec()
+  assert.throws(() => host(bad.exec).branchProtection('-x'), (e) => e.code === 'INVALID_INPUT')
+  assert.equal(bad.calls.length, 0)
+})
+
+test('a gh api failure carries the HTTP status of the reply, read from the status marker and not from the free text', () => {
+  const status = (stderr) => { try { host(fakeExec({ status: 1, stderr }).exec).branchProtection('fix-404') } catch (e) { return e.httpStatus } }
+  assert.equal(status('gh: Resource not accessible by integration (HTTP 403)\n'), 403)
+  assert.equal(status('gh: Not Found (HTTP 404)\n'), 404)
+  assert.equal(status('HTTP 502: Bad Gateway (https://api.github.com/repos/o/r/branches/fix-404/protection)\n'), 502)
+  assert.equal(status('error connecting to api.github.com/repos/o/r/branches/fix-404/protection\n'), undefined)
+})
+
+test('prThreads marks a FORBIDDEN or NOT_FOUND graphql error with the matching HTTP status, as the real gh fails it', () => {
+  const status = (type) => {
+    const stdout = JSON.stringify({ errors: [{ type, message: 'nope' }] })
+    try { host(fakeExec({ status: 1, stdout, stderr: 'gh: nope\n' }).exec).prThreads(1) } catch (e) { return e.httpStatus }
+  }
+  assert.equal(status('FORBIDDEN'), 403)
+  assert.equal(status('NOT_FOUND'), 404)
+  assert.equal(status('INTERNAL'), undefined)
+})
+
+test('a GraphQL: Resource not accessible refusal of gh pr view and gh pr checks is a 403', () => {
+  const stderr = 'GraphQL: Resource not accessible by integration (repository.pullRequest.statusCheckRollup)\n'
+  const status = (read) => { try { read(host(fakeExec({ status: 1, stderr }).exec)) } catch (e) { return e.httpStatus } }
+  assert.equal(status((h) => h.prChecks(1)), 403)
+  assert.equal(status((h) => h.prMergeState(1)), 403)
+  assert.equal(status((h) => h.prReviews(1)), 403)
+  const other = () => { try { host(fakeExec({ status: 1, stderr: 'GraphQL: Could not resolve to a PullRequest\n' }).exec).prMergeState(1) } catch (e) { return e.httpStatus } }
+  assert.equal(other(), undefined)
+})

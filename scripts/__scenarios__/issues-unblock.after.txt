@@ -1,0 +1,22 @@
+$ pmkit issues get ISS-5N1R --json  [step 1, read]
+exit 0
+$ pmkit pr blockers --branch iss-5n1r-paginate-the-events-api --json  [step 2, read]
+exit 0
+? Step 5  [confirmed]
+$ pmkit pr ready --issue ISS-5N1R --dry-run --json  [step 5, dry run]
+exit 0
+$ pmkit pr ready --issue ISS-5N1R --json  [step 5, write]
+exit 0
+
+(no file changed)
+--- gh calls
+pr view iss-5n1r-paginate-the-events-api --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr checks 7 --json name,state,bucket
+pr view 7 --json mergeable,mergeStateStatus,reviewDecision,baseRefName
+pr view 7 --json reviews,reviewRequests
+api graphql -F owner={owner} -F repo={repo} -F number=7 -f query=query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { pageInfo { hasNextPage } nodes { isResolved isOutdated path line comments(first: 1) { nodes { url body author { login } } } } } } } }
+api repos/{owner}/{repo}/branches/main/protection
+pr view iss-5n1r-paginate-the-events-api --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr view iss-5n1r-paginate-the-events-api --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr ready 7
+pr view 7 --json number,url,title,state,isDraft,headRefName,author,mergedAt

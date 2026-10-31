@@ -529,3 +529,87 @@ test('pr diff refuses a repository with no git host', async () => {
   assert.equal(result.code, 2)
   assert.equal(errorOf(result).code, 'NOT_SUPPORTED')
 })
+
+const MERGE = 'pr view 7 --json mergeable,mergeStateStatus,reviewDecision,baseRefName'
+const blockerGh = (over = {}) => ({
+  [view('feat')]: { stdout: prJson({ number: 7 }) },
+  'pr checks 7 --json name,state,bucket': { status: 8, stdout: JSON.stringify([{ name: 'build', state: 'FAILURE', bucket: 'fail' }, { name: 'lint', state: 'PENDING', bucket: 'pending' }]) },
+  'pr view 7 --json reviews,reviewRequests': { stdout: JSON.stringify({ reviews: [{ author: { login: 'ann' }, state: 'CHANGES_REQUESTED' }], reviewRequests: [{ __typename: 'User', login: 'bob' }] }) },
+  [MERGE]: { stdout: JSON.stringify({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY', reviewDecision: 'CHANGES_REQUESTED', baseRefName: 'main' }) },
+  ...over,
+})
+
+/** fakeGh matches whole argument strings, and the graphql call carries the query, so the key is built from the real call. */
+async function graphqlKey() {
+  const { createGithubHost } = await import('./lib/github/host.mjs')
+  let key
+  createGithubHost({ root: '.', env: {}, exec: (cmd, args) => { key = args.join(' '); return { status: 0, stdout: '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}', stderr: '' } } }).prThreads(7)
+  return key
+}
+
+test('pr blockers lists checks, reviews, conflicts, open threads and policies', async () => {
+  const root = teamRepo()
+  const key = await graphqlKey()
+  const threads = { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false }, nodes: [{ isResolved: false, isOutdated: false, path: 'a.js', line: 4, comments: { nodes: [{ url: 'https://x/c', body: 'rename', author: { login: 'ann' } }] } }] } } } } }
+  const gh = fakeGh(blockerGh({
+    [key]: { stdout: JSON.stringify(threads) },
+    'api repos/{owner}/{repo}/branches/main/protection': { stdout: JSON.stringify({ required_pull_request_reviews: { required_approving_review_count: 1 }, required_status_checks: { contexts: ['build'] } }) },
+  }))
+  const data = await callJson(root, envWith(gh), ['pr', 'blockers', '--branch', 'feat'])
+  assert.equal(data.branch, 'feat')
+  assert.equal(data.pr.number, 7)
+  assert.equal(data.blocked, true)
+  assert.deepEqual(data.checks.failing.map((c) => c.name), ['build'])
+  assert.deepEqual(data.checks.pending.map((c) => c.name), ['lint'])
+  assert.deepEqual(data.reviews.changesRequested, ['ann'])
+  assert.deepEqual(data.reviews.requested, ['bob'])
+  assert.equal(data.conflicts.conflicting, true)
+  assert.equal(data.threads.open[0].path, 'a.js')
+  assert.deepEqual(data.policies.unmet, ['needs 1 more approval (0 of 1)', 'required check build does not pass'])
+  assert.deepEqual(data.unchecked, [])
+  const text = (await call(root, envWith(gh), ['pr', 'blockers', '--branch', 'feat'])).stdout
+  assert.match(text, /^#7 /)
+  for (const word of ['checks:', 'reviews:', 'conflicts:', 'threads:', 'policies:']) assert.ok(text.includes(word), word)
+})
+
+test('pr blockers reports a refused protection read as not checked and still exits 0', async () => {
+  const root = teamRepo()
+  const key = await graphqlKey()
+  const gh = fakeGh(blockerGh({
+    [key]: { status: 1, stderr: 'gh: Resource not accessible by integration (HTTP 403)\n' },
+    'api repos/{owner}/{repo}/branches/main/protection': { status: 1, stderr: 'gh: Resource not accessible by integration (HTTP 403)\n' },
+  }))
+  const data = await callJson(root, envWith(gh), ['pr', 'blockers', '--branch', 'feat'])
+  assert.equal(data.threads, null)
+  assert.equal(data.policies, null)
+  assert.deepEqual(data.unchecked.map((u) => u.area), ['threads', 'policies'])
+  assert.equal(data.blocked, true)
+  const text = (await call(root, envWith(gh), ['pr', 'blockers', '--branch', 'feat'])).stdout
+  assert.match(text, /threads: not checked/)
+  assert.match(text, /policies: not checked/)
+})
+
+test('pr blockers of a branch without a pull request has no verdict (blocked null) and is not an error', async () => {
+  const root = teamRepo()
+  const gh = fakeGh({ [view('none')]: { status: 1, stderr: 'no pull requests found for branch "none"\n' } })
+  const data = await callJson(root, envWith(gh), ['pr', 'blockers', '--branch', 'none'])
+  assert.equal(data.pr, null)
+  assert.equal(data.blocked, null)
+  assert.match((await call(root, envWith(gh), ['pr', 'blockers', '--branch', 'none'])).stdout, /no pull request for none/)
+})
+
+test('pr blockers of a merged pull request is not blocked and reads nothing more', async () => {
+  const root = teamRepo()
+  const gh = fakeGh({ [view('done')]: { stdout: prJson({ number: 9, state: 'MERGED', mergedAt: '2026-10-22T10:00:00Z' }) } })
+  const data = await callJson(root, envWith(gh), ['pr', 'blockers', '--branch', 'done'])
+  assert.equal(data.blocked, false)
+  assert.equal(data.state, 'MERGED')
+  assert.deepEqual(ghCalls(gh), [`pr view done --json ${VIEW}`])
+})
+
+test('pr blockers with git_host.system none is NOT_SUPPORTED', async () => {
+  const root = teamRepo({ github: false })
+  const result = await call(root, envWith(fakeGh({})), ['pr', 'blockers', '--branch', 'x', '--json'])
+  assert.equal(result.code, 2)
+  assert.equal(errorOf(result).code, 'NOT_SUPPORTED')
+})

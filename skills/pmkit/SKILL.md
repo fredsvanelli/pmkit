@@ -36,6 +36,7 @@ Each command file holds the full procedure. When the user asks for one of these 
 | post what was done on an issue as a comment, tick acceptance criteria and log the time spent | `/pmkit:issues:progress` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/progress.md` |
 | review the pull request of an issue against its acceptance criteria, flag the gaps and post the result after approval | `/pmkit:issues:review` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/review.md` |
 | turn the TODO and FIXME comments of the repository into issues after a full preview, skipping the ones an issue already covers | `/pmkit:issues:todos` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/todos.md` |
+| list what blocks a pull request from merging: checks, reviews, conflicts, open threads and policies | `/pmkit:issues:unblock` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/unblock.md` |
 | summarize an issue or an epic from its record, comments and history | `/pmkit:issues:summary` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/summary.md` |
 | change the title, priority, estimate, labels or acceptance criteria of an issue | `/pmkit:issues:update` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/update.md` |
 | pick up an issue: claim it, branch, plan, implement, open the PR and move it to review | `/pmkit:issues:work` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/work.md` |
