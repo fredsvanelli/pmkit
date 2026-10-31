@@ -96,14 +96,15 @@ export function teamLoad(issues, { members, aging = [], capacity = {}, daysOff =
 /**
  * A proposal that moves the issues in `todo` of the flagged members to the human with the lowest known load, largest first.
  * A source stops giving when it is at its average (over_average) or its capacity (over_capacity). A move happens only when
- * the target stays at or below the source after it, and at or below the target's own capacity. It writes nothing.
+ * the target stays at or below the source after it, at or below the average, and at or below the target's own capacity.
+ * A member that is over_average or over_capacity, or whose load is unknown or partial, is never a target. It writes nothing.
  */
 export function suggestMoves(report, issues) {
   const estimated = report.unit !== 'issues'
   const mean = averageOf(report.rows).mean
   const loads = new Map(report.rows.map((row) => [row.member, row.load]))
   const capacityOf = new Map(report.rows.map((row) => [row.member, row.capacity]))
-  const targets = report.rows.filter((row) => isEligible(row) && row.load !== null && !row.partial)
+  const targets = report.rows.filter((row) => isEligible(row) && row.load !== null && !row.partial && row.flags.length === 0)
   const weight = (issue) => (estimated ? (isNumber(issue.estimate) ? issue.estimate : 0) : 1)
   const moves = []
   for (const from of [...new Set(report.imbalances.map((item) => item.member))]) {
@@ -117,7 +118,7 @@ export function suggestMoves(report, issues) {
       const w = weight(issue)
       const to = targets
         .filter((row) => row.member !== from)
-        .filter((row) => loads.get(row.member) + w <= loads.get(from) - w)
+        .filter((row) => loads.get(row.member) + w <= loads.get(from) - w && loads.get(row.member) + w <= mean)
         .filter((row) => !estimated || capacityOf.get(row.member) === null || loads.get(row.member) + w <= capacityOf.get(row.member))
         .sort((a, b) => loads.get(a.member) - loads.get(b.member))[0]
       if (to === undefined) continue

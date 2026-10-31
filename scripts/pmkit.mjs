@@ -1558,7 +1558,9 @@ async function runTeamLoad(ctx) {
   }
   notes.push(...(await metricNotes(tracker, 'aging')))
   const suggestions = truncated ? [] : suggestMoves(report, found.issues)
-  const data = { sprint: sprint ? { id: sprint.id, name: sprint.name, start: sprint.start, end: sprint.end } : null, truncated, ...report, suggestions }
+  const movable = report.imbalances.some((item) => found.issues.some((issue) => issue.assignee === item.member && issue.status.category === 'todo'))
+  const noTarget = !truncated && movable && suggestions.length === 0
+  const data = { sprint: sprint ? { id: sprint.id, name: sprint.name, start: sprint.start, end: sprint.end } : null, truncated, ...report, suggestions, noTarget }
   return { data, text: teamLoadText(data), warnings, notes }
 }
 
@@ -1578,6 +1580,7 @@ function teamLoadText(data) {
   ]
   if (data.imbalances.length > 0) lines.push('imbalances:', ...data.imbalances.map((item) => `  ${item.member}: ${item.flag}, load ${item.load}, limit ${item.limit}`))
   if (data.noWork.length > 0) lines.push(`no work in scope: ${data.noWork.map((item) => item.member + (item.daysOff.length > 0 ? ` (days off ${item.daysOff.join(', ')})` : '')).join(', ')}`)
+  if (data.noTarget) lines.push('no proposed moves: there is nobody to move an issue to without overloading someone')
   if (data.suggestions.length > 0) lines.push('proposed moves:', ...data.suggestions.map((move) => `  ${move.issue}: ${move.from} to ${move.to}`))
   return lines.join('\n')
 }
