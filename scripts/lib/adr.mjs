@@ -6,7 +6,8 @@ import path from 'node:path'
 import { PmkitError } from './errors.mjs'
 
 export const ADR_SLUG_MAX = 60
-const NUMBERED = /^(\d{4,})-[^/]+\.md$/
+// A name counts when it starts with four or more digits and a non-digit follows, so 0007a-x.md counts as 7.
+const NUMBERED = /^(\d{4,})(?=\D)[^/]*\.md$/
 const QUOTES = /['"`‘’“”]/g
 
 /**
@@ -46,13 +47,15 @@ function readTree(dir) {
 
 /**
  * Plans the next ADR. `git(args)` returns { status, stdout }. `createSupported` is whether the tracker can create documents.
- * `trackerPath` is the tracker folder relative to the root (`tracker.path` of the config), used only when `hosted` is false.
+ * `trackerDir` is the Local tracker's ADR folder as an absolute path, read from the working tree, or null for a hosted tracker.
+ * `trackerFolder` is the same folder relative to the repository root, or null when it lies outside the repository,
+ * where the ref has nothing to read.
  */
-export function planNextAdr({ title, root, trackerPath, hosted, createSupported, defaultBranch, defaultBranchSet, gitHost, git }) {
+export function planNextAdr({ title, root, trackerFolder, trackerDir, hosted, createSupported, defaultBranch, defaultBranchNote, gitHost, git }) {
   const slug = adrSlug(title)
   const notes = []
   const ignored = []
-  if (!defaultBranchSet) notes.push(`git_host.default_branch is not set in .pmkit/config.yaml, so ${defaultBranch} is used`)
+  if (defaultBranchNote) notes.push(defaultBranchNote)
 
   const ref = `origin/${defaultBranch}`
   const refCheck = git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`])
@@ -60,35 +63,39 @@ export function planNextAdr({ title, root, trackerPath, hosted, createSupported,
   if (refSha) notes.push(`numbered with ${ref} as last fetched (${refSha}), so it may be behind the remote`)
   else notes.push(`${ref} does not exist here, so only the working tree was read and an ADR merged on ${defaultBranch} may be missed`)
 
-  const folders = [{ place: 'repo', folder: 'docs/adr' }]
-  const trackerFolder = !hosted && trackerPath ? `${trackerPath}/docs/adr` : null
-  if (trackerFolder) folders.push({ place: 'tracker', folder: trackerFolder })
+  const trackerLabel = trackerDir ? (trackerFolder ?? trackerDir.split(path.sep).join('/')) : null
+  const folders = [{ place: 'repo', label: 'docs/adr', dir: path.join(root, 'docs', 'adr'), repoFolder: 'docs/adr' }]
+  if (trackerDir) folders.push({ place: 'tracker', label: trackerLabel, dir: trackerDir, repoFolder: trackerFolder })
+  if (trackerDir && !trackerFolder) notes.push(`the tracker folder is outside the repository, so ${ref} was not read for it`)
 
   const sources = []
-  for (const { place, folder } of folders) {
-    const entries = readTree(path.join(root, ...folder.split('/')))
+  for (const { place, label, dir, repoFolder } of folders) {
+    const entries = readTree(dir)
     const direct = entries?.filter((name) => !name.endsWith('/')) ?? []
     const dirs = entries?.filter((name) => name.endsWith('/')) ?? []
     const tree = highestAdr(direct)
-    sources.push({ place, folder, where: 'working tree', exists: entries !== null, highest: tree.highest, files: direct.length })
-    ignored.push(...tree.ignored.map((name) => `${folder}/${name}`), ...dirs.map((name) => `${folder}/${name}`))
-    if (refSha && !folder.startsWith('..')) {
-      const listed = git(['ls-tree', '-r', '--name-only', ref, '--', `${folder}/`])
-      const paths = listed.status === 0 ? listed.stdout.split('\n').filter(Boolean) : []
-      const names = children(paths, folder)
-      const direct = names.filter((name) => !name.includes('/'))
-      const remote = highestAdr(direct)
-      sources.push({ place, folder, where: ref, exists: names.length > 0, highest: remote.highest, files: direct.length })
-      ignored.push(...remote.ignored.map((name) => `${ref}:${folder}/${name}`), ...names.filter((name) => name.includes('/')).map((name) => `${ref}:${folder}/${name}`))
+    sources.push({ place, folder: label, where: 'working tree', exists: entries !== null, highest: tree.highest, files: direct.length })
+    ignored.push(...tree.ignored.map((name) => `${label}/${name}`), ...dirs.map((name) => `${label}/${name}`))
+    if (refSha && repoFolder) {
+      const listed = git(['ls-tree', '-r', '-z', '--name-only', ref, '--', `${repoFolder}/`])
+      if (listed.status !== 0) {
+        notes.push(`could not list ${ref}:${repoFolder}, so its ADRs are not counted and the number may be behind`)
+        continue
+      }
+      const names = children(listed.stdout.split('\0').filter(Boolean), repoFolder)
+      const remoteDirect = names.filter((name) => !name.includes('/'))
+      const remote = highestAdr(remoteDirect)
+      sources.push({ place, folder: label, where: ref, exists: names.length > 0, highest: remote.highest, files: remoteDirect.length })
+      ignored.push(...remote.ignored.map((name) => `${ref}:${repoFolder}/${name}`), ...names.filter((name) => name.includes('/')).map((name) => `${ref}:${repoFolder}/${name}`))
     }
   }
 
   const repoExists = sources.some((source) => source.place === 'repo' && source.exists)
-  const destination = repoExists || hosted || !createSupported ? 'repo' : 'tracker'
+  const destination = repoExists || hosted || !createSupported || !trackerDir ? 'repo' : 'tracker'
   const highest = Math.max(0, ...sources.map((source) => source.highest))
   const number = String(highest + 1).padStart(4, '0')
   const filename = `${number}-${slug}.md`
-  const folder = destination === 'repo' ? 'docs/adr' : trackerFolder
+  const folder = destination === 'repo' ? 'docs/adr' : trackerLabel
   const other = sources.filter((source) => source.place !== destination && source.files > 0)
   if (other.length > 0) notes.push(`${[...new Set(other.map((source) => source.folder))].join(' and ')} also has ADRs, and the number counts them`)
   if (ignored.length > 0) notes.push(`not counted, no number in the name: ${ignored.join(', ')}`)

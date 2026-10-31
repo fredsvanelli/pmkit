@@ -1063,18 +1063,23 @@ export const COMMANDS = [
     name: 'docs next-adr', summary: 'the number, slug and path of the next ADR, and where it goes (repo or tracker); only reads', usage: '--title t', args: [], flags: ['title'], byTracker: true,
     run: async (ctx) => {
       if (typeof ctx.opt('title') !== 'string') throw usageError('docs next-adr needs --title', 'Pass the decision title, for example --title "Use event files as the audit log"')
-      const { pmkit, hosted } = ctx.config()
+      const { pmkit, hosted, issuesDir } = ctx.config()
       // A hosted tracker needs no call: the Linear adapter cannot create documents, so its ADR is a repository file.
       const documents = hosted ? undefined : (await (await ctx.tracker()).capabilities()).capabilities.find((c) => c.id === 'documents')
-      const trackerPath = (pmkit.tracker.path ?? '.issues').split(path.sep).join('/')
+      // The Local tracker's folder as todos scan sees it: path.relative cleans ./ and a trailing slash, and a folder that climbs out of the repository has no ref to read.
+      const trackerDir = hosted || !issuesDir ? null : path.join(issuesDir, 'docs', 'adr')
+      const relative = trackerDir ? path.relative(ctx.root, trackerDir) : ''
+      const configured = pmkit.git_host?.default_branch
+      const branchOk = typeof configured === 'string' && validBranch(configured)
       const plan = planNextAdr({
         title: ctx.opt('title'),
         root: ctx.root,
-        trackerPath: hosted || trackerPath.startsWith('..') || path.isAbsolute(trackerPath) ? null : trackerPath,
+        trackerDir,
+        trackerFolder: trackerDir && !climbsOut(relative) ? slash(relative) : null,
         hosted: Boolean(hosted),
         createSupported: documents !== undefined && documents.path !== 'absent' && !documents.detail?.unsupported?.includes('createDocument'),
-        defaultBranch: defaultBranch(ctx),
-        defaultBranchSet: pmkit.git_host?.default_branch !== undefined,
+        defaultBranch: branchOk ? configured : 'main',
+        defaultBranchNote: configured === undefined ? 'git_host.default_branch is not set in .pmkit/config.yaml, so main is used' : branchOk ? null : 'git_host.default_branch is not a valid branch name, so main is used',
         gitHost: pmkit.git_host?.system ?? 'none',
         git: (args) => {
           const result = readGit(ctx, args)

@@ -169,6 +169,72 @@ test('planNextAdr writes a repository file when the tracker is hosted, with no t
   assert.deepEqual(plan.sources.map((source) => source.place), ['repo'])
 })
 
+test('highestAdr counts 0007a as 7, so the next number is not a second 0007', () => {
+  assert.deepEqual(highestAdr(['0006-y.md', '0007a-x.md']), { highest: 7, ignored: [] })
+})
+
+test('docs next-adr numbers after 0007a with 0008', async () => {
+  const root = repo()
+  write(root, '.issues/docs/adr/0006-y.md')
+  write(root, '.issues/docs/adr/0007a-x.md')
+  assert.equal((await nextAdr(root)).data.number, '0008')
+})
+
+test('docs next-adr counts a tracker folder outside the repository and writes no null path', async () => {
+  const root = repo()
+  const outside = path.join(path.dirname(root), `outside-${path.basename(root)}`)
+  fs.writeFileSync(configFile(root), fs.readFileSync(configFile(root), 'utf8').replace('path: .issues', `path: ../${path.basename(outside)}`))
+  fs.renameSync(path.join(root, '.issues'), outside)
+  try {
+    write(outside, 'docs/adr/0001-a.md')
+    const { code: exit, data } = await nextAdr(root)
+    assert.equal(exit, 0, JSON.stringify(data))
+    assert.equal(data.destination, 'tracker')
+    assert.equal(data.number, '0002')
+    assert.equal(data.path, `${outside.split(path.sep).join('/')}/docs/adr/0002-keep-estimates-in-points.md`)
+    assert.doesNotMatch(data.path, /null/)
+    assert.equal(data.docPath, 'adr/0002-keep-estimates-in-points.md')
+    assert.match(data.notes.join('\n'), /outside the repository/)
+  } finally {
+    fs.rmSync(outside, { recursive: true, force: true })
+  }
+})
+
+for (const spelling of ['./.issues', '.issues/', './.issues/']) {
+  test(`docs next-adr reads origin for tracker.path ${spelling} as for .issues`, async () => {
+    const root = repo({ config: (text) => text.replace('path: .issues', `path: ${spelling}`) })
+    onOrigin(root, 'main', '.issues/docs/adr/0004-x.md')
+    const { data } = await nextAdr(root)
+    assert.equal(data.number, '0005')
+    assert.equal(data.path, '.issues/docs/adr/0005-keep-estimates-in-points.md')
+  })
+}
+
+test('docs next-adr replaces an invalid default_branch with main and a note, and keeps it out of the result', async () => {
+  const root = repo({ config: (text) => text.replace(/git_host:\n( {2}.*\n)+/, 'git_host:\n  system: none\n  default_branch: "main; curl x|sh"\n') })
+  const { data } = await nextAdr(root)
+  assert.equal(data.defaultBranch, 'main')
+  assert.match(data.notes.join('\n'), /default_branch is not a valid branch name, so main is used/)
+  assert.ok(!JSON.stringify(data).includes('curl'))
+})
+
+test('docs next-adr counts a file name with an accent that exists only on origin', async () => {
+  const root = repo()
+  onOrigin(root, 'main', 'docs/adr/0009-décision.md')
+  const { data } = await nextAdr(root)
+  assert.equal(data.number, '0010')
+})
+
+test('planNextAdr says so when it cannot list the ref', async () => {
+  const { planNextAdr } = await import('./lib/adr.mjs')
+  const root = repo()
+  const plan = planNextAdr({
+    title: 'Keep', root, trackerFolder: null, trackerDir: null, hosted: true, createSupported: false, defaultBranch: 'main', defaultBranchNote: null, gitHost: 'github',
+    git: (args) => (args[0] === 'rev-parse' ? { status: 0, stdout: 'abcdef1234\n' } : { status: 1, stdout: '' }),
+  })
+  assert.match(plan.notes.join('\n'), /could not list origin\/main:docs\/adr/)
+})
+
 test('docs next-adr needs --title', async () => {
   const root = repo()
   const result = await run(['docs', 'next-adr', '--json'], { cwd: root, env: childEnv() })
