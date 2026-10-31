@@ -138,7 +138,7 @@ A demand signal is an accepted request: someone asked for that issue. `demand li
 Eight new operations in `TRACKER_OPERATIONS`, in a Customers and requests family:
 
 - `listCustomers()` returns `{ customers, problems }`, highest revenue first, then by name, a missing revenue last (Linear's `sortCustomers` rule).
-- `getCustomer(idOrName)` returns `{ customer, requests }`, the customer and its requests in creation order. The argument is an ID, or a name matched exactly and case-insensitively. Two customers with that name is `INVALID_INPUT` listing their IDs. No match is `NOT_FOUND`.
+- `getCustomer(idOrName)` returns `{ customer, requests, problems }`, the customer and its requests in creation order. The argument is an ID, or a name matched exactly and case-insensitively. Two customers with that name is `INVALID_INPUT` listing their IDs. No match is `NOT_FOUND`.
 - `createCustomer(input, actor, { dryRun })` takes `name` and optional `status`, `tier`, `revenue`, `size`, `owner`, `notes`, and returns `{ before: null, after }`.
 - `listRequests({ state, customer })` returns `{ requests, problems }` in creation order (`created`, then ID; a request without `created` goes last). `state` is `open` (the default), `accepted`, `declined` or `all`.
 - `getRequest(id)` returns the request record.
@@ -157,7 +157,7 @@ New groups `customers`, `requests` and `demand`:
 | Command | Does |
 |---|---|
 | `customers list` | the customers with status, tier, revenue, size and request count; `--json` prints `{ available: true, customers, hasMore: false, problems }`, the keys of `linear customers list` |
-| `customers show <id or name>` | one customer with its requests; `--json` prints `{ available: true, customer, requests }`, the keys of `linear customers show` |
+| `customers show <id or name>` | one customer with its requests; `--json` prints `{ available: true, customer, requests, problems }`, the keys of `linear customers show` plus `problems` |
 | `customers create --name n [--status s] [--tier t] [--revenue n] [--size n] [--owner member]` | a write; creates `customers/<ID>.md` |
 | `requests list [--state open\|accepted\|declined\|all] [--customer id]` | the inbox by default; `--json` prints `{ requests, problems }` |
 | `requests get <id>` | one request |

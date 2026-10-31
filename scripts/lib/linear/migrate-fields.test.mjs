@@ -199,7 +199,7 @@ test('every export row of "What does not round-trip" appears in losses when its 
     issues: [issue('ISS-1', { sprint: '2026-10-12', milestone: 'v1', release: '1.0', branch: 'iss-1-x', estimate: 21, assignee: 'bea' })],
     links: [{ kind: 'blocks', from: 'ISS-1', to: 'ISS-9' }],
     comments: [{ id: 'ISS-1/a', issue: 'ISS-1', author: 'bea', created: '2026-10-28T18:11:19Z', body: 'x', parent: null, resolved: false }],
-    outOfScope: { releases: 1, timeLogs: 2, documents: 3, milestones: 1, views: 4, goals: 2 },
+    outOfScope: { releases: 1, timeLogs: 2, documents: 3, milestones: 1, views: 4, goals: 2, customers: 1, requests: 3 },
   }), await target())
   assert.deepEqual(mapped.losses.map((loss) => loss.what).sort(), [...EXPORT_LOSSES].sort())
   for (const loss of mapped.losses) {
@@ -242,4 +242,11 @@ test('an empty tracker has no losses, and only the type labels the team lacks to
   assert.deepEqual(mapped.losses, [])
   assert.deepEqual(mapped.records.label.map((record) => record.key), ['Task'])
   assert.ok(Object.entries(mapped.records).every(([kind, list]) => kind === 'label' || list.length === 0))
+})
+
+test('customers and requests are losses that name the folders they stay in', async () => {
+  const mapped = mapExport(snapshot({ people: [], sprints: [], epics: [], issues: [], outOfScope: { releases: 0, timeLogs: 0, documents: 0, milestones: 0, views: 0, goals: 0, customers: 2, requests: 1 } }), await target())
+  const find = (what) => mapped.losses.find((loss) => loss.what === what)
+  assert.equal(find('customers').why, '2 customers stay in .issues/customers/; pmkit does not create Linear customers')
+  assert.equal(find('requests').why, '1 request stays in .issues/requests/; pmkit does not create Linear customer requests')
 })

@@ -66,6 +66,8 @@ Entities in the MVP:
 | Sprint | `id`, `name`, `start`, `end`, `goal`, `state` (`planned`, `active`, `closed`), `closed` (optional, ISO timestamp of the close with `Z` or an offset, set by `closeCycle`), `capacity` (member id → points or hours), `daysOff` (member id → dates) |
 | Epic | `id`, `title`, `status`, `start`, `target`, `milestone`, `goal`, `description` |
 | Goal | `id`, `title`, `target`, `description`, `epics` (computed from the epics whose `goal` names it) |
+| Customer | `id`, `name`, `status`, `tier`, `revenue`, `size`, `owner`, `requests` (computed count), `notes` |
+| Request | `id`, `title`, `body`, `customer`, `from`, `important`, `state` (`open`, `accepted`, `declined`), `target` (the issue, when accepted), `reason`, `created`, `triaged` (`{ at, by }`) |
 | Milestone | `id`, `name`, `due`, `description` |
 | Release | `id`, `name`, `tag`, `target`, `released`, `state` (`planned`, `released`; computed from `released`), `description` |
 | Status update | `epic`, `at`, `author`, `health` (`on_track`, `at_risk`, `off_track`), `body` |
@@ -77,7 +79,7 @@ Event ops: `create`, `update`, `move`, `assign`, `link`, `unlink`, `comment`, `l
 
 The 20 capabilities of the Unified model (`cycles`, `estimation`, `multilevel_hierarchy`, `dependencies`, `native_triage`, `deliverables`, `strategic_goals`, `status_update`, `releases`, `capacity`, `native_metrics`, `saved_views`, `documents`, `demand_signals`, `request_queue`, `time_tracking`, `linked_code`, `agent_delegation`, `security_alerts`, `user_inbox`). Each has a path (`native`, `derived`, `conditional`, `absent`), an optional `detail` map and an optional `enableHint`.
 
-The Local tracker serves 14 of the 20: 11 native and 3 derived (`native_metrics`, `linked_code`, `security_alerts`). It reports the other six as `absent`, each with an `enableHint`. The served-by table and the full split are in `2026-10-25-pmk-2-capability-manifest-design.md`. In the MVP the manifest is computed on each run from the config **(builder's call)**: it is cheap for the Local tracker, and caching starts with the first hosted adapter.
+The Local tracker serves 19 of the 20: 15 native and 4 derived (`native_metrics`, `linked_code`, `agent_delegation`, `security_alerts`). It reports `user_inbox` as `absent`, with an `enableHint`. The served-by table and the full split are in `2026-10-25-pmk-2-capability-manifest-design.md`. In the MVP the manifest is computed on each run from the config **(builder's call)**: it is cheap for the Local tracker, and caching starts with the first hosted adapter.
 
 `pmkit capabilities [--json]` prints it. `/pmkit:help` reads it.
 
@@ -95,6 +97,7 @@ The operations the MVP needs, grouped by family. Every write takes an `actor` (a
 | Deliverables | `listDeliverables()`, `getDeliverable(id)`, `deliverableProgress(id)`, `createDeliverable(input, actor)`, `publishStatusUpdate(update, actor)`, `listStatusUpdates(epic)` |
 | Milestones | `listMilestones()`, `getMilestone(id)`, `createMilestone(input, actor)` |
 | Goals | `listGoals()`, `getGoal(id)`, `createGoal(input, actor)`, `goalProgress(id)`, `setEpicGoal(epic, goal, actor)` |
+| Customers and requests | `listCustomers()`, `getCustomer(idOrName)`, `createCustomer(input, actor)`, `listRequests({ state, customer })`, `getRequest(id)`, `createRequest(input, actor)`, `acceptRequest(id, issue, actor)`, `declineRequest(id, reason, actor)`, `listDemandSignals()` |
 | Releases | `listReleases({ state })`, `getRelease(id)`, `releaseIssues(id, { archived })`, `createRelease(input, actor)`, `markReleased(id, actor, { tag })` |
 | Capacity | `getCapacity(sprint)`, `setCapacity(sprint, capacity, actor)` |
 | Metrics | `metricEvents({ since, until })` |

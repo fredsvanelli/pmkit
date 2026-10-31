@@ -16,7 +16,7 @@ export const PROJECT_TYPE_OF_CATEGORY = Object.freeze({
 })
 
 export const EXPORT_LOSSES = [
-  'sprints', 'sprint names', 'history', 'epic dates', 'comments', 'status updates', 'milestones', 'releases', 'time logs', 'documents', 'views', 'goals',
+  'sprints', 'sprint names', 'history', 'epic dates', 'comments', 'status updates', 'milestones', 'releases', 'time logs', 'documents', 'views', 'goals', 'customers', 'requests',
   'branch names', 'ids', 'estimates', 'members', 'links', 'capacity',
 ]
 
@@ -334,6 +334,9 @@ export function mapExport(snapshot, target) {
   losses.set('documents', out.documents ?? 0, [], `${plural(out.documents ?? 0, 'document')} stay in .issues/docs/`)
   losses.set('views', out.views ?? 0, [], `${plural(out.views ?? 0, 'view')} stay in .issues/views/; pmkit does not create Linear views`)
   losses.set('goals', out.goals ?? 0, [], `${plural(out.goals ?? 0, 'goal')} stay in .issues/goals/; pmkit does not create Linear initiatives, so epics lose their goal links`)
+  const stay = (n) => (n === 1 ? 'stays' : 'stay')
+  losses.set('customers', out.customers ?? 0, [], `${plural(out.customers ?? 0, 'customer')} ${stay(out.customers ?? 0)} in .issues/customers/; pmkit does not create Linear customers`)
+  losses.set('requests', out.requests ?? 0, [], `${plural(out.requests ?? 0, 'request')} ${stay(out.requests ?? 0)} in .issues/requests/; pmkit does not create Linear customer requests`)
   const branches = losses.get('branch names')
   if (branches) branches.why = `${plural(branches.count, 'issue')} get the branch name Linear gives them; the map keeps the old id`
   const ids = snapshot.issues.length + snapshot.epics.length

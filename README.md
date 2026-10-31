@@ -116,6 +116,15 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `goal get <id>` | shows one goal and its epics |
 | `goal create --title t [--target YYYY-MM-DD]` | creates a goal as `.issues/goals/<ID>.md`; the ID is `GOAL-` and a code that follows `id_style` |
 | `goal progress <id>` | adds up the progress of the epics linked to a goal, as `epic progress` counts each one |
+| `customers list` | lists the customers in `.issues/customers/`, highest revenue first, with the keys `linear customers list` prints |
+| `customers show <id or name>` | shows one customer and its requests |
+| `customers create --name n [--status s] [--tier t] [--revenue n] [--size n] [--owner member]` | creates a customer as `.issues/customers/<ID>.md`; the ID is `CUS-` and a code that follows `id_style` |
+| `requests list [--state open\|accepted\|declined\|all] [--customer id]` | lists the requests, the open ones (the inbox) by default, oldest first |
+| `requests get <id>` | shows one request |
+| `requests create --title t [--customer id] [--from text] [--important] [--issue id] [--body-file f]` | records a request as `.issues/requests/<ID>.md`, open, or accepted into an issue with `--issue`; the ID is `REQ-` and a code that follows `id_style` |
+| `requests accept <id> <issue>` | accepts a request into an existing issue; to turn it into a new issue, run `issues create` first |
+| `requests decline <id> [--reason text]` | declines a request |
+| `demand list` | groups the accepted requests by issue, most requests first, with the customers who asked |
 | `views run <name>` | runs a saved view and lists its issues; `sprint: current` and `assignee: me` stay symbolic, so they resolve when the view runs |
 | `metrics velocity` | points or counts done per closed sprint, and the average |
 | `metrics cycle-time` | median and p85 days from first `in_progress` to `done` |

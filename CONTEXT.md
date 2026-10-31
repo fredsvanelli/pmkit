@@ -52,6 +52,18 @@ _Avoid_: milestone (a milestone is a target, not a version), version (outside th
 The done issues of a release, a sprint or a period, grouped by type and written for a user of the product. The command says which basis it used and whether the notes are a draft. `/pmkit:report:release-notes` writes them and saves them as a document after the user confirms.
 _Avoid_: changelog (that is the plugin's own `CHANGELOG.md`), release (the object, not its notes)
 
+**Customer**:
+A company or person the team builds for, kept as `customers/<ID>.md` with a name and an optional status, tier, revenue, size and owner. Its ID is `CUS-` and a code that follows the ID style. Linear has customers of its own, which `/pmkit:linear:customers` reads.
+_Avoid_: client, account
+
+**Request**:
+Something a customer or another team asked for, kept as `requests/<ID>.md`. It is `open` in the inbox until someone accepts it into an issue or declines it. Its ID is `REQ-` and a code that follows the ID style.
+_Avoid_: ticket, ask (Linear's name for requests that arrive through Slack), need (Linear's API name)
+
+**Demand signal**:
+An accepted request, read as a sign that someone wants its issue. `demand list` groups them by issue with the customers who asked.
+_Avoid_: vote, upvote
+
 **Sprint**:
 A time box with a start, an end, a goal, a state (`planned`, `active` or `closed`) and a capacity per member. At most one sprint is `active`. The sprint's id is its start date. The Unified model calls it a cycle, and the CLI command group is `cycle`. A closed sprint records when it was closed, and velocity counts only the moves to `done` made up to that moment.
 _Avoid_: iteration, cycle (outside the CLI and contract names)
