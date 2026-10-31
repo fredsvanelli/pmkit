@@ -1,5 +1,6 @@
 // Security alerts from the scanners the repository already has. See
 // docs/superpowers/specs/2026-10-30-pmk-48-local-security-alerts-design.md.
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -117,4 +118,62 @@ export function collectAlerts(root, { env = process.env, timeoutMs = NPM_TIMEOUT
   }
   alerts.sort((a, b) => rank(a) - rank(b) || a.package.localeCompare(b.package))
   return { scanners, alerts, warnings }
+}
+
+// ---- Turning alerts into issues (PMK-73) ----
+
+/** The longest issue title, in characters. */
+const MAX_TITLE = 120
+
+/**
+ * The stable key of an alert: one package of one scanner with the advisory `alerts list` shows for it (its url, or its
+ * title when npm gives none). Severity, title text and fix state stay out, so a report that changes them does not
+ * make a second issue.
+ */
+export const alertKey = (alert) => crypto.createHash('sha256').update(`${alert.scanner}\n${alert.package}\n${alert.url ?? alert.title}`).digest('hex').slice(0, 12)
+
+/**
+ * The tracker priority of a severity, by position: critical is the first priority, high the second, medium the third
+ * and low the last. A list shorter than four clamps to its last entry. An empty list gives null.
+ */
+export function priorityFor(severity, priorities) {
+  if (priorities.length === 0) return null
+  const last = priorities.length - 1
+  const position = severity === 'low' ? last : SEVERITIES.indexOf(severity)
+  return priorities[position < 0 ? last : Math.min(position, last)]
+}
+
+/** The issue an alert becomes. `priorities` and `types` come from the tracker. The description ends with the `alert-key:` line. */
+export function alertCandidate(alert, { priorities, types }) {
+  const key = alertKey(alert)
+  const title = `Security: ${alert.package}: ${alert.title}`.slice(0, MAX_TITLE)
+  const description = [
+    alert.title, '',
+    `Severity: ${alert.severity}`, `Package: ${alert.package}`, `Scanner: ${alert.scanner}`,
+    `Advisory: ${alert.url ?? 'none'}`, `Fix available: ${alert.fixAvailable ? 'yes' : 'no'}`, '',
+    `alert-key: ${key}`, '',
+  ].join('\n')
+  return {
+    key, id: alert.id, scanner: alert.scanner, package: alert.package, severity: alert.severity,
+    priority: priorityFor(alert.severity, priorities), type: types.includes('bug') ? 'bug' : types[0] ?? null,
+    title, url: alert.url, fixAvailable: alert.fixAvailable, description,
+  }
+}
+
+const KEY_LINE = /^alert-key:[ \t]*([0-9a-f]{12})[ \t]*\r?$/gm
+
+/** Splits candidates into the ones no issue holds by `alert-key:` line and the matched ones. Every issue counts, whatever its status. */
+export function matchAlerts(candidates, issues) {
+  const keys = new Map()
+  for (const issue of issues) {
+    for (const [, key] of `${issue.description ?? ''}\n${issue.body ?? ''}`.matchAll(KEY_LINE)) if (!keys.has(key)) keys.set(key, issue)
+  }
+  const kept = []
+  const matched = []
+  for (const candidate of candidates) {
+    const issue = keys.get(candidate.key)
+    if (issue) matched.push({ ...candidate, issue: issue.id, status: issue.status?.name ?? null })
+    else kept.push(candidate)
+  }
+  return { candidates: kept, matched }
 }
