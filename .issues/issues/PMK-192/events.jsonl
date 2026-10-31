@@ -1,0 +1,2 @@
+{"at":"2026-10-31T19:29:35Z","by":"fred","op":"create","to":{"id":"PMK-192","title":"Validate default_branch before pause and progress put it in a shell command","type":"bug","status":"backlog","priority":"high","estimate":1,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-31T19:29:35.913Z","updated":"2026-10-31T19:29:35Z"}}
+{"at":"2026-10-31T19:29:35Z","by":"fred","op":"link","field":"related","to":"PMK-65"}
