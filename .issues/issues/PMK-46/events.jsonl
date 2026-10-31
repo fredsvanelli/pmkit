@@ -5,3 +5,5 @@
 {"at":"2026-10-31T15:55:02Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-46-add-customers-and-requests-to-the-local"}
 {"at":"2026-10-31T15:59:01Z","by":"fred","op":"comment","to":"2026-10-31T15-59-01Z-fred.md"}
 {"at":"2026-10-31T16:39:05Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-31T16:40:36Z","by":"fred","op":"comment","to":"2026-10-31T16-40-36Z-fred.md"}
+{"at":"2026-10-31T16:40:45Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
