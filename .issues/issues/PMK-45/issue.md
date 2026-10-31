@@ -2,7 +2,7 @@
 id: PMK-45
 title: Add strategic goals to the Local tracker
 type: feature
-status: in_review
+status: done
 priority: medium
 estimate: 3
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-2]
 milestone: generic-commands
 branch: pmk-45-add-strategic-goals-to-the-local-tracker
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-30T23:35:38Z
+updated: 2026-10-31T15:44:52Z
 ---
 
 ## Description
