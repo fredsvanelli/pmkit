@@ -2,7 +2,7 @@
 id: PMK-58
 title: Add the track-agents command
 type: feature
-status: in_progress
+status: in_review
 priority: medium
 estimate: 3
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-57]
 milestone: generic-commands
 branch: pmk-58-add-the-track-agents-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-31T19:40:50Z
+updated: 2026-10-31T19:44:44Z
 ---
 
 ## Description

@@ -5,3 +5,5 @@
 {"at":"2026-10-31T19:32:39Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-58-add-the-track-agents-command"}
 {"at":"2026-10-31T19:33:37Z","by":"fred","op":"comment","to":"2026-10-31T19-33-37Z-fred.md"}
 {"at":"2026-10-31T19:40:50Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-31T19:44:44Z","by":"fred","op":"comment","to":"2026-10-31T19-44-44Z-fred.md"}
+{"at":"2026-10-31T19:44:44Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
