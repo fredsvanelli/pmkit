@@ -2,12 +2,14 @@
 id: PMK-175
 title: Run npm audit through the shell on Windows in alerts list
 type: bug
-status: backlog
+status: in_review
 priority: high
 estimate: 1
+assignee: fred
 related: [PMK-48]
+branch: pmk-175-run-npm-audit-through-the-shell-on
 created: 2026-10-31T03:04:20.693Z
-updated: 2026-10-31T03:04:29Z
+updated: 2026-10-31T03:10:30Z
 ---
 
 ## Description
@@ -30,6 +32,6 @@ The second review of PR #81 found this, and the PR merged with it as a follow-up
 
 ## Acceptance criteria
 
-- [ ] `alerts list` runs `npm audit` on Windows with `shell: true`, and a test checks the spawn options for `win32`
-- [ ] A missing npm on Windows still reports `npm is not installed or not on PATH`
-- [ ] The CHANGELOG says the Windows fix under `## Unreleased`
+- [x] `alerts list` runs `npm audit` on Windows with `shell: true`, and a test checks the spawn options for `win32`
+- [x] A missing npm on Windows still reports `npm is not installed or not on PATH`
+- [x] The CHANGELOG says the Windows fix under `## Unreleased`

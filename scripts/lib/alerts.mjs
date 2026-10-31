@@ -58,6 +58,13 @@ export const NPM_TIMEOUT_MS = 60000
 /** The npm executable name: Windows needs the .cmd shim, which spawnSync does not resolve on its own. */
 export const npmCommand = (platform = process.platform) => (platform === 'win32' ? 'npm.cmd' : 'npm')
 
+/**
+ * True when the shell could not find npm.cmd. cmd.exe exits with 9009 for an unknown command in every display language,
+ * so the exit code is the main test. The English "is not recognized" text on stderr is the fallback.
+ */
+export const isNpmMissingOnShell = (result) => result.status === 9009
+  || (result.status !== 0 && /is not recognized/i.test(result.stderr ?? ''))
+
 const LOCKFILES = ['package-lock.json', 'npm-shrinkwrap.json']
 
 /** The scanners, in the order they run. `detect` says whether the repository has the scanner. */
@@ -67,14 +74,17 @@ export const SCANNERS = [
     needs: LOCKFILES.join(' or '),
     detect: (root) => LOCKFILES.some((file) => fs.existsSync(path.join(root, file))),
     // npm exits 1 when it finds vulnerabilities, so the output counts whatever the exit code is.
-    run: (root, env, { timeoutMs }) => {
-      const result = spawnSync(npmCommand(), ['audit', '--json'], { cwd: root, env, encoding: 'utf8', maxBuffer: NPM_MAX_BUFFER, timeout: timeoutMs })
+    run: (root, env, { timeoutMs, platform, spawn }) => {
+      // On Windows, Node refuses to spawn npm.cmd without a shell (EINVAL), so the call goes through cmd.exe.
+      const result = spawn(npmCommand(platform), ['audit', '--json'], { cwd: root, env, encoding: 'utf8', maxBuffer: NPM_MAX_BUFFER, timeout: timeoutMs, shell: platform === 'win32' })
       if (result.error) {
         if (result.error.code === 'ENOENT') throw new Error('npm is not installed or not on PATH')
         if (result.error.code === 'ETIMEDOUT') throw new Error(`npm audit timed out after ${timeoutMs / 1000} s`)
         if (result.error.code === 'ENOBUFS') throw new Error(`npm audit printed more than ${NPM_MAX_BUFFER / 1024 / 1024} MiB`)
         throw new Error(result.error.message)
       }
+      // With the shell, a missing npm.cmd exits non-zero and does not raise ENOENT.
+      if (platform === 'win32' && isNpmMissingOnShell(result)) throw new Error('npm is not installed or not on PATH')
       return parseNpmAudit(result.stdout)
     },
   },
@@ -86,7 +96,7 @@ const rank = (alert) => SEVERITIES.indexOf(alert.severity)
  * Runs every scanner the repository at `root` has. A scanner that fails is reported in `scanners` and `warnings`,
  * never thrown. Alerts sort by severity, then package.
  */
-export function collectAlerts(root, { env = process.env, timeoutMs = NPM_TIMEOUT_MS } = {}) {
+export function collectAlerts(root, { env = process.env, timeoutMs = NPM_TIMEOUT_MS, platform = process.platform, spawn = spawnSync } = {}) {
   const scanners = []
   const alerts = []
   const warnings = []
@@ -96,7 +106,7 @@ export function collectAlerts(root, { env = process.env, timeoutMs = NPM_TIMEOUT
       continue
     }
     try {
-      const found = scanner.run(root, env, { timeoutMs })
+      const found = scanner.run(root, env, { timeoutMs, platform, spawn })
       alerts.push(...found.alerts)
       warnings.push(...found.warnings)
       scanners.push({ id: scanner.id, detected: true, alerts: found.alerts.length })
