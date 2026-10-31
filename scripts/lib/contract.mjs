@@ -15,6 +15,7 @@ export const TRACKER_OPERATIONS = [
   'readDocument', 'createDocument', 'listDocuments',
   'saveView', 'listViews', 'runView',
   'listGoals', 'getGoal', 'createGoal', 'goalProgress', 'setEpicGoal',
+  'listCustomers', 'getCustomer', 'createCustomer', 'listRequests', 'getRequest', 'createRequest', 'acceptRequest', 'declineRequest', 'listDemandSignals',
   'logTime', 'listTimeEntries',
 ]
 

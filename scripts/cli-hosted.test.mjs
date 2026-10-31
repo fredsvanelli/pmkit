@@ -152,9 +152,13 @@ test('the linear commands are the triage and customers commands and stay out of 
   assert.ok(MIRRORED.every((command) => !command.linear))
 })
 
-test('the customers feature adds no contract operation', async () => {
-  const { TRACKER_OPERATIONS } = await import('./lib/contract.mjs')
-  assert.ok(!TRACKER_OPERATIONS.includes('customers') && TRACKER_OPERATIONS.every((operation) => !/customer/i.test(operation)))
+// PMK-46 added customer and request operations that every tracker implements. The Linear-only `customers` extension of PMK-42 stays outside the contract.
+test('the Linear customers extension stays outside the contract', async () => {
+  const { TRACKER_OPERATIONS, contractView } = await import('./lib/contract.mjs')
+  assert.ok(!TRACKER_OPERATIONS.includes('customers'))
+  for (const operation of ['list', 'show', 'set']) assert.ok(!TRACKER_OPERATIONS.includes(operation), operation)
+  const tracker = Object.fromEntries(TRACKER_OPERATIONS.map((name) => [name, () => {}]))
+  assert.ok(!('customers' in contractView({ ...tracker, customers: { list() {} } })))
 })
 
 async function runCopy(fixture, argv, { mirror }) {
