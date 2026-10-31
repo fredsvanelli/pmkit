@@ -1,0 +1,32 @@
+$ pmkit requests get REQ-6J8P
+exit 0
+--- stdout
+id: REQ-6J8P
+title: Export the board to CSV
+state: open
+from: support
+created: 2026-10-15T08:00:00.000Z
+
+Two tickets this week asked for it.
+--- stderr
+(empty)
+
+$ pmkit requests get REQ-6J8P --json
+exit 0
+--- stdout
+{
+  "id": "REQ-6J8P",
+  "title": "Export the board to CSV",
+  "body": "Two tickets this week asked for it.",
+  "priority": 0,
+  "important": false,
+  "customer": null,
+  "from": "support",
+  "state": "open",
+  "target": null,
+  "created": "2026-10-15T08:00:00.000Z",
+  "triaged": null,
+  "reason": null
+}
+--- stderr
+(empty)

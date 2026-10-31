@@ -1,0 +1,72 @@
+$ pmkit customers create --name 'Golden customer' --tier gold --revenue 5000
+exit 0
+--- stdout
+CUS-1
+id: CUS-1
+name: Golden customer
+tier: gold
+revenue: 5000
+requests: 0
+--- stderr
+(empty)
+
+$ pmkit customers create --name 'Golden customer' --tier gold --revenue 5000 --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "id": "CUS-1",
+    "name": "Golden customer",
+    "status": null,
+    "tier": {
+      "id": "gold",
+      "name": "gold"
+    },
+    "revenue": 5000,
+    "size": null,
+    "owner": null,
+    "requests": 0,
+    "url": null,
+    "notes": ""
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit customers create --name 'Golden customer' --tier gold --revenue 5000 --dry-run
+exit 0
+--- stdout
+CUS-1
+id: CUS-1
+name: Golden customer
+tier: gold
+revenue: 5000
+requests: 0
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit customers create --name 'Golden customer' --tier gold --revenue 5000 --dry-run --json
+exit 0
+--- stdout
+{
+  "before": null,
+  "after": {
+    "id": "CUS-1",
+    "name": "Golden customer",
+    "status": null,
+    "tier": {
+      "id": "gold",
+      "name": "gold"
+    },
+    "revenue": 5000,
+    "size": null,
+    "owner": null,
+    "requests": 0,
+    "url": null,
+    "notes": ""
+  }
+}
+--- stderr
+(empty)

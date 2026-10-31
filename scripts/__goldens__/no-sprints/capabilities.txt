@@ -5,7 +5,7 @@ tracker: local
 git host: none
 
 Capability           | Path    | Detail
----------------------|---------|----------------------------------------------------------------
+---------------------|---------|------------------------------------------------------------
 cycles               | native  |
 estimation           | native  | unit=points scale=1/2/3/5/8/13
 multilevel_hierarchy | native  |
@@ -19,8 +19,8 @@ capacity             | native  |
 native_metrics       | derived | source=events
 saved_views          | native  |
 documents            | native  |
-demand_signals       | absent  | No pmkit command serves demand_signals in the Local tracker yet
-request_queue        | absent  | No pmkit command serves request_queue in the Local tracker yet
+demand_signals       | native  |
+request_queue        | native  |
 time_tracking        | native  |
 linked_code          | derived | Set git_host in .pmkit/config.yaml
 agent_delegation     | derived | source=assignee run=local
@@ -105,13 +105,11 @@ exit 0
     },
     {
       "id": "demand_signals",
-      "path": "absent",
-      "enableHint": "No pmkit command serves demand_signals in the Local tracker yet"
+      "path": "native"
     },
     {
       "id": "request_queue",
-      "path": "absent",
-      "enableHint": "No pmkit command serves request_queue in the Local tracker yet"
+      "path": "native"
     },
     {
       "id": "time_tracking",

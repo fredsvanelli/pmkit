@@ -53,6 +53,15 @@ const REFUSALS = [
   ['goal', 'progress', 'GOAL-1'],
   ['epic', 'goal', 'P-ACM-1', 'GOAL-1'],
   ['epic', 'create', '--title', 'E', '--goal', 'GOAL-1'],
+  ['customers', 'list'],
+  ['customers', 'show', 'CUS-1'],
+  ['customers', 'create', '--name', 'Acme'],
+  ['requests', 'list'],
+  ['requests', 'get', 'REQ-1'],
+  ['requests', 'create', '--title', 'R'],
+  ['requests', 'accept', 'REQ-1', 'ACME-1'],
+  ['requests', 'decline', 'REQ-1'],
+  ['demand', 'list'],
 ]
 
 for (const args of REFUSALS) {
@@ -79,6 +88,8 @@ const COVERED = {
   'pr open': 'PATH_CASES', 'pr ready': 'PATH_CASES', 'pr status': 'PATH_CASES', 'pr sync': 'PATH_CASES', 'deploys list': 'PATH_CASES', 'ci logs': 'PATH_CASES', 'pr diff': 'PATH_CASES', 'pr blockers': 'PATH_CASES',
   'views list': 'REFUSALS', 'views save': 'REFUSALS', 'views run': 'REFUSALS',
   'goal list': 'REFUSALS', 'goal get': 'REFUSALS', 'goal create': 'REFUSALS', 'goal progress': 'REFUSALS', 'epic goal': 'REFUSALS',
+  'customers list': 'REFUSALS', 'customers show': 'REFUSALS', 'customers create': 'REFUSALS', 'demand list': 'REFUSALS',
+  'requests list': 'REFUSALS', 'requests get': 'REFUSALS', 'requests create': 'REFUSALS', 'requests accept': 'REFUSALS', 'requests decline': 'REFUSALS',
   'alerts list': 'REPO_SCAN',
   'issues delegate': 'REFUSALS',
 }

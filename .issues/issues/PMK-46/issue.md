@@ -2,14 +2,16 @@
 id: PMK-46
 title: Add customers and requests to the Local tracker
 type: feature
-status: backlog
+status: in_review
 priority: medium
 estimate: 5
+assignee: fred
 parent: EPC-6
 blocked_by: [PMK-2]
 milestone: generic-commands
+branch: pmk-46-add-customers-and-requests-to-the-local
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-25T19:13:25Z
+updated: 2026-10-31T16:40:45Z
 ---
 
 ## Description
@@ -18,6 +20,6 @@ Source: Local adapter, Entity mapping ("`customers/*.md` and `requests/*.md`, li
 
 ## Acceptance criteria
 
-- [ ] `customers/` and `requests/` hold records linked to issues
-- [ ] The CLI lists demand signals and requests
-- [ ] `capabilities` reports `demand_signals` and `request_queue` as native
+- [x] `customers/` and `requests/` hold records linked to issues
+- [x] The CLI lists demand signals and requests
+- [x] `capabilities` reports `demand_signals` and `request_queue` as native

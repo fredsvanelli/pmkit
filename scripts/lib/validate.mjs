@@ -14,6 +14,8 @@ import { parseRelease, releaseStems, validReleaseId } from './local/releases.mjs
 import { checkFilter } from './local/query.mjs'
 import { parseView, validViewName, viewStems } from './local/views.mjs'
 import { GOAL_PREFIX, goalStems, parseGoal } from './local/goals.mjs'
+import { CUSTOMER_PREFIX, mdStems, parseCustomer } from './local/customers.mjs'
+import { REQUEST_PREFIX, parseRequest } from './local/requests.mjs'
 import { hasConflictMarkers, parseIssueFile, toFrontmatter } from './local/issue-file.mjs'
 import { overlaps, readSprint, sprintFileExists } from './local/sprints.mjs'
 
@@ -282,6 +284,33 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
     }
   }
 
+  // Customers and requests (PMK-46). Their references are checked with the other references, below.
+  const recordFiles = (folder, prefix, code, parse, check) => {
+    const dir = path.join(issuesDir, folder)
+    const ids = mdStems(dir)
+    const parsed = []
+    for (const id of [...ids].sort()) {
+      const file = path.join(dir, `${id}.md`)
+      if (conflicted.has(file)) continue
+      if (!isId(id, prefix)) {
+        add(file, code, `${code} file ${id}.md is not named after a ${code} id such as ${prefix}-1`)
+        continue
+      }
+      try {
+        const record = parse(read(file), id)
+        check(file, record)
+        parsed.push({ file, record })
+      } catch (error) {
+        add(file, code, error.message)
+      }
+    }
+    return { ids, parsed }
+  }
+  const customerFiles = recordFiles('customers', CUSTOMER_PREFIX, 'customer', parseCustomer, (file, customer) => {
+    if (customer.owner !== undefined && !Object.hasOwn(local.members, customer.owner)) add(file, 'customer', `owner "${customer.owner}" is not a member`)
+  })
+  const requestFiles = recordFiles('requests', REQUEST_PREFIX, 'request', parseRequest, () => {})
+
   // Issues
   const folders = subdirs(path.join(issuesDir, 'issues'))
   const byNormalized = new Map()
@@ -345,6 +374,10 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
   for (const [name, epic] of epics) {
     if (milestoneMissing(epic.milestone)) add(path.join(issuesDir, 'epics', name, 'epic.md'), 'reference', `milestone ${epic.milestone} does not exist`)
     if (epic.goal !== undefined && !goalIds.has(epic.goal)) add(path.join(issuesDir, 'epics', name, 'epic.md'), 'reference', `goal ${epic.goal} does not exist`)
+  }
+  for (const { file, record } of requestFiles.parsed) {
+    if (record.customer !== undefined && !customerFiles.ids.has(record.customer)) add(file, 'reference', `customer ${record.customer} does not exist`)
+    if (record.issue !== undefined && !folderSet.has(record.issue)) add(file, 'reference', `issue ${record.issue} does not exist`)
   }
 
   // Cycles

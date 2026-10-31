@@ -1537,6 +1537,10 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'views save': ['mine', '--category', 'done'],
     'goal create': ['--title', 'New goal'],
     'epic goal': ['EPC-2M9D', 'none'],
+    'customers create': ['--name', 'Acme'],
+    'requests create': ['--title', 'CSV export'],
+    'requests accept': ['REQ-1', 'ISS-5N1R'],
+    'requests decline': ['REQ-1'],
     'issues branch': ['ISS-5N1R'],
     'pr open': ['--issue', 'ISS-5N1R'],
     'pr ready': ['--issue', 'ISS-5N1R'],
@@ -1636,6 +1640,11 @@ test('every read goes on with one warning', () => {
     'goal list': [],
     'goal get': ['GOAL-1'],
     'goal progress': ['GOAL-1'],
+    'customers list': [],
+    'customers show': ['CUS-1'],
+    'requests list': [],
+    'requests get': ['REQ-1'],
+    'demand list': [],
     'docs read': ['missing.md'],
     'metrics velocity': [],
     'metrics cycle-time': [],
@@ -2200,4 +2209,49 @@ test('goal list warns about a goal file that does not parse', () => {
   assert.equal(result.status, 0, result.stderr)
   assert.equal(result.stdout.trim(), 'no goals')
   assert.match(result.stderr, /GOAL-1.*run pmkit validate/)
+})
+
+test('customers, requests and demand record a request, accept it into an issue and list it as demand', () => {
+  const root = makeRepo('team')
+  assert.deepEqual(json(root, ['customers', 'list']), { available: true, customers: [], hasMore: false, problems: [] })
+  assert.equal(run(root, ['requests', 'list']).stdout.trim(), 'no open requests')
+  const customer = json(root, ['customers', 'create', '--name', 'Acme', '--tier', 'gold', '--revenue', '1000', '--size', '12.5', '--owner', 'fred']).after
+  assert.deepEqual([customer.tier, customer.revenue, customer.size, customer.owner], [{ id: 'gold', name: 'gold' }, 1000, 12.5, { id: 'fred', name: 'Fred Vanelli' }])
+  assert.equal(errorOf(run(root, ['customers', 'create', '--name', 'B', '--revenue', 'lots', '--json'])).code, 'INVALID_INPUT')
+  const body = path.join(tempDir('pmkit-req-'), 'body.md')
+  fs.writeFileSync(body, 'Columns out of order.\r\n')
+  const request = json(root, ['requests', 'create', '--title', 'CSV order', '--customer', customer.id, '--important', '--body-file', body]).after
+  assert.equal(request.state, 'open')
+  assert.equal(request.body, 'Columns out of order.')
+  assert.deepEqual(json(root, ['requests', 'list']).requests.map((item) => item.id), [request.id])
+  const hash = hashTree(root)
+  const dry = run(root, ['requests', 'accept', request.id, 'ISS-5N1R', '--dry-run'])
+  assert.match(dry.stdout, /dry run: nothing was written/)
+  assert.deepEqual(hashTree(root), hash)
+  const accepted = json(root, ['requests', 'accept', request.id, 'ISS-5N1R']).after
+  assert.equal(accepted.target.id, 'ISS-5N1R')
+  assert.deepEqual(json(root, ['requests', 'list']).requests, [])
+  assert.equal(json(root, ['requests', 'list', '--state', 'accepted']).requests[0].id, request.id)
+  const shown = json(root, ['customers', 'show', 'acme'])
+  assert.deepEqual(Object.keys(shown), ['available', 'customer', 'requests', 'problems'])
+  assert.equal(shown.customer.requests, 1)
+  const demand = json(root, ['demand', 'list'])
+  assert.equal(demand.signals[0].issue.id, 'ISS-5N1R')
+  assert.equal(demand.signals[0].customers[0].name, 'Acme')
+  assert.match(run(root, ['demand', 'list']).stdout, /ISS-5N1R/)
+  const declined = json(root, ['requests', 'decline', request.id, '--reason', 'Fixed already']).after
+  assert.deepEqual([declined.state, declined.reason, declined.target], ['declined', 'Fixed already', null])
+  assert.deepEqual(json(root, ['demand', 'list']).signals, [])
+})
+
+test('a broken request file is a warning that points to pmkit validate, in the text and in the JSON', () => {
+  const root = makeRepo('team')
+  fs.mkdirSync(path.join(root, '.issues', 'requests'), { recursive: true })
+  fs.writeFileSync(path.join(root, '.issues', 'requests', 'REQ-1.md'), '---\ntitle: [\n---\n')
+  for (const args of [['requests', 'list'], ['demand', 'list'], ['customers', 'list']]) {
+    const result = run(root, [...args, '--json'])
+    assert.equal(result.status, 0, args.join(' '))
+    assert.match(result.stderr, /warning: REQ-1: INVALID_INPUT .*; run pmkit validate/, args.join(' '))
+    assert.equal(JSON.parse(result.stdout).problems[0].id, 'REQ-1', args.join(' '))
+  }
 })

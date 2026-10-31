@@ -141,6 +141,8 @@ const WRITES = [
   { args: ['docs', 'create', 'notes.md', '--body-file', '-'], input: 'hello\n', expectedMessage: 'pmkit: docs create notes.md' },
   { args: ['views', 'save', 'mine', '--category', 'done'], expectedMessage: 'pmkit: views save mine' },
   { args: ['goal', 'create', '--title', 'G'], expectedMessage: /^pmkit: goal create GOAL-[0-9A-Z]{4}$/ },
+  { args: ['customers', 'create', '--name', 'Acme'], expectedMessage: /^pmkit: customers create CUS-[0-9A-Z]{4}$/ },
+  { args: ['requests', 'create', '--title', 'R'], expectedMessage: /^pmkit: requests create REQ-[0-9A-Z]{4}$/ },
 ]
 
 const head = (root) => git(root, 'rev-parse', 'HEAD').stdout.trim()

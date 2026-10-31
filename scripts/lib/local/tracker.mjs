@@ -24,6 +24,8 @@ import { hasMilestoneFiles, milestoneStems, parseMilestone, serializeMilestone, 
 import { parseRelease, releaseStems, serializeRelease, sortReleases, validReleaseId, validTag } from './releases.mjs'
 import { parseView, serializeView, validViewName, viewStems } from './views.mjs'
 import { GOAL_PREFIX, goalStems, parseGoal, serializeGoal, sortGoals } from './goals.mjs'
+import { CUSTOMER_PREFIX, mdStems, parseCustomer, serializeCustomer, sortCustomers } from './customers.mjs'
+import { REQUEST_KEYS, REQUEST_PREFIX, REQUEST_STATES, groupDemand, parseRequest, serializeRequest, sortRequests } from './requests.mjs'
 import { checkFilter, runQuery } from './query.mjs'
 import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
 import { CACHE_DIR, INDEX_FILE, clearIndex, indexHeader, readThroughIndex } from './query-index.mjs'
@@ -1134,7 +1136,293 @@ export function createLocalTracker(root, {
     return { before, after }
   }
 
-  const readMilestone = (id) => parseMilestone(fs.readFileSync(path.join(milestonesDir, `${id}.md`), 'utf8'), id)
+  // Customers and requests (PMK-46). The records use the keys of Linear's customer and request views.
+  // See docs/superpowers/specs/2026-10-31-pmk-46-customers-and-requests-design.md.
+  const customersDir = path.join(issuesDir, 'customers')
+  const requestsDir = path.join(issuesDir, 'requests')
+  const CUSTOMER = { dir: customersDir, prefix: CUSTOMER_PREFIX, label: 'customer', parse: parseCustomer, list: 'pmkit customers list' }
+  const REQUEST = { dir: requestsDir, prefix: REQUEST_PREFIX, label: 'request', parse: parseRequest, list: 'pmkit requests list' }
+  const problemOf = (id, error) => ({ id, code: error.code, message: error.message })
+
+  /** Every file of a record folder. A stem that is not an id of the kind, or a file that does not parse, is skipped and reported. */
+  function readRecords({ dir, prefix, label, parse }) {
+    const records = []
+    const problems = []
+    for (const stem of [...mdStems(dir)].sort()) {
+      if (!isId(stem, prefix)) {
+        problems.push({ id: stem, code: 'INVALID_INPUT', message: `${label} file ${stem}.md is not named after a ${label} id such as ${prefix}-1` })
+        continue
+      }
+      try {
+        records.push(parse(fs.readFileSync(path.join(dir, `${stem}.md`), 'utf8'), stem))
+      } catch (error) {
+        if (!(error instanceof PmkitError)) throw error
+        problems.push(problemOf(stem, error))
+      }
+    }
+    return { records, problems }
+  }
+
+  /** One record file. The normalized id is checked before a path is built, so no input reaches outside the folder. */
+  function readRecord({ dir, prefix, label, parse, list }, id) {
+    const normalized = normalizeId(String(id))
+    if (!isId(normalized, prefix) || !mdStems(dir).has(normalized)) throw new PmkitError('NOT_FOUND', `${label} ${id} does not exist`, list)
+    return parse(fs.readFileSync(path.join(dir, `${normalized}.md`), 'utf8'), normalized)
+  }
+
+  const named = (value) => (value === undefined ? null : { id: value, name: value })
+
+  function customerView(customer, requests) {
+    return {
+      id: customer.id, name: customer.name, status: named(customer.status), tier: named(customer.tier),
+      revenue: customer.revenue ?? null, size: customer.size ?? null,
+      owner: customer.owner === undefined ? null : { id: customer.owner, name: local.members[customer.owner]?.name ?? null },
+      requests: requests.filter((request) => request.customer === customer.id).length, url: null, notes: customer.notes,
+    }
+  }
+
+  /** Reads issues once each. A miss or a file that does not parse gives null, and the caller reports it. */
+  function issueReader() {
+    const cache = new Map()
+    return (id) => {
+      if (!cache.has(id)) {
+        try {
+          cache.set(id, { issue: readIssue(id).issue })
+        } catch (error) {
+          if (!(error instanceof PmkitError)) throw error
+          cache.set(id, { error })
+        }
+      }
+      return cache.get(id)
+    }
+  }
+
+  /**
+   * Request records with their customer name and issue title. A customer or an issue that cannot be read keeps its id with a
+   * null name or title, and a problem names the request, so a read never guesses.
+   */
+  function requestViews(requests, customers, readIssueOnce = issueReader()) {
+    const byId = new Map(customers.map((customer) => [customer.id, customer]))
+    const problems = []
+    const views = requests.map((request) => {
+      let customer = null
+      if (request.customer !== undefined) {
+        const found = byId.get(request.customer)
+        if (!found) problems.push({ id: request.id, code: 'NOT_FOUND', message: `request ${request.id} names customer ${request.customer}, which has no readable file` })
+        customer = { id: request.customer, name: found?.name ?? null }
+      }
+      let target = null
+      if (request.issue !== undefined) {
+        const { issue, error } = readIssueOnce(request.issue)
+        if (error) problems.push({ id: request.id, code: error.code, message: `request ${request.id} names issue ${request.issue}, which cannot be read: ${error.message}` })
+        target = { type: 'issue', id: request.issue, title: issue?.title ?? null, ...(issue?.archived ? { archived: true } : {}) }
+      }
+      return {
+        id: request.id, title: request.title, body: request.body, priority: request.important ? 1 : 0, important: request.important, customer,
+        from: request.from ?? null, state: request.state, target, created: request.created ?? null,
+        triaged: request.triaged ? { at: request.triaged, by: request.triagedBy ?? null } : null, reason: request.reason ?? null,
+      }
+    })
+    return { views, problems }
+  }
+
+  function listCustomers() {
+    const customers = readRecords(CUSTOMER)
+    // A request file that does not parse could hold a customer, so its problem tells the reader the counts may be short.
+    const requests = readRecords(REQUEST)
+    const views = customers.records.map((customer) => customerView(customer, requests.records))
+    return { customers: sortCustomers(views), problems: [...customers.problems, ...requests.problems] }
+  }
+
+  /** A customer by id, or by a name matched exactly and case-insensitively, with its requests in creation order. */
+  function getCustomer(ref) {
+    const all = readRecords(CUSTOMER)
+    const normalized = normalizeId(String(ref ?? ''))
+    let customer
+    if (isId(normalized, CUSTOMER_PREFIX) && mdStems(customersDir).has(normalized)) {
+      customer = readRecord(CUSTOMER, normalized)
+    } else {
+      const matches = all.records.filter((item) => item.name.toLowerCase() === String(ref ?? '').trim().toLowerCase())
+      if (matches.length > 1) throw invalid(`${matches.length} customers are named "${ref}"`, `Pass one of these ids: ${matches.map((item) => item.id).join(', ')}`)
+      if (matches.length === 0) throw new PmkitError('NOT_FOUND', `no customer is named or identified "${ref}"`, 'pmkit customers list')
+      customer = matches[0]
+    }
+    const requests = readRecords(REQUEST)
+    const own = sortRequests(requests.records.filter((request) => request.customer === customer.id))
+    const { views, problems } = requestViews(own, all.records)
+    return { customer: customerView(customer, requests.records), requests: views, problems: [...requests.problems, ...problems] }
+  }
+
+  const oneLineText = (field, value) => {
+    const trimmed = text(field)(value).trim()
+    if (trimmed === '') throw invalid(`${field} must not be empty`)
+    return oneLine(field, trimmed)
+  }
+
+  /** The id of the next record of a folder, by id_style. */
+  function nextRecordId({ dir, prefix }) {
+    const stems = mdStems(dir)
+    return local.id_style === 'numbered' ? nextNumberedId(prefix, [...stems]) : newId(prefix, { random, exists: (candidate) => stems.has(candidate) })
+  }
+
+  function createCustomer(input, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const allowed = ['name', 'status', 'tier', 'revenue', 'size', 'owner', 'notes']
+    for (const key of Object.keys(input)) {
+      if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+    }
+    if (typeof input.name !== 'string' || input.name.trim() === '') throw invalid('name is required')
+    const customer = { name: oneLineText('name', input.name), notes: '' }
+    for (const key of ['status', 'tier']) if (!blank(input[key])) customer[key] = oneLineText(key, input[key])
+    if (!blank(input.revenue)) {
+      if (!Number.isInteger(input.revenue) || input.revenue < 0) throw invalid('revenue must be a whole number of at least 0')
+      customer.revenue = input.revenue
+    }
+    if (!blank(input.size)) {
+      if (typeof input.size !== 'number' || !Number.isFinite(input.size) || input.size < 0) throw invalid('size must be a number of at least 0')
+      customer.size = input.size
+    }
+    if (!blank(input.owner)) customer.owner = requireMember(input.owner, 'owner')
+    if (!blank(input.notes)) customer.notes = plainText('notes', input.notes)
+    const id = nextRecordId(CUSTOMER)
+    const content = serializeCustomer(customer)
+    const after = readBack('customer file', () => parseCustomer(content, id))
+    if (!dryRun) {
+      fs.mkdirSync(customersDir, { recursive: true })
+      writeFile(path.join(customersDir, `${id}.md`), content)
+    }
+    return { before: null, after: customerView(after, []) }
+  }
+
+  /** The normalized id of a customer whose file exists and parses. */
+  function requireCustomer(value) {
+    try {
+      return readRecord(CUSTOMER, text('customer')(value)).id
+    } catch (error) {
+      if (error instanceof PmkitError && error.code === 'NOT_FOUND') throw invalid(`customer ${value} does not exist`, 'pmkit customers list')
+      throw error
+    }
+  }
+
+  /** The normalized id of an issue whose file exists and parses. The issue folder is only read. */
+  function requireRequestIssue(value) {
+    try {
+      return readIssue(text('issue')(value)).issue.id
+    } catch (error) {
+      if (error instanceof PmkitError && error.code === 'NOT_FOUND') throw invalid(`issue ${value} does not exist`, 'pmkit issues list')
+      throw error
+    }
+  }
+
+  const viewOfRequest = (request) => requestViews([request], readRecords(CUSTOMER).records).views[0]
+
+  const getRequest = (id) => viewOfRequest(readRecord(REQUEST, id))
+
+  function listRequests({ state = 'open', customer } = {}) {
+    if (![...REQUEST_STATES, 'all'].includes(state)) throw invalid(`state must be one of ${[...REQUEST_STATES, 'all'].join(', ')}`)
+    const requests = readRecords(REQUEST)
+    const wanted = blank(customer) ? undefined : normalizeId(String(customer))
+    const chosen = requests.records.filter((request) => (state === 'all' || request.state === state) && (wanted === undefined || request.customer === wanted))
+    const { views, problems } = requestViews(sortRequests(chosen), readRecords(CUSTOMER).records)
+    return { requests: views, problems: [...requests.problems, ...problems] }
+  }
+
+  function createRequest(input, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const allowed = ['title', 'body', 'customer', 'from', 'important', 'issue']
+    for (const key of Object.keys(input)) {
+      if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+    }
+    const request = { title: NORMALIZE.title(input.title), body: blank(input.body) ? '' : plainText('body', input.body) }
+    if (!blank(input.customer)) request.customer = requireCustomer(input.customer)
+    if (!blank(input.from)) request.from = oneLineText('from', input.from)
+    if (!blank(input.important) && typeof input.important !== 'boolean') throw invalid('important must be true or false')
+    request.important = input.important === true
+    request.created = createdStamp()
+    request.state = 'open'
+    if (!blank(input.issue)) {
+      request.state = 'accepted'
+      request.issue = requireRequestIssue(input.issue)
+    }
+    const id = nextRecordId(REQUEST)
+    const content = serializeRequest(request)
+    const after = readBack('request file', () => parseRequest(content, id))
+    if (!dryRun) {
+      fs.mkdirSync(requestsDir, { recursive: true })
+      writeFile(path.join(requestsDir, `${id}.md`), content)
+    }
+    return { before: null, after: viewOfRequest(after) }
+  }
+
+  /**
+   * Rewrites the state keys of a request. The stored map is edited, not the parsed request, so keys pmkit does not know and
+   * the body stay as they are. A change that leaves the state as it was writes nothing.
+   */
+  function triage(id, actor, { dryRun }, change) {
+    requireWriter(actor)
+    const stored = readRecord(REQUEST, id)
+    const before = viewOfRequest(stored)
+    const file = path.join(requestsDir, `${stored.id}.md`)
+    const { data, body } = parseFile(fs.readFileSync(file, 'utf8'), `request ${stored.id}`)
+    if (!change(stored, data)) return { before, after: before }
+    data.triaged = stamp()
+    data.triaged_by = actor
+    const content = joinFrontmatter(data, body ? `${body}\n` : '', { order: REQUEST_KEYS })
+    const after = viewOfRequest(readBack('request file', () => parseRequest(content, stored.id)))
+    if (!dryRun) writeFile(file, body ? content : content.replace(/\n\n$/, '\n'))
+    return { before, after }
+  }
+
+  /** Accepts a request into an existing issue, from any state. */
+  function acceptRequest(id, issue, actor, options = {}) {
+    requireWriter(actor)
+    const target = requireRequestIssue(issue)
+    return triage(id, actor, { dryRun: options.dryRun === true }, (stored, data) => {
+      if (stored.state === 'accepted' && stored.issue === target) return false
+      data.state = 'accepted'
+      data.issue = target
+      delete data.reason
+      return true
+    })
+  }
+
+  /** Declines a request, from any state, with an optional one-line reason. */
+  function declineRequest(id, reason, actor, options = {}) {
+    requireWriter(actor)
+    const why = blank(reason) ? undefined : oneLineText('reason', reason)
+    return triage(id, actor, { dryRun: options.dryRun === true }, (stored, data) => {
+      if (stored.state === 'declined' && stored.reason === why) return false
+      data.state = 'declined'
+      delete data.issue
+      delete data.reason
+      if (why !== undefined) data.reason = why
+      return true
+    })
+  }
+
+  /** The accepted requests grouped by issue, with the issue and the customers who asked. See groupDemand for the order. */
+  function listDemandSignals() {
+    const requests = readRecords(REQUEST)
+    const customers = new Map(readRecords(CUSTOMER).records.map((customer) => [customer.id, customer]))
+    const readIssueOnce = issueReader()
+    const problems = [...requests.problems]
+    const signals = groupDemand(sortRequests(requests.records)).map((group) => {
+      const { issue, error } = readIssueOnce(group.issue)
+      if (error) problems.push({ id: group.issue, code: error.code, message: `requests ${group.requests.join(', ')} name issue ${group.issue}, which cannot be read: ${error.message}` })
+      return {
+        ...group,
+        issue: { id: group.issue, title: issue?.title ?? null, status: issue?.status ?? null, priority: issue?.priority ?? null },
+        customers: group.customers.map((customerId) => {
+          const found = customers.get(customerId)
+          if (!found) problems.push({ id: customerId, code: 'NOT_FOUND', message: `customer ${customerId} has no readable file; its name, tier and revenue are unknown` })
+          return { id: customerId, name: found?.name ?? null, tier: named(found?.tier), revenue: found?.revenue ?? null, size: found?.size ?? null }
+        }),
+      }
+    })
+    return { signals, problems }
+  }
+
+  const readMilestone =(id) => parseMilestone(fs.readFileSync(path.join(milestonesDir, `${id}.md`), 'utf8'), id)
 
   function getMilestone(id) {
     if (!validMilestoneId(id) || !milestoneStems(milestonesDir).has(id)) {
@@ -1365,6 +1653,7 @@ export function createLocalTracker(root, {
   return {
     saveView, listViews, runView,
     listGoals, getGoal, createGoal, goalProgress, setEpicGoal,
+    listCustomers, getCustomer, createCustomer, listRequests, getRequest, createRequest, acceptRequest, declineRequest, listDemandSignals,
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     listMilestones, getMilestone, createMilestone, unfiledMilestones,
     listReleases, getRelease, createRelease, releaseIssues, markReleased,
