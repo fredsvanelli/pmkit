@@ -1,0 +1,56 @@
+$ pmkit issues parse-time 1h30
+exit 0
+--- stdout
+1h30 is 90 minutes
+--- stderr
+(empty)
+
+$ pmkit issues parse-time 1h30 --json
+exit 0
+--- stdout
+{
+  "input": "1h30",
+  "minutes": 90,
+  "note": null
+}
+--- stderr
+(empty)
+
+$ pmkit issues parse-time 1500
+exit 0
+--- stdout
+1500 is 1500 minutes
+--- stderr
+note: 1500 minutes (25h) is more than a day; check the time before you confirm
+
+$ pmkit issues parse-time 1500 --json
+exit 0
+--- stdout
+{
+  "input": "1500",
+  "minutes": 1500,
+  "note": "1500 minutes (25h) is more than a day; check the time before you confirm"
+}
+--- stderr
+note: 1500 minutes (25h) is more than a day; check the time before you confirm
+
+$ pmkit issues parse-time 0
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: "0" is not a valid time: it must be above zero
+next: Use minutes (90 or 45m) or hours (1h30, 1h30m, 1.5h, 2h), from 1 minute up.
+
+$ pmkit issues parse-time 0 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "\"0\" is not a valid time: it must be above zero",
+    "nextStep": "Use minutes (90 or 45m) or hours (1h30, 1h30m, 1.5h, 2h), from 1 minute up."
+  }
+}
+--- stderr
+(empty)

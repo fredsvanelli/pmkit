@@ -19,6 +19,7 @@ export default {
     { step: '5', read: ['issues', 'time-entries', 'ISS-5N1R'] },
   ],
   skip: {
+    '6 issues parse-time': 'the Local tracker has time tracking, so the command does not read the time for a comment',
     '6 issues comment': 'the Local tracker has time tracking, so the command logs the entry and does not comment it',
   },
   notHit: {

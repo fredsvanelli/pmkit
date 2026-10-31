@@ -13,6 +13,7 @@ test('the command file reads time_tracking and comments when it is absent', () =
   assert.match(step(text, 1), /`time_tracking`.*`absent`.*never calls `issues log-time`.*`enableHint`/)
   assert.match(step(text, 6), /only when step 1 found `absent`.*issues comment/)
   assert.match(step(text, 4), /Skip this step and step 5 when step 1 found `absent`/)
+  assert.match(step(text, 6), /issues parse-time <time> --json.*Post nothing for a time the CLI cannot read.*minutes/)
   assert.match(step(text, 5), /issues time-entries .*`total`/)
 })
 

@@ -54,6 +54,7 @@ export const CASES = {
   'issues resolve': (a) => [[a.issue, 'missing-comment']],
   'issues log-time': (a) => [[a.issue, '30']],
   'issues time-entries': (a) => [[a.issue]],
+  'issues parse-time': () => [['1h30'], ['1500'], ['0']],
   'issues archive': (a) => [[a.issue]],
   'issues delete': (a) => [[a.issue]],
   'cycle list': () => [[], ['--state', 'closed']],

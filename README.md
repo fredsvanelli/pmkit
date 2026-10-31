@@ -81,7 +81,8 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `issues link <from> <to> --kind blocks\|related\|duplicate` | links or unlinks (`--remove`) two issues |
 | `issues parent <id> <parent\|none>` | sets the parent |
 | `issues comment <id> --body-file f` | adds a comment |
-| `issues log-time <id> <time>` | logs time; `<time>` is minutes (`90`, `45m`) or hours (`2h`, `1h30`, `1.5h`), from 1 minute to 24 hours |
+| `issues log-time <id> <time>` | logs time; `<time>` is minutes (`90`, `45m`) or hours (`2h`, `1h30`, `1.5h`), from 1 minute with no upper limit (an entry above 24 hours prints a `note:`); the capability is checked before the time, so a tracker with no time tracking refuses first |
+| `issues parse-time <time>` | reads a time as minutes, with `note` set above 24 hours; needs no tracker and writes nothing |
 | `issues time-entries <id>` | lists the time logged on an issue, with the total |
 | `issues archive <id>` | archives an issue |
 | `issues delete <id>` | deletes an issue for good, and refuses while another issue lists it as blocked by, related, duplicate of or parent. `--dry-run` is the full preview. Archive keeps the record and its history, delete does not |
