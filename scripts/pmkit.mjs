@@ -19,6 +19,7 @@ import { buildNotes, chooseBasis } from './lib/release-notes.mjs'
 import { dependencyMap, serializable } from './lib/dependencies.mjs'
 import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 import { pathNote } from './lib/path-notes.mjs'
+import { planNextAdr } from './lib/adr.mjs'
 import { NO_MOVE_MESSAGES, chooseUnit, proposeMoves, teamLoad } from './lib/team-load.mjs'
 import { changeList, checkMembers, mergeCapacity, parseCapacityPairs, workingDays } from './lib/team-capacity.mjs'
 import { localRunLine } from './lib/delegation.mjs'
@@ -1056,6 +1057,37 @@ export const COMMANDS = [
       const docs = await (await ctx.tracker()).listDocuments()
       const text = docs.length === 0 ? 'no documents' : docs.map((doc) => doc.path).join('\n')
       return { data: docs, text }
+    },
+  },
+  {
+    name: 'docs next-adr', summary: 'the number, slug and path of the next ADR, and where it goes (repo or tracker); only reads', usage: '--title t', args: [], flags: ['title'], byTracker: true,
+    run: async (ctx) => {
+      if (typeof ctx.opt('title') !== 'string') throw usageError('docs next-adr needs --title', 'Pass the decision title, for example --title "Use event files as the audit log"')
+      const { pmkit, hosted, issuesDir } = ctx.config()
+      // A hosted tracker needs no call: the Linear adapter cannot create documents, so its ADR is a repository file.
+      const documents = hosted ? undefined : (await (await ctx.tracker()).capabilities()).capabilities.find((c) => c.id === 'documents')
+      // The Local tracker's folder as todos scan sees it: path.relative cleans ./ and a trailing slash, and a folder that climbs out of the repository has no ref to read.
+      const trackerDir = hosted || !issuesDir ? null : path.join(issuesDir, 'docs', 'adr')
+      const relative = trackerDir ? path.relative(ctx.root, trackerDir) : ''
+      const configured = pmkit.git_host?.default_branch
+      const branchOk = typeof configured === 'string' && validBranch(configured)
+      const plan = planNextAdr({
+        title: ctx.opt('title'),
+        root: ctx.root,
+        trackerDir,
+        trackerFolder: trackerDir && !climbsOut(relative) ? slash(relative) : null,
+        hosted: Boolean(hosted),
+        createSupported: documents !== undefined && documents.path !== 'absent' && !documents.detail?.unsupported?.includes('createDocument'),
+        defaultBranch: branchOk ? configured : 'main',
+        defaultBranchNote: configured === undefined ? 'git_host.default_branch is not set in .pmkit/config.yaml, so main is used' : branchOk ? null : 'git_host.default_branch is not a valid branch name, so main is used',
+        gitHost: pmkit.git_host?.system ?? 'none',
+        git: (args) => {
+          const result = readGit(ctx, args)
+          return { status: result.error ? 1 : result.status, stdout: result.stdout ?? '' }
+        },
+      })
+      const text = fields([['number', plan.number], ['slug', plan.slug], ['place', plan.destination], ['path', plan.path], ['tracker path', plan.docPath ?? '(none)'], ['default branch', plan.defaultBranch], ['git host', plan.gitHost]]).join('\n')
+      return { data: plan, text, notes: plan.notes }
     },
   },
   {

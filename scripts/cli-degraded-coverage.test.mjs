@@ -85,7 +85,7 @@ const COVERED = {
   'epic update-status': 'native write, PMK-39', 'epic updates': 'cli-linear.test.mjs or cli-degraded.test.mjs',
   'release list': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'release get': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'release issues': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'release create': 'REFUSALS', 'release mark-released': 'REFUSALS',
   'metrics velocity': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics cycle-time': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics lead-time': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics throughput': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'metrics aging': 'cli-linear.test.mjs or cli-degraded.test.mjs', events: 'cli-linear.test.mjs or cli-degraded.test.mjs',
-  'docs list': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'docs read': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'docs create': 'REFUSALS',
+  'docs list': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'docs read': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'docs create': 'REFUSALS', 'docs next-adr': 'cli-linear.test.mjs or cli-degraded.test.mjs',
   'pr open': 'PATH_CASES', 'pr ready': 'PATH_CASES', 'pr status': 'PATH_CASES', 'pr sync': 'PATH_CASES', 'deploys list': 'PATH_CASES', 'ci logs': 'PATH_CASES', 'pr diff': 'PATH_CASES', 'pr blockers': 'PATH_CASES',
   'views list': 'REFUSALS', 'views save': 'REFUSALS', 'views run': 'REFUSALS',
   'goal list': 'REFUSALS', 'goal get': 'REFUSALS', 'goal create': 'REFUSALS', 'goal progress': 'REFUSALS', 'epic goal': 'REFUSALS',

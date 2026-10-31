@@ -1635,6 +1635,7 @@ test('every read goes on with one warning', () => {
     'release issues': ['1.0.0'],
     'release-notes': [],
     'docs list': [],
+    'docs next-adr': ['--title', 'Next decision'],
     'views list': [],
     'views run': ['missing'],
     'goal list': [],

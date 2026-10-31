@@ -90,7 +90,7 @@ test('CHANGELOG.md has a section for the plugin version and a Tracker format tha
 })
 
 // Each Task that writes command files adds their names here.
-const COMMANDS = { '': ['setup', 'link-repo', 'help', 'upgrade'], issues: ['find', 'create', 'dependencies', 'update', 'move', 'assign', 'comment', 'link', 'summary', 'work', 'mine', 'capture', 'breakdown', 'progress', 'log-time', 'pause', 'estimate', 'delegate', 'review', 'todos', 'unblock', 'delete'], spec: ['import'], backlog: ['groom', 'triage'], report: ['status', 'release-notes'], cycle: ['plan', 'close'], team: ['capacity', 'flow-metrics', 'standup', 'risk-radar', 'load'], linear: ['triage-rotation', 'customers'], local: ['doctor', 'render', 'migrate'] }
+const COMMANDS = { '': ['setup', 'link-repo', 'help', 'upgrade'], issues: ['find', 'create', 'dependencies', 'update', 'move', 'assign', 'comment', 'link', 'summary', 'work', 'mine', 'capture', 'breakdown', 'progress', 'log-time', 'pause', 'estimate', 'delegate', 'review', 'todos', 'unblock', 'delete'], spec: ['import', 'record-decision'], backlog: ['groom', 'triage'], report: ['status', 'release-notes'], cycle: ['plan', 'close'], team: ['capacity', 'flow-metrics', 'standup', 'risk-radar', 'load'], linear: ['triage-rotation', 'customers'], local: ['doctor', 'render', 'migrate'] }
 
 const HEADINGS = ['## Parameters', '## Steps', '## Confirmation points', '## Output', '## If something is missing']
 
@@ -160,6 +160,33 @@ test('every command is listed in the skill table and in the README', () => {
       }
     }
   }
+})
+
+test('record-decision.md covers the three places, the numbering, the bulk comments and a failed comment', () => {
+  const text = fs.readFileSync(path.join(ROOT, 'commands/spec/record-decision.md'), 'utf8')
+  const lines = text.split('\n')
+  const step = (number) => {
+    const from = lines.findIndex((line) => line.startsWith(`${number}. `))
+    const to = lines.findIndex((line, index) => index > from && /^(\d+\. |## )/.test(line))
+    return lines.slice(from, to).join('\n')
+  }
+  assert.match(step(3), /docs next-adr --title/, 'the CLI computes the number, the slug and the path')
+  assert.match(step(3), /GIT_TERMINAL_PROMPT=0 git fetch origin <defaultBranch>/)
+  assert.match(step(3), /20 seconds/)
+  assert.match(step(3), /gitHost: none/, 'the fetch is skipped without a git host')
+  assert.match(step(3), /already here/, 'a failed fetch keeps the local ref')
+  assert.match(step(3), /INVALID_INPUT/)
+  assert.match(step(5), /whatever `write_policy\.confirm` says/)
+  assert.match(step(5), /Ask again after every change of the number or the path/)
+  assert.match(step(5), /--dry-run/)
+  assert.match(step(6), /no commit yet/, 'the preview warns that the repository file has no commit')
+  assert.match(step(6), /bulk change/)
+  assert.match(step(6), /unless `write_policy\.confirm` is `none`/, 'step 6 says what the Confirmation points say')
+  assert.match(step(3), /only a valid branch name/)
+  assert.match(step(7), /did not/)
+  assert.doesNotMatch(text, /\.issues\/docs\/adr/, 'the tracker folder comes from the CLI, not from the file')
+  assert.doesNotMatch(text, /Status:|## Context|## Decision/, 'the format is the one of the ADRs in docs/adr/')
+  assert.match(text, /renames its file/)
 })
 
 test('delegate.md previews in step 5, writes in step 6, always asks, and runs the agent only after a question', () => {
