@@ -32,7 +32,7 @@ import { brokenMappings, parseMappingFlags, proposeMappings } from './lib/mappin
 import { chooseRemote, inferHost } from './lib/git-remote.mjs'
 import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { lineDiff } from './lib/diff.mjs'
-import { DEFAULT_MAX, HARD_MAX, buildPreview, bulkText, parseChange } from './lib/bulk.mjs'
+import { DEFAULT_MAX, HARD_MAX, buildPreview, bulkText, checkBulkFilter, parseChange, valueError } from './lib/bulk.mjs'
 import { blockersText, collectBlockers } from './lib/pr-blockers.mjs'
 import { CACHE_DIR, ensureCacheIgnored } from './lib/local/query-index.mjs'
 import { writeFileAtomic } from './lib/local/store.mjs'
@@ -1725,12 +1725,11 @@ async function runBulk(ctx) {
   const view = ctx.opt('view')
   let filter = issueFilter(ctx)
   if (view !== undefined && Object.keys(filter).length > 0) throw usageError('issues bulk takes --view or filter flags, not both', 'Save the filter with pmkit views save, or drop --view')
-  const found = view === undefined ? (Object.keys(filter).length > 0 ? await tracker.searchIssues(filter) : null) : await tracker.runView(view)
-  if (found === null) throw usageError('issues bulk needs a filter, so it never means every issue', 'Pass filter flags such as --label legacy, or --view <name>; run pmkit issues list with them first')
+  if (view === undefined) checkBulkFilter(filter, 'the filter')
+  const found = view === undefined ? await tracker.searchIssues(filter) : await tracker.runView(view)
   if (view !== undefined) {
     filter = found.view.filter
-    if (filter.limit !== undefined) throw usageError(`view ${view} has a limit, which cuts the set; a bulk change needs the whole set`, `Save the view again without --limit: pmkit views save ${view} --overwrite`)
-    if (Object.keys(filter).length === 0) throw usageError(`view ${view} has no filter, so it would match every issue`, 'Save a view that narrows the issues')
+    checkBulkFilter(filter, `view ${view}`)
   }
   if (found.hasMore === true) throw usageError('the tracker has more matching issues than pmkit read, so the set is cut and nothing can be written from it', 'Narrow the filter')
   if (found.issues.length > max) {
@@ -1744,12 +1743,15 @@ async function runBulk(ctx) {
       results.push(await change.apply(tracker, issue, actor, { dryRun: true }))
     } catch (error) {
       if (!isPmkitError(error) || !PER_ISSUE_CODES.includes(error.code)) throw error
-      results.push({ error: { code: error.code, message: error.message } })
+      results.push({ error: { code: error.code, message: error.message, nextStep: error.nextStep } })
     }
   }
+  const wrong = valueError(change, results)
+  if (wrong) throw new PmkitError('INVALID_INPUT', `${change.kind} ${change.value}: ${wrong.message}`, wrong.nextStep ?? 'Correct the value, then run the dry run again')
   const preview = buildPreview({ change, found, results })
-  const data = { ...preview, filter, view: view ?? null, max, dryRun: ctx.dryRun }
-  const warnings = found.problems.map(problemLine)
+  const releaseWarnings = kind === 'release' && value !== 'none' ? await releasedWarnings(ctx, { release: value }) : []
+  const data = { ...preview, filter, view: view ?? null, max, dryRun: ctx.dryRun, warnings: releaseWarnings }
+  const warnings = [...found.problems.map(problemLine), ...releaseWarnings]
   if (ctx.dryRun) return { data, text: bulkText(preview, { dryRun: true }), warnings }
 
   if (preview.blockers.length > 0) {
@@ -2860,6 +2862,8 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
         if (Array.isArray(error.details?.problems)) body.error.problems = error.details.problems
         // The records that block a delete, so an agent reading the JSON sees the same list as the message.
         if (Array.isArray(error.details?.references)) body.error.references = error.details.references
+        // The two digests of a CONFLICT, so an agent sees what the preview held and what the tracker holds now.
+        if (typeof error.details?.expected === 'string' && typeof error.details?.digest === 'string') Object.assign(body.error, { expected: error.details.expected, digest: error.details.digest })
         if (error.written) body.result = error.written.data
         stdout.push(`${JSON.stringify(body, null, 2)}\n`)
       } else if (error.written) {

@@ -85,14 +85,11 @@ test('the digest follows the change, the updated stamp and the new values', () =
   assert.notEqual(buildPreview({ change, found: extra, results: [...results, { before: issue('C'), after: issue('C') }] }).digest, base)
 })
 
-test('unreadable issues, a cut read and a rejected issue block the write and the digest', () => {
+test('unreadable issues and a rejected issue block the write and the digest', () => {
   const problem = { id: 'ISS-9', code: 'PARSE', message: 'bad yaml' }
   const withProblem = buildPreview({ change, found: found({ problems: [problem] }), results })
   assert.equal(withProblem.digest, null)
   assert.match(withProblem.blockers.join('\n'), /ISS-9/)
-  const cut = buildPreview({ change, found: found({ hasMore: true }), results })
-  assert.equal(cut.digest, null)
-  assert.match(cut.blockers.join('\n'), /more matching issues/)
   const rejected = buildPreview({ change, found: found(), results: [{ error: { code: 'INVALID_INPUT', message: 'no' } }, results[1]] })
   assert.equal(rejected.items[0].state, 'rejected')
   assert.equal(rejected.digest, null)

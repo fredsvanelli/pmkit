@@ -8,7 +8,7 @@ import { run } from './pmkit.mjs'
 import { ADAPTERS } from './lib/adapters.mjs'
 import { linearDescriptor } from './lib/linear/adapter.mjs'
 import { useLinear } from './fake-hosted.mjs'
-import { FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeWorkspace } from './fake-linear-api.mjs'
+import { FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeWorkspace } from './fake-linear-api.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo, userStoreEnv } from './test-helpers.mjs'
 
@@ -64,5 +64,28 @@ test('a set Linear cut at 1000 issues is refused, never written from', async () 
   assert.equal(result.code, 2)
   assert.equal(result.body.error.code, 'INVALID_INPUT')
   assert.match(result.body.error.message, /more matching issues/)
+  assert.deepEqual(fake.mutations, [])
+})
+
+test('an epic as the parent is written on Linear, as issues parent does', async () => {
+  const issues = fakeLinearIssues()
+  const projects = fakeLinearProjects({ issues })
+  projects.seed({ id: '00000000-0000-4000-8000-0000000000a1', name: 'Launch', teamIds: ['team-acme'], startDate: '2026-11-01' })
+  issues.seed({ title: 'Loose' })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace(), ...issues.routes, ...projects.routes })
+  const context = setup()
+  const dry = await bulk(context, fetch, ['parent', 'P-ACM-1', '--category', 'backlog', '--dry-run'])
+  assert.equal(dry.code, 0, JSON.stringify(dry.body))
+  assert.deepEqual(dry.body.items.map((item) => item.state), ['change'])
+  const real = await bulk(context, fetch, ['parent', 'P-ACM-1', '--category', 'backlog', '--expect', dry.body.digest])
+  assert.equal(real.code, 0, JSON.stringify(real.body))
+  assert.deepEqual(real.body.applied, ['ACME-1'])
+})
+
+test('an agent as the assignee is one INVALID_INPUT on Linear', async () => {
+  const { fake, fetch } = withIssues(['One', 'Two'])
+  const result = await bulk(setup(), fetch, ['assign', 'agent:claude', '--category', 'backlog', '--dry-run'])
+  assert.equal(result.code, 2)
+  assert.equal(result.body.error.code, 'INVALID_INPUT')
   assert.deepEqual(fake.mutations, [])
 })

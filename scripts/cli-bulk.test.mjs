@@ -97,6 +97,9 @@ test('an issue that changed after the preview stops the write', async () => {
     const before = hashTree(root, ['.issues/.cache', '.git'])
     const result = await bulk(root, 'priority', 'high', '--label', 'legacy', '--expect', digest)
     assert.equal(result.body.error.code, 'CONFLICT')
+    assert.equal(result.body.error.expected, digest)
+    assert.match(result.body.error.digest, /^sha256:[0-9a-f]{64}$/)
+    assert.notEqual(result.body.error.digest, digest)
     assert.equal(hashTree(root, ['.issues/.cache', '.git']), before)
   })
 })
@@ -160,6 +163,53 @@ test('a saved view gives the same set as its flags, and a view with a limit is r
     assert.equal(view.view, 'legacy')
     assert.match((await bulk(root, 'priority', 'high', '--view', 'one', '--dry-run')).body.error.message, /limit/)
     assert.equal((await bulk(root, 'priority', 'high', '--view', 'legacy', '--label', 'x', '--dry-run')).body.error.code, 'INVALID_INPUT')
+  })
+})
+
+test('a view with archived or with only a sort is refused like the flags are', async () => {
+  await withRepo(async (root, ids) => {
+    await ok(root, ['issues', 'archive', ids.D])
+    await ok(root, ['views', 'save', 'arch', '--label', 'legacy', '--archived'])
+    await ok(root, ['views', 'save', 'all', '--sort', 'priority'])
+    const before = hashTree(root, ['.issues/.cache', '.git'])
+    const archived = await bulk(root, 'priority', 'high', '--view', 'arch', '--dry-run')
+    assert.equal(archived.body.error.code, 'INVALID_INPUT')
+    assert.match(archived.body.error.message, /archived/)
+    const sorted = await bulk(root, 'move', 'done', '--view', 'all', '--dry-run')
+    assert.equal(sorted.body.error.code, 'INVALID_INPUT')
+    assert.match(sorted.body.error.message, /narrow/)
+    assert.equal(hashTree(root, ['.issues/.cache', '.git']), before)
+  })
+})
+
+test('an empty filter value is refused instead of matching every issue', async () => {
+  await withRepo(async (root) => {
+    const result = await bulk(root, 'priority', 'high', '--text', '', '--dry-run')
+    assert.equal(result.body.error.code, 'INVALID_INPUT')
+    assert.match(result.body.error.message, /empty/)
+  })
+})
+
+test('a value the tracker refuses for every issue is one INVALID_INPUT with its next step, not a blocker per issue', async () => {
+  await withRepo(async (root) => {
+    for (const args of [['assign', 'ghost'], ['estimate', '4'], ['sprint', '999'], ['priority', 'bogus'], ['move', 'bogus'], ['parent', 'ISS-NOPE']]) {
+      const result = await bulk(root, ...args, '--label', 'legacy', '--dry-run')
+      assert.equal(result.code, 2, args.join(' '))
+      assert.equal(result.body.error.code, 'INVALID_INPUT', `${args.join(' ')}: ${JSON.stringify(result.body)}`)
+      assert.ok(result.body.error.nextStep, args.join(' '))
+      assert.doesNotMatch(result.body.error.nextStep, /validate/)
+    }
+  })
+})
+
+test('bulk release warns when the release is already released, as issues update does', async () => {
+  await withRepo(async (root) => {
+    await ok(root, ['release', 'create', '1.0.0'])
+    await ok(root, ['release', 'mark-released', '1.0.0'])
+    const result = await bulk(root, 'release', '1.0.0', '--label', 'legacy', '--dry-run')
+    assert.equal(result.code, 0, JSON.stringify(result.body))
+    assert.deepEqual(result.body.warnings, ['release 1.0.0 is already released'])
+    assert.match(result.stderr, /release 1.0.0 is already released/)
   })
 })
 

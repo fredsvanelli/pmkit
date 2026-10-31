@@ -65,6 +65,38 @@ export function parseChange(kind, value, flags = {}) {
   return { kind, value, ...BUILDERS[kind](value, flags) }
 }
 
+/**
+ * The rules of a bulk filter, for flags and for a saved view alike. `where` names the source in the message.
+ * `archived`, `limit` and `sort` change which issues come back or how many, so they are refused. An empty value
+ * matches everything, so it is refused too, and at least one criterion must narrow the set.
+ */
+export function checkBulkFilter(filter, where) {
+  for (const key of ['archived', 'limit', 'sort']) {
+    if (filter[key] === undefined || (key === 'archived' && filter[key] === false)) continue
+    const why = key === 'archived' ? 'archived issues stay out of a bulk change' : key === 'limit' ? 'a limit cuts the set, and a bulk change needs the whole set' : 'a sort does not narrow the set'
+    throw invalid(`${where} has ${key}: ${why}`, 'Use a filter without archived, limit and sort')
+  }
+  let narrows = 0
+  for (const [key, value] of Object.entries(filter)) {
+    if (key === 'archived' || key === 'limit' || key === 'sort') continue
+    if (value === '' || (Array.isArray(value) && value.length === 0)) throw invalid(`${where}: ${key} must not be empty`, 'Give the filter a value, or drop it')
+    if (value !== false) narrows++
+  }
+  if (narrows === 0) throw invalid(`${where} has no criterion that narrows the set, so it would match every issue`, 'Add a criterion such as --label legacy, then run pmkit issues list with it first')
+}
+
+/**
+ * When the dry run of every matched issue fails with the same error, the value of the change is wrong, not the issues.
+ * Returns that error, or null. A single issue that fails a link or a parent change fails for its own reasons, so it stays a blocker.
+ */
+export function valueError(change, results) {
+  if (results.length === 0 || results.some((result) => !result.error)) return null
+  const [first] = results
+  if (results.some((result) => result.error.code !== first.error.code || result.error.message !== first.error.message)) return null
+  if (results.length === 1 && ['link', 'parent'].includes(change.kind)) return null
+  return first.error
+}
+
 const SKIPPED = new Set(['updated', 'body'])
 const flat = (record) => Object.fromEntries(Object.entries(record).filter(([key]) => !SKIPPED.has(key)).map(([key, value]) => [key, key === 'status' ? value?.name : value]))
 
@@ -92,7 +124,6 @@ export function buildPreview({ change, found, results }) {
   const writes = items.filter((item) => item.state === 'change').length
   const blockers = [
     ...found.problems.map((problem) => `${problem.id} cannot be read (${problem.code}) and may match the filter; run pmkit validate and fix it first`),
-    ...(found.hasMore === true ? ['the tracker has more matching issues than pmkit read, so the set is cut; narrow the filter'] : []),
     ...items.filter((item) => item.state === 'rejected').map((item) => `${item.id} was rejected: ${item.error.code} ${item.error.message}`),
   ]
   const digest = blockers.length === 0 && writes > 0
