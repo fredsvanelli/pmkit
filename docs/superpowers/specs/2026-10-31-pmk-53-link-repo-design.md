@@ -50,7 +50,7 @@ Flags override: `--git-host` sets the system, `--repo` sets `git_host.repo` and 
 ### Scope
 
 - Local: the tracker has no scope. `--team` is `INVALID_INPUT` ("the Local tracker has no scope").
-- Linear: `--team KEY` is checked against the workspace with the same discovery `/pmkit:setup` runs (`init --update --team`). An unknown team is `INVALID_INPUT` listing the teams. Without `--team`, the file's team stays when the workspace still has it. When the file has no team, the team the viewer belongs to is used if there is only one, as setup does. Otherwise `questions` holds `tracker.scope.team` with candidates, and the real run refuses to write, as `init` does.
+- Linear: `--team KEY` is checked against the workspace with the same discovery `/pmkit:setup` runs (`init --update --team`). An unknown team is `INVALID_INPUT` listing the teams. Without `--team` and with a team in the file, the command calls Linear not at all, so a host change needs no key or network. The result says the team was not checked (`verified: false`), and `/pmkit:setup` is the command that re-checks a team. When the file has no team, the team the viewer belongs to is used if there is only one, as setup does. Otherwise `questions` holds `tracker.scope.team` with candidates, and the real run refuses to write, as `init` does.
 - A new team can break the mappings (statuses, fields, labels are per team). The dry run lists them in `broken`, and the real run refuses with `NOT_CONFIGURED`-style next step `/pmkit:setup`, so the config never ends up pointing at a team its own mappings do not fit. Setup is the command that asks for mappings.
 - Authentication or network errors from the discovery stop the command before any write. A read that comes back incomplete is never a reason to write.
 

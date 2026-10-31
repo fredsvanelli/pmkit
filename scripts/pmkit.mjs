@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { BOOLEANS, parseArgs } from './lib/args.mjs'
 import { gitUserEmail, resolveActor } from './lib/actor.mjs'
 import { ADAPTERS, adapterFor } from './lib/adapters.mjs'
-import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, loadPmkitConfig, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
+import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, loadPmkitConfig, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
 import { contractView } from './lib/contract.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
 import { changeLines, dependencyText, epicRecord, eventTable, fields, goalRecord, issueRecord, issueTable, milestoneRecord, percent, releaseNotesText, releaseRecord, sprintRecord, table } from './lib/format.mjs'
@@ -25,8 +25,9 @@ import { SCANNERS, SEVERITIES, collectAlerts } from './lib/alerts.mjs'
 import { READ_LIMIT, groupTodos, matchTodos, readExistingIssues, scanRepo } from './lib/todos.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
-import { addMapEntry, setMap, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
-import { parseMappingFlags, proposeMappings } from './lib/mappings.mjs'
+import { addMapEntry, removeKey, setMap, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
+import { brokenMappings, parseMappingFlags, proposeMappings } from './lib/mappings.mjs'
+import { chooseRemote, inferHost } from './lib/git-remote.mjs'
 import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { lineDiff } from './lib/diff.mjs'
 import { blockersText, collectBlockers } from './lib/pr-blockers.mjs'
@@ -368,6 +369,11 @@ export const COMMANDS = [
     name: 'init', summary: 'writes .pmkit/config.yaml and scaffolds .issues/; refuses to overwrite unless --update, which edits only the lines its flags name and the schema line; --label only adds labels; --tracker linear writes only .pmkit/config.yaml and returns what setup must ask',
     usage: '[--tracker local|linear] [--git-host github|none] [--workspace key] [--team KEY] [--status key=name ...] [--field key=value ...] [--type-label type=label ...] [--prefix ISS] [--id-style random|numbered] [--estimate-unit points|hours|sizes] [--label name ...] [--member id --name n --email e] [--members-file f|-] [--update [--replace path ...]]',
     flags: ['tracker', 'git-host', 'workspace', 'team', 'status', 'field', 'type-label', 'prefix', 'id-style', 'member', 'name', 'email', 'estimate-unit', 'label', 'members-file', 'update', 'replace'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runInit,
+  },
+  {
+    name: 'link-repo', summary: 'links this repository to a git host and, on Linear, a team: infers the host and the repo from the git remote, checks the team against the workspace, and edits only those lines of .pmkit/config.yaml',
+    usage: '[--git-host github|none] [--repo owner/name] [--remote name] [--team KEY]',
+    flags: ['git-host', 'repo', 'remote', 'team'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runLinkRepo,
   },
   {
     name: 'capabilities', summary: 'prints the capability manifest', flags: [],
@@ -2073,6 +2079,184 @@ function runInit(ctx) {
       ...(ctx.dryRun ? ['dry run: nothing was written'] : []),
     ].join('\n'),
   }
+}
+
+// link-repo. See docs/superpowers/specs/2026-10-31-pmk-53-link-repo-design.md.
+const GIT_READ_TIMEOUT_MS = 10_000
+const GIT_MAX_OUTPUT = 256 * 1024 * 1024
+
+// The remotes of the repository as { ok: true, remotes: [{ name, url }] }, or { ok: false, reason } when git cannot say.
+function readRemotes(ctx) {
+  const git = (args) => spawnSync('git', args, { cwd: ctx.root, env: ctx.env, encoding: 'utf8', timeout: GIT_READ_TIMEOUT_MS, maxBuffer: GIT_MAX_OUTPUT })
+  const failure = (result) => ({ ok: false, reason: (result.error?.message ?? result.stderr ?? '').trim().split('\n')[0] || `git exited with ${result.status}` })
+  const listed = git(['remote'])
+  if (listed.error || listed.status !== 0) return failure(listed)
+  const remotes = []
+  for (const name of listed.stdout.split('\n').map((line) => line.trim()).filter(Boolean)) {
+    const url = git(['remote', 'get-url', name])
+    if (url.error || url.status !== 0) return failure(url)
+    remotes.push({ name, url: url.stdout.trim() })
+  }
+  return { ok: true, remotes }
+}
+
+// The team of a Linear repository, checked against the workspace. Returns the description of the workspace too.
+async function linkTeam(ctx, parsed, current) {
+  const wanted = ctx.opt('team')
+  const adapter = adapterFor('linear', ctx.adapters)
+  const workspace = parsed.tracker.scope?.workspace
+  const tracker = await adapter.create({ root: ctx.root, system: 'linear', pmkit: { ...parsed, tracker: { system: 'linear', ...(workspace ? { scope: { workspace } } : {}) }, mappings: undefined } }, { now: ctx.now, env: ctx.env })
+  const view = await tracker.discover({ refresh: true })
+  const defaults = withLocalDefaults({}).types
+  const types = [...defaults, ...Object.keys(parsed.mappings?.types ?? {}).filter((type) => !defaults.includes(type))]
+  const description = adapter.describe(view.raw, view, view.auth?.viewer?.id ?? null, types)
+  const keys = description.teams.map((team) => team.key)
+  if (wanted !== undefined) {
+    if (!keys.includes(wanted)) throw usageError(`--team ${wanted} is not a team of workspace ${description.workspace.urlKey}`, `Pass one of: ${keys.join(', ')}`)
+    return { description, team: wanted, source: 'flag', questions: [] }
+  }
+  const viewerTeams = (description.viewerTeams ?? []).filter((key) => keys.includes(key))
+  if (viewerTeams.length === 1) return { description, team: viewerTeams[0], source: 'viewer', questions: [] }
+  const candidates = viewerTeams.length > 0 ? viewerTeams : keys
+  return { description, team: current, source: 'file', questions: [{ path: 'tracker.scope.team', flag: '--team <KEY>', candidates }] }
+}
+
+async function runLinkRepo(ctx) {
+  const flagHost = ctx.opt('git-host')
+  const flagRepo = ctx.opt('repo')
+  const wantedRemote = ctx.opt('remote')
+  if (flagHost !== undefined && !GIT_HOSTS.includes(flagHost)) throw usageError(`--git-host must be ${GIT_HOSTS.join(' or ')}`)
+  if (flagRepo !== undefined && !/^[^/\s]+\/[^/\s]+$/.test(flagRepo)) throw usageError('--repo must be owner/name, like acme/app')
+
+  // An invalid file refuses the dry run and the write alike, so nothing is ever written over it.
+  const { pmkit: parsed, system, pmkitProblems } = loadPmkitConfig(ctx.root, { adapters: ctx.adapters })
+  if (pmkitProblems.length > 0) throw pmkitWriteRefusal(pmkitProblems)
+  const pmkitFile = path.join('.pmkit', 'config.yaml')
+  const file = path.join(ctx.root, pmkitFile)
+  const before = normalized(fs.readFileSync(file, 'utf8'))
+  const hosted = adapterFor(system, ctx.adapters).hosted
+  if (!hosted && ctx.opt('team') !== undefined) throw usageError(`the ${system} tracker has no scope, so --team does not apply`, 'Remove --team')
+
+  const notes = []
+  const warnings = []
+  const read = readRemotes(ctx)
+  const remotes = read.ok ? read.remotes : []
+  let chosen = { remote: null, state: 'none', notes: [] }
+  if (read.ok) {
+    chosen = chooseRemote(remotes, wantedRemote)
+    if (chosen.state === 'unknown-name') throw usageError(chosen.notes[0], `Pass one of: ${remotes.map((remote) => remote.name).join(', ') || 'no remote exists'}`)
+    notes.push(...chosen.notes)
+  } else {
+    notes.push(`could not read the git remotes (${read.reason}), so the git host was not inferred`)
+  }
+  const inferred = chosen.remote ? inferHost(chosen.remote.url) : { system: null, repo: null, host: null }
+  if (read.ok && chosen.state === 'none') notes.push('there is no git remote, so the git host was not inferred; pass --git-host github or none')
+  if (chosen.remote && inferred.system === null) notes.push(`the URL of remote ${chosen.remote.name} is not recognized (${chosen.remote.url}), so the git host was not inferred`)
+  if (chosen.remote && inferred.system === 'none' && flagHost === undefined) notes.push(`remote ${chosen.remote.name} points to ${inferred.host}; pmkit supports only GitHub for now, so the git host is none`)
+
+  const held = { system: parsed.git_host.system, repo: parsed.git_host.repo ?? null }
+  const hostAfter = flagHost ?? inferred.system ?? held.system
+  const hostSource = flagHost !== undefined ? 'flag' : inferred.system ? 'remote' : 'file'
+  if (flagRepo !== undefined && hostAfter === 'none') throw usageError('--repo needs the git host github', 'Pass --git-host github, or remove --repo')
+  let repoAfter = held.repo
+  let repoSource = 'file'
+  if (hostAfter === 'none') {
+    repoAfter = null
+    repoSource = hostSource
+  } else if (flagRepo !== undefined) {
+    repoAfter = flagRepo
+    repoSource = 'flag'
+  } else if (inferred.system === 'github') {
+    repoAfter = inferred.repo
+    repoSource = 'remote'
+  }
+  if (chosen.remote && flagHost !== undefined && inferred.system !== null && inferred.system !== flagHost) {
+    warnings.push(`remote ${chosen.remote.name} points to ${inferred.host}, which is ${inferred.system === 'github' ? '' : 'not '}GitHub, and --git-host ${flagHost} was used as given`)
+  }
+  if (flagRepo !== undefined && inferred.repo !== null && inferred.repo !== flagRepo) {
+    warnings.push(`remote ${chosen.remote.name} points to ${inferred.repo} and --repo ${flagRepo} was used as given`)
+  }
+
+  // The team. A Linear call happens only when the team is asked for or missing, so a host change needs no network.
+  const heldTeam = parsed.tracker.scope?.team ?? null
+  let scope = null
+  let questions = []
+  let broken = []
+  if (hosted) {
+    let team = { team: heldTeam, source: 'file', questions: [] }
+    let verified = false
+    if (ctx.opt('team') !== undefined || heldTeam === null) {
+      team = await linkTeam(ctx, parsed, heldTeam)
+      verified = true
+      questions = team.questions
+      if (team.team !== null) broken = brokenMappings(team.description, { tracker: { scope: { team: team.team } }, mappings: parsed.mappings })
+    }
+    scope = { team: { before: heldTeam, after: team.team, source: team.source, verified } }
+  }
+
+  const edit = (key, change) => {
+    try {
+      return change()
+    } catch (error) {
+      throw new PmkitError('INVALID_INPUT', `cannot set ${key} in ${slash(pmkitFile)}: ${error.message}`, `Edit ${key} in ${slash(pmkitFile)} by hand, then run link-repo again`)
+    }
+  }
+  let text = before
+  if (hostAfter !== held.system) text = edit('git_host.system', () => setScalar(text, ['git_host', 'system'], hostAfter))
+  if (repoAfter === null && held.repo !== null) text = edit('git_host.repo', () => removeKey(text, ['git_host', 'repo']))
+  else if (repoAfter !== null && repoAfter !== held.repo) text = edit('git_host.repo', () => setScalar(text, ['git_host', 'repo'], repoAfter))
+  if (scope && scope.team.after !== null && scope.team.after !== heldTeam) text = edit('tracker.scope.team', () => setScalar(text, ['tracker', 'scope', 'team'], scope.team.after))
+  if (text !== before) {
+    let problems
+    try {
+      problems = pmkitConfigMessages(parseYaml(text), ctx.adapters)
+    } catch (error) {
+      problems = [`config.yaml does not parse: ${error.message}`]
+    }
+    if (problems.length > 0) throw usageError(`the new .pmkit/config.yaml would not be valid: ${problems.join('; ')}`, 'Fix the values you passed')
+  }
+
+  const teamChanged = scope !== null && scope.team.after !== null && scope.team.after !== heldTeam
+  if (!ctx.dryRun) {
+    if (questions.length > 0) throw new PmkitError('INVALID_INPUT', `link-repo has no team to write: ${questions.map((q) => q.path).join(', ')} is not set`, `Pass --team <KEY>, one of: ${questions[0].candidates.join(', ')}`)
+    if (teamChanged && broken.length > 0) {
+      throw new PmkitError('NOT_CONFIGURED', `team ${scope.team.after} does not fit the mappings in .pmkit/config.yaml: ${broken.map((item) => item.problem).join('; ')}`, '/pmkit:setup', { mappings: broken })
+    }
+  }
+  const changed = text !== before
+  const entry = changed ? { path: slash(pmkitFile), action: 'change', diff: lineDiff(before, text) } : { path: slash(pmkitFile), action: 'keep' }
+  if (!ctx.dryRun && changed) fs.writeFileSync(file, text)
+
+  const remote = chosen.remote ? { name: chosen.remote.name, url: chosen.remote.url, host: inferred.host } : null
+  const data = {
+    dryRun: ctx.dryRun,
+    tracker: system,
+    remote,
+    remotes: remotes.map(({ name, url }) => ({ name, url, host: inferHost(url).host })),
+    gitHost: { before: held.system, after: hostAfter, source: hostSource },
+    repo: { before: held.repo, after: repoAfter, source: repoSource },
+    scope,
+    questions,
+    broken,
+    notes,
+    warnings,
+    files: [entry],
+  }
+  const origin = (source) => (source === 'remote' ? ` (from remote ${remote.name})` : source === 'flag' ? ' (from the flag)' : source === 'viewer' ? ' (you belong to one team)' : '')
+  const show = (label, item) => `${label}: ${item.before ?? '(none)'}${item.before === item.after ? ' (unchanged)' : ` -> ${item.after ?? '(none)'}`}${origin(item.source)}`
+  const lines = [
+    show('git host', data.gitHost),
+    show('repo', data.repo),
+    ...(scope ? [show('team', scope.team) + (scope.team.verified ? '' : ' (not checked against the workspace)')] : []),
+    ...(broken.length > 0 ? ['broken by the new team:', ...broken.map((item) => `  ${item.problem}`)] : []),
+    ...(questions.length > 0 ? ['questions:', ...questions.map((q) => `  ${q.path}  ${q.flag}  one of: ${q.candidates.join(', ')}`)] : []),
+    ...warnings.map((warning) => `warning: ${warning}`),
+    ...notes.map((note) => `note: ${note}`),
+    changed ? (ctx.dryRun ? 'files:' : 'wrote:') : 'already linked, nothing to change',
+    ...(changed ? [`  ${entry.path}: ${ctx.dryRun ? 'would ' : ''}change`, '', entry.diff.trimEnd()] : []),
+    ...(ctx.dryRun ? ['dry run: nothing was written'] : []),
+  ]
+  return { data, text: lines.join('\n'), warnings, notes }
 }
 
 // The hosted branch of init: infers what it can from the workspace, returns what it must ask, and writes only .pmkit/config.yaml.
