@@ -1,6 +1,6 @@
 # EPC-6 follow-ups
 
-The implementers and reviewers of EPC-6 ("Remaining generic commands") suggested these improvements. None of them is a defect. The defects found in the same reviews are issues PMK-175 to PMK-186. This list stays here until each item becomes an issue or is dropped.
+The implementers and reviewers of EPC-6 ("Remaining generic commands") suggested these improvements. None of them is a defect. The defects found in the same reviews are issues PMK-175 to PMK-191. This list stays here until each item becomes an issue or is dropped.
 
 ## PMK-48: alerts list
 
@@ -89,6 +89,33 @@ The implementers and reviewers of EPC-6 ("Remaining generic commands") suggested
 - A column with the issues each person delivered in the sprint.
 - Count blocked issues when the command proposes moves.
 - Read capacity, days off and the flow history once.
+
+## PMK-46: customers and requests
+
+- `customers update` (tier, revenue, owner) and editing the text of a request.
+- `requests accept --create`, which creates the issue and links the request in one call.
+- The generic customer and request operations on Linear, built on top of `linear customers`.
+- Local prints `customers show X` and Linear `show --customer X`; give PMK-68 and PMK-70 one shape on both trackers.
+
+## PMK-52: issues delete
+
+- Scan `docs/` and the code for the deleted ID.
+- Restore an issue from the Linear trash.
+- Let `issues link --remove` take several targets, to clear the references in one call.
+- Run the delete in the Linear live sandbox (PMK-39).
+- Tests for an ID with `../`, an epic ID and `issueDelete` with `success: false`.
+
+## PMK-53: link-repo
+
+- GitHub Enterprise hosts.
+- A way to skip the confirmation for a host-only change.
+- Re-check the team in the file.
+
+## PMK-72: team capacity
+
+- Recompute the capacity when the days off change. Today the command only says the capacity does not change by itself.
+- `--sprint current` in `cycle capacity`, and the team check there on Linear (`writeEntry` takes any workspace user).
+- Build the load report once on the write path.
 
 ## PMK-175: alerts list on Windows
 

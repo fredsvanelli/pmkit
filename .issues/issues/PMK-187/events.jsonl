@@ -1,0 +1,2 @@
+{"at":"2026-10-31T16:59:10Z","by":"fred","op":"create","to":{"id":"PMK-187","title":"Fix issues delete on archived Linear relations and a partial folder removal","type":"bug","status":"backlog","priority":"medium","estimate":2,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-31T16:59:10.860Z","updated":"2026-10-31T16:59:10Z"}}
+{"at":"2026-10-31T16:59:10Z","by":"fred","op":"link","field":"related","to":"PMK-52"}

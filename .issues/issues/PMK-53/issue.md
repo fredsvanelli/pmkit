@@ -2,16 +2,17 @@
 id: PMK-53
 title: Add the link-repo command
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
 blocked_by: [PMK-31]
+related: [PMK-188]
 milestone: generic-commands
 branch: pmk-53-add-the-link-repo-command
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-31T16:20:06Z
+updated: 2026-10-31T16:59:11Z
 ---
 
 ## Description
