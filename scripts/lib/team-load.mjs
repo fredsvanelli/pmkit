@@ -95,30 +95,41 @@ export function teamLoad(issues, { members, aging = [], capacity = {}, daysOff =
 
 /**
  * A proposal that moves the issues in `todo` of the flagged members to the human with the lowest known load, largest first.
- * A source stops giving when it is at its average (over_average) or its capacity (over_capacity). A move happens only when
- * the target stays at or below the source after it, at or below the average, and at or below the target's own capacity.
- * A member that is over_average or over_capacity, or whose load is unknown or partial, is never a target. It writes nothing.
+ * A source stops giving at the average (over_average) or at its capacity (over_capacity). A move happens only when the
+ * target stays at or below the source after it, does not pass the overload limit (1.5 times the average, the same sum as
+ * over_average in teamLoad), and stays at or below its own capacity. A member the report flags, or whose load is unknown
+ * or partial, is never a target. It writes nothing.
+ * Returns the moves and, when a flagged member exists and no move is proposed, the reason: `no_candidates` (no issue in
+ * `todo`), `unestimated` (the issues in `todo` have no estimate, so a move cannot be sized) or `no_target`.
  */
-export function suggestMoves(report, issues) {
+export function proposeMoves(report, issues) {
   const estimated = report.unit !== 'issues'
-  const mean = averageOf(report.rows).mean
+  const { known, sum, mean } = averageOf(report.rows)
   const loads = new Map(report.rows.map((row) => [row.member, row.load]))
   const capacityOf = new Map(report.rows.map((row) => [row.member, row.capacity]))
   const targets = report.rows.filter((row) => isEligible(row) && row.load !== null && !row.partial && row.flags.length === 0)
   const weight = (issue) => (estimated ? (isNumber(issue.estimate) ? issue.estimate : 0) : 1)
+  const flagged = [...new Set(report.imbalances.map((item) => item.member))]
   const moves = []
-  for (const from of [...new Set(report.imbalances.map((item) => item.member))]) {
+  let anyTodo = false
+  let anyWeighted = false
+  for (const from of flagged) {
     const limits = report.imbalances.filter((item) => item.member === from).map((item) => (item.flag === 'over_capacity' ? capacityOf.get(from) : mean))
     const stopAt = Math.min(...limits)
-    const candidates = issues
-      .filter((issue) => issue.assignee === from && issue.status.category === 'todo' && weight(issue) > 0)
+    const todo = issues.filter((issue) => issue.assignee === from && issue.status.category === 'todo')
+    anyTodo ||= todo.length > 0
+    const candidates = todo
+      .filter((issue) => weight(issue) > 0)
       .sort((a, b) => weight(b) - weight(a) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    anyWeighted ||= candidates.length > 0
     for (const issue of candidates) {
       if (loads.get(from) <= stopAt) break
       const w = weight(issue)
       const to = targets
         .filter((row) => row.member !== from)
-        .filter((row) => loads.get(row.member) + w <= loads.get(from) - w && loads.get(row.member) + w <= mean)
+        .filter((row) => loads.get(row.member) + w <= loads.get(from) - w)
+        // The same comparison as over_average: load * count > 1.5 * sum, so a target never ends up flagged.
+        .filter((row) => (loads.get(row.member) + w) * known.length <= OVER_AVERAGE * sum)
         .filter((row) => !estimated || capacityOf.get(row.member) === null || loads.get(row.member) + w <= capacityOf.get(row.member))
         .sort((a, b) => loads.get(a.member) - loads.get(b.member))[0]
       if (to === undefined) continue
@@ -127,5 +138,16 @@ export function suggestMoves(report, issues) {
       moves.push({ issue: issue.id, from, to: to.member })
     }
   }
-  return moves
+  if (moves.length > 0 || flagged.length === 0) return { moves, reason: null }
+  return { moves, reason: !anyTodo ? 'no_candidates' : !anyWeighted ? 'unestimated' : 'no_target' }
+}
+
+/** The moves of proposeMoves. */
+export const suggestMoves = (report, issues) => proposeMoves(report, issues).moves
+
+/** The sentence for each reason proposeMoves gives when it proposes nothing. */
+export const NO_MOVE_MESSAGES = {
+  no_candidates: 'the overloaded members have no issue in todo to move',
+  unestimated: 'the issues in todo that could move have no estimate, so a move cannot be sized',
+  no_target: 'there is nobody to move an issue to without overloading someone',
 }

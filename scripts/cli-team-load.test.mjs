@@ -149,10 +149,10 @@ test('team load says there is nobody to move an issue to without overloading som
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^status: in_review$/m, 'status: todo'))
   const { code, data } = await load(root)
   assert.equal(code, 0)
-  assert.deepEqual([data.suggestions, data.noTarget], [[], true])
+  assert.deepEqual([data.suggestions, data.noMoves], [[], { reason: 'no_target', message: 'there is nobody to move an issue to without overloading someone' }])
   const text = (await run(['team', 'load'], { cwd: root, env })).stdout
   assert.match(text, /no proposed moves: there is nobody to move an issue to without overloading someone/)
-  assert.equal((await load(makeRepo('team'))).data.noTarget, false, 'ana has nothing in todo to move, so this is not a lack of targets')
+  assert.deepEqual((await load(makeRepo('team'))).data.noMoves, { reason: 'no_candidates', message: 'the overloaded members have no issue in todo to move' }, 'ana has nothing in todo to move, so this is not a lack of targets')
 })
 
 test('team load puts an unassigned issue and an agent member outside the balance', async () => {

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { OVER_AVERAGE, chooseUnit, suggestMoves, teamLoad } from './lib/team-load.mjs'
+import { OVER_AVERAGE, chooseUnit, proposeMoves, suggestMoves, teamLoad } from './lib/team-load.mjs'
 
 const issue = (id, category, assignee, estimate, extra = {}) => ({ id, title: `Title ${id}`, status: { name: category, category }, assignee, estimate, ...extra })
 const MEMBERS = [
@@ -196,14 +196,49 @@ test('suggestMoves never moves an issue to a member who is over the average, and
   assert.deepEqual(suggestMoves(report, issues), [])
 })
 
-test('suggestMoves leaves a target at the average or below after the move', () => {
-  const members = ['a', 'b', 'c'].map((id) => ({ id, name: id.toUpperCase() }))
-  const issues = [issue('A-1', 'todo', 'a', 6), issue('A-2', 'todo', 'a', 6), issue('C-1', 'todo', 'c', 3)]
+const people = (...ids) => ids.map((id) => ({ id, name: id.toUpperCase() }))
+const todo = (owner, ...estimates) => estimates.map((estimate, i) => issue(`${owner.toUpperCase()}-${i + 1}`, 'todo', owner, estimate))
+const movesFor = (members, issues) => suggestMoves(teamLoad(issues, { members, unit: 'points' }), issues)
+
+test('suggestMoves lets a target reach the overload limit, 1.5 times the average, but not pass it', () => {
+  // 12, 0, 0: the limit is 6, so b takes one issue of 6, and a second move would leave a below c.
+  assert.deepEqual(movesFor(people('a', 'b', 'c'), todo('a', 6, 6)), [{ issue: 'A-1', from: 'a', to: 'b' }])
+  // 9, 1, 2: the issue of 5 would leave every target above a, so the issue of 4 moves to b.
+  assert.deepEqual(movesFor(people('a', 'b', 'c'), [...todo('a', 5, 4), ...todo('b', 1), ...todo('c', 2)]), [{ issue: 'A-2', from: 'a', to: 'b' }])
+  // 13, 5, 5, 3, 4: the issue of 8 would put d at 11, above the limit of 9, so the issue of 5 moves to d.
+  const five = [...todo('a', 8, 5), ...todo('b', 5), ...todo('c', 5), ...todo('d', 3), ...todo('e', 4)]
+  assert.deepEqual(movesFor(people('a', 'b', 'c', 'd', 'e'), five), [{ issue: 'A-2', from: 'a', to: 'd' }])
+})
+
+test('suggestMoves keeps its answer for 10 against 0 and 8 against 2', () => {
+  assert.deepEqual(movesFor(people('a', 'b'), todo('a', 5, 5)), [{ issue: 'A-1', from: 'a', to: 'b' }])
+  assert.deepEqual(movesFor(people('a', 'b'), [...todo('a', 4, 4), ...todo('b', 2)]), [])
+})
+
+test('suggestMoves never moves an issue to a row that the report flags, whatever its load', () => {
+  const members = people('a', 'b', 'c')
+  const issues = [...todo('a', 3, 3, 3), ...todo('c', 3)]
   const report = teamLoad(issues, { members, unit: 'points' })
-  assert.equal(report.average, 5)
-  assert.deepEqual(suggestMoves(report, issues), [])
-  const fits = [issue('A-1', 'todo', 'a', 3), issue('A-2', 'todo', 'a', 3), issue('A-3', 'todo', 'a', 3)]
-  assert.deepEqual(suggestMoves(teamLoad(fits, { members, unit: 'points' }), fits), [{ issue: 'A-1', from: 'a', to: 'b' }, { issue: 'A-2', from: 'a', to: 'c' }])
+  assert.deepEqual(suggestMoves(report, issues), [{ issue: 'A-1', from: 'a', to: 'b' }])
+  const flagged = { ...report, rows: report.rows.map((row) => (row.member === 'b' ? { ...row, flags: ['over_average'] } : row)) }
+  assert.deepEqual(suggestMoves(flagged, issues), [{ issue: 'A-1', from: 'a', to: 'c' }])
+})
+
+test('proposeMoves gives the moves and, when there are none, the reason', () => {
+  const members = people('a', 'b')
+  const give = (issues) => proposeMoves(teamLoad(issues, { members, unit: 'points' }), issues)
+  assert.deepEqual(give(todo('a', 5, 5)), { moves: [{ issue: 'A-1', from: 'a', to: 'b' }], reason: null })
+  assert.equal(give([...todo('a', 10), issue('A-9', 'in_progress', 'a', 2)]).reason, 'no_target')
+  assert.deepEqual(give([issue('A-1', 'in_progress', 'a', 8), ...todo('b', 1)]), { moves: [], reason: 'no_candidates' })
+  assert.deepEqual(give([...todo('a', 3), ...todo('b', 3)]), { moves: [], reason: null }, 'nobody is overloaded, so there is nothing to explain')
+})
+
+test('proposeMoves says the movable work has no estimate when that is the only work in todo', () => {
+  const members = people('a', 'b')
+  const issues = [issue('A-1', 'in_progress', 'a', 10), issue('A-2', 'todo', 'a'), ...todo('b', 1)]
+  const report = teamLoad(issues, { members, unit: 'points' })
+  assert.deepEqual(report.imbalances.map((item) => item.member), ['a'])
+  assert.deepEqual(proposeMoves(report, issues), { moves: [], reason: 'unestimated' })
 })
 
 test('suggestMoves never moves an issue to a member with an unknown load', () => {

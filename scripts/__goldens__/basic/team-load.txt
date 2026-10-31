@@ -57,7 +57,7 @@ exit 0
   "unknownLoad": [],
   "imbalances": [],
   "suggestions": [],
-  "noTarget": false
+  "noMoves": null
 }
 --- stderr
 note: no active sprint: counted every open issue in todo, in_progress and in_review

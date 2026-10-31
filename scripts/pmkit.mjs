@@ -18,7 +18,7 @@ import { buildNotes, chooseBasis } from './lib/release-notes.mjs'
 import { dependencyMap, serializable } from './lib/dependencies.mjs'
 import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 import { pathNote } from './lib/path-notes.mjs'
-import { chooseUnit, suggestMoves, teamLoad } from './lib/team-load.mjs'
+import { NO_MOVE_MESSAGES, chooseUnit, proposeMoves, teamLoad } from './lib/team-load.mjs'
 import { localRunLine } from './lib/delegation.mjs'
 import { SCANNERS, SEVERITIES, collectAlerts } from './lib/alerts.mjs'
 import { READ_LIMIT, groupTodos, matchTodos, readExistingIssues, scanRepo } from './lib/todos.mjs'
@@ -1557,10 +1557,10 @@ async function runTeamLoad(ctx) {
     warnings.push(`some issues have no estimate and count 0 ${choice.unit}; the Unestimated column shows how many per member`)
   }
   notes.push(...(await metricNotes(tracker, 'aging')))
-  const suggestions = truncated ? [] : suggestMoves(report, found.issues)
-  const movable = report.imbalances.some((item) => found.issues.some((issue) => issue.assignee === item.member && issue.status.category === 'todo'))
-  const noTarget = !truncated && movable && suggestions.length === 0
-  const data = { sprint: sprint ? { id: sprint.id, name: sprint.name, start: sprint.start, end: sprint.end } : null, truncated, ...report, suggestions, noTarget }
+  const proposal = truncated ? { moves: [], reason: null } : proposeMoves(report, found.issues)
+  const suggestions = proposal.moves
+  const noMoves = proposal.reason === null ? null : { reason: proposal.reason, message: NO_MOVE_MESSAGES[proposal.reason] }
+  const data = { sprint: sprint ? { id: sprint.id, name: sprint.name, start: sprint.start, end: sprint.end } : null, truncated, ...report, suggestions, noMoves }
   return { data, text: teamLoadText(data), warnings, notes }
 }
 
@@ -1580,7 +1580,7 @@ function teamLoadText(data) {
   ]
   if (data.imbalances.length > 0) lines.push('imbalances:', ...data.imbalances.map((item) => `  ${item.member}: ${item.flag}, load ${item.load}, limit ${item.limit}`))
   if (data.noWork.length > 0) lines.push(`no work in scope: ${data.noWork.map((item) => item.member + (item.daysOff.length > 0 ? ` (days off ${item.daysOff.join(', ')})` : '')).join(', ')}`)
-  if (data.noTarget) lines.push('no proposed moves: there is nobody to move an issue to without overloading someone')
+  if (data.noMoves) lines.push(`no proposed moves: ${data.noMoves.message}`)
   if (data.suggestions.length > 0) lines.push('proposed moves:', ...data.suggestions.map((move) => `  ${move.issue}: ${move.from} to ${move.to}`))
   return lines.join('\n')
 }

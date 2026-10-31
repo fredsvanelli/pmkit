@@ -10,6 +10,7 @@ unassigned | 0      | 0      | 0           |     |                 |          |
 imbalances:
   ana: over_average, load 13, limit 12.75
   ana: over_capacity, load 13, limit 10
+no proposed moves: the overloaded members have no issue in todo to move
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
 note: aging computed from .issues/events.jsonl
@@ -101,7 +102,10 @@ exit 0
     }
   ],
   "suggestions": [],
-  "noTarget": false
+  "noMoves": {
+    "reason": "no_candidates",
+    "message": "the overloaded members have no issue in todo to move"
+  }
 }
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
