@@ -3,3 +3,5 @@
 {"at":"2026-10-31T15:52:58Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-31T15:53:07Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-52-add-issues-delete"}
 {"at":"2026-10-31T15:56:04Z","by":"fred","op":"comment","to":"2026-10-31T15-56-04Z-fred.md"}
+{"at":"2026-10-31T16:20:59Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-31T16:20:59Z","by":"fred","op":"update","field":"acceptance_criteria"}
