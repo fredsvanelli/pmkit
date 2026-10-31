@@ -1,0 +1,16 @@
+$ pmkit demand list
+exit 0
+--- stdout
+no demand signals
+--- stderr
+(empty)
+
+$ pmkit demand list --json
+exit 0
+--- stdout
+{
+  "signals": [],
+  "problems": []
+}
+--- stderr
+(empty)

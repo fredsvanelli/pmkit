@@ -148,6 +148,8 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
   const STUB_CAPABILITY = {
     logTime: 'time_tracking', listTimeEntries: 'time_tracking', createRelease: 'releases', markReleased: 'releases', delegate: 'agent_delegation',
     ...Object.fromEntries(['listGoals', 'getGoal', 'createGoal', 'goalProgress', 'setEpicGoal'].map((operation) => [operation, 'strategic_goals'])),
+    ...Object.fromEntries(['listCustomers', 'getCustomer', 'createCustomer', 'listDemandSignals'].map((operation) => [operation, 'demand_signals'])),
+    ...Object.fromEntries(['listRequests', 'getRequest', 'createRequest', 'acceptRequest', 'declineRequest'].map((operation) => [operation, 'request_queue'])),
   }
   const stub = (operation) =>
     guarded(async () => {

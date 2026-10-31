@@ -1,0 +1,98 @@
+$ pmkit requests decline REQ-6J8P --reason 'Not this quarter'
+exit 0
+--- stdout
+REQ-6J8P  Export the board to CSV
+state: open → declined
+triaged: (none) → {"at":"2026-10-23T12:00:00Z","by":"fred"}
+reason: (none) → Not this quarter
+--- stderr
+(empty)
+
+$ pmkit requests decline REQ-6J8P --reason 'Not this quarter' --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "REQ-6J8P",
+    "title": "Export the board to CSV",
+    "body": "Two tickets this week asked for it.",
+    "priority": 0,
+    "important": false,
+    "customer": null,
+    "from": "support",
+    "state": "open",
+    "target": null,
+    "created": "2026-10-15T08:00:00.000Z",
+    "triaged": null,
+    "reason": null
+  },
+  "after": {
+    "id": "REQ-6J8P",
+    "title": "Export the board to CSV",
+    "body": "Two tickets this week asked for it.",
+    "priority": 0,
+    "important": false,
+    "customer": null,
+    "from": "support",
+    "state": "declined",
+    "target": null,
+    "created": "2026-10-15T08:00:00.000Z",
+    "triaged": {
+      "at": "2026-10-23T12:00:00Z",
+      "by": "fred"
+    },
+    "reason": "Not this quarter"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit requests decline REQ-6J8P --reason 'Not this quarter' --dry-run
+exit 0
+--- stdout
+REQ-6J8P  Export the board to CSV
+state: open → declined
+triaged: (none) → {"at":"2026-10-23T12:00:00Z","by":"fred"}
+reason: (none) → Not this quarter
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit requests decline REQ-6J8P --reason 'Not this quarter' --dry-run --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "REQ-6J8P",
+    "title": "Export the board to CSV",
+    "body": "Two tickets this week asked for it.",
+    "priority": 0,
+    "important": false,
+    "customer": null,
+    "from": "support",
+    "state": "open",
+    "target": null,
+    "created": "2026-10-15T08:00:00.000Z",
+    "triaged": null,
+    "reason": null
+  },
+  "after": {
+    "id": "REQ-6J8P",
+    "title": "Export the board to CSV",
+    "body": "Two tickets this week asked for it.",
+    "priority": 0,
+    "important": false,
+    "customer": null,
+    "from": "support",
+    "state": "declined",
+    "target": null,
+    "created": "2026-10-15T08:00:00.000Z",
+    "triaged": {
+      "at": "2026-10-23T12:00:00Z",
+      "by": "fred"
+    },
+    "reason": "Not this quarter"
+  }
+}
+--- stderr
+(empty)

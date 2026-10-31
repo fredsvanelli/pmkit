@@ -1,0 +1,42 @@
+$ pmkit customers list
+exit 0
+--- stdout
+ID       | Name      | Status | Tier       | Revenue | Size | Requests
+---------|-----------|--------|------------|---------|------|---------
+CUS-3T7W | Acme Corp | active | enterprise | 120000  | 450  | 1
+--- stderr
+(empty)
+
+$ pmkit customers list --json
+exit 0
+--- stdout
+{
+  "available": true,
+  "customers": [
+    {
+      "id": "CUS-3T7W",
+      "name": "Acme Corp",
+      "status": {
+        "id": "active",
+        "name": "active"
+      },
+      "tier": {
+        "id": "enterprise",
+        "name": "enterprise"
+      },
+      "revenue": 120000,
+      "size": 450,
+      "owner": {
+        "id": "ana",
+        "name": "Ana Souza"
+      },
+      "requests": 1,
+      "url": null,
+      "notes": "Pays yearly and asks for exports."
+    }
+  ],
+  "hasMore": false,
+  "problems": []
+}
+--- stderr
+(empty)

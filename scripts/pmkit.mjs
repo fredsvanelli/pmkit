@@ -10,7 +10,7 @@ import { ADAPTERS, adapterFor } from './lib/adapters.mjs'
 import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, loadPmkitConfig, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
 import { contractView } from './lib/contract.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
-import { changeLines, dependencyText, epicRecord, eventTable, fields, goalRecord, issueRecord, issueTable, milestoneRecord, percent, releaseNotesText, releaseRecord, sprintRecord, table } from './lib/format.mjs'
+import { changeLines, customerRecord, dependencyText, epicRecord, eventTable, fields, goalRecord, issueRecord, issueTable, milestoneRecord, percent, releaseNotesText, releaseRecord, requestRecord, sprintRecord, table } from './lib/format.mjs'
 import {
   aging, categoryLookup, cycleTimes, doneInRange, groupEventsByIssue, lastEntry, leadTimes, rangeInstant, sprintIssues, summary, throughput, velocity,
 } from './lib/metrics.mjs'
@@ -305,6 +305,14 @@ function defaultPrBody(issue) {
   return lines.join('\n')
 }
 const problemLine = (problem) => `${problem.id}: ${problem.code} ${problem.message}`
+/** One warning per problem of a list, pointing to pmkit validate. The JSON carries the same problems. */
+const problemWarnings = (problems) => problems.map((problem) => `${problemLine(problem)}; run pmkit validate`)
+
+/** A table of requests in the order given: id, title, state, customer, where it came from and the issue. */
+const requestTable = (requests) => table(
+  ['ID', 'Title', 'State', 'Customer', 'From', 'Issue', 'Created'],
+  requests.map((r) => [r.id, r.title, r.state, r.customer ? (r.customer.name ?? r.customer.id) : '', r.from ?? '', r.target?.id ?? '', r.created ?? '']),
+)
 
 /**
  * The member the caller is. A tracker whose discover() names a viewer, such as Linear, writes as that viewer (ADR-0005).
@@ -764,6 +772,100 @@ export const COMMANDS = [
         p.epics.length === 0 ? 'no epics' : table(['Epic', 'Title', 'Status', 'Done', 'Total', 'Points done', 'Points'], rows),
       ].join('\n')
       return { data: p, text }
+    },
+  },
+  // Customers, requests and demand (PMK-46). customers list and show print the keys of linear customers list and show.
+  {
+    name: 'customers list', summary: 'lists the customers with status, tier, revenue, size and request count, highest revenue first', flags: [],
+    run: async (ctx) => {
+      const { customers, problems } = await (await ctx.tracker()).listCustomers()
+      const rows = customers.map((c) => [c.id, c.name, c.status?.name ?? '', c.tier?.name ?? '', c.revenue ?? '', c.size ?? '', c.requests])
+      return {
+        data: { available: true, customers, hasMore: false, problems },
+        text: customers.length === 0 ? 'no customers yet' : table(['ID', 'Name', 'Status', 'Tier', 'Revenue', 'Size', 'Requests'], rows),
+        warnings: problemWarnings(problems),
+      }
+    },
+  },
+  {
+    name: 'customers show', summary: 'one customer, by id or exact name, with its requests', usage: '<id or name>', args: ['customer'], flags: [],
+    run: async (ctx) => {
+      const { customer, requests, problems } = await (await ctx.tracker()).getCustomer(ctx.args[0])
+      const text = [customerRecord(customer), '', requests.length === 0 ? 'no requests yet' : requestTable(requests)].join('\n')
+      return { data: { available: true, customer, requests, problems }, text, warnings: problemWarnings(problems) }
+    },
+  },
+  {
+    name: 'customers create', summary: 'creates a customer', usage: '--name n [--status s] [--tier t] [--revenue n] [--size n] [--owner member]', write: true,
+    flags: ['name', 'status', 'tier', 'revenue', 'size', 'owner'],
+    run: async (ctx) => {
+      if (ctx.opt('name') === undefined) throw usageError('customers create needs --name', 'pmkit customers create --name "..."')
+      const input = { name: ctx.opt('name') }
+      for (const key of ['status', 'tier', 'owner']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
+      // A number the flag spells as digits becomes a number; anything else goes through as text and the tracker refuses it.
+      if (ctx.opt('revenue') !== undefined) input.revenue = /^\d+$/.test(ctx.opt('revenue')) ? Number(ctx.opt('revenue')) : ctx.opt('revenue')
+      if (ctx.opt('size') !== undefined) input.size = /^\d+(\.\d+)?$/.test(ctx.opt('size')) ? Number(ctx.opt('size')) : ctx.opt('size')
+      const result = await (await ctx.tracker()).createCustomer(input, await ctx.actor(), { dryRun: ctx.dryRun })
+      return { data: result, text: writeText(result, { ...ctx, record: customerRecord }), commit: result.after.id }
+    },
+  },
+  {
+    name: 'requests list', summary: 'lists the requests, the open ones (the inbox) by default, oldest first', usage: '[--state open|accepted|declined|all] [--customer id]',
+    flags: ['state', 'customer'],
+    run: async (ctx) => {
+      const state = ctx.opt('state') ?? 'open'
+      const { requests, problems } = await (await ctx.tracker()).listRequests({ state, customer: ctx.opt('customer') })
+      const empty = state === 'all' ? 'no requests' : `no ${state} requests`
+      return { data: { requests, problems }, text: requests.length === 0 ? empty : requestTable(requests), warnings: problemWarnings(problems) }
+    },
+  },
+  {
+    name: 'requests get', summary: 'one request', usage: '<id>', args: ['id'], flags: [],
+    run: async (ctx) => {
+      const request = await (await ctx.tracker()).getRequest(ctx.args[0])
+      return { data: request, text: requestRecord(request) }
+    },
+  },
+  {
+    name: 'requests create', summary: 'records a request in the inbox, or accepted into an issue with --issue',
+    usage: '--title t [--customer id] [--from text] [--important] [--issue id] [--body-file f]', write: true,
+    flags: ['title', 'customer', 'from', 'important', 'issue', 'body-file'],
+    run: async (ctx) => {
+      if (ctx.opt('title') === undefined) throw usageError('requests create needs --title', 'pmkit requests create --title "..."')
+      const input = { title: ctx.opt('title') }
+      for (const key of ['customer', 'from', 'issue']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
+      if (ctx.flag('important')) input.important = true
+      if (ctx.opt('body-file') !== undefined) input.body = readInput(ctx.opt('body-file'))
+      const result = await (await ctx.tracker()).createRequest(input, await ctx.actor(), { dryRun: ctx.dryRun })
+      return { data: result, text: writeText(result, { ...ctx, record: requestRecord }), commit: result.after.id }
+    },
+  },
+  {
+    name: 'requests accept', summary: 'accepts a request into an existing issue', usage: '<id> <issue>', write: true, args: ['id', 'issue'], flags: [],
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).acceptRequest(ctx.args[0], ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })
+      return { data: result, text: writeText(result, { ...ctx, record: requestRecord }), commit: result.after.id }
+    },
+  },
+  {
+    name: 'requests decline', summary: 'declines a request', usage: '<id> [--reason text]', write: true, args: ['id'], flags: ['reason'],
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).declineRequest(ctx.args[0], ctx.opt('reason'), await ctx.actor(), { dryRun: ctx.dryRun })
+      return { data: result, text: writeText(result, { ...ctx, record: requestRecord }), commit: result.after.id }
+    },
+  },
+  {
+    name: 'demand list', summary: 'the accepted requests grouped by issue, most requests first, with the customers who asked', flags: [],
+    run: async (ctx) => {
+      const { signals, problems } = await (await ctx.tracker()).listDemandSignals()
+      const rows = signals.map((s) => [
+        s.issue.id, s.issue.title ?? '(unreadable)', s.issue.status?.name ?? '', s.count, s.important, [...s.customers.map((c) => c.name ?? c.id), ...s.from].join(', '),
+      ])
+      return {
+        data: { signals, problems },
+        text: signals.length === 0 ? 'no demand signals' : table(['Issue', 'Title', 'Status', 'Requests', 'Important', 'Asked by'], rows),
+        warnings: problemWarnings(problems),
+      }
     },
   },
   {

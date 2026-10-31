@@ -101,6 +101,18 @@ test('a Business workspace with releases and customers on', async () => {
   assert.equal(entry.demand_signals.detail.workspace, 'native')
   assert.equal(entry.strategic_goals.detail.workspace, 'native')
   assert.equal(entry.request_queue.detail.workspace, 'conditional')
+  assert.deepEqual(entry.demand_signals, {
+    id: 'demand_signals',
+    path: 'absent',
+    detail: { workspace: 'native', unsupported: ['listCustomers', 'getCustomer', 'createCustomer', 'listDemandSignals'] },
+    enableHint: 'The Linear adapter serves customer requests through linear customers only; Linear offers them on this workspace',
+  })
+  assert.deepEqual(entry.request_queue, {
+    id: 'request_queue',
+    path: 'absent',
+    detail: { workspace: 'conditional', unsupported: ['listRequests', 'getRequest', 'createRequest', 'acceptRequest', 'declineRequest'] },
+    enableHint: 'The Linear adapter does not serve Asks yet; Linear offers them on this workspace',
+  })
   assert.deepEqual(entry.strategic_goals, {
     id: 'strategic_goals',
     path: 'absent',

@@ -1,0 +1,106 @@
+$ pmkit requests accept REQ-6J8P ISS-9B2X
+exit 0
+--- stdout
+REQ-6J8P  Export the board to CSV
+state: open → accepted
+target: (none) → {"type":"issue","id":"ISS-9B2X","title":"Dead-letter queue"}
+triaged: (none) → {"at":"2026-10-23T12:00:00Z","by":"fred"}
+--- stderr
+(empty)
+
+$ pmkit requests accept REQ-6J8P ISS-9B2X --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "REQ-6J8P",
+    "title": "Export the board to CSV",
+    "body": "Two tickets this week asked for it.",
+    "priority": 0,
+    "important": false,
+    "customer": null,
+    "from": "support",
+    "state": "open",
+    "target": null,
+    "created": "2026-10-15T08:00:00.000Z",
+    "triaged": null,
+    "reason": null
+  },
+  "after": {
+    "id": "REQ-6J8P",
+    "title": "Export the board to CSV",
+    "body": "Two tickets this week asked for it.",
+    "priority": 0,
+    "important": false,
+    "customer": null,
+    "from": "support",
+    "state": "accepted",
+    "target": {
+      "type": "issue",
+      "id": "ISS-9B2X",
+      "title": "Dead-letter queue"
+    },
+    "created": "2026-10-15T08:00:00.000Z",
+    "triaged": {
+      "at": "2026-10-23T12:00:00Z",
+      "by": "fred"
+    },
+    "reason": null
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit requests accept REQ-6J8P ISS-9B2X --dry-run
+exit 0
+--- stdout
+REQ-6J8P  Export the board to CSV
+state: open → accepted
+target: (none) → {"type":"issue","id":"ISS-9B2X","title":"Dead-letter queue"}
+triaged: (none) → {"at":"2026-10-23T12:00:00Z","by":"fred"}
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit requests accept REQ-6J8P ISS-9B2X --dry-run --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "REQ-6J8P",
+    "title": "Export the board to CSV",
+    "body": "Two tickets this week asked for it.",
+    "priority": 0,
+    "important": false,
+    "customer": null,
+    "from": "support",
+    "state": "open",
+    "target": null,
+    "created": "2026-10-15T08:00:00.000Z",
+    "triaged": null,
+    "reason": null
+  },
+  "after": {
+    "id": "REQ-6J8P",
+    "title": "Export the board to CSV",
+    "body": "Two tickets this week asked for it.",
+    "priority": 0,
+    "important": false,
+    "customer": null,
+    "from": "support",
+    "state": "accepted",
+    "target": {
+      "type": "issue",
+      "id": "ISS-9B2X",
+      "title": "Dead-letter queue"
+    },
+    "created": "2026-10-15T08:00:00.000Z",
+    "triaged": {
+      "at": "2026-10-23T12:00:00Z",
+      "by": "fred"
+    },
+    "reason": null
+  }
+}
+--- stderr
+(empty)

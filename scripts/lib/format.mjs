@@ -75,6 +75,28 @@ export function goalRecord(goal) {
   return lines.join('\n')
 }
 
+export function customerRecord(customer) {
+  const lines = fields([
+    ['id', customer.id], ['name', customer.name], ['status', customer.status?.name], ['tier', customer.tier?.name], ['revenue', customer.revenue],
+    ['size', customer.size], ['owner', customer.owner?.id], ['requests', customer.requests],
+  ])
+  if (customer.notes) lines.push('', customer.notes)
+  return lines.join('\n')
+}
+
+/** A request target or customer as one short line: the id and, when it could be read, the title or name. */
+const reference = (item, label) => (item ? `${item.id}${item[label] ? ` ${item[label]}` : item[label] === null ? ' (unreadable)' : ''}` : undefined)
+
+export function requestRecord(request) {
+  const lines = fields([
+    ['id', request.id], ['title', request.title], ['state', request.state], ['important', request.important ? 'yes' : undefined],
+    ['customer', reference(request.customer, 'name')], ['from', request.from], ['issue', reference(request.target, 'title')],
+    ['reason', request.reason], ['created', request.created], ['triaged', request.triaged ? `${request.triaged.at} by ${request.triaged.by}` : undefined],
+  ])
+  if (request.body) lines.push('', request.body)
+  return lines.join('\n')
+}
+
 export function milestoneRecord(milestone) {
   const lines = fields([['id', milestone.id], ['name', milestone.name], ['due', milestone.due]])
   if (milestone.description) lines.push('', milestone.description)

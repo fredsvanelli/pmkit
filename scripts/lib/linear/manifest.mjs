@@ -69,10 +69,22 @@ function workspaceAnswers(raw) {
     releases: releasesEnabled
       ? { path: 'native' }
       : { path: 'absent', enableHint: 'Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings' },
+    // Linear has customer requests when customers are on, but the generic commands do not read them yet (PMK-46); linear customers does.
     demand_signals: customersEnabled
-      ? { path: 'native' }
+      ? {
+        path: 'absent',
+        detail: { workspace: 'native', unsupported: ['listCustomers', 'getCustomer', 'createCustomer', 'listDemandSignals'] },
+        enableHint: 'The Linear adapter serves customer requests through linear customers only; Linear offers them on this workspace',
+      }
       : { path: 'absent', enableHint: 'Linear customer requests need the Business or Enterprise plan and customers turned on in the workspace settings' },
-    request_queue: business ? { path: 'conditional' } : { path: 'absent', enableHint: 'Linear Asks need the Business or Enterprise plan' },
+    // Linear Asks come in through the Slack integration on these plans, and the adapter does not read them yet (PMK-46).
+    request_queue: business
+      ? {
+        path: 'absent',
+        detail: { workspace: 'conditional', unsupported: ['listRequests', 'getRequest', 'createRequest', 'acceptRequest', 'declineRequest'] },
+        enableHint: 'The Linear adapter does not serve Asks yet; Linear offers them on this workspace',
+      }
+      : { path: 'absent', enableHint: 'Linear Asks need the Business or Enterprise plan' },
     // Linear delegates to installed app agents, but the adapter does not call it yet (PMK-57), so pmkit reports it absent.
     agent_delegation: {
       path: 'absent',

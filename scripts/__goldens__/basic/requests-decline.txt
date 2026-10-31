@@ -1,0 +1,41 @@
+$ pmkit requests decline REQ-6J8P --reason 'Not this quarter'
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: request REQ-6J8P does not exist
+next: pmkit requests list
+
+$ pmkit requests decline REQ-6J8P --reason 'Not this quarter' --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "request REQ-6J8P does not exist",
+    "nextStep": "pmkit requests list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit requests decline REQ-6J8P --reason 'Not this quarter' --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: request REQ-6J8P does not exist
+next: pmkit requests list
+
+$ pmkit requests decline REQ-6J8P --reason 'Not this quarter' --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "request REQ-6J8P does not exist",
+    "nextStep": "pmkit requests list"
+  }
+}
+--- stderr
+(empty)
