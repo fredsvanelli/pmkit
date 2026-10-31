@@ -51,6 +51,7 @@ Each command file holds the full procedure. When the user asks for one of these 
 | write release notes, say what shipped, a changelog for customers | `/pmkit:report:release-notes` | `${CLAUDE_PLUGIN_ROOT}/commands/report/release-notes.md` |
 | draft a status update for an epic and publish it after approval | `/pmkit:report:status` | `${CLAUDE_PLUGIN_ROOT}/commands/report/status.md` |
 | turn a spec or PRD into an epic with milestones, issues, sub-issues, estimates and blockers | `/pmkit:spec:import` | `${CLAUDE_PLUGIN_ROOT}/commands/spec/import.md` |
+| record a decision as an ADR and link it to the issues it affects | `/pmkit:spec:record-decision` | `${CLAUDE_PLUGIN_ROOT}/commands/spec/record-decision.md` |
 | see and change capacity and days off per member for a sprint, with the effect on the load | `/pmkit:team:capacity` | `${CLAUDE_PLUGIN_ROOT}/commands/team/capacity.md` |
 | show cycle time, lead time, throughput, aging and bug rate for a period, with the trend against the previous period | `/pmkit:team:flow-metrics` | `${CLAUDE_PLUGIN_ROOT}/commands/team/flow-metrics.md` |
 | see issues, estimates and work in progress per member, who is overloaded or has no work in the sprint, and move issues between members | `/pmkit:team:load` | `${CLAUDE_PLUGIN_ROOT}/commands/team/load.md` |

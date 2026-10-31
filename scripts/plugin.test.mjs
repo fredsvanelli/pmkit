@@ -90,7 +90,7 @@ test('CHANGELOG.md has a section for the plugin version and a Tracker format tha
 })
 
 // Each Task that writes command files adds their names here.
-const COMMANDS = { '': ['setup', 'link-repo', 'help', 'upgrade'], issues: ['find', 'create', 'dependencies', 'update', 'move', 'assign', 'comment', 'link', 'summary', 'work', 'mine', 'capture', 'breakdown', 'progress', 'log-time', 'pause', 'estimate', 'delegate', 'review', 'todos', 'unblock', 'delete'], spec: ['import'], backlog: ['groom', 'triage'], report: ['status', 'release-notes'], cycle: ['plan', 'close'], team: ['capacity', 'flow-metrics', 'standup', 'risk-radar', 'load'], linear: ['triage-rotation', 'customers'], local: ['doctor', 'render', 'migrate'] }
+const COMMANDS = { '': ['setup', 'link-repo', 'help', 'upgrade'], issues: ['find', 'create', 'dependencies', 'update', 'move', 'assign', 'comment', 'link', 'summary', 'work', 'mine', 'capture', 'breakdown', 'progress', 'log-time', 'pause', 'estimate', 'delegate', 'review', 'todos', 'unblock', 'delete'], spec: ['import', 'record-decision'], backlog: ['groom', 'triage'], report: ['status', 'release-notes'], cycle: ['plan', 'close'], team: ['capacity', 'flow-metrics', 'standup', 'risk-radar', 'load'], linear: ['triage-rotation', 'customers'], local: ['doctor', 'render', 'migrate'] }
 
 const HEADINGS = ['## Parameters', '## Steps', '## Confirmation points', '## Output', '## If something is missing']
 
@@ -160,6 +160,25 @@ test('every command is listed in the skill table and in the README', () => {
       }
     }
   }
+})
+
+test('record-decision.md covers the three places, the numbering, the bulk comments and a failed comment', () => {
+  const text = fs.readFileSync(path.join(ROOT, 'commands/spec/record-decision.md'), 'utf8')
+  const lines = text.split('\n')
+  const step = (number) => {
+    const from = lines.findIndex((line) => line.startsWith(`${number}. `))
+    const to = lines.findIndex((line, index) => index > from && /^(\d+\. |## )/.test(line))
+    return lines.slice(from, to).join('\n')
+  }
+  assert.match(step(3), /docs\/adr\//)
+  assert.match(step(3), /createDocument/)
+  assert.match(step(3), /\.issues\/docs\/adr\//)
+  assert.match(step(4), /highest/)
+  assert.match(step(4), /origin\/<default branch>/)
+  assert.match(step(6), /whatever `write_policy\.confirm` says/)
+  assert.match(step(7), /bulk change/)
+  assert.match(step(8), /did not/)
+  assert.match(text, /renames its file/)
 })
 
 test('delegate.md previews in step 5, writes in step 6, always asks, and runs the agent only after a question', () => {
