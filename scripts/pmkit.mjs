@@ -9,6 +9,7 @@ import { gitUserEmail, resolveActor } from './lib/actor.mjs'
 import { ADAPTERS, adapterFor } from './lib/adapters.mjs'
 import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, loadPmkitConfig, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
 import { contractView } from './lib/contract.mjs'
+import { parseMinutes } from './lib/duration.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
 import { changeLines, customerRecord, dependencyText, epicRecord, eventTable, fields, goalRecord, issueRecord, issueTable, milestoneRecord, percent, releaseNotesText, releaseRecord, requestRecord, sprintRecord, table } from './lib/format.mjs'
 import {
@@ -577,7 +578,7 @@ export const COMMANDS = [
   {
     name: 'issues log-time', summary: 'logs time', usage: '<id> <minutes>', write: true, args: ['id', 'minutes'], flags: [],
     run: async (ctx) => {
-      const minutes = /^\d+$/.test(ctx.args[1]) ? Number(ctx.args[1]) : NaN
+      const minutes = parseMinutes(ctx.args[1])
       const result = await (await ctx.tracker()).logTime(ctx.args[0], minutes, await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(null, { dryRun: ctx.dryRun, header: `logged ${minutes} minutes on ${result.after.id}` }), commit: result.after.id }
     },
