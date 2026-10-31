@@ -1,0 +1,2 @@
+{"at":"2026-10-31T16:01:21Z","by":"fred","op":"create","to":{"id":"PMK-185","title":"Fix alerts list notes, advisory titles and the missing-npm check","type":"bug","status":"backlog","priority":"medium","estimate":1,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-31T16:01:21.642Z","updated":"2026-10-31T16:01:21Z"}}
+{"at":"2026-10-31T16:01:22Z","by":"fred","op":"link","field":"related","to":"PMK-48"}

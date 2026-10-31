@@ -8,11 +8,11 @@ estimate: 3
 assignee: fred
 parent: EPC-6
 blocked_by: [PMK-2]
-related: [PMK-175]
+related: [PMK-175, PMK-185]
 milestone: generic-commands
 branch: pmk-48-turn-local-scanner-output-into-security
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-31T03:04:29Z
+updated: 2026-10-31T16:01:22Z
 ---
 
 ## Description

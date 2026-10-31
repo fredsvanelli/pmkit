@@ -7,10 +7,11 @@ priority: medium
 estimate: 3
 assignee: fred
 parent: EPC-6
+related: [PMK-183, PMK-186]
 milestone: generic-commands
 branch: pmk-71-add-the-team-load-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-31T15:45:01Z
+updated: 2026-10-31T16:01:23Z
 ---
 
 ## Description

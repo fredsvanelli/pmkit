@@ -1,0 +1,2 @@
+{"at":"2026-10-31T16:01:11Z","by":"fred","op":"create","to":{"id":"PMK-177","title":"Fix the local diff notes of pr diff and issues review","type":"bug","status":"backlog","priority":"medium","estimate":2,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-31T16:01:11.864Z","updated":"2026-10-31T16:01:11Z"}}
+{"at":"2026-10-31T16:01:12Z","by":"fred","op":"link","field":"related","to":"PMK-61"}
