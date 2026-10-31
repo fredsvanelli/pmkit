@@ -1060,7 +1060,7 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'docs next-adr', summary: 'the number, slug and path of the next ADR, and where it goes (repo or tracker); only reads', usage: '--title t', args: [], flags: ['title'],
+    name: 'docs next-adr', summary: 'the number, slug and path of the next ADR, and where it goes (repo or tracker); only reads', usage: '--title t', args: [], flags: ['title'], byTracker: true,
     run: async (ctx) => {
       if (typeof ctx.opt('title') !== 'string') throw usageError('docs next-adr needs --title', 'Pass the decision title, for example --title "Use event files as the audit log"')
       const { pmkit, hosted } = ctx.config()
