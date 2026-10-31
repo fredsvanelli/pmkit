@@ -1,0 +1,193 @@
+$ pmkit issues bulk priority high --category done
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: issues bulk cannot write: ISS-4 cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first; ISS-5 cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first
+next: Fix what the blockers name, then run the dry run again
+
+$ pmkit issues bulk priority high --category done --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "issues bulk cannot write: ISS-4 cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first; ISS-5 cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first",
+    "nextStep": "Fix what the blockers name, then run the dry run again"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues bulk priority high --category done --dry-run
+exit 0
+--- stdout
+set priority to high: 2 matched, 2 to write
+
+ID    | Title                   | Status | Assignee | Estimate | Change
+------|-------------------------|--------|----------|----------|------------------------
+ISS-1 | Sign webhook payloads   | done   | ana      | 5        | priority: medium → high
+ISS-6 | Paginate the events API | done   | fred     | 3        | priority: medium → high
+
+nothing can be written:
+  ISS-4 cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first
+  ISS-5 cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first
+dry run: nothing was written
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues bulk priority high --category done --dry-run --json
+exit 0
+--- stdout
+{
+  "change": {
+    "kind": "priority",
+    "value": "high",
+    "text": "set priority to high"
+  },
+  "matched": 2,
+  "writes": 2,
+  "items": [
+    {
+      "id": "ISS-1",
+      "title": "Sign webhook payloads",
+      "status": "done",
+      "assignee": "ana",
+      "estimate": 5,
+      "updated": "2026-10-09T17:00:00Z",
+      "state": "change",
+      "changes": [
+        {
+          "field": "priority",
+          "from": "medium",
+          "to": "high"
+        }
+      ]
+    },
+    {
+      "id": "ISS-6",
+      "title": "Paginate the events API",
+      "status": "done",
+      "assignee": "fred",
+      "estimate": 3,
+      "updated": "2026-10-10T16:00:00Z",
+      "state": "change",
+      "changes": [
+        {
+          "field": "priority",
+          "from": "medium",
+          "to": "high"
+        }
+      ]
+    }
+  ],
+  "blockers": [
+    "ISS-4 cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first",
+    "ISS-5 cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first"
+  ],
+  "writable": false,
+  "digest": null,
+  "filter": {
+    "categories": [
+      "done"
+    ]
+  },
+  "view": null,
+  "max": 50,
+  "dryRun": true
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues bulk label-add backend --category done
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: issues bulk cannot write: ISS-4 cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first; ISS-5 cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first
+next: Fix what the blockers name, then run the dry run again
+
+$ pmkit issues bulk label-add backend --category done --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "issues bulk cannot write: ISS-4 cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first; ISS-5 cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first",
+    "nextStep": "Fix what the blockers name, then run the dry run again"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues bulk label-add backend --category done --dry-run
+exit 0
+--- stdout
+add label backend: 2 matched, 0 to write
+
+ID    | Title                   | Status | Assignee | Estimate | Change
+------|-------------------------|--------|----------|----------|----------
+ISS-1 | Sign webhook payloads   | done   | ana      | 5        | no change
+ISS-6 | Paginate the events API | done   | fred     | 3        | no change
+
+nothing can be written:
+  ISS-4 cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first
+  ISS-5 cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first
+dry run: nothing was written
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues bulk label-add backend --category done --dry-run --json
+exit 0
+--- stdout
+{
+  "change": {
+    "kind": "label-add",
+    "value": "backend",
+    "text": "add label backend"
+  },
+  "matched": 2,
+  "writes": 0,
+  "items": [
+    {
+      "id": "ISS-1",
+      "title": "Sign webhook payloads",
+      "status": "done",
+      "assignee": "ana",
+      "estimate": 5,
+      "updated": "2026-10-09T17:00:00Z",
+      "state": "unchanged",
+      "changes": []
+    },
+    {
+      "id": "ISS-6",
+      "title": "Paginate the events API",
+      "status": "done",
+      "assignee": "fred",
+      "estimate": 3,
+      "updated": "2026-10-10T16:00:00Z",
+      "state": "unchanged",
+      "changes": []
+    }
+  ],
+  "blockers": [
+    "ISS-4 cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first",
+    "ISS-5 cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first"
+  ],
+  "writable": false,
+  "digest": null,
+  "filter": {
+    "categories": [
+      "done"
+    ]
+  },
+  "view": null,
+  "max": 50,
+  "dryRun": true
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.

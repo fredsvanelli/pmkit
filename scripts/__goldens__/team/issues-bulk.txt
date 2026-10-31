@@ -1,0 +1,218 @@
+$ pmkit issues bulk priority high --category done
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: issues bulk cannot write: ISS-3Q6T cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first
+next: Fix what the blockers name, then run the dry run again
+
+$ pmkit issues bulk priority high --category done --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "issues bulk cannot write: ISS-3Q6T cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first",
+    "nextStep": "Fix what the blockers name, then run the dry run again"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues bulk priority high --category done --dry-run
+exit 0
+--- stdout
+set priority to high: 3 matched, 2 to write
+
+ID       | Title                           | Status | Assignee | Estimate | Change
+---------|---------------------------------|--------|----------|----------|------------------------
+ISS-7K3Q | Retry failed webhook deliveries | done   | fred     | 3        | no change
+ISS-4P8A | Sign webhook payloads           | done   | ana      | 5        | priority: medium → high
+ISS-9T2M | Fix rounding in invoice totals  | done   | fred     | 2        | priority: urgent → high
+
+nothing can be written:
+  ISS-3Q6T cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first
+dry run: nothing was written
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues bulk priority high --category done --dry-run --json
+exit 0
+--- stdout
+{
+  "change": {
+    "kind": "priority",
+    "value": "high",
+    "text": "set priority to high"
+  },
+  "matched": 3,
+  "writes": 2,
+  "items": [
+    {
+      "id": "ISS-7K3Q",
+      "title": "Retry failed webhook deliveries",
+      "status": "done",
+      "assignee": "fred",
+      "estimate": 3,
+      "updated": "2026-10-06T16:00:00Z",
+      "state": "unchanged",
+      "changes": []
+    },
+    {
+      "id": "ISS-4P8A",
+      "title": "Sign webhook payloads",
+      "status": "done",
+      "assignee": "ana",
+      "estimate": 5,
+      "updated": "2026-10-08T17:00:00Z",
+      "state": "change",
+      "changes": [
+        {
+          "field": "priority",
+          "from": "medium",
+          "to": "high"
+        }
+      ]
+    },
+    {
+      "id": "ISS-9T2M",
+      "title": "Fix rounding in invoice totals",
+      "status": "done",
+      "assignee": "fred",
+      "estimate": 2,
+      "updated": "2026-10-05T15:00:00Z",
+      "state": "change",
+      "changes": [
+        {
+          "field": "priority",
+          "from": "urgent",
+          "to": "high"
+        }
+      ]
+    }
+  ],
+  "blockers": [
+    "ISS-3Q6T cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first"
+  ],
+  "writable": false,
+  "digest": null,
+  "filter": {
+    "categories": [
+      "done"
+    ]
+  },
+  "view": null,
+  "max": 50,
+  "dryRun": true
+}
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues bulk label-add backend --category done
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: issues bulk cannot write: ISS-3Q6T cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first
+next: Fix what the blockers name, then run the dry run again
+
+$ pmkit issues bulk label-add backend --category done --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "issues bulk cannot write: ISS-3Q6T cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first",
+    "nextStep": "Fix what the blockers name, then run the dry run again"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues bulk label-add backend --category done --dry-run
+exit 0
+--- stdout
+add label backend: 3 matched, 1 to write
+
+ID       | Title                           | Status | Assignee | Estimate | Change
+---------|---------------------------------|--------|----------|----------|-----------------------------------
+ISS-7K3Q | Retry failed webhook deliveries | done   | fred     | 3        | no change
+ISS-4P8A | Sign webhook payloads           | done   | ana      | 5        | no change
+ISS-9T2M | Fix rounding in invoice totals  | done   | fred     | 2        | labels: billing → billing, backend
+
+nothing can be written:
+  ISS-3Q6T cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first
+dry run: nothing was written
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+
+$ pmkit issues bulk label-add backend --category done --dry-run --json
+exit 0
+--- stdout
+{
+  "change": {
+    "kind": "label-add",
+    "value": "backend",
+    "text": "add label backend"
+  },
+  "matched": 3,
+  "writes": 1,
+  "items": [
+    {
+      "id": "ISS-7K3Q",
+      "title": "Retry failed webhook deliveries",
+      "status": "done",
+      "assignee": "fred",
+      "estimate": 3,
+      "updated": "2026-10-06T16:00:00Z",
+      "state": "unchanged",
+      "changes": []
+    },
+    {
+      "id": "ISS-4P8A",
+      "title": "Sign webhook payloads",
+      "status": "done",
+      "assignee": "ana",
+      "estimate": 5,
+      "updated": "2026-10-08T17:00:00Z",
+      "state": "unchanged",
+      "changes": []
+    },
+    {
+      "id": "ISS-9T2M",
+      "title": "Fix rounding in invoice totals",
+      "status": "done",
+      "assignee": "fred",
+      "estimate": 2,
+      "updated": "2026-10-05T15:00:00Z",
+      "state": "change",
+      "changes": [
+        {
+          "field": "labels",
+          "from": [
+            "billing"
+          ],
+          "to": [
+            "billing",
+            "backend"
+          ]
+        }
+      ]
+    }
+  ],
+  "blockers": [
+    "ISS-3Q6T cannot be read (CONFLICT) and may match the filter; run pmkit validate and fix it first"
+  ],
+  "writable": false,
+  "digest": null,
+  "filter": {
+    "categories": [
+      "done"
+    ]
+  },
+  "view": null,
+  "max": 50,
+  "dryRun": true
+}
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.

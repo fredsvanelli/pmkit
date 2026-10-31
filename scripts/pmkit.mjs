@@ -1758,7 +1758,7 @@ async function runBulk(ctx) {
   if (preview.writes === 0) return { data: { ...data, applied: [] }, text: `${bulkText(preview, { dryRun: false })}\nnothing to write`, warnings }
   const expect = ctx.opt('expect')
   if (typeof expect !== 'string' || expect === '') {
-    throw new PmkitError('INVALID_INPUT', 'issues bulk writes more than one record and needs the digest of its preview', 'Run the same command with --dry-run, show the preview, then pass its digest with --expect')
+    throw new PmkitError('INVALID_INPUT', 'issues bulk needs the digest of its preview before it writes', 'Run the same command with --dry-run, show the preview, then pass its digest with --expect')
   }
   if (expect !== preview.digest) {
     throw new PmkitError('CONFLICT', 'the issues changed since the preview, so nothing was written', 'Run the dry run again and confirm the new preview', { expected: expect, digest: preview.digest })
