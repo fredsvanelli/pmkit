@@ -70,6 +70,22 @@ test('isNpmMissingOnShell matches only the not-recognized text, case-insensitive
   assert.equal(isNpmMissingOnShell({ status: 1, stderr: 'npm ERR! code E403' }), false)
 })
 
+test('on win32 exit 9009 means npm is missing, whatever the cmd.exe language', () => {
+  const portuguese = "'npm.cmd' não é reconhecido como um comando interno ou externo"
+  const german = "'npm.cmd' wird nicht als interner oder externer Befehl, Programm oder Batchdatei erkannt."
+  for (const stderr of [portuguese, german]) {
+    const { spawn } = fakeSpawn({ status: 9009, stdout: '', stderr })
+    const found = collectAlerts(repoWithLockfile(), { platform: 'win32', spawn })
+    assert.equal(found.warnings[0], 'npm-audit failed: npm is not installed or not on PATH')
+  }
+})
+
+test('isNpmMissingOnShell accepts exit 9009 with any stderr, and no other non-zero exit without the text', () => {
+  assert.equal(isNpmMissingOnShell({ status: 9009, stderr: '' }), true)
+  assert.equal(isNpmMissingOnShell({ status: 9009, stderr: 'qualquer coisa' }), true)
+  assert.equal(isNpmMissingOnShell({ status: 1, stderr: 'npm ERR! code E403' }), false)
+})
+
 const audit = (vulnerabilities) => JSON.stringify({ auditReportVersion: 2, vulnerabilities })
 
 test('SEVERITIES lists the four levels, highest first', () => {

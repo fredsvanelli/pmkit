@@ -58,8 +58,12 @@ export const NPM_TIMEOUT_MS = 60000
 /** The npm executable name: Windows needs the .cmd shim, which spawnSync does not resolve on its own. */
 export const npmCommand = (platform = process.platform) => (platform === 'win32' ? 'npm.cmd' : 'npm')
 
-/** True when the shell could not find npm.cmd: a non-zero exit with "is not recognized" on stderr (cmd.exe, English). */
-export const isNpmMissingOnShell = (result) => result.status !== 0 && /is not recognized/i.test(result.stderr ?? '')
+/**
+ * True when the shell could not find npm.cmd. cmd.exe exits with 9009 for an unknown command in every display language,
+ * so the exit code is the main test. The English "is not recognized" text on stderr is the fallback.
+ */
+export const isNpmMissingOnShell = (result) => result.status === 9009
+  || (result.status !== 0 && /is not recognized/i.test(result.stderr ?? ''))
 
 const LOCKFILES = ['package-lock.json', 'npm-shrinkwrap.json']
 
