@@ -129,6 +129,8 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `requests accept <id> <issue>` | accepts a request into an existing issue; to turn it into a new issue, run `issues create` first |
 | `requests decline <id> [--reason text]` | declines a request |
 | `demand list` | groups the accepted requests by issue, most requests first, with the customers who asked |
+| `inbox list [--as member] [--since ts] [--all]` | lists the assignments and `@member` mentions since the last check, oldest first; `complete` is `false` when a file could not be read |
+| `inbox mark-read [--as member] [--through ts] [--dry-run]` | records the check in the user store, never in `.issues/`; refuses while the inbox is incomplete |
 | `views run <name>` | runs a saved view and lists its issues; `sprint: current` and `assignee: me` stay symbolic, so they resolve when the view runs |
 | `metrics velocity` | points or counts done per closed sprint, and the average |
 | `metrics cycle-time` | median and p85 days from first `in_progress` to `done` |

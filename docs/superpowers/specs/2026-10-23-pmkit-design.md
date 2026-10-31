@@ -79,7 +79,7 @@ Event ops: `create`, `update`, `move`, `assign`, `link`, `unlink`, `comment`, `l
 
 The 20 capabilities of the Unified model (`cycles`, `estimation`, `multilevel_hierarchy`, `dependencies`, `native_triage`, `deliverables`, `strategic_goals`, `status_update`, `releases`, `capacity`, `native_metrics`, `saved_views`, `documents`, `demand_signals`, `request_queue`, `time_tracking`, `linked_code`, `agent_delegation`, `security_alerts`, `user_inbox`). Each has a path (`native`, `derived`, `conditional`, `absent`), an optional `detail` map and an optional `enableHint`.
 
-The Local tracker serves 19 of the 20: 15 native and 4 derived (`native_metrics`, `linked_code`, `agent_delegation`, `security_alerts`). It reports `user_inbox` as `absent`, with an `enableHint`. The served-by table and the full split are in `2026-10-25-pmk-2-capability-manifest-design.md`. In the MVP the manifest is computed on each run from the config **(builder's call)**: it is cheap for the Local tracker, and caching starts with the first hosted adapter.
+The Local tracker serves all 20: 16 native and 4 derived (`native_metrics`, `linked_code`, `agent_delegation`, `security_alerts`). A tracker that lacks a capability reports it as `absent`, with an `enableHint`. The served-by table and the full split are in `2026-10-25-pmk-2-capability-manifest-design.md`. In the MVP the manifest is computed on each run from the config **(builder's call)**: it is cheap for the Local tracker, and caching starts with the first hosted adapter.
 
 `pmkit capabilities [--json]` prints it. `/pmkit:help` reads it.
 
@@ -175,7 +175,7 @@ Rules: every status maps to exactly one category, and every category has at leas
 
 ### User store
 
-`~/.config/pmkit/` (or `$XDG_CONFIG_HOME/pmkit/`, `%APPDATA%\pmkit\` on Windows) **(builder's call)**. In the MVP it holds only `inbox/<repo-hash>.json`, the time of the user's last inbox check. Nothing in it is required for a command to work.
+`~/.config/pmkit/` (or `$XDG_CONFIG_HOME/pmkit/`, `%APPDATA%\pmkit\` on Windows) **(builder's call)**. In the MVP it holds only `inbox/<repo-hash>.json`, the time of each member's last inbox check on that checkout (`inbox mark-read`, PMK-47). Nothing in it is required for a command to work.
 
 ### Actor
 
