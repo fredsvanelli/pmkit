@@ -2,13 +2,15 @@
 id: PMK-56
 title: Add the bulk-operation command
 type: feature
-status: backlog
+status: in_progress
 priority: medium
 estimate: 3
+assignee: fred
 parent: EPC-6
 milestone: generic-commands
+branch: pmk-56-add-the-bulk-operation-command
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-25T19:13:21Z
+updated: 2026-10-31T17:02:37Z
 ---
 
 ## Description

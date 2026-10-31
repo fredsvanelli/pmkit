@@ -1,1 +1,4 @@
 {"at":"2026-10-25T19:13:21Z","by":"fred","op":"create","to":{"id":"PMK-56","title":"Add the bulk-operation command","type":"feature","status":"backlog","priority":"medium","estimate":3,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"generic-commands","created":"2026-10-25T19:13:21Z","updated":"2026-10-25T19:13:21Z"}}
+{"at":"2026-10-31T17:02:34Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-31T17:02:34Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-31T17:02:37Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-56-add-the-bulk-operation-command"}
