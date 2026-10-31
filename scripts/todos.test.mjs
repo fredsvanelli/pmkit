@@ -136,7 +136,10 @@ test('readExistingIssues reads with a large limit and flags a read the tracker c
   const calls = []
   const tracker = (answer) => ({ searchIssues: async (filter) => { calls.push(filter); return answer } })
   const whole = await readExistingIssues(tracker({ issues: [issue('ISS-1')], problems: [] }))
-  assert.deepEqual(whole, { issues: [issue('ISS-1')], problems: [], incomplete: false })
+  assert.deepEqual(whole, { issues: [issue('ISS-1')], problems: [], incomplete: false, cut: false, unread: { count: 0, ids: [] } })
+  const broken = await readExistingIssues(tracker({ issues: [issue('ISS-1')], problems: [{ id: 'ISS-9', code: 'INVALID_INPUT', message: 'conflict' }, { code: 'X', message: 'no id' }] }))
+  assert.equal(broken.incomplete, true)
+  assert.deepEqual(broken.unread, { count: 2, ids: ['ISS-9'] })
   assert.equal(calls[0].archived, true)
   assert.ok(calls[0].limit >= 10000)
   assert.equal((await readExistingIssues(tracker({ issues: [], problems: [], hasMore: true }))).incomplete, true)

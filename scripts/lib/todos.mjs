@@ -267,11 +267,16 @@ export function matchTodos(candidates, issues) {
 
 /**
  * Every issue of the tracker, archived ones included. `incomplete` says the read stopped short, either because the tracker
- * has more issues than it returned or because the read reached `limit`, so a comment may look new when an issue covers it.
+ * has more issues than it returned, the read reached `limit`, or some issue files could not be read (`unread` counts them
+ * and lists their ids), so a comment may look new when an issue covers it.
  */
 export async function readExistingIssues(tracker, { limit = READ_LIMIT } = {}) {
   const found = await tracker.searchIssues({ archived: true, limit })
-  return { issues: found.issues, problems: found.problems ?? [], incomplete: found.hasMore === true || found.issues.length >= limit }
+  const problems = found.problems ?? []
+  // An issue the tracker cannot read may hold the todo-key of a comment, so it counts as a cut read too.
+  const unread = { count: problems.length, ids: problems.map((problem) => problem.id).filter(Boolean) }
+  const cut = found.hasMore === true || found.issues.length >= limit
+  return { issues: found.issues, problems, incomplete: cut || unread.count > 0, cut, unread }
 }
 
 // ---- Scan ----

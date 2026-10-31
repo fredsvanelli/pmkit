@@ -154,6 +154,23 @@ test('todos scan says it is incomplete when the tracker cut its issue list', asy
   assert.match(text.stderr, /incomplete/)
 })
 
+test('todos scan is incomplete when an issue file cannot be read, so it does not offer a duplicate', async () => {
+  const root = repo({ 'a.mjs': '// TODO build the export\n' })
+  const { data } = await scan(root)
+  write(root, 'body.md', data.candidates[0].description)
+  const created = JSON.parse((await create(root, 'Export', 'body.md')).stdout)
+  assert.equal((await scan(root)).data.candidates.length, 0)
+  const file = path.join(root, '.issues', 'issues', created.after.id, 'issue.md')
+  fs.writeFileSync(file, `<<<<<<< HEAD\n${fs.readFileSync(file, 'utf8')}=======\nother\n>>>>>>> branch\n`)
+  const after = await scan(root)
+  assert.equal(after.code, 0, after.stdout + after.stderr)
+  assert.equal(after.data.incomplete, true)
+  assert.deepEqual(after.data.unread, { count: 1, ids: [created.after.id] })
+  assert.equal(after.data.candidates.length, 1, 'the comment shows as new, which is why the run is incomplete')
+  const text = await run(['todos', 'scan'], { env: ENV, cwd: root })
+  assert.match(text.stderr, new RegExp(`incomplete: 1 issue could not be read \\(${created.after.id}\\).*Do not create issues from this list.*/pmkit:local:doctor`))
+})
+
 test('todos scan reads 20000 TODO lines', async () => {
   const lines = Array.from({ length: 20000 }, (_, i) => `// TODO item number ${i} with a long enough text`).join('\n')
   const root = repo({ 'many.mjs': lines })

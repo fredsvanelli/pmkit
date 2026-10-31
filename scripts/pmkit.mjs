@@ -1038,7 +1038,13 @@ export const COMMANDS = [
       const existing = await readExistingIssues(await ctx.tracker())
       const { candidates, matched } = matchTodos(groupTodos(found), existing.issues)
       const warnings = existing.problems.map(problemLine)
-      if (existing.incomplete) warnings.push(`incomplete: the tracker has more issues than the ${READ_LIMIT} pmkit read, so a comment that an issue covers may show as new. Do not create issues from this list`)
+      if (existing.cut) warnings.push(`incomplete: the tracker has more issues than the ${READ_LIMIT} pmkit read, so a comment that an issue covers may show as new. Do not create issues from this list`)
+      if (existing.unread.count > 0) {
+        const { count, ids } = existing.unread
+        const which = ids.length > 0 ? ` (${ids.join(', ')})` : ''
+        const next = ctx.config().system === 'local' ? 'Run /pmkit:local:doctor to fix them, then scan again' : 'Fix them in the tracker, then scan again'
+        warnings.push(`incomplete: ${count} ${count === 1 ? 'issue' : 'issues'} could not be read${which}, so a comment that one of them covers may show as new. Do not create issues from this list. ${next}`)
+      }
       if (skippedEmpty > 0) warnings.push(`${skippedEmpty} TODO or FIXME comments have no text and were skipped`)
       const unread = Object.entries(skipped.unsupported).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
       if (unread.length > 0) {
@@ -1048,7 +1054,7 @@ export const COMMANDS = [
       const parts = []
       if (candidates.length > 0) parts.push(table(['Key', 'Tag', 'Location', 'Text'], candidates.map((c) => [c.key, c.tag, c.locations.length > 1 ? `${c.locations[0]} (+${c.locations.length - 1})` : c.locations[0], c.title])))
       if (matched.length > 0) parts.push(`already in the tracker:\n${table(['Issue', 'Status', 'Reason', 'Text'], matched.map((m) => [m.issue, m.status ?? '', m.reason, m.text]))}`)
-      return { data: { files, skippedEmpty, skipped, incomplete: existing.incomplete, candidates, matched }, text: parts.length > 0 ? parts.join('\n\n') : 'no TODO or FIXME found', warnings }
+      return { data: { files, skippedEmpty, skipped, incomplete: existing.incomplete, unread: existing.unread, candidates, matched }, text: parts.length > 0 ? parts.join('\n\n') : 'no TODO or FIXME found', warnings }
     },
   },
   {
