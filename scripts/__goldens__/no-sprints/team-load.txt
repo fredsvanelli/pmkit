@@ -1,0 +1,73 @@
+$ pmkit team load
+exit 0
+--- stdout
+no sprint, load in points, average 4
+Member     | Issues | Points | Unestimated | WIP | Oldest WIP days | Capacity | Flags
+-----------|--------|--------|-------------|-----|-----------------|----------|------
+ana        | 1      | 5      | 0           | 1   | 9.1             |          |
+fred       | 1      | 3      | 0           | 0   |                 |          |
+unassigned | 0      | 0      | 0           |     |                 |          |
+--- stderr
+note: no active sprint: counted every open issue in todo, in_progress and in_review
+note: aging computed from .issues/events.jsonl
+
+$ pmkit team load --json
+exit 0
+--- stdout
+{
+  "sprint": null,
+  "unit": "points",
+  "average": 4,
+  "rows": [
+    {
+      "member": "ana",
+      "name": "Ana Souza",
+      "agent": false,
+      "isMember": true,
+      "issues": 1,
+      "points": 5,
+      "unestimated": 0,
+      "wip": 1,
+      "oldestWipDays": 9.1,
+      "load": 5,
+      "ids": [
+        "ISS-9B2X"
+      ],
+      "flags": [],
+      "availability": 0.8,
+      "capacity": null,
+      "daysOff": []
+    },
+    {
+      "member": "fred",
+      "name": "Fred Vanelli",
+      "agent": false,
+      "isMember": true,
+      "issues": 1,
+      "points": 3,
+      "unestimated": 0,
+      "wip": 0,
+      "oldestWipDays": null,
+      "load": 3,
+      "ids": [
+        "ISS-3M8D"
+      ],
+      "flags": [],
+      "availability": 1,
+      "capacity": null,
+      "daysOff": []
+    }
+  ],
+  "unassigned": {
+    "issues": 0,
+    "points": 0,
+    "unestimated": 0,
+    "ids": []
+  },
+  "noWork": [],
+  "imbalances": [],
+  "suggestions": []
+}
+--- stderr
+note: no active sprint: counted every open issue in todo, in_progress and in_review
+note: aging computed from .issues/events.jsonl

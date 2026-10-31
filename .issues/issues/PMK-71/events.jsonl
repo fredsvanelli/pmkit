@@ -3,3 +3,6 @@
 {"at":"2026-10-30T23:13:29Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-30T23:13:35Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-71-add-the-team-load-command"}
 {"at":"2026-10-30T23:15:17Z","by":"fred","op":"comment","to":"2026-10-30T23-15-17Z-fred.md"}
+{"at":"2026-10-31T02:33:42Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-31T02:33:42Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-31T02:33:42Z","by":"fred","op":"update","field":"acceptance_criteria"}
