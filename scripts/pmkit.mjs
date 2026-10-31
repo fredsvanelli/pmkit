@@ -1732,6 +1732,7 @@ async function runBulk(ctx) {
     if (filter.limit !== undefined) throw usageError(`view ${view} has a limit, which cuts the set; a bulk change needs the whole set`, `Save the view again without --limit: pmkit views save ${view} --overwrite`)
     if (Object.keys(filter).length === 0) throw usageError(`view ${view} has no filter, so it would match every issue`, 'Save a view that narrows the issues')
   }
+  if (found.hasMore === true) throw usageError('the tracker has more matching issues than pmkit read, so the set is cut and nothing can be written from it', 'Narrow the filter')
   if (found.issues.length > max) {
     throw usageError(`the filter matches ${found.issues.length} issues, more than the ${max} one bulk change takes`, `Narrow the filter${max < HARD_MAX ? `, or raise --max up to ${HARD_MAX}` : ''}`)
   }
