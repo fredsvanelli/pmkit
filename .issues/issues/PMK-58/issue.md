@@ -2,14 +2,16 @@
 id: PMK-58
 title: Add the track-agents command
 type: feature
-status: backlog
+status: in_progress
 priority: medium
 estimate: 3
+assignee: fred
 parent: EPC-6
 blocked_by: [PMK-57]
 milestone: generic-commands
+branch: pmk-58-add-the-track-agents-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-25T19:13:26Z
+updated: 2026-10-31T19:40:50Z
 ---
 
 ## Description
@@ -18,4 +20,4 @@ Source: Unified model, Foundation catalog (`track-agents`: "Status of agent sess
 
 ## Acceptance criteria
 
-- [ ] Lists the issues assigned to agents with the state of their pull requests
+- [x] Lists the issues assigned to agents with the state of their pull requests
