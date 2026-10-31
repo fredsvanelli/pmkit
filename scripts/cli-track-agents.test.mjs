@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
 import { delegationComment } from './lib/delegation.mjs'
 import { makeRepo, tempDir } from './test-helpers.mjs'
-import { fakeGh } from './fake-gh.mjs'
+import { fakeGh, ghCalls } from './fake-gh.mjs'
 
 const VIEW = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
 const view = (branch) => `pr view ${branch} --json ${VIEW}`
@@ -31,7 +31,7 @@ function setup({ github = true, canned = {} } = {}) {
     assert.equal(result.code, 0, result.stdout + result.stderr)
     return JSON.parse(result.stdout)
   }
-  return { root, cli, track }
+  return { root, cli, track, gh }
 }
 
 async function delegate(cli, issue, agent, body) {
@@ -107,4 +107,76 @@ test('an issue file that does not parse is a warning and marks the list incomple
   assert.equal(dataOf(out).issues.length, 1)
   assert.equal(dataOf(out).incomplete, true)
   assert.ok(dataOf(out).warnings.some((w) => w.includes('ISS-2X6D')))
+})
+
+// A pull request that goes through collectBlockers. `kind` picks the verdict: free (blocked false), draft (true) or notReady (null).
+const EMPTY_THREADS = '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}'
+async function threadsKey() {
+  const { createGithubHost } = await import('./lib/github/host.mjs')
+  let key
+  createGithubHost({ root: '.', env: {}, exec: (cmd, args) => { key = args.join(' '); return { status: 0, stdout: EMPTY_THREADS, stderr: '' } } }).prThreads(1)
+  return key.replace('number=1', 'number={N}')
+}
+const PROTECTION = 'api repos/{owner}/{repo}/branches/main/protection'
+function openPr(key, branch, number, kind) {
+  const merge = kind === 'notReady' ? { mergeable: 'UNKNOWN', mergeStateStatus: 'UNKNOWN', reviewDecision: '', baseRefName: 'main' } : { mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', reviewDecision: 'APPROVED', baseRefName: 'main' }
+  return {
+    [view(branch)]: { stdout: pr({ number, state: 'OPEN', isDraft: kind === 'draft', mergedAt: null }) },
+    [`pr checks ${number} --json name,state,bucket`]: { stdout: JSON.stringify([{ name: 'test', state: 'SUCCESS', bucket: 'pass' }]) },
+    [`pr view ${number} --json reviews,reviewRequests`]: { stdout: JSON.stringify({ reviews: [{ author: { login: 'ann' }, state: 'APPROVED' }], reviewRequests: [] }) },
+    [`pr view ${number} --json mergeable,mergeStateStatus,reviewDecision,baseRefName`]: { stdout: JSON.stringify(merge) },
+    [key.replace('{N}', String(number))]: { stdout: EMPTY_THREADS },
+  }
+}
+
+test('a blocked pull request is never reported as free: blocked true, null and false each come out as they are', async () => {
+  const key = await threadsKey()
+  const { root, cli, track } = setup({ canned: { ...openPr(key, 'b-draft', 11, 'draft'), ...openPr(key, 'b-wait', 12, 'notReady'), ...openPr(key, 'b-free', 13, 'free'), [PROTECTION]: { stdout: '{}' } } })
+  for (const id of ['ISS-5N1R', 'ISS-2X6D', 'ISS-8C4W']) await delegate(cli, id, 'agent:claude')
+  setBranch(root, 'ISS-5N1R', 'b-draft')
+  setBranch(root, 'ISS-2X6D', 'b-wait')
+  setBranch(root, 'ISS-8C4W', 'b-free')
+  const data = dataOf(await track())
+  const prOf = (id) => data.issues.find((i) => i.id === id).pr
+  assert.equal(prOf('ISS-5N1R').state, 'draft')
+  assert.equal(prOf('ISS-5N1R').blocked, true)
+  assert.deepEqual(prOf('ISS-5N1R').blocking, ['the pull request is a draft'])
+  assert.equal(prOf('ISS-2X6D').blocked, null)
+  assert.equal(prOf('ISS-8C4W').blocked, false)
+  assert.equal(data.incomplete, true)
+  assert.ok(data.warnings.some((w) => /not ready/.test(w)), data.warnings.join('\n'))
+  const text = (await cli('issues', 'track-agents')).stdout
+  assert.match(text, /#11 draft, blocked: the pull request is a draft/)
+  assert.match(text, /#12 open, blockers not verified/)
+  assert.match(text, /#13 open, nothing blocks it/)
+})
+
+test('the branch protection of a base is read once for all the issues', async () => {
+  const key = await threadsKey()
+  const { root, cli, track, gh } = setup({ canned: { ...openPr(key, 'b-one', 21, 'free'), ...openPr(key, 'b-two', 22, 'free'), [PROTECTION]: { stdout: '{}' } } })
+  for (const id of ['ISS-5N1R', 'ISS-2X6D']) await delegate(cli, id, 'agent:claude')
+  setBranch(root, 'ISS-5N1R', 'b-one')
+  setBranch(root, 'ISS-2X6D', 'b-two')
+  await track()
+  assert.equal(ghCalls(gh).filter((line) => line === PROTECTION).length, 1)
+})
+
+test('after the first RATE_LIMITED no more gh calls are made and one warning is given', async () => {
+  const { root, cli, track, gh } = setup({ canned: Object.fromEntries(['b-1', 'b-2', 'b-3'].map((b) => [view(b), { status: 1, stderr: 'API rate limit exceeded' }])) })
+  for (const id of ['ISS-5N1R', 'ISS-2X6D', 'ISS-8C4W']) await delegate(cli, id, 'agent:claude')
+  setBranch(root, 'ISS-5N1R', 'b-1')
+  setBranch(root, 'ISS-2X6D', 'b-2')
+  setBranch(root, 'ISS-8C4W', 'b-3')
+  const data = dataOf(await track())
+  assert.deepEqual(data.issues.map((i) => i.pr.state), ['unknown', 'unknown', 'unknown'])
+  assert.equal(ghCalls(gh).length, 1)
+  assert.equal(data.warnings.filter((w) => /rate limit/i.test(w)).length, 1, data.warnings.join('\n'))
+  assert.equal(data.incomplete, true)
+})
+
+test('an issue in triage assigned to an agent is listed', async () => {
+  const { cli, track } = setup({ github: false })
+  await cli('issues', 'assign', 'ISS-1V9Z', 'agent:claude')
+  const data = dataOf(await track())
+  assert.deepEqual(data.issues.map((i) => i.id), ['ISS-1V9Z'])
 })

@@ -4,7 +4,7 @@ exit 0
 no open issue is assigned to an agent
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.; run pmkit validate
-warning: the list is incomplete: some reads failed or were cut, so what is marked unknown or not verified is not confirmed
+warning: the list is incomplete: some reads failed, were cut, or were not ready (GitHub had not computed the merge state), so what is marked unknown or not verified is not confirmed
 note: git_host is none, so the list has no pull request state
 
 $ pmkit issues track-agents --json
@@ -16,7 +16,7 @@ exit 0
   "hasMore": false,
   "warnings": [
     "ISS-3Q6T: CONFLICT The issue file contains git conflict markers.; run pmkit validate",
-    "the list is incomplete: some reads failed or were cut, so what is marked unknown or not verified is not confirmed"
+    "the list is incomplete: some reads failed, were cut, or were not ready (GitHub had not computed the merge state), so what is marked unknown or not verified is not confirmed"
   ],
   "notes": [
     "git_host is none, so the list has no pull request state"
@@ -24,5 +24,5 @@ exit 0
 }
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.; run pmkit validate
-warning: the list is incomplete: some reads failed or were cut, so what is marked unknown or not verified is not confirmed
+warning: the list is incomplete: some reads failed, were cut, or were not ready (GitHub had not computed the merge state), so what is marked unknown or not verified is not confirmed
 note: git_host is none, so the list has no pull request state

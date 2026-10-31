@@ -1793,7 +1793,7 @@ async function runBulk(ctx) {
   return { data: { ...data, applied }, text: `${bulkText(preview, { dryRun: false })}\nwritten: ${applied.join(', ')}`, commit: `${change.kind} ${change.value} (${applied.length} issues)`, warnings }
 }
 
-const AGENT_CATEGORIES = ['backlog', 'todo', 'in_progress', 'in_review']
+const AGENT_CATEGORIES = ['triage', 'backlog', 'todo', 'in_progress', 'in_review']
 
 /** The delegation and the pull request state of every open issue assigned to an agent member. Writes nothing. */
 async function runTrackAgents(ctx) {
@@ -1815,6 +1815,23 @@ async function runTrackAgents(ctx) {
     if (!isPmkitError(error) || error.code !== 'NOT_SUPPORTED') throw error
     notes.push('git_host is none, so the list has no pull request state')
   }
+  // The branch protection of a base does not change between issues, so it is read once per base. A failed read is kept and thrown again.
+  const protections = new Map()
+  const cachedHost = host === null ? null : Object.assign(Object.create(host), {
+    branchProtection(base) {
+      if (!protections.has(base)) {
+        try {
+          protections.set(base, { value: host.branchProtection(base) })
+        } catch (error) {
+          protections.set(base, { error })
+        }
+      }
+      const kept = protections.get(base)
+      if (kept.error) throw kept.error
+      return kept.value
+    },
+  })
+  let rateLimited = false
   const rows = []
   for (const issue of found.issues.filter((item) => AGENT_ID.test(item.assignee ?? ''))) {
     const row = { id: issue.id, title: issue.title, status: issue.status?.name ?? null, assignee: issue.assignee, branch: issue.branch ?? null, delegation: null, pr: null, problems: [] }
@@ -1828,23 +1845,25 @@ async function runTrackAgents(ctx) {
     }
     if (host !== null) {
       if (!row.branch) row.pr = { state: 'no_branch' }
+      else if (rateLimited) row.pr = { state: 'unknown', code: 'RATE_LIMITED', message: 'not read: GitHub rate limit reached earlier in this run' }
       else {
         try {
-          const pr = host.getPullRequest({ head: row.branch })
-          row.pr = pr ? prSummary(pr, collectBlockers(host, pr)) : { state: 'no_pr' }
+          const pr = cachedHost.getPullRequest({ head: row.branch })
+          row.pr = pr ? prSummary(pr, collectBlockers(cachedHost, pr)) : { state: 'no_pr' }
         } catch (error) {
           // A missing or logged out gh fails every lookup the same way, so it stops the command.
           if (!isPmkitError(error) || error.code === 'NOT_CONFIGURED' || error.code === 'AUTH') throw error
           row.pr = { state: 'unknown', code: error.code, message: error.message }
-          row.problems.push({ code: error.code, message: `the pull request could not be read: ${error.message}` })
+          row.problems.push({ code: error.code, message: `the pull request could not be read: ${error.message}${error.code === 'RATE_LIMITED' ? '; the pull requests of the issues after this one were not read' : ''}` })
+          if (error.code === 'RATE_LIMITED') rateLimited = true
         }
       }
     }
-    if (row.problems.length > 0 || row.delegation.state === 'unknown' || row.pr?.blocked === null || (row.pr?.unchecked ?? []).length > 0) incomplete = true
+    if (row.problems.length > 0 || row.delegation.state === 'unknown' || row.pr?.state === 'unknown' || row.pr?.blocked === null || (row.pr?.unchecked ?? []).length > 0) incomplete = true
     for (const problem of row.problems) warnings.push(`${row.id}: ${problem.message}`)
     rows.push(row)
   }
-  if (incomplete) warnings.push('the list is incomplete: some reads failed or were cut, so what is marked unknown or not verified is not confirmed')
+  if (incomplete) warnings.push('the list is incomplete: some reads failed, were cut, or were not ready (GitHub had not computed the merge state), so what is marked unknown or not verified is not confirmed')
   if (host !== null) notes.push(...(await linkedCodeNotes(ctx)))
   const stale = rows.filter((row) => row.delegation.state === 'stale').length
   if (stale > 0) notes.push(`${stale} ${stale === 1 ? 'issue has' : 'issues have'} an agent as assignee but the newest delegation record names another agent`)
