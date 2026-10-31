@@ -1,0 +1,81 @@
+$ pmkit inbox list
+exit 0
+--- stdout
+no unseen mentions or assignments for fred since 2026-10-09T12:00:00Z
+--- stderr
+(empty)
+
+$ pmkit inbox list --json
+exit 0
+--- stdout
+{
+  "available": true,
+  "user": "fred",
+  "checked": null,
+  "since": "2026-10-09T12:00:00Z",
+  "hidden": 0,
+  "items": [],
+  "counts": {
+    "assignments": 0,
+    "mentions": 0
+  },
+  "complete": true,
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit inbox list --all
+exit 0
+--- stdout
+no unseen mentions or assignments for fred
+--- stderr
+(empty)
+
+$ pmkit inbox list --all --json
+exit 0
+--- stdout
+{
+  "available": true,
+  "user": "fred",
+  "checked": null,
+  "since": null,
+  "hidden": 0,
+  "items": [],
+  "counts": {
+    "assignments": 0,
+    "mentions": 0
+  },
+  "complete": true,
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit inbox list --as ana --since 2026-10-22T00:00:00Z
+exit 0
+--- stdout
+no unseen mentions or assignments for ana since 2026-10-22T00:00:00Z
+1 older unseen item is not shown, run pmkit inbox list --all
+--- stderr
+(empty)
+
+$ pmkit inbox list --as ana --since 2026-10-22T00:00:00Z --json
+exit 0
+--- stdout
+{
+  "available": true,
+  "user": "ana",
+  "checked": null,
+  "since": "2026-10-22T00:00:00Z",
+  "hidden": 1,
+  "items": [],
+  "counts": {
+    "assignments": 0,
+    "mentions": 0
+  },
+  "complete": true,
+  "problems": []
+}
+--- stderr
+(empty)

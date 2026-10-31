@@ -60,6 +60,10 @@ _Avoid_: client, account
 Something a customer or another team asked for, kept as `requests/<ID>.md`. It is `open` in the inbox until someone accepts it into an issue or declines it. Its ID is `REQ-` and a code that follows the ID style.
 _Avoid_: ticket, ask (Linear's name for requests that arrive through Slack), need (Linear's API name)
 
+**User inbox**:
+The assignments and `@member` mentions a member has not seen yet. The Local tracker finds them in the event log and in comment and description text, gives each a key that does not depend on a clock, and keeps the keys the member has seen in the user store, never in `.issues/`. `inbox mark-read` adds keys to that set. Not to be confused with the request inbox, which holds open requests.
+_Avoid_: notifications (Linear's name), unread
+
 **Demand signal**:
 An accepted request, read as a sign that someone wants its issue. `demand list` groups them by issue with the customers who asked.
 _Avoid_: vote, upvote

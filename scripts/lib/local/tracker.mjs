@@ -1,6 +1,7 @@
 // The Local tracker: issues as files under .issues/. Every write goes through
 // `change` (existing issue) or `createIssue`, and both end in `save`.
 
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { requireActor, gitUserEmail } from '../actor.mjs'
@@ -27,10 +28,12 @@ import { GOAL_PREFIX, goalStems, parseGoal, serializeGoal, sortGoals } from './g
 import { CUSTOMER_PREFIX, mdStems, parseCustomer, serializeCustomer, sortCustomers } from './customers.mjs'
 import { REQUEST_KEYS, REQUEST_PREFIX, REQUEST_STATES, groupDemand, parseRequest, serializeRequest, sortRequests } from './requests.mjs'
 import { checkFilter, runQuery } from './query.mjs'
+import { MAX_EXCERPT, findMention, findMentions, mentionText } from './inbox.mjs'
+import { inboxGet, inboxSet } from '../user-store.mjs'
 import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
 import { CACHE_DIR, INDEX_FILE, clearIndex, indexHeader, readThroughIndex } from './query-index.mjs'
 import {
-  SPRINT_STATES, sprintFileExists, addDays, overlaps, parseSprint, readSprint, readSprints, requireCapacity, requireDaysOff, serializeSprint, validDate,
+  SPRINT_STATES, sprintFileExists, addDays, overlaps, parseSprint, readSprint, readSprints, requireCapacity, requireDaysOff, serializeSprint, validDate, validTimestamp,
 } from './sprints.mjs'
 import { fileMtimeIso, issuePaths, listIssueIds, writeFileAtomic } from './store.mjs'
 
@@ -734,6 +737,176 @@ export function createLocalTracker(root, {
       ;(grouped[issue.sprint] ??= []).push({ id: issue.id, estimate: issue.estimate, status: issue.status.name, doneAt })
     }
     return grouped
+  }
+
+  // The user inbox (PMK-47). See docs/superpowers/specs/2026-10-31-pmk-47-user-inbox-design.md.
+  const inboxStore = { env, now }
+  const DAY = 86400000
+  const FIRST_LIST_DAYS = 14
+  const PRUNE_DAYS = 30
+  const EPOCH = '1970-01-01T00:00:00Z'
+  const digest = (text) => crypto.createHash('sha256').update(text).digest('hex').slice(0, 12)
+
+  /** A timestamp as `YYYY-MM-DDTHH:MM:SSZ`, or null when it is not a date. */
+  const inSeconds = (value) => {
+    const time = typeof value === 'string' || typeof value === 'number' ? new Date(value) : new Date(Number.NaN)
+    return Number.isNaN(time.getTime()) ? null : isoSeconds(time)
+  }
+
+  /** A `since` the user typed: only the strict timestamp with a zone that sprints use, as `YYYY-MM-DDTHH:MM:SSZ`, else null. */
+  const typedSeconds = (value) => (validTimestamp(value) ? isoSeconds(new Date(value)) : null)
+  const TIMESTAMP_STEP = 'Use a timestamp with a zone, such as 2026-10-31T10:00:00Z or 2026-10-31T12:00:00+02:00'
+  const modified = (file) => {
+    try {
+      return fileMtimeIso(file)
+    } catch {
+      return EPOCH
+    }
+  }
+
+  /**
+   * Every assignment and mention of the user, whatever the check, and a problem for each file that could not be read.
+   * Each item has a key that does not depend on a clock, so a clone that pulls an old item sees a key it has not seen.
+   * The time of an item only orders the list. A time that cannot be read falls back to the modified time of the file.
+   */
+  function scanInbox(user) {
+    const items = []
+    const problems = []
+    const { issues, problems: unparsed } = readAll({ save: false })
+    problems.push(...unparsed)
+    const byId = new Map(issues.map((issue) => [issue.id, issue]))
+    const item = (key, kind, issue, at, by, where, extra = {}) => ({
+      key, kind, issue, title: byId.get(issue)?.title ?? null, at, by, in: where, comment: null, excerpt: null, synthetic: false, ...extra,
+    })
+    for (const id of listIssueIds(issuesDir, local.id_prefix)) {
+      const paths = issuePaths(issuesDir, id)
+      const problem = (message) => problems.push({ id, code: 'INVALID_INPUT', message })
+      const { events, problems: lines } = readEvents(paths.events)
+      for (const line of lines) problem(`events.jsonl, ${line}`)
+      let described
+      let touched
+      for (const event of events) {
+        const at = inSeconds(event.at) ?? modified(paths.events)
+        const assignee = event.op === 'create' ? event.to?.assignee : event.to
+        if (((event.op === 'assign' && event.field === 'assignee') || event.op === 'create') && assignee === user && event.by !== user) {
+          const key = `assign:${id}:${digest(JSON.stringify([event.at, event.by, event.op, event.field ?? null, assignee]))}`
+          items.push(item(key, 'assignment', id, at, event.by, 'assignment', { synthetic: event.synthetic === true }))
+        }
+        if (event.op === 'create' || (event.op === 'update' && event.field === 'description')) described = { at, by: event.by }
+        if (event.op === 'create' || (event.op === 'update' && ['description', 'acceptance_criteria'].includes(event.field))) touched = { at }
+      }
+      const found = byId.get(id)
+      if (found !== undefined) {
+        // One item per line that mentions the user. The key is the issue and the text of the line, so editing that line is a new
+        // item and editing the rest of the body is not. The log does not say who wrote a line, so the author is the last description
+        // editor when that is someone else, and unknown otherwise. No item is dropped for its author.
+        const inDescription = new Set(findMentions(found.description, user, { full: true }).map(mentionText))
+        const lineKeys = new Set()
+        for (const line of findMentions(found.body, user, { full: true })) {
+          const text = mentionText(line)
+          if (lineKeys.has(text)) continue
+          lineKeys.add(text)
+          const where = inDescription.has(text) ? 'description' : 'acceptance_criteria'
+          const by = where === 'description' && described !== undefined && described.by !== user ? described.by : null
+          const at = (where === 'description' ? described?.at : touched?.at) ?? inSeconds(found.created) ?? modified(paths.file)
+          items.push(item(`description:${id}:${digest(text)}`, 'mention', id, at, by, where, { excerpt: line.slice(0, MAX_EXCERPT) }))
+        }
+      }
+      if (!fs.existsSync(paths.comments)) continue
+      for (const name of fs.readdirSync(paths.comments).filter((entry) => entry.endsWith('.md')).sort()) {
+        const file = path.join(paths.comments, name)
+        try {
+          const text = fs.readFileSync(file, 'utf8').replace(/\r\n?/g, '\n')
+          const split = splitFrontmatter(text)
+          const data = split ? parseYaml(split.yaml) : {}
+          const author = String(data.author ?? '')
+          const excerpt = findMention((split ? split.body : text).trim(), user)
+          if (excerpt !== null && author !== user) {
+            const stem = path.basename(name, '.md')
+            const at = (data.created === undefined ? null : inSeconds(String(data.created))) ?? modified(file)
+            items.push(item(`comment:${id}:${stem}`, 'mention', id, at, author, 'comment', { comment: stem, excerpt }))
+          }
+        } catch (error) {
+          problem(`comment ${name} cannot be read: ${error.message}`)
+        }
+      }
+    }
+    const order = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
+    items.sort((a, b) => order(a.at, b.at) || order(a.issue, b.issue) || order(a.kind, b.kind) || order(a.key, b.key))
+    return { items, problems }
+  }
+
+  /**
+   * The mentions and assignments of `user` whose keys the member has not seen. `since` limits them to items from that time on,
+   * and `all` lists every item, seen or not. With no check yet, the first list shows the last 14 days and counts the older
+   * items in `hidden`. Reads only.
+   */
+  function listNotifications({ user, since, all = false } = {}) {
+    requireMember(user, 'user')
+    if (all && !blank(since)) throw invalid('all and since cannot be used together', 'Use one of them')
+    let cutoff = null
+    if (!blank(since) && (cutoff = typedSeconds(since)) === null) throw invalid(`since "${since}" is not a timestamp with a zone`, TIMESTAMP_STEP)
+    const stored = inboxGet(config.root, user, inboxStore)
+    const { items, problems } = scanInbox(user)
+    const seen = stored?.seen ?? {}
+    const marked = items.map((entry) => ({ ...entry, seen: Object.hasOwn(seen, entry.key) }))
+    if (cutoff === null && stored === null && !all) cutoff = isoSeconds(new Date(now().getTime() - FIRST_LIST_DAYS * DAY))
+    const pool = all ? marked : marked.filter((entry) => !entry.seen)
+    const shown = all || cutoff === null ? pool : pool.filter((entry) => entry.at >= cutoff)
+    return {
+      user,
+      checked: stored?.at ?? null,
+      since: all ? null : cutoff,
+      hidden: pool.length - shown.length,
+      items: shown,
+      counts: { assignments: shown.filter((entry) => entry.kind === 'assignment').length, mentions: shown.filter((entry) => entry.kind === 'mention').length },
+      complete: problems.length === 0,
+      problems,
+    }
+  }
+
+  /**
+   * Records the keys of the items the member has seen. With no `keys` it marks every unseen item now. `keys` marks exactly those,
+   * so an item that arrived after the list stays unseen. It refuses a key no item has, and it writes nothing when the read is
+   * incomplete, so a file that does not parse cannot get its items marked. The first mark-read also marks the items older than
+   * the 14 days the first list showed. It drops the seen keys of items that no longer exist once they are 30 days old.
+   */
+  function markRead({ user, keys, dryRun = false } = {}) {
+    requireMember(user, 'user')
+    if (keys !== undefined && (!Array.isArray(keys) || keys.some((key) => typeof key !== 'string'))) throw invalid('keys must be a list of item keys')
+    const stored = inboxGet(config.root, user, inboxStore)
+    const { items, problems } = scanInbox(user)
+    if (problems.length > 0) {
+      throw new PmkitError(
+        'INVALID_INPUT',
+        `${problems.length} ${problems.length === 1 ? 'problem' : 'problems'} in ${[...new Set(problems.map((problem) => problem.id))].join(', ')} left the inbox incomplete, so nothing was marked read`,
+        'Run pmkit validate, fix the files with /pmkit:local:doctor, then mark read again',
+        { problems },
+      )
+    }
+    const seen = stored?.seen ?? {}
+    const known = new Set(items.map((entry) => entry.key))
+    const unknown = (keys ?? []).filter((key) => !known.has(key))
+    if (unknown.length > 0) throw invalid(`no item has the key ${unknown.join(', ')}`, 'Run pmkit inbox list --all for the keys')
+    const chosen = new Set(items.filter((entry) => !Object.hasOwn(seen, entry.key) && (keys === undefined || keys.includes(entry.key))).map((entry) => entry.key))
+    // With keys the member marks exactly those, so the older items stay for the next list.
+    if (stored === null && keys === undefined) {
+      const backlog = isoSeconds(new Date(now().getTime() - FIRST_LIST_DAYS * DAY))
+      for (const entry of items) if (entry.at < backlog) chosen.add(entry.key)
+    }
+    const recorded = stamp()
+    const oldest = now().getTime() - PRUNE_DAYS * DAY
+    const kept = {}
+    let pruned = 0
+    for (const [key, at] of Object.entries(seen)) {
+      if (known.has(key) || Date.parse(at) > oldest) kept[key] = at
+      else pruned++
+    }
+    const marked = [...chosen].sort()
+    for (const key of marked) kept[key] = recorded
+    const changed = stored === null || marked.length > 0 || pruned > 0
+    if (changed && !dryRun) inboxSet(config.root, user, { at: recorded, seen: kept }, inboxStore)
+    return { user, previous: stored?.at ?? null, recorded: changed ? recorded : stored.at, marked, pruned, changed, dryRun }
   }
 
   function discover() {
@@ -1654,6 +1827,7 @@ export function createLocalTracker(root, {
     saveView, listViews, runView,
     listGoals, getGoal, createGoal, goalProgress, setEpicGoal,
     listCustomers, getCustomer, createCustomer, listRequests, getRequest, createRequest, acceptRequest, declineRequest, listDemandSignals,
+    listNotifications, markRead,
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     listMilestones, getMilestone, createMilestone, unfiledMilestones,
     listReleases, getRelease, createRelease, releaseIssues, markReleased,

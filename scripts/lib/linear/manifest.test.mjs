@@ -86,7 +86,7 @@ test('the default workspace gives the sandbox column', async () => {
   assert.deepEqual(entry.security_alerts, { id: 'security_alerts', path: 'derived', detail: { source: 'scanners' } })
   assert.deepEqual(entry.saved_views.detail, { workspace: 'native' })
   assert.equal(entry.saved_views.enableHint, 'No pmkit command serves saved_views yet; Linear offers it on this workspace')
-  assert.deepEqual(entry.user_inbox.detail, { workspace: 'native' })
+  assert.deepEqual(entry.user_inbox.detail, { workspace: 'native', unsupported: ['listNotifications', 'markRead'] })
   assert.deepEqual(entry.deliverables.detail, { entity: 'project', derived: ['deliverableProgress'], unsupported: ['createMilestone'] })
   assert.deepEqual(entry.status_update.detail, { entity: 'project update' })
   assert.deepEqual(entry.documents.detail, { scope: 'project', unsupported: ['createDocument', 'listDocuments'] })
@@ -112,6 +112,12 @@ test('a Business workspace with releases and customers on', async () => {
     path: 'absent',
     detail: { workspace: 'conditional', unsupported: ['listRequests', 'getRequest', 'createRequest', 'acceptRequest', 'declineRequest'] },
     enableHint: 'The Linear adapter does not serve Asks yet; Linear offers them on this workspace',
+  })
+  assert.deepEqual(entry.user_inbox, {
+    id: 'user_inbox',
+    path: 'absent',
+    detail: { workspace: 'native', unsupported: ['listNotifications', 'markRead'] },
+    enableHint: 'The Linear adapter does not read notifications yet; Linear offers them on this workspace',
   })
   assert.deepEqual(entry.strategic_goals, {
     id: 'strategic_goals',

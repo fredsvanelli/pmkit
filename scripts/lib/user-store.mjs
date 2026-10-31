@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { PmkitError } from './errors.mjs'
+import { validTimestamp } from './local/sprints.mjs'
 import { setScalar } from './yaml-edit.mjs'
 import { parseYaml } from './yaml.mjs'
 
@@ -237,4 +238,64 @@ export function defaultsUnset(key, options) {
   const lines = text.split('\n')
   const kept = lines.filter((line) => !(line.startsWith(`${key}:`) && (line.length === key.length + 1 || /\s/.test(line[key.length + 1]))))
   if (kept.length !== lines.length) writeAtomic(file, kept.join('\n'), options)
+}
+
+const INBOX_VERSION = 2
+
+function inboxFile(root, options) {
+  return path.join(userDir(options), 'inbox', `${repoHash(root)}.json`)
+}
+
+const inboxBad = (file, why) => new PmkitError(
+  'INVALID_INPUT',
+  `The inbox file ${file} ${why}.`,
+  'This file is in the user store, not a value the user typed. Delete it, or fix it by hand. Deleting it makes the next inbox list show the last 14 days again.',
+)
+
+/** The checks of the inbox file of a repository, as stored: { member: entry }. A missing file gives {}. Only the file as a whole is checked. */
+function readInbox(file) {
+  let text
+  try {
+    text = fs.readFileSync(file, 'utf8')
+  } catch (error) {
+    if (error.code === 'ENOENT') return {}
+    throw error
+  }
+  let data
+  try {
+    data = JSON.parse(text)
+  } catch {
+    throw inboxBad(file, 'does not parse')
+  }
+  const checks = data?.checks
+  if (data?.version !== INBOX_VERSION || checks === null || typeof checks !== 'object' || Array.isArray(checks)) {
+    throw inboxBad(file, 'is not an inbox file of this version')
+  }
+  return checks
+}
+
+const isMapOfTimes = (value) => value !== null && typeof value === 'object' && !Array.isArray(value) && Object.values(value).every(validTimestamp)
+const inSeconds = (value) => new Date(value).toISOString().replace(/\.\d{3}Z$/, 'Z')
+
+/**
+ * The inbox entry of a member in this repository, `{ at, seen }`, or null when there is none. `at` is the time of the last mark-read
+ * and `seen` maps the key of each item the member has seen to the time it was marked. Times are read as whole seconds in Z.
+ * Only the entry of this member is checked, so a bad entry of another member does not block this one.
+ */
+export function inboxGet(root, member, options) {
+  const file = inboxFile(root, options)
+  const checks = readInbox(file)
+  if (!Object.hasOwn(checks, member)) return null
+  const entry = checks[member]
+  if (entry === null || typeof entry !== 'object' || !validTimestamp(entry.at) || !isMapOfTimes(entry.seen)) {
+    throw inboxBad(file, `holds an entry for ${member} that is not a check with a timestamp and a map of seen keys`)
+  }
+  return { at: inSeconds(entry.at), seen: Object.fromEntries(Object.entries(entry.seen).map(([key, at]) => [key, inSeconds(at)])) }
+}
+
+/** Replaces the inbox entry of a member in this repository and keeps the entries of the others as they are. */
+export function inboxSet(root, member, entry, options) {
+  const file = inboxFile(root, options)
+  const checks = readInbox(file)
+  writeAtomic(file, `${JSON.stringify({ version: INBOX_VERSION, checks: { ...checks, [member]: { at: entry.at, seen: entry.seen } } }, null, 2)}\n`, options)
 }

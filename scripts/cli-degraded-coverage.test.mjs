@@ -63,6 +63,8 @@ const REFUSALS = [
   ['requests', 'accept', 'REQ-1', 'ACME-1'],
   ['requests', 'decline', 'REQ-1'],
   ['demand', 'list'],
+  ['inbox', 'list'],
+  ['inbox', 'mark-read'],
 ]
 
 for (const args of REFUSALS) {
@@ -93,6 +95,7 @@ const COVERED = {
   'requests list': 'REFUSALS', 'requests get': 'REFUSALS', 'requests create': 'REFUSALS', 'requests accept': 'REFUSALS', 'requests decline': 'REFUSALS',
   'alerts list': 'REPO_SCAN',
   'issues delegate': 'REFUSALS',
+  'inbox list': 'REFUSALS', 'inbox mark-read': 'REFUSALS',
 }
 
 test('every command a capability names has a degraded-path case or an exemption', () => {

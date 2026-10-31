@@ -21,7 +21,6 @@ export const LINEAR_CAPABILITIES = Object.freeze({
   documents: { path: 'native', detail: { scope: 'project', unsupported: ['createDocument', 'listDocuments'] } },
   time_tracking: { path: 'absent', enableHint: 'Linear has no time tracking' },
   security_alerts: { path: 'derived', detail: { source: 'scanners' } },
-  user_inbox: { path: 'native' },
 })
 
 export const BUSINESS_PLANS = ['business', 'enterprise', 'trial']
@@ -85,6 +84,12 @@ function workspaceAnswers(raw) {
         enableHint: 'The Linear adapter does not serve Asks yet; Linear offers them on this workspace',
       }
       : { path: 'absent', enableHint: 'Linear Asks need the Business or Enterprise plan' },
+    // Linear has notifications on every plan, but the adapter does not read them yet (PMK-47), so pmkit reports it absent.
+    user_inbox: {
+      path: 'absent',
+      detail: { workspace: 'native', unsupported: ['listNotifications', 'markRead'] },
+      enableHint: 'The Linear adapter does not read notifications yet; Linear offers them on this workspace',
+    },
     // Linear delegates to installed app agents, but the adapter does not call it yet (PMK-57), so pmkit reports it absent.
     agent_delegation: {
       path: 'absent',

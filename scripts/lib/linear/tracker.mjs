@@ -150,6 +150,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     ...Object.fromEntries(['listGoals', 'getGoal', 'createGoal', 'goalProgress', 'setEpicGoal'].map((operation) => [operation, 'strategic_goals'])),
     ...Object.fromEntries(['listCustomers', 'getCustomer', 'createCustomer', 'listDemandSignals'].map((operation) => [operation, 'demand_signals'])),
     ...Object.fromEntries(['listRequests', 'getRequest', 'createRequest', 'acceptRequest', 'declineRequest'].map((operation) => [operation, 'request_queue'])),
+    ...Object.fromEntries(['listNotifications', 'markRead'].map((operation) => [operation, 'user_inbox'])),
   }
   const stub = (operation) =>
     guarded(async () => {

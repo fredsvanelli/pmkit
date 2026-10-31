@@ -5,7 +5,7 @@ tracker: local
 git host: none
 
 Capability           | Path    | Detail
----------------------|---------|------------------------------------------------------------
+---------------------|---------|-----------------------------------
 cycles               | native  |
 estimation           | native  | unit=points scale=1/2/3/5/8/13
 multilevel_hierarchy | native  |
@@ -25,7 +25,7 @@ time_tracking        | native  |
 linked_code          | derived | Set git_host in .pmkit/config.yaml
 agent_delegation     | derived | source=assignee run=local
 security_alerts      | derived | source=scanners
-user_inbox           | absent  | No pmkit command serves user_inbox in the Local tracker yet
+user_inbox           | native  |
 --- stderr
 (empty)
 
@@ -140,8 +140,7 @@ exit 0
     },
     {
       "id": "user_inbox",
-      "path": "absent",
-      "enableHint": "No pmkit command serves user_inbox in the Local tracker yet"
+      "path": "native"
     }
   ]
 }
