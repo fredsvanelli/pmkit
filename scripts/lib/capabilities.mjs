@@ -31,7 +31,7 @@ export const SERVED_BY = {
   linked_code: ['issues branch', 'pr open', 'pr ready', 'pr status', 'pr sync', 'deploys list', 'ci logs', 'pr diff', 'pr blockers'],
   agent_delegation: ['issues delegate'],
   security_alerts: ['alerts list'],
-  user_inbox: [],
+  user_inbox: ['inbox list', 'inbox mark-read'],
 }
 
 const ENABLE_GIT_HINT = 'Set git_host in .pmkit/config.yaml'

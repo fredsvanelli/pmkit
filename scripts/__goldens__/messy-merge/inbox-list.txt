@@ -1,0 +1,119 @@
+$ pmkit inbox list
+exit 0
+--- stdout
+no new mentions or assignments for fred so far
+the inbox is incomplete: 2 problems may hide items, run pmkit validate
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.; run pmkit validate
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.; run pmkit validate
+
+$ pmkit inbox list --json
+exit 0
+--- stdout
+{
+  "available": true,
+  "user": "fred",
+  "since": null,
+  "through": "2026-10-23T12:00:00Z",
+  "items": [],
+  "counts": {
+    "assignments": 0,
+    "mentions": 0
+  },
+  "complete": false,
+  "problems": [
+    {
+      "id": "ISS-4",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    },
+    {
+      "id": "ISS-5",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.; run pmkit validate
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.; run pmkit validate
+
+$ pmkit inbox list --all
+exit 0
+--- stdout
+no new mentions or assignments for fred so far
+the inbox is incomplete: 2 problems may hide items, run pmkit validate
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.; run pmkit validate
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.; run pmkit validate
+
+$ pmkit inbox list --all --json
+exit 0
+--- stdout
+{
+  "available": true,
+  "user": "fred",
+  "since": null,
+  "through": "2026-10-23T12:00:00Z",
+  "items": [],
+  "counts": {
+    "assignments": 0,
+    "mentions": 0
+  },
+  "complete": false,
+  "problems": [
+    {
+      "id": "ISS-4",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    },
+    {
+      "id": "ISS-5",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.; run pmkit validate
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.; run pmkit validate
+
+$ pmkit inbox list --as ana --since 2026-10-22T00:00:00Z
+exit 0
+--- stdout
+no new mentions or assignments for ana since 2026-10-22T00:00:00Z
+the inbox is incomplete: 2 problems may hide items, run pmkit validate
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.; run pmkit validate
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.; run pmkit validate
+
+$ pmkit inbox list --as ana --since 2026-10-22T00:00:00Z --json
+exit 0
+--- stdout
+{
+  "available": true,
+  "user": "ana",
+  "since": "2026-10-22T00:00:00Z",
+  "through": "2026-10-23T12:00:00Z",
+  "items": [],
+  "counts": {
+    "assignments": 0,
+    "mentions": 0
+  },
+  "complete": false,
+  "problems": [
+    {
+      "id": "ISS-4",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    },
+    {
+      "id": "ISS-5",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.; run pmkit validate
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.; run pmkit validate

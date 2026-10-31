@@ -1,0 +1,72 @@
+$ pmkit inbox list
+exit 0
+--- stdout
+no new mentions or assignments for fred so far
+--- stderr
+(empty)
+
+$ pmkit inbox list --json
+exit 0
+--- stdout
+{
+  "available": true,
+  "user": "fred",
+  "since": null,
+  "through": "2026-10-23T12:00:00Z",
+  "items": [],
+  "counts": {
+    "assignments": 0,
+    "mentions": 0
+  },
+  "complete": true,
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit inbox list --all
+exit 0
+--- stdout
+no new mentions or assignments for fred so far
+--- stderr
+(empty)
+
+$ pmkit inbox list --all --json
+exit 0
+--- stdout
+{
+  "available": true,
+  "user": "fred",
+  "since": null,
+  "through": "2026-10-23T12:00:00Z",
+  "items": [],
+  "counts": {
+    "assignments": 0,
+    "mentions": 0
+  },
+  "complete": true,
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit inbox list --as ana --since 2026-10-22T00:00:00Z
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: user "ana" is not a member
+next: Use one of: fred
+
+$ pmkit inbox list --as ana --since 2026-10-22T00:00:00Z --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "user \"ana\" is not a member",
+    "nextStep": "Use one of: fred"
+  }
+}
+--- stderr
+(empty)

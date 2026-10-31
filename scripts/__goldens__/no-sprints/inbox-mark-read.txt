@@ -1,0 +1,86 @@
+$ pmkit inbox mark-read --dry-run
+exit 0
+--- stdout
+would mark the inbox of fred read through 2026-10-23T12:00:00Z
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit inbox mark-read --dry-run --json
+exit 0
+--- stdout
+{
+  "user": "fred",
+  "previous": null,
+  "recorded": "2026-10-23T12:00:00Z",
+  "through": "2026-10-23T12:00:00Z",
+  "changed": true,
+  "dryRun": true
+}
+--- stderr
+(empty)
+
+$ pmkit inbox mark-read --dry-run --dry-run
+exit 0
+--- stdout
+would mark the inbox of fred read through 2026-10-23T12:00:00Z
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit inbox mark-read --dry-run --dry-run --json
+exit 0
+--- stdout
+{
+  "user": "fred",
+  "previous": null,
+  "recorded": "2026-10-23T12:00:00Z",
+  "through": "2026-10-23T12:00:00Z",
+  "changed": true,
+  "dryRun": true
+}
+--- stderr
+(empty)
+
+$ pmkit inbox mark-read --through 2026-10-22T10:00:00Z
+exit 0
+--- stdout
+marked the inbox of fred read through 2026-10-22T10:00:00Z
+--- stderr
+(empty)
+
+$ pmkit inbox mark-read --through 2026-10-22T10:00:00Z --json
+exit 0
+--- stdout
+{
+  "user": "fred",
+  "previous": null,
+  "recorded": "2026-10-22T10:00:00Z",
+  "through": "2026-10-22T10:00:00Z",
+  "changed": true,
+  "dryRun": false
+}
+--- stderr
+(empty)
+
+$ pmkit inbox mark-read --through 2026-10-22T10:00:00Z --dry-run
+exit 0
+--- stdout
+would mark the inbox of fred read through 2026-10-22T10:00:00Z
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit inbox mark-read --through 2026-10-22T10:00:00Z --dry-run --json
+exit 0
+--- stdout
+{
+  "user": "fred",
+  "previous": null,
+  "recorded": "2026-10-22T10:00:00Z",
+  "through": "2026-10-22T10:00:00Z",
+  "changed": true,
+  "dryRun": true
+}
+--- stderr
+(empty)

@@ -882,6 +882,33 @@ export const COMMANDS = [
       }
     },
   },
+  // The user inbox (PMK-47). Reads and records the check in the user store, never in the tracker, so neither command is a tracker write.
+  {
+    name: 'inbox list', summary: 'the mentions and assignments for a member since the last check, oldest first', usage: '[--as member] [--since timestamp] [--all]',
+    flags: ['as', 'since', 'all'],
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).listNotifications({ user: await ctx.actor(), since: ctx.opt('since'), all: ctx.flag('all') })
+      const { user, since, items, complete, problems } = result
+      const lines = []
+      if (items.length === 0) lines.push(`no new mentions or assignments for ${user} ${since === null ? 'so far' : `since ${since}`}`)
+      else {
+        lines.push(table(['When', 'Kind', 'Issue', 'Title', 'By', 'Where', 'Text'], items.map((i) => [i.at + (i.future ? ' (future)' : ''), i.kind, i.issue, i.title ?? '(unreadable)', i.by, i.in, i.excerpt ?? ''])))
+      }
+      if (!complete) lines.push(`the inbox is incomplete: ${problems.length} ${problems.length === 1 ? 'problem' : 'problems'} may hide items, run pmkit validate`)
+      return { data: { available: true, ...result }, text: lines.join('\n'), warnings: problemWarnings(problems) }
+    },
+  },
+  {
+    name: 'inbox mark-read', summary: 'records the check for a member in the user store, so the next list shows only what is newer; refuses when the inbox is incomplete', usage: '[--as member] [--through timestamp] [--dry-run]',
+    flags: ['as', 'through'], dryRun: true,
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).markRead({ user: await ctx.actor(), through: ctx.opt('through'), dryRun: ctx.dryRun })
+      const said = result.changed
+        ? `${ctx.dryRun ? 'would mark' : 'marked'} the inbox of ${result.user} read through ${result.recorded}`
+        : `the inbox of ${result.user} is already read through ${result.recorded}`
+      return { data: result, text: ctx.dryRun ? `${said}\ndry run: nothing was written` : said }
+    },
+  },
   {
     name: 'milestone list', summary: 'lists milestones', flags: [],
     run: async (ctx) => {

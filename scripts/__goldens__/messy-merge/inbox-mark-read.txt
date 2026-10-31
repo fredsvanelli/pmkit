@@ -1,0 +1,131 @@
+$ pmkit inbox mark-read --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: 2 problems in ISS-4, ISS-5 left the inbox incomplete, so nothing was marked read
+next: Run pmkit validate, fix the files with /pmkit:local:doctor, then mark read again
+
+$ pmkit inbox mark-read --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "2 problems in ISS-4, ISS-5 left the inbox incomplete, so nothing was marked read",
+    "nextStep": "Run pmkit validate, fix the files with /pmkit:local:doctor, then mark read again",
+    "problems": [
+      {
+        "id": "ISS-4",
+        "code": "CONFLICT",
+        "message": "The issue file contains git conflict markers."
+      },
+      {
+        "id": "ISS-5",
+        "code": "CONFLICT",
+        "message": "The issue file contains git conflict markers."
+      }
+    ]
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit inbox mark-read --dry-run --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: 2 problems in ISS-4, ISS-5 left the inbox incomplete, so nothing was marked read
+next: Run pmkit validate, fix the files with /pmkit:local:doctor, then mark read again
+
+$ pmkit inbox mark-read --dry-run --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "2 problems in ISS-4, ISS-5 left the inbox incomplete, so nothing was marked read",
+    "nextStep": "Run pmkit validate, fix the files with /pmkit:local:doctor, then mark read again",
+    "problems": [
+      {
+        "id": "ISS-4",
+        "code": "CONFLICT",
+        "message": "The issue file contains git conflict markers."
+      },
+      {
+        "id": "ISS-5",
+        "code": "CONFLICT",
+        "message": "The issue file contains git conflict markers."
+      }
+    ]
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit inbox mark-read --through 2026-10-22T10:00:00Z
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: 2 problems in ISS-4, ISS-5 left the inbox incomplete, so nothing was marked read
+next: Run pmkit validate, fix the files with /pmkit:local:doctor, then mark read again
+
+$ pmkit inbox mark-read --through 2026-10-22T10:00:00Z --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "2 problems in ISS-4, ISS-5 left the inbox incomplete, so nothing was marked read",
+    "nextStep": "Run pmkit validate, fix the files with /pmkit:local:doctor, then mark read again",
+    "problems": [
+      {
+        "id": "ISS-4",
+        "code": "CONFLICT",
+        "message": "The issue file contains git conflict markers."
+      },
+      {
+        "id": "ISS-5",
+        "code": "CONFLICT",
+        "message": "The issue file contains git conflict markers."
+      }
+    ]
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit inbox mark-read --through 2026-10-22T10:00:00Z --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: 2 problems in ISS-4, ISS-5 left the inbox incomplete, so nothing was marked read
+next: Run pmkit validate, fix the files with /pmkit:local:doctor, then mark read again
+
+$ pmkit inbox mark-read --through 2026-10-22T10:00:00Z --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "2 problems in ISS-4, ISS-5 left the inbox incomplete, so nothing was marked read",
+    "nextStep": "Run pmkit validate, fix the files with /pmkit:local:doctor, then mark read again",
+    "problems": [
+      {
+        "id": "ISS-4",
+        "code": "CONFLICT",
+        "message": "The issue file contains git conflict markers."
+      },
+      {
+        "id": "ISS-5",
+        "code": "CONFLICT",
+        "message": "The issue file contains git conflict markers."
+      }
+    ]
+  }
+}
+--- stderr
+(empty)

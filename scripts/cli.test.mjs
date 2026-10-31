@@ -1646,6 +1646,8 @@ test('every read goes on with one warning', () => {
     'requests list': [],
     'requests get': ['REQ-1'],
     'demand list': [],
+    'inbox list': [],
+    'inbox mark-read': ['--dry-run'],
     'docs read': ['missing.md'],
     'metrics velocity': [],
     'metrics cycle-time': [],
