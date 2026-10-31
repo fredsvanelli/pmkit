@@ -3,3 +3,7 @@
 {"at":"2026-10-31T03:05:23Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-10-31T03:05:24Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-31T03:05:29Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-175-run-npm-audit-through-the-shell-on"}
+{"at":"2026-10-31T03:06:38Z","by":"fred","op":"comment","to":"2026-10-31T03-06-38Z-fred.md"}
+{"at":"2026-10-31T03:08:52Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-31T03:08:53Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-31T03:08:53Z","by":"fred","op":"update","field":"acceptance_criteria"}
