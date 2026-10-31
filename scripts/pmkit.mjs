@@ -44,6 +44,7 @@ import { createGithubHost } from './lib/github/host.mjs'
 import { ID_STYLES, branchName, isId, normalizeId } from './lib/ids.mjs'
 import { boardDoc, hasMarker, problemsLine, renderDocument, roadmapDoc, sprintDoc } from './lib/render.mjs'
 import { boardData, roadmapData, sprintData } from './lib/render-data.mjs'
+import { redact } from './lib/redact.mjs'
 
 const TEMPLATES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates')
 const usageError = (message, nextStep = 'node scripts/pmkit.mjs --help') => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -614,6 +615,15 @@ export const COMMANDS = [
       const minutes = parseMinutes(ctx.args[0])
       const note = longEntryNote(minutes)
       return { data: { input: ctx.args[0], minutes, note }, text: `${ctx.args[0]} is ${minutes} minutes`, notes: note ? [note] : [] }
+    },
+  },
+  {
+    name: 'text redact', summary: 'replaces the secrets in a text file with [redacted] and counts them by type, with no tracker and no write', usage: '--file f', flags: ['file'], args: [],
+    run: async (ctx) => {
+      if (ctx.opt('file') === undefined) throw usageError('text redact needs --file', 'Pass a file, or - for stdin')
+      const result = redact(readInput(ctx.opt('file')))
+      const note = result.count === 0 ? null : `redacted ${result.count} ${result.count === 1 ? 'value' : 'values'}: ${Object.entries(result.counts).map(([type, n]) => `${type} ${n}`).join(', ')}`
+      return { data: result, text: result.text, notes: note ? [note] : [] }
     },
   },
   {

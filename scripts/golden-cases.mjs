@@ -56,6 +56,7 @@ export const CASES = {
   'issues log-time': (a) => [[a.issue, '30']],
   'issues time-entries': (a) => [[a.issue]],
   'issues parse-time': () => [['1h30'], ['1500'], ['0']],
+  'text redact': () => [['--file', input('redact.txt')]],
   'issues archive': (a) => [[a.issue]],
   'issues delete': (a) => [[a.issue]],
   // Without --expect the real run is refused, so the goldens record the preview and that refusal; scripts/cli-bulk.test.mjs covers the writes.

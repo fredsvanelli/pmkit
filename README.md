@@ -43,6 +43,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 - `/pmkit:issues:summary`: Summarize an issue or an epic from its record, comments and history.
 - `/pmkit:issues:track-agents`: List the open issues assigned to agents, with the delegation record and the state of each pull request.
 - `/pmkit:issues:unblock`: List what blocks a pull request from merging (checks, reviews, conflicts, open threads and policies) and the next step for each.
+- `/pmkit:issues:investigate-bug`: Propose root-cause hypotheses for a bug from its issue, comments, CI logs and code, and comment the diagnosis after approval. The comment holds `file:line` references and the link and step name of the CI run, never a line of a log, and the CLI redacts secrets from it.
 - `/pmkit:issues:update`: Change the title, priority, estimate, labels or acceptance criteria of an issue.
 - `/pmkit:issues:work`: Pick up an issue: claim it, branch, plan, implement, open the PR and move it to review.
 - `/pmkit:linear:customers`: List and edit Linear customers (tier, revenue, size, status) and link customer requests to issues and projects.
@@ -89,6 +90,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `issues comment <id> --body-file f` | adds a comment |
 | `issues log-time <id> <time>` | logs time; `<time>` is minutes (`90`, `45m`) or hours (`2h`, `1h30`, `1.5h`), from 1 minute with no upper limit (an entry above 24 hours prints a `note:`); the capability is checked before the time, so a tracker with no time tracking refuses first |
 | `issues parse-time <time>` | reads a time as minutes, with `note` set above 24 hours; needs no tracker and writes nothing |
+| `text redact --file f` | replaces secrets by `[redacted]` and returns `text`, `count`, `counts` and `summary`; the types in `counts` are `private_key`, `url_credentials`, `authorization`, `jwt`, `github_token`, `gitlab_token`, `slack_token`, `ai_api_key`, `stripe_key`, `google_api_key`, `npm_token`, `aws_key`, `bearer` and `api_key_value`; needs no tracker and writes nothing |
 | `issues time-entries <id>` | lists the time logged on an issue, with the total |
 | `issues archive <id>` | archives an issue |
 | `issues delete <id>` | deletes an issue for good, and refuses while another issue lists it as blocked by, related, duplicate of or parent. `--dry-run` is the full preview. Archive keeps the record and its history, delete does not |
