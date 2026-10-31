@@ -24,6 +24,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 - `/pmkit:issues:comment`: Add a comment to an issue.
 - `/pmkit:issues:create`: Create an issue from an idea, refined into context, scope, tasks and acceptance criteria, with the fields checked against the project config.
 - `/pmkit:issues:delegate`: Delegate an issue to an agent: assign it to `agent:<name>`, post the instructions, and run the agent locally only when you say so.
+- `/pmkit:issues:delete`: Delete an issue for good after a full preview, refusing while other issues reference it. Archive keeps the issue instead.
 - `/pmkit:issues:dependencies`: Show what blocks an issue or an epic, with the blocker chain, the hierarchy and the critical path.
 - `/pmkit:issues:estimate`: Propose an estimate for an issue from the code it affects and from similar completed issues, and save it after confirmation.
 - `/pmkit:issues:find`: Find issues with a plain-language question, such as "high-priority bugs in the current sprint".
@@ -80,6 +81,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `issues log-time <id> <minutes>` | logs time |
 | `issues time-entries <id>` | lists the time logged on an issue, with the total |
 | `issues archive <id>` | archives an issue |
+| `issues delete <id>` | deletes an issue for good, and refuses while another issue lists it as blocked by, related, duplicate of or parent. `--dry-run` is the full preview. Archive keeps the record and its history, delete does not |
 | `cycle list` | lists sprints |
 | `cycle current` | prints the active sprint |
 | `cycle issues <id>` | lists the issues of a sprint |

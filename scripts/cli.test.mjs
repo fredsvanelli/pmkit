@@ -1522,6 +1522,7 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'issues resolve': ['ISS-5N1R', 'some-comment'],
     'issues log-time': ['ISS-5N1R', '30'],
     'issues archive': ['ISS-5N1R'],
+    'issues delete': ['ISS-5N1R'],
     'cycle open': ['--start', '2026-10-26'],
     'cycle close': ['2026-10-12'],
     'cycle add': ['ISS-5N1R', '--to', 'current'],

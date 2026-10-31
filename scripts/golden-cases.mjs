@@ -53,6 +53,7 @@ export const CASES = {
   'issues log-time': (a) => [[a.issue, '30']],
   'issues time-entries': (a) => [[a.issue]],
   'issues archive': (a) => [[a.issue]],
+  'issues delete': (a) => [[a.issue]],
   'cycle list': () => [[], ['--state', 'closed']],
   'cycle current': () => [[]],
   'cycle issues': (a) => [[a.sprint]],

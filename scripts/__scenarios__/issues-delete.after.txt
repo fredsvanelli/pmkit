@@ -1,0 +1,10 @@
+$ pmkit issues get ISS-7T4C --json  [step 1, read]
+exit 0
+$ pmkit issues delete ISS-7T4C --dry-run --json  [step 2, dry run]
+exit 0
+? Step 6  [confirmed]
+$ pmkit issues delete ISS-7T4C --json  [step 7, write]
+exit 0
+
+--- removed .issues/issues/ISS-7T4C/events.jsonl
+--- removed .issues/issues/ISS-7T4C/issue.md

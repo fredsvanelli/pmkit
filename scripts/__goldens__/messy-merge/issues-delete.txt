@@ -1,0 +1,65 @@
+$ pmkit issues delete ISS-1
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: 2 issue files do not parse (ISS-4, ISS-5), so the references to ISS-1 cannot be checked
+next: Run pmkit validate, fix the files with /pmkit:local:doctor, then delete again
+
+$ pmkit issues delete ISS-1 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "2 issue files do not parse (ISS-4, ISS-5), so the references to ISS-1 cannot be checked",
+    "nextStep": "Run pmkit validate, fix the files with /pmkit:local:doctor, then delete again",
+    "problems": [
+      {
+        "id": "ISS-4",
+        "code": "CONFLICT",
+        "message": "The issue file contains git conflict markers."
+      },
+      {
+        "id": "ISS-5",
+        "code": "CONFLICT",
+        "message": "The issue file contains git conflict markers."
+      }
+    ]
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues delete ISS-1 --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: 2 issue files do not parse (ISS-4, ISS-5), so the references to ISS-1 cannot be checked
+next: Run pmkit validate, fix the files with /pmkit:local:doctor, then delete again
+
+$ pmkit issues delete ISS-1 --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "2 issue files do not parse (ISS-4, ISS-5), so the references to ISS-1 cannot be checked",
+    "nextStep": "Run pmkit validate, fix the files with /pmkit:local:doctor, then delete again",
+    "problems": [
+      {
+        "id": "ISS-4",
+        "code": "CONFLICT",
+        "message": "The issue file contains git conflict markers."
+      },
+      {
+        "id": "ISS-5",
+        "code": "CONFLICT",
+        "message": "The issue file contains git conflict markers."
+      }
+    ]
+  }
+}
+--- stderr
+(empty)
