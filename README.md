@@ -129,8 +129,8 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `requests accept <id> <issue>` | accepts a request into an existing issue; to turn it into a new issue, run `issues create` first |
 | `requests decline <id> [--reason text]` | declines a request |
 | `demand list` | groups the accepted requests by issue, most requests first, with the customers who asked |
-| `inbox list [--as member] [--since ts] [--all]` | lists the assignments and `@member` mentions the member has not seen, oldest first, each with a `key`; the first list shows the last 14 days and `hidden` counts the older ones; `complete` is `false` when a file could not be read |
-| `inbox mark-read [--as member] [--key key ...] [--dry-run]` | records the items as seen in the user store, never in `.issues/`; to mark what you listed, pass the `key` of each item with `--key`, because with no `--key` it marks everything unseen at that moment, including an item that arrived after the list; refuses while the inbox is incomplete |
+| `inbox list [--as member] [--since ts] [--all]` | lists the assignments and `@member` mentions the member has not seen, oldest first, each with a `key`; the first list shows the last 14 days and `hidden` counts the older ones, one item for each line that mentions the member; `complete` is `false` when a file could not be read |
+| `inbox mark-read [--as member] [--key key ...] [--dry-run]` | records the items as seen in the user store, never in `.issues/`; to mark what you listed, pass the `key` of each item with `--key`, because with no `--key` it marks everything unseen at that moment, including an item that arrived after the list (and, the first time, the items older than 14 days that the list counted); refuses while the inbox is incomplete |
 | `views run <name>` | runs a saved view and lists its issues; `sprint: current` and `assignee: me` stay symbolic, so they resolve when the view runs |
 | `metrics velocity` | points or counts done per closed sprint, and the average |
 | `metrics cycle-time` | median and p85 days from first `in_progress` to `done` |

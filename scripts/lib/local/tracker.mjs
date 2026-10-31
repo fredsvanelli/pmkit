@@ -28,7 +28,7 @@ import { GOAL_PREFIX, goalStems, parseGoal, serializeGoal, sortGoals } from './g
 import { CUSTOMER_PREFIX, mdStems, parseCustomer, serializeCustomer, sortCustomers } from './customers.mjs'
 import { REQUEST_KEYS, REQUEST_PREFIX, REQUEST_STATES, groupDemand, parseRequest, serializeRequest, sortRequests } from './requests.mjs'
 import { checkFilter, runQuery } from './query.mjs'
-import { findMention, mentionText } from './inbox.mjs'
+import { MAX_EXCERPT, findMention, findMentions, mentionText } from './inbox.mjs'
 import { inboxGet, inboxSet } from '../user-store.mjs'
 import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
 import { CACHE_DIR, INDEX_FILE, clearIndex, indexHeader, readThroughIndex } from './query-index.mjs'
@@ -797,14 +797,19 @@ export function createLocalTracker(root, {
       }
       const found = byId.get(id)
       if (found !== undefined) {
-        // The key is the issue and the text of the mention line, so editing that line is a new item and editing the rest of the body is not.
-        const inDescription = findMention(found.description, user, { full: true })
-        const line = inDescription ?? findMention(found.body, user, { full: true })
-        if (line !== null) {
-          const where = inDescription !== null ? 'description' : 'acceptance_criteria'
-          const by = where === 'description' ? (described?.by ?? null) : null
+        // One item per line that mentions the user. The key is the issue and the text of the line, so editing that line is a new
+        // item and editing the rest of the body is not. The log does not say who wrote a line, so the author is the last description
+        // editor when that is someone else, and unknown otherwise. No item is dropped for its author.
+        const inDescription = new Set(findMentions(found.description, user, { full: true }).map(mentionText))
+        const lineKeys = new Set()
+        for (const line of findMentions(found.body, user, { full: true })) {
+          const text = mentionText(line)
+          if (lineKeys.has(text)) continue
+          lineKeys.add(text)
+          const where = inDescription.has(text) ? 'description' : 'acceptance_criteria'
+          const by = where === 'description' && described !== undefined && described.by !== user ? described.by : null
           const at = (where === 'description' ? described?.at : touched?.at) ?? inSeconds(found.created) ?? modified(paths.file)
-          if (by !== user) items.push(item(`description:${id}:${digest(mentionText(line))}`, 'mention', id, at, by, where, { excerpt: line.slice(0, 200) }))
+          items.push(item(`description:${id}:${digest(text)}`, 'mention', id, at, by, where, { excerpt: line.slice(0, MAX_EXCERPT) }))
         }
       }
       if (!fs.existsSync(paths.comments)) continue
@@ -884,7 +889,8 @@ export function createLocalTracker(root, {
     const unknown = (keys ?? []).filter((key) => !known.has(key))
     if (unknown.length > 0) throw invalid(`no item has the key ${unknown.join(', ')}`, 'Run pmkit inbox list --all for the keys')
     const chosen = new Set(items.filter((entry) => !Object.hasOwn(seen, entry.key) && (keys === undefined || keys.includes(entry.key))).map((entry) => entry.key))
-    if (stored === null) {
+    // With keys the member marks exactly those, so the older items stay for the next list.
+    if (stored === null && keys === undefined) {
       const backlog = isoSeconds(new Date(now().getTime() - FIRST_LIST_DAYS * DAY))
       for (const entry of items) if (entry.at < backlog) chosen.add(entry.key)
     }

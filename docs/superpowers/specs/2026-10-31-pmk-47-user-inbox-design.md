@@ -24,7 +24,7 @@ The member id the CLI resolves for every command (`whoami`: git email, then `PMK
 
 - Assignment. An `assign` event whose `to` is the user, or a `create` event whose `to.assignee` is the user, when `by` is not the user. Assigning yourself is not news. An agent member receives delegations from PMK-57 the same way, because `delegate` assigns the issue. The delegation comment holds no `@` mention, so it adds no second item. Events marked `synthetic` (the CLI noticed a hand edit of the frontmatter of `issue.md`) count and keep `synthetic: true`; their `by` is the member who wrote next. An assignment undone later (a later `assign` to someone else or to nobody) stays in the inbox until the member has seen it, on purpose: the member was told, and Linear keeps its notification too.
 - Mention in a comment. A comment whose author is not the user and whose text has `@<user>`.
-- Mention in the description or the acceptance criteria. The first line of the description that mentions the user, else the first such line elsewhere in the body (which is where the criteria are). The item is `in: description` or `in: acceptance_criteria`. A description item is dated by the newest `create` event or `update` event on the field `description`, and attributed to its `by`; it does not count when that `by` is the user. A criteria item is dated by the newest `create` event or `update` event on `description` or `acceptance_criteria`, and has `by: null`, because the log does not say who wrote the criterion (ticking one is also an `update`). An issue with no such event is dated by its `created` time, with `by: null`. The author of a description item is the author of the last description edit that the log records, so a hand edit of the body can name the wrong author. A mention in a criteria item by the user is not skipped.
+- Mention in the description or the acceptance criteria. One item for each line of the body that mentions the user, so a second line, or a criterion, added after the first line was seen is a new item. A line that is in the description is `in: description`, and any other line of the body (which is where the criteria are) is `in: acceptance_criteria`. The same line twice in a body is one item. A description item is dated by the newest `create` event or `update` event on the field `description`. A criteria item is dated by the newest `create` event or `update` event on `description` or `acceptance_criteria`. An issue with no such event is dated by its `created` time. The log does not record the text of an edit, so it does not say who wrote a line. `by` is the author of the newest description event when that author is not the member, and null otherwise, and for every criteria item. No description or criteria item is dropped for its author: a line the member wrote in their own description shows once and is gone after the member has seen it. This is the one case where a mention by the member counts, and it is on purpose, because dropping by author would hide a mention that another person wrote by hand in an issue the member created.
 
 Mention rule. `@` followed by the member id, case-insensitive. The `@` is not preceded by a letter, digit, `_`, `.`, `+`, `-`, `/` or `\`, so `a@fred.com` and `\@fred` do not match. The id is not followed by a letter, digit, `_`, `-`, or a `.` and a letter or digit, so `@fredo` and `@fred.com` do not match and `thanks @fred.` does. Text in fenced code blocks and in inline code spans does not count. A fence opens with three or more backticks or tildes (up to three spaces of indent; the info string of a backtick fence has no backtick) and closes with the same character, at least as many of them and nothing else on the line, as CommonMark says. An unclosed fence runs to the end.
 
@@ -38,7 +38,7 @@ A key does not depend on the clock of any machine, so two clones that merge the 
 | Comment mention | `comment:<issue>:<comment id>`, the comment file name without `.md` |
 | Description or criteria mention | `description:<issue>:<hash>`, where the hash is of the mention line without its list marker or checkbox and with white space collapsed |
 
-Editing the text of the mention line gives a new key, so the member sees it again. Editing anything else in the body, ticking a criterion, or changing the title does not. A hand edit of a description is not an event (`driftEvents` compares only the frontmatter), but its mention line is a key the member has not seen, so it shows at the next list. Its date is the one of the newest description event, or `created`.
+Each line that mentions the user has its own key. Editing the text of the mention line gives a new key, so the member sees it again, and adding another mention line adds an item. Editing anything else in the body, ticking a criterion, or changing the title does not. A hand edit of a description is not an event (`driftEvents` compares only the frontmatter), but its mention line is a key the member has not seen, so it shows at the next list. Its date is the one of the newest description event, or `created`.
 
 ## The user store
 
@@ -52,7 +52,7 @@ The store is per user account and per checkout, and holds no credential. The wri
 
 ## First use
 
-A member with no entry gets the items of the last 14 days at the first list. The list counts the older unseen items in `hidden` and prints a line that says so; `--all` lists them. The first mark-read, with or without `--key`, also marks the older items, so the backlog the first list did not show does not appear afterwards. `since` in the result is the cut that was used.
+A member with no entry gets the items of the last 14 days at the first list. The list counts the older unseen items in `hidden` and prints a line that says so; `--all` lists them. The first mark-read with no `--key` also marks the older items, so the backlog the first list counted does not appear afterwards. With `--key` it marks exactly the keys passed, as at any other time, and the older items then show at the next list. `since` in the result is the cut that was used.
 
 ## Incomplete reads
 
@@ -63,7 +63,7 @@ An issue that does not parse, an event log with a bad line and a comment that ca
 `inbox mark-read [--key <key> ...] [--dry-run]` records what the member has seen.
 
 - With no `--key` it marks every unseen item at that moment. An item that arrives between the list and the mark is marked too, so a caller that lists and then marks passes the keys of the list with `--key`.
-- With `--key` it marks exactly those keys, whatever their date. An item that arrives after the list, in any way, keeps its own key and stays unseen. A key no item has is `INVALID_INPUT` and nothing is written.
+- With `--key` it marks exactly those keys, whatever their date, also at the first use. An item that arrives after the list, in any way, keeps its own key and stays unseen. A key no item has is `INVALID_INPUT` and nothing is written.
 - It sets `at` to now. The result has `previous` (the earlier `at` or null), `recorded` (the `at` now stored), `marked` (the keys it added), `pruned` (see below) and `changed`. When nothing is marked or pruned and an entry exists, it writes nothing and `recorded` is the old `at`.
 - `--dry-run` returns the same result and writes nothing.
 
@@ -97,7 +97,7 @@ Two contract operations: `listNotifications({ user, since, all })` and `markRead
 - Keys over dates, as the user decided after the review. The date orders and cuts, and never hides.
 - Reads take `--as`; the issue does not name it.
 - Refusing to mark on an incomplete read follows the round 3 lessons.
-- The first list shows 14 days and the first mark-read marks the backlog (the user said to decide).
+- The first list shows 14 days and the first mark-read with no `--key` marks the backlog (the user said to decide).
 - The seen set drops keys of vanished items after 30 days.
-- One mention line per description. If the body has several, the first one is the item; deleting it makes the next one a new item.
+- One item per mention line, with the key of the line.
 - Per-worktree hash: two checkouts of one repository keep separate sets. A follow-up can key on the remote.

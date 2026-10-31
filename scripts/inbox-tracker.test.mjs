@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { issuePaths } from './lib/local/store.mjs'
 import { inboxGet, userDir, repoHash } from './lib/user-store.mjs'
-import { hashTree, makeRepo, userStoreEnv } from './test-helpers.mjs'
+import { hashTree, makeRepo, tempDir, userStoreEnv } from './test-helpers.mjs'
 
 const SINCE = '2026-10-30T00:00:00Z'
 const code = (value) => (error) => error.code === value
@@ -130,6 +130,51 @@ test('a description mention written by hand has no event, is dated by created an
   assert.deepEqual(tracker.listNotifications({ user: 'fred' }).items, [])
 })
 
+test('a new mention line in the description or in a criterion shows after the first line was marked read', () => {
+  const { tracker, setNow } = setup()
+  const { id } = tracker.createIssue({ title: 'M', description: 'Please @fred review the plan.' }, 'ana').after
+  setNow('2026-10-31T09:30:00Z')
+  tracker.markRead({ user: 'fred' })
+  setNow('2026-10-31T10:00:00Z')
+  tracker.updateIssue(id, { description: 'Please @fred review the plan.\n\nUpdate: @fred the API changed, read section 2 before Monday.' }, 'ana')
+  setNow('2026-10-31T10:05:00Z')
+  tracker.updateIssue(id, { acceptanceCriteria: [{ text: '@fred signs off the security review', done: false }] }, 'ana')
+  const items = tracker.listNotifications({ user: 'fred' }).items
+  assert.deepEqual(items.map((item) => [item.in, item.excerpt]), [
+    ['description', 'Update: @fred the API changed, read section 2 before Monday.'],
+    ['acceptance_criteria', '- [ ] @fred signs off the security review'],
+  ])
+  assert.equal(new Set(items.map((item) => item.key)).size, 2)
+  assert.equal(tracker.listNotifications({ user: 'fred', all: true }).items.length, 3)
+  tracker.markRead({ user: 'fred' })
+  assert.deepEqual(tracker.listNotifications({ user: 'fred' }).items, [])
+})
+
+test('the same mention line twice in a body is one item', () => {
+  const { tracker } = setup()
+  tracker.createIssue({ title: 'M', description: '@fred look\n\n@fred   look' }, 'ana')
+  assert.equal(tracker.listNotifications({ user: 'fred', since: SINCE }).items.length, 1)
+})
+
+test('a mention written by hand in an issue the member created shows, with no author', () => {
+  const { tracker, setNow, paths } = setup()
+  const { id } = tracker.createIssue({ title: 'Mine', description: 'Plain.' }, 'fred').after
+  setNow('2026-10-31T10:30:00Z')
+  const file = paths(id).file
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('Plain.', 'Plain.\n\n@fred can you split this into two issues?'))
+  const [item] = tracker.listNotifications({ user: 'fred', since: SINCE }).items
+  assert.deepEqual([item.in, item.by, item.excerpt], ['description', null, '@fred can you split this into two issues?'])
+})
+
+test('a mention line another member wrote stays when the member edits another line of the description', () => {
+  const { tracker, setNow } = setup()
+  const { id } = tracker.createIssue({ title: 'D', description: 'Intro.\n\n@fred please check' }, 'ana').after
+  setNow('2026-10-31T10:30:00Z')
+  tracker.updateIssue(id, { description: 'Intro changed.\n\n@fred please check' }, 'fred')
+  const [item] = tracker.listNotifications({ user: 'fred', since: SINCE }).items
+  assert.deepEqual([item.in, item.by], ['description', null])
+})
+
 test('a hand edit of a description that drift does not record still shows as a new item', () => {
   const { tracker, setNow, paths } = setup()
   const { id } = tracker.createIssue({ title: 'D', description: 'Plain.' }, 'ana').after
@@ -208,8 +253,9 @@ test('an item made in another clone before the check and pulled after it still s
   git(origin, 'init', '-q', '-b', 'main')
   git(origin, 'add', '-A')
   git(origin, 'commit', '-q', '-m', 'start')
-  const cloneRoot = path.join(path.dirname(origin), `${path.basename(origin)}-clone`)
-  git(path.dirname(origin), 'clone', '-q', origin, cloneRoot)
+  const holder = tempDir('pmkit-clone-')
+  const cloneRoot = path.join(holder, 'clone')
+  git(holder, 'clone', '-q', origin, cloneRoot)
   const { env } = userStoreEnv()
   const ana = setup(origin, { env: userStoreEnv().env })
   const fred = setup(cloneRoot, { env })
@@ -226,7 +272,7 @@ test('an item made in another clone before the check and pulled after it still s
   fred.setNow('2026-10-31T10:31:00Z')
   const { items } = fred.tracker.listNotifications({ user: 'fred' })
   assert.deepEqual(items.map((item) => item.kind).sort(), ['assignment', 'mention'])
-  assert.ok(items.every((item) => item.at === '2026-10-31T09:50:00Z' || item.at === '2026-10-31T10:00:00Z'))
+  assert.deepEqual(items.map((item) => item.at), ['2026-10-31T09:50:00Z', '2026-10-31T09:50:00Z'])
 })
 
 test('the first list shows the last 14 days and counts the older items, and the first mark-read marks the backlog too', () => {
@@ -242,8 +288,25 @@ test('the first list shows the last 14 days and counts the older items, and the 
   assert.deepEqual(first.items.map((item) => item.issue), [recent])
   assert.deepEqual([first.since, first.hidden, first.checked], ['2026-10-17T10:00:00Z', 1, null])
   assert.equal(tracker.listNotifications({ user: 'fred', all: true }).items.length, 2)
-  const marked = tracker.markRead({ user: 'fred', keys: first.items.map((item) => item.key) })
-  assert.equal(marked.marked.length, 2)
+  const marked = tracker.markRead({ user: 'fred', keys: first.items.map((item) => item.key), dryRun: true })
+  assert.equal(marked.marked.length, 1)
+  assert.equal(inboxGet(root, 'fred', { env }), null)
+  tracker.markRead({ user: 'fred', keys: first.items.map((item) => item.key) })
+  const later = tracker.listNotifications({ user: 'fred' })
+  assert.deepEqual([later.items.map((item) => item.issue), later.hidden, later.since], [[old], 0, null])
+  assert.equal(Object.keys(inboxGet(root, 'fred', { env }).seen).length, 1)
+})
+
+test('the first mark-read with no keys marks the older items the first list counted', () => {
+  const { tracker, setNow, root, env } = setup()
+  const old = tracker.createIssue({ title: 'Old' }, 'ana').after.id
+  setNow('2026-10-01T10:00:00Z')
+  tracker.assign(old, 'fred', 'ana')
+  const recent = tracker.createIssue({ title: 'Recent' }, 'ana').after.id
+  setNow('2026-10-25T10:00:00Z')
+  tracker.assign(recent, 'fred', 'ana')
+  setNow('2026-10-31T10:00:00Z')
+  assert.equal(tracker.markRead({ user: 'fred' }).marked.length, 2)
   const after = tracker.listNotifications({ user: 'fred' })
   assert.deepEqual([after.items, after.hidden, after.since], [[], 0, null])
   assert.equal(Object.keys(inboxGet(root, 'fred', { env }).seen).length, 2)

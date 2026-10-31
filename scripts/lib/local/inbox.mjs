@@ -1,7 +1,7 @@
 // The user inbox of the Local tracker: the rule that decides when text mentions a member.
 // See docs/superpowers/specs/2026-10-31-pmk-47-user-inbox-design.md, "What counts".
 
-const MAX_EXCERPT = 200
+export const MAX_EXCERPT = 200
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 /**
@@ -28,18 +28,24 @@ function withoutCode(text) {
 }
 
 /**
- * The first line of text that mentions `member` as `@member`, trimmed and cut at 200 characters, or null.
+ * Every line of text that mentions `member` as `@member`, trimmed and cut at 200 characters, in order.
  * The match ignores case. The `@` must not follow a letter, digit, `_`, `.`, `+`, `-`, `/` or `\`, so an email does not match.
  * The id must not continue with a letter, digit, `_` or `-`, or with a `.` and a letter or digit, so `@fredo` and `@fred.com`
- * do not match and `thanks @fred.` does. Text in code does not count. With `full`, the line is not cut.
+ * do not match and `thanks @fred.` does. Text in code does not count. With `full`, the lines are not cut.
  */
-export function findMention(text, member, { full = false } = {}) {
-  if (typeof text !== 'string' || text === '') return null
+export function findMentions(text, member, { full = false } = {}) {
+  if (typeof text !== 'string' || text === '') return []
   const pattern = new RegExp(`(?<![A-Za-z0-9_.+\\\\/-])@${escapeRegExp(member)}(?![A-Za-z0-9_-])(?!\\.[A-Za-z0-9])`, 'i')
   const original = text.replace(/\r\n?/g, '\n').split('\n')
-  const lines = withoutCode(text)
-  const index = lines.findIndex((line) => pattern.test(line))
-  return index === -1 ? null : full ? original[index].trim() : original[index].trim().slice(0, MAX_EXCERPT)
+  return withoutCode(text)
+    .map((line, index) => (pattern.test(line) ? original[index].trim() : null))
+    .filter((line) => line !== null)
+    .map((line) => (full ? line : line.slice(0, MAX_EXCERPT)))
+}
+
+/** The first line of text that mentions `member`, or null. See findMentions. */
+export function findMention(text, member, options) {
+  return findMentions(text, member, options)[0] ?? null
 }
 
 /** A mention line as the key of an item sees it: without the list marker or checkbox, with white space collapsed. Ticking a criterion keeps it. */
