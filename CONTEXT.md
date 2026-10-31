@@ -61,7 +61,7 @@ Something a customer or another team asked for, kept as `requests/<ID>.md`. It i
 _Avoid_: ticket, ask (Linear's name for requests that arrive through Slack), need (Linear's API name)
 
 **User inbox**:
-The assignments and `@member` mentions a member has not seen yet. The Local tracker finds them in the event log and in comment and description text, and keeps the time of the last check in the user store, never in `.issues/`. `inbox mark-read` moves that time forward. Not to be confused with the request inbox, which holds open requests.
+The assignments and `@member` mentions a member has not seen yet. The Local tracker finds them in the event log and in comment and description text, gives each a key that does not depend on a clock, and keeps the keys the member has seen in the user store, never in `.issues/`. `inbox mark-read` adds keys to that set. Not to be confused with the request inbox, which holds open requests.
 _Avoid_: notifications (Linear's name), unread
 
 **Demand signal**:

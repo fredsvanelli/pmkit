@@ -882,30 +882,31 @@ export const COMMANDS = [
       }
     },
   },
-  // The user inbox (PMK-47). Reads and records the check in the user store, never in the tracker, so neither command is a tracker write.
+  // The user inbox (PMK-47). Reads and records the seen keys in the user store, never in the tracker, so neither command is a tracker write.
   {
-    name: 'inbox list', summary: 'the mentions and assignments for a member since the last check, oldest first', usage: '[--as member] [--since timestamp] [--all]',
+    name: 'inbox list', summary: 'the mentions and assignments for a member that the member has not seen, oldest first; the first list shows the last 14 days', usage: '[--as member] [--since timestamp] [--all]',
     flags: ['as', 'since', 'all'],
     run: async (ctx) => {
       const result = await (await ctx.tracker()).listNotifications({ user: await ctx.actor(), since: ctx.opt('since'), all: ctx.flag('all') })
-      const { user, since, items, complete, problems } = result
+      const { user, since, hidden, items, complete, problems } = result
       const lines = []
-      if (items.length === 0) lines.push(`no new mentions or assignments for ${user} ${since === null ? 'so far' : `since ${since}`}`)
-      else {
-        lines.push(table(['When', 'Kind', 'Issue', 'Title', 'By', 'Where', 'Text'], items.map((i) => [i.at + (i.future ? ' (future)' : ''), i.kind, i.issue, i.title ?? '(unreadable)', i.by, i.in, i.excerpt ?? ''])))
-      }
+      if (items.length === 0) lines.push(`no unseen mentions or assignments for ${user}${since === null ? '' : ` since ${since}`}`)
+      else lines.push(table(['When', 'Kind', 'Issue', 'Title', 'By', 'Where', 'Key'], items.map((i) => [i.at, i.kind, i.issue, i.title ?? '(unreadable)', i.by ?? '', i.in, i.key])))
+      if (hidden > 0) lines.push(`${hidden} older unseen ${hidden === 1 ? 'item is' : 'items are'} not shown, run pmkit inbox list --all`)
       if (!complete) lines.push(`the inbox is incomplete: ${problems.length} ${problems.length === 1 ? 'problem' : 'problems'} may hide items, run pmkit validate`)
       return { data: { available: true, ...result }, text: lines.join('\n'), warnings: problemWarnings(problems) }
     },
   },
   {
-    name: 'inbox mark-read', summary: 'records the check for a member in the user store, so the next list shows only what is newer; refuses when the inbox is incomplete', usage: '[--as member] [--through timestamp] [--dry-run]',
-    flags: ['as', 'through'], dryRun: true,
+    name: 'inbox mark-read', summary: 'records the items a member has seen in the user store; --key marks only the keys the list showed, and with none it marks every unseen item; refuses when the inbox is incomplete',
+    usage: '[--as member] [--key key ...] [--dry-run]', flags: ['as', 'key'], dryRun: true,
     run: async (ctx) => {
-      const result = await (await ctx.tracker()).markRead({ user: await ctx.actor(), through: ctx.opt('through'), dryRun: ctx.dryRun })
+      const keys = ctx.list('key')
+      const result = await (await ctx.tracker()).markRead({ user: await ctx.actor(), keys: keys.length > 0 ? keys : undefined, dryRun: ctx.dryRun })
+      const count = `${result.marked.length} ${result.marked.length === 1 ? 'item' : 'items'}`
       const said = result.changed
-        ? `${ctx.dryRun ? 'would mark' : 'marked'} the inbox of ${result.user} read through ${result.recorded}`
-        : `the inbox of ${result.user} is already read through ${result.recorded}`
+        ? `${ctx.dryRun ? 'would mark' : 'marked'} ${count} read for ${result.user}${result.pruned > 0 ? `, and drop ${result.pruned} old ${result.pruned === 1 ? 'key' : 'keys'}` : ''}`
+        : `nothing to mark read for ${result.user}`
       return { data: result, text: ctx.dryRun ? `${said}\ndry run: nothing was written` : said }
     },
   },

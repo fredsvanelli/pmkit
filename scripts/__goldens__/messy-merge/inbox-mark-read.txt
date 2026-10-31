@@ -64,7 +64,7 @@ exit 2
 --- stderr
 (empty)
 
-$ pmkit inbox mark-read --through 2026-10-22T10:00:00Z
+$ pmkit inbox mark-read --key comment:ISS-0000:none
 exit 2
 --- stdout
 (empty)
@@ -72,7 +72,7 @@ exit 2
 error: 2 problems in ISS-4, ISS-5 left the inbox incomplete, so nothing was marked read
 next: Run pmkit validate, fix the files with /pmkit:local:doctor, then mark read again
 
-$ pmkit inbox mark-read --through 2026-10-22T10:00:00Z --json
+$ pmkit inbox mark-read --key comment:ISS-0000:none --json
 exit 2
 --- stdout
 {
@@ -97,7 +97,7 @@ exit 2
 --- stderr
 (empty)
 
-$ pmkit inbox mark-read --through 2026-10-22T10:00:00Z --dry-run
+$ pmkit inbox mark-read --key comment:ISS-0000:none --dry-run
 exit 2
 --- stdout
 (empty)
@@ -105,7 +105,7 @@ exit 2
 error: 2 problems in ISS-4, ISS-5 left the inbox incomplete, so nothing was marked read
 next: Run pmkit validate, fix the files with /pmkit:local:doctor, then mark read again
 
-$ pmkit inbox mark-read --through 2026-10-22T10:00:00Z --dry-run --json
+$ pmkit inbox mark-read --key comment:ISS-0000:none --dry-run --json
 exit 2
 --- stdout
 {

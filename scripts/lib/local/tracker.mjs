@@ -1,6 +1,7 @@
 // The Local tracker: issues as files under .issues/. Every write goes through
 // `change` (existing issue) or `createIssue`, and both end in `save`.
 
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { requireActor, gitUserEmail } from '../actor.mjs'
@@ -27,7 +28,7 @@ import { GOAL_PREFIX, goalStems, parseGoal, serializeGoal, sortGoals } from './g
 import { CUSTOMER_PREFIX, mdStems, parseCustomer, serializeCustomer, sortCustomers } from './customers.mjs'
 import { REQUEST_KEYS, REQUEST_PREFIX, REQUEST_STATES, groupDemand, parseRequest, serializeRequest, sortRequests } from './requests.mjs'
 import { checkFilter, runQuery } from './query.mjs'
-import { findMention } from './inbox.mjs'
+import { findMention, mentionText } from './inbox.mjs'
 import { inboxGet, inboxSet } from '../user-store.mjs'
 import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
 import { CACHE_DIR, INDEX_FILE, clearIndex, indexHeader, readThroughIndex } from './query-index.mjs'
@@ -740,6 +741,11 @@ export function createLocalTracker(root, {
 
   // The user inbox (PMK-47). See docs/superpowers/specs/2026-10-31-pmk-47-user-inbox-design.md.
   const inboxStore = { env, now }
+  const DAY = 86400000
+  const FIRST_LIST_DAYS = 14
+  const PRUNE_DAYS = 30
+  const EPOCH = '1970-01-01T00:00:00Z'
+  const digest = (text) => crypto.createHash('sha256').update(text).digest('hex').slice(0, 12)
 
   /** A timestamp as `YYYY-MM-DDTHH:MM:SSZ`, or null when it is not a date. */
   const inSeconds = (value) => {
@@ -747,22 +753,30 @@ export function createLocalTracker(root, {
     return Number.isNaN(time.getTime()) ? null : isoSeconds(time)
   }
 
-  /** A `since` or `through` the user typed: only the strict timestamp with a zone that sprints use, as `YYYY-MM-DDTHH:MM:SSZ`, else null. */
+  /** A `since` the user typed: only the strict timestamp with a zone that sprints use, as `YYYY-MM-DDTHH:MM:SSZ`, else null. */
   const typedSeconds = (value) => (validTimestamp(value) ? isoSeconds(new Date(value)) : null)
   const TIMESTAMP_STEP = 'Use a timestamp with a zone, such as 2026-10-31T10:00:00Z or 2026-10-31T12:00:00+02:00'
-  // Events and comments keep whole seconds, so the second that holds now can still gain items. The last complete second cannot.
-  const lastCompleteSecond = () => isoSeconds(new Date(now().getTime() - 1000))
+  const modified = (file) => {
+    try {
+      return fileMtimeIso(file)
+    } catch {
+      return EPOCH
+    }
+  }
 
-  /** Every assignment and mention of the user, whatever the check, and a problem for each file that could not be read. */
+  /**
+   * Every assignment and mention of the user, whatever the check, and a problem for each file that could not be read.
+   * Each item has a key that does not depend on a clock, so a clone that pulls an old item sees a key it has not seen.
+   * The time of an item only orders the list. A time that cannot be read falls back to the modified time of the file.
+   */
   function scanInbox(user) {
-    const nowAt = stamp()
     const items = []
     const problems = []
     const { issues, problems: unparsed } = readAll({ save: false })
     problems.push(...unparsed)
     const byId = new Map(issues.map((issue) => [issue.id, issue]))
-    const item = (kind, issue, at, by, where, extra = {}) => ({
-      kind, issue: issue, title: byId.get(issue)?.title ?? null, at, by, in: where, comment: null, excerpt: null, synthetic: false, future: at > nowAt, ...extra,
+    const item = (key, kind, issue, at, by, where, extra = {}) => ({
+      key, kind, issue, title: byId.get(issue)?.title ?? null, at, by, in: where, comment: null, excerpt: null, synthetic: false, ...extra,
     })
     for (const id of listIssueIds(issuesDir, local.id_prefix)) {
       const paths = issuePaths(issuesDir, id)
@@ -770,59 +784,75 @@ export function createLocalTracker(root, {
       const { events, problems: lines } = readEvents(paths.events)
       for (const line of lines) problem(`events.jsonl, ${line}`)
       let described
+      let touched
       for (const event of events) {
-        const at = inSeconds(event.at)
-        if (at === null) {
-          problem(`events.jsonl has an event with the time "${event.at}", which is not a date`)
-          continue
+        const at = inSeconds(event.at) ?? modified(paths.events)
+        const assignee = event.op === 'create' ? event.to?.assignee : event.to
+        if (((event.op === 'assign' && event.field === 'assignee') || event.op === 'create') && assignee === user && event.by !== user) {
+          const key = `assign:${id}:${digest(JSON.stringify([event.at, event.by, event.op, event.field ?? null, assignee]))}`
+          items.push(item(key, 'assignment', id, at, event.by, 'assignment', { synthetic: event.synthetic === true }))
         }
-        const assigned = (event.op === 'assign' && event.field === 'assignee' && event.to === user)
-          || (event.op === 'create' && event.to?.assignee === user)
-        if (assigned && event.by !== user) items.push(item('assignment', id, at, event.by, 'assignment', { synthetic: event.synthetic === true }))
         if (event.op === 'create' || (event.op === 'update' && event.field === 'description')) described = { at, by: event.by }
+        if (event.op === 'create' || (event.op === 'update' && ['description', 'acceptance_criteria'].includes(event.field))) touched = { at }
       }
       const found = byId.get(id)
       if (found !== undefined) {
-        const excerpt = findMention(found.body, user)
-        if (excerpt !== null && described === undefined) {
-          // An issue written by hand has no create event. Its created time dates the mention, and nobody is named as the author.
-          const at = inSeconds(found.created)
-          if (at === null) problem(`the description mentions @${user}, but the created time "${found.created}" is not a date`)
-          else items.push(item('mention', id, at, null, 'description', { excerpt }))
-        } else if (excerpt !== null && described.by !== user) items.push(item('mention', id, described.at, described.by, 'description', { excerpt }))
+        // The key is the issue and the text of the mention line, so editing that line is a new item and editing the rest of the body is not.
+        const inDescription = findMention(found.description, user, { full: true })
+        const line = inDescription ?? findMention(found.body, user, { full: true })
+        if (line !== null) {
+          const where = inDescription !== null ? 'description' : 'acceptance_criteria'
+          const by = where === 'description' ? (described?.by ?? null) : null
+          const at = (where === 'description' ? described?.at : touched?.at) ?? inSeconds(found.created) ?? modified(paths.file)
+          if (by !== user) items.push(item(`description:${id}:${digest(mentionText(line))}`, 'mention', id, at, by, where, { excerpt: line.slice(0, 200) }))
+        }
       }
       if (!fs.existsSync(paths.comments)) continue
       for (const name of fs.readdirSync(paths.comments).filter((entry) => entry.endsWith('.md')).sort()) {
+        const file = path.join(paths.comments, name)
         try {
-          const comment = readComment(id, path.join(paths.comments, name))
-          const at = inSeconds(comment.created)
-          if (at === null) throw new Error(`the time "${comment.created}" is not a date`)
-          const excerpt = findMention(comment.body, user)
-          if (excerpt !== null && comment.author !== user) items.push(item('mention', id, at, comment.author, 'comment', { comment: comment.id, excerpt }))
+          const text = fs.readFileSync(file, 'utf8').replace(/\r\n?/g, '\n')
+          const split = splitFrontmatter(text)
+          const data = split ? parseYaml(split.yaml) : {}
+          const author = String(data.author ?? '')
+          const excerpt = findMention((split ? split.body : text).trim(), user)
+          if (excerpt !== null && author !== user) {
+            const stem = path.basename(name, '.md')
+            const at = (data.created === undefined ? null : inSeconds(String(data.created))) ?? modified(file)
+            items.push(item(`comment:${id}:${stem}`, 'mention', id, at, author, 'comment', { comment: stem, excerpt }))
+          }
         } catch (error) {
           problem(`comment ${name} cannot be read: ${error.message}`)
         }
       }
     }
     const order = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
-    items.sort((a, b) => order(a.at, b.at) || order(a.issue, b.issue) || order(a.kind, b.kind) || order(a.comment ?? '', b.comment ?? ''))
-    return { items, problems, nowAt }
+    items.sort((a, b) => order(a.at, b.at) || order(a.issue, b.issue) || order(a.kind, b.kind) || order(a.key, b.key))
+    return { items, problems }
   }
 
-  /** The mentions and assignments of `user` since the last check (or `since`, or all of them). Reads only. */
+  /**
+   * The mentions and assignments of `user` whose keys the member has not seen. `since` limits them to items from that time on,
+   * and `all` lists every item, seen or not. With no check yet, the first list shows the last 14 days and counts the older
+   * items in `hidden`. Reads only.
+   */
   function listNotifications({ user, since, all = false } = {}) {
     requireMember(user, 'user')
+    if (all && !blank(since)) throw invalid('all and since cannot be used together', 'Use one of them')
     let cutoff = null
-    if (!all) {
-      if (blank(since)) cutoff = inboxGet(config.root, user, inboxStore)
-      else if ((cutoff = typedSeconds(since)) === null) throw invalid(`since "${since}" is not a timestamp with a zone`, TIMESTAMP_STEP)
-    }
-    const { items, problems, nowAt } = scanInbox(user)
-    const shown = cutoff === null ? items : items.filter((entry) => entry.at > cutoff)
+    if (!blank(since) && (cutoff = typedSeconds(since)) === null) throw invalid(`since "${since}" is not a timestamp with a zone`, TIMESTAMP_STEP)
+    const stored = inboxGet(config.root, user, inboxStore)
+    const { items, problems } = scanInbox(user)
+    const seen = stored?.seen ?? {}
+    const marked = items.map((entry) => ({ ...entry, seen: Object.hasOwn(seen, entry.key) }))
+    if (cutoff === null && stored === null && !all) cutoff = isoSeconds(new Date(now().getTime() - FIRST_LIST_DAYS * DAY))
+    const pool = all ? marked : marked.filter((entry) => !entry.seen)
+    const shown = all || cutoff === null ? pool : pool.filter((entry) => entry.at >= cutoff)
     return {
       user,
-      since: cutoff,
-      through: lastCompleteSecond(),
+      checked: stored?.at ?? null,
+      since: all ? null : cutoff,
+      hidden: pool.length - shown.length,
       items: shown,
       counts: { assignments: shown.filter((entry) => entry.kind === 'assignment').length, mentions: shown.filter((entry) => entry.kind === 'mention').length },
       complete: problems.length === 0,
@@ -831,19 +861,16 @@ export function createLocalTracker(root, {
   }
 
   /**
-   * Records the user's check at `through` (default now). It never moves the check back, refuses a time after now,
-   * and writes nothing when the read is incomplete, so a file that does not parse cannot get its items marked read.
+   * Records the keys of the items the member has seen. With no `keys` it marks every unseen item now. `keys` marks exactly those,
+   * so an item that arrived after the list stays unseen. It refuses a key no item has, and it writes nothing when the read is
+   * incomplete, so a file that does not parse cannot get its items marked. The first mark-read also marks the items older than
+   * the 14 days the first list showed. It drops the seen keys of items that no longer exist once they are 30 days old.
    */
-  function markRead({ user, through, dryRun = false } = {}) {
+  function markRead({ user, keys, dryRun = false } = {}) {
     requireMember(user, 'user')
-    const nowAt = stamp()
-    const complete = lastCompleteSecond()
-    const asked = blank(through) ? complete : typedSeconds(through)
-    if (asked === null) throw invalid(`through "${through}" is not a timestamp with a zone`, TIMESTAMP_STEP)
-    if (asked > nowAt) throw invalid(`through ${asked} is after now (${nowAt})`, 'Use a time in the past, or leave it out to mark everything up to now')
-    // The second that holds now is not marked: an item written in it after the list would be hidden for good.
-    const target = asked < complete ? asked : complete
-    const { problems } = scanInbox(user)
+    if (keys !== undefined && (!Array.isArray(keys) || keys.some((key) => typeof key !== 'string'))) throw invalid('keys must be a list of item keys')
+    const stored = inboxGet(config.root, user, inboxStore)
+    const { items, problems } = scanInbox(user)
     if (problems.length > 0) {
       throw new PmkitError(
         'INVALID_INPUT',
@@ -852,11 +879,28 @@ export function createLocalTracker(root, {
         { problems },
       )
     }
-    const previous = inboxGet(config.root, user, inboxStore)
-    const recorded = previous !== null && previous >= target ? previous : target
-    const changed = recorded !== previous
-    if (changed && !dryRun) inboxSet(config.root, user, recorded, inboxStore)
-    return { user, previous, recorded, through: target, changed, dryRun }
+    const seen = stored?.seen ?? {}
+    const known = new Set(items.map((entry) => entry.key))
+    const unknown = (keys ?? []).filter((key) => !known.has(key))
+    if (unknown.length > 0) throw invalid(`no item has the key ${unknown.join(', ')}`, 'Run pmkit inbox list --all for the keys')
+    const chosen = new Set(items.filter((entry) => !Object.hasOwn(seen, entry.key) && (keys === undefined || keys.includes(entry.key))).map((entry) => entry.key))
+    if (stored === null) {
+      const backlog = isoSeconds(new Date(now().getTime() - FIRST_LIST_DAYS * DAY))
+      for (const entry of items) if (entry.at < backlog) chosen.add(entry.key)
+    }
+    const recorded = stamp()
+    const oldest = now().getTime() - PRUNE_DAYS * DAY
+    const kept = {}
+    let pruned = 0
+    for (const [key, at] of Object.entries(seen)) {
+      if (known.has(key) || Date.parse(at) > oldest) kept[key] = at
+      else pruned++
+    }
+    const marked = [...chosen].sort()
+    for (const key of marked) kept[key] = recorded
+    const changed = stored === null || marked.length > 0 || pruned > 0
+    if (changed && !dryRun) inboxSet(config.root, user, { at: recorded, seen: kept }, inboxStore)
+    return { user, previous: stored?.at ?? null, recorded: changed ? recorded : stored.at, marked, pruned, changed, dryRun }
   }
 
   function discover() {

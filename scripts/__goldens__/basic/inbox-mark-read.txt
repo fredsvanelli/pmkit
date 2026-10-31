@@ -1,7 +1,7 @@
 $ pmkit inbox mark-read --dry-run
 exit 0
 --- stdout
-would mark the inbox of fred read through 2026-10-23T11:59:59Z
+would mark 0 items read for fred
 dry run: nothing was written
 --- stderr
 (empty)
@@ -12,8 +12,9 @@ exit 0
 {
   "user": "fred",
   "previous": null,
-  "recorded": "2026-10-23T11:59:59Z",
-  "through": "2026-10-23T11:59:59Z",
+  "recorded": "2026-10-23T12:00:00Z",
+  "marked": [],
+  "pruned": 0,
   "changed": true,
   "dryRun": true
 }
@@ -23,7 +24,7 @@ exit 0
 $ pmkit inbox mark-read --dry-run --dry-run
 exit 0
 --- stdout
-would mark the inbox of fred read through 2026-10-23T11:59:59Z
+would mark 0 items read for fred
 dry run: nothing was written
 --- stderr
 (empty)
@@ -34,53 +35,53 @@ exit 0
 {
   "user": "fred",
   "previous": null,
-  "recorded": "2026-10-23T11:59:59Z",
-  "through": "2026-10-23T11:59:59Z",
+  "recorded": "2026-10-23T12:00:00Z",
+  "marked": [],
+  "pruned": 0,
   "changed": true,
   "dryRun": true
 }
 --- stderr
 (empty)
 
-$ pmkit inbox mark-read --through 2026-10-22T10:00:00Z
-exit 0
+$ pmkit inbox mark-read --key comment:ISS-0000:none
+exit 2
 --- stdout
-marked the inbox of fred read through 2026-10-22T10:00:00Z
---- stderr
 (empty)
+--- stderr
+error: no item has the key comment:ISS-0000:none
+next: Run pmkit inbox list --all for the keys
 
-$ pmkit inbox mark-read --through 2026-10-22T10:00:00Z --json
-exit 0
+$ pmkit inbox mark-read --key comment:ISS-0000:none --json
+exit 2
 --- stdout
 {
-  "user": "fred",
-  "previous": null,
-  "recorded": "2026-10-22T10:00:00Z",
-  "through": "2026-10-22T10:00:00Z",
-  "changed": true,
-  "dryRun": false
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "no item has the key comment:ISS-0000:none",
+    "nextStep": "Run pmkit inbox list --all for the keys"
+  }
 }
 --- stderr
 (empty)
 
-$ pmkit inbox mark-read --through 2026-10-22T10:00:00Z --dry-run
-exit 0
+$ pmkit inbox mark-read --key comment:ISS-0000:none --dry-run
+exit 2
 --- stdout
-would mark the inbox of fred read through 2026-10-22T10:00:00Z
-dry run: nothing was written
---- stderr
 (empty)
+--- stderr
+error: no item has the key comment:ISS-0000:none
+next: Run pmkit inbox list --all for the keys
 
-$ pmkit inbox mark-read --through 2026-10-22T10:00:00Z --dry-run --json
-exit 0
+$ pmkit inbox mark-read --key comment:ISS-0000:none --dry-run --json
+exit 2
 --- stdout
 {
-  "user": "fred",
-  "previous": null,
-  "recorded": "2026-10-22T10:00:00Z",
-  "through": "2026-10-22T10:00:00Z",
-  "changed": true,
-  "dryRun": true
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "no item has the key comment:ISS-0000:none",
+    "nextStep": "Run pmkit inbox list --all for the keys"
+  }
 }
 --- stderr
 (empty)

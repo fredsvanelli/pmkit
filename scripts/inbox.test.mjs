@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { findMention } from './lib/local/inbox.mjs'
+import { findMention, mentionText } from './lib/local/inbox.mjs'
 
 test('findMention finds a mention and returns its line', () => {
   assert.equal(findMention('hi @fred', 'fred'), 'hi @fred')
@@ -26,6 +26,15 @@ test('findMention skips fenced code, an unclosed fence and inline code', () => {
   assert.equal(findMention('``a `@fred` b``', 'fred'), null)
   assert.equal(findMention('```\ncode\n```\nthen @fred', 'fred'), 'then @fred')
   assert.equal(findMention('`code` and @fred', 'fred'), '`code` and @fred')
+})
+
+test('findMention cuts the excerpt at 200 characters unless full is asked, and mentionText ignores markers and spacing', () => {
+  const long = `@fred ${'x'.repeat(300)}`
+  assert.equal(findMention(long, 'fred', { full: true }), long)
+  assert.equal(mentionText('- [ ] @fred   to  verify'), '@fred to verify')
+  assert.equal(mentionText('- [x] @fred to verify'), '@fred to verify')
+  assert.equal(mentionText('  1. @fred to verify '), '@fred to verify')
+  assert.notEqual(mentionText('@fred to verify'), mentionText('@fred to verify it'))
 })
 
 test('findMention handles CRLF', () => {

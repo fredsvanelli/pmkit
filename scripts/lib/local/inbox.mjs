@@ -31,13 +31,18 @@ function withoutCode(text) {
  * The first line of text that mentions `member` as `@member`, trimmed and cut at 200 characters, or null.
  * The match ignores case. The `@` must not follow a letter, digit, `_`, `.`, `+`, `-`, `/` or `\`, so an email does not match.
  * The id must not continue with a letter, digit, `_` or `-`, or with a `.` and a letter or digit, so `@fredo` and `@fred.com`
- * do not match and `thanks @fred.` does. Text in code does not count.
+ * do not match and `thanks @fred.` does. Text in code does not count. With `full`, the line is not cut.
  */
-export function findMention(text, member) {
+export function findMention(text, member, { full = false } = {}) {
   if (typeof text !== 'string' || text === '') return null
   const pattern = new RegExp(`(?<![A-Za-z0-9_.+\\\\/-])@${escapeRegExp(member)}(?![A-Za-z0-9_-])(?!\\.[A-Za-z0-9])`, 'i')
   const original = text.replace(/\r\n?/g, '\n').split('\n')
   const lines = withoutCode(text)
   const index = lines.findIndex((line) => pattern.test(line))
-  return index === -1 ? null : original[index].trim().slice(0, MAX_EXCERPT)
+  return index === -1 ? null : full ? original[index].trim() : original[index].trim().slice(0, MAX_EXCERPT)
+}
+
+/** A mention line as the key of an item sees it: without the list marker or checkbox, with white space collapsed. Ticking a criterion keeps it. */
+export function mentionText(line) {
+  return line.replace(/^\s*(?:[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)/, '').replace(/\s+/g, ' ').trim()
 }

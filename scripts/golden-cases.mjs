@@ -91,9 +91,9 @@ export const CASES = {
   'requests accept': (a) => [[a.request, a.issue]],
   'requests decline': (a) => [[a.request, '--reason', 'Not this quarter']],
   'demand list': () => [[]],
-  // mark-read is not a tracker write, so only the cases below run. Its through is before the golden clock.
+  // mark-read is not a tracker write, so only the cases below run. A key no item has is the error case.
   'inbox list': () => [[], ['--all'], ['--as', 'ana', '--since', '2026-10-22T00:00:00Z']],
-  'inbox mark-read': () => [['--dry-run'], ['--through', '2026-10-22T10:00:00Z']],
+  'inbox mark-read': () => [['--dry-run'], ['--key', 'comment:ISS-0000:none']],
   'milestone list': () => [[]],
   'milestone get': (a) => [[a.milestone], ['missing-milestone']],
   // A new id, and the anchor again, which is a CONFLICT where the milestone exists.

@@ -1,7 +1,7 @@
 $ pmkit inbox list
 exit 0
 --- stdout
-no new mentions or assignments for fred so far
+no unseen mentions or assignments for fred since 2026-10-09T12:00:00Z
 --- stderr
 (empty)
 
@@ -11,8 +11,9 @@ exit 0
 {
   "available": true,
   "user": "fred",
-  "since": null,
-  "through": "2026-10-23T11:59:59Z",
+  "checked": null,
+  "since": "2026-10-09T12:00:00Z",
+  "hidden": 0,
   "items": [],
   "counts": {
     "assignments": 0,
@@ -27,7 +28,7 @@ exit 0
 $ pmkit inbox list --all
 exit 0
 --- stdout
-no new mentions or assignments for fred so far
+no unseen mentions or assignments for fred
 --- stderr
 (empty)
 
@@ -37,8 +38,9 @@ exit 0
 {
   "available": true,
   "user": "fred",
+  "checked": null,
   "since": null,
-  "through": "2026-10-23T11:59:59Z",
+  "hidden": 0,
   "items": [],
   "counts": {
     "assignments": 0,
@@ -53,7 +55,8 @@ exit 0
 $ pmkit inbox list --as ana --since 2026-10-22T00:00:00Z
 exit 0
 --- stdout
-no new mentions or assignments for ana since 2026-10-22T00:00:00Z
+no unseen mentions or assignments for ana since 2026-10-22T00:00:00Z
+1 older unseen item is not shown, run pmkit inbox list --all
 --- stderr
 (empty)
 
@@ -63,8 +66,9 @@ exit 0
 {
   "available": true,
   "user": "ana",
+  "checked": null,
   "since": "2026-10-22T00:00:00Z",
-  "through": "2026-10-23T11:59:59Z",
+  "hidden": 1,
   "items": [],
   "counts": {
     "assignments": 0,
