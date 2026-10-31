@@ -2,14 +2,16 @@
 id: PMK-65
 title: Add the record-decision command
 type: feature
-status: backlog
+status: in_progress
 priority: medium
 estimate: 3
+assignee: fred
 parent: EPC-6
 blocked_by: [PMK-50]
 milestone: generic-commands
+branch: pmk-65-add-the-record-decision-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-25T19:13:26Z
+updated: 2026-10-31T17:03:01Z
 ---
 
 ## Description
