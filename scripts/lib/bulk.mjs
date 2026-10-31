@@ -91,8 +91,8 @@ export function buildPreview({ change, found, results }) {
   })
   const writes = items.filter((item) => item.state === 'change').length
   const blockers = [
-    ...found.problems.map((problem) => `${problem.id}: ${problem.code} ${problem.message}; the file may match the filter, so nothing can be written until pmkit validate is clean`),
-    ...(found.hasMore ? ['the tracker has more matching issues than pmkit read, so the set is cut; narrow the filter'] : []),
+    ...found.problems.map((problem) => `${problem.id} cannot be read (${problem.code}) and may match the filter; run pmkit validate and fix it first`),
+    ...(found.hasMore === true ? ['the tracker has more matching issues than pmkit read, so the set is cut; narrow the filter'] : []),
     ...items.filter((item) => item.state === 'rejected').map((item) => `${item.id} was rejected: ${item.error.code} ${item.error.message}`),
   ]
   const digest = blockers.length === 0 && writes > 0
