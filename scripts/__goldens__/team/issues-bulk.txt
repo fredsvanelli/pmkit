@@ -103,7 +103,8 @@ exit 0
   },
   "view": null,
   "max": 50,
-  "dryRun": true
+  "dryRun": true,
+  "warnings": []
 }
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
@@ -212,7 +213,8 @@ exit 0
   },
   "view": null,
   "max": 50,
-  "dryRun": true
+  "dryRun": true,
+  "warnings": []
 }
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.

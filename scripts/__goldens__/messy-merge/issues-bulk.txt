@@ -95,7 +95,8 @@ exit 0
   },
   "view": null,
   "max": 50,
-  "dryRun": true
+  "dryRun": true,
+  "warnings": []
 }
 --- stderr
 warning: ISS-4: CONFLICT The issue file contains git conflict markers.
@@ -186,7 +187,8 @@ exit 0
   },
   "view": null,
   "max": 50,
-  "dryRun": true
+  "dryRun": true,
+  "warnings": []
 }
 --- stderr
 warning: ISS-4: CONFLICT The issue file contains git conflict markers.

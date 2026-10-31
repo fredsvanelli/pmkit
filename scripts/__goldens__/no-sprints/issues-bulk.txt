@@ -83,7 +83,8 @@ exit 0
   },
   "view": null,
   "max": 50,
-  "dryRun": true
+  "dryRun": true,
+  "warnings": []
 }
 --- stderr
 (empty)
@@ -145,6 +146,7 @@ exit 0
   "view": null,
   "max": 50,
   "dryRun": false,
+  "warnings": [],
   "applied": []
 }
 --- stderr
@@ -206,7 +208,8 @@ exit 0
   },
   "view": null,
   "max": 50,
-  "dryRun": true
+  "dryRun": true,
+  "warnings": []
 }
 --- stderr
 (empty)
