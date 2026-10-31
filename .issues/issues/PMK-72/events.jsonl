@@ -3,3 +3,4 @@
 {"at":"2026-10-31T15:51:58Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-10-31T15:51:59Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-31T15:52:06Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-72-add-the-team-capacity-command"}
+{"at":"2026-10-31T15:55:33Z","by":"fred","op":"comment","to":"2026-10-31T15-55-33Z-fred.md"}
