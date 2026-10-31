@@ -259,6 +259,24 @@ function writeText(result, { dryRun, record = issueRecord, header }) {
   return dryRun ? `${text}\ndry run: nothing was written` : text
 }
 
+/** Text of an issue delete: the full record, what goes, the warnings, and the way to keep the issue instead. A dry run is the preview. */
+function deleteText({ before, removes, warnings, mentions, unchecked }, { dryRun }) {
+  const lines = [`${dryRun ? 'would delete' : 'deleted'} ${before.id}  ${before.title}`, issueRecord(before), '']
+  if (removes.trash) {
+    lines.push("removes: the issue moves to Linear's trash, where the workspace can restore it for a while")
+  } else {
+    lines.push('removes:', ...removes.files.map((file) => `  ${file}`))
+    lines.push(`${removes.events} events and ${removes.comments} comments go with it. Only git history can bring them back.`)
+  }
+  lines.push('references: no other issue lists it as blocked by, related, duplicate of or parent')
+  if (warnings.length > 0) lines.push('warnings:', ...warnings.map((warning) => `  ${warning}`))
+  if (mentions.length > 0) lines.push(`mentioned in the text of: ${mentions.map((mention) => `${mention.id} (${mention.in})`).join(', ')}. The text stays as it is.`)
+  if (unchecked.length > 0) lines.push(`not checked: ${unchecked.join(', ')}`)
+  lines.push(`archive instead: pmkit issues archive ${before.id} keeps the record and its history and hides the issue from lists. Delete removes them.`)
+  if (dryRun) lines.push('dry run: nothing was written')
+  return lines.join('\n')
+}
+
 /** A comment as text. The thread lines appear only for a reply and for a resolved root. */
 const commentText = (c) =>
   `${c.created} ${c.author}${c.parent === undefined ? '' : ` (reply to ${c.parent})`}\n${c.body}${c.resolved === undefined ? '' : `\nresolved ${c.resolved.at} by ${c.resolved.by}`}`
@@ -564,6 +582,13 @@ export const COMMANDS = [
   {
     name: 'issues archive', summary: 'archives', usage: '<id>', write: true, args: ['id'], flags: [],
     run: async (ctx) => issueWrite(ctx, await (await ctx.tracker()).archive(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })),
+  },
+  {
+    name: 'issues delete', summary: 'deletes an issue for good; archive keeps it', usage: '<id>', write: true, args: ['id'], flags: [],
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).delete(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })
+      return { data: result, text: deleteText(result, ctx), commit: result.before.id }
+    },
   },
   {
     name: 'cycle list', summary: 'lists sprints', usage: '[--state s]', flags: ['state'],
@@ -2344,6 +2369,8 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
         // The details that reach the output: the mappings a hosted tracker found broken, and the problems a migration plan found.
         if (Array.isArray(error.details?.mappings)) body.error.mappings = error.details.mappings
         if (Array.isArray(error.details?.problems)) body.error.problems = error.details.problems
+        // The records that block a delete, so an agent reading the JSON sees the same list as the message.
+        if (Array.isArray(error.details?.references)) body.error.references = error.details.references
         if (error.written) body.result = error.written.data
         stdout.push(`${JSON.stringify(body, null, 2)}\n`)
       } else if (error.written) {

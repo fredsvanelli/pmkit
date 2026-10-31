@@ -13,15 +13,19 @@ const UNLINK = {
   parent: (id, other) => `pmkit issues parent ${other} none`,
 }
 
+const MAX_STEPS = 5
+
 /** The command that removes one reference: `kind` says how `other` points at `id`. */
 export const unlinkStep = (id, { id: other, kind }) => UNLINK[kind](id, other)
 
 /** The CONFLICT error for a non-empty `references` list of `{ id, kind }`. */
 export function referencedError(id, references) {
+  const steps = references.slice(0, MAX_STEPS).map((ref) => unlinkStep(id, ref))
+  const more = references.length > MAX_STEPS ? `; ${references.length - MAX_STEPS} more in the list` : ''
   return new PmkitError(
     'CONFLICT',
     `${id} is referenced by ${references.length === 1 ? 'one record' : `${references.length} records`}: ${references.map((ref) => `${ref.id} (${ref.kind})`).join(', ')}`,
-    `Remove each reference, then delete again. First: ${unlinkStep(id, references[0])}. To keep the history instead, archive it: pmkit issues archive ${id}`,
+    `Remove each reference, then delete again: ${steps.join('; ')}${more}. To keep the history instead, archive it: pmkit issues archive ${id}`,
     { references },
   )
 }

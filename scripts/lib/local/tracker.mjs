@@ -554,7 +554,8 @@ export function createLocalTracker(root, {
   function deleteIssue(id, actor, { dryRun = false } = {}) {
     requireWriter(actor)
     const { issue, paths } = readIssue(id)
-    const { issues, problems } = readAll({ save: !dryRun })
+    // Never saves the index here: a refusal and a dry run write nothing, and a delete refreshes it after the folder is gone.
+    const { issues, problems } = readAll({ save: false })
     if (problems.length > 0) {
       throw new PmkitError(
         'INVALID_INPUT',
