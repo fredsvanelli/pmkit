@@ -1513,10 +1513,18 @@ const teamMembers = (members, teamKey) => (teamKey === undefined ? members : mem
 
 /** The load per member for the active sprint, or for all open work without one. Writes nothing. */
 async function runTeamLoad(ctx) {
+  const { data, warnings, notes } = await teamLoadReport(ctx, { wanted: ctx.opt('sprint') })
+  return { data, text: teamLoadText(data), warnings, notes }
+}
+
+/**
+ * The load report of `team load`. `wanted` is `current`, a sprint id or undefined. `requireSprint` fails with NOT_FOUND when no sprint is
+ * in scope. `capacity` and `daysOff` replace the stored maps, which `team capacity` uses to show the load a change would give.
+ */
+async function teamLoadReport(ctx, { wanted, requireSprint = false, capacity: capacityOverride, daysOff: daysOffOverride }) {
   const tracker = await ctx.tracker()
   const notes = []
   const warnings = []
-  const wanted = ctx.opt('sprint')
   let sprint = null
   if (wanted === undefined || wanted === 'current') {
     // A Linear team with cycles off has no active sprint: the load covers all open work, and the cycles note says why.
@@ -1526,6 +1534,7 @@ async function runTeamLoad(ctx) {
       if (!isPmkitError(error) || error.code !== 'NOT_SUPPORTED') throw error
       notes.push(...(await capabilityNotes(tracker, 'cycles')))
     }
+    if (sprint === null && requireSprint) throw new PmkitError('NOT_FOUND', 'no sprint is active', 'Create one with /pmkit:cycle:plan, or name a sprint with --sprint <id>')
     if (sprint === null) notes.push('no active sprint: counted every open issue in todo, in_progress and in_review')
   } else {
     // An explicit sprint needs cycles: listCycles answers NOT_SUPPORTED when the tracker has none.
@@ -1541,8 +1550,8 @@ async function runTeamLoad(ctx) {
   const choice = chooseUnit(found.issues, estimation)
   if (choice.unit === 'issues') notes.push(`counted issues instead of estimates: ${choice.reason}${estimation?.path === 'absent' && estimation.enableHint ? ` (${estimation.enableHint})` : ''}`)
   if (estimation?.path === 'conditional') notes.push(...(await capabilityNotes(tracker, 'estimation')))
-  const capacity = sprint ? await orSupported(() => tracker.getCapacity(sprint.id), {}) : {}
-  const daysOff = sprint ? await orSupported(() => tracker.getDaysOff(sprint.id), {}) : {}
+  const capacity = capacityOverride ?? (sprint ? await orSupported(() => tracker.getCapacity(sprint.id), {}) : {})
+  const daysOff = daysOffOverride ?? (sprint ? await orSupported(() => tracker.getDaysOff(sprint.id), {}) : {})
   if (sprint) notes.push(...(await capabilityNotes(tracker, 'capacity')))
   const { categoryOf, events, warnings: capped } = await flowInputs(tracker)
   warnings.push(...capped)
@@ -1561,7 +1570,7 @@ async function runTeamLoad(ctx) {
   const suggestions = proposal.moves
   const noMoves = proposal.reason === null ? null : { reason: proposal.reason, message: NO_MOVE_MESSAGES[proposal.reason] }
   const data = { sprint: sprint ? { id: sprint.id, name: sprint.name, start: sprint.start, end: sprint.end } : null, truncated, ...report, suggestions, noMoves }
-  return { data, text: teamLoadText(data), warnings, notes }
+  return { data, warnings, notes }
 }
 
 function teamLoadText(data) {
