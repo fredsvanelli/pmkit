@@ -1,0 +1,60 @@
+$ pmkit team load
+exit 0
+--- stdout
+no sprint, load in issues, average 0
+Member     | Issues | WIP | Oldest WIP days | Flags
+-----------|--------|-----|-----------------|------
+fred       | 0      | 0   |                 |
+unassigned | 0      |     |                 |
+no work in scope: fred
+--- stderr
+note: no active sprint: counted every open issue in todo, in_progress and in_review
+note: counted issues, not points: no issue in scope has an estimate
+note: aging computed from .issues/events.jsonl
+
+$ pmkit team load --json
+exit 0
+--- stdout
+{
+  "sprint": null,
+  "unit": "issues",
+  "average": 0,
+  "rows": [
+    {
+      "member": "fred",
+      "name": "Fred Vanelli",
+      "agent": false,
+      "isMember": true,
+      "issues": 0,
+      "points": 0,
+      "unestimated": 0,
+      "wip": 0,
+      "oldestWipDays": null,
+      "load": 0,
+      "ids": [],
+      "flags": [],
+      "availability": 1,
+      "capacity": null,
+      "daysOff": []
+    }
+  ],
+  "unassigned": {
+    "issues": 0,
+    "points": 0,
+    "unestimated": 0,
+    "ids": []
+  },
+  "noWork": [
+    {
+      "member": "fred",
+      "name": "Fred Vanelli",
+      "daysOff": []
+    }
+  ],
+  "imbalances": [],
+  "suggestions": []
+}
+--- stderr
+note: no active sprint: counted every open issue in todo, in_progress and in_review
+note: counted issues, not points: no issue in scope has an estimate
+note: aging computed from .issues/events.jsonl
