@@ -6,7 +6,7 @@ This design was written without a round of questions. The calls the builder made
 
 ## Goal
 
-- A read-only CLI command, `pmkit team load`, that returns the open work of each member: issues, estimate points, work in progress and the oldest work in progress.
+- A read-only CLI command, `pmkit team load`, that returns the open work of each member: issues, estimates (points or hours), work in progress and the oldest work in progress.
 - A command file, `/pmkit:team:load`, that shows the result, flags imbalances and members with no work, and reassigns issues after a full preview.
 - The calculation lives in `scripts/lib/team-load.mjs`, a pure module. PMK-72 (team-capacity) reuses it.
 
@@ -40,11 +40,11 @@ Members:
 Imbalances (`imbalances`), computed on the unit's load among human members who are members:
 
 - `over_average`: load above 1.5 times the average of the human members, when there are at least two of them and the average is above 0.
-- `over_capacity`: points above the sprint capacity of the member, only with points and a capacity.
+- `over_capacity`: estimates above the sprint capacity of the member, only with an estimate unit and a capacity.
 
 `noWork` lists the human members with no open issue in scope, counted by issues and never by estimate, with their days off in the sprint. Members with `availability` 0 are skipped.
 
-Unknown load (decided in the review of PR #92): with an estimate unit, a member who has open issues and none estimated has an unknown load (`load: null`, `unknown: true`). That member stays out of the average, out of `over_average` and out of `noWork`, and is never a reassign target. A `note:` says how many members are in that state, and `unknownLoad` lists them. The comparison with 1.5 times the average uses the unrounded average, and only the output rounds, to 2 decimals.
+Unknown load (decided in the review of PR #92): with an estimate unit, a member who has open issues and none estimated has an unknown load (`load: null`, `unknown: true`). That member stays out of the average, out of `over_average` and out of `noWork`, and is never a reassign target. A `note:` says how many members are in that state, and `unknownLoad` lists them. Partial load (decided in the second review of PR #92): a member with some open issues unestimated and some estimated has a known lower bound, so the row is marked `partial: true` and the text shows `(partial)`. The sum still counts in the average and in the flags, but a partial member is never a reassign target, because the real load is unknown. The warning "some issues have no estimate and count 0 <unit>" skips the issues of members whose load is unknown. Members on Linear are those of the configured team (`tracker.scope.team`); an assignee from another team has a row marked not a member, outside the average and never a target. `--sprint current` means the active sprint, as in `issues list`. The comparison with 1.5 times the average uses the unrounded average, and only the output rounds, to 2 decimals.
 
 Suggestions (`suggestions`): `suggestMoves` moves issues in `todo` (not started) from members flagged `over_average` or `over_capacity` to the human member with the lowest known load, one issue at a time, largest estimate first. A move leaves the target at or below the source and at or below the target's own capacity. A source stops giving at the average (`over_average`) or at its capacity (`over_capacity`). It is a proposal only. Nothing is written. When the issue read comes back cut (`hasMore`), the command warns and proposes nothing. Without an active sprint on a Linear team with cycles off, the `cycles` note shows, and `--sprint <id>` answers `NOT_SUPPORTED`.
 
@@ -72,4 +72,4 @@ The command prints a table (member, issues, estimate in the unit, WIP, oldest WI
 
 - Unit tests for `scripts/lib/team-load.mjs`: load per member, unit choice, agents, non-members, imbalances, no work, suggestions.
 - CLI tests: Local on `team`, `no-sprints`, estimation off, and the read list in `cli.test.mjs`.
-- A scenario `scripts/__scenarios__/team-load.mjs` with its snapshot, the counts of command files (36 to 37), `COMMANDS.team` in `plugin.test.mjs`, the README and skill tables, and the CHANGELOG line.
+- A scenario `scripts/__scenarios__/team-load.mjs` with its snapshot, the counts of command files (each new command file adds one), `COMMANDS.team` in `plugin.test.mjs`, the README and skill tables, and the CHANGELOG line.

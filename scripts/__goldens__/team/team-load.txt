@@ -40,6 +40,7 @@ exit 0
       "oldestWipDays": 9.1,
       "load": 13,
       "unknown": false,
+      "partial": false,
       "ids": [
         "ISS-2X6D",
         "ISS-8C4W"
@@ -66,6 +67,7 @@ exit 0
       "oldestWipDays": 1.1,
       "load": 4,
       "unknown": false,
+      "partial": false,
       "ids": [
         "ISS-5N1R",
         "ISS-4M2S"

@@ -33,6 +33,7 @@ exit 0
       "oldestWipDays": null,
       "load": 0,
       "unknown": false,
+      "partial": false,
       "ids": [],
       "flags": [],
       "availability": 1,

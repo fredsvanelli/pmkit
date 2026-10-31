@@ -32,6 +32,7 @@ exit 0
       "oldestWipDays": 9.1,
       "load": 5,
       "unknown": false,
+      "partial": false,
       "ids": [
         "ISS-9B2X"
       ],
@@ -52,6 +53,7 @@ exit 0
       "oldestWipDays": null,
       "load": 3,
       "unknown": false,
+      "partial": false,
       "ids": [
         "ISS-3M8D"
       ],

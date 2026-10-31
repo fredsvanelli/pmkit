@@ -116,6 +116,33 @@ test('team load leaves a member whose issues have no estimate out of the balance
   assert.ok(notes.includes('note: 1 member has open issues and no estimate: their load is unknown, so they stay out of the average, the flags and the proposed moves'), notes.join('\n'))
 })
 
+test('team load --sprint current reads the active sprint, as the default does', async () => {
+  const root = makeRepo('team')
+  const named = await load(root, ['--sprint', 'current'])
+  assert.equal(named.code, 0, named.stderr)
+  assert.equal(named.data.sprint.id, '2026-10-12')
+  assert.deepEqual(named.data, (await load(root)).data)
+})
+
+test('team load does not warn about unestimated issues when only a member with an unknown load has them', async () => {
+  const root = makeRepo('team')
+  setEstimate(root, 'ISS-2X6D', null)
+  setEstimate(root, 'ISS-8C4W', null)
+  const { stderr } = await load(root)
+  assert.doesNotMatch(stderr, /no estimate and count 0/)
+})
+
+test('team load warns about unestimated issues of a member with a known load, and shows the row as partial', async () => {
+  const root = makeRepo('team')
+  setEstimate(root, 'ISS-2X6D', null)
+  const result = await load(root)
+  assert.match(result.stderr, /warning: some issues have no estimate and count 0 points/)
+  const ana = rowOf(result.data, 'ana')
+  assert.deepEqual([ana.partial, ana.unknown, ana.estimate], [true, false, 5])
+  const text = (await run(['team', 'load'], { cwd: root, env })).stdout
+  assert.match(text, /ana \(partial\)/)
+})
+
 test('team load puts an unassigned issue and an agent member outside the balance', async () => {
   const root = makeRepo('team')
   const file = path.join(root, '.issues/config.yaml')

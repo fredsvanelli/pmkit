@@ -1505,6 +1505,12 @@ async function orSupported(read, fallback) {
 }
 
 
+/**
+ * The members of the team the tracker is scoped to. Linear lists the whole workspace, and each member carries the keys of
+ * its teams. Without a team in the scope, or on a tracker whose members carry no teams (Local), every member counts.
+ */
+const teamMembers = (members, teamKey) => (teamKey === undefined ? members : members.filter((member) => member.teams === undefined || member.teams.includes(teamKey)))
+
 /** The load per member for the active sprint, or for all open work without one. Writes nothing. */
 async function runTeamLoad(ctx) {
   const tracker = await ctx.tracker()
@@ -1512,7 +1518,7 @@ async function runTeamLoad(ctx) {
   const warnings = []
   const wanted = ctx.opt('sprint')
   let sprint = null
-  if (wanted === undefined) {
+  if (wanted === undefined || wanted === 'current') {
     // A Linear team with cycles off has no active sprint: the load covers all open work, and the cycles note says why.
     try {
       sprint = await tracker.currentCycle()
@@ -1541,12 +1547,13 @@ async function runTeamLoad(ctx) {
   const { categoryOf, events, warnings: capped } = await flowInputs(tracker)
   warnings.push(...capped)
   const asOf = ctx.now().toISOString().replace(/\.\d{3}Z$/, 'Z')
-  const report = teamLoad(found.issues, { members: (await tracker.discover()).members, aging: aging(events, { categoryOf, asOf }), capacity, daysOff, unit: choice.unit })
+  const report = teamLoad(found.issues, { members: teamMembers((await tracker.discover()).members, ctx.config().pmkit?.tracker?.scope?.team), aging: aging(events, { categoryOf, asOf }), capacity, daysOff, unit: choice.unit })
   if (report.unknownLoad.length > 0) {
     const n = report.unknownLoad.length
     notes.push(`${n} ${n === 1 ? 'member has' : 'members have'} open issues and no estimate: their load is unknown, so they stay out of the average, the flags and the proposed moves`)
   }
-  if (choice.unit !== 'issues' && report.unassigned.unestimated + report.rows.reduce((sum, row) => sum + row.unestimated, 0) > 0) {
+  const counted = [report.unassigned.unestimated, ...report.rows.filter((row) => !row.unknown).map((row) => row.unestimated)]
+  if (choice.unit !== 'issues' && counted.some((n) => n > 0)) {
     warnings.push(`some issues have no estimate and count 0 ${choice.unit}; the Unestimated column shows how many per member`)
   }
   notes.push(...(await metricNotes(tracker, 'aging')))
@@ -1564,7 +1571,7 @@ function teamLoadText(data) {
     table(
       ['Member', 'Issues', ...(estimated ? [label, 'Unestimated'] : []), 'WIP', 'Oldest WIP days', ...(estimated ? ['Capacity'] : []), 'Flags'],
       rows.map((row) => [
-        row.member + (row.agent ? ' (agent)' : '') + (row.isMember === false ? ' (not a member)' : ''), row.issues,
+        row.member + (row.agent ? ' (agent)' : '') + (row.isMember === false ? ' (not a member)' : '') + (row.partial ? ' (partial)' : ''), row.issues,
         ...(estimated ? [row.unknown ? '?' : row.estimate, row.unestimated] : []), row.wip, row.oldestWipDays ?? '', ...(estimated ? [row.capacity ?? ''] : []), (row.flags ?? []).join(', '),
       ]),
     ),
