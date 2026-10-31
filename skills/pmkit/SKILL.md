@@ -26,6 +26,7 @@ Each command file holds the full procedure. When the user asks for one of these 
 | add a comment to an issue | `/pmkit:issues:comment` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/comment.md` |
 | create an issue from an idea, refined into context, scope, tasks and acceptance criteria, with the fields checked against the project config | `/pmkit:issues:create` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/create.md` |
 | delegate an issue to an agent, hand it to agent:<name>, or have an agent work on it | `/pmkit:issues:delegate` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/delegate.md` |
+| delete an issue for good after a full preview, refusing while other issues reference it | `/pmkit:issues:delete` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/delete.md` |
 | show what blocks an issue or an epic, with the blocker chain, the hierarchy and the critical path | `/pmkit:issues:dependencies` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/dependencies.md` |
 | propose an estimate for an issue from the code it affects and from similar completed issues, and save it after confirmation | `/pmkit:issues:estimate` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/estimate.md` |
 | find issues with a plain-language question, such as "high-priority bugs in the current sprint" | `/pmkit:issues:find` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/find.md` |

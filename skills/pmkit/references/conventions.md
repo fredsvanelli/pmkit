@@ -13,13 +13,13 @@ Every `/pmkit:*` command applies these rules. Read this file before the first st
 
 ## Write policy
 
-Reads run freely. A single write shows before → after (from `--dry-run`) and asks once. A bulk change (more than one record), an archive, a scope move or a published status update shows a full preview first. `write_policy.confirm: none` skips the single-write question, never the preview of a bulk change **(builder's call)**.
+Reads run freely. A single write shows before → after (from `--dry-run`) and asks once. A bulk change (more than one record), an archive, a delete, a scope move or a published status update shows a full preview first. `write_policy.confirm: none` skips the single-write question, never the preview of a bulk change **(builder's call)**.
 
 ## How to show a write
 
 1. Run the CLI command with `--dry-run --json`. Nothing changes on disk.
 2. Show the `before` and `after` of each record, field by field, and only the fields that change. For a create, show the new record.
-3. Ask with `AskUserQuestion`, following `write_policy.confirm` in `.pmkit/config.yaml`. A bulk change, an archive, a scope move or a published status update always shows the full preview and asks, whatever `confirm` says.
+3. Ask with `AskUserQuestion`, following `write_policy.confirm` in `.pmkit/config.yaml`. A bulk change, an archive, a delete, a scope move or a published status update always shows the full preview and asks, whatever `confirm` says.
 4. When the user approves, run the same command again without `--dry-run`. When the user declines, stop and change nothing.
 
 ## Reading errors

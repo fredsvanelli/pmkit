@@ -126,7 +126,26 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.deepEqual(ids((await tracker.searchIssues({ archived: true })).issues), [id])
     })
 
-    it('delegates an issue to an agent member with a delegation comment', ['issues', 'agents'], async (env) => {
+    it('deletes an issue, refuses while another issue references it, and a dry run changes nothing', ['issues'], async ({ tracker, actor }) => {
+      const x = (await tracker.createIssue({ title: 'Delete me' }, actor)).after.id
+      const y = (await tracker.createIssue({ title: 'Blocked by x' }, actor)).after.id
+      await tracker.link(x, y, 'blocks', actor)
+      for (const dryRun of [true, false]) {
+        await assert.rejects(async () => tracker.delete(x, actor, { dryRun }), (error) => error.code === 'CONFLICT' && error.message.includes(y))
+      }
+      assert.equal((await tracker.getIssue(x)).title, 'Delete me')
+      await tracker.unlink(x, y, 'blocks', actor)
+      const dry = await tracker.delete(x, actor, { dryRun: true })
+      assert.equal(dry.after, null)
+      assert.equal(dry.before.id, x)
+      assert.equal((await tracker.getIssue(x)).title, 'Delete me')
+      const done = await tracker.delete(x, actor)
+      assert.equal(done.after, null)
+      await assert.rejects(async () => tracker.getIssue(x), { code: 'NOT_FOUND' })
+      assert.deepEqual(ids((await tracker.searchIssues({ archived: true })).issues), [y])
+    })
+
+    it('delegates an issue to an agent member with a delegation comment',['issues', 'agents'], async (env) => {
       const { tracker, actor, agent, t } = env
       if (!agent) return t.skip('needs an agent member')
       const id = (await tracker.createIssue({ title: 'For the agent' }, actor)).after.id

@@ -3,9 +3,11 @@
 
 import { PmkitError } from '../errors.mjs'
 import { CATEGORIES } from '../model.mjs'
+import { REFERENCE_KINDS, referencedError } from '../delete-refusal.mjs'
+import { compareIds } from '../ids.mjs'
 import { checkFilter } from '../issue-filter.mjs'
 import { cycleKey } from './cycles.mjs'
-import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE } from './documents.mjs'
+import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE } from './documents.mjs'
 import { finishSearch, translateFilter } from './filter.mjs'
 import { blockedOpen, isIssueId, issueKey, makeContext, stateCategory, toIssue } from './issues.mjs'
 import { applyInput, createTeam, requireAssignee, skeletonNode, teamOf, teamStates, toInput } from './writes.mjs'
@@ -16,6 +18,7 @@ const NOTHING = () => ({ issues: [], problems: [], hasMore: false })
 export const isUnconfirmed = (error) =>
   error instanceof PmkitError && error.code === 'UPSTREAM' && error.message.startsWith('Linear did not confirm the change')
 
+const nodesOf = (connection) => connection?.nodes ?? []
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 const notFound = (id) => new PmkitError('NOT_FOUND', `issue ${id} does not exist`, 'pmkit issues list')
 
@@ -285,5 +288,43 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return { before, after: await mapped(await readNode(id)) }
   }
 
-  return { getIssue, searchIssues, cycleNodeFor, createIssue, updateIssue, moveToCategory, assign, archive, requireViewer, mapped, writeUpdate, parentNodeOf, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
+  /** The records that point at the issue, from its node: others it blocks, related in either direction, duplicates of it and its children. */
+  function referencesTo(node) {
+    const out = nodesOf(node.relations)
+    const inverse = nodesOf(node.inverseRelations)
+    const found = [
+      ...out.filter((item) => item.type === 'blocks').map((item) => ({ id: item.relatedIssue.identifier, kind: 'blockedBy' })),
+      ...out.filter((item) => item.type === 'related').map((item) => ({ id: item.relatedIssue.identifier, kind: 'related' })),
+      ...inverse.filter((item) => item.type === 'related').map((item) => ({ id: item.issue.identifier, kind: 'related' })),
+      ...inverse.filter((item) => item.type === 'duplicate').map((item) => ({ id: item.issue.identifier, kind: 'duplicateOf' })),
+      ...nodesOf(node.children).map((child) => ({ id: child.identifier, kind: 'parent' })),
+    ]
+    const unique = [...new Map(found.map((ref) => [`${ref.id} ${ref.kind}`, ref])).values()]
+    return unique.sort((a, b) => compareIds(a.id, b.id) || REFERENCE_KINDS.indexOf(a.kind) - REFERENCE_KINDS.indexOf(b.kind))
+  }
+
+  /**
+   * Deletes an issue with issueDelete, which moves it to Linear's trash. It refuses, sending nothing, while another issue references it.
+   * Linear's API shows relations and children only, so the text of other issues, views and local code are listed as not checked.
+   */
+  async function deleteIssue(id, actor, { dryRun = false } = {}) {
+    await requireViewer(actor)
+    const node = await readNode(id)
+    const before = toIssue(node, await contextFor([node]))
+    const references = referencesTo(node)
+    if (references.length > 0) throw referencedError(before.id, references)
+    const warnings = []
+    if (before.branch !== undefined) warnings.push(`branch ${before.branch} and its pull request stay as they are`)
+    if (before.assignee !== undefined && /^agent:/.test(before.assignee)) warnings.push(`it is assigned to ${before.assignee}, which may still be working on it`)
+    const result = {
+      before, after: null, removes: { trash: true }, references: [], mentions: [], warnings,
+      unchecked: ['the descriptions and comments of other issues', 'saved views', 'code comments, documents and docs/'],
+    }
+    if (dryRun) return result
+    const answer = await client.request(ISSUE_DELETE, { id: node.id })
+    if (answer?.issueDelete?.success !== true) throw new PmkitError('UPSTREAM', `Linear did not delete ${before.id}`, 'Run pmkit issues get to see whether it still exists')
+    return result
+  }
+
+  return { getIssue, searchIssues, cycleNodeFor, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue, requireViewer, mapped, writeUpdate, parentNodeOf, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
 }

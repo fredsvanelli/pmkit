@@ -1175,3 +1175,64 @@ test('release reads on a workspace without releases answer empty, getRelease is 
   await assert.rejects(linear.getRelease('1.0'), { code: 'NOT_FOUND', message: 'release 1.0 does not exist: releases is absent: Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings', nextStep: 'pmkit release list' })
   assert.ok(!namesOf(fetch).some((name) => /Release/.test(name)))
 })
+
+const refusal = (promise) => promise.then(() => assert.fail('expected a refusal'), (error) => error)
+
+test('delete refuses for a blocks out of the issue, a related either way, a duplicate into the issue and a child, and sends no mutation', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  fake.relate('blocks', 'ACME-1', 'ACME-2')
+  fake.relate('related', 'ACME-3', 'ACME-1')
+  const first = await refusal(linear.delete('ACME-1', 'user-1'))
+  assert.equal(first.code, 'CONFLICT')
+  assert.deepEqual(first.details.references, [{ id: 'ACME-2', kind: 'blockedBy' }, { id: 'ACME-3', kind: 'related' }])
+  assert.match(first.nextStep, /issues link ACME-1 ACME-2 --kind blocks --remove/)
+  assert.equal(mutationsIn(fetch), 0)
+
+  const dup = linearSetup()
+  three(dup.fake)
+  dup.fake.relate('duplicate', 'ACME-2', 'ACME-1')
+  assert.deepEqual((await refusal(dup.tracker.delete('ACME-1', 'user-1', { dryRun: true }))).details.references, [{ id: 'ACME-2', kind: 'duplicateOf' }])
+
+  const out = linearSetup()
+  three(out.fake)
+  out.fake.relate('related', 'ACME-1', 'ACME-2')
+  assert.deepEqual((await refusal(out.tracker.delete('ACME-1', 'user-1'))).details.references, [{ id: 'ACME-2', kind: 'related' }])
+
+  const child = linearSetup()
+  three(child.fake)
+  await child.tracker.setParent('ACME-2', 'ACME-1', 'user-1')
+  assert.deepEqual((await refusal(child.tracker.delete('ACME-1', 'user-1'))).details.references, [{ id: 'ACME-2', kind: 'parent' }])
+})
+
+test('the own blockedBy and duplicateOf of the issue do not block a Linear delete', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  three(fake)
+  fake.relate('blocks', 'ACME-2', 'ACME-1')
+  fake.relate('duplicate', 'ACME-1', 'ACME-3')
+  const dry = await linear.delete('ACME-1', 'user-1', { dryRun: true })
+  assert.deepEqual(dry.references, [])
+})
+
+test('a Linear dry run sends no mutation, a delete sends issueDelete once, and the issue is then NOT_FOUND', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  const dry = await linear.delete('ACME-3', 'user-1', { dryRun: true })
+  assert.equal(dry.after, null)
+  assert.equal(dry.before.id, 'ACME-3')
+  assert.deepEqual(dry.removes, { trash: true })
+  assert.ok(dry.unchecked.length > 0)
+  assert.equal(mutationsIn(fetch), 0)
+  const done = await linear.delete('ACME-3', 'user-1')
+  assert.equal(done.after, null)
+  assert.equal(mutationsIn(fetch), 1)
+  assert.equal(namesOf(fetch).filter((name) => name === 'PmkitIssueDelete').length, 1)
+  await assert.rejects(linear.getIssue('ACME-3'), { code: 'NOT_FOUND' })
+  await assert.rejects(linear.delete('ACME-3', 'user-1'), { code: 'NOT_FOUND' })
+})
+
+test('a Linear delete as another actor is refused', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  three(fake)
+  await assert.rejects(linear.delete('ACME-1', 'user-2'), { code: 'INVALID_INPUT' })
+})

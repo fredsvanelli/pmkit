@@ -1,1 +1,9 @@
 {"at":"2026-10-25T19:13:21Z","by":"fred","op":"create","to":{"id":"PMK-52","title":"Add issues delete","type":"feature","status":"backlog","priority":"low","estimate":2,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"generic-commands","created":"2026-10-25T19:13:21Z","updated":"2026-10-25T19:13:21Z"}}
+{"at":"2026-10-31T15:52:58Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-31T15:52:58Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-31T15:53:07Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-52-add-issues-delete"}
+{"at":"2026-10-31T15:56:04Z","by":"fred","op":"comment","to":"2026-10-31T15-56-04Z-fred.md"}
+{"at":"2026-10-31T16:20:59Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-31T16:20:59Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-31T16:26:29Z","by":"fred","op":"comment","to":"2026-10-31T16-26-29Z-fred.md"}
+{"at":"2026-10-31T16:26:30Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
