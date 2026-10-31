@@ -33,7 +33,7 @@
 //   stop is an answer turn with no key. Every answer counts as a stop, including the answer to a choice of
 //   input (setup's prefix, a status name), so a write after such an answer counts as confirmed.
 // - Rule 8 per call: only the tree hash at each stop.
-// - The part of each expect after its first `saved` read (LIVE_EXPECT_STOPS lists 25 of 41 entries).
+// - The part of each expect after its first `saved` read (LIVE_EXPECT_STOPS lists 25 of 42 entries).
 //
 // Spike findings (claude 2.1.310, 2026-10-26, /pmkit:issues:move ISS-2X6D done on the team fixture, 2 runs):
 // - The plugin command runs under -p despite `disable-model-invocation: true`. The agent read conventions.md,

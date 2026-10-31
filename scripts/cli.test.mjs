@@ -1456,8 +1456,8 @@ test('issues list --sprint current gives no warning when a sprint is active, and
 const cmd = (name) => COMMANDS.find((c) => c.name === name)
 
 test('configClass sorts every call into exempt, read or write', () => {
-  assert.deepEqual(COMMANDS.filter((c) => c.exempt).map((c) => c.name), ['init', 'changelog', 'validate'])
-  for (const name of ['init', 'changelog', 'validate']) assert.equal(configClass(cmd(name), {}), 'exempt', name)
+  assert.deepEqual(COMMANDS.filter((c) => c.exempt).map((c) => c.name), ['init', 'link-repo', 'changelog', 'validate'])
+  for (const name of ['init', 'link-repo', 'changelog', 'validate']) assert.equal(configClass(cmd(name), {}), 'exempt', name)
   assert.equal(configClass(cmd('issues list'), {}), 'read')
   assert.equal(configClass(cmd('issues create'), {}), 'write')
   assert.equal(configClass(cmd('migrate'), {}), 'write')
@@ -1660,7 +1660,7 @@ test('every read goes on with one warning', () => {
     'local-migrate status': [],
     render: ['board'],
   }
-  assert.deepEqual(Object.keys(READS).sort(), [...COMMANDS.filter((c) => !c.write && !['init', 'changelog', 'validate'].includes(c.name)).map((c) => c.name), 'cycle capacity', 'team capacity'].sort())
+  assert.deepEqual(Object.keys(READS).sort(), [...COMMANDS.filter((c) => !c.write && !['init', 'link-repo', 'changelog', 'validate'].includes(c.name)).map((c) => c.name), 'cycle capacity', 'team capacity'].sort())
   const root = makeRepo('team')
   const runAll = () => Object.entries(READS).map(([name, argv]) => {
     const result = run(root, [...name.split(' '), ...argv, '--json'])

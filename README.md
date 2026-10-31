@@ -12,6 +12,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 ## Commands
 
 - `/pmkit:setup`: Set up pmkit in the project, or bring a setup in line with the installed version.
+- `/pmkit:link-repo`: Link this repository to a git host and, on Linear, to a team, by editing `.pmkit/config.yaml` after one confirmation.
 - `/pmkit:upgrade`: Update the installed pmkit plugin and move `.issues/` to the current tracker format.
 - `/pmkit:help`: See what pmkit can do here, explain a capability, or find the command for a task.
 - `/pmkit:backlog:groom`: Find what is wrong with the backlog and fix what the user accepts.
@@ -63,6 +64,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 |---|---|
 | `init` | writes `.pmkit/config.yaml` and scaffolds `.issues/`; refuses to overwrite. Flags: `--tracker local\|linear`, `--git-host github\|none`, `--workspace`, `--team`, `--status key=name`, `--field key=value`, `--type-label type=label`, `--prefix`, `--id-style random\|numbered`, `--estimate-unit points\|hours\|sizes`, `--label name`, `--member id --name n --email e`, `--members-file f\|-` |
 | `init --tracker linear` | reads the Linear workspace with the key in `LINEAR_API_KEY`, applies what it can infer, lists what it must ask and writes only `.pmkit/config.yaml`. `--dry-run` returns `applied`, `questions` and `broken`; the answers go back as `--team`, `--status`, `--field` and `--type-label` |
+| `link-repo [--git-host github\|none] [--repo owner/name] [--default-branch name] [--remote name] [--team KEY]` | sets `git_host.system`, `git_host.repo`, `git_host.default_branch` and, on Linear, `tracker.scope.team` in `.pmkit/config.yaml`, keeping its comments and order. Without flags it infers the host, repo and default branch from `origin` (or the only remote) with no network call, and a host it does not recognize as GitHub changes nothing. Only `--git-host none` lowers a host. `--team` is the only Linear call and is checked against the workspace and refused when it breaks the mappings. `--dry-run` shows the diff |
 | `init --update` | edits only the lines its flags name and adds or updates the schema line in the config files; `--replace <path>` overwrites a template file that differs |
 | `capabilities` | prints the capability manifest |
 | `discover` | prints statuses with categories, types, priorities, labels, members and the estimate scale |

@@ -1,0 +1,22 @@
+$ pmkit link-repo --dry-run --json  [step 1, dry run]
+exit 0
+? Step 6  [confirmed]
+$ pmkit link-repo --json  [step 1, write]
+exit 0
+$ pmkit validate --json  [step 8, read]
+exit 0
+$ pmkit capabilities --json  [step 8, read]
+exit 0
+
+--- changed .pmkit/config.yaml
+  version: 1
+  tracker:
+    system: local
+    path: .issues
+  git_host:
+-  system: none
++  system: github
++  repo: acme/app
+  write_policy:
+    confirm: single_writes
+    preview: [bulk, delete, publish_update, move_scope]

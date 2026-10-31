@@ -33,6 +33,8 @@ export const FIXTURES = {
 // Each case runs as text and --json, and a write also runs with --dry-run.
 export const CASES = {
   init: () => [[], ['--update'], ['--root', 'fresh']],
+  // The fixtures are not git repositories, so the remote cannot be read and the first case infers nothing.
+  'link-repo': () => [[], ['--git-host', 'github', '--repo', 'acme/app']],
   capabilities: () => [[]],
   discover: () => [[]],
   whoami: () => [[]],

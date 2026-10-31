@@ -1,0 +1,229 @@
+$ pmkit link-repo
+exit 0
+--- stdout
+git host: none (unchanged)
+repo: (none) (unchanged)
+default branch: (none) (unchanged)
+note: could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred
+already linked, nothing to change
+--- stderr
+note: could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred
+
+$ pmkit link-repo --json
+exit 0
+--- stdout
+{
+  "dryRun": false,
+  "tracker": "local",
+  "remote": null,
+  "remotes": [],
+  "gitHost": {
+    "before": "none",
+    "after": "none",
+    "source": "file"
+  },
+  "repo": {
+    "before": null,
+    "after": null,
+    "source": "file"
+  },
+  "defaultBranch": {
+    "before": null,
+    "after": null,
+    "source": "file"
+  },
+  "scope": null,
+  "broken": [],
+  "notes": [
+    "could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred"
+  ],
+  "warnings": [],
+  "files": [
+    {
+      "path": ".pmkit/config.yaml",
+      "action": "keep"
+    }
+  ]
+}
+--- stderr
+note: could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred
+
+$ pmkit link-repo --dry-run
+exit 0
+--- stdout
+git host: none (unchanged)
+repo: (none) (unchanged)
+default branch: (none) (unchanged)
+note: could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred
+already linked, nothing to change
+dry run: nothing was written
+--- stderr
+note: could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred
+
+$ pmkit link-repo --dry-run --json
+exit 0
+--- stdout
+{
+  "dryRun": true,
+  "tracker": "local",
+  "remote": null,
+  "remotes": [],
+  "gitHost": {
+    "before": "none",
+    "after": "none",
+    "source": "file"
+  },
+  "repo": {
+    "before": null,
+    "after": null,
+    "source": "file"
+  },
+  "defaultBranch": {
+    "before": null,
+    "after": null,
+    "source": "file"
+  },
+  "scope": null,
+  "broken": [],
+  "notes": [
+    "could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred"
+  ],
+  "warnings": [],
+  "files": [
+    {
+      "path": ".pmkit/config.yaml",
+      "action": "keep"
+    }
+  ]
+}
+--- stderr
+note: could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred
+
+$ pmkit link-repo --git-host github --repo acme/app
+exit 0
+--- stdout
+git host: none -> github (from the flag)
+repo: (none) -> acme/app (from the flag)
+default branch: (none) (unchanged)
+note: could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred
+wrote:
+  .pmkit/config.yaml: change
+
+  version: 1
+  tracker:
+    system: local
+    path: .issues
+  git_host:
+-  system: none
++  system: github
++  repo: acme/app
+  write_policy:
+    confirm: single_writes
+    preview: [bulk, delete, publish_update, move_scope]
+--- stderr
+note: could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred
+
+$ pmkit link-repo --git-host github --repo acme/app --json
+exit 0
+--- stdout
+{
+  "dryRun": false,
+  "tracker": "local",
+  "remote": null,
+  "remotes": [],
+  "gitHost": {
+    "before": "none",
+    "after": "github",
+    "source": "flag"
+  },
+  "repo": {
+    "before": null,
+    "after": "acme/app",
+    "source": "flag"
+  },
+  "defaultBranch": {
+    "before": null,
+    "after": null,
+    "source": "file"
+  },
+  "scope": null,
+  "broken": [],
+  "notes": [
+    "could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred"
+  ],
+  "warnings": [],
+  "files": [
+    {
+      "path": ".pmkit/config.yaml",
+      "action": "change",
+      "diff": "  version: 1\n  tracker:\n    system: local\n    path: .issues\n  git_host:\n-  system: none\n+  system: github\n+  repo: acme/app\n  write_policy:\n    confirm: single_writes\n    preview: [bulk, delete, publish_update, move_scope]\n"
+    }
+  ]
+}
+--- stderr
+note: could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred
+
+$ pmkit link-repo --git-host github --repo acme/app --dry-run
+exit 0
+--- stdout
+git host: none -> github (from the flag)
+repo: (none) -> acme/app (from the flag)
+default branch: (none) (unchanged)
+note: could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred
+files:
+  .pmkit/config.yaml: would change
+
+  version: 1
+  tracker:
+    system: local
+    path: .issues
+  git_host:
+-  system: none
++  system: github
++  repo: acme/app
+  write_policy:
+    confirm: single_writes
+    preview: [bulk, delete, publish_update, move_scope]
+dry run: nothing was written
+--- stderr
+note: could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred
+
+$ pmkit link-repo --git-host github --repo acme/app --dry-run --json
+exit 0
+--- stdout
+{
+  "dryRun": true,
+  "tracker": "local",
+  "remote": null,
+  "remotes": [],
+  "gitHost": {
+    "before": "none",
+    "after": "github",
+    "source": "flag"
+  },
+  "repo": {
+    "before": null,
+    "after": "acme/app",
+    "source": "flag"
+  },
+  "defaultBranch": {
+    "before": null,
+    "after": null,
+    "source": "file"
+  },
+  "scope": null,
+  "broken": [],
+  "notes": [
+    "could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred"
+  ],
+  "warnings": [],
+  "files": [
+    {
+      "path": ".pmkit/config.yaml",
+      "action": "change",
+      "diff": "  version: 1\n  tracker:\n    system: local\n    path: .issues\n  git_host:\n-  system: none\n+  system: github\n+  repo: acme/app\n  write_policy:\n    confirm: single_writes\n    preview: [bulk, delete, publish_update, move_scope]\n"
+    }
+  ]
+}
+--- stderr
+note: could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred
