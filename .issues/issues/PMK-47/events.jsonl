@@ -4,3 +4,6 @@
 {"at":"2026-10-31T17:04:15Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-10-31T17:04:15Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-31T17:04:22Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-47-keep-a-user-inbox-for-the-local-tracker"}
+{"at":"2026-10-31T17:05:49Z","by":"fred","op":"comment","to":"2026-10-31T17-05-49Z-fred.md"}
+{"at":"2026-10-31T17:27:13Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-31T17:27:13Z","by":"fred","op":"update","field":"acceptance_criteria"}

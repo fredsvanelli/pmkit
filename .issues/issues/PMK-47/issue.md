@@ -11,7 +11,7 @@ blocked_by: [PMK-32, PMK-2]
 milestone: generic-commands
 branch: pmk-47-keep-a-user-inbox-for-the-local-tracker
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-31T17:04:22Z
+updated: 2026-10-31T17:27:13Z
 ---
 
 ## Description
@@ -20,5 +20,5 @@ Source: Local adapter, Capabilities (`user_inbox`: "Mentions (`@user`) and assig
 
 ## Acceptance criteria
 
-- [ ] The CLI lists the mentions and assignments since the last check
-- [ ] Marking read records the check in the user store
+- [x] The CLI lists the mentions and assignments since the last check
+- [x] Marking read records the check in the user store
