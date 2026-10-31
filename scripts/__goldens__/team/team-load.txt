@@ -1,0 +1,112 @@
+$ pmkit team load
+exit 0
+--- stdout
+sprint 2026-10-12 (2026-10-12 to 2026-10-25), load in points, average 8.5
+Member     | Issues | Points | Unestimated | WIP | Oldest WIP days | Capacity | Flags
+-----------|--------|--------|-------------|-----|-----------------|----------|----------------------------
+ana        | 2      | 13     | 0           | 2   | 9.1             | 10       | over_average, over_capacity
+fred       | 2      | 4      | 0           | 1   | 1.1             | 8        |
+unassigned | 0      | 0      | 0           |     |                 |          |
+imbalances:
+  ana: over_average, load 13, limit 12.75
+  ana: over_capacity, load 13, limit 10
+no proposed moves: the overloaded members have no issue in todo to move
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+note: aging computed from .issues/events.jsonl
+
+$ pmkit team load --json
+exit 0
+--- stdout
+{
+  "sprint": {
+    "id": "2026-10-12",
+    "name": "Sprint 2026-10-12",
+    "start": "2026-10-12",
+    "end": "2026-10-25"
+  },
+  "truncated": false,
+  "unit": "points",
+  "average": 8.5,
+  "rows": [
+    {
+      "member": "ana",
+      "name": "Ana Souza",
+      "agent": false,
+      "isMember": true,
+      "issues": 2,
+      "estimate": 13,
+      "unestimated": 0,
+      "wip": 2,
+      "oldestWipDays": 9.1,
+      "load": 13,
+      "unknown": false,
+      "partial": false,
+      "ids": [
+        "ISS-2X6D",
+        "ISS-8C4W"
+      ],
+      "flags": [
+        "over_average",
+        "over_capacity"
+      ],
+      "availability": 0.8,
+      "capacity": 10,
+      "daysOff": [
+        "2026-10-16"
+      ]
+    },
+    {
+      "member": "fred",
+      "name": "Fred Vanelli",
+      "agent": false,
+      "isMember": true,
+      "issues": 2,
+      "estimate": 4,
+      "unestimated": 0,
+      "wip": 1,
+      "oldestWipDays": 1.1,
+      "load": 4,
+      "unknown": false,
+      "partial": false,
+      "ids": [
+        "ISS-5N1R",
+        "ISS-4M2S"
+      ],
+      "flags": [],
+      "availability": 1,
+      "capacity": 8,
+      "daysOff": []
+    }
+  ],
+  "unassigned": {
+    "issues": 0,
+    "estimate": 0,
+    "unestimated": 0,
+    "ids": []
+  },
+  "noWork": [],
+  "unknownLoad": [],
+  "imbalances": [
+    {
+      "member": "ana",
+      "flag": "over_average",
+      "load": 13,
+      "limit": 12.75
+    },
+    {
+      "member": "ana",
+      "flag": "over_capacity",
+      "load": 13,
+      "limit": 10
+    }
+  ],
+  "suggestions": [],
+  "noMoves": {
+    "reason": "no_candidates",
+    "message": "the overloaded members have no issue in todo to move"
+  }
+}
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+note: aging computed from .issues/events.jsonl

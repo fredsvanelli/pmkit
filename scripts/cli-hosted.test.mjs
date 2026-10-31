@@ -112,6 +112,16 @@ test('milestone create warns about unfiled milestones on the Local tracker only'
   assert.equal(mirror.stderr, '')
 })
 
+test('team load warns when the issue read was cut and proposes no move', async () => {
+  const override = { searchIssues: async () => ({ issues: [], problems: [], hasMore: true }) }
+  const result = await call(mirrorRepo('team'), ['team', 'load', '--json'], { adapters: withLinear(mirrorLinear({ override })) })
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.truncated, true)
+  assert.deepEqual(data.suggestions, [])
+  assert.match(result.stderr, /warning: the issue read was cut/)
+})
+
 test('risks lists an epic whose updates reject, as it does for a throw', async () => {
   const override = { listStatusUpdates: async () => { throw new PmkitError('UPSTREAM', 'updates failed', 'Retry') } }
   const result = await call(mirrorRepo('team'), ['risks', '--json'], { adapters: withLinear(mirrorLinear({ override })) })

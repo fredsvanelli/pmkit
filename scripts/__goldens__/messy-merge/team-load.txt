@@ -1,0 +1,97 @@
+$ pmkit team load
+exit 0
+--- stdout
+sprint 2026-10-05 (2026-10-05 to 2026-10-11), load in issues, average 0
+Member     | Issues | WIP | Oldest WIP days | Flags
+-----------|--------|-----|-----------------|------
+ana        | 0      | 0   |                 |
+fred       | 0      | 0   |                 |
+unassigned | 0      |     |                 |
+no work in scope: ana, fred
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+note: counted issues instead of estimates: no issue in scope has an estimate
+note: aging computed from .issues/events.jsonl
+
+$ pmkit team load --json
+exit 0
+--- stdout
+{
+  "sprint": {
+    "id": "2026-10-05",
+    "name": "Sprint 2026-10-05",
+    "start": "2026-10-05",
+    "end": "2026-10-11"
+  },
+  "truncated": false,
+  "unit": "issues",
+  "average": 0,
+  "rows": [
+    {
+      "member": "ana",
+      "name": "Ana Souza",
+      "agent": false,
+      "isMember": true,
+      "issues": 0,
+      "estimate": 0,
+      "unestimated": 0,
+      "wip": 0,
+      "oldestWipDays": null,
+      "load": 0,
+      "unknown": false,
+      "partial": false,
+      "ids": [],
+      "flags": [],
+      "availability": 0.8,
+      "capacity": 8,
+      "daysOff": []
+    },
+    {
+      "member": "fred",
+      "name": "Fred Vanelli",
+      "agent": false,
+      "isMember": true,
+      "issues": 0,
+      "estimate": 0,
+      "unestimated": 0,
+      "wip": 0,
+      "oldestWipDays": null,
+      "load": 0,
+      "unknown": false,
+      "partial": false,
+      "ids": [],
+      "flags": [],
+      "availability": 1,
+      "capacity": 8,
+      "daysOff": []
+    }
+  ],
+  "unassigned": {
+    "issues": 0,
+    "estimate": 0,
+    "unestimated": 0,
+    "ids": []
+  },
+  "noWork": [
+    {
+      "member": "ana",
+      "name": "Ana Souza",
+      "daysOff": []
+    },
+    {
+      "member": "fred",
+      "name": "Fred Vanelli",
+      "daysOff": []
+    }
+  ],
+  "unknownLoad": [],
+  "imbalances": [],
+  "suggestions": [],
+  "noMoves": null
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+note: counted issues instead of estimates: no issue in scope has an estimate
+note: aging computed from .issues/events.jsonl
