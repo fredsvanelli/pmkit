@@ -32,6 +32,7 @@ import { brokenMappings, parseMappingFlags, proposeMappings } from './lib/mappin
 import { chooseRemote, inferHost } from './lib/git-remote.mjs'
 import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { lineDiff } from './lib/diff.mjs'
+import { DEFAULT_MAX, HARD_MAX, buildPreview, bulkText, checkBulkFilter, parseChange, valueError } from './lib/bulk.mjs'
 import { blockersText, collectBlockers } from './lib/pr-blockers.mjs'
 import { CACHE_DIR, ensureCacheIgnored } from './lib/local/query-index.mjs'
 import { writeFileAtomic } from './lib/local/store.mjs'
@@ -560,6 +561,12 @@ export const COMMANDS = [
   {
     name: 'issues parent', summary: 'sets the parent', usage: '<id> <parent|none>', write: true, args: ['id', 'parent'], flags: [],
     run: async (ctx) => issueWrite(ctx, await (await ctx.tracker()).setParent(ctx.args[0], ctx.args[1] === 'none' ? null : ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })),
+  },
+  {
+    name: 'issues bulk', summary: 'applies one change to every issue a filter or a saved view returns; --dry-run is the full preview and prints a digest, the real run needs it as --expect', write: true, args: ['change', 'value'],
+    usage: '<move|assign|priority|estimate|label-add|label-remove|milestone|release|sprint|parent|link> <value> (<issues list filter flags> | --view name) [--max n] [--status name] [--kind k] [--remove] [--expect digest]',
+    flags: ['text', 'category', 'type', 'assignee', 'label', 'sprint', 'parent', 'blocked', 'updated-before', 'updated-after', 'view', 'max', 'status', 'kind', 'remove', 'expect'],
+    run: (ctx) => runBulk(ctx),
   },
   {
     name: 'issues comment', summary: 'comments', usage: '<id> --body-file f [--reply-to comment]', write: true, args: ['id'], flags: ['body-file', 'reply-to'],
@@ -1704,6 +1711,83 @@ async function runRisks(ctx) {
   return { data: report, text: risksText(report), warnings, notes: [...cycleNotes, ...(await metricNotes(tracker, 'stalled-issue history'))] }
 }
 
+// Errors a dry run reports for one issue. Any other error is about the change or the tracker, so it stops the whole command.
+const PER_ISSUE_CODES = ['INVALID_INPUT', 'NOT_FOUND', 'CONFLICT']
+
+async function runBulk(ctx) {
+  const tracker = await ctx.tracker()
+  const [kind, value] = ctx.args
+  const scale = kind === 'estimate' ? ((await tracker.discover()).estimate.scale ?? []) : []
+  const change = parseChange(kind, value, { status: ctx.opt('status'), linkKind: ctx.opt('kind'), remove: ctx.flag('remove'), scale })
+  const max = ctx.opt('max') === undefined ? DEFAULT_MAX : whole('max', ctx.opt('max'))
+  if (max < 1 || max > HARD_MAX) throw usageError(`--max must be from 1 to ${HARD_MAX}`, 'Narrow the filter instead of raising --max')
+
+  const view = ctx.opt('view')
+  let filter = issueFilter(ctx)
+  if (view !== undefined && Object.keys(filter).length > 0) throw usageError('issues bulk takes --view or filter flags, not both', 'Save the filter with pmkit views save, or drop --view')
+  if (view === undefined) checkBulkFilter(filter, 'the filter')
+  const found = view === undefined ? await tracker.searchIssues(filter) : await tracker.runView(view)
+  if (view !== undefined) {
+    filter = found.view.filter
+    checkBulkFilter(filter, `view ${view}`)
+  }
+  if (found.hasMore === true) throw usageError('the tracker has more matching issues than pmkit read, so the set is cut and nothing can be written from it', 'Narrow the filter')
+  if (found.issues.length > max) {
+    throw usageError(`the filter matches ${found.issues.length} issues, more than the ${max} one bulk change takes`, `Narrow the filter${max < HARD_MAX ? `, or raise --max up to ${HARD_MAX}` : ''}`)
+  }
+
+  const actor = await ctx.actor()
+  const results = []
+  for (const issue of found.issues) {
+    try {
+      results.push(await change.apply(tracker, issue, actor, { dryRun: true }))
+    } catch (error) {
+      if (!isPmkitError(error) || !PER_ISSUE_CODES.includes(error.code)) throw error
+      results.push({ error: { code: error.code, message: error.message, nextStep: error.nextStep } })
+    }
+  }
+  const wrong = valueError(change, results)
+  if (wrong) throw new PmkitError('INVALID_INPUT', `${change.kind} ${change.value}: ${wrong.message}`, wrong.nextStep ?? 'Correct the value, then run the dry run again')
+  const preview = buildPreview({ change, found, results })
+  const releaseWarnings = kind === 'release' && value !== 'none' ? await releasedWarnings(ctx, { release: value }) : []
+  const data = { ...preview, filter, view: view ?? null, max, dryRun: ctx.dryRun, warnings: releaseWarnings }
+  const warnings = [...found.problems.map(problemLine), ...releaseWarnings]
+  if (ctx.dryRun) return { data, text: bulkText(preview, { dryRun: true }), warnings }
+
+  if (preview.blockers.length > 0) {
+    throw new PmkitError('INVALID_INPUT', `issues bulk cannot write: ${preview.blockers.join('; ')}`, 'Fix what the blockers name, then run the dry run again')
+  }
+  if (preview.writes === 0) return { data: { ...data, applied: [] }, text: `${bulkText(preview, { dryRun: false })}\nnothing to write`, warnings }
+  const expect = ctx.opt('expect')
+  if (typeof expect !== 'string' || expect === '') {
+    throw new PmkitError('INVALID_INPUT', 'issues bulk needs the digest of its preview before it writes', 'Run the same command with --dry-run, show the preview, then pass its digest with --expect')
+  }
+  if (expect !== preview.digest) {
+    throw new PmkitError('CONFLICT', 'the issues changed since the preview, so nothing was written', 'Run the dry run again and confirm the new preview', { expected: expect, digest: preview.digest })
+  }
+
+  const todo = found.issues.filter((_, i) => preview.items[i].state === 'change')
+  const applied = []
+  for (const issue of todo) {
+    try {
+      await change.apply(tracker, issue, actor, { dryRun: false })
+      applied.push(issue.id)
+    } catch (error) {
+      const code = isPmkitError(error) ? error.code : 'UPSTREAM'
+      const stopped = { applied, failed: { id: issue.id, code, message: error.message }, remaining: todo.slice(applied.length + 1).map((item) => item.id) }
+      const stop = new PmkitError(code, `${issue.id} failed after ${applied.length} of ${todo.length} writes: ${error.message}`,
+        'The issues in applied are written and the ones in remaining are not. Run the dry run again for what is left; bulk does not retry')
+      stop.written = {
+        data: stopped,
+        text: [`applied: ${applied.join(', ') || '(none)'}`, `failed: ${issue.id} ${code} ${error.message}`, `remaining: ${stopped.remaining.join(', ') || '(none)'}`].join('\n'),
+      }
+      if (applied.length > 0) stop.partialCommit = `${change.kind} ${change.value} (${applied.length} of ${todo.length})`
+      throw stop
+    }
+  }
+  return { data: { ...data, applied }, text: `${bulkText(preview, { dryRun: false })}\nwritten: ${applied.join(', ')}`, commit: `${change.kind} ${change.value} (${applied.length} issues)`, warnings }
+}
+
 const LOAD_CATEGORIES = ['todo', 'in_progress', 'in_review']
 
 /** Calls a tracker read that a tracker may not have, and returns `fallback` on NOT_SUPPORTED. */
@@ -2735,19 +2819,34 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
       const { system } = ctx.config()
       if (system !== 'linear') throw new PmkitError('NOT_SUPPORTED', `\`${command.name}\` works only with the Linear tracker, and tracker.system is "${system}"`, 'node scripts/pmkit.mjs --help')
     }
-    const result = await command.run(ctx)
     // auto_commit commits Local tracker files, so a hosted tracker never commits.
-    if (command.write && !dryRun && result.commit !== undefined && ctx.config().system === 'local' && ctx.config().local.auto_commit === true) {
+    const autoCommit = (commit, written) => {
+      if (!command.write || dryRun || commit === undefined || ctx.config().system !== 'local' || ctx.config().local.auto_commit !== true) return
       // Only the files this command wrote; a write that changed nothing commits nothing.
       const paths = tracker?.writtenFiles() ?? []
       try {
-        if (paths.length > 0) commitTracker(ctx.config(), `pmkit: ${command.name} ${result.commit}`, paths)
+        if (paths.length > 0) commitTracker(ctx.config(), `pmkit: ${command.name} ${commit}`, paths)
       } catch (error) {
         // The write succeeded; the caller still gets what was written, in the same single output.
-        error.written = { data: result.data, text: result.text }
+        error.written ??= written
         throw error
       }
     }
+    let result
+    try {
+      result = await command.run(ctx)
+    } catch (error) {
+      // A bulk write that stopped midway still commits the issues it wrote.
+      if (error?.partialCommit !== undefined) {
+        try {
+          autoCommit(error.partialCommit)
+        } catch (commitError) {
+          error.message = `${error.message}; ${commitError.message}`
+        }
+      }
+      throw error
+    }
+    autoCommit(result.commit, { data: result.data, text: result.text })
     stdout.push(json ? `${JSON.stringify(result.data, null, 2)}\n` : `${result.text}\n`)
     readWarning()
     for (const warning of result.warnings ?? []) stderr.push(`warning: ${warning}\n`)
@@ -2763,6 +2862,8 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
         if (Array.isArray(error.details?.problems)) body.error.problems = error.details.problems
         // The records that block a delete, so an agent reading the JSON sees the same list as the message.
         if (Array.isArray(error.details?.references)) body.error.references = error.details.references
+        // The two digests of a CONFLICT, so an agent sees what the preview held and what the tracker holds now.
+        if (typeof error.details?.expected === 'string' && typeof error.details?.digest === 'string') Object.assign(body.error, { expected: error.details.expected, digest: error.details.digest })
         if (error.written) body.result = error.written.data
         stdout.push(`${JSON.stringify(body, null, 2)}\n`)
       } else if (error.written) {

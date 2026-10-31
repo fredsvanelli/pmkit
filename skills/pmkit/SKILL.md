@@ -25,6 +25,7 @@ Each command file holds the full procedure. When the user asks for one of these 
 | break an issue into sub-issues with estimates, order and blockers | `/pmkit:issues:breakdown` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/breakdown.md` |
 | open an issue from what the session found (an error, a failing test, a TODO), after a duplicate check | `/pmkit:issues:capture` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/capture.md` |
 | add a comment to an issue | `/pmkit:issues:comment` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/comment.md` |
+| apply one change to every issue a filter or saved view returns, after a full preview | `/pmkit:issues:bulk` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/bulk.md` |
 | create an issue from an idea, refined into context, scope, tasks and acceptance criteria, with the fields checked against the project config | `/pmkit:issues:create` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/create.md` |
 | delegate an issue to an agent, hand it to agent:<name>, or have an agent work on it | `/pmkit:issues:delegate` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/delegate.md` |
 | delete an issue for good after a full preview, refusing while other issues reference it | `/pmkit:issues:delete` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/delete.md` |

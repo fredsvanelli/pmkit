@@ -1,0 +1,84 @@
+$ pmkit issues list --category done,in_review --type feature --json  [step 2, read]
+exit 0
+$ pmkit issues bulk priority urgent --category done,in_review --type feature --dry-run --json  [step 3, dry run]
+exit 0
+? Step 6  [confirmed]
+$ pmkit issues bulk priority urgent --category done,in_review --type feature --expect sha256:54bc5788e839d8eff7d1f6df1d01036c4e42e0baf4dfc45b8055ad22d875bb12 --json  [step 7, write]
+exit 0
+
+--- changed .issues/issues/ISS-2K5P/events.jsonl
+  {"at":"2026-09-26T10:30:00Z","by":"ana","op":"create","to":{"id":"ISS-2K5P","title":"Sign webhook payloads","type":"feature","status":"todo","priority":"medium","estimate":5,"assignee":"ana","labels":["backend","webhooks"],"parent":"EPC-4H7V","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-09-26T10:30:00Z","updated":"2026-09-26T10:30:00Z"}}
+  {"at":"2026-09-30T09:00:00Z","by":"ana","op":"move","field":"status","from":"todo","to":"in_progress"}
+  {"at":"2026-10-08T17:00:00Z","by":"ana","op":"move","field":"status","from":"in_progress","to":"done"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"priority","from":"medium","to":"urgent"}
+--- changed .issues/issues/ISS-2K5P/issue.md
+  ---
+  id: ISS-2K5P
+  title: Sign webhook payloads
+  type: feature
+  status: done
+-priority: medium
++priority: urgent
+  estimate: 5
+  assignee: ana
+  labels: [backend, webhooks]
+  parent: EPC-4H7V
+  created: 2026-09-26T10:30:00Z
+-updated: 2026-10-08T17:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Add an HMAC signature header so receivers can verify the sender.
+--- changed .issues/issues/ISS-6R3N/events.jsonl
+  {"at":"2026-09-26T11:00:00Z","by":"fred","op":"create","to":{"id":"ISS-6R3N","title":"Retry failed deliveries","type":"feature","status":"todo","priority":"high","estimate":8,"assignee":"fred","labels":["backend","webhooks"],"parent":"EPC-4H7V","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-09-26T11:00:00Z","updated":"2026-09-26T11:00:00Z"}}
+  {"at":"2026-10-05T09:00:00Z","by":"fred","op":"move","field":"status","from":"todo","to":"in_progress"}
+  {"at":"2026-10-16T15:00:00Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"done"}
+  {"at":"2026-10-22T10:00:00Z","by":"fred","op":"update","field":"release","from":null,"to":"1.0.0"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"priority","from":"high","to":"urgent"}
+--- changed .issues/issues/ISS-6R3N/issue.md
+  ---
+  id: ISS-6R3N
+  title: Retry failed deliveries
+  type: feature
+  status: done
+-priority: high
++priority: urgent
+  estimate: 8
+  assignee: fred
+  labels: [backend, webhooks]
+  parent: EPC-4H7V
+  release: 1.0.0
+  created: 2026-09-26T11:00:00Z
+-updated: 2026-10-22T10:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Retry with exponential backoff, up to six attempts.
+--- changed .issues/issues/ISS-9B2X/events.jsonl
+  {"at":"2026-10-06T11:00:00Z","by":"fred","op":"create","to":{"id":"ISS-9B2X","title":"Dead-letter queue","type":"feature","status":"todo","priority":"high","estimate":5,"assignee":"ana","labels":["webhooks","backend"],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-06T11:00:00Z","updated":"2026-10-06T11:00:00Z"}}
+  {"at":"2026-10-14T09:00:00Z","by":"ana","op":"move","field":"status","from":"todo","to":"in_progress"}
+  {"at":"2026-10-21T14:00:00Z","by":"ana","op":"move","field":"status","from":"in_progress","to":"in_review"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"priority","from":"high","to":"urgent"}
+--- changed .issues/issues/ISS-9B2X/issue.md
+  ---
+  id: ISS-9B2X
+  title: Dead-letter queue
+  type: feature
+  status: in_review
+-priority: high
++priority: urgent
+  estimate: 5
+  assignee: ana
+  labels: [webhooks, backend]
+  created: 2026-10-06T11:00:00Z
+-updated: 2026-10-21T14:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Keep deliveries that ran out of retries so support can replay them.

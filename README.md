@@ -21,6 +21,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 - `/pmkit:cycle:plan`: Plan the next sprint from velocity, capacity and the prioritized backlog.
 - `/pmkit:issues:assign`: Assign an issue to a member, to the user or to nobody.
 - `/pmkit:issues:breakdown`: Break an issue into sub-issues with estimates, order and blockers.
+- `/pmkit:issues:bulk`: Apply one change to every issue a filter or saved view returns, after a full preview that the write cannot differ from.
 - `/pmkit:issues:capture`: Open an issue from what the session found (an error, a failing test, a TODO), after a duplicate check.
 - `/pmkit:issues:comment`: Add a comment to an issue.
 - `/pmkit:issues:create`: Create an issue from an idea, refined into context, scope, tasks and acceptance criteria, with the fields checked against the project config.
@@ -87,6 +88,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `issues time-entries <id>` | lists the time logged on an issue, with the total |
 | `issues archive <id>` | archives an issue |
 | `issues delete <id>` | deletes an issue for good, and refuses while another issue lists it as blocked by, related, duplicate of or parent. `--dry-run` is the full preview. Archive keeps the record and its history, delete does not |
+| `issues bulk <change> <value> (filter flags \| --view name) [--max n] [--expect digest]` | applies one change (`move`, `assign`, `priority`, `estimate`, `label-add`, `label-remove`, `milestone`, `release`, `sprint`, `parent`, `link`) to every matched issue through the one-by-one operations. `--dry-run` is the full preview with a digest, and the real run needs it as `--expect` |
 | `cycle list` | lists sprints |
 | `cycle current` | prints the active sprint |
 | `cycle issues <id>` | lists the issues of a sprint |
