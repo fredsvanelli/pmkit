@@ -1669,7 +1669,7 @@ test('every read goes on with one warning', () => {
     'local-migrate status': [],
     render: ['board'],
   }
-  assert.deepEqual(Object.keys(READS).sort(), [...COMMANDS.filter((c) => !c.write && !['init', 'link-repo', 'changelog', 'validate'].includes(c.name)).map((c) => c.name), 'cycle capacity', 'team capacity'].sort())
+  assert.deepEqual(Object.keys(READS).sort(), [...COMMANDS.filter((c) => !c.write && !['init', 'link-repo', 'changelog', 'validate', 'issues parse-time'].includes(c.name)).map((c) => c.name), 'cycle capacity', 'team capacity'].sort())
   const root = makeRepo('team')
   const runAll = () => Object.entries(READS).map(([name, argv]) => {
     const result = run(root, [...name.split(' '), ...argv, '--json'])
@@ -2254,4 +2254,52 @@ test('a broken request file is a warning that points to pmkit validate, in the t
     assert.match(result.stderr, /warning: REQ-1: INVALID_INPUT .*; run pmkit validate/, args.join(' '))
     assert.equal(JSON.parse(result.stdout).problems[0].id, 'REQ-1', args.join(' '))
   }
+})
+
+test('log-time reads readable durations and refuses invalid ones with INVALID_INPUT', () => {
+  const root = makeRepo('team')
+  const logged = json(root, ['issues', 'log-time', 'ISS-3F7H', '1h30'])
+  assert.equal(logged.after.id, 'ISS-3F7H')
+  assert.equal(logged.minutes, 90, 'the JSON carries the parsed minutes, so the command can show them')
+  assert.equal(json(root, ['issues', 'time-entries', 'ISS-3F7H']).total, 90)
+  for (const bad of ['0', '-5', 'abc', '1.5', '1h90']) {
+    const result = run(root, ['issues', 'log-time', 'ISS-3F7H', bad, '--json'])
+    assert.equal(result.status, 2, bad)
+    assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT', bad)
+  }
+  assert.equal(json(root, ['issues', 'time-entries', 'ISS-3F7H']).total, 90)
+})
+
+test('log-time has no ceiling: a time above one day is accepted with a note', () => {
+  const root = makeRepo('team')
+  for (const [time, minutes] of [['1500', 1500], ['100000', 100000]]) {
+    const dry = run(root, ['issues', 'log-time', 'ISS-3F7H', time, '--dry-run', '--json'])
+    assert.equal(dry.status, 0, dry.stderr)
+    assert.equal(JSON.parse(dry.stdout).minutes, minutes)
+    assert.match(JSON.parse(dry.stdout).note, /is more than a day/, 'the JSON carries the note')
+    assert.match(dry.stderr, /note: .*is more than a day/)
+    assert.equal(run(root, ['issues', 'log-time', 'ISS-3F7H', time]).status, 0)
+  }
+  assert.equal(json(root, ['issues', 'time-entries', 'ISS-3F7H']).total, 101500)
+  assert.equal(json(root, ['issues', 'log-time', 'ISS-3F7H', '30', '--dry-run']).note, null)
+})
+
+test('log-time usage and arguments name the time', () => {
+  const entry = COMMANDS.find((command) => command.name === 'issues log-time')
+  assert.equal(entry.usage, '<id> <time>')
+  assert.deepEqual(entry.args, ['id', 'time'])
+})
+
+test('parse-time reads a time with no tracker and no write, and refuses an invalid one', () => {
+  const root = makeRepo('team')
+  const before = hashTree(root)
+  const ok = json(root, ['issues', 'parse-time', '1h30'])
+  assert.deepEqual({ input: ok.input, minutes: ok.minutes, note: ok.note }, { input: '1h30', minutes: 90, note: null })
+  assert.match(json(root, ['issues', 'parse-time', '1500']).note, /is more than a day/)
+  for (const bad of ['0', 'abc', '1.5']) {
+    const result = run(root, ['issues', 'parse-time', bad, '--json'])
+    assert.equal(result.status, 2, bad)
+    assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT', bad)
+  }
+  assert.equal(hashTree(root), before)
 })

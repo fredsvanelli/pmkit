@@ -42,6 +42,7 @@ const REFUSALS = [
   ['release', 'create', '1.0'],
   ['release', 'mark-released', '1.0'],
   ['issues', 'log-time', 'ACME-1', '5'],
+  ['issues', 'log-time', 'ACME-1', 'not a time'],
   ['issues', 'time-entries', 'ACME-1'],
   ['issues', 'delegate', 'ACME-1', 'agent:claude'],
   ['views', 'list'],

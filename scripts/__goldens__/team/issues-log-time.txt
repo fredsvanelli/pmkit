@@ -62,7 +62,9 @@ exit 0
     "estimate": 3,
     "assignee": "fred",
     "sprint": "2026-10-12"
-  }
+  },
+  "minutes": 30,
+  "note": null
 }
 --- stderr
 (empty)
@@ -132,7 +134,9 @@ exit 0
     "estimate": 3,
     "assignee": "fred",
     "sprint": "2026-10-12"
-  }
+  },
+  "minutes": 30,
+  "note": null
 }
 --- stderr
 (empty)

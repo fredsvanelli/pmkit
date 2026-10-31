@@ -9,6 +9,7 @@ import { gitUserEmail, resolveActor } from './lib/actor.mjs'
 import { ADAPTERS, adapterFor } from './lib/adapters.mjs'
 import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, loadPmkitConfig, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
 import { contractView } from './lib/contract.mjs'
+import { longEntryNote, parseMinutes } from './lib/duration.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
 import { changeLines, customerRecord, dependencyText, epicRecord, eventTable, fields, goalRecord, issueRecord, issueTable, milestoneRecord, percent, releaseNotesText, releaseRecord, requestRecord, sprintRecord, table } from './lib/format.mjs'
 import {
@@ -575,11 +576,23 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'issues log-time', summary: 'logs time', usage: '<id> <minutes>', write: true, args: ['id', 'minutes'], flags: [],
+    name: 'issues log-time', summary: 'logs time', usage: '<id> <time>', write: true, args: ['id', 'time'], flags: [],
     run: async (ctx) => {
-      const minutes = /^\d+$/.test(ctx.args[1]) ? Number(ctx.args[1]) : NaN
-      const result = await (await ctx.tracker()).logTime(ctx.args[0], minutes, await ctx.actor(), { dryRun: ctx.dryRun })
-      return { data: result, text: writeText(null, { dryRun: ctx.dryRun, header: `logged ${minutes} minutes on ${result.after.id}` }), commit: result.after.id }
+      const tracker = await ctx.tracker()
+      // The capability comes first, so a tracker with no time tracking refuses before it reads the time, whatever the time is.
+      const entry = (await tracker.capabilities()).capabilities.find((c) => c.id === 'time_tracking')
+      const minutes = entry?.path === 'absent' ? NaN : parseMinutes(ctx.args[1])
+      const result = await tracker.logTime(ctx.args[0], minutes, await ctx.actor(), { dryRun: ctx.dryRun })
+      const note = longEntryNote(minutes)
+      return { data: { ...result, minutes, note }, text: writeText(null, { dryRun: ctx.dryRun, header: `logged ${minutes} minutes on ${result.after.id}` }), notes: note ? [note] : [], commit: result.after.id }
+    },
+  },
+  {
+    name: 'issues parse-time', summary: 'reads a time such as 90, 45m, 1h30 or 1.5h as minutes, with no tracker and no write', usage: '<time>', args: ['time'], flags: [],
+    run: async (ctx) => {
+      const minutes = parseMinutes(ctx.args[0])
+      const note = longEntryNote(minutes)
+      return { data: { input: ctx.args[0], minutes, note }, text: `${ctx.args[0]} is ${minutes} minutes`, notes: note ? [note] : [] }
     },
   },
   {
