@@ -1,2 +1,9 @@
 {"at":"2026-10-25T19:13:22Z","by":"fred","op":"create","to":{"id":"PMK-72","title":"Add the team-capacity command","type":"feature","status":"backlog","priority":"medium","estimate":2,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"generic-commands","created":"2026-10-25T19:13:22Z","updated":"2026-10-25T19:13:22Z"}}
 {"at":"2026-10-25T19:13:26Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-4"}
+{"at":"2026-10-31T15:51:58Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-10-31T15:51:59Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-10-31T15:52:06Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-72-add-the-team-capacity-command"}
+{"at":"2026-10-31T15:55:33Z","by":"fred","op":"comment","to":"2026-10-31T15-55-33Z-fred.md"}
+{"at":"2026-10-31T16:05:32Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-10-31T16:21:21Z","by":"fred","op":"comment","to":"2026-10-31T16-21-21Z-fred.md"}
+{"at":"2026-10-31T16:21:21Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

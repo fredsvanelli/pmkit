@@ -46,6 +46,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 - `/pmkit:report:release-notes`: Write release notes for a release, a sprint or a period, and save them after you confirm.
 - `/pmkit:report:status`: Draft a status update for an epic and publish it after approval.
 - `/pmkit:spec:import`: Turn a spec or PRD into an epic with milestones, issues, sub-issues, estimates and blockers.
+- `/pmkit:team:capacity`: Capacity and days off per member for a sprint, with the effect on the load, changed after a preview.
 - `/pmkit:team:flow-metrics`: Show cycle time, lead time, throughput, aging and bug rate for a period, with the trend against the previous period.
 - `/pmkit:team:load`: Issues, estimates and work in progress per member, with imbalances and members with no work, and reassigns after a full preview.
 - `/pmkit:team:risk-radar`: Blockers, stalled issues and PRs, late epics, epics without a recent status update and broken CI, in one read-only report.
@@ -120,6 +121,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `events` | prints all events in a range, for digests |
 | `risks` | blockers, stalled issues and PRs, late epics, epics without a recent status update and broken CI; reads only. With `git_host.system: none`, or when `gh` is missing or logged out, it lists issues stalled by tracker activity and marks pull requests and CI as not checked |
 | `team load [--sprint current\|id]` | issues, estimates (points or hours) and work in progress per member for the active sprint, or for all open work when no sprint is active, with imbalances (above 1.5 times the average, over sprint capacity), members with no work and a proposal of moves; counts issues when estimates are off, absent or t-shirt sizes; a member whose open issues have no estimate has an unknown load, and one with some unestimated issues has a partial load, and neither is a move target; only reads |
+| `team capacity [--sprint current\|id] [--set member=n\|none,..] [--days-off member=date+date\|none,..]` | capacity and days off per member for a sprint; `--set` merges and `none` removes, a write is one call and takes `--dry-run`. Agents and, on Linear, members outside the team are refused. On Linear it writes only `.pmkit/capacity.yaml` |
 | `alerts list [--severity s,..]` | security alerts from the scanners the repository has, highest severity first: `npm audit` when there is a `package-lock.json` or `npm-shrinkwrap.json`. Severity is `critical`, `high`, `medium` or `low`. A scanner that fails is a warning, and the text output says the result is incomplete; reads only |
 | `issues branch <id> [--from branch]` | creates the issue branch from `--from` (default: `git_host.default_branch`) and records it on the issue |
 | `pr open --issue <id> [--draft] [--body-file f]` | pushes the issue branch and opens a pull request; when the branch already has an open one, pushes and returns it with `existing: true` |
