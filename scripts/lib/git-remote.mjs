@@ -21,13 +21,16 @@ export function parseRemoteUrl(url) {
   if (text === '') return null
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) {
     let parsed
+    let path
     try {
       parsed = new URL(text)
+      // A broken escape such as %zz throws here, and the URL then counts as not recognized.
+      path = decodeURIComponent(parsed.pathname)
     } catch {
       return null
     }
     if (!SCHEMES.includes(parsed.protocol) || parsed.hostname === '') return null
-    return fromPath(parsed.hostname, decodeURIComponent(parsed.pathname))
+    return fromPath(parsed.hostname, path)
   }
   const scp = SCP_FORM.exec(text)
   // A single letter before the colon is a Windows drive, not a host.
@@ -35,17 +38,20 @@ export function parseRemoteUrl(url) {
   return fromPath(scp[1], scp[2])
 }
 
+const GITHUB_HOSTS = ['github.com', 'www.github.com', 'ssh.github.com']
+
 /**
- * What a remote URL says about the git host. github.com is `github` with the repo as owner/name, any other host is `none`,
- * and a URL that does not parse says nothing (`system: null`).
+ * What a remote URL says about the git host. github.com, www.github.com and ssh.github.com (GitHub over port 443) are `github`,
+ * with the repo as owner/name. Anything else, a URL that does not parse and a GitHub path that is not owner/name say nothing
+ * (`system: null`). A URL never says `none`: a host this function does not know may be GitHub Enterprise or an SSH alias.
  */
 export function inferHost(url) {
   const parsed = parseRemoteUrl(url)
   if (!parsed) return { system: null, repo: null, host: null }
-  if (parsed.host === 'github.com' || parsed.host === 'www.github.com') {
+  if (GITHUB_HOSTS.includes(parsed.host) && !parsed.owner.includes('/')) {
     return { system: 'github', repo: `${parsed.owner}/${parsed.name}`, host: parsed.host }
   }
-  return { system: 'none', repo: null, host: parsed.host }
+  return { system: null, repo: null, host: parsed.host }
 }
 
 /**

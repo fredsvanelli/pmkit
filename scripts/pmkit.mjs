@@ -372,8 +372,8 @@ export const COMMANDS = [
   },
   {
     name: 'link-repo', summary: 'links this repository to a git host and, on Linear, a team: infers the host and the repo from the git remote, checks the team against the workspace, and edits only those lines of .pmkit/config.yaml',
-    usage: '[--git-host github|none] [--repo owner/name] [--remote name] [--team KEY]',
-    flags: ['git-host', 'repo', 'remote', 'team'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runLinkRepo,
+    usage: '[--git-host github|none] [--repo owner/name] [--default-branch name] [--remote name] [--team KEY]',
+    flags: ['git-host', 'repo', 'default-branch', 'remote', 'team'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runLinkRepo,
   },
   {
     name: 'capabilities', summary: 'prints the capability manifest', flags: [],
@@ -2083,26 +2083,43 @@ function runInit(ctx) {
 
 // link-repo. See docs/superpowers/specs/2026-10-31-pmk-53-link-repo-design.md.
 const GIT_READ_TIMEOUT_MS = 10_000
-const GIT_MAX_OUTPUT = 256 * 1024 * 1024
+const GIT_READ_MAX_OUTPUT = 1024 * 1024
+const BRANCH_NAME = /^[A-Za-z0-9_][A-Za-z0-9._/-]*$/
+const validBranch = (name) => BRANCH_NAME.test(name) && !name.includes('..') && !name.endsWith('/') && !name.endsWith('.lock')
+
+const readGit = (ctx, args) => spawnSync('git', args, { cwd: ctx.root, env: ctx.env, encoding: 'utf8', timeout: GIT_READ_TIMEOUT_MS, maxBuffer: GIT_READ_MAX_OUTPUT })
 
 // The remotes of the repository as { ok: true, remotes: [{ name, url }] }, or { ok: false, reason } when git cannot say.
+// One `git remote -v` call lists every remote with its fetch URL.
 function readRemotes(ctx) {
-  const git = (args) => spawnSync('git', args, { cwd: ctx.root, env: ctx.env, encoding: 'utf8', timeout: GIT_READ_TIMEOUT_MS, maxBuffer: GIT_MAX_OUTPUT })
-  const failure = (result) => ({ ok: false, reason: (result.error?.message ?? result.stderr ?? '').trim().split('\n')[0] || `git exited with ${result.status}` })
-  const listed = git(['remote'])
-  if (listed.error || listed.status !== 0) return failure(listed)
+  const listed = readGit(ctx, ['remote', '-v'])
+  if (listed.error || listed.status !== 0) {
+    return { ok: false, reason: (listed.error?.message ?? listed.stderr ?? '').trim().split('\n')[0] || `git exited with ${listed.status}` }
+  }
   const remotes = []
-  for (const name of listed.stdout.split('\n').map((line) => line.trim()).filter(Boolean)) {
-    const url = git(['remote', 'get-url', name])
-    if (url.error || url.status !== 0) return failure(url)
-    remotes.push({ name, url: url.stdout.trim() })
+  for (const line of listed.stdout.split('\n')) {
+    const found = /^(\S+)\t(.+) \((fetch|push)\)$/.exec(line.trimEnd())
+    if (!found) continue
+    const [, name, url, kind] = found
+    const known = remotes.find((remote) => remote.name === name)
+    if (!known) remotes.push({ name, url })
+    else if (kind === 'fetch') known.url = url
   }
   return { ok: true, remotes }
 }
 
-// The team of a Linear repository, checked against the workspace. Returns the description of the workspace too.
-async function linkTeam(ctx, parsed, current) {
-  const wanted = ctx.opt('team')
+// The default branch the remote's HEAD names, read from the local refs with no network call, or null when it is not set.
+function readDefaultBranch(ctx, remote) {
+  const prefix = `refs/remotes/${remote}/`
+  const result = readGit(ctx, ['symbolic-ref', '--quiet', `${prefix}HEAD`])
+  if (result.error || result.status !== 0) return null
+  const ref = result.stdout.trim()
+  const name = ref.startsWith(prefix) ? ref.slice(prefix.length) : null
+  return name !== null && validBranch(name) ? name : null
+}
+
+// The team named by --team, checked against the workspace.
+async function linkTeam(ctx, parsed, wanted) {
   const adapter = adapterFor('linear', ctx.adapters)
   const workspace = parsed.tracker.scope?.workspace
   const tracker = await adapter.create({ root: ctx.root, system: 'linear', pmkit: { ...parsed, tracker: { system: 'linear', ...(workspace ? { scope: { workspace } } : {}) }, mappings: undefined } }, { now: ctx.now, env: ctx.env })
@@ -2111,22 +2128,18 @@ async function linkTeam(ctx, parsed, current) {
   const types = [...defaults, ...Object.keys(parsed.mappings?.types ?? {}).filter((type) => !defaults.includes(type))]
   const description = adapter.describe(view.raw, view, view.auth?.viewer?.id ?? null, types)
   const keys = description.teams.map((team) => team.key)
-  if (wanted !== undefined) {
-    if (!keys.includes(wanted)) throw usageError(`--team ${wanted} is not a team of workspace ${description.workspace.urlKey}`, `Pass one of: ${keys.join(', ')}`)
-    return { description, team: wanted, source: 'flag', questions: [] }
-  }
-  const viewerTeams = (description.viewerTeams ?? []).filter((key) => keys.includes(key))
-  if (viewerTeams.length === 1) return { description, team: viewerTeams[0], source: 'viewer', questions: [] }
-  const candidates = viewerTeams.length > 0 ? viewerTeams : keys
-  return { description, team: current, source: 'file', questions: [{ path: 'tracker.scope.team', flag: '--team <KEY>', candidates }] }
+  if (!keys.includes(wanted)) throw usageError(`--team ${wanted} is not a team of workspace ${description.workspace.urlKey}`, `Pass one of: ${keys.join(', ')}`)
+  return description
 }
 
 async function runLinkRepo(ctx) {
   const flagHost = ctx.opt('git-host')
   const flagRepo = ctx.opt('repo')
+  const flagBranch = ctx.opt('default-branch')
   const wantedRemote = ctx.opt('remote')
   if (flagHost !== undefined && !GIT_HOSTS.includes(flagHost)) throw usageError(`--git-host must be ${GIT_HOSTS.join(' or ')}`)
   if (flagRepo !== undefined && !/^[^/\s]+\/[^/\s]+$/.test(flagRepo)) throw usageError('--repo must be owner/name, like acme/app')
+  if (flagBranch !== undefined && !validBranch(flagBranch)) throw usageError(`--default-branch ${flagBranch} is not a branch name`, 'Pass a branch name such as main')
 
   // An invalid file refuses the dry run and the write alike, so nothing is ever written over it.
   const { pmkit: parsed, system, pmkitProblems } = loadPmkitConfig(ctx.root, { adapters: ctx.adapters })
@@ -2151,18 +2164,23 @@ async function runLinkRepo(ctx) {
   }
   const inferred = chosen.remote ? inferHost(chosen.remote.url) : { system: null, repo: null, host: null }
   if (read.ok && chosen.state === 'none') notes.push('there is no git remote, so the git host was not inferred; pass --git-host github or none')
-  if (chosen.remote && inferred.system === null) notes.push(`the URL of remote ${chosen.remote.name} is not recognized (${chosen.remote.url}), so the git host was not inferred`)
-  if (chosen.remote && inferred.system === 'none' && flagHost === undefined) notes.push(`remote ${chosen.remote.name} points to ${inferred.host}; pmkit supports only GitHub for now, so the git host is none`)
+  // An inference never lowers a configured host. Only --git-host none does.
+  if (chosen.remote && inferred.system === null && flagHost === undefined) {
+    notes.push(inferred.host === null
+      ? `the URL of remote ${chosen.remote.name} is not recognized (${chosen.remote.url}), so git_host was not changed`
+      : `remote ${chosen.remote.name} points to ${inferred.host}, which is not recognized as GitHub, so git_host was not changed; pass --git-host github if it is GitHub (Enterprise or an SSH alias), or --git-host none to lower it`)
+  }
 
-  const held = { system: parsed.git_host.system, repo: parsed.git_host.repo ?? null }
-  const hostAfter = flagHost ?? inferred.system ?? held.system
-  const hostSource = flagHost !== undefined ? 'flag' : inferred.system ? 'remote' : 'file'
+  const held = { system: parsed.git_host.system, repo: parsed.git_host.repo ?? null, branch: parsed.git_host.default_branch ?? null }
+  const hostAfter = flagHost ?? (inferred.system === 'github' ? 'github' : held.system)
+  const hostSource = flagHost !== undefined ? 'flag' : inferred.system === 'github' ? 'remote' : 'file'
   if (flagRepo !== undefined && hostAfter === 'none') throw usageError('--repo needs the git host github', 'Pass --git-host github, or remove --repo')
+  if (flagBranch !== undefined && hostAfter === 'none') throw usageError('--default-branch needs the git host github', 'Pass --git-host github, or remove --default-branch')
   let repoAfter = held.repo
   let repoSource = 'file'
-  if (hostAfter === 'none') {
+  if (flagHost === 'none') {
     repoAfter = null
-    repoSource = hostSource
+    repoSource = 'flag'
   } else if (flagRepo !== undefined) {
     repoAfter = flagRepo
     repoSource = 'flag'
@@ -2170,28 +2188,45 @@ async function runLinkRepo(ctx) {
     repoAfter = inferred.repo
     repoSource = 'remote'
   }
-  if (chosen.remote && flagHost !== undefined && inferred.system !== null && inferred.system !== flagHost) {
-    warnings.push(`remote ${chosen.remote.name} points to ${inferred.host}, which is ${inferred.system === 'github' ? '' : 'not '}GitHub, and --git-host ${flagHost} was used as given`)
+  let branchAfter = held.branch
+  let branchSource = 'file'
+  const inferredBranch = inferred.system === 'github' ? readDefaultBranch(ctx, chosen.remote.name) : null
+  if (flagBranch !== undefined) {
+    branchAfter = flagBranch
+    branchSource = 'flag'
+  } else if (inferredBranch !== null && hostAfter === 'github') {
+    branchAfter = inferredBranch
+    branchSource = 'remote'
+  }
+  // A new repo with the old branch name may point at the wrong branch, so the value is kept and the note says it may be wrong.
+  if (branchSource === 'file' && held.branch !== null && held.repo !== null && repoAfter !== held.repo) {
+    notes.push(`the repo changed from ${held.repo} to ${repoAfter ?? 'none'} and the default branch could not be inferred, so default_branch ${held.branch} may be wrong; pass --default-branch <name>, or run git remote set-head <remote> --auto and run this again`)
+  }
+  if (chosen.remote && flagHost !== undefined) {
+    if (inferred.system !== null && inferred.system !== flagHost) {
+      warnings.push(`remote ${chosen.remote.name} points to ${inferred.host}, which is GitHub, and --git-host ${flagHost} was used as given`)
+    } else if (inferred.system === null && inferred.host !== null && flagHost === 'github') {
+      warnings.push(`remote ${chosen.remote.name} points to ${inferred.host}, which is not recognized as GitHub, and --git-host github was used as given`)
+    }
   }
   if (flagRepo !== undefined && inferred.repo !== null && inferred.repo !== flagRepo) {
     warnings.push(`remote ${chosen.remote.name} points to ${inferred.repo} and --repo ${flagRepo} was used as given`)
   }
 
-  // The team. A Linear call happens only when the team is asked for or missing, so a host change needs no network.
+  // The team. Linear is called only for --team, so a host change needs no key, no network and no team.
   const heldTeam = parsed.tracker.scope?.team ?? null
+  const wantedTeam = ctx.opt('team')
   let scope = null
-  let questions = []
   let broken = []
   if (hosted) {
-    let team = { team: heldTeam, source: 'file', questions: [] }
-    let verified = false
-    if (ctx.opt('team') !== undefined || heldTeam === null) {
-      team = await linkTeam(ctx, parsed, heldTeam)
-      verified = true
-      questions = team.questions
-      if (team.team !== null) broken = brokenMappings(team.description, { tracker: { scope: { team: team.team } }, mappings: parsed.mappings })
+    scope = { team: { before: heldTeam, after: heldTeam, source: 'file', verified: false } }
+    if (wantedTeam !== undefined) {
+      const description = await linkTeam(ctx, parsed, wantedTeam)
+      scope = { team: { before: heldTeam, after: wantedTeam, source: 'flag', verified: true } }
+      broken = brokenMappings(description, { tracker: { scope: { team: wantedTeam } }, mappings: parsed.mappings })
+    } else if (heldTeam === null) {
+      notes.push('tracker.scope.team is not set; pass --team KEY or run /pmkit:setup')
     }
-    scope = { team: { before: heldTeam, after: team.team, source: team.source, verified } }
   }
 
   const edit = (key, change) => {
@@ -2205,7 +2240,9 @@ async function runLinkRepo(ctx) {
   if (hostAfter !== held.system) text = edit('git_host.system', () => setScalar(text, ['git_host', 'system'], hostAfter))
   if (repoAfter === null && held.repo !== null) text = edit('git_host.repo', () => removeKey(text, ['git_host', 'repo']))
   else if (repoAfter !== null && repoAfter !== held.repo) text = edit('git_host.repo', () => setScalar(text, ['git_host', 'repo'], repoAfter))
-  if (scope && scope.team.after !== null && scope.team.after !== heldTeam) text = edit('tracker.scope.team', () => setScalar(text, ['tracker', 'scope', 'team'], scope.team.after))
+  if (branchAfter !== held.branch) text = edit('git_host.default_branch', () => setScalar(text, ['git_host', 'default_branch'], branchAfter))
+  const teamChanged = scope !== null && scope.team.after !== heldTeam
+  if (teamChanged) text = edit('tracker.scope.team', () => setScalar(text, ['tracker', 'scope', 'team'], scope.team.after))
   if (text !== before) {
     let problems
     try {
@@ -2216,12 +2253,8 @@ async function runLinkRepo(ctx) {
     if (problems.length > 0) throw usageError(`the new .pmkit/config.yaml would not be valid: ${problems.join('; ')}`, 'Fix the values you passed')
   }
 
-  const teamChanged = scope !== null && scope.team.after !== null && scope.team.after !== heldTeam
-  if (!ctx.dryRun) {
-    if (questions.length > 0) throw new PmkitError('INVALID_INPUT', `link-repo has no team to write: ${questions.map((q) => q.path).join(', ')} is not set`, `Pass --team <KEY>, one of: ${questions[0].candidates.join(', ')}`)
-    if (teamChanged && broken.length > 0) {
-      throw new PmkitError('NOT_CONFIGURED', `team ${scope.team.after} does not fit the mappings in .pmkit/config.yaml: ${broken.map((item) => item.problem).join('; ')}`, '/pmkit:setup', { mappings: broken })
-    }
+  if (!ctx.dryRun && teamChanged && broken.length > 0) {
+    throw new PmkitError('NOT_CONFIGURED', `team ${scope.team.after} does not fit the mappings in .pmkit/config.yaml: ${broken.map((item) => item.problem).join('; ')}`, '/pmkit:setup', { mappings: broken })
   }
   const changed = text !== before
   const entry = changed ? { path: slash(pmkitFile), action: 'change', diff: lineDiff(before, text) } : { path: slash(pmkitFile), action: 'keep' }
@@ -2235,21 +2268,21 @@ async function runLinkRepo(ctx) {
     remotes: remotes.map(({ name, url }) => ({ name, url, host: inferHost(url).host })),
     gitHost: { before: held.system, after: hostAfter, source: hostSource },
     repo: { before: held.repo, after: repoAfter, source: repoSource },
+    defaultBranch: { before: held.branch, after: branchAfter, source: branchSource },
     scope,
-    questions,
     broken,
     notes,
     warnings,
     files: [entry],
   }
-  const origin = (source) => (source === 'remote' ? ` (from remote ${remote.name})` : source === 'flag' ? ' (from the flag)' : source === 'viewer' ? ' (you belong to one team)' : '')
+  const origin = (source) => (source === 'remote' ? ` (from remote ${remote.name})` : source === 'flag' ? ' (from the flag)' : '')
   const show = (label, item) => `${label}: ${item.before ?? '(none)'}${item.before === item.after ? ' (unchanged)' : ` -> ${item.after ?? '(none)'}`}${origin(item.source)}`
   const lines = [
     show('git host', data.gitHost),
     show('repo', data.repo),
+    show('default branch', data.defaultBranch),
     ...(scope ? [show('team', scope.team) + (scope.team.verified ? '' : ' (not checked against the workspace)')] : []),
     ...(broken.length > 0 ? ['broken by the new team:', ...broken.map((item) => `  ${item.problem}`)] : []),
-    ...(questions.length > 0 ? ['questions:', ...questions.map((q) => `  ${q.path}  ${q.flag}  one of: ${q.candidates.join(', ')}`)] : []),
     ...warnings.map((warning) => `warning: ${warning}`),
     ...notes.map((note) => `note: ${note}`),
     changed ? (ctx.dryRun ? 'files:' : 'wrote:') : 'already linked, nothing to change',

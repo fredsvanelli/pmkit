@@ -81,13 +81,76 @@ test('--dry-run shows the change and writes nothing', async () => {
   assert.match(plain.stdout, /dry run: nothing was written/)
 })
 
-test('a remote that is not GitHub gives none, drops git_host.repo and says why', async () => {
+test('a remote the command does not recognize never changes a configured github host or repo, and says why', async () => {
+  for (const url of ['https://gitlab.com/acme/app.git', 'git@github.example.com:acme/app.git', 'work:acme/app.git']) {
+    const root = local({ remotes: { origin: url }, config: GITHUB_CONFIG })
+    const data = dataOf(await link(root))
+    assert.deepEqual(data.gitHost, { before: 'github', after: 'github', source: 'file' }, url)
+    assert.deepEqual(data.repo, { before: 'old/repo', after: 'old/repo', source: 'file' }, url)
+    assert.equal(data.files[0].action, 'keep', url)
+    assert.ok(data.notes.some((note) => /not recognized as GitHub/.test(note) && /--git-host none/.test(note)), `${url}: ${data.notes.join('\n')}`)
+    assert.equal(read(root), GITHUB_CONFIG, url)
+  }
+})
+
+test('only an explicit --git-host none lowers a github host, and it drops the repo', async () => {
   const root = local({ remotes: { origin: 'https://gitlab.com/acme/app.git' }, config: GITHUB_CONFIG })
-  const data = dataOf(await link(root))
-  assert.deepEqual(data.gitHost, { before: 'github', after: 'none', source: 'remote' })
-  assert.deepEqual(data.repo, { before: 'old/repo', after: null, source: 'remote' })
-  assert.ok(data.notes.some((note) => /gitlab\.com/.test(note) && /only GitHub/.test(note)), data.notes.join('\n'))
+  const data = dataOf(await link(root, ['--git-host', 'none']))
+  assert.deepEqual(data.gitHost, { before: 'github', after: 'none', source: 'flag' })
+  assert.deepEqual(data.repo, { before: 'old/repo', after: null, source: 'flag' })
   assert.equal(read(root), CONFIG.replace('  system: none # no host yet\n', '  system: none\n  default_branch: main\n'))
+})
+
+test('ssh.github.com on port 443 is GitHub', async () => {
+  const data = dataOf(await link(local({ remotes: { origin: 'ssh://git@ssh.github.com:443/acme/app.git' } }), ['--dry-run']))
+  assert.deepEqual([data.gitHost.after, data.repo.after], ['github', 'acme/app'])
+})
+
+test('a URL with a broken percent escape is not recognized and does not crash', async () => {
+  const root = local({ remotes: { origin: 'https://github.com/acme/100%.git' }, config: GITHUB_CONFIG })
+  const data = dataOf(await link(root))
+  assert.equal(data.files[0].action, 'keep')
+  assert.ok(data.notes.some((note) => /not recognized/.test(note)), data.notes.join('\n'))
+})
+
+test('a GitHub URL that is not owner/name is not recognized, so no repo a/b/c is written', async () => {
+  const root = local({ remotes: { origin: 'https://github.com/a/b/c.git' } })
+  const data = dataOf(await link(root))
+  assert.equal(data.files[0].action, 'keep')
+  assert.equal(errorOf(await link(root, ['--repo', 'a/b/c'])).code, 'INVALID_INPUT')
+})
+
+test('the default branch comes from refs/remotes/<remote>/HEAD and is written when it changes', async () => {
+  const root = local({ remotes: { origin: 'git@github.com:old/repo.git' }, config: GITHUB_CONFIG })
+  git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk')
+  const dry = dataOf(await link(root, ['--dry-run']))
+  assert.deepEqual(dry.defaultBranch, { before: 'main', after: 'trunk', source: 'remote' })
+  dataOf(await link(root))
+  assert.equal(read(root), GITHUB_CONFIG.replace('default_branch: main', 'default_branch: trunk'))
+})
+
+test('--default-branch overrides the remote, and a bad name is INVALID_INPUT', async () => {
+  const root = local({ remotes: { origin: 'git@github.com:old/repo.git' }, config: GITHUB_CONFIG })
+  git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk')
+  const data = dataOf(await link(root, ['--default-branch', 'develop']))
+  assert.deepEqual(data.defaultBranch, { before: 'main', after: 'develop', source: 'flag' })
+  assert.match(read(root), /default_branch: develop/)
+  assert.equal(errorOf(await link(root, ['--default-branch', 'a b'])).code, 'INVALID_INPUT')
+  assert.equal(errorOf(await link(root, ['--git-host', 'none', '--default-branch', 'x'])).code, 'INVALID_INPUT')
+})
+
+test('a changed repo whose default branch cannot be inferred keeps the old branch and says it may be wrong', async () => {
+  const root = local({ remotes: { origin: 'git@github.com:acme/app.git' }, config: GITHUB_CONFIG })
+  const data = dataOf(await link(root))
+  assert.deepEqual(data.defaultBranch, { before: 'main', after: 'main', source: 'file' })
+  assert.ok(data.notes.some((note) => /default_branch main may be wrong/.test(note) && /--default-branch/.test(note)), data.notes.join('\n'))
+  assert.match(read(root), /repo: acme\/app\n {2}default_branch: main/)
+})
+
+test('an unchanged repo keeps its default branch without a note', async () => {
+  const root = local({ remotes: { origin: 'git@github.com:old/repo.git' }, config: GITHUB_CONFIG })
+  const data = dataOf(await link(root))
+  assert.equal(data.notes.some((note) => /may be wrong/.test(note)), false)
 })
 
 test('without a remote nothing is inferred and the file stays as it was', async () => {
@@ -276,19 +339,19 @@ test('Linear: an unknown team is INVALID_INPUT and lists the teams', async () =>
   assert.equal(fs.readFileSync(file(context.root), 'utf8'), linearConfig())
 })
 
-test('Linear: with no team in the file, the viewer team is used when there is only one', async () => {
-  const context = linear({ config: linearConfig({ team: null }) })
-  const data = dataOf(await linearRun(context, []))
-  assert.deepEqual(data.scope.team, { before: null, after: 'ACME', source: 'viewer', verified: true })
-})
-
-test('Linear: with no team in the file and two candidates it asks and refuses to write', async () => {
-  const context = linear({ config: linearConfig({ team: null }) })
-  const dry = dataOf(await linearRun(context, ['--dry-run'], fakeLinearFetch(twoTeams())))
-  assert.deepEqual(dry.questions.map((q) => [q.path, q.candidates]), [['tracker.scope.team', ['ACME', 'BETA']]])
-  const error = errorOf(await linearRun(context, [], fakeLinearFetch(twoTeams())))
-  assert.match(error.message, /tracker\.scope\.team/)
-  assert.equal(fs.readFileSync(file(context.root), 'utf8'), linearConfig({ team: null }))
+test('Linear: with no team in the file, a host change does not call Linear, and the dry run and the write agree', async () => {
+  for (const key of [true, false]) {
+    const context = linear({ config: linearConfig({ team: null }), withKey: key })
+    const fetch = fakeLinearFetch(twoTeams())
+    const dry = dataOf(await linearRun(context, ['--dry-run'], fetch))
+    const real = dataOf(await linearRun(context, [], fetch))
+    assert.equal(fetch.calls.length, 0)
+    assert.deepEqual(dry.scope.team, { before: null, after: null, source: 'file', verified: false })
+    assert.deepEqual({ ...real, dryRun: true, files: dry.files }, dry)
+    assert.deepEqual(dry.notes.filter((note) => /tracker\.scope\.team is not set/.test(note)).length, 1)
+    assert.match(fs.readFileSync(file(context.root), 'utf8'), /system: github\n {2}repo: acme\/app/)
+    assert.doesNotMatch(fs.readFileSync(file(context.root), 'utf8'), /team:/)
+  }
 })
 
 const MAPPED = '\nmappings:\n  status:\n    in_review: Review\n    blocked: none\n  types: {}\n'

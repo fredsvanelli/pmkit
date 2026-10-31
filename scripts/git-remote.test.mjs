@@ -36,9 +36,24 @@ test('inferHost maps github.com to github with the repo', () => {
   assert.deepEqual(inferHost('https://www.github.com/owner/repo'), { system: 'github', repo: 'owner/repo', host: 'www.github.com' })
 })
 
-test('inferHost maps any other host to none', () => {
-  assert.deepEqual(inferHost('https://gitlab.com/owner/repo.git'), { system: 'none', repo: null, host: 'gitlab.com' })
-  assert.deepEqual(inferHost('git@github.example.com:owner/repo.git'), { system: 'none', repo: null, host: 'github.example.com' })
+test('inferHost recognizes ssh.github.com, with or without the port 443', () => {
+  assert.deepEqual(inferHost('ssh://git@ssh.github.com:443/owner/repo.git'), { system: 'github', repo: 'owner/repo', host: 'ssh.github.com' })
+  assert.deepEqual(inferHost('git@ssh.github.com:owner/repo.git'), { system: 'github', repo: 'owner/repo', host: 'ssh.github.com' })
+})
+
+test('inferHost says nothing about a host it does not recognize, and never answers none', () => {
+  assert.deepEqual(inferHost('https://gitlab.com/owner/repo.git'), { system: null, repo: null, host: 'gitlab.com' })
+  assert.deepEqual(inferHost('git@github.example.com:owner/repo.git'), { system: null, repo: null, host: 'github.example.com' })
+  assert.deepEqual(inferHost('work:owner/repo.git'), { system: null, repo: null, host: 'work' })
+})
+
+test('inferHost does not accept a GitHub path that is not owner/name', () => {
+  assert.deepEqual(inferHost('https://github.com/a/b/c.git'), { system: null, repo: null, host: 'github.com' })
+})
+
+test('parseRemoteUrl returns null for a URL with a broken percent escape instead of throwing', () => {
+  assert.equal(parseRemoteUrl('https://github.com/acme/100%.git'), null)
+  assert.deepEqual(inferHost('https://github.com/acme/100%.git'), { system: null, repo: null, host: null })
 })
 
 test('inferHost infers nothing from a URL it cannot read', () => {

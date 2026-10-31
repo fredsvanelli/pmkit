@@ -3,6 +3,7 @@ exit 0
 --- stdout
 git host: none (unchanged)
 repo: (none) (unchanged)
+default branch: (none) (unchanged)
 note: could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred
 already linked, nothing to change
 --- stderr
@@ -26,8 +27,12 @@ exit 0
     "after": null,
     "source": "file"
   },
+  "defaultBranch": {
+    "before": null,
+    "after": null,
+    "source": "file"
+  },
   "scope": null,
-  "questions": [],
   "broken": [],
   "notes": [
     "could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred"
@@ -48,6 +53,7 @@ exit 0
 --- stdout
 git host: none (unchanged)
 repo: (none) (unchanged)
+default branch: (none) (unchanged)
 note: could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred
 already linked, nothing to change
 dry run: nothing was written
@@ -72,8 +78,12 @@ exit 0
     "after": null,
     "source": "file"
   },
+  "defaultBranch": {
+    "before": null,
+    "after": null,
+    "source": "file"
+  },
   "scope": null,
-  "questions": [],
   "broken": [],
   "notes": [
     "could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred"
@@ -94,6 +104,7 @@ exit 0
 --- stdout
 git host: none -> github (from the flag)
 repo: (none) -> acme/app (from the flag)
+default branch: (none) (unchanged)
 note: could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred
 wrote:
   .pmkit/config.yaml: change
@@ -130,8 +141,12 @@ exit 0
     "after": "acme/app",
     "source": "flag"
   },
+  "defaultBranch": {
+    "before": null,
+    "after": null,
+    "source": "file"
+  },
   "scope": null,
-  "questions": [],
   "broken": [],
   "notes": [
     "could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred"
@@ -153,6 +168,7 @@ exit 0
 --- stdout
 git host: none -> github (from the flag)
 repo: (none) -> acme/app (from the flag)
+default branch: (none) (unchanged)
 note: could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred
 files:
   .pmkit/config.yaml: would change
@@ -190,8 +206,12 @@ exit 0
     "after": "acme/app",
     "source": "flag"
   },
+  "defaultBranch": {
+    "before": null,
+    "after": null,
+    "source": "file"
+  },
   "scope": null,
-  "questions": [],
   "broken": [],
   "notes": [
     "could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred"
