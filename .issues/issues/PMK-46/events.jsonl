@@ -3,3 +3,4 @@
 {"at":"2026-10-31T15:54:56Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-10-31T15:54:56Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-10-31T15:55:02Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-46-add-customers-and-requests-to-the-local"}
+{"at":"2026-10-31T15:59:01Z","by":"fred","op":"comment","to":"2026-10-31T15-59-01Z-fred.md"}
