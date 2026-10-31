@@ -23,7 +23,7 @@ test('inbox check: a file that does not parse is INVALID_INPUT for both calls an
   const { env } = userStoreEnv()
   const repo = tempDir('pmkit-repo-')
   const file = path.join(userDir({ env }), 'inbox', `${repoHash(repo)}.json`)
-  for (const text of ['{nope', '[]', '{"version":2,"checks":{}}', '{"version":1,"checks":{"fred":5}}']) {
+  for (const text of ['{nope', '[]', '{"version":2,"checks":{}}', '{"version":1,"checks":{"fred":5}}', '{"version":1,"checks":{"fred":"yesterday"}}', '{"version":1,"checks":{"fred":"2026-10-31"}}']) {
     fs.mkdirSync(path.dirname(file), { recursive: true })
     fs.writeFileSync(file, text)
     assert.throws(() => inboxGet(repo, 'fred', { env }), (e) => e.code === 'INVALID_INPUT' && e.message.includes(file), text)

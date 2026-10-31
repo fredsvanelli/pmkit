@@ -102,13 +102,13 @@ test('markRead records the check, hides what was read and shows what comes later
   tracker.assign(id, 'fred', 'ana')
   setNow('2026-10-31T10:10:00Z')
   assert.equal(tracker.listNotifications({ user: 'fred' }).items.length, 1)
-  assert.equal(tracker.listNotifications({ user: 'fred' }).through, '2026-10-31T10:10:00Z')
+  assert.equal(tracker.listNotifications({ user: 'fred' }).through, '2026-10-31T10:09:59Z')
   const dry = tracker.markRead({ user: 'fred', dryRun: true })
-  assert.deepEqual(dry, { user: 'fred', previous: null, recorded: '2026-10-31T10:10:00Z', through: '2026-10-31T10:10:00Z', changed: true, dryRun: true })
+  assert.deepEqual(dry, { user: 'fred', previous: null, recorded: '2026-10-31T10:09:59Z', through: '2026-10-31T10:09:59Z', changed: true, dryRun: true })
   assert.equal(inboxGet(root, 'fred', { env }), null)
   const done = tracker.markRead({ user: 'fred' })
   assert.equal(done.changed, true)
-  assert.equal(inboxGet(root, 'fred', { env }), '2026-10-31T10:10:00Z')
+  assert.equal(inboxGet(root, 'fred', { env }), '2026-10-31T10:09:59Z')
   assert.equal(fs.existsSync(path.join(root, '.issues', 'inbox')), false)
   assert.equal(tracker.listNotifications({ user: 'fred' }).items.length, 0)
   assert.equal(tracker.listNotifications({ user: 'agent:claude' }).since, null)
@@ -127,7 +127,7 @@ test('since and all override the stored check and write nothing', () => {
   assert.equal(tracker.listNotifications({ user: 'fred', since: SINCE }).items.length, 1)
   assert.equal(tracker.listNotifications({ user: 'fred', all: true }).since, null)
   assert.ok(tracker.listNotifications({ user: 'fred', all: true }).items.length >= 1)
-  assert.equal(inboxGet(root, 'fred', { env }), '2026-10-31T10:10:00Z')
+  assert.equal(inboxGet(root, 'fred', { env }), '2026-10-31T10:09:59Z')
   assert.throws(() => tracker.listNotifications({ user: 'fred', since: 'yesterday' }), code('INVALID_INPUT'))
   assert.throws(() => tracker.listNotifications({ user: 'nobody' }), code('INVALID_INPUT'))
 })
@@ -178,15 +178,6 @@ test('a broken comment, issue file or events line makes the inbox incomplete and
   assert.equal(fs.existsSync(path.join(userDir({ env }), 'inbox')), false)
 })
 
-test('a description that mentions the user without an event to date it is a problem, not a silent miss', () => {
-  const { tracker, paths } = setup()
-  const { id } = tracker.createIssue({ title: 'D', description: 'cc @fred' }, 'ana').after
-  fs.writeFileSync(paths(id).events, '')
-  const result = tracker.listNotifications({ user: 'fred', since: SINCE })
-  assert.equal(result.complete, false)
-  assert.equal(result.problems[0].id, id)
-})
-
 test('listNotifications and markRead change no file under the repository', () => {
   const { root, tracker, setNow } = setup()
   setNow('2026-10-31T10:10:00Z')
@@ -194,4 +185,77 @@ test('listNotifications and markRead change no file under the repository', () =>
   tracker.listNotifications({ user: 'fred', all: true })
   tracker.markRead({ user: 'fred' })
   assert.equal(hashTree(root), before)
+})
+
+test('an item that arrives in the second of the list stays unread after mark-read of that second', () => {
+  const { tracker, setNow } = setup()
+  const { id } = tracker.createIssue({ title: 'Talk' }, 'ana').after
+  setNow('2026-10-31T10:05:00.200Z')
+  const listed = tracker.listNotifications({ user: 'fred', since: SINCE })
+  assert.deepEqual(listed.items, [])
+  setNow('2026-10-31T10:05:00.700Z')
+  tracker.assign(id, 'fred', 'ana')
+  setNow('2026-10-31T10:05:00.800Z')
+  const marked = tracker.markRead({ user: 'fred', through: '2026-10-31T10:05:00Z' })
+  assert.equal(marked.recorded, '2026-10-31T10:04:59Z')
+  assert.deepEqual(tracker.listNotifications({ user: 'fred' }).items.map((item) => item.issue), [id])
+  // The same with the through the list returned and with no through at all.
+  tracker.markRead({ user: 'fred', through: listed.through })
+  assert.equal(tracker.listNotifications({ user: 'fred' }).items.length, 1)
+  tracker.markRead({ user: 'fred' })
+  assert.equal(tracker.listNotifications({ user: 'fred' }).items.length, 1)
+  // Once the second is over, marking it read hides the item.
+  setNow('2026-10-31T10:05:01.100Z')
+  assert.equal(tracker.markRead({ user: 'fred' }).recorded, '2026-10-31T10:05:00Z')
+  assert.deepEqual(tracker.listNotifications({ user: 'fred' }).items, [])
+})
+
+test('a change to the acceptance criteria neither hides nor revives a description mention', () => {
+  const { tracker, setNow } = setup()
+  const { id } = tracker.createIssue({ title: 'D', description: '@fred review this', acceptanceCriteria: [{ text: 'a', done: false }] }, 'ana').after
+  setNow('2026-10-31T10:30:00Z')
+  tracker.updateIssue(id, { acceptanceCriteria: [{ text: 'a', done: true }] }, 'fred')
+  const [shown] = tracker.listNotifications({ user: 'fred', since: SINCE }).items
+  assert.deepEqual([shown.in, shown.by, shown.at], ['description', 'ana', '2026-10-31T10:00:00Z'])
+  setNow('2026-10-31T11:00:00Z')
+  tracker.markRead({ user: 'fred' })
+  setNow('2026-10-31T11:30:00Z')
+  tracker.updateIssue(id, { acceptanceCriteria: [{ text: 'a', done: false }] }, 'ana')
+  assert.deepEqual(tracker.listNotifications({ user: 'fred' }).items, [])
+})
+
+test('a description mention on an issue with no events is dated by the created time and is not a problem', () => {
+  const { tracker, paths, root, env } = setup()
+  const { id } = tracker.createIssue({ title: 'D', description: 'cc @fred' }, 'ana').after
+  fs.rmSync(paths(id).events)
+  const result = tracker.listNotifications({ user: 'fred', since: SINCE })
+  assert.equal(result.complete, true)
+  assert.deepEqual(result.problems, [])
+  assert.deepEqual([result.items[0].issue, result.items[0].at, result.items[0].by, result.items[0].in], [id, '2026-10-31T10:00:00Z', null, 'description'])
+  assert.equal(tracker.markRead({ user: 'fred', through: '2026-10-31T09:59:59Z' }).changed, true)
+  assert.ok(inboxGet(root, 'fred', { env }))
+})
+
+test('since and through take only a strict timestamp with a zone', () => {
+  const { tracker, setNow } = setup()
+  setNow('2026-10-31T12:00:00Z')
+  for (const bad of ['1', 'Oct 1', '2026-10-31T10:00:00', '2026-10-31', '31/10/2026', 'soon', '2026-02-30T10:00:00Z']) {
+    assert.throws(() => tracker.listNotifications({ user: 'fred', since: bad }), code('INVALID_INPUT'), bad)
+    assert.throws(() => tracker.markRead({ user: 'fred', through: bad }), code('INVALID_INPUT'), bad)
+  }
+  assert.equal(tracker.listNotifications({ user: 'fred', since: '2026-10-31T12:00:00+02:00' }).since, '2026-10-31T10:00:00Z')
+  assert.equal(tracker.markRead({ user: 'fred', through: '2026-10-31T09:00:00.500Z', dryRun: true }).through, '2026-10-31T09:00:00Z')
+})
+
+test('an assignment undone later stays in the inbox until it is marked read', () => {
+  const { tracker, setNow } = setup()
+  const { id } = tracker.createIssue({ title: 'Talk' }, 'ana').after
+  setNow('2026-10-31T10:05:00Z')
+  tracker.assign(id, 'fred', 'ana')
+  setNow('2026-10-31T10:06:00Z')
+  tracker.assign(id, null, 'ana')
+  assert.deepEqual(tracker.listNotifications({ user: 'fred', since: SINCE }).items.map((item) => item.kind), ['assignment'])
+  setNow('2026-10-31T10:07:00Z')
+  tracker.markRead({ user: 'fred' })
+  assert.deepEqual(tracker.listNotifications({ user: 'fred' }).items, [])
 })

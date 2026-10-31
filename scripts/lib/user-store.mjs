@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { PmkitError } from './errors.mjs'
+import { validTimestamp } from './local/sprints.mjs'
 import { setScalar } from './yaml-edit.mjs'
 import { parseYaml } from './yaml.mjs'
 
@@ -265,6 +266,10 @@ function readInbox(file) {
   if (data?.version !== INBOX_VERSION || checks === null || typeof checks !== 'object' || Array.isArray(checks)
     || !Object.values(checks).every((value) => typeof value === 'string')) {
     throw bad('is not an inbox file of this version')
+  }
+  const unreadable = Object.keys(checks).find((member) => !validTimestamp(checks[member]))
+  if (unreadable !== undefined) {
+    throw bad(`holds "${checks[unreadable]}" for ${unreadable}, which is not a timestamp with a zone`)
   }
   return checks
 }

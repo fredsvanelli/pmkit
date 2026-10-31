@@ -32,7 +32,7 @@ import { inboxGet, inboxSet } from '../user-store.mjs'
 import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
 import { CACHE_DIR, INDEX_FILE, clearIndex, indexHeader, readThroughIndex } from './query-index.mjs'
 import {
-  SPRINT_STATES, sprintFileExists, addDays, overlaps, parseSprint, readSprint, readSprints, requireCapacity, requireDaysOff, serializeSprint, validDate,
+  SPRINT_STATES, sprintFileExists, addDays, overlaps, parseSprint, readSprint, readSprints, requireCapacity, requireDaysOff, serializeSprint, validDate, validTimestamp,
 } from './sprints.mjs'
 import { fileMtimeIso, issuePaths, listIssueIds, writeFileAtomic } from './store.mjs'
 
@@ -747,6 +747,12 @@ export function createLocalTracker(root, {
     return Number.isNaN(time.getTime()) ? null : isoSeconds(time)
   }
 
+  /** A `since` or `through` the user typed: only the strict timestamp with a zone that sprints use, as `YYYY-MM-DDTHH:MM:SSZ`, else null. */
+  const typedSeconds = (value) => (validTimestamp(value) ? isoSeconds(new Date(value)) : null)
+  const TIMESTAMP_STEP = 'Use a timestamp with a zone, such as 2026-10-31T10:00:00Z or 2026-10-31T12:00:00+02:00'
+  // Events and comments keep whole seconds, so the second that holds now can still gain items. The last complete second cannot.
+  const lastCompleteSecond = () => isoSeconds(new Date(now().getTime() - 1000))
+
   /** Every assignment and mention of the user, whatever the check, and a problem for each file that could not be read. */
   function scanInbox(user) {
     const nowAt = stamp()
@@ -773,13 +779,17 @@ export function createLocalTracker(root, {
         const assigned = (event.op === 'assign' && event.field === 'assignee' && event.to === user)
           || (event.op === 'create' && event.to?.assignee === user)
         if (assigned && event.by !== user) items.push(item('assignment', id, at, event.by, 'assignment', { synthetic: event.synthetic === true }))
-        if (event.op === 'create' || (event.op === 'update' && ['description', 'acceptance_criteria'].includes(event.field))) described = { at, by: event.by }
+        if (event.op === 'create' || (event.op === 'update' && event.field === 'description')) described = { at, by: event.by }
       }
       const found = byId.get(id)
       if (found !== undefined) {
         const excerpt = findMention(found.body, user)
-        if (excerpt !== null && described === undefined) problem(`the description mentions @${user}, but no event dates it`)
-        else if (excerpt !== null && described.by !== user) items.push(item('mention', id, described.at, described.by, 'description', { excerpt }))
+        if (excerpt !== null && described === undefined) {
+          // An issue written by hand has no create event. Its created time dates the mention, and nobody is named as the author.
+          const at = inSeconds(found.created)
+          if (at === null) problem(`the description mentions @${user}, but the created time "${found.created}" is not a date`)
+          else items.push(item('mention', id, at, null, 'description', { excerpt }))
+        } else if (excerpt !== null && described.by !== user) items.push(item('mention', id, described.at, described.by, 'description', { excerpt }))
       }
       if (!fs.existsSync(paths.comments)) continue
       for (const name of fs.readdirSync(paths.comments).filter((entry) => entry.endsWith('.md')).sort()) {
@@ -805,14 +815,14 @@ export function createLocalTracker(root, {
     let cutoff = null
     if (!all) {
       if (blank(since)) cutoff = inboxGet(config.root, user, inboxStore)
-      else if ((cutoff = inSeconds(since)) === null) throw invalid(`since "${since}" is not a date`, 'Use a timestamp such as 2026-10-31T10:00:00Z')
+      else if ((cutoff = typedSeconds(since)) === null) throw invalid(`since "${since}" is not a timestamp with a zone`, TIMESTAMP_STEP)
     }
     const { items, problems, nowAt } = scanInbox(user)
     const shown = cutoff === null ? items : items.filter((entry) => entry.at > cutoff)
     return {
       user,
       since: cutoff,
-      through: nowAt,
+      through: lastCompleteSecond(),
       items: shown,
       counts: { assignments: shown.filter((entry) => entry.kind === 'assignment').length, mentions: shown.filter((entry) => entry.kind === 'mention').length },
       complete: problems.length === 0,
@@ -827,9 +837,12 @@ export function createLocalTracker(root, {
   function markRead({ user, through, dryRun = false } = {}) {
     requireMember(user, 'user')
     const nowAt = stamp()
-    const target = blank(through) ? nowAt : inSeconds(through)
-    if (target === null) throw invalid(`through "${through}" is not a date`, 'Use a timestamp such as 2026-10-31T10:00:00Z')
-    if (target > nowAt) throw invalid(`through ${target} is after now (${nowAt})`, 'Use a time in the past, or leave it out to mark everything up to now')
+    const complete = lastCompleteSecond()
+    const asked = blank(through) ? complete : typedSeconds(through)
+    if (asked === null) throw invalid(`through "${through}" is not a timestamp with a zone`, TIMESTAMP_STEP)
+    if (asked > nowAt) throw invalid(`through ${asked} is after now (${nowAt})`, 'Use a time in the past, or leave it out to mark everything up to now')
+    // The second that holds now is not marked: an item written in it after the list would be hidden for good.
+    const target = asked < complete ? asked : complete
     const { problems } = scanInbox(user)
     if (problems.length > 0) {
       throw new PmkitError(

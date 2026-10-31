@@ -4,15 +4,26 @@
 const MAX_EXCERPT = 200
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-/** The text of a Markdown body with fenced code blocks and inline code spans blanked. An unclosed fence runs to the end. */
+/**
+ * The lines of a Markdown body with fenced code blocks and inline code spans blanked, as CommonMark reads them: a fence opens with
+ * three or more backticks or tildes and closes with the same character, at least as many, and nothing else on the line.
+ * An unclosed fence runs to the end.
+ */
 function withoutCode(text) {
-  let fenced = false
+  let open = null
   return text.replace(/\r\n?/g, '\n').split('\n').map((line) => {
-    if (/^\s*(```|~~~)/.test(line)) {
-      fenced = !fenced
+    if (open !== null) {
+      const close = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(line)
+      if (close && close[1][0] === open.char && close[1].length >= open.length) open = null
       return ''
     }
-    return fenced ? '' : line.replace(/(`+)[^`\n]*?\1/g, '')
+    const start = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line)
+    // The info string of a backtick fence holds no backtick, so a line like "``` a `b`" is text.
+    if (start && !(start[1][0] === '`' && start[2].includes('`'))) {
+      open = { char: start[1][0], length: start[1].length }
+      return ''
+    }
+    return line.replace(/(`+)[^`\n]*?\1/g, '')
   })
 }
 

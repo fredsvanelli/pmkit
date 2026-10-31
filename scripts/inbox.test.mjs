@@ -31,3 +31,14 @@ test('findMention skips fenced code, an unclosed fence and inline code', () => {
 test('findMention handles CRLF', () => {
   assert.equal(findMention('a\r\nhi @fred\r\n', 'fred'), 'hi @fred')
 })
+
+test('findMention closes a fence only with the same character and at least the same length', () => {
+  assert.equal(findMention('~~~\n```\n@fred\n```\n~~~\nafter', 'fred'), null)
+  assert.equal(findMention('~~~\n```\n```\n~~~\nthen @fred', 'fred'), 'then @fred')
+  assert.equal(findMention('````\n```\n@fred\n```\n````\nthen @fred again', 'fred'), 'then @fred again')
+  assert.equal(findMention('````\n```\n@fred\n```\n', 'fred'), null)
+  assert.equal(findMention('```\n@fred\n````\nthen @fred', 'fred'), 'then @fred')
+  assert.equal(findMention('   ```js\n@fred\n   ```\n@fred ok', 'fred'), '@fred ok')
+  assert.equal(findMention('``` not a `fence`\n@fred', 'fred'), '@fred')
+  assert.equal(findMention('```\n@fred\n``` trailing\n@fred', 'fred'), null)
+})

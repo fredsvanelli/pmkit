@@ -12,7 +12,7 @@ exit 0
   "available": true,
   "user": "fred",
   "since": null,
-  "through": "2026-10-23T12:00:00Z",
+  "through": "2026-10-23T11:59:59Z",
   "items": [],
   "counts": {
     "assignments": 0,
@@ -38,7 +38,7 @@ exit 0
   "available": true,
   "user": "fred",
   "since": null,
-  "through": "2026-10-23T12:00:00Z",
+  "through": "2026-10-23T11:59:59Z",
   "items": [],
   "counts": {
     "assignments": 0,
@@ -64,7 +64,7 @@ exit 0
   "available": true,
   "user": "ana",
   "since": "2026-10-22T00:00:00Z",
-  "through": "2026-10-23T12:00:00Z",
+  "through": "2026-10-23T11:59:59Z",
   "items": [],
   "counts": {
     "assignments": 0,

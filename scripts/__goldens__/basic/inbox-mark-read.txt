@@ -1,7 +1,7 @@
 $ pmkit inbox mark-read --dry-run
 exit 0
 --- stdout
-would mark the inbox of fred read through 2026-10-23T12:00:00Z
+would mark the inbox of fred read through 2026-10-23T11:59:59Z
 dry run: nothing was written
 --- stderr
 (empty)
@@ -12,8 +12,8 @@ exit 0
 {
   "user": "fred",
   "previous": null,
-  "recorded": "2026-10-23T12:00:00Z",
-  "through": "2026-10-23T12:00:00Z",
+  "recorded": "2026-10-23T11:59:59Z",
+  "through": "2026-10-23T11:59:59Z",
   "changed": true,
   "dryRun": true
 }
@@ -23,7 +23,7 @@ exit 0
 $ pmkit inbox mark-read --dry-run --dry-run
 exit 0
 --- stdout
-would mark the inbox of fred read through 2026-10-23T12:00:00Z
+would mark the inbox of fred read through 2026-10-23T11:59:59Z
 dry run: nothing was written
 --- stderr
 (empty)
@@ -34,8 +34,8 @@ exit 0
 {
   "user": "fred",
   "previous": null,
-  "recorded": "2026-10-23T12:00:00Z",
-  "through": "2026-10-23T12:00:00Z",
+  "recorded": "2026-10-23T11:59:59Z",
+  "through": "2026-10-23T11:59:59Z",
   "changed": true,
   "dryRun": true
 }
