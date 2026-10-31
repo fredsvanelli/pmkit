@@ -27,6 +27,8 @@ import { GOAL_PREFIX, goalStems, parseGoal, serializeGoal, sortGoals } from './g
 import { CUSTOMER_PREFIX, mdStems, parseCustomer, serializeCustomer, sortCustomers } from './customers.mjs'
 import { REQUEST_KEYS, REQUEST_PREFIX, REQUEST_STATES, groupDemand, parseRequest, serializeRequest, sortRequests } from './requests.mjs'
 import { checkFilter, runQuery } from './query.mjs'
+import { findMention } from './inbox.mjs'
+import { inboxGet, inboxSet } from '../user-store.mjs'
 import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
 import { CACHE_DIR, INDEX_FILE, clearIndex, indexHeader, readThroughIndex } from './query-index.mjs'
 import {
@@ -734,6 +736,114 @@ export function createLocalTracker(root, {
       ;(grouped[issue.sprint] ??= []).push({ id: issue.id, estimate: issue.estimate, status: issue.status.name, doneAt })
     }
     return grouped
+  }
+
+  // The user inbox (PMK-47). See docs/superpowers/specs/2026-10-31-pmk-47-user-inbox-design.md.
+  const inboxStore = { env, now }
+
+  /** A timestamp as `YYYY-MM-DDTHH:MM:SSZ`, or null when it is not a date. */
+  const inSeconds = (value) => {
+    const time = typeof value === 'string' || typeof value === 'number' ? new Date(value) : new Date(Number.NaN)
+    return Number.isNaN(time.getTime()) ? null : isoSeconds(time)
+  }
+
+  /** Every assignment and mention of the user, whatever the check, and a problem for each file that could not be read. */
+  function scanInbox(user) {
+    const nowAt = stamp()
+    const items = []
+    const problems = []
+    const { issues, problems: unparsed } = readAll({ save: false })
+    problems.push(...unparsed)
+    const byId = new Map(issues.map((issue) => [issue.id, issue]))
+    const item = (kind, issue, at, by, where, extra = {}) => ({
+      kind, issue: issue, title: byId.get(issue)?.title ?? null, at, by, in: where, comment: null, excerpt: null, synthetic: false, future: at > nowAt, ...extra,
+    })
+    for (const id of listIssueIds(issuesDir, local.id_prefix)) {
+      const paths = issuePaths(issuesDir, id)
+      const problem = (message) => problems.push({ id, code: 'INVALID_INPUT', message })
+      const { events, problems: lines } = readEvents(paths.events)
+      for (const line of lines) problem(`events.jsonl, ${line}`)
+      let described
+      for (const event of events) {
+        const at = inSeconds(event.at)
+        if (at === null) {
+          problem(`events.jsonl has an event with the time "${event.at}", which is not a date`)
+          continue
+        }
+        const assigned = (event.op === 'assign' && event.field === 'assignee' && event.to === user)
+          || (event.op === 'create' && event.to?.assignee === user)
+        if (assigned && event.by !== user) items.push(item('assignment', id, at, event.by, 'assignment', { synthetic: event.synthetic === true }))
+        if (event.op === 'create' || (event.op === 'update' && ['description', 'acceptance_criteria'].includes(event.field))) described = { at, by: event.by }
+      }
+      const found = byId.get(id)
+      if (found !== undefined) {
+        const excerpt = findMention(found.body, user)
+        if (excerpt !== null && described === undefined) problem(`the description mentions @${user}, but no event dates it`)
+        else if (excerpt !== null && described.by !== user) items.push(item('mention', id, described.at, described.by, 'description', { excerpt }))
+      }
+      if (!fs.existsSync(paths.comments)) continue
+      for (const name of fs.readdirSync(paths.comments).filter((entry) => entry.endsWith('.md')).sort()) {
+        try {
+          const comment = readComment(id, path.join(paths.comments, name))
+          const at = inSeconds(comment.created)
+          if (at === null) throw new Error(`the time "${comment.created}" is not a date`)
+          const excerpt = findMention(comment.body, user)
+          if (excerpt !== null && comment.author !== user) items.push(item('mention', id, at, comment.author, 'comment', { comment: comment.id, excerpt }))
+        } catch (error) {
+          problem(`comment ${name} cannot be read: ${error.message}`)
+        }
+      }
+    }
+    const order = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
+    items.sort((a, b) => order(a.at, b.at) || order(a.issue, b.issue) || order(a.kind, b.kind) || order(a.comment ?? '', b.comment ?? ''))
+    return { items, problems, nowAt }
+  }
+
+  /** The mentions and assignments of `user` since the last check (or `since`, or all of them). Reads only. */
+  function listNotifications({ user, since, all = false } = {}) {
+    requireMember(user, 'user')
+    let cutoff = null
+    if (!all) {
+      if (blank(since)) cutoff = inboxGet(config.root, user, inboxStore)
+      else if ((cutoff = inSeconds(since)) === null) throw invalid(`since "${since}" is not a date`, 'Use a timestamp such as 2026-10-31T10:00:00Z')
+    }
+    const { items, problems, nowAt } = scanInbox(user)
+    const shown = cutoff === null ? items : items.filter((entry) => entry.at > cutoff)
+    return {
+      user,
+      since: cutoff,
+      through: nowAt,
+      items: shown,
+      counts: { assignments: shown.filter((entry) => entry.kind === 'assignment').length, mentions: shown.filter((entry) => entry.kind === 'mention').length },
+      complete: problems.length === 0,
+      problems,
+    }
+  }
+
+  /**
+   * Records the user's check at `through` (default now). It never moves the check back, refuses a time after now,
+   * and writes nothing when the read is incomplete, so a file that does not parse cannot get its items marked read.
+   */
+  function markRead({ user, through, dryRun = false } = {}) {
+    requireMember(user, 'user')
+    const nowAt = stamp()
+    const target = blank(through) ? nowAt : inSeconds(through)
+    if (target === null) throw invalid(`through "${through}" is not a date`, 'Use a timestamp such as 2026-10-31T10:00:00Z')
+    if (target > nowAt) throw invalid(`through ${target} is after now (${nowAt})`, 'Use a time in the past, or leave it out to mark everything up to now')
+    const { problems } = scanInbox(user)
+    if (problems.length > 0) {
+      throw new PmkitError(
+        'INVALID_INPUT',
+        `${problems.length} ${problems.length === 1 ? 'problem' : 'problems'} in ${[...new Set(problems.map((problem) => problem.id))].join(', ')} left the inbox incomplete, so nothing was marked read`,
+        'Run pmkit validate, fix the files with /pmkit:local:doctor, then mark read again',
+        { problems },
+      )
+    }
+    const previous = inboxGet(config.root, user, inboxStore)
+    const recorded = previous !== null && previous >= target ? previous : target
+    const changed = recorded !== previous
+    if (changed && !dryRun) inboxSet(config.root, user, recorded, inboxStore)
+    return { user, previous, recorded, through: target, changed, dryRun }
   }
 
   function discover() {
@@ -1654,6 +1764,7 @@ export function createLocalTracker(root, {
     saveView, listViews, runView,
     listGoals, getGoal, createGoal, goalProgress, setEpicGoal,
     listCustomers, getCustomer, createCustomer, listRequests, getRequest, createRequest, acceptRequest, declineRequest, listDemandSignals,
+    listNotifications, markRead,
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     listMilestones, getMilestone, createMilestone, unfiledMilestones,
     listReleases, getRelease, createRelease, releaseIssues, markReleased,
