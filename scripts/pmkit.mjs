@@ -1504,25 +1504,37 @@ async function orSupported(read, fallback) {
   }
 }
 
+
 /** The load per member for the active sprint, or for all open work without one. Writes nothing. */
 async function runTeamLoad(ctx) {
   const tracker = await ctx.tracker()
   const notes = []
-  const wanted = ctx.opt('sprint') ?? 'current'
+  const warnings = []
+  const wanted = ctx.opt('sprint')
   let sprint = null
-  if (wanted === 'current') {
-    sprint = await orSupported(() => tracker.currentCycle(), null)
+  if (wanted === undefined) {
+    // A Linear team with cycles off has no active sprint: the load covers all open work, and the cycles note says why.
+    try {
+      sprint = await tracker.currentCycle()
+    } catch (error) {
+      if (!isPmkitError(error) || error.code !== 'NOT_SUPPORTED') throw error
+      notes.push(...(await capabilityNotes(tracker, 'cycles')))
+    }
     if (sprint === null) notes.push('no active sprint: counted every open issue in todo, in_progress and in_review')
   } else {
-    sprint = (await orSupported(() => tracker.listCycles({}), [])).find((item) => item.id === wanted) ?? null
+    // An explicit sprint needs cycles: listCycles answers NOT_SUPPORTED when the tracker has none.
+    sprint = (await tracker.listCycles({})).find((item) => item.id === wanted) ?? null
     if (sprint === null) throw new PmkitError('NOT_FOUND', `sprint ${wanted} does not exist`, 'pmkit cycle list')
   }
   const found = await tracker.searchIssues({ categories: LOAD_CATEGORIES, ...(sprint ? { sprint: sprint.id } : {}) })
-  const warnings = found.problems.map(problemLine)
+  warnings.push(...found.problems.map(problemLine))
+  const truncated = found.hasMore === true
+  if (truncated) warnings.push('the issue read was cut before the end, so the load covers only part of the scope and no move is proposed')
   const capabilities = (await tracker.capabilities()).capabilities
   const estimation = capabilities.find((c) => c.id === 'estimation')
-  const choice = chooseUnit(found.issues, estimation?.path)
-  if (choice.unit === 'issues') notes.push(`counted issues, not points: ${choice.reason}${estimation?.path === 'absent' && estimation.enableHint ? ` (${estimation.enableHint})` : ''}`)
+  const choice = chooseUnit(found.issues, estimation)
+  if (choice.unit === 'issues') notes.push(`counted issues instead of estimates: ${choice.reason}${estimation?.path === 'absent' && estimation.enableHint ? ` (${estimation.enableHint})` : ''}`)
+  if (estimation?.path === 'conditional') notes.push(...(await capabilityNotes(tracker, 'estimation')))
   const capacity = sprint ? await orSupported(() => tracker.getCapacity(sprint.id), {}) : {}
   const daysOff = sprint ? await orSupported(() => tracker.getDaysOff(sprint.id), {}) : {}
   if (sprint) notes.push(...(await capabilityNotes(tracker, 'capacity')))
@@ -1530,23 +1542,31 @@ async function runTeamLoad(ctx) {
   warnings.push(...capped)
   const asOf = ctx.now().toISOString().replace(/\.\d{3}Z$/, 'Z')
   const report = teamLoad(found.issues, { members: (await tracker.discover()).members, aging: aging(events, { categoryOf, asOf }), capacity, daysOff, unit: choice.unit })
-  if (choice.unit === 'points' && report.unassigned.unestimated + report.rows.reduce((sum, row) => sum + row.unestimated, 0) > 0) {
-    warnings.push('some issues have no estimate and count 0 points; the Unestimated column shows how many per member')
+  if (report.unknownLoad.length > 0) {
+    const n = report.unknownLoad.length
+    notes.push(`${n} ${n === 1 ? 'member has' : 'members have'} open issues and no estimate: their load is unknown, so they stay out of the average, the flags and the proposed moves`)
+  }
+  if (choice.unit !== 'issues' && report.unassigned.unestimated + report.rows.reduce((sum, row) => sum + row.unestimated, 0) > 0) {
+    warnings.push(`some issues have no estimate and count 0 ${choice.unit}; the Unestimated column shows how many per member`)
   }
   notes.push(...(await metricNotes(tracker, 'aging')))
-  const suggestions = suggestMoves(report, found.issues)
-  const data = { sprint: sprint ? { id: sprint.id, name: sprint.name, start: sprint.start, end: sprint.end } : null, ...report, suggestions }
+  const suggestions = truncated ? [] : suggestMoves(report, found.issues)
+  const data = { sprint: sprint ? { id: sprint.id, name: sprint.name, start: sprint.start, end: sprint.end } : null, truncated, ...report, suggestions }
   return { data, text: teamLoadText(data), warnings, notes }
 }
 
 function teamLoadText(data) {
-  const points = data.unit === 'points'
-  const rows = [...data.rows, { ...data.unassigned, member: 'unassigned', wip: '', oldestWipDays: null, capacity: null, flags: [] }]
+  const estimated = data.unit !== 'issues'
+  const label = data.unit.charAt(0).toUpperCase() + data.unit.slice(1)
+  const rows = [...data.rows, { ...data.unassigned, member: 'unassigned', wip: '', oldestWipDays: null, capacity: null, flags: [], unknown: false }]
   const lines = [
     data.sprint ? `sprint ${data.sprint.id} (${data.sprint.start} to ${data.sprint.end}), load in ${data.unit}, average ${data.average}` : `no sprint, load in ${data.unit}, average ${data.average}`,
     table(
-      ['Member', 'Issues', ...(points ? ['Points', 'Unestimated'] : []), 'WIP', 'Oldest WIP days', ...(points ? ['Capacity'] : []), 'Flags'],
-      rows.map((row) => [row.member + (row.agent ? ' (agent)' : '') + (row.isMember === false ? ' (not a member)' : ''), row.issues, ...(points ? [row.points, row.unestimated] : []), row.wip, row.oldestWipDays ?? '', ...(points ? [row.capacity ?? ''] : []), (row.flags ?? []).join(', ')]),
+      ['Member', 'Issues', ...(estimated ? [label, 'Unestimated'] : []), 'WIP', 'Oldest WIP days', ...(estimated ? ['Capacity'] : []), 'Flags'],
+      rows.map((row) => [
+        row.member + (row.agent ? ' (agent)' : '') + (row.isMember === false ? ' (not a member)' : ''), row.issues,
+        ...(estimated ? [row.unknown ? '?' : row.estimate, row.unestimated] : []), row.wip, row.oldestWipDays ?? '', ...(estimated ? [row.capacity ?? ''] : []), (row.flags ?? []).join(', '),
+      ]),
     ),
   ]
   if (data.imbalances.length > 0) lines.push('imbalances:', ...data.imbalances.map((item) => `  ${item.member}: ${item.flag}, load ${item.load}, limit ${item.limit}`))

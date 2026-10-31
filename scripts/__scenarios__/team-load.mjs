@@ -24,7 +24,7 @@ export default {
     assert.deepEqual(saved.before.suggestions, [], 'ana has no issue in todo, so nothing is proposed')
     assert.equal(repo.issue('ISS-8C4W').assignee, 'fred')
     assert.equal(repo.newEvents('ISS-8C4W').length, 1)
-    assert.deepEqual([row(saved.after, 'ana').points, row(saved.after, 'fred').points], [8, 9])
+    assert.deepEqual([row(saved.after, 'ana').estimate, row(saved.after, 'fred').estimate], [8, 9])
     assert.deepEqual(saved.after.imbalances.map((item) => [item.member, item.flag]), [['fred', 'over_capacity']], 'fred has 9 points against a capacity of 8')
   },
 }

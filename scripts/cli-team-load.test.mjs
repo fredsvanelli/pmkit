@@ -20,10 +20,10 @@ test('team load reads the active sprint, with points, work in progress, capacity
   assert.equal(data.unit, 'points')
   assert.deepEqual(data.rows.map((row) => row.member), ['ana', 'fred'])
   const ana = rowOf(data, 'ana')
-  assert.deepEqual([ana.issues, ana.points, ana.wip, ana.capacity, ana.daysOff, ana.flags], [2, 13, 2, 10, ['2026-10-16'], ['over_average', 'over_capacity']])
+  assert.deepEqual([ana.issues, ana.estimate, ana.wip, ana.capacity, ana.daysOff, ana.flags], [2, 13, 2, 10, ['2026-10-16'], ['over_average', 'over_capacity']])
   assert.ok(ana.oldestWipDays > 0)
   const fred = rowOf(data, 'fred')
-  assert.deepEqual([fred.issues, fred.points, fred.wip, fred.capacity, fred.flags], [2, 4, 1, 8, []])
+  assert.deepEqual([fred.issues, fred.estimate, fred.wip, fred.capacity, fred.flags], [2, 4, 1, 8, []])
   assert.deepEqual(data.noWork, [])
   assert.deepEqual(data.suggestions, [])
   assert.deepEqual(data.imbalances.map((item) => [item.member, item.flag]), [['ana', 'over_average'], ['ana', 'over_capacity']])
@@ -56,7 +56,7 @@ test('team load counts issues and says so when no issue has an estimate', async 
   assert.equal(data.unit, 'issues')
   assert.equal(rowOf(data, 'ana').load, 2)
   assert.deepEqual(data.imbalances, [])
-  assert.ok(notes.includes('note: counted issues, not points: no issue in scope has an estimate'), notes.join('\n'))
+  assert.ok(notes.includes('note: counted issues instead of estimates: no issue in scope has an estimate'), notes.join('\n'))
 })
 
 test('team load names a sprint with --sprint, and fails with NOT_FOUND for an unknown one', async () => {
@@ -67,6 +67,53 @@ test('team load names a sprint with --sprint, and fails with NOT_FOUND for an un
   const missing = await load(makeRepo('team'), ['--sprint', '2030-01-01'])
   assert.equal(missing.code, 2)
   assert.match(missing.stdout, /NOT_FOUND/)
+})
+
+const setEstimateUnit = (root, unit) => {
+  const file = path.join(root, '.issues/config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/estimate:\n  unit: points\n  scale: .*\n/, `estimate:\n  unit: ${unit}\n  scale: ${unit === 'sizes' ? '[XS, S, M, L, XL]' : '[1, 2, 3, 5, 8, 13]'}\n`))
+}
+const setEstimate = (root, id, value) => {
+  const file = path.join(root, '.issues/issues', id, 'issue.md')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^estimate: .*\n/m, value === null ? '' : `estimate: ${value}\n`))
+}
+
+test('team load labels the load with hours when the tracker estimates in hours', async () => {
+  const root = makeRepo('team')
+  setEstimateUnit(root, 'hours')
+  const { code, data, notes } = await load(root)
+  assert.equal(code, 0)
+  assert.equal(data.unit, 'hours')
+  assert.deepEqual(notes.filter((line) => line.startsWith('note: counted')), [])
+  const text = (await run(['team', 'load'], { cwd: root, env })).stdout
+  assert.match(text, /load in hours/)
+  assert.match(text, /Hours/)
+  assert.doesNotMatch(text, /points/i)
+})
+
+test('team load counts issues for t-shirt sizes and says the sizes do not add up', async () => {
+  const root = makeRepo('team')
+  setEstimateUnit(root, 'sizes')
+  for (const id of ['ISS-2X6D', 'ISS-5N1R', 'ISS-8C4W', 'ISS-4M2S']) setEstimate(root, id, 'M')
+  const { code, data, notes } = await load(root)
+  assert.equal(code, 0)
+  assert.equal(data.unit, 'issues')
+  assert.ok(notes.includes('note: counted issues instead of estimates: estimates are sizes and do not add up'), notes.join('\n'))
+  assert.ok(!notes.some((line) => line.includes('no issue in scope has an estimate')), notes.join('\n'))
+})
+
+test('team load leaves a member whose issues have no estimate out of the balance, and says how many', async () => {
+  const root = makeRepo('team')
+  setEstimate(root, 'ISS-2X6D', null)
+  setEstimate(root, 'ISS-8C4W', null)
+  const { code, data, notes } = await load(root)
+  assert.equal(code, 0)
+  const ana = rowOf(data, 'ana')
+  assert.deepEqual([ana.load, ana.unknown, ana.unestimated], [null, true, 2])
+  assert.deepEqual(data.unknownLoad, ['ana'])
+  assert.deepEqual(data.noWork, [])
+  assert.deepEqual(data.suggestions, [])
+  assert.ok(notes.includes('note: 1 member has open issues and no estimate: their load is unknown, so they stay out of the average, the flags and the proposed moves'), notes.join('\n'))
 })
 
 test('team load puts an unassigned issue and an agent member outside the balance', async () => {

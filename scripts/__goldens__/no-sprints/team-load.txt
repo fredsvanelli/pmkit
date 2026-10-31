@@ -16,6 +16,7 @@ exit 0
 --- stdout
 {
   "sprint": null,
+  "truncated": false,
   "unit": "points",
   "average": 4,
   "rows": [
@@ -25,11 +26,12 @@ exit 0
       "agent": false,
       "isMember": true,
       "issues": 1,
-      "points": 5,
+      "estimate": 5,
       "unestimated": 0,
       "wip": 1,
       "oldestWipDays": 9.1,
       "load": 5,
+      "unknown": false,
       "ids": [
         "ISS-9B2X"
       ],
@@ -44,11 +46,12 @@ exit 0
       "agent": false,
       "isMember": true,
       "issues": 1,
-      "points": 3,
+      "estimate": 3,
       "unestimated": 0,
       "wip": 0,
       "oldestWipDays": null,
       "load": 3,
+      "unknown": false,
       "ids": [
         "ISS-3M8D"
       ],
@@ -60,11 +63,12 @@ exit 0
   ],
   "unassigned": {
     "issues": 0,
-    "points": 0,
+    "estimate": 0,
     "unestimated": 0,
     "ids": []
   },
   "noWork": [],
+  "unknownLoad": [],
   "imbalances": [],
   "suggestions": []
 }

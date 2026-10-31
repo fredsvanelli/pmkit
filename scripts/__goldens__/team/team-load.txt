@@ -24,6 +24,7 @@ exit 0
     "start": "2026-10-12",
     "end": "2026-10-25"
   },
+  "truncated": false,
   "unit": "points",
   "average": 8.5,
   "rows": [
@@ -33,11 +34,12 @@ exit 0
       "agent": false,
       "isMember": true,
       "issues": 2,
-      "points": 13,
+      "estimate": 13,
       "unestimated": 0,
       "wip": 2,
       "oldestWipDays": 9.1,
       "load": 13,
+      "unknown": false,
       "ids": [
         "ISS-2X6D",
         "ISS-8C4W"
@@ -58,11 +60,12 @@ exit 0
       "agent": false,
       "isMember": true,
       "issues": 2,
-      "points": 4,
+      "estimate": 4,
       "unestimated": 0,
       "wip": 1,
       "oldestWipDays": 1.1,
       "load": 4,
+      "unknown": false,
       "ids": [
         "ISS-5N1R",
         "ISS-4M2S"
@@ -75,11 +78,12 @@ exit 0
   ],
   "unassigned": {
     "issues": 0,
-    "points": 0,
+    "estimate": 0,
     "unestimated": 0,
     "ids": []
   },
   "noWork": [],
+  "unknownLoad": [],
   "imbalances": [
     {
       "member": "ana",

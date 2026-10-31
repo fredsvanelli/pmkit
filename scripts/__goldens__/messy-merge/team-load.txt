@@ -11,7 +11,7 @@ no work in scope: ana, fred
 --- stderr
 warning: ISS-4: CONFLICT The issue file contains git conflict markers.
 warning: ISS-5: CONFLICT The issue file contains git conflict markers.
-note: counted issues, not points: no issue in scope has an estimate
+note: counted issues instead of estimates: no issue in scope has an estimate
 note: aging computed from .issues/events.jsonl
 
 $ pmkit team load --json
@@ -24,6 +24,7 @@ exit 0
     "start": "2026-10-05",
     "end": "2026-10-11"
   },
+  "truncated": false,
   "unit": "issues",
   "average": 0,
   "rows": [
@@ -33,11 +34,12 @@ exit 0
       "agent": false,
       "isMember": true,
       "issues": 0,
-      "points": 0,
+      "estimate": 0,
       "unestimated": 0,
       "wip": 0,
       "oldestWipDays": null,
       "load": 0,
+      "unknown": false,
       "ids": [],
       "flags": [],
       "availability": 0.8,
@@ -50,11 +52,12 @@ exit 0
       "agent": false,
       "isMember": true,
       "issues": 0,
-      "points": 0,
+      "estimate": 0,
       "unestimated": 0,
       "wip": 0,
       "oldestWipDays": null,
       "load": 0,
+      "unknown": false,
       "ids": [],
       "flags": [],
       "availability": 1,
@@ -64,7 +67,7 @@ exit 0
   ],
   "unassigned": {
     "issues": 0,
-    "points": 0,
+    "estimate": 0,
     "unestimated": 0,
     "ids": []
   },
@@ -80,11 +83,12 @@ exit 0
       "daysOff": []
     }
   ],
+  "unknownLoad": [],
   "imbalances": [],
   "suggestions": []
 }
 --- stderr
 warning: ISS-4: CONFLICT The issue file contains git conflict markers.
 warning: ISS-5: CONFLICT The issue file contains git conflict markers.
-note: counted issues, not points: no issue in scope has an estimate
+note: counted issues instead of estimates: no issue in scope has an estimate
 note: aging computed from .issues/events.jsonl
