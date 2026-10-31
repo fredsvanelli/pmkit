@@ -45,6 +45,7 @@ const REFUSALS = [
   ['issues', 'log-time', 'ACME-1', 'not a time'],
   ['issues', 'time-entries', 'ACME-1'],
   ['issues', 'delegate', 'ACME-1', 'agent:claude'],
+  ['issues', 'track-agents'],
   ['views', 'list'],
   ['views', 'save', 'v', '--category', 'done'],
   ['views', 'run', 'v'],
@@ -95,6 +96,7 @@ const COVERED = {
   'requests list': 'REFUSALS', 'requests get': 'REFUSALS', 'requests create': 'REFUSALS', 'requests accept': 'REFUSALS', 'requests decline': 'REFUSALS',
   'alerts list': 'REPO_SCAN',
   'issues delegate': 'REFUSALS',
+  'issues track-agents': 'REFUSALS',
   'inbox list': 'REFUSALS', 'inbox mark-read': 'REFUSALS',
 }
 

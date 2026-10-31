@@ -1,0 +1,21 @@
+$ pmkit issues track-agents
+exit 0
+--- stdout
+no open issue is assigned to an agent
+--- stderr
+note: git_host is none, so the list has no pull request state
+
+$ pmkit issues track-agents --json
+exit 0
+--- stdout
+{
+  "issues": [],
+  "incomplete": false,
+  "hasMore": false,
+  "warnings": [],
+  "notes": [
+    "git_host is none, so the list has no pull request state"
+  ]
+}
+--- stderr
+note: git_host is none, so the list has no pull request state

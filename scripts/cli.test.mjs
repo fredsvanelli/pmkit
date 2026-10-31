@@ -1620,6 +1620,7 @@ test('every read goes on with one warning', () => {
     'issues get': ['ISS-5N1R'],
     'issues dependencies': ['EPC-2M9D'],
     'issues time-entries': ['ISS-5N1R'],
+    'issues track-agents': [],
     'cycle list': [],
     'cycle current': [],
     'cycle issues': ['2026-10-12'],
