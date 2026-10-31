@@ -194,6 +194,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     moveToCategory: issues.moveToCategory,
     assign: issues.assign,
     archive: issues.archive,
+    delete: issues.delete,
     link: relations.link,
     unlink: relations.unlink,
     setParent: relations.setParent,

@@ -18,6 +18,7 @@ import { hasSectionHeading, parseIssueFile, serializeIssue, toFrontmatter } from
 import { buildCapabilities } from '../capabilities.mjs'
 import { lastEntry } from '../metrics.mjs'
 import { AGENT_ID, delegationComment } from '../delegation.mjs'
+import { REFERENCE_KINDS, referencedError } from '../delete-refusal.mjs'
 import { createDocumentFile, listDocumentFiles, readDocumentFile } from './documents.mjs'
 import { hasMilestoneFiles, milestoneStems, parseMilestone, serializeMilestone, sortMilestones, validMilestoneId } from './milestones.mjs'
 import { parseRelease, releaseStems, serializeRelease, sortReleases, validReleaseId, validTag } from './releases.mjs'
@@ -503,18 +504,11 @@ export function createLocalTracker(root, {
     })
   }
 
-  const REFERENCE_KINDS = ['blockedBy', 'related', 'duplicateOf']
   const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const commentTexts = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((name) => name.endsWith('.md')).map((name) => fs.readFileSync(path.join(dir, name), 'utf8')) : [])
   const filesUnder = (dir) => fs.readdirSync(dir, { withFileTypes: true })
     .flatMap((entry) => (entry.isDirectory() ? filesUnder(path.join(dir, entry.name)) : [path.join(dir, entry.name)]))
     .sort()
-  const unlinkStep = (id, { id: other, kind }) => ({
-    blockedBy: `pmkit issues link ${id} ${other} --kind blocks --remove`,
-    related: `pmkit issues link ${other} ${id} --kind related --remove`,
-    duplicateOf: `pmkit issues link ${other} ${id} --kind duplicate --remove`,
-    parent: `pmkit issues parent ${other} none`,
-  })[kind]
 
   /** What a delete warns about: the issue's own sprint, release, assignee, time, todo-key and branch, and the views that filter on it. */
   function deleteWarnings(issue, paths) {
@@ -570,18 +564,10 @@ export function createLocalTracker(root, {
       )
     }
     const others = issues.filter((other) => other.id !== issue.id)
-    const references = others.flatMap((other) => [
-      ...REFERENCE_KINDS.filter((kind) => other[kind].includes(issue.id)).map((kind) => ({ id: other.id, kind })),
-      ...(other.parent === issue.id ? [{ id: other.id, kind: 'parent' }] : []),
-    ])
-    if (references.length > 0) {
-      throw new PmkitError(
-        'CONFLICT',
-        `${issue.id} is referenced by ${references.length === 1 ? 'one record' : `${references.length} records`}: ${references.map((ref) => `${ref.id} (${ref.kind})`).join(', ')}`,
-        `Remove each reference, then delete again. First: ${unlinkStep(issue.id, references[0])}. To keep the history instead, archive it: pmkit issues archive ${issue.id}`,
-        { references },
-      )
-    }
+    const references = others.flatMap((other) => REFERENCE_KINDS
+      .filter((kind) => (kind === 'parent' ? other.parent === issue.id : other[kind].includes(issue.id)))
+      .map((kind) => ({ id: other.id, kind })))
+    if (references.length > 0) throw referencedError(issue.id, references)
     const mention = new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(issue.id)}(?![A-Za-z0-9_])`)
     const mentions = others.flatMap((other) => [
       ...(mention.test(`${other.description ?? ''}\n${other.body ?? ''}`) ? [{ id: other.id, in: 'description' }] : []),

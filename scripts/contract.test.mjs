@@ -11,6 +11,10 @@ test('resolveThread is a contract operation next to comment', () => {
   assert.equal(TRACKER_OPERATIONS.indexOf('resolveThread'), TRACKER_OPERATIONS.indexOf('comment') + 1)
 })
 
+test('delete is a contract operation next to archive', () => {
+  assert.equal(TRACKER_OPERATIONS.indexOf('delete'), TRACKER_OPERATIONS.indexOf('archive') + 1)
+})
+
 describe('assertTracker', () => {
   test('lists every missing operation', () => {
     const partial = { discover() {}, getIssue() {} }
