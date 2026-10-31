@@ -87,7 +87,8 @@ exit 0
   ],
   "unknownLoad": [],
   "imbalances": [],
-  "suggestions": []
+  "suggestions": [],
+  "noTarget": false
 }
 --- stderr
 warning: ISS-4: CONFLICT The issue file contains git conflict markers.

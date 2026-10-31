@@ -180,11 +180,30 @@ test('suggestMoves also proposes moves for a member that is only over_capacity',
 
 test('suggestMoves never leaves a target above its own capacity', () => {
   const members = [{ id: 'fred', name: 'Fred' }, { id: 'ana', name: 'Ana' }, { id: 'caio', name: 'Caio' }]
-  const issues = [issue('A-1', 'todo', 'fred', 5), issue('A-2', 'todo', 'fred', 5)]
-  const report = teamLoad(issues, { members, capacity: { ana: 3 }, unit: 'points' })
+  const issues = [issue('A-1', 'todo', 'fred', 3), issue('A-2', 'todo', 'fred', 3), issue('A-3', 'todo', 'fred', 3)]
+  const report = teamLoad(issues, { members, capacity: { ana: 2 }, unit: 'points' })
   assert.deepEqual(suggestMoves(report, issues), [{ issue: 'A-1', from: 'fred', to: 'caio' }])
-  const only = teamLoad(issues, { members: members.slice(0, 2), capacity: { ana: 3 }, unit: 'points' })
+  const only = teamLoad(issues, { members: members.slice(0, 2), capacity: { ana: 2 }, unit: 'points' })
   assert.deepEqual(suggestMoves(only, issues), [])
+})
+
+test('suggestMoves never moves an issue to a member who is over the average, and proposes nothing without a target', () => {
+  const members = ['a', 'b', 'c', 'd'].map((id) => ({ id, name: id.toUpperCase() }))
+  const many = (owner, count, estimate) => Array.from({ length: count }, (_, i) => issue(`${owner.toUpperCase()}-${i + 1}`, 'todo', owner, estimate))
+  const issues = [...many('a', 10, 2), ...many('b', 7, 2), issue('C-1', 'todo', 'c', 1), issue('C-2', 'todo', 'c'), issue('D-1', 'todo', 'd', 1), issue('D-2', 'todo', 'd')]
+  const report = teamLoad(issues, { members, unit: 'points' })
+  assert.deepEqual(report.imbalances.map((item) => [item.member, item.flag]), [['a', 'over_average'], ['b', 'over_average']])
+  assert.deepEqual(suggestMoves(report, issues), [])
+})
+
+test('suggestMoves leaves a target at the average or below after the move', () => {
+  const members = ['a', 'b', 'c'].map((id) => ({ id, name: id.toUpperCase() }))
+  const issues = [issue('A-1', 'todo', 'a', 6), issue('A-2', 'todo', 'a', 6), issue('C-1', 'todo', 'c', 3)]
+  const report = teamLoad(issues, { members, unit: 'points' })
+  assert.equal(report.average, 5)
+  assert.deepEqual(suggestMoves(report, issues), [])
+  const fits = [issue('A-1', 'todo', 'a', 3), issue('A-2', 'todo', 'a', 3), issue('A-3', 'todo', 'a', 3)]
+  assert.deepEqual(suggestMoves(teamLoad(fits, { members, unit: 'points' }), fits), [{ issue: 'A-1', from: 'a', to: 'b' }, { issue: 'A-2', from: 'a', to: 'c' }])
 })
 
 test('suggestMoves never moves an issue to a member with an unknown load', () => {

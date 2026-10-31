@@ -100,7 +100,8 @@ exit 0
       "limit": 10
     }
   ],
-  "suggestions": []
+  "suggestions": [],
+  "noTarget": false
 }
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.

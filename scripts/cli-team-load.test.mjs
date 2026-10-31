@@ -143,6 +143,18 @@ test('team load warns about unestimated issues of a member with a known load, an
   assert.match(text, /ana \(partial\)/)
 })
 
+test('team load says there is nobody to move an issue to without overloading someone', async () => {
+  const root = makeRepo('team')
+  const file = path.join(root, '.issues/issues/ISS-8C4W/issue.md')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^status: in_review$/m, 'status: todo'))
+  const { code, data } = await load(root)
+  assert.equal(code, 0)
+  assert.deepEqual([data.suggestions, data.noTarget], [[], true])
+  const text = (await run(['team', 'load'], { cwd: root, env })).stdout
+  assert.match(text, /no proposed moves: there is nobody to move an issue to without overloading someone/)
+  assert.equal((await load(makeRepo('team'))).data.noTarget, false, 'ana has nothing in todo to move, so this is not a lack of targets')
+})
+
 test('team load puts an unassigned issue and an agent member outside the balance', async () => {
   const root = makeRepo('team')
   const file = path.join(root, '.issues/config.yaml')
