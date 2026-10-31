@@ -7,3 +7,4 @@
 {"at":"2026-10-30T22:32:59Z","by":"fred","op":"comment","to":"2026-10-30T22-32-59Z-fred.md"}
 {"at":"2026-10-30T22:32:59Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
 {"at":"2026-10-30T23:09:53Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}
+{"at":"2026-10-31T16:01:17Z","by":"fred","op":"link","field":"related","to":"PMK-181"}

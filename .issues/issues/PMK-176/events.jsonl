@@ -1,0 +1,2 @@
+{"at":"2026-10-31T16:01:11Z","by":"fred","op":"create","to":{"id":"PMK-176","title":"Fix estimate-issue on an empty or conditional estimate scale","type":"bug","status":"backlog","priority":"medium","estimate":2,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-31T16:01:11.186Z","updated":"2026-10-31T16:01:11Z"}}
+{"at":"2026-10-31T16:01:11Z","by":"fred","op":"link","field":"related","to":"PMK-59"}

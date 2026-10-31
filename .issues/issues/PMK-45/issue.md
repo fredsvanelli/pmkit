@@ -8,10 +8,11 @@ estimate: 3
 assignee: fred
 parent: EPC-6
 blocked_by: [PMK-2]
+related: [PMK-179]
 milestone: generic-commands
 branch: pmk-45-add-strategic-goals-to-the-local-tracker
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-31T15:44:52Z
+updated: 2026-10-31T16:01:14Z
 ---
 
 ## Description

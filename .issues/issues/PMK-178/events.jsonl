@@ -1,0 +1,2 @@
+{"at":"2026-10-31T16:01:12Z","by":"fred","op":"create","to":{"id":"PMK-178","title":"Fix unblock-pr when checks, reviews or scopes cannot be read","type":"bug","status":"backlog","priority":"high","estimate":2,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-31T16:01:12.578Z","updated":"2026-10-31T16:01:12Z"}}
+{"at":"2026-10-31T16:01:13Z","by":"fred","op":"link","field":"related","to":"PMK-62"}

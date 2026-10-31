@@ -7,10 +7,11 @@ priority: medium
 estimate: 3
 assignee: fred
 parent: EPC-6
+related: [PMK-184]
 milestone: generic-commands
 branch: pmk-49-add-deploys-and-ci-logs-to-the-github
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-30T22:05:05Z
+updated: 2026-10-31T16:01:21Z
 ---
 
 ## Description

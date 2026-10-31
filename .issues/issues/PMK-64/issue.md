@@ -7,10 +7,11 @@ priority: medium
 estimate: 3
 assignee: fred
 parent: EPC-6
+related: [PMK-182]
 milestone: generic-commands
 branch: pmk-64-add-the-todos-to-issues-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-31T15:45:00Z
+updated: 2026-10-31T16:01:18Z
 ---
 
 ## Description

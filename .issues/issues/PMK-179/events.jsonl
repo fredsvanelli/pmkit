@@ -1,0 +1,2 @@
+{"at":"2026-10-31T16:01:13Z","by":"fred","op":"create","to":{"id":"PMK-179","title":"Fix epic goal and the goal checks of validate","type":"bug","status":"backlog","priority":"high","estimate":2,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-31T16:01:13.865Z","updated":"2026-10-31T16:01:13Z"}}
+{"at":"2026-10-31T16:01:14Z","by":"fred","op":"link","field":"related","to":"PMK-45"}
