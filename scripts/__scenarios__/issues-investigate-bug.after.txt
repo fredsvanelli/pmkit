@@ -1,0 +1,43 @@
+$ pmkit issues get ISS-5N1R --comments --json  [step 2, read]
+exit 0
+$ pmkit pr status --branch iss-5n1r-paginate-the-events-api --json  [step 3, read]
+exit 0
+$ pmkit ci logs --branch iss-5n1r-paginate-the-events-api --json  [step 4, read]
+exit 0
+$ pmkit pr diff --branch iss-5n1r-paginate-the-events-api --json  [step 6, read]
+exit 0
+$ pmkit text redact --file - --json  [step 10.2, read]
+exit 0
+$ pmkit issues comment ISS-5N1R --body-file - --dry-run --json  [step 10.3, dry run]
+exit 0
+? Step 10  [confirmed]
+$ pmkit issues comment ISS-5N1R --body-file - --json  [step 10.3, write]
+exit 0
+
+--- added .issues/issues/ISS-5N1R/comments/2026-10-23T12-00-00Z-fred.md
++---
++author: fred
++created: 2026-10-23T12:00:00Z
++---
++
++Diagnosis of ISS-5N1R.
++
++1. The cursor is ignored (medium). src/events.mjs:1 takes cursor and never uses it. CI: https://github.com/o/r/actions/runs/42, step "Run tests" of the job test.
++
++The reporter wrote: "GITHUB_TOKEN=[redacted] then a clone of https://[redacted]@github.com/o/r.git fails".
++
++Redacted 2 values.
+--- changed .issues/issues/ISS-5N1R/events.jsonl
+  {"at":"2026-10-05T09:30:00Z","by":"fred","op":"create","to":{"id":"ISS-5N1R","title":"Paginate the events API","type":"task","status":"todo","priority":"medium","estimate":3,"assignee":"fred","labels":["backend"],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-05T09:30:00Z","updated":"2026-10-05T09:30:00Z"}}
+  {"at":"2026-10-22T09:00:00Z","by":"fred","op":"move","field":"status","from":"todo","to":"in_progress"}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"branch","from":null,"to":"iss-5n1r-paginate-the-events-api"}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"acceptance_criteria"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"comment","to":"2026-10-23T12-00-00Z-fred.md"}
+--- gh calls
+pr view iss-5n1r-paginate-the-events-api --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr checks 7 --json name,state,bucket
+pr view 7 --json reviews,reviewRequests
+run list --branch iss-5n1r-paginate-the-events-api --limit 50 --json databaseId,workflowName,status,conclusion,url,createdAt,headSha
+run view 42 --log-failed
+pr view iss-5n1r-paginate-the-events-api --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr diff 7 --color never

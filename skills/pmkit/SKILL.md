@@ -44,6 +44,7 @@ Each command file holds the full procedure. When the user asks for one of these 
 | turn the TODO and FIXME comments of the repository into issues after a full preview, skipping the ones an issue already covers | `/pmkit:issues:todos` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/todos.md` |
 | turn the security alerts of the repository scanners into issues with a priority from the severity, after a full preview | `/pmkit:issues:security-alerts` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/security-alerts.md` |
 | list what blocks a pull request from merging: checks, reviews, conflicts, open threads and policies | `/pmkit:issues:unblock` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/unblock.md` |
+| propose root-cause hypotheses for a bug from the issue, comments, CI logs and code | `/pmkit:issues:investigate-bug` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/investigate-bug.md` |
 | summarize an issue or an epic from its record, comments and history | `/pmkit:issues:summary` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/summary.md` |
 | change the title, priority, estimate, labels or acceptance criteria of an issue | `/pmkit:issues:update` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/update.md` |
 | pick up an issue: claim it, branch, plan, implement, open the PR and move it to review | `/pmkit:issues:work` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/work.md` |

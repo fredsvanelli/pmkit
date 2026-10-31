@@ -1675,7 +1675,7 @@ test('every read goes on with one warning', () => {
     'local-migrate status': [],
     render: ['board'],
   }
-  assert.deepEqual(Object.keys(READS).sort(), [...COMMANDS.filter((c) => !c.write && !['init', 'link-repo', 'changelog', 'validate', 'issues parse-time'].includes(c.name)).map((c) => c.name), 'cycle capacity', 'team capacity'].sort())
+  assert.deepEqual(Object.keys(READS).sort(), [...COMMANDS.filter((c) => !c.write && !['init', 'link-repo', 'changelog', 'validate', 'issues parse-time', 'text redact'].includes(c.name)).map((c) => c.name), 'cycle capacity', 'team capacity'].sort())
   const root = makeRepo('team')
   const runAll = () => Object.entries(READS).map(([name, argv]) => {
     const result = run(root, [...name.split(' '), ...argv, '--json'])

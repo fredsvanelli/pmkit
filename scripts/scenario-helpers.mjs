@@ -710,7 +710,7 @@ export async function runScenario(scenario, { name, parsed, cliCommands, fixture
       const ignored = kind === 'dryRun' ? ['.git'] : ['.git', QUERY_CACHE]
       const before = reads ? hashTree(root, ignored) : null
       const full = kind === 'dryRun' ? [...args, '--dry-run', '--json'] : [...args, '--json']
-      const result = await exec(full, root, { env, input: entry.stdin })
+      const result = await exec(full, root, { env, input: typeof entry.stdin === 'function' ? entry.stdin(saved) : entry.stdin })
       const { json } = parseJson(result.stdout)
       rows.push(`$ pmkit ${show(full)}  [step ${entry.step}, ${LABELS[kind]}]`)
       rows.push(entry.expectError ? `exit ${result.code} (expected ${entry.expectError})` : `exit ${result.code}`)
