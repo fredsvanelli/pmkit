@@ -18,7 +18,8 @@
 - A missing view: step 4 suggests `views list` and does not guess a name.
 - An out of date view: shows the stored filter and the `--overwrite` fix, runs nothing by itself.
 - A broken view file: never replaced by a filter run, points to `pmkit validate`.
-- Linear (`saved_views` absent): says so and offers `issues list` with the same filter.
+- Linear (`saved_views` absent): says so and offers `/pmkit:issues:find` with the filter the user describes.
+- An invalid view name (`"Open Bugs"`): states the name rule and suggests `views list`, and is not treated as a broken file.
 - A cut or incomplete read: reported as incomplete, never as the full list.
 
 ### Task 1: Command, scenario and docs
