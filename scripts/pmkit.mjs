@@ -188,6 +188,14 @@ async function issuePatch(ctx, { create }) {
   const patch = {}
   const set = (key, value) => { if (value !== undefined) patch[key] = value }
   set('title', opt('title'))
+  if (create && opt('title-file') !== undefined) {
+    // A title read from a file never passes through the shell, so a backtick or $( in it stays text.
+    if (opt('title') !== undefined) throw usageError('--title and --title-file are exclusive', 'pass one of them')
+    const title = readInput(opt('title-file')).replace(/\n+$/, '')
+    if (title.trim() === '') throw usageError(`${opt('title-file')} has no title`, 'write the title on the first line')
+    if (title.includes('\n')) throw usageError(`${opt('title-file')} has more than one line`, 'a title is one line')
+    patch.title = title
+  }
   set('type', opt('type'))
   set('priority', create ? opt('priority') : orNull(opt('priority')))
   if (opt('estimate') !== undefined) {
@@ -509,11 +517,11 @@ export const COMMANDS = [
   },
   {
     name: 'issues create', summary: 'creates an issue', write: true,
-    usage: '--title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint id|current|none] [--due] [--milestone m] [--release r] [--description-file f] [--criteria-file f]',
-    flags: ['title', 'type', 'priority', 'estimate', 'assignee', 'label', 'parent', 'sprint', 'due', 'milestone', 'release', 'description-file', 'criteria-file'],
+    usage: '(--title t | --title-file f) [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint id|current|none] [--due] [--milestone m] [--release r] [--description-file f] [--criteria-file f]',
+    flags: ['title', 'title-file', 'type', 'priority', 'estimate', 'assignee', 'label', 'parent', 'sprint', 'due', 'milestone', 'release', 'description-file', 'criteria-file'],
     run: async (ctx) => {
       const patch = await issuePatch(ctx, { create: true })
-      if (patch.title === undefined) throw usageError('issues create needs --title', 'pmkit issues create --title "..."')
+      if (patch.title === undefined) throw usageError('issues create needs --title or --title-file', 'pmkit issues create --title "..."')
       const result = issueWrite(ctx, await (await ctx.tracker()).createIssue(patch, await ctx.actor(), { dryRun: ctx.dryRun }))
       return { ...result, warnings: await releasedWarnings(ctx, patch) }
     },

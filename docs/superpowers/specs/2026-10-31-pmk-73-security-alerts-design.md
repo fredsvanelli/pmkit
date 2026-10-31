@@ -19,7 +19,7 @@ Data: `{ absent, incomplete, scanners, unread, candidates, matched }`.
 
 - `absent` is `true` when no scanner is detected. The text says the `security_alerts` capability is absent in this repository and what is missing (`npm-audit needs package-lock.json or npm-shrinkwrap.json`).
 - `incomplete` is `true` when a scanner failed or the tracker read was cut (more issues than the read limit, or issue files that did not parse). The command creates nothing then. Its text and warnings say why.
-- A candidate is `{ key, id, scanner, package, severity, priority, title, url, fixAvailable, description }`.
+- A candidate is `{ key, id, scanner, package, severity, priority, type, title, url, fixAvailable, advisories, description }`.
 - A matched alert has the same fields plus `issue`, `status`.
 
 ### Key (my call, changed after review)
@@ -44,11 +44,15 @@ Follows the steps of `/pmkit:issues:todos`: scan, stop on `absent` or `incomplet
 
 ### Linear
 
-The command reads the repository and the tracker's issues, so it works on both trackers. `security_alerts` stays derived on both and `SERVED_BY` does not change.
+The command reads the repository and the tracker's issues, so it works on both trackers. `security_alerts` stays derived on both, so the manifest paths and the ADR-0001 counts do not change. `SERVED_BY.security_alerts` lists `alerts list` and `alerts scan`.
+
+### Titles and the shell
+
+The title of an issue comes from an npm advisory, so it is untrusted text. `issues create` takes `--title-file <file>` (exclusive with `--title`, one line, trailing newlines dropped, an empty file refused with `INVALID_INPUT`). The command writes each title to a temporary file and passes `--title-file`, so a backtick or `$(` in a title never reaches the shell. `todos.md` still passes `--title "<title>"` and is a follow-up.
 
 ### Known limits
 
-- `alerts list` shows one advisory per package (the first in `via`, PMK-185).
+- The `title` and `url` of an alert, and the `Advisory:` line of a new issue, come from the first advisory in `via` (PMK-185). `advisories` lists every advisory of the package, and the preview of a package that already has an issue shows them all.
 - Only npm audit is a scanner.
 - Fixed alerts do not close their issues.
 

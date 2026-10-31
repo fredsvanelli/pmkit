@@ -203,3 +203,25 @@ test('scanners[].alerts follows the --severity filter', async () => {
   assert.equal((await scan()).data.scanners[0].alerts, 4)
   assert.equal((await scan(['--severity', 'critical,high'])).data.scanners[0].alerts, 2)
 })
+
+test('issues create --title-file takes the title as it is, with a backtick and a command substitution', async () => {
+  const { pmkit } = setup()
+  const title = 'Security: x: a `touch pwned` and $(echo x) "quoted"'
+  const file = path.join(tempDir('pmkit-title-'), 'title.txt')
+  fs.writeFileSync(file, `${title}\r\n`)
+  const created = await pmkit(['issues', 'create', '--title-file', file, '--type', 'bug', '--json'])
+  assert.equal(created.code, 0, created.stdout + created.stderr)
+  assert.equal(JSON.parse(created.stdout).after.title, title)
+  const both = await pmkit(['issues', 'create', '--title', 'x', '--title-file', file, '--json'])
+  assert.equal(both.code, 2)
+  assert.equal(JSON.parse(both.stdout).error.code, 'INVALID_INPUT')
+  const empty = path.join(tempDir('pmkit-title-'), 'empty.txt')
+  fs.writeFileSync(empty, '\n')
+  assert.equal(JSON.parse((await pmkit(['issues', 'create', '--title-file', empty, '--json'])).stdout).error.code, 'INVALID_INPUT')
+})
+
+test('an alert title with a backtick and a command substitution reaches the candidate unchanged', async () => {
+  const out = JSON.stringify({ vulnerabilities: { a: { name: 'a', severity: 'high', via: [{ title: 'x `id` $(echo x)', url: 'https://example.com/z' }], fixAvailable: true } } })
+  const { scan } = setup({ out })
+  assert.equal((await scan()).data.candidates[0].title, 'Security: a: x `id` $(echo x)')
+})
