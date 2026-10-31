@@ -2,14 +2,16 @@
 id: PMK-46
 title: Add customers and requests to the Local tracker
 type: feature
-status: backlog
+status: in_progress
 priority: medium
 estimate: 5
+assignee: fred
 parent: EPC-6
 blocked_by: [PMK-2]
 milestone: generic-commands
+branch: pmk-46-add-customers-and-requests-to-the-local
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-25T19:13:25Z
+updated: 2026-10-31T15:55:02Z
 ---
 
 ## Description
