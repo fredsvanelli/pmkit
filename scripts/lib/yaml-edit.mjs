@@ -129,6 +129,23 @@ export function setMap(text, keyPath, object) {
   return join(lines)
 }
 
+/** Removes keyPath and the block under it. A key or parent the file lacks leaves the text as it is. */
+export function removeKey(text, keyPath) {
+  if (keyPath.length === 0) throw new Error('key path is empty')
+  const lines = split(text)
+  let found
+  try {
+    found = walk(lines, keyPath, { lastMayBeMissing: true })
+  } catch (error) {
+    if (/ not found$/.test(error.message)) return join(lines)
+    throw error
+  }
+  if (found.missing !== undefined) return join(lines)
+  const { last } = block(lines, found.header)
+  lines.splice(found.header, last - found.header + 1)
+  return join(lines)
+}
+
 export function addMapEntry(text, keyPath, key, value) {
   const lines = split(text)
   const { header } = walk(lines, keyPath, { lastMayBeMissing: false })
