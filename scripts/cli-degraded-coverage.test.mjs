@@ -95,6 +95,7 @@ const COVERED = {
   'customers list': 'REFUSALS', 'customers show': 'REFUSALS', 'customers create': 'REFUSALS', 'demand list': 'REFUSALS',
   'requests list': 'REFUSALS', 'requests get': 'REFUSALS', 'requests create': 'REFUSALS', 'requests accept': 'REFUSALS', 'requests decline': 'REFUSALS',
   'alerts list': 'REPO_SCAN',
+  'alerts scan': 'REPO_SCAN',
   'issues delegate': 'REFUSALS',
   'issues track-agents': 'REFUSALS',
   'inbox list': 'REFUSALS', 'inbox mark-read': 'REFUSALS',

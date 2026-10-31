@@ -116,7 +116,7 @@ test('the title and url come from the first advisory in via', () => {
   }))
   assert.deepEqual(alerts, [{
     id: 'npm-audit:lodash', scanner: 'npm-audit', package: 'lodash', title: 'Prototype Pollution', severity: 'high',
-    url: 'https://example.com/advisories/1', fixAvailable: true,
+    url: 'https://example.com/advisories/1', fixAvailable: true, advisories: [{ title: 'Prototype Pollution', url: 'https://example.com/advisories/1' }],
   }])
 })
 

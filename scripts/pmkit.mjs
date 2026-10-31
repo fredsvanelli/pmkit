@@ -24,7 +24,7 @@ import { NO_MOVE_MESSAGES, chooseUnit, proposeMoves, teamLoad } from './lib/team
 import { changeList, checkMembers, mergeCapacity, parseCapacityPairs, workingDays } from './lib/team-capacity.mjs'
 import { AGENT_ID, localRunLine } from './lib/delegation.mjs'
 import { delegationOf, prSummary, prText } from './lib/track-agents.mjs'
-import { SCANNERS, SEVERITIES, collectAlerts } from './lib/alerts.mjs'
+import { SCANNERS, SEVERITIES, alertCandidate, collectAlerts, matchAlerts } from './lib/alerts.mjs'
 import { READ_LIMIT, groupTodos, matchTodos, readExistingIssues, scanRepo } from './lib/todos.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { parseYaml } from './lib/yaml.mjs'
@@ -188,6 +188,14 @@ async function issuePatch(ctx, { create }) {
   const patch = {}
   const set = (key, value) => { if (value !== undefined) patch[key] = value }
   set('title', opt('title'))
+  if (create && opt('title-file') !== undefined) {
+    // A title read from a file never passes through the shell, so a backtick or $( in it stays text.
+    if (opt('title') !== undefined) throw usageError('--title and --title-file are exclusive', 'pass one of them')
+    const title = readInput(opt('title-file')).replace(/\n+$/, '')
+    if (title.trim() === '') throw usageError(`${opt('title-file')} has no title`, 'write the title on the first line')
+    if (title.includes('\n')) throw usageError(`${opt('title-file')} has more than one line`, 'a title is one line')
+    patch.title = title
+  }
   set('type', opt('type'))
   set('priority', create ? opt('priority') : orNull(opt('priority')))
   if (opt('estimate') !== undefined) {
@@ -509,11 +517,11 @@ export const COMMANDS = [
   },
   {
     name: 'issues create', summary: 'creates an issue', write: true,
-    usage: '--title t [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint id|current|none] [--due] [--milestone m] [--release r] [--description-file f] [--criteria-file f]',
-    flags: ['title', 'type', 'priority', 'estimate', 'assignee', 'label', 'parent', 'sprint', 'due', 'milestone', 'release', 'description-file', 'criteria-file'],
+    usage: '(--title t | --title-file f) [--type] [--priority] [--estimate] [--assignee] [--label l,..] [--parent] [--sprint id|current|none] [--due] [--milestone m] [--release r] [--description-file f] [--criteria-file f]',
+    flags: ['title', 'title-file', 'type', 'priority', 'estimate', 'assignee', 'label', 'parent', 'sprint', 'due', 'milestone', 'release', 'description-file', 'criteria-file'],
     run: async (ctx) => {
       const patch = await issuePatch(ctx, { create: true })
-      if (patch.title === undefined) throw usageError('issues create needs --title', 'pmkit issues create --title "..."')
+      if (patch.title === undefined) throw usageError('issues create needs --title or --title-file', 'pmkit issues create --title "..."')
       const result = issueWrite(ctx, await (await ctx.tracker()).createIssue(patch, await ctx.actor(), { dryRun: ctx.dryRun }))
       return { ...result, warnings: await releasedWarnings(ctx, patch) }
     },
@@ -1256,6 +1264,45 @@ export const COMMANDS = [
       // A failed scanner left part of the scan unread, so the text never reads as a clean result.
       if (failed.length > 0) text = [text, ...failed.map((scanner) => `incomplete: ${scanner.id} failed (${scanner.error}), so this result may miss alerts`)].join('\n')
       return { data: { incomplete: failed.length > 0, scanners, alerts }, text, warnings: found.warnings }
+    },
+  },
+  {
+    name: 'alerts scan', summary: 'security alerts no issue covers yet, each with a type, a priority from the severity and a description that holds its alert-key line; reads only', usage: '[--severity critical,high,medium,low]', flags: ['severity'],
+    run: async (ctx) => {
+      const wanted = csv(ctx.list('severity'))
+      const unknown = wanted.filter((value) => !SEVERITIES.includes(value))
+      if (unknown.length > 0) throw usageError(`--severity must be one of ${SEVERITIES.join(', ')}, not ${unknown.join(', ')}`)
+      ctx.config()
+      const found = collectAlerts(ctx.root, { env: ctx.env })
+      const failed = found.scanners.filter((scanner) => scanner.error !== undefined)
+      const warnings = [...found.warnings]
+      const noUnread = { count: 0, ids: [] }
+      if (!found.scanners.some((scanner) => scanner.detected)) {
+        const looked = SCANNERS.map((scanner) => `${scanner.id} needs ${scanner.needs}`).join('; ')
+        return { data: { absent: true, incomplete: false, scanners: found.scanners, unread: noUnread, candidates: [], matched: [] }, text: `security alerts are absent in this repository: no scanner found (${looked})`, warnings }
+      }
+      const tracker = await ctx.tracker()
+      const { priorities, types } = await tracker.discover()
+      const alerts = wanted.length === 0 ? found.alerts : found.alerts.filter((alert) => wanted.includes(alert.severity))
+      // The per-scanner count follows the filter, like alerts list, so scanners[].alerts adds up to the alerts scanned.
+      const scanners = found.scanners.map((scanner) => ({ ...scanner, alerts: alerts.filter((alert) => alert.scanner === scanner.id).length }))
+      const existing = await readExistingIssues(tracker)
+      const { candidates, matched } = matchAlerts(alerts.map((alert) => alertCandidate(alert, { priorities, types })), existing.issues)
+      warnings.push(...existing.problems.map(problemLine))
+      for (const scanner of failed) warnings.push(`incomplete: ${scanner.id} failed (${scanner.error}), so this list may miss alerts. Do not create issues from this list`)
+      if (existing.cut) warnings.push(`incomplete: the tracker has more issues than the ${READ_LIMIT} pmkit read, so an alert that an issue covers may show as new. Do not create issues from this list`)
+      if (existing.unread.count > 0) {
+        const { count, ids } = existing.unread
+        const which = ids.length > 0 ? ` (${ids.join(', ')})` : ''
+        const next = ctx.config().system === 'local' ? 'Run /pmkit:local:doctor to fix them, then scan again' : 'Fix them in the tracker, then scan again'
+        warnings.push(`incomplete: ${count} ${count === 1 ? 'issue' : 'issues'} could not be read${which}, so an alert that one of them covers may show as new. Do not create issues from this list. ${next}`)
+      }
+      const incomplete = failed.length > 0 || existing.incomplete
+      const parts = []
+      if (candidates.length > 0) parts.push(table(['Key', 'Severity', 'Priority', 'Package', 'Title'], candidates.map((c) => [c.key, c.severity, c.priority ?? '', c.package, c.title])))
+      if (matched.length > 0) parts.push(`already in the tracker:\n${table(['Issue', 'Status', 'Severity', 'Package', 'Title'], matched.map((m) => [m.issue, m.status ?? '', m.severity, m.package, m.advisories.length > 0 ? m.advisories.map((item) => item.title ?? item.url).join('; ') : m.title]))}`)
+      const empty = failed.length === 0 ? 'no alerts' : 'no alerts read'
+      return { data: { absent: false, incomplete, scanners, unread: existing.unread, candidates, matched }, text: parts.length > 0 ? parts.join('\n\n') : empty, warnings, notes: await capabilityNotes(tracker, 'security_alerts') }
     },
   },
   {

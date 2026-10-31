@@ -30,7 +30,7 @@ export const SERVED_BY = {
   time_tracking: ['issues log-time', 'issues time-entries'],
   linked_code: ['issues branch', 'pr open', 'pr ready', 'pr status', 'pr sync', 'deploys list', 'ci logs', 'pr diff', 'pr blockers'],
   agent_delegation: ['issues delegate', 'issues track-agents'],
-  security_alerts: ['alerts list'],
+  security_alerts: ['alerts list', 'alerts scan'],
   user_inbox: ['inbox list', 'inbox mark-read'],
 }
 

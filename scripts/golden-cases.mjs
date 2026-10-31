@@ -127,6 +127,7 @@ export const CASES = {
   'team load': () => [[]],
   'team capacity': (a) => [[], ['--sprint', a.sprint]],
   'alerts list': () => [[]],
+  'alerts scan': () => [[]],
   'todos scan': () => [[]],
   'issues branch': (a) => [[a.issue]],
   'pr open': (a) => [['--issue', a.issue]],
