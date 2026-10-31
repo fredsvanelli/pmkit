@@ -2,7 +2,7 @@
 id: PMK-60
 title: Add the log-time command
 type: feature
-status: in_progress
+status: in_review
 priority: medium
 estimate: 2
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-51]
 milestone: generic-commands
 branch: pmk-60-add-the-log-time-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-31T17:16:34Z
+updated: 2026-10-31T17:17:06Z
 ---
 
 ## Description
