@@ -1,6 +1,6 @@
 # EPC-6 follow-ups
 
-The implementers and reviewers of EPC-6 ("Remaining generic commands") suggested these improvements. None of them is a defect. The defects found in the same reviews are issues PMK-175 to PMK-196. This list stays here until each item becomes an issue or is dropped.
+The implementers and reviewers of EPC-6 ("Remaining generic commands") suggested these improvements. None of them is a defect. The defects found in the same reviews are issues PMK-175 to PMK-200. This list stays here until each item becomes an issue or is dropped.
 
 ## PMK-48: alerts list
 
@@ -146,6 +146,25 @@ The implementers and reviewers of EPC-6 ("Remaining generic commands") suggested
 - A `docs` field on issues, so a link to an ADR is not only a comment.
 - A command to change the status of an existing ADR (superseded, deprecated).
 - Read `origin/HEAD` when `default_branch` is not set.
+
+## PMK-58: track-agents
+
+- A Linear fallback that finds pull requests by agent authors, instead of `NOT_SUPPORTED`.
+- An `--agent` filter.
+
+## PMK-63: investigate-bug
+
+- Have `ci logs` return the run's `createdAt`, `conclusion` and `headSha`, so a stale failure does not depend on `pr status`.
+- Scenarios for the degraded paths (no branch, `git_host: none`).
+- A `--redact` flag on `issues comment`, so the CLI redacts any comment body.
+- Read the code of the issue's branch instead of the working tree.
+
+## PMK-73: security-alerts
+
+- Fold transitive advisories into the root package's issue, once `alerts list` carries the `via` graph.
+- Comment on or close an issue whose alert is gone from the audit.
+- Show the current priority of a matched issue and flag a severity that went up.
+- A scenario with a fake npm, and scanners besides `npm audit`.
 
 ## PMK-175: alerts list on Windows
 
