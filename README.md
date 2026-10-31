@@ -30,6 +30,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 - `/pmkit:issues:estimate`: Propose an estimate for an issue from the code it affects and from similar completed issues, and save it after confirmation.
 - `/pmkit:issues:find`: Find issues with a plain-language question, such as "high-priority bugs in the current sprint".
 - `/pmkit:issues:link`: Link two issues (blocks, related, duplicate), remove a link, or set a parent.
+- `/pmkit:issues:log-time`: Log time worked on an issue after confirmation and show its total, or suggest a comment when the tracker has no time tracking.
 - `/pmkit:issues:mine`: List the issues assigned to the user, with the state of their pull requests and the next one to pick up.
 - `/pmkit:issues:move`: Move an issue to a status category: in progress, in review, done.
 - `/pmkit:issues:pause`: Pause work on an issue, leave a handoff note and push a draft PR when there is code.
@@ -80,7 +81,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `issues link <from> <to> --kind blocks\|related\|duplicate` | links or unlinks (`--remove`) two issues |
 | `issues parent <id> <parent\|none>` | sets the parent |
 | `issues comment <id> --body-file f` | adds a comment |
-| `issues log-time <id> <minutes>` | logs time |
+| `issues log-time <id> <time>` | logs time; `<time>` is minutes (`90`, `45m`) or hours (`2h`, `1h30`, `1.5h`), from 1 minute to 24 hours |
 | `issues time-entries <id>` | lists the time logged on an issue, with the total |
 | `issues archive <id>` | archives an issue |
 | `issues delete <id>` | deletes an issue for good, and refuses while another issue lists it as blocked by, related, duplicate of or parent. `--dry-run` is the full preview. Archive keeps the record and its history, delete does not |

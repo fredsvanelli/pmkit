@@ -580,7 +580,7 @@ export const COMMANDS = [
     run: async (ctx) => {
       const minutes = parseMinutes(ctx.args[1])
       const result = await (await ctx.tracker()).logTime(ctx.args[0], minutes, await ctx.actor(), { dryRun: ctx.dryRun })
-      return { data: result, text: writeText(null, { dryRun: ctx.dryRun, header: `logged ${minutes} minutes on ${result.after.id}` }), commit: result.after.id }
+      return { data: { ...result, minutes }, text: writeText(null, { dryRun: ctx.dryRun, header: `logged ${minutes} minutes on ${result.after.id}` }), commit: result.after.id }
     },
   },
   {

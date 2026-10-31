@@ -32,6 +32,7 @@ Each command file holds the full procedure. When the user asks for one of these 
 | propose an estimate for an issue from the code it affects and from similar completed issues, and save it after confirmation | `/pmkit:issues:estimate` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/estimate.md` |
 | find issues with a plain-language question, such as "high-priority bugs in the current sprint" | `/pmkit:issues:find` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/find.md` |
 | link two issues (blocks, related, duplicate), remove a link, or set a parent | `/pmkit:issues:link` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/link.md` |
+| log time worked on an issue after confirmation and show its total, or suggest a comment when the tracker has no time tracking | `/pmkit:issues:log-time` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/log-time.md` |
 | list the issues assigned to the user, with the state of their pull requests and the next one to pick up | `/pmkit:issues:mine` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/mine.md` |
 | move an issue to a status category: in progress, in review, done | `/pmkit:issues:move` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/move.md` |
 | pause work on an issue, leave a handoff note and push a draft PR when there is code | `/pmkit:issues:pause` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/pause.md` |

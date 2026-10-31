@@ -2260,6 +2260,7 @@ test('log-time reads readable durations and refuses invalid ones with INVALID_IN
   const root = makeRepo('team')
   const logged = json(root, ['issues', 'log-time', 'ISS-3F7H', '1h30'])
   assert.equal(logged.after.id, 'ISS-3F7H')
+  assert.equal(logged.minutes, 90, 'the JSON carries the parsed minutes, so the command can show them')
   assert.equal(json(root, ['issues', 'time-entries', 'ISS-3F7H']).total, 90)
   for (const bad of ['0', '-5', 'abc', '1.5', '1h90']) {
     const result = run(root, ['issues', 'log-time', 'ISS-3F7H', bad, '--json'])

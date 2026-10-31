@@ -62,7 +62,8 @@ exit 0
     "priority": "high",
     "estimate": 5,
     "assignee": "ana"
-  }
+  },
+  "minutes": 30
 }
 --- stderr
 (empty)
@@ -132,7 +133,8 @@ exit 0
     "priority": "high",
     "estimate": 5,
     "assignee": "ana"
-  }
+  },
+  "minutes": 30
 }
 --- stderr
 (empty)
