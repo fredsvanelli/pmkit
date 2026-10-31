@@ -11,6 +11,11 @@ export const HARD_MAX = 200
 
 const invalid = (message, nextStep = 'pmkit issues bulk --help') => new PmkitError('INVALID_INPUT', message, nextStep)
 const orNull = (value) => (value === 'none' ? null : value)
+// A label is one name. `issues update --label` takes a list, but bulk adds or removes one label, so a comma is a mistake.
+const oneLabel = (value) => {
+  if (value.includes(',')) throw invalid(`"${value}" is one label with a comma in it; bulk adds or removes one label at a time`, 'Run the command once for each label')
+  return value
+}
 const patchOf = (patch) => (tracker, issue, actor, options) => tracker.updateIssue(issue.id, patch, actor, options)
 
 // Per change: how to read the value into `text` and an `apply(tracker, issue, actor, { dryRun })` that returns { before, after }.
@@ -29,11 +34,11 @@ const BUILDERS = {
     if (estimate !== null && !Number.isFinite(estimate)) throw invalid(`estimate "${value}" is not a number or none`)
     return { text: `set estimate to ${value}`, apply: patchOf({ estimate }) }
   },
-  'label-add': (value) => ({
+  'label-add': (value) => oneLabel(value) && ({
     text: `add label ${value}`,
     apply: (tracker, issue, actor, options) => tracker.updateIssue(issue.id, { labels: [...new Set([...(issue.labels ?? []), value])] }, actor, options),
   }),
-  'label-remove': (value) => ({
+  'label-remove': (value) => oneLabel(value) && ({
     text: `remove label ${value}`,
     apply: (tracker, issue, actor, options) => tracker.updateIssue(issue.id, { labels: (issue.labels ?? []).filter((label) => label !== value) }, actor, options),
   }),
@@ -67,14 +72,15 @@ export function parseChange(kind, value, flags = {}) {
 
 /**
  * The rules of a bulk filter, for flags and for a saved view alike. `where` names the source in the message.
- * `archived`, `limit` and `sort` change which issues come back or how many, so they are refused. An empty value
- * matches everything, so it is refused too, and at least one criterion must narrow the set.
+ * `archived` and `limit` change which issues come back or how many, so they are refused. A `sort` only orders the set,
+ * so it is allowed next to a criterion but never counts as one. An empty value matches everything, so it is refused too,
+ * and at least one criterion must narrow the set.
  */
 export function checkBulkFilter(filter, where) {
-  for (const key of ['archived', 'limit', 'sort']) {
+  for (const key of ['archived', 'limit']) {
     if (filter[key] === undefined || (key === 'archived' && filter[key] === false)) continue
-    const why = key === 'archived' ? 'archived issues stay out of a bulk change' : key === 'limit' ? 'a limit cuts the set, and a bulk change needs the whole set' : 'a sort does not narrow the set'
-    throw invalid(`${where} has ${key}: ${why}`, 'Use a filter without archived, limit and sort')
+    const why = key === 'archived' ? 'archived issues stay out of a bulk change' : 'a limit cuts the set, and a bulk change needs the whole set'
+    throw invalid(`${where} has ${key}: ${why}`, 'Use a filter without archived and limit')
   }
   let narrows = 0
   for (const [key, value] of Object.entries(filter)) {

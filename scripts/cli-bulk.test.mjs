@@ -7,6 +7,7 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
 import { ADAPTERS } from './lib/adapters.mjs'
+import { PmkitError } from './lib/errors.mjs'
 import { hashTree, makeRepo } from './test-helpers.mjs'
 
 process.env.GIT_CONFIG_GLOBAL = os.devNull
@@ -182,6 +183,24 @@ test('a view with archived or with only a sort is refused like the flags are', a
   })
 })
 
+test('a view with a criterion and a sort is accepted, and the sort orders the preview', async () => {
+  await withRepo(async (root, ids) => {
+    await ok(root, ['views', 'save', 'sorted', '--label', 'legacy', '--sort', 'priority'])
+    const result = await bulk(root, 'priority', 'high', '--view', 'sorted', '--dry-run')
+    assert.equal(result.code, 0, JSON.stringify(result.body))
+    assert.equal(result.body.matched, 3)
+    assert.deepEqual(result.body.items.map((item) => item.id).sort(), [ids.A, ids.B, ids.D].sort())
+  })
+})
+
+test('a label value with a comma is one INVALID_INPUT and nothing is previewed', async () => {
+  await withRepo(async (root) => {
+    const result = await bulk(root, 'label-add', 'a,b', '--label', 'legacy', '--dry-run')
+    assert.equal(result.body.error.code, 'INVALID_INPUT')
+    assert.equal(result.body.items, undefined)
+  })
+})
+
 test('an empty filter value is refused instead of matching every issue', async () => {
   await withRepo(async (root) => {
     const result = await bulk(root, 'priority', 'high', '--text', '', '--dry-run')
@@ -271,5 +290,34 @@ test('a write that fails midway stops, lists what changed and what is left, and 
     assert.equal((await ok(root, ['issues', 'get', ids.D])).assignee, undefined)
     assert.match(git('log', '-1', '--format=%s').stdout, /issues bulk/)
     assert.equal(git('status', '--porcelain').stdout, '')
+  })
+})
+
+test('a stop midway keeps applied and failed in the result even when the write failed with CONFLICT', async () => {
+  await withRepo(async (root, ids) => {
+    const flaky = {
+      ...ADAPTERS,
+      local: {
+        ...ADAPTERS.local,
+        create: async (...args) => {
+          const tracker = await ADAPTERS.local.create(...args)
+          let writes = 0
+          const assign = tracker.assign
+          tracker.assign = (id, who, actor, options) => {
+            if (!options?.dryRun && ++writes === 2) throw new PmkitError('CONFLICT', 'changed under us', 'retry')
+            return assign(id, who, actor, options)
+          }
+          return tracker
+        },
+      },
+    }
+    const args = ['issues', 'bulk', 'assign', 'fred', '--label', 'legacy']
+    const { digest } = (await cli(root, [...args, '--dry-run'], flaky)).body
+    const result = await cli(root, [...args, '--expect', digest], flaky)
+    assert.equal(result.code, 2)
+    assert.equal(result.body.error.code, 'CONFLICT')
+    assert.deepEqual(result.body.result.applied, [ids.A])
+    assert.equal(result.body.result.failed.id, ids.B)
+    assert.equal((await ok(root, ['issues', 'get', ids.A])).assignee, 'fred')
   })
 })

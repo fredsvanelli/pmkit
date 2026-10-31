@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { CHANGES, buildPreview, fieldChanges, parseChange } from './lib/bulk.mjs'
+import { CHANGES, buildPreview, checkBulkFilter, fieldChanges, parseChange } from './lib/bulk.mjs'
 
 const issue = (id, extra = {}) => ({ id, title: `Issue ${id}`, status: { name: 'Todo', category: 'todo' }, labels: [], updated: '2026-10-23T10:00:00Z', ...extra })
 const calls = []
@@ -101,4 +101,17 @@ test('nothing to write has no digest and no blocker', () => {
   assert.equal(preview.writes, 0)
   assert.equal(preview.digest, null)
   assert.deepEqual(preview.blockers, [])
+})
+
+test('a label value with a comma is refused, because it would be one label named "a,b"', () => {
+  for (const kind of ['label-add', 'label-remove']) {
+    assert.throws(() => parseChange(kind, 'a,b', {}), (error) => error.code === 'INVALID_INPUT' && /one label/.test(error.message))
+  }
+})
+
+test('checkBulkFilter accepts a sort next to a criterion and refuses a sort alone, archived and limit', () => {
+  assert.doesNotThrow(() => checkBulkFilter({ labels: ['legacy'], sort: 'priority' }, 'view v'))
+  assert.throws(() => checkBulkFilter({ sort: 'priority' }, 'view v'), /narrows/)
+  assert.throws(() => checkBulkFilter({ labels: ['x'], archived: true }, 'view v'), /archived/)
+  assert.throws(() => checkBulkFilter({ labels: ['x'], limit: 1 }, 'view v'), /limit/)
 })
