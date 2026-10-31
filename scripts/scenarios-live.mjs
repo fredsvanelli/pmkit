@@ -93,6 +93,7 @@ const LIVE_EXPECT_STOPS = {
   'issues-find': 'the two result lists, the only thing a read-only find checks',
   'issues-mine': 'the sync, list and PR status results the agent shows',
   'issues-pause': 'the PR preview and view results',
+  'issues-run-view': 'the result of the saved view in the scripted run, which is the only thing the run reads',
   'issues-summary.1': 'the epic, update and children results the summary shows',
   'issues-work': 'the readiness, PR preview and PR view results, and the follow-up issue, whose ID the agent gets',
   'local-doctor': 'the doctor results and the ISS-5 conflict resolution, which needs a file edit',

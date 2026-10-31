@@ -11,7 +11,7 @@ blocked_by: [PMK-44]
 milestone: generic-commands
 branch: pmk-54-add-the-run-saved-view-command
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-31T19:32:27Z
+updated: 2026-10-31T19:35:41Z
 ---
 
 ## Description
@@ -20,4 +20,4 @@ Source: Unified model, Foundation catalog (`run-custom-view`: "Runs an existing 
 
 ## Acceptance criteria
 
-- [ ] Runs a saved view by name and shows the issues table
+- [x] Runs a saved view by name and shows the issues table
