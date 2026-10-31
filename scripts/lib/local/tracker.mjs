@@ -503,6 +503,113 @@ export function createLocalTracker(root, {
     })
   }
 
+  const REFERENCE_KINDS = ['blockedBy', 'related', 'duplicateOf']
+  const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const commentTexts = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((name) => name.endsWith('.md')).map((name) => fs.readFileSync(path.join(dir, name), 'utf8')) : [])
+  const filesUnder = (dir) => fs.readdirSync(dir, { withFileTypes: true })
+    .flatMap((entry) => (entry.isDirectory() ? filesUnder(path.join(dir, entry.name)) : [path.join(dir, entry.name)]))
+    .sort()
+  const unlinkStep = (id, { id: other, kind }) => ({
+    blockedBy: `pmkit issues link ${id} ${other} --kind blocks --remove`,
+    related: `pmkit issues link ${other} ${id} --kind related --remove`,
+    duplicateOf: `pmkit issues link ${other} ${id} --kind duplicate --remove`,
+    parent: `pmkit issues parent ${other} none`,
+  })[kind]
+
+  /** What a delete warns about: the issue's own sprint, release, assignee, time, todo-key and branch, and the views that filter on it. */
+  function deleteWarnings(issue, paths) {
+    const warnings = []
+    if (issue.sprint !== undefined) {
+      const state = sprintExists(issue.sprint) ? readSprint(sprintsDir, String(issue.sprint)).state : undefined
+      const closed = state === 'closed' ? '; the velocity of that closed sprint no longer counts it' : ''
+      warnings.push(`it belongs to sprint ${issue.sprint}${state ? ` (${state})` : ''}, which loses it${closed}`)
+    }
+    if (issue.release !== undefined) {
+      try {
+        if (getRelease(issue.release).released) warnings.push(`release ${issue.release} is already released and loses this issue`)
+      } catch (error) {
+        if (!(error instanceof PmkitError)) throw error
+        warnings.push(`release ${issue.release} could not be read, so it was not checked`)
+      }
+    }
+    if (issue.assignee !== undefined && AGENT_ID.test(issue.assignee)) warnings.push(`it is assigned to ${issue.assignee}, which may still be working on it`)
+    const minutes = readEvents(paths.events).events
+      .filter((event) => event.op === 'log_time' && Number.isInteger(event.minutes) && event.minutes > 0)
+      .reduce((sum, event) => sum + event.minutes, 0)
+    if (minutes > 0) warnings.push(`${minutes} minutes logged on it are deleted with it`)
+    if (/^todo-key:[ \t]*[0-9a-f]{12}[ \t]*\r?$/m.test(`${issue.description ?? ''}\n${issue.body ?? ''}`)) {
+      warnings.push('it holds a todo-key line, so the next todos run lists its comment as new again')
+    }
+    for (const name of [...viewStems(viewsDir)].filter(validViewName).sort()) {
+      try {
+        if (parseView(fs.readFileSync(path.join(viewsDir, `${name}.yaml`), 'utf8'), name).filter.parent === issue.id) warnings.push(`view ${name} filters on this issue as parent and will find nothing`)
+      } catch (error) {
+        if (!(error instanceof PmkitError)) throw error
+        warnings.push(`view ${name} could not be read, so it was not checked`)
+      }
+    }
+    if (issue.branch !== undefined) warnings.push(`branch ${issue.branch} and its pull request stay as they are`)
+    return warnings
+  }
+
+  /**
+   * Deletes the issue folder. It refuses, writing nothing, when another issue lists this one in blockedBy, related or duplicateOf or has it
+   * as parent, and when an issue file does not parse, because that file may hold a reference. Archived issues count.
+   * A sprint or release, logged time, a view and the branch are warnings, and the issues that cite the ID in text are listed as mentions.
+   */
+  function deleteIssue(id, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const { issue, paths } = readIssue(id)
+    const { issues, problems } = readAll({ save: !dryRun })
+    if (problems.length > 0) {
+      throw new PmkitError(
+        'INVALID_INPUT',
+        `${problems.length} issue ${problems.length === 1 ? 'file does' : 'files do'} not parse (${problems.map((problem) => problem.id).join(', ')}), so the references to ${issue.id} cannot be checked`,
+        'Run pmkit validate, fix the files with /pmkit:local:doctor, then delete again',
+        { problems },
+      )
+    }
+    const others = issues.filter((other) => other.id !== issue.id)
+    const references = others.flatMap((other) => [
+      ...REFERENCE_KINDS.filter((kind) => other[kind].includes(issue.id)).map((kind) => ({ id: other.id, kind })),
+      ...(other.parent === issue.id ? [{ id: other.id, kind: 'parent' }] : []),
+    ])
+    if (references.length > 0) {
+      throw new PmkitError(
+        'CONFLICT',
+        `${issue.id} is referenced by ${references.length === 1 ? 'one record' : `${references.length} records`}: ${references.map((ref) => `${ref.id} (${ref.kind})`).join(', ')}`,
+        `Remove each reference, then delete again. First: ${unlinkStep(issue.id, references[0])}. To keep the history instead, archive it: pmkit issues archive ${issue.id}`,
+        { references },
+      )
+    }
+    const mention = new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(issue.id)}(?![A-Za-z0-9_])`)
+    const mentions = others.flatMap((other) => [
+      ...(mention.test(`${other.description ?? ''}\n${other.body ?? ''}`) ? [{ id: other.id, in: 'description' }] : []),
+      ...(commentTexts(issuePaths(issuesDir, other.id).comments).some((text) => mention.test(text)) ? [{ id: other.id, in: 'comment' }] : []),
+    ])
+    const rel = (file) => path.relative(config.root, file).split(path.sep).join('/')
+    const files = filesUnder(paths.dir)
+    const removes = {
+      dir: rel(paths.dir),
+      files: files.map(rel),
+      events: readEvents(paths.events).events.length,
+      comments: files.filter((file) => file.startsWith(`${paths.comments}${path.sep}`)).length,
+    }
+    const result = { before: withComputed(issue, issues), after: null, removes, references: [], mentions, warnings: deleteWarnings(issue, paths), unchecked: ['code comments, documents and docs/'] }
+    if (dryRun) return result
+    fs.rmSync(paths.dir, { recursive: true })
+    writtenPaths.add(paths.dir)
+    // A read drops an entry whose folder is gone. Reading now keeps the index file in step with the tree.
+    if (indexMode === true) {
+      try {
+        indexedRead(true)
+      } catch {
+        // The index only makes reads faster. The next search rebuilds it.
+      }
+    }
+    return result
+  }
+
   const knownIssue = (id) => readIssue(id).issue.id
 
   function listEdit(op, prop, field, other) {
@@ -1274,7 +1381,7 @@ export function createLocalTracker(root, {
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     listMilestones, getMilestone, createMilestone, unfiledMilestones,
     listReleases, getRelease, createRelease, releaseIssues, markReleased,
-    getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, delegate, archive, link, unlink, setParent,
+    getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, delegate, archive, delete: deleteIssue, link, unlink, setParent,
     comment, resolveThread, listComments, getHistory, logTime, listTimeEntries, readDocument, createDocument, listDocuments,
     discover, capabilities, reindex, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
     listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity, getDaysOff, updateCycleCapacity,
