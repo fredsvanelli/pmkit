@@ -19,6 +19,7 @@ import { dependencyMap, serializable } from './lib/dependencies.mjs'
 import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 import { pathNote } from './lib/path-notes.mjs'
 import { NO_MOVE_MESSAGES, chooseUnit, proposeMoves, teamLoad } from './lib/team-load.mjs'
+import { changeList, checkMembers, mergeCapacity, parseCapacityPairs, workingDays } from './lib/team-capacity.mjs'
 import { localRunLine } from './lib/delegation.mjs'
 import { SCANNERS, SEVERITIES, collectAlerts } from './lib/alerts.mjs'
 import { READ_LIMIT, groupTodos, matchTodos, readExistingIssues, scanRepo } from './lib/todos.mjs'
@@ -1013,6 +1014,11 @@ export const COMMANDS = [
     run: (ctx) => runTeamLoad(ctx),
   },
   {
+    name: 'team capacity', summary: 'capacity and days off per member for a sprint, with the load effect of a change; --set and --days-off write them', write: true, readUnless: ['set', 'days-off'],
+    usage: '[--sprint current|id] [--set member=n|none,..] [--days-off member=date+date|none,..]', flags: ['sprint', 'set', 'days-off'],
+    run: (ctx) => runTeamCapacity(ctx),
+  },
+  {
     name: 'alerts list', summary: 'security alerts from the scanners the repository has (npm audit), highest severity first; reads only', usage: '[--severity critical,high,medium,low]', flags: ['severity'],
     run: (ctx) => {
       ctx.config() // loads and checks .pmkit/config.yaml like every command, though alerts never read the tracker
@@ -1521,7 +1527,7 @@ async function runTeamLoad(ctx) {
  * The load report of `team load`. `wanted` is `current`, a sprint id or undefined. `requireSprint` fails with NOT_FOUND when no sprint is
  * in scope. `capacity` and `daysOff` replace the stored maps, which `team capacity` uses to show the load a change would give.
  */
-async function teamLoadReport(ctx, { wanted, requireSprint = false, capacity: capacityOverride, daysOff: daysOffOverride }) {
+async function teamLoadReport(ctx, { wanted, requireSprint = false, capacity: capacityOverride, daysOff: daysOffOverride, withAging = true }) {
   const tracker = await ctx.tracker()
   const notes = []
   const warnings = []
@@ -1553,10 +1559,13 @@ async function teamLoadReport(ctx, { wanted, requireSprint = false, capacity: ca
   const capacity = capacityOverride ?? (sprint ? await orSupported(() => tracker.getCapacity(sprint.id), {}) : {})
   const daysOff = daysOffOverride ?? (sprint ? await orSupported(() => tracker.getDaysOff(sprint.id), {}) : {})
   if (sprint) notes.push(...(await capabilityNotes(tracker, 'capacity')))
-  const { categoryOf, events, warnings: capped } = await flowInputs(tracker)
-  warnings.push(...capped)
-  const asOf = ctx.now().toISOString().replace(/\.\d{3}Z$/, 'Z')
-  const report = teamLoad(found.issues, { members: teamMembers((await tracker.discover()).members, ctx.config().pmkit?.tracker?.scope?.team), aging: aging(events, { categoryOf, asOf }), capacity, daysOff, unit: choice.unit })
+  let ages = []
+  if (withAging) {
+    const { categoryOf, events, warnings: capped } = await flowInputs(tracker)
+    warnings.push(...capped)
+    ages = aging(events, { categoryOf, asOf: ctx.now().toISOString().replace(/\.\d{3}Z$/, 'Z') })
+  }
+  const report = teamLoad(found.issues, { members: teamMembers((await tracker.discover()).members, ctx.config().pmkit?.tracker?.scope?.team), aging: ages, capacity, daysOff, unit: choice.unit })
   if (report.unknownLoad.length > 0) {
     const n = report.unknownLoad.length
     notes.push(`${n} ${n === 1 ? 'member has' : 'members have'} open issues and no estimate: their load is unknown, so they stay out of the average, the flags and the proposed moves`)
@@ -1565,12 +1574,74 @@ async function teamLoadReport(ctx, { wanted, requireSprint = false, capacity: ca
   if (choice.unit !== 'issues' && counted.some((n) => n > 0)) {
     warnings.push(`some issues have no estimate and count 0 ${choice.unit}; the Unestimated column shows how many per member`)
   }
-  notes.push(...(await metricNotes(tracker, 'aging')))
+  if (withAging) notes.push(...(await metricNotes(tracker, 'aging')))
   const proposal = truncated ? { moves: [], reason: null } : proposeMoves(report, found.issues)
   const suggestions = proposal.moves
   const noMoves = proposal.reason === null ? null : { reason: proposal.reason, message: NO_MOVE_MESSAGES[proposal.reason] }
   const data = { sprint: sprint ? { id: sprint.id, name: sprint.name, start: sprint.start, end: sprint.end } : null, truncated, ...report, suggestions, noMoves }
-  return { data, warnings, notes }
+  return { data, warnings, notes, sprint, incomplete: truncated || found.problems.length > 0 }
+}
+
+const HUMAN_ROW = (row) => !row.agent && row.isMember
+
+/** The part of a load report that a capacity change moves: the imbalances and the flags per member. Null when the read was cut. */
+const loadView = (report, incomplete) => (incomplete ? null : { imbalances: report.imbalances, flags: Object.fromEntries(report.rows.filter(HUMAN_ROW).map((row) => [row.member, row.flags])) })
+
+/** Capacity and days off per member for a sprint. With --set or --days-off it writes them in one tracker call, so a batch is atomic. */
+async function runTeamCapacity(ctx) {
+  const tracker = await ctx.tracker()
+  const wanted = ctx.opt('sprint') ?? 'current'
+  const writing = ctx.opt('set') !== undefined || ctx.opt('days-off') !== undefined
+  const current = await teamLoadReport(ctx, { wanted, requireSprint: true, withAging: false })
+  const { sprint, incomplete } = current
+  const humans = current.data.rows.filter(HUMAN_ROW)
+  const warnings = [...current.warnings]
+  const unit = current.data.unit
+  const members = (report, hide) => humans.map((row) => {
+    const live = report.rows.find((item) => item.member === row.member)
+    return {
+      member: row.member, name: row.name, availability: row.availability ?? null, capacity: live.capacity, daysOff: live.daysOff,
+      workingDays: workingDays(sprint, live.daysOff), estimate: hide ? null : live.estimate, load: hide ? null : live.load, flags: hide ? null : live.flags,
+    }
+  })
+  const header = `sprint ${sprint.id} (${sprint.start} to ${sprint.end}), capacity${unit === 'issues' ? '' : ` in ${unit}`}`
+  if (!writing) {
+    const data = { sprint: { id: sprint.id, name: sprint.name, start: sprint.start, end: sprint.end }, unit, sprintWorkingDays: workingDays(sprint), members: members(current.data, incomplete), imbalances: incomplete ? null : current.data.imbalances, notes: current.notes, warnings }
+    const label = unit === 'issues' ? 'Capacity' : `Capacity (${unit})`
+    const text = [header, table(['Member', 'Availability', label, 'Days off', 'Working days', 'Load', 'Flags'], data.members.map((row) => [row.member, row.availability ?? '', row.capacity ?? 'not set', row.daysOff.join(', '), row.workingDays, row.load ?? '?', (row.flags ?? []).join(', ')]))].join('\n')
+    return { data, text, warnings, notes: current.notes }
+  }
+  const set = ctx.opt('set') === undefined ? undefined : parseCapacityPairs(csv(ctx.list('set')))
+  const off = ctx.opt('days-off') === undefined ? undefined : parseDaysOff(ctx)
+  checkMembers([...Object.keys(set ?? {}), ...Object.keys(off ?? {})], humans.map((row) => row.member))
+  const capacity = set === undefined ? undefined : mergeCapacity(await tracker.getCapacity(sprint.id), set)
+  const result = await tracker.updateCycleCapacity(sprint.id, { capacity, daysOff: off }, await ctx.actor(), { dryRun: ctx.dryRun })
+  const ids = humans.map((row) => row.member)
+  const changes = changeList({ capacity: result.before.capacity, daysOff: result.before.daysOff }, { capacity: result.after.capacity, daysOff: result.after.daysOff }, ids)
+  let after = null
+  if (!incomplete) after = loadView((await teamLoadReport(ctx, { wanted: sprint.id, capacity: result.after.capacity, daysOff: result.after.daysOff, withAging: false })).data, false)
+  else warnings.push('the load effect of this change is not verified, because the issue read is incomplete')
+  const readNote = await capabilityNotes(tracker, 'capacity')
+  const notes = [...current.notes.filter((note) => !readNote.includes(note))]
+  if (readNote.length > 0 && (await tracker.capabilities()).capabilities.find((c) => c.id === 'capacity')?.path === 'derived') {
+    notes.push(ctx.dryRun ? 'capacity and days off would be written to .pmkit/capacity.yaml; Linear is not changed' : 'capacity and days off written to .pmkit/capacity.yaml; Linear was not changed')
+  }
+  const data = { dryRun: ctx.dryRun === true, sprint: { id: sprint.id, name: sprint.name, start: sprint.start, end: sprint.end }, unit, changes, load: { before: loadView(current.data, incomplete), after }, notes, warnings }
+  const lines = [header]
+  if (changes.length === 0) lines.push('no change')
+  for (const change of changes) {
+    lines.push(change.member)
+    if (change.capacity.before !== change.capacity.after) lines.push(`  capacity ${change.capacity.before ?? 'not set'} → ${change.capacity.after ?? 'not set'}`)
+    if (change.daysOff.before.join() !== change.daysOff.after.join()) lines.push(`  days off ${change.daysOff.before.join(', ') || 'none'} → ${change.daysOff.after.join(', ') || 'none'}`)
+  }
+  if (after !== null && data.load.before !== null) {
+    for (const member of ids) {
+      const [was, now] = [data.load.before.flags[member] ?? [], after.flags[member] ?? []]
+      if (was.join() !== now.join()) lines.push(`flags ${member}: ${was.join(', ') || 'none'} → ${now.join(', ') || 'none'}`)
+    }
+  }
+  if (ctx.dryRun) lines.push('dry run: nothing was written')
+  return { data, text: lines.join('\n'), warnings, notes, commit: sprint.id }
 }
 
 function teamLoadText(data) {

@@ -104,6 +104,7 @@ export const CASES = {
   events: () => [[]],
   risks: () => [[]],
   'team load': () => [[]],
+  'team capacity': (a) => [[], ['--sprint', a.sprint]],
   'alerts list': () => [[]],
   'todos scan': () => [[]],
   'issues branch': (a) => [[a.issue]],

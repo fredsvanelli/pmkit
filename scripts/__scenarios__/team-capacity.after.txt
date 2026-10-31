@@ -1,0 +1,21 @@
+$ pmkit team capacity --json  [step 1, read]
+exit 0
+$ pmkit team capacity --set ana=14,fred=9 --days-off fred=2026-10-14 --dry-run --json  [step 4, dry run]
+exit 0
+? Step 5  [confirmed]
+$ pmkit team capacity --set ana=14,fred=9 --days-off fred=2026-10-14 --json  [step 6, write]
+exit 0
+$ pmkit team capacity --json  [step 7, read]
+exit 0
+
+--- changed .issues/sprints/2026-10-12.yaml
+  name: Sprint 2026-10-12
+  start: 2026-10-12
+  end: 2026-10-25
+  goal: Webhook retries and the billing export
+  state: active
+-capacity: { fred: 8, ana: 10 }
++capacity: { fred: 9, ana: 14 }
+  days_off:
+    ana: [2026-10-16]
++  fred: [2026-10-14]

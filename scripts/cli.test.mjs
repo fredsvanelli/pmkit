@@ -1464,6 +1464,8 @@ test('configClass sorts every call into exempt, read or write', () => {
   assert.equal(configClass(cmd('cycle capacity'), {}), 'read')
   assert.equal(configClass(cmd('cycle capacity'), { set: 'fred=5' }), 'write')
   assert.equal(configClass(cmd('cycle capacity'), { 'days-off': 'fred=2026-10-20' }), 'write')
+  assert.equal(configClass(cmd('team capacity'), {}), 'read')
+  assert.equal(configClass(cmd('team capacity'), { set: 'fred=5' }), 'write')
 })
 
 // A parent chain deep enough that JSON.stringify overflows the stack, while the text printer still copes.
@@ -1524,6 +1526,7 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'cycle close': ['2026-10-12'],
     'cycle add': ['ISS-5N1R', '--to', 'current'],
     'cycle capacity': ['2026-10-12', '--set', 'fred=5'],
+    'team capacity': ['--set', 'fred=5'],
     'epic create': ['--title', 'New epic'],
     'epic update-status': ['EPC-2M9D', '--health', 'on_track', '--body-file', input('update.md')],
     'milestone create': ['v2.0'],
@@ -1615,6 +1618,7 @@ test('every read goes on with one warning', () => {
     'cycle current': [],
     'cycle issues': ['2026-10-12'],
     'cycle capacity': ['2026-10-12'],
+    'team capacity': [],
     'epic list': [],
     'epic get': ['EPC-2M9D'],
     'epic progress': ['EPC-2M9D'],
@@ -1655,7 +1659,7 @@ test('every read goes on with one warning', () => {
     'local-migrate status': [],
     render: ['board'],
   }
-  assert.deepEqual(Object.keys(READS).sort(), [...COMMANDS.filter((c) => !c.write && !['init', 'changelog', 'validate'].includes(c.name)).map((c) => c.name), 'cycle capacity'].sort())
+  assert.deepEqual(Object.keys(READS).sort(), [...COMMANDS.filter((c) => !c.write && !['init', 'changelog', 'validate'].includes(c.name)).map((c) => c.name), 'cycle capacity', 'team capacity'].sort())
   const root = makeRepo('team')
   const runAll = () => Object.entries(READS).map(([name, argv]) => {
     const result = run(root, [...name.split(' '), ...argv, '--json'])

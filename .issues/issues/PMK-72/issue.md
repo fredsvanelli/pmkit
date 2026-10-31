@@ -11,7 +11,7 @@ blocked_by: [PMK-4]
 milestone: generic-commands
 branch: pmk-72-add-the-team-capacity-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-31T15:52:06Z
+updated: 2026-10-31T16:05:32Z
 ---
 
 ## Description
@@ -20,4 +20,4 @@ Source: Unified model, EM catalog (`team-capacity`: "Views and adjusts availabil
 
 ## Acceptance criteria
 
-- [ ] Shows and changes member availability and days off for a sprint after confirmation
+- [x] Shows and changes member availability and days off for a sprint after confirmation
