@@ -9,7 +9,7 @@ import { ADAPTERS } from './lib/adapters.mjs'
 import { linearDescriptor } from './lib/linear/adapter.mjs'
 import { isMutation, operationName } from './lib/linear/client.mjs'
 import { useLinear } from './fake-hosted.mjs'
-import { ACME_TEAM, FAKE_KEY, fakeCustomers, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeTriage, fakeWorkspace } from './fake-linear-api.mjs'
+import { ACME_TEAM, ACME_USERS, FAKE_KEY, fakeCustomers, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeTriage, fakeWorkspace } from './fake-linear-api.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { epicRecord } from './lib/format.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
@@ -193,7 +193,7 @@ test('whoami prints the viewer', async () => {
 
 test('issues list --assignee me sends the viewer id', async () => {
   const { fake, fetch } = withIssues()
-  fake.seed({ title: 'Mine', assigneeId: 'user-1' })
+  fake.seed({ title: 'Mine', assigneeId: 'user-1', stateId: 'state-3' })
   fake.seed({ title: 'Theirs', assigneeId: 'user-2' })
   const result = await cli(setup({ edit: withTeam }), ['issues', 'list', '--assignee', 'me', '--json'], fetch)
   assert.equal(result.code, 0, result.stdout + result.stderr)
@@ -805,6 +805,24 @@ const bodyFile = (text) => {
   fs.writeFileSync(file, text)
   return file
 }
+
+test('team load lists only the members of the configured team, and shows other assignees on their own row', async () => {
+  const outsider = { id: 'user-5', name: 'Outsider', displayName: 'outsider', email: 'user-5@example.com', active: true, guest: false, app: false, teams: { nodes: [{ id: 'team-other' }] } }
+  const users = [...ACME_USERS, outsider]
+  const fake = fakeLinearIssues({ users })
+  fake.seed({ title: 'Mine', assigneeId: 'user-1', stateId: 'state-3' })
+  fake.seed({ title: 'Theirs', assigneeId: 'user-5', stateId: 'state-3' })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace({ users }), ...fake.routes })
+  const result = await linear(fetch, ['team', 'load', '--json'])
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.ok(!data.rows.some((row) => row.member === 'user-5' && row.isMember), 'the other team member is not a member row')
+  const row = data.rows.find((item) => item.member === 'user-5')
+  assert.deepEqual([row.isMember, row.issues], [false, 1])
+  assert.ok(data.rows.filter((item) => item.isMember).every((item) => ['user-1', 'user-2'].includes(item.member)))
+  assert.ok(!data.noWork.some((item) => item.member === 'user-5'))
+  assert.deepEqual(data.suggestions.filter((move) => move.to === 'user-5'), [])
+})
 
 test('issues get --history and --comments read Linear, with thread lines in the text', async () => {
   const { fake, fetch } = withIssues()

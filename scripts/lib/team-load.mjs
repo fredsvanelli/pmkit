@@ -23,7 +23,7 @@ export function chooseUnit(issues, estimation) {
 }
 
 function emptyRow(member, name, extra = {}) {
-  return { member, name, agent: AGENT_ID.test(member), isMember: true, issues: 0, estimate: 0, unestimated: 0, wip: 0, oldestWipDays: null, load: 0, unknown: false, ids: [], flags: [], ...extra }
+  return { member, name, agent: AGENT_ID.test(member), isMember: true, issues: 0, estimate: 0, unestimated: 0, wip: 0, oldestWipDays: null, load: 0, unknown: false, partial: false, ids: [], flags: [], ...extra }
 }
 
 /** The human members that count: not an agent, in the member list, and not at availability 0. */
@@ -41,6 +41,7 @@ function averageOf(rows) {
  * Agents and non-members have a row but stay out of the average, `noWork` and the flags. Unassigned issues form their own entry.
  * `unit` is `issues`, `points` or `hours`. With an estimate unit, a member whose open issues all lack an estimate has an
  * unknown load (`load: null`): out of the average and the flags, never a target, and not in `noWork`, which counts issues.
+ * A member with some issues unestimated has a partial load (`partial: true`): the sum is a lower bound, so the member is never a target.
  * `aging` is aging() output, `capacity` and `daysOff` are maps by member for the sprint in scope.
  */
 export function teamLoad(issues, { members, aging = [], capacity = {}, daysOff = {}, unit }) {
@@ -71,6 +72,7 @@ export function teamLoad(issues, { members, aging = [], capacity = {}, daysOff =
   }
   for (const row of rows) {
     row.unknown = estimated && row.issues > 0 && row.unestimated === row.issues
+    row.partial = estimated && !row.unknown && row.unestimated > 0
     row.load = !estimated ? row.issues : row.unknown ? null : row.estimate
     row.capacity = isNumber(capacity[row.member]) ? capacity[row.member] : null
     row.daysOff = [daysOff[row.member] ?? []].flat()
@@ -101,7 +103,7 @@ export function suggestMoves(report, issues) {
   const mean = averageOf(report.rows).mean
   const loads = new Map(report.rows.map((row) => [row.member, row.load]))
   const capacityOf = new Map(report.rows.map((row) => [row.member, row.capacity]))
-  const targets = report.rows.filter((row) => isEligible(row) && row.load !== null)
+  const targets = report.rows.filter((row) => isEligible(row) && row.load !== null && !row.partial)
   const weight = (issue) => (estimated ? (isNumber(issue.estimate) ? issue.estimate : 0) : 1)
   const moves = []
   for (const from of [...new Set(report.imbalances.map((item) => item.member))]) {

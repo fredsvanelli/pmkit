@@ -140,9 +140,25 @@ test('teamLoad with one estimated member and one without estimates flags nobody'
   assert.deepEqual(suggestMoves(report, issues), [])
 })
 
-test('teamLoad does not mark a member with a partly estimated load as unknown', () => {
+test('teamLoad marks a member with a partly estimated load as partial, not unknown', () => {
   const report = teamLoad([issue('A-1', 'todo', 'a'), issue('A-2', 'todo', 'a', 3)], { members: [{ id: 'a', name: 'A' }], unit: 'points' })
-  assert.deepEqual([rowOf(report, 'a').load, report.unknownLoad], [3, []])
+  const a = rowOf(report, 'a')
+  assert.deepEqual([a.load, a.unknown, a.partial, report.unknownLoad], [3, false, true, []])
+})
+
+test('teamLoad marks no row partial when the unit is issues or every issue has an estimate', () => {
+  const issues = [issue('A-1', 'todo', 'a', 2), issue('A-2', 'todo', 'b')]
+  const members = [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }]
+  assert.deepEqual(teamLoad(issues, { members, unit: 'issues' }).rows.map((row) => row.partial), [false, false])
+  assert.deepEqual(teamLoad([issue('A-1', 'todo', 'a', 2)], { members, unit: 'points' }).rows.map((row) => row.partial), [false, false])
+})
+
+test('suggestMoves never moves an issue to a member with a partial load', () => {
+  const members = [{ id: 'fred', name: 'Fred' }, { id: 'ana', name: 'Ana' }, { id: 'caio', name: 'Caio' }]
+  const issues = [issue('A-1', 'todo', 'fred', 2), issue('A-2', 'todo', 'fred', 2), issue('A-6', 'todo', 'fred', 2), issue('A-3', 'todo', 'ana', 1), issue('A-4', 'todo', 'ana'), issue('A-5', 'todo', 'caio', 3)]
+  const report = teamLoad(issues, { members, unit: 'points' })
+  assert.equal(rowOf(report, 'ana').partial, true)
+  assert.deepEqual(suggestMoves(report, issues), [])
 })
 
 test('teamLoad compares with the unrounded average and rounds only the output', () => {
