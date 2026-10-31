@@ -1,6 +1,74 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { SEVERITIES, parseNpmAudit } from './lib/alerts.mjs'
+import fs from 'node:fs'
+import path from 'node:path'
+import { SEVERITIES, collectAlerts, isNpmMissingOnShell, parseNpmAudit } from './lib/alerts.mjs'
+import { tempDir } from './test-helpers.mjs'
+
+const REPORT_ONE = JSON.stringify({ vulnerabilities: { a: { name: 'a', severity: 'low', via: [], fixAvailable: false } } })
+
+// A spawn stand-in that records each call and returns the given result.
+function fakeSpawn(result) {
+  const calls = []
+  const spawn = (command, args, options) => {
+    calls.push({ command, args, options })
+    return { stdout: '', stderr: '', status: 0, ...result }
+  }
+  return { spawn, calls }
+}
+
+function repoWithLockfile() {
+  const root = tempDir('pmkit-win-')
+  fs.writeFileSync(path.join(root, 'package-lock.json'), '{}\n')
+  return root
+}
+
+test('on win32 the npm audit call uses the shell and npm.cmd', () => {
+  const { spawn, calls } = fakeSpawn({ stdout: REPORT_ONE, status: 0 })
+  collectAlerts(repoWithLockfile(), { platform: 'win32', spawn })
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].command, 'npm.cmd')
+  assert.deepEqual(calls[0].args, ['audit', '--json'])
+  assert.equal(calls[0].options.shell, true)
+})
+
+test('on linux the npm audit call does not use the shell', () => {
+  const { spawn, calls } = fakeSpawn({ stdout: REPORT_ONE, status: 0 })
+  collectAlerts(repoWithLockfile(), { platform: 'linux', spawn })
+  assert.equal(calls[0].command, 'npm')
+  assert.equal(calls[0].options.shell, false)
+})
+
+test('on win32 a shell "not recognized" failure is a missing npm', () => {
+  const { spawn } = fakeSpawn({ status: 1, stdout: '', stderr: "'npm.cmd' is not recognized as an internal or external command" })
+  const found = collectAlerts(repoWithLockfile(), { platform: 'win32', spawn })
+  assert.equal(found.warnings[0], 'npm-audit failed: npm is not installed or not on PATH')
+})
+
+test('on win32 npm that exits 1 with vulnerabilities still parses', () => {
+  const { spawn } = fakeSpawn({ status: 1, stdout: REPORT_ONE, stderr: '' })
+  const found = collectAlerts(repoWithLockfile(), { platform: 'win32', spawn })
+  assert.deepEqual(found.warnings, [])
+  assert.equal(found.alerts.length, 1)
+})
+
+test('on win32 a registry error on stderr is not a missing npm', () => {
+  const { spawn } = fakeSpawn({ status: 1, stdout: '', stderr: 'npm ERR! code E403' })
+  const found = collectAlerts(repoWithLockfile(), { platform: 'win32', spawn })
+  assert.doesNotMatch(found.warnings[0], /not installed/)
+})
+
+test('on win32 a timeout still reports the timeout', () => {
+  const { spawn } = fakeSpawn({ error: Object.assign(new Error('spawnSync npm.cmd ETIMEDOUT'), { code: 'ETIMEDOUT' }), status: null })
+  const found = collectAlerts(repoWithLockfile(), { platform: 'win32', spawn, timeoutMs: 300 })
+  assert.match(found.warnings[0], /timed out after 0\.3 s/)
+})
+
+test('isNpmMissingOnShell matches only the not-recognized text, case-insensitively', () => {
+  assert.equal(isNpmMissingOnShell({ status: 1, stderr: "'npm.cmd' IS NOT RECOGNIZED" }), true)
+  assert.equal(isNpmMissingOnShell({ status: 0, stderr: 'is not recognized' }), false)
+  assert.equal(isNpmMissingOnShell({ status: 1, stderr: 'npm ERR! code E403' }), false)
+})
 
 const audit = (vulnerabilities) => JSON.stringify({ auditReportVersion: 2, vulnerabilities })
 
