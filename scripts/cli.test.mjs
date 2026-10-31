@@ -1660,6 +1660,7 @@ test('every read goes on with one warning', () => {
     risks: [],
     'team load': [],
     'alerts list': [],
+    'alerts scan': [],
     'todos scan': [],
     'pr status': [],
     'deploys list': [],

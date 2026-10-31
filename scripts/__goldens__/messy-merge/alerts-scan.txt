@@ -1,0 +1,29 @@
+$ pmkit alerts scan
+exit 0
+--- stdout
+security alerts are absent in this repository: no scanner found (npm-audit needs package-lock.json or npm-shrinkwrap.json)
+--- stderr
+(empty)
+
+$ pmkit alerts scan --json
+exit 0
+--- stdout
+{
+  "absent": true,
+  "incomplete": false,
+  "scanners": [
+    {
+      "id": "npm-audit",
+      "detected": false,
+      "alerts": 0
+    }
+  ],
+  "unread": {
+    "count": 0,
+    "ids": []
+  },
+  "candidates": [],
+  "matched": []
+}
+--- stderr
+(empty)

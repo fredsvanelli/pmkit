@@ -1,0 +1,4 @@
+$ pmkit alerts scan --json  [step 1, read]
+exit 0
+
+(no file changed)
