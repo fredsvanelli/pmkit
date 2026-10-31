@@ -11,7 +11,7 @@ blocked_by: [PMK-31]
 milestone: generic-commands
 branch: pmk-53-add-the-link-repo-command
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-31T15:52:05Z
+updated: 2026-10-31T16:12:18Z
 ---
 
 ## Description
@@ -20,5 +20,5 @@ Source: Unified model, Foundation catalog (`link-repo`: "Links the repository to
 
 ## Acceptance criteria
 
-- [ ] Writes the tracker scope and git host to `.pmkit/config.yaml` after confirmation
-- [ ] Infers the git host from the git remote
+- [x] Writes the tracker scope and git host to `.pmkit/config.yaml` after confirmation
+- [x] Infers the git host from the git remote

@@ -14,6 +14,7 @@ Each command file holds the full procedure. When the user asks for one of these 
 | Request | Command | File |
 |---|---|---|
 | set up pmkit in the project, or bring a setup in line with the installed version | `/pmkit:setup` | `${CLAUDE_PLUGIN_ROOT}/commands/setup.md` |
+| link this repository to a git host, or on Linear to a team | `/pmkit:link-repo` | `${CLAUDE_PLUGIN_ROOT}/commands/link-repo.md` |
 | update the installed pmkit plugin and move `.issues/` to the current tracker format | `/pmkit:upgrade` | `${CLAUDE_PLUGIN_ROOT}/commands/upgrade.md` |
 | see what pmkit can do here, explain a capability, or find the command for a task | `/pmkit:help` | `${CLAUDE_PLUGIN_ROOT}/commands/help.md` |
 | find what is wrong with the backlog and fix what the user accepts | `/pmkit:backlog:groom` | `${CLAUDE_PLUGIN_ROOT}/commands/backlog/groom.md` |
