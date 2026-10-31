@@ -29,7 +29,7 @@ export const SERVED_BY = {
   request_queue: ['requests list', 'requests get', 'requests create', 'requests accept', 'requests decline'],
   time_tracking: ['issues log-time', 'issues time-entries'],
   linked_code: ['issues branch', 'pr open', 'pr ready', 'pr status', 'pr sync', 'deploys list', 'ci logs', 'pr diff', 'pr blockers'],
-  agent_delegation: ['issues delegate'],
+  agent_delegation: ['issues delegate', 'issues track-agents'],
   security_alerts: ['alerts list'],
   user_inbox: ['inbox list', 'inbox mark-read'],
 }

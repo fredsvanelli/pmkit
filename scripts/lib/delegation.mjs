@@ -30,7 +30,7 @@ export function delegationComment({ issue, agent, by, instructions }) {
 /** `{ agent, by, run }` when the first line of `body` is a delegation record, else null. */
 export function parseDelegation(body) {
   if (typeof body !== 'string') return null
-  const match = RECORD_LINE.exec(body.split('\n')[0])
+  const match = RECORD_LINE.exec(body.split(/\r?\n/)[0].trimEnd())
   return match ? { agent: match[1], by: match[2], run: 'local' } : null
 }
 

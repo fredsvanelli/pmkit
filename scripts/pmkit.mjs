@@ -22,7 +22,8 @@ import { pathNote } from './lib/path-notes.mjs'
 import { planNextAdr } from './lib/adr.mjs'
 import { NO_MOVE_MESSAGES, chooseUnit, proposeMoves, teamLoad } from './lib/team-load.mjs'
 import { changeList, checkMembers, mergeCapacity, parseCapacityPairs, workingDays } from './lib/team-capacity.mjs'
-import { localRunLine } from './lib/delegation.mjs'
+import { AGENT_ID, localRunLine } from './lib/delegation.mjs'
+import { delegationOf, prSummary, prText } from './lib/track-agents.mjs'
 import { SCANNERS, SEVERITIES, collectAlerts } from './lib/alerts.mjs'
 import { READ_LIMIT, groupTodos, matchTodos, readExistingIssues, scanRepo } from './lib/todos.mjs'
 import { validateRepo } from './lib/validate.mjs'
@@ -548,6 +549,10 @@ export const COMMANDS = [
       if (ctx.dryRun) lines.push('dry run: nothing was written')
       return { data: result, text: lines.join('\n'), commit: result.after.id }
     },
+  },
+  {
+    name: 'issues track-agents', summary: 'open issues assigned to agent members, with the delegation record and the state of each pull request; reads only', args: [], flags: [],
+    run: (ctx) => runTrackAgents(ctx),
   },
   {
     name: 'issues link', summary: 'links or unlinks', usage: '<from> <to> --kind blocks|related|duplicate [--remove]', write: true, args: ['from', 'to'], flags: ['kind', 'remove'],
@@ -1786,6 +1791,68 @@ async function runBulk(ctx) {
     }
   }
   return { data: { ...data, applied }, text: `${bulkText(preview, { dryRun: false })}\nwritten: ${applied.join(', ')}`, commit: `${change.kind} ${change.value} (${applied.length} issues)`, warnings }
+}
+
+const AGENT_CATEGORIES = ['backlog', 'todo', 'in_progress', 'in_review']
+
+/** The delegation and the pull request state of every open issue assigned to an agent member. Writes nothing. */
+async function runTrackAgents(ctx) {
+  const tracker = await ctx.tracker()
+  const entry = (await tracker.capabilities()).capabilities.find((c) => c.id === 'agent_delegation')
+  if (entry?.path === 'absent') throw new PmkitError('NOT_SUPPORTED', 'this tracker has no agent delegation, so there are no agent issues to track', entry.enableHint)
+  const found = await tracker.searchIssues({ categories: AGENT_CATEGORIES })
+  const warnings = problemWarnings(found.problems)
+  const notes = []
+  let incomplete = found.problems.length > 0
+  if (found.hasMore === true) {
+    incomplete = true
+    warnings.push('the issue read was cut before the end, so the list may miss agent issues')
+  }
+  let host = null
+  try {
+    host = ctx.host()
+  } catch (error) {
+    if (!isPmkitError(error) || error.code !== 'NOT_SUPPORTED') throw error
+    notes.push('git_host is none, so the list has no pull request state')
+  }
+  const rows = []
+  for (const issue of found.issues.filter((item) => AGENT_ID.test(item.assignee ?? ''))) {
+    const row = { id: issue.id, title: issue.title, status: issue.status?.name ?? null, assignee: issue.assignee, branch: issue.branch ?? null, delegation: null, pr: null, problems: [] }
+    try {
+      const comments = await tracker.listComments(issue.id)
+      row.delegation = delegationOf(comments, issue.assignee, { incomplete: comments.truncated === true })
+    } catch (error) {
+      if (!isPmkitError(error) || error.code === 'NOT_CONFIGURED' || error.code === 'AUTH') throw error
+      row.delegation = { state: 'unknown', agent: null, by: null, comment: null, at: null }
+      row.problems.push({ code: error.code, message: `the comments could not be read: ${error.message}` })
+    }
+    if (host !== null) {
+      if (!row.branch) row.pr = { state: 'no_branch' }
+      else {
+        try {
+          const pr = host.getPullRequest({ head: row.branch })
+          row.pr = pr ? prSummary(pr, collectBlockers(host, pr)) : { state: 'no_pr' }
+        } catch (error) {
+          // A missing or logged out gh fails every lookup the same way, so it stops the command.
+          if (!isPmkitError(error) || error.code === 'NOT_CONFIGURED' || error.code === 'AUTH') throw error
+          row.pr = { state: 'unknown', code: error.code, message: error.message }
+          row.problems.push({ code: error.code, message: `the pull request could not be read: ${error.message}` })
+        }
+      }
+    }
+    if (row.problems.length > 0 || row.delegation.state === 'unknown' || row.pr?.blocked === null || (row.pr?.unchecked ?? []).length > 0) incomplete = true
+    for (const problem of row.problems) warnings.push(`${row.id}: ${problem.message}`)
+    rows.push(row)
+  }
+  if (incomplete) warnings.push('the list is incomplete: some reads failed or were cut, so what is marked unknown or not verified is not confirmed')
+  if (host !== null) notes.push(...(await linkedCodeNotes(ctx)))
+  const stale = rows.filter((row) => row.delegation.state === 'stale').length
+  if (stale > 0) notes.push(`${stale} ${stale === 1 ? 'issue has' : 'issues have'} an agent as assignee but the newest delegation record names another agent`)
+  const header = ['Issue', 'Agent', 'Status', 'Delegation', 'Branch', 'Pull request']
+  const text = rows.length === 0
+    ? 'no open issue is assigned to an agent'
+    : table(header, rows.map((row) => [row.id, row.assignee, row.status, row.delegation.state === 'current' ? `by ${row.delegation.by}` : row.delegation.state === 'stale' ? `stale (${row.delegation.agent})` : row.delegation.state, row.branch ?? '', prText(row)]))
+  return { data: { issues: rows, incomplete, hasMore: found.hasMore === true, warnings, notes }, text, warnings, notes }
 }
 
 const LOAD_CATEGORIES = ['todo', 'in_progress', 'in_review']

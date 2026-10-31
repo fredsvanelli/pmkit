@@ -40,6 +40,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 - `/pmkit:issues:review`: Review the pull request of an issue against its acceptance criteria, flag the gaps and post the result after approval.
 - `/pmkit:issues:todos`: Turn the TODO and FIXME comments of the repository into issues, dropping the ones an issue already covers, after a full preview.
 - `/pmkit:issues:summary`: Summarize an issue or an epic from its record, comments and history.
+- `/pmkit:issues:track-agents`: List the open issues assigned to agents, with the delegation record and the state of each pull request.
 - `/pmkit:issues:unblock`: List what blocks a pull request from merging (checks, reviews, conflicts, open threads and policies) and the next step for each.
 - `/pmkit:issues:update`: Change the title, priority, estimate, labels or acceptance criteria of an issue.
 - `/pmkit:issues:work`: Pick up an issue: claim it, branch, plan, implement, open the PR and move it to review.
@@ -81,6 +82,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `issues move <id> <category>` | changes status by category |
 | `issues assign <id> <member\|me\|none>` | assigns an issue; `me` is the actor |
 | `issues delegate <id> <agent:name>` | assigns an issue to an agent member and comments the instructions for local execution; `--instructions-file` holds them |
+| `issues track-agents` | open issues assigned to agent members, with the delegation record and the state of each pull request; reads only |
 | `issues link <from> <to> --kind blocks\|related\|duplicate` | links or unlinks (`--remove`) two issues |
 | `issues parent <id> <parent\|none>` | sets the parent |
 | `issues comment <id> --body-file f` | adds a comment |
