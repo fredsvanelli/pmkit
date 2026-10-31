@@ -22,6 +22,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 - `/pmkit:issues:assign`: Assign an issue to a member, to the user or to nobody.
 - `/pmkit:issues:breakdown`: Break an issue into sub-issues with estimates, order and blockers.
 - `/pmkit:issues:bulk`: Apply one change to every issue a filter or saved view returns, after a full preview that the write cannot differ from.
+- `/pmkit:issues:run-view`: Run a saved view by name and show its issues table.
 - `/pmkit:issues:capture`: Open an issue from what the session found (an error, a failing test, a TODO), after a duplicate check.
 - `/pmkit:issues:comment`: Add a comment to an issue.
 - `/pmkit:issues:create`: Create an issue from an idea, refined into context, scope, tasks and acceptance criteria, with the fields checked against the project config.
