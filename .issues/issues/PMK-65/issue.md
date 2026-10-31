@@ -11,7 +11,7 @@ blocked_by: [PMK-50]
 milestone: generic-commands
 branch: pmk-65-add-the-record-decision-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-31T17:03:01Z
+updated: 2026-10-31T17:13:38Z
 ---
 
 ## Description
@@ -20,5 +20,5 @@ Source: Unified model, Dev catalog (`record-decision`: "Writes an ADR and links 
 
 ## Acceptance criteria
 
-- [ ] Writes an ADR as a document after confirmation
-- [ ] Links the ADR to the related issues
+- [x] Writes an ADR as a document after confirmation
+- [x] Links the ADR to the related issues
