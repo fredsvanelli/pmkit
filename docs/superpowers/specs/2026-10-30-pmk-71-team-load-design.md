@@ -26,9 +26,9 @@ Scope:
 - Without a sprint (the `no-sprints` fixture, a Linear team with cycles off, or no active sprint), the scope is every open issue in `todo`, `in_progress` or `in_review`. A `note:` says so.
 - Backlog and triage issues are not load, because nobody has started or committed to them.
 
-Per member the result has `issues`, `points`, `unestimated`, `wip` (issues in `in_progress` or `in_review`), `oldestWipDays`, and, when a sprint is in scope, `capacity` and `daysOff`.
+Per member the result has `issues`, `estimate` (the sum of the estimates), `unestimated`, `wip` (issues in `in_progress` or `in_review`), `oldestWipDays`, and, when a sprint is in scope, `capacity` and `daysOff`.
 
-Unit: the result uses `points` when the `estimation` capability is not `absent` and at least one issue in scope has an estimate. Otherwise the unit is `issues` and a `note:` says why, for example "estimates are off (...): counted issues" or "no issue in scope has an estimate: counted issues". When points are used, the issues without an estimate show in `unestimated` and a warning names the count.
+Unit: the unit is the estimate unit of the tracker, `points` or `hours`, when the `estimation` capability is not `absent` and at least one issue in scope has an estimate. Otherwise the unit is `issues` and a `note:` says why: "estimates are off", "no issue in scope has an estimate", or, for t-shirt sizes (`sizes`), "estimates are sizes and do not add up". A `conditional` estimation (Linear teams that differ) follows what the issues carry. With an estimate unit, `unestimated` counts the issues without an estimate on each row and a warning names the total.
 
 Members:
 
@@ -42,11 +42,13 @@ Imbalances (`imbalances`), computed on the unit's load among human members who a
 - `over_average`: load above 1.5 times the average of the human members, when there are at least two of them and the average is above 0.
 - `over_capacity`: points above the sprint capacity of the member, only with points and a capacity.
 
-`noWork` lists the human members whose load is 0, with their days off in the sprint. Members with `availability` 0 are skipped.
+`noWork` lists the human members with no open issue in scope, counted by issues and never by estimate, with their days off in the sprint. Members with `availability` 0 are skipped.
 
-Suggestions (`suggestions`): `suggestMoves` moves issues in `todo` (not started) from members flagged `over_average` or `over_capacity` to the human member with the lowest load, one issue at a time, largest estimate first, while the move does not leave the target above the source. It is a proposal only. Nothing is written.
+Unknown load (decided in the review of PR #92): with an estimate unit, a member who has open issues and none estimated has an unknown load (`load: null`, `unknown: true`). That member stays out of the average, out of `over_average` and out of `noWork`, and is never a reassign target. A `note:` says how many members are in that state, and `unknownLoad` lists them. The comparison with 1.5 times the average uses the unrounded average, and only the output rounds, to 2 decimals.
 
-The command prints a table (member, issues, points, WIP, oldest WIP days, capacity, flags), then the `noWork` and `suggestions` lines. `--json` returns the whole object.
+Suggestions (`suggestions`): `suggestMoves` moves issues in `todo` (not started) from members flagged `over_average` or `over_capacity` to the human member with the lowest known load, one issue at a time, largest estimate first. A move leaves the target at or below the source and at or below the target's own capacity. A source stops giving at the average (`over_average`) or at its capacity (`over_capacity`). It is a proposal only. Nothing is written. When the issue read comes back cut (`hasMore`), the command warns and proposes nothing. Without an active sprint on a Linear team with cycles off, the `cycles` note shows, and `--sprint <id>` answers `NOT_SUPPORTED`.
+
+The command prints a table (member, issues, estimate in the unit, WIP, oldest WIP days, capacity, flags), then the `noWork` and `suggestions` lines. `--json` returns the whole object.
 
 ## The command file
 

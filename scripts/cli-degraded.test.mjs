@@ -95,6 +95,19 @@ test('risks on a Linear team with cycles off reads no sprint and says so in a no
   assert.ok(Array.isArray(JSON.parse(result.stdout).blocked))
 })
 
+test('team load on a Linear team with cycles off reads all open work and says why in a note', async () => {
+  const result = await linear(['team', 'load', '--json'])
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.ok(noteLines(result.stderr).includes("note: cycles is absent: Turn on cycles in the team's settings in Linear"), result.stderr)
+  assert.equal(JSON.parse(result.stdout).sprint, null)
+})
+
+test('team load --sprint on a Linear team with cycles off answers NOT_SUPPORTED', async () => {
+  const result = await linear(['team', 'load', '--sprint', 'S-1', '--json'])
+  assert.equal(result.code, 2)
+  assert.equal(JSON.parse(result.stdout).error.code, 'NOT_SUPPORTED')
+})
+
 test('pr status refuses without a git host, on Local and on Linear', async () => {
   for (const result of [await run(['pr', 'status', '--branch', 'x'], { cwd: makeRepo('basic') }), await linear(['pr', 'status', '--branch', 'x'])]) {
     assert.equal(result.code, 2)
