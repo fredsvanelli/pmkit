@@ -113,6 +113,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `docs list` | lists the documents under the docs folder |
 | `docs read <path>` | prints a document under the docs folder |
 | `docs create <path> --body-file f` | creates a document under the docs folder |
+| `docs next-adr --title t` | the number, slug and path of the next ADR and where it goes, `repo` (`docs/adr/`) or `tracker`; reads `docs/adr/` and the tracker folder in the working tree and in `origin/<default branch>`, refuses a title with no letter or digit; only reads |
 | `views save <name> [filter flags] [--overwrite]` | saves an issue filter as `.issues/views/<name>.yaml`; takes the flags of `issues list`, and refuses a name that exists unless `--overwrite` |
 | `views list` | lists the saved views with their filters |
 | `goal list` | lists the goals in `.issues/goals/` with the epics linked to each |

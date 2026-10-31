@@ -24,7 +24,7 @@ export const SERVED_BY = {
   capacity: ['cycle capacity'],
   native_metrics: ['metrics velocity', 'metrics cycle-time', 'metrics lead-time', 'metrics throughput', 'metrics aging', 'events'],
   saved_views: ['views list', 'views save', 'views run'],
-  documents: ['docs list', 'docs read', 'docs create'],
+  documents: ['docs list', 'docs read', 'docs create', 'docs next-adr'],
   demand_signals: ['customers list', 'customers show', 'customers create', 'requests create', 'demand list'],
   request_queue: ['requests list', 'requests get', 'requests create', 'requests accept', 'requests decline'],
   time_tracking: ['issues log-time', 'issues time-entries'],

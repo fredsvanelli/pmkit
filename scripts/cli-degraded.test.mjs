@@ -29,6 +29,15 @@ function linear(args, { teams, cycles } = {}) {
 
 const noteLines = (stderr) => stderr.split('\n').filter((line) => line.startsWith('note: '))
 
+test('docs next-adr on Linear names a repository file and reads no tracker folder', async () => {
+  const result = await linear(['docs', 'next-adr', '--title', 'Use Linear', '--json'])
+  assert.equal(result.code, 0, result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.destination, 'repo')
+  assert.equal(data.path, 'docs/adr/0001-use-linear.md')
+  assert.equal(data.docPath, null)
+})
+
 const METRICS = [
   [['metrics', 'cycle-time'], 'cycle-time'],
   [['metrics', 'lead-time'], 'lead-time'],

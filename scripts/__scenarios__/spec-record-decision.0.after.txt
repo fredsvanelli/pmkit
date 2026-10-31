@@ -2,37 +2,29 @@ $ pmkit issues get ISS-5N1R --json  [step 2, read]
 exit 0
 $ pmkit issues get ISS-4P8A --json  [step 2, read]
 exit 0
-$ pmkit capabilities --json  [step 3, read]
+$ pmkit docs next-adr --title 'Keep estimates in points' --json  [step 3, read]
 exit 0
-$ pmkit docs list --json  [step 4, read]
+$ pmkit docs next-adr --title 'Keep estimates in points' --json  [step 5, read]
 exit 0
-$ pmkit docs create adr/0001-keep-estimates-in-points.md --body-file <inputs>/adr.md --dry-run --json  [step 6, dry run]
+$ pmkit docs create adr/0001-keep-estimates-in-points.md --body-file <inputs>/adr.md --dry-run --json  [step 5, dry run]
+exit 0
+? Step 5  [confirmed]
+$ pmkit docs create adr/0001-keep-estimates-in-points.md --body-file <inputs>/adr.md --json  [step 5, write]
+exit 0
+$ pmkit issues comment ISS-5N1R --body-file <inputs>/adr-comment.md --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues comment ISS-4P8A --body-file <inputs>/adr-comment.md --dry-run --json  [step 6, dry run]
 exit 0
 ? Step 6  [confirmed]
-$ pmkit docs create adr/0001-keep-estimates-in-points.md --body-file <inputs>/adr.md --json  [step 6, write]
+$ pmkit issues comment ISS-5N1R --body-file <inputs>/adr-comment.md --json  [step 6, write]
 exit 0
-$ pmkit issues comment ISS-5N1R --body-file <inputs>/adr-comment.md --dry-run --json  [step 7, dry run]
-exit 0
-$ pmkit issues comment ISS-4P8A --body-file <inputs>/adr-comment.md --dry-run --json  [step 7, dry run]
-exit 0
-? Step 7  [confirmed]
-$ pmkit issues comment ISS-5N1R --body-file <inputs>/adr-comment.md --json  [step 7, write]
-exit 0
-$ pmkit issues comment ISS-4P8A --body-file <inputs>/adr-comment.md --json  [step 7, write]
+$ pmkit issues comment ISS-4P8A --body-file <inputs>/adr-comment.md --json  [step 6, write]
 exit 0
 
 --- added .issues/docs/adr/0001-keep-estimates-in-points.md
 +# Keep estimates in points
 +
-+Status: accepted
-+
-+## Context
-+
-+The team compared hours and points when it planned the last sprint. Hours made two members argue about precision, and the velocity numbers already use points.
-+
-+## Decision
-+
-+Estimates stay in points on the Fibonacci scale. Nobody records hours as an estimate.
++Two members argued about the precision of hours in the last sprint planning, and velocity already uses points. Estimates stay in points on the Fibonacci scale, and nobody records hours as an estimate.
 +
 +## Considered options
 +

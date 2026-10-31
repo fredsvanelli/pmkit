@@ -105,6 +105,7 @@ export const CASES = {
   'epic update-status': (a) => [[a.epic, '--health', 'on_track', '--body-file', input('update.md')]],
   'epic updates': (a) => [[a.epic]],
   'docs list': () => [[]],
+  'docs next-adr': () => [['--title', 'Golden decision']],
   'docs read': (a) => [[a.doc]],
   'docs create': () => [['golden/new.md', '--body-file', input('doc.md')]],
   'views save': () => [['golden-view', '--category', 'in_progress', '--sort', 'priority']],

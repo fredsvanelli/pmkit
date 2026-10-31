@@ -1,14 +1,6 @@
 # Keep estimates in points
 
-Status: accepted
-
-## Context
-
-The team compared hours and points when it planned the last sprint. Hours made two members argue about precision, and the velocity numbers already use points.
-
-## Decision
-
-Estimates stay in points on the Fibonacci scale. Nobody records hours as an estimate.
+Two members argued about the precision of hours in the last sprint planning, and velocity already uses points. Estimates stay in points on the Fibonacci scale, and nobody records hours as an estimate.
 
 ## Considered options
 

@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-31-pmk-65-record-decision-design.md`
 
+**Review change (PR #103):** ADR 0002 says commands never compute, so a read-only `docs next-adr --title t` (`scripts/lib/adr.mjs`, tests in `scripts/adr.test.mjs`) computes the slug, the number, the path and the place. The command file calls it in step 3 and again right before the write. The `Interfaces` of Task 1 therefore also consume `docs next-adr`.
+
 ## Global Constraints
 
 - The commit trailer is exactly `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`, and each message has `(PMK-65)`.
