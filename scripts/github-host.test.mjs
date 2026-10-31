@@ -411,8 +411,9 @@ test('prThreads asks the review threads with one graphql call, flattens them and
   assert.equal(result.threads[1].isResolved, true)
 })
 
-test('prThreads maps a graphql error reply to UPSTREAM', () => {
-  const { exec } = fakeExec({ stdout: JSON.stringify({ errors: [{ message: 'Resource not accessible' }] }) })
+test('prThreads maps the failed graphql call of gh, with its JSON on stdout and its message on stderr, to UPSTREAM', () => {
+  const stdout = JSON.stringify({ errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible by integration' }] })
+  const { exec } = fakeExec({ status: 1, stdout, stderr: 'gh: Resource not accessible by integration\n' })
   assert.throws(() => host(exec).prThreads(12), (e) => e.code === 'UPSTREAM' && /not accessible/.test(e.message))
 })
 
@@ -438,9 +439,22 @@ test('a gh api failure carries the HTTP status of the reply, read from the statu
   assert.equal(status('error connecting to api.github.com/repos/o/r/branches/fix-404/protection\n'), undefined)
 })
 
-test('prThreads marks a FORBIDDEN or NOT_FOUND graphql error with the matching HTTP status', () => {
-  const status = (type) => { try { host(fakeExec({ stdout: JSON.stringify({ errors: [{ type, message: 'nope' }] }) }).exec).prThreads(1) } catch (e) { return e.httpStatus } }
+test('prThreads marks a FORBIDDEN or NOT_FOUND graphql error with the matching HTTP status, as the real gh fails it', () => {
+  const status = (type) => {
+    const stdout = JSON.stringify({ errors: [{ type, message: 'nope' }] })
+    try { host(fakeExec({ status: 1, stdout, stderr: 'gh: nope\n' }).exec).prThreads(1) } catch (e) { return e.httpStatus }
+  }
   assert.equal(status('FORBIDDEN'), 403)
   assert.equal(status('NOT_FOUND'), 404)
   assert.equal(status('INTERNAL'), undefined)
+})
+
+test('a GraphQL: Resource not accessible refusal of gh pr view and gh pr checks is a 403', () => {
+  const stderr = 'GraphQL: Resource not accessible by integration (repository.pullRequest.statusCheckRollup)\n'
+  const status = (read) => { try { read(host(fakeExec({ status: 1, stderr }).exec)) } catch (e) { return e.httpStatus } }
+  assert.equal(status((h) => h.prChecks(1)), 403)
+  assert.equal(status((h) => h.prMergeState(1)), 403)
+  assert.equal(status((h) => h.prReviews(1)), 403)
+  const other = () => { try { host(fakeExec({ status: 1, stderr: 'GraphQL: Could not resolve to a PullRequest\n' }).exec).prMergeState(1) } catch (e) { return e.httpStatus } }
+  assert.equal(other(), undefined)
 })

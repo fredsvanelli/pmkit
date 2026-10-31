@@ -37,6 +37,8 @@ function failure(cmd, args, result) {
   // gh api ends its error line with "(HTTP 404)" or starts it with "HTTP 502:". The free text may name a branch, so only these two spots count.
   const http = /\(HTTP (\d{3})\)\s*$/.exec(detail) ?? /^(?:gh: )?HTTP (\d{3})\b/.exec(detail)
   if (http) error.httpStatus = Number(http[1])
+  // gh pr view and gh pr checks report a token that cannot read the data as "GraphQL: Resource not accessible ...", with no HTTP status.
+  else if (/^GraphQL: Resource not accessible/.test(detail)) error.httpStatus = 403
   return error
 }
 
@@ -157,13 +159,17 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
     /** The review threads of a pull request (first 100). `incomplete` is true when there are more. */
     prThreads(number) {
       const args = ['api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-F', `number=${number}`, '-f', `query=${THREADS_QUERY}`]
-      const reply = parse(check('gh', args).stdout, 'the review threads')
-      if (reply?.errors?.length > 0) {
-        const error = new PmkitError('UPSTREAM', `gh api graphql failed: ${reply.errors[0].message}`, 'Check the access of the GitHub token to the repository')
-        const httpStatus = { FORBIDDEN: 403, NOT_FOUND: 404 }[reply.errors[0].type]
+      const result = run('gh', args)
+      if (result.status !== 0) {
+        // A graphql error makes gh exit 1 with the reply on stdout and "gh: <message>" on stderr.
+        const error = failure('gh', args, result)
+        let type
+        try { type = JSON.parse(result.stdout)?.errors?.[0]?.type } catch {}
+        const httpStatus = { FORBIDDEN: 403, NOT_FOUND: 404 }[type]
         if (httpStatus) error.httpStatus = httpStatus
         throw error
       }
+      const reply = parse(result.stdout, 'the review threads')
       const connection = reply?.data?.repository?.pullRequest?.reviewThreads
       if (!connection) throw new PmkitError('UPSTREAM', 'gh api graphql returned no review threads', 'Update the GitHub CLI and retry')
       const threads = connection.nodes.map((t) => {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { PmkitError } from './lib/errors.mjs'
+import { createGithubHost } from './lib/github/host.mjs'
 import { blockersText, collectBlockers } from './lib/pr-blockers.mjs'
 
 const OPEN_PR = { number: 7, state: 'OPEN', isDraft: false, title: 'T', url: 'https://x/7' }
@@ -287,4 +288,25 @@ test('the text names a rule it does not read instead of saying the branch has no
   assert.match(text, /^policies: GitHub blocks the merge by a rule this command does not read \(for example a ruleset\)$/m)
   assert.equal(found.policies.protected, false)
   assert.ok(!text.includes('no classic branch protection'), 'the unread rule line replaces the no protection line')
+})
+
+test('GraphQL refusals of checks and threads, as the real host reports them, come back as not checked and do not fail the command', () => {
+  const answers = {
+    'pr checks 7 --json name,state,bucket': { status: 1, stdout: '', stderr: 'GraphQL: Resource not accessible by integration (repository.pullRequest.statusCheckRollup)\n' },
+    'pr view 7 --json mergeable,mergeStateStatus,reviewDecision,baseRefName': { stdout: JSON.stringify(merge()) },
+    'pr view 7 --json reviews,reviewRequests': { stdout: JSON.stringify({ reviews: [], reviewRequests: [] }) },
+    'api repos/{owner}/{repo}/branches/main/protection': { status: 1, stderr: 'gh: Branch not protected (HTTP 404)\n' },
+  }
+  const exec = (cmd, args) => {
+    const key = args.join(' ')
+    const answer = args[1] === 'graphql'
+      ? { status: 1, stdout: JSON.stringify({ errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible by integration' }] }), stderr: 'gh: Resource not accessible by integration\n' }
+      : answers[key]
+    return { status: 0, stdout: '', stderr: '', ...answer }
+  }
+  const r = collectBlockers(createGithubHost({ root: '.', env: {}, exec }), OPEN_PR)
+  assert.equal(r.checks, null)
+  assert.equal(r.threads, null)
+  assert.deepEqual(r.unchecked.map((u) => u.area), ['checks', 'threads'])
+  assert.equal(r.blocked, null)
 })
