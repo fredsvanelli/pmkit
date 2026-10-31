@@ -238,3 +238,46 @@ export function defaultsUnset(key, options) {
   const kept = lines.filter((line) => !(line.startsWith(`${key}:`) && (line.length === key.length + 1 || /\s/.test(line[key.length + 1]))))
   if (kept.length !== lines.length) writeAtomic(file, kept.join('\n'), options)
 }
+
+const INBOX_VERSION = 1
+
+function inboxFile(root, options) {
+  return path.join(userDir(options), 'inbox', `${repoHash(root)}.json`)
+}
+
+/** The checks of the inbox file of a repository: { member: timestamp }. A missing file gives {}. */
+function readInbox(file) {
+  let text
+  try {
+    text = fs.readFileSync(file, 'utf8')
+  } catch (error) {
+    if (error.code === 'ENOENT') return {}
+    throw error
+  }
+  const bad = (why) => new PmkitError('INVALID_INPUT', `The inbox file ${file} ${why}.`, 'Fix the file by hand or delete it. Deleting it makes the next inbox list show everything.')
+  let data
+  try {
+    data = JSON.parse(text)
+  } catch {
+    throw bad('does not parse')
+  }
+  const checks = data?.checks
+  if (data?.version !== INBOX_VERSION || checks === null || typeof checks !== 'object' || Array.isArray(checks)
+    || !Object.values(checks).every((value) => typeof value === 'string')) {
+    throw bad('is not an inbox file of this version')
+  }
+  return checks
+}
+
+/** The time of the last inbox check of a member in this repository, or null when there is none. */
+export function inboxGet(root, member, options) {
+  const checks = readInbox(inboxFile(root, options))
+  return Object.hasOwn(checks, member) ? checks[member] : null
+}
+
+/** Records the time of the last inbox check of a member in this repository and keeps the other members' checks. */
+export function inboxSet(root, member, at, options) {
+  const file = inboxFile(root, options)
+  const checks = readInbox(file)
+  writeAtomic(file, `${JSON.stringify({ version: INBOX_VERSION, checks: { ...checks, [member]: at } }, null, 2)}\n`, options)
+}
