@@ -165,3 +165,11 @@ test('npm is called npm.cmd on Windows only', () => {
   assert.equal(npmCommand('linux'), 'npm')
   assert.equal(npmCommand('darwin'), 'npm')
 })
+
+test('alerts scan runs on the same fake npm as alerts list', async () => {
+  const result = await setup()(['--json'])
+  assert.equal(JSON.parse(result.stdout).alerts.length, 3)
+  const root = makeRepo('basic')
+  const scan = await run(['alerts', 'scan', '--json'], { env: process.env, cwd: root })
+  assert.equal(JSON.parse(scan.stdout).absent, true)
+})

@@ -23,26 +23,26 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 2. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" discover --json` for the allowed types and priorities, when a candidate has a `null` `type` or `priority`. Ask for a value for those candidates.
 3. Draft one issue per candidate. The title, type, priority and description are the candidate's own, because its `alert-key:` line is what keeps a second run from creating the issue again. Write each description to a temporary file outside `.issues/`.
 4. Run the dry run of each issue: `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues create --title "<title>" --type <type> --priority <priority> --description-file <file> --dry-run --json`. When a dry run fails, show the error and ask for a corrected value.
-5. Show the full preview. First the `matched` alerts as information (issue, status, severity, package), and say when a match is `done` or `canceled`, because its alert is still in the audit. Then the candidates as a table (key, severity, priority, package, title). This is a bulk create, so it always shows the full list and asks, whatever `write_policy.confirm` says. Ask with `AskUserQuestion` whether to create all of them. Let the user drop rows, change priorities and titles, or move a `matched` row back to the creation list, which is the case when the match is wrong. A moved row keeps its `alert-key:` line. Then show the list again, running the dry run again for each changed or moved row. When the user declines, stop and create nothing.
+5. Show the full preview. First the `matched` packages as information (issue, status, severity, package, current advisories), and say when a match is `done` or `canceled`, because its package is still in the audit. A new advisory on a matched package does not open an issue. Then the candidates as a table (key, severity, priority, package, title). This is a bulk create, so it always shows the full list and asks, whatever `write_policy.confirm` says. Ask with `AskUserQuestion` whether to create all of them. Let the user drop rows, change priorities and titles, or move a `matched` row back to the creation list, which is the case when the match is wrong. A moved row keeps its `alert-key:` line. Then show the list again, running the dry run again for each changed or moved row. When the user declines, stop and create nothing.
 6. After the approval of step 5, create the issues in table order. For each, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues create --title "<title>" --type <type> --priority <priority> --description-file <file> --json` and note the new ID. When one fails, stop, list what was created and what was not, and do not retry it.
 7. Remove the temporary files.
 
 ## Severity and priority
 
-The CLI maps the severity of an alert to a tracker priority by position in the `priorities` list of the tracker (`pmkit discover`, highest first). With the default list:
+The CLI maps the severity of an alert to a tracker priority. It matches the name first, in the `priorities` list of the tracker (`pmkit discover`):
 
 | Severity | Priority |
 |---|---|
-| critical | urgent |
-| high | high |
-| medium | medium |
-| low | low |
+| critical | `urgent`, or `critical` when there is no `urgent` |
+| high | `high` |
+| medium | `medium`, or `normal` |
+| low | `low` |
 
-`critical` is always the first priority, `high` the second, `medium` the third and `low` the last. A list with fewer than four priorities uses its last entry for the severities it has no position for. npm `moderate` is `medium`, and npm `info` is `low`.
+When the list has no such name, the position decides: `critical` is the first priority, `high` the second, `medium` the third and `low` the last, and a list with fewer than four entries uses its last entry for the severities it has no position for. The priority `none` is never used. npm `moderate` is `medium`, and npm `info` is `low`.
 
 ## Alerts and issues
 
-One issue is one alert, which is one package with the advisory that `alerts list` shows for it. An advisory that npm reports for several packages (the vulnerable package and the ones that depend on it) opens one issue for each package, because each package has its own fix. The title of a package that only goes through another one reads `Security: <package>: vulnerable through <names>`. The `alert-key:` line is a hash of the scanner, the package and the advisory URL (the title when npm gives no URL). The severity is not in it, so a severity that changes in the report does not open a second issue. A new advisory on the same package has a new URL and opens a new issue.
+One issue is one vulnerable package. The `alert-key:` line is a hash of the scanner and the package name (`npm-audit:<package>`), and nothing else. The advisories of the package, their order, their titles and the packages they go through are not in it, because they change when a dependency is fixed and a changed key would open a second issue. A package with two advisories is one issue, and a package that already has an issue, open or closed, archived or not, gets no new one. A new advisory on a package that has an issue does not open another. The preview lists the package under `already in the tracker` with its current advisories, so the user decides whether to comment on the issue or reopen it by hand. The title of a package that only goes through another one reads `Security: <package>: vulnerable through <names>`. The severity is not in the key either, so a severity that changes in the report does not open a second issue.
 
 ## Confirmation points
 
@@ -52,12 +52,12 @@ One issue is one alert, which is one package with the advisory that `alerts list
 
 ## Output
 
-A table of the created issues (full ID, title, severity, priority), then the alerts that already had an issue, with the issue ID and its status. Mention that running the command again creates nothing for these alerts, because each issue holds its `alert-key:` line. Say that a fixed alert does not close its issue.
+A table of the created issues (full ID, title, severity, priority), then the packages that already had an issue, with the issue ID, its status and the current advisories. Mention that running the command again creates nothing for these packages, because each issue holds its `alert-key:` line. Say that a fixed alert does not close its issue.
 
 ## Known limits
 
 - `npm audit` is the only scanner.
-- The title and the URL come from the first advisory of the package, which may differ from the advisory that sets its severity (PMK-185).
+- The title of a new issue and the URL come from the first advisory of the package, which may differ from the advisory that sets its severity (PMK-185). The key does not depend on it.
 - An alert that disappears from the audit does not close or change its issue.
 
 ## If something is missing

@@ -44,8 +44,17 @@ function setup({ lockfile = 'package-lock.json', out = REPORT, status = 1, confi
     const result = await pmkit(['alerts', 'scan', ...args, '--json'], options)
     return { ...result, data: result.stdout.trim().startsWith('{') ? JSON.parse(result.stdout) : null }
   }
-  return { root, pmkit, scan }
+  return { root, env, pmkit, scan }
 }
+
+const createFrom = async (pmkit, candidate) => {
+  const file = path.join(tempDir('pmkit-body-'), 'body.md')
+  fs.writeFileSync(file, candidate.description)
+  const created = await pmkit(['issues', 'create', '--title', candidate.title, '--type', candidate.type, '--priority', candidate.priority, '--description-file', file, '--json'])
+  assert.equal(created.code, 0, created.stderr)
+  return JSON.parse(created.stdout).after.id
+}
+
 
 test('alerts scan returns one candidate per alert with a priority from the severity, highest first', async () => {
   const { scan } = setup()
@@ -159,4 +168,38 @@ test('the text output is a table of key, severity, priority, package and title',
   const { stdout } = await pmkit(['alerts', 'scan'])
   assert.match(stdout, /^Key\s+\| Severity\s+\| Priority\s+\| Package\s+\| Title/m)
   assert.match(stdout, /critical\s+\| urgent\s+\| lodash\s+\| Security: lodash: Command Injection/)
+})
+
+test('a package keeps its issue when its via changes, so the second run creates nothing and lists the current advisories', async () => {
+  const report = (via) => JSON.stringify({ vulnerabilities: { a: { name: 'a', severity: 'high', via, fixAvailable: true } } })
+  const { env, pmkit, scan } = setup({ out: report(['b', 'c']) })
+  const first = (await scan()).data
+  assert.equal(first.candidates.length, 1)
+  const id = await createFrom(pmkit, first.candidates[0])
+  const advisory = { title: 'ReDoS', url: 'https://example.com/a/9', severity: 'high' }
+  for (const via of [['b'], [advisory], [{ title: 'Other', url: 'https://example.com/a/10' }, advisory]]) {
+    const second = (await scan([], { env: { ...env, PMKIT_FAKE_NPM_OUT: report(via) } })).data
+    assert.deepEqual(second.candidates, [], JSON.stringify(via))
+    assert.deepEqual(second.matched.map((m) => [m.package, m.issue]), [['a', id]])
+  }
+  const last = (await scan([], { env: { ...env, PMKIT_FAKE_NPM_OUT: report([{ title: 'Other', url: 'https://example.com/a/10' }, advisory]) } })).data
+  assert.deepEqual(last.matched[0].advisories.map((item) => item.url), ['https://example.com/a/10', 'https://example.com/a/9'])
+  const text = await pmkit(['alerts', 'scan'], { env: { ...env, PMKIT_FAKE_NPM_OUT: report([advisory]) } })
+  assert.match(text.stdout, /already in the tracker:[\s\S]*ReDoS/)
+})
+
+test('an archived issue that holds the key keeps the second run from creating anything', async () => {
+  const { pmkit, scan } = setup()
+  const first = (await scan()).data
+  const id = await createFrom(pmkit, first.candidates[0])
+  assert.equal((await pmkit(['issues', 'archive', id, '--json'])).code, 0)
+  const second = (await scan()).data
+  assert.equal(second.candidates.length, first.candidates.length - 1)
+  assert.deepEqual(second.matched.map((m) => m.issue), [id])
+})
+
+test('scanners[].alerts follows the --severity filter', async () => {
+  const { scan } = setup()
+  assert.equal((await scan()).data.scanners[0].alerts, 4)
+  assert.equal((await scan(['--severity', 'critical,high'])).data.scanners[0].alerts, 2)
 })

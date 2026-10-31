@@ -1266,17 +1266,18 @@ export const COMMANDS = [
       if (unknown.length > 0) throw usageError(`--severity must be one of ${SEVERITIES.join(', ')}, not ${unknown.join(', ')}`)
       ctx.config()
       const found = collectAlerts(ctx.root, { env: ctx.env })
-      const scanners = found.scanners
-      const failed = scanners.filter((scanner) => scanner.error !== undefined)
+      const failed = found.scanners.filter((scanner) => scanner.error !== undefined)
       const warnings = [...found.warnings]
       const noUnread = { count: 0, ids: [] }
-      if (!scanners.some((scanner) => scanner.detected)) {
+      if (!found.scanners.some((scanner) => scanner.detected)) {
         const looked = SCANNERS.map((scanner) => `${scanner.id} needs ${scanner.needs}`).join('; ')
-        return { data: { absent: true, incomplete: false, scanners, unread: noUnread, candidates: [], matched: [] }, text: `security alerts are absent in this repository: no scanner found (${looked})`, warnings }
+        return { data: { absent: true, incomplete: false, scanners: found.scanners, unread: noUnread, candidates: [], matched: [] }, text: `security alerts are absent in this repository: no scanner found (${looked})`, warnings }
       }
       const tracker = await ctx.tracker()
       const { priorities, types } = await tracker.discover()
       const alerts = wanted.length === 0 ? found.alerts : found.alerts.filter((alert) => wanted.includes(alert.severity))
+      // The per-scanner count follows the filter, like alerts list, so scanners[].alerts adds up to the alerts scanned.
+      const scanners = found.scanners.map((scanner) => ({ ...scanner, alerts: alerts.filter((alert) => alert.scanner === scanner.id).length }))
       const existing = await readExistingIssues(tracker)
       const { candidates, matched } = matchAlerts(alerts.map((alert) => alertCandidate(alert, { priorities, types })), existing.issues)
       warnings.push(...existing.problems.map(problemLine))
@@ -1291,7 +1292,7 @@ export const COMMANDS = [
       const incomplete = failed.length > 0 || existing.incomplete
       const parts = []
       if (candidates.length > 0) parts.push(table(['Key', 'Severity', 'Priority', 'Package', 'Title'], candidates.map((c) => [c.key, c.severity, c.priority ?? '', c.package, c.title])))
-      if (matched.length > 0) parts.push(`already in the tracker:\n${table(['Issue', 'Status', 'Severity', 'Package', 'Title'], matched.map((m) => [m.issue, m.status ?? '', m.severity, m.package, m.title]))}`)
+      if (matched.length > 0) parts.push(`already in the tracker:\n${table(['Issue', 'Status', 'Severity', 'Package', 'Title'], matched.map((m) => [m.issue, m.status ?? '', m.severity, m.package, m.advisories.length > 0 ? m.advisories.map((item) => item.title ?? item.url).join('; ') : m.title]))}`)
       const empty = failed.length === 0 ? 'no alerts' : 'no alerts read'
       return { data: { absent: false, incomplete, scanners, unread: existing.unread, candidates, matched }, text: parts.length > 0 ? parts.join('\n\n') : empty, warnings, notes: await capabilityNotes(tracker, 'security_alerts') }
     },

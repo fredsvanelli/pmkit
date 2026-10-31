@@ -22,17 +22,17 @@ Data: `{ absent, incomplete, scanners, unread, candidates, matched }`.
 - A candidate is `{ key, id, scanner, package, severity, priority, title, url, fixAvailable, description }`.
 - A matched alert has the same fields plus `issue`, `status`.
 
-### Key (my call)
+### Key (my call, changed after review)
 
-One alert is one package of one scanner, with the advisory that `alerts list` shows for it. The key is the first 12 hex digits of the SHA-256 of `<scanner>\n<package>\n<advisory url, or the title when npm gives no URL>`. The description ends with the line `alert-key: <key>`. A second run finds that line in the issue body and creates nothing, whatever the status of the issue. A new advisory on the same package has a new URL, so it opens a new issue. The key does not hold the severity, so a severity that changes in the audit report does not duplicate the issue.
+One issue is one vulnerable package. The key is the first 12 hex digits of the SHA-256 of `<scanner>\n<package>`. The description ends with the line `alert-key: <key>`. The advisories, their order, their titles, the `via` names, the URL and the severity are not in the key, because they change when the user fixes a dependency and a changed key would open a second issue. A second run finds the line in the issue body and creates nothing, whatever the status of the issue and whether it is archived. A new advisory on a package that has an issue opens nothing: the preview lists the package as already registered with its current advisories (`advisories` in the data, every object entry of `via`), and the user decides whether to comment or reopen by hand. A package with two advisories is one alert.
 
 ### Transitive advisories (my call)
 
-One issue per alert, which means one per package. An advisory that npm reports for several packages (the package and the ones that depend on it) opens one issue for each, because each package has its own fix path and its own owner. The title of a package that only goes through another one is `<package>: vulnerable through <names>`. Folding them into one issue would need the `via` graph in `alerts list`, which PMK-185 touches, so it stays a follow-up.
+One issue per package, which means an advisory that npm reports for several packages opens one issue for each. Each package has its own fix. The title of a package that only goes through another one is `Security: <package>: vulnerable through <names>`. Folding them into one issue would need the `via` graph in `alerts list`, which PMK-185 touches, so it stays a follow-up.
 
-### Severity to priority (my call)
+### Severity to priority (my call, changed after review)
 
-The tracker priorities come from `.pmkit/config.yaml` (`priorities`, highest first, `urgent, high, medium, low` by default). The mapping is by position: `critical` is the first priority, `high` the second, `medium` the third and `low` the last one. A list with fewer than four entries clamps to its last entry (three priorities: `critical` and `high` get the first two, `medium` and `low` the third). A tracker with no `priorities` value never reaches this, since the config always has the default list.
+The tracker priorities come from the tracker (`discover`, `urgent, high, medium, low` by default). The name matches first: `critical` is `urgent` or `critical`, `high` is `high`, `medium` is `medium` or `normal`, `low` is `low`. With no matching name the position decides: `critical` is the first priority, `high` the second, `medium` the third and `low` the last, clamped to the list. `none` is never used.
 
 ### Type and description
 

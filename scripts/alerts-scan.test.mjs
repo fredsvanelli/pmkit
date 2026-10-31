@@ -1,34 +1,52 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { SEVERITIES, alertCandidate, alertKey, matchAlerts, priorityFor } from './lib/alerts.mjs'
+import { SEVERITIES, alertCandidate, alertKey, matchAlerts, parseNpmAudit, priorityFor } from './lib/alerts.mjs'
 
 // Key, priority, candidates and matching of `alerts scan` (PMK-73).
 
 const ALERT = { id: 'npm-audit:lodash', scanner: 'npm-audit', package: 'lodash', title: 'Command Injection', severity: 'critical', url: 'https://example.com/a/2', fixAvailable: false }
 
-test('alertKey is 12 hex digits that follow the scanner, the package and the advisory url', () => {
+test('alertKey follows only the scanner and the package', () => {
   const key = alertKey(ALERT)
   assert.match(key, /^[0-9a-f]{12}$/)
-  assert.equal(alertKey({ ...ALERT, severity: 'low', title: 'other text', fixAvailable: true }), key, 'severity, title and fix do not change the key')
-  assert.notEqual(alertKey({ ...ALERT, url: 'https://example.com/a/3' }), key)
+  const other = { ...ALERT, severity: 'low', title: 'other text', url: 'https://example.com/a/3', fixAvailable: true, advisories: [{ title: 'x', url: 'y' }] }
+  assert.equal(alertKey(other), key, 'severity, title, url, fix and advisories do not change the key')
   assert.notEqual(alertKey({ ...ALERT, package: 'lodash.merge' }), key)
   assert.notEqual(alertKey({ ...ALERT, scanner: 'other' }), key)
 })
 
-test('alertKey falls back to the title when the alert has no url', () => {
-  const bare = { ...ALERT, url: null, title: 'vulnerable through minimist' }
-  assert.notEqual(alertKey(bare), alertKey({ ...bare, title: 'vulnerable through tar' }))
+test('a package that goes through b and c keeps its key when it goes through b only', () => {
+  const via = (title) => ({ ...ALERT, package: 'a', url: null, title })
+  assert.equal(alertKey(via('vulnerable through b, c')), alertKey(via('vulnerable through b')))
 })
 
-test('priorityFor maps by position and clamps to the last priority', () => {
+test('two advisories on one package are one alert, and their order does not change the key', () => {
+  const report = (via) => JSON.stringify({ vulnerabilities: { a: { name: 'a', severity: 'high', via, fixAvailable: true } } })
+  const first = { title: 'One', url: 'https://example.com/1', severity: 'high' }
+  const second = { title: 'Two', url: 'https://example.com/2', severity: 'high' }
+  const one = parseNpmAudit(report([first, second])).alerts
+  const two = parseNpmAudit(report([second, first])).alerts
+  assert.equal(one.length, 1)
+  assert.equal(alertKey(one[0]), alertKey(two[0]))
+  assert.deepEqual(one[0].advisories, [{ title: 'One', url: 'https://example.com/1' }, { title: 'Two', url: 'https://example.com/2' }])
+})
+
+test('priorityFor matches the name first', () => {
   const four = ['urgent', 'high', 'medium', 'low']
   assert.deepEqual(SEVERITIES.map((severity) => priorityFor(severity, four)), ['urgent', 'high', 'medium', 'low'])
+  assert.deepEqual(SEVERITIES.map((severity) => priorityFor(severity, ['low', 'medium', 'high', 'urgent'])), ['urgent', 'high', 'medium', 'low'], 'an inverted list')
+  assert.deepEqual(SEVERITIES.map((severity) => priorityFor(severity, ['urgent', 'high', 'medium', 'low', 'none'])), ['urgent', 'high', 'medium', 'low'], 'never none')
+  assert.deepEqual(SEVERITIES.map((severity) => priorityFor(severity, ['critical', 'high', 'normal', 'low'])), ['critical', 'high', 'normal', 'low'])
+  assert.equal(priorityFor('critical', ['urgent', 'critical', 'high']), 'urgent')
+})
+
+test('priorityFor uses the position when no name matches, clamps, and never returns none', () => {
   assert.deepEqual(SEVERITIES.map((severity) => priorityFor(severity, ['p1', 'p2', 'p3'])), ['p1', 'p2', 'p3', 'p3'])
   assert.deepEqual(SEVERITIES.map((severity) => priorityFor(severity, ['only'])), ['only', 'only', 'only', 'only'])
-  assert.equal(priorityFor('high', ['a', 'b', 'c', 'd', 'e']), 'b')
-  assert.equal(priorityFor('medium', ['a', 'b', 'c', 'd', 'e']), 'c')
-  assert.equal(priorityFor('low', ['a', 'b', 'c', 'd', 'e']), 'e')
+  assert.deepEqual(SEVERITIES.map((severity) => priorityFor(severity, ['a', 'b', 'c', 'd', 'e'])), ['a', 'b', 'c', 'e'])
+  assert.deepEqual(SEVERITIES.map((severity) => priorityFor(severity, ['p1', 'p2', 'p3', 'none'])), ['p1', 'p2', 'p3', 'p3'])
   assert.equal(priorityFor('critical', []), null)
+  assert.equal(priorityFor('critical', ['none']), null)
 })
 
 test('alertCandidate has the title, type, priority and a description that ends with the key line', () => {
