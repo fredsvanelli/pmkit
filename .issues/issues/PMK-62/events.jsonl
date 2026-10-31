@@ -6,3 +6,4 @@
 {"at":"2026-10-30T23:20:51Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-10-30T23:22:49Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
 {"at":"2026-10-30T23:22:56Z","by":"fred","op":"comment","to":"2026-10-30T23-22-56Z-fred.md"}
+{"at":"2026-10-31T15:44:56Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}

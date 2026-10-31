@@ -2,14 +2,14 @@
 id: PMK-175
 title: Run npm audit through the shell on Windows in alerts list
 type: bug
-status: in_review
+status: done
 priority: high
 estimate: 1
 assignee: fred
 related: [PMK-48]
 branch: pmk-175-run-npm-audit-through-the-shell-on
 created: 2026-10-31T03:04:20.693Z
-updated: 2026-10-31T03:10:30Z
+updated: 2026-10-31T15:45:03Z
 ---
 
 ## Description
