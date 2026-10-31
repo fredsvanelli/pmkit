@@ -1,0 +1,2 @@
+{"at":"2026-10-31T16:59:11Z","by":"fred","op":"create","to":{"id":"PMK-188","title":"Fix link-repo when the repo and the remote disagree or the host is cleared","type":"bug","status":"backlog","priority":"medium","estimate":1,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-31T16:59:11.059Z","updated":"2026-10-31T16:59:11Z"}}
+{"at":"2026-10-31T16:59:11Z","by":"fred","op":"link","field":"related","to":"PMK-53"}
