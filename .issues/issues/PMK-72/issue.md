@@ -2,7 +2,7 @@
 id: PMK-72
 title: Add the team-capacity command
 type: feature
-status: in_progress
+status: in_review
 priority: medium
 estimate: 2
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-4]
 milestone: generic-commands
 branch: pmk-72-add-the-team-capacity-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-31T16:05:32Z
+updated: 2026-10-31T16:21:21Z
 ---
 
 ## Description
