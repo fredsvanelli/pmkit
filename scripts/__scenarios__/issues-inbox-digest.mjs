@@ -59,6 +59,10 @@ export default {
     fs.writeFileSync(body, 'Can you look at this, @fred?\n')
     await pmkit(['issues', 'comment', 'ISS-6J0B', '--body-file', body, '--as', 'ana'])
     fs.rmSync(body)
+    // An older mention (before the 14 day window of the first list): the list hides it and counts it in `hidden`.
+    const old = path.join(root, '.issues', 'issues', 'ISS-5N1R', 'comments')
+    fs.mkdirSync(old, { recursive: true })
+    fs.writeFileSync(path.join(old, '2026-09-20T12-00-00Z-ana.md'), '---\nauthor: ana\ncreated: 2026-09-20T12:00:00Z\n---\n\nOld note for @fred\n')
   },
   prompt: '/pmkit:issues:inbox-digest',
   answers: [],
@@ -83,6 +87,9 @@ export default {
     assert.deepEqual(saved.inbox.problems.map((p) => p.id), ['ISS-3Q6T'])
     assert.deepEqual(saved.review.problems.map((p) => p.id), ['ISS-3Q6T'])
     assert.deepEqual(saved.inbox.items.map((item) => [item.kind, item.issue, item.by]), [['assignment', 'ISS-6J0B', 'ana'], ['mention', 'ISS-6J0B', 'ana']])
+    // N9 and N10: the older mention is hidden, not shown. The digest says so and offers mark-read only with the shown keys.
+    assert.equal(saved.inbox.hidden, 1)
+    assert.ok(!saved.inbox.items.some((item) => item.issue === 'ISS-5N1R'))
     assert.equal(saved.me.id, 'fred')
     // Five issues are in review; the one with no branch has no pr blockers call (step 5.2, no branch recorded).
     assert.deepEqual(saved.review.issues.map((issue) => [issue.id, issue.assignee ?? null, issue.branch ?? null]).sort(), [
