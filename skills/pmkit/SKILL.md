@@ -53,6 +53,7 @@ Each command file holds the full procedure. When the user asks for one of these 
 | check the tracker files, fix what can be fixed and resolve git conflict markers | `/pmkit:local:doctor` | `${CLAUDE_PLUGIN_ROOT}/commands/local/doctor.md` |
 | render a board, roadmap or sprint view as Markdown or HTML to share with people outside the agent | `/pmkit:local:render` | `${CLAUDE_PLUGIN_ROOT}/commands/local/render.md` |
 | move the tracker to Linear, import a Linear team into .issues/, undo or finish a migration | `/pmkit:local:migrate` | `${CLAUDE_PLUGIN_ROOT}/commands/local/migrate.md` |
+| progress of goals and initiatives, how far the strategic goals are | `/pmkit:report:initiatives-and-goals` | `${CLAUDE_PLUGIN_ROOT}/commands/report/initiatives-and-goals.md` |
 | write release notes, say what shipped, a changelog for customers | `/pmkit:report:release-notes` | `${CLAUDE_PLUGIN_ROOT}/commands/report/release-notes.md` |
 | review the roadmap: epics and milestones with dates, health and delays, and the epics with no recent status update | `/pmkit:report:roadmap-review` | `${CLAUDE_PLUGIN_ROOT}/commands/report/roadmap-review.md` |
 | draft a status update for an epic and publish it after approval | `/pmkit:report:status` | `${CLAUDE_PLUGIN_ROOT}/commands/report/status.md` |
