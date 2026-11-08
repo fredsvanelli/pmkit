@@ -1,2 +1,5 @@
 {"at":"2026-10-31T16:01:13Z","by":"fred","op":"create","to":{"id":"PMK-179","title":"Fix epic goal and the goal checks of validate","type":"bug","status":"backlog","priority":"high","estimate":2,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-31T16:01:13.865Z","updated":"2026-10-31T16:01:13Z"}}
 {"at":"2026-10-31T16:01:14Z","by":"fred","op":"link","field":"related","to":"PMK-45"}
+{"at":"2026-11-08T23:32:46Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-08T23:32:46Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-08T23:32:52Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-179-fix-epic-goal-and-the-goal-checks-of"}

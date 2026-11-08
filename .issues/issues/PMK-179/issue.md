@@ -2,12 +2,14 @@
 id: PMK-179
 title: Fix epic goal and the goal checks of validate
 type: bug
-status: backlog
+status: in_progress
 priority: high
 estimate: 2
+assignee: fred
 related: [PMK-45]
+branch: pmk-179-fix-epic-goal-and-the-goal-checks-of
 created: 2026-10-31T16:01:13.865Z
-updated: 2026-10-31T16:01:14Z
+updated: 2026-11-08T23:32:52Z
 ---
 
 ## Description
