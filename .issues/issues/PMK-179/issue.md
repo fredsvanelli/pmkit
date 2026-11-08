@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-45]
 branch: pmk-179-fix-epic-goal-and-the-goal-checks-of
 created: 2026-10-31T16:01:13.865Z
-updated: 2026-11-08T23:32:52Z
+updated: 2026-11-08T23:48:50Z
 ---
 
 ## Description
@@ -31,7 +31,7 @@ Goals on the Local tracker (PMK-45) merged with these defects, found by the revi
 
 ## Acceptance criteria
 
-- [ ] `epic goal <epic> ""` is refused, and only `none` clears the link
-- [ ] `validate` reports an epic whose goal is not a valid goal ID or whose goal file does not parse
-- [ ] `epic goal` keeps every frontmatter key and comment of `epic.md`
-- [ ] The spec decides how a canceled epic counts in goal progress, with a test
+- [x] `epic goal <epic> ""` is refused, and only `none` clears the link
+- [x] `validate` reports an epic whose goal is not a valid goal ID or whose goal file does not parse
+- [x] `epic goal` keeps every frontmatter key and comment of `epic.md`
+- [x] The spec decides how a canceled epic counts in goal progress, with a test
