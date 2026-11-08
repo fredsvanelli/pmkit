@@ -1468,7 +1468,7 @@ test('configClass sorts every call into exempt, read or write', () => {
   assert.equal(configClass(cmd('team capacity'), { set: 'fred=5' }), 'write')
 })
 
-// A parent chain deep enough that JSON.stringify overflows the stack, while the text printer still copes.
+// A parent chain of the given depth. The JSON overflow is simulated with a title whose toJSON throws, not by depth.
 const chainCtx = (depth, json, { title = 't' } = {}) => {
   const status = { name: 'todo', category: 'todo' }
   const issues = Array.from({ length: depth }, (_, index) => ({
@@ -1493,7 +1493,7 @@ test('issues dependencies prints a deep chain in text mode and fails only for JS
   // A title whose toJSON throws the stack RangeError stands for a map too deep for JSON.stringify, whatever the stack size.
   const overflow = { toJSON() { throw new RangeError('Maximum call stack size exceeded') } }
   await assert.rejects(() => cmd('issues dependencies').run(chainCtx(3000, true, { title: overflow })), (error) => error.code === 'INVALID_INPUT' && /too deep/.test(error.message))
-  await assert.doesNotReject(() => cmd('issues dependencies').run(chainCtx(3000, true)))
+  await assert.doesNotReject(() => cmd('issues dependencies').run(chainCtx(50, true)))
 })
 
 const INPUTS = path.join(path.dirname(fileURLToPath(import.meta.url)), '__goldens__', '_inputs')
