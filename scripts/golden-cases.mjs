@@ -127,6 +127,7 @@ export const CASES = {
   risks: () => [[]],
   'roadmap review': () => [[]],
   'team load': () => [[]],
+  'goals overview': () => [[]],
   'team capacity': (a) => [[], ['--sprint', a.sprint]],
   'alerts list': () => [[]],
   'alerts scan': () => [[]],

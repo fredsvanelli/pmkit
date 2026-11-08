@@ -1,0 +1,48 @@
+$ pmkit goals overview
+exit 0
+--- stdout
+no goals: using top-level issues (issues with no parent, or whose parent is an epic) and the progress of their sub-issues
+Issue    | Title                 | Progress | Done/Total | Points done/points
+---------|-----------------------|----------|------------|-------------------
+ISS-2X6D | Billing export to CSV | 0%       | 0/1        | 0/1
+9 top-level issues have no sub-issues and are not listed
+incomplete: some issues were not read, so these numbers may be low
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+note: no goals: using top-level issues (issues with no parent, or whose parent is an epic) and the progress of their sub-issues
+
+$ pmkit goals overview --json
+exit 0
+--- stdout
+{
+  "source": "top_level",
+  "complete": false,
+  "items": [
+    {
+      "issue": {
+        "id": "ISS-2X6D",
+        "title": "Billing export to CSV",
+        "status": {
+          "name": "in_progress",
+          "category": "in_progress"
+        }
+      },
+      "total": 1,
+      "done": 0,
+      "canceled": 0,
+      "points": 1,
+      "pointsDone": 0,
+      "progress": 0
+    }
+  ],
+  "withoutChildren": 9,
+  "notes": [
+    "no goals: using top-level issues (issues with no parent, or whose parent is an epic) and the progress of their sub-issues"
+  ],
+  "warnings": [
+    "ISS-3Q6T: CONFLICT The issue file contains git conflict markers."
+  ]
+}
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+note: no goals: using top-level issues (issues with no parent, or whose parent is an epic) and the progress of their sub-issues
