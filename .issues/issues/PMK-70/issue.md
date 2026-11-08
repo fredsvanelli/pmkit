@@ -11,7 +11,7 @@ blocked_by: [PMK-46]
 milestone: generic-commands
 branch: pmk-70-add-the-request-queue-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-11-08T03:18:46Z
+updated: 2026-11-08T03:33:21Z
 ---
 
 ## Description
@@ -20,5 +20,5 @@ Source: Unified model, PM catalog (`request-queue`: "Processes external requests
 
 ## Acceptance criteria
 
-- [ ] Lists open requests and turns accepted ones into issues or links them to existing ones
-- [ ] Without a request queue it suggests triage
+- [x] Lists open requests and turns accepted ones into issues or links them to existing ones
+- [x] Without a request queue it suggests triage
