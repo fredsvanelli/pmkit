@@ -2,14 +2,14 @@
 id: PMK-192
 title: Validate default_branch before pause and progress put it in a shell command
 type: bug
-status: in_progress
+status: in_review
 priority: high
 estimate: 1
 assignee: fred
 related: [PMK-65]
 branch: pmk-192-validate-default-branch-before-pause-and
 created: 2026-10-31T19:29:35.913Z
-updated: 2026-11-08T23:52:56Z
+updated: 2026-11-08T23:58:00Z
 ---
 
 ## Description
