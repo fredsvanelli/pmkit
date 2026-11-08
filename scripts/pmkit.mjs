@@ -1878,17 +1878,31 @@ async function runReleaseReadiness(ctx) {
   }
   const warnings = []
   const notes = []
+  const problems = []
+  let truncated = false
   const notSupported = (error) => isPmkitError(error) && error.code === 'NOT_SUPPORTED'
-  const { issues: all, problems: found } = await tracker.searchIssues({})
-  const problems = found.map(({ id, code, message }) => ({ id, code, message }))
-  warnings.push(...found.map(problemLine))
-  const live = all.filter((issue) => !issue.archived)
+  // Every issue read goes through here: a cut read (hasMore) marks the report incomplete, and a file that does not parse is listed once.
+  const readIssues = async (filter) => {
+    const found = await tracker.searchIssues(filter)
+    for (const problem of found.problems) {
+      if (problems.some((known) => known.id === problem.id)) continue
+      problems.push({ id: problem.id, code: problem.code, message: problem.message })
+      warnings.push(problemLine(problem))
+    }
+    if (found.hasMore === true) {
+      if (!truncated) warnings.push('Linear has more issues than the 1000 pmkit read, so the basis and the open work may be incomplete')
+      truncated = true
+    }
+    return found.issues.filter((issue) => !issue.archived)
+  }
 
   let activeSprint = null
+  let cyclesAbsent = false
   try {
     activeSprint = (await tracker.currentCycle()) ?? null
   } catch (error) {
     if (!notSupported(error)) throw error
+    cyclesAbsent = true
     notes.push(...(await capabilityNotes(tracker, 'cycles')))
   }
   let selector = null
@@ -1911,19 +1925,27 @@ async function runReleaseReadiness(ctx) {
   } catch (error) {
     if (!notSupported(error)) throw error
   }
+  const releases = releasesOn ? await tracker.listReleases() : null
+  // The whole tracker is read only when the basis needs it: a milestone, or the milestone rung after no planned release.
+  const needsAll = selector?.milestone !== undefined || (selector === null && !(releases ?? []).some((release) => release.state === 'planned'))
+  const everything = needsAll ? await readIssues({}) : []
   const choice = chooseReadinessBasis({
     selector,
-    releases: releasesOn ? await tracker.listReleases() : null,
+    releases,
     milestones,
-    openMilestones: new Set(live.filter((i) => i.milestone && i.status.category !== 'done' && i.status.category !== 'canceled').map((i) => i.milestone)),
+    openMilestones: new Set(everything.filter((i) => i.milestone && i.status.category !== 'done' && i.status.category !== 'canceled').map((i) => i.milestone)),
     activeSprint,
+    cyclesAbsent,
   })
   if (choice.basis === null) {
-    throw new PmkitError('INVALID_INPUT', 'there is no planned release, no milestone with an open issue and no active sprint to check', 'pmkit release create <id>, pmkit milestone create <id> or pmkit cycle open --start <date>')
+    const sprintHint = cyclesAbsent ? '' : ' or pmkit cycle open --start <date>'
+    throw new PmkitError('INVALID_INPUT', `there is no planned release, no milestone with an open issue and no ${cyclesAbsent ? 'sprint (this tracker has no cycles)' : 'active sprint'} to check`, `pmkit release create <id> or pmkit milestone create <id>${sprintHint}`)
   }
   if (!releasesOn) notes.push(...(await capabilityNotes(tracker, 'releases')))
-  const field = { release: 'release', milestone: 'milestone', sprint: 'sprint' }[choice.basis]
-  const issues = live.filter((issue) => issue[field] === choice.source.id)
+  // The release and the sprint are filtered by the tracker, so a long list cuts the other issues and not these. A milestone has no filter.
+  const issues = choice.basis === 'milestone'
+    ? everything.filter((issue) => issue.milestone === choice.source.id)
+    : await readIssues(choice.basis === 'release' ? { release: choice.source.id } : { sprint: choice.source.id })
 
   const system = ctx.config().pmkit.git_host?.system ?? 'none'
   const NO_HOST_READ = 'so pull requests and deploys are not checked'
@@ -1932,26 +1954,29 @@ async function runReleaseReadiness(ctx) {
   let prsIncomplete = false
   let deploys = null
   const affectsOneCall = (error) => isPmkitError(error) && (error.code === 'RATE_LIMITED' || error.code === 'UPSTREAM')
+  // Collected apart from `warnings`, so a host that turns out to be unavailable drops what it said about the lists it read.
+  const hostWarnings = []
   try {
     const host = ctx.host()
     try {
       prs = host.listPullRequests()
       if (prs.length === 200) {
         prsIncomplete = true
-        warnings.push('only the 200 most recently created open pull requests were read')
+        hostWarnings.push('only the 200 most recently created open pull requests were read')
       }
     } catch (error) {
       if (!affectsOneCall(error)) throw error
       prs = { error: errorOf(error) }
-      warnings.push(`pull requests not checked: ${error.message}`)
+      hostWarnings.push(`pull requests not checked: ${error.message}`)
     }
     try {
       deploys = host.listDeploys({})
     } catch (error) {
       if (!affectsOneCall(error)) throw error
       deploys = { error: errorOf(error) }
-      warnings.push(`deploys not checked: ${error.message}`)
+      hostWarnings.push(`deploys not checked: ${error.message}`)
     }
+    warnings.push(...hostWarnings)
   } catch (error) {
     if (isPmkitError(error) && error.code === 'NOT_SUPPORTED') warnings.push(`no git host is configured, ${NO_HOST_READ}`)
     else if (isPmkitError(error) && (error.code === 'NOT_CONFIGURED' || error.code === 'AUTH')) warnings.push(`${error.message}, ${NO_HOST_READ}; next: ${error.nextStep}`)
@@ -1961,7 +1986,7 @@ async function runReleaseReadiness(ctx) {
     prsIncomplete = false
     deploys = null
   }
-  const report = buildReadiness({ choice, issues, prs, prsIncomplete, deploys, gitHost, problems })
+  const report = buildReadiness({ choice, issues, prs, prsIncomplete, deploys, gitHost, problems, truncated })
   return { data: report, text: readinessText(report), warnings, notes }
 }
 

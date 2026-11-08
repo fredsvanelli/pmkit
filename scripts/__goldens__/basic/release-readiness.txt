@@ -4,7 +4,7 @@ exit 2
 (empty)
 --- stderr
 error: there is no planned release, no milestone with an open issue and no active sprint to check
-next: pmkit release create <id>, pmkit milestone create <id> or pmkit cycle open --start <date>
+next: pmkit release create <id> or pmkit milestone create <id> or pmkit cycle open --start <date>
 
 $ pmkit release-readiness --json
 exit 2
@@ -13,7 +13,7 @@ exit 2
   "error": {
     "code": "INVALID_INPUT",
     "message": "there is no planned release, no milestone with an open issue and no active sprint to check",
-    "nextStep": "pmkit release create <id>, pmkit milestone create <id> or pmkit cycle open --start <date>"
+    "nextStep": "pmkit release create <id> or pmkit milestone create <id> or pmkit cycle open --start <date>"
   }
 }
 --- stderr

@@ -60,6 +60,7 @@ exit 0
       "nextStep": "Set git_host.system to github in .pmkit/config.yaml, or run /pmkit:setup"
     }
   },
+  "truncated": false,
   "complete": true,
   "ready": false,
   "problems": []
@@ -129,6 +130,7 @@ exit 0
       "nextStep": "Set git_host.system to github in .pmkit/config.yaml, or run /pmkit:setup"
     }
   },
+  "truncated": false,
   "complete": true,
   "ready": false,
   "problems": []

@@ -179,3 +179,33 @@ test('release-readiness writes nothing', async () => {
   await ok(root, env, ['release-readiness'])
   assert.equal(snapshot(), before)
 })
+
+test('release-readiness drops the 200 pull requests warning when a later deploys call logs out', async () => {
+  const root = repo()
+  const many = Array.from({ length: 200 }, (_, i) => ({ ...prs[1], number: 100 + i, headRefName: `b${i}` }))
+  const env = envWith(fakeGh(cannedGh({ [PR_LIST]: { stdout: JSON.stringify(many) }, [DEPLOYMENTS]: { status: 4, stderr: 'To get started with GitHub CLI, please run:  gh auth login\n' } })))
+  await ok(root, env, ['release', 'create', '2.0'])
+  const { stdout, stderr } = await ok(root, env, ['release-readiness', '--json'])
+  const data = JSON.parse(stdout)
+  assert.equal(data.gitHost.reason.code, 'AUTH')
+  assert.equal(data.pullRequestsIncomplete, false)
+  assert.doesNotMatch(stderr, /200 most recently created/)
+})
+
+test('release-readiness keeps the failing checks of a pull request', async () => {
+  const root = repo()
+  const failing = [{ ...prs[0], statusCheckRollup: [{ __typename: 'CheckRun', name: 'test', status: 'COMPLETED', conclusion: 'FAILURE' }] }]
+  const env = envWith(fakeGh(cannedGh({ [PR_LIST]: { stdout: JSON.stringify(failing) } })))
+  await withRelease(root, env)
+  const data = JSON.parse((await ok(root, env, ['release-readiness', '--json'])).stdout)
+  assert.deepEqual(data.pullRequests[0].checks, { total: 1, failing: ['test'] })
+  assert.match((await ok(root, env, ['release-readiness'])).stdout, /failing: test/)
+})
+
+test('release-readiness labels a milestone by its name', async () => {
+  const root = repo()
+  const env = envWith(fakeGh(cannedGh()))
+  await ok(root, env, ['milestone', 'create', 'beta', '--name', 'Public beta', '--due', '2026-11-01'])
+  const text = (await ok(root, env, ['release-readiness', '--milestone', 'beta'])).stdout
+  assert.ok(text.startsWith('milestone Public beta (due 2026-11-01)'), text)
+})

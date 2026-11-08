@@ -4,7 +4,7 @@ import { buildReadiness, chooseReadinessBasis } from './release-readiness.mjs'
 
 const rel = (id, state = 'planned', tag) => ({ id, state, tag })
 const ms = (id, due) => ({ id, name: id, due })
-const base = { selector: null, releases: null, milestones: [], openMilestones: new Set(), activeSprint: null }
+const base = { selector: null, releases: null, milestones: [], openMilestones: new Set(), activeSprint: null, cyclesAbsent: false }
 
 test('a selector wins and is requested', () => {
   const choice = chooseReadinessBasis({ ...base, selector: { milestone: ms('beta') } })
@@ -85,4 +85,22 @@ test('an open PR on a done issue still blocks', () => {
 test('milestone basis never matches a deploy', () => {
   const data = build({ choice: { ...choice, basis: 'milestone', source: { id: 'beta' } }, deploys: [{ ref: 'v1.1' }] })
   assert.equal(data.deploys[0].matchesRelease, false)
+})
+
+test('with cycles absent the last rung is cycles_absent, not no_active_sprint', () => {
+  const none = chooseReadinessBasis({ ...base, cyclesAbsent: true })
+  assert.equal(none.basis, null)
+  assert.deepEqual(none.skipped.at(-1), { basis: 'sprint', reason: 'cycles_absent' })
+})
+
+test('a cut read is incomplete: ready is null even with nothing open, and complete is false', () => {
+  const data = build({ issues: [issue('A-1', 'done')], truncated: true })
+  assert.deepEqual([data.truncated, data.complete, data.ready], [true, false, null])
+  assert.equal(build({ issues: [issue('A-1', 'done')] }).truncated, false)
+})
+
+test('a pull request row keeps its failing checks and the number of checks', () => {
+  const rollup = [{ __typename: 'CheckRun', name: 'test', status: 'COMPLETED', conclusion: 'FAILURE' }, { __typename: 'CheckRun', name: 'lint', status: 'COMPLETED', conclusion: 'SUCCESS' }]
+  const data = build({ issues: [issue('A-1', 'todo', 'a1')], prs: [pr(1, 'a1', { statusCheckRollup: rollup })] })
+  assert.deepEqual(data.pullRequests[0].checks, { total: 2, failing: ['test'] })
 })
