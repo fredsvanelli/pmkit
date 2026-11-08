@@ -8,9 +8,9 @@ const inputs = path.join(import.meta.dirname, '_inputs')
 const AUTH = 'the command stops at step 1 with AUTH, before any request'
 const STOPPED = 'the command stops before it writes'
 const OPEN = ['issues', 'list', '--category', 'backlog,todo,triage,in_progress,in_review']
-const create = ['issues', 'create', '--title', 'Export the board to CSV', '--description-file', path.join(inputs, 'request-queue-description.md')]
+const create = ['issues', 'create', '--title-file', path.join(inputs, 'request-queue-title.md'), '--description-file', path.join(inputs, 'request-queue-description.md')]
 const request = (pmkit, title, extra = []) => pmkit(['requests', 'create', '--title', title, ...extra])
-const reads = [{ step: '1', read: ['capabilities'] }, { step: '2', read: ['requests', 'list'], save: 'queue' }, { step: '3', read: OPEN }]
+const reads = [{ step: '1', read: ['capabilities'] }, { step: '2', read: ['requests', 'list'], save: 'queue' }, { step: '3', read: OPEN, save: 'open' }]
 
 export default [
   {
@@ -50,6 +50,10 @@ export default [
       assert.match(file('REQ-DZEF'), /state: declined/)
       assert.match(file('REQ-DZEF'), /reason: already planned for next year/)
       assert.equal(repo.newEvents('ISS-3F7H').length, 0, 'linking a request does not touch the issue')
+      // ISS-3Q6T has conflict markers, so the match list of step 3 is "not verified": the command warns before the new issue.
+      assert.deepEqual(saved.open.problems.map((p) => p.id), ['ISS-3Q6T'])
+      assert.ok(!repo.file('.issues/issues/ISS-M0GZ/issue.md').includes('Acme'), 'no customer is guessed')
+      assert.match(repo.file('.issues/issues/ISS-M0GZ/issue.md'), /Asked by: support\./)
     },
   },
   {
@@ -120,6 +124,7 @@ export default [
     notHit: {},
     expect(repo) {
       assert.equal(repo.issue('ISS-M0GZ').title, 'Export the board to CSV')
+      assert.doesNotMatch(repo.file('.issues/requests/REQ-M0GZ.md'), /state: accepted/, 'the request stays unaccepted and is not retried')
     },
   },
   {
