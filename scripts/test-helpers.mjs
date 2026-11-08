@@ -9,9 +9,12 @@ const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), '__fixt
 
 const made = []
 
-/** Makes a temp folder under os.tmpdir() and records it, so the test run removes it. */
+/**
+ * Makes a temp folder under os.tmpdir() and records it, so the test run removes it. The path is the real one: on macOS
+ * os.tmpdir() goes through the /var symlink, and the CLI and git print the resolved /private/var path.
+ */
 export function tempDir(prefix = 'pmkit-') {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix))
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))
   made.push(dir)
   return dir
 }
