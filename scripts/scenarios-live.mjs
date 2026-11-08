@@ -2,7 +2,7 @@
 // of its fixture, and the suite checks what the agent did. It costs money, so it never runs by default and
 // `npm test` does not load it (the name does not end in .test.mjs).
 //
-//   PMKIT_LIVE=1 node --test scripts/scenarios-live.mjs        every scenario: 70 runs, up to $1 each
+//   PMKIT_LIVE=1 node --test scripts/scenarios-live.mjs        every scenario: 75 runs, up to $1 each
 //   PMKIT_LIVE=1 node scripts/scenarios-live.mjs issues-move   only the named modules (node --test drops extra args)
 //
 // Each test is skipped unless PMKIT_LIVE is 1 and `claude` is on PATH. Each run passes --max-budget-usd 1, which
@@ -90,6 +90,11 @@ const LIVE_EXPECT_STOPS = {
   'backlog-prioritize-by-demand.2': 'the demand list of the scripted run, and the failed write, which needs a file edit',
   'backlog-prioritize-by-demand.3': 'the AUTH error of the scripted run, which a live run does not reproduce',
   'backlog-prioritize-by-demand.4': 'the demand list of the scripted run, whose problem comes from a file the setup breaks',
+  'backlog-request-queue.0': 'the open requests of the scripted run, which the agent decides one by one',
+  'backlog-request-queue.1': 'the AUTH error of the scripted run, which a live run does not reproduce',
+  'backlog-request-queue.2': 'the requests list of the scripted run, whose problem comes from a file the setup breaks',
+  'backlog-request-queue.3': 'the open request of the scripted run, and the failed accept, which needs a file edit',
+  'backlog-request-queue.4': 'the empty queue of the scripted run',
   'cycle-close': 'the sync preview and issue lists, and the split estimates and retro text, which the agent chooses',
   'cycle-plan': 'the velocity and the scope the agent picks for the sprint',
   help: 'the capability manifest, the only thing a read-only help checks',

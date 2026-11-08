@@ -18,6 +18,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 - `/pmkit:backlog:groom`: Find what is wrong with the backlog and fix what the user accepts.
 - `/pmkit:backlog:triage`: Triage the issues nobody has looked at and apply the decisions the user accepts.
 - `/pmkit:backlog:prioritize-by-demand`: Rank the open issues by customer requests, or by comments and mentions when there are none, and change their priorities after a full preview.
+- `/pmkit:backlog:request-queue`: Work the open requests into new issues, links to existing issues or declines, after a full preview; without a request queue it suggests triage.
 - `/pmkit:cycle:close`: Close the active sprint, report planned against delivered, and move the unfinished issues.
 - `/pmkit:cycle:plan`: Plan the next sprint from velocity, capacity and the prioritized backlog.
 - `/pmkit:issues:assign`: Assign an issue to a member, to the user or to nobody.

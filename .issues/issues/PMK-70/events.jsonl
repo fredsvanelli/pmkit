@@ -1,2 +1,10 @@
 {"at":"2026-10-25T19:13:22Z","by":"fred","op":"create","to":{"id":"PMK-70","title":"Add the request-queue command","type":"feature","status":"backlog","priority":"medium","estimate":3,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"generic-commands","created":"2026-10-25T19:13:22Z","updated":"2026-10-25T19:13:22Z"}}
 {"at":"2026-10-25T19:13:26Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-46"}
+{"at":"2026-11-08T03:18:42Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-08T03:18:42Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-08T03:18:46Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-70-add-the-request-queue-command"}
+{"at":"2026-11-08T03:19:47Z","by":"fred","op":"comment","to":"2026-11-08T03-19-47Z-fred.md"}
+{"at":"2026-11-08T03:33:21Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-08T03:33:21Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-08T03:33:38Z","by":"fred","op":"comment","to":"2026-11-08T03-33-38Z-fred.md"}
+{"at":"2026-11-08T03:33:38Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
