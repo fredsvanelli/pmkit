@@ -1105,13 +1105,14 @@ export function createLocalTracker(root, {
 
   const getDeliverable = (id) => readEpic(id).epic
 
-  /** Every epic that parses. An epic file that does not parse is skipped, as searchIssues skips a bad issue. */
-  function listDeliverables() {
-    if (!fs.existsSync(epicsDir)) return []
+  /** Every epic that parses, and a problem for each epic file that does not. */
+  function readDeliverables() {
+    if (!fs.existsSync(epicsDir)) return { epics: [], problems: [] }
     const ids = fs.readdirSync(epicsDir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && isId(entry.name, local.epic_prefix) && fs.existsSync(path.join(epicsDir, entry.name, 'epic.md')))
       .map((entry) => entry.name)
     const epics = []
+    const problems = []
     const created = {}
     for (const id of ids) {
       try {
@@ -1119,10 +1120,14 @@ export function createLocalTracker(root, {
         created[id] = readEvents(path.join(epicsDir, id, 'events.jsonl')).events.find((event) => event.op === 'create')?.at
       } catch (error) {
         if (!(error instanceof PmkitError)) throw error
+        problems.push({ id, kind: 'epic', code: error.code, message: error.message })
       }
     }
-    return sortEpics(epics, created)
+    return { epics: sortEpics(epics, created), problems }
   }
+
+  /** Every epic that parses. An epic file that does not parse is skipped, as searchIssues skips a bad issue. */
+  const listDeliverables = () => readDeliverables().epics
 
   function createDeliverable(input, actor, { dryRun = false } = {}) {
     requireWriter(actor)
@@ -1237,18 +1242,19 @@ export function createLocalTracker(root, {
     const problems = []
     for (const stem of [...goalStems(goalsDir)].sort()) {
       if (!isId(stem, GOAL_PREFIX)) {
-        problems.push({ id: stem, code: 'INVALID_INPUT', message: `goal file ${stem}.md is not named after a goal id such as ${GOAL_PREFIX}-1` })
+        problems.push({ id: stem, kind: 'goal', code: 'INVALID_INPUT', message: `goal file ${stem}.md is not named after a goal id such as ${GOAL_PREFIX}-1` })
         continue
       }
       try {
         goals.push(parseGoal(fs.readFileSync(path.join(goalsDir, `${stem}.md`), 'utf8'), stem))
       } catch (error) {
         if (!(error instanceof PmkitError)) throw error
-        problems.push({ id: stem, code: error.code, message: error.message })
+        problems.push({ id: stem, kind: 'goal', code: error.code, message: error.message })
       }
     }
-    const epics = listDeliverables()
-    return { goals: sortGoals(goals).map((goal) => withEpics(goal, epics)), problems }
+    // An epic that cannot be read may link to a goal, so it is a problem here: the goal's epics may be incomplete.
+    const read = readDeliverables()
+    return { goals: sortGoals(goals).map((goal) => withEpics(goal, read.epics)), problems: [...problems, ...read.problems] }
   }
 
   function createGoal(input, actor, { dryRun = false } = {}) {

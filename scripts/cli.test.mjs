@@ -1643,6 +1643,7 @@ test('every read goes on with one warning', () => {
     'goal list': [],
     'goal get': ['GOAL-1'],
     'goal progress': ['GOAL-1'],
+    'goals overview': [],
     'customers list': [],
     'customers show': ['CUS-1'],
     'requests list': [],

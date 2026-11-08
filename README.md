@@ -51,6 +51,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 - `/pmkit:local:doctor`: Check the tracker files, fix what can be fixed and resolve git conflict markers.
 - `/pmkit:local:render`: Render a board, roadmap or sprint view of the tracker as Markdown or HTML for people outside the agent.
 - `/pmkit:local:migrate`: Move the Local tracker to a Linear team, import a Linear team into .issues/, undo an export, or switch pmkit to the new tracker.
+- `/pmkit:report:initiatives-and-goals`: Show the progress of each strategic goal through its epics, or of the top-level issues when there are no goals.
 - `/pmkit:report:release-notes`: Write release notes for a release, a sprint or a period, and save them after you confirm.
 - `/pmkit:report:roadmap-review`: Epics and milestones with dates, health and delays, and the epics with no recent status update, in one read-only report.
 - `/pmkit:report:status`: Draft a status update for an epic and publish it after approval.
