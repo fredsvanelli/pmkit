@@ -1,0 +1,55 @@
+$ pmkit capabilities --json  [step 1, read]
+exit 0
+$ pmkit issues list --category backlog,todo,triage --json  [step 2, read]
+exit 0
+$ pmkit demand list --json  [step 3, read]
+exit 0
+$ pmkit issues get ISS-3F7H --comments --json  [step 4, read]
+exit 0
+$ pmkit issues list --text ISS-3F7H --json  [step 4, read]
+exit 0
+$ pmkit issues get ISS-6J0B --comments --json  [step 4, read]
+exit 0
+$ pmkit issues list --text ISS-6J0B --json  [step 4, read]
+exit 0
+$ pmkit issues get ISS-4M2S --comments --json  [step 4, read]
+exit 0
+$ pmkit issues list --text ISS-4M2S --json  [step 4, read]
+exit 0
+$ pmkit issues get ISS-1V9Z --comments --json  [step 4, read]
+exit 0
+$ pmkit issues list --text ISS-1V9Z --json  [step 4, read]
+exit 0
+? Step 5  [confirmed]
+$ pmkit issues update ISS-3F7H --priority urgent --dry-run --json  [step 6, dry run]
+exit 0
+? Step 7  [confirmed]
+$ pmkit issues update ISS-3F7H --priority urgent --json  [step 6, write]
+exit 0
+$ pmkit issues list --category backlog,todo,triage --json  [step 9, read]
+exit 0
+
+--- changed .issues/issues/ISS-3F7H/events.jsonl
+  {"at":"2026-10-07T14:00:00Z","by":"fred","op":"create","to":{"id":"ISS-3F7H","title":"Empty state for the dashboard","type":"feature","status":"backlog","priority":"low","estimate":2,"labels":["frontend"],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-07T14:00:00Z","updated":"2026-10-07T14:00:00Z"}}
+  {"at":"2026-10-22T17:00:00Z","by":"fred","op":"update","field":"priority","from":"low","to":"medium"}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"comment","to":"2026-10-23T12-00-00Z-fred.md"}
+  {"at":"2026-10-23T12:00:00Z","by":"fred","op":"comment","to":"2026-10-23T12-00-00Z-fred-2.md"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"priority","from":"medium","to":"urgent"}
+--- changed .issues/issues/ISS-3F7H/issue.md
+  ---
+  id: ISS-3F7H
+  title: Empty state for the dashboard
+  type: feature
+  status: backlog
+-priority: medium
++priority: urgent
+  estimate: 2
+  labels: [frontend]
+  created: 2026-10-07T14:00:00Z
+-updated: 2026-10-22T17:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  A new account sees a blank dashboard. Show a short guide instead.

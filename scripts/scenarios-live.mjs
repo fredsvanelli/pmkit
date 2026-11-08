@@ -85,6 +85,8 @@ const LIVE_ENV_KEYS = /^(?:HOME|USER|LOGNAME|SHELL|LANG|LC_\w+|TMPDIR|XDG_\w+|AN
 // with what is left unchecked. Keys are the test labels.
 const LIVE_EXPECT_STOPS = {
   'backlog-groom': 'the backlog lists of the scripted run, and the estimate of 2, which the agent proposes',
+  'backlog-prioritize-by-demand.0': 'the demand list of the scripted run, whose scores the agent ranks',
+  'backlog-prioritize-by-demand.1': 'the empty demand list of the scripted run',
   'cycle-close': 'the sync preview and issue lists, and the split estimates and retro text, which the agent chooses',
   'cycle-plan': 'the velocity and the scope the agent picks for the sprint',
   help: 'the capability manifest, the only thing a read-only help checks',
