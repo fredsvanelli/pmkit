@@ -2,16 +2,17 @@
 id: PMK-68
 title: Add the prioritize-by-demand command
 type: feature
-status: in_review
+status: done
 priority: medium
 estimate: 3
 assignee: fred
 parent: EPC-6
 blocked_by: [PMK-46]
+related: [PMK-204]
 milestone: generic-commands
 branch: pmk-68-add-the-prioritize-by-demand-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-11-08T02:04:51Z
+updated: 2026-11-08T03:15:27Z
 ---
 
 ## Description

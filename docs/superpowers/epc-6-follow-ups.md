@@ -1,6 +1,6 @@
 # EPC-6 follow-ups
 
-The implementers and reviewers of EPC-6 ("Remaining generic commands") suggested these improvements. None of them is a defect. The defects found in the same reviews are issues PMK-175 to PMK-200. This list stays here until each item becomes an issue or is dropped.
+The implementers and reviewers of EPC-6 ("Remaining generic commands") suggested these improvements. None of them is a defect. The defects found in the same reviews are issues PMK-175 to PMK-205. This list stays here until each item becomes an issue or is dropped.
 
 ## PMK-48: alerts list
 
@@ -170,3 +170,35 @@ The implementers and reviewers of EPC-6 ("Remaining generic commands") suggested
 
 - Tests for status 9009 outside `win32` and for a `null` status.
 - The CHANGELOG and the plan describe only the text check, not the 9009 exit code.
+
+## PMK-66: roadmap-review
+
+- Run the two reads per epic in parallel.
+- Share the section, `OPEN` and unfiled helpers with `risks.mjs` and `render-data.mjs`, and parse each file once in `unreadableRecords`.
+- Have the Local `listDeliverables` and `listMilestones` report their skipped files, instead of the side method `unreadableRecords`.
+- Give the team fixture a milestone, so tests stop adding one by hand.
+
+## PMK-67: initiatives-and-goals
+
+- Read Linear initiatives, so the Linear path does not only use top-level issues.
+- Show the goal's target date in the text.
+- Build the child map in one pass instead of O(n²), and read the issues once instead of once per goal.
+- Reuse `progressOf`, `walkParents`, `problemWarnings` and `capWarning` instead of copies.
+
+## PMK-68: prioritize-by-demand
+
+- Weight demand by customer revenue or tier.
+- A ranking-only mode that proposes nothing.
+- A stale-write guard between the preview and the write, with `issues bulk --expect`.
+- Serve `demand list` on Linear, so Linear ranks by requests instead of comments.
+- A CLI read for whole-token mentions, instead of matching by hand over a large dump.
+- Count mentions in archived issues and in Linear acceptance criteria.
+- A Linear-faked test of the fallback path.
+
+## PMK-69: release-readiness
+
+- Tie deploys to a release by tag or SHA range.
+- A milestone filter in `searchIssues`.
+- Skip the basis lists (`currentCycle`, `listMilestones`, `listReleases`) when a selector is given.
+- Run the `gh` deploy calls in parallel.
+- Share `OPEN`, the host block and the section helper with `risks`, and reuse `sortMilestones`.
