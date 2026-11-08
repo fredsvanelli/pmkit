@@ -138,7 +138,6 @@ export function validatePmkitConfig(obj) {
   } else {
     if (host.repo !== undefined && typeof host.repo !== 'string') problems.push('git_host.repo must be a string')
     if (host.default_branch !== undefined && typeof host.default_branch !== 'string') problems.push('git_host.default_branch must be a string')
-    else if (typeof host.default_branch === 'string' && !validBranch(host.default_branch)) problems.push('git_host.default_branch is not a valid branch name')
   }
   const policy = obj.write_policy
   if (!isObject(policy) || !CONFIRM.includes(policy.confirm)) {

@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { ADAPTERS } from './adapters.mjs'
-import { loadConfig, pmkitConfigMessages, validateLocalConfig } from './config.mjs'
+import { loadConfig, pmkitConfigMessages, resolveDefaultBranch, validateLocalConfig } from './config.mjs'
 import { isId, normalizeId } from './ids.mjs'
 import { parseYaml } from './yaml.mjs'
 import { parseEpicFile, walkParents } from './local/epics.mjs'
@@ -119,6 +119,9 @@ function pmkitConfigProblems(root, adapters) {
     return [{ path: at, code: 'config', message: `config.yaml does not parse: ${error.message}` }]
   }
   const messages = pmkitConfigMessages(parsed, adapters)
+  // Not a config problem that refuses writes: every reader falls back to main, so validate only says so.
+  const defaultBranch = resolveDefaultBranch(parsed)
+  if (!defaultBranch.valid && typeof defaultBranch.configured === 'string') messages.push(defaultBranch.note)
   return messages.map((message) => ({ path: at, code: 'config', message }))
 }
 

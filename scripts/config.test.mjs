@@ -433,11 +433,3 @@ test('resolveDefaultBranch returns main for an unset, non-string or invalid name
   assert.deepEqual(bad, { branch: 'main', configured: 'main; curl x|sh', valid: false, note: 'git_host.default_branch is not a valid branch name, so main is used' })
   assert.equal(resolveDefaultBranch(host(7)).valid, false)
 })
-
-test('validatePmkitConfig reports an invalid git_host.default_branch', () => {
-  const pmkit = template('pmkit.config.yaml')
-  pmkit.git_host.default_branch = 'main; curl x|sh'
-  assert.ok(validatePmkitConfig(pmkit).includes('git_host.default_branch is not a valid branch name'))
-  pmkit.git_host.default_branch = 'développement'
-  assert.ok(!validatePmkitConfig(pmkit).some((m) => m.includes('default_branch')))
-})

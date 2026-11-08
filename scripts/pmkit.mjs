@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { BOOLEANS, parseArgs } from './lib/args.mjs'
 import { gitUserEmail, resolveActor } from './lib/actor.mjs'
 import { ADAPTERS, adapterFor } from './lib/adapters.mjs'
-import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, loadPmkitConfig, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
+import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, loadPmkitConfig, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, resolveDefaultBranch, validBranch, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
 import { contractView } from './lib/contract.mjs'
 import { longEntryNote, parseMinutes } from './lib/duration.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
@@ -318,7 +318,13 @@ async function releasedWarnings(ctx, patch) {
     throw error
   }
 }
-const defaultBranch = (ctx) => ctx.config().pmkit.git_host?.default_branch ?? 'main'
+/** The default branch every reader uses, validated: `main` when git_host.default_branch is unset or not a branch name. */
+const defaultBranch = (ctx) => resolveDefaultBranch(ctx.config().pmkit).branch
+/** The note for a default_branch that was replaced by main, for a command that read it. */
+const defaultBranchNotes = (ctx) => {
+  const { note } = resolveDefaultBranch(ctx.config().pmkit)
+  return note === null ? [] : [note]
+}
 
 function defaultPrBody(issue) {
   const lines = [`Tracker issue: ${issue.id}`]
@@ -1147,8 +1153,7 @@ export const COMMANDS = [
       // The Local tracker's folder as todos scan sees it: path.relative cleans ./ and a trailing slash, and a folder that climbs out of the repository has no ref to read.
       const trackerDir = hosted || !issuesDir ? null : path.join(issuesDir, 'docs', 'adr')
       const relative = trackerDir ? path.relative(ctx.root, trackerDir) : ''
-      const configured = pmkit.git_host?.default_branch
-      const branchOk = typeof configured === 'string' && validBranch(configured)
+      const resolved = resolveDefaultBranch(pmkit)
       const plan = planNextAdr({
         title,
         root: ctx.root,
@@ -1156,8 +1161,8 @@ export const COMMANDS = [
         trackerFolder: trackerDir && !climbsOut(relative) ? slash(relative) : null,
         hosted: Boolean(hosted),
         createSupported: documents !== undefined && documents.path !== 'absent' && !documents.detail?.unsupported?.includes('createDocument'),
-        defaultBranch: branchOk ? configured : 'main',
-        defaultBranchNote: configured === undefined ? 'git_host.default_branch is not set in .pmkit/config.yaml, so main is used' : branchOk ? null : 'git_host.default_branch is not a valid branch name, so main is used',
+        defaultBranch: resolved.branch,
+        defaultBranchNote: resolved.configured === null ? 'git_host.default_branch is not set in .pmkit/config.yaml, so main is used' : resolved.note,
         gitHost: pmkit.git_host?.system ?? 'none',
         git: (args) => {
           const result = readGit(ctx, args)
@@ -1386,10 +1391,10 @@ export const COMMANDS = [
       // Check the tracker write first, so a refused write leaves git on the branch it was on.
       const actor = await ctx.actor()
       await tracker.updateIssue(issue.id, { branch }, actor, { dryRun: true })
-      if (ctx.dryRun) return { data: { branch, from }, text: `would create branch ${branch} from ${from}\ndry run: nothing was written` }
+      if (ctx.dryRun) return { data: { branch, from }, text: `would create branch ${branch} from ${from}\ndry run: nothing was written`, notes: ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : [] }
       host.createBranch(branch, { from })
       const result = await tracker.updateIssue(issue.id, { branch }, actor)
-      return { data: { branch, ...result }, text: `created branch ${branch} from ${from}\n${writeText(result, ctx)}`, commit: issue.id, notes: await linkedCodeNotes(ctx) }
+      return { data: { branch, ...result }, text: `created branch ${branch} from ${from}\n${writeText(result, ctx)}`, commit: issue.id, notes: [...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : []), ...(await linkedCodeNotes(ctx))] }
     },
   },
   {
@@ -1408,12 +1413,12 @@ export const COMMANDS = [
         const text = open
           ? `would push ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`
           : `would open a pull request ${request.head} to ${request.base}\n${request.title}\n\n${body}`
-        return { data: { ...request, existing: open !== null, pr: open }, text: `${text}\ndry run: nothing was written`, notes: await linkedCodeNotes(ctx) }
+        return { data: { ...request, existing: open !== null, pr: open }, text: `${text}\ndry run: nothing was written`, notes: [...defaultBranchNotes(ctx), ...(await linkedCodeNotes(ctx))] }
       }
       host.push(issue.branch)
-      if (open) return { data: { ...open, existing: true }, text: `pushed ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`, notes: await linkedCodeNotes(ctx) }
+      if (open) return { data: { ...open, existing: true }, text: `pushed ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`, notes: [...defaultBranchNotes(ctx), ...(await linkedCodeNotes(ctx))] }
       const pr = host.openPullRequest(request)
-      return { data: { ...pr, existing: false }, text: `opened pull request #${pr.number} ${pr.url}`, notes: await linkedCodeNotes(ctx) }
+      return { data: { ...pr, existing: false }, text: `opened pull request #${pr.number} ${pr.url}`, notes: [...defaultBranchNotes(ctx), ...(await linkedCodeNotes(ctx))] }
     },
   },
   {
@@ -1516,7 +1521,7 @@ export const COMMANDS = [
       const diff = truncated ? `${all.slice(0, maxLines).join('\n')}\n` : full
       const size = truncated ? `first ${maxLines} of ${all.length} lines` : `${all.length} lines`
       const head = source === 'pull_request' ? `pull request #${pr.number}, ${size}` : `local diff of ${branch} against ${base}, ${size}`
-      return { data: { branch, source, pr: source === 'pull_request' ? pr : null, base, uncommitted: local?.uncommitted ?? false, diff, truncated, lines: all.length }, text: `${head}\n${diff}`, notes: [...notes, ...(await linkedCodeNotes(ctx))] }
+      return { data: { branch, source, pr: source === 'pull_request' ? pr : null, base, uncommitted: local?.uncommitted ?? false, diff, truncated, lines: all.length }, text: `${head}\n${diff}`, notes: [...(requested === undefined ? defaultBranchNotes(ctx) : []), ...notes, ...(await linkedCodeNotes(ctx))] }
     },
   },
   {
@@ -1799,7 +1804,7 @@ async function runRisks(ctx) {
     ci,
     problems,
   }
-  return { data: report, text: risksText(report), warnings, notes: [...cycleNotes, ...(await metricNotes(tracker, 'stalled-issue history'))] }
+  return { data: report, text: risksText(report), warnings, notes: [...cycleNotes, ...(system === 'none' ? [] : defaultBranchNotes(ctx)), ...(await metricNotes(tracker, 'stalled-issue history'))] }
 }
 
 /** The roadmap review (PMK-66): epics, milestones, delays and missing status updates. Writes nothing. */
@@ -2774,8 +2779,6 @@ function runInit(ctx) {
 // link-repo. See docs/superpowers/specs/2026-10-31-pmk-53-link-repo-design.md.
 const GIT_READ_TIMEOUT_MS = 10_000
 const GIT_READ_MAX_OUTPUT = 1024 * 1024
-const BRANCH_NAME = /^[A-Za-z0-9_][A-Za-z0-9._/-]*$/
-const validBranch = (name) => BRANCH_NAME.test(name) && !name.includes('..') && !name.endsWith('/') && !name.endsWith('.lock')
 
 const readGit = (ctx, args) => spawnSync('git', args, { cwd: ctx.root, env: ctx.env, encoding: 'utf8', timeout: GIT_READ_TIMEOUT_MS, maxBuffer: GIT_READ_MAX_OUTPUT })
 
