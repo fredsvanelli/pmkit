@@ -1,3 +1,8 @@
 {"at":"2026-11-08T20:37:24Z","by":"fred","op":"create","to":{"id":"PMK-219","title":"Improve todos-to-issues","type":"feature","status":"backlog","priority":"low","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-08T20:37:24.030Z","updated":"2026-11-08T20:37:24Z"}}
 {"at":"2026-11-08T20:37:24Z","by":"fred","op":"link","field":"related","to":"PMK-64"}
 {"at":"2026-11-08T20:53:52Z","by":"fred","op":"update","field":"estimate","from":null,"to":8}
+{"at":"2026-11-08T20:58:08Z","by":"fred","op":"link","field":"related","to":"PMK-238"}
+{"at":"2026-11-08T20:58:08Z","by":"fred","op":"update","field":"title","from":"Improve todos-to-issues","to":"Find more TODOs in todos-to-issues"}
+{"at":"2026-11-08T20:58:08Z","by":"fred","op":"update","field":"estimate","from":8,"to":5}
+{"at":"2026-11-08T20:58:08Z","by":"fred","op":"update","field":"description"}
+{"at":"2026-11-08T20:58:08Z","by":"fred","op":"update","field":"acceptance_criteria"}

@@ -1,0 +1,3 @@
+{"at":"2026-11-08T20:58:09Z","by":"fred","op":"create","to":{"id":"PMK-241","title":"Count demand better in prioritize-by-demand","type":"feature","status":"backlog","priority":"low","estimate":5,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-08T20:58:09.413Z","updated":"2026-11-08T20:58:09Z"}}
+{"at":"2026-11-08T20:58:09Z","by":"fred","op":"link","field":"related","to":"PMK-68"}
+{"at":"2026-11-08T20:58:09Z","by":"fred","op":"link","field":"related","to":"PMK-234"}

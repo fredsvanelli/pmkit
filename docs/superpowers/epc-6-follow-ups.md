@@ -17,14 +17,14 @@ Each command's improvements are now one issue, of type feature and priority low,
 | PMK-59 | estimate-issue | PMK-216 |
 | PMK-61 | review-pr-against-issue | PMK-217 |
 | PMK-62 | unblock-pr | PMK-218 |
-| PMK-64 | todos-to-issues | PMK-219 |
+| PMK-64 | todos-to-issues | PMK-219, PMK-238 |
 | PMK-71 | team load | PMK-220 |
 | PMK-46 | customers and requests | PMK-221 |
 | PMK-52 | issues delete | PMK-222 |
 | PMK-53 | link-repo | PMK-223 |
 | PMK-72 | team capacity | PMK-224 |
 | PMK-47 | user inbox | PMK-225 |
-| PMK-56 | bulk operation | PMK-226 |
+| PMK-56 | bulk operation | PMK-226, PMK-239, PMK-240 |
 | PMK-60 | log-time | PMK-227 |
 | PMK-65 | record-decision | PMK-228 |
 | PMK-63 | investigate-bug | PMK-229 |
@@ -32,7 +32,7 @@ Each command's improvements are now one issue, of type feature and priority low,
 | PMK-175 | alerts list on Windows | PMK-231 |
 | PMK-66 | roadmap-review | PMK-232 |
 | PMK-67 | initiatives-and-goals | PMK-233 |
-| PMK-68 | prioritize-by-demand | PMK-234 |
+| PMK-68 | prioritize-by-demand | PMK-234, PMK-241, PMK-242 |
 | PMK-69 | release-readiness | PMK-235 |
 | PMK-55 | inbox-digest | PMK-236 |
 | PMK-70 | request-queue | PMK-237 |
