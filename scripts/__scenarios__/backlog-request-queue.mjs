@@ -102,8 +102,9 @@ export default [
     },
   },
   {
-    // A create whose accept fails (step 7). After the new issue is written, the request file is overwritten with a bad merge, so
-    // the accept cannot run. The command stops with the issue created and the request still open, and reports both IDs.
+    // A create whose accept fails (step 7). After the new issue is written, its file is overwritten with a bad merge, so the
+    // accept (which reads the issue) cannot run and the request file stays as it was.
+    // The command stops with the issue created and the request still open, and reports both IDs.
     command: 'backlog/request-queue',
     fixture: 'team',
     async setup({ pmkit }) {
@@ -117,14 +118,16 @@ export default [
       { step: '5.1', dryRun: create },
       { confirm: 'Step 6' },
       { step: '5.1', write: create },
-      { step: '7', edit: { file: '.issues/requests/REQ-M0GZ.md', content: '<<<<<<< HEAD\ntitle: x\n=======\n>>>>>>> other\n' } },
+      { step: '7', edit: { file: '.issues/issues/ISS-M0GZ/issue.md', content: '<<<<<<< HEAD\nid: ISS-M0GZ\n=======\n>>>>>>> other\n' } },
       { step: '7', dryRun: ['requests', 'accept', 'REQ-M0GZ', 'ISS-M0GZ'], expectError: 'CONFLICT' },
     ],
     skip: { '5.2 requests accept': 'no request is linked', '5.3 requests decline': 'no request is declined', '8 requests list': 'the command stops at step 7' },
     notHit: {},
     expect(repo) {
-      assert.equal(repo.issue('ISS-M0GZ').title, 'Export the board to CSV')
-      assert.doesNotMatch(repo.file('.issues/requests/REQ-M0GZ.md'), /state: accepted/, 'the request stays unaccepted and is not retried')
+      assert.ok(repo.newEvents('ISS-M0GZ').some((event) => event.to?.title === 'Export the board to CSV'), 'the issue was created')
+      const requestFile = repo.file('.issues/requests/REQ-M0GZ.md')
+      assert.match(requestFile, /state: open/, 'the request stays open and is not retried')
+      assert.doesNotMatch(requestFile, /state: accepted|issue:/)
     },
   },
   {
