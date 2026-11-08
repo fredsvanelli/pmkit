@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import path from 'node:path'
 
 const inputs = path.join(import.meta.dirname, '_inputs')
-const create = ['issues', 'create', '--title', 'Webhook deliveries are lost on a 5xx answer', '--type', 'bug', '--priority', 'high',
+const create = ['issues', 'create', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-webhook-deliveries-are-lost-on-a-5xx-ans.md'), '--type', 'bug', '--priority', 'high',
   '--description-file', path.join(inputs, 'description.md'), '--criteria-file', path.join(inputs, 'criteria.md')]
 const link = (saved) => ['issues', 'link', saved.created.after.id, 'ISS-5N1R', '--kind', 'related']
 

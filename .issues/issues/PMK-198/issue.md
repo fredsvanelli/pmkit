@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-73]
 branch: pmk-198-pass-issue-titles-through-title-file-in
 created: 2026-10-31T20:35:31.117Z
-updated: 2026-11-08T23:32:34Z
+updated: 2026-11-08T23:42:38Z
 ---
 
 ## Description
@@ -30,6 +30,6 @@ Found by the third review of PR #109 (PMK-73), which added `issues create --titl
 
 ## Acceptance criteria
 
-- [ ] No command file puts a title or a description taken from data into a shell argument
-- [ ] `conventions.md` says to write title and description files with the file tool, never with `echo`
-- [ ] An advisory title with a line break is joined into one line
+- [x] No command file puts a title or a description taken from data into a shell argument
+- [x] `conventions.md` says to write title and description files with the file tool, never with `echo`
+- [x] An advisory title with a line break is joined into one line

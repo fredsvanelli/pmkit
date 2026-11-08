@@ -22,7 +22,7 @@ const postPlan = ['issues', 'comment', 'ISS-4M2S', '--body-file', input('plan.md
 const open = ['pr', 'open', '--issue', 'ISS-4M2S', '--body-file', input('pr-body.md')]
 const ready = ['pr', 'ready', '--issue', 'ISS-4M2S']
 const postSummary = ['issues', 'comment', 'ISS-4M2S', '--body-file', input('summary.md')]
-const followUp = ['issues', 'create', '--title', 'Check the CSV header against the finance template']
+const followUp = ['issues', 'create', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-check-the-csv-header-against-the-finance.md')]
 const relate = (saved) => ['issues', 'link', saved.followUp.after.id, 'ISS-4M2S', '--kind', 'related']
 
 export default {

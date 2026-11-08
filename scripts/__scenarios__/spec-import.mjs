@@ -8,11 +8,12 @@
 //   issue     Park exhausted deliveries in a dead-letter queue (feature, 5), blocked by the retry issue
 //   sub-issue Replay a parked delivery (task, 2), under the dead-letter issue
 import assert from 'node:assert/strict'
+import path from 'node:path'
 
 const epic = ['epic', 'create', '--title', 'Webhook delivery platform']
-const retry = ['issues', 'create', '--title', 'Retry failed deliveries with backoff', '--type', 'feature', '--estimate', '3']
-const park = ['issues', 'create', '--title', 'Park exhausted deliveries in a dead-letter queue', '--type', 'feature', '--estimate', '5']
-const replay = ['issues', 'create', '--title', 'Replay a parked delivery', '--type', 'task', '--estimate', '2']
+const retry = ['issues', 'create', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-retry-failed-deliveries-with-backoff.md'), '--type', 'feature', '--estimate', '3']
+const park = ['issues', 'create', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-park-exhausted-deliveries-in-a-dead-lett.md'), '--type', 'feature', '--estimate', '5']
+const replay = ['issues', 'create', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-replay-a-parked-delivery.md'), '--type', 'task', '--estimate', '2']
 
 export default {
   command: 'spec/import',

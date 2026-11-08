@@ -149,6 +149,14 @@ for (const [folder, names] of Object.entries(COMMANDS)) {
   })
 }
 
+test('no command file puts an issue title on the shell command line, and conventions.md says how to write the files', () => {
+  for (const file of markdownFiles(path.join(ROOT, 'commands'))) {
+    assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /issues create[^\n`]*--title "/, `${path.relative(ROOT, file)} passes a title to the shell; use --title-file`)
+  }
+  const conventions = fs.readFileSync(path.join(ROOT, 'skills/pmkit/references/conventions.md'), 'utf8')
+  assert.match(conventions, /file tool[^\n]*never[^\n]*`echo`/)
+})
+
 test('every command is listed in the skill table and in the README', () => {
   const skill = path.join(ROOT, 'skills/pmkit/SKILL.md')
   for (const doc of [skill, path.join(ROOT, 'README.md')]) {
