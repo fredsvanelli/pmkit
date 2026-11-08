@@ -1,0 +1,75 @@
+$ pmkit roadmap review
+exit 0
+--- stdout
+roadmap review on 2026-10-23: status updates due every 14 days
+
+epics (1)
+ID       | Title             | Status      | Start      | Target     | Milestone | Done | Health  | Last update | Delay | Reasons
+---------|-------------------|-------------|------------|------------|-----------|------|---------|-------------|-------|-----------------
+EPC-4H7V | Reliable webhooks | in_progress | 2026-09-28 | 2026-11-13 |           | 2/2  | unknown |             |       | no_recent_update
+
+milestones (1)
+ID   | Name                   | Due        | Open | Done | Canceled | Epics | Delay
+-----|------------------------|------------|------|------|----------|-------|------
+v1.0 | Public webhooks launch | 2026-11-13 | 0    | 0    | 0        |       |
+
+epics with no recent status update (1)
+ID       | Title             | Status      | Last update
+---------|-------------------|-------------|------------
+EPC-4H7V | Reliable webhooks | in_progress | none
+--- stderr
+(empty)
+
+$ pmkit roadmap review --json
+exit 0
+--- stdout
+{
+  "today": "2026-10-23",
+  "statusUpdateWindowDays": 14,
+  "epics": [
+    {
+      "id": "EPC-4H7V",
+      "title": "Reliable webhooks",
+      "status": "in_progress",
+      "category": "in_progress",
+      "start": "2026-09-28",
+      "target": "2026-11-13",
+      "milestone": null,
+      "progress": {
+        "done": 2,
+        "total": 2,
+        "canceled": 0
+      },
+      "lastUpdate": null,
+      "health": null,
+      "delayDays": 0,
+      "reasons": [
+        "no_recent_update"
+      ]
+    }
+  ],
+  "milestones": [
+    {
+      "id": "v1.0",
+      "name": "Public webhooks launch",
+      "due": "2026-11-13",
+      "filed": true,
+      "issues": {
+        "open": 0,
+        "done": 0,
+        "canceled": 0
+      },
+      "epics": [],
+      "delayDays": 0
+    }
+  ],
+  "noRecentUpdates": [
+    "EPC-4H7V"
+  ],
+  "updatesNotChecked": [],
+  "lateIssues": null,
+  "incomplete": false,
+  "problems": []
+}
+--- stderr
+(empty)
