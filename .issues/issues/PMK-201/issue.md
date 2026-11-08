@@ -8,7 +8,7 @@ estimate: 2
 assignee: fred
 branch: pmk-201-make-the-test-suite-pass-on-a-default
 created: 2026-11-08T03:15:26.776Z
-updated: 2026-11-08T21:01:31Z
+updated: 2026-11-08T21:44:31Z
 ---
 
 ## Description
@@ -30,7 +30,7 @@ Found while starting EPC-6 round 7. On `develop` 4bc6839, `npm test` exited 1 wi
 
 ## Acceptance criteria
 
-- [ ] `npm test` exits 0 on macOS with the default `TMPDIR` and a case-insensitive filesystem
-- [ ] The case test is skipped, with a reason, where the filesystem folds case
-- [ ] The depth test does not depend on the Node stack size
-- [ ] The `matchTodos` timing test does not fail under machine load
+- [x] `npm test` exits 0 on macOS with the default `TMPDIR` and a case-insensitive filesystem
+- [x] The case test is skipped, with a reason, where the filesystem folds case
+- [x] The depth test does not depend on the Node stack size
+- [x] The `matchTodos` timing test does not fail under machine load
