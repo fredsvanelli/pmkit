@@ -1,0 +1,139 @@
+// The roadmap review (PMK-66): pure functions, no tracker access. The CLI reads the tracker and passes the data in.
+// A null input means the read failed or the tracker lacks it: it stays unknown and never becomes zero or "no update".
+
+import { table } from './format.mjs'
+import { dayNumber } from './metrics.mjs'
+import { epicRisks } from './risks.mjs'
+
+const OPEN = (category) => category !== 'done' && category !== 'canceled'
+const daysLate = (date, today) => (date && date < today ? dayNumber(today) - dayNumber(date) : 0)
+
+function epicRows(epics, { today, windowDays, milestones, progressByEpic, updatesByEpic }) {
+  const read = Object.fromEntries(epics.map((epic) => [epic.id, updatesByEpic[epic.id] ?? []]))
+  const risks = new Map(epicRisks(epics, { updatesByEpic: read, today, windowDays }).map((row) => [row.id, row.reasons]))
+  const milestoneOf = new Map((milestones ?? []).filter((m) => m.epic).map((m) => [m.epic, m.id]))
+  return epics.map((epic) => {
+    const updates = updatesByEpic[epic.id] ?? null
+    const latest = updates?.[0]
+    const reasons = (risks.get(epic.id) ?? []).filter((reason) => updates !== null || reason !== 'no_recent_update')
+    const p = progressByEpic[epic.id] ?? null
+    return {
+      id: epic.id, title: epic.title, status: epic.status.name, category: epic.status.category,
+      start: epic.start ?? null, target: epic.target ?? null,
+      milestone: epic.milestone ?? milestoneOf.get(epic.id) ?? null,
+      progress: p === null ? null : { done: p.done, total: p.total, canceled: p.canceled, ...(p.hasMore === true ? { partial: true } : {}) },
+      // A Local update file without health reads as '', which is unknown, not a health.
+      lastUpdate: latest ? { at: latest.at, health: latest.health || null } : null,
+      health: latest?.health || epic.health || null,
+      delayDays: !epic.target ? null : OPEN(epic.status.category) ? daysLate(epic.target, today) : 0,
+      reasons,
+    }
+  })
+}
+
+function milestoneRows(milestones, { today, issues, issuesComplete, epics }) {
+  const live = issues.filter((issue) => !issue.archived)
+  const filed = milestones.map((m) => ({ id: m.id, name: m.name ?? m.id, due: m.due ?? null, filed: true, ...(m.unreadable ? { unreadable: true } : {}), owner: m.epic }))
+  const known = new Set(filed.map((m) => m.id))
+  const unfiled = []
+  for (const id of [...(epics ?? []).map((epic) => epic.milestone), ...live.map((issue) => issue.milestone)]) {
+    if (!id || known.has(id)) continue
+    known.add(id)
+    unfiled.push({ id, name: id, due: null, filed: false })
+  }
+  return [...filed, ...unfiled].map(({ owner, ...m }) => {
+    const mine = live.filter((issue) => issue.milestone === m.id)
+    const counts = { open: 0, done: 0, canceled: 0 }
+    for (const issue of mine) counts[OPEN(issue.status.category) ? 'open' : issue.status.category]++
+    const epicIds = (epics ?? []).filter((epic) => epic.milestone === m.id || owner === epic.id).map((epic) => epic.id)
+    // Only an epic placed in the milestone (Local) is open work of it. A Linear milestone is a phase of its project
+    // (owner), so the running project says nothing about the phase: its own issues decide.
+    const openEpic = (epics ?? []).some((epic) => epic.milestone === m.id && OPEN(epic.status.category))
+    let delayDays
+    if (!m.due) delayDays = null
+    else if (m.due >= today) delayDays = 0
+    else if (openEpic || (issuesComplete && counts.open > 0)) delayDays = daysLate(m.due, today)
+    else delayDays = issuesComplete ? 0 : null
+    return { ...m, issues: issuesComplete ? counts : null, epics: epicIds, delayDays }
+  })
+}
+
+/** The open, non-archived issues past their due date, most late first: the review when the tracker has no epics. */
+function lateIssueRows(issues, today) {
+  return issues
+    .filter((issue) => !issue.archived && OPEN(issue.status.category) && issue.due && issue.due < today)
+    .map((issue) => ({ id: issue.id, title: issue.title, status: issue.status.name, due: issue.due, milestone: issue.milestone ?? null, delayDays: daysLate(issue.due, today) }))
+    .sort((a, b) => b.delayDays - a.delayDays)
+}
+
+/**
+ * The review. `epics` and `milestones` are null when unreadable; `progressByEpic[id]` and `updatesByEpic[id]` are null
+ * when that read failed (updates newest first). `issuesComplete` is false when the issue read was cut.
+ */
+export function buildRoadmapReview({ today, windowDays, issues, issuesComplete, epics, milestones, progressByEpic, updatesByEpic }) {
+  const rows = epics === null ? null : epicRows(epics, { today, windowDays, milestones, progressByEpic, updatesByEpic })
+  const openRows = (rows ?? []).filter((row) => OPEN(row.category))
+  // Only an epic that needs updates (in progress, or started) is unknown when its updates could not be read.
+  const started = (row) => row.category === 'in_progress' || (Boolean(row.start) && row.start <= today)
+  const notChecked = openRows.filter((row) => updatesByEpic[row.id] == null && started(row)).map((row) => row.id)
+  const unread = (epics ?? []).some((epic) => progressByEpic[epic.id] == null || progressByEpic[epic.id].hasMore === true || updatesByEpic[epic.id] == null)
+  return {
+    today,
+    statusUpdateWindowDays: windowDays,
+    epics: rows,
+    milestones: milestones === null ? null : milestoneRows(milestones, { today, issues, issuesComplete, epics }),
+    noRecentUpdates: (rows ?? []).filter((row) => row.reasons.includes('no_recent_update')).map((row) => row.id),
+    updatesNotChecked: notChecked,
+    lateIssues: epics === null ? lateIssueRows(issues, today) : null,
+    incomplete: !issuesComplete || epics === null || milestones === null || unread,
+    problems: [],
+  }
+}
+
+function section(title, rows, { notChecked, header, row, after = [] }) {
+  if (rows === null) return `${title}\nnot checked: ${notChecked}`
+  const body = rows.length === 0 ? `${title}\nnone` : `${title} (${rows.length})\n${table(header, rows.map(row))}`
+  return [body, ...after].join('\n')
+}
+
+const days = (value, missing) => (value === null ? missing : value === 0 ? '' : `${value}d late`)
+
+/** The text report: a head, an optional incomplete line, and the epic, milestone and no-update sections. */
+export function roadmapReviewText(report) {
+  const head = [`roadmap review on ${report.today}: status updates due every ${report.statusUpdateWindowDays} days`]
+  if (report.incomplete) head.push('incomplete: some reads failed or were cut; unknown values are shown as unknown, see the warnings')
+  const blocks = [
+    head.join('\n'),
+    section('epics', report.epics, {
+      notChecked: 'the tracker cannot list epics',
+      header: ['ID', 'Title', 'Status', 'Start', 'Target', 'Milestone', 'Done', 'Health', 'Last update', 'Delay', 'Reasons'],
+      row: (r) => [
+        r.id, r.title, r.status, r.start ?? '', r.target ?? '', r.milestone ?? '',
+        r.progress ? `${r.progress.done}/${r.progress.total}${r.progress.partial ? '+' : ''}` : 'unknown', r.health ?? 'unknown',
+        r.lastUpdate ? r.lastUpdate.at.slice(0, 10) : '', days(r.delayDays, 'no target'), r.reasons.join(', '),
+      ],
+    }),
+    section('milestones', report.milestones, {
+      notChecked: 'the tracker cannot list milestones',
+      header: ['ID', 'Name', 'Due', 'Open', 'Done', 'Canceled', 'Epics', 'Delay'],
+      row: (m) => [
+        m.id, m.name, m.due ?? (m.unreadable ? 'unknown, file does not parse' : m.filed ? 'none' : 'unknown, no record'),
+        ...(m.issues ? [m.issues.open, m.issues.done, m.issues.canceled] : ['unknown', 'unknown', 'unknown']),
+        m.epics.join(', '), days(m.delayDays, m.due ? 'unknown' : ''),
+      ],
+    }),
+    section('epics with no recent status update', report.epics === null ? null : report.epics.filter((r) => report.noRecentUpdates.includes(r.id)), {
+      notChecked: 'the tracker cannot list epics',
+      header: ['ID', 'Title', 'Status', 'Last update'],
+      row: (r) => [r.id, r.title, r.status, r.lastUpdate ? r.lastUpdate.at.slice(0, 10) : 'none'],
+      after: report.updatesNotChecked.length ? [`not checked: ${report.updatesNotChecked.join(', ')}`] : [],
+    }),
+  ]
+  if (report.lateIssues !== null) {
+    blocks.push(section('late issues', report.lateIssues, {
+      header: ['ID', 'Title', 'Status', 'Due', 'Milestone', 'Delay'],
+      row: (r) => [r.id, r.title, r.status, r.due, r.milestone ?? '', days(r.delayDays, '')],
+    }))
+  }
+  return blocks.join('\n\n')
+}

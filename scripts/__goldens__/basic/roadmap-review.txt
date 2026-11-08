@@ -1,0 +1,32 @@
+$ pmkit roadmap review
+exit 0
+--- stdout
+roadmap review on 2026-10-23: status updates due every 14 days
+
+epics
+none
+
+milestones
+none
+
+epics with no recent status update
+none
+--- stderr
+(empty)
+
+$ pmkit roadmap review --json
+exit 0
+--- stdout
+{
+  "today": "2026-10-23",
+  "statusUpdateWindowDays": 14,
+  "epics": [],
+  "milestones": [],
+  "noRecentUpdates": [],
+  "updatesNotChecked": [],
+  "lateIssues": null,
+  "incomplete": false,
+  "problems": []
+}
+--- stderr
+(empty)

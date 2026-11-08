@@ -125,6 +125,7 @@ export const CASES = {
   'metrics aging': () => [[]],
   events: () => [[]],
   risks: () => [[]],
+  'roadmap review': () => [[]],
   'team load': () => [[]],
   'team capacity': (a) => [[], ['--sprint', a.sprint]],
   'alerts list': () => [[]],

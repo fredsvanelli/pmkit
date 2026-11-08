@@ -1,3 +1,12 @@
 {"at":"2026-10-25T19:13:22Z","by":"fred","op":"create","to":{"id":"PMK-66","title":"Add the roadmap-review command","type":"feature","status":"backlog","priority":"medium","estimate":5,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"milestone":"generic-commands","created":"2026-10-25T19:13:22Z","updated":"2026-10-25T19:13:22Z"}}
 {"at":"2026-10-25T19:13:26Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-3"}
 {"at":"2026-10-25T19:13:26Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-45"}
+{"at":"2026-11-07T22:27:28Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-07T22:27:29Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-07T22:27:29Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-66-add-the-roadmap-review-command"}
+{"at":"2026-11-08T01:49:33Z","by":"fred","op":"comment","to":"2026-11-08T01-49-33Z-fred.md"}
+{"at":"2026-11-08T02:13:34Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-08T02:13:34Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-08T02:13:35Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-08T02:14:17Z","by":"fred","op":"comment","to":"2026-11-08T02-14-17Z-fred.md"}
+{"at":"2026-11-08T02:14:19Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

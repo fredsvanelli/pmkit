@@ -17,6 +17,7 @@ import {
 } from './lib/metrics.mjs'
 import { buildNotes, chooseBasis } from './lib/release-notes.mjs'
 import { dependencyMap, serializable } from './lib/dependencies.mjs'
+import { buildRoadmapReview, roadmapReviewText } from './lib/roadmap-review.mjs'
 import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 import { pathNote } from './lib/path-notes.mjs'
 import { planNextAdr } from './lib/adr.mjs'
@@ -1245,6 +1246,10 @@ export const COMMANDS = [
     run: (ctx) => runRisks(ctx),
   },
   {
+    name: 'roadmap review', summary: 'epics and milestones with dates, health and delays, and the epics with no recent status update; reads only', flags: [],
+    run: (ctx) => runRoadmapReview(ctx),
+  },
+  {
     name: 'team load', summary: 'issues, estimates and work in progress per member for the active sprint (or all open work without one), with imbalances, members with no work and a move proposal; reads only',
     usage: '[--sprint current|id]', flags: ['sprint'],
     run: (ctx) => runTeamLoad(ctx),
@@ -1771,6 +1776,82 @@ async function runRisks(ctx) {
     problems,
   }
   return { data: report, text: risksText(report), warnings, notes: [...cycleNotes, ...(await metricNotes(tracker, 'stalled-issue history'))] }
+}
+
+/** The roadmap review (PMK-66): epics, milestones, delays and missing status updates. Writes nothing. */
+async function runRoadmapReview(ctx) {
+  const tracker = await ctx.tracker()
+  const today = ctx.now().toISOString().slice(0, 10)
+  const windowDays = ctx.settings().defaults.status_update_window_days ?? 14
+  const warnings = []
+  const problems = []
+  const notes = new Set()
+  // Auth and configuration fail every read the same way, so they stop the command; anything else costs one value.
+  const recoverable = (error) => isPmkitError(error) && error.code !== 'AUTH' && error.code !== 'NOT_CONFIGURED'
+  // A list the tracker lacks, or that failed for a reason other than auth or config, costs its section.
+  const section = async (read, capability, what) => {
+    try {
+      return await read()
+    } catch (error) {
+      if (!recoverable(error)) throw error
+      if (error.code === 'NOT_SUPPORTED') {
+        warnings.push(`${what} not checked: ${error.message}`)
+        for (const note of await capabilityNotes(tracker, capability)) notes.add(note)
+      } else {
+        problems.push({ id: what, code: error.code, message: error.message })
+        warnings.push(`${what} not checked: ${error.code} ${error.message}`)
+      }
+      return null
+    }
+  }
+
+  const { issues, problems: found, hasMore } = await tracker.searchIssues({ archived: true })
+  problems.push(...found.map(({ id, code, message }) => ({ id, code, message })))
+  warnings.push(...found.map(problemLine))
+  if (hasMore === true) warnings.push('the tracker has more issues than pmkit read, so milestone issue counts are unknown')
+  const epics = await section(() => tracker.listDeliverables(), 'deliverables', 'epics')
+  let milestones = await section(() => tracker.listMilestones(), 'deliverables', 'milestones')
+  // The Local tracker skips an epic or milestone file that does not parse; say so, and keep the milestone as a row.
+  const local = await ctx.local()
+  if (local !== null) {
+    const unreadable = local.unreadableRecords()
+    for (const { id, code, message } of [...unreadable.epics, ...unreadable.milestones]) {
+      problems.push({ id, code, message })
+      warnings.push(`${id}: ${code} ${message}`)
+    }
+    if (milestones !== null) milestones = [...milestones, ...unreadable.milestones.map(({ id }) => ({ id, name: id, unreadable: true }))]
+  }
+
+  const progressByEpic = {}
+  const updatesByEpic = {}
+  let updatesSupported = true
+  // One epic's failed read is null for that epic only. A tracker without status updates stops asking after the first.
+  const perEpic = async (id, read, { updates = false } = {}) => {
+    try {
+      return await read()
+    } catch (error) {
+      if (!recoverable(error)) throw error
+      if (error.code === 'NOT_SUPPORTED' && updates) {
+        updatesSupported = false
+        warnings.push(`status updates not checked: ${error.message}`)
+        for (const note of await capabilityNotes(tracker, 'status_update')) notes.add(note)
+        return null
+      }
+      problems.push({ id, code: error.code, message: error.message })
+      warnings.push(`${id}: ${error.code} ${error.message}`)
+      return null
+    }
+  }
+  for (const epic of epics ?? []) {
+    progressByEpic[epic.id] = await perEpic(epic.id, () => tracker.deliverableProgress(epic.id))
+    if (progressByEpic[epic.id]?.hasMore === true) warnings.push(`${epic.id}: the tracker has more issues in this epic than pmkit read; the progress counts are partial`)
+    updatesByEpic[epic.id] = updatesSupported ? await perEpic(epic.id, () => tracker.listStatusUpdates(epic.id), { updates: true }) : null
+  }
+
+  const report = buildRoadmapReview({ today, windowDays, issues, issuesComplete: hasMore !== true && found.length === 0, epics, milestones, progressByEpic, updatesByEpic })
+  report.problems = problems
+  report.incomplete ||= problems.length > 0
+  return { data: report, text: roadmapReviewText(report), warnings, notes: [...notes] }
 }
 
 // Errors a dry run reports for one issue. Any other error is about the change or the tracker, so it stops the whole command.

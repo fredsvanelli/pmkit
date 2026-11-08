@@ -2,7 +2,7 @@
 // of its fixture, and the suite checks what the agent did. It costs money, so it never runs by default and
 // `npm test` does not load it (the name does not end in .test.mjs).
 //
-//   PMKIT_LIVE=1 node --test scripts/scenarios-live.mjs        every scenario: 61 runs, up to $1 each
+//   PMKIT_LIVE=1 node --test scripts/scenarios-live.mjs        every scenario: 62 runs, up to $1 each
 //   PMKIT_LIVE=1 node scripts/scenarios-live.mjs issues-move   only the named modules (node --test drops extra args)
 //
 // Each test is skipped unless PMKIT_LIVE is 1 and `claude` is on PATH. Each run passes --max-budget-usd 1, which
@@ -100,6 +100,7 @@ const LIVE_EXPECT_STOPS = {
   'local-render': 'the render result of the scripted run, whose path, overwrite flag and problems the agent reports',
   'report-release-notes.0': 'the release and issue results of the scripted run, whose draft grouping and wording the agent writes',
   'report-release-notes.1': 'the release and issue results of the scripted run, whose period and wording the agent chooses',
+  'report-roadmap-review': 'the review of the scripted run, which the agent shows as its sections',
   'setup.0': 'the init preview, validate and discover results',
   'setup.1': 'the init preview and validate results',
   'spec-import': 'every check: they find the new epic and issues through the IDs the scripted run saved',
