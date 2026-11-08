@@ -1,0 +1,41 @@
+$ pmkit release-readiness
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: there is no planned release, no milestone with an open issue and no active sprint to check
+next: pmkit release create <id>, pmkit milestone create <id> or pmkit cycle open --start <date>
+
+$ pmkit release-readiness --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "there is no planned release, no milestone with an open issue and no active sprint to check",
+    "nextStep": "pmkit release create <id>, pmkit milestone create <id> or pmkit cycle open --start <date>"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit release-readiness --release 1.0.0
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: release 1.0.0 does not exist
+next: pmkit release list
+
+$ pmkit release-readiness --release 1.0.0 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "release 1.0.0 does not exist",
+    "nextStep": "pmkit release list"
+  }
+}
+--- stderr
+(empty)

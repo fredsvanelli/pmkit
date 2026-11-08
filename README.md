@@ -55,6 +55,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 - `/pmkit:report:initiatives-and-goals`: Show the progress of each strategic goal through its epics, or of the top-level issues when there are no goals.
 - `/pmkit:report:release-notes`: Write release notes for a release, a sprint or a period, and save them after you confirm.
 - `/pmkit:report:roadmap-review`: Epics and milestones with dates, health and delays, and the epics with no recent status update, in one read-only report.
+- `/pmkit:report:release-readiness`: What is left for a release: open issues, open pull requests and deploys. Without releases it uses a milestone or a sprint and says so.
 - `/pmkit:report:status`: Draft a status update for an epic and publish it after approval.
 - `/pmkit:spec:import`: Turn a spec or PRD into an epic with milestones, issues, sub-issues, estimates and blockers.
 - `/pmkit:spec:record-decision`: Write an ADR from a decision after you confirm it, and link it to the issues it affects with a comment on each. The file is `docs/adr/NNNN-title.md` when the repository has that folder or the tracker cannot create documents, and the tracker folder (`.issues/docs/adr/` by default) otherwise.
@@ -120,6 +121,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `release issues <id> [--archived]` | lists the issues of a release; `--archived` keeps the archived ones |
 | `release create <id>` | creates a release; takes `--name`, `--tag` and `--target` |
 | `release mark-released <id>` | marks a release released, lists its unfinished issues and warns when its tag is not in the repository; takes `--tag` |
+| `release-readiness [--release id \| --milestone id \| --sprint id\|current]` | what is left for a release: open issues, open pull requests and deploys; without releases a milestone or a sprint, and says so; only reads |
 | `release-notes [--release id \| --sprint id\|current \| --since d [--until d]]` | the done issues of a release, a sprint or a period, grouped by type, with the basis it used; only reads |
 | `docs list` | lists the documents under the docs folder |
 | `docs read <path>` | prints a document under the docs folder |

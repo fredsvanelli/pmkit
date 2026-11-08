@@ -285,3 +285,30 @@ export function releaseNotesText(result) {
   if (parts.length > 0) lines.push('', `left out: ${parts.join(', ')}`)
   return lines.join('\n')
 }
+
+const READINESS_SKIPS = { releases_absent: 'this tracker has no releases', no_planned_release: 'no planned release', no_open_milestone: 'no milestone with an open issue', no_active_sprint: 'no active sprint' }
+
+function readinessSection(title, value, empty, rows, header) {
+  if (value === null) return [`${title}: not checked`]
+  if (!Array.isArray(value)) return [`${title}: not checked, ${value.error.message}`]
+  return value.length === 0 ? [`${title}: ${empty}`] : [`${title} (${value.length})`, table(header, rows(value))]
+}
+
+/** The text of `release-readiness`: the basis, why, open issues, pull requests, deploys and the verdict. */
+export function readinessText(result) {
+  const { basis, source, reason } = result
+  const label = basis === 'release' ? `release ${source.id}${source.target ? ` (target ${source.target})` : ''}` : basis === 'milestone' ? `milestone ${source.id}${source.due ? ` (due ${source.due})` : ''}` : `sprint ${source.id} (${source.start} to ${source.end})`
+  const lines = [label]
+  if (reason !== 'requested' && result.skipped.length > 0) {
+    lines.push(`${result.skipped.map((s) => READINESS_SKIPS[s.reason]).join(', ')}, so the report uses ${basis} ${source.id}`)
+  }
+  const { counts, open } = result.issues
+  lines.push('', `issues: ${counts.open} open, ${counts.done} done, ${counts.canceled} canceled`)
+  if (open.length > 0) lines.push(table(['ID', 'Title', 'Status', 'Assignee', 'Estimate'], open.map((i) => [i.id, i.title, i.status, i.assignee ?? '', i.estimate ?? ''])))
+  lines.push('', ...readinessSection('pull requests', result.pullRequests, 'none open', (prs) => prs.map((p) => [`#${p.number}`, p.title, p.issue, p.isDraft ? 'draft' : 'ready']), ['PR', 'Title', 'Issue', 'State']))
+  if (result.pullRequestsIncomplete) lines.push('the pull request list may be incomplete: only 200 were read')
+  lines.push('', ...readinessSection('deploys (whole repository, newest first)', result.deploys, 'none', (ds) => ds.map((d) => [d.environment, d.state, d.ref, String(d.sha ?? '').slice(0, 7), String(d.createdAt ?? ''), d.matchesRelease ? 'this release' : '']), ['Environment', 'State', 'Ref', 'Sha', 'Created', 'Match']))
+  if (!result.gitHost.available) lines.push(`git host: ${result.gitHost.system === 'none' ? 'none' : result.gitHost.reason.message}, so pull requests and deploys are not checked`)
+  lines.push('', result.ready === true ? 'ready: nothing is open' : result.ready === false ? 'not ready: work is still open' : 'unknown: nothing found open, but not everything was read')
+  return lines.join('\n')
+}

@@ -103,6 +103,7 @@ const LIVE_EXPECT_STOPS = {
   'issues-work': 'the readiness, PR preview and PR view results, and the follow-up issue, whose ID the agent gets',
   'local-doctor': 'the doctor results and the ISS-5 conflict resolution, which needs a file edit',
   'local-render': 'the render result of the scripted run, whose path, overwrite flag and problems the agent reports',
+  'report-release-readiness': 'the readiness result of the scripted run, whose wording and verdict the agent writes',
   'report-release-notes.0': 'the release and issue results of the scripted run, whose draft grouping and wording the agent writes',
   'report-release-notes.1': 'the release and issue results of the scripted run, whose period and wording the agent chooses',
   'report-roadmap-review': 'the review of the scripted run, which the agent shows as its sections',

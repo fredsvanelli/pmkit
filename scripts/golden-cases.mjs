@@ -109,6 +109,7 @@ export const CASES = {
   'release create': (a) => [['2.0.0', '--name', 'Golden release', '--tag', 'v2.0.0', '--target', '2026-12-01'], [a.release]],
   'release mark-released': (a) => [[a.release]],
   'release-notes': (a) => [[], ['--release', a.release]],
+  'release-readiness': (a) => [[], ['--release', a.release]],
   'epic update-status': (a) => [[a.epic, '--health', 'on_track', '--body-file', input('update.md')]],
   'epic updates': (a) => [[a.epic]],
   'docs list': () => [[]],
