@@ -4,9 +4,10 @@ title: Improve issues delete
 type: feature
 status: backlog
 priority: low
+estimate: 5
 related: [PMK-52]
 created: 2026-11-08T20:37:24.468Z
-updated: 2026-11-08T20:37:24Z
+updated: 2026-11-08T20:53:52Z
 ---
 
 ## Description

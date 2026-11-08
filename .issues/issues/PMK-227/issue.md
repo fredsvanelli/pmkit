@@ -4,9 +4,10 @@ title: Improve log-time
 type: feature
 status: backlog
 priority: low
+estimate: 1
 related: [PMK-60]
 created: 2026-11-08T20:37:25.141Z
-updated: 2026-11-08T20:37:25Z
+updated: 2026-11-08T20:53:52Z
 ---
 
 ## Description
@@ -18,7 +19,6 @@ Improvements suggested by the implementer and reviewers of PMK-60 (log-time) dur
 ### Scope (in)
 
 - A scenario against a Linear fixture for the comment path.
-- Show the time in readable form (`1h30`) in `time-entries`.
 - Make `progress` step 8 follow `log-time` directly, if scenario rule 5 (explicit CLI calls per step) is relaxed.
 
 ### Out of scope
@@ -28,5 +28,4 @@ Improvements suggested by the implementer and reviewers of PMK-60 (log-time) dur
 ## Acceptance criteria
 
 - [ ] A scenario against a Linear fixture for the comment path
-- [ ] Show the time in readable form (`1h30`) in `time-entries`
 - [ ] Make `progress` step 8 follow `log-time` directly, if scenario rule 5 (explicit CLI calls per step) is relaxed

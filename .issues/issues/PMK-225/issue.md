@@ -3,10 +3,11 @@ id: PMK-225
 title: Improve user inbox
 type: feature
 status: backlog
-priority: low
+priority: medium
+estimate: 5
 related: [PMK-47]
 created: 2026-11-08T20:37:24.875Z
-updated: 2026-11-08T20:37:24Z
+updated: 2026-11-08T20:53:52Z
 ---
 
 ## Description
@@ -19,7 +20,7 @@ Improvements suggested by the implementer and reviewers of PMK-47 (user inbox) d
 
 - Key the inbox check by git remote instead of checkout path, so two worktrees of one repository share it.
 - Read Linear `Notification` objects, so the Linear adapter can serve `user_inbox`.
-- Count review requests and status changes, which PMK-55 may need.
+- Count review requests and status changes in `inbox list`, so `/pmkit:issues:inbox-digest` needs fewer `gh` calls (PMK-236).
 - Show the mention text and whether an item was seen in the text table.
 - Lock the user store file on write, so two `mark-read` calls at once cannot drop each other's check.
 
@@ -31,6 +32,6 @@ Improvements suggested by the implementer and reviewers of PMK-47 (user inbox) d
 
 - [ ] Key the inbox check by git remote instead of checkout path, so two worktrees of one repository share it
 - [ ] Read Linear `Notification` objects, so the Linear adapter can serve `user_inbox`
-- [ ] Count review requests and status changes, which PMK-55 may need
+- [ ] Count review requests and status changes in `inbox list`, so `/pmkit:issues:inbox-digest` needs fewer `gh` calls (PMK-236)
 - [ ] Show the mention text and whether an item was seen in the text table
 - [ ] Lock the user store file on write, so two `mark-read` calls at once cannot drop each other's check

@@ -4,9 +4,10 @@ title: Improve release-readiness
 type: feature
 status: backlog
 priority: low
+estimate: 5
 related: [PMK-69]
 created: 2026-11-08T20:37:26.237Z
-updated: 2026-11-08T20:37:26Z
+updated: 2026-11-08T20:53:53Z
 ---
 
 ## Description

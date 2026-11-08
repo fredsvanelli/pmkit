@@ -1,2 +1,3 @@
 {"at":"2026-11-08T20:37:26Z","by":"fred","op":"create","to":{"id":"PMK-235","title":"Improve release-readiness","type":"feature","status":"backlog","priority":"low","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-08T20:37:26.237Z","updated":"2026-11-08T20:37:26Z"}}
 {"at":"2026-11-08T20:37:26Z","by":"fred","op":"link","field":"related","to":"PMK-69"}
+{"at":"2026-11-08T20:53:53Z","by":"fred","op":"update","field":"estimate","from":null,"to":5}

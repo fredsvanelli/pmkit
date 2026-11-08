@@ -4,9 +4,10 @@ title: Improve link-repo
 type: feature
 status: backlog
 priority: low
+estimate: 3
 related: [PMK-53]
 created: 2026-11-08T20:37:24.602Z
-updated: 2026-11-08T20:37:24Z
+updated: 2026-11-08T20:53:52Z
 ---
 
 ## Description

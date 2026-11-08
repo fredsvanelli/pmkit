@@ -4,9 +4,11 @@ title: Improve request-queue
 type: feature
 status: backlog
 priority: low
+estimate: 3
+blocked_by: [PMK-216]
 related: [PMK-70]
 created: 2026-11-08T20:37:26.517Z
-updated: 2026-11-08T20:37:26Z
+updated: 2026-11-08T20:53:53Z
 ---
 
 ## Description
@@ -17,20 +19,19 @@ Improvements suggested by the implementer and reviewers of PMK-70 (request-queue
 
 ### Scope (in)
 
-- Serve requests on Linear.
-- Match existing issues by text similarity in the CLI.
+- Match existing issues with the text-similarity read from PMK-216.
 - Look up customer names, so requests with only a customer show the name.
 - A `--reason-file` flag on `requests decline`.
 - A scenario for a customer `NOT_FOUND` problem.
 
 ### Out of scope
 
+- Requests on Linear, which are in PMK-221.
 - The defects found in the same reviews, which are their own bug issues.
 
 ## Acceptance criteria
 
-- [ ] Serve requests on Linear
-- [ ] Match existing issues by text similarity in the CLI
+- [ ] Match existing issues with the text-similarity read from PMK-216
 - [ ] Look up customer names, so requests with only a customer show the name
 - [ ] A `--reason-file` flag on `requests decline`
 - [ ] A scenario for a customer `NOT_FOUND` problem

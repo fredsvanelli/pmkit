@@ -4,9 +4,10 @@ title: Cover the Windows exit code of alerts list in tests and docs
 type: feature
 status: backlog
 priority: low
+estimate: 1
 related: [PMK-175]
 created: 2026-11-08T20:37:25.687Z
-updated: 2026-11-08T20:37:25Z
+updated: 2026-11-08T20:53:52Z
 ---
 
 ## Description

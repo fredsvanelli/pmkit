@@ -3,10 +3,11 @@ id: PMK-209
 title: Improve deploys list and ci logs
 type: feature
 status: backlog
-priority: low
+priority: medium
+estimate: 3
 related: [PMK-49]
 created: 2026-11-08T20:37:22.501Z
-updated: 2026-11-08T20:37:22Z
+updated: 2026-11-08T20:53:51Z
 ---
 
 ## Description

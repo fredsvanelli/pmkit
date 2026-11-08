@@ -4,9 +4,10 @@ title: Improve issues time-entries
 type: feature
 status: backlog
 priority: low
+estimate: 3
 related: [PMK-51]
 created: 2026-11-08T20:37:22.800Z
-updated: 2026-11-08T20:37:22Z
+updated: 2026-11-08T20:53:51Z
 ---
 
 ## Description
@@ -21,6 +22,7 @@ Improvements suggested by the implementer and reviewers of PMK-51 (issues time-e
 - Check `ignored` in `scripts/contract-suite.mjs`.
 - Totals per person and per sprint.
 - Use `time-entries` in `/pmkit:issues:progress`.
+- Show the time in readable form (`1h30`) in `time-entries`. (moved from PMK-227)
 
 ### Out of scope
 
@@ -32,3 +34,4 @@ Improvements suggested by the implementer and reviewers of PMK-51 (issues time-e
 - [ ] Check `ignored` in `scripts/contract-suite.mjs`
 - [ ] Totals per person and per sprint
 - [ ] Use `time-entries` in `/pmkit:issues:progress`
+- [ ] Show the time in readable form (`1h30`) in `time-entries`

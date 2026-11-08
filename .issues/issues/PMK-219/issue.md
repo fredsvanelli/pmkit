@@ -4,9 +4,10 @@ title: Improve todos-to-issues
 type: feature
 status: backlog
 priority: low
+estimate: 8
 related: [PMK-64]
 created: 2026-11-08T20:37:24.030Z
-updated: 2026-11-08T20:37:24Z
+updated: 2026-11-08T20:53:52Z
 ---
 
 ## Description

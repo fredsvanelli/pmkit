@@ -4,9 +4,10 @@ title: Improve estimate-issue
 type: feature
 status: backlog
 priority: low
+estimate: 3
 related: [PMK-59]
 created: 2026-11-08T20:37:23.568Z
-updated: 2026-11-08T20:37:23Z
+updated: 2026-11-08T20:53:51Z
 ---
 
 ## Description
@@ -18,7 +19,7 @@ Improvements suggested by the implementer and reviewers of PMK-59 (estimate-issu
 ### Scope (in)
 
 - A scenario with a tracker that has no estimate field, to cover the comment path.
-- Find similar issues by similarity instead of `--text` keywords.
+- Find similar issues with a text-similarity read in the CLI instead of `--text` keywords. PMK-237 reuses it.
 
 ### Out of scope
 
@@ -27,4 +28,4 @@ Improvements suggested by the implementer and reviewers of PMK-59 (estimate-issu
 ## Acceptance criteria
 
 - [ ] A scenario with a tracker that has no estimate field, to cover the comment path
-- [ ] Find similar issues by similarity instead of `--text` keywords
+- [ ] Find similar issues with a text-similarity read in the CLI instead of `--text` keywords

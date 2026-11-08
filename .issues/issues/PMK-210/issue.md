@@ -4,9 +4,10 @@ title: Improve docs list
 type: feature
 status: backlog
 priority: low
+estimate: 3
 related: [PMK-50]
 created: 2026-11-08T20:37:22.649Z
-updated: 2026-11-08T20:37:22Z
+updated: 2026-11-08T20:53:51Z
 ---
 
 ## Description

@@ -3,10 +3,11 @@ id: PMK-234
 title: Improve prioritize-by-demand
 type: feature
 status: backlog
-priority: low
+priority: medium
+estimate: 8
 related: [PMK-68]
 created: 2026-11-08T20:37:26.100Z
-updated: 2026-11-08T20:37:26Z
+updated: 2026-11-08T20:53:52Z
 ---
 
 ## Description

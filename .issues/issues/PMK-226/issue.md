@@ -4,9 +4,10 @@ title: Improve bulk operation
 type: feature
 status: backlog
 priority: low
+estimate: 8
 related: [PMK-56]
 created: 2026-11-08T20:37:25.008Z
-updated: 2026-11-08T20:37:25Z
+updated: 2026-11-08T20:53:52Z
 ---
 
 ## Description

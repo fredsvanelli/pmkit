@@ -4,9 +4,10 @@ title: Improve security-alerts
 type: feature
 status: backlog
 priority: low
+estimate: 5
 related: [PMK-73]
 created: 2026-11-08T20:37:25.552Z
-updated: 2026-11-08T20:37:25Z
+updated: 2026-11-08T20:53:52Z
 ---
 
 ## Description
@@ -20,7 +21,7 @@ Improvements suggested by the implementer and reviewers of PMK-73 (security-aler
 - Fold transitive advisories into the root package's issue, once `alerts list` carries the `via` graph.
 - Comment on or close an issue whose alert is gone from the audit.
 - Show the current priority of a matched issue and flag a severity that went up.
-- A scenario with a fake npm, and scanners besides `npm audit`.
+- A scenario with a fake npm. (Scanners besides `npm audit` are in PMK-208.)
 
 ### Out of scope
 
@@ -31,4 +32,4 @@ Improvements suggested by the implementer and reviewers of PMK-73 (security-aler
 - [ ] Fold transitive advisories into the root package's issue, once `alerts list` carries the `via` graph
 - [ ] Comment on or close an issue whose alert is gone from the audit
 - [ ] Show the current priority of a matched issue and flag a severity that went up
-- [ ] A scenario with a fake npm, and scanners besides `npm audit`
+- [ ] A scenario with a fake npm

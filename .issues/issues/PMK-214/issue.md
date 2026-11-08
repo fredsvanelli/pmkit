@@ -3,10 +3,11 @@ id: PMK-214
 title: Improve delegate
 type: feature
 status: backlog
-priority: low
+priority: medium
+estimate: 5
 related: [PMK-57]
 created: 2026-11-08T20:37:23.258Z
-updated: 2026-11-08T20:37:23Z
+updated: 2026-11-08T20:53:51Z
 ---
 
 ## Description

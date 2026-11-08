@@ -4,9 +4,10 @@ title: Improve record-decision
 type: feature
 status: backlog
 priority: low
+estimate: 5
 related: [PMK-65]
 created: 2026-11-08T20:37:25.277Z
-updated: 2026-11-08T20:37:25Z
+updated: 2026-11-08T20:53:52Z
 ---
 
 ## Description

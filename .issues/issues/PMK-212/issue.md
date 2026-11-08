@@ -4,9 +4,10 @@ title: Improve saved views
 type: feature
 status: backlog
 priority: low
+estimate: 5
 related: [PMK-44]
 created: 2026-11-08T20:37:22.964Z
-updated: 2026-11-08T20:37:23Z
+updated: 2026-11-08T20:53:51Z
 ---
 
 ## Description

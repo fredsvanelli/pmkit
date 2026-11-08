@@ -4,9 +4,10 @@ title: Improve track-agents
 type: feature
 status: backlog
 priority: low
+estimate: 2
 related: [PMK-58]
 created: 2026-11-08T20:37:23.421Z
-updated: 2026-11-08T20:37:23Z
+updated: 2026-11-08T20:53:51Z
 ---
 
 ## Description

@@ -4,9 +4,10 @@ title: Improve alerts list
 type: feature
 status: backlog
 priority: low
+estimate: 5
 related: [PMK-48]
 created: 2026-11-08T20:37:22.344Z
-updated: 2026-11-08T20:37:22Z
+updated: 2026-11-08T20:53:51Z
 ---
 
 ## Description

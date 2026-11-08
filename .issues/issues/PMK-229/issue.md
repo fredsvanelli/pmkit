@@ -3,10 +3,11 @@ id: PMK-229
 title: Improve investigate-bug
 type: feature
 status: backlog
-priority: low
+priority: medium
+estimate: 3
 related: [PMK-63]
 created: 2026-11-08T20:37:25.416Z
-updated: 2026-11-08T20:37:25Z
+updated: 2026-11-08T20:53:52Z
 ---
 
 ## Description
