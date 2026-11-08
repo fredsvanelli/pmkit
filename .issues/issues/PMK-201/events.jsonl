@@ -1,1 +1,4 @@
 {"at":"2026-11-08T03:15:26Z","by":"fred","op":"create","to":{"id":"PMK-201","title":"Make the test suite pass on a default macOS setup","type":"bug","status":"backlog","priority":"medium","estimate":2,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-08T03:15:26.776Z","updated":"2026-11-08T03:15:26Z"}}
+{"at":"2026-11-08T21:01:31Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-08T21:01:31Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-08T21:01:31Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-201-make-the-test-suite-pass-on-a-default"}
