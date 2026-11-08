@@ -1,0 +1,2 @@
+{"at":"2026-11-08T03:15:27Z","by":"fred","op":"create","to":{"id":"PMK-203","title":"Fix the fallback and incomplete paths of goals overview","type":"bug","status":"backlog","priority":"medium","estimate":2,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-08T03:15:27.003Z","updated":"2026-11-08T03:15:27Z"}}
+{"at":"2026-11-08T03:15:27Z","by":"fred","op":"link","field":"related","to":"PMK-67"}
