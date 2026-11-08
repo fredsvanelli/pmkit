@@ -1,6 +1,6 @@
 # EPC-6 follow-ups
 
-The implementers and reviewers of EPC-6 ("Remaining generic commands") suggested these improvements. None of them is a defect. The defects found in the same reviews are issues PMK-175 to PMK-205. This list stays here until each item becomes an issue or is dropped.
+The implementers and reviewers of EPC-6 ("Remaining generic commands") suggested these improvements. None of them is a defect. The defects found in the same reviews are issues PMK-175 to PMK-207. This list stays here until each item becomes an issue or is dropped.
 
 ## PMK-48: alerts list
 
@@ -202,3 +202,20 @@ The implementers and reviewers of EPC-6 ("Remaining generic commands") suggested
 - Skip the basis lists (`currentCycle`, `listMilestones`, `listReleases`) when a selector is given.
 - Run the `gh` deploy calls in parallel.
 - Share `OPEN`, the host block and the section helper with `risks`, and reuse `sortMilestones`.
+
+## PMK-55: inbox-digest
+
+- A map from members to GitHub logins, or a `gh api user` read, so review requests match without `login=`.
+- `--all` and status-change items in the digest.
+- Read Linear notifications instead of deriving the list.
+- Fewer `gh` calls than a full `pr blockers` per `in_review` issue.
+- Scenarios for Linear, hidden items, a broken inbox file, `git_host: none` and `login=`.
+
+## PMK-70: request-queue
+
+- Let `requests accept` create the issue in one call (`--create`).
+- Serve requests on Linear.
+- Match existing issues by text similarity in the CLI.
+- Look up customer names, so requests with only a customer show the name.
+- A `--reason-file` flag on `requests decline`.
+- A scenario for a customer `NOT_FOUND` problem.
