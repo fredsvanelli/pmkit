@@ -11,27 +11,32 @@ Arguments: `$ARGUMENTS`
 ## Parameters
 
 - `since=<timestamp>` (optional): the cut of `inbox list --since`, a timestamp with a zone such as `2026-10-31T10:00:00Z`.
-- `login=<github login>` (optional): the user's GitHub login, to match review requests (step 3). The config does not map members to GitHub logins, so without it only a login equal to the member ID matches.
+- `login=<github login>` (optional): the user's GitHub login, to match review requests (step 5). The config does not map members to GitHub logins, so without it only a login equal to the member ID matches.
 
 ## Steps
 
 Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 
-1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`. Read `user_inbox`. When it is `absent` (Linear), skip step 2 and do step 2b instead.
-2. Mentions and new assignments. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" inbox list [--since <timestamp>] --json`.
+1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`. Read `user_inbox`. When it is `absent` (Linear), skip step 2 and do step 3. Otherwise skip step 3.
+2. Mentions and new assignments (when `user_inbox` is not `absent`). Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" inbox list [--since <timestamp>] --json`.
    1. Show the `items` with `kind` `assignment` as "new assignments" and the ones with `kind` `mention` as "mentions", each with its issue ID, title, `at`, `by` (unknown when null), `in` and, for a mention, the `excerpt`. Keep each `key` so the user can pass it to `inbox mark-read --key`. Say `counts`.
    2. When `hidden` is above 0, say that many older unseen items are not shown and that `pmkit inbox list --all` lists them.
    3. When `complete` is `false`, say the inbox is incomplete, show each entry of `problems` as a warning with its issue ID and point to `pmkit validate`. Never say there is nothing new from an incomplete list.
    4. When `items` is empty and `complete` is `true`, say there are no unseen mentions or assignments.
    5. When the call fails with `INVALID_INPUT` and `error.message` starts with `The inbox file`, apply the rule for the user store files in the conventions, and show mentions and assignments as "not verified".
-   - 2b. On `absent`, say that this tracker has no inbox and the list is derived. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues list --assignee me --updated-after <date 14 days ago> --json` and show the issues as "assigned to you and changed in the last 14 days (derived, not proven new)". Say that mentions are not verified. When `hasMore` is `true` or the result has `problems` or a `warning:`, say the derived list is incomplete.
-3. Reviews waiting. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues list --category in_review --json`. Repeat each `warning:` line, and treat `problems` or `hasMore` `true` as an incomplete list of reviews.
+3. Derived list (only when `user_inbox` is `absent`). Say that this tracker has no inbox, so the list is derived. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues list --assignee me --updated-after <date 14 days ago> --json` and show the issues as "assigned to you and changed in the last 14 days (derived, not proven new)". Say that mentions are not verified. When `hasMore` is `true` or the result has `problems` or a `warning:`, say the derived list is incomplete.
+4. Find the user. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" whoami --json` and keep `id`. The user's logins for review requests are that `id` and the `login` argument, compared without case.
+5. Reviews waiting. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues list --category in_review --json`. Repeat each `warning:` line, and treat `problems` or `hasMore` `true` as an incomplete list of reviews.
    1. For each issue with a `branch`, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" pr blockers --branch <branch> --json`. When a call fails with `NOT_SUPPORTED`, `NOT_CONFIGURED` or `AUTH`, stop calling it, say that reviews are not verified and why (`error.message`, then `error.nextStep`). Another failure marks that issue "not verified" with its `error.message` and the loop goes on.
-   2. An issue with no `branch`, or whose `pr` is missing (`blocked` is `null` for no pull request), is "not verified: no pull request found". An issue is also "not verified" for the part named in `unchecked` when `unchecked` holds the area `reviews` or `threads`.
-   3. For an issue assigned to someone else, it is a review waiting for the user when `reviews.requested` holds the user's login: the member ID (`pmkit.mjs whoami --json`, field `id`) or the `login` argument, compared without case. When no `login` was given and nothing matches, say that review requests could not be matched to the user and name the PRs that have a request open (`reviews.requested` not empty) as "requested of someone, not matched".
-   4. For an issue assigned to the user, it holds "changes to address" when `reviews.changesRequested` is not empty or `threads.open` is not empty. Show the reviewers and the number of open threads.
-4. Show the digest. Lead with the counts of mentions, new assignments, reviews requested and changes to address, then one table or list per group. A group that was not verified shows `not verified` with the reason in place of a count, and never `0` or `none`. When any part is incomplete or not verified, end with one line that says what was not read.
-5. Offer the next step without running it. For mentions and assignments, show the call the user can run to mark what was shown as seen: `pmkit inbox mark-read --key <key> ...` with the keys of step 2. For an issue to work on, offer `/pmkit:issues:work <id>`.
+   2. Sort each issue by what the result holds, in this order:
+      - No `branch` recorded on the issue: "not verified: no branch recorded".
+      - `pr` is `null`: "not verified: no pull request for the branch". Only `pr` being `null` means there is no pull request. `blocked` being `null` does not, because an open pull request has `blocked` `null` whenever one of its fields could not be read.
+      - `pr.state` is not `OPEN` (merged or closed): "nothing waiting: pull request <state lowercased>", with the PR number. For these `reviews` and `threads` are `null` and `unchecked` is empty, so read nothing from them and count nothing.
+      - An open pull request: go on with 3 and 4. A `reviews` that is `null` (`unchecked` has the area `reviews`) is "not verified: reviews not read" for that issue. Likewise a `threads` that is `null` (area `threads`).
+   3. Review requests, for every open pull request whatever its assignee: the assignee is the user, another member or nobody. It is a review waiting for the user when `reviews.requested` holds one of the user's logins from step 4. A request made to a team shows as its slug and never matches. When no `login` was given and nothing matched, say that review requests could not be matched to the user and name the pull requests that have a request open (`reviews.requested` not empty) as "requested of someone, not matched".
+   4. Changes to address, only for an open pull request of an issue assigned to the user: it holds "changes to address" when `reviews.changesRequested` is not empty or `threads.open` is not empty. Show the reviewers and the number of open threads. When `threads.incomplete` is `true`, GitHub returned only the first 100 threads: with an empty `threads.open` the threads are "not verified: only the first 100 threads were read", and with open threads show the count as "at least N".
+6. Show the digest. Lead with the counts of mentions, new assignments, reviews requested and changes to address, then one table or list per group. A group that was not verified shows `not verified` with the reason in place of a count, and never `0` or `none`. List the merged or closed pull requests as "nothing waiting" with their state, and the issues that are not verified with their reason. When any part is incomplete or not verified, end with one line that says what was not read.
+7. Offer the next step without running it. For mentions and assignments, when `complete` is `true`, show the call the user can run to mark what was shown as seen: `pmkit inbox mark-read --key <key> ...` with the keys of step 2. When `complete` is `false`, do not offer it: `inbox mark-read` refuses on an incomplete inbox, so offer `pmkit validate` and `/pmkit:local:doctor` first and say mark-read waits for the fix. For an issue to work on, offer `/pmkit:issues:work <id>`.
 
 The command never writes. It does not run `inbox mark-read`, so the same items show again until the user marks them.
 
@@ -45,8 +50,8 @@ The counts line, the new assignments, the mentions (with `key`, `excerpt`), the 
 
 ## If something is missing
 
-- Linear or another tracker with `user_inbox` `absent`: step 2b, derived list, mentions not verified.
-- The git host is `none`, or `gh` is missing or not logged in: skip step 3 after the first failure, say reviews are not verified and why, and show the rest.
+- Linear or another tracker with `user_inbox` `absent`: step 3, derived list, mentions not verified.
+- The git host is `none`, or `gh` is missing or not logged in: skip the rest of step 5 after the first failure, say reviews are not verified and why, and show the rest.
 - A broken file in the user store (`The inbox file ...`): mentions and assignments are not verified; offer to delete it or fix it by hand.
 - Nothing found and everything read: say there is nothing that needs the user's attention.
 - An error from the CLI: apply the rules for reading errors in the conventions.
