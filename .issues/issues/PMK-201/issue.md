@@ -2,13 +2,13 @@
 id: PMK-201
 title: Make the test suite pass on a default macOS setup
 type: bug
-status: in_progress
+status: in_review
 priority: medium
 estimate: 2
 assignee: fred
 branch: pmk-201-make-the-test-suite-pass-on-a-default
 created: 2026-11-08T03:15:26.776Z
-updated: 2026-11-08T21:44:31Z
+updated: 2026-11-08T21:45:21Z
 ---
 
 ## Description
