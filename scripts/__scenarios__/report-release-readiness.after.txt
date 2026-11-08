@@ -1,0 +1,8 @@
+$ pmkit release-readiness --json  [step 1, read]
+exit 0
+
+(no file changed)
+--- gh calls
+pr list --state open --limit 200 --json number,url,title,headRefName,isDraft,updatedAt,author,statusCheckRollup
+api repos/{owner}/{repo}/deployments?per_page=20
+api repos/{owner}/{repo}/deployments/5/statuses?per_page=1

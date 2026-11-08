@@ -1,0 +1,142 @@
+$ pmkit release-readiness
+exit 0
+--- stdout
+sprint 2026-10-12 (2026-10-12 to 2026-10-25)
+no planned release, no milestone with an open issue, so the report uses sprint 2026-10-12
+
+issues: 4 open, 0 done, 0 canceled
+ID       | Title                          | Status      | Assignee | Estimate
+---------|--------------------------------|-------------|----------|---------
+ISS-2X6D | Billing export to CSV          | in_progress | ana      | 8
+ISS-5N1R | Paginate the events API        | in_progress | fred     | 3
+ISS-8C4W | Dead-letter queue for webhooks | in_review   | ana      | 5
+ISS-4M2S | Fix CSV column order           | todo        | fred     | 1
+
+pull requests: not checked
+
+deploys (whole repository, newest first): not checked
+git host: none, so pull requests and deploys are not checked
+
+not ready: work is still open
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+warning: no git host is configured, so pull requests and deploys are not checked
+
+$ pmkit release-readiness --json
+exit 0
+--- stdout
+{
+  "basis": "sprint",
+  "reason": "active_sprint",
+  "source": {
+    "id": "2026-10-12",
+    "name": "Sprint 2026-10-12",
+    "start": "2026-10-12",
+    "end": "2026-10-25",
+    "goal": "Webhook retries and the billing export",
+    "state": "active",
+    "capacity": {
+      "fred": 8,
+      "ana": 10
+    },
+    "daysOff": {
+      "ana": [
+        "2026-10-16"
+      ]
+    }
+  },
+  "skipped": [
+    {
+      "basis": "release",
+      "reason": "no_planned_release"
+    },
+    {
+      "basis": "milestone",
+      "reason": "no_open_milestone"
+    }
+  ],
+  "issues": {
+    "open": [
+      {
+        "id": "ISS-2X6D",
+        "title": "Billing export to CSV",
+        "status": "in_progress",
+        "assignee": "ana",
+        "estimate": 8
+      },
+      {
+        "id": "ISS-5N1R",
+        "title": "Paginate the events API",
+        "status": "in_progress",
+        "assignee": "fred",
+        "estimate": 3
+      },
+      {
+        "id": "ISS-8C4W",
+        "title": "Dead-letter queue for webhooks",
+        "status": "in_review",
+        "assignee": "ana",
+        "estimate": 5
+      },
+      {
+        "id": "ISS-4M2S",
+        "title": "Fix CSV column order",
+        "status": "todo",
+        "assignee": "fred",
+        "estimate": 1
+      }
+    ],
+    "counts": {
+      "open": 4,
+      "done": 0,
+      "canceled": 0,
+      "total": 4
+    }
+  },
+  "pullRequests": null,
+  "pullRequestsIncomplete": false,
+  "deploys": null,
+  "gitHost": {
+    "system": "none",
+    "available": false,
+    "reason": {
+      "code": "NOT_SUPPORTED",
+      "message": "this repository has no git host configured",
+      "nextStep": "Set git_host.system to github in .pmkit/config.yaml, or run /pmkit:setup"
+    }
+  },
+  "truncated": false,
+  "complete": false,
+  "ready": false,
+  "problems": [
+    {
+      "id": "ISS-3Q6T",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+warning: no git host is configured, so pull requests and deploys are not checked
+
+$ pmkit release-readiness --release 1.0.0
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: release 1.0.0 does not exist
+next: pmkit release list
+
+$ pmkit release-readiness --release 1.0.0 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "release 1.0.0 does not exist",
+    "nextStep": "pmkit release list"
+  }
+}
+--- stderr
+(empty)

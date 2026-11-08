@@ -1,0 +1,110 @@
+$ pmkit release-readiness
+exit 0
+--- stdout
+sprint 2026-10-05 (2026-10-05 to 2026-10-11)
+no planned release, no milestone with an open issue, so the report uses sprint 2026-10-05
+
+issues: 0 open, 2 done, 0 canceled
+
+pull requests: not checked
+
+deploys (whole repository, newest first): not checked
+git host: none, so pull requests and deploys are not checked
+
+unknown: nothing found open, but not everything was read
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+warning: no git host is configured, so pull requests and deploys are not checked
+
+$ pmkit release-readiness --json
+exit 0
+--- stdout
+{
+  "basis": "sprint",
+  "reason": "active_sprint",
+  "source": {
+    "id": "2026-10-05",
+    "name": "Sprint 2026-10-05",
+    "start": "2026-10-05",
+    "end": "2026-10-11",
+    "goal": "Webhook delivery basics",
+    "state": "active",
+    "capacity": {
+      "fred": 8,
+      "ana": 8
+    },
+    "daysOff": {}
+  },
+  "skipped": [
+    {
+      "basis": "release",
+      "reason": "no_planned_release"
+    },
+    {
+      "basis": "milestone",
+      "reason": "no_open_milestone"
+    }
+  ],
+  "issues": {
+    "open": [],
+    "counts": {
+      "open": 0,
+      "done": 2,
+      "canceled": 0,
+      "total": 2
+    }
+  },
+  "pullRequests": null,
+  "pullRequestsIncomplete": false,
+  "deploys": null,
+  "gitHost": {
+    "system": "none",
+    "available": false,
+    "reason": {
+      "code": "NOT_SUPPORTED",
+      "message": "this repository has no git host configured",
+      "nextStep": "Set git_host.system to github in .pmkit/config.yaml, or run /pmkit:setup"
+    }
+  },
+  "truncated": false,
+  "complete": false,
+  "ready": null,
+  "problems": [
+    {
+      "id": "ISS-4",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    },
+    {
+      "id": "ISS-5",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-4: CONFLICT The issue file contains git conflict markers.
+warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+warning: no git host is configured, so pull requests and deploys are not checked
+
+$ pmkit release-readiness --release 1.0.0
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: release 1.0.0 does not exist
+next: pmkit release list
+
+$ pmkit release-readiness --release 1.0.0 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "release 1.0.0 does not exist",
+    "nextStep": "pmkit release list"
+  }
+}
+--- stderr
+(empty)

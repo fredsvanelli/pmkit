@@ -1,0 +1,139 @@
+$ pmkit release-readiness
+exit 0
+--- stdout
+release 1.0.0 (target 2026-11-13)
+
+issues: 1 open, 1 done, 0 canceled
+ID       | Title                 | Status | Assignee | Estimate
+---------|-----------------------|--------|----------|---------
+ISS-3M8D | Billing export as CSV | todo   | fred     | 3
+
+pull requests: not checked
+
+deploys (whole repository, newest first): not checked
+git host: none, so pull requests and deploys are not checked
+
+not ready: work is still open
+--- stderr
+warning: no git host is configured, so pull requests and deploys are not checked
+
+$ pmkit release-readiness --json
+exit 0
+--- stdout
+{
+  "basis": "release",
+  "reason": "next_planned",
+  "source": {
+    "id": "1.0.0",
+    "name": "Webhooks GA",
+    "target": "2026-11-13",
+    "state": "planned",
+    "description": "Public webhooks with retries and a dead-letter queue."
+  },
+  "skipped": [],
+  "issues": {
+    "open": [
+      {
+        "id": "ISS-3M8D",
+        "title": "Billing export as CSV",
+        "status": "todo",
+        "assignee": "fred",
+        "estimate": 3
+      }
+    ],
+    "counts": {
+      "open": 1,
+      "done": 1,
+      "canceled": 0,
+      "total": 2
+    }
+  },
+  "pullRequests": null,
+  "pullRequestsIncomplete": false,
+  "deploys": null,
+  "gitHost": {
+    "system": "none",
+    "available": false,
+    "reason": {
+      "code": "NOT_SUPPORTED",
+      "message": "this repository has no git host configured",
+      "nextStep": "Set git_host.system to github in .pmkit/config.yaml, or run /pmkit:setup"
+    }
+  },
+  "truncated": false,
+  "complete": true,
+  "ready": false,
+  "problems": []
+}
+--- stderr
+warning: no git host is configured, so pull requests and deploys are not checked
+
+$ pmkit release-readiness --release 1.0.0
+exit 0
+--- stdout
+release 1.0.0 (target 2026-11-13)
+
+issues: 1 open, 1 done, 0 canceled
+ID       | Title                 | Status | Assignee | Estimate
+---------|-----------------------|--------|----------|---------
+ISS-3M8D | Billing export as CSV | todo   | fred     | 3
+
+pull requests: not checked
+
+deploys (whole repository, newest first): not checked
+git host: none, so pull requests and deploys are not checked
+
+not ready: work is still open
+--- stderr
+warning: no git host is configured, so pull requests and deploys are not checked
+
+$ pmkit release-readiness --release 1.0.0 --json
+exit 0
+--- stdout
+{
+  "basis": "release",
+  "reason": "requested",
+  "source": {
+    "id": "1.0.0",
+    "name": "Webhooks GA",
+    "target": "2026-11-13",
+    "state": "planned",
+    "description": "Public webhooks with retries and a dead-letter queue."
+  },
+  "skipped": [],
+  "issues": {
+    "open": [
+      {
+        "id": "ISS-3M8D",
+        "title": "Billing export as CSV",
+        "status": "todo",
+        "assignee": "fred",
+        "estimate": 3
+      }
+    ],
+    "counts": {
+      "open": 1,
+      "done": 1,
+      "canceled": 0,
+      "total": 2
+    }
+  },
+  "pullRequests": null,
+  "pullRequestsIncomplete": false,
+  "deploys": null,
+  "gitHost": {
+    "system": "none",
+    "available": false,
+    "reason": {
+      "code": "NOT_SUPPORTED",
+      "message": "this repository has no git host configured",
+      "nextStep": "Set git_host.system to github in .pmkit/config.yaml, or run /pmkit:setup"
+    }
+  },
+  "truncated": false,
+  "complete": true,
+  "ready": false,
+  "problems": []
+}
+--- stderr
+warning: no git host is configured, so pull requests and deploys are not checked

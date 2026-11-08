@@ -57,6 +57,7 @@ Each command file holds the full procedure. When the user asks for one of these 
 | progress of goals and initiatives, how far the strategic goals are | `/pmkit:report:initiatives-and-goals` | `${CLAUDE_PLUGIN_ROOT}/commands/report/initiatives-and-goals.md` |
 | write release notes, say what shipped, a changelog for customers | `/pmkit:report:release-notes` | `${CLAUDE_PLUGIN_ROOT}/commands/report/release-notes.md` |
 | review the roadmap: epics and milestones with dates, health and delays, and the epics with no recent status update | `/pmkit:report:roadmap-review` | `${CLAUDE_PLUGIN_ROOT}/commands/report/roadmap-review.md` |
+| what is left for a release, is it ready to ship, open work and deploys of a release | `/pmkit:report:release-readiness` | `${CLAUDE_PLUGIN_ROOT}/commands/report/release-readiness.md` |
 | draft a status update for an epic and publish it after approval | `/pmkit:report:status` | `${CLAUDE_PLUGIN_ROOT}/commands/report/status.md` |
 | turn a spec or PRD into an epic with milestones, issues, sub-issues, estimates and blockers | `/pmkit:spec:import` | `${CLAUDE_PLUGIN_ROOT}/commands/spec/import.md` |
 | record a decision as an ADR and link it to the issues it affects | `/pmkit:spec:record-decision` | `${CLAUDE_PLUGIN_ROOT}/commands/spec/record-decision.md` |

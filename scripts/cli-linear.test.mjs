@@ -1572,6 +1572,53 @@ test('release-notes on Linear without releases refuses --release', async () => {
   assert.deepEqual(errorOf(result), { code: 'NOT_SUPPORTED', message: 'release notes by release need releases, which this workspace does not have', nextStep: RELEASES_HINT })
 })
 
+test('release-readiness on Linear without releases refuses --release', async () => {
+  const result = await cycleCli(setup({ edit: withTeam }), ['release-readiness', '--release', '1.0', '--json'], withCycles(['A']).fetch)
+  assert.equal(result.code, 2)
+  assert.deepEqual(errorOf(result), { code: 'NOT_SUPPORTED', message: 'release readiness by release needs releases, which this workspace does not have', nextStep: RELEASES_HINT })
+})
+
+test('release-readiness on Linear without releases uses the sprint and says so', async () => {
+  const fake = fakeLinearIssues({ teams: [CYCLE_TEAM], cycles: CYCLES })
+  fake.seed({ title: 'A' })
+  const projects = fakeLinearProjects({ issues: fake })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace({ teams: [CYCLE_TEAM] }), ...fake.routes, ...projects.routes })
+  const result = await cli(setup({ edit: withTeam }), ['release-readiness'], fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const data = JSON.parse((await cycleCli(setup({ edit: withTeam }), ['release-readiness'], fetch)).stdout)
+  assert.deepEqual([data.basis, data.reason, data.source.id], ['sprint', 'active_sprint', '2'])
+  assert.deepEqual(data.skipped.map((s) => [s.basis, s.reason]), [['release', 'releases_absent'], ['milestone', 'no_open_milestone']])
+  assert.equal(data.gitHost.available, false)
+  assert.equal(data.ready, null)
+  assert.match(result.stderr, new RegExp(`note: releases is absent: ${RELEASES_HINT}`))
+  assert.match(result.stdout, /^sprint 2 \(.*\)\nthis tracker has no releases, no milestone with an open issue, so the report uses sprint 2\n/)
+})
+
+test('release-readiness on Linear takes a project milestone as the basis', async () => {
+  const { fetch } = withProjects()
+  const result = await cli(setup({ edit: withTeam }), ['release-readiness', '--milestone', MILESTONE, '--json'], fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.deepEqual([data.basis, data.reason, data.issues.counts.done], ['milestone', 'requested', 1])
+})
+
+test('release-readiness on Linear marks a cut issue read as incomplete and reads a sprint server side', async () => {
+  const fake = fakeLinearIssues({ teams: [CYCLE_TEAM], cycles: CYCLES })
+  for (let n = 0; n < 1001; n += 1) fake.seed({ title: `Issue ${n}` })
+  fake.records[0].cycleId = fake.cycles.list()[1].id
+  const projects = fakeLinearProjects({ issues: fake })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace({ teams: [CYCLE_TEAM] }), ...fake.routes, ...projects.routes })
+  const cut = await cycleCli(setup({ edit: withTeam }), ['release-readiness'], fetch)
+  assert.equal(cut.code, 0, cut.stdout + cut.stderr)
+  const data = JSON.parse(cut.stdout)
+  assert.deepEqual([data.truncated, data.complete], [true, false])
+  assert.equal(data.issues.counts.open, 1)
+  assert.equal(data.ready, false)
+  assert.match(cut.stderr, /more issues than the 1000 pmkit read, so the basis and the open work may be incomplete/)
+  const sprint = JSON.parse((await cycleCli(setup({ edit: withTeam }), ['release-readiness', '--sprint', '2'], fetch)).stdout)
+  assert.deepEqual([sprint.truncated, sprint.issues.counts.total], [false, 1])
+})
+
 test('release-notes on Linear without releases builds from the sprint and says so', async () => {
   for (const args of [['release-notes', '--sprint', '1'], ['release-notes']]) {
     const result = await cycleCli(setup({ edit: withTeam }), args, withCycles(['A']).fetch)

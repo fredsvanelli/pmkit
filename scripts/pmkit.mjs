@@ -11,11 +11,12 @@ import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, loadPmkitConfig, pmkit
 import { contractView } from './lib/contract.mjs'
 import { longEntryNote, parseMinutes } from './lib/duration.mjs'
 import { PmkitError, isPmkitError } from './lib/errors.mjs'
-import { changeLines, customerRecord, dependencyText, epicRecord, eventTable, fields, goalRecord, issueRecord, issueTable, milestoneRecord, percent, releaseNotesText, releaseRecord, requestRecord, sprintRecord, table } from './lib/format.mjs'
+import { changeLines, customerRecord, dependencyText, epicRecord, eventTable, fields, goalRecord, issueRecord, issueTable, milestoneRecord, percent, readinessText, releaseNotesText, releaseRecord, requestRecord, sprintRecord, table } from './lib/format.mjs'
 import {
   aging, categoryLookup, cycleTimes, doneInRange, groupEventsByIssue, lastEntry, leadTimes, rangeInstant, sprintIssues, summary, throughput, velocity,
 } from './lib/metrics.mjs'
 import { buildNotes, chooseBasis } from './lib/release-notes.mjs'
+import { buildReadiness, chooseReadinessBasis } from './lib/release-readiness.mjs'
 import { dependencyMap, serializable } from './lib/dependencies.mjs'
 import { buildRoadmapReview, roadmapReviewText } from './lib/roadmap-review.mjs'
 import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
@@ -1255,6 +1256,11 @@ export const COMMANDS = [
     run: (ctx) => runRoadmapReview(ctx),
   },
   {
+    name: 'release-readiness', summary: 'what is left for a release: open issues, open pull requests and deploys; without releases a milestone or a sprint; reads only',
+    usage: '[--release id | --milestone id | --sprint current|id]', flags: ['release', 'milestone', 'sprint'],
+    run: (ctx) => runReleaseReadiness(ctx),
+  },
+  {
     name: 'team load', summary: 'issues, estimates and work in progress per member for the active sprint (or all open work without one), with imbalances, members with no work and a move proposal; reads only',
     usage: '[--sprint current|id]', flags: ['sprint'],
     run: (ctx) => runTeamLoad(ctx),
@@ -1857,6 +1863,131 @@ async function runRoadmapReview(ctx) {
   report.problems = problems
   report.incomplete ||= problems.length > 0
   return { data: report, text: roadmapReviewText(report), warnings, notes: [...notes] }
+}
+
+/** What is left for a release (or a milestone, or a sprint): open issues, their open pull requests and the repository deploys. Writes nothing. */
+async function runReleaseReadiness(ctx) {
+  const tracker = await ctx.tracker()
+  const next = 'pmkit release-readiness --help'
+  const given = ['release', 'milestone', 'sprint'].filter((name) => ctx.opt(name) !== undefined)
+  if (given.length > 1) throw usageError(`--${given.join(', --')} exclude each other`, next)
+  const capabilities = (await tracker.capabilities()).capabilities
+  const releasesOn = capabilities.find((c) => c.id === 'releases').path !== 'absent'
+  if (!releasesOn && ctx.opt('release') !== undefined) {
+    throw new PmkitError('NOT_SUPPORTED', 'release readiness by release needs releases, which this workspace does not have', capabilities.find((c) => c.id === 'releases').enableHint)
+  }
+  const warnings = []
+  const notes = []
+  const problems = []
+  let truncated = false
+  const notSupported = (error) => isPmkitError(error) && error.code === 'NOT_SUPPORTED'
+  // Every issue read goes through here: a cut read (hasMore) marks the report incomplete, and a file that does not parse is listed once.
+  const readIssues = async (filter) => {
+    const found = await tracker.searchIssues(filter)
+    for (const problem of found.problems) {
+      if (problems.some((known) => known.id === problem.id)) continue
+      problems.push({ id: problem.id, code: problem.code, message: problem.message })
+      warnings.push(problemLine(problem))
+    }
+    if (found.hasMore === true) {
+      if (!truncated) warnings.push('Linear has more issues than the 1000 pmkit read, so the basis and the open work may be incomplete')
+      truncated = true
+    }
+    return found.issues.filter((issue) => !issue.archived)
+  }
+
+  let activeSprint = null
+  let cyclesAbsent = false
+  try {
+    activeSprint = (await tracker.currentCycle()) ?? null
+  } catch (error) {
+    if (!notSupported(error)) throw error
+    cyclesAbsent = true
+    notes.push(...(await capabilityNotes(tracker, 'cycles')))
+  }
+  let selector = null
+  if (ctx.opt('release') !== undefined) selector = { release: await tracker.getRelease(ctx.opt('release')) }
+  else if (ctx.opt('milestone') !== undefined) selector = { milestone: await tracker.getMilestone(ctx.opt('milestone')) }
+  else if (ctx.opt('sprint') !== undefined) {
+    const id = ctx.opt('sprint')
+    if (id === 'current') {
+      if (activeSprint === null) throw new PmkitError('INVALID_INPUT', 'there is no active sprint', 'pmkit cycle list')
+      selector = { sprint: activeSprint }
+    } else {
+      const sprint = (await tracker.listCycles({})).find((item) => item.id === id)
+      if (sprint === undefined) throw new PmkitError('NOT_FOUND', `sprint ${id} does not exist`, 'pmkit cycle list')
+      selector = { sprint }
+    }
+  }
+  let milestones = []
+  try {
+    milestones = await tracker.listMilestones()
+  } catch (error) {
+    if (!notSupported(error)) throw error
+  }
+  const releases = releasesOn ? await tracker.listReleases() : null
+  // The whole tracker is read only when the basis needs it: a milestone, or the milestone rung after no planned release.
+  const needsAll = selector?.milestone !== undefined || (selector === null && !(releases ?? []).some((release) => release.state === 'planned'))
+  const everything = needsAll ? await readIssues({}) : []
+  const choice = chooseReadinessBasis({
+    selector,
+    releases,
+    milestones,
+    openMilestones: new Set(everything.filter((i) => i.milestone && i.status.category !== 'done' && i.status.category !== 'canceled').map((i) => i.milestone)),
+    activeSprint,
+    cyclesAbsent,
+  })
+  if (choice.basis === null) {
+    const sprintHint = cyclesAbsent ? '' : ' or pmkit cycle open --start <date>'
+    throw new PmkitError('INVALID_INPUT', `there is no planned release, no milestone with an open issue and no ${cyclesAbsent ? 'sprint (this tracker has no cycles)' : 'active sprint'} to check`, `pmkit release create <id> or pmkit milestone create <id>${sprintHint}`)
+  }
+  if (!releasesOn) notes.push(...(await capabilityNotes(tracker, 'releases')))
+  // The release and the sprint are filtered by the tracker, so a long list cuts the other issues and not these. A milestone has no filter.
+  const issues = choice.basis === 'milestone'
+    ? everything.filter((issue) => issue.milestone === choice.source.id)
+    : await readIssues(choice.basis === 'release' ? { release: choice.source.id } : { sprint: choice.source.id })
+
+  const system = ctx.config().pmkit.git_host?.system ?? 'none'
+  const NO_HOST_READ = 'so pull requests and deploys are not checked'
+  let gitHost = { system, available: true }
+  let prs = null
+  let prsIncomplete = false
+  let deploys = null
+  const affectsOneCall = (error) => isPmkitError(error) && (error.code === 'RATE_LIMITED' || error.code === 'UPSTREAM')
+  // Collected apart from `warnings`, so a host that turns out to be unavailable drops what it said about the lists it read.
+  const hostWarnings = []
+  try {
+    const host = ctx.host()
+    try {
+      prs = host.listPullRequests()
+      if (prs.length === 200) {
+        prsIncomplete = true
+        hostWarnings.push('only the 200 most recently created open pull requests were read')
+      }
+    } catch (error) {
+      if (!affectsOneCall(error)) throw error
+      prs = { error: errorOf(error) }
+      hostWarnings.push(`pull requests not checked: ${error.message}`)
+    }
+    try {
+      deploys = host.listDeploys({})
+    } catch (error) {
+      if (!affectsOneCall(error)) throw error
+      deploys = { error: errorOf(error) }
+      hostWarnings.push(`deploys not checked: ${error.message}`)
+    }
+    warnings.push(...hostWarnings)
+  } catch (error) {
+    if (isPmkitError(error) && error.code === 'NOT_SUPPORTED') warnings.push(`no git host is configured, ${NO_HOST_READ}`)
+    else if (isPmkitError(error) && (error.code === 'NOT_CONFIGURED' || error.code === 'AUTH')) warnings.push(`${error.message}, ${NO_HOST_READ}; next: ${error.nextStep}`)
+    else throw error
+    gitHost = { system, available: false, reason: errorOf(error) }
+    prs = null
+    prsIncomplete = false
+    deploys = null
+  }
+  const report = buildReadiness({ choice, issues, prs, prsIncomplete, deploys, gitHost, problems, truncated })
+  return { data: report, text: readinessText(report), warnings, notes }
 }
 
 // Errors a dry run reports for one issue. Any other error is about the change or the tracker, so it stops the whole command.

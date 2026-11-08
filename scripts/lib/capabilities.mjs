@@ -12,7 +12,7 @@ export const CAPABILITIES = [
  * An empty list means no command serves it, so the manifest reports it absent. A test checks every name.
  */
 export const SERVED_BY = {
-  cycles: ['cycle list', 'cycle current', 'cycle issues', 'cycle open', 'cycle close', 'cycle add', 'release-notes'],
+  cycles: ['cycle list', 'cycle current', 'cycle issues', 'cycle open', 'cycle close', 'cycle add', 'release-notes', 'release-readiness'],
   estimation: ['issues create', 'issues update'],
   multilevel_hierarchy: ['issues parent', 'epic list', 'issues dependencies'],
   dependencies: ['issues link', 'issues dependencies'],
@@ -20,7 +20,7 @@ export const SERVED_BY = {
   deliverables: ['epic list', 'epic get', 'epic create', 'epic progress'],
   strategic_goals: ['goal list', 'goal get', 'goal create', 'goal progress', 'epic goal'],
   status_update: ['epic update-status', 'epic updates'],
-  releases: ['release list', 'release get', 'release issues', 'release create', 'release mark-released', 'release-notes'],
+  releases: ['release list', 'release get', 'release issues', 'release create', 'release mark-released', 'release-notes', 'release-readiness'],
   capacity: ['cycle capacity'],
   native_metrics: ['metrics velocity', 'metrics cycle-time', 'metrics lead-time', 'metrics throughput', 'metrics aging', 'events'],
   saved_views: ['views list', 'views save', 'views run'],
@@ -28,7 +28,7 @@ export const SERVED_BY = {
   demand_signals: ['customers list', 'customers show', 'customers create', 'requests create', 'demand list'],
   request_queue: ['requests list', 'requests get', 'requests create', 'requests accept', 'requests decline'],
   time_tracking: ['issues log-time', 'issues time-entries'],
-  linked_code: ['issues branch', 'pr open', 'pr ready', 'pr status', 'pr sync', 'deploys list', 'ci logs', 'pr diff', 'pr blockers'],
+  linked_code: ['issues branch', 'pr open', 'pr ready', 'pr status', 'pr sync', 'deploys list', 'ci logs', 'pr diff', 'pr blockers', 'release-readiness'],
   agent_delegation: ['issues delegate', 'issues track-agents'],
   security_alerts: ['alerts list', 'alerts scan'],
   user_inbox: ['inbox list', 'inbox mark-read'],
