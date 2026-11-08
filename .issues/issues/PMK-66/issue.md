@@ -11,7 +11,7 @@ blocked_by: [PMK-3, PMK-45]
 milestone: generic-commands
 branch: pmk-66-add-the-roadmap-review-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-11-07T22:27:29Z
+updated: 2026-11-08T02:13:35Z
 ---
 
 ## Description
@@ -20,6 +20,6 @@ Source: Unified model, PM catalog (`roadmap-review`: "Portfolio of deliverables 
 
 ## Acceptance criteria
 
-- [ ] Shows epics and milestones with dates, health and delays
-- [ ] Lists epics with no recent status update
-- [ ] Writes nothing
+- [x] Shows epics and milestones with dates, health and delays
+- [x] Lists epics with no recent status update
+- [x] Writes nothing
