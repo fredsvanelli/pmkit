@@ -8,6 +8,7 @@ import { requireActor, gitUserEmail } from '../actor.mjs'
 import { loadConfig, validateLocalConfig } from '../config.mjs'
 import { PmkitError } from '../errors.mjs'
 import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
+import { removeKey, setScalar } from '../yaml-edit.mjs'
 import { isBranchName, isId, newId, nextNumberedId, normalizeId } from '../ids.mjs'
 import { CATEGORIES, LINK_KINDS, TERMINAL } from '../model.mjs'
 import { appendEvents, driftEvents, readEvents } from './events.mjs'
@@ -1282,7 +1283,7 @@ export function createLocalTracker(root, {
     return { before: null, after: { ...after, epics: [] } }
   }
 
-  /** The progress of each linked epic, as deliverableProgress counts it, and the sums. An issue reaches at most one epic, so none counts twice. */
+  /** The progress of each linked epic, as deliverableProgress counts it, and the sums of the epics that are not canceled. An issue reaches at most one epic, so none counts twice. */
   function goalProgress(id) {
     const goal = getGoal(id)
     const issues = scanIssues()
@@ -1290,9 +1291,13 @@ export function createLocalTracker(root, {
     const epics = goal.epics.map((epicId) => {
       const { title, status } = getDeliverable(epicId)
       const progress = progressOf(epicId, issues)
-      for (const key of ['total', 'done', 'canceled', 'points', 'pointsDone']) sum[key] += progress[key]
-      for (const category of CATEGORIES) sum.byCategory[category] += progress.byCategory[category]
-      return { id: epicId, title, status, progress }
+      // A canceled epic is out of the goal: it is listed, but its issues are in none of the sums. An unknown category counts.
+      const counted = status.category !== 'canceled'
+      if (counted) {
+        for (const key of ['total', 'done', 'canceled', 'points', 'pointsDone']) sum[key] += progress[key]
+        for (const category of CATEGORIES) sum.byCategory[category] += progress.byCategory[category]
+      }
+      return { id: epicId, title, status, counted, progress }
     })
     return { goal, epics, ...sum }
   }
@@ -1301,13 +1306,21 @@ export function createLocalTracker(root, {
   function setEpicGoal(epicId, goal, actor, { dryRun = false } = {}) {
     requireWriter(actor)
     const { epic: before, dir } = readEpic(epicId)
-    const next = blank(goal) || goal === '' ? undefined : requireGoal(goal)
-    // The stored map is edited, not the parsed epic, so keys pmkit does not know and the body stay as they are.
+    // Only null removes the link: an empty value, such as an empty $GOAL in a script, must not clear it.
+    if (goal !== null && (typeof goal !== 'string' || goal.trim() === '')) {
+      throw invalid('goal must be a goal id, or "none" to remove the link', 'pmkit goal list')
+    }
+    const next = goal === null ? undefined : requireGoal(goal)
+    // Only the goal line of the stored frontmatter is edited, so every other key, comment and the body stay as they are.
     const file = path.join(dir, 'epic.md')
-    const { data, body } = parseFile(fs.readFileSync(file, 'utf8'), 'epic')
-    delete data.goal
-    if (next !== undefined) data.goal = next
-    const content = joinFrontmatter(data, body ? `${body}\n` : '', { order: EPIC_KEYS })
+    const { yaml, body } = splitFrontmatter(fs.readFileSync(file, 'utf8'))
+    let edited
+    try {
+      edited = next === undefined ? removeKey(yaml, ['goal']) : setScalar(yaml, ['goal'], next)
+    } catch (error) {
+      throw new PmkitError('INVALID_INPUT', `The epic frontmatter cannot be edited: ${error.message}`, '/pmkit:local:doctor')
+    }
+    const content = `---\n${edited.replace(/\n$/, '')}\n---\n${body}`
     const after = readBack('epic file', () => parseEpicFile(content, { statuses: local.statuses }))
     if (before.goal === after.goal || dryRun) return { before, after }
     writeFile(file, content)

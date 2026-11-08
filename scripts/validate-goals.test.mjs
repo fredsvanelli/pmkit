@@ -43,3 +43,38 @@ test('an epic whose goal has no file is a reference problem', () => {
   writeGoal(root, 'GOAL-9.md', '---\ntitle: Now it exists\n---\n')
   assert.deepEqual(brief(validateRepo(root), '/epics/'), [])
 })
+
+function linkEpic(root, goal) {
+  const file = path.join(root, '.issues', 'epics', 'EPC-2M9D', 'epic.md')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('target: 2026-11-13\n', `target: 2026-11-13\ngoal: ${goal}\n`))
+}
+const epicMessages = (root) => validateRepo(root).problems.filter((p) => p.path.endsWith('EPC-2M9D/epic.md')).map((p) => `${p.code}: ${p.message}`)
+
+test('an epic whose goal is not a goal id is a reference problem even when goals/<value>.md exists (PMK-179)', () => {
+  const root = makeRepo('team')
+  writeGoal(root, 'notes.md', '---\ntitle: Notes\n---\n')
+  linkEpic(root, 'notes')
+  assert.deepEqual(epicMessages(root), ['reference: goal notes is not a valid goal id such as GOAL-1'])
+})
+
+test('an epic whose goal id is not in the stored form is not a goal id (PMK-179)', () => {
+  const root = makeRepo('team')
+  writeGoal(root, 'GOAL-1.md', '---\ntitle: One\n---\n')
+  linkEpic(root, 'goal-1')
+  assert.deepEqual(epicMessages(root), ['reference: goal goal-1 is not a valid goal id such as GOAL-1'])
+})
+
+test('an epic whose goal file does not parse is a reference problem next to the goal problem (PMK-179)', () => {
+  const root = makeRepo('team')
+  writeGoal(root, 'GOAL-1.md', '---\ntarget: 2026-12-31\n---\n')
+  linkEpic(root, 'GOAL-1')
+  assert.deepEqual(epicMessages(root), ['reference: goal GOAL-1 does not parse, see .issues/goals/GOAL-1.md'])
+  assert.deepEqual(brief(validateRepo(root), '/goals/'), ['goal .issues/goals/GOAL-1.md'])
+})
+
+test('an epic linked to a goal that parses has no problem (PMK-179)', () => {
+  const root = makeRepo('team')
+  writeGoal(root, 'GOAL-1.md', '---\ntitle: One\n---\n')
+  linkEpic(root, 'GOAL-1')
+  assert.deepEqual(epicMessages(root), [])
+})

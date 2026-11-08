@@ -810,7 +810,7 @@ export const COMMANDS = [
     name: 'goal progress', summary: 'rolls up the progress of the epics of a goal', usage: '<id>', args: ['id'], flags: [],
     run: async (ctx) => {
       const p = await (await ctx.tracker()).goalProgress(ctx.args[0])
-      const rows = p.epics.map((e) => [e.id, e.title, e.status.name, e.progress.done, e.progress.total, e.progress.pointsDone, e.progress.points])
+      const rows = p.epics.map((e) => [e.id, e.title, e.counted ? e.status.name : `${e.status.name} (canceled, not counted)`, e.progress.done, e.progress.total, e.progress.pointsDone, e.progress.points])
       const text = [
         `${p.goal.id}  ${p.goal.title}`,
         ...fields([['total', p.total], ['done', p.done], ['canceled', p.canceled], ['points', p.points], ['points done', p.pointsDone]]),
@@ -2198,7 +2198,7 @@ async function runGoalsOverview(ctx) {
     for (const goal of listed.goals) {
       const p = await tracker.goalProgress(goal.id)
       const { goal: ignored, epics, ...sum } = p
-      items.push({ goal: { id: goal.id, title: goal.title, target: goal.target }, epics: epics.map((e) => ({ id: e.id, title: e.title, status: e.status, progress: e.progress })), ...sum, progress: shareDone(sum.done, sum.total) })
+      items.push({ goal: { id: goal.id, title: goal.title, target: goal.target }, epics: epics.map((e) => ({ id: e.id, title: e.title, status: e.status, counted: e.counted, progress: e.progress })), ...sum, progress: shareDone(sum.done, sum.total) })
     }
     const rows = items.map((i) => [i.goal.id, i.goal.title, i.progress === null ? 'not known' : percent(i.progress), `${i.done}/${i.total}`, `${i.pointsDone}/${i.points}`, i.epics.map((e) => e.id).join(', ')])
     const data = { source: 'goals', complete: warnings.length === 0, items, withoutChildren: 0, notes, warnings }

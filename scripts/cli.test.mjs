@@ -2315,3 +2315,23 @@ test('parse-time reads a time with no tracker and no write, and refuses an inval
   }
   assert.equal(hashTree(root), before)
 })
+
+test('epic goal refuses an empty goal, only none clears the link, and goal progress marks a canceled epic (PMK-179)', () => {
+  const root = makeRepo('team')
+  const { id } = json(root, ['goal', 'create', '--title', 'Trust']).after
+  json(root, ['epic', 'goal', 'EPC-2M9D', id])
+  const before = hashTree(root)
+  for (const empty of ['', ' ']) {
+    const refused = run(root, ['epic', 'goal', 'EPC-2M9D', empty, '--json'])
+    assert.equal(refused.status, 2)
+    assert.equal(JSON.parse(refused.stdout).error.code, 'INVALID_INPUT')
+  }
+  assert.deepEqual(hashTree(root), before)
+  const file = path.join(root, '.issues', 'epics', 'EPC-2M9D', 'epic.md')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^status: .*$/m, 'status: canceled'))
+  const progress = json(root, ['goal', 'progress', id])
+  assert.equal(progress.epics[0].counted, false)
+  assert.equal(progress.total, 0)
+  assert.match(run(root, ['goal', 'progress', id]).stdout, /EPC-2M9D .*canceled, not counted/)
+  assert.equal(json(root, ['epic', 'goal', 'EPC-2M9D', 'none']).after.goal, undefined)
+})

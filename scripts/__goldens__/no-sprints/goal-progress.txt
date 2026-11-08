@@ -42,6 +42,7 @@ exit 0
         "name": "in_progress",
         "category": "in_progress"
       },
+      "counted": true,
       "progress": {
         "total": 2,
         "done": 2,

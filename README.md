@@ -112,7 +112,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `epic get <id>` | shows one epic |
 | `epic progress <id>` | counts the issues under an epic |
 | `epic create --title t` | creates an epic; `--goal <id>` links it to a goal |
-| `epic goal <id> <goal\|none>` | links an epic to a goal, or removes the link with `none` |
+| `epic goal <id> <goal\|none>` | links an epic to a goal, or removes the link with `none` (an empty goal is refused) |
 | `epic update-status <id> --health h --body-file f` | publishes a status update |
 | `epic updates <id>` | lists the status updates of an epic, newest first |
 | `milestone list` | lists milestones, by due date |
