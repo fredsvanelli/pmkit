@@ -96,11 +96,19 @@ test('with cycles absent the last rung is cycles_absent, not no_active_sprint', 
 test('a cut read is incomplete: ready is null even with nothing open, and complete is false', () => {
   const data = build({ issues: [issue('A-1', 'done')], truncated: true })
   assert.deepEqual([data.truncated, data.complete, data.ready], [true, false, null])
+  // Open work found is a fact even when the read is cut.
+  assert.equal(build({ issues: [issue('A-1', 'todo')], truncated: true }).ready, false)
   assert.equal(build({ issues: [issue('A-1', 'done')] }).truncated, false)
 })
 
 test('a pull request row keeps its failing checks and the number of checks', () => {
   const rollup = [{ __typename: 'CheckRun', name: 'test', status: 'COMPLETED', conclusion: 'FAILURE' }, { __typename: 'CheckRun', name: 'lint', status: 'COMPLETED', conclusion: 'SUCCESS' }]
   const data = build({ issues: [issue('A-1', 'todo', 'a1')], prs: [pr(1, 'a1', { statusCheckRollup: rollup })] })
-  assert.deepEqual(data.pullRequests[0].checks, { total: 2, failing: ['test'] })
+  assert.deepEqual(data.pullRequests[0].checks, { total: 2, failing: ['test'], pending: 0 })
+})
+
+test('a pending check is counted apart from a passing one', () => {
+  const rollup = [{ __typename: 'CheckRun', name: 'build', status: 'IN_PROGRESS', conclusion: null }, { __typename: 'StatusContext', context: 'ci', state: 'PENDING' }, { __typename: 'CheckRun', name: 'lint', status: 'COMPLETED', conclusion: 'SUCCESS' }]
+  const data = build({ issues: [issue('A-1', 'todo', 'a1')], prs: [pr(1, 'a1', { statusCheckRollup: rollup })] })
+  assert.deepEqual(data.pullRequests[0].checks, { total: 3, failing: [], pending: 2 })
 })

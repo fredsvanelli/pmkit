@@ -198,8 +198,18 @@ test('release-readiness keeps the failing checks of a pull request', async () =>
   const env = envWith(fakeGh(cannedGh({ [PR_LIST]: { stdout: JSON.stringify(failing) } })))
   await withRelease(root, env)
   const data = JSON.parse((await ok(root, env, ['release-readiness', '--json'])).stdout)
-  assert.deepEqual(data.pullRequests[0].checks, { total: 1, failing: ['test'] })
+  assert.deepEqual(data.pullRequests[0].checks, { total: 1, failing: ['test'], pending: 0 })
   assert.match((await ok(root, env, ['release-readiness'])).stdout, /failing: test/)
+})
+
+test('release-readiness shows pending checks and never says nothing is open while it lists open work', async () => {
+  const root = repo()
+  const pending = [{ ...prs[0], statusCheckRollup: [{ __typename: 'CheckRun', name: 'build', status: 'IN_PROGRESS', conclusion: null }] }]
+  const env = envWith(fakeGh(cannedGh({ [PR_LIST]: { stdout: JSON.stringify(pending) } })))
+  await withRelease(root, env)
+  const text = (await ok(root, env, ['release-readiness'])).stdout
+  assert.match(text, /1 of 1 checks pending/)
+  assert.doesNotMatch(text, /nothing found open/)
 })
 
 test('release-readiness labels a milestone by its name', async () => {

@@ -33,6 +33,9 @@ export function chooseReadinessBasis({ selector, releases, milestones, openMiles
   return { basis: null, reason: null, source: null, skipped }
 }
 
+// A check run that has not completed, or a status that is still pending or expected.
+const isPending = (entry) => ('context' in entry ? ['PENDING', 'EXPECTED'].includes(entry.state) : entry.status !== 'COMPLETED')
+
 const issueRow = (issue) => ({ id: issue.id, title: issue.title, status: issue.status.name, assignee: issue.assignee ?? null, estimate: issue.estimate ?? null })
 
 /**
@@ -56,13 +59,13 @@ export function buildReadiness({ choice, issues, prs, prsIncomplete, deploys, gi
   }
   const byBranch = new Map(issues.filter((issue) => issue.branch).map((issue) => [issue.branch, issue.id]))
   const pullRequests = Array.isArray(prs)
-    ? prs.filter((pr) => byBranch.has(pr.headRefName)).map((pr) => ({ number: pr.number, title: pr.title, url: pr.url, isDraft: pr.isDraft === true, issue: byBranch.get(pr.headRefName), checks: { total: (pr.statusCheckRollup ?? []).length, failing: failingPullRequests([pr])[0]?.failing ?? [] } })).sort((a, b) => a.number - b.number)
+    ? prs.filter((pr) => byBranch.has(pr.headRefName)).map((pr) => ({ number: pr.number, title: pr.title, url: pr.url, isDraft: pr.isDraft === true, issue: byBranch.get(pr.headRefName), checks: { total: (pr.statusCheckRollup ?? []).length, failing: failingPullRequests([pr])[0]?.failing ?? [], pending: (pr.statusCheckRollup ?? []).filter(isPending).length } })).sort((a, b) => a.number - b.number)
     : prs
   const matches = (deploy) => basis === 'release' && Boolean(source.tag) && deploy.ref === source.tag
   const deployRows = Array.isArray(deploys) ? deploys.map((deploy) => ({ ...deploy, matchesRelease: matches(deploy) })) : deploys
   const complete = problems.length === 0 && !truncated
   const openWork = counts.open + (Array.isArray(pullRequests) ? pullRequests.length : 0)
   // Open work is a fact whatever else is unread. Nothing open is only "ready" when every read finished.
-  const ready = truncated ? null : openWork > 0 ? false : complete && Array.isArray(pullRequests) && !prsIncomplete ? true : null
+  const ready = openWork > 0 ? false : complete && Array.isArray(pullRequests) && !prsIncomplete ? true : null
   return { basis, reason, source, skipped, issues: { open: issues.filter((i) => OPEN(i.status.category)).map(issueRow), counts }, pullRequests, pullRequestsIncomplete: prsIncomplete, deploys: deployRows, gitHost, truncated, complete, ready, problems }
 }
