@@ -6,9 +6,10 @@ status: in_review
 priority: medium
 estimate: 2
 assignee: fred
+related: [PMK-243, PMK-244, PMK-245]
 branch: pmk-201-make-the-test-suite-pass-on-a-default
 created: 2026-11-08T03:15:26.776Z
-updated: 2026-11-08T21:45:21Z
+updated: 2026-11-08T22:28:26Z
 ---
 
 ## Description
