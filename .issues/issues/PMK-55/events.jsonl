@@ -3,3 +3,6 @@
 {"at":"2026-11-08T03:18:59Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-08T03:18:59Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-08T03:19:05Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-55-add-the-inbox-digest-command"}
+{"at":"2026-11-08T03:27:55Z","by":"fred","op":"comment","to":"2026-11-08T03-27-55Z-fred.md"}
+{"at":"2026-11-08T03:27:55Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-08T03:27:55Z","by":"fred","op":"update","field":"acceptance_criteria"}
