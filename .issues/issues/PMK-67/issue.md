@@ -10,7 +10,7 @@ blocked_by: [PMK-45]
 milestone: generic-commands
 branch: pmk-67-add-the-initiatives-and-goals-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-11-08T01:47:47Z
+updated: 2026-11-08T02:20:28Z
 ---
 
 ## Description
@@ -19,5 +19,5 @@ Source: Unified model, PM catalog (`initiatives-and-goals`: "Progress of strateg
 
 ## Acceptance criteria
 
-- [ ] Shows each goal with the progress of its epics
-- [ ] Without goals it uses top-level issues, and says so
+- [x] Shows each goal with the progress of its epics
+- [x] Without goals it uses top-level issues, and says so

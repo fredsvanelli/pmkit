@@ -2,3 +2,5 @@
 {"at":"2026-10-25T19:13:26Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-45"}
 {"at":"2026-11-08T01:47:47Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-67-add-the-initiatives-and-goals-command"}
 {"at":"2026-11-08T01:48:06Z","by":"fred","op":"comment","to":"2026-11-08T01-48-06Z-fred.md"}
+{"at":"2026-11-08T02:20:28Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-08T02:20:28Z","by":"fred","op":"update","field":"acceptance_criteria"}
