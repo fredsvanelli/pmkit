@@ -42,8 +42,8 @@ Epic row: `id`, `title`, `status`, `category`, `start`, `target`, `milestone` (L
 
 Milestone row: `id`, `name`, `due` (or `null`), `filed` (`false` for a milestone that issues or epics reference but that has no record; due unknown), `issues` (`{ open, done, canceled }` over non-archived issues, or `null` when the issue read is incomplete), `epics` (IDs), `delayDays`.
 
-- A milestone is late when `due` is before today and it has open issues or an open epic. `delayDays` is then the days since `due`, else `0`. With a past due date and an incomplete issue read and no open epic, `delayDays` is `null` (unknown), never `0`.
-- Order: the tracker's milestone order, then unfiled references in first-reference order (epics first, then issues by ID). Epics keep the tracker's order.
+- A milestone is late when `due` is before today and it has open issues or an open epic. `delayDays` is then the days since `due`, else `0`. With a past due date and an incomplete issue read and no open epic, `delayDays` is `null` (unknown), never `0`. A milestone with no due date (and every unfiled one) has `delayDays: null`.
+- Order: the tracker's milestone order, then unfiled references in first-reference order (epics first, then issues in read order). Epics keep the tracker's order.
 
 Text: a head line `roadmap review on <today>: status updates due every <n> days`, `incomplete: ...` when so, then three sections built like `risksText` sections: `epics (n)`, `milestones (n)`, `epics with no recent status update (n)` with a line `not checked: <ids>` when any; plus `late issues (n)` in degraded mode. A `null` section says `not checked: <reason>`.
 
