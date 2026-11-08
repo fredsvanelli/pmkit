@@ -5,3 +5,5 @@
 {"at":"2026-11-08T01:46:54Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-08T01:47:00Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-69-add-the-release-readiness-command"}
 {"at":"2026-11-08T01:48:05Z","by":"fred","op":"comment","to":"2026-11-08T01-48-05Z-fred.md"}
+{"at":"2026-11-08T02:16:36Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-08T02:16:37Z","by":"fred","op":"update","field":"acceptance_criteria"}
