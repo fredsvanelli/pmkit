@@ -6,7 +6,7 @@ Issue    | Title                 | Progress | Done/Total | Points done/points
 ---------|-----------------------|----------|------------|-------------------
 ISS-2X6D | Billing export to CSV | 0%       | 0/1        | 0/1
 9 top-level issues have no sub-issues and are not listed
-incomplete: some issues were not read, so these numbers may be low
+incomplete: some files or issues were not read, so these numbers may be low; do not conclude from them
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
 note: no goals: using top-level issues (issues with no parent, or whose parent is an epic) and the progress of their sub-issues

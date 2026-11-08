@@ -2036,8 +2036,14 @@ async function orSupported(read, fallback) {
  */
 const teamMembers = (members, teamKey) => (teamKey === undefined ? members : members.filter((member) => member.teams === undefined || member.teams.includes(teamKey)))
 
-/** The load per member for the active sprint, or for all open work without one. Writes nothing. */
 const NO_GOALS_NOTE = 'no goals: using top-level issues (issues with no parent, or whose parent is an epic) and the progress of their sub-issues'
+const INCOMPLETE_LINE = 'incomplete: some files or issues were not read, so these numbers may be low; do not conclude from them'
+
+/** The warnings of an issue read: files that do not parse and a read cut at the limit. */
+const issueReadWarnings = (found) => [
+  ...found.problems.map(problemLine),
+  ...(found.hasMore === true ? ['Linear has more issues than the 1000 pmkit read, so the progress covers only part of the work'] : []),
+]
 
 /** `goals overview`: the goals with their epics' progress, or the top-level issues when the tracker has no goals. */
 async function runGoalsOverview(ctx) {
@@ -2052,7 +2058,11 @@ async function runGoalsOverview(ctx) {
     notes.push(`${NO_GOALS_NOTE}; this tracker has no goals: ${error.message}`)
   }
   if (listed !== null) warnings.push(...listed.problems.map((problem) => `${problemLine(problem)}; run pmkit validate`))
-  if (listed !== null && listed.goals.length > 0) {
+  // A goal file that cannot be read may be the only goal, so it is not "no goals": the fallback runs only when every goal file was read.
+  const unreadableGoal = listed !== null && listed.problems.some((problem) => problem.kind === 'goal')
+  if (listed !== null && (listed.goals.length > 0 || unreadableGoal)) {
+    // goalProgress counts the issues it can read, so an issue file that does not parse may hold work of any epic.
+    warnings.push(...issueReadWarnings(await tracker.searchIssues({})).map((line) => `${line}; goal progress may be low`))
     const items = []
     for (const goal of listed.goals) {
       const p = await tracker.goalProgress(goal.id)
@@ -2061,24 +2071,30 @@ async function runGoalsOverview(ctx) {
     }
     const rows = items.map((i) => [i.goal.id, i.goal.title, i.progress === null ? 'not known' : percent(i.progress), `${i.done}/${i.total}`, `${i.pointsDone}/${i.points}`, i.epics.map((e) => e.id).join(', ')])
     const data = { source: 'goals', complete: warnings.length === 0, items, withoutChildren: 0, notes, warnings }
-    return { data, text: ['goals', table(['Goal', 'Title', 'Progress', 'Done/Total', 'Points done/points', 'Epics'], rows)].join('\n'), warnings, notes }
+    const text = [
+      'goals',
+      items.length === 0 ? 'no goal could be read' : table(['Goal', 'Title', 'Progress', 'Done/Total', 'Points done/points', 'Epics'], rows),
+      ...(warnings.length > 0 ? [INCOMPLETE_LINE] : []),
+    ].join('\n')
+    return { data, text, warnings, notes }
   }
   if (listed !== null) notes.push(NO_GOALS_NOTE)
   const found = await tracker.searchIssues({})
-  warnings.push(...found.problems.map(problemLine))
-  if (found.hasMore === true) warnings.push('Linear has more issues than the 1000 pmkit read, so the progress covers only part of the work')
-  const { items, withoutChildren } = topLevelRollup(found.issues)
+  warnings.push(...issueReadWarnings(found))
+  const { items, withoutChildren, unreached } = topLevelRollup(found.issues)
+  if (unreached.length > 0) warnings.push(`${unreached.length} issues are in a parent cycle or under an archived parent and are not counted: ${unreached.join(', ')}`)
   const rows = items.map((i) => [i.issue.id, i.issue.title, i.progress === null ? 'not known' : percent(i.progress), `${i.done}/${i.total}`, `${i.pointsDone}/${i.points}`])
   const data = { source: 'top_level', complete: warnings.length === 0, items, withoutChildren, notes, warnings }
   const text = [
     NO_GOALS_NOTE,
     items.length === 0 ? 'no top-level issues with sub-issues' : table(['Issue', 'Title', 'Progress', 'Done/Total', 'Points done/points'], rows),
     ...(withoutChildren > 0 ? [`${withoutChildren} top-level issues have no sub-issues and are not listed`] : []),
-    ...(warnings.length > 0 ? ['incomplete: some issues were not read, so these numbers may be low'] : []),
+    ...(warnings.length > 0 ? [INCOMPLETE_LINE] : []),
   ].join('\n')
   return { data, text, warnings, notes }
 }
 
+/** The load per member for the active sprint, or for all open work without one. Writes nothing. */
 async function runTeamLoad(ctx) {
   const { data, warnings, notes } = await teamLoadReport(ctx, { wanted: ctx.opt('sprint') })
   return { data, text: teamLoadText(data), warnings, notes }

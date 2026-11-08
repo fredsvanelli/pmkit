@@ -16,11 +16,11 @@ Written without a round of questions. The calls the builder made are under "Deci
 
 ## CLI
 
-`pmkit goals overview` returns `{ source, complete, items, unverified, notes, warnings }`.
+`pmkit goals overview` returns `{ source, complete, items, withoutChildren, notes, warnings }`.
 
 - `source` is `goals` when the tracker has at least one goal, otherwise `top_level`.
-- With goals, each item is `{ goal, epics, total, done, canceled, points, pointsDone, progress }` from `goalProgress`. `progress` is `done / total`, or `null` when `total` is 0 (unknown, never 0%). A goal file that does not parse is a warning and makes `complete` false.
-- Without goals (none exist, or the tracker answers `NOT_SUPPORTED`, as Linear does for initiatives) the command reads the issues and takes the top-level ones: not archived, with no parent, or whose parent is not an issue of the read (an epic). Only those with sub-issues are listed; their progress rolls up all descendants (canceled issues leave the total). `withoutChildren` counts the top-level issues left out. The `notes` and the text say `no goals: using top-level issues`, and say why when it is `NOT_SUPPORTED`.
+- With goals, each item is `{ goal, epics, total, done, canceled, points, pointsDone, progress }` from `goalProgress`. `progress` is `done / total`, or `null` when `total` is 0 (unknown, never 0%). A goal file that does not parse is a warning and makes `complete` false, and it is not "no goals": the fallback runs only when every goal file was read. An epic file that does not parse (it may link to a goal) and an issue file that does not parse are warnings too, because the goal's progress may be low.
+- Without goals (none exist, or the tracker answers `NOT_SUPPORTED`, as Linear does for initiatives) the command reads the issues and takes the top-level ones: not archived, with no parent, or whose parent is not an issue of the read (an epic). Only those with sub-issues are listed; their progress rolls up all descendants (canceled issues leave the total). Issues in a parent cycle, or under an archived parent, are listed in a warning and not counted. `withoutChildren` counts the top-level issues left out. The `notes` and the text say `no goals: using top-level issues`, and say why when it is `NOT_SUPPORTED`.
 - An incomplete issue read (`hasMore`, issue files that do not parse) is `complete: false` with a warning, and the progress is not a conclusion.
 
 ## Command file

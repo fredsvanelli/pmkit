@@ -20,6 +20,7 @@ const notes = (result) => result.stderr.split('\n').filter((line) => line.starts
 
 test('goals overview shows each goal with the progress of its epics', async () => {
   const root = makeRepo('team')
+  fs.rmSync(path.join(root, '.issues/issues/ISS-3Q6T'), { recursive: true }) // the fixture issue with conflict markers makes the read incomplete
   const goal = (await pmkit(root, ['goal', 'create', '--title', 'Grow'])).data.after.id
   await pmkit(root, ['epic', 'goal', 'EPC-2M9D', goal])
   const expected = (await pmkit(root, ['goal', 'progress', goal])).data
@@ -93,4 +94,56 @@ test('on Linear the goals read is not supported, so it falls back to top-level i
   const data = JSON.parse(result.stdout)
   assert.equal(data.source, 'top_level')
   assert.ok(data.notes.some((line) => line.includes('no goals: using top-level issues')), result.stdout)
+})
+
+const linkedTeamRepo = async () => {
+  const root = makeRepo('team')
+  const goal = (await pmkit(root, ['goal', 'create', '--title', 'Grow'])).data.after.id
+  await pmkit(root, ['epic', 'goal', 'EPC-2M9D', goal])
+  return { root, goal }
+}
+
+test('an issue file that does not parse makes the goals path incomplete, with a warning', async () => {
+  const { root } = await linkedTeamRepo() // ISS-3Q6T has conflict markers and hangs under EPC-2M9D
+  const result = await pmkit(root, ['goals', 'overview'])
+  assert.equal(result.data.source, 'goals')
+  assert.equal(result.data.complete, false)
+  assert.ok(result.data.warnings.some((line) => line.includes('ISS-3Q6T')), result.stdout)
+  const text = await run(['goals', 'overview'], { cwd: root, env })
+  assert.match(text.stdout, /incomplete/)
+})
+
+test('an epic file that does not parse is a warning, not a goal with no epics', async () => {
+  const { root } = await linkedTeamRepo()
+  fs.rmSync(path.join(root, '.issues/issues/ISS-3Q6T'), { recursive: true }) // only the epic is broken now
+  fs.writeFileSync(path.join(root, '.issues/epics/EPC-2M9D/epic.md'), '---\ntitle: [\n---\n')
+  const result = await pmkit(root, ['goals', 'overview'])
+  assert.equal(result.data.complete, false)
+  assert.ok(result.data.warnings.some((line) => line.includes('EPC-2M9D')), result.stdout)
+})
+
+test('an unreadable goal file does not trigger the top-level fallback', async () => {
+  const root = makeRepo('team')
+  fs.mkdirSync(path.join(root, '.issues', 'goals'))
+  fs.writeFileSync(path.join(root, '.issues', 'goals', 'GOAL-1.md'), '<<<<<<< HEAD\n---\ntitle: A\n=======\n---\ntitle: B\n>>>>>>> x\n')
+  const result = await pmkit(root, ['goals', 'overview'])
+  assert.equal(result.data.source, 'goals')
+  assert.deepEqual(result.data.items, [])
+  assert.equal(result.data.complete, false)
+  assert.ok(result.data.warnings.some((line) => line.includes('GOAL-1')))
+  const text = await run(['goals', 'overview'], { cwd: root, env })
+  assert.doesNotMatch(text.stdout, /no goals: using top-level/)
+  assert.match(text.stdout, /incomplete/)
+})
+
+test('a parent cycle is a warning and the rollup is incomplete', async () => {
+  const root = makeRepo('team')
+  const [a, b] = [(await pmkit(root, ['issues', 'create', '--title', 'A'])).data.after.id, (await pmkit(root, ['issues', 'create', '--title', 'B'])).data.after.id]
+  for (const [child, parent] of [[a, b], [b, a]]) {
+    const file = path.join(root, '.issues/issues', child, 'issue.md')
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/\nparent: .*/, '').replace('\ncreated: ', `\nparent: ${parent}\ncreated: `))
+  }
+  const result = await pmkit(root, ['goals', 'overview'])
+  assert.ok(result.data.warnings.some((line) => line.includes('parent cycle')), result.stdout)
+  assert.equal(result.data.complete, false)
 })
