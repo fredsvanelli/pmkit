@@ -2,7 +2,7 @@
 id: PMK-70
 title: Add the request-queue command
 type: feature
-status: in_progress
+status: in_review
 priority: medium
 estimate: 3
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-46]
 milestone: generic-commands
 branch: pmk-70-add-the-request-queue-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-11-08T03:33:21Z
+updated: 2026-11-08T03:33:38Z
 ---
 
 ## Description
