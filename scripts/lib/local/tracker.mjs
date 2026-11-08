@@ -1740,6 +1740,30 @@ export function createLocalTracker(root, {
     return [...counts].map(([name, count]) => ({ name, count })).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
   }
 
+  /**
+   * Epic and milestone files that exist and do not parse, which listDeliverables and listMilestones skip. Not a contract
+   * operation; the roadmap review reports them so a skipped record never passes for a complete review.
+   */
+  function unreadableRecords() {
+    const bad = (read) => {
+      try {
+        read()
+        return null
+      } catch (error) {
+        if (!(error instanceof PmkitError)) throw error
+        return { code: error.code, message: error.message }
+      }
+    }
+    const epics = fs.existsSync(epicsDir)
+      ? fs.readdirSync(epicsDir, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && isId(entry.name, local.epic_prefix) && fs.existsSync(path.join(epicsDir, entry.name, 'epic.md')))
+        .map((entry) => ({ id: entry.name, error: bad(() => getDeliverable(entry.name)) }))
+      : []
+    const milestones = [...milestoneStems(milestonesDir)].filter(validMilestoneId).map((id) => ({ id, error: bad(() => readMilestone(id)) }))
+    const failed = (rows) => rows.filter((row) => row.error !== null).map(({ id, error }) => ({ id, ...error }))
+    return { epics: failed(epics), milestones: failed(milestones) }
+  }
+
   const docsDir = path.join(issuesDir, 'docs')
   const readDocument = (docPath) => readDocumentFile(docsDir, docPath)
   const listDocuments = () => listDocumentFiles(docsDir)
@@ -1829,7 +1853,7 @@ export function createLocalTracker(root, {
     listCustomers, getCustomer, createCustomer, listRequests, getRequest, createRequest, acceptRequest, declineRequest, listDemandSignals,
     listNotifications, markRead,
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
-    listMilestones, getMilestone, createMilestone, unfiledMilestones,
+    listMilestones, getMilestone, createMilestone, unfiledMilestones, unreadableRecords,
     listReleases, getRelease, createRelease, releaseIssues, markReleased,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, delegate, archive, delete: deleteIssue, link, unlink, setParent,
     comment, resolveThread, listComments, getHistory, logTime, listTimeEntries, readDocument, createDocument, listDocuments,

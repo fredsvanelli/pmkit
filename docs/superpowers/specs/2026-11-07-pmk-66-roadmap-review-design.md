@@ -42,7 +42,7 @@ Epic row: `id`, `title`, `status`, `category`, `start`, `target`, `milestone` (L
 
 Milestone row: `id`, `name`, `due` (or `null`), `filed` (`false` for a milestone that issues or epics reference but that has no record; due unknown), `issues` (`{ open, done, canceled }` over non-archived issues, or `null` when the issue read is incomplete), `epics` (IDs), `delayDays`.
 
-- A milestone is late when `due` is before today and it has open issues or an open epic. `delayDays` is then the days since `due`, else `0`. With a past due date and an incomplete issue read and no open epic, `delayDays` is `null` (unknown), never `0`. A milestone with no due date (and every unfiled one) has `delayDays: null`.
+- A milestone is late when `due` is before today and it has open issues or an open epic placed in it (Local `epic.milestone`). A Linear milestone is a phase of its project (`milestone.epic`): the project is listed in `epics` but its being open does not make the phase late; its own issues decide (review cycle 1). `delayDays` is then the days since `due`, else `0`. With a past due date and an incomplete issue read and no open epic, `delayDays` is `null` (unknown), never `0`. A milestone with no due date (and every unfiled one) has `delayDays: null`.
 - Order: the tracker's milestone order, then unfiled references in first-reference order (epics first, then issues in read order). Epics keep the tracker's order.
 
 Text: a head line `roadmap review on <today>: status updates due every <n> days`, `incomplete: ...` when so, then three sections built like `risksText` sections: `epics (n)`, `milestones (n)`, `epics with no recent status update (n)` with a line `not checked: <ids>` when any; plus `late issues (n)` in degraded mode. A `null` section says `not checked: <reason>`.
@@ -55,6 +55,7 @@ Reads, all awaited: `searchIssues({ archived: true })`, `listDeliverables()`, `l
 - `listDeliverables` or `listMilestones` throwing `NOT_SUPPORTED`: that section is `null`, the capability note of `deliverables` goes into `notes`, `incomplete` is true. With no epics, `lateIssues` is computed.
 - `listStatusUpdates` throwing `NOT_SUPPORTED`: every open epic is in `updatesNotChecked`, the `status_update` note goes into `notes`.
 - Any other `PmkitError` on a per-epic read: that field is `null`, a problem and a warning line `<id>: <code> <message>` are added, other rows stay. A non-Pmkit error propagates.
+- Review cycle 1: `deliverableProgress` with `hasMore` gives `progress.partial: true`, a warning and `incomplete`. A transient error (not auth or config) listing epics or milestones costs that section (`null`, a problem, a warning), not the review. On Local, epic and milestone files that exist and do not parse (`unreadableRecords()`, not a contract operation) become problems and warnings, and such a milestone stays as a row with `unreadable: true` and an unknown due date. An update without health is unknown health. `updatesNotChecked` lists only epics that need updates (in progress, or started).
 - Every warning and note the command file tells the agent to repeat is in the JSON (`warnings`, `notes`, `problems`, `incomplete`), per the round-3 lesson.
 
 ## Command file

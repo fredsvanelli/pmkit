@@ -21,9 +21,10 @@ function epicRows(epics, { today, windowDays, milestones, progressByEpic, update
       id: epic.id, title: epic.title, status: epic.status.name, category: epic.status.category,
       start: epic.start ?? null, target: epic.target ?? null,
       milestone: epic.milestone ?? milestoneOf.get(epic.id) ?? null,
-      progress: p === null ? null : { done: p.done, total: p.total, canceled: p.canceled },
-      lastUpdate: latest ? { at: latest.at, health: latest.health } : null,
-      health: latest?.health ?? epic.health ?? null,
+      progress: p === null ? null : { done: p.done, total: p.total, canceled: p.canceled, ...(p.hasMore === true ? { partial: true } : {}) },
+      // A Local update file without health reads as '', which is unknown, not a health.
+      lastUpdate: latest ? { at: latest.at, health: latest.health || null } : null,
+      health: latest?.health || epic.health || null,
       delayDays: !epic.target ? null : OPEN(epic.status.category) ? daysLate(epic.target, today) : 0,
       reasons,
     }
@@ -32,7 +33,7 @@ function epicRows(epics, { today, windowDays, milestones, progressByEpic, update
 
 function milestoneRows(milestones, { today, issues, issuesComplete, epics }) {
   const live = issues.filter((issue) => !issue.archived)
-  const filed = milestones.map((m) => ({ id: m.id, name: m.name ?? m.id, due: m.due ?? null, filed: true, owner: m.epic }))
+  const filed = milestones.map((m) => ({ id: m.id, name: m.name ?? m.id, due: m.due ?? null, filed: true, ...(m.unreadable ? { unreadable: true } : {}), owner: m.epic }))
   const known = new Set(filed.map((m) => m.id))
   const unfiled = []
   for (const id of [...(epics ?? []).map((epic) => epic.milestone), ...live.map((issue) => issue.milestone)]) {
@@ -45,7 +46,9 @@ function milestoneRows(milestones, { today, issues, issuesComplete, epics }) {
     const counts = { open: 0, done: 0, canceled: 0 }
     for (const issue of mine) counts[OPEN(issue.status.category) ? 'open' : issue.status.category]++
     const epicIds = (epics ?? []).filter((epic) => epic.milestone === m.id || owner === epic.id).map((epic) => epic.id)
-    const openEpic = (epics ?? []).some((epic) => epicIds.includes(epic.id) && OPEN(epic.status.category))
+    // Only an epic placed in the milestone (Local) is open work of it. A Linear milestone is a phase of its project
+    // (owner), so the running project says nothing about the phase: its own issues decide.
+    const openEpic = (epics ?? []).some((epic) => epic.milestone === m.id && OPEN(epic.status.category))
     let delayDays
     if (!m.due) delayDays = null
     else if (m.due >= today) delayDays = 0
@@ -70,8 +73,10 @@ function lateIssueRows(issues, today) {
 export function buildRoadmapReview({ today, windowDays, issues, issuesComplete, epics, milestones, progressByEpic, updatesByEpic }) {
   const rows = epics === null ? null : epicRows(epics, { today, windowDays, milestones, progressByEpic, updatesByEpic })
   const openRows = (rows ?? []).filter((row) => OPEN(row.category))
-  const notChecked = openRows.filter((row) => updatesByEpic[row.id] == null).map((row) => row.id)
-  const unread = (epics ?? []).some((epic) => progressByEpic[epic.id] == null || updatesByEpic[epic.id] == null)
+  // Only an epic that needs updates (in progress, or started) is unknown when its updates could not be read.
+  const started = (row) => row.category === 'in_progress' || (Boolean(row.start) && row.start <= today)
+  const notChecked = openRows.filter((row) => updatesByEpic[row.id] == null && started(row)).map((row) => row.id)
+  const unread = (epics ?? []).some((epic) => progressByEpic[epic.id] == null || progressByEpic[epic.id].hasMore === true || updatesByEpic[epic.id] == null)
   return {
     today,
     statusUpdateWindowDays: windowDays,
@@ -104,7 +109,7 @@ export function roadmapReviewText(report) {
       header: ['ID', 'Title', 'Status', 'Start', 'Target', 'Milestone', 'Done', 'Health', 'Last update', 'Delay', 'Reasons'],
       row: (r) => [
         r.id, r.title, r.status, r.start ?? '', r.target ?? '', r.milestone ?? '',
-        r.progress ? `${r.progress.done}/${r.progress.total}` : 'unknown', r.health ?? 'unknown',
+        r.progress ? `${r.progress.done}/${r.progress.total}${r.progress.partial ? '+' : ''}` : 'unknown', r.health ?? 'unknown',
         r.lastUpdate ? r.lastUpdate.at.slice(0, 10) : '', days(r.delayDays, 'no target'), r.reasons.join(', '),
       ],
     }),
@@ -112,7 +117,7 @@ export function roadmapReviewText(report) {
       notChecked: 'the tracker cannot list milestones',
       header: ['ID', 'Name', 'Due', 'Open', 'Done', 'Canceled', 'Epics', 'Delay'],
       row: (m) => [
-        m.id, m.name, m.due ?? (m.filed ? 'none' : 'unknown, no record'),
+        m.id, m.name, m.due ?? (m.unreadable ? 'unknown, file does not parse' : m.filed ? 'none' : 'unknown, no record'),
         ...(m.issues ? [m.issues.open, m.issues.done, m.issues.canceled] : ['unknown', 'unknown', 'unknown']),
         m.epics.join(', '), days(m.delayDays, m.due ? 'unknown' : ''),
       ],

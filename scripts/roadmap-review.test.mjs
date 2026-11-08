@@ -99,11 +99,55 @@ test('an open issue past the milestone due date makes it late; a future due date
   assert.deepEqual(report.milestones.map((m) => [m.id, m.delayDays, m.issues.open]), [['m1', 1, 1], ['m2', 0, 1]])
 })
 
-test('a Linear milestone names its project, and the epic row shows it', () => {
-  const report = review({ milestones: [{ id: 'uuid-1', name: 'Beta', due: '2026-11-01', epic: 'P-1' }], epics: [epic('P-1')] })
-  assert.deepEqual(report.milestones[0].epics, ['P-1'])
-  assert.equal(report.milestones[0].delayDays, 6)
-  assert.equal(row(report, 'P-1').milestone, 'uuid-1')
+test('a Linear milestone names its project, and only its own issues make it late', () => {
+  // P-1 is still running: its finished phase Alpha is not late, Beta with an open issue past its due date is.
+  const report = review({
+    today: '2026-11-07',
+    epics: [epic('P-1')],
+    milestones: [
+      { id: 'uuid-a', name: 'Alpha', due: '2026-10-01', epic: 'P-1' },
+      { id: 'uuid-b', name: 'Beta', due: '2026-11-01', epic: 'P-1' },
+      { id: 'uuid-c', name: 'Gamma', due: '2026-11-01', epic: 'P-1' },
+    ],
+    issues: [issue('I1', { milestone: 'uuid-a', status: status('done') }), issue('I2', { milestone: 'uuid-b' })],
+  })
+  assert.deepEqual(report.milestones.map((m) => [m.name, m.epics, m.delayDays]), [['Alpha', ['P-1'], 0], ['Beta', ['P-1'], 6], ['Gamma', ['P-1'], 0]])
+})
+
+test('a cut progress read is partial and makes the review incomplete', () => {
+  const report = review({ epics: [epic('E1')], progressByEpic: { E1: { total: 1000, done: 400, canceled: 0, hasMore: true } } })
+  assert.deepEqual(row(report, 'E1').progress, { done: 400, total: 1000, canceled: 0, partial: true })
+  assert.equal(report.incomplete, true)
+  assert.match(roadmapReviewText(report), /400\/1000\+/)
+  assert.equal(review({ epics: [epic('E1')] }).incomplete, false)
+})
+
+test('an update without health is unknown health and falls back to the epic', () => {
+  const report = review({
+    epics: [epic('E1'), epic('E2', { health: 'off_track' })],
+    updatesByEpic: { E1: [{ at: '2026-11-06T00:00:00Z', health: '' }], E2: [{ at: '2026-11-06T00:00:00Z', health: '' }] },
+  })
+  assert.equal(row(report, 'E1').health, null)
+  assert.deepEqual(row(report, 'E1').lastUpdate, { at: '2026-11-06T00:00:00Z', health: null })
+  assert.equal(row(report, 'E2').health, 'off_track')
+  assert.match(roadmapReviewText(report), /\| unknown /)
+})
+
+test('an epic never started is not listed as not checked', () => {
+  const report = review({
+    epics: [epic('B0', { status: status('backlog') }), epic('B1', { status: status('backlog'), start: '2026-10-01' }), epic('B2', { status: status('todo'), start: '2026-12-01' }), epic('W1')],
+    updatesByEpic: { B0: null, B1: null, B2: null, W1: null },
+  })
+  assert.deepEqual(report.updatesNotChecked, ['B1', 'W1'])
+})
+
+test('a milestone whose file does not parse is filed with an unknown due date', () => {
+  const report = review({
+    milestones: [{ id: 'm1', name: 'm1', unreadable: true }],
+    issues: [issue('I1', { milestone: 'm1' })],
+  })
+  assert.deepEqual(report.milestones.map((m) => [m.id, m.filed, m.unreadable, m.due, m.delayDays]), [['m1', true, true, null, null]])
+  assert.match(roadmapReviewText(report), /unknown, file does not parse/)
 })
 
 test('a milestone referenced without a record is unfiled, with an unknown due date, after the filed ones', () => {

@@ -1784,26 +1784,43 @@ async function runRoadmapReview(ctx) {
   const today = ctx.now().toISOString().slice(0, 10)
   const windowDays = ctx.settings().defaults.status_update_window_days ?? 14
   const warnings = []
+  const problems = []
   const notes = new Set()
   // Auth and configuration fail every read the same way, so they stop the command; anything else costs one value.
   const recoverable = (error) => isPmkitError(error) && error.code !== 'AUTH' && error.code !== 'NOT_CONFIGURED'
-  const unsupported = async (read, capability, what) => {
+  // A list the tracker lacks, or that failed for a reason other than auth or config, costs its section.
+  const section = async (read, capability, what) => {
     try {
       return await read()
     } catch (error) {
-      if (!isPmkitError(error) || error.code !== 'NOT_SUPPORTED') throw error
-      warnings.push(`${what} not checked: ${error.message}`)
-      for (const note of await capabilityNotes(tracker, capability)) notes.add(note)
+      if (!recoverable(error)) throw error
+      if (error.code === 'NOT_SUPPORTED') {
+        warnings.push(`${what} not checked: ${error.message}`)
+        for (const note of await capabilityNotes(tracker, capability)) notes.add(note)
+      } else {
+        problems.push({ id: what, code: error.code, message: error.message })
+        warnings.push(`${what} not checked: ${error.code} ${error.message}`)
+      }
       return null
     }
   }
 
   const { issues, problems: found, hasMore } = await tracker.searchIssues({ archived: true })
-  const problems = found.map(({ id, code, message }) => ({ id, code, message }))
+  problems.push(...found.map(({ id, code, message }) => ({ id, code, message })))
   warnings.push(...found.map(problemLine))
   if (hasMore === true) warnings.push('the tracker has more issues than pmkit read, so milestone issue counts are unknown')
-  const epics = await unsupported(() => tracker.listDeliverables(), 'deliverables', 'epics')
-  const milestones = await unsupported(() => tracker.listMilestones(), 'deliverables', 'milestones')
+  const epics = await section(() => tracker.listDeliverables(), 'deliverables', 'epics')
+  let milestones = await section(() => tracker.listMilestones(), 'deliverables', 'milestones')
+  // The Local tracker skips an epic or milestone file that does not parse; say so, and keep the milestone as a row.
+  const local = await ctx.local()
+  if (local !== null) {
+    const unreadable = local.unreadableRecords()
+    for (const { id, code, message } of [...unreadable.epics, ...unreadable.milestones]) {
+      problems.push({ id, code, message })
+      warnings.push(`${id}: ${code} ${message}`)
+    }
+    if (milestones !== null) milestones = [...milestones, ...unreadable.milestones.map(({ id }) => ({ id, name: id, unreadable: true }))]
+  }
 
   const progressByEpic = {}
   const updatesByEpic = {}
@@ -1827,6 +1844,7 @@ async function runRoadmapReview(ctx) {
   }
   for (const epic of epics ?? []) {
     progressByEpic[epic.id] = await perEpic(epic.id, () => tracker.deliverableProgress(epic.id))
+    if (progressByEpic[epic.id]?.hasMore === true) warnings.push(`${epic.id}: the tracker has more issues in this epic than pmkit read; the progress counts are partial`)
     updatesByEpic[epic.id] = updatesSupported ? await perEpic(epic.id, () => tracker.listStatusUpdates(epic.id), { updates: true }) : null
   }
 
