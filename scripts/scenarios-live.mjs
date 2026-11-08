@@ -97,6 +97,7 @@ const LIVE_EXPECT_STOPS = {
   'issues-dependencies.1': 'the dependency map of the scripted run, whose basis the agent derives',
   'issues-find': 'the two result lists, the only thing a read-only find checks',
   'issues-mine': 'the sync, list and PR status results the agent shows',
+  'issues-inbox-digest': 'the inbox list and the pr blockers results the agent shows',
   'issues-pause': 'the PR preview and view results',
   'issues-run-view': 'the result of the saved view in the scripted run, which is the only thing the run reads',
   'issues-summary.1': 'the epic, update and children results the summary shows',

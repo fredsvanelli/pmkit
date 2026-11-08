@@ -1,0 +1,17 @@
+$ pmkit capabilities --json  [step 1, read]
+exit 0
+$ pmkit inbox list --json  [step 2, read]
+exit 0
+$ pmkit issues list --category in_review --json  [step 3, read]
+exit 0
+$ pmkit pr blockers --branch iss-8c4w-dead-letter-queue --json  [step 3.1, read]
+exit 0
+
+(no file changed)
+--- gh calls
+pr view iss-8c4w-dead-letter-queue --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr checks 9 --json name,state,bucket
+pr view 9 --json mergeable,mergeStateStatus,reviewDecision,baseRefName
+pr view 9 --json reviews,reviewRequests
+api graphql -F owner={owner} -F repo={repo} -F number=9 -f query=query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { pageInfo { hasNextPage } nodes { isResolved isOutdated path line comments(first: 1) { nodes { url body author { login } } } } } } } }
+api repos/{owner}/{repo}/branches/main/protection
