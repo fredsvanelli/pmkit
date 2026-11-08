@@ -2,12 +2,14 @@
 id: PMK-198
 title: Pass issue titles through --title-file in every command file
 type: bug
-status: backlog
+status: in_progress
 priority: high
 estimate: 1
+assignee: fred
 related: [PMK-73]
+branch: pmk-198-pass-issue-titles-through-title-file-in
 created: 2026-10-31T20:35:31.117Z
-updated: 2026-10-31T20:35:31Z
+updated: 2026-11-08T23:32:34Z
 ---
 
 ## Description
