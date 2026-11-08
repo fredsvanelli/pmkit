@@ -193,9 +193,11 @@ test('a milestone file with conflict markers is one conflict problem, as for epi
   assert.equal(result.checked.milestones, 1)
 })
 
-test('two folders with the same normalized id are one id problem', () => {
+test('two folders with the same normalized id are one id problem', (t) => {
   const root = makeRepo('basic')
   writeIssue(root, 'ISS-1AAA')
+  // Where the filesystem folds case (default macOS and Windows), both names are one folder and there is nothing to test.
+  if (fs.existsSync(path.join(root, '.issues', 'issues', 'iss-1aaa'))) return t.skip('the filesystem folds case, so ISS-1AAA and iss-1aaa are one folder')
   writeIssue(root, 'iss-1aaa')
   const ids = validateRepo(root).problems.filter((problem) => problem.code === 'id')
   assert.ok(ids.some((problem) => /same id/.test(problem.message)))

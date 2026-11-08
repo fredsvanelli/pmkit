@@ -170,9 +170,12 @@ test('matchTodos stays fast with 500 candidates and 5000 issues', () => {
   const issues = Array.from({ length: 5000 }, (_, i) => issue(`ISS-${i}`, { title: `issue ${i}`, body: `a long body about the module and the release ${i} with the usual words` }))
   issues[10] = issue('ISS-KEY', { description: `todo-key: ${candidates[0].key}` })
   issues[20] = issue('ISS-TEXT', { body: 'Please rework the module number 7 before the release, thanks.' })
-  const started = Date.now()
+  // CPU time, not the clock: a loaded machine stalls the process and stretches wall time, but a slow matcher spends CPU.
+  const started = process.cpuUsage()
   const result = matchTodos(candidates, issues)
-  assert.ok(Date.now() - started < 5000, `took ${Date.now() - started} ms`)
+  const used = process.cpuUsage(started)
+  const ms = (used.user + used.system) / 1000
+  assert.ok(ms < 5000, `took ${Math.round(ms)} ms of CPU`)
   assert.deepEqual(result.matched.map((m) => [m.issue, m.reason]).sort(), [['ISS-KEY', 'key'], ['ISS-TEXT', 'text']])
   assert.equal(result.candidates.length, 498)
 })
