@@ -2,14 +2,16 @@
 id: PMK-68
 title: Add the prioritize-by-demand command
 type: feature
-status: backlog
+status: in_progress
 priority: medium
 estimate: 3
+assignee: fred
 parent: EPC-6
 blocked_by: [PMK-46]
 milestone: generic-commands
+branch: pmk-68-add-the-prioritize-by-demand-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-25T19:13:26Z
+updated: 2026-11-08T02:04:15Z
 ---
 
 ## Description
@@ -18,6 +20,6 @@ Source: Unified model, PM catalog (`prioritize-by-demand`: "Ranks by customer or
 
 ## Acceptance criteria
 
-- [ ] Ranks issues by demand signals
-- [ ] Without demand signals it uses comments and mentions, and says so
-- [ ] Changes priorities after a full preview
+- [x] Ranks issues by demand signals
+- [x] Without demand signals it uses comments and mentions, and says so
+- [x] Changes priorities after a full preview
