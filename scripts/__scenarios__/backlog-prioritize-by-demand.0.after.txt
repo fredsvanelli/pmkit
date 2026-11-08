@@ -1,5 +1,7 @@
 $ pmkit capabilities --json  [step 1, read]
 exit 0
+$ pmkit discover --json  [step 1, read]
+exit 0
 $ pmkit issues list --category backlog,todo,triage --json  [step 2, read]
 exit 0
 $ pmkit demand list --json  [step 3, read]

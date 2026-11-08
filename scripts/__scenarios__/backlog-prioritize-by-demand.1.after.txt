@@ -1,5 +1,7 @@
 $ pmkit capabilities --json  [step 1, read]
 exit 0
+$ pmkit discover --json  [step 1, read]
+exit 0
 $ pmkit issues list --category backlog,todo,triage --json  [step 2, read]
 exit 0
 $ pmkit demand list --json  [step 3, read]
@@ -21,10 +23,10 @@ exit 0
 $ pmkit issues list --text ISS-1V9Z --json  [step 4, read]
 exit 0
 ? Step 5  [confirmed]
-$ pmkit issues update ISS-3F7H --priority urgent --dry-run --json  [step 6, dry run]
+$ pmkit issues update ISS-3F7H --priority high --dry-run --json  [step 6, dry run]
 exit 0
 ? Step 7  [confirmed]
-$ pmkit issues update ISS-3F7H --priority urgent --json  [step 6, write]
+$ pmkit issues update ISS-3F7H --priority high --json  [step 6, write]
 exit 0
 $ pmkit issues list --category backlog,todo,triage --json  [step 9, read]
 exit 0
@@ -34,7 +36,7 @@ exit 0
   {"at":"2026-10-22T17:00:00Z","by":"fred","op":"update","field":"priority","from":"low","to":"medium"}
   {"at":"2026-10-23T12:00:00Z","by":"fred","op":"comment","to":"2026-10-23T12-00-00Z-fred.md"}
   {"at":"2026-10-23T12:00:00Z","by":"fred","op":"comment","to":"2026-10-23T12-00-00Z-fred-2.md"}
-+{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"priority","from":"medium","to":"urgent"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"priority","from":"medium","to":"high"}
 --- changed .issues/issues/ISS-3F7H/issue.md
   ---
   id: ISS-3F7H
@@ -42,7 +44,7 @@ exit 0
   type: feature
   status: backlog
 -priority: medium
-+priority: urgent
++priority: high
   estimate: 2
   labels: [frontend]
   created: 2026-10-07T14:00:00Z
