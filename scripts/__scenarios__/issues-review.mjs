@@ -36,6 +36,7 @@ export default {
   ],
   skip: {
     '1 issues list': 'the ID is given, so step 1 does not look for the issue from the branch',
+    '3 default-branch': 'the git host is GitHub, so the diff comes from pr diff and the default branch is not read',
     '3.2 pr diff': 'the diff is short, so it is not cut and the second read does not run',
   },
   notHit: {},

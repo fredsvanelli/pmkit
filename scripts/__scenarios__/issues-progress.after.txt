@@ -5,6 +5,8 @@ $ pmkit issues comment ISS-5N1R --body-file <inputs>/comment.md --dry-run --json
 exit 0
 $ pmkit issues comment ISS-5N1R --body-file <inputs>/comment.md --json  [step 5, write]
 exit 0
+$ pmkit default-branch --json  [step 3, read]
+exit 0
 $ pmkit issues update ISS-5N1R --check 1 --dry-run --json  [step 7, dry run]
 exit 0
 ? Step 7  [confirmed]

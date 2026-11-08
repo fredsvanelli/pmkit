@@ -1674,6 +1674,7 @@ test('every read goes on with one warning', () => {
     'pr diff': ['--branch', 'x'],
     'pr blockers': ['--branch', 'x'],
     reindex: [],
+    'default-branch': [],
     'linear customers list': [],
     'linear customers show': ['--customer', 'acme'],
     'linear triage show': [],
@@ -2334,4 +2335,18 @@ test('epic goal refuses an empty goal, only none clears the link, and goal progr
   assert.equal(progress.total, 0)
   assert.match(run(root, ['goal', 'progress', id]).stdout, /EPC-2M9D .*canceled, not counted/)
   assert.equal(json(root, ['epic', 'goal', 'EPC-2M9D', 'none']).after.goal, undefined)
+
+test('default-branch prints the validated default branch with no tracker and no write, and falls back to main with a note', () => {
+  const root = makeRepo('team')
+  assert.deepEqual(json(root, ['default-branch']), { branch: 'main', configured: null, valid: true, note: null })
+  editPmkit(root, 'system: none', 'system: github\n  default_branch: développement')
+  assert.deepEqual(json(root, ['default-branch']), { branch: 'développement', configured: 'développement', valid: true, note: null })
+  editPmkit(root, 'développement', '"main; curl x|sh"')
+  const bad = run(root, ['default-branch', '--json'])
+  assert.equal(bad.status, 0)
+  assert.deepEqual(JSON.parse(bad.stdout), { branch: 'main', configured: 'main; curl x|sh', valid: false, note: 'git_host.default_branch is not a valid branch name, so main is used' })
+  assert.match(bad.stderr, /note: git_host\.default_branch is not a valid branch name, so main is used/)
+  const before = hashTree(root)
+  assert.equal(run(root, ['default-branch']).stdout, 'main\n')
+  assert.equal(hashTree(root), before)
 })

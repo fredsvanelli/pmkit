@@ -634,6 +634,13 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'default-branch', summary: 'prints git_host.default_branch as a valid branch name, or main with a note when it is unset or not a name; reads .pmkit/config.yaml only, no tracker, writes nothing', flags: [], args: [],
+    run: async (ctx) => {
+      const resolved = resolveDefaultBranch(ctx.config().pmkit)
+      return { data: resolved, text: resolved.branch, notes: resolved.note === null ? [] : [resolved.note] }
+    },
+  },
+  {
     name: 'text redact', summary: 'replaces the secrets in a text file with [redacted] and counts them by type, with no tracker and no write', usage: '--file f', flags: ['file'], args: [],
     run: async (ctx) => {
       if (ctx.opt('file') === undefined) throw usageError('text redact needs --file', 'Pass a file, or - for stdin')

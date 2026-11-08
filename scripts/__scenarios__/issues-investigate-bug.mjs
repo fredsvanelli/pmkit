@@ -52,6 +52,7 @@ export default {
   ],
   skip: {
     '1 issues list': 'the ID is given, so step 1 does not look for the issue from the branch',
+    '6 default-branch': 'the git host is GitHub, so the diff comes from pr diff and the default branch is not read',
     '5 deploys list': 'the issue names no environment, so step 5 does not run',
   },
   notHit: {},
