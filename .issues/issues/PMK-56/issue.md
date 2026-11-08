@@ -7,11 +7,11 @@ priority: medium
 estimate: 3
 assignee: fred
 parent: EPC-6
-related: [PMK-196]
+related: [PMK-196, PMK-226]
 milestone: generic-commands
 branch: pmk-56-add-the-bulk-operation-command
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-31T19:29:36Z
+updated: 2026-11-08T20:37:25Z
 ---
 
 ## Description

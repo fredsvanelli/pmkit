@@ -7,3 +7,4 @@
 {"at":"2026-10-30T21:39:57Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
 {"at":"2026-10-30T21:47:31Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-10-30T22:05:06Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}
+{"at":"2026-11-08T20:37:22Z","by":"fred","op":"link","field":"related","to":"PMK-211"}

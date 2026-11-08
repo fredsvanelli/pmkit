@@ -8,11 +8,11 @@ estimate: 2
 assignee: fred
 parent: EPC-6
 blocked_by: [PMK-51]
-related: [PMK-193]
+related: [PMK-193, PMK-227]
 milestone: generic-commands
 branch: pmk-60-add-the-log-time-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-31T19:29:36Z
+updated: 2026-11-08T20:37:25Z
 ---
 
 ## Description

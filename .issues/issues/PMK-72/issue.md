@@ -8,11 +8,11 @@ estimate: 2
 assignee: fred
 parent: EPC-6
 blocked_by: [PMK-4]
-related: [PMK-189]
+related: [PMK-189, PMK-224]
 milestone: generic-commands
 branch: pmk-72-add-the-team-capacity-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-31T16:59:11Z
+updated: 2026-11-08T20:37:24Z
 ---
 
 ## Description

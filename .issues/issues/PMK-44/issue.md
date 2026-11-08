@@ -8,11 +8,11 @@ estimate: 3
 assignee: fred
 parent: EPC-6
 blocked_by: [PMK-2]
-related: [PMK-180]
+related: [PMK-180, PMK-212]
 milestone: generic-commands
 branch: pmk-44-add-saved-views-to-the-local-tracker
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-31T16:01:15Z
+updated: 2026-11-08T20:37:23Z
 ---
 
 ## Description

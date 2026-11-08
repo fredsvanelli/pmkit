@@ -8,11 +8,11 @@ estimate: 3
 assignee: fred
 parent: EPC-6
 blocked_by: [PMK-32, PMK-2]
-related: [PMK-195]
+related: [PMK-195, PMK-225]
 milestone: generic-commands
 branch: pmk-47-keep-a-user-inbox-for-the-local-tracker
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-31T19:29:36Z
+updated: 2026-11-08T20:37:24Z
 ---
 
 ## Description

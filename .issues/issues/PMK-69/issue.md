@@ -8,11 +8,11 @@ estimate: 3
 assignee: fred
 parent: EPC-6
 blocked_by: [PMK-22, PMK-49]
-related: [PMK-205]
+related: [PMK-205, PMK-235]
 milestone: generic-commands
 branch: pmk-69-add-the-release-readiness-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-11-08T03:15:27Z
+updated: 2026-11-08T20:37:26Z
 ---
 
 ## Description

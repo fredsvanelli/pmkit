@@ -7,10 +7,11 @@ priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
+related: [PMK-210]
 milestone: generic-commands
 branch: pmk-50-list-the-documents-under-the-docs-folder
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-30T22:05:05Z
+updated: 2026-11-08T20:37:22Z
 ---
 
 ## Description

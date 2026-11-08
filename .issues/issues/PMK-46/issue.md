@@ -8,11 +8,11 @@ estimate: 5
 assignee: fred
 parent: EPC-6
 blocked_by: [PMK-2]
-related: [PMK-190]
+related: [PMK-190, PMK-221]
 milestone: generic-commands
 branch: pmk-46-add-customers-and-requests-to-the-local
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-31T16:59:11Z
+updated: 2026-11-08T20:37:24Z
 ---
 
 ## Description
