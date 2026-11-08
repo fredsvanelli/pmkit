@@ -1,28 +1,25 @@
 ---
 id: PMK-226
-title: Improve bulk operation
+title: Add more changes to the bulk operation
 type: feature
 status: backlog
 priority: low
-estimate: 8
-related: [PMK-56]
+estimate: 3
+related: [PMK-56, PMK-239, PMK-240]
 created: 2026-11-08T20:37:25.008Z
-updated: 2026-11-08T20:53:52Z
+updated: 2026-11-08T20:58:09Z
 ---
 
 ## Description
 
 ### Context
 
-Improvements suggested by the implementer and reviewers of PMK-56 (bulk operation) during EPC-6, collected in `docs/superpowers/epc-6-follow-ups.md`. None of them is a defect. Source: PMK-56.
+Improvements suggested by the implementer and reviewers of PMK-56 (bulk operation) during EPC-6, collected in `docs/superpowers/epc-6-follow-ups.md`. None of them is a defect. Source: PMK-56. Split into this issue and PMK-239 and PMK-240.
 
 ### Scope (in)
 
 - `due`, `type` and `archive` as bulk changes.
-- Resume a stopped batch.
 - Linear `milestone` and `release`.
-- Keep the digest and the filter in one object, so the agent does not pass the flags twice.
-- A cheaper preview for very large sets, and a cheaper `link --kind blocks` on Local.
 
 ### Out of scope
 
@@ -31,7 +28,4 @@ Improvements suggested by the implementer and reviewers of PMK-56 (bulk operatio
 ## Acceptance criteria
 
 - [ ] `due`, `type` and `archive` as bulk changes
-- [ ] Resume a stopped batch
 - [ ] Linear `milestone` and `release`
-- [ ] Keep the digest and the filter in one object, so the agent does not pass the flags twice
-- [ ] A cheaper preview for very large sets, and a cheaper `link --kind blocks` on Local

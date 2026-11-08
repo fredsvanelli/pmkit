@@ -12,3 +12,5 @@
 {"at":"2026-11-08T03:15:14Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}
 {"at":"2026-11-08T03:15:27Z","by":"fred","op":"link","field":"related","to":"PMK-204"}
 {"at":"2026-11-08T20:37:26Z","by":"fred","op":"link","field":"related","to":"PMK-234"}
+{"at":"2026-11-08T20:58:09Z","by":"fred","op":"link","field":"related","to":"PMK-241"}
+{"at":"2026-11-08T20:58:09Z","by":"fred","op":"link","field":"related","to":"PMK-242"}
