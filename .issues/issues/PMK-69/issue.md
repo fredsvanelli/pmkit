@@ -2,7 +2,7 @@
 id: PMK-69
 title: Add the release-readiness command
 type: feature
-status: in_progress
+status: in_review
 priority: medium
 estimate: 3
 assignee: fred
@@ -11,7 +11,7 @@ blocked_by: [PMK-22, PMK-49]
 milestone: generic-commands
 branch: pmk-69-add-the-release-readiness-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-11-08T02:16:37Z
+updated: 2026-11-08T02:16:55Z
 ---
 
 ## Description
