@@ -89,6 +89,7 @@ const LIVE_EXPECT_STOPS = {
   'backlog-prioritize-by-demand.1': 'the empty demand list of the scripted run',
   'backlog-prioritize-by-demand.2': 'the demand list of the scripted run, and the failed write, which needs a file edit',
   'backlog-prioritize-by-demand.3': 'the AUTH error of the scripted run, which a live run does not reproduce',
+  'backlog-prioritize-by-demand.4': 'the demand list of the scripted run, whose problem comes from a file the setup breaks',
   'cycle-close': 'the sync preview and issue lists, and the split estimates and retro text, which the agent chooses',
   'cycle-plan': 'the velocity and the scope the agent picks for the sprint',
   help: 'the capability manifest, the only thing a read-only help checks',
