@@ -10,3 +10,4 @@
 {"at":"2026-11-08T03:28:08Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
 {"at":"2026-11-08T04:05:50Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}
 {"at":"2026-11-08T04:05:51Z","by":"fred","op":"link","field":"related","to":"PMK-206"}
+{"at":"2026-11-08T20:37:26Z","by":"fred","op":"link","field":"related","to":"PMK-236"}

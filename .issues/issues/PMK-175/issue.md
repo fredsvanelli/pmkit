@@ -6,10 +6,10 @@ status: done
 priority: high
 estimate: 1
 assignee: fred
-related: [PMK-48]
+related: [PMK-48, PMK-231]
 branch: pmk-175-run-npm-audit-through-the-shell-on
 created: 2026-10-31T03:04:20.693Z
-updated: 2026-10-31T15:45:03Z
+updated: 2026-11-08T20:37:25Z
 ---
 
 ## Description

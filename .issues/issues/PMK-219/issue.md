@@ -1,0 +1,39 @@
+---
+id: PMK-219
+title: Improve todos-to-issues
+type: feature
+status: backlog
+priority: low
+estimate: 8
+related: [PMK-64]
+created: 2026-11-08T20:37:24.030Z
+updated: 2026-11-08T20:53:52Z
+---
+
+## Description
+
+### Context
+
+Improvements suggested by the implementer and reviewers of PMK-64 (todos-to-issues) during EPC-6, collected in `docs/superpowers/epc-6-follow-ups.md`. None of them is a defect. Source: PMK-64.
+
+### Scope (in)
+
+- More tags, such as `HACK` and `XXX`.
+- Show the owner of a TODO through `git blame`.
+- Offer to reference the new issue in the code comment.
+- A full comment parser per language: comments in `<script>` and `<style>` of html and vue, a lone quote that hides a comment, `@todo`, Python docstrings.
+- Keep the `todo-key` in an issue field instead of the body.
+- The warning about unread file types is noisy (425 files in this repository, 372 of them `.txt`).
+
+### Out of scope
+
+- The defects found in the same reviews, which are their own bug issues.
+
+## Acceptance criteria
+
+- [ ] More tags, such as `HACK` and `XXX`
+- [ ] Show the owner of a TODO through `git blame`
+- [ ] Offer to reference the new issue in the code comment
+- [ ] A full comment parser per language: comments in `<script>` and `<style>` of html and vue, a lone quote that hides a comment, `@todo`, Python docstrings
+- [ ] Keep the `todo-key` in an issue field instead of the body
+- [ ] The warning about unread file types is noisy (425 files in this repository, 372 of them `.txt`)

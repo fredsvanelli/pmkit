@@ -1,0 +1,6 @@
+{"at":"2026-11-08T20:37:26Z","by":"fred","op":"create","to":{"id":"PMK-237","title":"Improve request-queue","type":"feature","status":"backlog","priority":"low","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-08T20:37:26.517Z","updated":"2026-11-08T20:37:26Z"}}
+{"at":"2026-11-08T20:37:26Z","by":"fred","op":"link","field":"related","to":"PMK-70"}
+{"at":"2026-11-08T20:53:53Z","by":"fred","op":"update","field":"estimate","from":null,"to":3}
+{"at":"2026-11-08T20:53:53Z","by":"fred","op":"update","field":"description"}
+{"at":"2026-11-08T20:53:53Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-08T20:53:53Z","by":"fred","op":"link","field":"blocked_by","to":"PMK-216"}

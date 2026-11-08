@@ -7,11 +7,11 @@ priority: medium
 estimate: 3
 assignee: fred
 parent: EPC-6
-related: [PMK-176]
+related: [PMK-176, PMK-216]
 milestone: generic-commands
 branch: pmk-59-add-the-estimate-issue-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-31T16:01:11Z
+updated: 2026-11-08T20:37:23Z
 ---
 
 ## Description

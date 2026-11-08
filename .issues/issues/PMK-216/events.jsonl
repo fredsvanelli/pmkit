@@ -1,0 +1,5 @@
+{"at":"2026-11-08T20:37:23Z","by":"fred","op":"create","to":{"id":"PMK-216","title":"Improve estimate-issue","type":"feature","status":"backlog","priority":"low","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-08T20:37:23.568Z","updated":"2026-11-08T20:37:23Z"}}
+{"at":"2026-11-08T20:37:23Z","by":"fred","op":"link","field":"related","to":"PMK-59"}
+{"at":"2026-11-08T20:53:51Z","by":"fred","op":"update","field":"estimate","from":null,"to":3}
+{"at":"2026-11-08T20:53:51Z","by":"fred","op":"update","field":"description"}
+{"at":"2026-11-08T20:53:51Z","by":"fred","op":"update","field":"acceptance_criteria"}

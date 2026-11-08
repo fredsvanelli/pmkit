@@ -1,0 +1,4 @@
+{"at":"2026-11-08T20:37:26Z","by":"fred","op":"create","to":{"id":"PMK-234","title":"Improve prioritize-by-demand","type":"feature","status":"backlog","priority":"low","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-08T20:37:26.100Z","updated":"2026-11-08T20:37:26Z"}}
+{"at":"2026-11-08T20:37:26Z","by":"fred","op":"link","field":"related","to":"PMK-68"}
+{"at":"2026-11-08T20:53:52Z","by":"fred","op":"update","field":"priority","from":"low","to":"medium"}
+{"at":"2026-11-08T20:53:52Z","by":"fred","op":"update","field":"estimate","from":null,"to":8}

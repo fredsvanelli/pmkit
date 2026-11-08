@@ -8,11 +8,11 @@ estimate: 3
 assignee: fred
 parent: EPC-6
 blocked_by: [PMK-48]
-related: [PMK-198]
+related: [PMK-198, PMK-230]
 milestone: generic-commands
 branch: pmk-73-add-the-security-alerts-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-31T20:35:31Z
+updated: 2026-11-08T20:37:25Z
 ---
 
 ## Description

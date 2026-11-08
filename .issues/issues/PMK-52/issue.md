@@ -7,11 +7,11 @@ priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
-related: [PMK-187, PMK-191]
+related: [PMK-187, PMK-191, PMK-222]
 milestone: generic-commands
 branch: pmk-52-add-issues-delete
 created: 2026-10-25T19:13:21Z
-updated: 2026-10-31T16:59:11Z
+updated: 2026-11-08T20:37:24Z
 ---
 
 ## Description

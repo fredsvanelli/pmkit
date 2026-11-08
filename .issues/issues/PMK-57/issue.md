@@ -7,11 +7,11 @@ priority: medium
 estimate: 3
 assignee: fred
 parent: EPC-6
-related: [PMK-181]
+related: [PMK-181, PMK-214]
 milestone: generic-commands
 branch: pmk-57-add-the-delegate-to-agent-command
 created: 2026-10-25T19:13:22Z
-updated: 2026-10-31T16:01:17Z
+updated: 2026-11-08T20:37:23Z
 ---
 
 ## Description
