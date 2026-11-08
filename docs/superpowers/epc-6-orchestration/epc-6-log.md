@@ -206,3 +206,50 @@ Retomada: se o contexto for compactado, ler este registro, `lessons.md`, `brief-
 - PMK-73 follow-ups do ciclo 3: `alertCandidate` não junta quebras de linha do título do advisory; README e spec de design não citam `--title-file`; passo 5 não manda reescrever o arquivo do título depois de uma edição; regra de como escrever o arquivo do título (sem `echo`) cabe em `conventions.md`; `todos.md` e outros comandos ainda usam `--title "..."`.
 
 Fim da rodada 6: PRs #107, #108, #109, #110 mergeados; PR #111 com done e PMK-197 a PMK-200 (PMK-198 alta: títulos pelo shell). develop em 4bc6839, npm test exit 0 (3701 pass). Worktrees removidos. Próxima: rodada 7 (PMK-66 opus, PMK-67, PMK-68, PMK-69), depois rodada 8 (PMK-55, PMK-70).
+
+## Rodada 7
+
+Nova sessão (2026-11-07), com workers do Orca (run `run_b13ebdb322f0`) em vez de subagentes. Usuário: Claude para implementadores e revisores, modelos pela tabela do prompt.
+
+Início: `develop` em 4bc6839 falhou 4 testes nesta máquina (macOS): dois pelo symlink do `TMPDIR`, um por pasta sem diferença de maiúsculas, um pela profundidade de pilha do Node 22.22. Usuário: baseline conhecido. Com o `TMPDIR` resolvido (`TMPDIR="$(node -p "require('fs').realpathSync(require('os').tmpdir())")" npm test`), a suíte passa quando sai 0 ou sai 1 só com `issues dependencies prints a deep chain in text mode and fails only for JSON` e `two folders with the same normalized id are one id problem`. Os quatro testes viraram a PMK-201.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-66 | 5 | opus | #114 | ciclo 1 (opus): mudanças pedidas; ciclo 2 (opus): APROVADO | mergeado (97c2e89) |
+| PMK-67 | 3 | sonnet | #116 | ciclo 1 (opus): mudanças pedidas (inclui os eventos de claim que faltavam); ciclo 2 (opus): APROVADO; rebase 26d7c37 | mergeado (33a6147) |
+| PMK-68 | 3 | sonnet | #113 | ciclos 1 e 2 (opus): mudanças pedidas; ciclo 3 (opus): APROVADO; rebase 8fef58e | mergeado (9d4385a) |
+| PMK-69 | 3 | sonnet | #115 | ciclos 1 e 2 (opus): mudanças pedidas; ciclo 3 (opus): APROVADO; rebase a504b3c, CHANGELOG e teste ajustados | mergeado (eb74df7) |
+
+- PMK-66 (implementador): `roadmap review` na CLI e `/pmkit:report:roadmap-review`; saúde pelo update mais novo, senão pelo tracker, senão `unknown`; `updatesNotChecked`; `lateIssues` como fallback sem épicos. Follow-ups: `capabilityNotes` lança no caminho `NOT_SUPPORTED`; `risks` trata leitura de update que falhou como `[]`.
+- PMK-67 (implementador): `goals overview` na CLI e `/pmkit:report:initiatives-and-goals`; fallback para issues de topo (sem pai ou com épico como pai, com sub-issues), com nota; `complete: false` em leitura cortada. Follow-up: iniciativas do Linear não são lidas.
+- PMK-68 (implementador): só o arquivo de comando (`commands/backlog/prioritize-by-demand.md`); lista de demanda, ou comentários e menções como fallback (até 30; ilegível vira "não verificado"); faixas de prioridade iguais; um preview completo; para na primeira escrita que falha. Follow-ups: peso por receita ou plano; dry-run só do ranking; lista de demanda no Linear.
+- PMK-69 (implementador): `release-readiness` na CLI e `commands/report/release-readiness.md`; base: flag > primeira release planejada > primeiro milestone com data e issue aberta > sprint ativo; `--release` no Linear dá `NOT_SUPPORTED`; `ready` true/false/null; deploys do repo inteiro com `matchesRelease`.
+- PMK-67: o worker fez o commit `chore(issues): claim PMK-67` (f7ce08e) na branch provisória do Orca e depois abriu a branch da issue a partir de `origin/develop`, então o PR ia de `backlog` para `in_review` sem assign nem `in_progress`. Pedi o assign e o commit de `.issues/` junto com as correções do ciclo 1.
+- PMK-68: o worker rodou `gh auth setup-git`, que muda a config de credenciais do git do usuário. Avisado ao usuário; o brief da rodada 8 proíbe mexer na config do git e do gh.
+- PMK-66 ciclo 1: o revisor terminou o turno esperando um `code-review` em segundo plano; retomei com `send` e ele postou o veredito.
+- Revisores cujo prompt não chegou (composer vazio depois de um start que o Orca não viu, carga ~146 com quatro `npm test` em paralelo): PMK-69 ciclo 1 (usuário aprovou parar e tentar de novo) e PMK-68 ciclo 3. Usuário deu aprovação permanente para parar e tentar de novo nesses casos, avisando depois. A segunda tentativa da PMK-68 falhou igual; o que funcionou foi `worker-abandon` (mantém o terminal), `task-update --status ready` e `worker-start --task ... --terminal <term>` no agente já carregado.
+- `gh pr merge --delete-branch` falhou porque a branch local estava num worktree; mergeei sem a flag e apaguei a branch remota com `git push origin --delete`. `orca worktree rm` recusou por um `package-lock.json` não rastreado criado no setup; usei `--force` depois de conferir que só havia ele.
+- Instável: `matchTodos stays fast with 500 candidates and 5000 issues` falha sob carga; rodar o arquivo sozinho.
+- PMK-66 achados não bloqueantes do ciclo 2 (defeitos, viram issue): no Linear o último milestone do épico sai como UUID; `UPSTREAM` transitório imprime "cannot list epics" e cai no fallback de issues atrasadas; "started" difere da janela de `epicRisks`; atraso desconhecido sai em branco como no prazo; leituras sequenciais continuam depois de `RATE_LIMITED`; `unreadableRecords` faz parse duas vezes. Erro de digitação "A milestone a milestone" no CHANGELOG corrigido no PR de fechamento.
+- PMK-67 achados não bloqueantes do ciclo 2: `epic.md` quebrado deixa o caminho de topo incompleto e `goal list` imprime avisos de épico fora do CHANGELOG; `searchIssues({})` deixa arquivadas de fora, então filhos de pai arquivado viram linhas de topo com `complete: true`; um `notes.md` solto em `.issues/goals` bloqueia o fallback; linha "needs an epic" com `complete: false`; filhos de pai que não faz parse se dividem; `goalProgress` por meta é O(n²).
+- PMK-68 achados não bloqueantes do ciclo 3: a execução live para na primeira leitura salva, então o assert da ISS-6J0B nunca roda live; o caminho de requests conta issues com score 0 nas faixas; qualquer problema na lista de demanda bloqueia todas as escritas; Linear com mais de 1000 issues nunca escreve; regra de menção difere da de `deleteIssue` (`tracker.mjs:577`); comentários do próprio pmkit contam como demanda; sem `--expect`.
+- PMK-69 achados não bloqueantes do ciclo 3: Linear com releases chama o stub de `listReleases` e falha mesmo com `--sprint`/`--milestone`; `RATE_LIMITED`/`UPSTREAM` de `currentCycle`/`listMilestones` aborta `--release`/`--sprint`; `--sprint current` sem cycles dá `INVALID_INPUT`; release planejada vazia sai pronta; só lê os 20 deploys mais novos.
+
+Fim da rodada 7: PRs #113, #114, #115, #116 mergeados. PR #117 com `done`, PMK-201 a PMK-205, follow-ups e o erro do CHANGELOG. `develop` em 40c8d78; suíte em eb74df7 só com as 2 falhas do baseline. Workers liberados, 16 worktrees removidos, branches provisórias apagadas.
+
+## Rodada 8
+
+Brief do implementador com as lições da rodada 7 (ver `lessons.md`).
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-55 | 3 | sonnet | #118 | ciclo 1 (opus): mudanças pedidas; ciclo 2 (opus): APROVADO, mas pedi N9 e N10 antes do merge; revisão curta (sonnet): APROVADO | mergeado (9213dc1) |
+| PMK-70 | 3 | sonnet | #119 | ciclo 1 (opus): mudanças pedidas; ciclo 2 (opus): APROVADO, mas pedi duas correções antes do merge; revisão curta (sonnet): APROVADO; rebase | mergeado (f0deeae) |
+
+- PMK-55 (implementador): só o arquivo de comando (`/pmkit:issues:inbox-digest`); `inbox list` para atribuições e menções, `pr blockers` das issues em `in_review` para pedidos de revisão; incompleto ou "não verificado" em vez de zero; lista derivada no Linear; sem escritas. Eventos de claim presentes na branch. Follow-ups: mapa membro → login do GitHub; `--all`; itens de mudança de status; notificações do Linear.
+- PMK-70 (implementador): só o arquivo de comando (`/pmkit:backlog:request-queue`); decisão por request (issue nova, vínculo, recusa, deixar aberto); preview completo; requests legíveis continuam mesmo com problemas, nunca "inbox vazia"; Linear/`NOT_SUPPORTED` sugere triage. Follow-ups: `requests` aceitar `--create`; requests no Linear; similaridade de texto na CLI; nome do cliente.
+- PMK-55 ciclo 2: pedi antes do merge N9 (com itens ocultos o digest dizia que não havia nada não visto) e N10 (`mark-read` sem chaves marcava itens ocultos). Não bloqueantes (defeitos, viram issue): não para em `RATE_LIMITED`; pedidos de revisão para time aparecem pelo nome e podem casar; "changes to address" pula PRs do próprio usuário em issues sem dono ou `in_progress`; pedidos de revisão só em issues `in_review`; `since=` ignorado no Linear.
+- PMK-70 ciclo 2: pedi antes do merge arquivos temporários por request, removidos em toda parada, e a troca da asserção de `backlog-request-queue.mjs:127`, que sempre passava. Não bloqueantes: sem regra para dry-run de criação que falha (passo 5.1); ID do cliente some quando o cliente não tem arquivo e o request não tem `from`; o ramo de triage fora do caminho nativo sem cenário (critério 2).
+- Revisão curta da PMK-55: o cenário confere os dados salvos, não o texto do digest; o ramo que oferece o N10 não roda (`complete: false` no fixture).
+
+Fim da rodada 8: PRs #118 e #119 mergeados. PR #120 com `done`, PMK-206, PMK-207 e follow-ups. `develop` em 6a34b87; suíte em f0deeae só com as 2 falhas do baseline (3884 testes, 3802 pass). EPC-6: 30 de 30 issues, 85 de 85 pontos. Workers liberados, 8 worktrees removidos, branches provisórias apagadas.

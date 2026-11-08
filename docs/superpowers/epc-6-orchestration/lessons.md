@@ -22,3 +22,9 @@ Lições da rodada 3 (os revisores pediram mudanças por estes pontos):
 Lição da rodada 5:
 - O `npm test` pode terminar com 0 falhas e mesmo assim sair com código 1, quando um teste deixa arquivos fora do diretório temporário (guarda de vazamento do `scripts/run-tests.mjs`). Confira o código de saída, não só o total de falhas.
 - Rode o `npm test` em primeiro plano, com timeout longo. Um monitor em segundo plano pode não avisar quando termina, e o agente fica parado.
+
+Lições da rodada 7 (os quatro PRs precisaram de mudanças pelos dois primeiros pontos):
+- Uma leitura que pode vir incompleta (`hasMore`, arquivo que não faz parse, erro transitório `UPSTREAM` ou `RATE_LIMITED`, stub `NOT_SUPPORTED`) aparece como incompleta ou "não verificado" no JSON e no texto. O comando nunca tira conclusão dela ("nada aberto", "sem metas", "pronto") nem escreve a partir dela. Procure isso em cada leitura nova e teste cada uma.
+- Todo exemplo, expectativa de cenário e golden concorda com os passos do arquivo de comando. O revisor roda todos.
+- O Orca abre o worktree numa branch provisória `fredsvanelli/<nome>`. Não faça commit nela. Os passos 4 e 5 deixam mudanças em `.issues/`; crie a branch da issue no passo 6 a partir de `origin/develop`, leve essas mudanças e faça o commit na branch da issue, para o PR ter os eventos de assign e `in_progress`.
+- Não mude a configuração do git ou do gh (por exemplo `gh auth setup-git`). Se um push falhar, avise com `ask`.
