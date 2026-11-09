@@ -2,12 +2,14 @@
 id: PMK-197
 title: Make text redact trade false positives for no missed secrets
 type: bug
-status: backlog
+status: in_progress
 priority: medium
 estimate: 2
+assignee: fred
 related: [PMK-63]
+branch: pmk-197-make-text-redact-trade-false-positives
 created: 2026-10-31T20:35:30.957Z
-updated: 2026-10-31T20:35:31Z
+updated: 2026-11-09T03:59:23Z
 ---
 
 ## Description

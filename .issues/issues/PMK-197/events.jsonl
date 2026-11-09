@@ -1,2 +1,5 @@
 {"at":"2026-10-31T20:35:30Z","by":"fred","op":"create","to":{"id":"PMK-197","title":"Make text redact trade false positives for no missed secrets","type":"bug","status":"backlog","priority":"medium","estimate":2,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-31T20:35:30.957Z","updated":"2026-10-31T20:35:30Z"}}
 {"at":"2026-10-31T20:35:31Z","by":"fred","op":"link","field":"related","to":"PMK-63"}
+{"at":"2026-11-09T03:59:17Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-09T03:59:17Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-09T03:59:23Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-197-make-text-redact-trade-false-positives"}
