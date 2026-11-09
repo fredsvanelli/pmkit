@@ -9,7 +9,6 @@ tracker path: adr/0001-golden-decision.md
 default branch: main
 git host: none
 --- stderr
-note: git_host.default_branch is not set in .pmkit/config.yaml, so main is used
 note: origin/main does not exist here, so only the working tree was read and an ADR merged on main may be missed
 
 $ pmkit docs next-adr --title 'Golden decision' --json
@@ -45,10 +44,8 @@ exit 0
   ],
   "ignored": [],
   "notes": [
-    "git_host.default_branch is not set in .pmkit/config.yaml, so main is used",
     "origin/main does not exist here, so only the working tree was read and an ADR merged on main may be missed"
   ]
 }
 --- stderr
-note: git_host.default_branch is not set in .pmkit/config.yaml, so main is used
 note: origin/main does not exist here, so only the working tree was read and an ADR merged on main may be missed

@@ -138,14 +138,14 @@ test('docs next-adr reads origin/<default_branch> from the config', async () => 
   assert.ok(!data.notes.some((note) => /is not set/.test(note)))
 })
 
-test('docs next-adr falls back to main with a note when default_branch is not set, and says when the ref is missing', async () => {
+test('docs next-adr falls back to main without a note when default_branch is not set, and says when the ref is missing', async () => {
   const root = repo()
   const { data, stderr } = await nextAdr(root)
   assert.equal(data.defaultBranch, 'main')
   assert.equal(data.ref, null)
-  assert.match(data.notes.join('\n'), /default_branch is not set in \.pmkit\/config\.yaml, so main is used/)
+  assert.ok(!data.notes.some((note) => /default_branch/.test(note)), 'an unset default_branch is silent, as in every other reader')
   assert.match(data.notes.join('\n'), /origin\/main does not exist here/)
-  assert.match(stderr, /note: git_host\.default_branch is not set/)
+  assert.ok(!/default_branch/.test(stderr), stderr)
 })
 
 test('docs next-adr refuses a title with no letter or digit', async () => {

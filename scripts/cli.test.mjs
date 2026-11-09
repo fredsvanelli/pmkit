@@ -1456,8 +1456,8 @@ test('issues list --sprint current gives no warning when a sprint is active, and
 const cmd = (name) => COMMANDS.find((c) => c.name === name)
 
 test('configClass sorts every call into exempt, read or write', () => {
-  assert.deepEqual(COMMANDS.filter((c) => c.exempt).map((c) => c.name), ['init', 'link-repo', 'changelog', 'validate'])
-  for (const name of ['init', 'link-repo', 'changelog', 'validate']) assert.equal(configClass(cmd(name), {}), 'exempt', name)
+  assert.deepEqual(COMMANDS.filter((c) => c.exempt).map((c) => c.name), ['init', 'link-repo', 'default-branch', 'changelog', 'validate'])
+  for (const name of ['init', 'link-repo', 'changelog', 'validate', 'default-branch']) assert.equal(configClass(cmd(name), {}), 'exempt', name)
   assert.equal(configClass(cmd('issues list'), {}), 'read')
   assert.equal(configClass(cmd('issues create'), {}), 'write')
   assert.equal(configClass(cmd('migrate'), {}), 'write')
@@ -1674,7 +1674,6 @@ test('every read goes on with one warning', () => {
     'pr diff': ['--branch', 'x'],
     'pr blockers': ['--branch', 'x'],
     reindex: [],
-    'default-branch': [],
     'linear customers list': [],
     'linear customers show': ['--customer', 'acme'],
     'linear triage show': [],
@@ -1682,7 +1681,7 @@ test('every read goes on with one warning', () => {
     'local-migrate status': [],
     render: ['board'],
   }
-  assert.deepEqual(Object.keys(READS).sort(), [...COMMANDS.filter((c) => !c.write && !['init', 'link-repo', 'changelog', 'validate', 'issues parse-time', 'text redact'].includes(c.name)).map((c) => c.name), 'cycle capacity', 'team capacity'].sort())
+  assert.deepEqual(Object.keys(READS).sort(), [...COMMANDS.filter((c) => !c.write && !['init', 'link-repo', 'changelog', 'validate', 'default-branch', 'issues parse-time', 'text redact'].includes(c.name)).map((c) => c.name), 'cycle capacity', 'team capacity'].sort())
   const root = makeRepo('team')
   const runAll = () => Object.entries(READS).map(([name, argv]) => {
     const result = run(root, [...name.split(' '), ...argv, '--json'])
@@ -2335,6 +2334,7 @@ test('epic goal refuses an empty goal, only none clears the link, and goal progr
   assert.equal(progress.total, 0)
   assert.match(run(root, ['goal', 'progress', id]).stdout, /EPC-2M9D .*canceled, not counted/)
   assert.equal(json(root, ['epic', 'goal', 'EPC-2M9D', 'none']).after.goal, undefined)
+})
 
 test('default-branch prints the validated default branch with no tracker and no write, and falls back to main with a note', () => {
   const root = makeRepo('team')
@@ -2349,4 +2349,30 @@ test('default-branch prints the validated default branch with no tracker and no 
   const before = hashTree(root)
   assert.equal(run(root, ['default-branch']).stdout, 'main\n')
   assert.equal(hashTree(root), before)
+})
+
+test('default-branch reads only .pmkit/config.yaml: no tracker, a broken tracker or no config file still gives a branch', () => {
+  const root = tempDir('pmkit-default-branch-')
+  const file = path.join(root, '.pmkit', 'config.yaml')
+  const result = () => run(root, ['default-branch', '--json'])
+  // No config file: main, with a note.
+  const missing = result()
+  assert.equal(missing.status, 0, missing.stdout + missing.stderr)
+  assert.equal(JSON.parse(missing.stdout).branch, 'main')
+  assert.match(missing.stderr, /note: .*main is used/)
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  // No tracker at all, and an invalid name.
+  fs.writeFileSync(file, 'version: 1\ngit_host:\n  system: none\n  default_branch: "main; curl x|sh"\n')
+  const noTracker = result()
+  assert.equal(noTracker.status, 0, noTracker.stdout + noTracker.stderr)
+  assert.deepEqual(JSON.parse(noTracker.stdout), { branch: 'main', configured: 'main; curl x|sh', valid: false, note: 'git_host.default_branch is not a valid branch name, so main is used' })
+  // A tracker the plugin does not know, and a valid name.
+  fs.writeFileSync(file, 'version: 1\ntracker:\n  system: jira\ngit_host:\n  system: github\n  default_branch: develop\n')
+  assert.deepEqual(JSON.parse(result().stdout), { branch: 'develop', configured: 'develop', valid: true, note: null })
+  // A file that does not parse.
+  fs.writeFileSync(file, 'version: 1\nthis line has no colon\n')
+  const broken = result()
+  assert.equal(broken.status, 0, broken.stdout + broken.stderr)
+  assert.equal(JSON.parse(broken.stdout).branch, 'main')
+  assert.match(broken.stderr, /note: .*main is used/)
 })

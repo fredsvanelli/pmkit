@@ -420,7 +420,7 @@ test('validatePmkitConfig accepts tracker.path absent, null and .issues for the 
 
 test('validBranch accepts the names git accepts, with letters of any script, and refuses what a shell or git would misread', () => {
   for (const name of ['main', 'develop', 'release/1.0', 'feat/a_b-c', 'développement', 'ветка', '_x']) assert.equal(validBranch(name), true, name)
-  for (const name of ['main; curl x|sh', '-x', '--upload-pack=x', 'a..b', 'a//b', 'a/.b', '.hidden', 'x.lock', 'a/', 'a b', '$(id)', 'a`b`', 'a\nb', '', 'a@{1}']) assert.equal(validBranch(name), false, JSON.stringify(name))
+  for (const name of ['main.', 'a.lock/b', 'a./b', 'a/b.', 'x.lock/', '/a', 'main; curl x|sh', '-x', '--upload-pack=x', 'a..b', 'a//b', 'a/.b', '.hidden', 'x.lock', 'a/', 'a b', '$(id)', 'a`b`', 'a\nb', '', 'a@{1}']) assert.equal(validBranch(name), false, JSON.stringify(name))
 })
 
 test('resolveDefaultBranch returns main for an unset, non-string or invalid name, and says which', () => {
@@ -432,4 +432,15 @@ test('resolveDefaultBranch returns main for an unset, non-string or invalid name
   const bad = resolveDefaultBranch(host('main; curl x|sh'))
   assert.deepEqual(bad, { branch: 'main', configured: 'main; curl x|sh', valid: false, note: 'git_host.default_branch is not a valid branch name, so main is used' })
   assert.equal(resolveDefaultBranch(host(7)).valid, false)
+})
+
+test('validBranch accepts a name in NFC and in NFD, and the combining marks of other scripts', () => {
+  const nfc = 'développement'.normalize('NFC')
+  const nfd = 'développement'.normalize('NFD')
+  assert.notEqual(nfc, nfd)
+  assert.equal(validBranch(nfc), true)
+  assert.equal(validBranch(nfd), true)
+  assert.equal(validBranch('feat/' + nfd), true)
+  assert.equal(validBranch('शाखा'), true)
+  assert.equal(validBranch('\u0301x'), false, 'a combining mark cannot start a name')
 })

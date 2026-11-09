@@ -82,7 +82,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `capabilities` | prints the capability manifest |
 | `discover` | prints statuses with categories, types, priorities, labels, members and the estimate scale |
 | `whoami` | prints the resolved actor |
-| `default-branch` | prints `git_host.default_branch` as `branch`, with `configured`, `valid` and `note`. An unset or invalid name (anything git or a shell could misread, such as `main; curl x\|sh`) gives `main`, and an invalid one a `note:`. Command files take the base branch from here, never from the config. `validate` reports an invalid name. Reads only |
+| `default-branch` | prints `git_host.default_branch` as `branch`, with `configured`, `valid` and `note`. An unset or invalid name (anything git or a shell could misread, such as `main; curl x\|sh`) gives `main`, and an invalid one a `note:`. Command files take the base branch from here, never from the config. `validate` reports an invalid name. Reads only `.pmkit/config.yaml`, so it works with no tracker or a broken one: a missing or unreadable file gives `main` with a note |
 | `issues list` | searches issues by text, category, type, assignee, label, sprint, parent, blocked state or date, oldest created first unless `--sort` says otherwise |
 | `issues get <id>` | shows one issue, with `--comments` and `--history` |
 | `issues dependencies <id>` | shows the blocker chain, the hierarchy and the critical path of an issue or an epic; only reads |

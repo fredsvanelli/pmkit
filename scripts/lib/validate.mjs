@@ -119,7 +119,7 @@ function pmkitConfigProblems(root, adapters) {
     return [{ path: at, code: 'config', message: `config.yaml does not parse: ${error.message}` }]
   }
   const messages = pmkitConfigMessages(parsed, adapters)
-  // Not a config problem that refuses writes: every reader falls back to main, so validate only says so.
+  // Reported as a config problem, but kept out of pmkitConfigMessages so it does not refuse writes: every reader falls back to main.
   const defaultBranch = resolveDefaultBranch(parsed)
   if (!defaultBranch.valid && typeof defaultBranch.configured === 'string') messages.push(defaultBranch.note)
   return messages.map((message) => ({ path: at, code: 'config', message }))

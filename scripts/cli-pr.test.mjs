@@ -653,3 +653,19 @@ test('a branch with letters outside ASCII is a valid git_host.default_branch', a
   assert.equal(JSON.parse(result.stdout).from, 'développement')
   assert.ok(!result.stderr.includes('not a valid branch name'), result.stderr)
 })
+
+test('the default_branch fallback note is silent where the base is not used: pr diff from a pull request and pr open on an open one', async () => {
+  const root = badBranchRepo()
+  const gh = fakeGh({
+    [view('feat')]: { stdout: prJson({ number: 7 }) },
+    'pr diff 7 --color never': { stdout: 'diff\n' },
+  })
+  const env = envWith(gh)
+  const diff = await call(root, env, ['pr', 'diff', '--branch', 'feat', '--json'])
+  assert.equal(diff.code, 0, diff.stdout + diff.stderr)
+  assert.ok(!diff.stderr.includes('not a valid branch name'), diff.stderr)
+  await callJson(root, env, ['issues', 'update', 'ISS-2X6D', '--branch', 'feat'])
+  const open = await call(root, env, ['pr', 'open', '--issue', 'ISS-2X6D', '--dry-run', '--json'])
+  assert.equal(JSON.parse(open.stdout).existing, true)
+  assert.ok(!open.stderr.includes('not a valid branch name'), open.stderr)
+})

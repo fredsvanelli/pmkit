@@ -634,9 +634,16 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'default-branch', summary: 'prints git_host.default_branch as a valid branch name, or main with a note when it is unset or not a name; reads .pmkit/config.yaml only, no tracker, writes nothing', flags: [], args: [],
+    name: 'default-branch', summary: 'prints git_host.default_branch as a valid branch name, or main with a note when it is unset or not a name; reads .pmkit/config.yaml only, no tracker, writes nothing', flags: [], args: [], exempt: true,
     run: async (ctx) => {
-      const resolved = resolveDefaultBranch(ctx.config().pmkit)
+      // Only .pmkit/config.yaml, never the tracker: a missing, broken or newer tracker config must not cost the command files their base branch.
+      let resolved
+      try {
+        resolved = resolveDefaultBranch(parseYaml(fs.readFileSync(path.join(ctx.root, '.pmkit', 'config.yaml'), 'utf8')))
+      } catch (error) {
+        const reason = error.code === 'ENOENT' ? 'it does not exist' : error.message.split('\n')[0]
+        resolved = { branch: 'main', configured: null, valid: false, note: `cannot read .pmkit/config.yaml (${reason}), so main is used` }
+      }
       return { data: resolved, text: resolved.branch, notes: resolved.note === null ? [] : [resolved.note] }
     },
   },
@@ -1169,7 +1176,7 @@ export const COMMANDS = [
         hosted: Boolean(hosted),
         createSupported: documents !== undefined && documents.path !== 'absent' && !documents.detail?.unsupported?.includes('createDocument'),
         defaultBranch: resolved.branch,
-        defaultBranchNote: resolved.configured === null ? 'git_host.default_branch is not set in .pmkit/config.yaml, so main is used' : resolved.note,
+        defaultBranchNote: resolved.note,
         gitHost: pmkit.git_host?.system ?? 'none',
         git: (args) => {
           const result = readGit(ctx, args)
@@ -1420,10 +1427,10 @@ export const COMMANDS = [
         const text = open
           ? `would push ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`
           : `would open a pull request ${request.head} to ${request.base}\n${request.title}\n\n${body}`
-        return { data: { ...request, existing: open !== null, pr: open }, text: `${text}\ndry run: nothing was written`, notes: [...defaultBranchNotes(ctx), ...(await linkedCodeNotes(ctx))] }
+        return { data: { ...request, existing: open !== null, pr: open }, text: `${text}\ndry run: nothing was written`, notes: [...(open ? [] : defaultBranchNotes(ctx)), ...(await linkedCodeNotes(ctx))] }
       }
       host.push(issue.branch)
-      if (open) return { data: { ...open, existing: true }, text: `pushed ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`, notes: [...defaultBranchNotes(ctx), ...(await linkedCodeNotes(ctx))] }
+      if (open) return { data: { ...open, existing: true }, text: `pushed ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`, notes: await linkedCodeNotes(ctx) }
       const pr = host.openPullRequest(request)
       return { data: { ...pr, existing: false }, text: `opened pull request #${pr.number} ${pr.url}`, notes: [...defaultBranchNotes(ctx), ...(await linkedCodeNotes(ctx))] }
     },
@@ -1518,6 +1525,7 @@ export const COMMANDS = [
       }
       const source = full === null ? 'local' : 'pull_request'
       if (full === null) {
+        if (requested === undefined) notes.push(...defaultBranchNotes(ctx))
         local = host.localDiff({ branch, base: requested ?? defaultBranch(ctx) })
         full = local.diff
         if (local.uncommitted) notes.push('the local diff includes the uncommitted changes of tracked files')
@@ -1528,7 +1536,7 @@ export const COMMANDS = [
       const diff = truncated ? `${all.slice(0, maxLines).join('\n')}\n` : full
       const size = truncated ? `first ${maxLines} of ${all.length} lines` : `${all.length} lines`
       const head = source === 'pull_request' ? `pull request #${pr.number}, ${size}` : `local diff of ${branch} against ${base}, ${size}`
-      return { data: { branch, source, pr: source === 'pull_request' ? pr : null, base, uncommitted: local?.uncommitted ?? false, diff, truncated, lines: all.length }, text: `${head}\n${diff}`, notes: [...(requested === undefined ? defaultBranchNotes(ctx) : []), ...notes, ...(await linkedCodeNotes(ctx))] }
+      return { data: { branch, source, pr: source === 'pull_request' ? pr : null, base, uncommitted: local?.uncommitted ?? false, diff, truncated, lines: all.length }, text: `${head}\n${diff}`, notes: [...notes, ...(await linkedCodeNotes(ctx))] }
     },
   },
   {

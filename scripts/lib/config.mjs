@@ -108,9 +108,10 @@ export function withLocalDefaults(obj) {
 }
 
 // A branch name git accepts, with letters and digits of any script. No space, quote, `$`, `;`, `|`, backtick or leading `-` passes, so the name is also safe in a shell command.
-const BRANCH_NAME = /^[\p{L}\p{N}_][\p{L}\p{N}._/-]*$/u
+const BRANCH_NAME = /^[\p{L}\p{N}_][\p{L}\p{M}\p{N}._/-]*$/u
+// What git check-ref-format also refuses: an empty component, one that starts with `.` or ends with `.` or `.lock`, and `..`.
 export const validBranch = (name) =>
-  typeof name === 'string' && BRANCH_NAME.test(name) && !name.includes('..') && !name.includes('//') && !name.includes('/.') && !name.endsWith('/') && !name.endsWith('.lock')
+  typeof name === 'string' && BRANCH_NAME.test(name) && !name.includes('..') && name.split('/').every((part) => part !== '' && !part.startsWith('.') && !part.endsWith('.') && !part.endsWith('.lock'))
 
 /** The default branch every reader uses: git_host.default_branch when it is a valid name, `main` when it is unset or invalid. `configured` is what the file holds (null when unset) and `note` says why `main` replaced an invalid value. */
 export function resolveDefaultBranch(pmkit) {
