@@ -22,6 +22,7 @@ import { buildCapabilities } from '../capabilities.mjs'
 import { lastEntry } from '../metrics.mjs'
 import { AGENT_ID, delegationComment } from '../delegation.mjs'
 import { REFERENCE_KINDS, referencedError } from '../delete-refusal.mjs'
+import { mentionedIn } from '../mentions.mjs'
 import { createDocumentFile, listDocumentFiles, readDocumentFile } from './documents.mjs'
 import { hasMilestoneFiles, milestoneStems, parseMilestone, serializeMilestone, sortMilestones, validMilestoneId } from './milestones.mjs'
 import { parseRelease, releaseStems, serializeRelease, sortReleases, validReleaseId, validTag } from './releases.mjs'
@@ -513,7 +514,6 @@ export function createLocalTracker(root, {
     })
   }
 
-  const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const commentTexts = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((name) => name.endsWith('.md')).map((name) => fs.readFileSync(path.join(dir, name), 'utf8')) : [])
   const filesUnder = (dir) => fs.readdirSync(dir, { withFileTypes: true })
     .flatMap((entry) => (entry.isDirectory() ? filesUnder(path.join(dir, entry.name)) : [path.join(dir, entry.name)]))
@@ -578,13 +578,7 @@ export function createLocalTracker(root, {
       .filter((kind) => (kind === 'parent' ? other.parent === issue.id : other[kind].includes(issue.id)))
       .map((kind) => ({ id: other.id, kind })))
     if (references.length > 0) throw referencedError(issue.id, references)
-    const mention = new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(issue.id)}(?![A-Za-z0-9_])`)
-    // A path or a URL is not a mention. The target of a markdown link and bare URLs go first, so a link keeps its text; then a token with a separator that starts with . ~ or /,
-    // has two separators or ends in a file extension is a path. "ISS-1/", "ISS-1/2" and "ISS-1/ISS-2" stay.
-    const idLike = /^\(?[A-Za-z]+-[A-Za-z0-9]+[.,;:)]*$/
-    const pathLike = (token) => /[/\\]/.test(token) && !token.split(/[/\\]/).every((part) => idLike.test(part))
-      && (/^[.~/\\]/.test(token) || token.match(/[/\\]/g).length >= 2 || /[/\\][^/\\\s]*\.[A-Za-z0-9]+[.,;:)]*$/.test(token))
-    const mentioned = (text) => mention.test(text.replace(/\]\([^)\s]*\)/g, ']').replace(/https?:\/\/\S+/g, ' ').replace(/\S+/g, (token) => (pathLike(token) ? ' ' : token)))
+    const mentioned = mentionedIn(issue.id)
     const mentions = others.flatMap((other) => [
       ...(mentioned(`${other.description ?? ''}\n${other.body ?? ''}`) ? [{ id: other.id, in: 'description' }] : []),
       ...(commentTexts(issuePaths(issuesDir, other.id).comments).some(mentioned) ? [{ id: other.id, in: 'comment' }] : []),
@@ -1708,16 +1702,16 @@ export function createLocalTracker(root, {
     const requests = readRecords(REQUEST)
     const customers = new Map(readRecords(CUSTOMER).records.map((customer) => [customer.id, customer]))
     const readIssueOnce = issueReader()
-    const problems = [...requests.problems]
+    const problems = requests.problems.map((problem) => ({ ...problem, about: 'request' }))
     const signals = groupDemand(sortRequests(requests.records)).map((group) => {
       const { issue, error } = readIssueOnce(group.issue)
-      if (error) problems.push({ id: group.issue, code: error.code, message: `requests ${group.requests.join(', ')} name issue ${group.issue}, which cannot be read: ${error.message}` })
+      if (error) problems.push({ id: group.issue, about: 'issue', code: error.code, message: `requests ${group.requests.join(', ')} name issue ${group.issue}, which cannot be read: ${error.message}` })
       return {
         ...group,
         issue: { id: group.issue, title: issue?.title ?? null, status: issue?.status ?? null, priority: issue?.priority ?? null },
         customers: group.customers.map((customerId) => {
           const found = customers.get(customerId)
-          if (!found) problems.push({ id: customerId, code: 'NOT_FOUND', message: `customer ${customerId} has no readable file; its name, tier and revenue are unknown` })
+          if (!found) problems.push({ id: customerId, about: 'customer', code: 'NOT_FOUND', message: `customer ${customerId} has no readable file; its name, tier and revenue are unknown` })
           return { id: customerId, name: found?.name ?? null, tier: named(found?.tier), revenue: found?.revenue ?? null, size: found?.size ?? null }
         }),
       }

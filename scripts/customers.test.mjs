@@ -355,3 +355,12 @@ test('accept and decline return the problems of the links they could not read', 
   assert.deepEqual(tracker.declineRequest('REQ-1', 'No', 'fred', { dryRun: true }).problems.map((problem) => problem.id), ['REQ-1'])
   assert.deepEqual(tracker.declineRequest('REQ-2', 'No', 'fred').problems, [])
 })
+
+// PMK-204: what a demand problem is about, so a command can tell a problem that concerns a candidate from one that does not.
+test('listDemandSignals says what each problem is about', () => {
+  const { write, tracker } = setup()
+  write('requests', 'REQ-1.md', '---\ntitle: T\ncustomer: CUS-4\nstate: accepted\nissue: ISS-ZZZZ\n---\n')
+  write('requests', 'REQ-2.md', '<<<<<<< HEAD\ntitle: Broken\n=======\n>>>>>>> other\n')
+  const { problems } = tracker.listDemandSignals()
+  assert.deepEqual(problems.map((problem) => [problem.id, problem.about]).sort(), [['CUS-4', 'customer'], ['ISS-ZZZZ', 'issue'], ['REQ-2', 'request']])
+})
