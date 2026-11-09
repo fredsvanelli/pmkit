@@ -142,9 +142,12 @@ test('readExistingIssues reads with a large limit and flags a read the tracker c
   assert.deepEqual(broken.unread, { count: 2, ids: ['ISS-9'] })
   assert.equal(calls[0].archived, true)
   assert.ok(calls[0].limit >= 10000)
-  assert.equal((await readExistingIssues(tracker({ issues: [], problems: [], hasMore: true }))).incomplete, true)
+  const more = await readExistingIssues(tracker({ issues: [], problems: [], hasMore: true }))
+  assert.deepEqual([more.incomplete, more.cut, more.unread.count], [true, true, 0])
   const full = Array.from({ length: 5 }, (_, i) => issue(`ISS-${i}`))
-  assert.equal((await readExistingIssues(tracker({ issues: full, problems: [] }), { limit: 5 })).incomplete, true)
+  const atLimit = await readExistingIssues(tracker({ issues: full, problems: [] }), { limit: 5 })
+  assert.deepEqual([atLimit.incomplete, atLimit.cut], [true, true])
+  assert.equal(broken.cut, false)
 })
 
 test('findTodos reads a file with CRLF line endings', () => {
@@ -170,6 +173,7 @@ test('findTodos reads the block comments of sql, lua and hs', () => {
   assert.deepEqual(tags('x = 1\n--[[ TODO: lua block ]]\n--[[\nFIXME: lua inner\n]]\n', 'a.lua'), [[2, 'TODO', 'lua block'], [4, 'FIXME', 'lua inner']])
   assert.deepEqual(tags('x = 1\n{- TODO: hs block -}\n', 'a.hs'), [[2, 'TODO', 'hs block']])
   assert.deepEqual(tags('--[ not a block\nTODO: x\n-- TODO: after\n', 'a.lua'), [[3, 'TODO', 'after']])
+  assert.deepEqual(tags("f' x = 1 -- TODO: after a prime\ng = 'a' -- TODO: after a char\n", 'a.hs'), [[1, 'TODO', 'after a prime'], [2, 'TODO', 'after a char']])
   assert.deepEqual(tags("SELECT '/* TODO: x */';\n", 'a.sql'), [])
 })
 

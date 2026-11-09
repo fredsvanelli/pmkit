@@ -48,6 +48,6 @@ The parser reads comment marks by file type. It is a heuristic, and these cases 
 - The CLI answers `INVALID_INPUT` because the folder is not a git repository: say the scan needs git to honor `.gitignore`, and stop.
 - The CLI answers `NOT_CONFIGURED` because git is not installed: show the message and stop.
 - `--path` is outside the repository (`../x`, an absolute path) or does not exist: the CLI answers `INVALID_INPUT`. The path is relative to the repository root, not to the current folder. Ask for a path inside it that exists.
-- The scan finds no `TODO` or `FIXME` comment: say so and stop. The tag must be the first word of a comment in a known language (JavaScript and TypeScript, Python, shell, Ruby, Go, Rust, CSS, HTML, YAML), and Markdown counts only inside `<!-- -->`.
+- The scan finds no `TODO` or `FIXME` comment: say so and stop. The tag must be the first word of a comment in a known language (JavaScript and TypeScript, Python, shell, Ruby, Go, Rust, CSS, HTML, YAML, SQL, Lua, Haskell), and Markdown counts only inside `<!-- -->`.
 - The warning says some comments have no text: repeat it. The command skips them.
 - An error from the CLI: apply the rules for reading errors in the conventions.

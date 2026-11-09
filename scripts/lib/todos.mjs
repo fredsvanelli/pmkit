@@ -27,7 +27,7 @@ const STYLES = {
   // ponytail: Lua `--[=[` levels and long strings, and nested `{- -}` in Haskell, are not read; add when a repo needs them.
   sql: { line: ['--'], block: [['/*', '*/']], strings: ['"', "'"] },
   lua: { line: ['--'], block: [['--[[', ']]']], strings: ['"', "'"] },
-  hs: { line: ['--'], block: [['{-', '-}']], strings: ['"'] },
+  hs: { line: ['--'], block: [['{-', '-}']], strings: ['"'], chars: true }, // chars: a prime (foldl') or 'a' is not a string
   go: { line: ['//'], block: [['/*', '*/']], strings: ['"', '`'], chars: true },
   rs: { line: ['//'], block: [['/*', '*/']], strings: ['"'], chars: true },
   css: { block: [['/*', '*/']] },
