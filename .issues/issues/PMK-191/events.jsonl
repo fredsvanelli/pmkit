@@ -1,2 +1,5 @@
 {"at":"2026-10-31T16:59:11Z","by":"fred","op":"create","to":{"id":"PMK-191","title":"Make the ctime test of query-index stable","type":"bug","status":"backlog","priority":"low","estimate":1,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-31T16:59:11.658Z","updated":"2026-10-31T16:59:11Z"}}
 {"at":"2026-10-31T16:59:11Z","by":"fred","op":"link","field":"related","to":"PMK-52"}
+{"at":"2026-11-09T02:35:54Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-09T02:35:54Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-09T02:36:01Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-191-make-the-ctime-test-of-query-index"}
