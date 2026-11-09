@@ -22,7 +22,7 @@ import { buildRoadmapReview, roadmapReviewText } from './lib/roadmap-review.mjs'
 import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, FAILED_RUN, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 import { pathNote } from './lib/path-notes.mjs'
 import { planNextAdr } from './lib/adr.mjs'
-import { NO_MOVE_MESSAGES, chooseUnit, proposeMoves, teamLoad } from './lib/team-load.mjs'
+import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
 import { changeList, checkMembers, mergeCapacity, parseCapacityPairs, workingDays } from './lib/team-capacity.mjs'
 import { AGENT_ID, localRunLine } from './lib/delegation.mjs'
 import { delegationOf, prSummary, prText } from './lib/track-agents.mjs'
@@ -2329,40 +2329,50 @@ async function teamLoadReport(ctx, { wanted, requireSprint = false, capacity: ca
   const notes = []
   const warnings = []
   let sprint = null
+  let noSprintNamed = false
   if (wanted === undefined || wanted === 'current') {
     // A Linear team with cycles off has no active sprint: the load covers all open work, and the cycles note says why.
+    let cyclesOff = false
     try {
       sprint = await tracker.currentCycle()
     } catch (error) {
       if (!isPmkitError(error) || error.code !== 'NOT_SUPPORTED') throw error
+      cyclesOff = true
       notes.push(...(await capabilityNotes(tracker, 'cycles')))
     }
     if (sprint === null && requireSprint) throw new PmkitError('NOT_FOUND', 'no sprint is active', 'Create one with /pmkit:cycle:plan, or name a sprint with --sprint <id>')
-    if (sprint === null) notes.push('no active sprint: counted every open issue in todo, in_progress and in_review')
+    // An explicit `--sprint current` with cycles on and no active sprint matches no issue, as `issues list --sprint current` does.
+    noSprintNamed = sprint === null && wanted === 'current' && !cyclesOff
+    if (sprint === null && !noSprintNamed) notes.push('no active sprint: counted every open issue in todo, in_progress and in_review')
   } else {
     // An explicit sprint needs cycles: listCycles answers NOT_SUPPORTED when the tracker has none.
     sprint = (await tracker.listCycles({})).find((item) => item.id === wanted) ?? null
     if (sprint === null) throw new PmkitError('NOT_FOUND', `sprint ${wanted} does not exist`, 'pmkit cycle list')
   }
-  const found = await tracker.searchIssues({ categories: LOAD_CATEGORIES, ...(sprint ? { sprint: sprint.id } : {}) })
+  const found = noSprintNamed ? { issues: [], problems: [], hasMore: false } : await tracker.searchIssues({ categories: LOAD_CATEGORIES, ...(sprint ? { sprint: sprint.id } : {}) })
+  if (noSprintNamed) warnings.push('there is no active sprint, so --sprint current matches no issues; run pmkit cycle list')
   warnings.push(...found.problems.map(problemLine))
   const truncated = found.hasMore === true
   if (truncated) warnings.push('the issue read was cut before the end, so the load covers only part of the scope and no move is proposed')
   const capabilities = (await tracker.capabilities()).capabilities
   const estimation = capabilities.find((c) => c.id === 'estimation')
   const choice = chooseUnit(found.issues, estimation)
-  if (choice.unit === 'issues') notes.push(`counted issues instead of estimates: ${choice.reason}${estimation?.path === 'absent' && estimation.enableHint ? ` (${estimation.enableHint})` : ''}`)
+  if (choice.unit === 'issues' && !noSprintNamed) notes.push(`counted issues instead of estimates: ${choice.reason}${estimation?.path === 'absent' && estimation.enableHint ? ` (${estimation.enableHint})` : ''}`)
   if (estimation?.path === 'conditional') notes.push(...(await capabilityNotes(tracker, 'estimation')))
   const capacity = capacityOverride ?? (sprint ? await orSupported(() => tracker.getCapacity(sprint.id), {}) : {})
   const daysOff = daysOffOverride ?? (sprint ? await orSupported(() => tracker.getDaysOff(sprint.id), {}) : {})
   if (sprint) notes.push(...(await capabilityNotes(tracker, 'capacity')))
   let ages = []
-  if (withAging) {
+  // With no active sprint named nothing was read, so there is no age to compute.
+  const aged = withAging && !noSprintNamed
+  if (aged) {
     const { categoryOf, events, warnings: capped } = await flowInputs(tracker)
     warnings.push(...capped)
     ages = aging(events, { categoryOf, asOf: ctx.now().toISOString().replace(/\.\d{3}Z$/, 'Z') })
   }
   const report = teamLoad(found.issues, { members: teamMembers((await tracker.discover()).members, ctx.config().pmkit?.tracker?.scope?.team), aging: ages, capacity, daysOff, unit: choice.unit })
+  // Nothing was read, so nobody is known to have no work.
+  if (noSprintNamed) report.noWork = []
   if (report.unknownLoad.length > 0) {
     const n = report.unknownLoad.length
     notes.push(`${n} ${n === 1 ? 'member has' : 'members have'} open issues and no estimate: their load is unknown, so they stay out of the average, the flags and the proposed moves`)
@@ -2371,10 +2381,10 @@ async function teamLoadReport(ctx, { wanted, requireSprint = false, capacity: ca
   if (choice.unit !== 'issues' && counted.some((n) => n > 0)) {
     warnings.push(`some issues have no estimate and count 0 ${choice.unit}; the Unestimated column shows how many per member`)
   }
-  if (withAging) notes.push(...(await metricNotes(tracker, 'aging')))
+  if (aged) notes.push(...(await metricNotes(tracker, 'aging')))
   const proposal = truncated ? { moves: [], reason: null } : proposeMoves(report, found.issues)
   const suggestions = proposal.moves
-  const noMoves = proposal.reason === null ? null : { reason: proposal.reason, message: NO_MOVE_MESSAGES[proposal.reason] }
+  const noMoves = proposal.reason === null ? null : { reason: proposal.reason, message: noMoveMessage(proposal.reason, report.imbalances) }
   const data = { sprint: sprint ? { id: sprint.id, name: sprint.name, start: sprint.start, end: sprint.end } : null, truncated, ...report, suggestions, noMoves }
   return { data, warnings, notes, sprint, incomplete: truncated || found.problems.length > 0 }
 }
@@ -2455,10 +2465,10 @@ function teamLoadText(data) {
       ]),
     ),
   ]
-  if (data.imbalances.length > 0) lines.push('imbalances:', ...data.imbalances.map((item) => `  ${item.member}: ${item.flag}, load ${item.load}, limit ${item.limit}`))
+  if (data.imbalances.length > 0) lines.push('imbalances:', ...data.imbalances.map((item) => `  ${item.member}: ${item.flag}, load ${item.load ?? 'unknown'}, limit ${item.limit}`))
   if (data.noWork.length > 0) lines.push(`no work in scope: ${data.noWork.map((item) => item.member + (item.daysOff.length > 0 ? ` (days off ${item.daysOff.join(', ')})` : '')).join(', ')}`)
   if (data.noMoves) lines.push(`no proposed moves: ${data.noMoves.message}`)
-  if (data.suggestions.length > 0) lines.push('proposed moves:', ...data.suggestions.map((move) => `  ${move.issue}: ${move.from} to ${move.to}`))
+  if (data.suggestions.length > 0) lines.push('proposed moves:', ...data.suggestions.map((move) => `  ${move.issue}: ${move.from} to ${move.to}${move.unsized ? ` (${move.unsized === 'unestimated' ? 'no estimate' : 'estimate 0'}, load effect unknown)` : ''}`))
   return lines.join('\n')
 }
 

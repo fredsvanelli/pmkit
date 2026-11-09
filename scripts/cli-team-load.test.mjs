@@ -166,3 +166,49 @@ test('team load puts an unassigned issue and an agent member outside the balance
   assert.deepEqual([agent.agent, agent.issues], [true, 1])
   assert.equal(data.average, 8, 'the average of fred (3) and ana (13), without the agent')
 })
+
+test('team load --sprint current with no active sprint reads nothing and warns, as issues list --sprint current does', async () => {
+  const root = makeRepo('no-sprints')
+  const list = await run(['issues', 'list', '--sprint', 'current', '--json'], { cwd: root, env })
+  const warning = 'warning: there is no active sprint, so --sprint current matches no issues; run pmkit cycle list'
+  assert.match(list.stderr, new RegExp(warning))
+  const { code, data, stderr, notes } = await load(root, ['--sprint', 'current'])
+  assert.equal(code, 0, stderr)
+  assert.equal(data.sprint, null)
+  assert.deepEqual(data.rows.map((row) => row.issues), [0, 0])
+  assert.equal(data.unassigned.issues, 0)
+  assert.match(stderr, new RegExp(warning))
+  assert.ok(!notes.some((line) => line.startsWith('note: no active sprint')), notes.join('\n'))
+})
+
+test('team load --sprint current with no active sprint says nothing false about estimates', async () => {
+  const root = makeRepo('no-sprints')
+  const { stderr, notes } = await load(root, ['--sprint', 'current'])
+  assert.ok(!notes.some((line) => /no issue in scope has an estimate|estimates are off/.test(line)), notes.join('\n'))
+  assert.match(stderr, /there is no active sprint/)
+})
+
+test('team load without the flag, and with a sprint id, still counts what the sprint or all open work holds', async () => {
+  const none = await load(makeRepo('no-sprints'))
+  assert.deepEqual([rowOf(none.data, 'fred').issues, rowOf(none.data, 'ana').issues], [1, 1])
+  const named = await load(makeRepo('team'), ['--sprint', '2026-10-12'])
+  assert.equal(named.data.sprint.id, '2026-10-12')
+})
+
+test('team load --sprint current with no active sprint has no noWork list and no aging note', async () => {
+  const { data, notes } = await load(makeRepo('no-sprints'), ['--sprint', 'current'])
+  assert.deepEqual(data.noWork, [], 'nobody was read, so nobody is known to have no work')
+  assert.ok(!notes.some((line) => /aging/.test(line)), notes.join('\n'))
+  assert.doesNotMatch((await run(['team', 'load', '--sprint', 'current'], { cwd: makeRepo('no-sprints'), env })).stdout, /no work in scope/)
+})
+
+test('team load prints load unknown, not null, for a no_availability member whose issues have no estimate', async () => {
+  const root = makeRepo('team')
+  const file = path.join(root, '.issues/config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/(\n\s+ana: \{[^}]*availability: )[\d.]+/, '$10'))
+  setEstimate(root, 'ISS-2X6D', null)
+  setEstimate(root, 'ISS-8C4W', null)
+  const text = (await run(['team', 'load'], { cwd: root, env })).stdout
+  assert.match(text, /ana: no_availability, load unknown, limit 0/)
+  assert.doesNotMatch(text, /load null/)
+})
