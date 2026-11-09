@@ -2,14 +2,14 @@
 id: PMK-181
 title: Fix parseDelegation on trailing spaces and the delegate identity text
 type: bug
-status: in_progress
+status: in_review
 priority: medium
 estimate: 1
 assignee: fred
 related: [PMK-57]
 branch: pmk-181-fix-parsedelegation-on-trailing-spaces
 created: 2026-10-31T16:01:17.026Z
-updated: 2026-11-09T00:55:08Z
+updated: 2026-11-09T00:59:06Z
 ---
 
 ## Description
