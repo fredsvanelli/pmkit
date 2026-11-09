@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-46]
 branch: pmk-190-fix-the-order-and-the-unread-records-of
 created: 2026-10-31T16:59:11.453Z
-updated: 2026-11-09T02:35:51Z
+updated: 2026-11-09T02:47:46Z
 ---
 
 ## Description
@@ -34,8 +34,8 @@ Customers and requests on the Local tracker (PMK-46) merged with these defects, 
 
 ## Acceptance criteria
 
-- [ ] `customers show` sorts requests as Linear does
-- [ ] The inbox sorts by instant, not by text
-- [ ] `requests get` returns `problems` and never prints `by null`
-- [ ] `validate` reports a reference to an unreadable customer, and `requests list --customer` refuses an unknown customer
-- [ ] The Linear manifest lists every unsupported request operation
+- [x] `customers show` sorts requests as Linear does
+- [x] The inbox sorts by instant, not by text
+- [x] `requests get` returns `problems` and never prints `by null`
+- [x] `validate` reports a reference to an unreadable customer, and `requests list --customer` refuses an unknown customer
+- [x] The Linear manifest lists every unsupported request operation
