@@ -2,12 +2,14 @@
 id: PMK-207
 title: Fix the dry-run and customer paths of the request queue
 type: bug
-status: backlog
+status: in_progress
 priority: medium
 estimate: 2
+assignee: fred
 related: [PMK-70]
+branch: pmk-207-fix-the-dry-run-and-customer-paths-of
 created: 2026-11-08T04:05:51.296Z
-updated: 2026-11-08T04:05:51Z
+updated: 2026-11-09T23:47:18Z
 ---
 
 ## Description

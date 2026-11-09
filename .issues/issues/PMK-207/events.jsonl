@@ -1,2 +1,5 @@
 {"at":"2026-11-08T04:05:51Z","by":"fred","op":"create","to":{"id":"PMK-207","title":"Fix the dry-run and customer paths of the request queue","type":"bug","status":"backlog","priority":"medium","estimate":2,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-08T04:05:51.296Z","updated":"2026-11-08T04:05:51Z"}}
 {"at":"2026-11-08T04:05:51Z","by":"fred","op":"link","field":"related","to":"PMK-70"}
+{"at":"2026-11-09T23:47:15Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-09T23:47:15Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-09T23:47:18Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-207-fix-the-dry-run-and-customer-paths-of"}
