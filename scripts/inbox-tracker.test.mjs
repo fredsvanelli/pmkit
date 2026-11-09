@@ -21,6 +21,20 @@ function configure(root) {
   ))
 }
 
+const gitIn = (cwd, ...args) => {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@x.dev', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@x.dev' } })
+  assert.equal(result.status, 0, result.stderr)
+  return result.stdout
+}
+const gitRepo = () => {
+  const root = makeRepo('no-sprints')
+  configure(root)
+  gitIn(root, 'init', '-q', '-b', 'main')
+  gitIn(root, 'add', '-A')
+  gitIn(root, 'commit', '-q', '-m', 'start')
+  return root
+}
+
 function setup(root = makeRepo('no-sprints'), { env = userStoreEnv().env } = {}) {
   configure(root)
   let current = '2026-10-31T10:00:00Z'
@@ -83,7 +97,7 @@ test('a description mention is keyed by its text: editing it is a new item, edit
   const { tracker, setNow, keys } = setup()
   const { id } = tracker.createIssue({ title: 'D', description: 'Intro.\n\ncc @fred please' }, 'ana').after
   const [first] = tracker.listNotifications({ user: 'fred', since: SINCE }).items
-  assert.deepEqual(keys([first]), [`mention:${id}:description:ana`])
+  assert.deepEqual(keys([first]), [`mention:${id}:description:null`])
   assert.match(first.key, new RegExp(`^description:${id}:[0-9a-f]{12}$`))
   setNow('2026-10-31T10:30:00Z')
   tracker.markRead({ user: 'fred' })
@@ -208,7 +222,7 @@ test('markRead records the seen keys, the list hides them and shows what comes l
   setNow('2026-10-31T10:10:00Z')
   const [item] = tracker.listNotifications({ user: 'fred' }).items
   const dry = tracker.markRead({ user: 'fred', dryRun: true })
-  assert.deepEqual(dry, { user: 'fred', previous: null, recorded: '2026-10-31T10:10:00Z', marked: [item.key], pruned: 0, changed: true, dryRun: true })
+  assert.deepEqual(dry, { user: 'fred', previous: null, recorded: '2026-10-31T10:10:00Z', marked: [item.key], unknown: [], pruned: 0, changed: true, dryRun: true, note: null })
   assert.equal(inboxGet(root, 'fred', { env }), null)
   const done = tracker.markRead({ user: 'fred' })
   assert.deepEqual([done.changed, done.marked], [true, [item.key]])
@@ -222,7 +236,7 @@ test('markRead records the seen keys, the list hides them and shows what comes l
   assert.equal(tracker.listNotifications({ user: 'fred' }).items.length, 1)
   const again = tracker.markRead({ user: 'fred' })
   assert.equal(again.marked.length, 1)
-  assert.deepEqual(tracker.markRead({ user: 'fred' }), { user: 'fred', previous: '2026-10-31T10:20:00Z', recorded: '2026-10-31T10:20:00Z', marked: [], pruned: 0, changed: false, dryRun: false })
+  assert.deepEqual(tracker.markRead({ user: 'fred' }), { user: 'fred', previous: '2026-10-31T10:20:00Z', recorded: '2026-10-31T10:20:00Z', marked: [], unknown: [], pruned: 0, changed: false, dryRun: false, note: null })
 })
 
 test('an item that arrives in the second of the list, or after it, stays unread when the member marks the keys the list showed', () => {
@@ -340,23 +354,25 @@ test('since takes only a strict timestamp with a zone', () => {
   assert.equal(tracker.listNotifications({ user: 'fred', since: '2026-10-31T12:00:00+02:00' }).since, '2026-10-31T10:00:00Z')
 })
 
-test('markRead with keys marks only those, refuses an unknown key and takes none of the others', () => {
-  const { tracker, setNow, root, env } = setup()
+test('markRead with keys marks only those, reports an unknown key and marks the others', () => {
+  const { tracker, setNow } = setup()
   const a = tracker.createIssue({ title: 'A' }, 'ana').after.id
   const b = tracker.createIssue({ title: 'B' }, 'ana').after.id
   setNow('2026-10-31T10:05:00Z')
   tracker.assign(a, 'fred', 'ana')
   tracker.assign(b, 'fred', 'ana')
   const items = tracker.listNotifications({ user: 'fred', since: SINCE }).items
-  assert.throws(() => tracker.markRead({ user: 'fred', keys: [items[0].key, 'assign:ISS-0:000000000000'] }), (e) => e.code === 'INVALID_INPUT' && e.message.includes('assign:ISS-0:000000000000'))
-  assert.equal(inboxGet(root, 'fred', { env }), null)
-  assert.deepEqual(tracker.markRead({ user: 'fred', keys: [items[0].key] }).marked, [items[0].key])
+  const lost = 'assign:ISS-0:000000000000'
+  const result = tracker.markRead({ user: 'fred', keys: [items[0].key, lost] })
+  assert.deepEqual([result.marked, result.unknown], [[items[0].key], [lost]])
   assert.deepEqual(tracker.listNotifications({ user: 'fred' }).items.map((item) => item.key), [items[1].key])
+  assert.deepEqual(tracker.markRead({ user: 'fred', keys: [lost] }).unknown, [lost])
   assert.deepEqual(tracker.markRead({ user: 'fred', keys: [] }).marked, [])
+  assert.deepEqual(tracker.markRead({ user: 'fred' }).unknown, [])
 })
 
 test('the seen keys of items that no longer exist are dropped after 30 days, and kept before that', () => {
-  const { tracker, setNow, root, env, paths } = setup()
+  const { tracker, setNow, root, env, paths } = setup(gitRepo())
   const a = tracker.createIssue({ title: 'A' }, 'ana').after.id
   const b = tracker.createIssue({ title: 'B' }, 'ana').after.id
   setNow('2026-10-31T10:00:00Z')
@@ -399,18 +415,35 @@ test('a broken comment, issue file or events line makes the inbox incomplete and
   assert.equal(fs.existsSync(path.join(userDir({ env }), 'inbox')), false)
 })
 
-test('a comment without frontmatter and an event with a bad time are read, dated by their file, and are no problem', () => {
+test('a comment without frontmatter is read and dated by its file, and is no problem', () => {
   const { tracker, setNow, paths } = setup()
   const { id } = tracker.createIssue({ title: 'Hand' }, 'ana').after
   setNow('2026-10-31T10:05:00Z')
   fs.mkdirSync(paths(id).comments, { recursive: true })
   fs.writeFileSync(path.join(paths(id).comments, 'by-hand.md'), '@fred please look\n')
-  fs.appendFileSync(paths(id).events, `${JSON.stringify({ at: 'yesterday', by: 'ana', op: 'assign', field: 'assignee', from: null, to: 'fred' })}\n`)
   const result = tracker.listNotifications({ user: 'fred', since: '2000-01-01T00:00:00Z' })
   assert.equal(result.complete, true, JSON.stringify(result.problems))
-  assert.deepEqual(result.items.map((item) => item.kind).sort(), ['assignment', 'mention'])
   assert.ok(result.items.every((item) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(item.at)))
-  assert.equal(tracker.markRead({ user: 'fred' }).marked.length, 2)
+  assert.equal(tracker.markRead({ user: 'fred' }).marked.length, 1)
+})
+
+test('PMK-195: an event or comment with an unreadable time is a problem, still dated by its file, and blocks markRead', () => {
+  const { tracker, setNow, paths, env } = setup()
+  const { id } = tracker.createIssue({ title: 'Hand' }, 'ana').after
+  setNow('2026-10-31T10:05:00Z')
+  fs.appendFileSync(paths(id).events, `${JSON.stringify({ at: 'yesterday', by: 'ana', op: 'assign', field: 'assignee', from: null, to: 'fred' })}\n`)
+  const first = tracker.listNotifications({ user: 'fred', since: '2000-01-01T00:00:00Z' })
+  assert.equal(first.complete, false)
+  assert.deepEqual(first.problems.map((problem) => [problem.id, problem.code]), [[id, 'INVALID_INPUT']])
+  assert.match(first.problems[0].message, /yesterday/)
+  assert.deepEqual(first.items.map((item) => item.kind), ['assignment'])
+  fs.mkdirSync(paths(id).comments, { recursive: true })
+  fs.writeFileSync(path.join(paths(id).comments, 'late.md'), '---\nauthor: ana\ncreated: soon\n---\n@fred hi\n')
+  const second = tracker.listNotifications({ user: 'fred', since: '2000-01-01T00:00:00Z' })
+  assert.equal(second.problems.length, 2)
+  assert.match(second.problems[1].message, /comment late\.md.*soon/)
+  assert.throws(() => tracker.markRead({ user: 'fred' }), (error) => error.code === 'INVALID_INPUT')
+  assert.equal(fs.existsSync(path.join(userDir({ env }), 'inbox')), false)
 })
 
 test('a bad check of one member does not block another member', () => {
@@ -459,4 +492,117 @@ test('listNotifications changes no file under the repository', () => {
   tracker.listNotifications({ user: 'fred', all: true })
   tracker.markRead({ user: 'fred' })
   assert.equal(hashTree(root), before)
+})
+
+test('PMK-195: a description or criteria item has no author, and a comment without an author has by null', () => {
+  const { tracker, setNow, paths } = setup()
+  const { id } = tracker.createIssue({ title: 'D', description: 'Intro.\n\n@fred please check', acceptanceCriteria: [{ text: '@fred signs off', done: false }] }, 'ana').after
+  setNow('2026-10-31T10:30:00Z')
+  tracker.updateIssue(id, { description: 'Intro changed.\n\n@fred please check' }, 'agent:claude')
+  fs.mkdirSync(paths(id).comments, { recursive: true })
+  fs.writeFileSync(path.join(paths(id).comments, 'by-hand.md'), '@fred please look\n')
+  fs.writeFileSync(path.join(paths(id).comments, 'no-author.md'), '---\ncreated: 2026-10-31T10:00:00Z\n---\n@fred hi\n')
+  const items = tracker.listNotifications({ user: 'fred', since: SINCE }).items
+  assert.deepEqual(items.map((item) => [item.in, item.by]).sort(), [['acceptance_criteria', null], ['comment', null], ['comment', null], ['description', null]])
+})
+
+test('PMK-195: a mention under a section such as Notes is in the description, only a criterion is a criterion', () => {
+  const { tracker, paths } = setup()
+  const { id } = tracker.createIssue({ title: 'N', description: 'Plain.', acceptanceCriteria: [{ text: '@fred sign off', done: false }] }, 'ana').after
+  fs.appendFileSync(paths(id).file, '\n## Notes\n\n@fred see the notes\n')
+  const items = tracker.listNotifications({ user: 'fred', since: SINCE }).items
+  assert.deepEqual(items.map((item) => [item.in, item.excerpt]).sort(), [['acceptance_criteria', '- [ ] @fred sign off'], ['description', '@fred see the notes']])
+})
+
+test('PMK-195: the prune keeps the seen key of an item that exists on another branch, and drops one that exists nowhere', () => {
+  const git = (cwd, ...args) => {
+    const result = spawnSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@x.dev', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@x.dev' } })
+    assert.equal(result.status, 0, result.stderr)
+    return result.stdout
+  }
+  const root = makeRepo('no-sprints')
+  configure(root)
+  git(root, 'init', '-q', '-b', 'main')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-q', '-m', 'start')
+  git(root, 'switch', '-q', '-c', 'side')
+  const { tracker, setNow, paths, env } = setup(root)
+  const onBranch = tracker.createIssue({ title: 'Branch' }, 'ana').after.id
+  setNow('2026-10-31T10:00:00Z')
+  tracker.assign(onBranch, 'fred', 'ana')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-q', '-m', 'side')
+  const nowhere = tracker.createIssue({ title: 'Nowhere' }, 'ana').after.id
+  tracker.assign(nowhere, 'fred', 'ana')
+  tracker.markRead({ user: 'fred' })
+  git(root, 'switch', '-q', 'main')
+  fs.rmSync(paths(nowhere).dir, { recursive: true })
+  assert.equal(fs.existsSync(paths(onBranch).dir), false)
+  setNow('2026-12-05T10:00:00Z')
+  const result = tracker.markRead({ user: 'fred' })
+  assert.equal(result.pruned, 1)
+  assert.equal(Object.keys(inboxGet(root, 'fred', { env }).seen).length, 1)
+  git(root, 'switch', '-q', 'side')
+  assert.deepEqual(tracker.listNotifications({ user: 'fred' }).items, [])
+})
+
+test('PMK-195: the prune decides by item: the old key of an edited line or a deleted comment goes, though the issue is committed', () => {
+  const root = gitRepo()
+  const { tracker, setNow, paths, env } = setup(root)
+  const { id } = tracker.createIssue({ title: 'D', description: 'cc @fred first' }, 'ana').after
+  setNow('2026-10-31T10:00:00Z')
+  const posted = tracker.comment(id, '@fred look', 'ana')
+  gitIn(root, 'add', '-A')
+  gitIn(root, 'commit', '-q', '-m', 'one')
+  tracker.markRead({ user: 'fred' })
+  tracker.updateIssue(id, { description: 'cc @fred second' }, 'ana')
+  fs.rmSync(path.join(paths(id).comments, `${posted.id}.md`))
+  gitIn(root, 'add', '-A')
+  gitIn(root, 'commit', '-q', '-m', 'two')
+  setNow('2026-12-05T10:00:00Z')
+  const result = tracker.markRead({ user: 'fred' })
+  assert.equal(result.pruned, 2)
+  assert.equal(result.note, null)
+  assert.equal(Object.keys(inboxGet(root, 'fred', { env }).seen).length, 1)
+})
+
+test('PMK-195: the prune keeps the old keys of an edited line that another branch still has', () => {
+  const root = gitRepo()
+  const { tracker, setNow, env } = setup(root)
+  const { id } = tracker.createIssue({ title: 'D', description: 'cc @fred first' }, 'ana').after
+  setNow('2026-10-31T10:00:00Z')
+  gitIn(root, 'add', '-A')
+  gitIn(root, 'commit', '-q', '-m', 'one')
+  gitIn(root, 'branch', 'old')
+  tracker.markRead({ user: 'fred' })
+  tracker.updateIssue(id, { description: 'cc @fred second' }, 'ana')
+  gitIn(root, 'add', '-A')
+  gitIn(root, 'commit', '-q', '-m', 'two')
+  setNow('2026-12-05T10:00:00Z')
+  assert.equal(tracker.markRead({ user: 'fred' }).pruned, 0)
+  assert.equal(Object.keys(inboxGet(root, 'fred', { env }).seen).length, 2)
+})
+
+test('PMK-195: when the branches cannot be read the prune keeps every key and says so', () => {
+  const { tracker, setNow, root, env, paths } = setup()
+  const a = tracker.createIssue({ title: 'A' }, 'ana').after.id
+  setNow('2026-10-31T10:00:00Z')
+  tracker.assign(a, 'fred', 'ana')
+  tracker.markRead({ user: 'fred' })
+  fs.rmSync(paths(a).dir, { recursive: true })
+  setNow('2026-12-05T10:00:00Z')
+  const result = tracker.markRead({ user: 'fred' })
+  assert.deepEqual([result.pruned, result.changed], [0, false])
+  assert.match(result.note, /git/)
+  assert.equal(Object.keys(inboxGet(root, 'fred', { env }).seen).length, 1)
+})
+
+test('PMK-195: an empty created is no problem, and a repeated unknown key is listed once', () => {
+  const { tracker, paths } = setup()
+  const { id } = tracker.createIssue({ title: 'Hand' }, 'ana').after
+  fs.mkdirSync(paths(id).comments, { recursive: true })
+  fs.writeFileSync(path.join(paths(id).comments, 'empty.md'), '---\nauthor: ana\ncreated:\n---\n@fred hi\n')
+  const result = tracker.listNotifications({ user: 'fred', since: '2000-01-01T00:00:00Z' })
+  assert.equal(result.complete, true, JSON.stringify(result.problems))
+  assert.deepEqual(tracker.markRead({ user: 'fred', keys: ['x:ISS-0:a', 'x:ISS-0:a'] }).unknown, ['x:ISS-0:a'])
 })

@@ -59,7 +59,7 @@ test('inbox mark-read --dry-run writes nothing, --key marks only that key and th
   run(['issues', 'assign', 'ISS-2K5P', 'fred'], { user: 'ana', now: '2026-10-31T09:10:00Z' })
   const [first, second] = json(['inbox', 'list']).items
   const dry = json(['inbox', 'mark-read', '--dry-run'])
-  assert.deepEqual(dry, { user: 'fred', previous: null, recorded: '2026-10-31T10:00:00Z', marked: [first.key, second.key].sort(), pruned: 0, changed: true, dryRun: true })
+  assert.deepEqual(dry, { user: 'fred', previous: null, recorded: '2026-10-31T10:00:00Z', marked: [first.key, second.key].sort(), unknown: [], pruned: 0, changed: true, dryRun: true, note: null })
   assert.equal(fs.existsSync(path.join(store.PMKIT_HOME, 'inbox')), false)
   assert.match(run(['inbox', 'mark-read', '--dry-run']).stdout, /would mark 2 items read for fred\ndry run: nothing was written/)
   const done = json(['inbox', 'mark-read', '--key', first.key])
@@ -92,9 +92,19 @@ test('an incomplete inbox says so in the text, the warnings and the JSON, and ma
 
 test('inbox commands refuse a bad value with INVALID_INPUT', () => {
   const { run } = setup()
-  for (const args of [['inbox', 'list', '--since', 'later'], ['inbox', 'list', '--as', 'nobody'], ['inbox', 'mark-read', '--key', 'comment:ISS-1V9Z:none']]) {
+  for (const args of [['inbox', 'list', '--since', 'later'], ['inbox', 'list', '--as', 'nobody']]) {
     const result = run([...args, '--json'])
     assert.equal(result.status, 2, args.join(' '))
     assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT', args.join(' '))
   }
+})
+
+test('PMK-195: inbox mark-read marks the known keys, warns about an unknown key and exits 0', () => {
+  const { run, json } = setup()
+  run(['issues', 'assign', 'ISS-1V9Z', 'fred'], { user: 'ana', now: '2026-10-31T09:00:00Z' })
+  const first = json(['inbox', 'list', '--all']).items[0]
+  const result = run(['inbox', 'mark-read', '--key', first.key, '--key', 'comment:ISS-1V9Z:none', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.deepEqual([JSON.parse(result.stdout).marked, JSON.parse(result.stdout).unknown], [[first.key], ['comment:ISS-1V9Z:none']])
+  assert.match(result.stderr, /warning: no item has the key comment:ISS-1V9Z:none/)
 })

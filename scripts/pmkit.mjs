@@ -966,7 +966,7 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'inbox mark-read', summary: 'records the items a member has seen in the user store; --key marks only the keys the list showed, and with none it marks every unseen item; refuses when the inbox is incomplete',
+    name: 'inbox mark-read', summary: 'records the items a member has seen in the user store; --key marks only the keys the list showed, and with none it marks every unseen item; a key no item has is reported and the others are marked; refuses when the inbox is incomplete',
     usage: '[--as member] [--key key ...] [--dry-run]', flags: ['as', 'key'], dryRun: true,
     run: async (ctx) => {
       const keys = ctx.list('key')
@@ -975,7 +975,8 @@ export const COMMANDS = [
       const said = result.changed
         ? `${ctx.dryRun ? 'would mark' : 'marked'} ${count} read for ${result.user}${result.pruned > 0 ? `, and drop ${result.pruned} old ${result.pruned === 1 ? 'key' : 'keys'}` : ''}`
         : `nothing to mark read for ${result.user}`
-      return { data: result, text: ctx.dryRun ? `${said}\ndry run: nothing was written` : said }
+      const warnings = result.unknown.map((key) => `no item has the key ${key}; run pmkit inbox list --all for the keys`)
+      return { data: result, text: ctx.dryRun ? `${said}\ndry run: nothing was written` : said, warnings, notes: result.note === null ? [] : [result.note] }
     },
   },
   {

@@ -2,12 +2,14 @@
 id: PMK-195
 title: "Fix inbox authors, corrupt-file fallback and stale docs"
 type: bug
-status: backlog
+status: in_review
 priority: medium
 estimate: 2
+assignee: fred
 related: [PMK-47]
+branch: pmk-195-fix-inbox-authors-corrupt-file-fallback
 created: 2026-10-31T19:29:36.439Z
-updated: 2026-10-31T19:29:36Z
+updated: 2026-11-09T03:28:29Z
 ---
 
 ## Description
@@ -31,7 +33,7 @@ The user inbox (PMK-47) merged with these defects, found by the third and fourth
 
 ## Acceptance criteria
 
-- [ ] A description item reports an unknown author as `null` when the line's author cannot be known
-- [ ] An unreadable time is a `problem`, reported by `inbox list` and `validate`
-- [ ] An unknown key is reported and the other keys are marked
-- [ ] The JSDoc and the test name match the code
+- [x] A description item reports an unknown author as `null` when the line's author cannot be known
+- [x] An unreadable time is a `problem`, reported by `inbox list` and `validate`
+- [x] An unknown key is reported and the other keys are marked
+- [x] The JSDoc and the test name match the code

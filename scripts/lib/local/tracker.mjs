@@ -4,6 +4,7 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { requireActor, gitUserEmail } from '../actor.mjs'
 import { loadConfig, validateLocalConfig } from '../config.mjs'
 import { PmkitError } from '../errors.mjs'
@@ -11,7 +12,7 @@ import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
 import { removeKey, setScalar } from '../yaml-edit.mjs'
 import { isBranchName, isId, newId, nextNumberedId, normalizeId } from '../ids.mjs'
 import { CATEGORIES, LINK_KINDS, TERMINAL } from '../model.mjs'
-import { appendEvents, driftEvents, readEvents } from './events.mjs'
+import { appendEvents, driftEvents, parseEvents, readEvents } from './events.mjs'
 import { formatError } from './migrations.mjs'
 import {
   EPIC_KEYS, HEALTH, epicFrontmatter, parseEpicFile, parseUpdateFile, serializeEpic, serializeUpdate, sortEpics, sortUpdates, walkParents,
@@ -764,6 +765,13 @@ export function createLocalTracker(root, {
   const EPOCH = '1970-01-01T00:00:00Z'
   const digest = (text) => crypto.createHash('sha256').update(text).digest('hex').slice(0, 12)
 
+  /** The key of the assignment an event makes to `user`, or null when the event is not an assignment to the user by someone else. */
+  function assignmentKey(id, event, user) {
+    const assignee = event.op === 'create' ? event.to?.assignee : event.to
+    if (!(((event.op === 'assign' && event.field === 'assignee') || event.op === 'create') && assignee === user && event.by !== user)) return null
+    return `assign:${id}:${digest(JSON.stringify([event.at, event.by, event.op, event.field ?? null, assignee]))}`
+  }
+
   /** A timestamp as `YYYY-MM-DDTHH:MM:SSZ`, or null when it is not a date. */
   const inSeconds = (value) => {
     const time = typeof value === 'string' || typeof value === 'number' ? new Date(value) : new Date(Number.NaN)
@@ -804,29 +812,29 @@ export function createLocalTracker(root, {
       let touched
       for (const event of events) {
         const at = inSeconds(event.at) ?? modified(paths.events)
-        const assignee = event.op === 'create' ? event.to?.assignee : event.to
-        if (((event.op === 'assign' && event.field === 'assignee') || event.op === 'create') && assignee === user && event.by !== user) {
-          const key = `assign:${id}:${digest(JSON.stringify([event.at, event.by, event.op, event.field ?? null, assignee]))}`
+        const key = assignmentKey(id, event, user)
+        if (key !== null) {
           items.push(item(key, 'assignment', id, at, event.by, 'assignment', { synthetic: event.synthetic === true }))
         }
-        if (event.op === 'create' || (event.op === 'update' && event.field === 'description')) described = { at, by: event.by }
+        if (event.op === 'create' || (event.op === 'update' && event.field === 'description')) described = { at }
         if (event.op === 'create' || (event.op === 'update' && ['description', 'acceptance_criteria'].includes(event.field))) touched = { at }
       }
       const found = byId.get(id)
       if (found !== undefined) {
         // One item per line that mentions the user. The key is the issue and the text of the line, so editing that line is a new
-        // item and editing the rest of the body is not. The log does not say who wrote a line, so the author is the last description
-        // editor when that is someone else, and unknown otherwise. No item is dropped for its author.
+        // item and editing the rest of the body is not. The log does not say what an edit changed, so no line has a known author:
+        // `by` is null on every body item. No item is dropped for its author. Only the lines of the criteria list are criteria;
+        // a line under any other section, such as ## Notes, counts as description.
         const inDescription = new Set(findMentions(found.description, user, { full: true }).map(mentionText))
+        const inCriteria = new Set(found.acceptanceCriteria.map((criterion) => mentionText(criterion.text)))
         const lineKeys = new Set()
         for (const line of findMentions(found.body, user, { full: true })) {
           const text = mentionText(line)
           if (lineKeys.has(text)) continue
           lineKeys.add(text)
-          const where = inDescription.has(text) ? 'description' : 'acceptance_criteria'
-          const by = where === 'description' && described !== undefined && described.by !== user ? described.by : null
+          const where = !inDescription.has(text) && inCriteria.has(text) ? 'acceptance_criteria' : 'description'
           const at = (where === 'description' ? described?.at : touched?.at) ?? inSeconds(found.created) ?? modified(paths.file)
-          items.push(item(`description:${id}:${digest(text)}`, 'mention', id, at, by, where, { excerpt: line.slice(0, MAX_EXCERPT) }))
+          items.push(item(`description:${id}:${digest(text)}`, 'mention', id, at, null, where, { excerpt: line.slice(0, MAX_EXCERPT) }))
         }
       }
       if (!fs.existsSync(paths.comments)) continue
@@ -836,11 +844,13 @@ export function createLocalTracker(root, {
           const text = fs.readFileSync(file, 'utf8').replace(/\r\n?/g, '\n')
           const split = splitFrontmatter(text)
           const data = split ? parseYaml(split.yaml) : {}
-          const author = String(data.author ?? '')
+          const author = data.author == null || data.author === '' ? null : String(data.author)
+          const created = data.created == null ? null : inSeconds(String(data.created))
+          if (data.created != null && created === null) problem(`comment ${name} has created "${data.created}", which is not a time`)
           const excerpt = findMention((split ? split.body : text).trim(), user)
           if (excerpt !== null && author !== user) {
             const stem = path.basename(name, '.md')
-            const at = (data.created === undefined ? null : inSeconds(String(data.created))) ?? modified(file)
+            const at = created ?? modified(file)
             items.push(item(`comment:${id}:${stem}`, 'mention', id, at, author, 'comment', { comment: stem, excerpt }))
           }
         } catch (error) {
@@ -851,6 +861,56 @@ export function createLocalTracker(root, {
     const order = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
     items.sort((a, b) => order(a.at, b.at) || order(a.issue, b.issue) || order(a.kind, b.kind) || order(a.key, b.key))
     return { items, problems }
+  }
+
+  /**
+   * Reads files at the tips of the local and remote branches, for the prune: a seen key stays while its item is still on another
+   * branch, because a branch switch can take an item out of the checkout. The refs and each file are read once per call. Any git
+   * failure (no git, no repository, a timeout) throws, and the caller keeps the key. Reads only, so a timeout is safe.
+   */
+  function branchReader() {
+    const git = (...args) => spawnSync('git', args, { cwd: config.root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 10000 })
+    const files = new Map()
+    let refs
+    const text = (ref, file) => {
+      const slot = `${ref}\0${file}`
+      if (!files.has(slot)) {
+        const listed = git('ls-tree', '--name-only', ref, '--', file)
+        if (listed.status !== 0) throw new Error(`git ls-tree failed: ${listed.stderr ?? listed.error?.message}`)
+        const shown = listed.stdout.trim() === '' ? null : git('show', `${ref}:${file}`)
+        if (shown !== null && shown.status !== 0) throw new Error(`git show failed: ${shown.stderr ?? shown.error?.message}`)
+        files.set(slot, shown === null ? null : shown.stdout)
+      }
+      return files.get(slot)
+    }
+    const allRefs = () => {
+      if (refs === undefined) {
+        const listed = git('for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes')
+        if (listed.status !== 0) throw new Error(`git for-each-ref failed: ${listed.stderr ?? listed.error?.message}`)
+        refs = listed.stdout.split('\n').filter(Boolean)
+      }
+      return refs
+    }
+    /** True when the item of `key` is at the tip of any branch. */
+    const has = (key, user) => {
+      const [kind, id, ...rest] = key.split(':')
+      const tail = rest.join(':')
+      const folder = path.relative(config.root, path.join(issuesDir, 'issues', String(id))).split(path.sep).join('/')
+      return allRefs().some((ref) => {
+        if (kind === 'comment') return text(ref, `${folder}/comments/${tail}.md`) !== null
+        if (kind === 'assign') {
+          const log = text(ref, `${folder}/events.jsonl`)
+          return log !== null && parseEvents(log).events.some((event) => assignmentKey(id, event, user) === key)
+        }
+        if (kind === 'description') {
+          const file = text(ref, `${folder}/issue.md`)
+          const split = file === null ? null : splitFrontmatter(file.replace(/\r\n?/g, '\n'))
+          return split !== null && findMentions(split.body, user, { full: true }).some((line) => digest(mentionText(line)) === tail)
+        }
+        return false
+      })
+    }
+    return { has }
   }
 
   /**
@@ -884,9 +944,9 @@ export function createLocalTracker(root, {
 
   /**
    * Records the keys of the items the member has seen. With no `keys` it marks every unseen item now. `keys` marks exactly those,
-   * so an item that arrived after the list stays unseen. It refuses a key no item has, and it writes nothing when the read is
-   * incomplete, so a file that does not parse cannot get its items marked. The first mark-read also marks the items older than
-   * the 14 days the first list showed. It drops the seen keys of items that no longer exist once they are 30 days old.
+   * so an item that arrived after the list stays unseen. A key no item has is not an error: it comes back in `unknown` and the
+   * other keys are marked. It writes nothing when the read is incomplete, so a file that does not parse cannot get its items marked. The first mark-read also marks the items older than
+   * the 14 days the first list showed. It drops the seen keys of items that no longer exist, here and on every branch, once they are 30 days old.
    */
   function markRead({ user, keys, dryRun = false } = {}) {
     requireMember(user, 'user')
@@ -903,8 +963,7 @@ export function createLocalTracker(root, {
     }
     const seen = stored?.seen ?? {}
     const known = new Set(items.map((entry) => entry.key))
-    const unknown = (keys ?? []).filter((key) => !known.has(key))
-    if (unknown.length > 0) throw invalid(`no item has the key ${unknown.join(', ')}`, 'Run pmkit inbox list --all for the keys')
+    const unknown = [...new Set((keys ?? []).filter((key) => !known.has(key)))]
     const chosen = new Set(items.filter((entry) => !Object.hasOwn(seen, entry.key) && (keys === undefined || keys.includes(entry.key))).map((entry) => entry.key))
     // With keys the member marks exactly those, so the older items stay for the next list.
     if (stored === null && keys === undefined) {
@@ -915,15 +974,27 @@ export function createLocalTracker(root, {
     const oldest = now().getTime() - PRUNE_DAYS * DAY
     const kept = {}
     let pruned = 0
+    let note = null
+    const branches = branchReader()
     for (const [key, at] of Object.entries(seen)) {
-      if (known.has(key) || Date.parse(at) > oldest) kept[key] = at
+      let keep = known.has(key) || Date.parse(at) > oldest
+      if (!keep) {
+        try {
+          keep = branches.has(key, user)
+        } catch (error) {
+          // The branches cannot be read, so nothing proves the item is gone. Keeping is the safe side: a dropped key shows the item as unread again.
+          keep = true
+          note = `old seen keys were kept because git could not read the branches (${String(error.message).trim().split('\n')[0]})`
+        }
+      }
+      if (keep) kept[key] = at
       else pruned++
     }
     const marked = [...chosen].sort()
     for (const key of marked) kept[key] = recorded
     const changed = stored === null || marked.length > 0 || pruned > 0
     if (changed && !dryRun) inboxSet(config.root, user, { at: recorded, seen: kept }, inboxStore)
-    return { user, previous: stored?.at ?? null, recorded: changed ? recorded : stored.at, marked, pruned, changed, dryRun }
+    return { user, previous: stored?.at ?? null, recorded: changed ? recorded : stored.at, marked, unknown, pruned, changed, dryRun, note }
   }
 
   function discover() {

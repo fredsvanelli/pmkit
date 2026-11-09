@@ -517,3 +517,24 @@ test('an issue, archived or not, whose release has no file is a reference proble
   writeRelease(root, '9.9.9.md')
   assert.deepEqual(validateRepo(root).problems, [])
 })
+
+test('PMK-195: an event or a comment with an unreadable time is a problem', () => {
+  const root = makeRepo('team')
+  const id = 'ISS-1V9Z'
+  const dir = path.join(root, '.issues', 'issues', id)
+  fs.appendFileSync(path.join(dir, 'events.jsonl'), `${JSON.stringify({ at: 'yesterday', by: 'ana', op: 'update', field: 'title', from: 'a', to: 'b' })}\n`)
+  fs.mkdirSync(path.join(dir, 'comments'), { recursive: true })
+  fs.writeFileSync(path.join(dir, 'comments', 'late.md'), '---\nauthor: ana\ncreated: soon\n---\nhi\n')
+  fs.writeFileSync(path.join(dir, 'comments', 'broken.md'), '---\nauthor: [\n---\nhi\n')
+  const found = validateRepo(root).problems.filter((problem) => problem.path.includes(`${id}/`) && ['events', 'comment'].includes(problem.code))
+  assert.deepEqual(found.map((problem) => problem.code).sort(), ['comment', 'comment', 'events'])
+  assert.ok(found.some((problem) => /yesterday/.test(problem.message)) && found.some((problem) => /soon/.test(problem.message)))
+})
+
+test('PMK-195: a comment with an empty created is no problem', () => {
+  const root = makeRepo('team')
+  const dir = path.join(root, '.issues', 'issues', 'ISS-1V9Z', 'comments')
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'empty.md'), '---\nauthor: ana\ncreated:\n---\nhi\n')
+  assert.deepEqual(validateRepo(root).problems.filter((problem) => problem.code === 'comment'), [])
+})

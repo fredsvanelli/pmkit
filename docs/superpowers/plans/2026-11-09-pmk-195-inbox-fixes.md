@@ -1,0 +1,32 @@
+# PMK-195 Inbox Fixes Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (inline) with superpowers:test-driven-development.
+
+**Goal:** Fix inbox authors, corrupt-file fallback, unknown keys, prune across branches and stale docs.
+
+**Architecture:** Changes stay in `scanInbox` and `markRead` (`scripts/lib/local/tracker.mjs`), `readEvents`, `validate`, and the `inbox mark-read` command.
+
+**Tech Stack:** Node ESM, `node:test`, no dependencies (ADR-0003).
+
+**Spec:** `docs/superpowers/specs/2026-11-09-pmk-195-inbox-fixes-design.md`
+
+## Global Constraints
+
+- Item vocabulary `in` stays `assignment|description|acceptance_criteria|comment`; item keys unchanged.
+- No new dependency; git calls use `spawnSync` with a large `maxBuffer`, a timeout only on reads.
+- Every commit carries `(PMK-195)` and the `Co-Authored-By: Claude Opus 5.5` trailer.
+
+## Review Focus
+
+- Comment with `created` absent: no problem. Non-git repo: prune as before. All keys unknown: exit 0, nothing marked, `unknown` lists them.
+
+---
+
+
+1. **Authors (AC 1).** Test: a description item and a criteria item written by `ana`, then edited by `bob`, report `by: null`; a comment without frontmatter reports `by: null`. Change `scanInbox`: `by = null` for body items; `author` empty becomes `null`. Update the existing tests that expected `ana` on a description item.
+2. **Section (scope bullet).** Test: a mention under `## Notes` is `in: description`. Change `where` to use the parsed criteria texts.
+3. **Unreadable time (AC 2).** Tests: an event with `at: "yesterday"` and a comment with `created: yesterday` make `inbox list` `complete: false` with a problem, make `mark-read` refuse, and `validate` report them. Changes: `readEvents` keeps the event and reports the bad `at`; `scanInbox` reports a bad comment `created`; `validate` reads each comment frontmatter (unreadable or bad `created`, code `comment`). Rewrite the test at `inbox-tracker.test.mjs:402` that called this "no problem".
+4. **Unknown keys (AC 3).** Tests: `markRead` with a known and an unknown key marks the known and returns `unknown`; CLI prints `warning:` and exits 0; goldens regenerate. Change `markRead`, the `inbox mark-read` command text and summary.
+5. **Prune across branches (scope bullet).** Test: a key of an issue that exists only on another branch survives the prune after 30 days; one that exists nowhere is dropped. Add `existsInAnyBranch` (git `for-each-ref` + `ls-tree`, only for prune candidates).
+6. **Docs (AC 4).** `markRead` JSDoc, test name at line 343, PMK-47 spec "What counts" and "Mark read", `commands/issues/inbox-digest.md`, README, CHANGELOG under `## Unreleased`.
+7. **Verify.** `npm test` in the foreground (exit code 0), check the four criteria with `issues update PMK-195 --check n` (dry-run, then real), commit `.issues/`.
