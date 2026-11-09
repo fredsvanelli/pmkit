@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-58]
 branch: pmk-199-fix-track-agents-on-a-broken-comment-and
 created: 2026-10-31T20:35:31.270Z
-updated: 2026-11-09T03:59:24Z
+updated: 2026-11-09T04:01:23Z
 ---
 
 ## Description
@@ -31,6 +31,6 @@ updated: 2026-11-09T03:59:24Z
 
 ## Acceptance criteria
 
-- [ ] A broken comment marks its issue incomplete and the command goes on
-- [ ] Only a successful protection read is cached
-- [ ] The text of an incomplete or blocked list says what is unknown
+- [x] A broken comment marks its issue incomplete and the command goes on
+- [x] Only a successful protection read is cached
+- [x] The text of an incomplete or blocked list says what is unknown

@@ -29,7 +29,7 @@ import { delegationOf, prSummary, prText } from './lib/track-agents.mjs'
 import { SCANNERS, SEVERITIES, alertCandidate, collectAlerts, matchAlerts } from './lib/alerts.mjs'
 import { READ_LIMIT, groupTodos, matchTodos, readExistingIssues, scanRepo } from './lib/todos.mjs'
 import { validateRepo } from './lib/validate.mjs'
-import { parseYaml } from './lib/yaml.mjs'
+import { FrontmatterError, parseYaml } from './lib/yaml.mjs'
 import { addMapEntry, removeKey, setMap, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
 import { brokenMappings, parseMappingFlags, proposeMappings } from './lib/mappings.mjs'
 import { chooseRemote, inferHost } from './lib/git-remote.mjs'
@@ -2181,20 +2181,12 @@ async function runTrackAgents(ctx) {
     if (!isPmkitError(error) || error.code !== 'NOT_SUPPORTED') throw error
     notes.push('git_host is none, so the list has no pull request state')
   }
-  // The branch protection of a base does not change between issues, so it is read once per base. A failed read is kept and thrown again.
+  // The branch protection of a base does not change between issues, so it is read once per base. Only a successful read is kept: a failure (a 502, a rate limit) is thrown and the next issue reads again.
   const protections = new Map()
   const cachedHost = host === null ? null : Object.assign(Object.create(host), {
     branchProtection(base) {
-      if (!protections.has(base)) {
-        try {
-          protections.set(base, { value: host.branchProtection(base) })
-        } catch (error) {
-          protections.set(base, { error })
-        }
-      }
-      const kept = protections.get(base)
-      if (kept.error) throw kept.error
-      return kept.value
+      if (!protections.has(base)) protections.set(base, host.branchProtection(base))
+      return protections.get(base)
     },
   })
   let rateLimited = false
@@ -2205,9 +2197,11 @@ async function runTrackAgents(ctx) {
       const comments = await tracker.listComments(issue.id)
       row.delegation = delegationOf(comments, issue.assignee, { incomplete: comments.truncated === true })
     } catch (error) {
-      if (!isPmkitError(error) || error.code === 'NOT_CONFIGURED' || error.code === 'AUTH') throw error
+      // A comment file that does not parse throws FrontmatterError, which is not a PmkitError: it marks this issue, never the whole command.
+      const broken = error instanceof FrontmatterError
+      if (!broken && (!isPmkitError(error) || error.code === 'NOT_CONFIGURED' || error.code === 'AUTH')) throw error
       row.delegation = { state: 'unknown', agent: null, by: null, comment: null, at: null }
-      row.problems.push({ code: error.code, message: `the comments could not be read: ${error.message}` })
+      row.problems.push({ code: broken ? 'INVALID_INPUT' : error.code, message: `the comments could not be read: ${error.message}` })
     }
     if (host !== null) {
       if (!row.branch) row.pr = { state: 'no_branch' }
@@ -2229,13 +2223,21 @@ async function runTrackAgents(ctx) {
     for (const problem of row.problems) warnings.push(`${row.id}: ${problem.message}`)
     rows.push(row)
   }
-  if (incomplete) warnings.push('the list is incomplete: some reads failed, were cut, or were not ready (GitHub had not computed the merge state), so what is marked unknown or not verified is not confirmed')
+  // The causes that happened, so the line never blames GitHub for an issue file with a conflict marker.
+  const causes = []
+  if (found.problems.length > 0) causes.push('an issue file did not parse')
+  if (found.hasMore === true) causes.push('the issue read was cut')
+  if (rows.some((row) => row.delegation.state === 'unknown')) causes.push('the comments of an issue could not be read or were cut')
+  if (rows.some((row) => row.pr?.state === 'unknown')) causes.push('a pull request could not be read from GitHub')
+  if (rows.some((row) => row.pr?.blocked === null || (row.pr?.unchecked ?? []).length > 0)) causes.push('a pull request was not ready (GitHub had not computed the merge state) or a blocker read was refused')
+  const incompleteLine = `the list is incomplete: ${causes.join('; ') || 'some reads failed'}, so what is marked unknown or not verified is not confirmed`
+  if (incomplete) warnings.push(incompleteLine)
   if (host !== null) notes.push(...(await capabilityNotesOrNone(ctx)))
   const stale = rows.filter((row) => row.delegation.state === 'stale').length
   if (stale > 0) notes.push(`${stale} ${stale === 1 ? 'issue has' : 'issues have'} an agent as assignee but the newest delegation record names another agent`)
   const header = ['Issue', 'Agent', 'Status', 'Delegation', 'Branch', 'Pull request']
   const text = rows.length === 0
-    ? 'no open issue is assigned to an agent'
+    ? (incomplete ? `no agent issue was found, but ${incompleteLine}, and an agent issue may be missing` : 'no open issue is assigned to an agent')
     : table(header, rows.map((row) => [row.id, row.assignee, row.status, row.delegation.state === 'current' ? `by ${row.delegation.by}` : row.delegation.state === 'stale' ? `stale (${row.delegation.agent})` : row.delegation.state, row.branch ?? '', prText(row)]))
   return { data: { issues: rows, incomplete, hasMore: found.hasMore === true, warnings, notes }, text, warnings, notes }
 }

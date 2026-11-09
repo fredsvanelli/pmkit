@@ -41,3 +41,9 @@ test('prText says blocked, unknown blockers, and the missing pieces', () => {
   assert.equal(prText({ pr: { state: 'no_pr' }, branch: 'b' }), 'no pull request for b')
   assert.equal(prText({ pr: null }), '')
 })
+
+test('prText keeps what is not verified next to a blocked verdict (PMK-199)', () => {
+  const pr = { number: 3, state: 'open', blocked: true, blocking: ['x'], unknown: ['u1'], unchecked: ['checks'] }
+  assert.equal(prText({ pr }), '#3 open, blocked: x; not verified: u1; checks')
+  assert.equal(prText({ pr: { ...pr, blocked: null, blocking: [] } }), '#3 open, blockers not verified: u1; checks')
+})
