@@ -11,10 +11,13 @@ export const HARD_MAX = 200
 
 const invalid = (message, nextStep = 'pmkit issues bulk --help') => new PmkitError('INVALID_INPUT', message, nextStep)
 const orNull = (value) => (value === 'none' ? null : value)
-// A label is one name. `issues update --label` takes a list, but bulk adds or removes one label, so a comma is a mistake.
-const oneLabel = (value) => {
-  if (value.includes(',')) throw invalid(`"${value}" is one label with a comma in it; bulk adds or removes one label at a time`, 'Run the command once for each label')
-  return value
+// A label is one name, trimmed as `issues update --label` trims its list. Adding one with a comma is a mistake, because
+// `issues update --label` would read it back as two; removing one matches an existing label exactly, comma included.
+const oneLabel = (value, { allowComma = false } = {}) => {
+  const label = value.trim()
+  if (label === '') throw invalid('bulk needs a value')
+  if (!allowComma && label.includes(',')) throw invalid(`"${label}" is one label with a comma in it; bulk adds one label at a time`, 'Run the command once for each label')
+  return label
 }
 const patchOf = (patch) => (tracker, issue, actor, options) => tracker.updateIssue(issue.id, patch, actor, options)
 
@@ -34,14 +37,20 @@ const BUILDERS = {
     if (estimate !== null && !Number.isFinite(estimate)) throw invalid(`estimate "${value}" is not a number or none`)
     return { text: `set estimate to ${value}`, apply: patchOf({ estimate }) }
   },
-  'label-add': (value) => oneLabel(value) && ({
-    text: `add label ${value}`,
-    apply: (tracker, issue, actor, options) => tracker.updateIssue(issue.id, { labels: [...new Set([...(issue.labels ?? []), value])] }, actor, options),
-  }),
-  'label-remove': (value) => oneLabel(value) && ({
-    text: `remove label ${value}`,
-    apply: (tracker, issue, actor, options) => tracker.updateIssue(issue.id, { labels: (issue.labels ?? []).filter((label) => label !== value) }, actor, options),
-  }),
+  'label-add': (raw) => {
+    const value = oneLabel(raw)
+    return {
+      text: `add label ${value}`,
+      apply: (tracker, issue, actor, options) => tracker.updateIssue(issue.id, { labels: [...new Set([...(issue.labels ?? []), value])] }, actor, options),
+    }
+  },
+  'label-remove': (raw) => {
+    const value = oneLabel(raw, { allowComma: true })
+    return {
+      text: `remove label ${value}`,
+      apply: (tracker, issue, actor, options) => tracker.updateIssue(issue.id, { labels: (issue.labels ?? []).filter((label) => label !== value) }, actor, options),
+    }
+  },
   milestone: (value) => ({ text: `set milestone to ${value}`, apply: patchOf({ milestone: orNull(value) }) }),
   release: (value) => ({ text: `set release to ${value}`, apply: patchOf({ release: orNull(value) }) }),
   sprint: (value) => ({
@@ -85,10 +94,12 @@ export function checkBulkFilter(filter, where) {
   let narrows = 0
   for (const [key, value] of Object.entries(filter)) {
     if (key === 'archived' || key === 'limit' || key === 'sort') continue
-    if (value === '' || (Array.isArray(value) && value.length === 0)) throw invalid(`${where}: ${key} must not be empty`, 'Give the filter a value, or drop it')
+    if (value === '' || (typeof value === 'string' && value.trim() === '') || (Array.isArray(value) && value.length === 0)) throw invalid(`${where}: ${key} must not be empty`, 'Give the filter a value, or drop it')
     if (value !== false) narrows++
   }
-  if (narrows === 0) throw invalid(`${where} has no criterion that narrows the set, so it would match every issue`, 'Add a criterion such as --label legacy, then run pmkit issues list with it first')
+  if (narrows === 0) throw invalid(`${where} has no criterion that narrows the set, so it would match every issue`, where.startsWith('view')
+    ? 'Save the view again with a criterion (pmkit views save <name> --label legacy), or pass filter flags instead of --view'
+    : 'Add a criterion such as --label legacy, then run pmkit issues list with it first')
 }
 
 /**

@@ -2118,7 +2118,8 @@ async function runBulk(ctx) {
     }
   }
   const wrong = valueError(change, results)
-  if (wrong) throw new PmkitError('INVALID_INPUT', `${change.kind} ${change.value}: ${wrong.message}`, wrong.nextStep ?? 'Correct the value, then run the dry run again')
+  // One issue is not "wrong for every issue": its own error keeps its code (NOT_FOUND, CONFLICT).
+  if (wrong) throw new PmkitError(results.length === 1 ? wrong.code : 'INVALID_INPUT', `${change.kind} ${change.value}: ${wrong.message}`, wrong.nextStep ?? 'Correct the value, then run the dry run again')
   const preview = buildPreview({ change, found, results })
   const releaseWarnings = kind === 'release' && value !== 'none' ? await releasedWarnings(ctx, { release: value }) : []
   const data = { ...preview, filter, view: view ?? null, max, dryRun: ctx.dryRun, warnings: releaseWarnings }
