@@ -2,12 +2,14 @@
 id: PMK-193
 title: Fix the edges of the log-time duration parser
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 related: [PMK-60]
+branch: pmk-193-fix-the-edges-of-the-log-time-duration
 created: 2026-10-31T19:29:36.074Z
-updated: 2026-10-31T19:29:36Z
+updated: 2026-11-09T03:26:31Z
 ---
 
 ## Description
@@ -29,6 +31,6 @@ updated: 2026-10-31T19:29:36Z
 
 ## Acceptance criteria
 
-- [ ] A duration that is not a safe integer number of minutes answers `INVALID_INPUT`
-- [ ] The readable form of a long duration uses days
-- [ ] The more-than-a-day note on a real write says the time was already logged
+- [x] A duration that is not a safe integer number of minutes answers `INVALID_INPUT`
+- [x] The readable form of a long duration uses days
+- [x] The more-than-a-day note on a real write says the time was already logged

@@ -18,15 +18,24 @@ export function parseMinutes(input) {
     if (Number(match[2]) >= 60) throw invalid(input, 'minutes after the hours must be below 60')
     minutes = Number(match[1]) * 60 + Number(match[2])
   } else throw invalid(input, 'the format is not recognized')
-  minutes = Math.round(minutes * 1e6) / 1e6
+  if (!(minutes <= Number.MAX_SAFE_INTEGER)) throw invalid(input, 'it is too large to be a whole number of minutes')
+  if (!Number.isInteger(minutes)) minutes = Math.round(minutes * 1e6) / 1e6
   if (!Number.isInteger(minutes)) throw invalid(input, 'it is not a whole number of minutes')
   if (minutes <= 0) throw invalid(input, 'it must be above zero')
   return minutes
 }
 
-const hoursText = (minutes) => `${Math.floor(minutes / 60)}h${minutes % 60 === 0 ? '' : String(minutes % 60).padStart(2, '0')}`
+// 1500 is 1d1h, 100000 is 69d10h40; below a day it stays 1h30.
+function hoursText(minutes) {
+  const days = Math.floor(minutes / 1440)
+  const hours = Math.floor((minutes % 1440) / 60)
+  const rest = minutes % 60
+  const tail = `${hours}h${rest === 0 ? '' : String(rest).padStart(2, '0')}`
+  return days > 0 ? `${days}d${hours === 0 && rest === 0 ? '' : tail}` : tail
+}
 
-// There is no ceiling on an entry. One above a day gets a note, so the user checks the preview.
-export function longEntryNote(minutes) {
-  return minutes > LONG_ENTRY_MINUTES ? `${minutes} minutes (${hoursText(minutes)}) is more than a day; check the time before you confirm` : null
+// There is no ceiling on an entry. One above a day gets a note. Before the write the user checks the preview; after it the time is already logged.
+export function longEntryNote(minutes, { written = false } = {}) {
+  if (!(minutes > LONG_ENTRY_MINUTES)) return null
+  return `${minutes} minutes (${hoursText(minutes)}) is more than a day; ${written ? 'the time is already logged, check it' : 'check the time before you confirm'}`
 }
