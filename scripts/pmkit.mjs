@@ -1390,7 +1390,7 @@ export const COMMANDS = [
       const parts = []
       if (candidates.length > 0) parts.push(table(['Key', 'Tag', 'Location', 'Text'], candidates.map((c) => [c.key, c.tag, c.locations.length > 1 ? `${c.locations[0]} (+${c.locations.length - 1})` : c.locations[0], c.title])))
       if (matched.length > 0) parts.push(`already in the tracker:\n${table(['Issue', 'Status', 'Reason', 'Text'], matched.map((m) => [m.issue, m.status ?? '', m.reason, m.text]))}`)
-      return { data: { files, skippedEmpty, skipped, incomplete: existing.incomplete, unread: existing.unread, candidates, matched }, text: parts.length > 0 ? parts.join('\n\n') : 'no TODO or FIXME found', warnings }
+      return { data: { files, skippedEmpty, skipped, incomplete: existing.incomplete, cut: existing.cut, unread: existing.unread, candidates, matched }, text: parts.length > 0 ? parts.join('\n\n') : 'no TODO or FIXME found', warnings }
     },
   },
   {

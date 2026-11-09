@@ -94,6 +94,28 @@ test('todos scan --path outside the repository answers INVALID_INPUT', async () 
   }
 })
 
+test('todos scan --path that does not exist answers INVALID_INPUT, and an existing folder without TODOs does not', async () => {
+  const root = repo({ 'src/a.mjs': 'const x = 1\n' })
+  for (const arg of ['nope/', 'src/missing.mjs', './nope']) {
+    const result = await scan(root, ['--path', arg])
+    assert.equal(result.code, 2, arg)
+    const error = JSON.parse(result.stdout).error
+    assert.equal(error.code, 'INVALID_INPUT', arg)
+    assert.match(error.nextStep, /relative to the repository root/, arg)
+  }
+  const ok = await scan(root, ['--path', 'src'])
+  assert.equal(ok.code, 0)
+  assert.deepEqual(ok.data.candidates, [])
+})
+
+test('todos scan data has cut next to incomplete and unread', async () => {
+  const root = repo({ 'a.mjs': '// TODO: something to do here\n' })
+  const data = (await scan(root)).data
+  assert.equal(data.cut, false)
+  assert.equal(data.incomplete, false)
+  assert.deepEqual(data.unread, { count: 0, ids: [] })
+})
+
 test('todos scan drops a TODO that an existing issue matches and says why', async () => {
   const root = repo({ 'a.mjs': '// TODO handle the empty list\n// TODO refresh the documentation index\n// TODO new work item here\n' })
   write(root, 'd1.md', 'refresh the documentation index\n')

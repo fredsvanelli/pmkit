@@ -51,7 +51,7 @@ Matching reads closed and archived issues too, so a TODO whose issue is `done` s
 `todos scan` reads only. Data:
 
 ```
-{ files: n, skippedEmpty: n, incomplete: false, skipped: { unsupported: { ".txt": 3 } },
+{ files: n, skippedEmpty: n, incomplete: false, cut: false, unread: { count: 0, ids: [] }, skipped: { unsupported: { ".txt": 3 } },
   candidates: [{ key, tag, text, locations, title, description }],
   matched: [{ key, tag, text, locations, title, description, issue: "ISS-1", status: "done", reason: "key" }] }
 ```
@@ -101,7 +101,7 @@ None that need the author.
 - **A mark inside a string is not a comment.** `//` after a colon (a URL) is not a mark, and `#` counts only at the start of a line or after a space. Template literals, Python triple quotes and Go raw strings can span lines.
 - **The tag is the first word of the comment**, so the first tag wins (`// FIXME: TODO items` is a FIXME with the text `TODO items`) and prose that names a TODO in passing is not one. `TODO:fix` with no space counts.
 - **No `file:line` match.** An issue that lists an old line does not cover a new comment on that line. The matches are `key`, and `text` on whole words. A moved-back row of `matched` keeps its `title` and `description` in the data.
-- **The tracker read is complete or flagged.** `readExistingIssues` asks for up to 100000 issues, which makes the Linear adapter read every page. A read the tracker cut, or one that reached the limit, sets `incomplete: true` in the data and prints a warning. The command file stops before any create.
+- **The tracker read is complete or flagged.** `readExistingIssues` asks for up to 100000 issues, which makes the Linear adapter read every page. A read the tracker cut, or one that reached the limit, sets `cut: true` and `incomplete: true` in the data and prints a warning. Issues the tracker could not read are listed in `unread` (`count`, `ids`) and also set `incomplete: true`, with `cut` false. `--path` is relative to the repository root, and a path that does not exist answers `INVALID_INPUT`. The command file stops before any create.
 - **The scan never follows symbolic links** (`lstat`), skips the tracker folder from the config (`tracker.path`) in place of a fixed `.issues/`, and answers `INVALID_INPUT` for a `--path` outside the repository. `--path src` matches `src/` and `src` but not `src2/`.
 - **A missing git** answers `NOT_CONFIGURED` with the message "git was not found".
 - A test scans the pmkit repository and expects no candidate.
@@ -124,3 +124,9 @@ These are gaps of the parser. They stay as a follow-up and are not solved here.
 - A comment inside a `<script>` or `<style>` block of an html, vue or svelte file is not read.
 - A stray quote on a line can hide a comment that follows it on the same line.
 - A file type with no known comment syntax is not read. The warning lists those files.
+
+## Changes after PMK-182
+
+- `incomplete` means the tracker read is not complete: `cut` (more issues than the CLI read) or `unread.count > 0` (issues that could not be read, listed in `unread.ids`). The data has all three.
+- `--path` that does not exist answers `INVALID_INPUT`. It is relative to the repository root.
+- Block comments are read in sql (`/* */`), lua (`--[[ ]]`) and hs (`{- -}`).
