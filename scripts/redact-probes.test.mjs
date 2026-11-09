@@ -57,8 +57,7 @@ const PROBES = [
   ['authorization with a github token', `Authorization: token ghp_${rep('b', 36)}`, 'Authorization: [redacted]'],
   ['rerun over redacted text', 'Redacted 2 values.\nfoo [redacted]', 'Redacted 2 values.\nfoo [redacted]'],
   // Unchanged: code, prose, paths, numbers and values that are not secrets.
-  ['a short csrf token', 'csrf_token=abc in the form', 'csrf_token=abc in the form'],
-  ['cookie', 'Cookie: session=abcdef123456', 'Cookie: session=abcdef123456'],
+    ['cookie', 'Cookie: session=abcdef123456', 'Cookie: session=abcdef123456'],
   ['docker login', 'docker login -u ci -p hunter2 ghcr.io', 'docker login -u ci -p hunter2 ghcr.io'],
   ['a uuid', 'id 123e4567-e89b-12d3-a456-426614174000', 'id 123e4567-e89b-12d3-a456-426614174000'],
   ['an image data url', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='],
@@ -72,15 +71,39 @@ const PROBES = [
   ['pwd as a path', 'PWD=/home/runner/work/pmkit/pmkit', 'PWD=/home/runner/work/pmkit/pmkit'],
   ['oldpwd as a path', 'OLDPWD=/home/runner', 'OLDPWD=/home/runner'],
   ['pwd command output', 'pwd: /home/runner/work/pmkit', 'pwd: /home/runner/work/pmkit'],
-  ['password read from a request', 'const password = req.body.password', 'const password = req.body.password'],
-  ['password read from the environment', 'password: process.env.DB_PASSWORD', 'password: process.env.DB_PASSWORD'],
-  ['password typed as string', 'function login(password: string): Promise<void>', 'function login(password: string): Promise<void>'],
-  // Known gaps, pinned so that a change in them is a decision: the value is cut at a semicolon, ends in a colon and a
-  // number, or has no key.
-  ['value cut at a semicolon', 'password=pa$$;word123', 'password=pa$$;word123'],
-  ['value ending in a colon and a number', 'secret=Xy7#kL:42', 'secret=Xy7#kL:42'],
-  ['curl user and password', 'curl -u admin:hunter22 https://x', 'curl -u admin:hunter22 https://x'],
-  ['a singular credential name', 'GIT_CREDENTIAL=hunter22', 'GIT_CREDENTIAL=hunter22'],
+  // PMK-197: every value after a secret key goes, so these were missed secrets.
+  ['password with a dot and a bang', 'DB_PASSWORD=Summer.2024!', 'DB_PASSWORD=[redacted]'],
+  ['password with a dot after a colon', 'Password: Hunter.22', 'Password: [redacted]'],
+  ['password ending a sentence', 'the password: hunter22.', 'the password: [redacted].'],
+  ['password in parentheses', 'password=(hunter22)', 'password=[redacted])'],
+  ['password starting with a slash', 'PASSWORD=/x9Kq!zz', 'PASSWORD=[redacted]'],
+  ['token with an ampersand and no pair', 'API_TOKEN=abc123&rest', 'API_TOKEN=[redacted]'],
+  ['password with an ampersand', 'password=hunter&22', 'password=[redacted]'],
+  ['token longer than 512 characters', `AWS_SESSION_TOKEN=${rep('Ab1/', 150)} done`, 'AWS_SESSION_TOKEN=[redacted] done'],
+  ['json authorization', '{"Authorization": "Basic dXNlcjpwYXNz"}', '{"Authorization": [redacted]}'],
+  ['private key in the environment', 'PRIVATE_KEY=MIIEvQIBADANBgkq', 'PRIVATE_KEY=[redacted]'],
+  ['curl user and password', 'curl -u admin:hunter22 https://x', 'curl -u [redacted] https://x'],
+  ['curl long user option', 'curl --user admin:hunter22 https://x', 'curl --user [redacted] https://x'],
+  ['curl user with no password', 'curl -u admin https://x', 'curl -u admin https://x'],
+  ['a singular credential name', 'GIT_CREDENTIAL=hunter22', 'GIT_CREDENTIAL=[redacted]'],
+  ['value with a semicolon', 'password=pa$$;word123', 'password=[redacted]'],
+  ['value ending in a colon and a number', 'secret=Xy7#kL:42', 'secret=[redacted]'],
+  ['numeric password', 'password=123456', 'password=[redacted]'],
+  // Markdown around the value stays.
+  ['token in parentheses', '(token=abc12345xyz)', '(token=[redacted])'],
+  ['token in backticks', 'set `token=abc12345xyz` first', 'set `token=[redacted]` first'],
+  ['token in bold', 'use **token=abc12345xyz** here', 'use **token=[redacted]** here'],
+  ['token in a link text', '[token: abc12345xyz](https://x.io)', '[token: [redacted]](https://x.io)'],
+  ['token in a list line', '- token=abc12345xyz, then retry', '- token=[redacted], then retry'],
+  // False positives this accepts (listed in the PMK-197 spec).
+  ['a short csrf token', 'csrf_token=abc in the form', 'csrf_token=[redacted] in the form'],
+  ['prose after a key word', 'token: expired', 'token: [redacted]'],
+  ['password read from a request', 'const password = req.body.password', 'const password = [redacted]'],
+  ['password read from the environment', 'password: process.env.DB_PASSWORD', 'password: [redacted]'],
+  ['password typed as string', 'function login(password: string): Promise<void>', 'function login(password: [redacted]): Promise<void>'],
+  ['a comma list', 'a=1,token=x1,b=2', 'a=1,token=[redacted]'],
+  // Kept: the value of a pair after a query-string ampersand, a key with no secret name, and a directory in PWD.
+  ['query pair after the secret', 'password=hunter&user=bob', 'password=[redacted]&user=bob'],
 ]
 
 for (const [name, input, output] of PROBES) {
@@ -91,7 +114,7 @@ for (const [name, input, output] of PROBES) {
 
 test('probe: no pattern takes more than a second on 80 thousand characters of its own kind', () => {
   const n = 80000
-  const inputs = [rep('a', n), `token${rep('-', n)}`, `x://${rep(':', n)}`, `a://${rep('b:', n / 2)}`, rep('-----BEGIN A PRIVATE KEY-----', n / 29), rep('sk-', n / 3), `Authorization: ${rep('a', n)}`, rep('a://b', n / 5), rep('password:', n / 9), rep('a=1&', n / 4), rep('token=', n / 6)]
+  const inputs = [rep('a', n), `token${rep('-', n)}`, `x://${rep(':', n)}`, `a://${rep('b:', n / 2)}`, rep('-----BEGIN A PRIVATE KEY-----', n / 29), rep('sk-', n / 3), `Authorization: ${rep('a', n)}`, rep('a://b', n / 5), rep('password:', n / 9), rep('a=1&', n / 4), rep('token=', n / 6), rep('curl -u ', n / 8), rep('token=&a=', n / 9), rep('&a', n / 2), `token=${rep('a ', n / 2)}`]
   for (const input of inputs) {
     const start = process.hrtime.bigint()
     redact(input)

@@ -91,30 +91,40 @@ test('text redact refuses a missing file and a call with no --file', async () =>
 })
 
 const SAME = [
-  'Unexpected token: < in JSON at position 0',
   'at Object.<anonymous> (src/token.mjs:12:5)',
-  'if (password === undefined) throw new Error("no password")',
-  'max_tokens=4096 and tokenizer=cl100k',
-  'Set the password: field in config.yaml to your own value.',
   'The `password:` key is optional.',
   'password:\n  next: line',
-  'the parser reads the next token: a comma',
-  'const token = getToken(req)',
-  '  secretName: process.env.NAME,',
-  'function login(password: string): Promise<void>',
-  'not ok 3 - token: refresh expired token',
   '- `password`: the database password',
   'Use a Bearer token in the header.',
   'https://example.com/user@domain',
   'commit 3f786850e387550fdab836ed7e6dc881de23001b fixed it',
   'task-force-alpha-bravo-charlie-delta-echo and the sk-short',
-  'csrf_token=abc in the form',
-  'password: abc12 and token=1a2b3c4',
 ]
 for (const text of SAME) {
   test(`redact leaves ${JSON.stringify(text.slice(0, 45))} unchanged`, () => {
     const { summary, ...result } = redact(text)
     assert.deepEqual(result, { text, count: 0, counts: {} })
+  })
+}
+
+// PMK-197: the false positives that `text redact` accepts so that no value after a secret key is missed. The same list is in
+// docs/superpowers/specs/2026-11-09-pmk-197-redact-no-missed-secrets-design.md.
+const FALSE_POSITIVES = [
+  ['Unexpected token: < in JSON at position 0', 'Unexpected token: [redacted] in JSON at position 0'],
+  ['if (password === undefined) throw new Error("no password")', 'if (password =[redacted] undefined) throw new Error("no password")'],
+  ['max_tokens=4096 and tokenizer=cl100k', 'max_tokens=4096 and tokenizer=[redacted]'],
+  ['Set the password: field in config.yaml to your own value.', 'Set the password: [redacted] in config.yaml to your own value.'],
+  ['the parser reads the next token: a comma', 'the parser reads the next token: [redacted] comma'],
+  ['const token = getToken(req)', 'const token = [redacted])'],
+  ['  secretName: process.env.NAME,', '  secretName: [redacted],'],
+  ['not ok 3 - token: refresh expired token', 'not ok 3 - token: [redacted] expired token'],
+  ['password: abc12 and token=1a2b3c4', 'password: [redacted] and token=[redacted]', 2],
+]
+for (const [text, output, count = 1] of FALSE_POSITIVES) {
+  test(`redact accepts the false positive ${JSON.stringify(text.slice(0, 45))}`, () => {
+    const result = redact(text)
+    assert.equal(result.text, output)
+    assert.equal(result.count, count)
   })
 }
 

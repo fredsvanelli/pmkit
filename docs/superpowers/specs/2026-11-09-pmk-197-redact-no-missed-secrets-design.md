@@ -29,7 +29,8 @@ The length floors, the "needs a digit or symbol" test and the code-word and `pro
 
 - Prose after a key word: `token: expired`, `the secret: see below`, `csrf_token=abc`, `tokenizer: bpe`.
 - Code that names a key word: `password: string`, `const password = req.body.password`, `password: process.env.DB_PASSWORD`, `secret: null`, `token = getToken()`. Only the first word after the separator is replaced.
-- Words after a `token:` that are not secrets, in a stack frame such as `token.mjs:src`.
+- Operators and calls: `password === undefined` becomes `password =[redacted] undefined`, `const token = getToken(req)` becomes `const token = [redacted])`, `Unexpected token: <` loses the `<`.
+- A name that holds a key word: `secretName: x`, `tokenizer=cl100k`.
 - A comma-separated list `a=1,token=x,b=2`: the value runs to whitespace, so `,b=2` is replaced too.
 - `pwd=/x9Kq` and `PWD=~/secret`: kept (exemption 4), a missed secret for a key named exactly `pwd`.
 

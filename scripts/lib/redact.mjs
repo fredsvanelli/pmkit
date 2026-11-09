@@ -5,22 +5,20 @@ const MARK = '[redacted]'
 const strip = (value) => value.replace(/^["']|["']$/g, '')
 const keep = (value) => strip(value) === MARK
 
-const KEY_WORDS = /api[_-]?key|token|secret|passw(?:or)?d|pwd|credentials/i
-// Short passwords are common, so these names have a floor of 6 characters, and a plain word counts as a password.
-const SHORT_KEYS = /passw(?:or)?d|pwd|credentials/i
-const CODE_WORDS = /^(?:string|number|boolean|undefined|null|any|true|false)$/i
-const ENDS_WITH_NUMBER = /:\d+$/
+// PMK-197: a value after one of these keys is replaced in full unless it is provably not a secret (see `exempt`). The false
+// positives this accepts are listed in docs/superpowers/specs/2026-11-09-pmk-197-redact-no-missed-secrets-design.md.
+const KEY_WORDS = /api[_-]?key|private[_-]?key|token|secret|passw(?:or)?d|pwd|credentials?/i
+const PASSWORD_KEYS = /passw(?:or)?d|pwd|credentials?/i
+const SHELL_PWD = /^(?:old)?pwd$/i
+// Wrapper and sentence characters at the end of a value stay in the text, so `(token=x)`, `` `token=x` `` and `**token=x**` keep their mark.
+const TRAILER = /[)\]}>*`'",.;:]+$/
 
-// Whether the value after a key such as `token=` or `password:` is a secret. It is not when it is short, only digits, a
-// port or a line:column, code (`string`, `process.env.NAME`, `req.body.password`) or a path. A password name accepts a
-// plain word. Any other name needs a digit or a symbol, or 16 letters or more.
-function looksSecret(key, raw) {
-  const quoted = /^["']/.test(raw)
-  const value = quoted ? strip(raw) : raw.replace(/[)>\]}`:]+$/, '')
-  const short = SHORT_KEYS.test(key)
-  if (value.length < (short ? 6 : 8) || /^\d+$/.test(value) || ENDS_WITH_NUMBER.test(value)) return false
-  if (short) return !CODE_WORDS.test(value) && !/[.(]/.test(value) && !/^[/~]/.test(value)
-  return /[\d\-_+/=@$!%^&*~]/.test(value) || (value.length >= 16 && !/[.(/]/.test(value))
+// The only values left alone: empty, a number or line:column after a name that is not a password (a limit, a port, a stack
+// frame), and the directory in the shell variable PWD or OLDPWD.
+function exempt(key, value) {
+  if (!value) return true
+  if (!PASSWORD_KEYS.test(key) && /^\d+(?::\d+)*$/.test(value)) return true
+  return SHELL_PWD.test(key) && /^[/~]/.test(value)
 }
 
 // Order matters: a longer match (a private key, a URL, an Authorization line) goes before the shorter ones inside it.
@@ -30,7 +28,9 @@ const PATTERNS = [
   // The user may be empty (`redis://:password@host`). The password runs to the last @ before the path.
   ['url_credentials', /(?<![a-z0-9+.-])([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]*:[^\s/]+@/gi, (_, scheme) => `${scheme}${MARK}@`],
   // Before the tokens, so a token inside the header is one value of this type. The value may be in quotes.
-  ['authorization', /(\bAuthorization:[ \t]*)("[^"\n]*"|'[^'\n]*'|[^\s"'][^\n"']*)/gi, (whole, head, value) => (keep(value.trim()) ? whole : `${head}${MARK}`)],
+  ['authorization', /(\bAuthorization["']?:[ \t]*)("[^"\n]*"|'[^'\n]*'|[^\s"'][^\n"']*)/gi, (whole, head, value) => (keep(value.trim()) ? whole : `${head}${MARK}`)],
+  // The user and password of -u or --user, when it holds a colon. The lookback is bounded so a line of `curl` stays linear.
+  ['curl_user', /(\bcurl\b[^\n]{0,500}?[ \t](?:--user[ \t=]+|-u[ \t]*))(?:"[^"\n]*:[^"\n]*"|'[^'\n]*:[^'\n]*'|[^\s"']*:[^\s"']*)/g, (_, head) => `${head}${MARK}`],
   ['jwt', /\beyJ[\w-]+\.eyJ[\w-]+\.[\w-]*/g, () => MARK],
   ['github_token', /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/g, () => MARK],
   ['gitlab_token', /(?<![A-Za-z0-9])glpat-[\w-]{20,}/g, () => MARK],
@@ -44,11 +44,11 @@ const PATTERNS = [
   ['bearer', /(\bBearer[ \t]+)(?=[A-Za-z0-9._~+/=-]{20}|[A-Za-z0-9._~+/=-]*[\d._~+/=-])[A-Za-z0-9._~+/=-]{8,}/gi, (_, head) => `${head}${MARK}`],
 ]
 
-// Finds every `key=value` or `key: value` and replaces the value when the key names a secret and the value looks like one.
-// The scan goes on inside a value it leaves alone, so `?a=1&api_key=...` and `env: GITHUB_TOKEN=...` are found. A match
-// starts only at the beginning of a word and a value stops at 512 characters, so the scan stays linear.
+// Finds every `key=value` or `key: value` and replaces the value when the key names a secret. The scan goes on inside a
+// value it leaves alone, so `?a=1&api_key=...` and `env: GITHUB_TOKEN=...` are found. A match starts only at the beginning
+// of a word. An unquoted value runs to the next space; `&` ends it only before a new `name=`, and `](` ends it so a link survives.
 const KEY_SEPARATOR = /(?<![\w.-])([\w.-]+)(["']?[ \t]*[=:][ \t]*)/g
-const VALUE = /"[^"\n]*"|'[^'\n]*'|[^\s"',;&]{1,512}/y
+const VALUE = /"[^"\n]*"|'[^'\n]*'|(?:\](?!\()|&(?![\w.-]+=)|[^\s&\]])+/y
 
 function redactPairs(text, counts) {
   let out = ''
@@ -59,9 +59,13 @@ function redactPairs(text, counts) {
     if (!KEY_WORDS.test(match[1])) continue
     VALUE.lastIndex = start
     const found = VALUE.exec(text)
-    if (!found || keep(found[0]) || !looksSecret(match[1], found[0])) continue
+    if (!found || found[0].startsWith(MARK)) continue
+    const quoted = /^["']/.test(found[0])
+    const length = quoted ? found[0].length : found[0].replace(TRAILER, '').length
+    const value = quoted ? strip(found[0]) : found[0].slice(0, length)
+    if (keep(found[0]) || exempt(match[1], value)) continue
     out += `${text.slice(position, start)}${MARK}`
-    position = start + found[0].length
+    position = start + length
     KEY_SEPARATOR.lastIndex = position
     counts.api_key_value = (counts.api_key_value ?? 0) + 1
   }
