@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-44]
 branch: pmk-180-fix-saved-views-with-invalid-file-names
 created: 2026-10-31T16:01:14.694Z
-updated: 2026-11-09T00:54:02Z
+updated: 2026-11-09T01:07:56Z
 ---
 
 ## Description
@@ -31,7 +31,7 @@ Saved views (PMK-44) merged with these defects, found by the second and third re
 
 ## Acceptance criteria
 
-- [ ] `views list` warns about a file with an invalid name, and `--json` returns `problems`
-- [ ] The doctor does not propose a `views save` that the CLI refuses
-- [ ] The Linear hint says the Linear adapter does not serve views yet
-- [ ] `filterText` quotes values with a space or `=`
+- [x] `views list` warns about a file with an invalid name, and `--json` returns `problems`
+- [x] The doctor does not propose a `views save` that the CLI refuses
+- [x] The Linear hint says the Linear adapter does not serve views yet
+- [x] `filterText` quotes values with a space or `=`
