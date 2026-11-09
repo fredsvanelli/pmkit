@@ -2,12 +2,14 @@
 id: PMK-188
 title: Fix link-repo when the repo and the remote disagree or the host is cleared
 type: bug
-status: backlog
+status: in_progress
 priority: medium
 estimate: 1
+assignee: fred
 related: [PMK-53]
+branch: pmk-188-fix-link-repo-when-the-repo-and-the
 created: 2026-10-31T16:59:11.059Z
-updated: 2026-10-31T16:59:11Z
+updated: 2026-11-09T01:47:46Z
 ---
 
 ## Description
