@@ -624,7 +624,7 @@ export const COMMANDS = [
       const entry = (await tracker.capabilities()).capabilities.find((c) => c.id === 'time_tracking')
       const minutes = entry?.path === 'absent' ? NaN : parseMinutes(ctx.args[1])
       const result = await tracker.logTime(ctx.args[0], minutes, await ctx.actor(), { dryRun: ctx.dryRun })
-      const note = longEntryNote(minutes)
+      const note = longEntryNote(minutes, { written: !ctx.dryRun })
       return { data: { ...result, minutes, note }, text: writeText(null, { dryRun: ctx.dryRun, header: `logged ${minutes} minutes on ${result.after.id}` }), notes: note ? [note] : [], commit: result.after.id }
     },
   },
