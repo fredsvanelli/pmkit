@@ -262,3 +262,11 @@ test('customers show lists the requests newest first, a request without created 
   write('requests', 'REQ-4.md', '---\ntitle: no date\ncustomer: CUS-1\n---\n')
   assert.deepEqual(tracker.getCustomer('CUS-1').requests.map((request) => request.id), ['REQ-3', 'REQ-2', 'REQ-1', 'REQ-4'])
 })
+
+test('getRequest returns the problems of an unreadable customer or issue, and an empty list when all reads', () => {
+  const { write, tracker } = setup()
+  write('requests', 'REQ-1.md', '---\ntitle: T\ncustomer: CUS-4\nstate: accepted\nissue: ISS-ZZZZ\n---\n')
+  assert.deepEqual(tracker.getRequest('REQ-1').problems.map((problem) => problem.id), ['REQ-1', 'REQ-1'])
+  write('requests', 'REQ-2.md', '---\ntitle: Fine\n---\n')
+  assert.deepEqual(tracker.getRequest('REQ-2').problems, [])
+})

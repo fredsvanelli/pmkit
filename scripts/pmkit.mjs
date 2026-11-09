@@ -905,7 +905,7 @@ export const COMMANDS = [
     name: 'requests get', summary: 'one request', usage: '<id>', args: ['id'], flags: [],
     run: async (ctx) => {
       const request = await (await ctx.tracker()).getRequest(ctx.args[0])
-      return { data: request, text: requestRecord(request) }
+      return { data: request, text: requestRecord(request), warnings: problemWarnings(request.problems) }
     },
   },
   {

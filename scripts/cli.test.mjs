@@ -2296,6 +2296,21 @@ test('a broken request file is a warning that points to pmkit validate, in the t
   }
 })
 
+test('requests get warns about unreadable links and never prints by null, in the text and in the JSON', () => {
+  const root = makeRepo('team')
+  fs.mkdirSync(path.join(root, '.issues', 'requests'), { recursive: true })
+  fs.writeFileSync(path.join(root, '.issues', 'requests', 'REQ-1.md'), '---\ntitle: T\ncustomer: CUS-4\nstate: accepted\nissue: ISS-ZZZZ\ntriaged: 2026-10-23T12:00:00Z\n---\n')
+  const text = run(root, ['requests', 'get', 'REQ-1'])
+  assert.equal(text.status, 0, text.stderr)
+  assert.doesNotMatch(text.stdout, /by null/)
+  assert.match(text.stdout, /triaged: 2026-10-23T12:00:00Z$/m)
+  assert.match(text.stdout, /\(unreadable\)/)
+  assert.match(text.stderr, /warning: REQ-1: NOT_FOUND .*CUS-4.*; run pmkit validate/)
+  const shown = json(root, ['requests', 'get', 'REQ-1'])
+  assert.equal(shown.problems.length, 2)
+  assert.equal(shown.triaged.by, null)
+})
+
 test('log-time reads readable durations and refuses invalid ones with INVALID_INPUT', () => {
   const root = makeRepo('team')
   const logged = json(root, ['issues', 'log-time', 'ISS-3F7H', '1h30'])

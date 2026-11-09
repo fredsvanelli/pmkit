@@ -1524,7 +1524,11 @@ export function createLocalTracker(root, {
 
   const viewOfRequest = (request) => requestViews([request], readRecords(CUSTOMER).records).views[0]
 
-  const getRequest = (id) => viewOfRequest(readRecord(REQUEST, id))
+  /** One request view plus the `problems` of the links it could not read (a customer or an issue), as the list reports them. */
+  function getRequest(id) {
+    const { views, problems } = requestViews([readRecord(REQUEST, id)], readRecords(CUSTOMER).records)
+    return { ...views[0], problems }
+  }
 
   function listRequests({ state = 'open', customer } = {}) {
     if (![...REQUEST_STATES, 'all'].includes(state)) throw invalid(`state must be one of ${[...REQUEST_STATES, 'all'].join(', ')}`)
