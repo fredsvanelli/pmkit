@@ -45,6 +45,7 @@ exit 0
         "total": 2,
         "canceled": 0
       },
+      "updatesRead": true,
       "lastUpdate": null,
       "health": null,
       "delayDays": 0,

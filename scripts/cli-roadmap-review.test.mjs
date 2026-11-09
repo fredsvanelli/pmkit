@@ -229,7 +229,7 @@ test('a rate limit stops the per-epic reads and leaves the other epics not check
   assert.deepEqual(json.epics.map((e) => [e.id, e.progress]), [['EPC-2M9D', null], ['EPC-2ND0', null]])
   assert.deepEqual(json.updatesNotChecked, ['EPC-2M9D', 'EPC-2ND0'])
   assert.equal(json.incomplete, true)
-  assert.match(stderr, /rate limited: the reads of EPC-2ND0 were skipped/)
+  assert.match(stderr, /rate limited: the reads of EPC-2M9D, EPC-2ND0 were skipped/)
 })
 
 test('a failing capability report costs the note, not the review', async () => {
@@ -241,4 +241,34 @@ test('a failing capability report costs the note, not the review', async () => {
   assert.equal(code, 0, stderr)
   assert.equal(json.epics, null)
   assert.equal(json.unavailable.epics, 'NOT_SUPPORTED')
+  assert.doesNotMatch(stderr, /^note:/m)
+})
+
+test('a rate limit on the only epic says its updates read was skipped', async () => {
+  const calls = { updates: 0 }
+  const adapters = localWith({
+    deliverableProgress: async () => { throw new PmkitError('RATE_LIMITED', 'slow down') },
+    listStatusUpdates: async () => { calls.updates++; return [] },
+  })
+  const { code, json, stderr } = await review(teamRepo(), ['--json'], adapters)
+  assert.equal(code, 0, stderr)
+  assert.equal(calls.updates, 0)
+  assert.deepEqual(json.updatesNotChecked, ['EPC-2M9D'])
+  assert.match(stderr, /rate limited: the reads of EPC-2M9D were skipped/)
+})
+
+test('a rate limit listing milestones stops the per-epic reads', async () => {
+  const calls = { progress: 0, updates: 0 }
+  const adapters = localWith({
+    listMilestones: async () => { throw new PmkitError('RATE_LIMITED', 'slow down') },
+    deliverableProgress: async () => { calls.progress++; return { done: 0, total: 0, canceled: 0 } },
+    listStatusUpdates: async () => { calls.updates++; return [] },
+  })
+  const { code, json, stderr } = await review(teamRepo(), ['--json'], adapters)
+  assert.equal(code, 0, stderr)
+  assert.deepEqual(calls, { progress: 0, updates: 0 })
+  assert.equal(json.milestones, null)
+  assert.equal(json.epics[0].progress, null)
+  assert.equal(json.incomplete, true)
+  assert.match(stderr, /rate limited: the reads of EPC-2M9D were skipped/)
 })

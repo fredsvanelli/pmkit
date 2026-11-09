@@ -13,10 +13,12 @@ function epicRows(epics, { today, windowDays, milestones, progressByEpic, update
   const risks = new Map(epicRisks(epics, { updatesByEpic: read, today, windowDays }).map((row) => [row.id, row.reasons]))
   const nameOf = new Map((milestones ?? []).map((m) => [m.id, m.name ?? m.id]))
   // A Local epic names its milestone; a Linear milestone names its epic (project), and a project has several.
+  // With the milestone list unread, only the epic's own milestone is known: the rest is unknown (null), not none.
   const milestonesOf = (epic) => {
     const ids = new Set([epic.milestone, ...(milestones ?? []).filter((m) => m.epic === epic.id).map((m) => m.id)])
     ids.delete(undefined)
     ids.delete(null)
+    if (milestones === null && ids.size === 0) return null
     return [...ids].map((id) => ({ id, name: nameOf.get(id) ?? id }))
   }
   return epics.map((epic) => {
@@ -28,9 +30,11 @@ function epicRows(epics, { today, windowDays, milestones, progressByEpic, update
     return {
       id: epic.id, title: epic.title, status: epic.status.name, category: epic.status.category,
       start: epic.start ?? null, target: epic.target ?? null,
-      milestone: owned[0]?.id ?? null, milestones: owned,
+      milestone: owned?.[0]?.id ?? null, milestones: owned,
       progress: p === null ? null : { done: p.done, total: p.total, canceled: p.canceled, ...(p.hasMore === true ? { partial: true } : {}) },
       // A Local update file without health reads as '', which is unknown, not a health.
+      // false: the update read failed, so a null lastUpdate is unknown, not "no update".
+      updatesRead: updates !== null,
       lastUpdate: latest ? { at: latest.at, health: latest.health || null } : null,
       health: latest?.health || epic.health || null,
       delayDays: !epic.target ? null : OPEN(epic.status.category) ? daysLate(epic.target, today) : 0,
@@ -39,7 +43,7 @@ function epicRows(epics, { today, windowDays, milestones, progressByEpic, update
   })
 }
 
-function milestoneRows(milestones, { today, issues, issuesComplete, epics }) {
+function milestoneRows(milestones, { today, issues, issuesComplete, epics, epicsFailed }) {
   const live = issues.filter((issue) => !issue.archived)
   const filed = milestones.map((m) => ({ id: m.id, name: m.name ?? m.id, due: m.due ?? null, filed: true, ...(m.unreadable ? { unreadable: true } : {}), owner: m.epic }))
   const known = new Set(filed.map((m) => m.id))
@@ -61,8 +65,9 @@ function milestoneRows(milestones, { today, issues, issuesComplete, epics }) {
     if (!m.due) delayDays = null
     else if (m.due >= today) delayDays = 0
     else if (openEpic || (issuesComplete && counts.open > 0)) delayDays = daysLate(m.due, today)
-    else delayDays = issuesComplete ? 0 : null
-    return { ...m, issues: issuesComplete ? counts : null, epics: epicIds, delayDays }
+    // An unread epic list may hold the open epic that makes it late: unknown, unless an open issue already does.
+    else delayDays = issuesComplete && !epicsFailed ? 0 : null
+    return { ...m, issues: issuesComplete ? counts : null, epics: epicsFailed ? null : epicIds, delayDays }
   })
 }
 
@@ -90,7 +95,7 @@ export function buildRoadmapReview({ today, windowDays, issues, issuesComplete, 
     // null when the read worked; otherwise why the section is missing: NOT_SUPPORTED, or the code of the failed read.
     unavailable: { epics: epics === null ? sectionErrors.epics ?? 'NOT_SUPPORTED' : null, milestones: milestones === null ? sectionErrors.milestones ?? 'NOT_SUPPORTED' : null },
     epics: rows,
-    milestones: milestones === null ? null : milestoneRows(milestones, { today, issues, issuesComplete, epics }),
+    milestones: milestones === null ? null : milestoneRows(milestones, { today, issues, issuesComplete, epics, epicsFailed: epics === null && (sectionErrors.epics ?? 'NOT_SUPPORTED') !== 'NOT_SUPPORTED' }),
     noRecentUpdates: (rows ?? []).filter((row) => row.reasons.includes('no_recent_update')).map((row) => row.id),
     updatesNotChecked: notChecked,
     // The fallback is for a tracker with no epics; a failed read says nothing about them.
@@ -122,9 +127,9 @@ export function roadmapReviewText(report) {
       notChecked: cannot('epics'),
       header: ['ID', 'Title', 'Status', 'Start', 'Target', 'Milestone', 'Done', 'Health', 'Last update', 'Delay', 'Reasons'],
       row: (r) => [
-        r.id, r.title, r.status, r.start ?? '', r.target ?? '', (r.milestones ?? []).map((m) => m.name).join(', ') || (r.milestone ?? ''),
+        r.id, r.title, r.status, r.start ?? '', r.target ?? '', r.milestones === null ? 'unknown' : r.milestones.map((m) => m.name).join(', '),
         r.progress ? `${r.progress.done}/${r.progress.total}${r.progress.partial ? '+' : ''}` : 'unknown', r.health ?? 'unknown',
-        r.lastUpdate ? r.lastUpdate.at.slice(0, 10) : '', days(r.delayDays, 'no target'), r.reasons.join(', '),
+        r.lastUpdate ? r.lastUpdate.at.slice(0, 10) : r.updatesRead === false ? 'not checked' : '', days(r.delayDays, 'no target'), r.reasons.join(', '),
       ],
     }),
     section('milestones', report.milestones, {
@@ -133,7 +138,7 @@ export function roadmapReviewText(report) {
       row: (m) => [
         m.id, m.name, m.due ?? (m.unreadable ? 'unknown, file does not parse' : m.filed ? 'none' : 'unknown, no record'),
         ...(m.issues ? [m.issues.open, m.issues.done, m.issues.canceled] : ['unknown', 'unknown', 'unknown']),
-        m.epics.join(', '), days(m.delayDays, m.due || m.unreadable || !m.filed ? 'unknown' : ''),
+        m.epics === null ? 'unknown' : m.epics.join(', '), days(m.delayDays, m.due || m.unreadable || !m.filed ? 'unknown' : 'no due date'),
       ],
     }),
     section('epics with no recent status update', report.epics === null ? null : report.epics.filter((r) => report.noRecentUpdates.includes(r.id)), {

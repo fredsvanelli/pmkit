@@ -174,7 +174,7 @@ test('epicRisks flags a target before today and not one on today', () => {
   const recent = [update('2026-10-20T10:00:00Z')]
   assert.deepEqual(epicRisks(epics, epicOpts({ E1: recent, E2: recent })), [{
     id: 'E1', title: 'Epic E1', status: 'in_progress', target: '2026-10-25',
-    lastUpdate: { at: '2026-10-20T10:00:00Z', health: 'on_track' }, reasons: ['late'],
+    updatesRead: true, lastUpdate: { at: '2026-10-20T10:00:00Z', health: 'on_track' }, reasons: ['late'],
   }])
 })
 
@@ -324,4 +324,13 @@ test('epicsUpdatesNotChecked lists the open epics that need an update and whose 
   ]
   const ids = epicsUpdatesNotChecked(epics, epicOpts({ U1: null, U2: null, U3: null, U4: null, U5: [] }))
   assert.deepEqual(ids, ['U1', 'U3'])
+})
+
+test('a late epic whose update read failed has an unknown last update, not none', () => {
+  const epics = [epic('X1', 'in_progress', { target: '2026-10-01' }), epic('X2', 'in_progress', { target: '2026-10-01' })]
+  const rows = epicRisks(epics, epicOpts({ X1: null, X2: [] }))
+  assert.deepEqual(rows.map((row) => [row.id, row.updatesRead]), [['X1', false], ['X2', true]])
+  const report = baseReport({ epics: rows, updatesNotChecked: ['X1'] })
+  const cells = risksText(report).split('\n').filter((l) => /^(X1|X2) /.test(l)).map((l) => l.split('|')[4].trim())
+  assert.deepEqual(cells, ['not checked', 'none'])
 })

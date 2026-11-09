@@ -241,14 +241,14 @@ test('a failed milestone list says it failed, not that the tracker cannot list m
   assert.match(roadmapReviewText(report), /milestones\nnot checked: the tracker failed to list milestones \(RATE_LIMITED\), see the warnings/)
 })
 
-test('an unknown milestone delay reads unknown in the text, an on-time one stays blank', () => {
+test('an unknown milestone delay reads unknown, a milestone with no due date says so, an on-time one stays blank', () => {
   const report = review({
     milestones: [{ id: 'bad', name: 'bad', unreadable: true }, { id: 'ok', name: 'Ok', due: '2026-12-01' }, { id: 'none', name: 'None' }],
     issues: [issue('I1', { milestone: 'ghost' })],
   })
   const lines = roadmapReviewText(report).split('\n')
   const delay = (id) => lines.find((l) => l.startsWith(`${id} `)).split('|').at(-1).trim()
-  assert.deepEqual(['bad', 'ghost', 'ok', 'none'].map(delay), ['unknown', 'unknown', '', ''])
+  assert.deepEqual(['bad', 'ghost', 'ok', 'none'].map(delay), ['unknown', 'unknown', '', 'no due date'])
 })
 
 test('a Linear epic lists each of its milestones by name', () => {
@@ -268,4 +268,31 @@ test('a todo epic started within the window is not unchecked, one started before
     updatesByEpic: { S1: null, S2: null },
   })
   assert.deepEqual(report.updatesNotChecked, ['S2'])
+})
+
+test('a failed milestone list leaves the milestones of a Linear epic unknown, not none', () => {
+  const report = review({
+    epics: [epic('P1'), epic('L1', { milestone: 'beta' })],
+    milestones: null, sectionErrors: { milestones: 'UPSTREAM' },
+  })
+  assert.deepEqual([row(report, 'P1').milestone, row(report, 'P1').milestones], [null, null])
+  assert.deepEqual(row(report, 'L1').milestones, [{ id: 'beta', name: 'beta' }])
+  const cells = roadmapReviewText(report).split('\n').filter((l) => /^(P1|L1) /.test(l)).map((l) => l.split('|')[5].trim())
+  assert.deepEqual(cells, ['unknown', 'beta'])
+})
+
+test('an epic whose update read failed is not checked in the Last update cell, not blank', () => {
+  const report = review({ epics: [epic('E1'), epic('E2')], updatesByEpic: { E1: null, E2: [] } })
+  assert.deepEqual([row(report, 'E1').updatesRead, row(report, 'E2').updatesRead], [false, true])
+  const cells = roadmapReviewText(report).split('\n\n')[1].split('\n').filter((l) => /^(E1|E2) /.test(l)).map((l) => l.split('|')[8].trim())
+  assert.deepEqual(cells, ['not checked', ''])
+})
+
+test('a failed epic list leaves the epics and delay of a milestone unknown; an unsupported one means no epics', () => {
+  const milestones = [{ id: 'beta', name: 'Beta', due: '2026-10-20' }, { id: 'later', name: 'Later', due: '2026-12-01' }]
+  const failed = review({ epics: null, milestones, sectionErrors: { epics: 'UPSTREAM' } })
+  assert.deepEqual(failed.milestones.map((m) => [m.id, m.epics, m.delayDays]), [['beta', null, null], ['later', null, 0]])
+  assert.match(roadmapReviewText(failed), /beta\s+\| Beta\s+\| 2026-10-20\s+\| 0\s+\| 0\s+\| 0\s+\| unknown\s+\| unknown/)
+  const unsupported = review({ epics: null, milestones, sectionErrors: { epics: 'NOT_SUPPORTED' } })
+  assert.deepEqual(unsupported.milestones.map((m) => [m.id, m.epics, m.delayDays]), [['beta', [], 0], ['later', [], 0]])
 })

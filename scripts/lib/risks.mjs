@@ -123,6 +123,8 @@ export function epicRisks(epics, { updatesByEpic, today, windowDays }) {
     if (reasons.length === 0) continue
     rows.push({
       id: epic.id, title: epic.title, status: epic.status.name, target: epic.target ?? null,
+      // updatesRead false: the read failed, so a null lastUpdate is unknown, not none.
+      updatesRead: updates !== null,
       lastUpdate: latest ? { at: latest.at, health: latest.health } : null, reasons,
     })
   }
@@ -216,7 +218,7 @@ export function risksText(report) {
         header: ['ID', 'Title', 'Status', 'Target', 'Last update', 'Reasons'],
         row: (row) => [
           row.id, row.title, row.status, row.target ?? '',
-          row.lastUpdate ? `${row.lastUpdate.at.slice(0, 10)} ${row.lastUpdate.health}` : 'none', row.reasons.join(', '),
+          row.lastUpdate ? `${row.lastUpdate.at.slice(0, 10)} ${row.lastUpdate.health}` : row.updatesRead === false ? 'not checked' : 'none', row.reasons.join(', '),
         ],
       }),
       ...((report.updatesNotChecked ?? []).length ? [`not checked: ${report.updatesNotChecked.join(', ')} (status updates could not be read)`] : []),

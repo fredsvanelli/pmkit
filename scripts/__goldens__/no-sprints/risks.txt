@@ -54,6 +54,7 @@ exit 0
       "title": "Reliable webhooks",
       "status": "in_progress",
       "target": "2026-11-13",
+      "updatesRead": true,
       "lastUpdate": null,
       "reasons": [
         "no_recent_update"

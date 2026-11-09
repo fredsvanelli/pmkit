@@ -43,6 +43,7 @@ exit 0
         "total": 3,
         "canceled": 0
       },
+      "updatesRead": true,
       "lastUpdate": {
         "at": "2026-10-19T10:00:00Z",
         "health": "at_risk"

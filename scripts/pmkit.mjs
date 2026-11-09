@@ -1892,6 +1892,8 @@ async function runRoadmapReview(ctx) {
   const notes = new Set()
   // Why a section is missing: the code of the error that cost it. Only NOT_SUPPORTED means the tracker lacks it.
   const sectionErrors = {}
+  // After a rate limit every further read would fail the same way, so the per-epic reads stop.
+  let rateLimited = false
   // Auth and configuration fail every read the same way, so they stop the command; anything else costs one value.
   const recoverable = (error) => isPmkitError(error) && error.code !== 'AUTH' && error.code !== 'NOT_CONFIGURED'
   // A list the tracker lacks, or that failed for a reason other than auth or config, costs its section.
@@ -1901,6 +1903,7 @@ async function runRoadmapReview(ctx) {
     } catch (error) {
       if (!recoverable(error)) throw error
       sectionErrors[what] = error.code
+      if (error.code === 'RATE_LIMITED') rateLimited = true
       if (error.code === 'NOT_SUPPORTED') {
         warnings.push(`${what} not checked: ${error.message}`)
         for (const note of await capabilityNotesOrNone(ctx, capability)) notes.add(note)
@@ -1932,7 +1935,6 @@ async function runRoadmapReview(ctx) {
   const progressByEpic = {}
   const updatesByEpic = {}
   let updatesSupported = true
-  let rateLimited = false
   // One epic's failed read is null for that epic only. A tracker without status updates stops asking after the first.
   const perEpic = async (id, read, { updates = false } = {}) => {
     try {
@@ -1953,7 +1955,6 @@ async function runRoadmapReview(ctx) {
   }
   const skipped = []
   for (const epic of epics ?? []) {
-    // After a rate limit every further read would fail the same way: leave the rest unknown.
     if (rateLimited) {
       skipped.push(epic.id)
       progressByEpic[epic.id] = null
@@ -1962,6 +1963,8 @@ async function runRoadmapReview(ctx) {
     }
     progressByEpic[epic.id] = await perEpic(epic.id, () => tracker.deliverableProgress(epic.id))
     if (progressByEpic[epic.id]?.hasMore === true) warnings.push(`${epic.id}: the tracker has more issues in this epic than pmkit read; the progress counts are partial`)
+    // A rate limit on this epic's progress read skips its updates read: say so as for the epics after it.
+    if (updatesSupported && rateLimited) skipped.push(epic.id)
     updatesByEpic[epic.id] = updatesSupported && !rateLimited ? await perEpic(epic.id, () => tracker.listStatusUpdates(epic.id), { updates: true }) : null
   }
   if (skipped.length) warnings.push(`rate limited: the reads of ${skipped.join(', ')} were skipped, so their progress and status updates are not checked`)
