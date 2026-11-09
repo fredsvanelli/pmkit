@@ -1,5 +1,5 @@
 // /pmkit:backlog:prioritize-by-demand on the team fixture. The four candidates (backlog, todo, triage) are ISS-3F7H (medium),
-// ISS-6J0B (low), ISS-4M2S (medium) and ISS-1V9Z (no priority). Six entries: requests (.0), comments and mentions with a
+// ISS-6J0B (low), ISS-4M2S (medium) and ISS-1V9Z (no priority). Seven entries: requests (.0), comments and mentions with a
 // whole-token decoy and the assignee's own comments (.1), a failed batch write (.2), the Linear path (.3), an incomplete read (.4) and a
 // demand problem that concerns no candidate (.5).
 import assert from 'node:assert/strict'
@@ -188,9 +188,47 @@ export default [
     ],
     skip: { '4 issues get': LOCAL, '4 issues list': LOCAL },
     notHit: {},
-    expect(repo) {
+    expect(repo, saved) {
       assert.equal(repo.issue('ISS-6J0B').priority, 'urgent')
       assert.equal(repo.newEvents('ISS-3F7H').length, 0)
+      assert.deepEqual(saved.demand.problems.map((problem) => [problem.id, problem.about]).sort(), [['CUS-4', 'customer'], ['ISS-ZZZZ', 'issue']])
+      assert.deepEqual(saved.demand.signals.map((signal) => signal.issue.id).sort(), ['ISS-6J0B', 'ISS-ZZZZ'], 'the request on the deleted issue is a signal for no candidate')
+    },
+  },
+  {
+    // The cap on issues with no demand (step 5, customer requests). ISS-4M2S has no request and priority urgent; ISS-6J0B has two
+    // requests and ISS-3F7H one, so they get urgent and high. The lowest priority proposed to an issue with demand is high, so
+    // ISS-4M2S, which would rank above ISS-3F7H, is capped to high. Without the cap ISS-4M2S would keep urgent. ISS-1V9Z has no
+    // priority and no demand and stays as it is.
+    command: 'backlog/prioritize-by-demand',
+    fixture: 'team',
+    async setup({ pmkit }) {
+      await pmkit(['issues', 'update', 'ISS-4M2S', '--priority', 'urgent'])
+      await request(pmkit, 'ISS-6J0B', 'Upgrade on CI')
+      await request(pmkit, 'ISS-6J0B', 'Build is slow')
+      await request(pmkit, 'ISS-3F7H', 'Empty dashboard confuses new users')
+    },
+    prompt: '/pmkit:backlog:prioritize-by-demand',
+    answers: ['All', 'Yes'],
+    steps: [
+      ...reads,
+      { confirm: 'Step 5' },
+      { step: '6', dryRun: update('ISS-6J0B', 'urgent') },
+      { step: '6', dryRun: update('ISS-3F7H', 'high') },
+      { step: '6', dryRun: update('ISS-4M2S', 'high') },
+      { confirm: 'Step 7' },
+      { step: '6', write: update('ISS-6J0B', 'urgent') },
+      { step: '6', write: update('ISS-3F7H', 'high') },
+      { step: '6', write: update('ISS-4M2S', 'high') },
+      { step: '9', read: ['issues', 'list', ...CANDIDATES] },
+    ],
+    skip: { '4 issues get': LOCAL, '4 issues list': LOCAL },
+    notHit: {},
+    expect(repo) {
+      assert.equal(repo.issue('ISS-6J0B').priority, 'urgent')
+      assert.equal(repo.issue('ISS-3F7H').priority, 'high')
+      assert.equal(repo.issue('ISS-4M2S').priority, 'high', 'an issue with no demand never ranks above one with demand')
+      assert.equal(repo.newEvents('ISS-1V9Z').length, 0)
     },
   },
 ]
