@@ -1,2 +1,11 @@
 {"at":"2026-10-31T16:01:11Z","by":"fred","op":"create","to":{"id":"PMK-176","title":"Fix estimate-issue on an empty or conditional estimate scale","type":"bug","status":"backlog","priority":"medium","estimate":2,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-31T16:01:11.186Z","updated":"2026-10-31T16:01:11Z"}}
 {"at":"2026-10-31T16:01:11Z","by":"fred","op":"link","field":"related","to":"PMK-59"}
+{"at":"2026-11-09T00:21:58Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-09T00:21:58Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-09T00:22:02Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-176-fix-estimate-issue-on-an-empty-or"}
+{"at":"2026-11-09T00:22:57Z","by":"fred","op":"comment","to":"2026-11-09T00-22-57Z-fred.md"}
+{"at":"2026-11-09T00:23:52Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T00:23:53Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T00:23:53Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T00:28:04Z","by":"fred","op":"comment","to":"2026-11-09T00-28-04Z-fred.md"}
+{"at":"2026-11-09T00:28:04Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
