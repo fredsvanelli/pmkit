@@ -31,6 +31,7 @@ const names = (items, label = (i) => i) => items.map(label).join(', ')
 // A review request is a user (`login`) or a team (`slug`). Teams are kept apart so a team named like a user never matches the user.
 const isTeam = (r) => r.__typename === 'Team' || (r.login === undefined && r.slug !== undefined)
 /** Who is asked for a review, as text: users by login, teams as `team <slug>`. */
+const anyRequested = (reviews) => (reviews?.requested.length ?? 0) + (reviews?.requestedTeams.length ?? 0) > 0
 const waitingFor = (reviews) => [...reviews.requested, ...reviews.requestedTeams.map((t) => `team ${t}`)].join(', ')
 
 /**
@@ -158,7 +159,7 @@ export function collectBlockers(host, pr) {
     if (failing.length > 0) open.push({ area: 'checks', message: `failing ${names(failing, (c) => c.name)}` })
     if (waiting.length > 0) open.push({ area: 'checks', message: `pending ${names(waiting, (c) => c.name)}` })
   }
-  if (reviews?.requested.length + reviews?.requestedTeams.length > 0) open.push({ area: 'reviews', message: `waiting for ${waitingFor(reviews)}` })
+  if (anyRequested(reviews)) open.push({ area: 'reviews', message: `waiting for ${waitingFor(reviews)}` })
   if (conflicts?.behind && statusChecks?.strict !== true) open.push({ area: 'conflicts', message: 'the branch is behind the base branch' })
   if (threads && unresolved.length > 0 && !conversationRequired) {
     open.push({ area: 'threads', message: `${plural(threads.open.length, 'open thread')}${threads.outdated.length > 0 ? ` and ${plural(threads.outdated.length, 'outdated thread')}` : ''}` })
@@ -188,7 +189,7 @@ export function blockersText(pr, found) {
   else {
     const parts = []
     if (reviews.changesRequested.length > 0) parts.push(`changes requested by ${names(reviews.changesRequested)}`)
-    if (reviews.requested.length + reviews.requestedTeams.length > 0) parts.push(`waiting for ${waitingFor(reviews)}`)
+    if (anyRequested(reviews)) parts.push(`waiting for ${waitingFor(reviews)}`)
     if (parts.length === 0 && reviews.decision === 'REVIEW_REQUIRED') parts.push('a review is required')
     lines.push(`reviews: ${parts.length > 0 ? parts.join('; ') : 'nothing pending'}`)
   }

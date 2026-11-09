@@ -28,7 +28,7 @@ export default {
   gh: {
     [`pr view ${BRANCH} --json ${VIEW}`]: { stdout: JSON.stringify(pr) },
     'pr checks 7 --json name,state,bucket': { status: 8, stdout: JSON.stringify([{ name: 'test', state: 'FAILURE', bucket: 'fail' }, { name: 'lint', state: 'SUCCESS', bucket: 'pass' }]) },
-    'pr view 7 --json reviews,reviewRequests': { stdout: JSON.stringify({ reviews: [], reviewRequests: [{ __typename: 'User', login: 'ana' }] }) },
+    'pr view 7 --json reviews,reviewRequests': { stdout: JSON.stringify({ reviews: [], reviewRequests: [{ __typename: 'User', login: 'ana' }, { __typename: 'Team', name: 'core', slug: 'core' }] }) },
     'pr view 7 --json mergeable,mergeStateStatus,reviewDecision,baseRefName': { stdout: JSON.stringify({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY', reviewDecision: 'REVIEW_REQUIRED', baseRefName: 'main' }) },
     [threadsKey()]: { stdout: JSON.stringify(threads) },
     'api repos/{owner}/{repo}/branches/main/protection': { status: 1, stderr: 'gh: Resource not accessible by integration (HTTP 403)\n' },
@@ -57,6 +57,7 @@ export default {
     assert.ok(repo.ghCalls().includes('pr ready 7'), 'the user confirmed, so the pull request is marked ready')
     assert.deepEqual(blockers.checks.failing.map((c) => c.name), ['test'])
     assert.deepEqual(blockers.reviews.requested, ['ana'])
+    assert.deepEqual(blockers.reviews.requestedTeams, ['core'])
     assert.equal(blockers.conflicts.conflicting, true)
     assert.equal(blockers.threads.open.length, 1)
     assert.equal(blockers.policies, null)

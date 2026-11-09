@@ -47,7 +47,7 @@ const merged = { number: 12, url: 'https://github.com/o/r/pull/12', title: 'Bill
 const LIST = ['issues', 'list', '--category', 'backlog,todo,in_progress,in_review']
 const BRANCHES = [['ISS-8C4W', B.review], ['ISS-4M2S', B.cut], ['ISS-3F7H', B.nobody], ['ISS-2X6D', B.merged]]
 
-async function setup({ pmkit, root }, { complete = false } = {}) {
+async function setup({ pmkit, root }) {
   for (const [id, branch] of BRANCHES) await pmkit(['issues', 'update', id, '--branch', branch])
   for (const id of ['ISS-2X6D', 'ISS-1V9Z']) await pmkit(['issues', 'move', id, 'in_review'])
   // Not in review: the digest finds their pull requests whatever the status. ISS-4M2S also leaves fred, who keeps the PR as its author.
@@ -62,8 +62,6 @@ async function setup({ pmkit, root }, { complete = false } = {}) {
   const old = path.join(root, '.issues', 'issues', 'ISS-5N1R', 'comments')
   fs.mkdirSync(old, { recursive: true })
   fs.writeFileSync(path.join(old, '2026-09-20T12-00-00Z-ana.md'), '---\nauthor: ana\ncreated: 2026-09-20T12:00:00Z\n---\n\nOld note for @fred\n')
-  // The fixture's conflicted file makes the inbox incomplete. The complete entry drops it.
-  if (complete) fs.rmSync(path.join(root, '.issues', 'issues', 'ISS-3Q6T'), { recursive: true })
 }
 
 const base = {
@@ -142,11 +140,13 @@ const all = {
 }
 
 // The conflicted file is gone: the inbox is complete, so the digest offers `inbox mark-read --key <key> ...` with exactly the shown keys.
-// No issue has a branch here, so no pr blockers call runs and the issues in review are "not verified: no branch recorded".
+// ISS-4M2S (todo) has a branch and no pull request yet: the read works and finds none, which is a fact, not an incomplete read.
+// The issues in review with no branch are "not verified: no branch recorded".
 const complete = {
   ...base,
-  gh: {},
+  gh: { [`pr view ${B.cut} --json ${VIEW}`]: { status: 1, stderr: 'no pull requests found for branch "iss-4m2s-csv-column-order"\n' } },
   setup: async (ctx) => {
+    await ctx.pmkit(['issues', 'update', 'ISS-4M2S', '--branch', B.cut])
     await ctx.pmkit(['issues', 'move', 'ISS-2X6D', 'in_review'])
     await ctx.pmkit(['issues', 'assign', 'ISS-6J0B', 'fred', '--as', 'ana'])
     const body = path.join(ctx.root, 'mention.md')
@@ -155,8 +155,8 @@ const complete = {
     fs.rmSync(body)
     fs.rmSync(path.join(ctx.root, '.issues', 'issues', 'ISS-3Q6T'), { recursive: true })
   },
-  steps: head4,
-  skip: { ...skipStep3, '5.1 pr blockers': 'no issue has a branch recorded in this run' },
+  steps: [...head4, { step: '5.1', read: ['pr', 'blockers', '--branch', B.cut], save: 'noPr' }],
+  skip: skipStep3,
   expect(repo, saved) {
     assert.equal(saved.inbox.complete, true)
     assert.deepEqual(saved.inbox.problems, [])
@@ -168,6 +168,9 @@ const complete = {
     assert.ok(keys.every((key) => typeof key === 'string' && key !== ''))
     assert.equal(new Set(keys).size, keys.length)
     assert.deepEqual(saved.inbox.items.map((item) => item.kind), ['assignment', 'mention'])
+    // A branch with no pull request reads fine and leaves the inbox complete. The command file must not call it "not verified".
+    assert.equal(saved.noPr.pr, null)
+    assert.ok(!/not verified: no pull request/.test(fs.readFileSync(new URL('../../commands/issues/inbox-digest.md', import.meta.url), 'utf8')))
     // The digest reads only: the offer is text, so nothing is marked seen.
     assert.ok(saved.inbox.items.every((item) => item.seen === false))
   },
