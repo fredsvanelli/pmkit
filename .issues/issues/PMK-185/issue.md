@@ -2,12 +2,14 @@
 id: PMK-185
 title: "Fix alerts list notes, advisory titles and the missing-npm check"
 type: bug
-status: backlog
+status: in_progress
 priority: medium
 estimate: 1
+assignee: fred
 related: [PMK-48]
+branch: pmk-185-fix-alerts-list-notes-advisory-titles
 created: 2026-10-31T16:01:21.642Z
-updated: 2026-10-31T16:01:22Z
+updated: 2026-11-09T01:18:30Z
 ---
 
 ## Description
