@@ -1,2 +1,11 @@
 {"at":"2026-10-31T16:01:17Z","by":"fred","op":"create","to":{"id":"PMK-181","title":"Fix parseDelegation on trailing spaces and the delegate identity text","type":"bug","status":"backlog","priority":"medium","estimate":1,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-31T16:01:17.026Z","updated":"2026-10-31T16:01:17Z"}}
 {"at":"2026-10-31T16:01:17Z","by":"fred","op":"link","field":"related","to":"PMK-57"}
+{"at":"2026-11-09T00:54:11Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-09T00:54:11Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-09T00:54:16Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-181-fix-parsedelegation-on-trailing-spaces"}
+{"at":"2026-11-09T00:54:43Z","by":"fred","op":"comment","to":"2026-11-09T00-54-43Z-fred.md"}
+{"at":"2026-11-09T00:55:07Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T00:55:08Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T00:55:08Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T00:59:06Z","by":"fred","op":"comment","to":"2026-11-09T00-59-06Z-fred.md"}
+{"at":"2026-11-09T00:59:06Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

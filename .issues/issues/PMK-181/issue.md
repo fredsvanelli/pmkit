@@ -2,12 +2,14 @@
 id: PMK-181
 title: Fix parseDelegation on trailing spaces and the delegate identity text
 type: bug
-status: backlog
+status: in_review
 priority: medium
 estimate: 1
+assignee: fred
 related: [PMK-57]
+branch: pmk-181-fix-parsedelegation-on-trailing-spaces
 created: 2026-10-31T16:01:17.026Z
-updated: 2026-10-31T16:01:17Z
+updated: 2026-11-09T00:59:06Z
 ---
 
 ## Description
@@ -28,6 +30,6 @@ updated: 2026-10-31T16:01:17Z
 
 ## Acceptance criteria
 
-- [ ] `parseDelegation` reads a first line with trailing spaces or `\r\n`
-- [ ] The command and the comment say which identity the commits and the PR use
-- [ ] The contract `assign` test assigns a person again
+- [x] `parseDelegation` reads a first line with trailing spaces or `\r\n`
+- [x] The command and the comment say which identity the commits and the PR use
+- [x] The contract `assign` test assigns a person again
