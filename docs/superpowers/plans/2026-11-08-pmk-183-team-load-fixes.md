@@ -1,0 +1,11 @@
+# PMK-183 plan
+
+Each task: failing test first (`scripts/team-load.test.mjs`, `scripts/cli-team-load.test.mjs`), then code, then `node --test` on that file.
+
+1. **chooseUnit sizes/mixed** (criterion 4): string estimates and no numeric one, or numbers mixed with strings, give `issues` with the new reason. Test with conditional estimation.
+2. **proposeMoves reasons** (criterion 4): `zero_estimate` and `would_not_improve` in `NO_MOVE_MESSAGES`; test 10 with 6 in todo against 0 and estimates of 0.
+3. **no_availability flag** (criterion 3): flag in `teamLoad`, source handling in `proposeMoves`; tests: availability 0 with work is flagged and moves its todo, the flag does not fall on someone else, availability 0 without work is not flagged.
+4. **Current without sprint** (criterion 1): `teamLoadReport` reads nothing and warns; CLI test compares with `issues list --sprint current`; team capacity unchanged.
+5. **Linear target** (criterion 2): `commands/team/load.md` step 4 and 2; scenario and golden updated if text changes.
+6. **Docs**: CHANGELOG line, `load.md` reasons/flag, README/SKILL only if they list flags or reasons. Check criteria with `issues update --check`, commit `.issues/`.
+7. **Verify**: `npm test` in the foreground, exit code 0.
