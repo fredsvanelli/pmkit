@@ -20,7 +20,7 @@ export function viewStems(dir) {
 
 /** Parses the text of views/<name>.yaml into { name, filter }. */
 export function parseView(text, name) {
-  const bad = (why) => new PmkitError('INVALID_INPUT', `view file ${name}.yaml ${why}`, DOCTOR)
+  const bad = (why) => new PmkitError('INVALID_INPUT', `view file ${name}.yaml ${why}`, DOCTOR, { reason: 'view_file_broken' })
   let data
   try {
     data = parseYaml(text)

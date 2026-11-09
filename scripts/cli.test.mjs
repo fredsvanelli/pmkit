@@ -2438,3 +2438,16 @@ test('requests accept warns about a customer it cannot read, in the text and in 
   assert.match(result.stderr, /warning: REQ-1: NOT_FOUND .*CUS-4.*; run pmkit validate/)
   assert.equal(json(root, ['requests', 'accept', 'REQ-1', 'ISS-5N1R']).problems.length, 1)
 })
+
+test('views run prints a stable error.reason for each INVALID_INPUT case and none for NOT_FOUND', () => {
+  const root = makeRepo('team')
+  fs.mkdirSync(path.join(root, '.issues', 'views'), { recursive: true })
+  fs.writeFileSync(path.join(root, '.issues', 'views', 'stale.yaml'), 'filter:\n  types: [gone]\n')
+  fs.writeFileSync(path.join(root, '.issues', 'views', 'broken.yaml'), 'filter: 3\n')
+  const error = (name) => JSON.parse(run(root, ['views', 'run', name, '--json']).stdout).error
+  assert.equal(error('../x').reason, 'invalid_view_name')
+  assert.equal(error('stale').reason, 'view_out_of_date')
+  assert.equal(error('broken').reason, 'view_file_broken')
+  assert.equal(error('missing').code, 'NOT_FOUND')
+  assert.equal(error('missing').reason, undefined)
+})
