@@ -219,7 +219,7 @@ export function risksText(report) {
           row.lastUpdate ? `${row.lastUpdate.at.slice(0, 10)} ${row.lastUpdate.health}` : 'none', row.reasons.join(', '),
         ],
       }),
-      ...(report.updatesNotChecked.length ? [`not checked: ${report.updatesNotChecked.join(', ')} (status updates could not be read)`] : []),
+      ...((report.updatesNotChecked ?? []).length ? [`not checked: ${report.updatesNotChecked.join(', ')} (status updates could not be read)`] : []),
     ].join('\n'),
     section(`failing CI on ${branchName}`, defaultBranch === null ? null : defaultBranch.error ? defaultBranch : defaultBranch.failing, {
       notChecked,
