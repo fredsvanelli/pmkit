@@ -1,0 +1,9 @@
+# PMK-202 plan
+
+Spec: `docs/superpowers/specs/2026-11-09-pmk-202-roadmap-review-degraded-paths-design.md`. Each task is red, green, commit with `(PMK-202)`.
+
+1. `risks.mjs`: `needsUpdate`, null-aware `epicRisks`, `epicsUpdatesNotChecked`. Tests in `scripts/risks.test.mjs`.
+2. `runRisks`: keep `null` on a failed read, `updatesNotChecked` in the report and text. Update the test in `scripts/cli-risks.test.mjs`.
+3. `roadmap-review.mjs`: use `needsUpdate`, `unavailable`, no fallback on failure, `unknown` delay, `milestones` by name. Tests in `scripts/roadmap-review.test.mjs`.
+4. `pmkit.mjs` `runRoadmapReview`: pass the section errors, stop after `RATE_LIMITED`, safe `capabilityNotes`. Tests in `scripts/cli-roadmap-review.test.mjs`.
+5. Docs: both command files, scenario expectations if they change, CHANGELOG. Check the acceptance criteria, `npm test` in the foreground (exit code 0).
