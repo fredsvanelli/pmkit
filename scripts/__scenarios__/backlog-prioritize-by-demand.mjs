@@ -1,7 +1,7 @@
 // /pmkit:backlog:prioritize-by-demand on the team fixture. The four candidates (backlog, todo, triage) are ISS-3F7H (medium),
 // ISS-6J0B (low), ISS-4M2S (medium) and ISS-1V9Z (no priority). Seven entries: requests (.0), comments and mentions with a
 // whole-token decoy and the assignee's own comments (.1), a failed batch write (.2), the Linear path (.3), an incomplete read (.4) and a
-// demand problem that concerns no candidate (.5).
+// demand problem that concerns no candidate (.5) and the cap on an issue with no demand (.6).
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
