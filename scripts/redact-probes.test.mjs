@@ -155,7 +155,7 @@ const PROBES = [
   ['one-time code', 'token: 482913', 'token: [redacted]'],
   ['token limit', 'token_limit: 100', 'token_limit: 100'],
   ['secret version', 'secret_version=3', 'secret_version=3'],
-  ['max tokens before another pair', 'max_tokens=4096, token=abc', 'max_tokens=4096, token=[redacted]'],
+  ['max tokens before another pair', 'max_tokens=4096, token=abc', 'max_tokens=[redacted]'],
   // F: Markdown that opens inside the value goes with it, so nothing is left unbalanced.
   ['backticked password in prose', 'the password: `hunter2` works', 'the password: [redacted]'],
   ['bold password', 'password: **hunter2**', 'password: [redacted]'],
@@ -211,6 +211,48 @@ const PROBES = [
   ['environment key in brackets', "os.environ['DB_PASSWORD'] = 'hunter2'", "os.environ['DB_PASSWORD'] = [redacted]"],
   ['authorization quote never closed', 'Authorization: "Basic dXNlcjpwYXNz', 'Authorization: [redacted]'],
   ['curl short options before u', 'curl -su admin:hunter22 https://x', 'curl -su [redacted] https://x'],
+  // Review of PR #155, cycle 4. 1: a value that opens a block on its line takes the more indented lines below.
+  ['formatted json object', '{\n  "credentials": {\n    "user": "bob",\n    "pass": "hunter2"\n  }\n}', '{\n  "credentials": {\n    [redacted]\n  }\n}'],
+  ['hcl object', 'secrets = {\n  db = "hunter2"\n}', 'secrets = {\n  [redacted]\n}'],
+  ['python tuple', 'password = (\n  "hunter2"\n)', 'password = (\n  [redacted]\n)'],
+  ['json array', '"secrets": [\n  "hunter2"\n]', '"secrets": [\n  [redacted]\n]'],
+  ['shell line continuation', 'PASSWORD=\\\n  hunter2', 'PASSWORD=\\\n  [redacted]'],
+  ['object opened inline', '"credentials": {"user": "bob",\n    "pass": "hunter2"\n}', '"credentials": [redacted]\n}'],
+  // 2: a file location in backticks, with a range or before a dot.
+  ['file location in backticks', '- `src/auth/password.ts:12` and `src/a.ts:3`', '- `src/auth/password.ts:12` and `src/a.ts:3`'],
+  ['file location with a range', '`scripts/lib/token.mjs:42-50` reads the header twice', '`scripts/lib/token.mjs:42-50` reads the header twice'],
+  ['file location before a dot in backticks', 'See `lib/token.mjs:42`.', 'See `lib/token.mjs:42`.'],
+  ['file location ending a sentence', 'in password.ts:12.', 'in password.ts:12.'],
+  // 3: a number is exempt only as the whole value, after a quantity key or in a file location.
+  ['grep output of a password file', 'config/password.txt:1:hunter2', 'config/password.txt:[redacted]'],
+  ['grep output of a secrets file', '.env.secrets:3:DB=hunter2', '.env.secrets:[redacted]'],
+  ['plural key with a number and more', 'api_keys: 12345:abcdef', 'api_keys: [redacted]'],
+  ['telegram bot token', 'bot_tokens: 123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw', 'bot_tokens: [redacted]'],
+  ['number then a word after a plural key', 'secrets: 123 hunter2', 'secrets: [redacted]'],
+  ['number then a word after a quantity key', 'max_tokens=1000 hunter2', 'max_tokens=[redacted]'],
+  ['credentials pin', 'credentials.pin: 1234', 'credentials.pin: [redacted]'],
+  ['token value', 'token.value=48291337', 'token.value=[redacted]'],
+  ['secret pass', 'SECRET_PASS=12345678', 'SECRET_PASS=[redacted]'],
+  ['token pass', 'token_pass=482913', 'token_pass=[redacted]'],
+  // 4: a closing mark inside the secret is not the end of the value.
+  ['parenthesis inside a password in a call', 'login(password=Pa)ss!w0rd', 'login(password=[redacted]'],
+  ['parenthesis inside a password', '(password=hunter)22', '(password=[redacted]'],
+  ['parenthesis inside a password after another argument', 'connect(user="x", password=ab)cd,', 'connect(user="x", password=[redacted]'],
+  ['backtick inside a token', '`token=ab`cd', '`token=[redacted]'],
+  ['brace inside a token', '{token=ab}cd', '{token=[redacted]'],
+  ['double underscore inside a token', '__dirname token=abc__xyz', '__dirname token=[redacted]'],
+  // 5: a comment inside a YAML block, an indexed key, an empty quoted value followed by text.
+  ['comment at column 0 in a mapping', 'credentials:\n# c\n  db: hunter2', 'credentials:\n# c\n  db: [redacted]'],
+  ['comment at column 0 before a value', 'password:\n# c\n  hunter2', 'password:\n# c\n  [redacted]'],
+  ['indexed key', 'secret[0]=hunter2', 'secret[0]=[redacted]'],
+  ['key with a named index', 'token[value]=abc123', 'token[value]=[redacted]'],
+  ['empty quotes then a password', 'password: "" hunter2', 'password: [redacted]'],
+  ['empty single quotes then a token', "token: '' abc", 'token: [redacted]'],
+  ['empty quoted password in json', '{"password": "", "user": "bob"}', '{"password": "", "user": "bob"}'],
+  // Non-blockers of cycle 4.
+  ['authorization header in code', "headers['Authorization'] = 'Basic dXNlcjpodW50ZXIy'", "headers['Authorization'] = [redacted]"],
+  ['escaped authorization in a json string', 'headers: "{\\"Authorization\\": \\"Basic abc\\"}"', 'headers: "{\\"Authorization\\": [redacted]}"'],
+  ['quoted mark after authorization', '"Authorization": "[redacted]"', '"Authorization": "[redacted]"'],
 ]
 
 for (const [name, input, output] of PROBES) {

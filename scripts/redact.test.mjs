@@ -112,7 +112,7 @@ for (const text of SAME) {
 const FALSE_POSITIVES = [
   ['Unexpected token: < in JSON at position 0', 'Unexpected token: [redacted]'],
   ['if (password === undefined) throw new Error("no password")', 'if (password === [redacted])'],
-  ['max_tokens=4096 and tokenizer=cl100k', 'max_tokens=4096 and tokenizer=[redacted]'],
+  ['max_tokens=4096 and tokenizer=cl100k', 'max_tokens=[redacted]'],
   ['Set the password: field in config.yaml to your own value.', 'Set the password: [redacted]'],
   ['the parser reads the next token: a comma', 'the parser reads the next token: [redacted]'],
   ['const token = getToken(req)', 'const token = [redacted]'],

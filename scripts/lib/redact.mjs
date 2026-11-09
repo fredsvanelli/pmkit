@@ -3,7 +3,7 @@
 
 const MARK = '[redacted]'
 // An Authorization value that is the mark followed by wrappers only: text this module wrote, which a second pass leaves alone.
-const MARKED = /^\[redacted\][)\]}>*`'",.;:|_~]*$/
+const MARKED = /^["']?\[redacted\][)\]}>*`'",.;:|_~]*$/
 
 // Order matters: a longer match (a private key, a URL, an Authorization line) goes before the shorter ones inside it. These
 // run before the key/value pairs, the token patterns (TOKENS) after them, so a value after a secret key that starts with a
@@ -38,28 +38,39 @@ const TOKENS = [
 //   - A quoted value is the quoted text (an escaped quote and line breaks inside, up to 4096 characters), unless a word goes
 //     on right after the closing quote.
 //   - Any other value runs to the end of the line, or to the next `|` in a table row. Only the Markdown that opened before
-//     the value and is still open (a backtick, `**`, `__`, `~~`, `(`, `[`, `{`) keeps its last closing mark on the line.
-//   - Nothing after the key, or a YAML `|` or `>`: the lines below that are more indented than the key (see `under`). With
-//     nothing after the key and a `name:` pair on the first of them, they are a mapping: each value in it goes, the names
-//     stay.
-//   - Left alone: a value that is the mark already, a number after a key that names a quantity or a file and does not end in
-//     the secret word (`max_tokens`, `token_limit`, `secret_version`, `token.mjs:12:5`) and a directory after the shell
-//     variable PWD or OLDPWD.
-const SECRET_WORD = 'api[_-]?key|private[_-]?key|token|secret|passw(?:or)?d|pwd|credentials?'
+//     the value and is still open (a backtick, `**`, `__`, `~~`, `(`, `[`, `{`) keeps its last closing mark on the line, and
+//     only one that ends a word (see `ENDS`), so `login(password=Pa)ss` loses `)ss`.
+//   - Nothing after the key, a YAML `|` or `>`, or a value that opens `{`, `[` or `(` without closing it or ends in `\`: the
+//     lines below that are more indented than the key (see `under`) go too. With nothing after the key and a `name:` pair on
+//     the first of them, they are a mapping: each value in it goes, the names stay.
+//   - Left alone: a value that is the mark already, a number that is the whole value after a key that names a quantity
+//     (`max_tokens`, `token_limit`, `secret_version`), a file location (`token.mjs:12:5`, `password.ts:42-50`), an empty
+//     quoted value and a directory after the shell variable PWD or OLDPWD.
+const SECRET_WORD = 'api[_-]?key|private[_-]?key|token|secret|passw(?:or)?d|pwd|credentials?|authorization'
 const KEY_WORDS = new RegExp(SECRET_WORD, 'i')
 const SECRET_LAST = new RegExp(`(?:${SECRET_WORD})$`, 'i')
 const SHELL_PWD = /^(?:old)?pwd$/i
-const QUANTITY = /(?:s|limit|count|version|size|length|max|min|\.[a-z]\w*)$/i
-const keepsNumber = (key) => QUANTITY.test(key) && !SECRET_LAST.test(key)
-// A key starts with a word character or a dot, so the `-` of a removed diff line is not part of it. It may close a quote,
-// an escaped quote (`{\"password\":`) or a bracket (`config["password"] =`).
-const KEY_SEPARATOR = /(?<![\w.-])-*([\w.][\w.-]*)(\\?["']?\]?[^\S\n]*(?:=>|:=|===?|[=:])[^\S\n]*)/g
+// A plural (`max_tokens`, not `SECRET_PASS`) or a word of quantity.
+const QUANTITY = /(?:(?<!s)s|limit|count|version|size|length|max|min)$/i
+const keepsNumber = (key, value) => /^\d+(?:\.\d+)?$/.test(value) && QUANTITY.test(key) && !SECRET_LAST.test(key)
+// A source or config file name before `:line`, `:line:column` or `:line-line`, and what may follow it: the end, a space,
+// a quote, a closing mark, a sentence mark, or a colon and a space (`file.py:42: AssertionError`, not `file.txt:1:hunter2`).
+const FILE_KEY = /\.(?:[cm]?[jt]sx?|py|rb|go|rs|java|kts?|scala|swift|c|h|cc|cpp|hpp|cs|php|sh|bash|zsh|ps1|pl|lua|exs?|erl|dart|vue|svelte|sql|ya?ml|json|toml|ini|cfg|conf|env|txt|md|log|xml|html?|css|scss|tf|gradle|properties)$/i
+const LOCATION = /\d+(?::\d+)*(?:-\d+)?(?=[\s`'")\],;!?]|[.:](?=\s|$)|$)/y// A key starts with a word character or a dot, so the `-` of a removed diff line is not part of it. It may have an index
+// (`secret[0]=`) and close a quote, an escaped quote (`{\"password\":`) or a bracket (`config["password"] =`).
+const KEY_SEPARATOR = /(?<![\w.-])-*([\w.][\w.-]*)((?:\[[^\]\s"']{0,64}\])?\\?["']?\]?[^\S\n]*(?:=>|:=|===?|[=:])[^\S\n]*)/g
 // YAML doubles a single quote inside single quotes (`'it''s'`).
 const QUOTED = /"(?:[^"\\]|\\[\s\S]){0,4096}"|'(?:[^'\\]|\\[\s\S]|''){0,4096}'/y
 // What may follow a closing quote for the quoted text to be the whole value (`"pa"ss`, `"abc"-def` are not).
 const AFTER_QUOTE = /[\s,;)\]}]|$/y
-const NUMBER = /\d+(?::\d+)*(?=[\s,;:)\]}]|$)/y
-const DONE = /\[redacted\](?=[\s,;]|$)/y
+// An empty quoted value is left alone only when nothing but a separator or a closing mark follows it (`password: "" x` goes).
+const EMPTY_END = /[^\S\n]*(?:[,;)\]}]|\n|$)/y
+// The mark of an earlier pass, followed by what may end a value.
+const DONE = /\[redacted\](?=[\s,;'"`)\]}]|$)/y
+// A value that opens a bracket without closing it, or ends in a line continuation.
+const OPENS = (value) => value.endsWith('\\') || ['{}', '[]', '()'].some(([open, close]) => value.split(open).length > value.split(close).length)
+// What may follow a closing mark that ends the value: the end, a space, a sentence mark, a quote or another closing mark.
+const ENDS = /[\s.,;:!?'"`)\]}>*_~|]|$/y
 const TABLE_ROW = /[^\S\n]*\|/y
 // A YAML block indicator, a comment or both, after an anchor or a tag: the value is on the lines below.
 const BLOCK = /^(?:[&!]\S*[^\S\n]+)*(?:[|>][+-]?\d?[+-]?)?(?:[^\S\n]*#.*)?$/
@@ -97,7 +108,8 @@ function under(text, from, column, lead, before) {
     pos = lineEnd(text, start)
     const line = text.slice(start, pos)
     const indent = leadOf(line)
-    if (indent === line.length || (space(line[column]) && !line.slice(column).trim())) continue
+    // A blank line, or a YAML comment in any column, belongs to the block if more of it follows.
+    if (indent === line.length || line[indent] === '#' || (space(line[column]) && !line.slice(column).trim())) continue
     const sameColumn = space(line[column]) && (column === 0 || space(line[column - 1]) === space(before))
     if (!sameColumn && indent <= lead) break
     if (first < 0) first = start + (sameColumn ? column + line.slice(column).search(/\S/) : indent)
@@ -124,15 +136,15 @@ function redactPairs(text, counts) {
     const start = match.index + match[0].length
     const keyAt = start - match[2].length - key.length
     if (!KEY_WORDS.test(key) || keyAt < position) continue
-    if ((at(NUMBER, text, start) && keepsNumber(key)) || at(DONE, text, start)) continue
+    if (at(DONE, text, start) || (match[2] === ':' && FILE_KEY.test(key) && at(LOCATION, text, start))) continue
     if (SHELL_PWD.test(key) && (text[start] === '/' || text[start] === '~')) continue
     if (text[start] === '"' || text[start] === "'") {
       QUOTED.lastIndex = start
       const quoted = QUOTED.exec(text)
       if (quoted && at(AFTER_QUOTE, text, start + quoted[0].length)) {
         const inner = quoted[0].slice(1, -1)
-        if (inner && inner !== MARK && !(at(NUMBER, inner, 0) && keepsNumber(key))) replace(start, start + quoted[0].length)
-        continue
+        if (inner && inner !== MARK && !keepsNumber(key, inner)) replace(start, start + quoted[0].length)
+        if (inner || at(EMPTY_END, text, start + 2)) continue
       }
     }
     // The line is read once, however many keys it holds.
@@ -146,7 +158,8 @@ function redactPairs(text, counts) {
     if (end === -1 || end > lineStop) end = lineStop
     let value = text.slice(start, end).trimEnd()
     const below = !table && (!value || BLOCK.test(value))
-    const lines = below && under(text, lineStop, keyAt - lineStart, leadOf(text.slice(lineStart, keyAt)), text[keyAt - 1])
+    const opens = !table && !below && OPENS(value)
+    const lines = (below || opens) && under(text, lineStop, keyAt - lineStart, leadOf(text.slice(lineStart, keyAt)), text[keyAt - 1])
     if (lines) {
       if (text.slice(lines.first, lines.last) === MARK) continue
       if (!value && at(MAPPING, text, lines.first)) {
@@ -161,18 +174,20 @@ function redactPairs(text, counts) {
         }
         continue
       }
-      replace(value ? start : lines.first, lines.last)
+      // A lone opening mark stays (`"credentials": {`), and so does the closing line below.
+      replace(!value || /^[{[(\\]$/.test(value) ? lines.first : start, lines.last)
       continue
     }
     // With no line below, a lone `|` or `>` is left alone and a comment is the value itself (`PASSWORD=#hunter2`).
     if (below && !value.startsWith('#')) continue
     // A key's leading underscores are Markdown (`__token=x__`), not part of the name.
     for (const close of openClosers(text.slice(cell, keyAt + key.match(/^_*/)[0].length))) {
-      const cut = value.lastIndexOf(close)
+      let cut = value.lastIndexOf(close)
+      while (cut !== -1 && !(at(ENDS, value, cut + close.length) || (close === ']' && value[cut + 1] === '('))) cut = cut ? value.lastIndexOf(close, cut - 1) : -1
       if (cut !== -1) value = value.slice(0, cut)
     }
     value = value.trimEnd()
-    if (!value || value === MARK) continue
+    if (!value || value === MARK || keepsNumber(key, value)) continue
     replace(start, start + value.length)
   }
   return out + text.slice(position)
