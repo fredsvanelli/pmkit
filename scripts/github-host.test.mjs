@@ -472,6 +472,7 @@ test('a SAML enforcement or missing-scopes refusal is a 403, and a message that 
     try { host(fakeExec({ status: 1, stdout, stderr: 'gh: nope\n' }).exec).prThreads(1) } catch (e) { return e.httpStatus }
   }
   assert.equal(threads('INSUFFICIENT_SCOPES'), 403)
+})
 
 const STATUS = 'status --porcelain'
 const onBranch = { 'branch --show-current': { stdout: 'feat/x\n' } }
