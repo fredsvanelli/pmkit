@@ -298,6 +298,19 @@ test('probe: no pattern takes more than a second on 80 thousand characters of it
   }
 })
 
+// Review of PR #155, cycle 5b: a table row of many keys that are skipped (already redacted, a file location, a directory)
+// reads the row once, at the size the review measured.
+test('probe: a table row of 320 thousand characters of skipped keys takes less than a second', () => {
+  const n = 320000
+  const inputs = [`|${rep(' token=[redacted]', n / 17)}`, `|${rep(' token.ts:1', n / 11)}`, `|${rep(' PWD=/a', n / 7)}`, `|${rep(' **Password:** [redacted]', n / 25)}`, `|${rep(' token=[redacted] a.ts:1 PWD=/a', n / 31)}`]
+  for (const input of inputs) {
+    const start = process.hrtime.bigint()
+    redact(input)
+    const ms = Number(process.hrtime.bigint() - start) / 1e6
+    assert.ok(ms < 1000, `${JSON.stringify(input.slice(0, 20))} took ${ms} ms`)
+  }
+})
+
 test('probe: redact is idempotent over its own output', () => {
   for (const [name, , output] of PROBES) {
     const again = redact(output)

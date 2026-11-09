@@ -73,6 +73,7 @@ const DONE = /\[redacted\](?=[\s,;'"`)\]}]|$)/y
 // A value that opens a bracket without closing it, or ends in a line continuation.
 const OPENS = (value) => value.endsWith('\\') || ['{}', '[]', '()'].some(([open, close]) => value.split(open).length > value.split(close).length)
 const TABLE_ROW = /[^\S\n]*\|/y
+const BLANKS = /[^\S\n]*/y
 // A YAML block indicator, a comment or both, after an anchor or a tag: the value is on the lines below.
 const BLOCK = /^(?:[&!]\S*[^\S\n]+)*(?:[|>][+-]?\d?[+-]?)?(?:[^\S\n]*#.*)?$/
 const MAPPING = /[\w.-]+["']?[^\S\n]*:(?=\s|$)/y
@@ -137,6 +138,8 @@ function redactPairs(text, counts) {
   let lineStart = 0
   let lineStop = -1
   let table = false
+  let pipeAt = -1
+  let nextPipe = -1
   let markCell = -1
   let markAt = 0
   let marks = null
@@ -160,17 +163,27 @@ function redactPairs(text, counts) {
       lineStart = text.lastIndexOf('\n', keyAt) + 1
       lineStop = lineEnd(text, keyAt)
       table = at(TABLE_ROW, text, lineStart)
+      nextPipe = table ? text.indexOf('|', lineStart) : -1
     }
-    const cell = table ? text.lastIndexOf('|', keyAt) + 1 : lineStart
-    // The Markdown still open at the value. A key's leading underscores are Markdown (`__token=x__`), not part of the name.
-    if (cell !== markCell) [markCell, markAt, marks] = [cell, cell, countMarks('')]
-    marks = addMarks(marks, countMarks(text.slice(markAt, keyAt)))
-    markAt = keyAt
-    let closers = openClosers(addMarks(marks, countMarks(outer.match(/^_*/)[0] + index + separator)))
+    // The cell of a table row starts after the last `|` before the key. The row is scanned once, however many keys it holds.
+    while (nextPipe !== -1 && nextPipe < keyAt) [pipeAt, nextPipe] = [nextPipe, text.indexOf('|', nextPipe + 1)]
+    const cell = table ? pipeAt + 1 : lineStart
+    // The Markdown still open at the value, counted only when a value needs it. A key's leading underscores are Markdown
+    // (`__token=x__`), not part of the name.
+    let closers = null
+    const openAtValue = () => {
+      if (cell !== markCell) [markCell, markAt, marks] = [cell, cell, countMarks('')]
+      marks = addMarks(marks, countMarks(text.slice(markAt, keyAt)))
+      markAt = keyAt
+      return openClosers(addMarks(marks, countMarks(outer.match(/^_*/)[0] + index + separator)))
+    }
     // A mark that closes a label right after the separator (`**Password:** x`) is not part of the value, when one follows.
-    const label = closers.find((close) => LABEL_CLOSE.includes(close) && text.startsWith(close, start))
+    if (LABEL_CLOSE.some((close) => text.startsWith(close, start))) closers = openAtValue()
+    const label = closers?.find((close) => LABEL_CLOSE.includes(close) && text.startsWith(close, start))
     if (label) {
-      const after = start + label.length + text.slice(start + label.length, lineStop).search(/\S|$/)
+      BLANKS.lastIndex = start + label.length
+      BLANKS.exec(text)
+      const after = BLANKS.lastIndex
       if (after < lineStop) {
         start = after
         closers = closers.filter((close) => close !== label)
@@ -213,6 +226,7 @@ function redactPairs(text, counts) {
     }
     // With no line below, a lone `|` or `>` is left alone and a comment is the value itself (`PASSWORD=#hunter2`).
     if (below && !value.startsWith('#')) continue
+    closers ??= openAtValue()
     const ends = closers.length ? endings(value) : []
     for (const close of closers) {
       let cut = value.lastIndexOf(close)
