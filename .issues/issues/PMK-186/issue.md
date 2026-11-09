@@ -2,12 +2,14 @@
 id: PMK-186
 title: Keep the CLI from writing a cache into the test fixtures
 type: bug
-status: backlog
+status: in_review
 priority: medium
 estimate: 1
+assignee: fred
 related: [PMK-71]
+branch: pmk-186-keep-the-cli-from-writing-a-cache-into
 created: 2026-10-31T16:01:22.796Z
-updated: 2026-10-31T16:01:23Z
+updated: 2026-11-09T02:03:00Z
 ---
 
 ## Description
@@ -27,5 +29,5 @@ Found while implementing PMK-71 and reviewing PMK-61. Source: PMK-71, PR #92.
 
 ## Acceptance criteria
 
-- [ ] A cache inside `scripts/__fixtures__/` is ignored by git and does not break the suite, or the CLI refuses to write it there
-- [ ] The `scenarios-live.mjs` counts come from the list itself or a test checks them
+- [x] A cache inside `scripts/__fixtures__/` is ignored by git and does not break the suite, or the CLI refuses to write it there
+- [x] The `scenarios-live.mjs` counts come from the list itself or a test checks them

@@ -10,7 +10,7 @@ import { ADAPTERS } from './lib/adapters.mjs'
 import { linearDescriptor } from './lib/linear/adapter.mjs'
 import { FAKE_KEY, fakeLinearFetch, fakeWorkspace } from './fake-linear-api.mjs'
 import { addBareOrigin, fakeGh, ghCalls } from './fake-gh.mjs'
-import { hashTree } from './test-helpers.mjs'
+import { copyFixture, hashTree } from './test-helpers.mjs'
 import { lineDiff } from './lib/diff.mjs'
 import { parseYaml, splitFrontmatter } from './lib/yaml.mjs'
 
@@ -599,7 +599,7 @@ export async function prepareCopy(scenario, { scratch, fixturesDir, run: given =
     Object.assign(env, { HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: path.join(home, '.config'), PMKIT_HOME: path.join(home, '.config', 'pmkit'), LINEAR_API_KEY: FAKE_KEY })
     run = linearRunner(scenario.linear)
   }
-  if (scenario.fixture) fs.cpSync(path.join(fixturesDir, scenario.fixture), root, { recursive: true })
+  if (scenario.fixture) copyFixture(path.join(fixturesDir, scenario.fixture), root)
   else fs.mkdirSync(root)
   if (scenario.github) {
     const config = path.join(root, '.pmkit', 'config.yaml')

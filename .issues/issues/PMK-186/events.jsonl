@@ -1,2 +1,10 @@
 {"at":"2026-10-31T16:01:22Z","by":"fred","op":"create","to":{"id":"PMK-186","title":"Keep the CLI from writing a cache into the test fixtures","type":"bug","status":"backlog","priority":"medium","estimate":1,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-31T16:01:22.796Z","updated":"2026-10-31T16:01:22Z"}}
 {"at":"2026-10-31T16:01:23Z","by":"fred","op":"link","field":"related","to":"PMK-71"}
+{"at":"2026-11-09T01:47:25Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-09T01:47:25Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-09T01:47:27Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-186-keep-the-cli-from-writing-a-cache-into"}
+{"at":"2026-11-09T01:52:50Z","by":"fred","op":"comment","to":"2026-11-09T01-52-50Z-fred.md"}
+{"at":"2026-11-09T01:58:07Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T01:58:07Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T02:03:00Z","by":"fred","op":"comment","to":"2026-11-09T02-03-00Z-fred.md"}
+{"at":"2026-11-09T02:03:00Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
