@@ -171,6 +171,14 @@ test('planNextAdr writes a repository file when the tracker is hosted, with no t
 
 test('highestAdr counts only names of the form NNNN-', () => {
   assert.deepEqual(highestAdr(['0006-y.md', '20261031.md', '0007a-x.md']), { highest: 6, ignored: ['20261031.md', '0007a-x.md'] })
+  assert.deepEqual(highestAdr(['2026-10-31-notes.md', '20261031-x.md']), { highest: 0, ignored: ['2026-10-31-notes.md', '20261031-x.md'] })
+})
+
+test('adrSlug cuts by code point and refuses a title of only combining marks', () => {
+  const slug = adrSlug(`${'a'.repeat(59)}𠮷`)
+  assert.ok(!/[\ud800-\udfff]/.test(slug.replace(/[\ud800-\udbff][\udc00-\udfff]/g, '')), 'lone surrogate')
+  assert.equal(Array.from(slug).length, 60)
+  assert.throws(() => adrSlug('\u0301'), /no letter or digit/)
 })
 
 test('docs next-adr ignores a note named like a date', async () => {

@@ -6,8 +6,8 @@ import path from 'node:path'
 import { PmkitError } from './errors.mjs'
 
 export const ADR_SLUG_MAX = 60
-// A name counts only in the form NNNN-<rest>.md (four or more digits, then a hyphen), so 20261031.md and 0007a-x.md do not.
-const NUMBERED = /^(\d{4,})-[^/]*\.md$/
+// A name counts only in the form NNNN-<rest>.md (exactly four digits, a hyphen, then not a digit), so 20261031.md, 0007a-x.md and 2026-10-31-x.md do not.
+const NUMBERED = /^(\d{4})-(?!\d)[^/]*\.md$/
 const QUOTES = /['"`‘’“”]/g
 const LETTERS = { ß: 'ss', æ: 'ae', œ: 'oe', ø: 'o', đ: 'd', ð: 'd', ł: 'l', þ: 'th' }
 
@@ -19,10 +19,12 @@ const LETTERS = { ß: 'ss', æ: 'ae', œ: 'oe', ø: 'o', đ: 'd', ð: 'd', ł: '
 export function adrSlug(title) {
   if (typeof title !== 'string') throw new PmkitError('INVALID_INPUT', 'the ADR title must be a string', 'Pass --title with the decision title')
   const slug = title.normalize('NFD').replace(/(?<=\p{Script=Latin})\p{M}+/gu, '').normalize('NFC').toLowerCase().replace(QUOTES, '').replace(/[ßæœøđðłþ]/g, (c) => LETTERS[c]).replace(/[^\p{L}\p{N}\p{M}]+/gu, '-').replace(/^-+|-+$/g, '')
-  if (slug === '') throw new PmkitError('INVALID_INPUT', `the title "${title}" has no letter or digit to make a file name from`, 'Pass --title with words, for example "Use event files as the audit log"')
-  if (slug.length <= ADR_SLUG_MAX) return slug
-  const head = slug.slice(0, ADR_SLUG_MAX)
-  const cut = slug[ADR_SLUG_MAX] === '-' || !head.includes('-') ? head : head.slice(0, head.lastIndexOf('-'))
+  if (!/[\p{L}\p{N}]/u.test(slug)) throw new PmkitError('INVALID_INPUT', `the title "${title}" has no letter or digit to make a file name from`, 'Pass --title with words, for example "Use event files as the audit log"')
+  // Cut by code point, so a letter outside the basic plane is never split into a lone surrogate.
+  const points = Array.from(slug)
+  if (points.length <= ADR_SLUG_MAX) return slug
+  const head = points.slice(0, ADR_SLUG_MAX).join('')
+  const cut = points[ADR_SLUG_MAX] === '-' || !head.includes('-') ? head : head.slice(0, head.lastIndexOf('-'))
   return cut.replace(/-+$/, '')
 }
 
