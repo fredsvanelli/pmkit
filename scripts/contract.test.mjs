@@ -38,7 +38,7 @@ function setupLocal(options = {}) {
   const random = (n) => counter++ % n
   const now = () => new Date('2026-10-23T12:00:00Z')
   const tracker = createLocalTracker(root, { now, random, ...options })
-  return { tracker, actor: 'fred', agent: 'agent:claude', today: '2026-10-23', teardown: () => fs.rmSync(root, { recursive: true, force: true }) }
+  return { tracker, actor: 'fred', assignee: 'fred', agent: 'agent:claude', today: '2026-10-23', teardown: () => fs.rmSync(root, { recursive: true, force: true }) }
 }
 
 runTrackerContract({ name: 'Local tracker contract', setup: setupLocal })

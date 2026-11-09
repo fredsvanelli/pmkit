@@ -36,3 +36,15 @@ test('AGENT_ID accepts agent members only', () => {
 test('localRunLine names the work command and the --as flag', () => {
   assert.equal(localRunLine('ISS-1', 'agent:claude'), 'the agent runs locally: /pmkit:issues:work ISS-1 with --as agent:claude on every pmkit write')
 })
+
+test('parseDelegation tolerates trailing spaces and CRLF on the first line', () => {
+  const line = 'Delegated to agent:claude by fred, to run locally.'
+  const record = { agent: 'agent:claude', by: 'fred', run: 'local' }
+  assert.deepEqual(parseDelegation(`${line}  \r\n\r\n## Instructions\r\n`), record)
+  assert.deepEqual(parseDelegation(`${line} `), record)
+  assert.equal(parseDelegation(` ${line}`), null)
+})
+
+test('the delegation comment says commits and the pull request keep the user identity', () => {
+  assert.match(sample(), /tracker events .* as the agent's.*commits and the pull request keep your own identity/is)
+})

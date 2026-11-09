@@ -21,7 +21,7 @@ export function delegationComment({ issue, agent, by, instructions }) {
     'This tracker does not start agents. To run this issue:',
     '',
     '1. Open a session of the agent in this repository.',
-    `2. Run \`/pmkit:issues:work ${issue}\` and add \`--as ${agent}\` to every pmkit write, so the claim, the branch and the PR are recorded as the agent's.`,
+    `2. Run \`/pmkit:issues:work ${issue}\` and add \`--as ${agent}\` to every pmkit write, so the tracker events (claim, status moves, comments) are recorded as the agent's. Commits and the pull request keep your own identity.`,
     '3. The work command asks before the plan, the branch, the PR and each tracker write. Nothing runs without those answers.',
     '',
   ].join('\n')
