@@ -399,18 +399,35 @@ test('a broken comment, issue file or events line makes the inbox incomplete and
   assert.equal(fs.existsSync(path.join(userDir({ env }), 'inbox')), false)
 })
 
-test('a comment without frontmatter and an event with a bad time are read, dated by their file, and are no problem', () => {
+test('a comment without frontmatter is read and dated by its file, and is no problem', () => {
   const { tracker, setNow, paths } = setup()
   const { id } = tracker.createIssue({ title: 'Hand' }, 'ana').after
   setNow('2026-10-31T10:05:00Z')
   fs.mkdirSync(paths(id).comments, { recursive: true })
   fs.writeFileSync(path.join(paths(id).comments, 'by-hand.md'), '@fred please look\n')
-  fs.appendFileSync(paths(id).events, `${JSON.stringify({ at: 'yesterday', by: 'ana', op: 'assign', field: 'assignee', from: null, to: 'fred' })}\n`)
   const result = tracker.listNotifications({ user: 'fred', since: '2000-01-01T00:00:00Z' })
   assert.equal(result.complete, true, JSON.stringify(result.problems))
-  assert.deepEqual(result.items.map((item) => item.kind).sort(), ['assignment', 'mention'])
   assert.ok(result.items.every((item) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(item.at)))
-  assert.equal(tracker.markRead({ user: 'fred' }).marked.length, 2)
+  assert.equal(tracker.markRead({ user: 'fred' }).marked.length, 1)
+})
+
+test('PMK-195: an event or comment with an unreadable time is a problem, still dated by its file, and blocks markRead', () => {
+  const { tracker, setNow, paths, env } = setup()
+  const { id } = tracker.createIssue({ title: 'Hand' }, 'ana').after
+  setNow('2026-10-31T10:05:00Z')
+  fs.appendFileSync(paths(id).events, `${JSON.stringify({ at: 'yesterday', by: 'ana', op: 'assign', field: 'assignee', from: null, to: 'fred' })}\n`)
+  const first = tracker.listNotifications({ user: 'fred', since: '2000-01-01T00:00:00Z' })
+  assert.equal(first.complete, false)
+  assert.deepEqual(first.problems.map((problem) => [problem.id, problem.code]), [[id, 'INVALID_INPUT']])
+  assert.match(first.problems[0].message, /yesterday/)
+  assert.deepEqual(first.items.map((item) => item.kind), ['assignment'])
+  fs.mkdirSync(paths(id).comments, { recursive: true })
+  fs.writeFileSync(path.join(paths(id).comments, 'late.md'), '---\nauthor: ana\ncreated: soon\n---\n@fred hi\n')
+  const second = tracker.listNotifications({ user: 'fred', since: '2000-01-01T00:00:00Z' })
+  assert.equal(second.problems.length, 2)
+  assert.match(second.problems[1].message, /comment late\.md.*soon/)
+  assert.throws(() => tracker.markRead({ user: 'fred' }), (error) => error.code === 'INVALID_INPUT')
+  assert.equal(fs.existsSync(path.join(userDir({ env }), 'inbox')), false)
 })
 
 test('a bad check of one member does not block another member', () => {

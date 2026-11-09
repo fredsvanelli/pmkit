@@ -5,7 +5,7 @@ import path from 'node:path'
 import { ADAPTERS } from './adapters.mjs'
 import { loadConfig, pmkitConfigMessages, resolveDefaultBranch, validateLocalConfig } from './config.mjs'
 import { isId, normalizeId } from './ids.mjs'
-import { parseYaml } from './yaml.mjs'
+import { parseYaml, splitFrontmatter } from './yaml.mjs'
 import { parseEpicFile, walkParents } from './local/epics.mjs'
 import { driftEvents, readEvents } from './local/events.mjs'
 import { formatError } from './local/migrations.mjs'
@@ -339,7 +339,18 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
     const dir = path.join(issuesDir, 'issues', name)
     const file = path.join(dir, 'issue.md')
     checked.issues++
-    checked.comments += files(path.join(dir, 'comments'), '.md').length
+    const commentNames = files(path.join(dir, 'comments'), '.md')
+    checked.comments += commentNames.length
+    for (const commentName of commentNames) {
+      const commentFile = path.join(dir, 'comments', commentName)
+      try {
+        const split = splitFrontmatter(read(commentFile).replace(/\r\n?/g, '\n'))
+        const created = split ? parseYaml(split.yaml).created : undefined
+        if (created !== undefined && Number.isNaN(new Date(String(created)).getTime())) add(commentFile, 'comment', `created "${created}" is not a time`)
+      } catch (error) {
+        add(commentFile, 'comment', `the comment cannot be read: ${error.message}`)
+      }
+    }
     if (!isId(name, local.id_prefix)) add(file, 'id', `folder name ${name} is not a valid ${local.id_prefix} id`)
     const twins = byNormalized.get(normalizeId(name))
     if (twins.length > 1 && twins[0] === name) add(file, 'id', `folders ${twins.join(', ')} have the same id`)

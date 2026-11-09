@@ -838,10 +838,12 @@ export function createLocalTracker(root, {
           const split = splitFrontmatter(text)
           const data = split ? parseYaml(split.yaml) : {}
           const author = data.author == null || data.author === '' ? null : String(data.author)
+          const created = data.created === undefined ? null : inSeconds(String(data.created))
+          if (data.created !== undefined && created === null) problem(`comment ${name} has created "${data.created}", which is not a time`)
           const excerpt = findMention((split ? split.body : text).trim(), user)
           if (excerpt !== null && author !== user) {
             const stem = path.basename(name, '.md')
-            const at = (data.created === undefined ? null : inSeconds(String(data.created))) ?? modified(file)
+            const at = created ?? modified(file)
             items.push(item(`comment:${id}:${stem}`, 'mention', id, at, author, 'comment', { comment: stem, excerpt }))
           }
         } catch (error) {

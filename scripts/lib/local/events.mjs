@@ -42,6 +42,8 @@ export function readEvents(file) {
       problems.push(`line ${index + 1}: ${reason}`)
       return
     }
+    // The event is kept, so replay and drift do not change, but a time nobody can read is reported.
+    if (Number.isNaN(new Date(event.at).getTime())) problems.push(`line ${index + 1}: at "${event.at}" is not a time`)
     const key = sortedStringify(event)
     if (seen.has(key)) return
     seen.add(key)
