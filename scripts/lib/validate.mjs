@@ -318,7 +318,14 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
   const requestFiles = recordFiles('requests', REQUEST_PREFIX, 'request', parseRequest, () => {})
 
   // Issues
-  const folders = subdirs(path.join(issuesDir, 'issues'))
+  const LEFTOVER = '.deleting-'
+  const allFolders = subdirs(path.join(issuesDir, 'issues'))
+  // A failed cleanup of `issues delete` leaves one of these. It is not an issue: report it as a leftover, with the step to remove it.
+  for (const name of allFolders.filter((folder) => folder.startsWith(LEFTOVER))) {
+    const dir = path.join(issuesDir, 'issues', name)
+    add(dir, 'leftover', `it is what a failed issues delete left behind, not an issue; remove it by hand with rm -rf ${rel(dir)}`)
+  }
+  const folders = allFolders.filter((folder) => !folder.startsWith(LEFTOVER))
   const byNormalized = new Map()
   for (const name of folders) {
     const key = normalizeId(name)

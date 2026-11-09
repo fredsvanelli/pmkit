@@ -49,7 +49,7 @@ test('the dry run is the full preview and writes nothing', () => {
     const before = hashTree(root)
     const result = run(root, ['issues', 'delete', a, '--dry-run'])
     assert.equal(result.status, 0, result.stderr)
-    for (const part of [`would delete ${a}`, 'title: One', 'removes:', `.issues/issues/${a}/issue.md`, '2 events and 1 comment go with it', 'Nothing commits this delete','references: no other issue', `archive instead: pmkit issues archive ${a}`, 'dry run: nothing was written']) {
+    for (const part of [`would delete ${a}`, 'title: One', 'removes:', `.issues/issues/${a}/issue.md`, '2 events and 1 comment go with it', 'Nothing commits this delete', 'references: no other issue', `archive instead: pmkit issues archive ${a}`, 'dry run: nothing was written']) {
       assert.ok(result.stdout.includes(part), `${part}\n${result.stdout}`)
     }
     assert.equal(hashTree(root), before)

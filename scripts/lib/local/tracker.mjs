@@ -576,9 +576,12 @@ export function createLocalTracker(root, {
       .map((kind) => ({ id: other.id, kind })))
     if (references.length > 0) throw referencedError(issue.id, references)
     const mention = new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(issue.id)}(?![A-Za-z0-9_])`)
-    // A token with a slash is a path or a URL, and an ID inside it is not a mention, unless every part is an ID ("ISS-1/ISS-2").
+    // A path or a URL is not a mention. URLs go first, so a markdown link keeps its text; then a token with a separator that starts with . ~ or /,
+    // has two separators or ends in a file extension is a path. "ISS-1/", "ISS-1/2" and "ISS-1/ISS-2" stay.
     const idLike = /^\(?[A-Za-z]+-[A-Za-z0-9]+[.,;:)]*$/
-    const mentioned = (text) => mention.test(text.replace(/\S+/g, (token) => (/[/\\]/.test(token) && !token.split(/[/\\]/).every((part) => idLike.test(part)) ? ' ' : token)))
+    const pathLike = (token) => /[/\\]/.test(token) && !token.split(/[/\\]/).every((part) => idLike.test(part))
+      && (/^[.~/\\]/.test(token) || token.match(/[/\\]/g).length >= 2 || /[/\\][^/\\\s]*\.[A-Za-z0-9]+[.,;:)]*$/.test(token))
+    const mentioned = (text) => mention.test(text.replace(/https?:\/\/\S+/g, ' ').replace(/\S+/g, (token) => (pathLike(token) ? ' ' : token)))
     const mentions = others.flatMap((other) => [
       ...(mentioned(`${other.description ?? ''}\n${other.body ?? ''}`) ? [{ id: other.id, in: 'description' }] : []),
       ...(commentTexts(issuePaths(issuesDir, other.id).comments).some(mentioned) ? [{ id: other.id, in: 'comment' }] : []),
@@ -595,14 +598,13 @@ export function createLocalTracker(root, {
     const result = { before: withComputed(issue, issues), after: null, removes, references: [], mentions, warnings: deleteWarnings(issue, paths), unchecked: ['code comments, documents and docs/'] }
     if (dryRun) return result
     // The rename is the delete: it happens whole or not at all. A failed cleanup after it leaves a hidden folder that no read lists, never an issue without issue.md.
-    const trash = path.join(path.dirname(paths.dir), `.deleting-${issue.id}-${process.pid}`)
-    fs.rmSync(trash, { recursive: true, force: true })
+    const trash = path.join(path.dirname(paths.dir), `.deleting-${issue.id}-${process.pid}-${Date.now()}`)
     fs.renameSync(paths.dir, trash)
     writtenPaths.add(paths.dir)
     try {
       fs.rmSync(trash, { recursive: true })
-    } catch {
-      result.warnings.push(`the issue is deleted, but ${rel(trash)} could not be removed; delete that folder by hand`)
+    } catch (error) {
+      result.warnings.push(`the issue is deleted, but ${rel(trash)} could not be removed: ${error.code ?? error.message}; run pmkit validate for the step to remove it`)
     }
     // A read drops an entry whose folder is gone. Reading now keeps the index file in step with the tree.
     if (indexMode === true) {
