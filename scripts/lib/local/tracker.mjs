@@ -1330,7 +1330,7 @@ export function createLocalTracker(root, {
     const problems = []
     for (const stem of [...goalStems(goalsDir)].sort()) {
       if (!isId(stem, GOAL_PREFIX)) {
-        problems.push({ id: stem, kind: 'goal', code: 'INVALID_INPUT', message: `goal file ${stem}.md is not named after a goal id such as ${GOAL_PREFIX}-1` })
+        problems.push({ id: stem, kind: 'file', code: 'INVALID_INPUT', message: `goal file ${stem}.md is not named after a goal id such as ${GOAL_PREFIX}-1` })
         continue
       }
       try {

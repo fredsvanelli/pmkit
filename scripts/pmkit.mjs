@@ -2283,10 +2283,14 @@ async function runGoalsOverview(ctx) {
     if (!isPmkitError(error) || error.code !== 'NOT_SUPPORTED') throw error
     notes.push(`${NO_GOALS_NOTE}; this tracker has no goals: ${error.message}`)
   }
-  if (listed !== null) warnings.push(...listed.problems.map((problem) => `${problemLine(problem)}; run pmkit validate`))
+  // A file in goals/ that is not named after a goal id is no goal: it is noted, never a warning, and it does not block the fallback.
+  for (const problem of listed?.problems.filter((item) => item.kind === 'file') ?? []) notes.push(`ignored ${problem.id}.md in .issues/goals: it is not a goal file; pmkit validate lists it`)
+  const problems = listed?.problems.filter((item) => item.kind !== 'file') ?? []
   // A goal file that cannot be read may be the only goal, so it is not "no goals": the fallback runs only when every goal file was read.
-  const unreadableGoal = listed !== null && listed.problems.some((problem) => problem.kind === 'goal')
+  const unreadableGoal = problems.some((problem) => problem.kind === 'goal')
   if (listed !== null && (listed.goals.length > 0 || unreadableGoal)) {
+    // A broken epic file may link to a goal, so on this path it is part of the answer. The fallback below does not read epics.
+    warnings.push(...problems.map((problem) => `${problemLine(problem)}; run pmkit validate`))
     // goalProgress counts the issues it can read, so an issue file that does not parse may hold work of any epic.
     warnings.push(...issueReadWarnings(await tracker.searchIssues({})).map((line) => `${line}; goal progress may be low`))
     const items = []
@@ -2305,10 +2309,11 @@ async function runGoalsOverview(ctx) {
     return { data, text, warnings, notes }
   }
   if (listed !== null) notes.push(NO_GOALS_NOTE)
-  const found = await tracker.searchIssues({})
+  // Archived issues are read too, so the live children of an archived parent are not taken for top-level issues.
+  const found = await tracker.searchIssues({ archived: true })
   warnings.push(...issueReadWarnings(found))
-  const { items, withoutChildren, unreached } = topLevelRollup(found.issues)
-  if (unreached.length > 0) warnings.push(`${unreached.length} issues are in a parent cycle or under an archived parent and are not counted: ${unreached.join(', ')}`)
+  const { items, withoutChildren, unreached } = topLevelRollup(found.issues, { unreadable: new Set(found.problems.map((problem) => problem.id)) })
+  if (unreached.length > 0) warnings.push(`${unreached.length} issues are in a parent cycle, under an archived parent or under a parent file that did not parse and are not counted: ${unreached.join(', ')}`)
   const rows = items.map((i) => [i.issue.id, i.issue.title, i.progress === null ? 'not known' : percent(i.progress), `${i.done}/${i.total}`, `${i.pointsDone}/${i.points}`])
   const data = { source: 'top_level', complete: warnings.length === 0, items, withoutChildren, notes, warnings }
   const text = [
