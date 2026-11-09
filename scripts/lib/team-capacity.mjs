@@ -19,14 +19,16 @@ export function parseCapacityPairs(pairs) {
   return map
 }
 
-/** The weekdays from `sprint.start` to `sprint.end`, both included, minus the days off. */
+/** The weekdays from `sprint.start` to `sprint.end`, both included, minus the distinct days off that are weekdays inside the sprint. Other dates (a hand edit of the file) do not count. */
 export function workingDays(sprint, daysOff = []) {
+  const off = new Set(daysOff)
   let days = 0
   for (let at = Date.parse(`${sprint.start}T00:00:00Z`); at <= Date.parse(`${sprint.end}T00:00:00Z`); at += dayMs) {
-    const weekday = new Date(at).getUTCDay()
-    if (weekday !== 0 && weekday !== 6) days++
+    const date = new Date(at)
+    const weekday = date.getUTCDay()
+    if (weekday !== 0 && weekday !== 6 && !off.has(date.toISOString().slice(0, 10))) days++
   }
-  return days - daysOff.length
+  return days
 }
 
 /** The capacity map after the pairs: a number sets the member, null removes it. */

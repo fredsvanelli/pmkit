@@ -236,3 +236,14 @@ test('team capacity on Linear reports no load effect when the issue read is cut,
   assert.equal(write.data.load.after, null)
   assert.ok(write.data.warnings.some((line) => line.includes('not verified')), write.data.warnings.join('\n'))
 })
+
+test('team capacity answers INVALID_INPUT for a --days-off with bad syntax and writes nothing', async () => {
+  for (const bad of ['ana', '=2026-10-14', 'ana=', 'ana=2026-10-14+', 'ana=2026-10-14,ana=2026-10-15']) {
+    const root = cleanRepo()
+    const before = fs.readFileSync(sprintFile(root), 'utf8')
+    const { code, data } = await capacity(root, ['--days-off', bad])
+    assert.equal(code, 2, bad)
+    assert.equal(data.error.code, 'INVALID_INPUT', bad)
+    assert.equal(fs.readFileSync(sprintFile(root), 'utf8'), before, bad)
+  }
+})
