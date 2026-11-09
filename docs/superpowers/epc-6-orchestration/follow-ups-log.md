@@ -84,3 +84,26 @@ Início: 2026-11-08. `develop` em 88cda32, `npm test` com 3920 testes, 3839 pass
 - PMK-177 ciclo 2 (sonnet): APROVADO. Não bloqueantes: branchHas trata status 128 de is-ancestor como não está na branch (host.mjs:301); prRefs fora de try/catch (pmkit.mjs:1517); fallback casa /base branch/ na mensagem (pmkit.mjs:1556); design ainda cita VIEW_FIELDS. Mergeado (ae47ec3).
 
 Fim da rodada 2: PRs #129, #130, #131 mergeados.
+
+Limpeza da rodada 2: closing PR #132 mergeado (789fc88), 8 worktrees removidos, branches provisórias apagadas.
+
+## Rodada 3
+
+Início: 2026-11-08. `develop` em 789fc88, `npm test` com 3955 testes, 3874 pass, 0 fail, 81 skipped, saída 0. Run Orca `run_6b9a0b657e46`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-180 | 1 | sonnet (`ctx_0bce25776e19`) | #135 | ciclo 1 (sonnet): APROVADO; rebase 80a95bf | mergeado (2a97484) |
+| PMK-181 | 1 | sonnet (`ctx_0dbfd7385e10`) | #133 | ciclo 1 (sonnet): APROVADO | mergeado (c02ad41) |
+| PMK-182 | 1 | sonnet (`ctx_68666a32c43a`) | #134 | ciclo 1 (sonnet): APROVADO; rebase 92a99d6 | mergeado (6068951) |
+
+- PMK-181: PR #133 (sonnet); parseDelegation já tinha a correção da PMK-58, só testes; texto de identidade reescrito. Follow-ups: passo 7 de delegate.md ambíguo para identidade git/gh; sem --as no git. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-182: PR #134 (sonnet); --path ausente dá INVALID_INPUT; comentários de bloco SQL/Lua/Haskell; campo cut no JSON. Follow-ups: níveis --[=[ do Lua, comentários aninhados do Haskell. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-181 ciclo 1 (sonnet): APROVADO. Não bloqueantes: texto your own identity ambíguo (delegation.mjs:24); regex frouxa (delegation.test.mjs:49); spec da PMK-57 com texto antigo; lista de eventos em delegate.md:27 sem branch. Mergeado (c02ad41).
+- PMK-182 ciclo 1 (sonnet): APROVADO, em conflito com develop; pedi rebase com todos.md:50, teste de cut true e aspas simples no estilo hs. Não bloqueantes restantes: --path existente mas ignorado dá no TODO found (todos.mjs:316); alerts scan sem cut (pmkit.mjs:1345).
+- PMK-180: PR #135 (sonnet); views list reporta nomes inválidos e --json passa a {views, problems} (mudança de formato, como customers list); doctor não propõe views save para problema de nome; dica do Linear; filterText com aspas. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-182: rebase 92a99d6 (só CHANGELOG), diff pós-aprovação conferido (todos.md, teste de cut, hs com chars). Mergeado (6068951).
+- PMK-180 ciclo 1 (sonnet): APROVADO, em conflito com develop; pedi rebase com o texto no views quando só há problemas e o null impresso. Não bloqueantes restantes: dotfiles .yaml viram problema; bullet NOT_FOUND de run-view.md.
+- PMK-180: rebase 80a95bf, diff pós-aprovação conferido. Mergeado (2a97484).
+
+Fim da rodada 3: PRs #133, #134, #135 mergeados.

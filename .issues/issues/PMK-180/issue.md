@@ -2,14 +2,14 @@
 id: PMK-180
 title: Fix saved views with invalid file names and the Linear hint
 type: bug
-status: in_review
+status: done
 priority: medium
 estimate: 1
 assignee: fred
 related: [PMK-44]
 branch: pmk-180-fix-saved-views-with-invalid-file-names
 created: 2026-10-31T16:01:14.694Z
-updated: 2026-11-09T01:08:20Z
+updated: 2026-11-09T01:15:34Z
 ---
 
 ## Description

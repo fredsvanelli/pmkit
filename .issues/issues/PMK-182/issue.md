@@ -2,14 +2,14 @@
 id: PMK-182
 title: Fix todos scan on a missing path and the incomplete docs
 type: bug
-status: in_review
+status: done
 priority: medium
 estimate: 1
 assignee: fred
 related: [PMK-64]
 branch: pmk-182-fix-todos-scan-on-a-missing-path-and-the
 created: 2026-10-31T16:01:18.288Z
-updated: 2026-11-09T00:59:46Z
+updated: 2026-11-09T01:15:35Z
 ---
 
 ## Description
