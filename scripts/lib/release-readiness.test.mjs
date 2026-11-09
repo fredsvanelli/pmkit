@@ -112,3 +112,43 @@ test('a pending check is counted apart from a passing one', () => {
   const data = build({ issues: [issue('A-1', 'todo', 'a1')], prs: [pr(1, 'a1', { statusCheckRollup: rollup })] })
   assert.deepEqual(data.pullRequests[0].checks, { total: 3, failing: [], pending: 2 })
 })
+
+test('a deploy ref of refs/tags/<tag> is the deploy of the release tag', () => {
+  const data = build({ deploys: [{ ref: 'refs/tags/v1.1' }, { ref: 'refs/tags/v1.10' }, { ref: 'v1.1' }] })
+  assert.deepEqual(data.deploys.map((d) => d.matchesRelease), [true, false, true])
+})
+
+test('a basis with no issue is never ready: ready is null and empty is true', () => {
+  const data = build({ issues: [] })
+  assert.deepEqual([data.empty, data.ready, data.complete], [true, null, true])
+  assert.equal(build({ issues: [issue('A-1', 'done')] }).empty, false)
+  // Open pull requests cannot exist without issues, but open work still wins.
+  assert.equal(build({ issues: [issue('A-1', 'todo')] }).empty, false)
+})
+
+test('a rung that was not read is skipped as not_read, not as absent or empty', () => {
+  const sprint = { id: 's1' }
+  const choice = chooseReadinessBasis({ ...base, releases: null, activeSprint: sprint, unread: ['release', 'milestone'] })
+  assert.deepEqual(choice.skipped, [{ basis: 'release', reason: 'releases_not_read' }, { basis: 'milestone', reason: 'milestones_not_read' }])
+  assert.equal(choice.basis, 'sprint')
+  const none = chooseReadinessBasis({ ...base, releases: [], unread: ['sprint'] })
+  assert.deepEqual(none.skipped.at(-1), { basis: 'sprint', reason: 'cycles_not_read' })
+})
+
+test('empty is only claimed after a complete read: a cut read or a file that does not parse is not "no issues"', () => {
+  for (const over of [{ truncated: true }, { problems: [{ id: 'ISS-1', code: 'CONFLICT' }] }]) {
+    const data = build({ issues: [], ...over })
+    assert.deepEqual([data.empty, data.ready, data.complete], [false, null, false])
+  }
+})
+
+test('a basis whose issues are all canceled is empty, so it is never ready', () => {
+  const data = build({ issues: [issue('A-1', 'canceled'), issue('A-2', 'canceled')] })
+  assert.deepEqual([data.empty, data.ready], [true, null])
+  assert.equal(build({ issues: [issue('A-1', 'canceled'), issue('A-2', 'done')] }).ready, true)
+})
+
+test('empty is false while a pull request of a canceled issue is still open, so empty never comes with ready false', () => {
+  const data = build({ issues: [issue('A-1', 'canceled', 'a1')], prs: [pr(1, 'a1')] })
+  assert.deepEqual([data.empty, data.ready], [false, false])
+})

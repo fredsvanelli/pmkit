@@ -209,12 +209,13 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
       return parse(check('gh', ['pr', 'list', '--state', 'open', '--limit', '200', '--json', LIST_FIELDS]).stdout, 'the pull requests')
     },
 
-    listDeploys({ environment, limit = 20 } = {}) {
+    listDeploys({ environment, ref, limit = 20 } = {}) {
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
         throw new PmkitError('INVALID_INPUT', `limit "${limit}" is not valid`, 'Use a whole number from 1 to 100')
       }
       const env = environment === undefined ? '' : `&environment=${encodeURIComponent(environment)}`
-      const deployments = parse(check('gh', ['api', `repos/{owner}/{repo}/deployments?per_page=${limit}${env}`]).stdout, 'the deployments')
+      const byRef = ref === undefined ? '' : `&ref=${encodeURIComponent(ref)}`
+      const deployments = parse(check('gh', ['api', `repos/{owner}/{repo}/deployments?per_page=${limit}${env}${byRef}`]).stdout, 'the deployments')
       return deployments.map((d) => {
         const [status] = parse(check('gh', ['api', `repos/{owner}/{repo}/deployments/${d.id}/statuses?per_page=1`]).stdout, 'the deployment status')
         return {

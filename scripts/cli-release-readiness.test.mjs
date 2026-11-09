@@ -7,6 +7,8 @@ import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
 import { makeRepo, tempDir } from './test-helpers.mjs'
 import { fakeGh, ghCalls } from './fake-gh.mjs'
+import { ADAPTERS } from './lib/adapters.mjs'
+import { PmkitError } from './lib/errors.mjs'
 
 const envWith = ({ dir, responses }) => ({
   ...process.env, PATH: `${dir}${path.delimiter}${process.env.PATH}`, PMKIT_FAKE_GH: responses,
@@ -20,7 +22,11 @@ const prs = [
   { number: 9, url: 'https://github.com/o/r/pull/9', title: 'DLQ', headRefName: 'feat-dlq', isDraft: false, updatedAt: '2026-10-20T10:00:00Z', author: { login: 'ana' }, statusCheckRollup: [] },
   { number: 11, url: 'https://github.com/o/r/pull/11', title: 'Other', headRefName: 'unrelated', isDraft: true, updatedAt: '2026-10-20T10:00:00Z', author: { login: 'ana' }, statusCheckRollup: [] },
 ]
+const BY_TAG = 'api repos/{owner}/{repo}/deployments?per_page=100&ref=v1.0'
+const BY_REF = 'api repos/{owner}/{repo}/deployments?per_page=100&ref=refs%2Ftags%2Fv1.0'
 const cannedGh = (extra = {}) => ({
+  [BY_TAG]: { stdout: '[]' },
+  [BY_REF]: { stdout: '[]' },
   [PR_LIST]: { stdout: JSON.stringify(prs) },
   [DEPLOYMENTS]: { stdout: JSON.stringify([{ id: 5, environment: 'production', ref: 'v1.0', sha: 'abcdef123', created_at: '2026-10-22T10:00:00Z' }]) },
   'api repos/{owner}/{repo}/deployments/5/statuses?per_page=1': { stdout: JSON.stringify([{ state: 'success' }]) },
@@ -218,4 +224,139 @@ test('release-readiness labels a milestone by its name', async () => {
   await ok(root, env, ['milestone', 'create', 'beta', '--name', 'Public beta', '--due', '2026-11-01'])
   const text = (await ok(root, env, ['release-readiness', '--milestone', 'beta'])).stdout
   assert.ok(text.startsWith('milestone Public beta (due 2026-11-01)'), text)
+})
+
+const localWith = (overrides) => ({
+  ...ADAPTERS,
+  local: { ...ADAPTERS.local, create: async (...args) => ({ ...(await ADAPTERS.local.create(...args)), ...overrides }) },
+})
+const fail = (code, message) => async () => { throw new PmkitError(code, message) }
+// What Linear with releases on does: the release reads are stubs that answer NOT_SUPPORTED.
+const STUB = { listReleases: fail('NOT_SUPPORTED', 'the Linear adapter does not implement listReleases yet') }
+const readiness = async (root, env, args, adapters) => {
+  const result = await run(['release-readiness', ...args, '--json'], { cwd: root, env, adapters })
+  return { ...result, json: JSON.parse(result.stdout) }
+}
+
+test('a selector reads only what its basis needs, so --milestone, --sprint and --release survive the release stub and failing reads', async () => {
+  const root = repo()
+  const env = envWith(fakeGh(cannedGh()))
+  await ok(root, env, ['milestone', 'create', 'beta'])
+  await ok(root, env, ['release', 'create', '1.0'])
+  const adapters = localWith({ ...STUB, currentCycle: fail('UPSTREAM', 'cycles timed out'), listMilestones: fail('RATE_LIMITED', 'slow down') })
+  for (const [args, basis] of [[['--milestone', 'beta'], 'milestone'], [['--sprint', '2026-10-12'], 'sprint'], [['--release', '1.0'], 'release']]) {
+    const { code, json, stderr } = await readiness(root, env, args, adapters)
+    assert.equal(code, 0, stderr)
+    assert.deepEqual([json.basis, json.reason], [basis, 'requested'])
+    assert.ok(!json.problems.some((p) => ['releases', 'milestones', 'cycles'].includes(p.id)), 'no unused read is attempted')
+  }
+})
+
+test('--sprint current needs the active sprint: a failing read is the error, not an empty answer', async () => {
+  const root = repo()
+  const env = envWith(fakeGh(cannedGh()))
+  const { code, json } = await readiness(root, env, ['--sprint', 'current'], localWith({ currentCycle: fail('UPSTREAM', 'cycles timed out') }))
+  assert.equal(code, 2)
+  assert.equal(json.error.code, 'UPSTREAM')
+})
+
+test('--sprint current on a tracker without cycles is NOT_SUPPORTED, not "no active sprint"', async () => {
+  const root = repo({ github: false })
+  const { code, json } = await readiness(root, envWith(fakeGh({})), ['--sprint', 'current'], localWith({ currentCycle: fail('NOT_SUPPORTED', 'cycles absent') }))
+  assert.equal(code, 2)
+  assert.equal(json.error.code, 'NOT_SUPPORTED')
+  assert.match(json.error.message, /no cycles/)
+})
+
+test('the release stub on the automatic pick is not read: incomplete, never "no planned release"', async () => {
+  const root = repo()
+  const env = envWith(fakeGh(cannedGh()))
+  const { code, json, stderr } = await readiness(root, env, [], localWith(STUB))
+  assert.equal(code, 0, stderr)
+  assert.deepEqual(json.skipped[0], { basis: 'release', reason: 'releases_not_read' })
+  assert.equal(json.complete, false)
+  assert.notEqual(json.ready, true)
+  assert.ok(json.problems.some((p) => p.id === 'releases' && p.code === 'NOT_SUPPORTED'))
+  assert.match(stderr, /releases not read/)
+})
+
+test('a failing read of a rung the pick never reaches does not make the report incomplete', async () => {
+  const root = repo()
+  const env = envWith(fakeGh(cannedGh()))
+  await withRelease(root, env)
+  const adapters = localWith({ currentCycle: fail('RATE_LIMITED', 'slow down'), listMilestones: fail('UPSTREAM', 'milestones timed out') })
+  const { code, json, stderr } = await readiness(root, env, [], adapters)
+  assert.equal(code, 0, stderr)
+  assert.equal(json.basis, 'release')
+  assert.ok(!json.problems.some((p) => ['milestones', 'cycles'].includes(p.id)))
+  assert.doesNotMatch(stderr, /not read/)
+})
+
+test('only a transient error is "not read": an INVALID_INPUT or NOT_FOUND from a read is the error', async () => {
+  const root = repo()
+  const env = envWith(fakeGh(cannedGh()))
+  for (const [override, code] of [[{ listReleases: fail('NOT_FOUND', 'x') }, 'NOT_FOUND'], [{ listMilestones: fail('INVALID_INPUT', 'x') }, 'INVALID_INPUT'], [{ currentCycle: fail('CONFLICT', 'x') }, 'CONFLICT']]) {
+    const { code: exit, json } = await readiness(root, env, [], localWith(override))
+    assert.deepEqual([exit, json.error.code], [2, code])
+  }
+})
+
+test('the next step of --sprint current without cycles follows what the tracker has', async () => {
+  const root = repo({ github: false })
+  const { json } = await readiness(root, envWith(fakeGh({})), ['--sprint', 'current'], localWith({ currentCycle: fail('NOT_SUPPORTED', 'cycles absent') }))
+  assert.match(json.error.nextStep, /--release <id>/)
+  const noReleases = localWith({ currentCycle: fail('NOT_SUPPORTED', 'cycles absent'), capabilities: async () => ({ capabilities: [{ id: 'releases', path: 'absent', enableHint: 'h' }, { id: 'cycles', path: 'absent', enableHint: 'h' }] }) })
+  const second = await readiness(root, envWith(fakeGh({})), ['--sprint', 'current'], noReleases)
+  assert.doesNotMatch(second.json.error.nextStep, /--release/)
+})
+
+test('a transient milestones error falls through to the sprint and says the milestones were not read', async () => {
+  const root = repo()
+  const env = envWith(fakeGh(cannedGh()))
+  const { code, json } = await readiness(root, env, [], localWith({ listMilestones: fail('UPSTREAM', 'milestones timed out') }))
+  assert.equal(code, 0)
+  assert.equal(json.basis, 'sprint')
+  assert.deepEqual(json.skipped.map((s) => s.reason), ['no_planned_release', 'milestones_not_read'])
+  assert.deepEqual([json.complete, json.ready], [false, false]) // open work is a fact even when a read failed
+})
+
+test('when nothing can be picked and a read failed, that error is the answer, not "nothing to check"', async () => {
+  const root = repo()
+  const env = envWith(fakeGh(cannedGh()))
+  const { code, json } = await readiness(root, env, [], localWith({ listReleases: fail('UPSTREAM', 'releases timed out'), listMilestones: fail('UPSTREAM', 'milestones timed out'), currentCycle: fail('UPSTREAM', 'cycles timed out') }))
+  assert.equal(code, 2)
+  assert.equal(json.error.code, 'UPSTREAM')
+})
+
+test('a release with no issue is not ready: ready is null and empty is true', async () => {
+  const root = repo({ fixture: 'no-sprints' })
+  const env = envWith(fakeGh(cannedGh()))
+  await ok(root, env, ['release', 'create', '2.0'])
+  const { json } = await readiness(root, env, ['--release', '2.0'], undefined)
+  assert.deepEqual([json.issues.counts.total, json.empty, json.ready], [0, true, null])
+  assert.match((await ok(root, env, ['release-readiness', '--release', '2.0'])).stdout, /unknown: the release has no issue that is not canceled/)
+})
+
+test('the deploy of the release tag is found when it is older than the 20 newest, and through a refs/tags/ ref', async () => {
+  const root = repo()
+  const old = (id, ref) => ({ id, environment: 'production', ref, sha: `abcdef${id}`, created_at: '2026-09-01T10:00:00Z' })
+  const gh = fakeGh(cannedGh({
+    [BY_TAG]: { stdout: JSON.stringify([old(3, 'v1.0')]) },
+    [BY_REF]: { stdout: JSON.stringify([old(2, 'refs/tags/v1.0')]) },
+    'api repos/{owner}/{repo}/deployments/3/statuses?per_page=1': { stdout: JSON.stringify([{ state: 'success' }]) },
+    'api repos/{owner}/{repo}/deployments/2/statuses?per_page=1': { stdout: JSON.stringify([{ state: 'success' }]) },
+  }))
+  const env = envWith(gh)
+  await withRelease(root, env)
+  const { json } = await readiness(root, env, [], undefined)
+  assert.deepEqual(json.deploys.map((d) => [d.id, d.matchesRelease]), [[5, true], [3, true], [2, true]])
+})
+
+test('a failing deploy read by tag makes the deploys an error value, not a partial list', async () => {
+  const root = repo()
+  const env = envWith(fakeGh(cannedGh({ [BY_REF]: { status: 1, stderr: 'HTTP 502: Bad Gateway\n' } })))
+  await withRelease(root, env)
+  const { json, stderr } = await readiness(root, env, [], undefined)
+  assert.equal(json.deploys.error.code, 'UPSTREAM')
+  assert.match(stderr, /deploys not checked/)
 })

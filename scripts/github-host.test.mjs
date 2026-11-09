@@ -235,6 +235,12 @@ test('listDeploys encodes the environment and checks the limit', () => {
   assert.equal(calls.length, 1)
 })
 
+test('listDeploys can filter by the ref a deployment was made for', () => {
+  const { exec, calls } = fakeExec({ stdout: '[]' })
+  host(exec).listDeploys({ ref: 'refs/tags/v1.0', limit: 100 })
+  assert.deepEqual(calls[0].args, ['api', 'repos/{owner}/{repo}/deployments?per_page=100&ref=refs%2Ftags%2Fv1.0'])
+})
+
 test('ciLogs with a run id reads the failed steps of that run', () => {
   const meta = { workflowName: 'CI', url: 'u99', conclusion: 'failure', status: 'completed' }
   const { exec, calls } = fakeExec({ stdout: JSON.stringify(meta) }, { stdout: 'step failed\n' })

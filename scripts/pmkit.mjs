@@ -2013,21 +2013,48 @@ async function runReleaseReadiness(ctx) {
     return found.issues.filter((issue) => !issue.archived)
   }
 
+  // The automatic pick reads the releases, the milestones and the active sprint. A selector reads only what it needs, so a
+  // stub or a transient error in a read it does not use cannot stop it. A read that failed leaves its rung "not read" (the
+  // report is incomplete); only a selector that needs the read, or a pick with nothing left, turns that error into the answer.
+  const unread = []
+  const unreadErrors = []
+  const tolerant = async (rung, id, read, fallback) => {
+    try {
+      return await read()
+    } catch (error) {
+      // Only a transient error (and the release stub) is "not read". Any other error is a real failure and stops the command.
+      if (!isPmkitError(error) || !(error.code === 'RATE_LIMITED' || error.code === 'UPSTREAM' || (rung === 'release' && notSupported(error)))) {
+        if (rung === 'milestone' && notSupported(error)) return fallback
+        throw error
+      }
+      unread.push(rung)
+      unreadErrors.push(error)
+      problems.push({ id, code: error.code, message: error.message })
+      warnings.push(`${id} not read: ${error.message}`)
+      return fallback
+    }
+  }
+  const auto = ctx.opt('release') === undefined && ctx.opt('milestone') === undefined && ctx.opt('sprint') === undefined
+
   let activeSprint = null
   let cyclesAbsent = false
-  try {
-    activeSprint = (await tracker.currentCycle()) ?? null
-  } catch (error) {
-    if (!notSupported(error)) throw error
-    cyclesAbsent = true
-    notes.push(...(await capabilityNotes(tracker, 'cycles')))
+  const readCycle = async () => {
+    try {
+      activeSprint = (await tracker.currentCycle()) ?? null
+    } catch (error) {
+      if (!notSupported(error)) throw error
+      cyclesAbsent = true
+      notes.push(...(await capabilityNotes(tracker, 'cycles')))
+    }
   }
+  if (!auto && ctx.opt('sprint') === 'current') await readCycle()
   let selector = null
   if (ctx.opt('release') !== undefined) selector = { release: await tracker.getRelease(ctx.opt('release')) }
   else if (ctx.opt('milestone') !== undefined) selector = { milestone: await tracker.getMilestone(ctx.opt('milestone')) }
   else if (ctx.opt('sprint') !== undefined) {
     const id = ctx.opt('sprint')
     if (id === 'current') {
+      if (cyclesAbsent) throw new PmkitError('NOT_SUPPORTED', 'there is no current sprint: this tracker has no cycles', `pmkit release-readiness --milestone <id>${releasesOn ? ' or --release <id>' : ''}`)
       if (activeSprint === null) throw new PmkitError('INVALID_INPUT', 'there is no active sprint', 'pmkit cycle list')
       selector = { sprint: activeSprint }
     } else {
@@ -2036,25 +2063,27 @@ async function runReleaseReadiness(ctx) {
       selector = { sprint }
     }
   }
-  let milestones = []
-  try {
-    milestones = await tracker.listMilestones()
-  } catch (error) {
-    if (!notSupported(error)) throw error
-  }
-  const releases = releasesOn ? await tracker.listReleases() : null
+  // The automatic pick reads one rung at a time and stops at the first that has something, so a read it does not reach cannot fail it.
+  const releases = releasesOn && auto ? await tolerant('release', 'releases', () => tracker.listReleases(), null) : releasesOn ? [] : null
+  const planned = (releases ?? []).some((release) => release.state === 'planned')
   // The whole tracker is read only when the basis needs it: a milestone, or the milestone rung after no planned release.
-  const needsAll = selector?.milestone !== undefined || (selector === null && !(releases ?? []).some((release) => release.state === 'planned'))
+  const needsAll = selector?.milestone !== undefined || (selector === null && !planned)
+  const milestones = auto && !planned ? await tolerant('milestone', 'milestones', () => tracker.listMilestones(), []) : []
   const everything = needsAll ? await readIssues({}) : []
+  const openMilestones = new Set(everything.filter((i) => i.milestone && i.status.category !== 'done' && i.status.category !== 'canceled').map((i) => i.milestone))
+  if (auto && !planned && !milestones.some((m) => openMilestones.has(m.id))) await tolerant('sprint', 'cycles', async () => { await readCycle() })
   const choice = chooseReadinessBasis({
     selector,
     releases,
     milestones,
-    openMilestones: new Set(everything.filter((i) => i.milestone && i.status.category !== 'done' && i.status.category !== 'canceled').map((i) => i.milestone)),
+    openMilestones,
     activeSprint,
     cyclesAbsent,
+    unread,
   })
   if (choice.basis === null) {
+    // Nothing was picked and a read failed: the read error is the answer, not "nothing to check".
+    if (unreadErrors.length > 0) throw unreadErrors.find((e) => e.code !== 'NOT_SUPPORTED') ?? unreadErrors[0]
     const sprintHint = cyclesAbsent ? '' : ' or pmkit cycle open --start <date>'
     throw new PmkitError('INVALID_INPUT', `there is no planned release, no milestone with an open issue and no ${cyclesAbsent ? 'sprint (this tracker has no cycles)' : 'active sprint'} to check`, `pmkit release create <id> or pmkit milestone create <id>${sprintHint}`)
   }
@@ -2088,6 +2117,14 @@ async function runReleaseReadiness(ctx) {
     }
     try {
       deploys = host.listDeploys({})
+      // The tag's own deploy may be older than the newest 20: ask for the deploys made for the tag, as `v1` and as `refs/tags/v1`.
+      if (choice.basis === 'release' && choice.source.tag) {
+        const known = new Set(deploys.map((d) => d.id))
+        for (const ref of [choice.source.tag, `refs/tags/${choice.source.tag}`]) {
+          for (const deploy of host.listDeploys({ ref, limit: 100 })) if (!known.has(deploy.id)) { known.add(deploy.id); deploys.push(deploy) }
+        }
+        deploys.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+      }
     } catch (error) {
       if (!affectsOneCall(error)) throw error
       deploys = { error: errorOf(error) }

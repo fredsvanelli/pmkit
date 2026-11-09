@@ -106,6 +106,7 @@ exit 0
     }
   },
   "truncated": false,
+  "empty": false,
   "complete": false,
   "ready": false,
   "problems": [

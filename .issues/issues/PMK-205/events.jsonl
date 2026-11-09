@@ -1,2 +1,9 @@
 {"at":"2026-11-08T03:15:27Z","by":"fred","op":"create","to":{"id":"PMK-205","title":"Fix the Linear and error paths of release readiness","type":"bug","status":"backlog","priority":"medium","estimate":3,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-08T03:15:27.300Z","updated":"2026-11-08T03:15:27Z"}}
 {"at":"2026-11-08T03:15:27Z","by":"fred","op":"link","field":"related","to":"PMK-69"}
+{"at":"2026-11-09T22:56:37Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-09T22:56:37Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-09T22:56:39Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-205-fix-the-linear-and-error-paths-of"}
+{"at":"2026-11-09T22:57:58Z","by":"fred","op":"comment","to":"2026-11-09T22-57-58Z-fred.md"}
+{"at":"2026-11-09T23:08:48Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T23:13:50Z","by":"fred","op":"comment","to":"2026-11-09T23-13-50Z-fred.md"}
+{"at":"2026-11-09T23:13:51Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
