@@ -93,8 +93,6 @@ test('text redact refuses a missing file and a call with no --file', async () =>
 
 const SAME = [
   'at Object.<anonymous> (src/token.mjs:12:5)',
-  'The `password:` key is optional.',
-  '- `password`: the database password',
   'Use a Bearer token in the header.',
   'https://example.com/user@domain',
   'commit 3f786850e387550fdab836ed7e6dc881de23001b fixed it',
@@ -122,6 +120,8 @@ const FALSE_POSITIVES = [
   ['Error: invalid token:\n    at foo (src/a.js:1:2)', 'Error: invalid token:\n    [redacted]'],
   ['the password:\n  see the docs', 'the password:\n  [redacted]'],
   ['password:\n  next: line', 'password:\n  next: [redacted]'],
+  ['The `password:` key is optional.', 'The `password:` [redacted]'],
+  ['- `password`: the database password', '- `password`: [redacted]'],
 ]
 for (const [text, output, count = 1] of FALSE_POSITIVES) {
   test(`redact accepts the false positive ${JSON.stringify(text.slice(0, 45))}`, () => {

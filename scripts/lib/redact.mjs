@@ -39,7 +39,8 @@ const TOKENS = [
 //     on right after the closing quote.
 //   - Any other value runs to the end of the line, or to the next `|` in a table row. Only the Markdown that opened before
 //     the value and is still open (a backtick, `**`, `__`, `~~`, `(`, `[`, `{`) keeps its last closing mark on the line, and
-//     only one that ends a word (see `ENDS`), so `login(password=Pa)ss` loses `)ss`.
+//     only one that ends a word (see `endings`), so `login(password=Pa)ss` and `login(password=Ab3)!xY9` lose the rest.
+//     A mark that closes a label right after the separator (`**Password:** x`) is skipped, and the value starts after it.
 //   - Nothing after the key, a YAML `|` or `>`, or a value that opens `{`, `[` or `(` without closing it or ends in `\`: the
 //     lines below that are more indented than the key (see `under`) go too. With nothing after the key and a `name:` pair on
 //     the first of them, they are a mapping: each value in it goes, the names stay.
@@ -56,9 +57,11 @@ const keepsNumber = (key, value) => /^\d+(?:\.\d+)?$/.test(value) && QUANTITY.te
 // A source or config file name before `:line`, `:line:column` or `:line-line`, and what may follow it: the end, a space,
 // a quote, a closing mark, a sentence mark, or a colon and a space (`file.py:42: AssertionError`, not `file.txt:1:hunter2`).
 const FILE_KEY = /\.(?:[cm]?[jt]sx?|py|rb|go|rs|java|kts?|scala|swift|c|h|cc|cpp|hpp|cs|php|sh|bash|zsh|ps1|pl|lua|exs?|erl|dart|vue|svelte|sql|ya?ml|json|toml|ini|cfg|conf|env|txt|md|log|xml|html?|css|scss|tf|gradle|properties)$/i
-const LOCATION = /\d+(?::\d+)*(?:-\d+)?(?=[\s`'")\],;!?]|[.:](?=\s|$)|$)/y// A key starts with a word character or a dot, so the `-` of a removed diff line is not part of it. It may have an index
-// (`secret[0]=`) and close a quote, an escaped quote (`{\"password\":`) or a bracket (`config["password"] =`).
-const KEY_SEPARATOR = /(?<![\w.-])-*([\w.][\w.-]*)((?:\[[^\]\s"']{0,64}\])?\\?["']?\]?[^\S\n]*(?:=>|:=|===?|[=:])[^\S\n]*)/g
+const LOCATION = /\d+(?::\d+)*(?:-\d+)?(?=[\s`'")\],;!?]|[.:](?=\s|$)|$)/y
+// A key starts with a word character or a dot, so the `-` of a removed diff line is not part of it. It may have an index
+// (`secret[0]=`, `user[password]=`, whose secret word names the key) and close a quote, an escaped quote (`{\"password\":`),
+// a bracket (`config["password"] =`) or Markdown (`**password**:`, `` `DB_PASSWORD`: ``) before the separator.
+const KEY_SEPARATOR = /(?<![\w.-])-*([\w.][\w.-]*)(\[[^\]\s"'=]{0,64}\])?(\\?["']?\]?(?:`|\*\*?|~~)?[^\S\n]*(?:=>|:=|===?|[=:])[^\S\n]*)/g
 // YAML doubles a single quote inside single quotes (`'it''s'`).
 const QUOTED = /"(?:[^"\\]|\\[\s\S]){0,4096}"|'(?:[^'\\]|\\[\s\S]|''){0,4096}'/y
 // What may follow a closing quote for the quoted text to be the whole value (`"pa"ss`, `"abc"-def` are not).
@@ -69,14 +72,14 @@ const EMPTY_END = /[^\S\n]*(?:[,;)\]}]|\n|$)/y
 const DONE = /\[redacted\](?=[\s,;'"`)\]}]|$)/y
 // A value that opens a bracket without closing it, or ends in a line continuation.
 const OPENS = (value) => value.endsWith('\\') || ['{}', '[]', '()'].some(([open, close]) => value.split(open).length > value.split(close).length)
-// What may follow a closing mark that ends the value: the end, a space, a sentence mark, a quote or another closing mark.
-const ENDS = /[\s.,;:!?'"`)\]}>*_~|]|$/y
 const TABLE_ROW = /[^\S\n]*\|/y
 // A YAML block indicator, a comment or both, after an anchor or a tag: the value is on the lines below.
 const BLOCK = /^(?:[&!]\S*[^\S\n]+)*(?:[|>][+-]?\d?[+-]?)?(?:[^\S\n]*#.*)?$/
 const MAPPING = /[\w.-]+["']?[^\S\n]*:(?=\s|$)/y
 const PAIR = /(?<![\w.-])[\w.-]+["']?[^\S\n]*:(?:[^\S\n]+|$)/
 const MARKDOWN = [['`', '`'], ['**', '**'], ['__', '__'], ['~~', '~~'], ['(', ')'], ['[', ']'], ['{', '}']]
+// Markdown that may close a label right after its separator (`**Password:** x`).
+const LABEL_CLOSE = ['`', '**', '__', '~~']
 
 const lineEnd = (text, from) => {
   const end = text.indexOf('\n', from)
@@ -90,11 +93,21 @@ const at = (pattern, text, from) => {
 const leadOf = (line) => line.match(/^[\s+-]*/)[0].length
 const space = (char) => char !== undefined && /\s/.test(char)
 
-// The closing marks of the Markdown that is still open in `before`.
-const openClosers = (before) => MARKDOWN.filter(([open, close]) => {
-  const opens = before.split(open).length - 1
-  return open === close ? opens % 2 : opens > before.split(close).length - 1
-}).map(([, close]) => close)
+// How many opening and closing marks of each kind of Markdown a text holds. The counts of two texts add up when the second
+// starts with a word character, as a key does, so a line is counted once however many keys it holds.
+const countMarks = (text) => MARKDOWN.map(([open, close]) => [text.split(open).length - 1, open === close ? 0 : text.split(close).length - 1])
+const addMarks = (a, b) => a.map(([opens, closes], i) => [opens + b[i][0], closes + b[i][1]])
+// The closing marks of the Markdown that is still open, from its counts.
+const openClosers = (counts) => MARKDOWN.filter(([open, close], i) => (open === close ? counts[i][0] % 2 : counts[i][0] > counts[i][1])).map(([, close]) => close)
+
+// Where a closing mark may end a value: positions followed only by sentence marks, quotes and closing marks up to a space
+// or the end. One pass from the right, so a value of many closing marks stays linear.
+function endings(value) {
+  const ok = []
+  ok[value.length] = true
+  for (let i = value.length - 1; i >= 0; i--) ok[i] = space(value[i]) || (/[.,;:!?'"`)\]}>*_~|]/.test(value[i]) && ok[i + 1])
+  return ok
+}
 
 // The lines after the line break at `from` that belong to the value of a key at `column` of a line that starts with `lead`
 // characters of indentation: a line with a space at the key's column (and the same kind of character just before it, so a
@@ -124,6 +137,9 @@ function redactPairs(text, counts) {
   let lineStart = 0
   let lineStop = -1
   let table = false
+  let markCell = -1
+  let markAt = 0
+  let marks = null
   const replace = (from, to) => {
     out += `${text.slice(position, from)}${MARK}`
     position = to
@@ -132,11 +148,35 @@ function redactPairs(text, counts) {
   }
   KEY_SEPARATOR.lastIndex = 0
   for (let match = KEY_SEPARATOR.exec(text); match; match = KEY_SEPARATOR.exec(text)) {
-    const key = match[1]
-    const start = match.index + match[0].length
-    const keyAt = start - match[2].length - key.length
-    if (!KEY_WORDS.test(key) || keyAt < position) continue
-    if (at(DONE, text, start) || (match[2] === ':' && FILE_KEY.test(key) && at(LOCATION, text, start))) continue
+    const [, outer, index = '', separator] = match
+    let start = match.index + match[0].length
+    const keyAt = start - separator.length - index.length - outer.length
+    if (keyAt < position) continue
+    // The name the exemptions read: the key, or the secret word in its index (`user[password]`, `params[:password]`).
+    const key = KEY_WORDS.test(outer) ? outer : index.slice(1, -1).replace(/^:/, '')
+    if (!KEY_WORDS.test(key)) continue
+    // The line is read once, however many keys it holds.
+    if (keyAt > lineStop) {
+      lineStart = text.lastIndexOf('\n', keyAt) + 1
+      lineStop = lineEnd(text, keyAt)
+      table = at(TABLE_ROW, text, lineStart)
+    }
+    const cell = table ? text.lastIndexOf('|', keyAt) + 1 : lineStart
+    // The Markdown still open at the value. A key's leading underscores are Markdown (`__token=x__`), not part of the name.
+    if (cell !== markCell) [markCell, markAt, marks] = [cell, cell, countMarks('')]
+    marks = addMarks(marks, countMarks(text.slice(markAt, keyAt)))
+    markAt = keyAt
+    let closers = openClosers(addMarks(marks, countMarks(outer.match(/^_*/)[0] + index + separator)))
+    // A mark that closes a label right after the separator (`**Password:** x`) is not part of the value, when one follows.
+    const label = closers.find((close) => LABEL_CLOSE.includes(close) && text.startsWith(close, start))
+    if (label) {
+      const after = start + label.length + text.slice(start + label.length, lineStop).search(/\S|$/)
+      if (after < lineStop) {
+        start = after
+        closers = closers.filter((close) => close !== label)
+      }
+    }
+    if (at(DONE, text, start) || (separator === ':' && FILE_KEY.test(key) && at(LOCATION, text, start))) continue
     if (SHELL_PWD.test(key) && (text[start] === '/' || text[start] === '~')) continue
     if (text[start] === '"' || text[start] === "'") {
       QUOTED.lastIndex = start
@@ -147,13 +187,6 @@ function redactPairs(text, counts) {
         if (inner || at(EMPTY_END, text, start + 2)) continue
       }
     }
-    // The line is read once, however many keys it holds.
-    if (keyAt > lineStop) {
-      lineStart = text.lastIndexOf('\n', keyAt) + 1
-      lineStop = lineEnd(text, keyAt)
-      table = at(TABLE_ROW, text, lineStart)
-    }
-    const cell = table ? text.lastIndexOf('|', keyAt) + 1 : lineStart
     let end = table ? text.indexOf('|', start) : lineStop
     if (end === -1 || end > lineStop) end = lineStop
     let value = text.slice(start, end).trimEnd()
@@ -180,10 +213,10 @@ function redactPairs(text, counts) {
     }
     // With no line below, a lone `|` or `>` is left alone and a comment is the value itself (`PASSWORD=#hunter2`).
     if (below && !value.startsWith('#')) continue
-    // A key's leading underscores are Markdown (`__token=x__`), not part of the name.
-    for (const close of openClosers(text.slice(cell, keyAt + key.match(/^_*/)[0].length))) {
+    const ends = closers.length ? endings(value) : []
+    for (const close of closers) {
       let cut = value.lastIndexOf(close)
-      while (cut !== -1 && !(at(ENDS, value, cut + close.length) || (close === ']' && value[cut + 1] === '('))) cut = cut ? value.lastIndexOf(close, cut - 1) : -1
+      while (cut !== -1 && !(ends[cut + close.length] || (close === ']' && value[cut + 1] === '('))) cut = cut ? value.lastIndexOf(close, cut - 1) : -1
       if (cut !== -1) value = value.slice(0, cut)
     }
     value = value.trimEnd()

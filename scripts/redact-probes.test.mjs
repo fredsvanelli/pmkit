@@ -62,7 +62,7 @@ const PROBES = [
   ['a uuid', 'id 123e4567-e89b-12d3-a456-426614174000', 'id 123e4567-e89b-12d3-a456-426614174000'],
   ['an image data url', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='],
   ['a plain url', 'https://github.com/o/r/actions/runs/42', 'https://github.com/o/r/actions/runs/42'],
-  ['markdown about a password', '- `password`: the database password', '- `password`: the database password'],
+  ['markdown about a password', '- `password`: the database password', '- `password`: [redacted]'],
   ['a short bearer word', 'x bearer abcdef', 'x bearer abcdef'],
   ['stack frame with line and column', 'at Object.<anonymous> (src/token.mjs:1234:56)', 'at Object.<anonymous> (src/token.mjs:1234:56)'],
   ['stack frame in secret-manager', 'at run (/app/lib/secret-manager.mjs:1024:15)', 'at run (/app/lib/secret-manager.mjs:1024:15)'],
@@ -160,7 +160,7 @@ const PROBES = [
   ['backticked password in prose', 'the password: `hunter2` works', 'the password: [redacted]'],
   ['bold password', 'password: **hunter2**', 'password: [redacted]'],
   ['backticked secret', 'secret=`hunter2`', 'secret=[redacted]'],
-  ['code span around the key', 'The `password:` key and `x`', 'The `password:[redacted]`'],
+  ['code span around the key', 'The `password:` key and `x`', 'The `password:` [redacted]'],
   // G: a YAML block in a list item ends at the sibling keys.
   ['yaml block in a list item keeps the siblings', '  - password: |\n      hunter2\n    user: bob', '  - password: [redacted]\n    user: bob'],
   // Non-blockers of both cycles.
@@ -253,6 +253,32 @@ const PROBES = [
   ['authorization header in code', "headers['Authorization'] = 'Basic dXNlcjpodW50ZXIy'", "headers['Authorization'] = [redacted]"],
   ['escaped authorization in a json string', 'headers: "{\\"Authorization\\": \\"Basic abc\\"}"', 'headers: "{\\"Authorization\\": [redacted]}"'],
   ['quoted mark after authorization', '"Authorization": "[redacted]"', '"Authorization": "[redacted]"'],
+  // Review of PR #155, cycle 5. 1: a secret word inside the key's index names the key.
+  ['form body key', 'user[password]=hunter2', 'user[password]=[redacted]'],
+  ['form body key in a query', 'GET /login?user[password]=hunter2&x=1', 'GET /login?user[password]=[redacted]'],
+  ['rails symbol index', 'params[:password] = "hunter2"', 'params[:password] = [redacted]'],
+  ['php index', 'data[api_key]=abc123', 'data[api_key]=[redacted]'],
+  ['pair inside an index', 'login[password=Ab3]:xY9', 'login[password=[redacted]'],
+  ['quantity in an index', 'user[max_tokens]=4096', 'user[max_tokens]=4096'],
+  // 2: a closing mark ends the value only when what follows it ends at a space or the end of the line.
+  ['parenthesis then a symbol inside a password', 'login(password=Ab3)!xY9', 'login(password=[redacted]'],
+  ['parenthesis then an underscore inside a password', 'connect(user=x, password=aB3)_kL9!,', 'connect(user=x, password=[redacted]'],
+  ['brace then a dot inside a token', 'login{token: Ab3}.xY9', 'login{token: [redacted]'],
+  ['backtick then a colon inside a password', 'login`password=Ab3`:xY9', 'login`password=[redacted]'],
+  ['bold then a question mark inside a password', 'login**password=Ab3**?xY9', 'login**password=[redacted]'],
+  ['parenthesis then a dot', '(token=x).', '(token=[redacted]).'],
+  ['parenthesis then a comma and prose', '(token=x), then retry', '(token=[redacted]), then retry'],
+  ['bold then an exclamation mark', '**token=x**!', '**token=[redacted]**!'],
+  // 3: Markdown around the key does not hide it.
+  ['bold label', '**Password:** hunter2', '**Password:** [redacted]'],
+  ['bold label in a list', '- **Password:** hunter2', '- **Password:** [redacted]'],
+  ['code label', '`password:` hunter2', '`password:` [redacted]'],
+  ['underscore label', '__token:__ abc123', '__token:__ [redacted]'],
+  ['strikethrough label', '~~token:~~ abc123', '~~token:~~ [redacted]'],
+  ['bold key', '**password**: hunter2', '**password**: [redacted]'],
+  ['code key', '`DB_PASSWORD`: hunter2', '`DB_PASSWORD`: [redacted]'],
+  ['italic key', '*token*: abc123xyz', '*token*: [redacted]'],
+  ['code key and code value', '- `API_TOKEN`=`abc123`', '- `API_TOKEN`=[redacted]'],
 ]
 
 for (const [name, input, output] of PROBES) {
@@ -263,7 +289,7 @@ for (const [name, input, output] of PROBES) {
 
 test('probe: no pattern takes more than a second on 80 thousand characters of its own kind', () => {
   const n = 80000
-  const inputs = [rep('a', n), `token${rep('-', n)}`, `x://${rep(':', n)}`, `a://${rep('b:', n / 2)}`, rep('-----BEGIN A PRIVATE KEY-----', n / 29), rep('sk-', n / 3), `Authorization: ${rep('a', n)}`, rep('a://b', n / 5), rep('password:', n / 9), rep('a=1&', n / 4), rep('token=', n / 6), `token=${rep(')', n)}x`, rep('pwd=/', n / 5), rep('token="', n / 7), rep('password: |\n  a\n', n / 16), rep('token:\n  x\n', n / 10), rep('password=[redacted]', n / 19), rep('curl -u ', n / 8), rep('token=&a=', n / 9), rep('&a', n / 2), `token=${rep('a ', n / 2)}`, rep('|token=[redacted]', n / 17), rep('`password:` ', n / 12), rep('+password: |\n+  a\n', n / 18), rep('(token_limit=5) ', n / 16), rep('PWD=/a?token=[redacted] ', n / 24), rep('  - token:\n      a\n', n / 20), rep('token: ', n / 7), `x${rep(' ', n)}token=a`, rep('sk-', n / 3), rep('-token: ', n / 8), `${rep('-', n)}token=a`, `secrets:\n${rep('  a: b\n', n / 7)}`, rep('secrets:\n  a: [redacted]\n', n / 27), rep('-password: |\n-  a\n', n / 18), rep('a.py:1: ', n / 8)]
+  const inputs = [rep('a', n), `token${rep('-', n)}`, `x://${rep(':', n)}`, `a://${rep('b:', n / 2)}`, rep('-----BEGIN A PRIVATE KEY-----', n / 29), rep('sk-', n / 3), `Authorization: ${rep('a', n)}`, rep('a://b', n / 5), rep('password:', n / 9), rep('a=1&', n / 4), rep('token=', n / 6), `token=${rep(')', n)}x`, rep('pwd=/', n / 5), rep('token="', n / 7), rep('password: |\n  a\n', n / 16), rep('token:\n  x\n', n / 10), rep('password=[redacted]', n / 19), rep('curl -u ', n / 8), rep('token=&a=', n / 9), rep('&a', n / 2), `token=${rep('a ', n / 2)}`, rep('|token=[redacted]', n / 17), rep('`password:` ', n / 12), rep('+password: |\n+  a\n', n / 18), rep('(token_limit=5) ', n / 16), rep('PWD=/a?token=[redacted] ', n / 24), rep('  - token:\n      a\n', n / 20), rep('token: ', n / 7), `x${rep(' ', n)}token=a`, rep('sk-', n / 3), rep('-token: ', n / 8), `${rep('-', n)}token=a`, `secrets:\n${rep('  a: b\n', n / 7)}`, rep('secrets:\n  a: [redacted]\n', n / 27), rep('-password: |\n-  a\n', n / 18), rep('a.py:1: ', n / 8), rep('a[password]', n / 11), rep('a[', n / 2), rep('**Password:** ', n / 14), rep('**token=x', n / 9), `token=${rep(')!', n / 2)}`, `(token=${rep(')!x', n / 3)}`, `(token=${rep(')', n)}x`, `(token=${rep(').', n / 2)}x`, rep('`token`: ', n / 9), rep('`password:` [redacted] ', n / 23), rep('**Password:** [redacted] ', n / 25), rep('a[password]=[redacted] ', n / 23)]
   for (const input of inputs) {
     const start = process.hrtime.bigint()
     redact(input)
