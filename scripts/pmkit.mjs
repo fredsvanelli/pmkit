@@ -186,7 +186,8 @@ function issueFilter(ctx) {
 }
 
 /** A filter as one line, key=value pairs in the order they were stored. */
-const filterText = (filter) => Object.entries(filter).map(([key, value]) => `${key}=${[value].flat().join(',')}`).join(' ')
+const quoteValue = (value) => (/[\s=",]/.test(String(value)) ? JSON.stringify(String(value)) : String(value))
+const filterText = (filter) => Object.entries(filter).map(([key, value]) => `${key}=${[value].flat().map(quoteValue).join(',')}`).join(' ')
 
 /** The result of an issue search as the CLI prints it: the table and the warnings. `sort` and `sprint` are the filter values. */
 async function issueSearchResult(tracker, found, { sort, sprint }) {
@@ -479,7 +480,7 @@ export const COMMANDS = [
     run: async (ctx) => {
       const { views, problems } = await (await ctx.tracker()).listViews()
       const warnings = problems.map((problem) => `${problemLine(problem)}; run pmkit validate`)
-      return { data: views, text: views.length === 0 ? 'no views' : table(['Name', 'Filter'], views.map((view) => [view.name, filterText(view.filter)])), warnings }
+      return { data: { views, problems }, text: views.length === 0 ? 'no views' : table(['Name', 'Filter'], views.map((view) => [view.name, filterText(view.filter)])), warnings }
     },
   },
   {

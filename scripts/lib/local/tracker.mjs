@@ -1804,11 +1804,11 @@ export function createLocalTracker(root, {
     return parseView(fs.readFileSync(path.join(viewsDir, `${name}.yaml`), 'utf8'), name)
   }
 
-  /** Saved views by name. A file that does not parse is skipped and reported in `problems`; `pmkit validate` lists it too. */
+  /** Saved views by name. A file whose name breaks the rule, or that does not parse, is skipped and reported in `problems`; `pmkit validate` lists it too. */
   function listViews() {
     const views = []
     const problems = []
-    for (const name of [...viewStems(viewsDir)].filter(validViewName).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) {
+    for (const name of [...viewStems(viewsDir)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) {
       try {
         views.push(readView(name))
       } catch (error) {

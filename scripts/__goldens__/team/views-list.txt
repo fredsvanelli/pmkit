@@ -8,6 +8,9 @@ no views
 $ pmkit views list --json
 exit 0
 --- stdout
-[]
+{
+  "views": [],
+  "problems": []
+}
 --- stderr
 (empty)
