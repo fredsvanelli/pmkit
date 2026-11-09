@@ -63,3 +63,18 @@ test('a request file with conflict markers is one conflict problem and no reques
   write(root, 'requests', 'REQ-1.md', '---\n<<<<<<< HEAD\ntitle: A\n=======\ntitle: B\n>>>>>>> other\n---\n')
   assert.deepEqual(brief(validateRepo(root), '/requests/'), ['conflict .issues/requests/REQ-1.md'])
 })
+
+test('a request whose customer file does not parse, or has conflict markers, is a reference problem that points at the file', () => {
+  const root = makeRepo('team')
+  write(root, 'customers', 'CUS-1.md', '---\ntier: gold\n---\n')
+  write(root, 'customers', 'CUS-2.md', '---\n<<<<<<< HEAD\nname: A\n=======\nname: B\n>>>>>>> other\n---\n')
+  write(root, 'requests', 'REQ-1.md', '---\ntitle: T\ncustomer: CUS-1\n---\n')
+  write(root, 'requests', 'REQ-2.md', '---\ntitle: T\ncustomer: CUS-2\n---\n')
+  write(root, 'requests', 'REQ-3.md', '---\ntitle: T\ncustomer: CUS-9\n---\n')
+  const result = validateRepo(root)
+  assert.equal(messageOf(result, 'REQ-1.md'), 'customer CUS-1 does not parse, see .issues/customers/CUS-1.md')
+  assert.equal(messageOf(result, 'REQ-2.md'), 'customer CUS-2 does not parse, see .issues/customers/CUS-2.md')
+  assert.equal(messageOf(result, 'REQ-3.md'), 'customer CUS-9 does not exist')
+  // The customer file's own problem stays, so the user sees both.
+  assert.deepEqual(brief(result, '/customers/'), ['conflict .issues/customers/CUS-2.md', 'customer .issues/customers/CUS-1.md'])
+})

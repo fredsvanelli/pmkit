@@ -24,7 +24,7 @@
 - Two requests at the same instant: id breaks the tie (task 1 test).
 - `triaged` without `triaged_by`: no `by null` in text, `by` absent from nothing in JSON (task 3 test).
 - A customer file that is held back by conflict markers: counts as unreadable in `validate` (task 4 test).
-- A blank `--customer`: no filter, no error (task 4 test).
+- An empty `--customer`: refused like an unknown one; no `--customer`: no filter (task 4 test).
 
 ---
 
@@ -66,7 +66,7 @@
 
 **Files:** Modify `scripts/lib/validate.mjs` (reference loop for requests), `scripts/lib/local/tracker.mjs` (`getCustomer`, `listRequests`); Test `scripts/validate.test.mjs`, `scripts/customers.test.mjs`.
 
-- [ ] **Step 1:** Tests: `validate` reports `customer CUS-1 does not parse, see customers/CUS-1.md` for a request naming a broken customer file (and still `does not exist` for a missing one); `getCustomer('Name')` with one unreadable customer file and no match is `NOT_FOUND` whose message says the lookup is incomplete; a found customer carries the customer-file problems; `listRequests({customer:'CUS-9'})` throws `INVALID_INPUT`, a blank customer does not.
+- [ ] **Step 1:** Tests: `validate` reports `customer CUS-1 does not parse, see customers/CUS-1.md` for a request naming a broken customer file (and still `does not exist` for a missing one); `getCustomer('Name')` with one unreadable customer file and no match is `NOT_FOUND` whose message says the lookup is incomplete; a found customer carries the customer-file problems; `listRequests({customer:'CUS-9'})` throws `INVALID_INPUT`, no customer filters nothing and an empty one throws.
 - [ ] **Step 2:** Run both files; expect FAIL.
 - [ ] **Step 3:** Implement: track parsed customer ids in `validate`; in `getCustomer` merge `all.problems` into `problems` and word the miss; in `listRequests` call `requireCustomer(customer)` when not blank and filter by its id.
 - [ ] **Step 4:** Run; expect PASS.

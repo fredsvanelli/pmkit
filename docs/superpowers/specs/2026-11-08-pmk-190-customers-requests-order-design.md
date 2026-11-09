@@ -33,7 +33,7 @@ Linear sorts the `needs` of a customer by `createdAt`, newest first, so `request
 
 - `validate`: a request whose `customer` is a file that exists but does not parse yields a `reference` problem on the request (`customer CUS-1 does not parse, see customers/CUS-1.md`), next to the customer file's own problem. A request naming a customer with no file keeps `does not exist`. A customer file held back by conflict markers counts as unreadable.
 - `customers show <name>`: a name that matches no readable customer, while a customer file could not be read, answers `NOT_FOUND` with the message that the lookup was not complete and names the unreadable files. The result of a found customer carries the problems of the customer files too, so the warning shows.
-- `requests list --customer <id>` refuses a customer that is not a readable customer file with `INVALID_INPUT` (`customer X does not exist`, next step `pmkit customers list`), as `requests create --customer` does. A blank value means no filter.
+- `requests list --customer <id>` refuses a customer that is not a readable customer file with `INVALID_INPUT` (`customer X does not exist`, next step `pmkit customers list`), as `requests create --customer` does. No `--customer` means no filter. An empty value, such as an empty `$CUSTOMER` in a script, is refused too, so it never lists every request.
 
 ### 6. The Linear manifest
 

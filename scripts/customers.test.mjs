@@ -270,3 +270,30 @@ test('getRequest returns the problems of an unreadable customer or issue, and an
   write('requests', 'REQ-2.md', '---\ntitle: Fine\n---\n')
   assert.deepEqual(tracker.getRequest('REQ-2').problems, [])
 })
+
+test('customers show says the lookup is incomplete when a name matches nothing and a customer file could not be read', () => {
+  const { write, tracker } = setup()
+  write('customers', 'CUS-1.md', '---\nname: Acme\n---\n')
+  write('customers', 'CUS-2.md', '---\ntier: gold\n---\n')
+  assert.throws(() => tracker.getCustomer('Beta'), (error) => error.code === 'NOT_FOUND' && /CUS-2/.test(error.message) && /not (be )?read|incomplete|cannot be read/i.test(error.message))
+  assert.throws(() => tracker.getCustomer('Nobody'), (error) => error.code === 'NOT_FOUND' && /CUS-2/.test(error.message))
+  // A match is still found, and the unreadable file is reported next to it.
+  const found = tracker.getCustomer('acme')
+  assert.equal(found.customer.id, 'CUS-1')
+  assert.deepEqual(found.problems.map((problem) => problem.id), ['CUS-2'])
+})
+
+test('requests list --customer refuses a customer that is not a readable customer file, and no customer filters nothing', () => {
+  const { write, tracker } = setup()
+  write('customers', 'CUS-1.md', '---\nname: Acme\n---\n')
+  write('customers', 'CUS-2.md', '---\ntier: gold\n---\n')
+  write('requests', 'REQ-1.md', '---\ntitle: A\ncustomer: CUS-1\n---\n')
+  write('requests', 'REQ-2.md', '---\ntitle: B\n---\n')
+  assert.deepEqual(tracker.listRequests({ customer: 'cus-1' }).requests.map((request) => request.id), ['REQ-1'])
+  assert.deepEqual(tracker.listRequests({}).requests.map((request) => request.id), ['REQ-1', 'REQ-2'])
+  // An empty value, such as an empty $CUSTOMER in a script, is refused and does not list every request.
+  for (const customer of ['CUS-9', 'Acme', '../x', 'CUS-2', '']) {
+    assert.throws(() => tracker.listRequests({ customer }), (error) => error.code === 'INVALID_INPUT', customer)
+  }
+  assert.throws(() => tracker.listRequests({ customer: 'CUS-9' }), (error) => error.nextStep === 'pmkit customers list')
+})

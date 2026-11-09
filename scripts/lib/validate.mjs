@@ -317,6 +317,7 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
   const customerFiles = recordFiles('customers', CUSTOMER_PREFIX, 'customer', parseCustomer, (file, customer) => {
     if (customer.owner !== undefined && !Object.hasOwn(local.members, customer.owner)) add(file, 'customer', `owner "${customer.owner}" is not a member`)
   })
+  const readableCustomers = new Set(customerFiles.parsed.map(({ record }) => record.id))
   const requestFiles = recordFiles('requests', REQUEST_PREFIX, 'request', parseRequest, () => {})
 
   // Issues
@@ -397,6 +398,10 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
   }
   for (const { file, record } of requestFiles.parsed) {
     if (record.customer !== undefined && !customerFiles.ids.has(record.customer)) add(file, 'reference', `customer ${record.customer} does not exist`)
+    // The file exists but did not parse, or conflict markers held it back: the request points at a customer nobody can read.
+    else if (record.customer !== undefined && !readableCustomers.has(record.customer)) {
+      add(file, 'reference', `customer ${record.customer} does not parse, see ${rel(path.join(issuesDir, 'customers', `${record.customer}.md`))}`)
+    }
     if (record.issue !== undefined && !folderSet.has(record.issue)) add(file, 'reference', `issue ${record.issue} does not exist`)
   }
 

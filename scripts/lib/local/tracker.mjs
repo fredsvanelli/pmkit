@@ -1452,13 +1452,17 @@ export function createLocalTracker(root, {
     } else {
       const matches = all.records.filter((item) => item.name.toLowerCase() === String(ref ?? '').trim().toLowerCase())
       if (matches.length > 1) throw invalid(`${matches.length} customers are named "${ref}"`, `Pass one of these ids: ${matches.map((item) => item.id).join(', ')}`)
+      if (matches.length === 0 && all.problems.length > 0) {
+        // A name can sit in a file that cannot be read, so a miss is not an answer: say the lookup is incomplete.
+        throw new PmkitError('NOT_FOUND', `no readable customer is named or identified "${ref}", but ${all.problems.map((problem) => problem.id).join(', ')} could not be read, so the lookup is incomplete`, 'pmkit validate')
+      }
       if (matches.length === 0) throw new PmkitError('NOT_FOUND', `no customer is named or identified "${ref}"`, 'pmkit customers list')
       customer = matches[0]
     }
     const requests = readRecords(REQUEST)
     const own = sortRequestsNewest(requests.records.filter((request) => request.customer === customer.id))
     const { views, problems } = requestViews(own, all.records)
-    return { customer: customerView(customer, requests.records), requests: views, problems: [...requests.problems, ...problems] }
+    return { customer: customerView(customer, requests.records), requests: views, problems: [...all.problems, ...requests.problems, ...problems] }
   }
 
   const oneLineText = (field, value) => {
@@ -1533,7 +1537,8 @@ export function createLocalTracker(root, {
   function listRequests({ state = 'open', customer } = {}) {
     if (![...REQUEST_STATES, 'all'].includes(state)) throw invalid(`state must be one of ${[...REQUEST_STATES, 'all'].join(', ')}`)
     const requests = readRecords(REQUEST)
-    const wanted = blank(customer) ? undefined : normalizeId(String(customer))
+    // An unknown or unreadable customer is refused, as `requests create --customer` does, instead of answering an empty list.
+    const wanted = blank(customer) ? undefined : requireCustomer(customer)
     const chosen = requests.records.filter((request) => (state === 'all' || request.state === state) && (wanted === undefined || request.customer === wanted))
     const { views, problems } = requestViews(sortRequests(chosen), readRecords(CUSTOMER).records)
     return { requests: views, problems: [...requests.problems, ...problems] }
