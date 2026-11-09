@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-59]
 branch: pmk-176-fix-estimate-issue-on-an-empty-or
 created: 2026-10-31T16:01:11.186Z
-updated: 2026-11-09T00:22:02Z
+updated: 2026-11-09T00:23:53Z
 ---
 
 ## Description
@@ -30,6 +30,6 @@ updated: 2026-11-09T00:22:02Z
 
 ## Acceptance criteria
 
-- [ ] A `conditional` estimation, or a missing `mappings.fields.estimate`, falls back to commenting the estimate
-- [ ] The proposal uses the scale of the issue's team, and never writes days as points
-- [ ] The user can pick another value when the proposal equals the current one
+- [x] A `conditional` estimation, or a missing `mappings.fields.estimate`, falls back to commenting the estimate
+- [x] The proposal uses the scale of the issue's team, and never writes days as points
+- [x] The user can pick another value when the proposal equals the current one
