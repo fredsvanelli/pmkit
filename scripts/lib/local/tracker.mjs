@@ -74,6 +74,7 @@ function readBack(label, parse) {
 
 export function createLocalTracker(root, {
   config = loadConfig(root), now = () => new Date(), random, gitEmail, env = process.env, index = true, onIndexRead = () => {},
+  sign,
 } = {}) {
   const { local } = config
   if (![true, 'read', false].includes(index)) throw invalid('index must be true, read or false')
@@ -327,6 +328,7 @@ export function createLocalTracker(root, {
       fileOf: (id) => issuePaths(issuesDir, normalizeId(id)).file,
       read: (id) => readIssue(id).issue,
       write,
+      sign,
     })
   }
 

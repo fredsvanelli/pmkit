@@ -13,13 +13,14 @@
 ## Global Constraints
 
 - Signature stays `size, mtimeMs, ctimeMs, ino` (spec, Non-goals).
-- The tracker does not pass `sign`; production behavior is unchanged.
+- The tracker takes an optional `sign` option and passes it on; production passes none, so the default `signature` applies.
 - Commits carry `(PMK-191)` and the trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## Review Focus
 
 - A fake signer whose `ctimeMs` changes must reparse the entry even when size and mtime are equal. Covered by Task 2.
 - A signer that throws for a missing file must still give "no entry" for that folder. Covered by Task 1.
+- A same-size edit inside the whole `runStates` matrix must be caught by ctime alone. Covered by Task 4.
 
 ---
 
@@ -150,4 +151,39 @@ Expected: `EXIT 0`. Check the exit code, not only the failure count (lesson roun
 ```bash
 git add CHANGELOG.md
 git commit -m "docs(changelog): query-index ctime test is clock-free (PMK-191)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+### Task 4: Run the `runStates` matrix on the injected signer
+
+Added after the first pass, when the rebase on `origin/develop` showed that `runStates` still used the kernel's
+ctime (through `tick()`).
+
+**Files:**
+- Modify: `scripts/lib/local/tracker.mjs` (`createLocalTracker` option `sign`, passed to `readThroughIndex`)
+- Modify: `scripts/query-index.test.mjs` (`ctimeSigner`, `assertSame`, `runStates`; `tick` removed)
+
+**Interfaces:**
+- Consumes: `readThroughIndex` with `sign` from Task 1.
+- Produces: `createLocalTracker(root, { ..., sign })`. `ctimeSigner()` returns `{ sign(file), bump(file) }`; `sign` gives the real size, mtime and inode with `ctimeMs` 0 until a bump, then the bump count.
+
+- [ ] **Step 1: Write the failing check**
+
+Change `runStates` to call `signer.bump(fileOf(a))` after the same-size edit and to pass `sign: signer.sign` to every tracker and to `assertSame`. Then temporarily make `bump` a no-op.
+Run: `node --test scripts/query-index.test.mjs`
+Expected: FAIL in `team fixture`, `broken fixture` and `basic fixture`, with `parsed` 0 at `same-size edit`. Restore `bump` afterwards.
+
+- [ ] **Step 2: Implement**
+
+Add the optional `sign` option to `createLocalTracker` and pass it into `readThroughIndex` in `indexedRead`. Write `ctimeSigner` as described in the spec, remove `tick`, and move the remaining `trackerFor(root)` and `assertSame` calls in `runStates` to the signer.
+
+- [ ] **Step 3: Run the whole file**
+
+Run: `node --test scripts/query-index.test.mjs`
+Expected: PASS, 35 tests, 0 failures.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add scripts/lib/local/tracker.mjs scripts/query-index.test.mjs docs/superpowers/specs/2026-11-08-pmk-191-ctime-test-design.md docs/superpowers/plans/2026-11-08-pmk-191-ctime-test.md
+git commit -m "test(index): run the runStates matrix on the injected signer (PMK-191)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
