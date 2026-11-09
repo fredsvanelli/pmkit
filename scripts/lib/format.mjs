@@ -286,7 +286,7 @@ export function releaseNotesText(result) {
   return lines.join('\n')
 }
 
-const READINESS_SKIPS = { releases_absent: 'this tracker has no releases', no_planned_release: 'no planned release', no_open_milestone: 'no milestone with an open issue', no_active_sprint: 'no active sprint', cycles_absent: 'this tracker has no sprints' }
+const READINESS_SKIPS = { releases_absent: 'this tracker has no releases', no_planned_release: 'no planned release', no_open_milestone: 'no milestone with an open issue', no_active_sprint: 'no active sprint', cycles_absent: 'this tracker has no sprints', releases_not_read: 'the releases could not be read', milestones_not_read: 'the milestones could not be read', cycles_not_read: 'the sprints could not be read' }
 
 function readinessSection(title, value, empty, rows, header) {
   if (value === null) return [`${title}: not checked`]
@@ -309,6 +309,6 @@ export function readinessText(result) {
   if (result.pullRequestsIncomplete) lines.push('the pull request list may be incomplete: only 200 were read')
   lines.push('', ...readinessSection('deploys (whole repository, newest first)', result.deploys, 'none', (ds) => ds.map((d) => [d.environment, d.state, d.ref, String(d.sha ?? '').slice(0, 7), String(d.createdAt ?? ''), d.matchesRelease ? 'this release' : '']), ['Environment', 'State', 'Ref', 'Sha', 'Created', 'Match']))
   if (!result.gitHost.available) lines.push(`git host: ${result.gitHost.system === 'none' ? 'none' : result.gitHost.reason.message}, so pull requests and deploys are not checked`)
-  lines.push('', result.ready === true ? 'ready: nothing is open' : result.ready === false ? 'not ready: work is still open' : 'unknown: nothing found open, but not everything was read')
+  lines.push('', result.ready === true ? 'ready: nothing is open' : result.ready === false ? 'not ready: work is still open' : result.empty ? `unknown: the ${result.basis} has no issues, so nothing says it is ready` : 'unknown: nothing found open, but not everything was read')
   return lines.join('\n')
 }
