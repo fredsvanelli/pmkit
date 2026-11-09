@@ -3,3 +3,8 @@
 {"at":"2026-11-09T22:56:43Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-09T22:56:43Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-09T22:56:46Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-206-fix-the-review-request-and-error-paths"}
+{"at":"2026-11-09T22:58:03Z","by":"fred","op":"comment","to":"2026-11-09T22-58-03Z-fred.md"}
+{"at":"2026-11-09T23:06:51Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T23:06:51Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T23:06:52Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T23:06:52Z","by":"fred","op":"update","field":"acceptance_criteria"}
