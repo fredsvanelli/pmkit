@@ -824,6 +824,18 @@ test('team load lists only the members of the configured team, and shows other a
   assert.deepEqual(data.suggestions.filter((move) => move.to === 'user-5'), [])
 })
 
+test('team load --sprint current on a Linear team with cycles off counts all open work and names the cycles', async () => {
+  const fake = fakeLinearIssues({ users: ACME_USERS })
+  fake.seed({ title: 'Mine', assigneeId: 'user-1', stateId: 'state-3' })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace({ users: ACME_USERS }), ...fake.routes })
+  const result = await linear(fetch, ['team', 'load', '--sprint', 'current', '--json'])
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.sprint, null)
+  assert.equal(data.rows.find((row) => row.member === 'user-1').issues, 1)
+  assert.doesNotMatch(result.stderr, /there is no active sprint, so --sprint current matches no issues/)
+})
+
 test('issues get --history and --comments read Linear, with thread lines in the text', async () => {
   const { fake, fetch } = withIssues()
   fake.seed({ title: 'Talk' }, { createdAt: '2026-10-01T00:00:00.000Z' })

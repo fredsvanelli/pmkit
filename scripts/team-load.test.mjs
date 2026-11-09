@@ -290,3 +290,26 @@ test('proposeMoves gives all the todo work of a member with availability 0 to th
   const report = teamLoad(issues, { members, unit: 'points' })
   assert.deepEqual(proposeMoves(report, issues), { moves: [{ issue: 'A-1', from: 'a', to: 'b' }], reason: null })
 })
+
+const away = [{ id: 'a', name: 'A', availability: 0 }, { id: 'b', name: 'B', availability: 1 }, { id: 'c', name: 'C', availability: 1 }]
+
+test('proposeMoves moves the work of a member with availability 0 to a member with none, past the overload limit', () => {
+  const alone = [{ id: 'a', name: 'A', availability: 0 }, { id: 'b', name: 'B', availability: 1 }]
+  const one = todo('a', 3)
+  assert.deepEqual(proposeMoves(teamLoad(one, { members: alone, unit: 'points' }), one), { moves: [{ issue: 'A-1', from: 'a', to: 'b' }], reason: null })
+  const many = [...todo('a', 5), ...todo('b', 1), ...todo('c', 1)]
+  assert.deepEqual(proposeMoves(teamLoad(many, { members: away, unit: 'points' }), many).moves, [{ issue: 'A-1', from: 'a', to: 'b' }])
+})
+
+test('proposeMoves proposes the issues of a member with availability 0 that have no estimate or an estimate of 0, and says so', () => {
+  const issues = [issue('A-1', 'todo', 'a', 4), issue('A-2', 'todo', 'a'), issue('A-3', 'todo', 'a', 0), ...todo('b', 1), ...todo('c', 1)]
+  const { moves } = proposeMoves(teamLoad(issues, { members: away, unit: 'points' }), issues)
+  assert.deepEqual(moves.map((move) => [move.issue, move.unsized]), [['A-1', undefined], ['A-2', 'unestimated'], ['A-3', 'zero_estimate']])
+})
+
+test('proposeMoves does not stop at a member with availability 0 whose load is unknown', () => {
+  const issues = [issue('A-1', 'todo', 'a'), issue('A-2', 'todo', 'a'), issue('B-1', 'todo', 'b', 2), issue('C-1', 'todo', 'c', 2)]
+  const report = teamLoad(issues, { members: away, unit: 'points' })
+  assert.equal(rowOf(report, 'a').load, null)
+  assert.deepEqual(proposeMoves(report, issues).moves.map((move) => move.issue), ['A-1', 'A-2'])
+})

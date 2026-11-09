@@ -109,7 +109,8 @@ export function teamLoad(issues, { members, aging = [], capacity = {}, daysOff =
  * Returns the moves and, when a flagged member exists and no move is proposed, the reason: `no_candidates` (no issue in
  * `todo`), `unestimated` (the issues in `todo` have no estimate, so a move cannot be sized), `zero_estimate` (the estimates
  * are 0, so a move changes nothing), `would_not_improve` (a target passes the limits, but would end above the source) or `no_target`.
- * A member with availability 0 gives all its `todo` work away, without the "target ends at or below the source" rule.
+ * A member with availability 0 gives all its `todo` work away to a member with availability, with no overload or "ends at or below"
+ * rule; an issue it holds with no estimate or an estimate of 0 moves too, marked `unsized: 'unestimated' | 'zero_estimate'`.
  */
 export function proposeMoves(report, issues) {
   const estimated = report.unit !== 'issues'
@@ -124,42 +125,46 @@ export function proposeMoves(report, issues) {
   let anyWeighted = false
   let anyUnestimated = false
   let anyBalanceOnly = false
+  let anyStuck = false
   for (const from of flagged) {
-    const limits = report.imbalances.filter((item) => item.member === from).map((item) => (item.flag === 'over_capacity' ? capacityOf.get(from) : item.flag === 'no_availability' ? 0 : mean))
-    const stopAt = Math.min(...limits)
+    const own = report.imbalances.filter((item) => item.member === from)
+    // A member with no availability gives all its todo work to anyone who has availability: the overload and "ends above the source" rules do not apply.
+    const idle = own.some((item) => item.flag === 'no_availability')
+    const stopAt = Math.min(...own.map((item) => (item.flag === 'over_capacity' ? capacityOf.get(from) : item.flag === 'no_availability' ? 0 : mean)))
     const todo = issues.filter((issue) => issue.assignee === from && issue.status.category === 'todo')
     anyTodo ||= todo.length > 0
     anyUnestimated ||= estimated && todo.some((issue) => !isNumber(issue.estimate))
-    // A member with no availability gives everything away, so ending below the target does not matter.
-    const idle = report.rows.find((row) => row.member === from)?.availability === 0
+    // Work of an idle member always moves, even when its weight is unknown (no estimate) or 0: the move says why it cannot be sized.
     const candidates = todo
-      .filter((issue) => weight(issue) > 0)
+      .filter((issue) => idle || weight(issue) > 0)
       .sort((a, b) => weight(b) - weight(a) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
     anyWeighted ||= candidates.length > 0
     for (const issue of candidates) {
-      if (loads.get(from) <= stopAt) break
+      if (!idle && loads.get(from) <= stopAt) break
       const w = weight(issue)
       const allowed = targets
         .filter((row) => row.member !== from)
         // The same comparison as over_average: load * count > 1.5 * sum, so a target never ends up flagged.
-        .filter((row) => (loads.get(row.member) + w) * known.length <= OVER_AVERAGE * sum)
+        .filter((row) => idle || (loads.get(row.member) + w) * known.length <= OVER_AVERAGE * sum)
         .filter((row) => !estimated || capacityOf.get(row.member) === null || loads.get(row.member) + w <= capacityOf.get(row.member))
       const to = allowed
         .filter((row) => idle || loads.get(row.member) + w <= loads.get(from) - w)
         .sort((a, b) => loads.get(a.member) - loads.get(b.member))[0]
       if (to === undefined) {
-        anyBalanceOnly ||= allowed.length > 0
+        if (idle) anyStuck = true
+        else anyBalanceOnly ||= allowed.length > 0
         continue
       }
-      loads.set(from, loads.get(from) - w)
+      if (loads.get(from) !== null) loads.set(from, loads.get(from) - w)
       loads.set(to.member, loads.get(to.member) + w)
-      moves.push({ issue: issue.id, from, to: to.member })
+      const unsized = estimated && w === 0 ? (isNumber(issue.estimate) ? 'zero_estimate' : 'unestimated') : undefined
+      moves.push({ issue: issue.id, from, to: to.member, ...(unsized ? { unsized } : {}) })
     }
   }
   if (moves.length > 0 || flagged.length === 0) return { moves, reason: null }
   if (!anyTodo) return { moves, reason: 'no_candidates' }
   if (!anyWeighted) return { moves, reason: anyUnestimated ? 'unestimated' : 'zero_estimate' }
-  return { moves, reason: anyBalanceOnly ? 'would_not_improve' : 'no_target' }
+  return { moves, reason: anyBalanceOnly && !anyStuck ? 'would_not_improve' : 'no_target' }
 }
 
 /** The moves of proposeMoves. */

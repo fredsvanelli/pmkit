@@ -2357,7 +2357,7 @@ async function teamLoadReport(ctx, { wanted, requireSprint = false, capacity: ca
   const capabilities = (await tracker.capabilities()).capabilities
   const estimation = capabilities.find((c) => c.id === 'estimation')
   const choice = chooseUnit(found.issues, estimation)
-  if (choice.unit === 'issues') notes.push(`counted issues instead of estimates: ${choice.reason}${estimation?.path === 'absent' && estimation.enableHint ? ` (${estimation.enableHint})` : ''}`)
+  if (choice.unit === 'issues' && !noSprintNamed) notes.push(`counted issues instead of estimates: ${choice.reason}${estimation?.path === 'absent' && estimation.enableHint ? ` (${estimation.enableHint})` : ''}`)
   if (estimation?.path === 'conditional') notes.push(...(await capabilityNotes(tracker, 'estimation')))
   const capacity = capacityOverride ?? (sprint ? await orSupported(() => tracker.getCapacity(sprint.id), {}) : {})
   const daysOff = daysOffOverride ?? (sprint ? await orSupported(() => tracker.getDaysOff(sprint.id), {}) : {})
@@ -2464,7 +2464,7 @@ function teamLoadText(data) {
   if (data.imbalances.length > 0) lines.push('imbalances:', ...data.imbalances.map((item) => `  ${item.member}: ${item.flag}, load ${item.load}, limit ${item.limit}`))
   if (data.noWork.length > 0) lines.push(`no work in scope: ${data.noWork.map((item) => item.member + (item.daysOff.length > 0 ? ` (days off ${item.daysOff.join(', ')})` : '')).join(', ')}`)
   if (data.noMoves) lines.push(`no proposed moves: ${data.noMoves.message}`)
-  if (data.suggestions.length > 0) lines.push('proposed moves:', ...data.suggestions.map((move) => `  ${move.issue}: ${move.from} to ${move.to}`))
+  if (data.suggestions.length > 0) lines.push('proposed moves:', ...data.suggestions.map((move) => `  ${move.issue}: ${move.from} to ${move.to}${move.unsized ? ` (${move.unsized === 'unestimated' ? 'no estimate' : 'estimate 0'}, load effect unknown)` : ''}`))
   return lines.join('\n')
 }
 

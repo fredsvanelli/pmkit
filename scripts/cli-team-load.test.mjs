@@ -180,3 +180,17 @@ test('team load --sprint current with no active sprint reads nothing and warns, 
   assert.match(stderr, new RegExp(warning))
   assert.ok(!notes.some((line) => line.startsWith('note: no active sprint')), notes.join('\n'))
 })
+
+test('team load --sprint current with no active sprint says nothing false about estimates', async () => {
+  const root = makeRepo('no-sprints')
+  const { stderr, notes } = await load(root, ['--sprint', 'current'])
+  assert.ok(!notes.some((line) => /no issue in scope has an estimate|estimates are off/.test(line)), notes.join('\n'))
+  assert.match(stderr, /there is no active sprint/)
+})
+
+test('team load without the flag, and with a sprint id, still counts what the sprint or all open work holds', async () => {
+  const none = await load(makeRepo('no-sprints'))
+  assert.deepEqual([rowOf(none.data, 'fred').issues, rowOf(none.data, 'ana').issues], [1, 1])
+  const named = await load(makeRepo('team'), ['--sprint', '2026-10-12'])
+  assert.equal(named.data.sprint.id, '2026-10-12')
+})
