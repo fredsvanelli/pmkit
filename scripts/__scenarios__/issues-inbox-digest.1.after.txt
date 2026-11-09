@@ -1,0 +1,12 @@
+$ pmkit capabilities --json  [step 1, read]
+exit 0
+$ pmkit inbox list --json  [step 2, read]
+exit 0
+$ pmkit whoami --json  [step 4, read]
+exit 0
+$ pmkit issues list --category backlog,todo,in_progress,in_review --json  [step 5, read]
+exit 0
+
+(no file changed)
+--- gh calls
+(none)
