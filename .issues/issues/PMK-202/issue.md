@@ -2,12 +2,14 @@
 id: PMK-202
 title: Fix the degraded and error paths of roadmap review
 type: bug
-status: backlog
+status: in_review
 priority: medium
 estimate: 3
+assignee: fred
 related: [PMK-66]
+branch: pmk-202-fix-the-degraded-and-error-paths-of
 created: 2026-11-08T03:15:26.853Z
-updated: 2026-11-08T03:15:26Z
+updated: 2026-11-09T22:29:56Z
 ---
 
 ## Description
@@ -32,7 +34,7 @@ Found by the reviews of PR #114 (PMK-66) and left as non-blocking. Source: PMK-6
 
 ## Acceptance criteria
 
-- [ ] A transient error listing epics or milestones marks that section incomplete and does not show the no-epics fallback
-- [ ] An unknown delay reads as unknown in the text
-- [ ] A Linear epic lists each of its milestones by name
-- [ ] `risks` and `roadmap review` report a failed update read as not checked
+- [x] A transient error listing epics or milestones marks that section incomplete and does not show the no-epics fallback
+- [x] An unknown delay reads as unknown in the text
+- [x] A Linear epic lists each of its milestones by name
+- [x] `risks` and `roadmap review` report a failed update read as not checked

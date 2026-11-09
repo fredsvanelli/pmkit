@@ -20,6 +20,10 @@ exit 0
 {
   "today": "2026-10-23",
   "statusUpdateWindowDays": 14,
+  "unavailable": {
+    "epics": null,
+    "milestones": null
+  },
   "epics": [],
   "milestones": [],
   "noRecentUpdates": [],

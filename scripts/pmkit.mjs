@@ -19,7 +19,7 @@ import { buildNotes, chooseBasis } from './lib/release-notes.mjs'
 import { buildReadiness, chooseReadinessBasis } from './lib/release-readiness.mjs'
 import { dependencyMap, serializable } from './lib/dependencies.mjs'
 import { buildRoadmapReview, roadmapReviewText } from './lib/roadmap-review.mjs'
-import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, FAILED_RUN, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
+import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, failingWorkflows, FAILED_RUN, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 import { pathNote } from './lib/path-notes.mjs'
 import { planNextAdr } from './lib/adr.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
@@ -388,7 +388,9 @@ async function capabilityNotes(tracker, id) {
 async function capabilityNotesOrNone(ctx, id = 'linked_code') {
   try {
     return await capabilityNotes(await ctx.tracker(), id)
-  } catch {
+  } catch (error) {
+    // Only a failure of the tracker or its manifest costs the note; a bug in the code does not hide.
+    if (error instanceof TypeError) throw error
     return []
   }
 }
@@ -1860,7 +1862,7 @@ async function runRisks(ctx) {
       updatesByEpic[epic.id] = await tracker.listStatusUpdates(epic.id)
     } catch (error) {
       if (!isPmkitError(error)) throw error
-      updatesByEpic[epic.id] = []
+      updatesByEpic[epic.id] = null
       problems.push({ id: epic.id, code: error.code, message: error.message })
       epicWarnings.push(`${epic.id}: ${error.code} ${error.message}`)
     }
@@ -1875,6 +1877,7 @@ async function runRisks(ctx) {
     stalledIssues: stalledIssues(all, { eventsByIssue, openPrsByBranch, closedPrsByBranch, today, stuckBusinessDays }),
     stalledPullRequests: Array.isArray(prs) ? stalledPullRequests(prs, { issuesByBranch, today, stuckBusinessDays }) : prs,
     epics: epicRisks(epics, { updatesByEpic, today, windowDays }),
+    updatesNotChecked: epicsUpdatesNotChecked(epics, { updatesByEpic, today, windowDays }),
     ci,
     problems,
   }
@@ -1889,6 +1892,10 @@ async function runRoadmapReview(ctx) {
   const warnings = []
   const problems = []
   const notes = new Set()
+  // Why a section is missing: the code of the error that cost it. Only NOT_SUPPORTED means the tracker lacks it.
+  const sectionErrors = {}
+  // After a rate limit every further read would fail the same way, so the per-epic reads stop.
+  let rateLimited = false
   // Auth and configuration fail every read the same way, so they stop the command; anything else costs one value.
   const recoverable = (error) => isPmkitError(error) && error.code !== 'AUTH' && error.code !== 'NOT_CONFIGURED'
   // A list the tracker lacks, or that failed for a reason other than auth or config, costs its section.
@@ -1897,9 +1904,11 @@ async function runRoadmapReview(ctx) {
       return await read()
     } catch (error) {
       if (!recoverable(error)) throw error
+      sectionErrors[what] = error.code
+      if (error.code === 'RATE_LIMITED') rateLimited = true
       if (error.code === 'NOT_SUPPORTED') {
         warnings.push(`${what} not checked: ${error.message}`)
-        for (const note of await capabilityNotes(tracker, capability)) notes.add(note)
+        for (const note of await capabilityNotesOrNone(ctx, capability)) notes.add(note)
       } else {
         problems.push({ id: what, code: error.code, message: error.message })
         warnings.push(`${what} not checked: ${error.code} ${error.message}`)
@@ -1913,7 +1922,12 @@ async function runRoadmapReview(ctx) {
   warnings.push(...found.map(problemLine))
   if (hasMore === true) warnings.push('the tracker has more issues than pmkit read, so milestone issue counts are unknown')
   const epics = await section(() => tracker.listDeliverables(), 'deliverables', 'epics')
-  let milestones = await section(() => tracker.listMilestones(), 'deliverables', 'milestones')
+  // After a rate limit on the epic list the next read would fail the same way: leave the milestones unread.
+  let milestones = null
+  if (rateLimited) {
+    sectionErrors.milestones = 'RATE_LIMITED'
+    warnings.push('milestones not checked: rate limited while listing epics')
+  } else milestones = await section(() => tracker.listMilestones(), 'deliverables', 'milestones')
   // The Local tracker skips an epic or milestone file that does not parse; say so, and keep the milestone as a row.
   const local = await ctx.local()
   if (local !== null) {
@@ -1937,21 +1951,32 @@ async function runRoadmapReview(ctx) {
       if (error.code === 'NOT_SUPPORTED' && updates) {
         updatesSupported = false
         warnings.push(`status updates not checked: ${error.message}`)
-        for (const note of await capabilityNotes(tracker, 'status_update')) notes.add(note)
+        for (const note of await capabilityNotesOrNone(ctx, 'status_update')) notes.add(note)
         return null
       }
+      if (error.code === 'RATE_LIMITED') rateLimited = true
       problems.push({ id, code: error.code, message: error.message })
       warnings.push(`${id}: ${error.code} ${error.message}`)
       return null
     }
   }
+  const skipped = []
   for (const epic of epics ?? []) {
+    if (rateLimited) {
+      skipped.push(epic.id)
+      progressByEpic[epic.id] = null
+      updatesByEpic[epic.id] = null
+      continue
+    }
     progressByEpic[epic.id] = await perEpic(epic.id, () => tracker.deliverableProgress(epic.id))
     if (progressByEpic[epic.id]?.hasMore === true) warnings.push(`${epic.id}: the tracker has more issues in this epic than pmkit read; the progress counts are partial`)
-    updatesByEpic[epic.id] = updatesSupported ? await perEpic(epic.id, () => tracker.listStatusUpdates(epic.id), { updates: true }) : null
+    // A rate limit on this epic's progress read skips its updates read: say so as for the epics after it.
+    if (updatesSupported && rateLimited) skipped.push(epic.id)
+    updatesByEpic[epic.id] = updatesSupported && !rateLimited ? await perEpic(epic.id, () => tracker.listStatusUpdates(epic.id), { updates: true }) : null
   }
+  if (skipped.length) warnings.push(`rate limited: the reads of ${skipped.join(', ')} were skipped, so their progress and status updates are not checked`)
 
-  const report = buildRoadmapReview({ today, windowDays, issues, issuesComplete: hasMore !== true && found.length === 0, epics, milestones, progressByEpic, updatesByEpic })
+  const report = buildRoadmapReview({ today, windowDays, issues, issuesComplete: hasMore !== true && found.length === 0, epics, milestones, progressByEpic, updatesByEpic, sectionErrors })
   report.problems = problems
   report.incomplete ||= problems.length > 0
   return { data: report, text: roadmapReviewText(report), warnings, notes: [...notes] }
