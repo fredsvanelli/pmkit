@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 Arguments: `$ARGUMENTS`
 
-Deleting removes the issue, its events and its comments. Archiving keeps the record and its history and only hides the issue from lists. On the Local tracker only git history brings a deleted issue back. On Linear the issue goes to Linear's trash. When the user only wants the issue out of the way, offer `pmkit issues archive <id>` and stop.
+Deleting removes the issue, its events and its comments. Archiving keeps the record and its history and only hides the issue from lists. On the Local tracker only git history brings a deleted issue back, and the preview says so only when `removes.autoCommit` is true: with `auto_commit` off nothing commits the delete, so git has the issue only if the user committed it before. On Linear the issue goes to Linear's trash. When the user only wants the issue out of the way, offer `pmkit issues archive <id>` and stop.
 
 ## Parameters
 
@@ -32,7 +32,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 
 ## Output
 
-One line, `deleted <id> <title>`, from `before` of the result. Say once that the issue is gone from lists and that git history (Local) or Linear's trash (Linear) is the way back.
+One line, `deleted <id> <title>`, from `before` of the result. Say once that the issue is gone from lists and that git history (Local, see `removes.autoCommit`) or Linear's trash (Linear) is the way back. A warning that a hidden `.deleting-` folder could not be removed means the issue is deleted and the folder is for the user to remove.
 
 ## If something is missing
 

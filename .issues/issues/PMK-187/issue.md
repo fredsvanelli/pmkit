@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-52]
 branch: pmk-187-fix-issues-delete-on-archived-linear
 created: 2026-10-31T16:59:10.860Z
-updated: 2026-11-09T01:47:36Z
+updated: 2026-11-09T01:55:27Z
 ---
 
 ## Description
@@ -32,7 +32,7 @@ updated: 2026-11-09T01:47:36Z
 
 ## Acceptance criteria
 
-- [ ] On Linear, archived children and relations block the delete as they do on Local
-- [ ] A failed removal on Local leaves either the whole issue or nothing
-- [ ] The preview text is right for `auto_commit` off and for one event
-- [ ] Mentions inside paths and URLs are not listed
+- [x] On Linear, archived children and relations block the delete as they do on Local
+- [x] A failed removal on Local leaves either the whole issue or nothing
+- [x] The preview text is right for `auto_commit` off and for one event
+- [x] Mentions inside paths and URLs are not listed
