@@ -272,3 +272,32 @@ Início: 2026-11-09. `develop` em 647b950, `npm test` com 4235 testes, 4154 pass
 - PMK-202: rebase c8553ba com listMilestones pulado depois de RATE_LIMITED e TypeError relançado; diff pós-aprovação conferido. Mergeado (58adc21).
 
 Fim da rodada 9: PRs #158, #159, #160 mergeados.
+
+Limpeza da rodada 9: closing PR #161 mergeado (ad84993), 7 worktrees removidos, branches provisórias apagadas.
+
+## Rodada 10
+
+Início: 2026-11-09. `develop` em ad84993, `npm test` com 4266 testes, 4185 pass, 0 fail, 81 skipped, saída 0. Run Orca `run_0bb8d5b027ba`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-204 | 3 | sonnet (`ctx_bbf4e8109edf`) | #162 | ciclo 1 (opus): mudanças pedidas; ciclo 2 (opus): APROVADO; rebase 907ba8f | mergeado (6db471e) |
+| PMK-205 | 3 | sonnet (`ctx_ac0c95c56e2d`) | #164 | ciclo 1 (opus): mudanças pedidas; ciclo 2 (opus): APROVADO; rebase f5f168d | mergeado (6051adf) |
+| PMK-206 | 2 | sonnet (`ctx_3531374e5fd6`) | #163 | ciclo 1 (sonnet): mudanças pedidas; ciclo 2 (sonnet): APROVADO | mergeado (342cd4b) |
+
+- PMK-204: PR #162 (sonnet); faixas só sobre score>0; problems da lista de demanda com campo about, só problemas de arquivo de request ou de candidato bloqueiam escritas; comentário próprio = do assignee ou Delegated to agent: (sem marcador, heurística); regra de menção compartilhada com issues delete em scripts/lib/mentions.mjs (diferencia maiúsculas). Follow-ups: marcador nos comentários do pmkit; leitura de menções por token inteiro na CLI (PMK-241); lista de demanda no Linear (PMK-242). Revisor ciclo 1 (opus) iniciado.
+- PMK-206: PR #163 (sonnet); pr blockers separa reviews.requested (usuários) de reviews.requestedTeams; digest lê toda issue aberta e os PRs do autor; para em RATE_LIMITED; since= no Linear; cenário com mark-read de inbox completa e rate limit. Follow-ups: UPSTREAM transitório no passo 5.1 só marca uma issue; suíte live não confere o texto do digest. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-205: PR #164 (sonnet); seletores pulam leituras sem uso; leitura transitória ou stub deixa o relatório incompleto; base vazia dá ready null; deploys de tag achados além dos 20 mais novos e por refs/tags/. Follow-ups: listReleases real no Linear; aviso quando a lista de deploys bate em 100. Revisor ciclo 1 (opus) iniciado.
+- PMK-204 ciclo 1 (opus): mudanças pedidas (critério 1 quebrado: issues sem demanda ficam acima da de menor score; nenhum cenário distingue a regra nova). Heurística do assignee aceita com contagem de ignorados e autores agent:*; regra de menção com maiúsculas aceita com uma linha no passo 4. Follow-ups: menções do Linear como URL; 30 leituras --text.
+- PMK-206 ciclo 1 (sonnet): mudanças pedidas (unblock.md lê só reviews.requested, review pedido a time some; sem PR marcado como not verified deixa o digest sempre incompleto).
+- PMK-205 ciclo 1 (opus): mudanças pedidas (empty sem olhar truncated/problems, regra da rodada 7; release só com canceladas sai ready true). Pedi junto: leitura não usada não deixa incompleto; tolerant só para transitórios; CHANGELOG fiel; próximo passo de --sprint current. Follow-ups: ~200 chamadas gh na busca de deploys por ref; testes de --release com falha e Linear com releases.
+- PMK-206 correção cbc9f1a: unblock.md lê requestedTeams; sem PR é fato no passo 5.2; menores baratos. Follow-ups: isTeam trata entrada só com nome como usuário; cenário de rateLimited depende do snapshot; pr blockers por branch sem cache de proteção. Revisor ciclo 2 (sonnet) iniciado.
+- PMK-204 correção fee5252: issue sem demanda acima da menor prioridade proposta a uma com demanda é limitada a esse piso; contagem de comentários ignorados; agent:* ignorados; linha de maiúsculas; cenário .6. Revisor ciclo 2 (opus) iniciado.
+- PMK-206 ciclo 2 (sonnet): APROVADO. Não bloqueantes: aviso de login ausente no passo 5.4; since só com a data; teste por regex no cenário complete; custo de pr blockers por issue. Mergeado (342cd4b).
+- PMK-205 correção 0cafaf3: empty só depois de leitura completa; só canceladas é base vazia; leituras preguiçosas na escolha automática; tolerant só RATE_LIMITED/UPSTREAM; próximo passo de --sprint current segue as releases. O primeiro npm test do implementador teve uma falha de tempo em scripts/redact-probes.test.mjs (sonda de tempo da PMK-197 instável sob carga): follow-up. Revisor ciclo 2 (opus) iniciado.
+- PMK-204 ciclo 2 (opus): APROVADO, em conflito; pedi rebase. Não bloqueantes: piso vira low quando há tantas issues com demanda quanto prioridades e rebaixa o backlog; piso não recalculado depois de aceite parcial ou edição; about:issue de issue ilegível vira só aviso; caminho de comentários não aplica o critério 1; oráculo do .1 lê o frontmatter.
+- PMK-204: rebase 907ba8f (só CHANGELOG), cabeçalho do cenário cita o .6. Mergeado (6db471e).
+- PMK-205 ciclo 2 (opus): APROVADO, em conflito; pedi rebase com empty+ready false de cancelada com PR aberto e o CHANGELOG do --release no Linear. Não bloqueantes restantes: escada de escolha duplicada (pmkit.mjs:2068/2074); legibilidade de tolerant; cycles_absent sem tradução no arquivo de comando.
+- PMK-205: rebase f5f168d com empty falso enquanto há trabalho aberto e CHANGELOG sem --release no Linear; diff pós-aprovação conferido. Mergeado (6051adf).
+
+Fim da rodada 10: PRs #162, #163, #164 mergeados.
