@@ -39,6 +39,8 @@ function failure(cmd, args, result) {
   if (http) error.httpStatus = Number(http[1])
   // gh pr view and gh pr checks report a token that cannot read the data as "GraphQL: Resource not accessible ...", with no HTTP status.
   else if (/^GraphQL: Resource not accessible/.test(detail)) error.httpStatus = 403
+  // A SAML enforcement or a token without the scopes is a refusal too. The text must start the line, so a branch name cannot fake it.
+  else if (/^(?:(?:gh|GraphQL|error): )+(?:Resource protected by organization SAML enforcement|Your token has not been granted the required scopes|your authentication token is missing required scopes)/i.test(detail)) error.httpStatus = 403
   return error
 }
 
@@ -165,7 +167,7 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
         const error = failure('gh', args, result)
         let type
         try { type = JSON.parse(result.stdout)?.errors?.[0]?.type } catch {}
-        const httpStatus = { FORBIDDEN: 403, NOT_FOUND: 404 }[type]
+        const httpStatus = { FORBIDDEN: 403, INSUFFICIENT_SCOPES: 403, NOT_FOUND: 404 }[type]
         if (httpStatus) error.httpStatus = httpStatus
         throw error
       }
