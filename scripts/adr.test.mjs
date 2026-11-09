@@ -169,15 +169,48 @@ test('planNextAdr writes a repository file when the tracker is hosted, with no t
   assert.deepEqual(plan.sources.map((source) => source.place), ['repo'])
 })
 
-test('highestAdr counts 0007a as 7, so the next number is not a second 0007', () => {
-  assert.deepEqual(highestAdr(['0006-y.md', '0007a-x.md']), { highest: 7, ignored: [] })
+test('highestAdr counts a slug that starts with a digit but not a dated name', () => {
+  assert.equal(highestAdr(['0003-2fa-x.md']).highest, 3)
+  assert.equal(highestAdr(['0007-x.md']).highest, 7)
+  assert.equal(highestAdr(['2026-10-31-x.md', '2026-10-31.md']).highest, 0)
 })
 
-test('docs next-adr numbers after 0007a with 0008', async () => {
+test('highestAdr counts only names of the form NNNN-', () => {
+  assert.deepEqual(highestAdr(['0006-y.md', '20261031.md', '0007a-x.md']), { highest: 6, ignored: ['20261031.md', '0007a-x.md'] })
+  assert.deepEqual(highestAdr(['2026-10-31-notes.md', '20261031-x.md']), { highest: 0, ignored: ['2026-10-31-notes.md', '20261031-x.md'] })
+})
+
+test('adrSlug cuts by code point and refuses a title of only combining marks', () => {
+  const slug = adrSlug(`${'a'.repeat(59)}𠮷`)
+  assert.ok(!/[\ud800-\udfff]/.test(slug.replace(/[\ud800-\udbff][\udc00-\udfff]/g, '')), 'lone surrogate')
+  assert.equal(Array.from(slug).length, 60)
+  assert.throws(() => adrSlug('\u0301'), /no letter or digit/)
+})
+
+test('docs next-adr ignores a note named like a date', async () => {
   const root = repo()
   write(root, '.issues/docs/adr/0006-y.md')
-  write(root, '.issues/docs/adr/0007a-x.md')
-  assert.equal((await nextAdr(root)).data.number, '0008')
+  write(root, '.issues/docs/adr/20261031.md')
+  assert.equal((await nextAdr(root)).data.number, '0007')
+})
+
+test('adrSlug keeps non-Latin letters and transliterates ß æ ø', () => {
+  assert.equal(adrSlug('Использовать файлы событий'), 'использовать-файлы-событий')
+  assert.equal(adrSlug('Использовать й'), 'использовать-й')
+  assert.equal(adrSlug('イベント 記録'), 'イベント-記録')
+  assert.equal(adrSlug('Straße æble ørsted'), 'strasse-aeble-orsted')
+  assert.throws(() => adrSlug('!!! ???'), /no letter or digit/)
+})
+
+test('docs next-adr with tracker.path . counts the folder once', async () => {
+  const root = repo()
+  fs.writeFileSync(configFile(root), fs.readFileSync(configFile(root), 'utf8').replace('path: .issues', 'path: .'))
+  for (const name of fs.readdirSync(path.join(root, '.issues'))) fs.renameSync(path.join(root, '.issues', name), path.join(root, name))
+  write(root, 'docs/adr/0001-a.md')
+  const { code: exit, data } = await nextAdr(root)
+  assert.equal(exit, 0, JSON.stringify(data))
+  assert.equal(data.number, '0002')
+  assert.doesNotMatch(data.notes.join('\n'), /also has ADRs/)
 })
 
 test('docs next-adr counts a tracker folder outside the repository and writes no null path', async () => {
@@ -191,7 +224,7 @@ test('docs next-adr counts a tracker folder outside the repository and writes no
     assert.equal(exit, 0, JSON.stringify(data))
     assert.equal(data.destination, 'tracker')
     assert.equal(data.number, '0002')
-    assert.equal(data.path, `${outside.split(path.sep).join('/')}/docs/adr/0002-keep-estimates-in-points.md`)
+    assert.equal(data.path, 'docs/adr/0002-keep-estimates-in-points.md')
     assert.doesNotMatch(data.path, /null/)
     assert.equal(data.docPath, 'adr/0002-keep-estimates-in-points.md')
     assert.match(data.notes.join('\n'), /outside the repository/)

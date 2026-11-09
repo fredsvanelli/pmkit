@@ -6,22 +6,25 @@ import path from 'node:path'
 import { PmkitError } from './errors.mjs'
 
 export const ADR_SLUG_MAX = 60
-// A name counts when it starts with four or more digits and a non-digit follows, so 0007a-x.md counts as 7.
-const NUMBERED = /^(\d{4,})(?=\D)[^/]*\.md$/
+// A name counts only in the form NNNN-<rest>.md (exactly four digits and a hyphen, unless a date YYYY-MM-DD follows), so 20261031.md, 0007a-x.md and 2026-10-31-x.md do not, and 0003-2fa-x.md does.
+const NUMBERED = /^(\d{4})-(?!\d{2}-\d{2}(?:-|\.|$))[^/]*\.md$/
 const QUOTES = /['"`‘’“”]/g
+const LETTERS = { ß: 'ss', æ: 'ae', œ: 'oe', ø: 'o', đ: 'd', ð: 'd', ł: 'l', þ: 'th' }
 
 /**
- * The file-name part of an ADR title: lowercase `[a-z0-9-]`, accents transliterated, quotes dropped, every other
- * run of characters a single hyphen, at most ADR_SLUG_MAX characters and cut at a word boundary.
+ * The file-name part of an ADR title: lowercase letters and digits of any script, accents of Latin letters and ß æ ø
+ * transliterated, quotes dropped, every other run of characters a single hyphen, at most ADR_SLUG_MAX characters and cut at a word boundary.
  * A title with nothing left is refused.
  */
 export function adrSlug(title) {
   if (typeof title !== 'string') throw new PmkitError('INVALID_INPUT', 'the ADR title must be a string', 'Pass --title with the decision title')
-  const slug = title.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(QUOTES, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-  if (slug === '') throw new PmkitError('INVALID_INPUT', `the title "${title}" has no letter or digit to make a file name from`, 'Pass --title with words, for example "Use event files as the audit log"')
-  if (slug.length <= ADR_SLUG_MAX) return slug
-  const head = slug.slice(0, ADR_SLUG_MAX)
-  const cut = slug[ADR_SLUG_MAX] === '-' || !head.includes('-') ? head : head.slice(0, head.lastIndexOf('-'))
+  const slug = title.normalize('NFD').replace(/(?<=\p{Script=Latin})\p{M}+/gu, '').normalize('NFC').toLowerCase().replace(QUOTES, '').replace(/[ßæœøđðłþ]/g, (c) => LETTERS[c]).replace(/[^\p{L}\p{N}\p{M}]+/gu, '-').replace(/^-+|-+$/g, '')
+  if (!/[\p{L}\p{N}]/u.test(slug)) throw new PmkitError('INVALID_INPUT', `the title "${title}" has no letter or digit to make a file name from`, 'Pass --title with words, for example "Use event files as the audit log"')
+  // Cut by code point, so a letter outside the basic plane is never split into a lone surrogate.
+  const points = Array.from(slug)
+  if (points.length <= ADR_SLUG_MAX) return slug
+  const head = points.slice(0, ADR_SLUG_MAX).join('')
+  const cut = points[ADR_SLUG_MAX] === '-' || !head.includes('-') ? head : head.slice(0, head.lastIndexOf('-'))
   return cut.replace(/-+$/, '')
 }
 
@@ -63,19 +66,22 @@ export function planNextAdr({ title, root, trackerFolder, trackerDir, hosted, cr
   if (refSha) notes.push(`numbered with ${ref} as last fetched (${refSha}), so it may be behind the remote`)
   else notes.push(`${ref} does not exist here, so only the working tree was read and an ADR merged on ${defaultBranch} may be missed`)
 
-  const trackerLabel = trackerDir ? (trackerFolder ?? trackerDir.split(path.sep).join('/')) : null
-  const folders = [{ place: 'repo', label: 'docs/adr', dir: path.join(root, 'docs', 'adr'), repoFolder: 'docs/adr' }]
-  if (trackerDir) folders.push({ place: 'tracker', label: trackerLabel, dir: trackerDir, repoFolder: trackerFolder })
-  if (trackerDir && !trackerFolder) notes.push(`the tracker folder is outside the repository, so ${ref} was not read for it`)
+  // Outside the repository the path is relative to the tracker folder, never an absolute path of this machine.
+  const trackerLabel = trackerDir ? (trackerFolder ?? 'docs/adr') : null
+  const repoDir = path.join(root, 'docs', 'adr')
+  const folders = [{ place: 'repo', label: 'docs/adr', shown: 'docs/adr', dir: repoDir, repoFolder: 'docs/adr' }]
+  // tracker.path: . puts the tracker folder on the repo folder, which is then read once.
+  if (trackerDir && path.resolve(trackerDir) !== path.resolve(repoDir)) folders.push({ place: 'tracker', label: trackerLabel, shown: trackerFolder ?? 'docs/adr in the tracker', dir: trackerDir, repoFolder: trackerFolder })
+  if (trackerDir && !trackerFolder) notes.push(`the tracker folder is outside the repository, so ${ref} was not read for it and its paths are relative to the tracker folder`)
 
   const sources = []
-  for (const { place, label, dir, repoFolder } of folders) {
+  for (const { place, label, shown, dir, repoFolder } of folders) {
     const entries = readTree(dir)
     const direct = entries?.filter((name) => !name.endsWith('/')) ?? []
     const dirs = entries?.filter((name) => name.endsWith('/')) ?? []
     const tree = highestAdr(direct)
     sources.push({ place, folder: label, where: 'working tree', exists: entries !== null, highest: tree.highest, files: direct.length })
-    ignored.push(...tree.ignored.map((name) => `${label}/${name}`), ...dirs.map((name) => `${label}/${name}`))
+    ignored.push(...tree.ignored.map((name) => `${shown}/${name}`), ...dirs.map((name) => `${shown}/${name}`))
     if (refSha && repoFolder) {
       const listed = git(['ls-tree', '-r', '-z', '--name-only', ref, '--', `${repoFolder}/`])
       if (listed.status !== 0) {
@@ -97,7 +103,7 @@ export function planNextAdr({ title, root, trackerFolder, trackerDir, hosted, cr
   const filename = `${number}-${slug}.md`
   const folder = destination === 'repo' ? 'docs/adr' : trackerLabel
   const other = sources.filter((source) => source.place !== destination && source.files > 0)
-  if (other.length > 0) notes.push(`${[...new Set(other.map((source) => source.folder))].join(' and ')} also has ADRs, and the number counts them`)
+  if (other.length > 0) notes.push(`${[...new Set(other.map((source) => folders.find((f) => f.place === source.place).shown))].join(' and ')} also has ADRs, and the number counts them`)
   if (ignored.length > 0) notes.push(`not counted, no number in the name: ${ignored.join(', ')}`)
 
   return {

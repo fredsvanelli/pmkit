@@ -2,12 +2,14 @@
 id: PMK-194
 title: Fix docs next-adr for a tracker outside the repo and odd file names
 type: bug
-status: backlog
+status: in_review
 priority: medium
 estimate: 1
+assignee: fred
 related: [PMK-65]
+branch: pmk-194-fix-docs-next-adr-for-a-tracker-outside
 created: 2026-10-31T19:29:36.272Z
-updated: 2026-10-31T19:29:36Z
+updated: 2026-11-09T03:32:30Z
 ---
 
 ## Description
@@ -29,6 +31,6 @@ updated: 2026-10-31T19:29:36Z
 
 ## Acceptance criteria
 
-- [ ] The comment path is relative to the repository or to the tracker, never absolute
-- [ ] Only names of the form `NNNN-` count as ADR numbers
-- [ ] The slug and its error message handle non-Latin titles
+- [x] The comment path is relative to the repository or to the tracker, never absolute
+- [x] Only names of the form `NNNN-` count as ADR numbers
+- [x] The slug and its error message handle non-Latin titles
