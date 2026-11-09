@@ -242,3 +242,23 @@ test('listCustomers orders by revenue and reports a broken file', () => {
   assert.deepEqual(customers.map((customer) => customer.id), ['CUS-2', 'CUS-1'])
   assert.deepEqual(problems.map((problem) => problem.id), ['CUS-3'])
 })
+
+// PMK-190: order, unread records and the request rewrite.
+
+test('the inbox sorts by instant, not by text', () => {
+  const { write, tracker } = setup()
+  write('requests', 'REQ-1.md', '---\ntitle: late in UTC\ncreated: 2026-11-01T09:00:00-05:00\n---\n')
+  write('requests', 'REQ-2.md', '---\ntitle: noon UTC\ncreated: 2026-11-01T12:00:00Z\n---\n')
+  assert.deepEqual(tracker.listRequests().requests.map((request) => request.id), ['REQ-2', 'REQ-1'])
+  assert.deepEqual(sortRequests([{ id: 'REQ-1', created: '2026-11-01T09:00:00-05:00' }, { id: 'REQ-2', created: '2026-11-01T12:00:00Z' }]).map((item) => item.id), ['REQ-2', 'REQ-1'])
+})
+
+test('customers show lists the requests newest first, a request without created last, a tie by id descending', () => {
+  const { write, tracker } = setup()
+  write('customers', 'CUS-1.md', '---\nname: Acme\n---\n')
+  write('requests', 'REQ-1.md', '---\ntitle: old\ncustomer: CUS-1\ncreated: 2026-11-01T12:00:00Z\n---\n')
+  write('requests', 'REQ-2.md', '---\ntitle: offset\ncustomer: CUS-1\ncreated: 2026-11-01T09:00:00-05:00\n---\n')
+  write('requests', 'REQ-3.md', '---\ntitle: tie a\ncustomer: CUS-1\ncreated: 2026-11-01T14:00:00Z\n---\n')
+  write('requests', 'REQ-4.md', '---\ntitle: no date\ncustomer: CUS-1\n---\n')
+  assert.deepEqual(tracker.getCustomer('CUS-1').requests.map((request) => request.id), ['REQ-3', 'REQ-2', 'REQ-1', 'REQ-4'])
+})

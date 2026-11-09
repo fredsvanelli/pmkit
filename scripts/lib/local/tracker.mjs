@@ -27,7 +27,7 @@ import { parseRelease, releaseStems, serializeRelease, sortReleases, validReleas
 import { parseView, serializeView, validViewName, viewStems } from './views.mjs'
 import { GOAL_PREFIX, goalStems, parseGoal, serializeGoal, sortGoals } from './goals.mjs'
 import { CUSTOMER_PREFIX, mdStems, parseCustomer, serializeCustomer, sortCustomers } from './customers.mjs'
-import { REQUEST_KEYS, REQUEST_PREFIX, REQUEST_STATES, groupDemand, parseRequest, serializeRequest, sortRequests } from './requests.mjs'
+import { REQUEST_KEYS, REQUEST_PREFIX, REQUEST_STATES, groupDemand, parseRequest, serializeRequest, sortRequests, sortRequestsNewest } from './requests.mjs'
 import { checkFilter, runQuery } from './query.mjs'
 import { MAX_EXCERPT, findMention, findMentions, mentionText } from './inbox.mjs'
 import { inboxGet, inboxSet } from '../user-store.mjs'
@@ -1442,7 +1442,7 @@ export function createLocalTracker(root, {
     return { customers: sortCustomers(views), problems: [...customers.problems, ...requests.problems] }
   }
 
-  /** A customer by id, or by a name matched exactly and case-insensitively, with its requests in creation order. */
+  /** A customer by id, or by a name matched exactly and case-insensitively, with its requests newest first, as Linear lists them. */
   function getCustomer(ref) {
     const all = readRecords(CUSTOMER)
     const normalized = normalizeId(String(ref ?? ''))
@@ -1456,7 +1456,7 @@ export function createLocalTracker(root, {
       customer = matches[0]
     }
     const requests = readRecords(REQUEST)
-    const own = sortRequests(requests.records.filter((request) => request.customer === customer.id))
+    const own = sortRequestsNewest(requests.records.filter((request) => request.customer === customer.id))
     const { views, problems } = requestViews(own, all.records)
     return { customer: customerView(customer, requests.records), requests: views, problems: [...requests.problems, ...problems] }
   }
