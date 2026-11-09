@@ -2868,6 +2868,11 @@ const readGit = (ctx, args) => spawnSync('git', args, { cwd: ctx.root, env: ctx.
 // The remotes of the repository as { ok: true, remotes: [{ name, url }] }, or { ok: false, reason } when git cannot say.
 // One `git remote -v` call lists every remote with its fetch URL.
 function readRemotes(ctx) {
+  // `git remote -v` in a subdirectory reads the enclosing repository, so the pmkit root must be the repository root.
+  const top = readGit(ctx, ['rev-parse', '--show-toplevel'])
+  if (!top.error && top.status === 0 && fs.realpathSync(top.stdout.trim()) !== fs.realpathSync(ctx.root)) {
+    return { ok: false, reason: `${ctx.root} is not the root of a git repository` }
+  }
   const listed = readGit(ctx, ['remote', '-v'])
   if (listed.error || listed.status !== 0) {
     return { ok: false, reason: (listed.error?.message ?? listed.stderr ?? '').trim().split('\n')[0] || `git exited with ${listed.status}` }
@@ -2966,14 +2971,19 @@ async function runLinkRepo(ctx) {
   }
   let branchAfter = held.branch
   let branchSource = 'file'
-  const inferredBranch = inferred.system === 'github' ? readDefaultBranch(ctx, chosen.remote.name) : null
-  if (flagBranch !== undefined) {
+  // The branch comes from the remote only when that remote is the repository being written.
+  const inferredBranch = inferred.system === 'github' && repoAfter === inferred.repo ? readDefaultBranch(ctx, chosen.remote.name) : null
+  if (flagHost === 'none') {
+    branchAfter = null
+    branchSource = 'flag'
+  } else if (flagBranch !== undefined) {
     branchAfter = flagBranch
     branchSource = 'flag'
   } else if (inferredBranch !== null && hostAfter === 'github') {
     branchAfter = inferredBranch
     branchSource = 'remote'
   }
+  if (hostAfter === 'github' && repoAfter === null) throw usageError('git_host github needs a repo, and none was given or found', 'Pass --repo owner/name, or --git-host none')
   // A new repo with the old branch name may point at the wrong branch, so the value is kept and the note says it may be wrong.
   if (branchSource === 'file' && held.branch !== null && held.repo !== null && repoAfter !== held.repo) {
     notes.push(`the repo changed from ${held.repo} to ${repoAfter ?? 'none'} and the default branch could not be inferred, so default_branch ${held.branch} may be wrong; pass --default-branch <name>, or run git remote set-head <remote> --auto and run this again`)
@@ -3016,7 +3026,8 @@ async function runLinkRepo(ctx) {
   if (hostAfter !== held.system) text = edit('git_host.system', () => setScalar(text, ['git_host', 'system'], hostAfter))
   if (repoAfter === null && held.repo !== null) text = edit('git_host.repo', () => removeKey(text, ['git_host', 'repo']))
   else if (repoAfter !== null && repoAfter !== held.repo) text = edit('git_host.repo', () => setScalar(text, ['git_host', 'repo'], repoAfter))
-  if (branchAfter !== held.branch) text = edit('git_host.default_branch', () => setScalar(text, ['git_host', 'default_branch'], branchAfter))
+  if (branchAfter === null && held.branch !== null) text = edit('git_host.default_branch', () => removeKey(text, ['git_host', 'default_branch']))
+  else if (branchAfter !== null && branchAfter !== held.branch) text = edit('git_host.default_branch', () => setScalar(text, ['git_host', 'default_branch'], branchAfter))
   const teamChanged = scope !== null && scope.team.after !== heldTeam
   if (teamChanged) text = edit('tracker.scope.team', () => setScalar(text, ['tracker', 'scope', 'team'], scope.team.after))
   if (text !== before) {

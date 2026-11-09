@@ -1,6 +1,6 @@
 ---
 description: Link this repository to a git host and, on Linear, to a team, by editing .pmkit/config.yaml after one confirmation
-argument-hint: "[--git-host github|none] [--repo owner/name] [--remote name] [--team KEY]"
+argument-hint: "[--git-host github|none] [--repo owner/name] [--default-branch name] [--remote name] [--team KEY]"
 disable-model-invocation: true
 ---
 

@@ -98,7 +98,8 @@ test('only an explicit --git-host none lowers a github host, and it drops the re
   const data = dataOf(await link(root, ['--git-host', 'none']))
   assert.deepEqual(data.gitHost, { before: 'github', after: 'none', source: 'flag' })
   assert.deepEqual(data.repo, { before: 'old/repo', after: null, source: 'flag' })
-  assert.equal(read(root), CONFIG.replace('  system: none # no host yet\n', '  system: none\n  default_branch: main\n'))
+  assert.deepEqual(data.defaultBranch, { before: 'main', after: null, source: 'flag' })
+  assert.equal(read(root), CONFIG.replace('  system: none # no host yet\n', '  system: none\n'))
 })
 
 test('ssh.github.com on port 443 is GitHub', async () => {
@@ -220,7 +221,7 @@ test('--git-host none removes the repo and warns when the remote is GitHub', asy
   assert.equal(data.gitHost.after, 'none')
   assert.equal(data.repo.after, null)
   assert.ok(data.warnings.some((warning) => /github\.com/.test(warning)), data.warnings.join('\n'))
-  assert.doesNotMatch(read(root), /repo:/)
+  assert.doesNotMatch(read(root), /repo:|default_branch:/)
 })
 
 test('bad values are INVALID_INPUT', async () => {
@@ -388,4 +389,58 @@ test('Linear: a missing key fails with AUTH and writes nothing', async () => {
   const error = errorOf(await linearRun(context, ['--team', 'ACME']))
   assert.equal(error.code, 'AUTH')
   assert.equal(fs.readFileSync(file(context.root), 'utf8'), linearConfig())
+})
+
+test('the default branch is not read from a remote whose repository is not the one written', async () => {
+  const root = local({ remotes: { 'my.remote': 'git@github.com:other/app.git' }, config: GITHUB_CONFIG })
+  git(root, 'symbolic-ref', 'refs/remotes/my.remote/HEAD', 'refs/remotes/my.remote/trunk')
+  const data = dataOf(await link(root, ['--remote', 'my.remote', '--repo', 'z/z']))
+  assert.deepEqual(data.repo, { before: 'old/repo', after: 'z/z', source: 'flag' })
+  assert.deepEqual(data.defaultBranch, { before: 'main', after: 'main', source: 'file' })
+  assert.ok(data.notes.some((note) => /default_branch main may be wrong/.test(note)), data.notes.join('\n'))
+  assert.match(read(root), /default_branch: main/)
+})
+
+test('the default branch is read from the remote when --repo names the same repository', async () => {
+  const root = local({ remotes: { origin: 'git@github.com:z/z.git' }, config: GITHUB_CONFIG })
+  git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk')
+  const data = dataOf(await link(root, ['--repo', 'z/z']))
+  assert.deepEqual(data.defaultBranch, { before: 'main', after: 'trunk', source: 'remote' })
+})
+
+test('system github without a repo is refused by the dry run and the write, and the file stays', async () => {
+  const root = local()
+  for (const args of [['--git-host', 'github'], ['--git-host', 'github', '--dry-run']]) {
+    const error = errorOf(await link(root, args))
+    assert.equal(error.code, 'INVALID_INPUT')
+    assert.match(error.message, /github needs a repo/)
+    assert.match(error.nextStep, /--repo owner\/name/)
+  }
+  assert.equal(read(root), CONFIG)
+})
+
+test('system github with --repo and no remote is written', async () => {
+  const root = local()
+  dataOf(await link(root, ['--git-host', 'github', '--repo', 'acme/app']))
+  assert.match(read(root), /system: github[^\n]*\n {2}repo: acme\/app\n/)
+})
+
+test('a pmkit root inside a larger git repository does not read that repository\'s remotes', async () => {
+  const outer = local({ remotes: { origin: 'git@github.com:acme/outer.git' }, config: GITHUB_CONFIG })
+  const root = path.join(outer, 'sub')
+  fs.mkdirSync(path.join(root, '.pmkit'), { recursive: true })
+  fs.cpSync(path.join(outer, '.issues'), path.join(root, '.issues'), { recursive: true })
+  fs.copyFileSync(file(outer), file(root))
+  const data = dataOf(await link(root))
+  assert.equal(data.remote, null)
+  assert.deepEqual(data.repo, { before: 'old/repo', after: 'old/repo', source: 'file' })
+  assert.ok(data.notes.some((note) => /could not read the git remotes/.test(note) && /not the root of a git repository/.test(note)), data.notes.join('\n'))
+})
+
+test('the argument hint lists every flag of the Parameters section', () => {
+  const text = fs.readFileSync(new URL('../commands/link-repo.md', import.meta.url), 'utf8')
+  const hint = /^argument-hint: "(.*)"$/m.exec(text)[1]
+  const flags = [...text.split('## Parameters')[1].split('## Steps')[0].matchAll(/^- `(--[a-z-]+)/gm)].map((m) => m[1])
+  assert.ok(flags.length >= 5)
+  for (const flag of flags) assert.ok(hint.includes(flag), `${flag} is missing from ${hint}`)
 })

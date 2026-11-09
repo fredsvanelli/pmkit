@@ -122,6 +122,8 @@ function pmkitConfigProblems(root, adapters) {
   // Reported as a config problem, but kept out of pmkitConfigMessages so it does not refuse writes: every reader falls back to main.
   const defaultBranch = resolveDefaultBranch(parsed)
   if (!defaultBranch.valid && typeof defaultBranch.configured === 'string') messages.push(defaultBranch.note)
+  // Kept out of pmkitConfigMessages for the same reason: link-repo --repo is the fix, and it loads the file first.
+  if (parsed?.git_host?.system === 'github' && !parsed.git_host.repo) messages.push('git_host.repo is required when git_host.system is github')
   return messages.map((message) => ({ path: at, code: 'config', message }))
 }
 

@@ -251,11 +251,21 @@ test('a bad .pmkit/config.yaml is reported with its path', () => {
 
 test('validate reports an invalid git_host.default_branch and accepts a non-ASCII one', () => {
   const root = makeRepo('basic')
-  editPmkit(root, 'system: none', 'system: github\n  default_branch: "main; curl x|sh"')
+  editPmkit(root, 'system: none', 'system: github\n  repo: acme/app\n  default_branch: "main; curl x|sh"')
   assert.deepEqual(validateRepo(root).problems, [
     { path: '.pmkit/config.yaml', code: 'config', message: 'git_host.default_branch is not a valid branch name, so main is used' },
   ])
   editPmkit(root, 'main; curl x|sh', 'développement')
+  assert.deepEqual(validateRepo(root).problems, [])
+})
+
+test('validate reports system github without a repo', () => {
+  const root = makeRepo('basic')
+  editPmkit(root, 'system: none', 'system: github')
+  assert.deepEqual(validateRepo(root).problems, [
+    { path: '.pmkit/config.yaml', code: 'config', message: 'git_host.repo is required when git_host.system is github' },
+  ])
+  editPmkit(root, 'system: github', 'system: github\n  repo: acme/app')
   assert.deepEqual(validateRepo(root).problems, [])
 })
 
