@@ -166,3 +166,17 @@ test('team load puts an unassigned issue and an agent member outside the balance
   assert.deepEqual([agent.agent, agent.issues], [true, 1])
   assert.equal(data.average, 8, 'the average of fred (3) and ana (13), without the agent')
 })
+
+test('team load --sprint current with no active sprint reads nothing and warns, as issues list --sprint current does', async () => {
+  const root = makeRepo('no-sprints')
+  const list = await run(['issues', 'list', '--sprint', 'current', '--json'], { cwd: root, env })
+  const warning = 'warning: there is no active sprint, so --sprint current matches no issues; run pmkit cycle list'
+  assert.match(list.stderr, new RegExp(warning))
+  const { code, data, stderr, notes } = await load(root, ['--sprint', 'current'])
+  assert.equal(code, 0, stderr)
+  assert.equal(data.sprint, null)
+  assert.deepEqual(data.rows.map((row) => row.issues), [0, 0])
+  assert.equal(data.unassigned.issues, 0)
+  assert.match(stderr, new RegExp(warning))
+  assert.ok(!notes.some((line) => line.startsWith('note: no active sprint')), notes.join('\n'))
+})

@@ -2329,22 +2329,28 @@ async function teamLoadReport(ctx, { wanted, requireSprint = false, capacity: ca
   const notes = []
   const warnings = []
   let sprint = null
+  let noSprintNamed = false
   if (wanted === undefined || wanted === 'current') {
     // A Linear team with cycles off has no active sprint: the load covers all open work, and the cycles note says why.
+    let cyclesOff = false
     try {
       sprint = await tracker.currentCycle()
     } catch (error) {
       if (!isPmkitError(error) || error.code !== 'NOT_SUPPORTED') throw error
+      cyclesOff = true
       notes.push(...(await capabilityNotes(tracker, 'cycles')))
     }
     if (sprint === null && requireSprint) throw new PmkitError('NOT_FOUND', 'no sprint is active', 'Create one with /pmkit:cycle:plan, or name a sprint with --sprint <id>')
-    if (sprint === null) notes.push('no active sprint: counted every open issue in todo, in_progress and in_review')
+    // An explicit `--sprint current` with cycles on and no active sprint matches no issue, as `issues list --sprint current` does.
+    noSprintNamed = sprint === null && wanted === 'current' && !cyclesOff
+    if (sprint === null && !noSprintNamed) notes.push('no active sprint: counted every open issue in todo, in_progress and in_review')
   } else {
     // An explicit sprint needs cycles: listCycles answers NOT_SUPPORTED when the tracker has none.
     sprint = (await tracker.listCycles({})).find((item) => item.id === wanted) ?? null
     if (sprint === null) throw new PmkitError('NOT_FOUND', `sprint ${wanted} does not exist`, 'pmkit cycle list')
   }
-  const found = await tracker.searchIssues({ categories: LOAD_CATEGORIES, ...(sprint ? { sprint: sprint.id } : {}) })
+  const found = noSprintNamed ? { issues: [], problems: [], hasMore: false } : await tracker.searchIssues({ categories: LOAD_CATEGORIES, ...(sprint ? { sprint: sprint.id } : {}) })
+  if (noSprintNamed) warnings.push('there is no active sprint, so --sprint current matches no issues; run pmkit cycle list')
   warnings.push(...found.problems.map(problemLine))
   const truncated = found.hasMore === true
   if (truncated) warnings.push('the issue read was cut before the end, so the load covers only part of the scope and no move is proposed')

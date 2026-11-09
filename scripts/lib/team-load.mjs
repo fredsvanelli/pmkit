@@ -18,6 +18,9 @@ const round = (value) => Math.round(value * 100) / 100
 export function chooseUnit(issues, estimation) {
   if (estimation?.path === 'absent') return { unit: 'issues', reason: 'estimates are off' }
   if (estimation?.detail?.unit === 'sizes') return { unit: 'issues', reason: 'estimates are sizes and do not add up' }
+  // A size (t-shirt team) or a mix of sizes and numbers (teams that differ, on Linear) does not add up.
+  const sized = issues.some((issue) => issue.estimate !== null && issue.estimate !== undefined && !isNumber(issue.estimate))
+  if (sized) return { unit: 'issues', reason: 'estimates are sizes or mix scales and do not add up' }
   if (!issues.some((issue) => isNumber(issue.estimate))) return { unit: 'issues', reason: 'no issue in scope has an estimate' }
   return { unit: estimation?.detail?.unit === 'hours' ? 'hours' : 'points', reason: null }
 }
@@ -87,6 +90,10 @@ export function teamLoad(issues, { members, aging = [], capacity = {}, daysOff =
     }
     if (estimated && row.capacity !== null && row.estimate > row.capacity) imbalances.push({ member: row.member, flag: 'over_capacity', load: row.estimate, limit: row.capacity })
   }
+  // A human member with availability 0 stays out of the average and the targets, but open work on them is flagged.
+  for (const row of rows) {
+    if (!row.agent && row.isMember && row.availability === 0 && row.issues > 0) imbalances.push({ member: row.member, flag: 'no_availability', load: row.load, limit: 0 })
+  }
   for (const item of imbalances) byMember.get(item.member).flags.push(item.flag)
   const noWork = rows.filter((row) => isEligible(row) && row.issues === 0).map((row) => ({ member: row.member, name: row.name, daysOff: row.daysOff }))
   const unknownLoad = rows.filter((row) => !row.agent && row.isMember && row.unknown).map((row) => row.member)
@@ -100,7 +107,9 @@ export function teamLoad(issues, { members, aging = [], capacity = {}, daysOff =
  * over_average in teamLoad), and stays at or below its own capacity. A member the report flags, or whose load is unknown
  * or partial, is never a target. It writes nothing.
  * Returns the moves and, when a flagged member exists and no move is proposed, the reason: `no_candidates` (no issue in
- * `todo`), `unestimated` (the issues in `todo` have no estimate, so a move cannot be sized) or `no_target`.
+ * `todo`), `unestimated` (the issues in `todo` have no estimate, so a move cannot be sized), `zero_estimate` (the estimates
+ * are 0, so a move changes nothing), `would_not_improve` (a target passes the limits, but would end above the source) or `no_target`.
+ * A member with availability 0 gives all its `todo` work away, without the "target ends at or below the source" rule.
  */
 export function proposeMoves(report, issues) {
   const estimated = report.unit !== 'issues'
@@ -113,11 +122,16 @@ export function proposeMoves(report, issues) {
   const moves = []
   let anyTodo = false
   let anyWeighted = false
+  let anyUnestimated = false
+  let anyBalanceOnly = false
   for (const from of flagged) {
-    const limits = report.imbalances.filter((item) => item.member === from).map((item) => (item.flag === 'over_capacity' ? capacityOf.get(from) : mean))
+    const limits = report.imbalances.filter((item) => item.member === from).map((item) => (item.flag === 'over_capacity' ? capacityOf.get(from) : item.flag === 'no_availability' ? 0 : mean))
     const stopAt = Math.min(...limits)
     const todo = issues.filter((issue) => issue.assignee === from && issue.status.category === 'todo')
     anyTodo ||= todo.length > 0
+    anyUnestimated ||= estimated && todo.some((issue) => !isNumber(issue.estimate))
+    // A member with no availability gives everything away, so ending below the target does not matter.
+    const idle = report.rows.find((row) => row.member === from)?.availability === 0
     const candidates = todo
       .filter((issue) => weight(issue) > 0)
       .sort((a, b) => weight(b) - weight(a) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
@@ -125,21 +139,27 @@ export function proposeMoves(report, issues) {
     for (const issue of candidates) {
       if (loads.get(from) <= stopAt) break
       const w = weight(issue)
-      const to = targets
+      const allowed = targets
         .filter((row) => row.member !== from)
-        .filter((row) => loads.get(row.member) + w <= loads.get(from) - w)
         // The same comparison as over_average: load * count > 1.5 * sum, so a target never ends up flagged.
         .filter((row) => (loads.get(row.member) + w) * known.length <= OVER_AVERAGE * sum)
         .filter((row) => !estimated || capacityOf.get(row.member) === null || loads.get(row.member) + w <= capacityOf.get(row.member))
+      const to = allowed
+        .filter((row) => idle || loads.get(row.member) + w <= loads.get(from) - w)
         .sort((a, b) => loads.get(a.member) - loads.get(b.member))[0]
-      if (to === undefined) continue
+      if (to === undefined) {
+        anyBalanceOnly ||= allowed.length > 0
+        continue
+      }
       loads.set(from, loads.get(from) - w)
       loads.set(to.member, loads.get(to.member) + w)
       moves.push({ issue: issue.id, from, to: to.member })
     }
   }
   if (moves.length > 0 || flagged.length === 0) return { moves, reason: null }
-  return { moves, reason: !anyTodo ? 'no_candidates' : !anyWeighted ? 'unestimated' : 'no_target' }
+  if (!anyTodo) return { moves, reason: 'no_candidates' }
+  if (!anyWeighted) return { moves, reason: anyUnestimated ? 'unestimated' : 'zero_estimate' }
+  return { moves, reason: anyBalanceOnly ? 'would_not_improve' : 'no_target' }
 }
 
 /** The moves of proposeMoves. */
@@ -149,5 +169,7 @@ export const suggestMoves = (report, issues) => proposeMoves(report, issues).mov
 export const NO_MOVE_MESSAGES = {
   no_candidates: 'the overloaded members have no issue in todo to move',
   unestimated: 'the issues in todo that could move have no estimate, so a move cannot be sized',
+  zero_estimate: 'the issues in todo that could move have an estimate of 0, so moving them would not change the load',
+  would_not_improve: 'every possible move would leave the receiving member above the giving one, so none would even the load',
   no_target: 'there is nobody to move an issue to without overloading someone',
 }
