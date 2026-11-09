@@ -1906,7 +1906,7 @@ export function createLocalTracker(root, {
   const viewsDir = path.join(issuesDir, 'views')
 
   function requireViewName(name) {
-    if (!validViewName(name)) throw invalid(`view name "${name}" must start and end with a letter or digit and hold only letters, digits, ".", "_" and "-"`, 'Use a name like open-bugs')
+    if (!validViewName(name)) throw Object.assign(invalid(`view name "${name}" must start and end with a letter or digit and hold only letters, digits, ".", "_" and "-"`, 'Use a name like open-bugs'), { details: { reason: 'invalid_view_name' } })
   }
 
   function readView(name) {
@@ -1924,7 +1924,7 @@ export function createLocalTracker(root, {
         views.push(readView(name))
       } catch (error) {
         if (!(error instanceof PmkitError)) throw error
-        problems.push({ id: name, code: error.code, message: error.message })
+        problems.push({ id: name, code: error.code, ...(error.details?.reason && { reason: error.details.reason }), message: error.message })
       }
     }
     return { views, problems }
@@ -1937,7 +1937,7 @@ export function createLocalTracker(root, {
       return { ...search(view.filter), view }
     } catch (error) {
       if (!(error instanceof PmkitError) || error.code !== 'INVALID_INPUT') throw error
-      throw invalid(`view ${name} is out of date: ${error.message}`, `Save it again with pmkit views save ${name} <filter flags> --overwrite`)
+      throw Object.assign(invalid(`view ${name} is out of date: ${error.message}`, `Save it again with pmkit views save ${name} <filter flags> --overwrite`), { details: { reason: 'view_out_of_date' } })
     }
   }
 

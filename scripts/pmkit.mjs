@@ -3429,6 +3429,8 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
         if (Array.isArray(error.details?.references)) body.error.references = error.details.references
         // The two digests of a CONFLICT, so an agent sees what the preview held and what the tracker holds now.
         if (typeof error.details?.expected === 'string' && typeof error.details?.digest === 'string') Object.assign(body.error, { expected: error.details.expected, digest: error.details.digest })
+        // A stable reason, for an error whose code alone does not say which case it is (the three INVALID_INPUT errors of a view).
+        if (typeof error.details?.reason === 'string') body.error.reason = error.details.reason
         if (error.written) body.result = error.written.data
         stdout.push(`${JSON.stringify(body, null, 2)}\n`)
       } else if (error.written) {

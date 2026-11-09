@@ -1,0 +1,8 @@
+$ pmkit capabilities --json  [step 1, read]
+exit 0
+$ pmkit views run old-bugs --json  [step 3, read]
+exit 2 (expected INVALID_INPUT)
+$ pmkit views list --json  [step 2, read]
+exit 0
+
+(no file changed)

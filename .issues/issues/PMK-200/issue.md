@@ -2,12 +2,14 @@
 id: PMK-200
 title: Give view errors a stable reason instead of matching message text
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 related: [PMK-54]
+branch: pmk-200-give-view-errors-a-stable-reason-instead
 created: 2026-10-31T20:35:31.425Z
-updated: 2026-10-31T20:35:31Z
+updated: 2026-11-09T22:29:51Z
 ---
 
 ## Description
@@ -27,5 +29,5 @@ Found by the second review of PR #107 (PMK-54). Source: PMK-54, PR #107.
 
 ## Acceptance criteria
 
-- [ ] `PmkitError` carries a stable `details.reason` for each view error, and the command reads it
-- [ ] Each branch of step 4 has a scenario
+- [x] `PmkitError` carries a stable `details.reason` for each view error, and the command reads it
+- [x] Each branch of step 4 has a scenario

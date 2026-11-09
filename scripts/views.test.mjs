@@ -126,3 +126,24 @@ test('runView of a view with a stale value names the view and says to save it ag
   fs.writeFileSync(path.join(views, 'stale.yaml'), 'filter:\n  types: [gone]\n')
   assert.throws(() => tracker.runView('stale'), (error) => /^view stale is out of date: .*gone/.test(error.message) && /--overwrite/.test(error.nextStep))
 })
+
+test('each view error carries a stable details.reason, whatever its message says', () => {
+  const { tracker, views } = setup()
+  const reason = (name) => { try { tracker.runView(name) } catch (error) { return error.details?.reason } }
+  fs.mkdirSync(views, { recursive: true })
+  fs.writeFileSync(path.join(views, 'stale.yaml'), 'filter:\n  types: [gone]\n')
+  fs.writeFileSync(path.join(views, 'broken.yaml'), 'filter: 3\n')
+  fs.writeFileSync(path.join(views, 'unparsed.yaml'), 'filter:\n<<<<<<< HEAD\n')
+  assert.equal(reason('../x'), 'invalid_view_name')
+  assert.equal(reason('stale'), 'view_out_of_date')
+  assert.equal(reason('broken'), 'view_file_broken')
+  assert.equal(reason('unparsed'), 'view_file_broken')
+  assert.equal(reason('missing'), undefined, 'NOT_FOUND is told by its code')
+})
+
+test('listViews gives the same reason as runView for each problem', () => {
+  const { tracker, views } = setup()
+  fs.mkdirSync(views, { recursive: true })
+  fs.writeFileSync(path.join(views, 'scalar.yaml'), 'filter: 3\n')
+  assert.deepEqual(tracker.listViews().problems.map((problem) => problem.reason), ['view_file_broken'])
+})
