@@ -2,14 +2,14 @@
 id: PMK-187
 title: Fix issues delete on archived Linear relations and a partial folder removal
 type: bug
-status: in_review
+status: done
 priority: medium
 estimate: 2
 assignee: fred
 related: [PMK-52]
 branch: pmk-187-fix-issues-delete-on-archived-linear
 created: 2026-10-31T16:59:10.860Z
-updated: 2026-11-09T01:59:39Z
+updated: 2026-11-09T02:32:46Z
 ---
 
 ## Description

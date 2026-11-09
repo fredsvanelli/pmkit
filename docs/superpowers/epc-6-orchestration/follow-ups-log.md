@@ -132,3 +132,29 @@ Início: 2026-11-08. `develop` em f361005, `npm test` com 3962 testes, 3881 pass
 - PMK-183: rebase fdc67e5 com os não bloqueantes; diff pós-aprovação conferido. Mergeado (97718f7).
 
 Fim da rodada 4: PRs #137, #138, #139 mergeados.
+
+Limpeza da rodada 4: closing PR #140 mergeado (8ea61f6), 7 worktrees removidos, branches provisórias apagadas.
+
+## Rodada 5
+
+Início: 2026-11-08. `develop` em 8ea61f6, `npm test` com 3989 testes, 3908 pass, 0 fail, 81 skipped, saída 0. Run Orca `run_8e7604a57228`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-186 | 1 | sonnet (`ctx_aedc21031316`) | #142 | ciclo 1 (sonnet): APROVADO | mergeado (09e14cd) |
+| PMK-187 | 2 | sonnet (`ctx_b6995a90acf6`) | #141 | ciclo 1 (sonnet): mudanças pedidas; ciclo 2 (sonnet): APROVADO; rebase 7a12a2a | mergeado (25f2a2d) |
+| PMK-188 | 1 | sonnet (`ctx_2531075fd490`) | #143 | ciclo 1 (sonnet): APROVADO com regressão do init pedida; revisão curta (sonnet): APROVADO | mergeado (0ae7445) |
+
+- PMK-187: PR #141 (sonnet); Linear com leitura includeArchived separada; Local apaga renomeando para .deleting-<id> e limpa depois (falha vira aviso); menções com barra só quando todas as partes são IDs. Follow-ups: limpeza de .deleting- no doctor/validate; menções em texto do Linear. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-186: PR #142 (sonnet); cópias de fixture (makeRepo, prepareCopy) pulam .issues/.cache via copyFixture; .gitignore lista caches de fixture; cabeçalho de scenarios-live.mjs sem contagens, com teste. CLI não mudou. Follow-ups: CLI avisar ou recusar dentro de __fixtures__; cobertura de LIVE_EXPECT_STOPS derivada da lista. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-188: PR #143 (sonnet); validate reporta github sem repo fora de pmkitConfigMessages (não recusa escritas, link-repo --repo conserta); branch inferida só quando o repo escrito é o do remote. Follow-ups: inferência compartilhada link-repo/setup; recusar link-repo --team com config github sem repo só quando irreparável. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-187 ciclo 1 (sonnet): mudanças pedidas (.deleting- que sobra vira issue inválida no validate e bloqueia migração; filtro de menções descarta token com barra).
+- PMK-186 ciclo 1 (sonnet): APROVADO. Não bloqueantes: migrate-live.mjs:247 e :444 ainda usam fs.cpSync puro (trocar por copyFixture); copyFixture compara string em vez de path.relative; teste do cabeçalho não guarda indexOf=-1. Mergeado (09e14cd).
+- PMK-188 ciclo 1 (sonnet): APROVADO, mas pedi antes do merge: init grava github sem repo e o novo validate acusa (regressão); comparação de repo sem caixa; doc do --git-host none; recusa de --team/--default-branch. Follow-up: inferência em subdiretório de monorepo.
+- PMK-187 correção 28c0a24: validate reporta .deleting- como leftover com passo rm -rf; import da migração ignora; menções cortam URLs primeiro e só descartam tokens de caminho; sufixo pid-timestamp; guarda win32. Follow-ups: includeArchived só no fake; removes.autoCommit pode divergir do commit real. Revisor ciclo 2 (sonnet) iniciado.
+- PMK-187 ciclo 2 (sonnet): APROVADO; pedi rebase com a menção em link relativo e migrate-writer/migrations ignorando .deleting-*.
+- PMK-187: rebase 7a12a2a com menção em link relativo e .deleting-* fora de migrate-writer e da cópia da migração; diff pós-aprovação conferido. Mergeado (25f2a2d).
+- PMK-188 correção d7a136f: init pega o repo do origin ou recusa; comparação sem caixa; doc; --team/--default-branch avisam em vez de recusar; rebase. Revisão curta (sonnet) iniciada.
+- PMK-188 revisão curta (sonnet): APROVADO; init sem remote e --git-host none funcionam, recusa só com github pedido. Não bloqueantes: init só olha origin; retorno de withGithubRepo descartado; reescrita com caixa diferente sem nota; init --update --git-host none não limpa repo/default_branch; fixtures antigas com github sem repo. Mergeado (0ae7445).
+
+Fim da rodada 5: PRs #141, #142, #143 mergeados.
