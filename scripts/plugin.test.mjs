@@ -283,3 +283,10 @@ test('no command file puts a git_host.default_branch value in a shell command wi
     assert.match(fs.readFileSync(path.join(dir, `${name}.md`), 'utf8'), /pmkit\.mjs" default-branch --json/, name)
   }
 })
+
+test('bulk.md tells what to do with NOT_FOUND and CONFLICT from a one-issue batch, and keeps the digest CONFLICT for the real run', () => {
+  const text = fs.readFileSync(path.join(ROOT, 'commands/issues/bulk.md'), 'utf8')
+  assert.match(text, /`NOT_FOUND` or `CONFLICT` and the filter matched exactly one issue/)
+  assert.match(text, /Do not run the same dry run again/)
+  assert.match(text, /`CONFLICT` without `result` on a real run with `--expect`/)
+})
