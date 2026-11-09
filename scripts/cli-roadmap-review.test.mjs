@@ -196,3 +196,49 @@ test('a Local epic or milestone file that does not parse is reported and makes t
   assert.equal(json.incomplete, true)
   assert.match(stderr, /EPC-9ZZZ: /)
 })
+
+test('a transient failure listing epics marks the section not checked and shows no late-issues fallback', async () => {
+  const adapters = localWith({ listDeliverables: async () => { throw new PmkitError('UPSTREAM', 'epics timed out') } })
+  const { code, json, stderr } = await review(teamRepo(), ['--json'], adapters)
+  assert.equal(code, 0, stderr)
+  assert.equal(json.epics, null)
+  assert.equal(json.unavailable.epics, 'UPSTREAM')
+  assert.equal(json.lateIssues, null)
+  assert.equal(json.incomplete, true)
+  assert.match(stderr, /epics not checked: UPSTREAM epics timed out/)
+  const text = await review(teamRepo(), [], adapters)
+  assert.match(text.stdout, /epics\nnot checked: the tracker failed to list epics \(UPSTREAM\), see the warnings/)
+  assert.doesNotMatch(text.stdout, /late issues/)
+})
+
+test('a rate limit stops the per-epic reads and leaves the other epics not checked', async () => {
+  const calls = { progress: 0, updates: 0 }
+  const base = ADAPTERS.local
+  const adapters = { ...ADAPTERS, local: { ...base, create: async (...args) => {
+    const tracker = await base.create(...args)
+    return {
+      ...tracker,
+      listDeliverables: async () => { const [epic] = await tracker.listDeliverables(); return [epic, { ...epic, id: 'EPC-2ND0' }] },
+      deliverableProgress: async () => { calls.progress++; throw new PmkitError('RATE_LIMITED', 'slow down') },
+      listStatusUpdates: async () => { calls.updates++; return [] },
+    }
+  } } }
+  const { code, json, stderr } = await review(teamRepo(), ['--json'], adapters)
+  assert.equal(code, 0, stderr)
+  assert.deepEqual(calls, { progress: 1, updates: 0 })
+  assert.deepEqual(json.epics.map((e) => [e.id, e.progress]), [['EPC-2M9D', null], ['EPC-2ND0', null]])
+  assert.deepEqual(json.updatesNotChecked, ['EPC-2M9D', 'EPC-2ND0'])
+  assert.equal(json.incomplete, true)
+  assert.match(stderr, /rate limited: the reads of EPC-2ND0 were skipped/)
+})
+
+test('a failing capability report costs the note, not the review', async () => {
+  const adapters = localWith({
+    listDeliverables: async () => { throw new PmkitError('NOT_SUPPORTED', 'no epics') },
+    capabilities: async () => { throw new PmkitError('UPSTREAM', 'manifest failed') },
+  })
+  const { code, json, stderr } = await review(teamRepo(), ['--json'], adapters)
+  assert.equal(code, 0, stderr)
+  assert.equal(json.epics, null)
+  assert.equal(json.unavailable.epics, 'NOT_SUPPORTED')
+})
