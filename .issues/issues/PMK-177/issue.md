@@ -2,12 +2,14 @@
 id: PMK-177
 title: Fix the local diff notes of pr diff and issues review
 type: bug
-status: backlog
+status: in_progress
 priority: medium
 estimate: 2
+assignee: fred
 related: [PMK-61]
+branch: pmk-177-fix-the-local-diff-notes-of-pr-diff-and
 created: 2026-10-31T16:01:11.864Z
-updated: 2026-10-31T16:01:12Z
+updated: 2026-11-09T00:22:07Z
 ---
 
 ## Description
