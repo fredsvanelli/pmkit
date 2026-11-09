@@ -291,7 +291,9 @@ function deleteText({ before, removes, warnings, mentions, unchecked }, { dryRun
     lines.push("removes: the issue moves to Linear's trash, where the workspace can restore it for a while")
   } else {
     lines.push('removes:', ...removes.files.map((file) => `  ${file}`))
-    lines.push(`${removes.events} events and ${removes.comments} comments go with it. Only git history can bring them back.`)
+    const count = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
+    const recovery = removes.autoCommit ? 'Only git history can bring them back.' : 'Nothing commits this delete (auto_commit is off), so git can bring them back only if you committed them before.'
+    lines.push(`${count(removes.events, 'event')} and ${count(removes.comments, 'comment')} go with it. ${recovery}`)
   }
   lines.push('references: no other issue lists it as blocked by, related, duplicate of or parent')
   if (warnings.length > 0) lines.push('warnings:', ...warnings.map((warning) => `  ${warning}`))

@@ -346,23 +346,26 @@ export function fakeLinearIssues({
     const state = stateById(record.stateId)
     return state ? { id: state.id, type: state.type } : null
   }
+  // Like Linear, a nested connection leaves out archived issues unless its field asks for includeArchived: true.
+  let currentQuery = ''
+  const shown = (field, other) => other.archivedAt === null || new RegExp(`\\b${field}\\([^)]*includeArchived: true`).test(currentQuery)
   const nested = {
     labels: (record) =>
       record.labelIds.map((id) => {
         const label = labels.find((item) => item.id === id)
         return { id, name: label.name, parent: label.parent ? { name: label.parent.name } : null }
       }),
-    children: (record) => records.filter((other) => other.parentId === record.id).map((other) => ({ identifier: other.identifier })),
+    children: (record) => records.filter((other) => other.parentId === record.id && shown('children', other)).map((other) => ({ identifier: other.identifier })),
     relations: (record) =>
       relations
-        .filter((relation) => relation.issueId === record.id)
+        .filter((relation) => relation.issueId === record.id && shown('relations', find(relation.relatedIssueId)))
         .map((relation) => {
           const other = find(relation.relatedIssueId)
           return { id: relation.id, type: relation.type, relatedIssue: { identifier: other.identifier, state: stateRef(other) } }
         }),
     inverseRelations: (record) =>
       relations
-        .filter((relation) => relation.relatedIssueId === record.id)
+        .filter((relation) => relation.relatedIssueId === record.id && shown('inverseRelations', find(relation.issueId)))
         .map((relation) => {
           const other = find(relation.issueId)
           return { id: relation.id, type: relation.type, issue: { identifier: other.identifier, state: stateRef(other) } }
@@ -570,6 +573,7 @@ export function fakeLinearIssues({
   }
 
   const answerOf = (operation, body, run) => {
+    currentQuery = body.query ?? ''
     try {
       const plan = pending.get(operation)
       if (plan) {
@@ -646,9 +650,12 @@ export function fakeLinearIssues({
     const record = records.find((item) => idMatches(item, id))
     return { issues: { nodes: record ? [chainOf(record, 10)] : [] } }
   })
+  routes.PmkitIssueReferences = query('PmkitIssueReferences', ({ id }) => ({ issues: search({ filter: { id: { eq: id } }, includeArchived: true, first: 1 }) }))
   for (const field of Object.keys(nested)) {
-    const name = `PmkitIssue${field[0].toUpperCase()}${field.slice(1)}Page`
-    routes[name] = query(name, ({ id, first, after }) => ({ issue: { [field]: connection(nested[field](requireIssue(id)), first, after) } }))
+    for (const suffix of ['Page', 'ArchivedPage']) {
+      const name = `PmkitIssue${field[0].toUpperCase()}${field.slice(1)}${suffix}`
+      routes[name] = query(name, ({ id, first, after }) => ({ issue: { [field]: connection(nested[field](requireIssue(id)), first, after) } }))
+    }
   }
 
   // PMK-36: comments.

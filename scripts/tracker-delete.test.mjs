@@ -175,6 +175,41 @@ test('mentions list other issues and comments that cite the ID, and PMK-5 style 
   assert.deepEqual(tracker.delete(a, 'fred', { dryRun: true }).mentions, [{ id: c, in: 'comment' }])
 })
 
+test('mentions skip the ID inside paths and URLs, and keep it in links, trailing slashes, ratios and ID lists', () => {
+  const { tracker, ids: [a, b, c] } = setup()
+  const mentionsOf = (description) => {
+    tracker.updateIssue(b, { description }, 'fred')
+    return tracker.delete(a, 'fred', { dryRun: true }).mentions
+  }
+  for (const text of [`See .issues/issues/${a}/issue.md.`, `See https://example.com/x/${a}/y.`, `See docs/${a}-notes.md.`, `See src/lib/${a}`, `See ~/work/${a}.`, `See [notes](docs/${a}.md).`]) {
+    assert.deepEqual(mentionsOf(text), [], text)
+  }
+  const found = [{ id: b, in: 'description' }]
+  for (const text of [`See [${a}](https://linear.app/x/issue/${a}).`, `See [${a}](docs/x.md).`, `See [${a}](./x/y.md).`, `See ${a}/ for it.`, `Done ${a}/2 steps.`, `Same as ${a}/${c}, see (${a}).`, `Plain ${a}.`, `(${a}/${c})`]) {
+    assert.deepEqual(mentionsOf(text), found, text)
+  }
+})
+
+test('a cleanup that fails after the delete leaves the issue gone, never half there', { skip: process.getuid?.() === 0 || process.platform === 'win32' }, () => {
+  const { tracker, issuesDir, ids: [a, ...rest] } = setup()
+  tracker.comment(a, 'note', 'fred')
+  const comments = issuePaths(issuesDir, a).comments
+  fs.chmodSync(comments, 0o555)
+  try {
+    const result = tracker.delete(a, 'fred')
+    assert.match(result.warnings.join('\n'), /could not be removed: EACCES/)
+    assert.equal(fs.existsSync(issuePaths(issuesDir, a).dir), false)
+    assert.throws(() => tracker.getIssue(a), { code: 'NOT_FOUND' })
+    assert.deepEqual(tracker.searchIssues({ archived: true }).issues.map((issue) => issue.id), rest)
+  } finally {
+    for (const entry of fs.readdirSync(path.join(issuesDir, 'issues'))) {
+      const leftover = path.join(issuesDir, 'issues', entry, 'comments')
+      if (entry.startsWith('.deleting-') && fs.existsSync(leftover)) fs.chmodSync(leftover, 0o755)
+      if (entry.startsWith('.deleting-')) fs.rmSync(path.join(issuesDir, 'issues', entry), { recursive: true, force: true })
+    }
+  }
+})
+
 test('writtenFiles carries the removed folder so auto_commit stages the removal', () => {
   const { tracker, ids: [a] } = setup()
   const files = () => tracker.writtenFiles()

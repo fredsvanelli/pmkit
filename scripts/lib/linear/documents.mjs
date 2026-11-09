@@ -67,6 +67,20 @@ export const NESTED_PAGES = Object.fromEntries(
 )
 export const NESTED_PAGE_SIZE = NESTED
 
+// PMK-187: what the delete check reads. The shared fragment leaves archived children and relations out, as Linear does by default,
+// so the check asks for them on purpose, with the same fields and paging.
+export const REFERENCE_FIELDS = ['children', 'relations', 'inverseRelations']
+const archivedConnection = (field, paging) => `${field}(first: ${paging}, includeArchived: true) { nodes { ${NODE_FIELDS[field]} } ${PAGE_INFO} }`
+export const ISSUE_REFERENCES_QUERY = `query PmkitIssueReferences($id: ID!) {
+  issues(filter: { id: { eq: $id } }, includeArchived: true, first: 1) { nodes { id identifier ${REFERENCE_FIELDS.map((field) => archivedConnection(field, NESTED)).join(' ')} } }
+}`
+export const REFERENCE_PAGES = Object.fromEntries(
+  REFERENCE_FIELDS.map((field) => [
+    field,
+    `query ${pageName(field).replace('Page', 'ArchivedPage')}($id: String!, $first: Int!, $after: String) { issue(id: $id) { ${field}(first: $first, after: $after, includeArchived: true) { nodes { ${NODE_FIELDS[field]} } ${PAGE_INFO} } } }`,
+  ]),
+)
+
 // PMK-36: history and comments, added after the PMK-35 documents.
 const HISTORY_PAGE = 50
 

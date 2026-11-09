@@ -179,13 +179,13 @@ export async function runExport(ctx) {
   return { data: { ...previewJson(plan, budget), map: file, done: written.done, total: written.total, next }, text }
 }
 
-/** The issue and epic folders of the Local tracker. The import writes only into a tracker that has none. */
+/** The issue and epic folders of the Local tracker. The import writes only into a tracker that has none. A `.deleting-` folder is what a failed delete left, not a record. */
 function heldRecords(root, trackerPath) {
   const held = []
   for (const kind of ['issues', 'epics']) {
     const dir = path.join(root, trackerPath, kind)
     if (!fs.existsSync(dir)) continue
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) if (entry.isDirectory()) held.push(entry.name)
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) if (entry.isDirectory() && !entry.name.startsWith('.deleting-')) held.push(entry.name)
   }
   return held
 }

@@ -81,6 +81,15 @@ test('planMigration runs each step on a copy and lists the files it changed', ()
   assert.equal(hashTree(root), before)
 })
 
+test('planMigration leaves the leftover of a failed delete out of the copy', () => {
+  const root = makeRepo('basic')
+  const leftover = path.join(root, '.issues', 'issues', '.deleting-ISS-X-4242')
+  fs.mkdirSync(leftover, { recursive: true })
+  fs.writeFileSync(path.join(leftover, 'events.jsonl'), '')
+  const plan = planMigration({ root, trackerPath: '.issues', from: 1, to: 2, migrations: [{ from: 1, to: 2, describe: 'x', run: (dir) => assert.deepEqual(fs.readdirSync(path.join(dir, 'issues')).filter((name) => name.startsWith('.deleting-')), []) }] })
+  assert.equal(fs.existsSync(path.join(plan.dir, 'issues', '.deleting-ISS-X-4242')), false)
+})
+
 test('planMigration lists create and delete actions', () => {
   const { root } = setup()
   const reshape = {

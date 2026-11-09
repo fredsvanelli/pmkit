@@ -1205,6 +1205,35 @@ test('delete refuses for a blocks out of the issue, a related either way, a dupl
   assert.deepEqual((await refusal(child.tracker.delete('ACME-1', 'user-1'))).details.references, [{ id: 'ACME-2', kind: 'parent' }])
 })
 
+test('an archived child and an archived related issue block a Linear delete, a dry run too, and nothing is sent', async () => {
+  const child = linearSetup()
+  three(child.fake)
+  await child.tracker.setParent('ACME-2', 'ACME-1', 'user-1')
+  await child.tracker.archive('ACME-2', 'user-1')
+  const sent = mutationsIn(child.fetch)
+  for (const flags of [{}, { dryRun: true }]) {
+    assert.deepEqual((await refusal(child.tracker.delete('ACME-1', 'user-1', flags))).details.references, [{ id: 'ACME-2', kind: 'parent' }])
+  }
+  assert.equal(mutationsIn(child.fetch), sent)
+
+  const related = linearSetup()
+  three(related.fake)
+  related.fake.relate('related', 'ACME-3', 'ACME-1')
+  related.fake.relate('blocks', 'ACME-1', 'ACME-2')
+  await related.tracker.archive('ACME-3', 'user-1')
+  await related.tracker.archive('ACME-2', 'user-1')
+  assert.deepEqual((await refusal(related.tracker.delete('ACME-1', 'user-1'))).details.references, [{ id: 'ACME-2', kind: 'blockedBy' }, { id: 'ACME-3', kind: 'related' }])
+})
+
+test('a Linear delete finds an archived reference on a later page of the nested connection', async () => {
+  const { tracker: linear, fake } = linearSetup({ nestedPage: 1 })
+  three(fake)
+  fake.relate('related', 'ACME-2', 'ACME-1')
+  fake.relate('related', 'ACME-3', 'ACME-1')
+  await linear.archive('ACME-3', 'user-1')
+  assert.deepEqual((await refusal(linear.delete('ACME-1', 'user-1'))).details.references, [{ id: 'ACME-2', kind: 'related' }, { id: 'ACME-3', kind: 'related' }])
+})
+
 test('the own blockedBy and duplicateOf of the issue do not block a Linear delete', async () => {
   const { tracker: linear, fake } = linearSetup()
   three(fake)

@@ -49,7 +49,7 @@ test('the dry run is the full preview and writes nothing', () => {
     const before = hashTree(root)
     const result = run(root, ['issues', 'delete', a, '--dry-run'])
     assert.equal(result.status, 0, result.stderr)
-    for (const part of [`would delete ${a}`, 'title: One', 'removes:', `.issues/issues/${a}/issue.md`, '1 comments go with it', 'Only git history can bring them back', 'references: no other issue', `archive instead: pmkit issues archive ${a}`, 'dry run: nothing was written']) {
+    for (const part of [`would delete ${a}`, 'title: One', 'removes:', `.issues/issues/${a}/issue.md`, '2 events and 1 comment go with it', 'Nothing commits this delete', 'references: no other issue', `archive instead: pmkit issues archive ${a}`, 'dry run: nothing was written']) {
       assert.ok(result.stdout.includes(part), `${part}\n${result.stdout}`)
     }
     assert.equal(hashTree(root), before)
@@ -60,6 +60,21 @@ test('the dry run is the full preview and writes nothing', () => {
     assert.deepEqual(data.warnings, [])
     assert.deepEqual(data.references, [])
     assert.equal(hashTree(root), before)
+  })
+})
+
+test('the preview names git history only when auto_commit commits the delete, and counts one event and one comment in the singular', () => {
+  withRepo({ autoCommit: true }, (root, [a]) => {
+    const on = run(root, ['issues', 'delete', a, '--dry-run'])
+    assert.match(on.stdout, /1 event and 0 comments go with it\. Only git history can bring them back\./)
+    assert.doesNotMatch(on.stdout, /Nothing commits/)
+    assert.equal(json(root, ['issues', 'delete', a, '--dry-run']).removes.autoCommit, true)
+  })
+  withRepo({}, (root, [a]) => {
+    const off = run(root, ['issues', 'delete', a, '--dry-run'])
+    assert.doesNotMatch(off.stdout, /Only git history/)
+    assert.match(off.stdout, /1 event and 0 comments go with it\. Nothing commits this delete/)
+    assert.equal(json(root, ['issues', 'delete', a, '--dry-run']).removes.autoCommit, false)
   })
 })
 

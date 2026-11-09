@@ -19,7 +19,7 @@ removes:
   .issues/issues/ISS-9B2X/comments/2026-10-21T14-05-00Z-fred.md
   .issues/issues/ISS-9B2X/events.jsonl
   .issues/issues/ISS-9B2X/issue.md
-3 events and 1 comments go with it. Only git history can bring them back.
+3 events and 1 comment go with it. Nothing commits this delete (auto_commit is off), so git can bring them back only if you committed them before.
 references: no other issue lists it as blocked by, related, duplicate of or parent
 not checked: code comments, documents and docs/
 archive instead: pmkit issues archive ISS-9B2X keeps the record and its history and hides the issue from lists. Delete removes them.
@@ -66,7 +66,8 @@ exit 0
       ".issues/issues/ISS-9B2X/issue.md"
     ],
     "events": 3,
-    "comments": 1
+    "comments": 1,
+    "autoCommit": false
   },
   "references": [],
   "mentions": [],
@@ -99,7 +100,7 @@ removes:
   .issues/issues/ISS-9B2X/comments/2026-10-21T14-05-00Z-fred.md
   .issues/issues/ISS-9B2X/events.jsonl
   .issues/issues/ISS-9B2X/issue.md
-3 events and 1 comments go with it. Only git history can bring them back.
+3 events and 1 comment go with it. Nothing commits this delete (auto_commit is off), so git can bring them back only if you committed them before.
 references: no other issue lists it as blocked by, related, duplicate of or parent
 not checked: code comments, documents and docs/
 archive instead: pmkit issues archive ISS-9B2X keeps the record and its history and hides the issue from lists. Delete removes them.
@@ -147,7 +148,8 @@ exit 0
       ".issues/issues/ISS-9B2X/issue.md"
     ],
     "events": 3,
-    "comments": 1
+    "comments": 1,
+    "autoCommit": false
   },
   "references": [],
   "mentions": [],

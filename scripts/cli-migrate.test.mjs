@@ -386,6 +386,17 @@ test('import refuses a tracker that holds issues', async () => {
   })
 })
 
+test('import ignores the leftover of a failed issues delete', async () => {
+  const { context, fake } = importSetup()
+  const leftover = path.join(context.root, '.issues', 'issues', '.deleting-ISS-X-4242')
+  fs.mkdirSync(path.join(leftover, 'comments'), { recursive: true })
+  fs.writeFileSync(path.join(leftover, 'events.jsonl'), '')
+  commitAll(context.root, 'leftover')
+  const result = await cli(context, IMPORT.filter((arg) => arg !== '--json').concat('--dry-run'), { fetch: fake.fetch })
+  assert.equal(result.code, 0, result.stderr || result.stdout)
+  assert.match(result.stdout, /dry run: nothing was written/)
+})
+
 test('import --dry-run lists new members and writes nothing', async () => {
   const { context, fake } = importSetup()
   const before = hashTree(context.root)

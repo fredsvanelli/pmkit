@@ -11,6 +11,22 @@ import { useLinear, withLinear } from './fake-hosted.mjs'
 
 const brief = (result) => result.problems.map(({ path: file, code }) => `${code} ${file}`).sort()
 
+test('a leftover of a failed delete is reported as one, not as an invalid issue', () => {
+  const root = makeRepo('basic')
+  const before = validateRepo(root)
+  const leftover = path.join(root, '.issues', 'issues', '.deleting-ISS-X-4242')
+  fs.mkdirSync(path.join(leftover, 'comments'), { recursive: true })
+  fs.writeFileSync(path.join(leftover, 'events.jsonl'), '')
+  const after = validateRepo(root)
+  assert.equal(after.checked.issues, before.checked.issues)
+  assert.equal(after.checked.comments, before.checked.comments)
+  assert.deepEqual(after.problems.filter((problem) => !before.problems.some((old) => old.path === problem.path && old.code === problem.code)), [{
+    path: '.issues/issues/.deleting-ISS-X-4242',
+    code: 'leftover',
+    message: 'it is what a failed issues delete left behind, not an issue; remove it by hand with rm -rf .issues/issues/.deleting-ISS-X-4242',
+  }])
+})
+
 test('broken fixture returns exactly one problem of each kind, at the right path', () => {
   const root = makeRepo('broken')
   const result = validateRepo(root)
