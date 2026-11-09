@@ -1,2 +1,12 @@
 {"at":"2026-11-08T03:15:27Z","by":"fred","op":"create","to":{"id":"PMK-204","title":"Fix the ranking and write rules of prioritize-by-demand","type":"bug","status":"backlog","priority":"medium","estimate":3,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-08T03:15:27.153Z","updated":"2026-11-08T03:15:27Z"}}
 {"at":"2026-11-08T03:15:27Z","by":"fred","op":"link","field":"related","to":"PMK-68"}
+{"at":"2026-11-09T22:56:34Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-09T22:56:35Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-09T22:56:37Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-204-fix-the-ranking-and-write-rules-of"}
+{"at":"2026-11-09T22:58:21Z","by":"fred","op":"comment","to":"2026-11-09T22-58-21Z-fred.md"}
+{"at":"2026-11-09T23:00:54Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T23:00:54Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T23:00:55Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T23:00:55Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T23:07:12Z","by":"fred","op":"comment","to":"2026-11-09T23-07-12Z-fred.md"}
+{"at":"2026-11-09T23:07:13Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
