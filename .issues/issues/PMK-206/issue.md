@@ -2,12 +2,14 @@
 id: PMK-206
 title: Fix the review-request and error paths of the inbox digest
 type: bug
-status: backlog
+status: in_review
 priority: medium
 estimate: 2
+assignee: fred
 related: [PMK-55]
+branch: pmk-206-fix-the-review-request-and-error-paths
 created: 2026-11-08T04:05:51.147Z
-updated: 2026-11-08T04:05:51Z
+updated: 2026-11-09T23:13:14Z
 ---
 
 ## Description
@@ -31,7 +33,7 @@ Found by the reviews of PR #118 (PMK-55) and left as non-blocking. Source: PMK-5
 
 ## Acceptance criteria
 
-- [ ] A rate-limited pull request read marks the digest incomplete
-- [ ] Team review requests are shown as team requests, never matched to the user by name
-- [ ] Review requests and changes to address are found whatever the issue's status and assignee
-- [ ] A scenario runs the `mark-read` offer with a complete inbox
+- [x] A rate-limited pull request read marks the digest incomplete
+- [x] Team review requests are shown as team requests, never matched to the user by name
+- [x] Review requests and changes to address are found whatever the issue's status and assignee
+- [x] A scenario runs the `mark-read` offer with a complete inbox
