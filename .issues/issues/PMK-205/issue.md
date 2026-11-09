@@ -2,12 +2,14 @@
 id: PMK-205
 title: Fix the Linear and error paths of release readiness
 type: bug
-status: backlog
+status: in_progress
 priority: medium
 estimate: 3
+assignee: fred
 related: [PMK-69]
+branch: pmk-205-fix-the-linear-and-error-paths-of
 created: 2026-11-08T03:15:27.300Z
-updated: 2026-11-08T03:15:27Z
+updated: 2026-11-09T22:56:39Z
 ---
 
 ## Description
