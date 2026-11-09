@@ -2,14 +2,14 @@
 id: PMK-206
 title: Fix the review-request and error paths of the inbox digest
 type: bug
-status: in_progress
+status: in_review
 priority: medium
 estimate: 2
 assignee: fred
 related: [PMK-55]
 branch: pmk-206-fix-the-review-request-and-error-paths
 created: 2026-11-08T04:05:51.147Z
-updated: 2026-11-09T23:06:52Z
+updated: 2026-11-09T23:13:14Z
 ---
 
 ## Description
