@@ -10,3 +10,4 @@
 {"at":"2026-11-09T04:00:55Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-11-09T04:06:00Z","by":"fred","op":"comment","to":"2026-11-09T04-06-00Z-fred.md"}
 {"at":"2026-11-09T04:06:00Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-09T22:12:11Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}
