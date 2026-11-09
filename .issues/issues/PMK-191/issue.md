@@ -2,12 +2,14 @@
 id: PMK-191
 title: Make the ctime test of query-index stable
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 related: [PMK-52]
+branch: pmk-191-make-the-ctime-test-of-query-index
 created: 2026-10-31T16:59:11.658Z
-updated: 2026-10-31T16:59:11Z
+updated: 2026-11-09T02:53:32Z
 ---
 
 ## Description
@@ -26,4 +28,4 @@ A timing-sensitive test in `scripts/query-index.test.mjs` (it depends on file ct
 
 ## Acceptance criteria
 
-- [ ] The test passes 20 full runs in a row, or it no longer depends on the clock
+- [x] The test passes 20 full runs in a row, or it no longer depends on the clock
