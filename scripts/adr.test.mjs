@@ -169,6 +169,12 @@ test('planNextAdr writes a repository file when the tracker is hosted, with no t
   assert.deepEqual(plan.sources.map((source) => source.place), ['repo'])
 })
 
+test('highestAdr counts a slug that starts with a digit but not a dated name', () => {
+  assert.equal(highestAdr(['0003-2fa-x.md']).highest, 3)
+  assert.equal(highestAdr(['0007-x.md']).highest, 7)
+  assert.equal(highestAdr(['2026-10-31-x.md', '2026-10-31.md']).highest, 0)
+})
+
 test('highestAdr counts only names of the form NNNN-', () => {
   assert.deepEqual(highestAdr(['0006-y.md', '20261031.md', '0007a-x.md']), { highest: 6, ignored: ['20261031.md', '0007a-x.md'] })
   assert.deepEqual(highestAdr(['2026-10-31-notes.md', '20261031-x.md']), { highest: 0, ignored: ['2026-10-31-notes.md', '20261031-x.md'] })

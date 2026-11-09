@@ -6,8 +6,8 @@ import path from 'node:path'
 import { PmkitError } from './errors.mjs'
 
 export const ADR_SLUG_MAX = 60
-// A name counts only in the form NNNN-<rest>.md (exactly four digits, a hyphen, then not a digit), so 20261031.md, 0007a-x.md and 2026-10-31-x.md do not.
-const NUMBERED = /^(\d{4})-(?!\d)[^/]*\.md$/
+// A name counts only in the form NNNN-<rest>.md (exactly four digits and a hyphen, unless a date YYYY-MM-DD follows), so 20261031.md, 0007a-x.md and 2026-10-31-x.md do not, and 0003-2fa-x.md does.
+const NUMBERED = /^(\d{4})-(?!\d{2}-\d{2}(?:-|\.|$))[^/]*\.md$/
 const QUOTES = /['"`‘’“”]/g
 const LETTERS = { ß: 'ss', æ: 'ae', œ: 'oe', ø: 'o', đ: 'd', ð: 'd', ł: 'l', þ: 'th' }
 
