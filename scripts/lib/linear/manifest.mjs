@@ -72,7 +72,7 @@ function workspaceAnswers(raw) {
     demand_signals: customersEnabled
       ? {
         path: 'absent',
-        detail: { workspace: 'native', unsupported: ['listCustomers', 'getCustomer', 'createCustomer', 'listDemandSignals'] },
+        detail: { workspace: 'native', unsupported: ['listCustomers', 'getCustomer', 'createCustomer', 'createRequest', 'listDemandSignals'] },
         enableHint: 'The Linear adapter serves customer requests through linear customers only; Linear offers them on this workspace',
       }
       : { path: 'absent', enableHint: 'Linear customer requests need the Business or Enterprise plan and customers turned on in the workspace settings' },

@@ -68,10 +68,19 @@ export const serializeRequest = (request) => {
   return request.body ? text : text.replace(/\n\n$/, '\n')
 }
 
-/** Requests in creation order: `created`, then id. A request without `created` goes last. */
+/** The instant of a request, for ordering. A request without `created` has none. A stored `created` always parses, validTimestamp checks it. */
+const instantOf = (request) => (request.created === undefined ? undefined : Date.parse(request.created))
+
+/** Requests in creation order: the instant of `created` (not its text, since offsets differ), then id. A request without `created` goes last. */
 export function sortRequests(list) {
-  const key = (request) => request.created ?? '￿'
+  const key = (request) => instantOf(request) ?? Infinity
   return [...list].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) || compareIds(a.id, b.id))
+}
+
+/** Requests newest first, as Linear lists the requests of a customer: the instant, then id, both descending. A request without `created` still goes last. */
+export function sortRequestsNewest(list) {
+  const key = (request) => instantOf(request) ?? -Infinity
+  return [...list].sort((a, b) => (key(a) < key(b) ? 1 : key(a) > key(b) ? -1 : 0) || compareIds(b.id, a.id))
 }
 
 /**

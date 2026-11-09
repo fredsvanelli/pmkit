@@ -26,7 +26,8 @@ exit 0
   "target": null,
   "created": "2026-10-15T08:00:00.000Z",
   "triaged": null,
-  "reason": null
+  "reason": null,
+  "problems": []
 }
 --- stderr
 (empty)

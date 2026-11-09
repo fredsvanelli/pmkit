@@ -870,7 +870,7 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'customers show', summary: 'one customer, by id or exact name, with its requests', usage: '<id or name>', args: ['customer'], flags: [],
+    name: 'customers show', summary: 'one customer, by id or exact name, with its requests, newest first', usage: '<id or name>', args: ['customer'], flags: [],
     run: async (ctx) => {
       const { customer, requests, problems } = await (await ctx.tracker()).getCustomer(ctx.args[0])
       const text = [customerRecord(customer), '', requests.length === 0 ? 'no requests yet' : requestTable(requests)].join('\n')
@@ -905,7 +905,7 @@ export const COMMANDS = [
     name: 'requests get', summary: 'one request', usage: '<id>', args: ['id'], flags: [],
     run: async (ctx) => {
       const request = await (await ctx.tracker()).getRequest(ctx.args[0])
-      return { data: request, text: requestRecord(request) }
+      return { data: request, text: requestRecord(request), warnings: problemWarnings(request.problems) }
     },
   },
   {
@@ -926,14 +926,14 @@ export const COMMANDS = [
     name: 'requests accept', summary: 'accepts a request into an existing issue', usage: '<id> <issue>', write: true, args: ['id', 'issue'], flags: [],
     run: async (ctx) => {
       const result = await (await ctx.tracker()).acceptRequest(ctx.args[0], ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })
-      return { data: result, text: writeText(result, { ...ctx, record: requestRecord }), commit: result.after.id }
+      return { data: result, text: writeText(result, { ...ctx, record: requestRecord }), commit: result.after.id, warnings: problemWarnings(result.problems) }
     },
   },
   {
     name: 'requests decline', summary: 'declines a request', usage: '<id> [--reason text]', write: true, args: ['id'], flags: ['reason'],
     run: async (ctx) => {
       const result = await (await ctx.tracker()).declineRequest(ctx.args[0], ctx.opt('reason'), await ctx.actor(), { dryRun: ctx.dryRun })
-      return { data: result, text: writeText(result, { ...ctx, record: requestRecord }), commit: result.after.id }
+      return { data: result, text: writeText(result, { ...ctx, record: requestRecord }), commit: result.after.id, warnings: problemWarnings(result.problems) }
     },
   },
   {

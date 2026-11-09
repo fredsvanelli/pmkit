@@ -46,7 +46,8 @@ exit 0
       "by": "fred"
     },
     "reason": null
-  }
+  },
+  "problems": []
 }
 --- stderr
 (empty)
@@ -100,7 +101,8 @@ exit 0
       "by": "fred"
     },
     "reason": null
-  }
+  },
+  "problems": []
 }
 --- stderr
 (empty)

@@ -242,3 +242,116 @@ test('listCustomers orders by revenue and reports a broken file', () => {
   assert.deepEqual(customers.map((customer) => customer.id), ['CUS-2', 'CUS-1'])
   assert.deepEqual(problems.map((problem) => problem.id), ['CUS-3'])
 })
+
+// PMK-190: order, unread records and the request rewrite.
+
+test('the inbox sorts by instant, not by text', () => {
+  const { write, tracker } = setup()
+  write('requests', 'REQ-1.md', '---\ntitle: late in UTC\ncreated: 2026-11-01T09:00:00-05:00\n---\n')
+  write('requests', 'REQ-2.md', '---\ntitle: noon UTC\ncreated: 2026-11-01T12:00:00Z\n---\n')
+  assert.deepEqual(tracker.listRequests().requests.map((request) => request.id), ['REQ-2', 'REQ-1'])
+  assert.deepEqual(sortRequests([{ id: 'REQ-1', created: '2026-11-01T09:00:00-05:00' }, { id: 'REQ-2', created: '2026-11-01T12:00:00Z' }]).map((item) => item.id), ['REQ-2', 'REQ-1'])
+})
+
+test('customers show lists the requests newest first, a request without created last, a tie by id descending', () => {
+  const { write, tracker } = setup()
+  write('customers', 'CUS-1.md', '---\nname: Acme\n---\n')
+  write('requests', 'REQ-1.md', '---\ntitle: old\ncustomer: CUS-1\ncreated: 2026-11-01T12:00:00Z\n---\n')
+  write('requests', 'REQ-2.md', '---\ntitle: offset\ncustomer: CUS-1\ncreated: 2026-11-01T09:00:00-05:00\n---\n')
+  write('requests', 'REQ-3.md', '---\ntitle: tie a\ncustomer: CUS-1\ncreated: 2026-11-01T14:00:00Z\n---\n')
+  write('requests', 'REQ-4.md', '---\ntitle: no date\ncustomer: CUS-1\n---\n')
+  assert.deepEqual(tracker.getCustomer('CUS-1').requests.map((request) => request.id), ['REQ-3', 'REQ-2', 'REQ-1', 'REQ-4'])
+})
+
+test('getRequest returns the problems of an unreadable customer or issue, and an empty list when all reads', () => {
+  const { write, tracker } = setup()
+  write('requests', 'REQ-1.md', '---\ntitle: T\ncustomer: CUS-4\nstate: accepted\nissue: ISS-ZZZZ\n---\n')
+  assert.deepEqual(tracker.getRequest('REQ-1').problems.map((problem) => problem.id), ['REQ-1', 'REQ-1'])
+  write('requests', 'REQ-2.md', '---\ntitle: Fine\n---\n')
+  assert.deepEqual(tracker.getRequest('REQ-2').problems, [])
+})
+
+test('customers show says the lookup is incomplete when a name matches nothing and a customer file could not be read', () => {
+  const { write, tracker } = setup()
+  write('customers', 'CUS-1.md', '---\nname: Acme\n---\n')
+  write('customers', 'CUS-2.md', '---\ntier: gold\n---\n')
+  assert.throws(() => tracker.getCustomer('Beta'), (error) => error.code === 'NOT_FOUND' && /CUS-2/.test(error.message) && /not (be )?read|incomplete|cannot be read/i.test(error.message))
+  assert.throws(() => tracker.getCustomer('Nobody'), (error) => error.code === 'NOT_FOUND' && /CUS-2/.test(error.message))
+  // A match is still found, and the unreadable file is reported next to it.
+  const found = tracker.getCustomer('acme')
+  assert.equal(found.customer.id, 'CUS-1')
+  assert.deepEqual(found.problems.map((problem) => problem.id), ['CUS-2'])
+})
+
+test('requests list --customer refuses a customer that is not a readable customer file, and no customer filters nothing', () => {
+  const { write, tracker } = setup()
+  write('customers', 'CUS-1.md', '---\nname: Acme\n---\n')
+  write('customers', 'CUS-2.md', '---\ntier: gold\n---\n')
+  write('requests', 'REQ-1.md', '---\ntitle: A\ncustomer: CUS-1\n---\n')
+  write('requests', 'REQ-2.md', '---\ntitle: B\n---\n')
+  assert.deepEqual(tracker.listRequests({ customer: 'cus-1' }).requests.map((request) => request.id), ['REQ-1'])
+  assert.deepEqual(tracker.listRequests({}).requests.map((request) => request.id), ['REQ-1', 'REQ-2'])
+  // An empty value, such as an empty $CUSTOMER in a script, is refused and does not list every request.
+  for (const customer of ['CUS-9', 'Acme', '../x', 'CUS-2', '']) {
+    assert.throws(() => tracker.listRequests({ customer }), (error) => error.code === 'INVALID_INPUT', customer)
+  }
+  assert.throws(() => tracker.listRequests({ customer: 'CUS-9' }), (error) => error.nextStep === 'pmkit customers list')
+})
+
+test('accept and decline keep comments, unknown keys, key order and the body byte for byte', () => {
+  const { dir, write, tracker } = setup()
+  const head = '---\n# who asked\ntitle: CSV export\nsource_ticket: 42\ncreated: 2026-10-23T11:00:00Z\n# triage below\nstate: open\n---\n'
+  const body = '\nThe text.\n\nSecond paragraph with   spaces.\n'
+  write('requests', 'REQ-1.md', head + body)
+  const file = path.join(dir('requests'), 'REQ-1.md')
+  tracker.acceptRequest('REQ-1', 'ISS-5N1R', 'fred')
+  const accepted = fs.readFileSync(file, 'utf8')
+  assert.ok(accepted.endsWith('---\n' + body), 'the body is untouched')
+  assert.match(accepted, /^---\n# who asked\ntitle: CSV export\nsource_ticket: 42\ncreated: 2026-10-23T11:00:00Z\n# triage below\nstate: accepted\n/)
+  assert.match(accepted, /\nissue: ISS-5N1R\ntriaged: 2026-10-23T12:00:00Z\ntriaged_by: fred\n---\n/)
+  tracker.declineRequest('REQ-1', 'Out of scope', 'fred')
+  const declined = fs.readFileSync(file, 'utf8')
+  assert.ok(declined.endsWith('---\n' + body))
+  assert.match(declined, /^---\n# who asked\ntitle: CSV export\nsource_ticket: 42\ncreated: 2026-10-23T11:00:00Z\n# triage below\nstate: declined\n/)
+  assert.doesNotMatch(declined, /issue:/)
+  assert.match(declined, /reason: Out of scope/)
+  assert.equal(parseRequest(declined, 'REQ-1').state, 'declined')
+})
+
+test('accept on a request with CRLF line endings writes LF and keeps the comment', () => {
+  const { dir, write, tracker } = setup()
+  write('requests', 'REQ-1.md', '---\r\n# note\r\ntitle: T\r\n---\r\n')
+  tracker.acceptRequest('REQ-1', 'ISS-5N1R', 'fred')
+  const text = fs.readFileSync(path.join(dir('requests'), 'REQ-1.md'), 'utf8')
+  assert.ok(!text.includes('\r'))
+  assert.match(text, /^---\n# note\ntitle: T\n/)
+})
+
+test('customers show says "does not exist" for an id with no file and "incomplete" only for a name that may sit in an unreadable file', () => {
+  const { write, tracker } = setup()
+  write('customers', 'CUS-1.md', '---\nname: Acme\n---\n')
+  write('customers', 'CUS-2.md', '---\ntier: gold\n---\n')
+  assert.throws(() => tracker.getCustomer('CUS-9'), (error) => error.code === 'NOT_FOUND' && /customer CUS-9 does not exist/.test(error.message) && !/incomplete/.test(error.message))
+  assert.throws(() => tracker.getCustomer('Beta'), (error) => error.code === 'NOT_FOUND' && /incomplete/.test(error.message) && /CUS-2/.test(error.message))
+})
+
+test('--customer names an unreadable customer as unreadable, a missing one as missing and a name as not an id', () => {
+  const { write, tracker } = setup()
+  write('customers', 'CUS-2.md', '---\ntier: gold\n---\n')
+  write('customers', 'CUS-3.md', '---\n<<<<<<< HEAD\nname: A\n=======\nname: B\n>>>>>>> o\n---\n')
+  const message = (customer) => { try { tracker.listRequests({ customer }) } catch (error) { return `${error.code} ${error.message}` } }
+  assert.match(message('CUS-2'), /^INVALID_INPUT customer CUS-2 cannot be read: .*needs a name/)
+  assert.match(message('CUS-3'), /^CONFLICT customer CUS-3 cannot be read: /)
+  assert.equal(message('CUS-9'), 'INVALID_INPUT customer CUS-9 does not exist')
+  assert.match(message('Acme'), /^INVALID_INPUT customer "Acme" is not a customer id such as CUS-1/)
+  assert.doesNotMatch(message('CUS-2'), /does not exist/)
+})
+
+test('accept and decline return the problems of the links they could not read', () => {
+  const { write, tracker } = setup()
+  write('requests', 'REQ-1.md', '---\ntitle: T\ncustomer: CUS-4\n---\n')
+  write('requests', 'REQ-2.md', '---\ntitle: Fine\n---\n')
+  assert.deepEqual(tracker.acceptRequest('REQ-1', 'ISS-5N1R', 'fred').problems.map((problem) => problem.id), ['REQ-1'])
+  assert.deepEqual(tracker.declineRequest('REQ-1', 'No', 'fred', { dryRun: true }).problems.map((problem) => problem.id), ['REQ-1'])
+  assert.deepEqual(tracker.declineRequest('REQ-2', 'No', 'fred').problems, [])
+})

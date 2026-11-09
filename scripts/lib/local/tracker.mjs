@@ -14,7 +14,7 @@ import { CATEGORIES, LINK_KINDS, TERMINAL } from '../model.mjs'
 import { appendEvents, driftEvents, readEvents } from './events.mjs'
 import { formatError } from './migrations.mjs'
 import {
-  EPIC_KEYS, HEALTH, epicFrontmatter, parseEpicFile, parseFile, parseUpdateFile, serializeEpic, serializeUpdate, sortEpics, sortUpdates, walkParents,
+  EPIC_KEYS, HEALTH, epicFrontmatter, parseEpicFile, parseUpdateFile, serializeEpic, serializeUpdate, sortEpics, sortUpdates, walkParents,
 } from './epics.mjs'
 import { hasSectionHeading, parseIssueFile, serializeIssue, toFrontmatter } from './issue-file.mjs'
 import { buildCapabilities } from '../capabilities.mjs'
@@ -27,7 +27,7 @@ import { parseRelease, releaseStems, serializeRelease, sortReleases, validReleas
 import { parseView, serializeView, validViewName, viewStems } from './views.mjs'
 import { GOAL_PREFIX, goalStems, parseGoal, serializeGoal, sortGoals } from './goals.mjs'
 import { CUSTOMER_PREFIX, mdStems, parseCustomer, serializeCustomer, sortCustomers } from './customers.mjs'
-import { REQUEST_KEYS, REQUEST_PREFIX, REQUEST_STATES, groupDemand, parseRequest, serializeRequest, sortRequests } from './requests.mjs'
+import { REQUEST_PREFIX, REQUEST_STATES, groupDemand, parseRequest, serializeRequest, sortRequests, sortRequestsNewest } from './requests.mjs'
 import { checkFilter, runQuery } from './query.mjs'
 import { MAX_EXCERPT, findMention, findMentions, mentionText } from './inbox.mjs'
 import { inboxGet, inboxSet } from '../user-store.mjs'
@@ -1442,7 +1442,7 @@ export function createLocalTracker(root, {
     return { customers: sortCustomers(views), problems: [...customers.problems, ...requests.problems] }
   }
 
-  /** A customer by id, or by a name matched exactly and case-insensitively, with its requests in creation order. */
+  /** A customer by id, or by a name matched exactly and case-insensitively, with its requests newest first, as Linear lists them. */
   function getCustomer(ref) {
     const all = readRecords(CUSTOMER)
     const normalized = normalizeId(String(ref ?? ''))
@@ -1452,13 +1452,19 @@ export function createLocalTracker(root, {
     } else {
       const matches = all.records.filter((item) => item.name.toLowerCase() === String(ref ?? '').trim().toLowerCase())
       if (matches.length > 1) throw invalid(`${matches.length} customers are named "${ref}"`, `Pass one of these ids: ${matches.map((item) => item.id).join(', ')}`)
+      // An id is a file name, so an id with no file is plainly missing. Only a name can sit in a file that cannot be read.
+      if (matches.length === 0 && isId(normalized, CUSTOMER_PREFIX)) throw new PmkitError('NOT_FOUND', `customer ${ref} does not exist`, 'pmkit customers list')
+      if (matches.length === 0 && all.problems.length > 0) {
+        // A miss is not an answer while a file cannot be read: say the lookup is incomplete.
+        throw new PmkitError('NOT_FOUND', `no readable customer is named or identified "${ref}", but ${all.problems.map((problem) => problem.id).join(', ')} could not be read, so the lookup is incomplete`, 'pmkit validate')
+      }
       if (matches.length === 0) throw new PmkitError('NOT_FOUND', `no customer is named or identified "${ref}"`, 'pmkit customers list')
       customer = matches[0]
     }
     const requests = readRecords(REQUEST)
-    const own = sortRequests(requests.records.filter((request) => request.customer === customer.id))
+    const own = sortRequestsNewest(requests.records.filter((request) => request.customer === customer.id))
     const { views, problems } = requestViews(own, all.records)
-    return { customer: customerView(customer, requests.records), requests: views, problems: [...requests.problems, ...problems] }
+    return { customer: customerView(customer, requests.records), requests: views, problems: [...all.problems, ...requests.problems, ...problems] }
   }
 
   const oneLineText = (field, value) => {
@@ -1502,13 +1508,16 @@ export function createLocalTracker(root, {
     return { before: null, after: customerView(after, []) }
   }
 
-  /** The normalized id of a customer whose file exists and parses. */
+  /** The normalized id of a customer whose file exists and parses. A missing file, an unreadable one and a value that is not an id each get their own message. */
   function requireCustomer(value) {
+    const ref = text('customer')(value)
+    if (!isId(normalizeId(ref), CUSTOMER_PREFIX)) throw invalid(`customer "${ref}" is not a customer id such as ${CUSTOMER_PREFIX}-1`, 'pmkit customers list')
     try {
-      return readRecord(CUSTOMER, text('customer')(value)).id
+      return readRecord(CUSTOMER, ref).id
     } catch (error) {
-      if (error instanceof PmkitError && error.code === 'NOT_FOUND') throw invalid(`customer ${value} does not exist`, 'pmkit customers list')
-      throw error
+      if (!(error instanceof PmkitError)) throw error
+      if (error.code === 'NOT_FOUND') throw invalid(`customer ${ref} does not exist`, 'pmkit customers list')
+      throw new PmkitError(error.code, `customer ${normalizeId(ref)} cannot be read: ${error.message}`, error.nextStep)
     }
   }
 
@@ -1524,12 +1533,17 @@ export function createLocalTracker(root, {
 
   const viewOfRequest = (request) => requestViews([request], readRecords(CUSTOMER).records).views[0]
 
-  const getRequest = (id) => viewOfRequest(readRecord(REQUEST, id))
+  /** One request view plus the `problems` of the links it could not read (a customer or an issue), as the list reports them. */
+  function getRequest(id) {
+    const { views, problems } = requestViews([readRecord(REQUEST, id)], readRecords(CUSTOMER).records)
+    return { ...views[0], problems }
+  }
 
   function listRequests({ state = 'open', customer } = {}) {
     if (![...REQUEST_STATES, 'all'].includes(state)) throw invalid(`state must be one of ${[...REQUEST_STATES, 'all'].join(', ')}`)
     const requests = readRecords(REQUEST)
-    const wanted = blank(customer) ? undefined : normalizeId(String(customer))
+    // An unknown or unreadable customer is refused, as `requests create --customer` does, instead of answering an empty list.
+    const wanted = blank(customer) ? undefined : requireCustomer(customer)
     const chosen = requests.records.filter((request) => (state === 'all' || request.state === state) && (wanted === undefined || request.customer === wanted))
     const { views, problems } = requestViews(sortRequests(chosen), readRecords(CUSTOMER).records)
     return { requests: views, problems: [...requests.problems, ...problems] }
@@ -1563,33 +1577,43 @@ export function createLocalTracker(root, {
   }
 
   /**
-   * Rewrites the state keys of a request. The stored map is edited, not the parsed request, so keys pmkit does not know and
-   * the body stay as they are. A change that leaves the state as it was writes nothing.
+   * Rewrites the state keys of a request. Only those lines of the stored frontmatter are edited, with the line editor of
+   * yaml-edit.mjs as `epic goal` does, so `#` comments, keys pmkit does not know, key order and the body stay as they are.
+   * The text is normalized to LF first, as every reader does. A change that leaves the state as it was writes nothing. The result has the `problems` of the links the request names that cannot be read.
+   * `change(stored, edit)` returns false for no change, or edits with `edit.set(key, value)` and `edit.remove(key)`.
    */
   function triage(id, actor, { dryRun }, change) {
     requireWriter(actor)
     const stored = readRecord(REQUEST, id)
-    const before = viewOfRequest(stored)
+    const read = (request) => requestViews([request], readRecords(CUSTOMER).records)
+    const before = read(stored)
     const file = path.join(requestsDir, `${stored.id}.md`)
-    const { data, body } = parseFile(fs.readFileSync(file, 'utf8'), `request ${stored.id}`)
-    if (!change(stored, data)) return { before, after: before }
-    data.triaged = stamp()
-    data.triaged_by = actor
-    const content = joinFrontmatter(data, body ? `${body}\n` : '', { order: REQUEST_KEYS })
-    const after = viewOfRequest(readBack('request file', () => parseRequest(content, stored.id)))
-    if (!dryRun) writeFile(file, body ? content : content.replace(/\n\n$/, '\n'))
-    return { before, after }
+    const { yaml, body } = splitFrontmatter(fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'))
+    let edited = yaml
+    const edit = { set: (key, value) => { edited = setScalar(edited, [key], value) }, remove: (key) => { edited = removeKey(edited, [key]) } }
+    try {
+      if (!change(stored, edit)) return { before: before.views[0], after: before.views[0], problems: before.problems }
+      edit.set('triaged', stamp())
+      edit.set('triaged_by', actor)
+    } catch (error) {
+      if (error instanceof PmkitError) throw error
+      throw new PmkitError('INVALID_INPUT', `The request frontmatter cannot be edited: ${error.message}`, '/pmkit:local:doctor')
+    }
+    const content = `---\n${edited.replace(/\n$/, '')}\n---\n${body}`
+    const after = read(readBack('request file', () => parseRequest(content, stored.id)))
+    if (!dryRun) writeFile(file, content)
+    return { before: before.views[0], after: after.views[0], problems: after.problems }
   }
 
   /** Accepts a request into an existing issue, from any state. */
   function acceptRequest(id, issue, actor, options = {}) {
     requireWriter(actor)
     const target = requireRequestIssue(issue)
-    return triage(id, actor, { dryRun: options.dryRun === true }, (stored, data) => {
+    return triage(id, actor, { dryRun: options.dryRun === true }, (stored, edit) => {
       if (stored.state === 'accepted' && stored.issue === target) return false
-      data.state = 'accepted'
-      data.issue = target
-      delete data.reason
+      edit.set('state', 'accepted')
+      edit.set('issue', target)
+      edit.remove('reason')
       return true
     })
   }
@@ -1598,12 +1622,12 @@ export function createLocalTracker(root, {
   function declineRequest(id, reason, actor, options = {}) {
     requireWriter(actor)
     const why = blank(reason) ? undefined : oneLineText('reason', reason)
-    return triage(id, actor, { dryRun: options.dryRun === true }, (stored, data) => {
+    return triage(id, actor, { dryRun: options.dryRun === true }, (stored, edit) => {
       if (stored.state === 'declined' && stored.reason === why) return false
-      data.state = 'declined'
-      delete data.issue
-      delete data.reason
-      if (why !== undefined) data.reason = why
+      edit.set('state', 'declined')
+      edit.remove('issue')
+      edit.remove('reason')
+      if (why !== undefined) edit.set('reason', why)
       return true
     })
   }

@@ -91,7 +91,7 @@ export function requestRecord(request) {
   const lines = fields([
     ['id', request.id], ['title', request.title], ['state', request.state], ['important', request.important ? 'yes' : undefined],
     ['customer', reference(request.customer, 'name')], ['from', request.from], ['issue', reference(request.target, 'title')],
-    ['reason', request.reason], ['created', request.created], ['triaged', request.triaged ? `${request.triaged.at} by ${request.triaged.by}` : undefined],
+    ['reason', request.reason], ['created', request.created], ['triaged', request.triaged ? `${request.triaged.at}${request.triaged.by ? ` by ${request.triaged.by}` : ''}` : undefined],
   ])
   if (request.body) lines.push('', request.body)
   return lines.join('\n')

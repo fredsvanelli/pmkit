@@ -3,7 +3,7 @@ exit 2
 --- stdout
 (empty)
 --- stderr
-error: no customer is named or identified "CUS-3T7W"
+error: customer CUS-3T7W does not exist
 next: pmkit customers list
 
 $ pmkit customers show CUS-3T7W --json
@@ -12,7 +12,7 @@ exit 2
 {
   "error": {
     "code": "NOT_FOUND",
-    "message": "no customer is named or identified \"CUS-3T7W\"",
+    "message": "customer CUS-3T7W does not exist",
     "nextStep": "pmkit customers list"
   }
 }
