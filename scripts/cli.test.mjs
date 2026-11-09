@@ -1139,6 +1139,19 @@ test('views list reports a file with an invalid name and quotes filter values wi
   assert.match(run(root, ['views', 'list']).stdout, /labels="a b","c=d",e/)
 })
 
+test('views list does not say "no views" when every file is a problem, and a null filter value is not printed', () => {
+  const root = makeRepo('team')
+  fs.mkdirSync(path.join(root, '.issues/views'), { recursive: true })
+  fs.writeFileSync(path.join(root, '.issues/views/bad+name.yaml'), 'filter:\n  blocked: true\n')
+  const only = run(root, ['views', 'list'])
+  assert.equal(only.status, 0, only.stderr)
+  assert.doesNotMatch(only.stdout, /^no views$/m)
+  assert.match(only.stdout, /1 view file could not be read/)
+  fs.writeFileSync(path.join(root, '.issues/views/unset.yaml'), 'filter:\n  blocked: true\n  sprint: null\n')
+  const listed = run(root, ['views', 'list'])
+  assert.doesNotMatch(listed.stdout, /null/)
+})
+
 test('views save --dry-run writes nothing', () => {
   const root = makeRepo('team')
   const before = hashTree(root)
