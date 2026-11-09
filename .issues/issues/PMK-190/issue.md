@@ -2,12 +2,14 @@
 id: PMK-190
 title: Fix the order and the unread records of customers and requests
 type: bug
-status: backlog
+status: in_progress
 priority: medium
 estimate: 2
+assignee: fred
 related: [PMK-46]
+branch: pmk-190-fix-the-order-and-the-unread-records-of
 created: 2026-10-31T16:59:11.453Z
-updated: 2026-10-31T16:59:11Z
+updated: 2026-11-09T02:35:51Z
 ---
 
 ## Description
