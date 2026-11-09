@@ -132,3 +132,43 @@ test('invalid JSON, empty output and a missing vulnerabilities object throw', ()
   assert.throws(() => parseNpmAudit('{}'), /vulnerabilities/)
   assert.throws(() => parseNpmAudit(''), /empty/)
 })
+
+test('a valid audit report is never a missing npm, whatever the exit code and stderr say', () => {
+  const stderr = "'npm.cmd' is not recognized as an internal or external command"
+  assert.equal(isNpmMissingOnShell({ status: 1, stdout: REPORT_ONE, stderr }), false)
+  assert.equal(isNpmMissingOnShell({ status: 9009, stdout: REPORT_ONE, stderr }), false)
+  assert.equal(isNpmMissingOnShell({ status: 1, stdout: '  \n', stderr }), true)
+  const { spawn } = fakeSpawn({ status: 1, stdout: REPORT_ONE, stderr })
+  const found = collectAlerts(repoWithLockfile(), { platform: 'win32', spawn })
+  assert.deepEqual(found.warnings, [])
+  assert.equal(found.alerts.length, 1)
+})
+
+test('the title and url come from the advisory with the severity of the alert', () => {
+  const via = [
+    { title: 'ReDoS', url: 'https://example.com/redos', severity: 'low' },
+    { title: 'RCE', url: 'https://example.com/rce', severity: 'critical' },
+  ]
+  const [alert] = parseNpmAudit(audit({ x: { name: 'x', severity: 'critical', via, fixAvailable: false } })).alerts
+  assert.equal(alert.title, 'RCE')
+  assert.equal(alert.url, 'https://example.com/rce')
+  assert.equal(alert.advisories.length, 2)
+})
+
+test('with no advisory of the alert severity the most severe one gives the title, the first on a tie', () => {
+  const via = [{ title: 'A', severity: 'low' }, { title: 'B', severity: 'moderate' }, { title: 'C', severity: 'moderate' }]
+  const [alert] = parseNpmAudit(audit({ x: { name: 'x', severity: 'critical', via, fixAvailable: false } })).alerts
+  assert.equal(alert.title, 'B')
+})
+
+test('the empty-output error carries npm stderr, collapsed and cut', () => {
+  assert.throws(() => parseNpmAudit('', 'npm ERR! code E403\nnpm ERR! 403 Forbidden'), /^Error: npm audit printed empty output: npm ERR! code E403 npm ERR! 403 Forbidden$/)
+  assert.throws(() => parseNpmAudit('', ' \n '), (e) => e.message === 'npm audit printed empty output')
+  assert.throws(() => parseNpmAudit('', 'x'.repeat(500)), (e) => e.message.length === 'npm audit printed empty output: '.length + 300)
+})
+
+test('collectAlerts warns with the stderr of an npm that printed nothing', () => {
+  const { spawn } = fakeSpawn({ status: 1, stdout: '', stderr: 'npm ERR! code E403' })
+  const found = collectAlerts(repoWithLockfile(), { platform: 'linux', spawn })
+  assert.equal(found.warnings[0], 'npm-audit failed: npm audit printed empty output: npm ERR! code E403')
+})
