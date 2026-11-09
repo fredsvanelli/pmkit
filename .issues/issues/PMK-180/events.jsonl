@@ -1,2 +1,5 @@
 {"at":"2026-10-31T16:01:14Z","by":"fred","op":"create","to":{"id":"PMK-180","title":"Fix saved views with invalid file names and the Linear hint","type":"bug","status":"backlog","priority":"medium","estimate":1,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-31T16:01:14.694Z","updated":"2026-10-31T16:01:14Z"}}
 {"at":"2026-10-31T16:01:15Z","by":"fred","op":"link","field":"related","to":"PMK-44"}
+{"at":"2026-11-09T00:54:00Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-09T00:54:00Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-09T00:54:02Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-180-fix-saved-views-with-invalid-file-names"}
