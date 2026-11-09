@@ -399,7 +399,7 @@ test('pr diff returns the pull request diff when the branch has a pull request',
     'pr diff 7 --color never': { stdout: 'diff --git a/a b/a\n+x\n' },
   })
   const data = await callJson(root, envWith(gh), ['pr', 'diff', '--branch', 'feat'])
-  assert.deepEqual(data, { branch: 'feat', source: 'pull_request', pr: JSON.parse(prJson({ number: 7 })), base: null, uncommitted: false, diff: 'diff --git a/a b/a\n+x\n', truncated: false, lines: 2 })
+  assert.deepEqual(data, { branch: 'feat', source: 'pull_request', pr: JSON.parse(prJson({ number: 7 })), base: null, uncommitted: false, uncommittedIncluded: false, untracked: 0, incomplete: false, diff: 'diff --git a/a b/a\n+x\n', truncated: false, lines: 2 })
   const text = (await call(root, envWith(gh), ['pr', 'diff', '--branch', 'feat'])).stdout
   assert.match(text, /^pull request #7, 2 lines\ndiff --git a\/a b\/a\n\+x\n/)
 })
@@ -668,4 +668,101 @@ test('the default_branch fallback note is silent where the base is not used: pr 
   const open = await call(root, env, ['pr', 'open', '--issue', 'ISS-2X6D', '--dry-run', '--json'])
   assert.equal(JSON.parse(open.stdout).existing, true)
   assert.ok(!open.stderr.includes('not a valid branch name'), open.stderr)
+})
+
+// PMK-177: the notes of the local diff, the PR base, merged pull requests and reused branch names.
+const commitAll = (root, message = 'all') => {
+  git(root, 'add', '-A')
+  git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '-qm', message)
+}
+const REFS = 'pr view 7 --json baseRefName,headRefOid'
+const refs = (baseRefName, headRefOid) => ({ [REFS]: { stdout: JSON.stringify({ baseRefName, headRefOid }) } })
+const TOO_LARGE = { status: 1, stderr: 'could not find pull request diff: HTTP 406: Sorry, the diff exceeded the maximum number of lines (20000)\n' }
+const MERGED = { number: 7, state: 'MERGED', mergedAt: '2026-10-29T10:00:00Z' }
+const tipOf = (root, ref) => git(root, 'rev-parse', ref).stdout.trim()
+
+test('pr diff of a clean checked out branch is not uncommitted and says nothing about it', async () => {
+  const root = teamRepo()
+  const base = branchWithChange(root)
+  commitAll(root)
+  const result = await call(root, envWith(fakeGh({ [view('feat')]: NO_PR })), ['pr', 'diff', '--base', base, '--json'])
+  const data = JSON.parse(result.stdout)
+  assert.deepEqual([data.uncommitted, data.uncommittedIncluded, data.untracked], [false, false, 0])
+  assert.ok(!noteLines(result).some((n) => /uncommitted|untracked/.test(n)), result.stderr)
+})
+
+test('pr diff counts untracked files, which no diff holds, and says so', async () => {
+  const root = teamRepo()
+  const base = branchWithChange(root)
+  commitAll(root)
+  fs.writeFileSync(path.join(root, 'new.txt'), 'x\n')
+  const gh = fakeGh({ [view('feat')]: NO_PR })
+  const result = await call(root, envWith(gh), ['pr', 'diff', '--base', base, '--json'])
+  const data = JSON.parse(result.stdout)
+  assert.deepEqual([data.uncommitted, data.untracked], [false, 1])
+  assert.ok(noteLines(result).includes('note: 1 untracked file is not in the diff'), result.stderr)
+})
+
+test('pr diff with a pull request says the uncommitted changes of the checked out branch are not in it', async () => {
+  const root = teamRepo()
+  branchWithChange(root)
+  commitAll(root)
+  fs.writeFileSync(path.join(root, 'a.txt'), 'changed\n')
+  const gh = fakeGh({ [view('feat')]: { stdout: prJson({ number: 7 }) }, 'pr diff 7 --color never': { stdout: 'pr diff\n' } })
+  const result = await call(root, envWith(gh), ['pr', 'diff', '--json'])
+  const data = JSON.parse(result.stdout)
+  assert.deepEqual([data.source, data.uncommitted, data.uncommittedIncluded], ['pull_request', true, false])
+  assert.ok(noteLines(result).includes('note: feat has uncommitted changes, so the pull request diff does not include them'), result.stderr)
+})
+
+test('pr diff local fallback of a stacked pull request uses the PR base, and --base wins', async () => {
+  const root = teamRepo()
+  const base = branchWithChange(root)
+  git(root, 'switch', '-q', base)
+  git(root, 'switch', '-qc', 'stack')
+  fs.writeFileSync(path.join(root, 'low.txt'), 'lower\n')
+  commitAll(root, 'lower')
+  git(root, 'switch', '-q', 'feat')
+  git(root, 'rebase', '-q', 'stack')
+  commitAll(root)
+  const gh = fakeGh({ [view('feat')]: { stdout: prJson({ number: 7 }) }, 'pr diff 7 --color never': TOO_LARGE, ...refs('stack', 'abc') })
+  const data = await callJson(root, envWith(gh), ['pr', 'diff'])
+  assert.equal(data.base, 'stack')
+  assert.doesNotMatch(data.diff, /low\.txt/)
+  assert.match(data.diff, /a\.txt/)
+  const wide = await callJson(root, envWith(gh), ['pr', 'diff', '--base', base])
+  assert.match(wide.diff, /low\.txt/)
+})
+
+test('pr diff of a merged pull request that GitHub refuses and whose branch left no diff is incomplete, not empty', async () => {
+  const root = teamRepo()
+  const base = branchWithChange(root)
+  git(root, 'switch', '-q', base)
+  git(root, 'merge', '-q', '--ff-only', 'feat')
+  const gh = fakeGh({ [view('feat')]: { stdout: prJson(MERGED) }, 'pr diff 7 --color never': TOO_LARGE, ...refs(base, tipOf(root, 'feat')) })
+  const result = await call(root, envWith(gh), ['pr', 'diff', '--branch', 'feat', '--json'])
+  const data = JSON.parse(result.stdout)
+  assert.deepEqual([data.source, data.incomplete, data.diff], ['local', true, ''])
+  assert.ok(noteLines(result).some((n) => /pull request #7 is merged and GitHub refused its diff as too large/.test(n) && /not available/.test(n)), result.stderr)
+})
+
+test('pr diff does not use a merged pull request whose head is not the tip of the branch', async () => {
+  const root = teamRepo()
+  const base = branchWithChange(root)
+  commitAll(root)
+  const gh = fakeGh({ [view('feat')]: { stdout: prJson(MERGED) }, ...refs(base, 'f'.repeat(40)) })
+  const result = await call(root, envWith(gh), ['pr', 'diff', '--base', base, '--json'])
+  const data = JSON.parse(result.stdout)
+  assert.deepEqual([data.source, data.pr, data.incomplete], ['local', null, false])
+  assert.ok(noteLines(result).includes('note: pull request #7 is merged and its head is not the tip of feat, so it is not used and this is the local diff'), result.stderr)
+  assert.ok(!ghCalls(gh).includes('pr diff 7 --color never'))
+})
+
+test('pr diff uses a merged pull request whose head is the tip of the branch', async () => {
+  const root = teamRepo()
+  branchWithChange(root)
+  commitAll(root)
+  const gh = fakeGh({ [view('feat')]: { stdout: prJson(MERGED) }, 'pr diff 7 --color never': { stdout: 'merged diff\n' }, ...refs('main', tipOf(root, 'feat')) })
+  const data = await callJson(root, envWith(gh), ['pr', 'diff'])
+  assert.deepEqual([data.source, data.pr.number, data.incomplete], ['pull_request', 7, false])
 })
