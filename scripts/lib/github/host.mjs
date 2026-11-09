@@ -101,6 +101,18 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
     return parse(result.stdout, 'the pull request')
   }
 
+  const workingTree = (branch) => {
+    refArg('branch', branch)
+    const git = (args) => run('git', args, { timeout: DIFF_TIMEOUT_MS })
+    if (git(['branch', '--show-current']).stdout.trim() !== branch) return null
+    const args = ['status', '--porcelain']
+    const result = git(args)
+    if (result.status !== 0) throw failure('git', args, result)
+    const lines = result.stdout.split('\n').filter((line) => line !== '')
+    const untracked = lines.filter((line) => line.startsWith('??')).length
+    return { uncommitted: lines.length > untracked, untracked }
+  }
+
   const listRuns = ({ branch }) => {
     const args = ['run', 'list', '--branch', refArg('branch', branch), '--limit', '50', '--json', RUN_FIELDS]
     return parse(check('gh', args).stdout, 'the workflow runs')
@@ -241,7 +253,7 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
      * The changes of a branch since it left its base. The base is origin/<base> when that exists, so commits of other people
      * on a stale local base stay out. The branch is the local one, or origin/<branch> when only origin has it. For the branch
      * that is checked out the diff also holds the index and the working tree (tracked files), because it starts at the
-     * merge base and ends at the working tree. Returns { diff, base, ref, uncommitted }.
+     * merge base and ends at the working tree. Returns { diff, base, ref, uncommitted, untracked }.
      */
     localDiff({ branch, base }) {
       refArg('branch', branch)
@@ -253,15 +265,39 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
       const local = exists(`refs/heads/${branch}`)
       if (!local && !exists(`refs/remotes/origin/${branch}`)) throw new PmkitError('INVALID_INPUT', `the branch "${branch}" does not exist here or on origin`, 'Pass --branch <branch>, or run git fetch origin')
       const ref = local ? branch : `origin/${branch}`
-      const uncommitted = local && git(['branch', '--show-current']).stdout.trim() === branch
+      const tree = local ? workingTree(branch) : null
+      const uncommitted = tree?.uncommitted === true
+      const untracked = tree?.untracked ?? 0
       const diffOf = (args) => {
         const result = git(args)
         if (result.status !== 0) throw failure('git', args, result)
         return result.stdout
       }
-      if (!uncommitted) return { diff: diffOf(['diff', '--no-color', `${from}...${ref}`]), base: from, ref, uncommitted }
+      if (!uncommitted) return { diff: diffOf(['diff', '--no-color', `${from}...${ref}`]), base: from, ref, uncommitted, untracked }
       const mergeBase = diffOf(['merge-base', from, ref]).trim()
-      return { diff: diffOf(['diff', '--no-color', mergeBase]), base: from, ref, uncommitted }
+      return { diff: diffOf(['diff', '--no-color', mergeBase]), base: from, ref, uncommitted, untracked }
+    },
+
+    /**
+     * The state of the working tree when `branch` is the checked out branch, else null. `uncommitted` is true when the index or
+     * a tracked file has changes (the changes localDiff includes); `untracked` counts the files git does not track, which no diff holds.
+     */
+    workingTree,
+
+    /** The commit a branch points to: the local branch, else origin/<branch>, else null. */
+    branchTip(branch) {
+      refArg('branch', branch)
+      for (const ref of [`refs/heads/${branch}`, `refs/remotes/origin/${branch}`]) {
+        const result = run('git', ['rev-parse', '--verify', '--quiet', ref], { timeout: DIFF_TIMEOUT_MS })
+        if (result.status === 0) return result.stdout.trim()
+      }
+      return null
+    },
+
+    /** The base branch name and the head commit of a pull request. */
+    prRefs(number) {
+      if (!Number.isInteger(number) || number < 1) throw new PmkitError('INVALID_INPUT', `pull request number "${number}" is not valid`, 'Pass a pull request number')
+      return parse(check('gh', ['pr', 'view', String(number), '--json', 'baseRefName,headRefOid']).stdout, 'the pull request refs')
     },
 
     /** The commits of the local branch that origin/<branch> lacks, or null when either ref is missing. */

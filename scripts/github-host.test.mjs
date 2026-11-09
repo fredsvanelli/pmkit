@@ -340,7 +340,7 @@ test('localDiff of a branch that is not checked out diffs origin/<base> with the
     'diff --no-color origin/main...feat/x': { stdout: 'local diff\n' },
   })
   const result = host(exec).localDiff({ branch: 'feat/x', base: 'main' })
-  assert.deepEqual(result, { diff: 'local diff\n', base: 'origin/main', ref: 'feat/x', uncommitted: false })
+  assert.deepEqual(result, { diff: 'local diff\n', base: 'origin/main', ref: 'feat/x', uncommitted: false, untracked: 0 })
   assert.deepEqual(calls.map((c) => [c.cmd, ...c.args]).at(-1), ['git', 'diff', '--no-color', 'origin/main...feat/x'])
 })
 
@@ -349,15 +349,16 @@ test('localDiff prefers origin/<base> and uses the local base only when there is
   const both = mapExec({ ...answers, [`${REFS} refs/remotes/origin/develop`]: {}, 'diff --no-color origin/develop...feat/x': { stdout: 'remote\n' } })
   assert.equal(host(both.exec).localDiff({ branch: 'feat/x', base: 'develop' }).diff, 'remote\n')
   const localOnly = mapExec({ ...answers, 'diff --no-color develop...feat/x': { stdout: 'local\n' } })
-  assert.deepEqual(host(localOnly.exec).localDiff({ branch: 'feat/x', base: 'develop' }), { diff: 'local\n', base: 'develop', ref: 'feat/x', uncommitted: false })
+  assert.deepEqual(host(localOnly.exec).localDiff({ branch: 'feat/x', base: 'develop' }), { diff: 'local\n', base: 'develop', ref: 'feat/x', uncommitted: false, untracked: 0 })
 })
 
 test('localDiff of the checked out branch includes the commits, the index and the working tree', () => {
   const { exec, calls } = mapExec({
     [`${REFS} refs/remotes/origin/main`]: {}, [`${REFS} refs/heads/feat/x`]: {}, 'branch --show-current': { stdout: 'feat/x\n' },
+    'status --porcelain': { stdout: ' M a.txt\n?? new.txt\n' },
     'merge-base origin/main feat/x': { stdout: 'abc123\n' }, 'diff --no-color abc123': { stdout: 'all changes\n' },
   })
-  assert.deepEqual(host(exec).localDiff({ branch: 'feat/x', base: 'main' }), { diff: 'all changes\n', base: 'origin/main', ref: 'feat/x', uncommitted: true })
+  assert.deepEqual(host(exec).localDiff({ branch: 'feat/x', base: 'main' }), { diff: 'all changes\n', base: 'origin/main', ref: 'feat/x', uncommitted: true, untracked: 1 })
   assert.deepEqual(calls.map((c) => c.args.join(' ')).slice(-2), ['merge-base origin/main feat/x', 'diff --no-color abc123'])
 })
 
@@ -366,7 +367,7 @@ test('localDiff uses origin/<branch> when the branch exists only on origin, and 
     [`${REFS} refs/remotes/origin/main`]: {}, [`${REFS} refs/remotes/origin/feat/x`]: {},
     'diff --no-color origin/main...origin/feat/x': { stdout: 'remote branch\n' },
   })
-  assert.deepEqual(host(exec).localDiff({ branch: 'feat/x', base: 'main' }), { diff: 'remote branch\n', base: 'origin/main', ref: 'origin/feat/x', uncommitted: false })
+  assert.deepEqual(host(exec).localDiff({ branch: 'feat/x', base: 'main' }), { diff: 'remote branch\n', base: 'origin/main', ref: 'origin/feat/x', uncommitted: false, untracked: 0 })
 })
 
 test('localDiff names the missing base or branch', () => {
@@ -471,4 +472,42 @@ test('a SAML enforcement or missing-scopes refusal is a 403, and a message that 
     try { host(fakeExec({ status: 1, stdout, stderr: 'gh: nope\n' }).exec).prThreads(1) } catch (e) { return e.httpStatus }
   }
   assert.equal(threads('INSUFFICIENT_SCOPES'), 403)
+
+const STATUS = 'status --porcelain'
+const onBranch = { 'branch --show-current': { stdout: 'feat/x\n' } }
+
+test('workingTree is null for a branch that is not checked out', () => {
+  assert.equal(host(mapExec({ 'branch --show-current': { stdout: 'other\n' } }).exec).workingTree('feat/x'), null)
+})
+
+test('workingTree separates tracked changes from untracked files, and a clean tree is neither', () => {
+  const tree = (stdout) => host(mapExec({ ...onBranch, [STATUS]: { stdout } }).exec).workingTree('feat/x')
+  assert.deepEqual(tree(''), { uncommitted: false, untracked: 0 })
+  assert.deepEqual(tree('?? new.txt\n'), { uncommitted: false, untracked: 1 })
+  assert.deepEqual(tree(' M a.txt\nA  b.txt\n'), { uncommitted: true, untracked: 0 })
+})
+
+test('workingTree throws when git status fails, so an unknown state is never clean', () => {
+  assert.throws(() => host(mapExec({ ...onBranch }).exec).workingTree('feat/x'), (e) => e.code === 'UPSTREAM')
+})
+
+test('localDiff of a checked out branch with a clean tree is the three-dot diff and not uncommitted', () => {
+  const { exec } = mapExec({
+    [`${REFS} refs/remotes/origin/main`]: {}, [`${REFS} refs/heads/feat/x`]: {}, ...onBranch, [STATUS]: {},
+    'diff --no-color origin/main...feat/x': { stdout: 'd\n' },
+  })
+  assert.deepEqual(host(exec).localDiff({ branch: 'feat/x', base: 'main' }), { diff: 'd\n', base: 'origin/main', ref: 'feat/x', uncommitted: false, untracked: 0 })
+})
+
+test('branchTip prefers the local branch, then origin, then null', () => {
+  const tip = (answers) => host(mapExec(answers).exec).branchTip('feat/x')
+  assert.equal(tip({ 'rev-parse --verify --quiet refs/heads/feat/x': { stdout: 'aaa\n' }, 'rev-parse --verify --quiet refs/remotes/origin/feat/x': { stdout: 'bbb\n' } }), 'aaa')
+  assert.equal(tip({ 'rev-parse --verify --quiet refs/remotes/origin/feat/x': { stdout: 'bbb\n' } }), 'bbb')
+  assert.equal(tip({}), null)
+})
+
+test('prRefs reads the base name and the head commit of a pull request', () => {
+  const { exec, calls } = fakeExec({ stdout: JSON.stringify({ baseRefName: 'develop', headRefOid: 'abc' }) })
+  assert.deepEqual(host(exec).prRefs(7), { baseRefName: 'develop', headRefOid: 'abc' })
+  assert.deepEqual(calls[0].args, ['pr', 'view', '7', '--json', 'baseRefName,headRefOid'])
 })
