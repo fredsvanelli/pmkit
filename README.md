@@ -137,10 +137,10 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `goal create --title t [--target YYYY-MM-DD]` | creates a goal as `.issues/goals/<ID>.md`; the ID is `GOAL-` and a code that follows `id_style` |
 | `goal progress <id>` | adds up the progress of the epics linked to a goal, as `epic progress` counts each one |
 | `customers list` | lists the customers in `.issues/customers/`, highest revenue first, with the keys `linear customers list` prints |
-| `customers show <id or name>` | shows one customer and its requests |
+| `customers show <id or name>` | shows one customer and its requests, newest first |
 | `customers create --name n [--status s] [--tier t] [--revenue n] [--size n] [--owner member]` | creates a customer as `.issues/customers/<ID>.md`; the ID is `CUS-` and a code that follows `id_style` |
 | `requests list [--state open\|accepted\|declined\|all] [--customer id]` | lists the requests, the open ones (the inbox) by default, oldest first |
-| `requests get <id>` | shows one request |
+| `requests get <id>` | shows one request, with a warning for a customer or issue that cannot be read |
 | `requests create --title t [--customer id] [--from text] [--important] [--issue id] [--body-file f]` | records a request as `.issues/requests/<ID>.md`, open, or accepted into an issue with `--issue`; the ID is `REQ-` and a code that follows `id_style` |
 | `requests accept <id> <issue>` | accepts a request into an existing issue; to turn it into a new issue, run `issues create` first |
 | `requests decline <id> [--reason text]` | declines a request |

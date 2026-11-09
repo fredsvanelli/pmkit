@@ -870,7 +870,7 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'customers show', summary: 'one customer, by id or exact name, with its requests', usage: '<id or name>', args: ['customer'], flags: [],
+    name: 'customers show', summary: 'one customer, by id or exact name, with its requests, newest first', usage: '<id or name>', args: ['customer'], flags: [],
     run: async (ctx) => {
       const { customer, requests, problems } = await (await ctx.tracker()).getCustomer(ctx.args[0])
       const text = [customerRecord(customer), '', requests.length === 0 ? 'no requests yet' : requestTable(requests)].join('\n')
