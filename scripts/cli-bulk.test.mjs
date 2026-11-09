@@ -350,3 +350,19 @@ test('a stop midway keeps applied and failed in the result even when the write f
     assert.equal((await ok(root, ['issues', 'get', ids.A])).assignee, 'fred')
   })
 })
+
+test('the next step for a view with no criterion runs as printed and makes the view usable', async () => {
+  await withRepo(async (root, ids) => {
+    await ok(root, ['views', 'save', 'all', '--sort', 'priority'])
+    const refused = await bulk(root, 'priority', 'high', '--view', 'all', '--dry-run')
+    assert.equal(refused.body.error.code, 'INVALID_INPUT')
+    const command = /pmkit (views save .*? --overwrite)/.exec(refused.body.error.nextStep)?.[1]
+    assert.ok(command, refused.body.error.nextStep)
+    assert.match(command, /--sort priority/)
+    const saved = await cli(root, command.split(' '))
+    assert.equal(saved.code, 0, JSON.stringify(saved.body))
+    const result = await bulk(root, 'priority', 'high', '--view', 'all', '--dry-run')
+    assert.equal(result.code, 0, JSON.stringify(result.body))
+    assert.deepEqual(result.body.items.map((item) => item.id), [ids.B, ids.A, ids.D])
+  })
+})

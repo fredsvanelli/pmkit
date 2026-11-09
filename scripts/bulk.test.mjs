@@ -126,7 +126,7 @@ test('label values are trimmed, and label-remove takes a label that holds a comm
 test('checkBulkFilter refuses a text of spaces and names a next step the CLI accepts', () => {
   assert.throws(() => checkBulkFilter({ text: '   ' }, 'the filter'), /text must not be empty/)
   assert.throws(() => checkBulkFilter({ sort: 'priority' }, 'the filter'), (error) => /--label/.test(error.nextStep))
-  assert.throws(() => checkBulkFilter({ sort: 'priority' }, 'view v'), (error) => /views save/.test(error.nextStep) && !/add --label/.test(error.nextStep))
+  assert.throws(() => checkBulkFilter({ sort: 'priority' }, 'view v', 'v'), (error) => /views save v --sort priority .* --overwrite/.test(error.nextStep))
 })
 
 test('label-remove matches a stored label that has spaces at its ends, and a blank list item is no criterion', async () => {
@@ -134,4 +134,10 @@ test('label-remove matches a stored label that has spaces at its ends, and a bla
   await parseChange('label-remove', 'legacy', {}).apply(tracker, issue('A', { labels: ['legacy ', 'x'] }), actor, { dryRun: true })
   assert.deepEqual(calls[0][2], { labels: ['x'] })
   assert.throws(() => checkBulkFilter({ labels: [' '] }, 'the filter'), /labels must not be empty/)
+})
+
+test('label-add trims the stored labels, so "legacy " and "legacy" are one label', async () => {
+  calls.length = 0
+  await parseChange('label-add', 'legacy', {}).apply(tracker, issue('A', { labels: ['legacy ', 'x'] }), actor, { dryRun: true })
+  assert.deepEqual(calls[0][2], { labels: ['legacy', 'x'] })
 })

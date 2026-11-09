@@ -2100,7 +2100,7 @@ async function runBulk(ctx) {
   const found = view === undefined ? await tracker.searchIssues(filter) : await tracker.runView(view)
   if (view !== undefined) {
     filter = found.view.filter
-    checkBulkFilter(filter, `view ${view}`)
+    checkBulkFilter(filter, `view ${view}`, view)
   }
   if (found.hasMore === true) throw usageError('the tracker has more matching issues than pmkit read, so the set is cut and nothing can be written from it', 'Narrow the filter')
   if (found.issues.length > max) {
