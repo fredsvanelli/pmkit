@@ -48,6 +48,7 @@ import { boardDoc, hasMarker, problemsLine, renderDocument, roadmapDoc, sprintDo
 import { boardData, roadmapData, sprintData } from './lib/render-data.mjs'
 import { redact } from './lib/redact.mjs'
 import { shareDone, topLevelRollup } from './lib/initiatives.mjs'
+import { tailLines } from './lib/tail-lines.mjs'
 
 const TEMPLATES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates')
 const usageError = (message, nextStep = 'node scripts/pmkit.mjs --help') => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -1497,11 +1498,7 @@ export const COMMANDS = [
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch> or --run <id>, or switch to a branch')
       const found = host.ciLogs({ branch, runId })
       if (found === null) return { data: { branch, run: null, truncated: false }, text: `no failed run on ${branch}`, notes: await capabilityNotesOrNone(ctx) }
-      const lines = found.log.split('\n')
-      const hasFinalNewline = found.log.endsWith('\n')
-      const body = hasFinalNewline ? lines.slice(0, -1) : lines
-      const truncated = body.length > tail
-      const log = truncated ? `${body.slice(-tail).join('\n')}${hasFinalNewline ? '\n' : ''}` : found.log
+      const { log, truncated } = tailLines(found.log, tail)
       const failed = FAILED_RUN.has(found.conclusion)
       const hasLog = found.log.trim() !== ''
       const label = `run ${found.runId}${found.workflowName ? ` ${found.workflowName}` : ''}`
