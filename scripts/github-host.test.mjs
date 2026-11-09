@@ -458,3 +458,17 @@ test('a GraphQL: Resource not accessible refusal of gh pr view and gh pr checks 
   const other = () => { try { host(fakeExec({ status: 1, stderr: 'GraphQL: Could not resolve to a PullRequest\n' }).exec).prMergeState(1) } catch (e) { return e.httpStatus } }
   assert.equal(other(), undefined)
 })
+
+test('a SAML enforcement or missing-scopes refusal is a 403, and a message that only mentions them is not', () => {
+  const status = (stderr, read = (h) => h.prChecks(1)) => { try { read(host(fakeExec({ status: 1, stderr }).exec)) } catch (e) { return e.httpStatus } }
+  assert.equal(status('GraphQL: Resource protected by organization SAML enforcement. You must grant your OAuth token access to this organization.\n'), 403)
+  assert.equal(status('gh: Resource protected by organization SAML enforcement.\n', (h) => h.prReviews(1)), 403)
+  assert.equal(status('GraphQL: Your token has not been granted the required scopes to execute this query. (INSUFFICIENT_SCOPES)\n', (h) => h.prMergeState(1)), 403)
+  assert.equal(status('error: your authentication token is missing required scopes [read:org]\n'), 403)
+  assert.equal(status('GraphQL: Could not resolve to a PullRequest with the name SAML enforcement\n'), undefined)
+  const threads = (type) => {
+    const stdout = JSON.stringify({ errors: [{ type, message: 'nope' }] })
+    try { host(fakeExec({ status: 1, stdout, stderr: 'gh: nope\n' }).exec).prThreads(1) } catch (e) { return e.httpStatus }
+  }
+  assert.equal(threads('INSUFFICIENT_SCOPES'), 403)
+})

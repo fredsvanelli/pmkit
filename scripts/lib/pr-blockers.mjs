@@ -10,6 +10,8 @@ import { PmkitError } from './errors.mjs'
 const FAILING = new Set(['fail', 'cancel'])
 const PASSING = new Set(['pass', 'skipping'])
 const UNREAD_RULE = 'GitHub blocks the merge by a rule this command does not read (for example a ruleset)'
+// A rule the command evaluates from another read, and the read it needs.
+const NEEDS = { 'required checks': 'checks', 'required approvals': 'reviews', 'conversation resolution': 'threads' }
 const UNREAD_PROTECTION = 'GitHub blocks the merge by a rule this command could not read (branch protection or a ruleset)'
 
 /** The latest review of each author, in the order gh lists them. COMMENTED and PENDING do not change a verdict. */
@@ -109,7 +111,12 @@ export function collectBlockers(host, pr) {
     if (conversationRequired && threads && unresolved.length > 0) {
       unmet.push(`conversation resolution is required and ${plural(unresolved.length, 'thread')} ${unresolved.length === 1 ? 'is' : 'are'} unresolved`)
     }
-    policies = { protected: protection !== null, requiredApprovals, approvals, requiredChecks, unmet, unreadRule: false }
+    // A rule whose input read was refused did not run, so it is neither met nor unmet.
+    const unevaluated = []
+    if (!checkList) unevaluated.push('required checks')
+    if (!reviewData) unevaluated.push('required approvals')
+    if (conversationRequired && !threads) unevaluated.push('conversation resolution')
+    policies = { protected: protection !== null, requiredApprovals, approvals, requiredChecks, unmet, unreadRule: false, unevaluated }
   }
 
   // What blocks.
@@ -121,14 +128,19 @@ export function collectBlockers(host, pr) {
   if (reviews?.decision === 'CHANGES_REQUESTED') blocking.push({ area: 'reviews', message: reviews.changesRequested.length > 0 ? `changes requested by ${names(reviews.changesRequested)}` : 'changes are requested' })
   else if (reviews?.changesRequested.length > 0) {
     const message = `changes requested by ${names(reviews.changesRequested)}`
-    if (policies?.requiredApprovals != null) blocking.push({ area: 'reviews', message })
+    // A protection that requires 0 approvals does not require reviews, and GitHub APPROVED outranks one author's request.
+    if (reviews.decision === 'APPROVED') pending.push({ area: 'reviews', message })
+    else if (policies?.requiredApprovals > 0) blocking.push({ area: 'reviews', message })
     else if (protectionKnown) pending.push({ area: 'reviews', message })
     else unknown.push({ area: 'reviews', message })
   }
   for (const message of policies?.unmet ?? []) blocking.push({ area: 'policies', message })
   if (reviews?.decision === 'REVIEW_REQUIRED' && !(policies?.unmet ?? []).some((m) => m.startsWith('needs '))) blocking.push({ area: 'reviews', message: 'a review is required' })
   if (mergeState?.mergeStateStatus === 'BLOCKED' && blocking.length === 0) {
-    blocking.push({ area: 'policies', message: protectionKnown ? UNREAD_RULE : UNREAD_PROTECTION })
+    const unevaluated = policies?.unevaluated ?? []
+    const unread = [...new Set(unevaluated.map((u) => NEEDS[u]))]
+    const cause = unevaluated.length > 0 ? `${UNREAD_RULE}, or by ${names(unevaluated)}, which it could not evaluate because the ${unread.join(' and ')} were not read` : UNREAD_RULE
+    blocking.push({ area: 'policies', message: protectionKnown ? cause : UNREAD_PROTECTION })
     if (policies) policies.unreadRule = true
   }
 
@@ -184,9 +196,12 @@ export function blockersText(pr, found) {
     for (const t of [...threads.open, ...threads.outdated]) lines.push(`  ${t.path ?? '(no file)'}${t.line ? `:${t.line}` : ''} ${t.author ?? ''} ${t.url ?? ''}`.trimEnd())
   }
   if (policies === null) lines.push(notChecked('policies'))
-  else if (policies.unmet.length > 0) lines.push(`policies: ${policies.unmet.join('; ')}`)
-  else if (policies.unreadRule) lines.push(`policies: ${UNREAD_RULE}`)
-  else lines.push(`policies: ${policies.protected ? 'all met' : 'the base branch has no classic branch protection'}`)
+  else {
+    const parts = [...policies.unmet]
+    if (policies.unreadRule && parts.length === 0) parts.push(UNREAD_RULE)
+    if (policies.unevaluated.length > 0) parts.push(`not checked: ${names(policies.unevaluated, (u) => `${u} (${NEEDS[u]} unread)`)}`)
+    lines.push(`policies: ${parts.length > 0 ? parts.join('; ') : policies.protected ? 'all met' : 'the base branch has no classic branch protection'}`)
+  }
   if (found.draft) lines.push('draft: yes, mark it ready for review to merge')
   return lines.join('\n')
 }

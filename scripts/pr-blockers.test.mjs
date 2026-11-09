@@ -150,7 +150,7 @@ test('an outdated thread alone blocks when conversation resolution is required',
 
 test('an unprotected branch is a policy read, not an unchecked one', () => {
   const r = collectBlockers(stub().host, OPEN_PR)
-  assert.deepEqual(r.policies, { protected: false, requiredApprovals: null, approvals: 0, requiredChecks: [], unmet: [], unreadRule: false })
+  assert.deepEqual(r.policies, { protected: false, requiredApprovals: null, approvals: 0, requiredChecks: [], unmet: [], unreadRule: false, unevaluated: [] })
   assert.deepEqual(r.unchecked, [])
 })
 
@@ -309,4 +309,54 @@ test('GraphQL refusals of checks and threads, as the real host reports them, com
   assert.equal(r.threads, null)
   assert.deepEqual(r.unchecked.map((u) => u.area), ['checks', 'threads'])
   assert.equal(r.blocked, null)
+})
+
+const requiresOne = { required_pull_request_reviews: { required_approving_review_count: 1 } }
+const changeRequest = { reviews: [{ author: { login: 'ann' }, state: 'CHANGES_REQUESTED' }], reviewRequests: [] }
+
+test('a change request is pending when GitHub says APPROVED, and when the protection requires 0 approvals', () => {
+  const approved = collectBlockers(stub({ prReviews: { reviews: [...changeRequest.reviews, { author: { login: 'bob' }, state: 'APPROVED' }], reviewRequests: [] }, prMergeState: merge({ reviewDecision: 'APPROVED' }), branchProtection: requiresOne }).host, OPEN_PR)
+  assert.equal(approved.blocked, false)
+  assert.deepEqual(areas(approved.pending), ['reviews'])
+  const zero = collectBlockers(stub({ prReviews: changeRequest, branchProtection: { required_pull_request_reviews: { required_approving_review_count: 0 } } }).host, OPEN_PR)
+  assert.equal(zero.blocked, false)
+  assert.deepEqual(areas(zero.pending), ['reviews'])
+  const blocks = collectBlockers(stub({ prReviews: changeRequest, branchProtection: requiresOne }).host, OPEN_PR)
+  assert.equal(blocks.blocked, true)
+  const unread = collectBlockers(stub({ prReviews: changeRequest, branchProtection: refusal(), prMergeState: merge({ reviewDecision: 'APPROVED' }) }).host, OPEN_PR)
+  assert.deepEqual(areas(unread.pending), ['reviews'])
+})
+
+test('with the checks, reviews or threads unread, the policies they feed are unevaluated and the text says not checked', () => {
+  const rules = { ...requiresOne, required_status_checks: { contexts: ['ci'] }, required_conversation_resolution: { enabled: true } }
+  const r = collectBlockers(stub({ prChecks: refusal(), prReviews: refusal(), prThreads: refusal(), branchProtection: rules }).host, OPEN_PR)
+  assert.deepEqual(r.policies.unevaluated, ['required checks', 'required approvals', 'conversation resolution'])
+  assert.equal(r.blocked, null)
+  const text = blockersText(OPEN_PR, r)
+  assert.match(text, /^policies: not checked: required checks \(checks unread\), required approvals \(reviews unread\), conversation resolution \(threads unread\)$/m)
+  assert.doesNotMatch(text, /all met/)
+  const unmet = collectBlockers(stub({ prChecks: refusal(), branchProtection: { required_conversation_resolution: { enabled: true } }, prThreads: { threads: [thread()], incomplete: false } }).host, OPEN_PR)
+  assert.match(blockersText(OPEN_PR, unmet), /^policies: conversation resolution is required and 1 thread is unresolved; not checked: required checks \(checks unread\)$/m)
+})
+
+test('BLOCKED with an unread area names it as a possible cause next to the unread rule', () => {
+  const r = collectBlockers(stub({ prChecks: refusal(), branchProtection: { required_status_checks: { contexts: ['ci'] } }, prMergeState: merge({ mergeStateStatus: 'BLOCKED' }) }).host, OPEN_PR)
+  assert.equal(r.blocked, true)
+  assert.match(r.blocking[0].message, /by a rule this command does not read \(for example a ruleset\), or by required checks, which it could not evaluate because the checks were not read/)
+})
+
+test('a SAML or missing-scopes refusal of the real host marks the area unchecked and does not fail the command', () => {
+  for (const stderr of ['GraphQL: Resource protected by organization SAML enforcement. You must grant your OAuth token access to this organization.\n', 'GraphQL: Your token has not been granted the required scopes to execute this query. (INSUFFICIENT_SCOPES)\n']) {
+    const exec = (cmd, args) => {
+      const key = args.join(' ')
+      if (key === 'pr checks 7 --json name,state,bucket') return { status: 1, stdout: '', stderr }
+      if (key === 'pr view 7 --json mergeable,mergeStateStatus,reviewDecision,baseRefName') return { status: 0, stdout: JSON.stringify(merge()), stderr: '' }
+      if (key === 'pr view 7 --json reviews,reviewRequests') return { status: 0, stdout: JSON.stringify({ reviews: [], reviewRequests: [] }), stderr: '' }
+      if (args[1] === 'graphql') return { status: 1, stdout: JSON.stringify({ errors: [{ type: 'INSUFFICIENT_SCOPES', message: 'x' }] }), stderr: 'gh: x\n' }
+      return { status: 1, stdout: '', stderr: 'gh: Branch not protected (HTTP 404)\n' }
+    }
+    const r = collectBlockers(createGithubHost({ root: '.', env: {}, exec }), OPEN_PR)
+    assert.deepEqual(r.unchecked.map((u) => u.area), ['checks', 'threads'])
+    assert.equal(r.blocked, null)
+  }
 })
