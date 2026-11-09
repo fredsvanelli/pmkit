@@ -104,8 +104,11 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
   const workingTree = (branch) => {
     refArg('branch', branch)
     const git = (args) => run('git', args, { timeout: DIFF_TIMEOUT_MS })
-    if (git(['branch', '--show-current']).stdout.trim() !== branch) return null
-    const args = ['status', '--porcelain']
+    const current = git(['branch', '--show-current'])
+    if (current.status !== 0) throw failure('git', ['branch', '--show-current'], current)
+    if (current.stdout.trim() !== branch) return null
+    // --no-optional-locks keeps a read from writing the index. --untracked-files=all lists files, not a folder per entry.
+    const args = ['--no-optional-locks', 'status', '--porcelain', '--untracked-files=all']
     const result = git(args)
     if (result.status !== 0) throw failure('git', args, result)
     const lines = result.stdout.split('\n').filter((line) => line !== '')
@@ -253,7 +256,8 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
      * The changes of a branch since it left its base. The base is origin/<base> when that exists, so commits of other people
      * on a stale local base stay out. The branch is the local one, or origin/<branch> when only origin has it. For the branch
      * that is checked out the diff also holds the index and the working tree (tracked files), because it starts at the
-     * merge base and ends at the working tree. Returns { diff, base, ref, uncommitted, untracked }.
+     * merge base and ends at the working tree. Returns { diff, base, ref, uncommitted, untracked, committedEmpty, treeError }: committedEmpty is true when the commits alone
+     * change nothing, and treeError holds why the working tree could not be read, or null.
      */
     localDiff({ branch, base }) {
       refArg('branch', branch)
@@ -265,7 +269,12 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
       const local = exists(`refs/heads/${branch}`)
       if (!local && !exists(`refs/remotes/origin/${branch}`)) throw new PmkitError('INVALID_INPUT', `the branch "${branch}" does not exist here or on origin`, 'Pass --branch <branch>, or run git fetch origin')
       const ref = local ? branch : `origin/${branch}`
-      const tree = local ? workingTree(branch) : null
+      // A working tree that cannot be read must not stop the committed diff: the caller gets the reason in treeError.
+      let tree = null
+      let treeError = null
+      if (local) {
+        try { tree = workingTree(branch) } catch (error) { treeError = error.message }
+      }
       const uncommitted = tree?.uncommitted === true
       const untracked = tree?.untracked ?? 0
       const diffOf = (args) => {
@@ -273,9 +282,14 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
         if (result.status !== 0) throw failure('git', args, result)
         return result.stdout
       }
-      if (!uncommitted) return { diff: diffOf(['diff', '--no-color', `${from}...${ref}`]), base: from, ref, uncommitted, untracked }
+      if (!uncommitted) {
+        const diff = diffOf(['diff', '--no-color', `${from}...${ref}`])
+        return { diff, base: from, ref, uncommitted, untracked, committedEmpty: diff === '', treeError }
+      }
       const mergeBase = diffOf(['merge-base', from, ref]).trim()
-      return { diff: diffOf(['diff', '--no-color', mergeBase]), base: from, ref, uncommitted, untracked }
+      const quiet = git(['diff', '--quiet', `${from}...${ref}`])
+      if (quiet.status > 1) throw failure('git', ['diff', '--quiet', `${from}...${ref}`], quiet)
+      return { diff: diffOf(['diff', '--no-color', mergeBase]), base: from, ref, uncommitted, untracked, committedEmpty: quiet.status === 0, treeError }
     },
 
     /**
@@ -284,14 +298,16 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
      */
     workingTree,
 
-    /** The commit a branch points to: the local branch, else origin/<branch>, else null. */
-    branchTip(branch) {
+    /**
+     * Whether `oid` is on the branch: a tip of the local branch or of origin/<branch>, or behind one of them. Null when the
+     * branch exists in neither place. The local branch may be ahead of or behind what a pull request merged, so one tip is not enough.
+     */
+    branchHas(branch, oid) {
       refArg('branch', branch)
-      for (const ref of [`refs/heads/${branch}`, `refs/remotes/origin/${branch}`]) {
-        const result = run('git', ['rev-parse', '--verify', '--quiet', ref], { timeout: DIFF_TIMEOUT_MS })
-        if (result.status === 0) return result.stdout.trim()
-      }
-      return null
+      const git = (args) => run('git', args, { timeout: DIFF_TIMEOUT_MS })
+      const tips = [`refs/heads/${branch}`, `refs/remotes/origin/${branch}`].map((ref) => git(['rev-parse', '--verify', '--quiet', ref])).filter((r) => r.status === 0).map((r) => r.stdout.trim())
+      if (tips.length === 0) return null
+      return tips.some((tip) => tip === oid || git(['merge-base', '--is-ancestor', oid, tip]).status === 0)
     },
 
     /** The base branch name and the head commit of a pull request. */
