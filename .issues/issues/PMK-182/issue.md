@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-64]
 branch: pmk-182-fix-todos-scan-on-a-missing-path-and-the
 created: 2026-10-31T16:01:18.288Z
-updated: 2026-11-09T00:54:15Z
+updated: 2026-11-09T00:56:05Z
 ---
 
 ## Description
@@ -31,6 +31,6 @@ updated: 2026-11-09T00:54:15Z
 
 ## Acceptance criteria
 
-- [ ] The README, the CHANGELOG and the spec describe `incomplete`, `cut` and `unread`
-- [ ] A `--path` that does not exist answers `INVALID_INPUT`, and the docs say the path is relative to the repository root
-- [ ] SQL and Lua block comments are read, or those files are listed as not fully read
+- [x] The README, the CHANGELOG and the spec describe `incomplete`, `cut` and `unread`
+- [x] A `--path` that does not exist answers `INVALID_INPUT`, and the docs say the path is relative to the repository root
+- [x] SQL and Lua block comments are read, or those files are listed as not fully read
