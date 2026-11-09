@@ -4,3 +4,4 @@
 {"at":"2026-11-09T22:15:57Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-09T22:15:59Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-202-fix-the-degraded-and-error-paths-of"}
 {"at":"2026-11-09T22:16:56Z","by":"fred","op":"comment","to":"2026-11-09T22-16-56Z-fred.md"}
+{"at":"2026-11-09T22:19:39Z","by":"fred","op":"update","field":"acceptance_criteria"}
