@@ -30,14 +30,15 @@ function teamRepo({ github = true } = {}) {
 
 const call = (root, env, args) => run([...args, '--json'], { env, cwd: root })
 const DEPLOYMENTS = 'api repos/{owner}/{repo}/deployments?per_page=20'
+const STATUSES = (...ids) => `api graphql -f query=query($ids: [ID!]!) { nodes(ids: $ids) { ... on Deployment { latestStatus { state logUrl environmentUrl } } } } ${ids.map((id) => `ids[]=${id}`).join(' ')}`
 const META = (id) => `run view ${id} --json workflowName,url,conclusion,status`
 const RUNS = 'run list --branch main --limit 50 --json databaseId,workflowName,status,conclusion,url,createdAt,headSha'
 
 test('deploys list prints the deployments with their state', async () => {
   const root = teamRepo()
   const gh = fakeGh({
-    [DEPLOYMENTS]: { stdout: JSON.stringify([{ id: 5, environment: 'production', ref: 'main', sha: 'abc', created_at: '2026-10-22T10:00:00Z' }]) },
-    'api repos/{owner}/{repo}/deployments/5/statuses?per_page=1': { stdout: JSON.stringify([{ state: 'success', log_url: 'https://l/5' }]) },
+    [DEPLOYMENTS]: { stdout: JSON.stringify([{ id: 5, node_id: 'N5', environment: 'production', ref: 'main', sha: 'abc', created_at: '2026-10-22T10:00:00Z' }]) },
+    [STATUSES('N5')]: { stdout: JSON.stringify({ data: { nodes: [{ latestStatus: { state: 'SUCCESS', logUrl: 'https://l/5' } }] } }) },
   })
   const result = await call(root, envWith(gh), ['deploys', 'list'])
   assert.equal(result.code, 0, result.stdout + result.stderr)
@@ -46,6 +47,22 @@ test('deploys list prints the deployments with their state', async () => {
   const text = await run(['deploys', 'list'], { env: envWith(gh), cwd: root })
   assert.match(text.stdout, /production/)
   assert.match(text.stdout, /success/)
+})
+
+test('deploys list keeps the list and says the state is unknown when the status read fails', async () => {
+  const root = teamRepo()
+  const gh = fakeGh({
+    [DEPLOYMENTS]: { stdout: JSON.stringify([{ id: 5, node_id: 'N5', environment: 'production', ref: 'main', sha: 'abc', created_at: '2026-10-22T10:00:00Z' }]) },
+    [STATUSES('N5')]: { status: 1, stderr: 'HTTP 502: Bad Gateway' },
+  })
+  const json = await call(root, envWith(gh), ['deploys', 'list'])
+  assert.equal(json.code, 0, json.stdout + json.stderr)
+  const data = JSON.parse(json.stdout)
+  assert.equal(data.deploys[0].state, null)
+  assert.match(data.deploys[0].statusError, /502/)
+  const text = await run(['deploys', 'list'], { env: envWith(gh), cwd: root })
+  assert.match(text.stdout, /production unknown main/)
+  assert.match(text.stderr, /state of 1 deployment\(s\) is unknown/)
 })
 
 test('deploys list with no deployments says so', async () => {

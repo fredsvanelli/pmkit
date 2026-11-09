@@ -203,26 +203,52 @@ test('the default exec returns status, stdout and stderr', () => {
 })
 
 const depList = [
-  { id: 5, environment: 'production', ref: 'main', sha: 'abc', created_at: '2026-10-29T10:00:00Z' },
-  { id: 4, environment: 'staging', ref: 'main', sha: 'def', created_at: '2026-10-28T10:00:00Z' },
+  { id: 5, node_id: 'N5', environment: 'production', ref: 'main', sha: 'abc', created_at: '2026-10-29T10:00:00Z' },
+  { id: 4, node_id: 'N4', environment: 'staging', ref: 'main', sha: 'def', created_at: '2026-10-28T10:00:00Z' },
 ]
+const statusReply = (...nodes) => ({ stdout: JSON.stringify({ data: { nodes } }) })
+const row = (d, extra) => ({ id: d.id, environment: d.environment, ref: d.ref, sha: d.sha, createdAt: d.created_at, ...extra })
 
-test('listDeploys reads the deployments, then the latest status of each', () => {
+test('listDeploys reads the deployments, then every latest status in one graphql call', () => {
   const { exec, calls } = fakeExec(
     { stdout: JSON.stringify(depList) },
-    { stdout: JSON.stringify([{ state: 'success', log_url: 'https://l/5', target_url: null }]) },
-    { stdout: '[]' },
+    statusReply({ latestStatus: { state: 'SUCCESS', logUrl: 'https://l/5', environmentUrl: null } }, { latestStatus: null }),
   )
   const result = host(exec).listDeploys({})
-  assert.deepEqual(calls.map((c) => c.args), [
-    ['api', 'repos/{owner}/{repo}/deployments?per_page=20'],
-    ['api', 'repos/{owner}/{repo}/deployments/5/statuses?per_page=1'],
-    ['api', 'repos/{owner}/{repo}/deployments/4/statuses?per_page=1'],
-  ])
+  assert.equal(calls.length, 2)
+  assert.deepEqual(calls[0].args, ['api', 'repos/{owner}/{repo}/deployments?per_page=20'])
+  assert.deepEqual(calls[1].args.slice(0, 3), ['api', 'graphql', '-f'])
+  assert.ok(calls[1].args.includes('ids[]=N5') && calls[1].args.includes('ids[]=N4'))
   assert.deepEqual(result, [
-    { id: 5, environment: 'production', ref: 'main', sha: 'abc', createdAt: '2026-10-29T10:00:00Z', state: 'success', url: 'https://l/5' },
-    { id: 4, environment: 'staging', ref: 'main', sha: 'def', createdAt: '2026-10-28T10:00:00Z', state: 'pending', url: null },
+    row(depList[0], { state: 'success', url: 'https://l/5' }),
+    row(depList[1], { state: 'pending', url: null }),
   ])
+})
+
+test('listDeploys with no deployments makes no graphql call', () => {
+  const { exec, calls } = fakeExec({ stdout: '[]' })
+  assert.deepEqual(host(exec).listDeploys({}), [])
+  assert.equal(calls.length, 1)
+})
+
+test('listDeploys keeps the list with an unknown state when the status read fails', () => {
+  const { exec } = fakeExec({ stdout: JSON.stringify(depList) }, { status: 1, stderr: 'HTTP 502: Bad Gateway' })
+  const result = host(exec).listDeploys({})
+  assert.deepEqual(result.map((d) => [d.id, d.state, d.url]), [[5, null, null], [4, null, null]])
+  assert.match(result[0].statusError, /502/)
+})
+
+test('listDeploys marks only the deployment whose node graphql did not return as unknown', () => {
+  const { exec } = fakeExec({ stdout: JSON.stringify(depList) }, statusReply({ latestStatus: { state: 'FAILURE', logUrl: null, environmentUrl: 'https://e/5' } }, null))
+  const result = host(exec).listDeploys({})
+  assert.deepEqual([result[0].state, result[0].url, result[0].statusError], ['failure', 'https://e/5', undefined])
+  assert.equal(result[1].state, null)
+  assert.match(result[1].statusError, /no status/)
+})
+
+test('listDeploys still throws when gh is not logged in or rate limited', () => {
+  assert.throws(() => host(fakeExec({ stdout: JSON.stringify(depList) }, { status: 1, stderr: 'Run gh auth login' }).exec).listDeploys({}), (e) => e.code === 'AUTH')
+  assert.throws(() => host(fakeExec({ stdout: JSON.stringify(depList) }, { status: 1, stderr: 'API rate limit exceeded' }).exec).listDeploys({}), (e) => e.code === 'RATE_LIMITED')
 })
 
 test('listDeploys encodes the environment and checks the limit', () => {

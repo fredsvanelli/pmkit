@@ -11,6 +11,7 @@ const VIEW_FIELDS = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
 const LIST_FIELDS = 'number,url,title,headRefName,isDraft,updatedAt,author,statusCheckRollup'
 const RUN_FIELDS = 'databaseId,workflowName,status,conclusion,url,createdAt,headSha'
 const THREADS_QUERY = 'query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { pageInfo { hasNextPage } nodes { isResolved isOutdated path line comments(first: 1) { nodes { url body author { login } } } } } } } }'
+const STATUS_QUERY = 'query($ids: [ID!]!) { nodes(ids: $ids) { ... on Deployment { latestStatus { state logUrl environmentUrl } } } }'
 const INSTALL_STEP = 'Install the GitHub CLI (https://cli.github.com) and run gh auth login'
 
 /** Runs a command in root with spawnSync. A missing binary throws the spawn error (code ENOENT). */
@@ -216,17 +217,24 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
       const env = environment === undefined ? '' : `&environment=${encodeURIComponent(environment)}`
       const byRef = ref === undefined ? '' : `&ref=${encodeURIComponent(ref)}`
       const deployments = parse(check('gh', ['api', `repos/{owner}/{repo}/deployments?per_page=${limit}${env}${byRef}`]).stdout, 'the deployments')
-      return deployments.map((d) => {
-        const [status] = parse(check('gh', ['api', `repos/{owner}/{repo}/deployments/${d.id}/statuses?per_page=1`]).stdout, 'the deployment status')
-        return {
-          id: d.id,
-          environment: d.environment,
-          ref: d.ref,
-          sha: d.sha,
-          createdAt: d.created_at,
-          state: status?.state ?? 'pending',
-          url: status?.log_url ?? status?.target_url ?? null,
-        }
+      if (deployments.length === 0) return []
+      // One graphql call reads the latest status of every deployment. A failed read keeps the list, with the state unknown (null).
+      let nodes = null
+      let statusError = null
+      const args = ['api', 'graphql', '-f', `query=${STATUS_QUERY}`, ...deployments.map((d) => `ids[]=${d.node_id}`)]
+      try {
+        nodes = parse(check('gh', args).stdout, 'the deployment statuses')?.data?.nodes
+        if (!Array.isArray(nodes)) throw new PmkitError('UPSTREAM', 'gh api graphql returned no deployment statuses', 'Update the GitHub CLI and retry')
+      } catch (error) {
+        if (!(error instanceof PmkitError) || error.code !== 'UPSTREAM') throw error
+        statusError = error.message
+      }
+      return deployments.map((d, i) => {
+        const base = { id: d.id, environment: d.environment, ref: d.ref, sha: d.sha, createdAt: d.created_at }
+        const node = nodes?.[i]
+        if (!node) return { ...base, state: null, url: null, statusError: statusError ?? 'GitHub returned no status for this deployment' }
+        const status = node.latestStatus
+        return { ...base, state: status ? String(status.state).toLowerCase() : 'pending', url: status?.logUrl ?? status?.environmentUrl ?? null }
       })
     },
 

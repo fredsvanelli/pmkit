@@ -1478,8 +1478,10 @@ export const COMMANDS = [
       if (limit !== undefined && (limit < 1 || limit > 100)) throw usageError('--limit must be from 1 to 100')
       if (ctx.opt('environment') === '') throw usageError('--environment must not be empty')
       const deploys = ctx.host().listDeploys({ environment: ctx.opt('environment'), limit })
-      const lines = deploys.map((d) => `${d.environment} ${d.state} ${d.ref} ${d.sha.slice(0, 7)} ${d.createdAt}${d.url ? ` ${d.url}` : ''}`)
-      return { data: { deploys }, text: lines.length === 0 ? 'no deployments' : lines.join('\n'), notes: await capabilityNotesOrNone(ctx) }
+      const lines = deploys.map((d) => `${d.environment} ${d.state ?? 'unknown'} ${d.ref} ${d.sha.slice(0, 7)} ${d.createdAt}${d.url ? ` ${d.url}` : ''}`)
+      const unknown = deploys.find((d) => d.state === null)
+      const warnings = unknown ? [`the state of ${deploys.filter((d) => d.state === null).length} deployment(s) is unknown: ${unknown.statusError}`] : []
+      return { data: { deploys }, text: lines.length === 0 ? 'no deployments' : lines.join('\n'), warnings, notes: await capabilityNotesOrNone(ctx) }
     },
   },
   {
