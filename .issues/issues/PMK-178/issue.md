@@ -2,14 +2,14 @@
 id: PMK-178
 title: "Fix unblock-pr when checks, reviews or scopes cannot be read"
 type: bug
-status: in_progress
+status: in_review
 priority: high
 estimate: 2
 assignee: fred
 related: [PMK-62]
 branch: pmk-178-fix-unblock-pr-when-checks-reviews-or
 created: 2026-10-31T16:01:12.578Z
-updated: 2026-11-09T00:27:41Z
+updated: 2026-11-09T00:28:07Z
 ---
 
 ## Description
