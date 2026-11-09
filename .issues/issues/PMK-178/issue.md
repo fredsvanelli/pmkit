@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-62]
 branch: pmk-178-fix-unblock-pr-when-checks-reviews-or
 created: 2026-10-31T16:01:12.578Z
-updated: 2026-11-09T00:22:01Z
+updated: 2026-11-09T00:27:41Z
 ---
 
 ## Description
@@ -31,6 +31,6 @@ updated: 2026-11-09T00:22:01Z
 
 ## Acceptance criteria
 
-- [ ] With checks or reviews unread, the policies line says they were not checked, and `BLOCKED` names them as a possible cause
-- [ ] `INSUFFICIENT_SCOPES` and SAML refusals mark the area `unchecked`
-- [ ] `reviewDecision: APPROVED` and a required count of 0 do not make a change request blocking
+- [x] With checks or reviews unread, the policies line says they were not checked, and `BLOCKED` names them as a possible cause
+- [x] `INSUFFICIENT_SCOPES` and SAML refusals mark the area `unchecked`
+- [x] `reviewDecision: APPROVED` and a required count of 0 do not make a change request blocking

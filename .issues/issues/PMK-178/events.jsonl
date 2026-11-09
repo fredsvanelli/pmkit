@@ -4,3 +4,6 @@
 {"at":"2026-11-09T00:21:56Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-09T00:22:01Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-178-fix-unblock-pr-when-checks-reviews-or"}
 {"at":"2026-11-09T00:22:58Z","by":"fred","op":"comment","to":"2026-11-09T00-22-58Z-fred.md"}
+{"at":"2026-11-09T00:27:40Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T00:27:41Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T00:27:41Z","by":"fred","op":"update","field":"acceptance_criteria"}
