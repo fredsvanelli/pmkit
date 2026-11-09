@@ -4,3 +4,7 @@
 {"at":"2026-11-09T01:18:26Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-09T01:18:30Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-185-fix-alerts-list-notes-advisory-titles"}
 {"at":"2026-11-09T01:19:14Z","by":"fred","op":"comment","to":"2026-11-09T01-19-14Z-fred.md"}
+{"at":"2026-11-09T01:20:06Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T01:20:06Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T01:20:06Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T01:20:06Z","by":"fred","op":"update","field":"acceptance_criteria"}
