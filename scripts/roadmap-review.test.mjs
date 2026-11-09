@@ -219,3 +219,53 @@ test('the text shows the tables, unknown health, the not checked epics and incom
   assert.match(roadmapReviewText({ ...report, epics: null, lateIssues: [] }), /epics\nnot checked: /)
   assert.match(roadmapReviewText({ ...report, epics: null, lateIssues: [] }), /late issues\nnone/)
 })
+
+test('a failed epic list is not checked and shows no late-issues fallback; an unsupported one keeps it', () => {
+  const issues = [issue('I1', { due: '2026-11-01' })]
+  const failed = review({ epics: null, issues, sectionErrors: { epics: 'UPSTREAM' } })
+  assert.deepEqual(failed.unavailable, { epics: 'UPSTREAM', milestones: null })
+  assert.equal(failed.lateIssues, null)
+  assert.equal(failed.incomplete, true)
+  const text = roadmapReviewText(failed)
+  assert.match(text, /epics\nnot checked: the tracker failed to list epics \(UPSTREAM\), see the warnings/)
+  assert.doesNotMatch(text, /cannot list epics|late issues/)
+  const unsupported = review({ epics: null, issues, sectionErrors: { epics: 'NOT_SUPPORTED' } })
+  assert.equal(unsupported.unavailable.epics, 'NOT_SUPPORTED')
+  assert.equal(unsupported.lateIssues.length, 1)
+  assert.match(roadmapReviewText(unsupported), /cannot list epics/)
+})
+
+test('a failed milestone list says it failed, not that the tracker cannot list milestones', () => {
+  const report = review({ milestones: null, sectionErrors: { milestones: 'RATE_LIMITED' } })
+  assert.equal(report.unavailable.milestones, 'RATE_LIMITED')
+  assert.match(roadmapReviewText(report), /milestones\nnot checked: the tracker failed to list milestones \(RATE_LIMITED\), see the warnings/)
+})
+
+test('an unknown milestone delay reads unknown in the text, an on-time one stays blank', () => {
+  const report = review({
+    milestones: [{ id: 'bad', name: 'bad', unreadable: true }, { id: 'ok', name: 'Ok', due: '2026-12-01' }, { id: 'none', name: 'None' }],
+    issues: [issue('I1', { milestone: 'ghost' })],
+  })
+  const lines = roadmapReviewText(report).split('\n')
+  const delay = (id) => lines.find((l) => l.startsWith(`${id} `)).split('|').at(-1).trim()
+  assert.deepEqual(['bad', 'ghost', 'ok', 'none'].map(delay), ['unknown', 'unknown', '', ''])
+})
+
+test('a Linear epic lists each of its milestones by name', () => {
+  const report = review({
+    epics: [epic('P1'), epic('P2', { milestone: 'm9' })],
+    milestones: [{ id: 'm1', name: 'Alpha', due: '2026-11-15', epic: 'P1' }, { id: 'm2', name: 'Beta', due: '2026-12-15', epic: 'P1' }, { id: 'm9', name: 'Nine' }],
+  })
+  assert.deepEqual(row(report, 'P1').milestones, [{ id: 'm1', name: 'Alpha' }, { id: 'm2', name: 'Beta' }])
+  assert.equal(row(report, 'P1').milestone, 'm1')
+  assert.deepEqual(row(report, 'P2').milestones, [{ id: 'm9', name: 'Nine' }])
+  assert.match(roadmapReviewText(report), /\| Alpha, Beta /)
+})
+
+test('a todo epic started within the window is not unchecked, one started before it is', () => {
+  const report = review({
+    epics: [epic('S1', { status: status('todo'), start: '2026-11-04' }), epic('S2', { status: status('todo'), start: '2026-10-01' })],
+    updatesByEpic: { S1: null, S2: null },
+  })
+  assert.deepEqual(report.updatesNotChecked, ['S2'])
+})
