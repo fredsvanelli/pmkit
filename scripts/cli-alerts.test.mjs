@@ -104,7 +104,7 @@ test('--severity with an unknown value is INVALID_INPUT', async () => {
 test('output larger than 1 MiB is read in full, with no warning', async () => {
   const result = await setup({ out: '', status: 1, extraEnv: { PMKIT_FAKE_NPM_PAD: String(3 * 1024 * 1024) } })(['--json'])
   assert.equal(result.code, 0, result.stderr.slice(0, 300))
-  assert.equal(result.stderr, '')
+  assert.doesNotMatch(result.stderr, /warning/)
   assert.deepEqual(JSON.parse(result.stdout).alerts.map((a) => a.id), ['npm-audit:big'])
   assert.equal(NPM_MAX_BUFFER, 256 * 1024 * 1024)
 })
@@ -172,4 +172,10 @@ test('alerts scan runs on the same fake npm as alerts list', async () => {
   const root = makeRepo('basic')
   const scan = await run(['alerts', 'scan', '--json'], { env: process.env, cwd: root })
   assert.equal(JSON.parse(scan.stdout).absent, true)
+})
+
+test('alerts list prints the note of the derived path, like alerts scan', async () => {
+  const result = await setup()(['--json'])
+  assert.equal(result.code, 0, result.stderr)
+  assert.match(result.stderr, /^note: security_alerts is derived from scanners, not read natively$/m)
 })

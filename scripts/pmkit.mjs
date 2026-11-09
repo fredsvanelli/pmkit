@@ -382,10 +382,10 @@ async function capabilityNotes(tracker, id) {
   return note === null ? [] : [note]
 }
 
-/** The linked_code note of a command that reads git. A tracker that cannot load or report its manifest costs the note, not the command. */
-async function linkedCodeNotes(ctx) {
+/** The note of a command that must work without its tracker (default linked_code). A tracker that cannot load or report its manifest costs the note, not the command. */
+async function capabilityNotesOrNone(ctx, id = 'linked_code') {
   try {
-    return await capabilityNotes(await ctx.tracker(), 'linked_code')
+    return await capabilityNotes(await ctx.tracker(), id)
   } catch {
     return []
   }
@@ -1305,7 +1305,7 @@ export const COMMANDS = [
   },
   {
     name: 'alerts list', summary: 'security alerts from the scanners the repository has (npm audit), highest severity first; reads only', usage: '[--severity critical,high,medium,low]', flags: ['severity'],
-    run: (ctx) => {
+    run: async (ctx) => {
       ctx.config() // loads and checks .pmkit/config.yaml like every command, though alerts never read the tracker
       const wanted = csv(ctx.list('severity'))
       const unknown = wanted.filter((value) => !SEVERITIES.includes(value))
@@ -1322,7 +1322,7 @@ export const COMMANDS = [
       else text = failed.length === 0 ? 'no alerts' : 'no alerts read'
       // A failed scanner left part of the scan unread, so the text never reads as a clean result.
       if (failed.length > 0) text = [text, ...failed.map((scanner) => `incomplete: ${scanner.id} failed (${scanner.error}), so this result may miss alerts`)].join('\n')
-      return { data: { incomplete: failed.length > 0, scanners, alerts }, text, warnings: found.warnings }
+      return { data: { incomplete: failed.length > 0, scanners, alerts }, text, warnings: found.warnings, notes: await capabilityNotesOrNone(ctx, 'security_alerts') }
     },
   },
   {
@@ -1409,7 +1409,7 @@ export const COMMANDS = [
       if (ctx.dryRun) return { data: { branch, from }, text: `would create branch ${branch} from ${from}\ndry run: nothing was written`, notes: ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : [] }
       host.createBranch(branch, { from })
       const result = await tracker.updateIssue(issue.id, { branch }, actor)
-      return { data: { branch, ...result }, text: `created branch ${branch} from ${from}\n${writeText(result, ctx)}`, commit: issue.id, notes: [...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : []), ...(await linkedCodeNotes(ctx))] }
+      return { data: { branch, ...result }, text: `created branch ${branch} from ${from}\n${writeText(result, ctx)}`, commit: issue.id, notes: [...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : []), ...(await capabilityNotesOrNone(ctx))] }
     },
   },
   {
@@ -1428,12 +1428,12 @@ export const COMMANDS = [
         const text = open
           ? `would push ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`
           : `would open a pull request ${request.head} to ${request.base}\n${request.title}\n\n${body}`
-        return { data: { ...request, existing: open !== null, pr: open }, text: `${text}\ndry run: nothing was written`, notes: [...(open ? [] : defaultBranchNotes(ctx)), ...(await linkedCodeNotes(ctx))] }
+        return { data: { ...request, existing: open !== null, pr: open }, text: `${text}\ndry run: nothing was written`, notes: [...(open ? [] : defaultBranchNotes(ctx)), ...(await capabilityNotesOrNone(ctx))] }
       }
       host.push(issue.branch)
-      if (open) return { data: { ...open, existing: true }, text: `pushed ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`, notes: await linkedCodeNotes(ctx) }
+      if (open) return { data: { ...open, existing: true }, text: `pushed ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`, notes: await capabilityNotesOrNone(ctx) }
       const pr = host.openPullRequest(request)
-      return { data: { ...pr, existing: false }, text: `opened pull request #${pr.number} ${pr.url}`, notes: [...defaultBranchNotes(ctx), ...(await linkedCodeNotes(ctx))] }
+      return { data: { ...pr, existing: false }, text: `opened pull request #${pr.number} ${pr.url}`, notes: [...defaultBranchNotes(ctx), ...(await capabilityNotesOrNone(ctx))] }
     },
   },
   {
@@ -1446,9 +1446,9 @@ export const COMMANDS = [
       const pr = host.getPullRequest({ head: issue.branch })
       if (pr?.state !== 'OPEN') throw usageError(`${issue.branch} has no open pull request`, `pmkit pr open --issue ${issue.id}`)
       if (!pr.isDraft) throw usageError(`pull request #${pr.number} is not a draft, it is already ready for review`, `pmkit pr status --branch ${issue.branch}`)
-      if (ctx.dryRun) return { data: { ...pr, isDraft: false }, text: `would mark pull request #${pr.number} ready for review ${pr.url}\ndry run: nothing was written`, notes: await linkedCodeNotes(ctx) }
+      if (ctx.dryRun) return { data: { ...pr, isDraft: false }, text: `would mark pull request #${pr.number} ready for review ${pr.url}\ndry run: nothing was written`, notes: await capabilityNotesOrNone(ctx) }
       const ready = host.markReady(pr.number)
-      return { data: ready, text: `marked pull request #${ready.number} ready for review ${ready.url}`, notes: await linkedCodeNotes(ctx) }
+      return { data: ready, text: `marked pull request #${ready.number} ready for review ${ready.url}`, notes: await capabilityNotesOrNone(ctx) }
     },
   },
   {
@@ -1463,7 +1463,7 @@ export const COMMANDS = [
       const lines = pr
         ? [`#${pr.number} ${pr.title} (${pr.state}${pr.isDraft ? ', draft' : ''})`, pr.url, `checks: ${checks.length === 0 ? '(none)' : checks.map((c) => `${c.name} ${c.bucket ?? c.state}`).join(', ')}`, `reviews: ${reviews.length === 0 ? '(none)' : reviews.map((r) => r.state).join(', ')}`]
         : [`no pull request for ${branch}`]
-      return { data: { branch, pr, checks, reviews }, text: lines.join('\n'), notes: await linkedCodeNotes(ctx) }
+      return { data: { branch, pr, checks, reviews }, text: lines.join('\n'), notes: await capabilityNotesOrNone(ctx) }
     },
   },
   {
@@ -1474,7 +1474,7 @@ export const COMMANDS = [
       if (ctx.opt('environment') === '') throw usageError('--environment must not be empty')
       const deploys = ctx.host().listDeploys({ environment: ctx.opt('environment'), limit })
       const lines = deploys.map((d) => `${d.environment} ${d.state} ${d.ref} ${d.sha.slice(0, 7)} ${d.createdAt}${d.url ? ` ${d.url}` : ''}`)
-      return { data: { deploys }, text: lines.length === 0 ? 'no deployments' : lines.join('\n'), notes: await linkedCodeNotes(ctx) }
+      return { data: { deploys }, text: lines.length === 0 ? 'no deployments' : lines.join('\n'), notes: await capabilityNotesOrNone(ctx) }
     },
   },
   {
@@ -1489,13 +1489,13 @@ export const COMMANDS = [
       const branch = runId === undefined ? ctx.opt('branch') ?? host.currentBranch() : undefined
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch> or --run <id>, or switch to a branch')
       const found = host.ciLogs({ branch, runId })
-      if (found === null) return { data: { branch, run: null, truncated: false }, text: `no failed run on ${branch}`, notes: await linkedCodeNotes(ctx) }
+      if (found === null) return { data: { branch, run: null, truncated: false }, text: `no failed run on ${branch}`, notes: await capabilityNotesOrNone(ctx) }
       const lines = found.log.split('\n')
       const hasFinalNewline = found.log.endsWith('\n')
       const body = hasFinalNewline ? lines.slice(0, -1) : lines
       const truncated = body.length > tail
       const log = truncated ? `${body.slice(-tail).join('\n')}${hasFinalNewline ? '\n' : ''}` : found.log
-      return { data: { branch, run: { ...found, log }, truncated }, text: `run ${found.runId}${found.workflowName ? ` ${found.workflowName}` : ''}${truncated ? `, last ${tail} lines` : ''}\n${log}`, notes: await linkedCodeNotes(ctx) }
+      return { data: { branch, run: { ...found, log }, truncated }, text: `run ${found.runId}${found.workflowName ? ` ${found.workflowName}` : ''}${truncated ? `, last ${tail} lines` : ''}\n${log}`, notes: await capabilityNotesOrNone(ctx) }
     },
   },
   {
@@ -1583,7 +1583,7 @@ export const COMMANDS = [
       const diff = truncated ? `${all.slice(0, maxLines).join('\n')}\n` : full
       const size = truncated ? `first ${maxLines} of ${all.length} lines` : `${all.length} lines`
       const head = source === 'pull_request' ? `pull request #${pr.number}, ${size}` : `local diff of ${branch} against ${base}, ${size}`
-      return { data: { branch, source, pr: source === 'pull_request' ? pr : null, base, uncommitted: tree?.uncommitted ?? false, uncommittedIncluded: local?.uncommitted ?? false, untracked: tree?.untracked ?? 0, incomplete, diff, truncated, lines: all.length }, text: `${head}\n${diff}`, notes: [...notes, ...(await linkedCodeNotes(ctx))] }
+      return { data: { branch, source, pr: source === 'pull_request' ? pr : null, base, uncommitted: tree?.uncommitted ?? false, uncommittedIncluded: local?.uncommitted ?? false, untracked: tree?.untracked ?? 0, incomplete, diff, truncated, lines: all.length }, text: `${head}\n${diff}`, notes: [...notes, ...(await capabilityNotesOrNone(ctx))] }
     },
   },
   {
@@ -1593,9 +1593,9 @@ export const COMMANDS = [
       const branch = ctx.opt('branch') ?? host.currentBranch()
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
       const pr = host.getPullRequest({ head: branch })
-      if (!pr) return { data: { branch, pr: null, blocked: null }, text: `no pull request for ${branch}`, notes: await linkedCodeNotes(ctx) }
+      if (!pr) return { data: { branch, pr: null, blocked: null }, text: `no pull request for ${branch}`, notes: await capabilityNotesOrNone(ctx) }
       const found = collectBlockers(host, pr)
-      return { data: { branch, pr, ...found }, text: blockersText(pr, found), notes: await linkedCodeNotes(ctx) }
+      return { data: { branch, pr, ...found }, text: blockersText(pr, found), notes: await capabilityNotesOrNone(ctx) }
     },
   },
   {
@@ -1625,7 +1625,7 @@ export const COMMANDS = [
       const lines = [`checked ${candidates.length} in_review issues, moved ${moved.length} to done`, ...moved.map((m) => `  ${m.id} merged in #${m.pr}`), ...problems.map((p) => `  ${problemLine(p)}`)]
       if (ctx.dryRun) lines.push('dry run: nothing was written')
       const data = { checked: candidates.length, moved, problems }
-      return { data, text: lines.join('\n'), commit: moved.length > 0 ? moved.map((m) => m.id).join(' ') : undefined, notes: await linkedCodeNotes(ctx) }
+      return { data, text: lines.join('\n'), commit: moved.length > 0 ? moved.map((m) => m.id).join(' ') : undefined, notes: await capabilityNotesOrNone(ctx) }
     },
   },
   {
@@ -2218,7 +2218,7 @@ async function runTrackAgents(ctx) {
     rows.push(row)
   }
   if (incomplete) warnings.push('the list is incomplete: some reads failed, were cut, or were not ready (GitHub had not computed the merge state), so what is marked unknown or not verified is not confirmed')
-  if (host !== null) notes.push(...(await linkedCodeNotes(ctx)))
+  if (host !== null) notes.push(...(await capabilityNotesOrNone(ctx)))
   const stale = rows.filter((row) => row.delegation.state === 'stale').length
   if (stale > 0) notes.push(`${stale} ${stale === 1 ? 'issue has' : 'issues have'} an agent as assignee but the newest delegation record names another agent`)
   const header = ['Issue', 'Agent', 'Status', 'Delegation', 'Branch', 'Pull request']

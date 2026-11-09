@@ -2,12 +2,14 @@
 id: PMK-185
 title: "Fix alerts list notes, advisory titles and the missing-npm check"
 type: bug
-status: backlog
+status: in_review
 priority: medium
 estimate: 1
+assignee: fred
 related: [PMK-48]
+branch: pmk-185-fix-alerts-list-notes-advisory-titles
 created: 2026-10-31T16:01:21.642Z
-updated: 2026-10-31T16:01:22Z
+updated: 2026-11-09T01:30:36Z
 ---
 
 ## Description
@@ -29,7 +31,7 @@ updated: 2026-10-31T16:01:22Z
 
 ## Acceptance criteria
 
-- [ ] `alerts list` prints the derived-path note
-- [ ] The alert title and URL come from the advisory with the alert's severity
-- [ ] The empty-output warning includes npm's stderr
-- [ ] A valid `npm audit` report is never read as a missing npm
+- [x] `alerts list` prints the derived-path note
+- [x] The alert title and URL come from the advisory with the alert's severity
+- [x] The empty-output warning includes npm's stderr
+- [x] A valid `npm audit` report is never read as a missing npm

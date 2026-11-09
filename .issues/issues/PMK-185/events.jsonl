@@ -1,2 +1,12 @@
 {"at":"2026-10-31T16:01:21Z","by":"fred","op":"create","to":{"id":"PMK-185","title":"Fix alerts list notes, advisory titles and the missing-npm check","type":"bug","status":"backlog","priority":"medium","estimate":1,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-31T16:01:21.642Z","updated":"2026-10-31T16:01:21Z"}}
 {"at":"2026-10-31T16:01:22Z","by":"fred","op":"link","field":"related","to":"PMK-48"}
+{"at":"2026-11-09T01:18:26Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-09T01:18:26Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-09T01:18:30Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-185-fix-alerts-list-notes-advisory-titles"}
+{"at":"2026-11-09T01:19:14Z","by":"fred","op":"comment","to":"2026-11-09T01-19-14Z-fred.md"}
+{"at":"2026-11-09T01:20:06Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T01:20:06Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T01:20:06Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T01:20:06Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T01:30:36Z","by":"fred","op":"comment","to":"2026-11-09T01-30-36Z-fred.md"}
+{"at":"2026-11-09T01:30:36Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

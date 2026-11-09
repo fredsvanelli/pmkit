@@ -11,8 +11,11 @@ export const SEVERITIES = ['critical', 'high', 'medium', 'low']
 const NPM_SEVERITY = { critical: 'critical', high: 'high', moderate: 'medium', low: 'low', info: 'low' }
 
 /** Parses the stdout of `npm audit --json` (report version 2). Throws an Error when it is not an audit report. */
-export function parseNpmAudit(stdout) {
-  if (!stdout || stdout.trim() === '') throw new Error('npm audit printed empty output')
+export function parseNpmAudit(stdout, stderr = '') {
+  if (!stdout || stdout.trim() === '') {
+    const detail = String(stderr ?? '').replace(/\s+/g, ' ').trim().slice(0, 300)
+    throw new Error(detail === '' ? 'npm audit printed empty output' : `npm audit printed empty output: ${detail}`)
+  }
   let report
   try {
     report = JSON.parse(stdout)
@@ -37,7 +40,10 @@ export function parseNpmAudit(stdout) {
     }
     const via = Array.isArray(entry.via) ? entry.via : []
     const objects = via.filter((item) => item !== null && typeof item === 'object')
-    const advisory = objects[0]
+    // The title and URL come from the advisory that has the alert's severity, else the most severe one, the first on a tie.
+    const advisoryRank = (item) => SEVERITIES.indexOf(NPM_SEVERITY[item.severity] ?? 'low')
+    const advisory = objects.find((item) => NPM_SEVERITY[item.severity] === severity)
+      ?? objects.reduce((best, item) => (best === undefined || advisoryRank(item) < advisoryRank(best) ? item : best), undefined)
     const names = via.filter((item) => typeof item === 'string')
     return {
       id: `npm-audit:${name}`,
@@ -63,10 +69,11 @@ export const npmCommand = (platform = process.platform) => (platform === 'win32'
 
 /**
  * True when the shell could not find npm.cmd. cmd.exe exits with 9009 for an unknown command in every display language,
- * so the exit code is the main test. The English "is not recognized" text on stderr is the fallback.
+ * so the exit code is the main test. The English "is not recognized" text on stderr is the fallback. Only when stdout is
+ * blank: an audit report on stdout means npm ran, whatever its exit code and stderr say.
  */
-export const isNpmMissingOnShell = (result) => result.status === 9009
-  || (result.status !== 0 && /is not recognized/i.test(result.stderr ?? ''))
+export const isNpmMissingOnShell = (result) => (result.stdout ?? '').trim() === ''
+  && (result.status === 9009 || (result.status !== 0 && /is not recognized/i.test(result.stderr ?? '')))
 
 const LOCKFILES = ['package-lock.json', 'npm-shrinkwrap.json']
 
@@ -88,7 +95,7 @@ export const SCANNERS = [
       }
       // With the shell, a missing npm.cmd exits non-zero and does not raise ENOENT.
       if (platform === 'win32' && isNpmMissingOnShell(result)) throw new Error('npm is not installed or not on PATH')
-      return parseNpmAudit(result.stdout)
+      return parseNpmAudit(result.stdout, result.stderr)
     },
   },
 ]
