@@ -2,12 +2,14 @@
 id: PMK-199
 title: Fix track-agents on a broken comment and transient errors
 type: bug
-status: backlog
+status: in_progress
 priority: medium
 estimate: 1
+assignee: fred
 related: [PMK-58]
+branch: pmk-199-fix-track-agents-on-a-broken-comment-and
 created: 2026-10-31T20:35:31.270Z
-updated: 2026-10-31T20:35:31Z
+updated: 2026-11-09T03:59:24Z
 ---
 
 ## Description
