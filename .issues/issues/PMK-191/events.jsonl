@@ -5,3 +5,5 @@
 {"at":"2026-11-09T02:36:01Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-191-make-the-ctime-test-of-query-index"}
 {"at":"2026-11-09T02:44:30Z","by":"fred","op":"comment","to":"2026-11-09T02-44-30Z-fred.md"}
 {"at":"2026-11-09T02:53:08Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T02:53:32Z","by":"fred","op":"comment","to":"2026-11-09T02-53-32Z-fred.md"}
+{"at":"2026-11-09T02:53:32Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
