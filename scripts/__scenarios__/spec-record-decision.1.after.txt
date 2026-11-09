@@ -1,8 +1,8 @@
 $ pmkit issues get ISS-5N1R --json  [step 2, read]
 exit 0
-$ pmkit docs next-adr --title 'Keep estimates in points' --json  [step 3, read]
+$ pmkit docs next-adr --title-file <inputs>/title-keep-estimates-in-points.md --json  [step 3, read]
 exit 0
-$ pmkit docs next-adr --title 'Keep estimates in points' --json  [step 5, read]
+$ pmkit docs next-adr --title-file <inputs>/title-keep-estimates-in-points.md --json  [step 5, read]
 exit 0
 $ pmkit docs create adr/0003-keep-estimates-in-points.md --body-file <inputs>/adr-0003.md --dry-run --json  [step 5, dry run]
 exit 0

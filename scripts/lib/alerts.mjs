@@ -155,7 +155,8 @@ export function priorityFor(severity, priorities) {
 /** The issue an alert becomes. `priorities` and `types` come from the tracker. The description ends with the `alert-key:` line. */
 export function alertCandidate(alert, { priorities, types }) {
   const key = alertKey(alert)
-  const title = `Security: ${alert.package}: ${alert.title}`.slice(0, MAX_TITLE)
+  // An advisory title can hold line breaks; `--title-file` rejects a title of more than one line.
+  const title = `Security: ${alert.package}: ${alert.title}`.replace(/\s+/g, ' ').trim().slice(0, MAX_TITLE)
   const description = [
     alert.title, '',
     `Severity: ${alert.severity}`, `Package: ${alert.package}`, `Scanner: ${alert.scanner}`,

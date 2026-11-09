@@ -2,14 +2,14 @@ $ pmkit todos scan --json  [step 1, read]
 exit 0
 $ pmkit discover --json  [step 2, read]
 exit 0
-$ pmkit issues create --title 'fix the cache' --type bug --description-file <inputs>/todo-cache.md --dry-run --json  [step 4, dry run]
+$ pmkit issues create --title-file <inputs>/title-fix-the-cache.md --type bug --description-file <inputs>/todo-cache.md --dry-run --json  [step 4, dry run]
 exit 0
-$ pmkit issues create --title 'unique work item' --type task --description-file <inputs>/todo-unique.md --dry-run --json  [step 4, dry run]
+$ pmkit issues create --title-file <inputs>/title-unique-work-item.md --type task --description-file <inputs>/todo-unique.md --dry-run --json  [step 4, dry run]
 exit 0
 ? Step 5  [confirmed]
-$ pmkit issues create --title 'fix the cache' --type bug --description-file <inputs>/todo-cache.md --json  [step 6, write]
+$ pmkit issues create --title-file <inputs>/title-fix-the-cache.md --type bug --description-file <inputs>/todo-cache.md --json  [step 6, write]
 exit 0
-$ pmkit issues create --title 'unique work item' --type task --description-file <inputs>/todo-unique.md --json  [step 6, write]
+$ pmkit issues create --title-file <inputs>/title-unique-work-item.md --type task --description-file <inputs>/todo-unique.md --json  [step 6, write]
 exit 0
 
 --- added .issues/issues/ISS-DZEF/events.jsonl

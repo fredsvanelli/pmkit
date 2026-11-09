@@ -3,13 +3,13 @@ exit 0
 $ pmkit discover --json  [step 2, read]
 exit 0
 ? Step 5  [confirmed]
-$ pmkit issues create --title 'Design the empty state guide' --parent ISS-3F7H --type task --estimate 1 --dry-run --json  [step 6, dry run]
+$ pmkit issues create --title-file <inputs>/title-design-the-empty-state-guide.md --parent ISS-3F7H --type task --estimate 1 --dry-run --json  [step 6, dry run]
 exit 0
-$ pmkit issues create --title 'Build the empty state component' --parent ISS-3F7H --type task --estimate 1 --dry-run --json  [step 6, dry run]
+$ pmkit issues create --title-file <inputs>/title-build-the-empty-state-component.md --parent ISS-3F7H --type task --estimate 1 --dry-run --json  [step 6, dry run]
 exit 0
-$ pmkit issues create --title 'Design the empty state guide' --parent ISS-3F7H --type task --estimate 1 --json  [step 6, write]
+$ pmkit issues create --title-file <inputs>/title-design-the-empty-state-guide.md --parent ISS-3F7H --type task --estimate 1 --json  [step 6, write]
 exit 0
-$ pmkit issues create --title 'Build the empty state component' --parent ISS-3F7H --type task --estimate 1 --json  [step 6, write]
+$ pmkit issues create --title-file <inputs>/title-build-the-empty-state-component.md --parent ISS-3F7H --type task --estimate 1 --json  [step 6, write]
 exit 0
 $ pmkit issues link ISS-M0GZ ISS-Y8KQ --kind blocks --json  [step 8, write]
 exit 0

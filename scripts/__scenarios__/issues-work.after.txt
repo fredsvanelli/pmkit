@@ -49,10 +49,10 @@ exit 0
 ? Step 9  [confirmed]
 $ pmkit issues move ISS-4M2S in_review --json  [step 9.6, write]
 exit 0
-$ pmkit issues create --title 'Check the CSV header against the finance template' --dry-run --json  [step 10, dry run]
+$ pmkit issues create --title-file <inputs>/title-check-the-csv-header-against-the-finance.md --dry-run --json  [step 10, dry run]
 exit 0
 ? Step 10  [confirmed]
-$ pmkit issues create --title 'Check the CSV header against the finance template' --json  [step 10, write]
+$ pmkit issues create --title-file <inputs>/title-check-the-csv-header-against-the-finance.md --json  [step 10, write]
 exit 0
 $ pmkit issues link ISS-M0GZ ISS-4M2S --kind related --dry-run --json  [step 10, dry run]
 exit 0

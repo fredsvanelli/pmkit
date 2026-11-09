@@ -65,6 +65,11 @@ test('alertCandidate cuts a long title at 120 characters and says when there is 
   assert.match(candidate.description, /Advisory: none\nFix available: yes/)
 })
 
+test('alertCandidate joins line breaks of an advisory title into one line', () => {
+  const candidate = alertCandidate({ ...ALERT, title: 'Bad\r\nthing\n\n  here\u2028end' }, { priorities: ['a'], types: ['bug'] })
+  assert.equal(candidate.title, 'Security: lodash: Bad thing here end')
+})
+
 test('matchAlerts matches an issue that holds the alert-key line, whatever its status, and keeps the rest', () => {
   const options = { priorities: ['urgent', 'high', 'medium', 'low'], types: ['bug'] }
   const a = alertCandidate(ALERT, options)

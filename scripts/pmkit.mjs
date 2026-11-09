@@ -133,6 +133,21 @@ function readInput(source) {
   }
 }
 
+/**
+ * A one-line text (a title, a name) from `--<key>` or from the file of `--<key>-file`. A text read from a file never passes
+ * through the shell, so a backtick or $( in it stays text. The two flags are exclusive, and the file holds one line, not empty.
+ * Returns undefined when neither flag is given.
+ */
+function lineFromFlag(opt, key) {
+  const file = opt(`${key}-file`)
+  if (file === undefined) return opt(key)
+  if (opt(key) !== undefined) throw usageError(`--${key} and --${key}-file are exclusive`, 'pass one of them')
+  const text = readInput(file).replace(/\n+$/, '')
+  if (text.trim() === '') throw usageError(`${file} has no ${key}`, `write the ${key} on the first line`)
+  if (text.includes('\n')) throw usageError(`${file} has more than one line`, `a ${key} is one line`)
+  return text
+}
+
 function parseCriteria(text) {
   return text.split('\n')
     .map((line) => line.trim())
@@ -191,15 +206,7 @@ async function issuePatch(ctx, { create }) {
   const { opt } = ctx
   const patch = {}
   const set = (key, value) => { if (value !== undefined) patch[key] = value }
-  set('title', opt('title'))
-  if (create && opt('title-file') !== undefined) {
-    // A title read from a file never passes through the shell, so a backtick or $( in it stays text.
-    if (opt('title') !== undefined) throw usageError('--title and --title-file are exclusive', 'pass one of them')
-    const title = readInput(opt('title-file')).replace(/\n+$/, '')
-    if (title.trim() === '') throw usageError(`${opt('title-file')} has no title`, 'write the title on the first line')
-    if (title.includes('\n')) throw usageError(`${opt('title-file')} has more than one line`, 'a title is one line')
-    patch.title = title
-  }
+  set('title', create ? lineFromFlag(opt, 'title') : opt('title'))
   set('type', opt('type'))
   set('priority', create ? opt('priority') : orNull(opt('priority')))
   if (opt('estimate') !== undefined) {
@@ -764,10 +771,11 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'epic create', summary: 'creates an epic', usage: '--title t [--start d] [--target d] [--goal id]', write: true, flags: ['title', 'start', 'target', 'goal'],
+    name: 'epic create', summary: 'creates an epic', usage: '(--title t | --title-file f) [--start d] [--target d] [--goal id]', write: true, flags: ['title', 'title-file', 'start', 'target', 'goal'],
     run: async (ctx) => {
-      if (ctx.opt('title') === undefined) throw usageError('epic create needs --title', 'pmkit epic create --title "..."')
-      const input = { title: ctx.opt('title') }
+      const title = lineFromFlag(ctx.opt, 'title')
+      if (title === undefined) throw usageError('epic create needs --title or --title-file', 'pmkit epic create --title-file title.txt')
+      const input = { title }
       for (const key of ['start', 'target', 'goal']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
       const result = await (await ctx.tracker()).createDeliverable(input, await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: epicRecord }), commit: result.after.id }
@@ -963,10 +971,12 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'milestone create', summary: 'creates a milestone', usage: '<id> [--name n] [--due YYYY-MM-DD]', write: true, args: ['id'], flags: ['name', 'due'],
+    name: 'milestone create', summary: 'creates a milestone', usage: '<id> [--name n | --name-file f] [--due YYYY-MM-DD]', write: true, args: ['id'], flags: ['name', 'name-file', 'due'],
     run: async (ctx) => {
       const input = { id: ctx.args[0] }
-      for (const key of ['name', 'due']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
+      const name = lineFromFlag(ctx.opt, 'name')
+      if (name !== undefined) input.name = name
+      if (ctx.opt('due') !== undefined) input.due = ctx.opt('due')
       const result = await (await ctx.tracker()).createMilestone(input, await ctx.actor(), { dryRun: ctx.dryRun })
       // Milestone files are a Local tracker check, pointing to /pmkit:local:doctor. A hosted tracker skips it.
       const local = await ctx.local()
@@ -1001,10 +1011,12 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'release create', summary: 'creates a release', usage: '<id> [--name n] [--tag t] [--target YYYY-MM-DD]', write: true, args: ['id'], flags: ['name', 'tag', 'target'],
+    name: 'release create', summary: 'creates a release', usage: '<id> [--name n | --name-file f] [--tag t] [--target YYYY-MM-DD]', write: true, args: ['id'], flags: ['name', 'name-file', 'tag', 'target'],
     run: async (ctx) => {
       const input = { id: ctx.args[0] }
-      for (const key of ['name', 'tag', 'target']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
+      const name = lineFromFlag(ctx.opt, 'name')
+      if (name !== undefined) input.name = name
+      for (const key of ['tag', 'target']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
       const result = await (await ctx.tracker()).createRelease(input, await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: releaseRecord }), commit: result.after.id }
     },
@@ -1125,9 +1137,10 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'docs next-adr', summary: 'the number, slug and path of the next ADR, and where it goes (repo or tracker); only reads', usage: '--title t', args: [], flags: ['title'], byTracker: true,
+    name: 'docs next-adr', summary: 'the number, slug and path of the next ADR, and where it goes (repo or tracker); only reads', usage: '(--title t | --title-file f)', args: [], flags: ['title', 'title-file'], byTracker: true,
     run: async (ctx) => {
-      if (typeof ctx.opt('title') !== 'string') throw usageError('docs next-adr needs --title', 'Pass the decision title, for example --title "Use event files as the audit log"')
+      const title = lineFromFlag(ctx.opt, 'title')
+      if (typeof title !== 'string') throw usageError('docs next-adr needs --title or --title-file', 'Pass the decision title, for example --title-file title.txt')
       const { pmkit, hosted, issuesDir } = ctx.config()
       // A hosted tracker needs no call: the Linear adapter cannot create documents, so its ADR is a repository file.
       const documents = hosted ? undefined : (await (await ctx.tracker()).capabilities()).capabilities.find((c) => c.id === 'documents')
@@ -1137,7 +1150,7 @@ export const COMMANDS = [
       const configured = pmkit.git_host?.default_branch
       const branchOk = typeof configured === 'string' && validBranch(configured)
       const plan = planNextAdr({
-        title: ctx.opt('title'),
+        title,
         root: ctx.root,
         trackerDir,
         trackerFolder: trackerDir && !climbsOut(relative) ? slash(relative) : null,

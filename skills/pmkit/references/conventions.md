@@ -34,6 +34,10 @@ Every CLI call ends with `--json`. On a failure the CLI exits with code 2 and pr
 - An error whose `error.message` starts with `The inbox file` or `The defaults file` comes from a file in the user store, not from a value the user typed. Show `error.message` as it is, offer to delete the file or fix it by hand, and do not ask for a corrected value or retry the call.
 - Never hide an error or guess a fix.
 
+## Files with text from data
+
+A title, description, criteria or comment taken from data (code, a TODO, a spec, an advisory, a user) never goes on the shell command line: a backtick or `$(` in it runs as a command. Pass it by file: `--title-file` (`issues create`, `epic create`, `docs next-adr`), `--name-file` (`milestone create`, `release create`), `--description-file`, `--criteria-file`, `--body-file`. Write the file with the file tool, never with `echo`, `printf` or a heredoc, because those bring the text back to the shell. A title or name file holds one line and nothing else, and its flag is exclusive with the inline one (`--title`, `--name`).
+
 ## Issue tables
 
 A list of issues is a table with these columns, in this order: ID, title, status, assignee, estimate. Leave a cell empty when the issue has no value for it. A command may add a column its result needs, after these five.

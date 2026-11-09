@@ -2,12 +2,13 @@
 // ISS-3F7H has no children, so step 1 does not ask. No dry run fails, so step 6 does not ask again.
 // The approval of step 5 comes before the dry runs of step 6, and it covers the links of step 8.
 import assert from 'node:assert/strict'
+import path from 'node:path'
 
 const rows = [
-  ['Design the empty state guide', '1'],
-  ['Build the empty state component', '1'],
+  ['title-design-the-empty-state-guide.md', '1'],
+  ['title-build-the-empty-state-component.md', '1'],
 ]
-const create = ([title, estimate]) => ['issues', 'create', '--title', title, '--parent', 'ISS-3F7H', '--type', 'task', '--estimate', estimate]
+const create = ([titleFile, estimate]) => ['issues', 'create', '--title-file', path.join(import.meta.dirname, '_inputs', titleFile), '--parent', 'ISS-3F7H', '--type', 'task', '--estimate', estimate]
 const blocks = (saved) => ['issues', 'link', saved.first.after.id, saved.second.after.id, '--kind', 'blocks']
 
 export default {

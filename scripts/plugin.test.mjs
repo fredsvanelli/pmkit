@@ -149,6 +149,19 @@ for (const [folder, names] of Object.entries(COMMANDS)) {
   })
 }
 
+test('no command file puts a title, a name or a description on the shell command line, and conventions.md says how to write the files', () => {
+  for (const file of markdownFiles(path.join(ROOT, 'commands'))) {
+    // A title, a name or a description with an inline value (quoted, a placeholder or after `=`) in any command, on one line or broken over two.
+    const inline = /--(title|name|description)(?:=|\s+)["'<$]/.exec(fs.readFileSync(file, 'utf8'))
+    // A positional name taken from data would reach the shell: milestone and release ids come from the user or from a name that follows the id rule.
+    const positional = /(?:milestone|release) create (?:<name>|["'])/.exec(fs.readFileSync(file, 'utf8'))
+    assert.equal(positional, null, `${path.relative(ROOT, file)} passes a name as the positional id; pass an id that follows the id rule`)
+    assert.equal(inline, null, `${path.relative(ROOT, file)} passes ${inline?.[0]} to the shell; use --${inline?.[1]}-file`)
+  }
+  const conventions = fs.readFileSync(path.join(ROOT, 'skills/pmkit/references/conventions.md'), 'utf8')
+  assert.match(conventions, /file tool[^\n]*never[^\n]*`echo`/)
+})
+
 test('every command is listed in the skill table and in the README', () => {
   const skill = path.join(ROOT, 'skills/pmkit/SKILL.md')
   for (const doc of [skill, path.join(ROOT, 'README.md')]) {

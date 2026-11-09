@@ -7,9 +7,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 const inputs = path.join(import.meta.dirname, '_inputs')
-const create = (title, type, file) => ['issues', 'create', '--title', title, '--type', type, '--description-file', path.join(inputs, file)]
-const cache = create('fix the cache', 'bug', 'todo-cache.md')
-const unique = create('unique work item', 'task', 'todo-unique.md')
+const create = (titleFile, type, file) => ['issues', 'create', '--title-file', path.join(inputs, titleFile), '--type', type, '--description-file', path.join(inputs, file)]
+const cache = create('title-fix-the-cache.md', 'bug', 'todo-cache.md')
+const unique = create('title-unique-work-item.md', 'task', 'todo-unique.md')
 
 export default {
   command: 'issues/todos',
