@@ -3,3 +3,4 @@
 {"at":"2026-11-09T22:15:58Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-09T22:15:59Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-09T22:16:00Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-203-fix-the-fallback-and-incomplete-paths-of"}
+{"at":"2026-11-09T22:16:51Z","by":"fred","op":"comment","to":"2026-11-09T22-16-51Z-fred.md"}
