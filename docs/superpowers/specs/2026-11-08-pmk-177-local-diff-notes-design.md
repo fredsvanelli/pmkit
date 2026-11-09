@@ -10,7 +10,7 @@ a clean checked-out branch is reported as having uncommitted changes, a pull req
 1. `uncommitted` is true only when the index or the tracked working tree has changes (`git status --porcelain --untracked-files=no` is non-empty).
 2. With a pull request and the branch checked out, uncommitted changes are noted and exposed in the JSON. Untracked files are counted in `untracked` and noted, in both sources, because they are in no diff.
 3. The local fallback of a pull request diffs against the PR base (`baseRefName`, added to `VIEW_FIELDS`). `--base` still wins. A merged PR whose diff GitHub refuses and whose local diff is empty is reported `incomplete: true` with a note, never as a plain empty diff.
-4. A merged PR whose head (`headRefOid`) is not the tip of the branch is not used. The command reads the local diff and says why.
+4. A merged PR whose head (`headRefOid`) is not on the branch (not a tip of the local branch or of origin/<branch>, nor behind one) is not used. The command reads the local diff and says why.
 
 ## Non-goals
 

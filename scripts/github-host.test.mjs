@@ -502,12 +502,12 @@ test('localDiff of a checked out branch with a clean tree is the three-dot diff 
 
 test('branchHas is true when the commit is a tip of the branch or behind one, false when it is not, and null without the branch', () => {
   const tips = { [`${REFS} refs/heads/feat/x`]: { stdout: 'aaa\n' }, [`${REFS} refs/remotes/origin/feat/x`]: { stdout: 'bbb\n' } }
-  const has = (oid, answers = {}) => host(mapExec({ ...tips, ...answers }).exec).branchHas('feat/x', oid)
+  const has = (oid, answers = {}) => host(mapExec({ ...tips, ...answers }).exec).branchHas('feat/x', () => oid)
   assert.equal(has('aaa'), true, 'the local tip')
   assert.equal(has('bbb'), true, 'the tip of origin')
   assert.equal(has('old', { 'merge-base --is-ancestor old aaa': {} }), true, 'behind the local tip')
   assert.equal(has('other'), false)
-  assert.equal(host(mapExec({}).exec).branchHas('feat/x', 'aaa'), null)
+  assert.equal(host(mapExec({}).exec).branchHas('feat/x', () => assert.fail('no branch, no commit to read')), null)
 })
 
 test('localDiff says when the committed range is empty even though the working tree is not', () => {

@@ -1512,11 +1512,15 @@ export const COMMANDS = [
       // Only an open or merged pull request holds the work of the branch. A closed one is not what the review looks at.
       let pr = found && (found.state === 'OPEN' || found.state === 'MERGED') ? found : null
       if (found && !pr) notes.push(`pull request #${found.number} is closed without merge, so this is the local diff`)
-      // gh returns the newest merged pull request of a name, so a reused branch name finds an old one. Its head is then not the branch tip.
+      // The refs of a pull request are read once, and only by the paths that need them.
+      let refsOf
+      const prRefs = () => (refsOf ??= host.prRefs(found.number))
+      // gh returns the newest merged pull request of a name, so a reused branch name finds an old one. Its head is then not on the branch
+      // (a tip of the local branch or of origin, or behind one: the local branch may be ahead of or behind what was merged).
       if (pr?.state === 'MERGED') {
-        const tip = host.branchTip(branch)
-        if (tip !== null && host.prRefs(pr.number).headRefOid !== tip) {
-          notes.push(`pull request #${pr.number} is merged and its head is not the tip of ${branch}, so it is not used and this is the local diff`)
+        const onBranch = host.branchHas(branch, () => prRefs().headRefOid)
+        if (onBranch === false) {
+          notes.push(`pull request #${pr.number} is merged and its head is not on ${branch}, so it is not used and this is the local diff`)
           pr = null
         }
       }
@@ -1535,18 +1539,41 @@ export const COMMANDS = [
       const source = full === null ? 'local' : 'pull_request'
       if (full === null) {
         // A stacked pull request is compared with its own base, not the default branch. --base still wins.
-        const prBase = requested === undefined && pr ? host.prRefs(pr.number).baseRefName : undefined
-        if (requested === undefined && prBase === undefined) notes.push(...defaultBranchNotes(ctx))
-        local = host.localDiff({ branch, base: requested ?? prBase ?? defaultBranch(ctx) })
+        const prBase = requested === undefined && pr ? prRefs().baseRefName : undefined
+        const diffAgainst = (name) => host.localDiff({ branch, base: name })
+        if (prBase !== undefined) {
+          try {
+            local = diffAgainst(prBase)
+          } catch (error) {
+            if (error.code !== 'INVALID_INPUT' || !/base branch/.test(error.message)) throw error
+            incomplete = true
+            notes.push(...defaultBranchNotes(ctx))
+            local = diffAgainst(defaultBranch(ctx))
+            notes.push(`the base ${prBase} of pull request #${pr.number} does not exist here or on origin, so this is the local diff against ${local.base}; run git fetch origin`)
+          }
+        } else {
+          if (requested === undefined) notes.push(...defaultBranchNotes(ctx))
+          local = diffAgainst(requested ?? defaultBranch(ctx))
+        }
         full = local.diff
         if (local.uncommitted) notes.push('the local diff includes the uncommitted changes of tracked files')
-        // A merged branch no longer differs from its base, so an empty diff here says nothing about the pull request.
-        if (pr?.state === 'MERGED' && full === '') {
+        // A merged branch no longer differs from its base, so an empty range of commits says nothing about the pull request,
+        // whatever the working tree adds to the diff.
+        if (pr?.state === 'MERGED' && local.committedEmpty) {
           incomplete = true
-          notes.push(`pull request #${pr.number} is merged and GitHub refused its diff as too large, and ${branch} no longer differs from ${local.base}, so the diff is not available`)
+          notes.push(`pull request #${pr.number} is merged and GitHub refused its diff as too large, and the commits of ${branch} no longer differ from ${local.base}, so the diff is not available`)
         }
       }
-      const tree = local ?? host.workingTree(branch)
+      // The notes about the working tree are warnings: a tree that cannot be read must not stop the command.
+      let tree = local
+      let treeError = local?.treeError ?? null
+      if (local === null) {
+        try { tree = host.workingTree(branch) } catch (error) { treeError = error.message }
+      }
+      if (treeError !== null) {
+        incomplete = true
+        notes.push(`could not read the working tree of ${branch} (${treeError.split('\n')[0]}), so its uncommitted and untracked files are not checked`)
+      }
       if (source === 'pull_request' && tree?.uncommitted) notes.push(`${branch} has uncommitted changes, so the pull request diff does not include them`)
       if (tree?.untracked > 0) notes.push(`${tree.untracked} untracked ${tree.untracked === 1 ? 'file is' : 'files are'} not in the diff`)
       const base = local?.base ?? null

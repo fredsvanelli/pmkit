@@ -299,14 +299,15 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
     workingTree,
 
     /**
-     * Whether `oid` is on the branch: a tip of the local branch or of origin/<branch>, or behind one of them. Null when the
+     * Whether the commit `oidOf()` returns is on the branch: a tip of the local branch or of origin/<branch>, or behind one of them. Null when the
      * branch exists in neither place. The local branch may be ahead of or behind what a pull request merged, so one tip is not enough.
      */
-    branchHas(branch, oid) {
+    branchHas(branch, oidOf) {
       refArg('branch', branch)
       const git = (args) => run('git', args, { timeout: DIFF_TIMEOUT_MS })
       const tips = [`refs/heads/${branch}`, `refs/remotes/origin/${branch}`].map((ref) => git(['rev-parse', '--verify', '--quiet', ref])).filter((r) => r.status === 0).map((r) => r.stdout.trim())
       if (tips.length === 0) return null
+      const oid = oidOf()
       return tips.some((tip) => tip === oid || git(['merge-base', '--is-ancestor', oid, tip]).status === 0)
     },
 
