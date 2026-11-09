@@ -134,3 +134,16 @@ test('a rung that was not read is skipped as not_read, not as absent or empty', 
   const none = chooseReadinessBasis({ ...base, releases: [], unread: ['sprint'] })
   assert.deepEqual(none.skipped.at(-1), { basis: 'sprint', reason: 'cycles_not_read' })
 })
+
+test('empty is only claimed after a complete read: a cut read or a file that does not parse is not "no issues"', () => {
+  for (const over of [{ truncated: true }, { problems: [{ id: 'ISS-1', code: 'CONFLICT' }] }]) {
+    const data = build({ issues: [], ...over })
+    assert.deepEqual([data.empty, data.ready, data.complete], [false, null, false])
+  }
+})
+
+test('a basis whose issues are all canceled is empty, so it is never ready', () => {
+  const data = build({ issues: [issue('A-1', 'canceled'), issue('A-2', 'canceled')] })
+  assert.deepEqual([data.empty, data.ready], [true, null])
+  assert.equal(build({ issues: [issue('A-1', 'canceled'), issue('A-2', 'done')] }).ready, true)
+})

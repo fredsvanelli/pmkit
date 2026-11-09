@@ -309,6 +309,6 @@ export function readinessText(result) {
   if (result.pullRequestsIncomplete) lines.push('the pull request list may be incomplete: only 200 were read')
   lines.push('', ...readinessSection('deploys (whole repository, newest first)', result.deploys, 'none', (ds) => ds.map((d) => [d.environment, d.state, d.ref, String(d.sha ?? '').slice(0, 7), String(d.createdAt ?? ''), d.matchesRelease ? 'this release' : '']), ['Environment', 'State', 'Ref', 'Sha', 'Created', 'Match']))
   if (!result.gitHost.available) lines.push(`git host: ${result.gitHost.system === 'none' ? 'none' : result.gitHost.reason.message}, so pull requests and deploys are not checked`)
-  lines.push('', result.ready === true ? 'ready: nothing is open' : result.ready === false ? 'not ready: work is still open' : result.empty ? `unknown: the ${result.basis} has no issues, so nothing says it is ready` : 'unknown: nothing found open, but not everything was read')
+  lines.push('', result.ready === true ? 'ready: nothing is open' : result.ready === false ? 'not ready: work is still open' : result.empty ? `unknown: the ${result.basis} has no issue that is not canceled, so nothing says it is ready` : 'unknown: nothing found open, but not everything was read')
   return lines.join('\n')
 }

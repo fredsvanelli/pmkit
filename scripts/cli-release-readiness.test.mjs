@@ -242,8 +242,9 @@ test('a selector reads only what its basis needs, so --milestone, --sprint and -
   const root = repo()
   const env = envWith(fakeGh(cannedGh()))
   await ok(root, env, ['milestone', 'create', 'beta'])
+  await ok(root, env, ['release', 'create', '1.0'])
   const adapters = localWith({ ...STUB, currentCycle: fail('UPSTREAM', 'cycles timed out'), listMilestones: fail('RATE_LIMITED', 'slow down') })
-  for (const [args, basis] of [[['--milestone', 'beta'], 'milestone'], [['--sprint', '2026-10-12'], 'sprint']]) {
+  for (const [args, basis] of [[['--milestone', 'beta'], 'milestone'], [['--sprint', '2026-10-12'], 'sprint'], [['--release', '1.0'], 'release']]) {
     const { code, json, stderr } = await readiness(root, env, args, adapters)
     assert.equal(code, 0, stderr)
     assert.deepEqual([json.basis, json.reason], [basis, 'requested'])
@@ -279,15 +280,34 @@ test('the release stub on the automatic pick is not read: incomplete, never "no 
   assert.match(stderr, /releases not read/)
 })
 
-test('a transient cycles error with a planned release marks the report incomplete and keeps the release', async () => {
+test('a failing read of a rung the pick never reaches does not make the report incomplete', async () => {
   const root = repo()
   const env = envWith(fakeGh(cannedGh()))
   await withRelease(root, env)
-  const { code, json, stderr } = await readiness(root, env, [], localWith({ currentCycle: fail('RATE_LIMITED', 'slow down') }))
+  const adapters = localWith({ currentCycle: fail('RATE_LIMITED', 'slow down'), listMilestones: fail('UPSTREAM', 'milestones timed out') })
+  const { code, json, stderr } = await readiness(root, env, [], adapters)
   assert.equal(code, 0, stderr)
-  assert.deepEqual([json.basis, json.complete], ['release', false])
-  assert.ok(json.problems.some((p) => p.id === 'cycles' && p.code === 'RATE_LIMITED'))
-  assert.match(stderr, /cycles not read/)
+  assert.equal(json.basis, 'release')
+  assert.ok(!json.problems.some((p) => ['milestones', 'cycles'].includes(p.id)))
+  assert.doesNotMatch(stderr, /not read/)
+})
+
+test('only a transient error is "not read": an INVALID_INPUT or NOT_FOUND from a read is the error', async () => {
+  const root = repo()
+  const env = envWith(fakeGh(cannedGh()))
+  for (const [override, code] of [[{ listReleases: fail('NOT_FOUND', 'x') }, 'NOT_FOUND'], [{ listMilestones: fail('INVALID_INPUT', 'x') }, 'INVALID_INPUT'], [{ currentCycle: fail('CONFLICT', 'x') }, 'CONFLICT']]) {
+    const { code: exit, json } = await readiness(root, env, [], localWith(override))
+    assert.deepEqual([exit, json.error.code], [2, code])
+  }
+})
+
+test('the next step of --sprint current without cycles follows what the tracker has', async () => {
+  const root = repo({ github: false })
+  const { json } = await readiness(root, envWith(fakeGh({})), ['--sprint', 'current'], localWith({ currentCycle: fail('NOT_SUPPORTED', 'cycles absent') }))
+  assert.match(json.error.nextStep, /--release <id>/)
+  const noReleases = localWith({ currentCycle: fail('NOT_SUPPORTED', 'cycles absent'), capabilities: async () => ({ capabilities: [{ id: 'releases', path: 'absent', enableHint: 'h' }, { id: 'cycles', path: 'absent', enableHint: 'h' }] }) })
+  const second = await readiness(root, envWith(fakeGh({})), ['--sprint', 'current'], noReleases)
+  assert.doesNotMatch(second.json.error.nextStep, /--release/)
 })
 
 test('a transient milestones error falls through to the sprint and says the milestones were not read', async () => {
@@ -309,12 +329,12 @@ test('when nothing can be picked and a read failed, that error is the answer, no
 })
 
 test('a release with no issue is not ready: ready is null and empty is true', async () => {
-  const root = repo()
+  const root = repo({ fixture: 'no-sprints' })
   const env = envWith(fakeGh(cannedGh()))
   await ok(root, env, ['release', 'create', '2.0'])
   const { json } = await readiness(root, env, ['--release', '2.0'], undefined)
   assert.deepEqual([json.issues.counts.total, json.empty, json.ready], [0, true, null])
-  assert.match((await ok(root, env, ['release-readiness', '--release', '2.0'])).stdout, /unknown: the release has no issues/)
+  assert.match((await ok(root, env, ['release-readiness', '--release', '2.0'])).stdout, /unknown: the release has no issue that is not canceled/)
 })
 
 test('the deploy of the release tag is found when it is older than the 20 newest, and through a refs/tags/ ref', async () => {

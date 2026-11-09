@@ -67,8 +67,9 @@ export function buildReadiness({ choice, issues, prs, prsIncomplete, deploys, gi
   const complete = problems.length === 0 && !truncated
   const openWork = counts.open + (Array.isArray(pullRequests) ? pullRequests.length : 0)
   // Open work is a fact whatever else is unread. Nothing open is only "ready" when every read finished.
-  // A basis with no issue says nothing about being ready, so it is unknown, never ready.
-  const empty = counts.total === 0
+  // A basis with no issue, or only canceled ones, delivers nothing and says nothing about being ready: unknown, never ready.
+  // It is only called empty after a complete read, since a cut read or a file that does not parse may hide the issues.
+  const empty = complete && counts.total - counts.canceled === 0
   const ready = openWork > 0 ? false : complete && !empty && Array.isArray(pullRequests) && !prsIncomplete ? true : null
   return { basis, reason, source, skipped, issues: { open: issues.filter((i) => OPEN(i.status.category)).map(issueRow), counts }, pullRequests, pullRequestsIncomplete: prsIncomplete, deploys: deployRows, gitHost, truncated, empty, complete, ready, problems }
 }
