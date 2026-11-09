@@ -20,7 +20,8 @@ const CASES = [
   ['bearer', 'sent Bearer abc.def-123_x/y= to the api', 'sent Bearer [redacted] to the api'],
   ['bearer', 'sent bearer AbC123xyz9 and BEARER Zz9Zz9Zz9Zz9', 'sent bearer [redacted] and BEARER [redacted]', 2],
   ['authorization', 'Authorization: Basic dXNlcjpwYXNz\nnext line', 'Authorization: [redacted]\nnext line'],
-  ['api_key_value', 'config api_key=sk-12345 and API-KEY: "abc 12 def"', 'config api_key=[redacted] and API-KEY: [redacted]', 2],
+  ['api_key_value', 'config api_key=sk-12345 and API-KEY: "abc 12 def"', 'config api_key=[redacted]'],
+  ['api_key_value', 'API-KEY: "abc 12 def" and more', 'API-KEY: [redacted] and more'],
   ['api_key_value', 'GITHUB_TOKEN=abc12345', 'GITHUB_TOKEN=[redacted]'],
   ['api_key_value', '{"client_secret": "s3cr3t12", "password":"pw-1234x"}', '{"client_secret": [redacted], "password":[redacted]}', 2],
   ['api_key_value', 'DB_PASSWORD: hunter2!!', 'DB_PASSWORD: [redacted]'],
@@ -38,8 +39,8 @@ const CASES = [
   ['npm_token', `//registry.npmjs.org/:_authToken=npm_${'a'.repeat(36)}`, '//registry.npmjs.org/:_authToken=[redacted]'],
   ['npm_token', `npm token npm_${'a'.repeat(36)}`, 'npm token [redacted]'],
   ['stripe_key', `${'sk'}_live_${'a'.repeat(24)} rk_live_${'b'.repeat(24)}`, '[redacted] [redacted]', 2],
-  ['api_key_value', 'PASSWD=hunter2-ok1 DB_PWD=hunter2-ok1 credentials=hunter2-ok1', 'PASSWD=[redacted] DB_PWD=[redacted] credentials=[redacted]', 3],
-  ['api_key_value', 'password=hunter2 and "password": "hunter2"', 'password=[redacted] and "password": [redacted]', 2],
+  ['api_key_value', 'PASSWD=hunter2-ok1\nDB_PWD=hunter2-ok1\ncredentials=hunter2-ok1', 'PASSWD=[redacted]\nDB_PWD=[redacted]\ncredentials=[redacted]', 3],
+  ['api_key_value', 'password=hunter2 and "password": "hunter2"', 'password=[redacted]'],
   ['api_key_value', 'aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', 'aws_secret_access_key = [redacted]'],
   ['github_token', `curl -H "Authorization: token ghp_${'b'.repeat(36)}" https://api.github.com`, null],
 ]
@@ -56,7 +57,7 @@ for (const [type, input, output, count = 1] of CASES.filter((row) => row[2] !== 
 test('redact leaves a text with no secret unchanged, with a count of 0', () => {
   const text = 'FAIL src/events.mjs:12\nexpected 3 events, got 5\nsee https://github.com/o/r/pull/7 and the key idea\n'
   const { summary, ...result } = redact(text)
-    assert.deepEqual(result, { text, count: 0, counts: {} })
+  assert.deepEqual(result, { text, count: 0, counts: {} })
 })
 
 test('a value is counted once when two patterns match it', () => {
@@ -110,15 +111,17 @@ for (const text of SAME) {
 // PMK-197: the false positives that `text redact` accepts so that no value after a secret key is missed. The same list is in
 // docs/superpowers/specs/2026-11-09-pmk-197-redact-no-missed-secrets-design.md.
 const FALSE_POSITIVES = [
-  ['Unexpected token: < in JSON at position 0', 'Unexpected token: [redacted] in JSON at position 0'],
-  ['if (password === undefined) throw new Error("no password")', 'if (password =[redacted] undefined) throw new Error("no password")'],
+  ['Unexpected token: < in JSON at position 0', 'Unexpected token: [redacted]'],
+  ['if (password === undefined) throw new Error("no password")', 'if (password === [redacted])'],
   ['max_tokens=4096 and tokenizer=cl100k', 'max_tokens=4096 and tokenizer=[redacted]'],
-  ['Set the password: field in config.yaml to your own value.', 'Set the password: [redacted] in config.yaml to your own value.'],
-  ['the parser reads the next token: a comma', 'the parser reads the next token: [redacted] comma'],
-  ['const token = getToken(req)', 'const token = [redacted])'],
-  ['  secretName: process.env.NAME,', '  secretName: [redacted],'],
-  ['not ok 3 - token: refresh expired token', 'not ok 3 - token: [redacted] expired token'],
-  ['password: abc12 and token=1a2b3c4', 'password: [redacted] and token=[redacted]', 2],
+  ['Set the password: field in config.yaml to your own value.', 'Set the password: [redacted]'],
+  ['the parser reads the next token: a comma', 'the parser reads the next token: [redacted]'],
+  ['const token = getToken(req)', 'const token = [redacted]'],
+  ['  secretName: process.env.NAME,', '  secretName: [redacted]'],
+  ['not ok 3 - token: refresh expired token', 'not ok 3 - token: [redacted]'],
+  ['password: abc12 and token=1a2b3c4', 'password: [redacted]'],
+  ['Error: invalid token:\n    at foo (src/a.js:1:2)', 'Error: invalid token:\n    [redacted]'],
+  ['the password:\n  see the docs', 'the password:\n  [redacted]'],
 ]
 for (const [text, output, count = 1] of FALSE_POSITIVES) {
   test(`redact accepts the false positive ${JSON.stringify(text.slice(0, 45))}`, () => {

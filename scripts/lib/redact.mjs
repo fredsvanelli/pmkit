@@ -2,37 +2,8 @@
 // file, no network. The patterns are a floor, not a guarantee, so a command that posts the result still shows it first.
 
 const MARK = '[redacted]'
-const strip = (value) => value.replace(/^["']|["']$/g, '')
-const keep = (value) => strip(value) === MARK
-
-// PMK-197: a value after one of these keys is replaced in full unless it is provably not a secret (see `exempt`). The false
-// positives this accepts are listed in docs/superpowers/specs/2026-11-09-pmk-197-redact-no-missed-secrets-design.md.
-// The mark followed by wrappers only: text this module wrote, which a second pass leaves alone.
+// An Authorization value that is the mark followed by wrappers only: text this module wrote, which a second pass leaves alone.
 const MARKED = /^\[redacted\][)\]}>*`'",.;:|_~]*$/
-const KEY_WORDS = /api[_-]?key|private[_-]?key|token|secret|passw(?:or)?d|pwd|credentials?/i
-const PASSWORD_KEYS = /passw(?:or)?d|pwd|credentials?/i
-const SHELL_PWD = /^(?:old)?pwd$/i
-// Wrapper and sentence characters at the end of a value stay in the text, so `(token=x)`, `` `token=x` ``, `**token=x**`,
-// `__token=x__`, `~~token=x~~` and a table cell keep their mark.
-const WRAPPERS = new Set(')]}>*`\'",.;:|_~')
-// A file name before the line and column of a stack frame (`password.ts:42:13`): the key is a file, not a password.
-const FILE_KEY = /\.(?:[cm]?[jt]sx?|py|rb|go|rs|java|kt|cs|php|sh|ya?ml|json|toml|ini|env|conf|cfg|txt|md|log|properties|xml|html?|css|swift|c|h|cpp|hpp)$/i
-
-// The end of the value text[from, to) without the wrappers at its end, found from the back so it is linear. A value that
-// starts with the mark keeps the mark whole.
-function trimEnd(text, from, to) {
-  let end = to
-  while (end > from && WRAPPERS.has(text[end - 1])) end--
-  return text.startsWith(MARK, from) ? Math.max(end, Math.min(to, from + MARK.length)) : end
-}
-
-// The only values left alone: empty, a number or line:column after a name that is not a password (a limit, a port, a stack
-// frame) or after a file name, and the directory in the shell variable PWD or OLDPWD.
-function exempt(key, value) {
-  if (!value) return true
-  if ((!PASSWORD_KEYS.test(key) || FILE_KEY.test(key)) && /^\d+(?::\d+)*$/.test(value)) return true
-  return SHELL_PWD.test(key) && /^[/~]/.test(value)
-}
 
 // Order matters: a longer match (a private key, a URL, an Authorization line) goes before the shorter ones inside it.
 const PATTERNS = [
@@ -41,7 +12,7 @@ const PATTERNS = [
   // The user may be empty (`redis://:password@host`). The password runs to the last @ before the path.
   ['url_credentials', /(?<![a-z0-9+.-])([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]*:[^\s/]+@/gi, (_, scheme) => `${scheme}${MARK}@`],
   // Before the tokens, so a token inside the header is one value of this type. The value may be in quotes.
-  ['authorization', /(\bAuthorization["']?:[ \t]*)("[^"\n]*"|'[^'\n]*'|[^\s"'][^\n"']*)/gi, (whole, head, value) => (MARKED.test(value.trim()) ? whole : `${head}${MARK}`)],
+  ['authorization', /(\bAuthorization["']?:[^\S\n]*)("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|[^\s"'][^\n"']*)/gi, (whole, head, value) => (MARKED.test(value.trim()) ? whole : `${head}${MARK}`)],
   // The user and password of -u or --user, when it holds a colon. The lookback is bounded so a line of `curl` stays linear.
   ['curl_user', /(\bcurl\b[^\n]{0,500}?[ \t](?:--user[ \t=]+|-u[ \t]*))(?:"[^"\n]*:[^"\n]*"|'[^'\n]*:[^'\n]*'|[^\s"']*:[^\s"']*)/g, (_, head) => `${head}${MARK}`],
   ['jwt', /\beyJ[\w-]+\.eyJ[\w-]+\.[\w-]*/g, () => MARK],
@@ -57,44 +28,74 @@ const PATTERNS = [
   ['bearer', /(\bBearer[ \t]+)(?=[A-Za-z0-9._~+/=-]{20}|[A-Za-z0-9._~+/=-]*[\d._~+/=-])[A-Za-z0-9._~+/=-]{8,}/gi, (_, head) => `${head}${MARK}`],
 ]
 
-// Finds every `key=value` or `key: value` and replaces the value when the key names a secret. The scan goes on inside a
-// value it leaves alone, so `?a=1&api_key=...` and `env: GITHUB_TOKEN=...` are found. A match starts only at the beginning
-// of a word. An unquoted value runs to the next space; `&` ends it only before a new `name=`, `](` ends it so a link survives
-// and `|` ends it so a table cell does. A quoted value may hold an escaped quote or a line break (up to 4096 characters); a
-// quote that never closes runs to the end of the line. A YAML block (`|` or `>`) takes its more indented lines, and a key with
-// nothing after it takes the next line when that line is more indented and is not itself a `name:` pair.
-const KEY_SEPARATOR = /(?<![\w.-])([\w.-]+)(["']?[^\S\n]*[=:][^\S\n]*)/g
+// PMK-197: a value after a secret key is replaced in full, trading false positives for no missed secrets. The false
+// positives this accepts are listed in docs/superpowers/specs/2026-11-09-pmk-197-redact-no-missed-secrets-design.md.
+//   - A quoted value is the quoted text (an escaped quote and line breaks inside, up to 4096 characters), unless a word goes
+//     on right after the closing quote.
+//   - Any other value runs to the end of the line, or to the next `|` in a table row. Only the Markdown that opened before
+//     the value and is still open (a backtick, `**`, `__`, `~~`, `(`, `[`, `{`) keeps its last closing mark on the line.
+//   - Nothing after the key, or a YAML `|` or `>`: the lines below that are more indented than the key (see `under`). With
+//     nothing after the key and a `name:` pair on the first of them, they are a mapping read pair by pair.
+//   - Left alone: a value that is the mark already, a number after a key that does not end in the secret word (`max_tokens`,
+//     `token_limit`, `token.mjs:12:5`) and a directory after the shell variable PWD or OLDPWD.
+const SECRET_WORD = 'api[_-]?key|private[_-]?key|token|secret|passw(?:or)?d|pwd|credentials?'
+const KEY_WORDS = new RegExp(SECRET_WORD, 'i')
+const SECRET_LAST = new RegExp(`(?:${SECRET_WORD})$`, 'i')
+const SHELL_PWD = /^(?:old)?pwd$/i
+const KEY_SEPARATOR = /(?<![\w.-])([\w.-]+)(["']?[^\S\n]*(?:=>|:=|===?|[=:])[^\S\n]*)/g
 const QUOTED = /"(?:[^"\\]|\\[\s\S]){0,4096}"|'(?:[^'\\]|\\[\s\S]){0,4096}'/y
-const UNQUOTED = /(?:\](?!\()|&(?![\w.-]+=)|[^\s&\]|])+/y
-const BLOCK = /[|>][+-]?\d?[+-]?[^\S\n]*(?=\n|$)/y
-const MAPPING = /^[\w.-]+["']?[^\S\n]*[=:]/
+const NUMBER = /\d+(?::\d+)*(?=[\s,;)\]}]|$)/y
+const DONE = /\[redacted\](?=[\s,;]|$)/y
+const TABLE_ROW = /[^\S\n]*\|/y
+const BLOCK = /^[|>][+-]?\d?[+-]?$/
+const MAPPING = /[\w.-]+["']?[^\S\n]*:(?=\s|$)/y
+const MARKDOWN = [['`', '`'], ['**', '**'], ['__', '__'], ['~~', '~~'], ['(', ')'], ['[', ']'], ['{', '}']]
 
-const indentOf = (line) => line.length - line.trimStart().length
 const lineEnd = (text, from) => {
   const end = text.indexOf('\n', from)
   return end === -1 ? text.length : end
 }
+const at = (pattern, text, from) => {
+  pattern.lastIndex = from
+  return pattern.test(text)
+}
+// Leading space and diff marks, so `- ` of a list item and the `+` of a diff count as indentation.
+const leadOf = (line) => line.match(/^[\s+-]*/)[0].length
+const space = (char) => char !== undefined && /\s/.test(char)
 
-// The end of the more indented lines that follow the line break at `from`, or `from` when there are none. Blank lines inside
-// the block belong to it.
-function blockEnd(text, from, keyIndent) {
-  let last = from
+// The closing marks of the Markdown that is still open in `before`.
+const openClosers = (before) => MARKDOWN.filter(([open, close]) => {
+  const opens = before.split(open).length - 1
+  return open === close ? opens % 2 : opens > before.split(close).length - 1
+}).map(([, close]) => close)
+
+// The lines after the line break at `from` that belong to the value of a key at `column` of a line that starts with `lead`
+// characters of indentation: a line with a space at the key's column (and the same kind of character just before it, so a
+// diff `+`, a timestamp or a list `- ` before the key is matched) or with more indentation. Blank lines inside belong too.
+// Returns where the text of the first line starts and where the last line ends, or nothing.
+function under(text, from, column, lead, before) {
+  let first = -1
+  let last = -1
   for (let pos = from; pos < text.length; ) {
-    const end = lineEnd(text, pos + 1)
-    const line = text.slice(pos + 1, end)
-    if (line.trim() && indentOf(line) <= keyIndent) break
-    if (line.trim()) last = end
-    pos = end
+    const start = pos + 1
+    pos = lineEnd(text, start)
+    const line = text.slice(start, pos)
+    const indent = leadOf(line)
+    if (indent === line.length) continue
+    const sameColumn = space(line[column]) && (column === 0 || space(line[column - 1]) === space(before))
+    if (!sameColumn && indent <= lead) break
+    if (first < 0) first = start + (sameColumn ? column + line.slice(column).search(/\S/) : indent)
+    last = start + line.trimEnd().length
   }
-  return last
+  return first < 0 ? null : { first, last }
 }
 
 function redactPairs(text, counts) {
   let out = ''
   let position = 0
-  let runStart = 0
-  let runEnd = 0
-  let runTrim = 0
+  let lineStart = 0
+  let lineStop = -1
+  let table = false
   const replace = (from, to) => {
     out += `${text.slice(position, from)}${MARK}`
     position = to
@@ -103,56 +104,45 @@ function redactPairs(text, counts) {
   }
   KEY_SEPARATOR.lastIndex = 0
   for (let match = KEY_SEPARATOR.exec(text); match; match = KEY_SEPARATOR.exec(text)) {
-    const start = match.index + match[0].length
     const key = match[1]
-    if (!KEY_WORDS.test(key) || start < position) continue
-    const first = text[start]
-    // Only a block or an empty value needs the indent of the key's line, so it is not read for every key.
-    const keyIndent = () => indentOf(text.slice(text.lastIndexOf('\n', match.index) + 1, match.index + 1))
-    if (first === undefined || first === '\n') {
-      const from = start + 1
-      const end = lineEnd(text, from)
-      const line = text.slice(from, end)
-      const body = line.trimStart()
-      if (start >= text.length || !body.trim() || indentOf(line) <= keyIndent() || MAPPING.test(body) || MARKED.test(body.trimEnd())) continue
-      replace(end - body.length, end - (body.endsWith('\r') ? 1 : 0))
-      continue
-    }
-    BLOCK.lastIndex = start
-    if (BLOCK.test(text)) {
-      const head = lineEnd(text, start)
-      replace(start, blockEnd(text, head, keyIndent()))
-      continue
-    }
-    let end
-    let value
-    if (first === '"' || first === "'") {
+    const start = match.index + match[0].length
+    if (!KEY_WORDS.test(key) || match.index < position) continue
+    if ((at(NUMBER, text, start) && !SECRET_LAST.test(key)) || at(DONE, text, start)) continue
+    if (SHELL_PWD.test(key) && (text[start] === '/' || text[start] === '~')) continue
+    if (text[start] === '"' || text[start] === "'") {
       QUOTED.lastIndex = start
       const quoted = QUOTED.exec(text)
-      if (quoted) {
-        end = start + quoted[0].length
-        value = strip(quoted[0])
-        if (value === MARK || exempt(key, value)) continue
-        replace(start, end)
+      if (quoted && !/\w/.test(text[QUOTED.lastIndex] ?? '')) {
+        const inner = quoted[0].slice(1, -1)
+        if (inner && inner !== MARK && !(at(NUMBER, inner, 0) && !SECRET_LAST.test(key))) replace(start, QUOTED.lastIndex)
         continue
       }
-      end = trimEnd(text, start, lineEnd(text, start))
-      value = text.slice(start, end)
-    } else {
-      // Every start inside a run reaches the same end, so the run is found once, not again for each key inside it.
-      if (!(start > runStart && start < runEnd)) {
-        UNQUOTED.lastIndex = start
-        const found = UNQUOTED.exec(text)
-        if (!found) continue
-        runStart = start
-        runEnd = start + found[0].length
-        runTrim = trimEnd(text, start, runEnd)
-      }
-      end = Math.max(start, runTrim)
-      value = text.slice(start, end)
     }
-    if (value === MARK || exempt(key, value)) continue
-    replace(start, end)
+    // The line is read once, however many keys it holds.
+    if (match.index > lineStop) {
+      lineStart = text.lastIndexOf('\n', match.index) + 1
+      lineStop = lineEnd(text, match.index)
+      table = at(TABLE_ROW, text, lineStart)
+    }
+    const cell = table ? text.lastIndexOf('|', match.index) + 1 : lineStart
+    let end = table ? text.indexOf('|', start) : lineStop
+    if (end === -1 || end > lineStop) end = lineStop
+    let value = text.slice(start, end).trimEnd()
+    if (!table && (!value || BLOCK.test(value))) {
+      const column = match.index - lineStart
+      const lines = under(text, lineStop, column, leadOf(text.slice(lineStart, match.index)), text[match.index - 1])
+      if (!lines || text.slice(lines.first, lines.last) === MARK || (!value && at(MAPPING, text, lines.first))) continue
+      replace(value ? start : lines.first, lines.last)
+      continue
+    }
+    // A key's leading underscores are Markdown (`__token=x__`), not part of the name.
+    for (const close of openClosers(text.slice(cell, match.index + key.match(/^_*/)[0].length))) {
+      const cut = value.lastIndexOf(close)
+      if (cut !== -1) value = value.slice(0, cut)
+    }
+    value = value.trimEnd()
+    if (!value || value === MARK) continue
+    replace(start, start + value.length)
   }
   return out + text.slice(position)
 }
