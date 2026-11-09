@@ -4,3 +4,6 @@
 {"at":"2026-11-09T23:47:15Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-09T23:47:18Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-207-fix-the-dry-run-and-customer-paths-of"}
 {"at":"2026-11-09T23:48:13Z","by":"fred","op":"comment","to":"2026-11-09T23-48-13Z-fred.md"}
+{"at":"2026-11-09T23:51:15Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T23:51:15Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T23:51:15Z","by":"fred","op":"update","field":"acceptance_criteria"}

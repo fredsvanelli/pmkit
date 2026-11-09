@@ -5,19 +5,44 @@ exit 0
 $ pmkit issues list --category backlog,todo,triage,in_progress,in_review --json  [step 3, read]
 exit 0
 ? Step 4  [confirmed]
-$ pmkit issues create --title-file <inputs>/request-queue-title.md --description-file <inputs>/request-queue-description.md --dry-run --json  [step 5.1, dry run]
+$ pmkit issues create --title-file <inputs>/request-queue-title.md --description-file <inputs>/request-queue-customer-description.md --dry-run --json  [step 5.1, dry run]
 exit 0
+$ pmkit issues create --title-file <inputs>/request-queue-empty-title.md --description-file <inputs>/request-queue-description.md --dry-run --json  [step 5.1, dry run]
+exit 2 (expected INVALID_INPUT)
 ? Step 6  [confirmed]
-$ pmkit issues create --title-file <inputs>/request-queue-title.md --description-file <inputs>/request-queue-description.md --json  [step 5.1, write]
+$ pmkit issues create --title-file <inputs>/request-queue-title.md --description-file <inputs>/request-queue-customer-description.md --json  [step 5.1, write]
 exit 0
-~ edit .issues/issues/ISS-M0GZ/issue.md  [step 7]
-$ pmkit requests accept REQ-M0GZ ISS-M0GZ --dry-run --json  [step 7, dry run]
-exit 2 (expected CONFLICT)
+$ pmkit requests accept REQ-2X6D ISS-M0GZ --dry-run --json  [step 7, dry run]
+exit 0
+$ pmkit requests accept REQ-2X6D ISS-M0GZ --json  [step 7, write]
+exit 0
+$ pmkit requests list --json  [step 8, read]
+exit 0
 
 --- added .issues/issues/ISS-M0GZ/events.jsonl
 +{"at":"2026-10-23T12:00:00Z","by":"fred","op":"create","to":{"id":"ISS-M0GZ","title":"Export the board to CSV","type":"feature","status":"backlog","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-23T12:00:00.000Z","updated":"2026-10-23T12:00:00Z"}}
 --- added .issues/issues/ISS-M0GZ/issue.md
-+<<<<<<< HEAD
++---
 +id: ISS-M0GZ
-+=======
-+>>>>>>> other
++title: Export the board to CSV
++type: feature
++status: backlog
++created: 2026-10-23T12:00:00.000Z
++updated: 2026-10-23T12:00:00Z
++---
++
++## Description
++
++Asked by: CUS-ZZZZ.
++
++Request: REQ-2X6D
+--- changed .issues/requests/REQ-2X6D.md
+  ---
+  title: Export the board to CSV
+  customer: CUS-ZZZZ
+  created: 2026-11-01T10:00:00Z
++state: accepted
++issue: ISS-M0GZ
++triaged: 2026-10-23T12:00:00Z
++triaged_by: fred
+  ---

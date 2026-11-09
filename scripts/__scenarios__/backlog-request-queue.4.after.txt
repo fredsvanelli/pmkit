@@ -2,5 +2,8 @@ $ pmkit capabilities --json  [step 1, read]
 exit 0
 $ pmkit requests list --json  [step 2, read]
 exit 0
+$ pmkit issues list --category backlog,todo,triage,in_progress,in_review --json  [step 3, read]
+exit 0
+? Step 4  [confirmed]
 
 (no file changed)
