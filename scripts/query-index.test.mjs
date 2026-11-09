@@ -145,24 +145,35 @@ describe('query index module', () => {
     assert.deepEqual(counts(f.run(['A']).stats), { parsed: 1, reused: 0, written: true })
   }))
 
-  test('an edit reparses that file only, and a same-size edit with the mtime restored is caught by ctime', () => withDir((dir) => {
+  test('an edit that changes the size reparses that file only', () => withDir((dir) => {
     const f = fake(dir, { A: 'one', B: 'two' })
-    // A whole-second mtime survives the Date round trip below exactly, so only ctime can reveal the edit.
-    const pinned = new Date(Math.floor(Date.now() / 1000 - 3600) * 1000)
-    fs.utimesSync(f.fileOf('B'), pinned, pinned)
     f.run(['A', 'B'])
     settle(f.cacheDir)
     fs.writeFileSync(f.fileOf('A'), 'one, edited')
-    let result = f.run(['A', 'B'])
+    const result = f.run(['A', 'B'])
     assert.deepEqual(result.issues[0], issueOf('A', 'one, edited'))
     assert.deepEqual(counts(result.stats), { parsed: 1, reused: 1, written: true })
-    settle(f.cacheDir)
-    while (fs.statSync(f.fileOf('B')).ctimeMs > Date.now() - 25);
-    fs.writeFileSync(f.fileOf('B'), 'TWO')
-    fs.utimesSync(f.fileOf('B'), pinned, pinned)
-    assert.equal(fs.statSync(f.fileOf('B')).mtimeMs, pinned.getTime())
-    result = f.run(['A', 'B'])
-    assert.deepEqual(result.issues[1], issueOf('B', 'TWO'))
+  }))
+
+  // Size, mtime and inode are held equal, so only the ctime in the signature can tell the two reads apart.
+  test('a same-size change with equal size, mtime and ino is caught by a changed ctime alone', () => withDir((dir) => {
+    const files = path.join(dir, 'files')
+    fs.mkdirSync(files, { recursive: true })
+    fs.writeFileSync(path.join(files, 'A'), 'one')
+    const cacheDir = path.join(dir, '.cache')
+    const fileOf = (id) => path.join(files, id)
+    const read = (id) => issueOf(id, fs.readFileSync(fileOf(id), 'utf8'))
+    let ctimeMs = 2
+    const sign = () => ({ size: 3, mtimeMs: 1, ctimeMs, ino: 9 })
+    const run = () => readThroughIndex({ cacheDir, header: HEADER, ids: ['A'], fileOf, read, write: true, sign })
+    run()
+    settle(cacheDir)
+    assert.deepEqual(counts(run().stats), { parsed: 0, reused: 1, written: false })
+    fs.writeFileSync(fileOf('A'), 'TWO')
+    ctimeMs = 3
+    settle(cacheDir)
+    const result = run()
+    assert.deepEqual(result.issues, [issueOf('A', 'TWO')])
     assert.equal(result.stats.parsed, 1)
   }))
 
