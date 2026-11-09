@@ -24,7 +24,7 @@ exit 0
 +
 +1. The cursor is ignored (medium). src/events.mjs:1 takes cursor and never uses it. CI: https://github.com/o/r/actions/runs/42, step "Run tests" of the job test.
 +
-+The reporter wrote: "GITHUB_TOKEN=[redacted] then a clone of https://[redacted]@github.com/o/r.git fails".
++The reporter wrote: "GITHUB_TOKEN=[redacted]
 +
 +Redacted 2 values.
 --- changed .issues/issues/ISS-5N1R/events.jsonl

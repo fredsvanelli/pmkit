@@ -6,7 +6,7 @@ GITHUB_TOKEN=[redacted]
 clone https://[redacted]@github.com/o/r.git
 
 --- stderr
-note: redacted 2 values: url_credentials 1, github_token 1
+note: redacted 2 values: url_credentials 1, api_key_value 1
 
 $ pmkit text redact --file <inputs>/redact.txt --json
 exit 0
@@ -16,9 +16,9 @@ exit 0
   "count": 2,
   "counts": {
     "url_credentials": 1,
-    "github_token": 1
+    "api_key_value": 1
   },
   "summary": "Redacted 2 values."
 }
 --- stderr
-note: redacted 2 values: url_credentials 1, github_token 1
+note: redacted 2 values: url_credentials 1, api_key_value 1

@@ -66,6 +66,10 @@ export default {
     for (const line of LOG.split('\n').filter(Boolean)) assert.ok(!text.includes(line.split('\t').at(-1)), `the comment holds no line of the log: ${line}`)
     assert.ok(!text.includes(SECRET) && !text.includes('hunter2'), 'the comment holds no secret value')
     assert.ok(text.includes('Redacted 2 values.'), 'the comment says how many values were replaced')
+    // The comment is the draft with the reporter's line replaced from the secret key to its end (PMK-197: a value after a
+    // secret key runs to the end of the line); the other lines and the code reference stay.
+    const redacted = DRAFT.replace(/GITHUB_TOKEN=.*/, 'GITHUB_TOKEN=[redacted]')
+    assert.ok(text.includes(`${redacted}\nRedacted 2 values.`), 'the comment is the draft with the reporter line redacted from the key on and nothing else changed')
     assert.equal(events.filter((event) => event.field === 'status' || event.op === 'check').length, 0, 'the investigation changes nothing else')
   },
 }
