@@ -136,6 +136,19 @@ describe('query index module', () => {
     assert.deepEqual(seen, [f.fileOf('A')])
   }))
 
+  test('a file the injected signer cannot sign is read without an index entry', () => withDir((dir) => {
+    const f = fake(dir, { A: 'one', B: 'two' })
+    const sign = (file) => {
+      if (file === f.fileOf('B')) throw new Error('ENOENT')
+      return { size: 3, mtimeMs: 1, ctimeMs: 2, ino: 9 }
+    }
+    const run = () => readThroughIndex({ cacheDir: f.cacheDir, header: HEADER, ids: ['A', 'B'], fileOf: f.fileOf, read: (id) => issueOf(id, id === 'A' ? 'one' : 'two'), write: true, sign })
+    const result = run()
+    assert.deepEqual(result.issues, [issueOf('A', 'one'), issueOf('B', 'two')])
+    const data = JSON.parse(fs.readFileSync(f.indexFile, 'utf8'))
+    assert.deepEqual(Object.keys(data.issues), ['A'])
+  }))
+
   test('racy entries are reparsed and the index is rewritten', () => withDir((dir) => {
     const f = fake(dir, { A: 'one' })
     f.run(['A'])
