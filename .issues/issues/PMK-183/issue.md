@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-71]
 branch: pmk-183-fix-team-load-without-an-active-sprint
 created: 2026-10-31T16:01:19.821Z
-updated: 2026-11-09T01:18:24Z
+updated: 2026-11-09T01:25:13Z
 ---
 
 ## Description
@@ -32,7 +32,7 @@ updated: 2026-11-09T01:18:24Z
 
 ## Acceptance criteria
 
-- [ ] `--sprint current` with no active sprint behaves as `issues list --sprint current` does
-- [ ] On Linear, a reassignment target must be a member of the configured team
-- [ ] A member with no availability and open work is flagged
-- [ ] The no-move reason is right for a refused move that would not overload anyone, and for an estimate of 0
+- [x] `--sprint current` with no active sprint behaves as `issues list --sprint current` does
+- [x] On Linear, a reassignment target must be a member of the configured team
+- [x] A member with no availability and open work is flagged
+- [x] The no-move reason is right for a refused move that would not overload anyone, and for an estimate of 0
