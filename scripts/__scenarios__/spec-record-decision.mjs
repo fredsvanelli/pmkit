@@ -11,7 +11,7 @@ import path from 'node:path'
 
 const inputs = path.join(import.meta.dirname, '_inputs')
 const decision = 'We keep estimates in points, not hours. Context: two members argued about the precision of hours in the last sprint planning, and velocity already uses points. Consequence: time logged on an issue stays separate from its estimate. Rejected: estimating in hours.'
-const nextAdr = ['docs', 'next-adr', '--title', 'Keep estimates in points']
+const nextAdr = ['docs', 'next-adr', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-keep-estimates-in-points.md')]
 
 const added = (repo) => repo.git('ls-files', '--others', '--exclude-standard').split('\n').filter(Boolean)
 

@@ -149,9 +149,11 @@ for (const [folder, names] of Object.entries(COMMANDS)) {
   })
 }
 
-test('no command file puts an issue title on the shell command line, and conventions.md says how to write the files', () => {
+test('no command file puts a title, a name or a description on the shell command line, and conventions.md says how to write the files', () => {
   for (const file of markdownFiles(path.join(ROOT, 'commands'))) {
-    assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /issues create[^\n`]*--title "/, `${path.relative(ROOT, file)} passes a title to the shell; use --title-file`)
+    // A title, a name or a description with an inline value (quoted, a placeholder or after `=`) in any command, on one line or broken over two.
+    const inline = /--(title|name|description)(?:=|\s+)["'<$]/.exec(fs.readFileSync(file, 'utf8'))
+    assert.equal(inline, null, `${path.relative(ROOT, file)} passes ${inline?.[0]} to the shell; use --${inline?.[1]}-file`)
   }
   const conventions = fs.readFileSync(path.join(ROOT, 'skills/pmkit/references/conventions.md'), 'utf8')
   assert.match(conventions, /file tool[^\n]*never[^\n]*`echo`/)

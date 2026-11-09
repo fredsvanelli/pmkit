@@ -10,7 +10,7 @@
 import assert from 'node:assert/strict'
 import path from 'node:path'
 
-const epic = ['epic', 'create', '--title', 'Webhook delivery platform']
+const epic = ['epic', 'create', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-webhook-delivery-platform.md')]
 const retry = ['issues', 'create', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-retry-failed-deliveries-with-backoff.md'), '--type', 'feature', '--estimate', '3']
 const park = ['issues', 'create', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-park-exhausted-deliveries-in-a-dead-lett.md'), '--type', 'feature', '--estimate', '5']
 const replay = ['issues', 'create', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-replay-a-parked-delivery.md'), '--type', 'task', '--estimate', '2']

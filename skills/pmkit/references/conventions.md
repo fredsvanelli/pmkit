@@ -36,7 +36,7 @@ Every CLI call ends with `--json`. On a failure the CLI exits with code 2 and pr
 
 ## Files with text from data
 
-A title, description, criteria or comment taken from data (code, a TODO, a spec, an advisory, a user) never goes on the shell command line: a backtick or `$(` in it runs as a command. Pass it by file (`--title-file`, `--description-file`, `--criteria-file`, `--body-file`). Write the file with the file tool, never with `echo`, `printf` or a heredoc, because those bring the text back to the shell. A title file holds one line and nothing else.
+A title, description, criteria or comment taken from data (code, a TODO, a spec, an advisory, a user) never goes on the shell command line: a backtick or `$(` in it runs as a command. Pass it by file: `--title-file` (`issues create`, `epic create`, `docs next-adr`), `--name-file` (`milestone create`, `release create`), `--description-file`, `--criteria-file`, `--body-file`. Write the file with the file tool, never with `echo`, `printf` or a heredoc, because those bring the text back to the shell. A title or name file holds one line and nothing else, and its flag is exclusive with the inline one (`--title`, `--name`).
 
 ## Issue tables
 

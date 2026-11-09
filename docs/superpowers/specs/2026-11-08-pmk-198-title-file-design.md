@@ -11,5 +11,8 @@ A title that comes from data (a TODO, a code comment, a user, an advisory) must 
 3. `alertCandidate` joins line breaks (and runs of whitespace) of an advisory title into one space, so `--title-file` does not fail with "more than one line".
 4. A test fails when a command file has `issues create --title "`, and `conventions.md` is checked for the rule.
 
+## Review round 1 (PR #125)
+AC1 covers every command file, so the CLI got the flags: `epic create --title-file`, `docs next-adr --title-file`, `milestone create --name-file`, `release create --name-file` (for `local/doctor.md`). They share `lineFromFlag` in `scripts/pmkit.mjs` with `issues create --title-file`. `spec/import.md`, `spec/record-decision.md`, `local/doctor.md` and `issues/breakdown.md` use them. The plugin test now rejects `--title`, `--name` and `--description` with an inline value in any command file.
+
 ## Out of scope (follow-ups)
-`epic create --title`, `milestone create --name`, `docs next-adr --title`, `issues find --text` and `local/doctor.md`'s `--name` also take data on the command line, but their CLI commands have no `-file` flag. Adding one is a CLI change, so it is a separate issue.
+`issues list --text` is a search filter, not a title. `cycle open --goal` and `requests ... --reason` take free text from the user on the command line and have no `-file` flag.
