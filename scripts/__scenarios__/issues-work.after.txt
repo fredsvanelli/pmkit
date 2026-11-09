@@ -2,6 +2,8 @@ $ pmkit issues get ISS-4M2S --comments --json  [step 2, read]
 exit 0
 $ pmkit issues get ISS-2X6D --json  [step 2, read]
 exit 0
+$ pmkit default-branch --json  [step 2, read]
+exit 0
 ? Step 3  [confirmed]
 $ git status --porcelain  [step 4, git]
 exit 0

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   CONFIRM, ESTIMATE_UNITS, GIT_HOSTS, MEMBER_ID, NAME, PREFIX, PREVIEW, TRACKERS, WEEKDAYS, WORKSPACE_KEY,
-  findRoot, loadConfig, loadPmkitConfig, localConfigShapeProblems, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, unsupportedTracker, validateLocalConfig, validatePmkitConfig, withLocalDefaults,
+  findRoot, loadConfig, loadPmkitConfig, localConfigShapeProblems, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, resolveDefaultBranch, unsupportedTracker, validBranch, validateLocalConfig, validatePmkitConfig, withLocalDefaults,
 } from './lib/config.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { makeRepo, tempDir } from './test-helpers.mjs'
@@ -416,4 +416,31 @@ test('validatePmkitConfig accepts tracker.path absent, null and .issues for the 
     else pmkit.tracker.path = path
     assert.deepEqual(validatePmkitConfig(pmkit), [], String(path))
   }
+})
+
+test('validBranch accepts the names git accepts, with letters of any script, and refuses what a shell or git would misread', () => {
+  for (const name of ['main', 'develop', 'release/1.0', 'feat/a_b-c', 'développement', 'ветка', '_x']) assert.equal(validBranch(name), true, name)
+  for (const name of ['main.', 'a.lock/b', 'a./b', 'a/b.', 'x.lock/', '/a', 'main; curl x|sh', '-x', '--upload-pack=x', 'a..b', 'a//b', 'a/.b', '.hidden', 'x.lock', 'a/', 'a b', '$(id)', 'a`b`', 'a\nb', '', 'a@{1}']) assert.equal(validBranch(name), false, JSON.stringify(name))
+})
+
+test('resolveDefaultBranch returns main for an unset, non-string or invalid name, and says which', () => {
+  const host = (default_branch) => ({ git_host: { system: 'github', default_branch } })
+  assert.deepEqual(resolveDefaultBranch(host('develop')), { branch: 'develop', configured: 'develop', valid: true, note: null })
+  assert.deepEqual(resolveDefaultBranch(host('développement')), { branch: 'développement', configured: 'développement', valid: true, note: null })
+  assert.deepEqual(resolveDefaultBranch(host(undefined)), { branch: 'main', configured: null, valid: true, note: null })
+  assert.deepEqual(resolveDefaultBranch({}), { branch: 'main', configured: null, valid: true, note: null })
+  const bad = resolveDefaultBranch(host('main; curl x|sh'))
+  assert.deepEqual(bad, { branch: 'main', configured: 'main; curl x|sh', valid: false, note: 'git_host.default_branch is not a valid branch name, so main is used' })
+  assert.equal(resolveDefaultBranch(host(7)).valid, false)
+})
+
+test('validBranch accepts a name in NFC and in NFD, and the combining marks of other scripts', () => {
+  const nfc = 'développement'.normalize('NFC')
+  const nfd = 'développement'.normalize('NFD')
+  assert.notEqual(nfc, nfd)
+  assert.equal(validBranch(nfc), true)
+  assert.equal(validBranch(nfd), true)
+  assert.equal(validBranch('feat/' + nfd), true)
+  assert.equal(validBranch('शाखा'), true)
+  assert.equal(validBranch('\u0301x'), false, 'a combining mark cannot start a name')
 })

@@ -18,7 +18,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 
 1. Find the issue. When there is an `id`, use it. Otherwise run `git branch --show-current` and `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues list --assignee me --category in_progress,in_review --json`, then pick the issue whose `branch` equals the current branch. When none matches, ask for the ID.
 2. Read the issue. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues get <id> --comments --json`. Note the acceptance criteria (numbered from 1, in order), the description and the `branch`. When the issue has no `branch`, stop and say there is nothing to compare. Offer `/pmkit:issues:work <id>`. When it has no acceptance criteria, stop and offer `/pmkit:issues:update <id>` to add them.
-3. Read the diff. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" pr diff --branch <branch> --json`. The result has `source`, `diff`, `truncated` and `lines`.
+3. Read the diff. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" pr diff --branch <branch> --json`. The result has `source`, `diff`, `truncated` and `lines`. For the git host `none` (see the end of this file) run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" default-branch --json` first, because it holds the default branch.
    1. `source` is `pull_request` when the branch has an open or merged pull request, and `local` otherwise. A local diff is the branch against `origin/<default branch>` and, for the checked out branch, includes the uncommitted changes of tracked files. Say which one was read, and repeat each `note:` line of the CLI. A note says the pull request is closed without merge, that GitHub refused its diff as too large, that the local diff has uncommitted changes, or that local commits are not on origin and so are missing from the pull request diff.
    2. When `truncated` is `true`, the CLI kept the first 2000 lines and `lines` holds the full length. Say that the diff was cut. When the files left out could matter, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" pr diff --branch <branch> --max-lines <lines> --json` to read it whole, or mark the criteria that depend on the cut part as "not checked".
    3. When the diff is empty, say so, mark every criterion `gap`, skip step 4 and go on to step 5.
@@ -46,8 +46,8 @@ The issue line with its full ID, the source of the diff (pull request number or 
 ## If something is missing
 
 - No ID and no issue for the current branch: ask for the ID.
-- The git host is `none`: the CLI answers `NOT_SUPPORTED` on `pr diff`. Read the diff with `git diff <default branch>...<branch>`, where the default branch is `git_host.default_branch` or `main`, and say that no pull request was looked up.
 - `gh` is missing or not logged in: the CLI answers `NOT_CONFIGURED` or `AUTH`. Show the next step and offer to read the local diff with `git diff` instead.
 - The base branch does not exist here or on origin: the CLI answers `INVALID_INPUT`. Offer `git fetch origin`, or `--base <branch>`.
 - The branch has no changes the base lacks: the diff is empty. Every criterion is a gap, as in step 3.3.
 - An error from the CLI: apply the rules for reading errors in the conventions.
+- The git host is `none`: the CLI answers `NOT_SUPPORTED` on `pr diff`. Read the diff with `git diff <default branch>...<branch>`, where the default branch is the `branch` of `default-branch --json` from step 3 (a checked name, `main` when `git_host.default_branch` is unset or invalid; never put the config value itself in a shell command; when `default-branch` fails, use `main` and say so), and say that no pull request was looked up.

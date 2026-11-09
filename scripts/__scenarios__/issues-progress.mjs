@@ -21,6 +21,7 @@ export default {
     { confirm: 'Step 4' },
     { step: '5', dryRun: comment },
     { step: '5', write: comment },
+    { step: '3', read: ['default-branch'] },
     { step: '7', dryRun: tick },
     { confirm: 'Step 7' },
     { step: '7', write: tick },

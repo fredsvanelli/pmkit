@@ -107,6 +107,20 @@ export function withLocalDefaults(obj) {
   return result
 }
 
+// A branch name git accepts, with letters and digits of any script. No space, quote, `$`, `;`, `|`, backtick or leading `-` passes, so the name is also safe in a shell command.
+const BRANCH_NAME = /^[\p{L}\p{N}_][\p{L}\p{M}\p{N}._/-]*$/u
+// What git check-ref-format also refuses: an empty component, one that starts with `.` or ends with `.` or `.lock`, and `..`.
+export const validBranch = (name) =>
+  typeof name === 'string' && BRANCH_NAME.test(name) && !name.includes('..') && name.split('/').every((part) => part !== '' && !part.startsWith('.') && !part.endsWith('.') && !part.endsWith('.lock'))
+
+/** The default branch every reader uses: git_host.default_branch when it is a valid name, `main` when it is unset or invalid. `configured` is what the file holds (null when unset) and `note` says why `main` replaced an invalid value. */
+export function resolveDefaultBranch(pmkit) {
+  const configured = pmkit?.git_host?.default_branch
+  if (configured === undefined || configured === null) return { branch: 'main', configured: null, valid: true, note: null }
+  if (validBranch(configured)) return { branch: configured, configured, valid: true, note: null }
+  return { branch: 'main', configured, valid: false, note: 'git_host.default_branch is not a valid branch name, so main is used' }
+}
+
 export function validatePmkitConfig(obj) {
   if (!isObject(obj)) return ['config must be a map']
   const problems = []

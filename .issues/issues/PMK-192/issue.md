@@ -2,12 +2,14 @@
 id: PMK-192
 title: Validate default_branch before pause and progress put it in a shell command
 type: bug
-status: backlog
+status: in_review
 priority: high
 estimate: 1
+assignee: fred
 related: [PMK-65]
+branch: pmk-192-validate-default-branch-before-pause-and
 created: 2026-10-31T19:29:35.913Z
-updated: 2026-10-31T19:29:35Z
+updated: 2026-11-08T23:58:00Z
 ---
 
 ## Description
@@ -28,6 +30,6 @@ Found by the third review of PR #103 (PMK-65). It predates EPC-6. `docs next-adr
 
 ## Acceptance criteria
 
-- [ ] Every reader of `default_branch` goes through one validation, and an invalid name falls back to `main` with a `note:`
-- [ ] No command file puts a config value into a shell command without that validation
-- [ ] `validate` reports an invalid `default_branch`
+- [x] Every reader of `default_branch` goes through one validation, and an invalid name falls back to `main` with a `note:`
+- [x] No command file puts a config value into a shell command without that validation
+- [x] `validate` reports an invalid `default_branch`

@@ -233,6 +233,16 @@ test('a bad .pmkit/config.yaml is reported with its path', () => {
   ])
 })
 
+test('validate reports an invalid git_host.default_branch and accepts a non-ASCII one', () => {
+  const root = makeRepo('basic')
+  editPmkit(root, 'system: none', 'system: github\n  default_branch: "main; curl x|sh"')
+  assert.deepEqual(validateRepo(root).problems, [
+    { path: '.pmkit/config.yaml', code: 'config', message: 'git_host.default_branch is not a valid branch name, so main is used' },
+  ])
+  editPmkit(root, 'main; curl x|sh', 'développement')
+  assert.deepEqual(validateRepo(root).problems, [])
+})
+
 test('problems of both config files are listed, sorted by path', () => {
   const root = makeRepo('broken')
   fs.writeFileSync(path.join(root, '.issues', 'config.yaml'), 'version: 1\nthis line has no colon\n')

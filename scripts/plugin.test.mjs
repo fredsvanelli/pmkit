@@ -266,3 +266,20 @@ test('the routing skill has a name and a description', () => {
   assert.equal(data.name, 'pmkit')
   assert.ok(data.description && data.description.length > 20)
 })
+
+test('no command file puts a git_host.default_branch value in a shell command without the default-branch check (PMK-192)', () => {
+  const dir = path.join(ROOT, 'commands')
+  const files = markdownFiles(dir).filter((file) => !file.endsWith(`${path.sep}link-repo.md`))
+  const offending = []
+  for (const file of files) {
+    for (const [index, line] of fs.readFileSync(file, 'utf8').split('\n').entries()) {
+      const readsConfig = line.includes('git_host.default_branch')
+      const shellBase = /git (log|diff)[^`]*<(base|default branch)>/.test(line)
+      if ((readsConfig || shellBase) && !line.includes('default-branch --json')) offending.push(`${path.relative(ROOT, file)}:${index + 1}`)
+    }
+  }
+  assert.deepEqual(offending, [])
+  for (const name of ['issues/pause', 'issues/progress', 'issues/review', 'issues/investigate-bug', 'issues/work']) {
+    assert.match(fs.readFileSync(path.join(dir, `${name}.md`), 'utf8'), /pmkit\.mjs" default-branch --json/, name)
+  }
+})

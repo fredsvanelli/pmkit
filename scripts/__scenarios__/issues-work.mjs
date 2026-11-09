@@ -48,6 +48,7 @@ export default {
     // Step 2: the issue with its comments, and its parent, which is an issue.
     { step: '2', read: ['issues', 'get', 'ISS-4M2S', '--comments'], save: 'issue' },
     { step: '2', read: ['issues', 'get', 'ISS-2X6D'] },
+    { step: '2', read: ['default-branch'] },
     // Step 3: ISS-4M2S has no acceptance criteria, and the user continues.
     { confirm: 'Step 3' },
     // Step 4: the working tree is clean.
