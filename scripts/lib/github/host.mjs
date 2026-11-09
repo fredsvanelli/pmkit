@@ -230,16 +230,21 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
     },
 
     ciLogs({ branch, runId } = {}) {
-      let run = { databaseId: runId, workflowName: null, url: null }
+      let run
       if (runId !== undefined) {
         if (!Number.isInteger(runId) || runId < 1) throw new PmkitError('INVALID_INPUT', `run id "${runId}" is not valid`, 'Pass the number of a workflow run')
+        const meta = parse(check('gh', ['run', 'view', String(runId), '--json', 'workflowName,url,conclusion,status']).stdout, 'the workflow run')
+        run = { databaseId: runId, ...meta }
       } else {
-        const failed = listRuns({ branch }).find((r) => FAILED_RUN.has(r.conclusion))
-        if (!failed) return null
-        run = failed
+        run = listRuns({ branch }).find((r) => FAILED_RUN.has(r.conclusion))
+        if (!run) return null
       }
-      const log = check('gh', ['run', 'view', String(run.databaseId), '--log-failed']).stdout
-      return { runId: run.databaseId, workflowName: run.workflowName ?? null, url: run.url ?? null, log }
+      const conclusion = run.conclusion || null
+      // A run that succeeded, is still going or never started a job has no failed-step log: gh would only answer with nothing.
+      // A run that was cancelled or skipped can still have failed steps, so only these three skip the call.
+      const hasFailedSteps = conclusion !== null && conclusion !== 'success' && conclusion !== 'startup_failure'
+      const log = hasFailedSteps ? check('gh', ['run', 'view', String(run.databaseId), '--log-failed']).stdout : ''
+      return { runId: run.databaseId, workflowName: run.workflowName ?? null, url: run.url ?? null, conclusion, status: run.status ?? null, log }
     },
 
     prDiff(number) {
