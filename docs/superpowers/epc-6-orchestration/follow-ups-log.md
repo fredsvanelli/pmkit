@@ -107,3 +107,28 @@ Início: 2026-11-08. `develop` em 789fc88, `npm test` com 3955 testes, 3874 pass
 - PMK-180: rebase 80a95bf, diff pós-aprovação conferido. Mergeado (2a97484).
 
 Fim da rodada 3: PRs #133, #134, #135 mergeados.
+
+Limpeza da rodada 3: closing PR #136 mergeado (f361005), 6 worktrees removidos, branches provisórias apagadas.
+
+## Rodada 4
+
+Início: 2026-11-08. `develop` em f361005, `npm test` com 3962 testes, 3881 pass, 0 fail, 81 skipped, saída 0. Run Orca `run_e9dab19a2b7a`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-183 | 2 | sonnet (`ctx_70ece43b3872`) | #137 | ciclo 1 (sonnet): mudanças pedidas; ciclo 2 (sonnet): APROVADO; rebase fdc67e5 | mergeado (97718f7) |
+| PMK-184 | 1 | sonnet (`ctx_8c5c9163bc2f`) | #138 | ciclo 1 (sonnet): APROVADO; rebase f947019 | mergeado (aa6a444) |
+| PMK-185 | 1 | sonnet (`ctx_5e7e0fdfb9b9`) | #139 | ciclo 1 (sonnet): APROVADO | mergeado (5ff271f) |
+
+- PMK-183: PR #137 (sonnet); --sprint current sem sprint, no_availability, razões conditional/would_not_improve/zero_estimate, alvo de time no Linear. Manteve a regra alvo acima da origem. Follow-ups: relaxar essa regra; dias de folga na escolha do alvo; membership no issues assign do Linear. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-184: PR #138 (sonnet); AC1 já respondia INVALID_INPUT em develop, só teste de regressão; ci logs --run preenche workflowName/url/conclusion/status e logNote para run sem falha, não terminado, startup_failure ou log vazio. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-185: PR #139 (sonnet); advisory escolhida pela severidade do alerta, senão a mais grave; nota do caminho derivado no stderr, 4 goldens regenerados. Follow-ups: nota no --json; stderr na saída JSON inválida do npm. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-183 ciclo 1 (sonnet): mudanças pedidas (filtro de sobrecarga bloqueia tirar trabalho de quem tem availability 0; issues sem estimativa somem e null encerra o laço; nota falsa com --sprint current sem sprint).
+- PMK-185 ciclo 1 (sonnet): APROVADO (nota só no stderr é o padrão do CLI e nenhum arquivo de comando chama alerts list). Não bloqueantes: comentário falso em pmkit.mjs:1309; corte de 300 caracteres do stderr pode perder npm ERR! (alerts.mjs:15); README:161 sem a nota; shim 9009 com stdout cai em not valid JSON. Mergeado (5ff271f).
+- PMK-183 correção: trabalho de availability 0 passa pelo filtro; issues sem estimativa propostas com marcador unsized; null não para o laço; nota falsa removida; razão no_target; teste Linear cycles-off. Revisor ciclo 2 (sonnet) iniciado.
+- PMK-184 ciclo 1 (sonnet): APROVADO. Não bloqueantes: --run deixa de buscar log de runs cancelled/action_required/stale/skipped (host.mjs:244, pmkit.mjs:1503); regra de conclusões repetida (pmkit.mjs:1498); teste perdeu asserção do --log-failed para timed_out (github-host.test.mjs:274).
+- PMK-184: rebase f947019, --log-failed também para cancelled/skipped etc. com --run, asserção de timed_out de volta; diff pós-aprovação conferido. Mergeado (aa6a444).
+- PMK-183 ciclo 2 (sonnet): APROVADO, em conflito com develop; pedi rebase com mensagens sem sobrecarga para doador ausente, sem load null, e JSON/nota certos com --sprint current sem sprint. Follow-up: would_not_improve com alvos recusados por sobrecarga.
+- PMK-183: rebase fdc67e5 com os não bloqueantes; diff pós-aprovação conferido. Mergeado (97718f7).
+
+Fim da rodada 4: PRs #137, #138, #139 mergeados.
