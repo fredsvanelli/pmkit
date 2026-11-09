@@ -66,10 +66,9 @@ export default {
     for (const line of LOG.split('\n').filter(Boolean)) assert.ok(!text.includes(line.split('\t').at(-1)), `the comment holds no line of the log: ${line}`)
     assert.ok(!text.includes(SECRET) && !text.includes('hunter2'), 'the comment holds no secret value')
     assert.ok(text.includes('Redacted 2 values.'), 'the comment says how many values were replaced')
-    // Every secret fragment the draft quoted is gone, and the text around them is the draft's own.
-    for (const fragment of [SECRET, 'ci:hunter2', 'hunter2@']) assert.ok(!text.includes(fragment), `the comment holds no ${fragment}`)
-    assert.ok(text.includes('The reporter wrote: "GITHUB_TOKEN=[redacted] then a clone of https://[redacted]@github.com/o/r.git fails".'), 'the quoted sentence keeps its quotes and its words')
-    assert.ok(text.includes('src/events.mjs:1 takes cursor and never uses it.'), 'the code reference stays')
+    // The comment is the draft with only the secrets replaced: the quotes, the words and the code reference around them stay.
+    const redacted = DRAFT.replace(`GITHUB_TOKEN=${SECRET}`, 'GITHUB_TOKEN=[redacted]').replace('https://ci:hunter2@', 'https://[redacted]@')
+    assert.ok(text.includes(`${redacted}\nRedacted 2 values.`), 'the comment is the draft with the two secrets replaced and nothing else changed')
     assert.equal(events.filter((event) => event.field === 'status' || event.op === 'check').length, 0, 'the investigation changes nothing else')
   },
 }

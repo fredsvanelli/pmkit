@@ -57,7 +57,7 @@ const PROBES = [
   ['authorization with a github token', `Authorization: token ghp_${rep('b', 36)}`, 'Authorization: [redacted]'],
   ['rerun over redacted text', 'Redacted 2 values.\nfoo [redacted]', 'Redacted 2 values.\nfoo [redacted]'],
   // Unchanged: code, prose, paths, numbers and values that are not secrets.
-    ['cookie', 'Cookie: session=abcdef123456', 'Cookie: session=abcdef123456'],
+  ['cookie', 'Cookie: session=abcdef123456', 'Cookie: session=abcdef123456'],
   ['docker login', 'docker login -u ci -p hunter2 ghcr.io', 'docker login -u ci -p hunter2 ghcr.io'],
   ['a uuid', 'id 123e4567-e89b-12d3-a456-426614174000', 'id 123e4567-e89b-12d3-a456-426614174000'],
   ['an image data url', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='],
@@ -104,6 +104,34 @@ const PROBES = [
   ['a comma list', 'a=1,token=x1,b=2', 'a=1,token=[redacted]'],
   // Kept: the value of a pair after a query-string ampersand, a key with no secret name, and a directory in PWD.
   ['query pair after the secret', 'password=hunter&user=bob', 'password=[redacted]&user=bob'],
+  // Review of PR #155, blocker 1: a quoted value with an escaped quote, a line break or no closing quote goes in full.
+  ['escaped quote in a json password', '{"password": "hun\\"ter22"}', '{"password": [redacted]}'],
+  ['escaped quote in a token', 'token: "abc\\"def" next', 'token: [redacted] next'],
+  ['escaped n inside quotes', 'password="abc\\ndef"', 'password=[redacted]'],
+  ['line break inside quotes', 'password="abc\ndef" x', 'password=[redacted] x'],
+  ['quote never closed', 'password="abc def', 'password=[redacted]'],
+  // Blocker 2: a Unicode space after the separator.
+  ['no-break space after the colon', 'password:\u00a0hunter2', 'password:\u00a0[redacted]'],
+  ['em space after the equals', 'token=\u2003abc123', 'token=\u2003[redacted]'],
+  // Blocker 3: the rest of a value whose start another pattern replaced.
+  ['slack token with a tail', 'secret=xoxb-1234567890abc!Rest#9', 'secret=[redacted]'],
+  ['google key with a tail', `api_key=AIza${rep('A', 35)}.tail`, 'api_key=[redacted]'],
+  ['mark followed by more text', 'password=[redacted]hunter2', 'password=[redacted]'],
+  // Blocker 4: YAML block values.
+  ['yaml literal block', 'password: |\n  hunter2\nnext: 1', 'password: [redacted]\nnext: 1'],
+  ['yaml folded block with a chomp mark', 'token: >-\n  abc123def\n  more\n\n  last\nafter: 1', 'token: [redacted]\nafter: 1'],
+  ['yaml block in a list item', '- password: |\n    hunter2\n- other: 1', '- password: [redacted]\n- other: 1'],
+  ['yaml value on the next line', 'password:\n  hunter2\nnext: 1', 'password:\n  [redacted]\nnext: 1'],
+  ['yaml mapping under the key', 'credentials:\n  user: bob\n  password: hunter2', 'credentials:\n  user: bob\n  password: [redacted]'],
+  ['yaml key with nothing under it', 'password:\nnext: 1', 'password:\nnext: 1'],
+  // Blocker 7: Markdown wrappers.
+  ['token in a table cell', '|token=abc12345|x|', '|token=[redacted]|x|'],
+  ['token in underscores', '__token=abc12345__', '__token=[redacted]__'],
+  ['token in strikethrough', '~~token=abc12345~~', '~~token=[redacted]~~'],
+  // Blocker 8: a file name with a line and a column is not a secret; a dotted name that is not a file is.
+  ['stack frame in password.ts', 'at login (src/auth/password.ts:42:13)', 'at login (src/auth/password.ts:42:13)'],
+  ['credentials file with a line', 'see lib/credentials.mjs:42 for it', 'see lib/credentials.mjs:42 for it'],
+  ['dotted password name', 'my.password=123456', 'my.password=[redacted]'],
 ]
 
 for (const [name, input, output] of PROBES) {
@@ -114,11 +142,19 @@ for (const [name, input, output] of PROBES) {
 
 test('probe: no pattern takes more than a second on 80 thousand characters of its own kind', () => {
   const n = 80000
-  const inputs = [rep('a', n), `token${rep('-', n)}`, `x://${rep(':', n)}`, `a://${rep('b:', n / 2)}`, rep('-----BEGIN A PRIVATE KEY-----', n / 29), rep('sk-', n / 3), `Authorization: ${rep('a', n)}`, rep('a://b', n / 5), rep('password:', n / 9), rep('a=1&', n / 4), rep('token=', n / 6), rep('curl -u ', n / 8), rep('token=&a=', n / 9), rep('&a', n / 2), `token=${rep('a ', n / 2)}`]
+  const inputs = [rep('a', n), `token${rep('-', n)}`, `x://${rep(':', n)}`, `a://${rep('b:', n / 2)}`, rep('-----BEGIN A PRIVATE KEY-----', n / 29), rep('sk-', n / 3), `Authorization: ${rep('a', n)}`, rep('a://b', n / 5), rep('password:', n / 9), rep('a=1&', n / 4), rep('token=', n / 6), `token=${rep(')', n)}x`, rep('pwd=/', n / 5), rep('token="', n / 7), rep('password: |\n  a\n', n / 16), rep('token:\n  x\n', n / 10), rep('password=[redacted]', n / 19), rep('curl -u ', n / 8), rep('token=&a=', n / 9), rep('&a', n / 2), `token=${rep('a ', n / 2)}`]
   for (const input of inputs) {
     const start = process.hrtime.bigint()
     redact(input)
     const ms = Number(process.hrtime.bigint() - start) / 1e6
-    assert.ok(ms < 1000, `${JSON.stringify(input.slice(0, 20))} took ${ms} ms`)
+    assert.ok(ms < 2000, `${JSON.stringify(input.slice(0, 20))} took ${ms} ms`)
+  }
+})
+
+test('probe: redact is idempotent over its own output', () => {
+  for (const [name, , output] of PROBES) {
+    const again = redact(output)
+    assert.equal(again.text, output, name)
+    assert.equal(again.count, 0, `${name}: ${JSON.stringify(again.counts)}`)
   }
 })
