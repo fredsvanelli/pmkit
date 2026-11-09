@@ -15,21 +15,22 @@ const OPEN = (category) => category !== 'done' && category !== 'canceled'
  * @param {Set<string>} input.openMilestones ids of the milestones with an open issue
  * @param {object | null} input.activeSprint null when there is none or cycles are absent
  * @param {boolean} input.cyclesAbsent the tracker has no cycles, so there can be no sprint
+ * @param {string[]} [input.unread] rungs ('release', 'milestone', 'sprint') whose read failed: skipped as `*_not_read`, not as absent or empty
  */
-export function chooseReadinessBasis({ selector, releases, milestones, openMilestones, activeSprint, cyclesAbsent }) {
+export function chooseReadinessBasis({ selector, releases, milestones, openMilestones, activeSprint, cyclesAbsent, unread = [] }) {
   for (const basis of ['release', 'milestone', 'sprint']) {
     if (selector?.[basis]) return { basis, reason: 'requested', source: selector[basis], skipped: [] }
   }
   const skipped = []
   const release = releases === null ? null : releases.find((r) => r.state === 'planned')
   if (release) return { basis: 'release', reason: 'next_planned', source: release, skipped }
-  skipped.push({ basis: 'release', reason: releases === null ? 'releases_absent' : 'no_planned_release' })
+  skipped.push({ basis: 'release', reason: unread.includes('release') ? 'releases_not_read' : releases === null ? 'releases_absent' : 'no_planned_release' })
   const due = (m) => m.due ?? '9999-12-31'
   const milestone = milestones.filter((m) => openMilestones.has(m.id)).sort((a, b) => (due(a) < due(b) ? -1 : due(a) > due(b) ? 1 : a.id < b.id ? -1 : 1))[0]
   if (milestone) return { basis: 'milestone', reason: 'earliest_due_milestone', source: milestone, skipped }
-  skipped.push({ basis: 'milestone', reason: 'no_open_milestone' })
+  skipped.push({ basis: 'milestone', reason: unread.includes('milestone') ? 'milestones_not_read' : 'no_open_milestone' })
   if (activeSprint) return { basis: 'sprint', reason: 'active_sprint', source: activeSprint, skipped }
-  skipped.push({ basis: 'sprint', reason: cyclesAbsent ? 'cycles_absent' : 'no_active_sprint' })
+  skipped.push({ basis: 'sprint', reason: unread.includes('sprint') ? 'cycles_not_read' : cyclesAbsent ? 'cycles_absent' : 'no_active_sprint' })
   return { basis: null, reason: null, source: null, skipped }
 }
 
@@ -61,11 +62,13 @@ export function buildReadiness({ choice, issues, prs, prsIncomplete, deploys, gi
   const pullRequests = Array.isArray(prs)
     ? prs.filter((pr) => byBranch.has(pr.headRefName)).map((pr) => ({ number: pr.number, title: pr.title, url: pr.url, isDraft: pr.isDraft === true, issue: byBranch.get(pr.headRefName), checks: { total: (pr.statusCheckRollup ?? []).length, failing: failingPullRequests([pr])[0]?.failing ?? [], pending: (pr.statusCheckRollup ?? []).filter(isPending).length } })).sort((a, b) => a.number - b.number)
     : prs
-  const matches = (deploy) => basis === 'release' && Boolean(source.tag) && deploy.ref === source.tag
+  const matches = (deploy) => basis === 'release' && Boolean(source.tag) && (deploy.ref === source.tag || deploy.ref === `refs/tags/${source.tag}`)
   const deployRows = Array.isArray(deploys) ? deploys.map((deploy) => ({ ...deploy, matchesRelease: matches(deploy) })) : deploys
   const complete = problems.length === 0 && !truncated
   const openWork = counts.open + (Array.isArray(pullRequests) ? pullRequests.length : 0)
   // Open work is a fact whatever else is unread. Nothing open is only "ready" when every read finished.
-  const ready = openWork > 0 ? false : complete && Array.isArray(pullRequests) && !prsIncomplete ? true : null
-  return { basis, reason, source, skipped, issues: { open: issues.filter((i) => OPEN(i.status.category)).map(issueRow), counts }, pullRequests, pullRequestsIncomplete: prsIncomplete, deploys: deployRows, gitHost, truncated, complete, ready, problems }
+  // A basis with no issue says nothing about being ready, so it is unknown, never ready.
+  const empty = counts.total === 0
+  const ready = openWork > 0 ? false : complete && !empty && Array.isArray(pullRequests) && !prsIncomplete ? true : null
+  return { basis, reason, source, skipped, issues: { open: issues.filter((i) => OPEN(i.status.category)).map(issueRow), counts }, pullRequests, pullRequestsIncomplete: prsIncomplete, deploys: deployRows, gitHost, truncated, empty, complete, ready, problems }
 }
