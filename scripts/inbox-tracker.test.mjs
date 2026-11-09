@@ -499,3 +499,35 @@ test('PMK-195: a mention under a section such as Notes is in the description, on
   const items = tracker.listNotifications({ user: 'fred', since: SINCE }).items
   assert.deepEqual(items.map((item) => [item.in, item.excerpt]).sort(), [['acceptance_criteria', '- [ ] @fred sign off'], ['description', '@fred see the notes']])
 })
+
+test('PMK-195: the prune keeps the seen key of an item that exists on another branch, and drops one that exists nowhere', () => {
+  const git = (cwd, ...args) => {
+    const result = spawnSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@x.dev', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@x.dev' } })
+    assert.equal(result.status, 0, result.stderr)
+    return result.stdout
+  }
+  const root = makeRepo('no-sprints')
+  configure(root)
+  git(root, 'init', '-q', '-b', 'main')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-q', '-m', 'start')
+  git(root, 'switch', '-q', '-c', 'side')
+  const { tracker, setNow, paths, env } = setup(root)
+  const onBranch = tracker.createIssue({ title: 'Branch' }, 'ana').after.id
+  setNow('2026-10-31T10:00:00Z')
+  tracker.assign(onBranch, 'fred', 'ana')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-q', '-m', 'side')
+  const nowhere = tracker.createIssue({ title: 'Nowhere' }, 'ana').after.id
+  tracker.assign(nowhere, 'fred', 'ana')
+  tracker.markRead({ user: 'fred' })
+  git(root, 'switch', '-q', 'main')
+  fs.rmSync(paths(nowhere).dir, { recursive: true })
+  assert.equal(fs.existsSync(paths(onBranch).dir), false)
+  setNow('2026-12-05T10:00:00Z')
+  const result = tracker.markRead({ user: 'fred' })
+  assert.equal(result.pruned, 1)
+  assert.equal(Object.keys(inboxGet(root, 'fred', { env }).seen).length, 1)
+  git(root, 'switch', '-q', 'side')
+  assert.deepEqual(tracker.listNotifications({ user: 'fred' }).items, [])
+})

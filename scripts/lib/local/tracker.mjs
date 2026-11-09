@@ -4,6 +4,7 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { requireActor, gitUserEmail } from '../actor.mjs'
 import { loadConfig, validateLocalConfig } from '../config.mjs'
 import { PmkitError } from '../errors.mjs'
@@ -857,6 +858,19 @@ export function createLocalTracker(root, {
   }
 
   /**
+   * True when the issue folder is at the tip of any local or remote branch. The seen keys are per checkout and a branch switch can
+   * remove an issue from the checkout, so the prune must not drop a key whose item is still on another branch. Outside git, or when
+   * git fails, nothing is found elsewhere. Reads only, so a timeout is safe.
+   */
+  function onAnyBranch(id) {
+    const git = (...args) => spawnSync('git', args, { cwd: config.root, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, timeout: 10000 })
+    const refs = git('for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes')
+    if (refs.status !== 0) return false
+    const folder = path.relative(config.root, path.join(issuesDir, 'issues', id)).split(path.sep).join('/')
+    return refs.stdout.split('\n').filter(Boolean).some((ref) => git('ls-tree', '--name-only', ref, '--', folder).stdout?.trim())
+  }
+
+  /**
    * The mentions and assignments of `user` whose keys the member has not seen. `since` limits them to items from that time on,
    * and `all` lists every item, seen or not. With no check yet, the first list shows the last 14 days and counts the older
    * items in `hidden`. Reads only.
@@ -889,7 +903,7 @@ export function createLocalTracker(root, {
    * Records the keys of the items the member has seen. With no `keys` it marks every unseen item now. `keys` marks exactly those,
    * so an item that arrived after the list stays unseen. A key no item has is not an error: it comes back in `unknown` and the
    * other keys are marked. It writes nothing when the read is incomplete, so a file that does not parse cannot get its items marked. The first mark-read also marks the items older than
-   * the 14 days the first list showed. It drops the seen keys of items that no longer exist once they are 30 days old.
+   * the 14 days the first list showed. It drops the seen keys of items that no longer exist, here and on every branch, once they are 30 days old.
    */
   function markRead({ user, keys, dryRun = false } = {}) {
     requireMember(user, 'user')
@@ -918,7 +932,7 @@ export function createLocalTracker(root, {
     const kept = {}
     let pruned = 0
     for (const [key, at] of Object.entries(seen)) {
-      if (known.has(key) || Date.parse(at) > oldest) kept[key] = at
+      if (known.has(key) || Date.parse(at) > oldest || onAnyBranch(String(key.split(':')[1]))) kept[key] = at
       else pruned++
     }
     const marked = [...chosen].sort()
