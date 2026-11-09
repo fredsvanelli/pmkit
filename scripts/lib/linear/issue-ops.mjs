@@ -7,7 +7,7 @@ import { REFERENCE_KINDS, referencedError } from '../delete-refusal.mjs'
 import { compareIds } from '../ids.mjs'
 import { checkFilter } from '../issue-filter.mjs'
 import { cycleKey } from './cycles.mjs'
-import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE } from './documents.mjs'
+import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
 import { finishSearch, translateFilter } from './filter.mjs'
 import { blockedOpen, isIssueId, issueKey, makeContext, stateCategory, toIssue } from './issues.mjs'
 import { applyInput, createTeam, requireAssignee, skeletonNode, teamOf, teamStates, toInput } from './writes.mjs'
@@ -52,10 +52,10 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
   }
 
   /** Reads the pages after the first of each nested connection that has more, so every list is complete. */
-  async function completeNested(node) {
-    for (const field of Object.keys(NESTED_PAGES)) {
+  async function completeNested(node, pages = NESTED_PAGES) {
+    for (const field of Object.keys(pages)) {
       if (node[field]?.pageInfo?.hasNextPage !== true) continue
-      const { nodes } = await client.paginate(NESTED_PAGES[field], { id: node.id }, { select: (data) => data.issue[field], pageSize: NESTED_PAGE_SIZE })
+      const { nodes } = await client.paginate(pages[field], { id: node.id }, { select: (data) => data.issue[field], pageSize: NESTED_PAGE_SIZE })
       node[field] = { nodes, pageInfo: { hasNextPage: false, endCursor: null } }
     }
     return node
@@ -311,7 +311,10 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     await requireViewer(actor)
     const node = await readNode(id)
     const before = toIssue(node, await contextFor([node]))
-    const references = referencesTo(node)
+    // The shared read leaves archived children and relations out. A failed read here fails the delete: it never means "no references".
+    const archivedNode = (await client.request(ISSUE_REFERENCES_QUERY, { id: node.id }))?.issues?.nodes?.[0]
+    if (!archivedNode) throw new PmkitError('UPSTREAM', `Linear did not return the references of ${before.id}, so they cannot be checked`, 'Run pmkit issues delete again')
+    const references = referencesTo(await completeNested(archivedNode, REFERENCE_PAGES))
     if (references.length > 0) throw referencedError(before.id, references)
     const warnings = []
     if (before.branch !== undefined) warnings.push(`branch ${before.branch} and its pull request stay as they are`)
