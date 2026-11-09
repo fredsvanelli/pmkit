@@ -2,14 +2,14 @@
 id: PMK-183
 title: Fix team load without an active sprint and on Linear teams
 type: bug
-status: in_progress
+status: in_review
 priority: medium
 estimate: 2
 assignee: fred
 related: [PMK-71]
 branch: pmk-183-fix-team-load-without-an-active-sprint
 created: 2026-10-31T16:01:19.821Z
-updated: 2026-11-09T01:25:13Z
+updated: 2026-11-09T01:25:31Z
 ---
 
 ## Description
