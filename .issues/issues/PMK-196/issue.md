@@ -2,12 +2,14 @@
 id: PMK-196
 title: "Fix bulk labels, single-issue errors and the commit-only failure"
 type: bug
-status: backlog
+status: in_review
 priority: medium
 estimate: 1
+assignee: fred
 related: [PMK-56]
+branch: pmk-196-fix-bulk-labels-single-issue-errors-and
 created: 2026-10-31T19:29:36.596Z
-updated: 2026-10-31T19:29:36Z
+updated: 2026-11-09T04:06:00Z
 ---
 
 ## Description
@@ -31,7 +33,7 @@ updated: 2026-10-31T19:29:36Z
 
 ## Acceptance criteria
 
-- [ ] A failure of `auto_commit` alone is not reported as a stop midway
-- [ ] Label values are trimmed, and a label with a comma can be removed
-- [ ] A one-issue batch keeps the operation's error code
-- [ ] `--text` with only spaces is refused, and the next step for a view with no criterion is a command the CLI accepts
+- [x] A failure of `auto_commit` alone is not reported as a stop midway
+- [x] Label values are trimmed, and a label with a comma can be removed
+- [x] A one-issue batch keeps the operation's error code
+- [x] `--text` with only spaces is refused, and the next step for a view with no criterion is a command the CLI accepts

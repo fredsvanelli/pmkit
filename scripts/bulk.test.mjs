@@ -103,10 +103,8 @@ test('nothing to write has no digest and no blocker', () => {
   assert.deepEqual(preview.blockers, [])
 })
 
-test('a label value with a comma is refused, because it would be one label named "a,b"', () => {
-  for (const kind of ['label-add', 'label-remove']) {
-    assert.throws(() => parseChange(kind, 'a,b', {}), (error) => error.code === 'INVALID_INPUT' && /one label/.test(error.message))
-  }
+test('label-add refuses a label with a comma, because it would be read back as two', () => {
+  assert.throws(() => parseChange('label-add', 'a,b', {}), (error) => error.code === 'INVALID_INPUT' && /one label/.test(error.message))
 })
 
 test('checkBulkFilter accepts a sort next to a criterion and refuses a sort alone, archived and limit', () => {
@@ -114,4 +112,32 @@ test('checkBulkFilter accepts a sort next to a criterion and refuses a sort alon
   assert.throws(() => checkBulkFilter({ sort: 'priority' }, 'view v'), /narrows/)
   assert.throws(() => checkBulkFilter({ labels: ['x'], archived: true }, 'view v'), /archived/)
   assert.throws(() => checkBulkFilter({ labels: ['x'], limit: 1 }, 'view v'), /limit/)
+})
+
+test('label values are trimmed, and label-remove takes a label that holds a comma', async () => {
+  calls.length = 0
+  await parseChange('label-add', ' a ', {}).apply(tracker, issue('A', { labels: [] }), actor, { dryRun: true })
+  await parseChange('label-remove', ' ui, web ', {}).apply(tracker, issue('A', { labels: ['ui, web', 'x'] }), actor, { dryRun: true })
+  assert.deepEqual(calls.map((call) => call[2]), [{ labels: ['a'] }, { labels: ['x'] }])
+  assert.throws(() => parseChange('label-add', 'a,b', {}), /one label/)
+  assert.throws(() => parseChange('label-add', '  ', {}), /label must not be blank/)
+})
+
+test('checkBulkFilter refuses a text of spaces and names a next step the CLI accepts', () => {
+  assert.throws(() => checkBulkFilter({ text: '   ' }, 'the filter'), /text must not be empty/)
+  assert.throws(() => checkBulkFilter({ sort: 'priority' }, 'the filter'), (error) => /--label/.test(error.nextStep))
+  assert.throws(() => checkBulkFilter({ sort: 'priority' }, 'view v', 'v'), (error) => /views save v --sort priority .* --overwrite/.test(error.nextStep))
+})
+
+test('label-remove matches a stored label that has spaces at its ends, and a blank list item is no criterion', async () => {
+  calls.length = 0
+  await parseChange('label-remove', 'legacy', {}).apply(tracker, issue('A', { labels: ['legacy ', 'x'] }), actor, { dryRun: true })
+  assert.deepEqual(calls[0][2], { labels: ['x'] })
+  assert.throws(() => checkBulkFilter({ labels: [' '] }, 'the filter'), /labels must not be empty/)
+})
+
+test('label-add trims the stored labels, so "legacy " and "legacy" are one label', async () => {
+  calls.length = 0
+  await parseChange('label-add', 'legacy', {}).apply(tracker, issue('A', { labels: ['legacy ', 'x'] }), actor, { dryRun: true })
+  assert.deepEqual(calls[0][2], { labels: ['legacy', 'x'] })
 })

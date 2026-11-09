@@ -189,7 +189,23 @@ test('a view with a criterion and a sort is accepted, and the sort orders the pr
     const result = await bulk(root, 'priority', 'high', '--view', 'sorted', '--dry-run')
     assert.equal(result.code, 0, JSON.stringify(result.body))
     assert.equal(result.body.matched, 3)
-    assert.deepEqual(result.body.items.map((item) => item.id).sort(), [ids.A, ids.B, ids.D].sort())
+    // priority sort: B (high) first, then A and D (low) in creation order. A view that lost its sort would list A, B, D.
+    assert.deepEqual(result.body.items.map((item) => item.id), [ids.B, ids.A, ids.D])
+  })
+})
+
+test('a one-issue batch keeps the code of the operation that failed', async () => {
+  await withRepo(async (root) => {
+    const result = await bulk(root, 'sprint', '999', '--label', 'other', '--dry-run')
+    assert.equal(result.body.error.code, 'NOT_FOUND', JSON.stringify(result.body))
+  })
+})
+
+test('a text of spaces is refused instead of matching every issue', async () => {
+  await withRepo(async (root) => {
+    const result = await bulk(root, 'priority', 'high', '--text', ' ', '--dry-run')
+    assert.equal(result.body.error.code, 'INVALID_INPUT')
+    assert.match(result.body.error.message, /empty/)
   })
 })
 
@@ -293,6 +309,19 @@ test('a write that fails midway stops, lists what changed and what is left, and 
   })
 })
 
+test('a commit that fails after every write succeeded carries applied and no failed', async () => {
+  await withRepo(async (root, ids, git) => {
+    fs.writeFileSync(path.join(root, '.git/hooks/pre-commit'), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
+    const args = ['issues', 'bulk', 'assign', 'fred', '--label', 'legacy']
+    const { digest } = (await bulk(root, ...args.slice(2), '--dry-run')).body
+    const result = await cli(root, [...args, '--expect', digest])
+    assert.notEqual(result.code, 0)
+    assert.deepEqual(result.body.result.applied, [ids.A, ids.B, ids.D])
+    assert.equal(result.body.result.failed, undefined)
+    assert.equal((await ok(root, ['issues', 'get', ids.D])).assignee, 'fred')
+  }, { autoCommit: true })
+})
+
 test('a stop midway keeps applied and failed in the result even when the write failed with CONFLICT', async () => {
   await withRepo(async (root, ids) => {
     const flaky = {
@@ -319,5 +348,21 @@ test('a stop midway keeps applied and failed in the result even when the write f
     assert.deepEqual(result.body.result.applied, [ids.A])
     assert.equal(result.body.result.failed.id, ids.B)
     assert.equal((await ok(root, ['issues', 'get', ids.A])).assignee, 'fred')
+  })
+})
+
+test('the next step for a view with no criterion runs as printed and makes the view usable', async () => {
+  await withRepo(async (root, ids) => {
+    await ok(root, ['views', 'save', 'all', '--sort', 'priority'])
+    const refused = await bulk(root, 'priority', 'high', '--view', 'all', '--dry-run')
+    assert.equal(refused.body.error.code, 'INVALID_INPUT')
+    const command = /pmkit (views save .*? --overwrite)/.exec(refused.body.error.nextStep)?.[1]
+    assert.ok(command, refused.body.error.nextStep)
+    assert.match(command, /--sort priority/)
+    const saved = await cli(root, command.split(' '))
+    assert.equal(saved.code, 0, JSON.stringify(saved.body))
+    const result = await bulk(root, 'priority', 'high', '--view', 'all', '--dry-run')
+    assert.equal(result.code, 0, JSON.stringify(result.body))
+    assert.deepEqual(result.body.items.map((item) => item.id), [ids.B, ids.A, ids.D])
   })
 })
