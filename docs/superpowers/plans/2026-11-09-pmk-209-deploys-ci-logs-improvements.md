@@ -1,3 +1,28 @@
+# PMK-209 deploys list and ci logs improvements Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (inline) to implement this plan task-by-task.
+
+**Goal:** Two-call deploy statuses, check-to-run links, run age in `ci logs`, a cheaper `--tail`.
+
+**Architecture:** All host work in `scripts/lib/github/host.mjs`, CLI shaping in `scripts/pmkit.mjs`. Tests use `fakeExec` (host) and `fakeGh` (CLI).
+
+**Spec:** `docs/superpowers/specs/2026-11-09-pmk-209-deploys-ci-logs-improvements-design.md`
+
+## Global Constraints
+
+- Commit trailer exactly `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`; every commit has `(PMK-209)`.
+- An unknown state is never `pending` or "no failure"; it is `null` and says so in JSON and text.
+
+## Review Focus
+
+- Status read fails with UPSTREAM: rows keep, `state: null`, warning shown.
+- GraphQL returns a `null` node: that row is unknown, others keep their state.
+- Check without a run link (status context): `runId: null`, no hint.
+- Newer run of the workflow still in progress: not a `newerRun`.
+- Log with exactly `--tail` lines, with and without a final newline: `truncated` false.
+
+---
+
 # PMK-209 plan
 
 Spec: `docs/superpowers/specs/2026-11-09-pmk-209-deploys-ci-logs-improvements-design.md`. TDD, one commit per task, each with `(PMK-209)`.
