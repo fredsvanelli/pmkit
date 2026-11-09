@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-49]
 branch: pmk-184-fix-deploys-list-with-an-empty
 created: 2026-10-31T16:01:20.678Z
-updated: 2026-11-09T01:18:27Z
+updated: 2026-11-09T01:30:12Z
 ---
 
 ## Description
@@ -30,6 +30,6 @@ updated: 2026-11-09T01:18:27Z
 
 ## Acceptance criteria
 
-- [ ] `deploys list --environment` with no value answers `INVALID_INPUT`
-- [ ] `ci logs` says when a failed run has no log
-- [ ] With `--run`, the result has the workflow name and URL, and says when the run did not fail
+- [x] `deploys list --environment` with no value answers `INVALID_INPUT`
+- [x] `ci logs` says when a failed run has no log
+- [x] With `--run`, the result has the workflow name and URL, and says when the run did not fail
