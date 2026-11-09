@@ -42,7 +42,8 @@ exit 0
       "by": "fred"
     },
     "reason": "Not this quarter"
-  }
+  },
+  "problems": []
 }
 --- stderr
 (empty)
@@ -92,7 +93,8 @@ exit 0
       "by": "fred"
     },
     "reason": "Not this quarter"
-  }
+  },
+  "problems": []
 }
 --- stderr
 (empty)
