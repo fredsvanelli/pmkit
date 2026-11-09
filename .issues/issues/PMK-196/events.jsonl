@@ -1,2 +1,5 @@
 {"at":"2026-10-31T19:29:36Z","by":"fred","op":"create","to":{"id":"PMK-196","title":"Fix bulk labels, single-issue errors and the commit-only failure","type":"bug","status":"backlog","priority":"medium","estimate":1,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-31T19:29:36.596Z","updated":"2026-10-31T19:29:36Z"}}
 {"at":"2026-10-31T19:29:36Z","by":"fred","op":"link","field":"related","to":"PMK-56"}
+{"at":"2026-11-09T03:59:08Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-09T03:59:08Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-09T03:59:13Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-196-fix-bulk-labels-single-issue-errors-and"}
