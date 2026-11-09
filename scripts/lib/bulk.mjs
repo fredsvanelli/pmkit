@@ -41,7 +41,7 @@ const BUILDERS = {
     const value = oneLabel(raw)
     return {
       text: `add label ${value}`,
-      apply: (tracker, issue, actor, options) => tracker.updateIssue(issue.id, { labels: [...new Set([...(issue.labels ?? []), value])] }, actor, options),
+      apply: (tracker, issue, actor, options) => tracker.updateIssue(issue.id, { labels: [...new Set([...(issue.labels ?? []).map((label) => label.trim()), value])] }, actor, options),
     }
   },
   'label-remove': (raw) => {
@@ -85,7 +85,7 @@ export function parseChange(kind, value, flags = {}) {
  * so it is allowed next to a criterion but never counts as one. An empty value matches everything, so it is refused too,
  * and at least one criterion must narrow the set.
  */
-export function checkBulkFilter(filter, where) {
+export function checkBulkFilter(filter, where, viewName) {
   for (const key of ['archived', 'limit']) {
     if (filter[key] === undefined || (key === 'archived' && filter[key] === false)) continue
     const why = key === 'archived' ? 'archived issues stay out of a bulk change' : 'a limit cuts the set, and a bulk change needs the whole set'
@@ -97,8 +97,9 @@ export function checkBulkFilter(filter, where) {
     if (value === '' || (typeof value === 'string' && value.trim() === '') || (Array.isArray(value) && (value.length === 0 || value.some((item) => typeof item === 'string' && item.trim() === '')))) throw invalid(`${where}: ${key} must not be empty`, 'Give the filter a value, or drop it')
     if (value !== false) narrows++
   }
-  if (narrows === 0) throw invalid(`${where} has no criterion that narrows the set, so it would match every issue`, where.startsWith('view')
-    ? 'Save the view again with a criterion (pmkit views save <name> --label legacy), or pass filter flags instead of --view'
+  if (narrows === 0) throw invalid(`${where} has no criterion that narrows the set, so it would match every issue`, viewName !== undefined
+    // `views save` replaces the whole filter, so the command keeps the sort the view already has.
+    ? `Run pmkit views save ${viewName}${filter.sort === undefined ? '' : ` --sort ${filter.sort}`} --label legacy --overwrite (replace --label legacy with the criterion you need), or pass filter flags instead of --view`
     : 'Add a criterion such as --label legacy, then run pmkit issues list with it first')
 }
 
