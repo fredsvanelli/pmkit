@@ -181,11 +181,11 @@ test('mentions skip the ID inside paths and URLs, and keep it in links, trailing
     tracker.updateIssue(b, { description }, 'fred')
     return tracker.delete(a, 'fred', { dryRun: true }).mentions
   }
-  for (const text of [`See .issues/issues/${a}/issue.md.`, `See https://example.com/x/${a}/y.`, `See docs/${a}-notes.md.`, `See src/lib/${a}`, `See ~/work/${a}.`]) {
+  for (const text of [`See .issues/issues/${a}/issue.md.`, `See https://example.com/x/${a}/y.`, `See docs/${a}-notes.md.`, `See src/lib/${a}`, `See ~/work/${a}.`, `See [notes](docs/${a}.md).`]) {
     assert.deepEqual(mentionsOf(text), [], text)
   }
   const found = [{ id: b, in: 'description' }]
-  for (const text of [`See [${a}](https://linear.app/x/issue/${a}).`, `See ${a}/ for it.`, `Done ${a}/2 steps.`, `Same as ${a}/${c}, see (${a}).`, `Plain ${a}.`, `(${a}/${c})`]) {
+  for (const text of [`See [${a}](https://linear.app/x/issue/${a}).`, `See [${a}](docs/x.md).`, `See [${a}](./x/y.md).`, `See ${a}/ for it.`, `Done ${a}/2 steps.`, `Same as ${a}/${c}, see (${a}).`, `Plain ${a}.`, `(${a}/${c})`]) {
     assert.deepEqual(mentionsOf(text), found, text)
   }
 })

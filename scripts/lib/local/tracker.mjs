@@ -576,12 +576,12 @@ export function createLocalTracker(root, {
       .map((kind) => ({ id: other.id, kind })))
     if (references.length > 0) throw referencedError(issue.id, references)
     const mention = new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(issue.id)}(?![A-Za-z0-9_])`)
-    // A path or a URL is not a mention. URLs go first, so a markdown link keeps its text; then a token with a separator that starts with . ~ or /,
+    // A path or a URL is not a mention. The target of a markdown link and bare URLs go first, so a link keeps its text; then a token with a separator that starts with . ~ or /,
     // has two separators or ends in a file extension is a path. "ISS-1/", "ISS-1/2" and "ISS-1/ISS-2" stay.
     const idLike = /^\(?[A-Za-z]+-[A-Za-z0-9]+[.,;:)]*$/
     const pathLike = (token) => /[/\\]/.test(token) && !token.split(/[/\\]/).every((part) => idLike.test(part))
       && (/^[.~/\\]/.test(token) || token.match(/[/\\]/g).length >= 2 || /[/\\][^/\\\s]*\.[A-Za-z0-9]+[.,;:)]*$/.test(token))
-    const mentioned = (text) => mention.test(text.replace(/https?:\/\/\S+/g, ' ').replace(/\S+/g, (token) => (pathLike(token) ? ' ' : token)))
+    const mentioned = (text) => mention.test(text.replace(/\]\([^)\s]*\)/g, ']').replace(/https?:\/\/\S+/g, ' ').replace(/\S+/g, (token) => (pathLike(token) ? ' ' : token)))
     const mentions = others.flatMap((other) => [
       ...(mentioned(`${other.description ?? ''}\n${other.body ?? ''}`) ? [{ id: other.id, in: 'description' }] : []),
       ...(commentTexts(issuePaths(issuesDir, other.id).comments).some(mentioned) ? [{ id: other.id, in: 'comment' }] : []),
