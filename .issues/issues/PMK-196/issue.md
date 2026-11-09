@@ -2,12 +2,14 @@
 id: PMK-196
 title: "Fix bulk labels, single-issue errors and the commit-only failure"
 type: bug
-status: backlog
+status: in_progress
 priority: medium
 estimate: 1
+assignee: fred
 related: [PMK-56]
+branch: pmk-196-fix-bulk-labels-single-issue-errors-and
 created: 2026-10-31T19:29:36.596Z
-updated: 2026-10-31T19:29:36Z
+updated: 2026-11-09T03:59:13Z
 ---
 
 ## Description
