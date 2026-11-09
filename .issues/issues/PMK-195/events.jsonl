@@ -4,3 +4,7 @@
 {"at":"2026-11-09T03:15:29Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-09T03:15:32Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-195-fix-inbox-authors-corrupt-file-fallback"}
 {"at":"2026-11-09T03:17:25Z","by":"fred","op":"comment","to":"2026-11-09T03-17-25Z-fred.md"}
+{"at":"2026-11-09T03:27:55Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T03:27:55Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T03:27:56Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T03:27:56Z","by":"fred","op":"update","field":"acceptance_criteria"}
