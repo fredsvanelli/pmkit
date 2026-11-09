@@ -178,3 +178,11 @@ export const NO_MOVE_MESSAGES = {
   would_not_improve: 'every possible move would leave the receiving member above the giving one, so none would even the load',
   no_target: 'there is nobody to move an issue to without overloading someone',
 }
+
+/** The sentence for a no-move reason. A flagged member with no availability is not overloaded, so its messages leave overload out. */
+export function noMoveMessage(reason, imbalances) {
+  if (!imbalances.some((item) => item.flag === 'no_availability')) return NO_MOVE_MESSAGES[reason]
+  if (reason === 'no_candidates') return 'the flagged members have no issue in todo to move'
+  if (reason === 'no_target') return 'there is nobody to move an issue to: the others are flagged, have an unknown or partial load, or would pass their capacity or the load limit'
+  return NO_MOVE_MESSAGES[reason]
+}

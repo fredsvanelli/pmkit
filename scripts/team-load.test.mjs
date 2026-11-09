@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { NO_MOVE_MESSAGES, OVER_AVERAGE, chooseUnit, proposeMoves, suggestMoves, teamLoad } from './lib/team-load.mjs'
+import { NO_MOVE_MESSAGES, OVER_AVERAGE, chooseUnit, noMoveMessage, proposeMoves, suggestMoves, teamLoad } from './lib/team-load.mjs'
 
 const issue = (id, category, assignee, estimate, extra = {}) => ({ id, title: `Title ${id}`, status: { name: category, category }, assignee, estimate, ...extra })
 const MEMBERS = [
@@ -312,4 +312,13 @@ test('proposeMoves does not stop at a member with availability 0 whose load is u
   const report = teamLoad(issues, { members: away, unit: 'points' })
   assert.equal(rowOf(report, 'a').load, null)
   assert.deepEqual(proposeMoves(report, issues).moves.map((move) => move.issue), ['A-1', 'A-2'])
+})
+
+test('noMoveMessage does not talk about overload when a flagged member has no availability', () => {
+  const idle = [{ member: 'a', flag: 'no_availability', load: null, limit: 0 }]
+  for (const reason of ['no_candidates', 'no_target']) {
+    assert.doesNotMatch(noMoveMessage(reason, idle), /overload/i)
+    assert.match(noMoveMessage(reason, [{ member: 'a', flag: 'over_average', load: 9, limit: 4 }]), /overload/i)
+  }
+  assert.equal(noMoveMessage('unestimated', idle), NO_MOVE_MESSAGES.unestimated)
 })

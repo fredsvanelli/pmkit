@@ -194,3 +194,21 @@ test('team load without the flag, and with a sprint id, still counts what the sp
   const named = await load(makeRepo('team'), ['--sprint', '2026-10-12'])
   assert.equal(named.data.sprint.id, '2026-10-12')
 })
+
+test('team load --sprint current with no active sprint has no noWork list and no aging note', async () => {
+  const { data, notes } = await load(makeRepo('no-sprints'), ['--sprint', 'current'])
+  assert.deepEqual(data.noWork, [], 'nobody was read, so nobody is known to have no work')
+  assert.ok(!notes.some((line) => /aging/.test(line)), notes.join('\n'))
+  assert.doesNotMatch((await run(['team', 'load', '--sprint', 'current'], { cwd: makeRepo('no-sprints'), env })).stdout, /no work in scope/)
+})
+
+test('team load prints load unknown, not null, for a no_availability member whose issues have no estimate', async () => {
+  const root = makeRepo('team')
+  const file = path.join(root, '.issues/config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/(\n\s+ana: \{[^}]*availability: )[\d.]+/, '$10'))
+  setEstimate(root, 'ISS-2X6D', null)
+  setEstimate(root, 'ISS-8C4W', null)
+  const text = (await run(['team', 'load'], { cwd: root, env })).stdout
+  assert.match(text, /ana: no_availability, load unknown, limit 0/)
+  assert.doesNotMatch(text, /load null/)
+})
