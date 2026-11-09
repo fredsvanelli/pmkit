@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-52]
 branch: pmk-191-make-the-ctime-test-of-query-index
 created: 2026-10-31T16:59:11.658Z
-updated: 2026-11-09T02:36:01Z
+updated: 2026-11-09T02:53:08Z
 ---
 
 ## Description
@@ -28,4 +28,4 @@ A timing-sensitive test in `scripts/query-index.test.mjs` (it depends on file ct
 
 ## Acceptance criteria
 
-- [ ] The test passes 20 full runs in a row, or it no longer depends on the clock
+- [x] The test passes 20 full runs in a row, or it no longer depends on the clock
