@@ -34,9 +34,9 @@ const CASES = [
   ['gitlab_token', `pushing with glpat-${'x'.repeat(20)}`, 'pushing with [redacted]'],
   ['slack_token', `SLACK=xoxb-123456789012-1234567890123-${'a'.repeat(24)} and xoxp-12345678901-abcdef`, 'SLACK=[redacted] and [redacted]', 2],
   ['ai_api_key', `using key sk-proj-${'a'.repeat(48)}`, 'using key [redacted]'],
-  ['ai_api_key', `export ANTHROPIC_API_KEY=sk-ant-api03-${'a'.repeat(90)}`, 'export ANTHROPIC_API_KEY=[redacted]'],
+  ['api_key_value', `export ANTHROPIC_API_KEY=sk-ant-api03-${'a'.repeat(90)}`, 'export ANTHROPIC_API_KEY=[redacted]'],
   ['google_api_key', `maps key AIzaSy${'A'.repeat(33)}`, 'maps key [redacted]'],
-  ['npm_token', `//registry.npmjs.org/:_authToken=npm_${'a'.repeat(36)}`, '//registry.npmjs.org/:_authToken=[redacted]'],
+  ['api_key_value', `//registry.npmjs.org/:_authToken=npm_${'a'.repeat(36)}`, '//registry.npmjs.org/:_authToken=[redacted]'],
   ['npm_token', `npm token npm_${'a'.repeat(36)}`, 'npm token [redacted]'],
   ['stripe_key', `${'sk'}_live_${'a'.repeat(24)} rk_live_${'b'.repeat(24)}`, '[redacted] [redacted]', 2],
   ['api_key_value', 'PASSWD=hunter2-ok1\nDB_PWD=hunter2-ok1\ncredentials=hunter2-ok1', 'PASSWD=[redacted]\nDB_PWD=[redacted]\ncredentials=[redacted]', 3],
@@ -94,7 +94,6 @@ test('text redact refuses a missing file and a call with no --file', async () =>
 const SAME = [
   'at Object.<anonymous> (src/token.mjs:12:5)',
   'The `password:` key is optional.',
-  'password:\n  next: line',
   '- `password`: the database password',
   'Use a Bearer token in the header.',
   'https://example.com/user@domain',
@@ -122,6 +121,7 @@ const FALSE_POSITIVES = [
   ['password: abc12 and token=1a2b3c4', 'password: [redacted]'],
   ['Error: invalid token:\n    at foo (src/a.js:1:2)', 'Error: invalid token:\n    [redacted]'],
   ['the password:\n  see the docs', 'the password:\n  [redacted]'],
+  ['password:\n  next: line', 'password:\n  next: [redacted]'],
 ]
 for (const [text, output, count = 1] of FALSE_POSITIVES) {
   test(`redact accepts the false positive ${JSON.stringify(text.slice(0, 45))}`, () => {
@@ -137,16 +137,17 @@ test('a secret inside an Authorization line counts once, as authorization', () =
   assert.equal(result.text, 'curl -H "Authorization: [redacted]" https://api.github.com')
 })
 
-test('a secret in quotes after token counts once', () => {
-  const result = redact(`token: "ghp_${'c'.repeat(36)}"`)
-  assert.equal(result.count, 1)
-  assert.deepEqual(result.counts, { github_token: 1 })
-  assert.equal(result.text, 'token: "[redacted]"')
+test('a secret after a secret key counts once, as the key value', () => {
+  for (const text of [`token: "ghp_${'c'.repeat(36)}"`, 'secret=xoxb-1234567890abc!Rest#9']) {
+    const result = redact(text)
+    assert.deepEqual(result.counts, { api_key_value: 1 }, text)
+    assert.equal(result.text, `${text.slice(0, text.search(/[:=]/) + 1)}${text.includes(': ') ? ' ' : ''}[redacted]`)
+  }
 })
 
 test('the summary line uses the singular for 1 and the plural otherwise', () => {
   assert.equal(redact('GITHUB_TOKEN=abc12345').summary, 'Redacted 1 value.')
-  assert.equal(redact('GITHUB_TOKEN=abc12345 AKIAIOSFODNN7EXAMPLE').summary, 'Redacted 2 values.')
+  assert.equal(redact('GITHUB_TOKEN=abc12345\nAKIAIOSFODNN7EXAMPLE').summary, 'Redacted 2 values.')
   assert.equal(redact('nothing here').summary, 'Redacted 0 values.')
 })
 

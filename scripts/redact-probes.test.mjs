@@ -53,7 +53,7 @@ const PROBES = [
   ['token in a callback url', 'url=https://x.io/cb?token=abc12345xyz', 'url=https://x.io/cb?token=[redacted]'],
   ['key after another pair', 'a=1&api_key=abc12345xyz&b=2', 'a=1&api_key=[redacted]'],
   ['key after a label', 'env: GITHUB_TOKEN=abc12345xyz', 'env: GITHUB_TOKEN=[redacted]'],
-  ['json token', `{"token": "ghp_${rep('A', 36)}"}`, '{"token": "[redacted]"}'],
+  ['json token', `{"token": "ghp_${rep('A', 36)}"}`, '{"token": [redacted]}'],
   ['authorization with a github token', `Authorization: token ghp_${rep('b', 36)}`, 'Authorization: [redacted]'],
   ['rerun over redacted text', 'Redacted 2 values.\nfoo [redacted]', 'Redacted 2 values.\nfoo [redacted]'],
   // Unchanged: code, prose, paths, numbers and values that are not secrets.
@@ -122,7 +122,7 @@ const PROBES = [
   ['yaml folded block with a chomp mark', 'token: >-\n  abc123def\n  more\n\n  last\nafter: 1', 'token: [redacted]\nafter: 1'],
   ['yaml block in a list item', '- password: |\n    hunter2\n- other: 1', '- password: [redacted]\n- other: 1'],
   ['yaml value on the next line', 'password:\n  hunter2\nnext: 1', 'password:\n  [redacted]\nnext: 1'],
-  ['yaml mapping under the key', 'credentials:\n  user: bob\n  password: hunter2', 'credentials:\n  user: bob\n  password: [redacted]'],
+  ['yaml mapping under the key', 'credentials:\n  user: bob\n  password: hunter2', 'credentials:\n  user: [redacted]\n  password: [redacted]'],
   ['yaml key with nothing under it', 'password:\nnext: 1', 'password:\nnext: 1'],
   // Blocker 7: Markdown wrappers.
   ['token in a table cell', '|token=abc12345|x|', '|token=[redacted]|x|'],
@@ -177,6 +177,40 @@ const PROBES = [
   ['yaml anchor', 'password: &a hunter2', 'password: [redacted]'],
   ['authorization after a no-break space', 'Authorization: Basic dXNlcjpwYXNz', 'Authorization: [redacted]'],
   ['json authorization with an escaped quote', '{"Authorization": "Basic abc\\"def"}', '{"Authorization": [redacted]}'],
+  // Review of PR #155, cycle 3. 1: the `-` of a removed diff line is not part of the key.
+  ['removed yaml key in a diff hunk', '@@ -1,4 +1,4 @@\n-token:\n-  abc123\n+token:\n+  def456\n name: app\n replicas: 3', '@@ -1,4 +1,4 @@\n-token:\n-  [redacted]\n+token:\n+  [redacted]\n name: app\n replicas: 3'],
+  ['removed yaml block in a diff', '-password: |\n-  old\n+password: |\n+  new\n context: 1\n unrelated line', '-password: [redacted]\n+password: [redacted]\n context: 1\n unrelated line'],
+  // 2: a file name followed by a line, a column and a colon.
+  ['pytest location', 'tests/test_password.py:42: AssertionError', 'tests/test_password.py:42: AssertionError'],
+  ['go location', './token.go:12:5: undefined: x', './token.go:12:5: undefined: x'],
+  ['gcc location', 'src/secret.c:10:3: error: bad', 'src/secret.c:10:3: error: bad'],
+  ['number and a colon after a token', 'token: 1: x', 'token: [redacted]'],
+  // 3: a value that another pattern starts is still replaced to the end of the line.
+  ['aws key pair after credentials', 'credentials: AKIAIOSFODNN7EXAMPLE wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', 'credentials: [redacted]'],
+  ['github token and more after token', `token: ghp_${rep('a', 36)} hunter2extra`, 'token: [redacted]'],
+  ['slack token and a comma after secret', 'secret: xoxb-1234567890ab, hunter2', 'secret: [redacted]'],
+  // 4: every value of a mapping under a secret key goes; the names stay.
+  ['mapping under secrets', 'secrets:\n  db: hunter2', 'secrets:\n  db: [redacted]'],
+  ['mapping under credentials', 'credentials:\n  username: admin\n  pass: hunter2\nnext: 1', 'credentials:\n  username: [redacted]\n  pass: [redacted]\nnext: 1'],
+  ['nested mapping under a secret key', 'secrets:\n  db:\n    pass: hunter2\n  - hunter3', 'secrets:\n  db:\n    pass: [redacted]\n  - [redacted]'],
+  // Non-blockers of cycle 3.
+  ['blank line at the key column after a timestamp', '2026-11-09T04:01:05Z password:\n2026-11-09T04:01:06    \nnext', '2026-11-09T04:01:05Z password:\n2026-11-09T04:01:06    \nnext'],
+  ['yaml block with an anchor', 'password: &pw |\n  hunter2', 'password: [redacted]'],
+  ['yaml block with a tag', 'password: !!binary |\n  aHVudGVy', 'password: [redacted]'],
+  ['yaml block with a comment', 'password: | # db\n  hunter2', 'password: [redacted]'],
+  ['yaml comment before the value', 'password: # below\n  hunter2', 'password: [redacted]'],
+  ['hash value with nothing under it', 'PASSWORD=#hunter2', 'PASSWORD=[redacted]'],
+  ['yaml quote escape', "token: 'it''s secret'", 'token: [redacted]'],
+  ['text right after a closing quote', 'token: "abc"-def', 'token: [redacted]'],
+  ['shell quote concatenation', `PASSWORD='pa'"'"'ss'`, 'PASSWORD=[redacted]'],
+  ['rails params', '{"password"=>"123456", "password_confirmation"=>"123456"}', '{"password"=>[redacted], "password_confirmation"=>[redacted]}'],
+  ['numeric secret key', 'SECRET_KEY=1234567890', 'SECRET_KEY=[redacted]'],
+  ['numbered password name', 'password1=123456', 'password1=[redacted]'],
+  ['escaped json key', '{"body":"{\\"password\\":\\"hunter2\\"}"}', '{"body":"{\\"password\\":[redacted]}'],
+  ['key in brackets', 'config["password"] = "hunter2"', 'config["password"] = [redacted]'],
+  ['environment key in brackets', "os.environ['DB_PASSWORD'] = 'hunter2'", "os.environ['DB_PASSWORD'] = [redacted]"],
+  ['authorization quote never closed', 'Authorization: "Basic dXNlcjpwYXNz', 'Authorization: [redacted]'],
+  ['curl short options before u', 'curl -su admin:hunter22 https://x', 'curl -su [redacted] https://x'],
 ]
 
 for (const [name, input, output] of PROBES) {
@@ -187,7 +221,7 @@ for (const [name, input, output] of PROBES) {
 
 test('probe: no pattern takes more than a second on 80 thousand characters of its own kind', () => {
   const n = 80000
-  const inputs = [rep('a', n), `token${rep('-', n)}`, `x://${rep(':', n)}`, `a://${rep('b:', n / 2)}`, rep('-----BEGIN A PRIVATE KEY-----', n / 29), rep('sk-', n / 3), `Authorization: ${rep('a', n)}`, rep('a://b', n / 5), rep('password:', n / 9), rep('a=1&', n / 4), rep('token=', n / 6), `token=${rep(')', n)}x`, rep('pwd=/', n / 5), rep('token="', n / 7), rep('password: |\n  a\n', n / 16), rep('token:\n  x\n', n / 10), rep('password=[redacted]', n / 19), rep('curl -u ', n / 8), rep('token=&a=', n / 9), rep('&a', n / 2), `token=${rep('a ', n / 2)}`, rep('|token=[redacted]', n / 17), rep('`password:` ', n / 12), rep('+password: |\n+  a\n', n / 18), rep('(token_limit=5) ', n / 16), rep('PWD=/a?token=[redacted] ', n / 24), rep('  - token:\n      a\n', n / 20), rep('token: ', n / 7), `x${rep(' ', n)}token=a`]
+  const inputs = [rep('a', n), `token${rep('-', n)}`, `x://${rep(':', n)}`, `a://${rep('b:', n / 2)}`, rep('-----BEGIN A PRIVATE KEY-----', n / 29), rep('sk-', n / 3), `Authorization: ${rep('a', n)}`, rep('a://b', n / 5), rep('password:', n / 9), rep('a=1&', n / 4), rep('token=', n / 6), `token=${rep(')', n)}x`, rep('pwd=/', n / 5), rep('token="', n / 7), rep('password: |\n  a\n', n / 16), rep('token:\n  x\n', n / 10), rep('password=[redacted]', n / 19), rep('curl -u ', n / 8), rep('token=&a=', n / 9), rep('&a', n / 2), `token=${rep('a ', n / 2)}`, rep('|token=[redacted]', n / 17), rep('`password:` ', n / 12), rep('+password: |\n+  a\n', n / 18), rep('(token_limit=5) ', n / 16), rep('PWD=/a?token=[redacted] ', n / 24), rep('  - token:\n      a\n', n / 20), rep('token: ', n / 7), `x${rep(' ', n)}token=a`, rep('sk-', n / 3), rep('-token: ', n / 8), `${rep('-', n)}token=a`, `secrets:\n${rep('  a: b\n', n / 7)}`, rep('secrets:\n  a: [redacted]\n', n / 27), rep('-password: |\n-  a\n', n / 18), rep('a.py:1: ', n / 8)]
   for (const input of inputs) {
     const start = process.hrtime.bigint()
     redact(input)
