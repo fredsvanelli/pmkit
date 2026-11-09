@@ -211,3 +211,39 @@ Início: 2026-11-09. `develop` em 479edab, `npm test` com 4033 testes, 3952 pass
 - README:98 (log-time sem limite superior) corrigido no closing PR da rodada 7.
 
 Fim da rodada 7: PRs #149, #150, #151 mergeados.
+
+Limpeza da rodada 7: closing PR #152 mergeado (ebe6ddc, com a linha de log-time do README), 8 worktrees removidos, branches provisórias apagadas.
+
+## Rodada 8
+
+Início: 2026-11-09. `develop` em ebe6ddc, `npm test` com 4050 testes, 3969 pass, 0 fail, 81 skipped, saída 0. Run Orca `run_dcd377095f49`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-196 | 1 | sonnet (`ctx_f4c4932c0bbe`) | #153 → #156 | ciclos 1 e 2 (sonnet): mudanças pedidas; correção conferida pelo orquestrador; rebase b6a8f86; #153 não sincronizou e foi substituído pelo #156 | mergeado (10bfb3b) |
+| PMK-197 | 2 | sonnet (`ctx_fa6e133e7447`), depois opus (`ctx_2fe052060baa`) | #155 | ciclos 1 a 5 (opus): mudanças pedidas (8, 7, 4, 5, 3 bloqueantes); revisão curta (opus): 1 bloqueante (tempo); correção c5c611c conferida pelo orquestrador | mergeado (6faf7ea) |
+| PMK-199 | 1 | sonnet (`ctx_7ceef4cf4801`) | #154 | ciclo 1 (sonnet): APROVADO | mergeado (83ba4df) |
+
+- PMK-196: PR #153 (sonnet); trim de label (remove aceita vírgula, add ainda recusa); lote de uma issue relança o código da operação; --text só de espaço; próximo passo da view; doc da falha só do commit. Follow-ups: labels com vírgula no Linear; flag própria no JSON para a falha só do commit. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-199: PR #154 (sonnet); comentário quebrado marca a issue como unknown e o comando segue; só leitura de proteção bem-sucedida vai para o cache; texto de incompleto/bloqueado diz o que é desconhecido. Follow-up: cache de 403/404 persistente por base. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-197: PR #155 (sonnet); valor depois de chave secreta trocado inteiro; Authorization em JSON e curl -u (tipo curl_user); fechamentos de Markdown mantidos; falsos positivos aceitos listados na spec. Follow-ups: docker login -p; pontuação no fim da senha; password=x&user=y; isenção de PWD/OLDPWD. Revisor ciclo 1 (opus, por ser caminho de segurança) iniciado.
+- PMK-196 ciclo 1 (sonnet): mudanças pedidas (bulk.md passo 4 promete INVALID_INPUT para lote de uma issue; CONFLICT cai no passo 7 e repete o dry run). JSON distingue a falha só do commit (applied sem failed).
+- PMK-199 ciclo 1 (sonnet): APROVADO. Não bloqueantes: Output de track-agents.md:31 ainda diz when nothing is assigned; só FrontmatterError tratado (pmkit.mjs:2200); causa not ready imprecisa (~2232); 403/404 da proteção não é mais cacheado (2188); spec promete aviso no texto de lista não vazia. Mergeado (83ba4df).
+- PMK-196 correção ac826d5: bulk.md passo 4 com NOT_FOUND/CONFLICT para lote de uma issue; CONFLICT do passo 7 só em execução real com --expect; label em branco recusado; remove casa label guardado com espaço. Revisor ciclo 2 (sonnet) iniciado.
+- PMK-196 ciclo 2 (sonnet): mudanças pedidas (nextStep de view sem critério sugere views save sem --overwrite e a CLI recusa; critério 4). Não bloqueantes: parent NOT_FOUND no doc; change.value cru.
+- PMK-197 ciclo 1 (opus): mudanças pedidas, 8 bloqueantes em redact.mjs (aspa escapada/sem fechamento, NBSP, startsWith(MARK) regressão, bloco YAML, tempo quadrático, segunda passada não idempotente, fechamentos | __ ~~, falso positivo file:line:col). Follow-ups: pontuação no fim, password=x&user=y, docker login -p, curl_user continuado, sort -u/docker run -u.
+- PMK-196 d61a12f: nextStep views save com --sort e --overwrite, testado rodando o comando; label-add apara. Conferido pelo orquestrador, aprovado sem ciclo 3; pedi rebase final.
+- PMK-197 correção 76d1d59: os 8 bloqueantes com teste que falha antes; spec lista os falsos positivos aceitos; cenário confere o rascunho redigido inteiro; rebase. Decisão do implementador: token=123456 (numérico) sem redação. Revisor ciclo 2 (opus) iniciado.
+- PMK-196: rebase b6a8f86. O GitHub não atualizou o head do PR #153 depois do force-push (ficou em d61a12f, CONFLICTING); fechei para resincronizar e ele recusou reabrir. Abri o PR #156 com a mesma branch, com nota nos dois PRs. Mergeado (10bfb3b).
+- PMK-197 ciclo 2 (opus): mudanças pedidas, 7 bloqueantes (A YAML em diff/log; B valor na linha de baixo; C | no meio, regressão; D => := ==; E isenção numérica perde segredos; F abertura de crase/** comida, regressão; G bloco YAML em item de lista apaga irmãs). Dois ciclos com bloqueantes: subi o implementador para opus (worker novo na mesma branch), com pedido de rever o desenho de redact.mjs.
+- PMK-197 correção (opus) 10e3ae6: redactPairs reescrito sem casos por caractere (valor até o fim da linha; aspas; blocos e linha de baixo por recuo; => := == ===; número só quando a chave não termina na palavra secreta); custo: o resto da linha depois da chave é trocado, listado na spec. Revisor ciclo 3 (opus) iniciado.
+- PMK-197 ciclo 3 (opus): mudanças pedidas, 4 bloqueantes (prefixo de diff na coluna; caminho:linha redigido, regressão; marca anterior faz pular a chave e AKIA/ghp_/xoxb vazam; filhos de mapeamento secreto visíveis). Três ciclos sem aprovação: perguntei ao usuário, que aprovou um quarto ciclo. Mandei ao implementador opus.
+- PMK-197 ciclo 4 (opus) 09261cb: os 4 bloqueantes do ciclo 3 fechados com sondas; vários não bloqueantes baratos; goldens de text-redact e o cenário do investigate-bug atualizados. Revisor ciclo 4 (opus) iniciado.
+- PMK-197 ciclo 4 (opus): mudanças pedidas, 5 bloqueantes (abertura de bloco { [ ( \ vaza o de baixo; arquivo:linha em crase/intervalo apagado, regressão; isenção numérica com furos; fechamento de Markdown dentro do segredo, regressão; vazamentos raros). Perguntei ao usuário: corrigir os 5 e revisar de novo. Mandei ao implementador opus (ciclo 5).
+- PMK-197 ciclo 5 (opus) 76bdcd7: os 5 bloqueantes do ciclo 4 fechados; diff sobre 386 entradas sem regressão contra develop e idempotente. Revisor ciclo 5 (opus) iniciado.
+- PMK-197 ciclo 5 (opus): mudanças pedidas, 3 bloqueantes (índice da chave esconde a palavra-segredo; fechamento seguido de pontuação, regressão; Markdown em volta da chave). Usuário aprovou corrigir os 3 com revisão curta só deles e da comparação contra develop. Ciclo 6 mandado ao implementador opus.
+- PMK-197 ciclo 6 (opus) 9b4d8dd: os 3 corrigidos; comparação sobre 1168 entradas sem regressão contra develop nem contra 76bdcd7, idempotente; corrigiu lentidão quadrática que tinha introduzido. Revisão curta (opus) iniciada.
+- PMK-197 revisão curta (opus): os 3 fechados, sem regressão nem saída não idempotente; um bloqueante: tempo quadrático em linha de tabela (redact.mjs:164). Mandei a correção local ao implementador; os 7 não bloqueantes (Markdown em dois níveis, índice aninhado, isenção pela chave de fora, ***, falso positivo em *=) viram follow-up.
+- PMK-197 c5c611c: tempo linear em linha de tabela (conferido pelo orquestrador: 14 a 48 ms em 320k); saída idêntica à do 9b4d8dd em 1478 entradas. Mergeado (6faf7ea). Follow-ups: flags de linha de comando (docker login -p, mysql -p, wget --http-password, --password x, curl -u continuado); MYSQL_PASS/SSH_PASSPHRASE; Markdown em dois níveis; índice aninhado; isenção pela chave de fora; ***; falso positivo em *=; os tetos listados na spec.
+
+Fim da rodada 8: PRs #154, #155, #156 mergeados (#153 substituído pelo #156).
