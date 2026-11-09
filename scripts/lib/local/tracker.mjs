@@ -587,6 +587,7 @@ export function createLocalTracker(root, {
       files: files.map(rel),
       events: readEvents(paths.events).events.length,
       comments: files.filter((file) => file.startsWith(`${paths.comments}${path.sep}`)).length,
+      autoCommit: local.auto_commit === true,
     }
     const result = { before: withComputed(issue, issues), after: null, removes, references: [], mentions, warnings: deleteWarnings(issue, paths), unchecked: ['code comments, documents and docs/'] }
     if (dryRun) return result
