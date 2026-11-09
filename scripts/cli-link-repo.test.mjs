@@ -444,3 +444,28 @@ test('the argument hint lists every flag of the Parameters section', () => {
   assert.ok(flags.length >= 5)
   for (const flag of flags) assert.ok(hint.includes(flag), `${flag} is missing from ${hint}`)
 })
+
+test('the repo of a remote is compared without regard to case', async () => {
+  const root = local({ remotes: { origin: 'git@github.com:Acme/App.git' }, config: GITHUB_CONFIG.replace('old/repo', 'acme/app') })
+  git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk')
+  const data = dataOf(await link(root, ['--repo', 'acme/app']))
+  assert.deepEqual(data.defaultBranch, { before: 'main', after: 'trunk', source: 'remote' })
+  assert.equal(data.warnings.some((warning) => /--repo/.test(warning)), false, data.warnings.join('\n'))
+})
+
+test('a config that is already github without a repo can still take --default-branch, and says the repo is missing', async () => {
+  const root = local({ config: CONFIG.replace('system: none # no host yet', 'system: github') })
+  const data = dataOf(await link(root, ['--default-branch', 'trunk']))
+  assert.deepEqual(data.defaultBranch, { before: null, after: 'trunk', source: 'flag' })
+  assert.ok(data.warnings.some((warning) => /git_host\.repo is not set/.test(warning)), data.warnings.join('\n'))
+})
+
+test('--git-host github on a host none with no repo to take is still refused', async () => {
+  const root = local({ config: CONFIG })
+  assert.equal(errorOf(await link(root, ['--git-host', 'github'])).code, 'INVALID_INPUT')
+})
+
+test('the command file says --git-host none also removes default_branch', () => {
+  const text = fs.readFileSync(new URL('../commands/link-repo.md', import.meta.url), 'utf8')
+  assert.match(text, /--git-host none` also removes[^\n]*default_branch/)
+})
