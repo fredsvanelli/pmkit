@@ -3,3 +3,4 @@
 {"at":"2026-11-09T01:18:21Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-09T01:18:22Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-09T01:18:24Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-183-fix-team-load-without-an-active-sprint"}
+{"at":"2026-11-09T01:19:37Z","by":"fred","op":"comment","to":"2026-11-09T01-19-37Z-fred.md"}
