@@ -5,3 +5,4 @@
 {"at":"2026-11-09T22:15:51Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-200-give-view-errors-a-stable-reason-instead"}
 {"at":"2026-11-09T22:20:53Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-11-09T22:20:54Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T22:29:37Z","by":"fred","op":"comment","to":"2026-11-09T22-29-37Z-fred.md"}
