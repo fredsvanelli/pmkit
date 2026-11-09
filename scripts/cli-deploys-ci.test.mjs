@@ -30,6 +30,7 @@ function teamRepo({ github = true } = {}) {
 
 const call = (root, env, args) => run([...args, '--json'], { env, cwd: root })
 const DEPLOYMENTS = 'api repos/{owner}/{repo}/deployments?per_page=20'
+const META = (id) => `run view ${id} --json workflowName,url,conclusion,status`
 const RUNS = 'run list --branch main --limit 50 --json databaseId,workflowName,status,conclusion,url,createdAt,headSha'
 
 test('deploys list prints the deployments with their state', async () => {
@@ -82,7 +83,7 @@ test('ci logs prints the log of the newest failed run of a branch', async () => 
 
 test('ci logs keeps the last --tail lines of a long log', async () => {
   const root = teamRepo()
-  const gh = fakeGh({ 'run view 9 --log-failed': { stdout: 'a\nb\nc\nd\n' } })
+  const gh = fakeGh({ [META(9)]: { stdout: JSON.stringify({ workflowName: 'CI', url: 'https://r/9', conclusion: 'failure', status: 'completed' }) }, 'run view 9 --log-failed': { stdout: 'a\nb\nc\nd\n' } })
   const result = await call(root, envWith(gh), ['ci', 'logs', '--run', '9', '--tail', '2'])
   assert.equal(result.code, 0, result.stdout + result.stderr)
   const data = JSON.parse(result.stdout)
@@ -128,4 +129,55 @@ test('both commands answer NOT_SUPPORTED without a git host', async () => {
     assert.equal(result.code, 2)
     assert.equal(JSON.parse(result.stdout).error.code, 'NOT_SUPPORTED')
   }
+})
+
+test('deploys list --environment and ci logs --branch with no value are refused before gh runs', async () => {
+  const root = teamRepo()
+  const gh = fakeGh({})
+  for (const args of [['deploys', 'list', '--environment'], ['ci', 'logs', '--branch']]) {
+    const result = await call(root, envWith(gh), args)
+    assert.equal(result.code, 2, args.join(' '))
+    assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT')
+  }
+  assert.deepEqual(ghCalls(gh), [])
+})
+
+test('ci logs --run returns the workflow name and URL, and no note for a failed run with a log', async () => {
+  const root = teamRepo()
+  const gh = fakeGh({ [META(9)]: { stdout: JSON.stringify({ workflowName: 'CI', url: 'https://r/9', conclusion: 'failure', status: 'completed' }) }, 'run view 9 --log-failed': { stdout: 'boom\n' } })
+  const data = JSON.parse((await call(root, envWith(gh), ['ci', 'logs', '--run', '9'])).stdout)
+  assert.deepEqual({ ...data.run }, { runId: 9, workflowName: 'CI', url: 'https://r/9', conclusion: 'failure', status: 'completed', failed: true, hasLog: true, logNote: null, log: 'boom\n' })
+})
+
+test('ci logs says when the run did not fail, has not finished, never started or has an empty log', async () => {
+  const cases = [
+    [{ conclusion: 'success', status: 'completed' }, /did not fail \(success\)/, false],
+    [{ conclusion: null, status: 'in_progress' }, /has not finished \(in_progress\)/, false],
+    [{ conclusion: 'startup_failure', status: 'completed' }, /never started a job/, true],
+    [{ conclusion: 'failure', status: 'completed' }, /returned no log/, true],
+  ]
+  for (const [meta, note, failed] of cases) {
+    const root = teamRepo()
+    const gh = fakeGh({ [META(9)]: { stdout: JSON.stringify({ workflowName: 'CI', url: 'u', ...meta }) }, 'run view 9 --log-failed': { stdout: '' } })
+    const json = await call(root, envWith(gh), ['ci', 'logs', '--run', '9'])
+    assert.equal(json.code, 0, json.stdout)
+    const data = JSON.parse(json.stdout)
+    assert.equal(data.run.failed, failed)
+    assert.equal(data.run.hasLog, false)
+    assert.match(data.run.logNote, note)
+    const text = await run(['ci', 'logs', '--run', '9'], { env: envWith(gh), cwd: root })
+    assert.equal(text.code, 0)
+    assert.match(text.stdout, note)
+  }
+})
+
+test('ci logs --run shows the log of a cancelled run with the note that it did not fail', async () => {
+  const root = teamRepo()
+  const gh = fakeGh({ [META(9)]: { stdout: JSON.stringify({ workflowName: 'CI', url: 'u', conclusion: 'cancelled', status: 'completed' }) }, 'run view 9 --log-failed': { stdout: 'step failed\n' } })
+  const json = JSON.parse((await call(root, envWith(gh), ['ci', 'logs', '--run', '9'])).stdout)
+  assert.equal(json.run.failed, false)
+  assert.equal(json.run.hasLog, true)
+  assert.match(json.run.logNote, /did not fail \(cancelled\)/)
+  const text = await run(['ci', 'logs', '--run', '9'], { env: envWith(gh), cwd: root })
+  assert.match(text.stdout, /did not fail \(cancelled\)[^]*step failed/)
 })

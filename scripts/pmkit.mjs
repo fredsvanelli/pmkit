@@ -19,7 +19,7 @@ import { buildNotes, chooseBasis } from './lib/release-notes.mjs'
 import { buildReadiness, chooseReadinessBasis } from './lib/release-readiness.mjs'
 import { dependencyMap, serializable } from './lib/dependencies.mjs'
 import { buildRoadmapReview, roadmapReviewText } from './lib/roadmap-review.mjs'
-import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
+import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, FAILED_RUN, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 import { pathNote } from './lib/path-notes.mjs'
 import { planNextAdr } from './lib/adr.mjs'
 import { NO_MOVE_MESSAGES, chooseUnit, proposeMoves, teamLoad } from './lib/team-load.mjs'
@@ -1495,7 +1495,16 @@ export const COMMANDS = [
       const body = hasFinalNewline ? lines.slice(0, -1) : lines
       const truncated = body.length > tail
       const log = truncated ? `${body.slice(-tail).join('\n')}${hasFinalNewline ? '\n' : ''}` : found.log
-      return { data: { branch, run: { ...found, log }, truncated }, text: `run ${found.runId}${found.workflowName ? ` ${found.workflowName}` : ''}${truncated ? `, last ${tail} lines` : ''}\n${log}`, notes: await capabilityNotesOrNone(ctx) }
+      const failed = FAILED_RUN.has(found.conclusion)
+      const hasLog = found.log.trim() !== ''
+      const label = `run ${found.runId}${found.workflowName ? ` ${found.workflowName}` : ''}`
+      const logNote = found.conclusion === null && !hasLog ? `${label} has not finished (${found.status ?? 'unknown status'}), so it has no failed-step log yet`
+        : !failed ? `${label} did not fail (${found.conclusion ?? found.status}), ${hasLog ? 'the log below holds its failed steps' : 'so it has no failed-step log'}`
+          : hasLog ? null
+            : found.conclusion === 'startup_failure' ? `${label} ended with startup_failure: it never started a job, so it has no log`
+              : `${label} failed (${found.conclusion}) but GitHub returned no log for it`
+      const run = { ...found, log, failed, hasLog, logNote }
+      return { data: { branch, run, truncated }, text: `${label}${truncated ? `, last ${tail} lines` : ''}\n${logNote === null ? '' : `${logNote}\n`}${hasLog ? log : ''}`, notes: await capabilityNotesOrNone(ctx) }
     },
   },
   {

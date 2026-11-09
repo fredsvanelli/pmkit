@@ -236,10 +236,23 @@ test('listDeploys encodes the environment and checks the limit', () => {
 })
 
 test('ciLogs with a run id reads the failed steps of that run', () => {
-  const { exec, calls } = fakeExec({ stdout: 'step failed\n' })
+  const meta = { workflowName: 'CI', url: 'u99', conclusion: 'failure', status: 'completed' }
+  const { exec, calls } = fakeExec({ stdout: JSON.stringify(meta) }, { stdout: 'step failed\n' })
   const result = host(exec).ciLogs({ runId: 99 })
-  assert.deepEqual(calls[0].args, ['run', 'view', '99', '--log-failed'])
-  assert.deepEqual(result, { runId: 99, workflowName: null, url: null, log: 'step failed\n' })
+  assert.deepEqual(calls[0].args, ['run', 'view', '99', '--json', 'workflowName,url,conclusion,status'])
+  assert.deepEqual(calls[1].args, ['run', 'view', '99', '--log-failed'])
+  assert.deepEqual(result, { runId: 99, workflowName: 'CI', url: 'u99', conclusion: 'failure', status: 'completed', log: 'step failed\n' })
+})
+
+test('ciLogs with a run id skips the log of a run that did not fail or never started', () => {
+  for (const conclusion of ['success', 'startup_failure', null]) {
+    const meta = { workflowName: 'CI', url: 'u', conclusion, status: conclusion === null ? 'in_progress' : 'completed' }
+    const { exec, calls } = fakeExec({ stdout: JSON.stringify(meta) })
+    const result = host(exec).ciLogs({ runId: 5 })
+    assert.equal(result.log, '')
+    assert.equal(result.conclusion, conclusion)
+    assert.equal(calls.length, 1)
+  }
 })
 
 test('ciLogs without a run id takes the newest failed run of the branch', () => {
@@ -251,14 +264,25 @@ test('ciLogs without a run id takes the newest failed run of the branch', () => 
   const { exec, calls } = fakeExec({ stdout: JSON.stringify(runs) }, { stdout: 'boom\n' })
   const result = host(exec).ciLogs({ branch: 'main' })
   assert.deepEqual(calls[1].args, ['run', 'view', '2', '--log-failed'])
-  assert.deepEqual(result, { runId: 2, workflowName: 'CI', url: 'u2', log: 'boom\n' })
+  assert.deepEqual(result, { runId: 2, workflowName: 'CI', url: 'u2', conclusion: 'failure', status: null, log: 'boom\n' })
 })
 
 test('ciLogs counts timed_out and startup_failure runs as failed', () => {
   for (const conclusion of ['timed_out', 'startup_failure']) {
     const { exec, calls } = fakeExec({ stdout: JSON.stringify([{ databaseId: 7, workflowName: 'CI', conclusion, url: 'u' }]) }, { stdout: 'x' })
     assert.equal(host(exec).ciLogs({ branch: 'main' }).runId, 7)
-    assert.deepEqual(calls[1].args, ['run', 'view', '7', '--log-failed'])
+    if (conclusion === 'startup_failure') assert.equal(calls.length, 1)
+    else assert.deepEqual(calls[1].args, ['run', 'view', '7', '--log-failed'])
+  }
+})
+
+test('ciLogs with a run id still reads the log of a cancelled, action_required, stale or skipped run', () => {
+  for (const conclusion of ['cancelled', 'action_required', 'stale', 'skipped']) {
+    const meta = { workflowName: 'CI', url: 'u', conclusion, status: 'completed' }
+    const { exec, calls } = fakeExec({ stdout: JSON.stringify(meta) }, { stdout: 'step failed\n' })
+    const result = host(exec).ciLogs({ runId: 5 })
+    assert.deepEqual(calls[1].args, ['run', 'view', '5', '--log-failed'])
+    assert.equal(result.log, 'step failed\n')
   }
 })
 
