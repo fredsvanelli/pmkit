@@ -31,7 +31,7 @@ function teamRepo({ github = true } = {}) {
 const call = (root, env, args) => run([...args, '--json'], { env, cwd: root })
 const DEPLOYMENTS = 'api repos/{owner}/{repo}/deployments?per_page=20'
 const STATUSES = (...ids) => `api graphql -f query=query($ids: [ID!]!) { nodes(ids: $ids) { ... on Deployment { latestStatus { state logUrl environmentUrl } } } } ${ids.map((id) => `ids[]=${id}`).join(' ')}`
-const META = (id) => `run view ${id} --json workflowName,url,conclusion,status`
+const META = (id) => `run view ${id} --json workflowName,url,conclusion,status,createdAt,headSha`
 const RUNS = 'run list --branch main --limit 50 --json databaseId,workflowName,status,conclusion,url,createdAt,headSha'
 
 test('deploys list prints the deployments with their state', async () => {
@@ -163,7 +163,26 @@ test('ci logs --run returns the workflow name and URL, and no note for a failed 
   const root = teamRepo()
   const gh = fakeGh({ [META(9)]: { stdout: JSON.stringify({ workflowName: 'CI', url: 'https://r/9', conclusion: 'failure', status: 'completed' }) }, 'run view 9 --log-failed': { stdout: 'boom\n' } })
   const data = JSON.parse((await call(root, envWith(gh), ['ci', 'logs', '--run', '9'])).stdout)
-  assert.deepEqual({ ...data.run }, { runId: 9, workflowName: 'CI', url: 'https://r/9', conclusion: 'failure', status: 'completed', failed: true, hasLog: true, logNote: null, log: 'boom\n' })
+  assert.deepEqual({ ...data.run }, { runId: 9, workflowName: 'CI', url: 'https://r/9', conclusion: 'failure', status: 'completed', createdAt: null, headSha: null, failed: true, hasLog: true, logNote: null, supersededNote: null, log: 'boom\n' })
+})
+
+test('ci logs shows when the failure ran and says a newer run of the workflow passed', async () => {
+  const root = teamRepo()
+  const gh = fakeGh({
+    [RUNS]: { stdout: JSON.stringify([
+      { databaseId: 43, workflowName: 'CI', status: 'completed', conclusion: 'success', url: 'https://r/43', createdAt: '2026-11-03T10:00:00Z', headSha: 'bbbbbbb1234' },
+      { databaseId: 42, workflowName: 'CI', status: 'completed', conclusion: 'failure', url: 'https://r/42', createdAt: '2026-11-02T10:00:00Z', headSha: 'aaaaaaa1234' },
+    ]) },
+    'run view 42 --log-failed': { stdout: 'test failed\n' },
+  })
+  const data = JSON.parse((await call(root, envWith(gh), ['ci', 'logs', '--branch', 'main'])).stdout)
+  assert.equal(data.run.createdAt, '2026-11-02T10:00:00Z')
+  assert.equal(data.run.headSha, 'aaaaaaa1234')
+  assert.equal(data.run.newerRun.runId, 43)
+  assert.match(data.run.supersededNote, /newer run 43 of CI ended success/)
+  const text = await run(['ci', 'logs', '--branch', 'main'], { env: envWith(gh), cwd: root })
+  assert.match(text.stdout, /run 42 CI, 2026-11-02T10:00:00Z, aaaaaaa/)
+  assert.match(text.stdout, /newer run 43 of CI ended success/)
 })
 
 test('ci logs says when the run did not fail, has not finished, never started or has an empty log', async () => {

@@ -242,20 +242,27 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
 
     ciLogs({ branch, runId } = {}) {
       let run
+      let newerRun
       if (runId !== undefined) {
         if (!Number.isInteger(runId) || runId < 1) throw new PmkitError('INVALID_INPUT', `run id "${runId}" is not valid`, 'Pass the number of a workflow run')
-        const meta = parse(check('gh', ['run', 'view', String(runId), '--json', 'workflowName,url,conclusion,status']).stdout, 'the workflow run')
+        const meta = parse(check('gh', ['run', 'view', String(runId), '--json', 'workflowName,url,conclusion,status,createdAt,headSha']).stdout, 'the workflow run')
         run = { databaseId: runId, ...meta }
       } else {
-        run = listRuns({ branch }).find((r) => FAILED_RUN.has(r.conclusion))
+        const runs = listRuns({ branch })
+        run = runs.find((r) => FAILED_RUN.has(r.conclusion))
         if (!run) return null
+        // `risks` reads the newest completed run of a workflow, so a newer one that did not fail makes this failure old news.
+        const newest = runs
+          .filter((r) => r.workflowName === run.workflowName && r.status === 'completed' && Date.parse(r.createdAt) > Date.parse(run.createdAt))
+          .reduce((a, r) => (a === null || Date.parse(r.createdAt) > Date.parse(a.createdAt) ? r : a), null)
+        newerRun = newest && !FAILED_RUN.has(newest.conclusion) ? { runId: newest.databaseId, conclusion: newest.conclusion, createdAt: newest.createdAt, headSha: newest.headSha ?? null } : null
       }
       const conclusion = run.conclusion || null
       // A run that succeeded, is still going or never started a job has no failed-step log: gh would only answer with nothing.
       // A run that was cancelled or skipped can still have failed steps, so only these three skip the call.
       const hasFailedSteps = conclusion !== null && conclusion !== 'success' && conclusion !== 'startup_failure'
       const log = hasFailedSteps ? check('gh', ['run', 'view', String(run.databaseId), '--log-failed']).stdout : ''
-      return { runId: run.databaseId, workflowName: run.workflowName ?? null, url: run.url ?? null, conclusion, status: run.status ?? null, log }
+      return { runId: run.databaseId, workflowName: run.workflowName ?? null, url: run.url ?? null, conclusion, status: run.status ?? null, createdAt: run.createdAt ?? null, headSha: run.headSha ?? null, ...(newerRun === undefined ? {} : { newerRun }), log }
     },
 
     prDiff(number) {

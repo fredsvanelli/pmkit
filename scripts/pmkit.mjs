@@ -1510,8 +1510,11 @@ export const COMMANDS = [
           : hasLog ? null
             : found.conclusion === 'startup_failure' ? `${label} ended with startup_failure: it never started a job, so it has no log`
               : `${label} failed (${found.conclusion}) but GitHub returned no log for it`
-      const run = { ...found, log, failed, hasLog, logNote }
-      return { data: { branch, run, truncated }, text: `${label}${truncated ? `, last ${tail} lines` : ''}\n${logNote === null ? '' : `${logNote}\n`}${hasLog ? log : ''}`, notes: await capabilityNotesOrNone(ctx) }
+      const newer = found.newerRun
+      const supersededNote = newer ? `newer run ${newer.runId} of ${found.workflowName ?? 'the same workflow'} ended ${newer.conclusion} on ${newer.createdAt}, so this failure may already be fixed` : null
+      const run = { ...found, log, failed, hasLog, logNote, supersededNote }
+      const when = [found.createdAt, found.headSha?.slice(0, 7)].filter(Boolean).join(', ')
+      return { data: { branch, run, truncated }, text: `${label}${when ? `, ${when}` : ''}${truncated ? `, last ${tail} lines` : ''}\n${supersededNote === null ? '' : `${supersededNote}\n`}${logNote === null ? '' : `${logNote}\n`}${hasLog ? log : ''}`, notes: await capabilityNotesOrNone(ctx) }
     },
   },
   {
