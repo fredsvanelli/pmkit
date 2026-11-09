@@ -57,3 +57,30 @@ Início: 2026-11-08. `develop` em f864fa7, `npm test` com 3884 testes, 3803 pass
 - PMK-192 ciclo 2 (sonnet): APROVADO. Não bloqueante: BRANCH_NAME recusa nomes que o git aceita (release#2, rc+1) e duplica isBranchName de lib/ids.mjs. Mergeado (ddaa2a1).
 
 Fim da rodada 1: PRs #125, #126, #127 mergeados. Os achados não bloqueantes ficam neste registro; pergunto ao usuário no fim se viram issues.
+
+Limpeza da rodada 1: closing PR #128 mergeado (88cda32), workers liberados, 8 worktrees removidos (só `package-lock.json` não rastreado), branches provisórias apagadas.
+
+## Rodada 2
+
+Início: 2026-11-08. `develop` em 88cda32, `npm test` com 3920 testes, 3839 pass, 0 fail, 81 skipped, saída 0. Run Orca `run_56e782bf76bb`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-178 | 2 | sonnet (`ctx_bf27cb239bf5`) | #129 | ciclo 1 (sonnet): APROVADO | mergeado (00ea5d6) |
+| PMK-176 | 2 | sonnet (`ctx_5b99c3711bb7`) | #130 | ciclo 1 (sonnet): mudanças pedidas; ciclo 2 (sonnet): APROVADO | mergeado (5d25d56) |
+| PMK-177 | 2 | sonnet (`ctx_dbd557316bed`) | #131 | ciclo 1 (sonnet): mudanças pedidas; ciclo 2 (sonnet): APROVADO | mergeado (ae47ec3) |
+
+- PMK-176: PR #130 (sonnet); fallback para comentário em escala condicional/NOT_SUPPORTED, escala por time, escala vazia dá comentário só em dias. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-178: PR #129 (sonnet); também marcou resolução de conversas como não avaliada quando as threads não são lidas. Follow-up: reviewDecision APPROVED vs contagem de aprovações. Revisor ciclo 1 (sonnet) iniciado.
+- Os primeiros revisores de #129 e #130 (ctx_103ea8616667, ctx_f0ffec500792) receberam spec quebrada (zsh não divide `$p` no `set --`); parei os dois antes de qualquer comentário no PR e reiniciei: PMK-176 `ctx_637b3da6f74b`, PMK-178 `ctx_71786467e643`.
+- PMK-177: PR #131 (sonnet); refs do PR por leitura separada de gh pr view; PR mergeado com 406 sem diferença vira incomplete:true; não commitado = só rastreados. Follow-ups: diff de PR rebase-merged pelo merge commit; nota de working tree ciente de --branch. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-176 ciclo 1 (sonnet): mudanças pedidas (escala condicional/vazia podia gravar dias como pontos; update sem efeito com confirm none).
+- PMK-178 ciclo 1 (sonnet): APROVADO. Não bloqueantes: pr-blockers.mjs:118-119 marca required checks/approvals como não checados mesmo sem essa regra (sem teste); host.mjs:43 nextStep genérico para SAML/escopo e casa só o início da 1a linha do stderr; blockersText ~193 lê unevaluated.length sem ?.
+- PMK-178 mergeado (00ea5d6).
+- PMK-177 ciclo 1 (sonnet): mudanças pedidas (PR mergeado descartado com branch local à frente/atrás; diff parcial sem incomplete com working tree sujo). Pedi junto os não bloqueantes de robustez.
+- PMK-176 correção: passo 7 só no caminho de gravação; proposta igual com confirm none não escreve; achados 3 a 7 corrigidos com 3 testes; rebase. Revisor ciclo 2 (sonnet) iniciado.
+- PMK-176 ciclo 2 (sonnet): APROVADO. Não bloqueantes: redação do markdown (horas livres no passo 6, INVALID_INPUT fora da escala, NOT_SUPPORTED depois de already fits, testes por regex); problema parecido de escala em breakdown.md e create.md. Mergeado (5d25d56).
+- PMK-177 correção: PR mergeado mantido quando a cabeça é ponta ou ancestral da branch local ou de origin (host.branchHas); incomplete segue o intervalo commitado; working tree ilegível e base não resolvida viram nota+incomplete; untracked por arquivo; investigate-bug.md e review.md tratam incomplete; rebase. Revisor ciclo 2 (sonnet) iniciado.
+- PMK-177 ciclo 2 (sonnet): APROVADO. Não bloqueantes: branchHas trata status 128 de is-ancestor como não está na branch (host.mjs:301); prRefs fora de try/catch (pmkit.mjs:1517); fallback casa /base branch/ na mensagem (pmkit.mjs:1556); design ainda cita VIEW_FIELDS. Mergeado (ae47ec3).
+
+Fim da rodada 2: PRs #129, #130, #131 mergeados.

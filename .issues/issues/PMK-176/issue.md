@@ -2,14 +2,14 @@
 id: PMK-176
 title: Fix estimate-issue on an empty or conditional estimate scale
 type: bug
-status: in_review
+status: done
 priority: medium
 estimate: 2
 assignee: fred
 related: [PMK-59]
 branch: pmk-176-fix-estimate-issue-on-an-empty-or
 created: 2026-10-31T16:01:11.186Z
-updated: 2026-11-09T00:28:04Z
+updated: 2026-11-09T00:51:07Z
 ---
 
 ## Description
