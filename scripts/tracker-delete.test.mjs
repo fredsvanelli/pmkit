@@ -175,6 +175,34 @@ test('mentions list other issues and comments that cite the ID, and PMK-5 style 
   assert.deepEqual(tracker.delete(a, 'fred', { dryRun: true }).mentions, [{ id: c, in: 'comment' }])
 })
 
+test('mentions skip the ID inside paths and URLs, and keep plain text and ID lists', () => {
+  const { tracker, ids: [a, b, c] } = setup()
+  tracker.updateIssue(b, { description: `See .issues/issues/${a}/issue.md and https://example.com/x/${a}/y and docs/${a}-notes.md.` }, 'fred')
+  assert.deepEqual(tracker.delete(a, 'fred', { dryRun: true }).mentions, [])
+  tracker.updateIssue(b, { description: `Same as ${a}/${c}, see (${a}).` }, 'fred')
+  assert.deepEqual(tracker.delete(a, 'fred', { dryRun: true }).mentions, [{ id: b, in: 'description' }])
+})
+
+test('a cleanup that fails after the delete leaves the issue gone, never half there', { skip: process.getuid?.() === 0 }, () => {
+  const { tracker, issuesDir, ids: [a, ...rest] } = setup()
+  tracker.comment(a, 'note', 'fred')
+  const comments = issuePaths(issuesDir, a).comments
+  fs.chmodSync(comments, 0o555)
+  try {
+    const result = tracker.delete(a, 'fred')
+    assert.match(result.warnings.join('\n'), /could not be removed/)
+    assert.equal(fs.existsSync(issuePaths(issuesDir, a).dir), false)
+    assert.throws(() => tracker.getIssue(a), { code: 'NOT_FOUND' })
+    assert.deepEqual(tracker.searchIssues({ archived: true }).issues.map((issue) => issue.id), rest)
+  } finally {
+    for (const entry of fs.readdirSync(path.join(issuesDir, 'issues'))) {
+      const leftover = path.join(issuesDir, 'issues', entry, 'comments')
+      if (entry.startsWith('.deleting-') && fs.existsSync(leftover)) fs.chmodSync(leftover, 0o755)
+      if (entry.startsWith('.deleting-')) fs.rmSync(path.join(issuesDir, 'issues', entry), { recursive: true, force: true })
+    }
+  }
+})
+
 test('writtenFiles carries the removed folder so auto_commit stages the removal', () => {
   const { tracker, ids: [a] } = setup()
   const files = () => tracker.writtenFiles()
