@@ -180,3 +180,51 @@ test('an issue in triage assigned to an agent is listed', async () => {
   const data = dataOf(await track())
   assert.deepEqual(data.issues.map((i) => i.id), ['ISS-1V9Z'])
 })
+
+// PMK-199
+test('a comment with broken frontmatter marks its issue unknown and the command goes on', async () => {
+  const { root, cli, track } = setup({ github: false })
+  await delegate(cli, 'ISS-5N1R', 'agent:claude')
+  await delegate(cli, 'ISS-2X6D', 'agent:claude')
+  const dir = path.join(root, '.issues', 'issues', 'ISS-2X6D', 'comments')
+  for (const name of fs.readdirSync(dir)) fs.writeFileSync(path.join(dir, name), '---\n\tauthor: fred\n---\nbroken\n')
+  const data = dataOf(await track())
+  const row = (id) => data.issues.find((i) => i.id === id)
+  assert.equal(row('ISS-5N1R').delegation.state, 'current')
+  assert.equal(row('ISS-2X6D').delegation.state, 'unknown')
+  assert.equal(row('ISS-2X6D').problems.length, 1)
+  assert.equal(data.incomplete, true)
+  assert.ok(data.warnings.some((w) => w.includes('ISS-2X6D')))
+  assert.doesNotMatch(data.warnings.join('\n'), /GitHub/)
+})
+
+test('a failed branch protection read is not cached: the next issue reads it again', async () => {
+  const key = await threadsKey()
+  const { root, cli, track, gh } = setup({ canned: { ...openPr(key, 'b-one', 31, 'free'), ...openPr(key, 'b-two', 32, 'free'), [PROTECTION]: [{ status: 1, stderr: 'HTTP 502 bad gateway' }, { stdout: '{}' }] } })
+  for (const id of ['ISS-5N1R', 'ISS-2X6D']) await delegate(cli, id, 'agent:claude')
+  setBranch(root, 'ISS-5N1R', 'b-one')
+  setBranch(root, 'ISS-2X6D', 'b-two')
+  const data = dataOf(await track())
+  assert.deepEqual(data.issues.map((i) => i.pr.state).sort(), ['open', 'unknown'])
+  assert.equal(ghCalls(gh).filter((line) => line === PROTECTION).length, 2)
+})
+
+test('an incomplete list never says that no agent has an issue', async () => {
+  const { root, cli, track } = setup({ github: false })
+  fs.writeFileSync(path.join(root, '.issues', 'issues', 'ISS-2X6D', 'issue.md'), '---\n<<<<<<< HEAD\n---\n')
+  const data = dataOf(await track())
+  assert.equal(data.issues.length, 0)
+  const text = (await cli('issues', 'track-agents')).stdout
+  assert.doesNotMatch(text, /no open issue is assigned/)
+  assert.match(text, /incomplete/)
+  assert.doesNotMatch(text, /GitHub/)
+})
+
+test('the incomplete warning names GitHub only when a pull request read is the cause', async () => {
+  const { root, cli, track } = setup({ canned: { [view('b-broken')]: { status: 1, stderr: 'HTTP 502 bad gateway' } } })
+  await delegate(cli, 'ISS-5N1R', 'agent:claude')
+  setBranch(root, 'ISS-5N1R', 'b-broken')
+  const data = dataOf(await track())
+  assert.match(data.warnings.join('\n'), /pull request.*could not be read|GitHub/)
+  assert.ok(data.warnings.some((w) => /^the list is incomplete/.test(w) && /pull request/.test(w)))
+})

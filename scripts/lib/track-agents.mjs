@@ -40,6 +40,8 @@ export function prText(row) {
   if (row.pr.state === 'no_pr') return `no pull request for ${row.branch}`
   if (row.pr.state === 'unknown') return `not verified: ${row.pr.message}`
   const live = row.pr.state === 'open' || row.pr.state === 'draft'
-  const blocked = row.pr.blocked === true ? `blocked: ${row.pr.blocking.join('; ')}` : row.pr.blocked === false ? 'nothing blocks it' : 'blockers not verified'
+  // What was not verified stays in the text: a blocked verdict is not the whole picture when a read failed.
+  const missing = [...(row.pr.unknown ?? []), ...(row.pr.unchecked ?? [])].join('; ')
+  const blocked = row.pr.blocked === true ? `blocked: ${row.pr.blocking.join('; ')}${missing ? `; not verified: ${missing}` : ''}` : row.pr.blocked === false ? 'nothing blocks it' : `blockers not verified${missing ? `: ${missing}` : ''}`
   return `#${row.pr.number} ${row.pr.state}${live ? `, ${blocked}` : ''}`
 }

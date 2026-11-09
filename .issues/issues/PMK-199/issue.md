@@ -2,12 +2,14 @@
 id: PMK-199
 title: Fix track-agents on a broken comment and transient errors
 type: bug
-status: backlog
+status: in_review
 priority: medium
 estimate: 1
+assignee: fred
 related: [PMK-58]
+branch: pmk-199-fix-track-agents-on-a-broken-comment-and
 created: 2026-10-31T20:35:31.270Z
-updated: 2026-10-31T20:35:31Z
+updated: 2026-11-09T04:11:59Z
 ---
 
 ## Description
@@ -29,6 +31,6 @@ updated: 2026-10-31T20:35:31Z
 
 ## Acceptance criteria
 
-- [ ] A broken comment marks its issue incomplete and the command goes on
-- [ ] Only a successful protection read is cached
-- [ ] The text of an incomplete or blocked list says what is unknown
+- [x] A broken comment marks its issue incomplete and the command goes on
+- [x] Only a successful protection read is cached
+- [x] The text of an incomplete or blocked list says what is unknown
