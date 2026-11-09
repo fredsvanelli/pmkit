@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-69]
 branch: pmk-205-fix-the-linear-and-error-paths-of
 created: 2026-11-08T03:15:27.300Z
-updated: 2026-11-09T22:56:39Z
+updated: 2026-11-09T23:08:48Z
 ---
 
 ## Description
@@ -33,7 +33,7 @@ Found by the reviews of PR #115 (PMK-69) and left as non-blocking. Source: PMK-6
 
 ## Acceptance criteria
 
-- [ ] `--sprint` and `--milestone` work on Linear with releases on
-- [ ] A transient read error marks the result incomplete instead of aborting
-- [ ] An empty planned release is not reported ready
-- [ ] The release's deploy is found when it is older than the 20 newest, and through a `refs/tags/` ref
+- [x] `--sprint` and `--milestone` work on Linear with releases on
+- [x] A transient read error marks the result incomplete instead of aborting
+- [x] An empty planned release is not reported ready
+- [x] The release's deploy is found when it is older than the 20 newest, and through a `refs/tags/` ref

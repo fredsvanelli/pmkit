@@ -3,3 +3,5 @@
 {"at":"2026-11-09T22:56:37Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-09T22:56:37Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-09T22:56:39Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-205-fix-the-linear-and-error-paths-of"}
+{"at":"2026-11-09T22:57:58Z","by":"fred","op":"comment","to":"2026-11-09T22-57-58Z-fred.md"}
+{"at":"2026-11-09T23:08:48Z","by":"fred","op":"update","field":"acceptance_criteria"}

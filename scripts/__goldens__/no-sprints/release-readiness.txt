@@ -61,6 +61,7 @@ exit 0
     }
   },
   "truncated": false,
+  "empty": false,
   "complete": true,
   "ready": false,
   "problems": []
@@ -131,6 +132,7 @@ exit 0
     }
   },
   "truncated": false,
+  "empty": false,
   "complete": true,
   "ready": false,
   "problems": []
