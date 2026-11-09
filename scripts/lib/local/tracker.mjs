@@ -887,8 +887,8 @@ export function createLocalTracker(root, {
 
   /**
    * Records the keys of the items the member has seen. With no `keys` it marks every unseen item now. `keys` marks exactly those,
-   * so an item that arrived after the list stays unseen. It refuses a key no item has, and it writes nothing when the read is
-   * incomplete, so a file that does not parse cannot get its items marked. The first mark-read also marks the items older than
+   * so an item that arrived after the list stays unseen. A key no item has is not an error: it comes back in `unknown` and the
+   * other keys are marked. It writes nothing when the read is incomplete, so a file that does not parse cannot get its items marked. The first mark-read also marks the items older than
    * the 14 days the first list showed. It drops the seen keys of items that no longer exist once they are 30 days old.
    */
   function markRead({ user, keys, dryRun = false } = {}) {
@@ -907,7 +907,6 @@ export function createLocalTracker(root, {
     const seen = stored?.seen ?? {}
     const known = new Set(items.map((entry) => entry.key))
     const unknown = (keys ?? []).filter((key) => !known.has(key))
-    if (unknown.length > 0) throw invalid(`no item has the key ${unknown.join(', ')}`, 'Run pmkit inbox list --all for the keys')
     const chosen = new Set(items.filter((entry) => !Object.hasOwn(seen, entry.key) && (keys === undefined || keys.includes(entry.key))).map((entry) => entry.key))
     // With keys the member marks exactly those, so the older items stay for the next list.
     if (stored === null && keys === undefined) {
@@ -926,7 +925,7 @@ export function createLocalTracker(root, {
     for (const key of marked) kept[key] = recorded
     const changed = stored === null || marked.length > 0 || pruned > 0
     if (changed && !dryRun) inboxSet(config.root, user, { at: recorded, seen: kept }, inboxStore)
-    return { user, previous: stored?.at ?? null, recorded: changed ? recorded : stored.at, marked, pruned, changed, dryRun }
+    return { user, previous: stored?.at ?? null, recorded: changed ? recorded : stored.at, marked, unknown, pruned, changed, dryRun }
   }
 
   function discover() {

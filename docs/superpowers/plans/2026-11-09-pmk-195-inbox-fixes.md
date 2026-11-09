@@ -1,6 +1,27 @@
-# PMK-195 plan: inbox authors, corrupt-file fallback and stale docs
+# PMK-195 Inbox Fixes Implementation Plan
 
-Spec: `docs/superpowers/specs/2026-11-09-pmk-195-inbox-fixes-design.md`. Every task is test first (red, then green), inline, one commit each with `(PMK-195)`.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (inline) with superpowers:test-driven-development.
+
+**Goal:** Fix inbox authors, corrupt-file fallback, unknown keys, prune across branches and stale docs.
+
+**Architecture:** Changes stay in `scanInbox` and `markRead` (`scripts/lib/local/tracker.mjs`), `readEvents`, `validate`, and the `inbox mark-read` command.
+
+**Tech Stack:** Node ESM, `node:test`, no dependencies (ADR-0003).
+
+**Spec:** `docs/superpowers/specs/2026-11-09-pmk-195-inbox-fixes-design.md`
+
+## Global Constraints
+
+- Item vocabulary `in` stays `assignment|description|acceptance_criteria|comment`; item keys unchanged.
+- No new dependency; git calls use `spawnSync` with a large `maxBuffer`, a timeout only on reads.
+- Every commit carries `(PMK-195)` and the `Co-Authored-By: Claude Opus 5.5` trailer.
+
+## Review Focus
+
+- Comment with `created` absent: no problem. Non-git repo: prune as before. All keys unknown: exit 0, nothing marked, `unknown` lists them.
+
+---
+
 
 1. **Authors (AC 1).** Test: a description item and a criteria item written by `ana`, then edited by `bob`, report `by: null`; a comment without frontmatter reports `by: null`. Change `scanInbox`: `by = null` for body items; `author` empty becomes `null`. Update the existing tests that expected `ana` on a description item.
 2. **Section (scope bullet).** Test: a mention under `## Notes` is `in: description`. Change `where` to use the parsed criteria texts.

@@ -208,7 +208,7 @@ test('markRead records the seen keys, the list hides them and shows what comes l
   setNow('2026-10-31T10:10:00Z')
   const [item] = tracker.listNotifications({ user: 'fred' }).items
   const dry = tracker.markRead({ user: 'fred', dryRun: true })
-  assert.deepEqual(dry, { user: 'fred', previous: null, recorded: '2026-10-31T10:10:00Z', marked: [item.key], pruned: 0, changed: true, dryRun: true })
+  assert.deepEqual(dry, { user: 'fred', previous: null, recorded: '2026-10-31T10:10:00Z', marked: [item.key], unknown: [], pruned: 0, changed: true, dryRun: true })
   assert.equal(inboxGet(root, 'fred', { env }), null)
   const done = tracker.markRead({ user: 'fred' })
   assert.deepEqual([done.changed, done.marked], [true, [item.key]])
@@ -222,7 +222,7 @@ test('markRead records the seen keys, the list hides them and shows what comes l
   assert.equal(tracker.listNotifications({ user: 'fred' }).items.length, 1)
   const again = tracker.markRead({ user: 'fred' })
   assert.equal(again.marked.length, 1)
-  assert.deepEqual(tracker.markRead({ user: 'fred' }), { user: 'fred', previous: '2026-10-31T10:20:00Z', recorded: '2026-10-31T10:20:00Z', marked: [], pruned: 0, changed: false, dryRun: false })
+  assert.deepEqual(tracker.markRead({ user: 'fred' }), { user: 'fred', previous: '2026-10-31T10:20:00Z', recorded: '2026-10-31T10:20:00Z', marked: [], unknown: [], pruned: 0, changed: false, dryRun: false })
 })
 
 test('an item that arrives in the second of the list, or after it, stays unread when the member marks the keys the list showed', () => {
@@ -340,19 +340,21 @@ test('since takes only a strict timestamp with a zone', () => {
   assert.equal(tracker.listNotifications({ user: 'fred', since: '2026-10-31T12:00:00+02:00' }).since, '2026-10-31T10:00:00Z')
 })
 
-test('markRead with keys marks only those, refuses an unknown key and takes none of the others', () => {
-  const { tracker, setNow, root, env } = setup()
+test('markRead with keys marks only those, reports an unknown key and marks the others', () => {
+  const { tracker, setNow } = setup()
   const a = tracker.createIssue({ title: 'A' }, 'ana').after.id
   const b = tracker.createIssue({ title: 'B' }, 'ana').after.id
   setNow('2026-10-31T10:05:00Z')
   tracker.assign(a, 'fred', 'ana')
   tracker.assign(b, 'fred', 'ana')
   const items = tracker.listNotifications({ user: 'fred', since: SINCE }).items
-  assert.throws(() => tracker.markRead({ user: 'fred', keys: [items[0].key, 'assign:ISS-0:000000000000'] }), (e) => e.code === 'INVALID_INPUT' && e.message.includes('assign:ISS-0:000000000000'))
-  assert.equal(inboxGet(root, 'fred', { env }), null)
-  assert.deepEqual(tracker.markRead({ user: 'fred', keys: [items[0].key] }).marked, [items[0].key])
+  const lost = 'assign:ISS-0:000000000000'
+  const result = tracker.markRead({ user: 'fred', keys: [items[0].key, lost] })
+  assert.deepEqual([result.marked, result.unknown], [[items[0].key], [lost]])
   assert.deepEqual(tracker.listNotifications({ user: 'fred' }).items.map((item) => item.key), [items[1].key])
+  assert.deepEqual(tracker.markRead({ user: 'fred', keys: [lost] }).unknown, [lost])
   assert.deepEqual(tracker.markRead({ user: 'fred', keys: [] }).marked, [])
+  assert.deepEqual(tracker.markRead({ user: 'fred' }).unknown, [])
 })
 
 test('the seen keys of items that no longer exist are dropped after 30 days, and kept before that', () => {

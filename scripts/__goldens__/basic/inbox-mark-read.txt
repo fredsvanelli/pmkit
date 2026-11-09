@@ -14,6 +14,7 @@ exit 0
   "previous": null,
   "recorded": "2026-10-23T12:00:00Z",
   "marked": [],
+  "unknown": [],
   "pruned": 0,
   "changed": true,
   "dryRun": true
@@ -37,6 +38,7 @@ exit 0
   "previous": null,
   "recorded": "2026-10-23T12:00:00Z",
   "marked": [],
+  "unknown": [],
   "pruned": 0,
   "changed": true,
   "dryRun": true
@@ -45,43 +47,52 @@ exit 0
 (empty)
 
 $ pmkit inbox mark-read --key comment:ISS-0000:none
-exit 2
+exit 0
 --- stdout
-(empty)
+marked 0 items read for fred
 --- stderr
-error: no item has the key comment:ISS-0000:none
-next: Run pmkit inbox list --all for the keys
+warning: no item has the key comment:ISS-0000:none; run pmkit inbox list --all for the keys
 
 $ pmkit inbox mark-read --key comment:ISS-0000:none --json
-exit 2
+exit 0
 --- stdout
 {
-  "error": {
-    "code": "INVALID_INPUT",
-    "message": "no item has the key comment:ISS-0000:none",
-    "nextStep": "Run pmkit inbox list --all for the keys"
-  }
+  "user": "fred",
+  "previous": null,
+  "recorded": "2026-10-23T12:00:00Z",
+  "marked": [],
+  "unknown": [
+    "comment:ISS-0000:none"
+  ],
+  "pruned": 0,
+  "changed": true,
+  "dryRun": false
 }
 --- stderr
-(empty)
+warning: no item has the key comment:ISS-0000:none; run pmkit inbox list --all for the keys
 
 $ pmkit inbox mark-read --key comment:ISS-0000:none --dry-run
-exit 2
+exit 0
 --- stdout
-(empty)
+would mark 0 items read for fred
+dry run: nothing was written
 --- stderr
-error: no item has the key comment:ISS-0000:none
-next: Run pmkit inbox list --all for the keys
+warning: no item has the key comment:ISS-0000:none; run pmkit inbox list --all for the keys
 
 $ pmkit inbox mark-read --key comment:ISS-0000:none --dry-run --json
-exit 2
+exit 0
 --- stdout
 {
-  "error": {
-    "code": "INVALID_INPUT",
-    "message": "no item has the key comment:ISS-0000:none",
-    "nextStep": "Run pmkit inbox list --all for the keys"
-  }
+  "user": "fred",
+  "previous": null,
+  "recorded": "2026-10-23T12:00:00Z",
+  "marked": [],
+  "unknown": [
+    "comment:ISS-0000:none"
+  ],
+  "pruned": 0,
+  "changed": true,
+  "dryRun": true
 }
 --- stderr
-(empty)
+warning: no item has the key comment:ISS-0000:none; run pmkit inbox list --all for the keys
