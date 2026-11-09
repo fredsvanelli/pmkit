@@ -4,3 +4,6 @@
 {"at":"2026-11-09T00:54:11Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-09T00:54:16Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-181-fix-parsedelegation-on-trailing-spaces"}
 {"at":"2026-11-09T00:54:43Z","by":"fred","op":"comment","to":"2026-11-09T00-54-43Z-fred.md"}
+{"at":"2026-11-09T00:55:07Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T00:55:08Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T00:55:08Z","by":"fred","op":"update","field":"acceptance_criteria"}

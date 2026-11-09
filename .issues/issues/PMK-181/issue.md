@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-57]
 branch: pmk-181-fix-parsedelegation-on-trailing-spaces
 created: 2026-10-31T16:01:17.026Z
-updated: 2026-11-09T00:54:16Z
+updated: 2026-11-09T00:55:08Z
 ---
 
 ## Description
@@ -30,6 +30,6 @@ updated: 2026-11-09T00:54:16Z
 
 ## Acceptance criteria
 
-- [ ] `parseDelegation` reads a first line with trailing spaces or `\r\n`
-- [ ] The command and the comment say which identity the commits and the PR use
-- [ ] The contract `assign` test assigns a person again
+- [x] `parseDelegation` reads a first line with trailing spaces or `\r\n`
+- [x] The command and the comment say which identity the commits and the PR use
+- [x] The contract `assign` test assigns a person again
