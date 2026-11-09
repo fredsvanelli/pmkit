@@ -1,9 +1,11 @@
 // /pmkit:backlog:prioritize-by-demand on the team fixture. The four candidates (backlog, todo, triage) are ISS-3F7H (medium),
-// ISS-6J0B (low), ISS-4M2S (medium) and ISS-1V9Z (no priority). Five entries: requests (.0), comments and mentions with a
-// whole-token decoy (.1), a failed batch write (.2), the Linear path (.3) and an incomplete read (.4).
+// ISS-6J0B (low), ISS-4M2S (medium) and ISS-1V9Z (no priority). Six entries: requests (.0), comments and mentions with a
+// whole-token decoy and the assignee's own comments (.1), a failed batch write (.2), the Linear path (.3), an incomplete read (.4) and a
+// demand problem that concerns no candidate (.5).
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { mentionedIn } from '../lib/mentions.mjs'
 
 const AUTH = 'the command stops at step 1 with AUTH, before any request'
 const LOCAL = 'the Local tracker has demand signals, so the comments and mentions path does not run'
@@ -17,9 +19,9 @@ const reads = [
   { step: '2', read: ['issues', 'list', ...CANDIDATES] },
   { step: '3', read: ['demand', 'list'], save: 'demand' },
 ]
-// The mentions of an ID by the rule of step 4: another issue whose title or description names it as a whole token.
-const mentions = (list, id) => list.issues.filter((issue) => issue.id !== id
-  && new RegExp(`(?<![A-Za-z0-9-])${id}(?![A-Za-z0-9-])`, 'i').test(`${issue.title}\n${issue.description ?? ''}`)).map((issue) => issue.id).sort()
+// The mentions of an ID by the rule of step 4 (the rule of `issues delete`, lib/mentions.mjs), read from the issue files of the copy so a live run checks it too.
+const CANDIDATE_IDS = ['ISS-3F7H', 'ISS-6J0B', 'ISS-4M2S', 'ISS-1V9Z']
+const mentions = (repo, id) => CANDIDATE_IDS.filter((other) => other !== id && mentionedIn(id)(repo.file(`.issues/issues/${other}/issue.md`))).sort()
 
 export default [
   {
@@ -48,10 +50,10 @@ export default [
     skip: { '4 issues get': LOCAL, '4 issues list': LOCAL },
     notHit: {},
     expect(repo, saved) {
-      assert.deepEqual(saved.demand.signals.map((s) => [s.issue.id, s.count, s.important]), [['ISS-6J0B', 3, 1], ['ISS-3F7H', 1, 0]])
       assert.equal(repo.issue('ISS-6J0B').priority, 'urgent')
       assert.equal(repo.issue('ISS-3F7H').priority, 'high')
       assert.equal(repo.newEvents('ISS-4M2S').length, 0)
+      assert.deepEqual(saved.demand.signals.map((s) => [s.issue.id, s.count, s.important]), [['ISS-6J0B', 3, 1], ['ISS-3F7H', 1, 0]])
     },
   },
   {
@@ -65,12 +67,14 @@ export default [
       for (const text of ['Users keep asking for this.\n', 'Two more customers asked.\n']) await pmkit(['issues', 'comment', 'ISS-3F7H', '--body-file', '-'], { stdin: text })
       await pmkit(['issues', 'update', 'ISS-1V9Z', '--description-file', '-'], { stdin: 'Same cause as ISS-3F7H.\n' })
       await pmkit(['issues', 'update', 'ISS-4M2S', '--description-file', '-'], { stdin: 'Unrelated to ISS-6J0BX.\n' })
+      // pmkit's own comments: ISS-4M2S is assigned to fred, so these four are its assignee's plan and progress comments, not demand.
+      for (let n = 1; n <= 4; n += 1) await pmkit(['issues', 'comment', 'ISS-4M2S', '--body-file', '-'], { stdin: `Progress ${n}.\n` })
     },
     prompt: '/pmkit:backlog:prioritize-by-demand',
     answers: ['All', 'Yes'],
     steps: [
       ...reads,
-      { step: '4', read: ['issues', 'list'], save: 'tracker' },
+      ...CANDIDATE_IDS.map((id) => ({ step: '4', read: ['issues', 'list', '--text', id] })),
       ...['ISS-3F7H', 'ISS-6J0B', 'ISS-4M2S', 'ISS-1V9Z'].map((id) => ({ step: '4', read: ['issues', 'get', id, '--comments'] })),
       { confirm: 'Step 5' },
       { step: '6', dryRun: update('ISS-3F7H', 'high') },
@@ -81,11 +85,12 @@ export default [
     skip: {},
     notHit: {},
     expect(repo, saved) {
-      assert.deepEqual(saved.demand.signals, [])
-      assert.deepEqual(mentions(saved.tracker, 'ISS-3F7H'), ['ISS-1V9Z'])
-      assert.deepEqual(mentions(saved.tracker, 'ISS-6J0B'), [], 'ISS-6J0BX is not a mention of ISS-6J0B')
+      assert.deepEqual(mentions(repo, 'ISS-3F7H'), ['ISS-1V9Z'])
+      assert.deepEqual(mentions(repo, 'ISS-6J0B'), [], 'ISS-6J0BX is not a mention of ISS-6J0B')
       assert.equal(repo.issue('ISS-3F7H').priority, 'high')
       assert.equal(repo.newEvents('ISS-6J0B').length, 0)
+      assert.equal(repo.newEvents('ISS-4M2S').length, 0, 'the assignee\'s own comments are not demand')
+      assert.deepEqual(saved.demand.signals, [])
     },
   },
   {
@@ -156,9 +161,36 @@ export default [
     },
     notHit: { 'Step 5': 'an incomplete read asks nothing', 'Step 7': 'an incomplete read writes nothing, so there is no preview to confirm' },
     expect(repo, saved) {
+      assert.equal(repo.newEvents('ISS-6J0B').length, 0)
       assert.equal(saved.demand.problems.length, 1)
       assert.equal(saved.demand.signals.length, 1)
-      assert.equal(repo.newEvents('ISS-6J0B').length, 0)
+    },
+  },
+  {
+    // A demand problem that concerns no candidate (step 3). A request names ISS-ZZZZ, which does not exist, and a customer with no
+    // file. Both are `about` problems of an issue that is no candidate and of a customer, so they are warnings: the ranking is
+    // complete and ISS-6J0B, the only issue with a request, is written.
+    command: 'backlog/prioritize-by-demand',
+    fixture: 'team',
+    async setup({ pmkit, root }) {
+      await request(pmkit, 'ISS-6J0B', 'Upgrade on CI')
+      fs.writeFileSync(path.join(root, '.issues', 'requests', 'REQ-8X8X.md'), '---\ntitle: Gone\ncustomer: CUS-4\nstate: accepted\nissue: ISS-ZZZZ\n---\n')
+    },
+    prompt: '/pmkit:backlog:prioritize-by-demand',
+    answers: ['All', 'Yes'],
+    steps: [
+      ...reads,
+      { confirm: 'Step 5' },
+      { step: '6', dryRun: update('ISS-6J0B', 'urgent') },
+      { confirm: 'Step 7' },
+      { step: '6', write: update('ISS-6J0B', 'urgent') },
+      { step: '9', read: ['issues', 'list', ...CANDIDATES] },
+    ],
+    skip: { '4 issues get': LOCAL, '4 issues list': LOCAL },
+    notHit: {},
+    expect(repo) {
+      assert.equal(repo.issue('ISS-6J0B').priority, 'urgent')
+      assert.equal(repo.newEvents('ISS-3F7H').length, 0)
     },
   },
 ]

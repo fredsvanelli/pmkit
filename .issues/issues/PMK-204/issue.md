@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-68]
 branch: pmk-204-fix-the-ranking-and-write-rules-of
 created: 2026-11-08T03:15:27.153Z
-updated: 2026-11-09T22:56:37Z
+updated: 2026-11-09T23:00:55Z
 ---
 
 ## Description
@@ -34,7 +34,7 @@ Found by the reviews of PR #113 (PMK-68) and left as non-blocking. Source: PMK-6
 
 ## Acceptance criteria
 
-- [ ] Issues with no demand never rank above issues with demand
-- [ ] A demand problem that concerns no candidate is a warning, not a write block
-- [ ] pmkit's own comments do not count as demand
-- [ ] The live scenario checks the whole-token mention result
+- [x] Issues with no demand never rank above issues with demand
+- [x] A demand problem that concerns no candidate is a warning, not a write block
+- [x] pmkit's own comments do not count as demand
+- [x] The live scenario checks the whole-token mention result

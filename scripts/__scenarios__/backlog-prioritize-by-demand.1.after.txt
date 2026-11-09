@@ -6,7 +6,13 @@ $ pmkit issues list --category backlog,todo,triage --json  [step 2, read]
 exit 0
 $ pmkit demand list --json  [step 3, read]
 exit 0
-$ pmkit issues list --json  [step 4, read]
+$ pmkit issues list --text ISS-3F7H --json  [step 4, read]
+exit 0
+$ pmkit issues list --text ISS-6J0B --json  [step 4, read]
+exit 0
+$ pmkit issues list --text ISS-4M2S --json  [step 4, read]
+exit 0
+$ pmkit issues list --text ISS-1V9Z --json  [step 4, read]
 exit 0
 $ pmkit issues get ISS-3F7H --comments --json  [step 4, read]
 exit 0
