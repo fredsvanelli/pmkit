@@ -136,7 +136,7 @@ test('goalProgress gives each epic its deliverableProgress and the sums', () => 
   assert.deepEqual(progress.goal, tracker.getGoal(id))
   assert.deepEqual(progress.epics.map((e) => e.id), tracker.getGoal(id).epics)
   const first = progress.epics.find((e) => e.id === 'EPC-2M9D')
-  assert.deepEqual(first, { id: 'EPC-2M9D', title: 'Reliable webhooks and billing export', status: { name: 'in_progress', category: 'in_progress' }, progress: epic })
+  assert.deepEqual(first, { id: 'EPC-2M9D', title: 'Reliable webhooks and billing export', status: { name: 'in_progress', category: 'in_progress' }, counted: true, progress: epic })
   for (const key of ['total', 'done', 'canceled', 'points', 'pointsDone']) assert.equal(progress[key], epic[key], key)
   assert.deepEqual(progress.byCategory, epic.byCategory)
 })
@@ -156,4 +156,92 @@ test('listGoals skips a file that does not parse and a stem that is not a goal i
 
 test('listGoals is empty without a goals folder', () => {
   assert.deepEqual(setup().tracker.listGoals(), { goals: [], problems: [] })
+})
+
+test('setEpicGoal refuses an empty, blank or non-string goal and only null removes the link (PMK-179)', () => {
+  const { root, tracker } = setup()
+  const { id } = tracker.createGoal({ title: 'Trust' }, 'fred').after
+  tracker.setEpicGoal('EPC-2M9D', id, 'fred')
+  const before = hashTree(root)
+  for (const value of ['', '   ', 5, undefined]) {
+    assert.throws(() => tracker.setEpicGoal('EPC-2M9D', value, 'fred'), code('INVALID_INPUT'), String(value))
+  }
+  assert.deepEqual(hashTree(root), before)
+  assert.equal(tracker.getDeliverable('EPC-2M9D').goal, id)
+  assert.equal(tracker.setEpicGoal('EPC-2M9D', null, 'fred').after.goal, undefined)
+})
+
+const epicFile = (root) => path.join(root, '.issues', 'epics', 'EPC-2M9D', 'epic.md')
+const RICH = '---\nid: EPC-2M9D\n# keep this comment\ntitle: Reliable webhooks and billing export\nstatus: in_progress\nstart: 2026-09-28\ntarget: 2026-11-13\nextra:\n  - a: 1\n  - b: 2\n"": odd\nowner: ana # trailing\n---\n\nBody line one.\n\nBody line two.\n'
+
+test('setEpicGoal keeps every frontmatter key, comment and the body, including lists of maps and "" keys (PMK-179)', () => {
+  const { root, tracker } = setup()
+  fs.writeFileSync(epicFile(root), RICH)
+  const { id } = tracker.createGoal({ title: 'Trust' }, 'fred').after
+  tracker.setEpicGoal('EPC-2M9D', id, 'fred')
+  assert.equal(fs.readFileSync(epicFile(root), 'utf8'), RICH.replace('\n---\n\nBody line one', `\ngoal: ${id}\n---\n\nBody line one`))
+  const second = tracker.createGoal({ title: 'Other' }, 'fred').after.id
+  tracker.setEpicGoal('EPC-2M9D', second, 'fred')
+  assert.equal(fs.readFileSync(epicFile(root), 'utf8'), RICH.replace('\n---\n\nBody line one', `\ngoal: ${second}\n---\n\nBody line one`))
+  tracker.setEpicGoal('EPC-2M9D', null, 'fred')
+  assert.equal(fs.readFileSync(epicFile(root), 'utf8'), RICH)
+})
+
+test('setEpicGoal on a CRLF epic file keeps its keys and writes LF (PMK-179)', () => {
+  const { root, tracker } = setup()
+  fs.writeFileSync(epicFile(root), RICH.replace(/\n/g, '\r\n'))
+  const { id } = tracker.createGoal({ title: 'Trust' }, 'fred').after
+  tracker.setEpicGoal('EPC-2M9D', id, 'fred')
+  const text = fs.readFileSync(epicFile(root), 'utf8')
+  assert.ok(!text.includes('\r'))
+  assert.match(text, /^# keep this comment$/m)
+  assert.match(text, new RegExp(`^goal: ${id}$`, 'm'))
+})
+
+test('setEpicGoal fails and writes nothing when the goal key holds a block (PMK-179)', () => {
+  const { root, tracker } = setup()
+  fs.writeFileSync(epicFile(root), RICH.replace('owner: ana # trailing\n', 'goal:\n  nested: x\n'))
+  const { id } = tracker.createGoal({ title: 'Trust' }, 'fred').after
+  const before = hashTree(root)
+  assert.throws(() => tracker.setEpicGoal('EPC-2M9D', id, 'fred'), code('INVALID_INPUT'))
+  assert.deepEqual(hashTree(root), before)
+})
+
+function epicWithIssues(root, tracker, goalId, title, statuses, epicStatus) {
+  const epic = tracker.createDeliverable({ title, goal: goalId }, 'fred').after
+  for (const [category, estimate] of statuses) {
+    const issue = tracker.createIssue({ title: `${title} ${category}`, parent: epic.id, estimate }, 'fred').after
+    if (category !== 'backlog') tracker.moveToCategory(issue.id, category, 'fred')
+  }
+  if (epicStatus) {
+    const file = path.join(root, '.issues', 'epics', epic.id, 'epic.md')
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^status: .*$/m, `status: ${epicStatus}`))
+  }
+  return epic
+}
+
+test('a canceled epic counts as nothing in the goal progress, and is listed with counted false (PMK-179)', () => {
+  const { root, tracker } = setup()
+  const { id } = tracker.createGoal({ title: 'Trust' }, 'fred').after
+  const live = epicWithIssues(root, tracker, id, 'Live', [['done', 3], ['backlog', 2]])
+  const dead = epicWithIssues(root, tracker, id, 'Dead', [['done', 5], ['backlog', 8], ['backlog', 1]], 'canceled')
+  const progress = tracker.goalProgress(id)
+  const entry = (epicId) => progress.epics.find((e) => e.id === epicId)
+  assert.equal(entry(live.id).counted, true)
+  assert.equal(entry(dead.id).counted, false)
+  assert.deepEqual(entry(dead.id).progress, tracker.deliverableProgress(dead.id))
+  assert.deepEqual([progress.total, progress.done, progress.points, progress.pointsDone], [2, 1, 5, 3])
+  assert.equal(progress.byCategory.backlog, 1)
+})
+
+test('an epic with an unmapped status is still counted, and a goal of canceled epics has total 0 (PMK-179)', () => {
+  const { root, tracker } = setup()
+  const { id } = tracker.createGoal({ title: 'Trust' }, 'fred').after
+  const odd = epicWithIssues(root, tracker, id, 'Odd', [['backlog', 2]], 'mystery')
+  assert.equal(tracker.goalProgress(id).epics.find((e) => e.id === odd.id).counted, true)
+  assert.equal(tracker.goalProgress(id).total, 1)
+  const only = tracker.createGoal({ title: 'Dead goal' }, 'fred').after.id
+  epicWithIssues(root, tracker, only, 'Gone', [['done', 3]], 'canceled')
+  const none = tracker.goalProgress(only)
+  assert.deepEqual([none.total, none.done, none.points, none.epics.length], [0, 0, 0, 1])
 })

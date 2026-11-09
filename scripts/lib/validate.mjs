@@ -270,6 +270,8 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
   // Goals
   const goalsDir = path.join(issuesDir, 'goals')
   const goalIds = goalStems(goalsDir)
+  // Goal ids whose file parses: an epic may only link to one of these.
+  const readableGoals = new Set()
   for (const id of [...goalIds].sort()) {
     const file = path.join(goalsDir, `${id}.md`)
     if (conflicted.has(file)) continue
@@ -279,6 +281,7 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
     }
     try {
       parseGoal(read(file), id)
+      readableGoals.add(id)
     } catch (error) {
       add(file, 'goal', error.message)
     }
@@ -373,7 +376,12 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
   }
   for (const [name, epic] of epics) {
     if (milestoneMissing(epic.milestone)) add(path.join(issuesDir, 'epics', name, 'epic.md'), 'reference', `milestone ${epic.milestone} does not exist`)
-    if (epic.goal !== undefined && !goalIds.has(epic.goal)) add(path.join(issuesDir, 'epics', name, 'epic.md'), 'reference', `goal ${epic.goal} does not exist`)
+    if (epic.goal !== undefined) {
+      const file = path.join(issuesDir, 'epics', name, 'epic.md')
+      if (!isId(epic.goal, GOAL_PREFIX)) add(file, 'reference', `goal ${epic.goal} is not a valid goal id such as ${GOAL_PREFIX}-1`)
+      else if (!goalIds.has(epic.goal)) add(file, 'reference', `goal ${epic.goal} does not exist`)
+      else if (!readableGoals.has(epic.goal)) add(file, 'reference', `goal ${epic.goal} does not parse, see ${rel(path.join(goalsDir, `${epic.goal}.md`))}`)
+    }
   }
   for (const { file, record } of requestFiles.parsed) {
     if (record.customer !== undefined && !customerFiles.ids.has(record.customer)) add(file, 'reference', `customer ${record.customer} does not exist`)

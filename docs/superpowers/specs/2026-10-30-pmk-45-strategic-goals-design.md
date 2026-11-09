@@ -43,7 +43,7 @@ An epic links to one goal through an optional `goal` key in `epics/<ID>/epic.md`
 - `epic create --goal <id>` creates an epic linked to a goal.
 - `epic goal <epic> <goal|none>` sets or removes the link of an existing epic. It writes `epic.md` and appends an `update` event with `field: goal` to the epic's `events.jsonl`. When the value does not change, it writes nothing.
 
-Both refuse a goal that has no file, and a goal file that does not parse.
+Both refuse a goal that has no file, and a goal file that does not parse. `epic goal` refuses an empty value, and only `none` (`null` in the contract) removes the link (PMK-179). It edits only the `goal` line of `epic.md`.
 
 ### Tracker format
 
@@ -68,12 +68,12 @@ A goal record is `{ id, title, target?, description, epics }`, where `epics` lis
 ```json
 {
   "goal": { "id": "GOAL-1", "title": "...", "target": "2026-12-31", "description": "", "epics": ["EPC-1"] },
-  "epics": [{ "id": "EPC-1", "title": "...", "status": { "name": "in_progress", "category": "in_progress" }, "progress": { "total": 4, "done": 1, "canceled": 0, "points": 8, "pointsDone": 2, "byCategory": { "...": 0 } } }],
+  "epics": [{ "id": "EPC-1", "title": "...", "status": { "name": "in_progress", "category": "in_progress" }, "counted": true, "progress": { "total": 4, "done": 1, "canceled": 0, "points": 8, "pointsDone": 2, "byCategory": { "...": 0 } } }],
   "total": 4, "done": 1, "canceled": 0, "points": 8, "pointsDone": 2, "byCategory": { "...": 0 }
 }
 ```
 
-Each epic's `progress` is exactly what `deliverableProgress` returns for it. The tracker computes both from one shared function, so the counting rule (non-archived issues whose parent chain reaches the epic, canceled issues outside `total`) lives in one place. The sums add the epics. An issue reaches at most one epic, because an epic has no parent, so no issue counts twice.
+Each epic's `progress` is exactly what `deliverableProgress` returns for it. The tracker computes both from one shared function, so the counting rule (non-archived issues whose parent chain reaches the epic, canceled issues outside `total`) lives in one place. The sums add the epics that are not canceled (PMK-179): an epic whose status category is `canceled` is listed with `counted: false` and its own `progress`, and none of its issues, open or done, enter a sum. An epic with an unknown category is counted. The sums add the epics. An issue reaches at most one epic, because an epic has no parent, so no issue counts twice.
 
 ### CLI
 
