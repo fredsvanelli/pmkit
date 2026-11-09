@@ -976,7 +976,7 @@ export const COMMANDS = [
         ? `${ctx.dryRun ? 'would mark' : 'marked'} ${count} read for ${result.user}${result.pruned > 0 ? `, and drop ${result.pruned} old ${result.pruned === 1 ? 'key' : 'keys'}` : ''}`
         : `nothing to mark read for ${result.user}`
       const warnings = result.unknown.map((key) => `no item has the key ${key}; run pmkit inbox list --all for the keys`)
-      return { data: result, text: ctx.dryRun ? `${said}\ndry run: nothing was written` : said, warnings }
+      return { data: result, text: ctx.dryRun ? `${said}\ndry run: nothing was written` : said, warnings, notes: result.note === null ? [] : [result.note] }
     },
   },
   {

@@ -346,7 +346,7 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
       try {
         const split = splitFrontmatter(read(commentFile).replace(/\r\n?/g, '\n'))
         const created = split ? parseYaml(split.yaml).created : undefined
-        if (created !== undefined && Number.isNaN(new Date(String(created)).getTime())) add(commentFile, 'comment', `created "${created}" is not a time`)
+        if (created != null && Number.isNaN(new Date(String(created)).getTime())) add(commentFile, 'comment', `created "${created}" is not a time`)
       } catch (error) {
         add(commentFile, 'comment', `the comment cannot be read: ${error.message}`)
       }

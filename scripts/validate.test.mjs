@@ -530,3 +530,11 @@ test('PMK-195: an event or a comment with an unreadable time is a problem', () =
   assert.deepEqual(found.map((problem) => problem.code).sort(), ['comment', 'comment', 'events'])
   assert.ok(found.some((problem) => /yesterday/.test(problem.message)) && found.some((problem) => /soon/.test(problem.message)))
 })
+
+test('PMK-195: a comment with an empty created is no problem', () => {
+  const root = makeRepo('team')
+  const dir = path.join(root, '.issues', 'issues', 'ISS-1V9Z', 'comments')
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'empty.md'), '---\nauthor: ana\ncreated:\n---\nhi\n')
+  assert.deepEqual(validateRepo(root).problems.filter((problem) => problem.code === 'comment'), [])
+})

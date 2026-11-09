@@ -64,10 +64,10 @@ An issue that does not parse, an event log with a bad line and a comment that ca
 
 - With no `--key` it marks every unseen item at that moment. An item that arrives between the list and the mark is marked too, so a caller that lists and then marks passes the keys of the list with `--key`.
 - With `--key` it marks exactly those keys, whatever their date, also at the first use. An item that arrives after the list, in any way, keeps its own key and stays unseen. A key no item has is not an error (PMK-195): the other keys are marked, and the unknown ones come back in `unknown` and as a `warning:` in the CLI.
-- It sets `at` to now. The result has `previous` (the earlier `at` or null), `recorded` (the `at` now stored), `marked` (the keys it added), `unknown` (the keys no item has, `[]` when none), `pruned` (see below) and `changed`. When nothing is marked or pruned and an entry exists, it writes nothing and `recorded` is the old `at`.
+- It sets `at` to now. The result has `previous` (the earlier `at` or null), `recorded` (the `at` now stored), `marked` (the keys it added), `unknown` (the keys no item has, without repeats, `[]` when none), `note` (null, or why old keys were kept), `pruned` (see below) and `changed`. When nothing is marked or pruned and an entry exists, it writes nothing and `recorded` is the old `at`.
 - `--dry-run` returns the same result and writes nothing.
 
-Pruning keeps the set from growing without bound. At each mark-read it drops the seen keys of items that no longer exist (the issue, the comment or the mention line is gone) when the key was marked more than 30 days ago. A key whose item still exists in the checkout or on any local or remote branch (PMK-195) stays, and so does a key marked within 30 days, so a member who switches branches for a while does not see old items again. The set is therefore as large as the items that exist for the member plus the last 30 days of marks.
+Pruning keeps the set from growing without bound. At each mark-read it drops the seen keys of items that no longer exist (the issue, the comment or the mention line is gone) when the key was marked more than 30 days ago. A key whose item still exists in the checkout or at the tip of any local or remote branch (PMK-195: the comment file, the mention line or the assignment event, not just the issue folder) stays, and so does every key when git cannot read the branches (the result has a `note` and the CLI prints it), and so does a key marked within 30 days, so a member who switches branches for a while does not see old items again. The set is therefore as large as the items that exist for the member plus the last 30 days of marks.
 
 ## CLI and JSON
 
@@ -84,7 +84,7 @@ Pruning keeps the set from growing without bound. At each mark-read it drops the
 
 `checked` is the `at` of the entry, or null. `since` is the cut used, or null. `hidden` counts the unseen items the cut left out. Each item always has the same keys: `key`, `kind` (`assignment` or `mention`), `issue`, `title` (null when the issue does not parse), `at`, `by` (null when unknown), `in` (`assignment`, `description`, `acceptance_criteria` or `comment`), `comment` (the comment id or null), `excerpt` (the line that holds the mention, cut at 200 characters, or null), `synthetic` and `seen`. Items sort by `at`, then issue, then kind, then key. `at` is whole seconds in Z.
 
-`inbox mark-read --json`: `{ user, previous, recorded, marked, unknown, pruned, changed, dryRun }`.
+`inbox mark-read --json`: `{ user, previous, recorded, marked, unknown, pruned, changed, dryRun, note }`.
 
 The text output is a table (When, Kind, Issue, Title, By, Where, Key), a line for `hidden` and, when `complete` is false, a line saying the inbox is incomplete. Linear: `listNotifications` and `markRead` answer `NOT_SUPPORTED` with the manifest hint, and the manifest reports `user_inbox` `absent` with `detail: { workspace: 'native', unsupported: ['listNotifications', 'markRead'] }`.
 

@@ -24,7 +24,12 @@ function checkEvent(event) {
 
 export function readEvents(file) {
   if (!fs.existsSync(file)) return { events: [], problems: [] }
-  const text = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
+  return parseEvents(fs.readFileSync(file, 'utf8'))
+}
+
+/** The events and the problems of the text of an events.jsonl, which a caller may have read from git instead of a file. */
+export function parseEvents(raw) {
+  const text = raw.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
   const events = []
   const problems = []
   const seen = new Set()
@@ -43,7 +48,7 @@ export function readEvents(file) {
       return
     }
     // The event is kept, so replay and drift do not change, but a time nobody can read is reported.
-    if (Number.isNaN(new Date(event.at).getTime())) problems.push(`line ${index + 1}: at "${event.at}" is not a time`)
+    if (!['string', 'number'].includes(typeof event.at) || Number.isNaN(new Date(event.at).getTime())) problems.push(`line ${index + 1}: at "${event.at}" is not a time`)
     const key = sortedStringify(event)
     if (seen.has(key)) return
     seen.add(key)

@@ -17,7 +17,8 @@ exit 0
   "unknown": [],
   "pruned": 0,
   "changed": true,
-  "dryRun": true
+  "dryRun": true,
+  "note": null
 }
 --- stderr
 (empty)
@@ -41,7 +42,8 @@ exit 0
   "unknown": [],
   "pruned": 0,
   "changed": true,
-  "dryRun": true
+  "dryRun": true,
+  "note": null
 }
 --- stderr
 (empty)
@@ -66,7 +68,8 @@ exit 0
   ],
   "pruned": 0,
   "changed": true,
-  "dryRun": false
+  "dryRun": false,
+  "note": null
 }
 --- stderr
 warning: no item has the key comment:ISS-0000:none; run pmkit inbox list --all for the keys
@@ -92,7 +95,8 @@ exit 0
   ],
   "pruned": 0,
   "changed": true,
-  "dryRun": true
+  "dryRun": true,
+  "note": null
 }
 --- stderr
 warning: no item has the key comment:ISS-0000:none; run pmkit inbox list --all for the keys

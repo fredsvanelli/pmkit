@@ -12,7 +12,7 @@ import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
 import { removeKey, setScalar } from '../yaml-edit.mjs'
 import { isBranchName, isId, newId, nextNumberedId, normalizeId } from '../ids.mjs'
 import { CATEGORIES, LINK_KINDS, TERMINAL } from '../model.mjs'
-import { appendEvents, driftEvents, readEvents } from './events.mjs'
+import { appendEvents, driftEvents, parseEvents, readEvents } from './events.mjs'
 import { formatError } from './migrations.mjs'
 import {
   EPIC_KEYS, HEALTH, epicFrontmatter, parseEpicFile, parseUpdateFile, serializeEpic, serializeUpdate, sortEpics, sortUpdates, walkParents,
@@ -765,6 +765,13 @@ export function createLocalTracker(root, {
   const EPOCH = '1970-01-01T00:00:00Z'
   const digest = (text) => crypto.createHash('sha256').update(text).digest('hex').slice(0, 12)
 
+  /** The key of the assignment an event makes to `user`, or null when the event is not an assignment to the user by someone else. */
+  function assignmentKey(id, event, user) {
+    const assignee = event.op === 'create' ? event.to?.assignee : event.to
+    if (!(((event.op === 'assign' && event.field === 'assignee') || event.op === 'create') && assignee === user && event.by !== user)) return null
+    return `assign:${id}:${digest(JSON.stringify([event.at, event.by, event.op, event.field ?? null, assignee]))}`
+  }
+
   /** A timestamp as `YYYY-MM-DDTHH:MM:SSZ`, or null when it is not a date. */
   const inSeconds = (value) => {
     const time = typeof value === 'string' || typeof value === 'number' ? new Date(value) : new Date(Number.NaN)
@@ -805,9 +812,8 @@ export function createLocalTracker(root, {
       let touched
       for (const event of events) {
         const at = inSeconds(event.at) ?? modified(paths.events)
-        const assignee = event.op === 'create' ? event.to?.assignee : event.to
-        if (((event.op === 'assign' && event.field === 'assignee') || event.op === 'create') && assignee === user && event.by !== user) {
-          const key = `assign:${id}:${digest(JSON.stringify([event.at, event.by, event.op, event.field ?? null, assignee]))}`
+        const key = assignmentKey(id, event, user)
+        if (key !== null) {
           items.push(item(key, 'assignment', id, at, event.by, 'assignment', { synthetic: event.synthetic === true }))
         }
         if (event.op === 'create' || (event.op === 'update' && event.field === 'description')) described = { at }
@@ -839,8 +845,8 @@ export function createLocalTracker(root, {
           const split = splitFrontmatter(text)
           const data = split ? parseYaml(split.yaml) : {}
           const author = data.author == null || data.author === '' ? null : String(data.author)
-          const created = data.created === undefined ? null : inSeconds(String(data.created))
-          if (data.created !== undefined && created === null) problem(`comment ${name} has created "${data.created}", which is not a time`)
+          const created = data.created == null ? null : inSeconds(String(data.created))
+          if (data.created != null && created === null) problem(`comment ${name} has created "${data.created}", which is not a time`)
           const excerpt = findMention((split ? split.body : text).trim(), user)
           if (excerpt !== null && author !== user) {
             const stem = path.basename(name, '.md')
@@ -858,16 +864,53 @@ export function createLocalTracker(root, {
   }
 
   /**
-   * True when the issue folder is at the tip of any local or remote branch. The seen keys are per checkout and a branch switch can
-   * remove an issue from the checkout, so the prune must not drop a key whose item is still on another branch. Outside git, or when
-   * git fails, nothing is found elsewhere. Reads only, so a timeout is safe.
+   * Reads files at the tips of the local and remote branches, for the prune: a seen key stays while its item is still on another
+   * branch, because a branch switch can take an item out of the checkout. The refs and each file are read once per call. Any git
+   * failure (no git, no repository, a timeout) throws, and the caller keeps the key. Reads only, so a timeout is safe.
    */
-  function onAnyBranch(id) {
-    const git = (...args) => spawnSync('git', args, { cwd: config.root, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, timeout: 10000 })
-    const refs = git('for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes')
-    if (refs.status !== 0) return false
-    const folder = path.relative(config.root, path.join(issuesDir, 'issues', id)).split(path.sep).join('/')
-    return refs.stdout.split('\n').filter(Boolean).some((ref) => git('ls-tree', '--name-only', ref, '--', folder).stdout?.trim())
+  function branchReader() {
+    const git = (...args) => spawnSync('git', args, { cwd: config.root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 10000 })
+    const files = new Map()
+    let refs
+    const text = (ref, file) => {
+      const slot = `${ref}\0${file}`
+      if (!files.has(slot)) {
+        const listed = git('ls-tree', '--name-only', ref, '--', file)
+        if (listed.status !== 0) throw new Error(`git ls-tree failed: ${listed.stderr ?? listed.error?.message}`)
+        const shown = listed.stdout.trim() === '' ? null : git('show', `${ref}:${file}`)
+        if (shown !== null && shown.status !== 0) throw new Error(`git show failed: ${shown.stderr ?? shown.error?.message}`)
+        files.set(slot, shown === null ? null : shown.stdout)
+      }
+      return files.get(slot)
+    }
+    const allRefs = () => {
+      if (refs === undefined) {
+        const listed = git('for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes')
+        if (listed.status !== 0) throw new Error(`git for-each-ref failed: ${listed.stderr ?? listed.error?.message}`)
+        refs = listed.stdout.split('\n').filter(Boolean)
+      }
+      return refs
+    }
+    /** True when the item of `key` is at the tip of any branch. */
+    const has = (key, user) => {
+      const [kind, id, ...rest] = key.split(':')
+      const tail = rest.join(':')
+      const folder = path.relative(config.root, path.join(issuesDir, 'issues', String(id))).split(path.sep).join('/')
+      return allRefs().some((ref) => {
+        if (kind === 'comment') return text(ref, `${folder}/comments/${tail}.md`) !== null
+        if (kind === 'assign') {
+          const log = text(ref, `${folder}/events.jsonl`)
+          return log !== null && parseEvents(log).events.some((event) => assignmentKey(id, event, user) === key)
+        }
+        if (kind === 'description') {
+          const file = text(ref, `${folder}/issue.md`)
+          const split = file === null ? null : splitFrontmatter(file.replace(/\r\n?/g, '\n'))
+          return split !== null && findMentions(split.body, user, { full: true }).some((line) => digest(mentionText(line)) === tail)
+        }
+        return false
+      })
+    }
+    return { has }
   }
 
   /**
@@ -920,7 +963,7 @@ export function createLocalTracker(root, {
     }
     const seen = stored?.seen ?? {}
     const known = new Set(items.map((entry) => entry.key))
-    const unknown = (keys ?? []).filter((key) => !known.has(key))
+    const unknown = [...new Set((keys ?? []).filter((key) => !known.has(key)))]
     const chosen = new Set(items.filter((entry) => !Object.hasOwn(seen, entry.key) && (keys === undefined || keys.includes(entry.key))).map((entry) => entry.key))
     // With keys the member marks exactly those, so the older items stay for the next list.
     if (stored === null && keys === undefined) {
@@ -931,15 +974,27 @@ export function createLocalTracker(root, {
     const oldest = now().getTime() - PRUNE_DAYS * DAY
     const kept = {}
     let pruned = 0
+    let note = null
+    const branches = branchReader()
     for (const [key, at] of Object.entries(seen)) {
-      if (known.has(key) || Date.parse(at) > oldest || onAnyBranch(String(key.split(':')[1]))) kept[key] = at
+      let keep = known.has(key) || Date.parse(at) > oldest
+      if (!keep) {
+        try {
+          keep = branches.has(key, user)
+        } catch (error) {
+          // The branches cannot be read, so nothing proves the item is gone. Keeping is the safe side: a dropped key shows the item as unread again.
+          keep = true
+          note = `old seen keys were kept because git could not read the branches (${String(error.message).trim().split('\n')[0]})`
+        }
+      }
+      if (keep) kept[key] = at
       else pruned++
     }
     const marked = [...chosen].sort()
     for (const key of marked) kept[key] = recorded
     const changed = stored === null || marked.length > 0 || pruned > 0
     if (changed && !dryRun) inboxSet(config.root, user, { at: recorded, seen: kept }, inboxStore)
-    return { user, previous: stored?.at ?? null, recorded: changed ? recorded : stored.at, marked, unknown, pruned, changed, dryRun }
+    return { user, previous: stored?.at ?? null, recorded: changed ? recorded : stored.at, marked, unknown, pruned, changed, dryRun, note }
   }
 
   function discover() {

@@ -59,7 +59,7 @@ test('inbox mark-read --dry-run writes nothing, --key marks only that key and th
   run(['issues', 'assign', 'ISS-2K5P', 'fred'], { user: 'ana', now: '2026-10-31T09:10:00Z' })
   const [first, second] = json(['inbox', 'list']).items
   const dry = json(['inbox', 'mark-read', '--dry-run'])
-  assert.deepEqual(dry, { user: 'fred', previous: null, recorded: '2026-10-31T10:00:00Z', marked: [first.key, second.key].sort(), unknown: [], pruned: 0, changed: true, dryRun: true })
+  assert.deepEqual(dry, { user: 'fred', previous: null, recorded: '2026-10-31T10:00:00Z', marked: [first.key, second.key].sort(), unknown: [], pruned: 0, changed: true, dryRun: true, note: null })
   assert.equal(fs.existsSync(path.join(store.PMKIT_HOME, 'inbox')), false)
   assert.match(run(['inbox', 'mark-read', '--dry-run']).stdout, /would mark 2 items read for fred\ndry run: nothing was written/)
   const done = json(['inbox', 'mark-read', '--key', first.key])
