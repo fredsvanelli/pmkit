@@ -2,14 +2,14 @@
 id: PMK-200
 title: Give view errors a stable reason instead of matching message text
 type: bug
-status: in_review
+status: done
 priority: low
 estimate: 1
 assignee: fred
 related: [PMK-54]
 branch: pmk-200-give-view-errors-a-stable-reason-instead
 created: 2026-10-31T20:35:31.425Z
-updated: 2026-11-09T22:29:51Z
+updated: 2026-11-09T22:53:18Z
 ---
 
 ## Description
