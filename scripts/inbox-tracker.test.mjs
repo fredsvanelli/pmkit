@@ -83,7 +83,7 @@ test('a description mention is keyed by its text: editing it is a new item, edit
   const { tracker, setNow, keys } = setup()
   const { id } = tracker.createIssue({ title: 'D', description: 'Intro.\n\ncc @fred please' }, 'ana').after
   const [first] = tracker.listNotifications({ user: 'fred', since: SINCE }).items
-  assert.deepEqual(keys([first]), [`mention:${id}:description:ana`])
+  assert.deepEqual(keys([first]), [`mention:${id}:description:null`])
   assert.match(first.key, new RegExp(`^description:${id}:[0-9a-f]{12}$`))
   setNow('2026-10-31T10:30:00Z')
   tracker.markRead({ user: 'fred' })
@@ -459,4 +459,24 @@ test('listNotifications changes no file under the repository', () => {
   tracker.listNotifications({ user: 'fred', all: true })
   tracker.markRead({ user: 'fred' })
   assert.equal(hashTree(root), before)
+})
+
+test('PMK-195: a description or criteria item has no author, and a comment without an author has by null', () => {
+  const { tracker, setNow, paths } = setup()
+  const { id } = tracker.createIssue({ title: 'D', description: 'Intro.\n\n@fred please check', acceptanceCriteria: [{ text: '@fred signs off', done: false }] }, 'ana').after
+  setNow('2026-10-31T10:30:00Z')
+  tracker.updateIssue(id, { description: 'Intro changed.\n\n@fred please check' }, 'agent:claude')
+  fs.mkdirSync(paths(id).comments, { recursive: true })
+  fs.writeFileSync(path.join(paths(id).comments, 'by-hand.md'), '@fred please look\n')
+  fs.writeFileSync(path.join(paths(id).comments, 'no-author.md'), '---\ncreated: 2026-10-31T10:00:00Z\n---\n@fred hi\n')
+  const items = tracker.listNotifications({ user: 'fred', since: SINCE }).items
+  assert.deepEqual(items.map((item) => [item.in, item.by]).sort(), [['acceptance_criteria', null], ['comment', null], ['comment', null], ['description', null]])
+})
+
+test('PMK-195: a mention under a section such as Notes is in the description, only a criterion is a criterion', () => {
+  const { tracker, paths } = setup()
+  const { id } = tracker.createIssue({ title: 'N', description: 'Plain.', acceptanceCriteria: [{ text: '@fred sign off', done: false }] }, 'ana').after
+  fs.appendFileSync(paths(id).file, '\n## Notes\n\n@fred see the notes\n')
+  const items = tracker.listNotifications({ user: 'fred', since: SINCE }).items
+  assert.deepEqual(items.map((item) => [item.in, item.excerpt]).sort(), [['acceptance_criteria', '- [ ] @fred sign off'], ['description', '@fred see the notes']])
 })

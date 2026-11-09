@@ -809,24 +809,25 @@ export function createLocalTracker(root, {
           const key = `assign:${id}:${digest(JSON.stringify([event.at, event.by, event.op, event.field ?? null, assignee]))}`
           items.push(item(key, 'assignment', id, at, event.by, 'assignment', { synthetic: event.synthetic === true }))
         }
-        if (event.op === 'create' || (event.op === 'update' && event.field === 'description')) described = { at, by: event.by }
+        if (event.op === 'create' || (event.op === 'update' && event.field === 'description')) described = { at }
         if (event.op === 'create' || (event.op === 'update' && ['description', 'acceptance_criteria'].includes(event.field))) touched = { at }
       }
       const found = byId.get(id)
       if (found !== undefined) {
         // One item per line that mentions the user. The key is the issue and the text of the line, so editing that line is a new
-        // item and editing the rest of the body is not. The log does not say who wrote a line, so the author is the last description
-        // editor when that is someone else, and unknown otherwise. No item is dropped for its author.
+        // item and editing the rest of the body is not. The log does not say what an edit changed, so no line has a known author:
+        // `by` is null on every body item. No item is dropped for its author. Only the lines of the criteria list are criteria;
+        // a line under any other section, such as ## Notes, counts as description.
         const inDescription = new Set(findMentions(found.description, user, { full: true }).map(mentionText))
+        const inCriteria = new Set(found.acceptanceCriteria.map((criterion) => mentionText(criterion.text)))
         const lineKeys = new Set()
         for (const line of findMentions(found.body, user, { full: true })) {
           const text = mentionText(line)
           if (lineKeys.has(text)) continue
           lineKeys.add(text)
-          const where = inDescription.has(text) ? 'description' : 'acceptance_criteria'
-          const by = where === 'description' && described !== undefined && described.by !== user ? described.by : null
+          const where = !inDescription.has(text) && inCriteria.has(text) ? 'acceptance_criteria' : 'description'
           const at = (where === 'description' ? described?.at : touched?.at) ?? inSeconds(found.created) ?? modified(paths.file)
-          items.push(item(`description:${id}:${digest(text)}`, 'mention', id, at, by, where, { excerpt: line.slice(0, MAX_EXCERPT) }))
+          items.push(item(`description:${id}:${digest(text)}`, 'mention', id, at, null, where, { excerpt: line.slice(0, MAX_EXCERPT) }))
         }
       }
       if (!fs.existsSync(paths.comments)) continue
@@ -836,7 +837,7 @@ export function createLocalTracker(root, {
           const text = fs.readFileSync(file, 'utf8').replace(/\r\n?/g, '\n')
           const split = splitFrontmatter(text)
           const data = split ? parseYaml(split.yaml) : {}
-          const author = String(data.author ?? '')
+          const author = data.author == null || data.author === '' ? null : String(data.author)
           const excerpt = findMention((split ? split.body : text).trim(), user)
           if (excerpt !== null && author !== user) {
             const stem = path.basename(name, '.md')
