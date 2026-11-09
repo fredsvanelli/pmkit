@@ -32,3 +32,20 @@ test('an equal proposal still asks, and offers another value', () => {
   assert.doesNotMatch(text, /equals the current estimate, say that the estimate already fits and stop/)
   assert.match(text, /keep the current estimate or pick another value/)
 })
+
+test('step 7 is skipped on every comment path, whatever step 6 found', () => {
+  assert.doesNotMatch(text, /Skip this step when step 1 found `absent`/)
+  assert.match(text, /Skip this step, and go to step 8, unless step 1 and step 3 both chose the save path/)
+  assert.match(text, /On the comment path go on to step 8/)
+})
+
+test('an equal proposal with confirm none writes nothing', () => {
+  assert.match(text, /With `write_policy\.confirm: none` the question is skipped, so an equal proposal stops here without writing/)
+})
+
+test('the comment names its unit, days are not compared, and hours need no scale', () => {
+  assert.match(text, /always states the unit/)
+  assert.match(text, /do not compare them or measure a distance/)
+  assert.match(text, /except for the unit `hours`/)
+  assert.match(text, /prefix is not a known team key/)
+})
