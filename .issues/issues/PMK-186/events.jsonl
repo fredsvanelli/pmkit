@@ -3,3 +3,4 @@
 {"at":"2026-11-09T01:47:25Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-09T01:47:25Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-09T01:47:27Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-186-keep-the-cli-from-writing-a-cache-into"}
+{"at":"2026-11-09T01:52:50Z","by":"fred","op":"comment","to":"2026-11-09T01-52-50Z-fred.md"}
