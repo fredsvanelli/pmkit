@@ -147,3 +147,8 @@ test('a basis whose issues are all canceled is empty, so it is never ready', () 
   assert.deepEqual([data.empty, data.ready], [true, null])
   assert.equal(build({ issues: [issue('A-1', 'canceled'), issue('A-2', 'done')] }).ready, true)
 })
+
+test('empty is false while a pull request of a canceled issue is still open, so empty never comes with ready false', () => {
+  const data = build({ issues: [issue('A-1', 'canceled', 'a1')], prs: [pr(1, 'a1')] })
+  assert.deepEqual([data.empty, data.ready], [false, false])
+})
