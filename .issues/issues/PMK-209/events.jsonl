@@ -2,3 +2,6 @@
 {"at":"2026-11-08T20:37:22Z","by":"fred","op":"link","field":"related","to":"PMK-49"}
 {"at":"2026-11-08T20:53:51Z","by":"fred","op":"update","field":"priority","from":"low","to":"medium"}
 {"at":"2026-11-08T20:53:51Z","by":"fred","op":"update","field":"estimate","from":null,"to":3}
+{"at":"2026-11-09T23:47:17Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-09T23:47:17Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-09T23:47:19Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-209-improve-deploys-list-and-ci-logs"}
