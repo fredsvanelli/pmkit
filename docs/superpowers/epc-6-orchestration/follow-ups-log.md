@@ -181,3 +181,33 @@ Início: 2026-11-08. `develop` em 9871252, `npm test` com 4015 testes, 3934 pass
 - PMK-190: rebase 5c2f659 com mensagens corrigidas e problems em accept/decline; goldens conferidos. Mergeado (7a21a3e).
 
 Fim da rodada 6: PRs #145, #146, #147 mergeados.
+
+Limpeza da rodada 6: closing PR #148 mergeado (479edab), 6 worktrees removidos, branches provisórias apagadas.
+
+## Rodada 7
+
+Início: 2026-11-09. `develop` em 479edab, `npm test` com 4033 testes, 3952 pass, 0 fail, 81 skipped, saída 0. Run Orca `run_62b503d142a5`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-193 | 1 | sonnet (`ctx_bcdaf2b3fa2e`) | #149 | ciclo 1 (sonnet): APROVADO | mergeado (8612553) |
+| PMK-194 | 1 | sonnet (`ctx_c7235a905753`) | #151 | ciclo 1 (sonnet): mudanças pedidas; ciclo 2 (sonnet): mudanças pedidas (regressão da minha instrução); correção conferida pelo orquestrador; rebase f8b4f65 | mergeado (94e1fdc) |
+| PMK-195 | 2 | sonnet (`ctx_e94b00e95e97`) | #150 | ciclo 1 (sonnet): mudanças pedidas; ciclo 2 (sonnet): APROVADO | mergeado (86ce331) |
+
+- PMK-193: PR #149 (sonnet); inteiros inseguros dão INVALID_INPUT; entradas longas com dias (1d1h); nota da escrita real diz que já registrou; comentário de correção na PMK-60. Follow-ups: comando para apagar/corrigir time entry; mesma nota no fallback de comentário do Linear. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-195: PR #150 (sonnet); itens do corpo com by null e menção nas Notes como description; hora ilegível de evento/comentário é problem no inbox e no validate; mark-read reporta chaves desconhecidas (unknown, saída 0) e marca o resto; prune mantém chaves de itens em outras branches (git ls-tree local e remoto). Follow-ups: autor real de linha de description; validate de hora ruim em outros arquivos; at do item de description. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-195: o primeiro start do revisor (ctx_4e114b76115d) ficou com o composer vazio (turn_start_unobserved); pela aprovação permanente do usuário, worker-abandon, task-update ready e worker-start no mesmo terminal: `ctx_bde902fe472f`, rodando.
+- PMK-194: PR #151 (sonnet); caminho relativo ao tracker fora do repo; só nomes NNNN- contam; pasta lida uma vez com tracker.path .; slugs Unicode transliterados. Follow-up: nomes 0007a ignorados (número duplicado possível). Revisor ciclo 1 (sonnet) iniciado.
+- PMK-193 ciclo 1 (sonnet): APROVADO. Não bloqueantes: README:98 ainda diz no upper limit; tracker.mjs:539,1014,1021 ainda usam Number.isInteger.
+- PMK-193 mergeado (8612553). O README:98 desatualizado vai corrigido no closing PR da rodada.
+- PMK-195 ciclo 1 (sonnet): mudanças pedidas (poda decide pela pasta e não pelo item; falha da leitura de branches poda tudo).
+- PMK-194 ciclo 1 (sonnet): mudanças pedidas (corte do slug deixa surrogate solto; record-decision.md passo 6 não atualizado).
+- PMK-195 correção f0a8259: poda por item (comentário, linha de menção ou evento de assign na ponta de cada branch, refs lidas uma vez); falha do git mantém as chaves com nota; unknown sem duplicatas; created vazio não é problema; at inválido reportado. Revisor ciclo 2 (sonnet) iniciado.
+- PMK-194 correção b37fe4e: slug por code point; passo 6 de record-decision.md cita o documento do tracker; NNNN- exige 4 dígitos e um não dígito; título só de marcas recusado. Revisor ciclo 2 (sonnet) iniciado.
+- PMK-195 ciclo 2 (sonnet): APROVADO. Não bloqueantes: git show em raiz de subpasta; git por chave sem curto-circuito depois de falha; mensagem de erro em timeout; created vazio entre aspas. Mergeado (86ce331).
+- PMK-194 ciclo 2 (sonnet): mudanças pedidas: o regex NNNN- da minha instrução do ciclo 1 deixou de contar slug que começa com dígito (0003-2fa); pedi excluir só o formato de data AAAA-MM-DD-.
+- PMK-194 fa9fd03: regex conferido pelo orquestrador (0003-2fa conta; 2026-10-31-x não; troca aceita: 0004-10-05-notes não conta). Aprovado sem ciclo 3; pedi rebase final.
+- PMK-194 mergeado (94e1fdc).
+- README:98 (log-time sem limite superior) corrigido no closing PR da rodada 7.
+
+Fim da rodada 7: PRs #149, #150, #151 mergeados.
