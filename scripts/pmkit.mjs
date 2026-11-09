@@ -19,7 +19,7 @@ import { buildNotes, chooseBasis } from './lib/release-notes.mjs'
 import { buildReadiness, chooseReadinessBasis } from './lib/release-readiness.mjs'
 import { dependencyMap, serializable } from './lib/dependencies.mjs'
 import { buildRoadmapReview, roadmapReviewText } from './lib/roadmap-review.mjs'
-import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, FAILED_RUN, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
+import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, failingWorkflows, FAILED_RUN, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 import { pathNote } from './lib/path-notes.mjs'
 import { planNextAdr } from './lib/adr.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
@@ -1860,7 +1860,7 @@ async function runRisks(ctx) {
       updatesByEpic[epic.id] = await tracker.listStatusUpdates(epic.id)
     } catch (error) {
       if (!isPmkitError(error)) throw error
-      updatesByEpic[epic.id] = []
+      updatesByEpic[epic.id] = null
       problems.push({ id: epic.id, code: error.code, message: error.message })
       epicWarnings.push(`${epic.id}: ${error.code} ${error.message}`)
     }
@@ -1875,6 +1875,7 @@ async function runRisks(ctx) {
     stalledIssues: stalledIssues(all, { eventsByIssue, openPrsByBranch, closedPrsByBranch, today, stuckBusinessDays }),
     stalledPullRequests: Array.isArray(prs) ? stalledPullRequests(prs, { issuesByBranch, today, stuckBusinessDays }) : prs,
     epics: epicRisks(epics, { updatesByEpic, today, windowDays }),
+    updatesNotChecked: epicsUpdatesNotChecked(epics, { updatesByEpic, today, windowDays }),
     ci,
     problems,
   }

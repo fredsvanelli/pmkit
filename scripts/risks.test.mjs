@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { blockedIssues, epicRisks, failingPullRequests, failingWorkflows, needsPrLookup, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
+import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, failingWorkflows, needsPrLookup, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 
 const TODAY = '2026-10-26' // a Monday
 const issue = (id, category, extra = {}) => ({
@@ -309,4 +309,19 @@ test('risksText adds the pr sync note under a pr_merged row', () => {
   assert.ok(merged.split('\n').includes('pr_merged: the pull request is merged; pmkit pr sync moves the issue to done'), merged)
   const idle = risksText(baseReport({ stalledIssues: [row('idle', null)] }))
   assert.ok(!idle.includes('pr_merged:'), idle)
+})
+
+test('epicRisks does not report no_recent_update for an epic whose update read failed', () => {
+  const epics = [epic('X1', 'in_progress', { target: '2026-10-01' }), epic('X2', 'in_progress')]
+  const rows = epicRisks(epics, epicOpts({ X1: null, X2: null }))
+  assert.deepEqual(rows.map((row) => [row.id, row.reasons]), [['X1', ['late']]])
+})
+
+test('epicsUpdatesNotChecked lists the open epics that need an update and whose read failed', () => {
+  const epics = [
+    epic('U1', 'in_progress'), epic('U2', 'todo', { start: '2026-10-20' }), epic('U3', 'todo', { start: '2026-10-01' }),
+    epic('U4', 'done'), epic('U5', 'in_progress'),
+  ]
+  const ids = epicsUpdatesNotChecked(epics, epicOpts({ U1: null, U2: null, U3: null, U4: null, U5: [] }))
+  assert.deepEqual(ids, ['U1', 'U3'])
 })

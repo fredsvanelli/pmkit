@@ -94,19 +94,32 @@ export function stalledPullRequests(prs, { issuesByBranch, today, stuckBusinessD
     .sort((a, b) => a.number - b.number)
 }
 
-/** Open epics that are late, have an at_risk or off_track update, or are due a status update. `updatesByEpic` lists newest first. */
+/** An open epic that owes status updates: in progress, or started more than `windowDays` ago. */
+export function needsUpdate(epic, { today, windowDays }) {
+  return OPEN(epic.status.category) && (epic.status.category === 'in_progress' || (Boolean(epic.start) && daysSince(epic.start, today) > windowDays))
+}
+
+/** The IDs of the epics that owe updates and whose read failed (`updatesByEpic[id]` is null): neither stale nor fresh. */
+export function epicsUpdatesNotChecked(epics, { updatesByEpic, today, windowDays }) {
+  return epics.filter((epic) => updatesByEpic[epic.id] === null && needsUpdate(epic, { today, windowDays })).map((epic) => epic.id)
+}
+
+/**
+ * Open epics that are late, have an at_risk or off_track update, or are due a status update. `updatesByEpic` lists newest
+ * first; a null entry is a failed read, which never reports no_recent_update, and a missing entry is no updates.
+ */
 export function epicRisks(epics, { updatesByEpic, today, windowDays }) {
   const rows = []
   for (const epic of epics) {
     const category = epic.status.category
     if (!OPEN(category)) continue
-    const latest = (updatesByEpic[epic.id] ?? [])[0]
+    const updates = updatesByEpic[epic.id]
+    const latest = (updates ?? [])[0]
     const startedWithinWindow = Boolean(epic.start) && daysSince(epic.start, today) <= windowDays
-    const checked = category === 'in_progress' || (Boolean(epic.start) && !startedWithinWindow)
     const reasons = []
     if (epic.target && epic.target < today) reasons.push('late')
     if (latest?.health === 'at_risk' || latest?.health === 'off_track') reasons.push(latest.health)
-    if (checked && (latest ? daysSince(latest.at, today) > windowDays : !startedWithinWindow)) reasons.push('no_recent_update')
+    if (updates !== null && needsUpdate(epic, { today, windowDays }) && (latest ? daysSince(latest.at, today) > windowDays : !startedWithinWindow)) reasons.push('no_recent_update')
     if (reasons.length === 0) continue
     rows.push({
       id: epic.id, title: epic.title, status: epic.status.name, target: epic.target ?? null,
@@ -198,13 +211,16 @@ export function risksText(report) {
       header: ['PR', 'Title', 'Branch', 'Draft', 'Idle days', 'Issue'],
       row: (row) => [prRef(row.number), row.title, row.branch, row.isDraft ? 'yes' : '', row.idleBusinessDays, row.issue ?? ''],
     }),
-    section('epics at risk', report.epics, {
-      header: ['ID', 'Title', 'Status', 'Target', 'Last update', 'Reasons'],
-      row: (row) => [
-        row.id, row.title, row.status, row.target ?? '',
-        row.lastUpdate ? `${row.lastUpdate.at.slice(0, 10)} ${row.lastUpdate.health}` : 'none', row.reasons.join(', '),
-      ],
-    }),
+    [
+      section('epics at risk', report.epics, {
+        header: ['ID', 'Title', 'Status', 'Target', 'Last update', 'Reasons'],
+        row: (row) => [
+          row.id, row.title, row.status, row.target ?? '',
+          row.lastUpdate ? `${row.lastUpdate.at.slice(0, 10)} ${row.lastUpdate.health}` : 'none', row.reasons.join(', '),
+        ],
+      }),
+      ...(report.updatesNotChecked.length ? [`not checked: ${report.updatesNotChecked.join(', ')} (status updates could not be read)`] : []),
+    ].join('\n'),
     section(`failing CI on ${branchName}`, defaultBranch === null ? null : defaultBranch.error ? defaultBranch : defaultBranch.failing, {
       notChecked,
       empty: defaultBranch?.workflows === 0 ? `none, no workflow runs on ${branchName}` : 'none',
