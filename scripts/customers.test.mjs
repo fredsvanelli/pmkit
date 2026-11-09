@@ -326,3 +326,32 @@ test('accept on a request with CRLF line endings writes LF and keeps the comment
   assert.ok(!text.includes('\r'))
   assert.match(text, /^---\n# note\ntitle: T\n/)
 })
+
+test('customers show says "does not exist" for an id with no file and "incomplete" only for a name that may sit in an unreadable file', () => {
+  const { write, tracker } = setup()
+  write('customers', 'CUS-1.md', '---\nname: Acme\n---\n')
+  write('customers', 'CUS-2.md', '---\ntier: gold\n---\n')
+  assert.throws(() => tracker.getCustomer('CUS-9'), (error) => error.code === 'NOT_FOUND' && /customer CUS-9 does not exist/.test(error.message) && !/incomplete/.test(error.message))
+  assert.throws(() => tracker.getCustomer('Beta'), (error) => error.code === 'NOT_FOUND' && /incomplete/.test(error.message) && /CUS-2/.test(error.message))
+})
+
+test('--customer names an unreadable customer as unreadable, a missing one as missing and a name as not an id', () => {
+  const { write, tracker } = setup()
+  write('customers', 'CUS-2.md', '---\ntier: gold\n---\n')
+  write('customers', 'CUS-3.md', '---\n<<<<<<< HEAD\nname: A\n=======\nname: B\n>>>>>>> o\n---\n')
+  const message = (customer) => { try { tracker.listRequests({ customer }) } catch (error) { return `${error.code} ${error.message}` } }
+  assert.match(message('CUS-2'), /^INVALID_INPUT customer CUS-2 cannot be read: .*needs a name/)
+  assert.match(message('CUS-3'), /^CONFLICT customer CUS-3 cannot be read: /)
+  assert.equal(message('CUS-9'), 'INVALID_INPUT customer CUS-9 does not exist')
+  assert.match(message('Acme'), /^INVALID_INPUT customer "Acme" is not a customer id such as CUS-1/)
+  assert.doesNotMatch(message('CUS-2'), /does not exist/)
+})
+
+test('accept and decline return the problems of the links they could not read', () => {
+  const { write, tracker } = setup()
+  write('requests', 'REQ-1.md', '---\ntitle: T\ncustomer: CUS-4\n---\n')
+  write('requests', 'REQ-2.md', '---\ntitle: Fine\n---\n')
+  assert.deepEqual(tracker.acceptRequest('REQ-1', 'ISS-5N1R', 'fred').problems.map((problem) => problem.id), ['REQ-1'])
+  assert.deepEqual(tracker.declineRequest('REQ-1', 'No', 'fred', { dryRun: true }).problems.map((problem) => problem.id), ['REQ-1'])
+  assert.deepEqual(tracker.declineRequest('REQ-2', 'No', 'fred').problems, [])
+})

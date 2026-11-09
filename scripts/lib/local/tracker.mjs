@@ -1452,8 +1452,10 @@ export function createLocalTracker(root, {
     } else {
       const matches = all.records.filter((item) => item.name.toLowerCase() === String(ref ?? '').trim().toLowerCase())
       if (matches.length > 1) throw invalid(`${matches.length} customers are named "${ref}"`, `Pass one of these ids: ${matches.map((item) => item.id).join(', ')}`)
+      // An id is a file name, so an id with no file is plainly missing. Only a name can sit in a file that cannot be read.
+      if (matches.length === 0 && isId(normalized, CUSTOMER_PREFIX)) throw new PmkitError('NOT_FOUND', `customer ${ref} does not exist`, 'pmkit customers list')
       if (matches.length === 0 && all.problems.length > 0) {
-        // A name can sit in a file that cannot be read, so a miss is not an answer: say the lookup is incomplete.
+        // A miss is not an answer while a file cannot be read: say the lookup is incomplete.
         throw new PmkitError('NOT_FOUND', `no readable customer is named or identified "${ref}", but ${all.problems.map((problem) => problem.id).join(', ')} could not be read, so the lookup is incomplete`, 'pmkit validate')
       }
       if (matches.length === 0) throw new PmkitError('NOT_FOUND', `no customer is named or identified "${ref}"`, 'pmkit customers list')
@@ -1506,13 +1508,16 @@ export function createLocalTracker(root, {
     return { before: null, after: customerView(after, []) }
   }
 
-  /** The normalized id of a customer whose file exists and parses. */
+  /** The normalized id of a customer whose file exists and parses. A missing file, an unreadable one and a value that is not an id each get their own message. */
   function requireCustomer(value) {
+    const ref = text('customer')(value)
+    if (!isId(normalizeId(ref), CUSTOMER_PREFIX)) throw invalid(`customer "${ref}" is not a customer id such as ${CUSTOMER_PREFIX}-1`, 'pmkit customers list')
     try {
-      return readRecord(CUSTOMER, text('customer')(value)).id
+      return readRecord(CUSTOMER, ref).id
     } catch (error) {
-      if (error instanceof PmkitError && error.code === 'NOT_FOUND') throw invalid(`customer ${value} does not exist`, 'pmkit customers list')
-      throw error
+      if (!(error instanceof PmkitError)) throw error
+      if (error.code === 'NOT_FOUND') throw invalid(`customer ${ref} does not exist`, 'pmkit customers list')
+      throw new PmkitError(error.code, `customer ${normalizeId(ref)} cannot be read: ${error.message}`, error.nextStep)
     }
   }
 
@@ -1574,19 +1579,20 @@ export function createLocalTracker(root, {
   /**
    * Rewrites the state keys of a request. Only those lines of the stored frontmatter are edited, with the line editor of
    * yaml-edit.mjs as `epic goal` does, so `#` comments, keys pmkit does not know, key order and the body stay as they are.
-   * The text is normalized to LF first, as every reader does. A change that leaves the state as it was writes nothing.
+   * The text is normalized to LF first, as every reader does. A change that leaves the state as it was writes nothing. The result has the `problems` of the links the request names that cannot be read.
    * `change(stored, edit)` returns false for no change, or edits with `edit.set(key, value)` and `edit.remove(key)`.
    */
   function triage(id, actor, { dryRun }, change) {
     requireWriter(actor)
     const stored = readRecord(REQUEST, id)
-    const before = viewOfRequest(stored)
+    const read = (request) => requestViews([request], readRecords(CUSTOMER).records)
+    const before = read(stored)
     const file = path.join(requestsDir, `${stored.id}.md`)
     const { yaml, body } = splitFrontmatter(fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'))
     let edited = yaml
     const edit = { set: (key, value) => { edited = setScalar(edited, [key], value) }, remove: (key) => { edited = removeKey(edited, [key]) } }
     try {
-      if (!change(stored, edit)) return { before, after: before }
+      if (!change(stored, edit)) return { before: before.views[0], after: before.views[0], problems: before.problems }
       edit.set('triaged', stamp())
       edit.set('triaged_by', actor)
     } catch (error) {
@@ -1594,9 +1600,9 @@ export function createLocalTracker(root, {
       throw new PmkitError('INVALID_INPUT', `The request frontmatter cannot be edited: ${error.message}`, '/pmkit:local:doctor')
     }
     const content = `---\n${edited.replace(/\n$/, '')}\n---\n${body}`
-    const after = viewOfRequest(readBack('request file', () => parseRequest(content, stored.id)))
+    const after = read(readBack('request file', () => parseRequest(content, stored.id)))
     if (!dryRun) writeFile(file, content)
-    return { before, after }
+    return { before: before.views[0], after: after.views[0], problems: after.problems }
   }
 
   /** Accepts a request into an existing issue, from any state. */

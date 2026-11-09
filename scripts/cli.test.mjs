@@ -2419,3 +2419,13 @@ test('default-branch reads only .pmkit/config.yaml: no tracker, a broken tracker
   assert.equal(JSON.parse(broken.stdout).branch, 'main')
   assert.match(broken.stderr, /note: .*main is used/)
 })
+
+test('requests accept warns about a customer it cannot read, in the text and in the JSON', () => {
+  const root = makeRepo('team')
+  fs.mkdirSync(path.join(root, '.issues', 'requests'), { recursive: true })
+  fs.writeFileSync(path.join(root, '.issues', 'requests', 'REQ-1.md'), '---\ntitle: T\ncustomer: CUS-4\n---\n')
+  const result = run(root, ['requests', 'accept', 'REQ-1', 'ISS-5N1R', '--dry-run'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stderr, /warning: REQ-1: NOT_FOUND .*CUS-4.*; run pmkit validate/)
+  assert.equal(json(root, ['requests', 'accept', 'REQ-1', 'ISS-5N1R']).problems.length, 1)
+})

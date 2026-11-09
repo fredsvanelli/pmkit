@@ -926,14 +926,14 @@ export const COMMANDS = [
     name: 'requests accept', summary: 'accepts a request into an existing issue', usage: '<id> <issue>', write: true, args: ['id', 'issue'], flags: [],
     run: async (ctx) => {
       const result = await (await ctx.tracker()).acceptRequest(ctx.args[0], ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })
-      return { data: result, text: writeText(result, { ...ctx, record: requestRecord }), commit: result.after.id }
+      return { data: result, text: writeText(result, { ...ctx, record: requestRecord }), commit: result.after.id, warnings: problemWarnings(result.problems) }
     },
   },
   {
     name: 'requests decline', summary: 'declines a request', usage: '<id> [--reason text]', write: true, args: ['id'], flags: ['reason'],
     run: async (ctx) => {
       const result = await (await ctx.tracker()).declineRequest(ctx.args[0], ctx.opt('reason'), await ctx.actor(), { dryRun: ctx.dryRun })
-      return { data: result, text: writeText(result, { ...ctx, record: requestRecord }), commit: result.after.id }
+      return { data: result, text: writeText(result, { ...ctx, record: requestRecord }), commit: result.after.id, warnings: problemWarnings(result.problems) }
     },
   },
   {
