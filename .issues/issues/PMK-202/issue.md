@@ -2,14 +2,14 @@
 id: PMK-202
 title: Fix the degraded and error paths of roadmap review
 type: bug
-status: in_progress
+status: in_review
 priority: medium
 estimate: 3
 assignee: fred
 related: [PMK-66]
 branch: pmk-202-fix-the-degraded-and-error-paths-of
 created: 2026-11-08T03:15:26.853Z
-updated: 2026-11-09T22:19:39Z
+updated: 2026-11-09T22:29:56Z
 ---
 
 ## Description
