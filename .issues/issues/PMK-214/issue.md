@@ -2,12 +2,14 @@
 id: PMK-214
 title: Improve delegate
 type: feature
-status: backlog
+status: in_progress
 priority: medium
 estimate: 5
+assignee: fred
 related: [PMK-57]
+branch: pmk-214-improve-delegate
 created: 2026-11-08T20:37:23.258Z
-updated: 2026-11-08T20:53:51Z
+updated: 2026-11-09T23:48:52Z
 ---
 
 ## Description
