@@ -2,14 +2,14 @@
 id: PMK-204
 title: Fix the ranking and write rules of prioritize-by-demand
 type: bug
-status: in_progress
+status: in_review
 priority: medium
 estimate: 3
 assignee: fred
 related: [PMK-68]
 branch: pmk-204-fix-the-ranking-and-write-rules-of
 created: 2026-11-08T03:15:27.153Z
-updated: 2026-11-09T23:00:55Z
+updated: 2026-11-09T23:07:13Z
 ---
 
 ## Description
