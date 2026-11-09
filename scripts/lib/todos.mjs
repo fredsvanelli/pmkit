@@ -24,7 +24,10 @@ const MARKUP = { block: [['<!--', '-->']] }
 const STYLES = {
   c: C_LIKE,
   c_hash: { ...C_LIKE, line: ['//', '#'] }, // php and Terraform take both marks
-  dash: { line: ['--'], strings: ['"', "'"] },
+  // ponytail: Lua `--[=[` levels and long strings, and nested `{- -}` in Haskell, are not read; add when a repo needs them.
+  sql: { line: ['--'], block: [['/*', '*/']], strings: ['"', "'"] },
+  lua: { line: ['--'], block: [['--[[', ']]']], strings: ['"', "'"] },
+  hs: { line: ['--'], block: [['{-', '-}']], strings: ['"'] },
   go: { line: ['//'], block: [['/*', '*/']], strings: ['"', '`'], chars: true },
   rs: { line: ['//'], block: [['/*', '*/']], strings: ['"'], chars: true },
   css: { block: [['/*', '*/']] },
@@ -36,7 +39,9 @@ const STYLES = {
 const EXTENSIONS = {
   c: ['js', 'mjs', 'cjs', 'jsx', 'ts', 'tsx', 'mts', 'cts', 'java', 'kt', 'kts', 'swift', 'c', 'h', 'cc', 'cpp', 'hpp', 'cs', 'scala', 'dart', 'gradle', 'scss', 'less'],
   c_hash: ['php', 'tf'],
-  dash: ['sql', 'lua', 'hs'],
+  sql: ['sql'],
+  lua: ['lua'],
+  hs: ['hs'],
   go: ['go'],
   rs: ['rs'],
   css: ['css'],
@@ -273,7 +278,7 @@ export function matchTodos(candidates, issues) {
 export async function readExistingIssues(tracker, { limit = READ_LIMIT } = {}) {
   const found = await tracker.searchIssues({ archived: true, limit })
   const problems = found.problems ?? []
-  // An issue the tracker cannot read may hold the todo-key of a comment, so it counts as a cut read too.
+  // An issue the tracker cannot read may hold the todo-key of a comment, so it makes the read incomplete. It stays out of `cut`, which is only the limit.
   const unread = { count: problems.length, ids: problems.map((problem) => problem.id).filter(Boolean) }
   const cut = found.hasMore === true || found.issues.length >= limit
   return { issues: found.issues, problems, incomplete: cut || unread.count > 0, cut, unread }
@@ -308,6 +313,7 @@ export function scanRepo(root, { path: given, skip = [], env = process.env } = {
     const why = listed.error?.code === 'ENOBUFS' ? 'git printed more than 256 MiB' : /not a git repository/.test(stderr) ? 'not a git repository' : stderr || listed.error?.message || 'git failed'
     throw new PmkitError('INVALID_INPUT', `cannot list the files of ${root}: ${why}`, 'Run the scan inside a git repository, so it can honor .gitignore')
   }
+  if (prefix !== null && !fs.existsSync(path.join(root, prefix))) throw new PmkitError('INVALID_INPUT', `--path ${JSON.stringify(given)} does not exist in the repository`, 'Pass a path relative to the repository root, such as src/')
   const left = ['.pmkit', ...skip.filter((dir) => dir !== '' && dir !== '.')]
   const files = [...new Set(listed.stdout.toString('utf8').split('\0').filter(Boolean))].sort()
   const found = []

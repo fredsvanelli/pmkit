@@ -165,6 +165,14 @@ test('findTodos knows more languages', () => {
   assert.deepEqual(findTodos('SELECT 1; a--b TODO: x', 'a.sql'), [])
 })
 
+test('findTodos reads the block comments of sql, lua and hs', () => {
+  assert.deepEqual(tags('SELECT 1;\n/* TODO: sql block */\n/*\n * FIXME: sql inner\n */\n', 'a.sql'), [[2, 'TODO', 'sql block'], [4, 'FIXME', 'sql inner']])
+  assert.deepEqual(tags('x = 1\n--[[ TODO: lua block ]]\n--[[\nFIXME: lua inner\n]]\n', 'a.lua'), [[2, 'TODO', 'lua block'], [4, 'FIXME', 'lua inner']])
+  assert.deepEqual(tags('x = 1\n{- TODO: hs block -}\n', 'a.hs'), [[2, 'TODO', 'hs block']])
+  assert.deepEqual(tags('--[ not a block\nTODO: x\n-- TODO: after\n', 'a.lua'), [[3, 'TODO', 'after']])
+  assert.deepEqual(tags("SELECT '/* TODO: x */';\n", 'a.sql'), [])
+})
+
 test('matchTodos stays fast with 500 candidates and 5000 issues', () => {
   const candidates = groupTodos(Array.from({ length: 500 }, (_, i) => ({ file: 'f.mjs', line: i + 1, tag: 'TODO', text: `rework the module number ${i} before the release` })))
   const issues = Array.from({ length: 5000 }, (_, i) => issue(`ISS-${i}`, { title: `issue ${i}`, body: `a long body about the module and the release ${i} with the usual words` }))

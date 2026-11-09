@@ -1,2 +1,6 @@
 {"at":"2026-10-31T16:01:18Z","by":"fred","op":"create","to":{"id":"PMK-182","title":"Fix todos scan on a missing path and the incomplete docs","type":"bug","status":"backlog","priority":"medium","estimate":1,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-10-31T16:01:18.288Z","updated":"2026-10-31T16:01:18Z"}}
 {"at":"2026-10-31T16:01:18Z","by":"fred","op":"link","field":"related","to":"PMK-64"}
+{"at":"2026-11-09T00:54:13Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-09T00:54:13Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-09T00:54:15Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-182-fix-todos-scan-on-a-missing-path-and-the"}
+{"at":"2026-11-09T00:55:00Z","by":"fred","op":"comment","to":"2026-11-09T00-55-00Z-fred.md"}
