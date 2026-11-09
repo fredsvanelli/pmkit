@@ -1,0 +1,10 @@
+# PMK-204 plan
+
+Spec: `docs/superpowers/specs/2026-11-09-pmk-204-prioritize-by-demand-rules-design.md`. Inline execution, TDD for the code.
+
+1. **Shared mention rule.** Test first in `scripts/mentions.test.mjs` (whole token, `ISS-1` vs `ISS-10`, `ISS-1_x`, URL, path, link target). Move the rule out of `deleteIssue` into `scripts/lib/mentions.mjs`; `deleteIssue` calls it. The existing delete tests stay green.
+2. **`about` on demand problems.** Test first in `scripts/customers.test.mjs` (a customer with no file, a deleted issue, a request file that does not parse). Set `about` in `listDemandSignals`.
+3. **Command file.** Rewrite steps 3, 4 and 5 for decisions 1 to 6, and the "If something is missing" list. Update the intro of the scenario file.
+4. **Scenarios.** Add entries for a demand problem on a deleted issue (warning, still writes) and for the bands that skip zero-score issues; move the repo assertions before the `saved` reads; step 4 reads become `issues list --text`; update the `mentions` helper to the shared rule; update `LIVE_EXPECT_STOPS`; regenerate goldens with `UPDATE_GOLDENS=1` and update the counts the lessons list (`scenarios.test.mjs`, `scenarios-live.mjs`).
+5. **Docs.** CHANGELOG line under `## Unreleased`; README and SKILL.md only if their one-liner changes (it does not).
+6. **Deliver.** Tick the 4 criteria, `npm test` in the foreground, PR, comment, `in_review`.
