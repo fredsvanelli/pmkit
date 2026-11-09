@@ -4,3 +4,7 @@
 {"at":"2026-11-09T00:22:04Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-09T00:22:07Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-177-fix-the-local-diff-notes-of-pr-diff-and"}
 {"at":"2026-11-09T00:23:27Z","by":"fred","op":"comment","to":"2026-11-09T00-23-27Z-fred.md"}
+{"at":"2026-11-09T00:29:25Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T00:29:26Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T00:29:26Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T00:29:26Z","by":"fred","op":"update","field":"acceptance_criteria"}
