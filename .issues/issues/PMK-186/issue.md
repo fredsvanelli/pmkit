@@ -2,12 +2,14 @@
 id: PMK-186
 title: Keep the CLI from writing a cache into the test fixtures
 type: bug
-status: backlog
+status: in_progress
 priority: medium
 estimate: 1
+assignee: fred
 related: [PMK-71]
+branch: pmk-186-keep-the-cli-from-writing-a-cache-into
 created: 2026-10-31T16:01:22.796Z
-updated: 2026-10-31T16:01:23Z
+updated: 2026-11-09T01:47:27Z
 ---
 
 ## Description
