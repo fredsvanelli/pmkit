@@ -2,12 +2,14 @@
 id: PMK-177
 title: Fix the local diff notes of pr diff and issues review
 type: bug
-status: backlog
+status: in_review
 priority: medium
 estimate: 2
+assignee: fred
 related: [PMK-61]
+branch: pmk-177-fix-the-local-diff-notes-of-pr-diff-and
 created: 2026-10-31T16:01:11.864Z
-updated: 2026-10-31T16:01:12Z
+updated: 2026-11-09T00:34:20Z
 ---
 
 ## Description
@@ -29,7 +31,7 @@ updated: 2026-10-31T16:01:12Z
 
 ## Acceptance criteria
 
-- [ ] `uncommitted` is true only when the working tree or index has changes
-- [ ] With a pull request, uncommitted changes are noted
-- [ ] The local fallback uses the PR base, and a merged PR refused with 406 does not turn into an empty diff
-- [ ] A merged PR of a reused branch name is not used without a note
+- [x] `uncommitted` is true only when the working tree or index has changes
+- [x] With a pull request, uncommitted changes are noted
+- [x] The local fallback uses the PR base, and a merged PR refused with 406 does not turn into an empty diff
+- [x] A merged PR of a reused branch name is not used without a note
