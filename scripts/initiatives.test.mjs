@@ -32,3 +32,11 @@ test('archived issues are skipped and a parent cycle does not loop', () => {
   assert.deepEqual(items, [])
   assert.equal(withoutChildren, 1)
 })
+
+test('a live child of an archived parent or of an unreadable parent is not a top-level row and is unreached', () => {
+  const issues = [issue('P', undefined, 'todo', undefined, { archived: true }), issue('C', 'P', 'todo'), issue('K', 'BAD', 'todo'), issue('L', 'K', 'done')]
+  const { items, withoutChildren, unreached } = topLevelRollup(issues, { unreadable: new Set(['BAD']) })
+  assert.deepEqual(items, [])
+  assert.equal(withoutChildren, 0)
+  assert.deepEqual(unreached.sort(), ['C', 'K', 'L'])
+})

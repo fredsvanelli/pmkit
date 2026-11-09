@@ -147,3 +147,56 @@ test('a parent cycle is a warning and the rollup is incomplete', async () => {
   assert.ok(result.data.warnings.some((line) => line.includes('parent cycle')), result.stdout)
   assert.equal(result.data.complete, false)
 })
+
+const breakEpic = (root) => {
+  fs.rmSync(path.join(root, '.issues/issues/ISS-3Q6T'), { recursive: true }) // only the epic is broken
+  fs.writeFileSync(path.join(root, '.issues/epics/EPC-2M9D/epic.md'), '---\ntitle: [\n---\n')
+}
+
+test('without goals a broken epic file does not make the top-level rollup incomplete', async () => {
+  const root = makeRepo('team')
+  breakEpic(root)
+  const result = await pmkit(root, ['goals', 'overview'])
+  assert.equal(result.data.source, 'top_level')
+  assert.equal(result.data.complete, true, result.stdout)
+  assert.deepEqual(result.data.warnings, [])
+})
+
+test('a file in .issues/goals that is not a goal does not block the fallback and is only noted', async () => {
+  const root = makeRepo('team')
+  fs.rmSync(path.join(root, '.issues/issues/ISS-3Q6T'), { recursive: true })
+  fs.mkdirSync(path.join(root, '.issues', 'goals'))
+  fs.writeFileSync(path.join(root, '.issues', 'goals', 'notes.md'), 'remember the milk\n')
+  const result = await pmkit(root, ['goals', 'overview'])
+  assert.equal(result.data.source, 'top_level')
+  assert.equal(result.data.complete, true, result.stdout)
+  assert.ok(result.data.notes.some((line) => line.includes('notes.md')), result.stdout)
+})
+
+const makeParent = async (root, title) => (await pmkit(root, ['issues', 'create', '--title', title])).data.after.id
+const parentOf = async (root, child, parent) => pmkit(root, ['issues', 'parent', child, parent])
+
+test('the live child of an archived parent is warned about, not a top-level row', async () => {
+  const root = makeRepo('team')
+  fs.rmSync(path.join(root, '.issues/issues/ISS-3Q6T'), { recursive: true })
+  const [parent, child] = [await makeParent(root, 'Old parent'), await makeParent(root, 'Live child')]
+  await parentOf(root, child, parent)
+  await pmkit(root, ['issues', 'archive', parent])
+  const result = await pmkit(root, ['goals', 'overview'])
+  assert.equal(result.data.complete, false)
+  assert.ok(result.data.warnings.some((line) => line.includes('archived parent') && line.includes(child)), result.stdout)
+  assert.ok(!result.data.items.some((item) => item.issue.id === child))
+})
+
+test('the children of an issue file that does not parse are warned about, not split into top-level rows', async () => {
+  const root = makeRepo('team')
+  fs.rmSync(path.join(root, '.issues/issues/ISS-3Q6T'), { recursive: true })
+  const [parent, a, b] = [await makeParent(root, 'Parent'), await makeParent(root, 'A'), await makeParent(root, 'B')]
+  await parentOf(root, a, parent)
+  await parentOf(root, b, parent)
+  fs.writeFileSync(path.join(root, '.issues/issues', parent, 'issue.md'), '---\ntitle: [\n---\n')
+  const result = await pmkit(root, ['goals', 'overview'])
+  assert.equal(result.data.complete, false)
+  assert.ok(result.data.warnings.some((line) => line.includes(a) && line.includes(b)), result.stdout)
+  assert.ok(!result.data.items.some((item) => [a, b].includes(item.issue.id)))
+})

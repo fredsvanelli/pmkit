@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-67]
 branch: pmk-203-fix-the-fallback-and-incomplete-paths-of
 created: 2026-11-08T03:15:27.003Z
-updated: 2026-11-09T22:16:00Z
+updated: 2026-11-09T22:22:17Z
 ---
 
 ## Description
@@ -32,7 +32,7 @@ Found by the second review of PR #116 (PMK-67) and left as non-blocking. Source:
 
 ## Acceptance criteria
 
-- [ ] A broken epic file only marks the result incomplete when that epic is part of the answer
-- [ ] Children of an archived or unparseable parent are reported with a warning, not as top-level rows
-- [ ] A file in `.issues/goals` that is not a goal does not block the fallback
-- [ ] The command file says "needs an epic" only when the read was complete
+- [x] A broken epic file only marks the result incomplete when that epic is part of the answer
+- [x] Children of an archived or unparseable parent are reported with a warning, not as top-level rows
+- [x] A file in `.issues/goals` that is not a goal does not block the fallback
+- [x] The command file says "needs an epic" only when the read was complete
