@@ -247,3 +247,28 @@ Início: 2026-11-09. `develop` em ebe6ddc, `npm test` com 4050 testes, 3969 pass
 - PMK-197 c5c611c: tempo linear em linha de tabela (conferido pelo orquestrador: 14 a 48 ms em 320k); saída idêntica à do 9b4d8dd em 1478 entradas. Mergeado (6faf7ea). Follow-ups: flags de linha de comando (docker login -p, mysql -p, wget --http-password, --password x, curl -u continuado); MYSQL_PASS/SSH_PASSPHRASE; Markdown em dois níveis; índice aninhado; isenção pela chave de fora; ***; falso positivo em *=; os tetos listados na spec.
 
 Fim da rodada 8: PRs #154, #155, #156 mergeados (#153 substituído pelo #156).
+
+Limpeza da rodada 8: closing PR #157 mergeado (647b950), 15 worktrees removidos. O implementador opus da PMK-197 deixou sem commit um rascunho de follow-up (PMK-246: flags de linha de comando, curl continuado, Authorization como argumento, chaves com espaço, ?= e +=, par do Kubernetes); guardei no scratchpad para a lista de follow-ups do fim.
+
+## Rodada 9
+
+Início: 2026-11-09. `develop` em 647b950, `npm test` com 4235 testes, 4154 pass, 0 fail, 81 skipped, saída 0. Run Orca `run_e58257261342`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-200 | 1 | sonnet (`ctx_9c92f481e982`) | #159 | ciclo 1 (sonnet): APROVADO; rebase dba5b3e | mergeado (deab7e0) |
+| PMK-202 | 3 | sonnet (`ctx_8cd216e48960`) | #160 | ciclo 1 (opus): mudanças pedidas; ciclo 2 (opus): APROVADO; rebase c8553ba | mergeado (58adc21) |
+| PMK-203 | 2 | sonnet (`ctx_c36bf5954c88`) | #158 | ciclo 1 (sonnet): APROVADO | mergeado (25ed51c) |
+
+- PMK-203: PR #158 (sonnet); épico quebrado só conta no caminho das metas; arquivo solto em goals/ é nota; pai arquivado ou ilegível dá aviso em vez de virar linha de topo; arquivo de comando diz needs an epic só com complete. Follow-ups: aviso de arquivo solto no goals overview; teste do Linear para pai arquivado. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-203 ciclo 1 (sonnet): APROVADO. Não bloqueantes: goal com id mal formado vira arquivo solto com complete true; archived:true do Linear pode estourar o teto de 1000 issues; filtro duplicado em pmkit.mjs:2287; sem teste de goals com arquivo solto. Mergeado (25ed51c).
+- PMK-200: PR #159 (sonnet); os três INVALID_INPUT de views run ganham details.reason estável (invalid_view_name, view_out_of_date, view_file_broken), saem em error.reason no --json e o passo 4 de run-view.md lê o reason. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-202: PR #160 (sonnet); caminhos degradados e de erro do roadmap review; goldens de risks e roadmap-review regenerados. Follow-ups: parar em RATE_LIMITED também nas leituras de épicos e milestones; teste do fake do Linear com dois milestones num épico pela CLI. Revisor ciclo 1 (opus) iniciado.
+- PMK-200 ciclo 1 (sonnet): APROVADO, em conflito; pedi rebase com reason nos problems de views list e asserção no cenário do Linear. Não bloqueantes restantes: view_out_of_date vale para qualquer INVALID_INPUT de search (tracker.mjs:1937); Object.assign em vez do 4o argumento de PmkitError; doctor.md:37 ainda decide pelo texto.
+- PMK-202 ciclo 1 (opus): mudanças pedidas (milestones [] quando listMilestones falha no Linear; Last update none ao lado de not checked). Pedi junto os não bloqueantes do mesmo tipo. Follow-ups: runRisks sem parada no rate limit; hasMore descartado nos adapters do Linear.
+- PMK-200: rebase dba5b3e com reason nos problems de views list e asserção no cenário do Linear; conferi que o CHANGELOG não tem marcadores de conflito (um commit intermediário tinha). Mergeado (deab7e0).
+- PMK-202 correção c28c57b: milestones null/unknown quando a lista falha no Linear; last update not checked (campo updatesRead); milestone sem data diz no due date; épicos/delay null quando a lista de épicos falha; RATE_LIMITED na leitura de seção para as leituras por épico; aviso de skip cita o último épico. Revisor ciclo 2 (opus) iniciado.
+- PMK-202 ciclo 2 (opus): APROVADO. Pedi rebase final, com listMilestones depois de RATE_LIMITED e o catch que engole TypeError se forem pequenos. Não bloqueantes restantes: aviso de leitura pulada para épico cuja leitura rodou e falhou (pmkit.mjs:1967); unknown com NOT_SUPPORTED de milestones; duplicação de estilo; runRisks sem parada no rate limit; hasMore descartado nos adapters do Linear.
+- PMK-202: rebase c8553ba com listMilestones pulado depois de RATE_LIMITED e TypeError relançado; diff pós-aprovação conferido. Mergeado (58adc21).
+
+Fim da rodada 9: PRs #158, #159, #160 mergeados.
