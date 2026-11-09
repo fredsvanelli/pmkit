@@ -158,3 +158,26 @@ Início: 2026-11-08. `develop` em 8ea61f6, `npm test` com 3989 testes, 3908 pass
 - PMK-188 revisão curta (sonnet): APROVADO; init sem remote e --git-host none funcionam, recusa só com github pedido. Não bloqueantes: init só olha origin; retorno de withGithubRepo descartado; reescrita com caixa diferente sem nota; init --update --git-host none não limpa repo/default_branch; fixtures antigas com github sem repo. Mergeado (0ae7445).
 
 Fim da rodada 5: PRs #141, #142, #143 mergeados.
+
+Limpeza da rodada 5: closing PR #144 mergeado (9871252), 8 worktrees removidos, branches provisórias apagadas.
+
+## Rodada 6
+
+Início: 2026-11-08. `develop` em 9871252, `npm test` com 4015 testes, 3934 pass, 0 fail, 81 skipped, saída 0. Run Orca `run_dee6073e435d`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-189 | 1 | sonnet (`ctx_e0671cee394b`) | #145 | ciclo 1 (sonnet): APROVADO | mergeado (9d5a040) |
+| PMK-190 | 2 | sonnet (`ctx_ad21214fdfb3`) | #147 | ciclo 1 (sonnet): APROVADO; rebase 5c2f659 | mergeado (7a21a3e) |
+| PMK-191 | 1 | haiku (`ctx_e2de6d36619e`) | #146 | ciclo 1 (sonnet): APROVADO; rebase 5e36544 | mergeado (74983c5) |
+
+- PMK-189: PR #145 (sonnet); workingDays conta só datas distintas de dia útil dentro do sprint; --days-off ruim já dava INVALID_INPUT, só teste. Follow-ups: aviso para datas repetidas/fim de semana/fora do sprint; validar days_off no validate. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-189 ciclo 1 (sonnet): APROVADO. Não bloqueantes: texto mostra a lista de days off guardada junto de Working days que a ignora (pmkit.mjs:2412); teste só de sintaxe ruim (cli-team-capacity.test.mjs:240); entrada fora de YYYY-MM-DD ignorada sem aviso (team-capacity.mjs:26). Mergeado (9d5a040).
+- PMK-191: PR #146 (haiku); readThroughIndex com signer injetável, metade ctime do teste determinística; falha original não reproduzida, causa inferida; 20 execuções seguidas passaram. Follow-up: checagem de ctime com relógio real em runStates. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-190: PR #147 (sonnet); mais novo primeiro com empate por id decrescente; requests list --customer recusa vazio; accept/decline editam só as linhas de estado via yaml-edit (mantém comentários); golden de requests get com chave problems. Follow-ups: requests/customers no Linear; linha de texto para problems em requests get; proposta do doctor para referência de cliente ilegível. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-191 ciclo 1 (sonnet): APROVADO (signer não muda produção; causa plausível, não provada). Em conflito; pedi rebase com o mesmo signer em runStates (query-index.test.mjs:476) e spec/plano alinhados.
+- PMK-191: rebase 5e36544, runStates e a matriz do query-index com o signer injetado; 10 execuções seguidas passaram; diff pós-aprovação só de teste e docs. Mergeado (74983c5).
+- PMK-190 ciclo 1 (sonnet): APROVADO, em conflito; pedi rebase com as mensagens trocadas (tracker.mjs:1453 e :1539) e problems em accept/decline. Não bloqueantes restantes: nome duplicado com arquivo ilegível (:1450); triage com comentário final ou chave entre aspas (:1583); validate não reporta issue ilegível (validate.mjs:399).
+- PMK-190: rebase 5c2f659 com mensagens corrigidas e problems em accept/decline; goldens conferidos. Mergeado (7a21a3e).
+
+Fim da rodada 6: PRs #145, #146, #147 mergeados.

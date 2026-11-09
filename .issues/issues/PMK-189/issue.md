@@ -2,14 +2,14 @@
 id: PMK-189
 title: Fix team capacity on hand-edited days off and the days-off error
 type: bug
-status: in_review
+status: done
 priority: medium
 estimate: 1
 assignee: fred
 related: [PMK-72]
 branch: pmk-189-fix-team-capacity-on-hand-edited-days
 created: 2026-10-31T16:59:11.253Z
-updated: 2026-11-09T02:40:48Z
+updated: 2026-11-09T03:12:34Z
 ---
 
 ## Description
