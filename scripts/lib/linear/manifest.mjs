@@ -17,7 +17,7 @@ export const LINEAR_CAPABILITIES = Object.freeze({
   deliverables: { path: 'native', detail: { entity: 'project', derived: ['deliverableProgress'], unsupported: ['createMilestone'] } },
   status_update: { path: 'native', detail: { entity: 'project update' } },
   native_metrics: { path: 'derived', detail: { source: 'history' } },
-  saved_views: { path: 'absent', detail: { workspace: 'native' }, enableHint: unservedHint('saved_views') },
+  saved_views: { path: 'absent', detail: { workspace: 'native' }, enableHint: 'The Linear adapter does not serve views yet; Linear offers them on this workspace' },
   documents: { path: 'native', detail: { scope: 'project', unsupported: ['createDocument', 'listDocuments'] } },
   time_tracking: { path: 'absent', enableHint: 'Linear has no time tracking' },
   security_alerts: { path: 'derived', detail: { source: 'scanners' } },
