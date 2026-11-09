@@ -140,3 +140,10 @@ test('each view error carries a stable details.reason, whatever its message says
   assert.equal(reason('unparsed'), 'view_file_broken')
   assert.equal(reason('missing'), undefined, 'NOT_FOUND is told by its code')
 })
+
+test('listViews gives the same reason as runView for each problem', () => {
+  const { tracker, views } = setup()
+  fs.mkdirSync(views, { recursive: true })
+  fs.writeFileSync(path.join(views, 'scalar.yaml'), 'filter: 3\n')
+  assert.deepEqual(tracker.listViews().problems.map((problem) => problem.reason), ['view_file_broken'])
+})

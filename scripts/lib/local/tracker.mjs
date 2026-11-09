@@ -1924,7 +1924,7 @@ export function createLocalTracker(root, {
         views.push(readView(name))
       } catch (error) {
         if (!(error instanceof PmkitError)) throw error
-        problems.push({ id: name, code: error.code, message: error.message })
+        problems.push({ id: name, code: error.code, ...(error.details?.reason && { reason: error.details.reason }), message: error.message })
       }
     }
     return { views, problems }

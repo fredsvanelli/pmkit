@@ -112,6 +112,7 @@ export default [
     skip: { ...skip, '3 views run': 'the tracker has no saved views, so step 1 stops the command' },
     expect(repo, saved) {
       assert.equal(saved.capabilities.tracker, 'linear')
+      assert.deepEqual(Object.keys(saved), ['capabilities'], 'views run is not called')
       assert.equal(saved.capabilities.capabilities.find((capability) => capability.id === 'saved_views').path, 'absent')
     },
   },
