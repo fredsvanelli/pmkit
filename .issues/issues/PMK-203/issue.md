@@ -2,12 +2,14 @@
 id: PMK-203
 title: Fix the fallback and incomplete paths of goals overview
 type: bug
-status: backlog
+status: in_progress
 priority: medium
 estimate: 2
+assignee: fred
 related: [PMK-67]
+branch: pmk-203-fix-the-fallback-and-incomplete-paths-of
 created: 2026-11-08T03:15:27.003Z
-updated: 2026-11-08T03:15:27Z
+updated: 2026-11-09T22:16:00Z
 ---
 
 ## Description
