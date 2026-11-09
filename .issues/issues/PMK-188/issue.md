@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-53]
 branch: pmk-188-fix-link-repo-when-the-repo-and-the
 created: 2026-10-31T16:59:11.059Z
-updated: 2026-11-09T01:47:46Z
+updated: 2026-11-09T01:58:12Z
 ---
 
 ## Description
@@ -32,7 +32,7 @@ updated: 2026-11-09T01:47:46Z
 
 ## Acceptance criteria
 
-- [ ] `default_branch` is only inferred from the remote whose repository is written
-- [ ] `--git-host none` also clears `default_branch`
-- [ ] `system: github` without `repo` is refused by `link-repo` and reported by `validate`
-- [ ] The argument hint lists every flag
+- [x] `default_branch` is only inferred from the remote whose repository is written
+- [x] `--git-host none` also clears `default_branch`
+- [x] `system: github` without `repo` is refused by `link-repo` and reported by `validate`
+- [x] The argument hint lists every flag
