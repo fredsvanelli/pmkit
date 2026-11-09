@@ -128,6 +128,14 @@ describe('query index module', () => {
     assert.equal(fs.existsSync(ignore), false)
   }))
 
+  test('readThroughIndex signs every file with the injected signer', () => withDir((dir) => {
+    const f = fake(dir, { A: 'one' })
+    const seen = []
+    const sign = (file) => { seen.push(file); return { size: 3, mtimeMs: 1, ctimeMs: 2, ino: 9 } }
+    readThroughIndex({ cacheDir: f.cacheDir, header: HEADER, ids: ['A'], fileOf: f.fileOf, read: (id) => issueOf(id, 'one'), write: false, sign })
+    assert.deepEqual(seen, [f.fileOf('A')])
+  }))
+
   test('racy entries are reparsed and the index is rewritten', () => withDir((dir) => {
     const f = fake(dir, { A: 'one' })
     f.run(['A'])
