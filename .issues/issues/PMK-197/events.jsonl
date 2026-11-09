@@ -4,3 +4,6 @@
 {"at":"2026-11-09T03:59:17Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-09T03:59:23Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-197-make-text-redact-trade-false-positives"}
 {"at":"2026-11-09T04:01:05Z","by":"fred","op":"comment","to":"2026-11-09T04-01-05Z-fred.md"}
+{"at":"2026-11-09T04:16:48Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T04:16:48Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T04:16:48Z","by":"fred","op":"update","field":"acceptance_criteria"}

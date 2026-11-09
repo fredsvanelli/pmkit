@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-63]
 branch: pmk-197-make-text-redact-trade-false-positives
 created: 2026-10-31T20:35:30.957Z
-updated: 2026-11-09T03:59:23Z
+updated: 2026-11-09T04:16:48Z
 ---
 
 ## Description
@@ -32,6 +32,6 @@ updated: 2026-11-09T03:59:23Z
 
 ## Acceptance criteria
 
-- [ ] Every value after a password, passwd, pwd, credentials, secret, token or api_key key followed by `=` or `:` is redacted in full, and the false positives this accepts are listed in the spec
-- [ ] Every case above has a probe in `scripts/redact-probes.test.mjs` with the expected output
-- [ ] Redaction keeps the surrounding Markdown intact
+- [x] Every value after a password, passwd, pwd, credentials, secret, token or api_key key followed by `=` or `:` is redacted in full, and the false positives this accepts are listed in the spec
+- [x] Every case above has a probe in `scripts/redact-probes.test.mjs` with the expected output
+- [x] Redaction keeps the surrounding Markdown intact
