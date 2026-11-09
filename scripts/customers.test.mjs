@@ -297,3 +297,32 @@ test('requests list --customer refuses a customer that is not a readable custome
   }
   assert.throws(() => tracker.listRequests({ customer: 'CUS-9' }), (error) => error.nextStep === 'pmkit customers list')
 })
+
+test('accept and decline keep comments, unknown keys, key order and the body byte for byte', () => {
+  const { dir, write, tracker } = setup()
+  const head = '---\n# who asked\ntitle: CSV export\nsource_ticket: 42\ncreated: 2026-10-23T11:00:00Z\n# triage below\nstate: open\n---\n'
+  const body = '\nThe text.\n\nSecond paragraph with   spaces.\n'
+  write('requests', 'REQ-1.md', head + body)
+  const file = path.join(dir('requests'), 'REQ-1.md')
+  tracker.acceptRequest('REQ-1', 'ISS-5N1R', 'fred')
+  const accepted = fs.readFileSync(file, 'utf8')
+  assert.ok(accepted.endsWith('---\n' + body), 'the body is untouched')
+  assert.match(accepted, /^---\n# who asked\ntitle: CSV export\nsource_ticket: 42\ncreated: 2026-10-23T11:00:00Z\n# triage below\nstate: accepted\n/)
+  assert.match(accepted, /\nissue: ISS-5N1R\ntriaged: 2026-10-23T12:00:00Z\ntriaged_by: fred\n---\n/)
+  tracker.declineRequest('REQ-1', 'Out of scope', 'fred')
+  const declined = fs.readFileSync(file, 'utf8')
+  assert.ok(declined.endsWith('---\n' + body))
+  assert.match(declined, /^---\n# who asked\ntitle: CSV export\nsource_ticket: 42\ncreated: 2026-10-23T11:00:00Z\n# triage below\nstate: declined\n/)
+  assert.doesNotMatch(declined, /issue:/)
+  assert.match(declined, /reason: Out of scope/)
+  assert.equal(parseRequest(declined, 'REQ-1').state, 'declined')
+})
+
+test('accept on a request with CRLF line endings writes LF and keeps the comment', () => {
+  const { dir, write, tracker } = setup()
+  write('requests', 'REQ-1.md', '---\r\n# note\r\ntitle: T\r\n---\r\n')
+  tracker.acceptRequest('REQ-1', 'ISS-5N1R', 'fred')
+  const text = fs.readFileSync(path.join(dir('requests'), 'REQ-1.md'), 'utf8')
+  assert.ok(!text.includes('\r'))
+  assert.match(text, /^---\n# note\ntitle: T\n/)
+})

@@ -14,7 +14,7 @@ import { CATEGORIES, LINK_KINDS, TERMINAL } from '../model.mjs'
 import { appendEvents, driftEvents, readEvents } from './events.mjs'
 import { formatError } from './migrations.mjs'
 import {
-  EPIC_KEYS, HEALTH, epicFrontmatter, parseEpicFile, parseFile, parseUpdateFile, serializeEpic, serializeUpdate, sortEpics, sortUpdates, walkParents,
+  EPIC_KEYS, HEALTH, epicFrontmatter, parseEpicFile, parseUpdateFile, serializeEpic, serializeUpdate, sortEpics, sortUpdates, walkParents,
 } from './epics.mjs'
 import { hasSectionHeading, parseIssueFile, serializeIssue, toFrontmatter } from './issue-file.mjs'
 import { buildCapabilities } from '../capabilities.mjs'
@@ -27,7 +27,7 @@ import { parseRelease, releaseStems, serializeRelease, sortReleases, validReleas
 import { parseView, serializeView, validViewName, viewStems } from './views.mjs'
 import { GOAL_PREFIX, goalStems, parseGoal, serializeGoal, sortGoals } from './goals.mjs'
 import { CUSTOMER_PREFIX, mdStems, parseCustomer, serializeCustomer, sortCustomers } from './customers.mjs'
-import { REQUEST_KEYS, REQUEST_PREFIX, REQUEST_STATES, groupDemand, parseRequest, serializeRequest, sortRequests, sortRequestsNewest } from './requests.mjs'
+import { REQUEST_PREFIX, REQUEST_STATES, groupDemand, parseRequest, serializeRequest, sortRequests, sortRequestsNewest } from './requests.mjs'
 import { checkFilter, runQuery } from './query.mjs'
 import { MAX_EXCERPT, findMention, findMentions, mentionText } from './inbox.mjs'
 import { inboxGet, inboxSet } from '../user-store.mjs'
@@ -1572,21 +1572,30 @@ export function createLocalTracker(root, {
   }
 
   /**
-   * Rewrites the state keys of a request. The stored map is edited, not the parsed request, so keys pmkit does not know and
-   * the body stay as they are. A change that leaves the state as it was writes nothing.
+   * Rewrites the state keys of a request. Only those lines of the stored frontmatter are edited, with the line editor of
+   * yaml-edit.mjs as `epic goal` does, so `#` comments, keys pmkit does not know, key order and the body stay as they are.
+   * The text is normalized to LF first, as every reader does. A change that leaves the state as it was writes nothing.
+   * `change(stored, edit)` returns false for no change, or edits with `edit.set(key, value)` and `edit.remove(key)`.
    */
   function triage(id, actor, { dryRun }, change) {
     requireWriter(actor)
     const stored = readRecord(REQUEST, id)
     const before = viewOfRequest(stored)
     const file = path.join(requestsDir, `${stored.id}.md`)
-    const { data, body } = parseFile(fs.readFileSync(file, 'utf8'), `request ${stored.id}`)
-    if (!change(stored, data)) return { before, after: before }
-    data.triaged = stamp()
-    data.triaged_by = actor
-    const content = joinFrontmatter(data, body ? `${body}\n` : '', { order: REQUEST_KEYS })
+    const { yaml, body } = splitFrontmatter(fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'))
+    let edited = yaml
+    const edit = { set: (key, value) => { edited = setScalar(edited, [key], value) }, remove: (key) => { edited = removeKey(edited, [key]) } }
+    try {
+      if (!change(stored, edit)) return { before, after: before }
+      edit.set('triaged', stamp())
+      edit.set('triaged_by', actor)
+    } catch (error) {
+      if (error instanceof PmkitError) throw error
+      throw new PmkitError('INVALID_INPUT', `The request frontmatter cannot be edited: ${error.message}`, '/pmkit:local:doctor')
+    }
+    const content = `---\n${edited.replace(/\n$/, '')}\n---\n${body}`
     const after = viewOfRequest(readBack('request file', () => parseRequest(content, stored.id)))
-    if (!dryRun) writeFile(file, body ? content : content.replace(/\n\n$/, '\n'))
+    if (!dryRun) writeFile(file, content)
     return { before, after }
   }
 
@@ -1594,11 +1603,11 @@ export function createLocalTracker(root, {
   function acceptRequest(id, issue, actor, options = {}) {
     requireWriter(actor)
     const target = requireRequestIssue(issue)
-    return triage(id, actor, { dryRun: options.dryRun === true }, (stored, data) => {
+    return triage(id, actor, { dryRun: options.dryRun === true }, (stored, edit) => {
       if (stored.state === 'accepted' && stored.issue === target) return false
-      data.state = 'accepted'
-      data.issue = target
-      delete data.reason
+      edit.set('state', 'accepted')
+      edit.set('issue', target)
+      edit.remove('reason')
       return true
     })
   }
@@ -1607,12 +1616,12 @@ export function createLocalTracker(root, {
   function declineRequest(id, reason, actor, options = {}) {
     requireWriter(actor)
     const why = blank(reason) ? undefined : oneLineText('reason', reason)
-    return triage(id, actor, { dryRun: options.dryRun === true }, (stored, data) => {
+    return triage(id, actor, { dryRun: options.dryRun === true }, (stored, edit) => {
       if (stored.state === 'declined' && stored.reason === why) return false
-      data.state = 'declined'
-      delete data.issue
-      delete data.reason
-      if (why !== undefined) data.reason = why
+      edit.set('state', 'declined')
+      edit.remove('issue')
+      edit.remove('reason')
+      if (why !== undefined) edit.set('reason', why)
       return true
     })
   }
