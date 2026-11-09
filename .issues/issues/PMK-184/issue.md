@@ -2,14 +2,14 @@
 id: PMK-184
 title: Fix deploys list with an empty environment flag
 type: bug
-status: in_progress
+status: in_review
 priority: medium
 estimate: 1
 assignee: fred
 related: [PMK-49]
 branch: pmk-184-fix-deploys-list-with-an-empty
 created: 2026-10-31T16:01:20.678Z
-updated: 2026-11-09T01:30:12Z
+updated: 2026-11-09T01:30:25Z
 ---
 
 ## Description
