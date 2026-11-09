@@ -27,6 +27,14 @@ const json = (cwd, args, options) => {
 }
 
 const tmp = () => tempDir('pmkit-init-')
+const git = (cwd, ...args) => spawnSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: '1' } })
+// A directory that is a git repository with a GitHub origin.
+const tmpWithOrigin = () => {
+  const dir = tmp()
+  git(dir, 'init', '-q')
+  git(dir, 'remote', 'add', 'origin', 'git@github.com:acme/app.git')
+  return dir
+}
 const read = (dir, file) => fs.readFileSync(path.join(dir, file), 'utf8')
 
 test('lineDiff marks removed and added lines and keeps the common ones', () => {
@@ -80,7 +88,7 @@ test('--update adds id_style to a config written before it existed', () => {
 })
 
 test('--update --git-host changes only the system line', () => {
-  const dir = tmp()
+  const dir = tmpWithOrigin()
   assert.equal(run(dir, ['init']).status, 0)
   const file = path.join(dir, '.pmkit/config.yaml')
   const edited = `# my notes\n${fs.readFileSync(file, 'utf8').replace('confirm: single_writes', 'confirm: none # no prompts')}`
@@ -133,7 +141,7 @@ test('--update reads the tracker folder from the config', () => {
 })
 
 test('--update --dry-run writes nothing, and --update refuses --prefix or a missing setup', () => {
-  const dir = tmp()
+  const dir = tmpWithOrigin()
   assert.equal(run(dir, ['init']).status, 0)
   const before = hashTree(dir)
   const dry = json(dir, ['init', '--update', '--dry-run', '--git-host', 'github', '--estimate-unit', 'hours'])
@@ -424,14 +432,14 @@ test('init --update --dry-run refuses a bad .pmkit/config.yaml and writes nothin
 })
 
 test('--update --git-host github works on a valid .pmkit/config.yaml', () => {
-  const dir = tmp()
+  const dir = tmpWithOrigin()
   assert.equal(run(dir, ['init']).status, 0)
   json(dir, ['init', '--update', '--git-host', 'github'])
   assert.equal(parseYaml(read(dir, '.pmkit/config.yaml')).git_host.system, 'github')
 })
 
 test('init --update --git-host github repairs a bad git_host and writes go through again', () => {
-  const dir = tmp()
+  const dir = tmpWithOrigin()
   assert.equal(run(dir, ['init', '--member', 'fred', '--name', 'Fred', '--email', 'f@x.dev']).status, 0)
   const file = path.join(dir, '.pmkit/config.yaml')
   const text = fs.readFileSync(file, 'utf8')
@@ -546,4 +554,41 @@ test('an unparseable .pmkit/config.yaml in --update keeps the is not valid YAML 
   const { error } = JSON.parse(result.stdout)
   assert.equal(error.code, 'INVALID_INPUT')
   assert.match(error.message, /is not valid YAML/)
+})
+
+const validateClean = (dir) => {
+  const result = json(dir, ['validate'])
+  assert.deepEqual(result.problems, [])
+}
+
+test('init --git-host github takes the repo from origin, and validate is clean', () => {
+  const dir = tmpWithOrigin()
+  json(dir, ['init', '--git-host', 'github'])
+  assert.equal(parseYaml(read(dir, '.pmkit/config.yaml')).git_host.repo, 'acme/app')
+  validateClean(dir)
+})
+
+test('init --git-host github with no GitHub origin is refused and writes nothing', () => {
+  const dir = tmp()
+  const result = run(dir, ['init', '--git-host', 'github', '--json'])
+  assert.equal(result.status, 2)
+  assert.match(JSON.parse(result.stdout).error.message, /github needs a repo/)
+  assert.equal(fs.existsSync(path.join(dir, '.pmkit')), false)
+})
+
+test('init without --git-host leaves validate clean with and without an origin', () => {
+  for (const dir of [tmp(), tmpWithOrigin()]) {
+    json(dir, ['init'])
+    validateClean(dir)
+  }
+})
+
+test('init --update --git-host github with no repo and no origin is refused and keeps the file', () => {
+  const dir = tmp()
+  json(dir, ['init'])
+  const before = read(dir, '.pmkit/config.yaml')
+  const result = run(dir, ['init', '--update', '--git-host', 'github', '--json'])
+  assert.equal(result.status, 2)
+  assert.match(JSON.parse(result.stdout).error.message, /github needs a repo/)
+  assert.equal(read(dir, '.pmkit/config.yaml'), before)
 })

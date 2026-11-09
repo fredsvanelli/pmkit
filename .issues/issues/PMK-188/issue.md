@@ -2,12 +2,14 @@
 id: PMK-188
 title: Fix link-repo when the repo and the remote disagree or the host is cleared
 type: bug
-status: backlog
+status: in_review
 priority: medium
 estimate: 1
+assignee: fred
 related: [PMK-53]
+branch: pmk-188-fix-link-repo-when-the-repo-and-the
 created: 2026-10-31T16:59:11.059Z
-updated: 2026-10-31T16:59:11Z
+updated: 2026-11-09T02:03:07Z
 ---
 
 ## Description
@@ -30,7 +32,7 @@ updated: 2026-10-31T16:59:11Z
 
 ## Acceptance criteria
 
-- [ ] `default_branch` is only inferred from the remote whose repository is written
-- [ ] `--git-host none` also clears `default_branch`
-- [ ] `system: github` without `repo` is refused by `link-repo` and reported by `validate`
-- [ ] The argument hint lists every flag
+- [x] `default_branch` is only inferred from the remote whose repository is written
+- [x] `--git-host none` also clears `default_branch`
+- [x] `system: github` without `repo` is refused by `link-repo` and reported by `validate`
+- [x] The argument hint lists every flag

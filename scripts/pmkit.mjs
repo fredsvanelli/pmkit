@@ -2761,13 +2761,14 @@ function runInit(ctx) {
     pmkit = read(pmkitFile)
     local = read(issuesConfig)
     if (host !== undefined) pmkit = edit(pmkitFile, 'git_host.system', () => setScalar(pmkit, ['git_host', 'system'], host))
+    pmkit = withGithubRepo(pmkit, root, host)
   } else {
-    const remote = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: root, encoding: 'utf8' })
-    const repo = remote.status === 0 ? /github\.com[:/]([^/\s]+\/[^/\s]+?)(?:\.git)?\/?\s*$/.exec(remote.stdout)?.[1] : undefined
+    const repo = originRepo(root)
     pmkit = template('pmkit.config.yaml').replace(
       /git_host:\n {2}system: .*\n {2}repo: .*\n/,
       `git_host:\n  system: ${host ?? 'none'}\n${repo ? `  repo: ${repo}\n` : ''}`,
     )
+    withGithubRepo(pmkit, root, host)
     local = setScalar(template('issues.config.yaml').replace('id_prefix: ISS', `id_prefix: ${opt('prefix') ?? 'ISS'}`), ['version'], FORMAT_VERSION)
   }
   // pmkit is final here. This check runs first and alone, before any .issues/config.yaml parse and before entries exist.
@@ -2859,7 +2860,30 @@ function runInit(ctx) {
   }
 }
 
+// The GitHub repository the origin remote names, read the way link-repo reads it, or undefined when there is none.
+const originRepo = (root) => {
+  const remote = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: root, encoding: 'utf8', timeout: GIT_READ_TIMEOUT_MS })
+  return remote.status === 0 ? (inferHost(remote.stdout.trim()).repo ?? undefined) : undefined
+}
+
+// init never writes git_host.system github without a repo, which validate reports. A config that has none takes the origin's, or the call is refused.
+function withGithubRepo(text, root, host) {
+  if (host !== 'github') return text
+  let held
+  try {
+    held = parseYaml(text)?.git_host?.repo
+  } catch {
+    return text // the caller reports a file that does not parse
+  }
+  if (held) return text
+  const repo = originRepo(root)
+  if (!repo) throw usageError('git_host github needs a repo, and the origin remote is not a GitHub repository', 'Add a GitHub origin remote, or leave out --git-host and run /pmkit:link-repo --git-host github --repo owner/name')
+  return setScalar(text, ['git_host', 'repo'], repo)
+}
+
 // link-repo. See docs/superpowers/specs/2026-10-31-pmk-53-link-repo-design.md.
+// GitHub owner and repository names do not differ by case.
+const sameRepo = (a, b) => a != null && b != null && a.toLowerCase() === b.toLowerCase()
 const GIT_READ_TIMEOUT_MS = 10_000
 const GIT_READ_MAX_OUTPUT = 1024 * 1024
 
@@ -2868,6 +2892,11 @@ const readGit = (ctx, args) => spawnSync('git', args, { cwd: ctx.root, env: ctx.
 // The remotes of the repository as { ok: true, remotes: [{ name, url }] }, or { ok: false, reason } when git cannot say.
 // One `git remote -v` call lists every remote with its fetch URL.
 function readRemotes(ctx) {
+  // `git remote -v` in a subdirectory reads the enclosing repository, so the pmkit root must be the repository root.
+  const top = readGit(ctx, ['rev-parse', '--show-toplevel'])
+  if (!top.error && top.status === 0 && fs.realpathSync(top.stdout.trim()) !== fs.realpathSync(ctx.root)) {
+    return { ok: false, reason: `${ctx.root} is not the root of a git repository` }
+  }
   const listed = readGit(ctx, ['remote', '-v'])
   if (listed.error || listed.status !== 0) {
     return { ok: false, reason: (listed.error?.message ?? listed.stderr ?? '').trim().split('\n')[0] || `git exited with ${listed.status}` }
@@ -2966,16 +2995,25 @@ async function runLinkRepo(ctx) {
   }
   let branchAfter = held.branch
   let branchSource = 'file'
-  const inferredBranch = inferred.system === 'github' ? readDefaultBranch(ctx, chosen.remote.name) : null
-  if (flagBranch !== undefined) {
+  // The branch comes from the remote only when that remote is the repository being written.
+  const inferredBranch = inferred.system === 'github' && sameRepo(repoAfter, inferred.repo) ? readDefaultBranch(ctx, chosen.remote.name) : null
+  if (flagHost === 'none') {
+    branchAfter = null
+    branchSource = 'flag'
+  } else if (flagBranch !== undefined) {
     branchAfter = flagBranch
     branchSource = 'flag'
   } else if (inferredBranch !== null && hostAfter === 'github') {
     branchAfter = inferredBranch
     branchSource = 'remote'
   }
+  // A file that is already github without a repo is not made worse, so --team or --default-branch still work on it.
+  if (hostAfter === 'github' && repoAfter === null) {
+    if (held.system !== 'github') throw usageError('git_host github needs a repo, and none was given or found', 'Pass --repo owner/name, or --git-host none')
+    warnings.push('git_host.repo is not set while git_host is github, and none was given or found; pass --repo owner/name')
+  }
   // A new repo with the old branch name may point at the wrong branch, so the value is kept and the note says it may be wrong.
-  if (branchSource === 'file' && held.branch !== null && held.repo !== null && repoAfter !== held.repo) {
+  if (branchSource === 'file' && held.branch !== null && held.repo !== null && !sameRepo(repoAfter, held.repo)) {
     notes.push(`the repo changed from ${held.repo} to ${repoAfter ?? 'none'} and the default branch could not be inferred, so default_branch ${held.branch} may be wrong; pass --default-branch <name>, or run git remote set-head <remote> --auto and run this again`)
   }
   if (chosen.remote && flagHost !== undefined) {
@@ -2985,7 +3023,7 @@ async function runLinkRepo(ctx) {
       warnings.push(`remote ${chosen.remote.name} points to ${inferred.host}, which is not recognized as GitHub, and --git-host github was used as given`)
     }
   }
-  if (flagRepo !== undefined && inferred.repo !== null && inferred.repo !== flagRepo) {
+  if (flagRepo !== undefined && inferred.repo !== null && !sameRepo(inferred.repo, flagRepo)) {
     warnings.push(`remote ${chosen.remote.name} points to ${inferred.repo} and --repo ${flagRepo} was used as given`)
   }
 
@@ -3016,7 +3054,8 @@ async function runLinkRepo(ctx) {
   if (hostAfter !== held.system) text = edit('git_host.system', () => setScalar(text, ['git_host', 'system'], hostAfter))
   if (repoAfter === null && held.repo !== null) text = edit('git_host.repo', () => removeKey(text, ['git_host', 'repo']))
   else if (repoAfter !== null && repoAfter !== held.repo) text = edit('git_host.repo', () => setScalar(text, ['git_host', 'repo'], repoAfter))
-  if (branchAfter !== held.branch) text = edit('git_host.default_branch', () => setScalar(text, ['git_host', 'default_branch'], branchAfter))
+  if (branchAfter === null && held.branch !== null) text = edit('git_host.default_branch', () => removeKey(text, ['git_host', 'default_branch']))
+  else if (branchAfter !== null && branchAfter !== held.branch) text = edit('git_host.default_branch', () => setScalar(text, ['git_host', 'default_branch'], branchAfter))
   const teamChanged = scope !== null && scope.team.after !== heldTeam
   if (teamChanged) text = edit('tracker.scope.team', () => setScalar(text, ['tracker', 'scope', 'team'], scope.team.after))
   if (text !== before) {
@@ -3093,8 +3132,7 @@ async function runInitLinear(ctx) {
     text = before
   } else {
     if (fs.existsSync(file)) throw new PmkitError('CONFLICT', `${slash(pmkitFile)} already exists`, 'Edit it, or delete it to start over')
-    const remote = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: root, encoding: 'utf8' })
-    const repo = remote.status === 0 ? /github\.com[:/]([^/\s]+\/[^/\s]+?)(?:\.git)?\/?\s*$/.exec(remote.stdout)?.[1] : undefined
+    const repo = originRepo(root)
     text = fs.readFileSync(path.join(TEMPLATES, 'pmkit.config.yaml'), 'utf8')
       .replace(/tracker:\n {2}system: .*\n {2}path: .*\n/, 'tracker:\n  system: linear\n')
       .replace(/git_host:\n {2}system: .*\n {2}repo: .*\n {2}default_branch: .*\n/, `git_host:\n  system: ${host ?? 'none'}\n${repo ? `  repo: ${repo}\n` : ''}`)
@@ -3108,6 +3146,7 @@ async function runInitLinear(ctx) {
     }
   }
   if (update && host !== undefined) text = edit('git_host.system', () => setScalar(text, ['git_host', 'system'], host))
+  text = withGithubRepo(text, root, host)
   let draft
   try {
     draft = parseYaml(text)

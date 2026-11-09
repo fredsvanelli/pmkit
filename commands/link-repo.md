@@ -1,6 +1,6 @@
 ---
 description: Link this repository to a git host and, on Linear, to a team, by editing .pmkit/config.yaml after one confirmation
-argument-hint: "[--git-host github|none] [--repo owner/name] [--remote name] [--team KEY]"
+argument-hint: "[--git-host github|none] [--repo owner/name] [--default-branch name] [--remote name] [--team KEY]"
 disable-model-invocation: true
 ---
 
@@ -10,7 +10,7 @@ Arguments: `$ARGUMENTS`
 
 ## Parameters
 
-- `--git-host github|none` (optional): the git host. Without it, the command infers the host from the git remote.
+- `--git-host github|none` (optional): the git host. Without it, the command infers the host from the git remote. `--git-host none` also removes `git_host.repo` and `git_host.default_branch`.
 - `--repo owner/name` (optional): the GitHub repository. Without it, the command reads it from the git remote.
 - `--default-branch <name>` (optional): the default branch. Without it, the command reads `refs/remotes/<remote>/HEAD`, a local ref, and makes no network call.
 - `--remote <name>` (optional): the remote to read. Without it, the command reads `origin`, or the only remote when there is no `origin`.
