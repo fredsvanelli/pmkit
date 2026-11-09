@@ -272,3 +272,26 @@ test('a rate limit listing milestones stops the per-epic reads', async () => {
   assert.equal(json.incomplete, true)
   assert.match(stderr, /rate limited: the reads of EPC-2M9D were skipped/)
 })
+
+test('a rate limit listing epics skips the milestone list and marks it not checked', async () => {
+  const calls = { milestones: 0 }
+  const adapters = localWith({
+    listDeliverables: async () => { throw new PmkitError('RATE_LIMITED', 'slow down') },
+    listMilestones: async () => { calls.milestones++; return [] },
+  })
+  const { code, json, stderr } = await review(teamRepo(), ['--json'], adapters)
+  assert.equal(code, 0, stderr)
+  assert.equal(calls.milestones, 0)
+  assert.deepEqual(json.unavailable, { epics: 'RATE_LIMITED', milestones: 'RATE_LIMITED' })
+  assert.equal(json.incomplete, true)
+  assert.match(stderr, /milestones not checked: rate limited while listing epics/)
+})
+
+test('a TypeError from the capability report is a bug, not a dropped note', async () => {
+  const adapters = localWith({
+    listDeliverables: async () => { throw new PmkitError('NOT_SUPPORTED', 'no epics') },
+    capabilities: async () => { throw new TypeError('x is not a function') },
+  })
+  const { code } = await review(teamRepo(), ['--json'], adapters)
+  assert.notEqual(code, 0)
+})

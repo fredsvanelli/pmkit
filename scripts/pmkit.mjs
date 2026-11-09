@@ -388,7 +388,9 @@ async function capabilityNotes(tracker, id) {
 async function capabilityNotesOrNone(ctx, id = 'linked_code') {
   try {
     return await capabilityNotes(await ctx.tracker(), id)
-  } catch {
+  } catch (error) {
+    // Only a failure of the tracker or its manifest costs the note; a bug in the code does not hide.
+    if (error instanceof TypeError) throw error
     return []
   }
 }
@@ -1920,7 +1922,12 @@ async function runRoadmapReview(ctx) {
   warnings.push(...found.map(problemLine))
   if (hasMore === true) warnings.push('the tracker has more issues than pmkit read, so milestone issue counts are unknown')
   const epics = await section(() => tracker.listDeliverables(), 'deliverables', 'epics')
-  let milestones = await section(() => tracker.listMilestones(), 'deliverables', 'milestones')
+  // After a rate limit on the epic list the next read would fail the same way: leave the milestones unread.
+  let milestones = null
+  if (rateLimited) {
+    sectionErrors.milestones = 'RATE_LIMITED'
+    warnings.push('milestones not checked: rate limited while listing epics')
+  } else milestones = await section(() => tracker.listMilestones(), 'deliverables', 'milestones')
   // The Local tracker skips an epic or milestone file that does not parse; say so, and keep the milestone as a row.
   const local = await ctx.local()
   if (local !== null) {
