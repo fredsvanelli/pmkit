@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-60]
 branch: pmk-193-fix-the-edges-of-the-log-time-duration
 created: 2026-10-31T19:29:36.074Z
-updated: 2026-11-09T03:15:19Z
+updated: 2026-11-09T03:21:18Z
 ---
 
 ## Description
@@ -31,6 +31,6 @@ updated: 2026-11-09T03:15:19Z
 
 ## Acceptance criteria
 
-- [ ] A duration that is not a safe integer number of minutes answers `INVALID_INPUT`
-- [ ] The readable form of a long duration uses days
-- [ ] The more-than-a-day note on a real write says the time was already logged
+- [x] A duration that is not a safe integer number of minutes answers `INVALID_INPUT`
+- [x] The readable form of a long duration uses days
+- [x] The more-than-a-day note on a real write says the time was already logged
