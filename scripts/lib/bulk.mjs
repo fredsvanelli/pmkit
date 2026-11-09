@@ -15,7 +15,7 @@ const orNull = (value) => (value === 'none' ? null : value)
 // `issues update --label` would read it back as two; removing one matches an existing label exactly, comma included.
 const oneLabel = (value, { allowComma = false } = {}) => {
   const label = value.trim()
-  if (label === '') throw invalid('bulk needs a value')
+  if (label === '') throw invalid('the label must not be blank')
   if (!allowComma && label.includes(',')) throw invalid(`"${label}" is one label with a comma in it; bulk adds one label at a time`, 'Run the command once for each label')
   return label
 }
@@ -48,7 +48,7 @@ const BUILDERS = {
     const value = oneLabel(raw, { allowComma: true })
     return {
       text: `remove label ${value}`,
-      apply: (tracker, issue, actor, options) => tracker.updateIssue(issue.id, { labels: (issue.labels ?? []).filter((label) => label !== value) }, actor, options),
+      apply: (tracker, issue, actor, options) => tracker.updateIssue(issue.id, { labels: (issue.labels ?? []).filter((label) => label.trim() !== value) }, actor, options),
     }
   },
   milestone: (value) => ({ text: `set milestone to ${value}`, apply: patchOf({ milestone: orNull(value) }) }),
@@ -94,7 +94,7 @@ export function checkBulkFilter(filter, where) {
   let narrows = 0
   for (const [key, value] of Object.entries(filter)) {
     if (key === 'archived' || key === 'limit' || key === 'sort') continue
-    if (value === '' || (typeof value === 'string' && value.trim() === '') || (Array.isArray(value) && value.length === 0)) throw invalid(`${where}: ${key} must not be empty`, 'Give the filter a value, or drop it')
+    if (value === '' || (typeof value === 'string' && value.trim() === '') || (Array.isArray(value) && (value.length === 0 || value.some((item) => typeof item === 'string' && item.trim() === '')))) throw invalid(`${where}: ${key} must not be empty`, 'Give the filter a value, or drop it')
     if (value !== false) narrows++
   }
   if (narrows === 0) throw invalid(`${where} has no criterion that narrows the set, so it would match every issue`, where.startsWith('view')
