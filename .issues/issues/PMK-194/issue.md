@@ -2,14 +2,14 @@
 id: PMK-194
 title: Fix docs next-adr for a tracker outside the repo and odd file names
 type: bug
-status: in_review
+status: done
 priority: medium
 estimate: 1
 assignee: fred
 related: [PMK-65]
 branch: pmk-194-fix-docs-next-adr-for-a-tracker-outside
 created: 2026-10-31T19:29:36.272Z
-updated: 2026-11-09T03:32:30Z
+updated: 2026-11-09T03:55:51Z
 ---
 
 ## Description

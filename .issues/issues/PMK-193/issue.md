@@ -2,14 +2,14 @@
 id: PMK-193
 title: Fix the edges of the log-time duration parser
 type: bug
-status: in_review
+status: done
 priority: low
 estimate: 1
 assignee: fred
 related: [PMK-60]
 branch: pmk-193-fix-the-edges-of-the-log-time-duration
 created: 2026-10-31T19:29:36.074Z
-updated: 2026-11-09T03:26:31Z
+updated: 2026-11-09T03:55:51Z
 ---
 
 ## Description

@@ -2,14 +2,14 @@
 id: PMK-195
 title: "Fix inbox authors, corrupt-file fallback and stale docs"
 type: bug
-status: in_review
+status: done
 priority: medium
 estimate: 2
 assignee: fred
 related: [PMK-47]
 branch: pmk-195-fix-inbox-authors-corrupt-file-fallback
 created: 2026-10-31T19:29:36.439Z
-updated: 2026-11-09T03:28:29Z
+updated: 2026-11-09T03:55:52Z
 ---
 
 ## Description
