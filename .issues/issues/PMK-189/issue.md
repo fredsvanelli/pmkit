@@ -2,12 +2,14 @@
 id: PMK-189
 title: Fix team capacity on hand-edited days off and the days-off error
 type: bug
-status: backlog
+status: in_review
 priority: medium
 estimate: 1
+assignee: fred
 related: [PMK-72]
+branch: pmk-189-fix-team-capacity-on-hand-edited-days
 created: 2026-10-31T16:59:11.253Z
-updated: 2026-10-31T16:59:11Z
+updated: 2026-11-09T02:40:48Z
 ---
 
 ## Description
@@ -27,5 +29,5 @@ updated: 2026-10-31T16:59:11Z
 
 ## Acceptance criteria
 
-- [ ] `workingDays` counts only distinct working days inside the sprint
-- [ ] A bad `--days-off` answers what the command file says, or the command file says what it answers
+- [x] `workingDays` counts only distinct working days inside the sprint
+- [x] A bad `--days-off` answers what the command file says, or the command file says what it answers

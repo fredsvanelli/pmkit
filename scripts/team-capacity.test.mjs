@@ -42,3 +42,11 @@ test('changeList lists only the members whose values differ, with null for unset
     { member: 'zed', capacity: { before: null, after: 3 }, daysOff: { before: [], after: [] } },
   ])
 })
+
+test('workingDays ignores repeated days off, weekends and dates outside the sprint', () => {
+  const sprint = { start: '2026-10-12', end: '2026-10-25' }
+  assert.equal(workingDays(sprint, ['2026-10-16', '2026-10-16']), 9)
+  assert.equal(workingDays(sprint, ['2026-10-17', '2026-10-18']), 10)
+  assert.equal(workingDays(sprint, ['2026-10-09', '2026-10-26']), 10)
+  assert.equal(workingDays(sprint, ['2026-10-16', '2026-10-17', '2026-11-02', '2026-10-16']), 9)
+})
