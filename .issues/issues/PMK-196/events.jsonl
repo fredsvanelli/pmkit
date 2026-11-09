@@ -4,3 +4,7 @@
 {"at":"2026-11-09T03:59:08Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-09T03:59:13Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-196-fix-bulk-labels-single-issue-errors-and"}
 {"at":"2026-11-09T03:59:51Z","by":"fred","op":"comment","to":"2026-11-09T03-59-51Z-fred.md"}
+{"at":"2026-11-09T04:00:55Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T04:00:55Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T04:00:55Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-09T04:00:55Z","by":"fred","op":"update","field":"acceptance_criteria"}
