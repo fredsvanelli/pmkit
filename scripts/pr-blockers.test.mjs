@@ -293,7 +293,7 @@ test('the text names a rule it does not read instead of saying the branch has no
 
 test('GraphQL refusals of checks and threads, as the real host reports them, come back as not checked and do not fail the command', () => {
   const answers = {
-    'pr checks 7 --json name,state,bucket': { status: 1, stdout: '', stderr: 'GraphQL: Resource not accessible by integration (repository.pullRequest.statusCheckRollup)\n' },
+    'pr checks 7 --json name,state,bucket,link': { status: 1, stdout: '', stderr: 'GraphQL: Resource not accessible by integration (repository.pullRequest.statusCheckRollup)\n' },
     'pr view 7 --json mergeable,mergeStateStatus,reviewDecision,baseRefName': { stdout: JSON.stringify(merge()) },
     'pr view 7 --json reviews,reviewRequests': { stdout: JSON.stringify({ reviews: [], reviewRequests: [] }) },
     'api repos/{owner}/{repo}/branches/main/protection': { status: 1, stderr: 'gh: Branch not protected (HTTP 404)\n' },
@@ -350,7 +350,7 @@ test('a SAML or missing-scopes refusal of the real host marks the area unchecked
   for (const stderr of ['GraphQL: Resource protected by organization SAML enforcement. You must grant your OAuth token access to this organization.\n', 'GraphQL: Your token has not been granted the required scopes to execute this query. (INSUFFICIENT_SCOPES)\n']) {
     const exec = (cmd, args) => {
       const key = args.join(' ')
-      if (key === 'pr checks 7 --json name,state,bucket') return { status: 1, stdout: '', stderr }
+      if (key === 'pr checks 7 --json name,state,bucket,link') return { status: 1, stdout: '', stderr }
       if (key === 'pr view 7 --json mergeable,mergeStateStatus,reviewDecision,baseRefName') return { status: 0, stdout: JSON.stringify(merge()), stderr: '' }
       if (key === 'pr view 7 --json reviews,reviewRequests') return { status: 0, stdout: JSON.stringify({ reviews: [], reviewRequests: [] }), stderr: '' }
       if (args[1] === 'graphql') return { status: 1, stdout: JSON.stringify({ errors: [{ type: 'INSUFFICIENT_SCOPES', message: 'x' }] }), stderr: 'gh: x\n' }
@@ -368,4 +368,10 @@ test('a team named like a user is a team request, never the user', () => {
   assert.deepEqual(r.reviews.requested, [])
   assert.deepEqual(r.reviews.requestedTeams, ['fred'])
   assert.ok([...r.pending, ...r.unknown].some((o) => o.area === 'reviews' && /team fred/.test(o.message)))
+})
+
+test('blockersText points a failing check that has a workflow run to ci logs --run', () => {
+  const r = collectBlockers(stub({ prChecks: [{ name: 'build', bucket: 'fail', runId: 123 }, { name: 'ext', bucket: 'fail', runId: null }] }).host, OPEN_PR)
+  assert.deepEqual(r.checks.failing.map((c) => c.runId), [123, null])
+  assert.match(blockersText(OPEN_PR, r), /checks: failing build \(ci logs --run 123\), ext/)
 })

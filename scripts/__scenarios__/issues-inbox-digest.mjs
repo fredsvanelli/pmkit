@@ -28,7 +28,7 @@ function openPr({ number, branch, author = 'ana', requested = [], teams = [], th
   const pr = { number, url: `https://github.com/o/r/pull/${number}`, title: `Work on ${branch}`, state: 'OPEN', isDraft: false, headRefName: branch, author: { login: author }, mergedAt: null }
   return {
     [`pr view ${branch} --json ${VIEW}`]: { stdout: JSON.stringify(pr) },
-    [`pr checks ${number} --json name,state,bucket`]: { stdout: JSON.stringify([{ name: 'test', state: 'SUCCESS', bucket: 'pass' }]) },
+    [`pr checks ${number} --json name,state,bucket,link`]: { stdout: JSON.stringify([{ name: 'test', state: 'SUCCESS', bucket: 'pass' }]) },
     [`pr view ${number} --json reviews,reviewRequests`]: { stdout: JSON.stringify({ reviews: [], reviewRequests: [...requested.map((login) => ({ __typename: 'User', login })), ...teams.map((slug) => ({ __typename: 'Team', name: slug, slug }))] }) },
     [`pr view ${number} --json mergeable,mergeStateStatus,reviewDecision,baseRefName`]: { stdout: JSON.stringify({ mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', reviewDecision: '', baseRefName: 'main' }) },
     [threadsKey(number, threads)]: { stdout: JSON.stringify(threads) },

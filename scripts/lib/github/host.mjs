@@ -151,19 +151,21 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
     },
 
     prChecks(number) {
-      const args = ['pr', 'checks', String(number), '--json', 'name,state,bucket']
+      const args = ['pr', 'checks', String(number), '--json', 'name,state,bucket,link']
+      // The link of a check run holds the workflow run it belongs to, the id `ci logs --run` takes. Other CI has none.
+      const withRun = (list) => list.map((c) => ({ ...c, runId: Number(/\/actions\/runs\/(\d+)/.exec(c.link ?? '')?.[1]) || null }))
       const result = run('gh', args)
       // gh exits non-zero while checks fail or are pending, and still prints the list.
       if (result.status !== 0) {
         try {
           const list = JSON.parse(result.stdout)
-          if (Array.isArray(list)) return list
+          if (Array.isArray(list)) return withRun(list)
         } catch {}
         // A pull request without checks makes gh exit 1 with this message.
         if (/no checks reported/i.test(result.stderr ?? '')) return []
         throw failure('gh', args, result)
       }
-      return parse(result.stdout, 'the checks')
+      return withRun(parse(result.stdout, 'the checks'))
     },
 
     prReviews(number) {

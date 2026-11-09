@@ -27,7 +27,7 @@ export default {
   github: true,
   gh: {
     [`pr view ${BRANCH} --json ${VIEW}`]: { stdout: JSON.stringify(pr) },
-    'pr checks 7 --json name,state,bucket': { status: 8, stdout: JSON.stringify([{ name: 'test', state: 'FAILURE', bucket: 'fail' }, { name: 'lint', state: 'SUCCESS', bucket: 'pass' }]) },
+    'pr checks 7 --json name,state,bucket,link': { status: 8, stdout: JSON.stringify([{ name: 'test', state: 'FAILURE', bucket: 'fail' }, { name: 'lint', state: 'SUCCESS', bucket: 'pass' }]) },
     'pr view 7 --json reviews,reviewRequests': { stdout: JSON.stringify({ reviews: [], reviewRequests: [{ __typename: 'User', login: 'ana' }, { __typename: 'Team', name: 'core', slug: 'core' }] }) },
     'pr view 7 --json mergeable,mergeStateStatus,reviewDecision,baseRefName': { stdout: JSON.stringify({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY', reviewDecision: 'REVIEW_REQUIRED', baseRefName: 'main' }) },
     [threadsKey()]: { stdout: JSON.stringify(threads) },

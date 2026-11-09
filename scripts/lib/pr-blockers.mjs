@@ -184,7 +184,7 @@ export function blockersText(pr, found) {
   const { checks, reviews, conflicts, threads, policies } = found
   if (checks === null) lines.push(notChecked('checks'))
   else if (checks.failing.length + checks.pending.length === 0) lines.push('checks: none failing or pending')
-  else lines.push(`checks: ${[checks.failing.length > 0 && `failing ${names(checks.failing, (c) => c.name)}`, checks.pending.length > 0 && `pending ${names(checks.pending, (c) => c.name)}`].filter(Boolean).join('; ')}`)
+  else lines.push(`checks: ${[checks.failing.length > 0 && `failing ${names(checks.failing, (c) => (c.runId ? `${c.name} (ci logs --run ${c.runId})` : c.name))}`, checks.pending.length > 0 && `pending ${names(checks.pending, (c) => c.name)}`].filter(Boolean).join('; ')}`)
   if (reviews === null) lines.push(notChecked('reviews'))
   else {
     const parts = []

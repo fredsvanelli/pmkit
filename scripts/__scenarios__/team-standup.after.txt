@@ -15,5 +15,5 @@ exit 0
 --- gh calls
 pr view feat-dlq --json number,url,title,state,isDraft,headRefName,author,mergedAt
 pr view feat-dlq --json number,url,title,state,isDraft,headRefName,author,mergedAt
-pr checks 9 --json name,state,bucket
+pr checks 9 --json name,state,bucket,link
 pr view 9 --json reviews,reviewRequests

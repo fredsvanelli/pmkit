@@ -18,19 +18,19 @@ exit 0
 (no file changed)
 --- gh calls
 pr view iss-8c4w-dead-letter-queue --json number,url,title,state,isDraft,headRefName,author,mergedAt
-pr checks 9 --json name,state,bucket
+pr checks 9 --json name,state,bucket,link
 pr view 9 --json mergeable,mergeStateStatus,reviewDecision,baseRefName
 pr view 9 --json reviews,reviewRequests
 api graphql -F owner={owner} -F repo={repo} -F number=9 -f query=query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { pageInfo { hasNextPage } nodes { isResolved isOutdated path line comments(first: 1) { nodes { url body author { login } } } } } } } }
 api repos/{owner}/{repo}/branches/main/protection
 pr view iss-4m2s-csv-column-order --json number,url,title,state,isDraft,headRefName,author,mergedAt
-pr checks 10 --json name,state,bucket
+pr checks 10 --json name,state,bucket,link
 pr view 10 --json mergeable,mergeStateStatus,reviewDecision,baseRefName
 pr view 10 --json reviews,reviewRequests
 api graphql -F owner={owner} -F repo={repo} -F number=10 -f query=query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { pageInfo { hasNextPage } nodes { isResolved isOutdated path line comments(first: 1) { nodes { url body author { login } } } } } } } }
 api repos/{owner}/{repo}/branches/main/protection
 pr view iss-3f7h-empty-state --json number,url,title,state,isDraft,headRefName,author,mergedAt
-pr checks 11 --json name,state,bucket
+pr checks 11 --json name,state,bucket,link
 pr view 11 --json mergeable,mergeStateStatus,reviewDecision,baseRefName
 pr view 11 --json reviews,reviewRequests
 api graphql -F owner={owner} -F repo={repo} -F number=11 -f query=query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { pageInfo { hasNextPage } nodes { isResolved isOutdated path line comments(first: 1) { nodes { url body author { login } } } } } } } }

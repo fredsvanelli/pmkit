@@ -69,12 +69,17 @@ test('openPullRequest omits --draft when draft is false', () => {
 })
 
 test('prChecks and prReviews call gh with the spec flags', () => {
-  const { exec, calls } = fakeExec({ stdout: '[{"name":"ci","state":"SUCCESS","bucket":"pass"}]' }, { stdout: '{"reviews":[],"reviewRequests":[]}' })
+  const { exec, calls } = fakeExec({ stdout: '[{"name":"ci","state":"SUCCESS","bucket":"pass","link":"https://github.com/o/r/actions/runs/77/job/5"}]' }, { stdout: '{"reviews":[],"reviewRequests":[]}' })
   const h = host(exec)
-  assert.deepEqual(h.prChecks(12), [{ name: 'ci', state: 'SUCCESS', bucket: 'pass' }])
+  assert.deepEqual(h.prChecks(12), [{ name: 'ci', state: 'SUCCESS', bucket: 'pass', link: 'https://github.com/o/r/actions/runs/77/job/5', runId: 77 }])
   assert.deepEqual(h.prReviews(12), { reviews: [], reviewRequests: [] })
-  assert.deepEqual(calls[0].args, ['pr', 'checks', '12', '--json', 'name,state,bucket'])
+  assert.deepEqual(calls[0].args, ['pr', 'checks', '12', '--json', 'name,state,bucket,link'])
   assert.deepEqual(calls[1].args, ['pr', 'view', '12', '--json', 'reviews,reviewRequests'])
+})
+
+test('prChecks gives runId null for a check whose link is not a workflow run', () => {
+  const { exec } = fakeExec({ stdout: '[{"name":"a","bucket":"fail","link":"https://ci.example.com/b/1"},{"name":"b","bucket":"fail","link":""},{"name":"c","bucket":"fail"}]' })
+  assert.deepEqual(host(exec).prChecks(12).map((c) => c.runId), [null, null, null])
 })
 
 test('prChecks keeps the list when gh exits non-zero for failing or pending checks', () => {
