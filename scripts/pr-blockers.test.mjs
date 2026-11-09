@@ -72,7 +72,8 @@ test('only the latest review of each author counts for changes requested, and a 
   const reviewRequests = [{ __typename: 'User', login: 'dee' }, { __typename: 'Team', name: 'core', slug: 'core' }]
   const r = collectBlockers(stub({ prReviews: { reviews, reviewRequests }, prMergeState: merge({ mergeStateStatus: 'BLOCKED', reviewDecision: 'CHANGES_REQUESTED' }) }).host, OPEN_PR)
   assert.deepEqual(r.reviews.changesRequested, ['bob'])
-  assert.deepEqual(r.reviews.requested, ['dee', 'core'])
+  assert.deepEqual(r.reviews.requested, ['dee'])
+  assert.deepEqual(r.reviews.requestedTeams, ['core'])
   assert.equal(r.reviews.decision, 'CHANGES_REQUESTED')
   assert.equal(r.blocked, true)
   assert.ok(r.blocking.some((b) => b.area === 'reviews' && /bob/.test(b.message)))
@@ -359,4 +360,12 @@ test('a SAML or missing-scopes refusal of the real host marks the area unchecked
     assert.deepEqual(r.unchecked.map((u) => u.area), ['checks', 'threads'])
     assert.equal(r.blocked, null)
   }
+})
+
+test('a team named like a user is a team request, never the user', () => {
+  const reviewRequests = [{ __typename: 'Team', name: 'fred', slug: 'fred' }]
+  const r = collectBlockers(stub({ prReviews: { reviews: [], reviewRequests }, prMergeState: merge({}) }).host, OPEN_PR)
+  assert.deepEqual(r.reviews.requested, [])
+  assert.deepEqual(r.reviews.requestedTeams, ['fred'])
+  assert.ok([...r.pending, ...r.unknown].some((o) => o.area === 'reviews' && /team fred/.test(o.message)))
 })

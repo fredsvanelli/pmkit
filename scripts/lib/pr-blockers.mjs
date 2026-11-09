@@ -28,6 +28,10 @@ function latestVerdicts(reviews) {
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
 const names = (items, label = (i) => i) => items.map(label).join(', ')
+// A review request is a user (`login`) or a team (`slug`). Teams are kept apart so a team named like a user never matches the user.
+const isTeam = (r) => r.__typename === 'Team' || (r.login === undefined && r.slug !== undefined)
+/** Who is asked for a review, as text: users by login, teams as `team <slug>`. */
+const waitingFor = (reviews) => [...reviews.requested, ...reviews.requestedTeams.map((t) => `team ${t}`)].join(', ')
 
 /**
  * Reads checks, reviews, merge state, review threads and branch protection of `pr` and returns
@@ -78,7 +82,8 @@ export function collectBlockers(host, pr) {
   const reviews = reviewData && {
     decision: mergeState?.reviewDecision || null,
     changesRequested: [...verdicts].filter(([, state]) => state === 'CHANGES_REQUESTED').map(([login]) => login),
-    requested: (reviewData.reviewRequests ?? []).map((r) => r.login ?? r.name ?? r.slug),
+    requested: (reviewData.reviewRequests ?? []).filter((r) => !isTeam(r)).map((r) => r.login ?? r.name),
+    requestedTeams: (reviewData.reviewRequests ?? []).filter(isTeam).map((r) => r.slug ?? r.name),
   }
 
   const threadData = attempt('threads', () => host.prThreads(pr.number))
@@ -153,7 +158,7 @@ export function collectBlockers(host, pr) {
     if (failing.length > 0) open.push({ area: 'checks', message: `failing ${names(failing, (c) => c.name)}` })
     if (waiting.length > 0) open.push({ area: 'checks', message: `pending ${names(waiting, (c) => c.name)}` })
   }
-  if (reviews?.requested.length > 0) open.push({ area: 'reviews', message: `waiting for ${names(reviews.requested)}` })
+  if (reviews?.requested.length + reviews?.requestedTeams.length > 0) open.push({ area: 'reviews', message: `waiting for ${waitingFor(reviews)}` })
   if (conflicts?.behind && statusChecks?.strict !== true) open.push({ area: 'conflicts', message: 'the branch is behind the base branch' })
   if (threads && unresolved.length > 0 && !conversationRequired) {
     open.push({ area: 'threads', message: `${plural(threads.open.length, 'open thread')}${threads.outdated.length > 0 ? ` and ${plural(threads.outdated.length, 'outdated thread')}` : ''}` })
@@ -183,7 +188,7 @@ export function blockersText(pr, found) {
   else {
     const parts = []
     if (reviews.changesRequested.length > 0) parts.push(`changes requested by ${names(reviews.changesRequested)}`)
-    if (reviews.requested.length > 0) parts.push(`waiting for ${names(reviews.requested)}`)
+    if (reviews.requested.length + reviews.requestedTeams.length > 0) parts.push(`waiting for ${waitingFor(reviews)}`)
     if (parts.length === 0 && reviews.decision === 'REVIEW_REQUIRED') parts.push('a review is required')
     lines.push(`reviews: ${parts.length > 0 ? parts.join('; ') : 'nothing pending'}`)
   }
