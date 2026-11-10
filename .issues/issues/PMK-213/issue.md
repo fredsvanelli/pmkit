@@ -2,12 +2,14 @@
 id: PMK-213
 title: Improve goals
 type: feature
-status: backlog
+status: in_progress
 priority: low
 estimate: 5
+assignee: fred
 related: [PMK-45]
+branch: pmk-213-improve-goals
 created: 2026-11-08T20:37:23.113Z
-updated: 2026-11-08T20:53:51Z
+updated: 2026-11-10T03:15:21Z
 ---
 
 ## Description
