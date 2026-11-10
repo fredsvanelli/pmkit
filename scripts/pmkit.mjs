@@ -1201,7 +1201,10 @@ export const COMMANDS = [
       if (title !== undefined) changes.title = title
       if (ctx.opt('body-file') !== undefined) changes.body = readInput(ctx.opt('body-file'))
       const result = await (await ctx.tracker()).updateRequest(ctx.args[0], changes, await ctx.actor(), { dryRun: ctx.dryRun })
-      return { data: result, text: writeText(result, { ...ctx, record: requestRecord }), commit: result.after.id, warnings: problemWarnings(result.problems) }
+      // changeLines skips `body` (an issue's whole file), so the request text is compared as `text`, printed as "text: changed".
+      const withText = (view) => ({ ...view, text: view.body })
+      const text = writeText({ before: withText(result.before), after: withText(result.after) }, { ...ctx, record: requestRecord })
+      return { data: result, text, commit: result.after.id, warnings: problemWarnings(result.problems) }
     },
   },
   {

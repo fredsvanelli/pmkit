@@ -2399,6 +2399,24 @@ test('customers show takes the customer as a positional or as --customer, the li
   assert.equal(errorOf(run(root, ['customers', 'show', '--json'])).code, 'INVALID_INPUT')
 })
 
+test('requests update with only --body-file says the text changed, and customers update prints names, not JSON (PMK-221 review)', () => {
+  const root = makeRepo('team')
+  const request = json(root, ['requests', 'create', '--title', 'CSV']).after
+  const body = path.join(tempDir('pmkit-req-'), 'body.md')
+  fs.writeFileSync(body, 'New text.\n')
+  const updated = run(root, ['requests', 'update', request.id, '--body-file', body])
+  assert.equal(updated.status, 0, updated.stderr)
+  assert.match(updated.stdout, /^text: changed$/m)
+  assert.doesNotMatch(updated.stdout, /no change/)
+  assert.match(run(root, ['requests', 'update', request.id, '--body-file', body]).stdout, /no change/)
+  const customer = json(root, ['customers', 'create', '--name', 'Acme', '--tier', 'gold', '--owner', 'fred']).after
+  const text = run(root, ['customers', 'update', customer.id, '--tier', 'silver', '--status', 'active', '--owner', 'none']).stdout
+  assert.match(text, /^tier: gold → silver$/m)
+  assert.match(text, /^status: \(none\) → active$/m)
+  assert.match(text, /^owner: Fred Vanelli → \(none\)$/m)
+  assert.doesNotMatch(text, /\{"id"/)
+})
+
 test('a broken request file is a warning that points to pmkit validate, in the text and in the JSON', () => {
   const root = makeRepo('team')
   fs.mkdirSync(path.join(root, '.issues', 'requests'), { recursive: true })

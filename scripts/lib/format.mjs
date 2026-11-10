@@ -124,6 +124,8 @@ function flatten(record) {
   for (const [key, value] of Object.entries(record)) {
     if (SKIPPED.has(key)) continue
     if (key === 'status' && value?.name) flat.status = value.name
+    // A named reference (a customer's status, tier or owner) shows its name, never the JSON of the object.
+    else if (value !== null && typeof value === 'object' && !Array.isArray(value) && 'name' in value && 'id' in value) flat[key] = value.name ?? value.id
     else if (key === 'acceptanceCriteria') flat['acceptance criteria'] = value.length === 0 ? undefined : criteriaLines(value).join('; ')
     else if (key === 'description') flat.description = value === '' ? undefined : 'text'
     else flat[key] = value
@@ -138,7 +140,7 @@ export function changeLines(before, after) {
   const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])]
   return keys
     .filter((key) => JSON.stringify(a[key]) !== JSON.stringify(b[key]))
-    .map((key) => (key === 'description' ? 'description: changed' : `${key}: ${show(a[key])} → ${show(b[key])}`))
+    .map((key) => (key === 'description' || key === 'text' ? `${key}: changed` : `${key}: ${show(a[key])} → ${show(b[key])}`))
 }
 
 function describeEvent(event) {
