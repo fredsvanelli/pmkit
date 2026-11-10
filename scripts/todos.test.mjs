@@ -197,3 +197,20 @@ test('matchTodos picks the first issue in list order when several match', () => 
   const result = matchTodos(candidates, [issue('ISS-1', { body: 'x' }), issue('ISS-2', { body: 'refresh the documentation index' }), issue('ISS-3', { title: 'refresh the documentation index' })])
   assert.equal(result.matched[0].issue, 'ISS-2')
 })
+
+test('findTodos reads HACK, XXX and @todo tags', () => {
+  assert.deepEqual(tags('// HACK: skip the cache', 'a.mjs'), [[1, 'HACK', 'skip the cache']])
+  assert.deepEqual(tags('# XXX broken on windows', 'a.py'), [[1, 'XXX', 'broken on windows']])
+  assert.deepEqual(tags('/**\n * @todo add paging\n * @TODO(ana): x\n */', 'a.ts'), [[2, 'TODO', 'add paging'], [3, 'TODO', 'x']])
+  assert.equal(findTodos('/** @fixme(bo) y */', 'a.ts')[0].owner, 'bo')
+  for (const line of ['// XXXL size', '// @todos later', '// hack: lower', '// HACKS later']) assert.deepEqual(findTodos(line, 'a.mjs'), [], line)
+})
+
+test('groupTodos keeps the strongest tag: FIXME, then XXX, then HACK, then TODO', () => {
+  const tagOf = (...list) => groupTodos(list.map((tag, i) => ({ file: 'a', line: i + 1, tag, text: 'same work' })))[0].tag
+  assert.equal(tagOf('TODO', 'HACK'), 'HACK')
+  assert.equal(tagOf('HACK', 'TODO'), 'HACK')
+  assert.equal(tagOf('XXX', 'HACK'), 'XXX')
+  assert.equal(tagOf('FIXME', 'XXX'), 'FIXME')
+  assert.equal(tagOf('TODO'), 'TODO')
+})

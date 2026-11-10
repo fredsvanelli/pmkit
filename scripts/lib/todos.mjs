@@ -1,4 +1,4 @@
-// Candidate issues from the TODO and FIXME comments of a repository. See
+// Candidate issues from the TODO, FIXME, HACK and XXX comments of a repository. See
 // docs/superpowers/specs/2026-10-30-pmk-64-todos-to-issues-design.md.
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -167,9 +167,13 @@ function commentLines(source, style) {
 }
 
 // The tag is the first word of the comment, so prose that names a TODO in passing is not one.
-const TAG = /^(TODO|FIXME)(?:\(([^)]*)\))?(?::\s*|\s+|$)(.*)$/
+const TAG = /^(TODO|FIXME|HACK|XXX)(?:\(([^)]*)\))?(?::\s*|\s+|$)(.*)$/
+// The JSDoc and PHPDoc form, in any case: `@todo add paging`.
+const AT_TAG = /^@(todo|fixme|hack|xxx)(?:\(([^)]*)\))?(?::\s*|\s+|$)(.*)$/i
+/** The tags from weakest to strongest: a comment repeated under two tags keeps the stronger. FIXME and XXX are defects, HACK is debt (PEP 350). */
+const TAGS = ['TODO', 'HACK', 'XXX', 'FIXME']
 
-/** The TODO and FIXME comments of one file, as { line, tag, owner, text }. The text can be empty. */
+/** The TODO, FIXME, HACK and XXX comments of one file, as { line, tag, owner, text }. The text can be empty. */
 export function findTodos(source, file) {
   const style = commentStyle(file)
   if (!style) return []
@@ -177,8 +181,9 @@ export function findTodos(source, file) {
   // Line endings first, as config.mjs does for YAML: a \r left at the end of a line would end up in the text.
   const text = source.replace(/\r\n?/g, '\n')
   for (const { line, content } of commentLines(style.markdown ? blankMarkdownCode(text) : text, style)) {
-    const match = TAG.exec(content.replace(/^[\s*/!#]+/, ''))
-    if (match) found.push({ line, tag: match[1], owner: match[2] ?? '', text: match[3].trim() })
+    const body = content.replace(/^[\s*/!#]+/, '')
+    const match = TAG.exec(body) ?? AT_TAG.exec(body)
+    if (match) found.push({ line, tag: match[1].toUpperCase(), owner: match[2] ?? '', text: match[3].trim() })
   }
   return found
 }
@@ -199,7 +204,7 @@ export function groupTodos(found) {
   for (const item of [...found].sort(byLocation)) {
     const key = todoKey(item.text)
     const group = groups.get(key) ?? { key, tag: 'TODO', text: item.text, locations: [] }
-    if (item.tag === 'FIXME') group.tag = 'FIXME'
+    if (TAGS.indexOf(item.tag) > TAGS.indexOf(group.tag)) group.tag = item.tag
     group.locations.push(`${item.file}:${item.line}`)
     groups.set(key, group)
   }
