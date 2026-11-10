@@ -301,3 +301,31 @@ Início: 2026-11-09. `develop` em ad84993, `npm test` com 4266 testes, 4185 pass
 - PMK-205: rebase f5f168d com empty falso enquanto há trabalho aberto e CHANGELOG sem --release no Linear; diff pós-aprovação conferido. Mergeado (6051adf).
 
 Fim da rodada 10: PRs #162, #163, #164 mergeados.
+
+Limpeza da rodada 10: closing PR #165 mergeado (18f1c33), 9 worktrees removidos, branches provisórias apagadas.
+
+## Rodada 11
+
+Início: 2026-11-09. `develop` em 18f1c33, `npm test` com 4293 testes, 4212 pass, 0 fail, 81 skipped, saída 0. Run Orca `run_69df1f7e2548`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-207 | 2 | sonnet (`ctx_72ccb1e75fd6`) | #166 | ciclo 1 (sonnet): APROVADO; duas correções antes do merge | mergeado (be7d8d7) |
+| PMK-209 | 3 | sonnet (`ctx_489feffc0f97`) | #167 | ciclo 1 (opus): mudanças pedidas; ciclo 2 (opus): APROVADO; docs antes do merge | mergeado (2f4e6eb) |
+| PMK-214 | 5 | opus (`ctx_8b19b322b473`) | #168 | ciclo 1 (opus): mudanças pedidas; ciclo 2 (opus): APROVADO; três correções antes do merge | mergeado (9a40228) |
+
+- PMK-207: PR #166 (sonnet); passo 5.1 do request-queue descarta só o request cujo dry run de create falhou e diz o motivo; passo 4 mantém o ID do cliente sem arquivo; dois cenários novos (Linear até a sugestão de triage; create falho com cliente desconhecido). Follow-up: checagem de que a regra de 5.1 existe no md. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-207 ciclo 1 (sonnet): APROVADO; pedi antes do merge: 5.1 só para erro do próprio request (erro global para), frase de nada mudaria quando tudo caiu no dry run, cenário sem depender de empate. Não bloqueantes restantes: 5.3 sem regra de falha (pré-existente); cenário não prova a frase do passo 4; CHANGELOG ambíguo.
+- PMK-207: eea09aa com 5.1 só para erro do próprio request, mensagem sem nada mudaria quando tudo caiu, cenário sem empate; diff conferido. Mergeado (be7d8d7). Último bug da lista: os 31 bugs estão mergeados.
+- PMK-209: PR #167 (sonnet); status de deploy numa chamada GraphQL com fallback para unknown; check que falha liga a ci logs --run; createdAt/headSha/newerRun em ci logs; tail a partir do fim do log. Follow-ups: stream de gh run view --log-failed; filtro de ref no GraphQL. Revisor ciclo 1 (opus) iniciado.
+- PMK-209 ciclo 1 (opus): mudanças pedidas, 4 bloqueantes (argv do gh api sem -f, gh real recusa e tudo vira unknown; fakes com o mesmo argv errado; resposta GraphQL parcial descartada; run cancelled conta como talvez corrigido; state null em branco no release-readiness). Follow-ups: dica de cancel diferente entre pr status e pr blockers; lógica de risks duplicada.
+- PMK-214: PR #168 (opus); delegação nativa no Linear com agent:<id do usuário Linear> (comentário primeiro, depois delegateId, checagens antes de qualquer escrita, erro lista o que foi escrito); delegate atômico no Local; agent:claude no fixture team; /pmkit:issues:work --as <agent>; suíte de contrato com a família agents no fake do Linear. delegateId conferido só no schema público. Follow-ups: track-agents no Linear lendo delegate; filtrar agentes por User.isAssignable; checagem live de delegateId; Local com issue.md escrito e append de events falho. Revisor ciclo 1 (opus) iniciado.
+- PMK-209 correção 37a7e96: -f antes de cada ids[] (conferido no gh real), fake de gh recusa posicional sobrando; resposta parcial mantém os status que vieram; só run mais nova com sucesso marca superseded; release-readiness mostra unknown e avisa; url só logUrl; frase velha do investigate-bug.md removida. Revisor ciclo 2 (opus) iniciado.
+- PMK-214 ciclo 1 (opus): mudanças pedidas, 3 bloqueantes (falha do append de events deixa issue atribuída sem registro e erro UNEXPECTED; issueUpdate sem confirmação vira missing sem reler e o retry duplica o comentário; work.md manda --as no Linear, que recusa). Schema do Linear conferido pelo revisor. Follow-ups: redelegar ao mesmo agente sem confirmar reinício de sessão; código de comentário duplicado.
+- PMK-209 ciclo 2 (opus): APROVADO (forma da resposta parcial conferida no gh real); pedi antes do merge os docs com a regra nova de run mais nova (README:172, investigate-bug.md:24, CHANGELOG:5). Não bloqueantes restantes: erro de campo em latestStatus vira pending; RATE_LIMITED do GraphQL derruba a lista; dica de pr status só para fail; fake de gh sem -X/--jq.
+- PMK-209: df78a26 com docs da regra nova e um helper para o aviso de unknown; diff conferido. Mergeado (2f4e6eb).
+- PMK-209 mergeado acima. PMK-214 correção 9c57824: Local desfaz issue.md e o comentário quando o append falha (CONFLICT nothing was changed); Linear relê o issueUpdate sem confirmação e nomeia o comentário postado; work.md sem --as no Linear (mantém a ADR-0005); não bloqueantes baratos. Revisor ciclo 2 (opus) iniciado.
+- PMK-214 ciclo 2 (opus): APROVADO; pedi antes do merge: leitura falha depois de update confirmado não vira missing delegate (history-ops.mjs:189); mensagem de events intacto falsa com eventos de drift (tracker.mjs:536); rmSync dentro do try (:547).
+- PMK-214: 9c69536 com update confirmado como sucesso, rollback que devolve também events.jsonl e passos de rollback independentes; diff conferido. Mergeado (9a40228).
+
+Fim da rodada 11: PRs #166, #167, #168 mergeados.
