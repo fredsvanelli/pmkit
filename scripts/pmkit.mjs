@@ -68,6 +68,8 @@ export function pmkitConfigRefusal(text, { update }) {
 
 // Option readers. A repeated option arrives as an array; the last one wins unless the command asks for a list.
 const last = (value) => (Array.isArray(value) ? value[value.length - 1] : value)
+// A pull request read with `detail` keeps it out of the JSON: the review bodies would come back twice.
+const withoutDetail = (pr) => (pr ? (({ detail, ...view }) => view)(pr) : pr)
 const csv = (value) => [value].flat().filter((item) => typeof item === 'string').flatMap((item) => item.split(',')).map((item) => item.trim()).filter(Boolean)
 
 function whole(name, value) {
@@ -1482,13 +1484,13 @@ export const COMMANDS = [
       const host = ctx.host()
       const branch = ctx.opt('branch') ?? host.currentBranch()
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
-      const pr = host.getPullRequest({ head: branch })
+      const pr = host.getPullRequest({ head: branch }, { detail: true })
       const checks = pr ? host.prChecks(pr.number) : []
-      const reviews = pr ? host.prReviews(pr.number).reviews : []
+      const reviews = pr?.detail.reviews ?? []
       const lines = pr
         ? [`#${pr.number} ${pr.title} (${pr.state}${pr.isDraft ? ', draft' : ''})`, pr.url, `checks: ${checks.length === 0 ? '(none)' : checks.map((c) => `${c.name} ${c.bucket ?? c.state}${c.bucket === 'fail' && c.runId ? ` (ci logs --run ${c.runId})` : ''}`).join(', ')}`, `reviews: ${reviews.length === 0 ? '(none)' : reviews.map((r) => r.state).join(', ')}`]
         : [`no pull request for ${branch}`]
-      return { data: { branch, pr, checks, reviews }, text: lines.join('\n'), notes: await capabilityNotesOrNone(ctx) }
+      return { data: { branch, pr: withoutDetail(pr), checks, reviews }, text: lines.join('\n'), notes: await capabilityNotesOrNone(ctx) }
     },
   },
   {
@@ -1626,10 +1628,10 @@ export const COMMANDS = [
       const host = ctx.host()
       const branch = ctx.opt('branch') ?? host.currentBranch()
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
-      const pr = host.getPullRequest({ head: branch })
+      const pr = host.getPullRequest({ head: branch }, { detail: true })
       if (!pr) return { data: { branch, pr: null, blocked: null }, text: `no pull request for ${branch}`, notes: await capabilityNotesOrNone(ctx) }
       const found = collectBlockers(host, pr)
-      return { data: { branch, pr, ...found }, text: blockersText(pr, found), notes: await capabilityNotesOrNone(ctx) }
+      return { data: { branch, pr: withoutDetail(pr), ...found }, text: blockersText(pr, found), notes: await capabilityNotesOrNone(ctx) }
     },
   },
   {
@@ -2302,7 +2304,7 @@ async function runTrackAgents(ctx) {
       else if (rateLimited) row.pr = { state: 'unknown', code: 'RATE_LIMITED', message: 'not read: GitHub rate limit reached earlier in this run' }
       else {
         try {
-          const pr = cachedHost.getPullRequest({ head: row.branch })
+          const pr = cachedHost.getPullRequest({ head: row.branch }, { detail: true })
           row.pr = pr ? prSummary(pr, collectBlockers(cachedHost, pr)) : { state: 'no_pr' }
         } catch (error) {
           // A missing or logged out gh fails every lookup the same way, so it stops the command.

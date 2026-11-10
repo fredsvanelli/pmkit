@@ -11,7 +11,8 @@ import { makeRepo, tempDir } from './test-helpers.mjs'
 import { fakeGh, ghCalls } from './fake-gh.mjs'
 
 const VIEW = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
-const view = (branch) => `pr view ${branch} --json ${VIEW}`
+// track-agents reads each pull request with its reviews and merge state in one call.
+const view = (branch) => `pr view ${branch} --json ${VIEW},reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName`
 const pr = (overrides = {}) => JSON.stringify({ number: 7, url: 'https://github.com/o/r/pull/7', title: 'T', state: 'MERGED', isDraft: false, headRefName: 'x', author: { login: 'a' }, mergedAt: '2026-10-20T00:00:00Z', ...overrides })
 
 function setup({ github = true, canned = {} } = {}) {
@@ -121,10 +122,8 @@ const PROTECTION = 'api repos/{owner}/{repo}/branches/main/protection'
 function openPr(key, branch, number, kind) {
   const merge = kind === 'notReady' ? { mergeable: 'UNKNOWN', mergeStateStatus: 'UNKNOWN', reviewDecision: '', baseRefName: 'main' } : { mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', reviewDecision: 'APPROVED', baseRefName: 'main' }
   return {
-    [view(branch)]: { stdout: pr({ number, state: 'OPEN', isDraft: kind === 'draft', mergedAt: null }) },
+    [view(branch)]: { stdout: pr({ number, state: 'OPEN', isDraft: kind === 'draft', mergedAt: null, ...merge, reviews: [{ author: { login: 'ann' }, state: 'APPROVED' }], reviewRequests: [] }) },
     [`pr checks ${number} --json name,state,bucket,link`]: { stdout: JSON.stringify([{ name: 'test', state: 'SUCCESS', bucket: 'pass' }]) },
-    [`pr view ${number} --json reviews,reviewRequests`]: { stdout: JSON.stringify({ reviews: [{ author: { login: 'ann' }, state: 'APPROVED' }], reviewRequests: [] }) },
-    [`pr view ${number} --json mergeable,mergeStateStatus,reviewDecision,baseRefName`]: { stdout: JSON.stringify(merge) },
     [key.replace('{N}', String(number))]: { stdout: EMPTY_THREADS },
   }
 }

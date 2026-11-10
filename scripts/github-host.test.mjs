@@ -68,13 +68,19 @@ test('openPullRequest omits --draft when draft is false', () => {
   assert.ok(!calls[0].args.includes('--draft'))
 })
 
-test('prChecks and prReviews call gh with the spec flags', () => {
-  const { exec, calls } = fakeExec({ stdout: '[{"name":"ci","state":"SUCCESS","bucket":"pass","link":"https://github.com/o/r/actions/runs/77/job/5"}]' }, { stdout: '{"reviews":[],"reviewRequests":[]}' })
-  const h = host(exec)
-  assert.deepEqual(h.prChecks(12), [{ name: 'ci', state: 'SUCCESS', bucket: 'pass', link: 'https://github.com/o/r/actions/runs/77/job/5', runId: 77 }])
-  assert.deepEqual(h.prReviews(12), { reviews: [], reviewRequests: [] })
+test('prChecks calls gh with the spec flags', () => {
+  const { exec, calls } = fakeExec({ stdout: '[{"name":"ci","state":"SUCCESS","bucket":"pass","link":"https://github.com/o/r/actions/runs/77/job/5"}]' })
+  assert.deepEqual(host(exec).prChecks(12), [{ name: 'ci', state: 'SUCCESS', bucket: 'pass', link: 'https://github.com/o/r/actions/runs/77/job/5', runId: 77 }])
   assert.deepEqual(calls[0].args, ['pr', 'checks', '12', '--json', 'name,state,bucket,link'])
-  assert.deepEqual(calls[1].args, ['pr', 'view', '12', '--json', 'reviews,reviewRequests'])
+})
+
+test('getPullRequest with detail reads the review and merge fields in the same gh pr view', () => {
+  const detail = { reviews: [{ state: 'APPROVED' }], reviewRequests: [], mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', reviewDecision: '', baseRefName: 'main' }
+  const { exec, calls } = fakeExec({ stdout: JSON.stringify({ ...pr, ...detail }) })
+  const result = host(exec).getPullRequest({ head: 'feat' }, { detail: true })
+  assert.deepEqual(calls[0].args, ['pr', 'view', 'feat', '--json', `${VIEW_FIELDS},reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName`])
+  assert.deepEqual(result, { ...pr, detail })
+  assert.equal(calls.length, 1)
 })
 
 test('prChecks gives runId null for a check whose link is not a workflow run', () => {
@@ -156,7 +162,7 @@ test('stderr mentioning rate limit becomes RATE_LIMITED', () => {
 test('any other failure becomes UPSTREAM with the first stderr line', () => {
   const { exec } = fakeExec({ status: 1, stderr: 'boom happened\nsecond line\n' })
   assert.throws(
-    () => host(exec).prReviews(1),
+    () => host(exec).prRefs(1),
     (e) => e.code === 'UPSTREAM' && e.message.includes('boom happened') && !e.message.includes('second line'),
   )
 })
@@ -495,23 +501,46 @@ test('unpushedCommits counts the commits of a local branch that origin lacks, an
 })
 
 
-test('prMergeState reads the merge fields with gh pr view', () => {
-  const state = { mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY', reviewDecision: 'REVIEW_REQUIRED', baseRefName: 'main' }
-  const { exec, calls } = fakeExec({ stdout: JSON.stringify(state) })
-  assert.deepEqual(host(exec).prMergeState(12), state)
-  assert.deepEqual(calls[0].args, ['pr', 'view', '12', '--json', 'mergeable,mergeStateStatus,reviewDecision,baseRefName'])
-})
-
-test('prThreads asks the review threads with one graphql call, flattens them and reports a second page', () => {
-  const node = (id, extra = {}) => ({ isResolved: false, isOutdated: false, path: 'a.js', line: 3, comments: { nodes: [{ url: `https://x/${id}`, body: `c${id}`, author: { login: 'bob' } }] }, ...extra })
-  const reply = { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: true }, nodes: [node(1), node(2, { isResolved: true })] } } } } }
-  const { exec, calls } = fakeExec({ stdout: JSON.stringify(reply) })
+test('prThreads reads every page, sends the cursor of the previous page and asks for no comment body', () => {
+  const node = (id, extra = {}) => ({ isResolved: false, isOutdated: false, path: 'a.js', line: 3, comments: { nodes: [{ url: `https://x/${id}`, author: { login: 'bob' } }] }, ...extra })
+  const page = (pageInfo, nodes) => ({ stdout: JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { pageInfo, nodes } } } } }) })
+  const { exec, calls } = fakeExec(page({ hasNextPage: true, endCursor: 'c1' }, [node(1), node(2, { isResolved: true })]), page({ hasNextPage: false, endCursor: 'c2' }, [node(3)]))
   const result = host(exec).prThreads(12)
+  assert.equal(calls.length, 2)
   assert.deepEqual(calls[0].args.slice(0, 2), ['api', 'graphql'])
   for (const part of ['owner={owner}', 'repo={repo}', 'number=12']) assert.ok(calls[0].args.includes(part), part)
-  assert.equal(result.incomplete, true)
-  assert.deepEqual(result.threads[0], { isResolved: false, isOutdated: false, path: 'a.js', line: 3, url: 'https://x/1', author: 'bob', body: 'c1' })
-  assert.equal(result.threads[1].isResolved, true)
+  assert.ok(!calls[0].args.some((a) => a.startsWith('endCursor=')))
+  assert.ok(calls[1].args.includes('endCursor=c1'))
+  const query = calls[0].args.find((a) => a.startsWith('query='))
+  assert.ok(!/\bbody\b/.test(query), query)
+  assert.deepEqual(result, { threads: [
+    { isResolved: false, isOutdated: false, path: 'a.js', line: 3, url: 'https://x/1', author: 'bob' },
+    { isResolved: true, isOutdated: false, path: 'a.js', line: 3, url: 'https://x/2', author: 'bob' },
+    { isResolved: false, isOutdated: false, path: 'a.js', line: 3, url: 'https://x/3', author: 'bob' },
+  ] })
+})
+
+test('prThreads fails when GitHub says there is a next page without a cursor', () => {
+  const reply = { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: true, endCursor: null }, nodes: [] } } } } }
+  const { exec, calls } = fakeExec({ stdout: JSON.stringify(reply) })
+  assert.throws(() => host(exec).prThreads(12), (e) => e.code === 'UPSTREAM' && /no cursor/.test(e.message))
+  assert.equal(calls.length, 1)
+})
+
+test('branchRules reads the active rules of the base page by page', () => {
+  const full = Array.from({ length: 100 }, () => ({ type: 'deletion' }))
+  const { exec, calls } = fakeExec({ stdout: JSON.stringify(full) }, { stdout: JSON.stringify([{ type: 'pull_request', parameters: { required_approving_review_count: 1 } }]) })
+  const rules = host(exec).branchRules('main')
+  assert.equal(rules.length, 101)
+  assert.equal(rules[100].type, 'pull_request')
+  assert.deepEqual(calls.map((c) => c.args), [['api', 'repos/{owner}/{repo}/rules/branches/main?per_page=100&page=1'], ['api', 'repos/{owner}/{repo}/rules/branches/main?per_page=100&page=2']])
+  const refused = fakeExec({ status: 1, stderr: 'gh: Not Found (HTTP 404)\n' })
+  assert.throws(() => host(refused.exec).branchRules('main'), (e) => e.code === 'UPSTREAM' && e.httpStatus === 404)
+  const odd = fakeExec({ stdout: '{"message":"x"}' })
+  assert.throws(() => host(odd.exec).branchRules('main'), (e) => e.code === 'UPSTREAM')
+  const bad = fakeExec()
+  assert.throws(() => host(bad.exec).branchRules('-x'), (e) => e.code === 'INVALID_INPUT')
+  assert.equal(bad.calls.length, 0)
 })
 
 test('prThreads maps the failed graphql call of gh, with its JSON on stdout and its message on stderr, to UPSTREAM', () => {
@@ -556,17 +585,17 @@ test('a GraphQL: Resource not accessible refusal of gh pr view and gh pr checks 
   const stderr = 'GraphQL: Resource not accessible by integration (repository.pullRequest.statusCheckRollup)\n'
   const status = (read) => { try { read(host(fakeExec({ status: 1, stderr }).exec)) } catch (e) { return e.httpStatus } }
   assert.equal(status((h) => h.prChecks(1)), 403)
-  assert.equal(status((h) => h.prMergeState(1)), 403)
-  assert.equal(status((h) => h.prReviews(1)), 403)
-  const other = () => { try { host(fakeExec({ status: 1, stderr: 'GraphQL: Could not resolve to a PullRequest\n' }).exec).prMergeState(1) } catch (e) { return e.httpStatus } }
+  assert.equal(status((h) => h.prRefs(1)), 403)
+  assert.equal(status((h) => h.getPullRequest({ number: 1 }, { detail: true })), 403)
+  const other = () => { try { host(fakeExec({ status: 1, stderr: 'GraphQL: Could not resolve to a PullRequest\n' }).exec).prRefs(1) } catch (e) { return e.httpStatus } }
   assert.equal(other(), undefined)
 })
 
 test('a SAML enforcement or missing-scopes refusal is a 403, and a message that only mentions them is not', () => {
   const status = (stderr, read = (h) => h.prChecks(1)) => { try { read(host(fakeExec({ status: 1, stderr }).exec)) } catch (e) { return e.httpStatus } }
   assert.equal(status('GraphQL: Resource protected by organization SAML enforcement. You must grant your OAuth token access to this organization.\n'), 403)
-  assert.equal(status('gh: Resource protected by organization SAML enforcement.\n', (h) => h.prReviews(1)), 403)
-  assert.equal(status('GraphQL: Your token has not been granted the required scopes to execute this query. (INSUFFICIENT_SCOPES)\n', (h) => h.prMergeState(1)), 403)
+  assert.equal(status('gh: Resource protected by organization SAML enforcement.\n', (h) => h.prRefs(1)), 403)
+  assert.equal(status('GraphQL: Your token has not been granted the required scopes to execute this query. (INSUFFICIENT_SCOPES)\n', (h) => h.prRefs(1)), 403)
   assert.equal(status('error: your authentication token is missing required scopes [read:org]\n'), 403)
   assert.equal(status('GraphQL: Could not resolve to a PullRequest with the name SAML enforcement\n'), undefined)
   const threads = (type) => {

@@ -46,6 +46,9 @@ const errorOf = (result) => JSON.parse(result.stdout).error
 
 const prJson = (overrides = {}) => JSON.stringify({ number: 7, url: 'https://github.com/o/r/pull/7', title: 'T', state: 'OPEN', isDraft: false, headRefName: 'x', author: { login: 'fred' }, mergedAt: null, ...overrides })
 const view = (branch) => `pr view ${branch} --json ${VIEW}`
+// pr status and pr blockers read the pull request with its reviews and merge state in one call.
+const detailView = (branch) => `pr view ${branch} --json ${VIEW},reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName`
+const detailJson = (overrides = {}, detail = {}) => JSON.stringify({ ...JSON.parse(prJson(overrides)), reviews: [], reviewRequests: [], mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', reviewDecision: '', baseRefName: 'main', ...detail })
 
 async function inReview(root, env, id, branch) {
   await callJson(root, env, ['issues', 'update', id, '--branch', branch])
@@ -163,7 +166,8 @@ test('a PATH without gh exits 2 with NOT_CONFIGURED, and a logged out gh with AU
   assert.equal(missing.code, 2)
   assert.equal(errorOf(missing).code, 'NOT_CONFIGURED')
 
-  const loggedOut = envWith(fakeGh({ [view('x')]: { status: 4, stderr: 'To get started with GitHub CLI, please run:  gh auth login\n' } }))
+  const login = { status: 4, stderr: 'To get started with GitHub CLI, please run:  gh auth login\n' }
+  const loggedOut = envWith(fakeGh({ [view('x')]: login, [detailView('x')]: login }))
   const auth = await call(root, loggedOut, ['pr', 'status', '--branch', 'x', '--json'])
   assert.equal(auth.code, 2)
   assert.equal(errorOf(auth).code, 'AUTH')
@@ -177,10 +181,9 @@ test('a PATH without gh exits 2 with NOT_CONFIGURED, and a logged out gh with AU
 test('pr status returns the pull request with checks and reviews, and an empty checks list when there are none', async () => {
   const root = teamRepo()
   const gh = fakeGh({
-    [view('feat')]: { stdout: prJson({ number: 7 }) },
+    [detailView('feat')]: { stdout: detailJson({ number: 7 }, { reviews: [{ state: 'APPROVED' }] }) },
     'pr checks 7 --json name,state,bucket,link': { status: 1, stderr: "no checks reported on the 'feat' branch\n" },
-    'pr view 7 --json reviews,reviewRequests': { stdout: JSON.stringify({ reviews: [{ state: 'APPROVED' }], reviewRequests: [] }) },
-    [view('none')]: { status: 1, stderr: 'no pull requests found for branch "none"\n' },
+    [detailView('none')]: { status: 1, stderr: 'no pull requests found for branch "none"\n' },
   })
   const env = envWith(gh)
   const status = await callJson(root, env, ['pr', 'status', '--branch', 'feat'])
@@ -195,13 +198,12 @@ test('pr status returns the pull request with checks and reviews, and an empty c
 test('pr status links a failing check to its ci logs run, and leaves a check without a run alone', async () => {
   const root = teamRepo()
   const gh = fakeGh({
-    [view('feat')]: { stdout: prJson({ number: 7 }) },
+    [detailView('feat')]: { stdout: detailJson({ number: 7 }) },
     'pr checks 7 --json name,state,bucket,link': { status: 1, stdout: JSON.stringify([
       { name: 'build', state: 'FAILURE', bucket: 'fail', link: 'https://github.com/o/r/actions/runs/123/job/9' },
       { name: 'lint', state: 'SUCCESS', bucket: 'pass', link: 'https://github.com/o/r/actions/runs/124/job/1' },
       { name: 'ext', state: 'FAILURE', bucket: 'fail', link: 'https://ci.example.com/1' },
     ]) },
-    'pr view 7 --json reviews,reviewRequests': { stdout: JSON.stringify({ reviews: [], reviewRequests: [] }) },
   })
   const env = envWith(gh)
   const status = await callJson(root, env, ['pr', 'status', '--branch', 'feat'])
@@ -550,12 +552,9 @@ test('pr diff refuses a repository with no git host', async () => {
   assert.equal(errorOf(result).code, 'NOT_SUPPORTED')
 })
 
-const MERGE = 'pr view 7 --json mergeable,mergeStateStatus,reviewDecision,baseRefName'
 const blockerGh = (over = {}) => ({
-  [view('feat')]: { stdout: prJson({ number: 7 }) },
+  [detailView('feat')]: { stdout: detailJson({ number: 7 }, { reviews: [{ author: { login: 'ann' }, state: 'CHANGES_REQUESTED' }], reviewRequests: [{ __typename: 'User', login: 'bob' }], mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY', reviewDecision: 'CHANGES_REQUESTED' }) },
   'pr checks 7 --json name,state,bucket,link': { status: 8, stdout: JSON.stringify([{ name: 'build', state: 'FAILURE', bucket: 'fail' }, { name: 'lint', state: 'PENDING', bucket: 'pending' }]) },
-  'pr view 7 --json reviews,reviewRequests': { stdout: JSON.stringify({ reviews: [{ author: { login: 'ann' }, state: 'CHANGES_REQUESTED' }], reviewRequests: [{ __typename: 'User', login: 'bob' }] }) },
-  [MERGE]: { stdout: JSON.stringify({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY', reviewDecision: 'CHANGES_REQUESTED', baseRefName: 'main' }) },
   ...over,
 })
 
@@ -570,7 +569,7 @@ async function graphqlKey() {
 test('pr blockers lists checks, reviews, conflicts, open threads and policies', async () => {
   const root = teamRepo()
   const key = await graphqlKey()
-  const threads = { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false }, nodes: [{ isResolved: false, isOutdated: false, path: 'a.js', line: 4, comments: { nodes: [{ url: 'https://x/c', body: 'rename', author: { login: 'ann' } }] } }] } } } } }
+  const threads = { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false }, nodes: [{ isResolved: false, isOutdated: false, path: 'a.js', line: 4, comments: { nodes: [{ url: 'https://x/c', author: { login: 'ann' } }] } }] } } } } }
   const gh = fakeGh(blockerGh({
     [key]: { stdout: JSON.stringify(threads) },
     'api repos/{owner}/{repo}/branches/main/protection': { stdout: JSON.stringify({ required_pull_request_reviews: { required_approving_review_count: 1 }, required_status_checks: { contexts: ['build'] } }) },
@@ -578,6 +577,8 @@ test('pr blockers lists checks, reviews, conflicts, open threads and policies', 
   const data = await callJson(root, envWith(gh), ['pr', 'blockers', '--branch', 'feat'])
   assert.equal(data.branch, 'feat')
   assert.equal(data.pr.number, 7)
+  assert.equal('detail' in data.pr, false)
+  assert.equal(ghCalls(gh).filter((c) => c.startsWith('pr view')).length, 1)
   assert.equal(data.blocked, true)
   assert.deepEqual(data.checks.failing.map((c) => c.name), ['build'])
   assert.deepEqual(data.checks.pending.map((c) => c.name), ['lint'])
@@ -611,7 +612,7 @@ test('pr blockers reports a refused protection read as not checked and still exi
 
 test('pr blockers of a branch without a pull request has no verdict (blocked null) and is not an error', async () => {
   const root = teamRepo()
-  const gh = fakeGh({ [view('none')]: { status: 1, stderr: 'no pull requests found for branch "none"\n' } })
+  const gh = fakeGh({ [detailView('none')]: { status: 1, stderr: 'no pull requests found for branch "none"\n' } })
   const data = await callJson(root, envWith(gh), ['pr', 'blockers', '--branch', 'none'])
   assert.equal(data.pr, null)
   assert.equal(data.blocked, null)
@@ -620,11 +621,11 @@ test('pr blockers of a branch without a pull request has no verdict (blocked nul
 
 test('pr blockers of a merged pull request is not blocked and reads nothing more', async () => {
   const root = teamRepo()
-  const gh = fakeGh({ [view('done')]: { stdout: prJson({ number: 9, state: 'MERGED', mergedAt: '2026-10-22T10:00:00Z' }) } })
+  const gh = fakeGh({ [detailView('done')]: { stdout: detailJson({ number: 9, state: 'MERGED', mergedAt: '2026-10-22T10:00:00Z' }) } })
   const data = await callJson(root, envWith(gh), ['pr', 'blockers', '--branch', 'done'])
   assert.equal(data.blocked, false)
   assert.equal(data.state, 'MERGED')
-  assert.deepEqual(ghCalls(gh), [`pr view done --json ${VIEW}`])
+  assert.deepEqual(ghCalls(gh), [detailView('done')])
 })
 
 test('pr blockers with git_host.system none is NOT_SUPPORTED', async () => {
