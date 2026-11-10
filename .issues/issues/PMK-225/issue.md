@@ -2,14 +2,14 @@
 id: PMK-225
 title: Improve user inbox
 type: feature
-status: in_progress
+status: in_review
 priority: medium
 estimate: 5
 assignee: fred
 related: [PMK-47]
 branch: pmk-225-improve-user-inbox
 created: 2026-11-08T20:37:24.875Z
-updated: 2026-11-10T01:22:29Z
+updated: 2026-11-10T01:23:12Z
 ---
 
 ## Description
