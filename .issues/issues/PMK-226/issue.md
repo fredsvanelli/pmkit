@@ -2,12 +2,14 @@
 id: PMK-226
 title: Add more changes to the bulk operation
 type: feature
-status: backlog
+status: in_progress
 priority: low
 estimate: 3
+assignee: fred
 related: [PMK-56, PMK-239, PMK-240]
+branch: pmk-226-add-more-changes-to-the-bulk-operation
 created: 2026-11-08T20:37:25.008Z
-updated: 2026-11-08T20:58:09Z
+updated: 2026-11-10T17:19:29Z
 ---
 
 ## Description
