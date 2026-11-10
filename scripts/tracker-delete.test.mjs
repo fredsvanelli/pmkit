@@ -250,3 +250,15 @@ test('a delete of an epic ID is NOT_FOUND and the epic stays', () => {
   assert.equal(tracker.getDeliverable(epic).title, 'An epic')
   assert.equal(hashTree(root), before)
 })
+
+test('the refusal groups the blockedBy references and the related references into one unlink command each', () => {
+  const { tracker, ids: [a, b, c, d, e, f] } = setup(6)
+  tracker.link(a, b, 'blocks', 'fred')
+  tracker.link(a, c, 'blocks', 'fred')
+  tracker.link(d, a, 'related', 'fred')
+  tracker.link(a, e, 'related', 'fred')
+  tracker.link(f, a, 'duplicate', 'fred')
+  const error = refused(() => tracker.delete(a, 'fred'))
+  assert.equal(error.details.references.length, 5)
+  assert.ok(error.nextStep.startsWith(`Remove each reference, then delete again: pmkit issues link ${a} ${b} ${c} --kind blocks --remove; pmkit issues link ${a} ${d} ${e} --kind related --remove; pmkit issues link ${f} ${a} --kind duplicate --remove. `), error.nextStep)
+})

@@ -387,6 +387,33 @@ function deleteText({ before, removes, warnings, mentions, files = [], unchecked
 const commentText = (c) =>
   `${c.created} ${c.author}${c.parent === undefined ? '' : ` (reply to ${c.parent})`}\n${c.body}${c.resolved === undefined ? '' : `\nresolved ${c.resolved.at} by ${c.resolved.by}`}`
 
+/**
+ * `issues link --remove` with several targets (PMK-222): one unlink after another, each as the single-target call does. A failure stops
+ * the run as `issues bulk` does: what ran stays written, the error lists applied, failed and remaining, and auto_commit keeps the writes.
+ */
+async function unlinkMany(ctx, tracker, actor, from, targets) {
+  const kind = ctx.opt('kind')
+  const results = []
+  for (const to of targets) {
+    try {
+      results.push({ to, ...(await tracker.unlink(from, to, kind, actor, { dryRun: ctx.dryRun })) })
+    } catch (error) {
+      const code = isPmkitError(error) ? error.code : 'UPSTREAM'
+      const applied = results.map((item) => item.to)
+      const stopped = { applied, failed: { to, code, message: error.message }, remaining: targets.slice(results.length + 1) }
+      const stop = new PmkitError(code, `${to} failed after ${applied.length} of ${targets.length} unlinks: ${error.message}`,
+        'The targets in applied are unlinked and the ones in remaining are not. Run the call again with the remaining targets once the failed one is fixed')
+      stop.written = {
+        data: stopped,
+        text: [`applied: ${applied.join(', ') || '(none)'}`, `failed: ${to} ${code} ${error.message}`, `remaining: ${stopped.remaining.join(', ') || '(none)'}`].join('\n'),
+      }
+      if (applied.length > 0 && !ctx.dryRun) stop.partialCommit = `${from} --remove (${applied.length} of ${targets.length})`
+      throw stop
+    }
+  }
+  return { data: { results }, text: results.map((item) => writeText(item, ctx)).join('\n\n'), commit: `${from} --remove ${targets.join(' ')}` }
+}
+
 const issueWrite = (ctx, result, id = result.after.id) => ({ data: result, text: writeText(result, ctx), commit: id })
 
 /** The warning for an issue write that puts the issue in a release that is already released. Runs after the write, so a failure to read the release only drops the warning. */
@@ -802,12 +829,19 @@ export const COMMANDS = [
     run: (ctx) => runTrackAgents(ctx),
   },
   {
-    name: 'issues link', summary: 'links or unlinks', usage: '<from> <to> --kind blocks|related|duplicate [--remove]', write: true, args: ['from', 'to'], flags: ['kind', 'remove'],
+    name: 'issues link', summary: 'links or unlinks; --remove takes several targets', usage: '<from> <to...> --kind blocks|related|duplicate [--remove]', write: true, rest: 'id', flags: ['kind', 'remove'],
     run: async (ctx) => {
+      const [from, ...targets] = ctx.args
+      if (targets.length === 0) throw usageError('issues link takes <from> <to>', 'Usage: issues link <from> <to...> --kind blocks|related|duplicate [--remove]')
       if (ctx.opt('kind') === undefined) throw usageError('issues link needs --kind', 'Use --kind blocks, related or duplicate')
       const op = ctx.flag('remove') ? 'unlink' : 'link'
-      const result = await (await ctx.tracker())[op](ctx.args[0], ctx.args[1], ctx.opt('kind'), await ctx.actor(), { dryRun: ctx.dryRun })
-      return issueWrite(ctx, result, ctx.args[0])
+      const tracker = await ctx.tracker()
+      const actor = await ctx.actor()
+      if (targets.length === 1) return issueWrite(ctx, await tracker[op](from, targets[0], ctx.opt('kind'), actor, { dryRun: ctx.dryRun }), from)
+      if (op === 'link') throw usageError('several targets work only with --remove', 'Link one target per call, or add --remove')
+      const repeated = targets.find((to, i) => targets.indexOf(to) !== i)
+      if (repeated !== undefined) throw usageError(`${repeated} is named twice`, 'Name each target once')
+      return unlinkMany(ctx, tracker, actor, from, targets)
     },
   },
   {

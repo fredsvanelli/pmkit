@@ -93,7 +93,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `issues assign <id> <member\|me\|none>` | assigns an issue; `me` is the actor |
 | `issues delegate <id> <agent:name>` | hands an issue to an agent with a delegation comment: on Local the agent becomes the assignee and runs locally, on Linear (`agent:<Linear user id>`) it becomes the delegate and Linear runs it; `--instructions-file` holds the instructions |
 | `issues track-agents [--agent <name>]` | open issues assigned to agent members (on Linear, open pull requests by bot authors), with the delegation record and the state of each pull request; reads only |
-| `issues link <from> <to> --kind blocks\|related\|duplicate` | links or unlinks (`--remove`) two issues |
+| `issues link <from> <to...> --kind blocks\|related\|duplicate` | links or unlinks (`--remove`) two issues. `--remove` takes several targets and stops at the first that fails, listing what it removed |
 | `issues parent <id> <parent\|none>` | sets the parent |
 | `issues comment <id> --body-file f [--reply-to c] [--redact]` | adds a comment; `--redact` replaces the secrets in the body by `[redacted]` first |
 | `issues log-time <id> <time>` | logs time; `<time>` is minutes (`90`, `45m`) or hours (`2h`, `1h30`, `1.5h`), from 1 minute up to the largest safe integer number of minutes, above which it answers `INVALID_INPUT` (an entry above 24 hours prints a `note:`, and a long entry reads with days, such as `1d1h`); the capability is checked before the time, so a tracker with no time tracking refuses first |
