@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-58]
 branch: pmk-215-improve-track-agents
 created: 2026-11-08T20:37:23.421Z
-updated: 2026-11-10T05:14:39Z
+updated: 2026-11-10T05:29:08Z
 ---
 
 ## Description
@@ -29,5 +29,5 @@ Improvements suggested by the implementer and reviewers of PMK-58 (track-agents)
 
 ## Acceptance criteria
 
-- [ ] A Linear fallback that finds pull requests by agent authors, instead of `NOT_SUPPORTED`
-- [ ] An `--agent` filter
+- [x] A Linear fallback that finds pull requests by agent authors, instead of `NOT_SUPPORTED`
+- [x] An `--agent` filter
