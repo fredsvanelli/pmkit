@@ -4,6 +4,8 @@ $ pmkit pr status --branch iss-5n1r-paginate-the-events-api --json  [step 3, rea
 exit 2 (expected NOT_SUPPORTED)
 $ pmkit default-branch --json  [step 6, read]
 exit 0
+$ git diff main...iss-5n1r-paginate-the-events-api  [step 6, git]
+exit 0
 $ git rev-parse --verify --quiet refs/heads/iss-5n1r-paginate-the-events-api  [step 7, git]
 exit 0
 $ pmkit issues comment ISS-5N1R --body-file - --redact --dry-run --json  [step 10.3, dry run]
@@ -22,7 +24,7 @@ exit 0
 +
 +1. The cursor is ignored (low). No source supports more.
 +
-+Not read: the pull request, CI and deployments, because git_host is none.
++Not read: the pull request and CI, because git_host is none.
 +The reporter wrote: "password=[redacted]
 +
 +Redacted 1 value.

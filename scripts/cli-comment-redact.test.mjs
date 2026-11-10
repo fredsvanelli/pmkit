@@ -57,3 +57,10 @@ test('issues comment without --redact keeps the body and has no redacted field',
   assert.ok(data.body.includes(SECRET))
   assert.equal('redacted' in data, false)
 })
+
+test('issues comment --redact on a body that is only a secret posts the mark and the count line', async () => {
+  const { comment } = setup()
+  const { code, data } = await comment(`${SECRET}\n`, ['--redact'])
+  assert.equal(code, 0)
+  assert.equal(data.body, '[redacted]\n\nRedacted 1 value.')
+})

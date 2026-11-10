@@ -3,10 +3,12 @@
 //     branch has the open pull request #7 and a failed run 42, so the command reads the issue, the log, the diff and the code of
 //     the branch, and posts the diagnosis (redacted by the CLI with --redact) after one confirmation.
 //  .1 degraded: the issue has no branch. The pull request, CI and the diff are not read; the deployments are (step 5 needs no branch).
-//  .2 degraded: git_host is none. The pull request, CI and deployments answer NOT_SUPPORTED and the diff is the local one.
+//  .2 degraded: git_host is none. pr status answers NOT_SUPPORTED, so steps 4 and 5 are skipped and the diff is the local one (step 6).
+//  .3 degraded: the branch of the issue is not a valid name (`x$(id)`). Step 2 treats it as no branch: no command takes the name.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { validBranch } from '../lib/config.mjs'
 
 const BRANCH = 'iss-5n1r-paginate-the-events-api'
 const VIEW = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
@@ -55,7 +57,9 @@ const happy = {
     { step: '4', read: ['ci', 'logs', '--branch', BRANCH] },
     { step: '6', read: ['pr', 'diff', '--branch', BRANCH] },
     { step: '7', git: ['rev-parse', '--verify', '--quiet', `refs/heads/${BRANCH}`] },
-    { step: '7', git: ['show', `${BRANCH}:src/events.mjs`] },
+    { step: '7', git: ['show', `refs/heads/${BRANCH}:src/events.mjs`] },
+    // The pattern comes before the ref: `git grep refs/heads/x -- f` would search the working tree for the ref name.
+    { step: '7', git: ['grep', 'cursor', `refs/heads/${BRANCH}`, '--', 'src/events.mjs'] },
     { step: '10.3', dryRun: comment, stdin: DRAFT },
     { confirm: 'Step 10' },
     { step: '10.3', write: comment, stdin: DRAFT },
@@ -134,15 +138,18 @@ const noBranch = {
 
 // git_host none (the fixture default), the issue has a branch: pr status and ci logs answer NOT_SUPPORTED, so the command
 // says CI and the pull request cannot be read, reads the diff with git, and posts what it found.
-const NO_HOST = 'the pull request, CI and deployments, because git_host is none'
+const NO_HOST = 'the pull request and CI, because git_host is none'
 const noHostDraft = degradedDraft(NO_HOST)
 const noHost = {
   command: 'issues/investigate-bug',
   fixture: 'team',
   git: true,
-  async setup({ pmkit, git }) {
+  async setup({ root, pmkit, git }) {
     await pmkit(['issues', 'update', 'ISS-5N1R', '--criteria-file', path.join(inputs, 'criteria.md'), '--branch', BRANCH])
     git('switch', '-q', '-c', BRANCH)
+    fs.writeFileSync(path.join(root, 'events.mjs'), 'export const page = (n, cursor) => n\n')
+    git('add', 'events.mjs')
+    git('commit', '-q', '-m', 'paginate')
   },
   prompt: '/pmkit:issues:investigate-bug ISS-5N1R',
   answers: ['Yes'],
@@ -150,17 +157,54 @@ const noHost = {
     { step: '2', read: ['issues', 'get', 'ISS-5N1R', '--comments'] },
     { step: '3', read: ['pr', 'status', '--branch', BRANCH], expectError: 'NOT_SUPPORTED' },
     { step: '6', read: ['default-branch'] },
+    { step: '6', git: ['diff', `main...${BRANCH}`] },
     { step: '7', git: ['rev-parse', '--verify', '--quiet', `refs/heads/${BRANCH}`] },
     ...postSteps(noHostDraft),
   ],
   skip: {
     '1 issues list': 'the ID is given, so step 1 does not look for the issue from the branch',
-    '4 ci logs': 'pr status answered NOT_SUPPORTED, so steps 4 to 6 are skipped and the diff is read with git',
-    '5 deploys list': 'the issue names no environment, so step 5 does not run',
+    '4 ci logs': 'pr status answered NOT_SUPPORTED, so steps 4 and 5 are skipped',
+    '5 deploys list': 'pr status answered NOT_SUPPORTED, so steps 4 and 5 are skipped',
     '6 pr diff': 'the git host is none, so the diff is read with git diff, not pr diff',
   },
   notHit: {},
   expect: degradedExpect(NO_HOST),
 }
 
-export default [happy, noBranch, noHost]
+// The branch of the issue is data from the tracker. A name a shell would run is never put in a command: step 2 treats the issue
+// as having no branch, so the CLI reads and the git commands that take the name are not called, and the draft says why.
+const BAD = 'x$(id)'
+const NOT_VALID = 'the pull request, CI and the code of the branch, because the branch name is not valid'
+const invalidDraft = degradedDraft(NOT_VALID)
+const invalidBranch = {
+  command: 'issues/investigate-bug',
+  fixture: 'team',
+  git: true,
+  async setup({ root }) {
+    // The CLI refuses such a name, so the record is edited by hand, as a hand-edited or imported issue would be.
+    const file = path.join(root, '.issues', 'issues', 'ISS-5N1R', 'issue.md')
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^---\n/, `---\nbranch: '${BAD}'\n`))
+  },
+  prompt: '/pmkit:issues:investigate-bug ISS-5N1R',
+  answers: ['Yes'],
+  steps: [
+    { step: '2', read: ['issues', 'get', 'ISS-5N1R', '--comments'], save: 'issue' },
+    ...postSteps(invalidDraft),
+  ],
+  skip: {
+    '1 issues list': 'the ID is given, so step 1 does not look for the issue from the branch',
+    '3 pr status': 'the branch name is not valid, so step 2 treats the issue as having no branch',
+    '4 ci logs': 'the branch name is not valid, so there is no CI run to read',
+    '5 deploys list': 'the issue names no environment, so step 5 does not run',
+    '6 pr diff': 'the branch name is not valid, so there is no diff to read',
+    '6 default-branch': 'the branch name is not valid, so step 6 is skipped',
+  },
+  notHit: {},
+  expect(repo, saved) {
+    assert.equal(saved.issue.branch, BAD, 'the tracker holds the name that is not valid')
+    assert.equal(validBranch(saved.issue.branch), false, 'validBranch refuses it, which is the rule step 2 states')
+    degradedExpect(NOT_VALID)(repo)
+  },
+}
+
+export default [happy, noBranch, noHost, invalidBranch]

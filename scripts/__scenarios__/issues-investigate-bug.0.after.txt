@@ -8,7 +8,9 @@ $ pmkit pr diff --branch iss-5n1r-paginate-the-events-api --json  [step 6, read]
 exit 0
 $ git rev-parse --verify --quiet refs/heads/iss-5n1r-paginate-the-events-api  [step 7, git]
 exit 0
-$ git show iss-5n1r-paginate-the-events-api:src/events.mjs  [step 7, git]
+$ git show refs/heads/iss-5n1r-paginate-the-events-api:src/events.mjs  [step 7, git]
+exit 0
+$ git grep cursor refs/heads/iss-5n1r-paginate-the-events-api -- src/events.mjs  [step 7, git]
 exit 0
 $ pmkit issues comment ISS-5N1R --body-file - --redact --dry-run --json  [step 10.3, dry run]
 exit 0
