@@ -51,6 +51,9 @@ const BUILDERS = {
       apply: (tracker, issue, actor, options) => tracker.updateIssue(issue.id, { labels: (issue.labels ?? []).filter((label) => label.trim() !== value) }, actor, options),
     }
   },
+  due: (value) => ({ text: `set due to ${value}`, apply: patchOf({ due: orNull(value) }) }),
+  type: (value) => ({ text: `set type to ${value}`, apply: patchOf({ type: orNull(value) }) }),
+  archive: () => ({ text: 'archive', apply: (tracker, issue, actor, options) => tracker.archive(issue.id, actor, options) }),
   milestone: (value) => ({ text: `set milestone to ${value}`, apply: patchOf({ milestone: orNull(value) }) }),
   release: (value) => ({ text: `set release to ${value}`, apply: patchOf({ release: orNull(value) }) }),
   sprint: (value) => ({
@@ -75,6 +78,10 @@ export const CHANGES = Object.keys(BUILDERS)
 /** The change `kind value` as { kind, value, text, apply }. `flags` carries status, linkKind, remove and the estimate scale. */
 export function parseChange(kind, value, flags = {}) {
   if (!Object.hasOwn(BUILDERS, kind)) throw invalid(`unknown change "${kind}"; use one of ${CHANGES.join(', ')}`)
+  if (kind === 'archive') {
+    if (value !== undefined) throw invalid('bulk archive takes no value', 'Run pmkit issues bulk archive with a filter')
+    return { kind, value: '', ...BUILDERS.archive() }
+  }
   if (typeof value !== 'string' || value === '') throw invalid(`bulk ${kind} needs a value`)
   return { kind, value, ...BUILDERS[kind](value, flags) }
 }

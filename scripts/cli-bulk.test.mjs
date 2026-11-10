@@ -366,3 +366,48 @@ test('the next step for a view with no criterion runs as printed and makes the v
     assert.deepEqual(result.body.items.map((item) => item.id), [ids.B, ids.A, ids.D])
   })
 })
+
+test('due, type and archive preview and write on the Local tracker', async () => {
+  await withRepo(async (root, ids) => {
+    for (const [args, field, expected] of [[['due', '2026-12-01'], 'due', '2026-12-01'], [['type', 'bug'], 'type', 'bug'], [['archive'], 'archived', true]]) {
+      const dry = await bulk(root, ...args, '--label', 'legacy', '--dry-run')
+      assert.equal(dry.code, 0, JSON.stringify(dry.body))
+      assert.deepEqual(dry.body.items.map((item) => item.id), [ids.A, ids.B, ids.D])
+      assert.ok(dry.body.items.every((item) => item.changes.some((change) => change.field === field && change.to === expected)), args.join(' '))
+      const real = await bulk(root, ...args, '--label', 'legacy', '--expect', dry.body.digest)
+      assert.equal(real.code, 0, JSON.stringify(real.body))
+      assert.deepEqual(real.body.applied, [ids.A, ids.B, ids.D])
+      assert.equal((await ok(root, ['issues', 'get', ids.A]))[field === 'archived' ? 'archived' : field], expected)
+    }
+    assert.deepEqual((await ok(root, ['issues', 'list', '--label', 'legacy'])).issues, [])
+  })
+})
+
+test('due none clears the date', async () => {
+  await withRepo(async (root, ids) => {
+    await ok(root, ['issues', 'update', ids.A, '--due', '2026-12-01'])
+    const dry = await bulk(root, 'due', 'none', '--label', 'legacy', '--dry-run')
+    assert.deepEqual(dry.body.items.map((item) => item.state), ['change', 'unchanged', 'unchanged'])
+    await bulk(root, 'due', 'none', '--label', 'legacy', '--expect', dry.body.digest)
+    assert.equal((await ok(root, ['issues', 'get', ids.A])).due, undefined)
+  })
+})
+
+test('a bad date, type none and an archive value are one INVALID_INPUT and write nothing', async () => {
+  await withRepo(async (root, ids) => {
+    for (const args of [['due', '12/01/2026'], ['type', 'none'], ['type', 'bogus'], ['archive', 'yes']]) {
+      const result = await bulk(root, ...args, '--label', 'legacy', '--dry-run')
+      assert.equal(result.code, 2, args.join(' '))
+      assert.equal(result.body.error.code, 'INVALID_INPUT', `${args.join(' ')}: ${JSON.stringify(result.body)}`)
+      assert.equal(result.body.blockers, undefined)
+    }
+    assert.equal((await ok(root, ['issues', 'get', ids.A])).archived, false)
+  })
+})
+
+test('the archive preview warns that archived issues leave every list', async () => {
+  await withRepo(async (root) => {
+    const dry = await bulk(root, 'archive', '--label', 'legacy', '--dry-run')
+    assert.match(dry.body.warnings.join('\n'), /archived issues .*never matched/)
+  })
+})

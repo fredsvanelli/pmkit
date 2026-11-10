@@ -97,9 +97,22 @@ test('parentInput sets an issue parent, an epic, or clears both', () => {
   assert.deepEqual(parentInput(), { parentId: null, projectId: null })
 })
 
-test('a milestone is NOT_SUPPORTED with the Linear message, and NOT_EPICS is gone', () => {
-  assert.throws(() => toInput({ milestone: 'x' }, update), { code: 'NOT_SUPPORTED', message: 'set the milestone in Linear' })
+test('a milestone is written by update with the milestone node, cleared by null, and still refused on create', () => {
+  const milestoneNode = { id: 'ms-1', project: { id: 'project-uuid' } }
+  assert.throws(() => toInput({ title: 'x', milestone: 'x' }, create), { code: 'NOT_SUPPORTED', message: 'set the milestone in Linear' })
+  assert.deepEqual(toInput({ milestone: 'ms-1' }, { ...update, milestoneNode }), { projectMilestoneId: 'ms-1' })
+  assert.deepEqual(toInput({ milestone: null }, update), { projectMilestoneId: null })
+  assert.throws(() => toInput({ milestone: 'ms-1' }, update), { code: 'INVALID_INPUT' })
   assert.equal('NOT_EPICS' in writes, false)
+})
+
+test('a release is NOT_SUPPORTED and says Linear releases are not mapped', () => {
+  assert.throws(() => toInput({ release: '1.0' }, update), { code: 'NOT_SUPPORTED', message: 'Linear releases are not mapped yet' })
+})
+
+test('applyInput shows the milestone a projectMilestoneId sets', () => {
+  assert.deepEqual(applyInput(node(), { projectMilestoneId: 'ms-1' }, context).projectMilestone, { id: 'ms-1' })
+  assert.equal(applyInput(node({ projectMilestone: { id: 'ms-1' } }), { projectMilestoneId: null }, context).projectMilestone, null)
 })
 
 test('applyInput sets the project from the project option and the parent from the parent option', () => {
@@ -135,9 +148,9 @@ test('description and criteria rebuild the whole description; the heading is ref
   assert.throws(() => toInput({ acceptanceCriteria: [{ text: '' }] }, update), { code: 'INVALID_INPUT' })
 })
 
-test('milestone and release take only null', () => {
-  assert.deepEqual(toInput({ milestone: null, release: null }, update), {})
-  for (const key of ['milestone', 'release']) assert.throws(() => toInput({ [key]: 'x' }, update), { code: 'NOT_SUPPORTED' })
+test('release takes only null, and milestone null clears the milestone', () => {
+  assert.deepEqual(toInput({ milestone: null, release: null }, update), { projectMilestoneId: null })
+  assert.throws(() => toInput({ release: 'x' }, update), { code: 'NOT_SUPPORTED' })
 })
 
 const cycleRaw = await fakeRaw({ labels: LABELS, teams: [teamRecord({ cyclesEnabled: true })] })

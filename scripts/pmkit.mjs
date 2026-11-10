@@ -874,8 +874,8 @@ export const COMMANDS = [
     run: async (ctx) => issueWrite(ctx, await (await ctx.tracker()).setParent(ctx.args[0], ctx.args[1] === 'none' ? null : ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })),
   },
   {
-    name: 'issues bulk', summary: 'applies one change to every issue a filter or a saved view returns; --dry-run is the full preview and prints a digest, the real run needs it as --expect', write: true, args: ['change', 'value'],
-    usage: '<move|assign|priority|estimate|label-add|label-remove|milestone|release|sprint|parent|link> <value> (<issues list filter flags> | --view name) [--max n] [--status name] [--kind k] [--remove] [--expect digest]',
+    name: 'issues bulk', summary: 'applies one change to every issue a filter or a saved view returns; --dry-run is the full preview and prints a digest, the real run needs it as --expect', write: true, args: ['change', 'value?'],
+    usage: '<move|assign|priority|estimate|label-add|label-remove|due|type|archive|milestone|release|sprint|parent|link> [<value>] (<issues list filter flags> | --view name) [--max n] [--status name] [--kind k] [--remove] [--expect digest]',
     flags: ['text', 'category', 'type', 'assignee', 'label', 'sprint', 'parent', 'blocked', 'updated-before', 'updated-after', 'view', 'max', 'status', 'kind', 'remove', 'expect'],
     run: (ctx) => runBulk(ctx),
   },
@@ -2662,11 +2662,12 @@ async function runBulk(ctx) {
   }
   const wrong = valueError(change, results)
   // One issue is not "wrong for every issue": its own error keeps its code (NOT_FOUND, CONFLICT).
-  if (wrong) throw new PmkitError(results.length === 1 ? wrong.code : 'INVALID_INPUT', `${change.kind} ${change.value}: ${wrong.message}`, wrong.nextStep ?? 'Correct the value, then run the dry run again')
+  if (wrong) throw new PmkitError(results.length === 1 ? wrong.code : 'INVALID_INPUT', `${`${change.kind} ${change.value}`.trim()}: ${wrong.message}`, wrong.nextStep ?? 'Correct the value, then run the dry run again')
   const preview = buildPreview({ change, found, results })
   const releaseWarnings = kind === 'release' && value !== 'none' ? await releasedWarnings(ctx, { release: value }) : []
-  const data = { ...preview, filter, view: view ?? null, max, dryRun: ctx.dryRun, warnings: releaseWarnings }
-  const warnings = [...found.problems.map(problemLine), ...releaseWarnings]
+  const archiveWarnings = kind === 'archive' && preview.writes > 0 ? ['archived issues leave every list and are never matched by a bulk change again'] : []
+  const data = { ...preview, filter, view: view ?? null, max, dryRun: ctx.dryRun, warnings: [...releaseWarnings, ...archiveWarnings] }
+  const warnings = [...found.problems.map(problemLine), ...releaseWarnings, ...archiveWarnings]
   if (ctx.dryRun) return { data, text: bulkText(preview, { dryRun: true }), warnings }
 
   if (preview.blockers.length > 0) {
@@ -2696,11 +2697,11 @@ async function runBulk(ctx) {
         data: stopped,
         text: [`applied: ${applied.join(', ') || '(none)'}`, `failed: ${issue.id} ${code} ${error.message}`, `remaining: ${stopped.remaining.join(', ') || '(none)'}`].join('\n'),
       }
-      if (applied.length > 0) stop.partialCommit = `${change.kind} ${change.value} (${applied.length} of ${todo.length})`
+      if (applied.length > 0) stop.partialCommit = `${`${change.kind} ${change.value}`.trim()} (${applied.length} of ${todo.length})`
       throw stop
     }
   }
-  return { data: { ...data, applied }, text: `${bulkText(preview, { dryRun: false })}\nwritten: ${applied.join(', ')}`, commit: `${change.kind} ${change.value} (${applied.length} issues)`, warnings }
+  return { data: { ...data, applied }, text: `${bulkText(preview, { dryRun: false })}\nwritten: ${applied.join(', ')}`, commit: `${`${change.kind} ${change.value}`.trim()} (${applied.length} issues)`, warnings }
 }
 
 const AGENT_CATEGORIES = ['triage', 'backlog', 'todo', 'in_progress', 'in_review']

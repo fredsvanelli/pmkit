@@ -25,9 +25,10 @@ const notFound = (id) => new PmkitError('NOT_FOUND', `issue ${id} does not exist
 /**
  * The issue operations over one client. `discovery({ refresh })` is the tracker's memo of the raw discovery.
  * `resolveEpic(key)` returns the raw project node of an epic key, or null; without it a parent must be an issue.
+ * `resolveMilestone(id)` returns the raw project milestone node, or throws NOT_FOUND; without it a milestone is NOT_SUPPORTED.
  * Besides the contract operations, the result holds the helpers the relation operations use.
  */
-export function issueOperations({ client, discovery, config, now = () => new Date(), uuid, resolveEpic }) {
+export function issueOperations({ client, discovery, config, now = () => new Date(), uuid, resolveEpic, resolveMilestone }) {
   const workspace = config.pmkit?.tracker?.scope?.workspace
 
   function requireWorkspace() {
@@ -199,13 +200,30 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return { before: null, after: await mapped(node) }
   }
 
+  const milestoneReads = new Map()
+
+  /** The raw milestone a milestone value names, checked against the project of the issue: Linear takes only a milestone of the issue's own project. */
+  async function milestoneNodeFor(milestone, beforeNode) {
+    if (milestone === undefined || milestone === null) return undefined
+    if (!resolveMilestone) throw new PmkitError('NOT_SUPPORTED', 'set the milestone in Linear', 'Leave milestone out on Linear')
+    // One read per milestone for a whole bulk run, not one per issue. A failed read is not kept.
+    if (!milestoneReads.has(milestone)) milestoneReads.set(milestone, resolveMilestone(milestone).catch((error) => { milestoneReads.delete(milestone); throw error }))
+    const node = await milestoneReads.get(milestone)
+    if (node.project?.id !== beforeNode.project?.id) {
+      // The same words for every issue, so a bulk change with a wrong milestone fails once (valueError).
+      throw new PmkitError('INVALID_INPUT', `milestone ${milestone} is not in the project of the issue`, 'Put the issue in the project of the milestone first, or pick a milestone of its project')
+    }
+    return node
+  }
+
   async function updateIssue(id, patch, actor, { dryRun = false } = {}) {
     await requireViewer(actor)
     const beforeNode = await readNode(id)
     const before = toIssue(beforeNode, await contextFor([beforeNode]))
+    const milestoneNode = await milestoneNodeFor(patch.milestone, beforeNode)
     const { linearInput, current, cycleNode } = await withRefresh(async (ctx) => {
       const cycle = await cycleNodeFor(patch.sprint, teamOf(ctx, beforeNode.team.id))
-      return { linearInput: toInput(patch, { mode: 'update', beforeNode, context: ctx, cycleNode: cycle }), current: ctx, cycleNode: cycle }
+      return { linearInput: toInput(patch, { mode: 'update', beforeNode, context: ctx, cycleNode: cycle, milestoneNode }), current: ctx, cycleNode: cycle }
     })
     if (patch.branch !== undefined && patch.branch !== beforeNode.branchName) {
       throw new PmkitError('INVALID_INPUT', `Linear names this issue's branch ${beforeNode.branchName}`, `Use the branch name ${beforeNode.branchName}`)

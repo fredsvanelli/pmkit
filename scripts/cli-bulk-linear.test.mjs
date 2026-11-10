@@ -47,16 +47,6 @@ test('assign previews every issue, then writes them with the digest', async () =
   assert.deepEqual(fake.mutations, ['PmkitIssueUpdate', 'PmkitIssueUpdate'])
 })
 
-test('milestone and release are not written on Linear, so the command stops before any write', async () => {
-  const { fake, fetch } = withIssues(['One'])
-  for (const change of ['milestone', 'release']) {
-    const result = await bulk(setup(), fetch, [change, 'x', '--category', 'backlog', '--dry-run'])
-    assert.equal(result.code, 2)
-    assert.equal(result.body.error.code, 'NOT_SUPPORTED')
-  }
-  assert.deepEqual(fake.mutations, [])
-})
-
 test('a set Linear cut at 1000 issues is refused, never written from', async () => {
   const { fake, fetch } = withIssues([])
   for (let index = 0; index < 1001; index += 1) fake.seed({ title: `Issue ${index}` })
@@ -88,4 +78,82 @@ test('an agent as the assignee is one INVALID_INPUT on Linear', async () => {
   assert.equal(result.code, 2)
   assert.equal(result.body.error.code, 'INVALID_INPUT')
   assert.deepEqual(fake.mutations, [])
+})
+
+const PROJECT_ID = '00000000-0000-4000-8000-0000000000a1'
+const OTHER_ID = '00000000-0000-4000-8000-0000000000a2'
+const MILESTONE = '11111111-1111-4111-8111-111111111111'
+const ELSEWHERE = '22222222-2222-4222-8222-222222222222'
+
+function withMilestones() {
+  const issues = fakeLinearIssues()
+  const projects = fakeLinearProjects({ issues })
+  const launch = projects.seed({ id: PROJECT_ID, name: 'Launch', teamIds: ['team-acme'], startDate: '2026-11-01' })
+  projects.seed({ id: OTHER_ID, name: 'Other', teamIds: ['team-acme'], startDate: '2026-11-01' })
+  issues.seed({ title: 'In launch', projectId: launch.id })
+  issues.seed({ title: 'Also in launch', projectId: launch.id })
+  projects.seedMilestone(PROJECT_ID, { id: MILESTONE, name: 'Alpha', targetDate: '2026-11-15', status: 'next' })
+  projects.seedMilestone(OTHER_ID, { id: ELSEWHERE, name: 'Beta', targetDate: '2026-12-15', status: 'next' })
+  return { issues, fetch: fakeLinearFetch({ ...fakeWorkspace(), ...issues.routes, ...projects.routes }) }
+}
+
+test('milestone is previewed and written on Linear, and none clears it', async () => {
+  const { issues, fetch } = withMilestones()
+  const context = setup()
+  const dry = await bulk(context, fetch, ['milestone', MILESTONE, '--category', 'backlog', '--dry-run'])
+  assert.equal(dry.code, 0, JSON.stringify(dry.body))
+  assert.deepEqual(dry.body.items.map((item) => [item.id, item.state, item.changes[0].to]), [['ACME-1', 'change', MILESTONE], ['ACME-2', 'change', MILESTONE]])
+  assert.deepEqual(issues.mutations, [])
+  const real = await bulk(context, fetch, ['milestone', MILESTONE, '--category', 'backlog', '--expect', dry.body.digest])
+  assert.equal(real.code, 0, JSON.stringify(real.body))
+  assert.deepEqual(real.body.applied, ['ACME-1', 'ACME-2'])
+  const clear = await bulk(context, fetch, ['milestone', 'none', '--category', 'backlog', '--dry-run'])
+  assert.deepEqual(clear.body.items.map((item) => item.state), ['change', 'change'])
+})
+
+test('a milestone of another project is one INVALID_INPUT in the dry run, and an unknown milestone is NOT_FOUND', async () => {
+  const { issues, fetch } = withMilestones()
+  const wrong = await bulk(setup(), fetch, ['milestone', ELSEWHERE, '--category', 'backlog', '--dry-run'])
+  assert.equal(wrong.code, 2)
+  assert.equal(wrong.body.error.code, 'INVALID_INPUT')
+  assert.match(wrong.body.error.message, /project/)
+  const missing = await bulk(setup(), fetch, ['milestone', '33333333-3333-4333-8333-333333333333', '--category', 'backlog', '--dry-run'])
+  assert.equal(missing.code, 2)
+  assert.equal(missing.body.error.code, 'INVALID_INPUT')
+  assert.match(missing.body.error.message, /does not exist/)
+  assert.deepEqual(issues.mutations, [])
+})
+
+test('release stays NOT_SUPPORTED on Linear and says releases are not mapped', async () => {
+  const { fake, fetch } = withIssues(['One'])
+  const result = await bulk(setup(), fetch, ['release', '1.0', '--category', 'backlog', '--dry-run'])
+  assert.equal(result.body.error.code, 'NOT_SUPPORTED')
+  assert.match(result.body.error.message, /releases are not mapped/)
+  assert.deepEqual(fake.mutations, [])
+})
+
+test('due, type and archive are written on Linear', async () => {
+  const { fake, fetch } = withIssues(['One', 'Two'])
+  const context = setup()
+  fs.appendFileSync(path.join(context.root, '.pmkit', 'config.yaml'), 'mappings:\n  types:\n    bug: Bug\n')
+  for (const [args, mutation] of [[['due', '2026-12-01'], 'PmkitIssueUpdate'], [['type', 'bug'], 'PmkitIssueUpdate'], [['archive'], 'PmkitIssueArchive']]) {
+    const dry = await bulk(context, fetch, [...args, '--category', 'backlog', '--dry-run'])
+    assert.equal(dry.code, 0, JSON.stringify(dry.body))
+    const real = await bulk(context, fetch, [...args, '--category', 'backlog', '--expect', dry.body.digest])
+    assert.equal(real.code, 0, JSON.stringify(real.body))
+    assert.ok(fake.mutations.includes(mutation), args.join(' '))
+    assert.deepEqual(real.body.applied, ['ACME-1', 'ACME-2'], args.join(' '))
+  }
+})
+
+test('a milestone is read once for the whole batch, not once per issue', async () => {
+  const { fetch } = withMilestones()
+  let reads = 0
+  const counting = async (...args) => {
+    if (String(args[1]?.body).includes('PmkitProjectMilestone(')) reads += 1
+    return fetch(...args)
+  }
+  const dry = await bulk(setup(), counting, ['milestone', MILESTONE, '--category', 'backlog', '--dry-run'])
+  assert.equal(dry.code, 0, JSON.stringify(dry.body))
+  assert.equal(reads, 1)
 })

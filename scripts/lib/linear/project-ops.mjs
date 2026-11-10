@@ -235,7 +235,8 @@ export function projectOperations({ client, discovery, config, now = () => new D
     return sortMilestones(nodes.filter((node) => ids.has(node.project?.id)).map(toMilestone))
   }
 
-  async function getMilestone(id) {
+  /** The raw project milestone node of an id, or NOT_FOUND. */
+  async function resolveMilestone(id) {
     requireWorkspace()
     const missing = () => new PmkitError('NOT_FOUND', `milestone ${id} does not exist`, 'pmkit milestone list')
     if (typeof id !== 'string' || !UUID.test(id)) throw missing()
@@ -248,7 +249,11 @@ export function projectOperations({ client, discovery, config, now = () => new D
       throw error
     }
     if (!node) throw missing()
-    return toMilestone(node)
+    return node
+  }
+
+  async function getMilestone(id) {
+    return toMilestone(await resolveMilestone(id))
   }
 
   /** `docPath` is a document slug or the URL of a document, which ends in the slug. */
@@ -276,5 +281,5 @@ export function projectOperations({ client, discovery, config, now = () => new D
     throw new PmkitError('NOT_SUPPORTED', `the Linear adapter reads project ${what}s but does not create them`, `Create the ${what} in Linear`)
   }
 
-  return { listDeliverables, getDeliverable, deliverableProgress, createDeliverable, listMilestones, getMilestone, readDocument, listDocuments, createMilestone: notWritable('milestone'), createDocument: notWritable('document'), publishStatusUpdate, listStatusUpdates, resolveEpic, requireWorkspace, now, uuid, discovery }
+  return { listDeliverables, getDeliverable, deliverableProgress, createDeliverable, listMilestones, getMilestone, resolveMilestone, readDocument, listDocuments, createMilestone: notWritable('milestone'), createDocument: notWritable('document'), publishStatusUpdate, listStatusUpdates, resolveEpic, requireWorkspace, now, uuid, discovery }
 }
