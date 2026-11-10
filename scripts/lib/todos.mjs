@@ -203,13 +203,16 @@ function markupLines(text) {
   const out = []
   let markup = ''
   let from = 0
+  let offset = 0 // the newlines before `from`, counted once
+  const newlines = (part) => part.split('\n').length - 1
   for (const match of text.matchAll(ELEMENT)) {
     const [start, end] = match.indices[3]
-    const offset = text.slice(0, start).split('\n').length - 1
+    offset += newlines(text.slice(from, start))
     const syntax = match[1].toLowerCase() === 'script' || /\blang\s*=\s*["']?(scss|less|sass|styl)/i.test(match[2]) ? STYLES.c : STYLES.css
     for (const entry of commentLines(match[3], syntax)) out.push({ line: entry.line + offset, content: entry.content })
     // The element's code is blanked for the markup pass, newlines kept, so a `<!--` inside a script string is not a comment.
     markup += text.slice(from, start) + blank(match[3])
+    offset += newlines(match[3])
     from = end
   }
   out.push(...commentLines(markup + text.slice(from), STYLES.markup))

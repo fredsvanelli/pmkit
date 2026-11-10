@@ -242,3 +242,14 @@ test('the script and style elements of a markup file are read with their own syn
   assert.deepEqual(findTodos('<style>\n// TODO: not css\n</style>', 'a.html'), [])
   assert.deepEqual(findTodos('<script>\n// TODO: no\n</script>', 'README.md'), [])
 })
+
+test('findTodos stays fast on a markup file with many script elements', () => {
+  const html = Array.from({ length: 20000 }, (_, i) => `<p>row ${i}</p><script>// TODO: item ${i}</script>`).join('\n')
+  const started = process.cpuUsage()
+  const found = findTodos(html, 'a.html')
+  const used = process.cpuUsage(started)
+  const ms = (used.user + used.system) / 1000
+  assert.equal(found.length, 20000)
+  assert.deepEqual(found[19999], { line: 20000, tag: 'TODO', owner: '', text: 'item 19999' })
+  assert.ok(ms < 1500, `took ${Math.round(ms)} ms of CPU`)
+})
