@@ -48,6 +48,8 @@ const happy = {
     git('add', 'src')
     git('commit', '-q', '-m', 'paginate')
     git('switch', '-q', 'main')
+    // The search text, written by the file tool outside .issues/ (git does not track it here, and the scenario ignores nothing else).
+    fs.writeFileSync(path.join(root, 'pattern.txt'), 'cursor\n')
   },
   prompt: '/pmkit:issues:investigate-bug ISS-5N1R',
   answers: ['Yes'],
@@ -58,8 +60,8 @@ const happy = {
     { step: '6', read: ['pr', 'diff', '--branch', BRANCH] },
     { step: '7', git: ['rev-parse', '--verify', '--quiet', `refs/heads/${BRANCH}`] },
     { step: '7', git: ['show', `refs/heads/${BRANCH}:src/events.mjs`] },
-    // The pattern comes before the ref: `git grep refs/heads/x -- f` would search the working tree for the ref name.
-    { step: '7', git: ['grep', 'cursor', `refs/heads/${BRANCH}`, '--', 'src/events.mjs'] },
+    // The pattern is in a file (-f), so a pattern such as -Ocmd is text, never an option, and -F reads it as plain text.
+    { step: '7', git: ['grep', '-F', '-f', 'pattern.txt', `refs/heads/${BRANCH}`, '--', 'src/events.mjs'] },
     { step: '10.3', dryRun: comment, stdin: DRAFT },
     { confirm: 'Step 10' },
     { step: '10.3', write: comment, stdin: DRAFT },
@@ -181,7 +183,7 @@ const invalidBranch = {
   fixture: 'team',
   git: true,
   async setup({ root }) {
-    // The CLI refuses such a name, so the record is edited by hand, as a hand-edited or imported issue would be.
+    // The record is edited by hand to hold a name that fails validBranch, as a hand-edited or imported issue would (refusing it in the CLI is a follow-up of PMK-229).
     const file = path.join(root, '.issues', 'issues', 'ISS-5N1R', 'issue.md')
     fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^---\n/, `---\nbranch: '${BAD}'\n`))
   },

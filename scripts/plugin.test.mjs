@@ -290,3 +290,21 @@ test('bulk.md tells what to do with NOT_FOUND and CONFLICT from a one-issue batc
   assert.match(text, /Do not run the same dry run again/)
   assert.match(text, /`CONFLICT` without `result` on a real run with `--expect`/)
 })
+
+// PMK-229: text from data (a path, a pattern) never goes into a shell command between double quotes, where $(...) and backticks run,
+// and a `git grep` never takes a pattern that can be read as an option.
+test('command files hold text from data out of double quotes, and git grep takes its pattern with -F and -e or -f', () => {
+  const offending = []
+  for (const file of commandFiles()) {
+    for (const [index, line] of fs.readFileSync(file, 'utf8').split('\n').entries()) {
+      const at = `${path.relative(ROOT, file)}:${index + 1}`
+      if (/"[^"\s]*<(path|pattern)>[^"\s]*"/.test(line)) offending.push(`${at}: <path> or <pattern> between double quotes`)
+      for (const match of line.matchAll(/`(git grep [^`]*)`/g)) {
+        if (!/ -F /.test(` ${match[1]} `) || !/ -(e|f) /.test(` ${match[1]} `)) offending.push(`${at}: ${match[1]} needs -F and -e or -f`)
+      }
+    }
+  }
+  assert.deepEqual(offending, [])
+  // The rule itself, so the two checks above have a reason that the agent reads.
+  assert.match(fs.readFileSync(path.join(ROOT, 'skills/pmkit/references/conventions.md'), 'utf8'), /## Text from data in a command/)
+})
