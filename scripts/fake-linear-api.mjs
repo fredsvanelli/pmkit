@@ -1155,8 +1155,9 @@ export function fakeCustomViews({ views = [], issues, endless = false } = {}) {
     PmkitCustomViewIssues: (body) => {
       const view = views.find((item) => item.id === body.variables.id)
       if (!view) return graphqlError('Entity not found: CustomView', 'INPUT_ERROR')
-      const { first, after } = body.variables
-      return json({ customView: { issues: issues.search({ filter: view.filterData, first, after, sort: [{ createdAt: { order: 'Ascending' } }] }) } })
+      // Like issues, the order is the request's sort; without one the fake answers newest first, so a missing sort shows.
+      const { first, after, sort } = body.variables
+      return json({ customView: { issues: issues.search({ filter: view.filterData, first, after, sort }) } })
     },
   }
 }

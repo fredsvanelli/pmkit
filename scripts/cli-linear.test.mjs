@@ -1806,6 +1806,30 @@ test('issues bulk --view refuses a Linear view, whose filter pmkit cannot check'
   assert.equal(result.code, 2, result.stdout + result.stderr)
   assert.equal(errorOf(result).code, 'INVALID_INPUT')
   assert.match(errorOf(result).message, /Linear view Mine/)
+  assert.equal(callsOf(fetch, 'PmkitCustomViews') + callsOf(fetch, 'PmkitCustomViewIssues') + callsOf(fetch, 'PmkitIssues'), 0, 'refused before any read')
+})
+
+test('views run on Linear does not run a name found once in a cut list, and runs it by id', async () => {
+  const context = setup({ edit: withTeam })
+  const byName = await cli(context, ['views', 'run', 'Mine', '--json'], withViews(VIEWS, { endless: true }).fetch)
+  assert.equal(byName.code, 2, byName.stdout + byName.stderr)
+  assert.equal(errorOf(byName).code, 'INVALID_INPUT')
+  assert.equal(JSON.parse(byName.stdout).error.reason, 'view_list_incomplete')
+  assert.match(errorOf(byName).message, /view-2/)
+  const byId = await cli(context, ['views', 'run', 'view-2', '--json'], withViews(VIEWS, { endless: true }).fetch)
+  assert.equal(byId.code, 0, byId.stdout + byId.stderr)
+  assert.deepEqual(JSON.parse(byId.stdout).issues.map((issue) => issue.id), ['ACME-1', 'ACME-3'])
+})
+
+test('views list and views run on Linear need tracker.scope.workspace and send no view query without it', async () => {
+  const { fetch } = withViews(VIEWS)
+  const context = setup({ edit: (text) => withTeam(text).replace('    workspace: acme\n', '') })
+  for (const args of [['views', 'list'], ['views', 'run', 'Mine']]) {
+    const result = await cli(context, [...args, '--json'], fetch)
+    assert.equal(result.code, 2, result.stdout + result.stderr)
+    assert.equal(errorOf(result).code, 'NOT_CONFIGURED', args.join(' '))
+  }
+  assert.equal(callsOf(fetch, 'PmkitCustomViews'), 0)
 })
 
 test('views list on Linear never says no views when the list is cut', async () => {
@@ -1814,4 +1838,13 @@ test('views list on Linear never says no views when the list is cut', async () =
   assert.equal(listed.code, 0, listed.stdout + listed.stderr)
   assert.doesNotMatch(listed.stdout, /^no views$/m)
   assert.match(listed.stdout, /no view among the views pmkit read/)
+})
+
+test('views run on Linear asks Linear for the created order, so a cut read keeps the oldest issues', async () => {
+  const { fetch } = withViews(VIEWS)
+  const result = await cli(setup({ edit: withTeam }), ['views', 'run', 'Everyone', '--json'], fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const call = fetch.calls.filter((item) => operationName(item.body.query) === 'PmkitCustomViewIssues').at(-1)
+  assert.deepEqual(call.body.variables.sort, [{ createdAt: { order: 'Ascending' } }])
+  assert.deepEqual(JSON.parse(result.stdout).issues.map((issue) => issue.id), ['ACME-1', 'ACME-2', 'ACME-3'])
 })

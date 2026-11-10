@@ -22,6 +22,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 3. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" views run <name> --json`, with `--limit n` and `--sort s` when the user gave them. This only reads, and this command never changes a view. The result keeps the stored filter in `view` and the values the run replaced in `overrides`.
 4. Read the result. The `INVALID_INPUT` errors of a view, and the `NOT_FOUND` of a cut Linear list, carry `error.reason` in the JSON. Branch on that reason, never on the text of `error.message`.
    - `NOT_FOUND` with `error.reason` `view_list_incomplete`: Linear has more views than pmkit read, and the name is not among those read. Do not say the view does not exist. Ask for the view's id from Linear and run it by id.
+   - `INVALID_INPUT` with `error.reason` `view_list_incomplete`: the name was found once among the views read, but the list is cut, so another view may have the name. `error.nextStep` names the id found: show it, say why, and run that id only when the user confirms it is the view.
    - `NOT_FOUND` without a reason: the view does not exist. Show the closest names from `views list` (the result of step 2 when it ran, otherwise run it now) and name `pmkit views list` as the way to see them all. Do not guess a name.
    - `INVALID_INPUT` with `error.reason` `invalid_view_name`: the name is not a valid view name. State the rule (it starts and ends with a letter or a digit and holds only letters, digits, ".", "_" and "-", for example `open-bugs`) and suggest `views list`. No file was read.
    - `INVALID_INPUT` with `error.reason` `view_out_of_date`: the view names a type, member, sprint or label the tracker no longer has. Show `error.message` and read the stored filter as structured data from `views list --json` (the entry of `views` with this name, its `filter` map). Offer to run that filter as `issues list` without the stale value. To repair the view, build the `views save <name> <flag for each key of filter> --overwrite` call from those keys and values, and show it. Do not run it without the user asking.
@@ -35,7 +36,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 ## Confirmation points
 
 - Step 2: which view to run, only when no name was given.
-- Step 4: which Linear view to run, only when two have the name. The command only reads, so it never asks to write.
+- Step 4: which Linear view to run, only when two have the name or when the name was found in a cut list. The command only reads, so it never asks to write.
 
 ## Output
 

@@ -26,15 +26,20 @@ export function viewOperations({ client, config, issues }) {
     return { views, problems: [], hasMore }
   }
 
-  /** By exact name, then by id. Two views with the name are ambiguous; a miss in a cut list says the list was cut. */
+  /** By id, then by exact name. Two views with the name are ambiguous; in a cut list a name is never sure, so it asks for the id. */
   async function findView(name) {
     const { views, hasMore } = await listViews()
     const named = views.filter((view) => view.name === name)
     if (named.length > 1) {
       throw new PmkitError('INVALID_INPUT', `${named.length} views are named ${name}: ${named.map((view) => view.id).join(', ')}`, 'Run the view by its id', { reason: 'ambiguous_view_name' })
     }
-    const found = named[0] ?? views.find((view) => view.id === name)
-    if (found) return found
+    const byId = views.find((view) => view.id === name)
+    if (byId) return byId
+    // In a cut list a name found once may have a twin past the cut, so only the id is a sure match.
+    if (named.length === 1 && hasMore) {
+      throw new PmkitError('INVALID_INPUT', `view ${name} is ${named[0].id} among the views pmkit read, but ${VIEWS_CUT}, so another view may have the name`, `Run it by its id: pmkit views run ${named[0].id}`, { reason: 'view_list_incomplete' })
+    }
+    if (named.length === 1) return named[0]
     if (hasMore) throw new PmkitError('NOT_FOUND', `view ${name} is not among the views pmkit read: ${VIEWS_CUT}`, 'Run the view by its id', { reason: 'view_list_incomplete' })
     throw new PmkitError('NOT_FOUND', `view ${name} does not exist`, 'pmkit views list')
   }
@@ -44,7 +49,8 @@ export function viewOperations({ client, config, issues }) {
     const given = viewOverrides(overrides)
     const view = await findView(name)
     if (given.limit === 0) return { issues: [], problems: [], hasMore: false, view, overrides: given }
-    const { nodes, hasMore } = await client.paginate(CUSTOM_VIEW_ISSUES_QUERY, { id: view.id }, { select: (data) => data.customView.issues, pageSize: SEARCH_PAGE })
+    // The created order, as searchIssues asks: a read cut at the page cap then keeps the oldest issues, which the created order shows first.
+    const { nodes, hasMore } = await client.paginate(CUSTOM_VIEW_ISSUES_QUERY, { id: view.id, sort: [{ createdAt: { order: 'Ascending' } }] }, { select: (data) => data.customView.issues, pageSize: SEARCH_PAGE })
     for (const node of nodes) await issues.completeNested(node)
     const mapping = await issues.contextFor(nodes)
     const rows = nodes.map((node) => ({ issue: toIssue(node, mapping), blocked: blockedOpen(node, mapping) })).filter((row) => row.issue !== null)

@@ -164,6 +164,6 @@ export const CUSTOM_VIEWS_QUERY = `query PmkitCustomViews($first: Int!, $after: 
 }`
 
 export const CUSTOM_VIEW_ISSUES_QUERY = `${ISSUE_FRAGMENT}
-query PmkitCustomViewIssues($id: String!, $first: Int!, $after: String) {
-  customView(id: $id) { issues(first: $first, after: $after) { nodes { ...PmkitIssueFields } ${PAGE_INFO} } }
+query PmkitCustomViewIssues($id: String!, $first: Int!, $after: String, $sort: [IssueSortInput!]) {
+  customView(id: $id) { issues(first: $first, after: $after, sort: $sort) { nodes { ...PmkitIssueFields } ${PAGE_INFO} } }
 }`

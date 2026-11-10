@@ -2270,9 +2270,10 @@ async function runBulk(ctx) {
   let filter = issueFilter(ctx)
   if (view !== undefined && Object.keys(filter).length > 0) throw usageError('issues bulk takes --view or filter flags, not both', 'Save the filter with pmkit views save, or drop --view')
   if (view === undefined) checkBulkFilter(filter, 'the filter')
+  // A hosted tracker's view keeps the tracker's own filter, which pmkit cannot check narrows the set, so it is refused before any read.
+  if (view !== undefined && ctx.config().system !== 'local') throw usageError(`${ctx.config().system === 'linear' ? 'Linear' : 'a hosted'} view ${view} keeps the tracker's own filter, so pmkit cannot check that it narrows the set`, 'Pass filter flags to issues bulk instead of --view')
   const found = view === undefined ? await tracker.searchIssues(filter) : await tracker.runView(view)
   if (view !== undefined) {
-    if (found.view.filter === null) throw usageError(`Linear view ${view} keeps Linear's own filter, so pmkit cannot check that it narrows the set`, 'Pass filter flags to issues bulk instead of --view')
     filter = found.view.filter
     checkBulkFilter(filter, `view ${view}`, view)
   }
