@@ -38,7 +38,7 @@ const STYLES = {
   md: { ...MARKUP, markdown: true },
 }
 const EXTENSIONS = {
-  c: ['js', 'mjs', 'cjs', 'jsx', 'ts', 'tsx', 'mts', 'cts', 'java', 'kt', 'kts', 'swift', 'c', 'h', 'cc', 'cpp', 'hpp', 'cs', 'scala', 'dart', 'gradle', 'scss', 'less'],
+  c: ['json', 'jsonc', 'json5', 'js', 'mjs', 'cjs', 'jsx', 'ts', 'tsx', 'mts', 'cts', 'java', 'kt', 'kts', 'swift', 'c', 'h', 'cc', 'cpp', 'hpp', 'cs', 'scala', 'dart', 'gradle', 'scss', 'less'],
   c_hash: ['php', 'tf'],
   sql: ['sql'],
   lua: ['lua'],
@@ -47,12 +47,17 @@ const EXTENSIONS = {
   rs: ['rs'],
   css: ['css'],
   py: ['py'],
-  hash: ['sh', 'bash', 'zsh', 'rb', 'yaml', 'yml', 'toml', 'r', 'pl', 'ex', 'exs', 'ps1', 'mk'],
+  hash: ['sh', 'bash', 'zsh', 'rb', 'yaml', 'yml', 'toml', 'r', 'pl', 'ex', 'exs', 'ps1', 'mk', 'gitignore', 'gitattributes', 'dockerignore', 'npmignore'],
   markup: ['html', 'htm', 'xml', 'svg', 'vue', 'svelte'],
   md: ['md', 'markdown'],
 }
 const BY_EXTENSION = new Map(Object.entries(EXTENSIONS).flatMap(([style, list]) => list.map((ext) => [ext, STYLES[style]])))
 const BY_NAME = new Map(['Makefile', 'Dockerfile', 'Containerfile', 'Gemfile', 'Rakefile'].map((name) => [name, STYLES.hash]))
+/** File types with no comment syntax by nature (text, data, media). The scan does not read them, and does not warn about them. */
+const NO_COMMENTS = new Set([
+  '.txt', '.jsonl', '.ndjson', '.csv', '.tsv', '.log', '.lock', '.gitkeep', '.keep', 'LICENSE',
+  '.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp', '.bmp', '.pdf', '.woff', '.woff2', '.ttf', '.otf', '.eot', '.zip', '.gz', '.tgz',
+])
 
 /** The comment syntax of a file, chosen by its name, or null for a file type the scan does not read. */
 export function commentStyle(file) {
@@ -349,10 +354,11 @@ function pathPrefix(given) {
 }
 
 /**
- * Reads every file git lists (tracked, and untracked but not ignored) and returns its TODO and FIXME comments.
+ * Reads every file git lists (tracked, and untracked but not ignored) and returns its TODO, FIXME, HACK and XXX comments.
  * `path` keeps the files at or under that folder. `skip` lists folders to leave out, relative to `root`, besides
  * node_modules and .pmkit. Symbolic links are left out. File types without a comment syntax are left out too, and
- * `skipped.unsupported` counts them by extension (or by file name when there is none).
+ * `skipped.unsupported` counts them by extension (or by file name when there is none), apart from the types with no
+ * comments by nature, which `skipped.noComments` counts.
  */
 export function scanRepo(root, { path: given, skip = [], env = process.env } = {}) {
   const prefix = pathPrefix(given)
@@ -370,13 +376,16 @@ export function scanRepo(root, { path: given, skip = [], env = process.env } = {
   let read = 0
   let skippedEmpty = 0
   const unsupported = {}
+  const noComments = {}
   for (const file of files) {
     if (file.split('/').includes('node_modules') || left.some((dir) => inside(file, dir)) || (prefix !== null && !inside(file, prefix))) continue
     if (!commentStyle(file)) {
-      // A file type with no comment syntax is not read. The count by extension tells the user what the scan left out.
+      // A file type with no comment syntax is not read. The count by extension tells the user what the scan left out;
+      // a type that has no comments by nature (`.txt`, images) is counted apart, since it hides no TODO.
       const name = file.split('/').pop()
       const extension = path.extname(name).toLowerCase() || name
-      unsupported[extension] = (unsupported[extension] ?? 0) + 1
+      const bucket = NO_COMMENTS.has(extension) ? noComments : unsupported
+      bucket[extension] = (bucket[extension] ?? 0) + 1
       continue
     }
     const full = path.join(root, file)
@@ -395,5 +404,5 @@ export function scanRepo(root, { path: given, skip = [], env = process.env } = {
       else found.push({ file, line: todo.line, tag: todo.tag, text: todo.text })
     }
   }
-  return { found, files: read, skippedEmpty, skipped: { unsupported } }
+  return { found, files: read, skippedEmpty, skipped: { unsupported, noComments } }
 }

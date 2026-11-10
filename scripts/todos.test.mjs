@@ -163,6 +163,7 @@ test('findTodos knows more languages', () => {
     'a.scss': ['// TODO: x'], 'a.less': ['// TODO: x'], 'a.svelte': ['<!-- TODO: x -->'], 'a.tf': ['# TODO: x', '// TODO: y'], 'a.r': ['# TODO: x'], 'a.pl': ['# TODO: x'],
     'a.ex': ['# TODO: x'], 'a.exs': ['# TODO: x'], 'a.ps1': ['# TODO: x'], 'a.mk': ['# TODO: x'], Containerfile: ['# TODO: x'], Gemfile: ['# TODO: x'], Rakefile: ['# TODO: x'],
     'a.sql': ['-- TODO: x'], 'a.lua': ['-- TODO: x'], 'a.hs': ['-- TODO: x'],
+    '.gitignore': ['# TODO: x'], 'issues.gitignore': ['# TODO: x'], '.gitattributes': ['# TODO: x'], '.dockerignore': ['# TODO: x'], 'tsconfig.json': ['// TODO: x'], 'a.jsonc': ['/* TODO: x */'],
   }
   for (const [file, lines] of Object.entries(cases)) for (const line of lines) assert.equal(findTodos(`code\n${line}\n`, file).length, 1, `${file}: ${line}`)
   assert.deepEqual(findTodos('SELECT 1; a--b TODO: x', 'a.sql'), [])
