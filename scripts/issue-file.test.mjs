@@ -41,7 +41,7 @@ const parse = (text) => parseIssueFile(text, { statuses })
 test('ISSUE_KEYS fixes the frontmatter order', () => {
   assert.deepEqual(ISSUE_KEYS, [
     'id', 'title', 'type', 'status', 'priority', 'estimate', 'assignee', 'labels', 'parent',
-    'blocked_by', 'related', 'duplicate_of', 'sprint', 'milestone', 'release', 'due', 'branch', 'archived',
+    'blocked_by', 'related', 'duplicate_of', 'sprint', 'milestone', 'release', 'due', 'branch', 'docs', 'archived',
     'created', 'updated',
   ])
 })

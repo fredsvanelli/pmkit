@@ -226,6 +226,12 @@ export function createLocalTracker(root, {
       if (!isBranchName(name)) throw invalid(`branch "${name}" is not a valid git branch name`, 'Use a name git accepts, like iss-7k3q-retry-webhooks, that does not start with -')
       return name
     },
+    docs: (value) => {
+      if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) throw invalid('docs must be a list of paths')
+      const paths = value.map((item) => oneLine('doc', item.trim()))
+      if (paths.some((item) => item === '')) throw invalid('a doc path cannot be blank', 'Pass the path of the document, such as docs/adr/0001-use-points.md')
+      return [...new Set(paths)]
+    },
     description: (value) => noSectionHeading('description', plainText('description', value)),
     acceptanceCriteria: requireCriteria,
   }
@@ -240,6 +246,10 @@ export function createLocalTracker(root, {
         else delete issue[key]
       } else if (key === 'status') {
         issue.status = statusOf(NORMALIZE.status(value))
+      } else if (key === 'docs') {
+        const docs = NORMALIZE.docs(value)
+        if (docs.length > 0) issue.docs = docs
+        else delete issue.docs
       } else {
         issue[key] = NORMALIZE[key](value)
       }

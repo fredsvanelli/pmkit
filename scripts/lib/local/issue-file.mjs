@@ -6,7 +6,7 @@ import { FrontmatterError, joinFrontmatter, parseYaml, splitFrontmatter } from '
 
 export const ISSUE_KEYS = [
   'id', 'title', 'type', 'status', 'priority', 'estimate', 'assignee', 'labels', 'parent',
-  'blocked_by', 'related', 'duplicate_of', 'sprint', 'milestone', 'release', 'due', 'branch', 'archived',
+  'blocked_by', 'related', 'duplicate_of', 'sprint', 'milestone', 'release', 'due', 'branch', 'docs', 'archived',
   'created', 'updated',
 ]
 
@@ -115,6 +115,8 @@ export function parseIssueFile(text, { statuses = {} } = {}) {
   for (const key of ['type', 'priority', 'estimate', 'assignee', 'parent', 'sprint', 'milestone', 'release', 'due', 'branch']) {
     if (data[key] != null) issue[key] = data[key]
   }
+  const docs = asList(data.docs)
+  if (docs.length > 0) issue.docs = docs
   for (const key of ['created', 'updated']) if (issue[key] === undefined) delete issue[key]
   // Keys pmkit does not know, such as one a person added by hand, are kept so the next write does not drop them.
   const unknown = Object.keys(data).filter((key) => !ISSUE_KEYS.includes(key))
@@ -143,6 +145,7 @@ export function toFrontmatter(issue) {
     release: issue.release,
     due: issue.due,
     branch: issue.branch,
+    docs: issue.docs?.length > 0 ? issue.docs : undefined,
     archived: issue.archived ? true : undefined,
     created: issue.created,
     updated: issue.updated,

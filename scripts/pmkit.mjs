@@ -297,6 +297,17 @@ async function tickCriteria(ctx, id, patch) {
   patch.acceptanceCriteria = criteria
 }
 
+/** --add-doc and --remove-doc as the whole new docs list, so the caller never merges lists. Adding a path already there or removing an absent one changes nothing. */
+async function docLinks(ctx, id, patch) {
+  const adds = ctx.list('add-doc').map((item) => item.trim())
+  const removes = ctx.list('remove-doc').map((item) => item.trim())
+  if (adds.length === 0 && removes.length === 0) return
+  if (adds.some((item) => item === '')) throw usageError('--add-doc needs a path', 'Pass the path of the document, such as --add-doc docs/adr/0001-use-points.md')
+  const current = (await (await ctx.tracker()).getIssue(id)).docs ?? []
+  const kept = current.filter((item) => !removes.includes(item))
+  patch.docs = [...kept, ...adds.filter((item) => !kept.includes(item))]
+}
+
 /** The id of the active sprint, NOT_FOUND with the next step when none is active. */
 async function activeSprintId(tracker) {
   const sprint = await tracker.currentCycle()
@@ -816,12 +827,13 @@ export const COMMANDS = [
   },
   {
     name: 'issues update', summary: 'edits fields and criteria', write: true, args: ['id'],
-    usage: '<id> [--title] [--type] [--priority] [--estimate] [--label l,..] [--sprint id|current|none] [--due] [--milestone] [--release] [--branch] [--description-file f] [--criteria-file f] [--check n] [--uncheck n]',
-    flags: ['title', 'type', 'priority', 'estimate', 'label', 'sprint', 'due', 'milestone', 'release', 'branch', 'description-file', 'criteria-file', 'check', 'uncheck'],
+    usage: '<id> [--title] [--type] [--priority] [--estimate] [--label l,..] [--sprint id|current|none] [--due] [--milestone] [--release] [--branch] [--add-doc path] [--remove-doc path] [--description-file f] [--criteria-file f] [--check n] [--uncheck n]',
+    flags: ['title', 'type', 'priority', 'estimate', 'label', 'sprint', 'due', 'milestone', 'release', 'branch', 'add-doc', 'remove-doc', 'description-file', 'criteria-file', 'check', 'uncheck'],
     run: async (ctx) => {
       const [id] = ctx.args
       const patch = await issuePatch(ctx, { create: false })
       await tickCriteria(ctx, id, patch)
+      await docLinks(ctx, id, patch)
       if (Object.keys(patch).length === 0) throw usageError('issues update needs at least one field flag', 'pmkit issues update <id> --priority high')
       const result = issueWrite(ctx, await (await ctx.tracker()).updateIssue(id, patch, await ctx.actor(), { dryRun: ctx.dryRun }))
       return { ...result, warnings: await releasedWarnings(ctx, patch) }

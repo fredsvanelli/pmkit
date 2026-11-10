@@ -8,7 +8,7 @@ export const CREATE_KEYS = [
   'milestone', 'release', 'due', 'branch', 'description', 'acceptanceCriteria',
 ]
 export const UPDATE_KEYS = [
-  'title', 'type', 'priority', 'estimate', 'labels', 'sprint', 'milestone', 'release', 'due', 'branch',
+  'title', 'type', 'priority', 'estimate', 'labels', 'sprint', 'milestone', 'release', 'due', 'branch', 'docs',
   'description', 'acceptanceCriteria',
 ]
 // Fields another operation owns, with the command that writes them. An empty string means no next step.
