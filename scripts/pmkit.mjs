@@ -3131,7 +3131,7 @@ function buildLoadReport(ctx, inputs, { capacity, daysOff, proposals = true }) {
 }
 
 /** A capacity for the text: two decimals at most, and `not set` for null. The JSON keeps the stored number. */
-const shown = (capacity) => (capacity === null ? 'not set' : Number(capacity.toFixed(2)))
+const shown = (capacity) => (capacity === null ? 'not set' : typeof capacity === 'number' ? Number(capacity.toFixed(2)) : capacity)
 
 const HUMAN_ROW = (row) => !row.agent && row.isMember
 

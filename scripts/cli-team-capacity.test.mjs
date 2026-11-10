@@ -208,6 +208,17 @@ test('team capacity ignores a hand-edited capacity_base that is not a pair and b
   assert.match(fs.readFileSync(sprintFile(root), 'utf8'), /fred: \[8, 10\]/)
 })
 
+test('team capacity --set shows a stored capacity that is not a number as it is', async () => {
+  const root = cleanRepo()
+  fs.writeFileSync(sprintFile(root), fs.readFileSync(sprintFile(root), 'utf8').replace('capacity: { fred: 8, ana: 10 }', 'capacity: { fred: 8h, ana: 10 }'))
+  const { code, stderr, data } = await capacity(root, ['--set', 'fred=5'])
+  assert.equal(code, 0, stderr)
+  assert.equal(data.changes.find((change) => change.member === 'fred').capacity.after, 5)
+  assert.equal((await stored(root)).capacity.fred, 5)
+  const text = await run(['team', 'capacity', '--set', 'ana=9'], { cwd: root, env })
+  assert.equal(text.code, 0, text.stderr)
+})
+
 test('team capacity --set drops the base of the member, and the next days off build on the typed number', async () => {
   const root = cleanRepo()
   assert.equal((await capacity(root, ['--days-off', 'fred=2026-10-13+2026-10-14'])).code, 0)
