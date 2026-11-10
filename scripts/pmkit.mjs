@@ -407,6 +407,39 @@ function customerInput(ctx) {
   return input
 }
 
+/**
+ * Turns a request into a new issue and accepts the request into it (PMK-221): the issue gets the request title and a description
+ * of the request body, who asked (the customer name, else `from`, else the customer id) and `Request: <id>`, the text
+ * /pmkit:backlog:request-queue writes. An accepted request is refused, so it never gets a second issue. When the accept fails
+ * after the create, the issue stays and the error names both ids; `partialCommit` lets auto_commit keep the issue.
+ * Returns { issue: { before, after }, request: { before, after }, problems }. A dry run creates nothing and projects the request.
+ */
+export async function acceptIntoNewIssue(tracker, id, actor, { dryRun = false } = {}) {
+  const { problems, ...request } = await tracker.getRequest(id)
+  if (request.state === 'accepted') {
+    throw new PmkitError('CONFLICT', `request ${request.id} is already accepted into ${request.target?.id}`, `pmkit requests accept ${request.id} <issue> moves it to another issue`)
+  }
+  const asker = request.customer ? (request.customer.name ?? request.customer.id) : request.from
+  const description = [request.body, [asker ? `Asked by: ${asker}` : null, `Request: ${request.id}`].filter(Boolean).join('\n')].filter(Boolean).join('\n\n')
+  const issue = await tracker.createIssue({ title: request.title, description }, actor, { dryRun })
+  if (dryRun) {
+    const target = { type: 'issue', id: issue.after.id, title: issue.after.title }
+    return { issue, request: { before: request, after: { ...request, state: 'accepted', target, triaged: { at: null, by: actor }, reason: null } }, problems }
+  }
+  try {
+    const accepted = await tracker.acceptRequest(request.id, issue.after.id, actor)
+    return { issue, request: { before: accepted.before, after: accepted.after }, problems: accepted.problems ?? problems }
+  } catch (error) {
+    const failure = new PmkitError(
+      error.code ?? 'UPSTREAM',
+      `issue ${issue.after.id} was created, but request ${request.id} was not accepted: ${error.message}; the request is still ${request.state}`,
+      `pmkit requests accept ${request.id} ${issue.after.id}`,
+    )
+    failure.partialCommit = `${request.id} ${issue.after.id}`
+    throw failure
+  }
+}
+
 /** A table of requests in the order given: id, title, state, customer, where it came from and the issue. */
 const requestTable = (requests) => table(
   ['ID', 'Title', 'State', 'Customer', 'From', 'Issue', 'Created'],
@@ -1109,9 +1142,24 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'requests accept', summary: 'accepts a request into an existing issue', usage: '<id> <issue>', write: true, args: ['id', 'issue'], flags: [],
+    name: 'requests accept', summary: 'accepts a request into an existing issue, or with --create into a new issue made from the request',
+    usage: '<id> (<issue> | --create)', write: true, args: ['id', 'issue?'], flags: ['create'],
     run: async (ctx) => {
-      const result = await (await ctx.tracker()).acceptRequest(ctx.args[0], ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })
+      const [id, issue] = ctx.args
+      if ((issue === undefined) === !ctx.flag('create')) throw usageError('requests accept takes an <issue> or --create, and not both', 'pmkit requests accept REQ-1 ISS-1, or pmkit requests accept REQ-1 --create')
+      if (ctx.flag('create')) {
+        const result = await acceptIntoNewIssue(await ctx.tracker(), id, await ctx.actor(), { dryRun: ctx.dryRun })
+        const text = [
+          writeText(result.issue, { ...ctx, dryRun: false, record: issueRecord }),
+          '',
+          writeText(result.request, { ...ctx, record: requestRecord }),
+        ].join('\n')
+        return {
+          data: result, text, commit: `${result.request.after.id} ${result.issue.after.id}`, warnings: problemWarnings(result.problems),
+          notes: ctx.dryRun ? ['the issue ID is assigned when written, and so is the triage time'] : [],
+        }
+      }
+      const result = await (await ctx.tracker()).acceptRequest(id, issue, await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: requestRecord }), commit: result.after.id, warnings: problemWarnings(result.problems) }
     },
   },
@@ -3856,9 +3904,12 @@ function checkUsage(command, { options, positionals }) {
     }
   }
   const expected = command.args ?? []
+  // An argument named with a trailing ? is optional, and only the last ones can be.
+  const required = expected.filter((a) => !a.endsWith('?')).length
   const label = `${command.name}${command.usage ? ` ${command.usage}` : ''}`
-  if (command.rest ? positionals.length < 1 : positionals.length !== expected.length) {
-    throw usageError(`${command.name} takes ${command.rest ? 'at least one <id>' : expected.length === 0 ? 'no arguments' : expected.map((a) => `<${a}>`).join(' ')}`, `Usage: ${label}`)
+  if (command.rest ? positionals.length < 1 : positionals.length < required || positionals.length > expected.length) {
+    const named = expected.map((a) => (a.endsWith('?') ? `[<${a.slice(0, -1)}>]` : `<${a}>`)).join(' ')
+    throw usageError(`${command.name} takes ${command.rest ? 'at least one <id>' : expected.length === 0 ? 'no arguments' : named}`, `Usage: ${label}`)
   }
 }
 

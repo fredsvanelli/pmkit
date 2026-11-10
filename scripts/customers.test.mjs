@@ -423,3 +423,20 @@ test('updateRequest with the same text or a dry run writes nothing, and refuses 
   assert.throws(() => tracker.updateRequest('REQ-9', { title: 'T' }, 'fred'), code('NOT_FOUND'))
   assert.deepEqual(hashTree(root), hash)
 })
+
+// PMK-221: an accept that fails after the create keeps the issue and names both ids.
+test('acceptIntoNewIssue names the new issue and the open request when the accept fails after the create', async () => {
+  const { acceptIntoNewIssue } = await import('./pmkit.mjs')
+  const { root, write, tracker } = setup()
+  write('requests', 'REQ-1.md', '---\ntitle: CSV\n---\n')
+  const failing = { ...tracker, acceptRequest: () => { throw Object.assign(new Error('disk full'), { code: 'UPSTREAM' }) } }
+  await assert.rejects(acceptIntoNewIssue(failing, 'REQ-1', 'fred'), (error) => {
+    assert.equal(error.code, 'UPSTREAM')
+    assert.match(error.message, /^issue ISS-\d+ was created, but request REQ-1 was not accepted: disk full; the request is still open$/)
+    assert.match(error.nextStep, /^pmkit requests accept REQ-1 ISS-\d+$/)
+    assert.match(error.partialCommit, /^REQ-1 ISS-\d+$/)
+    return true
+  })
+  assert.equal(tracker.getRequest('REQ-1').state, 'open')
+  assert.ok(fs.readdirSync(path.join(root, '.issues', 'issues')).length > 0)
+})

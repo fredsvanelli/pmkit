@@ -1590,7 +1590,9 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'goal delete': ['GOAL-8K2W'],
     'epic goal': ['EPC-2M9D', 'none'],
     'customers create': ['--name', 'Acme'],
+    'customers update': ['CUS-1', '--tier', 'gold'],
     'requests create': ['--title', 'CSV export'],
+    'requests update': ['REQ-1', '--title', 'CSV'],
     'requests accept': ['REQ-1', 'ISS-5N1R'],
     'requests decline': ['REQ-1'],
     'issues branch': ['ISS-5N1R'],
@@ -2348,6 +2350,45 @@ test('requests update edits the title and the body from files and refuses --titl
   assert.equal(json(root, ['requests', 'update', request.id, '--title', 'CSV']).after.title, 'CSV')
   assert.equal(errorOf(run(root, ['requests', 'update', request.id, '--title', 'A', '--title-file', path.join(dir, 'title.txt'), '--json'])).code, 'INVALID_INPUT')
   assert.equal(errorOf(run(root, ['requests', 'update', request.id, '--json'])).code, 'INVALID_INPUT')
+})
+
+test('requests accept --create creates the issue from the request and accepts the request into it (PMK-221)', () => {
+  const root = makeRepo('team')
+  const customer = json(root, ['customers', 'create', '--name', 'Acme']).after
+  const body = path.join(tempDir('pmkit-req-'), 'body.md')
+  fs.writeFileSync(body, 'Columns out of order.\n')
+  const request = json(root, ['requests', 'create', '--title', 'CSV order', '--customer', customer.id, '--body-file', body]).after
+  const hash = hashTree(root)
+  const dry = run(root, ['requests', 'accept', request.id, '--create', '--dry-run', '--json'])
+  assert.equal(dry.status, 0, dry.stderr)
+  const preview = JSON.parse(dry.stdout)
+  assert.deepEqual([preview.issue.before, preview.issue.after.title, preview.request.after.state, preview.request.after.target.id], [null, 'CSV order', 'accepted', preview.issue.after.id])
+  assert.match(dry.stderr, /note: the issue ID is assigned when written/)
+  assert.deepEqual(hashTree(root), hash)
+  const result = json(root, ['requests', 'accept', request.id, '--create'])
+  const issue = json(root, ['issues', 'get', result.issue.after.id])
+  assert.equal(issue.title, 'CSV order')
+  assert.equal(issue.description, `Columns out of order.\n\nAsked by: Acme\nRequest: ${request.id}`)
+  assert.deepEqual([result.request.before.state, result.request.after.state, result.request.after.target.id], ['open', 'accepted', issue.id])
+  assert.equal(json(root, ['demand', 'list']).signals[0].issue.id, issue.id)
+  const again = errorOf(run(root, ['requests', 'accept', request.id, '--create', '--json']))
+  assert.equal(again.code, 'CONFLICT')
+  assert.match(again.message, new RegExp(`already accepted into ${issue.id}`))
+  assert.equal(errorOf(run(root, ['requests', 'accept', request.id, 'ISS-5N1R', '--create', '--json'])).code, 'INVALID_INPUT')
+  assert.equal(errorOf(run(root, ['requests', 'accept', request.id, '--json'])).code, 'INVALID_INPUT')
+})
+
+test('requests accept --create leaves out Asked by when the request names nobody, and names a from or a missing customer id', () => {
+  const root = makeRepo('team')
+  const bare = json(root, ['requests', 'create', '--title', 'Bare']).after
+  assert.equal(json(root, ['issues', 'get', json(root, ['requests', 'accept', bare.id, '--create']).issue.after.id]).description, `Request: ${bare.id}`)
+  const support = json(root, ['requests', 'create', '--title', 'From support', '--from', 'support']).after
+  assert.match(json(root, ['issues', 'get', json(root, ['requests', 'accept', support.id, '--create']).issue.after.id]).description, /^Asked by: support\nRequest: /)
+  fs.writeFileSync(path.join(root, '.issues', 'requests', 'REQ-9.md'), '---\ntitle: Lost\ncustomer: CUS-404\n---\n')
+  const lost = run(root, ['requests', 'accept', 'REQ-9', '--create', '--json'])
+  assert.equal(lost.status, 0, lost.stderr)
+  assert.match(json(root, ['issues', 'get', JSON.parse(lost.stdout).issue.after.id]).description, /^Asked by: CUS-404\n/)
+  assert.match(lost.stderr, /CUS-404/)
 })
 
 test('a broken request file is a warning that points to pmkit validate, in the text and in the JSON', () => {
