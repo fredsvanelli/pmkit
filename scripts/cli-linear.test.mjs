@@ -1672,3 +1672,33 @@ test('release-notes on Linear without releases builds from the sprint and says s
     assert.equal(result.stderr, `note: release notes built from sprint 1: ${RELEASES_HINT}\n`, args.join(' '))
   }
 })
+
+// PMK-225: the inbox reads Linear notifications of the key owner and marks them read in Linear.
+const inboxRoutes = () => ({
+  ...fakeWorkspace(),
+  PmkitNotifications: { status: 200, headers: {}, json: { data: { notifications: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [
+    { id: 'n1', type: 'issueAssignedToYou', createdAt: '2026-10-30T10:00:00.000Z', readAt: null, actor: { id: 'user-2' }, issue: { identifier: 'ACME-1', title: 'First' }, comment: null },
+  ] } } } },
+  PmkitNotificationRead: (body) => ({ status: 200, headers: {}, json: { data: { notificationUpdate: { success: true, notification: { id: body.variables.id, readAt: body.variables.readAt } } } } }),
+})
+
+test('PMK-225: inbox list on Linear lists the key owner notifications', async () => {
+  const fetch = fakeLinearFetch(inboxRoutes())
+  const result = await cli(setup({ edit: withTeam }), ['inbox', 'list', '--as', 'user-1', '--json'], fetch)
+  assert.equal(result.code, 0, result.stderr + result.stdout)
+  const data = JSON.parse(result.stdout)
+  assert.deepEqual(data.items.map((item) => [item.key, item.kind, item.issue]), [['notification:n1', 'assignment', 'ACME-1']])
+  assert.ok(!fetch.calls.some((call) => isMutation(call.body.query)))
+})
+
+test('PMK-225: inbox mark-read on Linear writes readAt, and a dry run writes nothing', async () => {
+  const fetch = fakeLinearFetch(inboxRoutes())
+  const context = setup({ edit: withTeam })
+  const dry = await cli(context, ['inbox', 'mark-read', '--as', 'user-1', '--dry-run', '--json'], fetch)
+  assert.equal(dry.code, 0, dry.stderr + dry.stdout)
+  assert.equal(callsOf(fetch, 'PmkitNotificationRead'), 0)
+  const result = await cli(context, ['inbox', 'mark-read', '--as', 'user-1', '--key', 'notification:n1', '--json'], fetch)
+  assert.equal(result.code, 0, result.stderr + result.stdout)
+  assert.deepEqual(JSON.parse(result.stdout).marked, ['notification:n1'])
+  assert.equal(callsOf(fetch, 'PmkitNotificationRead'), 1)
+})

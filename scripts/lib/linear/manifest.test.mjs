@@ -64,7 +64,7 @@ test('the default workspace gives the sandbox column', async () => {
     linked_code: 'derived',
     agent_delegation: 'native',
     security_alerts: 'derived',
-    user_inbox: 'absent',
+    user_inbox: 'native',
   })
   const entry = byId(entries)
   assert.deepEqual(entry.agent_delegation, {
@@ -85,7 +85,7 @@ test('the default workspace gives the sandbox column', async () => {
   assert.deepEqual(entry.security_alerts, { id: 'security_alerts', path: 'derived', detail: { source: 'scanners' } })
   assert.deepEqual(entry.saved_views.detail, { workspace: 'native' })
   assert.equal(entry.saved_views.enableHint, 'The Linear adapter does not serve views yet; Linear offers them on this workspace')
-  assert.deepEqual(entry.user_inbox.detail, { workspace: 'native', unsupported: ['listNotifications', 'markRead'] })
+  assert.deepEqual(entry.user_inbox.detail, { workspace: 'native' })
   assert.deepEqual(entry.deliverables.detail, { entity: 'project', derived: ['deliverableProgress'], unsupported: ['createMilestone'] })
   assert.deepEqual(entry.status_update.detail, { entity: 'project update' })
   assert.deepEqual(entry.documents.detail, { scope: 'project', unsupported: ['createDocument', 'listDocuments'] })
@@ -117,12 +117,7 @@ test('a Business workspace with releases and customers on', async () => {
   const listed = [...entry.demand_signals.detail.unsupported, ...entry.request_queue.detail.unsupported]
   for (const operation of REQUEST_OPERATIONS) assert.ok(listed.includes(operation), operation)
   assert.ok(entry.demand_signals.detail.unsupported.includes('createRequest'))
-  assert.deepEqual(entry.user_inbox, {
-    id: 'user_inbox',
-    path: 'absent',
-    detail: { workspace: 'native', unsupported: ['listNotifications', 'markRead'] },
-    enableHint: 'The Linear adapter does not read notifications yet; Linear offers them on this workspace',
-  })
+  assert.deepEqual(entry.user_inbox, { id: 'user_inbox', path: 'native', detail: { workspace: 'native' } })
   assert.deepEqual(entry.strategic_goals, {
     id: 'strategic_goals',
     path: 'absent',

@@ -87,12 +87,8 @@ function workspaceAnswers(raw) {
         enableHint: 'The Linear adapter does not serve Asks yet; Linear offers them on this workspace',
       }
       : { path: 'absent', enableHint: 'Linear Asks need the Business or Enterprise plan' },
-    // Linear has notifications on every plan, but the adapter does not read them yet (PMK-47), so pmkit reports it absent.
-    user_inbox: {
-      path: 'absent',
-      detail: { workspace: 'native', unsupported: ['listNotifications', 'markRead'] },
-      enableHint: 'The Linear adapter does not read notifications yet; Linear offers them on this workspace',
-    },
+    // Linear has notifications on every plan, and the adapter reads the key owner's (PMK-225).
+    user_inbox: { path: 'native', detail: { workspace: 'native' } },
     // Linear delegates to installed app agents through the issue's delegate field (PMK-214). Without an app user there is no agent.
     // track-agents finds agent issues by an agent: assignee, which a Linear issue never has, so it refuses here.
     agent_delegation: agents.length > 0
