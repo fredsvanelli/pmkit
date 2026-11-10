@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { SEVERITIES, collectAlerts, isNpmMissingOnShell, parseNpmAudit, parsePnpmAudit, parseYarnAudit } from './lib/alerts.mjs'
+import { SEVERITIES, collectAlerts, isNpmMissingOnShell, parseNpmAudit, parsePipAudit, parsePnpmAudit, parseYarnAudit } from './lib/alerts.mjs'
 import { tempDir } from './test-helpers.mjs'
 
 const REPORT_ONE = JSON.stringify({ vulnerabilities: { a: { name: 'a', severity: 'low', via: [], fixAvailable: false } } })
@@ -238,4 +238,57 @@ test('yarn and pnpm run through the shell on win32, with their .cmd shims', () =
     assert.deepEqual(calls[0].args, ['audit', '--json'])
     assert.equal(calls[0].options.shell, true)
   }
+})
+
+// ---- pip-audit (PMK-208) ----
+
+const PIP = { dependencies: [
+  { name: 'django', version: '3.2', vulns: [{ id: 'PYSEC-2023-1', aliases: ['CVE-2023-0001'], fix_versions: ['3.2.1'], description: 'long text' }, { id: 'GHSA-xxxx', aliases: [], fix_versions: [] }] },
+  { name: 'ok', version: '1.0', vulns: [] },
+], fixes: [] }
+
+test('pip-audit: one alert per package, severity unknown, an OSV link and the ID with its aliases', () => {
+  const { alerts, warnings, incomplete } = parsePipAudit(JSON.stringify(PIP))
+  assert.deepEqual(warnings, [])
+  assert.equal(incomplete, false)
+  assert.deepEqual(alerts, [{
+    id: 'pip-audit:django', scanner: 'pip-audit', package: 'django', title: 'PYSEC-2023-1 (CVE-2023-0001)', severity: 'unknown',
+    url: 'https://osv.dev/vulnerability/PYSEC-2023-1', fixAvailable: false,
+    advisories: [{ title: 'PYSEC-2023-1 (CVE-2023-0001)', url: 'https://osv.dev/vulnerability/PYSEC-2023-1' }, { title: 'GHSA-xxxx', url: 'https://osv.dev/vulnerability/GHSA-xxxx' }],
+  }])
+})
+
+test('pip-audit: the older top-level array reads the same', () => {
+  assert.deepEqual(parsePipAudit(JSON.stringify(PIP.dependencies)).alerts, parsePipAudit(JSON.stringify(PIP)).alerts)
+})
+
+test('pip-audit: a fix for every advisory is a fix', () => {
+  const out = JSON.stringify({ dependencies: [{ name: 'a', vulns: [{ id: 'X-1', fix_versions: ['2'] }] }] })
+  assert.equal(parsePipAudit(out).alerts[0].fixAvailable, true)
+})
+
+test('pip-audit: a skipped dependency makes the result incomplete with a warning', () => {
+  const out = JSON.stringify({ dependencies: [{ name: 'private-lib', skip_reason: 'Dependency not found on PyPI and could not be audited' }, ...PIP.dependencies] })
+  const { alerts, warnings, incomplete } = parsePipAudit(out)
+  assert.equal(alerts.length, 1)
+  assert.equal(incomplete, true)
+  assert.deepEqual(warnings, ['pip-audit did not audit private-lib: Dependency not found on PyPI and could not be audited'])
+})
+
+test('pip-audit: bad output throws', () => {
+  assert.throws(() => parsePipAudit('nope'), /pip-audit output is not valid JSON/)
+  assert.throws(() => parsePipAudit('{}'), /pip-audit output has no dependencies list/)
+  assert.throws(() => parsePipAudit('', 'No module named pip_audit'), /^Error: pip-audit printed empty output: No module named pip_audit$/)
+})
+
+test('pip-audit runs on requirements.txt without the shell, even on win32, and a skip marks the scanner incomplete', () => {
+  const root = tempDir('pmkit-pip-')
+  fs.writeFileSync(path.join(root, 'requirements.txt'), 'django==3.2\n')
+  const stdout = JSON.stringify({ dependencies: [{ name: 'x', skip_reason: 'editable' }] })
+  const { spawn, calls } = fakeSpawn({ stdout, status: 0 })
+  const found = collectAlerts(root, { platform: 'win32', spawn })
+  assert.equal(calls[0].command, 'pip-audit')
+  assert.deepEqual(calls[0].args, ['-r', 'requirements.txt', '-f', 'json', '--progress-spinner', 'off'])
+  assert.equal(calls[0].options.shell, false)
+  assert.deepEqual(found.scanners.find((scanner) => scanner.id === 'pip-audit'), { id: 'pip-audit', detected: true, alerts: 0, incomplete: true })
 })

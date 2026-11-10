@@ -1342,14 +1342,18 @@ export const COMMANDS = [
       // The per-scanner count follows the filter, so scanners[].alerts always adds up to alerts.length.
       const scanners = found.scanners.map((scanner) => ({ ...scanner, alerts: alerts.filter((alert) => alert.scanner === scanner.id).length }))
       const failed = scanners.filter((scanner) => scanner.error !== undefined)
+      const partial = scanners.filter((scanner) => scanner.incomplete)
       let text
       if (!scanners.some((scanner) => scanner.detected)) {
         text = `no scanners found in this repository (looked for: ${SCANNERS.map((scanner) => `${scanner.id} needs ${scanner.needs}`).join('; ')})`
       } else if (alerts.length > 0) text = table(['ID', 'Severity', 'Package', 'Title'], alerts.map((alert) => [alert.id, alert.severity, alert.package, alert.title]))
-      else text = failed.length === 0 ? 'no alerts' : 'no alerts read'
-      // A failed scanner left part of the scan unread, so the text never reads as a clean result.
-      if (failed.length > 0) text = [text, ...failed.map((scanner) => `incomplete: ${scanner.id} failed (${scanner.error}), so this result may miss alerts`)].join('\n')
-      return { data: { incomplete: failed.length > 0, scanners, alerts }, text, warnings: found.warnings, notes: await capabilityNotesOrNone(ctx, 'security_alerts') }
+      else text = failed.length === 0 && partial.length === 0 ? 'no alerts' : 'no alerts read'
+      // A failed or partial scanner left part of the scan unread, so the text never reads as a clean result.
+      if (failed.length > 0 || partial.length > 0) {
+        text = [text, ...failed.map((scanner) => `incomplete: ${scanner.id} failed (${scanner.error}), so this result may miss alerts`),
+          ...partial.map((scanner) => `incomplete: ${scanner.id} did not audit every package, so this result may miss alerts`)].join('\n')
+      }
+      return { data: { incomplete: failed.length > 0 || partial.length > 0, scanners, alerts }, text, warnings: found.warnings, notes: await capabilityNotesOrNone(ctx, 'security_alerts') }
     },
   },
   {
@@ -1361,6 +1365,7 @@ export const COMMANDS = [
       ctx.config()
       const found = collectAlerts(ctx.root, { env: ctx.env })
       const failed = found.scanners.filter((scanner) => scanner.error !== undefined)
+      const partial = found.scanners.filter((scanner) => scanner.incomplete)
       const warnings = [...found.warnings]
       const noUnread = { count: 0, ids: [] }
       if (!found.scanners.some((scanner) => scanner.detected)) {
@@ -1376,6 +1381,7 @@ export const COMMANDS = [
       const { candidates, matched } = matchAlerts(alerts.map((alert) => alertCandidate(alert, { priorities, types })), existing.issues)
       warnings.push(...existing.problems.map(problemLine))
       for (const scanner of failed) warnings.push(`incomplete: ${scanner.id} failed (${scanner.error}), so this list may miss alerts. Do not create issues from this list`)
+      for (const scanner of partial) warnings.push(`incomplete: ${scanner.id} did not audit every package, so this list may miss alerts. Do not create issues from this list`)
       if (existing.cut) warnings.push(`incomplete: the tracker has more issues than the ${READ_LIMIT} pmkit read, so an alert that an issue covers may show as new. Do not create issues from this list`)
       if (existing.unread.count > 0) {
         const { count, ids } = existing.unread
@@ -1383,11 +1389,11 @@ export const COMMANDS = [
         const next = ctx.config().system === 'local' ? 'Run /pmkit:local:doctor to fix them, then scan again' : 'Fix them in the tracker, then scan again'
         warnings.push(`incomplete: ${count} ${count === 1 ? 'issue' : 'issues'} could not be read${which}, so an alert that one of them covers may show as new. Do not create issues from this list. ${next}`)
       }
-      const incomplete = failed.length > 0 || existing.incomplete
+      const incomplete = failed.length > 0 || partial.length > 0 || existing.incomplete
       const parts = []
       if (candidates.length > 0) parts.push(table(['Key', 'Severity', 'Priority', 'Package', 'Title'], candidates.map((c) => [c.key, c.severity, c.priority ?? '', c.package, c.title])))
       if (matched.length > 0) parts.push(`already in the tracker:\n${table(['Issue', 'Status', 'Severity', 'Package', 'Title'], matched.map((m) => [m.issue, m.status ?? '', m.severity, m.package, m.advisories.length > 0 ? m.advisories.map((item) => item.title ?? item.url).join('; ') : m.title]))}`)
-      const empty = failed.length === 0 ? 'no alerts' : 'no alerts read'
+      const empty = failed.length === 0 && partial.length === 0 ? 'no alerts' : 'no alerts read'
       return { data: { absent: false, incomplete, scanners, unread: existing.unread, candidates, matched }, text: parts.length > 0 ? parts.join('\n\n') : empty, warnings, notes: await capabilityNotes(tracker, 'security_alerts') }
     },
   },

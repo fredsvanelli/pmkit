@@ -141,6 +141,39 @@ export function parsePnpmAudit(stdout, stderr = '') {
   return { alerts: groupAdvisories('pnpm-audit', entries.map((advisory) => npmStyleAdvisory('pnpm-audit', advisory, warnings))), warnings: [...new Set(warnings)] }
 }
 
+/**
+ * Parses the stdout of `pip-audit -f json`: `{ dependencies: [...] }`, or the bare list of older versions. pip-audit
+ * gives no severity, so every alert is `unknown`, and no URL, so the URL is the advisory's OSV page. A dependency with a
+ * `skip_reason` was not audited: it adds a warning and makes the result incomplete. Throws when it is not a report.
+ */
+export function parsePipAudit(stdout, stderr = '') {
+  if (!stdout || stdout.trim() === '') throw emptyOutputError('pip-audit', stderr)
+  let report
+  try {
+    report = JSON.parse(stdout)
+  } catch {
+    throw new Error('pip-audit output is not valid JSON')
+  }
+  const dependencies = Array.isArray(report) ? report : report?.dependencies
+  if (!Array.isArray(dependencies)) throw new Error('pip-audit output has no dependencies list')
+  const warnings = []
+  const entries = []
+  for (const dependency of dependencies) {
+    if (dependency?.skip_reason !== undefined) {
+      warnings.push(`pip-audit did not audit ${dependency.name}: ${String(dependency.skip_reason).replace(/\s+/g, ' ').trim()}`)
+      continue
+    }
+    for (const vuln of Array.isArray(dependency?.vulns) ? dependency.vulns : []) {
+      const aliases = Array.isArray(vuln.aliases) ? vuln.aliases : []
+      entries.push({
+        package: String(dependency.name), severity: 'unknown', title: aliases.length > 0 ? `${vuln.id} (${aliases.join(', ')})` : String(vuln.id),
+        url: `https://osv.dev/vulnerability/${encodeURIComponent(vuln.id)}`, fixAvailable: Array.isArray(vuln.fix_versions) && vuln.fix_versions.length > 0,
+      })
+    }
+  }
+  return { alerts: groupAdvisories('pip-audit', entries), warnings, incomplete: warnings.length > 0 }
+}
+
 /** The most output one scanner may print, in bytes. The same limit as the GitHub host. */
 export const NPM_MAX_BUFFER = 256 * 1024 * 1024
 /** The longest one scanner may run, in milliseconds. */
@@ -200,13 +233,18 @@ export const SCANNERS = [
     detect: (root) => fs.existsSync(path.join(root, 'pnpm-lock.yaml')),
     command: 'pnpm', args: ['audit', '--json'], shim: true, parse: parsePnpmAudit,
   },
+  {
+    id: 'pip-audit', label: 'pip-audit', needs: 'requirements.txt',
+    detect: (root) => fs.existsSync(path.join(root, 'requirements.txt')),
+    command: 'pip-audit', args: ['-r', 'requirements.txt', '-f', 'json', '--progress-spinner', 'off'], shim: false, parse: parsePipAudit,
+  },
 ]
 
 const rank = (alert) => SEVERITIES.indexOf(alert.severity)
 
 /**
  * Runs every scanner the repository at `root` has. A scanner that fails is reported in `scanners` and `warnings`,
- * never thrown. Alerts sort by severity, then package.
+ * never thrown, and one that skipped packages has `incomplete: true`. Alerts sort by severity, then package.
  */
 export function collectAlerts(root, { env = process.env, timeoutMs = NPM_TIMEOUT_MS, platform = process.platform, spawn = spawnSync } = {}) {
   const scanners = []
@@ -222,7 +260,8 @@ export function collectAlerts(root, { env = process.env, timeoutMs = NPM_TIMEOUT
       const found = scanner.parse(stdout, stderr)
       alerts.push(...found.alerts)
       warnings.push(...found.warnings)
-      scanners.push({ id: scanner.id, detected: true, alerts: found.alerts.length })
+      // A parser that could not read every package (pip-audit skips) says so: the scanner ran, but the result may miss alerts.
+      scanners.push({ id: scanner.id, detected: true, alerts: found.alerts.length, ...(found.incomplete ? { incomplete: true } : {}) })
     } catch (error) {
       scanners.push({ id: scanner.id, detected: true, alerts: 0, error: error.message })
       warnings.push(`${scanner.id} failed: ${error.message}`)

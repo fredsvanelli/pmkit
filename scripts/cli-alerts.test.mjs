@@ -27,8 +27,8 @@ function fakeNpm() {
   return dir
 }
 
-const SCANNER_IDS = ['npm-audit', 'yarn-audit', 'pnpm-audit']
-const LOOKED_FOR = 'npm-audit needs package-lock.json or npm-shrinkwrap.json; yarn-audit needs yarn.lock; pnpm-audit needs pnpm-lock.yaml'
+const SCANNER_IDS = ['npm-audit', 'yarn-audit', 'pnpm-audit', 'pip-audit']
+const LOOKED_FOR = 'npm-audit needs package-lock.json or npm-shrinkwrap.json; yarn-audit needs yarn.lock; pnpm-audit needs pnpm-lock.yaml; pip-audit needs requirements.txt'
 
 const REPORT = JSON.stringify({
   auditReportVersion: 2,
@@ -182,4 +182,23 @@ test('alerts list prints the note of the derived path, like alerts scan', async 
   const result = await setup()(['--json'])
   assert.equal(result.code, 0, result.stderr)
   assert.match(result.stderr, /^note: security_alerts is derived from scanners, not read natively$/m)
+})
+
+test('a scanner that skipped packages makes alerts list incomplete and says so in the text', async () => {
+  const dir = tempDir('pmkit-pipbin-')
+  const out = JSON.stringify({ dependencies: [{ name: 'private-lib', skip_reason: 'not on PyPI' }] })
+  fs.writeFileSync(path.join(dir, 'pip-audit'), `#!/usr/bin/env node\nprocess.stdout.write(${JSON.stringify(out)})\n`, { mode: 0o755 })
+  const root = makeRepo('basic')
+  fs.writeFileSync(path.join(root, 'requirements.txt'), 'x\n')
+  const env = { ...process.env, PATH: `${dir}${path.delimiter}${process.env.PATH}`, GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: '1' }
+  const json = await run(['alerts', 'list', '--json'], { env, cwd: root })
+  assert.equal(json.code, 0, json.stderr)
+  assert.equal(JSON.parse(json.stdout).incomplete, true)
+  assert.match(json.stderr, /warning: pip-audit did not audit private-lib: not on PyPI/)
+  const text = await run(['alerts', 'list'], { env, cwd: root })
+  assert.match(text.stdout, /^incomplete: pip-audit did not audit every package, so this result may miss alerts$/m)
+  assert.doesNotMatch(text.stdout, /^no alerts$/m)
+  const scan = await run(['alerts', 'scan', '--json'], { env, cwd: root })
+  assert.equal(JSON.parse(scan.stdout).incomplete, true)
+  assert.match(scan.stderr, /incomplete: pip-audit did not audit every package, so this list may miss alerts\. Do not create issues from this list/)
 })
