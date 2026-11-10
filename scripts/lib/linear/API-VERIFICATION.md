@@ -53,6 +53,31 @@ Docs: `https://linear.app/docs/releases` (read 2026-10-27) says releases are ava
 
 Answer `yes`, access `read/write`. Creation was not tried, so the Verified by cell does not claim a live write.
 
+## Releases mapped (PMK-246)
+
+Checked 2026-11-10 against Linear's public SDK schema (`packages/sdk/src/schema.graphql` in the `linear/linear` repository), not against a workspace: no workspace with releases on (Business or Enterprise) was at hand. The adapter's release documents run against the fake in `npm test` only.
+
+| pmkit | Linear (schema) |
+|---|---|
+| release `id` | `Release.id` (UUID). `release(id)` also takes the slug; pmkit sends the UUID only. |
+| `name`, `target`, `released`, `description` | `name`, `targetDate`, `completedAt`, `description` |
+| `state` | `released` when `completedAt` is set, else `planned`. `stage.type` (`planned`, `started`, `completed`, `canceled`) decides only that a canceled release is left out. |
+| `release list` | `releases(filter: { pipeline: { teams: { some: { key: { eq: <team> } } } } })`, page by page (`ReleaseFilter.pipeline` is a `ReleasePipelineFilter`, whose `teams` is a `TeamCollectionFilter`). |
+| an issue's `release` / `releases` | `issue(id) { releases(first, after) }`, a `ReleaseConnection`. One extra query, sent only when `Organization.releasesEnabled` is true. |
+| `issues update --release` | `issueUpdate` with `IssueUpdateInput.addedReleaseIds` and `removedReleaseIds`. |
+| the `release` filter | `IssueFilter.releases: { some: { id: { eq } } }` (`ReleaseCollectionFilter`). |
+
+Open until a workspace with releases runs them (acceptance criterion 5 of PMK-246):
+
+- `releases` with the `pipeline.teams` filter answers the scope team's releases and no error.
+- `Release.stage { type }`, `version`, `targetDate` and `completedAt` come back with the values the table assumes; in particular, whether a completed release always has `completedAt` set.
+- `Issue.releases` lists a release the issue was added to in the Linear app, and leaves a release the issue was removed from.
+- `issueUpdate` accepts `addedReleaseIds` and `removedReleaseIds` from a personal API key, and the issue then shows in the release in the app.
+- `issues(filter: { releases: { some: { id: { eq } } } })` answers the release's issues.
+- A pipeline with no team linked: whether its releases should count for the scope team. pmkit leaves them out today.
+
+A field Linear has renamed would reach the command as `UPSTREAM` with Linear's message.
+
 ## Insights
 
 The schema has no type, query, mutation or field whose name matches `insight`, `analytic` or `metric`. Live queries were skipped because there is no object to query.
