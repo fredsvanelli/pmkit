@@ -27,7 +27,7 @@ import { planNextAdr } from './lib/adr.mjs'
 import { similarResult } from './lib/similar.mjs'
 import { isBlocked } from './lib/model.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
-import { changeList, checkMembers, mergeCapacity, mergeDaysOff, parseCapacityPairs, recomputeCapacity, workingDays } from './lib/team-capacity.mjs'
+import { changeList, checkMembers, mergeDaysOff, parseCapacityPairs, recomputeCapacity, workingDays } from './lib/team-capacity.mjs'
 import { AGENT_ID, localRunLine, nativeRunLine } from './lib/delegation.mjs'
 import { agentFilter, authorAgent, blockedText, delegationOf, prSummary, prText } from './lib/track-agents.mjs'
 import { SCANNERS, SEVERITIES, alertCandidate, collectAlerts, matchAlerts, readReport } from './lib/alerts.mjs'
@@ -300,7 +300,7 @@ async function tickCriteria(ctx, id, patch) {
 /** The id of the active sprint, NOT_FOUND with the next step when none is active. */
 async function activeSprintId(tracker) {
   const sprint = await tracker.currentCycle()
-  if (sprint === null) throw new PmkitError('NOT_FOUND', 'no sprint is active', 'Create one with /pmkit:cycle:plan, or name a sprint by its id')
+  if (sprint === null) throw new PmkitError('NOT_FOUND', 'no sprint is active', 'pmkit cycle list shows the sprints to name by id; /pmkit:cycle:plan opens one on a tracker that can (Linear creates cycles from the team schedule)')
   return sprint.id
 }
 
@@ -3131,6 +3131,9 @@ function buildLoadReport(ctx, inputs, { capacity, daysOff, proposals = true }) {
   return { data, warnings, notes, sprint, incomplete: truncated || found.problems.length > 0 }
 }
 
+/** A capacity for the text: two decimals at most, and `not set` for null. The JSON keeps the stored number. */
+const shown = (capacity) => (capacity === null ? 'not set' : Number(capacity.toFixed(2)))
+
 const HUMAN_ROW = (row) => !row.agent && row.isMember
 
 /** The part of a load report that a capacity change moves: the imbalances and the flags per member. Null when the read was cut. */
@@ -3158,18 +3161,18 @@ async function runTeamCapacity(ctx) {
   if (!writing) {
     const data = { sprint: { id: sprint.id, name: sprint.name, start: sprint.start, end: sprint.end }, unit, sprintWorkingDays: workingDays(sprint), members: members(current.data, incomplete), imbalances: incomplete ? null : current.data.imbalances, notes: current.notes, warnings }
     const label = unit === 'issues' ? 'Capacity' : `Capacity (${unit})`
-    const text = [header, table(['Member', 'Availability', label, 'Days off', 'Working days', 'Load', 'Flags'], data.members.map((row) => [row.member, row.availability ?? '', row.capacity ?? 'not set', row.daysOff.join(', '), row.workingDays, row.load ?? '?', (row.flags ?? []).join(', ')]))].join('\n')
+    const text = [header, table(['Member', 'Availability', label, 'Days off', 'Working days', 'Load', 'Flags'], data.members.map((row) => [row.member, row.availability ?? '', shown(row.capacity), row.daysOff.join(', '), row.workingDays, row.load ?? '?', (row.flags ?? []).join(', ')]))].join('\n')
     return { data, text, warnings, notes: current.notes }
   }
   const set = ctx.opt('set') === undefined ? undefined : parseCapacityPairs(csv(ctx.list('set')))
   const off = ctx.opt('days-off') === undefined ? undefined : parseDaysOff(ctx)
   checkMembers([...Object.keys(set ?? {}), ...Object.keys(off ?? {})], humans.map((row) => row.member))
-  let capacity = set === undefined ? undefined : mergeCapacity(inputs.capacity, set)
   // A days-off change moves the working days, so it moves the capacity the formula of cycle:plan gave, except where --set named the member.
-  const scaled = off === undefined ? { recomputed: [], skipped: [] } : recomputeCapacity(sprint, capacity ?? inputs.capacity, inputs.daysOff, mergeDaysOff(inputs.daysOff, off), set ?? {})
-  if (scaled.recomputed.length > 0) capacity = scaled.capacity
+  const scaled = off === undefined ? { patch: {}, recomputed: [], skipped: [] } : recomputeCapacity(sprint, inputs.capacity, inputs.daysOff, mergeDaysOff(inputs.daysOff, off), set ?? {})
   warnings.push(...scaled.skipped.map((member) => `${member} has no working days to scale the capacity from, so it is unchanged`))
-  const result = await tracker.updateCycleCapacity(sprint.id, { capacity, daysOff: off }, await ctx.actor(), { dryRun: ctx.dryRun })
+  // Only the members this call changes are written, merged by the tracker: the other keys of the stored map are neither checked nor rewritten.
+  const capacityPatch = set === undefined && scaled.recomputed.length === 0 ? undefined : { ...set, ...scaled.patch }
+  const result = await tracker.updateCycleCapacity(sprint.id, { capacityPatch, daysOff: off }, await ctx.actor(), { dryRun: ctx.dryRun })
   const ids = humans.map((row) => row.member)
   const changes = changeList({ capacity: result.before.capacity, daysOff: result.before.daysOff }, { capacity: result.after.capacity, daysOff: result.after.daysOff }, ids)
   let after = null
@@ -3186,7 +3189,7 @@ async function runTeamCapacity(ctx) {
   if (changes.length === 0) lines.push('no change')
   for (const change of changes) {
     lines.push(change.member)
-    if (change.capacity.before !== change.capacity.after) lines.push(`  capacity ${change.capacity.before ?? 'not set'} → ${change.capacity.after ?? 'not set'}`)
+    if (change.capacity.before !== change.capacity.after) lines.push(`  capacity ${shown(change.capacity.before)} → ${shown(change.capacity.after)}`)
     if (change.daysOff.before.join() !== change.daysOff.after.join()) lines.push(`  days off ${change.daysOff.before.join(', ') || 'none'} → ${change.daysOff.after.join(', ') || 'none'}`)
   }
   if (after !== null && data.load.before !== null) {

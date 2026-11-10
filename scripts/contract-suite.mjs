@@ -387,6 +387,19 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.deepEqual(await tracker.getDaysOff(cycle.id), {})
     })
 
+    it('patches one member of the capacity and keeps the others', ['cycles'], async ({ tracker, actor, cycle: wanted }) => {
+      const members = (await tracker.discover()).members
+      const cycle = await wanted('active')
+      if (cycle === null || members.length < 2) return
+      const [first, second] = members
+      await tracker.setCapacity(cycle.id, { [first.id]: 8, [second.id]: 6 }, actor)
+      await tracker.updateCycleCapacity(cycle.id, { capacityPatch: { [first.id]: 5 } }, actor)
+      assert.deepEqual(await tracker.getCapacity(cycle.id), { [first.id]: 5, [second.id]: 6 })
+      await tracker.updateCycleCapacity(cycle.id, { capacityPatch: { [second.id]: null } }, actor)
+      assert.deepEqual(await tracker.getCapacity(cycle.id), { [first.id]: 5 })
+      await assert.rejects(async () => tracker.updateCycleCapacity(cycle.id, { capacityPatch: { 'nobody-here': 3 } }, actor), (error) => error.code === 'INVALID_INPUT')
+    })
+
     it('creates an epic, parents an issue and reads progress', ['deliverables', 'relations'], async ({ tracker, actor }) => {
       const epic = (await tracker.createDeliverable({ title: 'Launch' }, actor)).after
       assert.equal((await tracker.getDeliverable(epic.id)).title, 'Launch')

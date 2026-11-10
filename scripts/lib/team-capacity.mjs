@@ -31,16 +31,6 @@ export function workingDays(sprint, daysOff = []) {
   return days
 }
 
-/** The capacity map after the pairs: a number sets the member, null removes it. */
-export function mergeCapacity(current, set) {
-  const merged = { ...current }
-  for (const [member, amount] of Object.entries(set)) {
-    if (amount === null) delete merged[member]
-    else merged[member] = amount
-  }
-  return merged
-}
-
 /** Refuses a name that is an agent or not one of the human members of the scope. `humans` are the member ids. */
 export function checkMembers(names, humans) {
   for (const name of names) {
@@ -69,13 +59,17 @@ export function mergeDaysOff(current, off) {
   return merged
 }
 
+const PRECISION = 1e9
+
 /**
- * The capacity map after a days-off change. The formula of `/pmkit:cycle:plan` is linear in the working days, so a member who has a
- * capacity and whom `set` does not name gets round(capacity x new working days / old working days). A member with no capacity stays
- * unset, and one with no old working days to scale from is kept and listed in `skipped`. `beforeOff` and `afterOff` are full maps.
+ * The capacity changes a days-off change gives. The formula of `/pmkit:cycle:plan` is linear in the working days, so a member who has a
+ * capacity and whom `set` does not name gets capacity x new working days / old working days. The result is kept to 9 decimals and never
+ * rounded to a whole number: a rounded value cannot go back to the original (8 -> 6 -> 9, and 1 -> 0 -> 0), an unrounded one does.
+ * `patch` holds only the members that change, for `capacityPatch`, so no other key of the stored map is written. A member with no
+ * capacity stays unset, and one with no old working days to scale from is kept and listed in `skipped`. `beforeOff` and `afterOff` are full maps.
  */
 export function recomputeCapacity(sprint, capacity, beforeOff, afterOff, set) {
-  const next = { ...capacity }
+  const patch = {}
   const recomputed = []
   const skipped = []
   for (const member of new Set([...Object.keys(beforeOff), ...Object.keys(afterOff)])) {
@@ -86,8 +80,8 @@ export function recomputeCapacity(sprint, capacity, beforeOff, afterOff, set) {
       skipped.push(member)
       continue
     }
-    next[member] = Math.round((capacity[member] * after) / before)
-    recomputed.push({ member, workingDays: { before, after }, capacity: { before: capacity[member], after: next[member] } })
+    patch[member] = Math.round((capacity[member] * after * PRECISION) / before) / PRECISION
+    recomputed.push({ member, workingDays: { before, after }, capacity: { before: capacity[member], after: patch[member] } })
   }
-  return { capacity: next, recomputed, skipped }
+  return { patch, recomputed, skipped }
 }

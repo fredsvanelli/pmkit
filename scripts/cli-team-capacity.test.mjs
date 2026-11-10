@@ -126,10 +126,10 @@ test('team capacity --days-off recomputes the capacity of the member by working 
   const root = cleanRepo()
   const { code, data, stderr } = await capacity(root, ['--days-off', 'fred=2026-10-14+2026-10-15'])
   assert.equal(code, 0, stderr)
-  assert.deepEqual(data.recomputed, [{ member: 'fred', workingDays: { before: 10, after: 8 }, capacity: { before: 8, after: 6 } }])
-  assert.deepEqual(data.changes.map((change) => [change.member, change.capacity.before, change.capacity.after]), [['fred', 8, 6]])
+  assert.deepEqual(data.recomputed, [{ member: 'fred', workingDays: { before: 10, after: 8 }, capacity: { before: 8, after: 6.4 } }])
+  assert.deepEqual(data.changes.map((change) => [change.member, change.capacity.before, change.capacity.after]), [['fred', 8, 6.4]])
   assert.ok(data.notes.some((note) => /scaled by working days/.test(note)), data.notes.join('\n'))
-  assert.deepEqual((await stored(root)).capacity, { fred: 6, ana: 10 })
+  assert.deepEqual((await stored(root)).capacity, { fred: 6.4, ana: 10 })
 })
 
 test('team capacity --set for the same member wins over the recompute', async () => {
@@ -144,7 +144,7 @@ test('team capacity --days-off --dry-run previews the recomputed capacity and wr
   const root = cleanRepo()
   const before = fs.readFileSync(sprintFile(root), 'utf8')
   const { stdout } = await run(['team', 'capacity', '--days-off', 'fred=2026-10-14', '--dry-run'], { cwd: root, env })
-  assert.match(stdout, /capacity 8 → 7/)
+  assert.match(stdout, /capacity 8 → 7\.2/)
   assert.equal(fs.readFileSync(sprintFile(root), 'utf8'), before)
 })
 
@@ -154,6 +154,31 @@ test('team capacity --days-off leaves a member with no capacity unset', async ()
   const { data } = await capacity(root, ['--days-off', 'fred=2026-10-14'])
   assert.deepEqual(data.recomputed, [])
   assert.equal(memberOf((await capacity(root)).data, 'fred').capacity, null)
+})
+
+test('team capacity writes with a stored capacity of a member who left the team, and keeps that key', async () => {
+  const root = cleanRepo()
+  fs.writeFileSync(sprintFile(root), fs.readFileSync(sprintFile(root), 'utf8').replace('capacity: { fred: 8, ana: 10 }', 'capacity: { fred: 8, ana: 10, bob: 5 }'))
+  const off = await capacity(root, ['--days-off', 'fred=2026-10-14', '--dry-run'])
+  assert.equal(off.code, 0, off.stdout)
+  assert.deepEqual(off.data.changes.map((change) => change.member), ['fred'])
+  assert.equal((await capacity(root, ['--days-off', 'fred=2026-10-14'])).code, 0)
+  assert.equal((await capacity(root, ['--set', 'ana=12'])).code, 0)
+  assert.deepEqual((await stored(root)).capacity, { fred: 7.2, ana: 12, bob: 5 })
+})
+
+test('team capacity gives the original capacity back when the same days off are taken out', async () => {
+  const root = cleanRepo()
+  const days = 'fred=2026-10-13+2026-10-14+2026-10-15'
+  assert.equal((await capacity(root, ['--days-off', days])).code, 0)
+  assert.equal((await stored(root)).capacity.fred, 5.6)
+  assert.equal((await capacity(root, ['--days-off', 'fred=none'])).code, 0)
+  assert.equal((await stored(root)).capacity.fred, 8)
+  assert.equal((await capacity(root, ['--set', 'fred=1'])).code, 0)
+  const six = await capacity(root, ['--days-off', 'fred=2026-10-12+2026-10-13+2026-10-14+2026-10-15+2026-10-16+2026-10-19'])
+  assert.deepEqual(six.data.recomputed.map((item) => item.capacity.after), [0.4])
+  assert.equal((await capacity(root, ['--days-off', 'fred=none'])).code, 0)
+  assert.equal((await stored(root)).capacity.fred, 1)
 })
 
 test('team capacity --days-off member=none clears the days off', async () => {
@@ -250,6 +275,18 @@ test('team capacity on Linear refuses a member of another team and an agent, and
     assert.equal(data.error.code, 'INVALID_INPUT', name)
   }
   assert.ok(!fs.existsSync(path.join(root, '.pmkit', 'capacity.yaml')))
+})
+
+test('team capacity on Linear writes with a stored capacity of a user of another team, and keeps that key', async () => {
+  const { root, call } = onLinear()
+  fs.mkdirSync(path.join(root, '.pmkit'), { recursive: true })
+  fs.writeFileSync(path.join(root, '.pmkit', 'capacity.yaml'), 'version: 1\ncycles:\n  ACME:\n    2:\n      capacity:\n        user-1: 8\n        user-5: 3\n')
+  const off = await call(['--days-off', 'user-1=2026-10-21'])
+  assert.equal(off.code, 0, off.stdout + off.stderr)
+  assert.equal((await call(['--set', 'user-2=6'])).code, 0)
+  const file = fs.readFileSync(path.join(root, '.pmkit', 'capacity.yaml'), 'utf8')
+  assert.match(file, /user-5: 3/)
+  assert.match(file, /user-2: 6/)
 })
 
 test('team capacity on Linear accepts --sprint 2 and refuses a cycle that does not exist', async () => {

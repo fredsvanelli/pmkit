@@ -5,7 +5,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { PmkitError } from '../errors.mjs'
-import { requireCapacity, requireDaysOff, validDate } from '../local/sprints.mjs'
+import { applyCapacityPatch, requireCapacity, requireDaysOff, validDate } from '../local/sprints.mjs'
 import { writeFileAtomic } from '../local/store.mjs'
 import { parseYaml, stringifyYaml } from '../yaml.mjs'
 
@@ -92,16 +92,17 @@ export const readCapacity = (root, team) => readFile(root)[team] ?? {}
 export const entryFor = (entries, id) => entries[id] ?? { capacity: {}, daysOff: {} }
 
 /**
- * Changes the entry of one cycle and returns { before, after }. `capacity` replaces the whole map; `daysOff` merges per member,
+ * Changes the entry of one cycle and returns { before, after }. `capacity` replaces the whole map, `capacityPatch` merges per member; `daysOff` merges per member,
  * and a member set to null loses their days off. `sprint` is { start, end } for the date check, `members` the member ids.
  * A file that is not valid is never overwritten. A dry run builds `after` and writes nothing.
  */
-export function writeEntry(root, team, id, { capacity, daysOff }, { sprint, members, dryRun = false }) {
+export function writeEntry(root, team, id, { capacity, capacityPatch, daysOff }, { sprint, members, dryRun = false }) {
   const teams = readFile(root)
   const before = entryFor(teams[team] ?? {}, id)
   const known = Object.fromEntries(members.map((member) => [member, true]))
   const after = { capacity: { ...before.capacity }, daysOff: { ...before.daysOff } }
   if (capacity !== undefined) after.capacity = requireCapacity(capacity, known)
+  if (capacityPatch !== undefined) after.capacity = applyCapacityPatch(after.capacity, capacityPatch, known)
   if (daysOff !== undefined) {
     for (const [member, dates] of Object.entries(requireDaysOff(daysOff, known, sprint))) {
       if (dates === null) delete after.daysOff[member]

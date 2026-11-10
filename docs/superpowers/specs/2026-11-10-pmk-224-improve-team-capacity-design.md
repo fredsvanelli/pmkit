@@ -18,13 +18,14 @@ This design was written without a round of questions (the coordinator opted out)
 
 ## 1. Recompute on days off
 
-The only formula in the repo is `commands/cycle/plan.md` step 4: capacity = rate x availability x working days, rounded to a whole number. It is linear in the working days, so the CLI does not need the velocity: a member's new capacity is `round(old x newWorkingDays / oldWorkingDays)`. **(builder's call)**
+The only formula in the repo is `commands/cycle/plan.md` step 4: capacity = rate x availability x working days, rounded to a whole number. It is linear in the working days, so the CLI does not need the velocity: a member's new capacity is `old x newWorkingDays / oldWorkingDays`, kept to 9 decimals and not rounded to a whole number. **(builder's call, changed after review)**
 
 - Applies in `team capacity` when `--days-off` changes the working days of a member whose capacity is set and who `--set` does not name. `--set member=n` always wins, so `--set member=<old>` keeps the number.
 - A member with no capacity is left alone (unknown stays unknown, never 0).
 - `oldWorkingDays` 0 cannot scale: the capacity stays and a warning names the member. A new working-days count of 0 gives capacity 0.
 - The recomputed value goes through the same single `updateCycleCapacity` call as the rest, so the batch is atomic. `changes` already shows it as capacity before and after. The result gets `recomputed`: `[{ member, workingDays: {before, after}, capacity: {before, after} }]`, and a note says the capacity was scaled by working days and how to keep the number.
-- Rounding runs from the stored (already rounded) value, so a long chain of edits can drift by one. Accepted, the preview shows every step.
+- No rounding to a whole number: rounding from the stored value drifted (8 -> 6 -> 9) and trapped a small capacity at 0 (1 -> 0 -> 0). The unrounded value goes back to the original when the same days come back. The text shows two decimals at most; the JSON keeps the number.
+- Only the members whose capacity changes are written, through `capacityPatch` (new key of `updateCycleCapacity`, a merge that checks only the keys it names, in Local and Linear). `--set` uses it too, so a stored key of a member who left the team is neither checked nor rewritten, and a change made by someone else to another member is not overwritten.
 
 ## 2. `cycle capacity current` and the Linear team check
 

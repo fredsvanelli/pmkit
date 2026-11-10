@@ -90,6 +90,18 @@ export function requireCapacity(value, members) {
   return { ...value }
 }
 
+/**
+ * The capacity map after a patch of member to number (a number sets, null removes). Only the patched keys are checked, so a stored key
+ * of a member who left stays as it is and never fails a write that does not touch it.
+ */
+export function applyCapacityPatch(current, patch, members) {
+  if (!isMap(patch)) throw invalid('capacity patch must be a map of member to number or null')
+  const set = Object.fromEntries(Object.entries(patch).filter(([, amount]) => amount !== null))
+  const merged = { ...current, ...requireCapacity(set, members) }
+  for (const [member, amount] of Object.entries(patch)) if (amount === null) delete merged[member]
+  return merged
+}
+
 /** Validates a map of member to a list of dates off (or null to clear). Returns it with each list sorted. */
 export function requireDaysOff(value, members, sprint) {
   if (!isMap(value)) throw invalid('days off must be a map of member to a list of dates')
