@@ -2,12 +2,14 @@
 id: PMK-215
 title: Improve track-agents
 type: feature
-status: backlog
+status: in_progress
 priority: low
 estimate: 2
+assignee: fred
 related: [PMK-58]
+branch: pmk-215-improve-track-agents
 created: 2026-11-08T20:37:23.421Z
-updated: 2026-11-08T20:53:51Z
+updated: 2026-11-10T05:14:39Z
 ---
 
 ## Description
