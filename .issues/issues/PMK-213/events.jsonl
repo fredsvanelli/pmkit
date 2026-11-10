@@ -6,3 +6,5 @@
 {"at":"2026-11-10T03:15:21Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-213-improve-goals"}
 {"at":"2026-11-10T03:19:41Z","by":"fred","op":"comment","to":"2026-11-10T03-19-41Z-fred.md"}
 {"at":"2026-11-10T04:03:27Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T04:13:50Z","by":"fred","op":"comment","to":"2026-11-10T04-13-50Z-fred.md"}
+{"at":"2026-11-10T04:13:56Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
