@@ -390,8 +390,8 @@ function defaultPrBody(issue) {
   return lines.join('\n')
 }
 const problemLine = (problem) => `${problem.id === null ? '' : `${problem.id}: `}${problem.code} ${problem.message}`
-/** One warning per problem of a list, pointing to pmkit validate. The JSON carries the same problems. */
-const problemWarnings = (problems) => problems.map((problem) => `${problemLine(problem)}; run pmkit validate`)
+/** One warning per problem of a list, pointing to pmkit validate. A cut hosted read (INCOMPLETE) is no file problem. The JSON carries the same problems. */
+const problemWarnings = (problems) => problems.map((problem) => (problem.code === 'INCOMPLETE' ? problemLine(problem) : `${problemLine(problem)}; run pmkit validate`))
 /** A goal list problem as a warning. A cut Linear read (INCOMPLETE) is no file problem, so validate is no help there. */
 const goalProblemWarning = (problem) => (problem.code === 'INCOMPLETE' ? problemLine(problem) : `${problemLine(problem)}; run pmkit validate`)
 
@@ -1074,19 +1074,23 @@ export const COMMANDS = [
   {
     name: 'customers list', summary: 'lists the customers with status, tier, revenue, size and request count, highest revenue first', flags: [],
     run: async (ctx) => {
-      const { customers, problems } = await (await ctx.tracker()).listCustomers()
+      const { customers, problems, hasMore = false } = await (await ctx.tracker()).listCustomers()
       const rows = customers.map((c) => [c.id, c.name, c.status?.name ?? '', c.tier?.name ?? '', c.revenue ?? '', c.size ?? '', c.requests])
       return {
-        data: { available: true, customers, hasMore: false, problems },
+        data: { available: true, customers, hasMore, problems },
         text: customers.length === 0 ? 'no customers yet' : table(['ID', 'Name', 'Status', 'Tier', 'Revenue', 'Size', 'Requests'], rows),
         warnings: problemWarnings(problems),
       }
     },
   },
   {
-    name: 'customers show', summary: 'one customer, by id or exact name, with its requests, newest first', usage: '<id or name>', args: ['customer'], flags: [],
+    name: 'customers show', summary: 'one customer, by id or exact name, with its requests, newest first; --customer is the linear customers show spelling',
+    usage: '(<id or name> | --customer <id or name>)', args: ['customer?'], flags: ['customer'],
     run: async (ctx) => {
-      const { customer, requests, problems } = await (await ctx.tracker()).getCustomer(ctx.args[0])
+      if ((ctx.args[0] === undefined) === (ctx.opt('customer') === undefined)) {
+        throw usageError('customers show takes the customer as <id or name> or as --customer, and not both', 'pmkit customers show CUS-1')
+      }
+      const { customer, requests, problems } = await (await ctx.tracker()).getCustomer(ctx.args[0] ?? ctx.opt('customer'))
       const text = [customerRecord(customer), '', requests.length === 0 ? 'no requests yet' : requestTable(requests)].join('\n')
       return { data: { available: true, customer, requests, problems }, text, warnings: problemWarnings(problems) }
     },

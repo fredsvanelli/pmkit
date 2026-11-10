@@ -2391,6 +2391,14 @@ test('requests accept --create leaves out Asked by when the request names nobody
   assert.match(lost.stderr, /CUS-404/)
 })
 
+test('customers show takes the customer as a positional or as --customer, the linear customers show spelling (PMK-221)', () => {
+  const root = makeRepo('team')
+  json(root, ['customers', 'create', '--name', 'Acme'])
+  assert.deepEqual(json(root, ['customers', 'show', '--customer', 'acme']), json(root, ['customers', 'show', 'Acme']))
+  assert.equal(errorOf(run(root, ['customers', 'show', 'Acme', '--customer', 'Acme', '--json'])).code, 'INVALID_INPUT')
+  assert.equal(errorOf(run(root, ['customers', 'show', '--json'])).code, 'INVALID_INPUT')
+})
+
 test('a broken request file is a warning that points to pmkit validate, in the text and in the JSON', () => {
   const root = makeRepo('team')
   fs.mkdirSync(path.join(root, '.issues', 'requests'), { recursive: true })
