@@ -225,7 +225,7 @@ test('docs next-adr counts a tracker folder outside the repository and writes no
     assert.equal(exit, 0, JSON.stringify(data))
     assert.equal(data.destination, 'tracker')
     assert.equal(data.number, '0002')
-    assert.equal(data.path, 'docs/adr/0002-keep-estimates-in-points.md')
+    assert.equal(data.path, 'tracker:docs/adr/0002-keep-estimates-in-points.md')
     assert.doesNotMatch(data.path, /null/)
     assert.equal(data.docPath, 'adr/0002-keep-estimates-in-points.md')
     assert.match(data.notes.join('\n'), /outside the repository/)
@@ -279,7 +279,8 @@ test('docs next-adr needs --title', async () => {
 // PMK-228: the ADR folders and two ADRs with one number.
 test('adrFolders reads the tracker folder once when tracker.path puts it on docs/adr', () => {
   const root = '/r'
-  assert.deepEqual(adrFolders({ root, trackerDir: '/r/docs/adr', trackerFolder: 'docs/adr' }).map((f) => f.place), ['repo'])
+  assert.deepEqual(adrFolders({ root, trackerDir: '/r/docs/adr', trackerFolder: 'docs/adr' }).map((f) => [f.place, f.label]), [['tracker', 'docs/adr']])
+  assert.deepEqual(adrFolders({ root, trackerDir: '/t/docs/adr', trackerFolder: null }).map((f) => [f.place, f.label]), [['repo', 'docs/adr'], ['tracker', 'tracker:docs/adr']])
   assert.deepEqual(adrFolders({ root, trackerDir: '/r/.issues/docs/adr', trackerFolder: '.issues/docs/adr' }).map((f) => [f.place, f.label]), [['repo', 'docs/adr'], ['tracker', '.issues/docs/adr']])
   assert.deepEqual(adrFolders({ root, trackerDir: null, trackerFolder: null }).map((f) => f.place), ['repo'])
 })
@@ -502,4 +503,68 @@ test('setAdrStatus changes the front matter key and the ## Status section togeth
   // The key is current but the section is not: the section still changes.
   const stale = '---\nstatus: deprecated\n---\n\n# T\n\n## Status\n\nAccepted\n'
   assert.equal(setAdrStatus(stale, 'deprecated').text, '---\nstatus: deprecated\n---\n\n# T\n\n## Status\n\nDeprecated\n')
+})
+
+// PMK-247: the tracker folder is the repository's, or lies outside it.
+const trackerAtRoot = (root, autoCommit) => {
+  fs.writeFileSync(configFile(root), fs.readFileSync(configFile(root), 'utf8').replace('path: .issues', 'path: .'))
+  for (const name of fs.readdirSync(path.join(root, '.issues'))) fs.renameSync(path.join(root, '.issues', name), path.join(root, name))
+  fs.rmSync(path.join(root, '.issues'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'config.yaml'), fs.readFileSync(path.join(root, 'config.yaml'), 'utf8').replace(/^auto_commit: .*$/m, `auto_commit: ${autoCommit}`))
+  writeAdr(root, 'docs/adr/0001-a.md')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-q', '-m', 'init')
+}
+
+test('docs next-adr with tracker.path . answers a tracker document, as for any tracker path (PMK-247)', async () => {
+  const root = repo()
+  trackerAtRoot(root, true)
+  const { data } = await nextAdr(root)
+  assert.deepEqual([data.destination, data.path, data.docPath], ['tracker', 'docs/adr/0002-keep-estimates-in-points.md', 'adr/0002-keep-estimates-in-points.md'])
+  assert.doesNotMatch(data.notes.join('\n'), /also has ADRs/)
+})
+
+test('docs adr-status with tracker.path . and auto_commit true commits the ADR (PMK-247)', async () => {
+  const root = repo()
+  trackerAtRoot(root, true)
+  const before = git(root, 'rev-list', '--count', 'HEAD').trim()
+  const result = await adrStatus(root, '1', 'deprecated')
+  assert.equal(result.code, 0, result.stderr)
+  assert.equal(result.data.place, 'tracker')
+  assert.deepEqual(result.data.notes, [])
+  assert.equal(Number(git(root, 'rev-list', '--count', 'HEAD').trim()), Number(before) + 1)
+  assert.match(git(root, 'show', '--name-only', '--format=', 'HEAD'), /docs\/adr\/0001-a\.md/)
+  assert.equal(git(root, 'status', '--porcelain', '--', 'docs'), '')
+})
+
+test('docs adr-status with tracker.path . and auto_commit false writes the file and commits nothing (PMK-247)', async () => {
+  const root = repo()
+  trackerAtRoot(root, false)
+  const before = git(root, 'rev-list', '--count', 'HEAD').trim()
+  const result = await adrStatus(root, '1', 'deprecated')
+  assert.equal(result.code, 0, result.stderr)
+  assert.equal(result.data.place, 'tracker')
+  assert.deepEqual(result.data.notes, [])
+  assert.equal(git(root, 'rev-list', '--count', 'HEAD').trim(), before)
+  assert.match(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), /^Status: deprecated$/m)
+})
+
+test('a number used in the repository and in a tracker outside it shows two different paths in validate and CONFLICT (PMK-247)', async () => {
+  const root = repo()
+  const outside = path.join(path.dirname(root), `outside-${path.basename(root)}`)
+  fs.writeFileSync(configFile(root), fs.readFileSync(configFile(root), 'utf8').replace('path: .issues', `path: ../${path.basename(outside)}`))
+  fs.renameSync(path.join(root, '.issues'), outside)
+  try {
+    writeAdr(root, 'docs/adr/0002-a.md')
+    writeAdr(outside, 'docs/adr/0002-a.md')
+    const status = await adrStatus(root, '2', 'deprecated')
+    assert.equal(status.code, 2)
+    assert.equal(status.data.error.code, 'CONFLICT')
+    assert.match(status.data.error.message, /^ADR number 0002 is used by (docs\/adr\/0002-a\.md and tracker:docs\/adr\/0002-a\.md|tracker:docs\/adr\/0002-a\.md and docs\/adr\/0002-a\.md)$/)
+    const validate = await run(['validate', '--json'], { cwd: root, env: childEnv() })
+    const messages = JSON.parse(validate.stdout).problems.filter((problem) => problem.code === 'adr').map((problem) => `${problem.path} ${problem.message}`)
+    assert.deepEqual(messages.sort(), ['docs/adr/0002-a.md ADR number 0002 is also used by tracker:docs/adr/0002-a.md', 'tracker:docs/adr/0002-a.md ADR number 0002 is also used by docs/adr/0002-a.md'])
+  } finally {
+    fs.rmSync(outside, { recursive: true, force: true })
+  }
 })

@@ -41,16 +41,16 @@ export function highestAdr(names) {
 }
 
 /**
- * The ADR folders: the repository's docs/adr and, for the Local tracker, its docs/adr unless tracker.path puts it on the same folder,
- * which is then read once. `label` is the folder relative to the repository, or docs/adr relative to a tracker folder outside it,
- * never an absolute path of this machine. `repoFolder` is null for a folder outside the repository, where no ref has it.
+ * The ADR folders: the repository's docs/adr and, for the Local tracker, its docs/adr. When tracker.path puts that on the repository's
+ * folder it is one folder, read once, and its place is `tracker`, so the ADRs in it follow the tracker's writes and auto_commit (PMK-247).
+ * `label` is the folder relative to the repository, or `tracker:docs/adr` for a tracker folder outside it, so its paths never equal the
+ * repository's and never show a path of this machine. `repoFolder` is null for a folder outside the repository, where no ref has it.
  */
 export function adrFolders({ root, trackerDir, trackerFolder }) {
   const repoDir = path.join(root, 'docs', 'adr')
+  if (trackerDir && path.resolve(trackerDir) === path.resolve(repoDir)) return [{ place: 'tracker', label: 'docs/adr', shown: 'docs/adr', dir: repoDir, repoFolder: 'docs/adr' }]
   const folders = [{ place: 'repo', label: 'docs/adr', shown: 'docs/adr', dir: repoDir, repoFolder: 'docs/adr' }]
-  if (trackerDir && path.resolve(trackerDir) !== path.resolve(repoDir)) {
-    folders.push({ place: 'tracker', label: trackerFolder ?? 'docs/adr', shown: trackerFolder ?? 'docs/adr in the tracker', dir: trackerDir, repoFolder: trackerFolder })
-  }
+  if (trackerDir) folders.push({ place: 'tracker', label: trackerFolder ?? 'tracker:docs/adr', shown: trackerFolder ?? 'docs/adr in the tracker', dir: trackerDir, repoFolder: trackerFolder })
   return folders
 }
 
@@ -190,9 +190,9 @@ export function planNextAdr({ title, root, trackerFolder, trackerDir, hosted, cr
   if (refSha) notes.push(`numbered with ${ref} as last fetched (${refSha}), so it may be behind the remote`)
   else notes.push(`${ref} does not exist here, so only the working tree was read and an ADR merged on ${defaultBranch} may be missed`)
 
-  const trackerLabel = trackerDir ? (trackerFolder ?? 'docs/adr') : null
+  const trackerLabel = trackerDir ? (trackerFolder ?? 'tracker:docs/adr') : null
   const folders = adrFolders({ root, trackerDir, trackerFolder })
-  if (trackerDir && !trackerFolder) notes.push(`the tracker folder is outside the repository, so ${ref} was not read for it and its paths are relative to the tracker folder`)
+  if (trackerDir && !trackerFolder) notes.push(`the tracker folder is outside the repository, so ${ref} was not read for it and its paths start with tracker: and are relative to the tracker folder`)
 
   const sources = []
   for (const { place, label, shown, dir, repoFolder } of folders) {
