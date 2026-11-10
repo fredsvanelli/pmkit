@@ -5,8 +5,9 @@ type: bug
 status: backlog
 priority: low
 estimate: 1
+parent: EPC-6
 created: 2026-11-10T19:28:14.686Z
-updated: 2026-11-10T19:28:14Z
+updated: 2026-11-10T21:16:03Z
 ---
 
 ## Description
