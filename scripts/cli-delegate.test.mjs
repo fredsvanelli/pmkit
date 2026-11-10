@@ -6,6 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { run } from './pmkit.mjs'
 import { parseDelegation } from './lib/delegation.mjs'
+import { createLocalTracker } from './lib/local/tracker.mjs'
 import { hashTree, makeRepo, tempDir } from './test-helpers.mjs'
 
 const ISSUE = 'ISS-5N1R'
@@ -95,6 +96,48 @@ test('issues delegate puts issue.md back when the events append fails, and says 
   assert.equal(fs.readFileSync(path.join(dir, 'issue.md'), 'utf8'), before.issue)
   assert.equal(fs.readFileSync(events, 'utf8'), before.events)
   assert.deepEqual(comments(), [])
+})
+
+test('a failed delegation also takes back the drift events it logged, so nothing changed is true', async () => {
+  const { root, delegate } = setup()
+  const dir = path.join(root, '.issues', 'issues', ISSUE)
+  // A hand edit of issue.md makes the write log a drift event first; the blocked comments directory then fails the delegation.
+  const file = path.join(dir, 'issue.md')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^priority: medium$/m, 'priority: high'))
+  fs.writeFileSync(path.join(dir, 'comments'), '')
+  const before = { issue: fs.readFileSync(file, 'utf8'), events: fs.readFileSync(path.join(dir, 'events.jsonl'), 'utf8') }
+  const result = await delegate(ISSUE, 'agent:claude', '--json')
+  assert.equal(result.code, 2)
+  assert.match(JSON.parse(result.stdout).error.message, /nothing was changed/)
+  assert.equal(fs.readFileSync(file, 'utf8'), before.issue)
+  assert.equal(fs.readFileSync(path.join(dir, 'events.jsonl'), 'utf8'), before.events)
+})
+
+test('a comment that cannot be removed during the rollback keeps the original error and is named', () => {
+  const root = makeRepo('team')
+  const dir = path.join(root, '.issues', 'issues', ISSUE)
+  const events = path.join(dir, 'events.jsonl')
+  const original = fs.readFileSync(path.join(dir, 'issue.md'), 'utf8')
+  const tracker = createLocalTracker(root, { now: () => new Date('2026-10-23T12:00:00Z') })
+  const rmSync = fs.rmSync
+  fs.chmodSync(events, 0o444)
+  fs.rmSync = (target, ...rest) => {
+    if (String(target).includes(`${path.sep}comments${path.sep}`)) throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' })
+    return rmSync(target, ...rest)
+  }
+  try {
+    assert.throws(() => tracker.delegate(ISSUE, 'agent:claude', 'Do it.', 'fred'), (error) => {
+      assert.equal(error.code, 'CONFLICT')
+      assert.match(error.message, /EACCES/)
+      assert.match(error.message, /could not be put back: the delegation comment/)
+      assert.ok(error.details.written.includes('comment'), JSON.stringify(error.details))
+      return true
+    })
+  } finally {
+    fs.rmSync = rmSync
+    fs.chmodSync(events, 0o644)
+  }
+  assert.equal(fs.readFileSync(path.join(dir, 'issue.md'), 'utf8'), original)
 })
 
 test('issues delegate refuses a person and an unknown agent and writes nothing', async () => {

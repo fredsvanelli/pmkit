@@ -4,7 +4,7 @@
 import { AGENT_ID, delegationComment } from '../delegation.mjs'
 import { PmkitError, isPmkitError } from '../errors.mjs'
 import { compareIds } from '../ids.mjs'
-import { COMMENT_BY_ID_QUERY, COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_COMMENTS_QUERY, ISSUE_EVENTS_QUERY, ISSUE_HISTORY_QUERY } from './documents.mjs'
+import { COMMENT_BY_ID_QUERY, COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_COMMENTS_QUERY, ISSUE_EVENTS_QUERY, ISSUE_HISTORY_QUERY, ISSUE_UPDATE } from './documents.mjs'
 import { translateFilter } from './filter.mjs'
 import { toComment, toEvents } from './history.mjs'
 import { isUnconfirmed } from './issue-ops.mjs'
@@ -169,10 +169,12 @@ export function historyOperations({ client, ops }) {
     await ops.requireViewer(actor)
     const agentsOf = (ctx) => ctx.raw.users.filter((user) => user.app).map((user) => `agent:${user.id}`)
     let agents = agentsOf(await ops.context())
-    if (typeof agent === 'string' && !agents.includes(agent)) agents = agentsOf(await ops.context({ refresh: true }))
+    const shaped = typeof agent === 'string' && AGENT_ID.test(agent)
+    // Only a well-formed id that discovery does not know yet is worth a refresh.
+    if (shaped && !agents.includes(agent)) agents = agentsOf(await ops.context({ refresh: true }))
     if (agents.length === 0) throw new PmkitError('NOT_SUPPORTED', NO_AGENT_HINT, NO_AGENT_HINT)
     const nextStep = `Use one of: ${agents.join(', ')}`
-    if (typeof agent !== 'string' || !AGENT_ID.test(agent)) throw new PmkitError('INVALID_INPUT', `"${agent}" is not an agent: an agent id starts with agent:`, nextStep)
+    if (!shaped) throw new PmkitError('INVALID_INPUT', `"${agent}" is not an agent: an agent id starts with agent:`, nextStep)
     if (!agents.includes(agent)) throw new PmkitError('INVALID_INPUT', `agent "${agent}" is not an app user of this workspace`, nextStep)
     const beforeNode = await ops.readNode(id)
     const current = await ops.contextFor([beforeNode])
@@ -180,14 +182,23 @@ export function historyOperations({ client, ops }) {
     const body = delegationComment({ issue: before.id, agent, by: actor, instructions, run: 'native' })
     const input = { delegateId: agent.slice('agent:'.length) }
     const changes = before.delegate !== agent
-    if (dryRun) {
-      const after = changes ? (await ops.writeUpdate(beforeNode, before, input, current, true)).after : before
-      return { before, after, comment: await comment(before.id, body, actor, { dryRun: true }), run: 'native' }
-    }
+    // The issue with the delegate set, computed without a request: the dry run's answer, and the fallback when a read after the update fails.
+    const preview = changes ? (await ops.writeUpdate(beforeNode, before, input, current, true)).after : before
+    if (dryRun) return { before, after: preview, comment: await comment(before.id, body, actor, { dryRun: true }), run: 'native' }
     const posted = await comment(before.id, body, actor)
     if (!changes) return { before, after: before, comment: posted, run: 'native' }
+    // Once Linear has the delegate, the delegation succeeded: a read that fails while mapping the answer does not change that.
+    const done = async (node) => {
+      try {
+        return { before, after: await ops.mapped(node), comment: posted, run: 'native' }
+      } catch (error) {
+        if (!isPmkitError(error)) throw error
+        return { before, after: preview, comment: posted, run: 'native' }
+      }
+    }
+    let updated
     try {
-      return { before, after: (await ops.writeUpdate(beforeNode, before, input, current, false)).after, comment: posted, run: 'native' }
+      updated = (await client.request(ISSUE_UPDATE, { id: beforeNode.id, input })).issueUpdate.issue
     } catch (error) {
       if (!isPmkitError(error)) throw error
       // The comment is posted either way: a retry would only post it again, so the next step never says to delegate again.
@@ -207,7 +218,7 @@ export function historyOperations({ client, ops }) {
             { ...error.details, ...record, unknown: ['delegate'] },
           )
         }
-        if (node.delegate?.id === input.delegateId) return { before, after: await ops.mapped(node), comment: posted, run: 'native' }
+        if (node.delegate?.id === input.delegateId) return done(node)
       }
       throw new PmkitError(
         error.code,
@@ -216,6 +227,7 @@ export function historyOperations({ client, ops }) {
         { ...error.details, ...record, missing: ['delegate'] },
       )
     }
+    return done(updated)
   }
 
   return { getHistory, listComments, comment, resolveThread, metricEvents, delegate }

@@ -1245,6 +1245,28 @@ test('a delegate update that is not confirmed and cannot be read back leaves the
   })
 })
 
+test('a read that fails after a confirmed delegate update does not turn the delegation into a failure', async () => {
+  // One label per page, so mapping the issue the update returns reads a second labels page; that read is refused.
+  const issues = fakeLinearIssues({ nestedPage: 1 })
+  issues.seed({ title: 'For the agent', labelIds: ['label-bug', 'label-docs'] })
+  const forbidden = { status: 200, json: { data: null, errors: [{ message: 'Forbidden', extensions: { code: 'FORBIDDEN' } }] } }
+  const labelsPage = issues.routes.PmkitIssueLabelsPage
+  const fetch = fakeLinearFetch({ ...fakeWorkspace(), ...issues.routes, PmkitIssueLabelsPage: (body) => (issues.mutations.includes('PmkitIssueUpdate') ? forbidden : labelsPage(body)) })
+  const context = setup()
+  context.config.pmkit.mappings = { status: { in_review: 'In Review' } }
+  const linear = createLinearTracker(context.config, { env: context.env, now: at(0), fetch })
+  const result = await linear.delegate('ACME-1', 'agent:user-4', 'Do it.', 'user-1')
+  assert.equal(result.after.delegate, 'agent:user-4')
+  assert.deepEqual(issues.mutations, ['PmkitCommentCreate', 'PmkitIssueUpdate'])
+})
+
+test('delegate checks the shape of the agent id before it refreshes discovery', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { title: 'For the agent' })
+  await assert.rejects(linear.delegate('ACME-1', 'claude', 'x', 'user-1'), { code: 'INVALID_INPUT' })
+  assert.equal(callsOf(fetch, 'PmkitUsers'), 1)
+})
+
 test('deleting an issue delegated to an agent warns that the agent may still be working on it', async () => {
   const { tracker: linear, fake } = linearSetup()
   seed(fake, { title: 'For the agent', delegateId: 'user-4' })

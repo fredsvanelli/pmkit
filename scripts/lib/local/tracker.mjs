@@ -503,7 +503,9 @@ export function createLocalTracker(root, {
     if (typeof agent !== 'string' || !AGENT_ID.test(agent)) throw invalid(`"${agent}" is not an agent: an agent member id starts with agent:`, nextStep)
     if (!agents.includes(agent)) throw invalid(`agent "${agent}" is not a member`, nextStep)
     const { issue: current, paths } = readIssue(id)
-    const original = fs.readFileSync(paths.file, 'utf8')
+    const readOrNull = (file) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null)
+    // change() may log drift events before the edit runs, so the rollback puts events.jsonl back too.
+    const original = { issue: readOrNull(paths.file), events: readOrNull(paths.events) }
     const body = delegationComment({ issue: current.id, agent, by: actor, instructions })
     // Already the agent's: only the new instructions are written, as a plain comment.
     if (current.assignee === agent) return { before: current, after: current, comment: comment(current.id, body, actor, { dryRun }), run: 'local' }
@@ -528,31 +530,47 @@ export function createLocalTracker(root, {
     } catch (error) {
       if (dryRun) throw error
       // save() writes issue.md, then appends the events: a failed append leaves issue.md changed, so it is put back too.
-      const rolledBack = rollBackDelegation(paths.file, original, file)
-      // A PmkitError (the read-back check) is thrown before anything is written, so it is already the answer.
-      if (error instanceof PmkitError && rolledBack) throw error
+      const left = rollBackDelegation(paths, original, file, readOrNull)
+      // A PmkitError (the read-back check) leaves nothing behind once rolled back, so it is already the answer.
+      if (error instanceof PmkitError && left.length === 0) throw error
       const where = path.relative(config.root, paths.dir).split(path.sep).join('/')
-      if (rolledBack) {
+      if (left.length === 0) {
         throw new PmkitError('CONFLICT', `could not write the delegation of ${current.id}: ${error.message}; nothing was changed: issue.md, the comments and events.jsonl are as they were`,
           `Check that ${where} and its files are writable, then delegate again`, { written: [] })
       }
-      throw new PmkitError('CONFLICT', `could not write the delegation of ${current.id}: ${error.message}; issue.md could not be put back, so it may name ${agent} as assignee with no delegation comment and no event`,
-        `Restore ${where}/issue.md with git checkout, check that its files are writable, then delegate again`, { written: ['issue.md'], missing: ['comment', 'events'] })
+      const names = { comment: `the delegation comment ${posted?.id}.md`, 'issue.md': 'issue.md', 'events.jsonl': 'events.jsonl' }
+      throw new PmkitError('CONFLICT', `could not write the delegation of ${current.id}: ${error.message}; these could not be put back: ${left.map((item) => names[item]).join(', ')}`,
+        `Restore ${where} with git checkout (and remove a new comment file), check that its files are writable, then delegate again`, { written: left })
     }
   }
 
-  /** Puts issue.md back to `original` and removes the comment file. True when the issue is as it was before the delegation. */
-  function rollBackDelegation(issueFile, original, commentFile) {
+  /**
+   * Puts issue.md and events.jsonl back to `original` and removes the comment file. Each step runs on its own, so one failure
+   * never hides the delegation's error or skips the others. Returns what could not be put back: 'comment', 'issue.md', 'events.jsonl'.
+   */
+  function rollBackDelegation(paths, original, commentFile, readOrNull) {
+    const left = []
+    const step = (name, undo) => {
+      try {
+        undo()
+      } catch {
+        left.push(name)
+      }
+    }
     if (commentFile !== undefined) {
-      fs.rmSync(commentFile, { force: true })
-      writtenPaths.delete(commentFile)
+      step('comment', () => {
+        fs.rmSync(commentFile, { force: true })
+        writtenPaths.delete(commentFile)
+      })
     }
-    try {
-      if (fs.readFileSync(issueFile, 'utf8') !== original) fs.writeFileSync(issueFile, original)
-      return true
-    } catch {
-      return false
+    for (const [name, file, text] of [['issue.md', paths.file, original.issue], ['events.jsonl', paths.events, original.events]]) {
+      step(name, () => {
+        if (readOrNull(file) === text) return
+        if (text === null) fs.rmSync(file, { force: true })
+        else fs.writeFileSync(file, text)
+      })
     }
+    return left
   }
 
   function archive(id, actor, { dryRun } = {}) {
