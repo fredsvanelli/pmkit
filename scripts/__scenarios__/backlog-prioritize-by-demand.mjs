@@ -43,6 +43,8 @@ export default [
       { step: '6', dryRun: update('ISS-6J0B', 'urgent') },
       { step: '6', dryRun: update('ISS-3F7H', 'high') },
       { confirm: 'Step 7' },
+      { step: '6', dryRun: update('ISS-6J0B', 'urgent') },
+      { step: '6', dryRun: update('ISS-3F7H', 'high') },
       { step: '6', write: update('ISS-6J0B', 'urgent') },
       { step: '6', write: update('ISS-3F7H', 'high') },
       { step: '9', read: ['issues', 'list', ...CANDIDATES] },
@@ -79,6 +81,7 @@ export default [
       { confirm: 'Step 5' },
       { step: '6', dryRun: update('ISS-3F7H', 'high') },
       { confirm: 'Step 7' },
+      { step: '6', dryRun: update('ISS-3F7H', 'high') },
       { step: '6', write: update('ISS-3F7H', 'high') },
       { step: '9', read: ['issues', 'list', ...CANDIDATES] },
     ],
@@ -112,6 +115,8 @@ export default [
       { step: '6', dryRun: update('ISS-6J0B', 'urgent') },
       { step: '6', dryRun: update('ISS-3F7H', 'high') },
       { confirm: 'Step 7' },
+      { step: '6', dryRun: update('ISS-6J0B', 'urgent') },
+      { step: '6', dryRun: update('ISS-3F7H', 'high') },
       { step: '6', write: update('ISS-6J0B', 'urgent') },
       { step: '6', edit: { file: '.issues/issues/ISS-3F7H/issue.md', content: '<<<<<<< HEAD\nid: ISS-3F7H\n=======\n>>>>>>> other\n' } },
       { step: '6', write: update('ISS-3F7H', 'high'), expectError: 'CONFLICT' },
@@ -183,6 +188,7 @@ export default [
       { confirm: 'Step 5' },
       { step: '6', dryRun: update('ISS-6J0B', 'urgent') },
       { confirm: 'Step 7' },
+      { step: '6', dryRun: update('ISS-6J0B', 'urgent') },
       { step: '6', write: update('ISS-6J0B', 'urgent') },
       { step: '9', read: ['issues', 'list', ...CANDIDATES] },
     ],
@@ -217,6 +223,9 @@ export default [
       { step: '6', dryRun: update('ISS-3F7H', 'high') },
       { step: '6', dryRun: update('ISS-4M2S', 'high') },
       { confirm: 'Step 7' },
+      { step: '6', dryRun: update('ISS-6J0B', 'urgent') },
+      { step: '6', dryRun: update('ISS-3F7H', 'high') },
+      { step: '6', dryRun: update('ISS-4M2S', 'high') },
       { step: '6', write: update('ISS-6J0B', 'urgent') },
       { step: '6', write: update('ISS-3F7H', 'high') },
       { step: '6', write: update('ISS-4M2S', 'high') },
@@ -229,6 +238,54 @@ export default [
       assert.equal(repo.issue('ISS-3F7H').priority, 'high')
       assert.equal(repo.issue('ISS-4M2S').priority, 'high', 'an issue with no demand never ranks above one with demand')
       assert.equal(repo.newEvents('ISS-1V9Z').length, 0)
+    },
+  },
+  {
+    // The stale-write guard (step 8). ISS-6J0B has two requests and ISS-3F7H one, so they get urgent and high. After the preview
+    // is confirmed, ISS-3F7H is raised to urgent on disk (someone else changed it). The re-check dry run of ISS-3F7H shows a
+    // before that differs from the one the user saw, so nothing is written, not even ISS-6J0B, whose dry run still matches.
+    command: 'backlog/prioritize-by-demand',
+    fixture: 'team',
+    async setup({ pmkit }) {
+      await request(pmkit, 'ISS-6J0B', 'Upgrade on CI')
+      await request(pmkit, 'ISS-6J0B', 'Build is slow')
+      await request(pmkit, 'ISS-3F7H', 'Empty dashboard confuses new users')
+    },
+    prompt: '/pmkit:backlog:prioritize-by-demand',
+    answers: ['All', 'Yes'],
+    steps: [
+      ...reads,
+      { confirm: 'Step 5' },
+      { step: '6', dryRun: update('ISS-6J0B', 'urgent') },
+      { step: '6', dryRun: update('ISS-3F7H', 'high') },
+      { confirm: 'Step 7' },
+      { step: '6', edit: { file: '.issues/issues/ISS-3F7H/issue.md', content: '---\nid: ISS-3F7H\ntitle: Empty state for the dashboard\ntype: feature\nstatus: backlog\npriority: urgent\nestimate: 2\nlabels: [frontend]\ncreated: 2026-10-07T14:00:00Z\nupdated: 2026-11-09T12:00:00Z\n---\n\n## Description\n\nA new account sees a blank dashboard. Show a short guide instead.\n' } },
+      { step: '6', dryRun: update('ISS-6J0B', 'urgent') },
+      { step: '6', dryRun: update('ISS-3F7H', 'high') },
+    ],
+    skip: { '4 issues get': LOCAL, '4 issues list': LOCAL, '9 issues list': 'the command stops at step 8 and goes back to step 2: the stale preview is never written' },
+    notHit: {},
+    expect(repo) {
+      assert.equal(repo.newEvents('ISS-6J0B').length, 0, 'a stale preview writes nothing, not even the issues that still match')
+      assert.equal(repo.issue('ISS-3F7H').priority, 'urgent', 'the change made after the preview is kept')
+    },
+  },
+  {
+    // Ranking only (step 5). The command shows the ranking from the requests and stops: no proposal, no question, no write.
+    command: 'backlog/prioritize-by-demand',
+    fixture: 'team',
+    async setup({ pmkit }) {
+      await request(pmkit, 'ISS-6J0B', 'Upgrade on CI')
+      await request(pmkit, 'ISS-3F7H', 'Empty dashboard confuses new users')
+    },
+    prompt: '/pmkit:backlog:prioritize-by-demand rank-only',
+    answers: [],
+    steps: reads,
+    skip: { '4 issues get': LOCAL, '4 issues list': LOCAL, '6 issues update': 'ranking only proposes nothing, so there is no change to preview', '9 issues list': 'ranking only writes nothing' },
+    notHit: { 'Step 5': 'ranking only asks nothing', 'Step 7': 'ranking only writes nothing, so there is no preview to confirm' },
+    expect(repo, saved) {
+      for (const id of ['ISS-3F7H', 'ISS-6J0B', 'ISS-4M2S', 'ISS-1V9Z']) assert.equal(repo.newEvents(id).length, 0, id + ' is not written')
+      assert.equal(saved.demand.signals.length, 2)
     },
   },
 ]
