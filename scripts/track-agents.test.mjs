@@ -72,3 +72,16 @@ test('authorAgent reads a bot author and drops app/ and [bot]; a person is no ag
   assert.equal(authorAgent({ author: { login: 'dependabot', } }), null)
   assert.equal(authorAgent({}), null)
 })
+
+test('authorAgent skips the dependency and CI bots, which are no agents (PMK-215 review)', () => {
+  for (const login of ['dependabot[bot]', 'app/dependabot', 'app/renovate', 'renovate[bot]', 'github-actions[bot]', 'app/github-actions', 'snyk-bot', 'pre-commit-ci[bot]', 'allcontributors[bot]']) {
+    assert.equal(authorAgent({ author: { login, is_bot: true } }), null, login)
+  }
+})
+
+test('a delegation record with no delegate to compare is unknown, never stale (PMK-215 review)', () => {
+  const comments = [c('1', '2026-10-01', rec('agent:claude'))]
+  assert.equal(delegationOf(comments, null).state, 'unknown')
+  assert.equal(delegationOf([], null).state, 'none')
+  assert.equal(delegationOf(comments, 'agent:claude').state, 'current')
+})

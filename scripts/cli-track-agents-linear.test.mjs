@@ -75,7 +75,7 @@ test('Linear: bot pull requests are listed, matched to an issue by branch, and p
 test('Linear: --agent keeps the pull requests of one agent author (PMK-215)', async () => {
   const prs = [listed(31, 'a', bot('app/claude')), listed(32, 'b', bot('codex[bot]'))]
   const { cli } = await world({ prs })
-  const data = JSON.parse((await cli('issues', 'track-agents', '--agent', 'agent:codex', '--json')).stdout)
+  const data = JSON.parse((await cli('issues', 'track-agents', '--agent', 'codex', '--json')).stdout)
   assert.deepEqual(data.issues.map((r) => r.pr.number), [32])
   const none = JSON.parse((await cli('issues', 'track-agents', '--agent', 'nobody', '--json')).stdout)
   assert.deepEqual(none.issues, [])
@@ -104,9 +104,43 @@ test('Linear without a git host still answers NOT_SUPPORTED, and the issue path 
 })
 
 test('Linear: a pull request whose read fails is unknown, never free, and the list is incomplete (PMK-215)', async () => {
-  const { cli } = await world({ prs: [listed(41, 'x', bot('app/claude'))], broken: [41] })
+  const { cli } = await world({ prs: [listed(41, 'acme-1-fix-it', bot('app/claude'))], broken: [41], seed: [{ title: 'Fix it', delegateId: 'user-4' }] })
   const data = JSON.parse((await cli('issues', 'track-agents', '--json')).stdout)
   assert.equal(data.issues[0].pr.state, 'unknown')
   assert.equal(data.incomplete, true)
   assert.match((await cli('issues', 'track-agents')).stdout, /#41 .*not verified/)
+})
+
+test('Linear: dependency bots are skipped and only a pull request with an issue is read in detail (PMK-215 review)', async () => {
+  const prs = [listed(51, 'acme-1-fix-it', bot('app/claude')), listed(52, 'dependabot/npm/x', bot('dependabot[bot]')), listed(53, 'lonely', bot('codex[bot]'))]
+  const { cli, gh } = await world({ prs, seed: [{ title: 'Fix it', delegateId: 'user-4' }] })
+  const data = JSON.parse((await cli('issues', 'track-agents', '--json')).stdout)
+  assert.deepEqual(data.issues.map((r) => r.number), [51, 53])
+  assert.deepEqual(ghCalls(gh).filter((line) => line.startsWith('pr view')).length, 1)
+  const lonely = data.issues[1]
+  assert.equal(lonely.pr.state, 'draft')
+  assert.equal(lonely.pr.blocked, null)
+  assert.match(lonely.pr.unknown.join(), /not read/)
+  assert.equal(data.incomplete, false)
+})
+
+test('Linear: an issue with no delegate shows its delegation as unknown, not stale (PMK-215 review)', async () => {
+  const { cli, fake } = await world({ prs: [listed(61, 'acme-1-fix-it', bot('app/claude'))], seed: [{ title: 'Fix it' }] })
+  const file = path.join(tempDir('pmkit-deleg-'), 'c.md')
+  fs.writeFileSync(file, 'Delegated to agent:user-4 by fred, to run locally.\n\nDo it.\n')
+  assert.equal((await cli('issues', 'comment', 'ACME-1', '--body-file', file)).code, 0)
+  const data = JSON.parse((await cli('issues', 'track-agents', '--json')).stdout)
+  assert.equal(data.issues[0].delegation.state, 'unknown')
+  assert.equal(data.incomplete, false)
+})
+
+test('Linear: hasMore says the pull request list may be cut, and --agent agent:<id> is refused with the reason (PMK-215 review)', async () => {
+  const prs = Array.from({ length: 200 }, (_, i) => listed(100 + i, `b-${i}`, { login: 'ann', is_bot: false }))
+  const { cli } = await world({ prs })
+  assert.equal(JSON.parse((await cli('issues', 'track-agents', '--json')).stdout).hasMore, true)
+  const refused = await cli('issues', 'track-agents', '--agent', 'agent:user-4', '--json')
+  assert.equal(refused.code, 2)
+  const error = JSON.parse(refused.stdout).error
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.match(error.message, /login of the pull request author/)
 })

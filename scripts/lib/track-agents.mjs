@@ -11,16 +11,21 @@ export function agentFilter(value) {
   return name
 }
 
-/** The agent behind a pull request: its author's login without `app/` and `[bot]`, lowercased. `null` when the author is not a bot. */
+// Bots that keep dependencies or CI in order. They open many pull requests and none of them is an agent working an issue.
+const NOT_AGENTS = new Set(['dependabot', 'renovate', 'github-actions', 'snyk-bot', 'pre-commit-ci', 'allcontributors', 'greenkeeper', 'imgbot', 'codecov', 'sonarcloud', 'mergify', 'whitesource-bolt-for-github'])
+
+/** The agent behind a pull request: its author's login without `app/` and `[bot]`, lowercased. `null` when the author is not a bot or is a dependency or CI bot. */
 export function authorAgent(pr) {
   if (pr.author?.is_bot !== true || !pr.author.login) return null
-  return pr.author.login.replace(/^app\//i, '').replace(/\[bot\]$/i, '').toLowerCase()
+  const name = pr.author.login.replace(/^app\//i, '').replace(/\[bot\]$/i, '').toLowerCase()
+  return NOT_AGENTS.has(name) ? null : name
 }
 
 /**
  * The delegation of an issue assigned to `assignee`, from its comments. The newest root comment (no `parent`) that
  * parseDelegation reads wins. `state` is `current` when it names the assignee, `stale` when it names another agent and
- * `none` when no comment holds a record. `incomplete` (the comment read was cut) turns a `none` into `unknown`.
+ * `none` when no comment holds a record. `incomplete` (the comment read was cut) turns a `none` into `unknown`. Without an
+ * `assignee` to compare (a Linear issue with no delegate) a record is `unknown`: it cannot be told current from stale.
  */
 export function delegationOf(comments, assignee, { incomplete = false } = {}) {
   const newest = comments
@@ -30,6 +35,7 @@ export function delegationOf(comments, assignee, { incomplete = false } = {}) {
     .sort((a, b) => (a.comment.created < b.comment.created ? 1 : a.comment.created > b.comment.created ? -1 : a.comment.id < b.comment.id ? 1 : -1))[0]
   if (!newest) return { state: incomplete ? 'unknown' : 'none', agent: null, by: null, comment: null, at: null }
   const { record, comment } = newest
+  if (assignee === null || assignee === undefined) return { state: 'unknown', agent: record.agent, by: record.by, comment: comment.id, at: comment.created }
   return { state: record.agent === assignee ? 'current' : 'stale', agent: record.agent, by: record.by, comment: comment.id, at: comment.created }
 }
 

@@ -2421,7 +2421,13 @@ async function runTrackAgents(ctx) {
   if (entry?.path === 'absent') throw new PmkitError('NOT_SUPPORTED', 'this tracker has no agent delegation, so there are no agent issues to track', entry.enableHint)
   // Linear delegates natively: the agent is the issue's delegate, not an agent: assignee, so the issue list would miss every agent issue.
   // The pull requests of bot authors stand in for it (PMK-215).
-  if (entry?.detail?.unsupported?.includes('issues track-agents')) return runTrackAgentPullRequests(ctx, tracker, agent)
+  if (entry?.detail?.unsupported?.includes('issues track-agents')) {
+    // The id that `delegate` shows (agent:<Linear user id>) never matches a login, so it would filter everything out silently.
+    if (/^\s*agent:/i.test(String(ctx.opt('agent') ?? ''))) {
+      throw new PmkitError('INVALID_INPUT', 'on this tracker --agent matches the login of the pull request author, and an agent:<id> never does', 'Use --agent <login>, for example --agent claude for the author app/claude')
+    }
+    return runTrackAgentPullRequests(ctx, tracker, agent)
+  }
   const found = await tracker.searchIssues({ categories: AGENT_CATEGORIES })
   const warnings = problemWarnings(found.problems)
   const notes = []
@@ -2499,9 +2505,13 @@ async function runTrackAgentPullRequests(ctx, tracker, agent) {
   const warnings = []
   const causes = []
   let list = []
+  let cut = false
   try {
     list = host.listPullRequests()
-    if (list.length === 200) causes.push('only the 200 most recently created open pull requests were read')
+    if (list.length === 200) {
+      cut = true
+      causes.push('only the 200 most recently created open pull requests were read')
+    }
   } catch (error) {
     if (!isPmkitError(error) || !['RATE_LIMITED', 'UPSTREAM'].includes(error.code)) throw error
     causes.push(`the open pull requests could not be read: ${error.message}`)
@@ -2512,9 +2522,11 @@ async function runTrackAgentPullRequests(ctx, tracker, agent) {
   })
   let byBranch = new Map()
   let issuesWhole = true
+  let issuesCut = false
   if (mine.length > 0) {
     const found = await tracker.searchIssues({ categories: AGENT_CATEGORIES })
     issuesWhole = found.problems.length === 0 && found.hasMore !== true
+    issuesCut = found.hasMore === true
     warnings.push(...problemWarnings(found.problems))
     if (found.problems.length > 0) causes.push('an issue file did not parse, so a pull request may have an issue that was not matched')
     if (found.hasMore === true) causes.push('the issue read was cut, so a pull request may have an issue that was not matched')
@@ -2534,7 +2546,10 @@ async function runTrackAgentPullRequests(ctx, tracker, agent) {
       row.delegation = read.delegation
       if (read.problem) row.problems.push(read.problem)
     }
-    if (rateLimited) row.pr = { state: 'unknown', code: 'RATE_LIMITED', message: 'not read: GitHub rate limit reached earlier in this run' }
+    if (!issue) {
+      // A pull request with no issue is not read in detail: that read costs several calls, and a bot with no work behind it is noise.
+      row.pr = { state: item.isDraft === true ? 'draft' : 'open', number: item.number, url: item.url, blocked: null, blocking: [], unknown: ['not read: no issue has this branch'], unchecked: [] }
+    } else if (rateLimited) row.pr = { state: 'unknown', code: 'RATE_LIMITED', message: 'not read: GitHub rate limit reached earlier in this run' }
     else {
       try {
         const pr = cachedHost.getPullRequest({ number: item.number }, { detail: true })
@@ -2549,9 +2564,9 @@ async function runTrackAgentPullRequests(ctx, tracker, agent) {
     for (const problem of row.problems) warnings.push(`${item.headRefName}: ${problem.message}`)
     rows.push(row)
   }
-  if (rows.some((row) => row.delegation?.state === 'unknown')) causes.push('the comments of an issue could not be read or were cut')
+  if (rows.some((row) => row.problems.some((problem) => problem.message.startsWith('the comments')) || (row.delegation?.state === 'unknown' && row.delegate !== null))) causes.push('the comments of an issue could not be read or were cut')
   if (rows.some((row) => row.pr?.state === 'unknown')) causes.push('a pull request could not be read from GitHub')
-  if (rows.some((row) => row.pr?.blocked === null || (row.pr?.unchecked ?? []).length > 0)) causes.push('a pull request was not ready (GitHub had not computed the merge state) or a blocker read was refused')
+  if (rows.some((row) => row.issueMatch === 'found' && (row.pr?.blocked === null || (row.pr?.unchecked ?? []).length > 0))) causes.push('a pull request was not ready (GitHub had not computed the merge state) or a blocker read was refused')
   const incomplete = causes.length > 0
   const incompleteLine = `the list is incomplete: ${causes.join('; ')}, so what is marked unknown or not verified is not confirmed`
   if (incomplete) warnings.push(incompleteLine)
@@ -2563,7 +2578,7 @@ async function runTrackAgentPullRequests(ctx, tracker, agent) {
   const text = rows.length === 0
     ? (incomplete ? `no agent pull request${forAgent} was found, but ${incompleteLine}, and an agent pull request may be missing` : agent === null ? 'no open pull request has an agent author' : `no agent pull request${forAgent} was found`)
     : table(header, rows.map((row) => [`#${row.number}`, row.author, issueCell(row), delegationCell(row), row.branch, prText(row)]))
-  return { data: { source: 'pull_requests', agent, issues: rows, incomplete, hasMore: false, warnings, notes }, text, warnings, notes }
+  return { data: { source: 'pull_requests', agent, issues: rows, incomplete, hasMore: cut || issuesCut, warnings, notes }, text, warnings, notes }
 }
 
 const LOAD_CATEGORIES = ['todo', 'in_progress', 'in_review']
