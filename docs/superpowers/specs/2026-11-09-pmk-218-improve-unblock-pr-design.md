@@ -75,3 +75,12 @@ README rows of `pr status` and `pr blockers`, `commands/issues/unblock.md` (rule
 - No cap on thread pages, so `threads.incomplete` goes away.
 - With one policy source read, known unmet requirements block, open items stay `unknown`.
 - `pr status` shows blockers by default, with no flag.
+
+## Review changes (round 1)
+
+- `pr status` catches an `UPSTREAM` or `RATE_LIMITED` failure of the blocker reads: the pull request and its checks stay, `blockers` is `{ blocked: null, blocking: [], pending: [], unknown: [], unchecked: [{ area: 'blockers', code, message, nextStep }] }` and the text says `blockers: not verified (<message>)`. `collectBlockers` throws at the first such failure, so the reads after it are not made. `pr blockers` still fails on them, as before.
+- `/pmkit:issues:mine`, `/pmkit:team:standup` and `/pmkit:issues:investigate-bug` stop calling `pr status` after a `RATE_LIMITED` (a failed call or a `blockers.unchecked` entry with that code) and mark what was not read as not verified, as `/pmkit:issues:inbox-digest` does.
+- A 403 on the detail read is retried once without `reviewRequests` (a team asked for review needs `read:org`). Then `detail.reviewRequests` is `null` with `reviewRequestsError`, `reviews.requested` and `reviews.requestedTeams` are `null`, and `unchecked` has a `reviews` entry. The rest of the reviews still counts.
+- A 404 on the rules with the protection read means the host has no rulesets: `policies.rulesets` is `null`, nothing is unread, and the verdict can be `false`. With the protection refused, the 404 stays a refusal.
+- `ruleText` leaves out `creation`, `deletion` and `non_fast_forward`, which never block a merge. `prSummary` names an unchecked area once. `issues track-agents` keeps a 403 or 404 of the protection or the rules per base and throws it again.
+
