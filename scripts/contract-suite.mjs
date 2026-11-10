@@ -144,6 +144,16 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.equal(done.after, null)
       await assert.rejects(async () => tracker.getIssue(x), { code: 'NOT_FOUND' })
       assert.deepEqual(ids((await tracker.searchIssues({ archived: true })).issues), [y])
+      // PMK-222: a tracker with a trash brings the issue back; the Local tracker has none and says so.
+      let restored
+      try {
+        restored = await tracker.restore(x, actor)
+      } catch (error) {
+        assert.equal(error.code, 'NOT_SUPPORTED', error.message)
+        return
+      }
+      assert.equal(restored.after.id, x)
+      assert.equal((await tracker.getIssue(x)).title, 'Delete me')
     })
 
     // A local run makes the agent the assignee; a native run (Linear) keeps the assignee and sets the issue's delegate.

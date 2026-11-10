@@ -21,6 +21,8 @@ import { dependencyMap, serializable } from './lib/dependencies.mjs'
 import { buildRoadmapReview, roadmapReviewText } from './lib/roadmap-review.mjs'
 import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, failingWorkflows, FAILED_RUN, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 import { pathNote } from './lib/path-notes.mjs'
+import { fileMentions } from './lib/mentions.mjs'
+import { REPO_UNCHECKED } from './lib/delete-refusal.mjs'
 import { planNextAdr } from './lib/adr.mjs'
 import { similarResult } from './lib/similar.mjs'
 import { isBlocked } from './lib/model.mjs'
@@ -337,11 +339,47 @@ function writeText(result, { dryRun, record = issueRecord, header }) {
   return dryRun ? `${text}\ndry run: nothing was written` : text
 }
 
+const REPO_MENTIONS_TIMEOUT_MS = 30_000
+const REPO_MENTIONS_TEXT = 10
+
+/**
+ * The files of the repository that cite `id` (PMK-222): one `git grep` over the tracked and untracked files that are not ignored, minus
+ * the issue folders of the tracker (the delete reads their texts itself), filtered by the mention rule. The tracker's docs, epics and
+ * sprints are scanned. `--no-color` keeps the user's color settings out of the output. A failed run or an output that does not parse
+ * is `{ files: [], error }`, never "no file cites it".
+ */
+function repoMentions(ctx, id) {
+  const { issuesDir } = ctx.config()
+  const relative = issuesDir ? path.relative(ctx.root, path.join(issuesDir, 'issues')) : ''
+  const skip = relative !== '' && !climbsOut(relative) ? [`:(exclude,literal)${slash(relative)}`] : []
+  const result = spawnSync('git', ['grep', '--no-color', '-z', '-n', '-I', '-F', '--untracked', '-e', id, '--', '.', ...skip], {
+    cwd: ctx.root, env: ctx.env, encoding: 'utf8', timeout: REPO_MENTIONS_TIMEOUT_MS, maxBuffer: 256 * 1024 * 1024,
+  })
+  if (result.status === 0) {
+    try {
+      return { files: fileMentions(id, result.stdout), error: null }
+    } catch (error) {
+      return { files: [], error: error.message }
+    }
+  }
+  if (result.status === 1 && !result.error) return { files: [], error: null }
+  return { files: [], error: grepFailure(result) }
+}
+
+/** Why the scan failed, in pmkit's words where the cause is known: git's own text changes with its version and setup. */
+function grepFailure(result) {
+  if (result.error?.code === 'ENOENT') return 'git is not installed'
+  if (result.error?.code === 'ETIMEDOUT') return `it took longer than ${REPO_MENTIONS_TIMEOUT_MS / 1000} s`
+  if (result.error) return result.error.message
+  if (result.status === 128 && /not a git repository/i.test(result.stderr)) return 'not a git repository'
+  return result.stderr.trim().split(/\r?\n/)[0] || `exit status ${result.status}`
+}
+
 /** Text of an issue delete: the full record, what goes, the warnings, and the way to keep the issue instead. A dry run is the preview. */
-function deleteText({ before, removes, warnings, mentions, unchecked }, { dryRun }) {
+function deleteText({ before, removes, warnings, mentions, files = [], unchecked }, { dryRun }) {
   const lines = [`${dryRun ? 'would delete' : 'deleted'} ${before.id}  ${before.title}`, issueRecord(before), '']
   if (removes.trash) {
-    lines.push("removes: the issue moves to Linear's trash, where the workspace can restore it for a while")
+    lines.push(`removes: the issue moves to Linear's trash, where the workspace can restore it for a while: pmkit issues restore ${before.id}`)
   } else {
     lines.push('removes:', ...removes.files.map((file) => `  ${file}`))
     const count = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
@@ -351,6 +389,10 @@ function deleteText({ before, removes, warnings, mentions, unchecked }, { dryRun
   lines.push('references: no other issue lists it as blocked by, related, duplicate of or parent')
   if (warnings.length > 0) lines.push('warnings:', ...warnings.map((warning) => `  ${warning}`))
   if (mentions.length > 0) lines.push(`mentioned in the text of: ${mentions.map((mention) => `${mention.id} (${mention.in})`).join(', ')}. The text stays as it is.`)
+  if (files.length > 0) {
+    lines.push('cited in these files of the repository, which stay as they are:', ...files.slice(0, REPO_MENTIONS_TEXT).map((file) => `  ${file.path}:${file.lines.join(',')}`))
+    if (files.length > REPO_MENTIONS_TEXT) lines.push(`  ${files.length - REPO_MENTIONS_TEXT} more files in --json`)
+  }
   if (unchecked.length > 0) lines.push(`not checked: ${unchecked.join(', ')}`)
   lines.push(`archive instead: pmkit issues archive ${before.id} keeps the record and its history and hides the issue from lists. Delete removes them.`)
   if (dryRun) lines.push('dry run: nothing was written')
@@ -360,6 +402,34 @@ function deleteText({ before, removes, warnings, mentions, unchecked }, { dryRun
 /** A comment as text. The thread lines appear only for a reply and for a resolved root. */
 const commentText = (c) =>
   `${c.created} ${c.author}${c.parent === undefined ? '' : ` (reply to ${c.parent})`}\n${c.body}${c.resolved === undefined ? '' : `\nresolved ${c.resolved.at} by ${c.resolved.by}`}`
+
+/**
+ * `issues link --remove` with several targets (PMK-222): one unlink after another, each as the single-target call does. A failure stops
+ * the run as `issues bulk` does: what ran stays written, the error lists applied, failed and remaining, and auto_commit keeps the writes.
+ */
+async function unlinkMany(ctx, tracker, actor, from, targets) {
+  const kind = ctx.opt('kind')
+  const results = []
+  for (const to of targets) {
+    try {
+      results.push({ to, ...(await tracker.unlink(from, to, kind, actor, { dryRun: ctx.dryRun })) })
+    } catch (error) {
+      const code = isPmkitError(error) ? error.code : 'UPSTREAM'
+      const applied = results.map((item) => item.to)
+      const stopped = { applied, failed: { to, code, message: error.message }, remaining: targets.slice(results.length + 1) }
+      const stop = new PmkitError(code, `${to} failed after ${applied.length} of ${targets.length} unlinks: ${error.message}`, ctx.dryRun
+        ? 'Nothing was written (dry run). The dry run stopped at the failed target: fix it or leave it out, then run the dry run again'
+        : 'The targets in applied are unlinked and the ones in remaining are not. Run the call again with the remaining targets once the failed one is fixed')
+      stop.written = {
+        data: stopped,
+        text: [`${ctx.dryRun ? 'would unlink' : 'applied'}: ${applied.join(', ') || '(none)'}`, `failed: ${to} ${code} ${error.message}`, `remaining: ${stopped.remaining.join(', ') || '(none)'}`].join('\n'),
+      }
+      if (applied.length > 0 && !ctx.dryRun) stop.partialCommit = `${from} --remove (${applied.length} of ${targets.length})`
+      throw stop
+    }
+  }
+  return { data: { results }, text: results.map((item) => writeText(item, ctx)).join('\n\n'), commit: `${from} --remove ${targets.join(' ')}` }
+}
 
 const issueWrite = (ctx, result, id = result.after.id) => ({ data: result, text: writeText(result, ctx), commit: id })
 
@@ -776,12 +846,20 @@ export const COMMANDS = [
     run: (ctx) => runTrackAgents(ctx),
   },
   {
-    name: 'issues link', summary: 'links or unlinks', usage: '<from> <to> --kind blocks|related|duplicate [--remove]', write: true, args: ['from', 'to'], flags: ['kind', 'remove'],
+    name: 'issues link', summary: 'links or unlinks; --remove takes several targets', usage: '<from> <to...> --kind blocks|related|duplicate [--remove]', write: true, rest: 'id', flags: ['kind', 'remove'],
     run: async (ctx) => {
+      const [from, ...targets] = ctx.args
+      if (targets.length === 0) throw usageError('issues link takes <from> <to>', 'Usage: issues link <from> <to...> --kind blocks|related|duplicate [--remove]')
       if (ctx.opt('kind') === undefined) throw usageError('issues link needs --kind', 'Use --kind blocks, related or duplicate')
       const op = ctx.flag('remove') ? 'unlink' : 'link'
-      const result = await (await ctx.tracker())[op](ctx.args[0], ctx.args[1], ctx.opt('kind'), await ctx.actor(), { dryRun: ctx.dryRun })
-      return issueWrite(ctx, result, ctx.args[0])
+      const tracker = await ctx.tracker()
+      const actor = await ctx.actor()
+      if (targets.length === 1) return issueWrite(ctx, await tracker[op](from, targets[0], ctx.opt('kind'), actor, { dryRun: ctx.dryRun }), from)
+      if (op === 'link') throw usageError('several targets work only with --remove', 'Link one target per call, or add --remove')
+      const repeated = targets.find((to, i) => targets.indexOf(to) !== i)
+      if (repeated !== undefined) throw usageError(`${repeated} is named twice`, 'Name each target once')
+      if (targets.includes(from)) throw usageError(`${from} is both <from> and a target`, 'Leave <from> out of the targets')
+      return unlinkMany(ctx, tracker, actor, from, targets)
     },
   },
   {
@@ -888,7 +966,23 @@ export const COMMANDS = [
     name: 'issues delete', summary: 'deletes an issue for good; archive keeps it', usage: '<id>', write: true, args: ['id'], flags: [],
     run: async (ctx) => {
       const result = await (await ctx.tracker()).delete(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })
-      return { data: result, text: deleteText(result, ctx), commit: result.before.id }
+      const scan = repoMentions(ctx, result.before.id)
+      const data = {
+        ...result,
+        files: scan.files,
+        unchecked: result.unchecked.flatMap((item) => (item !== REPO_UNCHECKED ? [item] : scan.error === null ? [] : [`${item} (git grep failed: ${scan.error})`])),
+      }
+      return { data, text: deleteText(data, ctx), commit: result.before.id }
+    },
+  },
+  {
+    name: 'issues restore', summary: "brings a deleted issue back from Linear's trash; the Local tracker answers with the git commands", usage: '<id>', write: true, args: ['id'], flags: [],
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).restore(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })
+      const lines = [`${ctx.dryRun ? 'would restore' : 'restored'} ${result.after.id}  ${result.after.title}`, issueRecord(result.after)]
+      if (result.warnings?.length > 0) lines.push('warnings:', ...result.warnings.map((warning) => `  ${warning}`))
+      if (ctx.dryRun) lines.push('dry run: nothing was written')
+      return { data: result, text: lines.join('\n'), commit: result.after.id }
     },
   },
   {

@@ -3,11 +3,11 @@
 
 import { PmkitError } from '../errors.mjs'
 import { CATEGORIES } from '../model.mjs'
-import { REFERENCE_KINDS, referencedError } from '../delete-refusal.mjs'
+import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refusal.mjs'
 import { compareIds } from '../ids.mjs'
 import { checkFilter } from '../issue-filter.mjs'
 import { cycleKey } from './cycles.mjs'
-import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
+import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UNARCHIVE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
 import { finishSearch, translateFilter } from './filter.mjs'
 import { blockedOpen, isIssueId, issueKey, makeContext, stateCategory, toIssue } from './issues.mjs'
 import { applyInput, createTeam, requireAssignee, skeletonNode, teamOf, teamStates, toInput } from './writes.mjs'
@@ -322,7 +322,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     if (before.delegate !== undefined) warnings.push(`it is delegated to ${before.delegate}, which may still be working on it`)
     const result = {
       before, after: null, removes: { trash: true }, references: [], mentions: [], warnings,
-      unchecked: ['the descriptions and comments of other issues', 'saved views', 'code comments, documents and docs/'],
+      unchecked: ['the descriptions and comments of other issues', 'saved views', 'Linear documents', REPO_UNCHECKED],
     }
     if (dryRun) return result
     const answer = await client.request(ISSUE_DELETE, { id: node.id })
@@ -330,5 +330,25 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return result
   }
 
-  return { getIssue, searchIssues, cycleNodeFor, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue, requireViewer, mapped, writeUpdate, parentNodeOf, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
+  /** Brings an issue back from Linear's trash with issueUnarchive (PMK-222). Only a trashed issue qualifies; a dry run sends no mutation. */
+  async function restore(id, actor, { dryRun = false } = {}) {
+    await requireViewer(actor)
+    requireWorkspace()
+    if (!isIssueId(id)) throw notFound(id)
+    const node = (await client.request(ISSUE_BY_ID_QUERY, { id: issueKey(id) }))?.issues?.nodes?.[0]
+    if (!node) throw notFound(id)
+    if (node.trashed !== true) throw new PmkitError('INVALID_INPUT', `${node.identifier} is not in Linear's trash`, `pmkit issues get ${node.identifier}`)
+    const restored = await mapped({ ...node, trashed: false, archivedAt: null })
+    if (dryRun) return { before: null, after: restored }
+    const answer = await client.request(ISSUE_UNARCHIVE, { id: node.id })
+    if (answer?.issueUnarchive?.success !== true) throw new PmkitError('UPSTREAM', `Linear did not restore ${node.identifier}`, `Run pmkit issues restore ${node.identifier} again`)
+    // The write worked: a read-back that fails is a warning, never an error that would send the caller to restore again.
+    try {
+      return { before: null, after: await mapped(await readNode(node.identifier)), warnings: [] }
+    } catch (error) {
+      return { before: null, after: restored, warnings: [`${node.identifier} is restored, but reading it back failed (${error.message}), so this record is the one read before the restore: pmkit issues get ${node.identifier} shows it as it is now`] }
+    }
+  }
+
+  return { getIssue, searchIssues, cycleNodeFor, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue, restore, requireViewer, mapped, writeUpdate, parentNodeOf, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
 }

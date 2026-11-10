@@ -221,3 +221,56 @@ test('delete needs a member as actor', () => {
   const { tracker, ids: [a] } = setup()
   assert.throws(() => tracker.delete(a, 'nobody'), { code: 'INVALID_INPUT' })
 })
+
+test('restore on the Local tracker is NOT_SUPPORTED and names the git commands that bring the folder back', () => {
+  const { root, tracker, ids: [a] } = setup(1)
+  tracker.delete(a, 'fred')
+  const before = hashTree(root)
+  const error = refused(() => tracker.restore(a, 'fred'))
+  assert.equal(error.code, 'NOT_SUPPORTED')
+  assert.equal(error.message, 'the Local tracker has no trash: a deleted issue comes back from git history')
+  // :(top) makes the paths work from any folder of the repository, not only from its root.
+  const dir = `':(top).issues/issues/${a}'`
+  assert.equal(error.nextStep, `git checkout HEAD -- ${dir} brings the folder back while the delete is not committed; once it is, git log --diff-filter=D -1 --format=%h -- ${dir} finds the commit and git checkout <commit>^ -- ${dir} brings the folder back`)
+  assert.equal(refused(() => tracker.restore('../x', 'fred')).code, 'INVALID_INPUT')
+  assert.equal(hashTree(root), before)
+})
+
+test('restore of a Local issue that is not deleted is INVALID_INPUT and gives no git commands that would overwrite it', () => {
+  const { root, tracker, ids: [a] } = setup(1)
+  const before = hashTree(root)
+  const error = refused(() => tracker.restore(a, 'fred'))
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.equal(error.message, `${a} is not deleted`)
+  assert.equal(error.nextStep, `pmkit issues get ${a}`)
+  assert.equal(hashTree(root), before)
+})
+
+test('a delete of an ID with ../ is refused and nothing on disk changes', () => {
+  const { root, tracker, ids: [a] } = setup(1)
+  const before = hashTree(root)
+  for (const id of [`../${a}`, `${a}/..`, '../../etc']) assert.equal(refused(() => tracker.delete(id, 'fred')).code, 'NOT_FOUND')
+  assert.equal(hashTree(root), before)
+})
+
+test('a delete of an epic ID is NOT_FOUND and the epic stays', () => {
+  const root = makeRepo()
+  const tracker = createLocalTracker(root, { now: () => new Date('2026-10-23T12:00:00Z'), random: scriptedRandom([1, 2, 3, 9]) })
+  const epic = tracker.createDeliverable({ title: 'An epic' }, 'fred').after.id
+  const before = hashTree(root)
+  assert.equal(refused(() => tracker.delete(epic, 'fred')).code, 'NOT_FOUND')
+  assert.equal(tracker.getDeliverable(epic).title, 'An epic')
+  assert.equal(hashTree(root), before)
+})
+
+test('the refusal groups the blockedBy references and the related references into one unlink command each', () => {
+  const { tracker, ids: [a, b, c, d, e, f] } = setup(6)
+  tracker.link(a, b, 'blocks', 'fred')
+  tracker.link(a, c, 'blocks', 'fred')
+  tracker.link(d, a, 'related', 'fred')
+  tracker.link(a, e, 'related', 'fred')
+  tracker.link(f, a, 'duplicate', 'fred')
+  const error = refused(() => tracker.delete(a, 'fred'))
+  assert.equal(error.details.references.length, 5)
+  assert.ok(error.nextStep.startsWith(`Remove each reference, then delete again: pmkit issues link ${a} ${b} ${c} --kind blocks --remove; pmkit issues link ${a} ${d} ${e} --kind related --remove; pmkit issues link ${f} ${a} --kind duplicate --remove. `), error.nextStep)
+})

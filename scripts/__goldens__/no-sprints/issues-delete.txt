@@ -21,7 +21,7 @@ removes:
   .issues/issues/ISS-9B2X/issue.md
 3 events and 1 comment go with it. Nothing commits this delete (auto_commit is off), so git can bring them back only if you committed them before.
 references: no other issue lists it as blocked by, related, duplicate of or parent
-not checked: code comments, documents and docs/
+not checked: code comments, documents and docs/ (git grep failed: not a git repository)
 archive instead: pmkit issues archive ISS-9B2X keeps the record and its history and hides the issue from lists. Delete removes them.
 --- stderr
 (empty)
@@ -73,8 +73,9 @@ exit 0
   "mentions": [],
   "warnings": [],
   "unchecked": [
-    "code comments, documents and docs/"
-  ]
+    "code comments, documents and docs/ (git grep failed: not a git repository)"
+  ],
+  "files": []
 }
 --- stderr
 (empty)
@@ -102,7 +103,7 @@ removes:
   .issues/issues/ISS-9B2X/issue.md
 3 events and 1 comment go with it. Nothing commits this delete (auto_commit is off), so git can bring them back only if you committed them before.
 references: no other issue lists it as blocked by, related, duplicate of or parent
-not checked: code comments, documents and docs/
+not checked: code comments, documents and docs/ (git grep failed: not a git repository)
 archive instead: pmkit issues archive ISS-9B2X keeps the record and its history and hides the issue from lists. Delete removes them.
 dry run: nothing was written
 --- stderr
@@ -155,8 +156,9 @@ exit 0
   "mentions": [],
   "warnings": [],
   "unchecked": [
-    "code comments, documents and docs/"
-  ]
+    "code comments, documents and docs/ (git grep failed: not a git repository)"
+  ],
+  "files": []
 }
 --- stderr
 (empty)

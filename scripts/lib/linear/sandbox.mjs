@@ -324,10 +324,12 @@ const SUITE_RULES = {
   projectUpdateCreate: (variables, ctx) => rules.owns(ctx, 'project', variables.input?.projectId, 'project'),
   // readMutation lets through no argument but id, so permanentlyDelete cannot be sent.
   issueDelete: (variables, ctx) => rules.owns(ctx, 'issue', variables.id, 'issue'),
+  // PMK-222: the contract delete test restores the issue it trashed.
+  issueUnarchive: (variables, ctx) => rules.owns(ctx, 'issue', variables.id, 'issue'),
   projectDelete: (variables, ctx) => rules.owns(ctx, 'project', variables.id, 'project'),
 }
 
-/** The 14 mutations of the contract run, each behind its input-key check. */
+/** The 15 mutations of the contract run, each behind its input-key check. */
 export const SUITE_ALLOWLIST = Object.freeze(Object.fromEntries(Object.entries(SUITE_RULES).map(([root, rule]) => [root, checked(root, rule)])))
 
 /** The kind of id a create makes the run's own, and the payload field of its answer that carries the new node. */

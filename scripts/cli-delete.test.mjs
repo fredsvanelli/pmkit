@@ -151,3 +151,96 @@ test('delete takes exactly one id', () => {
     assert.equal(run(root, ['issues', 'delete', 'A', 'B']).status, 2)
   })
 })
+
+test('the preview lists the files of the repository that cite the ID, with their lines, and drops them from unchecked', () => {
+  withRepo({}, (root, [a]) => {
+    fs.mkdirSync(path.join(root, 'docs'))
+    fs.writeFileSync(path.join(root, 'docs/note.md'), `See ${a} for the why.\n`)
+    fs.mkdirSync(path.join(root, 'src'))
+    fs.writeFileSync(path.join(root, 'src/x.mjs'), `// nothing\n// TODO(${a}): later\n// ${a}9 is another issue\n`)
+    git(root, 'add', 'docs/note.md')
+    const before = hashTree(root)
+    const data = json(root, ['issues', 'delete', a, '--dry-run'])
+    assert.deepEqual(data.files, [{ path: 'docs/note.md', lines: [1] }, { path: 'src/x.mjs', lines: [2] }])
+    assert.ok(!data.unchecked.includes('code comments, documents and docs/'), data.unchecked.join('; '))
+    const text = run(root, ['issues', 'delete', a, '--dry-run']).stdout
+    assert.ok(text.includes('docs/note.md:1'), text)
+    assert.ok(text.includes('src/x.mjs:2'), text)
+    assert.equal(hashTree(root), before)
+  })
+})
+
+test('the scan reads the documents, epics and sprints of the tracker, and leaves out only the issue folders', () => {
+  withRepo({}, (root, [a]) => {
+    fs.mkdirSync(path.join(root, '.issues/docs/adr'), { recursive: true })
+    fs.writeFileSync(path.join(root, '.issues/docs/adr/0009.md'), `Decision depends on ${a}.\n`)
+    const data = json(root, ['issues', 'delete', a, '--dry-run'])
+    assert.deepEqual(data.files, [{ path: '.issues/docs/adr/0009.md', lines: [1] }])
+    assert.deepEqual(data.unchecked, [])
+  })
+})
+
+test("the user's git color settings do not empty the scan", () => {
+  withRepo({}, (root, [a]) => {
+    fs.writeFileSync(path.join(root, 'notes.md'), `see ${a}\n`)
+    for (const [key, value] of [['color.ui', 'always'], ['color.grep', 'always']]) {
+      git(root, 'config', key, value)
+      const data = json(root, ['issues', 'delete', a, '--dry-run'])
+      assert.deepEqual(data.files, [{ path: 'notes.md', lines: [1] }], key)
+      assert.deepEqual(data.unchecked, [], key)
+    }
+  })
+})
+
+test('a repository with no file that cites the ID has an empty files list', () => {
+  withRepo({}, (root, [a]) => {
+    const data = json(root, ['issues', 'delete', a, '--dry-run'])
+    assert.deepEqual(data.files, [])
+    assert.deepEqual(data.unchecked, [])
+  })
+})
+
+test('when git grep cannot run, the files stay unchecked with the reason and are never an empty answer', () => {
+  withRepo({}, (root, [a]) => {
+    fs.rmSync(path.join(root, '.git'), { recursive: true, force: true })
+    const data = json(root, ['issues', 'delete', a, '--dry-run'])
+    assert.deepEqual(data.files, [])
+    assert.equal(data.unchecked.length, 1)
+    // pmkit's own words, not git's fatal text, which changes with the git version.
+    assert.equal(data.unchecked[0], 'code comments, documents and docs/ (git grep failed: not a git repository)')
+    assert.match(run(root, ['issues', 'delete', a, '--dry-run']).stdout, /not checked: code comments, documents and docs\/ \(git grep failed/)
+  })
+})
+
+test('issues restore on the Local tracker answers NOT_SUPPORTED with the git commands, and writes nothing', () => {
+  withRepo({}, (root, [a]) => {
+    json(root, ['issues', 'delete', a])
+    const before = hashTree(root)
+    const result = run(root, ['issues', 'restore', a, '--json'])
+    assert.equal(result.status, 2, result.stdout)
+    const { error } = JSON.parse(result.stdout)
+    assert.equal(error.code, 'NOT_SUPPORTED')
+    assert.match(error.nextStep, new RegExp(`git checkout <commit>\\^ -- ':\\(top\\)\\.issues/issues/${a}' brings the folder back`))
+    assert.equal(run(root, ['issues', 'restore', a, '--dry-run', '--json']).status, 2)
+    assert.equal(run(root, ['issues', 'restore']).status, 2)
+    assert.equal(hashTree(root), before)
+    // The command it names works from a subfolder too.
+    const sub = path.join(root, 'src')
+    fs.mkdirSync(sub)
+    const checkout = error.nextStep.match(/^git checkout HEAD -- '([^']+)'/)[1]
+    assert.equal(git(sub, 'checkout', 'HEAD', '--', checkout).status, 0)
+    assert.ok(fs.existsSync(path.join(root, '.issues/issues', a, 'issue.md')))
+  })
+})
+
+test('a delete of an ID with ../ exits 2 and writes nothing', () => {
+  withRepo({}, (root, [a]) => {
+    const before = hashTree(root)
+    for (const id of [`../${a}`, '../../etc']) {
+      const result = run(root, ['issues', 'delete', id, '--json'])
+      assert.equal(result.status, 2, result.stdout)
+      assert.equal(JSON.parse(result.stdout).error.code, 'NOT_FOUND')
+    }
+    assert.equal(hashTree(root), before)
+  })
+})

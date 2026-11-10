@@ -12,3 +12,22 @@ export function mentionedIn(id) {
   const mention = new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(id)}(?![A-Za-z0-9_])`)
   return (text) => mention.test(text.replace(/\]\([^)\s]*\)/g, ']').replace(/https?:\/\/\S+/g, ' ').replace(/\S+/g, (token) => (pathLike(token) ? ' ' : token)))
 }
+
+/**
+ * The files that mention `id`, from the output of `git grep -z -n` (`path\0line\0text` per line): the lines the mention rule accepts,
+ * grouped by file and sorted by path. PMK-222.
+ */
+export function fileMentions(id, output) {
+  const mentioned = mentionedIn(id)
+  const byPath = new Map()
+  for (const row of output.split('\n')) {
+    if (row === '') continue
+    const [file, line, ...text] = row.split('\0')
+    // A row that is not path, line number, text means the format changed (color codes, say): never read it as "no mention".
+    if (text.length === 0 || !/^[1-9]\d*$/.test(line)) throw new Error(`could not read the git grep output: ${JSON.stringify(row.slice(0, 80))}`)
+    if (!mentioned(text.join('\0').replace(/\r$/, ''))) continue
+    if (!byPath.has(file)) byPath.set(file, [])
+    byPath.get(file).push(Number(line))
+  }
+  return [...byPath].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([file, lines]) => ({ path: file, lines }))
+}

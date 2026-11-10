@@ -3,7 +3,7 @@
 
 export const TRACKER_OPERATIONS = [
   'discover', 'capabilities',
-  'searchIssues', 'getIssue', 'createIssue', 'updateIssue', 'moveToCategory', 'assign', 'delegate', 'archive', 'delete',
+  'searchIssues', 'getIssue', 'createIssue', 'updateIssue', 'moveToCategory', 'assign', 'delegate', 'archive', 'delete', 'restore',
   'link', 'unlink', 'setParent',
   'getHistory', 'listComments', 'comment', 'resolveThread',
   'listCycles', 'currentCycle', 'cycleIssues', 'openCycle', 'closeCycle', 'moveToCycle',
