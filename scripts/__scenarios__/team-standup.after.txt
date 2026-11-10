@@ -14,6 +14,8 @@ exit 0
 (no file changed)
 --- gh calls
 pr view feat-dlq --json number,url,title,state,isDraft,headRefName,author,mergedAt
-pr view feat-dlq --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr view feat-dlq --json number,url,title,state,isDraft,headRefName,author,mergedAt,reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName
 pr checks 9 --json name,state,bucket,link
-pr view 9 --json reviews,reviewRequests
+api graphql -F owner={owner} -F repo={repo} -F number=9 -f query=query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100, after: $endCursor) { pageInfo { hasNextPage endCursor } nodes { isResolved isOutdated path line comments(first: 1) { nodes { url author { login } } } } } } } }
+api repos/{owner}/{repo}/branches/main/protection
+api repos/{owner}/{repo}/rules/branches/main?per_page=100&page=1

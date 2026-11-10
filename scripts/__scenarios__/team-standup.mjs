@@ -1,9 +1,20 @@
 // /pmkit:team:standup me on the team fixture with the GitHub host. ISS-8C4W (in review) has a branch with an open PR,
 // so the pr sync preview moves nothing and step 1 never asks.
 import assert from 'node:assert/strict'
+import { createGithubHost } from '../lib/github/host.mjs'
 
-const VIEW = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
-const pr = { number: 9, url: 'https://github.com/o/r/pull/9', title: 'Dead-letter queue for webhooks (ISS-8C4W)', state: 'OPEN', isDraft: false, headRefName: 'feat-dlq', author: { login: 'ana' }, mergedAt: null }
+// pr status reads the pull request with its reviews and merge state, then the blocker reads (threads, protection, rules).
+const VIEW = 'number,url,title,state,isDraft,headRefName,author,mergedAt,reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName'
+const pr = { number: 9, url: 'https://github.com/o/r/pull/9', title: 'Dead-letter queue for webhooks (ISS-8C4W)', state: 'OPEN', isDraft: false, headRefName: 'feat-dlq', author: { login: 'ana' }, mergedAt: null,
+  reviews: [], reviewRequests: [{ login: 'fred' }], mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', reviewDecision: '', baseRefName: 'main' }
+const NO_THREADS = JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false }, nodes: [] } } } } })
+
+/** The argument string of the first graphql call of the threads, taken from the real host so the canned key cannot drift. */
+function threadsKey(number) {
+  let key
+  createGithubHost({ root: '.', env: {}, exec: (cmd, args) => { key = args.join(' '); return { status: 0, stdout: NO_THREADS, stderr: '' } } }).prThreads(number)
+  return key
+}
 
 export default {
   command: 'team/standup',
@@ -12,7 +23,9 @@ export default {
   gh: {
     [`pr view feat-dlq --json ${VIEW}`]: { stdout: JSON.stringify(pr) },
     'pr checks 9 --json name,state,bucket,link': { stdout: JSON.stringify([{ name: 'test', state: 'FAILURE', bucket: 'fail' }]) },
-    'pr view 9 --json reviews,reviewRequests': { stdout: JSON.stringify({ reviews: [], reviewRequests: [{ login: 'fred' }] }) },
+    [threadsKey(9)]: { stdout: NO_THREADS },
+    'api repos/{owner}/{repo}/branches/main/protection': { status: 1, stderr: 'gh: Branch not protected (HTTP 404)\n' },
+    'api repos/{owner}/{repo}/rules/branches/main?per_page=100&page=1': { stdout: '[]' },
   },
   async setup({ pmkit }) {
     await pmkit(['issues', 'update', 'ISS-8C4W', '--branch', 'feat-dlq'])

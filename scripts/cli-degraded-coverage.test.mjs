@@ -129,7 +129,8 @@ function forged(id, entry, { github = false, gh: extra = {}, failManifest = fals
   let config = fs.readFileSync(file, 'utf8').replace('    workspace: acme', '    workspace: acme\n    team: ACME')
   if (github) config = config.replace('  system: none', '  system: github\n  default_branch: main')
   fs.writeFileSync(file, config)
-  const gh = github ? fakeGh({ [`pr view x --json ${PR_VIEW}`]: { status: 1, stderr: 'no pull requests found for branch "x"\n' }, ...extra }) : null
+  const none = { status: 1, stderr: 'no pull requests found for branch "x"\n' }
+  const gh = github ? fakeGh({ [`pr view x --json ${PR_VIEW}`]: none, [`pr view x --json ${PR_VIEW}${PR_DETAIL}`]: none, ...extra }) : null
   const env = { ...childEnv(), ...userStoreEnv().env, LINEAR_API_KEY: FAKE_KEY, ...(gh ? { PATH: `${gh.dir}${path.delimiter}${process.env.PATH}`, PMKIT_FAKE_GH: gh.responses } : {}) }
   if (github) {
     for (const args of [['init', '-q', '-b', 'main'], ['-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'init']]) {
@@ -158,6 +159,8 @@ function forged(id, entry, { github = false, gh: extra = {}, failManifest = fals
 }
 
 const PR_VIEW = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
+// pr status and pr blockers read the pull request with its reviews and merge state in the same gh pr view.
+const PR_DETAIL = ',reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName'
 const noteLines = (stderr) => stderr.split('\n').filter((line) => line.startsWith('note: '))
 const ABSENT = { path: 'absent', enableHint: 'Use the Business plan' }
 const ISSUE_BRANCH = 'acme-1-fix-it'
@@ -186,7 +189,7 @@ const PATH_CASES = [
     { argv: ['pr', 'open', '--issue', 'ACME-1', '--dry-run'], gh: { [`pr view ${ISSUE_BRANCH} --json ${PR_VIEW}`]: { status: 1, stderr: `no pull requests found for branch "${ISSUE_BRANCH}"\n` } } },
     { argv: ['pr', 'ready', '--issue', 'ACME-1', '--dry-run'], gh: { [`pr view ${ISSUE_BRANCH} --json ${PR_VIEW}`]: { stdout: JSON.stringify({ number: 7, url: 'https://github.com/o/r/pull/7', title: 'Fix it', state: 'OPEN', isDraft: true, headRefName: ISSUE_BRANCH, author: { login: 'a' }, mergedAt: null }) } } },
     { argv: ['pr', 'diff', '--branch', 'x'], gh: { [`pr view x --json ${PR_VIEW}`]: { stdout: JSON.stringify({ number: 7, url: 'https://github.com/o/r/pull/7', title: 'Fix it', state: 'OPEN', isDraft: false, headRefName: 'x', author: { login: 'a' }, mergedAt: null }) }, 'pr diff 7 --color never': { stdout: 'diff\n' } } },
-    { argv: ['pr', 'blockers', '--branch', 'x'], gh: { [`pr view x --json ${PR_VIEW}`]: { status: 1, stderr: 'no pull requests found for branch "x"\n' } } },
+    { argv: ['pr', 'blockers', '--branch', 'x'] },
     { argv: ['pr', 'sync'] },
     { argv: ['deploys', 'list'], gh: { 'api repos/{owner}/{repo}/deployments?per_page=20': { stdout: '[]' } } },
     { argv: ['ci', 'logs', '--run', '9'], gh: { 'run view 9 --json workflowName,url,conclusion,status,createdAt,headSha': { stdout: JSON.stringify({ workflowName: 'CI', url: 'u', conclusion: 'failure', status: 'completed' }) }, 'run view 9 --log-failed': { stdout: 'failed\n' } } },

@@ -11,4 +11,4 @@ exit 2 (expected RATE_LIMITED)
 
 (no file changed)
 --- gh calls
-pr view iss-8c4w-dead-letter-queue --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr view iss-8c4w-dead-letter-queue --json number,url,title,state,isDraft,headRefName,author,mergedAt,reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName

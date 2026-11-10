@@ -20,7 +20,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 2. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" cycle current --json`. When there is an active sprint, note its ID.
 3. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues list --assignee me --sprint current --json`. When there is no active sprint, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues list --assignee me --json` and say in one line that no sprint is active, so the list shows all assigned issues.
 4. Drop the issues in `done` or `canceled`. Keep the rest in creation order, oldest first, as the CLI returns them. An issue is blocked when `blockedBy` holds an issue not in `done` or `canceled`.
-5. For each issue with a `branch`, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" pr status --branch <branch> --json`. Note the PR, its checks and its reviews. When the call fails with `NOT_SUPPORTED`, `NOT_CONFIGURED` or `AUTH`, stop calling `pr status`, and say in one line that PR data is unavailable and why (use `error.message`).
+5. For each issue with a `branch`, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" pr status --branch <branch> --json`. Note the PR, its checks, its reviews and its `blockers`. For an open PR, `blockers.blocked` is `true` (blocked: show the messages of `blockers.blocking`), `false` (nothing blocks it) or `null` (not verified: show the messages of `blockers.unknown` and the areas of `blockers.unchecked`). Never show `null` as "nothing blocks it". `/pmkit:issues:unblock <id>` lists each blocker with its next step. When the call fails with `NOT_SUPPORTED`, `NOT_CONFIGURED` or `AUTH`, stop calling `pr status`, and say in one line that PR data is unavailable and why (use `error.message`).
 6. Pick one recommended next issue: the oldest created issue that is not blocked. Give the reason in one sentence.
 
 ## Confirmation points
@@ -30,7 +30,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 
 ## Output
 
-An issue table in creation order, oldest first, as the CLI returns it, with these columns after the standard five: priority, due date, blocked (yes or no) and PR (number and state, or empty). Then the open PRs awaiting review, from step 5, each with its review state. End with the recommended issue and its reason, and the command to start it, `/pmkit:issues:work <id>`.
+An issue table in creation order, oldest first, as the CLI returns it, with these columns after the standard five: priority, due date, blocked (yes or no, from `blockedBy`) and PR (number and state, and for an open PR its verdict from step 5: `blocked:` with the blocking messages, `nothing blocks it`, or `not verified:` with what was not verified; empty without a PR). Then the open PRs awaiting review, from step 5, each with its review state. End with the recommended issue and its reason, and the command to start it, `/pmkit:issues:work <id>`.
 
 ## If something is missing
 
