@@ -12,7 +12,7 @@ import { formatError } from './local/migrations.mjs'
 import { hasMilestoneFiles, milestoneStems, parseMilestone, validMilestoneId } from './local/milestones.mjs'
 import { parseRelease, releaseStems, validReleaseId } from './local/releases.mjs'
 import { checkFilter } from './local/query.mjs'
-import { parseView, validViewName, viewStems } from './local/views.mjs'
+import { caseClashes, parseView, validViewName, viewStems } from './local/views.mjs'
 import { GOAL_PREFIX, goalStems, parseGoal } from './local/goals.mjs'
 import { CUSTOMER_PREFIX, mdStems, parseCustomer } from './local/customers.mjs'
 import { REQUEST_PREFIX, parseRequest } from './local/requests.mjs'
@@ -69,7 +69,7 @@ function blockedByCycles(graph) {
 }
 
 const relative = (root, file) => path.relative(root, file).split(path.sep).join('/')
-const noneChecked = () => ({ issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, comments: 0 })
+const noneChecked = () => ({ issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, comments: 0, views: 0 })
 // A problem has no next step field, so the format problem carries it in its message.
 const formatProblem = (root, file, error) => ({ path: relative(root, file), code: 'FORMAT', message: `${error.message}; run ${error.nextStep}` })
 
@@ -257,15 +257,21 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
 
   // Views
   const viewsDir = path.join(issuesDir, 'views')
-  for (const name of [...viewStems(viewsDir)].sort()) {
+  const viewNames = [...viewStems(viewsDir)].sort()
+  // On a file system that ignores case the two names are one file; views save refuses such a clash.
+  const clashOf = new Map(caseClashes(viewNames))
+  for (const name of viewNames) {
     const file = path.join(viewsDir, `${name}.yaml`)
+    checked.views++
     if (conflicted.has(file)) continue
+    if (clashOf.has(name)) add(file, 'view', `view name "${name}" differs from "${clashOf.get(name)}" only in case`)
     if (!validViewName(name)) {
       add(file, 'view', `view name "${name}" must start and end with a letter or digit and hold only letters, digits, ".", "_" and "-"`)
       continue
     }
     try {
       const { filter } = parseView(read(file), name)
+      if (Object.keys(filter).length === 0) throw new Error('view filter is empty, so the view matches every issue')
       checkFilter(filter, { types: local.types, members: Object.keys(local.members), sprintExists: (id) => sprintFileExists(issuesDir, id) })
     } catch (error) {
       add(file, 'view', error.message)

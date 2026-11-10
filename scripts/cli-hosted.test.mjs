@@ -75,7 +75,7 @@ test('validate with a hosted config checks only .pmkit/config.yaml', async () =>
   const result = await call(mirrorRepo('team'), ['validate', '--json'], { adapters: withLinear(mirrorLinear()) })
   assert.equal(result.code, 0, result.stderr)
   assert.deepEqual(JSON.parse(result.stdout), {
-    checked: { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, comments: 0 },
+    checked: { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, comments: 0, views: 0 },
     problems: [],
   })
 })

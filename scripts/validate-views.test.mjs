@@ -1,7 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
+import { caseClashes } from './lib/local/views.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { makeRepo } from './test-helpers.mjs'
 
@@ -42,4 +44,38 @@ test('a view whose sprint is not a valid sprint id is a view problem, as it is f
   writeView(root, 'missing.yaml', 'filter:\n  sprint: 2099-01-01\n')
   writeView(root, 'current.yaml', 'filter:\n  sprint: current\n')
   assert.deepEqual(brief(validateRepo(root)), ['view .issues/views/escape.yaml', 'view .issues/views/missing.yaml'])
+})
+
+// PMK-212
+test('a view whose filter is empty is a view problem, and checked counts the views', () => {
+  const root = makeRepo('team')
+  writeView(root, 'good.yaml', 'filter:\n  categories: [done]\n')
+  writeView(root, 'empty.yaml', 'filter: {}\n')
+  const result = validateRepo(root)
+  assert.deepEqual(brief(result), ['view .issues/views/empty.yaml'])
+  assert.equal(result.problems.find((p) => p.path.endsWith('empty.yaml')).message, 'view filter is empty, so the view matches every issue')
+  assert.equal(result.checked.views, 2)
+  assert.equal(validateRepo(makeRepo('team')).checked.views, 0)
+})
+
+test('caseClashes names each later name that differs from an earlier one only in case', () => {
+  assert.deepEqual(caseClashes(['Mine', 'mine', 'other', 'MINE', 'b']), [['mine', 'Mine'], ['MINE', 'Mine']])
+  assert.deepEqual(caseClashes(['a', 'b']), [])
+})
+
+const caseSensitive = (() => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-case-'))
+  fs.writeFileSync(path.join(dir, 'a'), '')
+  const sensitive = !fs.existsSync(path.join(dir, 'A'))
+  fs.rmSync(dir, { recursive: true, force: true })
+  return sensitive
+})()
+
+test('two view files whose names differ only in case are a view problem on the later one', { skip: !caseSensitive && 'the file system ignores case' }, () => {
+  const root = makeRepo('team')
+  writeView(root, 'Mine.yaml', 'filter:\n  blocked: true\n')
+  writeView(root, 'mine.yaml', 'filter:\n  blocked: true\n')
+  const result = validateRepo(root)
+  assert.deepEqual(brief(result), ['view .issues/views/mine.yaml'])
+  assert.equal(result.problems[0].message, 'view name "mine" differs from "Mine" only in case')
 })

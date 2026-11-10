@@ -1,7 +1,7 @@
 $ pmkit validate
 exit 0
 --- stdout
-checked: 13 issues, 1 epics, 2 sprints, 0 milestones, 0 releases, 0 comments
+checked: 13 issues, 1 epics, 2 sprints, 0 milestones, 0 releases, 0 comments, 0 views
 .issues/issues/ISS-3Q6T/issue.md  conflict  the file contains git conflict markers
 --- stderr
 (empty)
@@ -16,7 +16,8 @@ exit 0
     "sprints": 2,
     "milestones": 0,
     "releases": 0,
-    "comments": 0
+    "comments": 0,
+    "views": 0
   },
   "problems": [
     {
