@@ -387,3 +387,38 @@ Início: 2026-11-09. `develop` em fd7ca15, `npm test` com 4392 testes, 4312 pass
 - PMK-208: b24907b com cvssScore por Map e Object.hasOwn, score não finito dá unknown. Mergeado (e365d50).
 
 Fim da rodada 13: PRs #174, #175, #176 mergeados.
+
+Limpeza da rodada 13: closing PR #177 mergeado (6b9bb8e), 8 worktrees removidos, branches provisórias apagadas.
+
+## Rodada 14
+
+Início: 2026-11-10. `develop` em 6b9bb8e, `npm test` com 4449 testes, 4363 pass, 0 fail, 86 skipped, saída 0. Run Orca `run_1603bd212b66`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-211 | 3 | sonnet (`ctx_ce87634a2ec5`) | #178 | ciclos 1 e 2 (opus): mudanças pedidas; textos e eventInstant conferidos pelo orquestrador | mergeado (d44c4fe) |
+| PMK-212 | 5 | opus (`ctx_f599f6914c18`) | #179 | ciclo 1 (opus): mudanças pedidas; ciclo 2 (opus): APROVADO; duas correções antes do merge | mergeado (c94edc3) |
+| PMK-213 | 5 | opus (`ctx_af8f93dcb293`) | #180 | ciclos 1 e 2 (opus): mudanças pedidas; ciclo 3 (opus): APROVADO, rebase com 17 conflitos conferido | mergeado (6828ca7) |
+
+- PMK-211: PR #178 (sonnet); isPositiveMinutes compartilhado; checagem de ignorados na suíte de contrato; tempo legível 1h30; totais por pessoa e por sprint (sprint pela data UTC dentro de start..end, senão no sprint; sprints ilegíveis dão sprintsUnread e nota); progress.md lê time-entries. Follow-ups: filtro por sprint; relatório de tempo do sprint; log-time em texto ainda só em minutos. Revisor ciclo 1 (opus) iniciado.
+- PMK-211 ciclo 1 (opus): mudanças pedidas, 2 bloqueantes em sprintOf (at numérico derruba com UNEXPECTED; at com fuso cai no dia local). Pedi junto: sprint ruim não descarta todos; sem leitura de sprints sem entradas.
+- PMK-211 correção e69faa5: sprintOf com eventInstant e data UTC (at numérico vai para no sprint); sprint ruim só marca sprintsUnread; sprints lidos só com entradas. Revisor ciclo 2 (opus) iniciado.
+- PMK-211 ciclo 2 (opus): mudanças pedidas, texto da nota de sprintsUnread e de progress.md contradiz o comportamento novo. Não bloqueantes: catch que engole EACCES/ENOTDIR; cópia de readSprints; by ausente; ordem de bySprint. Vou conferir a correção sem ciclo 3.
+- PMK-211 c2fe4ac: notas conferidas. eventInstant novo dá NaN para data com espaço e fuso (2026-01-01 10:00+05:00 e ...Z), que antes funcionava; pedi a correção de uma linha.
+- PMK-212: PR #179 (opus); views delete/rename no Local; validate checa views (checked.views); views run com --limit/--sort; custom views do Linear servidas por views list/run (save/delete/rename NOT_SUPPORTED); issues bulk --view recusa view do Linear; lista cortada do Linear dá NOT_FOUND view_list_incomplete. Follow-ups: escrever views do Linear; checagem live de custom_views; auto_commit com arquivo de view não rastreado. Revisor ciclo 1 (opus) iniciado.
+- PMK-212: o primeiro start do revisor (ctx_91963b64b57a) ficou com o composer vazio; worker-abandon, task-update ready e worker-start no mesmo terminal (aprovação permanente): `ctx_3a0d030e0f7f`, rodando.
+- PMK-213: PR #180 (opus); goal_prefix; goal status (5 status de initiative do Linear; sem status = active; owner fora); goal update/close/delete (delete recusa com épico ligado ou épico ilegível); leituras de initiatives no Linear Business/Enterprise; goal progress com avisos e complete; validate checked.goals. Follow-ups: owner da meta; escritas de metas no Linear; goals overview ler initiatives uma vez e tratar completed/canceled (PMK-233); provar PmkitInitiatives ao vivo. Revisor ciclo 1 (opus) iniciado.
+- Follow-up prioritário: scripts/redact-probes.test.mjs:297 e :310 limitam cada entrada a 1000 ms; sob carga já deu 1009 ms duas vezes (PMK-205, PMK-213). Subir o limite deixaria passar o quadrático antigo (1,7 s em 320k); o certo é comparar o tempo de n e 2n (razão).
+- PMK-211: 4792245 com eventInstant que só põe Z sem fuso (conferido: espaço com e sem fuso, T, só data; número dá NaN como em develop). Mergeado (d44c4fe).
+- PMK-212 ciclo 1 (opus): mudanças pedidas, 3 bloqueantes (delete/rename de view não rastreada com auto_commit sai 2; rename só de caixa no macOS sem commit; CUSTOM_VIEW_ISSUES_QUERY sem sort corta as issues erradas). CustomView conferido no schema. O npm test do revisor saiu 1 com 3 falhas que ele diz existirem também em develop (sandbox.test:748, degraded-live.test:12, tracker-delete.test:193): vou conferir em develop.
+- Conferi develop (d44c4fe) no tree principal: npm test 4456 testes, 0 fail, saída 0. As 3 falhas do revisor da PMK-212 não reproduzem; carga ~40 no momento. Se voltarem, vira follow-up de testes sensíveis a carga.
+- PMK-213 ciclo 1 (opus): mudanças pedidas, 3 bloqueantes (épico com outro prefixo pulado sem problem: goal delete apaga meta ligada; projeto antigo com prefixo GOAL quebra no validate e em toda escrita; goals overview descarta avisos e sai complete no Linear). Initiatives conferidas no schema. Pedi junto: REQ/CUS recusados como goal_prefix; checked.goals sem README.md.
+- PMK-212 correção 09d8b19: auto_commit só commita caminhos removidos que o git rastreia (git rm --cached) e add nos presentes; rename só de caixa recusado com o rename em dois passos como próximo passo; CustomView.issues com sort createdAt Ascending e fake que respeita o sort; nome achado uma vez numa lista cortada pede o id; bulk --view recusa antes de ler; rebase. Revisor ciclo 2 (opus) iniciado, com atenção ao commitTracker compartilhado.
+- PMK-213 correção 036bbef: pasta de épico com nome que não é id vira problem (goal delete recusa); goal_prefix fora de DEFAULTS e só checado quando definido; goals overview carrega os avisos de cada meta; checked.goals sem README.md; epicsMore fora do JSON; rebase. Revisor ciclo 2 (opus) iniciado.
+- PMK-212 ciclo 2 (opus): APROVADO (auto_commit dos outros comandos conferido); pedi antes do merge: view do Linear depois do corte rodar pelo id; --limit passado ao Linear. Follow-ups: validate só pega filter {}; eficiência do onDisk; duplicação runView/searchIssues; scope.team ausente; views de workspace.
+- PMK-212: 00ba610 com leitura direta de view do Linear pelo id (PmkitCustomView, mesmos campos conferidos) e --limit passado ao Linear; diff conferido. Mergeado (c94edc3).
+- PMK-213 ciclo 2 (opus): mudanças pedidas (com goal_prefix definido, metas GOAL antigas viram problems e goals overview cai no fallback com complete true). O PR conflita em 17 arquivos com develop depois da PMK-212; pedi a correção e o rebase juntos. Follow-ups: isId sem escape com prefixo como G( (já em develop com epic_prefix); recordOf deduplica pelo texto; RESERVED_PREFIXES é cópia.
+- PMK-213 correção fc895ed: meta com nome de id de outro prefixo vira problem kind goal (overview incompleto e avisa); goal delete sem does not parse; goal get com complete e warnings; rebase sobre c94edc3 com 17 conflitos resolvidos mantendo os dois lados. Revisor ciclo 3 (opus) iniciado, com atenção à resolução dos conflitos.
+- PMK-213 ciclo 3 (opus): APROVADO; rebase não perdeu nada da PMK-212. Não bloqueantes: ID_SHAPE aceita minúsculas (my-notes.md em goals/ vira meta ilegível); goal get mostra INCOMPLETE_LINE sobre números que não exibe e faz listGoals extra; goal-ops.mjs:82 copia o status de toEpic. Mergeado (6828ca7).
+
+Fim da rodada 14: PRs #178, #179, #180 mergeados.

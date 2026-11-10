@@ -2,14 +2,14 @@
 id: PMK-212
 title: Improve saved views
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 5
 assignee: fred
 related: [PMK-44]
 branch: pmk-212-improve-saved-views
 created: 2026-11-08T20:37:22.964Z
-updated: 2026-11-10T04:04:02Z
+updated: 2026-11-10T05:11:08Z
 ---
 
 ## Description

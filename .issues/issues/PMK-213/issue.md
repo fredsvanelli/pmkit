@@ -2,14 +2,14 @@
 id: PMK-213
 title: Improve goals
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 5
 assignee: fred
 related: [PMK-45]
 branch: pmk-213-improve-goals
 created: 2026-11-08T20:37:23.113Z
-updated: 2026-11-10T04:13:56Z
+updated: 2026-11-10T05:11:09Z
 ---
 
 ## Description
