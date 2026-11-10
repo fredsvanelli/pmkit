@@ -11,3 +11,4 @@
 {"at":"2026-11-10T17:19:25Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-10T17:19:29Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-226-add-more-changes-to-the-bulk-operation"}
 {"at":"2026-11-10T17:23:39Z","by":"fred","op":"comment","to":"2026-11-10T17-23-39Z-fred.md"}
+{"at":"2026-11-10T17:33:04Z","by":"fred","op":"update","field":"acceptance_criteria"}
