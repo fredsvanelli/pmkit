@@ -220,6 +220,44 @@ test('pr status says the blockers are not verified when the protection is refuse
   assert.doesNotMatch(text, /nothing blocks/)
 })
 
+test('pr status keeps the pull request and its checks when a blocker read hits the rate limit, and reads no further', async () => {
+  const root = teamRepo()
+  const reads = await cleanReads()
+  const threads = Object.keys(reads).find((key) => key.startsWith('api graphql'))
+  const gh = fakeGh({
+    [detailView('feat')]: { stdout: detailJson({ number: 7 }) },
+    'pr checks 7 --json name,state,bucket,link': { stdout: JSON.stringify([{ name: 'build', state: 'SUCCESS', bucket: 'pass' }]) },
+    ...reads,
+    [threads]: { status: 1, stderr: 'gh: API rate limit exceeded for user ID 1. (HTTP 403)\n' },
+  })
+  const result = await call(root, envWith(gh), ['pr', 'status', '--branch', 'feat', '--json'])
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const status = JSON.parse(result.stdout)
+  assert.equal(status.pr.number, 7)
+  assert.deepEqual(status.checks.map((c) => c.name), ['build'])
+  assert.equal(status.blockers.blocked, null)
+  assert.deepEqual(status.blockers.unchecked.map((u) => [u.area, u.code]), [['blockers', 'RATE_LIMITED']])
+  assert.ok(!ghCalls(gh).some((c) => c.includes('/protection') || c.includes('/rules/')), 'the rate limit stops the blocker reads')
+  const text = (await call(root, envWith(gh), ['pr', 'status', '--branch', 'feat'])).stdout
+  assert.match(text, /^checks: build pass$/m)
+  assert.match(text, /^blockers: not verified \(GitHub rate limit reached\)$/m)
+})
+
+test('pr status keeps the pull request when a blocker read fails with a 5xx, and says the blockers are not verified', async () => {
+  const root = teamRepo()
+  const gh = fakeGh({
+    [detailView('feat')]: { stdout: detailJson({ number: 7 }) },
+    'pr checks 7 --json name,state,bucket,link': { stdout: '[]' },
+    ...(await cleanReads()),
+    'api repos/{owner}/{repo}/rules/branches/main?per_page=100&page=1': { status: 1, stderr: 'gh: HTTP 502: Bad Gateway\n' },
+  })
+  const status = await callJson(root, envWith(gh), ['pr', 'status', '--branch', 'feat'])
+  assert.equal(status.pr.number, 7)
+  assert.equal(status.blockers.blocked, null)
+  assert.deepEqual(status.blockers.unchecked.map((u) => [u.area, u.code]), [['blockers', 'UPSTREAM']])
+  assert.match(status.blockers.unchecked[0].message, /502/)
+})
+
 test('pr status on a merged pull request reads no blocker', async () => {
   const root = teamRepo()
   const gh = fakeGh({

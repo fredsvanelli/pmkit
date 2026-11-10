@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { delegationOf, prSummary, prText } from './lib/track-agents.mjs'
+import { blockedText, delegationOf, prSummary, prText } from './lib/track-agents.mjs'
 import { parseDelegation } from './lib/delegation.mjs'
 
 const rec = (agent) => `Delegated to ${agent} by fred, to run locally.\r\n\r\n## Instructions`
@@ -46,4 +46,12 @@ test('prText keeps what is not verified next to a blocked verdict (PMK-199)', ()
   const pr = { number: 3, state: 'open', blocked: true, blocking: ['x'], unknown: ['u1'], unchecked: ['checks'] }
   assert.equal(prText({ pr }), '#3 open, blocked: x; not verified: u1; checks')
   assert.equal(prText({ pr: { ...pr, blocked: null, blocking: [] } }), '#3 open, blockers not verified: u1; checks')
+})
+
+test('prSummary names an area that was not checked once, even when two of its reads were refused', () => {
+  const pr = { state: 'OPEN', isDraft: false, number: 7, url: 'u', mergedAt: null }
+  const found = { blocked: null, blocking: [], unknown: [], unchecked: [{ area: 'policies' }, { area: 'policies' }, { area: 'threads' }] }
+  const summary = prSummary(pr, found)
+  assert.deepEqual(summary.unchecked, ['policies', 'threads'])
+  assert.equal(blockedText(summary), 'blockers not verified: policies; threads')
 })

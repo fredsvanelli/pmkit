@@ -1,6 +1,8 @@
 // /pmkit:issues:mine on the team fixture with the GitHub host. ISS-5N1R (fred, in progress) has a branch with an open PR.
 // No issue is in review with a merged PR, so the pr sync preview moves nothing and step 1 never asks.
-// A ruleset on main requires two approvals and the PR has one, so pr status says it is blocked and the PR column shows why.
+// Two entries. The first: a ruleset on main requires two approvals and the PR has one, so pr status says it is blocked and the
+// PR column shows why. The second (`rateLimited`): ISS-4M2S has a branch too, and the first pr status (ISS-5N1R, the older issue)
+// hits the rate limit on a blocker read. It still returns the PR and its checks, and step 5 stops there: ISS-4M2S is not read.
 import assert from 'node:assert/strict'
 import { createGithubHost } from '../lib/github/host.mjs'
 
@@ -16,7 +18,7 @@ function threadsKey(number) {
   return key
 }
 
-export default {
+const base = {
   command: 'issues/mine',
   fixture: 'team',
   github: true,
@@ -55,3 +57,29 @@ export default {
     assert.deepEqual(saved.status.blockers.blocking.map((b) => b.message), ['needs 1 more approval (1 of 2)'])
   },
 }
+
+const limited = { status: 1, stderr: 'gh: API rate limit exceeded for user ID 1. (HTTP 403)\n' }
+const rateLimited = {
+  ...base,
+  gh: {
+    [`pr view feat-retries --json ${VIEW}`]: { stdout: JSON.stringify(pr) },
+    'pr checks 7 --json name,state,bucket,link': { stdout: JSON.stringify([{ name: 'test', state: 'SUCCESS', bucket: 'pass' }]) },
+    [threadsKey(7)]: limited,
+  },
+  async setup({ pmkit }) {
+    await pmkit(['issues', 'update', 'ISS-5N1R', '--branch', 'feat-retries'])
+    await pmkit(['issues', 'update', 'ISS-4M2S', '--branch', 'feat-csv'])
+  },
+  expect(repo, saved) {
+    // The rate limited blocker read keeps the PR and its checks, and its RATE_LIMITED entry stops step 5.
+    assert.equal(saved.status.pr.number, 7)
+    assert.deepEqual(saved.status.checks.map((check) => check.bucket), ['pass'])
+    assert.equal(saved.status.blockers.blocked, null)
+    assert.deepEqual(saved.status.blockers.unchecked.map((u) => [u.area, u.code]), [['blockers', 'RATE_LIMITED']])
+    // ISS-4M2S has a branch that step 5 does not read: its PR column is "not verified: rate_limited".
+    assert.equal(saved.mine.issues.find((issue) => issue.id === 'ISS-4M2S').branch, 'feat-csv')
+    assert.ok(!repo.ghCalls().some((call) => call.includes('feat-csv')), repo.ghCalls().join('\n'))
+  },
+}
+
+export default [base, rateLimited]

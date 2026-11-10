@@ -29,7 +29,8 @@ export function prSummary(pr, found) {
     state, number: pr.number, url: pr.url, blocked: found.blocked,
     blocking: found.blocking.map((item) => item.message),
     unknown: found.unknown.map((item) => item.message),
-    unchecked: found.unchecked.map((item) => item.area),
+    // Two refused reads of one area (protection and rules are both `policies`) name it once.
+    unchecked: [...new Set(found.unchecked.map((item) => item.area))],
   }
 }
 

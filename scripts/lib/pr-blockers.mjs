@@ -13,8 +13,10 @@ import { PmkitError } from './errors.mjs'
 const FAILING = new Set(['fail', 'cancel'])
 const PASSING = new Set(['pass', 'skipping'])
 const UNREAD_RULE = 'GitHub blocks the merge by a rule this command does not evaluate (for example signed commits, a merge queue or required deployments)'
-// The ruleset rule types the command evaluates. GitHub's mergeStateStatus covers the others.
+// The ruleset rule types the command evaluates, and the ones that only guard creating, deleting or force-pushing the branch,
+// so they never block merging a pull request. GitHub's mergeStateStatus covers the rest.
 const EVALUATED_RULES = new Set(['pull_request', 'required_status_checks'])
+const NOT_MERGE_RULES = new Set(['creation', 'deletion', 'non_fast_forward'])
 // Marks a protection read that was refused, apart from null, which is a branch without classic protection.
 const REFUSED = Symbol('refused')
 // A rule the command evaluates from another read, and the read it needs.
@@ -35,7 +37,7 @@ function latestVerdicts(reviews) {
 
 /** Why GitHub blocks when nothing read explains it, with the active rule types the command does not evaluate. */
 function ruleText(policies) {
-  const others = (policies?.rulesets ?? []).filter((type) => !EVALUATED_RULES.has(type))
+  const others = (policies?.rulesets ?? []).filter((type) => !EVALUATED_RULES.has(type) && !NOT_MERGE_RULES.has(type))
   return others.length > 0 ? `${UNREAD_RULE}; active rules it does not evaluate: ${others.join(', ')}` : UNREAD_RULE
 }
 
@@ -44,7 +46,7 @@ const names = (items, label = (i) => i) => items.map(label).join(', ')
 // A review request is a user (`login`) or a team (`slug`). Teams are kept apart so a team named like a user never matches the user.
 const isTeam = (r) => r.__typename === 'Team' || (r.login === undefined && r.slug !== undefined)
 /** Who is asked for a review, as text: users by login, teams as `team <slug>`. */
-const anyRequested = (reviews) => (reviews?.requested.length ?? 0) + (reviews?.requestedTeams.length ?? 0) > 0
+const anyRequested = (reviews) => (reviews?.requested?.length ?? 0) + (reviews?.requestedTeams?.length ?? 0) > 0
 const waitingFor = (reviews) => [...reviews.requested, ...reviews.requestedTeams.map((t) => `team ${t}`)].join(', ')
 
 /**
@@ -92,11 +94,14 @@ export function collectBlockers(host, pr) {
   if (notComputed) unchecked.push({ area: 'conflicts', code: 'NOT_READY', message: 'GitHub has not computed the merge state yet', nextStep: 'Run the command again in a few seconds' })
 
   const verdicts = latestVerdicts(mergeState.reviews ?? [])
+  // Review requests the token could not read (getPullRequest sets reviewRequests null) are unknown, never "nobody asked".
+  const requests = mergeState.reviewRequests
+  if (requests === null) unchecked.push({ area: 'reviews', code: 'UPSTREAM', message: 'the review requests could not be read', ...mergeState.reviewRequestsError })
   const reviews = {
     decision: mergeState.reviewDecision || null,
     changesRequested: [...verdicts].filter(([, state]) => state === 'CHANGES_REQUESTED').map(([login]) => login),
-    requested: (mergeState.reviewRequests ?? []).filter((r) => !isTeam(r)).map((r) => r.login ?? r.name),
-    requestedTeams: (mergeState.reviewRequests ?? []).filter(isTeam).map((r) => r.slug ?? r.name),
+    requested: requests === null ? null : (requests ?? []).filter((r) => !isTeam(r)).map((r) => r.login ?? r.name),
+    requestedTeams: requests === null ? null : (requests ?? []).filter(isTeam).map((r) => r.slug ?? r.name),
   }
 
   const threadData = attempt('threads', () => host.prThreads(pr.number))
@@ -105,8 +110,19 @@ export function collectBlockers(host, pr) {
 
   const read = attempt('policies', () => host.branchProtection(mergeState.baseRefName), REFUSED)
   const protection = read === REFUSED ? null : read
-  const rules = attempt('policies', () => host.branchRules(mergeState.baseRefName))
-  const unread = [read === REFUSED && 'branch protection', rules === null && 'rulesets'].filter(Boolean)
+  // With the protection read, the repository is readable, so a 404 on the rules means the host has no rulesets (an older GitHub
+  // Enterprise Server): there is nothing to read, not a refusal. With the protection refused, a 404 may be a refusal too.
+  let noRulesets = false
+  const rules = attempt('policies', () => {
+    try {
+      return host.branchRules(mergeState.baseRefName)
+    } catch (error) {
+      if (read === REFUSED || !(error instanceof PmkitError) || error.code !== 'UPSTREAM' || error.httpStatus !== 404) throw error
+      noRulesets = true
+      return null
+    }
+  })
+  const unread = [read === REFUSED && 'branch protection', rules === null && !noRulesets && 'rulesets'].filter(Boolean)
   // Only with both read can the command say that something open is not required.
   const policiesKnown = unread.length === 0
   // What the two sources require, merged: the largest approval count, every required check, and either one's strict or conversation rule.
@@ -205,6 +221,7 @@ export function blockersText(pr, found) {
     const parts = []
     if (reviews.changesRequested.length > 0) parts.push(`changes requested by ${names(reviews.changesRequested)}`)
     if (anyRequested(reviews)) parts.push(`waiting for ${waitingFor(reviews)}`)
+    if (reviews.requested === null) parts.push(`review requests not checked (${found.unchecked.find((u) => u.area === 'reviews')?.message ?? 'no data'})`)
     if (parts.length === 0 && reviews.decision === 'REVIEW_REQUIRED') parts.push('a review is required')
     lines.push(`reviews: ${parts.length > 0 ? parts.join('; ') : 'nothing pending'}`)
   }
@@ -224,8 +241,10 @@ export function blockersText(pr, found) {
     // The refused policy reads are the policies entries of unchecked, in the order of `unread` (protection first).
     const refusals = found.unchecked.filter((u) => u.area === 'policies')
     policies.unread.forEach((source, i) => parts.push(`not read: ${source} (${refusals[i]?.message ?? 'no data'})`))
-    const none = policies.protected === false && policies.rulesets?.length === 0
-    lines.push(`policies: ${parts.length > 0 ? parts.join('; ') : none ? 'the base branch has no branch protection or ruleset' : 'all met'}`)
+    const noRulesets = policies.rulesets === null && !policies.unread.includes('rulesets')
+    const none = policies.protected === false && (policies.rulesets?.length === 0 || noRulesets)
+    const quiet = none ? (noRulesets ? 'the base branch has no branch protection, and this host has no rulesets' : 'the base branch has no branch protection or ruleset') : `all met${noRulesets ? ' (this host has no rulesets)' : ''}`
+    lines.push(`policies: ${parts.length > 0 ? parts.join('; ') : quiet}`)
   }
   if (found.draft) lines.push('draft: yes, mark it ready for review to merge')
   return lines.join('\n')

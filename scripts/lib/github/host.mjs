@@ -98,17 +98,32 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
       throw new PmkitError('INVALID_INPUT', 'getPullRequest needs a number or a head', 'Pass a pull request number or a branch name')
     }
     if (selector.number === undefined) refArg('head', target)
-    const args = ['pr', 'view', String(target), '--json', detail ? `${VIEW_FIELDS},${DETAIL_FIELDS.join(',')}` : VIEW_FIELDS]
-    const result = run('gh', args)
-    if (result.status !== 0) {
-      if (/no pull requests? found/i.test(result.stderr ?? '')) return null
-      throw failure('gh', args, result)
+    const read = (fields) => {
+      const args = ['pr', 'view', String(target), '--json', [VIEW_FIELDS, ...fields].join(',')]
+      const result = run('gh', args)
+      if (result.status !== 0) {
+        if (/no pull requests? found/i.test(result.stderr ?? '')) return null
+        throw failure('gh', args, result)
+      }
+      return parse(result.stdout, 'the pull request')
     }
-    const pr = parse(result.stdout, 'the pull request')
-    if (!detail) return pr
+    if (!detail) return read([])
+    let pr
+    let reviewRequestsError
+    try {
+      pr = read(DETAIL_FIELDS)
+    } catch (error) {
+      // A token without read:org cannot read a team asked for review, and gh then refuses the whole view. Without that one field
+      // the rest still reads, and the caller says the review requests were not checked.
+      if (!(error instanceof PmkitError) || error.httpStatus !== 403) throw error
+      pr = read(DETAIL_FIELDS.filter((field) => field !== 'reviewRequests'))
+      reviewRequestsError = { code: error.code, message: error.message, nextStep: 'Run gh auth refresh -s read:org, or read the review requests on the pull request page' }
+    }
+    if (pr === null) return null
     const view = { ...pr }
     for (const field of DETAIL_FIELDS) delete view[field]
-    return { ...view, detail: Object.fromEntries(DETAIL_FIELDS.map((field) => [field, pr[field]])) }
+    const details = Object.fromEntries(DETAIL_FIELDS.map((field) => [field, pr[field]]))
+    return { ...view, detail: reviewRequestsError ? { ...details, reviewRequests: null, reviewRequestsError } : details }
   }
 
   const workingTree = (branch) => {

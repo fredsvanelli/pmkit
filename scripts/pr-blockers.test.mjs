@@ -445,13 +445,13 @@ test('with the protection refused and the rules read, a known unmet rule blocks 
 })
 
 test('with the rules refused and the protection read, nothing open is called not required', () => {
-  const r = collectBlockers(stub({ branchRules: refusal(404, 'gh api repos/{owner}/{repo}/rules/branches/main failed: Not Found (HTTP 404)'), prChecks: [{ name: 'lint', bucket: 'fail' }] }).host, OPEN_PR)
+  const r = collectBlockers(stub({ branchRules: refusal(403, 'gh api repos/{owner}/{repo}/rules/branches/main failed: Forbidden (HTTP 403)'), prChecks: [{ name: 'lint', bucket: 'fail' }] }).host, OPEN_PR)
   assert.equal(r.blocked, null)
   assert.deepEqual(r.policies.unread, ['rulesets'])
   assert.equal(r.policies.rulesets, null)
   assert.equal(r.policies.protected, false)
   assert.deepEqual(areas(r.unknown), ['checks'])
-  assert.match(blockersText(OPEN_PR, r), /^policies: not read: rulesets \(gh api repos\/\{owner\}\/\{repo\}\/rules\/branches\/main failed: Not Found \(HTTP 404\)\)$/m)
+  assert.match(blockersText(OPEN_PR, r), /^policies: not read: rulesets \(gh api repos\/\{owner\}\/\{repo\}\/rules\/branches\/main failed: Forbidden \(HTTP 403\)\)$/m)
 })
 
 test('with both policy reads refused, policies is null and both are unchecked', () => {
@@ -473,4 +473,37 @@ test('the policies text says no protection or ruleset only when both were read a
   assert.match(blockersText(OPEN_PR, collectBlockers(stub().host, OPEN_PR)), /^policies: the base branch has no branch protection or ruleset$/m)
   assert.match(blockersText(OPEN_PR, collectBlockers(stub({ branchRules: [pullRule({ required_approving_review_count: 0 })] }).host, OPEN_PR)), /^policies: all met$/m)
   assert.doesNotMatch(blockersText(OPEN_PR, collectBlockers(stub({ branchRules: refusal() }).host, OPEN_PR)), /no branch protection|all met/)
+})
+
+test('review requests the token cannot read are not verified, and the rest of the reviews still counts', () => {
+  const pr = { ...OPEN_PR, detail: { ...merge(), reviews: [{ author: { login: 'ann' }, state: 'CHANGES_REQUESTED' }], reviewRequests: null, reviewRequestsError: { code: 'UPSTREAM', message: 'gh pr view failed: no read:org', nextStep: 'gh auth refresh -s read:org' } } }
+  const r = collect(stub().host, pr)
+  assert.equal(r.reviews.requested, null)
+  assert.equal(r.reviews.requestedTeams, null)
+  assert.deepEqual(r.reviews.changesRequested, ['ann'])
+  assert.deepEqual(r.unchecked.map((u) => [u.area, u.message]), [['reviews', 'gh pr view failed: no read:org']])
+  assert.equal(r.blocked, null)
+  assert.match(blockersText(OPEN_PR, r), /^reviews: changes requested by ann; review requests not checked \(gh pr view failed: no read:org\)$/m)
+})
+
+test('the active rules named for an unexplained BLOCKED leave out the ones that cannot block a merge', () => {
+  const rules = ['deletion', 'non_fast_forward', 'creation', 'required_signatures'].map((type) => ({ type }))
+  const r = collectBlockers(stub({ branchRules: rules, mergeState: merge({ mergeStateStatus: 'BLOCKED' }) }).host, OPEN_PR)
+  assert.match(r.blocking[0].message, /; active rules it does not evaluate: required_signatures$/)
+  const only = collectBlockers(stub({ branchRules: rules.slice(0, 3), mergeState: merge({ mergeStateStatus: 'BLOCKED' }) }).host, OPEN_PR)
+  assert.doesNotMatch(only.blocking[0].message, /active rules/)
+})
+
+test('a 404 on the rules with the protection read is a host without rulesets, not an unread source', () => {
+  const missing = refusal(404, 'gh api repos/{owner}/{repo}/rules/branches/main failed: Not Found (HTTP 404)')
+  const r = collectBlockers(stub({ branchRules: missing }).host, OPEN_PR)
+  assert.equal(r.blocked, false)
+  assert.deepEqual(r.unchecked, [])
+  assert.equal(r.policies.rulesets, null)
+  assert.deepEqual(r.policies.unread, [])
+  assert.match(blockersText(OPEN_PR, r), /^policies: the base branch has no branch protection, and this host has no rulesets$/m)
+  const refusedToo = collectBlockers(stub({ branchProtection: refusal(), branchRules: missing }).host, OPEN_PR)
+  assert.equal(refusedToo.policies, null, 'with the protection refused, a 404 on the rules may be a refusal too')
+  const forbidden = collectBlockers(stub({ branchRules: refusal(403) }).host, OPEN_PR)
+  assert.deepEqual(forbidden.policies.unread, ['rulesets'])
 })

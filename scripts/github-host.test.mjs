@@ -586,7 +586,9 @@ test('a GraphQL: Resource not accessible refusal of gh pr view and gh pr checks 
   const status = (read) => { try { read(host(fakeExec({ status: 1, stderr }).exec)) } catch (e) { return e.httpStatus } }
   assert.equal(status((h) => h.prChecks(1)), 403)
   assert.equal(status((h) => h.prRefs(1)), 403)
-  assert.equal(status((h) => h.getPullRequest({ number: 1 }, { detail: true })), 403)
+  // The detail read tries again without reviewRequests on a 403; when that fails too, the 403 is what the caller gets.
+  const twice = () => { try { host(fakeExec({ status: 1, stderr }, { status: 1, stderr }).exec).getPullRequest({ number: 1 }, { detail: true }) } catch (e) { return e.httpStatus } }
+  assert.equal(twice(), 403)
   const other = () => { try { host(fakeExec({ status: 1, stderr: 'GraphQL: Could not resolve to a PullRequest\n' }).exec).prRefs(1) } catch (e) { return e.httpStatus } }
   assert.equal(other(), undefined)
 })
@@ -667,4 +669,24 @@ test('prRefs reads the base name and the head commit of a pull request', () => {
   const { exec, calls } = fakeExec({ stdout: JSON.stringify({ baseRefName: 'develop', headRefOid: 'abc' }) })
   assert.deepEqual(host(exec).prRefs(7), { baseRefName: 'develop', headRefOid: 'abc' })
   assert.deepEqual(calls[0].args, ['pr', 'view', '7', '--json', 'baseRefName,headRefOid'])
+})
+
+test('getPullRequest with detail reads again without reviewRequests when the token cannot read them, and says so', () => {
+  const detail = { reviews: [], mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', reviewDecision: '', baseRefName: 'main' }
+  const scopes = "GraphQL: Your token has not been granted the required scopes to execute this query. The 'login' field requires one of the following scopes: ['read:org'] (INSUFFICIENT_SCOPES)\n"
+  const { exec, calls } = fakeExec({ status: 1, stderr: scopes }, { stdout: JSON.stringify({ ...pr, ...detail }) })
+  const result = host(exec).getPullRequest({ head: 'feat' }, { detail: true })
+  assert.equal(calls.length, 2)
+  assert.equal(calls[1].args[4], `${VIEW_FIELDS},reviews,mergeable,mergeStateStatus,reviewDecision,baseRefName`)
+  assert.equal(result.detail.reviewRequests, null)
+  assert.equal(result.detail.reviewRequestsError.code, 'UPSTREAM')
+  assert.match(result.detail.reviewRequestsError.message, /required scopes/)
+  assert.equal(result.detail.mergeStateStatus, 'CLEAN')
+  assert.equal(result.number, pr.number)
+})
+
+test('getPullRequest with detail reads only once when the failure is not a refusal', () => {
+  const { exec, calls } = fakeExec({ status: 1, stderr: 'HTTP 502: Bad Gateway\n' })
+  assert.throws(() => host(exec).getPullRequest({ head: 'feat' }, { detail: true }), (e) => e.code === 'UPSTREAM')
+  assert.equal(calls.length, 1)
 })

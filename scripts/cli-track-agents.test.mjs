@@ -162,6 +162,19 @@ test('the branch protection and the rules of a base are read once for all the is
   assert.equal(ghCalls(gh).filter((line) => line === RULES).length, 1)
 })
 
+test('a refused branch protection or rules read is kept for the base, so the next issue does not ask again', async () => {
+  const key = await threadsKey()
+  const refused = { status: 1, stderr: 'gh: Resource not accessible by integration (HTTP 403)\n' }
+  const { root, cli, track, gh } = setup({ canned: { ...openPr(key, 'b-one', 41, 'free'), ...openPr(key, 'b-two', 42, 'free'), [PROTECTION]: refused, [RULES]: refused } })
+  for (const id of ['ISS-5N1R', 'ISS-2X6D']) await delegate(cli, id, 'agent:claude')
+  setBranch(root, 'ISS-5N1R', 'b-one')
+  setBranch(root, 'ISS-2X6D', 'b-two')
+  const data = dataOf(await track())
+  assert.equal(ghCalls(gh).filter((line) => line === PROTECTION).length, 1)
+  assert.equal(ghCalls(gh).filter((line) => line === RULES).length, 1)
+  assert.ok(data.issues.every((issue) => issue.pr.blocked === null && issue.pr.unchecked.includes('policies')), JSON.stringify(data.issues.map((i) => i.pr)))
+})
+
 test('after the first RATE_LIMITED no more gh calls are made and one warning is given', async () => {
   const { root, cli, track, gh } = setup({ canned: Object.fromEntries(['b-1', 'b-2', 'b-3'].map((b) => [view(b), { status: 1, stderr: 'API rate limit exceeded' }])) })
   for (const id of ['ISS-5N1R', 'ISS-2X6D', 'ISS-8C4W']) await delegate(cli, id, 'agent:claude')

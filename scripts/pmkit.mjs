@@ -1488,11 +1488,24 @@ export const COMMANDS = [
       const checks = pr ? host.prChecks(pr.number) : []
       const reviews = pr?.detail.reviews ?? []
       // The checks are read once: collectBlockers gets the list this command already has. A merged or closed pull request reads nothing more.
-      const found = pr ? collectBlockers({ ...host, prChecks: () => checks }, pr) : null
+      // A blocker read that fails for a reason that may pass (rate limit, 5xx, network) must not lose the pull request and its checks:
+      // the verdict is unknown, with the cause, and the reads after it are not made.
+      let found = null
+      let failed = null
+      if (pr) {
+        try {
+          found = collectBlockers({ ...host, prChecks: () => checks }, pr)
+        } catch (error) {
+          if (!isPmkitError(error) || (error.code !== 'UPSTREAM' && error.code !== 'RATE_LIMITED')) throw error
+          failed = { area: 'blockers', code: error.code, message: error.message, nextStep: error.nextStep }
+          found = { blocked: null, blocking: [], pending: [], unknown: [], unchecked: [failed] }
+        }
+      }
       const lines = pr
         ? [`#${pr.number} ${pr.title} (${pr.state}${pr.isDraft ? ', draft' : ''})`, pr.url, `checks: ${checks.length === 0 ? '(none)' : checks.map((c) => `${c.name} ${c.bucket ?? c.state}${c.bucket === 'fail' && c.runId ? ` (ci logs --run ${c.runId})` : ''}`).join(', ')}`, `reviews: ${reviews.length === 0 ? '(none)' : reviews.map((r) => r.state).join(', ')}`]
         : [`no pull request for ${branch}`]
-      if (pr?.state === 'OPEN') lines.push(`blockers: ${blockedText(prSummary(pr, found))}`)
+      if (failed) lines.push(`blockers: not verified (${failed.message})`)
+      else if (pr?.state === 'OPEN') lines.push(`blockers: ${blockedText(prSummary(pr, found))}`)
       const blockers = found && { blocked: found.blocked, blocking: found.blocking, pending: found.pending, unknown: found.unknown, unchecked: found.unchecked }
       return { data: { branch, pr: withoutDetail(pr), checks, reviews, blockers }, text: lines.join('\n'), notes: await capabilityNotesOrNone(ctx) }
     },
@@ -2281,12 +2294,22 @@ async function runTrackAgents(ctx) {
     if (!isPmkitError(error) || error.code !== 'NOT_SUPPORTED') throw error
     notes.push('git_host is none, so the list has no pull request state')
   }
-  // The branch protection and the rules of a base do not change between issues, so each is read once per base. Only a successful read is kept: a failure (a 502, a rate limit, a refusal) is thrown and the next issue reads again.
+  // The branch protection and the rules of a base do not change between issues, so each is read once per base. A refusal (403 or
+  // 404) is as stable as an answer, so it is kept and thrown again; a failure that may pass (a 502, a rate limit) is not kept.
   const protections = new Map()
   const rules = new Map()
   const once = (cache, read) => (base) => {
-    if (!cache.has(base)) cache.set(base, read(base))
-    return cache.get(base)
+    if (!cache.has(base)) {
+      try {
+        cache.set(base, { value: read(base) })
+      } catch (error) {
+        if (!isPmkitError(error) || error.code !== 'UPSTREAM' || ![403, 404].includes(error.httpStatus)) throw error
+        cache.set(base, { error })
+      }
+    }
+    const kept = cache.get(base)
+    if (kept.error) throw kept.error
+    return kept.value
   }
   const cachedHost = host === null ? null : Object.assign(Object.create(host), {
     branchProtection: once(protections, (base) => host.branchProtection(base)),
