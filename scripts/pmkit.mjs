@@ -598,14 +598,18 @@ export const COMMANDS = [
       const target = await tracker.getIssue(ctx.args[0])
       const limit = ctx.opt('limit') === undefined ? 5 : whole('limit', ctx.opt('limit'))
       if (limit < 1) throw usageError('--limit must be at least 1')
-      const found = await tracker.searchIssues({ categories: csv(ctx.opt('category') ?? 'done') })
+      const categories = csv(ctx.opt('category') ?? 'done')
+      if (categories.length === 0) throw usageError('--category needs at least one category', 'pmkit issues similar <id> --category done')
+      const found = await tracker.searchIssues({ categories })
       const data = similarResult(target, found, { limit })
       const warnings = data.problems.map(problemLine)
-      if (data.hasMore) warnings.push('Linear has more matching issues than the 1000 pmkit read, so the list is not verified; narrow --category')
-      if (!data.complete) warnings.push('incomplete: not every issue could be read, so an empty or short list is not verified. Do not say that no similar issue exists')
-      const text = data.similar.length === 0
-        ? `no similar issues among the ${data.considered} read`
-        : table(['ID', 'Title', 'Status', 'Assignee', 'Estimate', 'Score', 'Shared'], data.similar.map((hit) => [hit.id, hit.title, hit.status.name, hit.assignee ?? '', hit.estimate ?? '', hit.score, hit.shared.join(', ')]))
+      if (data.hasMore) warnings.push('Linear has more matching issues than the 1000 pmkit read, so the list is not verified')
+      if (data.reason === 'no_comparable_text') warnings.push(`${target.id} has no title or description words to compare (reason no_comparable_text), so the similar issues are not verified. Ask what the work covers, or estimate from the code alone`)
+      if (!data.complete) warnings.push('incomplete: not every issue could be read or compared, so an empty or short list is not verified. Do not say that no similar issue exists')
+      const rows = [...data.similar, ...data.unestimated]
+      const text = rows.length === 0
+        ? (data.complete ? `no similar issues among the ${data.considered} read` : `no similar issues found among the ${data.considered} read, but the read is incomplete: not verified`)
+        : table(['ID', 'Title', 'Status', 'Assignee', 'Estimate', 'Score', 'Shared'], rows.map((hit) => [hit.id, hit.title, hit.status.name, hit.assignee ?? '', hit.estimate ?? '', hit.score, hit.shared.join(', ')]))
       return { data, text, warnings }
     },
   },

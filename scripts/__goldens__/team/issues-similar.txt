@@ -1,10 +1,10 @@
 $ pmkit issues similar ISS-5N1R
 exit 0
 --- stdout
-no similar issues among the 3 read
+no similar issues found among the 3 read, but the read is incomplete: not verified
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
-warning: incomplete: not every issue could be read, so an empty or short list is not verified. Do not say that no similar issue exists
+warning: incomplete: not every issue could be read or compared, so an empty or short list is not verified. Do not say that no similar issue exists
 
 $ pmkit issues similar ISS-5N1R --json
 exit 0
@@ -15,6 +15,7 @@ exit 0
     "title": "Paginate the events API"
   },
   "similar": [],
+  "unestimated": [],
   "considered": 3,
   "complete": false,
   "hasMore": false,
@@ -28,15 +29,15 @@ exit 0
 }
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
-warning: incomplete: not every issue could be read, so an empty or short list is not verified. Do not say that no similar issue exists
+warning: incomplete: not every issue could be read or compared, so an empty or short list is not verified. Do not say that no similar issue exists
 
 $ pmkit issues similar ISS-5N1R --category done,todo --limit 2
 exit 0
 --- stdout
-no similar issues among the 4 read
+no similar issues found among the 4 read, but the read is incomplete: not verified
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
-warning: incomplete: not every issue could be read, so an empty or short list is not verified. Do not say that no similar issue exists
+warning: incomplete: not every issue could be read or compared, so an empty or short list is not verified. Do not say that no similar issue exists
 
 $ pmkit issues similar ISS-5N1R --category done,todo --limit 2 --json
 exit 0
@@ -47,6 +48,7 @@ exit 0
     "title": "Paginate the events API"
   },
   "similar": [],
+  "unestimated": [],
   "considered": 4,
   "complete": false,
   "hasMore": false,
@@ -60,4 +62,4 @@ exit 0
 }
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
-warning: incomplete: not every issue could be read, so an empty or short list is not verified. Do not say that no similar issue exists
+warning: incomplete: not every issue could be read or compared, so an empty or short list is not verified. Do not say that no similar issue exists

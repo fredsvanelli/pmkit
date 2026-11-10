@@ -1,4 +1,6 @@
 // Text similarity between issues: cosine of TF-IDF vectors over the title, description and acceptance criteria.
+import { compareIds } from './ids.mjs'
+
 // Pure, so `issues similar` and any other command (PMK-237) can rank issues the same way.
 
 const STOP = new Set('the and for with from that this are was not but you all can has have into when then than they them its our out use used using add new via per also any more some should will'.split(' '))
@@ -39,25 +41,31 @@ export function rankSimilar(target, candidates, { limit = 5 } = {}) {
       return { issue, score: dot === 0 ? 0 : dot / (tNorm * norm(w)), shared: common.slice(0, 5).map(([word]) => word) }
     })
     .filter((hit) => hit.score > 0)
-    .sort((a, b) => b.score - a.score || (a.issue.id < b.issue.id ? -1 : 1))
+    .sort((a, b) => b.score - a.score || compareIds(a.issue.id, b.issue.id))
     .slice(0, limit)
 }
 
 /**
- * The `issues similar` result. `found` is what `searchIssues` returned. The result is `complete` only when every issue was read:
- * a file that does not parse (`problems`) or a cut read (`hasMore`) means an empty `similar` is "not verified", never "none".
+ * The `issues similar` result. `found` is what `searchIssues` returned. The result is `complete` only when every issue was read
+ * and the target has words to compare: a file that does not parse (`problems`), a cut read (`hasMore`) or a target with no usable
+ * word (`reason: 'no_comparable_text'`) means an empty `similar` is "not verified", never "none".
+ * `similar` holds up to `limit` hits that have an estimate; the hits without one are `unestimated` (not evidence, so they do not use the limit).
  * A missing estimate is `null`, never 0.
  */
 export function similarResult(target, found, { limit = 5 } = {}) {
   const hasMore = found.hasMore === true
   const problems = found.problems ?? []
+  const comparable = termCounts(target).size > 0
+  const hits = rankSimilar(target, found.issues, { limit: Infinity }).map(({ issue, score, shared }) => ({
+    id: issue.id, title: issue.title, status: issue.status, assignee: issue.assignee ?? null, estimate: issue.estimate ?? null, score: Math.round(score * 1000) / 1000, shared,
+  }))
   return {
     target: { id: target.id, title: target.title },
-    similar: rankSimilar(target, found.issues, { limit }).map(({ issue, score, shared }) => ({
-      id: issue.id, title: issue.title, status: issue.status, assignee: issue.assignee ?? null, estimate: issue.estimate ?? null, score: Math.round(score * 1000) / 1000, shared,
-    })),
+    similar: hits.filter((hit) => hit.estimate !== null).slice(0, limit),
+    unestimated: hits.filter((hit) => hit.estimate === null).slice(0, limit),
     considered: found.issues.filter((i) => i.id !== target.id).length,
-    complete: !hasMore && problems.length === 0,
+    complete: !hasMore && problems.length === 0 && comparable,
+    ...(comparable ? {} : { reason: 'no_comparable_text' }),
     hasMore,
     problems,
   }

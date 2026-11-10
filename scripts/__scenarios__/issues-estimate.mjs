@@ -98,7 +98,7 @@ const linear = {
   expect(repo, saved) {
     assert.notEqual(saved.capabilities.capabilities.find((capability) => capability.id === 'estimation').path, 'native')
     assert.equal(saved.similar.complete, true)
-    assert.deepEqual(saved.similar.similar.map((hit) => hit.id), ['ACME-1'])
+    assert.deepEqual(saved.similar.unestimated.map((hit) => hit.id), ['ACME-1'], 'ACME-1 has no estimate, so it is listed apart')
   },
 }
 

@@ -54,9 +54,28 @@ test('similarResult is complete only when the read had no problems and no more i
 
 test('similarResult keeps an issue with no estimate and reports it as null, not zero', () => {
   const r = similarResult(target, { issues: [withFields('A-2', 'Export customers to CSV', undefined)], problems: [] })
-  assert.equal(r.similar[0].estimate, null)
+  assert.equal(r.unestimated[0].estimate, null)
+  assert.deepEqual(r.similar, [])
 })
 
 test('plural endings match: deliveries and delivery are one term', () => {
   assert.deepEqual(rankSimilar(issue('E-1', 'Retry deliveries'), [issue('E-2', 'Delivery log')]).map((hit) => hit.shared), [['delivery']])
+})
+
+test('a target with no usable words cannot be compared: incomplete, with a reason (PMK-216 review)', () => {
+  const r = similarResult(issue('F-1', 'UI'), { issues: [withFields('F-2', 'Fix UI', 2)], problems: [] })
+  assert.deepEqual([r.similar, r.complete, r.reason], [[], false, 'no_comparable_text'])
+  assert.equal(similarResult(target, { issues: [], problems: [] }).reason, undefined)
+})
+
+test('hits with no estimate do not use the limit; they are listed apart', () => {
+  const found = { issues: [withFields('A-2', 'Export customers to CSV', undefined), withFields('A-5', 'Export orders to CSV', 3), withFields('A-6', 'Export users to CSV', 5)], problems: [] }
+  const r = similarResult(target, found, { limit: 2 })
+  assert.deepEqual(r.similar.map((s) => s.id).sort(), ['A-5', 'A-6'])
+  assert.deepEqual(r.unestimated.map((s) => s.id), ['A-2'])
+})
+
+test('equal scores sort by issue number, not by text', () => {
+  const same = (id) => issue(id, 'Export CSV')
+  assert.deepEqual(rankSimilar(issue('G-1', 'Export CSV'), [same('G-10'), same('G-9')]).map((h) => h.issue.id), ['G-9', 'G-10'])
 })

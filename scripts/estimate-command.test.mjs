@@ -57,3 +57,8 @@ test('step 5 reads the similar issues from `issues similar`, and an incomplete r
   assert.match(text, /not verified/)
   assert.match(text, /Never say that no similar issue exists from an incomplete read/)
 })
+
+test('step 5 does not conclude "no similar issue" for an issue with no words to compare (PMK-216 review)', () => {
+  assert.match(text, /`no_comparable_text`/)
+  assert.match(text, /`unestimated`/)
+})

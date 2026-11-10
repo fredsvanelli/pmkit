@@ -29,8 +29,8 @@ test('issues similar --category picks the issues it reads', async () => {
 
 test('issues similar --limit cuts the list', async () => {
   const root = makeRepo('no-sprints')
-  for (const title of ['Sign webhook requests', 'Verify webhook payloads']) {
-    assert.equal((await run(['issues', 'create', '--title', title, '--type', 'task', '--json'], { cwd: root, env })).code, 0)
+  for (const title of ['Sign webhook requests', 'Verify webhook payloads', 'Rotate webhook signing keys']) {
+    assert.equal((await run(['issues', 'create', '--title', title, '--type', 'task', '--estimate', '2', '--json'], { cwd: root, env })).code, 0)
   }
   const args = ['ISS-2K5P', '--category', 'done,todo,backlog,in_review,triage']
   const all = await similar(root, args)
@@ -51,4 +51,16 @@ test('issues similar refuses a bad limit and an unknown issue', async () => {
   const root = makeRepo('no-sprints')
   assert.equal((await similar(root, ['ISS-9B2X', '--limit', '0'])).data.error.code, 'INVALID_INPUT')
   assert.equal((await similar(root, ['ISS-0000'])).data.error.code, 'NOT_FOUND')
+})
+
+test('issues similar refuses an empty --category', async () => {
+  assert.equal((await similar(makeRepo('no-sprints'), ['ISS-9B2X', '--category', ''])).data.error.code, 'INVALID_INPUT')
+})
+
+test('issues similar says not verified on stdout when the target has no usable words or the read is incomplete', async () => {
+  const root = makeRepo('team')
+  const created = JSON.parse((await run(['issues', 'create', '--title', 'UI', '--type', 'task', '--json'], { cwd: root, env })).stdout).after.id
+  const result = await run(['issues', 'similar', created], { cwd: root, env })
+  assert.match(result.stdout, /not verified/)
+  assert.doesNotMatch(result.stdout, /^no similar issues among/)
 })
