@@ -21,6 +21,7 @@ const TITLE_MAX = 80
 const C_LIKE = { line: ['//'], block: [['/*', '*/']], strings: ['"', "'", '`'] }
 const HASH = { line: ['#'], strings: ['"', "'"] }
 const MARKUP = { block: [['<!--', '-->']] }
+const EMBEDDED = { block: [['<!--', '-->']], embedded: true } // html, vue, svelte, xml and svg read their <script> and <style> elements
 const STYLES = {
   c: C_LIKE,
   c_hash: { ...C_LIKE, line: ['//', '#'] }, // php and Terraform take both marks
@@ -31,9 +32,9 @@ const STYLES = {
   go: { line: ['//'], block: [['/*', '*/']], strings: ['"', '`'], chars: true },
   rs: { line: ['//'], block: [['/*', '*/']], strings: ['"'], chars: true },
   css: { block: [['/*', '*/']] },
-  py: { ...HASH, triple: true },
+  py: { ...HASH, triple: true, docstrings: true },
   hash: HASH,
-  markup: MARKUP,
+  markup: EMBEDDED,
   md: { ...MARKUP, markdown: true },
 }
 const EXTENSIONS = {
@@ -75,6 +76,16 @@ function blankMarkdownCode(source) {
       return fenced ? ' '.repeat(line.length) : line.replace(/`[^`\n]*`/g, (span) => ' '.repeat(span.length))
     })
     .join('\n')
+}
+
+/** Whether the quote opened before `i` closes on its line. A backslash skips the next character, a newline included. */
+function closesOnLine(source, i, quote) {
+  for (; i < source.length; i += 1) {
+    if (source[i] === '\\') i += 1
+    else if (source[i] === quote) return true
+    else if (source[i] === '\n') return false
+  }
+  return false
 }
 
 /** The text of every comment line, as { line, content }, outside strings. A block comment gives one entry per line. */
@@ -120,9 +131,21 @@ function commentLines(source, style) {
       }
       if (style.strings?.includes(ch)) {
         quote = style.triple && source.startsWith(ch.repeat(3), i) ? ch.repeat(3) : ch
-        mode = 'string'
-        i += quote.length
-        continue
+        if (quote.length === 3 && style.docstrings && /^[ \t]*$/.test(source.slice(source.lastIndexOf('\n', i - 1) + 1, i))) {
+          // A triple quote that starts its line is a docstring: it reads like a block comment.
+          mode = 'block'
+          close = quote
+          i += 3
+          buf = ''
+          start = line
+          continue
+        }
+        if (quote === '`' || quote.length === 3 || closesOnLine(source, i + 1, ch)) {
+          mode = 'string'
+          i += quote.length
+          continue
+        }
+        // A lone quote, with no partner on its line (an apostrophe, a quote in a regex), is code, so it hides no comment.
       }
       i += 1
     } else if (mode === 'string') {
@@ -166,6 +189,28 @@ function commentLines(source, style) {
   return out
 }
 
+// ponytail: a regex, not an html parser. A `<script>` that holds a template (type="text/x-template") is read as JavaScript.
+const ELEMENT = /<(script|style)\b([^>]*)>([\s\S]*?)<\/\1\s*>/dgi
+const blank = (text) => text.replace(/[^\n]/g, ' ')
+
+/** The comment lines of a markup file: its own `<!-- -->`, and the code of each `<script>` and `<style>` element read with that code's syntax. */
+function markupLines(text) {
+  const out = []
+  let markup = ''
+  let from = 0
+  for (const match of text.matchAll(ELEMENT)) {
+    const [start, end] = match.indices[3]
+    const offset = text.slice(0, start).split('\n').length - 1
+    const syntax = match[1].toLowerCase() === 'script' || /\blang\s*=\s*["']?(scss|less|sass|styl)/i.test(match[2]) ? STYLES.c : STYLES.css
+    for (const entry of commentLines(match[3], syntax)) out.push({ line: entry.line + offset, content: entry.content })
+    // The element's code is blanked for the markup pass, newlines kept, so a `<!--` inside a script string is not a comment.
+    markup += text.slice(from, start) + blank(match[3])
+    from = end
+  }
+  out.push(...commentLines(markup + text.slice(from), STYLES.markup))
+  return out.sort((a, b) => a.line - b.line)
+}
+
 // The tag is the first word of the comment, so prose that names a TODO in passing is not one.
 const TAG = /^(TODO|FIXME|HACK|XXX)(?:\(([^)]*)\))?(?::\s*|\s+|$)(.*)$/
 // The JSDoc and PHPDoc form, in any case: `@todo add paging`.
@@ -180,7 +225,7 @@ export function findTodos(source, file) {
   const found = []
   // Line endings first, as config.mjs does for YAML: a \r left at the end of a line would end up in the text.
   const text = source.replace(/\r\n?/g, '\n')
-  for (const { line, content } of commentLines(style.markdown ? blankMarkdownCode(text) : text, style)) {
+  for (const { line, content } of style.embedded ? markupLines(text) : commentLines(style.markdown ? blankMarkdownCode(text) : text, style)) {
     const body = content.replace(/^[\s*/!#]+/, '')
     const match = TAG.exec(body) ?? AT_TAG.exec(body)
     if (match) found.push({ line, tag: match[1].toUpperCase(), owner: match[2] ?? '', text: match[3].trim() })

@@ -43,7 +43,7 @@ test('findTodos reads Markdown only inside an HTML comment, not in prose, inline
 test('findTodos knows the comment marks of each language', () => {
   assert.deepEqual(tags('x = 1 # TODO: a', 'a.py'), [[1, 'TODO', 'a']])
   assert.deepEqual(findTodos('s = "# TODO: no"', 'a.py'), [])
-  assert.deepEqual(findTodos('"""\n# TODO: docstring\n"""', 'a.py'), [])
+  assert.deepEqual(findTodos('s = """\n# TODO: in a string\n"""', 'a.py'), [])
   assert.deepEqual(tags('echo "$#"; # TODO: real', 'a.sh'), [[1, 'TODO', 'real']])
   assert.deepEqual(findTodos('echo $# TODO: no', 'a.sh'), [])
   assert.deepEqual(tags('x = 1 # FIXME: rb', 'a.rb'), [[1, 'FIXME', 'rb']])
@@ -213,4 +213,31 @@ test('groupTodos keeps the strongest tag: FIXME, then XXX, then HACK, then TODO'
   assert.equal(tagOf('XXX', 'HACK'), 'XXX')
   assert.equal(tagOf('FIXME', 'XXX'), 'FIXME')
   assert.equal(tagOf('TODO'), 'TODO')
+})
+
+test('a lone quote does not hide the comment after it', () => {
+  assert.deepEqual(tags("title: it's done # TODO: x", 'a.yaml'), [[1, 'TODO', 'x']])
+  assert.deepEqual(tags("const re = /'/ // TODO: after a regex", 'a.mjs'), [[1, 'TODO', 'after a regex']])
+  assert.deepEqual(tags("echo don't\n# TODO: next line", 'a.sh'), [[2, 'TODO', 'next line']])
+  assert.deepEqual(findTodos("s = 'a # TODO: no'", 'a.py'), [])
+  assert.deepEqual(findTodos("x = 'it\\'s # TODO: no'", 'a.py'), [])
+  assert.deepEqual(findTodos('const s = "a \\\n// TODO: continued string"', 'a.mjs'), [])
+})
+
+test('a Python docstring reads like a block comment', () => {
+  assert.deepEqual(tags('def f():\n    """TODO: docstring"""\n', 'a.py'), [[2, 'TODO', 'docstring']])
+  assert.deepEqual(tags('"""Module.\n\nFIXME: second line\n"""\n', 'a.py'), [[3, 'FIXME', 'second line']])
+  assert.deepEqual(tags("def g():\n    \'\'\'\n    HACK: single quotes\n    \'\'\'\n", 'a.py'), [[3, 'HACK', 'single quotes']])
+  assert.deepEqual(findTodos('s = """\nTODO: in a string\n"""', 'a.py'), [])
+  assert.deepEqual(findTodos('f("""TODO: an argument""")', 'a.py'), [])
+})
+
+test('the script and style elements of a markup file are read with their own syntax', () => {
+  const html = '<p>x</p>\n<script>\nconst a = 1 // TODO: js\n</script>\n<style>\n/* FIXME: css */\na { background: url(//cdn.x/y.png) }\n</style>\n<!-- HACK: markup -->\n'
+  assert.deepEqual(tags(html, 'a.html'), [[3, 'TODO', 'js'], [6, 'FIXME', 'css'], [9, 'HACK', 'markup']])
+  assert.deepEqual(tags('<template><p/></template>\n<script setup lang="ts">\n/** @todo vue */\n</script>\n<style lang="scss">\n// TODO: scss\n</style>', 'a.vue'), [[3, 'TODO', 'vue'], [6, 'TODO', 'scss']])
+  assert.deepEqual(tags('<script>// XXX: one line</script>', 'a.svelte'), [[1, 'XXX', 'one line']])
+  assert.deepEqual(findTodos('<script>const s = "<!-- TODO: no -->"</script>', 'a.html'), [])
+  assert.deepEqual(findTodos('<style>\n// TODO: not css\n</style>', 'a.html'), [])
+  assert.deepEqual(findTodos('<script>\n// TODO: no\n</script>', 'README.md'), [])
 })
