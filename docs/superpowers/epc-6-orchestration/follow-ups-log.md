@@ -515,3 +515,32 @@ Início: 2026-11-10. `develop` em 4781f3b, `npm test` com 4683 testes, 4596 pass
 - PMK-224: a8cb7c2 conferido numa cópia do fixture team: com capacity fred: 8h, team capacity --set ana=9 sai 0, grava ana: 9 e mantém fred: 8h. Mergeado (58604e4).
 
 Fim da rodada 17: PRs #190, #191, #192 mergeados.
+
+Limpeza da rodada 17: closing PR #193 mergeado (9bf0239), 11 worktrees removidos, branches provisórias apagadas.
+
+## Rodada 18
+
+Início: 2026-11-10. `develop` em 9bf0239, `npm test` com 4775 testes, 4684 pass, 0 fail, 91 skipped, saída 0. Run Orca `run_4c99b0d03c38`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-226 | 3 | sonnet (`ctx_1f0f7b428e28`) | #195 | ciclo 1 (opus): APROVADO | mergeado (36526d5), done |
+| PMK-227 | 1 | haiku (`ctx_614c28a7021b`) | #194 | ciclo 1 (sonnet): APROVADO | mergeado (034439d), done |
+| PMK-228 | 5 | opus (`ctx_1ad2fe7758c2`) | #196 | ciclo 1 (opus): MUDANÇAS PEDIDAS; ciclo 2 (opus): APROVADO | mergeado (c620923), done |
+
+- PMK-226: PERGUNTA sobre o critério 2 (milestone e release no Linear no issues bulk). Respondi opção A: milestone no Linear sim; release no Linear continua NOT_SUPPORTED (o adapter não mapeia releases), critério 2 fica desmarcado e vira follow-up mapear releases do Linear. Decisão reversível, consistente com a PMK-205.
+- PMK-227: PR #194 (haiku); cenário do Linear para o caminho de comentário do log-time, sem mudar o texto do comando. Critério 2 condicional à regra 5 dos cenários, que não foi relaxada: fica desmarcado. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-227 ciclo 1 (sonnet): APROVADO; pedi antes do merge que o cenário confira o comentário postado e o corpo, no lugar do newEvents vazio.
+- PMK-226 parou num prompt de segurança do rm no próprio scratchpad (quarta vez nos follow-ups); acrescentei a lição em lessons.md, que entra no closing PR.
+- PMK-226: PR #195 (sonnet); issues bulk com due, type e archive (Local e Linear) e milestone do Linear (projectMilestoneId, valida o projeto; vale também para issues update --milestone). Critério 2 desmarcado (release no Linear). Follow-ups: mapear releases do Linear; issues create --milestone no Linear; unarchive no Local. Revisor ciclo 1 (opus) iniciado.
+- PMK-227: e138907 com o cenário lendo o comentário postado no fake do Linear (falha com texto errado). Mergeado (034439d).
+- PMK-226 ciclo 1 (opus): APROVADO, em conflito com develop; pedi rebase com os não bloqueantes baratos.
+- PMK-226: rebase d95e689 com resolveMilestone em cache, valueError, bulk.md, teste do type e um código só; diff conferido. Mergeado (36526d5) com o critério 2 desmarcado.
+- PMK-228: PR #196 (opus); validate reporta números de ADR repetidos; campo opcional docs nas issues gravado pelo record-decision; docs adr-status e /pmkit:spec:adr-status; origin/HEAD para default_branch não definido. Follow-ups: rótulo de ADR fora do repo no validate; linha Supersedes no ADR novo; docs no Linear. Revisor ciclo 1 (opus) iniciado.
+- PMK-228 ciclo 1 (opus): MUDANÇAS PEDIDAS, três bloqueantes conferidos à mão: adr-status deixava dois status num ADR com `## Status` ou `**Status:**`; validate não conferia os valores de docs (`""` virava `['']`, `[{a: 1}]` virava `'[object Object]'`); `--add-doc` sem valor dava UNEXPECTED. Mandei os três ao implementador.
+- PMK-228: dcc1656 e 76cf24e corrigem os três com teste, mais os não bloqueantes 4, 7, 8 e 9; 4737 pass, 0 fail. Ficaram de fora o 5 (`tracker.path: .` grava sem `auto_commit`, coerente com o next-adr da PMK-65) e o 6 (rótulo `docs/adr` repetido com o tracker fora do repo). 76cf24e devolve o relatório da PMK-8 em `.superpowers` que dcc1656 apagou.
+- PMK-228 ciclo 2 (opus): APROVADO; aceitou os itens 5 e 6 e anotou dois casos de borda do adr-status (`## Status` sem linhas em branco reescrito sem mudança de status; front matter e `## Status` juntos, só o front matter muda). Mergeado (c620923).
+- Moves para done: PMK-226 e PMK-227 pelo PR #197 (303c8c7), PMK-228 pelo PR #198 (fa96f79). PMK-226 e PMK-227 ficam com um critério desmarcado cada, pelas decisões acima.
+- Follow-ups abertos pelo PR #199 (6011ff3): PMK-246 (mapear releases do Linear, da PMK-226), PMK-247 (pasta de ADR com o tracker no repo ou fora dele, itens 5 e 6 da PMK-228), PMK-248 (casos de borda do adr-status).
+
+Fim da rodada 18: PRs #194, #195, #196 mergeados.

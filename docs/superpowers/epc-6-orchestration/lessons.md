@@ -28,3 +28,6 @@ Lições da rodada 7 (os quatro PRs precisaram de mudanças pelos dois primeiros
 - Todo exemplo, expectativa de cenário e golden concorda com os passos do arquivo de comando. O revisor roda todos.
 - O Orca abre o worktree numa branch provisória `fredsvanelli/<nome>`. Não faça commit nela. Os passos 4 e 5 deixam mudanças em `.issues/`; crie a branch da issue no passo 6 a partir de `origin/develop`, leve essas mudanças e faça o commit na branch da issue, para o PR ter os eventos de assign e `in_progress`.
 - Não mude a configuração do git ou do gh (por exemplo `gh auth setup-git`). Se um push falhar, avise com `ask`.
+
+Lição dos follow-ups (rodadas 16 a 18):
+- Um `rm` com caminho em variável (`rm -f $S/*.md`) para o agente num prompt de segurança do Claude Code e trava a sessão até ser bloqueado. Use `"${S:?}"/*.md` ou o caminho literal.
