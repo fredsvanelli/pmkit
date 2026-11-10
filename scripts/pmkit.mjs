@@ -897,8 +897,8 @@ export const COMMANDS = [
     run: async (ctx) => {
       const { goals, problems } = await (await ctx.tracker()).listGoals()
       const warnings = problems.map((problem) => `${problemLine(problem)}; run pmkit validate`)
-      const rows = goals.map((goal) => [goal.id, goal.title, goal.target ?? '', goal.epics.join(', ')])
-      return { data: goals, text: goals.length === 0 ? 'no goals' : table(['ID', 'Title', 'Target', 'Epics'], rows), warnings }
+      const rows = goals.map((goal) => [goal.id, goal.title, goal.status, goal.target ?? '', goal.epics.join(', ')])
+      return { data: goals, text: goals.length === 0 ? 'no goals' : table(['ID', 'Title', 'Status', 'Target', 'Epics'], rows), warnings }
     },
   },
   {
@@ -909,11 +909,12 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'goal create', summary: 'creates a strategic goal', usage: '--title t [--target YYYY-MM-DD]', write: true, flags: ['title', 'target'],
+    name: 'goal create', summary: 'creates a strategic goal', usage: '(--title t | --title-file f) [--target YYYY-MM-DD] [--status s]', write: true, flags: ['title', 'title-file', 'target', 'status'],
     run: async (ctx) => {
-      if (ctx.opt('title') === undefined) throw usageError('goal create needs --title', 'pmkit goal create --title "..."')
-      const input = { title: ctx.opt('title') }
-      if (ctx.opt('target') !== undefined) input.target = ctx.opt('target')
+      const title = lineFromFlag(ctx.opt, 'title')
+      if (title === undefined) throw usageError('goal create needs --title or --title-file', 'pmkit goal create --title-file title.txt')
+      const input = { title }
+      for (const key of ['target', 'status']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
       const result = await (await ctx.tracker()).createGoal(input, await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: goalRecord }), commit: result.after.id }
     },

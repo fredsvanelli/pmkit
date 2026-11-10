@@ -1,9 +1,9 @@
 $ pmkit goal list
 exit 0
 --- stdout
-ID        | Title                        | Target     | Epics
-----------|------------------------------|------------|---------
-GOAL-8K2W | Customers trust our webhooks | 2026-12-31 | EPC-4H7V
+ID        | Title                        | Status | Target     | Epics
+----------|------------------------------|--------|------------|---------
+GOAL-8K2W | Customers trust our webhooks | active | 2026-12-31 | EPC-4H7V
 --- stderr
 (empty)
 
@@ -14,6 +14,7 @@ exit 0
   {
     "id": "GOAL-8K2W",
     "title": "Customers trust our webhooks",
+    "status": "active",
     "target": "2026-12-31",
     "description": "No customer loses an event because a delivery failed.",
     "epics": [

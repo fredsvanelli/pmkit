@@ -5,21 +5,29 @@ import path from 'node:path'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { isId } from './lib/ids.mjs'
 import { hashTree, makeRepo } from './test-helpers.mjs'
-import { GOAL_PREFIX, parseGoal, serializeGoal, sortGoals } from './lib/local/goals.mjs'
+import { GOAL_STATUSES, parseGoal, serializeGoal, sortGoals } from './lib/local/goals.mjs'
 import { parseEpicFile, serializeEpic } from './lib/local/epics.mjs'
 
 const code = (value) => (error) => error.code === value
 
-test('the goal prefix is GOAL', () => {
-  assert.equal(GOAL_PREFIX, 'GOAL')
+test('the goal statuses are Linear initiative statuses in lower case (PMK-213)', () => {
+  assert.deepEqual(GOAL_STATUSES, ['proposed', 'planned', 'active', 'completed', 'canceled'])
+})
+
+test('a goal file without status reads as active, and a status outside the list is refused (PMK-213)', () => {
+  assert.equal(parseGoal('---\ntitle: T\n---\n', 'GOAL-1').status, 'active')
+  assert.equal(parseGoal('---\ntitle: T\nstatus: planned\n---\n', 'GOAL-1').status, 'planned')
+  for (const value of ['Active', 'done', '1']) {
+    assert.throws(() => parseGoal(`---\ntitle: T\nstatus: ${value}\n---\n`, 'GOAL-1'), (error) => error.code === 'INVALID_INPUT' && error.nextStep === '/pmkit:local:doctor' && error.message.includes('proposed, planned, active, completed, canceled'), value)
+  }
 })
 
 test('a goal round trips through its file, and the stem is the id', () => {
-  const text = serializeGoal({ title: 'Customers trust our webhooks', target: '2026-12-31', description: 'Why it matters.' })
-  assert.equal(text, '---\ntitle: Customers trust our webhooks\ntarget: 2026-12-31\n---\n\nWhy it matters.\n')
-  assert.deepEqual(parseGoal(text, 'GOAL-1'), { id: 'GOAL-1', title: 'Customers trust our webhooks', target: '2026-12-31', description: 'Why it matters.' })
-  assert.equal(serializeGoal({ title: 'Bare', description: '' }), '---\ntitle: Bare\n---\n')
-  assert.deepEqual(parseGoal('---\nid: GOAL-9\ntitle: Bare\n---\n', 'GOAL-2'), { id: 'GOAL-2', title: 'Bare', description: '' })
+  const text = serializeGoal({ title: 'Customers trust our webhooks', status: 'planned', target: '2026-12-31', description: 'Why it matters.' })
+  assert.equal(text, '---\ntitle: Customers trust our webhooks\nstatus: planned\ntarget: 2026-12-31\n---\n\nWhy it matters.\n')
+  assert.deepEqual(parseGoal(text, 'GOAL-1'), { id: 'GOAL-1', title: 'Customers trust our webhooks', status: 'planned', target: '2026-12-31', description: 'Why it matters.' })
+  assert.equal(serializeGoal({ title: 'Bare', status: 'active', description: '' }), '---\ntitle: Bare\nstatus: active\n---\n')
+  assert.deepEqual(parseGoal('---\nid: GOAL-9\ntitle: Bare\n---\n', 'GOAL-2'), { id: 'GOAL-2', title: 'Bare', status: 'active', description: '' })
 })
 
 test('parseGoal refuses a missing title, a title with a line break and a target that is not a date', () => {
@@ -57,8 +65,24 @@ test('createGoal writes goals/<id>.md with a GOAL id, and a dry run writes nothi
   assert.deepEqual(hashTree(root), before)
   const { after } = tracker.createGoal({ title: 'Trust', target: '2026-12-31' }, 'fred')
   assert.ok(isId(after.id, 'GOAL'), after.id)
-  assert.deepEqual(after, { id: after.id, title: 'Trust', target: '2026-12-31', description: '', epics: [] })
-  assert.equal(fs.readFileSync(path.join(goals, `${after.id}.md`), 'utf8'), '---\ntitle: Trust\ntarget: 2026-12-31\n---\n')
+  assert.deepEqual(after, { id: after.id, title: 'Trust', status: 'active', target: '2026-12-31', description: '', epics: [] })
+  assert.equal(fs.readFileSync(path.join(goals, `${after.id}.md`), 'utf8'), '---\ntitle: Trust\nstatus: active\ntarget: 2026-12-31\n---\n')
+  assert.equal(tracker.createGoal({ title: 'Later', status: 'planned' }, 'fred').after.status, 'planned')
+  assert.throws(() => tracker.createGoal({ title: 'T', status: 'nope' }, 'fred'), code('INVALID_INPUT'))
+})
+
+test('goal_prefix names the goal ids, and a file with another prefix is no goal (PMK-213)', () => {
+  const { root, goals } = setup()
+  fs.appendFileSync(path.join(root, '.issues', 'config.yaml'), 'goal_prefix: OKR\n')
+  const tracker = createLocalTracker(root, { now: () => new Date('2026-10-23T12:00:00Z') })
+  const { id } = tracker.createGoal({ title: 'Trust' }, 'fred').after
+  assert.ok(isId(id, 'OKR'), id)
+  fs.writeFileSync(path.join(goals, 'GOAL-1.md'), '---\ntitle: Old\n---\n')
+  const { goals: listed, problems } = tracker.listGoals()
+  assert.deepEqual(listed.map((goal) => goal.id), [id])
+  assert.deepEqual(problems.map((problem) => [problem.id, problem.kind]), [['GOAL-1', 'file']])
+  assert.match(problems[0].message, /such as OKR-1/)
+  assert.equal(tracker.setEpicGoal('EPC-2M9D', id, 'fred').after.goal, id)
 })
 
 test('createGoal refuses a missing title, a bad target and an unknown field', () => {

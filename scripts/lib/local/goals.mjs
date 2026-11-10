@@ -8,9 +8,9 @@ import { stringifyYaml } from '../yaml.mjs'
 import { parseFile } from './epics.mjs'
 import { validDate } from './sprints.mjs'
 
-/** Goal ids are GOAL- and a code that follows id_style, as in GOAL-7K3Q or GOAL-1. */
-export const GOAL_PREFIX = 'GOAL'
-const FILE_ORDER = ['title', 'target']
+/** The goal states: Linear's initiative statuses in lower case, so both trackers agree. A file without one is active. */
+export const GOAL_STATUSES = ['proposed', 'planned', 'active', 'completed', 'canceled']
+const FILE_ORDER = ['title', 'status', 'target']
 const DOCTOR = '/pmkit:local:doctor'
 
 /** The stems of the `.md` files in a goals folder, as stored. A missing folder gives an empty set. */
@@ -28,7 +28,9 @@ export function parseGoal(text, id) {
   const title = data.title == null ? '' : String(data.title).trim()
   if (title === '') throw bad('needs a title')
   if (/[\r\n]/.test(title)) throw bad('has a title with a line break')
-  const goal = { id, title }
+  const status = data.status == null ? 'active' : String(data.status)
+  if (!GOAL_STATUSES.includes(status)) throw bad(`has status "${status}", expected one of ${GOAL_STATUSES.join(', ')}`)
+  const goal = { id, title, status }
   if (data.target != null) {
     const target = String(data.target)
     if (!validDate(target)) throw bad(`has target "${target}", expected a date as YYYY-MM-DD`)
@@ -39,8 +41,8 @@ export function parseGoal(text, id) {
 }
 
 /** The text of a goal file. The body is the description, left out when it is empty. */
-export function serializeGoal({ title, target, description }) {
-  const head = `---\n${stringifyYaml({ title, target }, { order: FILE_ORDER })}---\n`
+export function serializeGoal({ title, status, target, description }) {
+  const head = `---\n${stringifyYaml({ title, status, target }, { order: FILE_ORDER })}---\n`
   return description ? `${head}\n${description}\n` : head
 }
 

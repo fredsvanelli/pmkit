@@ -13,7 +13,7 @@ import { hasMilestoneFiles, milestoneStems, parseMilestone, validMilestoneId } f
 import { parseRelease, releaseStems, validReleaseId } from './local/releases.mjs'
 import { checkFilter } from './local/query.mjs'
 import { caseClashes, parseView, validViewName, viewStems } from './local/views.mjs'
-import { GOAL_PREFIX, goalStems, parseGoal } from './local/goals.mjs'
+import { goalStems, parseGoal } from './local/goals.mjs'
 import { CUSTOMER_PREFIX, mdStems, parseCustomer } from './local/customers.mjs'
 import { REQUEST_PREFIX, parseRequest } from './local/requests.mjs'
 import { hasConflictMarkers, parseIssueFile, toFrontmatter } from './local/issue-file.mjs'
@@ -286,8 +286,8 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
   for (const id of [...goalIds].sort()) {
     const file = path.join(goalsDir, `${id}.md`)
     if (conflicted.has(file)) continue
-    if (!isId(id, GOAL_PREFIX)) {
-      add(file, 'goal', `goal file ${id}.md is not named after a goal id such as ${GOAL_PREFIX}-1`)
+    if (!isId(id, local.goal_prefix)) {
+      add(file, 'goal', `goal file ${id}.md is not named after a goal id such as ${local.goal_prefix}-1`)
       continue
     }
     try {
@@ -408,7 +408,7 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
     if (milestoneMissing(epic.milestone)) add(path.join(issuesDir, 'epics', name, 'epic.md'), 'reference', `milestone ${epic.milestone} does not exist`)
     if (epic.goal !== undefined) {
       const file = path.join(issuesDir, 'epics', name, 'epic.md')
-      if (!isId(epic.goal, GOAL_PREFIX)) add(file, 'reference', `goal ${epic.goal} is not a valid goal id such as ${GOAL_PREFIX}-1`)
+      if (!isId(epic.goal, local.goal_prefix)) add(file, 'reference', `goal ${epic.goal} is not a valid goal id such as ${local.goal_prefix}-1`)
       else if (!goalIds.has(epic.goal)) add(file, 'reference', `goal ${epic.goal} does not exist`)
       else if (!readableGoals.has(epic.goal)) add(file, 'reference', `goal ${epic.goal} does not parse, see ${rel(path.join(goalsDir, `${epic.goal}.md`))}`)
     }

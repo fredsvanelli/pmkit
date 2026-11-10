@@ -2226,13 +2226,14 @@ test('goal create, list, get, progress and epic goal link a goal to an epic and 
   const created = json(root, ['goal', 'create', '--title', 'Trust our webhooks', '--target', '2026-12-31'])
   const { id } = created.after
   assert.match(id, /^GOAL-[0-9A-Z]{4}$/)
-  assert.deepEqual(json(root, ['goal', 'list']), [{ id, title: 'Trust our webhooks', target: '2026-12-31', description: '', epics: [] }])
+  assert.deepEqual(json(root, ['goal', 'list']), [{ id, title: 'Trust our webhooks', status: 'active', target: '2026-12-31', description: '', epics: [] }])
   const linked = run(root, ['epic', 'goal', 'EPC-2M9D', id])
   assert.equal(linked.status, 0, linked.stderr)
   assert.match(linked.stdout, new RegExp(`goal: \\(none\\) → ${id}`))
   assert.match(run(root, ['epic', 'get', 'EPC-2M9D']).stdout, new RegExp(`^goal: ${id}$`, 'm'))
   assert.match(run(root, ['epic', 'list']).stdout, /\| Goal/)
-  assert.match(run(root, ['goal', 'list']).stdout, new RegExp(`${id} +\\| Trust our webhooks +\\| 2026-12-31 +\\| EPC-2M9D`))
+  assert.match(run(root, ['goal', 'list']).stdout, new RegExp(`${id} +\\| Trust our webhooks +\\| active +\\| 2026-12-31 +\\| EPC-2M9D`))
+  assert.match(run(root, ['goal', 'get', id]).stdout, /^status: active$/m)
   assert.deepEqual(json(root, ['goal', 'get', id]).epics, ['EPC-2M9D'])
   const progress = json(root, ['goal', 'progress', id])
   const epic = json(root, ['epic', 'progress', 'EPC-2M9D'])
@@ -2245,6 +2246,18 @@ test('goal create, list, get, progress and epic goal link a goal to an epic and 
   assert.equal(removed.after.goal, undefined)
   const epicWithGoal = json(root, ['epic', 'create', '--title', 'Signing', '--goal', id.toLowerCase()])
   assert.equal(epicWithGoal.after.goal, id)
+})
+
+test('goal create takes --status and --title-file, and refuses a bad status (PMK-213)', () => {
+  const root = makeRepo('team')
+  const file = path.join(root, 'title.txt')
+  fs.writeFileSync(file, 'Ship `signing` $(now)\n')
+  const created = json(root, ['goal', 'create', '--title-file', file, '--status', 'planned'])
+  assert.equal(created.after.title, 'Ship `signing` $(now)')
+  assert.equal(created.after.status, 'planned')
+  const bad = run(root, ['goal', 'create', '--title', 'T', '--status', 'done', '--json'])
+  assert.equal(bad.status, 2)
+  assert.equal(JSON.parse(bad.stdout).error.code, 'INVALID_INPUT')
 })
 
 test('goal get of a missing goal is NOT_FOUND and epic goal of a missing goal is INVALID_INPUT', () => {

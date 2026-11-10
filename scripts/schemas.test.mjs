@@ -313,6 +313,7 @@ const PINNED = {
   issues: {
     'id_prefix pattern': [(s) => s.properties.id_prefix.pattern, PREFIX.source],
     'epic_prefix pattern': [(s) => s.properties.epic_prefix.pattern, PREFIX.source],
+    'goal_prefix pattern': [(s) => s.properties.goal_prefix.pattern, PREFIX.source],
     'id_style enum': [(s) => s.properties.id_style.enum, ID_STYLES],
     'statuses.*.category enum': [(s) => s.properties.statuses.additionalProperties.properties.category.enum, CATEGORIES],
     'estimate.unit enum': [(s) => schemaAt(s, ['estimate', 'unit']).enum, ESTIMATE_UNITS],

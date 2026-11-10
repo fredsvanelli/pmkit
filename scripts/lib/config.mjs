@@ -21,6 +21,7 @@ export const WORKSPACE_KEY = /^[a-z0-9][a-z0-9-]*$/
 const DEFAULTS = {
   default_status: 'backlog',
   epic_prefix: 'EPC',
+  goal_prefix: 'GOAL',
   id_style: 'random',
   types: ['feature', 'bug', 'task', 'chore'],
   priorities: ['urgent', 'high', 'medium', 'low'],
@@ -157,6 +158,7 @@ export function localConfigShapeProblems(obj) {
   const { id_prefix: idPrefix, epic_prefix: epicPrefix } = obj
   if (typeof idPrefix !== 'string' || !PREFIX.test(idPrefix)) problems.push(`id_prefix must be 2 to 5 capital letters, found ${found(idPrefix)}`)
   if (typeof epicPrefix !== 'string' || !PREFIX.test(epicPrefix)) problems.push(`epic_prefix must be 2 to 5 capital letters, found ${found(epicPrefix)}`)
+  if (obj.goal_prefix !== undefined && (typeof obj.goal_prefix !== 'string' || !PREFIX.test(obj.goal_prefix))) problems.push(`goal_prefix must be 2 to 5 capital letters, found ${found(obj.goal_prefix)}`)
   if (obj.id_style !== undefined && !ID_STYLES.includes(obj.id_style)) problems.push(`id_style must be ${ID_STYLES.join(' or ')}, found ${found(obj.id_style)}`)
 
   if (!isObject(obj.statuses)) {
@@ -222,6 +224,9 @@ export function localConfigShapeProblems(obj) {
 export function validateLocalConfig(obj) {
   const problems = localConfigShapeProblems(obj)
   if (obj.id_prefix === obj.epic_prefix) problems.push('id_prefix and epic_prefix must differ')
+  // The default counts, so id_prefix: GOAL without the key is a clash too.
+  const goalPrefix = obj.goal_prefix ?? DEFAULTS.goal_prefix
+  if (goalPrefix === obj.id_prefix || goalPrefix === obj.epic_prefix) problems.push('goal_prefix must differ from id_prefix and epic_prefix')
   const statuses = isObject(obj.statuses) ? obj.statuses : {}
   const used = new Set(Object.values(statuses).map((s) => (isObject(s) ? s.category : undefined)))
   for (const category of CATEGORIES) {

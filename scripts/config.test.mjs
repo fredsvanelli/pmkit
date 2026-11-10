@@ -444,3 +444,14 @@ test('validBranch accepts a name in NFC and in NFD, and the combining marks of o
   assert.equal(validBranch('शाखा'), true)
   assert.equal(validBranch('\u0301x'), false, 'a combining mark cannot start a name')
 })
+
+test('goal_prefix defaults to GOAL, takes 2 to 5 capital letters and differs from the other prefixes (PMK-213)', () => {
+  const local = withLocalDefaults(template('issues.config.yaml'))
+  assert.equal(local.goal_prefix, 'GOAL')
+  assert.deepEqual(validateLocalConfig(local), [])
+  assert.ok(localConfigShapeProblems({ ...local, goal_prefix: 'ok' }).includes('goal_prefix must be 2 to 5 capital letters, found "ok"'))
+  assert.deepEqual(localConfigShapeProblems({ ...local, goal_prefix: 'OKR' }), [])
+  const { goal_prefix: ignored, ...bare } = local
+  assert.ok(validateLocalConfig({ ...bare, id_prefix: 'GOAL' }).includes('goal_prefix must differ from id_prefix and epic_prefix'))
+  assert.ok(validateLocalConfig({ ...local, goal_prefix: local.epic_prefix }).includes('goal_prefix must differ from id_prefix and epic_prefix'))
+})

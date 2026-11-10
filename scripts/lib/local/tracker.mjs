@@ -28,7 +28,7 @@ import { createDocumentFile, listDocumentFiles, readDocumentFile } from './docum
 import { hasMilestoneFiles, milestoneStems, parseMilestone, serializeMilestone, sortMilestones, validMilestoneId } from './milestones.mjs'
 import { parseRelease, releaseStems, serializeRelease, sortReleases, validReleaseId, validTag } from './releases.mjs'
 import { parseView, serializeView, validViewName, viewStems } from './views.mjs'
-import { GOAL_PREFIX, goalStems, parseGoal, serializeGoal, sortGoals } from './goals.mjs'
+import { GOAL_STATUSES, goalStems, parseGoal, serializeGoal, sortGoals } from './goals.mjs'
 import { CUSTOMER_PREFIX, mdStems, parseCustomer, serializeCustomer, sortCustomers } from './customers.mjs'
 import { REQUEST_PREFIX, REQUEST_STATES, groupDemand, parseRequest, serializeRequest, sortRequests, sortRequestsNewest } from './requests.mjs'
 import { checkFilter, runQuery } from './query.mjs'
@@ -1444,7 +1444,7 @@ export function createLocalTracker(root, {
   /** The goal file as stored, without its epics. A stem that is not a goal id is never a goal. */
   function readGoalFile(id) {
     const normalized = normalizeId(String(id))
-    if (!isId(normalized, GOAL_PREFIX) || !goalStems(goalsDir).has(normalized)) throw goalNotFound(id)
+    if (!isId(normalized, local.goal_prefix) || !goalStems(goalsDir).has(normalized)) throw goalNotFound(id)
     return parseGoal(fs.readFileSync(path.join(goalsDir, `${normalized}.md`), 'utf8'), normalized)
   }
 
@@ -1468,8 +1468,8 @@ export function createLocalTracker(root, {
     const goals = []
     const problems = []
     for (const stem of [...goalStems(goalsDir)].sort()) {
-      if (!isId(stem, GOAL_PREFIX)) {
-        problems.push({ id: stem, kind: 'file', code: 'INVALID_INPUT', message: `goal file ${stem}.md is not named after a goal id such as ${GOAL_PREFIX}-1` })
+      if (!isId(stem, local.goal_prefix)) {
+        problems.push({ id: stem, kind: 'file', code: 'INVALID_INPUT', message: `goal file ${stem}.md is not named after a goal id such as ${local.goal_prefix}-1` })
         continue
       }
       try {
@@ -1486,11 +1486,11 @@ export function createLocalTracker(root, {
 
   function createGoal(input, actor, { dryRun = false } = {}) {
     requireWriter(actor)
-    const allowed = ['title', 'target', 'description']
+    const allowed = ['title', 'status', 'target', 'description']
     for (const key of Object.keys(input)) {
       if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
     }
-    const goal = { title: NORMALIZE.title(input.title), description: '' }
+    const goal = { title: NORMALIZE.title(input.title), status: blank(input.status) ? 'active' : oneOf('status', input.status, GOAL_STATUSES), description: '' }
     if (!blank(input.target)) {
       if (!validDate(input.target)) throw invalid('target must be a date as YYYY-MM-DD')
       goal.target = input.target
@@ -1498,8 +1498,8 @@ export function createLocalTracker(root, {
     if (!blank(input.description)) goal.description = plainText('description', input.description)
     const stems = goalStems(goalsDir)
     const id = local.id_style === 'numbered'
-      ? nextNumberedId(GOAL_PREFIX, [...stems])
-      : newId(GOAL_PREFIX, { random, exists: (candidate) => stems.has(candidate) })
+      ? nextNumberedId(local.goal_prefix, [...stems])
+      : newId(local.goal_prefix, { random, exists: (candidate) => stems.has(candidate) })
     const content = serializeGoal(goal)
     const after = readBack('goal file', () => parseGoal(content, id))
     if (!dryRun) {
