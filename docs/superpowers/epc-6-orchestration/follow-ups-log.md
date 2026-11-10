@@ -329,3 +329,34 @@ Início: 2026-11-09. `develop` em 18f1c33, `npm test` com 4293 testes, 4212 pass
 - PMK-214: 9c69536 com update confirmado como sucesso, rollback que devolve também events.jsonl e passos de rollback independentes; diff conferido. Mergeado (9a40228).
 
 Fim da rodada 11: PRs #166, #167, #168 mergeados.
+
+Limpeza da rodada 11: closing PR #169 mergeado (a1371fb), 8 worktrees removidos, branches provisórias apagadas.
+
+## Rodada 12
+
+Início: 2026-11-09. `develop` em a1371fb, `npm test` com 4330 testes, 4250 pass, 0 fail, 80 skipped, saída 0. Run Orca `run_8337d34b0804`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-218 | 5 | opus (`ctx_56f4257a5d35`) | #172 | ciclo 1 (opus): mudanças pedidas; ciclo 2 (opus): APROVADO | mergeado (2ed1da2) |
+| PMK-225 | 5 | opus (`ctx_9a3a7a758719`) | #171 | ciclo 1 (opus): mudanças pedidas; ciclo 2 (opus): APROVADO; rebase 60a2555 | mergeado (8ed6acd) |
+| PMK-229 | 3 | sonnet (`ctx_0a6d123cbd20`) | #170 | ciclos 1 e 2 (opus): mudanças pedidas (injeção de shell no ciclo 2); ciclo 3 (opus): APROVADO; duas correções antes do merge | mergeado (970ddad) |
+
+- PMK-229: PR #170 (sonnet); issues comment --redact (redação na CLI, linha de contagem, redacted no JSON); passo 7 do investigate-bug lê o código na branch da issue e o passo 10 usa --redact; cenários sem branch e git_host none. Follow-ups: --redact em outras escritas de texto livre; cenário do Linear; fallback do passo 7 só com origin/<branch>. Revisor ciclo 1 (opus) iniciado.
+- PMK-229 ciclo 1 (opus): mudanças pedidas (git grep com a ref no lugar do padrão). --redact conferido sem vazamento. Pedi junto: ref completa; validar o nome da branch (validBranch da PMK-192) antes do shell nos passos 3, 4, 6 e 7; cenário noHost; preâmbulo. Follow-up: ref local defasada do headSha do CI.
+- PMK-229 correção 3b107c7: git grep <padrão> <ref>; refs completas; passo 2 valida a branch pela regra de validBranch (inválida = sem branch), aspas nos passos 3, 4, 6 e 7, cenário com x$(id); noHost corrigido; testes de --redact no Linear e só segredo. Revisor ciclo 2 (opus) iniciado.
+- PMK-225: PR #171 (opus); inbox indexado pelo remote do git; escritas no store do usuário com trava e merge; inbox list com mudanças de status e --reviews/--login (uma chamada gh, null e not verified na falha); colunas Text e Seen; Linear serve user_inbox por Notification; corte de 14 dias por tipo. Follow-ups: conferir os documentos de Notification ao vivo; recusar --login sem --reviews; texto do mark-read no Linear; inbox-digest usar status e --reviews (PMK-236). Revisor ciclo 1 (opus) iniciado.
+- PMK-229 ciclo 2 (opus): mudanças pedidas, 2 bloqueantes de injeção de shell no passo 7 (git grep sem -e executa -O<cmd>; aspas duplas expandem $(...) em padrão e caminho vindos do log). Validação do nome da branch só no texto, não na CLI: issues update --branch aceita x$(id) (follow-up). Pedi regra de citação em conventions.md e teste no plugin.test.mjs.
+- PMK-225 ciclo 1 (opus): mudanças pedidas, 2 bloqueantes (migração para o arquivo por remote perde as chaves vistas de outros worktrees; mark-read --key em entrada antiga marca kinds sem pendência e solta as mudanças de status antigas). Documentos GraphQL conferidos no schema público. Pedi junto: --reviews sem --login no Linear; mensagem da trava; mark-read --key com mais de 1000 notificações; null: UPSTREAM.
+- PMK-229 correção e9e8c4d: texto de busca por arquivo com git grep -F -f; caminhos entre aspas simples com escape; regra Text from data in a command em conventions.md; teste no plugin.test.mjs; diff local também em NOT_CONFIGURED/AUTH. Follow-ups: recusar x$(id) em issues update --branch e no branchName do Linear; citar --environment no passo 5. Revisor ciclo 3 (opus) iniciado.
+- PMK-218: PR #172 (opus); pr blockers lê rulesets (rules/branches, paginado) junto da proteção clássica; prThreads pagina por endCursor sem corpos; reviews e merge state numa leitura de gh pr view; pr status devolve blockers; /pmkit:issues:mine mostra o veredito. Follow-ups: avaliar outros tipos de regra de ruleset; opt-out das 3 leituras a mais por PR; base com barra contra o GitHub real; require_code_owner_review e require_last_push_approval. Revisor ciclo 1 (opus) iniciado.
+- PMK-225 correção fbcebe3: migração junta os arquivos por caminho de todos os worktrees do remote (registrado em migrated); entrada sem kinds conta como vistas as mudanças até o último check (decisão do implementador, aceita); --reviews no Linear sem --login dá not verified; mensagem da trava; mark-read --key no Linear marca por id; guard de toplevel do monorepo. Revisor ciclo 2 (opus) iniciado.
+- PMK-229 ciclo 3 (opus): APROVADO (reproduções de injeção refeitas, nenhuma executou). Pedi antes do merge: /\s+$/ quadrático em pmkit.mjs:619 (14 s em 50k espaços) e o cenário noHost com nomes curtos. Follow-ups: --environment sem aspas no passo 5; teste de guarda só pega aspas duplas; entrada do gh ausente sem receita do diff local.
+- PMK-218 ciclo 1 (opus): mudanças pedidas (pr status com 5+ leituras por PR: falha transitória numa leitura de bloqueio derruba o comando e mine/standup/investigate-bug não tratam). Base com barra conferida na API real. Pedi junto: read:org ausente, policies duplicado, ruleText com deletion/non_fast_forward, 404 de rulesets em GHES, inbox-digest.md:35.
+- PMK-229: 2cddf9f com trimEnd no lugar de /\s+$/ e o cenário noHost alinhado; diff conferido. Mergeado (970ddad).
+- PMK-225 ciclo 2 (opus): APROVADO (migração conferida com dois clones), em conflito; pedi rebase com a entrada válida de outro membro preservada e --login sem --reviews recusado. Follow-ups: mudar a URL do origin abandona o arquivo por remote; itens status no digest (PMK-236).
+- PMK-225: rebase 60a2555 com a entrada válida de outro membro preservada e --login sem --reviews recusado. Mergeado (8ed6acd).
+- PMK-218 correção 4960886: falha transitória de leitura de bloqueio mantém PR e checks com blockers not verified; mine/standup/investigate-bug param pr status depois de RATE_LIMITED; 403 na leitura de detalhe tenta sem reviewRequests; ruleText sem creation/deletion/non_fast_forward; 404 de rules com proteção lida = sem rulesets; track-agents cacheia recusa por base; rebase sobre 8ed6acd. Revisor ciclo 2 (opus) iniciado.
+- PMK-218 ciclo 2 (opus): APROVADO. Não bloqueantes: blocked null por reviewRequests ilegíveis mesmo com policiesKnown (pr-blockers.mjs:99/202); texto contraditório entre blocking e policies com a proteção recusada (:166/222); contagem de aprovações sem dizer que é mínima com a proteção não lida (:135); retry em qualquer 403 culpando read:org (host.mjs:120); custo das leituras de blockers em standup/investigate-bug (pmkit.mjs:1497). Mergeado (2ed1da2).
+
+Fim da rodada 12: PRs #170, #171, #172 mergeados.
