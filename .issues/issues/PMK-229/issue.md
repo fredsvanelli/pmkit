@@ -2,12 +2,14 @@
 id: PMK-229
 title: Improve investigate-bug
 type: feature
-status: backlog
+status: in_progress
 priority: medium
 estimate: 3
+assignee: fred
 related: [PMK-63]
+branch: pmk-229-improve-investigate-bug
 created: 2026-11-08T20:37:25.416Z
-updated: 2026-11-08T20:53:52Z
+updated: 2026-11-10T00:54:46Z
 ---
 
 ## Description
