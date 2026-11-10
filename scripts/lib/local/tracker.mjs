@@ -7,6 +7,7 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { requireActor, gitUserEmail } from '../actor.mjs'
 import { loadConfig, validateLocalConfig } from '../config.mjs'
+import { formatMinutes, isPositiveMinutes } from '../duration.mjs'
 import { PmkitError } from '../errors.mjs'
 import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
 import { removeKey, setScalar } from '../yaml-edit.mjs'
@@ -1188,16 +1189,27 @@ export function createLocalTracker(root, {
 
   function logTime(id, minutes, actor, { dryRun = false } = {}) {
     requireWriter(actor)
-    if (!Number.isInteger(minutes) || minutes <= 0) throw invalid('minutes must be a positive integer')
+    if (!isPositiveMinutes(minutes)) throw invalid('minutes must be a positive integer')
     return change(id, actor, { dryRun, eventsOnly: true }, (issue, meta) => [{ ...meta, op: 'log_time', minutes }])
   }
 
   // A hand-edited log_time event whose minutes is not a positive integer is left out of the entries and the total, and counted in `ignored`.
+  // An entry counts for the sprint whose start..end holds the UTC date of its `at` (the first by start when several do), else for `sprint: null`.
   function listTimeEntries(id) {
     const logged = getHistory(id).filter((event) => event.op === 'log_time')
-    const valid = logged.filter((event) => Number.isInteger(event.minutes) && event.minutes > 0)
-    const entries = valid.map((event) => ({ at: event.at, by: event.by, minutes: event.minutes }))
-    return { issue: id, entries, total: entries.reduce((sum, entry) => sum + entry.minutes, 0), ignored: logged.length - valid.length }
+    const valid = logged.filter((event) => isPositiveMinutes(event.minutes))
+    let sprints = []
+    let sprintsUnread = false
+    try { sprints = readSprints(sprintsDir) } catch { sprintsUnread = true } // a sprint file that does not parse must not hide the entries; validate reports it
+    const entries = valid.map((event) => ({ at: event.at, by: event.by, minutes: event.minutes, time: formatMinutes(event.minutes) }))
+    const sum = (key, of) => {
+      const totals = new Map()
+      entries.forEach((entry) => totals.set(of(entry), (totals.get(of(entry)) ?? 0) + entry.minutes))
+      return [...totals].map(([value, minutes]) => ({ [key]: value, minutes, time: formatMinutes(minutes) }))
+    }
+    const sprintOf = (entry) => sprints.find((sprint) => sprint.start <= entry.at.slice(0, 10) && entry.at.slice(0, 10) <= sprint.end)?.id ?? null
+    const total = entries.reduce((acc, entry) => acc + entry.minutes, 0)
+    return { issue: id, entries, total, totalTime: formatMinutes(total), byPerson: sum('by', (entry) => entry.by), bySprint: sum('sprint', sprintOf), ignored: logged.length - valid.length, ...(sprintsUnread ? { sprintsUnread } : {}) }
   }
 
   function cycleIssues(id) {

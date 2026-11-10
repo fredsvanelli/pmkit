@@ -492,6 +492,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       const listed = await tracker.listTimeEntries(id)
       assert.deepEqual(listed.entries.map((entry) => entry.minutes), [45])
       assert.equal(listed.total, 45)
+      assert.equal(listed.ignored, 0)
       assert.ok((await tracker.metricEvents()).some((event) => event.issue === id && event.op === 'log_time'))
       await rejects(() => tracker.logTime(id, 0, actor), 'INVALID_INPUT')
     })
