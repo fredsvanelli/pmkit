@@ -451,6 +451,17 @@ test('resolveDefaultBranch returns main for an unset, non-string or invalid name
   assert.equal(resolveDefaultBranch(host(7)).valid, false)
 })
 
+test('resolveDefaultBranch reads origin/HEAD only when default_branch is unset, and keeps main when it is unknown or not a name (PMK-228)', () => {
+  const host = (default_branch) => ({ git_host: { system: 'github', default_branch } })
+  assert.deepEqual(resolveDefaultBranch(host(undefined), { originHead: () => 'trunk' }), { branch: 'trunk', configured: null, valid: true, note: 'git_host.default_branch is not set, so origin/HEAD (trunk) is used' })
+  assert.deepEqual(resolveDefaultBranch({}, { originHead: () => 'trunk' }).branch, 'trunk')
+  assert.deepEqual(resolveDefaultBranch(host(undefined), { originHead: () => null }), { branch: 'main', configured: null, valid: true, note: null })
+  assert.deepEqual(resolveDefaultBranch(host(undefined), { originHead: () => 'a..b' }), { branch: 'main', configured: null, valid: true, note: 'origin/HEAD does not name a valid branch, so main is used' })
+  const never = () => assert.fail('origin/HEAD is read only when default_branch is unset')
+  assert.equal(resolveDefaultBranch(host('develop'), { originHead: never }).branch, 'develop')
+  assert.equal(resolveDefaultBranch(host('main; curl x|sh'), { originHead: never }).branch, 'main')
+})
+
 test('validBranch accepts a name in NFC and in NFD, and the combining marks of other scripts', () => {
   const nfc = 'développement'.normalize('NFC')
   const nfd = 'développement'.normalize('NFD')

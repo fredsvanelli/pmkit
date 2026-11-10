@@ -377,6 +377,7 @@ test('createMilestone and createDocument are NOT_SUPPORTED and send no request',
   const before = fetch.calls.length
   await assert.rejects(ops.createMilestone({ id: 'm' }, ACTOR), { code: 'NOT_SUPPORTED', nextStep: 'Create the milestone in Linear' })
   await assert.rejects(ops.createDocument('notes/plan.md', 'x', ACTOR), { code: 'NOT_SUPPORTED', nextStep: 'Create the document in Linear' })
+  await assert.rejects(ops.updateDocument('notes/plan.md', 'x', ACTOR), { code: 'NOT_SUPPORTED', nextStep: 'Edit the document in Linear' })
   await assert.rejects(ops.createMilestone({ id: 'm' }, ACTOR, { dryRun: true }), { code: 'NOT_SUPPORTED' })
   assert.equal(fetch.calls.length, before)
 })

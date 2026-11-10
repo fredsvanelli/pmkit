@@ -23,7 +23,7 @@ import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, 
 import { pathNote } from './lib/path-notes.mjs'
 import { fileMentions } from './lib/mentions.mjs'
 import { REPO_UNCHECKED } from './lib/delete-refusal.mjs'
-import { planNextAdr } from './lib/adr.mjs'
+import { ADR_STATUSES, adrFiles, adrFolders, adrLocation, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
 import { similarResult } from './lib/similar.mjs'
 import { isBlocked } from './lib/model.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
@@ -297,6 +297,88 @@ async function tickCriteria(ctx, id, patch) {
   patch.acceptanceCriteria = criteria
 }
 
+/** --add-doc and --remove-doc as the whole new docs list, so the caller never merges lists. Adding a path already there or removing an absent one changes nothing. */
+async function docLinks(ctx, id, patch) {
+  // A flag given with no value comes back as true, alone or inside a repeated list.
+  const paths = (name) => ctx.list(name).map((item) => {
+    if (typeof item !== 'string' || item.trim() === '') throw usageError(`--${name} needs a path`, `Pass the path of the document, such as --${name} docs/adr/0001-use-points.md`)
+    return item.trim()
+  })
+  const adds = paths('add-doc')
+  const removes = paths('remove-doc')
+  if (adds.length === 0 && removes.length === 0) return
+  const tracker = await ctx.tracker()
+  // The manifest says before the issue is read when the tracker has no docs field (Linear), so nothing else is asked of it.
+  const documents = (await tracker.capabilities()).capabilities.find((c) => c.id === 'documents')
+  if (documents?.detail?.unsupported?.includes('issueDocs')) throw new PmkitError('NOT_SUPPORTED', 'Linear issues have no docs field', 'The comment on the issue stays the link to the document')
+  const current = (await tracker.getIssue(id)).docs ?? []
+  const kept = current.filter((item) => !removes.includes(item))
+  patch.docs = [...kept, ...adds.filter((item) => !kept.includes(item))]
+}
+
+const originHeads = new WeakMap()
+/** The branch origin/HEAD points to, without origin/, or null when git cannot say. Read once per run (PMK-228). */
+function originHead(ctx) {
+  if (!originHeads.has(ctx)) {
+    // The full ref, not --short: a local branch named origin/<name> makes --short print remotes/origin/<name>.
+    const prefix = 'refs/remotes/origin/'
+    const result = readGit(ctx, ['symbolic-ref', '--quiet', `${prefix}HEAD`])
+    const ref = !result.error && result.status === 0 ? result.stdout.trim() : ''
+    originHeads.set(ctx, ref.startsWith(prefix) ? ref.slice(prefix.length) : null)
+  }
+  return originHeads.get(ctx)
+}
+
+const adrPlace = (ctx) => adrLocation({ root: ctx.root, issuesDir: ctx.config().issuesDir, hosted: ctx.config().hosted })
+
+/** The one ADR file with `number` (1 to 4 digits). NOT_FOUND when none has it, CONFLICT when several do. */
+function adrByNumber(files, number, flag) {
+  if (!/^\d{1,4}$/.test(number)) throw new PmkitError('INVALID_INPUT', `${flag} "${number}" is not an ADR number`, 'Pass the number of the ADR, such as 3 or 0003')
+  const padded = number.padStart(4, '0')
+  const found = files.filter((file) => file.number === padded)
+  if (found.length === 0) throw new PmkitError('NOT_FOUND', `no ADR has the number ${padded}`, 'Check the number in docs/adr/; pmkit docs next-adr names the folders it reads')
+  if (found.length > 1) throw new PmkitError('CONFLICT', `ADR number ${padded} is used by ${found.map((file) => file.path).join(' and ')}`, 'Rename one of them to the number docs next-adr gives; pmkit validate lists every repeated number')
+  return found[0]
+}
+
+/** docs adr-status (PMK-228): the Status line of one ADR, in the repository folder or the Local tracker's. */
+async function runAdrStatus(ctx) {
+  const [number, status] = ctx.args
+  if (!ADR_STATUSES.includes(status)) throw usageError(`status "${status}" is not one of ${ADR_STATUSES.join(', ')}`, 'Pass accepted, deprecated, or superseded --by <number>')
+  const by = ctx.opt('by')
+  if (status === 'superseded' && by === undefined) throw usageError('superseded needs --by with the number of the newer ADR', 'Pass --by <number>, such as --by 7')
+  if (status !== 'superseded' && by !== undefined) throw usageError('--by goes only with superseded', `Leave --by out for ${status}`)
+  const { trackerDir, trackerFolder } = adrPlace(ctx)
+  const folders = adrFolders({ root: ctx.root, trackerDir, trackerFolder })
+  const files = adrFiles(folders)
+  const adr = adrByNumber(files, number, 'number')
+  const notes = []
+  let byPath
+  if (by !== undefined) {
+    const newer = adrByNumber(files, by, '--by')
+    if (newer.number === adr.number) throw usageError(`ADR ${adr.number} cannot supersede itself`, 'Pass the number of the newer ADR in --by')
+    // A permanent record: say so when the arguments look swapped, but the user may supersede with an older ADR on purpose.
+    if (newer.number < adr.number) notes.push(`ADR ${newer.number} is older than ADR ${adr.number}; check that --by names the decision that replaces it`)
+    byPath = newer.path
+  }
+  const before = adrText(fs.readFileSync(adr.file, 'utf8'))
+  const { text: after, before: statusBefore, after: line } = setAdrStatus(before, status, byPath)
+  let commit
+  if (before !== after && !ctx.dryRun) {
+    if (adr.place === 'tracker') {
+      await (await ctx.tracker()).updateDocument(`adr/${adr.name}`, after, await ctx.actor())
+      commit = adr.path
+    } else {
+      writeFileAtomic(adr.file, after)
+      notes.push(`${adr.path} is a repository file and has no commit yet; commit it with the work it belongs to`)
+    }
+  }
+  const data = { number: adr.number, path: adr.path, place: adr.place, status: { before: statusBefore, after: line }, before, after, notes }
+  const verb = before === after ? 'unchanged' : ctx.dryRun ? 'would set' : 'set'
+  const text = [`${verb} ${adr.path}: ${statusBefore ?? '(no status)'} -> ${line}`, ...(ctx.dryRun ? ['dry run: nothing was written'] : [])].join('\n')
+  return { data, text, notes, commit }
+}
+
 /** The id of the active sprint, NOT_FOUND with the next step when none is active. */
 async function activeSprintId(tracker) {
   const sprint = await tracker.currentCycle()
@@ -452,10 +534,10 @@ async function releasedWarnings(ctx, patch) {
   }
 }
 /** The default branch every reader uses, validated: `main` when git_host.default_branch is unset or not a branch name. */
-const defaultBranch = (ctx) => resolveDefaultBranch(ctx.config().pmkit).branch
+const defaultBranch = (ctx) => resolveDefaultBranch(ctx.config().pmkit, { originHead: () => originHead(ctx) }).branch
 /** The note for a default_branch that was replaced by main, for a command that read it. */
 const defaultBranchNotes = (ctx) => {
-  const { note } = resolveDefaultBranch(ctx.config().pmkit)
+  const { note } = resolveDefaultBranch(ctx.config().pmkit, { originHead: () => originHead(ctx) })
   return note === null ? [] : [note]
 }
 
@@ -816,12 +898,13 @@ export const COMMANDS = [
   },
   {
     name: 'issues update', summary: 'edits fields and criteria', write: true, args: ['id'],
-    usage: '<id> [--title] [--type] [--priority] [--estimate] [--label l,..] [--sprint id|current|none] [--due] [--milestone] [--release] [--branch] [--description-file f] [--criteria-file f] [--check n] [--uncheck n]',
-    flags: ['title', 'type', 'priority', 'estimate', 'label', 'sprint', 'due', 'milestone', 'release', 'branch', 'description-file', 'criteria-file', 'check', 'uncheck'],
+    usage: '<id> [--title] [--type] [--priority] [--estimate] [--label l,..] [--sprint id|current|none] [--due] [--milestone] [--release] [--branch] [--add-doc path] [--remove-doc path] [--description-file f] [--criteria-file f] [--check n] [--uncheck n]',
+    flags: ['title', 'type', 'priority', 'estimate', 'label', 'sprint', 'due', 'milestone', 'release', 'branch', 'add-doc', 'remove-doc', 'description-file', 'criteria-file', 'check', 'uncheck'],
     run: async (ctx) => {
       const [id] = ctx.args
       const patch = await issuePatch(ctx, { create: false })
       await tickCriteria(ctx, id, patch)
+      await docLinks(ctx, id, patch)
       if (Object.keys(patch).length === 0) throw usageError('issues update needs at least one field flag', 'pmkit issues update <id> --priority high')
       const result = issueWrite(ctx, await (await ctx.tracker()).updateIssue(id, patch, await ctx.actor(), { dryRun: ctx.dryRun }))
       return { ...result, warnings: await releasedWarnings(ctx, patch) }
@@ -924,12 +1007,12 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'default-branch', summary: 'prints git_host.default_branch as a valid branch name, or main with a note when it is unset or not a name; reads .pmkit/config.yaml only, no tracker, writes nothing', flags: [], args: [], exempt: true,
+    name: 'default-branch', summary: 'prints git_host.default_branch as a valid branch name; when it is unset, the branch of origin/HEAD with a note, else main; main with a note when it is not a name; reads .pmkit/config.yaml and origin/HEAD only, no tracker, writes nothing', flags: [], args: [], exempt: true,
     run: async (ctx) => {
       // Only .pmkit/config.yaml, never the tracker: a missing, broken or newer tracker config must not cost the command files their base branch.
       let resolved
       try {
-        resolved = resolveDefaultBranch(parseYaml(fs.readFileSync(path.join(ctx.root, '.pmkit', 'config.yaml'), 'utf8')))
+        resolved = resolveDefaultBranch(parseYaml(fs.readFileSync(path.join(ctx.root, '.pmkit', 'config.yaml'), 'utf8')), { originHead: () => originHead(ctx) })
       } catch (error) {
         const reason = error.code === 'ENOENT' ? 'it does not exist' : error.message.split('\n')[0]
         resolved = { branch: 'main', configured: null, valid: false, note: `cannot read .pmkit/config.yaml (${reason}), so main is used` }
@@ -1557,18 +1640,16 @@ export const COMMANDS = [
     run: async (ctx) => {
       const title = lineFromFlag(ctx.opt, 'title')
       if (typeof title !== 'string') throw usageError('docs next-adr needs --title or --title-file', 'Pass the decision title, for example --title-file title.txt')
-      const { pmkit, hosted, issuesDir } = ctx.config()
+      const { pmkit, hosted } = ctx.config()
       // A hosted tracker needs no call: the Linear adapter cannot create documents, so its ADR is a repository file.
       const documents = hosted ? undefined : (await (await ctx.tracker()).capabilities()).capabilities.find((c) => c.id === 'documents')
-      // The Local tracker's folder as todos scan sees it: path.relative cleans ./ and a trailing slash, and a folder that climbs out of the repository has no ref to read.
-      const trackerDir = hosted || !issuesDir ? null : path.join(issuesDir, 'docs', 'adr')
-      const relative = trackerDir ? path.relative(ctx.root, trackerDir) : ''
-      const resolved = resolveDefaultBranch(pmkit)
+      const { trackerDir, trackerFolder } = adrPlace(ctx)
+      const resolved = resolveDefaultBranch(pmkit, { originHead: () => originHead(ctx) })
       const plan = planNextAdr({
         title,
         root: ctx.root,
         trackerDir,
-        trackerFolder: trackerDir && !climbsOut(relative) ? slash(relative) : null,
+        trackerFolder,
         hosted: Boolean(hosted),
         createSupported: documents !== undefined && documents.path !== 'absent' && !documents.detail?.unsupported?.includes('createDocument'),
         defaultBranch: resolved.branch,
@@ -1582,6 +1663,10 @@ export const COMMANDS = [
       const text = fields([['number', plan.number], ['slug', plan.slug], ['place', plan.destination], ['path', plan.path], ['tracker path', plan.docPath ?? '(none)'], ['default branch', plan.defaultBranch], ['git host', plan.gitHost]]).join('\n')
       return { data: plan, text, notes: plan.notes }
     },
+  },
+  {
+    name: 'docs adr-status', summary: 'sets the Status line of an existing ADR (accepted, deprecated, or superseded --by a newer ADR); a repository file is written without a commit, a tracker document through the tracker', usage: '<number> <accepted|deprecated|superseded> [--by number]', write: true, args: ['number', 'status'], flags: ['by'], byTracker: true,
+    run: (ctx) => runAdrStatus(ctx),
   },
   {
     name: 'docs create', summary: 'creates a document under the docs folder', usage: '<path> --body-file f', write: true, args: ['path'], flags: ['body-file'],

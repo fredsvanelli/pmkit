@@ -17,7 +17,7 @@ export const PROJECT_TYPE_OF_CATEGORY = Object.freeze({
 
 export const EXPORT_LOSSES = [
   'sprints', 'sprint names', 'history', 'epic dates', 'comments', 'status updates', 'milestones', 'releases', 'time logs', 'documents', 'views', 'goals', 'customers', 'requests',
-  'branch names', 'ids', 'estimates', 'members', 'links', 'capacity',
+  'branch names', 'doc links', 'ids', 'estimates', 'members', 'links', 'capacity',
 ]
 
 export const EXPORT_READ_REQUESTS = 10
@@ -233,6 +233,10 @@ export function mapExport(snapshot, target) {
       dropped.push('branch')
       losses.add('branch names', issue.id, '')
     }
+    if (issue.docs?.length > 0) {
+      dropped.push('docs')
+      losses.add('doc links', issue.id, '')
+    }
     const description = buildDescription(issue.description ?? '', issue.acceptanceCriteria ?? [])
     records.issue.push({
       key: issue.id,
@@ -339,6 +343,8 @@ export function mapExport(snapshot, target) {
   losses.set('requests', out.requests ?? 0, [], `${plural(out.requests ?? 0, 'request')} ${stay(out.requests ?? 0)} in .issues/requests/; pmkit does not create Linear customer requests`)
   const branches = losses.get('branch names')
   if (branches) branches.why = `${plural(branches.count, 'issue')} get the branch name Linear gives them; the map keeps the old id`
+  const docLinks = losses.get('doc links')
+  if (docLinks) docLinks.why = `${plural(docLinks.count, 'issue')} ${docLinks.count === 1 ? 'loses its' : 'lose their'} docs field; Linear has no such field, so the comments stay the links`
   const ids = snapshot.issues.length + snapshot.epics.length
   losses.set('ids', ids, [], `${plural(ids, 'record')} get new Linear identifiers; the map keeps the old ones`)
   const estimates = losses.get('estimates')

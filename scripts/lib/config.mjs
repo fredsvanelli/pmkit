@@ -122,9 +122,16 @@ export const validBranch = (name) =>
   typeof name === 'string' && BRANCH_NAME.test(name) && !name.includes('..') && name.split('/').every((part) => part !== '' && !part.startsWith('.') && !part.endsWith('.') && !part.endsWith('.lock'))
 
 /** The default branch every reader uses: git_host.default_branch when it is a valid name, `main` when it is unset or invalid. `configured` is what the file holds (null when unset) and `note` says why `main` replaced an invalid value. */
-export function resolveDefaultBranch(pmkit) {
+export function resolveDefaultBranch(pmkit, { originHead } = {}) {
   const configured = pmkit?.git_host?.default_branch
-  if (configured === undefined || configured === null) return { branch: 'main', configured: null, valid: true, note: null }
+  if (configured === undefined || configured === null) {
+    // PMK-228: the remote's own default branch, when git knows it and it is a valid name. Anything else keeps main, as before.
+    const head = originHead?.() ?? null
+    if (typeof head === 'string' && validBranch(head)) return { branch: head, configured: null, valid: true, note: `git_host.default_branch is not set, so origin/HEAD (${head}) is used` }
+    // The name itself is not echoed: it failed the check that keeps a name safe to print and to pass on.
+    if (typeof head === 'string') return { branch: 'main', configured: null, valid: true, note: 'origin/HEAD does not name a valid branch, so main is used' }
+    return { branch: 'main', configured: null, valid: true, note: null }
+  }
   if (validBranch(configured)) return { branch: configured, configured, valid: true, note: null }
   return { branch: 'main', configured, valid: false, note: 'git_host.default_branch is not a valid branch name, so main is used' }
 }

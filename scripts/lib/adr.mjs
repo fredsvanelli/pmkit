@@ -40,6 +40,119 @@ export function highestAdr(names) {
   return { highest, ignored }
 }
 
+/**
+ * The ADR folders: the repository's docs/adr and, for the Local tracker, its docs/adr unless tracker.path puts it on the same folder,
+ * which is then read once. `label` is the folder relative to the repository, or docs/adr relative to a tracker folder outside it,
+ * never an absolute path of this machine. `repoFolder` is null for a folder outside the repository, where no ref has it.
+ */
+export function adrFolders({ root, trackerDir, trackerFolder }) {
+  const repoDir = path.join(root, 'docs', 'adr')
+  const folders = [{ place: 'repo', label: 'docs/adr', shown: 'docs/adr', dir: repoDir, repoFolder: 'docs/adr' }]
+  if (trackerDir && path.resolve(trackerDir) !== path.resolve(repoDir)) {
+    folders.push({ place: 'tracker', label: trackerFolder ?? 'docs/adr', shown: trackerFolder ?? 'docs/adr in the tracker', dir: trackerDir, repoFolder: trackerFolder })
+  }
+  return folders
+}
+
+/**
+ * Where the Local tracker keeps its ADRs: `trackerDir` (absolute, null for a hosted tracker) and `trackerFolder`, the same folder
+ * relative to the repository with `/`, or null when it lies outside the repository. `docs next-adr`, `docs adr-status` and `validate` share it.
+ */
+export function adrLocation({ root, issuesDir, hosted }) {
+  const trackerDir = hosted || !issuesDir ? null : path.join(issuesDir, 'docs', 'adr')
+  if (trackerDir === null) return { trackerDir, trackerFolder: null }
+  const relative = path.relative(root, trackerDir)
+  const outside = relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)
+  return { trackerDir, trackerFolder: outside ? null : relative.split(path.sep).join('/') }
+}
+
+/** The numbered ADR files of the working tree in `folders`, as { number, name, path, place, file }, sorted by path. */
+export function adrFiles(folders) {
+  const found = []
+  for (const { place, label, dir } of folders) {
+    for (const name of readTree(dir) ?? []) {
+      const match = NUMBERED.exec(name)
+      if (match) found.push({ number: match[1], name, path: `${label}/${name}`, place, file: path.join(dir, name) })
+    }
+  }
+  return found.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+}
+
+/** Every ADR file whose number another file uses, with the paths of those others. */
+export function duplicateAdrs(files) {
+  return files.flatMap((file) => {
+    const others = files.filter((other) => other !== file && other.number === file.number).map((other) => other.path)
+    return others.length === 0 ? [] : [{ path: file.path, number: file.number, others }]
+  })
+}
+
+export const ADR_STATUSES = ['accepted', 'deprecated', 'superseded']
+
+/** The ADR text with BOM and CRLF removed. */
+export const adrText = (text) => text.replace(/^\uFEFF/, '').replaceAll('\r\n', '\n')
+
+// A status line above the first section: "Status: x", "**Status:** x", "**Status**: x", optionally as a list item.
+const STATUS_LINE = /^(\s*[-*]\s+)?(\*\*Status:?\*\*:?|Status:)\s*(.*)$/i
+const STATUS_SECTION = /^##\s+Status\s*$/i
+const YAML_STATUS = /^status:/i
+const capitalized = (text) => text.charAt(0).toUpperCase() + text.slice(1)
+// The lines after `from` up to the next "# " or "## " heading (or the end), as [start, end).
+const sectionEnd = (lines, from) => {
+  const next = lines.findIndex((item, i) => i > from && /^#{1,2} /.test(item))
+  return next === -1 ? lines.length : next
+}
+const withoutBlanks = (lines, from) => {
+  let at = from
+  while (at < lines.length && lines[at].trim() === '') at++
+  return lines.slice(at)
+}
+
+/**
+ * The ADR text with `status` (and `byPath`, the newer ADR, for superseded) written in the form the ADR already uses (PMK-228):
+ * the `status:` key of YAML front matter, the body of a `## Status` section (Nygard, adr-tools), or a `Status:` or `**Status:**`
+ * line above the first `## ` section. With none of them, a `Status:` line goes under the `# ` title, or under the front matter,
+ * or at the top. Returns { text, before, after }: the status as it was (null when there was none) and as it is written. CRLF becomes LF.
+ */
+export function setAdrStatus(text, status, byPath) {
+  const value = status === 'superseded' ? `superseded by ${byPath}` : status
+  const lines = adrText(text).split('\n')
+  const close = lines[0] === '---' ? lines.indexOf('---', 1) : -1
+  const start = close === -1 ? 0 : close + 1
+  const done = (before, after) => ({ text: lines.join('\n'), before, after })
+
+  const yaml = close === -1 ? -1 : lines.slice(1, close).findIndex((item) => YAML_STATUS.test(item)) + 1
+  if (yaml > 0) {
+    const before = lines[yaml]
+    lines[yaml] = `status: ${value}`
+    return done(before, lines[yaml])
+  }
+
+  const section = lines.findIndex((item, i) => i >= start && STATUS_SECTION.test(item))
+  if (section !== -1) {
+    const end = sectionEnd(lines, section)
+    const body = lines.slice(section + 1, end).map((item) => item.trim()).filter(Boolean)
+    const after = capitalized(value)
+    lines.splice(section + 1, end - section - 1, '', after, '')
+    return done(body.length === 0 ? null : body.join(' '), after)
+  }
+
+  const first = lines.findIndex((item, i) => i >= start && item.startsWith('## '))
+  const head = first === -1 ? lines.length : first
+  const found = lines.findIndex((item, i) => i >= start && i < head && STATUS_LINE.test(item))
+  if (found !== -1) {
+    const [, bullet = '', label] = STATUS_LINE.exec(lines[found])
+    const before = lines[found]
+    lines[found] = `${bullet}${label.startsWith('**') ? '**Status:**' : 'Status:'} ${value}`
+    return done(before, lines[found])
+  }
+
+  const line = `Status: ${value}`
+  const title = lines.findIndex((item, i) => i >= start && i < head && item.startsWith('# '))
+  const anchor = title !== -1 ? title : start - 1
+  const top = anchor === -1 ? [] : [...lines.slice(0, anchor + 1), '']
+  return { text: [...top, line, '', ...withoutBlanks(lines, anchor + 1)].join('\n'), before: null, after: line }
+}
+
 const children = (paths, folder) => paths.filter((p) => p.startsWith(`${folder}/`)).map((p) => p.slice(folder.length + 1))
 
 function readTree(dir) {
@@ -66,12 +179,8 @@ export function planNextAdr({ title, root, trackerFolder, trackerDir, hosted, cr
   if (refSha) notes.push(`numbered with ${ref} as last fetched (${refSha}), so it may be behind the remote`)
   else notes.push(`${ref} does not exist here, so only the working tree was read and an ADR merged on ${defaultBranch} may be missed`)
 
-  // Outside the repository the path is relative to the tracker folder, never an absolute path of this machine.
   const trackerLabel = trackerDir ? (trackerFolder ?? 'docs/adr') : null
-  const repoDir = path.join(root, 'docs', 'adr')
-  const folders = [{ place: 'repo', label: 'docs/adr', shown: 'docs/adr', dir: repoDir, repoFolder: 'docs/adr' }]
-  // tracker.path: . puts the tracker folder on the repo folder, which is then read once.
-  if (trackerDir && path.resolve(trackerDir) !== path.resolve(repoDir)) folders.push({ place: 'tracker', label: trackerLabel, shown: trackerFolder ?? 'docs/adr in the tracker', dir: trackerDir, repoFolder: trackerFolder })
+  const folders = adrFolders({ root, trackerDir, trackerFolder })
   if (trackerDir && !trackerFolder) notes.push(`the tracker folder is outside the repository, so ${ref} was not read for it and its paths are relative to the tracker folder`)
 
   const sources = []

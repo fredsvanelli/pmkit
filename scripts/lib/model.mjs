@@ -36,6 +36,7 @@ export const STATUS_MAPPING_KEYS = [...CATEGORIES, 'blocked']
  * @property {string} [release]
  * @property {string} [due] YYYY-MM-DD
  * @property {string} [branch]
+ * @property {string[]} [docs] the documents and ADRs the issue links to, by path; only when not empty, Local only (PMK-228)
  * @property {string} description
  * @property {Criterion[]} acceptanceCriteria
  * @property {string} created ISO 8601 UTC

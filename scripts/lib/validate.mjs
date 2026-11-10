@@ -6,6 +6,7 @@ import { ADAPTERS } from './adapters.mjs'
 import { goalPrefixOf, loadConfig, pmkitConfigMessages, resolveDefaultBranch, validateLocalConfig } from './config.mjs'
 import { isId, normalizeId } from './ids.mjs'
 import { parseYaml, splitFrontmatter } from './yaml.mjs'
+import { adrFiles, adrFolders, adrLocation, duplicateAdrs } from './adr.mjs'
 import { parseEpicFile, walkParents } from './local/epics.mjs'
 import { driftEvents, readEvents } from './local/events.mjs'
 import { formatError } from './local/migrations.mjs'
@@ -143,8 +144,8 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
       return { checked: noneChecked(), problems: [...pmkit, broken].sort(byPathThenCode) }
     }
   }
-  // A hosted tracker has no tracker files here, and validate stays offline: .pmkit/config.yaml is all it checks.
-  if (config.hosted) return { checked: noneChecked(), problems: pmkit }
+  // A hosted tracker has no tracker files here, and validate stays offline: .pmkit/config.yaml and the repository's ADRs are all it checks.
+  if (config.hosted) return { checked: noneChecked(), problems: [...pmkit, ...adrProblems(root, null)].sort(byPathThenCode) }
   const { local, issuesDir } = config
   // An older format is one problem: the other checks assume the current shape.
   if (config.format && config.format.state !== 'current') {
@@ -444,6 +445,13 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
   const graph = new Map([...issues].map(([id, issue]) => [id, issue.blockedBy]))
   for (const cycle of blockedByCycles(graph)) report('blocked_by', cycle)
 
+  problems.push(...adrProblems(root, issuesDir))
   problems.sort(byPathThenCode)
   return { checked, problems }
+}
+
+/** One problem per ADR file whose number another ADR file uses, in docs/adr and the Local tracker's docs/adr (PMK-228). Working tree only. */
+function adrProblems(root, issuesDir) {
+  const folders = adrFolders({ root, ...adrLocation({ root, issuesDir, hosted: issuesDir === null }) })
+  return duplicateAdrs(adrFiles(folders)).map(({ path: file, number, others }) => ({ path: file, code: 'adr', message: `ADR number ${number} is also used by ${others.join(', ')}` }))
 }

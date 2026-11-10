@@ -1140,6 +1140,7 @@ test('the project operations are implemented and the milestone and document writ
   assert.equal((await linear.listDeliverables())[0].id, 'P-ACM-1')
   await assert.rejects(linear.createMilestone({ id: 'm' }, 'user-1'), { code: 'NOT_SUPPORTED', nextStep: 'Create the milestone in Linear' })
   await assert.rejects(linear.createDocument('a.md', 'x', 'user-1'), { code: 'NOT_SUPPORTED', nextStep: 'Create the document in Linear' })
+  await assert.rejects(linear.updateDocument('a.md', 'x', 'user-1'), { code: 'NOT_SUPPORTED', nextStep: 'Edit the document in Linear' })
 })
 
 test('a broken mapping stops each project operation through guarded', async () => {

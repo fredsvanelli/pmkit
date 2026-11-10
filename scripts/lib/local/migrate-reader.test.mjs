@@ -115,3 +115,13 @@ test('outOfScope counts the customer and request files', () => {
   const { customers, requests } = read().outOfScope
   assert.deepEqual({ customers, requests }, { customers: 1, requests: 2 })
 })
+
+test('an issue carries its docs into the snapshot, and an issue without them an empty list (PMK-228)', async () => {
+  const { root, read } = fixture()
+  const { createLocalTracker } = await import('./tracker.mjs')
+  const [first, second] = read().issues.map((issue) => issue.id)
+  createLocalTracker(root).updateIssue(first, { docs: ['docs/adr/0001-a.md'] }, 'fred')
+  const issues = read().issues
+  assert.deepEqual(issues.find((issue) => issue.id === first).docs, ['docs/adr/0001-a.md'])
+  assert.deepEqual(issues.find((issue) => issue.id === second).docs, [])
+})
