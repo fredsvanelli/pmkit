@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-71]
 branch: pmk-220-improve-team-load
 created: 2026-11-08T20:37:24.175Z
-updated: 2026-11-10T06:54:38Z
+updated: 2026-11-10T07:22:39Z
 ---
 
 ## Description
@@ -31,7 +31,7 @@ Improvements suggested by the implementer and reviewers of PMK-71 (team load) du
 
 ## Acceptance criteria
 
-- [ ] A config key for the 1.5 overload threshold
-- [ ] A column with the issues each person delivered in the sprint
-- [ ] Count blocked issues when the command proposes moves
-- [ ] Read capacity, days off and the flow history once
+- [x] A config key for the 1.5 overload threshold
+- [x] A column with the issues each person delivered in the sprint
+- [x] Count blocked issues when the command proposes moves
+- [x] Read capacity, days off and the flow history once
