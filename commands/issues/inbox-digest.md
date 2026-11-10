@@ -17,7 +17,7 @@ Arguments: `$ARGUMENTS`
 
 Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 
-1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`. Read `user_inbox`. When it is `absent` (Linear), skip step 2 and do step 3. Otherwise skip step 3.
+1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" capabilities --json`. Read `user_inbox`. When it is `absent`, skip step 2 and do step 3. Otherwise skip step 3.
 2. Mentions and new assignments (when `user_inbox` is not `absent`). Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" inbox list [--since <timestamp>] --json`.
    1. Show the `items` with `kind` `assignment` as "new assignments" and the ones with `kind` `mention` as "mentions", each with its issue ID, title, `at`, `by` (unknown when null; always null for `description` and `acceptance_criteria` items, so never name an author for them), `in` and, for a mention, the `excerpt`. Keep each `key` so the user can pass it to `inbox mark-read --key`. Say `counts`.
    2. When `hidden` is above 0, say how many older unseen items the cut left out (the number is `hidden`) and that `pmkit inbox list --all` lists them. They are unseen, so they count as something waiting for the user, even when `items` is empty.
@@ -50,7 +50,7 @@ The counts line, the new assignments, the mentions (with `key`, `excerpt`), the 
 
 ## If something is missing
 
-- Linear or another tracker with `user_inbox` `absent`: step 3, derived list (cut by `since` when given), mentions not verified.
+- A tracker with `user_inbox` `absent`: step 3, derived list (cut by `since` when given), mentions not verified.
 - The git host is `none`, or `gh` is missing or not logged in: skip the rest of step 5 after the first failure (a `RATE_LIMITED` read too), say reviews are not verified and why, and show the rest. The digest is incomplete: end with the line that says what was not read.
 - A broken file in the user store (`The inbox file ...`): mentions and assignments are not verified; offer to delete it or fix it by hand.
 - Nothing found, everything read and `hidden` 0: say there is nothing that needs the user's attention.
