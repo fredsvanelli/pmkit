@@ -152,8 +152,8 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
   const STUB_CAPABILITY = {
     logTime: 'time_tracking', listTimeEntries: 'time_tracking', createRelease: 'releases', markReleased: 'releases',
     ...Object.fromEntries(['listGoals', 'getGoal', 'createGoal', 'goalProgress', 'setEpicGoal', 'updateGoal', 'deleteGoal'].map((operation) => [operation, 'strategic_goals'])),
-    ...Object.fromEntries(['listCustomers', 'getCustomer', 'createCustomer', 'updateCustomer', 'listDemandSignals'].map((operation) => [operation, 'demand_signals'])),
-    ...Object.fromEntries(['listRequests', 'getRequest', 'createRequest', 'updateRequest', 'acceptRequest', 'declineRequest'].map((operation) => [operation, 'request_queue'])),
+    ...Object.fromEntries(['listCustomers', 'getCustomer', 'createCustomer', 'updateCustomer', 'createRequest', 'listDemandSignals'].map((operation) => [operation, 'demand_signals'])),
+    ...Object.fromEntries(['listRequests', 'getRequest', 'updateRequest', 'acceptRequest', 'declineRequest'].map((operation) => [operation, 'request_queue'])),
   }
   const stub = (operation) =>
     guarded(async () => {
@@ -241,9 +241,18 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     listNotifications: notifications.listNotifications,
     markRead: notifications.markRead,
   }
-  const implemented = { discover, capabilities, ...releaseReads, ...goalReads, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
   // Linear-only features sit beside the contract operations. contractView ignores them.
   const triage = createTriage({ client, discovery, config })
   const customers = createCustomers({ client, discovery, config })
+  // The generic customer operations run on Linear customers (PMK-221) when the manifest says customers are on; otherwise the stub refuses with its hint.
+  const customerOp = (operation) => {
+    const refuse = stub(operation)
+    return guarded(async (...args) => {
+      const entry = (await capabilities()).capabilities.find((c) => c.id === 'demand_signals')
+      return entry?.path === 'absent' ? refuse(...args) : customers.contract[operation](...args)
+    })
+  }
+  const customerOps = Object.fromEntries(Object.keys(customers.contract).map((operation) => [operation, customerOp(operation)]))
+  const implemented = { discover, capabilities, ...releaseReads, ...goalReads, ...customerOps, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
   return { ...Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)])), triage, customers, migration: { client, discovery } }
 }

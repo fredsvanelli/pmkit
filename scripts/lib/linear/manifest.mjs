@@ -67,19 +67,15 @@ function workspaceAnswers(raw) {
     releases: releasesEnabled
       ? { path: 'native' }
       : { path: 'absent', enableHint: 'Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings' },
-    // Linear has customer requests when customers are on, but the generic commands do not read them yet (PMK-46); linear customers does.
+    // Linear has customer requests when customers are on, and the generic commands read them through linear customers (PMK-221).
     demand_signals: customersEnabled
-      ? {
-        path: 'absent',
-        detail: { workspace: 'native', unsupported: ['listCustomers', 'getCustomer', 'createCustomer', 'updateCustomer', 'createRequest', 'listDemandSignals'] },
-        enableHint: 'The Linear adapter serves customer requests through linear customers only; Linear offers them on this workspace',
-      }
+      ? { path: 'native', detail: { workspace: 'native' } }
       : { path: 'absent', enableHint: 'Linear customer requests need the Business or Enterprise plan and customers turned on in the workspace settings' },
     // Linear Asks come in through the Slack integration on these plans, and the adapter does not read them yet (PMK-46).
     request_queue: business
       ? {
         path: 'absent',
-        detail: { workspace: 'conditional', unsupported: ['listRequests', 'getRequest', 'createRequest', 'updateRequest', 'acceptRequest', 'declineRequest'] },
+        detail: { workspace: 'conditional', unsupported: ['listRequests', 'getRequest', 'updateRequest', 'acceptRequest', 'declineRequest'] },
         enableHint: 'The Linear adapter does not serve Asks yet; Linear offers them on this workspace',
       }
       : { path: 'absent', enableHint: 'Linear Asks need the Business or Enterprise plan' },

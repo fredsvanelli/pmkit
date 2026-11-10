@@ -1104,7 +1104,8 @@ export function fakeCustomers({ customers = [], statuses = CUSTOMER_STATUSES, ti
       const found = customerOf(body.variables?.id)
       if (!found) return graphqlError('Entity not found: Customer', 'INPUT_ERROR')
       const mine = needs.filter((need) => need.customerId === found.id).sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))
-      return json({ customer: { ...found, needs: page(mine.map(needNode)) } })
+      // The query asks for needs(first: 50), so a customer with more has a next page, as on Linear.
+      return json({ customer: { ...found, needs: page(mine.slice(0, 50).map(needNode), { hasNextPage: mine.length > 50, endCursor: mine.length > 50 ? '50' : null }) } })
     },
     PmkitCustomerStatuses: json({ customerStatuses: page(statuses) }),
     PmkitCustomerTiers: json({ customerTiers: page(tiers) }),
@@ -1124,6 +1125,21 @@ export function fakeCustomers({ customers = [], statuses = CUSTOMER_STATUSES, ti
       const changes = Object.entries(input).reduce((all, [key, value]) => ({ ...all, ...(FIELD_OF_INPUT[key]?.(value) ?? {}) }), {})
       return { success: true, customer: { ...found, ...changes } }
     }),
+    // PMK-221: the generic commands create customers and read every request of the workspace.
+    PmkitCustomerCreate: mutation('customerCreate', ({ input = {} }) => {
+      const { name, ...rest } = input
+      const changes = Object.entries(rest).reduce((all, [key, value]) => ({ ...all, ...(FIELD_OF_INPUT[key]?.(value) ?? {}) }), {})
+      return { success: true, customer: { id: 'cust-new', name, status: ref(statuses, 'st-1'), tier: null, revenue: null, size: null, owner: null, approximateNeedCount: 0, url: null, ...changes } }
+    }),
+    PmkitCustomerNeeds: (body) => {
+      if (disabledError) return disabled()
+      const { first = 50, after = null } = body.variables ?? {}
+      const start = Number(after ?? 0)
+      const end = start + first
+      const hasNextPage = end < needs.length
+      const nodes = needs.slice(start, end).map((need) => ({ ...needNode(need), customer: customerOf(need.customerId) ?? { id: need.customerId } }))
+      return json({ customerNeeds: page(nodes, { hasNextPage, endCursor: hasNextPage ? String(end) : null }) })
+    },
     PmkitCustomerNeedCreate: mutation('customerNeedCreate', ({ input = {} }) => {
       if (!customerOf(input.customerId)) throw new FakeInputError('Entity not found: Customer')
       const need = { id: 'need-new', body: input.body ?? '', priority: input.priority ?? 0, createdAt: '2026-10-28T12:00:00.000Z', customerId: input.customerId, issueId: input.issueId, projectId: input.projectId }

@@ -1219,7 +1219,7 @@ test('a Local epic prints no health, progress, milestones or documents line', ()
 })
 
 // Customers (PMK-42). The workspace with customers off is the proof for the absent capability; the workspaces with customers on use the fake.
-const CUSTOMER_OPERATIONS = ['PmkitCustomersList', 'PmkitCustomerShow', 'PmkitCustomerStatuses', 'PmkitCustomerTiers', 'PmkitCustomerIssue', 'PmkitCustomerProjects', 'PmkitCustomerUpdate', 'PmkitCustomerNeedCreate', 'PmkitCustomerNeedUpdate']
+const CUSTOMER_OPERATIONS = ['PmkitCustomersList', 'PmkitCustomerShow', 'PmkitCustomerStatuses', 'PmkitCustomerTiers', 'PmkitCustomerIssue', 'PmkitCustomerProjects', 'PmkitCustomerUpdate', 'PmkitCustomerNeedCreate', 'PmkitCustomerNeedUpdate', 'PmkitCustomerCreate', 'PmkitCustomerNeeds']
 const customerCalls = (fetch) => fetch.calls.filter((call) => CUSTOMER_OPERATIONS.includes(operationName(call.body.query)))
 const customersFetch = ({ workspace = {}, customers = {} } = {}) => fakeLinearFetch({ ...fakeWorkspace(workspace), ...fakeCustomers(customers) })
 const CUSTOMERS_PLAN = { type: 'Business' }
@@ -1884,4 +1884,149 @@ test('issues bulk estimate --view on Linear refuses before any request', async (
   assert.equal(errorOf(result).code, 'INVALID_INPUT')
   assert.match(errorOf(result).message, /Linear view Mine/)
   assert.equal(fetch.calls.length, 0)
+})
+
+// PMK-221: the generic customer commands on Linear, on top of linear customers, with the Local record keys.
+const LOCAL_CUSTOMER_KEYS = ['id', 'name', 'status', 'tier', 'revenue', 'size', 'owner', 'requests', 'url', 'notes']
+const LOCAL_REQUEST_KEYS = ['id', 'title', 'body', 'priority', 'important', 'customer', 'from', 'state', 'target', 'created', 'triaged', 'reason']
+const generic = async (args, fetch) => {
+  const result = await cli(setup({ edit: withTeam }), [...args, '--json'], fetch)
+  return { ...result, data: JSON.parse(result.stdout) }
+}
+
+test('customers list and customers show on Linear return the Local keys, and both spellings of show agree', async () => {
+  const list = await generic(['customers', 'list'], withNeeds())
+  assert.equal(list.code, 0, list.stdout + list.stderr)
+  assert.deepEqual(Object.keys(list.data), ['available', 'customers', 'hasMore', 'problems'])
+  assert.deepEqual(list.data.customers.map((item) => item.name), ['ACME Corp', 'Initech', 'Globex'])
+  assert.deepEqual(Object.keys(list.data.customers[0]), LOCAL_CUSTOMER_KEYS)
+  assert.equal(list.data.customers[0].notes, null)
+  const showFetch = withNeeds()
+  const shown = await generic(['customers', 'show', 'acme corp'], showFetch)
+  assert.equal(shown.code, 0, shown.stderr)
+  assert.deepEqual(Object.keys(shown.data), ['available', 'customer', 'requests', 'problems'])
+  assert.deepEqual(shown.data.requests.map((request) => request.id), ['need-2', 'need-3', 'need-1', 'need-4'])
+  assert.deepEqual(Object.keys(shown.data.requests[0]), LOCAL_REQUEST_KEYS)
+  assert.deepEqual(shown.data.requests.map((request) => request.state), ['accepted', 'open', 'accepted', 'accepted'])
+  assert.deepEqual(shown.data.requests[2].customer, { id: 'cust-2', name: 'ACME Corp' })
+  assert.deepEqual((await generic(['customers', 'show', '--customer', 'cust-2'], withNeeds())).data, shown.data)
+  assert.equal(mutationCalls(showFetch).length, 0)
+})
+
+test('customers show on Linear reports a cut request read as INCOMPLETE, and a name past a cut list as an incomplete lookup', async () => {
+  const many = Array.from({ length: 51 }, (_, index) => ({ id: `n-${index}`, customerId: 'cust-2', body: `Ask ${index}`, priority: 0, createdAt: `2026-10-01T00:00:${String(index).padStart(2, '0')}Z` }))
+  const fetch = onFetch({ needs: many })
+  const shown = await generic(['customers', 'show', 'cust-2'], fetch)
+  assert.equal(shown.code, 0, shown.stderr)
+  assert.deepEqual(shown.data.problems.map((problem) => [problem.id, problem.code]), [['cust-2', 'INCOMPLETE']])
+  assert.match(shown.stderr, /warning: cust-2: INCOMPLETE .*50/)
+  assert.doesNotMatch(shown.stderr, /run pmkit validate/)
+  const crowd = Array.from({ length: 251 }, (_, index) => customerNode(`c-${index}`, `Customer ${index}`))
+  const missing = await generic(['customers', 'show', 'Nobody'], onFetch({ customers: crowd }))
+  assert.equal(missing.code, 2)
+  assert.equal(missing.data.error.code, 'NOT_FOUND')
+  assert.match(missing.data.error.message, /incomplete/)
+  const listed = await generic(['customers', 'list'], onFetch({ customers: crowd }))
+  assert.equal(listed.data.hasMore, true)
+  assert.equal(listed.data.problems[0].code, 'INCOMPLETE')
+})
+
+test('customers create on Linear sends customerCreate with the ids of the names; --dry-run sends no mutation', async () => {
+  const dryFetch = onFetch()
+  const dry = await generic(['customers', 'create', '--name', 'Hooli', '--status', 'prospect', '--tier', 'silver', '--revenue', '900', '--owner', 'user-2', '--dry-run'], dryFetch)
+  assert.equal(dry.code, 0, dry.stderr)
+  assert.deepEqual(dry.data.after, {
+    id: null, name: 'Hooli', status: { id: 'st-2', name: 'Prospect' }, tier: { id: 'tier-2', name: 'Silver' }, revenue: 900, size: null,
+    owner: { id: 'user-2', name: 'Ada Lovelace' }, requests: 0, url: null, notes: null,
+  })
+  assert.equal(mutationCalls(dryFetch).length, 0)
+  const fetch = onFetch()
+  const made = await generic(['customers', 'create', '--name', 'Hooli', '--tier', 'Gold'], fetch)
+  assert.equal(made.code, 0, made.stderr)
+  assert.deepEqual(mutationCalls(fetch).map((call) => call.body.variables.input), [{ name: 'Hooli', tierId: 'tier-1' }])
+  assert.equal(made.data.after.name, 'Hooli')
+  for (const args of [['--name', 'X', '--tier', 'Platinum'], ['--name', 'X', '--owner', 'nobody'], ['--name', 'X', '--revenue', 'lots']]) {
+    const refused = await generic(['customers', 'create', ...args], onFetch())
+    assert.equal(refused.data.error.code, 'INVALID_INPUT', args.join(' '))
+  }
+})
+
+test('customers update on Linear sends customerUpdate, refuses --status none and previews with --dry-run', async () => {
+  const fetch = onFetch()
+  const updated = await generic(['customers', 'update', 'Initech', '--tier', 'gold', '--revenue', '7000'], fetch)
+  assert.equal(updated.code, 0, updated.stderr)
+  assert.deepEqual(mutationCalls(fetch).map((call) => call.body.variables), [{ id: 'cust-3', input: { tierId: 'tier-1', revenue: 7000 } }])
+  assert.deepEqual([updated.data.before.revenue, updated.data.after.revenue, updated.data.after.notes], [5000, 7000, null])
+  const dryFetch = onFetch()
+  const dry = await generic(['customers', 'update', 'Initech', '--owner', 'none', '--dry-run'], dryFetch)
+  assert.equal(dry.data.after.owner, null)
+  assert.equal(mutationCalls(dryFetch).length, 0)
+  assert.equal((await generic(['customers', 'update', 'Initech', '--status', 'none'], onFetch())).data.error.code, 'INVALID_INPUT')
+})
+
+test('requests create on Linear writes the title as the first body line on an issue, and needs a customer and an issue', async () => {
+  const fetch = withNeeds({ issues: [{ id: 'iss-7', identifier: 'ACME-7', title: 'CSV export', archivedAt: null, trashed: false }] })
+  const body = path.join(tempDir('pmkit-req-'), 'body.md')
+  fs.writeFileSync(body, 'Columns out of order.\n')
+  const made = await generic(['requests', 'create', '--title', 'CSV order', '--customer', 'Initech', '--issue', 'ACME-7', '--important', '--body-file', body], fetch)
+  assert.equal(made.code, 0, made.stderr)
+  assert.deepEqual(mutationCalls(fetch).map((call) => call.body.variables.input), [{ customerId: 'cust-3', issueId: 'iss-7', priority: 1, body: 'CSV order\n\nColumns out of order.' }])
+  assert.deepEqual([made.data.after.title, made.data.after.body, made.data.after.state, made.data.after.target.id], ['CSV order', 'Columns out of order.', 'accepted', 'ACME-7'])
+  for (const args of [['--title', 'T', '--issue', 'ACME-7'], ['--title', 'T', '--customer', 'Initech'], ['--title', 'T', '--customer', 'Initech', '--issue', 'ACME-7', '--from', 'support']]) {
+    const refusedFetch = withNeeds()
+    const refused = await generic(['requests', 'create', ...args], refusedFetch)
+    assert.equal(refused.data.error.code, 'INVALID_INPUT', args.join(' '))
+    assert.equal(mutationCalls(refusedFetch).length, 0)
+  }
+  const twin = await generic(['requests', 'create', '--title', 'Again', '--customer', 'cust-2', '--issue', 'ACME-12'], withNeeds({ issues: [{ id: 'iss-12', identifier: 'ACME-12', title: 'SSO login', archivedAt: null, trashed: false }] }))
+  assert.equal(twin.data.error.code, 'CONFLICT')
+})
+
+test('demand list on Linear groups the customer requests on issues, skips the others, and maps the status and the priority', async () => {
+  const state = { id: 'state-x', name: 'In Progress', type: 'started' }
+  const issue = (identifier, priority) => ({ id: `id-${identifier}`, identifier, title: `Title ${identifier}`, priority, archivedAt: null, state, team: { id: 'team-1' } })
+  const needs = [
+    { id: 'n-1', customerId: 'cust-2', body: 'a', priority: 1, createdAt: '2026-10-01T00:00:00Z', issue: issue('ACME-12', 2) },
+    { id: 'n-2', customerId: 'cust-3', body: 'b', priority: 0, createdAt: '2026-10-02T00:00:00Z', issue: issue('ACME-12', 2) },
+    { id: 'n-3', customerId: 'cust-3', body: 'c', priority: 0, createdAt: '2026-10-03T00:00:00Z', issue: issue('ACME-4', 0) },
+    { id: 'n-4', customerId: 'cust-2', body: 'd', priority: 0, createdAt: '2026-10-04T00:00:00Z', project: { id: 'proj-1', name: 'Mobile' } },
+    { id: 'n-5', customerId: 'cust-1', body: 'e', priority: 0, createdAt: '2026-10-05T00:00:00Z' },
+  ]
+  const fetch = onFetch({ needs })
+  const demand = await generic(['demand', 'list'], fetch)
+  assert.equal(demand.code, 0, demand.stderr)
+  assert.deepEqual(demand.data.problems, [])
+  assert.deepEqual(demand.data.signals.map((signal) => [signal.issue.id, signal.count, signal.important, signal.requests]), [['ACME-12', 2, 1, ['n-1', 'n-2']], ['ACME-4', 1, 0, ['n-3']]])
+  assert.deepEqual(demand.data.signals[0].issue, { id: 'ACME-12', title: 'Title ACME-12', status: { name: 'In Progress', category: 'in_progress' }, priority: 'high' })
+  assert.equal(demand.data.signals[1].issue.priority, null)
+  assert.deepEqual(demand.data.signals[0].customers, [
+    { id: 'cust-2', name: 'ACME Corp', tier: { id: 'tier-1', name: 'Gold' }, revenue: 120000, size: 450 },
+    { id: 'cust-3', name: 'Initech', tier: { id: 'tier-2', name: 'Silver' }, revenue: 5000, size: 10 },
+  ])
+  assert.deepEqual(demand.data.signals[0].from, [])
+  assert.equal(mutationCalls(fetch).length, 0)
+})
+
+test('demand list on Linear past the read cap says the requests are incomplete, about request', async () => {
+  const needs = Array.from({ length: 1001 }, (_, index) => ({ id: `n-${index}`, customerId: 'cust-2', body: 'x', priority: 0, createdAt: '2026-10-01T00:00:00Z', issue: { id: 'i-1', identifier: 'ACME-1', title: 'T', priority: 0, archivedAt: null, state: { id: 's', name: 'Todo', type: 'unstarted' }, team: { id: 'team-1' } } }))
+  const demand = await generic(['demand', 'list'], onFetch({ needs }))
+  assert.equal(demand.code, 0, demand.stderr)
+  assert.deepEqual(demand.data.problems.map((problem) => [problem.id, problem.about, problem.code]), [[null, 'request', 'INCOMPLETE']])
+  assert.equal(demand.data.signals[0].count, 1000)
+})
+
+test('the generic customer commands with customers off refuse with the hint and send no customer query; the request queue stays unsupported', async () => {
+  for (const args of [['customers', 'list'], ['customers', 'show', 'acme'], ['customers', 'update', 'acme', '--tier', 'Gold'], ['demand', 'list']]) {
+    const fetch = customersFetch({ workspace: { subscription: CUSTOMERS_PLAN } })
+    const refused = await generic(args, fetch)
+    assert.equal(refused.data.error.code, 'NOT_SUPPORTED', args.join(' '))
+    assert.match(refused.data.error.message, /customer requests/i, args.join(' '))
+    assert.equal(customerCalls(fetch).length, 0, args.join(' '))
+  }
+  for (const args of [['requests', 'list'], ['requests', 'get', 'need-1'], ['requests', 'accept', 'need-1', '--create'], ['requests', 'update', 'need-1', '--title', 'T']]) {
+    const fetch = withNeeds()
+    const refused = await generic(args, fetch)
+    assert.equal(refused.data.error.code, 'NOT_SUPPORTED', args.join(' '))
+    assert.equal(mutationCalls(fetch).length, 0, args.join(' '))
+  }
 })

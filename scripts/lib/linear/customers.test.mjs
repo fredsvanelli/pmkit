@@ -212,3 +212,18 @@ test('planLink rejects bad combinations with INVALID_INPUT', () => {
   ]
   for (const [flags, target] of cases) assert.equal(code(() => link(flags, target)).code, 'INVALID_INPUT', JSON.stringify(flags))
 })
+
+// PMK-221: the request view the generic commands return on Linear.
+import { genericRequestView } from './customers.mjs'
+
+test('genericRequestView splits the title from the body and derives the state from the target', () => {
+  const issue = { id: 'i-1', identifier: 'ACME-1', title: 'SSO', archivedAt: null }
+  const view = genericRequestView({ id: 'need-1', body: 'Export\r\n\r\nPlease add CSV.\nThanks', priority: 1, createdAt: '2026-10-01T00:00:00Z', issue }, { id: 'c-1', name: 'Acme' })
+  assert.deepEqual(view, {
+    id: 'need-1', title: 'Export', body: 'Please add CSV.\nThanks', priority: 1, important: true, customer: { id: 'c-1', name: 'Acme' }, from: null,
+    state: 'accepted', target: { type: 'issue', id: 'ACME-1', title: 'SSO' }, created: '2026-10-01T00:00:00Z', triaged: null, reason: null,
+  })
+  const open = genericRequestView({ id: 'need-2', body: '', priority: 0 }, null)
+  assert.deepEqual([open.title, open.body, open.state, open.target, open.created, open.customer], [null, '', 'open', null, null, null])
+  assert.equal(genericRequestView({ id: 'need-3', body: 'x', project: { id: 'p-1', name: 'Mobile' } }, null).state, 'accepted')
+})
