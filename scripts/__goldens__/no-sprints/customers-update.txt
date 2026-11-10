@@ -2,7 +2,7 @@ $ pmkit customers update CUS-3T7W --tier platinum --revenue 9000
 exit 0
 --- stdout
 CUS-3T7W
-tier: {"id":"enterprise","name":"enterprise"} → {"id":"platinum","name":"platinum"}
+tier: enterprise → platinum
 revenue: 120000 → 9000
 --- stderr
 (empty)
@@ -61,7 +61,7 @@ $ pmkit customers update CUS-3T7W --tier platinum --revenue 9000 --dry-run
 exit 0
 --- stdout
 CUS-3T7W
-tier: {"id":"enterprise","name":"enterprise"} → {"id":"platinum","name":"platinum"}
+tier: enterprise → platinum
 revenue: 120000 → 9000
 dry run: nothing was written
 --- stderr
@@ -121,7 +121,7 @@ $ pmkit customers update 'Acme Corp' --owner none
 exit 0
 --- stdout
 CUS-3T7W
-owner: {"id":"ana","name":"Ana Souza"} → (none)
+owner: Ana Souza → (none)
 --- stderr
 (empty)
 
@@ -176,7 +176,7 @@ $ pmkit customers update 'Acme Corp' --owner none --dry-run
 exit 0
 --- stdout
 CUS-3T7W
-owner: {"id":"ana","name":"Ana Souza"} → (none)
+owner: Ana Souza → (none)
 dry run: nothing was written
 --- stderr
 (empty)
