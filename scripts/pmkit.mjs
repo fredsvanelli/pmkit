@@ -2132,6 +2132,9 @@ async function runReleaseReadiness(ctx) {
       deploys = { error: errorOf(error) }
       hostWarnings.push(`deploys not checked: ${error.message}`)
     }
+    if (Array.isArray(deploys) && deploys.some((d) => d.state === null)) {
+      hostWarnings.push(`the state of ${deploys.filter((d) => d.state === null).length} deployment(s) is unknown: ${deploys.find((d) => d.state === null).statusError}`)
+    }
     warnings.push(...hostWarnings)
   } catch (error) {
     if (isPmkitError(error) && error.code === 'NOT_SUPPORTED') warnings.push(`no git host is configured, ${NO_HOST_READ}`)

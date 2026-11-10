@@ -18,7 +18,7 @@ const git = (cwd, ...args) => spawnSync('git', args, { cwd, encoding: 'utf8', en
 
 const PR_LIST = 'pr list --state open --limit 200 --json number,url,title,headRefName,isDraft,updatedAt,author,statusCheckRollup'
 const DEPLOYMENTS = 'api repos/{owner}/{repo}/deployments?per_page=20'
-const STATUS_OF = (id, state = 'SUCCESS') => [`api graphql -f query=query($ids: [ID!]!) { nodes(ids: $ids) { ... on Deployment { latestStatus { state logUrl environmentUrl } } } } ids[]=N${id}`, { stdout: JSON.stringify({ data: { nodes: [{ latestStatus: { state } }] } }) }]
+const STATUS_OF = (id, state = 'SUCCESS') => [`api graphql -f query=query($ids: [ID!]!) { nodes(ids: $ids) { ... on Deployment { latestStatus { state logUrl environmentUrl } } } } -f ids[]=N${id}`, { stdout: JSON.stringify({ data: { nodes: [{ latestStatus: { state } }] } }) }]
 const prs = [
   { number: 9, url: 'https://github.com/o/r/pull/9', title: 'DLQ', headRefName: 'feat-dlq', isDraft: false, updatedAt: '2026-10-20T10:00:00Z', author: { login: 'ana' }, statusCheckRollup: [] },
   { number: 11, url: 'https://github.com/o/r/pull/11', title: 'Other', headRefName: 'unrelated', isDraft: true, updatedAt: '2026-10-20T10:00:00Z', author: { login: 'ana' }, statusCheckRollup: [] },
@@ -336,6 +336,20 @@ test('a release with no issue is not ready: ready is null and empty is true', as
   const { json } = await readiness(root, env, ['--release', '2.0'], undefined)
   assert.deepEqual([json.issues.counts.total, json.empty, json.ready], [0, true, null])
   assert.match((await ok(root, env, ['release-readiness', '--release', '2.0'])).stdout, /unknown: the release has no issue that is not canceled/)
+})
+
+test('release-readiness shows a deploy whose status could not be read as unknown, and warns', async () => {
+  const root = repo()
+  const [key] = STATUS_OF(5)
+  const gh = fakeGh(cannedGh({ [key]: { status: 1, stderr: 'HTTP 502: Bad Gateway' } }))
+  const env = envWith(gh)
+  await withRelease(root, env)
+  const json = await ok(root, env, ['release-readiness', '--json'])
+  const data = JSON.parse(json.stdout)
+  assert.deepEqual(data.deploys.map((d) => [d.state, d.matchesRelease]), [[null, true]])
+  const text = await ok(root, env, ['release-readiness'])
+  assert.match(text.stdout, /production\s+\|?\s*unknown/)
+  assert.match(text.stderr, /state of 1 deployment\(s\) is unknown: .*502/)
 })
 
 test('the deploy of the release tag is found when it is older than the 20 newest, and through a refs/tags/ ref', async () => {

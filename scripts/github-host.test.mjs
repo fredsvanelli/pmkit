@@ -222,8 +222,10 @@ test('listDeploys reads the deployments, then every latest status in one graphql
   const result = host(exec).listDeploys({})
   assert.equal(calls.length, 2)
   assert.deepEqual(calls[0].args, ['api', 'repos/{owner}/{repo}/deployments?per_page=20'])
+  // The real gh refuses a field with no -f or -F before it ("accepts 1 arg(s), received 3").
+  assert.deepEqual(calls[1].args.filter((a) => a.startsWith('query=')).length, 1)
   assert.deepEqual(calls[1].args.slice(0, 3), ['api', 'graphql', '-f'])
-  assert.ok(calls[1].args.includes('ids[]=N5') && calls[1].args.includes('ids[]=N4'))
+  assert.deepEqual(calls[1].args.slice(4), ['-f', 'ids[]=N5', '-f', 'ids[]=N4'])
   assert.deepEqual(result, [
     row(depList[0], { state: 'success', url: 'https://l/5' }),
     row(depList[1], { state: 'pending', url: null }),
@@ -246,9 +248,23 @@ test('listDeploys keeps the list with an unknown state when the status read fail
 test('listDeploys marks only the deployment whose node graphql did not return as unknown', () => {
   const { exec } = fakeExec({ stdout: JSON.stringify(depList) }, statusReply({ latestStatus: { state: 'FAILURE', logUrl: null, environmentUrl: 'https://e/5' } }, null))
   const result = host(exec).listDeploys({})
-  assert.deepEqual([result[0].state, result[0].url, result[0].statusError], ['failure', 'https://e/5', undefined])
+  assert.deepEqual([result[0].state, result[0].url, result[0].statusError], ['failure', null, undefined])
   assert.equal(result[1].state, null)
   assert.match(result[1].statusError, /no status/)
+})
+
+test('listDeploys uses the statuses of a partial graphql reply that gh exits non-zero on', () => {
+  const partial = { data: { nodes: [{ latestStatus: { state: 'SUCCESS', logUrl: 'https://l/5' } }, null] }, errors: [{ type: 'NOT_FOUND', path: ['nodes', 1], message: 'Could not resolve to a node with the global id of N4' }] }
+  const { exec } = fakeExec({ stdout: JSON.stringify(depList) }, { status: 1, stdout: JSON.stringify(partial), stderr: 'gh: Could not resolve to a node' })
+  const result = host(exec).listDeploys({})
+  assert.deepEqual([result[0].state, result[0].url, result[0].statusError], ['success', 'https://l/5', undefined])
+  assert.equal(result[1].state, null)
+  assert.match(result[1].statusError, /Could not resolve to a node with the global id of N4/)
+})
+
+test('listDeploys url is the log url, never the published site (environmentUrl)', () => {
+  const { exec } = fakeExec({ stdout: JSON.stringify(depList) }, statusReply({ latestStatus: { state: 'SUCCESS', logUrl: null, environmentUrl: 'https://app' } }, { latestStatus: { state: 'SUCCESS', logUrl: 'https://log', environmentUrl: 'https://app' } }))
+  assert.deepEqual(host(exec).listDeploys({}).map((d) => d.url), [null, 'https://log'])
 })
 
 test('listDeploys still throws when gh is not logged in or rate limited', () => {
@@ -308,6 +324,18 @@ test('ciLogs names the newer run of the same workflow that did not fail', () => 
   const result = host(exec).ciLogs({ branch: 'main' })
   assert.equal(result.runId, 2)
   assert.deepEqual(result.newerRun, { runId: 3, conclusion: 'success', createdAt: '2026-11-03T10:00:00Z', headSha: 'sha3' })
+})
+
+test('ciLogs does not count a newer cancelled or skipped run as a sign the failure is fixed', () => {
+  const runs = [wf(5, 'cancelled', '2026-11-05T10:00:00Z'), wf(4, 'skipped', '2026-11-04T10:00:00Z'), wf(3, 'action_required', '2026-11-03T10:00:00Z'), wf(2, 'failure', '2026-11-02T10:00:00Z')]
+  const { exec } = fakeExec({ stdout: JSON.stringify(runs) }, { stdout: 'boom\n' })
+  assert.equal(host(exec).ciLogs({ branch: 'main' }).newerRun, null)
+})
+
+test('ciLogs names the newest successful run even when a newer one was cancelled', () => {
+  const runs = [wf(5, 'cancelled', '2026-11-05T10:00:00Z'), wf(4, 'success', '2026-11-04T10:00:00Z'), wf(2, 'failure', '2026-11-02T10:00:00Z')]
+  const { exec } = fakeExec({ stdout: JSON.stringify(runs) }, { stdout: 'boom\n' })
+  assert.equal(host(exec).ciLogs({ branch: 'main' }).newerRun.runId, 4)
 })
 
 test('ciLogs has no newerRun when the newer runs are still going', () => {

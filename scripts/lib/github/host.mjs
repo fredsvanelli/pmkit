@@ -220,13 +220,22 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
       const byRef = ref === undefined ? '' : `&ref=${encodeURIComponent(ref)}`
       const deployments = parse(check('gh', ['api', `repos/{owner}/{repo}/deployments?per_page=${limit}${env}${byRef}`]).stdout, 'the deployments')
       if (deployments.length === 0) return []
-      // One graphql call reads the latest status of every deployment. A failed read keeps the list, with the state unknown (null).
+      // One graphql call reads the latest status of every deployment. A read that fails keeps the list, with the state unknown (null).
+      // gh needs -f before each field, or it refuses the call ("accepts 1 arg(s), received N").
+      const args = ['api', 'graphql', '-f', `query=${STATUS_QUERY}`, ...deployments.flatMap((d) => ['-f', `ids[]=${d.node_id}`])]
       let nodes = null
+      let errors = []
       let statusError = null
-      const args = ['api', 'graphql', '-f', `query=${STATUS_QUERY}`, ...deployments.map((d) => `ids[]=${d.node_id}`)]
       try {
-        nodes = parse(check('gh', args).stdout, 'the deployment statuses')?.data?.nodes
-        if (!Array.isArray(nodes)) throw new PmkitError('UPSTREAM', 'gh api graphql returned no deployment statuses', 'Update the GitHub CLI and retry')
+        const result = run('gh', args)
+        // A node that does not resolve makes gh exit 1 with the other nodes still in the reply: use them.
+        let reply = null
+        try { reply = JSON.parse(result.stdout) } catch {}
+        if (Array.isArray(reply?.data?.nodes)) {
+          nodes = reply.data.nodes
+          errors = Array.isArray(reply.errors) ? reply.errors : []
+        } else if (result.status !== 0) throw failure('gh', args, result)
+        else throw new PmkitError('UPSTREAM', 'gh api graphql returned no deployment statuses', 'Update the GitHub CLI and retry')
       } catch (error) {
         if (!(error instanceof PmkitError) || error.code !== 'UPSTREAM') throw error
         statusError = error.message
@@ -234,9 +243,13 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
       return deployments.map((d, i) => {
         const base = { id: d.id, environment: d.environment, ref: d.ref, sha: d.sha, createdAt: d.created_at }
         const node = nodes?.[i]
-        if (!node) return { ...base, state: null, url: null, statusError: statusError ?? 'GitHub returned no status for this deployment' }
+        if (!node) {
+          const why = errors.find((e) => e.path?.[0] === 'nodes' && e.path?.[1] === i)?.message
+          return { ...base, state: null, url: null, statusError: statusError ?? why ?? 'GitHub returned no status for this deployment' }
+        }
         const status = node.latestStatus
-        return { ...base, state: status ? String(status.state).toLowerCase() : 'pending', url: status?.logUrl ?? status?.environmentUrl ?? null }
+        // The url is the log of the deploy, as target_url was. environmentUrl is the published site, not a log.
+        return { ...base, state: status ? String(status.state).toLowerCase() : 'pending', url: status?.logUrl ?? null }
       })
     },
 
@@ -251,11 +264,11 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
         const runs = listRuns({ branch })
         run = runs.find((r) => FAILED_RUN.has(r.conclusion))
         if (!run) return null
-        // `risks` reads the newest completed run of a workflow, so a newer one that did not fail makes this failure old news.
+        // A newer successful run of the workflow makes this failure old news. A cancelled, skipped or other run says nothing about the code.
         const newest = runs
-          .filter((r) => r.workflowName === run.workflowName && r.status === 'completed' && Date.parse(r.createdAt) > Date.parse(run.createdAt))
+          .filter((r) => r.workflowName === run.workflowName && r.status === 'completed' && r.conclusion === 'success' && Date.parse(r.createdAt) > Date.parse(run.createdAt))
           .reduce((a, r) => (a === null || Date.parse(r.createdAt) > Date.parse(a.createdAt) ? r : a), null)
-        newerRun = newest && !FAILED_RUN.has(newest.conclusion) ? { runId: newest.databaseId, conclusion: newest.conclusion, createdAt: newest.createdAt, headSha: newest.headSha ?? null } : null
+        newerRun = newest ? { runId: newest.databaseId, conclusion: newest.conclusion, createdAt: newest.createdAt, headSha: newest.headSha ?? null } : null
       }
       const conclusion = run.conclusion || null
       // A run that succeeded, is still going or never started a job has no failed-step log: gh would only answer with nothing.

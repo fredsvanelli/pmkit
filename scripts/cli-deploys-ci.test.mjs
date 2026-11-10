@@ -30,7 +30,7 @@ function teamRepo({ github = true } = {}) {
 
 const call = (root, env, args) => run([...args, '--json'], { env, cwd: root })
 const DEPLOYMENTS = 'api repos/{owner}/{repo}/deployments?per_page=20'
-const STATUSES = (...ids) => `api graphql -f query=query($ids: [ID!]!) { nodes(ids: $ids) { ... on Deployment { latestStatus { state logUrl environmentUrl } } } } ${ids.map((id) => `ids[]=${id}`).join(' ')}`
+const STATUSES = (...ids) => `api graphql -f query=query($ids: [ID!]!) { nodes(ids: $ids) { ... on Deployment { latestStatus { state logUrl environmentUrl } } } } ${ids.map((id) => `-f ids[]=${id}`).join(" ")}`
 const META = (id) => `run view ${id} --json workflowName,url,conclusion,status,createdAt,headSha`
 const RUNS = 'run list --branch main --limit 50 --json databaseId,workflowName,status,conclusion,url,createdAt,headSha'
 
