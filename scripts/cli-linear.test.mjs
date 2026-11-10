@@ -1702,3 +1702,24 @@ test('PMK-225: inbox mark-read on Linear writes readAt, and a dry run writes not
   assert.deepEqual(JSON.parse(result.stdout).marked, ['notification:n1'])
   assert.equal(callsOf(fetch, 'PmkitNotificationRead'), 1)
 })
+
+test('PMK-225 review: inbox list --reviews on Linear without --login is not verified, never 0, and calls no gh', async () => {
+  const fetch = fakeLinearFetch(inboxRoutes())
+  const context = setup({ edit: (text) => withTeam(text).replace(/git_host:\n  system: \w+/, 'git_host:\n  system: github\n  repo: acme/repo') })
+  const result = await cli(context, ['inbox', 'list', '--as', 'user-1', '--reviews', '--json'], fetch)
+  assert.equal(result.code, 0, result.stderr + result.stdout)
+  const data = JSON.parse(result.stdout)
+  assert.deepEqual([data.reviews.verified, data.reviews.requested, data.reviews.code, data.counts.reviewRequests], [false, null, 'INVALID_INPUT', null])
+  assert.match(data.reviews.reason, /--login/)
+})
+
+test('PMK-225 review: a cut Linear read is a warning without a null id and without pmkit validate', async () => {
+  const routes = inboxRoutes()
+  let n = 0
+  routes.PmkitNotifications = () => ({ status: 200, headers: {}, json: { data: { notifications: { pageInfo: { hasNextPage: true, endCursor: `c${(n += 1)}` }, nodes: [] } } } })
+  const result = await cli(setup({ edit: withTeam }), ['inbox', 'list', '--as', 'user-1'], fakeLinearFetch(routes))
+  assert.equal(result.code, 0, result.stderr + result.stdout)
+  assert.match(result.stderr, /warning: UPSTREAM only the newest 1000 notifications were read/)
+  assert.doesNotMatch(result.stderr + result.stdout, /null:|pmkit validate/)
+  assert.match(result.stdout, /the inbox is incomplete/)
+})

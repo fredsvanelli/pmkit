@@ -337,7 +337,7 @@ function defaultPrBody(issue) {
   }
   return lines.join('\n')
 }
-const problemLine = (problem) => `${problem.id}: ${problem.code} ${problem.message}`
+const problemLine = (problem) => `${problem.id === null ? '' : `${problem.id}: `}${problem.code} ${problem.message}`
 /** One warning per problem of a list, pointing to pmkit validate. The JSON carries the same problems. */
 const problemWarnings = (problems) => problems.map((problem) => `${problemLine(problem)}; run pmkit validate`)
 
@@ -973,15 +973,17 @@ export const COMMANDS = [
     run: async (ctx) => {
       const result = await (await ctx.tracker()).listNotifications({ user: await ctx.actor(), since: ctx.opt('since'), all: ctx.flag('all') })
       const { user, since, hidden, items, complete, problems } = result
-      const reviews = ctx.flag('reviews') ? reviewRequests(ctx, [user, ...ctx.list('login')]) : null
+      const reviews = ctx.flag('reviews') ? reviewRequests(ctx, user, ctx.list('login')) : null
       const lines = []
       if (items.length === 0) lines.push(`no unseen mentions, assignments or status changes for ${user}${since === null ? '' : ` since ${since}`}`)
       else lines.push(table(['When', 'Kind', 'Issue', 'Title', 'By', 'Where', 'Text', 'Seen', 'Key'], items.map((i) => [i.at, i.kind, i.issue, i.title ?? '(unreadable)', i.by ?? '', i.in, inboxText(i), i.seen ? 'yes' : 'no', i.key])))
       if (hidden > 0) lines.push(`${hidden} older unseen ${hidden === 1 ? 'item is' : 'items are'} not shown, run pmkit inbox list --all`)
-      if (!complete) lines.push(`the inbox is incomplete: ${problems.length} ${problems.length === 1 ? 'problem' : 'problems'} may hide items, run pmkit validate`)
+      // A problem with no issue (a cut Linear read) is not a file pmkit validate can find.
+      const validate = problems.some((problem) => problem.id !== null)
+      if (!complete) lines.push(`the inbox is incomplete: ${problems.length} ${problems.length === 1 ? 'problem' : 'problems'} may hide items${validate ? ', run pmkit validate' : ''}`)
       if (reviews !== null) lines.push(...reviewLines(reviews, user))
       const data = { available: true, ...result, counts: { ...result.counts, reviewRequests: reviews?.verified ? reviews.requested.length : null }, reviews }
-      return { data, text: lines.join('\n'), warnings: problemWarnings(problems) }
+      return { data, text: lines.join('\n'), warnings: problems.map((problem) => (problem.id === null ? problemLine(problem) : `${problemLine(problem)}; run pmkit validate`)) }
     },
   },
   {
@@ -3395,8 +3397,12 @@ function inboxText(item) {
  * The open pull requests that request a review of one of `logins` (ignoring case), from one gh call (PMK-225). A request made to a
  * team never matches and is listed apart. A failed read is `verified: false` with the reason, never an empty list.
  */
-function reviewRequests(ctx, logins) {
-  const wanted = new Set(logins.map((login) => String(login).toLowerCase()))
+function reviewRequests(ctx, user, logins) {
+  // A Linear member id is a Linear user id, never a GitHub login, so without --login there is nothing to match: not verified, never 0.
+  if (ctx.config().pmkit.tracker?.system === 'linear' && logins.length === 0) {
+    return { verified: false, requested: null, teamRequests: null, complete: false, reason: 'the Linear member id is not a GitHub login; pass --login <github login> to match review requests', code: 'INVALID_INPUT' }
+  }
+  const wanted = new Set([user, ...logins].map((login) => String(login).toLowerCase()))
   let prs
   try {
     prs = ctx.host().listReviewRequests()

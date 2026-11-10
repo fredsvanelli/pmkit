@@ -113,3 +113,18 @@ test('markRead stops at the first failed write and names the keys marked and the
   })
   assert.equal(mutations().length, 2)
 })
+
+test('PMK-225 review: with keys, markRead marks them even when the read is cut, because the key holds the notification id', async () => {
+  let n = 0
+  const pages = () => {
+    n += 1
+    return json({ notifications: page([note(`p${n}`, 'issueMention', '2026-10-30T10:00:00.000Z')], { hasNextPage: true, endCursor: `c${n}` }) })
+  }
+  const { tracker, mutations } = setup({ pages })
+  const result = await tracker.markRead({ user: 'user-1', keys: ['notification:p1', 'notification:beyond'] })
+  assert.deepEqual([result.marked, result.unknown], [['notification:beyond', 'notification:p1'], []])
+  assert.deepEqual(mutations().map((call) => call.id), ['beyond', 'p1'])
+  const odd = await tracker.markRead({ user: 'user-1', keys: ['assign:ISS-1:aaaaaaaaaaaa'] })
+  assert.deepEqual([odd.marked, odd.unknown], [[], ['assign:ISS-1:aaaaaaaaaaaa']])
+  assert.equal(mutations().length, 2)
+})

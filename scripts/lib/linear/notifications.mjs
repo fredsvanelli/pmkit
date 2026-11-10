@@ -8,6 +8,7 @@ import { validTimestamp } from '../local/sprints.mjs'
 const PAGE = 100
 const MAX_PAGES = 10
 const PAGE_INFO = 'pageInfo { hasNextPage endCursor }'
+const KEY = /^notification:[A-Za-z0-9-]+$/
 
 export const NOTIFICATIONS_QUERY = `query PmkitNotifications($first: Int!, $after: String) {
   notifications(first: $first, after: $after) {
@@ -103,12 +104,16 @@ export function notificationOperations({ client, ops, now }) {
     if (keys !== undefined && (!Array.isArray(keys) || keys.some((key) => typeof key !== 'string'))) throw invalid('keys must be a list of item keys')
     await requireOwner(user)
     const { items, problems } = await readItems()
-    if (problems.length > 0) {
+    if (problems.length > 0 && keys === undefined) {
       throw new PmkitError('INVALID_INPUT', `the inbox is incomplete (${problems[0].message}), so nothing was marked read`, 'Mark the items read with --key, using the keys inbox list showed', { problems })
     }
     const known = new Set(items.map((item) => item.key))
-    const unknown = [...new Set((keys ?? []).filter((key) => !known.has(key)))]
-    const chosen = items.filter((item) => !item.seen && (keys === undefined || keys.includes(item.key))).sort((a, b) => (a.key < b.key ? -1 : 1))
+    // A cut read may not reach a key, but the key holds the notification id, so it is marked by id; Linear refuses an id it lacks.
+    // A key that is not a notification key is unknown, as on Local, and is never sent.
+    const missing = [...new Set((keys ?? []).filter((key) => !known.has(key)))]
+    const beyond = problems.length > 0 ? missing.filter((key) => KEY.test(key)).map((key) => ({ key, id: key.slice('notification:'.length) })) : []
+    const unknown = missing.filter((key) => !beyond.some((entry) => entry.key === key))
+    const chosen = [...items.filter((item) => !item.seen && (keys === undefined || keys.includes(item.key))), ...beyond].sort((a, b) => (a.key < b.key ? -1 : 1))
     const recorded = isoSeconds(now())
     const marked = []
     if (!dryRun) {
