@@ -5,3 +5,7 @@
 {"at":"2026-11-10T03:15:05Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-10T03:15:10Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-212-improve-saved-views"}
 {"at":"2026-11-10T03:20:04Z","by":"fred","op":"comment","to":"2026-11-10T03-20-04Z-fred.md"}
+{"at":"2026-11-10T04:03:13Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T04:03:13Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T04:03:13Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T04:03:13Z","by":"fred","op":"update","field":"acceptance_criteria"}
