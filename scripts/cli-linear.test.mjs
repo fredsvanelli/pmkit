@@ -1204,8 +1204,10 @@ test('a milestone, a document and a milestone of an issue are readable', async (
   assert.equal(docs.code, 0, docs.stdout + docs.stderr)
   assert.equal(docs.stdout.trim(), '# Plan')
   const listed = await cli(context, ['docs', 'list', '--json'], fetch)
-  assert.equal(listed.code, 2, listed.stdout + listed.stderr)
-  assert.equal(JSON.parse(listed.stdout).error.code, 'NOT_SUPPORTED')
+  assert.equal(listed.code, 0, listed.stdout + listed.stderr)
+  assert.deepEqual(JSON.parse(listed.stdout), [{ path: 'abcdef012345', title: 'Plan' }])
+  const listedText = await cli(context, ['docs', 'list'], fetch)
+  assert.equal(listedText.stdout.trim(), 'abcdef012345  Plan')
   for (const args of [['views', 'list'], ['views', 'save', 'v', '--category', 'done'], ['views', 'run', 'v']]) {
     const refused = await cli(context, [...args, '--json'], fetch)
     assert.equal(refused.code, 2, refused.stdout + refused.stderr)

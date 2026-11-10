@@ -1124,6 +1124,7 @@ const PROJECT_OPERATIONS = {
   listMilestones: [],
   getMilestone: ['11111111-1111-4111-8111-111111111111'],
   readDocument: ['abcdef012345'],
+  listDocuments: [],
 }
 
 test('the project operations are implemented and the milestone and document writes are NOT_SUPPORTED', async () => {

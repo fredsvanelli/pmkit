@@ -1177,10 +1177,10 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'docs list', summary: 'lists the documents under the docs folder', usage: '', args: [], flags: [],
+    name: 'docs list', summary: 'lists the documents: the files under the docs folder (Local) or the documents of the team projects (Linear)', usage: '', args: [], flags: [],
     run: async (ctx) => {
       const docs = await (await ctx.tracker()).listDocuments()
-      const text = docs.length === 0 ? 'no documents' : docs.map((doc) => doc.path).join('\n')
+      const text = docs.length === 0 ? 'no documents' : docs.map((doc) => (doc.title ? `${doc.path}  ${doc.title}` : doc.path)).join('\n')
       return { data: docs, text }
     },
   },

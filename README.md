@@ -126,7 +126,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `release mark-released <id>` | marks a release released, lists its unfinished issues and warns when its tag is not in the repository; takes `--tag` |
 | `release-readiness [--release id \| --milestone id \| --sprint id\|current]` | what is left for a release: open issues, open pull requests and deploys; without releases a milestone or a sprint, and says so; only reads |
 | `release-notes [--release id \| --sprint id\|current \| --since d [--until d]]` | the done issues of a release, a sprint or a period, grouped by type, with the basis it used; only reads |
-| `docs list` | lists the documents under the docs folder |
+| `docs list` | lists the documents under the docs folder (Local) or the documents of the team's projects (Linear) |
 | `docs read <path>` | prints a document under the docs folder |
 | `docs create <path> --body-file f` | creates a document under the docs folder |
 | `docs next-adr --title t` | the number, slug and path of the next ADR and where it goes, `repo` (`docs/adr/`) or `tracker`; reads `docs/adr/` and the tracker folder in the working tree and in `origin/<default branch>`, refuses a title with no letter or digit; only reads |

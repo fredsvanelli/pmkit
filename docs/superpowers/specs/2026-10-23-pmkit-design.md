@@ -101,7 +101,7 @@ The operations the MVP needs, grouped by family. Every write takes an `actor` (a
 | Releases | `listReleases({ state })`, `getRelease(id)`, `releaseIssues(id, { archived })`, `createRelease(input, actor)`, `markReleased(id, actor, { tag })` |
 | Capacity | `getCapacity(sprint)`, `setCapacity(sprint, capacity, actor)` |
 | Metrics | `metricEvents({ since, until })` |
-| Documents | `readDocument(path)`, `createDocument(path, body, actor)` |
+| Documents | `readDocument(path)`, `createDocument(path, body, actor)`, `listDocuments()` |
 | Time | `logTime(id, minutes, actor)` |
 
 Natural-language queries are translated by the command, not by the contract **(builder's call)**. `/pmkit:issues:find` turns the question into CLI filter flags, shows the flags in one line, and runs them. The contract's `searchIssues` takes a structured filter: `text`, `categories`, `types`, `assignee` (member id, `me` or `none`), `labels`, `sprint` (id, `current` or `none`), `parent`, `blocked`, `updatedBefore`, `updatedAfter`, `sort` (`priority`, `updated`, `created`, `due`; `created` by default, oldest first), `limit`. Every issue table a command shows uses creation order, oldest first, unless the user asks for another order. The same order picks the next issue in `/pmkit:issues:work` and `/pmkit:issues:mine`, and the sprint scope in `/pmkit:cycle:plan`.
