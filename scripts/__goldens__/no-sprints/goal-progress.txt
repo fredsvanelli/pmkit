@@ -28,6 +28,7 @@ exit 0
   "goal": {
     "id": "GOAL-8K2W",
     "title": "Customers trust our webhooks",
+    "status": "active",
     "target": "2026-12-31",
     "description": "No customer loses an event because a delivery failed.",
     "epics": [
@@ -74,7 +75,9 @@ exit 0
     "in_review": 0,
     "done": 2,
     "canceled": 0
-  }
+  },
+  "warnings": [],
+  "complete": true
 }
 --- stderr
 (empty)

@@ -70,7 +70,7 @@ export function epicRecord(epic) {
 }
 
 export function goalRecord(goal) {
-  const lines = fields([['id', goal.id], ['title', goal.title], ['target', goal.target], ['epics', goal.epics]])
+  const lines = fields([['id', goal.id], ['title', goal.title], ['status', goal.status], ['target', goal.target], ['epics', goal.epics]])
   if (goal.description) lines.push('', goal.description)
   return lines.join('\n')
 }

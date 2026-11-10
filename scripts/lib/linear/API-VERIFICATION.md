@@ -134,6 +134,18 @@ Docs. `https://linear.app/docs/customer-requests` (read 2026-10-28; `https://lin
 
 Answer `yes`, access `read/write`. The three mutations stay `schema` because none was sent. `linear customers` decides from `customersEnabled` in the cached discovery and sends no customer query when it is false. When the flag is false the reason is `customers_off` on every plan, with the hint "An admin can turn on customer requests in the workspace settings.", because the docs say the feature exists on all plans and the docs win over the Linear tab (decided in PMK-42 review).
 
+## Initiatives as goals (PMK-213)
+
+Checked 2026-11-10 against Linear's public SDK schema (`packages/sdk/src/schema.graphql` in the `linear/linear` repository), not by introspection of a workspace: no Business workspace was at hand, and a Free one answers `initiatives` with an empty list (above).
+
+| Call | Result |
+|---|---|
+| `type Initiative` | `id`, `slugId`, `identifier` (nullable), `name`, `description`, `content`, `status` (`InitiativeStatus`, required), `targetDate` (`TimelessDate`), `url`, `owner`, and `projects(first, after, filter: ProjectFilter, includeSubInitiatives, ...)`. |
+| `enum InitiativeStatus` | `Proposed`, `Planned`, `Active`, `Completed`, `Canceled`. pmkit uses them in lower case as the goal statuses. |
+| `initiatives(first, after, filter, includeArchived, ...)` | Returns an `InitiativeConnection` with `nodes` and `pageInfo`. |
+
+The adapter's `PmkitInitiatives` query is not proven live. Its shapes run against the fake in `npm test`. A field Linear has renamed would reach the command as `UPSTREAM` with Linear's message.
+
 ## Live writes (PMK-39)
 
 The contract suite runs against the sandbox workspace through one fixed test team. The third live run, on 2026-10-29, ran 38 tests: 25 passed, 0 failed and 13 were skipped. The skipped tests belong to the families cycle-lifecycle, milestone-writes, releases, time and document-writes, which the Linear adapter does not run. The test team was empty afterwards. The run is by hand and no CI runs it.

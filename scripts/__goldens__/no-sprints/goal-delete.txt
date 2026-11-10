@@ -1,0 +1,41 @@
+$ pmkit goal delete GOAL-8K2W
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: goal GOAL-8K2W is linked to one epic: EPC-4H7V
+next: Remove each link, then delete again: pmkit epic goal EPC-4H7V none
+
+$ pmkit goal delete GOAL-8K2W --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "CONFLICT",
+    "message": "goal GOAL-8K2W is linked to one epic: EPC-4H7V",
+    "nextStep": "Remove each link, then delete again: pmkit epic goal EPC-4H7V none"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit goal delete GOAL-8K2W --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: goal GOAL-8K2W is linked to one epic: EPC-4H7V
+next: Remove each link, then delete again: pmkit epic goal EPC-4H7V none
+
+$ pmkit goal delete GOAL-8K2W --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "CONFLICT",
+    "message": "goal GOAL-8K2W is linked to one epic: EPC-4H7V",
+    "nextStep": "Remove each link, then delete again: pmkit epic goal EPC-4H7V none"
+  }
+}
+--- stderr
+(empty)

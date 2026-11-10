@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "pmkit local tracker config",
-  "description": "The config of the pmkit local tracker, in .issues/config.yaml. The rules between keys (the two prefixes differ, every category has a status, default_status names a status) are checked by pmkit validate, not by this schema. Keys pmkit does not know are allowed.",
+  "description": "The config of the pmkit local tracker, in .issues/config.yaml. The rules between keys (the three prefixes differ, every category has a status, default_status names a status) are checked by pmkit validate, not by this schema. Keys pmkit does not know are allowed.",
   "type": "object",
   "required": ["version", "id_prefix", "epic_prefix", "statuses", "default_status", "types", "priorities", "estimate"],
   "properties": {
@@ -23,6 +23,12 @@
       "type": "string",
       "pattern": "^[A-Z]{2,5}$",
       "default": "EPC"
+    },
+    "goal_prefix": {
+      "title": "Goal ID prefix",
+      "description": "2 to 5 capital letters, as in GOAL-1. Without the key, goal ids start with GOAL and nothing is checked. A set key must differ from id_prefix, epic_prefix, CUS and REQ.",
+      "type": "string",
+      "pattern": "^[A-Z]{2,5}$"
     },
     "id_style": {
       "title": "ID style",

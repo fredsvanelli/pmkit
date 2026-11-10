@@ -379,6 +379,8 @@ function defaultPrBody(issue) {
 const problemLine = (problem) => `${problem.id === null ? '' : `${problem.id}: `}${problem.code} ${problem.message}`
 /** One warning per problem of a list, pointing to pmkit validate. The JSON carries the same problems. */
 const problemWarnings = (problems) => problems.map((problem) => `${problemLine(problem)}; run pmkit validate`)
+/** A goal list problem as a warning. A cut Linear read (INCOMPLETE) is no file problem, so validate is no help there. */
+const goalProblemWarning = (problem) => (problem.code === 'INCOMPLETE' ? problemLine(problem) : `${problemLine(problem)}; run pmkit validate`)
 
 /** A table of requests in the order given: id, title, state, customer, where it came from and the issue. */
 const requestTable = (requests) => table(
@@ -896,26 +898,58 @@ export const COMMANDS = [
     name: 'goal list', summary: 'lists the strategic goals with their epics', flags: [],
     run: async (ctx) => {
       const { goals, problems } = await (await ctx.tracker()).listGoals()
-      const warnings = problems.map((problem) => `${problemLine(problem)}; run pmkit validate`)
-      const rows = goals.map((goal) => [goal.id, goal.title, goal.target ?? '', goal.epics.join(', ')])
-      return { data: goals, text: goals.length === 0 ? 'no goals' : table(['ID', 'Title', 'Target', 'Epics'], rows), warnings }
+      const warnings = problems.map(goalProblemWarning)
+      const rows = goals.map((goal) => [goal.id, goal.title, goal.status, goal.target ?? '', goal.epics.join(', ')])
+      return { data: goals, text: goals.length === 0 ? 'no goals' : table(['ID', 'Title', 'Status', 'Target', 'Epics'], rows), warnings }
     },
   },
   {
     name: 'goal get', summary: 'one goal with its epics', usage: '<id>', args: ['id'], flags: [],
     run: async (ctx) => {
-      const goal = await (await ctx.tracker()).getGoal(ctx.args[0])
-      return { data: goal, text: goalRecord(goal) }
+      const tracker = await ctx.tracker()
+      const goal = await tracker.getGoal(ctx.args[0])
+      // As goal list and goal progress: an unreadable epic may link to the goal, and a cut Linear read may hide its epics.
+      const warnings = (await tracker.listGoals()).problems.filter((problem) => problem.kind === 'epic' || problem.id === goal.id).map(goalProblemWarning)
+      const text = [goalRecord(goal), ...(warnings.length > 0 ? [INCOMPLETE_LINE] : [])].join('\n')
+      return { data: { ...goal, complete: warnings.length === 0, warnings }, text, warnings }
     },
   },
   {
-    name: 'goal create', summary: 'creates a strategic goal', usage: '--title t [--target YYYY-MM-DD]', write: true, flags: ['title', 'target'],
+    name: 'goal create', summary: 'creates a strategic goal', usage: '(--title t | --title-file f) [--target YYYY-MM-DD] [--status s]', write: true, flags: ['title', 'title-file', 'target', 'status'],
     run: async (ctx) => {
-      if (ctx.opt('title') === undefined) throw usageError('goal create needs --title', 'pmkit goal create --title "..."')
-      const input = { title: ctx.opt('title') }
-      if (ctx.opt('target') !== undefined) input.target = ctx.opt('target')
+      const title = lineFromFlag(ctx.opt, 'title')
+      if (title === undefined) throw usageError('goal create needs --title or --title-file', 'pmkit goal create --title-file title.txt')
+      const input = { title }
+      for (const key of ['target', 'status']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
       const result = await (await ctx.tracker()).createGoal(input, await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: goalRecord }), commit: result.after.id }
+    },
+  },
+  {
+    name: 'goal update', summary: 'changes the title, target or status of a goal; --target none removes the target', usage: '<id> [--title t | --title-file f] [--target YYYY-MM-DD|none] [--status s]', write: true, args: ['id'], flags: ['title', 'title-file', 'target', 'status'],
+    run: async (ctx) => {
+      const input = {}
+      const title = lineFromFlag(ctx.opt, 'title')
+      if (title !== undefined) input.title = title
+      if (ctx.opt('target') !== undefined) input.target = ctx.opt('target') === 'none' ? null : ctx.opt('target')
+      if (ctx.opt('status') !== undefined) input.status = ctx.opt('status')
+      const result = await (await ctx.tracker()).updateGoal(ctx.args[0], input, await ctx.actor(), { dryRun: ctx.dryRun })
+      return { data: result, text: writeText(result, { ...ctx, record: goalRecord }), commit: result.after.id }
+    },
+  },
+  {
+    name: 'goal close', summary: 'marks a goal completed', usage: '<id>', write: true, args: ['id'], flags: [],
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).updateGoal(ctx.args[0], { status: 'completed' }, await ctx.actor(), { dryRun: ctx.dryRun })
+      return { data: result, text: writeText(result, { ...ctx, record: goalRecord }), commit: result.after.id }
+    },
+  },
+  {
+    name: 'goal delete', summary: 'deletes a goal file; refuses while an epic links to it', usage: '<id>', write: true, args: ['id'], flags: [],
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).deleteGoal(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })
+      const text = [`${ctx.dryRun ? 'would delete' : 'deleted'} goal ${result.before.id}  ${result.before.title}`, goalRecord(result.before), '', `removes: ${result.removes.file}`, ...(ctx.dryRun ? ['dry run: nothing was written'] : [])].join('\n')
+      return { data: result, text, commit: result.before.id }
     },
   },
   {
@@ -929,8 +963,9 @@ export const COMMANDS = [
         ...Object.entries(p.byCategory).map(([category, count]) => `  ${category}: ${count}`),
         '',
         p.epics.length === 0 ? 'no epics' : table(['Epic', 'Title', 'Status', 'Done', 'Total', 'Points done', 'Points'], rows),
+        ...(p.warnings.length > 0 ? [INCOMPLETE_LINE] : []),
       ].join('\n')
-      return { data: p, text }
+      return { data: { ...p, complete: p.warnings.length === 0 }, text, warnings: p.warnings }
     },
   },
   {
@@ -1847,7 +1882,7 @@ export const COMMANDS = [
     run: (ctx) => {
       const result = validateRepo(ctx.root, { adapters: ctx.adapters })
       const c = result.checked
-      const head = `checked: ${c.issues} issues, ${c.epics} epics, ${c.sprints} sprints, ${c.milestones} milestones, ${c.releases} releases, ${c.comments} comments, ${c.views} views`
+      const head = `checked: ${c.issues} issues, ${c.epics} epics, ${c.sprints} sprints, ${c.milestones} milestones, ${c.releases} releases, ${c.goals} goals, ${c.comments} comments, ${c.views} views`
       const body = result.problems.length === 0 ? 'no problems' : result.problems.map((p) => `${p.path}  ${p.code}  ${p.message}`).join('\n')
       return { data: result, text: `${head}\n${body}` }
     },
@@ -2454,6 +2489,9 @@ async function orSupported(read, fallback) {
  */
 const teamMembers = (members, teamKey) => (teamKey === undefined ? members : members.filter((member) => member.teams === undefined || member.teams.includes(teamKey)))
 
+/** The record a warning line is about: the text before its first ": ", as problemLine writes it. */
+const recordOf = (line) => line.split(': ')[0]
+
 const NO_GOALS_NOTE = 'no goals: using top-level issues (issues with no parent, or whose parent is an epic) and the progress of their sub-issues'
 const INCOMPLETE_LINE = 'incomplete: some files or issues were not read, so these numbers may be low; do not conclude from them'
 
@@ -2482,13 +2520,21 @@ async function runGoalsOverview(ctx) {
   const unreadableGoal = problems.some((problem) => problem.kind === 'goal')
   if (listed !== null && (listed.goals.length > 0 || unreadableGoal)) {
     // A broken epic file may link to a goal, so on this path it is part of the answer. The fallback below does not read epics.
-    warnings.push(...problems.map((problem) => `${problemLine(problem)}; run pmkit validate`))
+    warnings.push(...problems.map(goalProblemWarning))
     // goalProgress counts the issues it can read, so an issue file that does not parse may hold work of any epic.
     warnings.push(...issueReadWarnings(await tracker.searchIssues({})).map((line) => `${line}; goal progress may be low`))
     const items = []
     for (const goal of listed.goals) {
       const p = await tracker.goalProgress(goal.id)
-      const { goal: ignored, epics, ...sum } = p
+      // A goal's own warnings reach the overview (a cut Linear epic read is only known here), once per record: the lines name
+      // the record first, and the overview already warned about each file that does not parse above.
+      const { goal: ignored, epics, warnings: perGoal, ...sum } = p
+      const said = new Set(warnings.map(recordOf))
+      for (const line of perGoal ?? []) {
+        if (said.has(recordOf(line))) continue
+        said.add(recordOf(line))
+        warnings.push(line)
+      }
       items.push({ goal: { id: goal.id, title: goal.title, target: goal.target }, epics: epics.map((e) => ({ id: e.id, title: e.title, status: e.status, counted: e.counted, progress: e.progress })), ...sum, progress: shareDone(sum.done, sum.total) })
     }
     const rows = items.map((i) => [i.goal.id, i.goal.title, i.progress === null ? 'not known' : percent(i.progress), `${i.done}/${i.total}`, `${i.pointsDone}/${i.points}`, i.epics.map((e) => e.id).join(', ')])

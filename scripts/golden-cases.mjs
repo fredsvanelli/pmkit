@@ -86,6 +86,10 @@ export const CASES = {
   'goal get': (a) => [[a.goal]],
   'goal progress': (a) => [[a.goal]],
   'goal create': () => [['--title', 'Golden goal', '--target', '2026-12-31']],
+  // GOAL-8K2W is linked to EPC-4H7V in no-sprints, so delete records the CONFLICT refusal there and NOT_FOUND elsewhere.
+  'goal update': (a) => [[a.goal, '--status', 'planned', '--target', 'none']],
+  'goal close': (a) => [[a.goal]],
+  'goal delete': (a) => [[a.goal]],
   'customers list': () => [[]],
   'customers show': (a) => [[a.customer], ['Acme Corp']],
   'customers create': () => [['--name', 'Golden customer', '--tier', 'gold', '--revenue', '5000']],

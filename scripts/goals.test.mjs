@@ -5,21 +5,29 @@ import path from 'node:path'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { isId } from './lib/ids.mjs'
 import { hashTree, makeRepo } from './test-helpers.mjs'
-import { GOAL_PREFIX, parseGoal, serializeGoal, sortGoals } from './lib/local/goals.mjs'
+import { GOAL_STATUSES, parseGoal, serializeGoal, sortGoals } from './lib/local/goals.mjs'
 import { parseEpicFile, serializeEpic } from './lib/local/epics.mjs'
 
 const code = (value) => (error) => error.code === value
 
-test('the goal prefix is GOAL', () => {
-  assert.equal(GOAL_PREFIX, 'GOAL')
+test('the goal statuses are Linear initiative statuses in lower case (PMK-213)', () => {
+  assert.deepEqual(GOAL_STATUSES, ['proposed', 'planned', 'active', 'completed', 'canceled'])
+})
+
+test('a goal file without status reads as active, and a status outside the list is refused (PMK-213)', () => {
+  assert.equal(parseGoal('---\ntitle: T\n---\n', 'GOAL-1').status, 'active')
+  assert.equal(parseGoal('---\ntitle: T\nstatus: planned\n---\n', 'GOAL-1').status, 'planned')
+  for (const value of ['Active', 'done', '1']) {
+    assert.throws(() => parseGoal(`---\ntitle: T\nstatus: ${value}\n---\n`, 'GOAL-1'), (error) => error.code === 'INVALID_INPUT' && error.nextStep === '/pmkit:local:doctor' && error.message.includes('proposed, planned, active, completed, canceled'), value)
+  }
 })
 
 test('a goal round trips through its file, and the stem is the id', () => {
-  const text = serializeGoal({ title: 'Customers trust our webhooks', target: '2026-12-31', description: 'Why it matters.' })
-  assert.equal(text, '---\ntitle: Customers trust our webhooks\ntarget: 2026-12-31\n---\n\nWhy it matters.\n')
-  assert.deepEqual(parseGoal(text, 'GOAL-1'), { id: 'GOAL-1', title: 'Customers trust our webhooks', target: '2026-12-31', description: 'Why it matters.' })
-  assert.equal(serializeGoal({ title: 'Bare', description: '' }), '---\ntitle: Bare\n---\n')
-  assert.deepEqual(parseGoal('---\nid: GOAL-9\ntitle: Bare\n---\n', 'GOAL-2'), { id: 'GOAL-2', title: 'Bare', description: '' })
+  const text = serializeGoal({ title: 'Customers trust our webhooks', status: 'planned', target: '2026-12-31', description: 'Why it matters.' })
+  assert.equal(text, '---\ntitle: Customers trust our webhooks\nstatus: planned\ntarget: 2026-12-31\n---\n\nWhy it matters.\n')
+  assert.deepEqual(parseGoal(text, 'GOAL-1'), { id: 'GOAL-1', title: 'Customers trust our webhooks', status: 'planned', target: '2026-12-31', description: 'Why it matters.' })
+  assert.equal(serializeGoal({ title: 'Bare', status: 'active', description: '' }), '---\ntitle: Bare\nstatus: active\n---\n')
+  assert.deepEqual(parseGoal('---\nid: GOAL-9\ntitle: Bare\n---\n', 'GOAL-2'), { id: 'GOAL-2', title: 'Bare', status: 'active', description: '' })
 })
 
 test('parseGoal refuses a missing title, a title with a line break and a target that is not a date', () => {
@@ -57,8 +65,25 @@ test('createGoal writes goals/<id>.md with a GOAL id, and a dry run writes nothi
   assert.deepEqual(hashTree(root), before)
   const { after } = tracker.createGoal({ title: 'Trust', target: '2026-12-31' }, 'fred')
   assert.ok(isId(after.id, 'GOAL'), after.id)
-  assert.deepEqual(after, { id: after.id, title: 'Trust', target: '2026-12-31', description: '', epics: [] })
-  assert.equal(fs.readFileSync(path.join(goals, `${after.id}.md`), 'utf8'), '---\ntitle: Trust\ntarget: 2026-12-31\n---\n')
+  assert.deepEqual(after, { id: after.id, title: 'Trust', status: 'active', target: '2026-12-31', description: '', epics: [] })
+  assert.equal(fs.readFileSync(path.join(goals, `${after.id}.md`), 'utf8'), '---\ntitle: Trust\nstatus: active\ntarget: 2026-12-31\n---\n')
+  assert.equal(tracker.createGoal({ title: 'Later', status: 'planned' }, 'fred').after.status, 'planned')
+  assert.throws(() => tracker.createGoal({ title: 'T', status: 'nope' }, 'fred'), code('INVALID_INPUT'))
+})
+
+test('goal_prefix names the goal ids, and a file with another prefix is no goal (PMK-213)', () => {
+  const { root, goals } = setup()
+  fs.appendFileSync(path.join(root, '.issues', 'config.yaml'), 'goal_prefix: OKR\n')
+  const tracker = createLocalTracker(root, { now: () => new Date('2026-10-23T12:00:00Z') })
+  const { id } = tracker.createGoal({ title: 'Trust' }, 'fred').after
+  assert.ok(isId(id, 'OKR'), id)
+  fs.writeFileSync(path.join(goals, 'GOAL-1.md'), '---\ntitle: Old\n---\n')
+  const { goals: listed, problems } = tracker.listGoals()
+  assert.deepEqual(listed.map((goal) => goal.id), [id])
+  // A goal file under another prefix is a goal pmkit cannot read, not a stray file (review cycle 2 of PR #180).
+  assert.deepEqual(problems.map((problem) => [problem.id, problem.kind]), [['GOAL-1', 'goal']])
+  assert.match(problems[0].message, /such as OKR-1/)
+  assert.equal(tracker.setEpicGoal('EPC-2M9D', id, 'fred').after.goal, id)
 })
 
 test('createGoal refuses a missing title, a bad target and an unknown field', () => {
@@ -244,4 +269,101 @@ test('an epic with an unmapped status is still counted, and a goal of canceled e
   epicWithIssues(root, tracker, only, 'Gone', [['done', 3]], 'canceled')
   const none = tracker.goalProgress(only)
   assert.deepEqual([none.total, none.done, none.points, none.epics.length], [0, 0, 0, 1])
+})
+
+// PMK-213: update, close and delete.
+const goalFile = (goals, id) => path.join(goals, `${id}.md`)
+
+test('updateGoal edits only the changed lines and keeps comments, unknown keys and the body (PMK-213)', () => {
+  const { goals, tracker } = setup({ numbered: true })
+  fs.mkdirSync(goals, { recursive: true })
+  fs.writeFileSync(goalFile(goals, 'GOAL-1'), '---\ntitle: Old\n# keep\nowner: ana\ntarget: 2026-12-31\n---\n\nWhy.\n')
+  const result = tracker.updateGoal('goal-1', { title: 'New', status: 'planned' }, 'fred')
+  assert.equal(result.before.title, 'Old')
+  assert.deepEqual([result.after.title, result.after.status, result.after.target], ['New', 'planned', '2026-12-31'])
+  assert.deepEqual(result.after.epics, [])
+  const text = fs.readFileSync(goalFile(goals, 'GOAL-1'), 'utf8')
+  assert.match(text, /^title: New$/m)
+  assert.match(text, /^status: planned$/m)
+  assert.match(text, /^# keep$/m)
+  assert.match(text, /^owner: ana$/m)
+  assert.ok(text.endsWith('---\n\nWhy.\n'), text)
+  tracker.updateGoal('GOAL-1', { target: null }, 'fred')
+  assert.doesNotMatch(fs.readFileSync(goalFile(goals, 'GOAL-1'), 'utf8'), /^target:/m)
+})
+
+test('updateGoal writes nothing when nothing changes or on a dry run, and refuses empty, unknown or bad input (PMK-213)', () => {
+  const { root, tracker } = setup()
+  const { id } = tracker.createGoal({ title: 'Trust' }, 'fred').after
+  const before = hashTree(root)
+  const same = tracker.updateGoal(id, { title: 'Trust', status: 'active', target: null }, 'fred')
+  assert.deepEqual(same.before, same.after)
+  assert.equal(tracker.updateGoal(id, { title: 'Other' }, 'fred', { dryRun: true }).after.title, 'Other')
+  assert.deepEqual(hashTree(root), before)
+  for (const input of [{}, { owner: 'ana' }, { status: 'done' }, { target: 'soon' }, { title: '  ' }]) {
+    assert.throws(() => tracker.updateGoal(id, input, 'fred'), code('INVALID_INPUT'), JSON.stringify(input))
+  }
+  assert.throws(() => tracker.updateGoal('GOAL-ZZZZ', { title: 'X' }, 'fred'), code('NOT_FOUND'))
+  assert.deepEqual(hashTree(root), before)
+})
+
+test('deleteGoal removes the file, and a dry run lists it and writes nothing (PMK-213)', () => {
+  const { root, goals, tracker } = setup()
+  const { id } = tracker.createGoal({ title: 'Trust' }, 'fred').after
+  const before = hashTree(root)
+  const dry = tracker.deleteGoal(id, 'fred', { dryRun: true })
+  assert.equal(dry.before.id, id)
+  assert.equal(dry.after, null)
+  assert.deepEqual(dry.removes, { file: `.issues/goals/${id}.md` })
+  assert.deepEqual(hashTree(root), before)
+  tracker.deleteGoal(id, 'fred')
+  assert.equal(fs.existsSync(goalFile(goals, id)), false)
+  assert.throws(() => tracker.getGoal(id), code('NOT_FOUND'))
+})
+
+test('deleteGoal refuses while an epic links to the goal or an epic file does not parse (PMK-213)', () => {
+  const { root, tracker } = setup()
+  const { id } = tracker.createGoal({ title: 'Trust' }, 'fred').after
+  tracker.setEpicGoal('EPC-2M9D', id, 'fred')
+  const before = hashTree(root)
+  assert.throws(() => tracker.deleteGoal(id, 'fred'), (error) => error.code === 'CONFLICT' && error.details.epics.includes('EPC-2M9D') && error.nextStep.includes(`pmkit epic goal EPC-2M9D none`))
+  assert.deepEqual(hashTree(root), before)
+  tracker.setEpicGoal('EPC-2M9D', null, 'fred')
+  fs.writeFileSync(epicFile(root), '---\ntitle: [\n---\n')
+  const broken = hashTree(root)
+  assert.throws(() => tracker.deleteGoal(id, 'fred'), (error) => error.code === 'INVALID_INPUT' && /EPC-2M9D/.test(error.message))
+  assert.deepEqual(hashTree(root), broken)
+})
+
+test('goalProgress warns about an epic file that does not parse and an issue file that does not parse (PMK-213)', () => {
+  const { root, tracker } = setup()
+  const { id } = tracker.createGoal({ title: 'Trust' }, 'fred').after
+  // The team fixture holds ISS-3Q6T, an issue file with conflict markers.
+  assert.deepEqual(tracker.goalProgress(id).warnings.map((line) => line.split(':')[0]), ['ISS-3Q6T'])
+  assert.match(tracker.goalProgress(id).warnings[0], /goal progress may be low/)
+  fs.writeFileSync(epicFile(root), '---\ntitle: [\n---\n')
+  const { warnings } = tracker.goalProgress(id)
+  assert.equal(warnings.length, 2)
+  assert.match(warnings[0], /^EPC-2M9D: INVALID_INPUT .*; it may link to this goal; run pmkit validate$/)
+})
+
+// PMK-213 review: an epic folder outside epic_prefix is not read, so it may hide a link to the goal.
+function withEpicPrefix(root, prefix) {
+  const file = path.join(root, '.issues', 'config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^epic_prefix: .*$/m, `epic_prefix: ${prefix}`))
+  return createLocalTracker(root, { now: () => new Date('2026-10-23T12:00:00Z') })
+}
+
+test('an epic folder outside epic_prefix is a goal problem: goal progress warns and goal delete refuses (PMK-213)', () => {
+  const { root, tracker } = setup()
+  const { id } = tracker.createGoal({ title: 'Trust' }, 'fred').after
+  tracker.setEpicGoal('EPC-2M9D', id, 'fred')
+  const renamed = withEpicPrefix(root, 'PRJ')
+  assert.deepEqual(renamed.listGoals().problems.filter((problem) => problem.kind === 'epic').map((problem) => problem.id), ['EPC-2M9D'])
+  const progress = renamed.goalProgress(id)
+  assert.ok(progress.warnings.some((line) => line.startsWith('EPC-2M9D:') && /not named after an epic id such as PRJ-1/.test(line) && /may link to this goal/.test(line)), progress.warnings.join('\n'))
+  const before = hashTree(root)
+  assert.throws(() => renamed.deleteGoal(id, 'fred'), (error) => error.code === 'INVALID_INPUT' && /EPC-2M9D/.test(error.message) && /not named after an epic id/.test(error.message) && !/does not parse/.test(error.message) && !/doctor/.test(error.nextStep))
+  assert.deepEqual(hashTree(root), before)
+  assert.deepEqual(renamed.unreadableRecords().epics.map((record) => [record.id, record.code]), [['EPC-2M9D', 'INVALID_INPUT']])
 })

@@ -341,3 +341,17 @@ test('a case-only rename is refused, and the two-step rename reaches the index, 
     assert.deepEqual(trackedViews(root), [])
   })
 })
+
+test('auto_commit true: goal update, close and delete each make one commit, tracker clean afterwards (PMK-213)', () => {
+  withRepo('team', { autoCommit: true }, (root) => {
+    const id = JSON.parse(run(root, ['goal', 'create', '--title', 'G', '--json']).stdout).after.id
+    for (const args of [['goal', 'update', id, '--status', 'planned'], ['goal', 'close', id], ['goal', 'delete', id]]) {
+      const before = commits(root)
+      const result = run(root, args)
+      assert.equal(result.status, 0, result.stderr)
+      assert.equal(commits(root), before + 1, args.join(' '))
+      assert.equal(subject(root), `pmkit: ${args.slice(0, 2).join(' ')} ${id}`)
+      assert.deepEqual(status(root, '.issues'), [])
+    }
+  })
+})

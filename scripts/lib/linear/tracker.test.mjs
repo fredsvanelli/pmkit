@@ -1382,3 +1382,18 @@ test('a Linear delete as another actor is refused', async () => {
   three(fake)
   await assert.rejects(linear.delete('ACME-1', 'user-2'), { code: 'INVALID_INPUT' })
 })
+
+test('goal reads refuse with the plan hint on Free and send no initiative query, and read initiatives on Business (PMK-213)', async () => {
+  const free = tracker(setup())
+  for (const call of [() => free.tracker.listGoals(), () => free.tracker.getGoal('INI-1'), () => free.tracker.goalProgress('INI-1')]) {
+    await assert.rejects(call(), (error) => error.code === 'NOT_SUPPORTED' && /Business or Enterprise plan/.test(error.message))
+  }
+  assert.ok(!namesOf(free.fetch).includes('PmkitInitiatives'))
+  const node = { id: 'i-1', slugId: 'abcdef123456', identifier: 'INI-1', name: 'Grow', description: '', content: null, status: 'Active', targetDate: null, url: 'u', projects: { nodes: [], pageInfo: { hasNextPage: false } } }
+  const fetch = fakeLinearFetch({ ...fakeWorkspace({ subscription: { type: 'business' } }), PmkitInitiatives: { status: 200, json: { data: { initiatives: { nodes: [node], pageInfo: { hasNextPage: false, endCursor: null } } } } } })
+  const business = tracker(setup(), { fetch })
+  assert.deepEqual((await business.tracker.listGoals()).goals.map((goal) => [goal.id, goal.status]), [['INI-1', 'active']])
+  assert.equal((await business.tracker.getGoal('ini-1')).title, 'Grow')
+  assert.equal((await business.tracker.goalProgress('INI-1')).total, 0)
+  await assert.rejects(business.tracker.createGoal({ title: 'X' }, 'user-1'), (error) => error.code === 'NOT_SUPPORTED' && /does not implement createGoal/.test(error.message))
+})

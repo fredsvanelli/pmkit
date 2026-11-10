@@ -506,7 +506,7 @@ test('validate lists tracker.system linear as a problem and exits 0', () => {
   useUnsupported(root)
   const text = run(root, ['validate'])
   assert.equal(text.status, 0)
-  assert.equal(text.stdout.split('\n')[0], 'checked: 0 issues, 0 epics, 0 sprints, 0 milestones, 0 releases, 0 comments, 0 views')
+  assert.equal(text.stdout.split('\n')[0], 'checked: 0 issues, 0 epics, 0 sprints, 0 milestones, 0 releases, 0 goals, 0 comments, 0 views')
   assert.match(text.stdout, UNSUPPORTED_LINE)
   const problem = json(root, ['validate']).problems[0]
   assert.deepEqual(Object.keys(problem).sort(), ['code', 'message', 'path'])
@@ -541,7 +541,7 @@ test('validate text starts with the counts, milestones included', () => {
   const { checked } = json(root, ['validate'])
   const text = run(root, ['validate'])
   assert.equal(text.status, 0)
-  assert.equal(text.stdout.split('\n')[0], `checked: ${checked.issues} issues, ${checked.epics} epics, ${checked.sprints} sprints, 1 milestones, ${checked.releases} releases, ${checked.comments} comments, ${checked.views} views`)
+  assert.equal(text.stdout.split('\n')[0], `checked: ${checked.issues} issues, ${checked.epics} epics, ${checked.sprints} sprints, 1 milestones, ${checked.releases} releases, ${checked.goals} goals, ${checked.comments} comments, ${checked.views} views`)
 })
 
 test('capabilities --json lists 20 capabilities', () => {
@@ -1585,6 +1585,9 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'views delete': ['mine'],
     'views rename': ['mine', 'theirs'],
     'goal create': ['--title', 'New goal'],
+    'goal update': ['GOAL-8K2W', '--status', 'planned'],
+    'goal close': ['GOAL-8K2W'],
+    'goal delete': ['GOAL-8K2W'],
     'epic goal': ['EPC-2M9D', 'none'],
     'customers create': ['--name', 'Acme'],
     'requests create': ['--title', 'CSV export'],
@@ -2226,13 +2229,14 @@ test('goal create, list, get, progress and epic goal link a goal to an epic and 
   const created = json(root, ['goal', 'create', '--title', 'Trust our webhooks', '--target', '2026-12-31'])
   const { id } = created.after
   assert.match(id, /^GOAL-[0-9A-Z]{4}$/)
-  assert.deepEqual(json(root, ['goal', 'list']), [{ id, title: 'Trust our webhooks', target: '2026-12-31', description: '', epics: [] }])
+  assert.deepEqual(json(root, ['goal', 'list']), [{ id, title: 'Trust our webhooks', status: 'active', target: '2026-12-31', description: '', epics: [] }])
   const linked = run(root, ['epic', 'goal', 'EPC-2M9D', id])
   assert.equal(linked.status, 0, linked.stderr)
   assert.match(linked.stdout, new RegExp(`goal: \\(none\\) → ${id}`))
   assert.match(run(root, ['epic', 'get', 'EPC-2M9D']).stdout, new RegExp(`^goal: ${id}$`, 'm'))
   assert.match(run(root, ['epic', 'list']).stdout, /\| Goal/)
-  assert.match(run(root, ['goal', 'list']).stdout, new RegExp(`${id} +\\| Trust our webhooks +\\| 2026-12-31 +\\| EPC-2M9D`))
+  assert.match(run(root, ['goal', 'list']).stdout, new RegExp(`${id} +\\| Trust our webhooks +\\| active +\\| 2026-12-31 +\\| EPC-2M9D`))
+  assert.match(run(root, ['goal', 'get', id]).stdout, /^status: active$/m)
   assert.deepEqual(json(root, ['goal', 'get', id]).epics, ['EPC-2M9D'])
   const progress = json(root, ['goal', 'progress', id])
   const epic = json(root, ['epic', 'progress', 'EPC-2M9D'])
@@ -2245,6 +2249,18 @@ test('goal create, list, get, progress and epic goal link a goal to an epic and 
   assert.equal(removed.after.goal, undefined)
   const epicWithGoal = json(root, ['epic', 'create', '--title', 'Signing', '--goal', id.toLowerCase()])
   assert.equal(epicWithGoal.after.goal, id)
+})
+
+test('goal create takes --status and --title-file, and refuses a bad status (PMK-213)', () => {
+  const root = makeRepo('team')
+  const file = path.join(root, 'title.txt')
+  fs.writeFileSync(file, 'Ship `signing` $(now)\n')
+  const created = json(root, ['goal', 'create', '--title-file', file, '--status', 'planned'])
+  assert.equal(created.after.title, 'Ship `signing` $(now)')
+  assert.equal(created.after.status, 'planned')
+  const bad = run(root, ['goal', 'create', '--title', 'T', '--status', 'done', '--json'])
+  assert.equal(bad.status, 2)
+  assert.equal(JSON.parse(bad.stdout).error.code, 'INVALID_INPUT')
 })
 
 test('goal get of a missing goal is NOT_FOUND and epic goal of a missing goal is INVALID_INPUT', () => {
@@ -2493,4 +2509,60 @@ test('views run --limit and --sort override the stored values (PMK-212)', () => 
   const bad = run(root, ['views', 'run', 'one', '--sort', 'bogus', '--json'])
   assert.equal(JSON.parse(bad.stdout).error.code, 'INVALID_INPUT')
   assert.equal(JSON.parse(bad.stdout).error.reason, undefined)
+})
+
+test('goal update, close and delete change and remove a goal, with dry runs and refusals (PMK-213)', () => {
+  const root = makeRepo('team')
+  const { id } = json(root, ['goal', 'create', '--title', 'Trust']).after
+  const none = run(root, ['goal', 'update', id, '--json'])
+  assert.equal(none.status, 2)
+  assert.equal(JSON.parse(none.stdout).error.code, 'INVALID_INPUT')
+  const updated = json(root, ['goal', 'update', id, '--title', 'Trust webhooks', '--target', '2026-12-31', '--status', 'planned'])
+  assert.deepEqual([updated.before.title, updated.after.title, updated.after.target, updated.after.status], ['Trust', 'Trust webhooks', '2026-12-31', 'planned'])
+  assert.equal(json(root, ['goal', 'update', id, '--target', 'none']).after.target, undefined)
+  const closed = run(root, ['goal', 'close', id])
+  assert.equal(closed.status, 0, closed.stderr)
+  assert.match(closed.stdout, /status: planned → completed/)
+  assert.equal(json(root, ['goal', 'get', id]).status, 'completed')
+  json(root, ['epic', 'goal', 'EPC-2M9D', id])
+  const linked = run(root, ['goal', 'delete', id, '--json'])
+  assert.equal(JSON.parse(linked.stdout).error.code, 'CONFLICT')
+  json(root, ['epic', 'goal', 'EPC-2M9D', 'none'])
+  const before = hashTree(root)
+  const dry = json(root, ['goal', 'delete', id, '--dry-run'])
+  assert.equal(dry.after, null)
+  assert.equal(dry.removes.file, `.issues/goals/${id}.md`)
+  assert.deepEqual(hashTree(root), before)
+  const deleted = run(root, ['goal', 'delete', id])
+  assert.equal(deleted.status, 0, deleted.stderr)
+  assert.match(deleted.stdout, new RegExp(`deleted goal ${id}`))
+  assert.equal(JSON.parse(run(root, ['goal', 'get', id, '--json']).stdout).error.code, 'NOT_FOUND')
+})
+
+test('a project from before goal_prefix with id_prefix GOAL still validates and writes (PMK-213)', () => {
+  const root = makeRepo('basic')
+  const file = path.join(root, '.issues', 'config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^id_prefix: .*$/m, 'id_prefix: GOAL'))
+  assert.doesNotMatch(run(root, ['validate']).stdout, /goal_prefix/)
+  const created = run(root, ['issues', 'create', '--title', 'X', '--dry-run'])
+  assert.equal(created.status, 0, created.stderr)
+})
+
+test('goals overview carries each goal\'s own warnings, so a cut epic read makes it incomplete (PMK-213)', async () => {
+  const sum = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: {} }
+  const goal = { id: 'INI-1', title: 'Grow', status: 'active', epics: ['P-ACM-1'] }
+  const ctx = {
+    args: [],
+    json: true,
+    tracker: () => ({
+      listGoals: () => ({ goals: [goal], problems: [] }),
+      searchIssues: () => ({ issues: [], problems: [] }),
+      goalProgress: () => ({ goal, epics: [], ...sum, warnings: ['P-ACM-1: Linear has more issues in this epic than the 1000 pmkit read; goal progress may be low'] }),
+    }),
+  }
+  const { data, text } = await cmd('goals overview').run(ctx)
+  assert.equal(data.complete, false)
+  assert.deepEqual(data.warnings, ['P-ACM-1: Linear has more issues in this epic than the 1000 pmkit read; goal progress may be low'])
+  assert.match(text, /^incomplete: /m)
+  assert.ok(data.items.every((item) => !('warnings' in item)))
 })

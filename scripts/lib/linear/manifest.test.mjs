@@ -97,7 +97,7 @@ test('a Business workspace with releases and customers on', async () => {
   assert.deepEqual(entry.releases, { id: 'releases', path: 'native' })
   assert.equal(entry.demand_signals.path, 'absent')
   assert.equal(entry.demand_signals.detail.workspace, 'native')
-  assert.equal(entry.strategic_goals.detail.workspace, 'native')
+  assert.equal(entry.strategic_goals.path, 'native')
   assert.equal(entry.request_queue.detail.workspace, 'conditional')
   assert.deepEqual(entry.demand_signals, {
     id: 'demand_signals',
@@ -117,17 +117,17 @@ test('a Business workspace with releases and customers on', async () => {
   for (const operation of REQUEST_OPERATIONS) assert.ok(listed.includes(operation), operation)
   assert.ok(entry.demand_signals.detail.unsupported.includes('createRequest'))
   assert.deepEqual(entry.user_inbox, { id: 'user_inbox', path: 'native', detail: { workspace: 'native' } })
+  // PMK-213: the adapter reads initiatives as goals; the goal writes stay unsupported.
   assert.deepEqual(entry.strategic_goals, {
     id: 'strategic_goals',
-    path: 'absent',
-    detail: { workspace: 'native', unsupported: ['listGoals', 'getGoal', 'createGoal', 'goalProgress', 'setEpicGoal'] },
-    enableHint: 'The Linear adapter does not serve initiatives yet; Linear offers them on this workspace',
+    path: 'native',
+    detail: { entity: 'initiative', unsupported: ['createGoal', 'setEpicGoal', 'updateGoal', 'deleteGoal'] },
   })
 })
 
 test('a trial counts as a Business plan and releases follow the setting', async () => {
   const entry = byId(buildLinearCapabilities(await raw({ trialEndsAt: '2026-11-01T00:00:00Z' }), pmkitWith()))
-  assert.equal(entry.strategic_goals.detail.workspace, 'native')
+  assert.equal(entry.strategic_goals.path, 'native')
   assert.equal(entry.releases.path, 'absent')
 })
 

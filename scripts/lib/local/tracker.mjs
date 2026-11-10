@@ -6,7 +6,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { requireActor, gitUserEmail } from '../actor.mjs'
-import { loadConfig, validateLocalConfig } from '../config.mjs'
+import { goalPrefixOf, loadConfig, validateLocalConfig } from '../config.mjs'
 import { formatMinutes, isPositiveMinutes } from '../duration.mjs'
 import { PmkitError } from '../errors.mjs'
 import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
@@ -28,7 +28,7 @@ import { createDocumentFile, listDocumentFiles, readDocumentFile } from './docum
 import { hasMilestoneFiles, milestoneStems, parseMilestone, serializeMilestone, sortMilestones, validMilestoneId } from './milestones.mjs'
 import { parseRelease, releaseStems, serializeRelease, sortReleases, validReleaseId, validTag } from './releases.mjs'
 import { parseView, serializeView, validViewName, viewStems } from './views.mjs'
-import { GOAL_PREFIX, goalStems, parseGoal, serializeGoal, sortGoals } from './goals.mjs'
+import { GOAL_STATUSES, goalStems, parseGoal, serializeGoal, sortGoals } from './goals.mjs'
 import { CUSTOMER_PREFIX, mdStems, parseCustomer, serializeCustomer, sortCustomers } from './customers.mjs'
 import { REQUEST_PREFIX, REQUEST_STATES, groupDemand, parseRequest, serializeRequest, sortRequests, sortRequestsNewest } from './requests.mjs'
 import { checkFilter, runQuery } from './query.mjs'
@@ -1332,14 +1332,20 @@ export function createLocalTracker(root, {
 
   const getDeliverable = (id) => readEpic(id).epic
 
-  /** Every epic that parses, and a problem for each epic file that does not. */
+  /**
+   * Every epic that parses, and a problem for each epic file that does not. A folder with an epic.md whose name is not an epic id
+   * (epic_prefix changed, a folder renamed by hand) is not read, so it is a problem too: it may hold a link the caller needs.
+   */
   function readDeliverables() {
     if (!fs.existsSync(epicsDir)) return { epics: [], problems: [] }
-    const ids = fs.readdirSync(epicsDir, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && isId(entry.name, local.epic_prefix) && fs.existsSync(path.join(epicsDir, entry.name, 'epic.md')))
+    const folders = fs.readdirSync(epicsDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && fs.existsSync(path.join(epicsDir, entry.name, 'epic.md')))
       .map((entry) => entry.name)
+    const ids = folders.filter((name) => isId(name, local.epic_prefix))
     const epics = []
-    const problems = []
+    const problems = folders.filter((name) => !isId(name, local.epic_prefix)).map((name) => (
+      { id: name, kind: 'epic', code: 'INVALID_INPUT', message: `epic folder ${name} is not named after an epic id such as ${local.epic_prefix}-1, so pmkit does not read it` }
+    ))
     const created = {}
     for (const id of ids) {
       try {
@@ -1439,12 +1445,14 @@ export function createLocalTracker(root, {
   }
 
   const goalsDir = path.join(issuesDir, 'goals')
+  // The shape of an id with any prefix, as in GOAL-7K3Q or OKR-1.
+  const ID_SHAPE = /^[A-Za-z]{2,5}-[0-9A-Za-z]+$/
   const goalNotFound = (id) => new PmkitError('NOT_FOUND', `goal ${id} does not exist`, 'pmkit goal list')
 
   /** The goal file as stored, without its epics. A stem that is not a goal id is never a goal. */
   function readGoalFile(id) {
     const normalized = normalizeId(String(id))
-    if (!isId(normalized, GOAL_PREFIX) || !goalStems(goalsDir).has(normalized)) throw goalNotFound(id)
+    if (!isId(normalized, goalPrefixOf(local)) || !goalStems(goalsDir).has(normalized)) throw goalNotFound(id)
     return parseGoal(fs.readFileSync(path.join(goalsDir, `${normalized}.md`), 'utf8'), normalized)
   }
 
@@ -1468,8 +1476,11 @@ export function createLocalTracker(root, {
     const goals = []
     const problems = []
     for (const stem of [...goalStems(goalsDir)].sort()) {
-      if (!isId(stem, GOAL_PREFIX)) {
-        problems.push({ id: stem, kind: 'file', code: 'INVALID_INPUT', message: `goal file ${stem}.md is not named after a goal id such as ${GOAL_PREFIX}-1` })
+      if (!isId(stem, goalPrefixOf(local))) {
+        // A stem shaped like an id under another prefix (GOAL-1.md after goal_prefix changed) is a goal pmkit cannot read, so it
+        // keeps a reader from concluding; any other name (README.md) is a stray file.
+        const kind = ID_SHAPE.test(stem) ? 'goal' : 'file'
+        problems.push({ id: stem, kind, code: 'INVALID_INPUT', message: `goal file ${stem}.md is not named after a goal id such as ${goalPrefixOf(local)}-1` })
         continue
       }
       try {
@@ -1486,11 +1497,11 @@ export function createLocalTracker(root, {
 
   function createGoal(input, actor, { dryRun = false } = {}) {
     requireWriter(actor)
-    const allowed = ['title', 'target', 'description']
+    const allowed = ['title', 'status', 'target', 'description']
     for (const key of Object.keys(input)) {
       if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
     }
-    const goal = { title: NORMALIZE.title(input.title), description: '' }
+    const goal = { title: NORMALIZE.title(input.title), status: blank(input.status) ? 'active' : oneOf('status', input.status, GOAL_STATUSES), description: '' }
     if (!blank(input.target)) {
       if (!validDate(input.target)) throw invalid('target must be a date as YYYY-MM-DD')
       goal.target = input.target
@@ -1498,8 +1509,8 @@ export function createLocalTracker(root, {
     if (!blank(input.description)) goal.description = plainText('description', input.description)
     const stems = goalStems(goalsDir)
     const id = local.id_style === 'numbered'
-      ? nextNumberedId(GOAL_PREFIX, [...stems])
-      : newId(GOAL_PREFIX, { random, exists: (candidate) => stems.has(candidate) })
+      ? nextNumberedId(goalPrefixOf(local), [...stems])
+      : newId(goalPrefixOf(local), { random, exists: (candidate) => stems.has(candidate) })
     const content = serializeGoal(goal)
     const after = readBack('goal file', () => parseGoal(content, id))
     if (!dryRun) {
@@ -1511,8 +1522,14 @@ export function createLocalTracker(root, {
 
   /** The progress of each linked epic, as deliverableProgress counts it, and the sums of the epics that are not canceled. An issue reaches at most one epic, so none counts twice. */
   function goalProgress(id) {
-    const goal = getGoal(id)
-    const issues = scanIssues()
+    const read = readDeliverables()
+    const goal = withEpics(readGoalFile(id), read.epics)
+    const { issues, problems } = readAll()
+    // An epic file that does not parse may link to this goal, and an issue file that does not parse may hold work of a linked epic.
+    const warnings = [
+      ...read.problems.map((problem) => `${problem.id}: ${problem.code} ${problem.message}; it may link to this goal; run pmkit validate`),
+      ...problems.map((problem) => `${problem.id}: ${problem.code} ${problem.message}; goal progress may be low; run pmkit validate`),
+    ]
     const sum = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: Object.fromEntries(CATEGORIES.map((category) => [category, 0])) }
     const epics = goal.epics.map((epicId) => {
       const { title, status } = getDeliverable(epicId)
@@ -1525,7 +1542,7 @@ export function createLocalTracker(root, {
       }
       return { id: epicId, title, status, counted, progress }
     })
-    return { goal, epics, ...sum }
+    return { goal, epics, ...sum, warnings }
   }
 
   /** Links an epic to a goal, or removes the link with a null goal. An unchanged link writes nothing. */
@@ -1552,6 +1569,76 @@ export function createLocalTracker(root, {
     writeFile(file, content)
     append(path.join(dir, 'events.jsonl'), [{ at: stamp(), by: actor, op: 'update', field: 'goal', from: before.goal ?? null, to: after.goal ?? null }])
     return { before, after }
+  }
+
+  /** Changes the title, status or target of a goal; a null target removes it. Only the changed frontmatter lines are edited. */
+  function updateGoal(id, input, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const allowed = ['title', 'status', 'target']
+    const keys = Object.keys(input ?? {})
+    if (keys.length === 0) throw invalid('goal update needs a title, a status or a target', 'pmkit goal update <id> --status completed')
+    for (const key of keys) {
+      if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+    }
+    // Every value is checked before the file is read for editing, so a refusal never touches it.
+    const set = {}
+    if (input.title !== undefined) set.title = NORMALIZE.title(input.title)
+    if (input.status !== undefined) set.status = oneOf('status', input.status, GOAL_STATUSES)
+    if (input.target !== undefined && input.target !== null) {
+      if (!validDate(input.target)) throw invalid('target must be a date as YYYY-MM-DD, or none to remove it')
+      set.target = input.target
+    }
+    const goal = readGoalFile(id)
+    const file = path.join(goalsDir, `${goal.id}.md`)
+    const { yaml, body } = splitFrontmatter(fs.readFileSync(file, 'utf8'))
+    let edited = yaml
+    try {
+      for (const [key, value] of Object.entries(set)) edited = setScalar(edited, [key], value)
+      if (input.target === null) edited = removeKey(edited, ['target'])
+    } catch (error) {
+      throw new PmkitError('INVALID_INPUT', `The goal frontmatter cannot be edited: ${error.message}`, '/pmkit:local:doctor')
+    }
+    const content = `---\n${edited.replace(/\n$/, '')}\n---\n${body}`
+    const after = readBack('goal file', () => parseGoal(content, goal.id))
+    const before = withEpics(goal)
+    if (['title', 'status', 'target', 'description'].every((key) => goal[key] === after[key])) return { before, after: before }
+    if (!dryRun) writeFile(file, content)
+    return { before, after: { ...after, epics: before.epics } }
+  }
+
+  /**
+   * Deletes a goal file. It refuses, writing nothing, while an epic links to the goal, and while an epic file does not parse,
+   * because that epic may link to it. Goals have no event log, so no event is written.
+   */
+  function deleteGoal(id, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const goal = readGoalFile(id)
+    const { epics, problems } = readDeliverables()
+    if (problems.length > 0) {
+      // A folder outside epic_prefix parses fine: its fix is a rename, not the doctor.
+      const misnamed = problems.every((problem) => !isId(problem.id, local.epic_prefix))
+      throw new PmkitError(
+        'INVALID_INPUT',
+        `the links to ${goal.id} cannot be checked, because pmkit cannot read ${problems.map((problem) => `${problem.id} (${problem.message})`).join('; ')}`,
+        misnamed ? 'Rename each epic folder to an epic id, or set epic_prefix back, then delete again' : 'Run pmkit validate, fix what it lists (/pmkit:local:doctor for a file that does not parse), then delete again',
+        { problems },
+      )
+    }
+    const linked = epics.filter((epic) => epic.goal === goal.id).map((epic) => epic.id)
+    if (linked.length > 0) {
+      throw new PmkitError(
+        'CONFLICT',
+        `goal ${goal.id} is linked to ${linked.length === 1 ? 'one epic' : `${linked.length} epics`}: ${linked.join(', ')}`,
+        `Remove each link, then delete again: ${linked.map((epic) => `pmkit epic goal ${epic} none`).join('; ')}`,
+        { epics: linked },
+      )
+    }
+    const file = path.join(goalsDir, `${goal.id}.md`)
+    const result = { before: { ...goal, epics: [] }, after: null, removes: { file: path.relative(config.root, file).split(path.sep).join('/') } }
+    if (dryRun) return result
+    fs.rmSync(file)
+    writtenPaths.add(file)
+    return result
   }
 
   // Customers and requests (PMK-46). The records use the keys of Linear's customer and request views.
@@ -2023,14 +2110,11 @@ export function createLocalTracker(root, {
         return { code: error.code, message: error.message }
       }
     }
-    const epics = fs.existsSync(epicsDir)
-      ? fs.readdirSync(epicsDir, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory() && isId(entry.name, local.epic_prefix) && fs.existsSync(path.join(epicsDir, entry.name, 'epic.md')))
-        .map((entry) => ({ id: entry.name, error: bad(() => getDeliverable(entry.name)) }))
-      : []
+    // readDeliverables names both an epic file that does not parse and a folder outside epic_prefix, which no read sees.
+    const epics = readDeliverables().problems.map(({ id, code, message }) => ({ id, code, message }))
     const milestones = [...milestoneStems(milestonesDir)].filter(validMilestoneId).map((id) => ({ id, error: bad(() => readMilestone(id)) }))
     const failed = (rows) => rows.filter((row) => row.error !== null).map(({ id, error }) => ({ id, ...error }))
-    return { epics: failed(epics), milestones: failed(milestones) }
+    return { epics, milestones: failed(milestones) }
   }
 
   const docsDir = path.join(issuesDir, 'docs')
@@ -2159,7 +2243,7 @@ export function createLocalTracker(root, {
 
   return {
     saveView, listViews, runView, deleteView, renameView,
-    listGoals, getGoal, createGoal, goalProgress, setEpicGoal,
+    listGoals, getGoal, createGoal, goalProgress, setEpicGoal, updateGoal, deleteGoal,
     listCustomers, getCustomer, createCustomer, listRequests, getRequest, createRequest, acceptRequest, declineRequest, listDemandSignals,
     listNotifications, markRead,
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,

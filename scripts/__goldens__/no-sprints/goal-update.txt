@@ -1,0 +1,72 @@
+$ pmkit goal update GOAL-8K2W --status planned --target none
+exit 0
+--- stdout
+GOAL-8K2W  Customers trust our webhooks
+status: active → planned
+target: 2026-12-31 → (none)
+--- stderr
+(empty)
+
+$ pmkit goal update GOAL-8K2W --status planned --target none --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "GOAL-8K2W",
+    "title": "Customers trust our webhooks",
+    "status": "active",
+    "target": "2026-12-31",
+    "description": "No customer loses an event because a delivery failed.",
+    "epics": [
+      "EPC-4H7V"
+    ]
+  },
+  "after": {
+    "id": "GOAL-8K2W",
+    "title": "Customers trust our webhooks",
+    "status": "planned",
+    "description": "No customer loses an event because a delivery failed.",
+    "epics": [
+      "EPC-4H7V"
+    ]
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit goal update GOAL-8K2W --status planned --target none --dry-run
+exit 0
+--- stdout
+GOAL-8K2W  Customers trust our webhooks
+status: active → planned
+target: 2026-12-31 → (none)
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit goal update GOAL-8K2W --status planned --target none --dry-run --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "GOAL-8K2W",
+    "title": "Customers trust our webhooks",
+    "status": "active",
+    "target": "2026-12-31",
+    "description": "No customer loses an event because a delivery failed.",
+    "epics": [
+      "EPC-4H7V"
+    ]
+  },
+  "after": {
+    "id": "GOAL-8K2W",
+    "title": "Customers trust our webhooks",
+    "status": "planned",
+    "description": "No customer loses an event because a delivery failed.",
+    "epics": [
+      "EPC-4H7V"
+    ]
+  }
+}
+--- stderr
+(empty)

@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { ADAPTERS } from './adapters.mjs'
-import { loadConfig, pmkitConfigMessages, resolveDefaultBranch, validateLocalConfig } from './config.mjs'
+import { goalPrefixOf, loadConfig, pmkitConfigMessages, resolveDefaultBranch, validateLocalConfig } from './config.mjs'
 import { isId, normalizeId } from './ids.mjs'
 import { parseYaml, splitFrontmatter } from './yaml.mjs'
 import { parseEpicFile, walkParents } from './local/epics.mjs'
@@ -13,7 +13,7 @@ import { hasMilestoneFiles, milestoneStems, parseMilestone, validMilestoneId } f
 import { parseRelease, releaseStems, validReleaseId } from './local/releases.mjs'
 import { checkFilter } from './local/query.mjs'
 import { caseClashes, parseView, validViewName, viewStems } from './local/views.mjs'
-import { GOAL_PREFIX, goalStems, parseGoal } from './local/goals.mjs'
+import { goalStems, parseGoal } from './local/goals.mjs'
 import { CUSTOMER_PREFIX, mdStems, parseCustomer } from './local/customers.mjs'
 import { REQUEST_PREFIX, parseRequest } from './local/requests.mjs'
 import { hasConflictMarkers, parseIssueFile, toFrontmatter } from './local/issue-file.mjs'
@@ -69,7 +69,7 @@ function blockedByCycles(graph) {
 }
 
 const relative = (root, file) => path.relative(root, file).split(path.sep).join('/')
-const noneChecked = () => ({ issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, comments: 0, views: 0 })
+const noneChecked = () => ({ issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, goals: 0, comments: 0, views: 0 })
 // A problem has no next step field, so the format problem carries it in its message.
 const formatProblem = (root, file, error) => ({ path: relative(root, file), code: 'FORMAT', message: `${error.message}; run ${error.nextStep}` })
 
@@ -184,6 +184,8 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
     epicIds.add(name)
     checked.epics++
     if (conflicted.has(file)) continue
+    // Commands read only folders named after an epic id, so any other one is skipped by every read (PMK-213).
+    if (!isId(name, local.epic_prefix)) add(file, 'id', `epic folder ${name} is not named after an epic id such as ${local.epic_prefix}-1, so pmkit does not read it`)
     try {
       const epic = parseEpicFile(read(file), { statuses: local.statuses })
       epics.set(name, epic)
@@ -285,9 +287,11 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
   const readableGoals = new Set()
   for (const id of [...goalIds].sort()) {
     const file = path.join(goalsDir, `${id}.md`)
+    // Only a file named after a goal id is a goal, as goal list counts them; a README.md is a problem, not a goal.
+    if (isId(id, goalPrefixOf(local))) checked.goals++
     if (conflicted.has(file)) continue
-    if (!isId(id, GOAL_PREFIX)) {
-      add(file, 'goal', `goal file ${id}.md is not named after a goal id such as ${GOAL_PREFIX}-1`)
+    if (!isId(id, goalPrefixOf(local))) {
+      add(file, 'goal', `goal file ${id}.md is not named after a goal id such as ${goalPrefixOf(local)}-1`)
       continue
     }
     try {
@@ -408,7 +412,7 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
     if (milestoneMissing(epic.milestone)) add(path.join(issuesDir, 'epics', name, 'epic.md'), 'reference', `milestone ${epic.milestone} does not exist`)
     if (epic.goal !== undefined) {
       const file = path.join(issuesDir, 'epics', name, 'epic.md')
-      if (!isId(epic.goal, GOAL_PREFIX)) add(file, 'reference', `goal ${epic.goal} is not a valid goal id such as ${GOAL_PREFIX}-1`)
+      if (!isId(epic.goal, goalPrefixOf(local))) add(file, 'reference', `goal ${epic.goal} is not a valid goal id such as ${goalPrefixOf(local)}-1`)
       else if (!goalIds.has(epic.goal)) add(file, 'reference', `goal ${epic.goal} does not exist`)
       else if (!readableGoals.has(epic.goal)) add(file, 'reference', `goal ${epic.goal} does not parse, see ${rel(path.join(goalsDir, `${epic.goal}.md`))}`)
     }

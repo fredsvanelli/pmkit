@@ -200,3 +200,64 @@ test('the children of an issue file that does not parse are warned about, not sp
   assert.ok(result.data.warnings.some((line) => line.includes(a) && line.includes(b)), result.stdout)
   assert.ok(!result.data.items.some((item) => [a, b].includes(item.issue.id)))
 })
+
+test('goal progress is complete on a clean tree and incomplete with a warning when an epic file does not parse (PMK-213)', async () => {
+  const root = makeRepo('no-sprints')
+  const clean = await pmkit(root, ['goal', 'progress', 'GOAL-8K2W'])
+  assert.equal(clean.data.complete, true)
+  assert.deepEqual(clean.data.warnings, [])
+  const other = (await pmkit(root, ['epic', 'create', '--title', 'Other'])).data.after.id
+  fs.writeFileSync(path.join(root, '.issues', 'epics', other, 'epic.md'), '---\ntitle: [\n---\n')
+  const broken = await pmkit(root, ['goal', 'progress', 'GOAL-8K2W'])
+  assert.equal(broken.data.complete, false)
+  assert.ok(broken.data.warnings.some((line) => line.startsWith(`${other}:`) && line.includes('may link to this goal')), broken.stdout)
+  const text = await run(['goal', 'progress', 'GOAL-8K2W'], { cwd: root, env })
+  assert.match(text.stdout, /^incomplete: /m)
+  assert.match(text.stderr, new RegExp(other))
+  const overview = await pmkit(root, ['goals', 'overview'])
+  assert.ok(overview.data.items.every((item) => !('warnings' in item)), overview.stdout)
+})
+
+test('on a Linear Business workspace goals overview and goal list read initiatives, and a cut read is a warning without validate advice (PMK-213)', async () => {
+  const root = useLinear(makeRepo('basic'))
+  const file = path.join(root, '.pmkit', 'config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('    workspace: acme', '    workspace: acme\n    team: ACME'))
+  const fake = fakeLinearIssues()
+  const node = { id: 'i-1', slugId: 'abcdef123456', identifier: 'INI-1', name: 'Grow', description: '', content: null, status: 'Active', targetDate: '2026-12-31', url: 'u', projects: { nodes: [], pageInfo: { hasNextPage: true, endCursor: 'x' } } }
+  const fetch = fakeLinearFetch({ ...fakeWorkspace({ subscription: { type: 'business' } }), ...fake.routes, PmkitInitiatives: { status: 200, json: { data: { initiatives: { nodes: [node], pageInfo: { hasNextPage: false, endCursor: null } } } } } })
+  const options = { cwd: root, env: { ...childEnv(), ...userStoreEnv().env, LINEAR_API_KEY: FAKE_KEY }, adapters: { ...ADAPTERS, linear: linearDescriptor({ fetch }) } }
+  const overview = await run(['goals', 'overview', '--json'], options)
+  assert.equal(overview.code, 0, overview.stdout + overview.stderr)
+  const data = JSON.parse(overview.stdout)
+  assert.equal(data.source, 'goals')
+  assert.deepEqual(data.items.map((item) => item.goal.id), ['INI-1'])
+  assert.equal(data.complete, false)
+  assert.ok(data.warnings.some((line) => line.includes('more than 50 projects') && !line.includes('pmkit validate')), data.warnings.join('\n'))
+  const list = await run(['goal', 'list'], options)
+  assert.match(list.stdout, /INI-1 +\| Grow +\| active +\| 2026-12-31/)
+  assert.match(list.stderr, /more than 50 projects/)
+  assert.doesNotMatch(list.stderr, /pmkit validate/)
+})
+
+test('with goal_prefix set, an old GOAL- file is an unreadable goal: goals overview warns, is incomplete and does not fall back (PMK-213)', async () => {
+  const root = makeRepo('no-sprints')
+  fs.appendFileSync(path.join(root, '.issues', 'config.yaml'), 'goal_prefix: OKR\n')
+  fs.writeFileSync(path.join(root, '.issues', 'goals', 'README.md'), '# Goals\n')
+  const result = await pmkit(root, ['goals', 'overview'])
+  assert.equal(result.data.source, 'goals')
+  assert.equal(result.data.complete, false)
+  assert.ok(result.data.warnings.some((line) => line.startsWith('GOAL-8K2W:') && /such as OKR-1/.test(line)), result.stdout)
+  assert.ok(result.data.notes.some((line) => line.includes('README.md')), result.stdout)
+})
+
+test('goal get warns about an epic file that does not parse, like goal list and goal progress (PMK-213)', async () => {
+  const root = makeRepo('no-sprints')
+  const clean = await pmkit(root, ['goal', 'get', 'GOAL-8K2W'])
+  assert.equal(clean.data.complete, true)
+  assert.deepEqual(clean.data.warnings, [])
+  const other = (await pmkit(root, ['epic', 'create', '--title', 'Other'])).data.after.id
+  fs.writeFileSync(path.join(root, '.issues', 'epics', other, 'epic.md'), '---\ntitle: [\n---\n')
+  const broken = await pmkit(root, ['goal', 'get', 'GOAL-8K2W'])
+  assert.equal(broken.data.complete, false)
+  assert.ok(broken.data.warnings.some((line) => line.startsWith(`${other}:`)), broken.stdout)
+})
