@@ -552,9 +552,11 @@ test('pr diff refuses a repository with no git host', async () => {
   assert.equal(errorOf(result).code, 'NOT_SUPPORTED')
 })
 
+const RULES = 'api repos/{owner}/{repo}/rules/branches/main?per_page=100&page=1'
 const blockerGh = (over = {}) => ({
   [detailView('feat')]: { stdout: detailJson({ number: 7 }, { reviews: [{ author: { login: 'ann' }, state: 'CHANGES_REQUESTED' }], reviewRequests: [{ __typename: 'User', login: 'bob' }], mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY', reviewDecision: 'CHANGES_REQUESTED' }) },
   'pr checks 7 --json name,state,bucket,link': { status: 8, stdout: JSON.stringify([{ name: 'build', state: 'FAILURE', bucket: 'fail' }, { name: 'lint', state: 'PENDING', bucket: 'pending' }]) },
+  [RULES]: { stdout: '[]' },
   ...over,
 })
 
@@ -573,6 +575,7 @@ test('pr blockers lists checks, reviews, conflicts, open threads and policies', 
   const gh = fakeGh(blockerGh({
     [key]: { stdout: JSON.stringify(threads) },
     'api repos/{owner}/{repo}/branches/main/protection': { stdout: JSON.stringify({ required_pull_request_reviews: { required_approving_review_count: 1 }, required_status_checks: { contexts: ['build'] } }) },
+    [RULES]: { stdout: JSON.stringify([{ type: 'required_status_checks', parameters: { required_status_checks: [{ context: 'lint' }] } }]) },
   }))
   const data = await callJson(root, envWith(gh), ['pr', 'blockers', '--branch', 'feat'])
   assert.equal(data.branch, 'feat')
@@ -586,7 +589,8 @@ test('pr blockers lists checks, reviews, conflicts, open threads and policies', 
   assert.deepEqual(data.reviews.requested, ['bob'])
   assert.equal(data.conflicts.conflicting, true)
   assert.equal(data.threads.open[0].path, 'a.js')
-  assert.deepEqual(data.policies.unmet, ['needs 1 more approval (0 of 1)', 'required check build does not pass'])
+  assert.deepEqual(data.policies.unmet, ['needs 1 more approval (0 of 1)', 'required check build does not pass', 'required check lint does not pass'])
+  assert.deepEqual(data.policies.rulesets, ['required_status_checks'])
   assert.deepEqual(data.unchecked, [])
   const text = (await call(root, envWith(gh), ['pr', 'blockers', '--branch', 'feat'])).stdout
   assert.match(text, /^#7 /)
@@ -602,12 +606,13 @@ test('pr blockers reports a refused protection read as not checked and still exi
   }))
   const data = await callJson(root, envWith(gh), ['pr', 'blockers', '--branch', 'feat'])
   assert.equal(data.threads, null)
-  assert.equal(data.policies, null)
+  assert.equal(data.policies.protected, null)
+  assert.deepEqual(data.policies.unread, ['branch protection'])
   assert.deepEqual(data.unchecked.map((u) => u.area), ['threads', 'policies'])
   assert.equal(data.blocked, true)
   const text = (await call(root, envWith(gh), ['pr', 'blockers', '--branch', 'feat'])).stdout
   assert.match(text, /threads: not checked/)
-  assert.match(text, /policies: not checked/)
+  assert.match(text, /policies: not read: branch protection/)
 })
 
 test('pr blockers of a branch without a pull request has no verdict (blocked null) and is not an error', async () => {

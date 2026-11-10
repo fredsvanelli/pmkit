@@ -2277,13 +2277,16 @@ async function runTrackAgents(ctx) {
     if (!isPmkitError(error) || error.code !== 'NOT_SUPPORTED') throw error
     notes.push('git_host is none, so the list has no pull request state')
   }
-  // The branch protection of a base does not change between issues, so it is read once per base. Only a successful read is kept: a failure (a 502, a rate limit) is thrown and the next issue reads again.
+  // The branch protection and the rules of a base do not change between issues, so each is read once per base. Only a successful read is kept: a failure (a 502, a rate limit, a refusal) is thrown and the next issue reads again.
   const protections = new Map()
+  const rules = new Map()
+  const once = (cache, read) => (base) => {
+    if (!cache.has(base)) cache.set(base, read(base))
+    return cache.get(base)
+  }
   const cachedHost = host === null ? null : Object.assign(Object.create(host), {
-    branchProtection(base) {
-      if (!protections.has(base)) protections.set(base, host.branchProtection(base))
-      return protections.get(base)
-    },
+    branchProtection: once(protections, (base) => host.branchProtection(base)),
+    branchRules: once(rules, (base) => host.branchRules(base)),
   })
   let rateLimited = false
   const rows = []
