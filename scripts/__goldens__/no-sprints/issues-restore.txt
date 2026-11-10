@@ -3,17 +3,17 @@ exit 2
 --- stdout
 (empty)
 --- stderr
-error: the Local tracker has no trash: a deleted issue comes back from git history
-next: git log --diff-filter=D -1 --format=%h -- .issues/issues/ISS-9B2X finds the commit; git checkout <commit>^ -- .issues/issues/ISS-9B2X brings the folder back
+error: ISS-9B2X is not deleted
+next: pmkit issues get ISS-9B2X
 
 $ pmkit issues restore ISS-9B2X --json
 exit 2
 --- stdout
 {
   "error": {
-    "code": "NOT_SUPPORTED",
-    "message": "the Local tracker has no trash: a deleted issue comes back from git history",
-    "nextStep": "git log --diff-filter=D -1 --format=%h -- .issues/issues/ISS-9B2X finds the commit; git checkout <commit>^ -- .issues/issues/ISS-9B2X brings the folder back"
+    "code": "INVALID_INPUT",
+    "message": "ISS-9B2X is not deleted",
+    "nextStep": "pmkit issues get ISS-9B2X"
   }
 }
 --- stderr
@@ -24,17 +24,17 @@ exit 2
 --- stdout
 (empty)
 --- stderr
-error: the Local tracker has no trash: a deleted issue comes back from git history
-next: git log --diff-filter=D -1 --format=%h -- .issues/issues/ISS-9B2X finds the commit; git checkout <commit>^ -- .issues/issues/ISS-9B2X brings the folder back
+error: ISS-9B2X is not deleted
+next: pmkit issues get ISS-9B2X
 
 $ pmkit issues restore ISS-9B2X --dry-run --json
 exit 2
 --- stdout
 {
   "error": {
-    "code": "NOT_SUPPORTED",
-    "message": "the Local tracker has no trash: a deleted issue comes back from git history",
-    "nextStep": "git log --diff-filter=D -1 --format=%h -- .issues/issues/ISS-9B2X finds the commit; git checkout <commit>^ -- .issues/issues/ISS-9B2X brings the folder back"
+    "code": "INVALID_INPUT",
+    "message": "ISS-9B2X is not deleted",
+    "nextStep": "pmkit issues get ISS-9B2X"
   }
 }
 --- stderr
