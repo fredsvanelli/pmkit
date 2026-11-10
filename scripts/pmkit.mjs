@@ -24,7 +24,7 @@ import { pathNote } from './lib/path-notes.mjs'
 import { planNextAdr } from './lib/adr.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
 import { changeList, checkMembers, mergeCapacity, parseCapacityPairs, workingDays } from './lib/team-capacity.mjs'
-import { AGENT_ID, localRunLine } from './lib/delegation.mjs'
+import { AGENT_ID, localRunLine, nativeRunLine } from './lib/delegation.mjs'
 import { delegationOf, prSummary, prText } from './lib/track-agents.mjs'
 import { SCANNERS, SEVERITIES, alertCandidate, collectAlerts, matchAlerts } from './lib/alerts.mjs'
 import { READ_LIMIT, groupTodos, matchTodos, readExistingIssues, scanRepo } from './lib/todos.mjs'
@@ -571,12 +571,14 @@ export const COMMANDS = [
     run: async (ctx) => issueWrite(ctx, await (await ctx.tracker()).assign(ctx.args[0], ctx.args[1] === 'none' ? null : ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })),
   },
   {
-    name: 'issues delegate', summary: 'assigns an issue to an agent member and comments the instructions for local execution', usage: '<id> <agent:name> [--instructions-file f]', write: true, args: ['id', 'agent'], flags: ['instructions-file'],
+    name: 'issues delegate', summary: 'hands an issue to an agent member with a delegation comment: the agent becomes the assignee (local run) or the tracker\'s delegate (native run)', usage: '<id> <agent:name> [--instructions-file f]', write: true, args: ['id', 'agent'], flags: ['instructions-file'],
     run: async (ctx) => {
       const instructions = ctx.opt('instructions-file') !== undefined ? readInput(ctx.opt('instructions-file')) : undefined
       const result = await (await ctx.tracker()).delegate(ctx.args[0], ctx.args[1], instructions, await ctx.actor(), { dryRun: ctx.dryRun })
-      const lines = [writeText(result, { dryRun: false }), `${ctx.dryRun ? 'would comment' : 'commented'} ${result.comment.id}`]
+      // A Linear dry run has no comment id yet.
+      const lines = [writeText(result, { dryRun: false }), `${ctx.dryRun ? 'would comment' : 'commented'}${result.comment.id ? ` ${result.comment.id}` : ''}`]
       if (result.run === 'local') lines.push(localRunLine(result.after.id, result.after.assignee))
+      if (result.run === 'native') lines.push(nativeRunLine(result.after.id, result.after.delegate))
       if (ctx.dryRun) lines.push('dry run: nothing was written')
       return { data: result, text: lines.join('\n'), commit: result.after.id }
     },

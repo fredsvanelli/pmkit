@@ -211,6 +211,7 @@ export function applyInput(node, input, context, { parent, project, cycle } = {}
     next.state = { id: state.id, name: state.name, type: state.type }
   }
   if (input.assigneeId !== undefined) next.assignee = input.assigneeId === null ? null : { id: input.assigneeId }
+  if (input.delegateId !== undefined) next.delegate = input.delegateId === null ? null : { id: input.delegateId }
   if (input.labelIds !== undefined) {
     const nodes = input.labelIds.map((id) => {
       const label = context.raw.labels.find((item) => item.id === id)
@@ -234,6 +235,6 @@ export function skeletonNode(team, at, context) {
     archivedAt: null, trashed: false, createdAt: at, updatedAt: at,
     team: { id: team.id, key: team.key },
     state: state === null ? { id: null, name: null, type: null } : { id: state.id, name: state.name, type: state.type },
-    assignee: null, parent: null, project: null, projectMilestone: null, cycle: null, labels: empty(), children: empty(), relations: empty(), inverseRelations: empty(),
+    assignee: null, delegate: null, parent: null, project: null, projectMilestone: null, cycle: null, labels: empty(), children: empty(), relations: empty(), inverseRelations: empty(),
   }
 }

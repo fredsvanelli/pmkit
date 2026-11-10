@@ -1,12 +1,15 @@
 // The History and Comments families of the Linear tracker: getHistory, listComments, comment, resolveThread and metricEvents.
 // See docs/superpowers/specs/2026-10-28-pmk-36-linear-history-comments-design.md.
 
-import { PmkitError } from '../errors.mjs'
+import { AGENT_ID, delegationComment } from '../delegation.mjs'
+import { PmkitError, isPmkitError } from '../errors.mjs'
 import { compareIds } from '../ids.mjs'
 import { COMMENT_BY_ID_QUERY, COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_COMMENTS_QUERY, ISSUE_EVENTS_QUERY, ISSUE_HISTORY_QUERY } from './documents.mjs'
 import { translateFilter } from './filter.mjs'
 import { toComment, toEvents } from './history.mjs'
 import { isUnconfirmed } from './issue-ops.mjs'
+import { toIssue } from './issues.mjs'
+import { NO_AGENT_HINT } from './manifest.mjs'
 
 const PAGE = 100
 const COMMENT_ID = /^[A-Za-z0-9-]+$/
@@ -156,5 +159,44 @@ export function historyOperations({ client, ops }) {
     return flagTruncated(events, hasMore)
   }
 
-  return { getHistory, listComments, comment, resolveThread, metricEvents }
+  /**
+   * Native delegation (PMK-214): the delegation comment, then the issue's delegate. Linear keeps the person as assignee and starts the
+   * agent's session when the delegate is set, so the comment goes first and the agent reads the instructions. Every check runs before the
+   * first mutation. Linear has no transaction: when the delegate update fails after the comment, the error lists what was written.
+   */
+  async function delegate(id, agent, instructions, actor, { dryRun = false } = {}) {
+    await ops.requireViewer(actor)
+    const agentsOf = (ctx) => ctx.raw.users.filter((user) => user.app).map((user) => `agent:${user.id}`)
+    let agents = agentsOf(await ops.context())
+    if (typeof agent === 'string' && !agents.includes(agent)) agents = agentsOf(await ops.context({ refresh: true }))
+    if (agents.length === 0) throw new PmkitError('NOT_SUPPORTED', NO_AGENT_HINT, NO_AGENT_HINT)
+    const nextStep = `Use one of: ${agents.join(', ')}`
+    if (typeof agent !== 'string' || !AGENT_ID.test(agent)) throw new PmkitError('INVALID_INPUT', `"${agent}" is not an agent: an agent id starts with agent:`, nextStep)
+    if (!agents.includes(agent)) throw new PmkitError('INVALID_INPUT', `agent "${agent}" is not an app user of this workspace`, nextStep)
+    const beforeNode = await ops.readNode(id)
+    const current = await ops.contextFor([beforeNode])
+    const before = toIssue(beforeNode, current)
+    const body = delegationComment({ issue: before.id, agent, by: actor, instructions, run: 'native' })
+    const input = { delegateId: agent.slice('agent:'.length) }
+    const changes = before.delegate !== agent
+    if (dryRun) {
+      const after = changes ? (await ops.writeUpdate(beforeNode, before, input, current, true)).after : before
+      return { before, after, comment: await comment(before.id, body, actor, { dryRun: true }), run: 'native' }
+    }
+    const posted = await comment(before.id, body, actor)
+    if (!changes) return { before, after: before, comment: posted, run: 'native' }
+    try {
+      return { before, after: (await ops.writeUpdate(beforeNode, before, input, current, false)).after, comment: posted, run: 'native' }
+    } catch (error) {
+      if (!isPmkitError(error)) throw error
+      throw new PmkitError(
+        error.code,
+        `Linear posted the delegation comment ${posted.id} on ${before.id}, but setting the delegate ${agent} failed: ${error.message}`,
+        `Check the delegate of ${before.id} in Linear; delegate again to retry (the newest delegation comment is the record)`,
+        { ...error.details, written: [`comment ${posted.id}`], missing: ['delegate'] },
+      )
+    }
+  }
+
+  return { getHistory, listComments, comment, resolveThread, metricEvents, delegate }
 }

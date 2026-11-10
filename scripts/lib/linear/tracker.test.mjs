@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
-import { ACME_LABELS, ACME_TEAM, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeWorkspace } from '../../fake-linear-api.mjs'
+import { ACME_LABELS, ACME_TEAM, ACME_USERS, FAKE_KEY, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeWorkspace } from '../../fake-linear-api.mjs'
 import { tempDir, userStoreEnv } from '../../test-helpers.mjs'
 import { assertTracker } from '../contract.mjs'
 import { cachePut, repoHash } from '../user-store.mjs'
@@ -1160,11 +1160,67 @@ test('logTime, createRelease and markReleased refuse with the manifest reason an
   assert.ok(fetch.calls.every((call) => !/mutation/i.test(call.body.query)))
 })
 
-test('delegate refuses with the agent_delegation hint and sends no mutation', async () => {
-  const { fetch, tracker: linear } = tracker(setup())
-  const hint = 'The Linear adapter does not delegate to agents yet; Linear offers it on this workspace'
-  await assert.rejects(linear.delegate('ACME-1', 'agent:claude', 'Do it.', 'x'), { code: 'NOT_SUPPORTED', message: hint, nextStep: hint })
-  assert.ok(fetch.calls.every((call) => !/mutation/i.test(call.body.query)))
+// PMK-214: native delegation through Linear's delegate field. user-4 is the fake's app user.
+test('delegate posts the instructions, then sets the delegate, and runs natively', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  seed(fake, { title: 'For the agent', assigneeId: 'user-2' })
+  const result = await linear.delegate('ACME-1', 'agent:user-4', 'Do it.', 'user-1')
+  assert.equal(result.run, 'native')
+  assert.equal(result.before.delegate, undefined)
+  assert.equal(result.after.delegate, 'agent:user-4')
+  assert.equal(result.after.assignee, 'user-2')
+  assert.equal(result.comment.body.split('\n')[0], 'Delegated to agent:user-4 by user-1, to run in the tracker.')
+  assert.deepEqual(fake.mutations, ['PmkitCommentCreate', 'PmkitIssueUpdate'])
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssueUpdate').input, { delegateId: 'user-4' })
+  assert.equal((await linear.getIssue('ACME-1')).delegate, 'agent:user-4')
+  // The same agent again posts new instructions and sends no update.
+  const again = await linear.delegate('ACME-1', 'agent:user-4', 'Do it again.', 'user-1')
+  assert.equal(again.before.delegate, 'agent:user-4')
+  assert.deepEqual(fake.mutations, ['PmkitCommentCreate', 'PmkitIssueUpdate', 'PmkitCommentCreate'])
+})
+
+test('a delegate dry run shows the delegate and the comment and sends no mutation', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'For the agent' })
+  const result = await linear.delegate('ACME-1', 'agent:user-4', 'Do it.', 'user-1', { dryRun: true })
+  assert.equal(result.after.delegate, 'agent:user-4')
+  assert.equal(result.comment.id, null)
+  assert.equal(result.run, 'native')
+  assert.deepEqual(fake.mutations, [])
+})
+
+test('delegate refuses a person, an unknown agent and another actor before any mutation', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'For the agent' })
+  for (const who of ['user-2', 'agent:user-2', 'agent:nobody']) {
+    await assert.rejects(linear.delegate('ACME-1', who, 'x', 'user-1'), (error) => error.code === 'INVALID_INPUT' && /agent:user-4/.test(error.nextStep), who)
+  }
+  await assert.rejects(linear.delegate('ACME-1', 'agent:user-4', 'x', 'user-2'), { code: 'INVALID_INPUT' })
+  await assert.rejects(linear.delegate('ACME-9', 'agent:user-4', 'x', 'user-1'), { code: 'NOT_FOUND' })
+  assert.deepEqual(fake.mutations, [])
+})
+
+test('a delegate update that fails after the comment names what was written and what is missing', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'For the agent' })
+  fake.unconfirm('PmkitIssueUpdate', { applied: false })
+  await assert.rejects(linear.delegate('ACME-1', 'agent:user-4', 'Do it.', 'user-1'), (error) => {
+    assert.equal(error.code, 'UPSTREAM')
+    assert.match(error.message, /posted the delegation comment \S+ on ACME-1, but setting the delegate agent:user-4 failed/)
+    assert.equal(error.details.written.length, 1)
+    assert.match(error.details.written[0], /^comment /)
+    assert.deepEqual(error.details.missing, ['delegate'])
+    return true
+  })
+})
+
+test('delegate on a workspace without an app user answers NOT_SUPPORTED with the hint and sends no mutation', async () => {
+  const users = ACME_USERS.filter((user) => !user.app)
+  const { tracker: linear, fake } = linearSetup({ workspace: { users }, issues: { users } })
+  seed(fake, { title: 'For the agent' })
+  const hint = 'Install an agent in this Linear workspace to delegate issues to it'
+  await assert.rejects(linear.delegate('ACME-1', 'agent:user-4', 'Do it.', 'user-1'), { code: 'NOT_SUPPORTED', message: hint, nextStep: hint })
+  assert.deepEqual(fake.mutations, [])
 })
 
 test('release reads on a workspace without releases answer empty, getRelease is NOT_FOUND, and no release query is sent', async () => {

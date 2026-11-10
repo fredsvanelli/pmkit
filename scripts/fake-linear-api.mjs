@@ -231,7 +231,7 @@ const NOT_FOUND = 'Could not find referenced Issue.'
 const failProject = () => {
   throw new FakeInputError('Could not find referenced Project.')
 }
-const UPDATE_FIELDS = ['title', 'description', 'assigneeId', 'parentId', 'priority', 'estimate', 'labelIds', 'teamId', 'stateId', 'dueDate', 'cycleId', 'projectId', 'projectMilestoneId']
+const UPDATE_FIELDS = ['title', 'description', 'assigneeId', 'delegateId', 'parentId', 'priority', 'estimate', 'labelIds', 'teamId', 'stateId', 'dueDate', 'cycleId', 'projectId', 'projectMilestoneId']
 // PMK-41: a create may carry the dates of the record it migrates.
 const CREATE_FIELDS = ['id', ...UPDATE_FIELDS, 'createdAt', 'completedAt']
 const LABEL_FIELDS = ['id', 'name', 'teamId', 'parentId', 'isGroup']
@@ -392,6 +392,7 @@ export function fakeLinearIssues({
       team: { id: team.id, key: team.key },
       state: { id: state.id, name: state.name, type: state.type },
       assignee: record.assigneeId ? { id: record.assigneeId } : null,
+      delegate: record.delegateId ? { id: record.delegateId } : null,
       parent: parent ? { identifier: parent.identifier } : null,
       cycle: cycleOf(record) ? { id: cycleOf(record).id, number: cycleOf(record).number } : null,
       project: record.projectId ? projectLookup(record.projectId) : null,
@@ -411,6 +412,11 @@ export function fakeLinearIssues({
       record.stateId = input.stateId
     }
     if (input.assigneeId !== undefined) record.assigneeId = input.assigneeId
+    if (input.delegateId !== undefined) {
+      // Linear delegates only to app users (agents).
+      if (input.delegateId !== null && users.find((item) => item.id === input.delegateId)?.app !== true) throw new FakeInputError('Delegate must be an agent.')
+      record.delegateId = input.delegateId
+    }
     if (input.labelIds !== undefined) record.labelIds = [...input.labelIds]
     if (input.parentId !== undefined) record.parentId = input.parentId === null ? null : requireIssue(input.parentId).id
     if (input.cycleId !== undefined) {
@@ -504,6 +510,7 @@ export function fakeLinearIssues({
       updatedAt: at,
       stateId: (backlog.find((state) => state.type === 'backlog') ?? backlog[0]).id,
       assigneeId: null,
+      delegateId: null,
       parentId: null,
       labelIds: [],
       cycleId: null,

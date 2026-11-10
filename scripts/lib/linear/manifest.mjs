@@ -5,6 +5,8 @@ import { CAPABILITIES, SERVED_BY } from '../capabilities.mjs'
 import { CAPACITY_FILE } from './capacity-store.mjs'
 import { estimateScale } from './discovery.mjs'
 
+/** The hint of agent_delegation and of delegate on a workspace without an app user. */
+export const NO_AGENT_HINT = 'Install an agent in this Linear workspace to delegate issues to it'
 const unservedHint = (id) => `No pmkit command serves ${id} yet; Linear offers it on this workspace`
 
 /**
@@ -56,6 +58,7 @@ function sharedScale(teams) {
 function workspaceAnswers(raw) {
   const business = BUSINESS_PLANS.includes(raw.workspace.plan)
   const { releasesEnabled, customersEnabled } = raw.flags
+  const agents = raw.users.filter((user) => user.app).map((user) => user.name)
   return {
     // Linear has initiatives on these plans, but the adapter does not read them yet (PMK-45), so pmkit reports it absent.
     strategic_goals: business
@@ -90,12 +93,11 @@ function workspaceAnswers(raw) {
       detail: { workspace: 'native', unsupported: ['listNotifications', 'markRead'] },
       enableHint: 'The Linear adapter does not read notifications yet; Linear offers them on this workspace',
     },
-    // Linear delegates to installed app agents, but the adapter does not call it yet (PMK-57), so pmkit reports it absent.
-    agent_delegation: {
-      path: 'absent',
-      detail: { workspace: 'conditional', agents: raw.users.filter((user) => user.app).map((user) => user.name), unsupported: ['delegate'] },
-      enableHint: 'The Linear adapter does not delegate to agents yet; Linear offers it on this workspace',
-    },
+    // Linear delegates to installed app agents through the issue's delegate field (PMK-214). Without an app user there is no agent.
+    // track-agents finds agent issues by an agent: assignee, which a Linear issue never has, so it refuses here.
+    agent_delegation: agents.length > 0
+      ? { path: 'native', detail: { workspace: 'conditional', run: 'native', agents, unsupported: ['issues track-agents'] } }
+      : { path: 'absent', detail: { workspace: 'conditional', agents }, enableHint: NO_AGENT_HINT },
   }
 }
 

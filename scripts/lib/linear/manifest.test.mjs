@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { FAKE_KEY, fakeLinearFetch, fakeWorkspace } from '../../fake-linear-api.mjs'
+import { ACME_USERS, FAKE_KEY, fakeLinearFetch, fakeWorkspace } from '../../fake-linear-api.mjs'
 import { fixedNow } from '../../test-helpers.mjs'
 import { CAPABILITIES, SERVED_BY, unservedCapabilities } from '../capabilities.mjs'
 import { createLinearClient } from './client.mjs'
@@ -62,16 +62,15 @@ test('the default workspace gives the sandbox column', async () => {
     request_queue: 'absent',
     time_tracking: 'absent',
     linked_code: 'derived',
-    agent_delegation: 'absent',
+    agent_delegation: 'native',
     security_alerts: 'derived',
     user_inbox: 'absent',
   })
   const entry = byId(entries)
   assert.deepEqual(entry.agent_delegation, {
     id: 'agent_delegation',
-    path: 'absent',
-    detail: { workspace: 'conditional', agents: ['Linear'], unsupported: ['delegate'] },
-    enableHint: 'The Linear adapter does not delegate to agents yet; Linear offers it on this workspace',
+    path: 'native',
+    detail: { workspace: 'conditional', run: 'native', agents: ['Linear'], unsupported: ['issues track-agents'] },
   })
   assert.equal(entry.cycles.enableHint, "Turn on cycles in the team's settings in Linear")
   assert.equal(entry.estimation.enableHint, "Turn on estimates in the team's settings in Linear")
@@ -234,4 +233,14 @@ test('cycles carries detail.open, close and schedule when native, and none when 
   const off = byId(buildLinearCapabilities(await raw(), pmkitWith({ team: 'ACME' })))
   assert.equal(off.cycles.detail, undefined)
   assert.deepEqual(off.capacity, { id: 'capacity', path: 'absent', enableHint: 'Capacity needs cycles' })
+})
+
+test('agent_delegation is absent with a hint when the workspace has no app user', async () => {
+  const entry = byId(buildLinearCapabilities(await raw({ users: ACME_USERS.filter((user) => !user.app) }), pmkitWith()))
+  assert.deepEqual(entry.agent_delegation, {
+    id: 'agent_delegation',
+    path: 'absent',
+    detail: { workspace: 'conditional', agents: [] },
+    enableHint: 'Install an agent in this Linear workspace to delegate issues to it',
+  })
 })
