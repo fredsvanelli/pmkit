@@ -6,12 +6,14 @@ $ pmkit ci logs --branch iss-5n1r-paginate-the-events-api --json  [step 4, read]
 exit 0
 $ pmkit pr diff --branch iss-5n1r-paginate-the-events-api --json  [step 6, read]
 exit 0
-$ pmkit text redact --file - --json  [step 10.2, read]
+$ git rev-parse --verify --quiet refs/heads/iss-5n1r-paginate-the-events-api  [step 7, git]
 exit 0
-$ pmkit issues comment ISS-5N1R --body-file - --dry-run --json  [step 10.3, dry run]
+$ git show iss-5n1r-paginate-the-events-api:src/events.mjs  [step 7, git]
+exit 0
+$ pmkit issues comment ISS-5N1R --body-file - --redact --dry-run --json  [step 10.3, dry run]
 exit 0
 ? Step 10  [confirmed]
-$ pmkit issues comment ISS-5N1R --body-file - --json  [step 10.3, write]
+$ pmkit issues comment ISS-5N1R --body-file - --redact --json  [step 10.3, write]
 exit 0
 
 --- added .issues/issues/ISS-5N1R/comments/2026-10-23T12-00-00Z-fred.md
