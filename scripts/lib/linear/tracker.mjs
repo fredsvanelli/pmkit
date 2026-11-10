@@ -238,6 +238,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     readDocument: projects.readDocument,
     listDocuments: projects.listDocuments,
     createDocument: projects.createDocument,
+    updateDocument: projects.updateDocument,
     ...views,
     listNotifications: notifications.listNotifications,
     markRead: notifications.markRead,

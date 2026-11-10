@@ -281,5 +281,7 @@ export function projectOperations({ client, discovery, config, now = () => new D
     throw new PmkitError('NOT_SUPPORTED', `the Linear adapter reads project ${what}s but does not create them`, `Create the ${what} in Linear`)
   }
 
-  return { listDeliverables, getDeliverable, deliverableProgress, createDeliverable, listMilestones, getMilestone, resolveMilestone, readDocument, listDocuments, createMilestone: notWritable('milestone'), createDocument: notWritable('document'), publishStatusUpdate, listStatusUpdates, resolveEpic, requireWorkspace, now, uuid, discovery }
+  return { listDeliverables, getDeliverable, deliverableProgress, createDeliverable, listMilestones, getMilestone, resolveMilestone, readDocument, listDocuments, createMilestone: notWritable('milestone'), createDocument: notWritable('document'), updateDocument: async () => {
+    throw new PmkitError('NOT_SUPPORTED', 'the Linear adapter reads project documents but does not edit them', 'Edit the document in Linear')
+  }, publishStatusUpdate, listStatusUpdates, resolveEpic, requireWorkspace, now, uuid, discovery }
 }

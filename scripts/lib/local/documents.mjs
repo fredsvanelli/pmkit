@@ -43,6 +43,19 @@ export function createDocumentFile(docsDir, docPath, body, { dryRun = false, onW
   return { before: null, after: { path: docPath, body: text } }
 }
 
+/** Replaces the body of an existing document. `onWrite(file)` gets the absolute file once it is written (PMK-228). */
+export function updateDocumentFile(docsDir, docPath, body, { dryRun = false, onWrite } = {}) {
+  const before = readDocumentFile(docsDir, docPath)
+  if (typeof body !== 'string' || body.trim() === '') throw invalid('document body must be a non-empty string')
+  const text = normalize(body)
+  if (!dryRun) {
+    const file = resolveDocPath(docsDir, docPath)
+    writeFileAtomic(file, text)
+    onWrite?.(file)
+  }
+  return { before, after: { path: docPath, body: text } }
+}
+
 /** The regular files under the docs folder, as { path } sorted by path. Hidden entries and symlinks are skipped, and a missing folder lists nothing. */
 export function listDocumentFiles(docsDir) {
   if (!fs.existsSync(docsDir)) return []

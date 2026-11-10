@@ -24,7 +24,7 @@ import { eventInstant, lastEntry } from '../metrics.mjs'
 import { AGENT_ID, delegationComment } from '../delegation.mjs'
 import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refusal.mjs'
 import { mentionedIn } from '../mentions.mjs'
-import { createDocumentFile, listDocumentFiles, readDocumentFile } from './documents.mjs'
+import { createDocumentFile, listDocumentFiles, readDocumentFile, updateDocumentFile } from './documents.mjs'
 import { hasMilestoneFiles, milestoneStems, parseMilestone, serializeMilestone, sortMilestones, validMilestoneId } from './milestones.mjs'
 import { parseRelease, releaseStems, serializeRelease, sortReleases, validReleaseId, validTag } from './releases.mjs'
 import { parseView, serializeView, validViewName, viewStems } from './views.mjs'
@@ -2240,6 +2240,11 @@ export function createLocalTracker(root, {
     return createDocumentFile(docsDir, docPath, body, { dryRun, onWrite: (file) => writtenPaths.add(file) })
   }
 
+  function updateDocument(docPath, body, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    return updateDocumentFile(docsDir, docPath, body, { dryRun, onWrite: (file) => writtenPaths.add(file) })
+  }
+
   const viewsDir = path.join(issuesDir, 'views')
 
   function requireViewName(name) {
@@ -2364,7 +2369,7 @@ export function createLocalTracker(root, {
     listMilestones, getMilestone, createMilestone, unfiledMilestones, unreadableRecords,
     listReleases, getRelease, createRelease, releaseIssues, markReleased,
     getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, delegate, archive, delete: deleteIssue, restore, link, unlink, setParent,
-    comment, resolveThread, listComments, getHistory, logTime, listTimeEntries, readDocument, createDocument, listDocuments,
+    comment, resolveThread, listComments, getHistory, logTime, listTimeEntries, readDocument, createDocument, updateDocument, listDocuments,
     discover, capabilities, reindex, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
     listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity, getDaysOff, updateCycleCapacity,
     writtenFiles,

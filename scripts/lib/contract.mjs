@@ -12,7 +12,7 @@ export const TRACKER_OPERATIONS = [
   'listReleases', 'getRelease', 'createRelease', 'releaseIssues', 'markReleased',
   'getCapacity', 'setCapacity', 'getDaysOff', 'updateCycleCapacity',
   'metricEvents',
-  'readDocument', 'createDocument', 'listDocuments',
+  'readDocument', 'createDocument', 'updateDocument', 'listDocuments',
   'saveView', 'listViews', 'runView', 'deleteView', 'renameView',
   'listGoals', 'getGoal', 'createGoal', 'goalProgress', 'setEpicGoal', 'updateGoal', 'deleteGoal',
   'listCustomers', 'getCustomer', 'createCustomer', 'updateCustomer', 'listRequests', 'getRequest', 'createRequest', 'updateRequest', 'acceptRequest', 'declineRequest', 'listDemandSignals',

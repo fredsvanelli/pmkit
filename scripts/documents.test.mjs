@@ -50,6 +50,24 @@ test('createDocument refuses an existing file with CONFLICT and keeps its conten
   assert.equal(fs.readFileSync(path.join(docs, 'a.md'), 'utf8'), 'old')
 })
 
+test('updateDocument replaces the body of an existing document with LF, and a dry run writes nothing (PMK-228)', () => {
+  const { tracker, docs } = setup()
+  fs.writeFileSync(path.join(docs, 'a.md'), 'old\r\n')
+  const dry = tracker.updateDocument('a.md', 'new\r\n', 'fred', { dryRun: true })
+  assert.deepEqual(dry, { before: { path: 'a.md', body: 'old\n' }, after: { path: 'a.md', body: 'new\n' } })
+  assert.equal(fs.readFileSync(path.join(docs, 'a.md'), 'utf8'), 'old\r\n')
+  tracker.updateDocument('a.md', 'new\r\n', 'fred')
+  assert.equal(fs.readFileSync(path.join(docs, 'a.md'), 'utf8'), 'new\n')
+})
+
+test('updateDocument of a missing document is NOT_FOUND and of a blank body INVALID_INPUT (PMK-228)', () => {
+  const { tracker, docs } = setup()
+  assert.throws(() => tracker.updateDocument('missing.md', 'x', 'fred'), code('NOT_FOUND'))
+  fs.writeFileSync(path.join(docs, 'a.md'), 'old')
+  assert.throws(() => tracker.updateDocument('a.md', '  ', 'fred'), code('INVALID_INPUT'))
+  assert.throws(() => tracker.updateDocument('../a.md', 'x', 'fred'), code('INVALID_INPUT'))
+})
+
 test('absolute paths, .. segments and escapes are INVALID_INPUT for read and create', () => {
   const { tracker, root } = setup()
   const before = hashTree(root)

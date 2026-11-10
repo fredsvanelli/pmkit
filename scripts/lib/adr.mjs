@@ -74,6 +74,45 @@ export function duplicateAdrs(files) {
   })
 }
 
+export const ADR_STATUSES = ['accepted', 'deprecated', 'superseded']
+
+/** The status line of an ADR. `byPath` is the path of the newer ADR, for superseded only. */
+export const adrStatusLine = (status, byPath) => (status === 'superseded' ? `Status: superseded by ${byPath}` : `Status: ${status}`)
+
+const STATUS = /^Status:/
+
+// The lines of an ADR, the index of its first "## " section (or the end), and the index of its status line above it (or -1).
+function statusPlace(text) {
+  const lines = text.replace(/^\uFEFF/, '').replaceAll('\r\n', '\n').split('\n')
+  const end = lines.findIndex((item) => item.startsWith('## '))
+  const head = end === -1 ? lines.length : end
+  return { lines, head, current: lines.slice(0, head).findIndex((item) => STATUS.test(item)) }
+}
+
+/** The status line of an ADR text, or null when it has none above its first section. */
+export function adrStatusOf(text) {
+  const { lines, current } = statusPlace(text)
+  return current === -1 ? null : lines[current]
+}
+
+/**
+ * The ADR text with `line` as its status: it replaces the first line that starts with "Status:" above the first "## " section,
+ * or goes under the first "# " title with a blank line on each side, or at the top when there is no title. CRLF becomes LF.
+ */
+export function setAdrStatus(text, line) {
+  const { lines, head, current } = statusPlace(text)
+  if (current !== -1) {
+    lines[current] = line
+    return lines.join('\n')
+  }
+  const title = lines.slice(0, head).findIndex((item) => item.startsWith('# '))
+  const at = title + 1
+  let rest = at
+  while (rest < lines.length && lines[rest].trim() === '') rest++
+  const before = title === -1 ? [] : [...lines.slice(0, at), '']
+  return [...before, line, '', ...lines.slice(rest)].join('\n')
+}
+
 const children = (paths, folder) => paths.filter((p) => p.startsWith(`${folder}/`)).map((p) => p.slice(folder.length + 1))
 
 function readTree(dir) {

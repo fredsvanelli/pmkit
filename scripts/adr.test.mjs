@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
-import { ADR_SLUG_MAX, adrFiles, adrFolders, adrSlug, duplicateAdrs, highestAdr } from './lib/adr.mjs'
+import { ADR_SLUG_MAX, adrFiles, adrFolders, adrSlug, adrStatusLine, duplicateAdrs, highestAdr, setAdrStatus } from './lib/adr.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo } from './test-helpers.mjs'
 
@@ -305,4 +305,96 @@ test('adrFiles lists the numbered files of each folder and duplicateAdrs names e
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
   }
+})
+
+// PMK-228: the status of an ADR.
+test('adrStatusLine writes the three statuses', () => {
+  assert.equal(adrStatusLine('accepted'), 'Status: accepted')
+  assert.equal(adrStatusLine('deprecated'), 'Status: deprecated')
+  assert.equal(adrStatusLine('superseded', 'docs/adr/0007-new.md'), 'Status: superseded by docs/adr/0007-new.md')
+})
+
+test('setAdrStatus puts the line under the title, replaces one above the first section and keeps LF', () => {
+  assert.equal(setAdrStatus('# Title\n\nContext.\n', 'Status: deprecated'), '# Title\n\nStatus: deprecated\n\nContext.\n')
+  assert.equal(setAdrStatus('# Title\nContext.\n', 'Status: deprecated'), '# Title\n\nStatus: deprecated\n\nContext.\n')
+  assert.equal(setAdrStatus('Context only.\n', 'Status: deprecated'), 'Status: deprecated\n\nContext only.\n')
+  assert.equal(setAdrStatus('# Title\r\n\r\nStatus: accepted\r\n\r\nContext.\r\n', 'Status: deprecated'), '# Title\n\nStatus: deprecated\n\nContext.\n')
+  const sectioned = '# Title\n\nContext.\n\n## Notes\n\nStatus: draft of the notes\n'
+  assert.equal(setAdrStatus(sectioned, 'Status: accepted'), '# Title\n\nStatus: accepted\n\nContext.\n\n## Notes\n\nStatus: draft of the notes\n')
+  assert.equal(setAdrStatus('# T\n\nStatus: accepted\n\nX\n', 'Status: accepted'), '# T\n\nStatus: accepted\n\nX\n')
+})
+
+const adrStatus = async (root, ...args) => {
+  const result = await run(['docs', 'adr-status', ...args, '--json'], { cwd: root, env: childEnv() })
+  return { code: result.code, data: result.stdout ? JSON.parse(result.stdout) : null, stderr: result.stderr }
+}
+const writeAdr = (root, rel, text = '# A decision\n\nWhy.\n') => {
+  fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true })
+  fs.writeFileSync(path.join(root, rel), text)
+}
+
+test('docs adr-status --dry-run shows the status line and writes nothing; the real run writes the repository file with no commit', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0001-a.md')
+  writeAdr(root, 'docs/adr/0002-b.md')
+  const dry = await adrStatus(root, '1', 'superseded', '--by', '0002', '--dry-run')
+  assert.equal(dry.code, 0, dry.stderr)
+  assert.deepEqual([dry.data.number, dry.data.path, dry.data.place, dry.data.status], ['0001', 'docs/adr/0001-a.md', 'repo', { before: null, after: 'Status: superseded by docs/adr/0002-b.md' }])
+  assert.equal(dry.data.after, '# A decision\n\nStatus: superseded by docs/adr/0002-b.md\n\nWhy.\n')
+  assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), '# A decision\n\nWhy.\n')
+  const real = await adrStatus(root, '0001', 'superseded', '--by', '2')
+  assert.equal(real.code, 0, real.stderr)
+  assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), dry.data.after)
+  assert.match(real.stderr, /note: docs\/adr\/0001-a\.md is a repository file and has no commit yet/)
+  const same = await adrStatus(root, '1', 'superseded', '--by', '2')
+  assert.equal(same.data.before, same.data.after)
+})
+
+test('docs adr-status writes a tracker ADR through the tracker', async () => {
+  const root = repo()
+  writeAdr(root, '.issues/docs/adr/0001-a.md')
+  const result = await adrStatus(root, '1', 'deprecated')
+  assert.equal(result.code, 0, result.stderr)
+  assert.deepEqual([result.data.path, result.data.place], ['.issues/docs/adr/0001-a.md', 'tracker'])
+  assert.equal(fs.readFileSync(path.join(root, '.issues/docs/adr/0001-a.md'), 'utf8'), '# A decision\n\nStatus: deprecated\n\nWhy.\n')
+})
+
+test('docs adr-status refuses bad input before any write', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0001-a.md')
+  writeAdr(root, 'docs/adr/0003-c.md')
+  writeAdr(root, '.issues/docs/adr/0003-d.md')
+  const cases = [
+    [['1', 'superseded'], 'INVALID_INPUT'],
+    [['1', 'deprecated', '--by', '3'], 'INVALID_INPUT'],
+    [['1', 'superseded', '--by', '1'], 'INVALID_INPUT'],
+    [['1', 'superseded', '--by', '9'], 'NOT_FOUND'],
+    [['9', 'deprecated'], 'NOT_FOUND'],
+    [['3', 'deprecated'], 'CONFLICT'],
+    [['1', 'superseded', '--by', '3'], 'CONFLICT'],
+    [['1', 'foo'], 'INVALID_INPUT'],
+    [['12345', 'deprecated'], 'INVALID_INPUT'],
+    [['x1', 'deprecated'], 'INVALID_INPUT'],
+  ]
+  const before = fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8')
+  for (const [args, expected] of cases) {
+    const result = await adrStatus(root, ...args)
+    assert.equal(result.code, 2, args.join(' '))
+    assert.equal(result.data.error.code, expected, args.join(' '))
+  }
+  assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), before)
+  const conflict = await adrStatus(root, '3', 'deprecated')
+  assert.match(conflict.data.error.message, /\.issues\/docs\/adr\/0003-d\.md.*docs\/adr\/0003-c\.md/)
+})
+
+test('docs adr-status on a hosted tracker writes the repository ADR with no Linear request', async () => {
+  const { useLinear } = await import('./fake-hosted.mjs')
+  const root = useLinear(repo())
+  writeAdr(root, 'docs/adr/0001-a.md')
+  const env = { ...childEnv() }
+  delete env.LINEAR_API_KEY
+  const result = await run(['docs', 'adr-status', '1', 'deprecated', '--json'], { cwd: root, env })
+  assert.equal(result.code, 0, result.stderr)
+  assert.equal(JSON.parse(result.stdout).place, 'repo')
+  assert.match(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), /^Status: deprecated$/m)
 })
