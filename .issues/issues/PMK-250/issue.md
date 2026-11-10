@@ -2,13 +2,14 @@
 id: PMK-250
 title: Unarchive issues on the Local tracker
 type: feature
-status: backlog
+status: in_progress
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
+branch: pmk-250-unarchive-issues-on-the-local-tracker
 created: 2026-11-10T20:03:45.264Z
-updated: 2026-11-10T21:22:26Z
+updated: 2026-11-10T21:37:56Z
 ---
 
 ## Description
