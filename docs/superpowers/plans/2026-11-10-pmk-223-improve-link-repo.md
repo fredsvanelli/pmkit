@@ -1,4 +1,23 @@
-# PMK-223 improve link-repo: plan
+# PMK-223 improve link-repo Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (inline) to implement this plan task-by-task.
+
+**Goal:** `link-repo` handles GitHub Enterprise remotes, can skip its confirmation for a host-only change, and can re-check the team held in the file.
+
+**Architecture:** all three changes live in `runLinkRepo` (`scripts/pmkit.mjs`) plus the command file; no new config key.
+
+**Tech Stack:** Node ESM, `node:test`.
+
+## Global Constraints
+
+- Commit trailer exactly `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`, issue ID in every message.
+- A read that cannot be verified is reported as not verified (`verified: false`), never as fine.
+
+## Review Focus
+
+- Enterprise remote whose path is not `owner/name` (three segments): falls back to the "needs a repo" refusal, no wrong repo written.
+- `--yes` with a team change or a broken mapping: still asks.
+- `--recheck-team` on Local, with no team, or with an unknown team: `INVALID_INPUT`.
 
 Spec: `docs/superpowers/specs/2026-11-10-pmk-223-improve-link-repo-design.md`. Files: `scripts/pmkit.mjs` (`runLinkRepo`, command table), `commands/link-repo.md`, `scripts/cli-link-repo.test.mjs`, `scripts/__scenarios__/link-repo.*` only if the steps change, `README.md`, `skills/pmkit/SKILL.md` if it lists flags, `CHANGELOG.md`.
 
