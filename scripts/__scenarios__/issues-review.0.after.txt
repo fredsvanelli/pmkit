@@ -4,15 +4,15 @@ $ pmkit pr diff --branch iss-5n1r-paginate-the-events-api --json  [step 3, read]
 exit 0
 $ pmkit pr status --branch iss-5n1r-paginate-the-events-api --json  [step 4, read]
 exit 0
-$ pmkit issues comment ISS-5N1R --body-file <inputs>/review.md --dry-run --json  [step 7.1, dry run]
+$ pmkit issues comment ISS-5N1R --body-file <inputs>/review.md --redact --dry-run --json  [step 7.1, dry run]
 exit 0
 ? Step 7.1  [confirmed]
-$ pmkit issues comment ISS-5N1R --body-file <inputs>/review.md --json  [step 7.1, write]
+$ pmkit issues comment ISS-5N1R --body-file <inputs>/review.md --redact --json  [step 7.1, write]
 exit 0
-$ pmkit pr review --issue ISS-5N1R --body-file <inputs>/pr-review.md --comments-file <inputs>/pr-review-comments.json --dry-run --json  [step 7.2, dry run]
+$ pmkit pr review --issue ISS-5N1R --body-file <inputs>/pr-review.md --comments-file <inputs>/pr-review-comments.json --redact --dry-run --json  [step 7.2, dry run]
 exit 0
 ? Step 7.2  [confirmed]
-$ pmkit pr review --issue ISS-5N1R --body-file <inputs>/pr-review.md --comments-file <inputs>/pr-review-comments.json --json  [step 7.2, write]
+$ pmkit pr review --issue ISS-5N1R --body-file <inputs>/pr-review.md --comments-file <inputs>/pr-review-comments.json --redact --json  [step 7.2, write]
 exit 0
 
 --- added .issues/issues/ISS-5N1R/comments/2026-10-23T12-00-00Z-fred.md
@@ -44,7 +44,9 @@ api graphql -F owner={owner} -F repo={repo} -F number=7 -f query=query($owner: S
 api repos/{owner}/{repo}/branches/main/protection
 api repos/{owner}/{repo}/rules/branches/main?per_page=100&page=1
 pr view iss-5n1r-paginate-the-events-api --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr view 7 --json baseRefName,headRefOid
 pr diff 7 --color never
 pr view iss-5n1r-paginate-the-events-api --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr view 7 --json baseRefName,headRefOid
 pr diff 7 --color never
 api repos/{owner}/{repo}/pulls/7/reviews --method POST --input -

@@ -305,6 +305,19 @@ test('command files hold text from data out of double quotes, and git grep takes
     }
   }
   assert.deepEqual(offending, [])
+  // PMK-217: a branch from the tracker goes into a command only after the validBranch check, and between double quotes there
+  // (a valid name holds no $ or backtick). These files still pass a bare <branch>: follow-up, not yet hardened.
+  const BARE_BRANCH = ['commands/issues/inbox-digest.md', 'commands/issues/mine.md', 'commands/issues/unblock.md', 'commands/issues/work.md', 'commands/team/standup.md']
+  const bare = []
+  for (const file of commandFiles()) {
+    const rel = path.relative(ROOT, file)
+    const text = fs.readFileSync(file, 'utf8')
+    const spans = [...text.matchAll(/`([^`]*<branch>[^`]*)`/g)].map((m) => m[1]).filter((span) => /pmkit\.mjs|^git /.test(span))
+    if (spans.length === 0 || BARE_BRANCH.includes(rel)) continue
+    for (const span of spans) if (span.replace(/"[^"]*"/g, '').includes('<branch>')) bare.push(`${rel}: ${span}`)
+    if (!/the rule of `validBranch`/.test(text)) bare.push(`${rel}: puts <branch> in a command without the validBranch check`)
+  }
+  assert.deepEqual(bare, [])
   // The rule itself, so the two checks above have a reason that the agent reads.
   assert.match(fs.readFileSync(path.join(ROOT, 'skills/pmkit/references/conventions.md'), 'utf8'), /## Text from data in a command/)
 })

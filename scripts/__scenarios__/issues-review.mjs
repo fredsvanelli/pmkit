@@ -30,12 +30,13 @@ const BIG = `diff --git a/src/big.mjs b/src/big.mjs\nnew file mode 100644\n--- /
 const BIG_LINES = 2105
 const REVIEW_API = 'api repos/{owner}/{repo}/pulls/7/reviews --method POST --input -'
 const inputs = path.join(import.meta.dirname, '_inputs')
-const comment = (file) => ['issues', 'comment', 'ISS-5N1R', '--body-file', path.join(inputs, file)]
-const review = ['pr', 'review', '--issue', 'ISS-5N1R', '--body-file', path.join(inputs, 'pr-review.md'), '--comments-file', path.join(inputs, 'pr-review-comments.json')]
+const comment = (file) => ['issues', 'comment', 'ISS-5N1R', '--body-file', path.join(inputs, file), '--redact']
+const review = ['pr', 'review', '--issue', 'ISS-5N1R', '--body-file', path.join(inputs, 'pr-review.md'), '--comments-file', path.join(inputs, 'pr-review-comments.json'), '--redact']
 
 const ghFor = (diff, checks) => ({
   [`pr view ${BRANCH} --json ${VIEW}`]: { stdout: JSON.stringify(pr) },
   'pr diff 7 --color never': { stdout: diff },
+  'pr view 7 --json baseRefName,headRefOid': { stdout: JSON.stringify({ baseRefName: 'main', headRefOid: 'sha7' }) },
   [`pr view ${BRANCH} --json ${VIEW}${DETAIL}`]: { stdout: JSON.stringify({ ...pr, reviews: [], reviewRequests: [], mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', reviewDecision: '', baseRefName: 'main' }) },
   'pr checks 7 --json name,state,bucket,link': { stdout: JSON.stringify(checks) },
   [threadsKey(7)]: { stdout: NO_THREADS },

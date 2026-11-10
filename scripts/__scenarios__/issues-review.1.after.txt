@@ -10,12 +10,12 @@ $ pmkit pr status --branch iss-5n1r-paginate-the-events-api --json  [step 4, rea
 exit 0
 $ pmkit ci logs --run 42 --json  [step 4, read]
 exit 0
-$ pmkit issues comment ISS-5N1R --body-file <inputs>/review-checks.md --dry-run --json  [step 7.1, dry run]
+$ pmkit issues comment ISS-5N1R --body-file <inputs>/review-checks.md --redact --dry-run --json  [step 7.1, dry run]
 exit 0
 ? Step 7.1  [confirmed]
-$ pmkit issues comment ISS-5N1R --body-file <inputs>/review-checks.md --json  [step 7.1, write]
+$ pmkit issues comment ISS-5N1R --body-file <inputs>/review-checks.md --redact --json  [step 7.1, write]
 exit 0
-$ pmkit pr review --issue ISS-5N1R --body-file <inputs>/pr-review.md --comments-file <inputs>/pr-review-comments.json --dry-run --json  [step 7.2, dry run]
+$ pmkit pr review --issue ISS-5N1R --body-file <inputs>/pr-review.md --comments-file <inputs>/pr-review-comments.json --redact --dry-run --json  [step 7.2, dry run]
 exit 0
 ? Step 7.2  [confirmed]
 
@@ -59,4 +59,5 @@ api repos/{owner}/{repo}/rules/branches/main?per_page=100&page=1
 run view 42 --json workflowName,url,conclusion,status,createdAt,headSha
 run view 42 --log-failed
 pr view iss-5n1r-paginate-the-events-api --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr view 7 --json baseRefName,headRefOid
 pr diff 7 --color never
