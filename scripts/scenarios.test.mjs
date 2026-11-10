@@ -100,10 +100,11 @@ describe('scenarios', { concurrency: Math.max(2, os.cpus().length) }, () => {
     }
     // A flag in the prose of a step with no call to join must exist in some command.
     // `accept-command` is a flag of `claude plugin update` (upgrade.md step 4), not of the pmkit CLI.
+    // `yes` is read by commands/link-repo.md itself (step 6) and never passed to the CLI, so only that file may name it.
     const known = new Set(['json', 'root', 'dry-run', 'as', 'accept-command', ...COMMANDS.flatMap((c) => [...(c.flags ?? []), ...(c.booleans ?? [])])])
     for (const { rel, parsed } of FILES) {
       for (const { step, flag } of parsed.looseFlags) {
-        if (!known.has(flag)) problems.push(`rule 3: ${rel}: step ${step || '(none)'} names --${flag} in its prose, and no CLI command takes it`)
+        if (!known.has(flag) && !(flag === 'yes' && rel === 'link-repo.md')) problems.push(`rule 3: ${rel}: step ${step || '(none)'} names --${flag} in its prose, and no CLI command takes it`)
       }
     }
     assert.deepEqual(problems, [])

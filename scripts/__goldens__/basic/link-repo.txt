@@ -34,6 +34,7 @@ exit 0
   },
   "scope": null,
   "broken": [],
+  "hostOnly": false,
   "notes": [
     "could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred"
   ],
@@ -85,6 +86,7 @@ exit 0
   },
   "scope": null,
   "broken": [],
+  "hostOnly": false,
   "notes": [
     "could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred"
   ],
@@ -148,6 +150,7 @@ exit 0
   },
   "scope": null,
   "broken": [],
+  "hostOnly": true,
   "notes": [
     "could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred"
   ],
@@ -213,6 +216,7 @@ exit 0
   },
   "scope": null,
   "broken": [],
+  "hostOnly": true,
   "notes": [
     "could not read the git remotes (fatal: not a git repository (or any of the parent directories): .git), so the git host was not inferred"
   ],

@@ -34,7 +34,7 @@ import { validateRepo } from './lib/validate.mjs'
 import { FrontmatterError, parseYaml } from './lib/yaml.mjs'
 import { addMapEntry, removeKey, setMap, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
 import { brokenMappings, parseMappingFlags, proposeMappings } from './lib/mappings.mjs'
-import { chooseRemote, inferHost } from './lib/git-remote.mjs'
+import { chooseRemote, inferHost, parseRemoteUrl } from './lib/git-remote.mjs'
 import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { lineDiff } from './lib/diff.mjs'
 import { DEFAULT_MAX, HARD_MAX, buildPreview, bulkText, checkBulkFilter, parseChange, valueError } from './lib/bulk.mjs'
@@ -552,8 +552,8 @@ export const COMMANDS = [
   },
   {
     name: 'link-repo', summary: 'links this repository to a git host and, on Linear, a team: infers the host and the repo from the git remote, checks the team against the workspace, and edits only those lines of .pmkit/config.yaml',
-    usage: '[--git-host github|none] [--repo owner/name] [--default-branch name] [--remote name] [--team KEY]',
-    flags: ['git-host', 'repo', 'default-branch', 'remote', 'team'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runLinkRepo,
+    usage: '[--git-host github|none] [--repo owner/name] [--default-branch name] [--remote name] [--team KEY] [--recheck-team]',
+    flags: ['git-host', 'repo', 'default-branch', 'remote', 'team', 'recheck-team'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runLinkRepo,
   },
   {
     name: 'capabilities', summary: 'prints the capability manifest', flags: [],
@@ -3524,6 +3524,10 @@ function withGithubRepo(text, root, host) {
 
 // link-repo. See docs/superpowers/specs/2026-10-31-pmk-53-link-repo-design.md.
 // GitHub owner and repository names do not differ by case.
+// A remote read for the repo: a DNS host name and owner and name in GitHub's character set (no leading -, not . or ..), so nothing else is written or quoted.
+const DNS_HOST = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/
+const GITHUB_NAME = /^(?!-)[A-Za-z0-9_.-]+$/
+const validGithubRemote = (url) => url !== null && !url.owner.includes('/') && DNS_HOST.test(url.host) && [url.owner, url.name].every((part) => GITHUB_NAME.test(part) && part !== '.' && part !== '..')
 const sameRepo = (a, b) => a != null && b != null && a.toLowerCase() === b.toLowerCase()
 const GIT_READ_TIMEOUT_MS = 10_000
 const GIT_READ_MAX_OUTPUT = 1024 * 1024
@@ -3564,8 +3568,8 @@ function readDefaultBranch(ctx, remote) {
   return name !== null && validBranch(name) ? name : null
 }
 
-// The team named by --team, checked against the workspace.
-async function linkTeam(ctx, parsed, wanted) {
+// The team named by --team, or held in the file, checked against the workspace. A discovery whose teams or states are cut at the client cap (`truncated`) proves nothing about a team or its mappings, so the team is not checked then; a cut of users or labels does not matter here.
+async function linkTeam(ctx, parsed, wanted, source) {
   const adapter = adapterFor('linear', ctx.adapters)
   const workspace = parsed.tracker.scope?.workspace
   const tracker = await adapter.create({ root: ctx.root, system: 'linear', pmkit: { ...parsed, tracker: { system: 'linear', ...(workspace ? { scope: { workspace } } : {}) }, mappings: undefined } }, { now: ctx.now, env: ctx.env })
@@ -3573,9 +3577,11 @@ async function linkTeam(ctx, parsed, wanted) {
   const defaults = withLocalDefaults({}).types
   const types = [...defaults, ...Object.keys(parsed.mappings?.types ?? {}).filter((type) => !defaults.includes(type))]
   const description = adapter.describe(view.raw, view, view.auth?.viewer?.id ?? null, types)
+  const truncated = (view.raw?.truncated ?? []).filter((kind) => kind === 'teams' || kind === 'states')
+  if (truncated.length > 0) return { description, truncated }
   const keys = description.teams.map((team) => team.key)
-  if (!keys.includes(wanted)) throw usageError(`--team ${wanted} is not a team of workspace ${description.workspace.urlKey}`, `Pass one of: ${keys.join(', ')}`)
-  return description
+  if (!keys.includes(wanted)) throw usageError(`${source === 'flag' ? `--team ${wanted}` : `tracker.scope.team ${wanted}`} is not a team of workspace ${description.workspace.urlKey}`, `Pass one of: ${keys.join(', ')}${source === 'flag' ? '' : ' with --team, or run /pmkit:setup'}`)
+  return { description, truncated }
 }
 
 async function runLinkRepo(ctx) {
@@ -3623,6 +3629,7 @@ async function runLinkRepo(ctx) {
   if (flagRepo !== undefined && hostAfter === 'none') throw usageError('--repo needs the git host github', 'Pass --git-host github, or remove --repo')
   if (flagBranch !== undefined && hostAfter === 'none') throw usageError('--default-branch needs the git host github', 'Pass --git-host github, or remove --default-branch')
   let repoAfter = held.repo
+  let invalidRemote = null
   let repoSource = 'file'
   if (flagHost === 'none') {
     repoAfter = null
@@ -3633,6 +3640,19 @@ async function runLinkRepo(ctx) {
   } else if (inferred.system === 'github') {
     repoAfter = inferred.repo
     repoSource = 'remote'
+  } else if (flagHost === 'github' && chosen.remote) {
+    // GitHub Enterprise or an SSH alias: the user said it is GitHub, so a missing repo is read from that remote. gh resolves the host from the remote itself.
+    const remoteUrl = parseRemoteUrl(chosen.remote.url)
+    if (!validGithubRemote(remoteUrl)) {
+      invalidRemote = `remote ${chosen.remote.name} does not have a valid host name and owner/name, so the repo was not read from it`
+      notes.push(invalidRemote)
+    } else if (held.repo === null) {
+      repoAfter = `${remoteUrl.owner}/${remoteUrl.name}`
+      repoSource = 'remote'
+      notes.push(`the repo ${repoAfter} was read from remote ${chosen.remote.name} on ${remoteUrl.host}; gh must be logged in to that host (gh auth login --hostname ${remoteUrl.host})`)
+    } else if (!sameRepo(held.repo, `${remoteUrl.owner}/${remoteUrl.name}`)) {
+      warnings.push(`remote ${chosen.remote.name} points to ${remoteUrl.owner}/${remoteUrl.name} on ${remoteUrl.host} and the file keeps repo ${held.repo}; pass --repo to change it`)
+    }
   }
   let branchAfter = held.branch
   let branchSource = 'file'
@@ -3650,7 +3670,7 @@ async function runLinkRepo(ctx) {
   }
   // A file that is already github without a repo is not made worse, so --team or --default-branch still work on it.
   if (hostAfter === 'github' && repoAfter === null) {
-    if (held.system !== 'github') throw usageError('git_host github needs a repo, and none was given or found', 'Pass --repo owner/name, or --git-host none')
+    if (held.system !== 'github') throw usageError(`git_host github needs a repo, and none was given or found${invalidRemote ? ` (${invalidRemote})` : ''}`, 'Pass --repo owner/name, or --git-host none')
     warnings.push('git_host.repo is not set while git_host is github, and none was given or found; pass --repo owner/name')
   }
   // A new repo with the old branch name may point at the wrong branch, so the value is kept and the note says it may be wrong.
@@ -3668,17 +3688,29 @@ async function runLinkRepo(ctx) {
     warnings.push(`remote ${chosen.remote.name} points to ${inferred.repo} and --repo ${flagRepo} was used as given`)
   }
 
-  // The team. Linear is called only for --team, so a host change needs no key, no network and no team.
+  // The team. Linear is called only for --team or --recheck-team, so a host change needs no key, no network and no team.
   const heldTeam = parsed.tracker.scope?.team ?? null
   const wantedTeam = ctx.opt('team')
   let scope = null
   let broken = []
+  const recheck = ctx.flag('recheck-team')
+  if (recheck && !hosted) throw usageError(`the ${system} tracker has no scope, so --recheck-team does not apply`, 'Remove --recheck-team')
+  if (recheck && wantedTeam === undefined && heldTeam === null) throw usageError('tracker.scope.team is not set, so there is no team to re-check', 'Pass --team KEY, or run /pmkit:setup')
   if (hosted) {
     scope = { team: { before: heldTeam, after: heldTeam, source: 'file', verified: false } }
-    if (wantedTeam !== undefined) {
-      const description = await linkTeam(ctx, parsed, wantedTeam)
-      scope = { team: { before: heldTeam, after: wantedTeam, source: 'flag', verified: true } }
-      broken = brokenMappings(description, { tracker: { scope: { team: wantedTeam } }, mappings: parsed.mappings })
+    if (wantedTeam !== undefined || recheck) {
+      const checked = wantedTeam ?? heldTeam
+      const source = wantedTeam !== undefined ? 'flag' : 'file'
+      const { description, truncated } = await linkTeam(ctx, parsed, checked, source)
+      if (truncated.length > 0 && checked !== heldTeam) {
+        throw new PmkitError('UPSTREAM', `Linear has more than the first part of its ${truncated.join(', ')}, so --team ${checked} could not be checked against the workspace`, 'Edit tracker.scope.team in .pmkit/config.yaml by hand')
+      }
+      if (truncated.length > 0) {
+        warnings.push(`Linear has more than the first part of its ${truncated.join(', ')}, so team ${checked} was not checked against the workspace`)
+      } else {
+        scope = { team: { before: heldTeam, after: checked, source, verified: true } }
+        broken = brokenMappings(description, { tracker: { scope: { team: checked } }, mappings: parsed.mappings })
+      }
     } else if (heldTeam === null) {
       notes.push('tracker.scope.team is not set; pass --team KEY or run /pmkit:setup')
     }
@@ -3727,6 +3759,8 @@ async function runLinkRepo(ctx) {
     defaultBranch: { before: held.branch, after: branchAfter, source: branchSource },
     scope,
     broken,
+    // Host only: the file changes, no team changes, no mapping breaks, nothing warns, the host is not lowered and no repo or branch the file holds is replaced.
+    hostOnly: changed && !teamChanged && broken.length === 0 && warnings.length === 0 && hostAfter !== 'none' && (held.repo === null || repoAfter === held.repo) && (held.branch === null || branchAfter === held.branch),
     notes,
     warnings,
     files: [entry],
@@ -3738,7 +3772,7 @@ async function runLinkRepo(ctx) {
     show('repo', data.repo),
     show('default branch', data.defaultBranch),
     ...(scope ? [show('team', scope.team) + (scope.team.verified ? '' : ' (not checked against the workspace)')] : []),
-    ...(broken.length > 0 ? ['broken by the new team:', ...broken.map((item) => `  ${item.problem}`)] : []),
+    ...(broken.length > 0 ? [teamChanged ? 'broken by the new team:' : 'broken for the team in the file:', ...broken.map((item) => `  ${item.problem}`)] : []),
     ...warnings.map((warning) => `warning: ${warning}`),
     ...notes.map((note) => `note: ${note}`),
     changed ? (ctx.dryRun ? 'files:' : 'wrote:') : 'already linked, nothing to change',

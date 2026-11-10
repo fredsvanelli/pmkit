@@ -1,3 +1,12 @@
 {"at":"2026-11-08T20:37:24Z","by":"fred","op":"create","to":{"id":"PMK-223","title":"Improve link-repo","type":"feature","status":"backlog","priority":"low","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-08T20:37:24.602Z","updated":"2026-11-08T20:37:24Z"}}
 {"at":"2026-11-08T20:37:24Z","by":"fred","op":"link","field":"related","to":"PMK-53"}
 {"at":"2026-11-08T20:53:52Z","by":"fred","op":"update","field":"estimate","from":null,"to":3}
+{"at":"2026-11-10T08:36:23Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-10T08:36:23Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-10T08:36:26Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-223-improve-link-repo"}
+{"at":"2026-11-10T08:37:35Z","by":"fred","op":"comment","to":"2026-11-10T08-37-35Z-fred.md"}
+{"at":"2026-11-10T09:00:18Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T09:00:19Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T09:00:20Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T09:00:48Z","by":"fred","op":"comment","to":"2026-11-10T09-00-48Z-fred.md"}
+{"at":"2026-11-10T09:00:48Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
