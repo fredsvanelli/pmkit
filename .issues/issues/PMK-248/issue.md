@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-248-fix-adr-status-on-an-unchanged-section
 created: 2026-11-10T19:28:14.686Z
-updated: 2026-11-10T21:37:48Z
+updated: 2026-11-10T21:38:43Z
 ---
 
 ## Description
@@ -34,5 +34,5 @@ The re-review of PR #196 (PMK-228) approved `docs adr-status` with two edge case
 
 ## Acceptance criteria
 
-- [ ] Setting the status an ADR already has leaves the file unchanged and says nothing changed, whatever the blank lines or letter case of its `## Status` section
-- [ ] An ADR with a status in both its front matter and a `## Status` section shows the new status in both places after `docs adr-status`
+- [x] Setting the status an ADR already has leaves the file unchanged and says nothing changed, whatever the blank lines or letter case of its `## Status` section
+- [x] An ADR with a status in both its front matter and a `## Status` section shows the new status in both places after `docs adr-status`

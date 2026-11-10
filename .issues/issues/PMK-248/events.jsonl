@@ -3,3 +3,6 @@
 {"at":"2026-11-10T21:22:26Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-10T21:37:46Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-10T21:37:48Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-248-fix-adr-status-on-an-unchanged-section"}
+{"at":"2026-11-10T21:38:15Z","by":"fred","op":"comment","to":"2026-11-10T21-38-15Z-fred.md"}
+{"at":"2026-11-10T21:38:42Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T21:38:43Z","by":"fred","op":"update","field":"acceptance_criteria"}
