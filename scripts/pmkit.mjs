@@ -25,7 +25,7 @@ import { planNextAdr } from './lib/adr.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
 import { changeList, checkMembers, mergeCapacity, parseCapacityPairs, workingDays } from './lib/team-capacity.mjs'
 import { AGENT_ID, localRunLine, nativeRunLine } from './lib/delegation.mjs'
-import { blockedText, delegationOf, prSummary, prText } from './lib/track-agents.mjs'
+import { agentFilter, authorAgent, blockedText, delegationOf, prSummary, prText } from './lib/track-agents.mjs'
 import { SCANNERS, SEVERITIES, alertCandidate, collectAlerts, matchAlerts, readReport } from './lib/alerts.mjs'
 import { READ_LIMIT, groupTodos, matchTodos, readExistingIssues, scanRepo } from './lib/todos.mjs'
 import { validateRepo } from './lib/validate.mjs'
@@ -645,7 +645,7 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'issues track-agents', summary: 'open issues assigned to agent members, with the delegation record and the state of each pull request; reads only', args: [], flags: [],
+    name: 'issues track-agents', summary: 'open issues assigned to agent members, with the delegation record and the state of each pull request; reads only', usage: '[--agent <name>]', args: [], flags: ['agent'],
     run: (ctx) => runTrackAgents(ctx),
   },
   {
@@ -2374,6 +2374,7 @@ const AGENT_CATEGORIES = ['triage', 'backlog', 'todo', 'in_progress', 'in_review
 
 /** The delegation and the pull request state of every open issue assigned to an agent member. Writes nothing. */
 async function runTrackAgents(ctx) {
+  const agent = ctx.opt('agent') === undefined ? null : agentFilter(ctx.opt('agent'))
   const tracker = await ctx.tracker()
   const entry = (await tracker.capabilities()).capabilities.find((c) => c.id === 'agent_delegation')
   if (entry?.path === 'absent') throw new PmkitError('NOT_SUPPORTED', 'this tracker has no agent delegation, so there are no agent issues to track', entry.enableHint)
@@ -2419,7 +2420,7 @@ async function runTrackAgents(ctx) {
   })
   let rateLimited = false
   const rows = []
-  for (const issue of found.issues.filter((item) => AGENT_ID.test(item.assignee ?? ''))) {
+  for (const issue of found.issues.filter((item) => AGENT_ID.test(item.assignee ?? '') && (agent === null || item.assignee.toLowerCase() === `agent:${agent}`))) {
     const row = { id: issue.id, title: issue.title, status: issue.status?.name ?? null, assignee: issue.assignee, branch: issue.branch ?? null, delegation: null, pr: null, problems: [] }
     try {
       const comments = await tracker.listComments(issue.id)
@@ -2465,9 +2466,9 @@ async function runTrackAgents(ctx) {
   if (stale > 0) notes.push(`${stale} ${stale === 1 ? 'issue has' : 'issues have'} an agent as assignee but the newest delegation record names another agent`)
   const header = ['Issue', 'Agent', 'Status', 'Delegation', 'Branch', 'Pull request']
   const text = rows.length === 0
-    ? (incomplete ? `no agent issue was found, but ${incompleteLine}, and an agent issue may be missing` : 'no open issue is assigned to an agent')
+    ? (incomplete ? `no agent issue${agent === null ? '' : ` for ${agent}`} was found, but ${incompleteLine}, and an agent issue may be missing` : agent === null ? 'no open issue is assigned to an agent' : `no open issue is assigned to agent ${agent}`)
     : table(header, rows.map((row) => [row.id, row.assignee, row.status, row.delegation.state === 'current' ? `by ${row.delegation.by}` : row.delegation.state === 'stale' ? `stale (${row.delegation.agent})` : row.delegation.state, row.branch ?? '', prText(row)]))
-  return { data: { issues: rows, incomplete, hasMore: found.hasMore === true, warnings, notes }, text, warnings, notes }
+  return { data: { source: 'issues', agent, issues: rows, incomplete, hasMore: found.hasMore === true, warnings, notes }, text, warnings, notes }
 }
 
 const LOAD_CATEGORIES = ['todo', 'in_progress', 'in_review']

@@ -2,6 +2,20 @@
 // The CLI reads the tracker and the git host and passes the data in.
 
 import { parseDelegation } from './delegation.mjs'
+import { PmkitError } from './errors.mjs'
+
+/** The name `--agent` asks for: `agent:<name>` or `<name>`, lowercased. An empty one is INVALID_INPUT. */
+export function agentFilter(value) {
+  const name = String(value).trim().replace(/^agent:/i, '').trim().toLowerCase()
+  if (name === '') throw new PmkitError('INVALID_INPUT', '--agent needs an agent name', 'Use --agent agent:<name> or --agent <name>')
+  return name
+}
+
+/** The agent behind a pull request: its author's login without `app/` and `[bot]`, lowercased. `null` when the author is not a bot. */
+export function authorAgent(pr) {
+  if (pr.author?.is_bot !== true || !pr.author.login) return null
+  return pr.author.login.replace(/^app\//i, '').replace(/\[bot\]$/i, '').toLowerCase()
+}
 
 /**
  * The delegation of an issue assigned to `assignee`, from its comments. The newest root comment (no `parent`) that

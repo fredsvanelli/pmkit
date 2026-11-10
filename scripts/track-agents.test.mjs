@@ -55,3 +55,20 @@ test('prSummary names an area that was not checked once, even when two of its re
   assert.deepEqual(summary.unchecked, ['policies', 'threads'])
   assert.equal(blockedText(summary), 'blockers not verified: policies; threads')
 })
+
+import { agentFilter, authorAgent } from './lib/track-agents.mjs'
+
+test('agentFilter takes agent:<name> or the bare name, lowercased, and refuses an empty value (PMK-215)', () => {
+  assert.equal(agentFilter('agent:Claude'), 'claude')
+  assert.equal(agentFilter('claude'), 'claude')
+  assert.throws(() => agentFilter(' '), (e) => e.code === 'INVALID_INPUT')
+  assert.throws(() => agentFilter('agent:'), (e) => e.code === 'INVALID_INPUT')
+})
+
+test('authorAgent reads a bot author and drops app/ and [bot]; a person is no agent (PMK-215)', () => {
+  assert.equal(authorAgent({ author: { login: 'app/Claude', is_bot: true } }), 'claude')
+  assert.equal(authorAgent({ author: { login: 'codex[bot]', is_bot: true } }), 'codex')
+  assert.equal(authorAgent({ author: { login: 'fred', is_bot: false } }), null)
+  assert.equal(authorAgent({ author: { login: 'dependabot', } }), null)
+  assert.equal(authorAgent({}), null)
+})
