@@ -52,6 +52,7 @@ export function readLocalSnapshot({ root, config, tracker, commit = null, now = 
       release: issue.release ?? null,
       due: issue.due ?? null,
       branch: issue.branch ?? null,
+      docs: issue.docs ?? [],
       description: issue.description ?? '',
       acceptanceCriteria: issue.acceptanceCriteria ?? [],
       archived: Boolean(issue.archived),

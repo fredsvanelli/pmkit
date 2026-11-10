@@ -196,7 +196,7 @@ test('every export row of "What does not round-trip" appears in losses when its 
     people: [{ id: 'bea', name: 'Bea', email: 'bea@example.com', app: false }],
     sprints: [{ id: '2026-10-12', name: 'B', start: '2026-10-12', end: '2026-10-25', goal: '', state: 'closed', closed: null }],
     epics: [{ id: 'EPC-1', title: 'Epic', status: status('todo'), start: null, target: null, milestone: null, description: '', created: null, updates: [{ id: 'EPC-1/u', at: '2026-10-21T10:00:00Z', author: 'bea', health: 'on_track', body: 'x' }] }],
-    issues: [issue('ISS-1', { sprint: '2026-10-12', milestone: 'v1', release: '1.0', branch: 'iss-1-x', estimate: 21, assignee: 'bea' })],
+    issues: [issue('ISS-1', { sprint: '2026-10-12', milestone: 'v1', release: '1.0', branch: 'iss-1-x', docs: ['docs/adr/0001-a.md'], estimate: 21, assignee: 'bea' })],
     links: [{ kind: 'blocks', from: 'ISS-1', to: 'ISS-9' }],
     comments: [{ id: 'ISS-1/a', issue: 'ISS-1', author: 'bea', created: '2026-10-28T18:11:19Z', body: 'x', parent: null, resolved: false }],
     outOfScope: { releases: 1, timeLogs: 2, documents: 3, milestones: 1, views: 4, goals: 2, customers: 1, requests: 3 },
@@ -206,6 +206,13 @@ test('every export row of "What does not round-trip" appears in losses when its 
     assert.ok(loss.count > 0, loss.what)
     assert.ok(loss.why.length > 0, loss.what)
   }
+})
+
+test('an issue with docs gives a doc links loss that names it (PMK-228)', async () => {
+  const mapped = mapExport(snapshot({ people: [], sprints: [], epics: [], issues: [issue('ISS-1', { docs: ['docs/adr/0001-a.md', 'docs/adr/0002-b.md'] }), issue('ISS-2')], outOfScope: { releases: 0, timeLogs: 0, documents: 0, milestones: 0, views: 0 } }), await target())
+  const loss = mapped.losses.find((item) => item.what === 'doc links')
+  assert.deepEqual([loss.count, loss.ids], [1, ['ISS-1']])
+  assert.equal(loss.why, '1 issue loses its docs field; Linear has no such field, so the comments stay the links')
 })
 
 test('views are a loss that names the folder they stay in', async () => {

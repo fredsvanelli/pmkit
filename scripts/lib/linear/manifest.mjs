@@ -20,7 +20,7 @@ export const LINEAR_CAPABILITIES = Object.freeze({
   status_update: { path: 'native', detail: { entity: 'project update' } },
   native_metrics: { path: 'derived', detail: { source: 'history' } },
   saved_views: { path: 'native', detail: { source: 'custom views', unsupported: ['saveView', 'deleteView', 'renameView'] } },
-  documents: { path: 'native', detail: { scope: 'project', unsupported: ['createDocument'] } },
+  documents: { path: 'native', detail: { scope: 'project', unsupported: ['createDocument', 'updateDocument', 'issueDocs'] } },
   time_tracking: { path: 'absent', enableHint: 'Linear has no time tracking' },
   security_alerts: { path: 'derived', detail: { source: 'scanners' } },
 })
