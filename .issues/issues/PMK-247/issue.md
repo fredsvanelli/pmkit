@@ -2,13 +2,14 @@
 id: PMK-247
 title: Improve ADR folders when the tracker is the repository or outside it
 type: feature
-status: backlog
+status: in_progress
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
+branch: pmk-247-improve-adr-folders-when-the-tracker-is
 created: 2026-11-10T19:28:14.611Z
-updated: 2026-11-10T21:22:26Z
+updated: 2026-11-10T22:25:57Z
 ---
 
 ## Description
