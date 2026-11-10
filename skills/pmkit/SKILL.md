@@ -43,7 +43,7 @@ Each command file holds the full procedure. When the user asks for one of these 
 | move an issue to a status category: in progress, in review, done | `/pmkit:issues:move` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/move.md` |
 | pause work on an issue, leave a handoff note and push a draft PR when there is code | `/pmkit:issues:pause` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/pause.md` |
 | post what was done on an issue as a comment, tick acceptance criteria and log the time spent | `/pmkit:issues:progress` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/progress.md` |
-| review the pull request of an issue against its acceptance criteria, flag the gaps and post the result after approval | `/pmkit:issues:review` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/review.md` |
+| review the pull request of an issue against its acceptance criteria and its checks, flag the gaps and post the result on the issue and the pull request after approval | `/pmkit:issues:review` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/review.md` |
 | turn the TODO and FIXME comments of the repository into issues after a full preview, skipping the ones an issue already covers | `/pmkit:issues:todos` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/todos.md` |
 | turn the security alerts of the repository scanners into issues with a priority from the severity, after a full preview | `/pmkit:issues:security-alerts` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/security-alerts.md` |
 | list what blocks a pull request from merging: checks, reviews, conflicts, open threads and policies | `/pmkit:issues:unblock` | `${CLAUDE_PLUGIN_ROOT}/commands/issues/unblock.md` |

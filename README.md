@@ -40,7 +40,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 - `/pmkit:issues:move`: Move an issue to a status category: in progress, in review, done.
 - `/pmkit:issues:pause`: Pause work on an issue, leave a handoff note and push a draft PR when there is code.
 - `/pmkit:issues:progress`: Post what was done on an issue as a comment, tick acceptance criteria and log the time spent.
-- `/pmkit:issues:review`: Review the pull request of an issue against its acceptance criteria, flag the gaps and post the result after approval.
+- `/pmkit:issues:review`: Review the pull request of an issue against its acceptance criteria and its checks, flag the gaps, then post the result on the issue and on the pull request after approval.
 - `/pmkit:issues:todos`: Turn the TODO and FIXME comments of the repository into issues, dropping the ones an issue already covers, after a full preview.
 - `/pmkit:issues:security-alerts`: Turn the security alerts of the repository scanners into issues, with a priority from the severity, after a full preview. It says the capability is absent when the repository has no scanner.
 - `/pmkit:issues:summary`: Summarize an issue or an epic from its record, comments and history.
