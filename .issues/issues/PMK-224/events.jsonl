@@ -4,3 +4,4 @@
 {"at":"2026-11-10T08:36:28Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-10T08:36:28Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-10T08:36:30Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-224-improve-team-capacity"}
+{"at":"2026-11-10T08:37:54Z","by":"fred","op":"comment","to":"2026-11-10T08-37-54Z-fred.md"}
