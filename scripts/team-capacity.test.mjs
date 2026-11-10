@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { changeList, checkMembers, mergeCapacity, parseCapacityPairs, workingDays } from './lib/team-capacity.mjs'
+import { changeList, checkMembers, mergeCapacity, parseCapacityPairs, recomputeCapacity, workingDays } from './lib/team-capacity.mjs'
 
 const invalid = /./
 const code = (name, pattern = invalid) => (error) => error.code === name && pattern.test(error.message)
@@ -49,4 +49,31 @@ test('workingDays ignores repeated days off, weekends and dates outside the spri
   assert.equal(workingDays(sprint, ['2026-10-17', '2026-10-18']), 10)
   assert.equal(workingDays(sprint, ['2026-10-09', '2026-10-26']), 10)
   assert.equal(workingDays(sprint, ['2026-10-16', '2026-10-17', '2026-11-02', '2026-10-16']), 9)
+})
+
+const week2 = { start: '2026-10-12', end: '2026-10-25' }
+
+test('recomputeCapacity scales a capacity by the working days a member gains or loses', () => {
+  const result = recomputeCapacity(week2, { ana: 10 }, {}, { ana: ['2026-10-16'] }, {})
+  assert.deepEqual(result.capacity, { ana: 9 })
+  assert.deepEqual(result.recomputed, [{ member: 'ana', workingDays: { before: 10, after: 9 }, capacity: { before: 10, after: 9 } }])
+  // The days off come back: 9 working days to 10.
+  assert.deepEqual(recomputeCapacity(week2, { ana: 9 }, { ana: ['2026-10-16'] }, {}, {}).capacity, { ana: 10 })
+})
+
+test('recomputeCapacity leaves a member that --set names, one with no capacity, and one whose days off did not change', () => {
+  const off = { ana: ['2026-10-16'], fred: ['2026-10-16'], zed: ['2026-10-16'], bob: [] }
+  const result = recomputeCapacity(week2, { ana: 10, zed: 10, bob: 10 }, {}, off, { ana: 4 })
+  assert.deepEqual(result.capacity, { ana: 10, zed: 9, bob: 10 })
+  assert.deepEqual(result.recomputed.map((item) => item.member), ['zed'])
+  assert.equal(result.capacity.fred, undefined)
+  assert.equal(recomputeCapacity(week2, { ana: 10 }, { ana: ['2026-10-16'] }, { ana: ['2026-10-16'] }, {}).recomputed.length, 0)
+})
+
+test('recomputeCapacity gives 0 when every working day is off and reports a member with no working days to scale from', () => {
+  const all = ['10-12', '10-13', '10-14', '10-15', '10-16', '10-19', '10-20', '10-21', '10-22', '10-23'].map((day) => `2026-${day}`)
+  assert.deepEqual(recomputeCapacity(week2, { ana: 10 }, {}, { ana: all }, {}).capacity, { ana: 0 })
+  const stuck = recomputeCapacity(week2, { ana: 5 }, { ana: all }, { ana: [] }, {})
+  assert.deepEqual(stuck.capacity, { ana: 5 })
+  assert.deepEqual(stuck.skipped, ['ana'])
 })

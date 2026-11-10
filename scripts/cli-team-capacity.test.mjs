@@ -122,6 +122,40 @@ test('team capacity says there is no change when the values stay the same', asyn
   assert.match(text.stdout, /no change/)
 })
 
+test('team capacity --days-off recomputes the capacity of the member by working days and lists it', async () => {
+  const root = cleanRepo()
+  const { code, data, stderr } = await capacity(root, ['--days-off', 'fred=2026-10-14+2026-10-15'])
+  assert.equal(code, 0, stderr)
+  assert.deepEqual(data.recomputed, [{ member: 'fred', workingDays: { before: 10, after: 8 }, capacity: { before: 8, after: 6 } }])
+  assert.deepEqual(data.changes.map((change) => [change.member, change.capacity.before, change.capacity.after]), [['fred', 8, 6]])
+  assert.ok(data.notes.some((note) => /scaled by working days/.test(note)), data.notes.join('\n'))
+  assert.deepEqual((await stored(root)).capacity, { fred: 6, ana: 10 })
+})
+
+test('team capacity --set for the same member wins over the recompute', async () => {
+  const root = cleanRepo()
+  const { code, data } = await capacity(root, ['--days-off', 'fred=2026-10-14+2026-10-15', '--set', 'fred=8'])
+  assert.equal(code, 0)
+  assert.deepEqual(data.recomputed, [])
+  assert.deepEqual((await stored(root)).capacity, { fred: 8, ana: 10 })
+})
+
+test('team capacity --days-off --dry-run previews the recomputed capacity and writes nothing', async () => {
+  const root = cleanRepo()
+  const before = fs.readFileSync(sprintFile(root), 'utf8')
+  const { stdout } = await run(['team', 'capacity', '--days-off', 'fred=2026-10-14', '--dry-run'], { cwd: root, env })
+  assert.match(stdout, /capacity 8 → 7/)
+  assert.equal(fs.readFileSync(sprintFile(root), 'utf8'), before)
+})
+
+test('team capacity --days-off leaves a member with no capacity unset', async () => {
+  const root = cleanRepo()
+  assert.equal((await capacity(root, ['--set', 'fred=none'])).code, 0)
+  const { data } = await capacity(root, ['--days-off', 'fred=2026-10-14'])
+  assert.deepEqual(data.recomputed, [])
+  assert.equal(memberOf((await capacity(root)).data, 'fred').capacity, null)
+})
+
 test('team capacity --days-off member=none clears the days off', async () => {
   const root = cleanRepo()
   assert.equal((await capacity(root, ['--days-off', 'ana=none'])).code, 0)

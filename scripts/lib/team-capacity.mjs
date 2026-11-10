@@ -58,3 +58,36 @@ export function changeList(before, after, members) {
   }))
   return entries.filter((entry) => entry.capacity.before !== entry.capacity.after || entry.daysOff.before.join() !== entry.daysOff.after.join())
 }
+
+/** The days-off map after the pairs of `--days-off`: a list sets the member, null clears it. */
+export function mergeDaysOff(current, off) {
+  const merged = { ...current }
+  for (const [member, dates] of Object.entries(off)) {
+    if (dates === null) delete merged[member]
+    else merged[member] = dates
+  }
+  return merged
+}
+
+/**
+ * The capacity map after a days-off change. The formula of `/pmkit:cycle:plan` is linear in the working days, so a member who has a
+ * capacity and whom `set` does not name gets round(capacity x new working days / old working days). A member with no capacity stays
+ * unset, and one with no old working days to scale from is kept and listed in `skipped`. `beforeOff` and `afterOff` are full maps.
+ */
+export function recomputeCapacity(sprint, capacity, beforeOff, afterOff, set) {
+  const next = { ...capacity }
+  const recomputed = []
+  const skipped = []
+  for (const member of new Set([...Object.keys(beforeOff), ...Object.keys(afterOff)])) {
+    if (Object.hasOwn(set, member) || typeof capacity[member] !== 'number') continue
+    const [before, after] = [workingDays(sprint, beforeOff[member] ?? []), workingDays(sprint, afterOff[member] ?? [])]
+    if (before === after) continue
+    if (before === 0) {
+      skipped.push(member)
+      continue
+    }
+    next[member] = Math.round((capacity[member] * after) / before)
+    recomputed.push({ member, workingDays: { before, after }, capacity: { before: capacity[member], after: next[member] } })
+  }
+  return { capacity: next, recomputed, skipped }
+}

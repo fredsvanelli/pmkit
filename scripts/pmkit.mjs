@@ -27,7 +27,7 @@ import { planNextAdr } from './lib/adr.mjs'
 import { similarResult } from './lib/similar.mjs'
 import { isBlocked } from './lib/model.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
-import { changeList, checkMembers, mergeCapacity, parseCapacityPairs, workingDays } from './lib/team-capacity.mjs'
+import { changeList, checkMembers, mergeCapacity, mergeDaysOff, parseCapacityPairs, recomputeCapacity, workingDays } from './lib/team-capacity.mjs'
 import { AGENT_ID, localRunLine, nativeRunLine } from './lib/delegation.mjs'
 import { agentFilter, authorAgent, blockedText, delegationOf, prSummary, prText } from './lib/track-agents.mjs'
 import { SCANNERS, SEVERITIES, alertCandidate, collectAlerts, matchAlerts, readReport } from './lib/alerts.mjs'
@@ -3155,7 +3155,11 @@ async function runTeamCapacity(ctx) {
   const set = ctx.opt('set') === undefined ? undefined : parseCapacityPairs(csv(ctx.list('set')))
   const off = ctx.opt('days-off') === undefined ? undefined : parseDaysOff(ctx)
   checkMembers([...Object.keys(set ?? {}), ...Object.keys(off ?? {})], humans.map((row) => row.member))
-  const capacity = set === undefined ? undefined : mergeCapacity(inputs.capacity, set)
+  let capacity = set === undefined ? undefined : mergeCapacity(inputs.capacity, set)
+  // A days-off change moves the working days, so it moves the capacity the formula of cycle:plan gave, except where --set named the member.
+  const scaled = off === undefined ? { recomputed: [], skipped: [] } : recomputeCapacity(sprint, capacity ?? inputs.capacity, inputs.daysOff, mergeDaysOff(inputs.daysOff, off), set ?? {})
+  if (scaled.recomputed.length > 0) capacity = scaled.capacity
+  warnings.push(...scaled.skipped.map((member) => `${member} has no working days to scale the capacity from, so it is unchanged`))
   const result = await tracker.updateCycleCapacity(sprint.id, { capacity, daysOff: off }, await ctx.actor(), { dryRun: ctx.dryRun })
   const ids = humans.map((row) => row.member)
   const changes = changeList({ capacity: result.before.capacity, daysOff: result.before.daysOff }, { capacity: result.after.capacity, daysOff: result.after.daysOff }, ids)
@@ -3167,7 +3171,8 @@ async function runTeamCapacity(ctx) {
   if (readNote.length > 0 && inputs.manifest.find((c) => c.id === 'capacity')?.path === 'derived') {
     notes.push(ctx.dryRun ? 'capacity and days off would be written to .pmkit/capacity.yaml; Linear is not changed' : 'capacity and days off written to .pmkit/capacity.yaml; Linear was not changed')
   }
-  const data = { dryRun: ctx.dryRun === true, sprint: { id: sprint.id, name: sprint.name, start: sprint.start, end: sprint.end }, unit, changes, load: { before: loadView(current.data, incomplete), after }, notes, warnings }
+  if (scaled.recomputed.length > 0) notes.push(`capacity scaled by working days for ${scaled.recomputed.map((item) => item.member).join(', ')}: round(capacity x new working days / old working days); --set <member>=<n> keeps a number`)
+  const data = { dryRun: ctx.dryRun === true, sprint: { id: sprint.id, name: sprint.name, start: sprint.start, end: sprint.end }, unit, changes, recomputed: scaled.recomputed, load: { before: loadView(current.data, incomplete), after }, notes, warnings }
   const lines = [header]
   if (changes.length === 0) lines.push('no change')
   for (const change of changes) {
