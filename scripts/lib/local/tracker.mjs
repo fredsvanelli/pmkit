@@ -1554,6 +1554,74 @@ export function createLocalTracker(root, {
     return { before, after }
   }
 
+  /** Changes the title, status or target of a goal; a null target removes it. Only the changed frontmatter lines are edited. */
+  function updateGoal(id, input, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const allowed = ['title', 'status', 'target']
+    const keys = Object.keys(input ?? {})
+    if (keys.length === 0) throw invalid('goal update needs a title, a status or a target', 'pmkit goal update <id> --status completed')
+    for (const key of keys) {
+      if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+    }
+    // Every value is checked before the file is read for editing, so a refusal never touches it.
+    const set = {}
+    if (input.title !== undefined) set.title = NORMALIZE.title(input.title)
+    if (input.status !== undefined) set.status = oneOf('status', input.status, GOAL_STATUSES)
+    if (input.target !== undefined && input.target !== null) {
+      if (!validDate(input.target)) throw invalid('target must be a date as YYYY-MM-DD, or none to remove it')
+      set.target = input.target
+    }
+    const goal = readGoalFile(id)
+    const file = path.join(goalsDir, `${goal.id}.md`)
+    const { yaml, body } = splitFrontmatter(fs.readFileSync(file, 'utf8'))
+    let edited = yaml
+    try {
+      for (const [key, value] of Object.entries(set)) edited = setScalar(edited, [key], value)
+      if (input.target === null) edited = removeKey(edited, ['target'])
+    } catch (error) {
+      throw new PmkitError('INVALID_INPUT', `The goal frontmatter cannot be edited: ${error.message}`, '/pmkit:local:doctor')
+    }
+    const content = `---\n${edited.replace(/\n$/, '')}\n---\n${body}`
+    const after = readBack('goal file', () => parseGoal(content, goal.id))
+    const before = withEpics(goal)
+    if (['title', 'status', 'target', 'description'].every((key) => goal[key] === after[key])) return { before, after: before }
+    if (!dryRun) writeFile(file, content)
+    return { before, after: { ...after, epics: before.epics } }
+  }
+
+  /**
+   * Deletes a goal file. It refuses, writing nothing, while an epic links to the goal, and while an epic file does not parse,
+   * because that epic may link to it. Goals have no event log, so no event is written.
+   */
+  function deleteGoal(id, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const goal = readGoalFile(id)
+    const { epics, problems } = readDeliverables()
+    if (problems.length > 0) {
+      throw new PmkitError(
+        'INVALID_INPUT',
+        `${problems.length} epic ${problems.length === 1 ? 'file does' : 'files do'} not parse (${problems.map((problem) => problem.id).join(', ')}), so the links to ${goal.id} cannot be checked`,
+        'Run pmkit validate, fix the files with /pmkit:local:doctor, then delete again',
+        { problems },
+      )
+    }
+    const linked = epics.filter((epic) => epic.goal === goal.id).map((epic) => epic.id)
+    if (linked.length > 0) {
+      throw new PmkitError(
+        'CONFLICT',
+        `goal ${goal.id} is linked to ${linked.length === 1 ? 'one epic' : `${linked.length} epics`}: ${linked.join(', ')}`,
+        `Remove each link, then delete again: ${linked.map((epic) => `pmkit epic goal ${epic} none`).join('; ')}`,
+        { epics: linked },
+      )
+    }
+    const file = path.join(goalsDir, `${goal.id}.md`)
+    const result = { before: { ...goal, epics: [] }, after: null, removes: { file: path.relative(config.root, file).split(path.sep).join('/') } }
+    if (dryRun) return result
+    fs.rmSync(file)
+    writtenPaths.add(file)
+    return result
+  }
+
   // Customers and requests (PMK-46). The records use the keys of Linear's customer and request views.
   // See docs/superpowers/specs/2026-10-31-pmk-46-customers-and-requests-design.md.
   const customersDir = path.join(issuesDir, 'customers')
@@ -2159,7 +2227,7 @@ export function createLocalTracker(root, {
 
   return {
     saveView, listViews, runView, deleteView, renameView,
-    listGoals, getGoal, createGoal, goalProgress, setEpicGoal,
+    listGoals, getGoal, createGoal, goalProgress, setEpicGoal, updateGoal, deleteGoal,
     listCustomers, getCustomer, createCustomer, listRequests, getRequest, createRequest, acceptRequest, declineRequest, listDemandSignals,
     listNotifications, markRead,
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,

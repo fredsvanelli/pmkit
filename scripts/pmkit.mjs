@@ -920,6 +920,33 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'goal update', summary: 'changes the title, target or status of a goal; --target none removes the target', usage: '<id> [--title t | --title-file f] [--target YYYY-MM-DD|none] [--status s]', write: true, args: ['id'], flags: ['title', 'title-file', 'target', 'status'],
+    run: async (ctx) => {
+      const input = {}
+      const title = lineFromFlag(ctx.opt, 'title')
+      if (title !== undefined) input.title = title
+      if (ctx.opt('target') !== undefined) input.target = ctx.opt('target') === 'none' ? null : ctx.opt('target')
+      if (ctx.opt('status') !== undefined) input.status = ctx.opt('status')
+      const result = await (await ctx.tracker()).updateGoal(ctx.args[0], input, await ctx.actor(), { dryRun: ctx.dryRun })
+      return { data: result, text: writeText(result, { ...ctx, record: goalRecord }), commit: result.after.id }
+    },
+  },
+  {
+    name: 'goal close', summary: 'marks a goal completed', usage: '<id>', write: true, args: ['id'], flags: [],
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).updateGoal(ctx.args[0], { status: 'completed' }, await ctx.actor(), { dryRun: ctx.dryRun })
+      return { data: result, text: writeText(result, { ...ctx, record: goalRecord }), commit: result.after.id }
+    },
+  },
+  {
+    name: 'goal delete', summary: 'deletes a goal file; refuses while an epic links to it', usage: '<id>', write: true, args: ['id'], flags: [],
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).deleteGoal(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })
+      const text = [`${ctx.dryRun ? 'would delete' : 'deleted'} goal ${result.before.id}  ${result.before.title}`, goalRecord(result.before), '', `removes: ${result.removes.file}`, ...(ctx.dryRun ? ['dry run: nothing was written'] : [])].join('\n')
+      return { data: result, text, commit: result.before.id }
+    },
+  },
+  {
     name: 'goal progress', summary: 'rolls up the progress of the epics of a goal', usage: '<id>', args: ['id'], flags: [],
     run: async (ctx) => {
       const p = await (await ctx.tracker()).goalProgress(ctx.args[0])

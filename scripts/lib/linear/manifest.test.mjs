@@ -120,7 +120,7 @@ test('a Business workspace with releases and customers on', async () => {
   assert.deepEqual(entry.strategic_goals, {
     id: 'strategic_goals',
     path: 'absent',
-    detail: { workspace: 'native', unsupported: ['listGoals', 'getGoal', 'createGoal', 'goalProgress', 'setEpicGoal'] },
+    detail: { workspace: 'native', unsupported: ['listGoals', 'getGoal', 'createGoal', 'goalProgress', 'setEpicGoal', 'updateGoal', 'deleteGoal'] },
     enableHint: 'The Linear adapter does not serve initiatives yet; Linear offers them on this workspace',
   })
 })

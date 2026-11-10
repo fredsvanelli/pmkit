@@ -64,7 +64,7 @@ function workspaceAnswers(raw) {
     strategic_goals: business
       ? {
         path: 'absent',
-        detail: { workspace: 'native', unsupported: ['listGoals', 'getGoal', 'createGoal', 'goalProgress', 'setEpicGoal'] },
+        detail: { workspace: 'native', unsupported: ['listGoals', 'getGoal', 'createGoal', 'goalProgress', 'setEpicGoal', 'updateGoal', 'deleteGoal'] },
         enableHint: 'The Linear adapter does not serve initiatives yet; Linear offers them on this workspace',
       }
       : { path: 'absent', enableHint: 'Linear initiatives need the Business or Enterprise plan' },

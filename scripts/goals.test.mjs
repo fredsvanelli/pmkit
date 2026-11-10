@@ -269,3 +269,67 @@ test('an epic with an unmapped status is still counted, and a goal of canceled e
   const none = tracker.goalProgress(only)
   assert.deepEqual([none.total, none.done, none.points, none.epics.length], [0, 0, 0, 1])
 })
+
+// PMK-213: update, close and delete.
+const goalFile = (goals, id) => path.join(goals, `${id}.md`)
+
+test('updateGoal edits only the changed lines and keeps comments, unknown keys and the body (PMK-213)', () => {
+  const { goals, tracker } = setup({ numbered: true })
+  fs.mkdirSync(goals, { recursive: true })
+  fs.writeFileSync(goalFile(goals, 'GOAL-1'), '---\ntitle: Old\n# keep\nowner: ana\ntarget: 2026-12-31\n---\n\nWhy.\n')
+  const result = tracker.updateGoal('goal-1', { title: 'New', status: 'planned' }, 'fred')
+  assert.equal(result.before.title, 'Old')
+  assert.deepEqual([result.after.title, result.after.status, result.after.target], ['New', 'planned', '2026-12-31'])
+  assert.deepEqual(result.after.epics, [])
+  const text = fs.readFileSync(goalFile(goals, 'GOAL-1'), 'utf8')
+  assert.match(text, /^title: New$/m)
+  assert.match(text, /^status: planned$/m)
+  assert.match(text, /^# keep$/m)
+  assert.match(text, /^owner: ana$/m)
+  assert.ok(text.endsWith('---\n\nWhy.\n'), text)
+  tracker.updateGoal('GOAL-1', { target: null }, 'fred')
+  assert.doesNotMatch(fs.readFileSync(goalFile(goals, 'GOAL-1'), 'utf8'), /^target:/m)
+})
+
+test('updateGoal writes nothing when nothing changes or on a dry run, and refuses empty, unknown or bad input (PMK-213)', () => {
+  const { root, tracker } = setup()
+  const { id } = tracker.createGoal({ title: 'Trust' }, 'fred').after
+  const before = hashTree(root)
+  const same = tracker.updateGoal(id, { title: 'Trust', status: 'active', target: null }, 'fred')
+  assert.deepEqual(same.before, same.after)
+  assert.equal(tracker.updateGoal(id, { title: 'Other' }, 'fred', { dryRun: true }).after.title, 'Other')
+  assert.deepEqual(hashTree(root), before)
+  for (const input of [{}, { owner: 'ana' }, { status: 'done' }, { target: 'soon' }, { title: '  ' }]) {
+    assert.throws(() => tracker.updateGoal(id, input, 'fred'), code('INVALID_INPUT'), JSON.stringify(input))
+  }
+  assert.throws(() => tracker.updateGoal('GOAL-ZZZZ', { title: 'X' }, 'fred'), code('NOT_FOUND'))
+  assert.deepEqual(hashTree(root), before)
+})
+
+test('deleteGoal removes the file, and a dry run lists it and writes nothing (PMK-213)', () => {
+  const { root, goals, tracker } = setup()
+  const { id } = tracker.createGoal({ title: 'Trust' }, 'fred').after
+  const before = hashTree(root)
+  const dry = tracker.deleteGoal(id, 'fred', { dryRun: true })
+  assert.equal(dry.before.id, id)
+  assert.equal(dry.after, null)
+  assert.deepEqual(dry.removes, { file: `.issues/goals/${id}.md` })
+  assert.deepEqual(hashTree(root), before)
+  tracker.deleteGoal(id, 'fred')
+  assert.equal(fs.existsSync(goalFile(goals, id)), false)
+  assert.throws(() => tracker.getGoal(id), code('NOT_FOUND'))
+})
+
+test('deleteGoal refuses while an epic links to the goal or an epic file does not parse (PMK-213)', () => {
+  const { root, tracker } = setup()
+  const { id } = tracker.createGoal({ title: 'Trust' }, 'fred').after
+  tracker.setEpicGoal('EPC-2M9D', id, 'fred')
+  const before = hashTree(root)
+  assert.throws(() => tracker.deleteGoal(id, 'fred'), (error) => error.code === 'CONFLICT' && error.details.epics.includes('EPC-2M9D') && error.nextStep.includes(`pmkit epic goal EPC-2M9D none`))
+  assert.deepEqual(hashTree(root), before)
+  tracker.setEpicGoal('EPC-2M9D', null, 'fred')
+  fs.writeFileSync(epicFile(root), '---\ntitle: [\n---\n')
+  const broken = hashTree(root)
+  assert.throws(() => tracker.deleteGoal(id, 'fred'), (error) => error.code === 'INVALID_INPUT' && /EPC-2M9D/.test(error.message))
+  assert.deepEqual(hashTree(root), broken)
+})
