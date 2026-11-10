@@ -145,18 +145,20 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.deepEqual(ids((await tracker.searchIssues({ archived: true })).issues), [y])
     })
 
-    it('delegates an issue to an agent member with a delegation comment',['issues', 'agents'], async (env) => {
+    // A local run makes the agent the assignee; a native run (Linear) keeps the assignee and sets the issue's delegate.
+    it('delegates an issue to an agent member with a delegation comment', ['issues', 'agents'], async (env) => {
       const { tracker, actor, agent, t } = env
       if (!agent) return t.skip('needs an agent member')
       const id = (await tracker.createIssue({ title: 'For the agent' }, actor)).after.id
       const first = await tracker.delegate(id, agent, 'Do it.', actor)
-      assert.equal(first.after.assignee, agent)
-      assert.equal(first.run, 'local')
-      assert.deepEqual(parseDelegation(first.comment.body), { agent, by: actor, run: 'local' })
-      assert.equal((await tracker.getIssue(id)).assignee, agent)
+      assert.ok(['local', 'native'].includes(first.run), `run is ${first.run}`)
+      const holder = (issue) => (first.run === 'native' ? issue.delegate : issue.assignee)
+      assert.equal(holder(first.after), agent)
+      assert.deepEqual(parseDelegation(first.comment.body), { agent, by: actor, run: first.run })
+      assert.equal(holder(await tracker.getIssue(id)), agent)
       assert.deepEqual((await tracker.listComments(id)).map((comment) => comment.id), [first.comment.id])
       const again = await tracker.delegate(id, agent, 'Do it again.', actor)
-      assert.equal(again.before.assignee, again.after.assignee)
+      assert.equal(holder(again.before), holder(again.after))
       assert.equal((await tracker.listComments(id)).length, 2)
       await rejects(() => tracker.delegate(id, actor, 'x', actor), 'INVALID_INPUT')
       await rejects(() => tracker.delegate(id, 'agent:nobody', 'x', actor), 'INVALID_INPUT')

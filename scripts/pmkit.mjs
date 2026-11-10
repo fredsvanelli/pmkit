@@ -2239,6 +2239,10 @@ async function runTrackAgents(ctx) {
   const tracker = await ctx.tracker()
   const entry = (await tracker.capabilities()).capabilities.find((c) => c.id === 'agent_delegation')
   if (entry?.path === 'absent') throw new PmkitError('NOT_SUPPORTED', 'this tracker has no agent delegation, so there are no agent issues to track', entry.enableHint)
+  // Linear delegates natively: the agent is the issue's delegate, not an agent: assignee, so this list would miss every agent issue.
+  if (entry?.detail?.unsupported?.includes('issues track-agents')) {
+    throw new PmkitError('NOT_SUPPORTED', 'this tracker hands issues to agents natively, and track-agents does not read its delegates yet', 'Open the issues delegated to agents in the tracker itself')
+  }
   const found = await tracker.searchIssues({ categories: AGENT_CATEGORIES })
   const warnings = problemWarnings(found.problems)
   const notes = []
