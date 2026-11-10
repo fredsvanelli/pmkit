@@ -2,14 +2,14 @@
 id: PMK-211
 title: Improve issues time-entries
 type: feature
-status: in_progress
+status: in_review
 priority: low
 estimate: 3
 assignee: fred
 related: [PMK-51]
 branch: pmk-211-improve-issues-time-entries
 created: 2026-11-08T20:37:22.800Z
-updated: 2026-11-10T03:28:25Z
+updated: 2026-11-10T03:32:52Z
 ---
 
 ## Description
