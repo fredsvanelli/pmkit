@@ -91,6 +91,8 @@ const LIVE_EXPECT_STOPS = {
   'backlog-prioritize-by-demand.3': 'the AUTH error of the scripted run, which a live run does not reproduce',
   'backlog-prioritize-by-demand.4': 'the demand list of the scripted run, whose problem comes from a file the setup breaks',
   'backlog-prioritize-by-demand.5': 'the problems of the demand list of the scripted run',
+  'backlog-prioritize-by-demand.7': 'the stale write, which needs a file edit after the preview',
+  'backlog-prioritize-by-demand.8': 'the demand list of the scripted run',
   'backlog-request-queue.0': 'the open requests of the scripted run, which the agent decides one by one',
   'backlog-request-queue.1': 'the AUTH error of the scripted run, which a live run does not reproduce',
   'backlog-request-queue.2': 'the requests list of the scripted run, whose problem comes from a file the setup breaks',

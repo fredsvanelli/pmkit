@@ -14,6 +14,12 @@ exit 0
 $ pmkit issues update ISS-4M2S --priority high --dry-run --json  [step 6, dry run]
 exit 0
 ? Step 7  [confirmed]
+$ pmkit issues update ISS-6J0B --priority urgent --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues update ISS-3F7H --priority high --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues update ISS-4M2S --priority high --dry-run --json  [step 6, dry run]
+exit 0
 $ pmkit issues update ISS-6J0B --priority urgent --json  [step 6, write]
 exit 0
 $ pmkit issues update ISS-3F7H --priority high --json  [step 6, write]

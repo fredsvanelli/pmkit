@@ -19,7 +19,7 @@ Each command file holds the full procedure. When the user asks for one of these 
 | see what pmkit can do here, explain a capability, or find the command for a task | `/pmkit:help` | `${CLAUDE_PLUGIN_ROOT}/commands/help.md` |
 | find what is wrong with the backlog and fix what the user accepts | `/pmkit:backlog:groom` | `${CLAUDE_PLUGIN_ROOT}/commands/backlog/groom.md` |
 | triage the issues nobody has looked at and apply the decisions the user accepts | `/pmkit:backlog:triage` | `${CLAUDE_PLUGIN_ROOT}/commands/backlog/triage.md` |
-| rank the open issues by demand and change their priorities after a full preview | `/pmkit:backlog:prioritize-by-demand` | `${CLAUDE_PLUGIN_ROOT}/commands/backlog/prioritize-by-demand.md` |
+| rank the open issues by demand and change their priorities after a full preview, or only show the ranking | `/pmkit:backlog:prioritize-by-demand` | `${CLAUDE_PLUGIN_ROOT}/commands/backlog/prioritize-by-demand.md` |
 | work the open requests into issues, links or declines after a full preview | `/pmkit:backlog:request-queue` | `${CLAUDE_PLUGIN_ROOT}/commands/backlog/request-queue.md` |
 | close the active sprint, report planned against delivered, and move the unfinished issues | `/pmkit:cycle:close` | `${CLAUDE_PLUGIN_ROOT}/commands/cycle/close.md` |
 | plan the next sprint from velocity, capacity and the prioritized backlog | `/pmkit:cycle:plan` | `${CLAUDE_PLUGIN_ROOT}/commands/cycle/plan.md` |

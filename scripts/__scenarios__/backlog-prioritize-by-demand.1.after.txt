@@ -26,6 +26,8 @@ exit 0
 $ pmkit issues update ISS-3F7H --priority high --dry-run --json  [step 6, dry run]
 exit 0
 ? Step 7  [confirmed]
+$ pmkit issues update ISS-3F7H --priority high --dry-run --json  [step 6, dry run]
+exit 0
 $ pmkit issues update ISS-3F7H --priority high --json  [step 6, write]
 exit 0
 $ pmkit issues list --category backlog,todo,triage --json  [step 9, read]
