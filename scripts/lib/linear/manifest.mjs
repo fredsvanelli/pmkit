@@ -86,7 +86,7 @@ function workspaceAnswers(raw) {
     // Linear has notifications on every plan, and the adapter reads the key owner's (PMK-225).
     user_inbox: { path: 'native', detail: { workspace: 'native' } },
     // Linear delegates to installed app agents through the issue's delegate field (PMK-214). Without an app user there is no agent.
-    // track-agents finds agent issues by an agent: assignee, which a Linear issue never has, so it refuses here.
+    // track-agents finds agent issues by an agent: assignee, which a Linear issue never has, so the issue path is unsupported; it lists bot pull requests instead (PMK-215).
     agent_delegation: agents.length > 0
       ? { path: 'native', detail: { workspace: 'conditional', run: 'native', agents, unsupported: ['issues track-agents'] } }
       : { path: 'absent', detail: { workspace: 'conditional', agents }, enableHint: NO_AGENT_HINT },

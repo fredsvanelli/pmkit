@@ -645,7 +645,7 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'issues track-agents', summary: 'open issues assigned to agent members, with the delegation record and the state of each pull request; reads only', usage: '[--agent <name>]', args: [], flags: ['agent'],
+    name: 'issues track-agents', summary: 'open issues assigned to agent members (on Linear, open pull requests by bot authors), with the delegation record and the state of each pull request; reads only', usage: '[--agent <name>]', args: [], flags: ['agent'],
     run: (ctx) => runTrackAgents(ctx),
   },
   {

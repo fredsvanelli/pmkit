@@ -91,7 +91,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `issues move <id> <category>` | changes status by category |
 | `issues assign <id> <member\|me\|none>` | assigns an issue; `me` is the actor |
 | `issues delegate <id> <agent:name>` | hands an issue to an agent with a delegation comment: on Local the agent becomes the assignee and runs locally, on Linear (`agent:<Linear user id>`) it becomes the delegate and Linear runs it; `--instructions-file` holds the instructions |
-| `issues track-agents` | open issues assigned to agent members, with the delegation record and the state of each pull request; reads only |
+| `issues track-agents [--agent <name>]` | open issues assigned to agent members (on Linear, open pull requests by bot authors), with the delegation record and the state of each pull request; reads only |
 | `issues link <from> <to> --kind blocks\|related\|duplicate` | links or unlinks (`--remove`) two issues |
 | `issues parent <id> <parent\|none>` | sets the parent |
 | `issues comment <id> --body-file f [--reply-to c] [--redact]` | adds a comment; `--redact` replaces the secrets in the body by `[redacted]` first |
