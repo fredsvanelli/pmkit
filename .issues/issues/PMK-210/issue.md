@@ -2,14 +2,14 @@
 id: PMK-210
 title: Improve docs list
 type: feature
-status: in_progress
+status: in_review
 priority: low
 estimate: 3
 assignee: fred
 related: [PMK-50]
 branch: pmk-210-improve-docs-list
 created: 2026-11-08T20:37:22.649Z
-updated: 2026-11-10T02:17:07Z
+updated: 2026-11-10T02:25:33Z
 ---
 
 ## Description
