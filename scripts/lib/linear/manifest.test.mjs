@@ -94,7 +94,7 @@ test('the default workspace gives the sandbox column', async () => {
 
 test('a Business workspace with releases and customers on', async () => {
   const entry = byId(buildLinearCapabilities(await raw(BUSINESS), pmkitWith()))
-  assert.deepEqual(entry.releases, { id: 'releases', path: 'native' })
+  assert.deepEqual(entry.releases, { id: 'releases', path: 'native', detail: { unsupported: ['createRelease', 'markReleased'] } })
   assert.equal(entry.strategic_goals.path, 'native')
   assert.equal(entry.request_queue.detail.workspace, 'conditional')
   // PMK-221: the generic customer commands read Linear customers.

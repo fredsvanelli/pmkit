@@ -20,6 +20,7 @@ import { linearDescription } from './mappings.mjs'
 import { projectOperations } from './project-ops.mjs'
 import { goalOperations } from './goal-ops.mjs'
 import { relationOperations } from './relation-ops.mjs'
+import { releaseOperations } from './releases.mjs'
 import { buildLinearCapabilities } from './manifest.mjs'
 import { createCustomers } from './customers.mjs'
 import { createTriage } from './triage.mjs'
@@ -170,12 +171,14 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     })
 
   // Release reads on a workspace without releases (the Free plan) answer with the empty shape (a get is NOT_FOUND), and the command prints the manifest's note. No release query is sent.
+  // With releases on, they read Linear releases (PMK-246).
+  const releases = releaseOperations({ client, config })
   const releasesEntry = async () => (await capabilities()).capabilities.find((c) => c.id === 'releases')
   const releaseRead = (operation, empty) => {
-    const unimplemented = stub(operation)
+    const read = releases[operation] ?? stub(operation)
     return guarded(async (...args) => {
       const entry = await releasesEntry()
-      return entry?.path === 'absent' ? empty(entry, ...args) : unimplemented(...args)
+      return entry?.path === 'absent' ? empty(entry, ...args) : read(...args)
     })
   }
   const releaseReads = {
