@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-50]
 branch: pmk-210-improve-docs-list
 created: 2026-11-08T20:37:22.649Z
-updated: 2026-11-10T02:14:53Z
+updated: 2026-11-10T02:17:07Z
 ---
 
 ## Description
@@ -30,6 +30,6 @@ Improvements suggested by the implementer and reviewers of PMK-50 (docs list) du
 
 ## Acceptance criteria
 
-- [ ] Serve `listDocuments` on the Linear adapter
-- [ ] Add a `listDocuments` case to `scripts/contract-suite.mjs`
-- [ ] Update the documents table in `docs/superpowers/specs/2026-10-23-pmkit-design.md`, which lists only read and create
+- [x] Serve `listDocuments` on the Linear adapter
+- [x] Add a `listDocuments` case to `scripts/contract-suite.mjs`
+- [x] Update the documents table in `docs/superpowers/specs/2026-10-23-pmkit-design.md`, which lists only read and create
