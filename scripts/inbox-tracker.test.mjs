@@ -630,23 +630,32 @@ test('PMK-225: a move by another member of an issue assigned to the user is a st
   assert.equal(tracker.listNotifications({ user: 'fred' }).items.filter((entry) => entry.kind === 'status').length, 0)
 })
 
-test('PMK-225: an entry written before status items hides the status changes older than 14 days, and mark-read with no key marks them', () => {
+test('PMK-225 review: an entry without kinds counts the status changes up to its last check as seen, also after a mark-read with --key', () => {
   const { tracker, setNow, root, env } = setup()
   setNow('2026-09-25T10:00:00Z')
   const { id } = tracker.createIssue({ title: 'Old moves', assignee: 'fred' }, 'fred').after
-  setNow('2026-10-01T10:00:00Z')
-  tracker.moveToCategory(id, 'todo', 'ana')
-  setNow('2026-10-30T10:00:00Z')
-  tracker.moveToCategory(id, 'in_progress', 'ana')
-  inboxSet(root, 'fred', { at: '2026-10-20T10:00:00Z', seen: {} }, { env })
+  const other = tracker.createIssue({ title: 'Other' }, 'ana').after.id
+  for (const [at, status] of [['2026-10-01T10:00:00Z', 'todo'], ['2026-10-02T10:00:00Z', 'in_progress'], ['2026-10-03T10:00:00Z', 'in_review']]) {
+    setNow(at)
+    tracker.moveToCategory(id, status, 'ana')
+  }
+  setNow('2026-10-20T10:00:00Z')
+  tracker.assign(other, 'fred', 'ana')
+  inboxSet(root, 'fred', { at: '2026-10-10T10:00:00Z', seen: {} }, { env })
+  setNow('2026-10-25T10:00:00Z')
+  tracker.moveToCategory(id, 'done', 'ana')
   setNow('2026-10-31T10:00:00Z')
   const list = tracker.listNotifications({ user: 'fred' })
-  assert.deepEqual(list.items.map((item) => [item.kind, item.to]), [['status', 'in_progress']])
-  assert.equal(list.hidden, 1)
-  assert.equal(tracker.markRead({ user: 'fred' }).marked.length, 2)
-  assert.deepEqual(inboxGet(root, 'fred', { env }).kinds, ['assignment', 'mention', 'status'])
+  assert.deepEqual(list.items.map((item) => [item.kind, item.to ?? item.issue]), [['assignment', other], ['status', 'done']])
+  assert.equal(list.hidden, 0)
+  assert.equal(tracker.listNotifications({ user: 'fred', all: true }).items.filter((item) => item.kind === 'status' && item.seen).length, 3)
+  const assignment = list.items.find((item) => item.kind === 'assignment').key
+  assert.deepEqual(tracker.markRead({ user: 'fred', keys: [assignment] }).marked, [assignment])
+  const stored = inboxGet(root, 'fred', { env })
+  assert.deepEqual(stored.kinds, ['assignment', 'mention', 'status'])
+  assert.equal(Object.keys(stored.seen).filter((key) => key.startsWith('status:')).length, 3)
   const after = tracker.listNotifications({ user: 'fred' })
-  assert.deepEqual([after.items, after.hidden], [[], 0])
+  assert.deepEqual([after.items.map((item) => [item.kind, item.to]), after.hidden], [[['status', 'done']], 0])
 })
 
 test('PMK-225: a mark-read keeps a key another run wrote after it read the file, because the write merges with the entry on disk', () => {

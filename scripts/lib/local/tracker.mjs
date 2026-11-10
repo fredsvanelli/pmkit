@@ -834,9 +834,10 @@ export function createLocalTracker(root, {
     return `assign:${id}:${digest(JSON.stringify([event.at, event.by, event.op, event.field ?? null, assignee]))}`
   }
 
-  // The item kinds, and the ones an entry written before PMK-225 covered. A kind an entry has not covered gets the first-list cut.
+  // The item kinds an entry covers once written. An entry written before PMK-225 has no kinds and never listed status changes, so
+  // the ones dated up to its last check count as seen: an old entry is not flooded with every old move. The next write records them.
   const INBOX_KINDS = ['assignment', 'mention', 'status']
-  const KINDS_BEFORE_PMK_225 = ['assignment', 'mention']
+  const seenBefore = (stored, entry) => stored !== null && stored.kinds === undefined && entry.kind === 'status' && entry.at <= stored.at
 
   /**
    * The status changes of an issue log that reach `user`: each `move` of the status by someone else while the user was the
@@ -1017,13 +1018,10 @@ export function createLocalTracker(root, {
     const stored = inboxGet(config.root, user, inboxStore)
     const { items, problems } = scanInbox(user)
     const seen = stored?.seen ?? {}
-    const marked = items.map((entry) => ({ ...entry, seen: Object.hasOwn(seen, entry.key) }))
-    const firstCut = isoSeconds(new Date(now().getTime() - FIRST_LIST_DAYS * DAY))
-    if (cutoff === null && stored === null && !all) cutoff = firstCut
-    // A kind the entry has not covered yet (status, for an entry written before PMK-225) gets the first-list cut on its own.
-    const covered = stored?.kinds ?? KINDS_BEFORE_PMK_225
+    const marked = items.map((entry) => ({ ...entry, seen: Object.hasOwn(seen, entry.key) || seenBefore(stored, entry) }))
+    if (cutoff === null && stored === null && !all) cutoff = isoSeconds(new Date(now().getTime() - FIRST_LIST_DAYS * DAY))
     const pool = all ? marked : marked.filter((entry) => !entry.seen)
-    const shown = all ? pool : pool.filter((entry) => entry.at >= (cutoff ?? (covered.includes(entry.kind) ? '' : firstCut)))
+    const shown = all || cutoff === null ? pool : pool.filter((entry) => entry.at >= cutoff)
     return {
       user,
       checked: stored?.at ?? null,
@@ -1062,14 +1060,15 @@ export function createLocalTracker(root, {
     const seen = stored?.seen ?? {}
     const known = new Set(items.map((entry) => entry.key))
     const unknown = [...new Set((keys ?? []).filter((key) => !known.has(key)))]
-    const chosen = new Set(items.filter((entry) => !Object.hasOwn(seen, entry.key) && (keys === undefined || keys.includes(entry.key))).map((entry) => entry.key))
+    const unseen = (entry) => !Object.hasOwn(seen, entry.key) && !seenBefore(stored, entry)
+    const chosen = new Set(items.filter((entry) => unseen(entry) && (keys === undefined || keys.includes(entry.key))).map((entry) => entry.key))
     // With keys the member marks exactly those, so the older items stay for the next list.
-    // So does a mark-read with no keys for the older items of a kind the entry has not covered yet.
-    if (keys === undefined) {
-      const covered = stored === null ? [] : (stored.kinds ?? KINDS_BEFORE_PMK_225)
+    if (stored === null && keys === undefined) {
       const backlog = isoSeconds(new Date(now().getTime() - FIRST_LIST_DAYS * DAY))
-      for (const entry of items) if (!covered.includes(entry.kind) && entry.at < backlog && !Object.hasOwn(seen, entry.key)) chosen.add(entry.key)
+      for (const entry of items) if (entry.at < backlog) chosen.add(entry.key)
     }
+    // The status changes an entry without kinds counts as seen go into seen with the write that records the kinds, so they stay seen.
+    const adopted = items.filter((entry) => !Object.hasOwn(seen, entry.key) && seenBefore(stored, entry)).map((entry) => entry.key)
     const recorded = stamp()
     const oldest = now().getTime() - PRUNE_DAYS * DAY
     const dropped = []
@@ -1096,6 +1095,7 @@ export function createLocalTracker(root, {
       inboxUpdate(config.root, user, (current) => {
         const kept = { ...(current?.seen ?? {}) }
         for (const key of dropped) delete kept[key]
+        for (const key of adopted) kept[key] ??= stored.at
         for (const key of marked) kept[key] = recorded
         return { at: recorded, seen: kept, kinds: INBOX_KINDS }
       }, inboxStore)
