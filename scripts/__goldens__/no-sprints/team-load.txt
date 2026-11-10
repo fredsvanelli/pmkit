@@ -2,11 +2,11 @@ $ pmkit team load
 exit 0
 --- stdout
 no sprint, load in points, average 4
-Member     | Issues | Points | Unestimated | WIP | Oldest WIP days | Capacity | Flags
------------|--------|--------|-------------|-----|-----------------|----------|------
-ana        | 1      | 5      | 0           | 1   | 9.1             |          |
-fred       | 1      | 3      | 0           | 0   |                 |          |
-unassigned | 0      | 0      | 0           |     |                 |          |
+Member     | Issues | Points | Unestimated | WIP | Blocked | Oldest WIP days | Capacity | Flags
+-----------|--------|--------|-------------|-----|---------|-----------------|----------|------
+ana        | 1      | 5      | 0           | 1   | 0       | 9.1             |          |
+fred       | 1      | 3      | 0           | 0   | 0       |                 |          |
+unassigned | 0      | 0      | 0           |     |         |                 |          |
 --- stderr
 note: no active sprint: counted every open issue in todo, in_progress and in_review
 note: aging computed from .issues/events.jsonl
@@ -18,6 +18,7 @@ exit 0
   "sprint": null,
   "truncated": false,
   "unit": "points",
+  "overloadFactor": 1.5,
   "average": 4,
   "rows": [
     {
@@ -29,6 +30,9 @@ exit 0
       "estimate": 5,
       "unestimated": 0,
       "wip": 1,
+      "blocked": 0,
+      "blockedIds": [],
+      "delivered": null,
       "oldestWipDays": 9.1,
       "load": 5,
       "unknown": false,
@@ -50,6 +54,9 @@ exit 0
       "estimate": 3,
       "unestimated": 0,
       "wip": 0,
+      "blocked": 0,
+      "blockedIds": [],
+      "delivered": null,
       "oldestWipDays": null,
       "load": 3,
       "unknown": false,
@@ -67,7 +74,8 @@ exit 0
     "issues": 0,
     "estimate": 0,
     "unestimated": 0,
-    "ids": []
+    "ids": [],
+    "delivered": null
   },
   "noWork": [],
   "unknownLoad": [],

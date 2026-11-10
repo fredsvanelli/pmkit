@@ -2,15 +2,16 @@ $ pmkit team load
 exit 0
 --- stdout
 sprint 2026-10-05 (2026-10-05 to 2026-10-11), load in issues, average 0
-Member     | Issues | WIP | Oldest WIP days | Flags
------------|--------|-----|-----------------|------
-ana        | 0      | 0   |                 |
-fred       | 0      | 0   |                 |
-unassigned | 0      |     |                 |
+Member     | Issues | WIP | Blocked | Delivered | Oldest WIP days | Flags
+-----------|--------|-----|---------|-----------|-----------------|------
+ana        | 0      | 0   | 0       | ?         |                 |
+fred       | 0      | 0   | 0       | ?         |                 |
+unassigned | 0      |     |         | ?         |                 |
 no work in scope: ana, fred
 --- stderr
 warning: ISS-4: CONFLICT The issue file contains git conflict markers.
 warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+warning: the delivered count is not verified: an issue file did not parse
 note: counted issues instead of estimates: no issue in scope has an estimate
 note: aging computed from .issues/events.jsonl
 
@@ -26,6 +27,7 @@ exit 0
   },
   "truncated": false,
   "unit": "issues",
+  "overloadFactor": 1.5,
   "average": 0,
   "rows": [
     {
@@ -37,6 +39,9 @@ exit 0
       "estimate": 0,
       "unestimated": 0,
       "wip": 0,
+      "blocked": 0,
+      "blockedIds": [],
+      "delivered": null,
       "oldestWipDays": null,
       "load": 0,
       "unknown": false,
@@ -56,6 +61,9 @@ exit 0
       "estimate": 0,
       "unestimated": 0,
       "wip": 0,
+      "blocked": 0,
+      "blockedIds": [],
+      "delivered": null,
       "oldestWipDays": null,
       "load": 0,
       "unknown": false,
@@ -71,7 +79,8 @@ exit 0
     "issues": 0,
     "estimate": 0,
     "unestimated": 0,
-    "ids": []
+    "ids": [],
+    "delivered": null
   },
   "noWork": [
     {
@@ -93,5 +102,6 @@ exit 0
 --- stderr
 warning: ISS-4: CONFLICT The issue file contains git conflict markers.
 warning: ISS-5: CONFLICT The issue file contains git conflict markers.
+warning: the delivered count is not verified: an issue file did not parse
 note: counted issues instead of estimates: no issue in scope has an estimate
 note: aging computed from .issues/events.jsonl

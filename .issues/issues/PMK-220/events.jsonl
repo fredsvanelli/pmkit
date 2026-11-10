@@ -1,3 +1,10 @@
 {"at":"2026-11-08T20:37:24Z","by":"fred","op":"create","to":{"id":"PMK-220","title":"Improve team load","type":"feature","status":"backlog","priority":"low","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-08T20:37:24.175Z","updated":"2026-11-08T20:37:24Z"}}
 {"at":"2026-11-08T20:37:24Z","by":"fred","op":"link","field":"related","to":"PMK-71"}
 {"at":"2026-11-08T20:53:52Z","by":"fred","op":"update","field":"estimate","from":null,"to":3}
+{"at":"2026-11-10T06:54:34Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-10T06:54:35Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-10T06:54:38Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-220-improve-team-load"}
+{"at":"2026-11-10T07:22:39Z","by":"fred","op":"comment","to":"2026-11-10T07-22-39Z-fred.md"}
+{"at":"2026-11-10T07:22:39Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T07:32:30Z","by":"fred","op":"comment","to":"2026-11-10T07-32-30Z-fred.md"}
+{"at":"2026-11-10T07:32:31Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

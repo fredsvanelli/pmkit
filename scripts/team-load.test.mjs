@@ -322,3 +322,59 @@ test('noMoveMessage does not talk about overload when a flagged member has no av
   }
   assert.equal(noMoveMessage('unestimated', idle), NO_MOVE_MESSAGES.unestimated)
 })
+
+test('teamLoad takes the overload factor from the options, and the report carries it', () => {
+  const issues = [issue('A-1', 'todo', 'fred', 6), issue('A-2', 'todo', 'ana', 4)]
+  const standard = teamLoad(issues, { members: MEMBERS, unit: 'points' })
+  assert.equal(standard.overloadFactor, OVER_AVERAGE)
+  assert.deepEqual(standard.imbalances, [])
+  const strict = teamLoad(issues, { members: MEMBERS, unit: 'points', overloadFactor: 1.1 })
+  assert.equal(strict.overloadFactor, 1.1)
+  assert.deepEqual(strict.imbalances, [{ member: 'fred', flag: 'over_average', load: 6, limit: 5.5 }])
+})
+
+test('proposeMoves uses the overload factor of the report for the target limit', () => {
+  const members = [...MEMBERS, { id: 'bia', name: 'Bia', availability: 1 }]
+  const issues = [issue('A-1', 'todo', 'fred', 4), issue('A-2', 'todo', 'fred', 4), issue('A-3', 'todo', 'fred', 4), issue('A-4', 'todo', 'ana', 1), issue('A-5', 'todo', 'bia', 1)]
+  assert.equal(proposeMoves(teamLoad(issues, { members, unit: 'points' }), issues).moves.length > 0, true)
+  const strict = teamLoad(issues, { members, unit: 'points', overloadFactor: 1.05 })
+  assert.deepEqual(proposeMoves(strict, issues), { moves: [], reason: 'no_target' })
+})
+
+test('teamLoad counts delivered issues per member, and null when the read is not verified', () => {
+  const done = [issue('D-1', 'done', 'fred', 3), issue('D-2', 'done', 'fred', 1), issue('D-3', 'done', 'gone', 2), issue('D-4', 'done', undefined, 1)]
+  const report = teamLoad([issue('A-1', 'todo', 'ana', 2)], { members: MEMBERS, unit: 'points', delivered: done })
+  assert.deepEqual(report.rows.map((row) => [row.member, row.delivered]), [['fred', 2], ['ana', 0], ['agent:claude', 0], ['gone', 1]])
+  assert.equal(rowOf(report, 'gone').isMember, false)
+  assert.equal(report.unassigned.delivered, 1)
+  assert.equal(report.average, 1, 'delivered stays out of the load')
+  const unknown = teamLoad([issue('A-1', 'todo', 'ana', 2)], { members: MEMBERS, unit: 'points' })
+  assert.deepEqual(unknown.rows.map((row) => row.delivered), [null, null, null])
+  assert.equal(unknown.unassigned.delivered, null)
+})
+
+test('proposeMoves skips a blocked issue, keeps moving the others, and says blocked when only blocked ones could move', () => {
+  const members = [...MEMBERS, { id: 'bia', name: 'Bia', availability: 1 }]
+  const issues = [issue('A-1', 'todo', 'fred', 4), issue('A-2', 'todo', 'fred', 4), issue('A-3', 'todo', 'fred', 4), issue('A-4', 'todo', 'ana', 1), issue('A-5', 'todo', 'bia', 1)]
+  const free = teamLoad(issues, { members, unit: 'points' })
+  assert.deepEqual(proposeMoves(free, issues).moves.map((move) => move.issue), ['A-1'])
+  const blocked = teamLoad(issues, { members, unit: 'points', blocked: new Set(['A-1']) })
+  assert.deepEqual(rowOf(blocked, 'fred').blockedIds, ['A-1'])
+  assert.deepEqual(proposeMoves(blocked, issues).moves.map((move) => move.issue), ['A-2'])
+  const all = teamLoad(issues, { members, unit: 'points', blocked: new Set(['A-1', 'A-2', 'A-3']) })
+  assert.deepEqual(proposeMoves(all, issues), { moves: [], reason: 'blocked' })
+  assert.equal(NO_MOVE_MESSAGES.blocked, 'the issues in todo that could move are blocked, so moving them would not free anyone')
+})
+
+test('proposeMoves still gives away the blocked work of a member with no availability', () => {
+  const members = [{ id: 'fred', name: 'Fred', availability: 0 }, { id: 'ana', name: 'Ana', availability: 1 }]
+  const issues = [issue('A-1', 'todo', 'fred', 5)]
+  const report = teamLoad(issues, { members, unit: 'points', blocked: new Set(['A-1']) })
+  assert.deepEqual(proposeMoves(report, issues).moves.map((move) => move.issue), ['A-1'])
+})
+
+test('teamLoad with an overload factor of 1 flags every member above the average', () => {
+  const report = teamLoad([issue('A-1', 'todo', 'fred', 5), issue('A-2', 'todo', 'ana', 4)], { members: MEMBERS, unit: 'points', overloadFactor: 1 })
+  assert.deepEqual(report.imbalances, [{ member: 'fred', flag: 'over_average', load: 5, limit: 4.5 }])
+  assert.deepEqual(teamLoad([issue('A-1', 'todo', 'fred', 4), issue('A-2', 'todo', 'ana', 4)], { members: MEMBERS, unit: 'points', overloadFactor: 1 }).imbalances, [], 'equal loads are not above the average')
+})

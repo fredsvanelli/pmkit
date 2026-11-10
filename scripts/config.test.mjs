@@ -249,6 +249,21 @@ test('validateLocalConfig checks prefixes, members, estimate and defaults', () =
   assert.equal(problems.length, 8)
 })
 
+test('validateLocalConfig takes defaults.overload_factor as a number of 1 or more', () => {
+  const local = template('issues.config.yaml')
+  assert.equal(local.defaults.overload_factor, 1.5)
+  assert.equal(withLocalDefaults({}).defaults.overload_factor, 1.5)
+  for (const good of [1.2, 1, 3]) {
+    local.defaults.overload_factor = good
+    assert.deepEqual(validateLocalConfig(local), [], String(good))
+  }
+  for (const bad of [0.99, 0, 'x', Infinity, null]) {
+    local.defaults.overload_factor = bad
+    assert.equal(validateLocalConfig(local).length, 1, String(bad))
+    assert.ok(validateLocalConfig(local)[0].startsWith('defaults.overload_factor must be a number of 1 or more'), String(bad))
+  }
+})
+
 test('validateLocalConfig accepts a missing id_style and refuses an unknown one', () => {
   const local = template('issues.config.yaml')
   delete local.id_style

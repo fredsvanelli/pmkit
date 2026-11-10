@@ -188,6 +188,13 @@
           "type": "integer",
           "minimum": 1,
           "default": 14
+        },
+        "overload_factor": {
+          "title": "Overload factor",
+          "description": "team load flags a member as over average when their load is above this multiple (1 or more) of the average load of the human members.",
+          "type": "number",
+          "minimum": 1,
+          "default": 1.5
         }
       },
       "additionalProperties": {
@@ -202,7 +209,8 @@
         "sprint_length_days": 14,
         "sprint_start_weekday": "mon",
         "velocity_window": 3,
-        "status_update_window_days": 14
+        "status_update_window_days": 14,
+        "overload_factor": 1.5
       }
     },
     "auto_commit": {

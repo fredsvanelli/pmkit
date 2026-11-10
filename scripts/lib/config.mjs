@@ -41,6 +41,7 @@ const DEFAULTS = {
     sprint_start_weekday: 'mon',
     velocity_window: 3,
     status_update_window_days: 14,
+    overload_factor: 1.5,
   },
   auto_commit: false,
 }
@@ -217,6 +218,8 @@ export function localConfigShapeProblems(obj) {
     for (const [key, value] of Object.entries(obj.defaults ?? {})) {
       if (key === 'sprint_start_weekday') {
         if (!WEEKDAYS.includes(value)) problems.push(`defaults.${key} must be one of ${WEEKDAYS.join(', ')}, found ${found(value)}`)
+      } else if (key === 'overload_factor') {
+        if (typeof value !== 'number' || !Number.isFinite(value) || value < 1) problems.push(`defaults.overload_factor must be a number of 1 or more, found ${found(value)}`)
       } else if (!Number.isInteger(value) || value <= 0) {
         problems.push(`defaults.${key} must be a positive integer, found ${found(value)}`)
       }
