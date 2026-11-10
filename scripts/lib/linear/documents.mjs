@@ -163,6 +163,10 @@ export const CUSTOM_VIEWS_QUERY = `query PmkitCustomViews($first: Int!, $after: 
   customViews(first: $first, after: $after) { nodes { id name modelName shared filterData team { id key } } ${PAGE_INFO} }
 }`
 
+export const CUSTOM_VIEW_QUERY = `query PmkitCustomView($id: String!) {
+  customView(id: $id) { id name modelName shared filterData team { id key } }
+}`
+
 export const CUSTOM_VIEW_ISSUES_QUERY = `${ISSUE_FRAGMENT}
 query PmkitCustomViewIssues($id: String!, $first: Int!, $after: String, $sort: [IssueSortInput!]) {
   customView(id: $id) { issues(first: $first, after: $after, sort: $sort) { nodes { ...PmkitIssueFields } ${PAGE_INFO} } }

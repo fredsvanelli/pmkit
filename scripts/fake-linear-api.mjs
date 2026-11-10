@@ -1143,8 +1143,14 @@ export function fakeCustomers({ customers = [], statuses = CUSTOMER_STATUSES, ti
  * `issues` is a fakeLinearIssues store, whose search runs a view's filterData as Linear does. `endless` makes the
  * view list report one more page forever, so the read is cut.
  */
-export function fakeCustomViews({ views = [], issues, endless = false } = {}) {
+export function fakeCustomViews({ views = [], issues, endless = false, extra = [] } = {}) {
+  // `extra` views exist in the workspace but sit past the cut of the list, so only a read by id finds them.
+  const all = [...views, ...extra]
   return {
+    PmkitCustomView: (body) => {
+      const view = all.find((item) => item.id === body.variables.id)
+      return view ? json({ customView: view }) : graphqlError('Entity not found: CustomView', 'INPUT_ERROR')
+    },
     PmkitCustomViews: (body) => {
       const first = body.variables?.first ?? 50
       const start = Number(body.variables?.after ?? 0)
@@ -1153,7 +1159,7 @@ export function fakeCustomViews({ views = [], issues, endless = false } = {}) {
       return json({ customViews: page(views.slice(start, end), { hasNextPage, endCursor: hasNextPage ? String(end) : null }) })
     },
     PmkitCustomViewIssues: (body) => {
-      const view = views.find((item) => item.id === body.variables.id)
+      const view = all.find((item) => item.id === body.variables.id)
       if (!view) return graphqlError('Entity not found: CustomView', 'INPUT_ERROR')
       // Like issues, the order is the request's sort; without one the fake answers newest first, so a missing sort shows.
       const { first, after, sort } = body.variables

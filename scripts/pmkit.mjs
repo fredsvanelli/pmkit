@@ -2261,17 +2261,17 @@ const PER_ISSUE_CODES = ['INVALID_INPUT', 'NOT_FOUND', 'CONFLICT']
 async function runBulk(ctx) {
   const tracker = await ctx.tracker()
   const [kind, value] = ctx.args
+  const view = ctx.opt('view')
+  // A hosted tracker's view keeps the tracker's own filter, which pmkit cannot check narrows the set, so it is refused before any read.
+  if (view !== undefined && ctx.config().system !== 'local') throw usageError(`${ctx.config().system === 'linear' ? 'Linear' : 'a hosted'} view ${view} keeps the tracker's own filter, so pmkit cannot check that it narrows the set`, 'Pass filter flags to issues bulk instead of --view')
   const scale = kind === 'estimate' ? ((await tracker.discover()).estimate.scale ?? []) : []
   const change = parseChange(kind, value, { status: ctx.opt('status'), linkKind: ctx.opt('kind'), remove: ctx.flag('remove'), scale })
   const max = ctx.opt('max') === undefined ? DEFAULT_MAX : whole('max', ctx.opt('max'))
   if (max < 1 || max > HARD_MAX) throw usageError(`--max must be from 1 to ${HARD_MAX}`, 'Narrow the filter instead of raising --max')
 
-  const view = ctx.opt('view')
   let filter = issueFilter(ctx)
   if (view !== undefined && Object.keys(filter).length > 0) throw usageError('issues bulk takes --view or filter flags, not both', 'Save the filter with pmkit views save, or drop --view')
   if (view === undefined) checkBulkFilter(filter, 'the filter')
-  // A hosted tracker's view keeps the tracker's own filter, which pmkit cannot check narrows the set, so it is refused before any read.
-  if (view !== undefined && ctx.config().system !== 'local') throw usageError(`${ctx.config().system === 'linear' ? 'Linear' : 'a hosted'} view ${view} keeps the tracker's own filter, so pmkit cannot check that it narrows the set`, 'Pass filter flags to issues bulk instead of --view')
   const found = view === undefined ? await tracker.searchIssues(filter) : await tracker.runView(view)
   if (view !== undefined) {
     filter = found.view.filter

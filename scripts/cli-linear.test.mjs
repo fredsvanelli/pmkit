@@ -1722,19 +1722,19 @@ test('PMK-225 review: a cut Linear read is a warning without a null id and witho
 })
 
 // Linear custom views (PMK-212): views list and views run read them; the writes stay in Linear.
-function withViews(views, { endless = false } = {}) {
+function withViews(views, { endless = false, extra = [] } = {}) {
   const fake = fakeLinearIssues()
   fake.seed({ title: 'Mine', assigneeId: 'user-1', priority: 4 })
   fake.seed({ title: 'Theirs', assigneeId: 'user-2' })
   fake.seed({ title: 'Also mine', assigneeId: 'user-1', priority: 1 })
-  return { fake, fetch: fakeLinearFetch({ ...fakeWorkspace(), ...fake.routes, ...fakeCustomViews({ views, issues: fake, endless }) }) }
+  return { fake, fetch: fakeLinearFetch({ ...fakeWorkspace(), ...fake.routes, ...fakeCustomViews({ views, issues: fake, endless, extra }) }) }
 }
 const MINE = { assignee: { id: { eq: 'user-1' } } }
 const VIEWS = [
-  customView('view-2', 'Mine', MINE),
-  customView('view-1', 'Everyone', {}, { team: null }),
-  customView('view-3', 'Other team', MINE, { team: { id: 'team-other', key: 'OPS' } }),
-  customView('view-4', 'Projects', {}, { modelName: 'Project' }),
+  customView('00000000-0000-4000-8000-000000000002', 'Mine', MINE),
+  customView('00000000-0000-4000-8000-000000000001', 'Everyone', {}, { team: null }),
+  customView('00000000-0000-4000-8000-000000000003', 'Other team', MINE, { team: { id: 'team-other', key: 'OPS' } }),
+  customView('00000000-0000-4000-8000-000000000004', 'Projects', {}, { modelName: 'Project' }),
 ]
 
 test('views list on Linear lists the issue views of the scope team and the workspace, with the Linear filter', async () => {
@@ -1742,7 +1742,7 @@ test('views list on Linear lists the issue views of the scope team and the works
   const listed = await cli(setup({ edit: withTeam }), ['views', 'list', '--json'], fetch)
   assert.equal(listed.code, 0, listed.stdout + listed.stderr)
   const data = JSON.parse(listed.stdout)
-  assert.deepEqual(data.views.map((view) => [view.name, view.id, view.filter, view.linear.team]), [['Everyone', 'view-1', null, null], ['Mine', 'view-2', null, 'ACME']])
+  assert.deepEqual(data.views.map((view) => [view.name, view.id, view.filter, view.linear.team]), [['Everyone', '00000000-0000-4000-8000-000000000001', null, null], ['Mine', '00000000-0000-4000-8000-000000000002', null, 'ACME']])
   assert.deepEqual(data.views[1].linear.filterData, MINE)
   assert.equal(data.hasMore, false)
   const text = await cli(setup({ edit: withTeam }), ['views', 'list'], withViews(VIEWS).fetch)
@@ -1763,9 +1763,9 @@ test('views run on Linear runs the view by name or id, in created order, with --
   assert.equal(byName.code, 0, byName.stdout + byName.stderr)
   const data = JSON.parse(byName.stdout)
   assert.deepEqual(data.issues.map((issue) => issue.id), ['ACME-1', 'ACME-3'])
-  assert.equal(data.view.id, 'view-2')
+  assert.equal(data.view.id, '00000000-0000-4000-8000-000000000002')
   assert.equal(data.hasMore, false)
-  const byId = await cli(context, ['views', 'run', 'view-2', '--sort', 'priority', '--limit', '1', '--json'], withViews(VIEWS).fetch)
+  const byId = await cli(context, ['views', 'run', '00000000-0000-4000-8000-000000000002', '--sort', 'priority', '--limit', '1', '--json'], withViews(VIEWS).fetch)
   assert.equal(byId.code, 0, byId.stdout + byId.stderr)
   assert.deepEqual(JSON.parse(byId.stdout).issues.map((issue) => issue.id), ['ACME-3'])
   assert.deepEqual(JSON.parse(byId.stdout).overrides, { limit: 1, sort: 'priority' })
@@ -1773,12 +1773,12 @@ test('views run on Linear runs the view by name or id, in created order, with --
 
 test('views run on Linear refuses two views with one name, and a name it cannot find', async () => {
   const context = setup({ edit: withTeam })
-  const twice = [...VIEWS, customView('view-5', 'Mine', {})]
+  const twice = [...VIEWS, customView('00000000-0000-4000-8000-000000000005', 'Mine', {})]
   const ambiguous = await cli(context, ['views', 'run', 'Mine', '--json'], withViews(twice).fetch)
   assert.equal(ambiguous.code, 2)
   assert.equal(errorOf(ambiguous).code, 'INVALID_INPUT')
   assert.equal(JSON.parse(ambiguous.stdout).error.reason, 'ambiguous_view_name')
-  assert.match(errorOf(ambiguous).message, /view-2, view-5/)
+  assert.match(errorOf(ambiguous).message, /00000000-0000-4000-8000-000000000002, 00000000-0000-4000-8000-000000000005/)
   const missing = await cli(context, ['views', 'run', 'Gone', '--json'], withViews(VIEWS).fetch)
   assert.equal(errorOf(missing).code, 'NOT_FOUND')
   assert.equal(JSON.parse(missing.stdout).error.reason, undefined)
@@ -1815,8 +1815,8 @@ test('views run on Linear does not run a name found once in a cut list, and runs
   assert.equal(byName.code, 2, byName.stdout + byName.stderr)
   assert.equal(errorOf(byName).code, 'INVALID_INPUT')
   assert.equal(JSON.parse(byName.stdout).error.reason, 'view_list_incomplete')
-  assert.match(errorOf(byName).message, /view-2/)
-  const byId = await cli(context, ['views', 'run', 'view-2', '--json'], withViews(VIEWS, { endless: true }).fetch)
+  assert.match(errorOf(byName).message, /00000000-0000-4000-8000-000000000002/)
+  const byId = await cli(context, ['views', 'run', '00000000-0000-4000-8000-000000000002', '--json'], withViews(VIEWS, { endless: true }).fetch)
   assert.equal(byId.code, 0, byId.stdout + byId.stderr)
   assert.deepEqual(JSON.parse(byId.stdout).issues.map((issue) => issue.id), ['ACME-1', 'ACME-3'])
 })
@@ -1833,7 +1833,7 @@ test('views list and views run on Linear need tracker.scope.workspace and send n
 })
 
 test('views list on Linear never says no views when the list is cut', async () => {
-  const { fetch } = withViews([customView('view-3', 'Other team', MINE, { team: { id: 'team-other', key: 'OPS' } })], { endless: true })
+  const { fetch } = withViews([customView('00000000-0000-4000-8000-000000000003', 'Other team', MINE, { team: { id: 'team-other', key: 'OPS' } })], { endless: true })
   const listed = await cli(setup({ edit: withTeam }), ['views', 'list'], fetch)
   assert.equal(listed.code, 0, listed.stdout + listed.stderr)
   assert.doesNotMatch(listed.stdout, /^no views$/m)
@@ -1847,4 +1847,41 @@ test('views run on Linear asks Linear for the created order, so a cut read keeps
   const call = fetch.calls.filter((item) => operationName(item.body.query) === 'PmkitCustomViewIssues').at(-1)
   assert.deepEqual(call.body.variables.sort, [{ createdAt: { order: 'Ascending' } }])
   assert.deepEqual(JSON.parse(result.stdout).issues.map((issue) => issue.id), ['ACME-1', 'ACME-2', 'ACME-3'])
+})
+
+test('views run on Linear reads a view by id directly, even past the cut of the view list', async () => {
+  const late = customView('00000000-0000-4000-8000-000000000009', 'Late', MINE)
+  const { fetch } = withViews(VIEWS, { endless: true, extra: [late] })
+  const context = setup({ edit: withTeam })
+  const result = await cli(context, ['views', 'run', late.id, '--json'], fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.deepEqual(JSON.parse(result.stdout).issues.map((issue) => issue.id), ['ACME-1', 'ACME-3'])
+  assert.equal(callsOf(fetch, 'PmkitCustomViews'), 0, 'an id needs no list')
+  const missing = await cli(context, ['views', 'run', '00000000-0000-4000-8000-0000000000ff', '--json'], fetch)
+  assert.equal(errorOf(missing).code, 'NOT_FOUND')
+  const projects = await cli(context, ['views', 'run', VIEWS[3].id, '--json'], fetch)
+  assert.equal(errorOf(projects).code, 'INVALID_INPUT')
+  assert.match(errorOf(projects).message, /not an issue view/)
+  const other = await cli(context, ['views', 'run', VIEWS[2].id, '--json'], fetch)
+  assert.equal(errorOf(other).code, 'INVALID_INPUT')
+  assert.match(errorOf(other).message, /team OPS/)
+})
+
+test('views run --limit on Linear reads only that many issues and warns about no cut', async () => {
+  const { fetch } = withViews(VIEWS)
+  const result = await cli(setup({ edit: withTeam }), ['views', 'run', 'Everyone', '--limit', '2'], fetch)
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.equal(result.stderr, '')
+  const call = fetch.calls.filter((item) => operationName(item.body.query) === 'PmkitCustomViewIssues').at(-1)
+  assert.equal(call.body.variables.first, 2)
+  const sorted = await cli(setup({ edit: withTeam }), ['views', 'run', 'Everyone', '--limit', '2', '--sort', 'priority', '--json'], withViews(VIEWS).fetch)
+  assert.deepEqual(JSON.parse(sorted.stdout).issues.map((issue) => issue.id), ['ACME-3', 'ACME-1'], 'another order reads every issue first')
+})
+
+test('issues bulk estimate --view on Linear refuses before any request', async () => {
+  const { fetch } = withViews(VIEWS)
+  const result = await cli(setup({ edit: withTeam }), ['issues', 'bulk', 'estimate', '3', '--view', 'Mine', '--dry-run', '--json'], fetch)
+  assert.equal(errorOf(result).code, 'INVALID_INPUT')
+  assert.match(errorOf(result).message, /Linear view Mine/)
+  assert.equal(fetch.calls.length, 0)
 })
