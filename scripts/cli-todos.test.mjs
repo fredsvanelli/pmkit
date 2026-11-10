@@ -256,6 +256,7 @@ test('the files that hold sample comments on purpose give no candidate', () => {
   const files = [
     'README.md', 'CHANGELOG.md', 'skills/pmkit/SKILL.md', 'commands/issues/todos.md', 'scripts/lib/todos.mjs', 'scripts/todos.test.mjs', 'scripts/cli-todos.test.mjs',
     'docs/superpowers/specs/2026-10-30-pmk-64-todos-to-issues-design.md', 'docs/superpowers/plans/2026-10-30-pmk-64-todos-to-issues.md',
+    'docs/superpowers/specs/2026-11-10-pmk-219-more-todos-design.md', 'docs/superpowers/plans/2026-11-10-pmk-219-more-todos.md',
   ]
   for (const file of files) assert.deepEqual(findTodos(fs.readFileSync(path.join(REPO_ROOT, file), 'utf8'), file), [], file)
 })
