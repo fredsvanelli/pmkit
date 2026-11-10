@@ -199,18 +199,20 @@ function cvssRoundup(value) {
 /** The base score of a CVSS 3.0 or 3.1 vector, or null when the vector is not one or misses a base metric. */
 export function cvssScore(vector) {
   if (typeof vector !== 'string' || !/^CVSS:3\.[01]\//.test(vector)) return null
-  const metrics = Object.fromEntries(vector.split('/').slice(1).map((part) => part.split(':')))
-  const scope = metrics.S
-  const weight = (name) => CVSS_WEIGHTS[name][metrics[name]]
-  const values = ['AV', 'AC', 'UI', 'C', 'I', 'A'].map(weight)
-  const pr = CVSS_PR[scope]?.[metrics.PR]
-  if (values.some((value) => value === undefined) || pr === undefined) return null
+  // A Map and own-key lookups, so a value such as `constructor` or `__proto__` never reaches Object.prototype.
+  const metrics = new Map(vector.split('/').slice(1).map((part) => part.split(':')))
+  const own = (table, key) => (typeof key === 'string' && Object.hasOwn(table, key) ? table[key] : undefined)
+  const scope = metrics.get('S')
+  const values = ['AV', 'AC', 'UI', 'C', 'I', 'A'].map((name) => own(CVSS_WEIGHTS[name], metrics.get(name)))
+  const pr = own(own(CVSS_PR, scope) ?? {}, metrics.get('PR'))
+  if (values.some((value) => typeof value !== 'number') || typeof pr !== 'number') return null
   const [av, ac, ui, c, i, a] = values
   const iss = 1 - (1 - c) * (1 - i) * (1 - a)
   const impact = scope === 'U' ? 6.42 * iss : 7.52 * (iss - 0.029) - 3.25 * (iss - 0.02) ** 15
   if (impact <= 0) return 0
   const exploitability = 8.22 * av * ac * pr * ui
-  return cvssRoundup(Math.min(scope === 'U' ? impact + exploitability : 1.08 * (impact + exploitability), 10))
+  const score = cvssRoundup(Math.min(scope === 'U' ? impact + exploitability : 1.08 * (impact + exploitability), 10))
+  return Number.isFinite(score) ? score : null
 }
 
 /** The severity of a CVSS 3 vector by the CVSS rating scale (0.0, None, counts as low), or `unknown` without one. */

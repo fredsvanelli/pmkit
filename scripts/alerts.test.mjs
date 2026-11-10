@@ -437,3 +437,12 @@ test('readReport refuses an empty file', () => {
   fs.writeFileSync(file, '\r\n')
   assert.throws(() => readReport(file), /^Error: the file is empty$/)
 })
+
+test('a CVSS metric value that names an Object prototype key is no score, so the severity is unknown', () => {
+  const base = 'AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H'
+  for (const [metric, value] of [['AV', 'constructor'], ['C', 'toString'], ['PR', '__proto__'], ['S', 'constructor'], ['AC', 'hasOwnProperty']]) {
+    const vector = `CVSS:3.1/${base.replace(new RegExp(`(^|/)${metric}:[A-Z]`), `$1${metric}:${value}`)}`
+    assert.equal(cvssScore(vector), null, vector)
+    assert.equal(cvssSeverity(vector), 'unknown', vector)
+  }
+})
