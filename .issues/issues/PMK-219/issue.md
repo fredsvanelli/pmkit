@@ -2,12 +2,14 @@
 id: PMK-219
 title: Find more TODOs in todos-to-issues
 type: feature
-status: backlog
+status: in_review
 priority: low
 estimate: 5
+assignee: fred
 related: [PMK-64, PMK-238]
+branch: pmk-219-find-more-todos-in-todos-to-issues
 created: 2026-11-08T20:37:24.030Z
-updated: 2026-11-08T20:58:08Z
+updated: 2026-11-10T07:20:00Z
 ---
 
 ## Description
@@ -28,6 +30,6 @@ Improvements suggested by the implementer and reviewers of PMK-64 (todos-to-issu
 
 ## Acceptance criteria
 
-- [ ] More tags, such as `HACK` and `XXX`
-- [ ] A full comment parser per language: comments in `<script>` and `<style>` of html and vue, a lone quote that hides a comment, `@todo`, Python docstrings
-- [ ] The warning about unread file types is noisy (425 files in this repository, 372 of them `.txt`)
+- [x] More tags, such as `HACK` and `XXX`
+- [x] A full comment parser per language: comments in `<script>` and `<style>` of html and vue, a lone quote that hides a comment, `@todo`, Python docstrings
+- [x] The warning about unread file types is noisy (425 files in this repository, 372 of them `.txt`)

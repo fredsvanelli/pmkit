@@ -207,7 +207,7 @@ test('todos scan prints tables in text mode and says when nothing is found', asy
   assert.match(text.stdout, /build the export/)
   assert.match(text.stdout, /a\.mjs:1/)
   const empty = await run(['todos', 'scan'], { env: ENV, cwd: repo({}) })
-  assert.match(empty.stdout, /no TODO or FIXME found/)
+  assert.match(empty.stdout, /no TODO, FIXME, HACK or XXX found/)
 })
 
 test('todos scan refuses a directory that is not a git repository', async () => {
@@ -229,16 +229,26 @@ test('todos scan says git was not found when git is not installed', async () => 
   assert.doesNotMatch(error.message, /repository/)
 })
 
-test('todos scan counts the files it cannot read by type and warns', async () => {
-  const root = repo({ 'a.mjs': '// TODO build the export\n', 'notes.txt': '// TODO in text\n', 'more.txt': 'x\n', 'data.JSON': '{}\n', LICENSE: 'text\n', 'node_modules/x/y.txt': 'x\n' })
+test('todos scan counts the files it cannot read by type and warns only about the ones that can hold a comment', async () => {
+  const root = repo({
+    'a.mjs': '// TODO build the export\n', 'notes.txt': '// TODO in text\n', 'more.txt': 'x\n', 'data.JSON': '{ // TODO: jsonc comment\n}\n', LICENSE: 'text\n',
+    '.gitignore': '# TODO: ignore rule\n', 'x.clj': '; TODO: lisp\n', 'node_modules/x/y.txt': 'x\n',
+  })
   const { data } = await scan(root)
-  assert.deepEqual(data.skipped, { unsupported: { '.json': 1, '.txt': 2, LICENSE: 1 } })
-  assert.deepEqual(data.candidates.map((c) => c.text), ['build the export'])
+  assert.deepEqual(data.skipped, { unsupported: { '.clj': 1 }, noComments: { '.txt': 2, LICENSE: 1 } })
+  assert.deepEqual(data.candidates.map((c) => c.text).sort(), ['build the export', 'ignore rule', 'jsonc comment'])
   const text = await run(['todos', 'scan'], { env: ENV, cwd: root })
-  assert.match(text.stderr, /warning: 4 files .*not read.*\.txt \(2\)/)
+  assert.match(text.stderr, /warning: 1 files .*not read.*\.clj \(1\)/)
+  assert.doesNotMatch(text.stderr, /\.txt|LICENSE/)
   const none = await scan(repo({ 'a.mjs': '// TODO build the export\n' }))
-  assert.deepEqual(none.data.skipped, { unsupported: {} })
-  assert.doesNotMatch((await run(['todos', 'scan'], { env: ENV, cwd: repo({ 'a.mjs': 'x\n' }) })).stderr, /not read/)
+  assert.deepEqual(none.data.skipped, { unsupported: {}, noComments: {} })
+  assert.doesNotMatch((await run(['todos', 'scan'], { env: ENV, cwd: repo({ 'a.mjs': 'x\n', 'b.txt': 'x\n' }) })).stderr, /not read/)
+})
+
+test('todos scan names at most 10 unread types in its warning', async () => {
+  const files = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`a.t${i + 1}`, 'x\n']))
+  const text = await run(['todos', 'scan'], { env: ENV, cwd: repo(files) })
+  assert.match(text.stderr, /warning: 12 files .*not read: (\.t\d+ \(1\), ){9}\.t\d+ \(1\) and 2 more types/)
 })
 
 test('the files that hold sample comments on purpose give no candidate', () => {
@@ -246,6 +256,7 @@ test('the files that hold sample comments on purpose give no candidate', () => {
   const files = [
     'README.md', 'CHANGELOG.md', 'skills/pmkit/SKILL.md', 'commands/issues/todos.md', 'scripts/lib/todos.mjs', 'scripts/todos.test.mjs', 'scripts/cli-todos.test.mjs',
     'docs/superpowers/specs/2026-10-30-pmk-64-todos-to-issues-design.md', 'docs/superpowers/plans/2026-10-30-pmk-64-todos-to-issues.md',
+    'docs/superpowers/specs/2026-11-10-pmk-219-more-todos-design.md', 'docs/superpowers/plans/2026-11-10-pmk-219-more-todos.md',
   ]
   for (const file of files) assert.deepEqual(findTodos(fs.readFileSync(path.join(REPO_ROOT, file), 'utf8'), file), [], file)
 })

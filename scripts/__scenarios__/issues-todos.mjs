@@ -21,7 +21,7 @@ export default {
       fs.writeFileSync(path.join(root, file), text)
     }
     write('src/a.mjs', 'export const a = 1\n// TODO(ana): fix the cache\n')
-    write('src/b.mjs', '/* FIXME fix the cache */\n# TODO: unique work item\n')
+    write('src/b.mjs', '/* FIXME fix the cache */\n// TODO: unique work item\n')
     write('src/c.mjs', '// TODO handle the empty list\n')
     await pmkit(['issues', 'create', '--title', 'Export edge cases', '--type', 'task', '--description-file', path.join(inputs, 'todo-existing.md')])
   },

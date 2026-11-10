@@ -6,3 +6,12 @@
 {"at":"2026-11-08T20:58:08Z","by":"fred","op":"update","field":"estimate","from":8,"to":5}
 {"at":"2026-11-08T20:58:08Z","by":"fred","op":"update","field":"description"}
 {"at":"2026-11-08T20:58:08Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T06:56:26Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-10T06:56:26Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-10T06:56:31Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-219-find-more-todos-in-todos-to-issues"}
+{"at":"2026-11-10T06:57:52Z","by":"fred","op":"comment","to":"2026-11-10T06-57-52Z-fred.md"}
+{"at":"2026-11-10T07:19:15Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T07:19:16Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T07:19:17Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T07:19:58Z","by":"fred","op":"comment","to":"2026-11-10T07-19-58Z-fred.md"}
+{"at":"2026-11-10T07:20:00Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

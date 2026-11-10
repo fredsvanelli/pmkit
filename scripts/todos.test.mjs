@@ -43,7 +43,7 @@ test('findTodos reads Markdown only inside an HTML comment, not in prose, inline
 test('findTodos knows the comment marks of each language', () => {
   assert.deepEqual(tags('x = 1 # TODO: a', 'a.py'), [[1, 'TODO', 'a']])
   assert.deepEqual(findTodos('s = "# TODO: no"', 'a.py'), [])
-  assert.deepEqual(findTodos('"""\n# TODO: docstring\n"""', 'a.py'), [])
+  assert.deepEqual(findTodos('s = """\n# TODO: in a string\n"""', 'a.py'), [])
   assert.deepEqual(tags('echo "$#"; # TODO: real', 'a.sh'), [[1, 'TODO', 'real']])
   assert.deepEqual(findTodos('echo $# TODO: no', 'a.sh'), [])
   assert.deepEqual(tags('x = 1 # FIXME: rb', 'a.rb'), [[1, 'FIXME', 'rb']])
@@ -163,6 +163,7 @@ test('findTodos knows more languages', () => {
     'a.scss': ['// TODO: x'], 'a.less': ['// TODO: x'], 'a.svelte': ['<!-- TODO: x -->'], 'a.tf': ['# TODO: x', '// TODO: y'], 'a.r': ['# TODO: x'], 'a.pl': ['# TODO: x'],
     'a.ex': ['# TODO: x'], 'a.exs': ['# TODO: x'], 'a.ps1': ['# TODO: x'], 'a.mk': ['# TODO: x'], Containerfile: ['# TODO: x'], Gemfile: ['# TODO: x'], Rakefile: ['# TODO: x'],
     'a.sql': ['-- TODO: x'], 'a.lua': ['-- TODO: x'], 'a.hs': ['-- TODO: x'],
+    '.gitignore': ['# TODO: x'], 'issues.gitignore': ['# TODO: x'], '.gitattributes': ['# TODO: x'], '.dockerignore': ['# TODO: x'], 'tsconfig.json': ['// TODO: x'], 'a.jsonc': ['/* TODO: x */'],
   }
   for (const [file, lines] of Object.entries(cases)) for (const line of lines) assert.equal(findTodos(`code\n${line}\n`, file).length, 1, `${file}: ${line}`)
   assert.deepEqual(findTodos('SELECT 1; a--b TODO: x', 'a.sql'), [])
@@ -196,4 +197,158 @@ test('matchTodos picks the first issue in list order when several match', () => 
   const candidates = groupTodos([{ file: 'a', line: 1, tag: 'TODO', text: 'refresh the documentation index' }])
   const result = matchTodos(candidates, [issue('ISS-1', { body: 'x' }), issue('ISS-2', { body: 'refresh the documentation index' }), issue('ISS-3', { title: 'refresh the documentation index' })])
   assert.equal(result.matched[0].issue, 'ISS-2')
+})
+
+test('findTodos reads HACK, XXX and @todo tags', () => {
+  assert.deepEqual(tags('// HACK: skip the cache', 'a.mjs'), [[1, 'HACK', 'skip the cache']])
+  assert.deepEqual(tags('# XXX broken on windows', 'a.py'), [[1, 'XXX', 'broken on windows']])
+  assert.deepEqual(tags('/**\n * @todo add paging\n * @TODO(ana): x\n */', 'a.ts'), [[2, 'TODO', 'add paging'], [3, 'TODO', 'x']])
+  assert.equal(findTodos('/** @fixme(bo) y */', 'a.ts')[0].owner, 'bo')
+  for (const line of ['// XXXL size', '// @todos later', '// hack: lower', '// HACKS later']) assert.deepEqual(findTodos(line, 'a.mjs'), [], line)
+})
+
+test('groupTodos keeps the strongest tag: FIXME, then XXX, then HACK, then TODO', () => {
+  const tagOf = (...list) => groupTodos(list.map((tag, i) => ({ file: 'a', line: i + 1, tag, text: 'same work' })))[0].tag
+  assert.equal(tagOf('TODO', 'HACK'), 'HACK')
+  assert.equal(tagOf('HACK', 'TODO'), 'HACK')
+  assert.equal(tagOf('XXX', 'HACK'), 'XXX')
+  assert.equal(tagOf('FIXME', 'XXX'), 'FIXME')
+  assert.equal(tagOf('TODO'), 'TODO')
+})
+
+test('a lone quote does not hide the comment after it', () => {
+  assert.deepEqual(tags("title: it's done # TODO: x", 'a.yaml'), [[1, 'TODO', 'x']])
+  assert.deepEqual(tags("const re = /'/ // TODO: after a regex", 'a.mjs'), [[1, 'TODO', 'after a regex']])
+  assert.deepEqual(tags("echo don't\n# TODO: next line", 'a.sh'), [[2, 'TODO', 'next line']])
+  assert.deepEqual(findTodos("s = 'a # TODO: no'", 'a.py'), [])
+  assert.deepEqual(findTodos("x = 'it\\'s # TODO: no'", 'a.py'), [])
+  assert.deepEqual(findTodos('const s = "a \\\n// TODO: continued string"', 'a.mjs'), [])
+})
+
+test('a Python docstring reads like a block comment', () => {
+  assert.deepEqual(tags('def f():\n    """TODO: docstring"""\n', 'a.py'), [[2, 'TODO', 'docstring']])
+  assert.deepEqual(tags('"""Module.\n\nFIXME: second line\n"""\n', 'a.py'), [[3, 'FIXME', 'second line']])
+  assert.deepEqual(tags("def g():\n    \'\'\'\n    HACK: single quotes\n    \'\'\'\n", 'a.py'), [[3, 'HACK', 'single quotes']])
+  assert.deepEqual(findTodos('s = """\nTODO: in a string\n"""', 'a.py'), [])
+  assert.deepEqual(findTodos('f("""TODO: an argument""")', 'a.py'), [])
+})
+
+test('the script and style elements of a markup file are read with their own syntax', () => {
+  const html = '<p>x</p>\n<script>\nconst a = 1 // TODO: js\n</script>\n<style>\n/* FIXME: css */\na { background: url(//cdn.x/y.png) }\n</style>\n<!-- HACK: markup -->\n'
+  assert.deepEqual(tags(html, 'a.html'), [[3, 'TODO', 'js'], [6, 'FIXME', 'css'], [9, 'HACK', 'markup']])
+  assert.deepEqual(tags('<template><p/></template>\n<script setup lang="ts">\n/** @todo vue */\n</script>\n<style lang="scss">\n// TODO: scss\n</style>', 'a.vue'), [[3, 'TODO', 'vue'], [6, 'TODO', 'scss']])
+  assert.deepEqual(tags('<script>// XXX: one line</script>', 'a.svelte'), [[1, 'XXX', 'one line']])
+  assert.deepEqual(findTodos('<script>const s = "<!-- TODO: no -->"</script>', 'a.html'), [])
+  assert.deepEqual(findTodos('<style>\n// TODO: not css\n</style>', 'a.html'), [])
+  assert.deepEqual(findTodos('<script>\n// TODO: no\n</script>', 'README.md'), [])
+})
+
+/** CPU milliseconds of one findTodos call. */
+const cpu = (source, file) => {
+  const started = process.cpuUsage()
+  findTodos(source, file)
+  const used = process.cpuUsage(started)
+  return (used.user + used.system) / 1000
+}
+
+/** findTodos takes about 4 times as long on 4 times the input, not 16 times. CPU time, with a floor for noise on a loaded machine. */
+const assertLinear = (unit, file, size = 128 * 1024) => {
+  const small = unit.repeat(Math.ceil(size / unit.length))
+  const large = small.repeat(4)
+  cpu(small, file) // warm up
+  const t1 = cpu(small, file)
+  const t4 = cpu(large, file)
+  assert.ok(t4 < 8 * t1 + 100, `${file} ${JSON.stringify(unit)}: ${Math.round(t1)} ms, then ${Math.round(t4)} ms on 4 times the input`)
+}
+
+test('findTodos stays linear on a markup file with many script elements', () => {
+  const html = Array.from({ length: 20000 }, (_, i) => `<p>row ${i}</p><script>// TODO: item ${i}</script>`).join('\n')
+  const found = findTodos(html, 'a.html')
+  assert.equal(found.length, 20000)
+  assert.deepEqual(found[19999], { line: 20000, tag: 'TODO', owner: '', text: 'item 19999' })
+  assertLinear('<p>row</p><script>// TODO: item</script>\n', 'a.html')
+})
+
+test('findTodos stays linear on lines full of lone quotes and triple quotes', () => {
+  assertLinear("\\'", 'a.mjs')
+  assertLinear('/\\"/;', 'a.mjs')
+  assertLinear('x="""a""";', 'a.py')
+  assertLinear("'", 'a.yaml')
+})
+
+test('findTodos stays linear on markup elements that never close', () => {
+  assertLinear('<script href="a.js"/>', 'a.svg')
+  assertLinear('<p><style x</p>', 'a.html')
+  assertLinear('<script>', 'a.html')
+  assertLinear('<style>', 'a.html')
+  assertLinear('<!--', 'a.html')
+  assertLinear('<script', 'a.html')
+})
+
+test('a self-closing element, an element quoted in a comment and an element with no close leave the markup readable', () => {
+  assert.deepEqual(tags('<svg><script href="a.js"/>\n<!-- TODO: x -->\n<script>b()</script></svg>', 'a.svg'), [[2, 'TODO', 'x']])
+  assert.deepEqual(tags('<style name="X" parent="Y"/>\n<!-- TODO: y -->\n<style name="Z">\n</style>', 'a.xml'), [[2, 'TODO', 'y']])
+  assert.deepEqual(tags('<!-- TODO: move the <script> below -->\n<p>x</p>\n<!-- FIXME: lost? -->\n<script>a()</script>', 'a.html'), [[1, 'TODO', 'move the <script> below'], [3, 'FIXME', 'lost?']])
+  assert.deepEqual(tags('<script>a()\n<!-- TODO: z -->\n', 'a.html'), [[2, 'TODO', 'z']])
+  assert.deepEqual(findTodos('<script>\n// TODO: no close, so markup\n', 'a.html'), [])
+  assert.deepEqual(tags('<SCRIPT>\n// TODO: upper\n</SCRIPT >\n<!-- HACK: after -->', 'a.htm'), [[2, 'TODO', 'upper'], [4, 'HACK', 'after']])
+})
+
+test('a script element that is not JavaScript stays markup', () => {
+  assert.deepEqual(tags('<script type="text/x-template">\n<!-- TODO: tpl -->\n</script>', 'a.html'), [[2, 'TODO', 'tpl']])
+  assert.deepEqual(tags('<script type="module">\n// TODO: mod\n</script>', 'a.html'), [[2, 'TODO', 'mod']])
+  assert.deepEqual(tags("<script type='text/typescript'>\n// TODO: ts\n</script>", 'a.html'), [[2, 'TODO', 'ts']])
+})
+
+test('a CSS string is not a comment', () => {
+  assert.deepEqual(findTodos('<style>.a{content:"/* TODO: no */"}</style>', 'a.html'), [])
+  assert.deepEqual(findTodos("a { content: '/* TODO: no */' }", 'a.css'), [])
+  assert.deepEqual(tags('a { content: "x" } /* TODO: yes */', 'a.css'), [[1, 'TODO', 'yes']])
+})
+
+test('a Python docstring may have a string prefix', () => {
+  assert.deepEqual(tags('def f():\n    r"""TODO: raw"""\n', 'a.py'), [[2, 'TODO', 'raw']])
+  assert.deepEqual(tags("def g():\n    u'''FIXME: unicode'''\n", 'a.py'), [[2, 'FIXME', 'unicode']])
+  assert.deepEqual(findTodos('x = r"""TODO: no"""', 'a.py'), [])
+})
+
+test('an ignore file reads # as a comment only at the start of a line', () => {
+  assert.deepEqual(tags('build/ # TODO: a pattern\n# TODO: a comment\n"quoted\n# FIXME: after a quote\n', '.gitignore'), [[2, 'TODO', 'a comment'], [4, 'FIXME', 'after a quote']])
+  assert.deepEqual(tags('*.png binary # TODO: no\n# HACK: yes\n', 'templates/issues.gitattributes'), [[2, 'HACK', 'yes']])
+})
+
+test('an xml file is plain markup: its style and script elements are data, not code', () => {
+  const styles = [
+    '<?xml version="1.0" encoding="utf-8"?>',
+    '<resources>',
+    '    <style name="AppTheme" parent="Theme.MaterialComponents.DayNight">',
+    '        <!-- TODO: dark mode colors -->',
+    '        <item name="colorPrimary">@color/purple_500</item>',
+    '    </style>',
+    '</resources>',
+  ].join('\n')
+  assert.deepEqual(tags(styles, 'app/src/main/res/values/styles.xml'), [[4, 'TODO', 'dark mode colors']])
+  assert.deepEqual(tags('<project>\n<script language="javascript">\n<!-- FIXME: ant -->\n// TODO: not a comment in xml\n</script>\n</project>', 'build.xml'), [[3, 'FIXME', 'ant']])
+  assert.deepEqual(tags('<svg>\n<style>\n/* TODO: svg css */\n</style>\n</svg>', 'a.svg'), [[3, 'TODO', 'svg css']])
+})
+
+test('an element whose name only starts with script or style is markup', () => {
+  assert.deepEqual(tags('<template>\n<style-guide>\n<!-- TODO: add tokens -->\n</style-guide>\n</template>', 'a.vue'), [[3, 'TODO', 'add tokens']])
+  assert.deepEqual(tags('<script-loader src="x"></script-loader>\n<script>\n// TODO: real script\n</script>', 'a.html'), [[3, 'TODO', 'real script']])
+  assert.deepEqual(tags('<style>\n/* TODO: css */\n</style-x>\n</style>\n<!-- HACK: after -->', 'a.html'), [[2, 'TODO', 'css'], [5, 'HACK', 'after']])
+})
+
+test('an escaped triple quote does not close a docstring', () => {
+  assert.deepEqual(tags('def f():\n    """Doc \\""" x"""\n    # TODO real\n', 'a.py'), [[3, 'TODO', 'real']])
+  assert.deepEqual(tags('"""Line one \\\nTODO: after an escaped newline\n"""\n# FIXME: after\n', 'a.py'), [[2, 'TODO', 'after an escaped newline'], [4, 'FIXME', 'after']])
+})
+
+test('CMakeLists.txt and requirements.txt are read with the # syntax', () => {
+  assert.deepEqual(tags('cmake_minimum_required(VERSION 3.10)\n# TODO: cmake\n', 'CMakeLists.txt'), [[2, 'TODO', 'cmake']])
+  assert.deepEqual(tags('requests==2.31 # FIXME: pin\n', 'requirements.txt'), [[1, 'FIXME', 'pin']])
+  assert.deepEqual(findTodos('# TODO: plain text\n', 'notes.txt'), [])
+})
+
+test('a backslash before the end of an html comment does not hide the end', () => {
+  assert.deepEqual(tags('<!-- TODO: path C:\\-->\n<!-- FIXME: next -->', 'a.html'), [[1, 'TODO', 'path C:\\'], [2, 'FIXME', 'next']])
 })

@@ -1,4 +1,4 @@
-// Candidate issues from the TODO and FIXME comments of a repository. See
+// Candidate issues from the TODO, FIXME, HACK and XXX comments of a repository. See
 // docs/superpowers/specs/2026-10-30-pmk-64-todos-to-issues-design.md.
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -21,6 +21,7 @@ const TITLE_MAX = 80
 const C_LIKE = { line: ['//'], block: [['/*', '*/']], strings: ['"', "'", '`'] }
 const HASH = { line: ['#'], strings: ['"', "'"] }
 const MARKUP = { block: [['<!--', '-->']] }
+const EMBEDDED = { block: [['<!--', '-->']], embedded: true } // html, vue, svelte and svg read their <script> and <style> elements
 const STYLES = {
   c: C_LIKE,
   c_hash: { ...C_LIKE, line: ['//', '#'] }, // php and Terraform take both marks
@@ -30,14 +31,16 @@ const STYLES = {
   hs: { line: ['--'], block: [['{-', '-}']], strings: ['"'], chars: true }, // chars: a prime (foldl') or 'a' is not a string
   go: { line: ['//'], block: [['/*', '*/']], strings: ['"', '`'], chars: true },
   rs: { line: ['//'], block: [['/*', '*/']], strings: ['"'], chars: true },
-  css: { block: [['/*', '*/']] },
-  py: { ...HASH, triple: true },
+  css: { block: [['/*', '*/']], strings: ['"', "'"] },
+  py: { ...HASH, triple: true, docstrings: true },
   hash: HASH,
-  markup: MARKUP,
+  ignore: { line: ['#'], lineStart: true }, // git and docker read # as a comment only at the start of a line
+  markup: EMBEDDED,
+  xml: MARKUP, // an xml <style> or <script> is data (Android styles, Ant), so its <!-- --> comments count
   md: { ...MARKUP, markdown: true },
 }
 const EXTENSIONS = {
-  c: ['js', 'mjs', 'cjs', 'jsx', 'ts', 'tsx', 'mts', 'cts', 'java', 'kt', 'kts', 'swift', 'c', 'h', 'cc', 'cpp', 'hpp', 'cs', 'scala', 'dart', 'gradle', 'scss', 'less'],
+  c: ['json', 'jsonc', 'json5', 'js', 'mjs', 'cjs', 'jsx', 'ts', 'tsx', 'mts', 'cts', 'java', 'kt', 'kts', 'swift', 'c', 'h', 'cc', 'cpp', 'hpp', 'cs', 'scala', 'dart', 'gradle', 'scss', 'less'],
   c_hash: ['php', 'tf'],
   sql: ['sql'],
   lua: ['lua'],
@@ -47,11 +50,18 @@ const EXTENSIONS = {
   css: ['css'],
   py: ['py'],
   hash: ['sh', 'bash', 'zsh', 'rb', 'yaml', 'yml', 'toml', 'r', 'pl', 'ex', 'exs', 'ps1', 'mk'],
-  markup: ['html', 'htm', 'xml', 'svg', 'vue', 'svelte'],
+  ignore: ['gitignore', 'gitattributes', 'dockerignore', 'npmignore'],
+  markup: ['html', 'htm', 'svg', 'vue', 'svelte'],
+  xml: ['xml'],
   md: ['md', 'markdown'],
 }
 const BY_EXTENSION = new Map(Object.entries(EXTENSIONS).flatMap(([style, list]) => list.map((ext) => [ext, STYLES[style]])))
-const BY_NAME = new Map(['Makefile', 'Dockerfile', 'Containerfile', 'Gemfile', 'Rakefile'].map((name) => [name, STYLES.hash]))
+const BY_NAME = new Map(['Makefile', 'Dockerfile', 'Containerfile', 'Gemfile', 'Rakefile', 'CMakeLists.txt', 'requirements.txt'].map((name) => [name, STYLES.hash]))
+/** File types with no comment syntax by nature (text, data, media). The scan does not read them, and does not warn about them. */
+const NO_COMMENTS = new Set([
+  '.txt', '.jsonl', '.ndjson', '.csv', '.tsv', '.log', '.lock', '.gitkeep', '.keep', 'LICENSE',
+  '.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp', '.bmp', '.pdf', '.woff', '.woff2', '.ttf', '.otf', '.eot', '.zip', '.gz', '.tgz',
+])
 
 /** The comment syntax of a file, chosen by its name, or null for a file type the scan does not read. */
 export function commentStyle(file) {
@@ -60,7 +70,10 @@ export function commentStyle(file) {
 }
 
 // A line comment starts at the mark. `//` after a colon is a URL, and `#` or `--` after code that is not a space is not a mark.
-const markOk = (mark, source, i) => (mark === '//' ? source[i - 1] !== ':' : i === 0 || /\s/.test(source[i - 1]))
+const markOk = (mark, source, i, style) => {
+  if (style.lineStart) return i === 0 || source[i - 1] === '\n'
+  return mark === '//' ? source[i - 1] !== ':' : i === 0 || /\s/.test(source[i - 1])
+}
 
 /** Markdown keeps its code blocks and inline code out of the scan: they become blanks of the same length. */
 function blankMarkdownCode(source) {
@@ -77,6 +90,26 @@ function blankMarkdownCode(source) {
     .join('\n')
 }
 
+/**
+ * Where the quote opened before `i` closes: the index of the closing quote, or of the end of its line when there is none.
+ * A backslash skips the next character, a newline included.
+ */
+function quoteEnd(source, i, quote) {
+  for (; i < source.length; i += 1) {
+    if (source[i] === '\\') i += 1
+    else if (source[i] === quote || source[i] === '\n') return i
+  }
+  return source.length
+}
+
+/** Whether a triple quote at `i`, after at most two prefix letters (`r`, `u`, `b`, `f`), has only spaces before it on its line. */
+function startsLine(source, i) {
+  let k = i - 1
+  while (k >= 0 && i - k <= 2 && /[rRuUbBfF]/.test(source[k])) k -= 1
+  while (k >= 0 && (source[k] === ' ' || source[k] === '\t')) k -= 1
+  return k < 0 || source[k] === '\n'
+}
+
 /** The text of every comment line, as { line, content }, outside strings. A block comment gives one entry per line. */
 function commentLines(source, style) {
   const out = []
@@ -87,6 +120,9 @@ function commentLines(source, style) {
   let line = 1
   let start = 0
   let i = 0
+  // For each quote character, the end of the line where its last search found no partner: a quote before it is lone too,
+  // so a line full of lone quotes is searched once, not once per quote.
+  const loneUntil = {}
   const push = () => {
     out.push({ line: start, content: buf })
     buf = ''
@@ -95,7 +131,7 @@ function commentLines(source, style) {
     const ch = source[i]
     if (mode === 'code') {
       const block = style.block?.find(([open]) => source.startsWith(open, i))
-      const mark = style.line?.find((m) => source.startsWith(m, i) && markOk(m, source, i))
+      const mark = style.line?.find((m) => source.startsWith(m, i) && markOk(m, source, i, style))
       if (ch === '\n') line += 1
       if (block) {
         mode = 'block'
@@ -120,9 +156,32 @@ function commentLines(source, style) {
       }
       if (style.strings?.includes(ch)) {
         quote = style.triple && source.startsWith(ch.repeat(3), i) ? ch.repeat(3) : ch
-        mode = 'string'
-        i += quote.length
-        continue
+        if (quote.length === 3 && style.docstrings && startsLine(source, i)) {
+          // A triple quote that starts its line is a docstring: it reads like a block comment.
+          mode = 'block'
+          close = quote
+          i += 3
+          buf = ''
+          start = line
+          continue
+        }
+        // A lone quote, with no partner on its line (an apostrophe, a quote in a regex), is code, so it hides no comment.
+        let lone = false
+        if (quote === ch && ch !== '`') {
+          if (i < (loneUntil[ch] ?? -1)) lone = true
+          else {
+            const end = quoteEnd(source, i + 1, ch)
+            if (source[end] !== ch) {
+              loneUntil[ch] = end
+              lone = true
+            }
+          }
+        }
+        if (!lone) {
+          mode = 'string'
+          i += quote.length
+          continue
+        }
       }
       i += 1
     } else if (mode === 'string') {
@@ -149,6 +208,10 @@ function commentLines(source, style) {
         line += 1
       } else buf += ch
       i += 1
+    } else if (ch === '\\' && (close === '"""' || close === "'''") && i + 1 < source.length && source[i + 1] !== '\n') {
+      // An escaped quote inside a docstring does not close it.
+      buf += source.slice(i, i + 2)
+      i += 2
     } else if (source.startsWith(close, i)) {
       push()
       mode = 'code'
@@ -166,19 +229,92 @@ function commentLines(source, style) {
   return out
 }
 
-// The tag is the first word of the comment, so prose that names a TODO in passing is not one.
-const TAG = /^(TODO|FIXME)(?:\(([^)]*)\))?(?::\s*|\s+|$)(.*)$/
+// ponytail: a scan for `<!--`, `<script>` and `<style>`, not an html parser: a `>` inside a quoted attribute ends the tag.
+const OPENING = /<!--|<(script|style)(?=[\s/>])([^<>]*)>/gi
+const JS_TYPE = /^(?:module|(?:text|application)\/(?:javascript|ecmascript|babel|jsx|typescript))$/i
+const blank = (text) => text.replace(/[^\n]/g, ' ')
 
-/** The TODO and FIXME comments of one file, as { line, tag, owner, text }. The text can be empty. */
+/** The syntax of an element's code: JavaScript for a script with no type or a JavaScript type, CSS or C-like for a style, null for a script that is not code (a template, JSON). */
+function elementSyntax(name, attrs) {
+  if (name === 'style') return /\blang\s*=\s*["']?(scss|less|sass|styl)/i.test(attrs) ? STYLES.c : STYLES.css
+  const type = /\btype\s*=\s*["']?([^"'\s>]*)/i.exec(attrs)?.[1]
+  return !type || JS_TYPE.test(type) ? STYLES.c : null
+}
+
+/** The index of the first `</name` at or after `from` that ends the name (`</style>`, not `</style-guide>`), or -1. */
+function closingTag(lower, name, from) {
+  for (let at = lower.indexOf(`</${name}`, from); at !== -1; at = lower.indexOf(`</${name}`, at + 1)) {
+    if (!/[\w-]/.test(lower[at + name.length + 2] ?? '')) return at
+  }
+  return -1
+}
+
+/**
+ * The comment lines of a markup file: its own `<!-- -->`, and the code of each `<script>` and `<style>` element read with
+ * that code's syntax. An element inside a comment, a self-closing one (`<script href="a.js"/>` in svg) and one with no
+ * closing tag stay markup. One pass over the file.
+ */
+function markupLines(text) {
+  const lower = text.toLowerCase()
+  const out = []
+  const markup = []
+  const noClose = new Set()
+  let from = 0
+  let line = 1 // the line of index `counted`
+  let counted = 0
+  const lineAt = (index) => {
+    for (let at = text.indexOf('\n', counted); at !== -1 && at < index; at = text.indexOf('\n', at + 1)) line += 1
+    counted = index
+    return line
+  }
+  OPENING.lastIndex = 0
+  for (let match = OPENING.exec(text); match; match = OPENING.exec(text)) {
+    if (match[0] === '<!--') {
+      const close = text.indexOf('-->', OPENING.lastIndex)
+      if (close === -1) break // the rest of the file is a comment
+      OPENING.lastIndex = close + 3
+      continue
+    }
+    const name = match[1].toLowerCase()
+    if (match[2].trimEnd().endsWith('/') || noClose.has(name)) continue
+    const start = OPENING.lastIndex
+    const end = closingTag(lower, name, start)
+    if (end === -1) {
+      noClose.add(name) // no later element of this name closes either
+      continue
+    }
+    OPENING.lastIndex = end
+    const syntax = elementSyntax(name, match[2])
+    if (!syntax) continue // a template stays markup
+    const offset = lineAt(start) - 1
+    for (const entry of commentLines(text.slice(start, end), syntax)) out.push({ line: entry.line + offset, content: entry.content })
+    // The element's code is blanked for the markup pass, newlines kept, so a `<!--` inside a script string is not a comment.
+    markup.push(text.slice(from, start), blank(text.slice(start, end)))
+    from = end
+  }
+  markup.push(text.slice(from))
+  out.push(...commentLines(markup.join(''), STYLES.markup))
+  return out.sort((a, b) => a.line - b.line)
+}
+
+// The tag is the first word of the comment, so prose that names a TODO in passing is not one.
+const TAG = /^(TODO|FIXME|HACK|XXX)(?:\(([^)]*)\))?(?::\s*|\s+|$)(.*)$/
+// The JSDoc and PHPDoc form, in any case: `@todo add paging`.
+const AT_TAG = /^@(todo|fixme|hack|xxx)(?:\(([^)]*)\))?(?::\s*|\s+|$)(.*)$/i
+/** The tags from weakest to strongest: a comment repeated under two tags keeps the stronger. FIXME and XXX are defects, HACK is debt (PEP 350). */
+const TAGS = ['TODO', 'HACK', 'XXX', 'FIXME']
+
+/** The TODO, FIXME, HACK and XXX comments of one file, as { line, tag, owner, text }. The text can be empty. */
 export function findTodos(source, file) {
   const style = commentStyle(file)
   if (!style) return []
   const found = []
   // Line endings first, as config.mjs does for YAML: a \r left at the end of a line would end up in the text.
   const text = source.replace(/\r\n?/g, '\n')
-  for (const { line, content } of commentLines(style.markdown ? blankMarkdownCode(text) : text, style)) {
-    const match = TAG.exec(content.replace(/^[\s*/!#]+/, ''))
-    if (match) found.push({ line, tag: match[1], owner: match[2] ?? '', text: match[3].trim() })
+  for (const { line, content } of style.embedded ? markupLines(text) : commentLines(style.markdown ? blankMarkdownCode(text) : text, style)) {
+    const body = content.replace(/^[\s*/!#]+/, '')
+    const match = TAG.exec(body) ?? AT_TAG.exec(body)
+    if (match) found.push({ line, tag: match[1].toUpperCase(), owner: match[2] ?? '', text: match[3].trim() })
   }
   return found
 }
@@ -199,7 +335,7 @@ export function groupTodos(found) {
   for (const item of [...found].sort(byLocation)) {
     const key = todoKey(item.text)
     const group = groups.get(key) ?? { key, tag: 'TODO', text: item.text, locations: [] }
-    if (item.tag === 'FIXME') group.tag = 'FIXME'
+    if (TAGS.indexOf(item.tag) > TAGS.indexOf(group.tag)) group.tag = item.tag
     group.locations.push(`${item.file}:${item.line}`)
     groups.set(key, group)
   }
@@ -299,10 +435,11 @@ function pathPrefix(given) {
 }
 
 /**
- * Reads every file git lists (tracked, and untracked but not ignored) and returns its TODO and FIXME comments.
+ * Reads every file git lists (tracked, and untracked but not ignored) and returns its TODO, FIXME, HACK and XXX comments.
  * `path` keeps the files at or under that folder. `skip` lists folders to leave out, relative to `root`, besides
  * node_modules and .pmkit. Symbolic links are left out. File types without a comment syntax are left out too, and
- * `skipped.unsupported` counts them by extension (or by file name when there is none).
+ * `skipped.unsupported` counts them by extension (or by file name when there is none), apart from the types with no
+ * comments by nature, which `skipped.noComments` counts.
  */
 export function scanRepo(root, { path: given, skip = [], env = process.env } = {}) {
   const prefix = pathPrefix(given)
@@ -320,13 +457,16 @@ export function scanRepo(root, { path: given, skip = [], env = process.env } = {
   let read = 0
   let skippedEmpty = 0
   const unsupported = {}
+  const noComments = {}
   for (const file of files) {
     if (file.split('/').includes('node_modules') || left.some((dir) => inside(file, dir)) || (prefix !== null && !inside(file, prefix))) continue
     if (!commentStyle(file)) {
-      // A file type with no comment syntax is not read. The count by extension tells the user what the scan left out.
+      // A file type with no comment syntax is not read. The count by extension tells the user what the scan left out;
+      // a type that has no comments by nature (`.txt`, images) is counted apart, since it hides no TODO.
       const name = file.split('/').pop()
       const extension = path.extname(name).toLowerCase() || name
-      unsupported[extension] = (unsupported[extension] ?? 0) + 1
+      const bucket = NO_COMMENTS.has(extension) ? noComments : unsupported
+      bucket[extension] = (bucket[extension] ?? 0) + 1
       continue
     }
     const full = path.join(root, file)
@@ -345,5 +485,5 @@ export function scanRepo(root, { path: given, skip = [], env = process.env } = {
       else found.push({ file, line: todo.line, tag: todo.tag, text: todo.text })
     }
   }
-  return { found, files: read, skippedEmpty, skipped: { unsupported } }
+  return { found, files: read, skippedEmpty, skipped: { unsupported, noComments } }
 }
