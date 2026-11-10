@@ -450,3 +450,32 @@ Início: 2026-11-10. `develop` em c7715af, `npm test` com 4535 testes, 4448 pass
 - PMK-216: 5f69d04 conferido rodando issues similar ISS-4M2S numa cópia do fixture team: tabela e linha not verified, complete false. Mergeado (574df52).
 
 Fim da rodada 15: PRs #182, #183, #184 mergeados.
+
+Limpeza da rodada 15: closing PR #185 mergeado (632e339), 9 worktrees removidos, branches provisórias apagadas.
+
+## Rodada 16
+
+Início: 2026-11-10. `develop` em 632e339, `npm test` com 4605 testes, 4518 pass, 0 fail, 87 skipped, saída 0. Run Orca `run_ce1d17032828`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-219 | 5 | opus (`ctx_3bf076636880`) | #186 | ciclos 1 e 2 (opus): mudanças pedidas; correção conferida pelo orquestrador com todos scan | mergeado (1327c3d) |
+| PMK-220 | 3 | sonnet (`ctx_4d8f3057deb6`) | #188 | ciclo 1 (opus): mudanças pedidas; correção conferida pelo orquestrador | mergeado (44c198a) |
+| PMK-221 | 5 | opus (`ctx_f4e90820ab49`) | #187 | ciclos 1 e 2 (opus): mudanças pedidas; B6 conferido pelo orquestrador | mergeado (7c64a20) |
+
+- PMK-219: PR #186 (opus); tags HACK, XXX e @todo; <script>/<style>; docstrings Python; comentário depois de aspa solta; tipos sem comentário fora do aviso (até 10 tipos); XXX/FIXME = bug, TODO/HACK = task; json como C-like; O(n²) em markupLines corrigido na auto-revisão. Follow-ups: cenário com # TODO em .mjs; duas apóstrofes na linha; script text/x-template; docstrings de outras linguagens. O worker parou num prompt de segurança do rm no próprio scratchpad, que bloqueou sozinho. Revisor ciclo 1 (opus) iniciado.
+- PMK-221: PR #187 (opus); customers update e requests update (updateCustomer, updateRequest); requests accept --create (CONFLICT em request aceito; accept que falha depois do create nomeia os dois IDs); customers show --customer; no Linear com customers ligado, demand_signals nativo e customers list/show/create/update, requests create e demand list; leituras cortadas como INCOMPLETE. Follow-ups: Asks do Linear; requests update no Linear; request-queue usar --create; provar customerCreate/customerNeeds ao vivo. Revisor ciclo 1 (opus) iniciado.
+- PMK-221: primeiro start do revisor (ctx_5ebe114a3b1f) com composer vazio; abandon, ready e worker-start no mesmo terminal (aprovação permanente).
+- PMK-220: PR #188 (sonnet); defaults.overload_factor (1 ou mais); colunas Delivered e Blocked; bloqueadas nunca propostas como move; uma leitura em team load e team capacity; Delivered com issue ilegível = ?. O worker rodou um git stash sem querer e diz ter devolvido e apagado só a própria entrada: conferi, stash vazio e tree principal limpo. Follow-ups: fator no Linear sem chave de config; leitura de bloqueadores em lote; ISS-3Q6T do fixture team esconde Delivered nos goldens. Revisor ciclo 1 (opus) iniciado.
+- PMK-221 ciclo 1 (opus): mudanças pedidas, 5 bloqueantes (erro errno no accept depois do create perde os dois IDs; retry de accept --create cria segunda issue; Customer.needs sem argumentos no schema e o fake esconde; requests update --body-file diz no change; find do Linear não passa dos 250). O npm test do revisor saiu 1 com 3 falhas que ele diz existirem em develop; o baseline da rodada em develop deu 0: são os testes sensíveis a carga já registrados (follow-up).
+- PMK-220 ciclo 1 (opus): mudanças pedidas (done arquivada some do Delivered). Pontos de atenção passaram. Pedi junto: team capacity sem avisos de bloqueador; releitura do manifesto; teste de overload_factor 1. Vou conferir sem ciclo 2.
+- PMK-220: 2c1dc76 com archived: true nas done do sprint, team capacity sem leitura de bloqueadores, manifesto reusado, teste de fator 1; diff conferido. Mergeado (44c198a).
+- PMK-219 ciclo 1 (opus): mudanças pedidas, 3 bloqueantes (closesOnLine quadrático: 512 KiB em 225 s; docstring copia a linha a cada aspa tripla; ELEMENT toma <script/> autofechado e <script> em comentário e é quadrático sem fecho). Pedi testes de tempo por razão n/2n.
+- PMK-221 correção 6f25e48: erro do accept mantém os dois ids e o commit parcial; retry recusa por issue com Request: <id> e busca incompleta recusa; customerNeeds filtrado por cliente e fake recusa needs(first:); requests update diz changed; customer(id) além dos 250; size Int; aspas em linear/customers.md; rebase. Revisor ciclo 2 (opus) iniciado, com pergunta sobre a recusa ampla do B2.
+- PMK-219 correção da42bc1: quoteEnd com cache (512 KiB em 54 ms); docstring sem cópia (256 KiB em 29 ms); markupLines numa passada, pula <script/> autofechado, comentário HTML e elemento sem fecho; testes de tempo n contra 4n; strings em CSS; docstrings r/u/b/f; script com type não JS é marcação; # só no começo em .gitignore; cenário com //; rebase. Revisor ciclo 2 (opus) iniciado.
+- PMK-221 ciclo 2 (opus): mudanças pedidas, B6 (qualquer issue ilegível recusa accept --create, até na primeira tentativa). customerNeeds filtrado conferido no schema. Pedi marca de tentativa no pedido e busca estrita só no retry. Follow-ups: M4/M7 mensagens do updateCustomer no Linear; M9 eficiência.
+- PMK-219 ciclo 2 (opus): mudanças pedidas, 1 bloqueante (.xml lê <style>/<script> como CSS/JS e perde TODOs de styles.xml do Android e de scripts do Ant). Tempos conferidos: 21 ms, 10 ms, 8-9 ms. Pedi junto teste de tempo com 128 KiB, <style-guide>, docstring com aspas escapadas, CMakeLists.txt/requirements.txt. Vou conferir sem ciclo 3.
+- PMK-219: 24f7ec6 conferido com todos scan num repo temporário: TODO do styles.xml do Android, FIXME do script do Ant, TODO do CMakeLists.txt e nota dentro de <style-guide>, todos achados. Mergeado (1327c3d).
+- PMK-221: 225427f com issue ilegível como aviso (leitura cortada ainda recusa; o retry acha a issue que o pmkit escreveu); M6 e M8; diff conferido. Mergeado (7c64a20).
+
+Fim da rodada 16: PRs #186, #187, #188 mergeados.
