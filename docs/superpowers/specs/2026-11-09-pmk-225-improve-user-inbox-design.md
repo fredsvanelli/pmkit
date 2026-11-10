@@ -16,7 +16,7 @@ The inbox of PMK-47 works on the Local tracker only, keeps one seen set per chec
 
 The inbox file becomes `inbox/<key>.json`, where `<key>` is the first 12 hex characters of the SHA-256 of `remote:<host>/<owner>/<name>` (lowercased), read from the remote `chooseRemote` picks in `scripts/lib/git-remote.mjs` (origin, else the only remote). Two worktrees or clones of one repository then share the file. `git remote -v` runs once, with a timeout because it is a read and a large `maxBuffer`.
 
-When git cannot say (no git, no remote, several remotes without origin, a URL `parseRemoteUrl` does not read), the key falls back to the real path of the root, as today. Migration: when the remote file does not exist and the path file of this checkout does, the inbox reads the path file, and the next write goes to the remote file. The old file stays, untouched. The Linear discovery cache keeps its path key (out of scope).
+When git cannot say (no git, no remote, several remotes without origin, a URL `parseRemoteUrl` does not read), or the root is not the top level of its repository (a project of a monorepo), the key falls back to the real path of the root, as today. Migration (review of PR #171): the path files of every worktree of the repository (`git worktree list`) are joined into the remote file, all members, the later check and every seen key; each is joined once and listed in the file's `migrated`. Reads join the files not migrated yet without writing. The old files stay, untouched. The Linear discovery cache keeps its path key (out of scope).
 
 ## 2. Linear serves `user_inbox`
 
@@ -26,7 +26,7 @@ When git cannot say (no git, no remote, several remotes without origin, a URL `p
 - What counts: type `issueAssignedToYou` is `assignment` (`in: assignment`), `issueMention` is `mention` (`in: description`), `issueCommentMention` is `mention` (`in: comment`, `comment` the comment id, `excerpt` the first non-empty line of the comment, cut at 200), `issueStatusChanged` is `status` (`in: status`). Other types are left out. Archived notifications are not read.
 - Key: `notification:<id>`. Seen: `readAt` is set. `by` is the actor's user id or null. `title` is the issue title, `issue` its identifier. `from` and `to` are null: the notification does not carry the states.
 - Read: pages of 100, at most 10 pages. A cut read (`hasMore`) makes `complete: false` with a problem `{ id: null, code: 'UPSTREAM', message: 'only the newest 1000 notifications were read' }`. `checked` is null and there is no first-list cut, because Linear keeps the read state itself. `since` and `all` behave as on Local.
-- Mark read: refuses on an incomplete read, like Local. With no `--key` it marks every unseen item; with `--key`, exactly those, and unknown keys come back in `unknown`. One mutation per notification, in key order. When one fails, it stops and throws with the keys already marked and the keys left, in the message and in `marked`/`left` on the error. `--dry-run` sends nothing. `pruned` is always 0 and `previous` null.
+- Mark read: with no `--key`, refuses on an incomplete read, like Local. With `--key`, a key the cut read did not reach is marked by the id it holds. With no `--key` it marks every unseen item; with `--key`, exactly those, and unknown keys come back in `unknown`. One mutation per notification, in key order. When one fails, it stops and throws with the keys already marked and the keys left, in the message and in `marked`/`left` on the error. `--dry-run` sends nothing. `pruned` is always 0 and `previous` null.
 
 The Notification schema comes from Linear's public GraphQL schema; there was no key in this worktree to check it live, so `verify-api.mjs` and the live probes get a follow-up.
 
@@ -34,7 +34,7 @@ The Notification schema comes from Linear's public GraphQL schema; there was no 
 
 Status changes. A new kind `status` on Local: a `move` event on `field: status` of an issue whose assignee at that event (replayed from the log: `create` `to.assignee`, then each `assign` event) is the user, when `by` is not the user. Key `status:<issue>:<hash>`, the hash of the event's time, author, `from` and `to`. The item has `in: status`, `from` and `to`. Prune: a `status` key is still on a branch when its event is in that branch's log, as for `assign`.
 
-No flood: the entry records the kinds it has covered (`kinds`). An entry written before this change covers `assignment` and `mention`. For a kind the entry does not cover yet, the list applies the first-list rule of PMK-47 to that kind: unseen items older than 14 days go to `hidden`, and a mark-read with no `--key` marks them too and adds the kind. `counts` gains `statusChanges`.
+No flood (review of PR #171): an entry written before this change has no `kinds` and never listed status changes, so the status changes dated up to its last check (`at`) count as seen. The next write, with or without `--key`, records their keys in `seen` and sets `kinds`. `counts` gains `statusChanges`.
 
 Review requests. `inbox list --reviews [--login <github login> ...]` makes one `gh pr list --state open --limit 200 --json number,url,title,headRefName,author,reviewRequests` call and adds `reviews` to the result:
 
@@ -43,7 +43,7 @@ reviews: { verified: true, requested: [{ number, url, title, branch, author }], 
 reviews: { verified: false, requested: null, teamRequests: null, complete: false, reason: '<error.message>', code: '<error.code>' }
 ```
 
-A pull request counts when one of its user review requests has a login equal, ignoring case, to the member id or a `--login`. A team request never matches and is listed in `teamRequests`. 200 pull requests back means `complete: false` with the reason. A failed call (`NOT_SUPPORTED` with no git host, `NOT_CONFIGURED`, `AUTH`, `RATE_LIMITED`, `UPSTREAM`) is `verified: false`, never a count of 0, and the text says "review requests not verified: <reason>". `counts.reviewRequests` is the count when verified and null otherwise. Without `--reviews`, `reviews` is null and `counts.reviewRequests` null: the plain list stays offline. Works on both trackers, because the git host is separate from the tracker.
+A pull request counts when one of its user review requests has a login equal, ignoring case, to the member id or a `--login`. On Linear the member id is a Linear user id, so only `--login` counts, and without it `reviews` is not verified (`INVALID_INPUT`). A team request never matches and is listed in `teamRequests`. 200 pull requests back means `complete: false` with the reason. A failed call (`NOT_SUPPORTED` with no git host, `NOT_CONFIGURED`, `AUTH`, `RATE_LIMITED`, `UPSTREAM`) is `verified: false`, never a count of 0, and the text says "review requests not verified: <reason>". `counts.reviewRequests` is the count when verified and null otherwise. Without `--reviews`, `reviews` is null and `counts.reviewRequests` null: the plain list stays offline. Works on both trackers, because the git host is separate from the tracker.
 
 ## 4. The text table
 
@@ -51,7 +51,7 @@ Columns: When, Kind, Issue, Title, By, Where, Text, Seen, Key. Text is the `exce
 
 ## 5. Locked writes
 
-Every inbox write takes `<file>.lock`, created with the `wx` flag, and removes it after. A lock already there makes the writer wait and retry, up to 10 seconds. A lock older than 30 seconds is stale and removed. A timeout is `CONFLICT`, naming the lock file and saying to delete it when no other pmkit runs.
+Every inbox write takes `<file>.lock`, created with the `wx` flag, and removes it after. A lock already there makes the writer wait and retry, up to 10 seconds. A lock older than 30 seconds is stale and removed. A timeout is `CONFLICT` ("Another pmkit run holds the inbox lock …", not "The inbox file", so an agent retries), naming the lock file and saying to delete it when no other pmkit runs.
 
 Under the lock, `markRead` re-reads the member's entry and merges: the keys this call marked are added, the keys this call pruned are removed, and every other key stays as the file has it now. Two mark-reads at once then keep both sets of keys.
 
@@ -61,4 +61,4 @@ Under the lock, `markRead` re-reads the member's entry and merges: the keys this
 - `status` items follow the assignment rule: the assignee at the time of the move, not the current one.
 - `--reviews` is opt-in, so `inbox list` needs no network by default.
 - Linear `from`/`to` are null rather than a guess from the current state.
-- The per-kind first-list cut keeps old status changes from flooding an existing entry.
+- An old entry counts the status changes up to its last check as seen, so it is not flooded.
