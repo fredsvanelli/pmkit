@@ -12,3 +12,5 @@
 {"at":"2026-11-10T02:14:39Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-10T02:14:44Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-234-guard-the-prioritize-by-demand-write"}
 {"at":"2026-11-10T02:16:08Z","by":"fred","op":"comment","to":"2026-11-10T02-16-08Z-fred.md"}
+{"at":"2026-11-10T02:24:38Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T02:24:38Z","by":"fred","op":"update","field":"acceptance_criteria"}
