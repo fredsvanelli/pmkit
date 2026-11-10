@@ -2,14 +2,14 @@
 id: PMK-222
 title: Improve issues delete
 type: feature
-status: in_progress
+status: in_review
 priority: low
 estimate: 5
 assignee: fred
 related: [PMK-52]
 branch: pmk-222-improve-issues-delete
 created: 2026-11-08T20:37:24.468Z
-updated: 2026-11-10T09:21:43Z
+updated: 2026-11-10T09:22:30Z
 ---
 
 ## Description
