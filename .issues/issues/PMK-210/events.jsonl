@@ -1,3 +1,6 @@
 {"at":"2026-11-08T20:37:22Z","by":"fred","op":"create","to":{"id":"PMK-210","title":"Improve docs list","type":"feature","status":"backlog","priority":"low","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-08T20:37:22.649Z","updated":"2026-11-08T20:37:22Z"}}
 {"at":"2026-11-08T20:37:22Z","by":"fred","op":"link","field":"related","to":"PMK-50"}
 {"at":"2026-11-08T20:53:51Z","by":"fred","op":"update","field":"estimate","from":null,"to":3}
+{"at":"2026-11-10T02:14:49Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-10T02:14:49Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-10T02:14:53Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-210-improve-docs-list"}
