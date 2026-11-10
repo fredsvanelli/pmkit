@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Linear customers
 
+The generic `customers`, `requests create` and `demand list` commands read and write the same Linear customers, with the record keys of the Local tracker, so `/pmkit:backlog:prioritize-by-demand` ranks by customer requests on Linear too. This command adds what only Linear has: filters by status and tier, projects as targets, and moving a request.
+
 Arguments: `$ARGUMENTS`
 
 ## Parameters
