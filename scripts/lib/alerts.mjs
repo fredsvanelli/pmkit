@@ -308,30 +308,51 @@ export const SCANNERS = [
   },
 ]
 
+/**
+ * The text of a saved scanner report. Drops a UTF-8 BOM and decodes UTF-16 LE (a BOM of FF FE), which Windows PowerShell 5
+ * writes for `>`, and normalizes CRLF. Throws the fs error when the file cannot be read.
+ */
+export function readReport(file) {
+  const bytes = fs.readFileSync(file)
+  const text = bytes[0] === 0xff && bytes[1] === 0xfe ? bytes.subarray(2).toString('utf16le') : bytes.toString('utf8').replace(/^\uFEFF/, '')
+  return text.replace(/\r\n/g, '\n')
+}
+
 const rank = (alert) => SEVERITIES.indexOf(alert.severity)
 
 /**
  * Runs every scanner the repository at `root` has. A scanner that fails is reported in `scanners` and `warnings`,
- * never thrown, and one that skipped packages has `incomplete: true`. Alerts sort by severity, then package.
+ * never thrown, and one that skipped packages has `incomplete: true`. Alerts sort by severity, then package. `reports`
+ * maps a scanner ID to a saved report `{ path, text }`: when it has any, the CLI parses them and runs no scanner.
  */
-export function collectAlerts(root, { env = process.env, timeoutMs = NPM_TIMEOUT_MS, platform = process.platform, spawn = spawnSync } = {}) {
+export function collectAlerts(root, { env = process.env, timeoutMs = NPM_TIMEOUT_MS, platform = process.platform, spawn = spawnSync, reports = new Map() } = {}) {
   const scanners = []
   const alerts = []
   const warnings = []
   for (const scanner of SCANNERS) {
-    if (!scanner.detect(root)) {
+    const report = reports.get(scanner.id)
+    // With saved reports nothing runs: a report counts whatever the lockfiles are, and a detected scanner without one is skipped.
+    if (report === undefined && reports.size > 0 && scanner.detect(root)) {
+      scanners.push({ id: scanner.id, detected: true, alerts: 0, skipped: true })
+      warnings.push(`${scanner.id} was not run because --report was given; pass --report ${scanner.id}=<file> to read it`)
+      continue
+    }
+    if (report === undefined && (reports.size > 0 || !scanner.detect(root))) {
       scanners.push({ id: scanner.id, detected: false, alerts: 0 })
       continue
     }
+    const source = report === undefined ? {} : { report: report.path }
     try {
-      const { stdout, stderr } = runScanner(scanner.command, scanner.args, { root, env, timeoutMs, platform, spawn, shim: scanner.shim, label: scanner.label })
+      const { stdout, stderr } = report === undefined
+        ? runScanner(scanner.command, scanner.args, { root, env, timeoutMs, platform, spawn, shim: scanner.shim, label: scanner.label })
+        : { stdout: report.text, stderr: '' }
       const found = scanner.parse(stdout, stderr)
       alerts.push(...found.alerts)
       warnings.push(...found.warnings)
       // A parser that could not read every package (pip-audit skips) says so: the scanner ran, but the result may miss alerts.
-      scanners.push({ id: scanner.id, detected: true, alerts: found.alerts.length, ...(found.incomplete ? { incomplete: true } : {}) })
+      scanners.push({ id: scanner.id, detected: true, alerts: found.alerts.length, ...source, ...(found.incomplete ? { incomplete: true } : {}) })
     } catch (error) {
-      scanners.push({ id: scanner.id, detected: true, alerts: 0, error: error.message })
+      scanners.push({ id: scanner.id, detected: true, alerts: 0, ...source, error: error.message })
       warnings.push(`${scanner.id} failed: ${error.message}`)
     }
   }

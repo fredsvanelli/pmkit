@@ -26,7 +26,7 @@ import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-lo
 import { changeList, checkMembers, mergeCapacity, parseCapacityPairs, workingDays } from './lib/team-capacity.mjs'
 import { AGENT_ID, localRunLine, nativeRunLine } from './lib/delegation.mjs'
 import { blockedText, delegationOf, prSummary, prText } from './lib/track-agents.mjs'
-import { SCANNERS, SEVERITIES, alertCandidate, collectAlerts, matchAlerts } from './lib/alerts.mjs'
+import { SCANNERS, SEVERITIES, alertCandidate, collectAlerts, matchAlerts, readReport } from './lib/alerts.mjs'
 import { READ_LIMIT, groupTodos, matchTodos, readExistingIssues, scanRepo } from './lib/todos.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { FrontmatterError, parseYaml } from './lib/yaml.mjs'
@@ -126,6 +126,27 @@ function randomSource(env) {
   if (!/^-?\d+$/.test(env.PMKIT_SEED)) throw usageError('PMKIT_SEED must be an integer')
   const next = mulberry32(Number(env.PMKIT_SEED))
   return (n) => Math.floor(next() * n)
+}
+
+/** The saved scanner reports of `--report <scanner>=<file>`, read up front, as the `reports` map of collectAlerts. */
+function readReports(ctx) {
+  const reports = new Map()
+  const example = 'pmkit alerts list --report npm-audit=npm-audit.json'
+  for (const value of ctx.list('report')) {
+    const text = String(value)
+    const at = text.indexOf('=')
+    if (at <= 0 || at === text.length - 1) throw usageError(`--report must be <scanner>=<file>, not ${text}`, example)
+    const id = text.slice(0, at)
+    const file = text.slice(at + 1)
+    if (!SCANNERS.some((scanner) => scanner.id === id)) throw usageError(`--report names the unknown scanner "${id}"; use one of ${SCANNERS.map((scanner) => scanner.id).join(', ')}`, example)
+    if (reports.has(id)) throw usageError(`--report gives ${id} twice`, 'pass one report per scanner')
+    try {
+      reports.set(id, { path: file, text: readReport(path.resolve(ctx.cwd, file)) })
+    } catch (error) {
+      throw usageError(`cannot read ${file}: ${error.message}`, `save the scanner's --json output to ${file} first`)
+    }
+  }
+  return reports
 }
 
 function readInput(source) {
@@ -1331,13 +1352,13 @@ export const COMMANDS = [
     run: (ctx) => runTeamCapacity(ctx),
   },
   {
-    name: 'alerts list', summary: 'security alerts from the scanners the repository has (npm audit), highest severity first; reads only', usage: '[--severity critical,high,medium,low]', flags: ['severity'],
+    name: 'alerts list', summary: 'security alerts from the scanners the repository has (npm, yarn and pnpm audit, pip-audit, cargo audit) or from saved reports, highest severity first; reads only', usage: '[--severity critical,high,medium,low,unknown] [--report scanner=file ..]', flags: ['severity', 'report'],
     run: async (ctx) => {
       ctx.config() // loads and checks .pmkit/config.yaml like every command, though alerts never read the tracker
       const wanted = csv(ctx.list('severity'))
       const unknown = wanted.filter((value) => !SEVERITIES.includes(value))
       if (unknown.length > 0) throw usageError(`--severity must be one of ${SEVERITIES.join(', ')}, not ${unknown.join(', ')}`)
-      const found = collectAlerts(ctx.root, { env: ctx.env })
+      const found = collectAlerts(ctx.root, { env: ctx.env, reports: readReports(ctx) })
       const alerts = wanted.length === 0 ? found.alerts : found.alerts.filter((alert) => wanted.includes(alert.severity))
       // The per-scanner count follows the filter, so scanners[].alerts always adds up to alerts.length.
       const scanners = found.scanners.map((scanner) => ({ ...scanner, alerts: alerts.filter((alert) => alert.scanner === scanner.id).length }))
@@ -1357,13 +1378,13 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'alerts scan', summary: 'security alerts no issue covers yet, each with a type, a priority from the severity and a description that holds its alert-key line; reads only', usage: '[--severity critical,high,medium,low]', flags: ['severity'],
+    name: 'alerts scan', summary: 'security alerts no issue covers yet, each with a type, a priority from the severity and a description that holds its alert-key line; reads only', usage: '[--severity critical,high,medium,low,unknown] [--report scanner=file ..]', flags: ['severity', 'report'],
     run: async (ctx) => {
       const wanted = csv(ctx.list('severity'))
       const unknown = wanted.filter((value) => !SEVERITIES.includes(value))
       if (unknown.length > 0) throw usageError(`--severity must be one of ${SEVERITIES.join(', ')}, not ${unknown.join(', ')}`)
       ctx.config()
-      const found = collectAlerts(ctx.root, { env: ctx.env })
+      const found = collectAlerts(ctx.root, { env: ctx.env, reports: readReports(ctx) })
       const failed = found.scanners.filter((scanner) => scanner.error !== undefined)
       const partial = found.scanners.filter((scanner) => scanner.incomplete)
       const warnings = [...found.warnings]

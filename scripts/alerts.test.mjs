@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { SEVERITIES, collectAlerts, cvssScore, cvssSeverity, isNpmMissingOnShell, parseCargoAudit, parseNpmAudit, parsePipAudit, parsePnpmAudit, parseYarnAudit } from './lib/alerts.mjs'
+import { SEVERITIES, collectAlerts, cvssScore, cvssSeverity, isNpmMissingOnShell, parseCargoAudit, parseNpmAudit, parsePipAudit, parsePnpmAudit, parseYarnAudit, readReport } from './lib/alerts.mjs'
 import { tempDir } from './test-helpers.mjs'
 
 const REPORT_ONE = JSON.stringify({ vulnerabilities: { a: { name: 'a', severity: 'low', via: [], fixAvailable: false } } })
@@ -349,4 +349,40 @@ test('cargo audit runs on Cargo.lock without the shell', () => {
   assert.deepEqual(calls[0].args, ['audit', '--json'])
   assert.equal(calls[0].options.shell, false)
   assert.deepEqual(found.warnings, [])
+})
+
+// ---- saved reports (PMK-208) ----
+
+test('readReport drops a UTF-8 BOM, decodes UTF-16 LE and normalizes CRLF', () => {
+  const dir = tempDir('pmkit-report-')
+  const utf8 = path.join(dir, 'a.json')
+  fs.writeFileSync(utf8, '﻿{"a":1}\r\n')
+  assert.equal(readReport(utf8), '{"a":1}\n')
+  const utf16 = path.join(dir, 'b.json')
+  fs.writeFileSync(utf16, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('{"b":2}\r\n', 'utf16le')]))
+  assert.equal(readReport(utf16), '{"b":2}\n')
+})
+
+test('collectAlerts with reports reads only them and runs nothing', () => {
+  const root = tempDir('pmkit-reports-')
+  fs.writeFileSync(path.join(root, 'package-lock.json'), '{}\n')
+  fs.writeFileSync(path.join(root, 'yarn.lock'), '\n')
+  const { spawn, calls } = fakeSpawn({ stdout: REPORT_ONE })
+  const reports = new Map([['cargo-audit', { path: 'cargo.json', text: JSON.stringify({ vulnerabilities: { list: [] } }) }], ['npm-audit', { path: 'npm.json', text: REPORT_ONE }]])
+  const found = collectAlerts(root, { spawn, reports })
+  assert.equal(calls.length, 0)
+  assert.deepEqual(found.scanners, [
+    { id: 'npm-audit', detected: true, alerts: 1, report: 'npm.json' },
+    { id: 'yarn-audit', detected: true, alerts: 0, skipped: true },
+    { id: 'pnpm-audit', detected: false, alerts: 0 },
+    { id: 'pip-audit', detected: false, alerts: 0 },
+    { id: 'cargo-audit', detected: true, alerts: 0, report: 'cargo.json' },
+  ])
+  assert.deepEqual(found.warnings, ['yarn-audit was not run because --report was given; pass --report yarn-audit=<file> to read it'])
+})
+
+test('a report that does not parse is a scanner error', () => {
+  const found = collectAlerts(tempDir('pmkit-reports-'), { reports: new Map([['npm-audit', { path: 'bad.json', text: 'nope' }]]) })
+  assert.deepEqual(found.scanners[0], { id: 'npm-audit', detected: true, alerts: 0, report: 'bad.json', error: 'npm audit output is not valid JSON' })
+  assert.deepEqual(found.warnings, ['npm-audit failed: npm audit output is not valid JSON'])
 })

@@ -202,3 +202,99 @@ test('a scanner that skipped packages makes alerts list incomplete and says so i
   assert.equal(JSON.parse(scan.stdout).incomplete, true)
   assert.match(scan.stderr, /incomplete: pip-audit did not audit every package, so this list may miss alerts\. Do not create issues from this list/)
 })
+
+// ---- --report (PMK-208) ----
+
+function offline() {
+  const root = makeRepo('basic')
+  const env = { PATH: tempDir('pmkit-nobin-'), GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: '1' }
+  const write = (name, text) => {
+    fs.writeFileSync(path.join(root, name), text)
+    return name
+  }
+  return { root, write, cli: (args) => run(args, { env, cwd: root }) }
+}
+
+test('alerts list --report reads a saved report with no lockfile and nothing on PATH', async () => {
+  const { write, cli } = offline()
+  write('npm-audit.json', REPORT)
+  const result = await cli(['alerts', 'list', '--report', 'npm-audit=npm-audit.json', '--json'])
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.incomplete, false)
+  assert.deepEqual(data.scanners[0], { id: 'npm-audit', detected: true, alerts: 3, report: 'npm-audit.json' })
+  assert.deepEqual(data.alerts.map((a) => a.id), ['npm-audit:lodash', 'npm-audit:tar', 'npm-audit:minimist'])
+})
+
+test('alerts list --report skips the detected scanners it was not given, with a warning, and stays complete', async () => {
+  const { write, cli } = offline()
+  write('package-lock.json', '{}\n')
+  write('pnpm-lock.yaml', '\n')
+  write('saved.json', REPORT)
+  const result = await cli(['alerts', 'list', '--report=npm-audit=saved.json', '--json'])
+  assert.equal(result.code, 0, result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.incomplete, false)
+  assert.deepEqual(data.scanners.find((s) => s.id === 'pnpm-audit'), { id: 'pnpm-audit', detected: true, alerts: 0, skipped: true })
+  assert.match(result.stderr, /warning: pnpm-audit was not run because --report was given; pass --report pnpm-audit=<file> to read it/)
+})
+
+test('alerts list --report reads every scanner format, a CRLF yarn report and a UTF-16 npm report', async () => {
+  const { root, write, cli } = offline()
+  const yarn = [JSON.stringify({ type: 'auditAdvisory', data: { advisory: { module_name: 'y', severity: 'high', title: 'Y', url: null, patched_versions: '<0.0.0' } } }), JSON.stringify({ type: 'auditSummary', data: {} })].join('\r\n')
+  write('yarn.json', yarn)
+  fs.writeFileSync(path.join(root, 'npm.json'), Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(REPORT, 'utf16le')]))
+  write('pnpm.json', JSON.stringify({ advisories: { 1: { module_name: 'p', severity: 'low', title: 'P', url: null, patched_versions: '>=2' } } }))
+  write('pip.json', JSON.stringify({ dependencies: [{ name: 'q', vulns: [{ id: 'PYSEC-1', fix_versions: [] }] }] }))
+  write('cargo.json', JSON.stringify({ vulnerabilities: { list: [{ advisory: { id: 'RUSTSEC-1', package: 'r', title: 'R', cvss: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H' }, versions: { patched: [] }, package: { name: 'r' } }] } }))
+  const args = ['npm-audit=npm.json', 'yarn-audit=yarn.json', 'pnpm-audit=pnpm.json', 'pip-audit=pip.json', 'cargo-audit=cargo.json'].flatMap((value) => ['--report', value])
+  const result = await cli(['alerts', 'list', ...args, '--json'])
+  assert.equal(result.code, 0, result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.incomplete, false)
+  assert.deepEqual(data.alerts.map((a) => [a.id, a.severity]), [
+    ['npm-audit:lodash', 'critical'], ['cargo-audit:r', 'critical'], ['npm-audit:tar', 'high'], ['yarn-audit:y', 'high'],
+    ['npm-audit:minimist', 'medium'], ['pnpm-audit:p', 'low'], ['pip-audit:q', 'unknown'],
+  ])
+  const unknown = await cli(['alerts', 'list', ...args, '--severity', 'unknown', '--json'])
+  assert.deepEqual(JSON.parse(unknown.stdout).alerts.map((a) => a.id), ['pip-audit:q'])
+})
+
+test('alerts list --report refuses a bad value, an unknown scanner, a repeat and a missing file', async () => {
+  const { write, cli } = offline()
+  write('a.json', REPORT)
+  const cases = [
+    [['--report', 'npm-audit'], /--report must be <scanner>=<file>/],
+    [['--report', 'npm-audit='], /--report must be <scanner>=<file>/],
+    [['--report', 'bogus=a.json'], /--report names the unknown scanner "bogus"/],
+    [['--report', 'npm-audit=a.json', '--report', 'npm-audit=a.json'], /--report gives npm-audit twice/],
+    [['--report', 'npm-audit=missing.json'], /cannot read missing\.json/],
+  ]
+  for (const [args, message] of cases) {
+    const result = await cli(['alerts', 'list', ...args, '--json'])
+    assert.equal(result.code, 2, args.join(' '))
+    const { error } = JSON.parse(result.stdout)
+    assert.equal(error.code, 'INVALID_INPUT')
+    assert.match(error.message, message)
+  }
+})
+
+test('alerts list --report with a report that does not parse is incomplete', async () => {
+  const { write, cli } = offline()
+  write('bad.json', 'nope')
+  const result = await cli(['alerts', 'list', '--report', 'npm-audit=bad.json', '--json'])
+  assert.equal(result.code, 0, result.stderr)
+  assert.equal(JSON.parse(result.stdout).incomplete, true)
+  assert.match(result.stderr, /warning: npm-audit failed: npm audit output is not valid JSON/)
+})
+
+test('alerts scan --report gives candidates offline', async () => {
+  const { write, cli } = offline()
+  write('npm-audit.json', REPORT)
+  const result = await cli(['alerts', 'scan', '--report', 'npm-audit=npm-audit.json', '--json'])
+  assert.equal(result.code, 0, result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.absent, false)
+  assert.equal(data.incomplete, false)
+  assert.deepEqual(data.candidates.map((c) => c.id), ['npm-audit:lodash', 'npm-audit:tar', 'npm-audit:minimist'])
+})
