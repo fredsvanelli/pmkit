@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-52]
 branch: pmk-222-improve-issues-delete
 created: 2026-11-08T20:37:24.468Z
-updated: 2026-11-10T08:36:29Z
+updated: 2026-11-10T09:21:43Z
 ---
 
 ## Description
@@ -32,8 +32,8 @@ Improvements suggested by the implementer and reviewers of PMK-52 (issues delete
 
 ## Acceptance criteria
 
-- [ ] Scan `docs/` and the code for the deleted ID
-- [ ] Restore an issue from the Linear trash
-- [ ] Let `issues link --remove` take several targets, to clear the references in one call
+- [x] Scan `docs/` and the code for the deleted ID
+- [x] Restore an issue from the Linear trash
+- [x] Let `issues link --remove` take several targets, to clear the references in one call
 - [ ] Run the delete in the Linear live sandbox (PMK-39)
-- [ ] Tests for an ID with `../`, an epic ID and `issueDelete` with `success: false`
+- [x] Tests for an ID with `../`, an epic ID and `issueDelete` with `success: false`
