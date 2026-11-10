@@ -13,6 +13,9 @@ exit 0
   "issue": "ISS-5N1R",
   "entries": [],
   "total": 0,
+  "totalTime": "0m",
+  "byPerson": [],
+  "bySprint": [],
   "ignored": 0
 }
 --- stderr

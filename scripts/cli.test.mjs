@@ -622,8 +622,13 @@ test('time-entries lists the logged time and the total, text and JSON', () => {
   assert.equal(run(root, ['issues', 'log-time', 'ISS-3F7H', '15']).status, 0)
   const text = run(root, ['issues', 'time-entries', 'ISS-3F7H']).stdout
   assert.match(text, /45/)
-  assert.match(text, /total: 60 minutes/)
+  assert.match(text, /total: 60 minutes \(1h\)/)
+  assert.match(text, /per person\n.*\n.*\nfred \| 60 +\| 1h\n/)
+  assert.match(text, /per sprint\n.*\n.*\n2026-10-12 \| 60 +\| 1h\n?$/)
   const got = json(root, ['issues', 'time-entries', 'ISS-3F7H'])
+  assert.equal(got.totalTime, '1h')
+  assert.deepEqual(got.byPerson.map((row) => [row.by, row.minutes, row.time]), [['fred', 60, '1h']])
+  assert.deepEqual(got.entries.map((entry) => entry.time), ['45m', '15m'])
   assert.equal(got.issue, 'ISS-3F7H')
   assert.equal(got.total, 60)
   assert.deepEqual(got.entries.map((entry) => entry.minutes), [45, 15])
@@ -644,6 +649,16 @@ test('time-entries prints the empty text, and a note when log_time events are ig
   assert.equal(noted.status, 0)
   assert.match(noted.stdout, /total: 0 minutes/)
   assert.match(noted.stderr, /^note: 1 log_time event ignored: minutes is not a positive integer\n/)
+})
+
+test('time-entries names the sprint file it could not read and says that period counts as no sprint', () => {
+  const root = makeRepo('team')
+  fs.writeFileSync(path.join(root, '.issues', 'sprints', 'broken.yaml'), 'name: [unclosed\n')
+  assert.equal(run(root, ['issues', 'log-time', 'ISS-3F7H', '45']).status, 0)
+  const got = run(root, ['issues', 'time-entries', 'ISS-3F7H'])
+  assert.equal(got.status, 0)
+  assert.match(got.stderr, /^note: could not read the sprint file broken; entries dated in that sprint's period count as no sprint, the other sprints still count; run pmkit validate\n/)
+  assert.deepEqual(json(root, ['issues', 'time-entries', 'ISS-3F7H']).sprintsUnread, ['broken'])
 })
 
 test('assign, link, comment, log-time, archive and get --comments --history', () => {

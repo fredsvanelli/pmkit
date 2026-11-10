@@ -75,7 +75,7 @@ test('history returns every event, or those at or after since (a date or a times
 
 test('listTimeEntries returns the log_time events in order with the total', () => {
   const { tracker, id, setNow } = setup()
-  assert.deepEqual(tracker.listTimeEntries(id), { issue: id, entries: [], total: 0, ignored: 0 })
+  assert.deepEqual(tracker.listTimeEntries(id), { issue: id, entries: [], total: 0, totalTime: '0m', byPerson: [], bySprint: [], ignored: 0 })
   setNow('2026-10-24T10:00:00Z')
   tracker.logTime(id, 30, 'fred')
   tracker.comment(id, 'between', 'fred')
@@ -83,10 +83,13 @@ test('listTimeEntries returns the log_time events in order with the total', () =
   assert.deepEqual(tracker.listTimeEntries(id), {
     issue: id,
     entries: [
-      { at: '2026-10-24T10:00:00Z', by: 'fred', minutes: 30 },
-      { at: '2026-10-24T10:00:00Z', by: 'fred', minutes: 15 },
+      { at: '2026-10-24T10:00:00Z', by: 'fred', minutes: 30, time: '30m' },
+      { at: '2026-10-24T10:00:00Z', by: 'fred', minutes: 15, time: '15m' },
     ],
     total: 45,
+    totalTime: '45m',
+    byPerson: [{ by: 'fred', minutes: 45, time: '45m' }],
+    bySprint: [{ sprint: null, minutes: 45, time: '45m' }],
     ignored: 0,
   })
   assert.throws(() => tracker.listTimeEntries('NOPE-1'), (error) => error.code === 'NOT_FOUND')
@@ -99,9 +102,57 @@ test('listTimeEntries leaves out log_time events whose minutes is not a positive
   const bad = [{}, { minutes: '30' }, { minutes: 0 }, { minutes: -5 }, { minutes: 1.5 }]
   fs.appendFileSync(paths.events, bad.map((extra) => `${JSON.stringify({ at, by: 'fred', op: 'log_time', ...extra })}\n`).join(''))
   const got = tracker.listTimeEntries(id)
-  assert.deepEqual(got.entries, [{ at: got.entries[0].at, by: 'fred', minutes: 30 }])
+  assert.deepEqual(got.entries, [{ at: got.entries[0].at, by: 'fred', minutes: 30, time: '30m' }])
   assert.equal(got.total, 30)
   assert.equal(got.ignored, 5)
+})
+
+test('listTimeEntries totals the minutes per person and per sprint, by the date of each entry', () => {
+  const { root, tracker, id, setNow } = setup()
+  const sprints = path.join(root, '.issues', 'sprints')
+  fs.mkdirSync(sprints, { recursive: true })
+  const sprint = (name, start, end) => fs.writeFileSync(path.join(sprints, `${name}.yaml`), `name: ${name}\nstart: ${start}\nend: ${end}\nstate: active\ncapacity: { fred: 5 }\n`)
+  sprint('s1', '2026-10-12', '2026-10-25')
+  sprint('s2', '2026-10-26', '2026-11-08')
+  const log = (at, minutes, by) => { setNow(at); tracker.logTime(id, minutes, by) }
+  log('2026-10-11T23:00:00Z', 10, 'fred')
+  log('2026-10-25T23:59:00Z', 90, 'fred')
+  log('2026-10-26T00:00:00Z', 30, 'agent:claude')
+  log('2026-10-27T09:00:00Z', 60, 'fred')
+  const got = tracker.listTimeEntries(id)
+  assert.deepEqual(got.byPerson, [{ by: 'fred', minutes: 160, time: '2h40' }, { by: 'agent:claude', minutes: 30, time: '30m' }])
+  assert.deepEqual(got.bySprint, [{ sprint: null, minutes: 10, time: '10m' }, { sprint: 's1', minutes: 90, time: '1h30' }, { sprint: 's2', minutes: 90, time: '1h30' }])
+  assert.equal(got.total, 190)
+  assert.equal(got.totalTime, '3h10')
+})
+
+test('listTimeEntries skips only the sprint file that does not parse, and reads no sprints without entries', () => {
+  const { root, tracker, id } = setup()
+  const sprints = path.join(root, '.issues', 'sprints')
+  fs.mkdirSync(sprints, { recursive: true })
+  fs.writeFileSync(path.join(sprints, 'bad.yaml'), 'name: [unclosed\n')
+  assert.equal(tracker.listTimeEntries(id).sprintsUnread, undefined, 'no entries, so no sprint is read')
+  fs.writeFileSync(path.join(sprints, 'good.yaml'), 'name: good\nstart: 2026-10-01\nend: 2026-10-31\nstate: active\ncapacity: { fred: 5 }\n')
+  tracker.logTime(id, 30, 'fred')
+  const got = tracker.listTimeEntries(id)
+  assert.equal(got.total, 30)
+  assert.deepEqual(got.sprintsUnread, ['bad'])
+  assert.deepEqual(got.bySprint.map((row) => row.sprint), ['good'])
+})
+
+test('listTimeEntries places an entry by its UTC date, whatever the zone or type of its at', () => {
+  const { root, tracker, id, paths } = setup()
+  const sprints = path.join(root, '.issues', 'sprints')
+  fs.mkdirSync(sprints, { recursive: true })
+  const sprint = (name, start, end) => fs.writeFileSync(path.join(sprints, `${name}.yaml`), `name: ${name}\nstart: ${start}\nend: ${end}\nstate: active\ncapacity: { fred: 5 }\n`)
+  sprint('s1', '2026-10-12', '2026-10-25')
+  sprint('s2', '2026-10-26', '2026-11-08')
+  const line = (at) => `${JSON.stringify({ at, by: 'fred', op: 'log_time', minutes: 10 })}\n`
+  // A time without a zone is UTC: '2026-10-11 23:00' is before s1, not 2026-10-12 in a zone behind UTC.
+  // 2026-10-26T02:00+05:00 is 2026-10-25T21:00Z: sprint s1. 2026-10-25T23:00-05:00 is 2026-10-26T04:00Z: sprint s2.
+  fs.appendFileSync(paths.events, line('2026-10-26T02:00:00+05:00') + line('2026-10-25T23:00:00-05:00') + line(1761000000000) + line('not a date') + line('2026-10-11 23:00'))
+  const got = tracker.listTimeEntries(id)
+  assert.deepEqual(Object.fromEntries(got.bySprint.map((row) => [row.sprint, row.minutes])), { s1: 10, s2: 10, null: 30 })
 })
 
 test('logTime writes one log_time event with the minutes', () => {

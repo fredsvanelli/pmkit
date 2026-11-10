@@ -25,6 +25,14 @@ export function parseMinutes(input) {
   return minutes
 }
 
+// The one rule for minutes of a time entry: a whole number above zero. logTime writes by it and listTimeEntries reads by it.
+export const isPositiveMinutes = (value) => Number.isInteger(value) && value > 0
+
+// 45 is 45m, 60 is 1h, 90 is 1h30, 1500 is 1d1h.
+export function formatMinutes(minutes) {
+  return minutes < 60 ? `${minutes}m` : hoursText(minutes)
+}
+
 // 1500 is 1d1h, 100000 is 69d10h40; below a day it stays 1h30.
 function hoursText(minutes) {
   const days = Math.floor(minutes / 1440)

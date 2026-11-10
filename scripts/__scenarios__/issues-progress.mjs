@@ -25,6 +25,7 @@ export default {
     { step: '7', dryRun: tick },
     { confirm: 'Step 7' },
     { step: '7', write: tick },
+    { step: '8', read: ['issues', 'time-entries', 'ISS-5N1R'] },
     { step: '8', dryRun: log },
     { confirm: 'Step 8' },
     { step: '8', write: log },

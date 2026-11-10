@@ -709,13 +709,21 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'issues time-entries', summary: 'lists the time logged on an issue, with the total', usage: '<id>', args: ['id'], flags: [],
+    name: 'issues time-entries', summary: 'lists the time logged on an issue, with the total and the totals per person and per sprint', usage: '<id>', args: ['id'], flags: [],
     run: async (ctx) => {
       const result = await (await ctx.tracker()).listTimeEntries(ctx.args[0])
       const text = result.entries.length === 0
         ? `no time logged on ${result.issue}\ntotal: 0 minutes`
-        : [table(['At', 'By', 'Minutes'], result.entries.map((entry) => [entry.at, entry.by, String(entry.minutes)])), `total: ${result.total} minutes`].join('\n')
-      const notes = result.ignored > 0 ? [`${result.ignored} log_time ${result.ignored === 1 ? 'event' : 'events'} ignored: minutes is not a positive integer`] : []
+        : [
+            table(['At', 'By', 'Minutes', 'Time'], result.entries.map((entry) => [entry.at, entry.by, String(entry.minutes), entry.time])),
+            `total: ${result.total} minutes (${result.totalTime})`,
+            `per person\n${table(['By', 'Minutes', 'Time'], result.byPerson.map((row) => [row.by, String(row.minutes), row.time]))}`,
+            `per sprint\n${table(['Sprint', 'Minutes', 'Time'], result.bySprint.map((row) => [row.sprint ?? 'no sprint', String(row.minutes), row.time]))}`,
+          ].join('\n')
+      const notes = [
+        ...(result.ignored > 0 ? [`${result.ignored} log_time ${result.ignored === 1 ? 'event' : 'events'} ignored: minutes is not a positive integer`] : []),
+        ...(result.sprintsUnread ? [`could not read the sprint ${result.sprintsUnread.length === 1 ? 'file' : 'files'} ${result.sprintsUnread.join(', ')}; entries dated in ${result.sprintsUnread.length === 1 ? "that sprint's" : 'those sprints'} period count as no sprint, the other sprints still count; run pmkit validate`] : []),
+      ]
       return { data: result, text, notes }
     },
   },

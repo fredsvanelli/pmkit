@@ -12,6 +12,8 @@ exit 0
 ? Step 7  [confirmed]
 $ pmkit issues update ISS-5N1R --check 1 --json  [step 7, write]
 exit 0
+$ pmkit issues time-entries ISS-5N1R --json  [step 8, read]
+exit 0
 $ pmkit issues log-time ISS-5N1R 30 --dry-run --json  [step 8, dry run]
 exit 0
 ? Step 8  [confirmed]
