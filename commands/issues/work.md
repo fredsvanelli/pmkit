@@ -1,6 +1,6 @@
 ---
 description: Pick up an issue. Claim it, create its branch, plan and implement, open the PR and move it to review
-argument-hint: "[id]"
+argument-hint: "[id] [--as agent:<name>]"
 disable-model-invocation: true
 ---
 
@@ -11,6 +11,7 @@ Arguments: `$ARGUMENTS`
 ## Parameters
 
 - `id` (optional): the issue ID, for example `ISS-7K3Q`. When it is empty, the command picks the top issue of the user's assigned work (step 1).
+- `--as <agent>` (optional): an agent member ID, for example `agent:claude`. The session runs an issue delegated to that agent, as `/pmkit:issues:delegate` and the delegation comment say. Every rule below that names the user then names the agent, and every pmkit call that writes carries `--as <agent>`, so `me` is the agent and the tracker events are recorded as the agent's. Commits and the pull request keep the user's git and GitHub identity. `--as` needs an `id`: without one, ask for it.
 
 ## Steps
 
@@ -18,7 +19,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/pmkit/references/conventions.md` first.
 
 1. When there is no `id`, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues list --assignee me --category in_progress,todo --json`. The CLI returns it in creation order, oldest first. Skip the issues with an open blocker, which means a `blockedBy` issue not in `done` or `canceled`. Propose the first issue left and ask with `AskUserQuestion` whether to use it. When the user declines or the list is empty, stop and say so.
 2. Read the context. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues get <id> --comments --json`. Note the acceptance criteria, the comments, the parent, the `children`, the `blockedBy` issues, the linked docs and the `branch` field. When the issue has a parent, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues get <parent> --json` for it. When the parent ID starts with the epic prefix (`EPC-` by default), run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" epic get <parent> --json` instead. Then run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" default-branch --json` for the default branch: its `branch` is a checked name that is `main` when `git_host.default_branch` is unset or invalid, with a `note:` on stderr that you pass on. Use that `branch` where a step names the default branch, never the config value itself. When the command fails, use `main` as the base, say so, and never fall back to the value in the config.
-3. Check readiness. List every problem found: the issue is blocked by an issue not in `done` or `canceled`, it is assigned to someone else, it is already `done` or `canceled`, or it has no acceptance criteria. When there is a problem, ask with `AskUserQuestion` whether to continue. When the user declines, stop and change nothing.
+3. Check readiness. List every problem found: the issue is blocked by an issue not in `done` or `canceled`, it is assigned to someone else, it is already `done` or `canceled`, or it has no acceptance criteria. With `--as`, the agent stands for the user: an issue assigned to that agent is not assigned to someone else. Without `--as`, an issue held by an agent (an `agent:` assignee, or a `delegate` on a tracker that delegates natively) is a problem that names the agent, because the agent may be working on it; say that `--as <agent>` runs it as that agent. When there is a problem, ask with `AskUserQuestion` whether to continue. When the user declines, stop and change nothing.
 4. Check the working tree. Run `git status --porcelain`. When there are uncommitted changes, ask with `AskUserQuestion` whether to continue, because creating the branch switches the working tree. When the user declines, stop and change nothing.
 5. Claim the issue. Skip this step when the issue is already assigned to the user and in `in_progress`.
    1. When it is not assigned to the user, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/pmkit.mjs" issues assign <id> me --dry-run --json`.
