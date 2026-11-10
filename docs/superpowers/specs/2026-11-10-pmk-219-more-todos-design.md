@@ -8,7 +8,7 @@
 
 1. **More tags.** `HACK` and `XXX` count, as the first word of a comment, like `TODO` and `FIXME`.
 2. **A better parser.**
-   - The `<script>` and `<style>` elements of html, vue, svelte, xml and svg files are read with their own syntax: JavaScript for a script with no `type` or a JavaScript `type` (any other script, a self-closing element and one with no closing tag stay markup), CSS for a style (C-like for `lang="scss"`, `less`, `sass` or `stylus`).
+   - The `<script>` and `<style>` elements of html, vue, svelte and svg files are read (an xml file stays plain markup: its `<style>` is Android data and its `<script>` an Ant task) with their own syntax: JavaScript for a script with no `type` or a JavaScript `type` (any other script, a self-closing element and one with no closing tag stay markup), CSS for a style (C-like for `lang="scss"`, `less`, `sass` or `stylus`).
    - A lone quote (one with no closing quote on its line) no longer hides the comment after it, so `title: it's done # TODO: x` in YAML and `const re = /'/ // TODO: x` in JavaScript are found.
    - `@todo` (any case, also `@fixme`, `@hack`, `@xxx`), the JSDoc and PHPDoc tag, counts. Its tag is the upper-case name.
    - A Python docstring is read like a block comment: a triple-quoted string that starts its line (only spaces before it). A triple-quoted string after code (`s = """..."""`) stays a string.

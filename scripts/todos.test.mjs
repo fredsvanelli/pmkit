@@ -252,7 +252,7 @@ const cpu = (source, file) => {
 }
 
 /** findTodos takes about 4 times as long on 4 times the input, not 16 times. CPU time, with a floor for noise on a loaded machine. */
-const assertLinear = (unit, file, size = 32 * 1024) => {
+const assertLinear = (unit, file, size = 128 * 1024) => {
   const small = unit.repeat(Math.ceil(size / unit.length))
   const large = small.repeat(4)
   cpu(small, file) // warm up
@@ -315,4 +315,40 @@ test('a Python docstring may have a string prefix', () => {
 test('an ignore file reads # as a comment only at the start of a line', () => {
   assert.deepEqual(tags('build/ # TODO: a pattern\n# TODO: a comment\n"quoted\n# FIXME: after a quote\n', '.gitignore'), [[2, 'TODO', 'a comment'], [4, 'FIXME', 'after a quote']])
   assert.deepEqual(tags('*.png binary # TODO: no\n# HACK: yes\n', 'templates/issues.gitattributes'), [[2, 'HACK', 'yes']])
+})
+
+test('an xml file is plain markup: its style and script elements are data, not code', () => {
+  const styles = [
+    '<?xml version="1.0" encoding="utf-8"?>',
+    '<resources>',
+    '    <style name="AppTheme" parent="Theme.MaterialComponents.DayNight">',
+    '        <!-- TODO: dark mode colors -->',
+    '        <item name="colorPrimary">@color/purple_500</item>',
+    '    </style>',
+    '</resources>',
+  ].join('\n')
+  assert.deepEqual(tags(styles, 'app/src/main/res/values/styles.xml'), [[4, 'TODO', 'dark mode colors']])
+  assert.deepEqual(tags('<project>\n<script language="javascript">\n<!-- FIXME: ant -->\n// TODO: not a comment in xml\n</script>\n</project>', 'build.xml'), [[3, 'FIXME', 'ant']])
+  assert.deepEqual(tags('<svg>\n<style>\n/* TODO: svg css */\n</style>\n</svg>', 'a.svg'), [[3, 'TODO', 'svg css']])
+})
+
+test('an element whose name only starts with script or style is markup', () => {
+  assert.deepEqual(tags('<template>\n<style-guide>\n<!-- TODO: add tokens -->\n</style-guide>\n</template>', 'a.vue'), [[3, 'TODO', 'add tokens']])
+  assert.deepEqual(tags('<script-loader src="x"></script-loader>\n<script>\n// TODO: real script\n</script>', 'a.html'), [[3, 'TODO', 'real script']])
+  assert.deepEqual(tags('<style>\n/* TODO: css */\n</style-x>\n</style>\n<!-- HACK: after -->', 'a.html'), [[2, 'TODO', 'css'], [5, 'HACK', 'after']])
+})
+
+test('an escaped triple quote does not close a docstring', () => {
+  assert.deepEqual(tags('def f():\n    """Doc \\""" x"""\n    # TODO real\n', 'a.py'), [[3, 'TODO', 'real']])
+  assert.deepEqual(tags('"""Line one \\\nTODO: after an escaped newline\n"""\n# FIXME: after\n', 'a.py'), [[2, 'TODO', 'after an escaped newline'], [4, 'FIXME', 'after']])
+})
+
+test('CMakeLists.txt and requirements.txt are read with the # syntax', () => {
+  assert.deepEqual(tags('cmake_minimum_required(VERSION 3.10)\n# TODO: cmake\n', 'CMakeLists.txt'), [[2, 'TODO', 'cmake']])
+  assert.deepEqual(tags('requests==2.31 # FIXME: pin\n', 'requirements.txt'), [[1, 'FIXME', 'pin']])
+  assert.deepEqual(findTodos('# TODO: plain text\n', 'notes.txt'), [])
+})
+
+test('a backslash before the end of an html comment does not hide the end', () => {
+  assert.deepEqual(tags('<!-- TODO: path C:\\-->\n<!-- FIXME: next -->', 'a.html'), [[1, 'TODO', 'path C:\\'], [2, 'FIXME', 'next']])
 })

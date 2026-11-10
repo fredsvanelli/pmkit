@@ -21,7 +21,7 @@ const TITLE_MAX = 80
 const C_LIKE = { line: ['//'], block: [['/*', '*/']], strings: ['"', "'", '`'] }
 const HASH = { line: ['#'], strings: ['"', "'"] }
 const MARKUP = { block: [['<!--', '-->']] }
-const EMBEDDED = { block: [['<!--', '-->']], embedded: true } // html, vue, svelte, xml and svg read their <script> and <style> elements
+const EMBEDDED = { block: [['<!--', '-->']], embedded: true } // html, vue, svelte and svg read their <script> and <style> elements
 const STYLES = {
   c: C_LIKE,
   c_hash: { ...C_LIKE, line: ['//', '#'] }, // php and Terraform take both marks
@@ -36,6 +36,7 @@ const STYLES = {
   hash: HASH,
   ignore: { line: ['#'], lineStart: true }, // git and docker read # as a comment only at the start of a line
   markup: EMBEDDED,
+  xml: MARKUP, // an xml <style> or <script> is data (Android styles, Ant), so its <!-- --> comments count
   md: { ...MARKUP, markdown: true },
 }
 const EXTENSIONS = {
@@ -50,11 +51,12 @@ const EXTENSIONS = {
   py: ['py'],
   hash: ['sh', 'bash', 'zsh', 'rb', 'yaml', 'yml', 'toml', 'r', 'pl', 'ex', 'exs', 'ps1', 'mk'],
   ignore: ['gitignore', 'gitattributes', 'dockerignore', 'npmignore'],
-  markup: ['html', 'htm', 'xml', 'svg', 'vue', 'svelte'],
+  markup: ['html', 'htm', 'svg', 'vue', 'svelte'],
+  xml: ['xml'],
   md: ['md', 'markdown'],
 }
 const BY_EXTENSION = new Map(Object.entries(EXTENSIONS).flatMap(([style, list]) => list.map((ext) => [ext, STYLES[style]])))
-const BY_NAME = new Map(['Makefile', 'Dockerfile', 'Containerfile', 'Gemfile', 'Rakefile'].map((name) => [name, STYLES.hash]))
+const BY_NAME = new Map(['Makefile', 'Dockerfile', 'Containerfile', 'Gemfile', 'Rakefile', 'CMakeLists.txt', 'requirements.txt'].map((name) => [name, STYLES.hash]))
 /** File types with no comment syntax by nature (text, data, media). The scan does not read them, and does not warn about them. */
 const NO_COMMENTS = new Set([
   '.txt', '.jsonl', '.ndjson', '.csv', '.tsv', '.log', '.lock', '.gitkeep', '.keep', 'LICENSE',
@@ -206,6 +208,10 @@ function commentLines(source, style) {
         line += 1
       } else buf += ch
       i += 1
+    } else if (ch === '\\' && (close === '"""' || close === "'''") && i + 1 < source.length && source[i + 1] !== '\n') {
+      // An escaped quote inside a docstring does not close it.
+      buf += source.slice(i, i + 2)
+      i += 2
     } else if (source.startsWith(close, i)) {
       push()
       mode = 'code'
@@ -224,7 +230,7 @@ function commentLines(source, style) {
 }
 
 // ponytail: a scan for `<!--`, `<script>` and `<style>`, not an html parser: a `>` inside a quoted attribute ends the tag.
-const OPENING = /<!--|<(script|style)\b([^<>]*)>/gi
+const OPENING = /<!--|<(script|style)(?=[\s/>])([^<>]*)>/gi
 const JS_TYPE = /^(?:module|(?:text|application)\/(?:javascript|ecmascript|babel|jsx|typescript))$/i
 const blank = (text) => text.replace(/[^\n]/g, ' ')
 
@@ -233,6 +239,14 @@ function elementSyntax(name, attrs) {
   if (name === 'style') return /\blang\s*=\s*["']?(scss|less|sass|styl)/i.test(attrs) ? STYLES.c : STYLES.css
   const type = /\btype\s*=\s*["']?([^"'\s>]*)/i.exec(attrs)?.[1]
   return !type || JS_TYPE.test(type) ? STYLES.c : null
+}
+
+/** The index of the first `</name` at or after `from` that ends the name (`</style>`, not `</style-guide>`), or -1. */
+function closingTag(lower, name, from) {
+  for (let at = lower.indexOf(`</${name}`, from); at !== -1; at = lower.indexOf(`</${name}`, at + 1)) {
+    if (!/[\w-]/.test(lower[at + name.length + 2] ?? '')) return at
+  }
+  return -1
 }
 
 /**
@@ -264,7 +278,7 @@ function markupLines(text) {
     const name = match[1].toLowerCase()
     if (match[2].trimEnd().endsWith('/') || noClose.has(name)) continue
     const start = OPENING.lastIndex
-    const end = lower.indexOf(`</${name}`, start)
+    const end = closingTag(lower, name, start)
     if (end === -1) {
       noClose.add(name) // no later element of this name closes either
       continue
