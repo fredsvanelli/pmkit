@@ -2,14 +2,14 @@
 id: PMK-209
 title: Improve deploys list and ci logs
 type: feature
-status: in_review
+status: done
 priority: medium
 estimate: 3
 assignee: fred
 related: [PMK-49]
 branch: pmk-209-improve-deploys-list-and-ci-logs
 created: 2026-11-08T20:37:22.501Z
-updated: 2026-11-10T00:07:35Z
+updated: 2026-11-10T00:51:22Z
 ---
 
 ## Description
