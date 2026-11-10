@@ -13,7 +13,7 @@ export const TRACKER_OPERATIONS = [
   'getCapacity', 'setCapacity', 'getDaysOff', 'updateCycleCapacity',
   'metricEvents',
   'readDocument', 'createDocument', 'listDocuments',
-  'saveView', 'listViews', 'runView',
+  'saveView', 'listViews', 'runView', 'deleteView', 'renameView',
   'listGoals', 'getGoal', 'createGoal', 'goalProgress', 'setEpicGoal',
   'listCustomers', 'getCustomer', 'createCustomer', 'listRequests', 'getRequest', 'createRequest', 'acceptRequest', 'declineRequest', 'listDemandSignals',
   'listNotifications', 'markRead',

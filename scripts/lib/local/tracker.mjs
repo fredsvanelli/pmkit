@@ -2115,8 +2115,45 @@ export function createLocalTracker(root, {
     return { before, after }
   }
 
+  /** The view as stored, or { name, unreadable } when its file does not parse, so a broken view can still be deleted or renamed. */
+  function storedView(name) {
+    try {
+      return readView(name)
+    } catch (error) {
+      if (!(error instanceof PmkitError) || error.details?.reason !== 'view_file_broken') throw error
+      return { name, unreadable: error.message }
+    }
+  }
+
+  function deleteView(name, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const before = storedView(name)
+    if (!dryRun) {
+      const file = path.join(viewsDir, `${name}.yaml`)
+      fs.rmSync(file)
+      writtenPaths.add(file)
+    }
+    return { before, after: null }
+  }
+
+  /** Moves the file as it is, so the stored filter does not change. A case-only rename of the same view is allowed. */
+  function renameView(name, newName, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    requireViewName(newName)
+    const before = storedView(name)
+    const clash = [...viewStems(viewsDir)].find((stem) => stem !== name && stem.toLowerCase() === newName.toLowerCase())
+    if (clash !== undefined) throw new PmkitError('CONFLICT', `view ${clash} already exists`, 'Pick another name, or delete that view first')
+    if (!dryRun && newName !== name) {
+      const [from, to] = [path.join(viewsDir, `${name}.yaml`), path.join(viewsDir, `${newName}.yaml`)]
+      fs.renameSync(from, to)
+      writtenPaths.add(from)
+      writtenPaths.add(to)
+    }
+    return { before, after: { ...before, name: newName } }
+  }
+
   return {
-    saveView, listViews, runView,
+    saveView, listViews, runView, deleteView, renameView,
     listGoals, getGoal, createGoal, goalProgress, setEpicGoal,
     listCustomers, getCustomer, createCustomer, listRequests, getRequest, createRequest, acceptRequest, declineRequest, listDemandSignals,
     listNotifications, markRead,

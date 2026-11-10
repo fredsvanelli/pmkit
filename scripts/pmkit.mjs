@@ -225,6 +225,9 @@ function issueFilter(ctx) {
 const quoteValue = (value) => (/[\s=",]/.test(String(value)) ? JSON.stringify(String(value)) : String(value))
 const filterText = (filter) => Object.entries(filter).filter(([, value]) => value !== null && value !== undefined).map(([key, value]) => `${key}=${[value].flat().map(quoteValue).join(',')}`).join(' ')
 
+/** The filter line of a stored view, or what made its file unreadable. */
+const storedViewText = (view) => (view.unreadable === undefined ? `filter: ${filterText(view.filter)}` : `a file that could not be read (${view.unreadable})`)
+
 /** The result of an issue search as the CLI prints it: the table and the warnings. `sort` and `sprint` are the filter values. */
 async function issueSearchResult(tracker, found, { sort, sprint }) {
   const warnings = found.problems.map(problemLine)
@@ -529,6 +532,22 @@ export const COMMANDS = [
       const tracker = await ctx.tracker()
       const found = await tracker.runView(ctx.args[0])
       return issueSearchResult(tracker, found, { sort: found.view.filter.sort, sprint: found.view.filter.sprint })
+    },
+  },
+  {
+    name: 'views delete', summary: 'deletes a saved view; --dry-run is the full preview', usage: '<name>', write: true, args: ['name'], flags: [],
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).deleteView(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })
+      const text = `deleted view ${result.before.name}\n${storedViewText(result.before)}`
+      return { data: result, text: ctx.dryRun ? `${text}\ndry run: nothing was written` : text, commit: result.before.name }
+    },
+  },
+  {
+    name: 'views rename', summary: 'renames a saved view and keeps its filter', usage: '<name> <new-name>', write: true, args: ['name', 'new-name'], flags: [],
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).renameView(ctx.args[0], ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })
+      const text = `renamed view ${result.before.name} to ${result.after.name}\n${storedViewText(result.after)}`
+      return { data: result, text: ctx.dryRun ? `${text}\ndry run: nothing was written` : text, commit: result.after.name }
     },
   },
   {

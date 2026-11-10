@@ -2466,3 +2466,17 @@ test('views run prints a stable error.reason for each INVALID_INPUT case and non
   assert.equal(error('missing').code, 'NOT_FOUND')
   assert.equal(error('missing').reason, undefined)
 })
+
+test('views delete and views rename change the view files, and --dry-run does not (PMK-212)', () => {
+  const root = makeRepo('team')
+  json(root, ['views', 'save', 'a', '--blocked'])
+  const renamed = json(root, ['views', 'rename', 'a', 'b'])
+  assert.deepEqual(renamed.after, { name: 'b', filter: { blocked: true } })
+  assert.match(run(root, ['views', 'rename', 'b', 'c', '--dry-run']).stdout, /renamed view b to c[\s\S]*dry run: nothing was written/)
+  const dry = run(root, ['views', 'delete', 'b', '--dry-run'])
+  assert.match(dry.stdout, /deleted view b\nfilter: blocked=true\ndry run: nothing was written/)
+  assert.ok(fs.existsSync(path.join(root, '.issues/views/b.yaml')))
+  assert.deepEqual(json(root, ['views', 'delete', 'b']), { before: { name: 'b', filter: { blocked: true } }, after: null })
+  assert.equal(run(root, ['views', 'list']).stdout.trim(), 'no views')
+  assert.equal(JSON.parse(run(root, ['views', 'delete', 'b', '--json']).stdout).error.code, 'NOT_FOUND')
+})

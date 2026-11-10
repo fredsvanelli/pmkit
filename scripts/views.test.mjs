@@ -147,3 +147,68 @@ test('listViews gives the same reason as runView for each problem', () => {
   fs.writeFileSync(path.join(views, 'scalar.yaml'), 'filter: 3\n')
   assert.deepEqual(tracker.listViews().problems.map((problem) => problem.reason), ['view_file_broken'])
 })
+
+// PMK-212: delete and rename.
+test('deleteView removes the file and returns the view, and a dry run keeps it', () => {
+  const { tracker, views } = setup()
+  tracker.saveView('active', { blocked: true }, 'fred')
+  const dry = tracker.deleteView('active', 'fred', { dryRun: true })
+  assert.deepEqual(dry, { before: { name: 'active', filter: { blocked: true } }, after: null })
+  assert.ok(fs.existsSync(path.join(views, 'active.yaml')))
+  assert.deepEqual(tracker.deleteView('active', 'fred'), dry)
+  assert.equal(fs.existsSync(path.join(views, 'active.yaml')), false)
+  assert.deepEqual(tracker.listViews(), { views: [], problems: [] })
+})
+
+test('deleteView refuses a missing view, an invalid name and an unknown actor', () => {
+  const { tracker } = setup()
+  tracker.saveView('active', { blocked: true }, 'fred')
+  assert.throws(() => tracker.deleteView('gone', 'fred'), code('NOT_FOUND'))
+  assert.throws(() => tracker.deleteView('../x', 'fred'), (error) => error.code === 'INVALID_INPUT' && error.details.reason === 'invalid_view_name')
+  assert.throws(() => tracker.deleteView('active', 'nobody'), code('INVALID_INPUT'))
+})
+
+test('deleteView removes a file that does not parse and says what was lost', () => {
+  const { tracker, views } = setup()
+  fs.mkdirSync(views, { recursive: true })
+  fs.writeFileSync(path.join(views, 'broken.yaml'), 'filter: 3\n')
+  const result = tracker.deleteView('broken', 'fred')
+  assert.equal(result.before.name, 'broken')
+  assert.match(result.before.unreadable, /needs a "filter" map/)
+  assert.equal(fs.existsSync(path.join(views, 'broken.yaml')), false)
+})
+
+test('renameView moves the file as it is, and a dry run writes nothing', () => {
+  const { tracker, views, root } = setup()
+  tracker.saveView('old', { categories: ['done'], limit: 3 }, 'fred')
+  const text = fs.readFileSync(path.join(views, 'old.yaml'), 'utf8')
+  const before = hashTree(root)
+  const dry = tracker.renameView('old', 'new', 'fred', { dryRun: true })
+  assert.deepEqual(dry, { before: { name: 'old', filter: { categories: ['done'], limit: 3 } }, after: { name: 'new', filter: { categories: ['done'], limit: 3 } } })
+  assert.equal(hashTree(root), before)
+  assert.deepEqual(tracker.renameView('old', 'new', 'fred'), dry)
+  assert.equal(fs.readFileSync(path.join(views, 'new.yaml'), 'utf8'), text)
+  assert.deepEqual(tracker.listViews().views.map((v) => v.name), ['new'])
+})
+
+test('renameView refuses a name another view has in any case, and allows a case-only rename', () => {
+  const { tracker } = setup()
+  tracker.saveView('mine', { assignee: 'me' }, 'fred')
+  tracker.saveView('other', { blocked: true }, 'fred')
+  assert.throws(() => tracker.renameView('mine', 'other', 'fred'), code('CONFLICT'))
+  assert.throws(() => tracker.renameView('mine', 'OTHER', 'fred'), code('CONFLICT'))
+  assert.throws(() => tracker.renameView('gone', 'x', 'fred'), code('NOT_FOUND'))
+  assert.throws(() => tracker.renameView('mine', 'a b', 'fred'), (error) => error.details?.reason === 'invalid_view_name')
+  assert.deepEqual(tracker.renameView('mine', 'Mine', 'fred').after, { name: 'Mine', filter: { assignee: 'me' } })
+  assert.deepEqual(tracker.listViews().views.map((v) => v.name), ['Mine', 'other'])
+})
+
+test('renameView moves a file that does not parse and marks both sides unreadable', () => {
+  const { tracker, views } = setup()
+  fs.mkdirSync(views, { recursive: true })
+  fs.writeFileSync(path.join(views, 'broken.yaml'), 'filter: 3\n')
+  const result = tracker.renameView('broken', 'fixed', 'fred')
+  assert.equal(result.after.name, 'fixed')
+  assert.match(result.after.unreadable, /needs a "filter" map/)
+  assert.equal(fs.readFileSync(path.join(views, 'fixed.yaml'), 'utf8'), 'filter: 3\n')
+})
