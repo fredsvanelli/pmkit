@@ -6,6 +6,7 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { makeRepo, userStoreEnv } from './test-helpers.mjs'
+import { fakeGh, ghCalls } from './fake-gh.mjs'
 
 const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), 'pmkit.mjs')
 const ITEM_KEYS = ['key', 'kind', 'issue', 'title', 'at', 'by', 'in', 'comment', 'excerpt', 'from', 'to', 'synthetic', 'seen']
@@ -30,9 +31,9 @@ test('inbox list prints the stable JSON keys, the item keys and a table with the
   const { run, json } = setup()
   assert.equal(run(['issues', 'assign', 'ISS-1V9Z', 'fred'], { user: 'ana', now: '2026-10-31T09:00:00Z' }).status, 0)
   const empty = json(['inbox', 'list', '--since', '2026-10-31T09:30:00Z'])
-  assert.deepEqual(Object.keys(empty), ['available', 'user', 'checked', 'since', 'hidden', 'items', 'counts', 'complete', 'problems'])
+  assert.deepEqual(Object.keys(empty), ['available', 'user', 'checked', 'since', 'hidden', 'items', 'counts', 'complete', 'problems', 'reviews'])
   assert.deepEqual(empty.items, [])
-  assert.match(run(['inbox', 'list', '--since', '2026-10-31T09:30:00Z']).stdout, /no unseen mentions or assignments for fred since 2026-10-31T09:30:00Z/)
+  assert.match(run(['inbox', 'list', '--since', '2026-10-31T09:30:00Z']).stdout, /no unseen mentions, assignments or status changes for fred since 2026-10-31T09:30:00Z/)
   const data = json(['inbox', 'list'])
   assert.equal(data.available, true)
   assert.deepEqual([data.user, data.checked, data.hidden], ['fred', null, 0])
@@ -107,4 +108,103 @@ test('PMK-195: inbox mark-read marks the known keys, warns about an unknown key 
   assert.equal(result.status, 0, result.stderr)
   assert.deepEqual([JSON.parse(result.stdout).marked, JSON.parse(result.stdout).unknown], [[first.key], ['comment:ISS-1V9Z:none']])
   assert.match(result.stderr, /warning: no item has the key comment:ISS-1V9Z:none/)
+})
+
+// PMK-225: review requests from one gh call, and the Text and Seen columns.
+const REVIEW_CALL = 'pr list --state open --limit 200 --json number,url,title,headRefName,author,reviewRequests'
+const pr = (number, requests, extra = {}) => ({ number, url: `https://github.com/acme/repo/pull/${number}`, title: `PR ${number}`, headRefName: `b${number}`, author: { login: 'ana' }, reviewRequests: requests, ...extra })
+
+function withGithub(root, canned) {
+  const file = path.join(root, '.pmkit', 'config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('git_host:\n  system: none', 'git_host:\n  system: github\n  repo: acme/repo'))
+  return fakeGh(canned)
+}
+
+function ghSetup(canned) {
+  const context = setup()
+  const gh = withGithub(context.root, canned)
+  const ghRun = (args, options) => {
+    const result = spawnSync(process.execPath, [CLI, ...args], {
+      cwd: context.root,
+      env: { ...process.env, ...context.store, PMKIT_USER: 'fred', PMKIT_NOW: '2026-10-31T10:00:00Z', PMKIT_SEED: '1', GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: '1', PATH: `${gh.dir}${path.delimiter}${process.env.PATH}`, PMKIT_FAKE_GH: gh.responses, ...options },
+      encoding: 'utf8',
+    })
+    return { status: result.status, stdout: result.stdout, stderr: result.stderr }
+  }
+  return { ...context, gh, ghRun }
+}
+
+test('PMK-225: inbox list --reviews matches review requests by member id or --login, without case, and lists team requests apart', () => {
+  const { ghRun, gh } = ghSetup({
+    [REVIEW_CALL]: { stdout: JSON.stringify([
+      pr(1, [{ __typename: 'User', login: 'Fred' }]),
+      pr(2, [{ __typename: 'User', login: 'fred-gh' }]),
+      pr(3, [{ __typename: 'User', login: 'ana' }]),
+      pr(4, [{ __typename: 'Team', name: 'Core', slug: 'core' }]),
+    ]) },
+  })
+  const result = ghRun(['inbox', 'list', '--reviews', '--login', 'FRED-GH', '--json'])
+  assert.equal(result.status, 0, result.stderr + result.stdout)
+  const data = JSON.parse(result.stdout)
+  assert.deepEqual(data.reviews, {
+    verified: true,
+    requested: [1, 2].map((n) => ({ number: n, url: `https://github.com/acme/repo/pull/${n}`, title: `PR ${n}`, branch: `b${n}`, author: 'ana' })),
+    teamRequests: [{ number: 4, team: 'core' }],
+    complete: true,
+    reason: null,
+  })
+  assert.equal(data.counts.reviewRequests, 2)
+  assert.deepEqual(ghCalls(gh), [REVIEW_CALL])
+  const text = ghRun(['inbox', 'list', '--reviews', '--login', 'fred-gh']).stdout
+  assert.match(text, /2 review requests waiting for fred/)
+  assert.match(text, /PR 1/)
+})
+
+test('PMK-225: inbox list --reviews says not verified, never 0, when gh fails or there is no git host', () => {
+  const failing = ghSetup({ [REVIEW_CALL]: { status: 1, stderr: 'To get started with GitHub CLI, please run:  gh auth login\n' } })
+  const result = failing.ghRun(['inbox', 'list', '--reviews', '--json'])
+  assert.equal(result.status, 0, result.stderr + result.stdout)
+  const data = JSON.parse(result.stdout)
+  assert.deepEqual(data.reviews, { verified: false, requested: null, teamRequests: null, complete: false, reason: 'GitHub CLI is not logged in', code: 'AUTH' })
+  assert.equal(data.counts.reviewRequests, null)
+  assert.match(failing.ghRun(['inbox', 'list', '--reviews']).stdout, /review requests not verified: GitHub CLI is not logged in/)
+  const { json } = setup()
+  const none = json(['inbox', 'list', '--reviews'])
+  assert.deepEqual([none.reviews.verified, none.reviews.code, none.counts.reviewRequests], [false, 'NOT_SUPPORTED', null])
+})
+
+test('PMK-225: 200 pull requests back make the review count incomplete', () => {
+  const many = Array.from({ length: 200 }, (_, i) => pr(i + 1, []))
+  const { ghRun } = ghSetup({ [REVIEW_CALL]: { stdout: JSON.stringify(many) } })
+  const data = JSON.parse(ghRun(['inbox', 'list', '--reviews', '--json']).stdout)
+  assert.deepEqual([data.reviews.verified, data.reviews.complete, data.reviews.reason], [true, false, 'only the 200 most recently created open pull requests were read'])
+})
+
+test('PMK-225: without --reviews the list calls no gh and has reviews null', () => {
+  const { ghRun, gh } = ghSetup({})
+  const data = JSON.parse(ghRun(['inbox', 'list', '--json']).stdout)
+  assert.deepEqual([data.reviews, data.counts.reviewRequests], [null, null])
+  assert.deepEqual(ghCalls(gh), [])
+})
+
+test('PMK-225: the text table shows the mention text cut at 60 characters, the status change and whether an item was seen', () => {
+  const { run, json } = setup()
+  const long = `@fred ${'x'.repeat(80)}`
+  const body = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-body-')), 'body.md')
+  fs.writeFileSync(body, long)
+  const posted = run(['issues', 'comment', 'ISS-1V9Z', '--body-file', body], { user: 'ana', now: '2026-10-31T09:00:00Z' })
+  fs.rmSync(path.dirname(body), { recursive: true })
+  assert.equal(posted.status, 0, posted.stderr + posted.stdout)
+  assert.equal(run(['issues', 'assign', 'ISS-1V9Z', 'fred'], { user: 'ana', now: '2026-10-31T09:01:00Z' }).status, 0)
+  assert.equal(run(['issues', 'move', 'ISS-1V9Z', 'in_progress'], { user: 'ana', now: '2026-10-31T09:02:00Z' }).status, 0)
+  const text = run(['inbox', 'list']).stdout
+  const header = text.split('\n')[0].split('|').map((cell) => cell.trim())
+  assert.deepEqual(header, ['When', 'Kind', 'Issue', 'Title', 'By', 'Where', 'Text', 'Seen', 'Key'])
+  assert.ok(text.includes(`${long.slice(0, 59)}…`))
+  assert.ok(!text.includes(long.slice(0, 61)))
+  assert.match(text, /\w → in_progress/)
+  const key = json(['inbox', 'list']).items[0].key
+  assert.equal(run(['inbox', 'mark-read', '--key', key]).status, 0)
+  const seenRow = run(['inbox', 'list', '--all']).stdout.split('\n').find((line) => line.includes(key))
+  assert.equal(seenRow.split('|').map((cell) => cell.trim())[7], 'yes')
 })

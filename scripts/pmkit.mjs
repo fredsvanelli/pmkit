@@ -966,17 +966,22 @@ export const COMMANDS = [
   },
   // The user inbox (PMK-47). Reads and records the seen keys in the user store, never in the tracker, so neither command is a tracker write.
   {
-    name: 'inbox list', summary: 'the mentions and assignments for a member that the member has not seen, oldest first; the first list shows the last 14 days', usage: '[--as member] [--since timestamp] [--all]',
-    flags: ['as', 'since', 'all'],
+    name: 'inbox list',
+    summary: 'the mentions, assignments and status changes for a member that the member has not seen, oldest first; the first list shows the last 14 days; --reviews adds the open pull requests that request the member\'s review, matched by member id or --login',
+    usage: '[--as member] [--since timestamp] [--all] [--reviews [--login github-login ...]]',
+    flags: ['as', 'since', 'all', 'reviews', 'login'],
     run: async (ctx) => {
       const result = await (await ctx.tracker()).listNotifications({ user: await ctx.actor(), since: ctx.opt('since'), all: ctx.flag('all') })
       const { user, since, hidden, items, complete, problems } = result
+      const reviews = ctx.flag('reviews') ? reviewRequests(ctx, [user, ...ctx.list('login')]) : null
       const lines = []
-      if (items.length === 0) lines.push(`no unseen mentions or assignments for ${user}${since === null ? '' : ` since ${since}`}`)
-      else lines.push(table(['When', 'Kind', 'Issue', 'Title', 'By', 'Where', 'Key'], items.map((i) => [i.at, i.kind, i.issue, i.title ?? '(unreadable)', i.by ?? '', i.in, i.key])))
+      if (items.length === 0) lines.push(`no unseen mentions, assignments or status changes for ${user}${since === null ? '' : ` since ${since}`}`)
+      else lines.push(table(['When', 'Kind', 'Issue', 'Title', 'By', 'Where', 'Text', 'Seen', 'Key'], items.map((i) => [i.at, i.kind, i.issue, i.title ?? '(unreadable)', i.by ?? '', i.in, inboxText(i), i.seen ? 'yes' : 'no', i.key])))
       if (hidden > 0) lines.push(`${hidden} older unseen ${hidden === 1 ? 'item is' : 'items are'} not shown, run pmkit inbox list --all`)
       if (!complete) lines.push(`the inbox is incomplete: ${problems.length} ${problems.length === 1 ? 'problem' : 'problems'} may hide items, run pmkit validate`)
-      return { data: { available: true, ...result }, text: lines.join('\n'), warnings: problemWarnings(problems) }
+      if (reviews !== null) lines.push(...reviewLines(reviews, user))
+      const data = { available: true, ...result, counts: { ...result.counts, reviewRequests: reviews?.verified ? reviews.requested.length : null }, reviews }
+      return { data, text: lines.join('\n'), warnings: problemWarnings(problems) }
     },
   },
   {
@@ -3377,6 +3382,49 @@ function checkUsage(command, { options, positionals }) {
   if (command.rest ? positionals.length < 1 : positionals.length !== expected.length) {
     throw usageError(`${command.name} takes ${command.rest ? 'at least one <id>' : expected.length === 0 ? 'no arguments' : expected.map((a) => `<${a}>`).join(' ')}`, `Usage: ${label}`)
   }
+}
+
+const INBOX_TEXT = 60
+/** The Text cell of an inbox item: the mention excerpt or the status change, cut at 60 characters. */
+function inboxText(item) {
+  const text = item.kind === 'status' && item.to !== null ? `${item.from ?? '?'} → ${item.to}` : (item.excerpt ?? '')
+  return text.length > INBOX_TEXT ? `${text.slice(0, INBOX_TEXT - 1)}…` : text
+}
+
+/**
+ * The open pull requests that request a review of one of `logins` (ignoring case), from one gh call (PMK-225). A request made to a
+ * team never matches and is listed apart. A failed read is `verified: false` with the reason, never an empty list.
+ */
+function reviewRequests(ctx, logins) {
+  const wanted = new Set(logins.map((login) => String(login).toLowerCase()))
+  let prs
+  try {
+    prs = ctx.host().listReviewRequests()
+  } catch (error) {
+    if (!isPmkitError(error)) throw error
+    return { verified: false, requested: null, teamRequests: null, complete: false, reason: error.message, code: error.code }
+  }
+  const requested = []
+  const teamRequests = []
+  for (const pr of prs) {
+    const asks = Array.isArray(pr.reviewRequests) ? pr.reviewRequests : []
+    for (const ask of asks.filter((entry) => entry?.__typename === 'Team')) teamRequests.push({ number: pr.number, team: ask.slug ?? ask.name ?? null })
+    if (asks.some((entry) => entry?.__typename !== 'Team' && typeof entry?.login === 'string' && wanted.has(entry.login.toLowerCase()))) {
+      requested.push({ number: pr.number, url: pr.url ?? null, title: pr.title ?? null, branch: pr.headRefName ?? null, author: pr.author?.login ?? null })
+    }
+  }
+  const complete = prs.length < 200
+  return { verified: true, requested, teamRequests, complete, reason: complete ? null : 'only the 200 most recently created open pull requests were read' }
+}
+
+/** The text lines of the review requests of inbox list. */
+function reviewLines(reviews, user) {
+  if (!reviews.verified) return [`review requests not verified: ${reviews.reason}`]
+  const count = reviews.requested.length
+  const lines = [`${count} review ${count === 1 ? 'request' : 'requests'} waiting for ${user}${reviews.complete ? '' : ` (at least; ${reviews.reason})`}`]
+  if (count > 0) lines.push(table(['PR', 'Title', 'Branch', 'Author'], reviews.requested.map((r) => [`#${r.number}`, r.title ?? '', r.branch ?? '', r.author ?? ''])))
+  if (reviews.teamRequests.length > 0) lines.push(`${reviews.teamRequests.length} team review ${reviews.teamRequests.length === 1 ? 'request is' : 'requests are'} not matched to ${user}`)
+  return lines
 }
 
 function makeHost(ctx) {

@@ -1,9 +1,9 @@
 $ pmkit inbox list
 exit 0
 --- stdout
-When                 | Kind   | Issue | Title        | By  | Where  | Key
----------------------|--------|-------|--------------|-----|--------|--------------------------
-2026-10-16T09:00:00Z | status | ISS-5 | (unreadable) | ana | status | status:ISS-5:569c809940de
+When                 | Kind   | Issue | Title        | By  | Where  | Text             | Seen | Key
+---------------------|--------|-------|--------------|-----|--------|------------------|------|--------------------------
+2026-10-16T09:00:00Z | status | ISS-5 | (unreadable) | ana | status | todo → in_review | no   | status:ISS-5:569c809940de
 the inbox is incomplete: 2 problems may hide items, run pmkit validate
 --- stderr
 warning: ISS-4: CONFLICT The issue file contains git conflict markers.; run pmkit validate
@@ -38,7 +38,8 @@ exit 0
   "counts": {
     "assignments": 0,
     "mentions": 0,
-    "statusChanges": 1
+    "statusChanges": 1,
+    "reviewRequests": null
   },
   "complete": false,
   "problems": [
@@ -52,7 +53,8 @@ exit 0
       "code": "CONFLICT",
       "message": "The issue file contains git conflict markers."
     }
-  ]
+  ],
+  "reviews": null
 }
 --- stderr
 warning: ISS-4: CONFLICT The issue file contains git conflict markers.; run pmkit validate
@@ -61,9 +63,9 @@ warning: ISS-5: CONFLICT The issue file contains git conflict markers.; run pmki
 $ pmkit inbox list --all
 exit 0
 --- stdout
-When                 | Kind   | Issue | Title        | By  | Where  | Key
----------------------|--------|-------|--------------|-----|--------|--------------------------
-2026-10-16T09:00:00Z | status | ISS-5 | (unreadable) | ana | status | status:ISS-5:569c809940de
+When                 | Kind   | Issue | Title        | By  | Where  | Text             | Seen | Key
+---------------------|--------|-------|--------------|-----|--------|------------------|------|--------------------------
+2026-10-16T09:00:00Z | status | ISS-5 | (unreadable) | ana | status | todo → in_review | no   | status:ISS-5:569c809940de
 the inbox is incomplete: 2 problems may hide items, run pmkit validate
 --- stderr
 warning: ISS-4: CONFLICT The issue file contains git conflict markers.; run pmkit validate
@@ -98,7 +100,8 @@ exit 0
   "counts": {
     "assignments": 0,
     "mentions": 0,
-    "statusChanges": 1
+    "statusChanges": 1,
+    "reviewRequests": null
   },
   "complete": false,
   "problems": [
@@ -112,7 +115,8 @@ exit 0
       "code": "CONFLICT",
       "message": "The issue file contains git conflict markers."
     }
-  ]
+  ],
+  "reviews": null
 }
 --- stderr
 warning: ISS-4: CONFLICT The issue file contains git conflict markers.; run pmkit validate
@@ -121,7 +125,7 @@ warning: ISS-5: CONFLICT The issue file contains git conflict markers.; run pmki
 $ pmkit inbox list --as ana --since 2026-10-22T00:00:00Z
 exit 0
 --- stdout
-no unseen mentions or assignments for ana since 2026-10-22T00:00:00Z
+no unseen mentions, assignments or status changes for ana since 2026-10-22T00:00:00Z
 the inbox is incomplete: 2 problems may hide items, run pmkit validate
 --- stderr
 warning: ISS-4: CONFLICT The issue file contains git conflict markers.; run pmkit validate
@@ -140,7 +144,8 @@ exit 0
   "counts": {
     "assignments": 0,
     "mentions": 0,
-    "statusChanges": 0
+    "statusChanges": 0,
+    "reviewRequests": null
   },
   "complete": false,
   "problems": [
@@ -154,7 +159,8 @@ exit 0
       "code": "CONFLICT",
       "message": "The issue file contains git conflict markers."
     }
-  ]
+  ],
+  "reviews": null
 }
 --- stderr
 warning: ISS-4: CONFLICT The issue file contains git conflict markers.; run pmkit validate

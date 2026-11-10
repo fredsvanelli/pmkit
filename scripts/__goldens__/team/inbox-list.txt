@@ -1,7 +1,7 @@
 $ pmkit inbox list
 exit 0
 --- stdout
-no unseen mentions or assignments for fred since 2026-10-09T12:00:00Z
+no unseen mentions, assignments or status changes for fred since 2026-10-09T12:00:00Z
 the inbox is incomplete: 1 problem may hide items, run pmkit validate
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.; run pmkit validate
@@ -19,7 +19,8 @@ exit 0
   "counts": {
     "assignments": 0,
     "mentions": 0,
-    "statusChanges": 0
+    "statusChanges": 0,
+    "reviewRequests": null
   },
   "complete": false,
   "problems": [
@@ -28,7 +29,8 @@ exit 0
       "code": "CONFLICT",
       "message": "The issue file contains git conflict markers."
     }
-  ]
+  ],
+  "reviews": null
 }
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.; run pmkit validate
@@ -36,7 +38,7 @@ warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.; run p
 $ pmkit inbox list --all
 exit 0
 --- stdout
-no unseen mentions or assignments for fred
+no unseen mentions, assignments or status changes for fred
 the inbox is incomplete: 1 problem may hide items, run pmkit validate
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.; run pmkit validate
@@ -54,7 +56,8 @@ exit 0
   "counts": {
     "assignments": 0,
     "mentions": 0,
-    "statusChanges": 0
+    "statusChanges": 0,
+    "reviewRequests": null
   },
   "complete": false,
   "problems": [
@@ -63,7 +66,8 @@ exit 0
       "code": "CONFLICT",
       "message": "The issue file contains git conflict markers."
     }
-  ]
+  ],
+  "reviews": null
 }
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.; run pmkit validate
@@ -71,7 +75,7 @@ warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.; run p
 $ pmkit inbox list --as ana --since 2026-10-22T00:00:00Z
 exit 0
 --- stdout
-no unseen mentions or assignments for ana since 2026-10-22T00:00:00Z
+no unseen mentions, assignments or status changes for ana since 2026-10-22T00:00:00Z
 1 older unseen item is not shown, run pmkit inbox list --all
 the inbox is incomplete: 1 problem may hide items, run pmkit validate
 --- stderr
@@ -90,7 +94,8 @@ exit 0
   "counts": {
     "assignments": 0,
     "mentions": 0,
-    "statusChanges": 0
+    "statusChanges": 0,
+    "reviewRequests": null
   },
   "complete": false,
   "problems": [
@@ -99,7 +104,8 @@ exit 0
       "code": "CONFLICT",
       "message": "The issue file contains git conflict markers."
     }
-  ]
+  ],
+  "reviews": null
 }
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.; run pmkit validate
