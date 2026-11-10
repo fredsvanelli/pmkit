@@ -62,6 +62,85 @@ export function parseNpmAudit(stdout, stderr = '') {
   return { alerts, warnings }
 }
 
+/** The severity of an npm-style name (npm, yarn, pnpm). An unknown name is low, with a warning. */
+function npmStyleSeverity(scanner, name, value, warnings) {
+  const severity = NPM_SEVERITY[value]
+  if (severity !== undefined) return severity
+  warnings.push(`${scanner}: ${name} has the unknown severity "${value}", treated as low`)
+  return 'low'
+}
+
+/**
+ * One alert per package from a list of advisories, each `{ package, severity, title, url, fixAvailable }` with a pmkit
+ * severity. The alert has the highest severity of its advisories, the title and URL of the first advisory with it, and a
+ * fix only when every advisory has one. The same advisory on two dependency paths counts once. Keeps the first-seen order.
+ */
+export function groupAdvisories(scanner, entries) {
+  const byPackage = new Map()
+  for (const entry of entries) {
+    if (!byPackage.has(entry.package)) byPackage.set(entry.package, [])
+    const list = byPackage.get(entry.package)
+    if (!list.some((seen) => seen.title === entry.title && seen.url === entry.url)) list.push(entry)
+  }
+  return [...byPackage].map(([name, list]) => {
+    const top = list.reduce((best, item) => (SEVERITIES.indexOf(item.severity) < SEVERITIES.indexOf(best.severity) ? item : best))
+    return {
+      id: `${scanner}:${name}`, scanner, package: name, title: top.title, severity: top.severity, url: top.url,
+      fixAvailable: list.every((item) => item.fixAvailable), advisories: list.map((item) => ({ title: item.title, url: item.url })),
+    }
+  })
+}
+
+/** An advisory in the npm v6 shape that yarn classic and pnpm print, as a groupAdvisories entry. `<0.0.0` means no patch. */
+function npmStyleAdvisory(scanner, advisory, warnings) {
+  const name = String(advisory.module_name)
+  const patched = typeof advisory.patched_versions === 'string' ? advisory.patched_versions.trim() : ''
+  return {
+    package: name, severity: npmStyleSeverity(scanner, name, advisory.severity, warnings),
+    title: advisory.title ?? 'no advisory title', url: advisory.url ?? null, fixAvailable: patched !== '' && patched !== '<0.0.0',
+  }
+}
+
+/** Parses the NDJSON stdout of yarn classic `yarn audit --json`. Throws an Error when it is not an audit report. */
+export function parseYarnAudit(stdout, stderr = '') {
+  if (!stdout || stdout.trim() === '') throw emptyOutputError('yarn audit', stderr)
+  const lines = []
+  for (const text of stdout.split(/\r?\n/)) {
+    if (text.trim() === '') continue
+    try {
+      lines.push(JSON.parse(text))
+    } catch {
+      // yarn prints plain text when it fails before the audit, for example Yarn Berry without the command.
+    }
+  }
+  const error = lines.find((line) => line?.type === 'error')
+  if (error) throw new Error(`yarn audit failed: ${String(error.data ?? 'no message').replace(/\s+/g, ' ').trim()}`)
+  const advisories = lines.filter((line) => line?.type === 'auditAdvisory' && line.data?.advisory?.module_name !== undefined)
+  if (advisories.length === 0 && !lines.some((line) => line?.type === 'auditSummary')) throw new Error('yarn audit printed no audit report')
+  const warnings = []
+  const alerts = groupAdvisories('yarn-audit', advisories.map((line) => npmStyleAdvisory('yarn-audit', line.data.advisory, warnings)))
+  return { alerts, warnings: [...new Set(warnings)] }
+}
+
+/** Parses the stdout of `pnpm audit --json` (the npm v6 report shape). Throws an Error when it is not an audit report. */
+export function parsePnpmAudit(stdout, stderr = '') {
+  if (!stdout || stdout.trim() === '') throw emptyOutputError('pnpm audit', stderr)
+  let report
+  try {
+    report = JSON.parse(stdout)
+  } catch {
+    throw new Error('pnpm audit output is not valid JSON')
+  }
+  if (report && typeof report.error === 'object' && report.error !== null) {
+    const code = report.error.code ? ` (${report.error.code})` : ''
+    throw new Error(`pnpm audit failed${code}: ${report.error.message ?? 'no message'}`)
+  }
+  if (!report || typeof report.advisories !== 'object' || report.advisories === null) throw new Error('pnpm audit output has no advisories object')
+  const warnings = []
+  const entries = Object.values(report.advisories).filter((advisory) => advisory?.module_name !== undefined)
+  return { alerts: groupAdvisories('pnpm-audit', entries.map((advisory) => npmStyleAdvisory('pnpm-audit', advisory, warnings))), warnings: [...new Set(warnings)] }
+}
+
 /** The most output one scanner may print, in bytes. The same limit as the GitHub host. */
 export const NPM_MAX_BUFFER = 256 * 1024 * 1024
 /** The longest one scanner may run, in milliseconds. */
@@ -110,6 +189,16 @@ export const SCANNERS = [
     id: 'npm-audit', label: 'npm audit', needs: LOCKFILES.join(' or '),
     detect: (root) => LOCKFILES.some((file) => fs.existsSync(path.join(root, file))),
     command: 'npm', args: ['audit', '--json'], shim: true, parse: parseNpmAudit,
+  },
+  {
+    id: 'yarn-audit', label: 'yarn audit', needs: 'yarn.lock',
+    detect: (root) => fs.existsSync(path.join(root, 'yarn.lock')),
+    command: 'yarn', args: ['audit', '--json'], shim: true, parse: parseYarnAudit,
+  },
+  {
+    id: 'pnpm-audit', label: 'pnpm audit', needs: 'pnpm-lock.yaml',
+    detect: (root) => fs.existsSync(path.join(root, 'pnpm-lock.yaml')),
+    command: 'pnpm', args: ['audit', '--json'], shim: true, parse: parsePnpmAudit,
   },
 ]
 

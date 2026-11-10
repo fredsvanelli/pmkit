@@ -27,6 +27,9 @@ function fakeNpm() {
   return dir
 }
 
+const SCANNER_IDS = ['npm-audit', 'yarn-audit', 'pnpm-audit']
+const LOOKED_FOR = 'npm-audit needs package-lock.json or npm-shrinkwrap.json; yarn-audit needs yarn.lock; pnpm-audit needs pnpm-lock.yaml'
+
 const REPORT = JSON.stringify({
   auditReportVersion: 2,
   vulnerabilities: {
@@ -51,7 +54,8 @@ test('alerts list reads npm audit output even when npm exits 1, highest severity
   assert.equal(result.code, 0, result.stdout + result.stderr)
   const data = JSON.parse(result.stdout)
   assert.deepEqual(data.alerts.map((a) => [a.id, a.severity]), [['npm-audit:lodash', 'critical'], ['npm-audit:tar', 'high'], ['npm-audit:minimist', 'medium']])
-  assert.deepEqual(data.scanners, [{ id: 'npm-audit', detected: true, alerts: 3 }])
+  assert.deepEqual(data.scanners[0], { id: 'npm-audit', detected: true, alerts: 3 })
+  assert.ok(data.scanners.slice(1).every((scanner) => !scanner.detected && scanner.alerts === 0))
 })
 
 test('alerts list prints a table in text mode', async () => {
@@ -64,9 +68,9 @@ test('alerts list prints a table in text mode', async () => {
 test('without a lockfile no scanner is found', async () => {
   const result = await setup({ lockfile: null })([])
   assert.equal(result.code, 0, result.stderr)
-  assert.equal(result.stdout.trim(), 'no scanners found in this repository (looked for: npm-audit needs package-lock.json or npm-shrinkwrap.json)')
+  assert.equal(result.stdout.trim(), `no scanners found in this repository (looked for: ${LOOKED_FOR})`)
   const data = JSON.parse((await setup({ lockfile: null })(['--json'])).stdout)
-  assert.deepEqual(data, { incomplete: false, scanners: [{ id: 'npm-audit', detected: false, alerts: 0 }], alerts: [] })
+  assert.deepEqual(data, { incomplete: false, scanners: SCANNER_IDS.map((id) => ({ id, detected: false, alerts: 0 })), alerts: [] })
 })
 
 test('a scanner with no findings prints no alerts', async () => {
@@ -140,7 +144,7 @@ test('npm-shrinkwrap.json alone also counts as a lockfile', async () => {
 test('--severity also filters the per-scanner count', async () => {
   const result = await setup()(['--severity', 'critical', '--json'])
   const data = JSON.parse(result.stdout)
-  assert.deepEqual(data.scanners, [{ id: 'npm-audit', detected: true, alerts: 1 }])
+  assert.deepEqual(data.scanners[0], { id: 'npm-audit', detected: true, alerts: 1 })
   assert.equal(data.alerts.length, 1)
 })
 

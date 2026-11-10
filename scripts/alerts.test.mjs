@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { SEVERITIES, collectAlerts, isNpmMissingOnShell, parseNpmAudit } from './lib/alerts.mjs'
+import { SEVERITIES, collectAlerts, isNpmMissingOnShell, parseNpmAudit, parsePnpmAudit, parseYarnAudit } from './lib/alerts.mjs'
 import { tempDir } from './test-helpers.mjs'
 
 const REPORT_ONE = JSON.stringify({ vulnerabilities: { a: { name: 'a', severity: 'low', via: [], fixAvailable: false } } })
@@ -171,4 +171,71 @@ test('collectAlerts warns with the stderr of an npm that printed nothing', () =>
   const { spawn } = fakeSpawn({ status: 1, stdout: '', stderr: 'npm ERR! code E403' })
   const found = collectAlerts(repoWithLockfile(), { platform: 'linux', spawn })
   assert.equal(found.warnings[0], 'npm-audit failed: npm audit printed empty output: npm ERR! code E403')
+})
+
+// ---- yarn and pnpm (PMK-208) ----
+
+const yarnLine = (module_name, severity, title, extra = {}) => JSON.stringify({ type: 'auditAdvisory', data: { resolution: { id: 1, path: `x>${module_name}` }, advisory: { module_name, severity, title, url: `https://example.com/${title}`, patched_versions: '>=2.0.0', ...extra } } })
+const YARN_SUMMARY = JSON.stringify({ type: 'auditSummary', data: { vulnerabilities: { info: 0, low: 0, moderate: 1, high: 1, critical: 0 } } })
+
+test('yarn audit: advisories of one package fold into one alert with the highest severity', () => {
+  const out = [yarnLine('minimist', 'moderate', 'Pollution'), yarnLine('minimist', 'high', 'RCE'), YARN_SUMMARY].join('\n')
+  const { alerts, warnings } = parseYarnAudit(out)
+  assert.deepEqual(warnings, [])
+  assert.deepEqual(alerts, [{
+    id: 'yarn-audit:minimist', scanner: 'yarn-audit', package: 'minimist', title: 'RCE', severity: 'high', url: 'https://example.com/RCE', fixAvailable: true,
+    advisories: [{ title: 'Pollution', url: 'https://example.com/Pollution' }, { title: 'RCE', url: 'https://example.com/RCE' }],
+  }])
+})
+
+test('yarn audit: the same advisory on two paths is one advisory', () => {
+  const out = [yarnLine('a', 'low', 'X'), yarnLine('a', 'low', 'X'), YARN_SUMMARY].join('\n')
+  assert.equal(parseYarnAudit(out).alerts[0].advisories.length, 1)
+})
+
+test('yarn audit: CRLF lines, no patched version and an empty report', () => {
+  const out = [yarnLine('a', 'info', 'X', { patched_versions: '<0.0.0' }), YARN_SUMMARY].join('\r\n')
+  const [alert] = parseYarnAudit(out).alerts
+  assert.equal(alert.severity, 'low')
+  assert.equal(alert.fixAvailable, false)
+  assert.deepEqual(parseYarnAudit(YARN_SUMMARY), { alerts: [], warnings: [] })
+})
+
+test('yarn audit: an error line, no summary and empty output throw', () => {
+  assert.throws(() => parseYarnAudit(JSON.stringify({ type: 'error', data: 'An unexpected error occurred' })), /^Error: yarn audit failed: An unexpected error occurred$/)
+  assert.throws(() => parseYarnAudit('Usage Error: Couldn\'t find a script named "audit".'), /yarn audit printed no audit report/)
+  assert.throws(() => parseYarnAudit('', 'boom'), /^Error: yarn audit printed empty output: boom$/)
+})
+
+test('pnpm audit: advisories group by package', () => {
+  const advisory = (id, module_name, severity, title, patched = '>=1.0.1') => ({ id, module_name, severity, title, url: `https://example.com/${id}`, patched_versions: patched })
+  const out = JSON.stringify({ actions: [], advisories: { 1: advisory(1, 'lodash', 'critical', 'RCE'), 2: advisory(2, 'lodash', 'low', 'ReDoS'), 3: advisory(3, 'tar', 'moderate', 'Traversal', '<0.0.0') }, metadata: {} })
+  const { alerts } = parsePnpmAudit(out)
+  assert.deepEqual(alerts.map((a) => [a.id, a.severity, a.title, a.fixAvailable, a.advisories.length]), [
+    ['pnpm-audit:lodash', 'critical', 'RCE', true, 2], ['pnpm-audit:tar', 'medium', 'Traversal', false, 1],
+  ])
+})
+
+test('pnpm audit: an error report and bad output throw', () => {
+  assert.throws(() => parsePnpmAudit(JSON.stringify({ error: { code: 'ERR_PNPM_AUDIT_NO_LOCKFILE', message: 'No pnpm-lock.yaml found' } })), /^Error: pnpm audit failed \(ERR_PNPM_AUDIT_NO_LOCKFILE\): No pnpm-lock.yaml found$/)
+  assert.throws(() => parsePnpmAudit('{}'), /pnpm audit output has no advisories object/)
+  assert.throws(() => parsePnpmAudit('nope'), /pnpm audit output is not valid JSON/)
+})
+
+test('an unknown yarn or pnpm severity is low with a warning', () => {
+  const { alerts, warnings } = parseYarnAudit([yarnLine('a', 'weird', 'X'), YARN_SUMMARY].join('\n'))
+  assert.equal(alerts[0].severity, 'low')
+  assert.match(warnings[0], /^yarn-audit: a has the unknown severity "weird", treated as low$/)
+})
+
+test('yarn and pnpm run through the shell on win32, with their .cmd shims', () => {
+  for (const [lockfile, command] of [['yarn.lock', 'yarn.cmd'], ['pnpm-lock.yaml', 'pnpm.cmd']]) {
+    const root = tempDir('pmkit-shim-')
+    fs.writeFileSync(path.join(root, lockfile), '\n')
+    const { spawn, calls } = fakeSpawn({ stdout: '', status: 1 })
+    collectAlerts(root, { platform: 'win32', spawn })
+    assert.equal(calls[0].command, command)
+    assert.deepEqual(calls[0].args, ['audit', '--json'])
+    assert.equal(calls[0].options.shell, true)
+  }
 })
