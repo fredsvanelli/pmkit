@@ -1,3 +1,5 @@
 {"at":"2026-11-10T19:28:14Z","by":"fred","op":"create","to":{"id":"PMK-246","title":"Map Linear releases","type":"feature","status":"backlog","priority":"low","estimate":5,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-10T19:28:14.537Z","updated":"2026-11-10T19:28:14Z"}}
 {"at":"2026-11-10T21:16:02Z","by":"fred","op":"update","field":"parent","from":null,"to":"EPC-5"}
 {"at":"2026-11-10T21:22:26Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-10T22:26:03Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-10T22:26:12Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-246-map-linear-releases"}

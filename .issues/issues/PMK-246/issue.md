@@ -2,13 +2,14 @@
 id: PMK-246
 title: Map Linear releases
 type: feature
-status: backlog
+status: in_progress
 priority: low
 estimate: 5
 assignee: fred
 parent: EPC-5
+branch: pmk-246-map-linear-releases
 created: 2026-11-10T19:28:14.537Z
-updated: 2026-11-10T21:22:26Z
+updated: 2026-11-10T22:26:12Z
 ---
 
 ## Description
