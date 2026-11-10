@@ -177,10 +177,14 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     const target = await parentNodeOf(input?.parent)
     const parentNode = target?.kind === 'issue' ? target.node : undefined
     const epicNode = target?.kind === 'epic' ? target.node : undefined
+    if (input?.milestone !== undefined && input.milestone !== null && !epicNode) {
+      throw new PmkitError('INVALID_INPUT', 'a milestone on a new Linear issue needs an epic parent', 'Add --parent <epic>')
+    }
+    const milestoneNode = await milestoneNodeFor(input?.milestone, { project: epicNode })
     const { team, linearInput, current, cycleNode } = await withRefresh(async (ctx) => {
       const teamNode = createTeam(ctx)
       const cycle = await cycleNodeFor(input?.sprint, teamNode)
-      const linear = toInput(input, { mode: 'create', team: teamNode, context: ctx, parentNode, epicNode, cycleNode: cycle })
+      const linear = toInput(input, { mode: 'create', team: teamNode, context: ctx, parentNode, epicNode, cycleNode: cycle, milestoneNode })
       return { team: teamNode, linearInput: linear, current: ctx, cycleNode: cycle }
     })
     if (dryRun) {

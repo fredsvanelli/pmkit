@@ -1,3 +1,7 @@
 {"at":"2026-11-10T20:03:45Z","by":"fred","op":"create","to":{"id":"PMK-249","title":"Set the milestone in issues create on Linear","type":"feature","status":"backlog","priority":"low","estimate":1,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-10T20:03:45.191Z","updated":"2026-11-10T20:03:45Z"}}
 {"at":"2026-11-10T21:16:02Z","by":"fred","op":"update","field":"parent","from":null,"to":"EPC-5"}
 {"at":"2026-11-10T21:22:26Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-10T21:37:45Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-10T21:37:48Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-249-set-the-milestone-in-issues-create-on"}
+{"at":"2026-11-10T21:38:33Z","by":"fred","op":"comment","to":"2026-11-10T21-38-33Z-fred.md"}
+{"at":"2026-11-10T21:39:13Z","by":"fred","op":"update","field":"acceptance_criteria"}

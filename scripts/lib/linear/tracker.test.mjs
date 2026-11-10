@@ -1092,6 +1092,26 @@ test('createIssue with an epic parent puts the issue in the epic, and updateIssu
   await assert.rejects(linear.updateIssue('ACME-1', { parent: 'P-ACM-1' }, 'user-1'), { code: 'INVALID_INPUT', message: 'parent cannot be set here' })
 })
 
+test('createIssue sets the milestone of the epic parent, and refuses a foreign milestone or no epic before any write', async () => {
+  const { tracker: linear, fake, fetch, projects } = epicSetup()
+  const MS = '22222222-2222-4222-8222-222222222222'
+  projects.seedMilestone(PID, { id: MS, name: 'Alpha' })
+  projects.seed({ id: 'p-other', name: 'Other', teamIds: ['team-acme'] })
+  projects.seedMilestone('p-other', { id: '33333333-3333-4333-8333-333333333333', name: 'Beta' })
+  const dry = await linear.createIssue({ title: 'M', parent: 'P-ACM-1', milestone: MS }, 'user-1', { dryRun: true })
+  assert.equal(dry.after.milestone, MS)
+  assert.equal(mutationsIn(fetch), 0)
+  const { after } = await linear.createIssue({ title: 'M', parent: 'P-ACM-1', milestone: MS }, 'user-1')
+  assert.equal(after.milestone, MS)
+  assert.equal(lastVariables(fetch, 'PmkitIssueCreate').input.projectMilestoneId, MS)
+  const before = fake.records.length
+  await assert.rejects(linear.createIssue({ title: 'M', parent: 'P-ACM-1', milestone: '33333333-3333-4333-8333-333333333333' }, 'user-1'), { code: 'INVALID_INPUT', message: 'milestone 33333333-3333-4333-8333-333333333333 is not in the project of the issue' })
+  for (const parent of [undefined, 'ACME-1']) {
+    await assert.rejects(linear.createIssue({ title: 'M', parent, milestone: MS }, 'user-1', { dryRun: true }), { code: 'INVALID_INPUT', nextStep: 'Add --parent <epic>' })
+  }
+  assert.equal(fake.records.length, before)
+})
+
 test('each of the three project keys works as a parent and reads back as the canonical id', async () => {
   const { tracker: linear, projects } = epicSetup()
   const slug = projects.projects[0].slugId
