@@ -11,6 +11,8 @@ import path from 'node:path'
 import { fakeLinearIssues } from '../fake-linear-api.mjs'
 
 const inputs = path.join(import.meta.dirname, '_inputs')
+// The fake Linear API of the Linear entry, set when its routes are built, so that expect can read the posted comments.
+const fake = {}
 const log = ['issues', 'log-time', 'ISS-5N1R', '1h30']
 const comment = ['issues', 'comment', 'ACME-2', '--body-file', path.join(inputs, 'log-time-comment.md')]
 
@@ -71,6 +73,7 @@ const linear = {
       const issues = fakeLinearIssues()
       issues.seed({ title: 'Export the invoice list as JSON', description: 'JSON export of the invoice list.', stateId: 'state-8' })
       issues.seed({ title: 'Export the invoice list as CSV', description: 'CSV export of the invoice list.' })
+      fake.issues = issues
       return issues.routes
     },
   },
@@ -97,7 +100,11 @@ const linear = {
   expect(repo, saved) {
     assert.equal(saved.capabilities.capabilities.find((capability) => capability.id === 'time_tracking').path, 'absent')
     assert.equal(saved.parsed.minutes, 90)
-    assert.equal(repo.newEvents('ACME-2').filter((event) => event.op === 'log_time').length, 0, 'no time entry is written')
+    // The comment is read back from the fake Linear API after the write: one comment on ACME-2 with the time in it.
+    const issue = fake.issues.records.find((record) => record.identifier === 'ACME-2')
+    const comments = fake.issues.comments.filter((item) => item.issueId === issue.id)
+    assert.equal(comments.length, 1, 'one comment is posted on ACME-2')
+    assert.match(comments[0].body, /^Time worked: 90 minutes \(1h30\)\.$/m)
   },
 }
 
