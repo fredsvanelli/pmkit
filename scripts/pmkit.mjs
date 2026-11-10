@@ -527,7 +527,7 @@ export const COMMANDS = [
       if (hasMore) warnings.push(VIEWS_CUT)
       // A Linear view keeps Linear's own filter, which pmkit shows as it is stored.
       const shown = (view) => (view.filter === null ? `linear: ${JSON.stringify(view.linear.filterData)}` : filterText(view.filter))
-      return { data: { views, problems, hasMore }, text: views.length === 0 ? (problems.length === 0 ? 'no views' : `no view could be read: ${problems.length} view ${problems.length === 1 ? 'file' : 'files'} could not be read, run pmkit validate`) : table(['Name', 'Filter'], views.map((view) => [view.name, shown(view)])), warnings }
+      return { data: { views, problems, hasMore }, text: views.length === 0 ? (problems.length === 0 ? (hasMore ? 'no view among the views pmkit read' : 'no views') : `no view could be read: ${problems.length} view ${problems.length === 1 ? 'file' : 'files'} could not be read, run pmkit validate`) : table(['Name', 'Filter'], views.map((view) => [view.name, shown(view)])), warnings }
     },
   },
   {

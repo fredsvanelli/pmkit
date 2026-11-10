@@ -1807,3 +1807,11 @@ test('issues bulk --view refuses a Linear view, whose filter pmkit cannot check'
   assert.equal(errorOf(result).code, 'INVALID_INPUT')
   assert.match(errorOf(result).message, /Linear view Mine/)
 })
+
+test('views list on Linear never says no views when the list is cut', async () => {
+  const { fetch } = withViews([customView('view-3', 'Other team', MINE, { team: { id: 'team-other', key: 'OPS' } })], { endless: true })
+  const listed = await cli(setup({ edit: withTeam }), ['views', 'list'], fetch)
+  assert.equal(listed.code, 0, listed.stdout + listed.stderr)
+  assert.doesNotMatch(listed.stdout, /^no views$/m)
+  assert.match(listed.stdout, /no view among the views pmkit read/)
+})
