@@ -11,7 +11,7 @@ import {
 } from '../../fake-linear-api.mjs'
 import { createLinearClient, isMutation } from './client.mjs'
 import {
-  COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_ARCHIVE, ISSUE_CREATE, ISSUE_UPDATE, RELATION_CREATE, RELATION_DELETE,
+  COMMENT_CREATE, COMMENT_RESOLVE, ISSUE_ARCHIVE, ISSUE_CREATE, ISSUE_UNARCHIVE, ISSUE_UPDATE, RELATION_CREATE, RELATION_DELETE,
 } from './documents.mjs'
 import { PROBES, commentProbe, cycleProbe, descriptionProbe, relationProbe } from './live-probes.mjs'
 import { buildLiveRun, installSignalHandlers, registerLiveSuite, runCleanup } from './contract-live.mjs'
@@ -147,6 +147,10 @@ test('issueCreate checks the team and every id it carries', async () => {
   // The create made i-1 the run's own.
   await send(guarded, ISSUE_ARCHIVE, { id: 'i-1' })
   assert.equal(inner.calls.length, 2)
+  // PMK-222: the restore passes for the run's own issue only.
+  await send(guarded, ISSUE_UNARCHIVE, { id: 'i-1' })
+  await assert.rejects(send(guarded, ISSUE_UNARCHIVE, { id: 'i-9' }), REFUSED)
+  assert.equal(inner.calls.length, 3)
 })
 
 test('projectCreate refuses a second team and passes with exactly the test team', async () => {
@@ -246,7 +250,7 @@ test('after stop(), suite mutations are refused and the deletes of owned ids sti
   assert.equal(inner.calls.length, 3)
 })
 
-test('a caller passes its own allowlist, and the suite list has the 14 mutations of the spec table', async () => {
+test('a caller passes its own allowlist, and the suite list has the 15 mutations of the spec table', async () => {
   const own = { teamUpdate: (variables) => (variables.input?.name === 'ok' ? null : 'wrong name') }
   const { inner, ...guarded } = opened({ allowlist: own })
   const update = 'mutation Update($input: TeamUpdateInput!) { teamUpdate(input: $input) { success } }'
@@ -254,7 +258,7 @@ test('a caller passes its own allowlist, and the suite list has the 14 mutations
   await assert.rejects(send(guarded, update, { input: { name: 'bad' } }), /refusing Update: wrong name/)
   await assert.rejects(send(guarded, ISSUE_CREATE, { input: { teamId: TEAM } }), REFUSED)
   assert.equal(inner.calls.length, 1)
-  assert.equal(Object.keys(SUITE_ALLOWLIST).length, 14)
+  assert.equal(Object.keys(SUITE_ALLOWLIST).length, 15)
 })
 
 /** Sends each [document, variables] attack through a guard that owns i-1, and checks that none reaches the fetch. */
@@ -322,7 +326,7 @@ test('issueDelete refuses permanentlyDelete passed through a variable default', 
 test('every mutation document the adapter and the run send has the shape the guard accepts', () => {
   const documents = [
     ISSUE_CREATE, ISSUE_UPDATE, ISSUE_ARCHIVE, RELATION_CREATE, RELATION_DELETE, COMMENT_CREATE, COMMENT_RESOLVE, PROJECT_CREATE,
-    PROJECT_UPDATE_CREATE, TEAM_CREATE, STATE_CREATE, CYCLE_START, ISSUE_DELETE, PROJECT_DELETE,
+    PROJECT_UPDATE_CREATE, TEAM_CREATE, STATE_CREATE, CYCLE_START, ISSUE_DELETE, PROJECT_DELETE, ISSUE_UNARCHIVE,
   ]
   const roots = documents.map((document) => {
     const read = readMutation(document)

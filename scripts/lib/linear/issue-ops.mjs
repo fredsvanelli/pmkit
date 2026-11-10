@@ -7,7 +7,7 @@ import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refu
 import { compareIds } from '../ids.mjs'
 import { checkFilter } from '../issue-filter.mjs'
 import { cycleKey } from './cycles.mjs'
-import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
+import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UNARCHIVE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
 import { finishSearch, translateFilter } from './filter.mjs'
 import { blockedOpen, isIssueId, issueKey, makeContext, stateCategory, toIssue } from './issues.mjs'
 import { applyInput, createTeam, requireAssignee, skeletonNode, teamOf, teamStates, toInput } from './writes.mjs'
@@ -330,5 +330,19 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return result
   }
 
-  return { getIssue, searchIssues, cycleNodeFor, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue, requireViewer, mapped, writeUpdate, parentNodeOf, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
+  /** Brings an issue back from Linear's trash with issueUnarchive (PMK-222). Only a trashed issue qualifies; a dry run sends no mutation. */
+  async function restore(id, actor, { dryRun = false } = {}) {
+    await requireViewer(actor)
+    requireWorkspace()
+    if (!isIssueId(id)) throw notFound(id)
+    const node = (await client.request(ISSUE_BY_ID_QUERY, { id: issueKey(id) }))?.issues?.nodes?.[0]
+    if (!node) throw notFound(id)
+    if (node.trashed !== true) throw new PmkitError('INVALID_INPUT', `${node.identifier} is not in Linear's trash`, `pmkit issues get ${node.identifier}`)
+    if (dryRun) return { before: null, after: await mapped({ ...node, trashed: false, archivedAt: null }) }
+    const answer = await client.request(ISSUE_UNARCHIVE, { id: node.id })
+    if (answer?.issueUnarchive?.success !== true) throw new PmkitError('UPSTREAM', `Linear did not restore ${node.identifier}`, `Run pmkit issues restore ${node.identifier} again`)
+    return { before: null, after: await mapped(await readNode(node.identifier)) }
+  }
+
+  return { getIssue, searchIssues, cycleNodeFor, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue, restore, requireViewer, mapped, writeUpdate, parentNodeOf, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
 }

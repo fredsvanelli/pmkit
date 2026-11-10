@@ -760,6 +760,14 @@ export function fakeLinearIssues({
     record.updatedAt = at
     return { issueDelete: { success: true } }
   })
+  // PMK-222: an unarchive brings a trashed or archived issue back.
+  routes.PmkitIssueUnarchive = mutation('PmkitIssueUnarchive', ({ id }) => {
+    const record = requireIssue(id)
+    record.trashed = false
+    record.archivedAt = null
+    record.updatedAt = stamp()
+    return { issueUnarchive: { success: true } }
+  })
   routes.PmkitCommentsByIds = query('PmkitCommentsByIds', ({ ids }) => ({ comments: { nodes: commentRecords.filter((item) => (ids ?? []).includes(item.id)).map(commentNode) } }))
   // Created labels go into `labels`, so pass one array to fakeWorkspace and fakeLinearIssues and discovery lists them.
   routes.PmkitLabelCreate = mutation('PmkitLabelCreate', ({ input }) => {

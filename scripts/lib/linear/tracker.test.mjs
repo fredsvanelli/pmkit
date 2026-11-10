@@ -277,10 +277,10 @@ test('no file under the store holds the key', async () => {
 
 // A Linear tracker over the stateful fake, scoped to team ACME, with in_review and two types mapped.
 function linearSetup({ mappings = { status: { in_review: 'In Review' }, types: { bug: 'Bug', feature: 'Feature' } }, scope = { workspace: 'acme', team: 'ACME' },
-  workspace = {}, issues = {}, nestedPage, uuid, now = at(0), context = setup({ scope }) } = {}) {
+  workspace = {}, issues = {}, nestedPage, uuid, now = at(0), context = setup({ scope }), routes = () => ({}) } = {}) {
   const fake = fakeLinearIssues({ ...workspace, ...issues, ...(nestedPage ? { nestedPage } : {}) })
   const projects = fakeLinearProjects({ issues: fake, teams: workspace.teams, states: workspace.states })
-  const fetch = fakeLinearFetch({ ...fakeWorkspace(workspace), ...fake.routes, ...projects.routes })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace(workspace), ...fake.routes, ...projects.routes, ...routes(fake) })
   context.config.pmkit.mappings = mappings
   const linear = createLinearTracker(context.config, { env: context.env, now, fetch, ...(uuid ? { uuid } : {}) })
   return { tracker: linear, fake, projects, fetch, context }
@@ -1367,7 +1367,7 @@ test('a Linear dry run sends no mutation, a delete sends issueDelete once, and t
   assert.equal(dry.after, null)
   assert.equal(dry.before.id, 'ACME-3')
   assert.deepEqual(dry.removes, { trash: true })
-  assert.ok(dry.unchecked.length > 0)
+  assert.ok(dry.unchecked.includes('Linear documents'), dry.unchecked.join('; '))
   assert.equal(mutationsIn(fetch), 0)
   const done = await linear.delete('ACME-3', 'user-1')
   assert.equal(done.after, null)
@@ -1396,4 +1396,67 @@ test('goal reads refuse with the plan hint on Free and send no initiative query,
   assert.equal((await business.tracker.getGoal('ini-1')).title, 'Grow')
   assert.equal((await business.tracker.goalProgress('INI-1')).total, 0)
   await assert.rejects(business.tracker.createGoal({ title: 'X' }, 'user-1'), (error) => error.code === 'NOT_SUPPORTED' && /does not implement createGoal/.test(error.message))
+})
+
+// PMK-222: restore from Linear's trash, and the edge cases of a delete.
+const answer = (field, payload) => () => ({ status: 200, json: { data: { [field]: payload } } })
+
+test('restore brings a trashed issue back: a dry run sends no mutation, the real run sends issueUnarchive once', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  await linear.delete('ACME-3', 'user-1')
+  const before = mutationsIn(fetch)
+  const dry = await linear.restore('ACME-3', 'user-1', { dryRun: true })
+  assert.equal(dry.before, null)
+  assert.equal(dry.after.id, 'ACME-3')
+  assert.equal(dry.after.archived, false)
+  assert.equal(mutationsIn(fetch), before)
+  await assert.rejects(linear.getIssue('ACME-3'), { code: 'NOT_FOUND' })
+  const done = await linear.restore('ACME-3', 'user-1')
+  assert.equal(done.after.id, 'ACME-3')
+  assert.equal(namesOf(fetch).filter((name) => name === 'PmkitIssueUnarchive').length, 1)
+  assert.equal((await linear.getIssue('ACME-3')).title, 'Three')
+})
+
+test('restore of an issue that is not in the trash is INVALID_INPUT and sends no mutation', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  await assert.rejects(linear.restore('ACME-1', 'user-1'), { code: 'INVALID_INPUT', message: "ACME-1 is not in Linear's trash", nextStep: 'pmkit issues get ACME-1' })
+  await assert.rejects(linear.restore('ACME-99', 'user-1'), { code: 'NOT_FOUND' })
+  await assert.rejects(linear.restore('../ACME-1', 'user-1'), { code: 'NOT_FOUND' })
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('restore answered with success false is UPSTREAM and the issue stays in the trash', async () => {
+  const { tracker: linear, fake } = linearSetup({ routes: () => ({ PmkitIssueUnarchive: answer('issueUnarchive', { success: false }) }) })
+  three(fake)
+  await linear.delete('ACME-3', 'user-1')
+  await assert.rejects(linear.restore('ACME-3', 'user-1'), { code: 'UPSTREAM', message: 'Linear did not restore ACME-3' })
+  await assert.rejects(linear.getIssue('ACME-3'), { code: 'NOT_FOUND' })
+})
+
+test('a delete answered with issueDelete success false is UPSTREAM and the issue is still there', async () => {
+  const { tracker: linear, fake } = linearSetup({ routes: () => ({ PmkitIssueDelete: answer('issueDelete', { success: false }) }) })
+  three(fake)
+  await assert.rejects(linear.delete('ACME-3', 'user-1'), { code: 'UPSTREAM', message: 'Linear did not delete ACME-3' })
+  assert.equal((await linear.getIssue('ACME-3')).title, 'Three')
+})
+
+test('a delete of an ID with ../ is NOT_FOUND and sends no request', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  const sent = fetch.calls.length
+  for (const id of ['../ACME-1', 'ACME-1/..', '../../etc']) await assert.rejects(linear.delete(id, 'user-1', { dryRun: true }), { code: 'NOT_FOUND' })
+  assert.ok(fetch.calls.slice(sent).every((call) => !/PmkitIssue(ById|Delete|References)/.test(operationName(call.body.query))), namesOf(fetch).join(', '))
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('a delete of an epic key is NOT_FOUND and sends no mutation', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  const epic = (await linear.createDeliverable({ title: 'An epic' }, 'user-1')).after.id
+  const before = mutationsIn(fetch)
+  await assert.rejects(linear.delete(epic, 'user-1'), { code: 'NOT_FOUND' })
+  assert.equal(mutationsIn(fetch), before)
+  assert.equal((await linear.getDeliverable(epic)).title, 'An epic')
 })

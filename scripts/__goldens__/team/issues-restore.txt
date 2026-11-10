@@ -1,0 +1,41 @@
+$ pmkit issues restore ISS-5N1R
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: the Local tracker has no trash: a deleted issue comes back from git history
+next: git log --diff-filter=D -1 --format=%h -- .issues/issues/ISS-5N1R finds the commit; git checkout <commit>^ -- .issues/issues/ISS-5N1R brings the folder back
+
+$ pmkit issues restore ISS-5N1R --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_SUPPORTED",
+    "message": "the Local tracker has no trash: a deleted issue comes back from git history",
+    "nextStep": "git log --diff-filter=D -1 --format=%h -- .issues/issues/ISS-5N1R finds the commit; git checkout <commit>^ -- .issues/issues/ISS-5N1R brings the folder back"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit issues restore ISS-5N1R --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: the Local tracker has no trash: a deleted issue comes back from git history
+next: git log --diff-filter=D -1 --format=%h -- .issues/issues/ISS-5N1R finds the commit; git checkout <commit>^ -- .issues/issues/ISS-5N1R brings the folder back
+
+$ pmkit issues restore ISS-5N1R --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_SUPPORTED",
+    "message": "the Local tracker has no trash: a deleted issue comes back from git history",
+    "nextStep": "git log --diff-filter=D -1 --format=%h -- .issues/issues/ISS-5N1R finds the commit; git checkout <commit>^ -- .issues/issues/ISS-5N1R brings the folder back"
+  }
+}
+--- stderr
+(empty)

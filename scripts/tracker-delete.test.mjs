@@ -221,3 +221,32 @@ test('delete needs a member as actor', () => {
   const { tracker, ids: [a] } = setup()
   assert.throws(() => tracker.delete(a, 'nobody'), { code: 'INVALID_INPUT' })
 })
+
+test('restore on the Local tracker is NOT_SUPPORTED and names the git commands that bring the folder back', () => {
+  const { root, tracker, ids: [a] } = setup(1)
+  tracker.delete(a, 'fred')
+  const before = hashTree(root)
+  const error = refused(() => tracker.restore(a, 'fred'))
+  assert.equal(error.code, 'NOT_SUPPORTED')
+  assert.equal(error.message, 'the Local tracker has no trash: a deleted issue comes back from git history')
+  assert.equal(error.nextStep, `git log --diff-filter=D -1 --format=%h -- .issues/issues/${a} finds the commit; git checkout <commit>^ -- .issues/issues/${a} brings the folder back`)
+  assert.equal(refused(() => tracker.restore('../x', 'fred')).code, 'INVALID_INPUT')
+  assert.equal(hashTree(root), before)
+})
+
+test('a delete of an ID with ../ is refused and nothing on disk changes', () => {
+  const { root, tracker, ids: [a] } = setup(1)
+  const before = hashTree(root)
+  for (const id of [`../${a}`, `${a}/..`, '../../etc']) assert.equal(refused(() => tracker.delete(id, 'fred')).code, 'NOT_FOUND')
+  assert.equal(hashTree(root), before)
+})
+
+test('a delete of an epic ID is NOT_FOUND and the epic stays', () => {
+  const root = makeRepo()
+  const tracker = createLocalTracker(root, { now: () => new Date('2026-10-23T12:00:00Z'), random: scriptedRandom([1, 2, 3, 9]) })
+  const epic = tracker.createDeliverable({ title: 'An epic' }, 'fred').after.id
+  const before = hashTree(root)
+  assert.equal(refused(() => tracker.delete(epic, 'fred')).code, 'NOT_FOUND')
+  assert.equal(tracker.getDeliverable(epic).title, 'An epic')
+  assert.equal(hashTree(root), before)
+})

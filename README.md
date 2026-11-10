@@ -101,7 +101,8 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `text redact --file f` | replaces secrets by `[redacted]` and returns `text`, `count`, `counts` and `summary`; the types in `counts` are `private_key`, `url_credentials`, `authorization`, `jwt`, `github_token`, `gitlab_token`, `slack_token`, `ai_api_key`, `stripe_key`, `google_api_key`, `npm_token`, `aws_key`, `bearer`, `curl_user` and `api_key_value` (every value after a secret key, so it trades false positives for no missed secrets); needs no tracker and writes nothing |
 | `issues time-entries <id>` | lists the time logged on an issue, as minutes and as `1h30`, with the total and the totals per person and per sprint (an entry counts for the sprint whose dates hold its date) |
 | `issues archive <id>` | archives an issue |
-| `issues delete <id>` | deletes an issue for good, and refuses while another issue lists it as blocked by, related, duplicate of or parent. `--dry-run` is the full preview. Archive keeps the record and its history, delete does not |
+| `issues delete <id>` | deletes an issue for good, and refuses while another issue lists it as blocked by, related, duplicate of or parent. `--dry-run` is the full preview, with the files of the repository that cite the ID. Archive keeps the record and its history, delete does not |
+| `issues restore <id>` | brings a deleted issue back from Linear's trash. The Local tracker has no trash and answers with the git commands that bring the folder back |
 | `issues bulk <change> <value> (filter flags \| --view name) [--max n] [--expect digest]` | applies one change (`move`, `assign`, `priority`, `estimate`, `label-add`, `label-remove`, `milestone`, `release`, `sprint`, `parent`, `link`) to every matched issue through the one-by-one operations. `--dry-run` is the full preview with a digest, and the real run needs it as `--expect` |
 | `cycle list` | lists sprints |
 | `cycle current` | prints the active sprint |

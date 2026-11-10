@@ -363,7 +363,7 @@ function repoMentions(ctx, id) {
 function deleteText({ before, removes, warnings, mentions, files = [], unchecked }, { dryRun }) {
   const lines = [`${dryRun ? 'would delete' : 'deleted'} ${before.id}  ${before.title}`, issueRecord(before), '']
   if (removes.trash) {
-    lines.push("removes: the issue moves to Linear's trash, where the workspace can restore it for a while")
+    lines.push(`removes: the issue moves to Linear's trash, where the workspace can restore it for a while: pmkit issues restore ${before.id}`)
   } else {
     lines.push('removes:', ...removes.files.map((file) => `  ${file}`))
     const count = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
@@ -921,6 +921,15 @@ export const COMMANDS = [
         unchecked: result.unchecked.flatMap((item) => (item !== REPO_UNCHECKED ? [item] : scan.error === null ? [] : [`${item} (git grep failed: ${scan.error})`])),
       }
       return { data, text: deleteText(data, ctx), commit: result.before.id }
+    },
+  },
+  {
+    name: 'issues restore', summary: "brings a deleted issue back from Linear's trash; the Local tracker answers with the git commands", usage: '<id>', write: true, args: ['id'], flags: [],
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).restore(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })
+      const lines = [`${ctx.dryRun ? 'would restore' : 'restored'} ${result.after.id}  ${result.after.title}`, issueRecord(result.after)]
+      if (ctx.dryRun) lines.push('dry run: nothing was written')
+      return { data: result, text: lines.join('\n'), commit: result.after.id }
     },
   },
   {

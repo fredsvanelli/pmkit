@@ -157,6 +157,8 @@ export const LABEL_DELETE = 'mutation PmkitLabelDelete($id: String!) { issueLabe
 
 // Without permanentlyDelete, Linear moves the issue to its trash.
 export const ISSUE_DELETE = 'mutation PmkitIssueDelete($id: String!) { issueDelete(id: $id) { success } }'
+// PMK-222: unarchiving a trashed issue brings it back from Linear's trash.
+export const ISSUE_UNARCHIVE = 'mutation PmkitIssueUnarchive($id: String!) { issueUnarchive(id: $id) { success } }'
 
 // Custom views (PMK-212). Linear runs the view's own filter, so pmkit never translates filterData.
 export const CUSTOM_VIEWS_QUERY = `query PmkitCustomViews($first: Int!, $after: String) {

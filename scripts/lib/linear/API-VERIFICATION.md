@@ -174,13 +174,13 @@ The team is named `pmkit-test`, has the key `PKT` and carries the marker `pmkit-
 | `findOrCreateTestTeam({ client, guard })` | Finds the team by name or creates it once. Returns `{ team: { id, key }, created }`. Sends no write when the team exists. |
 | `listTestTeamItems({ client, team, guard })` | Returns `{ issues, projects }` that the team holds and are not trashed. |
 | `trashTestTeamItems({ client, team, guard })` | Trashes those issues and projects. Returns the counts. |
-| `createGuardedFetch({ fetch, workspace, allowlist })` | Returns `{ fetch, guard }`. The fetch refuses every mutation the allowlist lacks. The default allowlist is `SUITE_ALLOWLIST`, the 14 mutations of this suite. PMK-41 passes its own allowlist. |
+| `createGuardedFetch({ fetch, workspace, allowlist })` | Returns `{ fetch, guard }`. The fetch refuses every mutation the allowlist lacks. The default allowlist is `SUITE_ALLOWLIST`, the 15 mutations of this suite. PMK-41 passes its own allowlist. |
 
 `preflight`, `waitForCycles` and `checkTestTeam` are exported too. The live run calls them in this order: `preflight`, `findOrCreateTestTeam`, `waitForCycles`.
 
 ### The write guard
 
-The guard reads each request with `isMutation` and refuses a mutation before it leaves the process unless its root field is on the allowlist and every id it names belongs to the run. The suite allowlist holds `teamCreate`, `workflowStateCreate`, `cycleStartUpcomingCycleToday`, `issueCreate`, `issueUpdate`, `issueArchive`, `issueRelationCreate`, `issueRelationDelete`, `commentCreate`, `commentResolve`, `projectCreate`, `projectUpdateCreate`, `issueDelete` and `projectDelete`. No mutation passes before `preflight` succeeds. After a stop signal only `issueDelete` and `projectDelete` of owned ids pass.
+The guard reads each request with `isMutation` and refuses a mutation before it leaves the process unless its root field is on the allowlist and every id it names belongs to the run. The suite allowlist holds `teamCreate`, `workflowStateCreate`, `cycleStartUpcomingCycleToday`, `issueCreate`, `issueUpdate`, `issueArchive`, `issueRelationCreate`, `issueRelationDelete`, `commentCreate`, `commentResolve`, `projectCreate`, `projectUpdateCreate`, `issueDelete`, `issueUnarchive` (PMK-222: the delete test restores the issue it trashed) and `projectDelete`. No mutation passes before `preflight` succeeds. After a stop signal only `issueDelete` and `projectDelete` of owned ids pass.
 
 ### Request budget
 
@@ -211,6 +211,8 @@ Estimated, not measured. The run aims at under 1,000 requests and stops suite re
 | `cycleStartDay` 0 means Sunday | `unverified` |
 | `teamCreate` accepts the five-character key `PKT` | Yes, the third live run created issues PKT-71 and PKT-72 |
 | `issueDelete` works on an archived issue | `unverified` |
+| `issueUnarchive` brings an issue back from the trash, and `issues(filter: { id })` with `includeArchived` returns a trashed issue with `trashed: true` (PMK-222, `issues restore`) | `unverified`: the contract delete test checks both on the next live run |
+| The contract delete test (`issues` family, PMK-52) passes against the live team | `unverified`: added after the third live run |
 | Trashed issues count toward the 250 issues of the Free plan | `unverified` |
 | `projects(filter: { accessibleTeams })` and `issues(filter: { team })` with an id comparator accept the test team id | `unverified` |
 

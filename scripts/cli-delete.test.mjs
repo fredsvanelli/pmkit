@@ -188,3 +188,18 @@ test('when git grep cannot run, the files stay unchecked with the reason and are
     assert.match(run(root, ['issues', 'delete', a, '--dry-run']).stdout, /not checked: code comments, documents and docs\/ \(git grep failed/)
   })
 })
+
+test('issues restore on the Local tracker answers NOT_SUPPORTED with the git commands, and writes nothing', () => {
+  withRepo({}, (root, [a]) => {
+    json(root, ['issues', 'delete', a])
+    const before = hashTree(root)
+    const result = run(root, ['issues', 'restore', a, '--json'])
+    assert.equal(result.status, 2, result.stdout)
+    const { error } = JSON.parse(result.stdout)
+    assert.equal(error.code, 'NOT_SUPPORTED')
+    assert.match(error.nextStep, new RegExp(`git checkout <commit>\\^ -- \\.issues/issues/${a} brings the folder back`))
+    assert.equal(run(root, ['issues', 'restore', a, '--dry-run', '--json']).status, 2)
+    assert.equal(run(root, ['issues', 'restore']).status, 2)
+    assert.equal(hashTree(root), before)
+  })
+})

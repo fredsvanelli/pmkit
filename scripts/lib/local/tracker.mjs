@@ -684,6 +684,15 @@ export function createLocalTracker(root, {
     return result
   }
 
+  /** The Local tracker has no trash (PMK-222): a deleted issue comes back from git history, and the error names the commands. */
+  function restore(id, actor) {
+    requireWriter(actor)
+    if (!isId(id, local.id_prefix)) throw invalid(`${id} is not an issue ID`, 'Pass the ID of the deleted issue')
+    const dir = path.relative(config.root, issuePaths(issuesDir, id).dir).split(path.sep).join('/')
+    throw new PmkitError('NOT_SUPPORTED', 'the Local tracker has no trash: a deleted issue comes back from git history',
+      `git log --diff-filter=D -1 --format=%h -- ${dir} finds the commit; git checkout <commit>^ -- ${dir} brings the folder back`)
+  }
+
   const knownIssue = (id) => readIssue(id).issue.id
 
   function listEdit(op, prop, field, other) {
@@ -2333,7 +2342,7 @@ export function createLocalTracker(root, {
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     listMilestones, getMilestone, createMilestone, unfiledMilestones, unreadableRecords,
     listReleases, getRelease, createRelease, releaseIssues, markReleased,
-    getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, delegate, archive, delete: deleteIssue, link, unlink, setParent,
+    getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, delegate, archive, delete: deleteIssue, restore, link, unlink, setParent,
     comment, resolveThread, listComments, getHistory, logTime, listTimeEntries, readDocument, createDocument, listDocuments,
     discover, capabilities, reindex, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
     listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity, getDaysOff, updateCycleCapacity,
