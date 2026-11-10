@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { makeRepo, userStoreEnv } from './test-helpers.mjs'
 
 const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), 'pmkit.mjs')
-const ITEM_KEYS = ['key', 'kind', 'issue', 'title', 'at', 'by', 'in', 'comment', 'excerpt', 'synthetic', 'seen']
+const ITEM_KEYS = ['key', 'kind', 'issue', 'title', 'at', 'by', 'in', 'comment', 'excerpt', 'from', 'to', 'synthetic', 'seen']
 
 function setup() {
   const root = makeRepo('no-sprints')

@@ -18,7 +18,8 @@ exit 0
   "items": [],
   "counts": {
     "assignments": 0,
-    "mentions": 0
+    "mentions": 0,
+    "statusChanges": 0
   },
   "complete": false,
   "problems": [
@@ -52,7 +53,8 @@ exit 0
   "items": [],
   "counts": {
     "assignments": 0,
-    "mentions": 0
+    "mentions": 0,
+    "statusChanges": 0
   },
   "complete": false,
   "problems": [
@@ -87,7 +89,8 @@ exit 0
   "items": [],
   "counts": {
     "assignments": 0,
-    "mentions": 0
+    "mentions": 0,
+    "statusChanges": 0
   },
   "complete": false,
   "problems": [

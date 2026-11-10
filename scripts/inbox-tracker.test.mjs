@@ -5,12 +5,12 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { issuePaths } from './lib/local/store.mjs'
-import { inboxGet, userDir, repoHash } from './lib/user-store.mjs'
+import { inboxGet, inboxSet, userDir, repoHash } from './lib/user-store.mjs'
 import { hashTree, makeRepo, tempDir, userStoreEnv } from './test-helpers.mjs'
 
 const SINCE = '2026-10-30T00:00:00Z'
 const code = (value) => (error) => error.code === value
-const ITEM_KEYS = ['key', 'kind', 'issue', 'title', 'at', 'by', 'in', 'comment', 'excerpt', 'synthetic', 'seen']
+const ITEM_KEYS = ['key', 'kind', 'issue', 'title', 'at', 'by', 'in', 'comment', 'excerpt', 'from', 'to', 'synthetic', 'seen']
 
 function configure(root) {
   const configFile = path.join(root, '.issues', 'config.yaml')
@@ -58,8 +58,8 @@ test('an assignment by another member shows, a self-assignment does not, and an 
   const [item] = result.items
   assert.deepEqual(Object.keys(item), ITEM_KEYS)
   assert.match(item.key, new RegExp(`^assign:${id}:[0-9a-f]{12}$`))
-  assert.deepEqual({ ...item, key: 'k' }, { key: 'k', kind: 'assignment', issue: id, title: 'One', at: '2026-10-31T10:05:00Z', by: 'ana', in: 'assignment', comment: null, excerpt: null, synthetic: false, seen: false })
-  assert.deepEqual(result.counts, { assignments: 1, mentions: 0 })
+  assert.deepEqual({ ...item, key: 'k' }, { key: 'k', kind: 'assignment', issue: id, title: 'One', at: '2026-10-31T10:05:00Z', by: 'ana', in: 'assignment', comment: null, excerpt: null, from: null, to: null, synthetic: false, seen: false })
+  assert.deepEqual(result.counts, { assignments: 1, mentions: 0, statusChanges: 0 })
   assert.deepEqual(Object.keys(result), ['user', 'checked', 'since', 'hidden', 'items', 'counts', 'complete', 'problems'])
   assert.deepEqual([result.checked, result.hidden, result.complete, result.problems], [null, 0, true, []])
   assert.equal(tracker.listNotifications({ user: 'fred', since: '2026-10-31T10:05:01Z' }).items.length, 0)
@@ -90,7 +90,7 @@ test('a comment mention shows with its key and excerpt, the author own mention d
   tracker.comment(id, 'mail ana@fred.com and `@fred` in code', 'ana')
   const { items } = tracker.listNotifications({ user: 'fred', since: SINCE })
   assert.equal(items.length, 1)
-  assert.deepEqual(items[0], { key: `comment:${id}:${posted.id}`, kind: 'mention', issue: id, title: 'Talk', at: '2026-10-31T10:05:00Z', by: 'ana', in: 'comment', comment: posted.id, excerpt: 'ping @fred about this', synthetic: false, seen: false })
+  assert.deepEqual(items[0], { key: `comment:${id}:${posted.id}`, kind: 'mention', issue: id, title: 'Talk', at: '2026-10-31T10:05:00Z', by: 'ana', in: 'comment', comment: posted.id, excerpt: 'ping @fred about this', from: null, to: null, synthetic: false, seen: false })
 })
 
 test('a description mention is keyed by its text: editing it is a new item, editing elsewhere is not', () => {
@@ -226,7 +226,7 @@ test('markRead records the seen keys, the list hides them and shows what comes l
   assert.equal(inboxGet(root, 'fred', { env }), null)
   const done = tracker.markRead({ user: 'fred' })
   assert.deepEqual([done.changed, done.marked], [true, [item.key]])
-  assert.deepEqual(inboxGet(root, 'fred', { env }), { at: '2026-10-31T10:10:00Z', seen: { [item.key]: '2026-10-31T10:10:00Z' } })
+  assert.deepEqual(inboxGet(root, 'fred', { env }), { at: '2026-10-31T10:10:00Z', seen: { [item.key]: '2026-10-31T10:10:00Z' }, kinds: ['assignment', 'mention', 'status'] })
   assert.equal(fs.existsSync(path.join(root, '.issues', 'inbox')), false)
   const after = tracker.listNotifications({ user: 'fred' })
   assert.deepEqual([after.items, after.checked], [[], '2026-10-31T10:10:00Z'])
@@ -605,4 +605,92 @@ test('PMK-195: an empty created is no problem, and a repeated unknown key is lis
   const result = tracker.listNotifications({ user: 'fred', since: '2000-01-01T00:00:00Z' })
   assert.equal(result.complete, true, JSON.stringify(result.problems))
   assert.deepEqual(tracker.markRead({ user: 'fred', keys: ['x:ISS-0:a', 'x:ISS-0:a'] }).unknown, ['x:ISS-0:a'])
+})
+
+test('PMK-225: a move by another member of an issue assigned to the user is a status item; a self move or a move before the assignment is not', () => {
+  const { tracker, setNow } = setup()
+  const { id } = tracker.createIssue({ title: 'Moved' }, 'ana').after
+  setNow('2026-10-31T10:01:00Z')
+  tracker.moveToCategory(id, 'todo', 'ana')
+  setNow('2026-10-31T10:02:00Z')
+  tracker.assign(id, 'fred', 'fred')
+  setNow('2026-10-31T10:03:00Z')
+  tracker.moveToCategory(id, 'in_progress', 'fred')
+  setNow('2026-10-31T10:04:00Z')
+  tracker.moveToCategory(id, 'in_review', 'ana')
+  const result = tracker.listNotifications({ user: 'fred', since: SINCE })
+  const status = result.items.filter((item) => item.kind === 'status')
+  assert.equal(status.length, 1)
+  const [item] = status
+  assert.deepEqual(Object.keys(item), ITEM_KEYS)
+  assert.deepEqual([item.issue, item.in, item.by, item.at, item.from, item.to, item.excerpt], [id, 'status', 'ana', '2026-10-31T10:04:00Z', 'in_progress', 'in_review', null])
+  assert.match(item.key, new RegExp(`^status:${id}:[0-9a-f]{12}$`))
+  assert.equal(result.counts.statusChanges, 1)
+  tracker.markRead({ user: 'fred', keys: [item.key] })
+  assert.equal(tracker.listNotifications({ user: 'fred' }).items.filter((entry) => entry.kind === 'status').length, 0)
+})
+
+test('PMK-225: an entry written before status items hides the status changes older than 14 days, and mark-read with no key marks them', () => {
+  const { tracker, setNow, root, env } = setup()
+  setNow('2026-09-25T10:00:00Z')
+  const { id } = tracker.createIssue({ title: 'Old moves', assignee: 'fred' }, 'fred').after
+  setNow('2026-10-01T10:00:00Z')
+  tracker.moveToCategory(id, 'todo', 'ana')
+  setNow('2026-10-30T10:00:00Z')
+  tracker.moveToCategory(id, 'in_progress', 'ana')
+  inboxSet(root, 'fred', { at: '2026-10-20T10:00:00Z', seen: {} }, { env })
+  setNow('2026-10-31T10:00:00Z')
+  const list = tracker.listNotifications({ user: 'fred' })
+  assert.deepEqual(list.items.map((item) => [item.kind, item.to]), [['status', 'in_progress']])
+  assert.equal(list.hidden, 1)
+  assert.equal(tracker.markRead({ user: 'fred' }).marked.length, 2)
+  assert.deepEqual(inboxGet(root, 'fred', { env }).kinds, ['assignment', 'mention', 'status'])
+  const after = tracker.listNotifications({ user: 'fred' })
+  assert.deepEqual([after.items, after.hidden], [[], 0])
+})
+
+test('PMK-225: a mark-read keeps a key another run wrote after it read the file, because the write merges with the entry on disk', () => {
+  const { tracker, setNow, root, env } = setup()
+  const a = tracker.createIssue({ title: 'A' }, 'ana').after.id
+  const b = tracker.createIssue({ title: 'B' }, 'ana').after.id
+  setNow('2026-10-31T10:05:00Z')
+  tracker.assign(a, 'fred', 'ana')
+  tracker.assign(b, 'fred', 'ana')
+  const [first, second] = tracker.listNotifications({ user: 'fred' }).items.map((item) => item.key)
+  tracker.markRead({ user: 'fred', keys: [first] })
+  // The clock is read after the entry, so this one writes, as another run would, between this run's read and its write.
+  let armed = true
+  const racing = createLocalTracker(root, {
+    env,
+    now: () => {
+      if (armed) {
+        armed = false
+        const current = inboxGet(root, 'fred', { env })
+        inboxSet(root, 'fred', { ...current, seen: { ...current.seen, 'assign:ISS-LATE:aaaaaaaaaaaa': '2026-10-31T10:05:00Z' } }, { env })
+      }
+      return new Date('2026-10-31T10:06:00Z')
+    },
+  })
+  const late = racing.markRead({ user: 'fred', keys: [second] })
+  assert.equal(armed, false)
+  assert.deepEqual(late.marked, [second])
+  assert.deepEqual(Object.keys(inboxGet(root, 'fred', { env }).seen).sort(), [first, second, 'assign:ISS-LATE:aaaaaaaaaaaa'].sort())
+})
+
+test('PMK-225: the prune keeps a status key while its move is on another branch', () => {
+  const root = gitRepo()
+  gitIn(root, 'switch', '-q', '-c', 'side')
+  const { tracker, setNow, paths, env } = setup(root)
+  const { id } = tracker.createIssue({ title: 'Branch', assignee: 'fred' }, 'fred').after
+  setNow('2026-10-31T10:00:00Z')
+  tracker.moveToCategory(id, 'todo', 'ana')
+  gitIn(root, 'add', '-A')
+  gitIn(root, 'commit', '-q', '-m', 'side')
+  tracker.markRead({ user: 'fred' })
+  assert.ok(Object.keys(inboxGet(root, 'fred', { env }).seen).some((key) => key.startsWith('status:')))
+  gitIn(root, 'switch', '-q', 'main')
+  assert.equal(fs.existsSync(paths(id).dir), false)
+  setNow('2026-12-05T10:00:00Z')
+  assert.equal(tracker.markRead({ user: 'fred' }).pruned, 0)
+  assert.ok(Object.keys(inboxGet(root, 'fred', { env }).seen).some((key) => key.startsWith('status:')))
 })
