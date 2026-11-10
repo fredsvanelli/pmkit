@@ -989,3 +989,40 @@ test('migration: an unknown input field still fails validation', async () => {
   const label = JSON.parse(await (await post(fetch, LABEL_CREATE, { input: { name: 'x', color: 'red' } })).text())
   assert.equal(label.errors[0].extensions.code, 'GRAPHQL_VALIDATION_FAILED')
 })
+
+// PMK-246: releases and pipelines in the issue fake.
+const PIPELINES = [{ id: 'pipe-acme', name: 'Web', teams: [ACME_TEAM_ID] }, { id: 'pipe-other', name: 'Other', teams: ['team-other'] }]
+const RELEASES = [
+  { id: 'rel-1', name: 'One', version: '1.0', pipeline: 'pipe-acme', stage: 'completed', completedAt: '2026-10-01T00:00:00.000Z' },
+  { id: 'rel-2', name: 'Two', version: '2.0', pipeline: 'pipe-acme', targetDate: '2026-12-01' },
+  { id: 'rel-x', name: 'Elsewhere', pipeline: 'pipe-other' },
+]
+
+test('releases are listed by team, read by id, and an issue releases change with added and removed ids', async () => {
+  const { RELEASES_QUERY, RELEASE_QUERY, ISSUE_RELEASES_QUERY } = await import('./lib/linear/documents.mjs')
+  const issues = fakeLinearIssues({ pipelines: PIPELINES, releases: RELEASES })
+  const fetch = fakeLinearFetch({ ...issues.routes })
+  const data = async (query, variables) => JSON.parse(await (await post(fetch, query, variables)).text())
+  const listed = await data(RELEASES_QUERY, { first: 50, filter: { pipeline: { teams: { some: { key: { eq: 'ACME' } } } } } })
+  assert.deepEqual(listed.data.releases.nodes.map((node) => node.id), ['rel-1', 'rel-2'])
+  assert.deepEqual(listed.data.releases.nodes[0], { id: 'rel-1', name: 'One', version: '1.0', description: null, targetDate: null, completedAt: '2026-10-01T00:00:00.000Z', stage: { type: 'completed' }, pipeline: { id: 'pipe-acme' } })
+  assert.equal((await data(RELEASES_QUERY, { first: 50 })).data.releases.nodes.length, 3)
+  assert.equal((await data(RELEASE_QUERY, { id: 'rel-2' })).data.release.targetDate, '2026-12-01')
+  assert.equal((await data(RELEASE_QUERY, { id: 'nope' })).errors[0].message, 'Entity not found: Release')
+  const issue = issues.seed({ title: 'A', releaseIds: ['rel-1'] })
+  const releasesOf = async () => (await data(ISSUE_RELEASES_QUERY, { id: issue.id, first: 50 })).data.issue.releases.nodes.map((node) => node.id)
+  assert.deepEqual(await releasesOf(), ['rel-1'])
+  await data(ISSUE_UPDATE, { id: issue.id, input: { addedReleaseIds: ['rel-2'], removedReleaseIds: ['rel-1'] } })
+  assert.deepEqual(await releasesOf(), ['rel-2'])
+  const bad = await data(ISSUE_UPDATE, { id: issue.id, input: { addedReleaseIds: ['nope'] } })
+  assert.equal(bad.errors[0].message, 'Could not find referenced Release.')
+})
+
+test('the releases filter matches an issue in any of its releases', async () => {
+  const issues = fakeLinearIssues({ pipelines: PIPELINES, releases: RELEASES })
+  const fetch = fakeLinearFetch({ ...issues.routes })
+  issues.seed({ title: 'Both', releaseIds: ['rel-1', 'rel-2'] })
+  issues.seed({ title: 'None' })
+  const found = JSON.parse(await (await post(fetch, ISSUES_QUERY, { first: 50, filter: { releases: { some: { id: { eq: 'rel-2' } } } } })).text())
+  assert.deepEqual(found.data.issues.nodes.map((node) => node.title), ['Both'])
+})

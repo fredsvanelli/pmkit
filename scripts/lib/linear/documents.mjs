@@ -173,3 +173,16 @@ export const CUSTOM_VIEW_ISSUES_QUERY = `${ISSUE_FRAGMENT}
 query PmkitCustomViewIssues($id: String!, $first: Int!, $after: String, $sort: [IssueSortInput!]) {
   customView(id: $id) { issues(first: $first, after: $after, sort: $sort) { nodes { ...PmkitIssueFields } ${PAGE_INFO} } }
 }`
+
+// PMK-246: Linear releases. A release node carries its stage type, so pmkit can leave canceled releases out.
+const RELEASE_FIELDS = 'id name version description targetDate completedAt stage { type } pipeline { id }'
+
+export const RELEASES_QUERY = `query PmkitReleases($filter: ReleaseFilter, $first: Int!, $after: String) {
+  releases(filter: $filter, first: $first, after: $after) { nodes { ${RELEASE_FIELDS} } ${PAGE_INFO} }
+}`
+
+export const RELEASE_QUERY = `query PmkitRelease($id: String!) { release(id: $id) { ${RELEASE_FIELDS} } }`
+
+export const ISSUE_RELEASES_QUERY = `query PmkitIssueReleases($id: String!, $first: Int!, $after: String) {
+  issue(id: $id) { releases(first: $first, after: $after) { nodes { ${RELEASE_FIELDS} } ${PAGE_INFO} } }
+}`

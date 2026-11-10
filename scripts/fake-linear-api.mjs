@@ -231,9 +231,9 @@ const NOT_FOUND = 'Could not find referenced Issue.'
 const failProject = () => {
   throw new FakeInputError('Could not find referenced Project.')
 }
-const UPDATE_FIELDS = ['title', 'description', 'assigneeId', 'delegateId', 'parentId', 'priority', 'estimate', 'labelIds', 'teamId', 'stateId', 'dueDate', 'cycleId', 'projectId', 'projectMilestoneId']
+const UPDATE_FIELDS = ['title', 'description', 'assigneeId', 'delegateId', 'parentId', 'priority', 'estimate', 'labelIds', 'teamId', 'stateId', 'dueDate', 'cycleId', 'projectId', 'projectMilestoneId', 'addedReleaseIds', 'removedReleaseIds']
 // PMK-41: a create may carry the dates of the record it migrates.
-const CREATE_FIELDS = ['id', ...UPDATE_FIELDS, 'createdAt', 'completedAt']
+const CREATE_FIELDS = ['id', ...UPDATE_FIELDS, 'createdAt', 'completedAt', 'releaseIds']
 const LABEL_FIELDS = ['id', 'name', 'teamId', 'parentId', 'isGroup']
 
 class FakeInputError extends Error {}
@@ -252,6 +252,8 @@ class FakeValidationError extends Error {}
  * `fake.cycles` adds more, lists them and moves the cycle clock (`setClock`), which starts at the `clock` option (default `start`) and decides isActive, isFuture and isPast.
  * `endsAt` is an exclusive boundary, as on Linear: at the instant `endsAt` a cycle is past, so a cycle that starts there is the active one.
  * A team with `cyclesEnabled: false` returns no cycles and takes no `cycleId`.
+ * PMK-246: `pipelines` ({ id, name, teams: [teamId] }) and `releases` ({ id, name, version, pipeline, stage, targetDate, completedAt, description })
+ * seed Linear releases. An issue holds `releaseIds`; `addedReleaseIds` and `removedReleaseIds` change them, and the filter takes `releases.some.id.eq`.
  */
 export function fakeLinearIssues({
   teams = [ACME_TEAM],
@@ -262,7 +264,15 @@ export function fakeLinearIssues({
   start = '2026-10-27T12:00:00.000Z',
   cycles: seededCycles = [],
   clock: startClock = start,
+  pipelines = [],
+  releases: seededReleases = [],
 } = {}) {
+  const releaseRecords = seededReleases.map((item) => ({ version: null, stage: 'planned', targetDate: null, completedAt: null, description: null, ...item }))
+  const releaseNode = (item) => ({
+    id: item.id, name: item.name, version: item.version, description: item.description, targetDate: item.targetDate, completedAt: item.completedAt,
+    stage: { type: item.stage }, pipeline: { id: item.pipeline },
+  })
+  const requireRelease = (id) => releaseRecords.find((item) => item.id === id) ?? (() => { throw new FakeInputError('Could not find referenced Release.') })()
   if (labels === ACME_LABELS) labels = [...ACME_LABELS]
   const records = []
   const relations = []
@@ -432,6 +442,9 @@ export function fakeLinearIssues({
     }
     if (input.projectId !== undefined) record.projectId = input.projectId === null ? null : (projectLookup(input.projectId)?.id ?? failProject())
     if (input.projectMilestoneId !== undefined) record.projectMilestoneId = input.projectMilestoneId
+    for (const id of input.releaseIds ?? []) record.releaseIds.push(requireRelease(id).id)
+    for (const id of input.addedReleaseIds ?? []) if (!record.releaseIds.includes(requireRelease(id).id)) record.releaseIds.push(id)
+    if (input.removedReleaseIds) record.releaseIds = record.releaseIds.filter((id) => !input.removedReleaseIds.includes(id))
   }
 
   // PMK-36: history. recordHistory is the one place that turns a change of an issue into an entry, so a later issue can add a field row here.
@@ -518,6 +531,7 @@ export function fakeLinearIssues({
       botActor: null,
       projectId: null,
       projectMilestoneId: null,
+      releaseIds: [],
     }
     const { id, teamId, title, createdAt, completedAt, ...rest } = input
     applyFields(record, rest)
@@ -546,6 +560,7 @@ export function fakeLinearIssues({
       return parent !== null && (c.id.eq === undefined || idMatches(parent, c.id.eq)) && (c.id.in === undefined || c.id.in.some((value) => idMatches(parent, value)))
     },
     project: (record, c) => record.projectId !== null && record.projectId === (projectLookup(c.id.eq)?.id ?? c.id.eq),
+    releases: (record, c) => record.releaseIds.includes(c.some.id.eq),
     hasBlockedByRelations: (record, c) => relations.some((relation) => relation.type === 'blocks' && relation.relatedIssueId === record.id) === c.eq,
     updatedAt: (record, c) =>
       (c.lt === undefined || Date.parse(record.updatedAt) < Date.parse(c.lt))
@@ -783,6 +798,21 @@ export function fakeLinearIssues({
     labels.splice(index, 1)
     return { issueLabelDelete: { success: true } }
   })
+
+  routes.PmkitReleases = query('PmkitReleases', ({ filter, first = 50, after = null }) => {
+    const team = filter?.pipeline?.teams?.some?.key?.eq
+    const teamId = team === undefined ? undefined : teams.find((item) => item.key === team)?.id
+    const listed = releaseRecords.filter((item) => team === undefined || pipelines.find((pipe) => pipe.id === item.pipeline)?.teams.includes(teamId))
+    return { releases: connection(listed.map(releaseNode), first, after) }
+  })
+  routes.PmkitRelease = query('PmkitRelease', ({ id }) => {
+    const found = releaseRecords.find((item) => item.id === id)
+    if (!found) throw new FakeInputError('Entity not found: Release')
+    return { release: releaseNode(found) }
+  })
+  routes.PmkitIssueReleases = query('PmkitIssueReleases', ({ id, first, after }) => ({
+    issue: { releases: connection(requireIssue(id).releaseIds.map((rid) => releaseNode(requireRelease(rid))), first, after) },
+  }))
 
   seededCycles.forEach(addCycle)
 
