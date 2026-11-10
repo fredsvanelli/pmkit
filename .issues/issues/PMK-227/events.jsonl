@@ -3,3 +3,10 @@
 {"at":"2026-11-08T20:53:52Z","by":"fred","op":"update","field":"estimate","from":null,"to":1}
 {"at":"2026-11-08T20:53:52Z","by":"fred","op":"update","field":"description"}
 {"at":"2026-11-08T20:53:52Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T17:19:34Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-10T17:19:34Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-10T17:19:40Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-227-improve-log-time"}
+{"at":"2026-11-10T17:21:56Z","by":"fred","op":"comment","to":"2026-11-10T17-21-56Z-fred.md"}
+{"at":"2026-11-10T17:26:59Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T17:27:41Z","by":"fred","op":"comment","to":"2026-11-10T17-27-41Z-fred.md"}
+{"at":"2026-11-10T17:27:42Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
