@@ -11,7 +11,7 @@ import { PARENT_CHAIN_DEPTH } from './documents.mjs'
 import { isUnconfirmed } from './issue-ops.mjs'
 import { estimateOf, makeContext, stateCategory } from './issues.mjs'
 import {
-  DOCUMENT_QUERY, EPIC_ISSUES_QUERY, HEALTH_TO_LINEAR, PROJECTS_QUERY, PROJECT_CREATE, PROJECT_MILESTONES_QUERY, PROJECT_MILESTONE_QUERY, PROJECT_UPDATES_QUERY,
+  DOCUMENTS_QUERY, DOCUMENT_QUERY, EPIC_ISSUES_QUERY, HEALTH_TO_LINEAR, PROJECTS_QUERY, PROJECT_CREATE, PROJECT_MILESTONES_QUERY, PROJECT_MILESTONE_QUERY, PROJECT_UPDATES_QUERY,
   PROJECT_UPDATE_CREATE, epicId, epicKey, toDocument, toEpic, toMilestone, toStatusUpdate,
 } from './projects.mjs'
 
@@ -263,9 +263,20 @@ export function projectOperations({ client, discovery, config, now = () => new D
     return toDocument(node)
   }
 
+  /** The documents of the team's projects as `{ path, title }` by slug. A list the page cap cuts short fails: it never answers with part of the documents. */
+  async function listDocuments() {
+    requireWorkspace()
+    const filter = { accessibleTeams: { some: { key: { eq: scope.team } } } }
+    const projects = await client.paginate(PROJECTS_QUERY, { filter, withLists: false }, { select: (data) => data.projects, pageSize: LIST_PAGE, maxPages: 100 })
+    const ids = new Set(projects.nodes.map((node) => node.id))
+    const { nodes, hasMore } = await client.paginate(DOCUMENTS_QUERY, {}, { select: (data) => data.documents, pageSize: LIST_PAGE, maxPages: 100 })
+    if (hasMore) throw new PmkitError('UPSTREAM', 'Linear has more documents than pmkit reads in one list', 'pmkit docs read <slug> reads one document')
+    return nodes.filter((node) => ids.has(node.project?.id)).map((node) => ({ path: node.slugId, title: node.title })).sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+  }
+
   const notWritable = (what) => async () => {
     throw new PmkitError('NOT_SUPPORTED', `the Linear adapter reads project ${what}s but does not create them`, `Create the ${what} in Linear`)
   }
 
-  return { listDeliverables, getDeliverable, deliverableProgress, createDeliverable, listMilestones, getMilestone, readDocument, createMilestone: notWritable('milestone'), createDocument: notWritable('document'), publishStatusUpdate, listStatusUpdates, resolveEpic, requireWorkspace, now, uuid, discovery }
+  return { listDeliverables, getDeliverable, deliverableProgress, createDeliverable, listMilestones, getMilestone, readDocument, listDocuments, createMilestone: notWritable('milestone'), createDocument: notWritable('document'), publishStatusUpdate, listStatusUpdates, resolveEpic, requireWorkspace, now, uuid, discovery }
 }

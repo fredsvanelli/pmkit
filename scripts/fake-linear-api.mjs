@@ -997,6 +997,7 @@ export function fakeLinearProjects({
       const found = documents.filter((item) => item.slugId === filter?.slugId?.eq).slice(0, 1)
       return { documents: { nodes: found.map((item) => ({ id: item.id, slugId: item.slugId, title: item.title, content: item.content ?? null, project: refOf(item.project) })) } }
     }),
+    PmkitDocuments: query('PmkitDocuments', ({ first, after }) => ({ documents: connection(documents.map((item) => ({ slugId: item.slugId, title: item.title, project: { id: item.project.id } })), first, after) })),
     PmkitEpicIssues: (body) => issues.routes.PmkitIssues(body),
     PmkitProjectsByIds: query('PmkitProjectsByIds', ({ ids }) => ({
       projects: { nodes: projects.filter((project) => (ids ?? []).includes(project.id)).map((project) => ({ ...refOf(project), updatedAt: project.updatedAt ?? project.createdAt })) },

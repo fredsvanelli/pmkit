@@ -128,6 +128,11 @@ export const DOCUMENT_QUERY = `query PmkitDocument($filter: DocumentFilter) {
   documents(filter: $filter, first: 1) { nodes { id slugId title content ${PROJECT_REF} } }
 }`
 
+/** Every document with its slug, title and project, for a list. */
+export const DOCUMENTS_QUERY = `query PmkitDocuments($first: Int!, $after: String) {
+  documents(first: $first, after: $after) { nodes { slugId title project { id } } ${PAGE_INFO} }
+}`
+
 /** The minimal fields progress counts: the state type for the category, the estimate and the parent for the chain. */
 export const EPIC_ISSUES_QUERY = `query PmkitEpicIssues($filter: IssueFilter, $first: Int!, $after: String) {
   issues(filter: $filter, first: $first, after: $after) { nodes { identifier archivedAt estimate team { id } state { id type } parent { identifier } } ${PAGE_INFO} }

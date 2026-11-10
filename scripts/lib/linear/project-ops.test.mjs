@@ -333,6 +333,29 @@ test('readDocument returns path, title and body for a slug or a document URL, an
   await assert.rejects(ops.readDocument('notes/plan.md'), { code: 'NOT_FOUND' })
 })
 
+test('listDocuments returns path and title sorted by slug, for the team projects only', async () => {
+  const { fake, ops } = kit()
+  const mine = seedProject(fake, 'Launch')
+  const other = fake.seed({ name: 'Elsewhere', teamIds: ['team-two'] })
+  fake.seedDocument(mine.id, { slugId: 'bbbbbbbbbbbb', title: 'B', content: 'x' })
+  fake.seedDocument(mine.id, { slugId: 'aaaaaaaaaaaa', title: 'A', content: 'x' })
+  fake.seedDocument(other.id, { slugId: 'cccccccccccc', title: 'C', content: 'x' })
+  assert.deepEqual(await ops.listDocuments(), [{ path: 'aaaaaaaaaaaa', title: 'A' }, { path: 'bbbbbbbbbbbb', title: 'B' }])
+})
+
+test('listDocuments returns an empty list when there are no documents', async () => {
+  const { fake, ops } = kit()
+  seedProject(fake, 'Launch')
+  assert.deepEqual(await ops.listDocuments(), [])
+})
+
+test('listDocuments fails with UPSTREAM and a next step instead of returning a partial list when the page cap is hit', async () => {
+  const { fake, ops } = kit()
+  const project = seedProject(fake, 'Launch')
+  for (let i = 0; i < 100 * 100 + 1; i += 1) fake.seedDocument(project.id, { slugId: String(i).padStart(12, '0'), title: `D${i}`, content: '' })
+  await assert.rejects(ops.listDocuments(), (error) => error.code === 'UPSTREAM' && error.nextStep.length > 0)
+})
+
 test('createMilestone and createDocument are NOT_SUPPORTED and send no request', async () => {
   const { ops, fetch } = kit()
   const before = fetch.calls.length
