@@ -57,10 +57,32 @@ test('issues similar refuses an empty --category', async () => {
   assert.equal((await similar(makeRepo('no-sprints'), ['ISS-9B2X', '--category', ''])).data.error.code, 'INVALID_INPUT')
 })
 
-test('issues similar says not verified on stdout when the target has no usable words or the read is incomplete', async () => {
+const text = async (root, args) => (await run(['issues', 'similar', ...args], { cwd: root, env })).stdout
+const created = async (root, title) => JSON.parse((await run(['issues', 'create', '--title', title, '--type', 'task', '--json'], { cwd: root, env })).stdout).after.id
+
+test('stdout of an incomplete read with a table still has a not verified line with the reason', async () => {
+  const out = await text(makeRepo('team'), ['ISS-4M2S'])
+  assert.match(out, /ISS-9T2M/)
+  assert.match(out, /^not verified: .*1 issue file could not be read \(ISS-3Q6T\)/m)
+})
+
+test('stdout of an incomplete read with no hits says not verified, not "no similar issues"', async () => {
   const root = makeRepo('team')
-  const created = JSON.parse((await run(['issues', 'create', '--title', 'UI', '--type', 'task', '--json'], { cwd: root, env })).stdout).after.id
-  const result = await run(['issues', 'similar', created], { cwd: root, env })
-  assert.match(result.stdout, /not verified/)
-  assert.doesNotMatch(result.stdout, /^no similar issues among/)
+  const out = await text(root, [await created(root, 'Zyxwv qpon')])
+  assert.match(out, /^not verified: .*1 issue file could not be read/m)
+  assert.doesNotMatch(out, /^no similar issues among/m)
+})
+
+test('a complete fixture with a target of no usable words says the target cannot be compared, not that the read is incomplete', async () => {
+  const root = makeRepo('no-sprints')
+  const id = await created(root, 'UI')
+  const { data } = await similar(root, [id])
+  assert.deepEqual([data.complete, data.reason, data.problems], [false, 'no_comparable_text', []])
+  const out = await text(root, [id])
+  assert.match(out, /^not verified: .*no words to compare/m)
+  assert.doesNotMatch(out, /incomplete/)
+})
+
+test('a complete read prints no not verified line', async () => {
+  assert.doesNotMatch(await text(makeRepo('no-sprints'), ['ISS-9B2X']), /not verified/)
 })

@@ -605,11 +605,19 @@ export const COMMANDS = [
       const warnings = data.problems.map(problemLine)
       if (data.hasMore) warnings.push('Linear has more matching issues than the 1000 pmkit read, so the list is not verified')
       if (data.reason === 'no_comparable_text') warnings.push(`${target.id} has no title or description words to compare (reason no_comparable_text), so the similar issues are not verified. Ask what the work covers, or estimate from the code alone`)
-      if (!data.complete) warnings.push('incomplete: not every issue could be read or compared, so an empty or short list is not verified. Do not say that no similar issue exists')
+      if (!data.complete) warnings.push('incomplete: the similar list is not verified. Do not say that no similar issue exists')
       const rows = [...data.similar, ...data.unestimated]
-      const text = rows.length === 0
-        ? (data.complete ? `no similar issues among the ${data.considered} read` : `no similar issues found among the ${data.considered} read, but the read is incomplete: not verified`)
+      // With an incomplete read the stdout always says why it is not verified, with a table or without one.
+      const why = [
+        ...(data.problems.length > 0 ? [`${data.problems.length} issue ${data.problems.length === 1 ? 'file' : 'files'} could not be read (${data.problems.map((p) => p.id ?? 'unknown').join(', ')})`] : []),
+        ...(data.hasMore ? ['Linear has more issues than the 1000 pmkit read'] : []),
+        ...(data.reason === 'no_comparable_text' ? [`${target.id} has no words to compare`] : []),
+      ]
+      const notVerified = data.complete ? [] : [`not verified: ${why.join('; ')}. Do not say that no similar issue exists`]
+      const body = rows.length === 0
+        ? (data.complete ? `no similar issues among the ${data.considered} read` : `no similar issues found among the ${data.considered} read`)
         : table(['ID', 'Title', 'Status', 'Assignee', 'Estimate', 'Score', 'Shared'], rows.map((hit) => [hit.id, hit.title, hit.status.name, hit.assignee ?? '', hit.estimate ?? '', hit.score, hit.shared.join(', ')]))
+      const text = [body, ...notVerified].join('\n')
       return { data, text, warnings }
     },
   },

@@ -49,7 +49,7 @@ export function rankSimilar(target, candidates, { limit = 5 } = {}) {
  * The `issues similar` result. `found` is what `searchIssues` returned. The result is `complete` only when every issue was read
  * and the target has words to compare: a file that does not parse (`problems`), a cut read (`hasMore`) or a target with no usable
  * word (`reason: 'no_comparable_text'`) means an empty `similar` is "not verified", never "none".
- * `similar` holds up to `limit` hits that have an estimate; the hits without one are `unestimated` (not evidence, so they do not use the limit).
+ * `similar` holds up to `limit` hits that have an estimate; the hits without one are `unestimated` (not evidence), up to `limit` as well, so they never take a place in `similar`.
  * A missing estimate is `null`, never 0.
  */
 export function similarResult(target, found, { limit = 5 } = {}) {
