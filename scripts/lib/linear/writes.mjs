@@ -17,6 +17,7 @@ const LATER = {
   milestone: 'set the milestone in Linear',
   release: 'Linear releases are not mapped yet',
 }
+// update writes a milestone (the caller resolves it); create has no project to check it against, so it stays refused.
 
 /** The raw team a new issue goes to: the scope team, else the only team of the workspace. */
 export function createTeam(context) {
@@ -136,9 +137,9 @@ export function parentInput({ parentNode, epicNode } = {}) {
 /**
  * The Linear input of a patch. mode is create or update. beforeNode is the issue's node (update), team the raw team (create),
  * parentNode the node of patch.parent when it is an issue, epicNode the project node when it is an epic,
- * cycleNode the { id, number } of the cycle patch.sprint names (the caller resolves it). Throws before any request; a name discovery may not know yet throws with details.stale.
+ * cycleNode the { id, number } of the cycle patch.sprint names (the caller resolves it), milestoneNode the raw project milestone patch.milestone names (update only). Throws before any request; a name discovery may not know yet throws with details.stale.
  */
-export function toInput(patch, { mode, beforeNode, team: givenTeam, context, parentNode, epicNode, cycleNode }) {
+export function toInput(patch, { mode, beforeNode, team: givenTeam, context, parentNode, epicNode, cycleNode, milestoneNode }) {
   checkKeys(patch, mode === 'create' ? CREATE_KEYS : UPDATE_KEYS)
   const team = givenTeam ?? teamOf(context, beforeNode?.team?.id)
   const input = mode === 'create' ? { teamId: team.id } : {}
@@ -189,7 +190,12 @@ export function toInput(patch, { mode, beforeNode, team: givenTeam, context, par
       input.cycleId = cycleNode.id
     }
   }
+  if (mode === 'update' && patch.milestone !== undefined) {
+    if (patch.milestone !== null && !milestoneNode) throw invalid(`milestone ${patch.milestone} was not resolved to a project milestone`)
+    input.projectMilestoneId = patch.milestone === null ? null : milestoneNode.id
+  }
   for (const key of Object.keys(LATER)) {
+    if (key === 'milestone' && mode === 'update') continue
     if (patch[key] !== undefined && patch[key] !== null) throw new PmkitError('NOT_SUPPORTED', LATER[key], `Leave ${key} out on Linear`)
   }
   return input
@@ -222,6 +228,7 @@ export function applyInput(node, input, context, { parent, project, cycle } = {}
   if (input.parentId !== undefined) next.parent = input.parentId === null ? null : { identifier: parent }
   if (input.cycleId !== undefined) next.cycle = input.cycleId === null ? null : { id: cycle.id, number: cycle.number }
   if (input.projectId !== undefined) next.project = input.projectId === null ? null : project
+  if (input.projectMilestoneId !== undefined) next.projectMilestone = input.projectMilestoneId === null ? null : { id: input.projectMilestoneId }
   return next
 }
 

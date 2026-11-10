@@ -198,7 +198,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     })
   }
   const goalReads = Object.fromEntries(['listGoals', 'getGoal', 'goalProgress'].map((operation) => [operation, goalRead(operation)]))
-  const issues = issueOperations({ client, discovery, config, now, uuid, resolveEpic: projects.resolveEpic })
+  const issues = issueOperations({ client, discovery, config, now, uuid, resolveEpic: projects.resolveEpic, resolveMilestone: projects.resolveMilestone })
   const relations = relationOperations({ client, ops: issues, uuid })
   const history = historyOperations({ client, ops: issues })
   const cycles = cycleOperations({ client, discovery, issues, config })
