@@ -876,6 +876,19 @@ test('issues comment --reply-to and issues resolve write to Linear, and their dr
   assert.deepEqual(fake.mutations.slice(2), ['PmkitCommentResolve'])
 })
 
+test('issues comment --redact on Linear posts the redacted body and reports what was replaced (PMK-229)', async () => {
+  const { fake, fetch } = withIssues(['Talk'])
+  const context = setup({ edit: withTeam })
+  const secret = `ghp_${'a'.repeat(36)}`
+  const result = await cli(context, ['issues', 'comment', 'ACME-1', '--body-file', bodyFile(`Seen with GITHUB_TOKEN=${secret}\n`), '--redact', '--json'], fetch)
+  assert.equal(result.code, 0, result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.redacted.count, 1)
+  assert.ok(!data.body.includes(secret) && data.body.endsWith('Redacted 1 value.'), data.body)
+  assert.ok(!JSON.stringify(fake).includes(secret), 'the secret never reached the API')
+  assert.deepEqual(fake.mutations, ['PmkitCommentCreate'])
+})
+
 test('issues delegate on Linear sets the delegate of an app agent and says the tracker runs it; the dry run writes nothing', async () => {
   const { fake, fetch } = withIssues(['Hand off'])
   const context = setup({ edit: withTeam })

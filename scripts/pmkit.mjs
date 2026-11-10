@@ -607,11 +607,20 @@ export const COMMANDS = [
     run: (ctx) => runBulk(ctx),
   },
   {
-    name: 'issues comment', summary: 'comments', usage: '<id> --body-file f [--reply-to comment]', write: true, args: ['id'], flags: ['body-file', 'reply-to'],
+    name: 'issues comment', summary: 'comments', usage: '<id> --body-file f [--reply-to comment] [--redact]', write: true, args: ['id'], flags: ['body-file', 'reply-to', 'redact'],
     run: async (ctx) => {
       if (ctx.opt('body-file') === undefined) throw usageError('issues comment needs --body-file', 'Pass a file, or - for stdin')
-      const comment = await (await ctx.tracker()).comment(ctx.args[0], readInput(ctx.opt('body-file')), await ctx.actor(), { dryRun: ctx.dryRun, replyTo: ctx.opt('reply-to') })
-      return { data: comment, text: writeText(null, { dryRun: ctx.dryRun, header: `commented on ${comment.issue}` }), commit: comment.issue }
+      let body = readInput(ctx.opt('body-file'))
+      // --redact (PMK-229) replaces the secrets before the tracker gets the body, so the dry run and the write hold the same text.
+      let redacted
+      if (ctx.flag('redact')) {
+        const { text, count, counts, summary } = redact(body)
+        redacted = { count, counts, summary }
+        body = count === 0 ? text : `${text.trimEnd()}\n\n${summary}`
+      }
+      const comment = await (await ctx.tracker()).comment(ctx.args[0], body, await ctx.actor(), { dryRun: ctx.dryRun, replyTo: ctx.opt('reply-to') })
+      const note = redacted === undefined || redacted.count === 0 ? null : `redacted ${redacted.count} ${redacted.count === 1 ? 'value' : 'values'}: ${Object.entries(redacted.counts).map(([type, n]) => `${type} ${n}`).join(', ')}`
+      return { data: redacted === undefined ? comment : { ...comment, redacted }, text: writeText(null, { dryRun: ctx.dryRun, header: `commented on ${comment.issue}` }), notes: note ? [note] : [], commit: comment.issue }
     },
   },
   {

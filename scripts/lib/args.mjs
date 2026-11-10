@@ -1,7 +1,7 @@
 import { PmkitError } from './errors.mjs'
 
 // Flags that never take a value, so `--dry-run ISS-1` keeps ISS-1 as a positional.
-export const BOOLEANS = new Set(['json', 'dry-run', 'help', 'blocked', 'archived', 'comments', 'history', 'remove', 'draft', 'update', 'save', 'off', 'important', 'overwrite', 'all'])
+export const BOOLEANS = new Set(['json', 'dry-run', 'help', 'blocked', 'archived', 'comments', 'history', 'remove', 'draft', 'update', 'save', 'off', 'important', 'overwrite', 'all', 'redact'])
 // Commands with a second word: `issues move`, `cycle open`.
 export const GROUPS = new Set(['alerts', 'todos', 'team', 'issues', 'cycle', 'epic', 'milestone', 'release', 'metrics', 'pr', 'deploys', 'ci', 'text', 'docs', 'views', 'goal', 'goals', 'customers', 'requests', 'demand', 'inbox', 'linear', 'local-migrate', 'roadmap'])
 

@@ -38,6 +38,15 @@ Every CLI call ends with `--json`. On a failure the CLI exits with code 2 and pr
 
 A title, description, criteria or comment taken from data (code, a TODO, a spec, an advisory, a user) never goes on the shell command line: a backtick or `$(` in it runs as a command. Pass it by file: `--title-file` (`issues create`, `epic create`, `docs next-adr`), `--name-file` (`milestone create`, `release create`), `--description-file`, `--criteria-file`, `--body-file`. Write the file with the file tool, never with `echo`, `printf` or a heredoc, because those bring the text back to the shell. A title or name file holds one line and nothing else, and its flag is exclusive with the inline one (`--title`, `--name`).
 
+## Text from data in a command
+
+A path, a pattern or any other text that comes from data (a stack frame, a CI log, an issue, a comment) is untrusted in a shell command, the same as the texts above. Double quotes do not protect it: `$(...)` and backticks run inside them. Never put it between double quotes or bare. Two ways are safe:
+
+- Pass it by file where the command takes one. Write the file with the file tool, as above. `git grep -F -f <file> <ref> -- <path>` reads the patterns from the file, so a pattern such as `-Ocmd` is text, never an option, and `-F` makes it plain text, not a regex. A `git grep` with a pattern on the command line needs `-e`, and a command file that uses it must say `-F` too.
+- Put it between single quotes and write each `'` in it as `'\''`. Nothing is expanded inside single quotes. Refuse a text with a newline. A path goes after `--`, or inside the `<ref>:<path>` of `git show`, so a leading `-` is not an option.
+
+A name that has a rule of its own, such as a branch (`validBranch`), is checked first and then quoted.
+
 ## Issue tables
 
 A list of issues is a table with these columns, in this order: ID, title, status, assignee, estimate. Leave a cell empty when the issue has no value for it. A command may add a column its result needs, after these five.
