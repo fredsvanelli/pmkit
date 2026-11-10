@@ -40,6 +40,40 @@ export function highestAdr(names) {
   return { highest, ignored }
 }
 
+/**
+ * The ADR folders: the repository's docs/adr and, for the Local tracker, its docs/adr unless tracker.path puts it on the same folder,
+ * which is then read once. `label` is the folder relative to the repository, or docs/adr relative to a tracker folder outside it,
+ * never an absolute path of this machine. `repoFolder` is null for a folder outside the repository, where no ref has it.
+ */
+export function adrFolders({ root, trackerDir, trackerFolder }) {
+  const repoDir = path.join(root, 'docs', 'adr')
+  const folders = [{ place: 'repo', label: 'docs/adr', shown: 'docs/adr', dir: repoDir, repoFolder: 'docs/adr' }]
+  if (trackerDir && path.resolve(trackerDir) !== path.resolve(repoDir)) {
+    folders.push({ place: 'tracker', label: trackerFolder ?? 'docs/adr', shown: trackerFolder ?? 'docs/adr in the tracker', dir: trackerDir, repoFolder: trackerFolder })
+  }
+  return folders
+}
+
+/** The numbered ADR files of the working tree in `folders`, as { number, name, path, place, file }, sorted by path. */
+export function adrFiles(folders) {
+  const found = []
+  for (const { place, label, dir } of folders) {
+    for (const name of readTree(dir) ?? []) {
+      const match = NUMBERED.exec(name)
+      if (match) found.push({ number: match[1], name, path: `${label}/${name}`, place, file: path.join(dir, name) })
+    }
+  }
+  return found.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+}
+
+/** Every ADR file whose number another file uses, with the paths of those others. */
+export function duplicateAdrs(files) {
+  return files.flatMap((file) => {
+    const others = files.filter((other) => other !== file && other.number === file.number).map((other) => other.path)
+    return others.length === 0 ? [] : [{ path: file.path, number: file.number, others }]
+  })
+}
+
 const children = (paths, folder) => paths.filter((p) => p.startsWith(`${folder}/`)).map((p) => p.slice(folder.length + 1))
 
 function readTree(dir) {
@@ -66,12 +100,8 @@ export function planNextAdr({ title, root, trackerFolder, trackerDir, hosted, cr
   if (refSha) notes.push(`numbered with ${ref} as last fetched (${refSha}), so it may be behind the remote`)
   else notes.push(`${ref} does not exist here, so only the working tree was read and an ADR merged on ${defaultBranch} may be missed`)
 
-  // Outside the repository the path is relative to the tracker folder, never an absolute path of this machine.
   const trackerLabel = trackerDir ? (trackerFolder ?? 'docs/adr') : null
-  const repoDir = path.join(root, 'docs', 'adr')
-  const folders = [{ place: 'repo', label: 'docs/adr', shown: 'docs/adr', dir: repoDir, repoFolder: 'docs/adr' }]
-  // tracker.path: . puts the tracker folder on the repo folder, which is then read once.
-  if (trackerDir && path.resolve(trackerDir) !== path.resolve(repoDir)) folders.push({ place: 'tracker', label: trackerLabel, shown: trackerFolder ?? 'docs/adr in the tracker', dir: trackerDir, repoFolder: trackerFolder })
+  const folders = adrFolders({ root, trackerDir, trackerFolder })
   if (trackerDir && !trackerFolder) notes.push(`the tracker folder is outside the repository, so ${ref} was not read for it and its paths are relative to the tracker folder`)
 
   const sources = []

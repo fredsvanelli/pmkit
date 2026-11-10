@@ -2,10 +2,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
-import { ADR_SLUG_MAX, adrSlug, highestAdr } from './lib/adr.mjs'
+import { ADR_SLUG_MAX, adrFiles, adrFolders, adrSlug, duplicateAdrs, highestAdr } from './lib/adr.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo } from './test-helpers.mjs'
 
@@ -273,4 +274,35 @@ test('docs next-adr needs --title', async () => {
   const result = await run(['docs', 'next-adr', '--json'], { cwd: root, env: childEnv() })
   assert.equal(result.code, 2)
   assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT')
+})
+
+// PMK-228: the ADR folders and two ADRs with one number.
+test('adrFolders reads the tracker folder once when tracker.path puts it on docs/adr', () => {
+  const root = '/r'
+  assert.deepEqual(adrFolders({ root, trackerDir: '/r/docs/adr', trackerFolder: 'docs/adr' }).map((f) => f.place), ['repo'])
+  assert.deepEqual(adrFolders({ root, trackerDir: '/r/.issues/docs/adr', trackerFolder: '.issues/docs/adr' }).map((f) => [f.place, f.label]), [['repo', 'docs/adr'], ['tracker', '.issues/docs/adr']])
+  assert.deepEqual(adrFolders({ root, trackerDir: null, trackerFolder: null }).map((f) => f.place), ['repo'])
+})
+
+test('adrFiles lists the numbered files of each folder and duplicateAdrs names every other file with the number', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-adr-'))
+  try {
+    const repo = path.join(root, 'docs', 'adr')
+    const tracker = path.join(root, '.issues', 'docs', 'adr')
+    fs.mkdirSync(repo, { recursive: true })
+    fs.mkdirSync(tracker, { recursive: true })
+    for (const name of ['0003-a.md', '0003-b.md', '0004-c.md', 'README.md', '.0003-hidden.md']) fs.writeFileSync(path.join(repo, name), '# x\n')
+    fs.writeFileSync(path.join(tracker, '0003-c.md'), '# x\n')
+    const files = adrFiles(adrFolders({ root, trackerDir: tracker, trackerFolder: '.issues/docs/adr' }))
+    assert.deepEqual(files.map((f) => [f.number, f.path, f.place]), [
+      ['0003', '.issues/docs/adr/0003-c.md', 'tracker'], ['0003', 'docs/adr/0003-a.md', 'repo'], ['0003', 'docs/adr/0003-b.md', 'repo'], ['0004', 'docs/adr/0004-c.md', 'repo'],
+    ])
+    assert.deepEqual(duplicateAdrs(files), [
+      { path: '.issues/docs/adr/0003-c.md', number: '0003', others: ['docs/adr/0003-a.md', 'docs/adr/0003-b.md'] },
+      { path: 'docs/adr/0003-a.md', number: '0003', others: ['.issues/docs/adr/0003-c.md', 'docs/adr/0003-b.md'] },
+      { path: 'docs/adr/0003-b.md', number: '0003', others: ['.issues/docs/adr/0003-c.md', 'docs/adr/0003-a.md'] },
+    ])
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
 })

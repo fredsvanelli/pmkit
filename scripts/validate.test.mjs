@@ -538,3 +538,25 @@ test('PMK-195: a comment with an empty created is no problem', () => {
   fs.writeFileSync(path.join(dir, 'empty.md'), '---\nauthor: ana\ncreated:\n---\nhi\n')
   assert.deepEqual(validateRepo(root).problems.filter((problem) => problem.code === 'comment'), [])
 })
+
+test('two ADRs with one number are each reported, in docs/adr and the tracker folder (PMK-228)', () => {
+  const root = makeRepo('basic')
+  fs.mkdirSync(path.join(root, 'docs', 'adr'), { recursive: true })
+  fs.mkdirSync(path.join(root, '.issues', 'docs', 'adr'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'docs', 'adr', '0003-a.md'), '# A\n')
+  fs.writeFileSync(path.join(root, 'docs', 'adr', '0004-d.md'), '# D\n')
+  fs.writeFileSync(path.join(root, '.issues', 'docs', 'adr', '0003-b.md'), '# B\n')
+  const adr = validateRepo(root).problems.filter((problem) => problem.code === 'adr')
+  assert.deepEqual(adr, [
+    { path: '.issues/docs/adr/0003-b.md', code: 'adr', message: 'ADR number 0003 is also used by docs/adr/0003-a.md' },
+    { path: 'docs/adr/0003-a.md', code: 'adr', message: 'ADR number 0003 is also used by .issues/docs/adr/0003-b.md' },
+  ])
+})
+
+test('a hosted tracker still gets the ADR check of docs/adr (PMK-228)', () => {
+  const root = useLinear(makeRepo('team'))
+  fs.mkdirSync(path.join(root, 'docs', 'adr'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'docs', 'adr', '0002-a.md'), '# A\n')
+  fs.writeFileSync(path.join(root, 'docs', 'adr', '0002-b.md'), '# B\n')
+  assert.deepEqual(brief(validateRepo(root)).filter((line) => line.startsWith('adr ')), ['adr docs/adr/0002-a.md', 'adr docs/adr/0002-b.md'])
+})
