@@ -60,13 +60,9 @@ function workspaceAnswers(raw) {
   const { releasesEnabled, customersEnabled } = raw.flags
   const agents = raw.users.filter((user) => user.app).map((user) => user.name)
   return {
-    // Linear has initiatives on these plans, but the adapter does not read them yet (PMK-45), so pmkit reports it absent.
+    // Linear has initiatives on these plans. The adapter reads them as goals (PMK-213); the goal writes stay unsupported.
     strategic_goals: business
-      ? {
-        path: 'absent',
-        detail: { workspace: 'native', unsupported: ['listGoals', 'getGoal', 'createGoal', 'goalProgress', 'setEpicGoal', 'updateGoal', 'deleteGoal'] },
-        enableHint: 'The Linear adapter does not serve initiatives yet; Linear offers them on this workspace',
-      }
+      ? { path: 'native', detail: { entity: 'initiative', unsupported: ['createGoal', 'setEpicGoal', 'updateGoal', 'deleteGoal'] } }
       : { path: 'absent', enableHint: 'Linear initiatives need the Business or Enterprise plan' },
     releases: releasesEnabled
       ? { path: 'native' }

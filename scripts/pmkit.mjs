@@ -379,6 +379,8 @@ function defaultPrBody(issue) {
 const problemLine = (problem) => `${problem.id === null ? '' : `${problem.id}: `}${problem.code} ${problem.message}`
 /** One warning per problem of a list, pointing to pmkit validate. The JSON carries the same problems. */
 const problemWarnings = (problems) => problems.map((problem) => `${problemLine(problem)}; run pmkit validate`)
+/** A goal list problem as a warning. A cut Linear read (INCOMPLETE) is no file problem, so validate is no help there. */
+const goalProblemWarning = (problem) => (problem.code === 'INCOMPLETE' ? problemLine(problem) : `${problemLine(problem)}; run pmkit validate`)
 
 /** A table of requests in the order given: id, title, state, customer, where it came from and the issue. */
 const requestTable = (requests) => table(
@@ -896,7 +898,7 @@ export const COMMANDS = [
     name: 'goal list', summary: 'lists the strategic goals with their epics', flags: [],
     run: async (ctx) => {
       const { goals, problems } = await (await ctx.tracker()).listGoals()
-      const warnings = problems.map((problem) => `${problemLine(problem)}; run pmkit validate`)
+      const warnings = problems.map(goalProblemWarning)
       const rows = goals.map((goal) => [goal.id, goal.title, goal.status, goal.target ?? '', goal.epics.join(', ')])
       return { data: goals, text: goals.length === 0 ? 'no goals' : table(['ID', 'Title', 'Status', 'Target', 'Epics'], rows), warnings }
     },
@@ -2511,7 +2513,7 @@ async function runGoalsOverview(ctx) {
   const unreadableGoal = problems.some((problem) => problem.kind === 'goal')
   if (listed !== null && (listed.goals.length > 0 || unreadableGoal)) {
     // A broken epic file may link to a goal, so on this path it is part of the answer. The fallback below does not read epics.
-    warnings.push(...problems.map((problem) => `${problemLine(problem)}; run pmkit validate`))
+    warnings.push(...problems.map(goalProblemWarning))
     // goalProgress counts the issues it can read, so an issue file that does not parse may hold work of any epic.
     warnings.push(...issueReadWarnings(await tracker.searchIssues({})).map((line) => `${line}; goal progress may be low`))
     const items = []

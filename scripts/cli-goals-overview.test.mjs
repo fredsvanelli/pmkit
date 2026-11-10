@@ -217,3 +217,24 @@ test('goal progress is complete on a clean tree and incomplete with a warning wh
   const overview = await pmkit(root, ['goals', 'overview'])
   assert.ok(overview.data.items.every((item) => !('warnings' in item)), overview.stdout)
 })
+
+test('on a Linear Business workspace goals overview and goal list read initiatives, and a cut read is a warning without validate advice (PMK-213)', async () => {
+  const root = useLinear(makeRepo('basic'))
+  const file = path.join(root, '.pmkit', 'config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('    workspace: acme', '    workspace: acme\n    team: ACME'))
+  const fake = fakeLinearIssues()
+  const node = { id: 'i-1', slugId: 'abcdef123456', identifier: 'INI-1', name: 'Grow', description: '', content: null, status: 'Active', targetDate: '2026-12-31', url: 'u', projects: { nodes: [], pageInfo: { hasNextPage: true, endCursor: 'x' } } }
+  const fetch = fakeLinearFetch({ ...fakeWorkspace({ subscription: { type: 'business' } }), ...fake.routes, PmkitInitiatives: { status: 200, json: { data: { initiatives: { nodes: [node], pageInfo: { hasNextPage: false, endCursor: null } } } } } })
+  const options = { cwd: root, env: { ...childEnv(), ...userStoreEnv().env, LINEAR_API_KEY: FAKE_KEY }, adapters: { ...ADAPTERS, linear: linearDescriptor({ fetch }) } }
+  const overview = await run(['goals', 'overview', '--json'], options)
+  assert.equal(overview.code, 0, overview.stdout + overview.stderr)
+  const data = JSON.parse(overview.stdout)
+  assert.equal(data.source, 'goals')
+  assert.deepEqual(data.items.map((item) => item.goal.id), ['INI-1'])
+  assert.equal(data.complete, false)
+  assert.ok(data.warnings.some((line) => line.includes('more than 50 projects') && !line.includes('pmkit validate')), data.warnings.join('\n'))
+  const list = await run(['goal', 'list'], options)
+  assert.match(list.stdout, /INI-1 +\| Grow +\| active +\| 2026-12-31/)
+  assert.match(list.stderr, /more than 50 projects/)
+  assert.doesNotMatch(list.stderr, /pmkit validate/)
+})

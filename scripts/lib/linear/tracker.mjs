@@ -1,7 +1,8 @@
 // The Linear tracker. discover and capabilities read the workspace (PMK-33). The Issues and Relations families read and
 // write issues (PMK-35), the History and Comments families read history and comments (PMK-36), the Cycles and Capacity
-// families map cycles to sprints (PMK-37), projects are epics with status updates, milestones and documents (PMK-38), and
-// custom views are saved views that pmkit reads and runs (PMK-212). Every other contract operation is a stub.
+// families map cycles to sprints (PMK-37), projects are epics with status updates, milestones and documents (PMK-38),
+// custom views are saved views that pmkit reads and runs (PMK-212), and initiatives are goals, read only (PMK-213).
+// Every other contract operation is a stub.
 // See docs/superpowers/specs/2026-10-27-pmk-33-linear-discovery-design.md, "The tracker".
 
 import { randomUUID } from 'node:crypto'
@@ -17,6 +18,7 @@ import { historyOperations } from './history-ops.mjs'
 import { issueOperations } from './issue-ops.mjs'
 import { linearDescription } from './mappings.mjs'
 import { projectOperations } from './project-ops.mjs'
+import { goalOperations } from './goal-ops.mjs'
 import { relationOperations } from './relation-ops.mjs'
 import { buildLinearCapabilities } from './manifest.mjs'
 import { createCustomers } from './customers.mjs'
@@ -186,6 +188,16 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
   }
 
   const projects = projectOperations({ client, discovery, config, now, uuid })
+  // Goal reads on a workspace without initiatives refuse with the manifest's hint, as the stubs do, and send no initiative query.
+  const goals = goalOperations({ client, config, projects })
+  const goalRead = (operation) => {
+    const refuse = stub(operation)
+    return guarded(async (...args) => {
+      const entry = (await capabilities()).capabilities.find((c) => c.id === 'strategic_goals')
+      return entry?.path === 'absent' ? refuse(...args) : goals[operation](...args)
+    })
+  }
+  const goalReads = Object.fromEntries(['listGoals', 'getGoal', 'goalProgress'].map((operation) => [operation, goalRead(operation)]))
   const issues = issueOperations({ client, discovery, config, now, uuid, resolveEpic: projects.resolveEpic })
   const relations = relationOperations({ client, ops: issues, uuid })
   const history = historyOperations({ client, ops: issues })
@@ -229,7 +241,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     listNotifications: notifications.listNotifications,
     markRead: notifications.markRead,
   }
-  const implemented = { discover, capabilities, ...releaseReads, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
+  const implemented = { discover, capabilities, ...releaseReads, ...goalReads, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
   // Linear-only features sit beside the contract operations. contractView ignores them.
   const triage = createTriage({ client, discovery, config })
   const customers = createCustomers({ client, discovery, config })
