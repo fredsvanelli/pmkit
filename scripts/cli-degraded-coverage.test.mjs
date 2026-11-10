@@ -192,7 +192,7 @@ const PATH_CASES = [
     { argv: ['pr', 'blockers', '--branch', 'x'], gh: { [`pr view x --json ${PR_VIEW}`]: { status: 1, stderr: 'no pull requests found for branch "x"\n' } } },
     { argv: ['pr', 'sync'] },
     { argv: ['deploys', 'list'], gh: { 'api repos/{owner}/{repo}/deployments?per_page=20': { stdout: '[]' } } },
-    { argv: ['ci', 'logs', '--run', '9'], gh: { 'run view 9 --json workflowName,url,conclusion,status': { stdout: JSON.stringify({ workflowName: 'CI', url: 'u', conclusion: 'failure', status: 'completed' }) }, 'run view 9 --log-failed': { stdout: 'failed\n' } } },
+    { argv: ['ci', 'logs', '--run', '9'], gh: { 'run view 9 --json workflowName,url,conclusion,status,createdAt,headSha': { stdout: JSON.stringify({ workflowName: 'CI', url: 'u', conclusion: 'failure', status: 'completed' }) }, 'run view 9 --log-failed': { stdout: 'failed\n' } } },
     { argv: ['ci', 'logs', '--branch', 'x'], gh: { 'run list --branch x --limit 50 --json databaseId,workflowName,status,conclusion,url,createdAt,headSha': { stdout: '[]' } } },
   ].map(({ argv, gh }) => ({ id: 'linked_code', argv, github: true, gh, cases: [
     [{ path: 'derived', detail: { source: 'git' } }, 'note: branch and PR state read from git, not from the tracker'],

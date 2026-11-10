@@ -14,8 +14,8 @@ export default {
   github: true,
   gh: {
     [PR_LIST]: { stdout: JSON.stringify([pr(21, 'feat-export'), pr(22, 'unrelated')]) },
-    [DEPLOYMENTS]: { stdout: JSON.stringify([{ id: 5, environment: 'staging', ref: 'main', sha: 'abcdef1234', created_at: '2026-10-22T10:00:00Z' }]) },
-    'api repos/{owner}/{repo}/deployments/5/statuses?per_page=1': { stdout: JSON.stringify([{ state: 'success' }]) },
+    [DEPLOYMENTS]: { stdout: JSON.stringify([{ id: 5, node_id: 'N5', environment: 'staging', ref: 'main', sha: 'abcdef1234', created_at: '2026-10-22T10:00:00Z' }]) },
+    'api graphql -f query=query($ids: [ID!]!) { nodes(ids: $ids) { ... on Deployment { latestStatus { state logUrl environmentUrl } } } } ids[]=N5': { stdout: JSON.stringify({ data: { nodes: [{ latestStatus: { state: 'SUCCESS' } }] } }) },
   },
   async setup({ root }) {
     const file = path.join(root, '.issues/issues/ISS-3M8D/issue.md')
