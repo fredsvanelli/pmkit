@@ -26,8 +26,13 @@ Dependências: PMK-233 espera PMK-213, PMK-236 espera PMK-225, PMK-237 espera PM
 | 16 | PMK-219, PMK-220, PMK-221 |
 | 17 | PMK-222, PMK-223, PMK-224 |
 | 18 | PMK-226, PMK-227, PMK-228 |
-| 19 | PMK-230, PMK-232, PMK-233 |
-| 20 | PMK-231, PMK-235, PMK-236 |
+| 19 | PMK-248, PMK-249, PMK-250 (follow-ups da rodada 18, a pedido do usuário) |
+| 20 | PMK-247, PMK-246 |
+| 21 | PMK-251, PMK-252 |
+| 22 | PMK-230, PMK-232, PMK-233 |
+| 23 | PMK-231, PMK-235, PMK-236 |
+
+As rodadas 19 a 21 levam os follow-ups da rodada 18 (PMK-246 a PMK-252) e separam as issues de ADR (PMK-247, PMK-248, PMK-251) e as do adapter Linear (PMK-246, PMK-249, PMK-252), que mexem nos mesmos arquivos. As antigas rodadas 19 e 20 viraram 22 e 23.
 | 21 | PMK-237, PMK-239, PMK-241 |
 | 22 | PMK-238, PMK-240, PMK-242 |
 
@@ -544,3 +549,27 @@ Início: 2026-11-10. `develop` em 9bf0239, `npm test` com 4775 testes, 4684 pass
 - Follow-ups abertos pelo PR #199 (6011ff3): PMK-246 (mapear releases do Linear, da PMK-226), PMK-247 (pasta de ADR com o tracker no repo ou fora dele, itens 5 e 6 da PMK-228), PMK-248 (casos de borda do adr-status).
 
 Fim da rodada 18: PRs #194, #195, #196 mergeados.
+
+Antes da rodada 19: PMK-246 a PMK-252 criadas (PRs #199 e #201, com as epics EPC-5 e EPC-6) e atribuídas a fred (PR #202). Limpeza da rodada 18: 6 worktrees removidos, branches provisórias, de issue e de chore apagadas.
+
+## Rodada 19
+
+Início: 2026-11-10. `develop` em e3efad5, `npm test` com 4828 testes, 4737 pass, 0 fail, 91 skipped, saída 0. Run Orca `run_4c99b0d03c38`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-248 | 1 | sonnet (`ctx_5b4765fa1e36`) | #203 | ciclo 1 (sonnet): APROVADO | mergeado (c9089d6), done |
+| PMK-249 | 1 | sonnet (`ctx_5618feb51334`) | #204 | ciclo 1 (sonnet): APROVADO; correções baratas antes do merge conferidas pelo orquestrador; rebase | mergeado (a219c83), done |
+| PMK-250 | 2 | sonnet (`ctx_cf6a2a13582b`) | #205 | ciclo 1 (sonnet): MUDANÇAS PEDIDAS; ciclo 2 (sonnet): APROVADO | mergeado (5062e03), done |
+
+- PMK-248: PR #203; setAdrStatus deixa intacto um ADR com o mesmo status (linhas em branco e caixa do `## Status`) e muda front matter e seção juntos. O worker parou de novo no prompt de segurança do rm (`"$S"/*.md` também dispara), que bloqueou sozinho; revisor iniciado antes do worker_done porque o código já estava no PR.
+- PMK-248 ciclo 1 (sonnet): APROVADO. Não bloqueantes: before/after incoerente no caso unchanged, comentário YAML reescrito, terceira forma de status fora do escopo. Mergeado (c9089d6).
+- PMK-249: PR #204; `issues create --milestone` no Linear com `--parent <epic>`, milestone conferido contra o projeto da epic antes da escrita, dry-run mostra. Follow-up: o ISSUE_KEYS do sandbox do Linear (`scripts/lib/linear/sandbox.mjs`) não lista `projectMilestoneId`, então o sandbox recusa milestone em update e create.
+- PMK-249 ciclo 1 (sonnet): APROVADO. Pedi antes do merge as correções baratas: docs do create e do spec:import sem a exigência de `--parent <epic>`, mensagem enganosa com pai issue, código morto `LATER.milestone`. fa0302e conferido no diff; o merge deu conflito no CHANGELOG depois do #203; rebase 90d7eab (só CHANGELOG mudou no range-diff). Mergeado (a219c83).
+- PMK-250: PR #205; `issues unarchive` e `issues bulk unarchive` no Local (dry-run, evento unarchive, replay); Linear responde NOT_SUPPORTED. Follow-ups: unarchive no Linear (issueUnarchive para arquivadas fora da lixeira); bulk unarchive sem critério que estreite.
+- PMK-250 ciclo 1 (sonnet): MUDANÇAS PEDIDAS; bloqueante: `commands/issues/bulk.md:18` dizia que `--archived` não existe e que view com archived é recusada. Mandei corrigir com os apontamentos de issue-fields.mjs e update.md, os menores baratos e o rebase.
+- PMK-250: 6dcd301 corrige os cinco pontos e faz o rebase; 4761 pass. Deixou de fora só a duplicação de archive em tracker.mjs e nos BUILDERS de bulk.mjs (estilo).
+- PMK-250 ciclo 2 (sonnet): APROVADO; aceitou o item de estilo. Não bloqueantes: histórico em dobro num merge que duplique A U A U, nextStep de `--view` sem archived, ordem da checagem do Linear, hasMore antes do filtro em memória. Mergeado (5062e03).
+- `pr sync` moveu PMK-248, PMK-249 e PMK-250 para done, com todos os critérios marcados.
+
+Fim da rodada 19: PRs #203, #204, #205 mergeados.
