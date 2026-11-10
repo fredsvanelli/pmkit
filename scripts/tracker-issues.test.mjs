@@ -122,6 +122,13 @@ test('update writes description changes as one event without from and to', () =>
   assert.ok(events.every((e) => e.op === 'update' && !('from' in e) && !('to' in e)))
 })
 
+test('update sends archived false to unarchive, and archived true to archive', () => {
+  const { tracker } = setup()
+  tracker.createIssue({ title: 'First' }, 'fred')
+  assert.throws(() => tracker.updateIssue('ISS-1234', { archived: false }, 'fred'), { code: 'INVALID_INPUT', nextStep: 'pmkit issues unarchive' })
+  assert.throws(() => tracker.updateIssue('ISS-1234', { archived: true }, 'fred'), { code: 'INVALID_INPUT', nextStep: 'pmkit issues archive' })
+})
+
 test('update refuses the fields other operations own', () => {
   const { tracker } = setup()
   tracker.createIssue({ title: 'First' }, 'fred')
@@ -134,7 +141,7 @@ test('update refuses the fields other operations own', () => {
     blockedBy: 'pmkit issues link',
     related: 'pmkit issues link',
     duplicateOf: 'pmkit issues link',
-    archived: 'pmkit issues archive, or pmkit issues unarchive to bring it back',
+    archived: 'pmkit issues archive',
   }
   for (const [key, nextStep] of Object.entries(owners)) {
     assert.throws(

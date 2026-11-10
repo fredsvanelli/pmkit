@@ -21,14 +21,14 @@ export const OWNED = {
   blockedBy: 'pmkit issues link',
   related: 'pmkit issues link',
   duplicateOf: 'pmkit issues link',
-  archived: 'pmkit issues archive, or pmkit issues unarchive to bring it back',
+  archived: 'pmkit issues archive',
 }
 
 /** Throws INVALID_INPUT for the first key of `input` that `allowed` lacks, naming the command that owns it. */
 export function checkKeys(input, allowed) {
   for (const key of Object.keys(input)) {
     if (allowed.includes(key)) continue
-    if (Object.hasOwn(OWNED, key)) throw new PmkitError('INVALID_INPUT', `${key} cannot be set here`, OWNED[key] || undefined)
+    if (Object.hasOwn(OWNED, key)) throw new PmkitError('INVALID_INPUT', `${key} cannot be set here`, (key === 'archived' && input[key] === false ? 'pmkit issues unarchive' : OWNED[key]) || undefined)
     throw new PmkitError('INVALID_INPUT', `unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
   }
 }
