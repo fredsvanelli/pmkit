@@ -5,8 +5,9 @@ type: feature
 status: backlog
 priority: low
 estimate: 5
+parent: EPC-5
 created: 2026-11-10T19:28:14.537Z
-updated: 2026-11-10T19:28:14Z
+updated: 2026-11-10T21:16:02Z
 ---
 
 ## Description

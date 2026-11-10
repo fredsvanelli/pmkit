@@ -1,1 +1,2 @@
 {"at":"2026-11-10T19:28:14Z","by":"fred","op":"create","to":{"id":"PMK-247","title":"Improve ADR folders when the tracker is the repository or outside it","type":"feature","status":"backlog","priority":"low","estimate":2,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-10T19:28:14.611Z","updated":"2026-11-10T19:28:14Z"}}
+{"at":"2026-11-10T21:16:03Z","by":"fred","op":"update","field":"parent","from":null,"to":"EPC-6"}
