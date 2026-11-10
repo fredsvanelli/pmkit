@@ -319,6 +319,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     const warnings = []
     if (before.branch !== undefined) warnings.push(`branch ${before.branch} and its pull request stay as they are`)
     if (before.assignee !== undefined && /^agent:/.test(before.assignee)) warnings.push(`it is assigned to ${before.assignee}, which may still be working on it`)
+    if (before.delegate !== undefined) warnings.push(`it is delegated to ${before.delegate}, which may still be working on it`)
     const result = {
       before, after: null, removes: { trash: true }, references: [], mentions: [], warnings,
       unchecked: ['the descriptions and comments of other issues', 'saved views', 'code comments, documents and docs/'],

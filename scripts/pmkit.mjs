@@ -578,7 +578,7 @@ export const COMMANDS = [
       // A Linear dry run has no comment id yet.
       const lines = [writeText(result, { dryRun: false }), `${ctx.dryRun ? 'would comment' : 'commented'}${result.comment.id ? ` ${result.comment.id}` : ''}`]
       if (result.run === 'local') lines.push(localRunLine(result.after.id, result.after.assignee))
-      if (result.run === 'native') lines.push(nativeRunLine(result.after.id, result.after.delegate))
+      if (result.run === 'native' && !ctx.dryRun) lines.push(nativeRunLine(result.after.id, result.after.delegate))
       if (ctx.dryRun) lines.push('dry run: nothing was written')
       return { data: result, text: lines.join('\n'), commit: result.after.id }
     },

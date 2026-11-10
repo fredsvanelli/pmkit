@@ -883,6 +883,7 @@ test('issues delegate on Linear sets the delegate of an app agent and says the t
   assert.equal(dry.code, 0, dry.stderr)
   assert.match(dry.stdout, /^delegate: \(none\) → agent:user-4$/m)
   assert.match(dry.stdout, /^would comment$/m)
+  assert.doesNotMatch(dry.stdout, /tracker runs the agent/)
   assert.match(dry.stdout, /dry run: nothing was written/)
   assert.deepEqual(fake.mutations, [])
   const done = await cli(context, ['issues', 'delegate', 'ACME-1', 'agent:user-4', '--instructions-file', bodyFile('Do it.')], fetch)
@@ -890,6 +891,9 @@ test('issues delegate on Linear sets the delegate of an app agent and says the t
   assert.match(done.stdout, /^the tracker runs the agent: agent:user-4 works on ACME-1 there$/m)
   assert.doesNotMatch(done.stdout, /runs locally/)
   assert.deepEqual(fake.mutations, ['PmkitCommentCreate', 'PmkitIssueUpdate'])
+  const shown = await cli(context, ['issues', 'get', 'ACME-1'], fetch)
+  assert.equal(shown.code, 0, shown.stderr)
+  assert.match(shown.stdout, /^delegate: agent:user-4$/m)
 })
 
 test('issues comment with --as another member exits 2 with INVALID_INPUT and writes nothing', async () => {

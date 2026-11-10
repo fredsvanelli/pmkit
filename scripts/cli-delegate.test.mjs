@@ -75,6 +75,28 @@ test('issues delegate is atomic: a comment that cannot be written leaves the iss
   assert.equal(fs.readFileSync(path.join(dir, 'events.jsonl'), 'utf8'), before.events)
 })
 
+test('issues delegate puts issue.md back when the events append fails, and says nothing was changed', async () => {
+  const { root, delegate, comments } = setup()
+  const dir = path.join(root, '.issues', 'issues', ISSUE)
+  const events = path.join(dir, 'events.jsonl')
+  const before = { issue: fs.readFileSync(path.join(dir, 'issue.md'), 'utf8'), events: fs.readFileSync(events, 'utf8') }
+  // issue.md is written before the append, so a read-only events.jsonl fails after issue.md changed.
+  fs.chmodSync(events, 0o444)
+  try {
+    const result = await delegate(ISSUE, 'agent:claude', '--json')
+    assert.equal(result.code, 2)
+    const error = JSON.parse(result.stdout).error
+    assert.equal(error.code, 'CONFLICT', result.stdout)
+    assert.match(error.message, /^could not write the delegation of ISS-5N1R: .*EACCES.*; nothing was changed/)
+    assert.match(error.nextStep, /writable/)
+  } finally {
+    fs.chmodSync(events, 0o644)
+  }
+  assert.equal(fs.readFileSync(path.join(dir, 'issue.md'), 'utf8'), before.issue)
+  assert.equal(fs.readFileSync(events, 'utf8'), before.events)
+  assert.deepEqual(comments(), [])
+})
+
 test('issues delegate refuses a person and an unknown agent and writes nothing', async () => {
   const { root, delegate } = setup()
   const before = hashTree(root)

@@ -162,7 +162,8 @@ export function historyOperations({ client, ops }) {
   /**
    * Native delegation (PMK-214): the delegation comment, then the issue's delegate. Linear keeps the person as assignee and starts the
    * agent's session when the delegate is set, so the comment goes first and the agent reads the instructions. Every check runs before the
-   * first mutation. Linear has no transaction: when the delegate update fails after the comment, the error lists what was written.
+   * first mutation. Linear has no transaction: when the delegate update fails after the comment, an unconfirmed update is read back,
+   * and the error lists what was written, what is missing or unknown, and says not to delegate again.
    */
   async function delegate(id, agent, instructions, actor, { dryRun = false } = {}) {
     await ops.requireViewer(actor)
@@ -189,11 +190,30 @@ export function historyOperations({ client, ops }) {
       return { before, after: (await ops.writeUpdate(beforeNode, before, input, current, false)).after, comment: posted, run: 'native' }
     } catch (error) {
       if (!isPmkitError(error)) throw error
+      // The comment is posted either way: a retry would only post it again, so the next step never says to delegate again.
+      const record = { comment: posted.id, written: [`comment ${posted.id}`] }
+      const once = `do not delegate again: the delegation comment ${posted.id} is already posted`
+      if (isUnconfirmed(error)) {
+        // The answer was lost, so the delegate may be set. One read tells.
+        let node
+        try {
+          node = await ops.readNode(before.id)
+        } catch (readError) {
+          if (!isPmkitError(readError)) throw readError
+          throw new PmkitError(
+            error.code,
+            `Linear posted the delegation comment ${posted.id}, but Linear did not confirm the delegate of ${before.id} and it could not be read back: ${readError.message}`,
+            `Check the delegate of ${before.id} in Linear; ${once}`,
+            { ...error.details, ...record, unknown: ['delegate'] },
+          )
+        }
+        if (node.delegate?.id === input.delegateId) return { before, after: await ops.mapped(node), comment: posted, run: 'native' }
+      }
       throw new PmkitError(
         error.code,
-        `Linear posted the delegation comment ${posted.id} on ${before.id}, but setting the delegate ${agent} failed: ${error.message}`,
-        `Check the delegate of ${before.id} in Linear; delegate again to retry (the newest delegation comment is the record)`,
-        { ...error.details, written: [`comment ${posted.id}`], missing: ['delegate'] },
+        `Linear posted the delegation comment ${posted.id} on ${before.id}, but the delegate is not ${agent}: ${error.message}`,
+        `Set the delegate of ${before.id} to ${agent} in Linear; ${once}`,
+        { ...error.details, ...record, missing: ['delegate'] },
       )
     }
   }

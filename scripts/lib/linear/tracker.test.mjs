@@ -1200,18 +1200,56 @@ test('delegate refuses a person, an unknown agent and another actor before any m
   assert.deepEqual(fake.mutations, [])
 })
 
-test('a delegate update that fails after the comment names what was written and what is missing', async () => {
+test('an unconfirmed delegate update that Linear applied is read back as a success', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'For the agent' })
+  fake.unconfirm('PmkitIssueUpdate', { applied: true })
+  const result = await linear.delegate('ACME-1', 'agent:user-4', 'Do it.', 'user-1')
+  assert.equal(result.after.delegate, 'agent:user-4')
+  assert.deepEqual(fake.mutations, ['PmkitCommentCreate', 'PmkitIssueUpdate'])
+})
+
+test('a delegate update that did not apply says the comment is posted, so the agent does not delegate again', async () => {
   const { tracker: linear, fake } = linearSetup()
   seed(fake, { title: 'For the agent' })
   fake.unconfirm('PmkitIssueUpdate', { applied: false })
   await assert.rejects(linear.delegate('ACME-1', 'agent:user-4', 'Do it.', 'user-1'), (error) => {
     assert.equal(error.code, 'UPSTREAM')
-    assert.match(error.message, /posted the delegation comment \S+ on ACME-1, but setting the delegate agent:user-4 failed/)
-    assert.equal(error.details.written.length, 1)
-    assert.match(error.details.written[0], /^comment /)
+    assert.match(error.message, /^Linear posted the delegation comment \S+ on ACME-1, but the delegate is not agent:user-4:/)
+    assert.match(error.nextStep, /^Set the delegate of ACME-1 to agent:user-4 in Linear; do not delegate again/)
+    assert.equal(error.details.comment, fake.comments.at(-1).id)
+    assert.deepEqual(error.details.written, [`comment ${error.details.comment}`])
     assert.deepEqual(error.details.missing, ['delegate'])
     return true
   })
+  assert.equal((await linear.getIssue('ACME-1')).delegate, undefined)
+})
+
+test('a delegate update that is not confirmed and cannot be read back leaves the delegate unknown', async () => {
+  const issues = fakeLinearIssues()
+  issues.seed({ title: 'For the agent' })
+  issues.unconfirm('PmkitIssueUpdate', { applied: false })
+  let reads = 0
+  const forbidden = { status: 200, json: { data: null, errors: [{ message: 'Forbidden', extensions: { code: 'FORBIDDEN' } }] } }
+  // The delegate and its comment read the issue once each; the read after the unconfirmed update is refused.
+  const byId = (body) => (++reads <= 2 ? issues.routes.PmkitIssueById(body) : forbidden)
+  const fetch = fakeLinearFetch({ ...fakeWorkspace(), ...issues.routes, PmkitIssueById: byId })
+  const context = setup()
+  context.config.pmkit.mappings = { status: { in_review: 'In Review' } }
+  const linear = createLinearTracker(context.config, { env: context.env, now: at(0), fetch })
+  await assert.rejects(linear.delegate('ACME-1', 'agent:user-4', 'Do it.', 'user-1'), (error) => {
+    assert.match(error.message, /Linear did not confirm the delegate of ACME-1 and it could not be read back/)
+    assert.deepEqual(error.details.unknown, ['delegate'])
+    assert.match(error.nextStep, /^Check the delegate of ACME-1 in Linear; do not delegate again/)
+    return true
+  })
+})
+
+test('deleting an issue delegated to an agent warns that the agent may still be working on it', async () => {
+  const { tracker: linear, fake } = linearSetup()
+  seed(fake, { title: 'For the agent', delegateId: 'user-4' })
+  const result = await linear.delete('ACME-1', 'user-1', { dryRun: true })
+  assert.ok(result.warnings.includes('it is delegated to agent:user-4, which may still be working on it'), result.warnings.join('; '))
 })
 
 test('delegate on a workspace without an app user answers NOT_SUPPORTED with the hint and sends no mutation', async () => {
