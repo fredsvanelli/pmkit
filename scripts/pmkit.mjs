@@ -368,11 +368,11 @@ async function runAdrStatus(ctx) {
       await (await ctx.tracker()).updateDocument(`adr/${adr.name}`, after, await ctx.actor())
       commit = adr.path
     } else {
-      fs.writeFileSync(adr.file, after)
+      writeFileAtomic(adr.file, after)
       notes.push(`${adr.path} is a repository file and has no commit yet; commit it with the work it belongs to`)
     }
   }
-  const data = { number: adr.number, path: adr.path, place: adr.place, status: { before: statusBefore, after: line }, before, after }
+  const data = { number: adr.number, path: adr.path, place: adr.place, status: { before: statusBefore, after: line }, before, after, notes }
   const verb = before === after ? 'unchanged' : ctx.dryRun ? 'would set' : 'set'
   const text = [`${verb} ${adr.path}: ${statusBefore ?? '(no status)'} -> ${line}`, ...(ctx.dryRun ? ['dry run: nothing was written'] : [])].join('\n')
   return { data, text, notes, commit }

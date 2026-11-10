@@ -346,6 +346,8 @@ test('docs adr-status --dry-run shows the status line and writes nothing; the re
   assert.equal(real.code, 0, real.stderr)
   assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), dry.data.after)
   assert.match(real.stderr, /note: docs\/adr\/0001-a\.md is a repository file and has no commit yet/)
+  assert.deepEqual(real.data.notes, ['docs/adr/0001-a.md is a repository file and has no commit yet; commit it with the work it belongs to'], 'the JSON carries the note the command file repeats')
+  assert.deepEqual(dry.data.notes, [])
   const same = await adrStatus(root, '1', 'superseded', '--by', '2')
   assert.equal(same.data.before, same.data.after)
 })
