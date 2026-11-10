@@ -69,7 +69,7 @@ function blockedByCycles(graph) {
 }
 
 const relative = (root, file) => path.relative(root, file).split(path.sep).join('/')
-const noneChecked = () => ({ issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, comments: 0, views: 0 })
+const noneChecked = () => ({ issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, goals: 0, comments: 0, views: 0 })
 // A problem has no next step field, so the format problem carries it in its message.
 const formatProblem = (root, file, error) => ({ path: relative(root, file), code: 'FORMAT', message: `${error.message}; run ${error.nextStep}` })
 
@@ -285,6 +285,7 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
   const readableGoals = new Set()
   for (const id of [...goalIds].sort()) {
     const file = path.join(goalsDir, `${id}.md`)
+    checked.goals++
     if (conflicted.has(file)) continue
     if (!isId(id, local.goal_prefix)) {
       add(file, 'goal', `goal file ${id}.md is not named after a goal id such as ${local.goal_prefix}-1`)

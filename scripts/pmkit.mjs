@@ -957,8 +957,9 @@ export const COMMANDS = [
         ...Object.entries(p.byCategory).map(([category, count]) => `  ${category}: ${count}`),
         '',
         p.epics.length === 0 ? 'no epics' : table(['Epic', 'Title', 'Status', 'Done', 'Total', 'Points done', 'Points'], rows),
+        ...(p.warnings.length > 0 ? [INCOMPLETE_LINE] : []),
       ].join('\n')
-      return { data: p, text }
+      return { data: { ...p, complete: p.warnings.length === 0 }, text, warnings: p.warnings }
     },
   },
   {
@@ -1875,7 +1876,7 @@ export const COMMANDS = [
     run: (ctx) => {
       const result = validateRepo(ctx.root, { adapters: ctx.adapters })
       const c = result.checked
-      const head = `checked: ${c.issues} issues, ${c.epics} epics, ${c.sprints} sprints, ${c.milestones} milestones, ${c.releases} releases, ${c.comments} comments, ${c.views} views`
+      const head = `checked: ${c.issues} issues, ${c.epics} epics, ${c.sprints} sprints, ${c.milestones} milestones, ${c.releases} releases, ${c.goals} goals, ${c.comments} comments, ${c.views} views`
       const body = result.problems.length === 0 ? 'no problems' : result.problems.map((p) => `${p.path}  ${p.code}  ${p.message}`).join('\n')
       return { data: result, text: `${head}\n${body}` }
     },
@@ -2516,7 +2517,8 @@ async function runGoalsOverview(ctx) {
     const items = []
     for (const goal of listed.goals) {
       const p = await tracker.goalProgress(goal.id)
-      const { goal: ignored, epics, ...sum } = p
+      // The overview already warns about every epic and issue file that does not parse, once, above.
+      const { goal: ignored, epics, warnings: perGoal, ...sum } = p
       items.push({ goal: { id: goal.id, title: goal.title, target: goal.target }, epics: epics.map((e) => ({ id: e.id, title: e.title, status: e.status, counted: e.counted, progress: e.progress })), ...sum, progress: shareDone(sum.done, sum.total) })
     }
     const rows = items.map((i) => [i.goal.id, i.goal.title, i.progress === null ? 'not known' : percent(i.progress), `${i.done}/${i.total}`, `${i.pointsDone}/${i.points}`, i.epics.map((e) => e.id).join(', ')])

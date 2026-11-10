@@ -333,3 +333,15 @@ test('deleteGoal refuses while an epic links to the goal or an epic file does no
   assert.throws(() => tracker.deleteGoal(id, 'fred'), (error) => error.code === 'INVALID_INPUT' && /EPC-2M9D/.test(error.message))
   assert.deepEqual(hashTree(root), broken)
 })
+
+test('goalProgress warns about an epic file that does not parse and an issue file that does not parse (PMK-213)', () => {
+  const { root, tracker } = setup()
+  const { id } = tracker.createGoal({ title: 'Trust' }, 'fred').after
+  // The team fixture holds ISS-3Q6T, an issue file with conflict markers.
+  assert.deepEqual(tracker.goalProgress(id).warnings.map((line) => line.split(':')[0]), ['ISS-3Q6T'])
+  assert.match(tracker.goalProgress(id).warnings[0], /goal progress may be low/)
+  fs.writeFileSync(epicFile(root), '---\ntitle: [\n---\n')
+  const { warnings } = tracker.goalProgress(id)
+  assert.equal(warnings.length, 2)
+  assert.match(warnings[0], /^EPC-2M9D: INVALID_INPUT .*; it may link to this goal; run pmkit validate$/)
+})

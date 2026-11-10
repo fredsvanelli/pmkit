@@ -200,3 +200,20 @@ test('the children of an issue file that does not parse are warned about, not sp
   assert.ok(result.data.warnings.some((line) => line.includes(a) && line.includes(b)), result.stdout)
   assert.ok(!result.data.items.some((item) => [a, b].includes(item.issue.id)))
 })
+
+test('goal progress is complete on a clean tree and incomplete with a warning when an epic file does not parse (PMK-213)', async () => {
+  const root = makeRepo('no-sprints')
+  const clean = await pmkit(root, ['goal', 'progress', 'GOAL-8K2W'])
+  assert.equal(clean.data.complete, true)
+  assert.deepEqual(clean.data.warnings, [])
+  const other = (await pmkit(root, ['epic', 'create', '--title', 'Other'])).data.after.id
+  fs.writeFileSync(path.join(root, '.issues', 'epics', other, 'epic.md'), '---\ntitle: [\n---\n')
+  const broken = await pmkit(root, ['goal', 'progress', 'GOAL-8K2W'])
+  assert.equal(broken.data.complete, false)
+  assert.ok(broken.data.warnings.some((line) => line.startsWith(`${other}:`) && line.includes('may link to this goal')), broken.stdout)
+  const text = await run(['goal', 'progress', 'GOAL-8K2W'], { cwd: root, env })
+  assert.match(text.stdout, /^incomplete: /m)
+  assert.match(text.stderr, new RegExp(other))
+  const overview = await pmkit(root, ['goals', 'overview'])
+  assert.ok(overview.data.items.every((item) => !('warnings' in item)), overview.stdout)
+})

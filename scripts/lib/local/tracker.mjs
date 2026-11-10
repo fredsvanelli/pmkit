@@ -1511,8 +1511,14 @@ export function createLocalTracker(root, {
 
   /** The progress of each linked epic, as deliverableProgress counts it, and the sums of the epics that are not canceled. An issue reaches at most one epic, so none counts twice. */
   function goalProgress(id) {
-    const goal = getGoal(id)
-    const issues = scanIssues()
+    const read = readDeliverables()
+    const goal = withEpics(readGoalFile(id), read.epics)
+    const { issues, problems } = readAll()
+    // An epic file that does not parse may link to this goal, and an issue file that does not parse may hold work of a linked epic.
+    const warnings = [
+      ...read.problems.map((problem) => `${problem.id}: ${problem.code} ${problem.message}; it may link to this goal; run pmkit validate`),
+      ...problems.map((problem) => `${problem.id}: ${problem.code} ${problem.message}; goal progress may be low; run pmkit validate`),
+    ]
     const sum = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: Object.fromEntries(CATEGORIES.map((category) => [category, 0])) }
     const epics = goal.epics.map((epicId) => {
       const { title, status } = getDeliverable(epicId)
@@ -1525,7 +1531,7 @@ export function createLocalTracker(root, {
       }
       return { id: epicId, title, status, counted, progress }
     })
-    return { goal, epics, ...sum }
+    return { goal, epics, ...sum, warnings }
   }
 
   /** Links an epic to a goal, or removes the link with a null goal. An unchanged link writes nothing. */
