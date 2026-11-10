@@ -92,7 +92,7 @@ export const CASES = {
   'goal close': (a) => [[a.goal]],
   'goal delete': (a) => [[a.goal]],
   'customers list': () => [[]],
-  'customers show': (a) => [[a.customer], ['Acme Corp']],
+  'customers show': (a) => [[a.customer], ['Acme Corp'], ['--customer', 'Acme Corp']],
   'customers create': () => [['--name', 'Golden customer', '--tier', 'gold', '--revenue', '5000']],
   'customers update': (a) => [[a.customer, '--tier', 'platinum', '--revenue', '9000'], ['Acme Corp', '--owner', 'none'], ['Nobody here', '--tier', 'gold']],
   // REQ-6J8P is the open request of no-sprints, so accept and decline show real output there and NOT_FOUND elsewhere.
