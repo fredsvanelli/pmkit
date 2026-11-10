@@ -8,7 +8,7 @@
 
 1. **More tags.** `HACK` and `XXX` count, as the first word of a comment, like `TODO` and `FIXME`.
 2. **A better parser.**
-   - The `<script>` and `<style>` elements of html, vue, svelte, xml and svg files are read with their own syntax: JavaScript for a script, CSS for a style (C-like for `lang="scss"`, `less`, `sass` or `stylus`).
+   - The `<script>` and `<style>` elements of html, vue, svelte, xml and svg files are read with their own syntax: JavaScript for a script with no `type` or a JavaScript `type` (any other script, a self-closing element and one with no closing tag stay markup), CSS for a style (C-like for `lang="scss"`, `less`, `sass` or `stylus`).
    - A lone quote (one with no closing quote on its line) no longer hides the comment after it, so `title: it's done # TODO: x` in YAML and `const re = /'/ // TODO: x` in JavaScript are found.
    - `@todo` (any case, also `@fixme`, `@hack`, `@xxx`), the JSDoc and PHPDoc tag, counts. Its tag is the upper-case name.
    - A Python docstring is read like a block comment: a triple-quoted string that starts its line (only spaces before it). A triple-quoted string after code (`s = """..."""`) stays a string.
@@ -28,7 +28,7 @@
 ## Non-goals
 
 - The owner of a TODO, the reference back to the issue, the `todo-key` field: PMK-238.
-- A real parser per language. The scan stays a heuristic, and the command file keeps a "Known limits" list: only the first word counts; two apostrophes on one line still make a string; a `<script>` holding a template (`type="text/x-template"`) is read as JavaScript; a triple-quoted string that starts a line inside an expression reads as a docstring.
+- A real parser per language. The scan stays a heuristic, and the command file keeps a "Known limits" list: only the first word counts; two apostrophes on one line still make a string; a `>` inside a quoted attribute of a `<script>` or `<style>` tag ends the tag; a triple-quoted string that starts a line inside an expression reads as a docstring.
 
 ## Anti-goals
 

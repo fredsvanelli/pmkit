@@ -31,9 +31,10 @@ const STYLES = {
   hs: { line: ['--'], block: [['{-', '-}']], strings: ['"'], chars: true }, // chars: a prime (foldl') or 'a' is not a string
   go: { line: ['//'], block: [['/*', '*/']], strings: ['"', '`'], chars: true },
   rs: { line: ['//'], block: [['/*', '*/']], strings: ['"'], chars: true },
-  css: { block: [['/*', '*/']] },
+  css: { block: [['/*', '*/']], strings: ['"', "'"] },
   py: { ...HASH, triple: true, docstrings: true },
   hash: HASH,
+  ignore: { line: ['#'], lineStart: true }, // git and docker read # as a comment only at the start of a line
   markup: EMBEDDED,
   md: { ...MARKUP, markdown: true },
 }
@@ -47,7 +48,8 @@ const EXTENSIONS = {
   rs: ['rs'],
   css: ['css'],
   py: ['py'],
-  hash: ['sh', 'bash', 'zsh', 'rb', 'yaml', 'yml', 'toml', 'r', 'pl', 'ex', 'exs', 'ps1', 'mk', 'gitignore', 'gitattributes', 'dockerignore', 'npmignore'],
+  hash: ['sh', 'bash', 'zsh', 'rb', 'yaml', 'yml', 'toml', 'r', 'pl', 'ex', 'exs', 'ps1', 'mk'],
+  ignore: ['gitignore', 'gitattributes', 'dockerignore', 'npmignore'],
   markup: ['html', 'htm', 'xml', 'svg', 'vue', 'svelte'],
   md: ['md', 'markdown'],
 }
@@ -66,7 +68,10 @@ export function commentStyle(file) {
 }
 
 // A line comment starts at the mark. `//` after a colon is a URL, and `#` or `--` after code that is not a space is not a mark.
-const markOk = (mark, source, i) => (mark === '//' ? source[i - 1] !== ':' : i === 0 || /\s/.test(source[i - 1]))
+const markOk = (mark, source, i, style) => {
+  if (style.lineStart) return i === 0 || source[i - 1] === '\n'
+  return mark === '//' ? source[i - 1] !== ':' : i === 0 || /\s/.test(source[i - 1])
+}
 
 /** Markdown keeps its code blocks and inline code out of the scan: they become blanks of the same length. */
 function blankMarkdownCode(source) {
@@ -83,14 +88,24 @@ function blankMarkdownCode(source) {
     .join('\n')
 }
 
-/** Whether the quote opened before `i` closes on its line. A backslash skips the next character, a newline included. */
-function closesOnLine(source, i, quote) {
+/**
+ * Where the quote opened before `i` closes: the index of the closing quote, or of the end of its line when there is none.
+ * A backslash skips the next character, a newline included.
+ */
+function quoteEnd(source, i, quote) {
   for (; i < source.length; i += 1) {
     if (source[i] === '\\') i += 1
-    else if (source[i] === quote) return true
-    else if (source[i] === '\n') return false
+    else if (source[i] === quote || source[i] === '\n') return i
   }
-  return false
+  return source.length
+}
+
+/** Whether a triple quote at `i`, after at most two prefix letters (`r`, `u`, `b`, `f`), has only spaces before it on its line. */
+function startsLine(source, i) {
+  let k = i - 1
+  while (k >= 0 && i - k <= 2 && /[rRuUbBfF]/.test(source[k])) k -= 1
+  while (k >= 0 && (source[k] === ' ' || source[k] === '\t')) k -= 1
+  return k < 0 || source[k] === '\n'
 }
 
 /** The text of every comment line, as { line, content }, outside strings. A block comment gives one entry per line. */
@@ -103,6 +118,9 @@ function commentLines(source, style) {
   let line = 1
   let start = 0
   let i = 0
+  // For each quote character, the end of the line where its last search found no partner: a quote before it is lone too,
+  // so a line full of lone quotes is searched once, not once per quote.
+  const loneUntil = {}
   const push = () => {
     out.push({ line: start, content: buf })
     buf = ''
@@ -111,7 +129,7 @@ function commentLines(source, style) {
     const ch = source[i]
     if (mode === 'code') {
       const block = style.block?.find(([open]) => source.startsWith(open, i))
-      const mark = style.line?.find((m) => source.startsWith(m, i) && markOk(m, source, i))
+      const mark = style.line?.find((m) => source.startsWith(m, i) && markOk(m, source, i, style))
       if (ch === '\n') line += 1
       if (block) {
         mode = 'block'
@@ -136,7 +154,7 @@ function commentLines(source, style) {
       }
       if (style.strings?.includes(ch)) {
         quote = style.triple && source.startsWith(ch.repeat(3), i) ? ch.repeat(3) : ch
-        if (quote.length === 3 && style.docstrings && /^[ \t]*$/.test(source.slice(source.lastIndexOf('\n', i - 1) + 1, i))) {
+        if (quote.length === 3 && style.docstrings && startsLine(source, i)) {
           // A triple quote that starts its line is a docstring: it reads like a block comment.
           mode = 'block'
           close = quote
@@ -145,12 +163,23 @@ function commentLines(source, style) {
           start = line
           continue
         }
-        if (quote === '`' || quote.length === 3 || closesOnLine(source, i + 1, ch)) {
+        // A lone quote, with no partner on its line (an apostrophe, a quote in a regex), is code, so it hides no comment.
+        let lone = false
+        if (quote === ch && ch !== '`') {
+          if (i < (loneUntil[ch] ?? -1)) lone = true
+          else {
+            const end = quoteEnd(source, i + 1, ch)
+            if (source[end] !== ch) {
+              loneUntil[ch] = end
+              lone = true
+            }
+          }
+        }
+        if (!lone) {
           mode = 'string'
           i += quote.length
           continue
         }
-        // A lone quote, with no partner on its line (an apostrophe, a quote in a regex), is code, so it hides no comment.
       }
       i += 1
     } else if (mode === 'string') {
@@ -194,28 +223,63 @@ function commentLines(source, style) {
   return out
 }
 
-// ponytail: a regex, not an html parser. A `<script>` that holds a template (type="text/x-template") is read as JavaScript.
-const ELEMENT = /<(script|style)\b([^>]*)>([\s\S]*?)<\/\1\s*>/dgi
+// ponytail: a scan for `<!--`, `<script>` and `<style>`, not an html parser: a `>` inside a quoted attribute ends the tag.
+const OPENING = /<!--|<(script|style)\b([^<>]*)>/gi
+const JS_TYPE = /^(?:module|(?:text|application)\/(?:javascript|ecmascript|babel|jsx|typescript))$/i
 const blank = (text) => text.replace(/[^\n]/g, ' ')
 
-/** The comment lines of a markup file: its own `<!-- -->`, and the code of each `<script>` and `<style>` element read with that code's syntax. */
+/** The syntax of an element's code: JavaScript for a script with no type or a JavaScript type, CSS or C-like for a style, null for a script that is not code (a template, JSON). */
+function elementSyntax(name, attrs) {
+  if (name === 'style') return /\blang\s*=\s*["']?(scss|less|sass|styl)/i.test(attrs) ? STYLES.c : STYLES.css
+  const type = /\btype\s*=\s*["']?([^"'\s>]*)/i.exec(attrs)?.[1]
+  return !type || JS_TYPE.test(type) ? STYLES.c : null
+}
+
+/**
+ * The comment lines of a markup file: its own `<!-- -->`, and the code of each `<script>` and `<style>` element read with
+ * that code's syntax. An element inside a comment, a self-closing one (`<script href="a.js"/>` in svg) and one with no
+ * closing tag stay markup. One pass over the file.
+ */
 function markupLines(text) {
+  const lower = text.toLowerCase()
   const out = []
-  let markup = ''
+  const markup = []
+  const noClose = new Set()
   let from = 0
-  let offset = 0 // the newlines before `from`, counted once
-  const newlines = (part) => part.split('\n').length - 1
-  for (const match of text.matchAll(ELEMENT)) {
-    const [start, end] = match.indices[3]
-    offset += newlines(text.slice(from, start))
-    const syntax = match[1].toLowerCase() === 'script' || /\blang\s*=\s*["']?(scss|less|sass|styl)/i.test(match[2]) ? STYLES.c : STYLES.css
-    for (const entry of commentLines(match[3], syntax)) out.push({ line: entry.line + offset, content: entry.content })
+  let line = 1 // the line of index `counted`
+  let counted = 0
+  const lineAt = (index) => {
+    for (let at = text.indexOf('\n', counted); at !== -1 && at < index; at = text.indexOf('\n', at + 1)) line += 1
+    counted = index
+    return line
+  }
+  OPENING.lastIndex = 0
+  for (let match = OPENING.exec(text); match; match = OPENING.exec(text)) {
+    if (match[0] === '<!--') {
+      const close = text.indexOf('-->', OPENING.lastIndex)
+      if (close === -1) break // the rest of the file is a comment
+      OPENING.lastIndex = close + 3
+      continue
+    }
+    const name = match[1].toLowerCase()
+    if (match[2].trimEnd().endsWith('/') || noClose.has(name)) continue
+    const start = OPENING.lastIndex
+    const end = lower.indexOf(`</${name}`, start)
+    if (end === -1) {
+      noClose.add(name) // no later element of this name closes either
+      continue
+    }
+    OPENING.lastIndex = end
+    const syntax = elementSyntax(name, match[2])
+    if (!syntax) continue // a template stays markup
+    const offset = lineAt(start) - 1
+    for (const entry of commentLines(text.slice(start, end), syntax)) out.push({ line: entry.line + offset, content: entry.content })
     // The element's code is blanked for the markup pass, newlines kept, so a `<!--` inside a script string is not a comment.
-    markup += text.slice(from, start) + blank(match[3])
-    offset += newlines(match[3])
+    markup.push(text.slice(from, start), blank(text.slice(start, end)))
     from = end
   }
-  out.push(...commentLines(markup + text.slice(from), STYLES.markup))
+  markup.push(text.slice(from))
+  out.push(...commentLines(markup.join(''), STYLES.markup))
   return out.sort((a, b) => a.line - b.line)
 }
 
