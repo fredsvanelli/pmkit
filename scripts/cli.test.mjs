@@ -2417,6 +2417,23 @@ test('requests update with only --body-file says the text changed, and customers
   assert.doesNotMatch(text, /\{"id"/)
 })
 
+test('requests accept --create works next to an unreadable issue, warns in the text and the JSON, and a retry still finds the issue (PMK-221 review B6)', () => {
+  const root = makeRepo('team')
+  const request = json(root, ['requests', 'create', '--title', 'CSV export']).after
+  const dry = run(root, ['requests', 'accept', request.id, '--create', '--dry-run', '--json'])
+  assert.equal(dry.status, 0, dry.stdout + dry.stderr)
+  assert.match(JSON.parse(dry.stdout).warnings[0], /ISS-3Q6T could not be read/)
+  assert.match(dry.stderr, /warning: .*ISS-3Q6T could not be read/)
+  const made = run(root, ['requests', 'accept', request.id, '--create', '--json'])
+  assert.equal(made.status, 0, made.stdout + made.stderr)
+  const issue = JSON.parse(made.stdout).issue.after.id
+  assert.match(made.stderr, /ISS-3Q6T/)
+  json(root, ['requests', 'decline', request.id])
+  const retry = errorOf(run(root, ['requests', 'accept', request.id, '--create', '--json']))
+  assert.equal(retry.code, 'CONFLICT')
+  assert.equal(retry.nextStep, `pmkit requests accept ${request.id} ${issue}`)
+})
+
 test('a broken request file is a warning that points to pmkit validate, in the text and in the JSON', () => {
   const root = makeRepo('team')
   fs.mkdirSync(path.join(root, '.issues', 'requests'), { recursive: true })

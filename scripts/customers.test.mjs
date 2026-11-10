@@ -477,15 +477,20 @@ test('acceptIntoNewIssue refuses with CONFLICT when an issue already names the r
   assert.deepEqual(hashTree(root, ['.issues/.cache']), hash)
 })
 
-test('acceptIntoNewIssue refuses when the issues that could name the request cannot all be read', async () => {
+test('acceptIntoNewIssue creates the issue with a warning naming the unreadable issues, and refuses a cut read (PMK-221 review B6)', async () => {
   const { acceptIntoNewIssue } = await import('./pmkit.mjs')
-  const { root, dir, write, tracker } = setup()
-  fs.rmSync(path.join(dir('issues'), 'ISS-3Q6T'), { recursive: true }) // the team fixture's conflicted issue, which no search can read
+  const { root, write, tracker } = setup()
   write('requests', 'REQ-1.md', '---\ntitle: CSV\n---\n')
-  write('issues/ISS-9ZZZ', 'issue.md', '---\ntitle: [\n---\n')
+  // The team fixture's ISS-3Q6T has conflict markers, so no search can read it.
   const hash = hashTree(root, ['.issues/.cache'])
-  await assert.rejects(acceptIntoNewIssue(tracker, 'REQ-1', 'fred'), (error) => error.code === 'INVALID_INPUT' && /ISS-9ZZZ/.test(error.message))
-  const cut = { ...tracker, searchIssues: async () => ({ issues: [], problems: [], hasMore: true }) }
-  await assert.rejects(acceptIntoNewIssue(cut, 'REQ-1', 'fred'), (error) => error.code === 'INVALID_INPUT' && /could not all be read/.test(error.message))
+  const dry = await acceptIntoNewIssue(tracker, 'REQ-1', 'fred', { dryRun: true })
   assert.deepEqual(hashTree(root, ['.issues/.cache']), hash)
+  assert.equal(dry.warnings.length, 1)
+  assert.match(dry.warnings[0], /ISS-3Q6T could not be read, so an issue an earlier run made for request REQ-1 is not ruled out/)
+  const made = await acceptIntoNewIssue(tracker, 'REQ-1', 'fred')
+  assert.deepEqual(made.warnings, dry.warnings)
+  assert.equal(tracker.getRequest('REQ-1').target.id, made.issue.after.id)
+  const cut = { ...tracker, searchIssues: async () => ({ issues: [], problems: [], hasMore: true }) }
+  write('requests', 'REQ-2.md', '---\ntitle: Other\n---\n')
+  await assert.rejects(acceptIntoNewIssue(cut, 'REQ-2', 'fred'), (error) => error.code === 'INVALID_INPUT' && /could not all be read/.test(error.message))
 })

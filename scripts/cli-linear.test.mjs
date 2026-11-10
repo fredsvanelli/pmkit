@@ -2078,3 +2078,26 @@ test('customers create and update on Linear refuse a decimal size before any mut
     assert.equal(mutationCalls(fetch).length, 0, args.join(' '))
   }
 })
+
+// PMK-221 review M6 and M8: a name matched in a cut list may have a twin past the cut; an id that Linear does not have is plainly missing.
+test('past the 250-customer cap, a name match is incomplete: a read warns, a write refuses, and an unknown id is NOT_FOUND', async () => {
+  const crowd = Array.from({ length: 260 }, (_, index) => customerNode(`c-${index}`, `Customer ${index}`))
+  const shown = await generic(['customers', 'show', 'Customer 5'], onFetch({ customers: crowd }))
+  assert.equal(shown.code, 0, shown.stdout + shown.stderr)
+  assert.equal(shown.data.customer.id, 'c-5')
+  assert.deepEqual(shown.data.problems.map((problem) => problem.code), ['INCOMPLETE'])
+  assert.match(shown.data.problems[0].message, /more than 250 customers; another customer named "Customer 5" past them is not ruled out/)
+  const byId = await generic(['customers', 'show', 'c-5'], onFetch({ customers: crowd }))
+  assert.deepEqual(byId.data.problems, [])
+  const fetch = onFetch({ customers: crowd })
+  const refused = await generic(['customers', 'update', 'Customer 5', '--tier', 'Gold'], fetch)
+  assert.equal(refused.data.error.code, 'INVALID_INPUT')
+  assert.match(refused.data.error.nextStep, /c-5/)
+  assert.equal(mutationCalls(fetch).length, 0)
+  const linear = await cli(setup(), ['linear', 'customers', 'show', '--customer', 'Customer 5', '--json'], onFetch({ customers: crowd }))
+  assert.equal(linear.code, 0, linear.stderr)
+  assert.match(linear.stderr, /warning: .*more than 250 customers/)
+  const missing = await generic(['customers', 'show', '0b5d7e9a-0000-4e3f-8a9b-0c1d2e3f4a5b'], onFetch({ customers: crowd }))
+  assert.equal(missing.data.error.code, 'NOT_FOUND')
+  assert.equal(missing.data.error.message, 'customer 0b5d7e9a-0000-4e3f-8a9b-0c1d2e3f4a5b does not exist')
+})

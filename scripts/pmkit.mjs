@@ -412,7 +412,7 @@ function customerInput(ctx) {
  * of the request body, who asked (the customer name, else `from`, else the customer id) and `Request: <id>`, the text
  * /pmkit:backlog:request-queue writes. An accepted request is refused, so it never gets a second issue. When the accept fails
  * after the create, the issue stays and the error names both ids; `partialCommit` lets auto_commit keep the issue.
- * Returns { issue: { before, after }, request: { before, after }, problems }. A dry run creates nothing and projects the request.
+ * Returns { issue: { before, after }, request: { before, after }, problems, warnings }. A dry run creates nothing and projects the request.
  */
 export async function acceptIntoNewIssue(tracker, id, actor, { dryRun = false } = {}) {
   const { problems, ...request } = await tracker.getRequest(id)
@@ -420,18 +420,18 @@ export async function acceptIntoNewIssue(tracker, id, actor, { dryRun = false } 
     throw new PmkitError('CONFLICT', `request ${request.id} is already accepted into ${request.target?.id}`, `pmkit requests accept ${request.id} <issue> moves it to another issue`)
   }
   // A retry after an accept that failed must not make a second issue: look for an issue that already names the request.
-  const named = await issueNamingRequest(tracker, request.id)
+  const { id: named, warnings } = await issueNamingRequest(tracker, request.id)
   if (named) throw new PmkitError('CONFLICT', `issue ${named} already names request ${request.id}`, `pmkit requests accept ${request.id} ${named}`)
   const asker = request.customer ? (request.customer.name ?? request.customer.id) : request.from
   const description = [request.body, [asker ? `Asked by: ${asker}` : null, `Request: ${request.id}`].filter(Boolean).join('\n')].filter(Boolean).join('\n\n')
   const issue = await tracker.createIssue({ title: request.title, description }, actor, { dryRun })
   if (dryRun) {
     const target = { type: 'issue', id: issue.after.id, title: issue.after.title }
-    return { issue, request: { before: request, after: { ...request, state: 'accepted', target, triaged: { at: null, by: actor }, reason: null } }, problems }
+    return { issue, request: { before: request, after: { ...request, state: 'accepted', target, triaged: { at: null, by: actor }, reason: null } }, problems, warnings }
   }
   try {
     const accepted = await tracker.acceptRequest(request.id, issue.after.id, actor)
-    return { issue, request: { before: accepted.before, after: accepted.after }, problems: accepted.problems ?? problems }
+    return { issue, request: { before: accepted.before, after: accepted.after }, problems: accepted.problems ?? problems, warnings }
   } catch (error) {
     // Any error, a system one (EACCES, ENOSPC) or a bug too, names both ids and lets auto_commit keep the issue.
     const failure = new PmkitError(
@@ -446,23 +446,27 @@ export async function acceptIntoNewIssue(tracker, id, actor, { dryRun = false } 
 }
 
 /**
- * The id of an issue whose description has the line `Request: <id>`, archived ones included, or null. A read that is cut or
- * skips a file that does not parse cannot rule such an issue out, so it refuses instead of answering null.
+ * { id, warnings }: the id of an issue whose description has the line `Request: <id>`, archived ones included, or null.
+ * A cut read (hasMore) refuses, since it may hide that issue. An issue file that does not parse is a warning that names it,
+ * not a refusal (PMK-221 review B6): the issue an earlier run made is written by pmkit and parses, so the search finds it,
+ * and refusing would block every --create in a tracker with one broken file.
  */
 async function issueNamingRequest(tracker, id) {
   const { issues, problems = [], hasMore = false } = await tracker.searchIssues({ text: `Request: ${id}`, archived: true })
   const line = new RegExp(`^Request: ${id}$`, 'm')
   const found = issues.find((issue) => line.test(issue.description ?? ''))
-  if (found) return found.id
-  if (problems.length > 0 || hasMore) {
-    const unread = problems.map((problem) => problem.id).filter(Boolean)
+  if (found) return { id: found.id, warnings: [] }
+  if (hasMore) {
     throw new PmkitError(
       'INVALID_INPUT',
-      `the issues could not all be read${unread.length > 0 ? ` (${unread.join(', ')})` : ''}, so an issue made for request ${id} by an earlier run cannot be ruled out`,
-      'Run pmkit validate, or accept the request into an existing issue with pmkit requests accept <id> <issue>',
+      `the issues could not all be read, so an issue made for request ${id} by an earlier run cannot be ruled out`,
+      'Accept the request into an existing issue with pmkit requests accept <id> <issue>',
     )
   }
-  return null
+  const unread = problems.map((problem) => problem.id ?? problem.path).filter(Boolean)
+  if (problems.length === 0) return { id: null, warnings: [] }
+  const named = unread.length > 0 ? unread.join(', ') : `${problems.length} issue files`
+  return { id: null, warnings: [`${named} could not be read, so an issue an earlier run made for request ${id} is not ruled out; run pmkit validate`] }
 }
 
 /** A table of requests in the order given: id, title, state, customer, where it came from and the issue. */
@@ -1184,7 +1188,7 @@ export const COMMANDS = [
           writeText(result.request, { ...ctx, record: requestRecord }),
         ].join('\n')
         return {
-          data: result, text, commit: `${result.request.after.id} ${result.issue.after.id}`, warnings: problemWarnings(result.problems),
+          data: result, text, commit: `${result.request.after.id} ${result.issue.after.id}`, warnings: [...problemWarnings(result.problems), ...result.warnings],
           notes: ctx.dryRun ? ['the issue ID is assigned when written, and so is the triage time'] : [],
         }
       }

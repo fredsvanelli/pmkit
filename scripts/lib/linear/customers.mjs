@@ -344,18 +344,29 @@ export function createCustomers({ client, discovery, config }) {
    * The customer a command names, from the first LOOKUP_LIMIT customers by id or exact name. Past a cut list an id is read
    * directly, and a name that is not found is an incomplete lookup, never "no such customer".
    */
-  async function findCustomer(ref, warnings, listHint) {
+  async function findCustomer(ref, warnings, listHint, { strict = false } = {}) {
     const found = await client.paginate(LIST_QUERY, {}, { select: (data) => data.customers, pageSize: 100, limit: LOOKUP_LIMIT })
     const views = found.nodes.map(customerView)
+    let chosen
     try {
-      return resolveCustomer(views, ref)
+      chosen = resolveCustomer(views, ref)
     } catch (error) {
       if (error.code !== 'NOT_FOUND' || !found.hasMore) throw error
-      const direct = UUID.test(ref) ? await readCustomer(ref) : null
-      if (direct) return direct
-      warnings.push(`the workspace has more than ${LOOKUP_LIMIT} customers; only the first ${LOOKUP_LIMIT} can be matched by name. Use the id`)
+      if (UUID.test(ref)) {
+        // An id is read directly, so a miss is plainly missing, not an incomplete lookup (PMK-221 review M8).
+        const direct = await readCustomer(ref)
+        if (direct) return direct
+        throw new PmkitError('NOT_FOUND', `customer ${ref} does not exist`, listHint)
+      }
       throw new PmkitError('NOT_FOUND', `no customer among the first ${LOOKUP_LIMIT} is named or identified "${ref}", and the workspace has more, so the lookup is incomplete`, `Pass the customer id; ${listHint} shows the first ${LOOKUP_LIMIT}`)
     }
+    // A name matched in a cut list may have a twin past the cut (PMK-221 review M6): a read warns, a write refuses.
+    if (found.hasMore && chosen.id !== ref) {
+      const message = `the workspace has more than ${LOOKUP_LIMIT} customers; another customer named "${ref}" past them is not ruled out`
+      if (strict) throw new PmkitError('INVALID_INPUT', message, `Pass the customer id, such as ${chosen.id}`)
+      warnings.push(message)
+    }
+    return chosen
   }
 
   /** Runs a read that needs customers. A "not available" answer means the cached flag is stale. */
@@ -415,7 +426,7 @@ export function createCustomers({ client, discovery, config }) {
     if (!availability.available) refuseWrite(availability)
     const all = [...warnings]
     try {
-      const before = await findCustomer(ref, all, 'linear customers list')
+      const before = await findCustomer(ref, all, 'linear customers list', { strict: true })
       const { plan, after } = await edit(raw, before, flags, dryRun)
       const lines = ['before:', indent(customersText([before])), 'after:', indent(customersText([after]))]
       if (dryRun) lines.push('dry run: nothing was written')
@@ -450,7 +461,7 @@ export function createCustomers({ client, discovery, config }) {
     checkLinkFlags(flags)
     const all = [...warnings]
     try {
-      const chosen = await findCustomer(ref, all, 'linear customers list')
+      const chosen = await findCustomer(ref, all, 'linear customers list', { strict: true })
       const needs = await readNeeds(chosen.id)
       if (needs.hasMore) all.push(`the customer has more than ${CUSTOMER_NEEDS_LIMIT} requests; a duplicate request beyond them is not detected`)
       const requests = needs.nodes.map(requestView)
@@ -496,9 +507,9 @@ export function createCustomers({ client, discovery, config }) {
   }
 
   /** findCustomer for the generic commands, whose list command is pmkit customers list. */
-  async function find(ref) {
+  async function find(ref, warnings = [], options = { strict: true }) {
     try {
-      return await findCustomer(ref, [], 'pmkit customers list')
+      return await findCustomer(ref, warnings, 'pmkit customers list', options)
     } catch (error) {
       if (error.code === 'NOT_FOUND' && /^Run linear/.test(error.nextStep ?? '')) throw new PmkitError('NOT_FOUND', error.message, 'pmkit customers list')
       throw error
@@ -514,10 +525,12 @@ export function createCustomers({ client, discovery, config }) {
   })
 
   const getCustomer = (ref) => contractCall(async () => {
-    const customer = genericCustomer(await find(ref))
+    const lookup = []
+    const customer = genericCustomer(await find(ref, lookup, { strict: false }))
     const owner = { id: customer.id, name: customer.name }
     const needs = await readNeeds(customer.id)
-    const problems = needs.hasMore ? [cutProblem(customer.id, `customer ${customer.name} has more than ${CUSTOMER_NEEDS_LIMIT} requests; only ${CUSTOMER_NEEDS_LIMIT} were read`)] : []
+    const problems = lookup.map((message) => cutProblem(null, message))
+    if (needs.hasMore) problems.push(cutProblem(customer.id, `customer ${customer.name} has more than ${CUSTOMER_NEEDS_LIMIT} requests; only ${CUSTOMER_NEEDS_LIMIT} were read`))
     return { customer, requests: needs.nodes.map((need) => genericRequestView(need, owner)), problems }
   })
 
