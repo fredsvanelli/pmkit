@@ -3107,7 +3107,7 @@ async function openBlocked(tracker, issues, warnings) {
 }
 
 /** The load report from the inputs of readLoadInputs. `capacity` and `daysOff` replace the ones read. Calls no tracker operation. */
-function buildLoadReport(ctx, inputs, { capacity, daysOff }) {
+function buildLoadReport(ctx, inputs, { capacity, daysOff, proposals = true }) {
   const { sprint, noSprintNamed, found, truncated, choice, delivered, blockedIds, ages } = inputs
   const notes = [...inputs.notes]
   const warnings = [...inputs.warnings]
@@ -3123,7 +3123,8 @@ function buildLoadReport(ctx, inputs, { capacity, daysOff }) {
     warnings.push(`some issues have no estimate and count 0 ${choice.unit}; the Unestimated column shows how many per member`)
   }
   notes.push(...inputs.agingNotes)
-  const proposal = truncated ? { moves: [], reason: null } : proposeMoves(report, found.issues)
+  // `team capacity` shows no proposal, so it builds none.
+  const proposal = truncated || !proposals ? { moves: [], reason: null } : proposeMoves(report, found.issues)
   const suggestions = proposal.moves
   const noMoves = proposal.reason === null ? null : { reason: proposal.reason, message: noMoveMessage(proposal.reason, report.imbalances) }
   const data = { sprint: sprint ? { id: sprint.id, name: sprint.name, start: sprint.start, end: sprint.end } : null, truncated, ...report, suggestions, noMoves }
@@ -3141,7 +3142,7 @@ async function runTeamCapacity(ctx) {
   const wanted = ctx.opt('sprint') ?? 'current'
   const writing = ctx.opt('set') !== undefined || ctx.opt('days-off') !== undefined
   const inputs = await readLoadInputs(ctx, { wanted, requireSprint: true, withAging: false, withDelivered: false, withBlocked: false })
-  const current = buildLoadReport(ctx, inputs, {})
+  const current = buildLoadReport(ctx, inputs, { proposals: false })
   const { sprint, incomplete } = current
   const humans = current.data.rows.filter(HUMAN_ROW)
   const warnings = [...current.warnings]
@@ -3172,7 +3173,7 @@ async function runTeamCapacity(ctx) {
   const ids = humans.map((row) => row.member)
   const changes = changeList({ capacity: result.before.capacity, daysOff: result.before.daysOff }, { capacity: result.after.capacity, daysOff: result.after.daysOff }, ids)
   let after = null
-  if (!incomplete) after = loadView(buildLoadReport(ctx, inputs, { capacity: result.after.capacity, daysOff: result.after.daysOff }).data, false)
+  if (!incomplete) after = loadView(buildLoadReport(ctx, inputs, { capacity: result.after.capacity, daysOff: result.after.daysOff, proposals: false }).data, false)
   else warnings.push('the load effect of this change is not verified, because the issue read is incomplete')
   const readNote = capabilityNotesFrom(inputs.manifest, 'capacity')
   const notes = [...current.notes.filter((note) => !readNote.includes(note))]
