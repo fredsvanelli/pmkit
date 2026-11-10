@@ -1,0 +1,85 @@
+$ pmkit issues similar ISS-9B2X
+exit 0
+--- stdout
+ID       | Title                   | Status | Assignee | Estimate | Score | Shared
+---------|-------------------------|--------|----------|----------|-------|----------------
+ISS-6R3N | Retry failed deliveries | done   | fred     | 8        | 0.147 | retry, delivery
+--- stderr
+(empty)
+
+$ pmkit issues similar ISS-9B2X --json
+exit 0
+--- stdout
+{
+  "target": {
+    "id": "ISS-9B2X",
+    "title": "Dead-letter queue"
+  },
+  "similar": [
+    {
+      "id": "ISS-6R3N",
+      "title": "Retry failed deliveries",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "assignee": "fred",
+      "estimate": 8,
+      "score": 0.147,
+      "shared": [
+        "retry",
+        "delivery"
+      ]
+    }
+  ],
+  "unestimated": [],
+  "considered": 2,
+  "complete": true,
+  "hasMore": false,
+  "problems": []
+}
+--- stderr
+(empty)
+
+$ pmkit issues similar ISS-9B2X --category done,todo --limit 2
+exit 0
+--- stdout
+ID       | Title                   | Status | Assignee | Estimate | Score | Shared
+---------|-------------------------|--------|----------|----------|-------|----------------
+ISS-6R3N | Retry failed deliveries | done   | fred     | 8        | 0.16  | retry, delivery
+--- stderr
+(empty)
+
+$ pmkit issues similar ISS-9B2X --category done,todo --limit 2 --json
+exit 0
+--- stdout
+{
+  "target": {
+    "id": "ISS-9B2X",
+    "title": "Dead-letter queue"
+  },
+  "similar": [
+    {
+      "id": "ISS-6R3N",
+      "title": "Retry failed deliveries",
+      "status": {
+        "name": "done",
+        "category": "done"
+      },
+      "assignee": "fred",
+      "estimate": 8,
+      "score": 0.16,
+      "shared": [
+        "retry",
+        "delivery"
+      ]
+    }
+  ],
+  "unestimated": [],
+  "considered": 3,
+  "complete": true,
+  "hasMore": false,
+  "problems": []
+}
+--- stderr
+(empty)

@@ -22,6 +22,7 @@ import { buildRoadmapReview, roadmapReviewText } from './lib/roadmap-review.mjs'
 import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, failingWorkflows, FAILED_RUN, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 import { pathNote } from './lib/path-notes.mjs'
 import { planNextAdr } from './lib/adr.mjs'
+import { similarResult } from './lib/similar.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
 import { changeList, checkMembers, mergeCapacity, parseCapacityPairs, workingDays } from './lib/team-capacity.mjs'
 import { AGENT_ID, localRunLine, nativeRunLine } from './lib/delegation.mjs'
@@ -587,6 +588,37 @@ export const COMMANDS = [
         parts.push('', 'history:', eventTable(data.history))
       }
       return { data, text: parts.join('\n'), warnings }
+    },
+  },
+  {
+    name: 'issues similar', summary: 'issues that read like this one (text similarity), done ones by default, with their estimates; only reads',
+    usage: '<id> [--category c,..] [--limit n]', args: ['id'], flags: ['category', 'limit'],
+    run: async (ctx) => {
+      const tracker = await ctx.tracker()
+      const target = await tracker.getIssue(ctx.args[0])
+      const limit = ctx.opt('limit') === undefined ? 5 : whole('limit', ctx.opt('limit'))
+      if (limit < 1) throw usageError('--limit must be at least 1')
+      const categories = csv(ctx.opt('category') ?? 'done')
+      if (categories.length === 0) throw usageError('--category needs at least one category', 'pmkit issues similar <id> --category done')
+      const found = await tracker.searchIssues({ categories })
+      const data = similarResult(target, found, { limit })
+      const warnings = data.problems.map(problemLine)
+      if (data.hasMore) warnings.push('Linear has more matching issues than the 1000 pmkit read, so the list is not verified')
+      if (data.reason === 'no_comparable_text') warnings.push(`${target.id} has no title or description words to compare (reason no_comparable_text), so the similar issues are not verified. Ask what the work covers, or estimate from the code alone`)
+      if (!data.complete) warnings.push('incomplete: the similar list is not verified. Do not say that no similar issue exists')
+      const rows = [...data.similar, ...data.unestimated]
+      // With an incomplete read the stdout always says why it is not verified, with a table or without one.
+      const why = [
+        ...(data.problems.length > 0 ? [`${data.problems.length} issue ${data.problems.length === 1 ? 'file' : 'files'} could not be read (${data.problems.map((p) => p.id ?? 'unknown').join(', ')})`] : []),
+        ...(data.hasMore ? ['Linear has more issues than the 1000 pmkit read'] : []),
+        ...(data.reason === 'no_comparable_text' ? [`${target.id} has no words to compare`] : []),
+      ]
+      const notVerified = data.complete ? [] : [`not verified: ${why.join('; ')}. Do not say that no similar issue exists`]
+      const body = rows.length === 0
+        ? (data.complete ? `no similar issues among the ${data.considered} read` : `no similar issues found among the ${data.considered} read`)
+        : table(['ID', 'Title', 'Status', 'Assignee', 'Estimate', 'Score', 'Shared'], rows.map((hit) => [hit.id, hit.title, hit.status.name, hit.assignee ?? '', hit.estimate ?? '', hit.score, hit.shared.join(', ')]))
+      const text = [body, ...notVerified].join('\n')
+      return { data, text, warnings }
     },
   },
   {

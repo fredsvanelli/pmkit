@@ -1,0 +1,15 @@
+$ pmkit capabilities --json  [step 1, read]
+exit 0
+$ pmkit issues get ACME-2 --json  [step 2, read]
+exit 0
+$ pmkit discover --json  [step 3, read]
+exit 0
+$ pmkit issues similar ACME-2 --json  [step 5, read]
+exit 0
+$ pmkit issues comment ACME-2 --body-file <inputs>/estimate-comment.md --dry-run --json  [step 8, dry run]
+exit 0
+? Step 8  [confirmed]
+$ pmkit issues comment ACME-2 --body-file <inputs>/estimate-comment.md --json  [step 8, write]
+exit 0
+
+(no file changed)
