@@ -5,9 +5,10 @@ type: feature
 status: backlog
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-5
 created: 2026-11-10T20:03:45.191Z
-updated: 2026-11-10T21:16:02Z
+updated: 2026-11-10T21:22:26Z
 ---
 
 ## Description
