@@ -134,10 +134,13 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `views list` | lists the saved views with their filters; on Linear, the custom views of the scope team and of the workspace, each with Linear's filter in `linear.filterData`, and `hasMore` when Linear has more views than pmkit read |
 | `views delete <name>` | deletes `.issues/views/<name>.yaml`, a file that does not parse too; `--dry-run` is the full preview. Linear views are deleted in Linear |
 | `views rename <name> <new-name>` | renames a saved view and keeps its filter; refuses a name another view has in any case, and a rename that changes only the case (rename through another name first). Linear views are renamed in Linear |
-| `goal list` | lists the goals in `.issues/goals/` with the epics linked to each |
+| `goal list` | lists the goals in `.issues/goals/` with their status and the epics linked to each; on a Linear Business or Enterprise plan, the initiatives, whose epics are their projects of the team |
 | `goal get <id>` | shows one goal and its epics |
-| `goal create --title t [--target YYYY-MM-DD]` | creates a goal as `.issues/goals/<ID>.md`; the ID is `GOAL-` and a code that follows `id_style` |
-| `goal progress <id>` | adds up the progress of the epics linked to a goal, as `epic progress` counts each one |
+| `goal create (--title t \| --title-file f) [--target YYYY-MM-DD] [--status s]` | creates a goal as `.issues/goals/<ID>.md`; the ID is `goal_prefix` (in `.issues/config.yaml`, default `GOAL`) and a code that follows `id_style`; the status is `proposed`, `planned`, `active` (the default, and the status of a file without one), `completed` or `canceled` |
+| `goal update <id> [--title t \| --title-file f] [--target YYYY-MM-DD\|none] [--status s]` | changes a goal, editing only those frontmatter lines; `--target none` removes the target |
+| `goal close <id>` | sets a goal's status to `completed` |
+| `goal delete <id>` | deletes a goal file; refuses while an epic links to the goal or an epic file does not parse |
+| `goal progress <id>` | adds up the progress of the epics linked to a goal, as `epic progress` counts each one; `complete` is `false`, with a warning, when an epic or issue file does not parse or a Linear read was cut |
 | `customers list` | lists the customers in `.issues/customers/`, highest revenue first, with the keys `linear customers list` prints |
 | `customers show <id or name>` | shows one customer and its requests, newest first |
 | `customers create --name n [--status s] [--tier t] [--revenue n] [--size n] [--owner member]` | creates a customer as `.issues/customers/<ID>.md`; the ID is `CUS-` and a code that follows `id_style` |
@@ -176,7 +179,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `migrate` | moves the tracker files to the format this pmkit writes; `--dry-run` lists every file it would touch |
 | `reindex` | rebuilds the query index in `.issues/.cache/` from the issue files; changes only files git ignores |
 | `render <board\|roadmap\|sprint>` | renders a view as Markdown or HTML to stdout, to `--out f`, or with `--save` to `.issues/.cache/render/`, which git ignores; never replaces a file it did not render |
-| `validate` | checks every file and reference; problems are output, not errors |
+| `validate` | checks every file and reference; problems are output, not errors; `checked` counts the files read, goals included |
 
 The `issues branch` and `pr` commands need `git_host.system: github` in `.pmkit/config.yaml` and a logged-in `gh`. With `git_host.system: none` they fail with `NOT_SUPPORTED`, and without `gh` or its login they fail with `NOT_CONFIGURED` or `AUTH`. A missing or invalid `git_host` makes `.pmkit/config.yaml` invalid. Then `issues branch`, `pr open`, `pr ready` and `pr sync` refuse with `INVALID_INPUT`, as every write does, and `pr status` prints a warning and fails with `NOT_SUPPORTED`. Run `node scripts/pmkit.mjs --help` for every flag. A failing command exits with code 2 and, with `--json`, prints one JSON error with a next step. An exception that is not a `PmkitError`, which means a bug in pmkit, has the code `UNEXPECTED` and no next step.
 

@@ -1,5 +1,7 @@
 # PMK-45 strategic goals for the Local tracker
 
+> PMK-213 adds `goal_prefix`, a goal status, `goal update|close|delete` and the Linear initiative reads: see `2026-11-10-pmk-213-improve-goals-design.md`.
+
 Source: Local adapter, Entity mapping ("`goals/<ID>.md`, linked to epics") and Capabilities ("progress rolled up from epics"); Technical spec, `EpicFrontmatter.goal`; Unified model, `list_goals`, `goal_progress`.
 
 ## Goal
