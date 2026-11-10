@@ -178,11 +178,66 @@ test('a PATH without gh exits 2 with NOT_CONFIGURED, and a logged out gh with AU
   assert.equal(errorOf(sync).code, 'AUTH')
 })
 
+/** The blocker reads of pull request 7 on main: no thread, no protection, no rule. */
+async function cleanReads(protection = { status: 1, stderr: 'gh: Branch not protected (HTTP 404)\n' }) {
+  return {
+    [await graphqlKey()]: { stdout: '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}' },
+    'api repos/{owner}/{repo}/branches/main/protection': protection,
+    'api repos/{owner}/{repo}/rules/branches/main?per_page=100&page=1': { stdout: '[]' },
+  }
+}
+
+test('pr status shows the blockers of an open pull request and reads it once', async () => {
+  const root = teamRepo()
+  const gh = fakeGh({
+    [detailView('feat')]: { stdout: detailJson({ number: 7, isDraft: true }) },
+    'pr checks 7 --json name,state,bucket,link': { stdout: '[]' },
+    ...(await cleanReads()),
+  })
+  const status = await callJson(root, envWith(gh), ['pr', 'status', '--branch', 'feat'])
+  assert.equal(status.blockers.blocked, true)
+  assert.deepEqual(status.blockers.blocking, [{ area: 'draft', message: 'the pull request is a draft' }])
+  assert.deepEqual(Object.keys(status.blockers), ['blocked', 'blocking', 'pending', 'unknown', 'unchecked'])
+  assert.equal('detail' in status.pr, false)
+  assert.equal(ghCalls(gh).filter((c) => c.startsWith('pr view')).length, 1)
+  assert.equal(ghCalls(gh).filter((c) => c.startsWith('pr checks')).length, 1)
+  const text = (await call(root, envWith(gh), ['pr', 'status', '--branch', 'feat'])).stdout
+  assert.match(text, /^blockers: blocked: the pull request is a draft$/m)
+})
+
+test('pr status says the blockers are not verified when the protection is refused, never that nothing blocks', async () => {
+  const root = teamRepo()
+  const gh = fakeGh({
+    [detailView('feat')]: { stdout: detailJson({ number: 7 }) },
+    'pr checks 7 --json name,state,bucket,link': { stdout: '[]' },
+    ...(await cleanReads({ status: 1, stderr: 'gh: Resource not accessible by integration (HTTP 403)\n' })),
+  })
+  const status = await callJson(root, envWith(gh), ['pr', 'status', '--branch', 'feat'])
+  assert.equal(status.blockers.blocked, null)
+  assert.deepEqual(status.blockers.unchecked.map((u) => u.area), ['policies'])
+  const text = (await call(root, envWith(gh), ['pr', 'status', '--branch', 'feat'])).stdout
+  assert.match(text, /^blockers: blockers not verified: policies$/m)
+  assert.doesNotMatch(text, /nothing blocks/)
+})
+
+test('pr status on a merged pull request reads no blocker', async () => {
+  const root = teamRepo()
+  const gh = fakeGh({
+    [detailView('done')]: { stdout: detailJson({ number: 9, state: 'MERGED', mergedAt: '2026-10-22T10:00:00Z' }) },
+    'pr checks 9 --json name,state,bucket,link': { stdout: '[]' },
+  })
+  const status = await callJson(root, envWith(gh), ['pr', 'status', '--branch', 'done'])
+  assert.equal(status.blockers.blocked, false)
+  assert.deepEqual(ghCalls(gh), [detailView('done'), 'pr checks 9 --json name,state,bucket,link'])
+  assert.doesNotMatch((await call(root, envWith(gh), ['pr', 'status', '--branch', 'done'])).stdout, /blockers:/)
+})
+
 test('pr status returns the pull request with checks and reviews, and an empty checks list when there are none', async () => {
   const root = teamRepo()
   const gh = fakeGh({
     [detailView('feat')]: { stdout: detailJson({ number: 7 }, { reviews: [{ state: 'APPROVED' }] }) },
     'pr checks 7 --json name,state,bucket,link': { status: 1, stderr: "no checks reported on the 'feat' branch\n" },
+    ...(await cleanReads()),
     [detailView('none')]: { status: 1, stderr: 'no pull requests found for branch "none"\n' },
   })
   const env = envWith(gh)
@@ -192,7 +247,7 @@ test('pr status returns the pull request with checks and reviews, and an empty c
   assert.deepEqual(status.checks, [])
   assert.deepEqual(status.reviews, [{ state: 'APPROVED' }])
   const none = await callJson(root, env, ['pr', 'status', '--branch', 'none'])
-  assert.deepEqual(none, { branch: 'none', pr: null, checks: [], reviews: [] })
+  assert.deepEqual(none, { branch: 'none', pr: null, checks: [], reviews: [], blockers: null })
 })
 
 test('pr status links a failing check to its ci logs run, and leaves a check without a run alone', async () => {
@@ -204,6 +259,7 @@ test('pr status links a failing check to its ci logs run, and leaves a check wit
       { name: 'lint', state: 'SUCCESS', bucket: 'pass', link: 'https://github.com/o/r/actions/runs/124/job/1' },
       { name: 'ext', state: 'FAILURE', bucket: 'fail', link: 'https://ci.example.com/1' },
     ]) },
+    ...(await cleanReads()),
   })
   const env = envWith(gh)
   const status = await callJson(root, env, ['pr', 'status', '--branch', 'feat'])

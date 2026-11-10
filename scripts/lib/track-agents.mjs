@@ -40,8 +40,12 @@ export function prText(row) {
   if (row.pr.state === 'no_pr') return `no pull request for ${row.branch}`
   if (row.pr.state === 'unknown') return `not verified: ${row.pr.message}`
   const live = row.pr.state === 'open' || row.pr.state === 'draft'
-  // What was not verified stays in the text: a blocked verdict is not the whole picture when a read failed.
-  const missing = [...(row.pr.unknown ?? []), ...(row.pr.unchecked ?? [])].join('; ')
-  const blocked = row.pr.blocked === true ? `blocked: ${row.pr.blocking.join('; ')}${missing ? `; not verified: ${missing}` : ''}` : row.pr.blocked === false ? 'nothing blocks it' : `blockers not verified${missing ? `: ${missing}` : ''}`
-  return `#${row.pr.number} ${row.pr.state}${live ? `, ${blocked}` : ''}`
+  return `#${row.pr.number} ${row.pr.state}${live ? `, ${blockedText(row.pr)}` : ''}`
+}
+
+/** The verdict of a prSummary as text. `null` is never "nothing blocks it", and what was not verified stays in the text. */
+export function blockedText(summary) {
+  const missing = [...(summary.unknown ?? []), ...(summary.unchecked ?? [])].join('; ')
+  if (summary.blocked === true) return `blocked: ${summary.blocking.join('; ')}${missing ? `; not verified: ${missing}` : ''}`
+  return summary.blocked === false ? 'nothing blocks it' : `blockers not verified${missing ? `: ${missing}` : ''}`
 }

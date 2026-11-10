@@ -25,7 +25,7 @@ import { planNextAdr } from './lib/adr.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
 import { changeList, checkMembers, mergeCapacity, parseCapacityPairs, workingDays } from './lib/team-capacity.mjs'
 import { AGENT_ID, localRunLine, nativeRunLine } from './lib/delegation.mjs'
-import { delegationOf, prSummary, prText } from './lib/track-agents.mjs'
+import { blockedText, delegationOf, prSummary, prText } from './lib/track-agents.mjs'
 import { SCANNERS, SEVERITIES, alertCandidate, collectAlerts, matchAlerts } from './lib/alerts.mjs'
 import { READ_LIMIT, groupTodos, matchTodos, readExistingIssues, scanRepo } from './lib/todos.mjs'
 import { validateRepo } from './lib/validate.mjs'
@@ -1479,7 +1479,7 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'pr status', summary: 'pull request, checks and reviews of a branch', usage: '[--branch b]', args: [], flags: ['branch'],
+    name: 'pr status', summary: 'pull request, checks, reviews and the blockers verdict of a branch', usage: '[--branch b]', args: [], flags: ['branch'],
     run: async (ctx) => {
       const host = ctx.host()
       const branch = ctx.opt('branch') ?? host.currentBranch()
@@ -1487,10 +1487,14 @@ export const COMMANDS = [
       const pr = host.getPullRequest({ head: branch }, { detail: true })
       const checks = pr ? host.prChecks(pr.number) : []
       const reviews = pr?.detail.reviews ?? []
+      // The checks are read once: collectBlockers gets the list this command already has. A merged or closed pull request reads nothing more.
+      const found = pr ? collectBlockers({ ...host, prChecks: () => checks }, pr) : null
       const lines = pr
         ? [`#${pr.number} ${pr.title} (${pr.state}${pr.isDraft ? ', draft' : ''})`, pr.url, `checks: ${checks.length === 0 ? '(none)' : checks.map((c) => `${c.name} ${c.bucket ?? c.state}${c.bucket === 'fail' && c.runId ? ` (ci logs --run ${c.runId})` : ''}`).join(', ')}`, `reviews: ${reviews.length === 0 ? '(none)' : reviews.map((r) => r.state).join(', ')}`]
         : [`no pull request for ${branch}`]
-      return { data: { branch, pr: withoutDetail(pr), checks, reviews }, text: lines.join('\n'), notes: await capabilityNotesOrNone(ctx) }
+      if (pr?.state === 'OPEN') lines.push(`blockers: ${blockedText(prSummary(pr, found))}`)
+      const blockers = found && { blocked: found.blocked, blocking: found.blocking, pending: found.pending, unknown: found.unknown, unchecked: found.unchecked }
+      return { data: { branch, pr: withoutDetail(pr), checks, reviews, blockers }, text: lines.join('\n'), notes: await capabilityNotesOrNone(ctx) }
     },
   },
   {
