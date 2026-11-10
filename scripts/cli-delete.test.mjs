@@ -151,3 +151,40 @@ test('delete takes exactly one id', () => {
     assert.equal(run(root, ['issues', 'delete', 'A', 'B']).status, 2)
   })
 })
+
+test('the preview lists the files of the repository that cite the ID, with their lines, and drops them from unchecked', () => {
+  withRepo({}, (root, [a]) => {
+    fs.mkdirSync(path.join(root, 'docs'))
+    fs.writeFileSync(path.join(root, 'docs/note.md'), `See ${a} for the why.\n`)
+    fs.mkdirSync(path.join(root, 'src'))
+    fs.writeFileSync(path.join(root, 'src/x.mjs'), `// nothing\n// TODO(${a}): later\n// ${a}9 is another issue\n`)
+    git(root, 'add', 'docs/note.md')
+    const before = hashTree(root)
+    const data = json(root, ['issues', 'delete', a, '--dry-run'])
+    assert.deepEqual(data.files, [{ path: 'docs/note.md', lines: [1] }, { path: 'src/x.mjs', lines: [2] }])
+    assert.ok(!data.unchecked.includes('code comments, documents and docs/'), data.unchecked.join('; '))
+    const text = run(root, ['issues', 'delete', a, '--dry-run']).stdout
+    assert.ok(text.includes('docs/note.md:1'), text)
+    assert.ok(text.includes('src/x.mjs:2'), text)
+    assert.equal(hashTree(root), before)
+  })
+})
+
+test('a repository with no file that cites the ID has an empty files list', () => {
+  withRepo({}, (root, [a]) => {
+    const data = json(root, ['issues', 'delete', a, '--dry-run'])
+    assert.deepEqual(data.files, [])
+    assert.deepEqual(data.unchecked, [])
+  })
+})
+
+test('when git grep cannot run, the files stay unchecked with the reason and are never an empty answer', () => {
+  withRepo({}, (root, [a]) => {
+    fs.rmSync(path.join(root, '.git'), { recursive: true, force: true })
+    const data = json(root, ['issues', 'delete', a, '--dry-run'])
+    assert.deepEqual(data.files, [])
+    assert.equal(data.unchecked.length, 1)
+    assert.match(data.unchecked[0], /^code comments, documents and docs\/ \(git grep failed: .+\)$/)
+    assert.match(run(root, ['issues', 'delete', a, '--dry-run']).stdout, /not checked: code comments, documents and docs\/ \(git grep failed/)
+  })
+})

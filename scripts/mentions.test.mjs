@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { mentionedIn } from './lib/mentions.mjs'
+import { fileMentions, mentionedIn } from './lib/mentions.mjs'
 
 test('mentionedIn finds an ID as a whole token', () => {
   const has = mentionedIn('ISS-1')
@@ -18,4 +18,15 @@ test('mentionedIn ignores URLs, link targets and paths', () => {
   assert.equal(has('[the issue](docs/ISS-1.md)'), false)
   assert.equal(has('[ISS-1](docs/other.md)'), true)
   assert.equal(has('see src/ISS-1/notes.txt'), false)
+})
+
+test('fileMentions groups the git grep lines that mention the ID by file, with the mention rule', () => {
+  const line = (file, n, text) => `${file}\0${n}\0${text}\n`
+  const output = line('a.md', 3, 'see PMK-5') + line('a.md', 9, 'PMK-52 only') + line('b/c.mjs', 1, '// PMK-5.') + line('a.md', 12, 'and PMK-5 again') + line('d.md', 2, 'docs/PMK-5/x.md')
+  assert.deepEqual(fileMentions('PMK-5', output), [{ path: 'a.md', lines: [3, 12] }, { path: 'b/c.mjs', lines: [1] }])
+  assert.deepEqual(fileMentions('PMK-5', ''), [])
+})
+
+test('fileMentions keeps a path that holds a colon and a line that ends in CRLF', () => {
+  assert.deepEqual(fileMentions('PMK-5', 'odd:name.md\x004\0PMK-5\r\n'), [{ path: 'odd:name.md', lines: [4] }])
 })

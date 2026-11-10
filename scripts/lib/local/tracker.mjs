@@ -22,7 +22,7 @@ import { hasSectionHeading, parseIssueFile, serializeIssue, toFrontmatter } from
 import { buildCapabilities } from '../capabilities.mjs'
 import { eventInstant, lastEntry } from '../metrics.mjs'
 import { AGENT_ID, delegationComment } from '../delegation.mjs'
-import { REFERENCE_KINDS, referencedError } from '../delete-refusal.mjs'
+import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refusal.mjs'
 import { mentionedIn } from '../mentions.mjs'
 import { createDocumentFile, listDocumentFiles, readDocumentFile } from './documents.mjs'
 import { hasMilestoneFiles, milestoneStems, parseMilestone, serializeMilestone, sortMilestones, validMilestoneId } from './milestones.mjs'
@@ -662,7 +662,7 @@ export function createLocalTracker(root, {
       comments: files.filter((file) => file.startsWith(`${paths.comments}${path.sep}`)).length,
       autoCommit: local.auto_commit === true,
     }
-    const result = { before: withComputed(issue, issues), after: null, removes, references: [], mentions, warnings: deleteWarnings(issue, paths), unchecked: ['code comments, documents and docs/'] }
+    const result = { before: withComputed(issue, issues), after: null, removes, references: [], mentions, warnings: deleteWarnings(issue, paths), unchecked: [REPO_UNCHECKED] }
     if (dryRun) return result
     // The rename is the delete: it happens whole or not at all. A failed cleanup after it leaves a hidden folder that no read lists, never an issue without issue.md.
     const trash = path.join(path.dirname(paths.dir), `.deleting-${issue.id}-${process.pid}-${Date.now()}`)

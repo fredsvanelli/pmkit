@@ -3,6 +3,9 @@
 
 import { PmkitError } from './errors.mjs'
 
+/** The `unchecked` entry for the files of the repository. The CLI scans them and drops or explains the entry (PMK-222). */
+export const REPO_UNCHECKED = 'code comments, documents and docs/'
+
 /** The kinds of reference, in the order a refusal lists them for one issue. */
 export const REFERENCE_KINDS = ['blockedBy', 'related', 'duplicateOf', 'parent']
 

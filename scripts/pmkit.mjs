@@ -21,6 +21,8 @@ import { dependencyMap, serializable } from './lib/dependencies.mjs'
 import { buildRoadmapReview, roadmapReviewText } from './lib/roadmap-review.mjs'
 import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, failingWorkflows, FAILED_RUN, needsPrLookup, NO_HOST, prsByBranch, risksText, stalledIssues, stalledPullRequests } from './lib/risks.mjs'
 import { pathNote } from './lib/path-notes.mjs'
+import { fileMentions } from './lib/mentions.mjs'
+import { REPO_UNCHECKED } from './lib/delete-refusal.mjs'
 import { planNextAdr } from './lib/adr.mjs'
 import { similarResult } from './lib/similar.mjs'
 import { isBlocked } from './lib/model.mjs'
@@ -338,7 +340,27 @@ function writeText(result, { dryRun, record = issueRecord, header }) {
 }
 
 /** Text of an issue delete: the full record, what goes, the warnings, and the way to keep the issue instead. A dry run is the preview. */
-function deleteText({ before, removes, warnings, mentions, unchecked }, { dryRun }) {
+const REPO_MENTIONS_TIMEOUT_MS = 30_000
+const REPO_MENTIONS_TEXT = 10
+
+/**
+ * The files of the repository that cite `id` (PMK-222): one `git grep` over the tracked and untracked files that are not ignored, minus
+ * the tracker folder, filtered by the mention rule. A failed run is `{ files: [], error }`, never "no file cites it".
+ */
+function repoMentions(ctx, id) {
+  const { issuesDir } = ctx.config()
+  const relative = issuesDir ? path.relative(ctx.root, issuesDir) : ''
+  const skip = relative !== '' && !climbsOut(relative) ? [`:(exclude,literal)${slash(relative)}`] : []
+  const result = spawnSync('git', ['grep', '-z', '-n', '-I', '-F', '--untracked', '-e', id, '--', '.', ...skip], {
+    cwd: ctx.root, env: ctx.env, encoding: 'utf8', timeout: REPO_MENTIONS_TIMEOUT_MS, maxBuffer: 256 * 1024 * 1024,
+  })
+  if (result.status === 0) return { files: fileMentions(id, result.stdout), error: null }
+  if (result.status === 1 && !result.error) return { files: [], error: null }
+  const reason = result.error?.message ?? (result.stderr.trim().split(/\r?\n/)[0] || `exit status ${result.status}`)
+  return { files: [], error: reason }
+}
+
+function deleteText({ before, removes, warnings, mentions, files = [], unchecked }, { dryRun }) {
   const lines = [`${dryRun ? 'would delete' : 'deleted'} ${before.id}  ${before.title}`, issueRecord(before), '']
   if (removes.trash) {
     lines.push("removes: the issue moves to Linear's trash, where the workspace can restore it for a while")
@@ -351,6 +373,10 @@ function deleteText({ before, removes, warnings, mentions, unchecked }, { dryRun
   lines.push('references: no other issue lists it as blocked by, related, duplicate of or parent')
   if (warnings.length > 0) lines.push('warnings:', ...warnings.map((warning) => `  ${warning}`))
   if (mentions.length > 0) lines.push(`mentioned in the text of: ${mentions.map((mention) => `${mention.id} (${mention.in})`).join(', ')}. The text stays as it is.`)
+  if (files.length > 0) {
+    lines.push('cited in these files of the repository, which stay as they are:', ...files.slice(0, REPO_MENTIONS_TEXT).map((file) => `  ${file.path}:${file.lines.join(',')}`))
+    if (files.length > REPO_MENTIONS_TEXT) lines.push(`  ${files.length - REPO_MENTIONS_TEXT} more files in --json`)
+  }
   if (unchecked.length > 0) lines.push(`not checked: ${unchecked.join(', ')}`)
   lines.push(`archive instead: pmkit issues archive ${before.id} keeps the record and its history and hides the issue from lists. Delete removes them.`)
   if (dryRun) lines.push('dry run: nothing was written')
@@ -888,7 +914,13 @@ export const COMMANDS = [
     name: 'issues delete', summary: 'deletes an issue for good; archive keeps it', usage: '<id>', write: true, args: ['id'], flags: [],
     run: async (ctx) => {
       const result = await (await ctx.tracker()).delete(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })
-      return { data: result, text: deleteText(result, ctx), commit: result.before.id }
+      const scan = repoMentions(ctx, result.before.id)
+      const data = {
+        ...result,
+        files: scan.files,
+        unchecked: result.unchecked.flatMap((item) => (item !== REPO_UNCHECKED ? [item] : scan.error === null ? [] : [`${item} (git grep failed: ${scan.error})`])),
+      }
+      return { data, text: deleteText(data, ctx), commit: result.before.id }
     },
   },
   {

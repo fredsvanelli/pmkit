@@ -3,7 +3,7 @@
 
 import { PmkitError } from '../errors.mjs'
 import { CATEGORIES } from '../model.mjs'
-import { REFERENCE_KINDS, referencedError } from '../delete-refusal.mjs'
+import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refusal.mjs'
 import { compareIds } from '../ids.mjs'
 import { checkFilter } from '../issue-filter.mjs'
 import { cycleKey } from './cycles.mjs'
@@ -322,7 +322,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     if (before.delegate !== undefined) warnings.push(`it is delegated to ${before.delegate}, which may still be working on it`)
     const result = {
       before, after: null, removes: { trash: true }, references: [], mentions: [], warnings,
-      unchecked: ['the descriptions and comments of other issues', 'saved views', 'code comments, documents and docs/'],
+      unchecked: ['the descriptions and comments of other issues', 'saved views', 'Linear documents', REPO_UNCHECKED],
     }
     if (dryRun) return result
     const answer = await client.request(ISSUE_DELETE, { id: node.id })
