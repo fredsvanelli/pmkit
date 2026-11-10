@@ -302,8 +302,9 @@ const linearRun = (context, args, fetch = fakeLinearFetch(fakeWorkspace())) =>
 const teamNode = (id, key, name) => ({ id, key, name, parent: null, cyclesEnabled: false, triageEnabled: false, issueEstimationType: 'notUsed', issueEstimationAllowZero: false, issueEstimationExtended: false })
 const stateNode = (id, name, type, position, team) => ({ id, name, type, position, team: { id: team } })
 const viewer = (teams) => ({ id: 'user-1', name: 'Test User', displayName: 'test', email: 't@example.com', active: true, guest: false, app: false, teams: { nodes: teams.map((id) => ({ id })) } })
-const twoTeams = (viewerTeams = ['team-acme', 'team-beta']) =>
+const twoTeams = (viewerTeams = ['team-acme', 'team-beta'], extra = {}) =>
   fakeWorkspace({
+    ...extra,
     teams: [teamNode('team-acme', 'ACME', 'Acme'), teamNode('team-beta', 'BETA', 'Beta')],
     states: [
       stateNode('sa-1', 'Todo', 'unstarted', 0, 'team-acme'), stateNode('sa-2', 'Doing', 'started', 1, 'team-acme'), stateNode('sa-3', 'Review', 'started', 2, 'team-acme'),
@@ -536,6 +537,7 @@ test('Linear: --recheck-team with a team the workspace does not have is INVALID_
   const error = errorOf(await linearRun(context, ['--recheck-team'], fakeLinearFetch(twoTeams())))
   assert.equal(error.code, 'INVALID_INPUT')
   assert.match(error.nextStep, /ACME, BETA/)
+  assert.match(error.message, /tracker\.scope\.team GONE/)
 })
 
 test('Linear: --recheck-team lists broken mappings of the held team and still writes the host', async () => {
@@ -555,4 +557,81 @@ test('--recheck-team with no team in the file, and on Local, is INVALID_INPUT', 
   const context = linear({ config: linearConfig({ team: null }) })
   assert.equal(errorOf(await linearRun(context, ['--recheck-team'])).code, 'INVALID_INPUT')
   assert.equal(errorOf(await link(local(), ['--recheck-team'])).code, 'INVALID_INPUT')
+})
+
+// PMK-223 review
+
+test('the command file and the README say a broken mapping refuses the write only when the team changes', () => {
+  const text = fs.readFileSync(new URL('../commands/link-repo.md', import.meta.url), 'utf8')
+  assert.match(text, /only when the team changes/)
+  const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8')
+  assert.doesNotMatch(readme, /--recheck-team`[^|\n]*refused when it breaks/)
+  assert.match(readme, /refused only when the team changes/)
+})
+
+test('conventions.md records the --yes exception to the write question', () => {
+  const text = fs.readFileSync(new URL('../skills/pmkit/references/conventions.md', import.meta.url), 'utf8')
+  assert.match(text, /--yes/)
+})
+
+test('GitHub Enterprise: an existing repo is not replaced by the path of a remote on another host, and the remote is named in a warning', async () => {
+  const root = local({ remotes: { origin: 'git@gitlab.com:mirror/app-mirror.git' }, config: GITHUB_CONFIG })
+  const data = dataOf(await link(root, ['--git-host', 'github', '--default-branch', 'dev', '--dry-run']))
+  assert.deepEqual(data.repo, { before: 'old/repo', after: 'old/repo', source: 'file' })
+  assert.equal(data.hostOnly, false)
+  assert.ok(data.warnings.some((warning) => /mirror\/app-mirror/.test(warning) && /old\/repo/.test(warning)), data.warnings.join('\n'))
+})
+
+test('hostOnly is false when an existing repo or branch changes, and when the host is lowered', async () => {
+  const moved = local({ remotes: { origin: 'https://github.com/acme/app.git' }, config: GITHUB_CONFIG })
+  assert.equal(dataOf(await link(moved, ['--dry-run'])).hostOnly, false)
+  const lowered = local({ config: GITHUB_CONFIG })
+  assert.equal(dataOf(await link(lowered, ['--git-host', 'none', '--dry-run'])).hostOnly, false)
+})
+
+test('GitHub Enterprise: a host or repo that is not valid is not written or quoted, and the remote counts as unreadable', async () => {
+  for (const url of ['https://a$(id)b.com/acme/app.git', 'https://ghe.example.com/a%20b/app.git', 'https://ghe.example.com/-oops/app.git', 'https://ghe.example.com/a%24(id)b/app.git', 'https://ghe.example.com/acme/..git', 'https://ghe.example.com/acme/%60id%60.git']) {
+    const root = local({ remotes: { origin: url } })
+    const result = await link(root, ['--git-host', 'github'])
+    assert.equal(errorOf(result).code, 'INVALID_INPUT', url)
+    assert.doesNotMatch(result.stdout, /gh auth login/, url)
+    assert.equal(read(root), CONFIG, url)
+  }
+})
+
+const truncatedLabels = () => fakeLinearFetch(twoTeams(undefined, { endless: ['PmkitLabels'] }))
+
+test('Linear: --recheck-team on a cut discovery is not verified, says so, and concludes nothing', async () => {
+  const context = linear({ config: linearConfig({ team: 'BETA', extra: MAPPED.slice(1) }) })
+  const data = dataOf(await linearRun(context, ['--recheck-team', '--dry-run'], truncatedLabels()))
+  assert.equal(data.scope.team.verified, false)
+  assert.deepEqual(data.broken, [])
+  assert.ok(data.warnings.some((warning) => /more than/.test(warning) && /labels/.test(warning)), data.warnings.join('\n'))
+})
+
+test('Linear: a team change from a cut discovery is refused and nothing is written', async () => {
+  const context = linear({ config: linearConfig({ team: 'BETA' }) })
+  const before = fs.readFileSync(file(context.root), 'utf8')
+  const error = errorOf(await linearRun(context, ['--team', 'ACME'], truncatedLabels()))
+  assert.equal(error.code, 'UPSTREAM')
+  assert.equal(fs.readFileSync(file(context.root), 'utf8'), before)
+})
+
+test('Linear: --recheck-team when the workspace read fails stops with the error and writes nothing', async () => {
+  const context = linear({ config: linearConfig({ team: 'BETA' }) })
+  const before = fs.readFileSync(file(context.root), 'utf8')
+  const fetch = fakeLinearFetch(twoTeams(undefined, { refuse: ['PmkitTeams'] }))
+  assert.equal(errorOf(await linearRun(context, ['--recheck-team', '--git-host', 'github'], fetch)).code, 'AUTH')
+  assert.equal(fs.readFileSync(file(context.root), 'utf8'), before)
+})
+
+test('the text labels broken mappings as those of the new team only when the team changes', async () => {
+  const text = async (team, args) => {
+    const context = linear({ config: linearConfig({ team, extra: MAPPED.slice(1) }) })
+    return (await run(['link-repo', ...args, '--dry-run'], { cwd: context.root, env: context.env, adapters: { ...ADAPTERS, linear: linearDescriptor({ fetch: fakeLinearFetch(twoTeams()) }) } })).stdout
+  }
+  assert.match(await text('ACME', ['--team', 'BETA']), /broken by the new team/)
+  const held = await text('BETA', ['--recheck-team'])
+  assert.match(held, /broken for the team in the file/)
+  assert.doesNotMatch(held, /broken by the new team/)
 })
