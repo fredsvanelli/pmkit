@@ -297,6 +297,13 @@ async function tickCriteria(ctx, id, patch) {
   patch.acceptanceCriteria = criteria
 }
 
+/** The id of the active sprint, NOT_FOUND with the next step when none is active. */
+async function activeSprintId(tracker) {
+  const sprint = await tracker.currentCycle()
+  if (sprint === null) throw new PmkitError('NOT_FOUND', 'no sprint is active', 'Create one with /pmkit:cycle:plan, or name a sprint by its id')
+  return sprint.id
+}
+
 function parseCapacity(ctx) {
   const map = {}
   for (const pair of csv(ctx.list('set'))) {
@@ -1038,10 +1045,11 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'cycle capacity', summary: 'reads or sets capacity and days off', usage: '<id> [--set member=n,..] [--days-off member=date+date,..]', write: true, readUnless: ['set', 'days-off'], args: ['id'], flags: ['set', 'days-off'],
+    name: 'cycle capacity', summary: 'reads or sets capacity and days off', usage: '<id|current> [--set member=n,..] [--days-off member=date+date,..]', write: true, readUnless: ['set', 'days-off'], args: ['id'], flags: ['set', 'days-off'],
     run: async (ctx) => {
       const tracker = await ctx.tracker()
-      const [id] = ctx.args
+      // `current` is the active sprint, as in `team capacity --sprint current`.
+      const id = ctx.args[0] === 'current' ? await activeSprintId(tracker) : ctx.args[0]
       const set = ctx.opt('set') !== undefined
       const dayoff = ctx.opt('days-off') !== undefined
       if (!set && !dayoff) {

@@ -724,6 +724,18 @@ test('cycle capacity reads, and --set takes a list or repeated flags', () => {
   assert.equal(run(root, ['cycle', 'capacity', '2026-10-12', '--set', 'fred']).status, 2)
 })
 
+test('cycle capacity current reads and writes the active sprint, and says so when none is active', () => {
+  const root = makeRepo('team')
+  assert.deepEqual(json(root, ['cycle', 'capacity', 'current']), { capacity: { fred: 8, ana: 10 }, days_off: { ana: ['2026-10-16'] } })
+  const set = json(root, ['cycle', 'capacity', 'current', '--set', 'fred=3'])
+  assert.deepEqual(set.after.capacity, { fred: 3 })
+  assert.equal(set.after.id, '2026-10-12')
+  const none = run(makeRepo('no-sprints'), ['cycle', 'capacity', 'current', '--json'])
+  assert.equal(none.status, 2)
+  assert.equal(JSON.parse(none.stdout).error.code, 'NOT_FOUND')
+  assert.match(JSON.parse(none.stdout).error.nextStep, /cycle:plan/)
+})
+
 test('cycle capacity --days-off sets, clears and validates', () => {
   const root = makeRepo('team')
   const sprintFile = path.join(root, '.issues/sprints/2026-10-12.yaml')
