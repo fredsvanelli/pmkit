@@ -10,5 +10,5 @@ exit 0
 (no file changed)
 --- gh calls
 pr view feat-retries --json number,url,title,state,isDraft,headRefName,author,mergedAt
-pr checks 7 --json name,state,bucket
+pr checks 7 --json name,state,bucket,link
 pr view 7 --json reviews,reviewRequests

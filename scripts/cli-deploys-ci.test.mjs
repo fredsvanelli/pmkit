@@ -30,14 +30,15 @@ function teamRepo({ github = true } = {}) {
 
 const call = (root, env, args) => run([...args, '--json'], { env, cwd: root })
 const DEPLOYMENTS = 'api repos/{owner}/{repo}/deployments?per_page=20'
-const META = (id) => `run view ${id} --json workflowName,url,conclusion,status`
+const STATUSES = (...ids) => `api graphql -f query=query($ids: [ID!]!) { nodes(ids: $ids) { ... on Deployment { latestStatus { state logUrl environmentUrl } } } } ${ids.map((id) => `-f ids[]=${id}`).join(" ")}`
+const META = (id) => `run view ${id} --json workflowName,url,conclusion,status,createdAt,headSha`
 const RUNS = 'run list --branch main --limit 50 --json databaseId,workflowName,status,conclusion,url,createdAt,headSha'
 
 test('deploys list prints the deployments with their state', async () => {
   const root = teamRepo()
   const gh = fakeGh({
-    [DEPLOYMENTS]: { stdout: JSON.stringify([{ id: 5, environment: 'production', ref: 'main', sha: 'abc', created_at: '2026-10-22T10:00:00Z' }]) },
-    'api repos/{owner}/{repo}/deployments/5/statuses?per_page=1': { stdout: JSON.stringify([{ state: 'success', log_url: 'https://l/5' }]) },
+    [DEPLOYMENTS]: { stdout: JSON.stringify([{ id: 5, node_id: 'N5', environment: 'production', ref: 'main', sha: 'abc', created_at: '2026-10-22T10:00:00Z' }]) },
+    [STATUSES('N5')]: { stdout: JSON.stringify({ data: { nodes: [{ latestStatus: { state: 'SUCCESS', logUrl: 'https://l/5' } }] } }) },
   })
   const result = await call(root, envWith(gh), ['deploys', 'list'])
   assert.equal(result.code, 0, result.stdout + result.stderr)
@@ -46,6 +47,22 @@ test('deploys list prints the deployments with their state', async () => {
   const text = await run(['deploys', 'list'], { env: envWith(gh), cwd: root })
   assert.match(text.stdout, /production/)
   assert.match(text.stdout, /success/)
+})
+
+test('deploys list keeps the list and says the state is unknown when the status read fails', async () => {
+  const root = teamRepo()
+  const gh = fakeGh({
+    [DEPLOYMENTS]: { stdout: JSON.stringify([{ id: 5, node_id: 'N5', environment: 'production', ref: 'main', sha: 'abc', created_at: '2026-10-22T10:00:00Z' }]) },
+    [STATUSES('N5')]: { status: 1, stderr: 'HTTP 502: Bad Gateway' },
+  })
+  const json = await call(root, envWith(gh), ['deploys', 'list'])
+  assert.equal(json.code, 0, json.stdout + json.stderr)
+  const data = JSON.parse(json.stdout)
+  assert.equal(data.deploys[0].state, null)
+  assert.match(data.deploys[0].statusError, /502/)
+  const text = await run(['deploys', 'list'], { env: envWith(gh), cwd: root })
+  assert.match(text.stdout, /production unknown main/)
+  assert.match(text.stderr, /state of 1 deployment\(s\) is unknown/)
 })
 
 test('deploys list with no deployments says so', async () => {
@@ -146,7 +163,26 @@ test('ci logs --run returns the workflow name and URL, and no note for a failed 
   const root = teamRepo()
   const gh = fakeGh({ [META(9)]: { stdout: JSON.stringify({ workflowName: 'CI', url: 'https://r/9', conclusion: 'failure', status: 'completed' }) }, 'run view 9 --log-failed': { stdout: 'boom\n' } })
   const data = JSON.parse((await call(root, envWith(gh), ['ci', 'logs', '--run', '9'])).stdout)
-  assert.deepEqual({ ...data.run }, { runId: 9, workflowName: 'CI', url: 'https://r/9', conclusion: 'failure', status: 'completed', failed: true, hasLog: true, logNote: null, log: 'boom\n' })
+  assert.deepEqual({ ...data.run }, { runId: 9, workflowName: 'CI', url: 'https://r/9', conclusion: 'failure', status: 'completed', createdAt: null, headSha: null, failed: true, hasLog: true, logNote: null, supersededNote: null, log: 'boom\n' })
+})
+
+test('ci logs shows when the failure ran and says a newer run of the workflow passed', async () => {
+  const root = teamRepo()
+  const gh = fakeGh({
+    [RUNS]: { stdout: JSON.stringify([
+      { databaseId: 43, workflowName: 'CI', status: 'completed', conclusion: 'success', url: 'https://r/43', createdAt: '2026-11-03T10:00:00Z', headSha: 'bbbbbbb1234' },
+      { databaseId: 42, workflowName: 'CI', status: 'completed', conclusion: 'failure', url: 'https://r/42', createdAt: '2026-11-02T10:00:00Z', headSha: 'aaaaaaa1234' },
+    ]) },
+    'run view 42 --log-failed': { stdout: 'test failed\n' },
+  })
+  const data = JSON.parse((await call(root, envWith(gh), ['ci', 'logs', '--branch', 'main'])).stdout)
+  assert.equal(data.run.createdAt, '2026-11-02T10:00:00Z')
+  assert.equal(data.run.headSha, 'aaaaaaa1234')
+  assert.equal(data.run.newerRun.runId, 43)
+  assert.match(data.run.supersededNote, /newer run 43 of CI ended success/)
+  const text = await run(['ci', 'logs', '--branch', 'main'], { env: envWith(gh), cwd: root })
+  assert.match(text.stdout, /run 42 CI, 2026-11-02T10:00:00Z, aaaaaaa/)
+  assert.match(text.stdout, /newer run 43 of CI ended success/)
 })
 
 test('ci logs says when the run did not fail, has not finished, never started or has an empty log', async () => {

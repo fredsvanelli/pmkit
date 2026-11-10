@@ -32,7 +32,7 @@ export default {
     'pr diff 7 --color never': { stdout: DIFF },
     [RUN_LIST]: { stdout: JSON.stringify([{ databaseId: 42, workflowName: 'test', status: 'completed', conclusion: 'failure', url: 'https://github.com/o/r/actions/runs/42', createdAt: '2026-10-23T09:00:00Z', headSha: 'sha42' }]) },
     'run view 42 --log-failed': { stdout: LOG },
-    'pr checks 7 --json name,state,bucket': { stdout: JSON.stringify([{ name: 'test', state: 'FAILURE', bucket: 'fail' }]) },
+    'pr checks 7 --json name,state,bucket,link': { stdout: JSON.stringify([{ name: 'test', state: 'FAILURE', bucket: 'fail' }]) },
     'pr view 7 --json reviews,reviewRequests': { stdout: JSON.stringify({ reviews: [], reviewRequests: [] }) },
   },
   async setup({ pmkit }) {

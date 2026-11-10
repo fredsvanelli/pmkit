@@ -48,6 +48,7 @@ import { boardDoc, hasMarker, problemsLine, renderDocument, roadmapDoc, sprintDo
 import { boardData, roadmapData, sprintData } from './lib/render-data.mjs'
 import { redact } from './lib/redact.mjs'
 import { shareDone, topLevelRollup } from './lib/initiatives.mjs'
+import { tailLines } from './lib/tail-lines.mjs'
 
 const TEMPLATES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates')
 const usageError = (message, nextStep = 'node scripts/pmkit.mjs --help') => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -1466,7 +1467,7 @@ export const COMMANDS = [
       const checks = pr ? host.prChecks(pr.number) : []
       const reviews = pr ? host.prReviews(pr.number).reviews : []
       const lines = pr
-        ? [`#${pr.number} ${pr.title} (${pr.state}${pr.isDraft ? ', draft' : ''})`, pr.url, `checks: ${checks.length === 0 ? '(none)' : checks.map((c) => `${c.name} ${c.bucket ?? c.state}`).join(', ')}`, `reviews: ${reviews.length === 0 ? '(none)' : reviews.map((r) => r.state).join(', ')}`]
+        ? [`#${pr.number} ${pr.title} (${pr.state}${pr.isDraft ? ', draft' : ''})`, pr.url, `checks: ${checks.length === 0 ? '(none)' : checks.map((c) => `${c.name} ${c.bucket ?? c.state}${c.bucket === 'fail' && c.runId ? ` (ci logs --run ${c.runId})` : ''}`).join(', ')}`, `reviews: ${reviews.length === 0 ? '(none)' : reviews.map((r) => r.state).join(', ')}`]
         : [`no pull request for ${branch}`]
       return { data: { branch, pr, checks, reviews }, text: lines.join('\n'), notes: await capabilityNotesOrNone(ctx) }
     },
@@ -1478,8 +1479,9 @@ export const COMMANDS = [
       if (limit !== undefined && (limit < 1 || limit > 100)) throw usageError('--limit must be from 1 to 100')
       if (ctx.opt('environment') === '') throw usageError('--environment must not be empty')
       const deploys = ctx.host().listDeploys({ environment: ctx.opt('environment'), limit })
-      const lines = deploys.map((d) => `${d.environment} ${d.state} ${d.ref} ${d.sha.slice(0, 7)} ${d.createdAt}${d.url ? ` ${d.url}` : ''}`)
-      return { data: { deploys }, text: lines.length === 0 ? 'no deployments' : lines.join('\n'), notes: await capabilityNotesOrNone(ctx) }
+      const lines = deploys.map((d) => `${d.environment} ${d.state ?? 'unknown'} ${d.ref} ${d.sha.slice(0, 7)} ${d.createdAt}${d.url ? ` ${d.url}` : ''}`)
+      const warnings = unknownDeployWarnings(deploys)
+      return { data: { deploys }, text: lines.length === 0 ? 'no deployments' : lines.join('\n'), warnings, notes: await capabilityNotesOrNone(ctx) }
     },
   },
   {
@@ -1495,11 +1497,7 @@ export const COMMANDS = [
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch> or --run <id>, or switch to a branch')
       const found = host.ciLogs({ branch, runId })
       if (found === null) return { data: { branch, run: null, truncated: false }, text: `no failed run on ${branch}`, notes: await capabilityNotesOrNone(ctx) }
-      const lines = found.log.split('\n')
-      const hasFinalNewline = found.log.endsWith('\n')
-      const body = hasFinalNewline ? lines.slice(0, -1) : lines
-      const truncated = body.length > tail
-      const log = truncated ? `${body.slice(-tail).join('\n')}${hasFinalNewline ? '\n' : ''}` : found.log
+      const { log, truncated } = tailLines(found.log, tail)
       const failed = FAILED_RUN.has(found.conclusion)
       const hasLog = found.log.trim() !== ''
       const label = `run ${found.runId}${found.workflowName ? ` ${found.workflowName}` : ''}`
@@ -1508,8 +1506,11 @@ export const COMMANDS = [
           : hasLog ? null
             : found.conclusion === 'startup_failure' ? `${label} ended with startup_failure: it never started a job, so it has no log`
               : `${label} failed (${found.conclusion}) but GitHub returned no log for it`
-      const run = { ...found, log, failed, hasLog, logNote }
-      return { data: { branch, run, truncated }, text: `${label}${truncated ? `, last ${tail} lines` : ''}\n${logNote === null ? '' : `${logNote}\n`}${hasLog ? log : ''}`, notes: await capabilityNotesOrNone(ctx) }
+      const newer = found.newerRun
+      const supersededNote = newer ? `newer run ${newer.runId} of ${found.workflowName ?? 'the same workflow'} ended ${newer.conclusion} on ${newer.createdAt}, so this failure may already be fixed` : null
+      const run = { ...found, log, failed, hasLog, logNote, supersededNote }
+      const when = [found.createdAt, found.headSha?.slice(0, 7)].filter(Boolean).join(', ')
+      return { data: { branch, run, truncated }, text: `${label}${when ? `, ${when}` : ''}${truncated ? `, last ${tail} lines` : ''}\n${supersededNote === null ? '' : `${supersededNote}\n`}${logNote === null ? '' : `${logNote}\n`}${hasLog ? log : ''}`, notes: await capabilityNotesOrNone(ctx) }
     },
   },
   {
@@ -1982,6 +1983,12 @@ async function runRoadmapReview(ctx) {
   return { data: report, text: roadmapReviewText(report), warnings, notes: [...notes] }
 }
 
+/** The warning for deployments whose status could not be read (state null), as a list of zero or one line. */
+function unknownDeployWarnings(deploys) {
+  const unknown = deploys.filter((d) => d.state === null)
+  return unknown.length === 0 ? [] : [`the state of ${unknown.length} deployment(s) is unknown: ${unknown[0].statusError}`]
+}
+
 /** What is left for a release (or a milestone, or a sprint): open issues, their open pull requests and the repository deploys. Writes nothing. */
 async function runReleaseReadiness(ctx) {
   const tracker = await ctx.tracker()
@@ -2130,6 +2137,7 @@ async function runReleaseReadiness(ctx) {
       deploys = { error: errorOf(error) }
       hostWarnings.push(`deploys not checked: ${error.message}`)
     }
+    if (Array.isArray(deploys)) hostWarnings.push(...unknownDeployWarnings(deploys))
     warnings.push(...hostWarnings)
   } catch (error) {
     if (isPmkitError(error) && error.code === 'NOT_SUPPORTED') warnings.push(`no git host is configured, ${NO_HOST_READ}`)

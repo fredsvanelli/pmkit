@@ -35,7 +35,7 @@ exit 0
 +{"at":"2026-10-23T12:00:00Z","by":"fred","op":"comment","to":"2026-10-23T12-00-00Z-fred.md"}
 --- gh calls
 pr view iss-5n1r-paginate-the-events-api --json number,url,title,state,isDraft,headRefName,author,mergedAt
-pr checks 7 --json name,state,bucket
+pr checks 7 --json name,state,bucket,link
 pr view 7 --json reviews,reviewRequests
 run list --branch iss-5n1r-paginate-the-events-api --limit 50 --json databaseId,workflowName,status,conclusion,url,createdAt,headSha
 run view 42 --log-failed

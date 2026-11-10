@@ -69,12 +69,17 @@ test('openPullRequest omits --draft when draft is false', () => {
 })
 
 test('prChecks and prReviews call gh with the spec flags', () => {
-  const { exec, calls } = fakeExec({ stdout: '[{"name":"ci","state":"SUCCESS","bucket":"pass"}]' }, { stdout: '{"reviews":[],"reviewRequests":[]}' })
+  const { exec, calls } = fakeExec({ stdout: '[{"name":"ci","state":"SUCCESS","bucket":"pass","link":"https://github.com/o/r/actions/runs/77/job/5"}]' }, { stdout: '{"reviews":[],"reviewRequests":[]}' })
   const h = host(exec)
-  assert.deepEqual(h.prChecks(12), [{ name: 'ci', state: 'SUCCESS', bucket: 'pass' }])
+  assert.deepEqual(h.prChecks(12), [{ name: 'ci', state: 'SUCCESS', bucket: 'pass', link: 'https://github.com/o/r/actions/runs/77/job/5', runId: 77 }])
   assert.deepEqual(h.prReviews(12), { reviews: [], reviewRequests: [] })
-  assert.deepEqual(calls[0].args, ['pr', 'checks', '12', '--json', 'name,state,bucket'])
+  assert.deepEqual(calls[0].args, ['pr', 'checks', '12', '--json', 'name,state,bucket,link'])
   assert.deepEqual(calls[1].args, ['pr', 'view', '12', '--json', 'reviews,reviewRequests'])
+})
+
+test('prChecks gives runId null for a check whose link is not a workflow run', () => {
+  const { exec } = fakeExec({ stdout: '[{"name":"a","bucket":"fail","link":"https://ci.example.com/b/1"},{"name":"b","bucket":"fail","link":""},{"name":"c","bucket":"fail"}]' })
+  assert.deepEqual(host(exec).prChecks(12).map((c) => c.runId), [null, null, null])
 })
 
 test('prChecks keeps the list when gh exits non-zero for failing or pending checks', () => {
@@ -203,26 +208,68 @@ test('the default exec returns status, stdout and stderr', () => {
 })
 
 const depList = [
-  { id: 5, environment: 'production', ref: 'main', sha: 'abc', created_at: '2026-10-29T10:00:00Z' },
-  { id: 4, environment: 'staging', ref: 'main', sha: 'def', created_at: '2026-10-28T10:00:00Z' },
+  { id: 5, node_id: 'N5', environment: 'production', ref: 'main', sha: 'abc', created_at: '2026-10-29T10:00:00Z' },
+  { id: 4, node_id: 'N4', environment: 'staging', ref: 'main', sha: 'def', created_at: '2026-10-28T10:00:00Z' },
 ]
+const statusReply = (...nodes) => ({ stdout: JSON.stringify({ data: { nodes } }) })
+const row = (d, extra) => ({ id: d.id, environment: d.environment, ref: d.ref, sha: d.sha, createdAt: d.created_at, ...extra })
 
-test('listDeploys reads the deployments, then the latest status of each', () => {
+test('listDeploys reads the deployments, then every latest status in one graphql call', () => {
   const { exec, calls } = fakeExec(
     { stdout: JSON.stringify(depList) },
-    { stdout: JSON.stringify([{ state: 'success', log_url: 'https://l/5', target_url: null }]) },
-    { stdout: '[]' },
+    statusReply({ latestStatus: { state: 'SUCCESS', logUrl: 'https://l/5', environmentUrl: null } }, { latestStatus: null }),
   )
   const result = host(exec).listDeploys({})
-  assert.deepEqual(calls.map((c) => c.args), [
-    ['api', 'repos/{owner}/{repo}/deployments?per_page=20'],
-    ['api', 'repos/{owner}/{repo}/deployments/5/statuses?per_page=1'],
-    ['api', 'repos/{owner}/{repo}/deployments/4/statuses?per_page=1'],
-  ])
+  assert.equal(calls.length, 2)
+  assert.deepEqual(calls[0].args, ['api', 'repos/{owner}/{repo}/deployments?per_page=20'])
+  // The real gh refuses a field with no -f or -F before it ("accepts 1 arg(s), received 3").
+  assert.deepEqual(calls[1].args.filter((a) => a.startsWith('query=')).length, 1)
+  assert.deepEqual(calls[1].args.slice(0, 3), ['api', 'graphql', '-f'])
+  assert.deepEqual(calls[1].args.slice(4), ['-f', 'ids[]=N5', '-f', 'ids[]=N4'])
   assert.deepEqual(result, [
-    { id: 5, environment: 'production', ref: 'main', sha: 'abc', createdAt: '2026-10-29T10:00:00Z', state: 'success', url: 'https://l/5' },
-    { id: 4, environment: 'staging', ref: 'main', sha: 'def', createdAt: '2026-10-28T10:00:00Z', state: 'pending', url: null },
+    row(depList[0], { state: 'success', url: 'https://l/5' }),
+    row(depList[1], { state: 'pending', url: null }),
   ])
+})
+
+test('listDeploys with no deployments makes no graphql call', () => {
+  const { exec, calls } = fakeExec({ stdout: '[]' })
+  assert.deepEqual(host(exec).listDeploys({}), [])
+  assert.equal(calls.length, 1)
+})
+
+test('listDeploys keeps the list with an unknown state when the status read fails', () => {
+  const { exec } = fakeExec({ stdout: JSON.stringify(depList) }, { status: 1, stderr: 'HTTP 502: Bad Gateway' })
+  const result = host(exec).listDeploys({})
+  assert.deepEqual(result.map((d) => [d.id, d.state, d.url]), [[5, null, null], [4, null, null]])
+  assert.match(result[0].statusError, /502/)
+})
+
+test('listDeploys marks only the deployment whose node graphql did not return as unknown', () => {
+  const { exec } = fakeExec({ stdout: JSON.stringify(depList) }, statusReply({ latestStatus: { state: 'FAILURE', logUrl: null, environmentUrl: 'https://e/5' } }, null))
+  const result = host(exec).listDeploys({})
+  assert.deepEqual([result[0].state, result[0].url, result[0].statusError], ['failure', null, undefined])
+  assert.equal(result[1].state, null)
+  assert.match(result[1].statusError, /no status/)
+})
+
+test('listDeploys uses the statuses of a partial graphql reply that gh exits non-zero on', () => {
+  const partial = { data: { nodes: [{ latestStatus: { state: 'SUCCESS', logUrl: 'https://l/5' } }, null] }, errors: [{ type: 'NOT_FOUND', path: ['nodes', 1], message: 'Could not resolve to a node with the global id of N4' }] }
+  const { exec } = fakeExec({ stdout: JSON.stringify(depList) }, { status: 1, stdout: JSON.stringify(partial), stderr: 'gh: Could not resolve to a node' })
+  const result = host(exec).listDeploys({})
+  assert.deepEqual([result[0].state, result[0].url, result[0].statusError], ['success', 'https://l/5', undefined])
+  assert.equal(result[1].state, null)
+  assert.match(result[1].statusError, /Could not resolve to a node with the global id of N4/)
+})
+
+test('listDeploys url is the log url, never the published site (environmentUrl)', () => {
+  const { exec } = fakeExec({ stdout: JSON.stringify(depList) }, statusReply({ latestStatus: { state: 'SUCCESS', logUrl: null, environmentUrl: 'https://app' } }, { latestStatus: { state: 'SUCCESS', logUrl: 'https://log', environmentUrl: 'https://app' } }))
+  assert.deepEqual(host(exec).listDeploys({}).map((d) => d.url), [null, 'https://log'])
+})
+
+test('listDeploys still throws when gh is not logged in or rate limited', () => {
+  assert.throws(() => host(fakeExec({ stdout: JSON.stringify(depList) }, { status: 1, stderr: 'Run gh auth login' }).exec).listDeploys({}), (e) => e.code === 'AUTH')
+  assert.throws(() => host(fakeExec({ stdout: JSON.stringify(depList) }, { status: 1, stderr: 'API rate limit exceeded' }).exec).listDeploys({}), (e) => e.code === 'RATE_LIMITED')
 })
 
 test('listDeploys encodes the environment and checks the limit', () => {
@@ -242,12 +289,12 @@ test('listDeploys can filter by the ref a deployment was made for', () => {
 })
 
 test('ciLogs with a run id reads the failed steps of that run', () => {
-  const meta = { workflowName: 'CI', url: 'u99', conclusion: 'failure', status: 'completed' }
+  const meta = { workflowName: 'CI', url: 'u99', conclusion: 'failure', status: 'completed', createdAt: '2026-11-01T10:00:00Z', headSha: 'abc' }
   const { exec, calls } = fakeExec({ stdout: JSON.stringify(meta) }, { stdout: 'step failed\n' })
   const result = host(exec).ciLogs({ runId: 99 })
-  assert.deepEqual(calls[0].args, ['run', 'view', '99', '--json', 'workflowName,url,conclusion,status'])
+  assert.deepEqual(calls[0].args, ['run', 'view', '99', '--json', 'workflowName,url,conclusion,status,createdAt,headSha'])
   assert.deepEqual(calls[1].args, ['run', 'view', '99', '--log-failed'])
-  assert.deepEqual(result, { runId: 99, workflowName: 'CI', url: 'u99', conclusion: 'failure', status: 'completed', log: 'step failed\n' })
+  assert.deepEqual(result, { runId: 99, workflowName: 'CI', url: 'u99', conclusion: 'failure', status: 'completed', createdAt: '2026-11-01T10:00:00Z', headSha: 'abc', log: 'step failed\n' })
 })
 
 test('ciLogs with a run id skips the log of a run that did not fail or never started', () => {
@@ -261,16 +308,40 @@ test('ciLogs with a run id skips the log of a run that did not fail or never sta
   }
 })
 
-test('ciLogs without a run id takes the newest failed run of the branch', () => {
-  const runs = [
-    { databaseId: 3, workflowName: 'CI', conclusion: 'success', url: 'u3' },
-    { databaseId: 2, workflowName: 'CI', conclusion: 'failure', url: 'u2' },
-    { databaseId: 1, workflowName: 'CI', conclusion: 'failure', url: 'u1' },
-  ]
+const wf = (databaseId, conclusion, createdAt, extra = {}) => ({ databaseId, workflowName: 'CI', conclusion, status: conclusion === null ? 'in_progress' : 'completed', url: `u${databaseId}`, createdAt, headSha: `sha${databaseId}`, ...extra })
+
+test('ciLogs without a run id takes the newest failed run of the branch, with its age', () => {
+  const runs = [wf(2, 'failure', '2026-11-02T10:00:00Z'), wf(1, 'failure', '2026-11-01T10:00:00Z')]
   const { exec, calls } = fakeExec({ stdout: JSON.stringify(runs) }, { stdout: 'boom\n' })
   const result = host(exec).ciLogs({ branch: 'main' })
   assert.deepEqual(calls[1].args, ['run', 'view', '2', '--log-failed'])
-  assert.deepEqual(result, { runId: 2, workflowName: 'CI', url: 'u2', conclusion: 'failure', status: null, log: 'boom\n' })
+  assert.deepEqual(result, { runId: 2, workflowName: 'CI', url: 'u2', conclusion: 'failure', status: 'completed', createdAt: '2026-11-02T10:00:00Z', headSha: 'sha2', newerRun: null, log: 'boom\n' })
+})
+
+test('ciLogs names the newer run of the same workflow that succeeded', () => {
+  const runs = [wf(4, null, '2026-11-04T10:00:00Z'), wf(3, 'success', '2026-11-03T10:00:00Z'), wf(2, 'failure', '2026-11-02T10:00:00Z'), wf(9, 'success', '2026-11-05T10:00:00Z', { workflowName: 'Lint' })]
+  const { exec } = fakeExec({ stdout: JSON.stringify(runs) }, { stdout: 'boom\n' })
+  const result = host(exec).ciLogs({ branch: 'main' })
+  assert.equal(result.runId, 2)
+  assert.deepEqual(result.newerRun, { runId: 3, conclusion: 'success', createdAt: '2026-11-03T10:00:00Z', headSha: 'sha3' })
+})
+
+test('ciLogs does not count a newer cancelled or skipped run as a sign the failure is fixed', () => {
+  const runs = [wf(5, 'cancelled', '2026-11-05T10:00:00Z'), wf(4, 'skipped', '2026-11-04T10:00:00Z'), wf(3, 'action_required', '2026-11-03T10:00:00Z'), wf(2, 'failure', '2026-11-02T10:00:00Z')]
+  const { exec } = fakeExec({ stdout: JSON.stringify(runs) }, { stdout: 'boom\n' })
+  assert.equal(host(exec).ciLogs({ branch: 'main' }).newerRun, null)
+})
+
+test('ciLogs names the newest successful run even when a newer one was cancelled', () => {
+  const runs = [wf(5, 'cancelled', '2026-11-05T10:00:00Z'), wf(4, 'success', '2026-11-04T10:00:00Z'), wf(2, 'failure', '2026-11-02T10:00:00Z')]
+  const { exec } = fakeExec({ stdout: JSON.stringify(runs) }, { stdout: 'boom\n' })
+  assert.equal(host(exec).ciLogs({ branch: 'main' }).newerRun.runId, 4)
+})
+
+test('ciLogs has no newerRun when the newer runs are still going', () => {
+  const runs = [wf(3, null, '2026-11-03T10:00:00Z'), wf(2, 'failure', '2026-11-02T10:00:00Z')]
+  const { exec } = fakeExec({ stdout: JSON.stringify(runs) }, { stdout: 'boom\n' })
+  assert.equal(host(exec).ciLogs({ branch: 'main' }).newerRun, null)
 })
 
 test('ciLogs counts timed_out and startup_failure runs as failed', () => {

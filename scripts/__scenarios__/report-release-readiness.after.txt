@@ -5,4 +5,4 @@ exit 0
 --- gh calls
 pr list --state open --limit 200 --json number,url,title,headRefName,isDraft,updatedAt,author,statusCheckRollup
 api repos/{owner}/{repo}/deployments?per_page=20
-api repos/{owner}/{repo}/deployments/5/statuses?per_page=1
+api graphql -f query=query($ids: [ID!]!) { nodes(ids: $ids) { ... on Deployment { latestStatus { state logUrl environmentUrl } } } } -f ids[]=N5

@@ -18,6 +18,7 @@ const git = (cwd, ...args) => spawnSync('git', args, { cwd, encoding: 'utf8', en
 
 const PR_LIST = 'pr list --state open --limit 200 --json number,url,title,headRefName,isDraft,updatedAt,author,statusCheckRollup'
 const DEPLOYMENTS = 'api repos/{owner}/{repo}/deployments?per_page=20'
+const STATUS_OF = (id, state = 'SUCCESS') => [`api graphql -f query=query($ids: [ID!]!) { nodes(ids: $ids) { ... on Deployment { latestStatus { state logUrl environmentUrl } } } } -f ids[]=N${id}`, { stdout: JSON.stringify({ data: { nodes: [{ latestStatus: { state } }] } }) }]
 const prs = [
   { number: 9, url: 'https://github.com/o/r/pull/9', title: 'DLQ', headRefName: 'feat-dlq', isDraft: false, updatedAt: '2026-10-20T10:00:00Z', author: { login: 'ana' }, statusCheckRollup: [] },
   { number: 11, url: 'https://github.com/o/r/pull/11', title: 'Other', headRefName: 'unrelated', isDraft: true, updatedAt: '2026-10-20T10:00:00Z', author: { login: 'ana' }, statusCheckRollup: [] },
@@ -28,8 +29,8 @@ const cannedGh = (extra = {}) => ({
   [BY_TAG]: { stdout: '[]' },
   [BY_REF]: { stdout: '[]' },
   [PR_LIST]: { stdout: JSON.stringify(prs) },
-  [DEPLOYMENTS]: { stdout: JSON.stringify([{ id: 5, environment: 'production', ref: 'v1.0', sha: 'abcdef123', created_at: '2026-10-22T10:00:00Z' }]) },
-  'api repos/{owner}/{repo}/deployments/5/statuses?per_page=1': { stdout: JSON.stringify([{ state: 'success' }]) },
+  [DEPLOYMENTS]: { stdout: JSON.stringify([{ id: 5, node_id: 'N5', environment: 'production', ref: 'v1.0', sha: 'abcdef123', created_at: '2026-10-22T10:00:00Z' }]) },
+  ...Object.fromEntries([STATUS_OF(5)]),
   ...extra,
 })
 
@@ -337,14 +338,27 @@ test('a release with no issue is not ready: ready is null and empty is true', as
   assert.match((await ok(root, env, ['release-readiness', '--release', '2.0'])).stdout, /unknown: the release has no issue that is not canceled/)
 })
 
+test('release-readiness shows a deploy whose status could not be read as unknown, and warns', async () => {
+  const root = repo()
+  const [key] = STATUS_OF(5)
+  const gh = fakeGh(cannedGh({ [key]: { status: 1, stderr: 'HTTP 502: Bad Gateway' } }))
+  const env = envWith(gh)
+  await withRelease(root, env)
+  const json = await ok(root, env, ['release-readiness', '--json'])
+  const data = JSON.parse(json.stdout)
+  assert.deepEqual(data.deploys.map((d) => [d.state, d.matchesRelease]), [[null, true]])
+  const text = await ok(root, env, ['release-readiness'])
+  assert.match(text.stdout, /production\s+\|?\s*unknown/)
+  assert.match(text.stderr, /state of 1 deployment\(s\) is unknown: .*502/)
+})
+
 test('the deploy of the release tag is found when it is older than the 20 newest, and through a refs/tags/ ref', async () => {
   const root = repo()
-  const old = (id, ref) => ({ id, environment: 'production', ref, sha: `abcdef${id}`, created_at: '2026-09-01T10:00:00Z' })
+  const old = (id, ref) => ({ id, node_id: `N${id}`, environment: 'production', ref, sha: `abcdef${id}`, created_at: '2026-09-01T10:00:00Z' })
   const gh = fakeGh(cannedGh({
     [BY_TAG]: { stdout: JSON.stringify([old(3, 'v1.0')]) },
     [BY_REF]: { stdout: JSON.stringify([old(2, 'refs/tags/v1.0')]) },
-    'api repos/{owner}/{repo}/deployments/3/statuses?per_page=1': { stdout: JSON.stringify([{ state: 'success' }]) },
-    'api repos/{owner}/{repo}/deployments/2/statuses?per_page=1': { stdout: JSON.stringify([{ state: 'success' }]) },
+    ...Object.fromEntries([STATUS_OF(3), STATUS_OF(2)]),
   }))
   const env = envWith(gh)
   await withRelease(root, env)

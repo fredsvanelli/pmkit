@@ -178,7 +178,7 @@ test('pr status returns the pull request with checks and reviews, and an empty c
   const root = teamRepo()
   const gh = fakeGh({
     [view('feat')]: { stdout: prJson({ number: 7 }) },
-    'pr checks 7 --json name,state,bucket': { status: 1, stderr: "no checks reported on the 'feat' branch\n" },
+    'pr checks 7 --json name,state,bucket,link': { status: 1, stderr: "no checks reported on the 'feat' branch\n" },
     'pr view 7 --json reviews,reviewRequests': { stdout: JSON.stringify({ reviews: [{ state: 'APPROVED' }], reviewRequests: [] }) },
     [view('none')]: { status: 1, stderr: 'no pull requests found for branch "none"\n' },
   })
@@ -190,6 +190,26 @@ test('pr status returns the pull request with checks and reviews, and an empty c
   assert.deepEqual(status.reviews, [{ state: 'APPROVED' }])
   const none = await callJson(root, env, ['pr', 'status', '--branch', 'none'])
   assert.deepEqual(none, { branch: 'none', pr: null, checks: [], reviews: [] })
+})
+
+test('pr status links a failing check to its ci logs run, and leaves a check without a run alone', async () => {
+  const root = teamRepo()
+  const gh = fakeGh({
+    [view('feat')]: { stdout: prJson({ number: 7 }) },
+    'pr checks 7 --json name,state,bucket,link': { status: 1, stdout: JSON.stringify([
+      { name: 'build', state: 'FAILURE', bucket: 'fail', link: 'https://github.com/o/r/actions/runs/123/job/9' },
+      { name: 'lint', state: 'SUCCESS', bucket: 'pass', link: 'https://github.com/o/r/actions/runs/124/job/1' },
+      { name: 'ext', state: 'FAILURE', bucket: 'fail', link: 'https://ci.example.com/1' },
+    ]) },
+    'pr view 7 --json reviews,reviewRequests': { stdout: JSON.stringify({ reviews: [], reviewRequests: [] }) },
+  })
+  const env = envWith(gh)
+  const status = await callJson(root, env, ['pr', 'status', '--branch', 'feat'])
+  assert.deepEqual(status.checks.map((c) => c.runId), [123, 124, null])
+  const text = await run(['pr', 'status', '--branch', 'feat'], { env, cwd: root })
+  assert.match(text.stdout, /build fail \(ci logs --run 123\)/)
+  assert.doesNotMatch(text.stdout, /lint pass \(/)
+  assert.doesNotMatch(text.stdout, /ext fail \(/)
 })
 
 test('issues branch --dry-run prints the branch name and creates no git branch', async () => {
@@ -533,7 +553,7 @@ test('pr diff refuses a repository with no git host', async () => {
 const MERGE = 'pr view 7 --json mergeable,mergeStateStatus,reviewDecision,baseRefName'
 const blockerGh = (over = {}) => ({
   [view('feat')]: { stdout: prJson({ number: 7 }) },
-  'pr checks 7 --json name,state,bucket': { status: 8, stdout: JSON.stringify([{ name: 'build', state: 'FAILURE', bucket: 'fail' }, { name: 'lint', state: 'PENDING', bucket: 'pending' }]) },
+  'pr checks 7 --json name,state,bucket,link': { status: 8, stdout: JSON.stringify([{ name: 'build', state: 'FAILURE', bucket: 'fail' }, { name: 'lint', state: 'PENDING', bucket: 'pending' }]) },
   'pr view 7 --json reviews,reviewRequests': { stdout: JSON.stringify({ reviews: [{ author: { login: 'ann' }, state: 'CHANGES_REQUESTED' }], reviewRequests: [{ __typename: 'User', login: 'bob' }] }) },
   [MERGE]: { stdout: JSON.stringify({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY', reviewDecision: 'CHANGES_REQUESTED', baseRefName: 'main' }) },
   ...over,

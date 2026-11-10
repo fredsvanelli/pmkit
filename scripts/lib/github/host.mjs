@@ -11,6 +11,7 @@ const VIEW_FIELDS = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
 const LIST_FIELDS = 'number,url,title,headRefName,isDraft,updatedAt,author,statusCheckRollup'
 const RUN_FIELDS = 'databaseId,workflowName,status,conclusion,url,createdAt,headSha'
 const THREADS_QUERY = 'query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { pageInfo { hasNextPage } nodes { isResolved isOutdated path line comments(first: 1) { nodes { url body author { login } } } } } } } }'
+const STATUS_QUERY = 'query($ids: [ID!]!) { nodes(ids: $ids) { ... on Deployment { latestStatus { state logUrl environmentUrl } } } }'
 const INSTALL_STEP = 'Install the GitHub CLI (https://cli.github.com) and run gh auth login'
 
 /** Runs a command in root with spawnSync. A missing binary throws the spawn error (code ENOENT). */
@@ -150,19 +151,21 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
     },
 
     prChecks(number) {
-      const args = ['pr', 'checks', String(number), '--json', 'name,state,bucket']
+      const args = ['pr', 'checks', String(number), '--json', 'name,state,bucket,link']
+      // The link of a check run holds the workflow run it belongs to, the id `ci logs --run` takes. Other CI has none.
+      const withRun = (list) => list.map((c) => ({ ...c, runId: Number(/\/actions\/runs\/(\d+)/.exec(c.link ?? '')?.[1]) || null }))
       const result = run('gh', args)
       // gh exits non-zero while checks fail or are pending, and still prints the list.
       if (result.status !== 0) {
         try {
           const list = JSON.parse(result.stdout)
-          if (Array.isArray(list)) return list
+          if (Array.isArray(list)) return withRun(list)
         } catch {}
         // A pull request without checks makes gh exit 1 with this message.
         if (/no checks reported/i.test(result.stderr ?? '')) return []
         throw failure('gh', args, result)
       }
-      return parse(result.stdout, 'the checks')
+      return withRun(parse(result.stdout, 'the checks'))
     },
 
     prReviews(number) {
@@ -216,36 +219,63 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
       const env = environment === undefined ? '' : `&environment=${encodeURIComponent(environment)}`
       const byRef = ref === undefined ? '' : `&ref=${encodeURIComponent(ref)}`
       const deployments = parse(check('gh', ['api', `repos/{owner}/{repo}/deployments?per_page=${limit}${env}${byRef}`]).stdout, 'the deployments')
-      return deployments.map((d) => {
-        const [status] = parse(check('gh', ['api', `repos/{owner}/{repo}/deployments/${d.id}/statuses?per_page=1`]).stdout, 'the deployment status')
-        return {
-          id: d.id,
-          environment: d.environment,
-          ref: d.ref,
-          sha: d.sha,
-          createdAt: d.created_at,
-          state: status?.state ?? 'pending',
-          url: status?.log_url ?? status?.target_url ?? null,
+      if (deployments.length === 0) return []
+      // One graphql call reads the latest status of every deployment. A read that fails keeps the list, with the state unknown (null).
+      // gh needs -f before each field, or it refuses the call ("accepts 1 arg(s), received N").
+      const args = ['api', 'graphql', '-f', `query=${STATUS_QUERY}`, ...deployments.flatMap((d) => ['-f', `ids[]=${d.node_id}`])]
+      let nodes = null
+      let errors = []
+      let statusError = null
+      try {
+        const result = run('gh', args)
+        // A node that does not resolve makes gh exit 1 with the other nodes still in the reply: use them.
+        let reply = null
+        try { reply = JSON.parse(result.stdout) } catch {}
+        if (Array.isArray(reply?.data?.nodes)) {
+          nodes = reply.data.nodes
+          errors = Array.isArray(reply.errors) ? reply.errors : []
+        } else if (result.status !== 0) throw failure('gh', args, result)
+        else throw new PmkitError('UPSTREAM', 'gh api graphql returned no deployment statuses', 'Update the GitHub CLI and retry')
+      } catch (error) {
+        if (!(error instanceof PmkitError) || error.code !== 'UPSTREAM') throw error
+        statusError = error.message
+      }
+      return deployments.map((d, i) => {
+        const base = { id: d.id, environment: d.environment, ref: d.ref, sha: d.sha, createdAt: d.created_at }
+        const node = nodes?.[i]
+        if (!node) {
+          const why = errors.find((e) => e.path?.[0] === 'nodes' && e.path?.[1] === i)?.message
+          return { ...base, state: null, url: null, statusError: statusError ?? why ?? 'GitHub returned no status for this deployment' }
         }
+        const status = node.latestStatus
+        // The url is the log of the deploy, as target_url was. environmentUrl is the published site, not a log.
+        return { ...base, state: status ? String(status.state).toLowerCase() : 'pending', url: status?.logUrl ?? null }
       })
     },
 
     ciLogs({ branch, runId } = {}) {
       let run
+      let newerRun
       if (runId !== undefined) {
         if (!Number.isInteger(runId) || runId < 1) throw new PmkitError('INVALID_INPUT', `run id "${runId}" is not valid`, 'Pass the number of a workflow run')
-        const meta = parse(check('gh', ['run', 'view', String(runId), '--json', 'workflowName,url,conclusion,status']).stdout, 'the workflow run')
+        const meta = parse(check('gh', ['run', 'view', String(runId), '--json', 'workflowName,url,conclusion,status,createdAt,headSha']).stdout, 'the workflow run')
         run = { databaseId: runId, ...meta }
       } else {
-        run = listRuns({ branch }).find((r) => FAILED_RUN.has(r.conclusion))
+        const runs = listRuns({ branch })
+        run = runs.find((r) => FAILED_RUN.has(r.conclusion))
         if (!run) return null
+        // A newer successful run of the workflow makes this failure old news. A cancelled, skipped or other run says nothing about the code.
+        const newest = runs
+          .filter((r) => r.workflowName === run.workflowName && r.status === 'completed' && r.conclusion === 'success' && Date.parse(r.createdAt) > Date.parse(run.createdAt))
+          .reduce((a, r) => (a === null || Date.parse(r.createdAt) > Date.parse(a.createdAt) ? r : a), null)
+        newerRun = newest ? { runId: newest.databaseId, conclusion: newest.conclusion, createdAt: newest.createdAt, headSha: newest.headSha ?? null } : null
       }
       const conclusion = run.conclusion || null
       // A run that succeeded, is still going or never started a job has no failed-step log: gh would only answer with nothing.
       // A run that was cancelled or skipped can still have failed steps, so only these three skip the call.
       const hasFailedSteps = conclusion !== null && conclusion !== 'success' && conclusion !== 'startup_failure'
       const log = hasFailedSteps ? check('gh', ['run', 'view', String(run.databaseId), '--log-failed']).stdout : ''
-      return { runId: run.databaseId, workflowName: run.workflowName ?? null, url: run.url ?? null, conclusion, status: run.status ?? null, log }
+      return { runId: run.databaseId, workflowName: run.workflowName ?? null, url: run.url ?? null, conclusion, status: run.status ?? null, createdAt: run.createdAt ?? null, headSha: run.headSha ?? null, ...(newerRun === undefined ? {} : { newerRun }), log }
     },
 
     prDiff(number) {

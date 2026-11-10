@@ -11,7 +11,7 @@ export default {
   github: true,
   gh: {
     [`pr view feat-dlq --json ${VIEW}`]: { stdout: JSON.stringify(pr) },
-    'pr checks 9 --json name,state,bucket': { stdout: JSON.stringify([{ name: 'test', state: 'FAILURE', bucket: 'fail' }]) },
+    'pr checks 9 --json name,state,bucket,link': { stdout: JSON.stringify([{ name: 'test', state: 'FAILURE', bucket: 'fail' }]) },
     'pr view 9 --json reviews,reviewRequests': { stdout: JSON.stringify({ reviews: [], reviewRequests: [{ login: 'fred' }] }) },
   },
   async setup({ pmkit }) {
@@ -31,7 +31,7 @@ export default {
   notHit: { 'Step 1': 'no in_review issue has a merged PR, so the pr sync preview moves nothing and does not ask' },
   expect(repo, saved) {
     assert.deepEqual(repo.newEvents('ISS-8C4W'), [], 'a read-only command appends no event')
-    assert.ok(repo.ghCalls().includes('pr checks 9 --json name,state,bucket'), repo.ghCalls().join('\n'))
+    assert.ok(repo.ghCalls().includes('pr checks 9 --json name,state,bucket,link'), repo.ghCalls().join('\n'))
     assert.deepEqual(saved.sync.moved, [])
     assert.equal(saved.me.id, 'fred')
     assert.ok(saved.open.issues.some((issue) => issue.id === 'ISS-8C4W' && issue.branch === 'feat-dlq'))
