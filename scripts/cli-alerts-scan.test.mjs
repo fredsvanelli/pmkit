@@ -108,7 +108,7 @@ test('without a scanner the scan says the capability is absent and what is missi
   assert.equal(data.incomplete, false)
   assert.deepEqual(data.candidates, [])
   const text = await pmkit(['alerts', 'scan'])
-  assert.match(text.stdout, /security alerts are absent in this repository: no scanner found \(npm-audit needs package-lock\.json or npm-shrinkwrap\.json; yarn-audit needs yarn\.lock; pnpm-audit needs pnpm-lock\.yaml; pip-audit needs requirements\.txt\)/)
+  assert.match(text.stdout, /security alerts are absent in this repository: no scanner found \(npm-audit needs package-lock\.json or npm-shrinkwrap\.json; yarn-audit needs yarn\.lock; pnpm-audit needs pnpm-lock\.yaml; pip-audit needs requirements\.txt; cargo-audit needs Cargo\.lock\)/)
 })
 
 test('a scanner with no findings says there is nothing to create', async () => {

@@ -174,6 +174,69 @@ export function parsePipAudit(stdout, stderr = '') {
   return { alerts: groupAdvisories('pip-audit', entries), warnings, incomplete: warnings.length > 0 }
 }
 
+// The CVSS 3.x base metric weights (FIRST, CVSS v3.1 specification, section 7.4). PR depends on the scope.
+const CVSS_WEIGHTS = {
+  AV: { N: 0.85, A: 0.62, L: 0.55, P: 0.2 }, AC: { L: 0.77, H: 0.44 }, UI: { N: 0.85, R: 0.62 },
+  C: { H: 0.56, L: 0.22, N: 0 }, I: { H: 0.56, L: 0.22, N: 0 }, A: { H: 0.56, L: 0.22, N: 0 },
+}
+const CVSS_PR = { U: { N: 0.85, L: 0.62, H: 0.27 }, C: { N: 0.85, L: 0.68, H: 0.5 } }
+
+/** The CVSS v3.1 Roundup: the smallest number with one decimal that is equal to or higher than the input. */
+function cvssRoundup(value) {
+  const whole = Math.round(value * 100000)
+  return whole % 10000 === 0 ? whole / 100000 : (Math.floor(whole / 10000) + 1) / 10
+}
+
+/** The base score of a CVSS 3.0 or 3.1 vector, or null when the vector is not one or misses a base metric. */
+export function cvssScore(vector) {
+  if (typeof vector !== 'string' || !/^CVSS:3\.[01]\//.test(vector)) return null
+  const metrics = Object.fromEntries(vector.split('/').slice(1).map((part) => part.split(':')))
+  const scope = metrics.S
+  const weight = (name) => CVSS_WEIGHTS[name][metrics[name]]
+  const values = ['AV', 'AC', 'UI', 'C', 'I', 'A'].map(weight)
+  const pr = CVSS_PR[scope]?.[metrics.PR]
+  if (values.some((value) => value === undefined) || pr === undefined) return null
+  const [av, ac, ui, c, i, a] = values
+  const iss = 1 - (1 - c) * (1 - i) * (1 - a)
+  const impact = scope === 'U' ? 6.42 * iss : 7.52 * (iss - 0.029) - 3.25 * (iss - 0.02) ** 15
+  if (impact <= 0) return 0
+  const exploitability = 8.22 * av * ac * pr * ui
+  return cvssRoundup(Math.min(scope === 'U' ? impact + exploitability : 1.08 * (impact + exploitability), 10))
+}
+
+/** The severity of a CVSS 3 vector by the CVSS rating scale (0.0, None, counts as low), or `unknown` without one. */
+export function cvssSeverity(vector) {
+  const score = cvssScore(vector)
+  if (score === null) return 'unknown'
+  if (score >= 9) return 'critical'
+  if (score >= 7) return 'high'
+  if (score >= 4) return 'medium'
+  return 'low'
+}
+
+/**
+ * Parses the stdout of `cargo audit --json`. Only `vulnerabilities.list` counts: the `warnings` (unmaintained, yanked)
+ * are not vulnerabilities. The severity comes from the advisory's CVSS 3 vector, `unknown` without one. An advisory with
+ * no URL links to its RustSec page. Throws an Error when it is not an audit report.
+ */
+export function parseCargoAudit(stdout, stderr = '') {
+  if (!stdout || stdout.trim() === '') throw emptyOutputError('cargo audit', stderr)
+  let report
+  try {
+    report = JSON.parse(stdout)
+  } catch {
+    throw new Error('cargo audit output is not valid JSON')
+  }
+  const list = report?.vulnerabilities?.list
+  if (!Array.isArray(list)) throw new Error('cargo audit output has no vulnerabilities list')
+  const entries = list.filter((entry) => entry?.advisory).map(({ advisory, versions, package: crate }) => ({
+    package: String(crate?.name ?? advisory.package), severity: cvssSeverity(advisory.cvss), title: advisory.title ?? String(advisory.id),
+    url: advisory.url ?? `https://rustsec.org/advisories/${encodeURIComponent(advisory.id)}.html`,
+    fixAvailable: Array.isArray(versions?.patched) && versions.patched.length > 0,
+  }))
+  return { alerts: groupAdvisories('cargo-audit', entries), warnings: [] }
+}
+
 /** The most output one scanner may print, in bytes. The same limit as the GitHub host. */
 export const NPM_MAX_BUFFER = 256 * 1024 * 1024
 /** The longest one scanner may run, in milliseconds. */
@@ -237,6 +300,11 @@ export const SCANNERS = [
     id: 'pip-audit', label: 'pip-audit', needs: 'requirements.txt',
     detect: (root) => fs.existsSync(path.join(root, 'requirements.txt')),
     command: 'pip-audit', args: ['-r', 'requirements.txt', '-f', 'json', '--progress-spinner', 'off'], shim: false, parse: parsePipAudit,
+  },
+  {
+    id: 'cargo-audit', label: 'cargo audit', needs: 'Cargo.lock',
+    detect: (root) => fs.existsSync(path.join(root, 'Cargo.lock')),
+    command: 'cargo', args: ['audit', '--json'], shim: false, parse: parseCargoAudit,
   },
 ]
 

@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { SEVERITIES, collectAlerts, isNpmMissingOnShell, parseNpmAudit, parsePipAudit, parsePnpmAudit, parseYarnAudit } from './lib/alerts.mjs'
+import { SEVERITIES, collectAlerts, cvssScore, cvssSeverity, isNpmMissingOnShell, parseCargoAudit, parseNpmAudit, parsePipAudit, parsePnpmAudit, parseYarnAudit } from './lib/alerts.mjs'
 import { tempDir } from './test-helpers.mjs'
 
 const REPORT_ONE = JSON.stringify({ vulnerabilities: { a: { name: 'a', severity: 'low', via: [], fixAvailable: false } } })
@@ -291,4 +291,62 @@ test('pip-audit runs on requirements.txt without the shell, even on win32, and a
   assert.deepEqual(calls[0].args, ['-r', 'requirements.txt', '-f', 'json', '--progress-spinner', 'off'])
   assert.equal(calls[0].options.shell, false)
   assert.deepEqual(found.scanners.find((scanner) => scanner.id === 'pip-audit'), { id: 'pip-audit', detected: true, alerts: 0, incomplete: true })
+})
+
+// ---- cargo audit (PMK-208) ----
+
+test('cvssSeverity rates a CVSS 3 base score and leaves the rest unknown', () => {
+  const cases = {
+    'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H': 'critical', // 9.8
+    'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H': 'high', // 7.5
+    'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N': 'medium', // 5.3
+    'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N': 'low', // 3.7
+    'CVSS:3.0/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H': 'critical', // 9.9
+    'CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N': 'medium', // 5.5
+    'CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N': 'medium', // 6.1
+    'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N': 'low', // 0.0
+    'CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N': 'unknown',
+    'CVSS:3.1/AV:N': 'unknown',
+  }
+  for (const [vector, severity] of Object.entries(cases)) assert.equal(cvssSeverity(vector), severity, vector)
+  assert.equal(cvssSeverity(null), 'unknown')
+  assert.equal(cvssScore('CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N'), 6.1)
+  assert.equal(cvssScore('CVSS:3.0/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H'), 9.9)
+})
+
+const cargoEntry = (pkg, id, cvss, patched = ['>=1.0.1'], url = null) => ({
+  advisory: { id, package: pkg, title: `${id} title`, url, cvss, informational: null },
+  versions: { patched, unaffected: [] }, package: { name: pkg, version: '1.0.0' },
+})
+
+test('cargo audit: advisories group by crate, severity from CVSS, RustSec link when there is no url', () => {
+  const out = JSON.stringify({ vulnerabilities: { found: true, count: 3, list: [
+    cargoEntry('smallvec', 'RUSTSEC-2021-0003', 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H'),
+    cargoEntry('smallvec', 'RUSTSEC-2019-0009', null, []),
+    cargoEntry('time', 'RUSTSEC-2020-0071', null, ['>=0.2.23'], 'https://github.com/time-rs/time/issues/293'),
+  ] }, warnings: {} })
+  const { alerts, warnings } = parseCargoAudit(out)
+  assert.deepEqual(warnings, [])
+  assert.deepEqual(alerts.map((a) => [a.id, a.severity, a.title, a.url, a.fixAvailable, a.advisories.length]), [
+    ['cargo-audit:smallvec', 'critical', 'RUSTSEC-2021-0003 title', 'https://rustsec.org/advisories/RUSTSEC-2021-0003.html', false, 2],
+    ['cargo-audit:time', 'unknown', 'RUSTSEC-2020-0071 title', 'https://github.com/time-rs/time/issues/293', true, 1],
+  ])
+})
+
+test('cargo audit: no vulnerabilities, a missing cargo-audit and bad output', () => {
+  assert.deepEqual(parseCargoAudit(JSON.stringify({ vulnerabilities: { found: false, count: 0, list: [] } })), { alerts: [], warnings: [] })
+  assert.throws(() => parseCargoAudit('', 'error: no such command: `audit`'), /^Error: cargo audit printed empty output: error: no such command: `audit`$/)
+  assert.throws(() => parseCargoAudit('{}'), /cargo audit output has no vulnerabilities list/)
+  assert.throws(() => parseCargoAudit('nope'), /cargo audit output is not valid JSON/)
+})
+
+test('cargo audit runs on Cargo.lock without the shell', () => {
+  const root = tempDir('pmkit-cargo-')
+  fs.writeFileSync(path.join(root, 'Cargo.lock'), '\n')
+  const { spawn, calls } = fakeSpawn({ stdout: JSON.stringify({ vulnerabilities: { list: [] } }), status: 0 })
+  const found = collectAlerts(root, { platform: 'win32', spawn })
+  assert.equal(calls[0].command, 'cargo')
+  assert.deepEqual(calls[0].args, ['audit', '--json'])
+  assert.equal(calls[0].options.shell, false)
+  assert.deepEqual(found.warnings, [])
 })

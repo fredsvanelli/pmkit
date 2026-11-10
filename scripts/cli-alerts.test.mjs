@@ -27,8 +27,8 @@ function fakeNpm() {
   return dir
 }
 
-const SCANNER_IDS = ['npm-audit', 'yarn-audit', 'pnpm-audit', 'pip-audit']
-const LOOKED_FOR = 'npm-audit needs package-lock.json or npm-shrinkwrap.json; yarn-audit needs yarn.lock; pnpm-audit needs pnpm-lock.yaml; pip-audit needs requirements.txt'
+const SCANNER_IDS = ['npm-audit', 'yarn-audit', 'pnpm-audit', 'pip-audit', 'cargo-audit']
+const LOOKED_FOR = 'npm-audit needs package-lock.json or npm-shrinkwrap.json; yarn-audit needs yarn.lock; pnpm-audit needs pnpm-lock.yaml; pip-audit needs requirements.txt; cargo-audit needs Cargo.lock'
 
 const REPORT = JSON.stringify({
   auditReportVersion: 2,
