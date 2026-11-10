@@ -2,14 +2,14 @@
 id: PMK-218
 title: Improve unblock-pr
 type: feature
-status: in_progress
+status: in_review
 priority: medium
 estimate: 5
 assignee: fred
 related: [PMK-62]
 branch: pmk-218-improve-unblock-pr
 created: 2026-11-08T20:37:23.866Z
-updated: 2026-11-10T01:35:28Z
+updated: 2026-11-10T01:35:58Z
 ---
 
 ## Description
