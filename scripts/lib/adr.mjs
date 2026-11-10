@@ -6,6 +6,8 @@ import path from 'node:path'
 import { PmkitError } from './errors.mjs'
 
 export const ADR_SLUG_MAX = 60
+// The display label of an ADR folder of a tracker outside the repository; never written into an ADR.
+const OUTSIDE_LABEL = 'tracker:docs/adr'
 // A name counts only in the form NNNN-<rest>.md (exactly four digits and a hyphen, unless a date YYYY-MM-DD follows), so 20261031.md, 0007a-x.md and 2026-10-31-x.md do not, and 0003-2fa-x.md does.
 const NUMBERED = /^(\d{4})-(?!\d{2}-\d{2}(?:-|\.|$))[^/]*\.md$/
 const QUOTES = /['"`‘’“”]/g
@@ -50,7 +52,7 @@ export function adrFolders({ root, trackerDir, trackerFolder }) {
   const repoDir = path.join(root, 'docs', 'adr')
   if (trackerDir && path.resolve(trackerDir) === path.resolve(repoDir)) return [{ place: 'tracker', label: 'docs/adr', shown: 'docs/adr', dir: repoDir, repoFolder: 'docs/adr' }]
   const folders = [{ place: 'repo', label: 'docs/adr', shown: 'docs/adr', dir: repoDir, repoFolder: 'docs/adr' }]
-  if (trackerDir) folders.push({ place: 'tracker', label: trackerFolder ?? 'tracker:docs/adr', shown: trackerFolder ?? 'docs/adr in the tracker', dir: trackerDir, repoFolder: trackerFolder })
+  if (trackerDir) folders.push({ place: 'tracker', label: trackerFolder ?? OUTSIDE_LABEL, shown: trackerFolder ?? 'docs/adr in the tracker', dir: trackerDir, repoFolder: trackerFolder })
   return folders
 }
 
@@ -66,13 +68,13 @@ export function adrLocation({ root, issuesDir, hosted }) {
   return { trackerDir, trackerFolder: outside ? null : relative.split(path.sep).join('/') }
 }
 
-/** The numbered ADR files of the working tree in `folders`, as { number, name, path, place, file }, sorted by path. */
+/** The numbered ADR files of the working tree in `folders`, as { number, name, path, ref, place, file }, sorted by path. `ref` is `path` without the tracker: label, the form an ADR text may cite. */
 export function adrFiles(folders) {
   const found = []
   for (const { place, label, dir } of folders) {
     for (const name of readTree(dir) ?? []) {
       const match = NUMBERED.exec(name)
-      if (match) found.push({ number: match[1], name, path: `${label}/${name}`, place, file: path.join(dir, name) })
+      if (match) found.push({ number: match[1], name, path: `${label}/${name}`, ref: `${label === OUTSIDE_LABEL ? 'docs/adr' : label}/${name}`, place, file: path.join(dir, name) })
     }
   }
   return found.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
@@ -190,7 +192,7 @@ export function planNextAdr({ title, root, trackerFolder, trackerDir, hosted, cr
   if (refSha) notes.push(`numbered with ${ref} as last fetched (${refSha}), so it may be behind the remote`)
   else notes.push(`${ref} does not exist here, so only the working tree was read and an ADR merged on ${defaultBranch} may be missed`)
 
-  const trackerLabel = trackerDir ? (trackerFolder ?? 'tracker:docs/adr') : null
+  const trackerLabel = trackerDir ? (trackerFolder ?? OUTSIDE_LABEL) : null
   const folders = adrFolders({ root, trackerDir, trackerFolder })
   if (trackerDir && !trackerFolder) notes.push(`the tracker folder is outside the repository, so ${ref} was not read for it and its paths start with tracker: and are relative to the tracker folder`)
 

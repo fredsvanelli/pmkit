@@ -568,3 +568,38 @@ test('a number used in the repository and in a tracker outside it shows two diff
     fs.rmSync(outside, { recursive: true, force: true })
   }
 })
+
+test('docs adr-status superseded --by writes a plain relative path into the ADR, never the tracker: label (PMK-247 review)', async () => {
+  const root = repo()
+  const outside = path.join(path.dirname(root), `outside-${path.basename(root)}`)
+  fs.writeFileSync(configFile(root), fs.readFileSync(configFile(root), 'utf8').replace('path: .issues', `path: ../${path.basename(outside)}`))
+  fs.renameSync(path.join(root, '.issues'), outside)
+  try {
+    writeAdr(root, 'docs/adr/0002-a.md')
+    writeAdr(outside, 'docs/adr/0003-x.md')
+    const dry = await adrStatus(root, '2', 'superseded', '--by', '3', '--dry-run')
+    assert.equal(dry.code, 0, dry.stderr)
+    assert.equal(dry.data.status.after, 'Status: superseded by docs/adr/0003-x.md')
+    await adrStatus(root, '2', 'superseded', '--by', '3')
+    assert.doesNotMatch(fs.readFileSync(path.join(root, 'docs/adr/0002-a.md'), 'utf8'), /tracker:/)
+    // The other way round: the ADR in the outside tracker names a repository ADR.
+    writeAdr(outside, 'docs/adr/0004-y.md')
+    writeAdr(root, 'docs/adr/0005-z.md')
+    const back = await adrStatus(root, '4', 'superseded', '--by', '5')
+    assert.equal(back.code, 0, back.stderr)
+    assert.equal(back.data.path, 'tracker:docs/adr/0004-y.md', 'the display path keeps the label')
+    assert.equal(fs.readFileSync(path.join(outside, 'docs/adr/0004-y.md'), 'utf8'), '# A decision\n\nStatus: superseded by docs/adr/0005-z.md\n\nWhy.\n')
+  } finally {
+    fs.rmSync(outside, { recursive: true, force: true })
+  }
+})
+
+test('docs adr-status superseded --by with tracker.path . writes the repository path (PMK-247 review)', async () => {
+  const root = repo()
+  trackerAtRoot(root, false)
+  writeAdr(root, 'docs/adr/0002-b.md')
+  const result = await adrStatus(root, '1', 'superseded', '--by', '2')
+  assert.equal(result.code, 0, result.stderr)
+  assert.equal(result.data.status.after, 'Status: superseded by docs/adr/0002-b.md')
+  assert.match(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), /^Status: superseded by docs\/adr\/0002-b\.md$/m)
+})

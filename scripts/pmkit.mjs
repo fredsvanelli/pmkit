@@ -359,7 +359,8 @@ async function runAdrStatus(ctx) {
     if (newer.number === adr.number) throw usageError(`ADR ${adr.number} cannot supersede itself`, 'Pass the number of the newer ADR in --by')
     // A permanent record: say so when the arguments look swapped, but the user may supersede with an older ADR on purpose.
     if (newer.number < adr.number) notes.push(`ADR ${newer.number} is older than ADR ${adr.number}; check that --by names the decision that replaces it`)
-    byPath = newer.path
+    // The text of the ADR cites the path without the display label tracker: (PMK-247).
+    byPath = newer.ref
   }
   const before = adrText(fs.readFileSync(adr.file, 'utf8'))
   const { text: after, before: statusBefore, after: line } = setAdrStatus(before, status, byPath)
