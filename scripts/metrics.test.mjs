@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  aging, businessDaysBetween, categoryLookup, cycleTimes, doneInRange, groupEventsByIssue, leadTimes, rangeInstant, sprintIssues, throughput, summary, velocity,
+  aging, businessDaysBetween, categoryLookup, cycleTimes, doneInRange, eventInstant, groupEventsByIssue, leadTimes, rangeInstant, sprintIssues, throughput, summary, velocity,
 } from './lib/metrics.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
 import { fixedNow, makeRepo } from './test-helpers.mjs'
@@ -387,4 +387,20 @@ test('the helpers give what the Local tracker gives, on every golden fixture', (
       `${name} sprintIssues`,
     )
   }
+})
+
+test('eventInstant reads a time with a zone as it is and a time without a zone as UTC, with a T or a space', () => {
+  const utc = Date.parse('2026-01-01T10:00:00Z')
+  const cases = {
+    '2026-01-01T10:00:00Z': utc,
+    '2026-01-01T10:00:00': utc,
+    '2026-01-01 10:00': utc,
+    '2026-01-01 10:00Z': utc,
+    '2026-01-01 10:00+05:00': Date.parse('2026-01-01T05:00:00Z'),
+    '2026-01-01 10:00-0300': Date.parse('2026-01-01T13:00:00Z'),
+    '2026-01-01T10:00:00+05:00': Date.parse('2026-01-01T05:00:00Z'),
+    '2026-01-01': Date.parse('2026-01-01T00:00:00Z'),
+  }
+  for (const [text, instant] of Object.entries(cases)) assert.equal(eventInstant(text), instant, text)
+  assert.ok(Number.isNaN(eventInstant('not a date')))
 })
