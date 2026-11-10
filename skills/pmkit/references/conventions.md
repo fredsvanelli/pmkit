@@ -13,7 +13,7 @@ Every `/pmkit:*` command applies these rules. Read this file before the first st
 
 ## Write policy
 
-Reads run freely. A single write shows before → after (from `--dry-run`) and asks once. A bulk change (more than one record), an archive, a delete, a scope move or a published status update shows a full preview first. `write_policy.confirm: none` skips the single-write question, never the preview of a bulk change **(builder's call)**. The one other exception is `/pmkit:link-repo --yes`, which skips its question only when the dry run says `hostOnly` is `true` (no team change, no broken mapping, the host not lowered, no repo or branch replaced).
+Reads run freely. A single write shows before → after (from `--dry-run`) and asks once. A bulk change (more than one record), an archive, a delete, a scope move or a published status update shows a full preview first. `write_policy.confirm: none` skips the single-write question, never the preview of a bulk change **(builder's call)**. The one other exception is `/pmkit:link-repo --yes`, which skips its question only when the dry run says `hostOnly` is `true` (no team change, no broken mapping, no warning, the host not lowered, no repo or branch replaced).
 
 ## How to show a write
 

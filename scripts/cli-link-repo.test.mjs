@@ -599,22 +599,38 @@ test('GitHub Enterprise: a host or repo that is not valid is not written or quot
   }
 })
 
-const truncatedLabels = () => fakeLinearFetch(twoTeams(undefined, { endless: ['PmkitLabels'] }))
+const cut = (...operations) => fakeLinearFetch(twoTeams(undefined, { endless: operations }))
 
-test('Linear: --recheck-team on a cut discovery is not verified, says so, and concludes nothing', async () => {
-  const context = linear({ config: linearConfig({ team: 'BETA', extra: MAPPED.slice(1) }) })
-  const data = dataOf(await linearRun(context, ['--recheck-team', '--dry-run'], truncatedLabels()))
-  assert.equal(data.scope.team.verified, false)
-  assert.deepEqual(data.broken, [])
-  assert.ok(data.warnings.some((warning) => /more than/.test(warning) && /labels/.test(warning)), data.warnings.join('\n'))
+test('Linear: --recheck-team on a discovery with the teams or states cut is not verified, says so, and concludes nothing', async () => {
+  for (const operation of ['PmkitTeams', 'PmkitStates']) {
+    const context = linear({ config: linearConfig({ team: 'BETA', extra: MAPPED.slice(1) }) })
+    const data = dataOf(await linearRun(context, ['--recheck-team', '--dry-run'], cut(operation)))
+    assert.equal(data.scope.team.verified, false, operation)
+    assert.deepEqual(data.broken, [], operation)
+    assert.ok(data.warnings.some((warning) => /more than/.test(warning)), data.warnings.join('\n'))
+  }
 })
 
-test('Linear: a team change from a cut discovery is refused and nothing is written', async () => {
-  const context = linear({ config: linearConfig({ team: 'BETA' }) })
-  const before = fs.readFileSync(file(context.root), 'utf8')
-  const error = errorOf(await linearRun(context, ['--team', 'ACME'], truncatedLabels()))
-  assert.equal(error.code, 'UPSTREAM')
-  assert.equal(fs.readFileSync(file(context.root), 'utf8'), before)
+test('Linear: a team change from a discovery with the teams or states cut is refused without a retry, and nothing is written', async () => {
+  for (const operation of ['PmkitTeams', 'PmkitStates']) {
+    const context = linear({ config: linearConfig({ team: 'BETA' }) })
+    const before = fs.readFileSync(file(context.root), 'utf8')
+    const error = errorOf(await linearRun(context, ['--team', 'ACME'], cut(operation)))
+    assert.equal(error.code, 'UPSTREAM', operation)
+    assert.doesNotMatch(error.nextStep, /retry/i, operation)
+    assert.equal(fs.readFileSync(file(context.root), 'utf8'), before, operation)
+  }
+})
+
+test('Linear: --team and --recheck-team still verify when only the users or the labels are cut', async () => {
+  for (const operation of ['PmkitUsers', 'PmkitLabels']) {
+    const context = linear({ config: linearConfig({ team: 'BETA' }) })
+    const data = dataOf(await linearRun(context, ['--team', 'ACME', '--dry-run'], cut(operation)))
+    assert.deepEqual(data.scope.team, { before: 'BETA', after: 'ACME', source: 'flag', verified: true }, operation)
+    const held = dataOf(await linearRun(context, ['--recheck-team', '--dry-run'], cut(operation)))
+    assert.equal(held.scope.team.verified, true, operation)
+    assert.deepEqual(held.warnings, [], operation)
+  }
 })
 
 test('Linear: --recheck-team when the workspace read fails stops with the error and writes nothing', async () => {
@@ -634,4 +650,20 @@ test('the text labels broken mappings as those of the new team only when the tea
   const held = await text('BETA', ['--recheck-team'])
   assert.match(held, /broken for the team in the file/)
   assert.doesNotMatch(held, /broken by the new team/)
+})
+
+// PMK-223 review, cycle 2
+
+test('hostOnly is false when --git-host github is used against a remote on a host that is not GitHub', async () => {
+  const root = local({ remotes: { origin: 'https://gitlab.com/acme/app.git' } })
+  const data = dataOf(await link(root, ['--git-host', 'github', '--dry-run']))
+  assert.ok(data.warnings.length > 0)
+  assert.equal(data.hostOnly, false)
+})
+
+test('the refusal of a remote that is not valid carries the note that says why', async () => {
+  const root = local({ remotes: { origin: 'https://a$(id)b.com/acme/app.git' } })
+  const error = errorOf(await link(root, ['--git-host', 'github']))
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.match(error.message, /valid host name and owner\/name/)
 })

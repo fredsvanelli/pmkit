@@ -3568,7 +3568,7 @@ function readDefaultBranch(ctx, remote) {
   return name !== null && validBranch(name) ? name : null
 }
 
-// The team named by --team, or held in the file, checked against the workspace. A discovery cut at the client cap (`truncated`) proves nothing, so the team is not checked then.
+// The team named by --team, or held in the file, checked against the workspace. A discovery whose teams or states are cut at the client cap (`truncated`) proves nothing about a team or its mappings, so the team is not checked then; a cut of users or labels does not matter here.
 async function linkTeam(ctx, parsed, wanted, source) {
   const adapter = adapterFor('linear', ctx.adapters)
   const workspace = parsed.tracker.scope?.workspace
@@ -3577,7 +3577,7 @@ async function linkTeam(ctx, parsed, wanted, source) {
   const defaults = withLocalDefaults({}).types
   const types = [...defaults, ...Object.keys(parsed.mappings?.types ?? {}).filter((type) => !defaults.includes(type))]
   const description = adapter.describe(view.raw, view, view.auth?.viewer?.id ?? null, types)
-  const truncated = view.raw?.truncated ?? []
+  const truncated = (view.raw?.truncated ?? []).filter((kind) => kind === 'teams' || kind === 'states')
   if (truncated.length > 0) return { description, truncated }
   const keys = description.teams.map((team) => team.key)
   if (!keys.includes(wanted)) throw usageError(`${source === 'flag' ? `--team ${wanted}` : `tracker.scope.team ${wanted}`} is not a team of workspace ${description.workspace.urlKey}`, `Pass one of: ${keys.join(', ')}${source === 'flag' ? '' : ' with --team, or run /pmkit:setup'}`)
@@ -3629,6 +3629,7 @@ async function runLinkRepo(ctx) {
   if (flagRepo !== undefined && hostAfter === 'none') throw usageError('--repo needs the git host github', 'Pass --git-host github, or remove --repo')
   if (flagBranch !== undefined && hostAfter === 'none') throw usageError('--default-branch needs the git host github', 'Pass --git-host github, or remove --default-branch')
   let repoAfter = held.repo
+  let invalidRemote = null
   let repoSource = 'file'
   if (flagHost === 'none') {
     repoAfter = null
@@ -3643,7 +3644,8 @@ async function runLinkRepo(ctx) {
     // GitHub Enterprise or an SSH alias: the user said it is GitHub, so a missing repo is read from that remote. gh resolves the host from the remote itself.
     const remoteUrl = parseRemoteUrl(chosen.remote.url)
     if (!validGithubRemote(remoteUrl)) {
-      notes.push(`remote ${chosen.remote.name} does not have a valid host name and owner/name, so the repo was not read from it`)
+      invalidRemote = `remote ${chosen.remote.name} does not have a valid host name and owner/name, so the repo was not read from it`
+      notes.push(invalidRemote)
     } else if (held.repo === null) {
       repoAfter = `${remoteUrl.owner}/${remoteUrl.name}`
       repoSource = 'remote'
@@ -3668,7 +3670,7 @@ async function runLinkRepo(ctx) {
   }
   // A file that is already github without a repo is not made worse, so --team or --default-branch still work on it.
   if (hostAfter === 'github' && repoAfter === null) {
-    if (held.system !== 'github') throw usageError('git_host github needs a repo, and none was given or found', 'Pass --repo owner/name, or --git-host none')
+    if (held.system !== 'github') throw usageError(`git_host github needs a repo, and none was given or found${invalidRemote ? ` (${invalidRemote})` : ''}`, 'Pass --repo owner/name, or --git-host none')
     warnings.push('git_host.repo is not set while git_host is github, and none was given or found; pass --repo owner/name')
   }
   // A new repo with the old branch name may point at the wrong branch, so the value is kept and the note says it may be wrong.
@@ -3701,7 +3703,7 @@ async function runLinkRepo(ctx) {
       const source = wantedTeam !== undefined ? 'flag' : 'file'
       const { description, truncated } = await linkTeam(ctx, parsed, checked, source)
       if (truncated.length > 0 && checked !== heldTeam) {
-        throw new PmkitError('UPSTREAM', `Linear has more than the first part of its ${truncated.join(', ')}, so --team ${checked} could not be checked against the workspace`, 'Retry, or run /pmkit:setup')
+        throw new PmkitError('UPSTREAM', `Linear has more than the first part of its ${truncated.join(', ')}, so --team ${checked} could not be checked against the workspace`, 'Edit tracker.scope.team in .pmkit/config.yaml by hand')
       }
       if (truncated.length > 0) {
         warnings.push(`Linear has more than the first part of its ${truncated.join(', ')}, so team ${checked} was not checked against the workspace`)
@@ -3757,8 +3759,8 @@ async function runLinkRepo(ctx) {
     defaultBranch: { before: held.branch, after: branchAfter, source: branchSource },
     scope,
     broken,
-    // Host only: the file changes, no team changes, no mapping breaks, the host is not lowered and no repo or branch the file holds is replaced.
-    hostOnly: changed && !teamChanged && broken.length === 0 && hostAfter !== 'none' && (held.repo === null || repoAfter === held.repo) && (held.branch === null || branchAfter === held.branch),
+    // Host only: the file changes, no team changes, no mapping breaks, nothing warns, the host is not lowered and no repo or branch the file holds is replaced.
+    hostOnly: changed && !teamChanged && broken.length === 0 && warnings.length === 0 && hostAfter !== 'none' && (held.repo === null || repoAfter === held.repo) && (held.branch === null || branchAfter === held.branch),
     notes,
     warnings,
     files: [entry],
