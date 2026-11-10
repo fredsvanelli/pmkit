@@ -1,3 +1,10 @@
 {"at":"2026-11-10T19:28:14Z","by":"fred","op":"create","to":{"id":"PMK-248","title":"Fix adr-status on an unchanged section and on two status forms","type":"bug","status":"backlog","priority":"low","estimate":1,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-10T19:28:14.686Z","updated":"2026-11-10T19:28:14Z"}}
 {"at":"2026-11-10T21:16:03Z","by":"fred","op":"update","field":"parent","from":null,"to":"EPC-6"}
 {"at":"2026-11-10T21:22:26Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-10T21:37:46Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-10T21:37:48Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-248-fix-adr-status-on-an-unchanged-section"}
+{"at":"2026-11-10T21:38:15Z","by":"fred","op":"comment","to":"2026-11-10T21-38-15Z-fred.md"}
+{"at":"2026-11-10T21:38:42Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T21:38:43Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T21:46:57Z","by":"fred","op":"comment","to":"2026-11-10T21-46-57Z-fred.md"}
+{"at":"2026-11-10T21:46:57Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

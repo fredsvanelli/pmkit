@@ -483,3 +483,23 @@ test('adrLocation gives the tracker ADR folder relative to the repository, null 
   assert.equal(adrLocation({ root, issuesDir: path.join(root, '..', 'tracker'), hosted: false }).trackerFolder, null)
   assert.deepEqual(adrLocation({ root, issuesDir: undefined, hosted: true }), { trackerDir: null, trackerFolder: null })
 })
+
+test('setAdrStatus leaves an ADR untouched when its status does not change, whatever the blank lines or letter case (PMK-248)', () => {
+  for (const text of ['# T\n\n## Status\nAccepted\n## Context\n\nWhy.\n', '# T\n\n## Status\n\naccepted\n\n## Context\n', '---\nstatus: Accepted\n---\n\n# T\n', '# T\n\n**Status:** ACCEPTED\n\nX\n']) {
+    const result = setAdrStatus(text, 'accepted')
+    assert.equal(result.text, text)
+  }
+  const sup = '# T\n\n## Status\nSuperseded by docs/adr/0009-b.md\n## Context\n'
+  assert.equal(setAdrStatus(sup, 'superseded', 'docs/adr/0009-b.md').text, sup)
+  // A section that is empty or holds more than the status is still a change.
+  assert.notEqual(setAdrStatus('# T\n\n## Status\n\n## Context\n', 'accepted').text, '# T\n\n## Status\n\n## Context\n')
+  assert.notEqual(setAdrStatus('# T\n\n## Status\n\nAccepted\nafter review\n\n## Context\n', 'accepted').text, '# T\n\n## Status\n\nAccepted\nafter review\n\n## Context\n')
+})
+
+test('setAdrStatus changes the front matter key and the ## Status section together (PMK-248)', () => {
+  const both = '---\nstatus: accepted\n---\n\n# T\n\n## Status\n\nAccepted\n\n## Context\n'
+  assert.deepEqual(setAdrStatus(both, 'deprecated'), { text: '---\nstatus: deprecated\n---\n\n# T\n\n## Status\n\nDeprecated\n\n## Context\n', before: 'status: accepted', after: 'status: deprecated' })
+  // The key is current but the section is not: the section still changes.
+  const stale = '---\nstatus: deprecated\n---\n\n# T\n\n## Status\n\nAccepted\n'
+  assert.equal(setAdrStatus(stale, 'deprecated').text, '---\nstatus: deprecated\n---\n\n# T\n\n## Status\n\nDeprecated\n')
+})
