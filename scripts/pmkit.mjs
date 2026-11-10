@@ -34,7 +34,7 @@ import { validateRepo } from './lib/validate.mjs'
 import { FrontmatterError, parseYaml } from './lib/yaml.mjs'
 import { addMapEntry, removeKey, setMap, setScalar, setSchemaLine } from './lib/yaml-edit.mjs'
 import { brokenMappings, parseMappingFlags, proposeMappings } from './lib/mappings.mjs'
-import { chooseRemote, inferHost } from './lib/git-remote.mjs'
+import { chooseRemote, inferHost, parseRemoteUrl } from './lib/git-remote.mjs'
 import { SCHEMA_FILES, schemaUrl } from './lib/schema-url.mjs'
 import { lineDiff } from './lib/diff.mjs'
 import { DEFAULT_MAX, HARD_MAX, buildPreview, bulkText, checkBulkFilter, parseChange, valueError } from './lib/bulk.mjs'
@@ -552,8 +552,8 @@ export const COMMANDS = [
   },
   {
     name: 'link-repo', summary: 'links this repository to a git host and, on Linear, a team: infers the host and the repo from the git remote, checks the team against the workspace, and edits only those lines of .pmkit/config.yaml',
-    usage: '[--git-host github|none] [--repo owner/name] [--default-branch name] [--remote name] [--team KEY]',
-    flags: ['git-host', 'repo', 'default-branch', 'remote', 'team'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runLinkRepo,
+    usage: '[--git-host github|none] [--repo owner/name] [--default-branch name] [--remote name] [--team KEY] [--recheck-team]',
+    flags: ['git-host', 'repo', 'default-branch', 'remote', 'team', 'recheck-team'], booleans: ['dry-run'], dryRun: true, exempt: true, run: runLinkRepo,
   },
   {
     name: 'capabilities', summary: 'prints the capability manifest', flags: [],
@@ -3633,6 +3633,14 @@ async function runLinkRepo(ctx) {
   } else if (inferred.system === 'github') {
     repoAfter = inferred.repo
     repoSource = 'remote'
+  } else if (flagHost === 'github' && chosen.remote) {
+    // GitHub Enterprise or an SSH alias: the user said it is GitHub, so the repo is read from that remote. gh resolves the host from the remote itself.
+    const parsed = parseRemoteUrl(chosen.remote.url)
+    if (parsed && !parsed.owner.includes('/')) {
+      repoAfter = `${parsed.owner}/${parsed.name}`
+      repoSource = 'remote'
+      notes.push(`the repo ${repoAfter} was read from remote ${chosen.remote.name} on ${parsed.host}; gh must be logged in to that host (gh auth login --hostname ${parsed.host})`)
+    }
   }
   let branchAfter = held.branch
   let branchSource = 'file'
@@ -3673,12 +3681,16 @@ async function runLinkRepo(ctx) {
   const wantedTeam = ctx.opt('team')
   let scope = null
   let broken = []
+  const recheck = ctx.flag('recheck-team')
+  if (recheck && !hosted) throw usageError(`the ${system} tracker has no scope, so --recheck-team does not apply`, 'Remove --recheck-team')
+  if (recheck && wantedTeam === undefined && heldTeam === null) throw usageError('tracker.scope.team is not set, so there is no team to re-check', 'Pass --team KEY, or run /pmkit:setup')
   if (hosted) {
     scope = { team: { before: heldTeam, after: heldTeam, source: 'file', verified: false } }
-    if (wantedTeam !== undefined) {
-      const description = await linkTeam(ctx, parsed, wantedTeam)
-      scope = { team: { before: heldTeam, after: wantedTeam, source: 'flag', verified: true } }
-      broken = brokenMappings(description, { tracker: { scope: { team: wantedTeam } }, mappings: parsed.mappings })
+    if (wantedTeam !== undefined || recheck) {
+      const checked = wantedTeam ?? heldTeam
+      const description = await linkTeam(ctx, parsed, checked)
+      scope = { team: { before: heldTeam, after: checked, source: wantedTeam !== undefined ? 'flag' : 'file', verified: true } }
+      broken = brokenMappings(description, { tracker: { scope: { team: checked } }, mappings: parsed.mappings })
     } else if (heldTeam === null) {
       notes.push('tracker.scope.team is not set; pass --team KEY or run /pmkit:setup')
     }
@@ -3727,6 +3739,7 @@ async function runLinkRepo(ctx) {
     defaultBranch: { before: held.branch, after: branchAfter, source: branchSource },
     scope,
     broken,
+    hostOnly: changed && !teamChanged && broken.length === 0,
     notes,
     warnings,
     files: [entry],

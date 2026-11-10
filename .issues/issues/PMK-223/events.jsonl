@@ -4,3 +4,7 @@
 {"at":"2026-11-10T08:36:23Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-10T08:36:23Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-10T08:36:26Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-223-improve-link-repo"}
+{"at":"2026-11-10T08:37:35Z","by":"fred","op":"comment","to":"2026-11-10T08-37-35Z-fred.md"}
+{"at":"2026-11-10T09:00:18Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T09:00:19Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T09:00:20Z","by":"fred","op":"update","field":"acceptance_criteria"}

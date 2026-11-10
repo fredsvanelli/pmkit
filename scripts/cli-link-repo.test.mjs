@@ -469,3 +469,90 @@ test('the command file says --git-host none also removes default_branch', () => 
   const text = fs.readFileSync(new URL('../commands/link-repo.md', import.meta.url), 'utf8')
   assert.match(text, /--git-host none` also removes[^\n]*default_branch/)
 })
+
+// PMK-223
+
+test('GitHub Enterprise: --git-host github takes owner/name from a remote that is not github.com, and says gh needs that host', async () => {
+  for (const url of ['git@github.example.com:acme/app.git', 'https://github.example.com/acme/app.git', 'ssh://git@github.example.com/acme/app.git']) {
+    const root = local({ remotes: { origin: url } })
+    const data = dataOf(await link(root, ['--git-host', 'github']))
+    assert.deepEqual(data.gitHost, { before: 'none', after: 'github', source: 'flag' }, url)
+    assert.deepEqual(data.repo, { before: null, after: 'acme/app', source: 'remote' }, url)
+    assert.ok(data.notes.some((note) => /github\.example\.com/.test(note) && /gh auth login --hostname github\.example\.com/.test(note)), data.notes.join('\n'))
+    assert.match(read(root), /repo: acme\/app/, url)
+  }
+})
+
+test('GitHub Enterprise: --repo wins over the remote, and a remote path that is not owner/name still needs a repo', async () => {
+  const root = local({ remotes: { origin: 'git@github.example.com:acme/app.git' } })
+  assert.deepEqual(dataOf(await link(root, ['--git-host', 'github', '--repo', 'acme/other'])).repo, { before: null, after: 'acme/other', source: 'flag' })
+  const deep = local({ remotes: { origin: 'https://github.example.com/a/b/c.git' } })
+  assert.equal(errorOf(await link(deep, ['--git-host', 'github'])).code, 'INVALID_INPUT')
+  assert.equal(read(deep), CONFIG)
+})
+
+test('GitHub Enterprise: without --git-host github an unrecognized host still changes nothing', async () => {
+  const root = local({ remotes: { origin: 'git@github.example.com:acme/app.git' } })
+  const data = dataOf(await link(root))
+  assert.equal(data.files[0].action, 'keep')
+  assert.equal(read(root), CONFIG)
+})
+
+test('hostOnly is true when only git_host lines change, and false for a team change or no change', async () => {
+  const root = local({ remotes: { origin: 'https://github.com/acme/app.git' } })
+  assert.equal(dataOf(await link(root, ['--dry-run'])).hostOnly, true)
+  dataOf(await link(root))
+  assert.equal(dataOf(await link(root, ['--dry-run'])).hostOnly, false)
+  const context = linear({ config: linearConfig({ team: 'BETA' }) })
+  assert.equal(dataOf(await linearRun(context, ['--team', 'ACME', '--dry-run'], fakeLinearFetch(twoTeams()))).hostOnly, false)
+  const hostOnly = linear()
+  assert.equal(dataOf(await linearRun(hostOnly, ['--dry-run'])).hostOnly, true)
+})
+
+test('hostOnly is false when the new team breaks the mappings', async () => {
+  const context = linear({ config: linearConfig({ extra: MAPPED.slice(1) }) })
+  const data = dataOf(await linearRun(context, ['--team', 'BETA', '--dry-run'], fakeLinearFetch(twoTeams())))
+  assert.equal(data.hostOnly, false)
+})
+
+test('the command file says --yes skips step 6 only for a host-only change', () => {
+  const text = fs.readFileSync(new URL('../commands/link-repo.md', import.meta.url), 'utf8')
+  assert.match(text, /^argument-hint: ".*--yes/m)
+  assert.match(text, /`--yes`[^\n]*`hostOnly`/)
+  assert.match(text, /--recheck-team/)
+})
+
+test('Linear: --recheck-team checks the team in the file against the workspace', async () => {
+  const context = linear({ config: linearConfig({ team: 'BETA' }) })
+  const fetch = fakeLinearFetch(twoTeams())
+  const data = dataOf(await linearRun(context, ['--recheck-team', '--dry-run'], fetch))
+  assert.ok(fetch.calls.length > 0)
+  assert.deepEqual(data.scope.team, { before: 'BETA', after: 'BETA', source: 'file', verified: true })
+  assert.deepEqual(data.broken, [])
+})
+
+test('Linear: --recheck-team with a team the workspace does not have is INVALID_INPUT and lists the teams', async () => {
+  const context = linear({ config: linearConfig({ team: 'GONE' }) })
+  const error = errorOf(await linearRun(context, ['--recheck-team'], fakeLinearFetch(twoTeams())))
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.match(error.nextStep, /ACME, BETA/)
+})
+
+test('Linear: --recheck-team lists broken mappings of the held team and still writes the host', async () => {
+  const context = linear({ config: linearConfig({ team: 'BETA', extra: MAPPED.slice(1) }) })
+  const data = dataOf(await linearRun(context, ['--recheck-team', '--git-host', 'github'], fakeLinearFetch(twoTeams())))
+  assert.deepEqual(data.broken.map((item) => item.path), ['mappings.status.in_review'])
+  assert.match(fs.readFileSync(file(context.root), 'utf8'), /system: github/)
+})
+
+test('Linear: --team X --recheck-team checks X once', async () => {
+  const context = linear({ config: linearConfig({ team: 'BETA' }) })
+  const data = dataOf(await linearRun(context, ['--team', 'ACME', '--recheck-team', '--dry-run'], fakeLinearFetch(twoTeams())))
+  assert.deepEqual(data.scope.team, { before: 'BETA', after: 'ACME', source: 'flag', verified: true })
+})
+
+test('--recheck-team with no team in the file, and on Local, is INVALID_INPUT', async () => {
+  const context = linear({ config: linearConfig({ team: null }) })
+  assert.equal(errorOf(await linearRun(context, ['--recheck-team'])).code, 'INVALID_INPUT')
+  assert.equal(errorOf(await link(local(), ['--recheck-team'])).code, 'INVALID_INPUT')
+})

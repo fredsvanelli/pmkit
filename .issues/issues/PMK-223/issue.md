@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-53]
 branch: pmk-223-improve-link-repo
 created: 2026-11-08T20:37:24.602Z
-updated: 2026-11-10T08:36:26Z
+updated: 2026-11-10T09:00:20Z
 ---
 
 ## Description
@@ -30,6 +30,6 @@ Improvements suggested by the implementer and reviewers of PMK-53 (link-repo) du
 
 ## Acceptance criteria
 
-- [ ] GitHub Enterprise hosts
-- [ ] A way to skip the confirmation for a host-only change
-- [ ] Re-check the team in the file
+- [x] GitHub Enterprise hosts
+- [x] A way to skip the confirmation for a host-only change
+- [x] Re-check the team in the file
