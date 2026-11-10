@@ -200,11 +200,15 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return { before: null, after: await mapped(node) }
   }
 
+  const milestoneReads = new Map()
+
   /** The raw milestone a milestone value names, checked against the project of the issue: Linear takes only a milestone of the issue's own project. */
   async function milestoneNodeFor(milestone, beforeNode) {
     if (milestone === undefined || milestone === null) return undefined
     if (!resolveMilestone) throw new PmkitError('NOT_SUPPORTED', 'set the milestone in Linear', 'Leave milestone out on Linear')
-    const node = await resolveMilestone(milestone)
+    // One read per milestone for a whole bulk run, not one per issue. A failed read is not kept.
+    if (!milestoneReads.has(milestone)) milestoneReads.set(milestone, resolveMilestone(milestone).catch((error) => { milestoneReads.delete(milestone); throw error }))
+    const node = await milestoneReads.get(milestone)
     if (node.project?.id !== beforeNode.project?.id) {
       // The same words for every issue, so a bulk change with a wrong milestone fails once (valueError).
       throw new PmkitError('INVALID_INPUT', `milestone ${milestone} is not in the project of the issue`, 'Put the issue in the project of the milestone first, or pick a milestone of its project')

@@ -10,7 +10,7 @@ Arguments: `$ARGUMENTS`
 
 ## Parameters
 
-- `change` and `value` (required): one change for every matched issue.
+- `change` (required) and `value` (required, except for `archive`): one change for every matched issue.
   - `move <category>` (with `--status <name>` to pick the status), `assign <member|me|none>`, `priority <priority|none>`, `estimate <n|none>`.
   - `due <YYYY-MM-DD|none>`, `type <type|none>` (`none` is refused on the Local tracker, where every issue has a type) and `archive`, which takes no value (`issues bulk archive --label legacy`): archived issues leave every list and a bulk change never matches them again, and the preview says so in `warnings`.
   - `label-add <label>`, `label-remove <label>` (one label per call, values are trimmed; `label-add` refuses a comma, `label-remove` takes a label that has one), `milestone <id|none>`, `release <id|none>`, `sprint <id|current|none>`, `parent <issue id|none>`.

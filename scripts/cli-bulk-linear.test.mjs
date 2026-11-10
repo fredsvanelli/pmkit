@@ -119,7 +119,8 @@ test('a milestone of another project is one INVALID_INPUT in the dry run, and an
   assert.match(wrong.body.error.message, /project/)
   const missing = await bulk(setup(), fetch, ['milestone', '33333333-3333-4333-8333-333333333333', '--category', 'backlog', '--dry-run'])
   assert.equal(missing.code, 2)
-  assert.ok(['NOT_FOUND', 'INVALID_INPUT'].includes(missing.body.error.code))
+  assert.equal(missing.body.error.code, 'INVALID_INPUT')
+  assert.match(missing.body.error.message, /does not exist/)
   assert.deepEqual(issues.mutations, [])
 })
 
@@ -134,11 +135,25 @@ test('release stays NOT_SUPPORTED on Linear and says releases are not mapped', a
 test('due, type and archive are written on Linear', async () => {
   const { fake, fetch } = withIssues(['One', 'Two'])
   const context = setup()
-  for (const [args, mutation] of [[['due', '2026-12-01'], 'PmkitIssueUpdate'], [['archive'], 'PmkitIssueArchive']]) {
+  fs.appendFileSync(path.join(context.root, '.pmkit', 'config.yaml'), 'mappings:\n  types:\n    bug: Bug\n')
+  for (const [args, mutation] of [[['due', '2026-12-01'], 'PmkitIssueUpdate'], [['type', 'bug'], 'PmkitIssueUpdate'], [['archive'], 'PmkitIssueArchive']]) {
     const dry = await bulk(context, fetch, [...args, '--category', 'backlog', '--dry-run'])
     assert.equal(dry.code, 0, JSON.stringify(dry.body))
     const real = await bulk(context, fetch, [...args, '--category', 'backlog', '--expect', dry.body.digest])
     assert.equal(real.code, 0, JSON.stringify(real.body))
     assert.ok(fake.mutations.includes(mutation), args.join(' '))
+    assert.deepEqual(real.body.applied, ['ACME-1', 'ACME-2'], args.join(' '))
   }
+})
+
+test('a milestone is read once for the whole batch, not once per issue', async () => {
+  const { fetch } = withMilestones()
+  let reads = 0
+  const counting = async (...args) => {
+    if (String(args[1]?.body).includes('PmkitProjectMilestone(')) reads += 1
+    return fetch(...args)
+  }
+  const dry = await bulk(setup(), counting, ['milestone', MILESTONE, '--category', 'backlog', '--dry-run'])
+  assert.equal(dry.code, 0, JSON.stringify(dry.body))
+  assert.equal(reads, 1)
 })
