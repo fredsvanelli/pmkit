@@ -208,3 +208,13 @@ test('PMK-225: the text table shows the mention text cut at 60 characters, the s
   const seenRow = run(['inbox', 'list', '--all']).stdout.split('\n').find((line) => line.includes(key))
   assert.equal(seenRow.split('|').map((cell) => cell.trim())[7], 'yes')
 })
+
+test('PMK-225 review 2: --login without --reviews is INVALID_INPUT, not ignored', () => {
+  const { run } = setup()
+  const result = run(['inbox', 'list', '--login', 'fred-gh', '--json'])
+  assert.equal(result.status, 2, result.stdout + result.stderr)
+  const { error } = JSON.parse(result.stdout)
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.match(error.message, /--login/)
+  assert.match(error.nextStep, /--reviews/)
+})

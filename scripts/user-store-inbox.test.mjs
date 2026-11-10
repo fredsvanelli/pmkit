@@ -189,3 +189,14 @@ test('PMK-225 review: the lock error does not start with "The inbox file", so an
   fs.writeFileSync(`${file}.lock`, '')
   assert.throws(() => inboxSet(repo, 'fred', entry('2026-10-31T10:00:00Z'), { env, lockWaitMs: 50 }), (error) => error.code === 'CONFLICT' && error.message.startsWith('Another pmkit run holds the inbox lock'))
 })
+
+test('PMK-225 review 2: the join keeps the valid path entry of another member when that member entry in the remote file is malformed', () => {
+  const { env } = userStoreEnv()
+  const repo = gitInit(tempDir('pmkit-repo-'), 'origin', 'https://github.com/acme/repo.git')
+  const remote = path.join(userDir({ env }), 'inbox', `${inboxKey(repo)}.json`)
+  fs.mkdirSync(path.dirname(remote), { recursive: true })
+  fs.writeFileSync(remote, JSON.stringify({ version: 2, checks: { ana: { at: 'yesterday', seen: {} } } }))
+  legacyFile(env, repo, { ana: { at: '2026-10-29T10:00:00Z', seen: { x: '2026-10-29T10:00:00Z' } } })
+  inboxSet(repo, 'fred', entry('2026-10-31T10:00:00Z'), { env })
+  assert.deepEqual(inboxGet(repo, 'ana', { env }), entry('2026-10-29T10:00:00Z', { x: '2026-10-29T10:00:00Z' }))
+})

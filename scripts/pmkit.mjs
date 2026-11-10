@@ -971,6 +971,7 @@ export const COMMANDS = [
     usage: '[--as member] [--since timestamp] [--all] [--reviews [--login github-login ...]]',
     flags: ['as', 'since', 'all', 'reviews', 'login'],
     run: async (ctx) => {
+      if (ctx.list('login').length > 0 && !ctx.flag('reviews')) throw usageError('--login matches review requests, so it needs --reviews', 'Add --reviews, or drop --login')
       const result = await (await ctx.tracker()).listNotifications({ user: await ctx.actor(), since: ctx.opt('since'), all: ctx.flag('all') })
       const { user, since, hidden, items, complete, problems } = result
       const reviews = ctx.flag('reviews') ? reviewRequests(ctx, user, ctx.list('login')) : null

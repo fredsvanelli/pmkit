@@ -436,7 +436,7 @@ export function inboxUpdate(root, member, update, options = {}) {
   return withLock(file, () => {
     const { checks, migrated } = readInbox(file)
     const joined = { ...checks }
-    // Each path file of PMK-47 joins once, for every member: a bad entry of another member is kept as it is, never merged.
+    // Each path file of PMK-47 joins once, for every member. A bad entry of another member is never merged: the valid one of the two is kept.
     for (const old of pending(legacy, migrated)) {
       for (const [name, value] of Object.entries(old.checks)) {
         if (!Object.hasOwn(joined, name)) joined[name] = value
@@ -445,6 +445,11 @@ export function inboxUpdate(root, member, update, options = {}) {
             joined[name] = mergeEntries(entryOf(joined, name, file), entryOf(old.checks, name, old.file))
           } catch (error) {
             if (name === member) throw error
+            // The stored entry of another member is malformed: its valid path entry replaces it rather than being dropped.
+            try {
+              entryOf(old.checks, name, old.file)
+              joined[name] = value
+            } catch {}
           }
         }
       }
