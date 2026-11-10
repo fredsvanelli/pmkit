@@ -2482,3 +2482,15 @@ test('views delete and views rename change the view files, and --dry-run does no
   assert.equal(run(root, ['views', 'list']).stdout.trim(), 'no views')
   assert.equal(JSON.parse(run(root, ['views', 'delete', 'b', '--json']).stdout).error.code, 'NOT_FOUND')
 })
+
+test('views run --limit and --sort override the stored values (PMK-212)', () => {
+  const root = makeRepo('team')
+  json(root, ['views', 'save', 'one', '--limit', '1'])
+  const ran = json(root, ['views', 'run', 'one', '--limit', '2', '--sort', 'priority'])
+  assert.equal(ran.issues.length, 2)
+  assert.deepEqual(ran.overrides, { limit: 2, sort: 'priority' })
+  assert.deepEqual(ran.view.filter, { limit: 1 })
+  const bad = run(root, ['views', 'run', 'one', '--sort', 'bogus', '--json'])
+  assert.equal(JSON.parse(bad.stdout).error.code, 'INVALID_INPUT')
+  assert.equal(JSON.parse(bad.stdout).error.reason, undefined)
+})

@@ -32,6 +32,7 @@ import { GOAL_PREFIX, goalStems, parseGoal, serializeGoal, sortGoals } from './g
 import { CUSTOMER_PREFIX, mdStems, parseCustomer, serializeCustomer, sortCustomers } from './customers.mjs'
 import { REQUEST_PREFIX, REQUEST_STATES, groupDemand, parseRequest, serializeRequest, sortRequests, sortRequestsNewest } from './requests.mjs'
 import { checkFilter, runQuery } from './query.mjs'
+import { viewOverrides } from '../issue-filter.mjs'
 import { MAX_EXCERPT, findMention, findMentions, mentionText } from './inbox.mjs'
 import { inboxGet, inboxUpdate } from '../user-store.mjs'
 import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
@@ -2068,11 +2069,12 @@ export function createLocalTracker(root, {
     return { views, problems }
   }
 
-  /** Runs the stored filter as a search. The stored values are checked again, so a view that names a removed type says it is out of date. */
-  function runView(name) {
+  /** Runs the stored filter as a search, with `overrides` (limit, sort) replacing the stored ones for this run. The stored values are checked again, so a view that names a removed type says it is out of date. */
+  function runView(name, overrides = {}) {
     const view = readView(name)
+    const given = viewOverrides(overrides)
     try {
-      return { ...search(view.filter), view }
+      return { ...search({ ...view.filter, ...given }), view, overrides: given }
     } catch (error) {
       if (!(error instanceof PmkitError) || error.code !== 'INVALID_INPUT') throw error
       throw Object.assign(invalid(`view ${name} is out of date: ${error.message}`, `Save it again with pmkit views save ${name} <filter flags> --overwrite`), { details: { reason: 'view_out_of_date' } })

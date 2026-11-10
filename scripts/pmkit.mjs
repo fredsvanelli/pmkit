@@ -527,11 +527,12 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'views run', summary: 'runs a saved view and lists its issues', usage: '<name>', args: ['name'], flags: [],
+    name: 'views run', summary: 'runs a saved view and lists its issues; --limit and --sort replace the stored values for this run', usage: '<name> [--limit n] [--sort s]', args: ['name'], flags: ['limit', 'sort'],
     run: async (ctx) => {
       const tracker = await ctx.tracker()
-      const found = await tracker.runView(ctx.args[0])
-      return issueSearchResult(tracker, found, { sort: found.view.filter.sort, sprint: found.view.filter.sprint })
+      const limit = ctx.opt('limit') === undefined ? undefined : whole('limit', ctx.opt('limit'))
+      const found = await tracker.runView(ctx.args[0], { limit, sort: ctx.opt('sort') })
+      return issueSearchResult(tracker, found, { sort: found.overrides.sort ?? found.view.filter.sort, sprint: found.view.filter.sprint })
     },
   },
   {

@@ -212,3 +212,24 @@ test('renameView moves a file that does not parse and marks both sides unreadabl
   assert.match(result.after.unreadable, /needs a "filter" map/)
   assert.equal(fs.readFileSync(path.join(views, 'fixed.yaml'), 'utf8'), 'filter: 3\n')
 })
+
+test('runView overrides the stored limit and sort for one run and leaves the file as it is', () => {
+  const { tracker, views } = setup()
+  tracker.saveView('few', { limit: 1, sort: 'created' }, 'fred')
+  const text = fs.readFileSync(path.join(views, 'few.yaml'), 'utf8')
+  assert.equal(tracker.runView('few').issues.length, 1)
+  const more = tracker.runView('few', { limit: 2 })
+  assert.equal(more.issues.length, 2)
+  assert.deepEqual(more.overrides, { limit: 2 })
+  assert.deepEqual(more.view.filter, { limit: 1, sort: 'created' })
+  const ordered = tracker.runView('few', { limit: 3, sort: 'priority' })
+  assert.deepEqual(ordered.issues.map((i) => i.id), tracker.searchIssues({ limit: 3, sort: 'priority' }).issues.map((i) => i.id))
+  assert.deepEqual(tracker.runView('few').overrides, {})
+  assert.equal(fs.readFileSync(path.join(views, 'few.yaml'), 'utf8'), text)
+})
+
+test('a bad override is INVALID_INPUT about the flag, never view_out_of_date', () => {
+  const { tracker } = setup()
+  tracker.saveView('few', { limit: 1 }, 'fred')
+  assert.throws(() => tracker.runView('few', { sort: 'bogus' }), (error) => error.code === 'INVALID_INPUT' && error.details?.reason === undefined && /sort must be one of/.test(error.message))
+})
