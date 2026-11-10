@@ -195,7 +195,8 @@ exit 0
       "reason": null
     }
   },
-  "problems": []
+  "problems": [],
+  "warnings": []
 }
 --- stderr
 (empty)
@@ -289,7 +290,8 @@ exit 0
       "reason": null
     }
   },
-  "problems": []
+  "problems": [],
+  "warnings": []
 }
 --- stderr
 note: the issue ID is assigned when written, and so is the triage time
