@@ -5,17 +5,23 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 
-/** The severity of an alert, highest first. */
-export const SEVERITIES = ['critical', 'high', 'medium', 'low']
+/** The severity of an alert, highest first. `unknown` is a scanner that gives none (pip-audit) or none pmkit can read. */
+export const SEVERITIES = ['critical', 'high', 'medium', 'low', 'unknown']
 
 const NPM_SEVERITY = { critical: 'critical', high: 'high', moderate: 'medium', low: 'low', info: 'low' }
 
+/** An Error with the scanner's stderr appended, collapsed and cut at 300 characters, when it has any. */
+function withStderr(message, stderr) {
+  const detail = String(stderr ?? '').replace(/\s+/g, ' ').trim().slice(0, 300)
+  return new Error(detail === '' ? message : `${message}: ${detail}`)
+}
+
+/** The error of a scanner that printed nothing, with its stderr. */
+export const emptyOutputError = (label, stderr) => withStderr(`${label} printed empty output`, stderr)
+
 /** Parses the stdout of `npm audit --json` (report version 2). Throws an Error when it is not an audit report. */
 export function parseNpmAudit(stdout, stderr = '') {
-  if (!stdout || stdout.trim() === '') {
-    const detail = String(stderr ?? '').replace(/\s+/g, ' ').trim().slice(0, 300)
-    throw new Error(detail === '' ? 'npm audit printed empty output' : `npm audit printed empty output: ${detail}`)
-  }
+  if (!stdout || stdout.trim() === '') throw emptyOutputError('npm audit', stderr)
   let report
   try {
     report = JSON.parse(stdout)
@@ -59,13 +65,200 @@ export function parseNpmAudit(stdout, stderr = '') {
   return { alerts, warnings }
 }
 
+/** The severity of an npm-style name (npm, yarn, pnpm). An unknown name is low, with a warning. */
+function npmStyleSeverity(scanner, name, value, warnings) {
+  const severity = NPM_SEVERITY[value]
+  if (severity !== undefined) return severity
+  warnings.push(`${scanner}: ${name} has the unknown severity "${value}", treated as low`)
+  return 'low'
+}
+
+/**
+ * One alert per package from a list of advisories, each `{ id, package, severity, title, url, fixAvailable }` with a pmkit
+ * severity. The same advisory (by `id`, else by title and URL) on two dependency paths counts once. The alert has the
+ * highest severity of its advisories, but an `unknown` advisory could be any severity, so it makes the alert `unknown`
+ * unless a known one is `critical`, the highest there is. The title and URL are those of the first advisory with the
+ * alert's severity. A fix only when every advisory has one. Keeps the first-seen order.
+ */
+export function groupAdvisories(scanner, entries) {
+  const byPackage = new Map()
+  const keyOf = (entry) => (entry.id !== undefined && entry.id !== null ? `id:${entry.id}` : `text:${entry.title}\n${entry.url}`)
+  for (const entry of entries) {
+    if (!byPackage.has(entry.package)) byPackage.set(entry.package, [])
+    const list = byPackage.get(entry.package)
+    if (!list.some((seen) => keyOf(seen) === keyOf(entry))) list.push(entry)
+  }
+  return [...byPackage].map(([name, list]) => {
+    const has = (severity) => list.some((item) => item.severity === severity)
+    const severity = has('critical') ? 'critical' : has('unknown') ? 'unknown' : SEVERITIES.find(has)
+    const top = list.find((item) => item.severity === severity)
+    return {
+      id: `${scanner}:${name}`, scanner, package: name, title: top.title, severity, url: top.url,
+      fixAvailable: list.every((item) => item.fixAvailable), advisories: list.map((item) => ({ title: item.title, url: item.url })),
+    }
+  })
+}
+
+/** An advisory in the npm v6 shape that yarn classic and pnpm print, as a groupAdvisories entry. `<0.0.0` means no patch. */
+function npmStyleAdvisory(scanner, advisory, warnings) {
+  const name = String(advisory.module_name)
+  const patched = typeof advisory.patched_versions === 'string' ? advisory.patched_versions.trim() : ''
+  return {
+    id: advisory.id, package: name, severity: npmStyleSeverity(scanner, name, advisory.severity, warnings),
+    title: advisory.title ?? 'no advisory title', url: advisory.url ?? null, fixAvailable: patched !== '' && patched !== '<0.0.0',
+  }
+}
+
+/** Parses the NDJSON stdout of yarn classic `yarn audit --json`. Throws an Error when it is not an audit report. */
+export function parseYarnAudit(stdout, stderr = '') {
+  if (!stdout || stdout.trim() === '') throw emptyOutputError('yarn audit', stderr)
+  const lines = []
+  for (const text of stdout.split(/\r?\n/)) {
+    if (text.trim() === '') continue
+    try {
+      lines.push(JSON.parse(text))
+    } catch {
+      // yarn prints plain text when it fails before the audit, for example Yarn Berry without the command.
+    }
+  }
+  const error = lines.find((line) => line?.type === 'error')
+  if (error) throw new Error(`yarn audit failed: ${String(error.data ?? 'no message').replace(/\s+/g, ' ').trim()}`)
+  const advisories = lines.filter((line) => line?.type === 'auditAdvisory' && line.data?.advisory?.module_name !== undefined)
+  // Yarn classic writes its error and warning lines to stderr, so the reason is there.
+  if (advisories.length === 0 && !lines.some((line) => line?.type === 'auditSummary')) throw withStderr('yarn audit printed no audit report', stderr)
+  const warnings = []
+  const alerts = groupAdvisories('yarn-audit', advisories.map((line) => npmStyleAdvisory('yarn-audit', line.data.advisory, warnings)))
+  return { alerts, warnings: [...new Set(warnings)] }
+}
+
+/** Parses the stdout of `pnpm audit --json` (the npm v6 report shape). Throws an Error when it is not an audit report. */
+export function parsePnpmAudit(stdout, stderr = '') {
+  if (!stdout || stdout.trim() === '') throw emptyOutputError('pnpm audit', stderr)
+  let report
+  try {
+    report = JSON.parse(stdout)
+  } catch {
+    throw new Error('pnpm audit output is not valid JSON')
+  }
+  if (report && typeof report.error === 'object' && report.error !== null) {
+    const code = report.error.code ? ` (${report.error.code})` : ''
+    throw new Error(`pnpm audit failed${code}: ${report.error.message ?? 'no message'}`)
+  }
+  if (!report || typeof report.advisories !== 'object' || report.advisories === null) throw new Error('pnpm audit output has no advisories object')
+  const warnings = []
+  const entries = Object.values(report.advisories).filter((advisory) => advisory?.module_name !== undefined)
+  return { alerts: groupAdvisories('pnpm-audit', entries.map((advisory) => npmStyleAdvisory('pnpm-audit', advisory, warnings))), warnings: [...new Set(warnings)] }
+}
+
+/**
+ * Parses the stdout of `pip-audit -f json`: `{ dependencies: [...] }`, or the bare list of older versions. pip-audit
+ * gives no severity, so every alert is `unknown`, and no URL, so the URL is the advisory's OSV page. A dependency with a
+ * `skip_reason` was not audited: it adds a warning and makes the result incomplete. Throws when it is not a report.
+ */
+export function parsePipAudit(stdout, stderr = '') {
+  if (!stdout || stdout.trim() === '') throw emptyOutputError('pip-audit', stderr)
+  let report
+  try {
+    report = JSON.parse(stdout)
+  } catch {
+    throw new Error('pip-audit output is not valid JSON')
+  }
+  const dependencies = Array.isArray(report) ? report : report?.dependencies
+  if (!Array.isArray(dependencies)) throw new Error('pip-audit output has no dependencies list')
+  const warnings = []
+  const entries = []
+  for (const dependency of dependencies) {
+    if (dependency?.skip_reason !== undefined) {
+      warnings.push(`pip-audit did not audit ${dependency.name}: ${String(dependency.skip_reason).replace(/\s+/g, ' ').trim()}`)
+      continue
+    }
+    for (const vuln of Array.isArray(dependency?.vulns) ? dependency.vulns : []) {
+      const aliases = Array.isArray(vuln.aliases) ? vuln.aliases : []
+      entries.push({
+        id: vuln.id, package: String(dependency.name), severity: 'unknown', title: aliases.length > 0 ? `${vuln.id} (${aliases.join(', ')})` : String(vuln.id),
+        url: `https://osv.dev/vulnerability/${encodeURIComponent(vuln.id)}`, fixAvailable: Array.isArray(vuln.fix_versions) && vuln.fix_versions.length > 0,
+      })
+    }
+  }
+  return { alerts: groupAdvisories('pip-audit', entries), warnings, incomplete: warnings.length > 0 }
+}
+
+// The CVSS 3.x base metric weights (FIRST, CVSS v3.1 specification, section 7.4). PR depends on the scope.
+const CVSS_WEIGHTS = {
+  AV: { N: 0.85, A: 0.62, L: 0.55, P: 0.2 }, AC: { L: 0.77, H: 0.44 }, UI: { N: 0.85, R: 0.62 },
+  C: { H: 0.56, L: 0.22, N: 0 }, I: { H: 0.56, L: 0.22, N: 0 }, A: { H: 0.56, L: 0.22, N: 0 },
+}
+const CVSS_PR = { U: { N: 0.85, L: 0.62, H: 0.27 }, C: { N: 0.85, L: 0.68, H: 0.5 } }
+
+/** The CVSS v3.1 Roundup: the smallest number with one decimal that is equal to or higher than the input. */
+function cvssRoundup(value) {
+  const whole = Math.round(value * 100000)
+  return whole % 10000 === 0 ? whole / 100000 : (Math.floor(whole / 10000) + 1) / 10
+}
+
+/** The base score of a CVSS 3.0 or 3.1 vector, or null when the vector is not one or misses a base metric. */
+export function cvssScore(vector) {
+  if (typeof vector !== 'string' || !/^CVSS:3\.[01]\//.test(vector)) return null
+  // A Map and own-key lookups, so a value such as `constructor` or `__proto__` never reaches Object.prototype.
+  const metrics = new Map(vector.split('/').slice(1).map((part) => part.split(':')))
+  const own = (table, key) => (typeof key === 'string' && Object.hasOwn(table, key) ? table[key] : undefined)
+  const scope = metrics.get('S')
+  const values = ['AV', 'AC', 'UI', 'C', 'I', 'A'].map((name) => own(CVSS_WEIGHTS[name], metrics.get(name)))
+  const pr = own(own(CVSS_PR, scope) ?? {}, metrics.get('PR'))
+  if (values.some((value) => typeof value !== 'number') || typeof pr !== 'number') return null
+  const [av, ac, ui, c, i, a] = values
+  const iss = 1 - (1 - c) * (1 - i) * (1 - a)
+  const impact = scope === 'U' ? 6.42 * iss : 7.52 * (iss - 0.029) - 3.25 * (iss - 0.02) ** 15
+  if (impact <= 0) return 0
+  const exploitability = 8.22 * av * ac * pr * ui
+  const score = cvssRoundup(Math.min(scope === 'U' ? impact + exploitability : 1.08 * (impact + exploitability), 10))
+  return Number.isFinite(score) ? score : null
+}
+
+/** The severity of a CVSS 3 vector by the CVSS rating scale (0.0, None, counts as low), or `unknown` without one. */
+export function cvssSeverity(vector) {
+  const score = cvssScore(vector)
+  if (score === null) return 'unknown'
+  if (score >= 9) return 'critical'
+  if (score >= 7) return 'high'
+  if (score >= 4) return 'medium'
+  return 'low'
+}
+
+/**
+ * Parses the stdout of `cargo audit --json`. Only `vulnerabilities.list` counts: the `warnings` (unmaintained, yanked)
+ * are not vulnerabilities. The severity comes from the advisory's CVSS 3 vector, `unknown` without one. An advisory with
+ * no URL links to its RustSec page. Throws an Error when it is not an audit report.
+ */
+export function parseCargoAudit(stdout, stderr = '') {
+  if (!stdout || stdout.trim() === '') throw emptyOutputError('cargo audit', stderr)
+  let report
+  try {
+    report = JSON.parse(stdout)
+  } catch {
+    throw new Error('cargo audit output is not valid JSON')
+  }
+  const list = report?.vulnerabilities?.list
+  if (!Array.isArray(list)) throw new Error('cargo audit output has no vulnerabilities list')
+  const entries = list.filter((entry) => entry?.advisory).map(({ advisory, versions, package: crate }) => ({
+    id: advisory.id, package: String(crate?.name ?? advisory.package), severity: cvssSeverity(advisory.cvss), title: advisory.title ?? String(advisory.id),
+    url: advisory.url ?? `https://rustsec.org/advisories/${encodeURIComponent(advisory.id)}.html`,
+    fixAvailable: Array.isArray(versions?.patched) && versions.patched.length > 0,
+  }))
+  return { alerts: groupAdvisories('cargo-audit', entries), warnings: [] }
+}
+
 /** The most output one scanner may print, in bytes. The same limit as the GitHub host. */
 export const NPM_MAX_BUFFER = 256 * 1024 * 1024
 /** The longest one scanner may run, in milliseconds. */
 export const NPM_TIMEOUT_MS = 60000
+/** The longest pip-audit and cargo audit may run: pip-audit builds a virtual environment, cargo audit fetches its database. */
+export const SLOW_SCANNER_TIMEOUT_MS = 300000
 
-/** The npm executable name: Windows needs the .cmd shim, which spawnSync does not resolve on its own. */
-export const npmCommand = (platform = process.platform) => (platform === 'win32' ? 'npm.cmd' : 'npm')
+/** A Node package manager's executable name: Windows needs the .cmd shim, which spawnSync does not resolve on its own. */
+export const shimCommand = (name, platform = process.platform) => (platform === 'win32' ? `${name}.cmd` : name)
+/** The npm executable name. */
+export const npmCommand = (platform = process.platform) => shimCommand('npm', platform)
 
 /**
  * True when the shell could not find npm.cmd. cmd.exe exits with 9009 for an unknown command in every display language,
@@ -75,53 +268,106 @@ export const npmCommand = (platform = process.platform) => (platform === 'win32'
 export const isNpmMissingOnShell = (result) => (result.stdout ?? '').trim() === ''
   && (result.status === 9009 || (result.status !== 0 && /is not recognized/i.test(result.stderr ?? '')))
 
+/**
+ * Runs one scanner and returns its stdout and stderr, whatever its exit code: the scanners exit non-zero when they find
+ * vulnerabilities. `shim` names a Node package manager (npm, yarn, pnpm): on Windows it is a .cmd file, and Node refuses
+ * to spawn one without a shell (EINVAL), so the call goes through cmd.exe. Throws an Error that names the cause.
+ */
+export function runScanner(name, args, { root, env, timeoutMs, platform, spawn, shim = false, label }) {
+  const viaShell = shim && platform === 'win32'
+  const result = spawn(shim ? shimCommand(name, platform) : name, args, { cwd: root, env, encoding: 'utf8', maxBuffer: NPM_MAX_BUFFER, timeout: timeoutMs, shell: viaShell })
+  if (result.error) {
+    if (result.error.code === 'ENOENT') throw new Error(`${name} is not installed or not on PATH`)
+    if (result.error.code === 'ETIMEDOUT') throw new Error(`${label} timed out after ${timeoutMs / 1000} s`)
+    if (result.error.code === 'ENOBUFS') throw new Error(`${label} printed more than ${NPM_MAX_BUFFER / 1024 / 1024} MiB`)
+    throw new Error(result.error.message)
+  }
+  // With the shell, a missing .cmd exits non-zero and does not raise ENOENT.
+  if (viaShell && isNpmMissingOnShell(result)) throw new Error(`${name} is not installed or not on PATH`)
+  return { stdout: result.stdout, stderr: result.stderr }
+}
+
 const LOCKFILES = ['package-lock.json', 'npm-shrinkwrap.json']
 
-/** The scanners, in the order they run. `detect` says whether the repository has the scanner. */
+/**
+ * The scanners, in the order they run. `detect` says whether the repository has the scanner, `command` and `args` run it,
+ * `shim` marks a Node package manager (see runScanner), and `parse(stdout, stderr)` reads its JSON output, run or saved.
+ */
 export const SCANNERS = [
   {
-    id: 'npm-audit',
-    needs: LOCKFILES.join(' or '),
+    id: 'npm-audit', label: 'npm audit', needs: LOCKFILES.join(' or '),
     detect: (root) => LOCKFILES.some((file) => fs.existsSync(path.join(root, file))),
-    // npm exits 1 when it finds vulnerabilities, so the output counts whatever the exit code is.
-    run: (root, env, { timeoutMs, platform, spawn }) => {
-      // On Windows, Node refuses to spawn npm.cmd without a shell (EINVAL), so the call goes through cmd.exe.
-      const result = spawn(npmCommand(platform), ['audit', '--json'], { cwd: root, env, encoding: 'utf8', maxBuffer: NPM_MAX_BUFFER, timeout: timeoutMs, shell: platform === 'win32' })
-      if (result.error) {
-        if (result.error.code === 'ENOENT') throw new Error('npm is not installed or not on PATH')
-        if (result.error.code === 'ETIMEDOUT') throw new Error(`npm audit timed out after ${timeoutMs / 1000} s`)
-        if (result.error.code === 'ENOBUFS') throw new Error(`npm audit printed more than ${NPM_MAX_BUFFER / 1024 / 1024} MiB`)
-        throw new Error(result.error.message)
-      }
-      // With the shell, a missing npm.cmd exits non-zero and does not raise ENOENT.
-      if (platform === 'win32' && isNpmMissingOnShell(result)) throw new Error('npm is not installed or not on PATH')
-      return parseNpmAudit(result.stdout, result.stderr)
-    },
+    command: 'npm', args: ['audit', '--json'], shim: true, parse: parseNpmAudit,
+  },
+  {
+    id: 'yarn-audit', label: 'yarn audit', needs: 'yarn.lock',
+    detect: (root) => fs.existsSync(path.join(root, 'yarn.lock')),
+    command: 'yarn', args: ['audit', '--json'], shim: true, parse: parseYarnAudit,
+  },
+  {
+    id: 'pnpm-audit', label: 'pnpm audit', needs: 'pnpm-lock.yaml',
+    detect: (root) => fs.existsSync(path.join(root, 'pnpm-lock.yaml')),
+    command: 'pnpm', args: ['audit', '--json'], shim: true, parse: parsePnpmAudit,
+  },
+  {
+    id: 'pip-audit', label: 'pip-audit', needs: 'requirements.txt',
+    detect: (root) => fs.existsSync(path.join(root, 'requirements.txt')),
+    command: 'pip-audit', args: ['-r', 'requirements.txt', '-f', 'json', '--progress-spinner', 'off'], shim: false, parse: parsePipAudit, timeoutMs: SLOW_SCANNER_TIMEOUT_MS,
+  },
+  {
+    id: 'cargo-audit', label: 'cargo audit', needs: 'Cargo.lock',
+    detect: (root) => fs.existsSync(path.join(root, 'Cargo.lock')),
+    command: 'cargo', args: ['audit', '--json'], shim: false, parse: parseCargoAudit, timeoutMs: SLOW_SCANNER_TIMEOUT_MS,
   },
 ]
+
+/**
+ * The text of a saved scanner report. Drops a UTF-8 BOM and decodes UTF-16 LE (a BOM of FF FE), which Windows PowerShell 5
+ * writes for `>`, and normalizes CRLF. Throws the fs error when the file cannot be read, and an error when it is empty.
+ */
+export function readReport(file) {
+  const bytes = fs.readFileSync(file)
+  const text = (bytes[0] === 0xff && bytes[1] === 0xfe ? bytes.subarray(2).toString('utf16le') : bytes.toString('utf8').replace(/^\uFEFF/, '')).replace(/\r\n/g, '\n')
+  // An empty file is a report that was never written, not a scanner that printed nothing.
+  if (text.trim() === '') throw new Error('the file is empty')
+  return text
+}
 
 const rank = (alert) => SEVERITIES.indexOf(alert.severity)
 
 /**
  * Runs every scanner the repository at `root` has. A scanner that fails is reported in `scanners` and `warnings`,
- * never thrown. Alerts sort by severity, then package.
+ * never thrown, and one that skipped packages has `incomplete: true`. Alerts sort by severity, then package. `reports`
+ * maps a scanner ID to a saved report `{ path, text }`: when it has any, the CLI parses them and runs no scanner.
  */
-export function collectAlerts(root, { env = process.env, timeoutMs = NPM_TIMEOUT_MS, platform = process.platform, spawn = spawnSync } = {}) {
+export function collectAlerts(root, { env = process.env, timeoutMs, platform = process.platform, spawn = spawnSync, reports = new Map() } = {}) {
   const scanners = []
   const alerts = []
   const warnings = []
   for (const scanner of SCANNERS) {
-    if (!scanner.detect(root)) {
+    const report = reports.get(scanner.id)
+    // With saved reports nothing runs: a report counts whatever the lockfiles are, and a detected scanner without one is
+    // skipped, unread. The CLI marks the result incomplete for it.
+    if (report === undefined && reports.size > 0 && scanner.detect(root)) {
+      scanners.push({ id: scanner.id, detected: true, alerts: 0, skipped: true })
+      continue
+    }
+    if (report === undefined && (reports.size > 0 || !scanner.detect(root))) {
       scanners.push({ id: scanner.id, detected: false, alerts: 0 })
       continue
     }
+    const source = report === undefined ? {} : { report: report.path }
     try {
-      const found = scanner.run(root, env, { timeoutMs, platform, spawn })
+      const { stdout, stderr } = report === undefined
+        ? runScanner(scanner.command, scanner.args, { root, env, timeoutMs: timeoutMs ?? scanner.timeoutMs ?? NPM_TIMEOUT_MS, platform, spawn, shim: scanner.shim, label: scanner.label })
+        : { stdout: report.text, stderr: '' }
+      const found = scanner.parse(stdout, stderr)
       alerts.push(...found.alerts)
       warnings.push(...found.warnings)
-      scanners.push({ id: scanner.id, detected: true, alerts: found.alerts.length })
+      // A parser that could not read every package (pip-audit skips) says so: the scanner ran, but the result may miss alerts.
+      scanners.push({ id: scanner.id, detected: true, alerts: found.alerts.length, ...source, ...(found.incomplete ? { incomplete: true } : {}) })
     } catch (error) {
-      scanners.push({ id: scanner.id, detected: true, alerts: 0, error: error.message })
+      scanners.push({ id: scanner.id, detected: true, alerts: 0, ...source, error: error.message })
       warnings.push(`${scanner.id} failed: ${error.message}`)
     }
   }
@@ -147,9 +393,11 @@ const PRIORITY_NAMES = { critical: ['urgent', 'critical'], high: ['high'], mediu
 /**
  * The tracker priority of a severity. The name comes first: critical is `urgent` or `critical`, high is `high`, medium is
  * `medium` or `normal`, low is `low`. With no such name the position decides: critical is the first priority, high the
- * second, medium the third and low the last, clamped to the list. `none` is never used. An empty list gives null.
+ * second, medium the third and low the last, clamped to the list. `none` is never used. An empty list gives null, and so
+ * does the `unknown` severity: the command asks for a priority rather than make one up.
  */
 export function priorityFor(severity, priorities) {
+  if (severity === 'unknown') return null
   const usable = priorities.filter((name) => name.toLowerCase() !== 'none')
   if (usable.length === 0) return null
   const named = (PRIORITY_NAMES[severity] ?? []).map((wanted) => usable.find((name) => name.toLowerCase() === wanted)).find(Boolean)

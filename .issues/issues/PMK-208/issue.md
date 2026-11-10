@@ -2,12 +2,14 @@
 id: PMK-208
 title: Improve alerts list
 type: feature
-status: backlog
+status: in_review
 priority: low
 estimate: 5
+assignee: fred
 related: [PMK-48]
+branch: pmk-208-improve-alerts-list
 created: 2026-11-08T20:37:22.344Z
-updated: 2026-11-08T20:53:51Z
+updated: 2026-11-10T02:42:05Z
 ---
 
 ## Description
@@ -27,5 +29,5 @@ Improvements suggested by the implementer and reviewers of PMK-48 (alerts list) 
 
 ## Acceptance criteria
 
-- [ ] Read other scanners: `pip-audit`, `cargo audit`, `yarn audit` and `pnpm audit`
-- [ ] Read a saved scanner report, so the command works offline
+- [x] Read other scanners: `pip-audit`, `cargo audit`, `yarn audit` and `pnpm audit`
+- [x] Read a saved scanner report, so the command works offline

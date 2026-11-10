@@ -26,7 +26,7 @@ import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-lo
 import { changeList, checkMembers, mergeCapacity, parseCapacityPairs, workingDays } from './lib/team-capacity.mjs'
 import { AGENT_ID, localRunLine, nativeRunLine } from './lib/delegation.mjs'
 import { blockedText, delegationOf, prSummary, prText } from './lib/track-agents.mjs'
-import { SCANNERS, SEVERITIES, alertCandidate, collectAlerts, matchAlerts } from './lib/alerts.mjs'
+import { SCANNERS, SEVERITIES, alertCandidate, collectAlerts, matchAlerts, readReport } from './lib/alerts.mjs'
 import { READ_LIMIT, groupTodos, matchTodos, readExistingIssues, scanRepo } from './lib/todos.mjs'
 import { validateRepo } from './lib/validate.mjs'
 import { FrontmatterError, parseYaml } from './lib/yaml.mjs'
@@ -126,6 +126,39 @@ function randomSource(env) {
   if (!/^-?\d+$/.test(env.PMKIT_SEED)) throw usageError('PMKIT_SEED must be an integer')
   const next = mulberry32(Number(env.PMKIT_SEED))
   return (n) => Math.floor(next() * n)
+}
+
+/**
+ * Why a scan may miss alerts, one phrase per scanner that ran but left part unread: it failed, it did not audit every
+ * package (pip-audit skips), or it was detected but not read because `--report` named other scanners.
+ */
+function scannerGaps(scanners) {
+  return scanners.flatMap((scanner) => {
+    if (scanner.error !== undefined) return [`${scanner.id} failed (${scanner.error})`]
+    if (scanner.incomplete) return [`${scanner.id} did not audit every package`]
+    if (scanner.skipped) return [`${scanner.id} was not read because --report was given without it (pass --report ${scanner.id}=<file>)`]
+    return []
+  })
+}
+
+/** The saved scanner reports of `--report <scanner>=<file>`, read up front, as the `reports` map of collectAlerts. `example` is the next step of a bad value. */
+function readReports(ctx, example) {
+  const reports = new Map()
+  for (const value of ctx.list('report')) {
+    const text = String(value)
+    const at = text.indexOf('=')
+    if (at <= 0 || at === text.length - 1) throw usageError(`--report must be <scanner>=<file>, not ${text}`, example)
+    const id = text.slice(0, at)
+    const file = text.slice(at + 1)
+    if (!SCANNERS.some((scanner) => scanner.id === id)) throw usageError(`--report names the unknown scanner "${id}"; use one of ${SCANNERS.map((scanner) => scanner.id).join(', ')}`, example)
+    if (reports.has(id)) throw usageError(`--report gives ${id} twice`, 'pass one report per scanner')
+    try {
+      reports.set(id, { path: file, text: readReport(path.resolve(ctx.cwd, file)) })
+    } catch (error) {
+      throw usageError(`cannot read ${file}: ${error.message}`, `save the scanner's --json output to ${file} first`)
+    }
+  }
+  return reports
 }
 
 function readInput(source) {
@@ -1331,36 +1364,36 @@ export const COMMANDS = [
     run: (ctx) => runTeamCapacity(ctx),
   },
   {
-    name: 'alerts list', summary: 'security alerts from the scanners the repository has (npm audit), highest severity first; reads only', usage: '[--severity critical,high,medium,low]', flags: ['severity'],
+    name: 'alerts list', summary: 'security alerts from the scanners the repository has (npm, yarn and pnpm audit, pip-audit, cargo audit) or from saved reports, highest severity first; reads only', usage: '[--severity critical,high,medium,low,unknown] [--report scanner=file ..]', flags: ['severity', 'report'],
     run: async (ctx) => {
       ctx.config() // loads and checks .pmkit/config.yaml like every command, though alerts never read the tracker
       const wanted = csv(ctx.list('severity'))
       const unknown = wanted.filter((value) => !SEVERITIES.includes(value))
       if (unknown.length > 0) throw usageError(`--severity must be one of ${SEVERITIES.join(', ')}, not ${unknown.join(', ')}`)
-      const found = collectAlerts(ctx.root, { env: ctx.env })
+      const found = collectAlerts(ctx.root, { env: ctx.env, reports: readReports(ctx, 'pmkit alerts list --report npm-audit=npm-audit.json') })
       const alerts = wanted.length === 0 ? found.alerts : found.alerts.filter((alert) => wanted.includes(alert.severity))
       // The per-scanner count follows the filter, so scanners[].alerts always adds up to alerts.length.
       const scanners = found.scanners.map((scanner) => ({ ...scanner, alerts: alerts.filter((alert) => alert.scanner === scanner.id).length }))
-      const failed = scanners.filter((scanner) => scanner.error !== undefined)
+      const gaps = scannerGaps(scanners)
       let text
       if (!scanners.some((scanner) => scanner.detected)) {
         text = `no scanners found in this repository (looked for: ${SCANNERS.map((scanner) => `${scanner.id} needs ${scanner.needs}`).join('; ')})`
       } else if (alerts.length > 0) text = table(['ID', 'Severity', 'Package', 'Title'], alerts.map((alert) => [alert.id, alert.severity, alert.package, alert.title]))
-      else text = failed.length === 0 ? 'no alerts' : 'no alerts read'
-      // A failed scanner left part of the scan unread, so the text never reads as a clean result.
-      if (failed.length > 0) text = [text, ...failed.map((scanner) => `incomplete: ${scanner.id} failed (${scanner.error}), so this result may miss alerts`)].join('\n')
-      return { data: { incomplete: failed.length > 0, scanners, alerts }, text, warnings: found.warnings, notes: await capabilityNotesOrNone(ctx, 'security_alerts') }
+      else text = gaps.length === 0 ? 'no alerts' : 'no alerts read'
+      // A failed, partial or skipped scanner left part of the scan unread, so the text never reads as a clean result.
+      if (gaps.length > 0) text = [text, ...gaps.map((gap) => `incomplete: ${gap}, so this result may miss alerts`)].join('\n')
+      return { data: { incomplete: gaps.length > 0, scanners, alerts }, text, warnings: found.warnings, notes: await capabilityNotesOrNone(ctx, 'security_alerts') }
     },
   },
   {
-    name: 'alerts scan', summary: 'security alerts no issue covers yet, each with a type, a priority from the severity and a description that holds its alert-key line; reads only', usage: '[--severity critical,high,medium,low]', flags: ['severity'],
+    name: 'alerts scan', summary: 'security alerts no issue covers yet, each with a type, a priority from the severity and a description that holds its alert-key line; reads only', usage: '[--severity critical,high,medium,low,unknown] [--report scanner=file ..]', flags: ['severity', 'report'],
     run: async (ctx) => {
       const wanted = csv(ctx.list('severity'))
       const unknown = wanted.filter((value) => !SEVERITIES.includes(value))
       if (unknown.length > 0) throw usageError(`--severity must be one of ${SEVERITIES.join(', ')}, not ${unknown.join(', ')}`)
       ctx.config()
-      const found = collectAlerts(ctx.root, { env: ctx.env })
-      const failed = found.scanners.filter((scanner) => scanner.error !== undefined)
+      const found = collectAlerts(ctx.root, { env: ctx.env, reports: readReports(ctx, 'pmkit alerts scan --report npm-audit=npm-audit.json') })
+      const gaps = scannerGaps(found.scanners)
       const warnings = [...found.warnings]
       const noUnread = { count: 0, ids: [] }
       if (!found.scanners.some((scanner) => scanner.detected)) {
@@ -1375,7 +1408,7 @@ export const COMMANDS = [
       const existing = await readExistingIssues(tracker)
       const { candidates, matched } = matchAlerts(alerts.map((alert) => alertCandidate(alert, { priorities, types })), existing.issues)
       warnings.push(...existing.problems.map(problemLine))
-      for (const scanner of failed) warnings.push(`incomplete: ${scanner.id} failed (${scanner.error}), so this list may miss alerts. Do not create issues from this list`)
+      for (const gap of gaps) warnings.push(`incomplete: ${gap}, so this list may miss alerts. Do not create issues from this list`)
       if (existing.cut) warnings.push(`incomplete: the tracker has more issues than the ${READ_LIMIT} pmkit read, so an alert that an issue covers may show as new. Do not create issues from this list`)
       if (existing.unread.count > 0) {
         const { count, ids } = existing.unread
@@ -1383,11 +1416,11 @@ export const COMMANDS = [
         const next = ctx.config().system === 'local' ? 'Run /pmkit:local:doctor to fix them, then scan again' : 'Fix them in the tracker, then scan again'
         warnings.push(`incomplete: ${count} ${count === 1 ? 'issue' : 'issues'} could not be read${which}, so an alert that one of them covers may show as new. Do not create issues from this list. ${next}`)
       }
-      const incomplete = failed.length > 0 || existing.incomplete
+      const incomplete = gaps.length > 0 || existing.incomplete
       const parts = []
       if (candidates.length > 0) parts.push(table(['Key', 'Severity', 'Priority', 'Package', 'Title'], candidates.map((c) => [c.key, c.severity, c.priority ?? '', c.package, c.title])))
       if (matched.length > 0) parts.push(`already in the tracker:\n${table(['Issue', 'Status', 'Severity', 'Package', 'Title'], matched.map((m) => [m.issue, m.status ?? '', m.severity, m.package, m.advisories.length > 0 ? m.advisories.map((item) => item.title ?? item.url).join('; ') : m.title]))}`)
-      const empty = failed.length === 0 ? 'no alerts' : 'no alerts read'
+      const empty = gaps.length === 0 ? 'no alerts' : 'no alerts read'
       return { data: { absent: false, incomplete, scanners, unread: existing.unread, candidates, matched }, text: parts.length > 0 ? parts.join('\n\n') : empty, warnings, notes: await capabilityNotes(tracker, 'security_alerts') }
     },
   },
