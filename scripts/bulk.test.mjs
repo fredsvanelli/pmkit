@@ -141,3 +141,23 @@ test('label-add trims the stored labels, so "legacy " and "legacy" are one label
   await parseChange('label-add', 'legacy', {}).apply(tracker, issue('A', { labels: ['legacy ', 'x'] }), actor, { dryRun: true })
   assert.deepEqual(calls[0][2], { labels: ['legacy', 'x'] })
 })
+
+test('due, type and archive call updateIssue and archive, and none clears due', async () => {
+  calls.length = 0
+  const run = (kind, value) => parseChange(kind, value, {}).apply(tracker, issue('A'), actor, { dryRun: true })
+  await run('due', '2026-12-01')
+  await run('due', 'none')
+  await run('type', 'bug')
+  await run('archive', undefined)
+  assert.deepEqual(calls.map(([op]) => op), ['updateIssue', 'updateIssue', 'updateIssue', 'archive'])
+  assert.deepEqual(calls[0][2], { due: '2026-12-01' })
+  assert.deepEqual(calls[1][2], { due: null })
+  assert.deepEqual(calls[2][2], { type: 'bug' })
+  assert.deepEqual(calls[3], ['archive', 'A', actor, { dryRun: true }])
+})
+
+test('archive takes no value and every other change still needs one', () => {
+  assert.equal(parseChange('archive', undefined, {}).text, 'archive')
+  assert.throws(() => parseChange('archive', 'yes', {}), (error) => error.code === 'INVALID_INPUT' && /no value/.test(error.message))
+  assert.throws(() => parseChange('due', undefined, {}), (error) => error.code === 'INVALID_INPUT' && /needs a value/.test(error.message))
+})
