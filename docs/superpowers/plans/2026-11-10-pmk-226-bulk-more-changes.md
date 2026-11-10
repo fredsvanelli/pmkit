@@ -1,0 +1,8 @@
+# PMK-226 plan: more changes for issues bulk
+
+Spec: `docs/superpowers/specs/2026-11-10-pmk-226-bulk-more-changes-design.md`. TDD: each task writes the failing test first.
+
+- [ ] **Task 1: `due`, `type`, `archive` in `scripts/lib/bulk.mjs`.** Tests in `scripts/bulk.test.mjs` (parse, `none`, archive with a value, missing value for other kinds) and `scripts/cli-bulk.test.mjs` (Local: dry run + digest + write for each; `type none` and bad date fail once; archive warning; archived issue gone from lists). Add the builders; `archive` takes no value (`value?` argument, `parseChange` allows an absent value for `archive` only); add `due|type|archive` to the `issues bulk` usage and the commit message.
+- [ ] **Task 2: Linear `milestone` in `scripts/lib/linear/issue-ops.mjs` and `writes.mjs`.** Tests in `scripts/lib/linear/writes.test.mjs` (replace the NOT_SUPPORTED test: create still refuses, update builds `projectMilestoneId`, `none` clears) and `scripts/cli-bulk-linear.test.mjs` (preview and write with the fake; wrong project is `INVALID_INPUT`; unknown id `NOT_FOUND`; `release` still `NOT_SUPPORTED` with the new message; `due`, `type`, `archive` on Linear). `applyInput` shows the milestone in the dry run.
+- [ ] **Task 3: docs.** `commands/issues/bulk.md` (parameters, step 4 `NOT_SUPPORTED` is only Linear `release`), `README.md` row, `skills/pmkit/SKILL.md`, `CHANGELOG.md` line, golden/scenario text if it lists the changes, tests in `scripts/plugin.test.mjs` if they pin the text.
+- [ ] **Task 4: verify.** `npm test` in the foreground, exit code 0; tick criterion 1 with `issues update PMK-226 --check 1`; commit `.issues/`.
