@@ -356,7 +356,7 @@ test('cargo audit runs on Cargo.lock without the shell', () => {
 test('readReport drops a UTF-8 BOM, decodes UTF-16 LE and normalizes CRLF', () => {
   const dir = tempDir('pmkit-report-')
   const utf8 = path.join(dir, 'a.json')
-  fs.writeFileSync(utf8, '﻿{"a":1}\r\n')
+  fs.writeFileSync(utf8, '\uFEFF{"a":1}\r\n')
   assert.equal(readReport(utf8), '{"a":1}\n')
   const utf16 = path.join(dir, 'b.json')
   fs.writeFileSync(utf16, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('{"b":2}\r\n', 'utf16le')]))
