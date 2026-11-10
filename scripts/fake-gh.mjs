@@ -12,10 +12,10 @@ export const FAKE_GH_SCRIPT = `#!/usr/bin/env node
 const fs = require('node:fs')
 const key = process.argv.slice(2).join(' ')
 fs.appendFileSync(process.env.PMKIT_FAKE_GH + '.log', key + '\\n')
-// The real gh takes only the endpoint as a positional argument of api: a field has to follow -f or -F.
+// The real gh takes only the endpoint as a positional argument of api: a field has to follow -f or -F, a value its flag.
 const args = process.argv.slice(2)
 if (args[0] === 'api') {
-  const extra = args.slice(2).filter((arg, i, rest) => !arg.startsWith('-') && !/^-[fFH]$/.test(rest[i - 1] ?? ''))
+  const extra = args.slice(2).filter((arg, i, rest) => !arg.startsWith('-') && !/^(-[fFHX]|--method|--input)$/.test(rest[i - 1] ?? ''))
   if (extra.length > 0) {
     process.stderr.write('accepts 1 arg(s), received ' + (extra.length + 1) + '\\n')
     process.exit(1)

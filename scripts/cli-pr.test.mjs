@@ -998,3 +998,91 @@ test('pr diff counts every untracked file inside a new folder', async () => {
   assert.equal(JSON.parse(result.stdout).untracked, 3)
   assert.ok(noteLines(result).includes('note: 3 untracked files are not in the diff'), result.stderr)
 })
+
+// pr review (PMK-217): one review on the open pull request of an issue, with inline comments on lines of its diff.
+const REVIEW_API = 'api repos/{owner}/{repo}/pulls/7/reviews --method POST --input -'
+const REVIEWED = { stdout: JSON.stringify({ id: 99, html_url: 'https://github.com/o/r/pull/7#pullrequestreview-99' }) }
+
+function reviewFiles(comments, body = 'Review against PMK criteria.\n') {
+  const dir = scratch()
+  fs.writeFileSync(path.join(dir, 'body.md'), body)
+  fs.writeFileSync(path.join(dir, 'comments.json'), typeof comments === 'string' ? comments : JSON.stringify(comments))
+  return { body: path.join(dir, 'body.md'), comments: path.join(dir, 'comments.json') }
+}
+
+async function reviewRepo(canned) {
+  const root = teamRepo()
+  const gh = fakeGh({ [view('feat')]: { stdout: prJson({ number: 7, headRefName: 'feat' }) }, 'pr diff 7 --color never': { stdout: TWO_FILES }, [REVIEW_API]: REVIEWED, ...canned })
+  const env = envWith(gh)
+  await callJson(root, env, ['issues', 'update', 'ISS-5N1R', '--branch', 'feat'])
+  return { root, gh, env }
+}
+
+test('pr review previews, then posts one review with the inline comments on the open pull request', async () => {
+  const { root, gh, env } = await reviewRepo()
+  const files = reviewFiles([{ path: 'b c.txt', line: 3, body: 'gap: no test for z' }])
+  const args = ['pr', 'review', '--issue', 'ISS-5N1R', '--body-file', files.body, '--comments-file', files.comments]
+  const dry = await callJson(root, env, [...args, '--dry-run'])
+  assert.deepEqual(dry, { pr: { number: 7, url: 'https://github.com/o/r/pull/7' }, event: 'COMMENT', body: 'Review against PMK criteria.\n', comments: [{ path: 'b c.txt', line: 3, body: 'gap: no test for z' }] })
+  assert.ok(!ghCalls(gh).includes(REVIEW_API))
+  const posted = await callJson(root, env, args)
+  assert.deepEqual(posted.review, { id: 99, url: 'https://github.com/o/r/pull/7#pullrequestreview-99' })
+  assert.equal(ghCalls(gh).filter((key) => key === REVIEW_API).length, 1)
+  assert.match((await call(root, env, [...args, '--dry-run'])).stdout, /^would post a review with 1 inline comment on pull request #7 https:\/\/github\.com\/o\/r\/pull\/7\n/)
+})
+
+test('pr review refuses inline comments that do not land on a line of the diff, before any write', async () => {
+  const { root, gh, env } = await reviewRepo()
+  const cases = [
+    [[{ path: 'b c.txt', line: 9, body: 'x' }], /comment 1 \(b c\.txt:9\) is not on a line of the diff/],
+    [[{ path: 'nope.txt', line: 1, body: 'x' }], /comment 1 \(nope\.txt:1\) is not on a line of the diff/],
+    [[{ path: 'a.txt', line: 1, body: 'ok' }, { path: 'a.txt', line: 2.5, body: 'x' }, { path: 'a.txt', body: 'x' }, { path: 'a.txt', line: 1, body: ' ' }], /comment 2 .*comment 3 .*comment 4 /s],
+    ['not json', /is not a JSON array/],
+    [{ path: 'a.txt' }, /is not a JSON array/],
+  ]
+  for (const [comments, message] of cases) {
+    for (const dryRun of [['--dry-run'], []]) {
+      const files = reviewFiles(comments)
+      const result = await call(root, env, ['pr', 'review', '--issue', 'ISS-5N1R', '--body-file', files.body, '--comments-file', files.comments, ...dryRun, '--json'])
+      assert.equal(result.code, 2, JSON.stringify(comments))
+      assert.equal(errorOf(result).code, 'INVALID_INPUT')
+      assert.match(errorOf(result).message, message)
+    }
+  }
+  assert.ok(!ghCalls(gh).includes(REVIEW_API))
+})
+
+test('pr review needs a body, an issue with a branch and an open pull request', async () => {
+  const { root, gh, env } = await reviewRepo({ [view('closed')]: { stdout: prJson({ number: 8, state: 'CLOSED' }) }, [view('gone')]: NO_PR })
+  const empty = reviewFiles([], ' \n')
+  const full = reviewFiles([])
+  const refused = async (args, message) => {
+    const result = await call(root, env, ['pr', 'review', ...args, '--json'])
+    assert.equal(result.code, 2, args.join(' '))
+    assert.equal(errorOf(result).code, 'INVALID_INPUT', args.join(' '))
+    assert.match(errorOf(result).message, message)
+  }
+  await refused(['--issue', 'ISS-5N1R'], /needs --body-file/)
+  await refused(['--body-file', full.body], /needs --issue/)
+  await refused(['--issue', 'ISS-5N1R', '--body-file', empty.body], /body is empty/)
+  await refused(['--issue', 'ISS-8C4W', '--body-file', full.body], /ISS-8C4W has no branch/)
+  await callJson(root, env, ['issues', 'update', 'ISS-8C4W', '--branch', 'closed'])
+  await refused(['--issue', 'ISS-8C4W', '--body-file', full.body], /closed has no open pull request/)
+  await callJson(root, env, ['issues', 'update', 'ISS-8C4W', '--branch', 'gone'])
+  await refused(['--issue', 'ISS-8C4W', '--body-file', full.body], /gone has no open pull request/)
+  assert.ok(!ghCalls(gh).includes(REVIEW_API))
+})
+
+test('pr review refuses inline comments when GitHub refuses the diff as too large, and posts a review with only a body', async () => {
+  const { root, gh, env } = await reviewRepo({ 'pr diff 7 --color never': TOO_LARGE })
+  const files = reviewFiles([{ path: 'a.txt', line: 1, body: 'x' }])
+  const result = await call(root, env, ['pr', 'review', '--issue', 'ISS-5N1R', '--body-file', files.body, '--comments-file', files.comments, '--json'])
+  assert.equal(result.code, 2)
+  assert.equal(errorOf(result).code, 'INVALID_INPUT')
+  assert.match(errorOf(result).message, /too large.*cannot be checked/)
+  assert.match(errorOf(result).nextStep, /body/)
+  assert.ok(!ghCalls(gh).includes(REVIEW_API))
+  const posted = await callJson(root, env, ['pr', 'review', '--issue', 'ISS-5N1R', '--body-file', files.body])
+  assert.deepEqual(posted.comments, [])
+  assert.ok(ghCalls(gh).includes(REVIEW_API))
+})

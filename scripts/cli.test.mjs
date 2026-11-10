@@ -1596,6 +1596,7 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'issues branch': ['ISS-5N1R'],
     'pr open': ['--issue', 'ISS-5N1R'],
     'pr ready': ['--issue', 'ISS-5N1R'],
+    'pr review': ['--issue', 'ISS-5N1R', '--body-file', path.join(import.meta.dirname, '__goldens__', '_inputs', 'comment.md')],
     'pr sync': [],
     'linear customers set': ['--customer', 'acme', '--tier', 'gold'],
     'linear customers link': ['--customer', 'acme', '--issue', 'ACME-1'],

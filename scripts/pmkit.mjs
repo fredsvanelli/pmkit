@@ -163,6 +163,16 @@ function readReports(ctx, example) {
   return reports
 }
 
+/** The inline comments of pr review: a JSON array of { path, line, body }. Every bad entry is named in one error. */
+function reviewComments(text) {
+  let list
+  try { list = JSON.parse(text) } catch {}
+  if (!Array.isArray(list)) throw usageError('the comments file is not a JSON array', 'Write a JSON array of { "path", "line", "body" } to the comments file')
+  const bad = list.map((c, i) => (c && typeof c.path === 'string' && c.path !== '' && Number.isInteger(c.line) && c.line > 0 && typeof c.body === 'string' && c.body.trim() !== '' ? null : `comment ${i + 1} needs a path, a line number above 0 and a body`)).filter(Boolean)
+  if (bad.length > 0) throw usageError(bad.join('; '), 'Write a JSON array of { "path", "line", "body" } to the comments file')
+  return list.map(({ path: file, line, body }) => ({ path: file, line, body }))
+}
+
 function readInput(source) {
   try {
     return fs.readFileSync(source === '-' ? 0 : source, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
@@ -1577,6 +1587,36 @@ export const COMMANDS = [
       if (ctx.dryRun) return { data: { ...pr, isDraft: false }, text: `would mark pull request #${pr.number} ready for review ${pr.url}\ndry run: nothing was written`, notes: await capabilityNotesOrNone(ctx) }
       const ready = host.markReady(pr.number)
       return { data: ready, text: `marked pull request #${ready.number} ready for review ${ready.url}`, notes: await capabilityNotesOrNone(ctx) }
+    },
+  },
+  {
+    name: 'pr review', summary: 'posts one review that comments on the open pull request of an issue, with inline comments on lines of its diff', usage: '--issue <id> --body-file f [--comments-file f]', write: true, args: [], flags: ['issue', 'body-file', 'comments-file'],
+    run: async (ctx) => {
+      if (ctx.opt('issue') === undefined) throw usageError('pr review needs --issue', 'pmkit pr review --issue <id> --body-file <file>')
+      if (ctx.opt('body-file') === undefined) throw usageError('pr review needs --body-file', 'pmkit pr review --issue <id> --body-file <file>')
+      const host = ctx.host()
+      const body = readInput(ctx.opt('body-file'))
+      if (body.trim() === '') throw usageError('the review body is empty', 'Write the summary of the review to the body file')
+      const comments = ctx.opt('comments-file') === undefined ? [] : reviewComments(readInput(ctx.opt('comments-file')))
+      const issue = await (await ctx.tracker()).getIssue(ctx.opt('issue'))
+      if (!issue.branch) throw usageError(`${issue.id} has no branch`, `pmkit issues branch ${issue.id}`)
+      const found = host.getPullRequest({ head: issue.branch })
+      if (found?.state !== 'OPEN') throw usageError(`${issue.branch} has no open pull request`, `pmkit pr open --issue ${issue.id}, or post the review on the issue with pmkit issues comment`)
+      // Every inline line is checked against the diff before any write, so a dry run shows what GitHub would refuse.
+      if (comments.length > 0) {
+        const diff = host.prDiff(found.number)
+        if (diff === null) throw usageError(`GitHub refused the diff of pull request #${found.number} as too large, so the lines of the inline comments cannot be checked`, 'Put the findings in the body and post the review without --comments-file')
+        const lines = new Map()
+        for (const section of splitDiff(diff)) lines.set(section.path, new Set([...(lines.get(section.path) ?? []), ...rightLines(section.text)]))
+        const off = comments.map((c, i) => (lines.get(c.path)?.has(c.line) ? null : `comment ${i + 1} (${c.path}:${c.line}) is not on a line of the diff`)).filter(Boolean)
+        if (off.length > 0) throw usageError(off.join('; '), 'Point each inline comment at an added or unchanged line of the diff, or move it to the body')
+      }
+      const pr = { number: found.number, url: found.url }
+      const data = { pr, event: 'COMMENT', body, comments }
+      const what = `a review with ${comments.length} inline ${comments.length === 1 ? 'comment' : 'comments'} on pull request #${pr.number} ${pr.url}`
+      if (ctx.dryRun) return { data, text: `would post ${what}\ndry run: nothing was written`, notes: await capabilityNotesOrNone(ctx) }
+      const review = host.postReview(pr.number, { body, comments })
+      return { data: { ...data, review }, text: `posted ${what}\n${review.url}`, notes: await capabilityNotesOrNone(ctx) }
     },
   },
   {
