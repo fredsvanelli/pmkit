@@ -906,8 +906,12 @@ export const COMMANDS = [
   {
     name: 'goal get', summary: 'one goal with its epics', usage: '<id>', args: ['id'], flags: [],
     run: async (ctx) => {
-      const goal = await (await ctx.tracker()).getGoal(ctx.args[0])
-      return { data: goal, text: goalRecord(goal) }
+      const tracker = await ctx.tracker()
+      const goal = await tracker.getGoal(ctx.args[0])
+      // As goal list and goal progress: an unreadable epic may link to the goal, and a cut Linear read may hide its epics.
+      const warnings = (await tracker.listGoals()).problems.filter((problem) => problem.kind === 'epic' || problem.id === goal.id).map(goalProblemWarning)
+      const text = [goalRecord(goal), ...(warnings.length > 0 ? [INCOMPLETE_LINE] : [])].join('\n')
+      return { data: { ...goal, complete: warnings.length === 0, warnings }, text, warnings }
     },
   },
   {

@@ -1445,6 +1445,8 @@ export function createLocalTracker(root, {
   }
 
   const goalsDir = path.join(issuesDir, 'goals')
+  // The shape of an id with any prefix, as in GOAL-7K3Q or OKR-1.
+  const ID_SHAPE = /^[A-Za-z]{2,5}-[0-9A-Za-z]+$/
   const goalNotFound = (id) => new PmkitError('NOT_FOUND', `goal ${id} does not exist`, 'pmkit goal list')
 
   /** The goal file as stored, without its epics. A stem that is not a goal id is never a goal. */
@@ -1475,7 +1477,10 @@ export function createLocalTracker(root, {
     const problems = []
     for (const stem of [...goalStems(goalsDir)].sort()) {
       if (!isId(stem, goalPrefixOf(local))) {
-        problems.push({ id: stem, kind: 'file', code: 'INVALID_INPUT', message: `goal file ${stem}.md is not named after a goal id such as ${goalPrefixOf(local)}-1` })
+        // A stem shaped like an id under another prefix (GOAL-1.md after goal_prefix changed) is a goal pmkit cannot read, so it
+        // keeps a reader from concluding; any other name (README.md) is a stray file.
+        const kind = ID_SHAPE.test(stem) ? 'goal' : 'file'
+        problems.push({ id: stem, kind, code: 'INVALID_INPUT', message: `goal file ${stem}.md is not named after a goal id such as ${goalPrefixOf(local)}-1` })
         continue
       }
       try {
@@ -1610,10 +1615,12 @@ export function createLocalTracker(root, {
     const goal = readGoalFile(id)
     const { epics, problems } = readDeliverables()
     if (problems.length > 0) {
+      // A folder outside epic_prefix parses fine: its fix is a rename, not the doctor.
+      const misnamed = problems.every((problem) => !isId(problem.id, local.epic_prefix))
       throw new PmkitError(
         'INVALID_INPUT',
-        `${problems.length} epic ${problems.length === 1 ? 'file does' : 'files do'} not parse (${problems.map((problem) => problem.id).join(', ')}), so the links to ${goal.id} cannot be checked`,
-        'Run pmkit validate, fix the files with /pmkit:local:doctor, then delete again',
+        `the links to ${goal.id} cannot be checked, because pmkit cannot read ${problems.map((problem) => `${problem.id} (${problem.message})`).join('; ')}`,
+        misnamed ? 'Rename each epic folder to an epic id, or set epic_prefix back, then delete again' : 'Run pmkit validate, fix what it lists (/pmkit:local:doctor for a file that does not parse), then delete again',
         { problems },
       )
     }
@@ -2103,14 +2110,11 @@ export function createLocalTracker(root, {
         return { code: error.code, message: error.message }
       }
     }
-    const epics = fs.existsSync(epicsDir)
-      ? fs.readdirSync(epicsDir, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory() && isId(entry.name, local.epic_prefix) && fs.existsSync(path.join(epicsDir, entry.name, 'epic.md')))
-        .map((entry) => ({ id: entry.name, error: bad(() => getDeliverable(entry.name)) }))
-      : []
+    // readDeliverables names both an epic file that does not parse and a folder outside epic_prefix, which no read sees.
+    const epics = readDeliverables().problems.map(({ id, code, message }) => ({ id, code, message }))
     const milestones = [...milestoneStems(milestonesDir)].filter(validMilestoneId).map((id) => ({ id, error: bad(() => readMilestone(id)) }))
     const failed = (rows) => rows.filter((row) => row.error !== null).map(({ id, error }) => ({ id, ...error }))
-    return { epics: failed(epics), milestones: failed(milestones) }
+    return { epics, milestones: failed(milestones) }
   }
 
   const docsDir = path.join(issuesDir, 'docs')

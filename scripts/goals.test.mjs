@@ -80,7 +80,8 @@ test('goal_prefix names the goal ids, and a file with another prefix is no goal 
   fs.writeFileSync(path.join(goals, 'GOAL-1.md'), '---\ntitle: Old\n---\n')
   const { goals: listed, problems } = tracker.listGoals()
   assert.deepEqual(listed.map((goal) => goal.id), [id])
-  assert.deepEqual(problems.map((problem) => [problem.id, problem.kind]), [['GOAL-1', 'file']])
+  // A goal file under another prefix is a goal pmkit cannot read, not a stray file (review cycle 2 of PR #180).
+  assert.deepEqual(problems.map((problem) => [problem.id, problem.kind]), [['GOAL-1', 'goal']])
   assert.match(problems[0].message, /such as OKR-1/)
   assert.equal(tracker.setEpicGoal('EPC-2M9D', id, 'fred').after.goal, id)
 })
@@ -362,6 +363,7 @@ test('an epic folder outside epic_prefix is a goal problem: goal progress warns 
   const progress = renamed.goalProgress(id)
   assert.ok(progress.warnings.some((line) => line.startsWith('EPC-2M9D:') && /not named after an epic id such as PRJ-1/.test(line) && /may link to this goal/.test(line)), progress.warnings.join('\n'))
   const before = hashTree(root)
-  assert.throws(() => renamed.deleteGoal(id, 'fred'), (error) => error.code === 'INVALID_INPUT' && /EPC-2M9D/.test(error.message))
+  assert.throws(() => renamed.deleteGoal(id, 'fred'), (error) => error.code === 'INVALID_INPUT' && /EPC-2M9D/.test(error.message) && /not named after an epic id/.test(error.message) && !/does not parse/.test(error.message) && !/doctor/.test(error.nextStep))
   assert.deepEqual(hashTree(root), before)
+  assert.deepEqual(renamed.unreadableRecords().epics.map((record) => [record.id, record.code]), [['EPC-2M9D', 'INVALID_INPUT']])
 })
