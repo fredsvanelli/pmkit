@@ -5,17 +5,20 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 
-/** The severity of an alert, highest first. */
-export const SEVERITIES = ['critical', 'high', 'medium', 'low']
+/** The severity of an alert, highest first. `unknown` is a scanner that gives none (pip-audit) or none pmkit can read. */
+export const SEVERITIES = ['critical', 'high', 'medium', 'low', 'unknown']
 
 const NPM_SEVERITY = { critical: 'critical', high: 'high', moderate: 'medium', low: 'low', info: 'low' }
 
+/** The error of a scanner that printed nothing, with its stderr collapsed and cut at 300 characters. */
+export function emptyOutputError(label, stderr) {
+  const detail = String(stderr ?? '').replace(/\s+/g, ' ').trim().slice(0, 300)
+  return new Error(detail === '' ? `${label} printed empty output` : `${label} printed empty output: ${detail}`)
+}
+
 /** Parses the stdout of `npm audit --json` (report version 2). Throws an Error when it is not an audit report. */
 export function parseNpmAudit(stdout, stderr = '') {
-  if (!stdout || stdout.trim() === '') {
-    const detail = String(stderr ?? '').replace(/\s+/g, ' ').trim().slice(0, 300)
-    throw new Error(detail === '' ? 'npm audit printed empty output' : `npm audit printed empty output: ${detail}`)
-  }
+  if (!stdout || stdout.trim() === '') throw emptyOutputError('npm audit', stderr)
   let report
   try {
     report = JSON.parse(stdout)
@@ -64,8 +67,10 @@ export const NPM_MAX_BUFFER = 256 * 1024 * 1024
 /** The longest one scanner may run, in milliseconds. */
 export const NPM_TIMEOUT_MS = 60000
 
-/** The npm executable name: Windows needs the .cmd shim, which spawnSync does not resolve on its own. */
-export const npmCommand = (platform = process.platform) => (platform === 'win32' ? 'npm.cmd' : 'npm')
+/** A Node package manager's executable name: Windows needs the .cmd shim, which spawnSync does not resolve on its own. */
+export const shimCommand = (name, platform = process.platform) => (platform === 'win32' ? `${name}.cmd` : name)
+/** The npm executable name. */
+export const npmCommand = (platform = process.platform) => shimCommand('npm', platform)
 
 /**
  * True when the shell could not find npm.cmd. cmd.exe exits with 9009 for an unknown command in every display language,
@@ -75,28 +80,36 @@ export const npmCommand = (platform = process.platform) => (platform === 'win32'
 export const isNpmMissingOnShell = (result) => (result.stdout ?? '').trim() === ''
   && (result.status === 9009 || (result.status !== 0 && /is not recognized/i.test(result.stderr ?? '')))
 
+/**
+ * Runs one scanner and returns its stdout and stderr, whatever its exit code: the scanners exit non-zero when they find
+ * vulnerabilities. `shim` names a Node package manager (npm, yarn, pnpm): on Windows it is a .cmd file, and Node refuses
+ * to spawn one without a shell (EINVAL), so the call goes through cmd.exe. Throws an Error that names the cause.
+ */
+export function runScanner(name, args, { root, env, timeoutMs, platform, spawn, shim = false, label }) {
+  const viaShell = shim && platform === 'win32'
+  const result = spawn(shim ? shimCommand(name, platform) : name, args, { cwd: root, env, encoding: 'utf8', maxBuffer: NPM_MAX_BUFFER, timeout: timeoutMs, shell: viaShell })
+  if (result.error) {
+    if (result.error.code === 'ENOENT') throw new Error(`${name} is not installed or not on PATH`)
+    if (result.error.code === 'ETIMEDOUT') throw new Error(`${label} timed out after ${timeoutMs / 1000} s`)
+    if (result.error.code === 'ENOBUFS') throw new Error(`${label} printed more than ${NPM_MAX_BUFFER / 1024 / 1024} MiB`)
+    throw new Error(result.error.message)
+  }
+  // With the shell, a missing .cmd exits non-zero and does not raise ENOENT.
+  if (viaShell && isNpmMissingOnShell(result)) throw new Error(`${name} is not installed or not on PATH`)
+  return { stdout: result.stdout, stderr: result.stderr }
+}
+
 const LOCKFILES = ['package-lock.json', 'npm-shrinkwrap.json']
 
-/** The scanners, in the order they run. `detect` says whether the repository has the scanner. */
+/**
+ * The scanners, in the order they run. `detect` says whether the repository has the scanner, `command` and `args` run it,
+ * `shim` marks a Node package manager (see runScanner), and `parse(stdout, stderr)` reads its JSON output, run or saved.
+ */
 export const SCANNERS = [
   {
-    id: 'npm-audit',
-    needs: LOCKFILES.join(' or '),
+    id: 'npm-audit', label: 'npm audit', needs: LOCKFILES.join(' or '),
     detect: (root) => LOCKFILES.some((file) => fs.existsSync(path.join(root, file))),
-    // npm exits 1 when it finds vulnerabilities, so the output counts whatever the exit code is.
-    run: (root, env, { timeoutMs, platform, spawn }) => {
-      // On Windows, Node refuses to spawn npm.cmd without a shell (EINVAL), so the call goes through cmd.exe.
-      const result = spawn(npmCommand(platform), ['audit', '--json'], { cwd: root, env, encoding: 'utf8', maxBuffer: NPM_MAX_BUFFER, timeout: timeoutMs, shell: platform === 'win32' })
-      if (result.error) {
-        if (result.error.code === 'ENOENT') throw new Error('npm is not installed or not on PATH')
-        if (result.error.code === 'ETIMEDOUT') throw new Error(`npm audit timed out after ${timeoutMs / 1000} s`)
-        if (result.error.code === 'ENOBUFS') throw new Error(`npm audit printed more than ${NPM_MAX_BUFFER / 1024 / 1024} MiB`)
-        throw new Error(result.error.message)
-      }
-      // With the shell, a missing npm.cmd exits non-zero and does not raise ENOENT.
-      if (platform === 'win32' && isNpmMissingOnShell(result)) throw new Error('npm is not installed or not on PATH')
-      return parseNpmAudit(result.stdout, result.stderr)
-    },
+    command: 'npm', args: ['audit', '--json'], shim: true, parse: parseNpmAudit,
   },
 ]
 
@@ -116,7 +129,8 @@ export function collectAlerts(root, { env = process.env, timeoutMs = NPM_TIMEOUT
       continue
     }
     try {
-      const found = scanner.run(root, env, { timeoutMs, platform, spawn })
+      const { stdout, stderr } = runScanner(scanner.command, scanner.args, { root, env, timeoutMs, platform, spawn, shim: scanner.shim, label: scanner.label })
+      const found = scanner.parse(stdout, stderr)
       alerts.push(...found.alerts)
       warnings.push(...found.warnings)
       scanners.push({ id: scanner.id, detected: true, alerts: found.alerts.length })
@@ -147,9 +161,11 @@ const PRIORITY_NAMES = { critical: ['urgent', 'critical'], high: ['high'], mediu
 /**
  * The tracker priority of a severity. The name comes first: critical is `urgent` or `critical`, high is `high`, medium is
  * `medium` or `normal`, low is `low`. With no such name the position decides: critical is the first priority, high the
- * second, medium the third and low the last, clamped to the list. `none` is never used. An empty list gives null.
+ * second, medium the third and low the last, clamped to the list. `none` is never used. An empty list gives null, and so
+ * does the `unknown` severity: the command asks for a priority rather than make one up.
  */
 export function priorityFor(severity, priorities) {
+  if (severity === 'unknown') return null
   const usable = priorities.filter((name) => name.toLowerCase() !== 'none')
   if (usable.length === 0) return null
   const named = (PRIORITY_NAMES[severity] ?? []).map((wanted) => usable.find((name) => name.toLowerCase() === wanted)).find(Boolean)

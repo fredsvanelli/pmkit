@@ -88,8 +88,8 @@ test('isNpmMissingOnShell accepts exit 9009 with any stderr, and no other non-ze
 
 const audit = (vulnerabilities) => JSON.stringify({ auditReportVersion: 2, vulnerabilities })
 
-test('SEVERITIES lists the four levels, highest first', () => {
-  assert.deepEqual(SEVERITIES, ['critical', 'high', 'medium', 'low'])
+test('SEVERITIES lists the four levels, highest first, then unknown', () => {
+  assert.deepEqual(SEVERITIES, ['critical', 'high', 'medium', 'low', 'unknown'])
 })
 
 test('npm moderate maps to medium and info to low', () => {

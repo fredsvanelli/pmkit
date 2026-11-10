@@ -4,6 +4,8 @@ import { SEVERITIES, alertCandidate, alertKey, matchAlerts, parseNpmAudit, prior
 
 // Key, priority, candidates and matching of `alerts scan` (PMK-73).
 
+const RANKED = SEVERITIES.filter((severity) => severity !== 'unknown')
+
 const ALERT = { id: 'npm-audit:lodash', scanner: 'npm-audit', package: 'lodash', title: 'Command Injection', severity: 'critical', url: 'https://example.com/a/2', fixAvailable: false }
 
 test('alertKey follows only the scanner and the package', () => {
@@ -33,18 +35,18 @@ test('two advisories on one package are one alert, and their order does not chan
 
 test('priorityFor matches the name first', () => {
   const four = ['urgent', 'high', 'medium', 'low']
-  assert.deepEqual(SEVERITIES.map((severity) => priorityFor(severity, four)), ['urgent', 'high', 'medium', 'low'])
-  assert.deepEqual(SEVERITIES.map((severity) => priorityFor(severity, ['low', 'medium', 'high', 'urgent'])), ['urgent', 'high', 'medium', 'low'], 'an inverted list')
-  assert.deepEqual(SEVERITIES.map((severity) => priorityFor(severity, ['urgent', 'high', 'medium', 'low', 'none'])), ['urgent', 'high', 'medium', 'low'], 'never none')
-  assert.deepEqual(SEVERITIES.map((severity) => priorityFor(severity, ['critical', 'high', 'normal', 'low'])), ['critical', 'high', 'normal', 'low'])
+  assert.deepEqual(RANKED.map((severity) => priorityFor(severity, four)), ['urgent', 'high', 'medium', 'low'])
+  assert.deepEqual(RANKED.map((severity) => priorityFor(severity, ['low', 'medium', 'high', 'urgent'])), ['urgent', 'high', 'medium', 'low'], 'an inverted list')
+  assert.deepEqual(RANKED.map((severity) => priorityFor(severity, ['urgent', 'high', 'medium', 'low', 'none'])), ['urgent', 'high', 'medium', 'low'], 'never none')
+  assert.deepEqual(RANKED.map((severity) => priorityFor(severity, ['critical', 'high', 'normal', 'low'])), ['critical', 'high', 'normal', 'low'])
   assert.equal(priorityFor('critical', ['urgent', 'critical', 'high']), 'urgent')
 })
 
 test('priorityFor uses the position when no name matches, clamps, and never returns none', () => {
-  assert.deepEqual(SEVERITIES.map((severity) => priorityFor(severity, ['p1', 'p2', 'p3'])), ['p1', 'p2', 'p3', 'p3'])
-  assert.deepEqual(SEVERITIES.map((severity) => priorityFor(severity, ['only'])), ['only', 'only', 'only', 'only'])
-  assert.deepEqual(SEVERITIES.map((severity) => priorityFor(severity, ['a', 'b', 'c', 'd', 'e'])), ['a', 'b', 'c', 'e'])
-  assert.deepEqual(SEVERITIES.map((severity) => priorityFor(severity, ['p1', 'p2', 'p3', 'none'])), ['p1', 'p2', 'p3', 'p3'])
+  assert.deepEqual(RANKED.map((severity) => priorityFor(severity, ['p1', 'p2', 'p3'])), ['p1', 'p2', 'p3', 'p3'])
+  assert.deepEqual(RANKED.map((severity) => priorityFor(severity, ['only'])), ['only', 'only', 'only', 'only'])
+  assert.deepEqual(RANKED.map((severity) => priorityFor(severity, ['a', 'b', 'c', 'd', 'e'])), ['a', 'b', 'c', 'e'])
+  assert.deepEqual(RANKED.map((severity) => priorityFor(severity, ['p1', 'p2', 'p3', 'none'])), ['p1', 'p2', 'p3', 'p3'])
   assert.equal(priorityFor('critical', []), null)
   assert.equal(priorityFor('critical', ['none']), null)
 })
@@ -81,4 +83,10 @@ test('matchAlerts matches an issue that holds the alert-key line, whatever its s
   const { candidates, matched } = matchAlerts([a, b], issues)
   assert.deepEqual(candidates.map((c) => c.package), ['tar'])
   assert.deepEqual(matched.map((m) => [m.package, m.issue, m.status]), [['lodash', 'ISS-1', 'done']])
+})
+
+test('an unknown severity gets no priority, so the command asks for one', () => {
+  assert.equal(priorityFor('unknown', ['urgent', 'high', 'medium', 'low']), null)
+  assert.equal(priorityFor('unknown', ['p1']), null)
+  assert.equal(alertCandidate({ ...ALERT, severity: 'unknown' }, { priorities: ['urgent', 'high', 'medium', 'low'], types: ['bug'] }).priority, null)
 })
