@@ -22,7 +22,9 @@ exit 0
   "description": "No customer loses an event because a delivery failed.",
   "epics": [
     "EPC-4H7V"
-  ]
+  ],
+  "complete": true,
+  "warnings": []
 }
 --- stderr
 (empty)
