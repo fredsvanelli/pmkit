@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { SEVERITIES, collectAlerts, cvssScore, cvssSeverity, isNpmMissingOnShell, parseCargoAudit, parseNpmAudit, parsePipAudit, parsePnpmAudit, parseYarnAudit, readReport } from './lib/alerts.mjs'
+import { SEVERITIES, alertCandidate, collectAlerts, cvssScore, cvssSeverity, isNpmMissingOnShell, parseCargoAudit, parseNpmAudit, parsePipAudit, parsePnpmAudit, parseYarnAudit, readReport } from './lib/alerts.mjs'
 import { tempDir } from './test-helpers.mjs'
 
 const REPORT_ONE = JSON.stringify({ vulnerabilities: { a: { name: 'a', severity: 'low', via: [], fixAvailable: false } } })
@@ -378,11 +378,62 @@ test('collectAlerts with reports reads only them and runs nothing', () => {
     { id: 'pip-audit', detected: false, alerts: 0 },
     { id: 'cargo-audit', detected: true, alerts: 0, report: 'cargo.json' },
   ])
-  assert.deepEqual(found.warnings, ['yarn-audit was not run because --report was given; pass --report yarn-audit=<file> to read it'])
+  assert.deepEqual(found.warnings, [])
 })
 
 test('a report that does not parse is a scanner error', () => {
   const found = collectAlerts(tempDir('pmkit-reports-'), { reports: new Map([['npm-audit', { path: 'bad.json', text: 'nope' }]]) })
   assert.deepEqual(found.scanners[0], { id: 'npm-audit', detected: true, alerts: 0, report: 'bad.json', error: 'npm audit output is not valid JSON' })
   assert.deepEqual(found.warnings, ['npm-audit failed: npm audit output is not valid JSON'])
+})
+
+// ---- review of PR #176 (PMK-208) ----
+
+test('an unknown advisory makes its package unknown, unless a known one is critical', () => {
+  const crate = (cvssA, cvssB) => JSON.stringify({ vulnerabilities: { list: [cargoEntry('x', 'RUSTSEC-A', cvssA), cargoEntry('x', 'RUSTSEC-B', cvssB)] } })
+  const low = 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N'
+  const high = 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H'
+  const critical = 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H'
+  const [withLow] = parseCargoAudit(crate(null, low)).alerts
+  assert.equal(withLow.severity, 'unknown')
+  assert.equal(withLow.title, 'RUSTSEC-A title')
+  assert.equal(alertCandidate(withLow, { priorities: ['urgent', 'high', 'medium', 'low'], types: ['bug'] }).priority, null)
+  assert.equal(parseCargoAudit(crate(high, null)).alerts[0].severity, 'unknown')
+  const [withCritical] = parseCargoAudit(crate(null, critical)).alerts
+  assert.equal(withCritical.severity, 'critical')
+  assert.equal(withCritical.title, 'RUSTSEC-B title')
+})
+
+test('two advisories with the same title and no url stay two when their ids differ', () => {
+  const advisory = (id, patched) => ({ id, module_name: 'a', severity: 'low', title: 'Same', url: null, patched_versions: patched })
+  const [alert] = parsePnpmAudit(JSON.stringify({ advisories: { 1: advisory(1, '>=2'), 2: advisory(2, '<0.0.0') } })).alerts
+  assert.equal(alert.advisories.length, 2)
+  assert.equal(alert.fixAvailable, false)
+  const yarn = [1, 1, 2].map((id) => JSON.stringify({ type: 'auditAdvisory', data: { advisory: { ...advisory(id, '>=2') } } }))
+  assert.equal(parseYarnAudit([...yarn, YARN_SUMMARY].join('\n')).alerts[0].advisories.length, 2, 'the same id on two paths is one advisory')
+})
+
+test('yarn audit keeps its stderr when it printed no audit report', () => {
+  assert.throws(() => parseYarnAudit('Usage Error: no audit', '{"type":"error","data":"Request failed \\"410 Gone\\""}'), /^Error: yarn audit printed no audit report: \{"type":"error","data":"Request failed \\"410 Gone\\""\}$/)
+})
+
+test('pip-audit and cargo audit get a longer timeout than the package managers', () => {
+  for (const [file, timeout] of [['package-lock.json', 60000], ['requirements.txt', 300000], ['Cargo.lock', 300000]]) {
+    const root = tempDir('pmkit-timeout-')
+    fs.writeFileSync(path.join(root, file), '\n')
+    const { spawn, calls } = fakeSpawn({ stdout: '' })
+    collectAlerts(root, { platform: 'linux', spawn })
+    assert.equal(calls[0].options.timeout, timeout, file)
+  }
+  const { spawn, calls } = fakeSpawn({ stdout: '' })
+  const root = tempDir('pmkit-timeout-')
+  fs.writeFileSync(path.join(root, 'Cargo.lock'), '\n')
+  collectAlerts(root, { platform: 'linux', spawn, timeoutMs: 300 })
+  assert.equal(calls[0].options.timeout, 300, 'an explicit timeout wins')
+})
+
+test('readReport refuses an empty file', () => {
+  const file = path.join(tempDir('pmkit-report-'), 'empty.json')
+  fs.writeFileSync(file, '\r\n')
+  assert.throws(() => readReport(file), /^Error: the file is empty$/)
 })

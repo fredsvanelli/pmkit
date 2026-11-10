@@ -1,7 +1,7 @@
 // /pmkit:issues:security-alerts on the team fixture, which has no package-lock.json or npm-shrinkwrap.json.
 // The scan finds no scanner, so the capability is absent: the command says so, names the missing file and stops
-// before any create. The create path needs an npm that prints an audit report, which a scenario cannot fake without
-// the network, so cli-alerts-scan.test.mjs covers it.
+// before any create. cli-alerts-scan.test.mjs covers the create path. A scenario can now run it offline with
+// `--report <scanner>=<file>` (PMK-208), including the null priority of an `unknown` alert; that is a follow-up (PMK-230).
 import assert from 'node:assert/strict'
 
 export default {

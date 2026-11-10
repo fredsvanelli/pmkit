@@ -10,11 +10,14 @@ export const SEVERITIES = ['critical', 'high', 'medium', 'low', 'unknown']
 
 const NPM_SEVERITY = { critical: 'critical', high: 'high', moderate: 'medium', low: 'low', info: 'low' }
 
-/** The error of a scanner that printed nothing, with its stderr collapsed and cut at 300 characters. */
-export function emptyOutputError(label, stderr) {
+/** An Error with the scanner's stderr appended, collapsed and cut at 300 characters, when it has any. */
+function withStderr(message, stderr) {
   const detail = String(stderr ?? '').replace(/\s+/g, ' ').trim().slice(0, 300)
-  return new Error(detail === '' ? `${label} printed empty output` : `${label} printed empty output: ${detail}`)
+  return new Error(detail === '' ? message : `${message}: ${detail}`)
 }
+
+/** The error of a scanner that printed nothing, with its stderr. */
+export const emptyOutputError = (label, stderr) => withStderr(`${label} printed empty output`, stderr)
 
 /** Parses the stdout of `npm audit --json` (report version 2). Throws an Error when it is not an audit report. */
 export function parseNpmAudit(stdout, stderr = '') {
@@ -71,21 +74,26 @@ function npmStyleSeverity(scanner, name, value, warnings) {
 }
 
 /**
- * One alert per package from a list of advisories, each `{ package, severity, title, url, fixAvailable }` with a pmkit
- * severity. The alert has the highest severity of its advisories, the title and URL of the first advisory with it, and a
- * fix only when every advisory has one. The same advisory on two dependency paths counts once. Keeps the first-seen order.
+ * One alert per package from a list of advisories, each `{ id, package, severity, title, url, fixAvailable }` with a pmkit
+ * severity. The same advisory (by `id`, else by title and URL) on two dependency paths counts once. The alert has the
+ * highest severity of its advisories, but an `unknown` advisory could be any severity, so it makes the alert `unknown`
+ * unless a known one is `critical`, the highest there is. The title and URL are those of the first advisory with the
+ * alert's severity. A fix only when every advisory has one. Keeps the first-seen order.
  */
 export function groupAdvisories(scanner, entries) {
   const byPackage = new Map()
+  const keyOf = (entry) => (entry.id !== undefined && entry.id !== null ? `id:${entry.id}` : `text:${entry.title}\n${entry.url}`)
   for (const entry of entries) {
     if (!byPackage.has(entry.package)) byPackage.set(entry.package, [])
     const list = byPackage.get(entry.package)
-    if (!list.some((seen) => seen.title === entry.title && seen.url === entry.url)) list.push(entry)
+    if (!list.some((seen) => keyOf(seen) === keyOf(entry))) list.push(entry)
   }
   return [...byPackage].map(([name, list]) => {
-    const top = list.reduce((best, item) => (SEVERITIES.indexOf(item.severity) < SEVERITIES.indexOf(best.severity) ? item : best))
+    const has = (severity) => list.some((item) => item.severity === severity)
+    const severity = has('critical') ? 'critical' : has('unknown') ? 'unknown' : SEVERITIES.find(has)
+    const top = list.find((item) => item.severity === severity)
     return {
-      id: `${scanner}:${name}`, scanner, package: name, title: top.title, severity: top.severity, url: top.url,
+      id: `${scanner}:${name}`, scanner, package: name, title: top.title, severity, url: top.url,
       fixAvailable: list.every((item) => item.fixAvailable), advisories: list.map((item) => ({ title: item.title, url: item.url })),
     }
   })
@@ -96,7 +104,7 @@ function npmStyleAdvisory(scanner, advisory, warnings) {
   const name = String(advisory.module_name)
   const patched = typeof advisory.patched_versions === 'string' ? advisory.patched_versions.trim() : ''
   return {
-    package: name, severity: npmStyleSeverity(scanner, name, advisory.severity, warnings),
+    id: advisory.id, package: name, severity: npmStyleSeverity(scanner, name, advisory.severity, warnings),
     title: advisory.title ?? 'no advisory title', url: advisory.url ?? null, fixAvailable: patched !== '' && patched !== '<0.0.0',
   }
 }
@@ -116,7 +124,8 @@ export function parseYarnAudit(stdout, stderr = '') {
   const error = lines.find((line) => line?.type === 'error')
   if (error) throw new Error(`yarn audit failed: ${String(error.data ?? 'no message').replace(/\s+/g, ' ').trim()}`)
   const advisories = lines.filter((line) => line?.type === 'auditAdvisory' && line.data?.advisory?.module_name !== undefined)
-  if (advisories.length === 0 && !lines.some((line) => line?.type === 'auditSummary')) throw new Error('yarn audit printed no audit report')
+  // Yarn classic writes its error and warning lines to stderr, so the reason is there.
+  if (advisories.length === 0 && !lines.some((line) => line?.type === 'auditSummary')) throw withStderr('yarn audit printed no audit report', stderr)
   const warnings = []
   const alerts = groupAdvisories('yarn-audit', advisories.map((line) => npmStyleAdvisory('yarn-audit', line.data.advisory, warnings)))
   return { alerts, warnings: [...new Set(warnings)] }
@@ -166,7 +175,7 @@ export function parsePipAudit(stdout, stderr = '') {
     for (const vuln of Array.isArray(dependency?.vulns) ? dependency.vulns : []) {
       const aliases = Array.isArray(vuln.aliases) ? vuln.aliases : []
       entries.push({
-        package: String(dependency.name), severity: 'unknown', title: aliases.length > 0 ? `${vuln.id} (${aliases.join(', ')})` : String(vuln.id),
+        id: vuln.id, package: String(dependency.name), severity: 'unknown', title: aliases.length > 0 ? `${vuln.id} (${aliases.join(', ')})` : String(vuln.id),
         url: `https://osv.dev/vulnerability/${encodeURIComponent(vuln.id)}`, fixAvailable: Array.isArray(vuln.fix_versions) && vuln.fix_versions.length > 0,
       })
     }
@@ -230,7 +239,7 @@ export function parseCargoAudit(stdout, stderr = '') {
   const list = report?.vulnerabilities?.list
   if (!Array.isArray(list)) throw new Error('cargo audit output has no vulnerabilities list')
   const entries = list.filter((entry) => entry?.advisory).map(({ advisory, versions, package: crate }) => ({
-    package: String(crate?.name ?? advisory.package), severity: cvssSeverity(advisory.cvss), title: advisory.title ?? String(advisory.id),
+    id: advisory.id, package: String(crate?.name ?? advisory.package), severity: cvssSeverity(advisory.cvss), title: advisory.title ?? String(advisory.id),
     url: advisory.url ?? `https://rustsec.org/advisories/${encodeURIComponent(advisory.id)}.html`,
     fixAvailable: Array.isArray(versions?.patched) && versions.patched.length > 0,
   }))
@@ -241,6 +250,8 @@ export function parseCargoAudit(stdout, stderr = '') {
 export const NPM_MAX_BUFFER = 256 * 1024 * 1024
 /** The longest one scanner may run, in milliseconds. */
 export const NPM_TIMEOUT_MS = 60000
+/** The longest pip-audit and cargo audit may run: pip-audit builds a virtual environment, cargo audit fetches its database. */
+export const SLOW_SCANNER_TIMEOUT_MS = 300000
 
 /** A Node package manager's executable name: Windows needs the .cmd shim, which spawnSync does not resolve on its own. */
 export const shimCommand = (name, platform = process.platform) => (platform === 'win32' ? `${name}.cmd` : name)
@@ -299,23 +310,25 @@ export const SCANNERS = [
   {
     id: 'pip-audit', label: 'pip-audit', needs: 'requirements.txt',
     detect: (root) => fs.existsSync(path.join(root, 'requirements.txt')),
-    command: 'pip-audit', args: ['-r', 'requirements.txt', '-f', 'json', '--progress-spinner', 'off'], shim: false, parse: parsePipAudit,
+    command: 'pip-audit', args: ['-r', 'requirements.txt', '-f', 'json', '--progress-spinner', 'off'], shim: false, parse: parsePipAudit, timeoutMs: SLOW_SCANNER_TIMEOUT_MS,
   },
   {
     id: 'cargo-audit', label: 'cargo audit', needs: 'Cargo.lock',
     detect: (root) => fs.existsSync(path.join(root, 'Cargo.lock')),
-    command: 'cargo', args: ['audit', '--json'], shim: false, parse: parseCargoAudit,
+    command: 'cargo', args: ['audit', '--json'], shim: false, parse: parseCargoAudit, timeoutMs: SLOW_SCANNER_TIMEOUT_MS,
   },
 ]
 
 /**
  * The text of a saved scanner report. Drops a UTF-8 BOM and decodes UTF-16 LE (a BOM of FF FE), which Windows PowerShell 5
- * writes for `>`, and normalizes CRLF. Throws the fs error when the file cannot be read.
+ * writes for `>`, and normalizes CRLF. Throws the fs error when the file cannot be read, and an error when it is empty.
  */
 export function readReport(file) {
   const bytes = fs.readFileSync(file)
-  const text = bytes[0] === 0xff && bytes[1] === 0xfe ? bytes.subarray(2).toString('utf16le') : bytes.toString('utf8').replace(/^\uFEFF/, '')
-  return text.replace(/\r\n/g, '\n')
+  const text = (bytes[0] === 0xff && bytes[1] === 0xfe ? bytes.subarray(2).toString('utf16le') : bytes.toString('utf8').replace(/^\uFEFF/, '')).replace(/\r\n/g, '\n')
+  // An empty file is a report that was never written, not a scanner that printed nothing.
+  if (text.trim() === '') throw new Error('the file is empty')
+  return text
 }
 
 const rank = (alert) => SEVERITIES.indexOf(alert.severity)
@@ -325,16 +338,16 @@ const rank = (alert) => SEVERITIES.indexOf(alert.severity)
  * never thrown, and one that skipped packages has `incomplete: true`. Alerts sort by severity, then package. `reports`
  * maps a scanner ID to a saved report `{ path, text }`: when it has any, the CLI parses them and runs no scanner.
  */
-export function collectAlerts(root, { env = process.env, timeoutMs = NPM_TIMEOUT_MS, platform = process.platform, spawn = spawnSync, reports = new Map() } = {}) {
+export function collectAlerts(root, { env = process.env, timeoutMs, platform = process.platform, spawn = spawnSync, reports = new Map() } = {}) {
   const scanners = []
   const alerts = []
   const warnings = []
   for (const scanner of SCANNERS) {
     const report = reports.get(scanner.id)
-    // With saved reports nothing runs: a report counts whatever the lockfiles are, and a detected scanner without one is skipped.
+    // With saved reports nothing runs: a report counts whatever the lockfiles are, and a detected scanner without one is
+    // skipped, unread. The CLI marks the result incomplete for it.
     if (report === undefined && reports.size > 0 && scanner.detect(root)) {
       scanners.push({ id: scanner.id, detected: true, alerts: 0, skipped: true })
-      warnings.push(`${scanner.id} was not run because --report was given; pass --report ${scanner.id}=<file> to read it`)
       continue
     }
     if (report === undefined && (reports.size > 0 || !scanner.detect(root))) {
@@ -344,7 +357,7 @@ export function collectAlerts(root, { env = process.env, timeoutMs = NPM_TIMEOUT
     const source = report === undefined ? {} : { report: report.path }
     try {
       const { stdout, stderr } = report === undefined
-        ? runScanner(scanner.command, scanner.args, { root, env, timeoutMs, platform, spawn, shim: scanner.shim, label: scanner.label })
+        ? runScanner(scanner.command, scanner.args, { root, env, timeoutMs: timeoutMs ?? scanner.timeoutMs ?? NPM_TIMEOUT_MS, platform, spawn, shim: scanner.shim, label: scanner.label })
         : { stdout: report.text, stderr: '' }
       const found = scanner.parse(stdout, stderr)
       alerts.push(...found.alerts)

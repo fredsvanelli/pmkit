@@ -226,17 +226,36 @@ test('alerts list --report reads a saved report with no lockfile and nothing on 
   assert.deepEqual(data.alerts.map((a) => a.id), ['npm-audit:lodash', 'npm-audit:tar', 'npm-audit:minimist'])
 })
 
-test('alerts list --report skips the detected scanners it was not given, with a warning, and stays complete', async () => {
+test('a detected scanner with no --report is unread, so alerts list and alerts scan are incomplete and never say no alerts', async () => {
   const { write, cli } = offline()
   write('package-lock.json', '{}\n')
   write('pnpm-lock.yaml', '\n')
-  write('saved.json', REPORT)
+  write('saved.json', JSON.stringify({ vulnerabilities: {} }))
   const result = await cli(['alerts', 'list', '--report=npm-audit=saved.json', '--json'])
   assert.equal(result.code, 0, result.stderr)
   const data = JSON.parse(result.stdout)
-  assert.equal(data.incomplete, false)
+  assert.equal(data.incomplete, true)
   assert.deepEqual(data.scanners.find((s) => s.id === 'pnpm-audit'), { id: 'pnpm-audit', detected: true, alerts: 0, skipped: true })
-  assert.match(result.stderr, /warning: pnpm-audit was not run because --report was given; pass --report pnpm-audit=<file> to read it/)
+  const text = await cli(['alerts', 'list', '--report=npm-audit=saved.json'])
+  assert.equal(text.stdout.trim(), 'no alerts read\nincomplete: pnpm-audit was not read because --report was given without it (pass --report pnpm-audit=<file>), so this result may miss alerts')
+  const scan = await cli(['alerts', 'scan', '--report=npm-audit=saved.json', '--json'])
+  assert.equal(scan.code, 0, scan.stderr)
+  const scanned = JSON.parse(scan.stdout)
+  assert.equal(scanned.incomplete, true)
+  assert.deepEqual(scanned.candidates, [])
+  assert.match(scan.stderr, /incomplete: pnpm-audit was not read because --report was given without it \(pass --report pnpm-audit=<file>\), so this list may miss alerts\. Do not create issues from this list/)
+  assert.doesNotMatch((await cli(['alerts', 'scan', '--report=npm-audit=saved.json'])).stdout, /^no alerts$/m)
+})
+
+test('alerts scan --report errors name alerts scan in the next step, and an empty report file is refused', async () => {
+  const { write, cli } = offline()
+  write('empty.json', ' \n')
+  const bogus = JSON.parse((await cli(['alerts', 'scan', '--report', 'bogus=x.json', '--json'])).stdout).error
+  assert.equal(bogus.nextStep, 'pmkit alerts scan --report npm-audit=npm-audit.json')
+  const empty = await cli(['alerts', 'list', '--report', 'npm-audit=empty.json', '--json'])
+  assert.equal(empty.code, 2)
+  assert.equal(JSON.parse(empty.stdout).error.code, 'INVALID_INPUT')
+  assert.match(JSON.parse(empty.stdout).error.message, /^cannot read empty\.json: the file is empty$/)
 })
 
 test('alerts list --report reads every scanner format, a CRLF yarn report and a UTF-16 npm report', async () => {

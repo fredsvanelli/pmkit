@@ -33,7 +33,7 @@ Issue PMK-208, a follow-up of PMK-48 (EPC-6). Status: approved by the author's o
 | `cargo-audit` | `Cargo.lock` | `cargo audit --json` | `{ vulnerabilities: { list: [{ advisory: { id, package, title, url, cvss }, versions: { patched } }] } }` |
 
 - Every scanner exits non-zero when it finds vulnerabilities, so stdout counts whatever the exit code is, as for npm.
-- The run shares one helper with npm: the 256 MiB buffer, the 60 s timeout, and the same messages for a missing executable, a timeout and an overflow. `yarn` and `pnpm` are `.cmd` shims on Windows, so they run through the shell like npm, with the same missing-shim check. `pip-audit` and `cargo` are executables and never use the shell.
+- The run shares one helper with npm: the 256 MiB buffer, the 60 s timeout (5 minutes for pip-audit and cargo audit, which build a virtual environment or fetch their database), and the same messages for a missing executable, a timeout and an overflow. `yarn` and `pnpm` are `.cmd` shims on Windows, so they run through the shell like npm, with the same missing-shim check. `pip-audit` and `cargo` are executables and never use the shell.
 - `cargo audit` with no `cargo-audit` installed prints `no such command` on stderr and nothing on stdout: an empty stdout is an error that carries stderr, like npm.
 - **One alert per package**, so the `alert-key:` of `alerts scan` (scanner and package) stays stable. Yarn, pnpm and cargo report one entry per advisory: the parser groups them by package. The alert severity is the highest of its advisories, and the title and URL come from the advisory with that severity, the first on a tie (the PMK-185 rule). `advisories` keeps every advisory.
 - Alert IDs are `<scanner>:<package>`, as before.
@@ -47,6 +47,7 @@ pip-audit gives no severity, and a RustSec advisory often has no CVSS vector. Th
 
 - pip-audit alerts are always `unknown`.
 - cargo alerts take the severity of the CVSS 3.x base score of `advisory.cvss` (0.1 to 3.9 low, 4.0 to 6.9 medium, 7.0 to 8.9 high, 9.0 to 10 critical, 0.0 low). No vector, or a vector that is not CVSS 3, is `unknown`.
+- A package with several advisories takes the highest severity, but an `unknown` advisory could be any severity, so it makes the package `unknown` unless another advisory is `critical` (changed after the review of PR #176). Advisories are deduplicated by their ID.
 - yarn and pnpm use the npm names (`moderate` is `medium`, `info` is `low`). An unknown name is `low` with a warning, as for npm.
 - `--severity` accepts `unknown`. `unknown` sorts after `low`.
 - `priorityFor('unknown')` is `null`. Step 2 of `/pmkit:issues:security-alerts` already asks for a value when a candidate has a `null` priority, so an alert of unknown severity never gets a priority made up for it.
@@ -54,7 +55,7 @@ pip-audit gives no severity, and a RustSec advisory often has no CVSS vector. Th
 ### Saved reports
 
 - `--report <scanner>=<file>`, repeatable, one scanner per flag. Commas are not split, so a path can hold one. The file is the scanner's `--json` output saved, for example `npm audit --json > npm-audit.json`. A relative path resolves from the current directory.
-- With at least one `--report`, nothing is run: the CLI reads only the given files. A detected scanner without a report is listed with `skipped: true` and a warning says it was not read (`pnpm-audit was not run because --report was given; pass --report pnpm-audit=<file> to read it`). It does not make the result `incomplete`, because the user chose the scanners, and fewer alerts never create a duplicate issue.
+- With at least one `--report`, nothing is run: the CLI reads only the given files. A detected scanner without a report is listed with `skipped: true`, and it makes the result `incomplete` like a failed scanner, with the line `incomplete: pnpm-audit was not read because --report was given without it (pass --report pnpm-audit=<file>), ...` (changed after the review of PR #176: an unread scanner never becomes `no alerts`).
 - A reported scanner counts as detected, whatever lockfile the repository has, and its entry carries `report: <path>`.
 - An unknown scanner ID, a missing `=`, a scanner given twice or an unreadable file is `INVALID_INPUT`, before any work. A file whose content does not parse is a scanner error, like a bad stdout: a warning, `incomplete: true`.
 - The file text drops a UTF-8 BOM and is decoded as UTF-16 LE when it starts with `FF FE`, because Windows PowerShell 5 writes `>` redirections that way. CRLF is normalized.
