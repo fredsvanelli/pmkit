@@ -132,6 +132,13 @@ test('release stays NOT_SUPPORTED on Linear and says releases are not mapped', a
   assert.deepEqual(fake.mutations, [])
 })
 
+test('bulk unarchive is NOT_SUPPORTED on Linear before any read, even when nothing is archived', async () => {
+  const { fake, fetch } = withIssues(['One'])
+  const result = await bulk(setup(), fetch, ['unarchive', '--category', 'backlog', '--archived', '--dry-run'])
+  assert.equal(result.body.error.code, 'NOT_SUPPORTED')
+  assert.deepEqual(fake.mutations, [])
+})
+
 test('due, type and archive are written on Linear', async () => {
   const { fake, fetch } = withIssues(['One', 'Two'])
   const context = setup()

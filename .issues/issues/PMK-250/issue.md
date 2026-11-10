@@ -2,13 +2,14 @@
 id: PMK-250
 title: Unarchive issues on the Local tracker
 type: feature
-status: backlog
+status: in_review
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
+branch: pmk-250-unarchive-issues-on-the-local-tracker
 created: 2026-11-10T20:03:45.264Z
-updated: 2026-11-10T21:22:26Z
+updated: 2026-11-10T22:00:38Z
 ---
 
 ## Description
@@ -35,7 +36,7 @@ PMK-226 added `archive` as a bulk change. On the Local tracker an archived issue
 
 ## Acceptance criteria
 
-- [ ] An archived Local issue shows again in `issues list` after it is unarchived, and its history shows the unarchive
-- [ ] `--dry-run` shows the change and writes nothing
-- [ ] Unarchiving an issue that is not archived changes nothing and says so
-- [ ] A bulk unarchive brings back every archived issue its filter matches, after the usual preview
+- [x] An archived Local issue shows again in `issues list` after it is unarchived, and its history shows the unarchive
+- [x] `--dry-run` shows the change and writes nothing
+- [x] Unarchiving an issue that is not archived changes nothing and says so
+- [x] A bulk unarchive brings back every archived issue its filter matches, after the usual preview

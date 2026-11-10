@@ -60,6 +60,7 @@ export const CASES = {
   'default-branch': () => [[]],
   'text redact': () => [['--file', input('redact.txt')]],
   'issues archive': (a) => [[a.issue]],
+  'issues unarchive': (a) => [[a.issue]],
   'issues delete': (a) => [[a.issue]],
   'issues restore': (a) => [[a.issue]],
   // Without --expect the real run is refused, so the goldens record the preview and that refusal; scripts/cli-bulk.test.mjs covers the writes.

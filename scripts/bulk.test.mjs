@@ -156,6 +156,22 @@ test('due, type and archive call updateIssue and archive, and none clears due', 
   assert.deepEqual(calls[3], ['archive', 'A', actor, { dryRun: true }])
 })
 
+test('unarchive takes no value and calls the contract unarchive', async () => {
+  calls.length = 0
+  const change = parseChange('unarchive', undefined, {})
+  assert.equal(change.text, 'unarchive')
+  assert.throws(() => parseChange('unarchive', 'yes', {}), (error) => error.code === 'INVALID_INPUT' && /no value/.test(error.message))
+  await change.apply(tracker, issue('A'), actor, { dryRun: true })
+  assert.deepEqual(calls[0], ['unarchive', 'A', actor, { dryRun: true }])
+})
+
+test('checkBulkFilter for unarchive needs archived and still refuses a limit', () => {
+  assert.doesNotThrow(() => checkBulkFilter({ labels: ['x'], archived: true }, 'the filter', undefined, 'unarchive'))
+  assert.throws(() => checkBulkFilter({ archived: true }, 'the filter', undefined, 'unarchive'), /narrows/)
+  assert.throws(() => checkBulkFilter({ labels: ['x'] }, 'the filter', undefined, 'unarchive'), (error) => error.code === 'INVALID_INPUT' && /needs --archived/.test(error.message))
+  assert.throws(() => checkBulkFilter({ labels: ['x'], archived: true, limit: 1 }, 'the filter', undefined, 'unarchive'), /limit/)
+})
+
 test('archive takes no value and every other change still needs one', () => {
   assert.equal(parseChange('archive', undefined, {}).text, 'archive')
   assert.throws(() => parseChange('archive', 'yes', {}), (error) => error.code === 'INVALID_INPUT' && /no value/.test(error.message))

@@ -411,3 +411,76 @@ test('the archive preview warns that archived issues leave every list', async ()
     assert.match(dry.body.warnings.join('\n'), /archived issues .*never matched/)
   })
 })
+
+// PMK-250: the way back of archive.
+test('issues unarchive brings an archived issue back: dry run writes nothing, the history shows it, a second run says nothing changed', async () => {
+  await withRepo(async (root, ids) => {
+    await ok(root, ['issues', 'archive', ids.A])
+    assert.ok(!(await ok(root, ['issues', 'list'])).issues.some((issue) => issue.id === ids.A))
+    const before = hashTree(root, ['.issues/.cache', '.git'])
+    const dry = await cli(root, ['issues', 'unarchive', ids.A, '--dry-run'])
+    assert.equal(dry.code, 0, JSON.stringify(dry.body))
+    assert.equal(dry.body.after.archived, false)
+    assert.equal(hashTree(root, ['.issues/.cache', '.git']), before)
+    const real = await ok(root, ['issues', 'unarchive', ids.A])
+    assert.equal(real.before.archived, true)
+    assert.equal(real.after.archived, false)
+    assert.ok((await ok(root, ['issues', 'list'])).issues.some((issue) => issue.id === ids.A))
+    const history = fs.readFileSync(path.join(root, '.issues/issues', ids.A, 'events.jsonl'), 'utf8')
+    assert.match(history, /"op":"unarchive"/)
+    const again = await ok(root, ['issues', 'unarchive', ids.A])
+    assert.equal(again.unchanged, true)
+    assert.match(again.message, new RegExp(`${ids.A} is not archived, so nothing changed`))
+    assert.equal(events(root, ids.A), 3)
+  })
+})
+
+test('issues unarchive says in text that an issue that is not archived is unchanged', async () => {
+  await withRepo(async (root, ids) => {
+    const result = await run(['issues', 'unarchive', ids.A], { cwd: root, env: ENV, adapters: ADAPTERS })
+    assert.equal(result.code, 0)
+    assert.match(result.stdout, /is not archived, so nothing changed/)
+  })
+})
+
+test('bulk unarchive brings back every archived issue its filter matches, after the preview and digest', async () => {
+  await withRepo(async (root, ids) => {
+    for (const id of [ids.A, ids.B, ids.C]) await ok(root, ['issues', 'archive', id])
+    const dry = await bulk(root, 'unarchive', '--label', 'legacy', '--archived', '--dry-run')
+    assert.equal(dry.code, 0, JSON.stringify(dry.body))
+    // D is live and C does not match the label, so only A and B are previewed.
+    assert.deepEqual(dry.body.items.map((item) => [item.id, item.state]), [[ids.A, 'change'], [ids.B, 'change']])
+    assert.ok(dry.body.items.every((item) => item.changes.some((change) => change.field === 'archived' && change.to === false)))
+    const refused = await bulk(root, 'unarchive', '--label', 'legacy', '--archived')
+    assert.equal(refused.body.error.code, 'INVALID_INPUT')
+    const real = await bulk(root, 'unarchive', '--label', 'legacy', '--archived', '--expect', dry.body.digest)
+    assert.equal(real.code, 0, JSON.stringify(real.body))
+    assert.deepEqual(real.body.applied, [ids.A, ids.B])
+    const listed = (await ok(root, ['issues', 'list', '--label', 'legacy'])).issues.map((issue) => issue.id)
+    assert.deepEqual(listed.sort(), [ids.A, ids.B, ids.D].sort())
+    assert.deepEqual((await ok(root, ['issues', 'list', '--archived', '--category', 'backlog,todo'])).issues.filter((issue) => issue.archived).map((issue) => issue.id), [ids.C])
+  })
+})
+
+test('bulk unarchive without --archived or with a limit is INVALID_INPUT', async () => {
+  await withRepo(async (root) => {
+    const plain = await bulk(root, 'unarchive', '--label', 'legacy', '--dry-run')
+    assert.equal(plain.body.error.code, 'INVALID_INPUT')
+    assert.match(plain.body.error.message, /needs --archived/)
+    const limited = await bulk(root, 'unarchive', '--label', 'legacy', '--archived', '--limit', '1', '--dry-run')
+    assert.equal(limited.body.error.code, 'INVALID_INPUT')
+  })
+})
+
+test('bulk unarchive with a view whose filter has archived works; a view without it is refused', async () => {
+  await withRepo(async (root, ids) => {
+    await ok(root, ['issues', 'archive', ids.A])
+    await ok(root, ['views', 'save', 'arch', '--label', 'legacy', '--archived'])
+    await ok(root, ['views', 'save', 'live', '--label', 'legacy'])
+    const dry = await bulk(root, 'unarchive', '--view', 'arch', '--dry-run')
+    assert.equal(dry.code, 0, JSON.stringify(dry.body))
+    assert.deepEqual(dry.body.items.map((item) => item.id), [ids.A])
+    const live = await bulk(root, 'unarchive', '--view', 'live', '--dry-run')
+    assert.equal(live.body.error.code, 'INVALID_INPUT')
+  })
+})

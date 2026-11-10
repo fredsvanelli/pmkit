@@ -39,6 +39,16 @@ test('readEvents handles a missing file, a BOM, CRLF and events missing keys', (
   assert.match(problems[0], /^line 3: /)
 })
 
+test('an archive, unarchive, archive in one second keeps all three, and a merge duplicate of one still collapses', () => {
+  const at = '2026-10-01T10:00:00Z'
+  const line = (op) => JSON.stringify({ at, by: 'f', op })
+  const { events } = readEvents(write(tmp(), 'events.jsonl', [line('archive'), line('unarchive'), line('archive')].join('\n')))
+  assert.deepEqual(events.map((event) => event.op), ['archive', 'unarchive', 'archive'])
+  assert.equal(replay(events).archived, true)
+  const merged = readEvents(write(tmp(), 'events2.jsonl', [line('archive'), line('archive')].join('\n')))
+  assert.equal(merged.events.length, 1)
+})
+
 test('duplicates ignore key order and ties keep file order', () => {
   const a = { at: '2026-10-01T10:00:00Z', by: 'f', op: 'comment', to: 'one' }
   const b = { at: '2026-10-01T10:00:00Z', by: 'f', op: 'comment', to: 'two' }
@@ -59,6 +69,11 @@ test('link and unlink edit the named list', () => {
     { at: '2026-10-02T15:00:00Z', by: 'f', op: 'archive' },
   ]
   assert.deepEqual(replay(events), { title: 'A', status: 'todo', blocked_by: ['ISS-2'], archived: true })
+})
+
+test('an unarchive event drops archived again, so the replay equals the file and drift finds nothing', () => {
+  const events = [clean[0], { at: '2026-10-02T15:00:00Z', by: 'f', op: 'archive' }, { at: '2026-10-02T16:00:00Z', by: 'f', op: 'unarchive' }]
+  assert.deepEqual(replay(events), { title: 'A', status: 'todo' })
 })
 
 test('appendEvents writes LF lines with keys in order and skips undefined', () => {

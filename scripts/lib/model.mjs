@@ -2,7 +2,7 @@
 
 export const CATEGORIES = ['triage', 'backlog', 'todo', 'in_progress', 'in_review', 'done', 'canceled']
 export const TERMINAL = ['done', 'canceled']
-export const EVENT_OPS = ['create', 'update', 'move', 'assign', 'link', 'unlink', 'comment', 'log_time', 'archive']
+export const EVENT_OPS = ['create', 'update', 'move', 'assign', 'link', 'unlink', 'comment', 'log_time', 'archive', 'unarchive']
 export const LINK_KINDS = ['blocks', 'related', 'duplicate']
 
 export const isCategory = (value) => CATEGORIES.includes(value)

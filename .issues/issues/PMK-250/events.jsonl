@@ -1,3 +1,12 @@
 {"at":"2026-11-10T20:03:45Z","by":"fred","op":"create","to":{"id":"PMK-250","title":"Unarchive issues on the Local tracker","type":"feature","status":"backlog","priority":"low","estimate":2,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-10T20:03:45.264Z","updated":"2026-11-10T20:03:45Z"}}
 {"at":"2026-11-10T21:16:03Z","by":"fred","op":"update","field":"parent","from":null,"to":"EPC-6"}
 {"at":"2026-11-10T21:22:26Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-10T21:37:53Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-10T21:37:56Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-250-unarchive-issues-on-the-local-tracker"}
+{"at":"2026-11-10T21:39:03Z","by":"fred","op":"comment","to":"2026-11-10T21-39-03Z-fred.md"}
+{"at":"2026-11-10T21:55:08Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T21:55:09Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T21:55:09Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T21:55:09Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T22:00:38Z","by":"fred","op":"comment","to":"2026-11-10T22-00-38Z-fred.md"}
+{"at":"2026-11-10T22:00:38Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

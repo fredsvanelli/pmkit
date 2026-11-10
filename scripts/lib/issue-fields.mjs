@@ -28,7 +28,7 @@ export const OWNED = {
 export function checkKeys(input, allowed) {
   for (const key of Object.keys(input)) {
     if (allowed.includes(key)) continue
-    if (Object.hasOwn(OWNED, key)) throw new PmkitError('INVALID_INPUT', `${key} cannot be set here`, OWNED[key] || undefined)
+    if (Object.hasOwn(OWNED, key)) throw new PmkitError('INVALID_INPUT', `${key} cannot be set here`, (key === 'archived' && input[key] === false ? 'pmkit issues unarchive' : OWNED[key]) || undefined)
     throw new PmkitError('INVALID_INPUT', `unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
   }
 }
