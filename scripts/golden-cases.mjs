@@ -94,12 +94,14 @@ export const CASES = {
   'customers list': () => [[]],
   'customers show': (a) => [[a.customer], ['Acme Corp']],
   'customers create': () => [['--name', 'Golden customer', '--tier', 'gold', '--revenue', '5000']],
+  'customers update': (a) => [[a.customer, '--tier', 'platinum', '--revenue', '9000'], ['Acme Corp', '--owner', 'none'], ['Nobody here', '--tier', 'gold']],
   // REQ-6J8P is the open request of no-sprints, so accept and decline show real output there and NOT_FOUND elsewhere.
   'requests list': () => [[], ['--state', 'all']],
   'requests get': (a) => [[a.request]],
   'requests create': (a) => [['--title', 'Golden request', '--from', 'sales', '--important'], ['--title', 'Golden demand', '--issue', a.issue]],
   'requests accept': (a) => [[a.request, a.issue]],
   'requests decline': (a) => [[a.request, '--reason', 'Not this quarter']],
+  'requests update': (a) => [[a.request, '--title', 'Golden title']],
   'demand list': () => [[]],
   // mark-read is not a tracker write, so only the cases below run. A key no item has is the error case.
   'inbox list': () => [[], ['--all'], ['--as', 'ana', '--since', '2026-10-22T00:00:00Z']],

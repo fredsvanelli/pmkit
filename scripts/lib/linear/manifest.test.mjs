@@ -102,13 +102,13 @@ test('a Business workspace with releases and customers on', async () => {
   assert.deepEqual(entry.demand_signals, {
     id: 'demand_signals',
     path: 'absent',
-    detail: { workspace: 'native', unsupported: ['listCustomers', 'getCustomer', 'createCustomer', 'createRequest', 'listDemandSignals'] },
+    detail: { workspace: 'native', unsupported: ['listCustomers', 'getCustomer', 'createCustomer', 'updateCustomer', 'createRequest', 'listDemandSignals'] },
     enableHint: 'The Linear adapter serves customer requests through linear customers only; Linear offers them on this workspace',
   })
   assert.deepEqual(entry.request_queue, {
     id: 'request_queue',
     path: 'absent',
-    detail: { workspace: 'conditional', unsupported: ['listRequests', 'getRequest', 'createRequest', 'acceptRequest', 'declineRequest'] },
+    detail: { workspace: 'conditional', unsupported: ['listRequests', 'getRequest', 'createRequest', 'updateRequest', 'acceptRequest', 'declineRequest'] },
     enableHint: 'The Linear adapter does not serve Asks yet; Linear offers them on this workspace',
   })
   // `requests create` is served by demand_signals and request_queue, so both lists name createRequest.

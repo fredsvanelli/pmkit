@@ -71,7 +71,7 @@ function workspaceAnswers(raw) {
     demand_signals: customersEnabled
       ? {
         path: 'absent',
-        detail: { workspace: 'native', unsupported: ['listCustomers', 'getCustomer', 'createCustomer', 'createRequest', 'listDemandSignals'] },
+        detail: { workspace: 'native', unsupported: ['listCustomers', 'getCustomer', 'createCustomer', 'updateCustomer', 'createRequest', 'listDemandSignals'] },
         enableHint: 'The Linear adapter serves customer requests through linear customers only; Linear offers them on this workspace',
       }
       : { path: 'absent', enableHint: 'Linear customer requests need the Business or Enterprise plan and customers turned on in the workspace settings' },
@@ -79,7 +79,7 @@ function workspaceAnswers(raw) {
     request_queue: business
       ? {
         path: 'absent',
-        detail: { workspace: 'conditional', unsupported: ['listRequests', 'getRequest', 'createRequest', 'acceptRequest', 'declineRequest'] },
+        detail: { workspace: 'conditional', unsupported: ['listRequests', 'getRequest', 'createRequest', 'updateRequest', 'acceptRequest', 'declineRequest'] },
         enableHint: 'The Linear adapter does not serve Asks yet; Linear offers them on this workspace',
       }
       : { path: 'absent', enableHint: 'Linear Asks need the Business or Enterprise plan' },

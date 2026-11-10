@@ -364,3 +364,62 @@ test('listDemandSignals says what each problem is about', () => {
   const { problems } = tracker.listDemandSignals()
   assert.deepEqual(problems.map((problem) => [problem.id, problem.about]).sort(), [['CUS-4', 'customer'], ['ISS-ZZZZ', 'issue'], ['REQ-2', 'request']])
 })
+
+// PMK-221: customers update.
+test('updateCustomer edits each field, clears status, tier and owner with none, and keeps comments, unknown keys and notes', () => {
+  const { dir, write, tracker } = setup()
+  write('customers', 'CUS-1.md', '---\n# the account\nname: Acme\nplan: gold\nstatus: active\ntier: t1\nowner: fred\n---\n\nNotes.\n')
+  const { before, after } = tracker.updateCustomer('acme', { name: 'Acme Corp', tier: 'enterprise', revenue: 5, size: 1.5, status: 'none', owner: 'NONE' }, 'fred')
+  assert.equal(before.name, 'Acme')
+  assert.deepEqual(after, {
+    id: 'CUS-1', name: 'Acme Corp', status: null, tier: { id: 'enterprise', name: 'enterprise' }, revenue: 5, size: 1.5, owner: null, requests: 0, url: null, notes: 'Notes.',
+  })
+  const text = fs.readFileSync(path.join(dir('customers'), 'CUS-1.md'), 'utf8')
+  for (const kept of ['# the account\n', 'plan: gold\n', '\nNotes.\n']) assert.ok(text.includes(kept), kept)
+  assert.ok(!/^status:|^owner:/m.test(text), text)
+  assert.equal(tracker.updateCustomer('CUS-1', { owner: 'fred' }, 'fred').after.owner.id, 'fred')
+})
+
+test('updateCustomer with no change or a dry run writes nothing, and refuses bad values', () => {
+  const { root, write, tracker } = setup()
+  write('customers', 'CUS-1.md', '---\r\nname: Acme\r\nrevenue: 10\r\n---\r\n')
+  const hash = hashTree(root)
+  const same = tracker.updateCustomer('CUS-1', { revenue: 10, tier: 'none' }, 'fred')
+  assert.deepEqual(same.before, same.after)
+  const dry = tracker.updateCustomer('CUS-1', { revenue: 20 }, 'fred', { dryRun: true })
+  assert.equal(dry.after.revenue, 20)
+  assert.deepEqual(hashTree(root), hash)
+  for (const changes of [{}, { revenue: -1 }, { revenue: '10' }, { size: 'big' }, { owner: 'nobody' }, { name: '' }, { name: 'A\nB' }, { url: 'x' }]) {
+    assert.throws(() => tracker.updateCustomer('CUS-1', changes, 'fred'), code('INVALID_INPUT'), JSON.stringify(changes))
+  }
+  assert.throws(() => tracker.updateCustomer('CUS-9', { revenue: 1 }, 'fred'), code('NOT_FOUND'))
+  assert.deepEqual(hashTree(root), hash)
+})
+
+// PMK-221: requests update edits the text of a request.
+test('updateRequest edits the title and the body, keeps triaged, unknown keys and comments', () => {
+  const { dir, write, tracker } = setup()
+  write('requests', 'REQ-1.md', '---\n# from the call\ntitle: CSV\nsource_ticket: 42\nstate: declined\nreason: later\ntriaged: 2026-10-23T12:00:00Z\ntriaged_by: fred\n---\n\nOld text.\n')
+  const { before, after } = tracker.updateRequest('req-1', { title: 'CSV export', body: 'New text.\r\nSecond line.' }, 'fred')
+  assert.deepEqual([before.title, before.body], ['CSV', 'Old text.'])
+  assert.deepEqual([after.title, after.body, after.state, after.reason, after.triaged], ['CSV export', 'New text.\nSecond line.', 'declined', 'later', { at: '2026-10-23T12:00:00Z', by: 'fred' }])
+  const text = fs.readFileSync(path.join(dir('requests'), 'REQ-1.md'), 'utf8')
+  assert.equal(text, '---\n# from the call\ntitle: CSV export\nsource_ticket: 42\nstate: declined\nreason: later\ntriaged: 2026-10-23T12:00:00Z\ntriaged_by: fred\n---\n\nNew text.\nSecond line.\n')
+  tracker.updateRequest('REQ-1', { body: '' }, 'fred')
+  assert.ok(fs.readFileSync(path.join(dir('requests'), 'REQ-1.md'), 'utf8').endsWith('triaged_by: fred\n---\n'))
+})
+
+test('updateRequest with the same text or a dry run writes nothing, and refuses bad input', () => {
+  const { root, write, tracker } = setup()
+  write('requests', 'REQ-1.md', '---\ntitle: CSV\n---\n\nText.\n')
+  const hash = hashTree(root)
+  const same = tracker.updateRequest('REQ-1', { title: 'CSV', body: 'Text.\n' }, 'fred')
+  assert.deepEqual(same.before, same.after)
+  assert.equal(tracker.updateRequest('REQ-1', { title: 'Other' }, 'fred', { dryRun: true }).after.title, 'Other')
+  assert.deepEqual(hashTree(root), hash)
+  for (const changes of [{}, { title: '' }, { title: 'A\nB' }, { state: 'open' }]) {
+    assert.throws(() => tracker.updateRequest('REQ-1', changes, 'fred'), code('INVALID_INPUT'), JSON.stringify(changes))
+  }
+  assert.throws(() => tracker.updateRequest('REQ-9', { title: 'T' }, 'fred'), code('NOT_FOUND'))
+  assert.deepEqual(hashTree(root), hash)
+})

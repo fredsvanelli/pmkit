@@ -2319,6 +2319,37 @@ test('customers, requests and demand record a request, accept it into an issue a
   assert.deepEqual(json(root, ['demand', 'list']).signals, [])
 })
 
+test('customers update edits a customer by name, previews with --dry-run and refuses a bad value (PMK-221)', () => {
+  const root = makeRepo('team')
+  const customer = json(root, ['customers', 'create', '--name', 'Acme', '--tier', 'gold', '--owner', 'fred']).after
+  const hash = hashTree(root)
+  const dry = json(root, ['customers', 'update', 'acme', '--revenue', '2000', '--size', '4.5', '--tier', 'none', '--dry-run'])
+  assert.deepEqual([dry.before.revenue, dry.after.revenue, dry.after.size, dry.after.tier], [null, 2000, 4.5, null])
+  assert.deepEqual(hashTree(root), hash)
+  const updated = json(root, ['customers', 'update', customer.id, '--revenue', '2000', '--status', 'active', '--owner', 'none', '--name', 'Acme Corp']).after
+  assert.deepEqual([updated.name, updated.revenue, updated.status, updated.owner], ['Acme Corp', 2000, { id: 'active', name: 'active' }, null])
+  assert.match(run(root, ['customers', 'update', customer.id, '--tier', 'silver']).stdout, /tier/)
+  assert.equal(errorOf(run(root, ['customers', 'update', customer.id, '--revenue', 'lots', '--json'])).code, 'INVALID_INPUT')
+  assert.equal(errorOf(run(root, ['customers', 'update', customer.id, '--json'])).code, 'INVALID_INPUT')
+})
+
+test('requests update edits the title and the body from files and refuses --title with --title-file (PMK-221)', () => {
+  const root = makeRepo('team')
+  const request = json(root, ['requests', 'create', '--title', 'CSV']).after
+  const dir = tempDir('pmkit-req-')
+  fs.writeFileSync(path.join(dir, 'title.txt'), 'CSV export `$(touch x)`\n')
+  fs.writeFileSync(path.join(dir, 'body.md'), 'Columns.\r\n')
+  const hash = hashTree(root)
+  const dry = json(root, ['requests', 'update', request.id, '--title-file', path.join(dir, 'title.txt'), '--dry-run'])
+  assert.equal(dry.after.title, 'CSV export `$(touch x)`')
+  assert.deepEqual(hashTree(root), hash)
+  const updated = json(root, ['requests', 'update', request.id, '--title-file', path.join(dir, 'title.txt'), '--body-file', path.join(dir, 'body.md')]).after
+  assert.deepEqual([updated.title, updated.body, updated.state], ['CSV export `$(touch x)`', 'Columns.', 'open'])
+  assert.equal(json(root, ['requests', 'update', request.id, '--title', 'CSV']).after.title, 'CSV')
+  assert.equal(errorOf(run(root, ['requests', 'update', request.id, '--title', 'A', '--title-file', path.join(dir, 'title.txt'), '--json'])).code, 'INVALID_INPUT')
+  assert.equal(errorOf(run(root, ['requests', 'update', request.id, '--json'])).code, 'INVALID_INPUT')
+})
+
 test('a broken request file is a warning that points to pmkit validate, in the text and in the JSON', () => {
   const root = makeRepo('team')
   fs.mkdirSync(path.join(root, '.issues', 'requests'), { recursive: true })

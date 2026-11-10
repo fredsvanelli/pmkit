@@ -395,6 +395,18 @@ const problemWarnings = (problems) => problems.map((problem) => `${problemLine(p
 /** A goal list problem as a warning. A cut Linear read (INCOMPLETE) is no file problem, so validate is no help there. */
 const goalProblemWarning = (problem) => (problem.code === 'INCOMPLETE' ? problemLine(problem) : `${problemLine(problem)}; run pmkit validate`)
 
+/**
+ * The customer fields of customers create and update, from their flags. A number the flag spells as digits becomes a number;
+ * anything else goes through as text and the tracker refuses it.
+ */
+function customerInput(ctx) {
+  const input = {}
+  for (const key of ['name', 'status', 'tier', 'owner']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
+  if (ctx.opt('revenue') !== undefined) input.revenue = /^\d+$/.test(ctx.opt('revenue')) ? Number(ctx.opt('revenue')) : ctx.opt('revenue')
+  if (ctx.opt('size') !== undefined) input.size = /^\d+(\.\d+)?$/.test(ctx.opt('size')) ? Number(ctx.opt('size')) : ctx.opt('size')
+  return input
+}
+
 /** A table of requests in the order given: id, title, state, customer, where it came from and the issue. */
 const requestTable = (requests) => table(
   ['ID', 'Title', 'State', 'Customer', 'From', 'Issue', 'Created'],
@@ -1051,12 +1063,17 @@ export const COMMANDS = [
     flags: ['name', 'status', 'tier', 'revenue', 'size', 'owner'],
     run: async (ctx) => {
       if (ctx.opt('name') === undefined) throw usageError('customers create needs --name', 'pmkit customers create --name "..."')
-      const input = { name: ctx.opt('name') }
-      for (const key of ['status', 'tier', 'owner']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
-      // A number the flag spells as digits becomes a number; anything else goes through as text and the tracker refuses it.
-      if (ctx.opt('revenue') !== undefined) input.revenue = /^\d+$/.test(ctx.opt('revenue')) ? Number(ctx.opt('revenue')) : ctx.opt('revenue')
-      if (ctx.opt('size') !== undefined) input.size = /^\d+(\.\d+)?$/.test(ctx.opt('size')) ? Number(ctx.opt('size')) : ctx.opt('size')
+      const input = customerInput(ctx)
       const result = await (await ctx.tracker()).createCustomer(input, await ctx.actor(), { dryRun: ctx.dryRun })
+      return { data: result, text: writeText(result, { ...ctx, record: customerRecord }), commit: result.after.id }
+    },
+  },
+  {
+    name: 'customers update', summary: 'edits a customer, by id or exact name; none clears the status, tier or owner',
+    usage: '<id or name> [--name n] [--status s|none] [--tier t|none] [--revenue n] [--size n] [--owner member|none]', write: true,
+    args: ['customer'], flags: ['name', 'status', 'tier', 'revenue', 'size', 'owner'],
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).updateCustomer(ctx.args[0], customerInput(ctx), await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: customerRecord }), commit: result.after.id }
     },
   },
@@ -1095,6 +1112,18 @@ export const COMMANDS = [
     name: 'requests accept', summary: 'accepts a request into an existing issue', usage: '<id> <issue>', write: true, args: ['id', 'issue'], flags: [],
     run: async (ctx) => {
       const result = await (await ctx.tracker()).acceptRequest(ctx.args[0], ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })
+      return { data: result, text: writeText(result, { ...ctx, record: requestRecord }), commit: result.after.id, warnings: problemWarnings(result.problems) }
+    },
+  },
+  {
+    name: 'requests update', summary: 'edits the title or the body of a request; the state and the triage stay',
+    usage: '<id> [--title t | --title-file f] [--body-file f]', write: true, args: ['id'], flags: ['title', 'title-file', 'body-file'],
+    run: async (ctx) => {
+      const changes = {}
+      const title = lineFromFlag(ctx.opt, 'title')
+      if (title !== undefined) changes.title = title
+      if (ctx.opt('body-file') !== undefined) changes.body = readInput(ctx.opt('body-file'))
+      const result = await (await ctx.tracker()).updateRequest(ctx.args[0], changes, await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: requestRecord }), commit: result.after.id, warnings: problemWarnings(result.problems) }
     },
   },
