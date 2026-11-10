@@ -2,6 +2,7 @@
 // See docs/superpowers/specs/2026-10-28-pmk-37-linear-cycles-to-sprints-design.md, "Which operations are native".
 
 import { PmkitError } from '../errors.mjs'
+import { baseField } from '../local/sprints.mjs'
 
 const CYCLE_NUMBER = /^[1-9][0-9]*$/
 
@@ -38,6 +39,7 @@ export function toSprint(node, local = {}) {
     ...(state === 'closed' && node.completedAt ? { closed: node.completedAt } : {}),
     capacity: local.capacity ?? {},
     daysOff: local.daysOff ?? {},
+    ...baseField(local.capacityBase ?? {}),
   }
 }
 

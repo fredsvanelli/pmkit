@@ -1061,6 +1061,25 @@ test('cycle capacity --set and --days-off write .pmkit/capacity.yaml and read ba
   assert.deepEqual(fake.mutations, [])
 })
 
+test('cycle capacity current writes the active cycle, and a member outside the configured team is refused', async () => {
+  const outsider = { id: 'user-5', name: 'Outsider', displayName: 'outsider', email: 'user-5@example.com', active: true, guest: false, app: false, teams: { nodes: [{ id: 'team-other' }] } }
+  const users = [...ACME_USERS, outsider]
+  const teams = [CYCLE_TEAM]
+  const fake = fakeLinearIssues({ teams, cycles: CYCLES, users })
+  const fetch = fakeLinearFetch({ ...fakeWorkspace({ teams, users }), ...fake.routes })
+  const context = setup({ edit: withTeam })
+  const ok = await cycleCli(context, ['cycle', 'capacity', 'current', '--set', 'user-1=8'], fetch)
+  assert.equal(ok.code, 0, ok.stdout + ok.stderr)
+  assert.equal(JSON.parse(ok.stdout).after.id, '2')
+  const refused = await cycleCli(context, ['cycle', 'capacity', '2', '--set', 'user-5=3'], fetch)
+  assert.equal(refused.code, 2)
+  assert.equal(errorOf(refused).code, 'INVALID_INPUT')
+  assert.match(errorOf(refused).nextStep, /user-1/)
+  assert.doesNotMatch(errorOf(refused).nextStep, /user-5/)
+  const refusedOff = await cycleCli(context, ['cycle', 'capacity', '2', '--days-off', 'user-5=2026-10-21'], fetch)
+  assert.equal(refusedOff.code, 2)
+})
+
 test('cycle open and cycle close exit 2 with NOT_SUPPORTED, the reason and the next step', async () => {
   const { fake, fetch } = withCycles()
   const context = setup({ edit: withTeam })

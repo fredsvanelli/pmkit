@@ -31,16 +31,6 @@ export function workingDays(sprint, daysOff = []) {
   return days
 }
 
-/** The capacity map after the pairs: a number sets the member, null removes it. */
-export function mergeCapacity(current, set) {
-  const merged = { ...current }
-  for (const [member, amount] of Object.entries(set)) {
-    if (amount === null) delete merged[member]
-    else merged[member] = amount
-  }
-  return merged
-}
-
 /** Refuses a name that is an agent or not one of the human members of the scope. `humans` are the member ids. */
 export function checkMembers(names, humans) {
   for (const name of names) {
@@ -58,3 +48,54 @@ export function changeList(before, after, members) {
   }))
   return entries.filter((entry) => entry.capacity.before !== entry.capacity.after || entry.daysOff.before.join() !== entry.daysOff.after.join())
 }
+
+/** The days-off map after the pairs of `--days-off`: a list sets the member, null clears it. */
+export function mergeDaysOff(current, off) {
+  const merged = { ...current }
+  for (const [member, dates] of Object.entries(off)) {
+    if (dates === null) delete merged[member]
+    else merged[member] = dates
+  }
+  return merged
+}
+
+const MICRO = 1e6
+const isBase = (entry) => entry !== null && typeof entry === 'object' && Number.isFinite(entry.capacity) && entry.capacity >= 0 && Number.isInteger(entry.workingDays) && entry.workingDays > 0
+
+/** The capacity a base gives for `days` working days. At the base's own working days it is the base itself, so it goes back exactly. */
+const scaleTo = (base, days) => (days === base.workingDays ? base.capacity : Math.round((base.capacity * days * MICRO) / base.workingDays) / MICRO)
+
+/**
+ * The capacity changes a days-off change gives. The formula of `/pmkit:cycle:plan` is linear in the working days: capacity x new working
+ * days / old working days. Every value is derived from a base, `{ capacity, workingDays }`, the capacity the user gave and the working days
+ * it was for, never from the previous scaled value, so errors do not add up and the same days off and back give the number the user wrote.
+ * A member with a base that still gives the stored capacity keeps that base. Any other member gets one from the stored capacity and the old
+ * working days. When the days return to the base's working days the base is dropped (`null` in `basePatch`).
+ * `patch` and `basePatch` hold only the members that change, for `capacityPatch` and `capacityBasePatch`. A member with no capacity stays
+ * unset, and one with no working days and no base to scale from is kept and listed in `skipped`. `beforeOff` and `afterOff` are full maps.
+ */
+export function recomputeCapacity(sprint, capacity, base, beforeOff, afterOff, set) {
+  const patch = {}
+  const basePatch = {}
+  const recomputed = []
+  const skipped = []
+  for (const member of new Set([...Object.keys(beforeOff), ...Object.keys(afterOff)])) {
+    if (Object.hasOwn(set, member) || typeof capacity[member] !== 'number') continue
+    const [before, after] = [workingDays(sprint, beforeOff[member] ?? []), workingDays(sprint, afterOff[member] ?? [])]
+    if (before === after) continue
+    const kept = isBase(base[member]) && scaleTo(base[member], before) === capacity[member] ? base[member] : null
+    const ref = kept ?? (before > 0 ? { capacity: capacity[member], workingDays: before } : null)
+    if (ref === null) {
+      skipped.push(member)
+      continue
+    }
+    patch[member] = scaleTo(ref, after)
+    if (kept === null) basePatch[member] = ref
+    else if (after === ref.workingDays) basePatch[member] = null
+    recomputed.push({ member, workingDays: { before, after }, capacity: { before: capacity[member], after: patch[member] } })
+  }
+  return { patch, basePatch, recomputed, skipped }
+}
+
+/** The members of the scope team. With no team configured, or a member with no team list (Local), every member counts. */
+export const teamMembers = (members, teamKey) => (teamKey === undefined || teamKey === null ? members : members.filter((member) => member.teams === undefined || member.teams.includes(teamKey)))

@@ -1,3 +1,12 @@
 {"at":"2026-11-08T20:37:24Z","by":"fred","op":"create","to":{"id":"PMK-224","title":"Improve team capacity","type":"feature","status":"backlog","priority":"low","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-08T20:37:24.737Z","updated":"2026-11-08T20:37:24Z"}}
 {"at":"2026-11-08T20:37:24Z","by":"fred","op":"link","field":"related","to":"PMK-72"}
 {"at":"2026-11-08T20:53:52Z","by":"fred","op":"update","field":"estimate","from":null,"to":3}
+{"at":"2026-11-10T08:36:28Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-10T08:36:28Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-10T08:36:30Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-224-improve-team-capacity"}
+{"at":"2026-11-10T08:37:54Z","by":"fred","op":"comment","to":"2026-11-10T08-37-54Z-fred.md"}
+{"at":"2026-11-10T08:51:28Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T08:51:28Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T08:51:29Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T08:59:37Z","by":"fred","op":"comment","to":"2026-11-10T08-59-37Z-fred.md"}
+{"at":"2026-11-10T08:59:38Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

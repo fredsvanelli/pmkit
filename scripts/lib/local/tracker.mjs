@@ -38,7 +38,7 @@ import { inboxGet, inboxUpdate } from '../user-store.mjs'
 import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
 import { CACHE_DIR, INDEX_FILE, clearIndex, indexHeader, readThroughIndex } from './query-index.mjs'
 import {
-  SPRINT_STATES, sprintFileExists, addDays, overlaps, parseSprint, readSprint, readSprints, requireCapacity, requireDaysOff, serializeSprint, validDate, validTimestamp,
+  SPRINT_STATES, sprintFileExists, addDays, overlaps, parseSprint, readSprint, readSprints, applyBasePatch, applyCapacityPatch, requireCapacity, requireDaysOff, serializeSprint, validDate, validTimestamp,
 } from './sprints.mjs'
 import { fileMtimeIso, issuePaths, listIssueIds, writeFileAtomic } from './store.mjs'
 
@@ -1314,11 +1314,18 @@ export function createLocalTracker(root, {
 
   const getDaysOff = (id) => getSprint(id).daysOff
 
-  function updateCycleCapacity(id, { capacity, daysOff } = {}, actor, { dryRun = false } = {}) {
+  // `capacity` replaces the whole map. `capacityPatch` merges member to number (null removes) and checks only the keys it names. `capacityBasePatch` does the same for the base capacities `team capacity` keeps.
+  function updateCycleCapacity(id, { capacity, capacityPatch, capacityBasePatch, daysOff } = {}, actor, { dryRun = false } = {}) {
     requireWriter(actor)
     const before = getSprint(id)
     const next = { ...before }
     if (capacity !== undefined) next.capacity = requireCapacity(capacity, local.members)
+    if (capacityPatch !== undefined) next.capacity = applyCapacityPatch(next.capacity, capacityPatch, local.members)
+    if (capacityBasePatch !== undefined) {
+      const base = applyBasePatch(before.capacityBase ?? {}, capacityBasePatch, local.members)
+      if (Object.keys(base).length > 0) next.capacityBase = base
+      else delete next.capacityBase
+    }
     if (daysOff !== undefined) {
       const merged = { ...before.daysOff }
       for (const [member, dates] of Object.entries(requireDaysOff(daysOff, local.members, before))) {
