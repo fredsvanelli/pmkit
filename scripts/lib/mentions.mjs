@@ -21,8 +21,11 @@ export function fileMentions(id, output) {
   const mentioned = mentionedIn(id)
   const byPath = new Map()
   for (const row of output.split('\n')) {
+    if (row === '') continue
     const [file, line, ...text] = row.split('\0')
-    if (text.length === 0 || !mentioned(text.join('\0').replace(/\r$/, ''))) continue
+    // A row that is not path, line number, text means the format changed (color codes, say): never read it as "no mention".
+    if (text.length === 0 || !/^[1-9]\d*$/.test(line)) throw new Error(`could not read the git grep output: ${JSON.stringify(row.slice(0, 80))}`)
+    if (!mentioned(text.join('\0').replace(/\r$/, ''))) continue
     if (!byPath.has(file)) byPath.set(file, [])
     byPath.get(file).push(Number(line))
   }

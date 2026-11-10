@@ -229,8 +229,18 @@ test('restore on the Local tracker is NOT_SUPPORTED and names the git commands t
   const error = refused(() => tracker.restore(a, 'fred'))
   assert.equal(error.code, 'NOT_SUPPORTED')
   assert.equal(error.message, 'the Local tracker has no trash: a deleted issue comes back from git history')
-  assert.equal(error.nextStep, `git log --diff-filter=D -1 --format=%h -- .issues/issues/${a} finds the commit; git checkout <commit>^ -- .issues/issues/${a} brings the folder back`)
+  assert.equal(error.nextStep, `git checkout HEAD -- .issues/issues/${a} brings the folder back while the delete is not committed; once it is, git log --diff-filter=D -1 --format=%h -- .issues/issues/${a} finds the commit and git checkout <commit>^ -- .issues/issues/${a} brings the folder back`)
   assert.equal(refused(() => tracker.restore('../x', 'fred')).code, 'INVALID_INPUT')
+  assert.equal(hashTree(root), before)
+})
+
+test('restore of a Local issue that is not deleted is INVALID_INPUT and gives no git commands that would overwrite it', () => {
+  const { root, tracker, ids: [a] } = setup(1)
+  const before = hashTree(root)
+  const error = refused(() => tracker.restore(a, 'fred'))
+  assert.equal(error.code, 'INVALID_INPUT')
+  assert.equal(error.message, `${a} is not deleted`)
+  assert.equal(error.nextStep, `pmkit issues get ${a}`)
   assert.equal(hashTree(root), before)
 })
 

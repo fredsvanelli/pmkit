@@ -13,7 +13,7 @@ Arguments: `$ARGUMENTS`
 - `from` (required): the issue ID the relation starts from.
 - `to` (required): the other issue ID. With a parent, `to` is the parent ID, or `none` to clear the parent.
 - Kind: `blocks` (`from` blocks `to`), `related`, `duplicate` (`from` duplicates `to`) or `parent` (`to` is the parent of `from`). Accept plain words such as "ISS-4P8A blocks ISS-7K3Q" and map them.
-- `--remove` (optional): remove the link instead of adding it. It does not apply to a parent. To clear a parent, use `none`. With `--remove`, `to` can be several issue IDs, which removes the link of that kind between `from` and each of them in one call. Without `--remove` the CLI refuses several targets.
+- `--remove` (optional): remove the link instead of adding it. It does not apply to a parent. To clear a parent, use `none`. With `--remove`, `to` can be several issue IDs, which removes the link of that kind between `from` and each of them in one call. Without `--remove` the CLI refuses several targets, and it refuses a target named twice or `from` among the targets.
 
 ## Steps
 
@@ -40,5 +40,5 @@ One line that states the relation in words, for example "ISS-4P8A now blocks ISS
 - An issue ID that does not exist: the CLI answers `NOT_FOUND`. Ask for a corrected ID.
 - A link that would make a loop, such as a parent that is also a child, or an issue linked to itself: the CLI refuses. Show its message.
 - A link to remove that does not exist: say so and change nothing.
-- A removal with several targets that fails partway: the CLI stops at the failed target. The error JSON holds `result.applied` (unlinked), `result.failed` and `result.remaining` (not unlinked). Show the three lists, and never say that every link is gone.
+- A removal with several targets that fails partway: the CLI stops at the failed target. The error JSON holds `result.applied` (unlinked), `result.failed` and `result.remaining` (not unlinked). Show the three lists, and never say that every link is gone. In a dry run nothing was written: `applied` holds the targets that would be unlinked, so say "would unlink".
 - An error from the CLI: apply the rules for reading errors in the conventions.

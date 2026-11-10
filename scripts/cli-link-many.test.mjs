@@ -58,7 +58,7 @@ test('one target keeps the single-target JSON', () => {
 test('several targets need --remove, a repeated target is refused, and both write nothing', () => {
   withLinks((root, [a, b, c]) => {
     const before = hashTree(root)
-    for (const args of [[a, b, c, '--kind', 'related'], [a, b, b, '--kind', 'blocks', '--remove']]) {
+    for (const args of [[a, b, c, '--kind', 'related'], [a, b, b, '--kind', 'blocks', '--remove'], [a, b, a, '--kind', 'blocks', '--remove']]) {
       const result = run(root, ['issues', 'link', ...args, '--json'])
       assert.equal(result.status, 2, result.stdout)
       assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT')
@@ -81,5 +81,21 @@ test('a failure partway stops, keeps what was written, and lists applied, failed
     assert.deepEqual(body.result.remaining, [d])
     assert.deepEqual(blockedBy(root, b), [])
     assert.deepEqual(blockedBy(root, d), [a])
+  })
+})
+
+test('a dry run that fails partway says nothing was written', () => {
+  withLinks((root, [a, b, , d]) => {
+    const before = hashTree(root)
+    const result = run(root, ['issues', 'link', a, b, 'ISS-ZZZZ', d, '--kind', 'blocks', '--remove', '--dry-run', '--json'])
+    assert.equal(result.status, 2, result.stdout)
+    const body = JSON.parse(result.stdout)
+    assert.deepEqual(body.result.applied, [b])
+    assert.match(body.error.nextStep, /^Nothing was written \(dry run\)/)
+    assert.doesNotMatch(body.error.nextStep, /are unlinked/)
+    const text = run(root, ['issues', 'link', a, b, 'ISS-ZZZZ', d, '--kind', 'blocks', '--remove', '--dry-run'])
+    assert.match(text.stdout + text.stderr, /would unlink: /)
+    assert.doesNotMatch(text.stdout + text.stderr, /applied: /)
+    assert.equal(hashTree(root), before)
   })
 })

@@ -170,6 +170,28 @@ test('the preview lists the files of the repository that cite the ID, with their
   })
 })
 
+test('the scan reads the documents, epics and sprints of the tracker, and leaves out only the issue folders', () => {
+  withRepo({}, (root, [a]) => {
+    fs.mkdirSync(path.join(root, '.issues/docs/adr'), { recursive: true })
+    fs.writeFileSync(path.join(root, '.issues/docs/adr/0009.md'), `Decision depends on ${a}.\n`)
+    const data = json(root, ['issues', 'delete', a, '--dry-run'])
+    assert.deepEqual(data.files, [{ path: '.issues/docs/adr/0009.md', lines: [1] }])
+    assert.deepEqual(data.unchecked, [])
+  })
+})
+
+test("the user's git color settings do not empty the scan", () => {
+  withRepo({}, (root, [a]) => {
+    fs.writeFileSync(path.join(root, 'notes.md'), `see ${a}\n`)
+    for (const [key, value] of [['color.ui', 'always'], ['color.grep', 'always']]) {
+      git(root, 'config', key, value)
+      const data = json(root, ['issues', 'delete', a, '--dry-run'])
+      assert.deepEqual(data.files, [{ path: 'notes.md', lines: [1] }], key)
+      assert.deepEqual(data.unchecked, [], key)
+    }
+  })
+})
+
 test('a repository with no file that cites the ID has an empty files list', () => {
   withRepo({}, (root, [a]) => {
     const data = json(root, ['issues', 'delete', a, '--dry-run'])

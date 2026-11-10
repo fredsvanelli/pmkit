@@ -345,16 +345,24 @@ const REPO_MENTIONS_TEXT = 10
 
 /**
  * The files of the repository that cite `id` (PMK-222): one `git grep` over the tracked and untracked files that are not ignored, minus
- * the tracker folder, filtered by the mention rule. A failed run is `{ files: [], error }`, never "no file cites it".
+ * the issue folders of the tracker (the delete reads their texts itself), filtered by the mention rule. The tracker's docs, epics and
+ * sprints are scanned. `--no-color` keeps the user's color settings out of the output. A failed run or an output that does not parse
+ * is `{ files: [], error }`, never "no file cites it".
  */
 function repoMentions(ctx, id) {
   const { issuesDir } = ctx.config()
-  const relative = issuesDir ? path.relative(ctx.root, issuesDir) : ''
+  const relative = issuesDir ? path.relative(ctx.root, path.join(issuesDir, 'issues')) : ''
   const skip = relative !== '' && !climbsOut(relative) ? [`:(exclude,literal)${slash(relative)}`] : []
-  const result = spawnSync('git', ['grep', '-z', '-n', '-I', '-F', '--untracked', '-e', id, '--', '.', ...skip], {
+  const result = spawnSync('git', ['grep', '--no-color', '-z', '-n', '-I', '-F', '--untracked', '-e', id, '--', '.', ...skip], {
     cwd: ctx.root, env: ctx.env, encoding: 'utf8', timeout: REPO_MENTIONS_TIMEOUT_MS, maxBuffer: 256 * 1024 * 1024,
   })
-  if (result.status === 0) return { files: fileMentions(id, result.stdout), error: null }
+  if (result.status === 0) {
+    try {
+      return { files: fileMentions(id, result.stdout), error: null }
+    } catch (error) {
+      return { files: [], error: error.message }
+    }
+  }
   if (result.status === 1 && !result.error) return { files: [], error: null }
   const reason = result.error?.message ?? (result.stderr.trim().split(/\r?\n/)[0] || `exit status ${result.status}`)
   return { files: [], error: reason }
@@ -401,11 +409,12 @@ async function unlinkMany(ctx, tracker, actor, from, targets) {
       const code = isPmkitError(error) ? error.code : 'UPSTREAM'
       const applied = results.map((item) => item.to)
       const stopped = { applied, failed: { to, code, message: error.message }, remaining: targets.slice(results.length + 1) }
-      const stop = new PmkitError(code, `${to} failed after ${applied.length} of ${targets.length} unlinks: ${error.message}`,
-        'The targets in applied are unlinked and the ones in remaining are not. Run the call again with the remaining targets once the failed one is fixed')
+      const stop = new PmkitError(code, `${to} failed after ${applied.length} of ${targets.length} unlinks: ${error.message}`, ctx.dryRun
+        ? 'Nothing was written (dry run). The dry run stopped at the failed target: fix it or leave it out, then run the dry run again'
+        : 'The targets in applied are unlinked and the ones in remaining are not. Run the call again with the remaining targets once the failed one is fixed')
       stop.written = {
         data: stopped,
-        text: [`applied: ${applied.join(', ') || '(none)'}`, `failed: ${to} ${code} ${error.message}`, `remaining: ${stopped.remaining.join(', ') || '(none)'}`].join('\n'),
+        text: [`${ctx.dryRun ? 'would unlink' : 'applied'}: ${applied.join(', ') || '(none)'}`, `failed: ${to} ${code} ${error.message}`, `remaining: ${stopped.remaining.join(', ') || '(none)'}`].join('\n'),
       }
       if (applied.length > 0 && !ctx.dryRun) stop.partialCommit = `${from} --remove (${applied.length} of ${targets.length})`
       throw stop
@@ -841,6 +850,7 @@ export const COMMANDS = [
       if (op === 'link') throw usageError('several targets work only with --remove', 'Link one target per call, or add --remove')
       const repeated = targets.find((to, i) => targets.indexOf(to) !== i)
       if (repeated !== undefined) throw usageError(`${repeated} is named twice`, 'Name each target once')
+      if (targets.includes(from)) throw usageError(`${from} is both <from> and a target`, 'Leave <from> out of the targets')
       return unlinkMany(ctx, tracker, actor, from, targets)
     },
   },

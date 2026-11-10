@@ -30,3 +30,9 @@ test('fileMentions groups the git grep lines that mention the ID by file, with t
 test('fileMentions keeps a path that holds a colon and a line that ends in CRLF', () => {
   assert.deepEqual(fileMentions('PMK-5', 'odd:name.md\x004\0PMK-5\r\n'), [{ path: 'odd:name.md', lines: [4] }])
 })
+
+test('fileMentions refuses output it cannot read, so a changed format is never an empty answer', () => {
+  // git grep with color on wraps the fields in ANSI codes.
+  assert.throws(() => fileMentions('PMK-5', 'a.md\0\x1b[32m3\x1b[m\0see PMK-5\n'), /git grep output/)
+  assert.throws(() => fileMentions('PMK-5', 'a.md:3:see PMK-5\n'), /git grep output/)
+})
