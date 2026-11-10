@@ -2,14 +2,14 @@
 id: PMK-228
 title: Improve record-decision
 type: feature
-status: in_progress
+status: in_review
 priority: low
 estimate: 5
 assignee: fred
 related: [PMK-65]
 branch: pmk-228-improve-record-decision
 created: 2026-11-08T20:37:25.277Z
-updated: 2026-11-10T17:58:25Z
+updated: 2026-11-10T17:59:01Z
 ---
 
 ## Description
