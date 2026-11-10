@@ -24,18 +24,20 @@ export const INITIATIVES_QUERY = `query PmkitInitiatives($first: Int, $after: St
 /** The goal id of an initiative: the identifier in upper case when it has one, else the slug. */
 const goalId = (node) => (node.identifier ? node.identifier.toUpperCase() : node.slugId.toLowerCase())
 
-/** The pmkit goal of an initiative node. `epicsMore` is set when the initiative has more team projects than were read. */
+/** True when the initiative has more team projects than the query read. */
+const projectsCut = (node) => node.projects.pageInfo?.hasNextPage === true
+
+/** The pmkit goal of an initiative node. */
 export function toGoal(node) {
   const goal = { id: goalId(node), title: node.name, status: String(node.status).toLowerCase() }
   if (node.targetDate) goal.target = node.targetDate
   goal.description = node.content || node.description || ''
   if (node.url) goal.url = node.url
   goal.epics = node.projects.nodes.map(epicId)
-  if (node.projects.pageInfo?.hasNextPage === true) goal.epicsMore = true
   return goal
 }
 
-const epicsCut = (goal) => `the initiative ${goal.id} has more than ${EPIC_PAGE} projects of the team; its epics are the first ${EPIC_PAGE}`
+const EPICS_CUT = `the initiative has more than ${EPIC_PAGE} projects of the team; its epics are the first ${EPIC_PAGE}`
 
 export function goalOperations({ client, config, projects }) {
   const scope = config.pmkit?.tracker?.scope ?? {}
@@ -51,7 +53,7 @@ export function goalOperations({ client, config, projects }) {
     const goals = sortGoals(nodes.map(toGoal))
     const problems = [
       ...(hasMore ? [{ id: null, kind: 'goal', code: 'INCOMPLETE', message: `Linear has more initiatives than the ${PAGE * PAGES} pmkit read; the goals cover the first ${PAGE * PAGES}` }] : []),
-      ...goals.filter((goal) => goal.epicsMore).map((goal) => ({ id: goal.id, kind: 'goal', code: 'INCOMPLETE', message: epicsCut(goal) })),
+      ...nodes.filter(projectsCut).map(toGoal).map((goal) => ({ id: goal.id, kind: 'goal', code: 'INCOMPLETE', message: EPICS_CUT })),
     ]
     return { goals, problems }
   }
@@ -72,7 +74,7 @@ export function goalOperations({ client, config, projects }) {
   async function goalProgress(key) {
     const node = await findInitiative(key)
     const goal = toGoal(node)
-    const warnings = goal.epicsMore ? [`${epicsCut(goal)}; goal progress may be low`] : []
+    const warnings = projectsCut(node) ? [`${goal.id}: ${EPICS_CUT}; goal progress may be low`] : []
     const sum = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: Object.fromEntries(CATEGORIES.map((category) => [category, 0])) }
     const epics = []
     for (const project of node.projects.nodes) {

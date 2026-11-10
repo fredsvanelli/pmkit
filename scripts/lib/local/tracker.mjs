@@ -6,7 +6,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { requireActor, gitUserEmail } from '../actor.mjs'
-import { loadConfig, validateLocalConfig } from '../config.mjs'
+import { goalPrefixOf, loadConfig, validateLocalConfig } from '../config.mjs'
 import { formatMinutes, isPositiveMinutes } from '../duration.mjs'
 import { PmkitError } from '../errors.mjs'
 import { joinFrontmatter, parseYaml, splitFrontmatter } from '../yaml.mjs'
@@ -1332,14 +1332,20 @@ export function createLocalTracker(root, {
 
   const getDeliverable = (id) => readEpic(id).epic
 
-  /** Every epic that parses, and a problem for each epic file that does not. */
+  /**
+   * Every epic that parses, and a problem for each epic file that does not. A folder with an epic.md whose name is not an epic id
+   * (epic_prefix changed, a folder renamed by hand) is not read, so it is a problem too: it may hold a link the caller needs.
+   */
   function readDeliverables() {
     if (!fs.existsSync(epicsDir)) return { epics: [], problems: [] }
-    const ids = fs.readdirSync(epicsDir, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && isId(entry.name, local.epic_prefix) && fs.existsSync(path.join(epicsDir, entry.name, 'epic.md')))
+    const folders = fs.readdirSync(epicsDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && fs.existsSync(path.join(epicsDir, entry.name, 'epic.md')))
       .map((entry) => entry.name)
+    const ids = folders.filter((name) => isId(name, local.epic_prefix))
     const epics = []
-    const problems = []
+    const problems = folders.filter((name) => !isId(name, local.epic_prefix)).map((name) => (
+      { id: name, kind: 'epic', code: 'INVALID_INPUT', message: `epic folder ${name} is not named after an epic id such as ${local.epic_prefix}-1, so pmkit does not read it` }
+    ))
     const created = {}
     for (const id of ids) {
       try {
@@ -1444,7 +1450,7 @@ export function createLocalTracker(root, {
   /** The goal file as stored, without its epics. A stem that is not a goal id is never a goal. */
   function readGoalFile(id) {
     const normalized = normalizeId(String(id))
-    if (!isId(normalized, local.goal_prefix) || !goalStems(goalsDir).has(normalized)) throw goalNotFound(id)
+    if (!isId(normalized, goalPrefixOf(local)) || !goalStems(goalsDir).has(normalized)) throw goalNotFound(id)
     return parseGoal(fs.readFileSync(path.join(goalsDir, `${normalized}.md`), 'utf8'), normalized)
   }
 
@@ -1468,8 +1474,8 @@ export function createLocalTracker(root, {
     const goals = []
     const problems = []
     for (const stem of [...goalStems(goalsDir)].sort()) {
-      if (!isId(stem, local.goal_prefix)) {
-        problems.push({ id: stem, kind: 'file', code: 'INVALID_INPUT', message: `goal file ${stem}.md is not named after a goal id such as ${local.goal_prefix}-1` })
+      if (!isId(stem, goalPrefixOf(local))) {
+        problems.push({ id: stem, kind: 'file', code: 'INVALID_INPUT', message: `goal file ${stem}.md is not named after a goal id such as ${goalPrefixOf(local)}-1` })
         continue
       }
       try {
@@ -1498,8 +1504,8 @@ export function createLocalTracker(root, {
     if (!blank(input.description)) goal.description = plainText('description', input.description)
     const stems = goalStems(goalsDir)
     const id = local.id_style === 'numbered'
-      ? nextNumberedId(local.goal_prefix, [...stems])
-      : newId(local.goal_prefix, { random, exists: (candidate) => stems.has(candidate) })
+      ? nextNumberedId(goalPrefixOf(local), [...stems])
+      : newId(goalPrefixOf(local), { random, exists: (candidate) => stems.has(candidate) })
     const content = serializeGoal(goal)
     const after = readBack('goal file', () => parseGoal(content, id))
     if (!dryRun) {

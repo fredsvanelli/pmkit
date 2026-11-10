@@ -59,7 +59,8 @@ test('listGoals reports a cut read of initiatives and of a goal\'s projects as I
   const many = kit(() => [initiative({ projects: page([], { hasNextPage: true, endCursor: 'x' }) })])
   const listed = await many.ops.listGoals()
   assert.deepEqual(listed.problems.map((problem) => [problem.id, problem.code]), [['abcdef123456', 'INCOMPLETE']])
-  assert.equal(listed.goals[0].epicsMore, true)
+  assert.equal('epicsMore' in listed.goals[0], false)
+  assert.equal('epicsMore' in (await many.ops.getGoal('abcdef123456')), false)
 })
 
 test('getGoal finds a goal by identifier in any case, by slug and by UUID, and a missing key is NOT_FOUND', async () => {

@@ -79,12 +79,13 @@ test('an epic linked to a goal that parses has no problem (PMK-179)', () => {
   assert.deepEqual(epicMessages(root), [])
 })
 
-test('validate counts the goal files in checked, readable or not (PMK-213)', () => {
+test('validate counts the files named after a goal id in checked, readable or not (PMK-213)', () => {
   const root = makeRepo('team')
   assert.equal(validateRepo(root).checked.goals, 0)
   writeGoal(root, 'GOAL-1.md', '---\ntitle: Good\n---\n')
   writeGoal(root, 'GOAL-2.md', '---\ntarget: soon\n---\n')
   writeGoal(root, 'notes.txt', 'not a goal\n')
+  writeGoal(root, 'README.md', '# Goals\n')
   assert.equal(validateRepo(root).checked.goals, 2)
 })
 
@@ -92,4 +93,13 @@ test('a goal with a status outside the list is a goal problem (PMK-213)', () => 
   const root = makeRepo('team')
   writeGoal(root, 'GOAL-1.md', '---\ntitle: Good\nstatus: done\n---\n')
   assert.match(validateRepo(root).problems.find((p) => p.path.endsWith('GOAL-1.md')).message, /status "done"/)
+})
+
+test('an epic folder outside epic_prefix is an id problem (PMK-213)', () => {
+  const root = makeRepo('team')
+  const file = path.join(root, '.issues', 'config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^epic_prefix: .*$/m, 'epic_prefix: PRJ'))
+  const problem = validateRepo(root).problems.find((p) => p.path === '.issues/epics/EPC-2M9D/epic.md')
+  assert.equal(problem?.code, 'id')
+  assert.match(problem.message, /not named after an epic id such as PRJ-1/)
 })

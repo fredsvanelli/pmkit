@@ -2485,6 +2485,9 @@ async function orSupported(read, fallback) {
  */
 const teamMembers = (members, teamKey) => (teamKey === undefined ? members : members.filter((member) => member.teams === undefined || member.teams.includes(teamKey)))
 
+/** The record a warning line is about: the text before its first ": ", as problemLine writes it. */
+const recordOf = (line) => line.split(': ')[0]
+
 const NO_GOALS_NOTE = 'no goals: using top-level issues (issues with no parent, or whose parent is an epic) and the progress of their sub-issues'
 const INCOMPLETE_LINE = 'incomplete: some files or issues were not read, so these numbers may be low; do not conclude from them'
 
@@ -2519,8 +2522,15 @@ async function runGoalsOverview(ctx) {
     const items = []
     for (const goal of listed.goals) {
       const p = await tracker.goalProgress(goal.id)
-      // The overview already warns about every epic and issue file that does not parse, once, above.
+      // A goal's own warnings reach the overview (a cut Linear epic read is only known here), once per record: the lines name
+      // the record first, and the overview already warned about each file that does not parse above.
       const { goal: ignored, epics, warnings: perGoal, ...sum } = p
+      const said = new Set(warnings.map(recordOf))
+      for (const line of perGoal ?? []) {
+        if (said.has(recordOf(line))) continue
+        said.add(recordOf(line))
+        warnings.push(line)
+      }
       items.push({ goal: { id: goal.id, title: goal.title, target: goal.target }, epics: epics.map((e) => ({ id: e.id, title: e.title, status: e.status, counted: e.counted, progress: e.progress })), ...sum, progress: shareDone(sum.done, sum.total) })
     }
     const rows = items.map((i) => [i.goal.id, i.goal.title, i.progress === null ? 'not known' : percent(i.progress), `${i.done}/${i.total}`, `${i.pointsDone}/${i.points}`, i.epics.map((e) => e.id).join(', ')])

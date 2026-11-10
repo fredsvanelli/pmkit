@@ -4,10 +4,12 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  CONFIRM, ESTIMATE_UNITS, GIT_HOSTS, MEMBER_ID, NAME, PREFIX, PREVIEW, TRACKERS, WEEKDAYS, WORKSPACE_KEY,
-  findRoot, loadConfig, loadPmkitConfig, localConfigShapeProblems, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, resolveDefaultBranch, unsupportedTracker, validBranch, validateLocalConfig, validatePmkitConfig, withLocalDefaults,
+  CONFIRM, ESTIMATE_UNITS, GIT_HOSTS, MEMBER_ID, NAME, PREFIX, PREVIEW, RESERVED_PREFIXES, TRACKERS, WEEKDAYS, WORKSPACE_KEY,
+  findRoot, goalPrefixOf, loadConfig, loadPmkitConfig, localConfigShapeProblems, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, resolveDefaultBranch, unsupportedTracker, validBranch, validateLocalConfig, validatePmkitConfig, withLocalDefaults,
 } from './lib/config.mjs'
 import { parseYaml } from './lib/yaml.mjs'
+import { CUSTOMER_PREFIX } from './lib/local/customers.mjs'
+import { REQUEST_PREFIX } from './lib/local/requests.mjs'
 import { makeRepo, tempDir } from './test-helpers.mjs'
 import { useLinear, withLinear } from './fake-hosted.mjs'
 
@@ -445,13 +447,19 @@ test('validBranch accepts a name in NFC and in NFD, and the combining marks of o
   assert.equal(validBranch('\u0301x'), false, 'a combining mark cannot start a name')
 })
 
-test('goal_prefix defaults to GOAL, takes 2 to 5 capital letters and differs from the other prefixes (PMK-213)', () => {
+test('goal_prefix is optional and takes 2 to 5 capital letters; only a set key must differ from the other prefixes (PMK-213)', () => {
   const local = withLocalDefaults(template('issues.config.yaml'))
-  assert.equal(local.goal_prefix, 'GOAL')
+  assert.equal(goalPrefixOf(local), 'GOAL')
+  assert.equal(goalPrefixOf({ ...local, goal_prefix: 'OKR' }), 'OKR')
   assert.deepEqual(validateLocalConfig(local), [])
   assert.ok(localConfigShapeProblems({ ...local, goal_prefix: 'ok' }).includes('goal_prefix must be 2 to 5 capital letters, found "ok"'))
   assert.deepEqual(localConfigShapeProblems({ ...local, goal_prefix: 'OKR' }), [])
-  const { goal_prefix: ignored, ...bare } = local
-  assert.ok(validateLocalConfig({ ...bare, id_prefix: 'GOAL' }).includes('goal_prefix must differ from id_prefix and epic_prefix'))
-  assert.ok(validateLocalConfig({ ...local, goal_prefix: local.epic_prefix }).includes('goal_prefix must differ from id_prefix and epic_prefix'))
+  // A project from before goal_prefix with id_prefix or epic_prefix GOAL keeps working: goal files live in their own folder.
+  assert.deepEqual(validateLocalConfig({ ...local, id_prefix: 'GOAL' }), [])
+  assert.deepEqual(validateLocalConfig({ ...local, epic_prefix: 'GOAL' }), [])
+  const clash = 'goal_prefix must differ from id_prefix, epic_prefix and the customer and request prefixes (CUS, REQ)'
+  assert.ok(validateLocalConfig({ ...local, id_prefix: 'GOAL', goal_prefix: 'GOAL' }).includes(clash))
+  assert.ok(validateLocalConfig({ ...local, goal_prefix: local.epic_prefix }).includes(clash))
+  for (const prefix of ['CUS', 'REQ']) assert.ok(validateLocalConfig({ ...local, goal_prefix: prefix }).includes(clash), prefix)
+  assert.deepEqual(RESERVED_PREFIXES, [CUSTOMER_PREFIX, REQUEST_PREFIX])
 })

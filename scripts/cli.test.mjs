@@ -2538,3 +2538,31 @@ test('goal update, close and delete change and remove a goal, with dry runs and 
   assert.match(deleted.stdout, new RegExp(`deleted goal ${id}`))
   assert.equal(JSON.parse(run(root, ['goal', 'get', id, '--json']).stdout).error.code, 'NOT_FOUND')
 })
+
+test('a project from before goal_prefix with id_prefix GOAL still validates and writes (PMK-213)', () => {
+  const root = makeRepo('basic')
+  const file = path.join(root, '.issues', 'config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^id_prefix: .*$/m, 'id_prefix: GOAL'))
+  assert.doesNotMatch(run(root, ['validate']).stdout, /goal_prefix/)
+  const created = run(root, ['issues', 'create', '--title', 'X', '--dry-run'])
+  assert.equal(created.status, 0, created.stderr)
+})
+
+test('goals overview carries each goal\'s own warnings, so a cut epic read makes it incomplete (PMK-213)', async () => {
+  const sum = { total: 0, done: 0, canceled: 0, points: 0, pointsDone: 0, byCategory: {} }
+  const goal = { id: 'INI-1', title: 'Grow', status: 'active', epics: ['P-ACM-1'] }
+  const ctx = {
+    args: [],
+    json: true,
+    tracker: () => ({
+      listGoals: () => ({ goals: [goal], problems: [] }),
+      searchIssues: () => ({ issues: [], problems: [] }),
+      goalProgress: () => ({ goal, epics: [], ...sum, warnings: ['P-ACM-1: Linear has more issues in this epic than the 1000 pmkit read; goal progress may be low'] }),
+    }),
+  }
+  const { data, text } = await cmd('goals overview').run(ctx)
+  assert.equal(data.complete, false)
+  assert.deepEqual(data.warnings, ['P-ACM-1: Linear has more issues in this epic than the 1000 pmkit read; goal progress may be low'])
+  assert.match(text, /^incomplete: /m)
+  assert.ok(data.items.every((item) => !('warnings' in item)))
+})

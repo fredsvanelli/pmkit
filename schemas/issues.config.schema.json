@@ -26,10 +26,9 @@
     },
     "goal_prefix": {
       "title": "Goal ID prefix",
-      "description": "2 to 5 capital letters, as in GOAL-1. Must differ from id_prefix and epic_prefix.",
+      "description": "2 to 5 capital letters, as in GOAL-1. Without the key, goal ids start with GOAL and nothing is checked. A set key must differ from id_prefix, epic_prefix, CUS and REQ.",
       "type": "string",
-      "pattern": "^[A-Z]{2,5}$",
-      "default": "GOAL"
+      "pattern": "^[A-Z]{2,5}$"
     },
     "id_style": {
       "title": "ID style",

@@ -345,3 +345,23 @@ test('goalProgress warns about an epic file that does not parse and an issue fil
   assert.equal(warnings.length, 2)
   assert.match(warnings[0], /^EPC-2M9D: INVALID_INPUT .*; it may link to this goal; run pmkit validate$/)
 })
+
+// PMK-213 review: an epic folder outside epic_prefix is not read, so it may hide a link to the goal.
+function withEpicPrefix(root, prefix) {
+  const file = path.join(root, '.issues', 'config.yaml')
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^epic_prefix: .*$/m, `epic_prefix: ${prefix}`))
+  return createLocalTracker(root, { now: () => new Date('2026-10-23T12:00:00Z') })
+}
+
+test('an epic folder outside epic_prefix is a goal problem: goal progress warns and goal delete refuses (PMK-213)', () => {
+  const { root, tracker } = setup()
+  const { id } = tracker.createGoal({ title: 'Trust' }, 'fred').after
+  tracker.setEpicGoal('EPC-2M9D', id, 'fred')
+  const renamed = withEpicPrefix(root, 'PRJ')
+  assert.deepEqual(renamed.listGoals().problems.filter((problem) => problem.kind === 'epic').map((problem) => problem.id), ['EPC-2M9D'])
+  const progress = renamed.goalProgress(id)
+  assert.ok(progress.warnings.some((line) => line.startsWith('EPC-2M9D:') && /not named after an epic id such as PRJ-1/.test(line) && /may link to this goal/.test(line)), progress.warnings.join('\n'))
+  const before = hashTree(root)
+  assert.throws(() => renamed.deleteGoal(id, 'fred'), (error) => error.code === 'INVALID_INPUT' && /EPC-2M9D/.test(error.message))
+  assert.deepEqual(hashTree(root), before)
+})

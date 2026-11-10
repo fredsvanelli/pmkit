@@ -18,10 +18,16 @@ export const MEMBER_ID = /^([a-z0-9][a-z0-9-]*|agent:[a-z0-9-]+)$/
 export const NAME = /\S/
 export const WORKSPACE_KEY = /^[a-z0-9][a-z0-9-]*$/
 
+// goal_prefix has no entry in DEFAULTS: the config checks must tell an absent key from a set one (PMK-213).
+export const DEFAULT_GOAL_PREFIX = 'GOAL'
+/** The goal prefix of a local config: the key, or GOAL when it is absent. */
+export const goalPrefixOf = (local) => local.goal_prefix ?? DEFAULT_GOAL_PREFIX
+// The id prefixes of customers and requests (CUSTOMER_PREFIX, REQUEST_PREFIX). A test pins them; an import would make a cycle.
+export const RESERVED_PREFIXES = ['CUS', 'REQ']
+
 const DEFAULTS = {
   default_status: 'backlog',
   epic_prefix: 'EPC',
-  goal_prefix: 'GOAL',
   id_style: 'random',
   types: ['feature', 'bug', 'task', 'chore'],
   priorities: ['urgent', 'high', 'medium', 'low'],
@@ -224,9 +230,11 @@ export function localConfigShapeProblems(obj) {
 export function validateLocalConfig(obj) {
   const problems = localConfigShapeProblems(obj)
   if (obj.id_prefix === obj.epic_prefix) problems.push('id_prefix and epic_prefix must differ')
-  // The default counts, so id_prefix: GOAL without the key is a clash too.
-  const goalPrefix = obj.goal_prefix ?? DEFAULTS.goal_prefix
-  if (goalPrefix === obj.id_prefix || goalPrefix === obj.epic_prefix) problems.push('goal_prefix must differ from id_prefix and epic_prefix')
+  // Only a set key is checked: a project from before goal_prefix may use GOAL as id_prefix or epic_prefix, and its goal files
+  // keep the GOAL default in their own folder, as they did before the key existed.
+  if (obj.goal_prefix !== undefined && [obj.id_prefix, obj.epic_prefix, ...RESERVED_PREFIXES].includes(obj.goal_prefix)) {
+    problems.push(`goal_prefix must differ from id_prefix, epic_prefix and the customer and request prefixes (${RESERVED_PREFIXES.join(', ')})`)
+  }
   const statuses = isObject(obj.statuses) ? obj.statuses : {}
   const used = new Set(Object.values(statuses).map((s) => (isObject(s) ? s.category : undefined)))
   for (const category of CATEGORIES) {
