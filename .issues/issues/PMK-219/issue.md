@@ -2,12 +2,14 @@
 id: PMK-219
 title: Find more TODOs in todos-to-issues
 type: feature
-status: backlog
+status: in_progress
 priority: low
 estimate: 5
+assignee: fred
 related: [PMK-64, PMK-238]
+branch: pmk-219-find-more-todos-in-todos-to-issues
 created: 2026-11-08T20:37:24.030Z
-updated: 2026-11-08T20:58:08Z
+updated: 2026-11-10T06:56:31Z
 ---
 
 ## Description
