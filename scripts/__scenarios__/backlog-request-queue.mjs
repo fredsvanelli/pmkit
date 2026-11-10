@@ -6,9 +6,37 @@ import path from 'node:path'
 
 const inputs = path.join(import.meta.dirname, '_inputs')
 const AUTH = 'the command stops at step 1 with AUTH, before any request'
+const NO_QUEUE = 'the tracker has no request queue, so the command suggests /pmkit:backlog:triage and stops'
 const STOPPED = 'the command stops before it writes'
 const OPEN = ['issues', 'list', '--category', 'backlog,todo,triage,in_progress,in_review']
 const create = ['issues', 'create', '--title-file', path.join(inputs, 'request-queue-title.md'), '--description-file', path.join(inputs, 'request-queue-description.md')]
+const customerCreate = ['issues', 'create', '--title-file', path.join(inputs, 'request-queue-title.md'), '--description-file', path.join(inputs, 'request-queue-customer-description.md')]
+const emptyTitle = ['issues', 'create', '--title-file', path.join(inputs, 'request-queue-empty-title.md'), '--description-file', path.join(inputs, 'request-queue-description.md')]
+const LINEAR_CONFIG = `version: 1
+tracker:
+  system: linear
+  scope:
+    workspace: acme
+    team: ACME
+git_host:
+  system: none
+write_policy:
+  confirm: single_writes
+  preview: [bulk, delete, publish_update, move_scope]
+mappings:
+  status:
+    in_review: In Review
+    blocked: none
+  types:
+    feature: Feature
+    bug: Bug
+    task: none
+    chore: none
+`
+const writeRequest = (root, id, text) => {
+  fs.mkdirSync(path.join(root, '.issues', 'requests'), { recursive: true })
+  fs.writeFileSync(path.join(root, '.issues', 'requests', `${id}.md`), `---\n${text}\n---\n`)
+}
 const request = (pmkit, title, extra = []) => pmkit(['requests', 'create', '--title', title, ...extra])
 const reads = [{ step: '1', read: ['capabilities'] }, { step: '2', read: ['requests', 'list'], save: 'queue' }, { step: '3', read: OPEN, save: 'open' }]
 
@@ -76,6 +104,59 @@ export default [
     notHit: { 'Step 4': AUTH, 'Step 6': AUTH },
     expect(repo, saved) {
       assert.equal(saved.capabilities.error.code, 'AUTH')
+    },
+  },
+  {
+    // The Linear path with a workspace that answers: request_queue is absent, so the command suggests /pmkit:backlog:triage and
+    // stops after step 1, before any request. The AUTH entry above covers the failed step 1.
+    command: 'backlog/request-queue',
+    fixture: 'team',
+    git: true,
+    linear: {},
+    setup: ({ root }) => fs.writeFileSync(path.join(root, '.pmkit', 'config.yaml'), LINEAR_CONFIG),
+    prompt: '/pmkit:backlog:request-queue',
+    answers: [],
+    steps: [{ step: '1', read: ['capabilities'], save: 'capabilities' }],
+    skip: {
+      '2 requests list': NO_QUEUE, '3 issues list': NO_QUEUE, '5.1 issues create': NO_QUEUE, '5.2 requests accept': NO_QUEUE, '5.3 requests decline': NO_QUEUE,
+      '7 requests accept': NO_QUEUE, '8 requests list': NO_QUEUE,
+    },
+    notHit: { 'Step 4': NO_QUEUE, 'Step 6': NO_QUEUE },
+    expect(repo, saved) {
+      assert.equal(saved.capabilities.tracker, 'linear')
+      assert.deepEqual(Object.keys(saved), ['capabilities'], 'requests list is not called')
+      assert.equal(saved.capabilities.capabilities.find((capability) => capability.id === 'request_queue').path, 'absent')
+    },
+  },
+  {
+    // REQ-2X6D names customer CUS-ZZZZ, which has no file, and has no `from`: its new issue keeps the customer ID. REQ-5N1R
+    // fails its create dry run (an empty title file): only that request is dropped, it stays open and the other one is worked.
+    command: 'backlog/request-queue',
+    fixture: 'team',
+    setup({ root }) {
+      writeRequest(root, 'REQ-2X6D', 'title: Export the board to CSV\ncustomer: CUS-ZZZZ\ncreated: 2026-11-01T10:00:00Z')
+      writeRequest(root, 'REQ-5N1R', 'title: Dark theme\ncreated: 2026-11-01T10:01:00Z\nfrom: sales')
+    },
+    prompt: '/pmkit:backlog:request-queue',
+    answers: ['New issue', 'New issue', 'Yes'],
+    steps: [
+      ...reads,
+      { confirm: 'Step 4' },
+      { step: '5.1', dryRun: customerCreate },
+      { step: '5.1', dryRun: emptyTitle, expectError: 'INVALID_INPUT' },
+      { confirm: 'Step 6' },
+      { step: '5.1', write: customerCreate },
+      { step: '7', dryRun: ['requests', 'accept', 'REQ-2X6D', 'ISS-M0GZ'] },
+      { step: '7', write: ['requests', 'accept', 'REQ-2X6D', 'ISS-M0GZ'] },
+      { step: '8', read: ['requests', 'list'], save: 'after' },
+    ],
+    skip: { '5.2 requests accept': 'no request is linked', '5.3 requests decline': 'no request is declined' },
+    notHit: {},
+    expect(repo, saved) {
+      assert.deepEqual(saved.queue.problems.map((p) => [p.id, p.code]), [['REQ-2X6D', 'NOT_FOUND']], 'the customer has no file')
+      assert.match(repo.file('.issues/issues/ISS-M0GZ/issue.md'), /Asked by: CUS-ZZZZ\./)
+      assert.match(repo.file('.issues/requests/REQ-2X6D.md'), /state: accepted/)
+      assert.deepEqual(saved.after.requests.map((r) => r.id), ['REQ-5N1R'], 'the failed request stays open')
     },
   },
   {
