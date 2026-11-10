@@ -2,14 +2,14 @@
 id: PMK-227
 title: Improve log-time
 type: feature
-status: in_progress
+status: in_review
 priority: low
 estimate: 1
 assignee: fred
 related: [PMK-60]
 branch: pmk-227-improve-log-time
 created: 2026-11-08T20:37:25.141Z
-updated: 2026-11-10T17:26:59Z
+updated: 2026-11-10T17:27:42Z
 ---
 
 ## Description
