@@ -1659,3 +1659,17 @@ test('createIssue with a release refuses NOT_SUPPORTED', async () => {
   })
   assert.equal(mutationsIn(fetch), 0)
 })
+
+test('releaseIssues refuses a cut read instead of answering with part of the issues', async () => {
+  const { tracker: linear, fake } = releaseSetup()
+  for (let n = 0; n < 1001; n += 1) fake.seed({ title: `Issue ${n}`, releaseIds: [REL.two] })
+  await assert.rejects(linear.releaseIssues(REL.two), { code: 'UPSTREAM', message: `release ${REL.two} has more issues than pmkit reads at once, and pmkit does not answer with part of them` })
+})
+
+test('releaseIssues reads the release first, so a canceled one is NOT_FOUND', async () => {
+  const { tracker: linear, fake } = releaseSetup()
+  fake.seed({ title: 'In', releaseIds: [REL.two] })
+  fake.seed({ title: 'Out' })
+  assert.deepEqual((await linear.releaseIssues(REL.two)).map((issue) => issue.title), ['In'])
+  await assert.rejects(linear.releaseIssues(REL.gone), { code: 'NOT_FOUND' })
+})

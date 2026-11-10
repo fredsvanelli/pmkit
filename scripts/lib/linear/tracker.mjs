@@ -174,8 +174,16 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
   // With releases on, they read Linear releases (PMK-246).
   const releases = releaseOperations({ client, config })
   const releasesEntry = async () => (await capabilities()).capabilities.find((c) => c.id === 'releases')
+  // A release's issues are a search with the release filter (PMK-246-2). A cut read refuses rather than answer with part of them.
+  // `issues` is defined below; the call happens later, so the reference is safe.
+  const releaseIssues = async (id, { archived = false } = {}) => {
+    await releases.getRelease(id)
+    const found = await issues.searchIssues({ release: id, ...(archived ? { archived: true } : {}) })
+    if (found.hasMore) throw new PmkitError('UPSTREAM', `release ${id} has more issues than pmkit reads at once, and pmkit does not answer with part of them`, 'Narrow the search with pmkit issues list')
+    return found.issues
+  }
   const releaseRead = (operation, empty) => {
-    const read = releases[operation] ?? stub(operation)
+    const read = operation === 'releaseIssues' ? releaseIssues : (releases[operation] ?? stub(operation))
     return guarded(async (...args) => {
       const entry = await releasesEntry()
       return entry?.path === 'absent' ? empty(entry, ...args) : read(...args)

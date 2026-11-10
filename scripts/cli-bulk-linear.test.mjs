@@ -124,11 +124,56 @@ test('a milestone of another project is one INVALID_INPUT in the dry run, and an
   assert.deepEqual(issues.mutations, [])
 })
 
-test('release stays NOT_SUPPORTED on Linear and says releases are not mapped', async () => {
+// PMK-246: one release per issue on Linear (decision PMK-246-1).
+const REL_A = '00000000-0000-4000-8000-0000000000c1'
+const REL_B = '00000000-0000-4000-8000-0000000000c2'
+function withReleases() {
+  const fake = fakeLinearIssues({
+    pipelines: [{ id: 'pipe', name: 'Web', teams: ['team-acme'] }],
+    releases: [{ id: REL_A, name: 'A', version: '1.0', pipeline: 'pipe' }, { id: REL_B, name: 'B', version: '1.1', pipeline: 'pipe' }],
+  })
+  fake.seed({ title: 'One' })
+  fake.seed({ title: 'Two', releaseIds: [REL_A] })
+  fake.seed({ title: 'Both', releaseIds: [REL_A, REL_B] })
+  return { fake, fetch: fakeLinearFetch({ ...fakeWorkspace({ releasesEnabled: true }), ...fake.routes }) }
+}
+
+test('release is previewed and written on Linear, and an issue in two releases is rejected', async () => {
+  const { fake, fetch } = withReleases()
+  const context = setup()
+  const dry = await bulk(context, fetch, ['release', REL_B, '--category', 'backlog', '--dry-run'])
+  assert.equal(dry.code, 0, JSON.stringify(dry.body))
+  assert.deepEqual(dry.body.items.map((item) => [item.id, item.state]), [['ACME-1', 'change'], ['ACME-2', 'change'], ['ACME-3', 'rejected']])
+  assert.deepEqual(dry.body.items[1].changes.map((change) => [change.field, change.from, change.to]), [['release', REL_A, REL_B]])
+  assert.deepEqual(dry.body.items[2].error, { code: 'INVALID_INPUT', message: 'the issue is in 2 Linear releases, and pmkit sets one release per issue', nextStep: 'Change the releases of the issue in Linear' })
+  assert.deepEqual(fake.mutations, [])
+  // The rejected issue is a blocker, so the real run writes nothing.
+  const real = await bulk(context, fetch, ['release', REL_B, '--category', 'backlog'])
+  assert.equal(real.body.error.code, 'INVALID_INPUT')
+  assert.match(real.body.error.message, /^issues bulk cannot write: ACME-3 was rejected: INVALID_INPUT the issue is in 2 Linear releases/)
+  assert.deepEqual(fake.mutations, [])
+})
+
+test('release is written on Linear with the digest, and none clears it', async () => {
+  const { fake, fetch } = withReleases()
+  fake.seed({ title: 'Docs one', labelIds: ['label-docs'] })
+  fake.seed({ title: 'Docs two', labelIds: ['label-docs'], releaseIds: [REL_A] })
+  const context = setup()
+  const dry = await bulk(context, fetch, ['release', REL_B, '--label', 'Docs', '--dry-run'])
+  assert.equal(dry.code, 0, JSON.stringify(dry.body))
+  const real = await bulk(context, fetch, ['release', REL_B, '--label', 'Docs', '--expect', dry.body.digest])
+  assert.equal(real.code, 0, JSON.stringify(real.body))
+  assert.deepEqual(real.body.applied, ['ACME-4', 'ACME-5'])
+  assert.deepEqual(fake.records.slice(3).map((record) => record.releaseIds), [[REL_B], [REL_B]])
+  const clear = await bulk(context, fetch, ['release', 'none', '--label', 'Docs', '--dry-run'])
+  assert.deepEqual(clear.body.items.map((item) => item.state), ['change', 'change'])
+})
+
+test('release on a workspace with releases off refuses NOT_SUPPORTED', async () => {
   const { fake, fetch } = withIssues(['One'])
-  const result = await bulk(setup(), fetch, ['release', '1.0', '--category', 'backlog', '--dry-run'])
+  const result = await bulk(setup(), fetch, ['release', REL_A, '--category', 'backlog', '--dry-run'])
   assert.equal(result.body.error.code, 'NOT_SUPPORTED')
-  assert.match(result.body.error.message, /releases are not mapped/)
+  assert.equal(result.body.error.message, 'Linear releases are off in this workspace')
   assert.deepEqual(fake.mutations, [])
 })
 
