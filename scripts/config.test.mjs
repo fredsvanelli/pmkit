@@ -253,8 +253,10 @@ test('validateLocalConfig takes defaults.overload_factor as a number of 1 or mor
   const local = template('issues.config.yaml')
   assert.equal(local.defaults.overload_factor, 1.5)
   assert.equal(withLocalDefaults({}).defaults.overload_factor, 1.5)
-  local.defaults.overload_factor = 1.2
-  assert.deepEqual(validateLocalConfig(local), [])
+  for (const good of [1.2, 1, 3]) {
+    local.defaults.overload_factor = good
+    assert.deepEqual(validateLocalConfig(local), [], String(good))
+  }
   for (const bad of [0.99, 0, 'x', Infinity, null]) {
     local.defaults.overload_factor = bad
     assert.equal(validateLocalConfig(local).length, 1, String(bad))

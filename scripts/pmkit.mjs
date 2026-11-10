@@ -2810,7 +2810,7 @@ async function teamLoadReport(ctx, { wanted, requireSprint = false, capacity, da
  * capacity, days off, the flow history, the members and the manifest. `buildLoadReport` computes from it with no tracker call,
  * so `team capacity` can build the report before and after a change from one read.
  */
-async function readLoadInputs(ctx, { wanted, requireSprint = false, withAging = true, withDelivered = true }) {
+async function readLoadInputs(ctx, { wanted, requireSprint = false, withAging = true, withDelivered = true, withBlocked = true }) {
   const tracker = await ctx.tracker()
   const notes = []
   const warnings = []
@@ -2845,18 +2845,19 @@ async function readLoadInputs(ctx, { wanted, requireSprint = false, withAging = 
   const estimation = manifest.find((c) => c.id === 'estimation')
   const choice = chooseUnit(found.issues, estimation)
   if (choice.unit === 'issues' && !noSprintNamed) notes.push(`counted issues instead of estimates: ${choice.reason}${estimation?.path === 'absent' && estimation.enableHint ? ` (${estimation.enableHint})` : ''}`)
-  if (estimation?.path === 'conditional') notes.push(...(await capabilityNotes(tracker, 'estimation')))
+  if (estimation?.path === 'conditional') notes.push(...capabilityNotesFrom(manifest, 'estimation'))
   const capacity = sprint ? await orSupported(() => tracker.getCapacity(sprint.id), {}) : {}
   const daysOff = sprint ? await orSupported(() => tracker.getDaysOff(sprint.id), {}) : {}
   if (sprint) notes.push(...capabilityNotesFrom(manifest, 'capacity'))
-  // The issues done in the sprint. A cut or damaged read is not verified, so nobody gets a count from it.
+  // The issues done in the sprint, archived ones included: an archived issue was still delivered. A cut or damaged read is not verified, so nobody gets a count from it.
   let delivered = null
   if (sprint && !noSprintNamed && withDelivered) {
-    const done = await tracker.searchIssues({ categories: ['done'], sprint: sprint.id })
+    const done = await tracker.searchIssues({ categories: ['done'], sprint: sprint.id, archived: true })
     if (done.hasMore === true || done.problems.length > 0) warnings.push(`the delivered count is not verified: ${done.hasMore === true ? 'the read of the issues done in the sprint was cut' : 'an issue file did not parse'}`)
     else delivered = done.issues
   }
-  const blockedIds = await openBlocked(tracker, found.issues, warnings)
+  // `team capacity` shows no blocked count and proposes no move, so it neither reads blockers nor warns about them.
+  const blockedIds = withBlocked ? await openBlocked(tracker, found.issues, warnings) : new Set()
   let ages = []
   // With no active sprint named nothing was read, so there is no age to compute.
   const aged = withAging && !noSprintNamed
@@ -2923,7 +2924,7 @@ async function runTeamCapacity(ctx) {
   const tracker = await ctx.tracker()
   const wanted = ctx.opt('sprint') ?? 'current'
   const writing = ctx.opt('set') !== undefined || ctx.opt('days-off') !== undefined
-  const inputs = await readLoadInputs(ctx, { wanted, requireSprint: true, withAging: false, withDelivered: false })
+  const inputs = await readLoadInputs(ctx, { wanted, requireSprint: true, withAging: false, withDelivered: false, withBlocked: false })
   const current = buildLoadReport(ctx, inputs, {})
   const { sprint, incomplete } = current
   const humans = current.data.rows.filter(HUMAN_ROW)

@@ -372,3 +372,9 @@ test('proposeMoves still gives away the blocked work of a member with no availab
   const report = teamLoad(issues, { members, unit: 'points', blocked: new Set(['A-1']) })
   assert.deepEqual(proposeMoves(report, issues).moves.map((move) => move.issue), ['A-1'])
 })
+
+test('teamLoad with an overload factor of 1 flags every member above the average', () => {
+  const report = teamLoad([issue('A-1', 'todo', 'fred', 5), issue('A-2', 'todo', 'ana', 4)], { members: MEMBERS, unit: 'points', overloadFactor: 1 })
+  assert.deepEqual(report.imbalances, [{ member: 'fred', flag: 'over_average', load: 5, limit: 4.5 }])
+  assert.deepEqual(teamLoad([issue('A-1', 'todo', 'fred', 4), issue('A-2', 'todo', 'ana', 4)], { members: MEMBERS, unit: 'points', overloadFactor: 1 }).imbalances, [], 'equal loads are not above the average')
+})

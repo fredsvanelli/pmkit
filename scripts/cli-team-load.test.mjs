@@ -273,6 +273,27 @@ test('team load counts the issues each member delivered in the sprint', async ()
   assert.match((await run(['team', 'load'], { cwd: root, env })).stdout, /Delivered/)
 })
 
+test('team load counts an archived done issue in the delivered column', async () => {
+  const root = makeRepo('team')
+  withoutBadFile(root)
+  for (const id of ['ISS-7K3Q', 'ISS-9T2M']) editIssue(root, id, (text) => text.replace('sprint: 2026-09-28', 'sprint: 2026-10-12'))
+  editIssue(root, 'ISS-9T2M', (text) => text.replace('status: done', 'status: done\narchived: true'))
+  assert.equal(rowOf((await load(root)).data, 'fred').delivered, 2)
+})
+
+test('team capacity reads no blocker and prints no blocker warning', async () => {
+  const root = makeRepo('team')
+  withoutBadFile(root)
+  editIssue(root, 'ISS-2X6D', (text) => text.replace(/^blocked_by: .*$/m, 'blocked_by: [ISS-3F7H]'))
+  const { calls, stderr, code } = await spied(root, ['team', 'capacity', '--json'], (name, a, call) => {
+    if (name === 'getIssue') throw new Error('boom')
+    return call()
+  })
+  assert.equal(code, 0, stderr)
+  assert.equal(calls.getIssue, undefined)
+  assert.doesNotMatch(stderr, /blocker/)
+})
+
 test('team load has no delivered count without a sprint, and no column', async () => {
   const root = makeRepo('no-sprints')
   const { data } = await load(root)
