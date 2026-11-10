@@ -398,3 +398,25 @@ test('docs adr-status on a hosted tracker writes the repository ADR with no Line
   assert.equal(JSON.parse(result.stdout).place, 'repo')
   assert.match(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), /^Status: deprecated$/m)
 })
+
+// PMK-228: origin/HEAD is the default branch when git_host.default_branch is unset.
+test('default-branch and docs next-adr use origin/HEAD when default_branch is unset', async () => {
+  const root = repo()
+  writeAdr(root, 'README.md', '# r\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-q', '-m', 'x')
+  git(root, 'update-ref', 'refs/remotes/origin/trunk', 'HEAD')
+  git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk')
+  const result = await run(['default-branch', '--json'], { cwd: root, env: childEnv() })
+  assert.equal(result.code, 0, result.stderr)
+  assert.deepEqual(JSON.parse(result.stdout), { branch: 'trunk', configured: null, valid: true, note: 'git_host.default_branch is not set, so origin/HEAD (trunk) is used' })
+  const { data } = await nextAdr(root)
+  assert.equal(data.defaultBranch, 'trunk')
+  assert.ok(data.notes.includes('git_host.default_branch is not set, so origin/HEAD (trunk) is used'), data.notes.join('\n'))
+})
+
+test('default-branch stays main with no note when origin/HEAD is missing', async () => {
+  const root = repo()
+  const result = await run(['default-branch', '--json'], { cwd: root, env: childEnv() })
+  assert.deepEqual(JSON.parse(result.stdout), { branch: 'main', configured: null, valid: true, note: null })
+})

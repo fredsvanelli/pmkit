@@ -308,6 +308,17 @@ async function docLinks(ctx, id, patch) {
   patch.docs = [...kept, ...adds.filter((item) => !kept.includes(item))]
 }
 
+const originHeads = new WeakMap()
+/** The branch origin/HEAD points to, without origin/, or null when git cannot say. Read once per run (PMK-228). */
+function originHead(ctx) {
+  if (!originHeads.has(ctx)) {
+    const result = readGit(ctx, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'])
+    const ref = !result.error && result.status === 0 ? result.stdout.trim() : ''
+    originHeads.set(ctx, ref.startsWith('origin/') ? ref.slice('origin/'.length) : null)
+  }
+  return originHeads.get(ctx)
+}
+
 /**
  * Where the Local tracker keeps its ADRs: `trackerDir` (absolute, null for a hosted tracker) and `trackerFolder`, the same folder
  * relative to the repository as todos scan sees it (path.relative cleans ./ and a trailing slash), or null when it climbs out of the repository.
@@ -324,7 +335,7 @@ function adrByNumber(files, number, flag) {
   if (!/^\d{1,4}$/.test(number)) throw new PmkitError('INVALID_INPUT', `${flag} "${number}" is not an ADR number`, 'Pass the number of the ADR, such as 3 or 0003')
   const padded = number.padStart(4, '0')
   const found = files.filter((file) => file.number === padded)
-  if (found.length === 0) throw new PmkitError('NOT_FOUND', `no ADR has the number ${padded}`, 'pmkit docs list, or look in docs/adr/')
+  if (found.length === 0) throw new PmkitError('NOT_FOUND', `no ADR has the number ${padded}`, 'Check the number in docs/adr/; pmkit docs next-adr names the folders it reads')
   if (found.length > 1) throw new PmkitError('CONFLICT', `ADR number ${padded} is used by ${found.map((file) => file.path).join(' and ')}`, 'Rename one of them to the number docs next-adr gives; pmkit validate lists every repeated number')
   return found[0]
 }
@@ -522,10 +533,10 @@ async function releasedWarnings(ctx, patch) {
   }
 }
 /** The default branch every reader uses, validated: `main` when git_host.default_branch is unset or not a branch name. */
-const defaultBranch = (ctx) => resolveDefaultBranch(ctx.config().pmkit).branch
+const defaultBranch = (ctx) => resolveDefaultBranch(ctx.config().pmkit, { originHead: () => originHead(ctx) }).branch
 /** The note for a default_branch that was replaced by main, for a command that read it. */
 const defaultBranchNotes = (ctx) => {
-  const { note } = resolveDefaultBranch(ctx.config().pmkit)
+  const { note } = resolveDefaultBranch(ctx.config().pmkit, { originHead: () => originHead(ctx) })
   return note === null ? [] : [note]
 }
 
@@ -995,12 +1006,12 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'default-branch', summary: 'prints git_host.default_branch as a valid branch name, or main with a note when it is unset or not a name; reads .pmkit/config.yaml only, no tracker, writes nothing', flags: [], args: [], exempt: true,
+    name: 'default-branch', summary: 'prints git_host.default_branch as a valid branch name; when it is unset, the branch of origin/HEAD with a note, else main; main with a note when it is not a name; reads .pmkit/config.yaml and origin/HEAD only, no tracker, writes nothing', flags: [], args: [], exempt: true,
     run: async (ctx) => {
       // Only .pmkit/config.yaml, never the tracker: a missing, broken or newer tracker config must not cost the command files their base branch.
       let resolved
       try {
-        resolved = resolveDefaultBranch(parseYaml(fs.readFileSync(path.join(ctx.root, '.pmkit', 'config.yaml'), 'utf8')))
+        resolved = resolveDefaultBranch(parseYaml(fs.readFileSync(path.join(ctx.root, '.pmkit', 'config.yaml'), 'utf8')), { originHead: () => originHead(ctx) })
       } catch (error) {
         const reason = error.code === 'ENOENT' ? 'it does not exist' : error.message.split('\n')[0]
         resolved = { branch: 'main', configured: null, valid: false, note: `cannot read .pmkit/config.yaml (${reason}), so main is used` }
@@ -1632,7 +1643,7 @@ export const COMMANDS = [
       // A hosted tracker needs no call: the Linear adapter cannot create documents, so its ADR is a repository file.
       const documents = hosted ? undefined : (await (await ctx.tracker()).capabilities()).capabilities.find((c) => c.id === 'documents')
       const { trackerDir, trackerFolder } = adrLocation(ctx)
-      const resolved = resolveDefaultBranch(pmkit)
+      const resolved = resolveDefaultBranch(pmkit, { originHead: () => originHead(ctx) })
       const plan = planNextAdr({
         title,
         root: ctx.root,
