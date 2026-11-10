@@ -519,6 +519,20 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       await rejects(() => tracker.createDocument('../escape.md', 'x', actor), 'INVALID_INPUT')
     })
 
+    it('lists documents with a string path each, sorted', ['documents'], async ({ tracker }) => {
+      const docs = await tracker.listDocuments()
+      assert.ok(Array.isArray(docs))
+      assert.ok(docs.every((doc) => typeof doc.path === 'string'))
+      const paths = docs.map((doc) => doc.path)
+      assert.deepEqual(paths, [...paths].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)))
+      assert.ok(!paths.includes(DOC_PATH))
+    })
+
+    it('lists a created document', ['documents', 'document-writes'], async ({ tracker, actor }) => {
+      await tracker.createDocument(DOC_PATH, '# Notes\n', actor)
+      assert.ok((await tracker.listDocuments()).some((doc) => doc.path === DOC_PATH))
+    })
+
     it('every dry run changes nothing that a following read can see', FAMILIES, async ({ tracker, actor, today, assignee, agent }) => {
       const { members } = await tracker.discover()
       const a = (await tracker.createIssue({ title: 'Dry A' }, actor)).after.id
