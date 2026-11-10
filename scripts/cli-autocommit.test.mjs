@@ -355,3 +355,36 @@ test('auto_commit true: goal update, close and delete each make one commit, trac
     }
   })
 })
+
+// PMK-221 review B1 and B2: an accept that fails after the create commits the issue, names both ids, and a retry creates no second issue.
+test('requests accept --create that fails on a read-only request commits the new issue, and the retry points to it', () => {
+  withRepo('no-sprints', { autoCommit: true }, (root) => {
+    const request = JSON.parse(run(root, ['requests', 'create', '--title', 'CSV export', '--json']).stdout).after
+    const dir = path.join(root, '.issues', 'requests')
+    const file = path.join(dir, `${request.id}.md`)
+    fs.chmodSync(file, 0o444)
+    fs.chmodSync(dir, 0o555)
+    let failed
+    try {
+      failed = run(root, ['requests', 'accept', request.id, '--create', '--json'])
+    } finally {
+      fs.chmodSync(dir, 0o755)
+      fs.chmodSync(file, 0o644)
+    }
+    assert.equal(failed.status, 2, failed.stdout + failed.stderr)
+    const error = JSON.parse(failed.stdout).error
+    const created = /^issue (\S+) was created, but request /.exec(error.message)?.[1]
+    assert.ok(created, error.message)
+    assert.match(error.message, new RegExp(`request ${request.id} was not accepted: .*EACCES.*; the request is still open$`))
+    assert.equal(error.nextStep, `pmkit requests accept ${request.id} ${created}`)
+    assert.equal(git(root, 'log', '-1', '--format=%s').stdout.trim(), `pmkit: requests accept ${request.id} ${created}`)
+    assert.deepEqual(status(root, '.issues'), [])
+    const retry = run(root, ['requests', 'accept', request.id, '--create', '--json'])
+    assert.equal(retry.status, 2)
+    assert.equal(JSON.parse(retry.stdout).error.code, 'CONFLICT')
+    assert.equal(JSON.parse(retry.stdout).error.nextStep, `pmkit requests accept ${request.id} ${created}`)
+    const linked = run(root, ['requests', 'accept', request.id, created, '--json'])
+    assert.equal(linked.status, 0, linked.stderr)
+    assert.equal(JSON.parse(linked.stdout).after.target.id, created)
+  })
+})

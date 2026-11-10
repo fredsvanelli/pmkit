@@ -390,10 +390,84 @@ function defaultPrBody(issue) {
   return lines.join('\n')
 }
 const problemLine = (problem) => `${problem.id === null ? '' : `${problem.id}: `}${problem.code} ${problem.message}`
-/** One warning per problem of a list, pointing to pmkit validate. The JSON carries the same problems. */
-const problemWarnings = (problems) => problems.map((problem) => `${problemLine(problem)}; run pmkit validate`)
+/** One warning per problem of a list, pointing to pmkit validate. A cut hosted read (INCOMPLETE) is no file problem. The JSON carries the same problems. */
+const problemWarnings = (problems) => problems.map((problem) => (problem.code === 'INCOMPLETE' ? problemLine(problem) : `${problemLine(problem)}; run pmkit validate`))
 /** A goal list problem as a warning. A cut Linear read (INCOMPLETE) is no file problem, so validate is no help there. */
 const goalProblemWarning = (problem) => (problem.code === 'INCOMPLETE' ? problemLine(problem) : `${problemLine(problem)}; run pmkit validate`)
+
+/**
+ * The customer fields of customers create and update, from their flags. A number the flag spells as digits becomes a number;
+ * anything else goes through as text and the tracker refuses it.
+ */
+function customerInput(ctx) {
+  const input = {}
+  for (const key of ['name', 'status', 'tier', 'owner']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
+  if (ctx.opt('revenue') !== undefined) input.revenue = /^\d+$/.test(ctx.opt('revenue')) ? Number(ctx.opt('revenue')) : ctx.opt('revenue')
+  if (ctx.opt('size') !== undefined) input.size = /^\d+(\.\d+)?$/.test(ctx.opt('size')) ? Number(ctx.opt('size')) : ctx.opt('size')
+  return input
+}
+
+/**
+ * Turns a request into a new issue and accepts the request into it (PMK-221): the issue gets the request title and a description
+ * of the request body, who asked (the customer name, else `from`, else the customer id) and `Request: <id>`, the text
+ * /pmkit:backlog:request-queue writes. An accepted request is refused, so it never gets a second issue. When the accept fails
+ * after the create, the issue stays and the error names both ids; `partialCommit` lets auto_commit keep the issue.
+ * Returns { issue: { before, after }, request: { before, after }, problems, warnings }. A dry run creates nothing and projects the request.
+ */
+export async function acceptIntoNewIssue(tracker, id, actor, { dryRun = false } = {}) {
+  const { problems, ...request } = await tracker.getRequest(id)
+  if (request.state === 'accepted') {
+    throw new PmkitError('CONFLICT', `request ${request.id} is already accepted into ${request.target?.id}`, `pmkit requests accept ${request.id} <issue> moves it to another issue`)
+  }
+  // A retry after an accept that failed must not make a second issue: look for an issue that already names the request.
+  const { id: named, warnings } = await issueNamingRequest(tracker, request.id)
+  if (named) throw new PmkitError('CONFLICT', `issue ${named} already names request ${request.id}`, `pmkit requests accept ${request.id} ${named}`)
+  const asker = request.customer ? (request.customer.name ?? request.customer.id) : request.from
+  const description = [request.body, [asker ? `Asked by: ${asker}` : null, `Request: ${request.id}`].filter(Boolean).join('\n')].filter(Boolean).join('\n\n')
+  const issue = await tracker.createIssue({ title: request.title, description }, actor, { dryRun })
+  if (dryRun) {
+    const target = { type: 'issue', id: issue.after.id, title: issue.after.title }
+    return { issue, request: { before: request, after: { ...request, state: 'accepted', target, triaged: { at: null, by: actor }, reason: null } }, problems, warnings }
+  }
+  try {
+    const accepted = await tracker.acceptRequest(request.id, issue.after.id, actor)
+    return { issue, request: { before: accepted.before, after: accepted.after }, problems: accepted.problems ?? problems, warnings }
+  } catch (error) {
+    // Any error, a system one (EACCES, ENOSPC) or a bug too, names both ids and lets auto_commit keep the issue.
+    const failure = new PmkitError(
+      isPmkitError(error) ? error.code : 'UPSTREAM',
+      `issue ${issue.after.id} was created, but request ${request.id} was not accepted: ${error.message}; the request is still ${request.state}`,
+      `pmkit requests accept ${request.id} ${issue.after.id}`,
+    )
+    failure.cause = error
+    failure.partialCommit = `${request.id} ${issue.after.id}`
+    throw failure
+  }
+}
+
+/**
+ * { id, warnings }: the id of an issue whose description has the line `Request: <id>`, archived ones included, or null.
+ * A cut read (hasMore) refuses, since it may hide that issue. An issue file that does not parse is a warning that names it,
+ * not a refusal (PMK-221 review B6): the issue an earlier run made is written by pmkit and parses, so the search finds it,
+ * and refusing would block every --create in a tracker with one broken file.
+ */
+async function issueNamingRequest(tracker, id) {
+  const { issues, problems = [], hasMore = false } = await tracker.searchIssues({ text: `Request: ${id}`, archived: true })
+  const line = new RegExp(`^Request: ${id}$`, 'm')
+  const found = issues.find((issue) => line.test(issue.description ?? ''))
+  if (found) return { id: found.id, warnings: [] }
+  if (hasMore) {
+    throw new PmkitError(
+      'INVALID_INPUT',
+      `the issues could not all be read, so an issue made for request ${id} by an earlier run cannot be ruled out`,
+      'Accept the request into an existing issue with pmkit requests accept <id> <issue>',
+    )
+  }
+  const unread = problems.map((problem) => problem.id ?? problem.path).filter(Boolean)
+  if (problems.length === 0) return { id: null, warnings: [] }
+  const named = unread.length > 0 ? unread.join(', ') : `${problems.length} issue files`
+  return { id: null, warnings: [`${named} could not be read, so an issue an earlier run made for request ${id} is not ruled out; run pmkit validate`] }
+}
 
 /** A table of requests in the order given: id, title, state, customer, where it came from and the issue. */
 const requestTable = (requests) => table(
@@ -1029,19 +1103,23 @@ export const COMMANDS = [
   {
     name: 'customers list', summary: 'lists the customers with status, tier, revenue, size and request count, highest revenue first', flags: [],
     run: async (ctx) => {
-      const { customers, problems } = await (await ctx.tracker()).listCustomers()
+      const { customers, problems, hasMore = false } = await (await ctx.tracker()).listCustomers()
       const rows = customers.map((c) => [c.id, c.name, c.status?.name ?? '', c.tier?.name ?? '', c.revenue ?? '', c.size ?? '', c.requests])
       return {
-        data: { available: true, customers, hasMore: false, problems },
+        data: { available: true, customers, hasMore, problems },
         text: customers.length === 0 ? 'no customers yet' : table(['ID', 'Name', 'Status', 'Tier', 'Revenue', 'Size', 'Requests'], rows),
         warnings: problemWarnings(problems),
       }
     },
   },
   {
-    name: 'customers show', summary: 'one customer, by id or exact name, with its requests, newest first', usage: '<id or name>', args: ['customer'], flags: [],
+    name: 'customers show', summary: 'one customer, by id or exact name, with its requests, newest first; --customer is the linear customers show spelling',
+    usage: '(<id or name> | --customer <id or name>)', args: ['customer?'], flags: ['customer'],
     run: async (ctx) => {
-      const { customer, requests, problems } = await (await ctx.tracker()).getCustomer(ctx.args[0])
+      if ((ctx.args[0] === undefined) === (ctx.opt('customer') === undefined)) {
+        throw usageError('customers show takes the customer as <id or name> or as --customer, and not both', 'pmkit customers show CUS-1')
+      }
+      const { customer, requests, problems } = await (await ctx.tracker()).getCustomer(ctx.args[0] ?? ctx.opt('customer'))
       const text = [customerRecord(customer), '', requests.length === 0 ? 'no requests yet' : requestTable(requests)].join('\n')
       return { data: { available: true, customer, requests, problems }, text, warnings: problemWarnings(problems) }
     },
@@ -1051,12 +1129,17 @@ export const COMMANDS = [
     flags: ['name', 'status', 'tier', 'revenue', 'size', 'owner'],
     run: async (ctx) => {
       if (ctx.opt('name') === undefined) throw usageError('customers create needs --name', 'pmkit customers create --name "..."')
-      const input = { name: ctx.opt('name') }
-      for (const key of ['status', 'tier', 'owner']) if (ctx.opt(key) !== undefined) input[key] = ctx.opt(key)
-      // A number the flag spells as digits becomes a number; anything else goes through as text and the tracker refuses it.
-      if (ctx.opt('revenue') !== undefined) input.revenue = /^\d+$/.test(ctx.opt('revenue')) ? Number(ctx.opt('revenue')) : ctx.opt('revenue')
-      if (ctx.opt('size') !== undefined) input.size = /^\d+(\.\d+)?$/.test(ctx.opt('size')) ? Number(ctx.opt('size')) : ctx.opt('size')
+      const input = customerInput(ctx)
       const result = await (await ctx.tracker()).createCustomer(input, await ctx.actor(), { dryRun: ctx.dryRun })
+      return { data: result, text: writeText(result, { ...ctx, record: customerRecord }), commit: result.after.id }
+    },
+  },
+  {
+    name: 'customers update', summary: 'edits a customer, by id or exact name; none clears the status, tier or owner',
+    usage: '<id or name> [--name n] [--status s|none] [--tier t|none] [--revenue n] [--size n] [--owner member|none]', write: true,
+    args: ['customer'], flags: ['name', 'status', 'tier', 'revenue', 'size', 'owner'],
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).updateCustomer(ctx.args[0], customerInput(ctx), await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: customerRecord }), commit: result.after.id }
     },
   },
@@ -1092,10 +1175,40 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'requests accept', summary: 'accepts a request into an existing issue', usage: '<id> <issue>', write: true, args: ['id', 'issue'], flags: [],
+    name: 'requests accept', summary: 'accepts a request into an existing issue, or with --create into a new issue made from the request',
+    usage: '<id> (<issue> | --create)', write: true, args: ['id', 'issue?'], flags: ['create'],
     run: async (ctx) => {
-      const result = await (await ctx.tracker()).acceptRequest(ctx.args[0], ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })
+      const [id, issue] = ctx.args
+      if ((issue === undefined) === !ctx.flag('create')) throw usageError('requests accept takes an <issue> or --create, and not both', 'pmkit requests accept REQ-1 ISS-1, or pmkit requests accept REQ-1 --create')
+      if (ctx.flag('create')) {
+        const result = await acceptIntoNewIssue(await ctx.tracker(), id, await ctx.actor(), { dryRun: ctx.dryRun })
+        const text = [
+          writeText(result.issue, { ...ctx, dryRun: false, record: issueRecord }),
+          '',
+          writeText(result.request, { ...ctx, record: requestRecord }),
+        ].join('\n')
+        return {
+          data: result, text, commit: `${result.request.after.id} ${result.issue.after.id}`, warnings: [...problemWarnings(result.problems), ...result.warnings],
+          notes: ctx.dryRun ? ['the issue ID is assigned when written, and so is the triage time'] : [],
+        }
+      }
+      const result = await (await ctx.tracker()).acceptRequest(id, issue, await ctx.actor(), { dryRun: ctx.dryRun })
       return { data: result, text: writeText(result, { ...ctx, record: requestRecord }), commit: result.after.id, warnings: problemWarnings(result.problems) }
+    },
+  },
+  {
+    name: 'requests update', summary: 'edits the title or the body of a request; the state and the triage stay',
+    usage: '<id> [--title t | --title-file f] [--body-file f]', write: true, args: ['id'], flags: ['title', 'title-file', 'body-file'],
+    run: async (ctx) => {
+      const changes = {}
+      const title = lineFromFlag(ctx.opt, 'title')
+      if (title !== undefined) changes.title = title
+      if (ctx.opt('body-file') !== undefined) changes.body = readInput(ctx.opt('body-file'))
+      const result = await (await ctx.tracker()).updateRequest(ctx.args[0], changes, await ctx.actor(), { dryRun: ctx.dryRun })
+      // changeLines skips `body` (an issue's whole file), so the request text is compared as `text`, printed as "text: changed".
+      const withText = (view) => ({ ...view, text: view.body })
+      const text = writeText({ before: withText(result.before), after: withText(result.after) }, { ...ctx, record: requestRecord })
+      return { data: result, text, commit: result.after.id, warnings: problemWarnings(result.problems) }
     },
   },
   {
@@ -3827,9 +3940,12 @@ function checkUsage(command, { options, positionals }) {
     }
   }
   const expected = command.args ?? []
+  // An argument named with a trailing ? is optional, and only the last ones can be.
+  const required = expected.filter((a) => !a.endsWith('?')).length
   const label = `${command.name}${command.usage ? ` ${command.usage}` : ''}`
-  if (command.rest ? positionals.length < 1 : positionals.length !== expected.length) {
-    throw usageError(`${command.name} takes ${command.rest ? 'at least one <id>' : expected.length === 0 ? 'no arguments' : expected.map((a) => `<${a}>`).join(' ')}`, `Usage: ${label}`)
+  if (command.rest ? positionals.length < 1 : positionals.length < required || positionals.length > expected.length) {
+    const named = expected.map((a) => (a.endsWith('?') ? `[<${a.slice(0, -1)}>]` : `<${a}>`)).join(' ')
+    throw usageError(`${command.name} takes ${command.rest ? 'at least one <id>' : expected.length === 0 ? 'no arguments' : named}`, `Usage: ${label}`)
   }
 }
 

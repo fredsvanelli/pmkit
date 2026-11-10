@@ -1,3 +1,10 @@
 {"at":"2026-11-08T20:37:24Z","by":"fred","op":"create","to":{"id":"PMK-221","title":"Improve customers and requests","type":"feature","status":"backlog","priority":"low","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-08T20:37:24.334Z","updated":"2026-11-08T20:37:24Z"}}
 {"at":"2026-11-08T20:37:24Z","by":"fred","op":"link","field":"related","to":"PMK-46"}
 {"at":"2026-11-08T20:53:52Z","by":"fred","op":"update","field":"estimate","from":null,"to":5}
+{"at":"2026-11-10T06:55:48Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-10T06:55:48Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-10T06:55:51Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-221-improve-customers-and-requests"}
+{"at":"2026-11-10T06:59:21Z","by":"fred","op":"comment","to":"2026-11-10T06-59-21Z-fred.md"}
+{"at":"2026-11-10T07:22:45Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T07:23:28Z","by":"fred","op":"comment","to":"2026-11-10T07-23-28Z-fred.md"}
+{"at":"2026-11-10T07:23:29Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

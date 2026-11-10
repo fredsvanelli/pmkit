@@ -1739,8 +1739,8 @@ export function createLocalTracker(root, {
     return { customers: sortCustomers(views), problems: [...customers.problems, ...requests.problems] }
   }
 
-  /** A customer by id, or by a name matched exactly and case-insensitively, with its requests newest first, as Linear lists them. */
-  function getCustomer(ref) {
+  /** A customer by id, or by a name matched exactly and case-insensitively. Returns the customer and every readable customer. */
+  function findCustomer(ref) {
     const all = readRecords(CUSTOMER)
     const normalized = normalizeId(String(ref ?? ''))
     let customer
@@ -1758,6 +1758,12 @@ export function createLocalTracker(root, {
       if (matches.length === 0) throw new PmkitError('NOT_FOUND', `no customer is named or identified "${ref}"`, 'pmkit customers list')
       customer = matches[0]
     }
+    return { customer, all }
+  }
+
+  /** A customer by id or exact name (findCustomer), with its requests newest first, as Linear lists them. */
+  function getCustomer(ref) {
+    const { customer, all } = findCustomer(ref)
     const requests = readRecords(REQUEST)
     const own = sortRequestsNewest(requests.records.filter((request) => request.customer === customer.id))
     const { views, problems } = requestViews(own, all.records)
@@ -1776,6 +1782,21 @@ export function createLocalTracker(root, {
     return local.id_style === 'numbered' ? nextNumberedId(prefix, [...stems]) : newId(prefix, { random, exists: (candidate) => stems.has(candidate) })
   }
 
+  /** One customer field checked as a create or an update stores it. */
+  const CUSTOMER_FIELD = {
+    status: (value) => oneLineText('status', value),
+    tier: (value) => oneLineText('tier', value),
+    revenue: (value) => {
+      if (!Number.isInteger(value) || value < 0) throw invalid('revenue must be a whole number of at least 0')
+      return value
+    },
+    size: (value) => {
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw invalid('size must be a number of at least 0')
+      return value
+    },
+    owner: (value) => requireMember(value, 'owner'),
+  }
+
   function createCustomer(input, actor, { dryRun = false } = {}) {
     requireWriter(actor)
     const allowed = ['name', 'status', 'tier', 'revenue', 'size', 'owner', 'notes']
@@ -1784,16 +1805,7 @@ export function createLocalTracker(root, {
     }
     if (typeof input.name !== 'string' || input.name.trim() === '') throw invalid('name is required')
     const customer = { name: oneLineText('name', input.name), notes: '' }
-    for (const key of ['status', 'tier']) if (!blank(input[key])) customer[key] = oneLineText(key, input[key])
-    if (!blank(input.revenue)) {
-      if (!Number.isInteger(input.revenue) || input.revenue < 0) throw invalid('revenue must be a whole number of at least 0')
-      customer.revenue = input.revenue
-    }
-    if (!blank(input.size)) {
-      if (typeof input.size !== 'number' || !Number.isFinite(input.size) || input.size < 0) throw invalid('size must be a number of at least 0')
-      customer.size = input.size
-    }
-    if (!blank(input.owner)) customer.owner = requireMember(input.owner, 'owner')
+    for (const key of ['status', 'tier', 'revenue', 'size', 'owner']) if (!blank(input[key])) customer[key] = CUSTOMER_FIELD[key](input[key])
     if (!blank(input.notes)) customer.notes = plainText('notes', input.notes)
     const id = nextRecordId(CUSTOMER)
     const content = serializeCustomer(customer)
@@ -1803,6 +1815,46 @@ export function createLocalTracker(root, {
       writeFile(path.join(customersDir, `${id}.md`), content)
     }
     return { before: null, after: customerView(after, []) }
+  }
+
+  /**
+   * Edits a customer found by id or exact name. `changes` holds name, status, tier, revenue, size or owner; `none` (any case)
+   * removes status, tier or owner. Only those frontmatter lines change, so comments, unknown keys and the notes stay. A change
+   * that leaves every value as it was writes nothing and returns `before` equal to `after`.
+   */
+  function updateCustomer(ref, changes, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const allowed = ['name', 'status', 'tier', 'revenue', 'size', 'owner']
+    const keys = Object.keys(changes ?? {})
+    if (keys.length === 0) throw invalid('nothing to update', `Pass at least one of: ${allowed.join(', ')}`)
+    for (const key of keys) if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+    const { customer: stored } = findCustomer(ref)
+    const requests = readRecords(REQUEST).records
+    const before = customerView(stored, requests)
+    const next = { ...stored }
+    for (const key of keys) {
+      const value = changes[key]
+      if (key === 'name') next.name = oneLineText('name', value)
+      else if (['status', 'tier', 'owner'].includes(key) && typeof value === 'string' && value.trim().toLowerCase() === 'none') delete next[key]
+      else next[key] = CUSTOMER_FIELD[key](value)
+    }
+    if (allowed.every((key) => next[key] === stored[key])) return { before, after: before }
+    const file = path.join(customersDir, `${stored.id}.md`)
+    const { yaml, body } = splitFrontmatter(fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'))
+    let edited = yaml
+    try {
+      for (const key of allowed) {
+        if (next[key] === stored[key]) continue
+        edited = next[key] === undefined ? removeKey(edited, [key]) : setScalar(edited, [key], next[key])
+      }
+    } catch (error) {
+      if (error instanceof PmkitError) throw error
+      throw new PmkitError('INVALID_INPUT', `The customer frontmatter cannot be edited: ${error.message}`, '/pmkit:local:doctor')
+    }
+    const content = `---\n${edited.replace(/\n$/, '')}\n---\n${body}`
+    const after = readBack('customer file', () => parseCustomer(content, stored.id))
+    if (!dryRun) writeFile(file, content)
+    return { before, after: customerView(after, requests) }
   }
 
   /** The normalized id of a customer whose file exists and parses. A missing file, an unreadable one and a value that is not an id each get their own message. */
@@ -1897,6 +1949,38 @@ export function createLocalTracker(root, {
       throw new PmkitError('INVALID_INPUT', `The request frontmatter cannot be edited: ${error.message}`, '/pmkit:local:doctor')
     }
     const content = `---\n${edited.replace(/\n$/, '')}\n---\n${body}`
+    const after = read(readBack('request file', () => parseRequest(content, stored.id)))
+    if (!dryRun) writeFile(file, content)
+    return { before: before.views[0], after: after.views[0], problems: after.problems }
+  }
+
+  /**
+   * Edits the text of a request: `title` (one line) and `body` (an empty body removes it). The title line is edited in place and
+   * the body after the frontmatter is replaced, so `#` comments, unknown keys and the triage keys stay; `triaged` does not change,
+   * since editing the text is not triage. The same text writes nothing and returns `before` equal to `after`.
+   */
+  function updateRequest(id, changes, actor, { dryRun = false } = {}) {
+    requireWriter(actor)
+    const allowed = ['title', 'body']
+    const keys = Object.keys(changes ?? {})
+    if (keys.length === 0) throw invalid('nothing to update', 'Pass --title or --body-file')
+    for (const key of keys) if (!allowed.includes(key)) throw invalid(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+    const stored = readRecord(REQUEST, id)
+    const title = changes.title === undefined ? stored.title : NORMALIZE.title(changes.title)
+    const body = changes.body === undefined ? stored.body : (blank(changes.body) ? '' : plainText('body', changes.body))
+    const read = (request) => requestViews([request], readRecords(CUSTOMER).records)
+    const before = read(stored)
+    if (title === stored.title && body === stored.body) return { before: before.views[0], after: before.views[0], problems: before.problems }
+    const file = path.join(requestsDir, `${stored.id}.md`)
+    const { yaml } = splitFrontmatter(fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'))
+    let edited
+    try {
+      edited = title === stored.title ? yaml : setScalar(yaml, ['title'], title)
+    } catch (error) {
+      if (error instanceof PmkitError) throw error
+      throw new PmkitError('INVALID_INPUT', `The request frontmatter cannot be edited: ${error.message}`, '/pmkit:local:doctor')
+    }
+    const content = `---\n${edited.replace(/\n$/, '')}\n---\n${body === '' ? '' : `\n${body}\n`}`
     const after = read(readBack('request file', () => parseRequest(content, stored.id)))
     if (!dryRun) writeFile(file, content)
     return { before: before.views[0], after: after.views[0], problems: after.problems }
@@ -2244,7 +2328,7 @@ export function createLocalTracker(root, {
   return {
     saveView, listViews, runView, deleteView, renameView,
     listGoals, getGoal, createGoal, goalProgress, setEpicGoal, updateGoal, deleteGoal,
-    listCustomers, getCustomer, createCustomer, listRequests, getRequest, createRequest, acceptRequest, declineRequest, listDemandSignals,
+    listCustomers, getCustomer, createCustomer, updateCustomer, listRequests, getRequest, createRequest, updateRequest, acceptRequest, declineRequest, listDemandSignals,
     listNotifications, markRead,
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     listMilestones, getMilestone, createMilestone, unfiledMilestones, unreadableRecords,

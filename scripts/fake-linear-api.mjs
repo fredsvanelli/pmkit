@@ -1101,10 +1101,11 @@ export function fakeCustomers({ customers = [], statuses = CUSTOMER_STATUSES, ti
     },
     PmkitCustomerShow: (body) => {
       if (disabledError) return disabled()
+      // Customer.needs is [CustomerNeed!]! without arguments in Linear's schema, so validation refuses a connection form (PMK-221 review).
+      if (/\bneeds\s*\(/.test(body.query)) return graphqlError('Unknown argument "first" on field "Customer.needs".', 'GRAPHQL_VALIDATION_FAILED')
       const found = customerOf(body.variables?.id)
       if (!found) return graphqlError('Entity not found: Customer', 'INPUT_ERROR')
-      const mine = needs.filter((need) => need.customerId === found.id).sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))
-      return json({ customer: { ...found, needs: page(mine.map(needNode)) } })
+      return json({ customer: found })
     },
     PmkitCustomerStatuses: json({ customerStatuses: page(statuses) }),
     PmkitCustomerTiers: json({ customerTiers: page(tiers) }),
@@ -1124,6 +1125,23 @@ export function fakeCustomers({ customers = [], statuses = CUSTOMER_STATUSES, ti
       const changes = Object.entries(input).reduce((all, [key, value]) => ({ ...all, ...(FIELD_OF_INPUT[key]?.(value) ?? {}) }), {})
       return { success: true, customer: { ...found, ...changes } }
     }),
+    // PMK-221: the generic commands create customers and read every request of the workspace.
+    PmkitCustomerCreate: mutation('customerCreate', ({ input = {} }) => {
+      const { name, ...rest } = input
+      const changes = Object.entries(rest).reduce((all, [key, value]) => ({ ...all, ...(FIELD_OF_INPUT[key]?.(value) ?? {}) }), {})
+      return { success: true, customer: { id: 'cust-new', name, status: ref(statuses, 'st-1'), tier: null, revenue: null, size: null, owner: null, approximateNeedCount: 0, url: null, ...changes } }
+    }),
+    PmkitCustomerNeeds: (body) => {
+      if (disabledError) return disabled()
+      const { first = 50, after = null, filter } = body.variables ?? {}
+      const wanted = filter?.customer?.id?.eq
+      const matching = wanted === undefined ? needs : needs.filter((need) => need.customerId === wanted)
+      const start = Number(after ?? 0)
+      const end = start + first
+      const hasNextPage = end < matching.length
+      const nodes = matching.slice(start, end).map((need) => ({ ...needNode(need), customer: customerOf(need.customerId) ?? { id: need.customerId } }))
+      return json({ customerNeeds: page(nodes, { hasNextPage, endCursor: hasNextPage ? String(end) : null }) })
+    },
     PmkitCustomerNeedCreate: mutation('customerNeedCreate', ({ input = {} }) => {
       if (!customerOf(input.customerId)) throw new FakeInputError('Entity not found: Customer')
       const need = { id: 'need-new', body: input.body ?? '', priority: input.priority ?? 0, createdAt: '2026-10-28T12:00:00.000Z', customerId: input.customerId, issueId: input.issueId, projectId: input.projectId }

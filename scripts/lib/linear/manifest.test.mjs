@@ -95,27 +95,16 @@ test('the default workspace gives the sandbox column', async () => {
 test('a Business workspace with releases and customers on', async () => {
   const entry = byId(buildLinearCapabilities(await raw(BUSINESS), pmkitWith()))
   assert.deepEqual(entry.releases, { id: 'releases', path: 'native' })
-  assert.equal(entry.demand_signals.path, 'absent')
-  assert.equal(entry.demand_signals.detail.workspace, 'native')
   assert.equal(entry.strategic_goals.path, 'native')
   assert.equal(entry.request_queue.detail.workspace, 'conditional')
-  assert.deepEqual(entry.demand_signals, {
-    id: 'demand_signals',
-    path: 'absent',
-    detail: { workspace: 'native', unsupported: ['listCustomers', 'getCustomer', 'createCustomer', 'createRequest', 'listDemandSignals'] },
-    enableHint: 'The Linear adapter serves customer requests through linear customers only; Linear offers them on this workspace',
-  })
+  // PMK-221: the generic customer commands read Linear customers.
+  assert.deepEqual(entry.demand_signals, { id: 'demand_signals', path: 'native', detail: { workspace: 'native' } })
   assert.deepEqual(entry.request_queue, {
     id: 'request_queue',
     path: 'absent',
-    detail: { workspace: 'conditional', unsupported: ['listRequests', 'getRequest', 'createRequest', 'acceptRequest', 'declineRequest'] },
+    detail: { workspace: 'conditional', unsupported: ['listRequests', 'getRequest', 'updateRequest', 'acceptRequest', 'declineRequest'] },
     enableHint: 'The Linear adapter does not serve Asks yet; Linear offers them on this workspace',
   })
-  // `requests create` is served by demand_signals and request_queue, so both lists name createRequest.
-  const REQUEST_OPERATIONS = ['listRequests', 'getRequest', 'createRequest', 'acceptRequest', 'declineRequest']
-  const listed = [...entry.demand_signals.detail.unsupported, ...entry.request_queue.detail.unsupported]
-  for (const operation of REQUEST_OPERATIONS) assert.ok(listed.includes(operation), operation)
-  assert.ok(entry.demand_signals.detail.unsupported.includes('createRequest'))
   assert.deepEqual(entry.user_inbox, { id: 'user_inbox', path: 'native', detail: { workspace: 'native' } })
   // PMK-213: the adapter reads initiatives as goals; the goal writes stay unsupported.
   assert.deepEqual(entry.strategic_goals, {

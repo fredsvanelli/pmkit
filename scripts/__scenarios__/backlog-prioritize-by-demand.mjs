@@ -128,8 +128,9 @@ export default [
     },
   },
   {
-    // The Linear path (demand_signals absent) needs the Linear API, which a child process cannot fake: step 1 fails with AUTH and
-    // the command stops before any request. scripts/lib/linear/manifest.test.mjs covers the absent capability.
+    // The Linear path needs the Linear API, which a child process cannot fake: step 1 fails with AUTH and the command stops before
+    // any request. scripts/lib/linear/manifest.test.mjs covers demand_signals (native with customers on, absent with them off), and
+    // scripts/cli-linear.test.mjs covers demand list on Linear (PMK-221).
     command: 'backlog/prioritize-by-demand',
     fixture: 'team',
     git: true,

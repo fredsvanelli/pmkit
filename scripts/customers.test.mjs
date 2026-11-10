@@ -364,3 +364,133 @@ test('listDemandSignals says what each problem is about', () => {
   const { problems } = tracker.listDemandSignals()
   assert.deepEqual(problems.map((problem) => [problem.id, problem.about]).sort(), [['CUS-4', 'customer'], ['ISS-ZZZZ', 'issue'], ['REQ-2', 'request']])
 })
+
+// PMK-221: customers update.
+test('updateCustomer edits each field, clears status, tier and owner with none, and keeps comments, unknown keys and notes', () => {
+  const { dir, write, tracker } = setup()
+  write('customers', 'CUS-1.md', '---\n# the account\nname: Acme\nplan: gold\nstatus: active\ntier: t1\nowner: fred\n---\n\nNotes.\n')
+  const { before, after } = tracker.updateCustomer('acme', { name: 'Acme Corp', tier: 'enterprise', revenue: 5, size: 1.5, status: 'none', owner: 'NONE' }, 'fred')
+  assert.equal(before.name, 'Acme')
+  assert.deepEqual(after, {
+    id: 'CUS-1', name: 'Acme Corp', status: null, tier: { id: 'enterprise', name: 'enterprise' }, revenue: 5, size: 1.5, owner: null, requests: 0, url: null, notes: 'Notes.',
+  })
+  const text = fs.readFileSync(path.join(dir('customers'), 'CUS-1.md'), 'utf8')
+  for (const kept of ['# the account\n', 'plan: gold\n', '\nNotes.\n']) assert.ok(text.includes(kept), kept)
+  assert.ok(!/^status:|^owner:/m.test(text), text)
+  assert.equal(tracker.updateCustomer('CUS-1', { owner: 'fred' }, 'fred').after.owner.id, 'fred')
+})
+
+test('updateCustomer with no change or a dry run writes nothing, and refuses bad values', () => {
+  const { root, write, tracker } = setup()
+  write('customers', 'CUS-1.md', '---\r\nname: Acme\r\nrevenue: 10\r\n---\r\n')
+  const hash = hashTree(root)
+  const same = tracker.updateCustomer('CUS-1', { revenue: 10, tier: 'none' }, 'fred')
+  assert.deepEqual(same.before, same.after)
+  const dry = tracker.updateCustomer('CUS-1', { revenue: 20 }, 'fred', { dryRun: true })
+  assert.equal(dry.after.revenue, 20)
+  assert.deepEqual(hashTree(root), hash)
+  for (const changes of [{}, { revenue: -1 }, { revenue: '10' }, { size: 'big' }, { owner: 'nobody' }, { name: '' }, { name: 'A\nB' }, { url: 'x' }]) {
+    assert.throws(() => tracker.updateCustomer('CUS-1', changes, 'fred'), code('INVALID_INPUT'), JSON.stringify(changes))
+  }
+  assert.throws(() => tracker.updateCustomer('CUS-9', { revenue: 1 }, 'fred'), code('NOT_FOUND'))
+  assert.deepEqual(hashTree(root), hash)
+})
+
+// PMK-221: requests update edits the text of a request.
+test('updateRequest edits the title and the body, keeps triaged, unknown keys and comments', () => {
+  const { dir, write, tracker } = setup()
+  write('requests', 'REQ-1.md', '---\n# from the call\ntitle: CSV\nsource_ticket: 42\nstate: declined\nreason: later\ntriaged: 2026-10-23T12:00:00Z\ntriaged_by: fred\n---\n\nOld text.\n')
+  const { before, after } = tracker.updateRequest('req-1', { title: 'CSV export', body: 'New text.\r\nSecond line.' }, 'fred')
+  assert.deepEqual([before.title, before.body], ['CSV', 'Old text.'])
+  assert.deepEqual([after.title, after.body, after.state, after.reason, after.triaged], ['CSV export', 'New text.\nSecond line.', 'declined', 'later', { at: '2026-10-23T12:00:00Z', by: 'fred' }])
+  const text = fs.readFileSync(path.join(dir('requests'), 'REQ-1.md'), 'utf8')
+  assert.equal(text, '---\n# from the call\ntitle: CSV export\nsource_ticket: 42\nstate: declined\nreason: later\ntriaged: 2026-10-23T12:00:00Z\ntriaged_by: fred\n---\n\nNew text.\nSecond line.\n')
+  tracker.updateRequest('REQ-1', { body: '' }, 'fred')
+  assert.ok(fs.readFileSync(path.join(dir('requests'), 'REQ-1.md'), 'utf8').endsWith('triaged_by: fred\n---\n'))
+})
+
+test('updateRequest with the same text or a dry run writes nothing, and refuses bad input', () => {
+  const { root, write, tracker } = setup()
+  write('requests', 'REQ-1.md', '---\ntitle: CSV\n---\n\nText.\n')
+  const hash = hashTree(root)
+  const same = tracker.updateRequest('REQ-1', { title: 'CSV', body: 'Text.\n' }, 'fred')
+  assert.deepEqual(same.before, same.after)
+  assert.equal(tracker.updateRequest('REQ-1', { title: 'Other' }, 'fred', { dryRun: true }).after.title, 'Other')
+  assert.deepEqual(hashTree(root), hash)
+  for (const changes of [{}, { title: '' }, { title: 'A\nB' }, { state: 'open' }]) {
+    assert.throws(() => tracker.updateRequest('REQ-1', changes, 'fred'), code('INVALID_INPUT'), JSON.stringify(changes))
+  }
+  assert.throws(() => tracker.updateRequest('REQ-9', { title: 'T' }, 'fred'), code('NOT_FOUND'))
+  assert.deepEqual(hashTree(root), hash)
+})
+
+// PMK-221: an accept that fails after the create keeps the issue and names both ids.
+test('acceptIntoNewIssue names the new issue and the open request when the accept fails after the create', async () => {
+  const { acceptIntoNewIssue } = await import('./pmkit.mjs')
+  const { root, dir, write, tracker } = setup()
+  fs.rmSync(path.join(dir('issues'), 'ISS-3Q6T'), { recursive: true }) // the team fixture's conflicted issue, which no search can read
+  write('requests', 'REQ-1.md', '---\ntitle: CSV\n---\n')
+  const failing = { ...tracker, acceptRequest: () => { throw Object.assign(new Error('disk full'), { code: 'UPSTREAM' }) } }
+  await assert.rejects(acceptIntoNewIssue(failing, 'REQ-1', 'fred'), (error) => {
+    assert.equal(error.code, 'UPSTREAM')
+    assert.match(error.message, /^issue ISS-\d+ was created, but request REQ-1 was not accepted: disk full; the request is still open$/)
+    assert.match(error.nextStep, /^pmkit requests accept REQ-1 ISS-\d+$/)
+    assert.match(error.partialCommit, /^REQ-1 ISS-\d+$/)
+    return true
+  })
+  assert.equal(tracker.getRequest('REQ-1').state, 'open')
+  assert.ok(fs.readdirSync(path.join(root, '.issues', 'issues')).length > 0)
+})
+
+// PMK-221 review B1: any error of the accept, an errno one too, keeps both ids and the partial commit.
+test('acceptIntoNewIssue keeps both ids when the accept fails with a system error, and keeps its cause', async () => {
+  const { acceptIntoNewIssue } = await import('./pmkit.mjs')
+  const { dir, write, tracker } = setup()
+  fs.rmSync(path.join(dir('issues'), 'ISS-3Q6T'), { recursive: true }) // the team fixture's conflicted issue, which no search can read
+  write('requests', 'REQ-1.md', '---\ntitle: CSV\n---\n')
+  const errno = Object.assign(new Error('EACCES: permission denied, open REQ-1.md'), { code: 'EACCES' })
+  const failing = { ...tracker, acceptRequest: () => { throw errno } }
+  await assert.rejects(acceptIntoNewIssue(failing, 'REQ-1', 'fred'), (error) => {
+    assert.equal(error.code, 'UPSTREAM')
+    assert.match(error.message, /^issue ISS-\d+ was created, but request REQ-1 was not accepted: EACCES: permission denied/)
+    assert.match(error.partialCommit, /^REQ-1 ISS-\d+$/)
+    assert.equal(error.cause, errno)
+    return true
+  })
+})
+
+// PMK-221 review B2: a retry after a failed accept finds the issue the first run made and never creates a second one.
+test('acceptIntoNewIssue refuses with CONFLICT when an issue already names the request, and writes nothing', async () => {
+  const { acceptIntoNewIssue } = await import('./pmkit.mjs')
+  const { root, dir, write, tracker } = setup()
+  fs.rmSync(path.join(dir('issues'), 'ISS-3Q6T'), { recursive: true }) // the team fixture's conflicted issue, which no search can read
+  write('requests', 'REQ-1.md', '---\ntitle: CSV\n---\n')
+  const orphan = tracker.createIssue({ title: 'CSV', description: 'Asked by: support\nRequest: REQ-1' }, 'fred').after
+  tracker.createIssue({ title: 'Other', description: 'Request: REQ-10' }, 'fred')
+  const hash = hashTree(root, ['.issues/.cache'])
+  await assert.rejects(acceptIntoNewIssue(tracker, 'req-1', 'fred'), (error) => {
+    assert.equal(error.code, 'CONFLICT')
+    assert.match(error.message, new RegExp(`issue ${orphan.id} already names request REQ-1`))
+    assert.equal(error.nextStep, `pmkit requests accept REQ-1 ${orphan.id}`)
+    return true
+  })
+  assert.deepEqual(hashTree(root, ['.issues/.cache']), hash)
+})
+
+test('acceptIntoNewIssue creates the issue with a warning naming the unreadable issues, and refuses a cut read (PMK-221 review B6)', async () => {
+  const { acceptIntoNewIssue } = await import('./pmkit.mjs')
+  const { root, write, tracker } = setup()
+  write('requests', 'REQ-1.md', '---\ntitle: CSV\n---\n')
+  // The team fixture's ISS-3Q6T has conflict markers, so no search can read it.
+  const hash = hashTree(root, ['.issues/.cache'])
+  const dry = await acceptIntoNewIssue(tracker, 'REQ-1', 'fred', { dryRun: true })
+  assert.deepEqual(hashTree(root, ['.issues/.cache']), hash)
+  assert.equal(dry.warnings.length, 1)
+  assert.match(dry.warnings[0], /ISS-3Q6T could not be read, so an issue an earlier run made for request REQ-1 is not ruled out/)
+  const made = await acceptIntoNewIssue(tracker, 'REQ-1', 'fred')
+  assert.deepEqual(made.warnings, dry.warnings)
+  assert.equal(tracker.getRequest('REQ-1').target.id, made.issue.after.id)
+  const cut = { ...tracker, searchIssues: async () => ({ issues: [], problems: [], hasMore: true }) }
+  write('requests', 'REQ-2.md', '---\ntitle: Other\n---\n')
+  await assert.rejects(acceptIntoNewIssue(cut, 'REQ-2', 'fred'), (error) => error.code === 'INVALID_INPUT' && /could not all be read/.test(error.message))
+})

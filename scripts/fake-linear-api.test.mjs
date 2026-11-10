@@ -853,8 +853,10 @@ test('fakeCustomers answers the queries and the mutation routes echo their varia
   const fetch = fakeLinearFetch(fakeCustomers({ customers: [CUSTOMER], needs: [NEED], issues: [ISSUE_A], projects: [{ id: 'proj-1', name: 'Mobile', slugId: 'mob' }] }))
   assert.equal((await ask(fetch, 'PmkitCustomersList', { first: 10 })).data.customers.nodes.length, 1)
   assert.equal((await ask(fetch, 'PmkitCustomersList', { first: 10, filter: { tier: { id: { eq: 'tier-1' } } } })).data.customers.nodes.length, 0)
-  const show = (await ask(fetch, 'PmkitCustomerShow', { id: 'cust-1' })).data.customer
-  assert.deepEqual(show.needs.nodes.map((need) => [need.id, need.customer.id, need.issue.identifier]), [['need-1', 'cust-1', 'ACME-12']])
+  assert.equal((await ask(fetch, 'PmkitCustomerShow', { id: 'cust-1' })).data.customer.id, 'cust-1')
+  const needs = (await ask(fetch, 'PmkitCustomerNeeds', { first: 10, filter: { customer: { id: { eq: 'cust-1' } } } })).data.customerNeeds
+  assert.deepEqual(needs.nodes.map((need) => [need.id, need.customer.id, need.issue.identifier]), [['need-1', 'cust-1', 'ACME-12']])
+  assert.deepEqual((await ask(fetch, 'PmkitCustomerNeeds', { first: 10, filter: { customer: { id: { eq: 'cust-9' } } } })).data.customerNeeds.nodes, [])
   assert.equal((await ask(fetch, 'PmkitCustomerStatuses')).data.customerStatuses.nodes.length, 4)
   assert.deepEqual((await ask(fetch, 'PmkitCustomerTiers')).data.customerTiers.nodes.map((tier) => tier.name), ['Gold', 'Silver'])
   assert.equal((await ask(fetch, 'PmkitCustomerIssue', { id: 'acme-12' })).data.issues.nodes[0].id, 'iss-1')

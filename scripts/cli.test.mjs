@@ -1590,7 +1590,9 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'goal delete': ['GOAL-8K2W'],
     'epic goal': ['EPC-2M9D', 'none'],
     'customers create': ['--name', 'Acme'],
+    'customers update': ['CUS-1', '--tier', 'gold'],
     'requests create': ['--title', 'CSV export'],
+    'requests update': ['REQ-1', '--title', 'CSV'],
     'requests accept': ['REQ-1', 'ISS-5N1R'],
     'requests decline': ['REQ-1'],
     'issues branch': ['ISS-5N1R'],
@@ -2317,6 +2319,119 @@ test('customers, requests and demand record a request, accept it into an issue a
   const declined = json(root, ['requests', 'decline', request.id, '--reason', 'Fixed already']).after
   assert.deepEqual([declined.state, declined.reason, declined.target], ['declined', 'Fixed already', null])
   assert.deepEqual(json(root, ['demand', 'list']).signals, [])
+})
+
+test('customers update edits a customer by name, previews with --dry-run and refuses a bad value (PMK-221)', () => {
+  const root = makeRepo('team')
+  const customer = json(root, ['customers', 'create', '--name', 'Acme', '--tier', 'gold', '--owner', 'fred']).after
+  const hash = hashTree(root)
+  const dry = json(root, ['customers', 'update', 'acme', '--revenue', '2000', '--size', '4.5', '--tier', 'none', '--dry-run'])
+  assert.deepEqual([dry.before.revenue, dry.after.revenue, dry.after.size, dry.after.tier], [null, 2000, 4.5, null])
+  assert.deepEqual(hashTree(root), hash)
+  const updated = json(root, ['customers', 'update', customer.id, '--revenue', '2000', '--status', 'active', '--owner', 'none', '--name', 'Acme Corp']).after
+  assert.deepEqual([updated.name, updated.revenue, updated.status, updated.owner], ['Acme Corp', 2000, { id: 'active', name: 'active' }, null])
+  assert.match(run(root, ['customers', 'update', customer.id, '--tier', 'silver']).stdout, /tier/)
+  assert.equal(errorOf(run(root, ['customers', 'update', customer.id, '--revenue', 'lots', '--json'])).code, 'INVALID_INPUT')
+  assert.equal(errorOf(run(root, ['customers', 'update', customer.id, '--json'])).code, 'INVALID_INPUT')
+})
+
+test('requests update edits the title and the body from files and refuses --title with --title-file (PMK-221)', () => {
+  const root = makeRepo('team')
+  const request = json(root, ['requests', 'create', '--title', 'CSV']).after
+  const dir = tempDir('pmkit-req-')
+  fs.writeFileSync(path.join(dir, 'title.txt'), 'CSV export `$(touch x)`\n')
+  fs.writeFileSync(path.join(dir, 'body.md'), 'Columns.\r\n')
+  const hash = hashTree(root)
+  const dry = json(root, ['requests', 'update', request.id, '--title-file', path.join(dir, 'title.txt'), '--dry-run'])
+  assert.equal(dry.after.title, 'CSV export `$(touch x)`')
+  assert.deepEqual(hashTree(root), hash)
+  const updated = json(root, ['requests', 'update', request.id, '--title-file', path.join(dir, 'title.txt'), '--body-file', path.join(dir, 'body.md')]).after
+  assert.deepEqual([updated.title, updated.body, updated.state], ['CSV export `$(touch x)`', 'Columns.', 'open'])
+  assert.equal(json(root, ['requests', 'update', request.id, '--title', 'CSV']).after.title, 'CSV')
+  assert.equal(errorOf(run(root, ['requests', 'update', request.id, '--title', 'A', '--title-file', path.join(dir, 'title.txt'), '--json'])).code, 'INVALID_INPUT')
+  assert.equal(errorOf(run(root, ['requests', 'update', request.id, '--json'])).code, 'INVALID_INPUT')
+})
+
+test('requests accept --create creates the issue from the request and accepts the request into it (PMK-221)', () => {
+  const root = makeRepo('no-sprints')
+  const customer = json(root, ['customers', 'create', '--name', 'Acme']).after
+  const body = path.join(tempDir('pmkit-req-'), 'body.md')
+  fs.writeFileSync(body, 'Columns out of order.\n')
+  const request = json(root, ['requests', 'create', '--title', 'CSV order', '--customer', customer.id, '--body-file', body]).after
+  const hash = hashTree(root, ['.issues/.cache'])
+  const dry = run(root, ['requests', 'accept', request.id, '--create', '--dry-run', '--json'])
+  assert.equal(dry.status, 0, dry.stderr)
+  const preview = JSON.parse(dry.stdout)
+  assert.deepEqual([preview.issue.before, preview.issue.after.title, preview.request.after.state, preview.request.after.target.id], [null, 'CSV order', 'accepted', preview.issue.after.id])
+  assert.match(dry.stderr, /note: the issue ID is assigned when written/)
+  assert.deepEqual(hashTree(root, ['.issues/.cache']), hash)
+  const result = json(root, ['requests', 'accept', request.id, '--create'])
+  const issue = json(root, ['issues', 'get', result.issue.after.id])
+  assert.equal(issue.title, 'CSV order')
+  assert.equal(issue.description, `Columns out of order.\n\nAsked by: Acme\nRequest: ${request.id}`)
+  assert.deepEqual([result.request.before.state, result.request.after.state, result.request.after.target.id], ['open', 'accepted', issue.id])
+  assert.ok(json(root, ['demand', 'list']).signals.some((signal) => signal.issue.id === issue.id))
+  const again = errorOf(run(root, ['requests', 'accept', request.id, '--create', '--json']))
+  assert.equal(again.code, 'CONFLICT')
+  assert.match(again.message, new RegExp(`already accepted into ${issue.id}`))
+  assert.equal(errorOf(run(root, ['requests', 'accept', request.id, 'ISS-5N1R', '--create', '--json'])).code, 'INVALID_INPUT')
+  assert.equal(errorOf(run(root, ['requests', 'accept', request.id, '--json'])).code, 'INVALID_INPUT')
+})
+
+test('requests accept --create leaves out Asked by when the request names nobody, and names a from or a missing customer id', () => {
+  const root = makeRepo('no-sprints')
+  const bare = json(root, ['requests', 'create', '--title', 'Bare']).after
+  assert.equal(json(root, ['issues', 'get', json(root, ['requests', 'accept', bare.id, '--create']).issue.after.id]).description, `Request: ${bare.id}`)
+  const support = json(root, ['requests', 'create', '--title', 'From support', '--from', 'support']).after
+  assert.match(json(root, ['issues', 'get', json(root, ['requests', 'accept', support.id, '--create']).issue.after.id]).description, /^Asked by: support\nRequest: /)
+  fs.writeFileSync(path.join(root, '.issues', 'requests', 'REQ-9.md'), '---\ntitle: Lost\ncustomer: CUS-404\n---\n')
+  const lost = run(root, ['requests', 'accept', 'REQ-9', '--create', '--json'])
+  assert.equal(lost.status, 0, lost.stderr)
+  assert.match(json(root, ['issues', 'get', JSON.parse(lost.stdout).issue.after.id]).description, /^Asked by: CUS-404\n/)
+  assert.match(lost.stderr, /CUS-404/)
+})
+
+test('customers show takes the customer as a positional or as --customer, the linear customers show spelling (PMK-221)', () => {
+  const root = makeRepo('team')
+  json(root, ['customers', 'create', '--name', 'Acme'])
+  assert.deepEqual(json(root, ['customers', 'show', '--customer', 'acme']), json(root, ['customers', 'show', 'Acme']))
+  assert.equal(errorOf(run(root, ['customers', 'show', 'Acme', '--customer', 'Acme', '--json'])).code, 'INVALID_INPUT')
+  assert.equal(errorOf(run(root, ['customers', 'show', '--json'])).code, 'INVALID_INPUT')
+})
+
+test('requests update with only --body-file says the text changed, and customers update prints names, not JSON (PMK-221 review)', () => {
+  const root = makeRepo('team')
+  const request = json(root, ['requests', 'create', '--title', 'CSV']).after
+  const body = path.join(tempDir('pmkit-req-'), 'body.md')
+  fs.writeFileSync(body, 'New text.\n')
+  const updated = run(root, ['requests', 'update', request.id, '--body-file', body])
+  assert.equal(updated.status, 0, updated.stderr)
+  assert.match(updated.stdout, /^text: changed$/m)
+  assert.doesNotMatch(updated.stdout, /no change/)
+  assert.match(run(root, ['requests', 'update', request.id, '--body-file', body]).stdout, /no change/)
+  const customer = json(root, ['customers', 'create', '--name', 'Acme', '--tier', 'gold', '--owner', 'fred']).after
+  const text = run(root, ['customers', 'update', customer.id, '--tier', 'silver', '--status', 'active', '--owner', 'none']).stdout
+  assert.match(text, /^tier: gold → silver$/m)
+  assert.match(text, /^status: \(none\) → active$/m)
+  assert.match(text, /^owner: Fred Vanelli → \(none\)$/m)
+  assert.doesNotMatch(text, /\{"id"/)
+})
+
+test('requests accept --create works next to an unreadable issue, warns in the text and the JSON, and a retry still finds the issue (PMK-221 review B6)', () => {
+  const root = makeRepo('team')
+  const request = json(root, ['requests', 'create', '--title', 'CSV export']).after
+  const dry = run(root, ['requests', 'accept', request.id, '--create', '--dry-run', '--json'])
+  assert.equal(dry.status, 0, dry.stdout + dry.stderr)
+  assert.match(JSON.parse(dry.stdout).warnings[0], /ISS-3Q6T could not be read/)
+  assert.match(dry.stderr, /warning: .*ISS-3Q6T could not be read/)
+  const made = run(root, ['requests', 'accept', request.id, '--create', '--json'])
+  assert.equal(made.status, 0, made.stdout + made.stderr)
+  const issue = JSON.parse(made.stdout).issue.after.id
+  assert.match(made.stderr, /ISS-3Q6T/)
+  json(root, ['requests', 'decline', request.id])
+  const retry = errorOf(run(root, ['requests', 'accept', request.id, '--create', '--json']))
+  assert.equal(retry.code, 'CONFLICT')
+  assert.equal(retry.nextStep, `pmkit requests accept ${request.id} ${issue}`)
 })
 
 test('a broken request file is a warning that points to pmkit validate, in the text and in the JSON', () => {

@@ -106,3 +106,192 @@ exit 0
 }
 --- stderr
 (empty)
+
+$ pmkit requests accept REQ-6J8P --create
+exit 0
+--- stdout
+ISS-M0GZ  Export the board to CSV
+id: ISS-M0GZ
+title: Export the board to CSV
+type: feature
+status: backlog (backlog)
+created: 2026-10-23T12:00:00.000Z
+updated: 2026-10-23T12:00:00Z
+
+Two tickets this week asked for it.
+
+Asked by: support
+Request: REQ-6J8P
+
+REQ-6J8P  Export the board to CSV
+state: open → accepted
+target: (none) → {"type":"issue","id":"ISS-M0GZ","title":"Export the board to CSV"}
+triaged: (none) → {"at":"2026-10-23T12:00:00Z","by":"fred"}
+--- stderr
+(empty)
+
+$ pmkit requests accept REQ-6J8P --create --json
+exit 0
+--- stdout
+{
+  "issue": {
+    "before": null,
+    "after": {
+      "id": "ISS-M0GZ",
+      "title": "Export the board to CSV",
+      "status": {
+        "name": "backlog",
+        "category": "backlog"
+      },
+      "labels": [],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Two tickets this week asked for it.\n\nAsked by: support\nRequest: REQ-6J8P",
+      "acceptanceCriteria": [],
+      "created": "2026-10-23T12:00:00.000Z",
+      "updated": "2026-10-23T12:00:00Z",
+      "body": "## Description\n\nTwo tickets this week asked for it.\n\nAsked by: support\nRequest: REQ-6J8P\n",
+      "type": "feature"
+    }
+  },
+  "request": {
+    "before": {
+      "id": "REQ-6J8P",
+      "title": "Export the board to CSV",
+      "body": "Two tickets this week asked for it.",
+      "priority": 0,
+      "important": false,
+      "customer": null,
+      "from": "support",
+      "state": "open",
+      "target": null,
+      "created": "2026-10-15T08:00:00.000Z",
+      "triaged": null,
+      "reason": null
+    },
+    "after": {
+      "id": "REQ-6J8P",
+      "title": "Export the board to CSV",
+      "body": "Two tickets this week asked for it.",
+      "priority": 0,
+      "important": false,
+      "customer": null,
+      "from": "support",
+      "state": "accepted",
+      "target": {
+        "type": "issue",
+        "id": "ISS-M0GZ",
+        "title": "Export the board to CSV"
+      },
+      "created": "2026-10-15T08:00:00.000Z",
+      "triaged": {
+        "at": "2026-10-23T12:00:00Z",
+        "by": "fred"
+      },
+      "reason": null
+    }
+  },
+  "problems": [],
+  "warnings": []
+}
+--- stderr
+(empty)
+
+$ pmkit requests accept REQ-6J8P --create --dry-run
+exit 0
+--- stdout
+ISS-M0GZ  Export the board to CSV
+id: ISS-M0GZ
+title: Export the board to CSV
+type: feature
+status: backlog (backlog)
+created: 2026-10-23T12:00:00.000Z
+updated: 2026-10-23T12:00:00Z
+
+Two tickets this week asked for it.
+
+Asked by: support
+Request: REQ-6J8P
+
+REQ-6J8P  Export the board to CSV
+state: open → accepted
+target: (none) → {"type":"issue","id":"ISS-M0GZ","title":"Export the board to CSV"}
+triaged: (none) → {"at":null,"by":"fred"}
+dry run: nothing was written
+--- stderr
+note: the issue ID is assigned when written, and so is the triage time
+
+$ pmkit requests accept REQ-6J8P --create --dry-run --json
+exit 0
+--- stdout
+{
+  "issue": {
+    "before": null,
+    "after": {
+      "id": "ISS-M0GZ",
+      "title": "Export the board to CSV",
+      "status": {
+        "name": "backlog",
+        "category": "backlog"
+      },
+      "labels": [],
+      "blockedBy": [],
+      "blocks": [],
+      "related": [],
+      "duplicateOf": [],
+      "children": [],
+      "archived": false,
+      "description": "Two tickets this week asked for it.\n\nAsked by: support\nRequest: REQ-6J8P",
+      "acceptanceCriteria": [],
+      "created": "2026-10-23T12:00:00.000Z",
+      "updated": "2026-10-23T12:00:00Z",
+      "body": "## Description\n\nTwo tickets this week asked for it.\n\nAsked by: support\nRequest: REQ-6J8P\n",
+      "type": "feature"
+    }
+  },
+  "request": {
+    "before": {
+      "id": "REQ-6J8P",
+      "title": "Export the board to CSV",
+      "body": "Two tickets this week asked for it.",
+      "priority": 0,
+      "important": false,
+      "customer": null,
+      "from": "support",
+      "state": "open",
+      "target": null,
+      "created": "2026-10-15T08:00:00.000Z",
+      "triaged": null,
+      "reason": null
+    },
+    "after": {
+      "id": "REQ-6J8P",
+      "title": "Export the board to CSV",
+      "body": "Two tickets this week asked for it.",
+      "priority": 0,
+      "important": false,
+      "customer": null,
+      "from": "support",
+      "state": "accepted",
+      "target": {
+        "type": "issue",
+        "id": "ISS-M0GZ",
+        "title": "Export the board to CSV"
+      },
+      "created": "2026-10-15T08:00:00.000Z",
+      "triaged": {
+        "at": null,
+        "by": "fred"
+      },
+      "reason": null
+    }
+  },
+  "problems": [],
+  "warnings": []
+}
+--- stderr
+note: the issue ID is assigned when written, and so is the triage time

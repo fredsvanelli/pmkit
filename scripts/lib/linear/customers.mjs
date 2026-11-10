@@ -2,7 +2,9 @@
 // See docs/superpowers/specs/2026-10-28-pmk-42-linear-customers-design.md.
 
 import { PmkitError } from '../errors.mjs'
+import { groupDemand, sortRequests } from '../local/requests.mjs'
 import { isIssueId } from './ids.mjs'
+import { makeContext, priorityOf, stateCategory } from './issues.mjs'
 
 const CUSTOMERS_OFF_HINT = 'An admin can turn on customer requests in the workspace settings.'
 
@@ -48,6 +50,24 @@ export function requestView(node) {
   const priority = node.priority === 1 ? 1 : 0
   return { id: node.id, body: (node.body ?? '').slice(0, BODY_LIMIT), priority, important: priority === 1, target: targetOf(node) }
 }
+
+/**
+ * The request record the generic commands return (PMK-221), with the keys of the Local request. A Linear request has a body
+ * and no title, so the title is the first line of the body (createRequest writes it there) and the body the rest. A request
+ * with a target is accepted, one without is open; Linear has no from, triage or reason.
+ */
+export function genericRequestView(node, customer) {
+  const [first = '', ...rest] = String(node.body ?? '').replace(/\r\n/g, '\n').trim().split('\n')
+  const target = targetOf(node)
+  const important = node.priority === 1
+  return {
+    id: node.id, title: first.trim() === '' ? null : first.trim(), body: rest.join('\n').trim(), priority: important ? 1 : 0, important,
+    customer: customer ?? null, from: null, state: target ? 'accepted' : 'open', target, created: node.createdAt ?? null, triaged: null, reason: null,
+  }
+}
+
+/** The customer record the generic commands return: the linear customers view plus `notes`, which Linear does not have. */
+const genericCustomer = (view) => ({ ...view, notes: null })
 
 /** The customers, highest revenue first, then by name. A missing revenue sorts last. Returns a new array. */
 export function sortCustomers(list) {
@@ -101,11 +121,6 @@ function wholeNumber(value, flag) {
   return Number(value)
 }
 
-/** A number of at least 0 with an optional decimal part, for the Float fields. */
-function decimalNumber(value, flag) {
-  if (typeof value !== 'string' || !/^\d+(\.\d+)?$/.test(value)) throw bad(`--${flag} takes a number of at least 0, got "${value === true ? '' : value}"`, `Pass --${flag} 450`)
-  return Number(value)
-}
 
 /**
  * What `set` has to do, from the current customer view, the flags, the workspace statuses and tiers and the ids of the members.
@@ -134,7 +149,8 @@ export function planCustomerEdit(current, flags, statuses, tiers, memberIds) {
     if (value !== current.revenue) input.revenue = value
   }
   if (size !== undefined) {
-    const value = decimalNumber(size, 'size')
+    // CustomerUpdateInput.size is an Int, though Customer.size reads as a Float.
+    const value = wholeNumber(size, 'size')
     if (value !== current.size) input.size = value
   }
   if (owner !== undefined) {
@@ -199,17 +215,26 @@ export const LIST_QUERY = `query PmkitCustomersList($first: Int!, $after: String
 export const STATUSES_QUERY = `query PmkitCustomerStatuses($first: Int!, $after: String) { customerStatuses(first: $first, after: $after) { nodes { id name } ${PAGE_INFO} } }`
 export const TIERS_QUERY = `query PmkitCustomerTiers($first: Int!, $after: String) { customerTiers(first: $first, after: $after) { nodes { id name } ${PAGE_INFO} } }`
 
-export const SHOW_QUERY = `query PmkitCustomerShow($id: String!) { customer(id: $id) { ${CUSTOMER_FIELDS} needs(first: 50) { nodes { id body priority createdAt issue { id identifier title archivedAt } project { id name } } ${PAGE_INFO} } } }`
+// Customer.needs is a plain list without arguments in Linear's schema, so the requests of a customer come from customerNeeds,
+// filtered by the customer, which pages (PMK-221 review).
+export const SHOW_QUERY = `query PmkitCustomerShow($id: String!) { customer(id: $id) { ${CUSTOMER_FIELDS} } }`
 
 export const UPDATE_MUTATION = `mutation PmkitCustomerUpdate($id: String!, $input: CustomerUpdateInput!) { customerUpdate(id: $id, input: $input) { success customer { ${CUSTOMER_FIELDS} } } }`
 
-const NEED_FIELDS = 'id body priority issue { id identifier title archivedAt } project { id name }'
+const NEED_FIELDS = 'id body priority createdAt issue { id identifier title archivedAt } project { id name }'
 export const ISSUE_QUERY = 'query PmkitCustomerIssue($id: ID!) { issues(filter: { id: { eq: $id } }, includeArchived: true, first: 1) { nodes { id identifier title archivedAt trashed } } }'
 export const PROJECTS_QUERY = `query PmkitCustomerProjects($name: String!, $first: Int!) { projects(first: $first, filter: { or: [{ name: { containsIgnoreCase: $name } }, { slugId: { eq: $name } }] }) { nodes { id name slugId } ${PAGE_INFO} } }`
 export const NEED_CREATE_MUTATION = `mutation PmkitCustomerNeedCreate($input: CustomerNeedCreateInput!) { customerNeedCreate(input: $input) { success need { ${NEED_FIELDS} } } }`
 export const NEED_UPDATE_MUTATION = `mutation PmkitCustomerNeedUpdate($id: String!, $input: CustomerNeedUpdateInput!) { customerNeedUpdate(id: $id, input: $input) { success need { ${NEED_FIELDS} } } }`
 
+export const CREATE_MUTATION = `mutation PmkitCustomerCreate($input: CustomerCreateInput!) { customerCreate(input: $input) { success customer { ${CUSTOMER_FIELDS} } } }`
+export const NEEDS_QUERY = `query PmkitCustomerNeeds($first: Int!, $after: String, $filter: CustomerNeedFilter) { customerNeeds(first: $first, after: $after, filter: $filter) { nodes { id body priority createdAt customer { id name tier { id name } revenue size } issue { id identifier title priority archivedAt state { id name type } team { id } } project { id name } } ${PAGE_INFO} } }`
+
 const PROJECT_PAGE = 25
+const NEEDS_LIMIT = 1000
+const CUSTOMER_NEEDS_LIMIT = 250
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const newestFirst = (a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? ''))
 const LOOKUP_LIMIT = 250
 
 const DEFAULT_LIMIT = 50
@@ -289,13 +314,60 @@ const indent = (text) => text.split('\n').map((line) => `  ${line}`).join('\n')
  * The customer operations of the Linear tracker. discovery is the tracker's cached discovery, client the Linear client.
  * Every method returns { data, text, warnings? }, the shape a command returns.
  */
-export function createCustomers({ client, discovery }) {
+export function createCustomers({ client, discovery, config }) {
   async function context() {
     const { raw, warnings } = await discovery()
     return { raw, warnings, availability: customersAvailability(raw) }
   }
 
   const readNames = async (document, field) => (await client.paginate(document, {}, { select: (data) => data[field], pageSize: 100, maxPages: 5 })).nodes
+
+  /** The requests of one customer, newest first, up to CUSTOMER_NEEDS_LIMIT, and whether more exist. */
+  async function readNeeds(customerId) {
+    const found = await client.paginate(NEEDS_QUERY, { filter: { customer: { id: { eq: customerId } } } }, { select: (data) => data.customerNeeds, pageSize: 100, limit: CUSTOMER_NEEDS_LIMIT })
+    return { nodes: [...found.nodes].sort(newestFirst), hasMore: found.hasMore }
+  }
+
+  /** One customer read by id, or null when Linear has none. */
+  async function readCustomer(id) {
+    try {
+      const node = (await client.request(SHOW_QUERY, { id }))?.customer
+      return node ? customerView(node) : null
+    } catch (error) {
+      // Linear answers an unknown id with an "Entity not found" error.
+      if (error instanceof PmkitError && /not found/i.test(error.message)) return null
+      throw error
+    }
+  }
+
+  /**
+   * The customer a command names, from the first LOOKUP_LIMIT customers by id or exact name. Past a cut list an id is read
+   * directly, and a name that is not found is an incomplete lookup, never "no such customer".
+   */
+  async function findCustomer(ref, warnings, listHint, { strict = false } = {}) {
+    const found = await client.paginate(LIST_QUERY, {}, { select: (data) => data.customers, pageSize: 100, limit: LOOKUP_LIMIT })
+    const views = found.nodes.map(customerView)
+    let chosen
+    try {
+      chosen = resolveCustomer(views, ref)
+    } catch (error) {
+      if (error.code !== 'NOT_FOUND' || !found.hasMore) throw error
+      if (UUID.test(ref)) {
+        // An id is read directly, so a miss is plainly missing, not an incomplete lookup (PMK-221 review M8).
+        const direct = await readCustomer(ref)
+        if (direct) return direct
+        throw new PmkitError('NOT_FOUND', `customer ${ref} does not exist`, listHint)
+      }
+      throw new PmkitError('NOT_FOUND', `no customer among the first ${LOOKUP_LIMIT} is named or identified "${ref}", and the workspace has more, so the lookup is incomplete`, `Pass the customer id; ${listHint} shows the first ${LOOKUP_LIMIT}`)
+    }
+    // A name matched in a cut list may have a twin past the cut (PMK-221 review M6): a read warns, a write refuses.
+    if (found.hasMore && chosen.id !== ref) {
+      const message = `the workspace has more than ${LOOKUP_LIMIT} customers; another customer named "${ref}" past them is not ruled out`
+      if (strict) throw new PmkitError('INVALID_INPUT', message, `Pass the customer id, such as ${chosen.id}`)
+      warnings.push(message)
+    }
+    return chosen
+  }
 
   /** Runs a read that needs customers. A "not available" answer means the cached flag is stale. */
   async function guarded(raw, warnings, read) {
@@ -305,13 +377,6 @@ export function createCustomers({ client, discovery }) {
       if (!isNotAvailable(error)) throw error
       return unavailable({ reason: 'stale', plan: raw.workspace.plan, enableHint: STALE_HINT }, warnings)
     }
-  }
-
-  /** Every customer (up to LOOKUP_LIMIT) as views, for resolving a name. */
-  async function lookup(warnings) {
-    const found = await client.paginate(LIST_QUERY, {}, { select: (data) => data.customers, pageSize: 100, limit: LOOKUP_LIMIT })
-    if (found.hasMore) warnings.push(`the workspace has more than ${LOOKUP_LIMIT} customers; only the first ${LOOKUP_LIMIT} can be matched by name. Use the id`)
-    return found.nodes.map(customerView)
   }
 
   async function list({ status, tier, limit: limitFlag } = {}) {
@@ -335,15 +400,25 @@ export function createCustomers({ client, discovery }) {
     if (!availability.available) return unavailable(availability, warnings)
     const all = [...warnings]
     return guarded(raw, all, async () => {
-      const chosen = resolveCustomer(await lookup(all), ref)
-      const node = (await client.request(SHOW_QUERY, { id: chosen.id }))?.customer
-      if (!node) throw new PmkitError('NOT_FOUND', `Linear no longer returns customer ${chosen.id}`, 'Run linear customers list')
-      const needs = [...(node.needs?.nodes ?? [])].sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))
-      if (node.needs?.pageInfo?.hasNextPage) all.push('the customer has more requests than the 50 shown; the newest are listed')
-      const customer = customerView(node)
-      const requests = needs.map(requestView)
+      const customer = await findCustomer(ref, all, 'linear customers list')
+      const needs = await readNeeds(customer.id)
+      if (needs.hasMore) all.push(`the customer has more than ${CUSTOMER_NEEDS_LIMIT} requests; only ${CUSTOMER_NEEDS_LIMIT} were read`)
+      const requests = needs.nodes.map(requestView)
       return { data: { available: true, customer, requests }, text: customerText(customer, requests), warnings: all }
     })
+  }
+
+  /** Edits one customer: the plan of planCustomerEdit, then customerUpdate unless it is a dry run or nothing changes. */
+  async function edit(raw, before, flags, dryRun) {
+    const statuses = await readNames(STATUSES_QUERY, 'customerStatuses')
+    const tiers = await readNames(TIERS_QUERY, 'customerTiers')
+    const users = raw.users.filter((user) => !user.app)
+    const plan = planCustomerEdit(before, flags, statuses, tiers, users.map((user) => user.id))
+    if (!plan.changed) return { plan, after: before }
+    if (dryRun) return { plan, after: projected(before, plan.input, { statuses, tiers, users }) }
+    const payload = (await client.request(UPDATE_MUTATION, { id: before.id, input: plan.input })).customerUpdate
+    if (payload?.success !== true || !payload.customer) throw new PmkitError('UPSTREAM', 'Linear did not apply the customer change', 'Run linear customers show to see the current values')
+    return { plan, after: customerView(payload.customer) }
   }
 
   async function set({ customer: ref, dryRun = false, ...flags } = {}) {
@@ -351,19 +426,8 @@ export function createCustomers({ client, discovery }) {
     if (!availability.available) refuseWrite(availability)
     const all = [...warnings]
     try {
-      const before = resolveCustomer(await lookup(all), ref)
-      const statuses = await readNames(STATUSES_QUERY, 'customerStatuses')
-      const tiers = await readNames(TIERS_QUERY, 'customerTiers')
-      const users = raw.users.filter((user) => !user.app)
-      const plan = planCustomerEdit(before, flags, statuses, tiers, users.map((user) => user.id))
-      let after = before
-      if (plan.changed && dryRun) {
-        after = projected(before, plan.input, { statuses, tiers, users })
-      } else if (plan.changed) {
-        const payload = (await client.request(UPDATE_MUTATION, { id: before.id, input: plan.input })).customerUpdate
-        if (payload?.success !== true || !payload.customer) throw new PmkitError('UPSTREAM', 'Linear did not apply the customer change', 'Run linear customers show to see the current values')
-        after = customerView(payload.customer)
-      }
+      const before = await findCustomer(ref, all, 'linear customers list', { strict: true })
+      const { plan, after } = await edit(raw, before, flags, dryRun)
       const lines = ['before:', indent(customersText([before])), 'after:', indent(customersText([after]))]
       if (dryRun) lines.push('dry run: nothing was written')
       else if (!plan.changed) lines.push('nothing to change')
@@ -397,10 +461,10 @@ export function createCustomers({ client, discovery }) {
     checkLinkFlags(flags)
     const all = [...warnings]
     try {
-      const chosen = resolveCustomer(await lookup(all), ref)
-      const node = (await client.request(SHOW_QUERY, { id: chosen.id }))?.customer
-      if (node?.needs?.pageInfo?.hasNextPage) all.push('the customer has more requests than the 50 read; a duplicate request beyond them is not detected')
-      const requests = (node?.needs?.nodes ?? []).map(requestView)
+      const chosen = await findCustomer(ref, all, 'linear customers list', { strict: true })
+      const needs = await readNeeds(chosen.id)
+      if (needs.hasMore) all.push(`the customer has more than ${CUSTOMER_NEEDS_LIMIT} requests; a duplicate request beyond them is not detected`)
+      const requests = needs.nodes.map(requestView)
       const target = await resolveTarget(flags, all)
       const plan = planLink({ customer: chosen, requests, flags, target })
       let id = plan.kind === 'move' ? plan.id : null
@@ -424,5 +488,142 @@ export function createCustomers({ client, discovery }) {
     }
   }
 
-  return Object.freeze({ list, show, set, link })
+  // The contract operations of the generic commands (PMK-221). The tracker calls them only when the manifest says customers
+  // are on; a "not available" answer then means the cached flag is stale. They return the Local record shapes and throw errors.
+  async function contractCall(body) {
+    const { raw } = await discovery()
+    try {
+      return await body(raw)
+    } catch (error) {
+      if (isNotAvailable(error)) throw new PmkitError('NOT_SUPPORTED', 'customers are unavailable on this workspace (Linear reports none)', STALE_HINT)
+      throw error
+    }
+  }
+
+  /** Every customer up to LOOKUP_LIMIT, and whether more exist. */
+  async function readAll() {
+    const found = await client.paginate(LIST_QUERY, {}, { select: (data) => data.customers, pageSize: 100, limit: LOOKUP_LIMIT })
+    return { views: found.nodes.map(customerView), hasMore: found.hasMore }
+  }
+
+  /** findCustomer for the generic commands, whose list command is pmkit customers list. */
+  async function find(ref, warnings = [], options = { strict: true }) {
+    try {
+      return await findCustomer(ref, warnings, 'pmkit customers list', options)
+    } catch (error) {
+      if (error.code === 'NOT_FOUND' && /^Run linear/.test(error.nextStep ?? '')) throw new PmkitError('NOT_FOUND', error.message, 'pmkit customers list')
+      throw error
+    }
+  }
+
+  const cutProblem = (id, message) => ({ id, code: 'INCOMPLETE', message })
+
+  const listCustomers = () => contractCall(async () => {
+    const { views, hasMore } = await readAll()
+    const problems = hasMore ? [cutProblem(null, `the workspace has more than ${LOOKUP_LIMIT} customers; only the first ${LOOKUP_LIMIT} were read`)] : []
+    return { customers: sortCustomers(views).map(genericCustomer), problems, hasMore }
+  })
+
+  const getCustomer = (ref) => contractCall(async () => {
+    const lookup = []
+    const customer = genericCustomer(await find(ref, lookup, { strict: false }))
+    const owner = { id: customer.id, name: customer.name }
+    const needs = await readNeeds(customer.id)
+    const problems = lookup.map((message) => cutProblem(null, message))
+    if (needs.hasMore) problems.push(cutProblem(customer.id, `customer ${customer.name} has more than ${CUSTOMER_NEEDS_LIMIT} requests; only ${CUSTOMER_NEEDS_LIMIT} were read`))
+    return { customer, requests: needs.nodes.map((need) => genericRequestView(need, owner)), problems }
+  })
+
+  const refuseKeys = (input, allowed) => {
+    for (const key of Object.keys(input)) if (!allowed.includes(key)) throw bad(`unknown field "${key}"`, `Use one of: ${allowed.join(', ')}`)
+  }
+  // planCustomerEdit reads flag text; the generic input has numbers.
+  const asFlags = (changes) => Object.fromEntries(Object.entries(changes).map(([key, value]) => [key, typeof value === 'number' ? String(value) : value]))
+
+  const createCustomer = (input, actor, { dryRun = false } = {}) => contractCall(async (raw) => {
+    refuseKeys(input, ['name', 'status', 'tier', 'revenue', 'size', 'owner', 'notes'])
+    if (input.notes !== undefined && input.notes !== '') throw bad('Linear customers have no notes', 'Leave out notes on Linear')
+    if (typeof input.name !== 'string' || input.name.trim() === '') throw bad('name is required', 'Pass --name')
+    const flags = asFlags(input)
+    const create = { name: input.name.trim() }
+    const users = raw.users.filter((user) => !user.app)
+    const after = { id: null, name: create.name, status: null, tier: null, revenue: null, size: null, owner: null, requests: 0, url: null }
+    if (flags.status !== undefined) after.status = name(pickByName(await readNames(STATUSES_QUERY, 'customerStatuses'), flags.status, 'status'))
+    if (flags.tier !== undefined) after.tier = name(pickByName(await readNames(TIERS_QUERY, 'customerTiers'), flags.tier, 'tier'))
+    if (flags.revenue !== undefined) after.revenue = wholeNumber(flags.revenue, 'revenue')
+    if (flags.size !== undefined) after.size = wholeNumber(flags.size, 'size')
+    if (flags.owner !== undefined) {
+      const owner = users.find((user) => user.id === flags.owner)
+      if (!owner) throw bad(`not a member of the workspace: ${flags.owner}`, 'Use a member id from pmkit discover')
+      after.owner = { id: owner.id, name: owner.name }
+    }
+    if (after.status) create.statusId = after.status.id
+    if (after.tier) create.tierId = after.tier.id
+    if (after.revenue !== null) create.revenue = after.revenue
+    if (after.size !== null) create.size = after.size
+    if (after.owner) create.ownerId = after.owner.id
+    if (dryRun) return { before: null, after: genericCustomer(after) }
+    const payload = (await client.request(CREATE_MUTATION, { input: create })).customerCreate
+    if (payload?.success !== true || !payload.customer) throw new PmkitError('UPSTREAM', 'Linear did not create the customer', 'Run pmkit customers list to check')
+    return { before: null, after: genericCustomer(customerView(payload.customer)) }
+  })
+
+  const updateCustomer = (ref, changes, actor, { dryRun = false } = {}) => contractCall(async (raw) => {
+    refuseKeys(changes ?? {}, ['name', 'status', 'tier', 'revenue', 'size', 'owner'])
+    const before = await find(ref)
+    const { after } = await edit(raw, before, asFlags(changes ?? {}), dryRun)
+    return { before: genericCustomer(before), after: genericCustomer(after) }
+  })
+
+  const createRequest = (input, actor, { dryRun = false } = {}) => contractCall(async () => {
+    refuseKeys(input, ['title', 'body', 'customer', 'from', 'important', 'issue'])
+    if (input.from !== undefined) throw bad('Linear customer requests have no from', 'Pass --customer instead of --from on Linear')
+    if (input.customer === undefined || input.issue === undefined) {
+      throw bad('on Linear a request needs --customer and --issue', 'A Linear request belongs to a customer and an issue; an open request with no issue is an Ask, which pmkit does not serve')
+    }
+    const title = typeof input.title === 'string' ? input.title.trim() : ''
+    if (title === '' || /[\r\n]/.test(title)) throw bad('title is required and fits on one line', 'Pass --title')
+    const text = typeof input.body === 'string' ? input.body.replace(/\r\n/g, '\n').trim() : ''
+    const chosen = await find(input.customer)
+    const needs = await readNeeds(chosen.id)
+    if (needs.hasMore) throw new PmkitError('INVALID_INPUT', `customer ${chosen.name} has more than ${CUSTOMER_NEEDS_LIMIT} requests, so a duplicate request cannot be ruled out`, 'Link it in Linear')
+    const target = await resolveTarget({ issue: input.issue }, [])
+    const flags = { issue: input.issue, important: input.important === true, body: text === '' ? title : `${title}\n\n${text}` }
+    const plan = planLink({ customer: chosen, requests: needs.nodes.map(requestView), flags, target })
+    const owner = { id: chosen.id, name: chosen.name }
+    if (dryRun) {
+      const preview = { id: null, body: flags.body, priority: plan.input.priority, createdAt: null, issue: { identifier: target.id, title: target.title } }
+      return { before: null, after: genericRequestView(preview, owner) }
+    }
+    const payload = (await client.request(NEED_CREATE_MUTATION, { input: plan.input })).customerNeedCreate
+    if (payload?.success !== true || !payload.need) throw new PmkitError('UPSTREAM', 'Linear did not create the customer request', 'Run pmkit customers show to see the requests')
+    return { before: null, after: genericRequestView(payload.need, owner) }
+  })
+
+  const listDemandSignals = () => contractCall(async (raw) => {
+    const found = await client.paginate(NEEDS_QUERY, {}, { select: (data) => data.customerNeeds, pageSize: 100, limit: NEEDS_LIMIT })
+    const context = makeContext(raw, config?.pmkit, null)
+    const onIssues = found.nodes.filter((need) => need.issue)
+    const issues = new Map(onIssues.map((need) => [need.issue.identifier, need.issue]))
+    const customers = new Map(onIssues.filter((need) => need.customer).map((need) => [need.customer.id, need.customer]))
+    const requests = onIssues.map((need) => ({ id: need.id, state: 'accepted', issue: need.issue.identifier, customer: need.customer?.id, important: need.priority === 1, created: need.createdAt }))
+    const signals = groupDemand(sortRequests(requests)).map((group) => {
+      const issue = issues.get(group.issue)
+      return {
+        ...group,
+        issue: { id: issue.identifier, title: issue.title, status: issue.state ? { name: issue.state.name, category: stateCategory(issue.state, context) } : null, priority: priorityOf(issue.priority) ?? null },
+        customers: group.customers.map((id) => {
+          const customer = customers.get(id)
+          return { id, name: customer.name ?? null, tier: name(customer.tier), revenue: customer.revenue ?? null, size: customer.size ?? null }
+        }),
+      }
+    })
+    const problems = found.hasMore
+      ? [{ id: null, about: 'request', code: 'INCOMPLETE', message: `Linear has more than ${NEEDS_LIMIT} customer requests; only the first ${NEEDS_LIMIT} were read, so the counts may be short` }]
+      : []
+    return { signals, problems }
+  })
+
+  const contract = Object.freeze({ listCustomers, getCustomer, createCustomer, updateCustomer, createRequest, listDemandSignals })
+  return Object.freeze({ list, show, set, link, contract })
 }

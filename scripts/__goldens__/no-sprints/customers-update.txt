@@ -1,0 +1,271 @@
+$ pmkit customers update CUS-3T7W --tier platinum --revenue 9000
+exit 0
+--- stdout
+CUS-3T7W
+tier: enterprise → platinum
+revenue: 120000 → 9000
+--- stderr
+(empty)
+
+$ pmkit customers update CUS-3T7W --tier platinum --revenue 9000 --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "CUS-3T7W",
+    "name": "Acme Corp",
+    "status": {
+      "id": "active",
+      "name": "active"
+    },
+    "tier": {
+      "id": "enterprise",
+      "name": "enterprise"
+    },
+    "revenue": 120000,
+    "size": 450,
+    "owner": {
+      "id": "ana",
+      "name": "Ana Souza"
+    },
+    "requests": 1,
+    "url": null,
+    "notes": "Pays yearly and asks for exports."
+  },
+  "after": {
+    "id": "CUS-3T7W",
+    "name": "Acme Corp",
+    "status": {
+      "id": "active",
+      "name": "active"
+    },
+    "tier": {
+      "id": "platinum",
+      "name": "platinum"
+    },
+    "revenue": 9000,
+    "size": 450,
+    "owner": {
+      "id": "ana",
+      "name": "Ana Souza"
+    },
+    "requests": 1,
+    "url": null,
+    "notes": "Pays yearly and asks for exports."
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit customers update CUS-3T7W --tier platinum --revenue 9000 --dry-run
+exit 0
+--- stdout
+CUS-3T7W
+tier: enterprise → platinum
+revenue: 120000 → 9000
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit customers update CUS-3T7W --tier platinum --revenue 9000 --dry-run --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "CUS-3T7W",
+    "name": "Acme Corp",
+    "status": {
+      "id": "active",
+      "name": "active"
+    },
+    "tier": {
+      "id": "enterprise",
+      "name": "enterprise"
+    },
+    "revenue": 120000,
+    "size": 450,
+    "owner": {
+      "id": "ana",
+      "name": "Ana Souza"
+    },
+    "requests": 1,
+    "url": null,
+    "notes": "Pays yearly and asks for exports."
+  },
+  "after": {
+    "id": "CUS-3T7W",
+    "name": "Acme Corp",
+    "status": {
+      "id": "active",
+      "name": "active"
+    },
+    "tier": {
+      "id": "platinum",
+      "name": "platinum"
+    },
+    "revenue": 9000,
+    "size": 450,
+    "owner": {
+      "id": "ana",
+      "name": "Ana Souza"
+    },
+    "requests": 1,
+    "url": null,
+    "notes": "Pays yearly and asks for exports."
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit customers update 'Acme Corp' --owner none
+exit 0
+--- stdout
+CUS-3T7W
+owner: Ana Souza → (none)
+--- stderr
+(empty)
+
+$ pmkit customers update 'Acme Corp' --owner none --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "CUS-3T7W",
+    "name": "Acme Corp",
+    "status": {
+      "id": "active",
+      "name": "active"
+    },
+    "tier": {
+      "id": "enterprise",
+      "name": "enterprise"
+    },
+    "revenue": 120000,
+    "size": 450,
+    "owner": {
+      "id": "ana",
+      "name": "Ana Souza"
+    },
+    "requests": 1,
+    "url": null,
+    "notes": "Pays yearly and asks for exports."
+  },
+  "after": {
+    "id": "CUS-3T7W",
+    "name": "Acme Corp",
+    "status": {
+      "id": "active",
+      "name": "active"
+    },
+    "tier": {
+      "id": "enterprise",
+      "name": "enterprise"
+    },
+    "revenue": 120000,
+    "size": 450,
+    "owner": null,
+    "requests": 1,
+    "url": null,
+    "notes": "Pays yearly and asks for exports."
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit customers update 'Acme Corp' --owner none --dry-run
+exit 0
+--- stdout
+CUS-3T7W
+owner: Ana Souza → (none)
+dry run: nothing was written
+--- stderr
+(empty)
+
+$ pmkit customers update 'Acme Corp' --owner none --dry-run --json
+exit 0
+--- stdout
+{
+  "before": {
+    "id": "CUS-3T7W",
+    "name": "Acme Corp",
+    "status": {
+      "id": "active",
+      "name": "active"
+    },
+    "tier": {
+      "id": "enterprise",
+      "name": "enterprise"
+    },
+    "revenue": 120000,
+    "size": 450,
+    "owner": {
+      "id": "ana",
+      "name": "Ana Souza"
+    },
+    "requests": 1,
+    "url": null,
+    "notes": "Pays yearly and asks for exports."
+  },
+  "after": {
+    "id": "CUS-3T7W",
+    "name": "Acme Corp",
+    "status": {
+      "id": "active",
+      "name": "active"
+    },
+    "tier": {
+      "id": "enterprise",
+      "name": "enterprise"
+    },
+    "revenue": 120000,
+    "size": 450,
+    "owner": null,
+    "requests": 1,
+    "url": null,
+    "notes": "Pays yearly and asks for exports."
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit customers update 'Nobody here' --tier gold
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: no customer is named or identified "Nobody here"
+next: pmkit customers list
+
+$ pmkit customers update 'Nobody here' --tier gold --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "no customer is named or identified \"Nobody here\"",
+    "nextStep": "pmkit customers list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit customers update 'Nobody here' --tier gold --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: no customer is named or identified "Nobody here"
+next: pmkit customers list
+
+$ pmkit customers update 'Nobody here' --tier gold --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "no customer is named or identified \"Nobody here\"",
+    "nextStep": "pmkit customers list"
+  }
+}
+--- stderr
+(empty)
