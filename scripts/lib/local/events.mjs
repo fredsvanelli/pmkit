@@ -33,6 +33,7 @@ export function parseEvents(raw) {
   const events = []
   const problems = []
   const seen = new Set()
+  let toggle // the last archive or unarchive kept: a repeat of it is a merge duplicate, a flip back is a new event
   text.split('\n').forEach((line, index) => {
     if (line.trim() === '') return
     let event
@@ -50,8 +51,10 @@ export function parseEvents(raw) {
     // The event is kept, so replay and drift do not change, but a time nobody can read is reported.
     if (!['string', 'number'].includes(typeof event.at) || Number.isNaN(new Date(event.at).getTime())) problems.push(`line ${index + 1}: at "${event.at}" is not a time`)
     const key = sortedStringify(event)
-    if (seen.has(key)) return
+    const flips = event.op === 'archive' || event.op === 'unarchive'
+    if (seen.has(key) && (!flips || toggle === event.op)) return
     seen.add(key)
+    if (flips) toggle = event.op
     events.push(event)
   })
   events.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))

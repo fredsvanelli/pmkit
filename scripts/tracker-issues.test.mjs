@@ -134,7 +134,7 @@ test('update refuses the fields other operations own', () => {
     blockedBy: 'pmkit issues link',
     related: 'pmkit issues link',
     duplicateOf: 'pmkit issues link',
-    archived: 'pmkit issues archive',
+    archived: 'pmkit issues archive, or pmkit issues unarchive to bring it back',
   }
   for (const [key, nextStep] of Object.entries(owners)) {
     assert.throws(

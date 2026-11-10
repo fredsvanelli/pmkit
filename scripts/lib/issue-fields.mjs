@@ -21,7 +21,7 @@ export const OWNED = {
   blockedBy: 'pmkit issues link',
   related: 'pmkit issues link',
   duplicateOf: 'pmkit issues link',
-  archived: 'pmkit issues archive',
+  archived: 'pmkit issues archive, or pmkit issues unarchive to bring it back',
 }
 
 /** Throws INVALID_INPUT for the first key of `input` that `allowed` lacks, naming the command that owns it. */

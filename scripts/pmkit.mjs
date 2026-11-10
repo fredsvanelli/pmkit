@@ -1057,7 +1057,7 @@ export const COMMANDS = [
     run: async (ctx) => {
       const result = await (await ctx.tracker()).unarchive(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })
       // A call that changes nothing has no commit and says so in both the text and the JSON.
-      if (result.before !== result.after) return issueWrite(ctx, result)
+      if (result.before.archived !== result.after.archived) return issueWrite(ctx, result)
       const message = `${result.after.id} is not archived, so nothing changed`
       return { data: { ...result, unchanged: true, message }, text: `${writeText(result, ctx)}\n${message}` }
     },
@@ -2732,6 +2732,7 @@ async function runBulk(ctx) {
   const max = ctx.opt('max') === undefined ? DEFAULT_MAX : whole('max', ctx.opt('max'))
   if (max < 1 || max > HARD_MAX) throw usageError(`--max must be from 1 to ${HARD_MAX}`, 'Narrow the filter instead of raising --max')
 
+  if (kind === 'unarchive' && ctx.config().system !== 'local') throw new PmkitError('NOT_SUPPORTED', 'unarchive works on the Local tracker only', "pmkit issues restore <id> brings a deleted issue back from Linear's trash")
   // Only unarchive reads --archived: for every other change it stays an unknown option, as before.
   if (kind !== 'unarchive' && ctx.flag('archived')) throw usageError('unknown option --archived: only bulk unarchive takes it', 'Run pmkit issues bulk --help')
   let filter = issueFilter(ctx)
