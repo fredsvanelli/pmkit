@@ -9,7 +9,7 @@ import { ADAPTERS } from './lib/adapters.mjs'
 import { linearDescriptor } from './lib/linear/adapter.mjs'
 import { isMutation, operationName } from './lib/linear/client.mjs'
 import { useLinear } from './fake-hosted.mjs'
-import { ACME_TEAM, ACME_USERS, FAKE_KEY, fakeCustomers, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeTriage, fakeWorkspace } from './fake-linear-api.mjs'
+import { ACME_TEAM, ACME_USERS, FAKE_KEY, customView, fakeCustomViews, fakeCustomers, fakeLinearFetch, fakeLinearIssues, fakeLinearProjects, fakeTriage, fakeWorkspace } from './fake-linear-api.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { epicRecord } from './lib/format.mjs'
 import { createLocalTracker } from './lib/local/tracker.mjs'
@@ -1208,11 +1208,6 @@ test('a milestone, a document and a milestone of an issue are readable', async (
   assert.deepEqual(JSON.parse(listed.stdout), [{ path: 'abcdef012345', title: 'Plan' }])
   const listedText = await cli(context, ['docs', 'list'], fetch)
   assert.equal(listedText.stdout.trim(), 'abcdef012345  Plan')
-  for (const args of [['views', 'list'], ['views', 'save', 'v', '--category', 'done'], ['views', 'run', 'v']]) {
-    const refused = await cli(context, [...args, '--json'], fetch)
-    assert.equal(refused.code, 2, refused.stdout + refused.stderr)
-    assert.equal(JSON.parse(refused.stdout).error.code, 'NOT_SUPPORTED', args.join(' '))
-  }
   const attached = await cli(context, ['issues', 'get', 'ACME-1', '--json'], fetch)
   assert.equal(attached.code, 0, attached.stdout + attached.stderr)
   assert.equal(JSON.parse(attached.stdout).milestone, MILESTONE)
@@ -1724,4 +1719,91 @@ test('PMK-225 review: a cut Linear read is a warning without a null id and witho
   assert.match(result.stderr, /warning: UPSTREAM only the newest 1000 notifications were read/)
   assert.doesNotMatch(result.stderr + result.stdout, /null:|pmkit validate/)
   assert.match(result.stdout, /the inbox is incomplete/)
+})
+
+// Linear custom views (PMK-212): views list and views run read them; the writes stay in Linear.
+function withViews(views, { endless = false } = {}) {
+  const fake = fakeLinearIssues()
+  fake.seed({ title: 'Mine', assigneeId: 'user-1', priority: 4 })
+  fake.seed({ title: 'Theirs', assigneeId: 'user-2' })
+  fake.seed({ title: 'Also mine', assigneeId: 'user-1', priority: 1 })
+  return { fake, fetch: fakeLinearFetch({ ...fakeWorkspace(), ...fake.routes, ...fakeCustomViews({ views, issues: fake, endless }) }) }
+}
+const MINE = { assignee: { id: { eq: 'user-1' } } }
+const VIEWS = [
+  customView('view-2', 'Mine', MINE),
+  customView('view-1', 'Everyone', {}, { team: null }),
+  customView('view-3', 'Other team', MINE, { team: { id: 'team-other', key: 'OPS' } }),
+  customView('view-4', 'Projects', {}, { modelName: 'Project' }),
+]
+
+test('views list on Linear lists the issue views of the scope team and the workspace, with the Linear filter', async () => {
+  const { fetch } = withViews(VIEWS)
+  const listed = await cli(setup({ edit: withTeam }), ['views', 'list', '--json'], fetch)
+  assert.equal(listed.code, 0, listed.stdout + listed.stderr)
+  const data = JSON.parse(listed.stdout)
+  assert.deepEqual(data.views.map((view) => [view.name, view.id, view.filter, view.linear.team]), [['Everyone', 'view-1', null, null], ['Mine', 'view-2', null, 'ACME']])
+  assert.deepEqual(data.views[1].linear.filterData, MINE)
+  assert.equal(data.hasMore, false)
+  const text = await cli(setup({ edit: withTeam }), ['views', 'list'], withViews(VIEWS).fetch)
+  assert.match(text.stdout, /Mine +\| linear: \{"assignee":\{"id":\{"eq":"user-1"\}\}\}/)
+})
+
+test('views list on Linear says the list is cut when Linear has more views than pmkit read', async () => {
+  const { fetch } = withViews(VIEWS, { endless: true })
+  const listed = await cli(setup({ edit: withTeam }), ['views', 'list', '--json'], fetch)
+  assert.equal(listed.code, 0, listed.stdout + listed.stderr)
+  assert.equal(JSON.parse(listed.stdout).hasMore, true)
+  assert.match(listed.stderr, /Linear has more views than pmkit read, so the list is not complete/)
+})
+
+test('views run on Linear runs the view by name or id, in created order, with --limit and --sort', async () => {
+  const context = setup({ edit: withTeam })
+  const byName = await cli(context, ['views', 'run', 'Mine', '--json'], withViews(VIEWS).fetch)
+  assert.equal(byName.code, 0, byName.stdout + byName.stderr)
+  const data = JSON.parse(byName.stdout)
+  assert.deepEqual(data.issues.map((issue) => issue.id), ['ACME-1', 'ACME-3'])
+  assert.equal(data.view.id, 'view-2')
+  assert.equal(data.hasMore, false)
+  const byId = await cli(context, ['views', 'run', 'view-2', '--sort', 'priority', '--limit', '1', '--json'], withViews(VIEWS).fetch)
+  assert.equal(byId.code, 0, byId.stdout + byId.stderr)
+  assert.deepEqual(JSON.parse(byId.stdout).issues.map((issue) => issue.id), ['ACME-3'])
+  assert.deepEqual(JSON.parse(byId.stdout).overrides, { limit: 1, sort: 'priority' })
+})
+
+test('views run on Linear refuses two views with one name, and a name it cannot find', async () => {
+  const context = setup({ edit: withTeam })
+  const twice = [...VIEWS, customView('view-5', 'Mine', {})]
+  const ambiguous = await cli(context, ['views', 'run', 'Mine', '--json'], withViews(twice).fetch)
+  assert.equal(ambiguous.code, 2)
+  assert.equal(errorOf(ambiguous).code, 'INVALID_INPUT')
+  assert.equal(JSON.parse(ambiguous.stdout).error.reason, 'ambiguous_view_name')
+  assert.match(errorOf(ambiguous).message, /view-2, view-5/)
+  const missing = await cli(context, ['views', 'run', 'Gone', '--json'], withViews(VIEWS).fetch)
+  assert.equal(errorOf(missing).code, 'NOT_FOUND')
+  assert.equal(JSON.parse(missing.stdout).error.reason, undefined)
+  const cut = await cli(context, ['views', 'run', 'Gone', '--json'], withViews(VIEWS, { endless: true }).fetch)
+  assert.equal(errorOf(cut).code, 'NOT_FOUND')
+  assert.equal(JSON.parse(cut.stdout).error.reason, 'view_list_incomplete')
+  assert.match(errorOf(cut).message, /Linear has more views than pmkit read/)
+})
+
+test('views save, delete and rename on Linear answer NOT_SUPPORTED and send no mutation', async () => {
+  const { fake, fetch } = withViews(VIEWS)
+  for (const args of [['views', 'save', 'v', '--category', 'done'], ['views', 'delete', 'Mine'], ['views', 'rename', 'Mine', 'Ours']]) {
+    const refused = await cli(setup({ edit: withTeam }), [...args, '--json'], fetch)
+    assert.equal(refused.code, 2, refused.stdout + refused.stderr)
+    assert.equal(errorOf(refused).code, 'NOT_SUPPORTED', args.join(' '))
+    assert.equal(errorOf(refused).message, 'Linear views are created, renamed and deleted in Linear; pmkit reads and runs them')
+  }
+  assert.deepEqual(fake.mutations, [])
+  assert.ok(fetch.calls.every((call) => !isMutation(call.body.query)))
+})
+
+test('issues bulk --view refuses a Linear view, whose filter pmkit cannot check', async () => {
+  const { fetch } = withViews(VIEWS)
+  const result = await cli(setup({ edit: withTeam }), ['issues', 'bulk', 'priority', 'high', '--view', 'Mine', '--dry-run', '--json'], fetch)
+  assert.equal(result.code, 2, result.stdout + result.stderr)
+  assert.equal(errorOf(result).code, 'INVALID_INPUT')
+  assert.match(errorOf(result).message, /Linear view Mine/)
 })

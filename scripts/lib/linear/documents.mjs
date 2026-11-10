@@ -157,3 +157,13 @@ export const LABEL_DELETE = 'mutation PmkitLabelDelete($id: String!) { issueLabe
 
 // Without permanentlyDelete, Linear moves the issue to its trash.
 export const ISSUE_DELETE = 'mutation PmkitIssueDelete($id: String!) { issueDelete(id: $id) { success } }'
+
+// Custom views (PMK-212). Linear runs the view's own filter, so pmkit never translates filterData.
+export const CUSTOM_VIEWS_QUERY = `query PmkitCustomViews($first: Int!, $after: String) {
+  customViews(first: $first, after: $after) { nodes { id name modelName shared filterData team { id key } } ${PAGE_INFO} }
+}`
+
+export const CUSTOM_VIEW_ISSUES_QUERY = `${ISSUE_FRAGMENT}
+query PmkitCustomViewIssues($id: String!, $first: Int!, $after: String) {
+  customView(id: $id) { issues(first: $first, after: $after) { nodes { ...PmkitIssueFields } ${PAGE_INFO} } }
+}`

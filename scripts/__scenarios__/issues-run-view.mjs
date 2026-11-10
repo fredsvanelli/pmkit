@@ -1,9 +1,10 @@
 // /pmkit:issues:run-view. One entry per branch of step 4 (a view that runs, NOT_FOUND, and the three INVALID_INPUT reasons
-// `invalid_view_name`, `view_out_of_date` and `view_file_broken`) and one for the Linear branch of step 1.
+// `invalid_view_name`, `view_out_of_date` and `view_file_broken`) and one for a Linear custom view (PMK-212).
 // The entries that fail read the stable `error.reason`, never the text of `error.message`.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { customView, fakeCustomViews, fakeLinearIssues } from '../fake-linear-api.mjs'
 
 const writeView = (root, name, text) => {
   const dir = path.join(root, '.issues', 'views')
@@ -11,7 +12,7 @@ const writeView = (root, name, text) => {
   fs.writeFileSync(path.join(dir, `${name}.yaml`), text)
 }
 const skip = { '2 views list': 'the prompt names the view, so the list of views is not needed' }
-const notHit = { 'Step 2': 'the prompt names the view, so the list of views is not asked for' }
+const notHit = { 'Step 2': 'the prompt names the view, so the list of views is not asked for', 'Step 4': 'no two Linear views share the name' }
 const base = { command: 'issues/run-view', fixture: 'team', answers: [], notHit }
 const failing = (name, expectError) => [
   { step: '1', read: ['capabilities'] },
@@ -101,19 +102,31 @@ export default [
       assert.equal(saved.run.error.reason, 'view_file_broken')
     },
   },
-  // Step 1, Linear: `saved_views` is `absent`, so `views run` is never called.
+  // Linear: `saved_views` is native, and the view is a Linear custom view whose filter Linear runs (PMK-212).
   {
     ...base,
     git: true,
-    linear: {},
+    linear: {
+      routes: () => {
+        const issues = fakeLinearIssues()
+        issues.seed({ title: 'Crash on save', assigneeId: 'user-1' })
+        issues.seed({ title: 'Typo', assigneeId: 'user-2' })
+        return { ...issues.routes, ...fakeCustomViews({ views: [customView('view-1', 'open-bugs', { assignee: { id: { eq: 'user-1' } } })], issues }) }
+      },
+    },
     setup: ({ root }) => fs.writeFileSync(path.join(root, '.pmkit', 'config.yaml'), LINEAR_CONFIG),
     prompt: '/pmkit:issues:run-view open-bugs',
-    steps: [{ step: '1', read: ['capabilities'], save: 'capabilities' }],
-    skip: { ...skip, '3 views run': 'the tracker has no saved views, so step 1 stops the command' },
+    steps: [
+      { step: '1', read: ['capabilities'], save: 'capabilities' },
+      { step: '3', read: ['views', 'run', 'open-bugs'], save: 'run' },
+    ],
+    skip,
     expect(repo, saved) {
       assert.equal(saved.capabilities.tracker, 'linear')
-      assert.deepEqual(Object.keys(saved), ['capabilities'], 'views run is not called')
-      assert.equal(saved.capabilities.capabilities.find((capability) => capability.id === 'saved_views').path, 'absent')
+      assert.equal(saved.capabilities.capabilities.find((capability) => capability.id === 'saved_views').path, 'native')
+      assert.deepEqual(saved.run.issues.map((issue) => issue.id), ['ACME-1'])
+      assert.equal(saved.run.view.filter, null, 'Linear keeps the filter')
+      assert.deepEqual(saved.run.view.linear.filterData, { assignee: { id: { eq: 'user-1' } } })
     },
   },
 ]

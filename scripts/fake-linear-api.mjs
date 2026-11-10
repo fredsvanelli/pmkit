@@ -802,6 +802,7 @@ export function fakeLinearIssues({
       projectLookup = byRef
     },
     relate: (type, from, to) => relate({ type, issueId: from, relatedIssueId: to }),
+    search,
     comment: (ref, input) => commentNode(addComment({ ...input, issueId: ref }, { author: input.userId === undefined && input.botActor === undefined && input.externalUser === undefined })),
     comments: commentRecords,
     records,
@@ -1136,3 +1137,29 @@ export function fakeCustomers({ customers = [], statuses = CUSTOMER_STATUSES, ti
     }),
   }
 }
+
+/**
+ * Routes for Linear custom views (PMK-212). `views` are CustomView nodes ({ id, name, modelName, shared, filterData, team });
+ * `issues` is a fakeLinearIssues store, whose search runs a view's filterData as Linear does. `endless` makes the
+ * view list report one more page forever, so the read is cut.
+ */
+export function fakeCustomViews({ views = [], issues, endless = false } = {}) {
+  return {
+    PmkitCustomViews: (body) => {
+      const first = body.variables?.first ?? 50
+      const start = Number(body.variables?.after ?? 0)
+      const end = start + first
+      const hasNextPage = endless || end < views.length
+      return json({ customViews: page(views.slice(start, end), { hasNextPage, endCursor: hasNextPage ? String(end) : null }) })
+    },
+    PmkitCustomViewIssues: (body) => {
+      const view = views.find((item) => item.id === body.variables.id)
+      if (!view) return graphqlError('Entity not found: CustomView', 'INPUT_ERROR')
+      const { first, after } = body.variables
+      return json({ customView: { issues: issues.search({ filter: view.filterData, first, after, sort: [{ createdAt: { order: 'Ascending' } }] }) } })
+    },
+  }
+}
+
+/** A CustomView node for fakeCustomViews. */
+export const customView = (id, name, filterData, { team = { id: ACME_TEAM_ID, key: 'ACME' }, modelName = 'Issue', shared = true } = {}) => ({ id, name, modelName, shared, filterData, team })

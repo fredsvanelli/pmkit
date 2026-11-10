@@ -1,7 +1,7 @@
 // The Linear tracker. discover and capabilities read the workspace (PMK-33). The Issues and Relations families read and
 // write issues (PMK-35), the History and Comments families read history and comments (PMK-36), the Cycles and Capacity
-// families map cycles to sprints (PMK-37), and projects are epics with status updates, milestones and documents (PMK-38).
-// Every other contract operation is a stub.
+// families map cycles to sprints (PMK-37), projects are epics with status updates, milestones and documents (PMK-38), and
+// custom views are saved views that pmkit reads and runs (PMK-212). Every other contract operation is a stub.
 // See docs/superpowers/specs/2026-10-27-pmk-33-linear-discovery-design.md, "The tracker".
 
 import { randomUUID } from 'node:crypto'
@@ -22,6 +22,7 @@ import { buildLinearCapabilities } from './manifest.mjs'
 import { createCustomers } from './customers.mjs'
 import { createTriage } from './triage.mjs'
 import { notificationOperations } from './notifications.mjs'
+import { viewOperations } from './views.mjs'
 
 const CACHE_TTL_SECONDS = 3600
 const isoSeconds = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z')
@@ -190,6 +191,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
   const history = historyOperations({ client, ops: issues })
   const cycles = cycleOperations({ client, discovery, issues, config })
   const notifications = notificationOperations({ client, ops: issues, now })
+  const views = viewOperations({ client, config, issues })
   const contract = {
     getIssue: issues.getIssue,
     searchIssues: issues.searchIssues,
@@ -223,6 +225,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     readDocument: projects.readDocument,
     listDocuments: projects.listDocuments,
     createDocument: projects.createDocument,
+    ...Object.fromEntries(['listViews', 'runView', 'saveView', 'deleteView', 'renameView'].map((name) => [name, views[name]])),
     listNotifications: notifications.listNotifications,
     markRead: notifications.markRead,
   }

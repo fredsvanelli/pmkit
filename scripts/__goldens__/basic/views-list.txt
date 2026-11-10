@@ -10,7 +10,8 @@ exit 0
 --- stdout
 {
   "views": [],
-  "problems": []
+  "problems": [],
+  "hasMore": false
 }
 --- stderr
 (empty)

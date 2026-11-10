@@ -43,6 +43,7 @@ import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, p
 import { parseChangelog, sectionsSince } from './lib/changelog.mjs'
 import { runExport, runImport, runStatus, runSwitch, runUndo } from './lib/migrate/cli.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
+import { VIEWS_CUT } from './lib/linear/views.mjs'
 import { ID_STYLES, branchName, isId, normalizeId } from './lib/ids.mjs'
 import { boardDoc, hasMarker, problemsLine, renderDocument, roadmapDoc, sprintDoc } from './lib/render.mjs'
 import { boardData, roadmapData, sprintData } from './lib/render-data.mjs'
@@ -521,9 +522,12 @@ export const COMMANDS = [
   {
     name: 'views list', summary: 'lists the saved views', usage: '', flags: [],
     run: async (ctx) => {
-      const { views, problems } = await (await ctx.tracker()).listViews()
+      const { views, problems, hasMore = false } = await (await ctx.tracker()).listViews()
       const warnings = problems.map((problem) => `${problemLine(problem)}; run pmkit validate`)
-      return { data: { views, problems }, text: views.length === 0 ? (problems.length === 0 ? 'no views' : `no view could be read: ${problems.length} view ${problems.length === 1 ? 'file' : 'files'} could not be read, run pmkit validate`) : table(['Name', 'Filter'], views.map((view) => [view.name, filterText(view.filter)])), warnings }
+      if (hasMore) warnings.push(VIEWS_CUT)
+      // A Linear view keeps Linear's own filter, which pmkit shows as it is stored.
+      const shown = (view) => (view.filter === null ? `linear: ${JSON.stringify(view.linear.filterData)}` : filterText(view.filter))
+      return { data: { views, problems, hasMore }, text: views.length === 0 ? (problems.length === 0 ? 'no views' : `no view could be read: ${problems.length} view ${problems.length === 1 ? 'file' : 'files'} could not be read, run pmkit validate`) : table(['Name', 'Filter'], views.map((view) => [view.name, shown(view)])), warnings }
     },
   },
   {
@@ -532,7 +536,7 @@ export const COMMANDS = [
       const tracker = await ctx.tracker()
       const limit = ctx.opt('limit') === undefined ? undefined : whole('limit', ctx.opt('limit'))
       const found = await tracker.runView(ctx.args[0], { limit, sort: ctx.opt('sort') })
-      return issueSearchResult(tracker, found, { sort: found.overrides.sort ?? found.view.filter.sort, sprint: found.view.filter.sprint })
+      return issueSearchResult(tracker, found, { sort: found.overrides.sort ?? found.view.filter?.sort, sprint: found.view.filter?.sprint })
     },
   },
   {
@@ -2268,6 +2272,7 @@ async function runBulk(ctx) {
   if (view === undefined) checkBulkFilter(filter, 'the filter')
   const found = view === undefined ? await tracker.searchIssues(filter) : await tracker.runView(view)
   if (view !== undefined) {
+    if (found.view.filter === null) throw usageError(`Linear view ${view} keeps Linear's own filter, so pmkit cannot check that it narrows the set`, 'Pass filter flags to issues bulk instead of --view')
     filter = found.view.filter
     checkBulkFilter(filter, `view ${view}`, view)
   }
