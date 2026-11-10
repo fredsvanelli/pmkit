@@ -1,0 +1,10 @@
+# PMK-216 plan: improve estimate-issue
+
+Spec: `docs/superpowers/specs/2026-11-10-pmk-216-improve-estimate-issue-design.md`. Inline execution, TDD.
+
+1. `scripts/lib/similar.mjs` + `similar.test.mjs`: `rankSimilar(target, candidates, { limit })`. Tests first: ranks the closer issue first, drops score 0 and the target, `limit`, common words weigh nothing, `shared` terms, CRLF text, empty target text gives no hits.
+2. `issues similar <id> [--category c,..] [--limit n]` in `scripts/pmkit.mjs`: result `{ target, similar, considered, complete, hasMore, problems }`, text table, warnings for `problems` and `hasMore` ("not verified"). Tests in `scripts/cli-similar.test.mjs` (Local fixture, `--json` shape, default category done, bad `--limit`, a bad issue file makes it incomplete) and a Linear `hasMore` case. Add it to `golden-cases.mjs` (regenerate goldens), `cli-degraded-coverage` list if the suite asks, README table.
+3. `commands/issues/estimate.md` step 5 uses `issues similar --json`; keeps "no estimate is not evidence", adds "incomplete is not verified, never 'no similar issues'". Update `estimate-command.test.mjs` pins.
+4. Scenarios: update the Local entry, add the Linear no-estimate-field entry (comment path); update the counts in `scenarios.test.mjs` / `scenarios-live.mjs` if they change (no new command file, so likely not).
+5. `CHANGELOG.md` line under `## Unreleased`; `skills/pmkit/SKILL.md` unchanged (no new command file); tick criteria 1 and 2 with `issues update PMK-216 --check n`; commit `.issues/`.
+6. `npm test` in the foreground, exit code 0; then verification-before-completion, PR.
