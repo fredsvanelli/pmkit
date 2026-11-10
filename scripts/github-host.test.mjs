@@ -200,6 +200,22 @@ test('markReady calls gh pr ready with the number, then reads the PR back', () =
   assert.equal(result.isDraft, false)
 })
 
+test('postReview posts one COMMENT review with its inline comments on the right side, and returns its id and link', () => {
+  const { exec, calls } = fakeExec({ stdout: JSON.stringify({ id: 99, html_url: 'https://github.com/o/r/pull/12#pullrequestreview-99' }) })
+  const result = host(exec).postReview(12, { body: 'Summary', comments: [{ path: 'a.txt', line: 3, body: 'gap' }] })
+  assert.deepEqual(calls[0].args, ['api', 'repos/{owner}/{repo}/pulls/12/reviews', '--method', 'POST', '--input', '-'])
+  assert.deepEqual(JSON.parse(calls[0].input), { event: 'COMMENT', body: 'Summary', comments: [{ path: 'a.txt', line: 3, side: 'RIGHT', body: 'gap' }] })
+  assert.equal(calls[0].timeout, undefined, 'a write has no time limit')
+  assert.deepEqual(result, { id: 99, url: 'https://github.com/o/r/pull/12#pullrequestreview-99' })
+  assert.throws(() => host(exec).postReview(0, { body: 'x', comments: [] }), (e) => e.code === 'INVALID_INPUT')
+})
+
+test('postReview pins the review to the commit that was reviewed when it is given', () => {
+  const { exec, calls } = fakeExec({ stdout: JSON.stringify({ id: 1, html_url: 'u' }) })
+  host(exec).postReview(12, { body: 'B', comments: [{ path: 'a', line: 1, body: 'c' }], commitId: 'abc123' })
+  assert.equal(JSON.parse(calls[0].input).commit_id, 'abc123')
+})
+
 test('the default exec throws ENOENT for a command that does not exist', () => {
   assert.throws(
     () => defaultExec({ root: process.cwd(), env: process.env })('pmkit-no-such-command-xyz', []),

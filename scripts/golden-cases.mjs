@@ -144,6 +144,7 @@ export const CASES = {
   'issues branch': (a) => [[a.issue]],
   'pr open': (a) => [['--issue', a.issue]],
   'pr ready': (a) => [['--issue', a.issue]],
+  'pr review': (a) => [['--issue', a.issue, '--body-file', input('comment.md')]],
   'pr status': () => [[]],
   'deploys list': () => [[]],
   'ci logs': () => [['--run', '9']],

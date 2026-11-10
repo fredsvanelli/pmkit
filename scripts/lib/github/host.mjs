@@ -174,6 +174,15 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
       return getPullRequest({ number })
     },
 
+    /** Posts one review that only comments (never approves or requests changes). GitHub takes the review whole or refuses it whole. */
+    postReview(number, { body, comments, commitId }) {
+      if (!Number.isInteger(number) || number < 1) throw new PmkitError('INVALID_INPUT', `pull request number "${number}" is not valid`, 'Pass a pull request number')
+      // commit_id pins the inline lines to the commit they were checked against, so a push after the read cannot move them.
+      const input = JSON.stringify({ event: 'COMMENT', body, ...(commitId ? { commit_id: commitId } : {}), comments: comments.map(({ path, line, body: text }) => ({ path, line, side: 'RIGHT', body: text })) })
+      const review = parse(check('gh', ['api', `repos/{owner}/{repo}/pulls/${number}/reviews`, '--method', 'POST', '--input', '-'], { input }).stdout, 'the review')
+      return { id: review.id, url: review.html_url }
+    },
+
     prChecks(number) {
       const args = ['pr', 'checks', String(number), '--json', 'name,state,bucket,link']
       // The link of a check run holds the workflow run it belongs to, the id `ci logs --run` takes. Other CI has none.

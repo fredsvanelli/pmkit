@@ -1,0 +1,1 @@
+[{ "path": "src/events.mjs", "line": 1, "body": "covered: adds the cursor parameter (criterion 1). Nothing here tests the last page (criterion 2, gap)." }]

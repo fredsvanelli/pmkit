@@ -50,6 +50,7 @@ import { boardData, roadmapData, sprintData } from './lib/render-data.mjs'
 import { redact } from './lib/redact.mjs'
 import { shareDone, topLevelRollup } from './lib/initiatives.mjs'
 import { tailLines } from './lib/tail-lines.mjs'
+import { rightLines, splitDiff } from './lib/diff-files.mjs'
 
 const TEMPLATES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates')
 const usageError = (message, nextStep = 'node scripts/pmkit.mjs --help') => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -160,6 +161,16 @@ function readReports(ctx, example) {
     }
   }
   return reports
+}
+
+/** The inline comments of pr review: a JSON array of { path, line, body }. Every bad entry is named in one error. */
+function reviewComments(text) {
+  let list
+  try { list = JSON.parse(text) } catch {}
+  if (!Array.isArray(list)) throw usageError('the comments file is not a JSON array', 'Write a JSON array of { "path", "line", "body" } to the comments file')
+  const bad = list.map((c, i) => (c && typeof c.path === 'string' && c.path !== '' && Number.isInteger(c.line) && c.line > 0 && typeof c.body === 'string' && c.body.trim() !== '' ? null : `comment ${i + 1} needs a path, a line number above 0 and a body`)).filter(Boolean)
+  if (bad.length > 0) throw usageError(bad.join('; '), 'Write a JSON array of { "path", "line", "body" } to the comments file')
+  return list.map(({ path: file, line, body }) => ({ path: file, line, body }))
 }
 
 function readInput(source) {
@@ -1579,6 +1590,54 @@ export const COMMANDS = [
     },
   },
   {
+    name: 'pr review', summary: 'posts one review that comments on the open pull request of an issue, with inline comments on lines of its diff', usage: '--issue <id> --body-file f [--comments-file f] [--redact]', write: true, args: [], flags: ['issue', 'body-file', 'comments-file', 'redact'],
+    run: async (ctx) => {
+      if (ctx.opt('issue') === undefined) throw usageError('pr review needs --issue', 'pmkit pr review --issue <id> --body-file <file>')
+      if (ctx.opt('body-file') === undefined) throw usageError('pr review needs --body-file', 'pmkit pr review --issue <id> --body-file <file>')
+      const host = ctx.host()
+      let body = readInput(ctx.opt('body-file'))
+      if (body.trim() === '') throw usageError('the review body is empty', 'Write the summary of the review to the body file')
+      let comments = ctx.opt('comments-file') === undefined ? [] : reviewComments(readInput(ctx.opt('comments-file')))
+      // --redact, as issues comment has it (PMK-229): the secrets of the body and of each inline comment go before GitHub gets them.
+      let redacted
+      if (ctx.flag('redact')) {
+        const counts = {}
+        const clean = (text) => {
+          const result = redact(text)
+          for (const [type, n] of Object.entries(result.counts)) counts[type] = (counts[type] ?? 0) + n
+          return result.text
+        }
+        body = clean(body)
+        comments = comments.map((c) => ({ ...c, body: clean(c.body) }))
+        const count = Object.values(counts).reduce((sum, n) => sum + n, 0)
+        redacted = { count, counts }
+      }
+      const issue = await (await ctx.tracker()).getIssue(ctx.opt('issue'))
+      if (!issue.branch) throw usageError(`${issue.id} has no branch`, `pmkit issues branch ${issue.id}`)
+      const found = host.getPullRequest({ head: issue.branch })
+      if (found?.state !== 'OPEN') throw usageError(`${issue.branch} has no open pull request`, `pmkit pr open --issue ${issue.id}, or post the review on the issue with pmkit issues comment`)
+      // Every inline line is checked against the diff before any write, so a dry run shows what GitHub would refuse.
+      let commitId = null
+      if (comments.length > 0) {
+        // The head is read before the diff, so the lines checked are never newer than the commit the review is pinned to.
+        commitId = host.prRefs(found.number).headRefOid
+        const diff = host.prDiff(found.number)
+        if (diff === null) throw usageError(`GitHub refused the diff of pull request #${found.number} as too large, so the lines of the inline comments cannot be checked`, 'Put the findings in the body and post the review without --comments-file')
+        const lines = new Map()
+        for (const section of splitDiff(diff)) lines.set(section.path, new Set([...(lines.get(section.path) ?? []), ...rightLines(section.text)]))
+        const off = comments.map((c, i) => (lines.get(c.path)?.has(c.line) ? null : `comment ${i + 1} (${c.path}:${c.line}) is not on a line of the diff`)).filter(Boolean)
+        if (off.length > 0) throw usageError(off.join('; '), 'Point each inline comment at an added or unchanged line of the diff, or move it to the body')
+      }
+      const pr = { number: found.number, url: found.url }
+      const data = { pr, event: 'COMMENT', commitId, body, comments, ...(redacted === undefined ? {} : { redacted }) }
+      const notes = [...(redacted?.count > 0 ? [`redacted ${redacted.count} ${redacted.count === 1 ? 'value' : 'values'}: ${Object.entries(redacted.counts).map(([type, n]) => `${type} ${n}`).join(', ')}`] : []), ...(await capabilityNotesOrNone(ctx))]
+      const what = `a review with ${comments.length} inline ${comments.length === 1 ? 'comment' : 'comments'} on pull request #${pr.number} ${pr.url}`
+      if (ctx.dryRun) return { data, text: `would post ${what}\ndry run: nothing was written`, notes }
+      const review = host.postReview(pr.number, { body, comments, commitId })
+      return { data: { ...data, review }, text: `posted ${what}\n${review.url}`, notes }
+    },
+  },
+  {
     name: 'pr status', summary: 'pull request, checks, reviews and the blockers verdict of a branch', usage: '[--branch b]', args: [], flags: ['branch'],
     run: async (ctx) => {
       const host = ctx.host()
@@ -1652,10 +1711,12 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'pr diff', summary: 'diff of the pull request of a branch, or the local diff against the base branch when it has none', usage: '[--branch b] [--base b] [--max-lines n]', args: [], flags: ['branch', 'base', 'max-lines'],
+    name: 'pr diff', summary: 'diff of the pull request of a branch, or the local diff against the base branch when it has none', usage: '[--branch b] [--base b] [--max-lines n] [--file path]', args: [], flags: ['branch', 'base', 'max-lines', 'file'],
     run: async (ctx) => {
       const maxLines = ctx.opt('max-lines') === undefined ? 2000 : whole('max-lines', ctx.opt('max-lines'))
       if (maxLines < 1) throw usageError('--max-lines must be at least 1')
+      const only = ctx.opt('file')
+      if (only === '') throw usageError('--file must not be empty', 'Pass a path from the files of pr diff --json')
       const requested = ctx.opt('base')
       if (requested !== undefined && (requested === '' || requested.startsWith('-'))) throw new PmkitError('INVALID_INPUT', `base "${requested}" is not a valid branch name`, 'Use a branch name that does not start with -')
       const host = ctx.host()
@@ -1731,12 +1792,26 @@ export const COMMANDS = [
       if (source === 'pull_request' && tree?.uncommitted) notes.push(`${branch} has uncommitted changes, so the pull request diff does not include them`)
       if (tree?.untracked > 0) notes.push(`${tree.untracked} untracked ${tree.untracked === 1 ? 'file is' : 'files are'} not in the diff`)
       const base = local?.base ?? null
+      // A cut diff is read again file by file: --file keeps the sections of one path, and the cut then applies to that file.
+      let sections = splitDiff(full)
+      if (only !== undefined) {
+        sections = sections.filter((section) => section.path === only)
+        if (sections.length === 0) throw new PmkitError('INVALID_INPUT', `${only} is not in the diff of ${branch}${incomplete ? ', which is incomplete' : ''}`, 'Pass a path from the files of pr diff --json')
+        full = sections.map((section) => section.text).join('')
+      }
+      const lineCount = (text) => (text === '' ? 0 : text.replace(/\n$/, '').split('\n').length)
+      let seen = 0
+      const files = sections.map((section) => {
+        const lines = lineCount(section.text)
+        seen += lines
+        return { path: section.path, lines, cut: seen > maxLines }
+      })
       const all = full === '' ? [] : full.replace(/\n$/, '').split('\n')
       const truncated = all.length > maxLines
       const diff = truncated ? `${all.slice(0, maxLines).join('\n')}\n` : full
-      const size = truncated ? `first ${maxLines} of ${all.length} lines` : `${all.length} lines`
+      const size = `${only === undefined ? '' : `${only}, `}${truncated ? `first ${maxLines} of ${all.length} lines` : `${all.length} lines`}`
       const head = source === 'pull_request' ? `pull request #${pr.number}, ${size}` : `local diff of ${branch} against ${base}, ${size}`
-      return { data: { branch, source, pr: source === 'pull_request' ? pr : null, base, uncommitted: tree?.uncommitted ?? false, uncommittedIncluded: local?.uncommitted ?? false, untracked: tree?.untracked ?? 0, incomplete, diff, truncated, lines: all.length }, text: `${head}\n${diff}`, notes: [...notes, ...(await capabilityNotesOrNone(ctx))] }
+      return { data: { branch, source, pr, base, uncommitted: tree?.uncommitted ?? false, uncommittedIncluded: local?.uncommitted ?? false, untracked: tree?.untracked ?? 0, incomplete, diff, truncated, lines: all.length, file: only ?? null, files }, text: `${head}\n${diff}`, notes: [...notes, ...(await capabilityNotesOrNone(ctx))] }
     },
   },
   {
