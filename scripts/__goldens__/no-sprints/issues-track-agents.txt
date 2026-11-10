@@ -9,6 +9,8 @@ $ pmkit issues track-agents --json
 exit 0
 --- stdout
 {
+  "source": "issues",
+  "agent": null,
   "issues": [],
   "incomplete": false,
   "hasMore": false,

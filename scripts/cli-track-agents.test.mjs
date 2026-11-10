@@ -242,3 +242,36 @@ test('the incomplete warning names GitHub only when a pull request read is the c
   assert.match(data.warnings.join('\n'), /pull request.*could not be read|GitHub/)
   assert.ok(data.warnings.some((w) => /^the list is incomplete/.test(w) && /pull request/.test(w)))
 })
+
+test('--agent keeps the rows of one agent, by id or bare name, and reads only their pull requests (PMK-215)', async () => {
+  const { root, cli, track } = setup({ canned: { [view('b-claude')]: { stdout: pr() } } })
+  await delegate(cli, 'ISS-5N1R', 'agent:claude')
+  await delegate(cli, 'ISS-2X6D', 'agent:codex')
+  setBranch(root, 'ISS-5N1R', 'b-claude')
+  setBranch(root, 'ISS-2X6D', 'b-codex')
+  for (const value of ['agent:claude', 'Claude']) {
+    const data = dataOf(await track('--agent', value))
+    assert.deepEqual(data.issues.map((i) => i.id), ['ISS-5N1R'])
+    assert.equal(data.agent, 'claude')
+    assert.equal(data.source, 'issues')
+  }
+})
+
+test('--agent with no issue for that agent says so and never "nothing is assigned" (PMK-215)', async () => {
+  const { root, cli, track } = setup({ github: false })
+  await delegate(cli, 'ISS-5N1R', 'agent:claude')
+  // The team fixture holds one issue file with conflict markers, so the list is incomplete until it is gone.
+  const incomplete = (await cli('issues', 'track-agents', '--agent', 'codex')).stdout
+  assert.match(incomplete, /no agent issue for codex was found, but the list is incomplete/)
+  fs.rmSync(path.join(root, '.issues', 'issues', 'ISS-3Q6T'), { recursive: true })
+  const data = dataOf(await track('--agent', 'codex'))
+  assert.deepEqual(data.issues, [])
+  assert.match((await cli('issues', 'track-agents', '--agent', 'codex')).stdout, /no open issue is assigned to agent codex/)
+})
+
+test('--agent with an empty value is INVALID_INPUT (PMK-215)', async () => {
+  const { cli } = setup({ github: false })
+  const result = await cli('issues', 'track-agents', '--json', '--agent', 'agent:')
+  assert.equal(result.code, 2)
+  assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT')
+})
