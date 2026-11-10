@@ -2,14 +2,14 @@
 id: PMK-248
 title: Fix adr-status on an unchanged section and on two status forms
 type: bug
-status: in_progress
+status: in_review
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-248-fix-adr-status-on-an-unchanged-section
 created: 2026-11-10T19:28:14.686Z
-updated: 2026-11-10T21:38:43Z
+updated: 2026-11-10T21:46:57Z
 ---
 
 ## Description
