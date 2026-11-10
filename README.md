@@ -133,7 +133,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `views save <name> [filter flags] [--overwrite]` | saves an issue filter as `.issues/views/<name>.yaml`; takes the flags of `issues list`, and refuses a name that exists unless `--overwrite` |
 | `views list` | lists the saved views with their filters; on Linear, the custom views of the scope team and of the workspace, each with Linear's filter in `linear.filterData`, and `hasMore` when Linear has more views than pmkit read |
 | `views delete <name>` | deletes `.issues/views/<name>.yaml`, a file that does not parse too; `--dry-run` is the full preview. Linear views are deleted in Linear |
-| `views rename <name> <new-name>` | renames a saved view and keeps its filter; refuses a name another view has in any case. Linear views are renamed in Linear |
+| `views rename <name> <new-name>` | renames a saved view and keeps its filter; refuses a name another view has in any case, and a rename that changes only the case (rename through another name first). Linear views are renamed in Linear |
 | `goal list` | lists the goals in `.issues/goals/` with the epics linked to each |
 | `goal get <id>` | shows one goal and its epics |
 | `goal create --title t [--target YYYY-MM-DD]` | creates a goal as `.issues/goals/<ID>.md`; the ID is `GOAL-` and a code that follows `id_style` |

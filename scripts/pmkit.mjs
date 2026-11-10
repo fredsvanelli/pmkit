@@ -3451,10 +3451,30 @@ function commitTracker(config, message, paths) {
   const git = (...args) => spawnSync('git', ['--literal-pathspecs', ...args], { cwd: config.root, encoding: 'utf8' })
   const named = paths.length <= 5 ? paths.join(' ') : folder
   const fail = (result) => new PmkitError('UPSTREAM', `the write succeeded but auto_commit failed: ${(result.stderr || result.stdout).trim()}`, `Commit ${named} yourself`)
-  const added = git('add', '--', ...paths)
-  if (added.status !== 0) throw fail(added)
-  if (git('diff', '--cached', '--quiet', '--', ...paths).status === 0) return
-  const committed = git('commit', '-m', message, '--', ...paths)
+  // On disk with its exact case: where the file system ignores case, the old name of a case-only rename still "exists".
+  const onDisk = (file) => {
+    const full = path.join(config.root, file)
+    try {
+      return fs.readdirSync(path.dirname(full)).includes(path.basename(full))
+    } catch {
+      return false
+    }
+  }
+  const present = paths.filter(onDisk)
+  // A removed path is committed only when git tracks it: a file git never saw, such as a view written by hand, is not an error.
+  const removed = paths.filter((file) => !onDisk(file) && git('ls-files', '--', file).stdout.trim() !== '')
+  if (removed.length > 0) {
+    // git rm --cached drops the old name from the index, which git add cannot do for a case-only rename.
+    const dropped = git('rm', '--cached', '-r', '-q', '--ignore-unmatch', '--', ...removed)
+    if (dropped.status !== 0) throw fail(dropped)
+  }
+  if (present.length > 0) {
+    const added = git('add', '--', ...present)
+    if (added.status !== 0) throw fail(added)
+  }
+  const staged = [...removed, ...present]
+  if (staged.length === 0 || git('diff', '--cached', '--quiet', '--', ...staged).status === 0) return
+  const committed = git('commit', '-m', message, '--', ...staged)
   if (committed.status !== 0) throw fail(committed)
 }
 

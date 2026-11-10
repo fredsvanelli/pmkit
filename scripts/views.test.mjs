@@ -191,7 +191,7 @@ test('renameView moves the file as it is, and a dry run writes nothing', () => {
   assert.deepEqual(tracker.listViews().views.map((v) => v.name), ['new'])
 })
 
-test('renameView refuses a name another view has in any case, and allows a case-only rename', () => {
+test('renameView refuses a name another view has in any case, and a case-only rename', () => {
   const { tracker } = setup()
   tracker.saveView('mine', { assignee: 'me' }, 'fred')
   tracker.saveView('other', { blocked: true }, 'fred')
@@ -199,8 +199,9 @@ test('renameView refuses a name another view has in any case, and allows a case-
   assert.throws(() => tracker.renameView('mine', 'OTHER', 'fred'), code('CONFLICT'))
   assert.throws(() => tracker.renameView('gone', 'x', 'fred'), code('NOT_FOUND'))
   assert.throws(() => tracker.renameView('mine', 'a b', 'fred'), (error) => error.details?.reason === 'invalid_view_name')
-  assert.deepEqual(tracker.renameView('mine', 'Mine', 'fred').after, { name: 'Mine', filter: { assignee: 'me' } })
-  assert.deepEqual(tracker.listViews().views.map((v) => v.name), ['Mine', 'other'])
+  // git cannot record a case-only rename where the file system ignores case, so the view goes through another name first.
+  assert.throws(() => tracker.renameView('mine', 'Mine', 'fred'), (error) => error.code === 'INVALID_INPUT' && /only the case/.test(error.message) && /Rename mine to another name first, then to Mine/.test(error.nextStep))
+  assert.deepEqual(tracker.listViews().views.map((v) => v.name), ['mine', 'other'])
 })
 
 test('renameView moves a file that does not parse and marks both sides unreadable', () => {

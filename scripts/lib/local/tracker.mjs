@@ -2138,11 +2138,14 @@ export function createLocalTracker(root, {
     return { before, after: null }
   }
 
-  /** Moves the file as it is, so the stored filter does not change. A case-only rename of the same view is allowed. */
+  /** Moves the file as it is, so the stored filter does not change. A case-only rename is refused: git cannot record it where the file system ignores case. */
   function renameView(name, newName, actor, { dryRun = false } = {}) {
     requireWriter(actor)
     requireViewName(newName)
     const before = storedView(name)
+    if (newName !== name && newName.toLowerCase() === name.toLowerCase()) {
+      throw invalid(`renaming view ${name} to ${newName} changes only the case of the name, which git does not record where the file system ignores case`, `Rename ${name} to another name first, then to ${newName}`)
+    }
     const clash = [...viewStems(viewsDir)].find((stem) => stem !== name && stem.toLowerCase() === newName.toLowerCase())
     if (clash !== undefined) throw new PmkitError('CONFLICT', `view ${clash} already exists`, 'Pick another name, or delete that view first')
     if (!dryRun && newName !== name) {

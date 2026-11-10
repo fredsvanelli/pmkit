@@ -26,7 +26,7 @@ Saved views exist on the Local tracker (`views save`, `views list`, `views run`,
 
 - New contract operations `deleteView(name, actor, { dryRun })` and `renameView(name, newName, actor, { dryRun })`, next to `saveView`, `listViews`, `runView`.
 - `deleteView` checks the name rule (`invalid_view_name`), answers `NOT_FOUND` for a missing file, and removes `.issues/views/<name>.yaml`. It returns `{ before, after: null }`. `before` is the view, or `{ name, unreadable }` when the file does not parse, so a broken view can be deleted and the result says what was lost. `--dry-run` writes nothing.
-- `renameView` checks both names, answers `NOT_FOUND` when the old one is missing, and `CONFLICT` when another view has the new name in any case (a case-only rename of the same file is allowed). It moves the file as is, so the stored filter does not change. It returns `{ before: { name, filter }, after: { name: newName, filter } }` (or `unreadable` in both when the file does not parse).
+- `renameView` checks both names, answers `NOT_FOUND` when the old one is missing, and `CONFLICT` when another view has the new name in any case (a case-only rename is `INVALID_INPUT`: git does not record it where the file system ignores case, so the user renames through another name first; review of PR #179). It moves the file as is, so the stored filter does not change. It returns `{ before: { name, filter }, after: { name: newName, filter } }` (or `unreadable` in both when the file does not parse).
 - The CLI: `views delete <name>` and `views rename <name> <new-name>`, both writes with `--dry-run`, both auto-committed like `views save`.
 
 ### validate (criterion 2)
