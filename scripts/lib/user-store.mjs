@@ -1,10 +1,12 @@
 // The user store: the per-user folder for the discovery cache and personal defaults.
 // It lives outside the repository and holds no credential.
+import { spawnSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { PmkitError } from './errors.mjs'
+import { chooseRemote, parseRemoteUrl } from './git-remote.mjs'
 import { validTimestamp } from './local/sprints.mjs'
 import { setScalar } from './yaml-edit.mjs'
 import { parseYaml } from './yaml.mjs'
@@ -241,9 +243,37 @@ export function defaultsUnset(key, options) {
 }
 
 const INBOX_VERSION = 2
+const sha12 = (text) => crypto.createHash('sha256').update(text).digest('hex').slice(0, 12)
 
-function inboxFile(root, options) {
-  return path.join(userDir(options), 'inbox', `${repoHash(root)}.json`)
+/** The remotes of the repository at root as [{ name, url }], or [] when git cannot say. A read, so it has a timeout. */
+function remotesOf(root) {
+  const listed = spawnSync('git', ['remote', '-v'], { cwd: root, encoding: 'utf8', timeout: 10000, maxBuffer: 16 * 1024 * 1024 })
+  if (listed.error || listed.status !== 0) return []
+  const remotes = []
+  for (const line of listed.stdout.split(/\r?\n/)) {
+    const match = /^(\S+)\s+(\S+)\s+\(fetch\)$/.exec(line.trim())
+    if (match && !remotes.some((remote) => remote.name === match[1])) remotes.push({ name: match[1], url: match[2] })
+  }
+  return remotes
+}
+
+/**
+ * The key of the inbox file of a repository: the hash of the host, owner and name of the remote chooseRemote picks (origin, else
+ * the only remote), so every worktree and clone of one repository shares it, whether the URL is https or ssh. Without a remote
+ * git can read, the hash of the real path of root, as repoHash.
+ */
+export function inboxKey(root) {
+  const { remote } = chooseRemote(remotesOf(root))
+  const parsed = remote ? parseRemoteUrl(remote.url) : null
+  return parsed ? sha12(`remote:${parsed.host}/${parsed.owner}/${parsed.name}`.toLowerCase()) : repoHash(root)
+}
+
+/** The inbox file to write, and the file to read: the path-keyed file of PMK-47 while the remote-keyed one does not exist yet. */
+function inboxFiles(root, options) {
+  const dir = path.join(userDir(options), 'inbox')
+  const write = path.join(dir, `${inboxKey(root)}.json`)
+  const legacy = path.join(dir, `${repoHash(root)}.json`)
+  return { write, read: write !== legacy && !fs.existsSync(write) && fs.existsSync(legacy) ? legacy : write }
 }
 
 const inboxBad = (file, why) => new PmkitError(
@@ -275,27 +305,90 @@ function readInbox(file) {
 }
 
 const isMapOfTimes = (value) => value !== null && typeof value === 'object' && !Array.isArray(value) && Object.values(value).every(validTimestamp)
+const isKinds = (value) => value === undefined || (Array.isArray(value) && value.every((kind) => typeof kind === 'string'))
 const inSeconds = (value) => new Date(value).toISOString().replace(/\.\d{3}Z$/, 'Z')
 
-/**
- * The inbox entry of a member in this repository, `{ at, seen }`, or null when there is none. `at` is the time of the last mark-read
- * and `seen` maps the key of each item the member has seen to the time it was marked. Times are read as whole seconds in Z.
- * Only the entry of this member is checked, so a bad entry of another member does not block this one.
- */
-export function inboxGet(root, member, options) {
-  const file = inboxFile(root, options)
-  const checks = readInbox(file)
+/** The entry of member in checks, normalized, or null. Throws when it is not a check. */
+function entryOf(checks, member, file) {
   if (!Object.hasOwn(checks, member)) return null
   const entry = checks[member]
-  if (entry === null || typeof entry !== 'object' || !validTimestamp(entry.at) || !isMapOfTimes(entry.seen)) {
+  if (entry === null || typeof entry !== 'object' || !validTimestamp(entry.at) || !isMapOfTimes(entry.seen) || !isKinds(entry.kinds)) {
     throw inboxBad(file, `holds an entry for ${member} that is not a check with a timestamp and a map of seen keys`)
   }
-  return { at: inSeconds(entry.at), seen: Object.fromEntries(Object.entries(entry.seen).map(([key, at]) => [key, inSeconds(at)])) }
+  const normal = { at: inSeconds(entry.at), seen: Object.fromEntries(Object.entries(entry.seen).map(([key, at]) => [key, inSeconds(at)])) }
+  return entry.kinds === undefined ? normal : { ...normal, kinds: [...entry.kinds] }
+}
+
+/**
+ * The inbox entry of a member in this repository, `{ at, seen }` plus `kinds` when the file records them, or null when there is
+ * none. `at` is the time of the last mark-read, `seen` maps the key of each item the member has seen to the time it was marked
+ * and `kinds` lists the item kinds the entry has covered. Times are read as whole seconds in Z. Only the entry of this member is
+ * checked, so a bad entry of another member does not block this one.
+ */
+export function inboxGet(root, member, options) {
+  const { read } = inboxFiles(root, options)
+  return entryOf(readInbox(read), member, read)
+}
+
+const LOCK_STEP_MS = 25
+const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+
+/**
+ * Runs body while holding `<file>.lock`, made with the `wx` flag so only one process holds it. A lock already there makes the
+ * caller wait, up to lockWaitMs (10 s); a lock older than staleLockMs (30 s) was left by a process that died and is removed.
+ */
+function withLock(file, body, { lockWaitMs = 10000, staleLockMs = 30000 } = {}) {
+  const lock = `${file}.lock`
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
+  const deadline = Date.now() + lockWaitMs
+  for (;;) {
+    try {
+      fs.closeSync(fs.openSync(lock, 'wx', 0o600))
+      break
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error
+    }
+    try {
+      if (Date.now() - fs.statSync(lock).mtimeMs > staleLockMs) {
+        fs.rmSync(lock, { force: true })
+        continue
+      }
+    } catch (error) {
+      if (error.code === 'ENOENT') continue
+      throw error
+    }
+    if (Date.now() >= deadline) {
+      throw new PmkitError('CONFLICT', `The inbox file is locked by another pmkit run (${lock}).`, `Retry in a moment. If no other pmkit runs, delete ${lock}.`)
+    }
+    sleep(LOCK_STEP_MS)
+  }
+  try {
+    return body()
+  } finally {
+    fs.rmSync(lock, { force: true })
+  }
+}
+
+/**
+ * Replaces the inbox entry of a member in this repository with update(current), where current is the entry on disk at that
+ * moment (or null). It holds the lock from the read to the write, so two writers never drop each other's keys, and keeps the
+ * entries of the other members as they are.
+ */
+export function inboxUpdate(root, member, update, options = {}) {
+  const { read, write } = inboxFiles(root, options)
+  assertOutsideRepo(write, options)
+  return withLock(write, () => {
+    // The read may have moved to the remote file while this call waited for the lock.
+    const source = fs.existsSync(write) ? write : read
+    const checks = readInbox(source)
+    const next = update(entryOf(checks, member, source))
+    const stored = { at: next.at, seen: next.seen, ...(next.kinds === undefined ? {} : { kinds: next.kinds }) }
+    writeAtomic(write, `${JSON.stringify({ version: INBOX_VERSION, checks: { ...checks, [member]: stored } }, null, 2)}\n`, options)
+    return stored
+  }, options)
 }
 
 /** Replaces the inbox entry of a member in this repository and keeps the entries of the others as they are. */
 export function inboxSet(root, member, entry, options) {
-  const file = inboxFile(root, options)
-  const checks = readInbox(file)
-  writeAtomic(file, `${JSON.stringify({ version: INBOX_VERSION, checks: { ...checks, [member]: { at: entry.at, seen: entry.seen } } }, null, 2)}\n`, options)
+  inboxUpdate(root, member, () => entry, options)
 }
