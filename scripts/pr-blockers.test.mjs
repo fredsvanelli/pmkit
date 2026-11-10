@@ -416,7 +416,7 @@ test('a ruleset required check and strict policy merge with the classic protecti
   }).host, OPEN_PR)
   assert.deepEqual(r.policies.requiredChecks, ['lint', 'build'])
   assert.deepEqual(r.policies.unmet, ['required check lint does not pass', 'required check build does not pass'])
-  assert.ok(r.blocking.some((b) => b.area === 'conflicts' && /behind/.test(b.message)))
+  assert.ok(r.blocking.some((b) => b.area === 'conflicts' && b.message === 'the branch is behind the base branch and the protection or a ruleset requires it to be up to date'))
   assert.deepEqual(r.pending, [])
 })
 

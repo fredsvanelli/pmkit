@@ -4,7 +4,8 @@
 // `blocking` holds what stops the merge: what the policies require, merge conflicts, a draft and requested changes.
 // `pending` holds what is open but that nothing requires, such as a reviewer nobody needs or a check that is not required.
 // `unknown` holds what may block, but the command cannot tell because the protection or the rules could not be read.
-// A read that GitHub refuses with HTTP 403 or 404 leaves its section null and adds an `unchecked` entry.
+// A read that GitHub refuses with HTTP 403 or 404 leaves its section null and adds an `unchecked` entry. `policies` has two
+// reads (protection and rules): it is null only when both are refused, and names a refused one in `policies.unread`.
 // Any other failure, such as a network error or a 5xx, fails the read.
 
 import { PmkitError } from './errors.mjs'
@@ -144,7 +145,7 @@ export function collectBlockers(host, pr) {
   // What blocks.
   if (draft) blocking.push({ area: 'draft', message: 'the pull request is a draft' })
   if (conflicts.conflicting) blocking.push({ area: 'conflicts', message: 'merge conflicts with the base branch' })
-  if (conflicts.behind && strict) blocking.push({ area: 'conflicts', message: 'the branch is behind the base branch and the protection requires it to be up to date' })
+  if (conflicts.behind && strict) blocking.push({ area: 'conflicts', message: 'the branch is behind the base branch and the protection or a ruleset requires it to be up to date' })
   // GitHub reviewDecision is the word of GitHub, so it blocks without the protection.
   if (reviews.decision === 'CHANGES_REQUESTED') blocking.push({ area: 'reviews', message: reviews.changesRequested.length > 0 ? `changes requested by ${names(reviews.changesRequested)}` : 'changes are requested' })
   else if (reviews.changesRequested.length > 0) {
@@ -159,7 +160,6 @@ export function collectBlockers(host, pr) {
   if (reviews.decision === 'REVIEW_REQUIRED' && !(policies?.unmet ?? []).some((m) => m.startsWith('needs '))) blocking.push({ area: 'reviews', message: 'a review is required' })
   if (mergeState.mergeStateStatus === 'BLOCKED' && blocking.length === 0) {
     const unevaluated = policies?.unevaluated ?? []
-    const unread = [...new Set(unevaluated.map((u) => NEEDS[u]))]
     const reads = [...new Set(unevaluated.map((u) => NEEDS[u]))]
     const rule = ruleText(policies)
     const cause = unevaluated.length > 0 ? `${rule}, or by ${names(unevaluated)}, which it could not evaluate because the ${reads.join(' and ')} were not read` : rule
