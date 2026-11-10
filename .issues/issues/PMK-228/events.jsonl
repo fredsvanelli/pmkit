@@ -4,3 +4,4 @@
 {"at":"2026-11-10T17:19:46Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-10T17:19:46Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-10T17:19:53Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-228-improve-record-decision"}
+{"at":"2026-11-10T17:24:10Z","by":"fred","op":"comment","to":"2026-11-10T17-24-10Z-fred.md"}
