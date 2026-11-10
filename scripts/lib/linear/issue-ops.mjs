@@ -7,9 +7,10 @@ import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refu
 import { compareIds } from '../ids.mjs'
 import { checkFilter } from '../issue-filter.mjs'
 import { cycleKey } from './cycles.mjs'
-import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UNARCHIVE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
+import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUE_RELEASES_QUERY, ISSUES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UNARCHIVE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
 import { finishSearch, translateFilter } from './filter.mjs'
 import { blockedOpen, isIssueId, issueKey, makeContext, stateCategory, toIssue } from './issues.mjs'
+import { allReleases, releasesOff } from './releases.mjs'
 import { applyInput, createTeam, requireAssignee, skeletonNode, teamOf, teamStates, toInput } from './writes.mjs'
 
 const SEARCH_PAGE = 100
@@ -26,9 +27,10 @@ const notFound = (id) => new PmkitError('NOT_FOUND', `issue ${id} does not exist
  * The issue operations over one client. `discovery({ refresh })` is the tracker's memo of the raw discovery.
  * `resolveEpic(key)` returns the raw project node of an epic key, or null; without it a parent must be an issue.
  * `resolveMilestone(id)` returns the raw project milestone node, or throws NOT_FOUND; without it a milestone is NOT_SUPPORTED.
+ * `resolveRelease(id)` returns the raw release node, or throws NOT_FOUND for an unknown or canceled one (PMK-246).
  * Besides the contract operations, the result holds the helpers the relation operations use.
  */
-export function issueOperations({ client, discovery, config, now = () => new Date(), uuid, resolveEpic, resolveMilestone }) {
+export function issueOperations({ client, discovery, config, now = () => new Date(), uuid, resolveEpic, resolveMilestone, resolveRelease }) {
   const workspace = config.pmkit?.tracker?.scope?.workspace
 
   function requireWorkspace() {
@@ -80,8 +82,18 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return context({ refresh: true })
   }
 
+  /** True when the workspace has releases on, from the cached discovery: no request. */
+  const releasesOn = async () => (await discovery()).raw.flags?.releasesEnabled === true
+
+  /** Puts the issue's releases on the node, every page, as `releases: { nodes }`, which toIssue reads. */
+  async function attachReleases(node) {
+    node.releases = { nodes: await allReleases(client, ISSUE_RELEASES_QUERY, { id: node.id }, (data) => data.issue.releases) }
+    return node
+  }
+
   async function getIssue(id) {
     const node = await readNode(id)
+    if (await releasesOn()) await attachReleases(node)
     return toIssue(node, await contextFor([node]))
   }
 
@@ -206,6 +218,23 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
   }
 
   const milestoneReads = new Map()
+  const releaseReads = new Map()
+
+  /**
+   * The raw release a release value names (PMK-246, decision PMK-246-1): refuses with releases off, and on an issue in two or more
+   * releases, with words that do not name the issue, so a bulk change shows the same message on each. Reads the issue's releases onto
+   * beforeNode. The target is read once per run.
+   */
+  async function releaseNodeFor(release, beforeNode) {
+    if (release === undefined) return undefined
+    if (!(await releasesOn())) throw releasesOff()
+    await attachReleases(beforeNode)
+    const count = beforeNode.releases.nodes.filter((item) => item.stage?.type !== 'canceled').length
+    if (count > 1) throw new PmkitError('INVALID_INPUT', `the issue is in ${count} Linear releases, and pmkit sets one release per issue`, 'Change the releases of the issue in Linear')
+    if (release === null) return null
+    if (!releaseReads.has(release)) releaseReads.set(release, resolveRelease(release).catch((error) => { releaseReads.delete(release); throw error }))
+    return releaseReads.get(release)
+  }
 
   /** The raw milestone a milestone value names, checked against the project of the issue: Linear takes only a milestone of the issue's own project. */
   async function milestoneNodeFor(milestone, beforeNode) {
@@ -224,28 +253,31 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
   async function updateIssue(id, patch, actor, { dryRun = false } = {}) {
     await requireViewer(actor)
     const beforeNode = await readNode(id)
+    const releaseNode = await releaseNodeFor(patch.release, beforeNode)
     const before = toIssue(beforeNode, await contextFor([beforeNode]))
     const milestoneNode = await milestoneNodeFor(patch.milestone, beforeNode)
     const { linearInput, current, cycleNode } = await withRefresh(async (ctx) => {
       const cycle = await cycleNodeFor(patch.sprint, teamOf(ctx, beforeNode.team.id))
-      return { linearInput: toInput(patch, { mode: 'update', beforeNode, context: ctx, cycleNode: cycle, milestoneNode }), current: ctx, cycleNode: cycle }
+      return { linearInput: toInput(patch, { mode: 'update', beforeNode, context: ctx, cycleNode: cycle, milestoneNode, releaseNode }), current: ctx, cycleNode: cycle }
     })
     if (patch.branch !== undefined && patch.branch !== beforeNode.branchName) {
       throw new PmkitError('INVALID_INPUT', `Linear names this issue's branch ${beforeNode.branchName}`, `Use the branch name ${beforeNode.branchName}`)
     }
     if (Object.keys(linearInput).length === 0) return { before, after: before }
-    return writeUpdate(beforeNode, before, linearInput, current, dryRun, { cycle: cycleNode })
+    return writeUpdate(beforeNode, before, linearInput, current, dryRun, { cycle: cycleNode, release: releaseNode, withReleases: patch.release !== undefined })
   }
 
   /**
    * Sends one issueUpdate unless the preview equals the issue; a dry run returns the preview. `refs` names what ids in the input point
-   * to: `parent` the parent's identifier for a parentId, `project` the project node for a projectId, `cycle` the { id, number } for a cycleId.
+   * to: `parent` the parent's identifier for a parentId, `project` the project node for a projectId, `cycle` the { id, number } for a cycleId,
+   * `release` the release node for addedReleaseIds. `withReleases` reads the releases of the written issue again, so `after` is what Linear holds.
    */
-  async function writeUpdate(beforeNode, before, linearInput, current, dryRun, { parent = before.parent, project, cycle } = {}) {
-    const preview = toIssue(applyInput(beforeNode, linearInput, current, { parent, project, cycle }), current)
+  async function writeUpdate(beforeNode, before, linearInput, current, dryRun, { parent = before.parent, project, cycle, release, withReleases = false } = {}) {
+    const preview = toIssue(applyInput(beforeNode, linearInput, current, { parent, project, cycle, release }), current)
     if (same(preview, before)) return { before, after: before }
     if (dryRun) return { before, after: preview }
     const node = (await client.request(ISSUE_UPDATE, { id: beforeNode.id, input: linearInput })).issueUpdate.issue
+    if (withReleases) await attachReleases(node)
     return { before, after: await mapped(node) }
   }
 

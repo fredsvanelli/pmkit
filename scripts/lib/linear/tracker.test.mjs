@@ -1562,3 +1562,100 @@ test('getRelease answers a release, NOT_FOUND for an unknown or malformed id, an
   assert.equal(callsOf(fetch, 'PmkitRelease'), sent)
   await assert.rejects(linear.getRelease(REL.gone), { code: 'NOT_FOUND', message: `release ${REL.gone} was canceled in Linear`, nextStep: 'pmkit release list' })
 })
+
+test('getIssue shows the one release, releases for two, and nothing on a workspace with releases off (no release query)', async () => {
+  const { tracker: linear, fake } = releaseSetup()
+  seed(fake, { title: 'One', releaseIds: [REL.two, REL.gone] })
+  seed(fake, { title: 'Two', releaseIds: [REL.two, REL.ten] })
+  seed(fake, { title: 'None' })
+  assert.equal((await linear.getIssue('ACME-1')).release, REL.two)
+  const two = await linear.getIssue('ACME-2')
+  assert.deepEqual(two.releases, [REL.two, REL.ten].sort())
+  assert.equal('release' in two, false)
+  const none = await linear.getIssue('ACME-3')
+  assert.equal('release' in none || 'releases' in none, false)
+  const off = linearSetup({ issues: { pipelines: PIPELINES, releases: RELEASES } })
+  seed(off.fake, { title: 'Off', releaseIds: [REL.two] })
+  assert.equal('release' in (await off.tracker.getIssue('ACME-1')), false)
+  assert.equal(callsOf(off.fetch, 'PmkitIssueReleases'), 0)
+})
+
+test('updateIssue --release swaps the release, previews it in a dry run, and reads the releases again after the write', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'One', releaseIds: [REL.two] })
+  const dry = await linear.updateIssue('ACME-1', { release: REL.ten }, 'user-1', { dryRun: true })
+  assert.equal(dry.before.release, REL.two)
+  assert.equal(dry.after.release, REL.ten)
+  assert.equal(mutationsIn(fetch), 0)
+  const real = await linear.updateIssue('ACME-1', { release: REL.ten }, 'user-1')
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssueUpdate').input, { addedReleaseIds: [REL.ten], removedReleaseIds: [REL.two] })
+  assert.equal(real.after.release, REL.ten)
+  assert.equal((await linear.getIssue('ACME-1')).release, REL.ten)
+})
+
+test('updateIssue --release none removes it, and the same release or none on no release sends no mutation', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'One', releaseIds: [REL.two] })
+  seed(fake, { title: 'Bare' })
+  const same = await linear.updateIssue('ACME-1', { release: REL.two }, 'user-1')
+  assert.equal(same.after.release, REL.two)
+  const bare = await linear.updateIssue('ACME-2', { release: null }, 'user-1')
+  assert.equal('release' in bare.after, false)
+  assert.equal(mutationsIn(fetch), 0)
+  const cleared = await linear.updateIssue('ACME-1', { release: null }, 'user-1')
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssueUpdate').input, { removedReleaseIds: [REL.two] })
+  assert.equal('release' in cleared.after, false)
+})
+
+test('an issue whose only release is canceled gets the new release without removing the canceled one', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'One', releaseIds: [REL.gone] })
+  const result = await linear.updateIssue('ACME-1', { release: REL.two }, 'user-1')
+  assert.deepEqual(lastVariables(fetch, 'PmkitIssueUpdate').input, { addedReleaseIds: [REL.two] })
+  assert.equal(result.after.release, REL.two)
+})
+
+test('an issue in two releases is refused with the count', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'Two', releaseIds: [REL.two, REL.ten] })
+  for (const release of [REL.one, null]) {
+    await assert.rejects(linear.updateIssue('ACME-1', { release }, 'user-1', { dryRun: true }), {
+      code: 'INVALID_INPUT',
+      message: 'the issue is in 2 Linear releases, and pmkit sets one release per issue',
+      nextStep: 'Change the releases of the issue in Linear',
+    })
+  }
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('a canceled or unknown target release is refused before any mutation', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'One' })
+  await assert.rejects(linear.updateIssue('ACME-1', { release: REL.gone }, 'user-1'), { code: 'NOT_FOUND', message: `release ${REL.gone} was canceled in Linear` })
+  await assert.rejects(linear.updateIssue('ACME-1', { release: '1.0' }, 'user-1'), { code: 'NOT_FOUND', message: 'release 1.0 does not exist' })
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('releases off: --release and none refuse NOT_SUPPORTED with the hint and send no release query', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup({ issues: { pipelines: PIPELINES, releases: RELEASES } })
+  seed(fake, { title: 'One' })
+  for (const release of [REL.two, null]) {
+    await assert.rejects(linear.updateIssue('ACME-1', { release }, 'user-1', { dryRun: true }), {
+      code: 'NOT_SUPPORTED',
+      message: 'Linear releases are off in this workspace',
+      nextStep: 'Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings',
+    })
+  }
+  assert.equal(callsOf(fetch, 'PmkitRelease') + callsOf(fetch, 'PmkitIssueReleases'), 0)
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('createIssue with a release refuses NOT_SUPPORTED', async () => {
+  const { tracker: linear, fetch } = releaseSetup()
+  await assert.rejects(linear.createIssue({ title: 'New', release: REL.two }, 'user-1', { dryRun: true }), {
+    code: 'NOT_SUPPORTED',
+    message: 'issues create does not set a Linear release',
+    nextStep: 'Create the issue, then run pmkit issues update <id> --release <release>',
+  })
+  assert.equal(mutationsIn(fetch), 0)
+})
