@@ -42,7 +42,7 @@ test('broken fixture returns exactly one problem of each kind, at the right path
     'sprint .issues/sprints/2026-10-12.yaml',
     'value .issues/issues/ISS-3VAZ/issue.md',
   ])
-  assert.deepEqual(result.checked, { issues: 9, epics: 0, sprints: 1, milestones: 0, releases: 0, comments: 0 })
+  assert.deepEqual(result.checked, { issues: 9, epics: 0, sprints: 1, milestones: 0, releases: 0, comments: 0, views: 0 })
   const cycle = result.problems.find((problem) => problem.code === 'cycle')
   assert.match(cycle.message, /ISS-5CYA.*ISS-5CYB.*ISS-5CYA/)
 })
@@ -52,7 +52,7 @@ test('team fixture minus its conflicted issue has no problems', () => {
   fs.rmSync(path.join(root, '.issues', 'issues', 'ISS-3Q6T'), { recursive: true })
   const result = validateRepo(root)
   assert.deepEqual(result.problems, [])
-  assert.deepEqual(result.checked, { issues: 12, epics: 1, sprints: 2, milestones: 0, releases: 0, comments: 0 })
+  assert.deepEqual(result.checked, { issues: 12, epics: 1, sprints: 2, milestones: 0, releases: 0, comments: 0, views: 0 })
 })
 
 test('team fixture reports only its conflicted issue', () => {
@@ -363,7 +363,7 @@ test('tracker.system jira alone is one config problem, not a throw', () => {
   })
   assert.deepEqual(brief(result), ['config .pmkit/config.yaml'])
   assert.equal(result.problems[0].message, MSG)
-  assert.deepEqual(result.checked, { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, comments: 0 })
+  assert.deepEqual(result.checked, { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, comments: 0, views: 0 })
   assert.ok(MSG.startsWith(unsupportedTracker('jira').message))
 })
 
@@ -379,7 +379,7 @@ test('a hosted config lists only .pmkit/config.yaml problems and checks no track
   const root = useLinear(makeRepo('team'), 'mappings:\n  status:\n    reviewing: Review\n')
   const before = hashTree(root)
   assert.deepEqual(validateRepo(root, { adapters: withLinear() }), {
-    checked: { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, comments: 0 },
+    checked: { issues: 0, epics: 0, sprints: 0, milestones: 0, releases: 0, comments: 0, views: 0 },
     problems: [{ path: '.pmkit/config.yaml', code: 'config', message: 'mappings.status.reviewing: reviewing is not a category or blocked' }],
   })
   assert.equal(hashTree(root), before)

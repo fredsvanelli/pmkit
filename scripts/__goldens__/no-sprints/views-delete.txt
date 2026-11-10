@@ -1,0 +1,85 @@
+$ pmkit views delete golden-view
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: view golden-view does not exist
+next: pmkit views list
+
+$ pmkit views delete golden-view --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "view golden-view does not exist",
+    "nextStep": "pmkit views list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit views delete golden-view --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: view golden-view does not exist
+next: pmkit views list
+
+$ pmkit views delete golden-view --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "view golden-view does not exist",
+    "nextStep": "pmkit views list"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit views delete 'bad name'
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: view name "bad name" must start and end with a letter or digit and hold only letters, digits, ".", "_" and "-"
+next: Use a name like open-bugs
+
+$ pmkit views delete 'bad name' --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "view name \"bad name\" must start and end with a letter or digit and hold only letters, digits, \".\", \"_\" and \"-\"",
+    "nextStep": "Use a name like open-bugs",
+    "reason": "invalid_view_name"
+  }
+}
+--- stderr
+(empty)
+
+$ pmkit views delete 'bad name' --dry-run
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: view name "bad name" must start and end with a letter or digit and hold only letters, digits, ".", "_" and "-"
+next: Use a name like open-bugs
+
+$ pmkit views delete 'bad name' --dry-run --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "view name \"bad name\" must start and end with a letter or digit and hold only letters, digits, \".\", \"_\" and \"-\"",
+    "nextStep": "Use a name like open-bugs",
+    "reason": "invalid_view_name"
+  }
+}
+--- stderr
+(empty)

@@ -279,3 +279,65 @@ test('a no-op write after a hand edit commits issue.md with its drift events', (
     assert.deepEqual(status(root, '.issues/issues/ISS-0G5E'), [])
   })
 })
+
+// PMK-212 review: views delete and rename commit only what git tracks, and a case-only rename reaches the index.
+const writeView = (root, name, text = 'filter:\n  blocked: true\n') => {
+  fs.mkdirSync(path.join(root, '.issues/views'), { recursive: true })
+  fs.writeFileSync(path.join(root, `.issues/views/${name}.yaml`), text)
+}
+const committedPaths = (root) => git(root, 'show', '--name-only', '--no-renames', '--format=', 'HEAD').stdout.trim().split('\n').filter(Boolean).sort()
+const trackedViews = (root) => git(root, 'ls-files', '.issues/views').stdout.trim().split('\n').filter(Boolean).sort()
+
+test('views delete and rename of a view git never tracked succeed and commit what git tracks', () => {
+  withRepo('team', { autoCommit: true }, (root) => {
+    writeView(root, 'hand')
+    writeView(root, 'hand2')
+    const before = commits(root)
+    const deleted = run(root, ['views', 'delete', 'hand'])
+    assert.equal(deleted.status, 0, deleted.stdout + deleted.stderr)
+    assert.equal(commits(root), before, 'nothing git tracked changed')
+    const renamed = run(root, ['views', 'rename', 'hand2', 'hand3'])
+    assert.equal(renamed.status, 0, renamed.stdout + renamed.stderr)
+    assert.equal(commits(root), before + 1)
+    assert.deepEqual(committedFiles(root), ['.issues/views/hand3.yaml'])
+    assert.deepEqual(trackedViews(root), ['.issues/views/hand3.yaml'])
+  })
+})
+
+test('views delete and rename of a tracked view commit the removal and the move', () => {
+  withRepo('team', { autoCommit: true }, (root) => {
+    writeView(root, 'kept')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'view')
+    const renamed = run(root, ['views', 'rename', 'kept', 'moved'])
+    assert.equal(renamed.status, 0, renamed.stdout + renamed.stderr)
+    assert.deepEqual(committedPaths(root), ['.issues/views/kept.yaml', '.issues/views/moved.yaml'])
+    assert.deepEqual(trackedViews(root), ['.issues/views/moved.yaml'])
+    const deleted = run(root, ['views', 'delete', 'moved'])
+    assert.equal(deleted.status, 0, deleted.stdout + deleted.stderr)
+    assert.deepEqual(trackedViews(root), [])
+    assert.deepEqual(status(root, '.issues/views'), [])
+  })
+})
+
+test('a case-only rename is refused, and the two-step rename reaches the index, so the next delete works', () => {
+  withRepo('team', { autoCommit: true }, (root) => {
+    writeView(root, 'tracked2')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'view')
+    const before = commits(root)
+    const refused = run(root, ['views', 'rename', 'tracked2', 'Tracked2', '--json'])
+    assert.equal(refused.status, 2, refused.stdout + refused.stderr)
+    assert.equal(JSON.parse(refused.stdout).error.code, 'INVALID_INPUT')
+    assert.equal(commits(root), before)
+    for (const [from, to] of [['tracked2', 'step'], ['step', 'Tracked2']]) {
+      const renamed = run(root, ['views', 'rename', from, to])
+      assert.equal(renamed.status, 0, renamed.stdout + renamed.stderr)
+    }
+    assert.equal(commits(root), before + 2)
+    assert.deepEqual(trackedViews(root), ['.issues/views/Tracked2.yaml'])
+    const deleted = run(root, ['views', 'delete', 'Tracked2'])
+    assert.equal(deleted.status, 0, deleted.stdout + deleted.stderr)
+    assert.deepEqual(trackedViews(root), [])
+  })
+})

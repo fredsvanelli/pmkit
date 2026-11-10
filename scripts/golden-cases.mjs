@@ -120,6 +120,9 @@ export const CASES = {
   'views save': () => [['golden-view', '--category', 'in_progress', '--sort', 'priority']],
   'views list': () => [[]],
   'views run': () => [['golden-view']],
+  // No fixture has a view, so these record the NOT_FOUND and the name-rule errors.
+  'views delete': () => [['golden-view'], ['bad name']],
+  'views rename': () => [['golden-view', 'golden-renamed'], ['golden-view', 'bad name']],
   'metrics velocity': () => [[]],
   'metrics cycle-time': () => [[]],
   'metrics lead-time': () => [[]],

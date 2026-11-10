@@ -2,12 +2,14 @@
 id: PMK-212
 title: Improve saved views
 type: feature
-status: backlog
+status: in_review
 priority: low
 estimate: 5
+assignee: fred
 related: [PMK-44]
+branch: pmk-212-improve-saved-views
 created: 2026-11-08T20:37:22.964Z
-updated: 2026-11-08T20:53:51Z
+updated: 2026-11-10T04:04:02Z
 ---
 
 ## Description
@@ -29,7 +31,7 @@ Improvements suggested by the implementer and reviewers of PMK-44 (saved views) 
 
 ## Acceptance criteria
 
-- [ ] `views delete` and `views rename`
-- [ ] `validate` reports two view names that differ only in case, and `filter: {}`, and counts views in `checked`
-- [ ] Let `views run` override the limit and the sort
-- [ ] Serve Linear saved views through the API
+- [x] `views delete` and `views rename`
+- [x] `validate` reports two view names that differ only in case, and `filter: {}`, and counts views in `checked`
+- [x] Let `views run` override the limit and the sort
+- [x] Serve Linear saved views through the API

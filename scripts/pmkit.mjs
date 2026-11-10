@@ -43,6 +43,7 @@ import { FORMAT_VERSION, MIGRATIONS, applyMigration, formatError, formatState, p
 import { parseChangelog, sectionsSince } from './lib/changelog.mjs'
 import { runExport, runImport, runStatus, runSwitch, runUndo } from './lib/migrate/cli.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
+import { VIEWS_CUT } from './lib/linear/views.mjs'
 import { ID_STYLES, branchName, isId, normalizeId } from './lib/ids.mjs'
 import { boardDoc, hasMarker, problemsLine, renderDocument, roadmapDoc, sprintDoc } from './lib/render.mjs'
 import { boardData, roadmapData, sprintData } from './lib/render-data.mjs'
@@ -224,6 +225,9 @@ function issueFilter(ctx) {
 /** A filter as one line, key=value pairs in the order they were stored. */
 const quoteValue = (value) => (/[\s=",]/.test(String(value)) ? JSON.stringify(String(value)) : String(value))
 const filterText = (filter) => Object.entries(filter).filter(([, value]) => value !== null && value !== undefined).map(([key, value]) => `${key}=${[value].flat().map(quoteValue).join(',')}`).join(' ')
+
+/** The filter line of a stored view, or what made its file unreadable. */
+const storedViewText = (view) => (view.unreadable === undefined ? `filter: ${filterText(view.filter)}` : `a file that could not be read (${view.unreadable})`)
 
 /** The result of an issue search as the CLI prints it: the table and the warnings. `sort` and `sprint` are the filter values. */
 async function issueSearchResult(tracker, found, { sort, sprint }) {
@@ -518,17 +522,37 @@ export const COMMANDS = [
   {
     name: 'views list', summary: 'lists the saved views', usage: '', flags: [],
     run: async (ctx) => {
-      const { views, problems } = await (await ctx.tracker()).listViews()
+      const { views, problems, hasMore = false } = await (await ctx.tracker()).listViews()
       const warnings = problems.map((problem) => `${problemLine(problem)}; run pmkit validate`)
-      return { data: { views, problems }, text: views.length === 0 ? (problems.length === 0 ? 'no views' : `no view could be read: ${problems.length} view ${problems.length === 1 ? 'file' : 'files'} could not be read, run pmkit validate`) : table(['Name', 'Filter'], views.map((view) => [view.name, filterText(view.filter)])), warnings }
+      if (hasMore) warnings.push(VIEWS_CUT)
+      // A Linear view keeps Linear's own filter, which pmkit shows as it is stored.
+      const shown = (view) => (view.filter === null ? `linear: ${JSON.stringify(view.linear.filterData)}` : filterText(view.filter))
+      return { data: { views, problems, hasMore }, text: views.length === 0 ? (problems.length === 0 ? (hasMore ? 'no view among the views pmkit read' : 'no views') : `no view could be read: ${problems.length} view ${problems.length === 1 ? 'file' : 'files'} could not be read, run pmkit validate`) : table(['Name', 'Filter'], views.map((view) => [view.name, shown(view)])), warnings }
     },
   },
   {
-    name: 'views run', summary: 'runs a saved view and lists its issues', usage: '<name>', args: ['name'], flags: [],
+    name: 'views run', summary: 'runs a saved view and lists its issues; --limit and --sort replace the stored values for this run', usage: '<name> [--limit n] [--sort s]', args: ['name'], flags: ['limit', 'sort'],
     run: async (ctx) => {
       const tracker = await ctx.tracker()
-      const found = await tracker.runView(ctx.args[0])
-      return issueSearchResult(tracker, found, { sort: found.view.filter.sort, sprint: found.view.filter.sprint })
+      const limit = ctx.opt('limit') === undefined ? undefined : whole('limit', ctx.opt('limit'))
+      const found = await tracker.runView(ctx.args[0], { limit, sort: ctx.opt('sort') })
+      return issueSearchResult(tracker, found, { sort: found.overrides.sort ?? found.view.filter?.sort, sprint: found.view.filter?.sprint })
+    },
+  },
+  {
+    name: 'views delete', summary: 'deletes a saved view; --dry-run is the full preview', usage: '<name>', write: true, args: ['name'], flags: [],
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).deleteView(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })
+      const text = `deleted view ${result.before.name}\n${storedViewText(result.before)}`
+      return { data: result, text: ctx.dryRun ? `${text}\ndry run: nothing was written` : text, commit: result.before.name }
+    },
+  },
+  {
+    name: 'views rename', summary: 'renames a saved view and keeps its filter', usage: '<name> <new-name>', write: true, args: ['name', 'new-name'], flags: [],
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).renameView(ctx.args[0], ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })
+      const text = `renamed view ${result.before.name} to ${result.after.name}\n${storedViewText(result.after)}`
+      return { data: result, text: ctx.dryRun ? `${text}\ndry run: nothing was written` : text, commit: result.after.name }
     },
   },
   {
@@ -1823,7 +1847,7 @@ export const COMMANDS = [
     run: (ctx) => {
       const result = validateRepo(ctx.root, { adapters: ctx.adapters })
       const c = result.checked
-      const head = `checked: ${c.issues} issues, ${c.epics} epics, ${c.sprints} sprints, ${c.milestones} milestones, ${c.releases} releases, ${c.comments} comments`
+      const head = `checked: ${c.issues} issues, ${c.epics} epics, ${c.sprints} sprints, ${c.milestones} milestones, ${c.releases} releases, ${c.comments} comments, ${c.views} views`
       const body = result.problems.length === 0 ? 'no problems' : result.problems.map((p) => `${p.path}  ${p.code}  ${p.message}`).join('\n')
       return { data: result, text: `${head}\n${body}` }
     },
@@ -2237,12 +2261,14 @@ const PER_ISSUE_CODES = ['INVALID_INPUT', 'NOT_FOUND', 'CONFLICT']
 async function runBulk(ctx) {
   const tracker = await ctx.tracker()
   const [kind, value] = ctx.args
+  const view = ctx.opt('view')
+  // A hosted tracker's view keeps the tracker's own filter, which pmkit cannot check narrows the set, so it is refused before any read.
+  if (view !== undefined && ctx.config().system !== 'local') throw usageError(`${ctx.config().system === 'linear' ? 'Linear' : 'a hosted'} view ${view} keeps the tracker's own filter, so pmkit cannot check that it narrows the set`, 'Pass filter flags to issues bulk instead of --view')
   const scale = kind === 'estimate' ? ((await tracker.discover()).estimate.scale ?? []) : []
   const change = parseChange(kind, value, { status: ctx.opt('status'), linkKind: ctx.opt('kind'), remove: ctx.flag('remove'), scale })
   const max = ctx.opt('max') === undefined ? DEFAULT_MAX : whole('max', ctx.opt('max'))
   if (max < 1 || max > HARD_MAX) throw usageError(`--max must be from 1 to ${HARD_MAX}`, 'Narrow the filter instead of raising --max')
 
-  const view = ctx.opt('view')
   let filter = issueFilter(ctx)
   if (view !== undefined && Object.keys(filter).length > 0) throw usageError('issues bulk takes --view or filter flags, not both', 'Save the filter with pmkit views save, or drop --view')
   if (view === undefined) checkBulkFilter(filter, 'the filter')
@@ -3426,10 +3452,30 @@ function commitTracker(config, message, paths) {
   const git = (...args) => spawnSync('git', ['--literal-pathspecs', ...args], { cwd: config.root, encoding: 'utf8' })
   const named = paths.length <= 5 ? paths.join(' ') : folder
   const fail = (result) => new PmkitError('UPSTREAM', `the write succeeded but auto_commit failed: ${(result.stderr || result.stdout).trim()}`, `Commit ${named} yourself`)
-  const added = git('add', '--', ...paths)
-  if (added.status !== 0) throw fail(added)
-  if (git('diff', '--cached', '--quiet', '--', ...paths).status === 0) return
-  const committed = git('commit', '-m', message, '--', ...paths)
+  // On disk with its exact case: where the file system ignores case, the old name of a case-only rename still "exists".
+  const onDisk = (file) => {
+    const full = path.join(config.root, file)
+    try {
+      return fs.readdirSync(path.dirname(full)).includes(path.basename(full))
+    } catch {
+      return false
+    }
+  }
+  const present = paths.filter(onDisk)
+  // A removed path is committed only when git tracks it: a file git never saw, such as a view written by hand, is not an error.
+  const removed = paths.filter((file) => !onDisk(file) && git('ls-files', '--', file).stdout.trim() !== '')
+  if (removed.length > 0) {
+    // git rm --cached drops the old name from the index, which git add cannot do for a case-only rename.
+    const dropped = git('rm', '--cached', '-r', '-q', '--ignore-unmatch', '--', ...removed)
+    if (dropped.status !== 0) throw fail(dropped)
+  }
+  if (present.length > 0) {
+    const added = git('add', '--', ...present)
+    if (added.status !== 0) throw fail(added)
+  }
+  const staged = [...removed, ...present]
+  if (staged.length === 0 || git('diff', '--cached', '--quiet', '--', ...staged).status === 0) return
+  const committed = git('commit', '-m', message, '--', ...staged)
   if (committed.status !== 0) throw fail(committed)
 }
 

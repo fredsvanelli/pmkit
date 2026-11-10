@@ -571,11 +571,12 @@ const LABELS = { read: 'read', dryRun: 'dry run', write: 'write' }
 
 /**
  * The runner of a scenario with a `linear` option: the CLI in this process, with the Linear adapter over a fake fetch
- * that serves `fakeWorkspace(options)`. No socket opens and no test hook enters the CLI. The environment gets
+ * that serves `fakeWorkspace(options)` and the routes `options.routes()` returns. No socket opens and no test hook enters the CLI. The environment gets
  * LINEAR_API_KEY set to FAKE_KEY and a user store under the scratch folder, set by prepareCopy.
  */
-function linearRunner(options) {
-  const fetch = fakeLinearFetch(fakeWorkspace(options))
+function linearRunner({ routes, ...options }) {
+  // `routes` returns extra fake routes, such as an issue store or custom views, next to the workspace.
+  const fetch = fakeLinearFetch({ ...fakeWorkspace(options), ...(routes ? routes() : {}) })
   const adapters = { ...ADAPTERS, linear: linearDescriptor({ fetch }) }
   return async (args, cwd, { env = {} } = {}) => {
     // gitUserEmail reads the process environment, so an in-process run needs the git isolation childEnv gives a child.

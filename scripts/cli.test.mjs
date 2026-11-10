@@ -506,7 +506,7 @@ test('validate lists tracker.system linear as a problem and exits 0', () => {
   useUnsupported(root)
   const text = run(root, ['validate'])
   assert.equal(text.status, 0)
-  assert.equal(text.stdout.split('\n')[0], 'checked: 0 issues, 0 epics, 0 sprints, 0 milestones, 0 releases, 0 comments')
+  assert.equal(text.stdout.split('\n')[0], 'checked: 0 issues, 0 epics, 0 sprints, 0 milestones, 0 releases, 0 comments, 0 views')
   assert.match(text.stdout, UNSUPPORTED_LINE)
   const problem = json(root, ['validate']).problems[0]
   assert.deepEqual(Object.keys(problem).sort(), ['code', 'message', 'path'])
@@ -541,7 +541,7 @@ test('validate text starts with the counts, milestones included', () => {
   const { checked } = json(root, ['validate'])
   const text = run(root, ['validate'])
   assert.equal(text.status, 0)
-  assert.equal(text.stdout.split('\n')[0], `checked: ${checked.issues} issues, ${checked.epics} epics, ${checked.sprints} sprints, 1 milestones, ${checked.releases} releases, ${checked.comments} comments`)
+  assert.equal(text.stdout.split('\n')[0], `checked: ${checked.issues} issues, ${checked.epics} epics, ${checked.sprints} sprints, 1 milestones, ${checked.releases} releases, ${checked.comments} comments, ${checked.views} views`)
 })
 
 test('capabilities --json lists 20 capabilities', () => {
@@ -1582,6 +1582,8 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'release mark-released': ['1.0.0'],
     'docs create': ['notes/new.md', '--body-file', input('doc.md')],
     'views save': ['mine', '--category', 'done'],
+    'views delete': ['mine'],
+    'views rename': ['mine', 'theirs'],
     'goal create': ['--title', 'New goal'],
     'epic goal': ['EPC-2M9D', 'none'],
     'customers create': ['--name', 'Acme'],
@@ -2465,4 +2467,30 @@ test('views run prints a stable error.reason for each INVALID_INPUT case and non
   assert.equal(error('broken').reason, 'view_file_broken')
   assert.equal(error('missing').code, 'NOT_FOUND')
   assert.equal(error('missing').reason, undefined)
+})
+
+test('views delete and views rename change the view files, and --dry-run does not (PMK-212)', () => {
+  const root = makeRepo('team')
+  json(root, ['views', 'save', 'a', '--blocked'])
+  const renamed = json(root, ['views', 'rename', 'a', 'b'])
+  assert.deepEqual(renamed.after, { name: 'b', filter: { blocked: true } })
+  assert.match(run(root, ['views', 'rename', 'b', 'c', '--dry-run']).stdout, /renamed view b to c[\s\S]*dry run: nothing was written/)
+  const dry = run(root, ['views', 'delete', 'b', '--dry-run'])
+  assert.match(dry.stdout, /deleted view b\nfilter: blocked=true\ndry run: nothing was written/)
+  assert.ok(fs.existsSync(path.join(root, '.issues/views/b.yaml')))
+  assert.deepEqual(json(root, ['views', 'delete', 'b']), { before: { name: 'b', filter: { blocked: true } }, after: null })
+  assert.equal(run(root, ['views', 'list']).stdout.trim(), 'no views')
+  assert.equal(JSON.parse(run(root, ['views', 'delete', 'b', '--json']).stdout).error.code, 'NOT_FOUND')
+})
+
+test('views run --limit and --sort override the stored values (PMK-212)', () => {
+  const root = makeRepo('team')
+  json(root, ['views', 'save', 'one', '--limit', '1'])
+  const ran = json(root, ['views', 'run', 'one', '--limit', '2', '--sort', 'priority'])
+  assert.equal(ran.issues.length, 2)
+  assert.deepEqual(ran.overrides, { limit: 2, sort: 'priority' })
+  assert.deepEqual(ran.view.filter, { limit: 1 })
+  const bad = run(root, ['views', 'run', 'one', '--sort', 'bogus', '--json'])
+  assert.equal(JSON.parse(bad.stdout).error.code, 'INVALID_INPUT')
+  assert.equal(JSON.parse(bad.stdout).error.reason, undefined)
 })

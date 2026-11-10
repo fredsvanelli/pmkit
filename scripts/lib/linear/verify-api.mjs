@@ -60,6 +60,14 @@ export const FEATURES = [
     ],
   },
   { id: 'insights', pattern: /insight|analytic|metric/i, liveQueries: [] },
+  // PMK-212 reads custom views and runs them with CustomView.issues; this checks the fields it selects.
+  {
+    id: 'custom_views',
+    pattern: /customView/i,
+    liveQueries: [
+      { name: 'customViews', query: '{ customViews(first: 1) { nodes { id name modelName filterData team { key } issues(first: 1) { nodes { id } } } } }', nodes: connection('customViews') },
+    ],
+  },
 ]
 
 function summarizeLive(feature, liveResults) {

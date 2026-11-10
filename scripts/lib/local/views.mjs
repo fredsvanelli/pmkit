@@ -33,3 +33,15 @@ export function parseView(text, name) {
 }
 
 export const serializeView = (filter) => stringifyYaml({ filter })
+
+/** [later, earlier] for each name that differs from an earlier one only in case, in the order given. */
+export function caseClashes(names) {
+  const first = new Map()
+  const clashes = []
+  for (const name of names) {
+    const key = name.toLowerCase()
+    if (first.has(key)) clashes.push([name, first.get(key)])
+    else first.set(key, name)
+  }
+  return clashes
+}

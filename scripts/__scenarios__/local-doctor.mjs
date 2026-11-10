@@ -78,6 +78,7 @@ export default {
     '4 issues link': 'no blocker, related or duplicate target is missing and there is no blocker loop',
     '4 cycle add': 'every sprint reference exists, so no issue moves to the backlog',
     '5 views save': 'the fixture has no view file, so no view problem needs a replacement',
+    '5 views rename': 'the fixture has no view file, so no view name clashes',
   },
   notHit: { 'Step 3': 'validate reports no config or FORMAT problem' },
   expect(repo, saved) {
