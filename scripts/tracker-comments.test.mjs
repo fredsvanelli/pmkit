@@ -136,7 +136,7 @@ test('listTimeEntries skips only the sprint file that does not parse, and reads 
   tracker.logTime(id, 30, 'fred')
   const got = tracker.listTimeEntries(id)
   assert.equal(got.total, 30)
-  assert.equal(got.sprintsUnread, true)
+  assert.deepEqual(got.sprintsUnread, ['bad'])
   assert.deepEqual(got.bySprint.map((row) => row.sprint), ['good'])
 })
 
@@ -148,10 +148,11 @@ test('listTimeEntries places an entry by its UTC date, whatever the zone or type
   sprint('s1', '2026-10-12', '2026-10-25')
   sprint('s2', '2026-10-26', '2026-11-08')
   const line = (at) => `${JSON.stringify({ at, by: 'fred', op: 'log_time', minutes: 10 })}\n`
+  // A time without a zone is UTC: '2026-10-11 23:00' is before s1, not 2026-10-12 in a zone behind UTC.
   // 2026-10-26T02:00+05:00 is 2026-10-25T21:00Z: sprint s1. 2026-10-25T23:00-05:00 is 2026-10-26T04:00Z: sprint s2.
-  fs.appendFileSync(paths.events, line('2026-10-26T02:00:00+05:00') + line('2026-10-25T23:00:00-05:00') + line(1761000000000) + line('not a date'))
+  fs.appendFileSync(paths.events, line('2026-10-26T02:00:00+05:00') + line('2026-10-25T23:00:00-05:00') + line(1761000000000) + line('not a date') + line('2026-10-11 23:00'))
   const got = tracker.listTimeEntries(id)
-  assert.deepEqual(Object.fromEntries(got.bySprint.map((row) => [row.sprint, row.minutes])), { s1: 10, s2: 10, null: 20 })
+  assert.deepEqual(Object.fromEntries(got.bySprint.map((row) => [row.sprint, row.minutes])), { s1: 10, s2: 10, null: 30 })
 })
 
 test('logTime writes one log_time event with the minutes', () => {

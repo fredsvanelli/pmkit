@@ -1200,10 +1200,10 @@ export function createLocalTracker(root, {
     const logged = getHistory(id).filter((event) => event.op === 'log_time')
     const valid = logged.filter((event) => isPositiveMinutes(event.minutes))
     const sprints = []
-    let sprintsUnread = false
+    const sprintsUnread = []
     if (valid.length > 0 && fs.existsSync(sprintsDir)) {
       for (const name of fs.readdirSync(sprintsDir).filter((file) => file.endsWith('.yaml')).sort()) {
-        try { sprints.push(readSprint(sprintsDir, path.basename(name, '.yaml'))) } catch { sprintsUnread = true }
+        try { sprints.push(readSprint(sprintsDir, path.basename(name, '.yaml'))) } catch { sprintsUnread.push(path.basename(name, '.yaml')) }
       }
       sprints.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : a.id < b.id ? -1 : 1))
     }
@@ -1228,7 +1228,7 @@ export function createLocalTracker(root, {
       byPerson: sum('by'),
       bySprint: sum('sprint'),
       ignored: logged.length - valid.length,
-      ...(sprintsUnread ? { sprintsUnread } : {}),
+      ...(sprintsUnread.length > 0 ? { sprintsUnread } : {}),
     }
   }
 

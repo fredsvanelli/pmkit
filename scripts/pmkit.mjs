@@ -722,7 +722,7 @@ export const COMMANDS = [
           ].join('\n')
       const notes = [
         ...(result.ignored > 0 ? [`${result.ignored} log_time ${result.ignored === 1 ? 'event' : 'events'} ignored: minutes is not a positive integer`] : []),
-        ...(result.sprintsUnread ? ['the sprint files could not be read, so every entry counts as no sprint; run pmkit validate'] : []),
+        ...(result.sprintsUnread ? [`could not read the sprint ${result.sprintsUnread.length === 1 ? 'file' : 'files'} ${result.sprintsUnread.join(', ')}; entries dated in ${result.sprintsUnread.length === 1 ? "that sprint's" : 'those sprints'} period count as no sprint, the other sprints still count; run pmkit validate`] : []),
       ]
       return { data: result, text, notes }
     },

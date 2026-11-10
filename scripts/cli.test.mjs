@@ -651,6 +651,16 @@ test('time-entries prints the empty text, and a note when log_time events are ig
   assert.match(noted.stderr, /^note: 1 log_time event ignored: minutes is not a positive integer\n/)
 })
 
+test('time-entries names the sprint file it could not read and says that period counts as no sprint', () => {
+  const root = makeRepo('team')
+  fs.writeFileSync(path.join(root, '.issues', 'sprints', 'broken.yaml'), 'name: [unclosed\n')
+  assert.equal(run(root, ['issues', 'log-time', 'ISS-3F7H', '45']).status, 0)
+  const got = run(root, ['issues', 'time-entries', 'ISS-3F7H'])
+  assert.equal(got.status, 0)
+  assert.match(got.stderr, /^note: could not read the sprint file broken; entries dated in that sprint's period count as no sprint, the other sprints still count; run pmkit validate\n/)
+  assert.deepEqual(json(root, ['issues', 'time-entries', 'ISS-3F7H']).sprintsUnread, ['broken'])
+})
+
 test('assign, link, comment, log-time, archive and get --comments --history', () => {
   const root = makeRepo('team')
   assert.match(run(root, ['issues', 'assign', 'ISS-3F7H', 'ana']).stdout, /assignee: .* → ana/)

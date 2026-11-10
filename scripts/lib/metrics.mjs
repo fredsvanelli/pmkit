@@ -65,7 +65,7 @@ export function rangeInstant(text, { endOfDay = false } = {}) {
 /** An event `at` as epoch milliseconds, or NaN when it is no date. A time without a zone is UTC, as in rangeInstant. */
 export function eventInstant(at) {
   const value = String(at)
-  if (!value.includes('T')) return Date.parse(value)
+  if (!value.includes('T')) return /^\d{4}-\d{2}-\d{2} \d/.test(value) ? Date.parse(`${value.replace(' ', 'T')}Z`) : Date.parse(value)
   return Date.parse(/(Z|[+-]\d{2}(:?\d{2})?)$/i.test(value.slice(value.indexOf('T'))) ? value : `${value}Z`)
 }
 
