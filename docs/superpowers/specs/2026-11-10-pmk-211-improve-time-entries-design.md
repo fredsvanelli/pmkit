@@ -16,7 +16,7 @@ Source: PMK-51 follow-ups (`docs/superpowers/epc-6-follow-ups.md`). No question 
 - `byPerson` and `bySprint` are lists, in order of first appearance, each `{ by|sprint, minutes, time }`; their sums equal `total`.
 - Readable form: `45` is `45m`, `60` is `1h`, `90` is `1h30`, 1500 is `1d1h` (same rule as the over-a-day note). Minutes stay in the JSON.
 - Linear: unchanged, `time_tracking` is `absent` and `listTimeEntries` already refuses with `NOT_SUPPORTED`.
-- If sprints cannot be read (a sprint file that does not parse is skipped by `readSprints`), nothing changes: those entries land in "no sprint".
+- A sprint file that does not parse is skipped and sets `sprintsUnread`; the other sprints still count. Sprint files are read only when there is an entry. The `at` is read with `eventInstant` (a zone is converted to UTC; a value that is no date, such as a number, counts for no sprint).
 
 ## Non-goals
 
