@@ -75,3 +75,40 @@ test('a docs entry that is blank or holds a line break is refused, and the list 
   assert.throws(() => tracker.updateIssue(ID, { docs: 'a' }, 'fred'), { code: 'INVALID_INPUT' })
   assert.deepEqual(tracker.updateIssue(ID, { docs: ['a.md', ' a.md ', 'b.md'] }, 'fred', { dryRun: true }).after.docs, ['a.md', 'b.md'])
 })
+
+// PMK-228 review: a docs value that is not a list of one-line, non-blank, distinct paths is a broken file, never coerced to a string.
+const withDocs = (value) => `---\nid: ISS-1\ntitle: T\nstatus: todo\ndocs: ${value}\n---\n`
+
+test('parseIssueFile refuses docs that are blank, not text, or repeated, and accepts one path as a list', () => {
+  for (const value of ['""', '[""]', '[{a: 1}]', '[a.md, 7]', '[a.md, a.md]', '{a: 1}', 'true']) {
+    assert.throws(() => parseIssueFile(withDocs(value)), { code: 'INVALID_INPUT', message: /docs must be a list of one-line, non-blank paths with no repeats/ }, value)
+  }
+  assert.deepEqual(parseIssueFile(withDocs('a.md')).docs, ['a.md'])
+  assert.equal('docs' in parseIssueFile(withDocs('[]')), false)
+  assert.equal('docs' in parseIssueFile('---\nid: ISS-1\ntitle: T\nstatus: todo\ndocs:\n---\n'), false)
+})
+
+test('validate reports bad docs as a frontmatter problem, and an update never writes them back', async () => {
+  const root = makeRepo('team')
+  const { validateRepo } = await import('./lib/validate.mjs')
+  const text = fs.readFileSync(issueFile(root), 'utf8').replace(/^title: /m, 'docs: [{a: 1}]\ntitle: ')
+  fs.writeFileSync(issueFile(root), text)
+  const problems = validateRepo(root).problems.filter((problem) => problem.path === `.issues/issues/${ID}/issue.md`)
+  assert.deepEqual(problems.map((problem) => problem.code), ['frontmatter'])
+  assert.match(problems[0].message, /docs must be a list/)
+  const update = await cli(root, 'issues', 'update', ID, '--title', 'Renamed')
+  assert.equal(update.code, 2)
+  assert.equal(fs.readFileSync(issueFile(root), 'utf8'), text)
+})
+
+test('--add-doc or --remove-doc with no value, alone or repeated, is a usage error, not UNEXPECTED (PMK-228 review)', async () => {
+  const root = makeRepo('team')
+  const text = fs.readFileSync(issueFile(root), 'utf8')
+  for (const args of [['--add-doc', 'a.md', '--add-doc'], ['--remove-doc', 'a.md', '--remove-doc'], ['--add-doc'], ['--remove-doc', ' ']]) {
+    const result = await cli(root, 'issues', 'update', ID, ...args, '--dry-run')
+    assert.equal(result.code, 2, args.join(' '))
+    assert.equal(result.data.error.code, 'INVALID_INPUT', `${args.join(' ')}: ${result.data.error.message}`)
+    assert.match(result.data.error.message, /--(add|remove)-doc needs a (path|value)/, args.join(' '))
+  }
+  assert.equal(fs.readFileSync(issueFile(root), 'utf8'), text)
+})

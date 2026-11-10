@@ -6,7 +6,7 @@ import { ADAPTERS } from './adapters.mjs'
 import { goalPrefixOf, loadConfig, pmkitConfigMessages, resolveDefaultBranch, validateLocalConfig } from './config.mjs'
 import { isId, normalizeId } from './ids.mjs'
 import { parseYaml, splitFrontmatter } from './yaml.mjs'
-import { adrFiles, adrFolders, duplicateAdrs } from './adr.mjs'
+import { adrFiles, adrFolders, adrLocation, duplicateAdrs } from './adr.mjs'
 import { parseEpicFile, walkParents } from './local/epics.mjs'
 import { driftEvents, readEvents } from './local/events.mjs'
 import { formatError } from './local/migrations.mjs'
@@ -445,15 +445,13 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
   const graph = new Map([...issues].map(([id, issue]) => [id, issue.blockedBy]))
   for (const cycle of blockedByCycles(graph)) report('blocked_by', cycle)
 
-  problems.push(...adrProblems(root, path.join(issuesDir, 'docs', 'adr')))
+  problems.push(...adrProblems(root, issuesDir))
   problems.sort(byPathThenCode)
   return { checked, problems }
 }
 
 /** One problem per ADR file whose number another ADR file uses, in docs/adr and the Local tracker's docs/adr (PMK-228). Working tree only. */
-function adrProblems(root, trackerDir) {
-  const relativeDir = trackerDir === null ? null : path.relative(root, trackerDir)
-  const inside = relativeDir !== null && relativeDir !== '' && !relativeDir.startsWith('..') && !path.isAbsolute(relativeDir)
-  const folders = adrFolders({ root, trackerDir, trackerFolder: inside ? relativeDir.split(path.sep).join('/') : null })
+function adrProblems(root, issuesDir) {
+  const folders = adrFolders({ root, ...adrLocation({ root, issuesDir, hosted: issuesDir === null }) })
   return duplicateAdrs(adrFiles(folders)).map(({ path: file, number, others }) => ({ path: file, code: 'adr', message: `ADR number ${number} is also used by ${others.join(', ')}` }))
 }

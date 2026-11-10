@@ -16,7 +16,7 @@ process.env.GIT_CONFIG_GLOBAL = os.devNull
 process.env.GIT_CONFIG_NOSYSTEM = '1'
 process.env.GIT_CEILING_DIRECTORIES = fs.realpathSync(os.tmpdir())
 
-function linear(args, { teams, cycles } = {}) {
+function linear(args, { teams, cycles, calls } = {}) {
   const root = useLinear(makeRepo('basic'))
   const file = path.join(root, '.pmkit', 'config.yaml')
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('    workspace: acme', '    workspace: acme\n    team: ACME'))
@@ -24,6 +24,7 @@ function linear(args, { teams, cycles } = {}) {
   const fake = fakeLinearIssues({ ...(teams ? { teams } : {}), ...(cycles ? { cycles } : {}) })
   const projects = fakeLinearProjects({ issues: fake, ...(teams ? { teams } : {}) })
   const fetch = fakeLinearFetch({ ...fakeWorkspace(teams ? { teams } : {}), ...fake.routes, ...projects.routes })
+  if (calls) calls.fetch = fetch
   return run(args, { cwd: root, env, adapters: { ...ADAPTERS, linear: linearDescriptor({ fetch }) } })
 }
 
@@ -42,6 +43,15 @@ test('docs adr-status on Linear finds no tracker folder and answers NOT_FOUND fo
   const result = await linear(['docs', 'adr-status', '1', 'deprecated', '--json'])
   assert.equal(result.code, 2)
   assert.equal(JSON.parse(result.stdout).error.code, 'NOT_FOUND')
+})
+
+test('issues update --add-doc on Linear is NOT_SUPPORTED before any issue is read (PMK-228 review)', async () => {
+  const calls = {}
+  const result = await linear(['issues', 'update', 'ACME-1', '--add-doc', 'docs/adr/0001-a.md', '--json'], { calls })
+  assert.equal(result.code, 2)
+  assert.deepEqual(JSON.parse(result.stdout).error, { code: 'NOT_SUPPORTED', message: 'Linear issues have no docs field', nextStep: 'The comment on the issue stays the link to the document' })
+  const names = calls.fetch.calls.map((call) => /(?:query|mutation)\s+(\w+)/.exec(call.body.query)?.[1])
+  assert.ok(!names.some((name) => /Issue/.test(name ?? '')), names.join(', '))
 })
 
 const METRICS = [

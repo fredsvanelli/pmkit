@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
-import { ADR_SLUG_MAX, adrFiles, adrFolders, adrSlug, adrStatusLine, duplicateAdrs, highestAdr, setAdrStatus } from './lib/adr.mjs'
+import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus } from './lib/adr.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo } from './test-helpers.mjs'
 
@@ -308,20 +308,50 @@ test('adrFiles lists the numbered files of each folder and duplicateAdrs names e
 })
 
 // PMK-228: the status of an ADR.
-test('adrStatusLine writes the three statuses', () => {
-  assert.equal(adrStatusLine('accepted'), 'Status: accepted')
-  assert.equal(adrStatusLine('deprecated'), 'Status: deprecated')
-  assert.equal(adrStatusLine('superseded', 'docs/adr/0007-new.md'), 'Status: superseded by docs/adr/0007-new.md')
+test('setAdrStatus puts a Status line under the title, replaces one above the first section and keeps LF', () => {
+  const set = (text, status, by) => setAdrStatus(text, status, by).text
+  assert.equal(set('# Title\n\nContext.\n', 'deprecated'), '# Title\n\nStatus: deprecated\n\nContext.\n')
+  assert.equal(set('# Title\nContext.\n', 'deprecated'), '# Title\n\nStatus: deprecated\n\nContext.\n')
+  assert.equal(set('Context only.\n', 'deprecated'), 'Status: deprecated\n\nContext only.\n')
+  assert.equal(set('# Title\r\n\r\nStatus: accepted\r\n\r\nContext.\r\n', 'deprecated'), '# Title\n\nStatus: deprecated\n\nContext.\n')
+  const sectioned = '# Title\n\nContext.\n\n## Notes\n\nStatus: draft of the notes\n'
+  assert.equal(set(sectioned, 'accepted'), '# Title\n\nStatus: accepted\n\nContext.\n\n## Notes\n\nStatus: draft of the notes\n')
+  assert.deepEqual(setAdrStatus('# T\n\nStatus: accepted\n\nX\n', 'accepted'), { text: '# T\n\nStatus: accepted\n\nX\n', before: 'Status: accepted', after: 'Status: accepted' })
+  assert.deepEqual(setAdrStatus('# T\n\nX\n', 'superseded', 'docs/adr/0007-new.md'), { text: '# T\n\nStatus: superseded by docs/adr/0007-new.md\n\nX\n', before: null, after: 'Status: superseded by docs/adr/0007-new.md' })
 })
 
-test('setAdrStatus puts the line under the title, replaces one above the first section and keeps LF', () => {
-  assert.equal(setAdrStatus('# Title\n\nContext.\n', 'Status: deprecated'), '# Title\n\nStatus: deprecated\n\nContext.\n')
-  assert.equal(setAdrStatus('# Title\nContext.\n', 'Status: deprecated'), '# Title\n\nStatus: deprecated\n\nContext.\n')
-  assert.equal(setAdrStatus('Context only.\n', 'Status: deprecated'), 'Status: deprecated\n\nContext only.\n')
-  assert.equal(setAdrStatus('# Title\r\n\r\nStatus: accepted\r\n\r\nContext.\r\n', 'Status: deprecated'), '# Title\n\nStatus: deprecated\n\nContext.\n')
-  const sectioned = '# Title\n\nContext.\n\n## Notes\n\nStatus: draft of the notes\n'
-  assert.equal(setAdrStatus(sectioned, 'Status: accepted'), '# Title\n\nStatus: accepted\n\nContext.\n\n## Notes\n\nStatus: draft of the notes\n')
-  assert.equal(setAdrStatus('# T\n\nStatus: accepted\n\nX\n', 'Status: accepted'), '# T\n\nStatus: accepted\n\nX\n')
+test('setAdrStatus replaces the body of a ## Status section, the Nygard format, and adds no second status (PMK-228 review)', () => {
+  const nygard = '# 4. Use X\n\nDate: 2026-11-10\n\n## Status\n\nAccepted\n\n## Context\n\nWhy.\n'
+  assert.deepEqual(setAdrStatus(nygard, 'deprecated'), { text: '# 4. Use X\n\nDate: 2026-11-10\n\n## Status\n\nDeprecated\n\n## Context\n\nWhy.\n', before: 'Accepted', after: 'Deprecated' })
+  const twoLines = '# T\n\n## Status\n\nProposed\nAccepted after review\n\n## Context\n'
+  assert.deepEqual(setAdrStatus(twoLines, 'superseded', 'docs/adr/0009-b.md'), { text: '# T\n\n## Status\n\nSuperseded by docs/adr/0009-b.md\n\n## Context\n', before: 'Proposed Accepted after review', after: 'Superseded by docs/adr/0009-b.md' })
+  assert.equal(setAdrStatus('# T\n\n## status\n\naccepted\n', 'deprecated').text, '# T\n\n## status\n\nDeprecated\n')
+  assert.deepEqual(setAdrStatus('# T\n\n## Status\n\n## Context\n', 'accepted'), { text: '# T\n\n## Status\n\nAccepted\n\n## Context\n', before: null, after: 'Accepted' })
+})
+
+test('setAdrStatus keeps a bold **Status:** line bold and replaces it in place (PMK-228 review)', () => {
+  assert.deepEqual(setAdrStatus('# T\n\n**Status:** accepted\n\nX\n', 'deprecated'), { text: '# T\n\n**Status:** deprecated\n\nX\n', before: '**Status:** accepted', after: '**Status:** deprecated' })
+  assert.equal(setAdrStatus('# T\n\n**Status**: Accepted\n', 'deprecated').text, '# T\n\n**Status:** deprecated\n')
+  assert.equal(setAdrStatus('# T\n\n- Status: accepted\n', 'deprecated').text, '# T\n\n- Status: deprecated\n')
+})
+
+test('setAdrStatus edits the status key of YAML front matter and never writes above the front matter (PMK-228 review)', () => {
+  const madr = '---\nstatus: accepted\ndate: 2026-11-10\n---\n\n# Use X\n\nWhy.\n'
+  assert.deepEqual(setAdrStatus(madr, 'deprecated'), { text: '---\nstatus: deprecated\ndate: 2026-11-10\n---\n\n# Use X\n\nWhy.\n', before: 'status: accepted', after: 'status: deprecated' })
+  assert.equal(setAdrStatus('---\ndate: 2026-11-10\n---\n\nWhy.\n', 'deprecated').text, '---\ndate: 2026-11-10\n---\n\nStatus: deprecated\n\nWhy.\n')
+  assert.equal(setAdrStatus('---\ndate: 2026-11-10\n---\n# Use X\n\nWhy.\n', 'deprecated').text, '---\ndate: 2026-11-10\n---\n# Use X\n\nStatus: deprecated\n\nWhy.\n')
+})
+
+test('docs adr-status on a Nygard ADR shows the old status in the preview and writes one status', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0004-use-x.md', '# 4. Use X\n\nDate: 2026-11-10\n\n## Status\n\nAccepted\n\n## Context\n\nWhy.\n')
+  const dry = await adrStatus(root, '4', 'deprecated', '--dry-run')
+  assert.equal(dry.code, 0, dry.stderr)
+  assert.deepEqual(dry.data.status, { before: 'Accepted', after: 'Deprecated' })
+  await adrStatus(root, '4', 'deprecated')
+  const text = fs.readFileSync(path.join(root, 'docs/adr/0004-use-x.md'), 'utf8')
+  assert.doesNotMatch(text, /Accepted|^Status:/m)
+  assert.match(text, /## Status\n\nDeprecated\n/)
 })
 
 const adrStatus = async (root, ...args) => {
@@ -417,8 +447,39 @@ test('default-branch and docs next-adr use origin/HEAD when default_branch is un
   assert.ok(data.notes.includes('git_host.default_branch is not set, so origin/HEAD (trunk) is used'), data.notes.join('\n'))
 })
 
+test('default-branch reads origin/HEAD when a local branch is also named origin/<name> (PMK-228 review)', async () => {
+  const root = repo()
+  writeAdr(root, 'README.md', '# r\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-q', '-m', 'x')
+  git(root, 'update-ref', 'refs/remotes/origin/trunk', 'HEAD')
+  git(root, 'branch', 'origin/trunk')
+  git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk')
+  const result = await run(['default-branch', '--json'], { cwd: root, env: childEnv() })
+  assert.equal(JSON.parse(result.stdout).branch, 'trunk', result.stderr)
+})
+
 test('default-branch stays main with no note when origin/HEAD is missing', async () => {
   const root = repo()
   const result = await run(['default-branch', '--json'], { cwd: root, env: childEnv() })
   assert.deepEqual(JSON.parse(result.stdout), { branch: 'main', configured: null, valid: true, note: null })
+})
+
+test('docs adr-status notes in the JSON when --by names an older ADR (PMK-228 review)', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0003-a.md')
+  writeAdr(root, 'docs/adr/0005-b.md')
+  const swapped = await adrStatus(root, '5', 'superseded', '--by', '3', '--dry-run')
+  assert.equal(swapped.code, 0, swapped.stderr)
+  assert.deepEqual(swapped.data.notes, ['ADR 0003 is older than ADR 0005; check that --by names the decision that replaces it'])
+  const right = await adrStatus(root, '3', 'superseded', '--by', '5', '--dry-run')
+  assert.deepEqual(right.data.notes, [])
+})
+
+test('adrLocation gives the tracker ADR folder relative to the repository, null outside it, and none for a hosted tracker (PMK-228 review)', () => {
+  const root = path.join(os.tmpdir(), 'r')
+  assert.deepEqual(adrLocation({ root, issuesDir: path.join(root, '.issues'), hosted: false }), { trackerDir: path.join(root, '.issues', 'docs', 'adr'), trackerFolder: '.issues/docs/adr' })
+  assert.equal(adrLocation({ root, issuesDir: path.join(root, '..x'), hosted: false }).trackerFolder, '..x/docs/adr')
+  assert.equal(adrLocation({ root, issuesDir: path.join(root, '..', 'tracker'), hosted: false }).trackerFolder, null)
+  assert.deepEqual(adrLocation({ root, issuesDir: undefined, hosted: true }), { trackerDir: null, trackerFolder: null })
 })

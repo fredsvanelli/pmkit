@@ -128,6 +128,8 @@ export function resolveDefaultBranch(pmkit, { originHead } = {}) {
     // PMK-228: the remote's own default branch, when git knows it and it is a valid name. Anything else keeps main, as before.
     const head = originHead?.() ?? null
     if (typeof head === 'string' && validBranch(head)) return { branch: head, configured: null, valid: true, note: `git_host.default_branch is not set, so origin/HEAD (${head}) is used` }
+    // The name itself is not echoed: it failed the check that keeps a name safe to print and to pass on.
+    if (typeof head === 'string') return { branch: 'main', configured: null, valid: true, note: 'origin/HEAD does not name a valid branch, so main is used' }
     return { branch: 'main', configured: null, valid: true, note: null }
   }
   if (validBranch(configured)) return { branch: configured, configured, valid: true, note: null }

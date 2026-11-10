@@ -560,3 +560,11 @@ test('a hosted tracker still gets the ADR check of docs/adr (PMK-228)', () => {
   fs.writeFileSync(path.join(root, 'docs', 'adr', '0002-b.md'), '# B\n')
   assert.deepEqual(brief(validateRepo(root)).filter((line) => line.startsWith('adr ')), ['adr docs/adr/0002-a.md', 'adr docs/adr/0002-b.md'])
 })
+
+test('dated ADR names carry no number, so two of them are never reported (PMK-228 review)', () => {
+  const root = makeRepo('basic')
+  fs.mkdirSync(path.join(root, 'docs', 'adr'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'docs', 'adr', '2026-10-31-x.md'), '# X\n')
+  fs.writeFileSync(path.join(root, 'docs', 'adr', '2026-11-01-y.md'), '# Y\n')
+  assert.deepEqual(validateRepo(root).problems.filter((problem) => problem.code === 'adr'), [])
+})

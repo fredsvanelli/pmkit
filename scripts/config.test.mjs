@@ -456,7 +456,7 @@ test('resolveDefaultBranch reads origin/HEAD only when default_branch is unset, 
   assert.deepEqual(resolveDefaultBranch(host(undefined), { originHead: () => 'trunk' }), { branch: 'trunk', configured: null, valid: true, note: 'git_host.default_branch is not set, so origin/HEAD (trunk) is used' })
   assert.deepEqual(resolveDefaultBranch({}, { originHead: () => 'trunk' }).branch, 'trunk')
   assert.deepEqual(resolveDefaultBranch(host(undefined), { originHead: () => null }), { branch: 'main', configured: null, valid: true, note: null })
-  assert.deepEqual(resolveDefaultBranch(host(undefined), { originHead: () => 'a..b' }), { branch: 'main', configured: null, valid: true, note: null })
+  assert.deepEqual(resolveDefaultBranch(host(undefined), { originHead: () => 'a..b' }), { branch: 'main', configured: null, valid: true, note: 'origin/HEAD does not name a valid branch, so main is used' })
   const never = () => assert.fail('origin/HEAD is read only when default_branch is unset')
   assert.equal(resolveDefaultBranch(host('develop'), { originHead: never }).branch, 'develop')
   assert.equal(resolveDefaultBranch(host('main; curl x|sh'), { originHead: never }).branch, 'main')

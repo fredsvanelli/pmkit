@@ -74,6 +74,15 @@ function renderSection(title, content, trailing) {
   return `## ${title}\n\n${content}\n${trailing.slice(1)}`
 }
 
+// docs (PMK-228): one path, or a list of one-line, non-blank, distinct paths. Anything else is a broken file, never coerced to text.
+function readDocs(value) {
+  if (value == null) return []
+  const list = typeof value === 'string' ? [value] : value
+  const ok = Array.isArray(list) && list.every((item) => typeof item === 'string' && item.trim() !== '' && !item.includes('\n')) && new Set(list).size === list.length
+  if (!ok) throw new PmkitError('INVALID_INPUT', `The issue frontmatter is not valid: docs must be a list of one-line, non-blank paths with no repeats, got ${JSON.stringify(value)}.`, '/pmkit:local:doctor')
+  return list
+}
+
 export function parseIssueFile(text, { statuses = {} } = {}) {
   const normalized = normalize(text)
   assertNoConflict(normalized)
@@ -115,7 +124,7 @@ export function parseIssueFile(text, { statuses = {} } = {}) {
   for (const key of ['type', 'priority', 'estimate', 'assignee', 'parent', 'sprint', 'milestone', 'release', 'due', 'branch']) {
     if (data[key] != null) issue[key] = data[key]
   }
-  const docs = asList(data.docs)
+  const docs = readDocs(data.docs)
   if (docs.length > 0) issue.docs = docs
   for (const key of ['created', 'updated']) if (issue[key] === undefined) delete issue[key]
   // Keys pmkit does not know, such as one a person added by hand, are kept so the next write does not drop them.

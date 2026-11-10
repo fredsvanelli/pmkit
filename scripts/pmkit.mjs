@@ -23,7 +23,7 @@ import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, 
 import { pathNote } from './lib/path-notes.mjs'
 import { fileMentions } from './lib/mentions.mjs'
 import { REPO_UNCHECKED } from './lib/delete-refusal.mjs'
-import { ADR_STATUSES, adrFiles, adrFolders, adrStatusLine, adrStatusOf, planNextAdr, setAdrStatus } from './lib/adr.mjs'
+import { ADR_STATUSES, adrFiles, adrFolders, adrLocation, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
 import { similarResult } from './lib/similar.mjs'
 import { isBlocked } from './lib/model.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
@@ -299,11 +299,19 @@ async function tickCriteria(ctx, id, patch) {
 
 /** --add-doc and --remove-doc as the whole new docs list, so the caller never merges lists. Adding a path already there or removing an absent one changes nothing. */
 async function docLinks(ctx, id, patch) {
-  const adds = ctx.list('add-doc').map((item) => item.trim())
-  const removes = ctx.list('remove-doc').map((item) => item.trim())
+  // A flag given with no value comes back as true, alone or inside a repeated list.
+  const paths = (name) => ctx.list(name).map((item) => {
+    if (typeof item !== 'string' || item.trim() === '') throw usageError(`--${name} needs a path`, `Pass the path of the document, such as --${name} docs/adr/0001-use-points.md`)
+    return item.trim()
+  })
+  const adds = paths('add-doc')
+  const removes = paths('remove-doc')
   if (adds.length === 0 && removes.length === 0) return
-  if (adds.some((item) => item === '')) throw usageError('--add-doc needs a path', 'Pass the path of the document, such as --add-doc docs/adr/0001-use-points.md')
-  const current = (await (await ctx.tracker()).getIssue(id)).docs ?? []
+  const tracker = await ctx.tracker()
+  // The manifest says before the issue is read when the tracker has no docs field (Linear), so nothing else is asked of it.
+  const documents = (await tracker.capabilities()).capabilities.find((c) => c.id === 'documents')
+  if (documents?.detail?.unsupported?.includes('issueDocs')) throw new PmkitError('NOT_SUPPORTED', 'Linear issues have no docs field', 'The comment on the issue stays the link to the document')
+  const current = (await tracker.getIssue(id)).docs ?? []
   const kept = current.filter((item) => !removes.includes(item))
   patch.docs = [...kept, ...adds.filter((item) => !kept.includes(item))]
 }
@@ -312,23 +320,16 @@ const originHeads = new WeakMap()
 /** The branch origin/HEAD points to, without origin/, or null when git cannot say. Read once per run (PMK-228). */
 function originHead(ctx) {
   if (!originHeads.has(ctx)) {
-    const result = readGit(ctx, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'])
+    // The full ref, not --short: a local branch named origin/<name> makes --short print remotes/origin/<name>.
+    const prefix = 'refs/remotes/origin/'
+    const result = readGit(ctx, ['symbolic-ref', '--quiet', `${prefix}HEAD`])
     const ref = !result.error && result.status === 0 ? result.stdout.trim() : ''
-    originHeads.set(ctx, ref.startsWith('origin/') ? ref.slice('origin/'.length) : null)
+    originHeads.set(ctx, ref.startsWith(prefix) ? ref.slice(prefix.length) : null)
   }
   return originHeads.get(ctx)
 }
 
-/**
- * Where the Local tracker keeps its ADRs: `trackerDir` (absolute, null for a hosted tracker) and `trackerFolder`, the same folder
- * relative to the repository as todos scan sees it (path.relative cleans ./ and a trailing slash), or null when it climbs out of the repository.
- */
-function adrLocation(ctx) {
-  const { hosted, issuesDir } = ctx.config()
-  const trackerDir = hosted || !issuesDir ? null : path.join(issuesDir, 'docs', 'adr')
-  const relative = trackerDir ? path.relative(ctx.root, trackerDir) : ''
-  return { trackerDir, trackerFolder: trackerDir && !climbsOut(relative) ? slash(relative) : null }
-}
+const adrPlace = (ctx) => adrLocation({ root: ctx.root, issuesDir: ctx.config().issuesDir, hosted: ctx.config().hosted })
 
 /** The one ADR file with `number` (1 to 4 digits). NOT_FOUND when none has it, CONFLICT when several do. */
 function adrByNumber(files, number, flag) {
@@ -347,21 +348,21 @@ async function runAdrStatus(ctx) {
   const by = ctx.opt('by')
   if (status === 'superseded' && by === undefined) throw usageError('superseded needs --by with the number of the newer ADR', 'Pass --by <number>, such as --by 7')
   if (status !== 'superseded' && by !== undefined) throw usageError('--by goes only with superseded', `Leave --by out for ${status}`)
-  const { trackerDir, trackerFolder } = adrLocation(ctx)
+  const { trackerDir, trackerFolder } = adrPlace(ctx)
   const folders = adrFolders({ root: ctx.root, trackerDir, trackerFolder })
   const files = adrFiles(folders)
   const adr = adrByNumber(files, number, 'number')
+  const notes = []
   let byPath
   if (by !== undefined) {
     const newer = adrByNumber(files, by, '--by')
     if (newer.number === adr.number) throw usageError(`ADR ${adr.number} cannot supersede itself`, 'Pass the number of the newer ADR in --by')
+    // A permanent record: say so when the arguments look swapped, but the user may supersede with an older ADR on purpose.
+    if (newer.number < adr.number) notes.push(`ADR ${newer.number} is older than ADR ${adr.number}; check that --by names the decision that replaces it`)
     byPath = newer.path
   }
-  const line = adrStatusLine(status, byPath)
-  const before = fs.readFileSync(adr.file, 'utf8').replace(/^\uFEFF/, '').replaceAll('\r\n', '\n')
-  const after = setAdrStatus(before, line)
-  const statusBefore = adrStatusOf(before)
-  const notes = []
+  const before = adrText(fs.readFileSync(adr.file, 'utf8'))
+  const { text: after, before: statusBefore, after: line } = setAdrStatus(before, status, byPath)
   let commit
   if (before !== after && !ctx.dryRun) {
     if (adr.place === 'tracker') {
@@ -1642,7 +1643,7 @@ export const COMMANDS = [
       const { pmkit, hosted } = ctx.config()
       // A hosted tracker needs no call: the Linear adapter cannot create documents, so its ADR is a repository file.
       const documents = hosted ? undefined : (await (await ctx.tracker()).capabilities()).capabilities.find((c) => c.id === 'documents')
-      const { trackerDir, trackerFolder } = adrLocation(ctx)
+      const { trackerDir, trackerFolder } = adrPlace(ctx)
       const resolved = resolveDefaultBranch(pmkit, { originHead: () => originHead(ctx) })
       const plan = planNextAdr({
         title,
