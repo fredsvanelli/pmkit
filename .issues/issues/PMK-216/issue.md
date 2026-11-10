@@ -2,12 +2,14 @@
 id: PMK-216
 title: Improve estimate-issue
 type: feature
-status: backlog
+status: in_progress
 priority: low
 estimate: 3
+assignee: fred
 related: [PMK-59]
+branch: pmk-216-improve-estimate-issue
 created: 2026-11-08T20:37:23.568Z
-updated: 2026-11-08T20:53:51Z
+updated: 2026-11-10T05:14:43Z
 ---
 
 ## Description
