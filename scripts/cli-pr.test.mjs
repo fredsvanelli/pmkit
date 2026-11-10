@@ -569,6 +569,7 @@ test('pr diff falls back to the local diff when GitHub refuses the diff as too l
   assert.equal(result.code, 0, result.stderr)
   const data = JSON.parse(result.stdout)
   assert.equal(data.source, 'local')
+  assert.equal(data.pr?.number, 7, 'the open pull request stays in the result, so its checks and a review are still read')
   assert.match(data.diff, /\+two/)
   assert.ok(noteLines(result).includes('note: GitHub refused the diff of pull request #7 because it is too large, so this is the local diff'), result.stderr)
 })
@@ -1012,7 +1013,7 @@ function reviewFiles(comments, body = 'Review against PMK criteria.\n') {
 
 async function reviewRepo(canned) {
   const root = teamRepo()
-  const gh = fakeGh({ [view('feat')]: { stdout: prJson({ number: 7, headRefName: 'feat' }) }, 'pr diff 7 --color never': { stdout: TWO_FILES }, [REVIEW_API]: REVIEWED, ...canned })
+  const gh = fakeGh({ [view('feat')]: { stdout: prJson({ number: 7, headRefName: 'feat' }) }, 'pr diff 7 --color never': { stdout: TWO_FILES }, [REVIEW_API]: REVIEWED, ...refs('main', 'abc123'), ...canned })
   const env = envWith(gh)
   await callJson(root, env, ['issues', 'update', 'ISS-5N1R', '--branch', 'feat'])
   return { root, gh, env }
@@ -1023,7 +1024,7 @@ test('pr review previews, then posts one review with the inline comments on the 
   const files = reviewFiles([{ path: 'b c.txt', line: 3, body: 'gap: no test for z' }])
   const args = ['pr', 'review', '--issue', 'ISS-5N1R', '--body-file', files.body, '--comments-file', files.comments]
   const dry = await callJson(root, env, [...args, '--dry-run'])
-  assert.deepEqual(dry, { pr: { number: 7, url: 'https://github.com/o/r/pull/7' }, event: 'COMMENT', body: 'Review against PMK criteria.\n', comments: [{ path: 'b c.txt', line: 3, body: 'gap: no test for z' }] })
+  assert.deepEqual(dry, { pr: { number: 7, url: 'https://github.com/o/r/pull/7' }, event: 'COMMENT', commitId: 'abc123', body: 'Review against PMK criteria.\n', comments: [{ path: 'b c.txt', line: 3, body: 'gap: no test for z' }] })
   assert.ok(!ghCalls(gh).includes(REVIEW_API))
   const posted = await callJson(root, env, args)
   assert.deepEqual(posted.review, { id: 99, url: 'https://github.com/o/r/pull/7#pullrequestreview-99' })
@@ -1097,4 +1098,25 @@ test('pr diff --file and pr review read the paths git writes with a space (a TAB
   const files = reviewFiles([{ path: 'docs/my notes.md', line: 2, body: 'x' }, { path: 'café.txt', line: 2, body: 'y' }])
   const dry = await callJson(root, env, ['pr', 'review', '--issue', 'ISS-5N1R', '--body-file', files.body, '--comments-file', files.comments, '--dry-run'])
   assert.equal(dry.comments.length, 2)
+})
+
+test('pr review with inline comments reads the head commit before the diff and pins the review to it', async () => {
+  const { root, gh, env } = await reviewRepo(refs('main', 'abc123'))
+  const files = reviewFiles([{ path: 'a.txt', line: 2, body: 'x' }])
+  const dry = await callJson(root, env, ['pr', 'review', '--issue', 'ISS-5N1R', '--body-file', files.body, '--comments-file', files.comments, '--dry-run'])
+  assert.equal(dry.commitId, 'abc123')
+  const calls = ghCalls(gh)
+  assert.ok(calls.indexOf(REFS) < calls.indexOf('pr diff 7 --color never'), calls.join('\n'))
+})
+
+test('pr review --redact replaces the secrets of the body and of each inline comment, in the dry run too', async () => {
+  const secret = `ghp_${'b'.repeat(36)}`
+  const { root, env } = await reviewRepo(refs('main', 'abc123'))
+  const files = reviewFiles([{ path: 'a.txt', line: 2, body: `token ${secret}` }], `Body GITHUB_TOKEN=${secret}\n`)
+  const args = ['pr', 'review', '--issue', 'ISS-5N1R', '--body-file', files.body, '--comments-file', files.comments, '--redact']
+  const dry = await callJson(root, env, [...args, '--dry-run'])
+  assert.ok(!JSON.stringify(dry).includes(secret), JSON.stringify(dry))
+  assert.equal(dry.redacted.count, 2)
+  const plain = await callJson(root, env, [...args.slice(0, -1), '--dry-run'])
+  assert.equal(plain.redacted, undefined)
 })

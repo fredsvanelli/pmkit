@@ -1590,20 +1590,37 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'pr review', summary: 'posts one review that comments on the open pull request of an issue, with inline comments on lines of its diff', usage: '--issue <id> --body-file f [--comments-file f]', write: true, args: [], flags: ['issue', 'body-file', 'comments-file'],
+    name: 'pr review', summary: 'posts one review that comments on the open pull request of an issue, with inline comments on lines of its diff', usage: '--issue <id> --body-file f [--comments-file f] [--redact]', write: true, args: [], flags: ['issue', 'body-file', 'comments-file', 'redact'],
     run: async (ctx) => {
       if (ctx.opt('issue') === undefined) throw usageError('pr review needs --issue', 'pmkit pr review --issue <id> --body-file <file>')
       if (ctx.opt('body-file') === undefined) throw usageError('pr review needs --body-file', 'pmkit pr review --issue <id> --body-file <file>')
       const host = ctx.host()
-      const body = readInput(ctx.opt('body-file'))
+      let body = readInput(ctx.opt('body-file'))
       if (body.trim() === '') throw usageError('the review body is empty', 'Write the summary of the review to the body file')
-      const comments = ctx.opt('comments-file') === undefined ? [] : reviewComments(readInput(ctx.opt('comments-file')))
+      let comments = ctx.opt('comments-file') === undefined ? [] : reviewComments(readInput(ctx.opt('comments-file')))
+      // --redact, as issues comment has it (PMK-229): the secrets of the body and of each inline comment go before GitHub gets them.
+      let redacted
+      if (ctx.flag('redact')) {
+        const counts = {}
+        const clean = (text) => {
+          const result = redact(text)
+          for (const [type, n] of Object.entries(result.counts)) counts[type] = (counts[type] ?? 0) + n
+          return result.text
+        }
+        body = clean(body)
+        comments = comments.map((c) => ({ ...c, body: clean(c.body) }))
+        const count = Object.values(counts).reduce((sum, n) => sum + n, 0)
+        redacted = { count, counts }
+      }
       const issue = await (await ctx.tracker()).getIssue(ctx.opt('issue'))
       if (!issue.branch) throw usageError(`${issue.id} has no branch`, `pmkit issues branch ${issue.id}`)
       const found = host.getPullRequest({ head: issue.branch })
       if (found?.state !== 'OPEN') throw usageError(`${issue.branch} has no open pull request`, `pmkit pr open --issue ${issue.id}, or post the review on the issue with pmkit issues comment`)
       // Every inline line is checked against the diff before any write, so a dry run shows what GitHub would refuse.
+      let commitId = null
       if (comments.length > 0) {
+        // The head is read before the diff, so the lines checked are never newer than the commit the review is pinned to.
+        commitId = host.prRefs(found.number).headRefOid
         const diff = host.prDiff(found.number)
         if (diff === null) throw usageError(`GitHub refused the diff of pull request #${found.number} as too large, so the lines of the inline comments cannot be checked`, 'Put the findings in the body and post the review without --comments-file')
         const lines = new Map()
@@ -1612,11 +1629,12 @@ export const COMMANDS = [
         if (off.length > 0) throw usageError(off.join('; '), 'Point each inline comment at an added or unchanged line of the diff, or move it to the body')
       }
       const pr = { number: found.number, url: found.url }
-      const data = { pr, event: 'COMMENT', body, comments }
+      const data = { pr, event: 'COMMENT', commitId, body, comments, ...(redacted === undefined ? {} : { redacted }) }
+      const notes = [...(redacted?.count > 0 ? [`redacted ${redacted.count} ${redacted.count === 1 ? 'value' : 'values'}: ${Object.entries(redacted.counts).map(([type, n]) => `${type} ${n}`).join(', ')}`] : []), ...(await capabilityNotesOrNone(ctx))]
       const what = `a review with ${comments.length} inline ${comments.length === 1 ? 'comment' : 'comments'} on pull request #${pr.number} ${pr.url}`
-      if (ctx.dryRun) return { data, text: `would post ${what}\ndry run: nothing was written`, notes: await capabilityNotesOrNone(ctx) }
-      const review = host.postReview(pr.number, { body, comments })
-      return { data: { ...data, review }, text: `posted ${what}\n${review.url}`, notes: await capabilityNotesOrNone(ctx) }
+      if (ctx.dryRun) return { data, text: `would post ${what}\ndry run: nothing was written`, notes }
+      const review = host.postReview(pr.number, { body, comments, commitId })
+      return { data: { ...data, review }, text: `posted ${what}\n${review.url}`, notes }
     },
   },
   {
@@ -1793,7 +1811,7 @@ export const COMMANDS = [
       const diff = truncated ? `${all.slice(0, maxLines).join('\n')}\n` : full
       const size = `${only === undefined ? '' : `${only}, `}${truncated ? `first ${maxLines} of ${all.length} lines` : `${all.length} lines`}`
       const head = source === 'pull_request' ? `pull request #${pr.number}, ${size}` : `local diff of ${branch} against ${base}, ${size}`
-      return { data: { branch, source, pr: source === 'pull_request' ? pr : null, base, uncommitted: tree?.uncommitted ?? false, uncommittedIncluded: local?.uncommitted ?? false, untracked: tree?.untracked ?? 0, incomplete, diff, truncated, lines: all.length, file: only ?? null, files }, text: `${head}\n${diff}`, notes: [...notes, ...(await capabilityNotesOrNone(ctx))] }
+      return { data: { branch, source, pr, base, uncommitted: tree?.uncommitted ?? false, uncommittedIncluded: local?.uncommitted ?? false, untracked: tree?.untracked ?? 0, incomplete, diff, truncated, lines: all.length, file: only ?? null, files }, text: `${head}\n${diff}`, notes: [...notes, ...(await capabilityNotesOrNone(ctx))] }
     },
   },
   {

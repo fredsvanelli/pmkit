@@ -210,6 +210,12 @@ test('postReview posts one COMMENT review with its inline comments on the right 
   assert.throws(() => host(exec).postReview(0, { body: 'x', comments: [] }), (e) => e.code === 'INVALID_INPUT')
 })
 
+test('postReview pins the review to the commit that was reviewed when it is given', () => {
+  const { exec, calls } = fakeExec({ stdout: JSON.stringify({ id: 1, html_url: 'u' }) })
+  host(exec).postReview(12, { body: 'B', comments: [{ path: 'a', line: 1, body: 'c' }], commitId: 'abc123' })
+  assert.equal(JSON.parse(calls[0].input).commit_id, 'abc123')
+})
+
 test('the default exec throws ENOENT for a command that does not exist', () => {
   assert.throws(
     () => defaultExec({ root: process.cwd(), env: process.env })('pmkit-no-such-command-xyz', []),
