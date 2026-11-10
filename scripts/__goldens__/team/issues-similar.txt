@@ -1,0 +1,63 @@
+$ pmkit issues similar ISS-5N1R
+exit 0
+--- stdout
+no similar issues among the 3 read
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+warning: incomplete: not every issue could be read, so an empty or short list is not verified. Do not say that no similar issue exists
+
+$ pmkit issues similar ISS-5N1R --json
+exit 0
+--- stdout
+{
+  "target": {
+    "id": "ISS-5N1R",
+    "title": "Paginate the events API"
+  },
+  "similar": [],
+  "considered": 3,
+  "complete": false,
+  "hasMore": false,
+  "problems": [
+    {
+      "id": "ISS-3Q6T",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+warning: incomplete: not every issue could be read, so an empty or short list is not verified. Do not say that no similar issue exists
+
+$ pmkit issues similar ISS-5N1R --category done,todo --limit 2
+exit 0
+--- stdout
+no similar issues among the 4 read
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+warning: incomplete: not every issue could be read, so an empty or short list is not verified. Do not say that no similar issue exists
+
+$ pmkit issues similar ISS-5N1R --category done,todo --limit 2 --json
+exit 0
+--- stdout
+{
+  "target": {
+    "id": "ISS-5N1R",
+    "title": "Paginate the events API"
+  },
+  "similar": [],
+  "considered": 4,
+  "complete": false,
+  "hasMore": false,
+  "problems": [
+    {
+      "id": "ISS-3Q6T",
+      "code": "CONFLICT",
+      "message": "The issue file contains git conflict markers."
+    }
+  ]
+}
+--- stderr
+warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+warning: incomplete: not every issue could be read, so an empty or short list is not verified. Do not say that no similar issue exists

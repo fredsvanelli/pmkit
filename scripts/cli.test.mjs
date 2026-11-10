@@ -1671,6 +1671,7 @@ test('every read goes on with one warning', () => {
     'issues list': [],
     'issues get': ['ISS-5N1R'],
     'issues dependencies': ['EPC-2M9D'],
+    'issues similar': ['ISS-5N1R'],
     'issues time-entries': ['ISS-5N1R'],
     'issues track-agents': [],
     'cycle list': [],

@@ -41,6 +41,7 @@ export const CASES = {
   'issues list': () => [[], ['--sprint', 'current'], ['--blocked'], ['--category', 'done']],
   'issues get': (a) => [[a.issue], [a.issue, '--comments', '--history'], [a.conflicted]],
   'issues dependencies': (a) => [[a.epic], [a.issue]],
+  'issues similar': (a) => [[a.issue], [a.issue, '--category', 'done,todo', '--limit', '2']],
   'issues create': () => [['--title', 'Golden sample', '--type', 'task', '--description-file', input('description.md')]],
   'issues update': (a) => [[a.issue, '--title', 'Renamed', '--criteria-file', input('criteria.md')]],
   'issues move': (a) => [[a.issue, 'done'], [a.conflicted, 'done']],

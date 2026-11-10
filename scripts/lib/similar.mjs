@@ -3,7 +3,7 @@
 
 const STOP = new Set('the and for with from that this are was not but you all can has have into when then than they them its our out use used using add new via per also any more some should will'.split(' '))
 
-const stem = (word) => (word.length > 3 && word.endsWith('s') && !word.endsWith('ss') ? word.slice(0, -1) : word)
+const stem = (word) => (word.length > 4 && word.endsWith('ies') ? `${word.slice(0, -3)}y` : word.length > 3 && word.endsWith('s') && !word.endsWith('ss') ? word.slice(0, -1) : word)
 
 /** Lower-case words of 3 or more characters, without stop words, with a trailing plural `s` removed. */
 export const tokens = (text) => String(text ?? '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3 && !STOP.has(w)).map(stem)
@@ -41,4 +41,24 @@ export function rankSimilar(target, candidates, { limit = 5 } = {}) {
     .filter((hit) => hit.score > 0)
     .sort((a, b) => b.score - a.score || (a.issue.id < b.issue.id ? -1 : 1))
     .slice(0, limit)
+}
+
+/**
+ * The `issues similar` result. `found` is what `searchIssues` returned. The result is `complete` only when every issue was read:
+ * a file that does not parse (`problems`) or a cut read (`hasMore`) means an empty `similar` is "not verified", never "none".
+ * A missing estimate is `null`, never 0.
+ */
+export function similarResult(target, found, { limit = 5 } = {}) {
+  const hasMore = found.hasMore === true
+  const problems = found.problems ?? []
+  return {
+    target: { id: target.id, title: target.title },
+    similar: rankSimilar(target, found.issues, { limit }).map(({ issue, score, shared }) => ({
+      id: issue.id, title: issue.title, status: issue.status, assignee: issue.assignee ?? null, estimate: issue.estimate ?? null, score: Math.round(score * 1000) / 1000, shared,
+    })),
+    considered: found.issues.filter((i) => i.id !== target.id).length,
+    complete: !hasMore && problems.length === 0,
+    hasMore,
+    problems,
+  }
 }

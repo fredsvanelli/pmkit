@@ -7,3 +7,5 @@
 {"at":"2026-11-10T05:14:41Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-10T05:14:43Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-216-improve-estimate-issue"}
 {"at":"2026-11-10T05:15:58Z","by":"fred","op":"comment","to":"2026-11-10T05-15-58Z-fred.md"}
+{"at":"2026-11-10T05:48:29Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T05:48:29Z","by":"fred","op":"update","field":"acceptance_criteria"}

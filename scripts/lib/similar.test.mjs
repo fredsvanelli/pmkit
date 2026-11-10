@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { rankSimilar } from './similar.mjs'
+import { rankSimilar, similarResult } from './similar.mjs'
 
 const issue = (id, title, description = '', criteria = []) => ({ id, title, description, acceptanceCriteria: criteria.map((text) => ({ text, done: false })) })
 
@@ -38,4 +38,25 @@ test('acceptance criteria count and CRLF does not split a word', () => {
 
 test('a target with no usable text has no hits', () => {
   assert.deepEqual(rankSimilar(issue('D-1', 'a'), pool), [])
+})
+
+const withFields = (id, title, estimate) => ({ ...issue(id, title), status: { name: 'done', category: 'done' }, assignee: 'ana', estimate })
+
+test('similarResult is complete only when the read had no problems and no more issues', () => {
+  const found = { issues: [withFields('A-2', 'Export customers to CSV', 3)], problems: [] }
+  const ok = similarResult(target, found)
+  assert.deepEqual([ok.complete, ok.hasMore, ok.considered], [true, false, 1])
+  assert.deepEqual(ok.similar.map((s) => [s.id, s.estimate, s.status.name]), [['A-2', 3, 'done']])
+  assert.equal(similarResult(target, { ...found, hasMore: true }).complete, false)
+  const bad = similarResult(target, { ...found, problems: [{ id: 'A-9', code: 'INVALID', message: 'no parse' }] })
+  assert.deepEqual([bad.complete, bad.problems.length], [false, 1])
+})
+
+test('similarResult keeps an issue with no estimate and reports it as null, not zero', () => {
+  const r = similarResult(target, { issues: [withFields('A-2', 'Export customers to CSV', undefined)], problems: [] })
+  assert.equal(r.similar[0].estimate, null)
+})
+
+test('plural endings match: deliveries and delivery are one term', () => {
+  assert.deepEqual(rankSimilar(issue('E-1', 'Retry deliveries'), [issue('E-2', 'Delivery log')]).map((hit) => hit.shared), [['delivery']])
 })

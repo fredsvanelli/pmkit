@@ -49,3 +49,11 @@ test('the comment names its unit, days are not compared, and hours need no scale
   assert.match(text, /except for the unit `hours`/)
   assert.match(text, /prefix is not a known team key/)
 })
+
+test('step 5 reads the similar issues from `issues similar`, and an incomplete read is not verified (PMK-216)', () => {
+  assert.match(text, /issues similar <id> --json/)
+  assert.doesNotMatch(text, /--text <keyword>/)
+  assert.match(text, /`complete`/)
+  assert.match(text, /not verified/)
+  assert.match(text, /Never say that no similar issue exists from an incomplete read/)
+})

@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-59]
 branch: pmk-216-improve-estimate-issue
 created: 2026-11-08T20:37:23.568Z
-updated: 2026-11-10T05:14:43Z
+updated: 2026-11-10T05:48:29Z
 ---
 
 ## Description
@@ -29,5 +29,5 @@ Improvements suggested by the implementer and reviewers of PMK-59 (estimate-issu
 
 ## Acceptance criteria
 
-- [ ] A scenario with a tracker that has no estimate field, to cover the comment path
-- [ ] Find similar issues with a text-similarity read in the CLI instead of `--text` keywords
+- [x] A scenario with a tracker that has no estimate field, to cover the comment path
+- [x] Find similar issues with a text-similarity read in the CLI instead of `--text` keywords

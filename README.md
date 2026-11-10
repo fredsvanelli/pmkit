@@ -86,6 +86,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `issues list` | searches issues by text, category, type, assignee, label, sprint, parent, blocked state or date, oldest created first unless `--sort` says otherwise |
 | `issues get <id>` | shows one issue, with `--comments` and `--history` |
 | `issues dependencies <id>` | shows the blocker chain, the hierarchy and the critical path of an issue or an epic; only reads |
+| `issues similar <id>` | ranks issues that read like this one by text similarity (TF-IDF cosine over title, description and acceptance criteria), done issues by default (`--category`, `--limit`, default 5), with their estimate, a score and the shared terms. `complete` is `false`, with a warning, when an issue file could not be read or Linear has more issues than pmkit read: an empty list is then "not verified", never "none". Only reads |
 | `issues create` | creates an issue; takes `--milestone` and `--release` |
 | `issues update <id>` | edits fields and acceptance criteria; `--milestone`, `--release` and `--branch` take `none` to clear |
 | `issues move <id> <category>` | changes status by category |
