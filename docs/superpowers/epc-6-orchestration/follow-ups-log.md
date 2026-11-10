@@ -360,3 +360,30 @@ Início: 2026-11-09. `develop` em a1371fb, `npm test` com 4330 testes, 4250 pass
 - PMK-218 ciclo 2 (opus): APROVADO. Não bloqueantes: blocked null por reviewRequests ilegíveis mesmo com policiesKnown (pr-blockers.mjs:99/202); texto contraditório entre blocking e policies com a proteção recusada (:166/222); contagem de aprovações sem dizer que é mínima com a proteção não lida (:135); retry em qualquer 403 culpando read:org (host.mjs:120); custo das leituras de blockers em standup/investigate-bug (pmkit.mjs:1497). Mergeado (2ed1da2).
 
 Fim da rodada 12: PRs #170, #171, #172 mergeados.
+
+Limpeza da rodada 12: closing PR #173 mergeado (fd7ca15), 10 worktrees removidos, branches provisórias apagadas.
+
+## Rodada 13
+
+Início: 2026-11-09. `develop` em fd7ca15, `npm test` com 4392 testes, 4312 pass, 0 fail, 80 skipped, saída 0. Run Orca `run_d46957912cdf`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-234 | 2 | sonnet (`ctx_d36700614aba`) | #174 | ciclo 1 (sonnet): APROVADO | mergeado (6122933) |
+| PMK-208 | 5 | opus (`ctx_b073a0e75ad6`) | #176 | ciclo 1 (opus): mudanças pedidas; ciclo 2 (opus): APROVADO; uma correção antes do merge | mergeado (e365d50) |
+| PMK-210 | 3 | sonnet (`ctx_15a533c6e6df`) | #175 | ciclo 1 (opus): mudanças pedidas; ciclo 2 (opus): APROVADO; rebase d9942e9 | mergeado (e02ab0c) |
+
+- PMK-234: PR #174 (sonnet); passo 8 do prioritize-by-demand refaz os dry runs do passo 6 e não escreve nada se um before mudou ou um recheck falhou (volta ao passo 2); palavra rank-only mostra o ranking e para; cenários .7 e .8; sem mudança na CLI. Follow-ups: compare-and-set (--expect-updated) em issues update; filtro por ID em issues bulk para usar --expect. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-210: PR #175 (sonnet); Linear serve listDocuments (documentos de projetos do time como {path,title}, ordenados, UPSTREAM no teto de páginas em vez de lista parcial); manifesto, suíte de contrato, tabela da spec de design, CHANGELOG e README. Follow-ups: documentos de iniciativas/times/issues no Linear; rodar a sonda live com chave; listMilestones/listDeliverables ignoram hasMore no teto. Revisor ciclo 1 (opus) iniciado.
+- PMK-210 ciclo 1 (opus): mudanças pedidas (DOCUMENTS_QUERY sem filtro: teto vale para o workspace inteiro; próximo passo inútil). Query válida no schema público; UPSTREAM no teto aceito. Pedi filtro no servidor por projeto do time e os não bloqueantes baratos. Conferência ao vivo pendente (sem chave).
+- PMK-234 ciclo 1 (sonnet): APROVADO. Não bloqueantes (texto do arquivo de comando): regra rank-only no fim do passo 5; rank-only com todos os scores 0 pode não mostrar a tabela; reinício cita só priority/status mas compara updated; sem cenário para a reconferência que falha. Mergeado (6122933).
+- PMK-210 correção b8437e2: filtro no servidor por accessibleTeams do projeto (sem leitura de projetos separada); erro no teto aponta para pmkit epic get; texto path e title; teste de nomes de operação; fake com documento sem projeto. Conferência ao vivo pendente. Revisor ciclo 2 (opus) iniciado.
+- PMK-208: PR #176 (opus); alerts list e alerts scan leem yarn audit (classic), pnpm audit, pip-audit (requirements.txt) e cargo audit além do npm audit; --report scanner=arquivo offline; severidade nova unknown com prioridade null; scanner detectado sem relatório com --report é pulado com aviso, sem deixar incompleto (decisão a julgar). Follow-ups: Yarn Berry; pip-audit em pyproject.toml; CVSS 4; unknown do npm como unknown; cenário do create do security-alerts com --report (PMK-230). Revisor ciclo 1 (opus) iniciado.
+- PMK-210 ciclo 2 (opus): APROVADO (filtro conferido no schema público). Pedi rebase com a spec atualizada, campo não usado removido e o caso de lista da suíte de contrato. Follow-ups: sem scope.team o filtro lista todos os times (como listDeliverables e listMilestones); teto permanente sai como UPSTREAM e epic get mostra só 50 documentos; conferência ao vivo com client-live.mjs.
+- PMK-208 ciclo 1 (opus): mudanças pedidas (scanner detectado sem relatório com --report vira no alerts, regra da rodada 7; unknown abaixo de low no grupo rebaixa e pula a pergunta de prioridade). Consumidores do unknown, parsers contra formatos documentados e .cmd no Windows conferidos.
+- PMK-210: rebase d9942e9 com spec atualizada, campo não usado removido e caso de lista da suíte de contrato com documentos semeados. Mergeado (e02ab0c).
+- PMK-208 correção 240d65c: scanner detectado não lido com --report deixa alerts list e alerts scan incompletos; unknown no grupo deixa o pacote unknown salvo quando outra advisory é critical; pip-audit e cargo audit com 5 min; dedup por id; stderr do yarn; relatório vazio dá INVALID_INPUT; rebase em e02ab0c. Revisor ciclo 2 (opus) iniciado.
+- PMK-208 ciclo 2 (opus): APROVADO; pedi antes do merge cvssScore sem chaves do protótipo (NaN vira low). Follow-ups: qualquer skip_reason do pip-audit deixa o scan inteiro incompleto; high+unknown vira unknown e ordena depois de low; UTF-16 BE; refactor de parseNpmAudit.
+- PMK-208: b24907b com cvssScore por Map e Object.hasOwn, score não finito dá unknown. Mergeado (e365d50).
+
+Fim da rodada 13: PRs #174, #175, #176 mergeados.
