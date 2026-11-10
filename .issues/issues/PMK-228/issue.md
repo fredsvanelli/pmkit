@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-65]
 branch: pmk-228-improve-record-decision
 created: 2026-11-08T20:37:25.277Z
-updated: 2026-11-10T17:19:53Z
+updated: 2026-11-10T17:58:25Z
 ---
 
 ## Description
@@ -31,7 +31,7 @@ Improvements suggested by the implementer and reviewers of PMK-65 (record-decisi
 
 ## Acceptance criteria
 
-- [ ] A `validate` or `/pmkit:local:doctor` check that no two ADRs share a number
-- [ ] A `docs` field on issues, so a link to an ADR is not only a comment
-- [ ] A command to change the status of an existing ADR (superseded, deprecated)
-- [ ] Read `origin/HEAD` when `default_branch` is not set
+- [x] A `validate` or `/pmkit:local:doctor` check that no two ADRs share a number
+- [x] A `docs` field on issues, so a link to an ADR is not only a comment
+- [x] A command to change the status of an existing ADR (superseded, deprecated)
+- [x] Read `origin/HEAD` when `default_branch` is not set
