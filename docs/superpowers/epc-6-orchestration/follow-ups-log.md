@@ -422,3 +422,31 @@ Início: 2026-11-10. `develop` em 6b9bb8e, `npm test` com 4449 testes, 4363 pass
 - PMK-213 ciclo 3 (opus): APROVADO; rebase não perdeu nada da PMK-212. Não bloqueantes: ID_SHAPE aceita minúsculas (my-notes.md em goals/ vira meta ilegível); goal get mostra INCOMPLETE_LINE sobre números que não exibe e faz listGoals extra; goal-ops.mjs:82 copia o status de toEpic. Mergeado (6828ca7).
 
 Fim da rodada 14: PRs #178, #179, #180 mergeados.
+
+Limpeza da rodada 14: closing PR #181 mergeado (c7715af), 10 worktrees removidos, branches provisórias apagadas.
+
+## Rodada 15
+
+Início: 2026-11-10. `develop` em c7715af, `npm test` com 4535 testes, 4448 pass, 0 fail, 87 skipped, saída 0. Run Orca `run_0790a1f2c1eb`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-215 | 2 | sonnet (`ctx_ab1de30d5356`) | #182 | ciclo 1 (sonnet): mudanças pedidas; ciclo 2 (sonnet): APROVADO | mergeado (3ff9e0e) |
+| PMK-216 | 3 | sonnet (`ctx_be20ed87f690`) | #184 | ciclos 1 e 2 (opus): mudanças pedidas; saída conferida pelo orquestrador | mergeado (574df52) |
+| PMK-217 | 5 | opus (`ctx_2168c85b8df8`) | #183 | ciclo 1 (opus): mudanças pedidas; ciclo 2 (opus): APROVADO | mergeado (a59ca40) |
+
+- PMK-215: PR #182 (sonnet); track-agents no Linear lista PRs abertos de autores bot (casados por branch, fonte pull_requests) e filtro --agent; sem git host ou sem agente fica NOT_SUPPORTED. Follow-ups: mapa de agente do Linear para login do GitHub; ler delegates do Linear; golden de --agent. Revisor ciclo 1 (sonnet) iniciado, com pergunta sobre o delegate da PMK-214.
+- PMK-215 ciclo 1 (sonnet): mudanças pedidas (dependabot/renovate contam como agentes e gastam até 200 leituras; holder nulo dá stale). Autor bot aceito como caminho esperado; ler o delegate fica de follow-up.
+- PMK-215 correção 2afc1c2: bots de dependência excluídos; detalhe só de PRs que casam por branch; delegate ausente dá unknown; hasMore no corte; --agent agent:<id> no Linear dá INVALID_INPUT. Follow-ups: done/canceled contam como sem match; branches duplicadas; laço de leitura duplicado. Revisor ciclo 2 (sonnet) iniciado.
+- PMK-215 ciclo 2 (sonnet): APROVADO. Não bloqueantes: issue done/canceled aparece como sem issue; --agent app/claude ou claude[bot] não casa; incomplete por comentários com startsWith frágil; lista fixa de bots. Mergeado (3ff9e0e).
+- PMK-215 mergeado acima. PMK-217: PR #183 (opus); pr review (review só de comentários com comentários inline checados contra o diff antes da escrita); pr diff files/--file para ler diff cortado por arquivo; review.md lê pr status e ci logs e trata check falhando como lacuna. Follow-ups: caminhos não ASCII citados pelo git; pr review --redact; validBranch no review.md; harness de cenário mostra confirm recusado como confirmado. Revisor ciclo 1 (opus) iniciado.
+- PMK-216: PR #184 (sonnet); leitura nova issues similar (TF-IDF em scripts/lib/similar.mjs, complete/hasMore); estimate.md passo 5 usa; cenário do Linear sem campo de estimativa. Follow-ups: PMK-237 usar rankSimilar; ajuste de stemming e stop-list; issues similar no Linear limitado a 1000; runner de cenários do Linear ignora input. Revisor ciclo 1 (opus) iniciado.
+- PMK-217 ciclo 1 (opus): mudanças pedidas (sectionPath mantém TAB e citação do git em caminhos com espaço/não ASCII; review.md com branch e caminho sem validação nem aspas). Pedi junto S1-S4.
+- PMK-216 ciclo 1 (opus): mudanças pedidas (alvo sem tokens dá similar vazio com complete true; stdout incompleto sem not verified). Custo linear conferido (1000 issues em 49 ms).
+- PMK-216 correção bfd7ae1: alvo sem tokens dá no_comparable_text e complete false; stdout incompleto diz not verified; --category vazio dá INVALID_INPUT; hits sem estimativa em lista separada; desempate com compareIds; rebase. Revisor ciclo 2 (opus) iniciado.
+- PMK-217 correção f408c34: caminhos sem TAB final e sem citação do git; review.md valida a branch e a põe entre aspas duplas; pr diff mantém o PR com diff grande; cancel é lacuna; commit_id no review; pr review --redact; rebase. Follow-up de segurança: inbox-digest, mine, unblock, work e standup ainda põem <branch> sem aspas em comandos (exceções no plugin test). Revisor ciclo 2 (opus) iniciado.
+- PMK-216 ciclo 2 (opus): mudanças pedidas (stdout incompleto com tabela sem not verified). Pedi junto o texto de no_comparable_text, teste em fixture completo e README sobre unestimated. Follow-ups: stop words antes do stem; score arredondado pode dar 0; Linear lê as 1000 mais antigas; avisos duplicados; escopo de time e arquivadas. Vou conferir sem ciclo 3.
+- PMK-217 ciclo 2 (opus): APROVADO (validBranch recusa $, crase, aspas e barra invertida; caminho com aspas simples). Não bloqueantes: commit_id fixa o head lido pelo pr review e não o do diff do passo 3 (review.md:39 afirma demais); comentário invertido em pmkit.mjs:1622; diff local depende de diff.mnemonicPrefix/noprefix; frase de validBranch solta no passo 2. Mergeado (a59ca40).
+- PMK-216: 5f69d04 conferido rodando issues similar ISS-4M2S numa cópia do fixture team: tabela e linha not verified, complete false. Mergeado (574df52).
+
+Fim da rodada 15: PRs #182, #183, #184 mergeados.
