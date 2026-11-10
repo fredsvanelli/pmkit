@@ -1,3 +1,6 @@
 {"at":"2026-11-08T20:37:24Z","by":"fred","op":"create","to":{"id":"PMK-222","title":"Improve issues delete","type":"feature","status":"backlog","priority":"low","labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-08T20:37:24.468Z","updated":"2026-11-08T20:37:24Z"}}
 {"at":"2026-11-08T20:37:24Z","by":"fred","op":"link","field":"related","to":"PMK-52"}
 {"at":"2026-11-08T20:53:52Z","by":"fred","op":"update","field":"estimate","from":null,"to":5}
+{"at":"2026-11-10T08:36:24Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-10T08:36:24Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-10T08:36:29Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-222-improve-issues-delete"}
