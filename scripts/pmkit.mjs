@@ -1480,8 +1480,7 @@ export const COMMANDS = [
       if (ctx.opt('environment') === '') throw usageError('--environment must not be empty')
       const deploys = ctx.host().listDeploys({ environment: ctx.opt('environment'), limit })
       const lines = deploys.map((d) => `${d.environment} ${d.state ?? 'unknown'} ${d.ref} ${d.sha.slice(0, 7)} ${d.createdAt}${d.url ? ` ${d.url}` : ''}`)
-      const unknown = deploys.find((d) => d.state === null)
-      const warnings = unknown ? [`the state of ${deploys.filter((d) => d.state === null).length} deployment(s) is unknown: ${unknown.statusError}`] : []
+      const warnings = unknownDeployWarnings(deploys)
       return { data: { deploys }, text: lines.length === 0 ? 'no deployments' : lines.join('\n'), warnings, notes: await capabilityNotesOrNone(ctx) }
     },
   },
@@ -1984,6 +1983,12 @@ async function runRoadmapReview(ctx) {
   return { data: report, text: roadmapReviewText(report), warnings, notes: [...notes] }
 }
 
+/** The warning for deployments whose status could not be read (state null), as a list of zero or one line. */
+function unknownDeployWarnings(deploys) {
+  const unknown = deploys.filter((d) => d.state === null)
+  return unknown.length === 0 ? [] : [`the state of ${unknown.length} deployment(s) is unknown: ${unknown[0].statusError}`]
+}
+
 /** What is left for a release (or a milestone, or a sprint): open issues, their open pull requests and the repository deploys. Writes nothing. */
 async function runReleaseReadiness(ctx) {
   const tracker = await ctx.tracker()
@@ -2132,9 +2137,7 @@ async function runReleaseReadiness(ctx) {
       deploys = { error: errorOf(error) }
       hostWarnings.push(`deploys not checked: ${error.message}`)
     }
-    if (Array.isArray(deploys) && deploys.some((d) => d.state === null)) {
-      hostWarnings.push(`the state of ${deploys.filter((d) => d.state === null).length} deployment(s) is unknown: ${deploys.find((d) => d.state === null).statusError}`)
-    }
+    if (Array.isArray(deploys)) hostWarnings.push(...unknownDeployWarnings(deploys))
     warnings.push(...hostWarnings)
   } catch (error) {
     if (isPmkitError(error) && error.code === 'NOT_SUPPORTED') warnings.push(`no git host is configured, ${NO_HOST_READ}`)

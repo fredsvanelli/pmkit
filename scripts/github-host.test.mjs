@@ -318,7 +318,7 @@ test('ciLogs without a run id takes the newest failed run of the branch, with it
   assert.deepEqual(result, { runId: 2, workflowName: 'CI', url: 'u2', conclusion: 'failure', status: 'completed', createdAt: '2026-11-02T10:00:00Z', headSha: 'sha2', newerRun: null, log: 'boom\n' })
 })
 
-test('ciLogs names the newer run of the same workflow that did not fail', () => {
+test('ciLogs names the newer run of the same workflow that succeeded', () => {
   const runs = [wf(4, null, '2026-11-04T10:00:00Z'), wf(3, 'success', '2026-11-03T10:00:00Z'), wf(2, 'failure', '2026-11-02T10:00:00Z'), wf(9, 'success', '2026-11-05T10:00:00Z', { workflowName: 'Lint' })]
   const { exec } = fakeExec({ stdout: JSON.stringify(runs) }, { stdout: 'boom\n' })
   const result = host(exec).ciLogs({ branch: 'main' })
