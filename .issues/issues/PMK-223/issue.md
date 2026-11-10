@@ -2,14 +2,14 @@
 id: PMK-223
 title: Improve link-repo
 type: feature
-status: in_progress
+status: in_review
 priority: low
 estimate: 3
 assignee: fred
 related: [PMK-53]
 branch: pmk-223-improve-link-repo
 created: 2026-11-08T20:37:24.602Z
-updated: 2026-11-10T09:00:20Z
+updated: 2026-11-10T09:00:48Z
 ---
 
 ## Description
