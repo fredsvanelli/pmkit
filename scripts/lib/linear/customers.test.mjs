@@ -124,9 +124,9 @@ test('planCustomerEdit clears the tier and the owner with none', () => {
   assert.deepEqual(edit({ tier: 'None' }).input, { tierId: null })
 })
 
-test('planCustomerEdit accepts a decimal size', () => {
-  assert.deepEqual(edit({ size: '2.5' }), { changed: true, input: { size: 2.5 } })
-  assert.deepEqual(edit({ size: '0.25' }).input, { size: 0.25 })
+test('planCustomerEdit takes a whole size, since CustomerUpdateInput.size is an Int (PMK-221 review)', () => {
+  assert.deepEqual(edit({ size: '25' }), { changed: true, input: { size: 25 } })
+  for (const size of ['2.5', '0.25']) assert.throws(() => edit({ size }), (error) => error.code === 'INVALID_INPUT', size)
 })
 
 test('planCustomerEdit rejects bad input with INVALID_INPUT', () => {

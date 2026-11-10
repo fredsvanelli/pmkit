@@ -1101,11 +1101,11 @@ export function fakeCustomers({ customers = [], statuses = CUSTOMER_STATUSES, ti
     },
     PmkitCustomerShow: (body) => {
       if (disabledError) return disabled()
+      // Customer.needs is [CustomerNeed!]! without arguments in Linear's schema, so validation refuses a connection form (PMK-221 review).
+      if (/\bneeds\s*\(/.test(body.query)) return graphqlError('Unknown argument "first" on field "Customer.needs".', 'GRAPHQL_VALIDATION_FAILED')
       const found = customerOf(body.variables?.id)
       if (!found) return graphqlError('Entity not found: Customer', 'INPUT_ERROR')
-      const mine = needs.filter((need) => need.customerId === found.id).sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))
-      // The query asks for needs(first: 50), so a customer with more has a next page, as on Linear.
-      return json({ customer: { ...found, needs: page(mine.slice(0, 50).map(needNode), { hasNextPage: mine.length > 50, endCursor: mine.length > 50 ? '50' : null }) } })
+      return json({ customer: found })
     },
     PmkitCustomerStatuses: json({ customerStatuses: page(statuses) }),
     PmkitCustomerTiers: json({ customerTiers: page(tiers) }),
@@ -1133,11 +1133,13 @@ export function fakeCustomers({ customers = [], statuses = CUSTOMER_STATUSES, ti
     }),
     PmkitCustomerNeeds: (body) => {
       if (disabledError) return disabled()
-      const { first = 50, after = null } = body.variables ?? {}
+      const { first = 50, after = null, filter } = body.variables ?? {}
+      const wanted = filter?.customer?.id?.eq
+      const matching = wanted === undefined ? needs : needs.filter((need) => need.customerId === wanted)
       const start = Number(after ?? 0)
       const end = start + first
-      const hasNextPage = end < needs.length
-      const nodes = needs.slice(start, end).map((need) => ({ ...needNode(need), customer: customerOf(need.customerId) ?? { id: need.customerId } }))
+      const hasNextPage = end < matching.length
+      const nodes = matching.slice(start, end).map((need) => ({ ...needNode(need), customer: customerOf(need.customerId) ?? { id: need.customerId } }))
       return json({ customerNeeds: page(nodes, { hasNextPage, endCursor: hasNextPage ? String(end) : null }) })
     },
     PmkitCustomerNeedCreate: mutation('customerNeedCreate', ({ input = {} }) => {

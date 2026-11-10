@@ -1914,12 +1914,18 @@ test('customers list and customers show on Linear return the Local keys, and bot
 })
 
 test('customers show on Linear reports a cut request read as INCOMPLETE, and a name past a cut list as an incomplete lookup', async () => {
-  const many = Array.from({ length: 51 }, (_, index) => ({ id: `n-${index}`, customerId: 'cust-2', body: `Ask ${index}`, priority: 0, createdAt: `2026-10-01T00:00:${String(index).padStart(2, '0')}Z` }))
-  const fetch = onFetch({ needs: many })
+  const many = Array.from({ length: 251 }, (_, index) => ({ id: `n-${index}`, customerId: 'cust-2', body: `Ask ${index}`, priority: 0, createdAt: `2026-10-01T00:${String(Math.floor(index / 60)).padStart(2, '0')}:${String(index % 60).padStart(2, '0')}Z` }))
+  const fetch = onFetch({ needs: [...many, { id: 'other', customerId: 'cust-3', body: 'Not mine', priority: 0 }] })
   const shown = await generic(['customers', 'show', 'cust-2'], fetch)
   assert.equal(shown.code, 0, shown.stderr)
+  assert.equal(shown.data.requests.length, 250)
+  assert.ok(!shown.data.requests.some((request) => request.id === 'other'))
   assert.deepEqual(shown.data.problems.map((problem) => [problem.id, problem.code]), [['cust-2', 'INCOMPLETE']])
-  assert.match(shown.stderr, /warning: cust-2: INCOMPLETE .*50/)
+  assert.match(shown.stderr, /warning: cust-2: INCOMPLETE .*250/)
+  // B3: the requests of a customer come from customerNeeds filtered by the customer, never from Customer.needs.
+  const reads = fetch.calls.filter((call) => operationName(call.body.query) === 'PmkitCustomerNeeds')
+  assert.ok(reads.length > 0)
+  for (const call of reads) assert.deepEqual(call.body.variables.filter, { customer: { id: { eq: 'cust-2' } } })
   assert.doesNotMatch(shown.stderr, /run pmkit validate/)
   const crowd = Array.from({ length: 251 }, (_, index) => customerNode(`c-${index}`, `Customer ${index}`))
   const missing = await generic(['customers', 'show', 'Nobody'], onFetch({ customers: crowd }))
@@ -2027,6 +2033,48 @@ test('the generic customer commands with customers off refuse with the hint and 
     const fetch = withNeeds()
     const refused = await generic(args, fetch)
     assert.equal(refused.data.error.code, 'NOT_SUPPORTED', args.join(' '))
+    assert.equal(mutationCalls(fetch).length, 0, args.join(' '))
+  }
+})
+
+// PMK-221 review B3: Customer.needs is a plain list without arguments in Linear's schema; the fake refuses the connection form.
+test('the fake refuses Customer.needs with arguments, as the Linear schema does', async () => {
+  const fetch = withNeeds()
+  const wrong = 'query PmkitCustomerShow($id: String!) { customer(id: $id) { id needs(first: 50) { nodes { id } pageInfo { hasNextPage endCursor } } } }'
+  const response = await fetch('https://api.linear.app/graphql', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: wrong, variables: { id: 'cust-2' } }) })
+  const body = JSON.parse(await response.text())
+  assert.match(body.errors?.[0]?.message ?? '', /Unknown argument "first" on field "Customer.needs"/)
+})
+
+test('linear customers show and link read the requests through customerNeeds and say when the read was cut', async () => {
+  const many = Array.from({ length: 251 }, (_, index) => ({ id: `n-${index}`, customerId: 'cust-2', body: `Ask ${index}`, priority: 0, createdAt: '2026-10-01T00:00:00Z' }))
+  const shown = await cli(setup(), ['linear', 'customers', 'show', '--customer', 'cust-2', '--json'], onFetch({ needs: many }))
+  assert.equal(shown.code, 0, shown.stderr)
+  assert.equal(JSON.parse(shown.stdout).requests.length, 250)
+  assert.match(shown.stderr, /more than 250 requests/)
+})
+
+// PMK-221 review B5: a customer past the 250 the lookup reads is still found by its id, read directly.
+test('the generic customer commands on Linear find a customer past the lookup cap by its id', async () => {
+  const late = '0b5d7e9a-1c2d-4e3f-8a9b-0c1d2e3f4a5b'
+  const crowd = [...Array.from({ length: 260 }, (_, index) => customerNode(`c-${index}`, `Customer ${index}`)), customerNode(late, 'Late Corp', { revenue: 1 })]
+  const shown = await generic(['customers', 'show', late], onFetch({ customers: crowd }))
+  assert.equal(shown.code, 0, shown.stdout + shown.stderr)
+  assert.equal(shown.data.customer.name, 'Late Corp')
+  const fetch = onFetch({ customers: crowd })
+  const updated = await generic(['customers', 'update', late, '--tier', 'silver'], fetch)
+  assert.equal(updated.code, 0, updated.stdout + updated.stderr)
+  assert.deepEqual(mutationCalls(fetch).map((call) => call.body.variables.id), [late])
+  const missing = await generic(['customers', 'show', '0b5d7e9a-0000-4e3f-8a9b-0c1d2e3f4a5b'], onFetch({ customers: crowd }))
+  assert.equal(missing.data.error.code, 'NOT_FOUND')
+})
+
+// PMK-221 review M2: CustomerCreateInput.size and CustomerUpdateInput.size are Int.
+test('customers create and update on Linear refuse a decimal size before any mutation', async () => {
+  for (const args of [['customers', 'create', '--name', 'X', '--size', '2.5'], ['customers', 'update', 'Initech', '--size', '2.5']]) {
+    const fetch = onFetch()
+    const refused = await generic(args, fetch)
+    assert.equal(refused.data.error.code, 'INVALID_INPUT', args.join(' '))
     assert.equal(mutationCalls(fetch).length, 0, args.join(' '))
   }
 })
