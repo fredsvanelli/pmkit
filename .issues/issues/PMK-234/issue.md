@@ -2,14 +2,14 @@
 id: PMK-234
 title: Guard the prioritize-by-demand write
 type: feature
-status: in_progress
+status: in_review
 priority: medium
 estimate: 2
 assignee: fred
 related: [PMK-68, PMK-241, PMK-242]
 branch: pmk-234-guard-the-prioritize-by-demand-write
 created: 2026-11-08T20:37:26.100Z
-updated: 2026-11-10T02:24:38Z
+updated: 2026-11-10T02:25:22Z
 ---
 
 ## Description
