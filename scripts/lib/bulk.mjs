@@ -54,6 +54,7 @@ const BUILDERS = {
   due: (value) => ({ text: `set due to ${value}`, apply: patchOf({ due: orNull(value) }) }),
   type: (value) => ({ text: `set type to ${value}`, apply: patchOf({ type: orNull(value) }) }),
   archive: () => ({ text: 'archive', apply: (tracker, issue, actor, options) => tracker.archive(issue.id, actor, options) }),
+  unarchive: () => ({ text: 'unarchive', apply: (tracker, issue, actor, options) => tracker.unarchive(issue.id, actor, options) }),
   milestone: (value) => ({ text: `set milestone to ${value}`, apply: patchOf({ milestone: orNull(value) }) }),
   release: (value) => ({ text: `set release to ${value}`, apply: patchOf({ release: orNull(value) }) }),
   sprint: (value) => ({
@@ -78,9 +79,9 @@ export const CHANGES = Object.keys(BUILDERS)
 /** The change `kind value` as { kind, value, text, apply }. `flags` carries status, linkKind, remove and the estimate scale. */
 export function parseChange(kind, value, flags = {}) {
   if (!Object.hasOwn(BUILDERS, kind)) throw invalid(`unknown change "${kind}"; use one of ${CHANGES.join(', ')}`)
-  if (kind === 'archive') {
-    if (value !== undefined) throw invalid('bulk archive takes no value', 'Run pmkit issues bulk archive with a filter')
-    return { kind, value: '', ...BUILDERS.archive() }
+  if (kind === 'archive' || kind === 'unarchive') {
+    if (value !== undefined) throw invalid(`bulk ${kind} takes no value`, `Run pmkit issues bulk ${kind} with a filter`)
+    return { kind, value: '', ...BUILDERS[kind]() }
   }
   if (typeof value !== 'string' || value === '') throw invalid(`bulk ${kind} needs a value`)
   return { kind, value, ...BUILDERS[kind](value, flags) }
@@ -92,9 +93,11 @@ export function parseChange(kind, value, flags = {}) {
  * so it is allowed next to a criterion but never counts as one. An empty value matches everything, so it is refused too,
  * and at least one criterion must narrow the set.
  */
-export function checkBulkFilter(filter, where, viewName) {
+export function checkBulkFilter(filter, where, viewName, kind) {
+  // PMK-250: unarchive matches archived issues only, so it needs `archived` where every other change refuses it.
+  if (kind === 'unarchive' && filter.archived !== true) throw invalid(`${where} has no archived: bulk unarchive needs --archived, because it brings archived issues back`, 'Add --archived to the filter')
   for (const key of ['archived', 'limit']) {
-    if (filter[key] === undefined || (key === 'archived' && filter[key] === false)) continue
+    if (filter[key] === undefined || (key === 'archived' && (filter[key] === false || kind === 'unarchive'))) continue
     const why = key === 'archived' ? 'archived issues stay out of a bulk change' : 'a limit cuts the set, and a bulk change needs the whole set'
     throw invalid(`${where} has ${key}: ${why}`, 'Use a filter without archived and limit')
   }

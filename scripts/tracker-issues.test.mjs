@@ -194,6 +194,38 @@ test('archive sets archived and writes one archive event', () => {
   assert.equal(rawEvents('ISS-1234').length, 2)
 })
 
+test('unarchive brings an archived issue back into the list and writes one unarchive event', () => {
+  const { tracker, rawEvents } = setup()
+  tracker.createIssue({ title: 'First' }, 'fred')
+  tracker.archive('ISS-1234', 'fred')
+  assert.equal(tracker.searchIssues({}).issues.length, 0)
+  const { before, after } = tracker.unarchive('ISS-1234', 'fred')
+  assert.equal(before.archived, true)
+  assert.equal(after.archived, false)
+  assert.deepEqual(tracker.searchIssues({}).issues.map((issue) => issue.id), ['ISS-1234'])
+  assert.deepEqual(rawEvents('ISS-1234').map((event) => event.op), ['create', 'archive', 'unarchive'])
+})
+
+test('unarchive of an issue that is not archived writes nothing', () => {
+  const { tracker, issuesDir, rawEvents } = setup()
+  tracker.createIssue({ title: 'First' }, 'fred')
+  const hash = hashTree(issuesDir)
+  const result = tracker.unarchive('ISS-1234', 'fred')
+  assert.equal(result.before, result.after)
+  assert.equal(hashTree(issuesDir), hash)
+  assert.equal(rawEvents('ISS-1234').length, 1)
+})
+
+test('a dry-run unarchive shows the change and writes nothing', () => {
+  const { tracker, issuesDir } = setup()
+  tracker.createIssue({ title: 'First' }, 'fred')
+  tracker.archive('ISS-1234', 'fred')
+  const hash = hashTree(issuesDir)
+  assert.equal(tracker.unarchive('ISS-1234', 'fred', { dryRun: true }).after.archived, false)
+  assert.equal(hashTree(issuesDir), hash)
+  assert.equal(tracker.getIssue('ISS-1234').archived, true)
+})
+
 test('a hand-edited status becomes a synthetic move before the next write, once', () => {
   const { tracker, paths, rawEvents, setNow } = setup()
   setNow('2026-10-23T10:00:00Z')
@@ -388,6 +420,7 @@ test('with a config that fails validation, reads work and every write refuses wi
     moveToCategory: () => tracker.moveToCategory(id, 'done', 'fred'),
     assign: () => tracker.assign(id, 'fred', 'fred'),
     archive: () => tracker.archive(id, 'fred'),
+    unarchive: () => tracker.unarchive(id, 'fred'),
     link: () => tracker.link(id, other, 'related', 'fred'),
     unlink: () => tracker.unlink(id, other, 'related', 'fred'),
     setParent: () => tracker.setParent(id, other, 'fred'),

@@ -958,8 +958,8 @@ export const COMMANDS = [
   },
   {
     name: 'issues bulk', summary: 'applies one change to every issue a filter or a saved view returns; --dry-run is the full preview and prints a digest, the real run needs it as --expect', write: true, args: ['change', 'value?'],
-    usage: '<move|assign|priority|estimate|label-add|label-remove|due|type|archive|milestone|release|sprint|parent|link> [<value>] (<issues list filter flags> | --view name) [--max n] [--status name] [--kind k] [--remove] [--expect digest]',
-    flags: ['text', 'category', 'type', 'assignee', 'label', 'sprint', 'parent', 'blocked', 'updated-before', 'updated-after', 'view', 'max', 'status', 'kind', 'remove', 'expect'],
+    usage: '<move|assign|priority|estimate|label-add|label-remove|due|type|archive|unarchive|milestone|release|sprint|parent|link> [<value>] (<issues list filter flags> | --view name) [--max n] [--status name] [--kind k] [--remove] [--expect digest]',
+    flags: ['text', 'category', 'type', 'assignee', 'label', 'sprint', 'parent', 'blocked', 'updated-before', 'updated-after', 'archived', 'view', 'max', 'status', 'kind', 'remove', 'expect'],
     run: (ctx) => runBulk(ctx),
   },
   {
@@ -1051,6 +1051,16 @@ export const COMMANDS = [
   {
     name: 'issues archive', summary: 'archives', usage: '<id>', write: true, args: ['id'], flags: [],
     run: async (ctx) => issueWrite(ctx, await (await ctx.tracker()).archive(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })),
+  },
+  {
+    name: 'issues unarchive', summary: 'brings an archived issue back (Local tracker)', usage: '<id>', write: true, args: ['id'], flags: [],
+    run: async (ctx) => {
+      const result = await (await ctx.tracker()).unarchive(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })
+      // A call that changes nothing has no commit and says so in both the text and the JSON.
+      if (result.before !== result.after) return issueWrite(ctx, result)
+      const message = `${result.after.id} is not archived, so nothing changed`
+      return { data: { ...result, unchanged: true, message }, text: `${writeText(result, ctx)}\n${message}` }
+    },
   },
   {
     name: 'issues delete', summary: 'deletes an issue for good; archive keeps it', usage: '<id>', write: true, args: ['id'], flags: [],
@@ -2722,14 +2732,18 @@ async function runBulk(ctx) {
   const max = ctx.opt('max') === undefined ? DEFAULT_MAX : whole('max', ctx.opt('max'))
   if (max < 1 || max > HARD_MAX) throw usageError(`--max must be from 1 to ${HARD_MAX}`, 'Narrow the filter instead of raising --max')
 
+  // Only unarchive reads --archived: for every other change it stays an unknown option, as before.
+  if (kind !== 'unarchive' && ctx.flag('archived')) throw usageError('unknown option --archived: only bulk unarchive takes it', 'Run pmkit issues bulk --help')
   let filter = issueFilter(ctx)
   if (view !== undefined && Object.keys(filter).length > 0) throw usageError('issues bulk takes --view or filter flags, not both', 'Save the filter with pmkit views save, or drop --view')
-  if (view === undefined) checkBulkFilter(filter, 'the filter')
-  const found = view === undefined ? await tracker.searchIssues(filter) : await tracker.runView(view)
+  if (view === undefined) checkBulkFilter(filter, 'the filter', undefined, kind)
+  let found = view === undefined ? await tracker.searchIssues(filter) : await tracker.runView(view)
   if (view !== undefined) {
     filter = found.view.filter
-    checkBulkFilter(filter, `view ${view}`, view)
+    checkBulkFilter(filter, `view ${view}`, view, kind)
   }
+  // `archived` returns the live issues too; unarchive brings back the archived ones only, so the preview never lists a live issue.
+  if (kind === 'unarchive') found = { ...found, issues: found.issues.filter((issue) => issue.archived) }
   if (found.hasMore === true) throw usageError('the tracker has more matching issues than pmkit read, so the set is cut and nothing can be written from it', 'Narrow the filter')
   if (found.issues.length > max) {
     throw usageError(`the filter matches ${found.issues.length} issues, more than the ${max} one bulk change takes`, `Narrow the filter${max < HARD_MAX ? `, or raise --max up to ${HARD_MAX}` : ''}`)

@@ -594,6 +594,16 @@ export function createLocalTracker(root, {
     })
   }
 
+  /** The way back of `archive` (PMK-250): an issue that is not archived writes nothing. */
+  function unarchive(id, actor, { dryRun } = {}) {
+    requireWriter(actor)
+    return change(id, actor, { dryRun }, (issue, meta, before) => {
+      if (!before.archived) return []
+      issue.archived = false
+      return [{ ...meta, op: 'unarchive' }]
+    })
+  }
+
   const commentTexts = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((name) => name.endsWith('.md')).map((name) => fs.readFileSync(path.join(dir, name), 'utf8')) : [])
   const filesUnder = (dir) => fs.readdirSync(dir, { withFileTypes: true })
     .flatMap((entry) => (entry.isDirectory() ? filesUnder(path.join(dir, entry.name)) : [path.join(dir, entry.name)]))
@@ -2368,7 +2378,7 @@ export function createLocalTracker(root, {
     listDeliverables, getDeliverable, createDeliverable, deliverableProgress, publishStatusUpdate, listStatusUpdates,
     listMilestones, getMilestone, createMilestone, unfiledMilestones, unreadableRecords,
     listReleases, getRelease, createRelease, releaseIssues, markReleased,
-    getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, delegate, archive, delete: deleteIssue, restore, link, unlink, setParent,
+    getIssue, searchIssues, createIssue, updateIssue, moveToCategory, assign, delegate, archive, unarchive, delete: deleteIssue, restore, link, unlink, setParent,
     comment, resolveThread, listComments, getHistory, logTime, listTimeEntries, readDocument, createDocument, updateDocument, listDocuments,
     discover, capabilities, reindex, categoryOf, eventsByIssue, metricEvents, issuesBySprint,
     listCycles, currentCycle, cycleIssues, openCycle, closeCycle, moveToCycle, getCapacity, setCapacity, getDaysOff, updateCycleCapacity,

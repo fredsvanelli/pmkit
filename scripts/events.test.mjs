@@ -61,6 +61,11 @@ test('link and unlink edit the named list', () => {
   assert.deepEqual(replay(events), { title: 'A', status: 'todo', blocked_by: ['ISS-2'], archived: true })
 })
 
+test('an unarchive event drops archived again, so the replay equals the file and drift finds nothing', () => {
+  const events = [clean[0], { at: '2026-10-02T15:00:00Z', by: 'f', op: 'archive' }, { at: '2026-10-02T16:00:00Z', by: 'f', op: 'unarchive' }]
+  assert.deepEqual(replay(events), { title: 'A', status: 'todo' })
+})
+
 test('appendEvents writes LF lines with keys in order and skips undefined', () => {
   const file = path.join(tmp(), 'events.jsonl')
   appendEvents(file, [{ synthetic: true, to: 'done', op: 'move', by: 'f', at: 'T', from: undefined, field: 'status' }])

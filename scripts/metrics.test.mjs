@@ -283,6 +283,13 @@ test('aging leaves out an archived issue from its archive event', () => {
   assert.deepEqual(aging(events, { categoryOf, asOf: AS_OF }).map((i) => [i.issue, i.days]), [['ISS-2', 9]])
 })
 
+test('aging counts an issue again after an unarchive event', () => {
+  const events = {
+    'ISS-1': [move('2026-10-01T12:00:00Z', 'doing'), { at: '2026-10-05T10:00:00Z', by: 'fred', op: 'archive' }, { at: '2026-10-06T10:00:00Z', by: 'fred', op: 'unarchive' }],
+  }
+  assert.deepEqual(aging(events, { categoryOf, asOf: AS_OF }).map((i) => i.issue), ['ISS-1'])
+})
+
 test('aging on the team fixture gives the spec numbers', () => {
   const tracker = createLocalTracker(makeRepo('team'), { now: fixedNow(), random: () => 0 })
   const result = aging(tracker.eventsByIssue(), { categoryOf: tracker.categoryOf, asOf: '2026-10-23T12:00:00Z' })

@@ -11,6 +11,10 @@ test('resolveThread is a contract operation next to comment', () => {
   assert.equal(TRACKER_OPERATIONS.indexOf('resolveThread'), TRACKER_OPERATIONS.indexOf('comment') + 1)
 })
 
+test('unarchive is a contract operation after delete', () => {
+  assert.equal(TRACKER_OPERATIONS.indexOf('unarchive'), TRACKER_OPERATIONS.indexOf('delete') + 1)
+})
+
 test('delete is a contract operation next to archive', () => {
   assert.equal(TRACKER_OPERATIONS.indexOf('delete'), TRACKER_OPERATIONS.indexOf('archive') + 1)
 })

@@ -95,6 +95,8 @@ export function replay(events) {
         ? (list.includes(event.to) ? list : [...list, event.to])
         : list.filter((item) => item !== event.to)
     } else if (event.op === 'archive') state.archived = true
+    // An unarchived issue has no `archived` key in its file, so the replay drops it or the next write reads the file as a hand edit.
+    else if (event.op === 'unarchive') delete state.archived
   }
   return state
 }

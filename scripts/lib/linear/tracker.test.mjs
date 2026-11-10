@@ -1440,6 +1440,14 @@ test('restore brings a trashed issue back: a dry run sends no mutation, the real
   assert.equal((await linear.getIssue('ACME-3')).title, 'Three')
 })
 
+// PMK-250: unarchive is Local only.
+test('unarchive is NOT_SUPPORTED on Linear and sends no mutation', async () => {
+  const { tracker: linear, fake, fetch } = linearSetup()
+  three(fake)
+  await assert.rejects(linear.unarchive('ACME-1', 'user-1'), { code: 'NOT_SUPPORTED' })
+  assert.equal(mutationsIn(fetch), 0)
+})
+
 test('restore of an issue that is not in the trash is INVALID_INPUT and sends no mutation', async () => {
   const { tracker: linear, fake, fetch } = linearSetup()
   three(fake)
