@@ -128,9 +128,9 @@ export const DOCUMENT_QUERY = `query PmkitDocument($filter: DocumentFilter) {
   documents(filter: $filter, first: 1) { nodes { id slugId title content ${PROJECT_REF} } }
 }`
 
-/** The documents that match a filter, with slug, title and project, for a list. */
+/** The documents that match a filter, with slug and title, for a list. */
 export const DOCUMENTS_QUERY = `query PmkitDocuments($filter: DocumentFilter, $first: Int!, $after: String) {
-  documents(filter: $filter, first: $first, after: $after) { nodes { slugId title project { id } } ${PAGE_INFO} }
+  documents(filter: $filter, first: $first, after: $after) { nodes { slugId title } ${PAGE_INFO} }
 }`
 
 /** The minimal fields progress counts: the state type for the category, the estimate and the parent for the chain. */

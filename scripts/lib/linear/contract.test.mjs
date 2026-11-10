@@ -39,6 +39,14 @@ function linearContract({ cycles = [ACTIVE, PLANNED] } = {}) {
   }
   return {
     tracker, env, fake, root, today: TODAY, actor: 'user-1', cycles: { active: pick('active'), planned: pick('planned') },
+    // Two documents, out of order, so the list case has something to check: the sandbox of the live run may hold none.
+    // They are seeded on demand, because a project of their own would show in the epic tests.
+    seedDocuments: () => {
+      const home = projects.seed({ name: 'Docs home', teamIds: [ACME_TEAM.id] })
+      projects.seedDocument(home.id, { slugId: 'bbbbbbbbbbbb', title: 'B', content: '' })
+      projects.seedDocument(home.id, { slugId: 'aaaaaaaaaaaa', title: 'A', content: '' })
+      return ['aaaaaaaaaaaa', 'bbbbbbbbbbbb']
+    },
     teardown: () => fs.rmSync(root, { recursive: true, force: true }),
   }
 }

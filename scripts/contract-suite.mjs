@@ -12,6 +12,7 @@
 // of its history. The history test then still requires create before comment and the updated value, but no 'update' entry.
 // The suite awaits every operation, so an adapter may return values or promises.
 //
+// setup() may name `seedDocuments()`, which adds documents to the tracker and returns their paths, so the list case cannot pass on an empty list.
 // setup() may also return `cycles: { active(), planned() }`, two async functions that return a cycle (an object with `id`, and
 // `start` and `end` when a test needs them) or null. The tests that need a cycle but do not open or close one ask for it with
 // `cycle('active')` or `cycle('planned')`. Without a provider the helper opens the cycle with openCycle, as the Local tracker
@@ -519,18 +520,22 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       await rejects(() => tracker.createDocument('../escape.md', 'x', actor), 'INVALID_INPUT')
     })
 
-    it('lists documents with a string path each, sorted', ['documents'], async ({ tracker }) => {
+    it('lists the known documents with a string path each, sorted', ['documents'], async ({ tracker, seedDocuments }) => {
+      const documents = seedDocuments?.() ?? []
       const docs = await tracker.listDocuments()
       assert.ok(Array.isArray(docs))
       assert.ok(docs.every((doc) => typeof doc.path === 'string'))
       const paths = docs.map((doc) => doc.path)
       assert.deepEqual(paths, [...paths].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)))
+      for (const known of documents) assert.ok(paths.includes(known), `${known} is listed`)
       assert.ok(!paths.includes(DOC_PATH))
     })
 
-    it('lists a created document', ['documents', 'document-writes'], async ({ tracker, actor }) => {
-      await tracker.createDocument(DOC_PATH, '# Notes\n', actor)
-      assert.ok((await tracker.listDocuments()).some((doc) => doc.path === DOC_PATH))
+    it('lists created documents in path order', ['documents', 'document-writes'], async ({ tracker, actor }) => {
+      await tracker.createDocument('contract/b.md', '# B\n', actor)
+      await tracker.createDocument('contract/a.md', '# A\n', actor)
+      const paths = (await tracker.listDocuments()).map((doc) => doc.path)
+      assert.ok(paths.indexOf('contract/a.md') !== -1 && paths.indexOf('contract/a.md') < paths.indexOf('contract/b.md'))
     })
 
     it('every dry run changes nothing that a following read can see', FAMILIES, async ({ tracker, actor, today, assignee, agent }) => {
