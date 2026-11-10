@@ -2372,33 +2372,12 @@ async function runBulk(ctx) {
 
 const AGENT_CATEGORIES = ['triage', 'backlog', 'todo', 'in_progress', 'in_review']
 
-/** The delegation and the pull request state of every open issue assigned to an agent member. Writes nothing. */
-async function runTrackAgents(ctx) {
-  const agent = ctx.opt('agent') === undefined ? null : agentFilter(ctx.opt('agent'))
-  const tracker = await ctx.tracker()
-  const entry = (await tracker.capabilities()).capabilities.find((c) => c.id === 'agent_delegation')
-  if (entry?.path === 'absent') throw new PmkitError('NOT_SUPPORTED', 'this tracker has no agent delegation, so there are no agent issues to track', entry.enableHint)
-  // Linear delegates natively: the agent is the issue's delegate, not an agent: assignee, so this list would miss every agent issue.
-  if (entry?.detail?.unsupported?.includes('issues track-agents')) {
-    throw new PmkitError('NOT_SUPPORTED', 'this tracker hands issues to agents natively, and track-agents does not read its delegates yet', 'Open the issues delegated to agents in the tracker itself')
-  }
-  const found = await tracker.searchIssues({ categories: AGENT_CATEGORIES })
-  const warnings = problemWarnings(found.problems)
-  const notes = []
-  let incomplete = found.problems.length > 0
-  if (found.hasMore === true) {
-    incomplete = true
-    warnings.push('the issue read was cut before the end, so the list may miss agent issues')
-  }
-  let host = null
-  try {
-    host = ctx.host()
-  } catch (error) {
-    if (!isPmkitError(error) || error.code !== 'NOT_SUPPORTED') throw error
-    notes.push('git_host is none, so the list has no pull request state')
-  }
-  // The branch protection and the rules of a base do not change between issues, so each is read once per base. A refusal (403 or
-  // 404) is as stable as an answer, so it is kept and thrown again; a failure that may pass (a 502, a rate limit) is not kept.
+/**
+ * The host with the branch protection and the rules of a base read once per base. They do not change between pull requests.
+ * A refusal (403 or 404) is as stable as an answer, so it is kept and thrown again; a failure that may pass (a 502, a rate
+ * limit) is not kept.
+ */
+function blockerReadCache(host) {
   const protections = new Map()
   const rules = new Map()
   const once = (cache, read) => (base) => {
@@ -2414,24 +2393,58 @@ async function runTrackAgents(ctx) {
     if (kept.error) throw kept.error
     return kept.value
   }
-  const cachedHost = host === null ? null : Object.assign(Object.create(host), {
+  return Object.assign(Object.create(host), {
     branchProtection: once(protections, (base) => host.branchProtection(base)),
     branchRules: once(rules, (base) => host.branchRules(base)),
   })
+}
+
+/** The delegation of an issue from its comments. A comment read that fails marks the issue `unknown` with a problem; NOT_CONFIGURED and AUTH stop the command. */
+async function readDelegation(tracker, id, holder) {
+  try {
+    const comments = await tracker.listComments(id)
+    return { delegation: delegationOf(comments, holder, { incomplete: comments.truncated === true }), problem: null }
+  } catch (error) {
+    // A comment file that does not parse throws FrontmatterError, which is not a PmkitError: it marks this issue, never the whole command.
+    const broken = error instanceof FrontmatterError
+    if (!broken && (!isPmkitError(error) || error.code === 'NOT_CONFIGURED' || error.code === 'AUTH')) throw error
+    return { delegation: { state: 'unknown', agent: null, by: null, comment: null, at: null }, problem: { code: broken ? 'INVALID_INPUT' : error.code, message: `the comments could not be read: ${error.message}` } }
+  }
+}
+
+
+/** The delegation and the pull request state of every open issue assigned to an agent member. Writes nothing. */
+async function runTrackAgents(ctx) {
+  const agent = ctx.opt('agent') === undefined ? null : agentFilter(ctx.opt('agent'))
+  const tracker = await ctx.tracker()
+  const entry = (await tracker.capabilities()).capabilities.find((c) => c.id === 'agent_delegation')
+  if (entry?.path === 'absent') throw new PmkitError('NOT_SUPPORTED', 'this tracker has no agent delegation, so there are no agent issues to track', entry.enableHint)
+  // Linear delegates natively: the agent is the issue's delegate, not an agent: assignee, so the issue list would miss every agent issue.
+  // The pull requests of bot authors stand in for it (PMK-215).
+  if (entry?.detail?.unsupported?.includes('issues track-agents')) return runTrackAgentPullRequests(ctx, tracker, agent)
+  const found = await tracker.searchIssues({ categories: AGENT_CATEGORIES })
+  const warnings = problemWarnings(found.problems)
+  const notes = []
+  let incomplete = found.problems.length > 0
+  if (found.hasMore === true) {
+    incomplete = true
+    warnings.push('the issue read was cut before the end, so the list may miss agent issues')
+  }
+  let host = null
+  try {
+    host = ctx.host()
+  } catch (error) {
+    if (!isPmkitError(error) || error.code !== 'NOT_SUPPORTED') throw error
+    notes.push('git_host is none, so the list has no pull request state')
+  }
+  const cachedHost = host === null ? null : blockerReadCache(host)
   let rateLimited = false
   const rows = []
   for (const issue of found.issues.filter((item) => AGENT_ID.test(item.assignee ?? '') && (agent === null || item.assignee.toLowerCase() === `agent:${agent}`))) {
     const row = { id: issue.id, title: issue.title, status: issue.status?.name ?? null, assignee: issue.assignee, branch: issue.branch ?? null, delegation: null, pr: null, problems: [] }
-    try {
-      const comments = await tracker.listComments(issue.id)
-      row.delegation = delegationOf(comments, issue.assignee, { incomplete: comments.truncated === true })
-    } catch (error) {
-      // A comment file that does not parse throws FrontmatterError, which is not a PmkitError: it marks this issue, never the whole command.
-      const broken = error instanceof FrontmatterError
-      if (!broken && (!isPmkitError(error) || error.code === 'NOT_CONFIGURED' || error.code === 'AUTH')) throw error
-      row.delegation = { state: 'unknown', agent: null, by: null, comment: null, at: null }
-      row.problems.push({ code: broken ? 'INVALID_INPUT' : error.code, message: `the comments could not be read: ${error.message}` })
-    }
+    const read = await readDelegation(tracker, issue.id, issue.assignee)
+    row.delegation = read.delegation
+    if (read.problem) row.problems.push(read.problem)
     if (host !== null) {
       if (!row.branch) row.pr = { state: 'no_branch' }
       else if (rateLimited) row.pr = { state: 'unknown', code: 'RATE_LIMITED', message: 'not read: GitHub rate limit reached earlier in this run' }
@@ -2469,6 +2482,88 @@ async function runTrackAgents(ctx) {
     ? (incomplete ? `no agent issue${agent === null ? '' : ` for ${agent}`} was found, but ${incompleteLine}, and an agent issue may be missing` : agent === null ? 'no open issue is assigned to an agent' : `no open issue is assigned to agent ${agent}`)
     : table(header, rows.map((row) => [row.id, row.assignee, row.status, row.delegation.state === 'current' ? `by ${row.delegation.by}` : row.delegation.state === 'stale' ? `stale (${row.delegation.agent})` : row.delegation.state, row.branch ?? '', prText(row)]))
   return { data: { source: 'issues', agent, issues: rows, incomplete, hasMore: found.hasMore === true, warnings, notes }, text, warnings, notes }
+}
+
+/**
+ * `issues track-agents` where the tracker delegates natively (Linear): the open pull requests whose author is a bot, each matched
+ * to the issue with the same branch. Nothing is concluded from a read that may be cut or that failed: the list says so.
+ */
+async function runTrackAgentPullRequests(ctx, tracker, agent) {
+  let host
+  try {
+    host = ctx.host()
+  } catch (error) {
+    if (!isPmkitError(error) || error.code !== 'NOT_SUPPORTED') throw error
+    throw new PmkitError('NOT_SUPPORTED', 'this tracker hands issues to agents natively and git_host is none, so there is no pull request to find an agent by', 'Set git_host in .pmkit/config.yaml (run /pmkit:setup) to find the pull requests of agent authors')
+  }
+  const warnings = []
+  const causes = []
+  let list = []
+  try {
+    list = host.listPullRequests()
+    if (list.length === 200) causes.push('only the 200 most recently created open pull requests were read')
+  } catch (error) {
+    if (!isPmkitError(error) || !['RATE_LIMITED', 'UPSTREAM'].includes(error.code)) throw error
+    causes.push(`the open pull requests could not be read: ${error.message}`)
+  }
+  const mine = list.filter((item) => {
+    const name = authorAgent(item)
+    return name !== null && (agent === null || name === agent)
+  })
+  let byBranch = new Map()
+  let issuesWhole = true
+  if (mine.length > 0) {
+    const found = await tracker.searchIssues({ categories: AGENT_CATEGORIES })
+    issuesWhole = found.problems.length === 0 && found.hasMore !== true
+    warnings.push(...problemWarnings(found.problems))
+    if (found.problems.length > 0) causes.push('an issue file did not parse, so a pull request may have an issue that was not matched')
+    if (found.hasMore === true) causes.push('the issue read was cut, so a pull request may have an issue that was not matched')
+    byBranch = new Map(found.issues.filter((issue) => issue.branch).map((issue) => [issue.branch, issue]))
+  }
+  const cachedHost = blockerReadCache(host)
+  let rateLimited = false
+  const rows = []
+  for (const item of mine) {
+    const issue = byBranch.get(item.headRefName)
+    const row = {
+      id: issue?.id ?? null, title: issue?.title ?? null, status: issue?.status?.name ?? null, delegate: issue?.delegate ?? null,
+      number: item.number, author: item.author.login, agent: authorAgent(item), branch: item.headRefName, delegation: null, issueMatch: issue ? 'found' : issuesWhole ? 'none' : 'unknown', pr: null, problems: [],
+    }
+    if (issue) {
+      const read = await readDelegation(tracker, issue.id, issue.delegate ?? null)
+      row.delegation = read.delegation
+      if (read.problem) row.problems.push(read.problem)
+    }
+    if (rateLimited) row.pr = { state: 'unknown', code: 'RATE_LIMITED', message: 'not read: GitHub rate limit reached earlier in this run' }
+    else {
+      try {
+        const pr = cachedHost.getPullRequest({ number: item.number }, { detail: true })
+        row.pr = pr ? prSummary(pr, collectBlockers(cachedHost, pr)) : { state: 'unknown', code: 'UPSTREAM', message: `pull request #${item.number} was listed but could not be read` }
+      } catch (error) {
+        if (!isPmkitError(error) || error.code === 'NOT_CONFIGURED' || error.code === 'AUTH') throw error
+        row.pr = { state: 'unknown', code: error.code, message: error.message }
+        row.problems.push({ code: error.code, message: `the pull request could not be read: ${error.message}${error.code === 'RATE_LIMITED' ? '; the pull requests after this one were not read' : ''}` })
+        if (error.code === 'RATE_LIMITED') rateLimited = true
+      }
+    }
+    for (const problem of row.problems) warnings.push(`${item.headRefName}: ${problem.message}`)
+    rows.push(row)
+  }
+  if (rows.some((row) => row.delegation?.state === 'unknown')) causes.push('the comments of an issue could not be read or were cut')
+  if (rows.some((row) => row.pr?.state === 'unknown')) causes.push('a pull request could not be read from GitHub')
+  if (rows.some((row) => row.pr?.blocked === null || (row.pr?.unchecked ?? []).length > 0)) causes.push('a pull request was not ready (GitHub had not computed the merge state) or a blocker read was refused')
+  const incomplete = causes.length > 0
+  const incompleteLine = `the list is incomplete: ${causes.join('; ')}, so what is marked unknown or not verified is not confirmed`
+  if (incomplete) warnings.push(incompleteLine)
+  const notes = ['this tracker delegates natively: the list is the open pull requests with a bot author, matched to issues by branch, so an agent whose pull request is by a person is not listed']
+  const forAgent = agent === null ? '' : ` for ${agent}`
+  const header = ['Pull request', 'Agent', 'Issue', 'Delegation', 'Branch', 'State']
+  const issueCell = (row) => row.id ?? (row.issueMatch === 'unknown' ? 'issue not verified' : 'no issue with this branch')
+  const delegationCell = (row) => row.delegation === null ? '' : row.delegation.state === 'current' ? `by ${row.delegation.by}` : row.delegation.state === 'stale' ? `stale (${row.delegation.agent})` : row.delegation.state
+  const text = rows.length === 0
+    ? (incomplete ? `no agent pull request${forAgent} was found, but ${incompleteLine}, and an agent pull request may be missing` : agent === null ? 'no open pull request has an agent author' : `no agent pull request${forAgent} was found`)
+    : table(header, rows.map((row) => [`#${row.number}`, row.author, issueCell(row), delegationCell(row), row.branch, prText(row)]))
+  return { data: { source: 'pull_requests', agent, issues: rows, incomplete, hasMore: false, warnings, notes }, text, warnings, notes }
 }
 
 const LOAD_CATEGORIES = ['todo', 'in_progress', 'in_review']
