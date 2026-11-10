@@ -2,14 +2,14 @@
 id: PMK-208
 title: Improve alerts list
 type: feature
-status: in_progress
+status: in_review
 priority: low
 estimate: 5
 assignee: fred
 related: [PMK-48]
 branch: pmk-208-improve-alerts-list
 created: 2026-11-08T20:37:22.344Z
-updated: 2026-11-10T02:41:29Z
+updated: 2026-11-10T02:42:05Z
 ---
 
 ## Description
