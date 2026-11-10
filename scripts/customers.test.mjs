@@ -427,7 +427,8 @@ test('updateRequest with the same text or a dry run writes nothing, and refuses 
 // PMK-221: an accept that fails after the create keeps the issue and names both ids.
 test('acceptIntoNewIssue names the new issue and the open request when the accept fails after the create', async () => {
   const { acceptIntoNewIssue } = await import('./pmkit.mjs')
-  const { root, write, tracker } = setup()
+  const { root, dir, write, tracker } = setup()
+  fs.rmSync(path.join(dir('issues'), 'ISS-3Q6T'), { recursive: true }) // the team fixture's conflicted issue, which no search can read
   write('requests', 'REQ-1.md', '---\ntitle: CSV\n---\n')
   const failing = { ...tracker, acceptRequest: () => { throw Object.assign(new Error('disk full'), { code: 'UPSTREAM' }) } }
   await assert.rejects(acceptIntoNewIssue(failing, 'REQ-1', 'fred'), (error) => {
@@ -439,4 +440,52 @@ test('acceptIntoNewIssue names the new issue and the open request when the accep
   })
   assert.equal(tracker.getRequest('REQ-1').state, 'open')
   assert.ok(fs.readdirSync(path.join(root, '.issues', 'issues')).length > 0)
+})
+
+// PMK-221 review B1: any error of the accept, an errno one too, keeps both ids and the partial commit.
+test('acceptIntoNewIssue keeps both ids when the accept fails with a system error, and keeps its cause', async () => {
+  const { acceptIntoNewIssue } = await import('./pmkit.mjs')
+  const { dir, write, tracker } = setup()
+  fs.rmSync(path.join(dir('issues'), 'ISS-3Q6T'), { recursive: true }) // the team fixture's conflicted issue, which no search can read
+  write('requests', 'REQ-1.md', '---\ntitle: CSV\n---\n')
+  const errno = Object.assign(new Error('EACCES: permission denied, open REQ-1.md'), { code: 'EACCES' })
+  const failing = { ...tracker, acceptRequest: () => { throw errno } }
+  await assert.rejects(acceptIntoNewIssue(failing, 'REQ-1', 'fred'), (error) => {
+    assert.equal(error.code, 'UPSTREAM')
+    assert.match(error.message, /^issue ISS-\d+ was created, but request REQ-1 was not accepted: EACCES: permission denied/)
+    assert.match(error.partialCommit, /^REQ-1 ISS-\d+$/)
+    assert.equal(error.cause, errno)
+    return true
+  })
+})
+
+// PMK-221 review B2: a retry after a failed accept finds the issue the first run made and never creates a second one.
+test('acceptIntoNewIssue refuses with CONFLICT when an issue already names the request, and writes nothing', async () => {
+  const { acceptIntoNewIssue } = await import('./pmkit.mjs')
+  const { root, dir, write, tracker } = setup()
+  fs.rmSync(path.join(dir('issues'), 'ISS-3Q6T'), { recursive: true }) // the team fixture's conflicted issue, which no search can read
+  write('requests', 'REQ-1.md', '---\ntitle: CSV\n---\n')
+  const orphan = tracker.createIssue({ title: 'CSV', description: 'Asked by: support\nRequest: REQ-1' }, 'fred').after
+  tracker.createIssue({ title: 'Other', description: 'Request: REQ-10' }, 'fred')
+  const hash = hashTree(root, ['.issues/.cache'])
+  await assert.rejects(acceptIntoNewIssue(tracker, 'req-1', 'fred'), (error) => {
+    assert.equal(error.code, 'CONFLICT')
+    assert.match(error.message, new RegExp(`issue ${orphan.id} already names request REQ-1`))
+    assert.equal(error.nextStep, `pmkit requests accept REQ-1 ${orphan.id}`)
+    return true
+  })
+  assert.deepEqual(hashTree(root, ['.issues/.cache']), hash)
+})
+
+test('acceptIntoNewIssue refuses when the issues that could name the request cannot all be read', async () => {
+  const { acceptIntoNewIssue } = await import('./pmkit.mjs')
+  const { root, dir, write, tracker } = setup()
+  fs.rmSync(path.join(dir('issues'), 'ISS-3Q6T'), { recursive: true }) // the team fixture's conflicted issue, which no search can read
+  write('requests', 'REQ-1.md', '---\ntitle: CSV\n---\n')
+  write('issues/ISS-9ZZZ', 'issue.md', '---\ntitle: [\n---\n')
+  const hash = hashTree(root, ['.issues/.cache'])
+  await assert.rejects(acceptIntoNewIssue(tracker, 'REQ-1', 'fred'), (error) => error.code === 'INVALID_INPUT' && /ISS-9ZZZ/.test(error.message))
+  const cut = { ...tracker, searchIssues: async () => ({ issues: [], problems: [], hasMore: true }) }
+  await assert.rejects(acceptIntoNewIssue(cut, 'REQ-1', 'fred'), (error) => error.code === 'INVALID_INPUT' && /could not all be read/.test(error.message))
+  assert.deepEqual(hashTree(root, ['.issues/.cache']), hash)
 })

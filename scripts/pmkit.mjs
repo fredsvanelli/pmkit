@@ -419,6 +419,9 @@ export async function acceptIntoNewIssue(tracker, id, actor, { dryRun = false } 
   if (request.state === 'accepted') {
     throw new PmkitError('CONFLICT', `request ${request.id} is already accepted into ${request.target?.id}`, `pmkit requests accept ${request.id} <issue> moves it to another issue`)
   }
+  // A retry after an accept that failed must not make a second issue: look for an issue that already names the request.
+  const named = await issueNamingRequest(tracker, request.id)
+  if (named) throw new PmkitError('CONFLICT', `issue ${named} already names request ${request.id}`, `pmkit requests accept ${request.id} ${named}`)
   const asker = request.customer ? (request.customer.name ?? request.customer.id) : request.from
   const description = [request.body, [asker ? `Asked by: ${asker}` : null, `Request: ${request.id}`].filter(Boolean).join('\n')].filter(Boolean).join('\n\n')
   const issue = await tracker.createIssue({ title: request.title, description }, actor, { dryRun })
@@ -430,14 +433,36 @@ export async function acceptIntoNewIssue(tracker, id, actor, { dryRun = false } 
     const accepted = await tracker.acceptRequest(request.id, issue.after.id, actor)
     return { issue, request: { before: accepted.before, after: accepted.after }, problems: accepted.problems ?? problems }
   } catch (error) {
+    // Any error, a system one (EACCES, ENOSPC) or a bug too, names both ids and lets auto_commit keep the issue.
     const failure = new PmkitError(
-      error.code ?? 'UPSTREAM',
+      isPmkitError(error) ? error.code : 'UPSTREAM',
       `issue ${issue.after.id} was created, but request ${request.id} was not accepted: ${error.message}; the request is still ${request.state}`,
       `pmkit requests accept ${request.id} ${issue.after.id}`,
     )
+    failure.cause = error
     failure.partialCommit = `${request.id} ${issue.after.id}`
     throw failure
   }
+}
+
+/**
+ * The id of an issue whose description has the line `Request: <id>`, archived ones included, or null. A read that is cut or
+ * skips a file that does not parse cannot rule such an issue out, so it refuses instead of answering null.
+ */
+async function issueNamingRequest(tracker, id) {
+  const { issues, problems = [], hasMore = false } = await tracker.searchIssues({ text: `Request: ${id}`, archived: true })
+  const line = new RegExp(`^Request: ${id}$`, 'm')
+  const found = issues.find((issue) => line.test(issue.description ?? ''))
+  if (found) return found.id
+  if (problems.length > 0 || hasMore) {
+    const unread = problems.map((problem) => problem.id).filter(Boolean)
+    throw new PmkitError(
+      'INVALID_INPUT',
+      `the issues could not all be read${unread.length > 0 ? ` (${unread.join(', ')})` : ''}, so an issue made for request ${id} by an earlier run cannot be ruled out`,
+      'Run pmkit validate, or accept the request into an existing issue with pmkit requests accept <id> <issue>',
+    )
+  }
+  return null
 }
 
 /** A table of requests in the order given: id, title, state, customer, where it came from and the issue. */

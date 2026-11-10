@@ -2353,24 +2353,24 @@ test('requests update edits the title and the body from files and refuses --titl
 })
 
 test('requests accept --create creates the issue from the request and accepts the request into it (PMK-221)', () => {
-  const root = makeRepo('team')
+  const root = makeRepo('no-sprints')
   const customer = json(root, ['customers', 'create', '--name', 'Acme']).after
   const body = path.join(tempDir('pmkit-req-'), 'body.md')
   fs.writeFileSync(body, 'Columns out of order.\n')
   const request = json(root, ['requests', 'create', '--title', 'CSV order', '--customer', customer.id, '--body-file', body]).after
-  const hash = hashTree(root)
+  const hash = hashTree(root, ['.issues/.cache'])
   const dry = run(root, ['requests', 'accept', request.id, '--create', '--dry-run', '--json'])
   assert.equal(dry.status, 0, dry.stderr)
   const preview = JSON.parse(dry.stdout)
   assert.deepEqual([preview.issue.before, preview.issue.after.title, preview.request.after.state, preview.request.after.target.id], [null, 'CSV order', 'accepted', preview.issue.after.id])
   assert.match(dry.stderr, /note: the issue ID is assigned when written/)
-  assert.deepEqual(hashTree(root), hash)
+  assert.deepEqual(hashTree(root, ['.issues/.cache']), hash)
   const result = json(root, ['requests', 'accept', request.id, '--create'])
   const issue = json(root, ['issues', 'get', result.issue.after.id])
   assert.equal(issue.title, 'CSV order')
   assert.equal(issue.description, `Columns out of order.\n\nAsked by: Acme\nRequest: ${request.id}`)
   assert.deepEqual([result.request.before.state, result.request.after.state, result.request.after.target.id], ['open', 'accepted', issue.id])
-  assert.equal(json(root, ['demand', 'list']).signals[0].issue.id, issue.id)
+  assert.ok(json(root, ['demand', 'list']).signals.some((signal) => signal.issue.id === issue.id))
   const again = errorOf(run(root, ['requests', 'accept', request.id, '--create', '--json']))
   assert.equal(again.code, 'CONFLICT')
   assert.match(again.message, new RegExp(`already accepted into ${issue.id}`))
@@ -2379,7 +2379,7 @@ test('requests accept --create creates the issue from the request and accepts th
 })
 
 test('requests accept --create leaves out Asked by when the request names nobody, and names a from or a missing customer id', () => {
-  const root = makeRepo('team')
+  const root = makeRepo('no-sprints')
   const bare = json(root, ['requests', 'create', '--title', 'Bare']).after
   assert.equal(json(root, ['issues', 'get', json(root, ['requests', 'accept', bare.id, '--create']).issue.after.id]).description, `Request: ${bare.id}`)
   const support = json(root, ['requests', 'create', '--title', 'From support', '--from', 'support']).after
