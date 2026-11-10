@@ -50,6 +50,7 @@ import { boardData, roadmapData, sprintData } from './lib/render-data.mjs'
 import { redact } from './lib/redact.mjs'
 import { shareDone, topLevelRollup } from './lib/initiatives.mjs'
 import { tailLines } from './lib/tail-lines.mjs'
+import { rightLines, splitDiff } from './lib/diff-files.mjs'
 
 const TEMPLATES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates')
 const usageError = (message, nextStep = 'node scripts/pmkit.mjs --help') => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -1652,10 +1653,12 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'pr diff', summary: 'diff of the pull request of a branch, or the local diff against the base branch when it has none', usage: '[--branch b] [--base b] [--max-lines n]', args: [], flags: ['branch', 'base', 'max-lines'],
+    name: 'pr diff', summary: 'diff of the pull request of a branch, or the local diff against the base branch when it has none', usage: '[--branch b] [--base b] [--max-lines n] [--file path]', args: [], flags: ['branch', 'base', 'max-lines', 'file'],
     run: async (ctx) => {
       const maxLines = ctx.opt('max-lines') === undefined ? 2000 : whole('max-lines', ctx.opt('max-lines'))
       if (maxLines < 1) throw usageError('--max-lines must be at least 1')
+      const only = ctx.opt('file')
+      if (only === '') throw usageError('--file must not be empty', 'Pass a path from the files of pr diff --json')
       const requested = ctx.opt('base')
       if (requested !== undefined && (requested === '' || requested.startsWith('-'))) throw new PmkitError('INVALID_INPUT', `base "${requested}" is not a valid branch name`, 'Use a branch name that does not start with -')
       const host = ctx.host()
@@ -1731,12 +1734,26 @@ export const COMMANDS = [
       if (source === 'pull_request' && tree?.uncommitted) notes.push(`${branch} has uncommitted changes, so the pull request diff does not include them`)
       if (tree?.untracked > 0) notes.push(`${tree.untracked} untracked ${tree.untracked === 1 ? 'file is' : 'files are'} not in the diff`)
       const base = local?.base ?? null
+      // A cut diff is read again file by file: --file keeps the sections of one path, and the cut then applies to that file.
+      let sections = splitDiff(full)
+      if (only !== undefined) {
+        sections = sections.filter((section) => section.path === only)
+        if (sections.length === 0) throw new PmkitError('INVALID_INPUT', `${only} is not in the diff of ${branch}${incomplete ? ', which is incomplete' : ''}`, 'Pass a path from the files of pr diff --json')
+        full = sections.map((section) => section.text).join('')
+      }
+      const lineCount = (text) => (text === '' ? 0 : text.replace(/\n$/, '').split('\n').length)
+      let seen = 0
+      const files = sections.map((section) => {
+        const lines = lineCount(section.text)
+        seen += lines
+        return { path: section.path, lines, cut: seen > maxLines }
+      })
       const all = full === '' ? [] : full.replace(/\n$/, '').split('\n')
       const truncated = all.length > maxLines
       const diff = truncated ? `${all.slice(0, maxLines).join('\n')}\n` : full
-      const size = truncated ? `first ${maxLines} of ${all.length} lines` : `${all.length} lines`
+      const size = `${only === undefined ? '' : `${only}, `}${truncated ? `first ${maxLines} of ${all.length} lines` : `${all.length} lines`}`
       const head = source === 'pull_request' ? `pull request #${pr.number}, ${size}` : `local diff of ${branch} against ${base}, ${size}`
-      return { data: { branch, source, pr: source === 'pull_request' ? pr : null, base, uncommitted: tree?.uncommitted ?? false, uncommittedIncluded: local?.uncommitted ?? false, untracked: tree?.untracked ?? 0, incomplete, diff, truncated, lines: all.length }, text: `${head}\n${diff}`, notes: [...notes, ...(await capabilityNotesOrNone(ctx))] }
+      return { data: { branch, source, pr: source === 'pull_request' ? pr : null, base, uncommitted: tree?.uncommitted ?? false, uncommittedIncluded: local?.uncommitted ?? false, untracked: tree?.untracked ?? 0, incomplete, diff, truncated, lines: all.length, file: only ?? null, files }, text: `${head}\n${diff}`, notes: [...notes, ...(await capabilityNotesOrNone(ctx))] }
     },
   },
   {

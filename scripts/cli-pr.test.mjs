@@ -515,7 +515,7 @@ test('pr diff returns the pull request diff when the branch has a pull request',
     'pr diff 7 --color never': { stdout: 'diff --git a/a b/a\n+x\n' },
   })
   const data = await callJson(root, envWith(gh), ['pr', 'diff', '--branch', 'feat'])
-  assert.deepEqual(data, { branch: 'feat', source: 'pull_request', pr: JSON.parse(prJson({ number: 7 })), base: null, uncommitted: false, uncommittedIncluded: false, untracked: 0, incomplete: false, diff: 'diff --git a/a b/a\n+x\n', truncated: false, lines: 2 })
+  assert.deepEqual(data, { branch: 'feat', source: 'pull_request', pr: JSON.parse(prJson({ number: 7 })), base: null, uncommitted: false, uncommittedIncluded: false, untracked: 0, incomplete: false, diff: 'diff --git a/a b/a\n+x\n', truncated: false, lines: 2, file: null, files: [{ path: 'a', lines: 2, cut: false }] })
   const text = (await call(root, envWith(gh), ['pr', 'diff', '--branch', 'feat'])).stdout
   assert.match(text, /^pull request #7, 2 lines\ndiff --git a\/a b\/a\n\+x\n/)
 })
@@ -619,6 +619,30 @@ test('pr diff keeps the first --max-lines lines and says it cut the rest', async
   assert.equal(data.lines, 10)
   assert.equal(data.diff, 'line 0\nline 1\nline 2\n')
   assert.match((await call(root, envWith(gh), ['pr', 'diff', '--branch', 'feat', '--max-lines', '3'])).stdout, /^pull request #7, first 3 of 10 lines\n/)
+})
+
+const TWO_FILES = 'diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1,2 @@\n x\n+y\ndiff --git a/b c.txt b/b c.txt\n--- a/b c.txt\n+++ b/b c.txt\n@@ -1 +1,3 @@\n x\n+y\n+z\n'
+
+test('pr diff lists its files and marks the ones the cut reaches', async () => {
+  const root = teamRepo()
+  const gh = fakeGh({ [view('feat')]: { stdout: prJson({ number: 7 }) }, 'pr diff 7 --color never': { stdout: TWO_FILES } })
+  const whole = await callJson(root, envWith(gh), ['pr', 'diff', '--branch', 'feat'])
+  assert.deepEqual(whole.files, [{ path: 'a.txt', lines: 6, cut: false }, { path: 'b c.txt', lines: 7, cut: false }])
+  const cut = await callJson(root, envWith(gh), ['pr', 'diff', '--branch', 'feat', '--max-lines', '8'])
+  assert.deepEqual(cut.files, [{ path: 'a.txt', lines: 6, cut: false }, { path: 'b c.txt', lines: 7, cut: true }])
+})
+
+test('pr diff --file reads one file of the diff, and refuses a file the diff does not hold', async () => {
+  const root = teamRepo()
+  const gh = fakeGh({ [view('feat')]: { stdout: prJson({ number: 7 }) }, 'pr diff 7 --color never': { stdout: TWO_FILES } })
+  const one = await callJson(root, envWith(gh), ['pr', 'diff', '--branch', 'feat', '--file', 'b c.txt', '--max-lines', '5'])
+  assert.equal(one.diff, 'diff --git a/b c.txt b/b c.txt\n--- a/b c.txt\n+++ b/b c.txt\n@@ -1 +1,3 @@\n x\n')
+  assert.deepEqual([one.file, one.lines, one.truncated, one.files], ['b c.txt', 7, true, [{ path: 'b c.txt', lines: 7, cut: true }]])
+  assert.match((await call(root, envWith(gh), ['pr', 'diff', '--branch', 'feat', '--file', 'b c.txt'])).stdout, /^pull request #7, b c\.txt, 7 lines\n/)
+  const missing = await call(root, envWith(gh), ['pr', 'diff', '--branch', 'feat', '--file', 'nope.txt', '--json'])
+  assert.equal(missing.code, 2)
+  assert.equal(errorOf(missing).code, 'INVALID_INPUT')
+  assert.match(errorOf(missing).message, /nope\.txt is not in the diff/)
 })
 
 test('pr diff of an empty diff has no lines', async () => {
