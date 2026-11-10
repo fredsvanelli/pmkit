@@ -1,7 +1,7 @@
 // /pmkit:spec:record-decision on the team fixture, which has no docs/adr/ folder and a Local tracker, so the ADR is a
 // tracker document. The prompt carries the context and the consequence, so the command has nothing to ask.
 //   entry 0: no ADR yet, so the number is 0001. It affects two issues, so the two comments are a bulk change: the
-//            previews come first and the user approves them once.
+//            previews come first and the user approves them once. The two docs links follow under the same rule.
 //   entry 1: the tracker folder already holds 0002 and a README with no number, so the number is 0003. One issue,
 //            so the comment is a single write.
 // Neither expect reads `saved`, so a live run checks the whole of both.
@@ -21,7 +21,7 @@ export default [
     fixture: 'team',
     git: true,
     prompt: `/pmkit:spec:record-decision ${decision} --issues ISS-5N1R,ISS-4P8A`,
-    answers: ['Yes', 'Yes'],
+    answers: ['Yes', 'Yes', 'Yes'],
     steps: [
       { step: '2', read: ['issues', 'get', 'ISS-5N1R'] },
       { step: '2', read: ['issues', 'get', 'ISS-4P8A'] },
@@ -35,6 +35,11 @@ export default [
       { confirm: 'Step 6' },
       { step: '6', write: ['issues', 'comment', 'ISS-5N1R', '--body-file', path.join(inputs, 'adr-comment.md')] },
       { step: '6', write: ['issues', 'comment', 'ISS-4P8A', '--body-file', path.join(inputs, 'adr-comment.md')] },
+      { step: '6', dryRun: ['issues', 'update', 'ISS-5N1R', '--add-doc', '.issues/docs/adr/0001-keep-estimates-in-points.md'] },
+      { step: '6', dryRun: ['issues', 'update', 'ISS-4P8A', '--add-doc', '.issues/docs/adr/0001-keep-estimates-in-points.md'] },
+      { confirm: 'Step 6' },
+      { step: '6', write: ['issues', 'update', 'ISS-5N1R', '--add-doc', '.issues/docs/adr/0001-keep-estimates-in-points.md'] },
+      { step: '6', write: ['issues', 'update', 'ISS-4P8A', '--add-doc', '.issues/docs/adr/0001-keep-estimates-in-points.md'] },
     ],
     skip: {},
     notHit: {},
@@ -44,6 +49,7 @@ export default [
       assert.match(repo.file(file), /ISS-5N1R/)
       for (const id of ['ISS-5N1R', 'ISS-4P8A']) {
         assert.equal(repo.newEvents(id).filter((event) => event.op === 'comment').length, 1, `${id} got one comment`)
+        assert.deepEqual(repo.newEvents(id).filter((event) => event.field === 'docs').map((event) => event.to), [[file]], `${id} links the ADR in docs`)
       }
     },
   },
@@ -58,7 +64,7 @@ export default [
       fs.writeFileSync(path.join(dir, 'README.md'), '# ADRs\n')
     },
     prompt: `/pmkit:spec:record-decision ${decision} --issues ISS-5N1R`,
-    answers: ['Yes', 'Yes'],
+    answers: ['Yes', 'Yes', 'Yes'],
     steps: [
       { step: '2', read: ['issues', 'get', 'ISS-5N1R'] },
       { step: '3', read: nextAdr },
@@ -69,6 +75,9 @@ export default [
       { step: '6', dryRun: ['issues', 'comment', 'ISS-5N1R', '--body-file', path.join(inputs, 'adr-comment-0003.md')] },
       { confirm: 'Step 6' },
       { step: '6', write: ['issues', 'comment', 'ISS-5N1R', '--body-file', path.join(inputs, 'adr-comment-0003.md')] },
+      { step: '6', dryRun: ['issues', 'update', 'ISS-5N1R', '--add-doc', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
+      { confirm: 'Step 6' },
+      { step: '6', write: ['issues', 'update', 'ISS-5N1R', '--add-doc', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
     ],
     skip: {},
     notHit: {},

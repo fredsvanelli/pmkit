@@ -20,6 +20,15 @@ $ pmkit issues comment ISS-5N1R --body-file <inputs>/adr-comment.md --json  [ste
 exit 0
 $ pmkit issues comment ISS-4P8A --body-file <inputs>/adr-comment.md --json  [step 6, write]
 exit 0
+$ pmkit issues update ISS-5N1R --add-doc .issues/docs/adr/0001-keep-estimates-in-points.md --dry-run --json  [step 6, dry run]
+exit 0
+$ pmkit issues update ISS-4P8A --add-doc .issues/docs/adr/0001-keep-estimates-in-points.md --dry-run --json  [step 6, dry run]
+exit 0
+? Step 6  [confirmed]
+$ pmkit issues update ISS-5N1R --add-doc .issues/docs/adr/0001-keep-estimates-in-points.md --json  [step 6, write]
+exit 0
+$ pmkit issues update ISS-4P8A --add-doc .issues/docs/adr/0001-keep-estimates-in-points.md --json  [step 6, write]
+exit 0
 
 --- added .issues/docs/adr/0001-keep-estimates-in-points.md
 +# Keep estimates in points
@@ -50,6 +59,28 @@ exit 0
   {"at":"2026-09-30T09:00:00Z","by":"ana","op":"move","field":"status","from":"todo","to":"in_progress"}
   {"at":"2026-10-08T17:00:00Z","by":"ana","op":"move","field":"status","from":"in_progress","to":"done"}
 +{"at":"2026-10-23T12:00:00Z","by":"fred","op":"comment","to":"2026-10-23T12-00-00Z-fred.md"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"docs","from":null,"to":[".issues/docs/adr/0001-keep-estimates-in-points.md"]}
+--- changed .issues/issues/ISS-4P8A/issue.md
+  ---
+  id: ISS-4P8A
+  title: Sign webhook payloads
+  type: feature
+  status: done
+  priority: medium
+  estimate: 5
+  assignee: ana
+  labels: [backend, webhooks]
+  parent: EPC-2M9D
+  sprint: 2026-09-28
++docs: [.issues/docs/adr/0001-keep-estimates-in-points.md]
+  created: 2026-09-26T10:30:00Z
+-updated: 2026-10-08T17:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  Add an HMAC signature header so receivers can verify the sender.
 --- added .issues/issues/ISS-5N1R/comments/2026-10-23T12-00-00Z-fred.md
 +---
 +author: fred
@@ -61,3 +92,24 @@ exit 0
   {"at":"2026-10-05T09:30:00Z","by":"fred","op":"create","to":{"id":"ISS-5N1R","title":"Paginate the events API","type":"task","status":"todo","priority":"medium","estimate":3,"assignee":"fred","labels":["backend"],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-05T09:30:00Z","updated":"2026-10-05T09:30:00Z"}}
   {"at":"2026-10-22T09:00:00Z","by":"fred","op":"move","field":"status","from":"todo","to":"in_progress"}
 +{"at":"2026-10-23T12:00:00Z","by":"fred","op":"comment","to":"2026-10-23T12-00-00Z-fred.md"}
++{"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"docs","from":null,"to":[".issues/docs/adr/0001-keep-estimates-in-points.md"]}
+--- changed .issues/issues/ISS-5N1R/issue.md
+  ---
+  id: ISS-5N1R
+  title: Paginate the events API
+  type: task
+  status: in_progress
+  priority: medium
+  estimate: 3
+  assignee: fred
+  labels: [backend]
+  sprint: 2026-10-12
++docs: [.issues/docs/adr/0001-keep-estimates-in-points.md]
+  created: 2026-10-05T09:30:00Z
+-updated: 2026-10-22T09:00:00Z
++updated: 2026-10-23T12:00:00Z
+  ---
+
+  ## Description
+
+  The export reads events in pages of 500.

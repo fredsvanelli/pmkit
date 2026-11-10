@@ -1,0 +1,12 @@
+$ pmkit docs adr-status 1 superseded --by 2 --dry-run --json  [step 1, dry run]
+exit 0
+? Step 2  [confirmed]
+$ pmkit docs adr-status 1 superseded --by 2 --json  [step 3, write]
+exit 0
+
+--- changed docs/adr/0001-keep-estimates-in-hours.md
+  # Keep estimates in hours
+
++Status: superseded by docs/adr/0002-keep-estimates-in-points.md
++
+  The team estimated in hours.

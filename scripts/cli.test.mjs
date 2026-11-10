@@ -1594,6 +1594,7 @@ test('every write refuses an invalid .pmkit/config.yaml and writes nothing', () 
     'release create': ['2.0.0'],
     'release mark-released': ['1.0.0'],
     'docs create': ['notes/new.md', '--body-file', input('doc.md')],
+    'docs adr-status': ['1', 'deprecated'],
     'views save': ['mine', '--category', 'done'],
     'views delete': ['mine'],
     'views rename': ['mine', 'theirs'],

@@ -38,6 +38,12 @@ test('docs next-adr on Linear names a repository file and reads no tracker folde
   assert.equal(data.docPath, null)
 })
 
+test('docs adr-status on Linear finds no tracker folder and answers NOT_FOUND for a number docs/adr lacks (PMK-228)', async () => {
+  const result = await linear(['docs', 'adr-status', '1', 'deprecated', '--json'])
+  assert.equal(result.code, 2)
+  assert.equal(JSON.parse(result.stdout).error.code, 'NOT_FOUND')
+})
+
 const METRICS = [
   [['metrics', 'cycle-time'], 'cycle-time'],
   [['metrics', 'lead-time'], 'lead-time'],
