@@ -2,12 +2,14 @@
 id: PMK-220
 title: Improve team load
 type: feature
-status: backlog
+status: in_progress
 priority: low
 estimate: 3
+assignee: fred
 related: [PMK-71]
+branch: pmk-220-improve-team-load
 created: 2026-11-08T20:37:24.175Z
-updated: 2026-11-08T20:53:52Z
+updated: 2026-11-10T06:54:38Z
 ---
 
 ## Description
