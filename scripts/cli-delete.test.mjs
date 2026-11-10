@@ -203,3 +203,15 @@ test('issues restore on the Local tracker answers NOT_SUPPORTED with the git com
     assert.equal(hashTree(root), before)
   })
 })
+
+test('a delete of an ID with ../ exits 2 and writes nothing', () => {
+  withRepo({}, (root, [a]) => {
+    const before = hashTree(root)
+    for (const id of [`../${a}`, '../../etc']) {
+      const result = run(root, ['issues', 'delete', id, '--json'])
+      assert.equal(result.status, 2, result.stdout)
+      assert.equal(JSON.parse(result.stdout).error.code, 'NOT_FOUND')
+    }
+    assert.equal(hashTree(root), before)
+  })
+})
