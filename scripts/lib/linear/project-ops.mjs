@@ -263,15 +263,13 @@ export function projectOperations({ client, discovery, config, now = () => new D
     return toDocument(node)
   }
 
-  /** The documents of the team's projects as `{ path, title }` by slug. A list the page cap cuts short fails: it never answers with part of the documents. */
+  /** The documents of the team's projects as `{ path, title }` by slug. The team filter runs on the server. A list the page cap cuts short fails: it never answers with part of the documents. */
   async function listDocuments() {
     requireWorkspace()
-    const filter = { accessibleTeams: { some: { key: { eq: scope.team } } } }
-    const projects = await client.paginate(PROJECTS_QUERY, { filter, withLists: false }, { select: (data) => data.projects, pageSize: LIST_PAGE, maxPages: 100 })
-    const ids = new Set(projects.nodes.map((node) => node.id))
-    const { nodes, hasMore } = await client.paginate(DOCUMENTS_QUERY, {}, { select: (data) => data.documents, pageSize: LIST_PAGE, maxPages: 100 })
-    if (hasMore) throw new PmkitError('UPSTREAM', 'Linear has more documents than pmkit reads in one list', 'pmkit docs read <slug> reads one document')
-    return nodes.filter((node) => ids.has(node.project?.id)).map((node) => ({ path: node.slugId, title: node.title })).sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+    const filter = { project: { accessibleTeams: { some: { key: { eq: scope.team } } } } }
+    const { nodes, hasMore } = await client.paginate(DOCUMENTS_QUERY, { filter }, { select: (data) => data.documents, pageSize: LIST_PAGE, maxPages: 100 })
+    if (hasMore) throw new PmkitError('UPSTREAM', 'Linear has more documents than pmkit reads in one list', 'pmkit epic get <project> lists the documents of one project')
+    return nodes.map((node) => ({ path: node.slugId, title: node.title })).sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
   }
 
   const notWritable = (what) => async () => {

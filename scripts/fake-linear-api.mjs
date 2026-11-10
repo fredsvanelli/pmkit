@@ -995,9 +995,14 @@ export function fakeLinearProjects({
     PmkitDocument: query('PmkitDocument', ({ filter }) => {
       for (const key of Object.keys(filter ?? {})) if (key !== 'slugId') throw new FakeValidationError(`Unknown filter ${key}`)
       const found = documents.filter((item) => item.slugId === filter?.slugId?.eq).slice(0, 1)
-      return { documents: { nodes: found.map((item) => ({ id: item.id, slugId: item.slugId, title: item.title, content: item.content ?? null, project: refOf(item.project) })) } }
+      return { documents: { nodes: found.map((item) => ({ id: item.id, slugId: item.slugId, title: item.title, content: item.content ?? null, project: item.project ? refOf(item.project) : null })) } }
     }),
-    PmkitDocuments: query('PmkitDocuments', ({ first, after }) => ({ documents: connection(documents.map((item) => ({ slugId: item.slugId, title: item.title, project: { id: item.project.id } })), first, after) })),
+    PmkitDocuments: query('PmkitDocuments', ({ filter, first, after }) => {
+      for (const key of Object.keys(filter ?? {})) if (key !== 'project') throw new FakeValidationError(`Unknown filter ${key}`)
+      if (filter?.project) checkFilter(filter.project)
+      const found = documents.filter((item) => !filter?.project || (item.project && Object.entries(filter.project).every(([key, value]) => comparators[key](item.project, value))))
+      return { documents: connection(found.map((item) => ({ slugId: item.slugId, title: item.title, project: item.project ? { id: item.project.id } : null })), first, after) }
+    }),
     PmkitEpicIssues: (body) => issues.routes.PmkitIssues(body),
     PmkitProjectsByIds: query('PmkitProjectsByIds', ({ ids }) => ({
       projects: { nodes: projects.filter((project) => (ids ?? []).includes(project.id)).map((project) => ({ ...refOf(project), updatedAt: project.updatedAt ?? project.createdAt })) },
@@ -1020,7 +1025,7 @@ export function fakeLinearProjects({
       milestones.push({ ...input, project: requireProject(ref) })
     },
     seedDocument: (ref, input) => {
-      documents.push({ id: input.id ?? `document-${documents.length + 1}`, ...input, project: requireProject(ref) })
+      documents.push({ id: input.id ?? `document-${documents.length + 1}`, ...input, project: ref == null ? null : requireProject(ref) })
     },
     seedUpdate: (ref, input) => addUpdate({ ...input, projectId: requireProject(ref).id }, { checkHealth: false }),
     projects,
