@@ -616,7 +616,7 @@ export const COMMANDS = [
       if (ctx.flag('redact')) {
         const { text, count, counts, summary } = redact(body)
         redacted = { count, counts, summary }
-        body = count === 0 ? text : `${text.replace(/\s+$/, '')}\n\n${summary}`
+        body = count === 0 ? text : `${text.trimEnd()}\n\n${summary}`
       }
       const comment = await (await ctx.tracker()).comment(ctx.args[0], body, await ctx.actor(), { dryRun: ctx.dryRun, replyTo: ctx.opt('reply-to') })
       const note = redacted === undefined || redacted.count === 0 ? null : `redacted ${redacted.count} ${redacted.count === 1 ? 'value' : 'values'}: ${Object.entries(redacted.counts).map(([type, n]) => `${type} ${n}`).join(', ')}`

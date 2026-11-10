@@ -159,8 +159,10 @@ const noHost = {
     { step: '2', read: ['issues', 'get', 'ISS-5N1R', '--comments'] },
     { step: '3', read: ['pr', 'status', '--branch', BRANCH], expectError: 'NOT_SUPPORTED' },
     { step: '6', read: ['default-branch'] },
-    { step: '6', git: ['diff', `main...${BRANCH}`] },
+    // The refs come first, with the full names of step 7, then the diff between them (investigate-bug.md, "If something is missing").
     { step: '7', git: ['rev-parse', '--verify', '--quiet', `refs/heads/${BRANCH}`] },
+    { step: '6', git: ['rev-parse', '--verify', '--quiet', 'refs/heads/main'] },
+    { step: '6', git: ['diff', `refs/heads/main...refs/heads/${BRANCH}`] },
     ...postSteps(noHostDraft),
   ],
   skip: {

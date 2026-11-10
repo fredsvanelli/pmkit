@@ -4,9 +4,11 @@ $ pmkit pr status --branch iss-5n1r-paginate-the-events-api --json  [step 3, rea
 exit 2 (expected NOT_SUPPORTED)
 $ pmkit default-branch --json  [step 6, read]
 exit 0
-$ git diff main...iss-5n1r-paginate-the-events-api  [step 6, git]
-exit 0
 $ git rev-parse --verify --quiet refs/heads/iss-5n1r-paginate-the-events-api  [step 7, git]
+exit 0
+$ git rev-parse --verify --quiet refs/heads/main  [step 6, git]
+exit 0
+$ git diff refs/heads/main...refs/heads/iss-5n1r-paginate-the-events-api  [step 6, git]
 exit 0
 $ pmkit issues comment ISS-5N1R --body-file - --redact --dry-run --json  [step 10.3, dry run]
 exit 0

@@ -64,3 +64,12 @@ test('issues comment --redact on a body that is only a secret posts the mark and
   assert.equal(code, 0)
   assert.equal(data.body, '[redacted]\n\nRedacted 1 value.')
 })
+
+test('issues comment --redact is linear in the blanks inside the body (50k spaces in the middle)', async () => {
+  const { comment } = setup()
+  const started = Date.now()
+  const { code, data } = await comment(`before${' '.repeat(50000)}after ${SECRET}\n`, ['--redact'])
+  assert.equal(code, 0)
+  assert.ok(data.body.endsWith('Redacted 1 value.'))
+  assert.ok(Date.now() - started < 1000, `took ${Date.now() - started} ms`)
+})
