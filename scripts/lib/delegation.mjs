@@ -4,24 +4,31 @@
 /** An agent member id: `agent:` and a lowercase name. */
 export const AGENT_ID = /^agent:[a-z0-9-]+$/
 
-const RECORD_LINE = /^Delegated to (agent:[a-z0-9-]+) by (\S+), to run (locally)\.$/
+const RECORD_LINE = /^Delegated to (agent:[a-z0-9-]+) by (\S+), to run (locally|in the tracker)\.$/
 
-/** The comment body for a delegation that runs locally. Blank instructions fall back to the issue's own description. */
-export function delegationComment({ issue, agent, by, instructions }) {
+/**
+ * The comment body of a delegation. `run` is 'local' (the user runs the agent, so the comment has the steps) or 'native'
+ * (the tracker starts the agent, so the comment has the instructions only). Blank instructions fall back to the issue's own description.
+ */
+export function delegationComment({ issue, agent, by, instructions, run = 'local' }) {
   const text = typeof instructions === 'string' && instructions.trim() !== '' ? instructions.trim() : `Work on ${issue} as its description and acceptance criteria say.`
-  return [
-    `Delegated to ${agent} by ${by}, to run locally.`,
+  const head = [
+    `Delegated to ${agent} by ${by}, to run ${run === 'native' ? 'in the tracker' : 'locally'}.`,
     '',
     '## Instructions',
     '',
     text,
     '',
+  ]
+  if (run === 'native') return head.join('\n')
+  return [
+    ...head,
     '## Run it locally',
     '',
     'This tracker does not start agents. To run this issue:',
     '',
     '1. Open a session of the agent in this repository.',
-    `2. Run \`/pmkit:issues:work ${issue}\` and add \`--as ${agent}\` to every pmkit write, so the tracker events (claim, status moves, comments) are recorded as the agent's. Commits and the pull request keep your own identity.`,
+    `2. Run \`/pmkit:issues:work ${issue} --as ${agent}\`. The command adds \`--as ${agent}\` to every pmkit write, so the tracker events (claim, status moves, comments) are recorded as the agent's. Commits and the pull request keep your own identity.`,
     '3. The work command asks before the plan, the branch, the PR and each tracker write. Nothing runs without those answers.',
     '',
   ].join('\n')
@@ -31,8 +38,11 @@ export function delegationComment({ issue, agent, by, instructions }) {
 export function parseDelegation(body) {
   if (typeof body !== 'string') return null
   const match = RECORD_LINE.exec(body.split(/\r?\n/)[0].trimEnd())
-  return match ? { agent: match[1], by: match[2], run: 'local' } : null
+  return match ? { agent: match[1], by: match[2], run: match[3] === 'locally' ? 'local' : 'native' } : null
 }
 
 /** The one line the CLI prints after a local delegation. */
-export const localRunLine = (issue, agent) => `the agent runs locally: /pmkit:issues:work ${issue} with --as ${agent} on every pmkit write`
+export const localRunLine = (issue, agent) => `the agent runs locally: /pmkit:issues:work ${issue} --as ${agent}`
+
+/** The one line the CLI prints after a native delegation. */
+export const nativeRunLine = (issue, agent) => `the tracker runs the agent: ${agent} works on ${issue} there`

@@ -1,41 +1,160 @@
 $ pmkit issues delegate ISS-5N1R agent:claude --instructions-file <inputs>/instructions.md
-exit 2
+exit 0
 --- stdout
-(empty)
+ISS-5N1R  Paginate the events API
+assignee: fred → agent:claude
+commented 2026-10-23T12-00-00Z-fred
+the agent runs locally: /pmkit:issues:work ISS-5N1R --as agent:claude
 --- stderr
-error: agent "agent:claude" is not a member
-next: Add an agent member such as agent:claude with /pmkit:setup
+(empty)
 
 $ pmkit issues delegate ISS-5N1R agent:claude --instructions-file <inputs>/instructions.md --json
-exit 2
+exit 0
 --- stdout
 {
-  "error": {
-    "code": "INVALID_INPUT",
-    "message": "agent \"agent:claude\" is not a member",
-    "nextStep": "Add an agent member such as agent:claude with /pmkit:setup"
-  }
+  "before": {
+    "id": "ISS-5N1R",
+    "title": "Paginate the events API",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "The export reads events in pages of 500.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-05T09:30:00Z",
+    "updated": "2026-10-22T09:00:00Z",
+    "body": "## Description\n\nThe export reads events in pages of 500.\n",
+    "type": "task",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "fred",
+    "sprint": "2026-10-12"
+  },
+  "after": {
+    "id": "ISS-5N1R",
+    "title": "Paginate the events API",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "The export reads events in pages of 500.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-05T09:30:00Z",
+    "updated": "2026-10-23T12:00:00Z",
+    "body": "## Description\n\nThe export reads events in pages of 500.\n",
+    "type": "task",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "agent:claude",
+    "sprint": "2026-10-12"
+  },
+  "comment": {
+    "id": "2026-10-23T12-00-00Z-fred",
+    "issue": "ISS-5N1R",
+    "author": "fred",
+    "body": "Delegated to agent:claude by fred, to run locally.\n\n## Instructions\n\nOnly touch the events API, and keep the page size at 500.\n\n## Run it locally\n\nThis tracker does not start agents. To run this issue:\n\n1. Open a session of the agent in this repository.\n2. Run `/pmkit:issues:work ISS-5N1R --as agent:claude`. The command adds `--as agent:claude` to every pmkit write, so the tracker events (claim, status moves, comments) are recorded as the agent's. Commits and the pull request keep your own identity.\n3. The work command asks before the plan, the branch, the PR and each tracker write. Nothing runs without those answers.",
+    "created": "2026-10-23T12:00:00Z"
+  },
+  "run": "local"
 }
 --- stderr
 (empty)
 
 $ pmkit issues delegate ISS-5N1R agent:claude --instructions-file <inputs>/instructions.md --dry-run
-exit 2
+exit 0
 --- stdout
-(empty)
+ISS-5N1R  Paginate the events API
+assignee: fred → agent:claude
+would comment 2026-10-23T12-00-00Z-fred
+the agent runs locally: /pmkit:issues:work ISS-5N1R --as agent:claude
+dry run: nothing was written
 --- stderr
-error: agent "agent:claude" is not a member
-next: Add an agent member such as agent:claude with /pmkit:setup
+(empty)
 
 $ pmkit issues delegate ISS-5N1R agent:claude --instructions-file <inputs>/instructions.md --dry-run --json
-exit 2
+exit 0
 --- stdout
 {
-  "error": {
-    "code": "INVALID_INPUT",
-    "message": "agent \"agent:claude\" is not a member",
-    "nextStep": "Add an agent member such as agent:claude with /pmkit:setup"
-  }
+  "before": {
+    "id": "ISS-5N1R",
+    "title": "Paginate the events API",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "The export reads events in pages of 500.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-05T09:30:00Z",
+    "updated": "2026-10-22T09:00:00Z",
+    "body": "## Description\n\nThe export reads events in pages of 500.\n",
+    "type": "task",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "fred",
+    "sprint": "2026-10-12"
+  },
+  "after": {
+    "id": "ISS-5N1R",
+    "title": "Paginate the events API",
+    "status": {
+      "name": "in_progress",
+      "category": "in_progress"
+    },
+    "labels": [
+      "backend"
+    ],
+    "blockedBy": [],
+    "blocks": [],
+    "related": [],
+    "duplicateOf": [],
+    "children": [],
+    "archived": false,
+    "description": "The export reads events in pages of 500.",
+    "acceptanceCriteria": [],
+    "created": "2026-10-05T09:30:00Z",
+    "updated": "2026-10-23T12:00:00Z",
+    "body": "## Description\n\nThe export reads events in pages of 500.\n",
+    "type": "task",
+    "priority": "medium",
+    "estimate": 3,
+    "assignee": "agent:claude",
+    "sprint": "2026-10-12"
+  },
+  "comment": {
+    "id": "2026-10-23T12-00-00Z-fred",
+    "issue": "ISS-5N1R",
+    "author": "fred",
+    "body": "Delegated to agent:claude by fred, to run locally.\n\n## Instructions\n\nOnly touch the events API, and keep the page size at 500.\n\n## Run it locally\n\nThis tracker does not start agents. To run this issue:\n\n1. Open a session of the agent in this repository.\n2. Run `/pmkit:issues:work ISS-5N1R --as agent:claude`. The command adds `--as agent:claude` to every pmkit write, so the tracker events (claim, status moves, comments) are recorded as the agent's. Commits and the pull request keep your own identity.\n3. The work command asks before the plan, the branch, the PR and each tracker write. Nothing runs without those answers.",
+    "created": "2026-10-23T12:00:00Z"
+  },
+  "run": "local"
 }
 --- stderr
 (empty)

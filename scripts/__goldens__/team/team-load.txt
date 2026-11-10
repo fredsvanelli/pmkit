@@ -2,11 +2,12 @@ $ pmkit team load
 exit 0
 --- stdout
 sprint 2026-10-12 (2026-10-12 to 2026-10-25), load in points, average 8.5
-Member     | Issues | Points | Unestimated | WIP | Oldest WIP days | Capacity | Flags
------------|--------|--------|-------------|-----|-----------------|----------|----------------------------
-ana        | 2      | 13     | 0           | 2   | 9.1             | 10       | over_average, over_capacity
-fred       | 2      | 4      | 0           | 1   | 1.1             | 8        |
-unassigned | 0      | 0      | 0           |     |                 |          |
+Member               | Issues | Points | Unestimated | WIP | Oldest WIP days | Capacity | Flags
+---------------------|--------|--------|-------------|-----|-----------------|----------|----------------------------
+agent:claude (agent) | 0      | 0      | 0           | 0   |                 |          |
+ana                  | 2      | 13     | 0           | 2   | 9.1             | 10       | over_average, over_capacity
+fred                 | 2      | 4      | 0           | 1   | 1.1             | 8        |
+unassigned           | 0      | 0      | 0           |     |                 |          |
 imbalances:
   ana: over_average, load 13, limit 12.75
   ana: over_capacity, load 13, limit 10
@@ -29,6 +30,25 @@ exit 0
   "unit": "points",
   "average": 8.5,
   "rows": [
+    {
+      "member": "agent:claude",
+      "name": "Claude",
+      "agent": true,
+      "isMember": true,
+      "issues": 0,
+      "estimate": 0,
+      "unestimated": 0,
+      "wip": 0,
+      "oldestWipDays": null,
+      "load": 0,
+      "unknown": false,
+      "partial": false,
+      "ids": [],
+      "flags": [],
+      "availability": 1,
+      "capacity": null,
+      "daysOff": []
+    },
     {
       "member": "ana",
       "name": "Ana Souza",

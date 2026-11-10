@@ -12,9 +12,10 @@ const ISSUE = 'ISS-5N1R'
 
 function setup({ agent = true } = {}) {
   const root = makeRepo('team')
-  if (agent) {
+  // The team fixture has agent:claude; a run without agents removes it.
+  if (!agent) {
     const file = path.join(root, '.issues', 'config.yaml')
-    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^members:\n/m, 'members:\n  agent:claude: { name: Claude, availability: 1 }\n'))
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^ {2}agent:claude: .*\n/m, ''))
   }
   const env = { ...process.env, PMKIT_USER: 'fred', GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: '1' }
   const delegate = (...args) => run(['issues', 'delegate', ...args], { env, cwd: root })
@@ -51,7 +52,7 @@ test('issues delegate assigns the agent and posts the instructions from the file
   assert.match(result.stdout, /^ISS-5N1R {2}Paginate the events API$/m)
   assert.match(result.stdout, /assignee: fred → agent:claude/)
   assert.match(result.stdout, /^commented 2026-\S+-fred$/m)
-  assert.match(result.stdout, /the agent runs locally: \/pmkit:issues:work ISS-5N1R with --as agent:claude on every pmkit write/)
+  assert.match(result.stdout, /the agent runs locally: \/pmkit:issues:work ISS-5N1R --as agent:claude$/m)
   assert.match(fs.readFileSync(path.join(root, '.issues', 'issues', ISSUE, 'issue.md'), 'utf8'), /^assignee: agent:claude$/m)
   const posted = comments()
   assert.equal(posted.length, 1)
@@ -59,6 +60,19 @@ test('issues delegate assigns the agent and posts the instructions from the file
   assert.match(posted[0], /## Instructions\n\nOnly touch the events API\.\n/)
   const events = fs.readFileSync(path.join(root, '.issues', 'issues', ISSUE, 'events.jsonl'), 'utf8').trim().split('\n').map((line) => JSON.parse(line))
   assert.deepEqual(events.slice(-2).map((event) => [event.op, event.by, event.to?.startsWith?.('2026') ? 'comment file' : event.to]), [['assign', 'fred', 'agent:claude'], ['comment', 'fred', 'comment file']])
+  assert.equal(events.at(-2).at, events.at(-1).at)
+})
+
+test('issues delegate is atomic: a comment that cannot be written leaves the issue unassigned', async () => {
+  const { root, delegate } = setup()
+  const dir = path.join(root, '.issues', 'issues', ISSUE)
+  // A plain file where the comments directory goes makes the comment write fail.
+  fs.writeFileSync(path.join(dir, 'comments'), '')
+  const before = { issue: fs.readFileSync(path.join(dir, 'issue.md'), 'utf8'), events: fs.readFileSync(path.join(dir, 'events.jsonl'), 'utf8') }
+  const result = await delegate(ISSUE, 'agent:claude', '--json')
+  assert.notEqual(result.code, 0)
+  assert.equal(fs.readFileSync(path.join(dir, 'issue.md'), 'utf8'), before.issue)
+  assert.equal(fs.readFileSync(path.join(dir, 'events.jsonl'), 'utf8'), before.events)
 })
 
 test('issues delegate refuses a person and an unknown agent and writes nothing', async () => {

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { AGENT_ID, delegationComment, localRunLine, parseDelegation } from './lib/delegation.mjs'
+import { AGENT_ID, delegationComment, localRunLine, nativeRunLine, parseDelegation } from './lib/delegation.mjs'
 
 const sample = (instructions = 'Add the export.\n') => delegationComment({ issue: 'ISS-1', agent: 'agent:claude', by: 'fred', instructions })
 
@@ -8,8 +8,7 @@ test('delegationComment starts with the record line and holds the instructions a
   const body = sample()
   assert.equal(body.split('\n')[0], 'Delegated to agent:claude by fred, to run locally.')
   assert.match(body, /^## Instructions\n\nAdd the export\.\n\n## Run it locally$/m)
-  assert.ok(body.includes('`/pmkit:issues:work ISS-1`'))
-  assert.ok(body.includes('`--as agent:claude`'))
+  assert.ok(body.includes('`/pmkit:issues:work ISS-1 --as agent:claude`'))
 })
 
 test('blank instructions fall back to the default line', () => {
@@ -34,7 +33,19 @@ test('AGENT_ID accepts agent members only', () => {
 })
 
 test('localRunLine names the work command and the --as flag', () => {
-  assert.equal(localRunLine('ISS-1', 'agent:claude'), 'the agent runs locally: /pmkit:issues:work ISS-1 with --as agent:claude on every pmkit write')
+  assert.equal(localRunLine('ISS-1', 'agent:claude'), 'the agent runs locally: /pmkit:issues:work ISS-1 --as agent:claude')
+})
+
+test('a native delegation comment has the instructions and no local steps', () => {
+  const body = delegationComment({ issue: 'ACME-1', agent: 'agent:user-4', by: 'user-1', instructions: 'Do it.', run: 'native' })
+  assert.equal(body.split('\n')[0], 'Delegated to agent:user-4 by user-1, to run in the tracker.')
+  assert.match(body, /## Instructions\n\nDo it\.\n/)
+  assert.ok(!body.includes('Run it locally'))
+  assert.deepEqual(parseDelegation(body), { agent: 'agent:user-4', by: 'user-1', run: 'native' })
+})
+
+test('nativeRunLine says the tracker runs the agent', () => {
+  assert.equal(nativeRunLine('ACME-1', 'agent:user-4'), 'the tracker runs the agent: agent:user-4 works on ACME-1 there')
 })
 
 test('parseDelegation tolerates trailing spaces and CRLF on the first line', () => {

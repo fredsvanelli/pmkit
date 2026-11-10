@@ -31,7 +31,7 @@ exit 0
 +This tracker does not start agents. To run this issue:
 +
 +1. Open a session of the agent in this repository.
-+2. Run `/pmkit:issues:work ISS-5N1R` and add `--as agent:claude` to every pmkit write, so the tracker events (claim, status moves, comments) are recorded as the agent's. Commits and the pull request keep your own identity.
++2. Run `/pmkit:issues:work ISS-5N1R --as agent:claude`. The command adds `--as agent:claude` to every pmkit write, so the tracker events (claim, status moves, comments) are recorded as the agent's. Commits and the pull request keep your own identity.
 +3. The work command asks before the plan, the branch, the PR and each tracker write. Nothing runs without those answers.
 --- changed .issues/issues/ISS-5N1R/events.jsonl
   {"at":"2026-10-05T09:30:00Z","by":"fred","op":"create","to":{"id":"ISS-5N1R","title":"Paginate the events API","type":"task","status":"todo","priority":"medium","estimate":3,"assignee":"fred","labels":["backend"],"blocked_by":[],"related":[],"duplicate_of":[],"sprint":"2026-10-12","created":"2026-10-05T09:30:00Z","updated":"2026-10-05T09:30:00Z"}}

@@ -108,6 +108,7 @@ test('discover lists statuses in config order, the lists and members sorted by i
   assert.deepEqual(found.priorities, ['urgent', 'high', 'medium', 'low'])
   assert.deepEqual(found.labels, ['backend', 'frontend', 'webhooks', 'billing'])
   assert.deepEqual(found.members, [
+    { id: 'agent:claude', name: 'Claude', email: undefined, availability: 1 },
     { id: 'ana', name: 'Ana Souza', email: 'ana@example.com', availability: 0.8 },
     { id: 'fred', name: 'Fred Vanelli', email: 'fred@example.com', availability: 1 },
   ])

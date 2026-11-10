@@ -493,6 +493,8 @@ export function createLocalTracker(root, {
   /**
    * Hands an issue to an agent member: assigns it and posts the delegation comment with the instructions for local execution.
    * The Local tracker never starts the agent, so `run` is always 'local'.
+   * One write: the comment file first, then issue.md and both events. When the issue write fails the comment file is removed,
+   * so the issue is either delegated with its record or left as it was.
    */
   function delegate(id, agent, instructions, actor, { dryRun = false } = {}) {
     requireWriter(actor)
@@ -500,9 +502,32 @@ export function createLocalTracker(root, {
     const nextStep = agents.length > 0 ? `Use one of: ${agents.join(', ')}` : 'Add an agent member such as agent:claude with /pmkit:setup'
     if (typeof agent !== 'string' || !AGENT_ID.test(agent)) throw invalid(`"${agent}" is not an agent: an agent member id starts with agent:`, nextStep)
     if (!agents.includes(agent)) throw invalid(`agent "${agent}" is not a member`, nextStep)
-    const assigned = assign(id, agent, actor, { dryRun })
-    const posted = comment(assigned.after.id, delegationComment({ issue: assigned.after.id, agent, by: actor, instructions }), actor, { dryRun })
-    return { before: assigned.before, after: assigned.after, comment: posted, run: 'local' }
+    const { issue: current } = readIssue(id)
+    const body = delegationComment({ issue: current.id, agent, by: actor, instructions })
+    // Already the agent's: only the new instructions are written, as a plain comment.
+    if (current.assignee === agent) return { before: current, after: current, comment: comment(current.id, body, actor, { dryRun }), run: 'local' }
+    let posted
+    let file
+    try {
+      const changed = change(id, actor, { dryRun }, (issue, meta, before) => {
+        const dir = issuePaths(issuesDir, issue.id).comments
+        const base = `${fileSafe(meta.at)}-${fileSafe(actor)}`
+        let name = base
+        for (let n = 2; fs.existsSync(path.join(dir, `${name}.md`)); n++) name = `${base}-${n}`
+        posted = { id: name, issue: issue.id, author: actor, body: body.trim(), created: meta.at }
+        if (!dryRun) {
+          fs.mkdirSync(dir, { recursive: true })
+          file = path.join(dir, `${name}.md`)
+          writeFile(file, joinFrontmatter({ author: actor, created: meta.at }, `${posted.body}\n`, { order: ['author', 'created', 'reply_to'] }))
+        }
+        issue.assignee = agent
+        return [fieldEvent('assign', 'assignee', before, issue, meta), { ...meta, op: 'comment', to: `${name}.md` }]
+      })
+      return { before: changed.before, after: changed.after, comment: posted, run: 'local' }
+    } catch (error) {
+      if (file !== undefined) fs.rmSync(file, { force: true })
+      throw error
+    }
   }
 
   function archive(id, actor, { dryRun } = {}) {

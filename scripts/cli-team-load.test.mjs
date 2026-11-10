@@ -18,7 +18,8 @@ test('team load reads the active sprint, with points, work in progress, capacity
   assert.equal(code, 0, stderr)
   assert.equal(data.sprint.id, '2026-10-12')
   assert.equal(data.unit, 'points')
-  assert.deepEqual(data.rows.map((row) => row.member), ['ana', 'fred'])
+  // The team fixture's agent member has its own row, with no work.
+  assert.deepEqual(data.rows.map((row) => row.member), ['agent:claude', 'ana', 'fred'])
   const ana = rowOf(data, 'ana')
   assert.deepEqual([ana.issues, ana.estimate, ana.wip, ana.capacity, ana.daysOff, ana.flags], [2, 13, 2, 10, ['2026-10-16'], ['over_average', 'over_capacity']])
   assert.ok(ana.oldestWipDays > 0)
@@ -63,7 +64,7 @@ test('team load names a sprint with --sprint, and fails with NOT_FOUND for an un
   const closed = await load(makeRepo('team'), ['--sprint', '2026-09-28'])
   assert.equal(closed.code, 0, closed.stderr)
   assert.equal(closed.data.sprint.id, '2026-09-28')
-  assert.deepEqual(closed.data.rows.map((row) => row.load), [0, 0], 'a closed sprint has no open issues')
+  assert.deepEqual(closed.data.rows.map((row) => row.load), [0, 0, 0], 'a closed sprint has no open issues')
   const missing = await load(makeRepo('team'), ['--sprint', '2030-01-01'])
   assert.equal(missing.code, 2)
   assert.match(missing.stdout, /NOT_FOUND/)
