@@ -135,7 +135,7 @@ export default [
     fixture: 'team',
     setup({ root }) {
       writeRequest(root, 'REQ-2X6D', 'title: Export the board to CSV\ncustomer: CUS-ZZZZ\ncreated: 2026-11-01T10:00:00Z')
-      writeRequest(root, 'REQ-5N1R', 'title: Dark theme\ncreated: 2026-11-01T10:00:00Z\nfrom: sales')
+      writeRequest(root, 'REQ-5N1R', 'title: Dark theme\ncreated: 2026-11-01T10:01:00Z\nfrom: sales')
     },
     prompt: '/pmkit:backlog:request-queue',
     answers: ['New issue', 'New issue', 'Yes'],
