@@ -44,7 +44,12 @@ function linearContract({ cycles = [ACTIVE, PLANNED] } = {}) {
 }
 
 // The cycle-lifecycle family stays out: Linear has no call that opens or closes a cycle.
-runTrackerContract({ name: 'Linear tracker contract over the fake', families: ['discovery', 'issues', 'relations', 'history', 'cycles', 'deliverables', 'milestones', 'documents'], setup: linearContract })
+// user-4 is the fake's app user, so the agents family runs native delegation (PMK-214).
+runTrackerContract({
+  name: 'Linear tracker contract over the fake',
+  families: ['discovery', 'issues', 'relations', 'history', 'cycles', 'deliverables', 'milestones', 'documents', 'agents'],
+  setup: () => ({ ...linearContract(), agent: 'agent:user-4' }),
+})
 
 test('openCycle and closeCycle answer NOT_SUPPORTED and name the schedule of Linear', async () => {
   const { tracker, actor, teardown } = linearContract()

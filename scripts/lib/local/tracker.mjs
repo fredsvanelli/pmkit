@@ -493,6 +493,8 @@ export function createLocalTracker(root, {
   /**
    * Hands an issue to an agent member: assigns it and posts the delegation comment with the instructions for local execution.
    * The Local tracker never starts the agent, so `run` is always 'local'.
+   * One write: the comment file first, then issue.md and both events. When any of them fails, issue.md is put back and the
+   * comment file removed, so the issue is either delegated with its record or left as it was; the error says which (CONFLICT).
    */
   function delegate(id, agent, instructions, actor, { dryRun = false } = {}) {
     requireWriter(actor)
@@ -500,9 +502,75 @@ export function createLocalTracker(root, {
     const nextStep = agents.length > 0 ? `Use one of: ${agents.join(', ')}` : 'Add an agent member such as agent:claude with /pmkit:setup'
     if (typeof agent !== 'string' || !AGENT_ID.test(agent)) throw invalid(`"${agent}" is not an agent: an agent member id starts with agent:`, nextStep)
     if (!agents.includes(agent)) throw invalid(`agent "${agent}" is not a member`, nextStep)
-    const assigned = assign(id, agent, actor, { dryRun })
-    const posted = comment(assigned.after.id, delegationComment({ issue: assigned.after.id, agent, by: actor, instructions }), actor, { dryRun })
-    return { before: assigned.before, after: assigned.after, comment: posted, run: 'local' }
+    const { issue: current, paths } = readIssue(id)
+    const readOrNull = (file) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null)
+    // change() may log drift events before the edit runs, so the rollback puts events.jsonl back too.
+    const original = { issue: readOrNull(paths.file), events: readOrNull(paths.events) }
+    const body = delegationComment({ issue: current.id, agent, by: actor, instructions })
+    // Already the agent's: only the new instructions are written, as a plain comment.
+    if (current.assignee === agent) return { before: current, after: current, comment: comment(current.id, body, actor, { dryRun }), run: 'local' }
+    let posted
+    let file
+    try {
+      const changed = change(id, actor, { dryRun }, (issue, meta, before) => {
+        const dir = issuePaths(issuesDir, issue.id).comments
+        const base = `${fileSafe(meta.at)}-${fileSafe(actor)}`
+        let name = base
+        for (let n = 2; fs.existsSync(path.join(dir, `${name}.md`)); n++) name = `${base}-${n}`
+        posted = { id: name, issue: issue.id, author: actor, body: body.trim(), created: meta.at }
+        if (!dryRun) {
+          fs.mkdirSync(dir, { recursive: true })
+          file = path.join(dir, `${name}.md`)
+          writeFile(file, joinFrontmatter({ author: actor, created: meta.at }, `${posted.body}\n`, { order: ['author', 'created', 'reply_to'] }))
+        }
+        issue.assignee = agent
+        return [fieldEvent('assign', 'assignee', before, issue, meta), { ...meta, op: 'comment', to: `${name}.md` }]
+      })
+      return { before: changed.before, after: changed.after, comment: posted, run: 'local' }
+    } catch (error) {
+      if (dryRun) throw error
+      // save() writes issue.md, then appends the events: a failed append leaves issue.md changed, so it is put back too.
+      const left = rollBackDelegation(paths, original, file, readOrNull)
+      // A PmkitError (the read-back check) leaves nothing behind once rolled back, so it is already the answer.
+      if (error instanceof PmkitError && left.length === 0) throw error
+      const where = path.relative(config.root, paths.dir).split(path.sep).join('/')
+      if (left.length === 0) {
+        throw new PmkitError('CONFLICT', `could not write the delegation of ${current.id}: ${error.message}; nothing was changed: issue.md, the comments and events.jsonl are as they were`,
+          `Check that ${where} and its files are writable, then delegate again`, { written: [] })
+      }
+      const names = { comment: `the delegation comment ${posted?.id}.md`, 'issue.md': 'issue.md', 'events.jsonl': 'events.jsonl' }
+      throw new PmkitError('CONFLICT', `could not write the delegation of ${current.id}: ${error.message}; these could not be put back: ${left.map((item) => names[item]).join(', ')}`,
+        `Restore ${where} with git checkout (and remove a new comment file), check that its files are writable, then delegate again`, { written: left })
+    }
+  }
+
+  /**
+   * Puts issue.md and events.jsonl back to `original` and removes the comment file. Each step runs on its own, so one failure
+   * never hides the delegation's error or skips the others. Returns what could not be put back: 'comment', 'issue.md', 'events.jsonl'.
+   */
+  function rollBackDelegation(paths, original, commentFile, readOrNull) {
+    const left = []
+    const step = (name, undo) => {
+      try {
+        undo()
+      } catch {
+        left.push(name)
+      }
+    }
+    if (commentFile !== undefined) {
+      step('comment', () => {
+        fs.rmSync(commentFile, { force: true })
+        writtenPaths.delete(commentFile)
+      })
+    }
+    for (const [name, file, text] of [['issue.md', paths.file, original.issue], ['events.jsonl', paths.events, original.events]]) {
+      step(name, () => {
+        if (readOrNull(file) === text) return
+        if (text === null) fs.rmSync(file, { force: true })
+        else fs.writeFileSync(file, text)
+      })
+    }
+    return left
   }
 
   function archive(id, actor, { dryRun } = {}) {

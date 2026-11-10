@@ -146,7 +146,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
 
   // Operations whose capability the manifest can mark absent. The refusal then carries the manifest's hint, not the generic text.
   const STUB_CAPABILITY = {
-    logTime: 'time_tracking', listTimeEntries: 'time_tracking', createRelease: 'releases', markReleased: 'releases', delegate: 'agent_delegation',
+    logTime: 'time_tracking', listTimeEntries: 'time_tracking', createRelease: 'releases', markReleased: 'releases',
     ...Object.fromEntries(['listGoals', 'getGoal', 'createGoal', 'goalProgress', 'setEpicGoal'].map((operation) => [operation, 'strategic_goals'])),
     ...Object.fromEntries(['listCustomers', 'getCustomer', 'createCustomer', 'listDemandSignals'].map((operation) => [operation, 'demand_signals'])),
     ...Object.fromEntries(['listRequests', 'getRequest', 'createRequest', 'acceptRequest', 'declineRequest'].map((operation) => [operation, 'request_queue'])),
@@ -205,6 +205,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     listComments: history.listComments,
     comment: history.comment,
     resolveThread: history.resolveThread,
+    delegate: history.delegate,
     metricEvents: history.metricEvents,
     ...Object.fromEntries(
       ['listCycles', 'currentCycle', 'cycleIssues', 'moveToCycle', 'openCycle', 'closeCycle', 'getCapacity', 'setCapacity', 'getDaysOff', 'updateCycleCapacity'].map((name) => [name, cycles[name]]),

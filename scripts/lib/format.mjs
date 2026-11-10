@@ -35,7 +35,7 @@ export function issueRecord(issue) {
   const lines = fields([
     ['id', issue.id], ['title', issue.title], ['type', issue.type],
     ['status', `${issue.status.name} (${issue.status.category})`],
-    ['priority', issue.priority], ['estimate', issue.estimate], ['assignee', issue.assignee], ['labels', issue.labels],
+    ['priority', issue.priority], ['estimate', issue.estimate], ['assignee', issue.assignee], ['delegate', issue.delegate], ['labels', issue.labels],
     ['parent', issue.parent], ['sprint', issue.sprint], ['milestone', issue.milestone], ['release', issue.release], ['due', issue.due], ['branch', issue.branch],
     ['blocked_by', issue.blockedBy], ['blocks', issue.blocks], ['related', issue.related], ['duplicate_of', issue.duplicateOf],
     ['children', issue.children], ['archived', issue.archived ? true : undefined],

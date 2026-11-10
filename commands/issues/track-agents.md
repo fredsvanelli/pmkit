@@ -32,6 +32,6 @@ The table of step 2 with every issue in full, the notes and warnings, and a line
 
 ## If something is missing
 
-- The CLI answers `NOT_SUPPORTED`: the tracker has no agent delegation (Linear, for now). Show `error.message` and `error.nextStep`.
+- The CLI answers `NOT_SUPPORTED`: the tracker has no agent delegation, or it delegates natively and this command does not read its delegates yet (Linear). Show `error.message` and `error.nextStep`.
 - `gh` is missing or not logged in: the CLI answers `NOT_CONFIGURED` or `AUTH`. Show the next step and offer to retry after the fix.
 - An error from the CLI: apply the rules for reading errors in the conventions.

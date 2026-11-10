@@ -1,8 +1,7 @@
-// /pmkit:issues:delegate ISS-5N1R claude on the team fixture, with agent:claude added to the members by setup.
+// /pmkit:issues:delegate ISS-5N1R claude on the team fixture, whose members include agent:claude.
 // ISS-5N1R is fred's, in progress, with no acceptance criteria, which is the one readiness problem of step 3.
 // "claude" matches one agent member, so step 2 asks nothing. At step 7 the user runs the agent later.
 import assert from 'node:assert/strict'
-import fs from 'node:fs'
 import path from 'node:path'
 
 const input = (file) => path.join(import.meta.dirname, '_inputs', file)
@@ -11,10 +10,6 @@ const delegate = ['issues', 'delegate', 'ISS-5N1R', 'agent:claude', '--instructi
 export default {
   command: 'issues/delegate',
   fixture: 'team',
-  setup({ root }) {
-    const file = path.join(root, '.issues', 'config.yaml')
-    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^members:\n/m, 'members:\n  agent:claude: { name: Claude, availability: 1 }\n'))
-  },
   prompt: '/pmkit:issues:delegate ISS-5N1R claude make the events export use the new cursor',
   answers: ['Yes', 'Yes', 'Later'],
   steps: [

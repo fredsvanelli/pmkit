@@ -24,7 +24,7 @@ import { pathNote } from './lib/path-notes.mjs'
 import { planNextAdr } from './lib/adr.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
 import { changeList, checkMembers, mergeCapacity, parseCapacityPairs, workingDays } from './lib/team-capacity.mjs'
-import { AGENT_ID, localRunLine } from './lib/delegation.mjs'
+import { AGENT_ID, localRunLine, nativeRunLine } from './lib/delegation.mjs'
 import { delegationOf, prSummary, prText } from './lib/track-agents.mjs'
 import { SCANNERS, SEVERITIES, alertCandidate, collectAlerts, matchAlerts } from './lib/alerts.mjs'
 import { READ_LIMIT, groupTodos, matchTodos, readExistingIssues, scanRepo } from './lib/todos.mjs'
@@ -571,12 +571,14 @@ export const COMMANDS = [
     run: async (ctx) => issueWrite(ctx, await (await ctx.tracker()).assign(ctx.args[0], ctx.args[1] === 'none' ? null : ctx.args[1], await ctx.actor(), { dryRun: ctx.dryRun })),
   },
   {
-    name: 'issues delegate', summary: 'assigns an issue to an agent member and comments the instructions for local execution', usage: '<id> <agent:name> [--instructions-file f]', write: true, args: ['id', 'agent'], flags: ['instructions-file'],
+    name: 'issues delegate', summary: 'hands an issue to an agent member with a delegation comment: the agent becomes the assignee (local run) or the tracker\'s delegate (native run)', usage: '<id> <agent:name> [--instructions-file f]', write: true, args: ['id', 'agent'], flags: ['instructions-file'],
     run: async (ctx) => {
       const instructions = ctx.opt('instructions-file') !== undefined ? readInput(ctx.opt('instructions-file')) : undefined
       const result = await (await ctx.tracker()).delegate(ctx.args[0], ctx.args[1], instructions, await ctx.actor(), { dryRun: ctx.dryRun })
-      const lines = [writeText(result, { dryRun: false }), `${ctx.dryRun ? 'would comment' : 'commented'} ${result.comment.id}`]
+      // A Linear dry run has no comment id yet.
+      const lines = [writeText(result, { dryRun: false }), `${ctx.dryRun ? 'would comment' : 'commented'}${result.comment.id ? ` ${result.comment.id}` : ''}`]
       if (result.run === 'local') lines.push(localRunLine(result.after.id, result.after.assignee))
+      if (result.run === 'native' && !ctx.dryRun) lines.push(nativeRunLine(result.after.id, result.after.delegate))
       if (ctx.dryRun) lines.push('dry run: nothing was written')
       return { data: result, text: lines.join('\n'), commit: result.after.id }
     },
@@ -2237,6 +2239,10 @@ async function runTrackAgents(ctx) {
   const tracker = await ctx.tracker()
   const entry = (await tracker.capabilities()).capabilities.find((c) => c.id === 'agent_delegation')
   if (entry?.path === 'absent') throw new PmkitError('NOT_SUPPORTED', 'this tracker has no agent delegation, so there are no agent issues to track', entry.enableHint)
+  // Linear delegates natively: the agent is the issue's delegate, not an agent: assignee, so this list would miss every agent issue.
+  if (entry?.detail?.unsupported?.includes('issues track-agents')) {
+    throw new PmkitError('NOT_SUPPORTED', 'this tracker hands issues to agents natively, and track-agents does not read its delegates yet', 'Open the issues delegated to agents in the tracker itself')
+  }
   const found = await tracker.searchIssues({ categories: AGENT_CATEGORIES })
   const warnings = problemWarnings(found.problems)
   const notes = []

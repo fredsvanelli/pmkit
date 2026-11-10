@@ -241,7 +241,8 @@ export function discoveryView(raw, pmkit = {}, { session } = {}) {
       guest: user.guest,
       teams: user.teams.filter((id) => teamKeys.has(id)).map((id) => teamKeys.get(id)),
     }))
-  const agents = raw.users.filter((user) => user.app).sort(byId).map((user) => ({ id: user.id, name: user.name }))
+  // An agent id is agent:<Linear user id>, the id issues delegate takes (PMK-214).
+  const agents = raw.users.filter((user) => user.app).sort(byId).map((user) => ({ id: `agent:${user.id}`, name: user.name }))
 
   const mappingWarnings = mappings
     .filter(([, name]) => !scoped.some((team) => team.statuses.some((status) => status.name === name)))

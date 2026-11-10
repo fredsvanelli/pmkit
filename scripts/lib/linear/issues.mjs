@@ -128,6 +128,8 @@ export function toIssue(node, context) {
   const estimate = estimateOf(node, context)
   if (estimate !== undefined) issue.estimate = estimate
   if (node.assignee?.id) issue.assignee = node.assignee.id
+  // Linear keeps the person as assignee and the agent as delegate (PMK-214); an agent id is agent:<Linear user id>.
+  if (node.delegate?.id) issue.delegate = `agent:${node.delegate.id}`
   issue.labels = [...new Set(labelNames.filter((name) => !typeLabels.has(name)))].sort()
   // The parent issue wins; an issue with only a project shows the project as its parent (PMK-38).
   if (node.parent?.identifier) issue.parent = node.parent.identifier
