@@ -2,12 +2,14 @@
 id: PMK-221
 title: Improve customers and requests
 type: feature
-status: backlog
+status: in_progress
 priority: low
 estimate: 5
+assignee: fred
 related: [PMK-46]
+branch: pmk-221-improve-customers-and-requests
 created: 2026-11-08T20:37:24.334Z
-updated: 2026-11-08T20:53:52Z
+updated: 2026-11-10T06:55:51Z
 ---
 
 ## Description
