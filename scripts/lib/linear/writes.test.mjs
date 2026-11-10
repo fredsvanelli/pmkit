@@ -97,9 +97,11 @@ test('parentInput sets an issue parent, an epic, or clears both', () => {
   assert.deepEqual(parentInput(), { parentId: null, projectId: null })
 })
 
-test('a milestone is written by update with the milestone node, cleared by null, and still refused on create', () => {
+test('a milestone is written by create and update with the milestone node, and cleared by null', () => {
   const milestoneNode = { id: 'ms-1', project: { id: 'project-uuid' } }
-  assert.throws(() => toInput({ title: 'x', milestone: 'x' }, create), { code: 'NOT_SUPPORTED', message: 'set the milestone in Linear' })
+  assert.throws(() => toInput({ title: 'x', milestone: 'x' }, create), { code: 'INVALID_INPUT' })
+  assert.equal(toInput({ title: 'x', milestone: 'ms-1' }, { ...create, milestoneNode }).projectMilestoneId, 'ms-1')
+  assert.equal('projectMilestoneId' in toInput({ title: 'x', milestone: null }, create), false)
   assert.deepEqual(toInput({ milestone: 'ms-1' }, { ...update, milestoneNode }), { projectMilestoneId: 'ms-1' })
   assert.deepEqual(toInput({ milestone: null }, update), { projectMilestoneId: null })
   assert.throws(() => toInput({ milestone: 'ms-1' }, update), { code: 'INVALID_INPUT' })

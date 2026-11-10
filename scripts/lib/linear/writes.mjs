@@ -14,10 +14,9 @@ const invalid = (message, nextStep, details) => new PmkitError('INVALID_INPUT', 
 const stale = (message, nextStep) => invalid(message, nextStep, { stale: true })
 const LABEL_STEP = 'Create the label in Linear, then run pmkit discover'
 const LATER = {
-  milestone: 'set the milestone in Linear',
   release: 'Linear releases are not mapped yet',
 }
-// update writes a milestone (the caller resolves it); create has no project to check it against, so it stays refused.
+// A milestone is written by update and by create under an epic (the caller resolves it and checks its project).
 
 /** The raw team a new issue goes to: the scope team, else the only team of the workspace. */
 export function createTeam(context) {
@@ -137,7 +136,7 @@ export function parentInput({ parentNode, epicNode } = {}) {
 /**
  * The Linear input of a patch. mode is create or update. beforeNode is the issue's node (update), team the raw team (create),
  * parentNode the node of patch.parent when it is an issue, epicNode the project node when it is an epic,
- * cycleNode the { id, number } of the cycle patch.sprint names (the caller resolves it), milestoneNode the raw project milestone patch.milestone names (update only). Throws before any request; a name discovery may not know yet throws with details.stale.
+ * cycleNode the { id, number } of the cycle patch.sprint names (the caller resolves it), milestoneNode the raw project milestone patch.milestone names. Throws before any request; a name discovery may not know yet throws with details.stale.
  */
 export function toInput(patch, { mode, beforeNode, team: givenTeam, context, parentNode, epicNode, cycleNode, milestoneNode }) {
   checkKeys(patch, mode === 'create' ? CREATE_KEYS : UPDATE_KEYS)
@@ -190,14 +189,13 @@ export function toInput(patch, { mode, beforeNode, team: givenTeam, context, par
       input.cycleId = cycleNode.id
     }
   }
-  if (mode === 'update' && patch.milestone !== undefined) {
+  if (patch.milestone !== undefined && !(mode === 'create' && patch.milestone === null)) {
     if (patch.milestone !== null && !milestoneNode) throw invalid(`milestone ${patch.milestone} was not resolved to a project milestone`)
     input.projectMilestoneId = patch.milestone === null ? null : milestoneNode.id
   }
   // PMK-228: a Linear issue has no list field for documents, so the comment record-decision posts stays the link.
   if (patch.docs !== undefined) throw new PmkitError('NOT_SUPPORTED', 'Linear issues have no docs field', 'The comment on the issue stays the link to the document')
   for (const key of Object.keys(LATER)) {
-    if (key === 'milestone' && mode === 'update') continue
     if (patch[key] !== undefined && patch[key] !== null) throw new PmkitError('NOT_SUPPORTED', LATER[key], `Leave ${key} out on Linear`)
   }
   return input

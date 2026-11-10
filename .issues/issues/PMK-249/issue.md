@@ -2,13 +2,14 @@
 id: PMK-249
 title: Set the milestone in issues create on Linear
 type: feature
-status: backlog
+status: in_review
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-5
+branch: pmk-249-set-the-milestone-in-issues-create-on
 created: 2026-11-10T20:03:45.191Z
-updated: 2026-11-10T21:22:26Z
+updated: 2026-11-10T21:45:41Z
 ---
 
 ## Description
@@ -33,6 +34,6 @@ PMK-226 let `issues update` and `issues bulk` set a Linear milestone, but `issue
 
 ## Acceptance criteria
 
-- [ ] `issues create --parent <epic> --milestone <id>` on Linear creates the issue with that milestone, and `--dry-run` shows it
-- [ ] A milestone from another project is refused before anything is created, with the same message as `issues update`
-- [ ] `issues create --milestone` with no epic parent on Linear is refused with a message that says to add `--parent <epic>`
+- [x] `issues create --parent <epic> --milestone <id>` on Linear creates the issue with that milestone, and `--dry-run` shows it
+- [x] A milestone from another project is refused before anything is created, with the same message as `issues update`
+- [x] `issues create --milestone` with no epic parent on Linear is refused with a message that says to add `--parent <epic>`

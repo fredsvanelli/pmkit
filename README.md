@@ -88,7 +88,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `issues get <id>` | shows one issue, with `--comments` and `--history` |
 | `issues dependencies <id>` | shows the blocker chain, the hierarchy and the critical path of an issue or an epic; only reads |
 | `issues similar <id>` | ranks issues that read like this one by text similarity (TF-IDF cosine over title, description and acceptance criteria), done issues by default (`--category`, `--limit`, default 5), with their estimate, a score and the shared terms (a hit with no estimate goes in `unestimated`, not in `similar`; `--limit` caps `similar` and `unestimated` each, so an unestimated hit never takes a place in `similar`). `complete` is `false`, with a warning, when an issue file could not be read, Linear has more issues than pmkit read, or the issue has no words to compare (`reason: no_comparable_text`): an empty list is then "not verified", never "none". Only reads |
-| `issues create` | creates an issue; takes `--milestone` and `--release` |
+| `issues create` | creates an issue; takes `--milestone` and `--release`; on Linear `--milestone` needs `--parent <epic>` and a milestone of that epic's project |
 | `issues update <id>` | edits fields and acceptance criteria; `--milestone`, `--release` and `--branch` take `none` to clear; `--add-doc <path>` and `--remove-doc <path>` (repeatable) add a document or ADR to the issue's `docs` list or take it out, and Linear answers `NOT_SUPPORTED` because its issues have no such field |
 | `issues move <id> <category>` | changes status by category |
 | `issues assign <id> <member\|me\|none>` | assigns an issue; `me` is the actor |
