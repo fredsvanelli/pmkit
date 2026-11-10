@@ -1086,3 +1086,15 @@ test('pr review refuses inline comments when GitHub refuses the diff as too larg
   assert.deepEqual(posted.comments, [])
   assert.ok(ghCalls(gh).includes(REVIEW_API))
 })
+
+test('pr diff --file and pr review read the paths git writes with a space (a TAB after it) and outside ASCII (quoted)', async () => {
+  const diff = 'diff --git a/docs/my notes.md b/docs/my notes.md\n--- a/docs/my notes.md\t\n+++ b/docs/my notes.md\t\n@@ -1 +1,2 @@\n one\n+two\ndiff --git "a/caf\\303\\251.txt" "b/caf\\303\\251.txt"\n--- "a/caf\\303\\251.txt"\n+++ "b/caf\\303\\251.txt"\n@@ -1 +1,2 @@\n one\n+two\n'
+  const { root, env } = await reviewRepo({ 'pr diff 7 --color never': { stdout: diff } })
+  const listed = await callJson(root, env, ['pr', 'diff', '--branch', 'feat'])
+  assert.deepEqual(listed.files.map((f) => f.path), ['docs/my notes.md', 'café.txt'])
+  const one = await callJson(root, env, ['pr', 'diff', '--branch', 'feat', '--file', 'docs/my notes.md'])
+  assert.equal(one.lines, 6)
+  const files = reviewFiles([{ path: 'docs/my notes.md', line: 2, body: 'x' }, { path: 'café.txt', line: 2, body: 'y' }])
+  const dry = await callJson(root, env, ['pr', 'review', '--issue', 'ISS-5N1R', '--body-file', files.body, '--comments-file', files.comments, '--dry-run'])
+  assert.equal(dry.comments.length, 2)
+})
