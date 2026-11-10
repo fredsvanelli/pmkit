@@ -18,14 +18,15 @@ This design was written without a round of questions (the coordinator opted out)
 
 ## 1. Recompute on days off
 
-The only formula in the repo is `commands/cycle/plan.md` step 4: capacity = rate x availability x working days, rounded to a whole number. It is linear in the working days, so the CLI does not need the velocity: a member's new capacity is `old x newWorkingDays / oldWorkingDays`, kept to 9 decimals and not rounded to a whole number. **(builder's call, changed after review)**
+The only formula in the repo is `commands/cycle/plan.md` step 4: capacity = rate x availability x working days. It is linear in the working days, so the CLI does not need the velocity: a member's capacity for `w` working days is `base x w / baseDays`. **(builder's call)**
 
 - Applies in `team capacity` when `--days-off` changes the working days of a member whose capacity is set and who `--set` does not name. `--set member=n` always wins, so `--set member=<old>` keeps the number.
-- A member with no capacity is left alone (unknown stays unknown, never 0).
-- `oldWorkingDays` 0 cannot scale: the capacity stays and a warning names the member. A new working-days count of 0 gives capacity 0.
-- The recomputed value goes through the same single `updateCycleCapacity` call as the rest, so the batch is atomic. `changes` already shows it as capacity before and after. The result gets `recomputed`: `[{ member, workingDays: {before, after}, capacity: {before, after} }]`, and a note says the capacity was scaled by working days and how to keep the number.
-- No rounding to a whole number: rounding from the stored value drifted (8 -> 6 -> 9) and trapped a small capacity at 0 (1 -> 0 -> 0). The unrounded value goes back to the original when the same days come back. The text shows two decimals at most; the JSON keeps the number.
-- Only the members whose capacity changes are written, through `capacityPatch` (new key of `updateCycleCapacity`, a merge that checks only the keys it names, in Local and Linear). `--set` uses it too, so a stored key of a member who left the team is neither checked nor rewritten, and a change made by someone else to another member is not overwritten.
+- Every scaled value derives from a **base**, `{ capacity, workingDays }`: the capacity the user gave and the working days it was for. The first scaling creates it from the stored capacity and the old working days. A base is kept while the stored capacity still equals what it gives for the member's current working days; otherwise (a number typed since, `cycle capacity --set`) it is ignored and a new one is made. When the days come back to the base's working days the capacity is the base itself and the base is dropped, so the file holds the number the user wrote. No scaled value is derived from another, so nothing drifts (8 -> 6 -> 9 with rounding, 5 -> 6 day by day, and 1 -> 0 -> 0 are gone), and the same days off and back are exact by construction. Checked over 3600 capacity and working-day pairs.
+- A value is kept to 6 decimals (float noise only, never compounding) and is not rounded to a whole number, so it can be a decimal. Text shows two decimals at most; the JSON keeps the number.
+- Storage: `capacity_base` in the Local sprint file and in the Linear entry of `.pmkit/capacity.yaml`: member to `[capacity, working days]`. It is left out when empty, so files without scaling are unchanged. A malformed entry is ignored on read.
+- A member with no capacity is left alone (unknown stays unknown, never 0). All working days off gives 0, and the base brings the capacity back when the days return. With no working days and no base to scale from, the capacity stays and a warning names the member.
+- Only the members this call changes are written, through `capacityPatch` and `capacityBasePatch` of `updateCycleCapacity` (merges that check only the keys they name, in Local and Linear; a `null` for a name that is no member is refused like a number). A stored key of a member who left the team is neither checked nor rewritten, and a change by someone else to another member is not overwritten.
+- `cycle capacity --days-off` stays a plain write with no scaling (follow-up). The result gets `recomputed` and a note.
 
 ## 2. `cycle capacity current` and the Linear team check
 

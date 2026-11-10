@@ -59,29 +59,43 @@ export function mergeDaysOff(current, off) {
   return merged
 }
 
-const PRECISION = 1e9
+const MICRO = 1e6
+const isBase = (entry) => entry !== null && typeof entry === 'object' && Number.isFinite(entry.capacity) && entry.capacity >= 0 && Number.isInteger(entry.workingDays) && entry.workingDays > 0
+
+/** The capacity a base gives for `days` working days. At the base's own working days it is the base itself, so it goes back exactly. */
+const scaleTo = (base, days) => (days === base.workingDays ? base.capacity : Math.round((base.capacity * days * MICRO) / base.workingDays) / MICRO)
 
 /**
- * The capacity changes a days-off change gives. The formula of `/pmkit:cycle:plan` is linear in the working days, so a member who has a
- * capacity and whom `set` does not name gets capacity x new working days / old working days. The result is kept to 9 decimals and never
- * rounded to a whole number: a rounded value cannot go back to the original (8 -> 6 -> 9, and 1 -> 0 -> 0), an unrounded one does.
- * `patch` holds only the members that change, for `capacityPatch`, so no other key of the stored map is written. A member with no
- * capacity stays unset, and one with no old working days to scale from is kept and listed in `skipped`. `beforeOff` and `afterOff` are full maps.
+ * The capacity changes a days-off change gives. The formula of `/pmkit:cycle:plan` is linear in the working days: capacity x new working
+ * days / old working days. Every value is derived from a base, `{ capacity, workingDays }`, the capacity the user gave and the working days
+ * it was for, never from the previous scaled value, so errors do not add up and the same days off and back give the number the user wrote.
+ * A member with a base that still gives the stored capacity keeps that base. Any other member gets one from the stored capacity and the old
+ * working days. When the days return to the base's working days the base is dropped (`null` in `basePatch`).
+ * `patch` and `basePatch` hold only the members that change, for `capacityPatch` and `capacityBasePatch`. A member with no capacity stays
+ * unset, and one with no working days and no base to scale from is kept and listed in `skipped`. `beforeOff` and `afterOff` are full maps.
  */
-export function recomputeCapacity(sprint, capacity, beforeOff, afterOff, set) {
+export function recomputeCapacity(sprint, capacity, base, beforeOff, afterOff, set) {
   const patch = {}
+  const basePatch = {}
   const recomputed = []
   const skipped = []
   for (const member of new Set([...Object.keys(beforeOff), ...Object.keys(afterOff)])) {
     if (Object.hasOwn(set, member) || typeof capacity[member] !== 'number') continue
     const [before, after] = [workingDays(sprint, beforeOff[member] ?? []), workingDays(sprint, afterOff[member] ?? [])]
     if (before === after) continue
-    if (before === 0) {
+    const kept = isBase(base[member]) && scaleTo(base[member], before) === capacity[member] ? base[member] : null
+    const ref = kept ?? (before > 0 ? { capacity: capacity[member], workingDays: before } : null)
+    if (ref === null) {
       skipped.push(member)
       continue
     }
-    patch[member] = Math.round((capacity[member] * after * PRECISION) / before) / PRECISION
+    patch[member] = scaleTo(ref, after)
+    if (kept === null) basePatch[member] = ref
+    else if (after === ref.workingDays) basePatch[member] = null
     recomputed.push({ member, workingDays: { before, after }, capacity: { before: capacity[member], after: patch[member] } })
   }
-  return { patch, recomputed, skipped }
+  return { patch, basePatch, recomputed, skipped }
 }
+
+/** The members of the scope team. With no team configured, or a member with no team list (Local), every member counts. */
+export const teamMembers = (members, teamKey) => (teamKey === undefined || teamKey === null ? members : members.filter((member) => member.teams === undefined || member.teams.includes(teamKey)))

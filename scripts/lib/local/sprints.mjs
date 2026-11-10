@@ -9,7 +9,7 @@ import { parseYaml, stringifyYaml } from '../yaml.mjs'
 export const sprintFileExists = (issuesDir, id) => /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(String(id)) && fs.existsSync(path.join(issuesDir, 'sprints', `${id}.yaml`))
 
 export const SPRINT_STATES = ['planned', 'active', 'closed']
-const FILE_ORDER = ['name', 'start', 'end', 'goal', 'state', 'closed', 'capacity', 'days_off']
+const FILE_ORDER = ['name', 'start', 'end', 'goal', 'state', 'closed', 'capacity', 'capacity_base', 'days_off']
 const DOCTOR = '/pmkit:local:doctor'
 
 export const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -32,6 +32,22 @@ const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2
 
 /** A timestamp has a real date, a time and a zone (Z or an offset). A sprint's `closed` and a release's `released` use it. */
 export const validTimestamp = (value) => typeof value === 'string' && TIMESTAMP.test(value) && validDate(value.slice(0, 10)) && !Number.isNaN(Date.parse(value))
+
+/**
+ * The base capacities of a sprint: `capacity_base` is a map of member to [capacity, working days], the number the user gave and the working
+ * days it was for. `team capacity --days-off` derives every scaled capacity from it. An entry that is not that pair is left out.
+ */
+export function readCapacityBase(value) {
+  if (!isMap(value)) return {}
+  const entries = Object.entries(value).filter(([, pair]) => Array.isArray(pair) && pair.length === 2 && Number.isFinite(pair[0]) && pair[0] >= 0 && Number.isInteger(pair[1]) && pair[1] > 0)
+  return Object.fromEntries(entries.map(([member, [capacity, workingDays]]) => [member, { capacity, workingDays }]))
+}
+
+/** The file form of a base map, or null when it is empty. */
+export const writeCapacityBase = (base) => (base && Object.keys(base).length > 0 ? Object.fromEntries(Object.entries(base).map(([member, { capacity, workingDays }]) => [member, [capacity, workingDays]])) : null)
+
+/** The sprint field for a base map: present only when it holds something, so a sprint without one reads as before. */
+export const baseField = (base) => (Object.keys(base).length > 0 ? { capacityBase: base } : {})
 
 /** Parses the text of sprints/<id>.yaml. A text that does not parse or lacks a start, end or state throws INVALID_INPUT. */
 export function parseSprint(text, id) {
@@ -56,6 +72,7 @@ export function parseSprint(text, id) {
     ...(validTimestamp(data.closed) ? { closed: data.closed } : {}),
     capacity: isMap(data.capacity) ? data.capacity : {},
     daysOff: isMap(data.days_off) ? data.days_off : {},
+    ...baseField(readCapacityBase(data.capacity_base)),
   }
   // Keys pmkit does not know are kept so the next write does not drop them.
   const extra = Object.fromEntries(Object.keys(data).filter((key) => !FILE_ORDER.includes(key)).map((key) => [key, data[key]]))
@@ -77,8 +94,9 @@ export function readSprints(dir) {
 }
 
 export function serializeSprint(sprint) {
-  const { id, daysOff, extra, ...rest } = sprint
-  return stringifyYaml({ ...extra, ...rest, days_off: daysOff }, { order: FILE_ORDER })
+  const { id, daysOff, capacityBase, extra, ...rest } = sprint
+  const base = writeCapacityBase(capacityBase)
+  return stringifyYaml({ ...extra, ...rest, ...(base === null ? {} : { capacity_base: base }), days_off: daysOff }, { order: FILE_ORDER })
 }
 
 export function requireCapacity(value, members) {
@@ -91,14 +109,32 @@ export function requireCapacity(value, members) {
 }
 
 /**
- * The capacity map after a patch of member to number (a number sets, null removes). Only the patched keys are checked, so a stored key
- * of a member who left stays as it is and never fails a write that does not touch it.
+ * The capacity map after a patch of member to number (a number sets, null removes). Only the patched keys are checked, and each must be a
+ * member, so a stored key of a member who left stays as it is and never fails a write that does not touch it, and a removal of a name that
+ * is no member is a mistake like a set of it.
  */
 export function applyCapacityPatch(current, patch, members) {
   if (!isMap(patch)) throw invalid('capacity patch must be a map of member to number or null')
   const set = Object.fromEntries(Object.entries(patch).filter(([, amount]) => amount !== null))
   const merged = { ...current, ...requireCapacity(set, members) }
-  for (const [member, amount] of Object.entries(patch)) if (amount === null) delete merged[member]
+  for (const [member, amount] of Object.entries(patch)) {
+    if (amount !== null) continue
+    if (!Object.hasOwn(members, member)) throw invalid(`capacity member "${member}" is not a member`, `Use one of: ${Object.keys(members).join(', ')}`)
+    delete merged[member]
+  }
+  return merged
+}
+
+/** The base map after a patch of member to { capacity, workingDays } (null drops it). Checks the shape and that each key is a member. */
+export function applyBasePatch(current, patch, members) {
+  if (!isMap(patch)) throw invalid('capacity base patch must be a map of member to { capacity, workingDays } or null')
+  const merged = { ...current }
+  for (const [member, entry] of Object.entries(patch)) {
+    if (!Object.hasOwn(members, member)) throw invalid(`capacity base member "${member}" is not a member`, `Use one of: ${Object.keys(members).join(', ')}`)
+    if (entry === null) delete merged[member]
+    else if (Object.keys(readCapacityBase({ [member]: [entry.capacity, entry.workingDays] })).length === 0) throw invalid(`capacity base for ${member} must be a non-negative capacity and a whole number of working days above 0`)
+    else merged[member] = { capacity: entry.capacity, workingDays: entry.workingDays }
+  }
   return merged
 }
 

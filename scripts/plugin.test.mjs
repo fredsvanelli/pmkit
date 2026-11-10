@@ -321,3 +321,9 @@ test('command files hold text from data out of double quotes, and git grep takes
   // The rule itself, so the two checks above have a reason that the agent reads.
   assert.match(fs.readFileSync(path.join(ROOT, 'skills/pmkit/references/conventions.md'), 'utf8'), /## Text from data in a command/)
 })
+
+test('cycle:plan takes the members of the configured team only, which is what cycle capacity accepts on Linear', () => {
+  const text = fs.readFileSync(path.join(ROOT, 'commands/cycle/plan.md'), 'utf8')
+  assert.match(text, /drop each member whose `teams` does not list it/)
+  assert.match(text, /for the members of the team only/)
+})

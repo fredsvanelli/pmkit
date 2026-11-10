@@ -5,7 +5,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { PmkitError } from '../errors.mjs'
-import { applyCapacityPatch, requireCapacity, requireDaysOff, validDate } from '../local/sprints.mjs'
+import { applyBasePatch, applyCapacityPatch, baseField, readCapacityBase, requireCapacity, requireDaysOff, validDate, writeCapacityBase } from '../local/sprints.mjs'
 import { writeFileAtomic } from '../local/store.mjs'
 import { parseYaml, stringifyYaml } from '../yaml.mjs'
 
@@ -29,7 +29,7 @@ function checkEntry(entry, where) {
   for (const [member, dates] of Object.entries(daysOff)) {
     if (!Array.isArray(dates) || !dates.every(validDate)) throw notValid(`${where} days_off for ${member} is not a list of dates`)
   }
-  return { capacity: { ...capacity }, daysOff: Object.fromEntries(Object.entries(daysOff).map(([member, dates]) => [member, [...dates]])) }
+  return { capacity: { ...capacity }, daysOff: Object.fromEntries(Object.entries(daysOff).map(([member, dates]) => [member, [...dates]])), ...baseField(readCapacityBase(entry.capacity_base)) }
 }
 
 /** The whole file as { team: { cycleId: { capacity, daysOff } } }. A missing file is an empty map. */
@@ -64,7 +64,7 @@ function parseFile(content) {
   return teams
 }
 
-const isEmptyEntry = (entry) => Object.keys(entry.capacity).length === 0 && Object.keys(entry.daysOff).length === 0
+const isEmptyEntry = (entry) => Object.keys(entry.capacity).length === 0 && Object.keys(entry.daysOff).length === 0 && Object.keys(entry.capacityBase ?? {}).length === 0
 const sortedMap = (map) => Object.fromEntries(Object.entries(map).sort(([a], [b]) => byText(a, b)))
 
 /** The text of the file for { team: { cycleId: entry } }: fixed key order, cycle ids in numeric order, empty entries left out. */
@@ -77,6 +77,7 @@ function serialize(teams) {
       if (isEmptyEntry(entry)) continue
       entries[id] = {
         capacity: sortedMap(entry.capacity),
+        ...(writeCapacityBase(entry.capacityBase) === null ? {} : { capacity_base: sortedMap(writeCapacityBase(entry.capacityBase)) }),
         days_off: Object.fromEntries(Object.entries(sortedMap(entry.daysOff)).map(([member, dates]) => [member, [...dates].sort()])),
       }
     }
@@ -96,13 +97,18 @@ export const entryFor = (entries, id) => entries[id] ?? { capacity: {}, daysOff:
  * and a member set to null loses their days off. `sprint` is { start, end } for the date check, `members` the member ids.
  * A file that is not valid is never overwritten. A dry run builds `after` and writes nothing.
  */
-export function writeEntry(root, team, id, { capacity, capacityPatch, daysOff }, { sprint, members, dryRun = false }) {
+export function writeEntry(root, team, id, { capacity, capacityPatch, capacityBasePatch, daysOff }, { sprint, members, dryRun = false }) {
   const teams = readFile(root)
   const before = entryFor(teams[team] ?? {}, id)
   const known = Object.fromEntries(members.map((member) => [member, true]))
-  const after = { capacity: { ...before.capacity }, daysOff: { ...before.daysOff } }
+  const after = { capacity: { ...before.capacity }, daysOff: { ...before.daysOff }, ...baseField(before.capacityBase ?? {}) }
   if (capacity !== undefined) after.capacity = requireCapacity(capacity, known)
   if (capacityPatch !== undefined) after.capacity = applyCapacityPatch(after.capacity, capacityPatch, known)
+  if (capacityBasePatch !== undefined) {
+    const base = applyBasePatch(before.capacityBase ?? {}, capacityBasePatch, known)
+    delete after.capacityBase
+    Object.assign(after, baseField(base))
+  }
   if (daysOff !== undefined) {
     for (const [member, dates] of Object.entries(requireDaysOff(daysOff, known, sprint))) {
       if (dates === null) delete after.daysOff[member]

@@ -23,10 +23,17 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { assertTracker } from './lib/contract.mjs'
 import { parseDelegation } from './lib/delegation.mjs'
+import { teamMembers } from './lib/team-capacity.mjs'
 
 // The contract families. A hosted adapter lists the ones it implements, and the suite skips the tests that need another.
 // milestone-writes and document-writes cover creating a milestone or a document, which a tracker can leave out while it reads them.
 export const FAMILIES = ['discovery', 'issues', 'relations', 'history', 'time', 'cycles', 'cycle-lifecycle', 'deliverables', 'milestones', 'milestone-writes', 'releases', 'documents', 'document-writes', 'agents']
+
+/** The members of the scope team: on Linear `discover().members` lists the whole workspace, and a capacity write refuses another team's user. */
+const scopeMembers = async (tracker) => {
+  const found = await tracker.discover()
+  return teamMembers(found.members, found.team)
+}
 
 const CATEGORIES = ['triage', 'backlog', 'todo', 'in_progress', 'in_review', 'done', 'canceled']
 const DOC_PATH = 'contract/notes.md'
@@ -367,7 +374,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
     })
 
     it('sets and reads cycle capacity', ['cycles'], async ({ tracker, actor, cycle: wanted }) => {
-      const [member] = (await tracker.discover()).members
+      const [member] = await scopeMembers(tracker)
       const cycle = await wanted('active')
       if (cycle === null) return
       await tracker.setCapacity(cycle.id, { [member.id]: 8 }, actor)
@@ -375,7 +382,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
     })
 
     it('sets, reads and clears days off', ['cycles'], async ({ tracker, actor, today, cycle: wanted }) => {
-      const [member] = (await tracker.discover()).members
+      const [member] = await scopeMembers(tracker)
       const cycle = await wanted('active')
       if (cycle === null) return
       const date = new Date(`${cycle.start ?? today}T00:00:00Z`)
@@ -388,7 +395,7 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
     })
 
     it('patches one member of the capacity and keeps the others', ['cycles'], async ({ tracker, actor, cycle: wanted }) => {
-      const members = (await tracker.discover()).members
+      const members = await scopeMembers(tracker)
       const cycle = await wanted('active')
       if (cycle === null || members.length < 2) return
       const [first, second] = members
@@ -397,7 +404,23 @@ export function runTrackerContract({ name, setup, families = FAMILIES }) {
       assert.deepEqual(await tracker.getCapacity(cycle.id), { [first.id]: 5, [second.id]: 6 })
       await tracker.updateCycleCapacity(cycle.id, { capacityPatch: { [second.id]: null } }, actor)
       assert.deepEqual(await tracker.getCapacity(cycle.id), { [first.id]: 5 })
-      await assert.rejects(async () => tracker.updateCycleCapacity(cycle.id, { capacityPatch: { 'nobody-here': 3 } }, actor), (error) => error.code === 'INVALID_INPUT')
+      for (const patch of [{ 'nobody-here': 3 }, { 'nobody-here': null }]) {
+        await assert.rejects(async () => tracker.updateCycleCapacity(cycle.id, { capacityPatch: patch }, actor), (error) => error.code === 'INVALID_INPUT')
+      }
+    })
+
+    it('keeps a base capacity on the sprint and drops it with null', ['cycles'], async ({ tracker, actor, cycle: wanted }) => {
+      const [member] = await scopeMembers(tracker)
+      const cycle = await wanted('active')
+      if (cycle === null) return
+      const sprintOf = async () => (await tracker.listCycles({})).find((item) => item.id === cycle.id)
+      await tracker.setCapacity(cycle.id, { [member.id]: 7 }, actor)
+      await tracker.updateCycleCapacity(cycle.id, { capacityBasePatch: { [member.id]: { capacity: 7, workingDays: 10 } } }, actor)
+      assert.deepEqual((await sprintOf()).capacityBase, { [member.id]: { capacity: 7, workingDays: 10 } })
+      await tracker.updateCycleCapacity(cycle.id, { capacityBasePatch: { [member.id]: null } }, actor)
+      assert.equal((await sprintOf()).capacityBase, undefined)
+      await assert.rejects(async () => tracker.updateCycleCapacity(cycle.id, { capacityBasePatch: { [member.id]: { capacity: 7, workingDays: 0 } } }, actor), (error) => error.code === 'INVALID_INPUT')
+      await assert.rejects(async () => tracker.updateCycleCapacity(cycle.id, { capacityBasePatch: { 'nobody-here': { capacity: 7, workingDays: 10 } } }, actor), (error) => error.code === 'INVALID_INPUT')
     })
 
     it('creates an epic, parents an issue and reads progress', ['deliverables', 'relations'], async ({ tracker, actor }) => {
