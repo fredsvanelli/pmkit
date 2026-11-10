@@ -2,14 +2,14 @@
 id: PMK-217
 title: Improve review-pr-against-issue
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 5
 assignee: fred
 related: [PMK-61]
 branch: pmk-217-improve-review-pr-against-issue
 created: 2026-11-08T20:37:23.715Z
-updated: 2026-11-10T05:54:21Z
+updated: 2026-11-10T06:46:44Z
 ---
 
 ## Description
