@@ -136,3 +136,56 @@ test('inbox update: the updater gets the entry on disk at write time, so two upd
   inboxUpdate(repo, 'fred', add('b'), { env })
   assert.deepEqual(Object.keys(inboxGet(repo, 'fred', { env }).seen), ['a', 'b'])
 })
+
+const gitAt = (cwd, ...args) => {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: '1', GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@x.dev', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@x.dev' } })
+  assert.equal(result.status, 0, result.stderr)
+  return result.stdout
+}
+const legacyFile = (env, root, checks) => {
+  const file = path.join(userDir({ env }), 'inbox', `${repoHash(root)}.json`)
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.writeFileSync(file, JSON.stringify({ version: 2, checks }))
+  return file
+}
+
+test('PMK-225 review: the migration joins the seen keys of the path files of every worktree of the remote', () => {
+  const { env } = userStoreEnv()
+  const a = gitInit(tempDir('pmkit-repo-a-'), 'origin', 'https://github.com/acme/repo.git')
+  gitAt(a, 'commit', '-q', '--allow-empty', '-m', 'start')
+  const b = path.join(tempDir('pmkit-wt-'), 'b')
+  gitAt(a, 'worktree', 'add', '-q', b)
+  const fileA = legacyFile(env, a, { fred: { at: '2026-10-30T10:00:00Z', seen: { 'mention:a-old': '2026-10-30T10:00:00Z' } } })
+  const fileB = legacyFile(env, b, { fred: { at: '2026-10-29T10:00:00Z', seen: { 'mention:b-old': '2026-10-29T10:00:00Z' } }, ana: { at: '2026-10-29T10:00:00Z', seen: { x: '2026-10-29T10:00:00Z' } } })
+  const textB = fs.readFileSync(fileB, 'utf8')
+  // Before any write both worktrees read both path files.
+  assert.deepEqual(Object.keys(inboxGet(b, 'fred', { env }).seen).sort(), ['mention:a-old', 'mention:b-old'])
+  inboxUpdate(a, 'fred', (current) => ({ ...current, seen: { ...current.seen, 'mention:a-new': '2026-10-31T10:00:00Z' } }), { env })
+  assert.deepEqual(Object.keys(inboxGet(b, 'fred', { env }).seen).sort(), ['mention:a-new', 'mention:a-old', 'mention:b-old'])
+  assert.equal(inboxGet(b, 'fred', { env }).at, '2026-10-30T10:00:00Z')
+  assert.deepEqual(Object.keys(inboxGet(b, 'ana', { env }).seen), ['x'])
+  const stored = JSON.parse(fs.readFileSync(path.join(userDir({ env }), 'inbox', `${inboxKey(a)}.json`), 'utf8'))
+  assert.deepEqual(stored.migrated.sort(), [repoHash(a), repoHash(b)].sort())
+  // A path file joins once: a key dropped from the remote file later does not come back from it.
+  inboxUpdate(b, 'fred', (current) => ({ ...current, seen: Object.fromEntries(Object.entries(current.seen).filter(([key]) => key !== 'mention:b-old')) }), { env })
+  assert.deepEqual(Object.keys(inboxGet(a, 'fred', { env }).seen).sort(), ['mention:a-new', 'mention:a-old'])
+  assert.ok(fs.existsSync(fileA))
+  assert.equal(fs.readFileSync(fileB, 'utf8'), textB)
+})
+
+test('PMK-225 review: a pmkit root below the repository top level keeps its path key, so two projects of a monorepo do not share a file', () => {
+  const repo = gitInit(tempDir('pmkit-mono-'), 'origin', 'https://github.com/acme/mono.git')
+  const app = path.join(repo, 'apps', 'a')
+  fs.mkdirSync(app, { recursive: true })
+  assert.equal(inboxKey(app), repoHash(app))
+  assert.notEqual(inboxKey(repo), repoHash(repo))
+})
+
+test('PMK-225 review: the lock error does not start with "The inbox file", so an agent retries instead of deleting the file', () => {
+  const { env } = userStoreEnv()
+  const repo = tempDir('pmkit-repo-')
+  const file = path.join(userDir({ env }), 'inbox', `${repoHash(repo)}.json`)
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.writeFileSync(`${file}.lock`, '')
+  assert.throws(() => inboxSet(repo, 'fred', entry('2026-10-31T10:00:00Z'), { env, lockWaitMs: 50 }), (error) => error.code === 'CONFLICT' && error.message.startsWith('Another pmkit run holds the inbox lock'))
+})

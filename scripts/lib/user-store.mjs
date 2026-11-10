@@ -245,35 +245,70 @@ export function defaultsUnset(key, options) {
 const INBOX_VERSION = 2
 const sha12 = (text) => crypto.createHash('sha256').update(text).digest('hex').slice(0, 12)
 
-/** The remotes of the repository at root as [{ name, url }], or [] when git cannot say. A read, so it has a timeout. */
-function remotesOf(root) {
-  const listed = spawnSync('git', ['remote', '-v'], { cwd: root, encoding: 'utf8', timeout: 10000, maxBuffer: 16 * 1024 * 1024 })
-  if (listed.error || listed.status !== 0) return []
+const git = (root, args) => spawnSync('git', args, { cwd: root, encoding: 'utf8', timeout: 10000, maxBuffer: 16 * 1024 * 1024 })
+
+/**
+ * What git says about the repository at root, for the inbox key: its remotes as [{ name, url }] and the paths of its worktrees,
+ * or null when root is not the top level of a work tree (no git, or a pmkit project below the top level of a monorepo).
+ * Reads only, so each call has a timeout.
+ */
+function gitFacts(root) {
+  const top = git(root, ['rev-parse', '--show-toplevel'])
+  if (top.error || top.status !== 0) return null
+  try {
+    if (fs.realpathSync(top.stdout.trim()) !== fs.realpathSync(root)) return null
+  } catch {
+    return null
+  }
   const remotes = []
-  for (const line of listed.stdout.split(/\r?\n/)) {
+  const listed = git(root, ['remote', '-v'])
+  for (const line of listed.status === 0 ? listed.stdout.split(/\r?\n/) : []) {
     const match = /^(\S+)\s+(\S+)\s+\(fetch\)$/.exec(line.trim())
     if (match && !remotes.some((remote) => remote.name === match[1])) remotes.push({ name: match[1], url: match[2] })
   }
-  return remotes
+  const worktrees = git(root, ['worktree', 'list', '--porcelain'])
+  const paths = worktrees.status === 0 ? worktrees.stdout.split(/\r?\n/).filter((line) => line.startsWith('worktree ')).map((line) => line.slice('worktree '.length)) : []
+  return { remotes, worktrees: paths }
+}
+
+/** The repoHash of a path, or null when it does not exist any more. */
+const hashOf = (dir) => {
+  try {
+    return repoHash(dir)
+  } catch {
+    return null
+  }
+}
+
+/** The key of the inbox file and the path keys of PMK-47 it takes over, from one read of git. */
+function inboxKeys(root) {
+  const own = repoHash(root)
+  const facts = gitFacts(root)
+  const { remote } = chooseRemote(facts?.remotes ?? [])
+  const parsed = remote ? parseRemoteUrl(remote.url) : null
+  if (!parsed) return { key: own, legacy: [] }
+  const legacy = [...new Set([own, ...facts.worktrees.map(hashOf).filter((hash) => hash !== null)])]
+  return { key: sha12(`remote:${parsed.host}/${parsed.owner}/${parsed.name}`.toLowerCase()), legacy }
 }
 
 /**
  * The key of the inbox file of a repository: the hash of the host, owner and name of the remote chooseRemote picks (origin, else
  * the only remote), so every worktree and clone of one repository shares it, whether the URL is https or ssh. Without a remote
- * git can read, the hash of the real path of root, as repoHash.
+ * git can read, or when root is not the top level of its repository (a project of a monorepo), the hash of the real path of root,
+ * as repoHash.
  */
 export function inboxKey(root) {
-  const { remote } = chooseRemote(remotesOf(root))
-  const parsed = remote ? parseRemoteUrl(remote.url) : null
-  return parsed ? sha12(`remote:${parsed.host}/${parsed.owner}/${parsed.name}`.toLowerCase()) : repoHash(root)
+  return inboxKeys(root).key
 }
 
-/** The inbox file to write, and the file to read: the path-keyed file of PMK-47 while the remote-keyed one does not exist yet. */
+/**
+ * The inbox file and the path-keyed files of PMK-47 it takes over: one per worktree of the repository (PMK-225 review), each
+ * joined once and then listed in the file's `migrated`.
+ */
 function inboxFiles(root, options) {
   const dir = path.join(userDir(options), 'inbox')
-  const write = path.join(dir, `${inboxKey(root)}.json`)
-  const legacy = path.join(dir, `${repoHash(root)}.json`)
-  return { write, read: write !== legacy && !fs.existsSync(write) && fs.existsSync(legacy) ? legacy : write }
+  const { key, legacy } = inboxKeys(root)
+  return { file: path.join(dir, `${key}.json`), legacy: legacy.filter((hash) => hash !== key).map((hash) => ({ hash, file: path.join(dir, `${hash}.json`) })) }
 }
 
 const inboxBad = (file, why) => new PmkitError(
@@ -282,13 +317,16 @@ const inboxBad = (file, why) => new PmkitError(
   'This file is in the user store, not a value the user typed. Delete it, or fix it by hand. Deleting it makes the next inbox list show the last 14 days again.',
 )
 
-/** The checks of the inbox file of a repository, as stored: { member: entry }. A missing file gives {}. Only the file as a whole is checked. */
+/**
+ * The inbox file as stored: { checks: { member: entry }, migrated: [path keys joined] }. A missing file gives empty ones. Only the
+ * file as a whole is checked.
+ */
 function readInbox(file) {
   let text
   try {
     text = fs.readFileSync(file, 'utf8')
   } catch (error) {
-    if (error.code === 'ENOENT') return {}
+    if (error.code === 'ENOENT') return { checks: {}, migrated: [] }
     throw error
   }
   let data
@@ -298,11 +336,26 @@ function readInbox(file) {
     throw inboxBad(file, 'does not parse')
   }
   const checks = data?.checks
-  if (data?.version !== INBOX_VERSION || checks === null || typeof checks !== 'object' || Array.isArray(checks)) {
+  const migrated = data?.migrated ?? []
+  if (data?.version !== INBOX_VERSION || checks === null || typeof checks !== 'object' || Array.isArray(checks) || !Array.isArray(migrated)) {
     throw inboxBad(file, 'is not an inbox file of this version')
   }
-  return checks
+  return { checks, migrated }
 }
+
+const later = (a, b) => (Date.parse(a) >= Date.parse(b) ? a : b)
+
+/** Two entries of one member as one: the later check, every seen key at its later time, and the kinds of `base`. */
+function mergeEntries(base, other) {
+  if (base === null) return other
+  if (other === null) return base
+  const seen = { ...other.seen }
+  for (const [key, at] of Object.entries(base.seen)) seen[key] = Object.hasOwn(seen, key) ? later(at, seen[key]) : at
+  return { ...base, at: later(base.at, other.at), seen }
+}
+
+/** The path files of `legacy` the stored file has not joined yet, read. */
+const pending = (legacy, migrated) => legacy.filter(({ hash, file }) => !migrated.includes(hash) && fs.existsSync(file)).map(({ hash, file }) => ({ hash, file, checks: readInbox(file).checks }))
 
 const isMapOfTimes = (value) => value !== null && typeof value === 'object' && !Array.isArray(value) && Object.values(value).every(validTimestamp)
 const isKinds = (value) => value === undefined || (Array.isArray(value) && value.every((kind) => typeof kind === 'string'))
@@ -326,8 +379,11 @@ function entryOf(checks, member, file) {
  * checked, so a bad entry of another member does not block this one.
  */
 export function inboxGet(root, member, options) {
-  const { read } = inboxFiles(root, options)
-  return entryOf(readInbox(read), member, read)
+  const { file, legacy } = inboxFiles(root, options)
+  const { checks, migrated } = readInbox(file)
+  let entry = entryOf(checks, member, file)
+  for (const old of pending(legacy, migrated)) entry = mergeEntries(entry, entryOf(old.checks, member, old.file))
+  return entry
 }
 
 const LOCK_STEP_MS = 25
@@ -358,7 +414,7 @@ function withLock(file, body, { lockWaitMs = 10000, staleLockMs = 30000 } = {}) 
       throw error
     }
     if (Date.now() >= deadline) {
-      throw new PmkitError('CONFLICT', `The inbox file is locked by another pmkit run (${lock}).`, `Retry in a moment. If no other pmkit runs, delete ${lock}.`)
+      throw new PmkitError('CONFLICT', `Another pmkit run holds the inbox lock ${lock}.`, `Retry in a moment. If no other pmkit runs, delete ${lock}.`)
     }
     sleep(LOCK_STEP_MS)
   }
@@ -375,15 +431,29 @@ function withLock(file, body, { lockWaitMs = 10000, staleLockMs = 30000 } = {}) 
  * entries of the other members as they are.
  */
 export function inboxUpdate(root, member, update, options = {}) {
-  const { read, write } = inboxFiles(root, options)
-  assertOutsideRepo(write, options)
-  return withLock(write, () => {
-    // The read may have moved to the remote file while this call waited for the lock.
-    const source = fs.existsSync(write) ? write : read
-    const checks = readInbox(source)
-    const next = update(entryOf(checks, member, source))
+  const { file, legacy } = inboxFiles(root, options)
+  assertOutsideRepo(file, options)
+  return withLock(file, () => {
+    const { checks, migrated } = readInbox(file)
+    const joined = { ...checks }
+    // Each path file of PMK-47 joins once, for every member: a bad entry of another member is kept as it is, never merged.
+    for (const old of pending(legacy, migrated)) {
+      for (const [name, value] of Object.entries(old.checks)) {
+        if (!Object.hasOwn(joined, name)) joined[name] = value
+        else {
+          try {
+            joined[name] = mergeEntries(entryOf(joined, name, file), entryOf(old.checks, name, old.file))
+          } catch (error) {
+            if (name === member) throw error
+          }
+        }
+      }
+      migrated.push(old.hash)
+    }
+    const next = update(entryOf(joined, member, file))
     const stored = { at: next.at, seen: next.seen, ...(next.kinds === undefined ? {} : { kinds: next.kinds }) }
-    writeAtomic(write, `${JSON.stringify({ version: INBOX_VERSION, checks: { ...checks, [member]: stored } }, null, 2)}\n`, options)
+    const data = { version: INBOX_VERSION, checks: { ...joined, [member]: stored }, ...(migrated.length > 0 ? { migrated } : {}) }
+    writeAtomic(file, `${JSON.stringify(data, null, 2)}\n`, options)
     return stored
   }, options)
 }
