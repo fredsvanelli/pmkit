@@ -21,6 +21,7 @@ import { relationOperations } from './relation-ops.mjs'
 import { buildLinearCapabilities } from './manifest.mjs'
 import { createCustomers } from './customers.mjs'
 import { createTriage } from './triage.mjs'
+import { notificationOperations } from './notifications.mjs'
 
 const CACHE_TTL_SECONDS = 3600
 const isoSeconds = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z')
@@ -150,7 +151,6 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     ...Object.fromEntries(['listGoals', 'getGoal', 'createGoal', 'goalProgress', 'setEpicGoal'].map((operation) => [operation, 'strategic_goals'])),
     ...Object.fromEntries(['listCustomers', 'getCustomer', 'createCustomer', 'listDemandSignals'].map((operation) => [operation, 'demand_signals'])),
     ...Object.fromEntries(['listRequests', 'getRequest', 'createRequest', 'acceptRequest', 'declineRequest'].map((operation) => [operation, 'request_queue'])),
-    ...Object.fromEntries(['listNotifications', 'markRead'].map((operation) => [operation, 'user_inbox'])),
   }
   const stub = (operation) =>
     guarded(async () => {
@@ -189,6 +189,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
   const relations = relationOperations({ client, ops: issues, uuid })
   const history = historyOperations({ client, ops: issues })
   const cycles = cycleOperations({ client, discovery, issues, config })
+  const notifications = notificationOperations({ client, ops: issues, now })
   const contract = {
     getIssue: issues.getIssue,
     searchIssues: issues.searchIssues,
@@ -221,6 +222,8 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     createMilestone: projects.createMilestone,
     readDocument: projects.readDocument,
     createDocument: projects.createDocument,
+    listNotifications: notifications.listNotifications,
+    markRead: notifications.markRead,
   }
   const implemented = { discover, capabilities, ...releaseReads, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
   // Linear-only features sit beside the contract operations. contractView ignores them.

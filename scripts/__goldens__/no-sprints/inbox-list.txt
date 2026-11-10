@@ -1,7 +1,7 @@
 $ pmkit inbox list
 exit 0
 --- stdout
-no unseen mentions or assignments for fred since 2026-10-09T12:00:00Z
+no unseen mentions, assignments or status changes for fred since 2026-10-09T12:00:00Z
 --- stderr
 (empty)
 
@@ -17,10 +17,13 @@ exit 0
   "items": [],
   "counts": {
     "assignments": 0,
-    "mentions": 0
+    "mentions": 0,
+    "statusChanges": 0,
+    "reviewRequests": null
   },
   "complete": true,
-  "problems": []
+  "problems": [],
+  "reviews": null
 }
 --- stderr
 (empty)
@@ -28,7 +31,7 @@ exit 0
 $ pmkit inbox list --all
 exit 0
 --- stdout
-no unseen mentions or assignments for fred
+no unseen mentions, assignments or status changes for fred
 --- stderr
 (empty)
 
@@ -44,10 +47,13 @@ exit 0
   "items": [],
   "counts": {
     "assignments": 0,
-    "mentions": 0
+    "mentions": 0,
+    "statusChanges": 0,
+    "reviewRequests": null
   },
   "complete": true,
-  "problems": []
+  "problems": [],
+  "reviews": null
 }
 --- stderr
 (empty)
@@ -55,7 +61,7 @@ exit 0
 $ pmkit inbox list --as ana --since 2026-10-22T00:00:00Z
 exit 0
 --- stdout
-no unseen mentions or assignments for ana since 2026-10-22T00:00:00Z
+no unseen mentions, assignments or status changes for ana since 2026-10-22T00:00:00Z
 1 older unseen item is not shown, run pmkit inbox list --all
 --- stderr
 (empty)
@@ -72,10 +78,13 @@ exit 0
   "items": [],
   "counts": {
     "assignments": 0,
-    "mentions": 0
+    "mentions": 0,
+    "statusChanges": 0,
+    "reviewRequests": null
   },
   "complete": true,
-  "problems": []
+  "problems": [],
+  "reviews": null
 }
 --- stderr
 (empty)

@@ -208,6 +208,11 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
       throw failure('gh', args, result)
     },
 
+    /** The open pull requests with their review requests (PMK-225), the 200 most recently created. */
+    listReviewRequests() {
+      return parse(check('gh', ['pr', 'list', '--state', 'open', '--limit', '200', '--json', 'number,url,title,headRefName,author,reviewRequests']).stdout, 'the review requests')
+    },
+
     listPullRequests() {
       return parse(check('gh', ['pr', 'list', '--state', 'open', '--limit', '200', '--json', LIST_FIELDS]).stdout, 'the pull requests')
     },

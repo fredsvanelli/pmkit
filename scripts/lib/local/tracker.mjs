@@ -32,7 +32,7 @@ import { CUSTOMER_PREFIX, mdStems, parseCustomer, serializeCustomer, sortCustome
 import { REQUEST_PREFIX, REQUEST_STATES, groupDemand, parseRequest, serializeRequest, sortRequests, sortRequestsNewest } from './requests.mjs'
 import { checkFilter, runQuery } from './query.mjs'
 import { MAX_EXCERPT, findMention, findMentions, mentionText } from './inbox.mjs'
-import { inboxGet, inboxSet } from '../user-store.mjs'
+import { inboxGet, inboxUpdate } from '../user-store.mjs'
 import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
 import { CACHE_DIR, INDEX_FILE, clearIndex, indexHeader, readThroughIndex } from './query-index.mjs'
 import {
@@ -834,6 +834,28 @@ export function createLocalTracker(root, {
     return `assign:${id}:${digest(JSON.stringify([event.at, event.by, event.op, event.field ?? null, assignee]))}`
   }
 
+  // The item kinds an entry covers once written. An entry written before PMK-225 has no kinds and never listed status changes, so
+  // the ones dated up to its last check count as seen: an old entry is not flooded with every old move. The next write records them.
+  const INBOX_KINDS = ['assignment', 'mention', 'status']
+  const seenBefore = (stored, entry) => stored !== null && stored.kinds === undefined && entry.kind === 'status' && entry.at <= stored.at
+
+  /**
+   * The status changes of an issue log that reach `user`: each `move` of the status by someone else while the user was the
+   * assignee, replayed from the `create` event and each `assign` event. Returns [{ key, event }] in log order.
+   */
+  function statusChanges(id, events, user) {
+    const found = []
+    let assignee = null
+    for (const event of events) {
+      if (event.op === 'create') assignee = event.to?.assignee ?? null
+      else if (event.op === 'assign' && event.field === 'assignee') assignee = event.to ?? null
+      else if (event.op === 'move' && event.field === 'status' && assignee === user && event.by !== user) {
+        found.push({ key: `status:${id}:${digest(JSON.stringify([event.at, event.by, event.from ?? null, event.to ?? null]))}`, event })
+      }
+    }
+    return found
+  }
+
   /** A timestamp as `YYYY-MM-DDTHH:MM:SSZ`, or null when it is not a date. */
   const inSeconds = (value) => {
     const time = typeof value === 'string' || typeof value === 'number' ? new Date(value) : new Date(Number.NaN)
@@ -863,7 +885,7 @@ export function createLocalTracker(root, {
     problems.push(...unparsed)
     const byId = new Map(issues.map((issue) => [issue.id, issue]))
     const item = (key, kind, issue, at, by, where, extra = {}) => ({
-      key, kind, issue, title: byId.get(issue)?.title ?? null, at, by, in: where, comment: null, excerpt: null, synthetic: false, ...extra,
+      key, kind, issue, title: byId.get(issue)?.title ?? null, at, by, in: where, comment: null, excerpt: null, from: null, to: null, synthetic: false, ...extra,
     })
     for (const id of listIssueIds(issuesDir, local.id_prefix)) {
       const paths = issuePaths(issuesDir, id)
@@ -880,6 +902,10 @@ export function createLocalTracker(root, {
         }
         if (event.op === 'create' || (event.op === 'update' && event.field === 'description')) described = { at }
         if (event.op === 'create' || (event.op === 'update' && ['description', 'acceptance_criteria'].includes(event.field))) touched = { at }
+      }
+      for (const { key, event } of statusChanges(id, events, user)) {
+        const at = inSeconds(event.at) ?? modified(paths.events)
+        items.push(item(key, 'status', id, at, event.by ?? null, 'status', { from: event.from ?? null, to: event.to ?? null, synthetic: event.synthetic === true }))
       }
       const found = byId.get(id)
       if (found !== undefined) {
@@ -964,6 +990,10 @@ export function createLocalTracker(root, {
           const log = text(ref, `${folder}/events.jsonl`)
           return log !== null && parseEvents(log).events.some((event) => assignmentKey(id, event, user) === key)
         }
+        if (kind === 'status') {
+          const log = text(ref, `${folder}/events.jsonl`)
+          return log !== null && statusChanges(id, parseEvents(log).events, user).some((change) => change.key === key)
+        }
         if (kind === 'description') {
           const file = text(ref, `${folder}/issue.md`)
           const split = file === null ? null : splitFrontmatter(file.replace(/\r\n?/g, '\n'))
@@ -988,7 +1018,7 @@ export function createLocalTracker(root, {
     const stored = inboxGet(config.root, user, inboxStore)
     const { items, problems } = scanInbox(user)
     const seen = stored?.seen ?? {}
-    const marked = items.map((entry) => ({ ...entry, seen: Object.hasOwn(seen, entry.key) }))
+    const marked = items.map((entry) => ({ ...entry, seen: Object.hasOwn(seen, entry.key) || seenBefore(stored, entry) }))
     if (cutoff === null && stored === null && !all) cutoff = isoSeconds(new Date(now().getTime() - FIRST_LIST_DAYS * DAY))
     const pool = all ? marked : marked.filter((entry) => !entry.seen)
     const shown = all || cutoff === null ? pool : pool.filter((entry) => entry.at >= cutoff)
@@ -998,7 +1028,11 @@ export function createLocalTracker(root, {
       since: all ? null : cutoff,
       hidden: pool.length - shown.length,
       items: shown,
-      counts: { assignments: shown.filter((entry) => entry.kind === 'assignment').length, mentions: shown.filter((entry) => entry.kind === 'mention').length },
+      counts: {
+        assignments: shown.filter((entry) => entry.kind === 'assignment').length,
+        mentions: shown.filter((entry) => entry.kind === 'mention').length,
+        statusChanges: shown.filter((entry) => entry.kind === 'status').length,
+      },
       complete: problems.length === 0,
       problems,
     }
@@ -1026,16 +1060,18 @@ export function createLocalTracker(root, {
     const seen = stored?.seen ?? {}
     const known = new Set(items.map((entry) => entry.key))
     const unknown = [...new Set((keys ?? []).filter((key) => !known.has(key)))]
-    const chosen = new Set(items.filter((entry) => !Object.hasOwn(seen, entry.key) && (keys === undefined || keys.includes(entry.key))).map((entry) => entry.key))
+    const unseen = (entry) => !Object.hasOwn(seen, entry.key) && !seenBefore(stored, entry)
+    const chosen = new Set(items.filter((entry) => unseen(entry) && (keys === undefined || keys.includes(entry.key))).map((entry) => entry.key))
     // With keys the member marks exactly those, so the older items stay for the next list.
     if (stored === null && keys === undefined) {
       const backlog = isoSeconds(new Date(now().getTime() - FIRST_LIST_DAYS * DAY))
       for (const entry of items) if (entry.at < backlog) chosen.add(entry.key)
     }
+    // The status changes an entry without kinds counts as seen go into seen with the write that records the kinds, so they stay seen.
+    const adopted = items.filter((entry) => !Object.hasOwn(seen, entry.key) && seenBefore(stored, entry)).map((entry) => entry.key)
     const recorded = stamp()
     const oldest = now().getTime() - PRUNE_DAYS * DAY
-    const kept = {}
-    let pruned = 0
+    const dropped = []
     let note = null
     const branches = branchReader()
     for (const [key, at] of Object.entries(seen)) {
@@ -1049,13 +1085,21 @@ export function createLocalTracker(root, {
           note = `old seen keys were kept because git could not read the branches (${String(error.message).trim().split('\n')[0]})`
         }
       }
-      if (keep) kept[key] = at
-      else pruned++
+      if (!keep) dropped.push(key)
     }
+    const pruned = dropped.length
     const marked = [...chosen].sort()
-    for (const key of marked) kept[key] = recorded
     const changed = stored === null || marked.length > 0 || pruned > 0
-    if (changed && !dryRun) inboxSet(config.root, user, { at: recorded, seen: kept }, inboxStore)
+    if (changed && !dryRun) {
+      // The update runs under the lock on the entry as it is on disk now, so a key another run wrote since the read above stays.
+      inboxUpdate(config.root, user, (current) => {
+        const kept = { ...(current?.seen ?? {}) }
+        for (const key of dropped) delete kept[key]
+        for (const key of adopted) kept[key] ??= stored.at
+        for (const key of marked) kept[key] = recorded
+        return { at: recorded, seen: kept, kinds: INBOX_KINDS }
+      }, inboxStore)
+    }
     return { user, previous: stored?.at ?? null, recorded: changed ? recorded : stored.at, marked, unknown, pruned, changed, dryRun, note }
   }
 

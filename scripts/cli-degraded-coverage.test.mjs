@@ -63,8 +63,6 @@ const REFUSALS = [
   ['requests', 'accept', 'REQ-1', 'ACME-1'],
   ['requests', 'decline', 'REQ-1'],
   ['demand', 'list'],
-  ['inbox', 'list'],
-  ['inbox', 'mark-read'],
 ]
 
 for (const args of REFUSALS) {
@@ -97,7 +95,7 @@ const COVERED = {
   'alerts scan': 'REPO_SCAN',
   'issues delegate': 'cli-linear.test.mjs or cli-degraded.test.mjs',
   'issues track-agents': 'REFUSALS',
-  'inbox list': 'REFUSALS', 'inbox mark-read': 'REFUSALS',
+  'inbox list': 'cli-linear.test.mjs or cli-degraded.test.mjs', 'inbox mark-read': 'cli-linear.test.mjs or cli-degraded.test.mjs',
 }
 
 test('every command a capability names has a degraded-path case or an exemption', () => {
