@@ -3,3 +3,6 @@
 {"at":"2026-11-10T21:22:26Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-10T22:25:55Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-10T22:25:57Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-247-improve-adr-folders-when-the-tracker-is"}
+{"at":"2026-11-10T22:27:12Z","by":"fred","op":"comment","to":"2026-11-10T22-27-12Z-fred.md"}
+{"at":"2026-11-10T22:31:02Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T22:31:03Z","by":"fred","op":"update","field":"acceptance_criteria"}

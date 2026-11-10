@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-247-improve-adr-folders-when-the-tracker-is
 created: 2026-11-10T19:28:14.611Z
-updated: 2026-11-10T22:25:57Z
+updated: 2026-11-10T22:31:03Z
 ---
 
 ## Description
@@ -34,5 +34,5 @@ The second review of PR #196 (PMK-228) found two cases where the ADR commands tr
 
 ## Acceptance criteria
 
-- [ ] With `tracker.path: .`, `docs next-adr` and `docs adr-status` follow `auto_commit` the same way they do for any other tracker path
-- [ ] When the repository and a tracker outside it both hold an ADR with the same number, `validate` and the `CONFLICT` error show two different paths, so the user can tell which file to rename
+- [x] With `tracker.path: .`, `docs next-adr` and `docs adr-status` follow `auto_commit` the same way they do for any other tracker path
+- [x] When the repository and a tracker outside it both hold an ADR with the same number, `validate` and the `CONFLICT` error show two different paths, so the user can tell which file to rename
