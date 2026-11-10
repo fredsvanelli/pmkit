@@ -141,10 +141,9 @@ function scannerGaps(scanners) {
   })
 }
 
-/** The saved scanner reports of `--report <scanner>=<file>`, read up front, as the `reports` map of collectAlerts. */
-function readReports(ctx, command) {
+/** The saved scanner reports of `--report <scanner>=<file>`, read up front, as the `reports` map of collectAlerts. `example` is the next step of a bad value. */
+function readReports(ctx, example) {
   const reports = new Map()
-  const example = `pmkit ${command} --report npm-audit=npm-audit.json`
   for (const value of ctx.list('report')) {
     const text = String(value)
     const at = text.indexOf('=')
@@ -1371,7 +1370,7 @@ export const COMMANDS = [
       const wanted = csv(ctx.list('severity'))
       const unknown = wanted.filter((value) => !SEVERITIES.includes(value))
       if (unknown.length > 0) throw usageError(`--severity must be one of ${SEVERITIES.join(', ')}, not ${unknown.join(', ')}`)
-      const found = collectAlerts(ctx.root, { env: ctx.env, reports: readReports(ctx, 'alerts list') })
+      const found = collectAlerts(ctx.root, { env: ctx.env, reports: readReports(ctx, 'pmkit alerts list --report npm-audit=npm-audit.json') })
       const alerts = wanted.length === 0 ? found.alerts : found.alerts.filter((alert) => wanted.includes(alert.severity))
       // The per-scanner count follows the filter, so scanners[].alerts always adds up to alerts.length.
       const scanners = found.scanners.map((scanner) => ({ ...scanner, alerts: alerts.filter((alert) => alert.scanner === scanner.id).length }))
@@ -1393,7 +1392,7 @@ export const COMMANDS = [
       const unknown = wanted.filter((value) => !SEVERITIES.includes(value))
       if (unknown.length > 0) throw usageError(`--severity must be one of ${SEVERITIES.join(', ')}, not ${unknown.join(', ')}`)
       ctx.config()
-      const found = collectAlerts(ctx.root, { env: ctx.env, reports: readReports(ctx, 'alerts scan') })
+      const found = collectAlerts(ctx.root, { env: ctx.env, reports: readReports(ctx, 'pmkit alerts scan --report npm-audit=npm-audit.json') })
       const gaps = scannerGaps(found.scanners)
       const warnings = [...found.warnings]
       const noUnread = { count: 0, ids: [] }
