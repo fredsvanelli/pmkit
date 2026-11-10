@@ -2,18 +2,19 @@ $ pmkit team load
 exit 0
 --- stdout
 sprint 2026-10-12 (2026-10-12 to 2026-10-25), load in points, average 8.5
-Member               | Issues | Points | Unestimated | WIP | Oldest WIP days | Capacity | Flags
----------------------|--------|--------|-------------|-----|-----------------|----------|----------------------------
-agent:claude (agent) | 0      | 0      | 0           | 0   |                 |          |
-ana                  | 2      | 13     | 0           | 2   | 9.1             | 10       | over_average, over_capacity
-fred                 | 2      | 4      | 0           | 1   | 1.1             | 8        |
-unassigned           | 0      | 0      | 0           |     |                 |          |
+Member               | Issues | Points | Unestimated | WIP | Blocked | Delivered | Oldest WIP days | Capacity | Flags
+---------------------|--------|--------|-------------|-----|---------|-----------|-----------------|----------|----------------------------
+agent:claude (agent) | 0      | 0      | 0           | 0   | 0       | ?         |                 |          |
+ana                  | 2      | 13     | 0           | 2   | 1       | ?         | 9.1             | 10       | over_average, over_capacity
+fred                 | 2      | 4      | 0           | 1   | 0       | ?         | 1.1             | 8        |
+unassigned           | 0      | 0      | 0           |     |         | ?         |                 |          |
 imbalances:
   ana: over_average, load 13, limit 12.75
   ana: over_capacity, load 13, limit 10
 no proposed moves: the overloaded members have no issue in todo to move
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+warning: the delivered count is not verified: an issue file did not parse
 note: aging computed from .issues/events.jsonl
 
 $ pmkit team load --json
@@ -28,6 +29,7 @@ exit 0
   },
   "truncated": false,
   "unit": "points",
+  "overloadFactor": 1.5,
   "average": 8.5,
   "rows": [
     {
@@ -39,6 +41,9 @@ exit 0
       "estimate": 0,
       "unestimated": 0,
       "wip": 0,
+      "blocked": 0,
+      "blockedIds": [],
+      "delivered": null,
       "oldestWipDays": null,
       "load": 0,
       "unknown": false,
@@ -58,6 +63,11 @@ exit 0
       "estimate": 13,
       "unestimated": 0,
       "wip": 2,
+      "blocked": 1,
+      "blockedIds": [
+        "ISS-2X6D"
+      ],
+      "delivered": null,
       "oldestWipDays": 9.1,
       "load": 13,
       "unknown": false,
@@ -85,6 +95,9 @@ exit 0
       "estimate": 4,
       "unestimated": 0,
       "wip": 1,
+      "blocked": 0,
+      "blockedIds": [],
+      "delivered": null,
       "oldestWipDays": 1.1,
       "load": 4,
       "unknown": false,
@@ -103,7 +116,8 @@ exit 0
     "issues": 0,
     "estimate": 0,
     "unestimated": 0,
-    "ids": []
+    "ids": [],
+    "delivered": null
   },
   "noWork": [],
   "unknownLoad": [],
@@ -129,4 +143,5 @@ exit 0
 }
 --- stderr
 warning: ISS-3Q6T: CONFLICT The issue file contains git conflict markers.
+warning: the delivered count is not verified: an issue file did not parse
 note: aging computed from .issues/events.jsonl

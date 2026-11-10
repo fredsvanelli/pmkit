@@ -46,6 +46,7 @@ exit 0
 +  sprint_start_weekday: mon
 +  velocity_window: 3
 +  status_update_window_days: 14
++  overload_factor: 1.5
 +# With true, each pmkit write commits the files it changed as `pmkit: <command> <id>`.
 +# With false, the default, no command commits.
 +auto_commit: false

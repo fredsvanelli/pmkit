@@ -17,7 +17,7 @@ Source: PMK-71 follow-ups (`docs/superpowers/epc-6-follow-ups.md`). The brainsto
 
 ## 1. `defaults.overload_factor`
 
-- `.issues/config.yaml` `defaults.overload_factor`: a number above 1, default `1.5`. `validate` refuses anything else (a string, 1 or less, a non-finite number). The existing `defaults` rule (positive integer) gets this one exception.
+- `.issues/config.yaml` `defaults.overload_factor`: a number of 1 or more, default `1.5` (1 flags anyone above the average). `validate` refuses anything else (a string, below 1, a non-finite number). The existing `defaults` rule (positive integer) gets this one exception.
 - `teamLoad(..., { overloadFactor })` and `proposeMoves` use it where they used the `OVER_AVERAGE` constant. The report carries `overloadFactor`, so `proposeMoves` and the text read the same number. `OVER_AVERAGE` stays as the default.
 - Linear has no local config: `settings()` returns the built-in defaults, so Linear keeps 1.5. The note on the command says nothing extra; the report shows `overloadFactor` in the header line only when it is not 1.5.
 - Schema (`schemas/issues.config.schema.json`) and `templates/issues.config.yaml` list the key.

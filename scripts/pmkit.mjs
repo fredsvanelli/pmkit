@@ -23,6 +23,7 @@ import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, 
 import { pathNote } from './lib/path-notes.mjs'
 import { planNextAdr } from './lib/adr.mjs'
 import { similarResult } from './lib/similar.mjs'
+import { isBlocked } from './lib/model.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
 import { changeList, checkMembers, mergeCapacity, parseCapacityPairs, workingDays } from './lib/team-capacity.mjs'
 import { AGENT_ID, localRunLine, nativeRunLine } from './lib/delegation.mjs'
@@ -425,7 +426,11 @@ const capWarnings = (list, kind, id) => (list.truncated === true ? [capWarning(k
 
 /** The one note for a metric command: the path native_metrics took, and for velocity the sprint count and the estimates. */
 async function metricNotes(tracker, metric, extra = {}) {
-  const capabilities = (await tracker.capabilities()).capabilities
+  return metricNotesFrom((await tracker.capabilities()).capabilities, metric, extra)
+}
+
+/** metricNotes over a manifest already read, for a command that reads the manifest once. */
+function metricNotesFrom(capabilities, metric, extra = {}) {
   const entry = capabilities.find((c) => c.id === 'native_metrics')
   const note = pathNote(entry, { metric, estimation: capabilities.find((c) => c.id === 'estimation'), ...extra })
   return note === null ? [] : [note]
@@ -433,7 +438,12 @@ async function metricNotes(tracker, metric, extra = {}) {
 
 /** The note for one capability's path (capacity, deliverables, linked_code), as a list of zero or one lines. */
 async function capabilityNotes(tracker, id) {
-  const entry = (await tracker.capabilities()).capabilities.find((c) => c.id === id)
+  return capabilityNotesFrom((await tracker.capabilities()).capabilities, id)
+}
+
+/** capabilityNotes over a manifest already read. */
+function capabilityNotesFrom(capabilities, id) {
+  const entry = capabilities.find((c) => c.id === id)
   const note = entry === undefined ? null : pathNote(entry)
   return note === null ? [] : [note]
 }
@@ -450,8 +460,8 @@ async function capabilityNotesOrNone(ctx, id = 'linked_code') {
 }
 
 /** discover().statuses as a categoryOf(statusName), and every issue's events grouped by issue. The flow metrics need each whole log. */
-async function flowInputs(tracker) {
-  const categoryOf = categoryLookup((await tracker.discover()).statuses)
+async function flowInputs(tracker, statuses) {
+  const categoryOf = categoryLookup(statuses ?? (await tracker.discover()).statuses)
   const list = await tracker.metricEvents()
   return { categoryOf, events: groupEventsByIssue(list), warnings: capWarnings(list, 'issues') }
 }
@@ -2791,10 +2801,21 @@ async function runTeamLoad(ctx) {
  * The load report of `team load`. `wanted` is `current`, a sprint id or undefined. `requireSprint` fails with NOT_FOUND when no sprint is
  * in scope. `capacity` and `daysOff` replace the stored maps, which `team capacity` uses to show the load a change would give.
  */
-async function teamLoadReport(ctx, { wanted, requireSprint = false, capacity: capacityOverride, daysOff: daysOffOverride, withAging = true }) {
+async function teamLoadReport(ctx, { wanted, requireSprint = false, capacity, daysOff, withAging = true }) {
+  return buildLoadReport(ctx, await readLoadInputs(ctx, { wanted, requireSprint, withAging }), { capacity, daysOff })
+}
+
+/**
+ * Every tracker read of the load report, once: the open issues, the issues done in the sprint, the blockers outside the scope,
+ * capacity, days off, the flow history, the members and the manifest. `buildLoadReport` computes from it with no tracker call,
+ * so `team capacity` can build the report before and after a change from one read.
+ */
+async function readLoadInputs(ctx, { wanted, requireSprint = false, withAging = true, withDelivered = true }) {
   const tracker = await ctx.tracker()
   const notes = []
   const warnings = []
+  const manifest = (await tracker.capabilities()).capabilities
+  const discovered = await tracker.discover()
   let sprint = null
   let noSprintNamed = false
   if (wanted === undefined || wanted === 'current') {
@@ -2805,7 +2826,7 @@ async function teamLoadReport(ctx, { wanted, requireSprint = false, capacity: ca
     } catch (error) {
       if (!isPmkitError(error) || error.code !== 'NOT_SUPPORTED') throw error
       cyclesOff = true
-      notes.push(...(await capabilityNotes(tracker, 'cycles')))
+      notes.push(...capabilityNotesFrom(manifest, 'cycles'))
     }
     if (sprint === null && requireSprint) throw new PmkitError('NOT_FOUND', 'no sprint is active', 'Create one with /pmkit:cycle:plan, or name a sprint with --sprint <id>')
     // An explicit `--sprint current` with cycles on and no active sprint matches no issue, as `issues list --sprint current` does.
@@ -2821,23 +2842,59 @@ async function teamLoadReport(ctx, { wanted, requireSprint = false, capacity: ca
   warnings.push(...found.problems.map(problemLine))
   const truncated = found.hasMore === true
   if (truncated) warnings.push('the issue read was cut before the end, so the load covers only part of the scope and no move is proposed')
-  const capabilities = (await tracker.capabilities()).capabilities
-  const estimation = capabilities.find((c) => c.id === 'estimation')
+  const estimation = manifest.find((c) => c.id === 'estimation')
   const choice = chooseUnit(found.issues, estimation)
   if (choice.unit === 'issues' && !noSprintNamed) notes.push(`counted issues instead of estimates: ${choice.reason}${estimation?.path === 'absent' && estimation.enableHint ? ` (${estimation.enableHint})` : ''}`)
   if (estimation?.path === 'conditional') notes.push(...(await capabilityNotes(tracker, 'estimation')))
-  const capacity = capacityOverride ?? (sprint ? await orSupported(() => tracker.getCapacity(sprint.id), {}) : {})
-  const daysOff = daysOffOverride ?? (sprint ? await orSupported(() => tracker.getDaysOff(sprint.id), {}) : {})
-  if (sprint) notes.push(...(await capabilityNotes(tracker, 'capacity')))
+  const capacity = sprint ? await orSupported(() => tracker.getCapacity(sprint.id), {}) : {}
+  const daysOff = sprint ? await orSupported(() => tracker.getDaysOff(sprint.id), {}) : {}
+  if (sprint) notes.push(...capabilityNotesFrom(manifest, 'capacity'))
+  // The issues done in the sprint. A cut or damaged read is not verified, so nobody gets a count from it.
+  let delivered = null
+  if (sprint && !noSprintNamed && withDelivered) {
+    const done = await tracker.searchIssues({ categories: ['done'], sprint: sprint.id })
+    if (done.hasMore === true || done.problems.length > 0) warnings.push(`the delivered count is not verified: ${done.hasMore === true ? 'the read of the issues done in the sprint was cut' : 'an issue file did not parse'}`)
+    else delivered = done.issues
+  }
+  const blockedIds = await openBlocked(tracker, found.issues, warnings)
   let ages = []
   // With no active sprint named nothing was read, so there is no age to compute.
   const aged = withAging && !noSprintNamed
   if (aged) {
-    const { categoryOf, events, warnings: capped } = await flowInputs(tracker)
+    const { categoryOf, events, warnings: capped } = await flowInputs(tracker, discovered.statuses)
     warnings.push(...capped)
     ages = aging(events, { categoryOf, asOf: ctx.now().toISOString().replace(/\.\d{3}Z$/, 'Z') })
   }
-  const report = teamLoad(found.issues, { members: teamMembers((await tracker.discover()).members, ctx.config().pmkit?.tracker?.scope?.team), aging: ages, capacity, daysOff, unit: choice.unit })
+  const agingNotes = aged ? metricNotesFrom(manifest, 'aging') : []
+  return { manifest, sprint, noSprintNamed, found, truncated, choice, capacity, daysOff, delivered, blockedIds, ages, members: teamMembers(discovered.members, ctx.config().pmkit?.tracker?.scope?.team), notes, warnings, agingNotes }
+}
+
+/**
+ * The ids of the open issues in `issues` that wait on an open blocker. A blocker outside the scope is read once with getIssue. A blocker
+ * that cannot be read counts as blocking, as the model says, and a warning names it: its state is not verified, so nothing says "not blocked".
+ */
+async function openBlocked(tracker, issues, warnings) {
+  const byId = new Map(issues.map((issue) => [issue.id, issue]))
+  const outside = [...new Set(issues.flatMap((issue) => issue.blockedBy ?? []))].filter((id) => !byId.has(id))
+  const unread = []
+  for (const id of outside) {
+    try {
+      byId.set(id, await tracker.getIssue(id))
+    } catch (error) {
+      if (error instanceof TypeError) throw error
+      unread.push(id)
+    }
+  }
+  if (unread.length > 0) warnings.push(`blocker state is not verified for ${unread.join(', ')}: ${unread.length === 1 ? 'it' : 'they'} could not be read, so ${unread.length === 1 ? 'it counts' : 'they count'} as blocking`)
+  return new Set(issues.filter((issue) => isBlocked(issue, byId)).map((issue) => issue.id))
+}
+
+/** The load report from the inputs of readLoadInputs. `capacity` and `daysOff` replace the ones read. Calls no tracker operation. */
+function buildLoadReport(ctx, inputs, { capacity, daysOff }) {
+  const { sprint, noSprintNamed, found, truncated, choice, delivered, blockedIds, ages } = inputs
+  const notes = [...inputs.notes]
+  const warnings = [...inputs.warnings]
+  const report = teamLoad(found.issues, { members: inputs.members, aging: ages, capacity: capacity ?? inputs.capacity, daysOff: daysOff ?? inputs.daysOff, unit: choice.unit, overloadFactor: ctx.settings().defaults.overload_factor, delivered, blocked: blockedIds })
   // Nothing was read, so nobody is known to have no work.
   if (noSprintNamed) report.noWork = []
   if (report.unknownLoad.length > 0) {
@@ -2848,7 +2905,7 @@ async function teamLoadReport(ctx, { wanted, requireSprint = false, capacity: ca
   if (choice.unit !== 'issues' && counted.some((n) => n > 0)) {
     warnings.push(`some issues have no estimate and count 0 ${choice.unit}; the Unestimated column shows how many per member`)
   }
-  if (aged) notes.push(...(await metricNotes(tracker, 'aging')))
+  notes.push(...inputs.agingNotes)
   const proposal = truncated ? { moves: [], reason: null } : proposeMoves(report, found.issues)
   const suggestions = proposal.moves
   const noMoves = proposal.reason === null ? null : { reason: proposal.reason, message: noMoveMessage(proposal.reason, report.imbalances) }
@@ -2866,7 +2923,8 @@ async function runTeamCapacity(ctx) {
   const tracker = await ctx.tracker()
   const wanted = ctx.opt('sprint') ?? 'current'
   const writing = ctx.opt('set') !== undefined || ctx.opt('days-off') !== undefined
-  const current = await teamLoadReport(ctx, { wanted, requireSprint: true, withAging: false })
+  const inputs = await readLoadInputs(ctx, { wanted, requireSprint: true, withAging: false, withDelivered: false })
+  const current = buildLoadReport(ctx, inputs, {})
   const { sprint, incomplete } = current
   const humans = current.data.rows.filter(HUMAN_ROW)
   const warnings = [...current.warnings]
@@ -2888,16 +2946,16 @@ async function runTeamCapacity(ctx) {
   const set = ctx.opt('set') === undefined ? undefined : parseCapacityPairs(csv(ctx.list('set')))
   const off = ctx.opt('days-off') === undefined ? undefined : parseDaysOff(ctx)
   checkMembers([...Object.keys(set ?? {}), ...Object.keys(off ?? {})], humans.map((row) => row.member))
-  const capacity = set === undefined ? undefined : mergeCapacity(await tracker.getCapacity(sprint.id), set)
+  const capacity = set === undefined ? undefined : mergeCapacity(inputs.capacity, set)
   const result = await tracker.updateCycleCapacity(sprint.id, { capacity, daysOff: off }, await ctx.actor(), { dryRun: ctx.dryRun })
   const ids = humans.map((row) => row.member)
   const changes = changeList({ capacity: result.before.capacity, daysOff: result.before.daysOff }, { capacity: result.after.capacity, daysOff: result.after.daysOff }, ids)
   let after = null
-  if (!incomplete) after = loadView((await teamLoadReport(ctx, { wanted: sprint.id, capacity: result.after.capacity, daysOff: result.after.daysOff, withAging: false })).data, false)
+  if (!incomplete) after = loadView(buildLoadReport(ctx, inputs, { capacity: result.after.capacity, daysOff: result.after.daysOff }).data, false)
   else warnings.push('the load effect of this change is not verified, because the issue read is incomplete')
-  const readNote = await capabilityNotes(tracker, 'capacity')
+  const readNote = capabilityNotesFrom(inputs.manifest, 'capacity')
   const notes = [...current.notes.filter((note) => !readNote.includes(note))]
-  if (readNote.length > 0 && (await tracker.capabilities()).capabilities.find((c) => c.id === 'capacity')?.path === 'derived') {
+  if (readNote.length > 0 && inputs.manifest.find((c) => c.id === 'capacity')?.path === 'derived') {
     notes.push(ctx.dryRun ? 'capacity and days off would be written to .pmkit/capacity.yaml; Linear is not changed' : 'capacity and days off written to .pmkit/capacity.yaml; Linear was not changed')
   }
   const data = { dryRun: ctx.dryRun === true, sprint: { id: sprint.id, name: sprint.name, start: sprint.start, end: sprint.end }, unit, changes, load: { before: loadView(current.data, incomplete), after }, notes, warnings }
@@ -2921,14 +2979,17 @@ async function runTeamCapacity(ctx) {
 function teamLoadText(data) {
   const estimated = data.unit !== 'issues'
   const label = data.unit.charAt(0).toUpperCase() + data.unit.slice(1)
-  const rows = [...data.rows, { ...data.unassigned, member: 'unassigned', wip: '', oldestWipDays: null, capacity: null, flags: [], unknown: false }]
+  const rows = [...data.rows, { ...data.unassigned, member: 'unassigned', wip: '', blocked: '', oldestWipDays: null, capacity: null, flags: [], unknown: false }]
+  // The delivered column exists only with a sprint; a count that is not verified shows `?`, never 0.
+  const withDelivered = data.sprint !== null
+  const factor = data.overloadFactor === 1.5 ? '' : `, overload factor ${data.overloadFactor}`
   const lines = [
-    data.sprint ? `sprint ${data.sprint.id} (${data.sprint.start} to ${data.sprint.end}), load in ${data.unit}, average ${data.average}` : `no sprint, load in ${data.unit}, average ${data.average}`,
+    data.sprint ? `sprint ${data.sprint.id} (${data.sprint.start} to ${data.sprint.end}), load in ${data.unit}, average ${data.average}${factor}` : `no sprint, load in ${data.unit}, average ${data.average}${factor}`,
     table(
-      ['Member', 'Issues', ...(estimated ? [label, 'Unestimated'] : []), 'WIP', 'Oldest WIP days', ...(estimated ? ['Capacity'] : []), 'Flags'],
+      ['Member', 'Issues', ...(estimated ? [label, 'Unestimated'] : []), 'WIP', 'Blocked', ...(withDelivered ? ['Delivered'] : []), 'Oldest WIP days', ...(estimated ? ['Capacity'] : []), 'Flags'],
       rows.map((row) => [
         row.member + (row.agent ? ' (agent)' : '') + (row.isMember === false ? ' (not a member)' : '') + (row.partial ? ' (partial)' : ''), row.issues,
-        ...(estimated ? [row.unknown ? '?' : row.estimate, row.unestimated] : []), row.wip, row.oldestWipDays ?? '', ...(estimated ? [row.capacity ?? ''] : []), (row.flags ?? []).join(', '),
+        ...(estimated ? [row.unknown ? '?' : row.estimate, row.unestimated] : []), row.wip, row.blocked, ...(withDelivered ? [row.delivered ?? '?'] : []), row.oldestWipDays ?? '', ...(estimated ? [row.capacity ?? ''] : []), (row.flags ?? []).join(', '),
       ]),
     ),
   ]
