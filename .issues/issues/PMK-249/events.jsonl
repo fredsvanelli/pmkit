@@ -5,3 +5,5 @@
 {"at":"2026-11-10T21:37:48Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-249-set-the-milestone-in-issues-create-on"}
 {"at":"2026-11-10T21:38:33Z","by":"fred","op":"comment","to":"2026-11-10T21-38-33Z-fred.md"}
 {"at":"2026-11-10T21:39:13Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T21:45:40Z","by":"fred","op":"comment","to":"2026-11-10T21-45-40Z-fred.md"}
+{"at":"2026-11-10T21:45:41Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

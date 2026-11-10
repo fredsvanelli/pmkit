@@ -2,14 +2,14 @@
 id: PMK-249
 title: Set the milestone in issues create on Linear
 type: feature
-status: in_progress
+status: in_review
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-5
 branch: pmk-249-set-the-milestone-in-issues-create-on
 created: 2026-11-10T20:03:45.191Z
-updated: 2026-11-10T21:39:13Z
+updated: 2026-11-10T21:45:41Z
 ---
 
 ## Description
