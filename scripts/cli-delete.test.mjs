@@ -206,7 +206,8 @@ test('when git grep cannot run, the files stay unchecked with the reason and are
     const data = json(root, ['issues', 'delete', a, '--dry-run'])
     assert.deepEqual(data.files, [])
     assert.equal(data.unchecked.length, 1)
-    assert.match(data.unchecked[0], /^code comments, documents and docs\/ \(git grep failed: .+\)$/)
+    // pmkit's own words, not git's fatal text, which changes with the git version.
+    assert.equal(data.unchecked[0], 'code comments, documents and docs/ (git grep failed: not a git repository)')
     assert.match(run(root, ['issues', 'delete', a, '--dry-run']).stdout, /not checked: code comments, documents and docs\/ \(git grep failed/)
   })
 })
@@ -219,10 +220,16 @@ test('issues restore on the Local tracker answers NOT_SUPPORTED with the git com
     assert.equal(result.status, 2, result.stdout)
     const { error } = JSON.parse(result.stdout)
     assert.equal(error.code, 'NOT_SUPPORTED')
-    assert.match(error.nextStep, new RegExp(`git checkout <commit>\\^ -- \\.issues/issues/${a} brings the folder back`))
+    assert.match(error.nextStep, new RegExp(`git checkout <commit>\\^ -- ':\\(top\\)\\.issues/issues/${a}' brings the folder back`))
     assert.equal(run(root, ['issues', 'restore', a, '--dry-run', '--json']).status, 2)
     assert.equal(run(root, ['issues', 'restore']).status, 2)
     assert.equal(hashTree(root), before)
+    // The command it names works from a subfolder too.
+    const sub = path.join(root, 'src')
+    fs.mkdirSync(sub)
+    const checkout = error.nextStep.match(/^git checkout HEAD -- '([^']+)'/)[1]
+    assert.equal(git(sub, 'checkout', 'HEAD', '--', checkout).status, 0)
+    assert.ok(fs.existsSync(path.join(root, '.issues/issues', a, 'issue.md')))
   })
 })
 

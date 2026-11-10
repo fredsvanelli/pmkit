@@ -4,7 +4,7 @@ exit 2
 (empty)
 --- stderr
 error: the Local tracker has no trash: a deleted issue comes back from git history
-next: git checkout HEAD -- .issues/issues/ISS-0000 brings the folder back while the delete is not committed; once it is, git log --diff-filter=D -1 --format=%h -- .issues/issues/ISS-0000 finds the commit and git checkout <commit>^ -- .issues/issues/ISS-0000 brings the folder back
+next: git checkout HEAD -- ':(top).issues/issues/ISS-0000' brings the folder back while the delete is not committed; once it is, git log --diff-filter=D -1 --format=%h -- ':(top).issues/issues/ISS-0000' finds the commit and git checkout <commit>^ -- ':(top).issues/issues/ISS-0000' brings the folder back
 
 $ pmkit issues restore ISS-0000 --json
 exit 2
@@ -13,7 +13,7 @@ exit 2
   "error": {
     "code": "NOT_SUPPORTED",
     "message": "the Local tracker has no trash: a deleted issue comes back from git history",
-    "nextStep": "git checkout HEAD -- .issues/issues/ISS-0000 brings the folder back while the delete is not committed; once it is, git log --diff-filter=D -1 --format=%h -- .issues/issues/ISS-0000 finds the commit and git checkout <commit>^ -- .issues/issues/ISS-0000 brings the folder back"
+    "nextStep": "git checkout HEAD -- ':(top).issues/issues/ISS-0000' brings the folder back while the delete is not committed; once it is, git log --diff-filter=D -1 --format=%h -- ':(top).issues/issues/ISS-0000' finds the commit and git checkout <commit>^ -- ':(top).issues/issues/ISS-0000' brings the folder back"
   }
 }
 --- stderr
@@ -25,7 +25,7 @@ exit 2
 (empty)
 --- stderr
 error: the Local tracker has no trash: a deleted issue comes back from git history
-next: git checkout HEAD -- .issues/issues/ISS-0000 brings the folder back while the delete is not committed; once it is, git log --diff-filter=D -1 --format=%h -- .issues/issues/ISS-0000 finds the commit and git checkout <commit>^ -- .issues/issues/ISS-0000 brings the folder back
+next: git checkout HEAD -- ':(top).issues/issues/ISS-0000' brings the folder back while the delete is not committed; once it is, git log --diff-filter=D -1 --format=%h -- ':(top).issues/issues/ISS-0000' finds the commit and git checkout <commit>^ -- ':(top).issues/issues/ISS-0000' brings the folder back
 
 $ pmkit issues restore ISS-0000 --dry-run --json
 exit 2
@@ -34,7 +34,7 @@ exit 2
   "error": {
     "code": "NOT_SUPPORTED",
     "message": "the Local tracker has no trash: a deleted issue comes back from git history",
-    "nextStep": "git checkout HEAD -- .issues/issues/ISS-0000 brings the folder back while the delete is not committed; once it is, git log --diff-filter=D -1 --format=%h -- .issues/issues/ISS-0000 finds the commit and git checkout <commit>^ -- .issues/issues/ISS-0000 brings the folder back"
+    "nextStep": "git checkout HEAD -- ':(top).issues/issues/ISS-0000' brings the folder back while the delete is not committed; once it is, git log --diff-filter=D -1 --format=%h -- ':(top).issues/issues/ISS-0000' finds the commit and git checkout <commit>^ -- ':(top).issues/issues/ISS-0000' brings the folder back"
   }
 }
 --- stderr

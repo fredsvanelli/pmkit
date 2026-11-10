@@ -691,7 +691,8 @@ export function createLocalTracker(root, {
     const folder = issuePaths(issuesDir, id).dir
     // Git commands on a live folder would overwrite it with an old copy.
     if (fs.existsSync(folder)) throw invalid(`${id} is not deleted`, `pmkit issues get ${id}`)
-    const dir = path.relative(config.root, folder).split(path.sep).join('/')
+    // :(top) reads the path from the top of the repository, so the commands work from any folder of it.
+    const dir = `':(top)${path.relative(config.root, folder).split(path.sep).join('/')}'`
     throw new PmkitError('NOT_SUPPORTED', 'the Local tracker has no trash: a deleted issue comes back from git history',
       `git checkout HEAD -- ${dir} brings the folder back while the delete is not committed; once it is, git log --diff-filter=D -1 --format=%h -- ${dir} finds the commit and git checkout <commit>^ -- ${dir} brings the folder back`)
   }

@@ -339,7 +339,6 @@ function writeText(result, { dryRun, record = issueRecord, header }) {
   return dryRun ? `${text}\ndry run: nothing was written` : text
 }
 
-/** Text of an issue delete: the full record, what goes, the warnings, and the way to keep the issue instead. A dry run is the preview. */
 const REPO_MENTIONS_TIMEOUT_MS = 30_000
 const REPO_MENTIONS_TEXT = 10
 
@@ -364,10 +363,19 @@ function repoMentions(ctx, id) {
     }
   }
   if (result.status === 1 && !result.error) return { files: [], error: null }
-  const reason = result.error?.message ?? (result.stderr.trim().split(/\r?\n/)[0] || `exit status ${result.status}`)
-  return { files: [], error: reason }
+  return { files: [], error: grepFailure(result) }
 }
 
+/** Why the scan failed, in pmkit's words where the cause is known: git's own text changes with its version and setup. */
+function grepFailure(result) {
+  if (result.error?.code === 'ENOENT') return 'git is not installed'
+  if (result.error?.code === 'ETIMEDOUT') return `it took longer than ${REPO_MENTIONS_TIMEOUT_MS / 1000} s`
+  if (result.error) return result.error.message
+  if (result.status === 128 && /not a git repository/i.test(result.stderr)) return 'not a git repository'
+  return result.stderr.trim().split(/\r?\n/)[0] || `exit status ${result.status}`
+}
+
+/** Text of an issue delete: the full record, what goes, the warnings, and the way to keep the issue instead. A dry run is the preview. */
 function deleteText({ before, removes, warnings, mentions, files = [], unchecked }, { dryRun }) {
   const lines = [`${dryRun ? 'would delete' : 'deleted'} ${before.id}  ${before.title}`, issueRecord(before), '']
   if (removes.trash) {
@@ -972,6 +980,7 @@ export const COMMANDS = [
     run: async (ctx) => {
       const result = await (await ctx.tracker()).restore(ctx.args[0], await ctx.actor(), { dryRun: ctx.dryRun })
       const lines = [`${ctx.dryRun ? 'would restore' : 'restored'} ${result.after.id}  ${result.after.title}`, issueRecord(result.after)]
+      if (result.warnings?.length > 0) lines.push('warnings:', ...result.warnings.map((warning) => `  ${warning}`))
       if (ctx.dryRun) lines.push('dry run: nothing was written')
       return { data: result, text: lines.join('\n'), commit: result.after.id }
     },

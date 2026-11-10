@@ -338,10 +338,16 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     const node = (await client.request(ISSUE_BY_ID_QUERY, { id: issueKey(id) }))?.issues?.nodes?.[0]
     if (!node) throw notFound(id)
     if (node.trashed !== true) throw new PmkitError('INVALID_INPUT', `${node.identifier} is not in Linear's trash`, `pmkit issues get ${node.identifier}`)
-    if (dryRun) return { before: null, after: await mapped({ ...node, trashed: false, archivedAt: null }) }
+    const restored = await mapped({ ...node, trashed: false, archivedAt: null })
+    if (dryRun) return { before: null, after: restored }
     const answer = await client.request(ISSUE_UNARCHIVE, { id: node.id })
     if (answer?.issueUnarchive?.success !== true) throw new PmkitError('UPSTREAM', `Linear did not restore ${node.identifier}`, `Run pmkit issues restore ${node.identifier} again`)
-    return { before: null, after: await mapped(await readNode(node.identifier)) }
+    // The write worked: a read-back that fails is a warning, never an error that would send the caller to restore again.
+    try {
+      return { before: null, after: await mapped(await readNode(node.identifier)), warnings: [] }
+    } catch (error) {
+      return { before: null, after: restored, warnings: [`${node.identifier} is restored, but reading it back failed (${error.message}), so this record is the one read before the restore: pmkit issues get ${node.identifier} shows it as it is now`] }
+    }
   }
 
   return { getIssue, searchIssues, cycleNodeFor, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue, restore, requireViewer, mapped, writeUpdate, parentNodeOf, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }

@@ -1435,6 +1435,29 @@ test('restore answered with success false is UPSTREAM and the issue stays in the
   await assert.rejects(linear.getIssue('ACME-3'), { code: 'NOT_FOUND' })
 })
 
+test('a restore that worked but whose read-back fails says the issue is restored and the read failed', async () => {
+  // Linear answers the read right after issueUnarchive with the issue still in the trash.
+  const routes = (fake) => {
+    let restored = false
+    return {
+      PmkitIssueUnarchive: (body) => { restored = true; return fake.routes.PmkitIssueUnarchive(body) },
+      PmkitIssueById: (body) => {
+        const answer = fake.routes.PmkitIssueById(body)
+        if (restored) for (const node of answer.json?.data?.issues?.nodes ?? []) node.trashed = true
+        return answer
+      },
+    }
+  }
+  const { tracker: linear, fake, fetch } = linearSetup({ routes })
+  three(fake)
+  await linear.delete('ACME-3', 'user-1')
+  const done = await linear.restore('ACME-3', 'user-1')
+  assert.equal(done.after.id, 'ACME-3')
+  assert.equal(done.after.archived, false)
+  assert.deepEqual(done.warnings, ['ACME-3 is restored, but reading it back failed (issue ACME-3 does not exist), so this record is the one read before the restore: pmkit issues get ACME-3 shows it as it is now'])
+  assert.equal(namesOf(fetch).filter((name) => name === 'PmkitIssueUnarchive').length, 1)
+})
+
 test('a delete answered with issueDelete success false is UPSTREAM and the issue is still there', async () => {
   const { tracker: linear, fake } = linearSetup({ routes: () => ({ PmkitIssueDelete: answer('issueDelete', { success: false }) }) })
   three(fake)
