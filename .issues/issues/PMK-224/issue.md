@@ -2,14 +2,14 @@
 id: PMK-224
 title: Improve team capacity
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 3
 assignee: fred
 related: [PMK-72]
 branch: pmk-224-improve-team-capacity
 created: 2026-11-08T20:37:24.737Z
-updated: 2026-11-10T08:59:38Z
+updated: 2026-11-10T17:15:35Z
 ---
 
 ## Description

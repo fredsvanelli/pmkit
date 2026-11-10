@@ -479,3 +479,39 @@ Início: 2026-11-10. `develop` em 632e339, `npm test` com 4605 testes, 4518 pass
 - PMK-221: 225427f com issue ilegível como aviso (leitura cortada ainda recusa; o retry acha a issue que o pmkit escreveu); M6 e M8; diff conferido. Mergeado (7c64a20).
 
 Fim da rodada 16: PRs #186, #187, #188 mergeados.
+
+Limpeza da rodada 16: closing PR #189 mergeado (4781f3b), 8 worktrees removidos, branches provisórias apagadas.
+
+## Rodada 17
+
+Início: 2026-11-10. `develop` em 4781f3b, `npm test` com 4683 testes, 4596 pass, 0 fail, 87 skipped, saída 0. Run Orca `run_91f320f7ec8d`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-222 | 5 | opus (`ctx_1bbbf79d6503`) | #192 | ciclo 1 (opus): mudanças pedidas; ciclo 2 (opus): APROVADO; duas correções antes do merge; critério 4 (live) desmarcado por decisão do usuário | mergeado (1a05940) |
+| PMK-223 | 3 | sonnet (`ctx_57bb4b8ce982`) | #191 | ciclos 1 e 2 (opus): mudanças pedidas; ciclo 3 (opus): APROVADO | mergeado (03924f8) |
+| PMK-224 | 3 | sonnet (`ctx_addd0c5b5bcc`) | #190 | ciclos 1 a 3 (opus): mudanças pedidas; correção final conferida pelo orquestrador (decisão do usuário) | mergeado (58604e4) |
+
+- PMK-224: PR #190 (sonnet); capacidade recalculada quando os days-off mudam; cycle capacity current e checagem de time no Linear; sem proposta de move no caminho de escrita do team capacity. A sonda de tempo de redact-probes falhou de novo sob carga (terceira vez). Follow-ups: deriva de arredondamento depois de várias edições; opção de recalcular em cycle capacity --days-off; teste da checagem de time no Linear. Revisor ciclo 1 (opus) iniciado.
+- PMK-223: PR #191 (sonnet); remotes de GitHub Enterprise e alias com --git-host github; hostOnly no JSON e --yes no arquivo de comando para pular a confirmação de mudança só de host; --recheck-team no Linear. Follow-ups: GH_HOST ou git_host.host para Enterprise sem remote; reconhecer Enterprise sem --git-host github; --recheck-team no setup. Revisor ciclo 1 (opus) iniciado.
+- PMK-223: primeiro start do revisor (ctx_f64271e13db3) com composer vazio; abandon, ready e worker-start no mesmo terminal (aprovação permanente).
+- PMK-223 ciclo 1 (opus): mudanças pedidas, 4 bloqueantes (texto diz que recusa broken com --recheck-team e a CLI não; --git-host github troca repo existente por remote de outro host e --yes escreve; host e repo do remote sem validação, a$(id)b.com chega à nota; --recheck-team conclui de leitura cortada). O revisor mandou o veredito pelo dispatch abandonado; parei o dispatch reiniciado para fechar.
+- PMK-224 ciclo 1 (opus): mudanças pedidas, 2 bloqueantes (escrita só de days-off manda o mapa inteiro e falha com chave velha; arredondamento a partir do valor guardado deriva e 1 vira 0 para sempre). Pedi base que não muda com os days-off. Follow-ups: capacidade decimal; teams(first: 50) sem paginação; helpers duplicados. O revisor parou num prompt de segurança do rm e seguiu sozinho.
+- PMK-222: PR #192 (opus); preview do delete com git grep no repo (files com path e lines, scan falho fica em unchecked); issues restore (issueUnarchive no Linear, NOT_SUPPORTED no Local com os comandos git); issues link --remove com vários alvos e parada como bulk; testes de ../, id de épico e issueDelete success:false. Critério 4 (sandbox live do Linear) aberto, sem chave. Follow-ups: rodar o live e registrar em API-VERIFICATION.md; restore do Local a partir do git; delete nomear id de épico; link com vários alvos sem --remove. Revisor ciclo 1 (opus) iniciado.
+- PMK-223 correção a3dd9a2: texto alinhado à CLI; repo existente nunca trocado por remote (aviso) e hostOnly falso quando repo, branch ou host mudam; host (DNS) e owner/repo validados antes de gravar ou citar; discover cortado deixa o time não verificado; conventions.md registra a exceção do --yes; --git-host none sempre pergunta. Revisor ciclo 2 (opus) iniciado.
+- PMK-223 ciclo 2: primeiro start do revisor (ctx_96523049de2d) com composer vazio; abandon, ready e worker-start no mesmo terminal (aprovação permanente).
+- Decisão do usuário (PMK-222): mergear o PR #192 com o critério 4 desmarcado quando a revisão aprovar; a execução no sandbox live do Linear vira follow-up (registrar em API-VERIFICATION.md).
+- PMK-223 ciclo 2 (opus): mudanças pedidas (corte de users ou labels no discover recusa --team com UPSTREAM Retry, regressão). Mandei a correção; o próximo é o ciclo 3.
+- PMK-222 ciclo 1 (opus): mudanças pedidas, 2 bloqueantes (.issues inteira fora do git grep perde ADR em .issues/docs; color.ui=always faz o grep voltar vazio). Pontos de atenção OK.
+- PMK-224 correção 5d546b0: capacityPatch escreve só os membros que mudam (Local e Linear); recálculo sem arredondar (9 casas), ida e volta exata; capacidade decimal como efeito. Revisor ciclo 2 (opus) iniciado, com atenção aos consumidores de capacidade decimal.
+- PMK-223 correção de3a238: só corte de times ou estados deixa o time não verificado; hostOnly falso com aviso; recusa de remote inválido com a nota; yes só para link-repo.md. Revisor ciclo 3 (opus) iniciado.
+- PMK-224 ciclo 2 (opus): mudanças pedidas, 2 bloqueantes (ida e volta com 9 casas falha em 398 de 3600 casos e gera over_capacity falso; cycle:plan e a suíte de contrato ainda usam os membros do workspace inteiro). Pedi guardar a base e derivar a efetiva na leitura. Linear nunca recebe a capacidade (só capacity.yaml).
+- PMK-222 correção 0bef129: scan exclui só <issuesDir>/issues (lê .issues/docs, epics, sprints); git grep com --no-color e saída ilegível em unchecked; dry run do link --remove diz que nada foi escrito; from entre os alvos recusado antes; restore no Local de issue viva é INVALID_INPUT. Revisor ciclo 2 (opus) iniciado.
+- PMK-223 ciclo 3 (opus): APROVADO (regressão corrigida, reprodução contra develop). Não bloqueantes: corte de labels ainda pode gerar broken falso em mappings.types (igual a develop, mas o comentário/spec/CHANGELOG dizem que não importa); --yes nunca pula a pergunta num link Enterprise (aviso deixa hostOnly false); corte só de states pula a checagem do time. Mergeado (03924f8).
+- PMK-222 ciclo 2 (opus): APROVADO; pedi antes do merge o golden sem o texto do fatal do git (muda com a versão) e o restore do Linear depois de releitura falha. Follow-ups: id que nunca existiu recebe NOT_SUPPORTED; --kind inválido culpa o primeiro alvo; scan repetido no delete real; execução live (critério 4).
+- PMK-224 correção 4329787: capacidade escalada derivada de capacity_base guardada (sprint e capacity.yaml); ida e volta exata em 3600 casos; carga igual não é over_capacity; cycle:plan, suíte de contrato e teamMembers só com o time; rebase. Revisor ciclo 3 (opus) iniciado, com atenção ao campo novo capacity_base no validate e na migração.
+- PMK-222: 07271d6 com golden sem o fatal do git e restore do Linear com aviso depois de releitura falha; diff conferido. Mergeado (1a05940) com o critério 4 desmarcado (decisão do usuário). Follow-up: os goldens de link-repo da PMK-223 também guardam texto do fatal do git.
+- PMK-224 ciclo 3 (opus): mudanças pedidas, 1 bloqueante (shown() com .toFixed numa capacidade não numérica grava e sai com exit 2). Varredura de 3600 e 36000 casos exata; capacity_base no validate, schema e migração. Três ciclos sem aprovação: o usuário escolheu corrigir e eu conferir, sem ciclo 4.
+- PMK-224: a8cb7c2 conferido numa cópia do fixture team: com capacity fred: 8h, team capacity --set ana=9 sai 0, grava ana: 9 e mantém fred: 8h. Mergeado (58604e4).
+
+Fim da rodada 17: PRs #190, #191, #192 mergeados.
