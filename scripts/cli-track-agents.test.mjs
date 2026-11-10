@@ -11,7 +11,8 @@ import { makeRepo, tempDir } from './test-helpers.mjs'
 import { fakeGh, ghCalls } from './fake-gh.mjs'
 
 const VIEW = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
-const view = (branch) => `pr view ${branch} --json ${VIEW}`
+// track-agents reads each pull request with its reviews and merge state in one call.
+const view = (branch) => `pr view ${branch} --json ${VIEW},reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName`
 const pr = (overrides = {}) => JSON.stringify({ number: 7, url: 'https://github.com/o/r/pull/7', title: 'T', state: 'MERGED', isDraft: false, headRefName: 'x', author: { login: 'a' }, mergedAt: '2026-10-20T00:00:00Z', ...overrides })
 
 function setup({ github = true, canned = {} } = {}) {
@@ -118,20 +119,19 @@ async function threadsKey() {
   return key.replace('number=1', 'number={N}')
 }
 const PROTECTION = 'api repos/{owner}/{repo}/branches/main/protection'
+const RULES = 'api repos/{owner}/{repo}/rules/branches/main?per_page=100&page=1'
 function openPr(key, branch, number, kind) {
   const merge = kind === 'notReady' ? { mergeable: 'UNKNOWN', mergeStateStatus: 'UNKNOWN', reviewDecision: '', baseRefName: 'main' } : { mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', reviewDecision: 'APPROVED', baseRefName: 'main' }
   return {
-    [view(branch)]: { stdout: pr({ number, state: 'OPEN', isDraft: kind === 'draft', mergedAt: null }) },
+    [view(branch)]: { stdout: pr({ number, state: 'OPEN', isDraft: kind === 'draft', mergedAt: null, ...merge, reviews: [{ author: { login: 'ann' }, state: 'APPROVED' }], reviewRequests: [] }) },
     [`pr checks ${number} --json name,state,bucket,link`]: { stdout: JSON.stringify([{ name: 'test', state: 'SUCCESS', bucket: 'pass' }]) },
-    [`pr view ${number} --json reviews,reviewRequests`]: { stdout: JSON.stringify({ reviews: [{ author: { login: 'ann' }, state: 'APPROVED' }], reviewRequests: [] }) },
-    [`pr view ${number} --json mergeable,mergeStateStatus,reviewDecision,baseRefName`]: { stdout: JSON.stringify(merge) },
     [key.replace('{N}', String(number))]: { stdout: EMPTY_THREADS },
   }
 }
 
 test('a blocked pull request is never reported as free: blocked true, null and false each come out as they are', async () => {
   const key = await threadsKey()
-  const { root, cli, track } = setup({ canned: { ...openPr(key, 'b-draft', 11, 'draft'), ...openPr(key, 'b-wait', 12, 'notReady'), ...openPr(key, 'b-free', 13, 'free'), [PROTECTION]: { stdout: '{}' } } })
+  const { root, cli, track } = setup({ canned: { ...openPr(key, 'b-draft', 11, 'draft'), ...openPr(key, 'b-wait', 12, 'notReady'), ...openPr(key, 'b-free', 13, 'free'), [PROTECTION]: { stdout: '{}' }, [RULES]: { stdout: '[]' } } })
   for (const id of ['ISS-5N1R', 'ISS-2X6D', 'ISS-8C4W']) await delegate(cli, id, 'agent:claude')
   setBranch(root, 'ISS-5N1R', 'b-draft')
   setBranch(root, 'ISS-2X6D', 'b-wait')
@@ -151,14 +151,28 @@ test('a blocked pull request is never reported as free: blocked true, null and f
   assert.match(text, /#13 open, nothing blocks it/)
 })
 
-test('the branch protection of a base is read once for all the issues', async () => {
+test('the branch protection and the rules of a base are read once for all the issues', async () => {
   const key = await threadsKey()
-  const { root, cli, track, gh } = setup({ canned: { ...openPr(key, 'b-one', 21, 'free'), ...openPr(key, 'b-two', 22, 'free'), [PROTECTION]: { stdout: '{}' } } })
+  const { root, cli, track, gh } = setup({ canned: { ...openPr(key, 'b-one', 21, 'free'), ...openPr(key, 'b-two', 22, 'free'), [PROTECTION]: { stdout: '{}' }, [RULES]: { stdout: '[]' } } })
   for (const id of ['ISS-5N1R', 'ISS-2X6D']) await delegate(cli, id, 'agent:claude')
   setBranch(root, 'ISS-5N1R', 'b-one')
   setBranch(root, 'ISS-2X6D', 'b-two')
   await track()
   assert.equal(ghCalls(gh).filter((line) => line === PROTECTION).length, 1)
+  assert.equal(ghCalls(gh).filter((line) => line === RULES).length, 1)
+})
+
+test('a refused branch protection or rules read is kept for the base, so the next issue does not ask again', async () => {
+  const key = await threadsKey()
+  const refused = { status: 1, stderr: 'gh: Resource not accessible by integration (HTTP 403)\n' }
+  const { root, cli, track, gh } = setup({ canned: { ...openPr(key, 'b-one', 41, 'free'), ...openPr(key, 'b-two', 42, 'free'), [PROTECTION]: refused, [RULES]: refused } })
+  for (const id of ['ISS-5N1R', 'ISS-2X6D']) await delegate(cli, id, 'agent:claude')
+  setBranch(root, 'ISS-5N1R', 'b-one')
+  setBranch(root, 'ISS-2X6D', 'b-two')
+  const data = dataOf(await track())
+  assert.equal(ghCalls(gh).filter((line) => line === PROTECTION).length, 1)
+  assert.equal(ghCalls(gh).filter((line) => line === RULES).length, 1)
+  assert.ok(data.issues.every((issue) => issue.pr.blocked === null && issue.pr.unchecked.includes('policies')), JSON.stringify(data.issues.map((i) => i.pr)))
 })
 
 test('after the first RATE_LIMITED no more gh calls are made and one warning is given', async () => {
@@ -200,7 +214,7 @@ test('a comment with broken frontmatter marks its issue unknown and the command 
 
 test('a failed branch protection read is not cached: the next issue reads it again', async () => {
   const key = await threadsKey()
-  const { root, cli, track, gh } = setup({ canned: { ...openPr(key, 'b-one', 31, 'free'), ...openPr(key, 'b-two', 32, 'free'), [PROTECTION]: [{ status: 1, stderr: 'HTTP 502 bad gateway' }, { stdout: '{}' }] } })
+  const { root, cli, track, gh } = setup({ canned: { ...openPr(key, 'b-one', 31, 'free'), ...openPr(key, 'b-two', 32, 'free'), [PROTECTION]: [{ status: 1, stderr: 'HTTP 502 bad gateway' }, { stdout: '{}' }], [RULES]: { stdout: '[]' } } })
   for (const id of ['ISS-5N1R', 'ISS-2X6D']) await delegate(cli, id, 'agent:claude')
   setBranch(root, 'ISS-5N1R', 'b-one')
   setBranch(root, 'ISS-2X6D', 'b-two')

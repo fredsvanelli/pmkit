@@ -9,9 +9,20 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { validBranch } from '../lib/config.mjs'
+import { createGithubHost } from '../lib/github/host.mjs'
 
 const BRANCH = 'iss-5n1r-paginate-the-events-api'
 const VIEW = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
+// pr status reads the pull request with its reviews and merge state, then the blocker reads (threads, protection, rules).
+const DETAIL = ',reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName'
+const NO_THREADS = JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false }, nodes: [] } } } } })
+
+/** The argument string of the first graphql call of the threads, taken from the real host so the canned key cannot drift. */
+function threadsKey(number) {
+  let key
+  createGithubHost({ root: '.', env: {}, exec: (cmd, args) => { key = args.join(' '); return { status: 0, stdout: NO_THREADS, stderr: '' } } }).prThreads(number)
+  return key
+}
 const RUN_LIST = `run list --branch ${BRANCH} --limit 50 --json databaseId,workflowName,status,conclusion,url,createdAt,headSha`
 const pr = {
   number: 7, url: 'https://github.com/o/r/pull/7', title: 'Paginate the events API (ISS-5N1R)', state: 'OPEN',
@@ -37,7 +48,10 @@ const happy = {
     [RUN_LIST]: { stdout: JSON.stringify([{ databaseId: 42, workflowName: 'test', status: 'completed', conclusion: 'failure', url: 'https://github.com/o/r/actions/runs/42', createdAt: '2026-10-23T09:00:00Z', headSha: 'sha42' }]) },
     'run view 42 --log-failed': { stdout: LOG },
     'pr checks 7 --json name,state,bucket,link': { stdout: JSON.stringify([{ name: 'test', state: 'FAILURE', bucket: 'fail' }]) },
-    'pr view 7 --json reviews,reviewRequests': { stdout: JSON.stringify({ reviews: [], reviewRequests: [] }) },
+    [`pr view ${BRANCH} --json ${VIEW}${DETAIL}`]: { stdout: JSON.stringify({ ...pr, reviews: [], reviewRequests: [], mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', reviewDecision: '', baseRefName: 'main' }) },
+    [threadsKey(7)]: { stdout: NO_THREADS },
+    'api repos/{owner}/{repo}/branches/main/protection': { status: 1, stderr: 'gh: Branch not protected (HTTP 404)\n' },
+    'api repos/{owner}/{repo}/rules/branches/main?per_page=100&page=1': { stdout: '[]' },
   },
   async setup({ root, pmkit, git }) {
     await pmkit(['issues', 'update', 'ISS-5N1R', '--criteria-file', path.join(inputs, 'criteria.md'), '--branch', BRANCH])

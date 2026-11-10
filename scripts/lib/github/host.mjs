@@ -8,9 +8,13 @@ const MAX_OUTPUT = 256 * 1024 * 1024
 const DIFF_TIMEOUT_MS = 120 * 1000
 
 const VIEW_FIELDS = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
+// What pr blockers needs beyond the view, read in the same gh pr view and nested in `detail`.
+const DETAIL_FIELDS = ['reviews', 'reviewRequests', 'mergeable', 'mergeStateStatus', 'reviewDecision', 'baseRefName']
+// GitHub pages the rules of a branch; 100 is the largest page.
+const RULES_PAGE = 100
 const LIST_FIELDS = 'number,url,title,headRefName,isDraft,updatedAt,author,statusCheckRollup'
 const RUN_FIELDS = 'databaseId,workflowName,status,conclusion,url,createdAt,headSha'
-const THREADS_QUERY = 'query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { pageInfo { hasNextPage } nodes { isResolved isOutdated path line comments(first: 1) { nodes { url body author { login } } } } } } } }'
+const THREADS_QUERY = 'query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100, after: $endCursor) { pageInfo { hasNextPage endCursor } nodes { isResolved isOutdated path line comments(first: 1) { nodes { url author { login } } } } } } } }'
 const STATUS_QUERY = 'query($ids: [ID!]!) { nodes(ids: $ids) { ... on Deployment { latestStatus { state logUrl environmentUrl } } } }'
 const INSTALL_STEP = 'Install the GitHub CLI (https://cli.github.com) and run gh auth login'
 
@@ -87,19 +91,39 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
     }
   }
 
-  const getPullRequest = (selector) => {
+  /** The pull request of a number or a head branch, or null. With `detail`, the same call also reads DETAIL_FIELDS into `pr.detail`. */
+  const getPullRequest = (selector, { detail = false } = {}) => {
     const target = selector?.number ?? selector?.head
     if (target === undefined || target === '') {
       throw new PmkitError('INVALID_INPUT', 'getPullRequest needs a number or a head', 'Pass a pull request number or a branch name')
     }
     if (selector.number === undefined) refArg('head', target)
-    const args = ['pr', 'view', String(target), '--json', VIEW_FIELDS]
-    const result = run('gh', args)
-    if (result.status !== 0) {
-      if (/no pull requests? found/i.test(result.stderr ?? '')) return null
-      throw failure('gh', args, result)
+    const read = (fields) => {
+      const args = ['pr', 'view', String(target), '--json', [VIEW_FIELDS, ...fields].join(',')]
+      const result = run('gh', args)
+      if (result.status !== 0) {
+        if (/no pull requests? found/i.test(result.stderr ?? '')) return null
+        throw failure('gh', args, result)
+      }
+      return parse(result.stdout, 'the pull request')
     }
-    return parse(result.stdout, 'the pull request')
+    if (!detail) return read([])
+    let pr
+    let reviewRequestsError
+    try {
+      pr = read(DETAIL_FIELDS)
+    } catch (error) {
+      // A token without read:org cannot read a team asked for review, and gh then refuses the whole view. Without that one field
+      // the rest still reads, and the caller says the review requests were not checked.
+      if (!(error instanceof PmkitError) || error.httpStatus !== 403) throw error
+      pr = read(DETAIL_FIELDS.filter((field) => field !== 'reviewRequests'))
+      reviewRequestsError = { code: error.code, message: error.message, nextStep: 'Run gh auth refresh -s read:org, or read the review requests on the pull request page' }
+    }
+    if (pr === null) return null
+    const view = { ...pr }
+    for (const field of DETAIL_FIELDS) delete view[field]
+    const details = Object.fromEntries(DETAIL_FIELDS.map((field) => [field, pr[field]]))
+    return { ...view, detail: reviewRequestsError ? { ...details, reviewRequests: null, reviewRequestsError } : details }
   }
 
   const workingTree = (branch) => {
@@ -168,35 +192,34 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
       return withRun(parse(result.stdout, 'the checks'))
     },
 
-    prReviews(number) {
-      return parse(check('gh', ['pr', 'view', String(number), '--json', 'reviews,reviewRequests']).stdout, 'the reviews')
-    },
-
-    prMergeState(number) {
-      return parse(check('gh', ['pr', 'view', String(number), '--json', 'mergeable,mergeStateStatus,reviewDecision,baseRefName']).stdout, 'the merge state')
-    },
-
-    /** The review threads of a pull request (first 100). `incomplete` is true when there are more. */
+    /** Every review thread of a pull request, one graphql call per page of 100. */
     prThreads(number) {
-      const args = ['api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-F', `number=${number}`, '-f', `query=${THREADS_QUERY}`]
-      const result = run('gh', args)
-      if (result.status !== 0) {
-        // A graphql error makes gh exit 1 with the reply on stdout and "gh: <message>" on stderr.
-        const error = failure('gh', args, result)
-        let type
-        try { type = JSON.parse(result.stdout)?.errors?.[0]?.type } catch {}
-        const httpStatus = { FORBIDDEN: 403, INSUFFICIENT_SCOPES: 403, NOT_FOUND: 404 }[type]
-        if (httpStatus) error.httpStatus = httpStatus
-        throw error
+      const threads = []
+      let cursor = null
+      for (;;) {
+        const args = ['api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-F', `number=${number}`, '-f', `query=${THREADS_QUERY}`, ...(cursor === null ? [] : ['-f', `endCursor=${cursor}`])]
+        const result = run('gh', args)
+        if (result.status !== 0) {
+          // A graphql error makes gh exit 1 with the reply on stdout and "gh: <message>" on stderr.
+          const error = failure('gh', args, result)
+          let type
+          try { type = JSON.parse(result.stdout)?.errors?.[0]?.type } catch {}
+          const httpStatus = { FORBIDDEN: 403, INSUFFICIENT_SCOPES: 403, NOT_FOUND: 404 }[type]
+          if (httpStatus) error.httpStatus = httpStatus
+          throw error
+        }
+        const reply = parse(result.stdout, 'the review threads')
+        const connection = reply?.data?.repository?.pullRequest?.reviewThreads
+        if (!connection) throw new PmkitError('UPSTREAM', 'gh api graphql returned no review threads', 'Update the GitHub CLI and retry')
+        for (const t of connection.nodes) {
+          const first = t.comments?.nodes?.[0]
+          threads.push({ isResolved: t.isResolved, isOutdated: t.isOutdated, path: t.path ?? null, line: t.line ?? null, url: first?.url ?? null, author: first?.author?.login ?? null })
+        }
+        if (connection.pageInfo?.hasNextPage !== true) return { threads }
+        cursor = connection.pageInfo.endCursor
+        // Without a cursor the next page cannot be asked, and a partial list must not pass for the whole one.
+        if (!cursor) throw new PmkitError('UPSTREAM', 'gh api graphql returned no cursor for the next page of review threads', 'Retry, or update the GitHub CLI')
       }
-      const reply = parse(result.stdout, 'the review threads')
-      const connection = reply?.data?.repository?.pullRequest?.reviewThreads
-      if (!connection) throw new PmkitError('UPSTREAM', 'gh api graphql returned no review threads', 'Update the GitHub CLI and retry')
-      const threads = connection.nodes.map((t) => {
-        const first = t.comments?.nodes?.[0]
-        return { isResolved: t.isResolved, isOutdated: t.isOutdated, path: t.path ?? null, line: t.line ?? null, url: first?.url ?? null, author: first?.author?.login ?? null, body: first?.body ?? '' }
-      })
-      return { threads, incomplete: connection.pageInfo?.hasNextPage === true }
     },
 
     /** The branch protection of a base branch, or null when it has none. */
@@ -211,6 +234,18 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
     /** The open pull requests with their review requests (PMK-225), the 200 most recently created. */
     listReviewRequests() {
       return parse(check('gh', ['pr', 'list', '--state', 'open', '--limit', '200', '--json', 'number,url,title,headRefName,author,reviewRequests']).stdout, 'the review requests')
+    },
+
+    /** The active rules of the repository and organization rulesets that apply to a base branch, read page by page. */
+    branchRules(base) {
+      const branch = encodeURIComponent(refArg('base', base))
+      const rules = []
+      for (let page = 1; ; page++) {
+        const batch = parse(check('gh', ['api', `repos/{owner}/{repo}/rules/branches/${branch}?per_page=${RULES_PAGE}&page=${page}`]).stdout, 'the branch rules')
+        if (!Array.isArray(batch)) throw new PmkitError('UPSTREAM', 'gh api returned no list of branch rules', 'Update the GitHub CLI and retry')
+        rules.push(...batch)
+        if (batch.length < RULES_PAGE) return rules
+      }
     },
 
     listPullRequests() {

@@ -1,17 +1,26 @@
 // What blocks a pull request from merging. Reads through the git host and classifies the answers.
-// `blocking` holds what stops the merge: what the branch protection requires, merge conflicts, a draft and requested changes.
+// The pull request comes with its reviews and merge state in `pr.detail` (getPullRequest with `detail`), so they need no read here.
+// The policies are the classic branch protection and the active ruleset rules of the base branch, merged.
+// `blocking` holds what stops the merge: what the policies require, merge conflicts, a draft and requested changes.
 // `pending` holds what is open but that nothing requires, such as a reviewer nobody needs or a check that is not required.
-// `unknown` holds what may block, but the command cannot tell because the branch protection could not be read.
-// A read that GitHub refuses with HTTP 403 or 404 leaves its section null and adds an `unchecked` entry.
+// `unknown` holds what may block, but the command cannot tell because the protection or the rules could not be read.
+// A read that GitHub refuses with HTTP 403 or 404 leaves its section null and adds an `unchecked` entry. `policies` has two
+// reads (protection and rules): it is null only when both are refused, and names a refused one in `policies.unread`.
 // Any other failure, such as a network error or a 5xx, fails the read.
 
 import { PmkitError } from './errors.mjs'
 
 const FAILING = new Set(['fail', 'cancel'])
 const PASSING = new Set(['pass', 'skipping'])
-const UNREAD_RULE = 'GitHub blocks the merge by a rule this command does not read (for example a ruleset)'
+const UNREAD_RULE = 'GitHub blocks the merge by a rule this command does not evaluate (for example signed commits, a merge queue or required deployments)'
+// The ruleset rule types the command evaluates, and the ones that only guard creating, deleting or force-pushing the branch,
+// so they never block merging a pull request. GitHub's mergeStateStatus covers the rest.
+const EVALUATED_RULES = new Set(['pull_request', 'required_status_checks'])
+const NOT_MERGE_RULES = new Set(['creation', 'deletion', 'non_fast_forward'])
+// Marks a protection read that was refused, apart from null, which is a branch without classic protection.
+const REFUSED = Symbol('refused')
 // A rule the command evaluates from another read, and the read it needs.
-const NEEDS = { 'required checks': 'checks', 'required approvals': 'reviews', 'conversation resolution': 'threads' }
+const NEEDS = { 'required checks': 'checks', 'conversation resolution': 'threads' }
 const UNREAD_PROTECTION = 'GitHub blocks the merge by a rule this command could not read (branch protection or a ruleset)'
 
 /** The latest review of each author, in the order gh lists them. COMMENTED and PENDING do not change a verdict. */
@@ -26,16 +35,22 @@ function latestVerdicts(reviews) {
   return byAuthor
 }
 
+/** Why GitHub blocks when nothing read explains it, with the active rule types the command does not evaluate. */
+function ruleText(policies) {
+  const others = (policies?.rulesets ?? []).filter((type) => !EVALUATED_RULES.has(type) && !NOT_MERGE_RULES.has(type))
+  return others.length > 0 ? `${UNREAD_RULE}; active rules it does not evaluate: ${others.join(', ')}` : UNREAD_RULE
+}
+
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
 const names = (items, label = (i) => i) => items.map(label).join(', ')
 // A review request is a user (`login`) or a team (`slug`). Teams are kept apart so a team named like a user never matches the user.
 const isTeam = (r) => r.__typename === 'Team' || (r.login === undefined && r.slug !== undefined)
 /** Who is asked for a review, as text: users by login, teams as `team <slug>`. */
-const anyRequested = (reviews) => (reviews?.requested.length ?? 0) + (reviews?.requestedTeams.length ?? 0) > 0
+const anyRequested = (reviews) => (reviews?.requested?.length ?? 0) + (reviews?.requestedTeams?.length ?? 0) > 0
 const waitingFor = (reviews) => [...reviews.requested, ...reviews.requestedTeams.map((t) => `team ${t}`)].join(', ')
 
 /**
- * Reads checks, reviews, merge state, review threads and branch protection of `pr` and returns
+ * Reads checks, review threads and branch protection of `pr`, takes its reviews and merge state from `pr.detail`, and returns
  * { blocked, blocking, pending, unknown, state, draft, checks, reviews, conflicts, threads, policies, unchecked }.
  * `blocked` is true when something is in `blocking`, false when nothing is blocking and every read worked, and null when
  * nothing is blocking but `unknown` has items, a read is missing or the merge state is not computed yet.
@@ -46,13 +61,13 @@ export function collectBlockers(host, pr) {
   const blocking = []
   const pending = []
   const unknown = []
-  const attempt = (area, read) => {
+  const attempt = (area, read, refused = null) => {
     try {
       return read()
     } catch (error) {
       if (!(error instanceof PmkitError) || error.code !== 'UPSTREAM' || ![403, 404].includes(error.httpStatus)) throw error
       unchecked.push({ area, code: error.code, message: error.message, nextStep: error.nextStep })
-      return null
+      return refused
     }
   }
   if (pr.state !== 'OPEN') {
@@ -66,10 +81,10 @@ export function collectBlockers(host, pr) {
     pending: checkList.filter((c) => c.bucket === 'pending'),
   }
 
-  const mergeState = attempt('conflicts', () => host.prMergeState(pr.number))
+  const mergeState = pr.detail
   // GitHub answers UNKNOWN while it computes the merge, for example right after a push.
-  const notComputed = mergeState !== null && (mergeState.mergeable === 'UNKNOWN' || mergeState.mergeStateStatus === 'UNKNOWN') && mergeState.mergeable !== 'CONFLICTING' && mergeState.mergeStateStatus !== 'DIRTY'
-  const conflicts = mergeState && {
+  const notComputed = (mergeState.mergeable === 'UNKNOWN' || mergeState.mergeStateStatus === 'UNKNOWN') && mergeState.mergeable !== 'CONFLICTING' && mergeState.mergeStateStatus !== 'DIRTY'
+  const conflicts = {
     mergeable: mergeState.mergeable,
     mergeStateStatus: mergeState.mergeStateStatus,
     conflicting: mergeState.mergeable === 'CONFLICTING' || mergeState.mergeStateStatus === 'DIRTY',
@@ -78,34 +93,52 @@ export function collectBlockers(host, pr) {
   }
   if (notComputed) unchecked.push({ area: 'conflicts', code: 'NOT_READY', message: 'GitHub has not computed the merge state yet', nextStep: 'Run the command again in a few seconds' })
 
-  const reviewData = attempt('reviews', () => host.prReviews(pr.number))
-  const verdicts = reviewData ? latestVerdicts(reviewData.reviews ?? []) : new Map()
-  const reviews = reviewData && {
-    decision: mergeState?.reviewDecision || null,
+  const verdicts = latestVerdicts(mergeState.reviews ?? [])
+  // Review requests the token could not read (getPullRequest sets reviewRequests null) are unknown, never "nobody asked".
+  const requests = mergeState.reviewRequests
+  if (requests === null) unchecked.push({ area: 'reviews', code: 'UPSTREAM', message: 'the review requests could not be read', ...mergeState.reviewRequestsError })
+  const reviews = {
+    decision: mergeState.reviewDecision || null,
     changesRequested: [...verdicts].filter(([, state]) => state === 'CHANGES_REQUESTED').map(([login]) => login),
-    requested: (reviewData.reviewRequests ?? []).filter((r) => !isTeam(r)).map((r) => r.login ?? r.name),
-    requestedTeams: (reviewData.reviewRequests ?? []).filter(isTeam).map((r) => r.slug ?? r.name),
+    requested: requests === null ? null : (requests ?? []).filter((r) => !isTeam(r)).map((r) => r.login ?? r.name),
+    requestedTeams: requests === null ? null : (requests ?? []).filter(isTeam).map((r) => r.slug ?? r.name),
   }
 
   const threadData = attempt('threads', () => host.prThreads(pr.number))
   const unresolved = threadData ? threadData.threads.filter((t) => !t.isResolved) : []
-  const threads = threadData && { open: unresolved.filter((t) => !t.isOutdated), outdated: unresolved.filter((t) => t.isOutdated), incomplete: threadData.incomplete }
+  const threads = threadData && { open: unresolved.filter((t) => !t.isOutdated), outdated: unresolved.filter((t) => t.isOutdated) }
 
-  const base = mergeState?.baseRefName
-  const protection = base === undefined ? undefined : attempt('policies', () => host.branchProtection(base))
-  if (base === undefined && mergeState === null) {
-    unchecked.push({ area: 'policies', code: 'NOT_READY', message: 'the base branch is unknown because the merge state was not read', nextStep: 'Run the command again' })
-  }
-  const policiesRead = protection !== undefined && !unchecked.some((u) => u.area === 'policies')
+  const read = attempt('policies', () => host.branchProtection(mergeState.baseRefName), REFUSED)
+  const protection = read === REFUSED ? null : read
+  // With the protection read, the repository is readable, so a 404 on the rules means the host has no rulesets (an older GitHub
+  // Enterprise Server): there is nothing to read, not a refusal. With the protection refused, a 404 may be a refusal too.
+  let noRulesets = false
+  const rules = attempt('policies', () => {
+    try {
+      return host.branchRules(mergeState.baseRefName)
+    } catch (error) {
+      if (read === REFUSED || !(error instanceof PmkitError) || error.code !== 'UPSTREAM' || error.httpStatus !== 404) throw error
+      noRulesets = true
+      return null
+    }
+  })
+  const unread = [read === REFUSED && 'branch protection', rules === null && !noRulesets && 'rulesets'].filter(Boolean)
+  // Only with both read can the command say that something open is not required.
+  const policiesKnown = unread.length === 0
+  // What the two sources require, merged: the largest approval count, every required check, and either one's strict or conversation rule.
+  const pullRules = (rules ?? []).filter((r) => r.type === 'pull_request').map((r) => r.parameters ?? {})
+  const checkRules = (rules ?? []).filter((r) => r.type === 'required_status_checks').map((r) => r.parameters ?? {})
   const statusChecks = protection?.required_status_checks
-  const requiredChecks = [...new Set([...(statusChecks?.contexts ?? []), ...(statusChecks?.checks ?? []).map((c) => c.context)])]
-  const conversationRequired = policiesRead && protection?.required_conversation_resolution?.enabled === true
+  const requiredChecks = [...new Set([...(statusChecks?.contexts ?? []), ...(statusChecks?.checks ?? []).map((c) => c.context), ...checkRules.flatMap((p) => (p.required_status_checks ?? []).map((c) => c.context))])]
+  const strict = statusChecks?.strict === true || checkRules.some((p) => p.strict_required_status_checks_policy === true)
+  const conversationRequired = protection?.required_conversation_resolution?.enabled === true || pullRules.some((p) => p.required_review_thread_resolution === true)
+  const counts = [protection?.required_pull_request_reviews?.required_approving_review_count, ...pullRules.map((p) => p.required_approving_review_count)].filter(Number.isInteger)
   let policies = null
-  if (policiesRead) {
-    const requiredApprovals = protection?.required_pull_request_reviews?.required_approving_review_count ?? null
+  if (unread.length < 2) {
+    const requiredApprovals = counts.length > 0 ? Math.max(...counts) : null
     const approvals = [...verdicts.values()].filter((state) => state === 'APPROVED').length
     const unmet = []
-    if (requiredApprovals !== null && reviewData && approvals < requiredApprovals) {
+    if (requiredApprovals !== null && approvals < requiredApprovals) {
       unmet.push(`needs ${plural(requiredApprovals - approvals, 'more approval')} (${approvals} of ${requiredApprovals})`)
     }
     if (checkList) {
@@ -120,52 +153,51 @@ export function collectBlockers(host, pr) {
     // A rule whose input read was refused did not run, so it is neither met nor unmet.
     const unevaluated = []
     if (!checkList) unevaluated.push('required checks')
-    if (!reviewData) unevaluated.push('required approvals')
     if (conversationRequired && !threads) unevaluated.push('conversation resolution')
-    policies = { protected: protection !== null, requiredApprovals, approvals, requiredChecks, unmet, unreadRule: false, unevaluated }
+    const rulesets = rules === null ? null : [...new Set(rules.map((r) => r.type))]
+    policies = { protected: read === REFUSED ? null : protection !== null, rulesets, unread, requiredApprovals, approvals, requiredChecks, unmet, unreadRule: false, unevaluated }
   }
 
   // What blocks.
-  const protectionKnown = policiesRead
   if (draft) blocking.push({ area: 'draft', message: 'the pull request is a draft' })
-  if (conflicts?.conflicting) blocking.push({ area: 'conflicts', message: 'merge conflicts with the base branch' })
-  if (conflicts?.behind && statusChecks?.strict === true) blocking.push({ area: 'conflicts', message: 'the branch is behind the base branch and the protection requires it to be up to date' })
+  if (conflicts.conflicting) blocking.push({ area: 'conflicts', message: 'merge conflicts with the base branch' })
+  if (conflicts.behind && strict) blocking.push({ area: 'conflicts', message: 'the branch is behind the base branch and the protection or a ruleset requires it to be up to date' })
   // GitHub reviewDecision is the word of GitHub, so it blocks without the protection.
-  if (reviews?.decision === 'CHANGES_REQUESTED') blocking.push({ area: 'reviews', message: reviews.changesRequested.length > 0 ? `changes requested by ${names(reviews.changesRequested)}` : 'changes are requested' })
-  else if (reviews?.changesRequested.length > 0) {
+  if (reviews.decision === 'CHANGES_REQUESTED') blocking.push({ area: 'reviews', message: reviews.changesRequested.length > 0 ? `changes requested by ${names(reviews.changesRequested)}` : 'changes are requested' })
+  else if (reviews.changesRequested.length > 0) {
     const message = `changes requested by ${names(reviews.changesRequested)}`
     // A protection that requires 0 approvals does not require reviews, and GitHub APPROVED outranks one author's request.
     if (reviews.decision === 'APPROVED') pending.push({ area: 'reviews', message })
     else if (policies?.requiredApprovals > 0) blocking.push({ area: 'reviews', message })
-    else if (protectionKnown) pending.push({ area: 'reviews', message })
+    else if (policiesKnown) pending.push({ area: 'reviews', message })
     else unknown.push({ area: 'reviews', message })
   }
   for (const message of policies?.unmet ?? []) blocking.push({ area: 'policies', message })
-  if (reviews?.decision === 'REVIEW_REQUIRED' && !(policies?.unmet ?? []).some((m) => m.startsWith('needs '))) blocking.push({ area: 'reviews', message: 'a review is required' })
-  if (mergeState?.mergeStateStatus === 'BLOCKED' && blocking.length === 0) {
+  if (reviews.decision === 'REVIEW_REQUIRED' && !(policies?.unmet ?? []).some((m) => m.startsWith('needs '))) blocking.push({ area: 'reviews', message: 'a review is required' })
+  if (mergeState.mergeStateStatus === 'BLOCKED' && blocking.length === 0) {
     const unevaluated = policies?.unevaluated ?? []
-    const unread = [...new Set(unevaluated.map((u) => NEEDS[u]))]
-    const cause = unevaluated.length > 0 ? `${UNREAD_RULE}, or by ${names(unevaluated)}, which it could not evaluate because the ${unread.join(' and ')} were not read` : UNREAD_RULE
-    blocking.push({ area: 'policies', message: protectionKnown ? cause : UNREAD_PROTECTION })
+    const reads = [...new Set(unevaluated.map((u) => NEEDS[u]))]
+    const rule = ruleText(policies)
+    const cause = unevaluated.length > 0 ? `${rule}, or by ${names(unevaluated)}, which it could not evaluate because the ${reads.join(' and ')} were not read` : rule
+    blocking.push({ area: 'policies', message: policiesKnown ? cause : UNREAD_PROTECTION })
     if (policies) policies.unreadRule = true
   }
 
-  // What is open. With the protection read, what it does not require is pending. Without it, the command cannot tell.
-  const open = protectionKnown ? pending : unknown
+  // What is open. With both policy sources read, what they do not require is pending. Without one, the command cannot tell.
+  // A check known to be required is already in blocking, so it is never listed again.
+  const open = policiesKnown ? pending : unknown
   if (checks) {
-    const optional = (c) => !protectionKnown || !requiredChecks.includes(c.name)
+    const optional = (c) => !requiredChecks.includes(c.name)
     const failing = checks.failing.filter(optional)
     const waiting = checks.pending.filter(optional)
     if (failing.length > 0) open.push({ area: 'checks', message: `failing ${names(failing, (c) => c.name)}` })
     if (waiting.length > 0) open.push({ area: 'checks', message: `pending ${names(waiting, (c) => c.name)}` })
   }
   if (anyRequested(reviews)) open.push({ area: 'reviews', message: `waiting for ${waitingFor(reviews)}` })
-  if (conflicts?.behind && statusChecks?.strict !== true) open.push({ area: 'conflicts', message: 'the branch is behind the base branch' })
+  if (conflicts.behind && !strict) open.push({ area: 'conflicts', message: 'the branch is behind the base branch' })
   if (threads && unresolved.length > 0 && !conversationRequired) {
     open.push({ area: 'threads', message: `${plural(threads.open.length, 'open thread')}${threads.outdated.length > 0 ? ` and ${plural(threads.outdated.length, 'outdated thread')}` : ''}` })
   }
-  // Past 100 threads the conversation rule cannot be checked against the whole list.
-  if (conversationRequired && threads?.incomplete) unknown.push({ area: 'threads', message: 'only the first 100 threads were read and conversation resolution is required' })
 
   const blocked = blocking.length > 0 ? true : unchecked.length > 0 || unknown.length > 0 ? null : false
   return { blocked, blocking, pending, unknown, state: pr.state, draft, checks, reviews, conflicts, threads, policies, unchecked }
@@ -175,7 +207,7 @@ export function collectBlockers(host, pr) {
 export function blockersText(pr, found) {
   const head = `#${pr.number} ${pr.title} (${pr.state}${pr.isDraft ? ', draft' : ''})`
   if (found.state !== 'OPEN') return `${head}\nnothing to unblock`
-  const notChecked = (area) => `${area}: not checked (${found.unchecked.find((u) => u.area === area)?.message ?? 'no data'})`
+  const notChecked = (area) => `${area}: not checked (${found.unchecked.filter((u) => u.area === area).map((u) => u.message).join('; ') || 'no data'})`
   const verdict = found.blocked === true ? 'blocked' : found.blocked === false ? 'nothing blocks the merge' : 'nothing known blocks the merge, but part of it could not be checked'
   const lines = [head, pr.url, verdict]
   if (found.blocking.length > 0) lines.push(`blocking: ${found.blocking.map((b) => b.message).join('; ')}`)
@@ -185,28 +217,34 @@ export function blockersText(pr, found) {
   if (checks === null) lines.push(notChecked('checks'))
   else if (checks.failing.length + checks.pending.length === 0) lines.push('checks: none failing or pending')
   else lines.push(`checks: ${[checks.failing.length > 0 && `failing ${names(checks.failing, (c) => (c.runId ? `${c.name} (ci logs --run ${c.runId})` : c.name))}`, checks.pending.length > 0 && `pending ${names(checks.pending, (c) => c.name)}`].filter(Boolean).join('; ')}`)
-  if (reviews === null) lines.push(notChecked('reviews'))
-  else {
+  {
     const parts = []
     if (reviews.changesRequested.length > 0) parts.push(`changes requested by ${names(reviews.changesRequested)}`)
     if (anyRequested(reviews)) parts.push(`waiting for ${waitingFor(reviews)}`)
+    if (reviews.requested === null) parts.push(`review requests not checked (${found.unchecked.find((u) => u.area === 'reviews')?.message ?? 'no data'})`)
     if (parts.length === 0 && reviews.decision === 'REVIEW_REQUIRED') parts.push('a review is required')
     lines.push(`reviews: ${parts.length > 0 ? parts.join('; ') : 'nothing pending'}`)
   }
-  if (conflicts === null || conflicts.unknown) lines.push(notChecked('conflicts'))
+  if (conflicts.unknown) lines.push(notChecked('conflicts'))
   else lines.push(`conflicts: ${conflicts.conflicting ? 'merge conflicts with the base branch' : conflicts.behind ? 'the branch is behind the base branch' : 'none'}`)
   if (threads === null) lines.push(notChecked('threads'))
-  else if (threads.open.length + threads.outdated.length === 0) lines.push(`threads: none unresolved${threads.incomplete ? ' in the first 100' : ''}`)
+  else if (threads.open.length + threads.outdated.length === 0) lines.push('threads: none unresolved')
   else {
-    lines.push(`threads: ${threads.open.length} open, ${threads.outdated.length} outdated${threads.incomplete ? ' (first 100 read)' : ''}`)
+    lines.push(`threads: ${threads.open.length} open, ${threads.outdated.length} outdated`)
     for (const t of [...threads.open, ...threads.outdated]) lines.push(`  ${t.path ?? '(no file)'}${t.line ? `:${t.line}` : ''} ${t.author ?? ''} ${t.url ?? ''}`.trimEnd())
   }
   if (policies === null) lines.push(notChecked('policies'))
   else {
     const parts = [...policies.unmet]
-    if (policies.unreadRule && parts.length === 0) parts.push(UNREAD_RULE)
+    if (policies.unreadRule && parts.length === 0) parts.push(ruleText(policies))
     if (policies.unevaluated.length > 0) parts.push(`not checked: ${names(policies.unevaluated, (u) => `${u} (${NEEDS[u]} unread)`)}`)
-    lines.push(`policies: ${parts.length > 0 ? parts.join('; ') : policies.protected ? 'all met' : 'the base branch has no classic branch protection'}`)
+    // The refused policy reads are the policies entries of unchecked, in the order of `unread` (protection first).
+    const refusals = found.unchecked.filter((u) => u.area === 'policies')
+    policies.unread.forEach((source, i) => parts.push(`not read: ${source} (${refusals[i]?.message ?? 'no data'})`))
+    const noRulesets = policies.rulesets === null && !policies.unread.includes('rulesets')
+    const none = policies.protected === false && (policies.rulesets?.length === 0 || noRulesets)
+    const quiet = none ? (noRulesets ? 'the base branch has no branch protection, and this host has no rulesets' : 'the base branch has no branch protection or ruleset') : `all met${noRulesets ? ' (this host has no rulesets)' : ''}`
+    lines.push(`policies: ${parts.length > 0 ? parts.join('; ') : quiet}`)
   }
   if (found.draft) lines.push('draft: yes, mark it ready for review to merge')
   return lines.join('\n')

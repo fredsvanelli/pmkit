@@ -2,27 +2,33 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { PmkitError } from './lib/errors.mjs'
 import { createGithubHost } from './lib/github/host.mjs'
-import { blockersText, collectBlockers } from './lib/pr-blockers.mjs'
+import { blockersText, collectBlockers as collect } from './lib/pr-blockers.mjs'
 
 const OPEN_PR = { number: 7, state: 'OPEN', isDraft: false, title: 'T', url: 'https://x/7' }
-const thread = (over = {}) => ({ isResolved: false, isOutdated: false, path: 'a.js', line: 3, url: 'https://x/t', author: 'bob', body: 'fix', ...over })
+const thread = (over = {}) => ({ isResolved: false, isOutdated: false, path: 'a.js', line: 3, url: 'https://x/t', author: 'bob', ...over })
 const merge = (over = {}) => ({ mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', reviewDecision: '', baseRefName: 'main', ...over })
+// The pull request as getPullRequest({ detail: true }) returns it, for the tests that run the real host.
+const DETAILED_PR = { ...OPEN_PR, detail: { ...merge(), reviews: [], reviewRequests: [] } }
+const RULES = 'api repos/{owner}/{repo}/rules/branches/main?per_page=100&page=1'
 const areas = (list) => list.map((item) => item.area)
 /** A refused read: the host marks the error with the HTTP status of the gh reply. */
 const refusal = (status = 403, message = `gh api failed: HTTP ${status}`) => Object.assign(new PmkitError('UPSTREAM', message, 'x'), { httpStatus: status })
 
-/** A stub host. Each read is the value, or an error that it throws. */
+/**
+ * A stub host. Each read is the value, or an error that it throws. `reviewData` and `mergeState` are not reads: they are the
+ * pull request's `detail`, which getPullRequest({ detail: true }) returns, and the collectBlockers below puts them there.
+ */
 function stub(over = {}) {
   const calls = []
+  const { reviewData = { reviews: [], reviewRequests: [] }, mergeState = merge(), ...rest } = over
   const reads = {
     prChecks: [],
-    prReviews: { reviews: [], reviewRequests: [] },
-    prMergeState: merge(),
-    prThreads: { threads: [], incomplete: false },
+    prThreads: { threads: [] },
     branchProtection: null,
-    ...over,
+    branchRules: [],
+    ...rest,
   }
-  const host = {}
+  const host = { detail: { ...mergeState, ...reviewData } }
   for (const [name, value] of Object.entries(reads)) {
     host[name] = () => {
       calls.push(name)
@@ -33,6 +39,24 @@ function stub(over = {}) {
   return { host, calls }
 }
 
+/** collectBlockers on the pull request as getPullRequest({ detail: true }) returns it, with the stub's reviews and merge state. */
+const collectBlockers = (host, pr) => collect(host, host.detail ? { ...pr, detail: host.detail } : pr)
+
+test('the reviews and the merge state come from the pull request, with no gh pr view of their own', () => {
+  const keys = []
+  const exec = (cmd, args) => {
+    keys.push(args.join(' '))
+    if (args[1] === 'graphql') return { status: 0, stdout: JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false }, nodes: [] } } } } }), stderr: '' }
+    if (args[0] === 'pr' || args.join(' ') === RULES) return { status: 0, stdout: '[]', stderr: '' }
+    return { status: 1, stdout: '', stderr: 'gh: Branch not protected (HTTP 404)\n' }
+  }
+  const pr = { ...OPEN_PR, detail: { ...merge({ reviewDecision: 'CHANGES_REQUESTED' }), reviews: [{ author: { login: 'ann' }, state: 'CHANGES_REQUESTED' }], reviewRequests: [] } }
+  const r = collect(createGithubHost({ root: '.', env: {}, exec }), pr)
+  assert.deepEqual(r.reviews.changesRequested, ['ann'])
+  assert.equal(r.conflicts.mergeStateStatus, 'CLEAN')
+  assert.ok(!keys.some((key) => key.startsWith('pr view')), keys.join('\n'))
+})
+
 test('a clean pull request is not blocked and every section is empty', () => {
   const r = collectBlockers(stub().host, OPEN_PR)
   assert.equal(r.blocked, false)
@@ -41,7 +65,7 @@ test('a clean pull request is not blocked and every section is empty', () => {
   assert.deepEqual(r.unknown, [])
   assert.deepEqual(r.checks, { failing: [], pending: [] })
   assert.deepEqual(r.conflicts, { mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', conflicting: false, behind: false, unknown: false })
-  assert.deepEqual(r.threads, { open: [], outdated: [], incomplete: false })
+  assert.deepEqual(r.threads, { open: [], outdated: [] })
   assert.deepEqual(r.unchecked, [])
 })
 
@@ -70,7 +94,7 @@ test('only the latest review of each author counts for changes requested, and a 
     { author: { login: 'cy' }, state: 'CHANGES_REQUESTED' }, { author: { login: 'cy' }, state: 'DISMISSED' },
   ]
   const reviewRequests = [{ __typename: 'User', login: 'dee' }, { __typename: 'Team', name: 'core', slug: 'core' }]
-  const r = collectBlockers(stub({ prReviews: { reviews, reviewRequests }, prMergeState: merge({ mergeStateStatus: 'BLOCKED', reviewDecision: 'CHANGES_REQUESTED' }) }).host, OPEN_PR)
+  const r = collectBlockers(stub({ reviewData: { reviews, reviewRequests }, mergeState: merge({ mergeStateStatus: 'BLOCKED', reviewDecision: 'CHANGES_REQUESTED' }) }).host, OPEN_PR)
   assert.deepEqual(r.reviews.changesRequested, ['bob'])
   assert.deepEqual(r.reviews.requested, ['dee'])
   assert.deepEqual(r.reviews.requestedTeams, ['core'])
@@ -80,15 +104,15 @@ test('only the latest review of each author counts for changes requested, and a 
 })
 
 test('a requested reviewer nobody requires is pending, not blocking', () => {
-  const prReviews = { reviews: [{ author: { login: 'ann' }, state: 'APPROVED' }, { author: { login: 'bob' }, state: 'APPROVED' }], reviewRequests: [{ __typename: 'User', login: 'cy' }] }
-  const r = collectBlockers(stub({ prReviews, branchProtection: { required_pull_request_reviews: { required_approving_review_count: 1 } } }).host, OPEN_PR)
+  const reviewData = { reviews: [{ author: { login: 'ann' }, state: 'APPROVED' }, { author: { login: 'bob' }, state: 'APPROVED' }], reviewRequests: [{ __typename: 'User', login: 'cy' }] }
+  const r = collectBlockers(stub({ reviewData, branchProtection: { required_pull_request_reviews: { required_approving_review_count: 1 } } }).host, OPEN_PR)
   assert.equal(r.blocked, false)
   assert.deepEqual(r.blocking, [])
   assert.deepEqual(areas(r.pending), ['reviews'])
 })
 
 test('conflicts block, and behind blocks only when the protection is strict', () => {
-  const state = (over, branchProtection = null) => collectBlockers(stub({ prMergeState: merge(over), branchProtection }).host, OPEN_PR)
+  const state = (over, branchProtection = null) => collectBlockers(stub({ mergeState: merge(over), branchProtection }).host, OPEN_PR)
   const conflict = state({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' })
   assert.equal(conflict.conflicts.conflicting, true)
   assert.equal(conflict.blocked, true)
@@ -102,24 +126,23 @@ test('conflicts block, and behind blocks only when the protection is strict', ()
 })
 
 test('UNKNOWN merge state is not computed yet: not checked, and never blocked false', () => {
-  const r = collectBlockers(stub({ prMergeState: merge({ mergeable: 'UNKNOWN', mergeStateStatus: 'UNKNOWN' }) }).host, OPEN_PR)
+  const r = collectBlockers(stub({ mergeState: merge({ mergeable: 'UNKNOWN', mergeStateStatus: 'UNKNOWN' }) }).host, OPEN_PR)
   assert.equal(r.conflicts.unknown, true)
   assert.equal(r.conflicts.conflicting, false)
   assert.equal(r.unchecked.length, 1)
   assert.equal(r.unchecked[0].area, 'conflicts')
   assert.match(r.unchecked[0].nextStep, /again in a few seconds/)
   assert.equal(r.blocked, null)
-  const withBlocker = collectBlockers(stub({ prMergeState: merge({ mergeable: 'UNKNOWN', mergeStateStatus: 'UNKNOWN', reviewDecision: 'CHANGES_REQUESTED' }), prReviews: { reviews: [{ author: { login: 'a' }, state: 'CHANGES_REQUESTED' }], reviewRequests: [] } }).host, OPEN_PR)
+  const withBlocker = collectBlockers(stub({ mergeState: merge({ mergeable: 'UNKNOWN', mergeStateStatus: 'UNKNOWN', reviewDecision: 'CHANGES_REQUESTED' }), reviewData: { reviews: [{ author: { login: 'a' }, state: 'CHANGES_REQUESTED' }], reviewRequests: [] } }).host, OPEN_PR)
   assert.equal(withBlocker.blocked, true)
 })
 
 test('open and outdated threads are listed apart and resolved ones are dropped', () => {
-  const prThreads = { threads: [thread(), thread({ isResolved: true }), thread({ isOutdated: true, path: 'b.js' })], incomplete: true }
+  const prThreads = { threads: [thread(), thread({ isResolved: true }), thread({ isOutdated: true, path: 'b.js' })] }
   const r = collectBlockers(stub({ prThreads }).host, OPEN_PR)
   assert.equal(r.threads.open.length, 1)
   assert.equal(r.threads.open[0].path, 'a.js')
   assert.deepEqual(r.threads.outdated.map((t) => t.path), ['b.js'])
-  assert.equal(r.threads.incomplete, true)
   assert.equal(r.blocked, false)
   assert.deepEqual(areas(r.pending), ['threads'])
 })
@@ -130,10 +153,10 @@ test('policies: unmet approvals, unmet required checks and unresolved conversati
     required_status_checks: { contexts: ['build'], checks: [{ context: 'lint' }] },
     required_conversation_resolution: { enabled: true },
   }
-  const prReviews = { reviews: [{ author: { login: 'ann' }, state: 'APPROVED' }], reviewRequests: [] }
+  const reviewData = { reviews: [{ author: { login: 'ann' }, state: 'APPROVED' }], reviewRequests: [] }
   const prChecks = [{ name: 'lint', bucket: 'pass' }]
-  const prThreads = { threads: [thread(), thread({ isOutdated: true })], incomplete: false }
-  const r = collectBlockers(stub({ branchProtection: protection, prReviews, prChecks, prThreads }).host, OPEN_PR)
+  const prThreads = { threads: [thread(), thread({ isOutdated: true })] }
+  const r = collectBlockers(stub({ branchProtection: protection, reviewData, prChecks, prThreads }).host, OPEN_PR)
   assert.equal(r.policies.protected, true)
   assert.equal(r.policies.requiredApprovals, 2)
   assert.equal(r.policies.approvals, 1)
@@ -143,7 +166,7 @@ test('policies: unmet approvals, unmet required checks and unresolved conversati
 })
 
 test('an outdated thread alone blocks when conversation resolution is required', () => {
-  const prThreads = { threads: [thread({ isOutdated: true })], incomplete: false }
+  const prThreads = { threads: [thread({ isOutdated: true })] }
   const r = collectBlockers(stub({ prThreads, branchProtection: { required_conversation_resolution: { enabled: true } } }).host, OPEN_PR)
   assert.equal(r.blocked, true)
   assert.deepEqual(r.policies.unmet, ['conversation resolution is required and 1 thread is unresolved'])
@@ -151,16 +174,16 @@ test('an outdated thread alone blocks when conversation resolution is required',
 
 test('an unprotected branch is a policy read, not an unchecked one', () => {
   const r = collectBlockers(stub().host, OPEN_PR)
-  assert.deepEqual(r.policies, { protected: false, requiredApprovals: null, approvals: 0, requiredChecks: [], unmet: [], unreadRule: false, unevaluated: [] })
+  assert.deepEqual(r.policies, { protected: false, rulesets: [], unread: [], requiredApprovals: null, approvals: 0, requiredChecks: [], unmet: [], unreadRule: false, unevaluated: [] })
   assert.deepEqual(r.unchecked, [])
 })
 
 test('BLOCKED with nothing else to explain it names a rule the command does not read', () => {
-  const r = collectBlockers(stub({ prMergeState: merge({ mergeStateStatus: 'BLOCKED' }) }).host, OPEN_PR)
+  const r = collectBlockers(stub({ mergeState: merge({ mergeStateStatus: 'BLOCKED' }) }).host, OPEN_PR)
   assert.equal(r.policies.protected, false)
   assert.equal(r.policies.unreadRule, true)
   assert.equal(r.blocked, true)
-  assert.match(r.blocking[0].message, /rule this command does not read.*ruleset/)
+  assert.equal(r.blocking[0].message, 'GitHub blocks the merge by a rule this command does not evaluate (for example signed commits, a merge queue or required deployments)')
 })
 
 test('a draft pull request is its own blocker and does not depend on the protection read', () => {
@@ -170,7 +193,7 @@ test('a draft pull request is its own blocker and does not depend on the protect
   assert.deepEqual(clean.blocking.map((b) => b.area), ['draft'])
   assert.equal('draft' in clean.policies, false)
   const refused = collectBlockers(stub({ branchProtection: refusal() }).host, { ...OPEN_PR, isDraft: true })
-  assert.equal(refused.policies, null)
+  assert.equal(refused.policies.protected, null)
   assert.equal(refused.draft, true)
   assert.deepEqual(refused.blocking.map((b) => b.area), ['draft'])
 })
@@ -179,7 +202,7 @@ test('a refused read gives a null section and one unchecked entry, and the rest 
   const refused = refusal(403, 'gh api failed: Resource not accessible by integration (HTTP 403)')
   const r = collectBlockers(stub({ prThreads: refused, branchProtection: refused, prChecks: [{ name: 'a', bucket: 'fail' }] }).host, OPEN_PR)
   assert.equal(r.threads, null)
-  assert.equal(r.policies, null)
+  assert.deepEqual(r.policies.unread, ['branch protection'])
   assert.deepEqual(r.unchecked.map((u) => [u.area, u.code]), [['threads', 'UPSTREAM'], ['policies', 'UPSTREAM']])
   assert.equal(r.checks.failing.length, 1)
   assert.deepEqual(r.pending, [], 'with the protection unread, nothing can be called not required')
@@ -191,8 +214,8 @@ test('with the protection unread, failing checks, requested reviewers and unreso
   const r = collectBlockers(stub({
     branchProtection: refusal(),
     prChecks: [{ name: 'a', bucket: 'fail' }, { name: 'b', bucket: 'pending' }],
-    prReviews: { reviews: [], reviewRequests: [{ __typename: 'User', login: 'dee' }] },
-    prThreads: { threads: [thread(), thread({ isOutdated: true })], incomplete: false },
+    reviewData: { reviews: [], reviewRequests: [{ __typename: 'User', login: 'dee' }] },
+    prThreads: { threads: [thread(), thread({ isOutdated: true })] },
   }).host, OPEN_PR)
   assert.deepEqual(r.blocking, [])
   assert.deepEqual(r.pending, [])
@@ -201,7 +224,7 @@ test('with the protection unread, failing checks, requested reviewers and unreso
 })
 
 test('with the protection unread, BLOCKED says GitHub blocks by a rule the command could not read', () => {
-  const r = collectBlockers(stub({ branchProtection: refusal(), prMergeState: merge({ mergeStateStatus: 'BLOCKED' }) }).host, OPEN_PR)
+  const r = collectBlockers(stub({ branchProtection: refusal(), mergeState: merge({ mergeStateStatus: 'BLOCKED' }) }).host, OPEN_PR)
   assert.equal(r.blocked, true)
   assert.match(r.blocking[0].message, /GitHub blocks the merge by a rule this command could not read \(branch protection or a ruleset\)/)
   assert.doesNotMatch(r.blocking[0].message, /for example/)
@@ -209,29 +232,23 @@ test('with the protection unread, BLOCKED says GitHub blocks by a rule the comma
 
 test('GitHub reviewDecision blocks even when the protection is unread', () => {
   for (const reviewDecision of ['CHANGES_REQUESTED', 'REVIEW_REQUIRED']) {
-    const r = collectBlockers(stub({ branchProtection: refusal(), prMergeState: merge({ reviewDecision }) }).host, OPEN_PR)
+    const r = collectBlockers(stub({ branchProtection: refusal(), mergeState: merge({ reviewDecision }) }).host, OPEN_PR)
     assert.equal(r.blocked, true, reviewDecision)
     assert.deepEqual(areas(r.blocking), ['reviews'], reviewDecision)
   }
 })
 
 test('changes requested by an author block only when the protection requires reviews or GitHub says so', () => {
-  const prReviews = { reviews: [{ author: { login: 'ann' }, state: 'CHANGES_REQUESTED' }], reviewRequests: [] }
-  const optional = collectBlockers(stub({ prReviews }).host, OPEN_PR)
+  const reviewData = { reviews: [{ author: { login: 'ann' }, state: 'CHANGES_REQUESTED' }], reviewRequests: [] }
+  const optional = collectBlockers(stub({ reviewData }).host, OPEN_PR)
   assert.equal(optional.blocked, false)
   assert.deepEqual(areas(optional.pending), ['reviews'])
-  const required = collectBlockers(stub({ prReviews, branchProtection: { required_pull_request_reviews: { required_approving_review_count: 1 } } }).host, OPEN_PR)
+  const required = collectBlockers(stub({ reviewData, branchProtection: { required_pull_request_reviews: { required_approving_review_count: 1 } } }).host, OPEN_PR)
   assert.equal(required.blocked, true)
   assert.ok(required.blocking.some((b) => /ann/.test(b.message)))
-  const unread = collectBlockers(stub({ prReviews, branchProtection: refusal() }).host, OPEN_PR)
+  const unread = collectBlockers(stub({ reviewData, branchProtection: refusal() }).host, OPEN_PR)
   assert.deepEqual(areas(unread.unknown), ['reviews'])
   assert.equal(unread.blocked, null)
-})
-
-test('more than 100 threads with conversation resolution required leave the verdict unknown', () => {
-  const r = collectBlockers(stub({ prThreads: { threads: [], incomplete: true }, branchProtection: { required_conversation_resolution: { enabled: true } } }).host, OPEN_PR)
-  assert.deepEqual(areas(r.unknown), ['threads'])
-  assert.equal(r.blocked, null)
 })
 
 test('a message that mentions 404 is not a refusal unless the host marked the HTTP status', () => {
@@ -271,7 +288,7 @@ test('a merged or closed pull request makes no read and is not blocked', () => {
 })
 
 test('the text says not checked for an UNKNOWN merge state and names a draft when the protection read is refused', () => {
-  const unknown = collectBlockers(stub({ prMergeState: merge({ mergeable: 'UNKNOWN', mergeStateStatus: 'UNKNOWN' }) }).host, OPEN_PR)
+  const unknown = collectBlockers(stub({ mergeState: merge({ mergeable: 'UNKNOWN', mergeStateStatus: 'UNKNOWN' }) }).host, OPEN_PR)
   const text = blockersText(OPEN_PR, unknown)
   assert.match(text, /conflicts: not checked \(GitHub has not computed the merge state yet\)/)
   assert.doesNotMatch(text, /conflicts: none/)
@@ -279,14 +296,14 @@ test('the text says not checked for an UNKNOWN merge state and names a draft whe
   const pr = { ...OPEN_PR, isDraft: true }
   const draft = blockersText(pr, collectBlockers(stub({ branchProtection: refusal() }).host, pr))
   assert.match(draft, /^blocking: the pull request is a draft$/m)
-  assert.match(draft, /^policies: not checked/m)
+  assert.match(draft, /^policies: not read: branch protection \(gh api failed: HTTP 403\)$/m)
   assert.match(draft, /^draft: yes/m)
 })
 
 test('the text names a rule it does not read instead of saying the branch has no classic protection', () => {
-  const found = collectBlockers(stub({ prMergeState: merge({ mergeStateStatus: 'BLOCKED' }) }).host, OPEN_PR)
+  const found = collectBlockers(stub({ mergeState: merge({ mergeStateStatus: 'BLOCKED' }) }).host, OPEN_PR)
   const text = blockersText(OPEN_PR, found)
-  assert.match(text, /^policies: GitHub blocks the merge by a rule this command does not read \(for example a ruleset\)$/m)
+  assert.match(text, /^policies: GitHub blocks the merge by a rule this command does not evaluate \(for example signed commits, a merge queue or required deployments\)$/m)
   assert.equal(found.policies.protected, false)
   assert.ok(!text.includes('no classic branch protection'), 'the unread rule line replaces the no protection line')
 })
@@ -294,9 +311,8 @@ test('the text names a rule it does not read instead of saying the branch has no
 test('GraphQL refusals of checks and threads, as the real host reports them, come back as not checked and do not fail the command', () => {
   const answers = {
     'pr checks 7 --json name,state,bucket,link': { status: 1, stdout: '', stderr: 'GraphQL: Resource not accessible by integration (repository.pullRequest.statusCheckRollup)\n' },
-    'pr view 7 --json mergeable,mergeStateStatus,reviewDecision,baseRefName': { stdout: JSON.stringify(merge()) },
-    'pr view 7 --json reviews,reviewRequests': { stdout: JSON.stringify({ reviews: [], reviewRequests: [] }) },
     'api repos/{owner}/{repo}/branches/main/protection': { status: 1, stderr: 'gh: Branch not protected (HTTP 404)\n' },
+    [RULES]: { stdout: '[]' },
   }
   const exec = (cmd, args) => {
     const key = args.join(' ')
@@ -305,7 +321,7 @@ test('GraphQL refusals of checks and threads, as the real host reports them, com
       : answers[key]
     return { status: 0, stdout: '', stderr: '', ...answer }
   }
-  const r = collectBlockers(createGithubHost({ root: '.', env: {}, exec }), OPEN_PR)
+  const r = collectBlockers(createGithubHost({ root: '.', env: {}, exec }), DETAILED_PR)
   assert.equal(r.checks, null)
   assert.equal(r.threads, null)
   assert.deepEqual(r.unchecked.map((u) => u.area), ['checks', 'threads'])
@@ -316,34 +332,34 @@ const requiresOne = { required_pull_request_reviews: { required_approving_review
 const changeRequest = { reviews: [{ author: { login: 'ann' }, state: 'CHANGES_REQUESTED' }], reviewRequests: [] }
 
 test('a change request is pending when GitHub says APPROVED, and when the protection requires 0 approvals', () => {
-  const approved = collectBlockers(stub({ prReviews: { reviews: [...changeRequest.reviews, { author: { login: 'bob' }, state: 'APPROVED' }], reviewRequests: [] }, prMergeState: merge({ reviewDecision: 'APPROVED' }), branchProtection: requiresOne }).host, OPEN_PR)
+  const approved = collectBlockers(stub({ reviewData: { reviews: [...changeRequest.reviews, { author: { login: 'bob' }, state: 'APPROVED' }], reviewRequests: [] }, mergeState: merge({ reviewDecision: 'APPROVED' }), branchProtection: requiresOne }).host, OPEN_PR)
   assert.equal(approved.blocked, false)
   assert.deepEqual(areas(approved.pending), ['reviews'])
-  const zero = collectBlockers(stub({ prReviews: changeRequest, branchProtection: { required_pull_request_reviews: { required_approving_review_count: 0 } } }).host, OPEN_PR)
+  const zero = collectBlockers(stub({ reviewData: changeRequest, branchProtection: { required_pull_request_reviews: { required_approving_review_count: 0 } } }).host, OPEN_PR)
   assert.equal(zero.blocked, false)
   assert.deepEqual(areas(zero.pending), ['reviews'])
-  const blocks = collectBlockers(stub({ prReviews: changeRequest, branchProtection: requiresOne }).host, OPEN_PR)
+  const blocks = collectBlockers(stub({ reviewData: changeRequest, branchProtection: requiresOne }).host, OPEN_PR)
   assert.equal(blocks.blocked, true)
-  const unread = collectBlockers(stub({ prReviews: changeRequest, branchProtection: refusal(), prMergeState: merge({ reviewDecision: 'APPROVED' }) }).host, OPEN_PR)
+  const unread = collectBlockers(stub({ reviewData: changeRequest, branchProtection: refusal(), mergeState: merge({ reviewDecision: 'APPROVED' }) }).host, OPEN_PR)
   assert.deepEqual(areas(unread.pending), ['reviews'])
 })
 
-test('with the checks, reviews or threads unread, the policies they feed are unevaluated and the text says not checked', () => {
-  const rules = { ...requiresOne, required_status_checks: { contexts: ['ci'] }, required_conversation_resolution: { enabled: true } }
-  const r = collectBlockers(stub({ prChecks: refusal(), prReviews: refusal(), prThreads: refusal(), branchProtection: rules }).host, OPEN_PR)
-  assert.deepEqual(r.policies.unevaluated, ['required checks', 'required approvals', 'conversation resolution'])
+test('with the checks or threads unread, the policies they feed are unevaluated and the text says not checked', () => {
+  const rules = { required_status_checks: { contexts: ['ci'] }, required_conversation_resolution: { enabled: true } }
+  const r = collectBlockers(stub({ prChecks: refusal(), prThreads: refusal(), branchProtection: rules }).host, OPEN_PR)
+  assert.deepEqual(r.policies.unevaluated, ['required checks', 'conversation resolution'])
   assert.equal(r.blocked, null)
   const text = blockersText(OPEN_PR, r)
-  assert.match(text, /^policies: not checked: required checks \(checks unread\), required approvals \(reviews unread\), conversation resolution \(threads unread\)$/m)
+  assert.match(text, /^policies: not checked: required checks \(checks unread\), conversation resolution \(threads unread\)$/m)
   assert.doesNotMatch(text, /all met/)
-  const unmet = collectBlockers(stub({ prChecks: refusal(), branchProtection: { required_conversation_resolution: { enabled: true } }, prThreads: { threads: [thread()], incomplete: false } }).host, OPEN_PR)
+  const unmet = collectBlockers(stub({ prChecks: refusal(), branchProtection: { required_conversation_resolution: { enabled: true } }, prThreads: { threads: [thread()] } }).host, OPEN_PR)
   assert.match(blockersText(OPEN_PR, unmet), /^policies: conversation resolution is required and 1 thread is unresolved; not checked: required checks \(checks unread\)$/m)
 })
 
 test('BLOCKED with an unread area names it as a possible cause next to the unread rule', () => {
-  const r = collectBlockers(stub({ prChecks: refusal(), branchProtection: { required_status_checks: { contexts: ['ci'] } }, prMergeState: merge({ mergeStateStatus: 'BLOCKED' }) }).host, OPEN_PR)
+  const r = collectBlockers(stub({ prChecks: refusal(), branchProtection: { required_status_checks: { contexts: ['ci'] } }, mergeState: merge({ mergeStateStatus: 'BLOCKED' }) }).host, OPEN_PR)
   assert.equal(r.blocked, true)
-  assert.match(r.blocking[0].message, /by a rule this command does not read \(for example a ruleset\), or by required checks, which it could not evaluate because the checks were not read/)
+  assert.match(r.blocking[0].message, /by a rule this command does not evaluate \(for example signed commits, a merge queue or required deployments\), or by required checks, which it could not evaluate because the checks were not read/)
 })
 
 test('a SAML or missing-scopes refusal of the real host marks the area unchecked and does not fail the command', () => {
@@ -351,12 +367,11 @@ test('a SAML or missing-scopes refusal of the real host marks the area unchecked
     const exec = (cmd, args) => {
       const key = args.join(' ')
       if (key === 'pr checks 7 --json name,state,bucket,link') return { status: 1, stdout: '', stderr }
-      if (key === 'pr view 7 --json mergeable,mergeStateStatus,reviewDecision,baseRefName') return { status: 0, stdout: JSON.stringify(merge()), stderr: '' }
-      if (key === 'pr view 7 --json reviews,reviewRequests') return { status: 0, stdout: JSON.stringify({ reviews: [], reviewRequests: [] }), stderr: '' }
       if (args[1] === 'graphql') return { status: 1, stdout: JSON.stringify({ errors: [{ type: 'INSUFFICIENT_SCOPES', message: 'x' }] }), stderr: 'gh: x\n' }
+      if (key === RULES) return { status: 0, stdout: '[]', stderr: '' }
       return { status: 1, stdout: '', stderr: 'gh: Branch not protected (HTTP 404)\n' }
     }
-    const r = collectBlockers(createGithubHost({ root: '.', env: {}, exec }), OPEN_PR)
+    const r = collectBlockers(createGithubHost({ root: '.', env: {}, exec }), DETAILED_PR)
     assert.deepEqual(r.unchecked.map((u) => u.area), ['checks', 'threads'])
     assert.equal(r.blocked, null)
   }
@@ -364,7 +379,7 @@ test('a SAML or missing-scopes refusal of the real host marks the area unchecked
 
 test('a team named like a user is a team request, never the user', () => {
   const reviewRequests = [{ __typename: 'Team', name: 'fred', slug: 'fred' }]
-  const r = collectBlockers(stub({ prReviews: { reviews: [], reviewRequests }, prMergeState: merge({}) }).host, OPEN_PR)
+  const r = collectBlockers(stub({ reviewData: { reviews: [], reviewRequests }, mergeState: merge({}) }).host, OPEN_PR)
   assert.deepEqual(r.reviews.requested, [])
   assert.deepEqual(r.reviews.requestedTeams, ['fred'])
   assert.ok([...r.pending, ...r.unknown].some((o) => o.area === 'reviews' && /team fred/.test(o.message)))
@@ -374,4 +389,121 @@ test('blockersText points a failing check that has a workflow run to ci logs --r
   const r = collectBlockers(stub({ prChecks: [{ name: 'build', bucket: 'fail', runId: 123 }, { name: 'ext', bucket: 'fail', runId: null }] }).host, OPEN_PR)
   assert.deepEqual(r.checks.failing.map((c) => c.runId), [123, null])
   assert.match(blockersText(OPEN_PR, r), /checks: failing build \(ci logs --run 123\), ext/)
+})
+
+const pullRule = (parameters) => ({ type: 'pull_request', parameters })
+const checksRule = (contexts, strict = false) => ({ type: 'required_status_checks', parameters: { required_status_checks: contexts.map((context) => ({ context })), strict_required_status_checks_policy: strict } })
+
+test('a ruleset pull_request rule requires approvals and conversation resolution', () => {
+  const r = collectBlockers(stub({
+    branchRules: [pullRule({ required_approving_review_count: 2, required_review_thread_resolution: true })],
+    reviewData: { reviews: [{ author: { login: 'ann' }, state: 'APPROVED' }], reviewRequests: [] },
+    prThreads: { threads: [thread()] },
+  }).host, OPEN_PR)
+  assert.deepEqual(r.policies.rulesets, ['pull_request'])
+  assert.equal(r.policies.protected, false)
+  assert.deepEqual(r.policies.unmet, ['needs 1 more approval (1 of 2)', 'conversation resolution is required and 1 thread is unresolved'])
+  assert.equal(r.blocked, true)
+  assert.deepEqual(r.pending, [], 'the open thread is required, so it is not pending')
+})
+
+test('a ruleset required check and strict policy merge with the classic protection', () => {
+  const r = collectBlockers(stub({
+    branchProtection: { required_status_checks: { contexts: ['lint'] } },
+    branchRules: [checksRule(['build'], true)],
+    prChecks: [{ name: 'lint', bucket: 'fail' }, { name: 'build', bucket: 'fail' }],
+    mergeState: merge({ mergeStateStatus: 'BEHIND' }),
+  }).host, OPEN_PR)
+  assert.deepEqual(r.policies.requiredChecks, ['lint', 'build'])
+  assert.deepEqual(r.policies.unmet, ['required check lint does not pass', 'required check build does not pass'])
+  assert.ok(r.blocking.some((b) => b.area === 'conflicts' && b.message === 'the branch is behind the base branch and the protection or a ruleset requires it to be up to date'))
+  assert.deepEqual(r.pending, [])
+})
+
+test('the largest required approval count of both sources wins', () => {
+  const r = collectBlockers(stub({ branchProtection: { required_pull_request_reviews: { required_approving_review_count: 1 } }, branchRules: [pullRule({ required_approving_review_count: 3 })] }).host, OPEN_PR)
+  assert.equal(r.policies.requiredApprovals, 3)
+  assert.deepEqual(r.policies.unmet, ['needs 3 more approvals (0 of 3)'])
+})
+
+test('with the protection refused and the rules read, a known unmet rule blocks and the rest is unknown', () => {
+  const r = collectBlockers(stub({
+    branchProtection: refusal(),
+    branchRules: [checksRule(['build'])],
+    prChecks: [{ name: 'build', bucket: 'fail' }],
+    reviewData: { reviews: [], reviewRequests: [{ __typename: 'User', login: 'cy' }] },
+  }).host, OPEN_PR)
+  assert.equal(r.blocked, true)
+  assert.deepEqual(r.blocking.map((b) => b.message), ['required check build does not pass'])
+  assert.deepEqual(r.unknown.map((u) => u.message), ['waiting for cy'], 'the required check is not listed again as unknown')
+  assert.deepEqual(r.pending, [])
+  assert.equal(r.policies.protected, null)
+  assert.deepEqual(r.policies.unread, ['branch protection'])
+  const text = blockersText(OPEN_PR, r)
+  assert.match(text, /^policies: required check build does not pass; not read: branch protection \(gh api failed: HTTP 403\)$/m)
+  assert.doesNotMatch(text, /all met/)
+})
+
+test('with the rules refused and the protection read, nothing open is called not required', () => {
+  const r = collectBlockers(stub({ branchRules: refusal(403, 'gh api repos/{owner}/{repo}/rules/branches/main failed: Forbidden (HTTP 403)'), prChecks: [{ name: 'lint', bucket: 'fail' }] }).host, OPEN_PR)
+  assert.equal(r.blocked, null)
+  assert.deepEqual(r.policies.unread, ['rulesets'])
+  assert.equal(r.policies.rulesets, null)
+  assert.equal(r.policies.protected, false)
+  assert.deepEqual(areas(r.unknown), ['checks'])
+  assert.match(blockersText(OPEN_PR, r), /^policies: not read: rulesets \(gh api repos\/\{owner\}\/\{repo\}\/rules\/branches\/main failed: Forbidden \(HTTP 403\)\)$/m)
+})
+
+test('with both policy reads refused, policies is null and both are unchecked', () => {
+  const r = collectBlockers(stub({ branchProtection: refusal(403, 'protection refused'), branchRules: refusal(404, 'rules refused') }).host, OPEN_PR)
+  assert.equal(r.policies, null)
+  assert.deepEqual(r.unchecked.map((u) => [u.area, u.message]), [['policies', 'protection refused'], ['policies', 'rules refused']])
+  assert.equal(r.blocked, null)
+  assert.match(blockersText(OPEN_PR, r), /^policies: not checked \(protection refused; rules refused\)$/m)
+})
+
+test('BLOCKED with both sources read names the active rules it does not evaluate', () => {
+  const r = collectBlockers(stub({ branchRules: [{ type: 'required_signatures' }, pullRule({})], mergeState: merge({ mergeStateStatus: 'BLOCKED' }) }).host, OPEN_PR)
+  assert.equal(r.blocked, true)
+  assert.match(r.blocking[0].message, /does not evaluate .*; active rules it does not evaluate: required_signatures$/)
+  assert.equal(r.policies.unreadRule, true)
+})
+
+test('the policies text says no protection or ruleset only when both were read and both are empty', () => {
+  assert.match(blockersText(OPEN_PR, collectBlockers(stub().host, OPEN_PR)), /^policies: the base branch has no branch protection or ruleset$/m)
+  assert.match(blockersText(OPEN_PR, collectBlockers(stub({ branchRules: [pullRule({ required_approving_review_count: 0 })] }).host, OPEN_PR)), /^policies: all met$/m)
+  assert.doesNotMatch(blockersText(OPEN_PR, collectBlockers(stub({ branchRules: refusal() }).host, OPEN_PR)), /no branch protection|all met/)
+})
+
+test('review requests the token cannot read are not verified, and the rest of the reviews still counts', () => {
+  const pr = { ...OPEN_PR, detail: { ...merge(), reviews: [{ author: { login: 'ann' }, state: 'CHANGES_REQUESTED' }], reviewRequests: null, reviewRequestsError: { code: 'UPSTREAM', message: 'gh pr view failed: no read:org', nextStep: 'gh auth refresh -s read:org' } } }
+  const r = collect(stub().host, pr)
+  assert.equal(r.reviews.requested, null)
+  assert.equal(r.reviews.requestedTeams, null)
+  assert.deepEqual(r.reviews.changesRequested, ['ann'])
+  assert.deepEqual(r.unchecked.map((u) => [u.area, u.message]), [['reviews', 'gh pr view failed: no read:org']])
+  assert.equal(r.blocked, null)
+  assert.match(blockersText(OPEN_PR, r), /^reviews: changes requested by ann; review requests not checked \(gh pr view failed: no read:org\)$/m)
+})
+
+test('the active rules named for an unexplained BLOCKED leave out the ones that cannot block a merge', () => {
+  const rules = ['deletion', 'non_fast_forward', 'creation', 'required_signatures'].map((type) => ({ type }))
+  const r = collectBlockers(stub({ branchRules: rules, mergeState: merge({ mergeStateStatus: 'BLOCKED' }) }).host, OPEN_PR)
+  assert.match(r.blocking[0].message, /; active rules it does not evaluate: required_signatures$/)
+  const only = collectBlockers(stub({ branchRules: rules.slice(0, 3), mergeState: merge({ mergeStateStatus: 'BLOCKED' }) }).host, OPEN_PR)
+  assert.doesNotMatch(only.blocking[0].message, /active rules/)
+})
+
+test('a 404 on the rules with the protection read is a host without rulesets, not an unread source', () => {
+  const missing = refusal(404, 'gh api repos/{owner}/{repo}/rules/branches/main failed: Not Found (HTTP 404)')
+  const r = collectBlockers(stub({ branchRules: missing }).host, OPEN_PR)
+  assert.equal(r.blocked, false)
+  assert.deepEqual(r.unchecked, [])
+  assert.equal(r.policies.rulesets, null)
+  assert.deepEqual(r.policies.unread, [])
+  assert.match(blockersText(OPEN_PR, r), /^policies: the base branch has no branch protection, and this host has no rulesets$/m)
+  const refusedToo = collectBlockers(stub({ branchProtection: refusal(), branchRules: missing }).host, OPEN_PR)
+  assert.equal(refusedToo.policies, null, 'with the protection refused, a 404 on the rules may be a refusal too')
+  const forbidden = collectBlockers(stub({ branchRules: refusal(403) }).host, OPEN_PR)
+  assert.deepEqual(forbidden.policies.unread, ['rulesets'])
 })

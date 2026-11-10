@@ -38,9 +38,11 @@ exit 0
   {"at":"2026-10-23T12:00:00Z","by":"fred","op":"update","field":"acceptance_criteria"}
 +{"at":"2026-10-23T12:00:00Z","by":"fred","op":"comment","to":"2026-10-23T12-00-00Z-fred.md"}
 --- gh calls
-pr view iss-5n1r-paginate-the-events-api --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr view iss-5n1r-paginate-the-events-api --json number,url,title,state,isDraft,headRefName,author,mergedAt,reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName
 pr checks 7 --json name,state,bucket,link
-pr view 7 --json reviews,reviewRequests
+api graphql -F owner={owner} -F repo={repo} -F number=7 -f query=query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100, after: $endCursor) { pageInfo { hasNextPage endCursor } nodes { isResolved isOutdated path line comments(first: 1) { nodes { url author { login } } } } } } } }
+api repos/{owner}/{repo}/branches/main/protection
+api repos/{owner}/{repo}/rules/branches/main?per_page=100&page=1
 run list --branch iss-5n1r-paginate-the-events-api --limit 50 --json databaseId,workflowName,status,conclusion,url,createdAt,headSha
 run view 42 --log-failed
 pr view iss-5n1r-paginate-the-events-api --json number,url,title,state,isDraft,headRefName,author,mergedAt

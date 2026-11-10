@@ -25,7 +25,7 @@ import { planNextAdr } from './lib/adr.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
 import { changeList, checkMembers, mergeCapacity, parseCapacityPairs, workingDays } from './lib/team-capacity.mjs'
 import { AGENT_ID, localRunLine, nativeRunLine } from './lib/delegation.mjs'
-import { delegationOf, prSummary, prText } from './lib/track-agents.mjs'
+import { blockedText, delegationOf, prSummary, prText } from './lib/track-agents.mjs'
 import { SCANNERS, SEVERITIES, alertCandidate, collectAlerts, matchAlerts } from './lib/alerts.mjs'
 import { READ_LIMIT, groupTodos, matchTodos, readExistingIssues, scanRepo } from './lib/todos.mjs'
 import { validateRepo } from './lib/validate.mjs'
@@ -68,6 +68,8 @@ export function pmkitConfigRefusal(text, { update }) {
 
 // Option readers. A repeated option arrives as an array; the last one wins unless the command asks for a list.
 const last = (value) => (Array.isArray(value) ? value[value.length - 1] : value)
+// A pull request read with `detail` keeps it out of the JSON: the review bodies would come back twice.
+const withoutDetail = (pr) => (pr ? (({ detail, ...view }) => view)(pr) : pr)
 const csv = (value) => [value].flat().filter((item) => typeof item === 'string').flatMap((item) => item.split(',')).map((item) => item.trim()).filter(Boolean)
 
 function whole(name, value) {
@@ -1477,18 +1479,35 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'pr status', summary: 'pull request, checks and reviews of a branch', usage: '[--branch b]', args: [], flags: ['branch'],
+    name: 'pr status', summary: 'pull request, checks, reviews and the blockers verdict of a branch', usage: '[--branch b]', args: [], flags: ['branch'],
     run: async (ctx) => {
       const host = ctx.host()
       const branch = ctx.opt('branch') ?? host.currentBranch()
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
-      const pr = host.getPullRequest({ head: branch })
+      const pr = host.getPullRequest({ head: branch }, { detail: true })
       const checks = pr ? host.prChecks(pr.number) : []
-      const reviews = pr ? host.prReviews(pr.number).reviews : []
+      const reviews = pr?.detail.reviews ?? []
+      // The checks are read once: collectBlockers gets the list this command already has. A merged or closed pull request reads nothing more.
+      // A blocker read that fails for a reason that may pass (rate limit, 5xx, network) must not lose the pull request and its checks:
+      // the verdict is unknown, with the cause, and the reads after it are not made.
+      let found = null
+      let failed = null
+      if (pr) {
+        try {
+          found = collectBlockers({ ...host, prChecks: () => checks }, pr)
+        } catch (error) {
+          if (!isPmkitError(error) || (error.code !== 'UPSTREAM' && error.code !== 'RATE_LIMITED')) throw error
+          failed = { area: 'blockers', code: error.code, message: error.message, nextStep: error.nextStep }
+          found = { blocked: null, blocking: [], pending: [], unknown: [], unchecked: [failed] }
+        }
+      }
       const lines = pr
         ? [`#${pr.number} ${pr.title} (${pr.state}${pr.isDraft ? ', draft' : ''})`, pr.url, `checks: ${checks.length === 0 ? '(none)' : checks.map((c) => `${c.name} ${c.bucket ?? c.state}${c.bucket === 'fail' && c.runId ? ` (ci logs --run ${c.runId})` : ''}`).join(', ')}`, `reviews: ${reviews.length === 0 ? '(none)' : reviews.map((r) => r.state).join(', ')}`]
         : [`no pull request for ${branch}`]
-      return { data: { branch, pr, checks, reviews }, text: lines.join('\n'), notes: await capabilityNotesOrNone(ctx) }
+      if (failed) lines.push(`blockers: not verified (${failed.message})`)
+      else if (pr?.state === 'OPEN') lines.push(`blockers: ${blockedText(prSummary(pr, found))}`)
+      const blockers = found && { blocked: found.blocked, blocking: found.blocking, pending: found.pending, unknown: found.unknown, unchecked: found.unchecked }
+      return { data: { branch, pr: withoutDetail(pr), checks, reviews, blockers }, text: lines.join('\n'), notes: await capabilityNotesOrNone(ctx) }
     },
   },
   {
@@ -1626,10 +1645,10 @@ export const COMMANDS = [
       const host = ctx.host()
       const branch = ctx.opt('branch') ?? host.currentBranch()
       if (branch === '') throw new PmkitError('INVALID_INPUT', 'no current branch (detached HEAD)', 'pass --branch <branch>, or switch to a branch')
-      const pr = host.getPullRequest({ head: branch })
+      const pr = host.getPullRequest({ head: branch }, { detail: true })
       if (!pr) return { data: { branch, pr: null, blocked: null }, text: `no pull request for ${branch}`, notes: await capabilityNotesOrNone(ctx) }
       const found = collectBlockers(host, pr)
-      return { data: { branch, pr, ...found }, text: blockersText(pr, found), notes: await capabilityNotesOrNone(ctx) }
+      return { data: { branch, pr: withoutDetail(pr), ...found }, text: blockersText(pr, found), notes: await capabilityNotesOrNone(ctx) }
     },
   },
   {
@@ -2275,13 +2294,26 @@ async function runTrackAgents(ctx) {
     if (!isPmkitError(error) || error.code !== 'NOT_SUPPORTED') throw error
     notes.push('git_host is none, so the list has no pull request state')
   }
-  // The branch protection of a base does not change between issues, so it is read once per base. Only a successful read is kept: a failure (a 502, a rate limit) is thrown and the next issue reads again.
+  // The branch protection and the rules of a base do not change between issues, so each is read once per base. A refusal (403 or
+  // 404) is as stable as an answer, so it is kept and thrown again; a failure that may pass (a 502, a rate limit) is not kept.
   const protections = new Map()
+  const rules = new Map()
+  const once = (cache, read) => (base) => {
+    if (!cache.has(base)) {
+      try {
+        cache.set(base, { value: read(base) })
+      } catch (error) {
+        if (!isPmkitError(error) || error.code !== 'UPSTREAM' || ![403, 404].includes(error.httpStatus)) throw error
+        cache.set(base, { error })
+      }
+    }
+    const kept = cache.get(base)
+    if (kept.error) throw kept.error
+    return kept.value
+  }
   const cachedHost = host === null ? null : Object.assign(Object.create(host), {
-    branchProtection(base) {
-      if (!protections.has(base)) protections.set(base, host.branchProtection(base))
-      return protections.get(base)
-    },
+    branchProtection: once(protections, (base) => host.branchProtection(base)),
+    branchRules: once(rules, (base) => host.branchRules(base)),
   })
   let rateLimited = false
   const rows = []
@@ -2302,7 +2334,7 @@ async function runTrackAgents(ctx) {
       else if (rateLimited) row.pr = { state: 'unknown', code: 'RATE_LIMITED', message: 'not read: GitHub rate limit reached earlier in this run' }
       else {
         try {
-          const pr = cachedHost.getPullRequest({ head: row.branch })
+          const pr = cachedHost.getPullRequest({ head: row.branch }, { detail: true })
           row.pr = pr ? prSummary(pr, collectBlockers(cachedHost, pr)) : { state: 'no_pr' }
         } catch (error) {
           // A missing or logged out gh fails every lookup the same way, so it stops the command.

@@ -11,4 +11,4 @@ exit 0
 
 (no file changed)
 --- gh calls
-pr view iss-4m2s-csv-column-order --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr view iss-4m2s-csv-column-order --json number,url,title,state,isDraft,headRefName,author,mergedAt,reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName

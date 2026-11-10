@@ -2,3 +2,10 @@
 {"at":"2026-11-08T20:37:23Z","by":"fred","op":"link","field":"related","to":"PMK-62"}
 {"at":"2026-11-08T20:53:51Z","by":"fred","op":"update","field":"priority","from":"low","to":"medium"}
 {"at":"2026-11-08T20:53:51Z","by":"fred","op":"update","field":"estimate","from":null,"to":5}
+{"at":"2026-11-10T00:54:44Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-10T00:54:44Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-10T00:54:49Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-218-improve-unblock-pr"}
+{"at":"2026-11-10T01:01:03Z","by":"fred","op":"comment","to":"2026-11-10T01-01-03Z-fred.md"}
+{"at":"2026-11-10T01:35:28Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-10T01:35:51Z","by":"fred","op":"comment","to":"2026-11-10T01-35-51Z-fred.md"}
+{"at":"2026-11-10T01:35:58Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

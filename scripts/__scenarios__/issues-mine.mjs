@@ -1,18 +1,33 @@
 // /pmkit:issues:mine on the team fixture with the GitHub host. ISS-5N1R (fred, in progress) has a branch with an open PR.
 // No issue is in review with a merged PR, so the pr sync preview moves nothing and step 1 never asks.
+// Two entries. The first: a ruleset on main requires two approvals and the PR has one, so pr status says it is blocked and the
+// PR column shows why. The second (`rateLimited`): ISS-4M2S has a branch too, and the first pr status (ISS-5N1R, the older issue)
+// hits the rate limit on a blocker read. It still returns the PR and its checks, and step 5 stops there: ISS-4M2S is not read.
 import assert from 'node:assert/strict'
+import { createGithubHost } from '../lib/github/host.mjs'
 
-const VIEW = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
-const pr = { number: 7, url: 'https://github.com/o/r/pull/7', title: 'Paginate the events API (ISS-5N1R)', state: 'OPEN', isDraft: false, headRefName: 'feat-retries', author: { login: 'fred' }, mergedAt: null }
+const VIEW = 'number,url,title,state,isDraft,headRefName,author,mergedAt,reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName'
+const pr = { number: 7, url: 'https://github.com/o/r/pull/7', title: 'Paginate the events API (ISS-5N1R)', state: 'OPEN', isDraft: false, headRefName: 'feat-retries', author: { login: 'fred' }, mergedAt: null,
+  reviews: [{ author: { login: 'ana' }, state: 'APPROVED' }], reviewRequests: [], mergeable: 'MERGEABLE', mergeStateStatus: 'BLOCKED', reviewDecision: 'REVIEW_REQUIRED', baseRefName: 'main' }
+const NO_THREADS = JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false }, nodes: [] } } } } })
 
-export default {
+/** The argument string of the first graphql call of the threads, taken from the real host so the canned key cannot drift. */
+function threadsKey(number) {
+  let key
+  createGithubHost({ root: '.', env: {}, exec: (cmd, args) => { key = args.join(' '); return { status: 0, stdout: NO_THREADS, stderr: '' } } }).prThreads(number)
+  return key
+}
+
+const base = {
   command: 'issues/mine',
   fixture: 'team',
   github: true,
   gh: {
     [`pr view feat-retries --json ${VIEW}`]: { stdout: JSON.stringify(pr) },
     'pr checks 7 --json name,state,bucket,link': { stdout: JSON.stringify([{ name: 'test', state: 'SUCCESS', bucket: 'pass' }]) },
-    'pr view 7 --json reviews,reviewRequests': { stdout: JSON.stringify({ reviews: [{ state: 'APPROVED' }], reviewRequests: [] }) },
+    [threadsKey(7)]: { stdout: NO_THREADS },
+    'api repos/{owner}/{repo}/branches/main/protection': { status: 1, stderr: 'gh: Branch not protected (HTTP 404)\n' },
+    'api repos/{owner}/{repo}/rules/branches/main?per_page=100&page=1': { stdout: JSON.stringify([{ type: 'pull_request', parameters: { required_approving_review_count: 2 } }]) },
   },
   async setup({ pmkit }) {
     await pmkit(['issues', 'update', 'ISS-5N1R', '--branch', 'feat-retries'])
@@ -37,5 +52,34 @@ export default {
     assert.equal(saved.status.pr.number, 7)
     assert.deepEqual(saved.status.checks.map((check) => check.bucket), ['pass'])
     assert.deepEqual(saved.status.reviews.map((review) => review.state), ['APPROVED'])
+    // The PR column of step 5 shows the verdict: blocked, with the ruleset's approval count.
+    assert.equal(saved.status.blockers.blocked, true)
+    assert.deepEqual(saved.status.blockers.blocking.map((b) => b.message), ['needs 1 more approval (1 of 2)'])
   },
 }
+
+const limited = { status: 1, stderr: 'gh: API rate limit exceeded for user ID 1. (HTTP 403)\n' }
+const rateLimited = {
+  ...base,
+  gh: {
+    [`pr view feat-retries --json ${VIEW}`]: { stdout: JSON.stringify(pr) },
+    'pr checks 7 --json name,state,bucket,link': { stdout: JSON.stringify([{ name: 'test', state: 'SUCCESS', bucket: 'pass' }]) },
+    [threadsKey(7)]: limited,
+  },
+  async setup({ pmkit }) {
+    await pmkit(['issues', 'update', 'ISS-5N1R', '--branch', 'feat-retries'])
+    await pmkit(['issues', 'update', 'ISS-4M2S', '--branch', 'feat-csv'])
+  },
+  expect(repo, saved) {
+    // The rate limited blocker read keeps the PR and its checks, and its RATE_LIMITED entry stops step 5.
+    assert.equal(saved.status.pr.number, 7)
+    assert.deepEqual(saved.status.checks.map((check) => check.bucket), ['pass'])
+    assert.equal(saved.status.blockers.blocked, null)
+    assert.deepEqual(saved.status.blockers.unchecked.map((u) => [u.area, u.code]), [['blockers', 'RATE_LIMITED']])
+    // ISS-4M2S has a branch that step 5 does not read: its PR column is "not verified: rate_limited".
+    assert.equal(saved.mine.issues.find((issue) => issue.id === 'ISS-4M2S').branch, 'feat-csv')
+    assert.ok(!repo.ghCalls().some((call) => call.includes('feat-csv')), repo.ghCalls().join('\n'))
+  },
+}
+
+export default [base, rateLimited]

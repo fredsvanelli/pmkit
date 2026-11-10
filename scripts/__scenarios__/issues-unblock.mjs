@@ -1,17 +1,21 @@
 // /pmkit:issues:unblock ISS-5N1R on the team fixture, with GitHub. ISS-5N1R gets the branch below in setup. gh answers that
 // the branch has the open draft pull request #7 with a failing check, a requested reviewer, merge conflicts and one open thread.
-// Reading the branch protection is refused, so the policies come back as not checked. The user confirms marking the draft ready.
+// Reading the branch protection is refused, but a ruleset requires the failing check, so that rule blocks and the rest may block.
+// The user confirms marking the draft ready.
 import assert from 'node:assert/strict'
 import { createGithubHost } from '../lib/github/host.mjs'
 
 const BRANCH = 'iss-5n1r-paginate-the-events-api'
 const VIEW = 'number,url,title,state,isDraft,headRefName,author,mergedAt'
+// pr blockers reads the pull request with its reviews and merge state in the same gh pr view.
+const DETAIL = ',reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName'
+const detail = { reviews: [], reviewRequests: [{ __typename: 'User', login: 'ana' }, { __typename: 'Team', name: 'core', slug: 'core' }], mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY', reviewDecision: 'REVIEW_REQUIRED', baseRefName: 'main' }
 const pr = {
   number: 7, url: 'https://github.com/o/r/pull/7', title: 'Paginate the events API (ISS-5N1R)', state: 'OPEN',
   isDraft: true, headRefName: BRANCH, author: { login: 'fred' }, mergedAt: null,
 }
 const threads = { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false }, nodes: [
-  { isResolved: false, isOutdated: false, path: 'src/events.mjs', line: 2, comments: { nodes: [{ url: 'https://github.com/o/r/pull/7#discussion_r1', body: 'Name the cursor', author: { login: 'ana' } }] } },
+  { isResolved: false, isOutdated: false, path: 'src/events.mjs', line: 2, comments: { nodes: [{ url: 'https://github.com/o/r/pull/7#discussion_r1', author: { login: 'ana' } }] } },
 ] } } } } }
 
 /** The argument string of the graphql call, taken from the real host so the canned key cannot drift. */
@@ -26,12 +30,12 @@ export default {
   fixture: 'team',
   github: true,
   gh: {
+    [`pr view ${BRANCH} --json ${VIEW}${DETAIL}`]: { stdout: JSON.stringify({ ...pr, ...detail }) },
     [`pr view ${BRANCH} --json ${VIEW}`]: { stdout: JSON.stringify(pr) },
     'pr checks 7 --json name,state,bucket,link': { status: 8, stdout: JSON.stringify([{ name: 'test', state: 'FAILURE', bucket: 'fail' }, { name: 'lint', state: 'SUCCESS', bucket: 'pass' }]) },
-    'pr view 7 --json reviews,reviewRequests': { stdout: JSON.stringify({ reviews: [], reviewRequests: [{ __typename: 'User', login: 'ana' }, { __typename: 'Team', name: 'core', slug: 'core' }] }) },
-    'pr view 7 --json mergeable,mergeStateStatus,reviewDecision,baseRefName': { stdout: JSON.stringify({ mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY', reviewDecision: 'REVIEW_REQUIRED', baseRefName: 'main' }) },
     [threadsKey()]: { stdout: JSON.stringify(threads) },
     'api repos/{owner}/{repo}/branches/main/protection': { status: 1, stderr: 'gh: Resource not accessible by integration (HTTP 403)\n' },
+    'api repos/{owner}/{repo}/rules/branches/main?per_page=100&page=1': { stdout: JSON.stringify([{ type: 'required_status_checks', parameters: { required_status_checks: [{ context: 'test' }], strict_required_status_checks_policy: false } }]) },
     'pr ready 7': { stdout: '' },
     [`pr view 7 --json ${VIEW}`]: { stdout: JSON.stringify({ ...pr, isDraft: false }) },
   },
@@ -60,7 +64,11 @@ export default {
     assert.deepEqual(blockers.reviews.requestedTeams, ['core'])
     assert.equal(blockers.conflicts.conflicting, true)
     assert.equal(blockers.threads.open.length, 1)
-    assert.equal(blockers.policies, null)
+    assert.deepEqual(blockers.policies.unread, ['branch protection'])
+    assert.deepEqual(blockers.policies.unmet, ['required check test does not pass'])
+    assert.ok(blockers.blocking.some((b) => b.message === 'required check test does not pass'), 'a ruleset rule blocks with the protection unread')
+    assert.ok(!blockers.unknown.some((u) => /test/.test(u.message)), 'the required check is not listed again as may block')
     assert.deepEqual(blockers.unchecked.map((u) => u.area), ['policies'])
+    assert.equal(repo.ghCalls().filter((call) => call.startsWith('pr view 7 --json reviews') || call.startsWith('pr view 7 --json mergeable')).length, 0)
   },
 }
