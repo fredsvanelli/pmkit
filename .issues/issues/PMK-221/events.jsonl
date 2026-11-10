@@ -5,3 +5,4 @@
 {"at":"2026-11-10T06:55:48Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-10T06:55:51Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-221-improve-customers-and-requests"}
 {"at":"2026-11-10T06:59:21Z","by":"fred","op":"comment","to":"2026-11-10T06-59-21Z-fred.md"}
+{"at":"2026-11-10T07:22:45Z","by":"fred","op":"update","field":"acceptance_criteria"}

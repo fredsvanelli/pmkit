@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-46]
 branch: pmk-221-improve-customers-and-requests
 created: 2026-11-08T20:37:24.334Z
-updated: 2026-11-10T06:55:51Z
+updated: 2026-11-10T07:22:45Z
 ---
 
 ## Description
@@ -31,7 +31,7 @@ Improvements suggested by the implementer and reviewers of PMK-46 (customers and
 
 ## Acceptance criteria
 
-- [ ] `customers update` (tier, revenue, owner) and editing the text of a request
-- [ ] `requests accept --create`, which creates the issue and links the request in one call
-- [ ] The generic customer and request operations on Linear, built on top of `linear customers`
-- [ ] Local prints `customers show X` and Linear `show --customer X`; give PMK-68 and PMK-70 one shape on both trackers
+- [x] `customers update` (tier, revenue, owner) and editing the text of a request
+- [x] `requests accept --create`, which creates the issue and links the request in one call
+- [x] The generic customer and request operations on Linear, built on top of `linear customers`
+- [x] Local prints `customers show X` and Linear `show --customer X`; give PMK-68 and PMK-70 one shape on both trackers
