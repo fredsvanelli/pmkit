@@ -9,7 +9,7 @@ assignee: fred
 related: [PMK-61]
 branch: pmk-217-improve-review-pr-against-issue
 created: 2026-11-08T20:37:23.715Z
-updated: 2026-11-10T05:15:32Z
+updated: 2026-11-10T05:43:47Z
 ---
 
 ## Description
@@ -30,6 +30,6 @@ Improvements suggested by the implementer and reviewers of PMK-61 (review-pr-aga
 
 ## Acceptance criteria
 
-- [ ] Comment on the pull request itself, with inline findings
-- [ ] Read the diff file by file when it is cut
-- [ ] Read `ci logs` and `pr status` into the review, so a failing check shows as a gap
+- [x] Comment on the pull request itself, with inline findings
+- [x] Read the diff file by file when it is cut
+- [x] Read `ci logs` and `pr status` into the review, so a failing check shows as a gap
