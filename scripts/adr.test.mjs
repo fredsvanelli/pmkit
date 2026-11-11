@@ -596,7 +596,9 @@ test('docs adr-status superseded --by writes a plain relative path into the ADR,
     writeAdr(outside, 'docs/adr/0003-x.md')
     const dry = await adrStatus(root, '2', 'superseded', '--by', '3', '--dry-run')
     assert.equal(dry.code, 0, dry.stderr)
-    assert.equal(dry.data.status.after, 'Status: superseded by docs/adr/0003-x.md')
+    // A reader opens it from the repository root (PMK-257).
+    assert.equal(dry.data.status.after, `Status: superseded by ../${path.basename(outside)}/docs/adr/0003-x.md`)
+    assert.ok(fs.existsSync(path.join(root, `../${path.basename(outside)}/docs/adr/0003-x.md`)))
     await adrStatus(root, '2', 'superseded', '--by', '3')
     assert.doesNotMatch(fs.readFileSync(path.join(root, 'docs/adr/0002-a.md'), 'utf8'), /tracker:/)
     // The other way round: the ADR in the outside tracker names a repository ADR.
@@ -623,7 +625,7 @@ test('docs adr-status returns ref, the path without the tracker: label, in the J
     assert.deepEqual([inRepo.data.path, inRepo.data.ref], ['docs/adr/0002-a.md', 'docs/adr/0002-a.md'])
     for (const args of [['4', 'deprecated', '--dry-run'], ['4', 'deprecated']]) {
       const result = await adrStatus(root, ...args)
-      assert.deepEqual([result.data.path, result.data.ref], ['tracker:docs/adr/0004-y.md', 'docs/adr/0004-y.md'], args.join(' '))
+      assert.deepEqual([result.data.path, result.data.ref], ['tracker:docs/adr/0004-y.md', `../${path.basename(outside)}/docs/adr/0004-y.md`], args.join(' '))
     }
   } finally {
     fs.rmSync(outside, { recursive: true, force: true })

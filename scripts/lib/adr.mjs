@@ -52,7 +52,8 @@ export function adrFolders({ root, trackerDir, trackerFolder }) {
   const repoDir = path.join(root, 'docs', 'adr')
   if (trackerDir && path.resolve(trackerDir) === path.resolve(repoDir)) return [{ place: 'tracker', label: 'docs/adr', shown: 'docs/adr', dir: repoDir, repoFolder: 'docs/adr' }]
   const folders = [{ place: 'repo', label: 'docs/adr', shown: 'docs/adr', dir: repoDir, repoFolder: 'docs/adr' }]
-  if (trackerDir) folders.push({ place: 'tracker', label: trackerFolder ?? OUTSIDE_LABEL, shown: trackerFolder ?? 'docs/adr in the tracker', dir: trackerDir, repoFolder: trackerFolder })
+  // `refFolder` is where an ADR text points a reader: the folder from the repository root, `../...` for a tracker outside it (PMK-257).
+  if (trackerDir) folders.push({ place: 'tracker', label: trackerFolder ?? OUTSIDE_LABEL, shown: trackerFolder ?? 'docs/adr in the tracker', dir: trackerDir, repoFolder: trackerFolder, refFolder: trackerFolder ?? path.relative(root, trackerDir).split(path.sep).join('/') })
   return folders
 }
 
@@ -68,13 +69,13 @@ export function adrLocation({ root, issuesDir, hosted }) {
   return { trackerDir, trackerFolder: outside ? null : relative.split(path.sep).join('/') }
 }
 
-/** The numbered ADR files of the working tree in `folders`, as { number, name, path, ref, place, file }, sorted by path. `ref` is `path` without the tracker: label, the form an ADR text may cite. */
+/** The numbered ADR files of the working tree in `folders`, as { number, name, path, ref, place, file }, sorted by path. `ref` is the path an ADR text may cite, from the repository root: `path` without the tracker: label, and `../...` for a tracker outside the repository. */
 export function adrFiles(folders) {
   const found = []
-  for (const { place, label, dir } of folders) {
+  for (const { place, label, dir, refFolder = label } of folders) {
     for (const name of readTree(dir) ?? []) {
       const match = NUMBERED.exec(name)
-      if (match) found.push({ number: match[1], name, path: `${label}/${name}`, ref: `${label === OUTSIDE_LABEL ? 'docs/adr' : label}/${name}`, place, file: path.join(dir, name) })
+      if (match) found.push({ number: match[1], name, path: `${label}/${name}`, ref: `${refFolder}/${name}`, place, file: path.join(dir, name) })
     }
   }
   return found.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
