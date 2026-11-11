@@ -355,8 +355,8 @@ function runAdrGet(ctx) {
   const adr = adrByNumber(adrFiles(adrFolders({ root: ctx.root, trackerDir, trackerFolder })), ctx.args[0], 'number')
   const { title, status, statuses } = adrInfo(fs.readFileSync(adr.file, 'utf8'))
   const notes = new Set(statuses.map((value) => value.toLowerCase())).size > 1 ? [`${adr.path} holds more than one status (${statuses.join(', ')}); the first is shown, and docs adr-status sets them all`] : []
-  const data = { number: adr.number, title, status, path: adr.path, ref: adr.ref, place: adr.place, notes }
-  return { data, text: fields([['number', data.number], ['title', title ?? '(no title)'], ['status', status ?? '(no status)'], ['path', data.path], ['place', data.place]]).join('\n'), notes }
+  const data = { number: adr.number, title, status, statuses, path: adr.path, ref: adr.ref, place: adr.place, notes }
+  return { data, text: fields([['number', data.number], ['title', title ?? '(no title)'], ['status', statuses.length > 1 ? statuses.join(' | ') : status ?? '(no status)'], ['path', data.path], ['place', data.place]]).join('\n'), notes }
 }
 
 /** docs adr-status (PMK-228): the Status line of one ADR, in the repository folder or the Local tracker's. */

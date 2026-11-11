@@ -55,6 +55,18 @@ test('docs adr-get on Linear reads docs/adr and answers NOT_FOUND for a number i
   assert.equal(JSON.parse(result.stdout).error.code, 'NOT_FOUND')
 })
 
+test('validate on Linear reports two ADRs of one number in docs/adr (PMK-263)', async () => {
+  const prepare = (root) => {
+    fs.mkdirSync(path.join(root, 'docs', 'adr'), { recursive: true })
+    fs.writeFileSync(path.join(root, 'docs', 'adr', '0002-a.md'), '# A\n')
+    fs.writeFileSync(path.join(root, 'docs', 'adr', '0002-b.md'), '# B\n')
+  }
+  const result = await linear(['validate', '--json'], { prepare })
+  const adr = JSON.parse(result.stdout).problems.filter((problem) => problem.code === 'adr')
+  assert.deepEqual(adr.map((problem) => problem.path), ['docs/adr/0002-a.md', 'docs/adr/0002-b.md'])
+  assert.match(adr[0].message, /ADR number 0002 is also used by docs\/adr\/0002-b\.md/)
+})
+
 test('issues update --add-doc on Linear with no GitHub repo is NOT_CONFIGURED and writes nothing (PMK-252)', async () => {
   const calls = {}
   const result = await linear(['issues', 'update', 'ACME-1', '--add-doc', 'docs/adr/0001-a.md', '--json'], { calls, seed: (fake) => fake.seed({ title: 'One' }) })

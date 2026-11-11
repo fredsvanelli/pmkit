@@ -99,10 +99,42 @@ const STATUS_LINE = /^(\s*[-*]\s+)?(\*\*Status:?\*\*:?|Status:)\s*(.*)$/i
 const STATUS_SECTION = /^##\s+Status\s*$/i
 const YAML_STATUS = /^status:/i
 const capitalized = (text) => text.charAt(0).toUpperCase() + text.slice(1)
-// The lines after `from` up to the next "# " or "## " heading (or the end), as [start, end).
-const sectionEnd = (lines, from) => {
-  const next = lines.findIndex((item, i) => i > from && /^#{1,2} /.test(item))
-  return next === -1 ? lines.length : next
+// Which lines are inside a fenced code block (``` or ~~~), fences included: a status or a heading there is an example, not the ADR's own (PMK-263).
+const fencedLines = (lines) => {
+  let open = null
+  return lines.map((item) => {
+    const marker = /^\s*(```|~~~)/.exec(item)?.[1]
+    if (open === null) return marker ? Boolean((open = marker)) : false
+    if (marker === open) open = null
+    return true
+  })
+}
+// A front matter value split into the value (with its quotes) and the YAML comment after it, which a `#` inside quotes never starts.
+const splitYaml = (rest) => {
+  const quoted = /^(\s*)(["'])(.*?)\2(.*)$/.exec(rest)
+  const [, value, comment = ''] = quoted ? [null, `${quoted[1]}${quoted[2]}${quoted[3]}${quoted[2]}`, quoted[4]] : /^(.*?)(\s+#.*)?$/.exec(rest)
+  return { value, comment }
+}
+const unquote = (value) => value.trim().replace(/^(["'])(.*)\1$/, '$2')
+
+/**
+ * The places of an ADR text that hold its title and status, found once for `adrInfo` and `setAdrStatus` so the two never disagree (PMK-263):
+ * `yaml` (index of the `status:` line in the front matter, -1 when none), `line` (a `Status:` line above the first `## ` section),
+ * `section` (a `## Status` heading), `title` (the first `# ` heading) and `end(from)`, where the section that starts at `from` stops.
+ * Lines inside a fenced code block never count.
+ */
+function locate(lines) {
+  const close = lines[0] === '---' ? lines.indexOf('---', 1) : -1
+  const start = close === -1 ? 0 : close + 1
+  const code = fencedLines(lines)
+  const at = (test, to = lines.length) => lines.findIndex((item, i) => i >= start && i < to && !code[i] && test(item))
+  const head = at((item) => item.startsWith('## '))
+  const yaml = close === -1 ? -1 : lines.slice(1, close).findIndex((item) => YAML_STATUS.test(item)) + 1 || -1
+  const end = (from) => {
+    const next = lines.findIndex((item, i) => i > from && !code[i] && /^#{1,2} /.test(item))
+    return next === -1 ? lines.length : next
+  }
+  return { close, start, yaml, head, line: at((item) => STATUS_LINE.test(item), head === -1 ? lines.length : head), section: at((item) => STATUS_SECTION.test(item)), title: at((item) => item.startsWith('# '), head === -1 ? lines.length : head), end }
 }
 const withoutBlanks = (lines, from) => {
   let at = from
@@ -116,20 +148,14 @@ const withoutBlanks = (lines, from) => {
  */
 export function adrInfo(text) {
   const lines = adrText(text).split('\n')
-  const close = lines[0] === '---' ? lines.indexOf('---', 1) : -1
-  const start = close === -1 ? 0 : close + 1
-  const unquote = (value) => value.trim().replace(/^(["'])(.*)\1$/, '$2')
+  const { close, yaml, line, section, title, end } = locate(lines)
   const key = (name) => {
     const found = close === -1 ? undefined : lines.slice(1, close).find((item) => new RegExp(`^${name}:`, 'i').test(item))
-    return found === undefined ? null : unquote(found.slice(name.length + 1).replace(/\s+#.*$/, '')) || null
+    return found === undefined ? null : unquote(splitYaml(found.slice(name.length + 1)).value) || null
   }
-  const heading = lines.find((item, i) => i >= start && item.startsWith('# '))
-  const head = lines.findIndex((item, i) => i >= start && item.startsWith('## '))
-  const line = lines.find((item, i) => i >= start && (head === -1 || i < head) && STATUS_LINE.test(item))
-  const section = lines.findIndex((item, i) => i >= start && STATUS_SECTION.test(item))
-  const body = section === -1 ? '' : lines.slice(section + 1, sectionEnd(lines, section)).map((item) => item.trim()).filter(Boolean).join(' ')
-  const statuses = [key('status'), line === undefined ? null : STATUS_LINE.exec(line)[3].trim(), body].filter((value) => value)
-  return { title: heading === undefined ? key('title') : heading.slice(2).trim(), status: statuses[0] ?? null, statuses }
+  const body = section === -1 ? '' : lines.slice(section + 1, end(section)).map((item) => item.trim()).filter(Boolean).join(' ')
+  const statuses = [yaml > 0 ? key('status') : null, line === -1 ? null : STATUS_LINE.exec(lines[line])[3].trim(), body].filter((value) => value)
+  return { title: title === -1 ? key('title') : lines[title].slice(2).trim(), status: statuses[0] ?? null, statuses }
 }
 
 /**
@@ -141,25 +167,20 @@ export function adrInfo(text) {
 export function setAdrStatus(text, status, byPath) {
   const value = status === 'superseded' ? `superseded by ${byPath}` : status
   const lines = adrText(text).split('\n')
-  const close = lines[0] === '---' ? lines.indexOf('---', 1) : -1
-  const start = close === -1 ? 0 : close + 1
-  const same = (current) => current.trim().replace(/^(["'])(.*)\1$/, '$2').toLowerCase() === value.toLowerCase()
+  const { start, yaml, line: found, section, title, end: sectionEnd } = locate(lines)
+  const same = (current) => unquote(current).toLowerCase() === value.toLowerCase()
   // A status that is already the requested one leaves the text as it came, so the file is not rewritten (PMK-248).
   const done = (before, after, unchanged) => ({ text: unchanged ? adrText(text) : lines.join('\n'), before, after })
 
   // The front matter key and a `## Status` section can both hold a status (PMK-248): change every one and report both (PMK-257).
-  const yaml = close === -1 ? -1 : lines.slice(1, close).findIndex((item) => YAML_STATUS.test(item)) + 1
-  const section = lines.findIndex((item, i) => i >= start && STATUS_SECTION.test(item))
   if (yaml > 0 || section !== -1) {
     let unchanged = true
     const befores = []
     const afters = []
     // A `Status:` line above the first section is a third place that holds the status (PMK-263).
-    const head = lines.findIndex((item, i) => i >= start && item.startsWith('## '))
-    const found = lines.findIndex((item, i) => i >= start && (head === -1 || i < head) && STATUS_LINE.test(item))
     if (yaml > 0) {
       // A YAML comment after the value is not part of the status, and the rewrite keeps it.
-      const [, current, comment = ''] = /^status:(.*?)(\s+#.*)?$/i.exec(lines[yaml])
+      const { value: current, comment } = splitYaml(lines[yaml].slice('status:'.length))
       befores.push(lines[yaml])
       if (!same(current)) unchanged = false
       lines[yaml] = `status: ${value}${comment}`
@@ -173,7 +194,7 @@ export function setAdrStatus(text, status, byPath) {
       afters.push(lines[found])
     }
     if (section !== -1) {
-      const end = sectionEnd(lines, section)
+      const end = sectionEnd(section)
       const body = lines.slice(section + 1, end).map((item) => item.trim()).filter(Boolean)
       if (body.length !== 1 || !same(body[0])) unchanged = false
       const label = befores.length > 0 ? '## Status: ' : ''
@@ -185,9 +206,6 @@ export function setAdrStatus(text, status, byPath) {
     return done(befores.length === 0 ? null : befores.join('; '), unchanged ? befores.join('; ') : afters.join('; '), unchanged)
   }
 
-  const first = lines.findIndex((item, i) => i >= start && item.startsWith('## '))
-  const head = first === -1 ? lines.length : first
-  const found = lines.findIndex((item, i) => i >= start && i < head && STATUS_LINE.test(item))
   if (found !== -1) {
     const [, bullet = '', label] = STATUS_LINE.exec(lines[found])
     const before = lines[found]
@@ -197,7 +215,6 @@ export function setAdrStatus(text, status, byPath) {
   }
 
   const line = `Status: ${value}`
-  const title = lines.findIndex((item, i) => i >= start && i < head && item.startsWith('# '))
   const anchor = title !== -1 ? title : start - 1
   const top = anchor === -1 ? [] : [...lines.slice(0, anchor + 1), '']
   return { text: [...top, line, '', ...withoutBlanks(lines, anchor + 1)].join('\n'), before: null, after: line }
