@@ -1924,3 +1924,63 @@ test('issues create takes no docs', async () => {
   const { tracker: linear } = docsSetup()
   await assert.rejects(linear.createIssue({ title: 'New', docs: ['docs/a.md'] }, 'user-1', { dryRun: true }), { code: 'INVALID_INPUT' })
 })
+
+// PMK-252 review: the link branch, hand-made attachments and paths.
+const urlsOf = (fake) => fake.records[0].attachments.map((item) => item.url)
+
+test('the link uses the default branch the caller resolved, then git_host.default_branch, then main', async () => {
+  const given = docsSetup({ gitHost: { system: 'github', repo: 'acme/app' } })
+  seed(given.fake, { title: 'One' })
+  await given.tracker.updateIssue('ACME-1', { docs: ['docs/a.md'] }, 'user-1', { docsBranch: 'trunk' })
+  assert.deepEqual(urlsOf(given.fake), ['https://github.com/acme/app/blob/trunk/docs/a.md'])
+  const unset = docsSetup({ gitHost: { system: 'github', repo: 'acme/app' } })
+  seed(unset.fake, { title: 'One' })
+  await unset.tracker.updateIssue('ACME-1', { docs: ['docs/a.md'] }, 'user-1')
+  assert.deepEqual(urlsOf(unset.fake), ['https://github.com/acme/app/blob/main/docs/a.md'])
+  const invalid = docsSetup({ gitHost: { system: 'github', repo: 'acme/app', default_branch: 'a..b' } })
+  seed(invalid.fake, { title: 'One' })
+  await invalid.tracker.updateIssue('ACME-1', { docs: ['docs/a.md'] }, 'user-1')
+  assert.deepEqual(urlsOf(invalid.fake), ['https://github.com/acme/app/blob/main/docs/a.md'])
+})
+
+test('adding a doc whose link a person attached by hand is a CONFLICT, and the attachment is never changed or removed', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup()
+  const handMade = { id: 'att-hand', url: 'https://github.com/acme/app/blob/develop/docs/a.md', title: 'Design notes', metadata: {}, createdAt: '2026-10-27T11:00:00.000Z' }
+  seed(fake, { title: 'One' }, { attachments: [handMade] })
+  await assert.rejects(linear.updateIssue('ACME-1', { docs: ['docs/a.md'] }, 'user-1', { dryRun: true }), { code: 'CONFLICT' })
+  await assert.rejects(linear.updateIssue('ACME-1', { docs: ['docs/a.md'] }, 'user-1'), (error) => /Design notes|attachment/.test(error.message) && error.code === 'CONFLICT')
+  const cleared = await linear.updateIssue('ACME-1', { docs: [] }, 'user-1')
+  assert.equal('docs' in cleared.after, false)
+  assert.equal(mutationsIn(fetch), 0)
+  assert.deepEqual(fake.records[0].attachments, [handMade])
+})
+
+test('a docs path that is not relative to the repository is INVALID_INPUT before any write, and the same path twice links once', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup()
+  seed(fake, { title: 'One' })
+  for (const path of ['/Users/x/a.md', 'tracker:docs/adr/0001-a.md', '../a.md', 'docs/../../a.md', 'C:/a.md', '', '.', './']) {
+    await assert.rejects(linear.updateIssue('ACME-1', { docs: [path] }, 'user-1'), { code: 'INVALID_INPUT' }, path)
+  }
+  assert.equal(mutationsIn(fetch), 0)
+  await linear.updateIssue('ACME-1', { docs: ['docs/a.md', 'docs/a.md'] }, 'user-1')
+  assert.equal(fake.records[0].attachments.length, 1)
+})
+
+test('a failure after the other fields were written says so', async () => {
+  const failing = (fake) => ({ PmkitAttachmentCreate: () => ({ status: 200, json: { data: null, errors: [{ message: 'Attachment refused', extensions: { code: 'INPUT_ERROR' } }] } }) })
+  const { tracker: linear, fake } = docsSetup({ routes: failing })
+  seed(fake, { title: 'One' })
+  await assert.rejects(linear.updateIssue('ACME-1', { title: 'Two', docs: ['docs/a.md'] }, 'user-1'), /already written.*title/s)
+})
+
+test('one issue whose attachments cannot be read alone does not make the rest of the batch unknown', async () => {
+  const { tracker: linear, fake } = docsSetup({
+    nestedPage: 1,
+    routes: (f) => ({ PmkitIssueAttachments: ({ body } = {}) => ({ status: 200, json: { data: null, errors: [{ message: 'Rate limited', extensions: { code: 'INTERNAL_SERVER_ERROR' } }] } }) }),
+  })
+  seed(fake, { title: 'Big' }, { attachments: [docAttachment('docs/a.md', 1), docAttachment('docs/b.md', 2)] })
+  seed(fake, { title: 'Small' }, { attachments: [docAttachment('docs/c.md', 3)] })
+  const { issues } = await linear.searchIssues({})
+  assert.match(issues[0].docsUnknown, /Rate limited/)
+  assert.deepEqual(issues[1].docs, ['docs/c.md'])
+})

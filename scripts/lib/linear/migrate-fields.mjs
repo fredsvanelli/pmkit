@@ -344,7 +344,7 @@ export function mapExport(snapshot, target) {
   const branches = losses.get('branch names')
   if (branches) branches.why = `${plural(branches.count, 'issue')} get the branch name Linear gives them; the map keeps the old id`
   const docLinks = losses.get('doc links')
-  if (docLinks) docLinks.why = `${plural(docLinks.count, 'issue')} ${docLinks.count === 1 ? 'loses its' : 'lose their'} docs field; Linear has no such field, so the comments stay the links`
+  if (docLinks) docLinks.why = `${plural(docLinks.count, 'issue')} ${docLinks.count === 1 ? 'loses its' : 'lose their'} docs field; a Linear doc is a link pmkit makes on the issue, and the migration does not create it, so the docs are not carried over`
   const ids = snapshot.issues.length + snapshot.epics.length
   losses.set('ids', ids, [], `${plural(ids, 'record')} get new Linear identifiers; the map keeps the old ones`)
   const estimates = losses.get('estimates')

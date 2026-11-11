@@ -5,7 +5,7 @@ Design for the `docs` field of an issue on the Linear tracker. Source: PMK-228 (
 ## Decisions (the coordinator gave no one to ask, so these are the implementer's calls)
 
 1. **A doc is a Linear attachment (a link) on the issue**, as the issue says ("stored as links on the issue"). pmkit creates it with `attachmentCreate` and removes it with `attachmentDelete`.
-2. **The link needs a URL.** A docs path is a repository path, so the URL is `https://github.com/<git_host.repo>/blob/<default branch>/<path>` (each path segment percent-encoded). The default branch is `git_host.default_branch`, `main` when unset. The ADR file may not be merged yet; the link works once it is, and `record-decision` already says so in the comment.
+2. **The link needs a URL.** A docs path is a repository path, so the URL is `https://github.com/<git_host.repo>/blob/<default branch>/<path>` (each path segment percent-encoded). The default branch is the one `default-branch` resolves (PMK-228: `git_host.default_branch`, else origin/HEAD, else `main`), which the CLI passes to the tracker as `docsBranch`. The ADR file may not be merged yet; the link works once it is, and `record-decision` already says so in the comment.
 3. **The path is the source of truth, not the URL.** The attachment carries `metadata: { pmkitDoc: <path> }`, its `title` is the path. A read lists only attachments with a string `pmkitDoc`; pull request links, Slack links and others are never docs. Order: `createdAt`, then path.
 4. **No GitHub repo, no write.** With `git_host.system` other than `github`, or no `repo`, `--add-doc` is refused with `NOT_CONFIGURED` (next step `/pmkit:link-repo`) before any request. A read still works and lists what is there. `--remove-doc` of a path works without a repo (it matches by `pmkitDoc`).
 5. **Read cost.** The issue fragment is not touched (it is at the complexity budget PMK-246 set). Attachments are read like releases: one batched query per 100 issues (`PmkitIssuesAttachments`, 20 attachments per issue, `id url`-sized fields, about 2.6k points), and a single paged read for an issue with more than 20. No read per issue in list, search or views.
@@ -13,6 +13,8 @@ Design for the `docs` field of an issue on the Linear tracker. Source: PMK-228 (
 7. **Write semantics.** The CLI sends the whole new `docs` list (Local semantics). The tracker diffs it against the attachments: `attachmentCreate` for added paths, `attachmentDelete` for removed. `--dry-run` reads and diffs but sends no mutation. When a mutation fails in the middle, the error says which paths were added or removed and which were not. `issues create` takes no docs (as before).
 8. **record-decision** no longer skips the `docs` step on Linear: the step 6 text drops the "NOT_SUPPORTED on Linear" branch, keeps it for trackers that still answer it, and says the link is a Linear attachment.
 9. **Manifest:** `issueDocs` leaves `documents.detail.unsupported` on Linear.
+
+10. **Review of PR #211.** A path must be relative to the repository root: absolute, `tracker:` and `..` are `INVALID_INPUT` before any request, `./` and doubled slashes are dropped, and a repeated path is one doc. An attachment a person made with the same URL is never adopted or removed: adding that doc is `CONFLICT`. The one-issue fallback read marks only its issue unknown. A failure after the other fields were written says so.
 
 ## Non-goals
 

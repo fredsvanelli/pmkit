@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { BOOLEANS, parseArgs } from './lib/args.mjs'
 import { gitUserEmail, resolveActor } from './lib/actor.mjs'
 import { ADAPTERS, adapterFor } from './lib/adapters.mjs'
+import { repoDocPath } from './lib/doc-path.mjs'
 import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, loadPmkitConfig, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, resolveDefaultBranch, validBranch, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
 import { contractView } from './lib/contract.mjs'
 import { longEntryNote, parseMinutes } from './lib/duration.mjs'
@@ -304,9 +305,16 @@ async function docLinks(ctx, id, patch) {
     if (typeof item !== 'string' || item.trim() === '') throw usageError(`--${name} needs a path`, `Pass the path of the document, such as --${name} docs/adr/0001-use-points.md`)
     return item.trim()
   })
-  const adds = paths('add-doc')
-  const removes = paths('remove-doc')
+  let adds = paths('add-doc')
+  let removes = paths('remove-doc')
   if (adds.length === 0 && removes.length === 0) return
+  // A Linear doc is a link to a file of the repository (PMK-252): a path that cannot be one is refused before any request, and
+  // `./docs/a.md` is `docs/a.md`. A path to remove that is not valid is kept as typed, because it can only match nothing.
+  if (ctx.config().system === 'linear') {
+    adds = adds.map(repoDocPath)
+    removes = removes.map((item) => { try { return repoDocPath(item) } catch { return item } })
+  }
+  adds = [...new Set(adds)]
   const tracker = await ctx.tracker()
   const issue = await tracker.getIssue(id)
   // An unread list (Linear, PMK-252) is not an empty one: writing the whole new list from it could unlink docs the read never saw.
@@ -909,8 +917,10 @@ export const COMMANDS = [
       await tickCriteria(ctx, id, patch)
       await docLinks(ctx, id, patch)
       if (Object.keys(patch).length === 0) throw usageError('issues update needs at least one field flag', 'pmkit issues update <id> --priority high')
-      const result = issueWrite(ctx, await (await ctx.tracker()).updateIssue(id, patch, await ctx.actor(), { dryRun: ctx.dryRun }))
-      return { ...result, warnings: await releasedWarnings(ctx, patch) }
+      // Linear links a doc to the file on the default branch, resolved here as every reader does (PMK-228), with its note.
+      const linkDocs = patch.docs !== undefined && ctx.config().system === 'linear'
+      const result = issueWrite(ctx, await (await ctx.tracker()).updateIssue(id, patch, await ctx.actor(), { dryRun: ctx.dryRun, ...(linkDocs ? { docsBranch: defaultBranch(ctx) } : {}) }))
+      return { ...result, warnings: await releasedWarnings(ctx, patch), ...(linkDocs ? { notes: defaultBranchNotes(ctx) } : {}) }
     },
   },
   {

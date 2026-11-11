@@ -2,6 +2,8 @@
 // See docs/superpowers/specs/2026-10-27-pmk-35-linear-issues-relations-search-design.md.
 
 import { PmkitError } from '../errors.mjs'
+import { resolveDefaultBranch } from '../config.mjs'
+import { repoDocPath } from '../doc-path.mjs'
 import { CATEGORIES } from '../model.mjs'
 import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refusal.mjs'
 import { compareIds } from '../ids.mjs'
@@ -132,17 +134,32 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
         for (const node of chunk) {
           const connection = byId.get(node.id)
           if (connection && connection.pageInfo?.hasNextPage !== true) node.attachments = { nodes: connection.nodes }
-          else await attachDocs(node)
+          else await readDocsAlone(node)
         }
       } catch (error) {
         if (!unreadable(error)) throw error
-        const unread = chunk.filter((node) => node.attachments === undefined)
-        for (const node of unread) node.attachmentsUnread = error
-        const ids = unread.map((node) => node.identifier).filter(Boolean)
-        notes.push(`the docs of ${idList(ids)} are unknown, because pmkit could not read them: ${error.message}`)
+        unknownDocs(chunk.filter((node) => node.attachments === undefined && !node.attachmentsUnread), error)
       }
     }
     return all
+  }
+
+  /** The note and the mark of issues whose docs are unknown: never an empty list. */
+  function unknownDocs(nodes, error) {
+    if (nodes.length === 0) return
+    for (const node of nodes) node.attachmentsUnread = error
+    const ids = nodes.map((node) => node.identifier).filter(Boolean)
+    notes.push(`the docs of ${idList(ids)} are unknown, because pmkit could not read them: ${error.message}`)
+  }
+
+  /** The one-issue read of a list the batch cut. Its failure marks only that issue, the rest of the batch keeps what it read. */
+  async function readDocsAlone(node) {
+    try {
+      await attachDocs(node)
+    } catch (error) {
+      if (!unreadable(error)) throw error
+      unknownDocs([node], error)
+    }
   }
 
   /** The node of an issue id, archived ones included. A malformed id or a trashed issue is NOT_FOUND, and a malformed one sends no request. */
@@ -331,7 +348,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return node
   }
 
-  async function updateIssue(id, patch, actor, { dryRun = false } = {}) {
+  async function updateIssue(id, patch, actor, { dryRun = false, docsBranch } = {}) {
     await requireViewer(actor)
     const beforeNode = await readNode(id)
     const releaseNode = await releaseNodeFor(patch.release, beforeNode)
@@ -344,7 +361,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     if (patch.branch !== undefined && patch.branch !== beforeNode.branchName) {
       throw new PmkitError('INVALID_INPUT', `Linear names this issue's branch ${beforeNode.branchName}`, `Use the branch name ${beforeNode.branchName}`)
     }
-    const change = patch.docs === undefined ? null : docChange(beforeNode, patch.docs)
+    const change = patch.docs === undefined ? null : docChange(beforeNode, patch.docs, docsBranch)
     let result = { before, after: before }
     if (Object.keys(linearInput).length > 0) result = await writeUpdate(beforeNode, before, linearInput, current, dryRun, { cycle: cycleNode, release: releaseNode })
     if (change === null) return result
@@ -352,35 +369,41 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
       const { docs, ...rest } = result.after
       return { before, after: patch.docs.length > 0 ? { ...rest, docs: patch.docs } : rest }
     }
-    await writeDocs(before.id, change)
+    await writeDocs(before.id, change, { fieldsWritten: Object.keys(linearInput) })
     // The issue is read again, so `after` is what Linear holds: its attachments changed after the update's own answer.
     return { before, after: await mapped(await readNode(before.id)) }
   }
 
   /** The docs a write adds (paths) and removes (attachment nodes), or null when the list is the one the issue has. An unread list refuses. */
-  function docChange(beforeNode, docs) {
+  function docChange(beforeNode, docList, branch) {
     if (beforeNode.attachmentsUnread) throw beforeNode.attachmentsUnread
+    const docs = [...new Set(docList.map(repoDocPath))]
     const nodes = beforeNode.attachments?.nodes ?? []
+    const isDoc = (item) => typeof item.metadata?.pmkitDoc === 'string'
     const current = docPaths(nodes)
-    const add = docs.filter((path) => !current.includes(path))
-    const remove = nodes.filter((item) => typeof item.metadata?.pmkitDoc === 'string' && !docs.includes(item.metadata.pmkitDoc))
+    const add = docs.filter((path) => !current.includes(path)).map((path) => ({ path, url: docUrl(path, branch) }))
+    // attachmentCreate upserts by url, so an attachment a person made with this link would be rewritten, and removed later as a doc.
+    const taken = add.map((item) => nodes.find((node) => node.url === item.url && !isDoc(node))).filter(Boolean)
+    if (taken.length > 0) {
+      throw new PmkitError('CONFLICT', `${beforeNode.identifier} already has an attachment with the link ${taken[0].url} that pmkit did not create, so pmkit leaves it alone and does not link ${add.find((item) => item.url === taken[0].url).path}`, 'Remove that attachment in Linear, then run the command again')
+    }
+    const remove = nodes.filter((item) => isDoc(item) && !docs.includes(item.metadata.pmkitDoc))
     if (add.length === 0 && remove.length === 0) return null
-    // Every url is built before the first write, so a missing GitHub repo refuses the whole change, also in a dry run.
-    return { add: add.map((path) => ({ path, url: docUrl(path) })), remove }
+    return { add, remove }
   }
 
   /** The link of a docs path: the file on GitHub, on the default branch. The path stays in the attachment's metadata. */
-  function docUrl(path) {
+  function docUrl(path, branch) {
     const host = config.pmkit?.git_host
     if (host?.system !== 'github' || !host.repo) {
       throw new PmkitError('NOT_CONFIGURED', 'a Linear doc is a link to the file on GitHub, and git_host has no GitHub repo', '/pmkit:link-repo')
     }
     const encode = (value) => value.split('/').map(encodeURIComponent).join('/')
-    return `https://github.com/${host.repo}/blob/${encode(host.default_branch ?? 'main')}/${encode(path)}`
+    return `https://github.com/${host.repo}/blob/${encode(branch ?? resolveDefaultBranch(config.pmkit).branch)}/${encode(path)}`
   }
 
   /** attachmentCreate for each added path, then attachmentDelete for each removed one. A failure names what was done and what was not. */
-  async function writeDocs(id, { add, remove }) {
+  async function writeDocs(id, { add, remove }, { fieldsWritten = [] } = {}) {
     const linked = []
     const unlinked = []
     try {
@@ -398,7 +421,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
       if (!(error instanceof PmkitError)) throw error
       const left = [...add.map((item) => item.path), ...remove.map((item) => item.metadata.pmkitDoc)].filter((path) => !linked.includes(path) && !unlinked.includes(path))
       const say = (paths) => (paths.length > 0 ? paths.join(', ') : 'none')
-      throw new PmkitError(error.code, `${error.message}. Docs of ${id}: linked: ${say(linked)}; unlinked: ${say(unlinked)}; not done: ${say(left)}`, `pmkit issues get ${id}`, error.details)
+      throw new PmkitError(error.code, `${error.message}. Docs of ${id}: linked: ${say(linked)}; unlinked: ${say(unlinked)}; not done: ${say(left)}${fieldsWritten.length > 0 ? `. The other fields of this change were already written (${fieldsWritten.join(', ')})` : ''}`, `pmkit issues get ${id}`, error.details)
     }
   }
 
