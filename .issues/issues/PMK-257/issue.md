@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-257-fix-adr-status-with-a-tracker-outside
 created: 2026-11-11T22:34:42.521Z
-updated: 2026-11-11T22:55:34Z
+updated: 2026-11-11T22:59:13Z
 ---
 
 ## Description
@@ -39,8 +39,8 @@ The reviews of PMK-247 and PMK-248 approved `docs adr-status` with defects left 
 
 ## Acceptance criteria
 
-- [ ] With the tracker outside the repository and `auto_commit: true`, `adr-status` writes and commits the ADR without an error, and no message shows an absolute path
-- [ ] A superseded-by reference to an ADR in a tracker outside the repository says where the file is, so a reader can open it
-- [ ] An unchanged status reports the same value before and after
-- [ ] When both the front matter and the `## Status` section change, the report shows both
-- [ ] `status: accepted # comment` counts as accepted and keeps its comment
+- [x] With the tracker outside the repository and `auto_commit: true`, `adr-status` writes and commits the ADR without an error, and no message shows an absolute path
+- [x] A superseded-by reference to an ADR in a tracker outside the repository says where the file is, so a reader can open it
+- [x] An unchanged status reports the same value before and after
+- [x] When both the front matter and the `## Status` section change, the report shows both
+- [x] `status: accepted # comment` counts as accepted and keeps its comment
