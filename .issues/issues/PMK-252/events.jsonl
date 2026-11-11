@@ -3,3 +3,4 @@
 {"at":"2026-11-10T21:22:27Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-11T01:46:54Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-11T01:46:57Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-252-map-issue-docs-on-linear"}
+{"at":"2026-11-11T01:48:46Z","by":"fred","op":"comment","to":"2026-11-11T01-48-46Z-fred.md"}
