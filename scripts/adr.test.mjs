@@ -594,6 +594,25 @@ test('docs adr-status superseded --by writes a plain relative path into the ADR,
   }
 })
 
+test('docs adr-status returns ref, the path without the tracker: label, in the JSON and the dry run (PMK-251 review)', async () => {
+  const root = repo()
+  const outside = path.join(path.dirname(root), `outside-${path.basename(root)}`)
+  fs.writeFileSync(configFile(root), fs.readFileSync(configFile(root), 'utf8').replace('path: .issues', `path: ../${path.basename(outside)}`))
+  fs.renameSync(path.join(root, '.issues'), outside)
+  try {
+    writeAdr(root, 'docs/adr/0002-a.md')
+    writeAdr(outside, 'docs/adr/0004-y.md')
+    const inRepo = await adrStatus(root, '2', 'deprecated', '--dry-run')
+    assert.deepEqual([inRepo.data.path, inRepo.data.ref], ['docs/adr/0002-a.md', 'docs/adr/0002-a.md'])
+    for (const args of [['4', 'deprecated', '--dry-run'], ['4', 'deprecated']]) {
+      const result = await adrStatus(root, ...args)
+      assert.deepEqual([result.data.path, result.data.ref], ['tracker:docs/adr/0004-y.md', 'docs/adr/0004-y.md'], args.join(' '))
+    }
+  } finally {
+    fs.rmSync(outside, { recursive: true, force: true })
+  }
+})
+
 test('docs adr-status superseded --by with tracker.path . writes the repository path (PMK-247 review)', async () => {
   const root = repo()
   trackerAtRoot(root, false)

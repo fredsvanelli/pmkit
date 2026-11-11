@@ -374,7 +374,7 @@ async function runAdrStatus(ctx) {
       notes.push(`${adr.path} is a repository file and has no commit yet; commit it with the work it belongs to`)
     }
   }
-  const data = { number: adr.number, path: adr.path, place: adr.place, status: { before: statusBefore, after: line }, before, after, notes }
+  const data = { number: adr.number, path: adr.path, ref: adr.ref, place: adr.place, status: { before: statusBefore, after: line }, before, after, notes }
   const verb = before === after ? 'unchanged' : ctx.dryRun ? 'would set' : 'set'
   const text = [`${verb} ${adr.path}: ${statusBefore ?? '(no status)'} -> ${line}`, ...(ctx.dryRun ? ['dry run: nothing was written'] : [])].join('\n')
   return { data, text, notes, commit }
