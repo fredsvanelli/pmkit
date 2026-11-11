@@ -1,1 +1,12 @@
 {"at":"2026-11-11T22:34:42Z","by":"fred","op":"create","to":{"id":"PMK-257","title":"Fix adr-status with a tracker outside the repo and in its report","type":"bug","status":"backlog","priority":"medium","estimate":2,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-11T22:34:42.521Z","updated":"2026-11-11T22:34:42Z"}}
+{"at":"2026-11-11T22:55:31Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-11T22:55:31Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-11T22:55:34Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-257-fix-adr-status-with-a-tracker-outside"}
+{"at":"2026-11-11T22:56:46Z","by":"fred","op":"comment","to":"2026-11-11T22-56-46Z-fred.md"}
+{"at":"2026-11-11T22:59:12Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-11T22:59:12Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-11T22:59:12Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-11T22:59:13Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-11T22:59:13Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-11T23:03:26Z","by":"fred","op":"comment","to":"2026-11-11T23-03-26Z-fred.md"}
+{"at":"2026-11-11T23:03:26Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

@@ -4151,16 +4151,45 @@ async function runInitLinear(ctx) {
   return { data, text: lines.join('\n') }
 }
 
-/** Commits exactly `paths` (root-relative, `/` separators). Nothing staged for them means no commit. */
+/**
+ * Commits exactly `paths` (root-relative, `/` separators). Nothing staged for them means no commit. A path that climbs out of the
+ * repository (a tracker folder outside it, PMK-257) is committed in the git repository that holds it, with paths relative to that
+ * repository, and is skipped when none does. Returns the notes to show, and no message shows an absolute path.
+ */
 function commitTracker(config, message, paths) {
   const folder = (config.pmkit.tracker.path ?? '.issues').split(path.sep).join('/')
+  const inside = paths.filter((file) => !climbsOut(file))
+  const notes = []
+  if (inside.length > 0) commitIn(config.root, message, inside, inside.length <= 5 ? inside.join(' ') : folder)
+  // ponytail: one git call per outside file to find its repository; fine for the few files one write touches.
+  const groups = new Map()
+  let loose = false
+  for (const file of paths.filter(climbsOut)) {
+    // Real location: git reports its top level with symlinks resolved (/tmp is /private/tmp on macOS).
+    const full = realParent(path.resolve(config.root, file))
+    let dir = path.dirname(full)
+    while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir)
+    const top = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, encoding: 'utf8' })
+    if (top.status !== 0 || top.stdout.trim() === '') {
+      loose = true
+      continue
+    }
+    const top2 = top.stdout.trim()
+    groups.set(top2, [...(groups.get(top2) ?? []), slash(path.relative(top2, full))])
+  }
+  for (const [top, files] of groups) commitIn(top, message, files, files.length <= 5 ? files.join(' ') : 'the tracker files')
+  if (loose) notes.push('the tracker folder is outside the repository and not in a git repository, so nothing was committed for it')
+  return notes
+}
+
+/** The commit of `paths` (relative to the repository at `cwd`), `named` for the hint of a failure. */
+function commitIn(cwd, message, paths, named) {
   // --literal-pathspecs keeps a name such as notes/[x].md from matching as a glob.
-  const git = (...args) => spawnSync('git', ['--literal-pathspecs', ...args], { cwd: config.root, encoding: 'utf8' })
-  const named = paths.length <= 5 ? paths.join(' ') : folder
+  const git = (...args) => spawnSync('git', ['--literal-pathspecs', ...args], { cwd, encoding: 'utf8' })
   const fail = (result) => new PmkitError('UPSTREAM', `the write succeeded but auto_commit failed: ${(result.stderr || result.stdout).trim()}`, `Commit ${named} yourself`)
   // On disk with its exact case: where the file system ignores case, the old name of a case-only rename still "exists".
   const onDisk = (file) => {
-    const full = path.join(config.root, file)
+    const full = path.join(cwd, file)
     try {
       return fs.readdirSync(path.dirname(full)).includes(path.basename(full))
     } catch {
@@ -4354,11 +4383,11 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
     }
     // auto_commit commits Local tracker files, so a hosted tracker never commits.
     const autoCommit = (commit, written) => {
-      if (!command.write || dryRun || commit === undefined || ctx.config().system !== 'local' || ctx.config().local.auto_commit !== true) return
+      if (!command.write || dryRun || commit === undefined || ctx.config().system !== 'local' || ctx.config().local.auto_commit !== true) return []
       // Only the files this command wrote; a write that changed nothing commits nothing.
       const paths = tracker?.writtenFiles() ?? []
       try {
-        if (paths.length > 0) commitTracker(ctx.config(), `pmkit: ${command.name} ${commit}`, paths)
+        return paths.length > 0 ? commitTracker(ctx.config(), `pmkit: ${command.name} ${commit}`, paths) : []
       } catch (error) {
         // The write succeeded; the caller still gets what was written, in the same single output.
         error.written ??= written
@@ -4379,11 +4408,11 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
       }
       throw error
     }
-    autoCommit(result.commit, { data: result.data, text: result.text })
+    const commitNotes = autoCommit(result.commit, { data: result.data, text: result.text })
     stdout.push(json ? `${JSON.stringify(result.data, null, 2)}\n` : `${result.text}\n`)
     readWarning()
     for (const warning of result.warnings ?? []) stderr.push(`warning: ${warning}\n`)
-    for (const note of result.notes ?? []) stderr.push(`note: ${note}\n`)
+    for (const note of [...(result.notes ?? []), ...commitNotes]) stderr.push(`note: ${note}\n`)
     // Notes the tracker collected while it read, such as an issue release it could not read (Linear).
     for (const note of tracker?.takeNotes?.() ?? []) stderr.push(`note: ${note}\n`)
   } catch (error) {

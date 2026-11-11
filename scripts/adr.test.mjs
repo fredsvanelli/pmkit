@@ -499,10 +499,27 @@ test('setAdrStatus leaves an ADR untouched when its status does not change, what
 
 test('setAdrStatus changes the front matter key and the ## Status section together (PMK-248)', () => {
   const both = '---\nstatus: accepted\n---\n\n# T\n\n## Status\n\nAccepted\n\n## Context\n'
-  assert.deepEqual(setAdrStatus(both, 'deprecated'), { text: '---\nstatus: deprecated\n---\n\n# T\n\n## Status\n\nDeprecated\n\n## Context\n', before: 'status: accepted', after: 'status: deprecated' })
+  assert.deepEqual(setAdrStatus(both, 'deprecated'), { text: '---\nstatus: deprecated\n---\n\n# T\n\n## Status\n\nDeprecated\n\n## Context\n', before: 'status: accepted; ## Status: Accepted', after: 'status: deprecated; ## Status: Deprecated' })
   // The key is current but the section is not: the section still changes.
   const stale = '---\nstatus: deprecated\n---\n\n# T\n\n## Status\n\nAccepted\n'
   assert.equal(setAdrStatus(stale, 'deprecated').text, '---\nstatus: deprecated\n---\n\n# T\n\n## Status\n\nDeprecated\n')
+})
+
+test('setAdrStatus reports an unchanged status as the same text before and after, and both places when both change (PMK-257)', () => {
+  for (const text of ['# T\n\n## Status\n\naccepted\n\n## Context\n', '---\nstatus: Accepted\n---\n\n# T\n', '# T\n\n**Status:** ACCEPTED\n']) {
+    const result = setAdrStatus(text, 'accepted')
+    assert.equal(result.before, result.after, text)
+  }
+  const both = setAdrStatus('---\nstatus: accepted\n---\n\n# T\n\n## Status\n\naccepted\n', 'accepted')
+  assert.deepEqual([both.before, both.after], ['status: accepted; ## Status: accepted', 'status: accepted; ## Status: accepted'])
+})
+
+test('setAdrStatus counts status: accepted # comment as accepted and keeps the comment (PMK-257)', () => {
+  const same = '---\nstatus: accepted # agreed in review\n---\n\n# T\n'
+  assert.deepEqual(setAdrStatus(same, 'accepted'), { text: same, before: 'status: accepted # agreed in review', after: 'status: accepted # agreed in review' })
+  const changed = setAdrStatus(same, 'deprecated')
+  assert.deepEqual(changed, { text: '---\nstatus: deprecated # agreed in review\n---\n\n# T\n', before: 'status: accepted # agreed in review', after: 'status: deprecated # agreed in review' })
+  assert.equal(setAdrStatus('---\nstatus: "accepted"   #c\n---\n', 'accepted').text, '---\nstatus: "accepted"   #c\n---\n')
 })
 
 // PMK-247: the tracker folder is the repository's, or lies outside it.
@@ -579,7 +596,9 @@ test('docs adr-status superseded --by writes a plain relative path into the ADR,
     writeAdr(outside, 'docs/adr/0003-x.md')
     const dry = await adrStatus(root, '2', 'superseded', '--by', '3', '--dry-run')
     assert.equal(dry.code, 0, dry.stderr)
-    assert.equal(dry.data.status.after, 'Status: superseded by docs/adr/0003-x.md')
+    // A reader opens it from the repository root (PMK-257).
+    assert.equal(dry.data.status.after, `Status: superseded by ../${path.basename(outside)}/docs/adr/0003-x.md`)
+    assert.ok(fs.existsSync(path.join(root, `../${path.basename(outside)}/docs/adr/0003-x.md`)))
     await adrStatus(root, '2', 'superseded', '--by', '3')
     assert.doesNotMatch(fs.readFileSync(path.join(root, 'docs/adr/0002-a.md'), 'utf8'), /tracker:/)
     // The other way round: the ADR in the outside tracker names a repository ADR.
@@ -594,6 +613,49 @@ test('docs adr-status superseded --by writes a plain relative path into the ADR,
   }
 })
 
+// PMK-257: auto_commit with a tracker outside the repository.
+const withOutsideTracker = async (inGit, fn) => {
+  const root = repo()
+  const outside = path.join(path.dirname(root), `outside-${path.basename(root)}`)
+  fs.writeFileSync(configFile(root), fs.readFileSync(configFile(root), 'utf8').replace('path: .issues', `path: ../${path.basename(outside)}`))
+  fs.renameSync(path.join(root, '.issues'), outside)
+  fs.writeFileSync(path.join(outside, 'config.yaml'), fs.readFileSync(path.join(outside, 'config.yaml'), 'utf8').replace(/^auto_commit: .*$/m, 'auto_commit: true'))
+  writeAdr(outside, 'docs/adr/0001-a.md')
+  if (inGit) {
+    git(outside, 'init', '-q')
+    git(outside, 'config', 'user.name', 'T')
+    git(outside, 'config', 'user.email', 't@example.com')
+    git(outside, 'add', '-A')
+    git(outside, 'commit', '-q', '-m', 'init')
+  }
+  try {
+    await fn({ root, outside })
+  } finally {
+    fs.rmSync(outside, { recursive: true, force: true })
+  }
+}
+
+test('docs adr-status with a tracker outside the repository commits in the git repository that holds the tracker (PMK-257)', async () => {
+  await withOutsideTracker(true, async ({ root, outside }) => {
+    const result = await run(['docs', 'adr-status', '1', 'deprecated'], { cwd: root, env: childEnv() })
+    assert.equal(result.code, 0, result.stderr)
+    assert.equal(git(outside, 'rev-list', '--count', 'HEAD').trim(), '2')
+    assert.match(git(outside, 'show', '--name-only', '--format=', 'HEAD'), /docs\/adr\/0001-a\.md/)
+    assert.equal(git(outside, 'status', '--porcelain'), '')
+    assert.ok(!(result.stdout + result.stderr).includes(outside), 'no absolute path')
+  })
+})
+
+test('docs adr-status with a tracker outside the repository and outside any git repository writes the ADR and says nothing was committed (PMK-257)', async () => {
+  await withOutsideTracker(false, async ({ root, outside }) => {
+    const result = await run(['docs', 'adr-status', '1', 'deprecated', '--json'], { cwd: root, env: childEnv() })
+    assert.equal(result.code, 0, result.stderr)
+    assert.match(fs.readFileSync(path.join(outside, 'docs/adr/0001-a.md'), 'utf8'), /^Status: deprecated$/m)
+    assert.match(result.stderr, /^note: .*not in a git repository, so nothing was committed/m)
+    assert.ok(!(result.stdout + result.stderr).includes(outside), 'no absolute path')
+  })
+})
+
 test('docs adr-status returns ref, the path without the tracker: label, in the JSON and the dry run (PMK-251 review)', async () => {
   const root = repo()
   const outside = path.join(path.dirname(root), `outside-${path.basename(root)}`)
@@ -606,7 +668,7 @@ test('docs adr-status returns ref, the path without the tracker: label, in the J
     assert.deepEqual([inRepo.data.path, inRepo.data.ref], ['docs/adr/0002-a.md', 'docs/adr/0002-a.md'])
     for (const args of [['4', 'deprecated', '--dry-run'], ['4', 'deprecated']]) {
       const result = await adrStatus(root, ...args)
-      assert.deepEqual([result.data.path, result.data.ref], ['tracker:docs/adr/0004-y.md', 'docs/adr/0004-y.md'], args.join(' '))
+      assert.deepEqual([result.data.path, result.data.ref], ['tracker:docs/adr/0004-y.md', `../${path.basename(outside)}/docs/adr/0004-y.md`], args.join(' '))
     }
   } finally {
     fs.rmSync(outside, { recursive: true, force: true })
