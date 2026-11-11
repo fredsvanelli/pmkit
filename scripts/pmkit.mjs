@@ -308,10 +308,10 @@ async function docLinks(ctx, id, patch) {
   const removes = paths('remove-doc')
   if (adds.length === 0 && removes.length === 0) return
   const tracker = await ctx.tracker()
-  // The manifest says before the issue is read when the tracker has no docs field (Linear), so nothing else is asked of it.
-  const documents = (await tracker.capabilities()).capabilities.find((c) => c.id === 'documents')
-  if (documents?.detail?.unsupported?.includes('issueDocs')) throw new PmkitError('NOT_SUPPORTED', 'Linear issues have no docs field', 'The comment on the issue stays the link to the document')
-  const current = (await tracker.getIssue(id)).docs ?? []
+  const issue = await tracker.getIssue(id)
+  // An unread list (Linear, PMK-252) is not an empty one: writing the whole new list from it could unlink docs the read never saw.
+  if (issue.docsUnknown !== undefined) throw new PmkitError('UPSTREAM', `the docs of ${id} are unknown, because pmkit could not read them: ${issue.docsUnknown}`, `Run pmkit issues get ${id} again`)
+  const current = issue.docs ?? []
   const kept = current.filter((item) => !removes.includes(item))
   patch.docs = [...kept, ...adds.filter((item) => !kept.includes(item))]
 }

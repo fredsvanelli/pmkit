@@ -124,10 +124,8 @@ test('applyInput shows the milestone a projectMilestoneId sets', () => {
   assert.equal(applyInput(node({ projectMilestone: { id: 'ms-1' } }), { projectMilestoneId: null }, context).projectMilestone, null)
 })
 
-test('docs is NOT_SUPPORTED on Linear before any request, even an empty list (PMK-228)', () => {
-  for (const docs of [['docs/adr/0001-a.md'], []]) {
-    assert.throws(() => toInput({ docs }, update), { code: 'NOT_SUPPORTED', message: 'Linear issues have no docs field', nextStep: 'The comment on the issue stays the link to the document' })
-  }
+test('docs is not an issue input on Linear: toInput leaves it out, and updateIssue links it as attachments (PMK-252)', () => {
+  for (const docs of [['docs/adr/0001-a.md'], []]) assert.deepEqual(toInput({ docs }, update), {})
 })
 
 test('applyInput sets the project from the project option and the parent from the parent option', () => {

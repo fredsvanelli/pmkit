@@ -7,9 +7,9 @@ import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refu
 import { compareIds } from '../ids.mjs'
 import { checkFilter } from '../issue-filter.mjs'
 import { cycleKey } from './cycles.mjs'
-import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUE_RELEASES_QUERY, ISSUES_QUERY, ISSUES_RELEASES_QUERY, ISSUE_ARCHIVE, ISSUE_ATTACHMENTS_QUERY, ISSUES_ATTACHMENTS_QUERY, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UNARCHIVE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
+import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUE_RELEASES_QUERY, ISSUES_QUERY, ISSUES_RELEASES_QUERY, ATTACHMENT_CREATE, ATTACHMENT_DELETE, ISSUE_ARCHIVE, ISSUE_ATTACHMENTS_QUERY, ISSUES_ATTACHMENTS_QUERY, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UNARCHIVE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
 import { finishSearch, translateFilter } from './filter.mjs'
-import { blockedOpen, isIssueId, issueKey, makeContext, stateCategory, toIssue } from './issues.mjs'
+import { blockedOpen, docPaths, isIssueId, issueKey, makeContext, stateCategory, toIssue } from './issues.mjs'
 import { allReleases, releasesOff } from './releases.mjs'
 import { applyInput, createTeam, requireAssignee, skeletonNode, teamOf, teamStates, toInput } from './writes.mjs'
 
@@ -344,8 +344,62 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     if (patch.branch !== undefined && patch.branch !== beforeNode.branchName) {
       throw new PmkitError('INVALID_INPUT', `Linear names this issue's branch ${beforeNode.branchName}`, `Use the branch name ${beforeNode.branchName}`)
     }
-    if (Object.keys(linearInput).length === 0) return { before, after: before }
-    return writeUpdate(beforeNode, before, linearInput, current, dryRun, { cycle: cycleNode, release: releaseNode })
+    const change = patch.docs === undefined ? null : docChange(beforeNode, patch.docs)
+    let result = { before, after: before }
+    if (Object.keys(linearInput).length > 0) result = await writeUpdate(beforeNode, before, linearInput, current, dryRun, { cycle: cycleNode, release: releaseNode })
+    if (change === null) return result
+    if (dryRun) {
+      const { docs, ...rest } = result.after
+      return { before, after: patch.docs.length > 0 ? { ...rest, docs: patch.docs } : rest }
+    }
+    await writeDocs(before.id, change)
+    // The issue is read again, so `after` is what Linear holds: its attachments changed after the update's own answer.
+    return { before, after: await mapped(await readNode(before.id)) }
+  }
+
+  /** The docs a write adds (paths) and removes (attachment nodes), or null when the list is the one the issue has. An unread list refuses. */
+  function docChange(beforeNode, docs) {
+    if (beforeNode.attachmentsUnread) throw beforeNode.attachmentsUnread
+    const nodes = beforeNode.attachments?.nodes ?? []
+    const current = docPaths(nodes)
+    const add = docs.filter((path) => !current.includes(path))
+    const remove = nodes.filter((item) => typeof item.metadata?.pmkitDoc === 'string' && !docs.includes(item.metadata.pmkitDoc))
+    if (add.length === 0 && remove.length === 0) return null
+    // Every url is built before the first write, so a missing GitHub repo refuses the whole change, also in a dry run.
+    return { add: add.map((path) => ({ path, url: docUrl(path) })), remove }
+  }
+
+  /** The link of a docs path: the file on GitHub, on the default branch. The path stays in the attachment's metadata. */
+  function docUrl(path) {
+    const host = config.pmkit?.git_host
+    if (host?.system !== 'github' || !host.repo) {
+      throw new PmkitError('NOT_CONFIGURED', 'a Linear doc is a link to the file on GitHub, and git_host has no GitHub repo', '/pmkit:link-repo')
+    }
+    const encode = (value) => value.split('/').map(encodeURIComponent).join('/')
+    return `https://github.com/${host.repo}/blob/${encode(host.default_branch ?? 'main')}/${encode(path)}`
+  }
+
+  /** attachmentCreate for each added path, then attachmentDelete for each removed one. A failure names what was done and what was not. */
+  async function writeDocs(id, { add, remove }) {
+    const linked = []
+    const unlinked = []
+    try {
+      for (const item of add) {
+        const answer = await client.request(ATTACHMENT_CREATE, { input: { issueId: id, url: item.url, title: item.path, metadata: { pmkitDoc: item.path } } })
+        if (answer?.attachmentCreate?.success !== true) throw new PmkitError('UPSTREAM', `Linear did not link ${item.path}`)
+        linked.push(item.path)
+      }
+      for (const item of remove) {
+        const answer = await client.request(ATTACHMENT_DELETE, { id: item.id })
+        if (answer?.attachmentDelete?.success !== true) throw new PmkitError('UPSTREAM', `Linear did not unlink ${item.metadata.pmkitDoc}`)
+        unlinked.push(item.metadata.pmkitDoc)
+      }
+    } catch (error) {
+      if (!(error instanceof PmkitError)) throw error
+      const left = [...add.map((item) => item.path), ...remove.map((item) => item.metadata.pmkitDoc)].filter((path) => !linked.includes(path) && !unlinked.includes(path))
+      const say = (paths) => (paths.length > 0 ? paths.join(', ') : 'none')
+      throw new PmkitError(error.code, `${error.message}. Docs of ${id}: linked: ${say(linked)}; unlinked: ${say(unlinked)}; not done: ${say(left)}`, `pmkit issues get ${id}`, error.details)
+    }
   }
 
   /**

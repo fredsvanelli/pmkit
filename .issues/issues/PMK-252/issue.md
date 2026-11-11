@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-5
 branch: pmk-252-map-issue-docs-on-linear
 created: 2026-11-10T20:03:45.412Z
-updated: 2026-11-11T01:46:57Z
+updated: 2026-11-11T01:55:35Z
 ---
 
 ## Description
@@ -37,7 +37,7 @@ PMK-228 added a `docs` field on issues, which `/pmkit:spec:record-decision` fill
 
 ## Acceptance criteria
 
-- [ ] `issues get` on a Linear issue shows its docs
-- [ ] `issues update --add-doc` and `--remove-doc` work on Linear, and `--dry-run` sends no request
-- [ ] `/pmkit:spec:record-decision` on Linear links the ADR to each related issue, not only through a comment
-- [ ] The manifest no longer lists `issueDocs` as unsupported
+- [x] `issues get` on a Linear issue shows its docs
+- [x] `issues update --add-doc` and `--remove-doc` work on Linear, and `--dry-run` sends no request
+- [x] `/pmkit:spec:record-decision` on Linear links the ADR to each related issue, not only through a comment
+- [x] The manifest no longer lists `issueDocs` as unsupported

@@ -16,14 +16,16 @@ process.env.GIT_CONFIG_GLOBAL = os.devNull
 process.env.GIT_CONFIG_NOSYSTEM = '1'
 process.env.GIT_CEILING_DIRECTORIES = fs.realpathSync(os.tmpdir())
 
-function linear(args, { teams, cycles, calls } = {}) {
+function linear(args, { teams, cycles, calls, gitHost, seed, routes = {} } = {}) {
   const root = useLinear(makeRepo('basic'))
   const file = path.join(root, '.pmkit', 'config.yaml')
-  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('    workspace: acme', '    workspace: acme\n    team: ACME'))
+  const text = fs.readFileSync(file, 'utf8').replace('    workspace: acme', '    workspace: acme\n    team: ACME')
+  fs.writeFileSync(file, gitHost ? text.replace('  system: none', `  system: github\n  repo: ${gitHost}`) : text)
   const env = { ...childEnv(), ...userStoreEnv().env, LINEAR_API_KEY: FAKE_KEY }
   const fake = fakeLinearIssues({ ...(teams ? { teams } : {}), ...(cycles ? { cycles } : {}) })
   const projects = fakeLinearProjects({ issues: fake, ...(teams ? { teams } : {}) })
-  const fetch = fakeLinearFetch({ ...fakeWorkspace(teams ? { teams } : {}), ...fake.routes, ...projects.routes })
+  seed?.(fake)
+  const fetch = fakeLinearFetch({ ...fakeWorkspace(teams ? { teams } : {}), ...fake.routes, ...projects.routes, ...routes })
   if (calls) calls.fetch = fetch
   return run(args, { cwd: root, env, adapters: { ...ADAPTERS, linear: linearDescriptor({ fetch }) } })
 }
@@ -45,13 +47,38 @@ test('docs adr-status on Linear finds no tracker folder and answers NOT_FOUND fo
   assert.equal(JSON.parse(result.stdout).error.code, 'NOT_FOUND')
 })
 
-test('issues update --add-doc on Linear is NOT_SUPPORTED before any issue is read (PMK-228 review)', async () => {
+test('issues update --add-doc on Linear with no GitHub repo is NOT_CONFIGURED and writes nothing (PMK-252)', async () => {
   const calls = {}
-  const result = await linear(['issues', 'update', 'ACME-1', '--add-doc', 'docs/adr/0001-a.md', '--json'], { calls })
+  const result = await linear(['issues', 'update', 'ACME-1', '--add-doc', 'docs/adr/0001-a.md', '--json'], { calls, seed: (fake) => fake.seed({ title: 'One' }) })
   assert.equal(result.code, 2)
-  assert.deepEqual(JSON.parse(result.stdout).error, { code: 'NOT_SUPPORTED', message: 'Linear issues have no docs field', nextStep: 'The comment on the issue stays the link to the document' })
-  const names = calls.fetch.calls.map((call) => /(?:query|mutation)\s+(\w+)/.exec(call.body.query)?.[1])
-  assert.ok(!names.some((name) => /Issue/.test(name ?? '')), names.join(', '))
+  const error = JSON.parse(result.stdout).error
+  assert.equal(error.code, 'NOT_CONFIGURED')
+  assert.equal(error.nextStep, '/pmkit:link-repo')
+  assert.ok(!calls.fetch.calls.some((call) => /^\s*mutation/.test(call.body.query)))
+})
+
+test('issues update --add-doc and --remove-doc work on Linear, and --dry-run sends no request that writes (PMK-252)', async () => {
+  const seed = (fake) => fake.seed({ title: 'One' })
+  const dry = {}
+  const preview = await linear(['issues', 'update', 'ACME-1', '--add-doc', 'docs/adr/0001-a.md', '--dry-run', '--json'], { calls: dry, gitHost: 'acme/app', seed })
+  assert.equal(preview.code, 0, preview.stderr)
+  assert.deepEqual(JSON.parse(preview.stdout).after.docs, ['docs/adr/0001-a.md'])
+  assert.ok(!dry.fetch.calls.some((call) => /^\s*mutation/.test(call.body.query)))
+  const sent = {}
+  const written = await linear(['issues', 'update', 'ACME-1', '--add-doc', 'docs/adr/0001-a.md', '--json'], { calls: sent, gitHost: 'acme/app', seed })
+  assert.equal(written.code, 0, written.stderr)
+  assert.deepEqual(JSON.parse(written.stdout).after.docs, ['docs/adr/0001-a.md'])
+  assert.ok(sent.fetch.calls.some((call) => /PmkitAttachmentCreate/.test(call.body.query)))
+})
+
+test('issues update --add-doc on Linear refuses when the docs of the issue could not be read (PMK-252)', async () => {
+  const tooComplex = { status: 200, json: { data: null, errors: [{ message: 'Query too complex', extensions: { code: 'INTERNAL_SERVER_ERROR' } }] } }
+  const routes = { PmkitIssuesAttachments: tooComplex, PmkitIssueAttachments: tooComplex }
+  const calls = {}
+  const result = await linear(['issues', 'update', 'ACME-1', '--add-doc', 'docs/adr/0001-a.md', '--json'], { calls, gitHost: 'acme/app', routes, seed: (fake) => fake.seed({ title: 'One' }) })
+  assert.equal(result.code, 2)
+  assert.match(JSON.parse(result.stdout).error.message, /unknown|Query too complex/)
+  assert.ok(!calls.fetch.calls.some((call) => /^\s*mutation/.test(call.body.query)))
 })
 
 const METRICS = [
