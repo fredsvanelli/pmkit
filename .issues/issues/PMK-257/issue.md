@@ -2,14 +2,14 @@
 id: PMK-257
 title: Fix adr-status with a tracker outside the repo and in its report
 type: bug
-status: in_review
+status: done
 priority: medium
 estimate: 2
 assignee: fred
 parent: EPC-6
 branch: pmk-257-fix-adr-status-with-a-tracker-outside
 created: 2026-11-11T22:34:42.521Z
-updated: 2026-11-11T23:03:26Z
+updated: 2026-11-11T23:51:49Z
 ---
 
 ## Description
