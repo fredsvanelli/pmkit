@@ -3,3 +3,7 @@
 {"at":"2026-11-11T22:55:27Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-11T22:55:29Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-256-fix-unarchive-edge-cases-in-history"}
 {"at":"2026-11-11T22:56:33Z","by":"fred","op":"comment","to":"2026-11-11T22-56-33Z-fred.md"}
+{"at":"2026-11-11T22:57:31Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-11T22:57:31Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-11T22:57:31Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-11T22:57:31Z","by":"fred","op":"update","field":"acceptance_criteria"}

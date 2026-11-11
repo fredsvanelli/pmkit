@@ -482,5 +482,16 @@ test('bulk unarchive with a view whose filter has archived works; a view without
     assert.deepEqual(dry.body.items.map((item) => item.id), [ids.A])
     const live = await bulk(root, 'unarchive', '--view', 'live', '--dry-run')
     assert.equal(live.body.error.code, 'INVALID_INPUT')
+    assert.match(live.body.error.nextStep, /views save live .*--archived/)
+  })
+})
+
+test('bulk unarchive is never refused for the live issues its filter also matches (PMK-256)', async () => {
+  await withRepo(async (root, ids) => {
+    await ok(root, ['issues', 'archive', ids.A])
+    // B and D are live and match too: two live issues, one archived, --max 1.
+    const dry = await bulk(root, 'unarchive', '--label', 'legacy', '--archived', '--max', '1', '--dry-run')
+    assert.equal(dry.code, 0, JSON.stringify(dry.body))
+    assert.deepEqual(dry.body.items.map((item) => item.id), [ids.A])
   })
 })

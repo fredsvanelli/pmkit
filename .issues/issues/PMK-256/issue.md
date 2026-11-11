@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-256-fix-unarchive-edge-cases-in-history
 created: 2026-11-11T22:34:42.444Z
-updated: 2026-11-11T22:55:29Z
+updated: 2026-11-11T22:57:31Z
 ---
 
 ## Description
@@ -38,7 +38,7 @@ PMK-250 added `issues unarchive` and `issues bulk unarchive` on the Local tracke
 
 ## Acceptance criteria
 
-- [ ] After a merge that repeats an archive and unarchive sequence, the issue history shows each event once
-- [ ] A bulk unarchive with a view that lacks archived says to save the view with `--archived`
-- [ ] On Linear, `issues bulk unarchive` always answers `NOT_SUPPORTED` first, whatever other flags it has
-- [ ] A bulk unarchive is never refused because of the number of live issues the filter also matches
+- [x] After a merge that repeats an archive and unarchive sequence, the issue history shows each event once
+- [x] A bulk unarchive with a view that lacks archived says to save the view with `--archived`
+- [x] On Linear, `issues bulk unarchive` always answers `NOT_SUPPORTED` first, whatever other flags it has
+- [x] A bulk unarchive is never refused because of the number of live issues the filter also matches

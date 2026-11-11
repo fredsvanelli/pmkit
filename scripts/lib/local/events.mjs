@@ -34,6 +34,7 @@ export function parseEvents(raw) {
   const problems = []
   const seen = new Set()
   let toggle // the last archive or unarchive kept: a repeat of it is a merge duplicate, a flip back is a new event
+  let lastAt // the time of the last event kept
   text.split('\n').forEach((line, index) => {
     if (line.trim() === '') return
     let event
@@ -52,8 +53,10 @@ export function parseEvents(raw) {
     if (!['string', 'number'].includes(typeof event.at) || Number.isNaN(new Date(event.at).getTime())) problems.push(`line ${index + 1}: at "${event.at}" is not a time`)
     const key = sortedStringify(event)
     const flips = event.op === 'archive' || event.op === 'unarchive'
-    if (seen.has(key) && (!flips || toggle === event.op)) return
+    // PMK-256: a flip back is a new event only within the second of the last kept event; after that, a repeat is a merge duplicate.
+    if (seen.has(key) && (!flips || toggle === event.op || lastAt !== event.at)) return
     seen.add(key)
+    lastAt = event.at
     if (flips) toggle = event.op
     events.push(event)
   })

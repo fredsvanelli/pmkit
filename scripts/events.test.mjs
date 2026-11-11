@@ -49,6 +49,14 @@ test('an archive, unarchive, archive in one second keeps all three, and a merge 
   assert.equal(merged.events.length, 1)
 })
 
+test('a merge that repeats a whole archive, unarchive, archive, unarchive run shows each event once (PMK-256)', () => {
+  const ev = (op, n) => JSON.stringify({ at: `2026-10-01T10:00:0${n}Z`, by: 'f', op })
+  const run = [ev('archive', 1), ev('unarchive', 2), ev('archive', 3), ev('unarchive', 4)]
+  const { events } = readEvents(write(tmp(), 'events3.jsonl', [...run, ...run].join('\n')))
+  assert.deepEqual(events.map((event) => event.op), ['archive', 'unarchive', 'archive', 'unarchive'])
+  assert.equal(replay(events).archived, undefined)
+})
+
 test('duplicates ignore key order and ties keep file order', () => {
   const a = { at: '2026-10-01T10:00:00Z', by: 'f', op: 'comment', to: 'one' }
   const b = { at: '2026-10-01T10:00:00Z', by: 'f', op: 'comment', to: 'two' }

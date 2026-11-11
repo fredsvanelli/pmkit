@@ -21,3 +21,6 @@ export class PmkitError extends Error {
 }
 
 export const isPmkitError = (error) => error instanceof PmkitError
+
+/** PMK-250, PMK-256: `unarchive` works on the Local tracker only; the bulk command and the Linear tracker answer with this one error. */
+export const unarchiveNotSupported = () => new PmkitError('NOT_SUPPORTED', 'unarchive works on the Local tracker only', "pmkit issues restore <id> brings a deleted issue back from Linear's trash")

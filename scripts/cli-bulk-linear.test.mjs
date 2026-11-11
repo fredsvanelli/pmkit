@@ -184,6 +184,17 @@ test('bulk unarchive is NOT_SUPPORTED on Linear before any read, even when nothi
   assert.deepEqual(fake.mutations, [])
 })
 
+test('bulk unarchive answers NOT_SUPPORTED first on Linear, whatever its other flags (PMK-256)', async () => {
+  const { fake, fetch } = withIssues(['One'])
+  const context = setup()
+  for (const args of [['--view', 'x', '--dry-run'], ['value', '--category', 'backlog', '--dry-run'], ['--max', '0', '--category', 'backlog'], ['--archived', '--view', 'x', '--category', 'backlog']]) {
+    const result = await bulk(context, fetch, ['unarchive', ...args])
+    assert.equal(result.body.error.code, 'NOT_SUPPORTED', args.join(' '))
+    assert.match(result.body.error.message, /unarchive works on the Local tracker only/)
+  }
+  assert.deepEqual(fake.mutations, [])
+})
+
 test('due, type and archive are written on Linear', async () => {
   const { fake, fetch } = withIssues(['One', 'Two'])
   const context = setup()
