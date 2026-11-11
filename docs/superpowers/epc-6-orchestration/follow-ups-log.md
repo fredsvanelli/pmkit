@@ -573,3 +573,27 @@ Início: 2026-11-10. `develop` em e3efad5, `npm test` com 4828 testes, 4737 pass
 - `pr sync` moveu PMK-248, PMK-249 e PMK-250 para done, com todos os critérios marcados.
 
 Fim da rodada 19: PRs #203, #204, #205 mergeados.
+
+Limpeza da rodada 19: closing PR #206 mergeado (ef8109b), 7 worktrees removidos, branches provisórias, de issue e de chore apagadas.
+
+## Rodada 20
+
+Início: 2026-11-10. `develop` em ef8109b, `npm test` com 4852 testes, 4761 pass, 0 fail, 91 skipped, saída 0. Run Orca `run_4c99b0d03c38`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-247 | 2 | sonnet (`ctx_7172103597b8`) | #207 | ciclo 1 (sonnet): MUDANÇAS PEDIDAS; ciclo 2 (sonnet): APROVADO | mergeado (44ecb9f), done |
+| PMK-246 | 5 | opus (`ctx_5a2ffc0bbccd`) | #208 | ciclo 1 (opus): APROVADO com correções antes do merge; ciclo 2 (opus): MUDANÇAS PEDIDAS; ciclo 3 (opus): APROVADO | mergeado (2cfa32c), done com o critério 5 desmarcado (decisão do usuário) |
+
+- PMK-246: PERGUNTA PMK-246-1 (uma issue do Linear pode estar em várias releases, de pipelines diferentes). Respondi opção A: uma release por issue; com 2 ou mais, issues get mostra releases: [ids] e update/bulk recusam. Aceitei as decisões próprias do worker (UUID como id, só pipelines do time do escopo, canceladas fora, released = completedAt, releases desligadas como na PMK-40). Opção B (uma por pipeline) fica como follow-up.
+- PMK-246: PERGUNTA PMK-246-2 (ligar listReleases faria release-readiness e release-notes chamarem o filtro --release, NOT_SUPPORTED no Linear). Respondi opção A: o filtro release e release issues entram no escopo para não haver regressão.
+- PMK-247: PR #207; com `tracker.path: .` a pasta de ADR é do tracker (adr-status segue auto_commit, next-adr responde tracker); tracker fora do repo rotulado `tracker:docs/adr`. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-247 ciclo 1 (sonnet): MUDANÇAS PEDIDAS; bloqueante: `superseded --by` gravava o rótulo `tracker:docs/adr/...` no texto do ADR. 777cde4 grava o caminho real (campo ref) com testes e corrige record-decision.md e doctor.md.
+- PMK-247 ciclo 2 (sonnet): APROVADO. Follow-ups: adr-status com tracker fora do repo e auto_commit falha com UPSTREAM (anterior ao PR); `--by` grava `docs/adr/<nome>` que não existe no repo. Mergeado (44ecb9f).
+- PMK-246: PERGUNTA PMK-246-3 (critério 5, conferir num workspace Business real, sem acesso). O usuário decidiu: critério 5 desmarcado e follow-up "Verify Linear releases against a Business workspace"; o que falta conferir está em `scripts/lib/linear/API-VERIFICATION.md`. PR #208 (opus).
+- PMK-246 ciclo 1 (opus): o revisor parou quando o computador dormiu; mandei seguir dos achados e ele terminou. APROVADO com 6 não bloqueantes; pedi antes do merge os que tocam corretude: release-notes por release ignorava hasMore, a release sumia de searchIssues e das escritas (release-notes gravava release: null), release de outro time aceita. 5e47d75 corrigiu com rebase, mas cresceu (20 arquivos, goldens do Local), então mandei para revisão.
+- PMK-246 ciclo 2 (opus): MUDANÇAS PEDIDAS; bloqueante: `teams(first: 250)` no RELEASE_FIELDS compartilhado levava as consultas de release a ~28.000 e ~1,4M pontos de complexidade (limite 10.000), e uma recusa derrubaria get, list, views e escritas. 31e28c2: teams só no RELEASE_QUERY (lote ~4650 pontos, teste de tamanho), leitura de release com falha vira releaseUnknown com note:.
+- PMK-246 ciclo 3 (opus): APROVADO. Follow-ups: texto não mostra releases quando a issue está em duas; scope.team em releases.mjs; fake e API-VERIFICATION com 50 em vez de 20; `.replace` frágil no RELEASE_QUERY; custo de requests (readNode lendo releases sem mostrar, escritas lendo antes e depois, busca lendo antes de finishSearch); erro pós-escrita em mapped; mensagem duplicada de 1000 issues; issues create --release, release create e mark-released no Linear; opção B. Mergeado (2cfa32c).
+- `pr sync` moveu PMK-246 e PMK-247 para done; PMK-246 fica com o critério 5 desmarcado.
+
+Fim da rodada 20: PRs #207 e #208 mergeados.
