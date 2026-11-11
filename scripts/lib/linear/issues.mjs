@@ -138,6 +138,8 @@ export function toIssue(node, context) {
   if (node.projectMilestone?.id) issue.milestone = node.projectMilestone.id
   // PMK-246: present only when the issue's releases were read (a workspace with releases on).
   if (node.releases) Object.assign(issue, issueReleaseFields(node.releases.nodes))
+  // A release read that failed: the release is unknown, never "none" (review of PR #208).
+  else if (node.releasesUnread) issue.releaseUnknown = node.releasesUnread.message
   if (node.cycle) issue.sprint = String(node.cycle.number)
   issue.blockedBy = identifiers(inverse.filter((item) => item.type === 'blocks').map((item) => item.issue.identifier))
   issue.blocks = identifiers(out.filter((item) => item.type === 'blocks').map((item) => item.relatedIssue.identifier))

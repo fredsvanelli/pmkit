@@ -2214,3 +2214,13 @@ test('release-notes --release marks a cut read incomplete in the JSON, the text 
   const text = await linear(fetch, ['release-notes', '--release', RA])
   assert.match(text.stdout, /\nincomplete: Linear has more issues than the 1000 pmkit read, so the notes may be missing issues\n/)
 })
+
+test('issues get on Linear says the release is unknown when its read fails, and exits 0', async () => {
+  const { fake } = withReleases()
+  const failed = { status: 200, json: { data: null, errors: [{ message: 'Query too complex', extensions: { code: 'INTERNAL_SERVER_ERROR' } }] } }
+  const fetch = fakeLinearFetch({ ...fakeWorkspace({ releasesEnabled: true }), ...fake.routes, PmkitIssuesReleases: failed, PmkitIssueReleases: failed })
+  const result = await linear(fetch, ['issues', 'get', 'ACME-2'])
+  assert.equal(result.code, 0, result.stderr)
+  assert.match(result.stdout, /\nrelease: unknown \(/)
+  assert.match(result.stderr, /note: the release of ACME-2 is unknown, because pmkit could not read it: /)
+})

@@ -271,5 +271,5 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
   }
   const customerOps = Object.fromEntries(Object.keys(customers.contract).map((operation) => [operation, customerOp(operation)]))
   const implemented = { discover, capabilities, ...releaseReads, ...goalReads, ...customerOps, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
-  return { ...Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)])), triage, customers, migration: { client, discovery } }
+  return { ...Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)])), triage, customers, takeNotes: issues.takeNotes, migration: { client, discovery } }
 }

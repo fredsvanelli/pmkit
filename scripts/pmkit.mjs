@@ -4374,6 +4374,8 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
     readWarning()
     for (const warning of result.warnings ?? []) stderr.push(`warning: ${warning}\n`)
     for (const note of result.notes ?? []) stderr.push(`note: ${note}\n`)
+    // Notes the tracker collected while it read, such as an issue release it could not read (Linear).
+    for (const note of tracker?.takeNotes?.() ?? []) stderr.push(`note: ${note}\n`)
   } catch (error) {
     code = 2
     readWarning()

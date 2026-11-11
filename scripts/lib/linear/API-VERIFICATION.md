@@ -74,6 +74,7 @@ Open until a workspace with releases runs them (acceptance criterion 5 of PMK-24
 - `Release.stage { type }`, `version`, `targetDate` and `completedAt` come back with the values the table assumes; in particular, whether a completed release always has `completedAt` set.
 - `Issue.releases` lists a release the issue was added to in the Linear app, and leaves a release the issue was removed from, also inside `issues(filter: { id: { in } })`.
 - `ReleasePipeline.teams` lists the teams a pipeline is linked to in the app.
+- The `x-complexity` header of `PmkitReleases` (page 100), `PmkitIssuesReleases` (100 issues x 20 releases) and `PmkitRelease` stays under Linear's limit of 10000 points. By the documented rule they cost about 380, 4300 and 280.
 - `issueUpdate` accepts `addedReleaseIds` and `removedReleaseIds` from a personal API key, and the issue then shows in the release in the app.
 - `issues(filter: { releases: { some: { id: { eq } } } })` answers the release's issues.
 - A pipeline with no team linked: whether its releases should count for the scope team. pmkit leaves them out today.

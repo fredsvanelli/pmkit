@@ -64,6 +64,12 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return node
   }
 
+  // A failed release read leaves the release unknown rather than failing the issue read or the write that returned it.
+  const unreadable = (error) => error instanceof PmkitError && ['UPSTREAM', 'RATE_LIMITED', 'AUTH'].includes(error.code)
+  const notes = []
+  /** The notes this run collected (an unknown release), once: the CLI prints them after the result. */
+  const takeNotes = () => notes.splice(0)
+
   /** True when the workspace has releases on, from the cached discovery: no request. */
   const releasesOn = async () => (await discovery()).raw.flags?.releasesEnabled === true
 
@@ -77,19 +83,29 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
    * Puts the releases on every node when releases are on (review of PMK-246): one request per 100 issues, and one more for an issue
    * whose list has a next page. With releases off it sends nothing and toIssue shows no release.
    */
-  async function attachReleasesTo(nodes) {
-    if (nodes.length === 0 || !(await releasesOn())) return nodes
+  async function attachReleasesTo(all) {
+    const nodes = all.filter((node) => node.releases === undefined && !node.releasesUnread)
+    if (nodes.length === 0 || !(await releasesOn())) return all
     for (let at = 0; at < nodes.length; at += 100) {
       const chunk = nodes.slice(at, at + 100)
-      const data = await client.request(ISSUES_RELEASES_QUERY, { ids: chunk.map((node) => node.id), first: chunk.length })
-      const byId = new Map((data?.issues?.nodes ?? []).map((item) => [item.id, item.releases]))
-      for (const node of chunk) {
-        const connection = byId.get(node.id)
-        if (connection && connection.pageInfo?.hasNextPage !== true) node.releases = { nodes: connection.nodes }
-        else await attachReleases(node)
+      try {
+        const data = await client.request(ISSUES_RELEASES_QUERY, { ids: chunk.map((node) => node.id), first: chunk.length })
+        const byId = new Map((data?.issues?.nodes ?? []).map((item) => [item.id, item.releases]))
+        for (const node of chunk) {
+          const connection = byId.get(node.id)
+          if (connection && connection.pageInfo?.hasNextPage !== true) node.releases = { nodes: connection.nodes }
+          else await attachReleases(node)
+        }
+      } catch (error) {
+        if (!unreadable(error)) throw error
+        // An incomplete read (lessons): the issue still comes back, its release is unknown, and a note says why.
+        const unread = chunk.filter((node) => node.releases === undefined)
+        for (const node of unread) node.releasesUnread = error
+        const ids = unread.map((node) => node.identifier).filter(Boolean)
+        notes.push(`the release of ${ids.length > 3 ? `${ids.slice(0, 3).join(', ')} and ${ids.length - 3} more issues` : ids.join(', ')} ${ids.length === 1 ? 'is' : 'are'} unknown, because pmkit could not read it: ${error.message}`)
       }
     }
-    return nodes
+    return all
   }
 
   /** The node of an issue id, archived ones included. A malformed id or a trashed issue is NOT_FOUND, and a malformed one sends no request. */
@@ -235,6 +251,8 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
       node = (await client.request(ISSUE_BY_ID_QUERY, { id }))?.issues?.nodes?.[0]
       if (!node) throw error
     }
+    // A new issue is in no release (create sets none), so its releases are not read.
+    node.releases ??= { nodes: [] }
     return { before: null, after: await mapped(node) }
   }
 
@@ -251,7 +269,10 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     if (!(await releasesOn())) throw releasesOff()
     if (release !== null && !releaseReads.has(release)) releaseReads.set(release, resolveRelease(release).catch((error) => { releaseReads.delete(release); throw error }))
     const target = release === null ? null : await releaseReads.get(release)
-    const count = (beforeNode.releases?.nodes ?? []).filter((item) => item.stage?.type !== 'canceled').length
+    // The one-release rule needs the real count: an unknown list refuses the write, and a node without one reads it.
+    if (beforeNode.releasesUnread) throw beforeNode.releasesUnread
+    if (beforeNode.releases === undefined) await attachReleases(beforeNode)
+    const count = beforeNode.releases.nodes.filter((item) => item.stage?.type !== 'canceled').length
     if (count > 1) throw new PmkitError('INVALID_INPUT', `the issue is in ${count} Linear releases, and pmkit sets one release per issue`, 'Change the releases of the issue in Linear')
     return target
   }
@@ -424,5 +445,5 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     }
   }
 
-  return { attachReleasesTo, getIssue, searchIssues, cycleNodeFor, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue, restore, requireViewer, mapped, writeUpdate, parentNodeOf, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
+  return { attachReleasesTo, takeNotes, getIssue, searchIssues, cycleNodeFor, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue, restore, requireViewer, mapped, writeUpdate, parentNodeOf, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
 }

@@ -1702,3 +1702,71 @@ test('an unknown release on an issue in two releases is NOT_FOUND, not the count
   seed(fake, { title: 'Two', releaseIds: [REL.two, REL.ten] })
   await assert.rejects(linear.updateIssue('ACME-1', { release: '00000000-0000-4000-8000-0000000000ff' }, 'user-1', { dryRun: true }), { code: 'NOT_FOUND' })
 })
+
+// Review cycle 2 of PR #208: Linear refuses a query above 10000 complexity points (PMK-41 hit it with nested lists).
+// By Linear's rule (field 0.1, object 1, a connection times its page) the release lists cost: PmkitReleases 100 x ~3.8,
+// PmkitIssueReleases 100 x ~2.1, PmkitIssuesReleases 100 issues x 20 releases x ~2.1 (about 4300). Only PmkitRelease reads
+// the pipeline's teams (250 x 1.1, one release). These page sizes and selections must not grow.
+test('the release queries keep their page sizes, and only PmkitRelease reads the pipeline teams', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'One', releaseIds: [REL.two] })
+  await linear.listReleases()
+  await linear.getRelease(REL.two)
+  await linear.searchIssues({})
+  await linear.updateIssue('ACME-1', { release: REL.ten }, 'user-1')
+  const sent = (name) => fetch.calls.filter((call) => operationName(call.body.query) === name)
+  for (const name of ['PmkitReleases', 'PmkitIssuesReleases', 'PmkitRelease']) assert.ok(sent(name).length > 0, name)
+  // The one-issue read runs only for an issue with more than 20 releases, so its document is checked as it is.
+  const { ISSUE_RELEASES_QUERY } = await import('./documents.mjs')
+  assert.doesNotMatch(ISSUE_RELEASES_QUERY, /teams\(|\bname\b/)
+  for (const name of ['PmkitReleases', 'PmkitIssueReleases', 'PmkitIssuesReleases']) {
+    for (const call of sent(name)) {
+      assert.doesNotMatch(call.body.query, /teams\(/, name)
+      assert.ok(call.body.variables.first <= 100, name)
+    }
+  }
+  for (const call of sent('PmkitIssueReleases').concat(sent('PmkitIssuesReleases'))) assert.doesNotMatch(call.body.query, /releases\([^)]*\)\s*\{\s*nodes\s*\{[^}]*\bname\b/)
+  for (const call of sent('PmkitIssuesReleases')) assert.match(call.body.query, /releases\(first: 20\)/)
+  assert.match(sent('PmkitRelease')[0].body.query, /teams\(first: 250\)/)
+})
+
+// A refused or failed release read leaves the release unknown, with a note, and never fails the read or the write.
+const failingReleases = () => ({
+  PmkitIssuesReleases: { status: 200, json: { data: null, errors: [{ message: 'Query too complex', extensions: { code: 'INTERNAL_SERVER_ERROR' } }] } },
+  PmkitIssueReleases: { status: 200, json: { data: null, errors: [{ message: 'Query too complex', extensions: { code: 'INTERNAL_SERVER_ERROR' } }] } },
+})
+
+test('a failed release read shows the release as unknown with a note, and get, list and a write still answer', async () => {
+  const { tracker: linear, fake } = releaseSetup({ routes: failingReleases })
+  seed(fake, { title: 'One', releaseIds: [REL.two] })
+  const issue = await linear.getIssue('ACME-1')
+  assert.equal('release' in issue, false)
+  assert.match(issue.releaseUnknown, /Query too complex/)
+  assert.match((await linear.searchIssues({})).issues[0].releaseUnknown, /Query too complex/)
+  const renamed = await linear.updateIssue('ACME-1', { title: 'Renamed' }, 'user-1')
+  assert.equal(renamed.after.title, 'Renamed')
+  assert.match(renamed.after.releaseUnknown, /Query too complex/)
+  const notes = linear.takeNotes()
+  assert.ok(notes.length > 0)
+  assert.match(notes[0], /^the release of ACME-1 is unknown, because pmkit could not read it: .*Query too complex/)
+  assert.deepEqual(linear.takeNotes(), [])
+})
+
+test('a write with --release refuses when the issue releases could not be read', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup({ routes: failingReleases })
+  seed(fake, { title: 'One', releaseIds: [REL.two] })
+  await assert.rejects(linear.updateIssue('ACME-1', { release: REL.ten }, 'user-1'), { code: 'UPSTREAM' })
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('a node that already has its releases is not read again, and a new issue reads none', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'One', releaseIds: [REL.two] })
+  await linear.archive('ACME-1', 'user-1')
+  // readNode before the archive, then readNode for the result: mapped does not read them a third time.
+  assert.equal(callsOf(fetch, 'PmkitIssuesReleases'), 2)
+  const before = callsOf(fetch, 'PmkitIssuesReleases')
+  const made = await linear.createIssue({ title: 'New' }, 'user-1')
+  assert.equal('release' in made.after, false)
+  assert.equal(callsOf(fetch, 'PmkitIssuesReleases'), before)
+})

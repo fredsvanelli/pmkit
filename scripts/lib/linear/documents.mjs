@@ -174,21 +174,27 @@ query PmkitCustomViewIssues($id: String!, $first: Int!, $after: String, $sort: [
   customView(id: $id) { issues(first: $first, after: $after, sort: $sort) { nodes { ...PmkitIssueFields } ${PAGE_INFO} } }
 }`
 
-// PMK-246: Linear releases. A release node carries its stage type, so pmkit can leave canceled releases out, and its pipeline's
-// teams, so a release of another team is refused. ponytail: 250 teams per pipeline is read as all of them.
-const RELEASE_FIELDS = 'id name version description targetDate completedAt stage { type } pipeline { id teams(first: 250) { nodes { key } } }'
+// PMK-246: Linear releases. A release node carries its stage type, so pmkit can leave canceled releases out.
+// Linear refuses a query above 10000 complexity points (field 0.1, object 1, a connection times its page; PMK-41 hit it),
+// so the lists keep small selections: about 3.8 points a release in a list and 2.1 an issue's release. Only the read of one
+// release takes the pipeline's teams, so a release of another team is refused. ponytail: 250 teams per pipeline is read as all.
+const RELEASE_FIELDS = 'id name version description targetDate completedAt stage { type } pipeline { id }'
+// What an issue's release needs: the id and whether it is canceled.
+const ISSUE_RELEASE_FIELDS = 'id stage { type }'
+// An issue's releases in the batch read: 100 issues x 20 releases x 2.1 is about 4300 points.
+export const BATCH_RELEASES_PAGE = 20
 
 export const RELEASES_QUERY = `query PmkitReleases($filter: ReleaseFilter, $first: Int!, $after: String) {
   releases(filter: $filter, first: $first, after: $after) { nodes { ${RELEASE_FIELDS} } ${PAGE_INFO} }
 }`
 
-export const RELEASE_QUERY = `query PmkitRelease($id: String!) { release(id: $id) { ${RELEASE_FIELDS} } }`
+export const RELEASE_QUERY = `query PmkitRelease($id: String!) { release(id: $id) { ${RELEASE_FIELDS.replace('pipeline { id }', 'pipeline { id teams(first: 250) { nodes { key } } }')} } }`
 
 // The releases of up to 100 issues in one request (review of PMK-246). An issue whose list has a next page is read again alone.
 export const ISSUES_RELEASES_QUERY = `query PmkitIssuesReleases($ids: [ID!], $first: Int!) {
-  issues(filter: { id: { in: $ids } }, includeArchived: true, first: $first) { nodes { id releases(first: ${NESTED}) { nodes { ${RELEASE_FIELDS} } ${PAGE_INFO} } } }
+  issues(filter: { id: { in: $ids } }, includeArchived: true, first: $first) { nodes { id releases(first: ${BATCH_RELEASES_PAGE}) { nodes { ${ISSUE_RELEASE_FIELDS} } ${PAGE_INFO} } } }
 }`
 
 export const ISSUE_RELEASES_QUERY = `query PmkitIssueReleases($id: String!, $first: Int!, $after: String) {
-  issue(id: $id) { releases(first: $first, after: $after) { nodes { ${RELEASE_FIELDS} } ${PAGE_INFO} } }
+  issue(id: $id) { releases(first: $first, after: $after) { nodes { ${ISSUE_RELEASE_FIELDS} } ${PAGE_INFO} } }
 }`
