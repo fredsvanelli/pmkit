@@ -13,6 +13,7 @@ const inputs = path.join(import.meta.dirname, '_inputs')
 const decision = 'We keep estimates in points, not hours. Context: two members argued about the precision of hours in the last sprint planning, and velocity already uses points. Consequence: time logged on an issue stays separate from its estimate. Rejected: estimating in hours.'
 const nextAdr = ['docs', 'next-adr', '--title-file', path.join(import.meta.dirname, '_inputs', 'title-keep-estimates-in-points.md')]
 
+const NO_OLD = 'the decision replaces no ADR, so the older ADR is neither looked up nor marked (PMK-251)'
 const added = (repo) => repo.git('ls-files', '--others', '--exclude-standard').split('\n').filter(Boolean)
 
 export default [
@@ -41,8 +42,8 @@ export default [
       { step: '6', write: ['issues', 'update', 'ISS-5N1R', '--add-doc', '.issues/docs/adr/0001-keep-estimates-in-points.md'] },
       { step: '6', write: ['issues', 'update', 'ISS-4P8A', '--add-doc', '.issues/docs/adr/0001-keep-estimates-in-points.md'] },
     ],
-    skip: {},
-    notHit: {},
+    skip: { '2 docs adr-status': NO_OLD, '7 docs adr-status': NO_OLD },
+    notHit: { 'Step 7': NO_OLD },
     expect(repo) {
       const file = added(repo).find((name) => name.endsWith('adr/0001-keep-estimates-in-points.md'))
       assert.equal(file, '.issues/docs/adr/0001-keep-estimates-in-points.md')
@@ -79,13 +80,51 @@ export default [
       { confirm: 'Step 6' },
       { step: '6', write: ['issues', 'update', 'ISS-5N1R', '--add-doc', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
     ],
-    skip: {},
-    notHit: {},
+    skip: { '2 docs adr-status': NO_OLD, '7 docs adr-status': NO_OLD },
+    notHit: { 'Step 7': NO_OLD },
     expect(repo) {
       const files = added(repo).filter((name) => name.includes('docs/adr/'))
       assert.ok(files.includes('.issues/docs/adr/0003-keep-estimates-in-points.md'), files.join('\n'))
       assert.ok(!files.some((name) => name.includes('0001-')), 'a gap or a README does not restart the numbers')
       assert.equal(repo.newEvents('ISS-5N1R').filter((event) => event.op === 'comment').length, 1)
+    },
+  },
+  {
+    // PMK-251: the decision replaces ADR 0002. The Supersedes line is in the draft, the older ADR is looked up before the
+    // write and marked superseded after it, with its own confirmation.
+    command: 'spec/record-decision',
+    fixture: 'team',
+    git: true,
+    setup({ root }) {
+      const dir = path.join(root, '.issues', 'docs', 'adr')
+      fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(path.join(dir, '0002-existing.md'), '# Existing\n')
+    },
+    prompt: `/pmkit:spec:record-decision ${decision} It replaces ADR 0002. --issues ISS-5N1R`,
+    answers: ['Yes', 'Yes', 'Yes', 'Yes'],
+    steps: [
+      { step: '2', read: ['issues', 'get', 'ISS-5N1R'] },
+      { step: '2', dryRun: ['docs', 'adr-status', '2', 'deprecated'] },
+      { step: '3', read: nextAdr },
+      { step: '5', read: nextAdr },
+      { step: '5', dryRun: ['docs', 'create', 'adr/0003-keep-estimates-in-points.md', '--body-file', path.join(inputs, 'adr-0003-supersedes.md')] },
+      { confirm: 'Step 5' },
+      { step: '5', write: ['docs', 'create', 'adr/0003-keep-estimates-in-points.md', '--body-file', path.join(inputs, 'adr-0003-supersedes.md')] },
+      { step: '6', dryRun: ['issues', 'comment', 'ISS-5N1R', '--body-file', path.join(inputs, 'adr-comment-0003.md')] },
+      { confirm: 'Step 6' },
+      { step: '6', write: ['issues', 'comment', 'ISS-5N1R', '--body-file', path.join(inputs, 'adr-comment-0003.md')] },
+      { step: '6', dryRun: ['issues', 'update', 'ISS-5N1R', '--add-doc', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
+      { confirm: 'Step 6' },
+      { step: '6', write: ['issues', 'update', 'ISS-5N1R', '--add-doc', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
+      { step: '7', dryRun: ['docs', 'adr-status', '2', 'superseded', '--by', '3'] },
+      { confirm: 'Step 7' },
+      { step: '7', write: ['docs', 'adr-status', '2', 'superseded', '--by', '3'] },
+    ],
+    skip: {},
+    notHit: {},
+    expect(repo) {
+      assert.match(repo.file('.issues/docs/adr/0003-keep-estimates-in-points.md'), /^Supersedes: ADR 0002, \.issues\/docs\/adr\/0002-existing\.md$/m)
+      assert.match(repo.file('.issues/docs/adr/0002-existing.md'), /superseded by .*0003-keep-estimates-in-points\.md/i)
     },
   },
 ]
