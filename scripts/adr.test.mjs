@@ -499,10 +499,27 @@ test('setAdrStatus leaves an ADR untouched when its status does not change, what
 
 test('setAdrStatus changes the front matter key and the ## Status section together (PMK-248)', () => {
   const both = '---\nstatus: accepted\n---\n\n# T\n\n## Status\n\nAccepted\n\n## Context\n'
-  assert.deepEqual(setAdrStatus(both, 'deprecated'), { text: '---\nstatus: deprecated\n---\n\n# T\n\n## Status\n\nDeprecated\n\n## Context\n', before: 'status: accepted', after: 'status: deprecated' })
+  assert.deepEqual(setAdrStatus(both, 'deprecated'), { text: '---\nstatus: deprecated\n---\n\n# T\n\n## Status\n\nDeprecated\n\n## Context\n', before: 'status: accepted; ## Status: Accepted', after: 'status: deprecated; ## Status: Deprecated' })
   // The key is current but the section is not: the section still changes.
   const stale = '---\nstatus: deprecated\n---\n\n# T\n\n## Status\n\nAccepted\n'
   assert.equal(setAdrStatus(stale, 'deprecated').text, '---\nstatus: deprecated\n---\n\n# T\n\n## Status\n\nDeprecated\n')
+})
+
+test('setAdrStatus reports an unchanged status as the same text before and after, and both places when both change (PMK-257)', () => {
+  for (const text of ['# T\n\n## Status\n\naccepted\n\n## Context\n', '---\nstatus: Accepted\n---\n\n# T\n', '# T\n\n**Status:** ACCEPTED\n']) {
+    const result = setAdrStatus(text, 'accepted')
+    assert.equal(result.before, result.after, text)
+  }
+  const both = setAdrStatus('---\nstatus: accepted\n---\n\n# T\n\n## Status\n\naccepted\n', 'accepted')
+  assert.deepEqual([both.before, both.after], ['status: accepted; ## Status: accepted', 'status: accepted; ## Status: accepted'])
+})
+
+test('setAdrStatus counts status: accepted # comment as accepted and keeps the comment (PMK-257)', () => {
+  const same = '---\nstatus: accepted # agreed in review\n---\n\n# T\n'
+  assert.deepEqual(setAdrStatus(same, 'accepted'), { text: same, before: 'status: accepted # agreed in review', after: 'status: accepted # agreed in review' })
+  const changed = setAdrStatus(same, 'deprecated')
+  assert.deepEqual(changed, { text: '---\nstatus: deprecated # agreed in review\n---\n\n# T\n', before: 'status: accepted # agreed in review', after: 'status: deprecated # agreed in review' })
+  assert.equal(setAdrStatus('---\nstatus: "accepted"   #c\n---\n', 'accepted').text, '---\nstatus: "accepted"   #c\n---\n')
 })
 
 // PMK-247: the tracker folder is the repository's, or lies outside it.

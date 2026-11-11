@@ -124,28 +124,32 @@ export function setAdrStatus(text, status, byPath) {
   // A status that is already the requested one leaves the text as it came, so the file is not rewritten (PMK-248).
   const done = (before, after, unchanged) => ({ text: unchanged ? adrText(text) : lines.join('\n'), before, after })
 
-  // The front matter key and a `## Status` section can both hold a status (PMK-248): change every one. The key is reported.
+  // The front matter key and a `## Status` section can both hold a status (PMK-248): change every one and report both (PMK-257).
   const yaml = close === -1 ? -1 : lines.slice(1, close).findIndex((item) => YAML_STATUS.test(item)) + 1
   const section = lines.findIndex((item, i) => i >= start && STATUS_SECTION.test(item))
   if (yaml > 0 || section !== -1) {
     let unchanged = true
-    let before = null
-    let after = null
+    const befores = []
+    const afters = []
+    if (yaml > 0) {
+      // A YAML comment after the value is not part of the status, and the rewrite keeps it.
+      const [, current, comment = ''] = /^status:(.*?)(\s+#.*)?$/i.exec(lines[yaml])
+      befores.push(lines[yaml])
+      if (!same(current)) unchanged = false
+      lines[yaml] = `status: ${value}${comment}`
+      afters.push(lines[yaml])
+    }
     if (section !== -1) {
       const end = sectionEnd(lines, section)
       const body = lines.slice(section + 1, end).map((item) => item.trim()).filter(Boolean)
-      after = capitalized(value)
-      before = body.length === 0 ? null : body.join(' ')
       if (body.length !== 1 || !same(body[0])) unchanged = false
-      lines.splice(section + 1, end - section - 1, '', after, '')
+      const label = yaml > 0 ? '## Status: ' : ''
+      if (body.length > 0) befores.push(`${label}${body.join(' ')}`)
+      afters.push(`${label}${capitalized(value)}`)
+      lines.splice(section + 1, end - section - 1, '', capitalized(value), '')
     }
-    if (yaml > 0) {
-      before = lines[yaml]
-      if (!same(before.replace(YAML_STATUS, ''))) unchanged = false
-      lines[yaml] = `status: ${value}`
-      after = lines[yaml]
-    }
-    return done(before, after, unchanged)
+    // A status that does not change reports the same text on both sides.
+    return done(befores.length === 0 ? null : befores.join('; '), unchanged ? befores.join('; ') : afters.join('; '), unchanged)
   }
 
   const first = lines.findIndex((item, i) => i >= start && item.startsWith('## '))
@@ -156,7 +160,7 @@ export function setAdrStatus(text, status, byPath) {
     const before = lines[found]
     const unchanged = same(STATUS_LINE.exec(before)[3])
     lines[found] = `${bullet}${label.startsWith('**') ? '**Status:**' : 'Status:'} ${value}`
-    return done(before, lines[found], unchanged)
+    return done(before, unchanged ? before : lines[found], unchanged)
   }
 
   const line = `Status: ${value}`
