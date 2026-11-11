@@ -1,1 +1,4 @@
 {"at":"2026-11-11T22:34:42Z","by":"fred","op":"create","to":{"id":"PMK-256","title":"Fix unarchive edge cases in history, views and bulk limits","type":"bug","status":"backlog","priority":"low","estimate":2,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-11T22:34:42.444Z","updated":"2026-11-11T22:34:42Z"}}
+{"at":"2026-11-11T22:55:27Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-11T22:55:27Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-11T22:55:29Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-256-fix-unarchive-edge-cases-in-history"}

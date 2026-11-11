@@ -2,12 +2,14 @@
 id: PMK-256
 title: "Fix unarchive edge cases in history, views and bulk limits"
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-6
+branch: pmk-256-fix-unarchive-edge-cases-in-history
 created: 2026-11-11T22:34:42.444Z
-updated: 2026-11-11T22:34:42Z
+updated: 2026-11-11T22:55:29Z
 ---
 
 ## Description
