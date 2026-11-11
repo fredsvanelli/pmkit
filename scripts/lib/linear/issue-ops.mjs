@@ -7,7 +7,7 @@ import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refu
 import { compareIds } from '../ids.mjs'
 import { checkFilter } from '../issue-filter.mjs'
 import { cycleKey } from './cycles.mjs'
-import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUE_RELEASES_QUERY, ISSUES_QUERY, ISSUES_RELEASES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UNARCHIVE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
+import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUE_RELEASES_QUERY, ISSUES_QUERY, ISSUES_RELEASES_QUERY, ISSUE_ARCHIVE, ISSUE_ATTACHMENTS_QUERY, ISSUES_ATTACHMENTS_QUERY, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UNARCHIVE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
 import { finishSearch, translateFilter } from './filter.mjs'
 import { blockedOpen, isIssueId, issueKey, makeContext, stateCategory, toIssue } from './issues.mjs'
 import { allReleases, releasesOff } from './releases.mjs'
@@ -108,6 +108,43 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return all
   }
 
+  const idList = (ids) => (ids.length > 3 ? `${ids.slice(0, 3).join(', ')} and ${ids.length - 3} more issues` : ids.join(', '))
+
+  /** Puts one issue's attachments on its node, every page. A list the page cap cut is UPSTREAM, so part of it never reads as the whole. */
+  async function attachDocs(node) {
+    const { nodes, hasMore } = await client.paginate(ISSUE_ATTACHMENTS_QUERY, { id: node.id }, { select: (data) => data.issue.attachments, pageSize: 50, maxPages: 100 })
+    if (hasMore) throw new PmkitError('UPSTREAM', `${node.identifier} has more than 5000 attachments, and pmkit does not answer with part of them`, 'Remove attachments in Linear')
+    node.attachments = { nodes }
+    return node
+  }
+
+  /**
+   * Puts the attachments (the docs, PMK-252) on every node: one request per 100 issues, and one more for an issue whose list has a
+   * next page. A refused or failed read leaves them unknown on the node (attachmentsUnread) with a note, never an empty list.
+   */
+  async function attachDocsTo(all) {
+    const nodes = all.filter((node) => node.attachments === undefined && !node.attachmentsUnread)
+    for (let at = 0; at < nodes.length; at += 100) {
+      const chunk = nodes.slice(at, at + 100)
+      try {
+        const data = await client.request(ISSUES_ATTACHMENTS_QUERY, { ids: chunk.map((node) => node.id), first: chunk.length })
+        const byId = new Map((data?.issues?.nodes ?? []).map((item) => [item.id, item.attachments]))
+        for (const node of chunk) {
+          const connection = byId.get(node.id)
+          if (connection && connection.pageInfo?.hasNextPage !== true) node.attachments = { nodes: connection.nodes }
+          else await attachDocs(node)
+        }
+      } catch (error) {
+        if (!unreadable(error)) throw error
+        const unread = chunk.filter((node) => node.attachments === undefined)
+        for (const node of unread) node.attachmentsUnread = error
+        const ids = unread.map((node) => node.identifier).filter(Boolean)
+        notes.push(`the docs of ${idList(ids)} are unknown, because pmkit could not read them: ${error.message}`)
+      }
+    }
+    return all
+  }
+
   /** The node of an issue id, archived ones included. A malformed id or a trashed issue is NOT_FOUND, and a malformed one sends no request. */
   async function readNode(id) {
     requireWorkspace()
@@ -116,7 +153,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     const node = data?.issues?.nodes?.[0]
     if (!node || node.trashed === true) throw notFound(id)
     await completeNested(node)
-    return (await attachReleasesTo([node]))[0]
+    return (await attachDocsTo(await attachReleasesTo([node])))[0]
   }
 
   /** A context that knows every state the nodes name: a state missing from a cached discovery refreshes it once. */
@@ -152,6 +189,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     })
     for (const node of nodes) await completeNested(node)
     await attachReleasesTo(nodes)
+    await attachDocsTo(nodes)
     const mapping = await contextFor(nodes)
     const rows = nodes
       .map((node) => ({ issue: toIssue(node, mapping), blocked: blockedOpen(node, mapping) }))
@@ -173,6 +211,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
   async function mapped(node) {
     await completeNested(node)
     await attachReleasesTo([node])
+    await attachDocsTo([node])
     return toIssue(node, await contextFor([node]))
   }
 
@@ -253,6 +292,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     }
     // A new issue is in no release (create sets none), so its releases are not read.
     node.releases ??= { nodes: [] }
+    node.attachments ??= { nodes: [] }
     return { before: null, after: await mapped(node) }
   }
 
@@ -445,5 +485,5 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     }
   }
 
-  return { attachReleasesTo, takeNotes, getIssue, searchIssues, cycleNodeFor, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue, restore, requireViewer, mapped, writeUpdate, parentNodeOf, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
+  return { attachReleasesTo, attachDocsTo, takeNotes, getIssue, searchIssues, cycleNodeFor, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue, restore, requireViewer, mapped, writeUpdate, parentNodeOf, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
 }

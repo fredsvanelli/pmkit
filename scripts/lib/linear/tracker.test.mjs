@@ -284,7 +284,7 @@ function linearSetup({ mappings = { status: { in_review: 'In Review' }, types: {
   const linear = createLinearTracker(context.config, { env: context.env, now, fetch, ...(uuid ? { uuid } : {}) })
   return { tracker: linear, fake, projects, fetch, context }
 }
-const seed = (fake, input) => fake.seed(input)
+const seed = (fake, input, extra) => fake.seed(input, extra)
 const namesOf = (fetch) => fetch.calls.map((call) => operationName(call.body.query))
 const lastVariables = (fetch, name) => fetch.calls.filter((call) => operationName(call.body.query) === name).at(-1).body.variables
 
@@ -1769,4 +1769,73 @@ test('a node that already has its releases is not read again, and a new issue re
   const made = await linear.createIssue({ title: 'New' }, 'user-1')
   assert.equal('release' in made.after, false)
   assert.equal(callsOf(fetch, 'PmkitIssuesReleases'), before)
+})
+
+// PMK-252: the docs of an issue are the attachments pmkit made (metadata.pmkitDoc), read like the releases.
+const REPO = { system: 'github', repo: 'acme/app', default_branch: 'develop' }
+const docsSetup = ({ gitHost = REPO, ...options } = {}) => {
+  const context = setup({ scope: { workspace: 'acme', team: 'ACME' } })
+  context.config.pmkit.git_host = gitHost
+  return linearSetup({ context, ...options })
+}
+const docAttachment = (path, n) => ({ id: `att-${n}`, url: `https://github.com/acme/app/blob/develop/${path}`, title: path, metadata: { pmkitDoc: path }, createdAt: `2026-10-27T12:00:${String(n).padStart(2, '0')}.000Z` })
+const prAttachment = { id: 'att-pr', url: 'https://github.com/acme/app/pull/3', title: 'PR 3', metadata: {}, createdAt: '2026-10-27T11:00:00.000Z' }
+const failingAttachments = () => ({
+  PmkitIssuesAttachments: { status: 200, json: { data: null, errors: [{ message: 'Query too complex', extensions: { code: 'INTERNAL_SERVER_ERROR' } }] } },
+  PmkitIssueAttachments: { status: 200, json: { data: null, errors: [{ message: 'Query too complex', extensions: { code: 'INTERNAL_SERVER_ERROR' } }] } },
+})
+
+test('getIssue lists the docs pmkit linked, in the order added, and ignores other attachments', async () => {
+  const { tracker: linear, fake } = docsSetup()
+  seed(fake, { title: 'One' }, { attachments: [prAttachment, docAttachment('docs/adr/0002-b.md', 2), docAttachment('docs/adr/0001-a.md', 1)] })
+  assert.deepEqual((await linear.getIssue('ACME-1')).docs, ['docs/adr/0001-a.md', 'docs/adr/0002-b.md'])
+})
+
+test('an issue with no pmkit attachment has no docs key', async () => {
+  const { tracker: linear, fake } = docsSetup()
+  seed(fake, { title: 'One' }, { attachments: [prAttachment] })
+  const issue = await linear.getIssue('ACME-1')
+  assert.equal('docs' in issue, false)
+  assert.equal('docsUnknown' in issue, false)
+})
+
+test('an issue with more attachments than one batch page reads every page', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup({ nestedPage: 20 })
+  seed(fake, { title: 'One' }, { attachments: Array.from({ length: 25 }, (_, i) => docAttachment(`docs/d${String(i).padStart(2, '0')}.md`, i + 1)) })
+  assert.equal((await linear.getIssue('ACME-1')).docs.length, 25)
+  assert.ok(callsOf(fetch, 'PmkitIssueAttachments') > 0)
+})
+
+test('a list and a search read the docs in one request per 100 issues, never one per issue', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup()
+  for (let i = 1; i <= 3; i++) seed(fake, { title: `T${i}` }, { attachments: [docAttachment(`docs/d${i}.md`, i)] })
+  const found = await linear.searchIssues({})
+  assert.deepEqual(found.issues.map((issue) => issue.docs), [['docs/d1.md'], ['docs/d2.md'], ['docs/d3.md']])
+  assert.equal(callsOf(fetch, 'PmkitIssuesAttachments'), 1)
+  assert.equal(callsOf(fetch, 'PmkitIssueAttachments'), 0)
+})
+
+test('the attachment queries keep their page sizes and selections (Linear refuses above 10000 complexity points)', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup()
+  seed(fake, { title: 'One' }, { attachments: [docAttachment('docs/a.md', 1)] })
+  await linear.searchIssues({})
+  const [call] = fetch.calls.filter((item) => operationName(item.body.query) === 'PmkitIssuesAttachments')
+  assert.ok(call.body.variables.first <= 100)
+  assert.match(call.body.query, /attachments\(first: 20\)/)
+  assert.doesNotMatch(call.body.query, /\b(?:title|subtitle|creator|source)\b/)
+  const { ISSUE_ATTACHMENTS_QUERY, ISSUE_FRAGMENT } = await import('./documents.mjs')
+  assert.doesNotMatch(ISSUE_ATTACHMENTS_QUERY, /\b(?:title|subtitle|creator)\b/)
+  assert.doesNotMatch(ISSUE_FRAGMENT, /attachments/)
+})
+
+test('a failed attachment read shows the docs as unknown with a note, and get, list and a write still answer', async () => {
+  const { tracker: linear, fake } = docsSetup({ routes: failingAttachments })
+  seed(fake, { title: 'One' }, { attachments: [docAttachment('docs/a.md', 1)] })
+  const issue = await linear.getIssue('ACME-1')
+  assert.equal('docs' in issue, false)
+  assert.match(issue.docsUnknown, /Query too complex/)
+  assert.match((await linear.searchIssues({})).issues[0].docsUnknown, /Query too complex/)
+  assert.equal((await linear.updateIssue('ACME-1', { title: 'Renamed' }, 'user-1')).after.title, 'Renamed')
+  const notes = linear.takeNotes()
+  assert.match(notes[0], /^the docs of ACME-1 are unknown, because pmkit could not read them: .*Query too complex/)
 })

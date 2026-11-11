@@ -198,3 +198,21 @@ export const ISSUES_RELEASES_QUERY = `query PmkitIssuesReleases($ids: [ID!], $fi
 export const ISSUE_RELEASES_QUERY = `query PmkitIssueReleases($id: String!, $first: Int!, $after: String) {
   issue(id: $id) { releases(first: $first, after: $after) { nodes { ${ISSUE_RELEASE_FIELDS} } ${PAGE_INFO} } }
 }`
+
+// PMK-252: the docs of an issue are attachments pmkit made (metadata.pmkitDoc). Read like the releases: the fragment stays as it is
+// (it is at the complexity budget), 100 issues x 20 attachments x about 1.4 points is about 2800 points, and an issue with more
+// than 20 is read again alone, 50 at a time.
+const ATTACHMENT_FIELDS = 'id url metadata createdAt'
+export const BATCH_ATTACHMENTS_PAGE = 20
+
+export const ISSUES_ATTACHMENTS_QUERY = `query PmkitIssuesAttachments($ids: [ID!], $first: Int!) {
+  issues(filter: { id: { in: $ids } }, includeArchived: true, first: $first) { nodes { id attachments(first: ${BATCH_ATTACHMENTS_PAGE}) { nodes { ${ATTACHMENT_FIELDS} } ${PAGE_INFO} } } }
+}`
+
+export const ISSUE_ATTACHMENTS_QUERY = `query PmkitIssueAttachments($id: String!, $first: Int!, $after: String) {
+  issue(id: $id) { attachments(first: $first, after: $after) { nodes { ${ATTACHMENT_FIELDS} } ${PAGE_INFO} } }
+}`
+
+export const ATTACHMENT_CREATE = 'mutation PmkitAttachmentCreate($input: AttachmentCreateInput!) { attachmentCreate(input: $input) { success attachment { id } } }'
+
+export const ATTACHMENT_DELETE = 'mutation PmkitAttachmentDelete($id: String!) { attachmentDelete(id: $id) { success } }'

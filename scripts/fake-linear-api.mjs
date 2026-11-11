@@ -283,6 +283,7 @@ export function fakeLinearIssues({
   let tick = 0
   let issueCount = 0
   let relationCount = 0
+  let attachmentCount = 0
   let projectLookup = () => undefined
   const stamp = () => new Date(Date.parse(start) + ++tick * 1000).toISOString()
 
@@ -533,6 +534,8 @@ export function fakeLinearIssues({
       projectId: null,
       projectMilestoneId: null,
       releaseIds: [],
+      // PMK-252: attachments ({ id, url, title, metadata, createdAt }); `seed(input, { attachments })` fills them.
+      attachments: [],
     }
     const { id, teamId, title, createdAt, completedAt, ...rest } = input
     applyFields(record, rest)
@@ -817,6 +820,30 @@ export function fakeLinearIssues({
   routes.PmkitIssueReleases = query('PmkitIssueReleases', ({ id, first, after }) => ({
     issue: { releases: connection(requireIssue(id).releaseIds.map((rid) => releaseNode(requireRelease(rid))), first, after) },
   }))
+
+  // PMK-252: issue attachments. attachmentCreate upserts by issue and url, as Linear does.
+  const attachmentNode = (item) => ({ id: item.id, url: item.url, metadata: item.metadata, createdAt: item.createdAt })
+  routes.PmkitIssuesAttachments = query('PmkitIssuesAttachments', ({ ids = [], first = 50 }) => ({
+    issues: connection(records.filter((record) => ids.includes(record.id)).map((record) => ({ id: record.id, attachments: connection(record.attachments.map(attachmentNode), nestedPage) })), first),
+  }))
+  routes.PmkitIssueAttachments = query('PmkitIssueAttachments', ({ id, first, after }) => ({
+    issue: { attachments: connection(requireIssue(id).attachments.map(attachmentNode), first, after) },
+  }))
+  routes.PmkitAttachmentCreate = mutation('PmkitAttachmentCreate', ({ input }) => {
+    checkFields(input, ['id', 'issueId', 'title', 'subtitle', 'url', 'metadata'])
+    const record = requireIssue(input.issueId)
+    const found = record.attachments.find((item) => item.url === input.url)
+    const item = found ?? { id: input.id ?? `attachment-${++attachmentCount}`, createdAt: stamp() }
+    Object.assign(item, { url: input.url, title: input.title, metadata: input.metadata ?? {} })
+    if (!found) record.attachments.push(item)
+    return { attachmentCreate: { success: true, attachment: { id: item.id } } }
+  })
+  routes.PmkitAttachmentDelete = mutation('PmkitAttachmentDelete', ({ id }) => {
+    const record = records.find((issue) => issue.attachments.some((item) => item.id === id))
+    if (!record) throw new FakeInputError('Entity not found: Attachment')
+    record.attachments = record.attachments.filter((item) => item.id !== id)
+    return { attachmentDelete: { success: true } }
+  })
 
   seededCycles.forEach(addCycle)
 
