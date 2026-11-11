@@ -4,6 +4,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { PmkitError } from './errors.mjs'
+import { stripComment } from './yaml.mjs'
 
 export const ADR_SLUG_MAX = 60
 // The display label of an ADR folder of a tracker outside the repository; never written into an ADR.
@@ -99,15 +100,72 @@ const STATUS_LINE = /^(\s*[-*]\s+)?(\*\*Status:?\*\*:?|Status:)\s*(.*)$/i
 const STATUS_SECTION = /^##\s+Status\s*$/i
 const YAML_STATUS = /^status:/i
 const capitalized = (text) => text.charAt(0).toUpperCase() + text.slice(1)
-// The lines after `from` up to the next "# " or "## " heading (or the end), as [start, end).
-const sectionEnd = (lines, from) => {
-  const next = lines.findIndex((item, i) => i > from && /^#{1,2} /.test(item))
-  return next === -1 ? lines.length : next
+// Which lines are inside a fenced code block, fences included: a status or a heading there is an example, not the ADR's own (PMK-263).
+// As in CommonMark, a fence is three or more backticks or tildes; a backtick fence with a backtick after it is inline code, and
+// only a fence of the same character, at least as long and followed by blanks only, closes the block.
+const fencedLines = (lines) => {
+  let open = null
+  return lines.map((item) => {
+    const [, marker = '', rest = ''] = /^\s*(`{3,}|~{3,})(.*)$/.exec(item) ?? []
+    if (open === null) {
+      if (marker === '' || (marker[0] === '`' && rest.includes('`'))) return false
+      open = marker
+      return true
+    }
+    if (marker !== '' && marker[0] === open[0] && marker.length >= open.length && rest.trim() === '') open = null
+    return true
+  })
+}
+// A front matter value split into the value (with its quotes) and the YAML comment after it, which a `#` inside quotes never starts.
+const splitYaml = (rest) => {
+  const value = stripComment(rest).trimEnd()
+  return { value, comment: rest.slice(value.length) }
+}
+// A quoted YAML scalar without its quotes; '' is an escaped quote in a single-quoted one.
+const unquote = (value) => {
+  const quoted = /^(["'])(.*)\1$/.exec(value.trim())
+  return quoted === null ? value.trim() : quoted[1] === "'" ? quoted[2].replaceAll("''", "'") : quoted[2]
+}
+
+/**
+ * The places of an ADR text that hold its title and status, found once for `adrInfo` and `setAdrStatus` so the two never disagree (PMK-263):
+ * `yaml` (index of the `status:` line in the front matter, -1 when none), `line` (a `Status:` line above the first `## ` section),
+ * `section` (a `## Status` heading), `title` (the first `# ` heading) and `end(from)`, where the section that starts at `from` stops.
+ * Lines inside a fenced code block never count.
+ */
+function locate(lines) {
+  const close = lines[0] === '---' ? lines.indexOf('---', 1) : -1
+  const start = close === -1 ? 0 : close + 1
+  const code = fencedLines(lines)
+  const at = (test, to = lines.length) => lines.findIndex((item, i) => i >= start && i < to && !code[i] && test(item))
+  const head = at((item) => item.startsWith('## '))
+  const yaml = close === -1 ? -1 : lines.slice(1, close).findIndex((item) => YAML_STATUS.test(item)) + 1 || -1
+  const end = (from) => {
+    const next = lines.findIndex((item, i) => i > from && !code[i] && /^#{1,2} /.test(item))
+    return next === -1 ? lines.length : next
+  }
+  return { close, start, yaml, head, line: at((item) => STATUS_LINE.test(item), head === -1 ? lines.length : head), section: at((item) => STATUS_SECTION.test(item)), title: at((item) => item.startsWith('# '), head === -1 ? lines.length : head), end }
 }
 const withoutBlanks = (lines, from) => {
   let at = from
   while (at < lines.length && lines[at].trim() === '') at++
   return lines.slice(at)
+}
+
+/**
+ * What `docs adr-get` shows (PMK-263): the title (the first `# ` heading, else the `title:` key of the front matter, else null) and the
+ * status as each form holds it, in the order front matter key, `Status:` line above the first section, `## Status` section. `status` is the first.
+ */
+export function adrInfo(text) {
+  const lines = adrText(text).split('\n')
+  const { close, yaml, line, section, title, end } = locate(lines)
+  const key = (name) => {
+    const found = close === -1 ? undefined : lines.slice(1, close).find((item) => new RegExp(`^${name}:`, 'i').test(item))
+    return found === undefined ? null : unquote(splitYaml(found.slice(name.length + 1)).value) || null
+  }
+  const body = section === -1 ? '' : lines.slice(section + 1, end(section)).map((item) => item.trim()).filter(Boolean).join(' ')
+  const statuses = [yaml > 0 ? key('status') : null, line === -1 ? null : STATUS_LINE.exec(lines[line])[3].trim(), body].filter((value) => value)
+  return { title: title === -1 ? key('title') : lines[title].slice(2).trim(), status: statuses[0] ?? null, statuses }
 }
 
 /**
@@ -119,32 +177,37 @@ const withoutBlanks = (lines, from) => {
 export function setAdrStatus(text, status, byPath) {
   const value = status === 'superseded' ? `superseded by ${byPath}` : status
   const lines = adrText(text).split('\n')
-  const close = lines[0] === '---' ? lines.indexOf('---', 1) : -1
-  const start = close === -1 ? 0 : close + 1
-  const same = (current) => current.trim().replace(/^(["'])(.*)\1$/, '$2').toLowerCase() === value.toLowerCase()
+  const { start, yaml, line: found, section, title, end: sectionEnd } = locate(lines)
+  const same = (current) => unquote(current).toLowerCase() === value.toLowerCase()
   // A status that is already the requested one leaves the text as it came, so the file is not rewritten (PMK-248).
   const done = (before, after, unchanged) => ({ text: unchanged ? adrText(text) : lines.join('\n'), before, after })
 
   // The front matter key and a `## Status` section can both hold a status (PMK-248): change every one and report both (PMK-257).
-  const yaml = close === -1 ? -1 : lines.slice(1, close).findIndex((item) => YAML_STATUS.test(item)) + 1
-  const section = lines.findIndex((item, i) => i >= start && STATUS_SECTION.test(item))
   if (yaml > 0 || section !== -1) {
     let unchanged = true
     const befores = []
     const afters = []
+    // A `Status:` line above the first section is a third place that holds the status (PMK-263).
     if (yaml > 0) {
       // A YAML comment after the value is not part of the status, and the rewrite keeps it.
-      const [, current, comment = ''] = /^status:(.*?)(\s+#.*)?$/i.exec(lines[yaml])
+      const { value: current, comment } = splitYaml(lines[yaml].slice('status:'.length))
       befores.push(lines[yaml])
       if (!same(current)) unchanged = false
       lines[yaml] = `status: ${value}${comment}`
       afters.push(lines[yaml])
     }
+    if (found !== -1) {
+      const [, bullet = '', label, current] = STATUS_LINE.exec(lines[found])
+      befores.push(lines[found])
+      if (!same(current)) unchanged = false
+      lines[found] = `${bullet}${label.startsWith('**') ? '**Status:**' : 'Status:'} ${value}`
+      afters.push(lines[found])
+    }
     if (section !== -1) {
-      const end = sectionEnd(lines, section)
+      const end = sectionEnd(section)
       const body = lines.slice(section + 1, end).map((item) => item.trim()).filter(Boolean)
       if (body.length !== 1 || !same(body[0])) unchanged = false
-      const label = yaml > 0 ? '## Status: ' : ''
+      const label = befores.length > 0 ? '## Status: ' : ''
       if (body.length > 0) befores.push(`${label}${body.join(' ')}`)
       afters.push(`${label}${capitalized(value)}`)
       lines.splice(section + 1, end - section - 1, '', capitalized(value), '')
@@ -153,9 +216,6 @@ export function setAdrStatus(text, status, byPath) {
     return done(befores.length === 0 ? null : befores.join('; '), unchanged ? befores.join('; ') : afters.join('; '), unchanged)
   }
 
-  const first = lines.findIndex((item, i) => i >= start && item.startsWith('## '))
-  const head = first === -1 ? lines.length : first
-  const found = lines.findIndex((item, i) => i >= start && i < head && STATUS_LINE.test(item))
   if (found !== -1) {
     const [, bullet = '', label] = STATUS_LINE.exec(lines[found])
     const before = lines[found]
@@ -165,7 +225,6 @@ export function setAdrStatus(text, status, byPath) {
   }
 
   const line = `Status: ${value}`
-  const title = lines.findIndex((item, i) => i >= start && i < head && item.startsWith('# '))
   const anchor = title !== -1 ? title : start - 1
   const top = anchor === -1 ? [] : [...lines.slice(0, anchor + 1), '']
   return { text: [...top, line, '', ...withoutBlanks(lines, anchor + 1)].join('\n'), before: null, after: line }

@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
-import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus } from './lib/adr.mjs'
+import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrInfo } from './lib/adr.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo } from './test-helpers.mjs'
 
@@ -683,4 +683,104 @@ test('docs adr-status superseded --by with tracker.path . writes the repository 
   assert.equal(result.code, 0, result.stderr)
   assert.equal(result.data.status.after, 'Status: superseded by docs/adr/0002-b.md')
   assert.match(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), /^Status: superseded by docs\/adr\/0002-b\.md$/m)
+})
+
+test('setAdrStatus changes a Status: line above the first section together with the front matter and the ## Status section (PMK-263)', () => {
+  const line = '# T\n\nStatus: accepted\n\n## Status\n\nAccepted\n\n## Context\n'
+  assert.deepEqual(setAdrStatus(line, 'deprecated'), { text: '# T\n\nStatus: deprecated\n\n## Status\n\nDeprecated\n\n## Context\n', before: 'Status: accepted; ## Status: Accepted', after: 'Status: deprecated; ## Status: Deprecated' })
+  const all = '---\nstatus: accepted\n---\n\n# T\n\n**Status:** Accepted\n\n## Status\n\nAccepted\n'
+  assert.deepEqual(setAdrStatus(all, 'deprecated'), { text: '---\nstatus: deprecated\n---\n\n# T\n\n**Status:** deprecated\n\n## Status\n\nDeprecated\n', before: 'status: accepted; **Status:** Accepted; ## Status: Accepted', after: 'status: deprecated; **Status:** deprecated; ## Status: Deprecated' })
+  const fm = '---\nstatus: accepted\n---\n\n# T\n\nStatus: accepted\n\nWhy.\n'
+  assert.equal(setAdrStatus(fm, 'deprecated').text, '---\nstatus: deprecated\n---\n\n# T\n\nStatus: deprecated\n\nWhy.\n')
+  // Nothing changes when every place already has the status.
+  const same = '# T\n\nStatus: Accepted\n\n## Status\n\naccepted\n'
+  assert.equal(setAdrStatus(same, 'accepted').text, same)
+  // A Status: line inside a later section is not a status line.
+  const later = '# T\n\n## Status\n\nAccepted\n\n## Context\n\nStatus: draft notes\n'
+  assert.equal(setAdrStatus(later, 'deprecated').text, '# T\n\n## Status\n\nDeprecated\n\n## Context\n\nStatus: draft notes\n')
+})
+
+test('adrInfo reads the title and the status in every form an ADR uses, null when absent (PMK-263)', () => {
+  assert.deepEqual(adrInfo('# 4. Use X\n\nDate: 2026-11-10\n\n## Status\n\nAccepted\n\n## Context\n'), { title: '4. Use X', status: 'Accepted', statuses: ['Accepted'] })
+  assert.deepEqual(adrInfo('---\nstatus: "accepted"  # agreed\n---\n\n# Use X\n'), { title: 'Use X', status: 'accepted', statuses: ['accepted'] })
+  assert.deepEqual(adrInfo('---\ntitle: Use Y\nstatus: proposed\n---\n\nWhy.\n'), { title: 'Use Y', status: 'proposed', statuses: ['proposed'] })
+  assert.deepEqual(adrInfo('# T\r\n\r\n**Status:** Deprecated\r\n'), { title: 'T', status: 'Deprecated', statuses: ['Deprecated'] })
+  assert.deepEqual(adrInfo('Why.\n'), { title: null, status: null, statuses: [] })
+  // Two forms: the first (front matter, then the line above the first section, then the section) wins and both are listed.
+  assert.deepEqual(adrInfo('---\nstatus: accepted\n---\n\n# T\n\n## Status\n\nDeprecated\n'), { title: 'T', status: 'accepted', statuses: ['accepted', 'Deprecated'] })
+  // A Status: line in a later section is not the status.
+  assert.equal(adrInfo('# T\n\n## Context\n\nStatus: notes\n').status, null)
+})
+
+test('docs adr-get shows number, title, status and path, notes a disagreement and writes nothing (PMK-263)', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0004-use-x.md', '---\nstatus: accepted\n---\n\n# 4. Use X\n\n## Status\n\nDeprecated\n')
+  writeAdr(root, '.issues/docs/adr/0005-use-y.md', '# Use Y\n\nStatus: proposed\n')
+  const run1 = async (...args) => {
+    const result = await run(['docs', 'adr-get', ...args, '--json'], { cwd: root, env: childEnv() })
+    return { code: result.code, data: result.stdout ? JSON.parse(result.stdout) : null, stderr: result.stderr }
+  }
+  const one = await run1('4')
+  assert.equal(one.code, 0, one.stderr)
+  assert.deepEqual({ ...one.data, notes: undefined }, { number: '0004', title: '4. Use X', status: 'accepted', statuses: ['accepted', 'Deprecated'], path: 'docs/adr/0004-use-x.md', ref: 'docs/adr/0004-use-x.md', place: 'repo', notes: undefined })
+  assert.equal(one.data.notes.length, 1)
+  assert.match(one.data.notes[0], /accepted.*Deprecated/)
+  assert.match(one.data.notes[0], /status in the JSON is the first/, 'the note matches what the text and the JSON show')
+  assert.doesNotMatch(one.data.notes[0], /the first is shown/)
+  const two = await run1('0005')
+  assert.deepEqual([two.data.title, two.data.status, two.data.place, two.data.path, two.data.notes], ['Use Y', 'proposed', 'tracker', '.issues/docs/adr/0005-use-y.md', []])
+  assert.equal(JSON.parse((await run(['docs', 'adr-get', '9', '--json'], { cwd: root, env: childEnv() })).stdout).error.code, 'NOT_FOUND')
+  assert.equal((await run(['docs', 'adr-get', 'x', '--json'], { cwd: root, env: childEnv() })).code, 2)
+  const status = spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).stdout
+  assert.doesNotMatch(status, /^ M/m)
+  assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0004-use-x.md'), 'utf8').startsWith('---\nstatus: accepted'), true)
+})
+
+test('setAdrStatus and adrInfo ignore status lines, headings and sections inside code blocks (PMK-263 review)', () => {
+  const fm = '---\nstatus: accepted\n---\n\n# T\n\n```yaml\nstatus: accepted\n```\n\n## Context\n'
+  assert.equal(setAdrStatus(fm, 'deprecated').text, '---\nstatus: deprecated\n---\n\n# T\n\n```yaml\nstatus: accepted\n```\n\n## Context\n')
+  const section = '# T\n\n~~~\nStatus: draft\n~~~\n\n## Status\n\nAccepted\n'
+  assert.deepEqual(setAdrStatus(section, 'deprecated'), { text: '# T\n\n~~~\nStatus: draft\n~~~\n\n## Status\n\nDeprecated\n', before: 'Accepted', after: 'Deprecated' })
+  const fenced = '# T\n\n```md\n## Status\n\nold\n```\n\n## Status\n\nAccepted\n'
+  assert.equal(setAdrStatus(fenced, 'deprecated').text, '# T\n\n```md\n## Status\n\nold\n```\n\n## Status\n\nDeprecated\n')
+  const plain = '# T\n\n```\nStatus: draft\n```\n\nWhy.\n'
+  assert.equal(setAdrStatus(plain, 'deprecated').text, '# T\n\nStatus: deprecated\n\n```\nStatus: draft\n```\n\nWhy.\n')
+  assert.deepEqual(adrInfo(fm), { title: 'T', status: 'accepted', statuses: ['accepted'] })
+  assert.deepEqual(adrInfo(section), { title: 'T', status: 'Accepted', statuses: ['Accepted'] })
+  assert.equal(adrInfo('```sh\n# a comment\n```\n\n# Real\n').title, 'Real')
+  assert.equal(adrInfo('```sh\n# a comment\n```\n').title, null)
+})
+
+test('adrInfo keeps a # inside quotes and drops a YAML comment outside them (PMK-263 review)', () => {
+  assert.equal(adrInfo('---\ntitle: "Fix issue #42"\n---\n').title, 'Fix issue #42')
+  assert.equal(adrInfo("---\ntitle: 'Fix #42'  # note\n---\n").title, 'Fix #42')
+  assert.equal(adrInfo('---\ntitle: Fix  # note\n---\n').title, 'Fix')
+  assert.equal(adrInfo('---\nstatus: "accepted # x"\n---\n').status, 'accepted # x')
+})
+
+test('docs adr-get lists every status it read, so a superseded one is never hidden (PMK-263 review)', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0004-use-x.md', '---\nstatus: accepted\n---\n\n# Use X\n\n## Status\n\nSuperseded by docs/adr/0009-y.md\n')
+  writeAdr(root, 'docs/adr/0005-use-z.md', '# Use Z\n\n## Status\n\nAccepted\n')
+  const get = async (n) => JSON.parse((await run(['docs', 'adr-get', n, '--json'], { cwd: root, env: childEnv() })).stdout)
+  assert.deepEqual((await get('4')).statuses, ['accepted', 'Superseded by docs/adr/0009-y.md'])
+  assert.deepEqual((await get('5')).statuses, ['Accepted'])
+})
+
+test('a YAML single-quoted value with an escaped quote is read and rewritten whole (PMK-263 review 2)', () => {
+  assert.equal(adrInfo("---\ntitle: 'Don''t use X'\n---\n").title, "Don't use X")
+  assert.equal(adrInfo("---\nstatus: 'it''s ok'  # why\n---\n").status, "it's ok")
+  assert.equal(setAdrStatus("---\nstatus: 'it''s ok'  # why\n---\n\n# T\n", 'deprecated').text, '---\nstatus: deprecated  # why\n---\n\n# T\n')
+  const same = "---\nstatus: 'it''s ok'\n---\n"
+  assert.equal(setAdrStatus(same, "it's ok").text, same)
+})
+
+test('a fence needs its own character and length to close, and inline triple backticks open nothing (PMK-263 review 2)', () => {
+  const inline = '# T\n\n```npm test``` runs the suite.\n\n## Status\n\nAccepted\n'
+  assert.equal(setAdrStatus(inline, 'deprecated').text, '# T\n\n```npm test``` runs the suite.\n\n## Status\n\nDeprecated\n')
+  const longer = '# T\n\n````md\n```\nStatus: draft\n```\n````\n\n## Status\n\nAccepted\n'
+  assert.equal(setAdrStatus(longer, 'deprecated').text, '# T\n\n````md\n```\nStatus: draft\n```\n````\n\n## Status\n\nDeprecated\n')
+  const mixed = '# T\n\n~~~\n```\nStatus: draft\n~~~\n\n**Status:** Accepted\n'
+  assert.equal(adrInfo(mixed).status, 'Accepted')
+  assert.equal(adrInfo('# T\n\n```js\ncode\n```  \n\n## Status\n\nProposed\n').status, 'Proposed')
 })

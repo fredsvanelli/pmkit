@@ -1709,6 +1709,7 @@ test('every read goes on with one warning', () => {
     'release-readiness': [],
     'docs list': [],
     'docs next-adr': ['--title', 'Next decision'],
+    'docs adr-get': ['1'],
     'views list': [],
     'views run': ['missing'],
     'goal list': [],

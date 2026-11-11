@@ -2,12 +2,14 @@
 id: PMK-263
 title: Improve the ADR commands
 type: feature
-status: backlog
+status: in_review
 priority: low
 estimate: 3
+assignee: fred
 parent: EPC-6
+branch: pmk-263-improve-the-adr-commands
 created: 2026-11-11T22:34:42.992Z
-updated: 2026-11-11T22:34:42Z
+updated: 2026-11-11T23:26:30Z
 ---
 
 ## Description
@@ -38,8 +40,8 @@ PMK-247, PMK-248 and PMK-251 left improvements to the ADR commands. `/pmkit:spec
 
 ## Acceptance criteria
 
-- [ ] `docs adr-get <number>` shows the ADR's number, title, status and path and writes nothing, and record-decision uses it
-- [ ] A decision that replaces two ADRs gets one Supersedes line per ADR, and both old ADRs are marked superseded after confirmation
-- [ ] record-decision warns when the replaced ADR is newer than the new one and does not ask again for an ADR the user already named
-- [ ] With a hosted tracker, `validate` reports two ADRs in the repository folder with the same number
-- [ ] An ADR with a `Status:` line and a `## Status` section shows the new status in both after `docs adr-status`
+- [x] `docs adr-get <number>` shows the ADR's number, title, status and path and writes nothing, and record-decision uses it
+- [x] A decision that replaces two ADRs gets one Supersedes line per ADR, and both old ADRs are marked superseded after confirmation
+- [x] record-decision warns when the replaced ADR is newer than the new one and does not ask again for an ADR the user already named
+- [x] With a hosted tracker, `validate` reports two ADRs in the repository folder with the same number
+- [x] An ADR with a `Status:` line and a `## Status` section shows the new status in both after `docs adr-status`

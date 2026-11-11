@@ -125,6 +125,7 @@ export const CASES = {
   'docs list': () => [[]],
   'docs next-adr': () => [['--title', 'Golden decision']],
   // No fixture has an ADR, so these record the NOT_FOUND and the missing --by.
+  'docs adr-get': () => [['1']],
   'docs adr-status': () => [['1', 'deprecated'], ['1', 'superseded']],
   'docs read': (a) => [[a.doc]],
   'docs create': () => [['golden/new.md', '--body-file', input('doc.md')]],

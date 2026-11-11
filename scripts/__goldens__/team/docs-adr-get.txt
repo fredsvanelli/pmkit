@@ -1,0 +1,20 @@
+$ pmkit docs adr-get 1
+exit 2
+--- stdout
+(empty)
+--- stderr
+error: no ADR has the number 0001
+next: Check the number in docs/adr/; pmkit docs next-adr names the folders it reads
+
+$ pmkit docs adr-get 1 --json
+exit 2
+--- stdout
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "no ADR has the number 0001",
+    "nextStep": "Check the number in docs/adr/; pmkit docs next-adr names the folders it reads"
+  }
+}
+--- stderr
+(empty)
