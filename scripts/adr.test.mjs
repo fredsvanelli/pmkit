@@ -613,6 +613,49 @@ test('docs adr-status superseded --by writes a plain relative path into the ADR,
   }
 })
 
+// PMK-257: auto_commit with a tracker outside the repository.
+const withOutsideTracker = async (inGit, fn) => {
+  const root = repo()
+  const outside = path.join(path.dirname(root), `outside-${path.basename(root)}`)
+  fs.writeFileSync(configFile(root), fs.readFileSync(configFile(root), 'utf8').replace('path: .issues', `path: ../${path.basename(outside)}`))
+  fs.renameSync(path.join(root, '.issues'), outside)
+  fs.writeFileSync(path.join(outside, 'config.yaml'), fs.readFileSync(path.join(outside, 'config.yaml'), 'utf8').replace(/^auto_commit: .*$/m, 'auto_commit: true'))
+  writeAdr(outside, 'docs/adr/0001-a.md')
+  if (inGit) {
+    git(outside, 'init', '-q')
+    git(outside, 'config', 'user.name', 'T')
+    git(outside, 'config', 'user.email', 't@example.com')
+    git(outside, 'add', '-A')
+    git(outside, 'commit', '-q', '-m', 'init')
+  }
+  try {
+    await fn({ root, outside })
+  } finally {
+    fs.rmSync(outside, { recursive: true, force: true })
+  }
+}
+
+test('docs adr-status with a tracker outside the repository commits in the git repository that holds the tracker (PMK-257)', async () => {
+  await withOutsideTracker(true, async ({ root, outside }) => {
+    const result = await run(['docs', 'adr-status', '1', 'deprecated'], { cwd: root, env: childEnv() })
+    assert.equal(result.code, 0, result.stderr)
+    assert.equal(git(outside, 'rev-list', '--count', 'HEAD').trim(), '2')
+    assert.match(git(outside, 'show', '--name-only', '--format=', 'HEAD'), /docs\/adr\/0001-a\.md/)
+    assert.equal(git(outside, 'status', '--porcelain'), '')
+    assert.ok(!(result.stdout + result.stderr).includes(outside), 'no absolute path')
+  })
+})
+
+test('docs adr-status with a tracker outside the repository and outside any git repository writes the ADR and says nothing was committed (PMK-257)', async () => {
+  await withOutsideTracker(false, async ({ root, outside }) => {
+    const result = await run(['docs', 'adr-status', '1', 'deprecated', '--json'], { cwd: root, env: childEnv() })
+    assert.equal(result.code, 0, result.stderr)
+    assert.match(fs.readFileSync(path.join(outside, 'docs/adr/0001-a.md'), 'utf8'), /^Status: deprecated$/m)
+    assert.match(result.stderr, /^note: .*not in a git repository, so nothing was committed/m)
+    assert.ok(!(result.stdout + result.stderr).includes(outside), 'no absolute path')
+  })
+})
+
 test('docs adr-status returns ref, the path without the tracker: label, in the JSON and the dry run (PMK-251 review)', async () => {
   const root = repo()
   const outside = path.join(path.dirname(root), `outside-${path.basename(root)}`)
