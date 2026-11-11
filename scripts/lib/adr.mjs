@@ -4,6 +4,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { PmkitError } from './errors.mjs'
+import { stripComment } from './yaml.mjs'
 
 export const ADR_SLUG_MAX = 60
 // The display label of an ADR folder of a tracker outside the repository; never written into an ADR.
@@ -99,23 +100,32 @@ const STATUS_LINE = /^(\s*[-*]\s+)?(\*\*Status:?\*\*:?|Status:)\s*(.*)$/i
 const STATUS_SECTION = /^##\s+Status\s*$/i
 const YAML_STATUS = /^status:/i
 const capitalized = (text) => text.charAt(0).toUpperCase() + text.slice(1)
-// Which lines are inside a fenced code block (``` or ~~~), fences included: a status or a heading there is an example, not the ADR's own (PMK-263).
+// Which lines are inside a fenced code block, fences included: a status or a heading there is an example, not the ADR's own (PMK-263).
+// As in CommonMark, a fence is three or more backticks or tildes; a backtick fence with a backtick after it is inline code, and
+// only a fence of the same character, at least as long and followed by blanks only, closes the block.
 const fencedLines = (lines) => {
   let open = null
   return lines.map((item) => {
-    const marker = /^\s*(```|~~~)/.exec(item)?.[1]
-    if (open === null) return marker ? Boolean((open = marker)) : false
-    if (marker === open) open = null
+    const [, marker = '', rest = ''] = /^\s*(`{3,}|~{3,})(.*)$/.exec(item) ?? []
+    if (open === null) {
+      if (marker === '' || (marker[0] === '`' && rest.includes('`'))) return false
+      open = marker
+      return true
+    }
+    if (marker !== '' && marker[0] === open[0] && marker.length >= open.length && rest.trim() === '') open = null
     return true
   })
 }
 // A front matter value split into the value (with its quotes) and the YAML comment after it, which a `#` inside quotes never starts.
 const splitYaml = (rest) => {
-  const quoted = /^(\s*)(["'])(.*?)\2(.*)$/.exec(rest)
-  const [, value, comment = ''] = quoted ? [null, `${quoted[1]}${quoted[2]}${quoted[3]}${quoted[2]}`, quoted[4]] : /^(.*?)(\s+#.*)?$/.exec(rest)
-  return { value, comment }
+  const value = stripComment(rest).trimEnd()
+  return { value, comment: rest.slice(value.length) }
 }
-const unquote = (value) => value.trim().replace(/^(["'])(.*)\1$/, '$2')
+// A quoted YAML scalar without its quotes; '' is an escaped quote in a single-quoted one.
+const unquote = (value) => {
+  const quoted = /^(["'])(.*)\1$/.exec(value.trim())
+  return quoted === null ? value.trim() : quoted[1] === "'" ? quoted[2].replaceAll("''", "'") : quoted[2]
+}
 
 /**
  * The places of an ADR text that hold its title and status, found once for `adrInfo` and `setAdrStatus` so the two never disagree (PMK-263):

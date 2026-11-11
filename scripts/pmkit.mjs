@@ -354,7 +354,7 @@ function runAdrGet(ctx) {
   const { trackerDir, trackerFolder } = adrPlace(ctx)
   const adr = adrByNumber(adrFiles(adrFolders({ root: ctx.root, trackerDir, trackerFolder })), ctx.args[0], 'number')
   const { title, status, statuses } = adrInfo(fs.readFileSync(adr.file, 'utf8'))
-  const notes = new Set(statuses.map((value) => value.toLowerCase())).size > 1 ? [`${adr.path} holds more than one status (${statuses.join(', ')}); the first is shown, and docs adr-status sets them all`] : []
+  const notes = new Set(statuses.map((value) => value.toLowerCase())).size > 1 ? [`${adr.path} holds more than one status (${statuses.join(', ')}); status in the JSON is the first, and docs adr-status sets them all`] : []
   const data = { number: adr.number, title, status, statuses, path: adr.path, ref: adr.ref, place: adr.place, notes }
   return { data, text: fields([['number', data.number], ['title', title ?? '(no title)'], ['status', statuses.length > 1 ? statuses.join(' | ') : status ?? '(no status)'], ['path', data.path], ['place', data.place]]).join('\n'), notes }
 }

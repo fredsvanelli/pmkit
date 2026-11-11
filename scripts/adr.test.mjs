@@ -725,6 +725,8 @@ test('docs adr-get shows number, title, status and path, notes a disagreement an
   assert.deepEqual({ ...one.data, notes: undefined }, { number: '0004', title: '4. Use X', status: 'accepted', statuses: ['accepted', 'Deprecated'], path: 'docs/adr/0004-use-x.md', ref: 'docs/adr/0004-use-x.md', place: 'repo', notes: undefined })
   assert.equal(one.data.notes.length, 1)
   assert.match(one.data.notes[0], /accepted.*Deprecated/)
+  assert.match(one.data.notes[0], /status in the JSON is the first/, 'the note matches what the text and the JSON show')
+  assert.doesNotMatch(one.data.notes[0], /the first is shown/)
   const two = await run1('0005')
   assert.deepEqual([two.data.title, two.data.status, two.data.place, two.data.path, two.data.notes], ['Use Y', 'proposed', 'tracker', '.issues/docs/adr/0005-use-y.md', []])
   assert.equal(JSON.parse((await run(['docs', 'adr-get', '9', '--json'], { cwd: root, env: childEnv() })).stdout).error.code, 'NOT_FOUND')
@@ -763,4 +765,22 @@ test('docs adr-get lists every status it read, so a superseded one is never hidd
   const get = async (n) => JSON.parse((await run(['docs', 'adr-get', n, '--json'], { cwd: root, env: childEnv() })).stdout)
   assert.deepEqual((await get('4')).statuses, ['accepted', 'Superseded by docs/adr/0009-y.md'])
   assert.deepEqual((await get('5')).statuses, ['Accepted'])
+})
+
+test('a YAML single-quoted value with an escaped quote is read and rewritten whole (PMK-263 review 2)', () => {
+  assert.equal(adrInfo("---\ntitle: 'Don''t use X'\n---\n").title, "Don't use X")
+  assert.equal(adrInfo("---\nstatus: 'it''s ok'  # why\n---\n").status, "it's ok")
+  assert.equal(setAdrStatus("---\nstatus: 'it''s ok'  # why\n---\n\n# T\n", 'deprecated').text, '---\nstatus: deprecated  # why\n---\n\n# T\n')
+  const same = "---\nstatus: 'it''s ok'\n---\n"
+  assert.equal(setAdrStatus(same, "it's ok").text, same)
+})
+
+test('a fence needs its own character and length to close, and inline triple backticks open nothing (PMK-263 review 2)', () => {
+  const inline = '# T\n\n```npm test``` runs the suite.\n\n## Status\n\nAccepted\n'
+  assert.equal(setAdrStatus(inline, 'deprecated').text, '# T\n\n```npm test``` runs the suite.\n\n## Status\n\nDeprecated\n')
+  const longer = '# T\n\n````md\n```\nStatus: draft\n```\n````\n\n## Status\n\nAccepted\n'
+  assert.equal(setAdrStatus(longer, 'deprecated').text, '# T\n\n````md\n```\nStatus: draft\n```\n````\n\n## Status\n\nDeprecated\n')
+  const mixed = '# T\n\n~~~\n```\nStatus: draft\n~~~\n\n**Status:** Accepted\n'
+  assert.equal(adrInfo(mixed).status, 'Accepted')
+  assert.equal(adrInfo('# T\n\n```js\ncode\n```  \n\n## Status\n\nProposed\n').status, 'Proposed')
 })
