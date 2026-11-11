@@ -2,14 +2,14 @@
 id: PMK-252
 title: Map issue docs on Linear
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 3
 assignee: fred
 parent: EPC-5
 branch: pmk-252-map-issue-docs-on-linear
 created: 2026-11-10T20:03:45.412Z
-updated: 2026-11-11T02:01:07Z
+updated: 2026-11-11T02:35:39Z
 ---
 
 ## Description
