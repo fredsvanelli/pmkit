@@ -2,14 +2,14 @@
 id: PMK-263
 title: Improve the ADR commands
 type: feature
-status: in_review
+status: done
 priority: low
 estimate: 3
 assignee: fred
 parent: EPC-6
 branch: pmk-263-improve-the-adr-commands
 created: 2026-11-11T22:34:42.992Z
-updated: 2026-11-11T23:26:30Z
+updated: 2026-11-11T23:51:49Z
 ---
 
 ## Description
