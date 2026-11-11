@@ -11,7 +11,7 @@ import { repoDocPath } from './lib/doc-path.mjs'
 import { ESTIMATE_UNITS, GIT_HOSTS, findRoot, loadConfig, loadPmkitConfig, pmkitConfigMessages, pmkitConfigWarning, pmkitWriteRefusal, resolveDefaultBranch, validBranch, validateLocalConfig, validatePmkitConfig, withLocalDefaults } from './lib/config.mjs'
 import { contractView } from './lib/contract.mjs'
 import { longEntryNote, parseMinutes } from './lib/duration.mjs'
-import { PmkitError, isPmkitError } from './lib/errors.mjs'
+import { PmkitError, isPmkitError, unarchiveNotSupported } from './lib/errors.mjs'
 import { changeLines, customerRecord, dependencyText, epicRecord, eventTable, fields, goalRecord, issueRecord, issueTable, milestoneRecord, percent, readinessText, releaseNotesText, releaseRecord, requestRecord, sprintRecord, table } from './lib/format.mjs'
 import {
   aging, categoryLookup, cycleTimes, doneInRange, groupEventsByIssue, lastEntry, leadTimes, rangeInstant, sprintIssues, summary, throughput, velocity,
@@ -2739,8 +2739,10 @@ async function runReleaseReadiness(ctx) {
 const PER_ISSUE_CODES = ['INVALID_INPUT', 'NOT_FOUND', 'CONFLICT']
 
 async function runBulk(ctx) {
-  const tracker = await ctx.tracker()
   const [kind, value] = ctx.args
+  // PMK-256: Linear refuses unarchive before anything else is read or checked, whatever the other flags are.
+  if (kind === 'unarchive' && ctx.config().system !== 'local') throw unarchiveNotSupported()
+  const tracker = await ctx.tracker()
   const view = ctx.opt('view')
   // A hosted tracker's view keeps the tracker's own filter, which pmkit cannot check narrows the set, so it is refused before any read.
   if (view !== undefined && ctx.config().system !== 'local') throw usageError(`${ctx.config().system === 'linear' ? 'Linear' : 'a hosted'} view ${view} keeps the tracker's own filter, so pmkit cannot check that it narrows the set`, 'Pass filter flags to issues bulk instead of --view')
@@ -2749,7 +2751,6 @@ async function runBulk(ctx) {
   const max = ctx.opt('max') === undefined ? DEFAULT_MAX : whole('max', ctx.opt('max'))
   if (max < 1 || max > HARD_MAX) throw usageError(`--max must be from 1 to ${HARD_MAX}`, 'Narrow the filter instead of raising --max')
 
-  if (kind === 'unarchive' && ctx.config().system !== 'local') throw new PmkitError('NOT_SUPPORTED', 'unarchive works on the Local tracker only', "pmkit issues restore <id> brings a deleted issue back from Linear's trash")
   // Only unarchive reads --archived: for every other change it stays an unknown option, as before.
   if (kind !== 'unarchive' && ctx.flag('archived')) throw usageError('unknown option --archived: only bulk unarchive takes it', 'Run pmkit issues bulk --help')
   let filter = issueFilter(ctx)

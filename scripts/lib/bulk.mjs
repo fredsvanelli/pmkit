@@ -95,7 +95,10 @@ export function parseChange(kind, value, flags = {}) {
  */
 export function checkBulkFilter(filter, where, viewName, kind) {
   // PMK-250: unarchive matches archived issues only, so it needs `archived` where every other change refuses it.
-  if (kind === 'unarchive' && filter.archived !== true) throw invalid(`${where} has no archived: bulk unarchive needs --archived, because it brings archived issues back`, 'Add --archived to the filter')
+  if (kind === 'unarchive' && filter.archived !== true) throw invalid(`${where} has no archived: bulk unarchive needs --archived, because it brings archived issues back`, viewName === undefined
+    ? 'Add --archived to the filter'
+    // --view cannot take --archived: the flag would be a second filter, so the view itself must carry it.
+    : `Run pmkit views save ${viewName}${filter.sort === undefined ? '' : ` --sort ${filter.sort}`} <the view's filter flags> --archived --overwrite`)
   for (const key of ['archived', 'limit']) {
     if (filter[key] === undefined || (key === 'archived' && (filter[key] === false || kind === 'unarchive'))) continue
     const why = key === 'archived' ? 'archived issues stay out of a bulk change' : 'a limit cuts the set, and a bulk change needs the whole set'

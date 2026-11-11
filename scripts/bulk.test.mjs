@@ -172,6 +172,12 @@ test('checkBulkFilter for unarchive needs archived and still refuses a limit', (
   assert.throws(() => checkBulkFilter({ labels: ['x'], archived: true, limit: 1 }, 'the filter', undefined, 'unarchive'), /limit/)
 })
 
+test('checkBulkFilter tells a view without archived to save the view with --archived (PMK-256)', () => {
+  assert.throws(() => checkBulkFilter({ labels: ['x'] }, 'view live', 'live', 'unarchive'), (error) => /views save live/.test(error.nextStep) && /--archived/.test(error.nextStep) && !/Add --archived to the filter/.test(error.nextStep))
+  assert.throws(() => checkBulkFilter({ labels: ['x'], sort: 'priority' }, 'view live', 'live', 'unarchive'), (error) => /views save live --sort priority/.test(error.nextStep))
+  assert.throws(() => checkBulkFilter({ labels: ['x'] }, 'the filter', undefined, 'unarchive'), (error) => error.nextStep === 'Add --archived to the filter')
+})
+
 test('archive takes no value and every other change still needs one', () => {
   assert.equal(parseChange('archive', undefined, {}).text, 'archive')
   assert.throws(() => parseChange('archive', 'yes', {}), (error) => error.code === 'INVALID_INPUT' && /no value/.test(error.message))

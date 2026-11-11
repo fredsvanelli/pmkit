@@ -8,7 +8,7 @@
 import { randomUUID } from 'node:crypto'
 
 import { TRACKER_OPERATIONS } from '../contract.mjs'
-import { PmkitError } from '../errors.mjs'
+import { PmkitError, unarchiveNotSupported } from '../errors.mjs'
 import { brokenMappings } from '../mappings.mjs'
 import { cacheGet, cachePut, repoHash } from '../user-store.mjs'
 import { createLinearClient } from './client.mjs'
@@ -225,7 +225,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     archive: issues.archive,
     // PMK-250: unarchive is Local only. A trashed Linear issue comes back with `issues restore`.
     unarchive: guarded(async () => {
-      throw new PmkitError('NOT_SUPPORTED', 'unarchive works on the Local tracker only', 'pmkit issues restore <id> brings a deleted issue back from Linear\'s trash')
+      throw unarchiveNotSupported()
     }),
     delete: issues.delete,
     restore: issues.restore,
