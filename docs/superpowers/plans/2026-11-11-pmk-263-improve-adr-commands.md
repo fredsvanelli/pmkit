@@ -1,5 +1,31 @@
-# PMK-263 implementation plan
+# PMK-263 Improve the ADR commands Implementation Plan
 
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (inline, no sub-agents) to implement this plan task-by-task. Steps use checkbox syntax for tracking.
+
+**Goal:** Add `docs adr-get`, let record-decision replace several ADRs, tidy its questions and warnings, and make `docs adr-status` rewrite every status line.
+
+**Architecture:** `scripts/lib/adr.mjs` holds the pure ADR logic (`setAdrStatus`, new `adrInfo`); `scripts/pmkit.mjs` registers the command next to `docs adr-status` and reuses `adrByNumber`; `commands/spec/record-decision.md` is the agent-facing flow.
+
+**Tech Stack:** Node ESM, `node:test`, no dependencies (ADR-0003).
+
+**Spec:** `docs/superpowers/specs/2026-11-11-pmk-263-improve-adr-commands-design.md`
+
+## Global Constraints
+
+- Do not undo PMK-257: `refFolder`, `commitTracker`, `--by` relative to the repository root, the YAML comment kept.
+- Every commit message carries `(PMK-263)` and ends with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- A command file change updates its scenarios, goldens and the counts in `scripts/scenarios.test.mjs`, `scripts/scenarios-live.mjs`, `scripts/plugin.test.mjs`.
+- `npm test` runs in the foreground and must exit 0.
+
+## Review Focus
+
+- An ADR with no title heading or no status: `adr-get` returns `null`, not an error (task 2).
+- An ADR whose forms disagree (`status:` key vs `## Status`): a note lists both (task 2).
+- A status line already equal to the requested one in every place: the file is not rewritten (task 1).
+- Two replaced ADRs where one `adr-status` write fails: step 7 stops and lists what is left (task 3).
+- Replaced ADR numbered above the new one: the warning appears before the write (task 3).
+
+---
 Spec: `docs/superpowers/specs/2026-11-11-pmk-263-improve-adr-commands-design.md`. Every task starts with a failing test.
 
 1. **adr-status writes every status line** (criterion 5). Test in `scripts/adr.test.mjs`: front matter + `Status:` line, and `Status:` line + `## Status`, both show the new status in all places. Change `setAdrStatus` in `scripts/lib/adr.mjs`: also rewrite the `Status:` line above the first `##` when yaml or a section was found; keep `before`/`after` and the unchanged check covering it.
