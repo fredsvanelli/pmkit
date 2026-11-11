@@ -597,3 +597,26 @@ Início: 2026-11-10. `develop` em ef8109b, `npm test` com 4852 testes, 4761 pass
 - `pr sync` moveu PMK-246 e PMK-247 para done; PMK-246 fica com o critério 5 desmarcado.
 
 Fim da rodada 20: PRs #207 e #208 mergeados.
+
+Limpeza da rodada 20: closing PR #209 mergeado (452694a), 7 worktrees removidos, branches provisórias e de issue apagadas, local e no origin.
+
+## Rodada 21
+
+Início: 2026-11-10. `develop` em 452694a, `npm test` com 4898 testes, 4807 pass, 0 fail, 91 skipped, saída 0. Run Orca `run_4c99b0d03c38`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-251 | 2 | sonnet (`ctx_56f919ea6da6`) | #210 | ciclos 1 e 2 (sonnet): MUDANÇAS PEDIDAS; ciclo 3 (sonnet): APROVADO | mergeado (6777f71), done |
+| PMK-252 | 3 | sonnet (`ctx_b4b6c6d8bb5d`) | #211 | ciclo 1 (opus): MUDANÇAS PEDIDAS; ciclo 2 (opus): APROVADO | mergeado (035242b), done |
+
+- PMK-252: brief com o aviso do limite de complexidade do Linear e das leituras por issue, por causa da PMK-246.
+- PMK-251: PR #210; record-decision pergunta se a decisão substitui um ADR antigo, grava a linha Supersedes e marca o antigo superseded depois de confirmar (passo 7). O ADR antigo é achado com `docs adr-status <antigo> deprecated --dry-run`, porque a CLI não tem consulta de ADR. Follow-ups: `docs adr-get <número>` só de leitura; decisão que substitui vários ADRs.
+- PMK-251 ciclo 1 (sonnet): MUDANÇAS PEDIDAS; bloqueante: com tracker fora do repo o adr-status devolvia `tracker:docs/adr/...` sem ref e a linha Supersedes gravava esse rótulo. 5df2629: ref no JSON do adr-status (e do dry-run), passos 2 e 4 usam number e ref, aviso de já superseded, número com zeros.
+- PMK-251 ciclo 2 (sonnet): MUDANÇAS PEDIDAS; regressão: a regra de parar numa escrita em lote que falha sumiu dos passos 6 e 8. 98401f0 a restaurou e prendeu em `scripts/plugin.test.mjs`.
+- PMK-251 ciclo 3 (sonnet): APROVADO; nenhuma outra regra do arquivo de comando sumiu. Quatro sugestões de prosa como follow-up. Mergeado (6777f71).
+- PMK-252: PR #211; docs de uma issue do Linear como attachments com link para o arquivo no GitHub e o caminho no metadata, leitura em lote, desconhecido quando a leitura falha. Só testado contra o fake.
+- PMK-252 ciclo 1 (opus): MUDANÇAS PEDIDAS, 4 bloqueios: link ignorava a branch padrão resolvida; --add-doc tomava um attachment feito à mão e --remove-doc o apagava; caminho absoluto, tracker: ou .. aceito; API-VERIFICATION sem seção da PMK-252. Complexidade ~3000 pontos, com teste. 61d5443 corrigiu com rebase sobre o #210 (conflitos em record-decision.md, README e CHANGELOG).
+- PMK-252 ciclo 2 (opus): APROVADO; o rebase não perdeu nada da PMK-251. Follow-ups: leituras extras de attachment em toda escrita do Linear; lote de attachReleasesTo; host GitHub Enterprise; docs na migração Linear para Local; upsert e delete na mesma URL quando o pmkitDoc não está normalizado; CONFLICT sem tratamento no passo 6 do record-decision; conferir os attachments ao vivo. Mergeado (035242b).
+- `pr sync` moveu PMK-251 e PMK-252 para done, com todos os critérios marcados.
+
+Fim da rodada 21: PRs #210 e #211 mergeados. Os follow-ups PMK-246 a PMK-252 da rodada 18 estão todos em done.
