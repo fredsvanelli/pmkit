@@ -111,6 +111,28 @@ const withoutBlanks = (lines, from) => {
 }
 
 /**
+ * What `docs adr-get` shows (PMK-263): the title (the first `# ` heading, else the `title:` key of the front matter, else null) and the
+ * status as each form holds it, in the order front matter key, `Status:` line above the first section, `## Status` section. `status` is the first.
+ */
+export function adrInfo(text) {
+  const lines = adrText(text).split('\n')
+  const close = lines[0] === '---' ? lines.indexOf('---', 1) : -1
+  const start = close === -1 ? 0 : close + 1
+  const unquote = (value) => value.trim().replace(/^(["'])(.*)\1$/, '$2')
+  const key = (name) => {
+    const found = close === -1 ? undefined : lines.slice(1, close).find((item) => new RegExp(`^${name}:`, 'i').test(item))
+    return found === undefined ? null : unquote(found.slice(name.length + 1).replace(/\s+#.*$/, '')) || null
+  }
+  const heading = lines.find((item, i) => i >= start && item.startsWith('# '))
+  const head = lines.findIndex((item, i) => i >= start && item.startsWith('## '))
+  const line = lines.find((item, i) => i >= start && (head === -1 || i < head) && STATUS_LINE.test(item))
+  const section = lines.findIndex((item, i) => i >= start && STATUS_SECTION.test(item))
+  const body = section === -1 ? '' : lines.slice(section + 1, sectionEnd(lines, section)).map((item) => item.trim()).filter(Boolean).join(' ')
+  const statuses = [key('status'), line === undefined ? null : STATUS_LINE.exec(line)[3].trim(), body].filter((value) => value)
+  return { title: heading === undefined ? key('title') : heading.slice(2).trim(), status: statuses[0] ?? null, statuses }
+}
+
+/**
  * The ADR text with `status` (and `byPath`, the newer ADR, for superseded) written in the form the ADR already uses (PMK-228):
  * the `status:` key of YAML front matter, the body of a `## Status` section (Nygard, adr-tools), or a `Status:` or `**Status:**`
  * line above the first `## ` section. With none of them, a `Status:` line goes under the `# ` title, or under the front matter,

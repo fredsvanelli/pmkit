@@ -49,6 +49,12 @@ test('docs adr-status on Linear finds no tracker folder and answers NOT_FOUND fo
   assert.equal(JSON.parse(result.stdout).error.code, 'NOT_FOUND')
 })
 
+test('docs adr-get on Linear reads docs/adr and answers NOT_FOUND for a number it lacks (PMK-263)', async () => {
+  const result = await linear(['docs', 'adr-get', '1', '--json'])
+  assert.equal(result.code, 2)
+  assert.equal(JSON.parse(result.stdout).error.code, 'NOT_FOUND')
+})
+
 test('issues update --add-doc on Linear with no GitHub repo is NOT_CONFIGURED and writes nothing (PMK-252)', async () => {
   const calls = {}
   const result = await linear(['issues', 'update', 'ACME-1', '--add-doc', 'docs/adr/0001-a.md', '--json'], { calls, seed: (fake) => fake.seed({ title: 'One' }) })

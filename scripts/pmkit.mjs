@@ -24,7 +24,7 @@ import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, 
 import { pathNote } from './lib/path-notes.mjs'
 import { fileMentions } from './lib/mentions.mjs'
 import { REPO_UNCHECKED } from './lib/delete-refusal.mjs'
-import { ADR_STATUSES, adrFiles, adrFolders, adrLocation, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
+import { ADR_STATUSES, adrFiles, adrInfo, adrFolders, adrLocation, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
 import { similarResult } from './lib/similar.mjs'
 import { isBlocked } from './lib/model.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
@@ -347,6 +347,16 @@ function adrByNumber(files, number, flag) {
   if (found.length === 0) throw new PmkitError('NOT_FOUND', `no ADR has the number ${padded}`, 'Check the number in docs/adr/; pmkit docs next-adr names the folders it reads')
   if (found.length > 1) throw new PmkitError('CONFLICT', `ADR number ${padded} is used by ${found.map((file) => file.path).join(' and ')}`, 'Rename one of them to the number docs next-adr gives; pmkit validate lists every repeated number')
   return found[0]
+}
+
+/** docs adr-get (PMK-263): the number, title, status and path of one ADR. Only reads. */
+function runAdrGet(ctx) {
+  const { trackerDir, trackerFolder } = adrPlace(ctx)
+  const adr = adrByNumber(adrFiles(adrFolders({ root: ctx.root, trackerDir, trackerFolder })), ctx.args[0], 'number')
+  const { title, status, statuses } = adrInfo(fs.readFileSync(adr.file, 'utf8'))
+  const notes = new Set(statuses.map((value) => value.toLowerCase())).size > 1 ? [`${adr.path} holds more than one status (${statuses.join(', ')}); the first is shown, and docs adr-status sets them all`] : []
+  const data = { number: adr.number, title, status, path: adr.path, ref: adr.ref, place: adr.place, notes }
+  return { data, text: fields([['number', data.number], ['title', title ?? '(no title)'], ['status', status ?? '(no status)'], ['path', data.path], ['place', data.place]]).join('\n'), notes }
 }
 
 /** docs adr-status (PMK-228): the Status line of one ADR, in the repository folder or the Local tracker's. */
@@ -1690,6 +1700,10 @@ export const COMMANDS = [
       const text = fields([['number', plan.number], ['slug', plan.slug], ['place', plan.destination], ['path', plan.path], ['tracker path', plan.docPath ?? '(none)'], ['default branch', plan.defaultBranch], ['git host', plan.gitHost]]).join('\n')
       return { data: plan, text, notes: plan.notes }
     },
+  },
+  {
+    name: 'docs adr-get', summary: 'the number, title, status and path of one ADR, in the repository folder or the Local tracker\'s; only reads', usage: '<number>', args: ['number'], flags: [], byTracker: true,
+    run: (ctx) => runAdrGet(ctx),
   },
   {
     name: 'docs adr-status', summary: 'sets the Status line of an existing ADR (accepted, deprecated, or superseded --by a newer ADR); a repository file is written without a commit, a tracker document through the tracker', usage: '<number> <accepted|deprecated|superseded> [--by number]', write: true, args: ['number', 'status'], flags: ['by'], byTracker: true,

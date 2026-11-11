@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
-import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus } from './lib/adr.mjs'
+import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrInfo } from './lib/adr.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo } from './test-helpers.mjs'
 
@@ -698,4 +698,38 @@ test('setAdrStatus changes a Status: line above the first section together with 
   // A Status: line inside a later section is not a status line.
   const later = '# T\n\n## Status\n\nAccepted\n\n## Context\n\nStatus: draft notes\n'
   assert.equal(setAdrStatus(later, 'deprecated').text, '# T\n\n## Status\n\nDeprecated\n\n## Context\n\nStatus: draft notes\n')
+})
+
+test('adrInfo reads the title and the status in every form an ADR uses, null when absent (PMK-263)', () => {
+  assert.deepEqual(adrInfo('# 4. Use X\n\nDate: 2026-11-10\n\n## Status\n\nAccepted\n\n## Context\n'), { title: '4. Use X', status: 'Accepted', statuses: ['Accepted'] })
+  assert.deepEqual(adrInfo('---\nstatus: "accepted"  # agreed\n---\n\n# Use X\n'), { title: 'Use X', status: 'accepted', statuses: ['accepted'] })
+  assert.deepEqual(adrInfo('---\ntitle: Use Y\nstatus: proposed\n---\n\nWhy.\n'), { title: 'Use Y', status: 'proposed', statuses: ['proposed'] })
+  assert.deepEqual(adrInfo('# T\r\n\r\n**Status:** Deprecated\r\n'), { title: 'T', status: 'Deprecated', statuses: ['Deprecated'] })
+  assert.deepEqual(adrInfo('Why.\n'), { title: null, status: null, statuses: [] })
+  // Two forms: the first (front matter, then the line above the first section, then the section) wins and both are listed.
+  assert.deepEqual(adrInfo('---\nstatus: accepted\n---\n\n# T\n\n## Status\n\nDeprecated\n'), { title: 'T', status: 'accepted', statuses: ['accepted', 'Deprecated'] })
+  // A Status: line in a later section is not the status.
+  assert.equal(adrInfo('# T\n\n## Context\n\nStatus: notes\n').status, null)
+})
+
+test('docs adr-get shows number, title, status and path, notes a disagreement and writes nothing (PMK-263)', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0004-use-x.md', '---\nstatus: accepted\n---\n\n# 4. Use X\n\n## Status\n\nDeprecated\n')
+  writeAdr(root, '.issues/docs/adr/0005-use-y.md', '# Use Y\n\nStatus: proposed\n')
+  const run1 = async (...args) => {
+    const result = await run(['docs', 'adr-get', ...args, '--json'], { cwd: root, env: childEnv() })
+    return { code: result.code, data: result.stdout ? JSON.parse(result.stdout) : null, stderr: result.stderr }
+  }
+  const one = await run1('4')
+  assert.equal(one.code, 0, one.stderr)
+  assert.deepEqual({ ...one.data, notes: undefined }, { number: '0004', title: '4. Use X', status: 'accepted', path: 'docs/adr/0004-use-x.md', ref: 'docs/adr/0004-use-x.md', place: 'repo', notes: undefined })
+  assert.equal(one.data.notes.length, 1)
+  assert.match(one.data.notes[0], /accepted.*Deprecated/)
+  const two = await run1('0005')
+  assert.deepEqual([two.data.title, two.data.status, two.data.place, two.data.path, two.data.notes], ['Use Y', 'proposed', 'tracker', '.issues/docs/adr/0005-use-y.md', []])
+  assert.equal(JSON.parse((await run(['docs', 'adr-get', '9', '--json'], { cwd: root, env: childEnv() })).stdout).error.code, 'NOT_FOUND')
+  assert.equal((await run(['docs', 'adr-get', 'x', '--json'], { cwd: root, env: childEnv() })).code, 2)
+  const status = spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).stdout
+  assert.doesNotMatch(status, /^ M/m)
+  assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0004-use-x.md'), 'utf8').startsWith('---\nstatus: accepted'), true)
 })
