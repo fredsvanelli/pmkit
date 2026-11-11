@@ -270,7 +270,8 @@ export function fakeLinearIssues({
   const releaseRecords = seededReleases.map((item) => ({ version: null, stage: 'planned', targetDate: null, completedAt: null, description: null, ...item }))
   const releaseNode = (item) => ({
     id: item.id, name: item.name, version: item.version, description: item.description, targetDate: item.targetDate, completedAt: item.completedAt,
-    stage: { type: item.stage }, pipeline: { id: item.pipeline },
+    stage: { type: item.stage },
+    pipeline: { id: item.pipeline, teams: { nodes: (pipelines.find((pipe) => pipe.id === item.pipeline)?.teams ?? []).map((id) => ({ key: teams.find((team) => team.id === id)?.key ?? id })) } },
   })
   const requireRelease = (id) => releaseRecords.find((item) => item.id === id) ?? (() => { throw new FakeInputError('Could not find referenced Release.') })()
   if (labels === ACME_LABELS) labels = [...ACME_LABELS]
@@ -810,6 +811,9 @@ export function fakeLinearIssues({
     if (!found) throw new FakeInputError('Entity not found: Release')
     return { release: releaseNode(found) }
   })
+  routes.PmkitIssuesReleases = query('PmkitIssuesReleases', ({ ids = [], first = 50 }) => ({
+    issues: connection(records.filter((record) => ids.includes(record.id)).map((record) => ({ id: record.id, releases: connection(record.releaseIds.map((rid) => releaseNode(requireRelease(rid))), nestedPage) })), first),
+  }))
   routes.PmkitIssueReleases = query('PmkitIssueReleases', ({ id, first, after }) => ({
     issue: { releases: connection(requireIssue(id).releaseIds.map((rid) => releaseNode(requireRelease(rid))), first, after) },
   }))

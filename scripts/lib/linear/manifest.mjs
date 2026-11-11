@@ -51,12 +51,12 @@ function sharedScale(teams) {
   return { unit, scale }
 }
 
+export const RELEASES_HINT = 'Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings'
+
 /**
  * Linear's own answer for the capabilities that depend on a setting or the plan, before the served-by rule.
  * An absent answer carries the hint that names the plan or the setting.
  */
-export const RELEASES_HINT = 'Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings'
-
 function workspaceAnswers(raw) {
   const business = BUSINESS_PLANS.includes(raw.workspace.plan)
   const { releasesEnabled, customersEnabled } = raw.flags

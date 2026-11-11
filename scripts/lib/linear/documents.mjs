@@ -174,14 +174,20 @@ query PmkitCustomViewIssues($id: String!, $first: Int!, $after: String, $sort: [
   customView(id: $id) { issues(first: $first, after: $after, sort: $sort) { nodes { ...PmkitIssueFields } ${PAGE_INFO} } }
 }`
 
-// PMK-246: Linear releases. A release node carries its stage type, so pmkit can leave canceled releases out.
-const RELEASE_FIELDS = 'id name version description targetDate completedAt stage { type } pipeline { id }'
+// PMK-246: Linear releases. A release node carries its stage type, so pmkit can leave canceled releases out, and its pipeline's
+// teams, so a release of another team is refused. ponytail: 250 teams per pipeline is read as all of them.
+const RELEASE_FIELDS = 'id name version description targetDate completedAt stage { type } pipeline { id teams(first: 250) { nodes { key } } }'
 
 export const RELEASES_QUERY = `query PmkitReleases($filter: ReleaseFilter, $first: Int!, $after: String) {
   releases(filter: $filter, first: $first, after: $after) { nodes { ${RELEASE_FIELDS} } ${PAGE_INFO} }
 }`
 
 export const RELEASE_QUERY = `query PmkitRelease($id: String!) { release(id: $id) { ${RELEASE_FIELDS} } }`
+
+// The releases of up to 100 issues in one request (review of PMK-246). An issue whose list has a next page is read again alone.
+export const ISSUES_RELEASES_QUERY = `query PmkitIssuesReleases($ids: [ID!], $first: Int!) {
+  issues(filter: { id: { in: $ids } }, includeArchived: true, first: $first) { nodes { id releases(first: ${NESTED}) { nodes { ${RELEASE_FIELDS} } ${PAGE_INFO} } } }
+}`
 
 export const ISSUE_RELEASES_QUERY = `query PmkitIssueReleases($id: String!, $first: Int!, $after: String) {
   issue(id: $id) { releases(first: $first, after: $after) { nodes { ${RELEASE_FIELDS} } ${PAGE_INFO} } }

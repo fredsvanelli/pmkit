@@ -1005,7 +1005,7 @@ test('releases are listed by team, read by id, and an issue releases change with
   const data = async (query, variables) => JSON.parse(await (await post(fetch, query, variables)).text())
   const listed = await data(RELEASES_QUERY, { first: 50, filter: { pipeline: { teams: { some: { key: { eq: 'ACME' } } } } } })
   assert.deepEqual(listed.data.releases.nodes.map((node) => node.id), ['rel-1', 'rel-2'])
-  assert.deepEqual(listed.data.releases.nodes[0], { id: 'rel-1', name: 'One', version: '1.0', description: null, targetDate: null, completedAt: '2026-10-01T00:00:00.000Z', stage: { type: 'completed' }, pipeline: { id: 'pipe-acme' } })
+  assert.deepEqual(listed.data.releases.nodes[0], { id: 'rel-1', name: 'One', version: '1.0', description: null, targetDate: null, completedAt: '2026-10-01T00:00:00.000Z', stage: { type: 'completed' }, pipeline: { id: 'pipe-acme', teams: { nodes: [{ key: 'ACME' }] } } })
   assert.equal((await data(RELEASES_QUERY, { first: 50 })).data.releases.nodes.length, 3)
   assert.equal((await data(RELEASE_QUERY, { id: 'rel-2' })).data.release.targetDate, '2026-12-01')
   assert.equal((await data(RELEASE_QUERY, { id: 'nope' })).errors[0].message, 'Entity not found: Release')

@@ -86,8 +86,9 @@ const entryOf = (issue, doneAt) => ({
  * @param {{issue: object, doneAt: string | null}[]} input.candidates
  * @param {string[]} input.types the tracker's types, in order
  * @param {object[]} [input.problems=[]]
+ * @param {boolean} [input.truncated=false] the tracker cut the read, so issues may be missing; `complete` is then false
  */
-export function buildNotes({ choice, candidates, types, problems = [] }) {
+export function buildNotes({ choice, candidates, types, problems = [], truncated = false }) {
   const excluded = { open: 0, canceled: 0, chore: 0, after_close: 0 }
   const listed = []
   for (const candidate of [...candidates].sort((a, b) => byCreation(a.issue, b.issue))) {
@@ -105,5 +106,5 @@ export function buildNotes({ choice, candidates, types, problems = [] }) {
     if (members.length > 0) groups.push({ type, issues: members.map(({ issue, doneAt }) => entryOf(issue, doneAt)) })
   }
   const { basis, reason, draft, source, period, skipped } = choice
-  return { basis, reason, draft, source, period, groups, counts: { done: listed.length, excluded }, skipped, problems }
+  return { basis, reason, draft, source, period, groups, counts: { done: listed.length, excluded }, skipped, problems, truncated, complete: !truncated && problems.length === 0 }
 }

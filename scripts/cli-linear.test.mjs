@@ -2200,4 +2200,17 @@ test('release-notes --release reads a Linear release', async () => {
   assert.equal(data.basis, 'release')
   assert.match(JSON.stringify(data), /Shipped/)
   assert.doesNotMatch(JSON.stringify(data), /"Open"/)
+  assert.deepEqual(data.groups.flatMap((group) => group.issues.map((issue) => issue.release)), [RA])
+  assert.deepEqual([data.truncated, data.complete], [false, true])
+})
+
+test('release-notes --release marks a cut read incomplete in the JSON, the text and a warning', async () => {
+  const { fake, fetch } = withReleases()
+  for (let n = 0; n < 1001; n += 1) fake.seed({ title: `Issue ${n}`, releaseIds: [RA] })
+  const result = await linear(fetch, ['release-notes', '--release', RA, '--json'])
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.deepEqual([JSON.parse(result.stdout).truncated, JSON.parse(result.stdout).complete], [true, false])
+  assert.match(result.stderr, /Linear has more issues than the 1000 pmkit read, so the notes may be missing issues/)
+  const text = await linear(fetch, ['release-notes', '--release', RA])
+  assert.match(text.stdout, /\nincomplete: Linear has more issues than the 1000 pmkit read, so the notes may be missing issues\n/)
 })

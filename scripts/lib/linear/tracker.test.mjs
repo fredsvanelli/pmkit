@@ -1673,3 +1673,32 @@ test('releaseIssues reads the release first, so a canceled one is NOT_FOUND', as
   assert.deepEqual((await linear.releaseIssues(REL.two)).map((issue) => issue.title), ['In'])
   await assert.rejects(linear.releaseIssues(REL.gone), { code: 'NOT_FOUND' })
 })
+
+// PMK-246 review: the release comes back wherever an issue does, read in one batch per page.
+test('searchIssues and an update without --release show the release, with one batched read per page', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'One', releaseIds: [REL.two] })
+  seed(fake, { title: 'Two', releaseIds: [REL.two, REL.ten] })
+  seed(fake, { title: 'None' })
+  const found = await linear.searchIssues({})
+  assert.deepEqual(found.issues.map((issue) => [issue.id, issue.release ?? null, issue.releases ?? null]), [['ACME-1', REL.two, null], ['ACME-2', null, [REL.two, REL.ten].sort()], ['ACME-3', null, null]])
+  assert.equal(callsOf(fetch, 'PmkitIssuesReleases'), 1)
+  const updated = await linear.updateIssue('ACME-1', { title: 'Renamed' }, 'user-1')
+  assert.equal(updated.before.release, REL.two)
+  assert.equal(updated.after.release, REL.two)
+})
+
+test('a release of another team is refused for get and for an issue', async () => {
+  const { tracker: linear, fake, fetch } = releaseSetup()
+  seed(fake, { title: 'One' })
+  const refusal = { code: 'INVALID_INPUT', message: `release ${REL.away} is not in a release pipeline of team ACME`, nextStep: 'Pick a release from pmkit release list' }
+  await assert.rejects(linear.getRelease(REL.away), refusal)
+  await assert.rejects(linear.updateIssue('ACME-1', { release: REL.away }, 'user-1', { dryRun: true }), refusal)
+  assert.equal(mutationsIn(fetch), 0)
+})
+
+test('an unknown release on an issue in two releases is NOT_FOUND, not the count', async () => {
+  const { tracker: linear, fake } = releaseSetup()
+  seed(fake, { title: 'Two', releaseIds: [REL.two, REL.ten] })
+  await assert.rejects(linear.updateIssue('ACME-1', { release: '00000000-0000-4000-8000-0000000000ff' }, 'user-1', { dryRun: true }), { code: 'NOT_FOUND' })
+})

@@ -56,6 +56,10 @@ export function releaseOperations({ client, config }) {
     }
     if (!node) throw missing()
     if (canceled(node)) throw new PmkitError('NOT_FOUND', `release ${id} was canceled in Linear`, 'pmkit release list')
+    // Refused like a milestone of another project: the same words for every issue, so a bulk change fails once.
+    if (!(node.pipeline?.teams?.nodes ?? []).some((item) => item.key === team)) {
+      throw new PmkitError('INVALID_INPUT', `release ${id} is not in a release pipeline of team ${team}`, 'Pick a release from pmkit release list')
+    }
     return node
   }
 

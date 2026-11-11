@@ -69,6 +69,7 @@ export function viewOperations({ client, config, issues }) {
     const serverLimit = (given.sort ?? 'created') === 'created' ? given.limit : undefined
     const { nodes, hasMore } = await client.paginate(CUSTOM_VIEW_ISSUES_QUERY, { id: view.id, sort: [{ createdAt: { order: 'Ascending' } }] }, { select: (data) => data.customView.issues, pageSize: SEARCH_PAGE, limit: serverLimit })
     for (const node of nodes) await issues.completeNested(node)
+    await issues.attachReleasesTo(nodes)
     const mapping = await issues.contextFor(nodes)
     const rows = nodes.map((node) => ({ issue: toIssue(node, mapping), blocked: blockedOpen(node, mapping) })).filter((row) => row.issue !== null)
     // With a limit sent to Linear, hasMore only says the limit cut the read, which is not an incomplete list.

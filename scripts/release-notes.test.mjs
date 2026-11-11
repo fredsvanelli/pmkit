@@ -153,9 +153,17 @@ test('no done issue gives no groups', () => {
 test('the result keeps the choice fields and the problems in order', () => {
   const problems = [{ id: 'X', code: 'NOT_FOUND', message: 'gone' }]
   const result = buildNotes({ choice, candidates: [], types, problems })
-  assert.deepEqual(Object.keys(result), ['basis', 'reason', 'draft', 'source', 'period', 'groups', 'counts', 'skipped', 'problems'])
+  assert.deepEqual(Object.keys(result), ['basis', 'reason', 'draft', 'source', 'period', 'groups', 'counts', 'skipped', 'problems', 'truncated', 'complete'])
   assert.deepEqual(result.problems, problems)
   assert.deepEqual(buildNotes({ choice, candidates: [], types }).problems, [])
+})
+
+test('a cut read or a problem makes the notes incomplete, and the text says a cut read', () => {
+  assert.deepEqual(['truncated', 'complete'].map((key) => buildNotes({ choice, candidates: [], types })[key]), [false, true])
+  assert.equal(buildNotes({ choice, candidates: [], types, problems: [{ id: 'X', code: 'NOT_FOUND', message: 'gone' }] }).complete, false)
+  const cut = buildNotes({ choice, candidates: [], types, truncated: true })
+  assert.deepEqual([cut.truncated, cut.complete], [true, false])
+  assert.ok(releaseNotesText(cut).split('\n').includes('incomplete: Linear has more issues than the 1000 pmkit read, so the notes may be missing issues'))
 })
 
 const textOf = (selector, candidates = [], extra = {}) => releaseNotesText(buildNotes({ choice: chooseBasis({ ...base, selector, ...extra }), candidates, types }))

@@ -92,7 +92,9 @@ exit 0
       "reason": "no_closed_sprint"
     }
   ],
-  "problems": []
+  "problems": [],
+  "truncated": false,
+  "complete": true
 }
 --- stderr
 (empty)

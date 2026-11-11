@@ -273,6 +273,7 @@ export function releaseNotesText(result) {
     lines.push(`${phrases}, so the notes use ${used}`)
   }
   if (result.draft) lines.push(result.basis === 'release' ? `draft: release ${result.source.id} is not released yet` : `draft: sprint ${result.source.id} is not closed`)
+  if (result.truncated) lines.push('incomplete: Linear has more issues than the 1000 pmkit read, so the notes may be missing issues')
   lines.push('')
   if (result.groups.length === 0) lines.push('no done issues')
   const withDone = result.basis !== 'release'
