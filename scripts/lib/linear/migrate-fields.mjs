@@ -332,8 +332,8 @@ export function mapExport(snapshot, target) {
   const milestones = losses.get('milestones')
   if (milestones) milestones.why = `${plural(milestones.count, 'record')} lose their milestone; pmkit cannot create Linear milestones`
   const releases = losses.get('releases')
-  if (releases) releases.why = `${plural(releases.count, 'issue')} lose their release; pmkit has no Linear release mapping`
-  else if (out.releases > 0) losses.set('releases', out.releases, [], `${plural(out.releases, 'release')} stay in .issues/releases/; pmkit has no Linear release mapping`)
+  if (releases) releases.why = `${plural(releases.count, 'issue')} lose their release; pmkit does not carry releases into Linear`
+  else if (out.releases > 0) losses.set('releases', out.releases, [], `${plural(out.releases, 'release')} stay in .issues/releases/; pmkit does not carry releases into Linear`)
   losses.set('time logs', out.timeLogs ?? 0, [], `${plural(out.timeLogs ?? 0, 'time log')} stay in events.jsonl; Linear has no time tracking`)
   losses.set('documents', out.documents ?? 0, [], `${plural(out.documents ?? 0, 'document')} stay in .issues/docs/`)
   losses.set('views', out.views ?? 0, [], `${plural(out.views ?? 0, 'view')} stay in .issues/views/; pmkit does not create Linear views`)

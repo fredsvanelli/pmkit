@@ -88,8 +88,8 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `issues get <id>` | shows one issue, with `--comments` and `--history` |
 | `issues dependencies <id>` | shows the blocker chain, the hierarchy and the critical path of an issue or an epic; only reads |
 | `issues similar <id>` | ranks issues that read like this one by text similarity (TF-IDF cosine over title, description and acceptance criteria), done issues by default (`--category`, `--limit`, default 5), with their estimate, a score and the shared terms (a hit with no estimate goes in `unestimated`, not in `similar`; `--limit` caps `similar` and `unestimated` each, so an unestimated hit never takes a place in `similar`). `complete` is `false`, with a warning, when an issue file could not be read, Linear has more issues than pmkit read, or the issue has no words to compare (`reason: no_comparable_text`): an empty list is then "not verified", never "none". Only reads |
-| `issues create` | creates an issue; takes `--milestone` and `--release`; on Linear `--milestone` needs `--parent <epic>` and a milestone of that epic's project |
-| `issues update <id>` | edits fields and acceptance criteria; `--milestone`, `--release` and `--branch` take `none` to clear; `--add-doc <path>` and `--remove-doc <path>` (repeatable) add a document or ADR to the issue's `docs` list or take it out, and Linear answers `NOT_SUPPORTED` because its issues have no such field |
+| `issues create` | creates an issue; takes `--milestone` and `--release`; on Linear `--milestone` needs `--parent <epic>` and a milestone of that epic's project, and `--release` is refused (set it with `issues update`) |
+| `issues update <id>` | edits fields and acceptance criteria; `--milestone`, `--release` and `--branch` take `none` to clear; on Linear `--release` takes a release id from `release list`, swaps the issue's one release, and refuses an issue in two or more releases; `--add-doc <path>` and `--remove-doc <path>` (repeatable) add a document or ADR to the issue's `docs` list or take it out, and Linear answers `NOT_SUPPORTED` because its issues have no such field |
 | `issues move <id> <category>` | changes status by category |
 | `issues assign <id> <member\|me\|none>` | assigns an issue; `me` is the actor |
 | `issues delegate <id> <agent:name>` | hands an issue to an agent with a delegation comment: on Local the agent becomes the assignee and runs locally, on Linear (`agent:<Linear user id>`) it becomes the delegate and Linear runs it; `--instructions-file` holds the instructions |
@@ -123,7 +123,7 @@ With `auto_commit: true` in `.issues/config.yaml`, each write commits the files 
 | `milestone list` | lists milestones, by due date |
 | `milestone get <id>` | shows one milestone |
 | `milestone create <id>` | creates a milestone; takes `--name` and `--due` |
-| `release list` | lists releases, oldest version first; `--state planned\|released` |
+| `release list` | lists releases, oldest version first; `--state planned\|released`; on Linear the releases of the scope team's pipelines, canceled ones left out, with the release UUID as the id |
 | `release get <id>` | shows one release |
 | `release issues <id> [--archived]` | lists the issues of a release; `--archived` keeps the archived ones |
 | `release create <id>` | creates a release; takes `--name`, `--tag` and `--target` |

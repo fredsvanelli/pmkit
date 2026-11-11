@@ -1,6 +1,7 @@
 // A Linear issue as a pmkit issue: ids, priorities and the acceptance criteria section of the description.
 // See docs/superpowers/specs/2026-10-27-pmk-35-linear-issues-relations-search-design.md, "The issue model".
 
+import { issueReleaseFields } from './releases.mjs'
 import { compareIds } from '../ids.mjs'
 import { TERMINAL } from '../model.mjs'
 import { categoryOfType, estimateScale } from './discovery.mjs'
@@ -135,6 +136,10 @@ export function toIssue(node, context) {
   if (node.parent?.identifier) issue.parent = node.parent.identifier
   else if (node.project) issue.parent = epicId(node.project)
   if (node.projectMilestone?.id) issue.milestone = node.projectMilestone.id
+  // PMK-246: present only when the issue's releases were read (a workspace with releases on).
+  if (node.releases) Object.assign(issue, issueReleaseFields(node.releases.nodes))
+  // A release read that failed: the release is unknown, never "none" (review of PR #208).
+  else if (node.releasesUnread) issue.releaseUnknown = node.releasesUnread.message
   if (node.cycle) issue.sprint = String(node.cycle.number)
   issue.blockedBy = identifiers(inverse.filter((item) => item.type === 'blocks').map((item) => item.issue.identifier))
   issue.blocks = identifiers(out.filter((item) => item.type === 'blocks').map((item) => item.relatedIssue.identifier))

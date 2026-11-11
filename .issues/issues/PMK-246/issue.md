@@ -2,13 +2,14 @@
 id: PMK-246
 title: Map Linear releases
 type: feature
-status: backlog
+status: in_review
 priority: low
 estimate: 5
 assignee: fred
 parent: EPC-5
+branch: pmk-246-map-linear-releases
 created: 2026-11-10T19:28:14.537Z
-updated: 2026-11-10T21:22:26Z
+updated: 2026-11-11T01:06:28Z
 ---
 
 ## Description
@@ -38,8 +39,8 @@ PMK-226 added the Linear milestone to `issues bulk` but left the Linear release 
 
 ## Acceptance criteria
 
-- [ ] `release list` on a Linear workspace with releases enabled lists its releases
-- [ ] `issues get` on a Linear issue shows its release
-- [ ] `issues update --release` and `issues bulk` set the release of Linear issues
-- [ ] On a Linear workspace with releases turned off, those commands refuse with a message that says releases are off
+- [x] `release list` on a Linear workspace with releases enabled lists its releases
+- [x] `issues get` on a Linear issue shows its release
+- [x] `issues update --release` and `issues bulk` set the release of Linear issues
+- [x] On a Linear workspace with releases turned off, those commands refuse with a message that says releases are off
 - [ ] The mapping was checked once against a real Linear workspace with releases, and the result is recorded next to the Linear adapter

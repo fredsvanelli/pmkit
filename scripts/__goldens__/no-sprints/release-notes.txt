@@ -67,7 +67,9 @@ exit 0
       "reason": "no_closed_sprint"
     }
   ],
-  "problems": []
+  "problems": [],
+  "truncated": false,
+  "complete": true
 }
 --- stderr
 (empty)
@@ -136,7 +138,9 @@ exit 0
     }
   },
   "skipped": [],
-  "problems": []
+  "problems": [],
+  "truncated": false,
+  "complete": true
 }
 --- stderr
 (empty)

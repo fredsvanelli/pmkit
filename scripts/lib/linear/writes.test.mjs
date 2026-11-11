@@ -108,8 +108,15 @@ test('a milestone is written by create and update with the milestone node, and c
   assert.equal('NOT_EPICS' in writes, false)
 })
 
-test('a release is NOT_SUPPORTED and says Linear releases are not mapped', () => {
-  assert.throws(() => toInput({ release: '1.0' }, update), { code: 'NOT_SUPPORTED', message: 'Linear releases are not mapped yet' })
+// PMK-246: one release per issue. The caller resolves the release and refuses an issue in two or more.
+const rel = (id, type = 'planned') => ({ id, stage: { type } })
+test('a release swaps the current one, leaves a canceled one, and needs a resolved release', () => {
+  const withRelease = (nodes) => ({ ...update, beforeNode: node({ releases: { nodes } }) })
+  assert.deepEqual(toInput({ release: 'r2' }, { ...withRelease([rel('r1')]), releaseNode: rel('r2') }), { addedReleaseIds: ['r2'], removedReleaseIds: ['r1'] })
+  assert.deepEqual(toInput({ release: 'r2' }, { ...withRelease([rel('r0', 'canceled')]), releaseNode: rel('r2') }), { addedReleaseIds: ['r2'] })
+  assert.deepEqual(toInput({ release: 'r1' }, { ...withRelease([rel('r1')]), releaseNode: rel('r1') }), {})
+  assert.deepEqual(toInput({ release: null }, withRelease([rel('r1')])), { removedReleaseIds: ['r1'] })
+  assert.throws(() => toInput({ release: 'r2' }, withRelease([])), { code: 'INVALID_INPUT' })
 })
 
 test('applyInput shows the milestone a projectMilestoneId sets', () => {
@@ -156,9 +163,14 @@ test('description and criteria rebuild the whole description; the heading is ref
   assert.throws(() => toInput({ acceptanceCriteria: [{ text: '' }] }, update), { code: 'INVALID_INPUT' })
 })
 
-test('release takes only null, and milestone null clears the milestone', () => {
+test('create takes no release, and milestone null clears the milestone', () => {
   assert.deepEqual(toInput({ milestone: null, release: null }, update), { projectMilestoneId: null })
-  assert.throws(() => toInput({ release: 'x' }, update), { code: 'NOT_SUPPORTED' })
+  assert.throws(() => toInput({ title: 'T', release: 'x' }, { mode: 'create', team: raw.teams[0], context }), { code: 'NOT_SUPPORTED', message: 'issues create does not set a Linear release' })
+})
+
+test('applyInput shows the release an addedReleaseIds sets and drops the removed one', () => {
+  const next = applyInput(node({ releases: { nodes: [rel('r1'), rel('r0', 'canceled')] } }), { addedReleaseIds: ['r2'], removedReleaseIds: ['r1'] }, context, { release: rel('r2') })
+  assert.deepEqual(next.releases.nodes.map((item) => item.id), ['r0', 'r2'])
 })
 
 const cycleRaw = await fakeRaw({ labels: LABELS, teams: [teamRecord({ cyclesEnabled: true })] })

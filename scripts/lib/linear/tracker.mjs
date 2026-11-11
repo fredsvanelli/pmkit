@@ -20,6 +20,7 @@ import { linearDescription } from './mappings.mjs'
 import { projectOperations } from './project-ops.mjs'
 import { goalOperations } from './goal-ops.mjs'
 import { relationOperations } from './relation-ops.mjs'
+import { releaseOperations } from './releases.mjs'
 import { buildLinearCapabilities } from './manifest.mjs'
 import { createCustomers } from './customers.mjs'
 import { createTriage } from './triage.mjs'
@@ -170,12 +171,22 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     })
 
   // Release reads on a workspace without releases (the Free plan) answer with the empty shape (a get is NOT_FOUND), and the command prints the manifest's note. No release query is sent.
+  // With releases on, they read Linear releases (PMK-246).
+  const releases = releaseOperations({ client, config })
   const releasesEntry = async () => (await capabilities()).capabilities.find((c) => c.id === 'releases')
+  // A release's issues are a search with the release filter (PMK-246-2). A cut read refuses rather than answer with part of them.
+  // `issues` is defined below; the call happens later, so the reference is safe.
+  const releaseIssues = async (id, { archived = false } = {}) => {
+    await releases.getRelease(id)
+    const found = await issues.searchIssues({ release: id, ...(archived ? { archived: true } : {}) })
+    if (found.hasMore) throw new PmkitError('UPSTREAM', `release ${id} has more issues than pmkit reads at once, and pmkit does not answer with part of them`, 'Narrow the search with pmkit issues list')
+    return found.issues
+  }
   const releaseRead = (operation, empty) => {
-    const unimplemented = stub(operation)
+    const read = operation === 'releaseIssues' ? releaseIssues : (releases[operation] ?? stub(operation))
     return guarded(async (...args) => {
       const entry = await releasesEntry()
-      return entry?.path === 'absent' ? empty(entry, ...args) : unimplemented(...args)
+      return entry?.path === 'absent' ? empty(entry, ...args) : read(...args)
     })
   }
   const releaseReads = {
@@ -198,7 +209,7 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
     })
   }
   const goalReads = Object.fromEntries(['listGoals', 'getGoal', 'goalProgress'].map((operation) => [operation, goalRead(operation)]))
-  const issues = issueOperations({ client, discovery, config, now, uuid, resolveEpic: projects.resolveEpic, resolveMilestone: projects.resolveMilestone })
+  const issues = issueOperations({ client, discovery, config, now, uuid, resolveEpic: projects.resolveEpic, resolveMilestone: projects.resolveMilestone, resolveRelease: releases.resolveRelease })
   const relations = relationOperations({ client, ops: issues, uuid })
   const history = historyOperations({ client, ops: issues })
   const cycles = cycleOperations({ client, discovery, issues, config })
@@ -260,5 +271,5 @@ export function createLinearTracker(config, { env, now = () => new Date(), fetch
   }
   const customerOps = Object.fromEntries(Object.keys(customers.contract).map((operation) => [operation, customerOp(operation)]))
   const implemented = { discover, capabilities, ...releaseReads, ...goalReads, ...customerOps, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
-  return { ...Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)])), triage, customers, migration: { client, discovery } }
+  return { ...Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)])), triage, customers, takeNotes: issues.takeNotes, migration: { client, discovery } }
 }

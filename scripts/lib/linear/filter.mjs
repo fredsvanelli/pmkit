@@ -5,8 +5,8 @@ import { PmkitError } from '../errors.mjs'
 import { issueComparator } from '../issue-filter.mjs'
 import { cycleKey, cyclesOff } from './cycles.mjs'
 import { isIssueId, issueKey, stateCategory } from './issues.mjs'
+import { releasesOff } from './releases.mjs'
 
-const notSupported = (message) => new PmkitError('NOT_SUPPORTED', message, 'Leave this filter out on Linear')
 
 /**
  * The issue clause of a sprint value. With cycles off no issue is in a cycle, so none matches every issue (no clause)
@@ -28,7 +28,8 @@ function cycleClause(sprint, context) {
  * `context.epicProject` is the project node of an epic filter. `serverLimit` is set only when Linear's order is the final order. `empty` says no state matches `categories`, so no request is needed.
  */
 export function translateFilter(filter, context) {
-  if (filter.release !== undefined) throw notSupported('Linear releases are not mapped yet, so --release does not work on Linear')
+  // PMK-246: an issue matches when the release is any of its releases. With releases off, no issue has one.
+  if (filter.release !== undefined && context.raw.flags?.releasesEnabled !== true) throw releasesOff()
   const and = []
   const clientSteps = []
   let empty = false
@@ -62,6 +63,7 @@ export function translateFilter(filter, context) {
     const clause = cycleClause(filter.sprint, context)
     if (clause !== null) and.push(clause)
   }
+  if (filter.release !== undefined) and.push({ releases: { some: { id: { eq: filter.release } } } })
   if (filter.blocked === true) and.push({ hasBlockedByRelations: { eq: true } })
   if (filter.blocked !== undefined) clientSteps.push('blocked')
   if (filter.updatedBefore !== undefined) and.push({ updatedAt: { lt: filter.updatedBefore } })

@@ -13,9 +13,6 @@ const invalid = (message, nextStep, details) => new PmkitError('INVALID_INPUT', 
 // A name discovery may not know yet. The caller refreshes the discovery once and builds the input again.
 const stale = (message, nextStep) => invalid(message, nextStep, { stale: true })
 const LABEL_STEP = 'Create the label in Linear, then run pmkit discover'
-const LATER = {
-  release: 'Linear releases are not mapped yet',
-}
 // A milestone is written by update and by create under an epic (the caller resolves it and checks its project).
 
 /** The raw team a new issue goes to: the scope team, else the only team of the workspace. */
@@ -136,9 +133,10 @@ export function parentInput({ parentNode, epicNode } = {}) {
 /**
  * The Linear input of a patch. mode is create or update. beforeNode is the issue's node (update), team the raw team (create),
  * parentNode the node of patch.parent when it is an issue, epicNode the project node when it is an epic,
- * cycleNode the { id, number } of the cycle patch.sprint names (the caller resolves it), milestoneNode the raw project milestone patch.milestone names. Throws before any request; a name discovery may not know yet throws with details.stale.
+ * cycleNode the { id, number } of the cycle patch.sprint names (the caller resolves it), milestoneNode the raw project milestone patch.milestone names,
+ * releaseNode the raw release patch.release names (beforeNode.releases holds the issue's releases). Throws before any request; a name discovery may not know yet throws with details.stale.
  */
-export function toInput(patch, { mode, beforeNode, team: givenTeam, context, parentNode, epicNode, cycleNode, milestoneNode }) {
+export function toInput(patch, { mode, beforeNode, team: givenTeam, context, parentNode, epicNode, cycleNode, milestoneNode, releaseNode }) {
   checkKeys(patch, mode === 'create' ? CREATE_KEYS : UPDATE_KEYS)
   const team = givenTeam ?? teamOf(context, beforeNode?.team?.id)
   const input = mode === 'create' ? { teamId: team.id } : {}
@@ -195,17 +193,36 @@ export function toInput(patch, { mode, beforeNode, team: givenTeam, context, par
   }
   // PMK-228: a Linear issue has no list field for documents, so the comment record-decision posts stays the link.
   if (patch.docs !== undefined) throw new PmkitError('NOT_SUPPORTED', 'Linear issues have no docs field', 'The comment on the issue stays the link to the document')
-  for (const key of Object.keys(LATER)) {
-    if (patch[key] !== undefined && patch[key] !== null) throw new PmkitError('NOT_SUPPORTED', LATER[key], `Leave ${key} out on Linear`)
+  if (patch.release !== undefined) Object.assign(input, releaseInput(patch.release, { mode, beforeNode, releaseNode }))
+  return input
+}
+
+const activeReleaseIds = (node) => (node?.releases?.nodes ?? []).filter((item) => item.stage?.type !== 'canceled').map((item) => item.id)
+
+/**
+ * The release input of a patch (PMK-246, one release per issue): add the new release and remove the current one. The caller has
+ * refused an issue in two or more releases. A canceled release is left where it is. Create takes no release.
+ */
+function releaseInput(release, { mode, beforeNode, releaseNode }) {
+  if (mode === 'create') {
+    if (release === null) return {}
+    throw new PmkitError('NOT_SUPPORTED', 'issues create does not set a Linear release', 'Create the issue, then run pmkit issues update <id> --release <release>')
   }
+  if (release !== null && !releaseNode) throw invalid(`release ${release} was not resolved to a Linear release`)
+  const target = release === null ? null : releaseNode.id
+  const current = activeReleaseIds(beforeNode)
+  const input = {}
+  if (target !== null && !current.includes(target)) input.addedReleaseIds = [target]
+  const removed = current.filter((id) => id !== target)
+  if (removed.length > 0) input.removedReleaseIds = removed
   return input
 }
 
 /**
  * The node with a Linear input applied, so toIssue of it is the after of a dry run. `parent` is the parent's identifier for a parentId,
- * `project` the project reference for a projectId, `cycle` the { id, number } for a cycleId.
+ * `project` the project reference for a projectId, `cycle` the { id, number } for a cycleId, `release` the release node for addedReleaseIds.
  */
-export function applyInput(node, input, context, { parent, project, cycle } = {}) {
+export function applyInput(node, input, context, { parent, project, cycle, release } = {}) {
   const next = structuredClone(node)
   if (input.title !== undefined) next.title = input.title
   if (input.description !== undefined) next.description = input.description
@@ -229,6 +246,10 @@ export function applyInput(node, input, context, { parent, project, cycle } = {}
   if (input.cycleId !== undefined) next.cycle = input.cycleId === null ? null : { id: cycle.id, number: cycle.number }
   if (input.projectId !== undefined) next.project = input.projectId === null ? null : project
   if (input.projectMilestoneId !== undefined) next.projectMilestone = input.projectMilestoneId === null ? null : { id: input.projectMilestoneId }
+  if (input.addedReleaseIds !== undefined || input.removedReleaseIds !== undefined) {
+    const kept = (next.releases?.nodes ?? []).filter((item) => !(input.removedReleaseIds ?? []).includes(item.id))
+    next.releases = { nodes: [...kept, ...(input.addedReleaseIds ? [release] : [])] }
+  }
   return next
 }
 

@@ -12,7 +12,7 @@ Arguments: `$ARGUMENTS`
 
 - `idea or title` (optional): what the issue is about, from a title to a vague idea of a feature. When it is empty, ask for it.
 
-The command always refines the idea into a full ticket before it creates anything. It takes the fields the user gave in the request (type, priority, estimate, assignee, labels, parent, sprint, due date, milestone, release; on Linear a milestone needs `--parent <epic>` and must belong to that epic's project, so ask for the epic or leave the milestone out), and suggests a type, priority, estimate and parent when the user gave none. It never asks for a field the user left out on purpose.
+The command always refines the idea into a full ticket before it creates anything. It takes the fields the user gave in the request (type, priority, estimate, assignee, labels, parent, sprint, due date, milestone, release; on Linear a milestone needs `--parent <epic>` and must belong to that epic's project, so ask for the epic or leave the milestone out; on Linear `--release` is refused, so create the issue without it and set it with `issues update <id> --release <release>`), and suggests a type, priority, estimate and parent when the user gave none. It never asks for a field the user left out on purpose.
 
 The description follows this template. Each section heading is `###`, because the CLI rejects a `## ` line inside the description. The headings stay in English and the text follows the language of the user's request. The acceptance criteria go in their own field, not in the description. Write them one per line, and the issue shows them as checkboxes under `## Acceptance criteria`.
 

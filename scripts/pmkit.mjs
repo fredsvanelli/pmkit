@@ -523,6 +523,8 @@ async function unlinkMany(ctx, tracker, actor, from, targets) {
 
 const issueWrite = (ctx, result, id = result.after.id) => ({ data: result, text: writeText(result, ctx), commit: id })
 
+const NOTES_CUT = 'Linear has more issues than the 1000 pmkit read, so the notes may be missing issues'
+
 /** The warning for an issue write that puts the issue in a release that is already released. Runs after the write, so a failure to read the release only drops the warning. */
 async function releasedWarnings(ctx, patch) {
   if (typeof patch.release !== 'string') return []
@@ -1585,15 +1587,19 @@ export const COMMANDS = [
       const categoryOf = categoryLookup(discovered.statuses)
       const choice = chooseBasis({ selector, releases, sprints, today: ctx.now().toISOString().slice(0, 10), windowDays: defaults.status_update_window_days ?? 14 })
       const problems = []
+      // A read the tracker cut (hasMore) makes the notes incomplete, said in the JSON, the text and a warning (review of PMK-246).
+      let truncated = false
       let candidates
       if (choice.basis === 'release') {
         const found = await tracker.searchIssues({ release: choice.source.id, archived: true })
         problems.push(...found.problems)
+        truncated = found.hasMore === true
         candidates = found.issues.map((issue) => ({ issue, doneAt: null }))
       } else if (choice.basis === 'sprint') {
         const events = groupEventsByIssue(await tracker.metricEvents())
         const found = await tracker.searchIssues({ sprint: choice.source.id, archived: true })
         problems.push(...found.problems)
+        truncated = found.hasMore === true
         candidates = found.issues.map((issue) => ({ issue, doneAt: lastEntry(events[issue.id] ?? [], 'done', categoryOf) ?? null }))
       } else {
         const inRange = doneInRange(groupEventsByIssue(await tracker.metricEvents()), { categoryOf, since: choice.period.since, until: choice.period.until })
@@ -1606,9 +1612,9 @@ export const COMMANDS = [
           }
         }
       }
-      const result = buildNotes({ choice, candidates, types: discovered.types, problems })
+      const result = buildNotes({ choice, candidates, types: discovered.types, problems, truncated })
       const note = !on('releases') && choice.basis === 'sprint' ? pathNote(releasesEntry, { releaseNotesFrom: choice.source.id }) : null
-      return { data: result, text: releaseNotesText(result), warnings: result.problems.map(problemLine), notes: note === null ? [] : [note] }
+      return { data: result, text: releaseNotesText(result), warnings: [...result.problems.map(problemLine), ...(truncated ? [NOTES_CUT] : [])], notes: note === null ? [] : [note] }
     },
   },
   {
@@ -4368,6 +4374,8 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
     readWarning()
     for (const warning of result.warnings ?? []) stderr.push(`warning: ${warning}\n`)
     for (const note of result.notes ?? []) stderr.push(`note: ${note}\n`)
+    // Notes the tracker collected while it read, such as an issue release it could not read (Linear).
+    for (const note of tracker?.takeNotes?.() ?? []) stderr.push(`note: ${note}\n`)
   } catch (error) {
     code = 2
     readWarning()

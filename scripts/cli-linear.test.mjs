@@ -2120,3 +2120,107 @@ test('past the 250-customer cap, a name match is incomplete: a read warns, a wri
   assert.equal(missing.data.error.code, 'NOT_FOUND')
   assert.equal(missing.data.error.message, 'customer 0b5d7e9a-0000-4e3f-8a9b-0c1d2e3f4a5b does not exist')
 })
+
+// PMK-246: a workspace with releases on. One release per issue (decision PMK-246-1); the filter matches any of an issue's releases.
+const RA = '00000000-0000-4000-8000-0000000000d1'
+const RB = '00000000-0000-4000-8000-0000000000d2'
+function withReleases() {
+  const fake = fakeLinearIssues({
+    pipelines: [{ id: 'pipe', name: 'Web', teams: ['team-acme'] }],
+    releases: [{ id: RA, name: 'Alpha', version: '1.0', pipeline: 'pipe', targetDate: '2026-12-01' }, { id: RB, name: 'Beta', version: '1.1', pipeline: 'pipe' }],
+  })
+  fake.seed({ title: 'Shipped', releaseIds: [RA], stateId: 'state-8', labelIds: ['label-feature'] })
+  fake.seed({ title: 'Open', releaseIds: [RA] })
+  fake.seed({ title: 'Both', releaseIds: [RA, RB] })
+  fake.seed({ title: 'Free' })
+  const projects = fakeLinearProjects({ issues: fake })
+  return { fake, fetch: fakeLinearFetch({ ...fakeWorkspace({ releasesEnabled: true }), ...fake.routes, ...projects.routes }) }
+}
+
+test('release list and get read Linear releases on a workspace with releases', async () => {
+  const { fetch } = withReleases()
+  const list = await linear(fetch, ['release', 'list', '--json'])
+  assert.equal(list.code, 0, list.stderr)
+  assert.deepEqual(JSON.parse(list.stdout).map((release) => [release.id, release.name, release.state]), [[RA, 'Alpha', 'planned'], [RB, 'Beta', 'planned']])
+  assert.equal(list.stderr, '')
+  const get = await linear(fetch, ['release', 'get', RA, '--json'])
+  assert.deepEqual(JSON.parse(get.stdout), { id: RA, name: 'Alpha', target: '2026-12-01', state: 'planned', description: '' })
+})
+
+test('issues get shows the release and issues update --release changes it on Linear', async () => {
+  const { fake, fetch } = withReleases()
+  assert.equal(JSON.parse((await linear(fetch, ['issues', 'get', 'ACME-2', '--json'])).stdout).release, RA)
+  assert.deepEqual(JSON.parse((await linear(fetch, ['issues', 'get', 'ACME-3', '--json'])).stdout).releases, [RA, RB])
+  const dry = JSON.parse((await linear(fetch, ['issues', 'update', 'ACME-4', '--release', RB, '--dry-run', '--json'])).stdout)
+  assert.equal(dry.after.release, RB)
+  const real = await linear(fetch, ['issues', 'update', 'ACME-4', '--release', RB, '--json'])
+  assert.equal(real.code, 0, real.stdout + real.stderr)
+  assert.deepEqual(fake.records[3].releaseIds, [RB])
+  const refused = await linear(fetch, ['issues', 'update', 'ACME-3', '--release', 'none', '--json'])
+  assert.deepEqual(errorOf(refused), { code: 'INVALID_INPUT', message: 'the issue is in 2 Linear releases, and pmkit sets one release per issue', nextStep: 'Change the releases of the issue in Linear' })
+})
+
+test('issues update --release on a workspace with releases off says releases are off', async () => {
+  const { fetch } = withIssues(['A'])
+  const result = await linear(fetch, ['issues', 'update', 'ACME-1', '--release', RA, '--json'])
+  assert.equal(result.code, 2)
+  assert.deepEqual(errorOf(result), { code: 'NOT_SUPPORTED', message: 'Linear releases are off in this workspace', nextStep: RELEASES_HINT })
+})
+
+test('release issues lists the issues of a Linear release, and a missing one is NOT_FOUND', async () => {
+  const { fetch } = withReleases()
+  const result = await linear(fetch, ['release', 'issues', RA, '--json'])
+  assert.equal(result.code, 0, result.stderr)
+  assert.deepEqual(JSON.parse(result.stdout).map((issue) => issue.id), ['ACME-1', 'ACME-2', 'ACME-3'])
+  const missing = await linear(fetch, ['release', 'issues', '00000000-0000-4000-8000-0000000000ff', '--json'])
+  assert.equal(errorOf(missing).code, 'NOT_FOUND')
+})
+
+test('release-readiness --release reads a Linear release', async () => {
+  const { fetch } = withReleases()
+  const result = await linear(fetch, ['release-readiness', '--release', RA, '--json'])
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.deepEqual([data.basis, data.reason, data.source.id], ['release', 'requested', RA])
+  assert.deepEqual([data.issues.counts.total, data.issues.counts.done, data.issues.counts.open], [3, 1, 2])
+})
+
+test('release-readiness with no flag picks a planned Linear release', async () => {
+  const { fetch } = withReleases()
+  const result = await linear(fetch, ['release-readiness', '--json'])
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.equal(JSON.parse(result.stdout).basis, 'release')
+})
+
+test('release-notes --release reads a Linear release', async () => {
+  const { fetch } = withReleases()
+  const result = await linear(fetch, ['release-notes', '--release', RA, '--json'])
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.basis, 'release')
+  assert.match(JSON.stringify(data), /Shipped/)
+  assert.doesNotMatch(JSON.stringify(data), /"Open"/)
+  assert.deepEqual(data.groups.flatMap((group) => group.issues.map((issue) => issue.release)), [RA])
+  assert.deepEqual([data.truncated, data.complete], [false, true])
+})
+
+test('release-notes --release marks a cut read incomplete in the JSON, the text and a warning', async () => {
+  const { fake, fetch } = withReleases()
+  for (let n = 0; n < 1001; n += 1) fake.seed({ title: `Issue ${n}`, releaseIds: [RA] })
+  const result = await linear(fetch, ['release-notes', '--release', RA, '--json'])
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  assert.deepEqual([JSON.parse(result.stdout).truncated, JSON.parse(result.stdout).complete], [true, false])
+  assert.match(result.stderr, /Linear has more issues than the 1000 pmkit read, so the notes may be missing issues/)
+  const text = await linear(fetch, ['release-notes', '--release', RA])
+  assert.match(text.stdout, /\nincomplete: Linear has more issues than the 1000 pmkit read, so the notes may be missing issues\n/)
+})
+
+test('issues get on Linear says the release is unknown when its read fails, and exits 0', async () => {
+  const { fake } = withReleases()
+  const failed = { status: 200, json: { data: null, errors: [{ message: 'Query too complex', extensions: { code: 'INTERNAL_SERVER_ERROR' } }] } }
+  const fetch = fakeLinearFetch({ ...fakeWorkspace({ releasesEnabled: true }), ...fake.routes, PmkitIssuesReleases: failed, PmkitIssueReleases: failed })
+  const result = await linear(fetch, ['issues', 'get', 'ACME-2'])
+  assert.equal(result.code, 0, result.stderr)
+  assert.match(result.stdout, /\nrelease: unknown \(/)
+  assert.match(result.stderr, /note: the release of ACME-2 is unknown, because pmkit could not read it: /)
+})

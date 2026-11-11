@@ -36,7 +36,7 @@ export function issueRecord(issue) {
     ['id', issue.id], ['title', issue.title], ['type', issue.type],
     ['status', `${issue.status.name} (${issue.status.category})`],
     ['priority', issue.priority], ['estimate', issue.estimate], ['assignee', issue.assignee], ['delegate', issue.delegate], ['labels', issue.labels],
-    ['parent', issue.parent], ['sprint', issue.sprint], ['milestone', issue.milestone], ['release', issue.release], ['due', issue.due], ['branch', issue.branch], ['docs', issue.docs],
+    ['parent', issue.parent], ['sprint', issue.sprint], ['milestone', issue.milestone], ['release', issue.release ?? (issue.releaseUnknown === undefined ? undefined : `unknown (${issue.releaseUnknown})`)], ['due', issue.due], ['branch', issue.branch], ['docs', issue.docs],
     ['blocked_by', issue.blockedBy], ['blocks', issue.blocks], ['related', issue.related], ['duplicate_of', issue.duplicateOf],
     ['children', issue.children], ['archived', issue.archived ? true : undefined],
     ['created', issue.created], ['updated', issue.updated],
@@ -273,6 +273,7 @@ export function releaseNotesText(result) {
     lines.push(`${phrases}, so the notes use ${used}`)
   }
   if (result.draft) lines.push(result.basis === 'release' ? `draft: release ${result.source.id} is not released yet` : `draft: sprint ${result.source.id} is not closed`)
+  if (result.truncated) lines.push('incomplete: Linear has more issues than the 1000 pmkit read, so the notes may be missing issues')
   lines.push('')
   if (result.groups.length === 0) lines.push('no done issues')
   const withDone = result.basis !== 'release'

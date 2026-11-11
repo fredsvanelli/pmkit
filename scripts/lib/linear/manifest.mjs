@@ -51,6 +51,8 @@ function sharedScale(teams) {
   return { unit, scale }
 }
 
+export const RELEASES_HINT = 'Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings'
+
 /**
  * Linear's own answer for the capabilities that depend on a setting or the plan, before the served-by rule.
  * An absent answer carries the hint that names the plan or the setting.
@@ -64,9 +66,10 @@ function workspaceAnswers(raw) {
     strategic_goals: business
       ? { path: 'native', detail: { entity: 'initiative', unsupported: ['createGoal', 'setEpicGoal', 'updateGoal', 'deleteGoal'] } }
       : { path: 'absent', enableHint: 'Linear initiatives need the Business or Enterprise plan' },
+    // The adapter reads releases and sets an issue's release (PMK-246); it does not create or mark them.
     releases: releasesEnabled
-      ? { path: 'native' }
-      : { path: 'absent', enableHint: 'Linear releases need the Business or Enterprise plan and releases turned on in the workspace settings' },
+      ? { path: 'native', detail: { unsupported: ['createRelease', 'markReleased'] } }
+      : { path: 'absent', enableHint: RELEASES_HINT },
     // Linear has customer requests when customers are on, and the generic commands read them through linear customers (PMK-221).
     demand_signals: customersEnabled
       ? { path: 'native', detail: { workspace: 'native' } }
