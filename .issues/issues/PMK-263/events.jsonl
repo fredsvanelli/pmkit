@@ -3,3 +3,8 @@
 {"at":"2026-11-11T23:10:17Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-11T23:10:19Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-263-improve-the-adr-commands"}
 {"at":"2026-11-11T23:11:20Z","by":"fred","op":"comment","to":"2026-11-11T23-11-20Z-fred.md"}
+{"at":"2026-11-11T23:23:13Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-11T23:23:13Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-11T23:23:13Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-11T23:23:13Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-11T23:23:13Z","by":"fred","op":"update","field":"acceptance_criteria"}
