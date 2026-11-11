@@ -284,7 +284,7 @@ function linearSetup({ mappings = { status: { in_review: 'In Review' }, types: {
   const linear = createLinearTracker(context.config, { env: context.env, now, fetch, ...(uuid ? { uuid } : {}) })
   return { tracker: linear, fake, projects, fetch, context }
 }
-const seed = (fake, input) => fake.seed(input)
+const seed = (fake, input, extra) => fake.seed(input, extra)
 const namesOf = (fetch) => fetch.calls.map((call) => operationName(call.body.query))
 const lastVariables = (fetch, name) => fetch.calls.filter((call) => operationName(call.body.query) === name).at(-1).body.variables
 
@@ -1769,4 +1769,218 @@ test('a node that already has its releases is not read again, and a new issue re
   const made = await linear.createIssue({ title: 'New' }, 'user-1')
   assert.equal('release' in made.after, false)
   assert.equal(callsOf(fetch, 'PmkitIssuesReleases'), before)
+})
+
+// PMK-252: the docs of an issue are the attachments pmkit made (metadata.pmkitDoc), read like the releases.
+const REPO = { system: 'github', repo: 'acme/app', default_branch: 'develop' }
+const docsSetup = ({ gitHost = REPO, ...options } = {}) => {
+  const context = setup({ scope: { workspace: 'acme', team: 'ACME' } })
+  context.config.pmkit.git_host = gitHost
+  return linearSetup({ context, ...options })
+}
+const docAttachment = (path, n) => ({ id: `att-${n}`, url: `https://github.com/acme/app/blob/develop/${path}`, title: path, metadata: { pmkitDoc: path }, createdAt: `2026-10-27T12:00:${String(n).padStart(2, '0')}.000Z` })
+const prAttachment = { id: 'att-pr', url: 'https://github.com/acme/app/pull/3', title: 'PR 3', metadata: {}, createdAt: '2026-10-27T11:00:00.000Z' }
+const failingAttachments = () => ({
+  PmkitIssuesAttachments: { status: 200, json: { data: null, errors: [{ message: 'Query too complex', extensions: { code: 'INTERNAL_SERVER_ERROR' } }] } },
+  PmkitIssueAttachments: { status: 200, json: { data: null, errors: [{ message: 'Query too complex', extensions: { code: 'INTERNAL_SERVER_ERROR' } }] } },
+})
+
+test('getIssue lists the docs pmkit linked, in the order added, and ignores other attachments', async () => {
+  const { tracker: linear, fake } = docsSetup()
+  seed(fake, { title: 'One' }, { attachments: [prAttachment, docAttachment('docs/adr/0002-b.md', 2), docAttachment('docs/adr/0001-a.md', 1)] })
+  assert.deepEqual((await linear.getIssue('ACME-1')).docs, ['docs/adr/0001-a.md', 'docs/adr/0002-b.md'])
+})
+
+test('an issue with no pmkit attachment has no docs key', async () => {
+  const { tracker: linear, fake } = docsSetup()
+  seed(fake, { title: 'One' }, { attachments: [prAttachment] })
+  const issue = await linear.getIssue('ACME-1')
+  assert.equal('docs' in issue, false)
+  assert.equal('docsUnknown' in issue, false)
+})
+
+test('an issue with more attachments than one batch page reads every page', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup({ nestedPage: 20 })
+  seed(fake, { title: 'One' }, { attachments: Array.from({ length: 25 }, (_, i) => docAttachment(`docs/d${String(i).padStart(2, '0')}.md`, i + 1)) })
+  assert.equal((await linear.getIssue('ACME-1')).docs.length, 25)
+  assert.ok(callsOf(fetch, 'PmkitIssueAttachments') > 0)
+})
+
+test('a list and a search read the docs in one request per 100 issues, never one per issue', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup()
+  for (let i = 1; i <= 3; i++) seed(fake, { title: `T${i}` }, { attachments: [docAttachment(`docs/d${i}.md`, i)] })
+  const found = await linear.searchIssues({})
+  assert.deepEqual(found.issues.map((issue) => issue.docs), [['docs/d1.md'], ['docs/d2.md'], ['docs/d3.md']])
+  assert.equal(callsOf(fetch, 'PmkitIssuesAttachments'), 1)
+  assert.equal(callsOf(fetch, 'PmkitIssueAttachments'), 0)
+})
+
+test('the attachment queries keep their page sizes and selections (Linear refuses above 10000 complexity points)', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup()
+  seed(fake, { title: 'One' }, { attachments: [docAttachment('docs/a.md', 1)] })
+  await linear.searchIssues({})
+  const [call] = fetch.calls.filter((item) => operationName(item.body.query) === 'PmkitIssuesAttachments')
+  assert.ok(call.body.variables.first <= 100)
+  assert.match(call.body.query, /attachments\(first: 20\)/)
+  assert.doesNotMatch(call.body.query, /\b(?:title|subtitle|creator|source)\b/)
+  const { ISSUE_ATTACHMENTS_QUERY, ISSUE_FRAGMENT } = await import('./documents.mjs')
+  assert.doesNotMatch(ISSUE_ATTACHMENTS_QUERY, /\b(?:title|subtitle|creator)\b/)
+  assert.doesNotMatch(ISSUE_FRAGMENT, /attachments/)
+})
+
+test('a failed attachment read shows the docs as unknown with a note, and get, list and a write still answer', async () => {
+  const { tracker: linear, fake } = docsSetup({ routes: failingAttachments })
+  seed(fake, { title: 'One' }, { attachments: [docAttachment('docs/a.md', 1)] })
+  const issue = await linear.getIssue('ACME-1')
+  assert.equal('docs' in issue, false)
+  assert.match(issue.docsUnknown, /Query too complex/)
+  assert.match((await linear.searchIssues({})).issues[0].docsUnknown, /Query too complex/)
+  assert.equal((await linear.updateIssue('ACME-1', { title: 'Renamed' }, 'user-1')).after.title, 'Renamed')
+  const notes = linear.takeNotes()
+  assert.match(notes[0], /^the docs of ACME-1 are unknown, because pmkit could not read them: .*Query too complex/)
+})
+
+test('updateIssue with docs links each new path as an attachment, and again changes nothing', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup()
+  seed(fake, { title: 'One' })
+  const added = await linear.updateIssue('ACME-1', { docs: ['docs/adr/0001-a.md', 'docs/adr/0002-b.md'] }, 'user-1')
+  assert.equal('docs' in added.before, false)
+  assert.deepEqual(added.after.docs, ['docs/adr/0001-a.md', 'docs/adr/0002-b.md'])
+  const [first] = fake.records[0].attachments
+  assert.equal(first.url, 'https://github.com/acme/app/blob/develop/docs/adr/0001-a.md')
+  assert.deepEqual(first.metadata, { pmkitDoc: 'docs/adr/0001-a.md' })
+  assert.equal(first.title, 'docs/adr/0001-a.md')
+  const before = mutationsIn(fetch)
+  const again = await linear.updateIssue('ACME-1', { docs: ['docs/adr/0001-a.md', 'docs/adr/0002-b.md'] }, 'user-1')
+  assert.deepEqual(again.after, again.before)
+  assert.equal(mutationsIn(fetch), before)
+})
+
+test('updateIssue with docs unlinks the removed path and leaves other attachments alone', async () => {
+  const { tracker: linear, fake } = docsSetup()
+  seed(fake, { title: 'One' }, { attachments: [prAttachment, docAttachment('docs/a.md', 1), docAttachment('docs/b.md', 2)] })
+  const removed = await linear.updateIssue('ACME-1', { docs: ['docs/b.md'] }, 'user-1')
+  assert.deepEqual(removed.after.docs, ['docs/b.md'])
+  assert.deepEqual(fake.records[0].attachments.map((item) => item.id), ['att-pr', 'att-2'])
+  const cleared = await linear.updateIssue('ACME-1', { docs: [] }, 'user-1')
+  assert.equal('docs' in cleared.after, false)
+  assert.deepEqual(fake.records[0].attachments.map((item) => item.id), ['att-pr'])
+})
+
+test('updateIssue with docs and another field writes both', async () => {
+  const { tracker: linear, fake } = docsSetup()
+  seed(fake, { title: 'One' })
+  const result = await linear.updateIssue('ACME-1', { title: 'Two', docs: ['docs/a.md'] }, 'user-1')
+  assert.equal(result.after.title, 'Two')
+  assert.deepEqual(result.after.docs, ['docs/a.md'])
+})
+
+test('a dry run with docs shows the new list and sends no mutation', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup()
+  seed(fake, { title: 'One' }, { attachments: [docAttachment('docs/a.md', 1)] })
+  const result = await linear.updateIssue('ACME-1', { docs: ['docs/b.md'] }, 'user-1', { dryRun: true })
+  assert.deepEqual(result.before.docs, ['docs/a.md'])
+  assert.deepEqual(result.after.docs, ['docs/b.md'])
+  assert.equal(mutationsIn(fetch), 0)
+  assert.equal(fake.records[0].attachments.length, 1)
+})
+
+test('adding a doc with no GitHub repo in git_host is NOT_CONFIGURED and writes nothing, and removing one still works', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup({ gitHost: { system: 'none' } })
+  seed(fake, { title: 'One' }, { attachments: [docAttachment('docs/a.md', 1)] })
+  await assert.rejects(linear.updateIssue('ACME-1', { docs: ['docs/a.md', 'docs/b.md'] }, 'user-1', { dryRun: true }), { code: 'NOT_CONFIGURED', nextStep: '/pmkit:link-repo' })
+  await assert.rejects(linear.updateIssue('ACME-1', { docs: ['docs/a.md', 'docs/b.md'] }, 'user-1'), { code: 'NOT_CONFIGURED' })
+  assert.equal(mutationsIn(fetch), 0)
+  const removed = await linear.updateIssue('ACME-1', { docs: [] }, 'user-1')
+  assert.equal('docs' in removed.after, false)
+})
+
+test('a docs write refuses when the attachments could not be read, and sends no mutation', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup({ routes: failingAttachments })
+  seed(fake, { title: 'One' }, { attachments: [docAttachment('docs/a.md', 1)] })
+  await assert.rejects(linear.updateIssue('ACME-1', { docs: [] }, 'user-1'), { code: 'UPSTREAM' })
+  assert.equal(mutationsIn(fetch), 0)
+  assert.equal(fake.records[0].attachments.length, 1)
+})
+
+test('a docs write that fails midway says what was linked and what was not', async () => {
+  const failOnB = (fake) => ({
+    PmkitAttachmentCreate: (body) => (body.variables.input.url.endsWith('b.md')
+      ? { status: 200, json: { data: null, errors: [{ message: 'Attachment refused', extensions: { code: 'INPUT_ERROR' } }] } }
+      : fake.routes.PmkitAttachmentCreate(body)),
+  })
+  const { tracker: linear, fake } = docsSetup({ routes: failOnB })
+  seed(fake, { title: 'One' })
+  await assert.rejects(linear.updateIssue('ACME-1', { docs: ['docs/a.md', 'docs/b.md', 'docs/c.md'] }, 'user-1'), (error) => {
+    assert.match(error.message, /Attachment refused/)
+    assert.match(error.message, /linked: docs\/a\.md/)
+    assert.match(error.message, /not done: docs\/b\.md, docs\/c\.md/)
+    return true
+  })
+  assert.equal(fake.records[0].attachments.length, 1)
+})
+
+test('issues create takes no docs', async () => {
+  const { tracker: linear } = docsSetup()
+  await assert.rejects(linear.createIssue({ title: 'New', docs: ['docs/a.md'] }, 'user-1', { dryRun: true }), { code: 'INVALID_INPUT' })
+})
+
+// PMK-252 review: the link branch, hand-made attachments and paths.
+const urlsOf = (fake) => fake.records[0].attachments.map((item) => item.url)
+
+test('the link uses the default branch the caller resolved, then git_host.default_branch, then main', async () => {
+  const given = docsSetup({ gitHost: { system: 'github', repo: 'acme/app' } })
+  seed(given.fake, { title: 'One' })
+  await given.tracker.updateIssue('ACME-1', { docs: ['docs/a.md'] }, 'user-1', { docsBranch: 'trunk' })
+  assert.deepEqual(urlsOf(given.fake), ['https://github.com/acme/app/blob/trunk/docs/a.md'])
+  const unset = docsSetup({ gitHost: { system: 'github', repo: 'acme/app' } })
+  seed(unset.fake, { title: 'One' })
+  await unset.tracker.updateIssue('ACME-1', { docs: ['docs/a.md'] }, 'user-1')
+  assert.deepEqual(urlsOf(unset.fake), ['https://github.com/acme/app/blob/main/docs/a.md'])
+  const invalid = docsSetup({ gitHost: { system: 'github', repo: 'acme/app', default_branch: 'a..b' } })
+  seed(invalid.fake, { title: 'One' })
+  await invalid.tracker.updateIssue('ACME-1', { docs: ['docs/a.md'] }, 'user-1')
+  assert.deepEqual(urlsOf(invalid.fake), ['https://github.com/acme/app/blob/main/docs/a.md'])
+})
+
+test('adding a doc whose link a person attached by hand is a CONFLICT, and the attachment is never changed or removed', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup()
+  const handMade = { id: 'att-hand', url: 'https://github.com/acme/app/blob/develop/docs/a.md', title: 'Design notes', metadata: {}, createdAt: '2026-10-27T11:00:00.000Z' }
+  seed(fake, { title: 'One' }, { attachments: [handMade] })
+  await assert.rejects(linear.updateIssue('ACME-1', { docs: ['docs/a.md'] }, 'user-1', { dryRun: true }), { code: 'CONFLICT' })
+  await assert.rejects(linear.updateIssue('ACME-1', { docs: ['docs/a.md'] }, 'user-1'), (error) => /Design notes|attachment/.test(error.message) && error.code === 'CONFLICT')
+  const cleared = await linear.updateIssue('ACME-1', { docs: [] }, 'user-1')
+  assert.equal('docs' in cleared.after, false)
+  assert.equal(mutationsIn(fetch), 0)
+  assert.deepEqual(fake.records[0].attachments, [handMade])
+})
+
+test('a docs path that is not relative to the repository is INVALID_INPUT before any write, and the same path twice links once', async () => {
+  const { tracker: linear, fake, fetch } = docsSetup()
+  seed(fake, { title: 'One' })
+  for (const path of ['/Users/x/a.md', 'tracker:docs/adr/0001-a.md', '../a.md', 'docs/../../a.md', 'C:/a.md', '', '.', './']) {
+    await assert.rejects(linear.updateIssue('ACME-1', { docs: [path] }, 'user-1'), { code: 'INVALID_INPUT' }, path)
+  }
+  assert.equal(mutationsIn(fetch), 0)
+  await linear.updateIssue('ACME-1', { docs: ['docs/a.md', 'docs/a.md'] }, 'user-1')
+  assert.equal(fake.records[0].attachments.length, 1)
+})
+
+test('a failure after the other fields were written says so', async () => {
+  const failing = (fake) => ({ PmkitAttachmentCreate: () => ({ status: 200, json: { data: null, errors: [{ message: 'Attachment refused', extensions: { code: 'INPUT_ERROR' } }] } }) })
+  const { tracker: linear, fake } = docsSetup({ routes: failing })
+  seed(fake, { title: 'One' })
+  await assert.rejects(linear.updateIssue('ACME-1', { title: 'Two', docs: ['docs/a.md'] }, 'user-1'), /already written.*title/s)
+})
+
+test('one issue whose attachments cannot be read alone does not make the rest of the batch unknown', async () => {
+  const { tracker: linear, fake } = docsSetup({
+    nestedPage: 1,
+    routes: (f) => ({ PmkitIssueAttachments: ({ body } = {}) => ({ status: 200, json: { data: null, errors: [{ message: 'Rate limited', extensions: { code: 'INTERNAL_SERVER_ERROR' } }] } }) }),
+  })
+  seed(fake, { title: 'Big' }, { attachments: [docAttachment('docs/a.md', 1), docAttachment('docs/b.md', 2)] })
+  seed(fake, { title: 'Small' }, { attachments: [docAttachment('docs/c.md', 3)] })
+  const { issues } = await linear.searchIssues({})
+  assert.match(issues[0].docsUnknown, /Rate limited/)
+  assert.deepEqual(issues[1].docs, ['docs/c.md'])
 })

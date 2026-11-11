@@ -2,14 +2,16 @@
 // See docs/superpowers/specs/2026-10-27-pmk-35-linear-issues-relations-search-design.md.
 
 import { PmkitError } from '../errors.mjs'
+import { resolveDefaultBranch } from '../config.mjs'
+import { repoDocPath } from '../doc-path.mjs'
 import { CATEGORIES } from '../model.mjs'
 import { REFERENCE_KINDS, REPO_UNCHECKED, referencedError } from '../delete-refusal.mjs'
 import { compareIds } from '../ids.mjs'
 import { checkFilter } from '../issue-filter.mjs'
 import { cycleKey } from './cycles.mjs'
-import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUE_RELEASES_QUERY, ISSUES_QUERY, ISSUES_RELEASES_QUERY, ISSUE_ARCHIVE, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UNARCHIVE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
+import { CYCLES_QUERY, CYCLE_BY_NUMBER_QUERY, ISSUE_RELEASES_QUERY, ISSUES_QUERY, ISSUES_RELEASES_QUERY, ATTACHMENT_CREATE, ATTACHMENT_DELETE, ISSUE_ARCHIVE, ISSUE_ATTACHMENTS_QUERY, ISSUES_ATTACHMENTS_QUERY, ISSUE_BY_ID_QUERY, ISSUE_CREATE, ISSUE_DELETE, ISSUE_REFERENCES_QUERY, ISSUE_UNARCHIVE, ISSUE_UPDATE, NESTED_PAGES, NESTED_PAGE_SIZE, REFERENCE_PAGES } from './documents.mjs'
 import { finishSearch, translateFilter } from './filter.mjs'
-import { blockedOpen, isIssueId, issueKey, makeContext, stateCategory, toIssue } from './issues.mjs'
+import { blockedOpen, docPaths, isIssueId, issueKey, makeContext, stateCategory, toIssue } from './issues.mjs'
 import { allReleases, releasesOff } from './releases.mjs'
 import { applyInput, createTeam, requireAssignee, skeletonNode, teamOf, teamStates, toInput } from './writes.mjs'
 
@@ -108,6 +110,58 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return all
   }
 
+  const idList = (ids) => (ids.length > 3 ? `${ids.slice(0, 3).join(', ')} and ${ids.length - 3} more issues` : ids.join(', '))
+
+  /** Puts one issue's attachments on its node, every page. A list the page cap cut is UPSTREAM, so part of it never reads as the whole. */
+  async function attachDocs(node) {
+    const { nodes, hasMore } = await client.paginate(ISSUE_ATTACHMENTS_QUERY, { id: node.id }, { select: (data) => data.issue.attachments, pageSize: 50, maxPages: 100 })
+    if (hasMore) throw new PmkitError('UPSTREAM', `${node.identifier} has more than 5000 attachments, and pmkit does not answer with part of them`, 'Remove attachments in Linear')
+    node.attachments = { nodes }
+    return node
+  }
+
+  /**
+   * Puts the attachments (the docs, PMK-252) on every node: one request per 100 issues, and one more for an issue whose list has a
+   * next page. A refused or failed read leaves them unknown on the node (attachmentsUnread) with a note, never an empty list.
+   */
+  async function attachDocsTo(all) {
+    const nodes = all.filter((node) => node.attachments === undefined && !node.attachmentsUnread)
+    for (let at = 0; at < nodes.length; at += 100) {
+      const chunk = nodes.slice(at, at + 100)
+      try {
+        const data = await client.request(ISSUES_ATTACHMENTS_QUERY, { ids: chunk.map((node) => node.id), first: chunk.length })
+        const byId = new Map((data?.issues?.nodes ?? []).map((item) => [item.id, item.attachments]))
+        for (const node of chunk) {
+          const connection = byId.get(node.id)
+          if (connection && connection.pageInfo?.hasNextPage !== true) node.attachments = { nodes: connection.nodes }
+          else await readDocsAlone(node)
+        }
+      } catch (error) {
+        if (!unreadable(error)) throw error
+        unknownDocs(chunk.filter((node) => node.attachments === undefined && !node.attachmentsUnread), error)
+      }
+    }
+    return all
+  }
+
+  /** The note and the mark of issues whose docs are unknown: never an empty list. */
+  function unknownDocs(nodes, error) {
+    if (nodes.length === 0) return
+    for (const node of nodes) node.attachmentsUnread = error
+    const ids = nodes.map((node) => node.identifier).filter(Boolean)
+    notes.push(`the docs of ${idList(ids)} are unknown, because pmkit could not read them: ${error.message}`)
+  }
+
+  /** The one-issue read of a list the batch cut. Its failure marks only that issue, the rest of the batch keeps what it read. */
+  async function readDocsAlone(node) {
+    try {
+      await attachDocs(node)
+    } catch (error) {
+      if (!unreadable(error)) throw error
+      unknownDocs([node], error)
+    }
+  }
+
   /** The node of an issue id, archived ones included. A malformed id or a trashed issue is NOT_FOUND, and a malformed one sends no request. */
   async function readNode(id) {
     requireWorkspace()
@@ -116,7 +170,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     const node = data?.issues?.nodes?.[0]
     if (!node || node.trashed === true) throw notFound(id)
     await completeNested(node)
-    return (await attachReleasesTo([node]))[0]
+    return (await attachDocsTo(await attachReleasesTo([node])))[0]
   }
 
   /** A context that knows every state the nodes name: a state missing from a cached discovery refreshes it once. */
@@ -152,6 +206,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     })
     for (const node of nodes) await completeNested(node)
     await attachReleasesTo(nodes)
+    await attachDocsTo(nodes)
     const mapping = await contextFor(nodes)
     const rows = nodes
       .map((node) => ({ issue: toIssue(node, mapping), blocked: blockedOpen(node, mapping) }))
@@ -173,6 +228,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
   async function mapped(node) {
     await completeNested(node)
     await attachReleasesTo([node])
+    await attachDocsTo([node])
     return toIssue(node, await contextFor([node]))
   }
 
@@ -253,6 +309,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     }
     // A new issue is in no release (create sets none), so its releases are not read.
     node.releases ??= { nodes: [] }
+    node.attachments ??= { nodes: [] }
     return { before: null, after: await mapped(node) }
   }
 
@@ -291,7 +348,7 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     return node
   }
 
-  async function updateIssue(id, patch, actor, { dryRun = false } = {}) {
+  async function updateIssue(id, patch, actor, { dryRun = false, docsBranch } = {}) {
     await requireViewer(actor)
     const beforeNode = await readNode(id)
     const releaseNode = await releaseNodeFor(patch.release, beforeNode)
@@ -304,8 +361,68 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     if (patch.branch !== undefined && patch.branch !== beforeNode.branchName) {
       throw new PmkitError('INVALID_INPUT', `Linear names this issue's branch ${beforeNode.branchName}`, `Use the branch name ${beforeNode.branchName}`)
     }
-    if (Object.keys(linearInput).length === 0) return { before, after: before }
-    return writeUpdate(beforeNode, before, linearInput, current, dryRun, { cycle: cycleNode, release: releaseNode })
+    const change = patch.docs === undefined ? null : docChange(beforeNode, patch.docs, docsBranch)
+    let result = { before, after: before }
+    if (Object.keys(linearInput).length > 0) result = await writeUpdate(beforeNode, before, linearInput, current, dryRun, { cycle: cycleNode, release: releaseNode })
+    if (change === null) return result
+    if (dryRun) {
+      const { docs, ...rest } = result.after
+      return { before, after: patch.docs.length > 0 ? { ...rest, docs: patch.docs } : rest }
+    }
+    await writeDocs(before.id, change, { fieldsWritten: Object.keys(linearInput) })
+    // The issue is read again, so `after` is what Linear holds: its attachments changed after the update's own answer.
+    return { before, after: await mapped(await readNode(before.id)) }
+  }
+
+  /** The docs a write adds (paths) and removes (attachment nodes), or null when the list is the one the issue has. An unread list refuses. */
+  function docChange(beforeNode, docList, branch) {
+    if (beforeNode.attachmentsUnread) throw beforeNode.attachmentsUnread
+    const docs = [...new Set(docList.map(repoDocPath))]
+    const nodes = beforeNode.attachments?.nodes ?? []
+    const isDoc = (item) => typeof item.metadata?.pmkitDoc === 'string'
+    const current = docPaths(nodes)
+    const add = docs.filter((path) => !current.includes(path)).map((path) => ({ path, url: docUrl(path, branch) }))
+    // attachmentCreate upserts by url, so an attachment a person made with this link would be rewritten, and removed later as a doc.
+    const taken = add.map((item) => nodes.find((node) => node.url === item.url && !isDoc(node))).filter(Boolean)
+    if (taken.length > 0) {
+      throw new PmkitError('CONFLICT', `${beforeNode.identifier} already has an attachment with the link ${taken[0].url} that pmkit did not create, so pmkit leaves it alone and does not link ${add.find((item) => item.url === taken[0].url).path}`, 'Remove that attachment in Linear, then run the command again')
+    }
+    const remove = nodes.filter((item) => isDoc(item) && !docs.includes(item.metadata.pmkitDoc))
+    if (add.length === 0 && remove.length === 0) return null
+    return { add, remove }
+  }
+
+  /** The link of a docs path: the file on GitHub, on the default branch. The path stays in the attachment's metadata. */
+  function docUrl(path, branch) {
+    const host = config.pmkit?.git_host
+    if (host?.system !== 'github' || !host.repo) {
+      throw new PmkitError('NOT_CONFIGURED', 'a Linear doc is a link to the file on GitHub, and git_host has no GitHub repo', '/pmkit:link-repo')
+    }
+    const encode = (value) => value.split('/').map(encodeURIComponent).join('/')
+    return `https://github.com/${host.repo}/blob/${encode(branch ?? resolveDefaultBranch(config.pmkit).branch)}/${encode(path)}`
+  }
+
+  /** attachmentCreate for each added path, then attachmentDelete for each removed one. A failure names what was done and what was not. */
+  async function writeDocs(id, { add, remove }, { fieldsWritten = [] } = {}) {
+    const linked = []
+    const unlinked = []
+    try {
+      for (const item of add) {
+        const answer = await client.request(ATTACHMENT_CREATE, { input: { issueId: id, url: item.url, title: item.path, metadata: { pmkitDoc: item.path } } })
+        if (answer?.attachmentCreate?.success !== true) throw new PmkitError('UPSTREAM', `Linear did not link ${item.path}`)
+        linked.push(item.path)
+      }
+      for (const item of remove) {
+        const answer = await client.request(ATTACHMENT_DELETE, { id: item.id })
+        if (answer?.attachmentDelete?.success !== true) throw new PmkitError('UPSTREAM', `Linear did not unlink ${item.metadata.pmkitDoc}`)
+        unlinked.push(item.metadata.pmkitDoc)
+      }
+    } catch (error) {
+      if (!(error instanceof PmkitError)) throw error
+      const left = [...add.map((item) => item.path), ...remove.map((item) => item.metadata.pmkitDoc)].filter((path) => !linked.includes(path) && !unlinked.includes(path))
+      const say = (paths) => (paths.length > 0 ? paths.join(', ') : 'none')
+      throw new PmkitError(error.code, `${error.message}. Docs of ${id}: linked: ${say(linked)}; unlinked: ${say(unlinked)}; not done: ${say(left)}${fieldsWritten.length > 0 ? `. The other fields of this change were already written (${fieldsWritten.join(', ')})` : ''}`, `pmkit issues get ${id}`, error.details)
+    }
   }
 
   /**
@@ -445,5 +562,5 @@ export function issueOperations({ client, discovery, config, now = () => new Dat
     }
   }
 
-  return { attachReleasesTo, takeNotes, getIssue, searchIssues, cycleNodeFor, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue, restore, requireViewer, mapped, writeUpdate, parentNodeOf, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
+  return { attachReleasesTo, attachDocsTo, takeNotes, getIssue, searchIssues, cycleNodeFor, createIssue, updateIssue, moveToCategory, assign, archive, delete: deleteIssue, restore, requireViewer, mapped, writeUpdate, parentNodeOf, context, readNode, contextFor, completeNested, withRefresh, requireWorkspace, now, uuid }
 }

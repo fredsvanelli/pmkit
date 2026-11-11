@@ -111,6 +111,14 @@ export function estimateOf(node, context) {
   return Object.keys(scale.values).find((size) => scale.values[size] === node.estimate) ?? node.estimate
 }
 
+/** The docs paths of attachment nodes: those pmkit made (metadata.pmkitDoc is a path), oldest first. Other attachments are not docs. */
+export function docPaths(nodes) {
+  return nodes
+    .filter((item) => typeof item.metadata?.pmkitDoc === 'string')
+    .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0) || (a.metadata.pmkitDoc < b.metadata.pmkitDoc ? -1 : 1))
+    .map((item) => item.metadata.pmkitDoc)
+}
+
 /** The pmkit issue of a fragment-shaped node, or null for an issue in Linear's trash. Unset fields are absent keys. */
 export function toIssue(node, context) {
   if (node.trashed === true) return null
@@ -140,6 +148,11 @@ export function toIssue(node, context) {
   if (node.releases) Object.assign(issue, issueReleaseFields(node.releases.nodes))
   // A release read that failed: the release is unknown, never "none" (review of PR #208).
   else if (node.releasesUnread) issue.releaseUnknown = node.releasesUnread.message
+  // PMK-252: the docs pmkit linked, in the order added. Unread attachments make the docs unknown, never none.
+  if (node.attachments) {
+    const docs = docPaths(node.attachments.nodes)
+    if (docs.length > 0) issue.docs = docs
+  } else if (node.attachmentsUnread) issue.docsUnknown = node.attachmentsUnread.message
   if (node.cycle) issue.sprint = String(node.cycle.number)
   issue.blockedBy = identifiers(inverse.filter((item) => item.type === 'blocks').map((item) => item.issue.identifier))
   issue.blocks = identifiers(out.filter((item) => item.type === 'blocks').map((item) => item.relatedIssue.identifier))

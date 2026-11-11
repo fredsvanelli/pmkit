@@ -192,7 +192,7 @@ export function toInput(patch, { mode, beforeNode, team: givenTeam, context, par
     input.projectMilestoneId = patch.milestone === null ? null : milestoneNode.id
   }
   // PMK-228: a Linear issue has no list field for documents, so the comment record-decision posts stays the link.
-  if (patch.docs !== undefined) throw new PmkitError('NOT_SUPPORTED', 'Linear issues have no docs field', 'The comment on the issue stays the link to the document')
+  // patch.docs is not an issue field on Linear: updateIssue links it as attachments (PMK-252).
   if (patch.release !== undefined) Object.assign(input, releaseInput(patch.release, { mode, beforeNode, releaseNode }))
   return input
 }

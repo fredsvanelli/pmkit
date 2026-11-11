@@ -81,6 +81,29 @@ Open until a workspace with releases runs them (acceptance criterion 5 of PMK-24
 
 A field Linear has renamed would reach the command as `UPSTREAM` with Linear's message.
 
+## Issue docs mapped (PMK-252)
+
+Written 2026-11-10 from Linear's public SDK schema, not checked against a workspace: nothing below ran against the live API, only against the fake in `scripts/fake-linear-api.mjs`. Nothing here is verified.
+
+| pmkit | Linear (schema, to confirm) |
+|---|---|
+| an issue's `docs` | `issues(filter: { id: { in } }) { id attachments(first: 20) { nodes { id url metadata createdAt } } }` for up to 100 issues, and `issue(id) { attachments(first, after) }` for an issue with more than 20. Only an attachment whose `metadata.pmkitDoc` is a string is a doc. |
+| `issues update --add-doc` | `attachmentCreate(input: { issueId, url, title, metadata: { pmkitDoc } })`, with `url` = `https://github.com/<repo>/blob/<branch>/<path>`. |
+| `issues update --remove-doc` | `attachmentDelete(id)` of the attachments whose `metadata.pmkitDoc` is the path. |
+
+Open until a workspace runs them:
+
+- `Issue.attachments` answers inside `issues(filter: { id: { in } })`, and `attachments(first: 20)` is accepted there.
+- `Attachment.metadata` comes back as it was written (`{ pmkitDoc: <path> }`), also for an attachment made with a personal API key.
+- `AttachmentCreateInput` accepts `metadata` and `title` together with `issueId` and `url` from a personal API key.
+- The upsert by URL: `attachmentCreate` for an `issueId` and `url` that already have an attachment updates it. pmkit assumes it does, so it refuses (CONFLICT) to add a doc whose link a person attached by hand, and never rewrites or removes that attachment.
+- Whether Linear turns a `github.com/.../blob/...` URL into an integration attachment (another `sourceType`, its own `metadata`), which would drop `pmkitDoc` or fail the upsert.
+- `attachmentDelete` works with a personal API key, and the attachment leaves the issue.
+- The `x-complexity` header of `PmkitIssuesAttachments` (100 issues x 20 attachments of 4 scalar fields). By the documented rule it costs about 3000 points, under the limit of 10000.
+- An issue with more than 20 attachments (pull request links count) takes the one-issue read, 50 at a time.
+
+A field Linear has renamed would reach the command as `UPSTREAM` with Linear's message, and the docs of the issue would read as `unknown`.
+
 ## Insights
 
 The schema has no type, query, mutation or field whose name matches `insight`, `analytic` or `metric`. Live queries were skipped because there is no object to query.

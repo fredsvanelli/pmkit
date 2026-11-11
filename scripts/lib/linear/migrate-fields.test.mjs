@@ -212,7 +212,7 @@ test('an issue with docs gives a doc links loss that names it (PMK-228)', async 
   const mapped = mapExport(snapshot({ people: [], sprints: [], epics: [], issues: [issue('ISS-1', { docs: ['docs/adr/0001-a.md', 'docs/adr/0002-b.md'] }), issue('ISS-2')], outOfScope: { releases: 0, timeLogs: 0, documents: 0, milestones: 0, views: 0 } }), await target())
   const loss = mapped.losses.find((item) => item.what === 'doc links')
   assert.deepEqual([loss.count, loss.ids], [1, ['ISS-1']])
-  assert.equal(loss.why, '1 issue loses its docs field; Linear has no such field, so the comments stay the links')
+  assert.equal(loss.why, '1 issue loses its docs field; a Linear doc is a link pmkit makes on the issue, and the migration does not create it, so the docs are not carried over')
 })
 
 test('views are a loss that names the folder they stay in', async () => {
