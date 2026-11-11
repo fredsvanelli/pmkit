@@ -2,14 +2,14 @@
 id: PMK-251
 title: Write the Supersedes line in a new ADR
 type: feature
-status: in_progress
+status: in_review
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
 branch: pmk-251-write-the-supersedes-line-in-a-new-adr
 created: 2026-11-10T20:03:45.337Z
-updated: 2026-11-11T01:50:03Z
+updated: 2026-11-11T01:55:12Z
 ---
 
 ## Description
