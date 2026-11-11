@@ -684,3 +684,18 @@ test('docs adr-status superseded --by with tracker.path . writes the repository 
   assert.equal(result.data.status.after, 'Status: superseded by docs/adr/0002-b.md')
   assert.match(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), /^Status: superseded by docs\/adr\/0002-b\.md$/m)
 })
+
+test('setAdrStatus changes a Status: line above the first section together with the front matter and the ## Status section (PMK-263)', () => {
+  const line = '# T\n\nStatus: accepted\n\n## Status\n\nAccepted\n\n## Context\n'
+  assert.deepEqual(setAdrStatus(line, 'deprecated'), { text: '# T\n\nStatus: deprecated\n\n## Status\n\nDeprecated\n\n## Context\n', before: 'Status: accepted; ## Status: Accepted', after: 'Status: deprecated; ## Status: Deprecated' })
+  const all = '---\nstatus: accepted\n---\n\n# T\n\n**Status:** Accepted\n\n## Status\n\nAccepted\n'
+  assert.deepEqual(setAdrStatus(all, 'deprecated'), { text: '---\nstatus: deprecated\n---\n\n# T\n\n**Status:** deprecated\n\n## Status\n\nDeprecated\n', before: 'status: accepted; **Status:** Accepted; ## Status: Accepted', after: 'status: deprecated; **Status:** deprecated; ## Status: Deprecated' })
+  const fm = '---\nstatus: accepted\n---\n\n# T\n\nStatus: accepted\n\nWhy.\n'
+  assert.equal(setAdrStatus(fm, 'deprecated').text, '---\nstatus: deprecated\n---\n\n# T\n\nStatus: deprecated\n\nWhy.\n')
+  // Nothing changes when every place already has the status.
+  const same = '# T\n\nStatus: Accepted\n\n## Status\n\naccepted\n'
+  assert.equal(setAdrStatus(same, 'accepted').text, same)
+  // A Status: line inside a later section is not a status line.
+  const later = '# T\n\n## Status\n\nAccepted\n\n## Context\n\nStatus: draft notes\n'
+  assert.equal(setAdrStatus(later, 'deprecated').text, '# T\n\n## Status\n\nDeprecated\n\n## Context\n\nStatus: draft notes\n')
+})

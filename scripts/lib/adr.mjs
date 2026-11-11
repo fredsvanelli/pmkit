@@ -132,6 +132,9 @@ export function setAdrStatus(text, status, byPath) {
     let unchanged = true
     const befores = []
     const afters = []
+    // A `Status:` line above the first section is a third place that holds the status (PMK-263).
+    const head = lines.findIndex((item, i) => i >= start && item.startsWith('## '))
+    const found = lines.findIndex((item, i) => i >= start && (head === -1 || i < head) && STATUS_LINE.test(item))
     if (yaml > 0) {
       // A YAML comment after the value is not part of the status, and the rewrite keeps it.
       const [, current, comment = ''] = /^status:(.*?)(\s+#.*)?$/i.exec(lines[yaml])
@@ -140,11 +143,18 @@ export function setAdrStatus(text, status, byPath) {
       lines[yaml] = `status: ${value}${comment}`
       afters.push(lines[yaml])
     }
+    if (found !== -1) {
+      const [, bullet = '', label, current] = STATUS_LINE.exec(lines[found])
+      befores.push(lines[found])
+      if (!same(current)) unchanged = false
+      lines[found] = `${bullet}${label.startsWith('**') ? '**Status:**' : 'Status:'} ${value}`
+      afters.push(lines[found])
+    }
     if (section !== -1) {
       const end = sectionEnd(lines, section)
       const body = lines.slice(section + 1, end).map((item) => item.trim()).filter(Boolean)
       if (body.length !== 1 || !same(body[0])) unchanged = false
-      const label = yaml > 0 ? '## Status: ' : ''
+      const label = befores.length > 0 ? '## Status: ' : ''
       if (body.length > 0) befores.push(`${label}${body.join(' ')}`)
       afters.push(`${label}${capitalized(value)}`)
       lines.splice(section + 1, end - section - 1, '', capitalized(value), '')
