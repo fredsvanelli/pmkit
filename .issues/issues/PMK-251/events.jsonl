@@ -1,3 +1,11 @@
 {"at":"2026-11-10T20:03:45Z","by":"fred","op":"create","to":{"id":"PMK-251","title":"Write the Supersedes line in a new ADR","type":"feature","status":"backlog","priority":"low","estimate":2,"labels":[],"blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-10T20:03:45.337Z","updated":"2026-11-10T20:03:45Z"}}
 {"at":"2026-11-10T21:16:03Z","by":"fred","op":"update","field":"parent","from":null,"to":"EPC-6"}
 {"at":"2026-11-10T21:22:27Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-11T01:46:50Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-11T01:46:52Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-251-write-the-supersedes-line-in-a-new-adr"}
+{"at":"2026-11-11T01:50:00Z","by":"fred","op":"comment","to":"2026-11-11T01-50-00Z-fred.md"}
+{"at":"2026-11-11T01:50:03Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-11T01:50:03Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-11T01:50:03Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-11T01:55:12Z","by":"fred","op":"comment","to":"2026-11-11T01-55-12Z-fred.md"}
+{"at":"2026-11-11T01:55:12Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

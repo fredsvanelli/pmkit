@@ -61,7 +61,7 @@ Then run `/pmkit:setup` in the project. It asks whether the issues live in the L
 - `/pmkit:report:status`: Draft a status update for an epic and publish it after approval.
 - `/pmkit:spec:import`: Turn a spec or PRD into an epic with milestones, issues, sub-issues, estimates and blockers.
 - `/pmkit:spec:adr-status`: Mark an existing ADR accepted, deprecated or superseded by a newer one, after you confirm the new `Status:` line.
-- `/pmkit:spec:record-decision`: Write an ADR from a decision after you confirm it, and link it to the issues it affects with a comment on each. The file is `docs/adr/NNNN-title.md` when the repository has that folder or the tracker cannot create documents, and the tracker folder (`.issues/docs/adr/` by default) otherwise.
+- `/pmkit:spec:record-decision`: Write an ADR from a decision after you confirm it, and link it to the issues it affects with a comment on each. When the decision replaces an older ADR, the new one gets a `Supersedes` line and the older one is marked superseded after you confirm. The file is `docs/adr/NNNN-title.md` when the repository has that folder or the tracker cannot create documents, and the tracker folder (`.issues/docs/adr/` by default) otherwise.
 - `/pmkit:team:capacity`: Capacity and days off per member for a sprint, with the effect on the load, changed after a preview.
 - `/pmkit:team:flow-metrics`: Show cycle time, lead time, throughput, aging and bug rate for a period, with the trend against the previous period.
 - `/pmkit:team:load`: Issues, estimates and work in progress per member, with imbalances and members with no work, and reassigns after a full preview.

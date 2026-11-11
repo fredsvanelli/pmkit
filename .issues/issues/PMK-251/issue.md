@@ -2,13 +2,14 @@
 id: PMK-251
 title: Write the Supersedes line in a new ADR
 type: feature
-status: backlog
+status: in_review
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
+branch: pmk-251-write-the-supersedes-line-in-a-new-adr
 created: 2026-11-10T20:03:45.337Z
-updated: 2026-11-10T21:22:27Z
+updated: 2026-11-11T01:55:12Z
 ---
 
 ## Description
@@ -35,6 +36,6 @@ PMK-228 added `docs adr-status`, which marks an old ADR "superseded by" the new 
 
 ## Acceptance criteria
 
-- [ ] A new ADR that replaces an older one has a line naming the older ADR's number and path
-- [ ] After the run, the older ADR says it is superseded by the new one, and its status change was confirmed first
-- [ ] A decision that replaces no ADR is written as it is today
+- [x] A new ADR that replaces an older one has a line naming the older ADR's number and path
+- [x] After the run, the older ADR says it is superseded by the new one, and its status change was confirmed first
+- [x] A decision that replaces no ADR is written as it is today
