@@ -2,12 +2,14 @@
 id: PMK-271
 title: Hide every absolute path in the auto_commit failure message
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-6
+branch: pmk-271-hide-every-absolute-path-in-the-auto
 created: 2026-11-12T00:43:33.141Z
-updated: 2026-11-12T00:43:33Z
+updated: 2026-11-12T00:56:49Z
 ---
 
 ## Description
