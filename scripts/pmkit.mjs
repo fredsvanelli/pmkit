@@ -488,7 +488,7 @@ function repoMentions(ctx, id) {
 function grepFailure(result) {
   if (result.error?.code === 'ENOENT') return 'git is not installed'
   if (result.error?.code === 'ETIMEDOUT') return `it took longer than ${REPO_MENTIONS_TIMEOUT_MS / 1000} s`
-  if (result.error) return result.error.message
+  if (result.error) return hideAbsolutePaths(result.error.message)
   if (result.status === 128 && /not a git repository/i.test(result.stderr)) return 'not a git repository'
   return hideAbsolutePaths(result.stderr.trim().split(/\r?\n/)[0]) || `exit status ${result.status}`
 }
@@ -2365,7 +2365,7 @@ export const COMMANDS = [
 export function tagWarning(root, tag, env) {
   const result = spawnSync('git', ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}`], { cwd: root, env, encoding: 'utf8' })
   if (result.error) {
-    const reason = result.error.code === 'ENOENT' ? 'git is not installed or not on PATH' : result.error.message
+    const reason = result.error.code === 'ENOENT' ? 'git is not installed or not on PATH' : hideAbsolutePaths(result.error.message)
     return `cannot check tag ${tag}: ${reason}`
   }
   if (result.status === 0) return null
@@ -3794,7 +3794,7 @@ function readRemotes(ctx) {
   // `git remote -v` in a subdirectory reads the enclosing repository, so the pmkit root must be the repository root.
   const top = readGit(ctx, ['rev-parse', '--show-toplevel'])
   if (!top.error && top.status === 0 && fs.realpathSync(top.stdout.trim()) !== fs.realpathSync(ctx.root)) {
-    return { ok: false, reason: `${ctx.root} is not the root of a git repository` }
+    return { ok: false, reason: 'the project root is not the root of a git repository' }
   }
   const listed = readGit(ctx, ['remote', '-v'])
   if (listed.error || listed.status !== 0) {

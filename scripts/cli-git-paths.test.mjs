@@ -38,14 +38,15 @@ const assertHidden = (text, secrets) => {
   assert.match(text, /<path>/)
 }
 
-test('todos scan hides the absolute path in git\'s error and keeps the folder it was asked to scan', () => {
+test('todos scan hides the absolute path in git\'s error and leaves the folder out (PMK-289)', () => {
   const { env, secrets } = brokenConfig()
   const root = repo()
   const result = cli(root, ['todos', 'scan'], env)
   assert.equal(result.status, 2)
   assert.equal(JSON.parse(result.stdout).error.code, 'INVALID_INPUT')
-  assert.ok(JSON.parse(result.stdout).error.message.includes(`cannot list the files of ${root}`), result.text)
-  assertHidden(result.text.replaceAll(root, ''), secrets)
+  assert.match(JSON.parse(result.stdout).error.message, /^cannot list the files of this repository: /, result.text)
+  assert.ok(!result.text.includes(root), result.text)
+  assertHidden(result.text, secrets)
 })
 
 test('issues delete hides the absolute path in the git grep failure it reports as unchecked', () => {
@@ -72,4 +73,21 @@ test('link-repo hides the absolute path in the note about git remotes it could n
   const result = cli(root, ['link-repo', '--dry-run'], env)
   assert.match(result.text, /could not read the git remotes/, result.text)
   assertHidden(result.text, secrets)
+})
+
+test('tagWarning and the git grep failure hide the absolute path in a spawn error message (PMK-289)', () => {
+  const dir = path.join(tempDir('pmkit-spawn paths-'), 'gone')
+  const warning = tagWarning(dir, 'v1.0.0', GOOD)
+  assert.match(warning, /^cannot check tag v1\.0\.0: /)
+  assert.ok(!warning.includes(dir) && !warning.includes('spawn paths'), warning)
+})
+
+test('link-repo leaves the project root out of the note when it is not the git root (PMK-289)', () => {
+  const root = repo()
+  const sub = path.join(root, 'sub dir')
+  fs.mkdirSync(path.join(sub, '.pmkit'), { recursive: true })
+  fs.copyFileSync(path.join(root, '.pmkit/config.yaml'), path.join(sub, '.pmkit/config.yaml'))
+  const result = cli(sub, ['link-repo', '--dry-run'], GOOD)
+  assert.match(result.text, /not the root of a git repository/, result.text)
+  assert.ok(!result.text.includes(sub) && !result.text.includes('sub dir'), result.text)
 })

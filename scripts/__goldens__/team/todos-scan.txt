@@ -3,7 +3,7 @@ exit 2
 --- stdout
 (empty)
 --- stderr
-error: cannot list the files of <root>: not a git repository
+error: cannot list the files of this repository: not a git repository
 next: Run the scan inside a git repository, so it can honor .gitignore
 
 $ pmkit todos scan --json
@@ -12,7 +12,7 @@ exit 2
 {
   "error": {
     "code": "INVALID_INPUT",
-    "message": "cannot list the files of <root>: not a git repository",
+    "message": "cannot list the files of this repository: not a git repository",
     "nextStep": "Run the scan inside a git repository, so it can honor .gitignore"
   }
 }
