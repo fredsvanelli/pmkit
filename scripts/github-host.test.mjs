@@ -190,7 +190,7 @@ test('git operations call git with the spec arguments', () => {
   h.push('b')
   assert.equal(h.currentBranch(), 'feat/x')
   assert.deepEqual(calls.map((c) => [c.cmd, ...c.args]), [
-    ['git', 'switch', '-c', 'iss-7k3q-retry', 'main'],
+    ['git', 'switch', '--no-track', '-c', 'iss-7k3q-retry', 'main'],
     ['git', 'push', '-u', 'origin', 'b'],
     ['git', 'branch', '--show-current'],
   ])
