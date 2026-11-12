@@ -2,14 +2,14 @@
 id: PMK-299
 title: Refuse to delete the text an unclosed HTML block takes into the Status section
 type: bug
-status: in_progress
+status: in_review
 priority: medium
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-299-refuse-to-delete-the-text-an-unclosed
 created: 2026-11-12T22:25:14.150Z
-updated: 2026-11-12T23:09:30Z
+updated: 2026-11-12T23:10:26Z
 ---
 
 ## Description
