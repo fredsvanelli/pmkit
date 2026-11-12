@@ -909,7 +909,12 @@ test('adrStatusHeading names the line a setext heading makes of an empty Status 
     '===': ['## Status\nAccepted\n===\n\n## Context\n', 'Accepted'],
     'blank lines before it': ['## Status\n\nAccepted\n===\n', 'Accepted'],
     'indented': ['## Status\n\n  Accepted  \n  ---\n', 'Accepted'],
-    'multi-line heading names its first line': ['## Status\nAccepted\nfor now\n---\n', 'Accepted'],
+    'a multi-line heading is named whole': ['## Status\nAccepted\nfor now\n---\n', 'Accepted for now'],
+    'indented lines of a multi-line heading': ['## Status\n  Accepted\n   for now  \n===\n', 'Accepted for now'],
+    'link definitions are not the heading': ['## Status\n[a]: /u\nAccepted\n---\n', 'Accepted'],
+    'link definitions with a title and a destination on the next line': ['## Status\n[a]:\n/u "t"\n[b]: /v\nAccepted\nfor now\n---\n', 'Accepted for now'],
+    'definitions alone are not a heading': ['## Status\n[a]: /u\n---\n', null],
+    'CRLF': ['## Status\r\nAccepted\r\nfor now\r\n---\r\n', 'Accepted for now'],
     'a filled section': ['## Status\n\nAccepted\n\n---\n\n## Context\n', null],
     'a thematic break after a blank line': ['## Status\n\n---\n\nAccepted\n===\n', null],
     'a list item is not a heading': ['## Status\n- Accepted\n---\n', null],
@@ -949,6 +954,35 @@ for (const underline of ['---', '===']) {
     assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-use-x.md'), 'utf8'), `# 1. Use X\n\n## Status\n\nDeprecated\n\nAccepted\n${underline}\n\n## Context\n\nSome text.\n`)
   })
 }
+
+test('the heading note offers both ways out, and does not ask for a second status when another form holds one (PMK-294 review)', async () => {
+  const section = '## Status\nAccepted\nfor now\n---\n\n## Context\n'
+  const cases = {
+    'no other status': [`# 1. Use X\n\n${section}`, true],
+    'a Status: line': [`# 1. Use X\n\nStatus: Old\n\n${section}`, false],
+    'YAML front matter': [`---\nstatus: Old\n---\n\n# 1. Use X\n\n${section}`, false],
+  }
+  for (const [name, [text, empty]] of Object.entries(cases)) {
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-use-x.md', text.replaceAll('\n', name === 'no other status' ? '\r\n' : '\n'))
+    const get = await adrGetFrom(root, '1')
+    assert.equal(get.data.statusHeading, 'Accepted for now', name)
+    const [note] = get.data.notes.filter((item) => item.includes('reads as a heading'))
+    assert.match(note, /because "Accepted for now" reads as a heading/, name)
+    if (empty) {
+      assert.match(note, /remove the underline/, name)
+      assert.match(note, /blank line before the underline/, name)
+      assert.doesNotMatch(note, /the first line/, name)
+    } else {
+      assert.doesNotMatch(note, /remove the underline|so "Accepted for now" is the status/, name)
+      assert.match(note, /another form/, name)
+    }
+    const set = await adrStatus(root, '1', 'deprecated', '--dry-run')
+    const [setNote] = set.data.notes.filter((item) => item.includes('reads as a heading'))
+    assert.equal(/remove the underline/.test(setNote), empty, name)
+    assert.match(setNote, /before the write/, name)
+  }
+})
 
 test('docs adr-get and docs adr-status give no heading note for an ADR with a status (PMK-294)', async () => {
   const root = repo()

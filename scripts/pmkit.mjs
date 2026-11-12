@@ -370,8 +370,13 @@ function adrByNumber(files, number, flag) {
   return found[0]
 }
 
-/** The note when a setext heading makes the `## Status` section empty (PMK-294): it names the line and says how to make it the status. */
-const statusHeadingNote = (adrPath, line) => `${adrPath}: the Status section is empty because "${line}" reads as a heading (the line under it, --- or ===, underlines it); remove the underline so "${line}" is the status`
+/**
+ * The note when a setext heading makes the `## Status` section empty (PMK-294): it names the heading and what to do. `hasStatus` is true when
+ * another form (`status:` key, `Status:` line) already holds the status: then the heading is not meant to be one, so no way to make it a second status.
+ * With none, the way out is to remove the underline, or to put a blank line before it, which makes it a thematic break that the status then includes.
+ * Both commands describe the text as it was before any write.
+ */
+const statusHeadingNote = (adrPath, heading, hasStatus) => `${adrPath}: the Status section is empty because "${heading}" reads as a heading (an underline, --- or ===, follows it)${hasStatus ? '; the status of this ADR is held in another form, so that heading is not a second status' : `; to make it the status, remove the underline, or put a blank line before the underline, which makes it a thematic break that the status then includes ("${heading} ---")`}`
 
 /** docs adr-get (PMK-263): the number, title, status and path of one ADR. Only reads. `--from` is the path `docs next-adr` gave the new ADR that supersedes it: `supersedesRef` is the path its Supersedes line cites (PMK-270). */
 function runAdrGet(ctx) {
@@ -389,7 +394,7 @@ function runAdrGet(ctx) {
   const { title, status, statuses } = adrInfo(adrSource)
   const statusHeading = adrStatusHeading(adrSource)
   const notes = new Set(statuses.map((value) => value.toLowerCase())).size > 1 ? [`${adr.path} holds more than one status (${statuses.join(', ')}); status in the JSON is the first, and docs adr-status sets them all`] : []
-  if (statusHeading !== null) notes.push(statusHeadingNote(adr.path, statusHeading))
+  if (statusHeading !== null) notes.push(statusHeadingNote(adr.path, statusHeading, statuses.length > 0))
   const data = { number: adr.number, title, status, statuses, statusHeading, path: adr.path, ref: adr.ref, place: adr.place, supersedesRef, notes }
   return { data, text: fields([['number', data.number], ['title', title ?? '(no title)'], ['status', statuses.length > 1 ? statuses.join(' | ') : status ?? '(no status)'], ['path', data.path], ['place', data.place], ...(supersedesRef === null ? [] : [['supersedes ref', supersedesRef]])]).join('\n'), notes }
 }
@@ -418,7 +423,7 @@ async function runAdrStatus(ctx) {
   }
   const before = adrText(fs.readFileSync(adr.file, 'utf8'))
   const statusHeading = adrStatusHeading(before)
-  if (statusHeading !== null) notes.push(`${statusHeadingNote(adr.path, statusHeading)}; the status is written above it and the heading stays as it is`)
+  if (statusHeading !== null) notes.push(`${statusHeadingNote(adr.path, statusHeading, adrInfo(before).statuses.length > 0)}; this describes the text before the write, which writes the status above the heading and leaves the heading as it is`)
   const { text: after, before: statusBefore, after: line } = setAdrStatus(before, status, byPath)
   let commit
   if (before !== after && !ctx.dryRun) {
