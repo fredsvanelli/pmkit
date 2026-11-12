@@ -1,1 +1,4 @@
 {"at":"2026-11-12T02:12:43Z","by":"fred","op":"create","to":{"id":"PMK-278","title":"Hide absolute paths in the git errors of other commands","type":"bug","status":"backlog","priority":"low","estimate":2,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-12T02:12:43.682Z","updated":"2026-11-12T02:12:43Z"}}
+{"at":"2026-11-12T02:19:28Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-12T02:19:28Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-12T02:19:30Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-278-hide-absolute-paths-in-the-git-errors-of"}
