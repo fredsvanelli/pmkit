@@ -879,6 +879,24 @@ test('setAdrStatus on a Status section underlined by --- pins the CommonMark rea
   })
 })
 
+test('docs adr-status and docs adr-get on a Status section underlined by --- pin what is written (PMK-283)', async () => {
+  // The same CommonMark reading as the unit test above: a human reader sees Deprecated and Accepted after the write.
+  const root = repo()
+  const text = '# 1. Use X\n\n## Status\nAccepted\n---\n\n## Context\n\nSome text.\n'
+  const written = '# 1. Use X\n\n## Status\n\nDeprecated\n\nAccepted\n---\n\n## Context\n\nSome text.\n'
+  writeAdr(root, 'docs/adr/0001-use-x.md', text)
+  const before = await adrGetFrom(root, '1')
+  assert.equal(before.code, 0)
+  assert.equal(before.data.status, null)
+  const result = await adrStatus(root, '1', 'deprecated')
+  assert.equal(result.code, 0, result.stderr)
+  assert.deepEqual(result.data.status, { before: null, after: 'Deprecated' })
+  assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-use-x.md'), 'utf8'), written)
+  const after = await adrGetFrom(root, '1')
+  assert.equal(after.code, 0)
+  assert.equal(after.data.status, 'Deprecated')
+})
+
 const headings = {
   'one space': ' ## Status',
   'three spaces': '   ## Status',
