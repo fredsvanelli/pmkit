@@ -101,7 +101,6 @@ test('hideAbsolutePaths starts a path after a backtick, a brace, a pipe and a re
   assert.equal(hideAbsolutePaths('a`/Users/x'), 'a`<path>')
   assert.equal(hideAbsolutePaths('{/Users/x}'), '{<path>')
   assert.equal(hideAbsolutePaths('a|/Users/x'), 'a|<path>')
-  assert.equal(hideAbsolutePaths('a>/Users/x'), 'a><path>')
   assert.equal(hideAbsolutePaths('cmd 2>/Users/x y/log'), 'cmd 2><path>')
 })
 
@@ -121,4 +120,22 @@ test("hideAbsolutePaths closes a quote before ']' and '>' so the text after it s
 
 test('hideAbsolutePaths leaves ordinary text with a backtick, a brace, a pipe or a redirect alone (PMK-284)', () => {
   for (const text of ['a|b', '{a/b}', 'a > b/c', 'run `git status` now', 'x {a} | y', 'docs/a`b/c']) assert.equal(hideAbsolutePaths(text), text)
+})
+
+test("hideAbsolutePaths starts a path after '>' only when it is a redirect, never after a letter such as <remote>/<branch> (PMK-284 cycle 2)", () => {
+  for (const text of ['usage: git push <remote>/<branch> and more', '<name>/<id>', 'see <a>/b c', 'x <remote>/<branch>']) assert.equal(hideAbsolutePaths(text), text)
+  assert.equal(hideAbsolutePaths('cmd 2>/Users/x y/log'), 'cmd 2><path>')
+  assert.equal(hideAbsolutePaths('cmd &>/Users/x'), 'cmd &><path>')
+  assert.equal(hideAbsolutePaths('cmd >/Users/x'), 'cmd ><path>')
+  assert.equal(hideAbsolutePaths('cmd >>/Users/x'), 'cmd >><path>')
+  assert.equal(hideAbsolutePaths('>/Users/x'), '><path>')
+})
+
+test("hideAbsolutePaths closes a quote before ']' or '>' only when that character ends the text, a space, ':' ')' or another ']' / '>' (PMK-284 cycle 2)", () => {
+  assert.equal(hideAbsolutePaths("'/Users/x/a'>b/secret dir/y' tail"), "'<path>' tail")
+  assert.equal(hideAbsolutePaths("'/Users/a/r'] gone"), "'<path>'] gone")
+  assert.equal(hideAbsolutePaths("'/Users/a/r']"), "'<path>']")
+  assert.equal(hideAbsolutePaths("['/Users/a/r']] gone"), "['<path>']] gone")
+  assert.equal(hideAbsolutePaths("'/Users/a/r'>: gone"), "'<path>'>: gone")
+  assert.equal(hideAbsolutePaths("('/Users/a/r'>) gone"), "('<path>'>) gone")
 })
