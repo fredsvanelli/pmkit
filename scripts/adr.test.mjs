@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
-import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrInfo, adrRef, adrStatusHeading } from './lib/adr.mjs'
+import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrInfo, adrRef, adrStatusHeading, adrHtmlHeld } from './lib/adr.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo } from './test-helpers.mjs'
 
@@ -722,7 +722,7 @@ test('docs adr-get shows number, title, status and path, notes a disagreement an
   }
   const one = await run1('4')
   assert.equal(one.code, 0, one.stderr)
-  assert.deepEqual({ ...one.data, notes: undefined }, { number: '0004', title: '4. Use X', status: 'accepted', statuses: ['accepted', 'Deprecated'], statusHeading: null, path: 'docs/adr/0004-use-x.md', ref: 'docs/adr/0004-use-x.md', place: 'repo', supersedesRef: null, notes: undefined })
+  assert.deepEqual({ ...one.data, notes: undefined }, { number: '0004', title: '4. Use X', status: 'accepted', statuses: ['accepted', 'Deprecated'], statusHeading: null, htmlHeld: null, path: 'docs/adr/0004-use-x.md', ref: 'docs/adr/0004-use-x.md', place: 'repo', supersedesRef: null, notes: undefined })
   assert.equal(one.data.notes.length, 1)
   assert.match(one.data.notes[0], /accepted.*Deprecated/)
   assert.match(one.data.notes[0], /status in the JSON is the first/, 'the note matches what the text and the JSON show')
@@ -1515,3 +1515,52 @@ test('a 9-digit ordered marker is still a list item, so the Status section stays
   assert.equal((await adrStatus(root, '40', 'deprecated')).code, 0)
   assert.match(fs.readFileSync(path.join(root, file), 'utf8'), /\n## Status\n\nDeprecated\n\n## Context\n/)
 })
+
+// PMK-299: an HTML block that takes a heading or later text into the Status section is never deleted by adr-status.
+const HELD = [
+  ['an unclosed comment', '## Status\n\n<!-- note\nAccepted\n\n## Context\n\nWhy we did it.\n', '<!-- note', ['## Context', 'Why we did it.']],
+  ['a div (kind 6)', '## Status\n\n<div>\n## Context\n\nWhy.\n', '<div>', ['## Context']],
+  ['a custom tag (kind 7)', '## Status\n\n<custom-tag>\n## Context\n\nWhy.\n', '<custom-tag>', ['## Context']],
+  ['an unclosed comment with plain text after a blank line', '## Status\n\n<!-- note\nAccepted\n\nWhy we did it.\n', '<!-- note', ['Why we did it.']],
+  ['a closed comment that holds a heading', '## Status\n\n<!--\n## Context\n-->\n\nAccepted\n', '<!--', ['## Context']],
+]
+const HELD_OK = [
+  ['a closed comment', '## Status\n\n<!-- note -->\n\nAccepted\n\n## Context\n\nWhy.\n'],
+  ['a closed multi-line comment with text', '## Status\n\n<!-- a\n\nb -->\n\nAccepted\n\n## Context\n\nWhy.\n'],
+  ['an unclosed comment that ends the file with the status only', '## Status\n\n<!-- note\nAccepted\n'],
+  ['a div that ends at a blank line', '## Status\n\n<div>\nAccepted\n\n## Context\n\nWhy.\n'],
+  ['a fenced heading, no HTML', '## Status\n\n```\n## x\n```\n\n## Context\n'],
+  ['no Status section', '# T\n\n<!-- note\n## Context\n'],
+]
+for (const [name, text, opener, lines] of HELD) {
+  test(`adrHtmlHeld, docs adr-status and docs adr-get name ${name} and refuse to delete what it holds (PMK-299)`, async () => {
+    assert.deepEqual(adrHtmlHeld(text), { opener, lines })
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    const get = await adrGetFrom(root, '1')
+    assert.equal(get.code, 0)
+    assert.deepEqual(get.data.htmlHeld, { opener, lines })
+    assert.ok(get.data.notes.join('\n').includes(`the HTML block "${opener}" takes ${lines.map((item) => `"${item}"`).join(', ')} into the Status section`))
+    // The reading is as before.
+    assert.equal(get.data.status, adrInfo(text).status)
+    for (const flags of [['--dry-run'], []]) {
+      const result = await adrStatus(root, '1', 'deprecated', ...flags)
+      assert.equal(result.code, 2, flags.join(' '))
+      assert.equal(result.data.error.code, 'INVALID_INPUT')
+      assert.match(result.data.error.message, /would delete/)
+      assert.match(result.data.error.nextStep, /close a comment with -->, or add a blank line after the HTML line/)
+      assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+    }
+  })
+}
+for (const [name, text] of HELD_OK) {
+  test(`adrHtmlHeld is null and docs adr-status writes as before for ${name} (PMK-299)`, async () => {
+    assert.equal(adrHtmlHeld(text), null)
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    assert.equal((await adrGetFrom(root, '1')).data.htmlHeld, null)
+    const result = await adrStatus(root, '1', 'deprecated')
+    assert.equal(result.code, 0, result.stderr)
+    if (text.includes('## Status')) assert.match(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), /## Status\n\nDeprecated\n/)
+  })
+}

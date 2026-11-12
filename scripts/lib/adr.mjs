@@ -223,9 +223,10 @@ const keepsText = (paragraph) => {
  * HTML block until its end), then starts new blocks in the deepest one it continued, and a line that continues no more than a paragraph
  * is a lazy continuation of it. A setext underline makes a heading only of a paragraph it continues and that holds more than link
  * reference definitions, so under a list item it is a break or a lazy line (PMK-280). Columns count a tab to the next stop of 4.
- * Not a Markdown parser: no inline content.
+ * Not a Markdown parser: no inline content. `held`, when given, collects the non-blank lines an HTML block continues (PMK-299), as `{ at, heading, late, block }` (`late`: after a blank line of the block),
+ * and gets `unclosed`: the block of kind 1 to 5 still open at the end of the file, which takes in every later line.
  */
-function sectionEnd(lines, from) {
+function sectionEnd(lines, from, held = []) {
   const open = [{ type: 'document' }]
   for (let j = from + 1; j < lines.length; j++) {
     const line = lines[j]
@@ -287,6 +288,11 @@ function sectionEnd(lines, from) {
       matched = k
     }
     if (closedFence) continue
+    // A line the open HTML block continues; the block itself starts on an earlier line.
+    if (matched >= 1 && matched === open.length - 1 && open[matched].type === 'html') {
+      if (blank) open[matched].blank = true
+      else held.push({ at: j, heading: headingLevel(line.slice(offset)) > 0, late: open[matched].blank === true, block: open[matched] })
+    }
 
     // Start new blocks in the deepest continued one; starting one closes the open blocks the line did not continue.
     let container = matched
@@ -320,7 +326,7 @@ function sectionEnd(lines, from) {
         add({ type: 'fence', char: fence[0], length: fence.length })
       } else if (indent < 4 && rest[0] === '<' && (kind = HTML_OPEN.findIndex((start, i) => start.test(rest) && (i < 6 || !(inParagraph || (!allClosed && !blank && open.at(-1).type === 'paragraph')))) + 1) > 0) {
         // The white space before it is part of the HTML block, so `offset` stays.
-        add({ type: 'html', kind })
+        add({ type: 'html', kind, first: rest.trim() })
       } else if (indent < 4 && inParagraph && CM_SETEXT.test(rest) && keepsText(open[container])) {
         // The whole paragraph becomes the heading, so the section stops at its first line.
         if (container === 1) return open[1].start
@@ -367,6 +373,7 @@ function sectionEnd(lines, from) {
     else if (leaf.type === 'html' && leaf.kind <= 5 && HTML_CLOSE[leaf.kind].test(rest)) open.length = container
     else if (!blank && !LEAVES.has(leaf.type)) add({ type: 'paragraph', start: j, text: `${rest}\n` })
   }
+  held.unclosed = open.at(-1).type === 'html' && open.at(-1).kind <= 5 ? open.at(-1) : null
   return lines.length
 }
 
@@ -385,6 +392,21 @@ function locate(lines) {
   const yaml = close === -1 ? -1 : lines.slice(1, close).findIndex((item) => YAML_STATUS.test(item)) + 1 || -1
   const end = (from) => sectionEnd(lines, from)
   return { close, start, yaml, head, line: at((item) => STATUS_LINE.test(item), head === -1 ? lines.length : head), section: at((item) => headingLevel(item) === 2 && headingText(item).toLowerCase() === 'status'), title: at((item) => headingLevel(item) === 1, head === -1 ? lines.length : head), end }
+}
+/**
+ * What `adr-status` would delete that an HTML block took into the `## Status` section (PMK-299), `{ opener, lines }`, null when nothing: the lines
+ * the section replaces that the block continues and that read as an ATX heading, or that come after a blank line in a block of kind 1 to 5
+ * that never closes. `opener` is the first line of the block, `lines` the trimmed lines at risk. Found by the walk that ends the section, so
+ * reading is unchanged and the first line of the block (the status the user wrote) is never counted.
+ */
+export function adrHtmlHeld(text) {
+  const lines = adrText(text).split('\n')
+  const { section } = locate(lines)
+  if (section === -1) return null
+  const held = []
+  sectionEnd(lines, section, held)
+  const risky = held.filter((item) => item.heading || (item.block === held.unclosed && item.late))
+  return risky.length === 0 ? null : { opener: risky[0].block.first, lines: risky.map((item) => lines[item.at].trim()) }
 }
 const withoutBlanks = (lines, from) => {
   let at = from

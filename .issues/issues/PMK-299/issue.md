@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-299-refuse-to-delete-the-text-an-unclosed
 created: 2026-11-12T22:25:14.150Z
-updated: 2026-11-12T22:40:24Z
+updated: 2026-11-12T23:09:30Z
 ---
 
 ## Description
@@ -39,6 +39,6 @@ Reading is right by CommonMark; deleting the user's text is not. Source: PMK-291
 
 ## Acceptance criteria
 
-- [ ] `adr-status` on a Status section with an unclosed `<!--`, `<div>` or `<custom-tag>` before `## Context` writes nothing and gives a next step, with tests
-- [ ] `adr-get` on the same files names the cause in a note, with a test
-- [ ] `adr-status` on a Status section with a closed HTML comment works as before, with a test
+- [x] `adr-status` on a Status section with an unclosed `<!--`, `<div>` or `<custom-tag>` before `## Context` writes nothing and gives a next step, with tests
+- [x] `adr-get` on the same files names the cause in a note, with a test
+- [x] `adr-status` on a Status section with a closed HTML comment works as before, with a test

@@ -24,7 +24,7 @@ import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, 
 import { pathNote } from './lib/path-notes.mjs'
 import { fileMentions } from './lib/mentions.mjs'
 import { REPO_UNCHECKED } from './lib/delete-refusal.mjs'
-import { ADR_STATUSES, adrFiles, adrInfo, adrRef, isAdrName, adrFolders, adrLocation, adrStatusHeading, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
+import { ADR_STATUSES, adrFiles, adrInfo, adrRef, isAdrName, adrFolders, adrLocation, adrHtmlHeld, adrStatusHeading, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
 import { similarResult } from './lib/similar.mjs'
 import { isBlocked } from './lib/model.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
@@ -378,6 +378,9 @@ function adrByNumber(files, number, flag) {
  */
 const statusHeadingNote = (adrPath, { heading, underline }, hasStatus) => `${adrPath}: the Status section is empty because "${heading}" reads as a heading (an underline, --- or ===, follows it)${hasStatus ? '; the status of this ADR is held in another form, so that heading is not a second status' : `; to make it the status, remove the underline, or put a blank line before the underline, which stops it underlining, and the status then includes it ("${heading} ${underline}")`}`
 
+const HTML_HELD_STEP = 'End the HTML block before the heading: close a comment with -->, or add a blank line after the HTML line; then run the command again'
+const htmlHeldNote = (adrPath, { opener, lines }) => `${adrPath}: the HTML block "${opener}" takes ${lines.map((item) => `"${item}"`).join(', ')} into the Status section, so that text reads as part of the status; ${HTML_HELD_STEP.charAt(0).toLowerCase()}${HTML_HELD_STEP.slice(1)}`
+
 /** docs adr-get (PMK-263): the number, title, status and path of one ADR. Only reads. `--from` is the path `docs next-adr` gave the new ADR that supersedes it: `supersedesRef` is the path its Supersedes line cites (PMK-270). */
 function runAdrGet(ctx) {
   const { trackerDir, trackerFolder } = adrPlace(ctx)
@@ -396,7 +399,9 @@ function runAdrGet(ctx) {
   const statusHeading = found?.heading ?? null
   const notes = new Set(statuses.map((value) => value.toLowerCase())).size > 1 ? [`${adr.path} holds more than one status (${statuses.join(', ')}); status in the JSON is the first, and docs adr-status sets them all`] : []
   if (found !== null) notes.push(statusHeadingNote(adr.path, found, statuses.length > 0))
-  const data = { number: adr.number, title, status, statuses, statusHeading, path: adr.path, ref: adr.ref, place: adr.place, supersedesRef, notes }
+  const htmlHeld = adrHtmlHeld(adrSource)
+  if (htmlHeld !== null) notes.push(htmlHeldNote(adr.path, htmlHeld))
+  const data = { number: adr.number, title, status, statuses, statusHeading, htmlHeld, path: adr.path, ref: adr.ref, place: adr.place, supersedesRef, notes }
   return { data, text: fields([['number', data.number], ['title', title ?? '(no title)'], ['status', statuses.length > 1 ? statuses.join(' | ') : status ?? '(no status)'], ['path', data.path], ['place', data.place], ...(supersedesRef === null ? [] : [['supersedes ref', supersedesRef]])]).join('\n'), notes }
 }
 
@@ -423,6 +428,8 @@ async function runAdrStatus(ctx) {
     byPath = adrRef(adr, newer, trackerFolder)
   }
   const before = adrText(fs.readFileSync(adr.file, 'utf8'))
+  const htmlHeld = adrHtmlHeld(before)
+  if (htmlHeld !== null) throw new PmkitError('INVALID_INPUT', `${adr.path}: setting the status would delete ${htmlHeld.lines.map((item) => `"${item}"`).join(', ')}, which the HTML block "${htmlHeld.opener}" takes into the Status section; nothing was written`, HTML_HELD_STEP)
   const found = adrStatusHeading(before)
   const statusHeading = found?.heading ?? null
   if (found !== null) notes.push(`${statusHeadingNote(adr.path, found, adrInfo(before).statuses.length > 0)}; this describes the text before the write, which writes the status above the heading and leaves the heading as it is`)
