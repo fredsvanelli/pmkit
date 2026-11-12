@@ -8,3 +8,5 @@
 {"at":"2026-11-12T19:26:34Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-11-12T19:27:00Z","by":"fred","op":"comment","to":"2026-11-12T19-27-00Z-fred.md"}
 {"at":"2026-11-12T19:27:01Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-12T19:20:27Z","by":"fred","op":"comment","to":"2026-11-12T19-20-27Z-fred.md"}
+{"at":"2026-11-12T20:41:50Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}

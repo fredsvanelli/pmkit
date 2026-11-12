@@ -2,14 +2,14 @@
 id: PMK-284
 title: "Hide a path after a backtick, a brace, a pipe or a redirect"
 type: bug
-status: in_review
+status: done
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-284-hide-a-path-after-a-backtick-a-brace-a
 created: 2026-11-12T14:41:34.609Z
-updated: 2026-11-12T14:56:10Z
+updated: 2026-11-12T20:41:45Z
 ---
 
 ## Description
