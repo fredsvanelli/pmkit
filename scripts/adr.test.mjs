@@ -1284,3 +1284,20 @@ test('an HTML block and a paragraph of link reference definitions end the Status
     number++
   }
 })
+
+// Review of PR #241, cycle 5: an unclosed link title of escapes once made the title pattern backtrack twice per escape. Every
+// pattern of the link reference definition and of the HTML block reads a long line of its own kind in well under a second.
+test('probe: no link reference definition or HTML block pattern takes a second on a long line of its own kind (PMK-291 cycle 5 review)', () => {
+  const n = 5000
+  const bodies = [
+    `[a]: /u "${'\\!'.repeat(n)}`, `[a]: /u '${'\\!'.repeat(n)}`, `[a]: /u (${'\\!'.repeat(n)}`, `[a]: /u "${'\\!'.repeat(n)}"x`,
+    `[${'\\['.repeat(n)}`, `[a${'\\]'.repeat(n)}: /u`, `[a]: ${'('.repeat(n)}`, `[a]: ${'\\('.repeat(n)}(`, `[a]: <${'\\<'.repeat(n)}`,
+    '[a]: /u "t"\n'.repeat(n / 5), `[a]: /u\n"${'\\!'.repeat(n)}`, `<x-y${' a=1'.repeat(n)}`, `<x-y${' a="b'.repeat(n)}`,
+  ]
+  for (const body of bodies) {
+    const start = process.hrtime.bigint()
+    adrInfo(`# T\n\n## Status\n\n${body}\n---\n\n## Context\n`)
+    const ms = Number(process.hrtime.bigint() - start) / 1e6
+    assert.ok(ms < 1000, `${JSON.stringify(body.slice(0, 20))} took ${ms} ms`)
+  }
+})

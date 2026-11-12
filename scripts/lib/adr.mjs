@@ -166,7 +166,9 @@ const HTML_OPEN = [
 ]
 const HTML_CLOSE = [null, /<\/(?:script|pre|textarea|style)>/i, /-->/, /\?>/, />/, /\]\]>/]
 const ESCAPABLE = /^[!"#$%&'()*+,./:;<=>?@[\\\]^_`{|}~-]/
-const LINK_TITLE = /^(?:"(\\[!"#$%&'()*+,./:;<=>?@[\\\]^_`{|}~-]|\\[^\\]|[^\\"\x00])*"|'(\\[!"#$%&'()*+,./:;<=>?@[\\\]^_`{|}~-]|\\[^\\]|[^\\'\x00])*'|\((\\[!"#$%&'()*+,./:;<=>?@[\\\]^_`{|}~-]|\\[^\\]|[^\\()\x00])*\))/
+// A backslash and the character after it are one step, so an escape never has two ways to match (commonmark.js 0.31.2 has two
+// overlapping alternatives there, which backtrack twice per escape in an unclosed title: PMK-291 cycle 5 review).
+const LINK_TITLE = /^(?:"(?:\\[\s\S]|[^\\"\x00])*"|'(?:\\[\s\S]|[^\\'\x00])*'|\((?:\\[\s\S]|[^\\()\x00])*\))/
 const SPACE_NEWLINE = /^ *(?:\n *)?/
 const LINE_END = /^ *(?:\n|$)/
 
