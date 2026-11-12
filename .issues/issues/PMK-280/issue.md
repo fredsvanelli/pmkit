@@ -2,14 +2,14 @@
 id: PMK-280
 title: Keep the Status section open past an indented list item continuation
 type: bug
-status: in_review
+status: done
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-280-keep-the-status-section-open-past-an
 created: 2026-11-12T02:12:43.866Z
-updated: 2026-11-12T02:29:46Z
+updated: 2026-11-12T04:01:16Z
 ---
 
 ## Description

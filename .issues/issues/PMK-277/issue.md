@@ -2,14 +2,14 @@
 id: PMK-277
 title: "Hide an absolute path that follows a bracket, comma, semicolon, angle bracket or at sign"
 type: bug
-status: in_review
+status: done
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-277-hide-an-absolute-path-that-follows-a
 created: 2026-11-12T02:12:43.592Z
-updated: 2026-11-12T02:29:40Z
+updated: 2026-11-12T04:01:15Z
 ---
 
 ## Description
