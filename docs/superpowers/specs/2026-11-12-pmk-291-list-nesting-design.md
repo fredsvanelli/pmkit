@@ -21,3 +21,9 @@ Out of scope: a full list parser (quotes inside items, `1.` numbering, setext in
 ## Check
 
 Compare `adrInfo` of develop and the branch over a generated set of list cases against commonmark.js as oracle. No case may get worse. Tests: one per text, in `scripts/adr.test.mjs`, plus `setAdrStatus`/`adr-get`/`adr-status` paths share `locate`.
+
+## Cycle 4 (after three review cycles)
+
+Each patch of `continuesItem` broke a new form (empty item, marker with 5+ spaces, code inside an item, item nested 4+ columns in). The rule now follows CommonMark's block structure instead: `sectionEnd(lines, from)` walks forward from the section start with a stack of open blocks (quote, list item with its content column, paragraph, indented code, fence). Each line continues the open blocks in order, starts blocks in the deepest one it continued, or is a lazy line of the open paragraph. The section ends at the first ATX or setext heading whose parent is the document. Still no inlines, HTML blocks or link reference definitions.
+
+Check: `scripts/dev/adr-commonmark-diff.mjs --commonmark <dir>` (commonmark.js 0.31.2 installed outside the repository) compares develop and HEAD against the oracle; the PR is pushed only with 0 cases worse than develop.
