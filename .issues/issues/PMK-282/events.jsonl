@@ -1,1 +1,5 @@
 {"at":"2026-11-12T02:12:44Z","by":"fred","op":"create","to":{"id":"PMK-282","title":"Find an indented or closed Status heading","type":"bug","status":"backlog","priority":"low","estimate":1,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-12T02:12:44.044Z","updated":"2026-11-12T02:12:44Z"}}
+{"at":"2026-11-12T03:39:19Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-12T03:39:19Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-12T03:39:21Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-282-find-an-indented-or-closed-status"}
+{"at":"2026-11-12T03:39:57Z","by":"fred","op":"comment","to":"2026-11-12T03-39-57Z-fred.md"}

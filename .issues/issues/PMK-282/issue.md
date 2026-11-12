@@ -2,12 +2,14 @@
 id: PMK-282
 title: Find an indented or closed Status heading
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-282-find-an-indented-or-closed-status
 created: 2026-11-12T02:12:44.044Z
-updated: 2026-11-12T02:12:44Z
+updated: 2026-11-12T03:39:21Z
 ---
 
 ## Description
