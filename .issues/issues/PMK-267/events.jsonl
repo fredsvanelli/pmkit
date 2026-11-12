@@ -1,1 +1,9 @@
 {"at":"2026-11-12T00:00:31Z","by":"fred","op":"create","to":{"id":"PMK-267","title":"Fix unarchive history repeats within one second and the Linear flag check","type":"bug","status":"backlog","priority":"low","estimate":2,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-12T00:00:31.358Z","updated":"2026-11-12T00:00:31Z"}}
+{"at":"2026-11-12T00:05:59Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-12T00:05:59Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-12T00:06:02Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-267-fix-unarchive-history-repeats-within-one"}
+{"at":"2026-11-12T00:07:13Z","by":"fred","op":"comment","to":"2026-11-12T00-07-13Z-fred.md"}
+{"at":"2026-11-12T00:07:13Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-12T00:07:13Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-12T00:10:41Z","by":"fred","op":"comment","to":"2026-11-12T00-10-41Z-fred.md"}
+{"at":"2026-11-12T00:10:41Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
