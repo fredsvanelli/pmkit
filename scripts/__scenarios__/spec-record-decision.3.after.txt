@@ -6,6 +6,10 @@ $ pmkit docs adr-get 2 --json  [step 2, read]
 exit 0
 $ pmkit docs next-adr --title-file <inputs>/title-keep-estimates-in-points.md --json  [step 3, read]
 exit 0
+$ pmkit docs adr-get 1 --from .issues/docs/adr/0003-keep-estimates-in-points.md --json  [step 4, read]
+exit 0
+$ pmkit docs adr-get 2 --from .issues/docs/adr/0003-keep-estimates-in-points.md --json  [step 4, read]
+exit 0
 $ pmkit docs next-adr --title-file <inputs>/title-keep-estimates-in-points.md --json  [step 5, read]
 exit 0
 $ pmkit docs create adr/0003-keep-estimates-in-points.md --body-file <inputs>/adr-0003-supersedes-two.md --dry-run --json  [step 5, dry run]
