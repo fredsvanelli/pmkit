@@ -2,3 +2,5 @@
 {"at":"2026-11-12T03:49:49Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-12T03:49:49Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-12T03:50:00Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-283-test-adr-status-on-a-status-followed-by"}
+{"at":"2026-11-12T03:51:45Z","by":"fred","op":"comment","to":"2026-11-12T03-51-45Z-fred.md"}
+{"at":"2026-11-12T03:55:51Z","by":"fred","op":"update","field":"acceptance_criteria"}
