@@ -867,6 +867,18 @@ test('docs adr-get and docs adr-status end the Status section at a setext headin
   assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0005-use-y.md'), 'utf8'), text.replace('\nAccepted\n', '\nDeprecated\n'))
 })
 
+test('setAdrStatus on a Status section underlined by --- pins the CommonMark reading (PMK-283)', () => {
+  // CommonMark makes `Accepted` a setext h2 heading, so the Status section is empty and the status is null.
+  // This pins that reading: a human reader sees two status-like entries (Deprecated and Accepted) after the write.
+  const text = '# 1. Use X\n\n## Status\nAccepted\n---\n\n## Context\n\nSome text.\n'
+  assert.deepEqual(adrInfo(text), { title: '1. Use X', status: null, statuses: [] })
+  assert.deepEqual(setAdrStatus(text, 'deprecated'), {
+    text: '# 1. Use X\n\n## Status\n\nDeprecated\n\nAccepted\n---\n\n## Context\n\nSome text.\n',
+    before: null,
+    after: 'Deprecated',
+  })
+})
+
 const headings = {
   'one space': ' ## Status',
   'three spaces': '   ## Status',
