@@ -2,3 +2,5 @@
 {"at":"2026-11-12T15:53:51Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-12T15:53:51Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-12T15:53:55Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-285-keep-the-cause-after-a-quoted-file-url"}
+{"at":"2026-11-12T15:54:31Z","by":"fred","op":"comment","to":"2026-11-12T15-54-31Z-fred.md"}
+{"at":"2026-11-12T15:55:05Z","by":"fred","op":"update","field":"acceptance_criteria"}

@@ -162,3 +162,13 @@ test('hideAbsolutePaths leaves ordinary git and gh text, revisions, arrows and m
   ]) assert.equal(hideAbsolutePaths(text), text)
   assert.equal(hideAbsolutePaths('git log > /Users/x y/out'), 'git log > <path>')
 })
+
+test('hideAbsolutePaths ends a quoted file:// URL at its closing quote, as a quoted path does (PMK-285)', () => {
+  assert.equal(hideAbsolutePaths("fatal: 'file:///Users/a/r': does not appear to be a git repository"), "fatal: 'file:<path>': does not appear to be a git repository")
+  assert.equal(hideAbsolutePaths('fatal: "FILE://localhost/Users/a b/r": not a repo'), 'fatal: "FILE:<path>": not a repo')
+  assert.equal(hideAbsolutePaths("fatal: 'file://host/Users/a/r' (cause)"), "fatal: 'file:<path>' (cause)")
+  assert.equal(hideAbsolutePaths("['file:///Users/a b']: cause"), "['file:<path>']: cause")
+  assert.equal(hideAbsolutePaths("fatal: 'file:///Users/O'Brien/r': cause"), "fatal: 'file:<path>': cause") // an apostrophe inside the name stays inside
+  assert.equal(hideAbsolutePaths("fatal: 'file:///Users/a/r"), "fatal: 'file:<path>") // never closes: to the end of the line
+  assert.equal(hideAbsolutePaths('url file:///Users/a/r: cause'), 'url file:<path>') // unquoted: to the end of the line
+})
