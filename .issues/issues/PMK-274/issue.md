@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-274-stop-step-2-of-record-decision-from
 created: 2026-11-12T02:12:43.326Z
-updated: 2026-11-12T02:19:55Z
+updated: 2026-11-12T02:30:05Z
 ---
 
 ## Description
@@ -33,5 +33,5 @@ PMK-270 made `/pmkit:spec:record-decision` write the `Supersedes:` line from `su
 
 ## Acceptance criteria
 
-- [ ] Step 2 no longer tells the agent to keep `ref` for the Supersedes line, and steps 2 and 4 agree on what the line cites
-- [ ] The plugin test and the record-decision scenario pass
+- [x] Step 2 no longer tells the agent to keep `ref` for the Supersedes line, and steps 2 and 4 agree on what the line cites
+- [x] The plugin test and the record-decision scenario pass
