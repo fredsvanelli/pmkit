@@ -56,7 +56,7 @@ import { redact } from './lib/redact.mjs'
 import { shareDone, topLevelRollup } from './lib/initiatives.mjs'
 import { tailLines } from './lib/tail-lines.mjs'
 import { rightLines, splitDiff } from './lib/diff-files.mjs'
-import { climbsOut, relativeTo } from './lib/paths.mjs'
+import { climbsOut, hideAbsolutePaths, relativeTo } from './lib/paths.mjs'
 
 const TEMPLATES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates')
 const usageError = (message, nextStep = 'node scripts/pmkit.mjs --help') => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -4199,7 +4199,9 @@ function commitTracker(config, message, paths) {
     const top2 = top.stdout.trim()
     groups.set(top2, [...(groups.get(top2) ?? []), slash(path.relative(top2, full))])
   }
-  for (const [top, files] of groups) commitIn(top, message, files, `${files.length <= 5 ? files.join(' ') : 'the tracker files'} (in the git repository that holds the tracker)`)
+  // tracker.path is relative for a folder next to the repository; an absolute one is never shown (PMK-271).
+  const outsideName = path.isAbsolute(folder) || path.win32.isAbsolute(folder) ? 'the tracker files' : `the tracker files in ${folder}`
+  for (const [top, files] of groups) commitIn(top, message, files, `${files.length <= 5 ? files.join(' ') : outsideName} (in the git repository that holds the tracker)`)
   if (loose) notes.push('the tracker folder is outside the repository and not in a git repository, so nothing was committed for it')
   return notes
 }
@@ -4210,10 +4212,7 @@ function commitIn(cwd, message, paths, named) {
   const git = (...args) => spawnSync('git', ['--literal-pathspecs', ...args], { cwd, encoding: 'utf8' })
   // git quotes the absolute path of what it refused: the repository folder comes out, which leaves the path relative to it, and any other absolute path is hidden (PMK-268).
   const folders = [...new Set([cwd, fs.realpathSync(cwd)])].flatMap((dir) => [dir.split(path.sep).join('/'), dir]).sort((a, b) => b.length - a.length)
-  const relative = (text) => {
-    return relativeTo(text, folders).replace(/(^|[\s'"(])((?:[A-Za-z]:[\\/]|\/)[^\s'"]+)/g, '$1<path>')
-  }
-  const fail = (result) => new PmkitError('UPSTREAM', `the write succeeded but auto_commit failed: ${relative((result.stderr || result.stdout).trim())}`, `Commit ${named} yourself`)
+  const fail = (result) => new PmkitError('UPSTREAM', `the write succeeded but auto_commit failed: ${hideAbsolutePaths(relativeTo((result.stderr || result.stdout).trim(), folders))}`, `Commit ${named} yourself`)
   // On disk with its exact case: where the file system ignores case, the old name of a case-only rename still "exists".
   const onDisk = (file) => {
     const full = path.join(cwd, file)

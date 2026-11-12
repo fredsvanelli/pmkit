@@ -1,1 +1,10 @@
 {"at":"2026-11-12T00:43:33Z","by":"fred","op":"create","to":{"id":"PMK-271","title":"Hide every absolute path in the auto_commit failure message","type":"bug","status":"backlog","priority":"low","estimate":2,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-12T00:43:33.141Z","updated":"2026-11-12T00:43:33Z"}}
+{"at":"2026-11-12T00:56:44Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-12T00:56:44Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-12T00:56:49Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-271-hide-every-absolute-path-in-the-auto"}
+{"at":"2026-11-12T00:57:22Z","by":"fred","op":"comment","to":"2026-11-12T00-57-22Z-fred.md"}
+{"at":"2026-11-12T01:02:34Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-12T01:02:36Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-12T01:02:38Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-12T01:09:17Z","by":"fred","op":"comment","to":"2026-11-12T01-09-17Z-fred.md"}
+{"at":"2026-11-12T01:09:18Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
