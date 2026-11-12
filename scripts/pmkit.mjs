@@ -490,7 +490,7 @@ function grepFailure(result) {
   if (result.error?.code === 'ETIMEDOUT') return `it took longer than ${REPO_MENTIONS_TIMEOUT_MS / 1000} s`
   if (result.error) return result.error.message
   if (result.status === 128 && /not a git repository/i.test(result.stderr)) return 'not a git repository'
-  return result.stderr.trim().split(/\r?\n/)[0] || `exit status ${result.status}`
+  return hideAbsolutePaths(result.stderr.trim().split(/\r?\n/)[0]) || `exit status ${result.status}`
 }
 
 /** Text of an issue delete: the full record, what goes, the warnings, and the way to keep the issue instead. A dry run is the preview. */
@@ -2370,7 +2370,7 @@ export function tagWarning(root, tag, env) {
   }
   if (result.status === 0) return null
   if (result.status === 1) return `tag ${tag} is not in this repository; create and push it, or run git fetch --tags`
-  const first = (result.stderr ?? '').split('\n')[0].replace(/^fatal: /, '').trim()
+  const first = hideAbsolutePaths((result.stderr ?? '').split('\n')[0].replace(/^fatal: /, '').trim())
   return `cannot check tag ${tag}: ${first || `git exited with ${result.status}`}`
 }
 
@@ -3798,7 +3798,7 @@ function readRemotes(ctx) {
   }
   const listed = readGit(ctx, ['remote', '-v'])
   if (listed.error || listed.status !== 0) {
-    return { ok: false, reason: (listed.error?.message ?? listed.stderr ?? '').trim().split('\n')[0] || `git exited with ${listed.status}` }
+    return { ok: false, reason: hideAbsolutePaths((listed.error?.message ?? listed.stderr ?? '').trim().split('\n')[0]) || `git exited with ${listed.status}` }
   }
   const remotes = []
   for (const line of listed.stdout.split('\n')) {

@@ -37,6 +37,7 @@ import { MAX_EXCERPT, findMention, findMentions, mentionText } from './inbox.mjs
 import { inboxGet, inboxUpdate } from '../user-store.mjs'
 import { CREATE_KEYS, UPDATE_KEYS, checkKeys } from '../issue-fields.mjs'
 import { CACHE_DIR, INDEX_FILE, clearIndex, indexHeader, readThroughIndex } from './query-index.mjs'
+import { hideAbsolutePaths } from '../paths.mjs'
 import {
   SPRINT_STATES, sprintFileExists, addDays, overlaps, parseSprint, readSprint, readSprints, applyBasePatch, applyCapacityPatch, requireCapacity, requireDaysOff, serializeSprint, validDate, validTimestamp,
 } from './sprints.mjs'
@@ -1117,7 +1118,7 @@ export function createLocalTracker(root, {
         } catch (error) {
           // The branches cannot be read, so nothing proves the item is gone. Keeping is the safe side: a dropped key shows the item as unread again.
           keep = true
-          note = `old seen keys were kept because git could not read the branches (${String(error.message).trim().split('\n')[0]})`
+          note = `old seen keys were kept because git could not read the branches (${hideAbsolutePaths(String(error.message).trim().split('\n')[0])})`
         }
       }
       if (!keep) dropped.push(key)

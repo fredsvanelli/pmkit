@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { PmkitError } from './errors.mjs'
+import { hideAbsolutePaths } from './paths.mjs'
 
 /** The most output git may print, in bytes. The same limit as the GitHub host. */
 export const GIT_MAX_BUFFER = 256 * 1024 * 1024
@@ -447,7 +448,7 @@ export function scanRepo(root, { path: given, skip = [], env = process.env } = {
   if (listed.error?.code === 'ENOENT') throw new PmkitError('NOT_CONFIGURED', 'git was not found, and the scan needs it to list the files', 'Install git and run the scan again')
   if (listed.error || listed.status !== 0) {
     const stderr = String(listed.stderr ?? '').trim()
-    const why = listed.error?.code === 'ENOBUFS' ? 'git printed more than 256 MiB' : /not a git repository/.test(stderr) ? 'not a git repository' : stderr || listed.error?.message || 'git failed'
+    const why = listed.error?.code === 'ENOBUFS' ? 'git printed more than 256 MiB' : /not a git repository/.test(stderr) ? 'not a git repository' : hideAbsolutePaths(stderr) || listed.error?.message || 'git failed'
     throw new PmkitError('INVALID_INPUT', `cannot list the files of ${root}: ${why}`, 'Run the scan inside a git repository, so it can honor .gitignore')
   }
   if (prefix !== null && !fs.existsSync(path.join(root, prefix))) throw new PmkitError('INVALID_INPUT', `--path ${JSON.stringify(given)} does not exist in the repository`, 'Pass a path relative to the repository root, such as src/')

@@ -167,6 +167,22 @@ test('any other failure becomes UPSTREAM with the first stderr line', () => {
   )
 })
 
+test('PMK-278: a git failure hides the absolute path of its stderr, a gh failure keeps its text, and the HTTP status still parses', () => {
+  const stderr = "fatal: '/Users/John Doe/remote.git' does not appear to be a git repository\n"
+  assert.throws(
+    () => host(fakeExec({ status: 128, stderr }).exec).push('iss-1'),
+    (e) => e.code === 'UPSTREAM' && e.message.includes('<path>') && !e.message.includes('John') && !e.message.includes('Doe'),
+  )
+  const url = "fatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 403\n"
+  assert.throws(() => host(fakeExec({ status: 128, stderr: url }).exec).push('iss-1'), (e) => e.message.includes(url.trim()))
+  const secret = "fatal: unable to access 'https://user:pw@github.com/o/r.git/': The requested URL returned error: 403\n"
+  assert.throws(() => host(fakeExec({ status: 128, stderr: secret }).exec).push('iss-1'), (e) => e.message.includes('https://[redacted]@github.com/o/r.git/') && !e.message.includes('user:pw'))
+  assert.throws(
+    () => host(fakeExec({ status: 1, stderr: 'gh: see /tmp/x.log (HTTP 404)\n' }).exec).prRefs(1),
+    (e) => e.message.includes('/tmp/x.log') && e.httpStatus === 404,
+  )
+})
+
 test('git operations call git with the spec arguments', () => {
   const { exec, calls } = fakeExec({}, {}, { stdout: ' feat/x \n' })
   const h = host(exec)
