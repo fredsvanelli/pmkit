@@ -19,7 +19,7 @@ export const relativeTo = (text, dirs) => {
 
 const ABSOLUTE = String.raw`(?:[A-Za-z]:[\\/]|\\\\|/)`
 // Where a path may start (PMK-277, PMK-284): the beginning of a line, one of ` (=:[,;<@{|`, or a `>` that is a redirect (after a line start, a space, `&`, another `>` or a digit that is not the end of a word or a revision: `2>/x`, `&>/x`, ` >/x`, `>>/x`, but not `<rev1>/x` or `HEAD~1>/x`), never one after a letter, which closes `<remote>/<branch>`.
-const START = String.raw`^|[\s(=:\[,;<@{|]|(?:^|[\s&>]|(?<![\w~^])\d)>`
+const START = String.raw`^|[\s(=:\[,;<@{|!]|(?:^|[\s&>]|(?<![\w~^])\d|(?<=[A-Za-z])(?<!<[^\s<>]*))>`
 // The scheme of a local path: `file:`, or `<scheme>+file:` such as `git+file:` (PMK-286), in any case.
 const FILE_SCHEME = String.raw`(?:[A-Za-z][A-Za-z0-9+.-]*\+)?[Ff][Ii][Ll][Ee]:`
 // scheme://host...: a URL is not a path and stays whole, except file:// and <scheme>+file://, which are always a local path, with or without a host (PMK-278, PMK-286).
@@ -27,7 +27,7 @@ const FILE_SCHEME = String.raw`(?:[A-Za-z][A-Za-z0-9+.-]*\+)?[Ff][Ii][Ll][Ee]:`
 // rejected for the same reason). The regex starts only at the start of a run, takes the text before that first letter as a prefix and gives it back, so a run is read once (PMK-288).
 const RUN_START = String.raw`(?<![A-Za-z0-9+.-])`
 const URL_PREFIX = String.raw`(?:(?<!\w)(?=[A-Za-z])|(?:(?<=_)|(?![A-Za-z]))(?:[A-Za-z0-9]|[.+-](?![A-Za-z]))*[.+-](?=[A-Za-z]))`
-const SCHEME_URL = String.raw`${RUN_START}(${URL_PREFIX})((?!${FILE_SCHEME})[A-Za-z][A-Za-z0-9+.-]+:\/\/(?=[^\/\s])\S*)`
+const SCHEME_URL = String.raw`${RUN_START}(${URL_PREFIX})((?!${FILE_SCHEME})[A-Za-z][A-Za-z0-9+.-]+:\/\/(?=[^\/\s])(?:[^\s|]|\|(?!${ABSOLUTE}))*)`
 // The user of an http(s) URL, or of a `<scheme>+http(s)` one such as `git+https` (PMK-287): up to the last `@` before the path, a query or a fragment.
 const HTTP_USER = /^((?:[A-Za-z][A-Za-z0-9+.-]*\+)?[Hh][Tt][Tt][Pp][Ss]?:\/\/)[^\/\s?#]+@/
 

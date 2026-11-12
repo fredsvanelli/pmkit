@@ -2,12 +2,14 @@
 id: PMK-295
 title: "Hide a path after `!`, after a letter before `>` and after a pipe that ends a URL"
 type: bug
-status: backlog
+status: in_progress
 priority: medium
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-295-hide-a-path-after-after-a-letter-before
 created: 2026-11-12T22:25:13.683Z
-updated: 2026-11-12T22:25:13Z
+updated: 2026-11-12T22:40:08Z
 ---
 
 ## Description
@@ -38,5 +40,5 @@ Source: PMK-284, PR #239 (implementer and review cycles 1 and 2).
 
 ## Acceptance criteria
 
-- [ ] `!/Users/x`, `from>/Users/x` and `https://h.com/x|/Users/y` hide the path, with tests
-- [ ] `<remote>/<branch>` and `<rev1>/<rev2>` stay as they are, with a test
+- [x] `!/Users/x`, `from>/Users/x` and `https://h.com/x|/Users/y` hide the path, with tests
+- [x] `<remote>/<branch>` and `<rev1>/<rev2>` stay as they are, with a test

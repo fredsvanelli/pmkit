@@ -203,3 +203,14 @@ test('hideAbsolutePaths redacts the user name of an http(s) URL, and leaves ssh 
     assert.equal(hideAbsolutePaths(text), text)
   }
 })
+
+test("hideAbsolutePaths hides a path after '!', after a letter and '>' that is not <placeholder>, and after a '|' that ends a URL (PMK-295)", () => {
+  assert.equal(hideAbsolutePaths('!/Users/x'), '!<path>')
+  assert.equal(hideAbsolutePaths('from>/Users/x'), 'from><path>')
+  assert.equal(hideAbsolutePaths('https://h.com/x|/Users/y'), 'https://h.com/x|<path>')
+  assert.equal(hideAbsolutePaths('see https://h.com/a|b and https://h.com/c'), 'see https://h.com/a|b and https://h.com/c')
+})
+
+test('hideAbsolutePaths keeps <remote>/<branch>, <rev1>/<rev2>, HEAD~1>/x and a closing backtick (PMK-295)', () => {
+  for (const text of ['<remote>/<branch>', '<rev1>/<rev2>', 'push <remote>/<branch> now', 'HEAD~1>/x', 'use `git`/`gh` here']) assert.equal(hideAbsolutePaths(text), text)
+})
