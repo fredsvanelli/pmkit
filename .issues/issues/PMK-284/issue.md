@@ -2,12 +2,14 @@
 id: PMK-284
 title: "Hide a path after a backtick, a brace, a pipe or a redirect"
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-284-hide-a-path-after-a-backtick-a-brace-a
 created: 2026-11-12T14:41:34.609Z
-updated: 2026-11-12T14:41:34Z
+updated: 2026-11-12T14:56:10Z
 ---
 
 ## Description
@@ -34,5 +36,5 @@ PMK-277 added `[ , ; < @` to the characters a path can start after in `hideAbsol
 
 ## Acceptance criteria
 
-- [ ] A path after a backtick, `{`, `|` or `>` is hidden, with a test
-- [ ] A quoted path followed by `]` or `>` keeps the text after it, with a test
+- [x] A path after a backtick, `{`, `|` or `>` is hidden, with a test
+- [x] A quoted path followed by `]` or `>` keeps the text after it, with a test
