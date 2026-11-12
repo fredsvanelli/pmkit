@@ -150,16 +150,78 @@ const CM_SETEXT = /^(?:=+|-+)[ \t]*$/
 const CM_BREAK = /^(?:\*[ \t]*){3,}$|^(?:_[ \t]*){3,}$|^(?:-[ \t]*){3,}$/
 const CM_MARKER = /^(?:[*+-]|(\d{1,9})[.)])/
 // The open blocks that take the rest of a line as their own, so no block starts inside them.
-const LEAVES = new Set(['paragraph', 'code', 'fence', 'heading', 'break'])
+const LEAVES = new Set(['paragraph', 'code', 'fence', 'html', 'heading', 'break'])
+// The seven starts of an HTML block (CommonMark 4.6), by kind 1 to 7, and the ends of kinds 1 to 5; kinds 6 and 7 end at a blank line.
+// Kinds 1 to 6 interrupt a paragraph, kind 7 (any other complete tag alone on its line) does not.
+const TAG = '[A-Za-z][A-Za-z0-9-]*'
+const ATTRIBUTE = `(?:\\s+[a-zA-Z_:][a-zA-Z0-9:._-]*(?:\\s*=\\s*(?:[^"'=<>\`\\x00-\\x20]+|'[^']*'|"[^"]*"))?)`
+const HTML_OPEN = [
+  /^<(?:script|pre|textarea|style)(?:\s|>|$)/i,
+  /^<!--/,
+  /^<[?]/,
+  /^<![A-Za-z]/,
+  /^<!\[CDATA\[/,
+  /^<[/]?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[123456]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|section|search|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:\s|[/]?[>]|$)/i,
+  new RegExp(`^(?:<${TAG}${ATTRIBUTE}*\\s*/?>|</${TAG}\\s*[>])\\s*$`, 'i'),
+]
+const HTML_CLOSE = [null, /<\/(?:script|pre|textarea|style)>/i, /-->/, /\?>/, />/, /\]\]>/]
+const ESCAPABLE = /^[!"#$%&'()*+,./:;<=>?@[\\\]^_`{|}~-]/
+const LINK_TITLE = /^(?:"(\\[!"#$%&'()*+,./:;<=>?@[\\\]^_`{|}~-]|\\[^\\]|[^\\"\x00])*"|'(\\[!"#$%&'()*+,./:;<=>?@[\\\]^_`{|}~-]|\\[^\\]|[^\\'\x00])*'|\((\\[!"#$%&'()*+,./:;<=>?@[\\\]^_`{|}~-]|\\[^\\]|[^\\()\x00])*\))/
+const SPACE_NEWLINE = /^ *(?:\n *)?/
+const LINE_END = /^ *(?:\n|$)/
+
+// The length of the link reference definition at the start of `text`, 0 when there is none (CommonMark 4.7, as commonmark.js parses it):
+// a label that is not blank, `:`, a destination (`<...>`, or a run without white space and with balanced parentheses), an optional
+// title after white space, then the end of the line. A title that is followed by more text is dropped when the destination ends the line.
+function referenceLength(text) {
+  const label = /^\[(?:[^\\[\]]|\\.){0,1000}\]/s.exec(text)
+  if (label === null || label[0].length > 1001 || text[label[0].length] !== ':' || label[0].slice(1, -1).trim() === '') return 0
+  let at = label[0].length + 1
+  at += SPACE_NEWLINE.exec(text.slice(at))[0].length
+  const braces = /^<(?:[^<>\n\\\x00]|\\.)*>/.exec(text.slice(at))
+  if (braces !== null) at += braces[0].length
+  else {
+    if (text[at] === '<') return 0
+    const start = at
+    let parens = 0
+    while (at < text.length) {
+      const char = text[at]
+      if (char === '\\' && ESCAPABLE.test(text[at + 1] ?? '')) at += 2
+      else if (char === '(') { at++; parens++ }
+      else if (char === ')' && parens > 0) { at++; parens-- }
+      else if (char === ')' || /[ \t\n\v\f\r]/.test(char)) break
+      else at++
+    }
+    if ((at === start && text[at] !== ')') || parens !== 0) return 0
+  }
+  const beforeTitle = at
+  at += SPACE_NEWLINE.exec(text.slice(at))[0].length
+  const title = at === beforeTitle ? null : LINK_TITLE.exec(text.slice(at))
+  at = title === null ? beforeTitle : at + title[0].length
+  let end = LINE_END.exec(text.slice(at))
+  if (end === null && title !== null) {
+    at = beforeTitle
+    end = LINE_END.exec(text.slice(at))
+  }
+  return end === null ? 0 : at + end[0].length
+}
+// Whether a paragraph has text left once the link reference definitions at its start are taken out, as they are when an underline
+// comes: a paragraph of definitions only is not a setext heading. The definitions stay out of it.
+const keepsText = (paragraph) => {
+  let length
+  while (paragraph.text[0] === '[' && (length = referenceLength(paragraph.text)) > 0) paragraph.text = paragraph.text.slice(length)
+  return paragraph.text.length > 0
+}
 
 /**
  * Where the section that starts at line `from` stops: the first heading at the top level of the document after it, ATX or setext (PMK-273),
  * so a heading inside a list item or a quote is not a section (PMK-291). The walk follows CommonMark's block structure line by line:
  * a stack of open blocks from the document in, where each line first continues the open ones in order (a quote by its `>`, a list item
- * by the content column of its marker, a paragraph unless blank, indented code by 4 more columns, a fence until its closing fence), then
- * starts new blocks in the deepest one it continued, and a line that continues no more than a paragraph is a lazy continuation of it.
- * A setext underline makes a heading only of a paragraph it continues, so under a list item it is a break or a lazy line (PMK-280).
- * Columns count a tab to the next stop of 4. Not a Markdown parser: no inline content, no HTML blocks, no link reference definitions.
+ * by the content column of its marker, a paragraph unless blank, indented code by 4 more columns, a fence until its closing fence, an
+ * HTML block until its end), then starts new blocks in the deepest one it continued, and a line that continues no more than a paragraph
+ * is a lazy continuation of it. A setext underline makes a heading only of a paragraph it continues and that holds more than link
+ * reference definitions, so under a list item it is a break or a lazy line (PMK-280). Columns count a tab to the next stop of 4.
+ * Not a Markdown parser: no inline content.
  */
 function sectionEnd(lines, from) {
   const open = [{ type: 'document' }]
@@ -206,6 +268,8 @@ function sectionEnd(lines, from) {
         else break
       } else if (block.type === 'paragraph') {
         if (blank) break
+      } else if (block.type === 'html') {
+        if (blank && block.kind >= 6) break
       } else if (block.type === 'code') {
         if (indent >= 4) advance(4, true)
         else if (blank) toNext()
@@ -239,6 +303,7 @@ function sectionEnd(lines, from) {
       const rest = line.slice(next)
       const marker = indent < 4 ? CM_MARKER.exec(rest) : null
       const inParagraph = open[container].type === 'paragraph'
+      let kind
       if (indent < 4 && rest[0] === '>') {
         toNext()
         advance(1, false)
@@ -251,7 +316,10 @@ function sectionEnd(lines, from) {
       } else if (indent < 4 && CM_FENCE.test(rest)) {
         const fence = CM_FENCE.exec(rest)[0]
         add({ type: 'fence', char: fence[0], length: fence.length })
-      } else if (indent < 4 && inParagraph && CM_SETEXT.test(rest)) {
+      } else if (indent < 4 && rest[0] === '<' && (kind = HTML_OPEN.findIndex((start, i) => start.test(rest) && (i < 6 || !(inParagraph || (!allClosed && !blank && open.at(-1).type === 'paragraph')))) + 1) > 0) {
+        // The white space before it is part of the HTML block, so `offset` stays.
+        add({ type: 'html', kind })
+      } else if (indent < 4 && inParagraph && CM_SETEXT.test(rest) && keepsText(open[container])) {
         // The whole paragraph becomes the heading, so the section stops at its first line.
         if (container === 1) return open[1].start
         open[container] = { type: 'heading' }
@@ -284,10 +352,18 @@ function sectionEnd(lines, from) {
       break
     }
 
-    // What is left is text: a lazy line of the open paragraph, a line of the leaf it reached, or a new paragraph.
-    if (!allClosed && !blank && open.at(-1).type === 'paragraph') continue
+    // What is left is text: a lazy line of the open paragraph, a line of the leaf it reached, or a new paragraph. A paragraph keeps its
+    // text for the link reference definitions; an HTML block of kind 1 to 5 ends on the line that holds its end, its first line included.
+    const rest = line.slice(offset)
+    if (!allClosed && !blank && open.at(-1).type === 'paragraph') {
+      open.at(-1).text += `${rest}\n`
+      continue
+    }
     open.length = container + 1
-    if (!blank && !LEAVES.has(open[container].type)) add({ type: 'paragraph', start: j })
+    const leaf = open[container]
+    if (leaf.type === 'paragraph') leaf.text += `${rest}\n`
+    else if (leaf.type === 'html' && leaf.kind <= 5 && HTML_CLOSE[leaf.kind].test(rest)) open.length = container
+    else if (!blank && !LEAVES.has(leaf.type)) add({ type: 'paragraph', start: j, text: `${rest}\n` })
   }
   return lines.length
 }
@@ -339,7 +415,7 @@ export function adrInfo(text) {
 export function setAdrStatus(text, status, byPath) {
   const value = status === 'superseded' ? `superseded by ${byPath}` : status
   const lines = adrText(text).split('\n')
-  const { start, yaml, line: found, section, title, end: sectionEnd } = locate(lines)
+  const { start, yaml, line: found, section, title, end: endOf } = locate(lines)
   const same = (current) => unquote(current).toLowerCase() === value.toLowerCase()
   // A status that is already the requested one leaves the text as it came, so the file is not rewritten (PMK-248).
   const done = (before, after, unchanged) => ({ text: unchanged ? adrText(text) : lines.join('\n'), before, after })
@@ -366,7 +442,7 @@ export function setAdrStatus(text, status, byPath) {
       afters.push(lines[found])
     }
     if (section !== -1) {
-      const end = sectionEnd(section)
+      const end = endOf(section)
       const body = lines.slice(section + 1, end).map((item) => item.trim()).filter(Boolean)
       if (body.length !== 1 || !same(body[0])) unchanged = false
       const label = befores.length > 0 ? '## Status: ' : ''

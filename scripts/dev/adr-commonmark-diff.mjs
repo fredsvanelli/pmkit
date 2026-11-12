@@ -2,7 +2,7 @@
 // Compares where `adrInfo` ends the `## Status` section at two refs with where CommonMark ends it (PMK-291). A developer check, not part
 // of `npm test`, with no dependency of the repository: the oracle is a commonmark.js installed outside it, for example
 //   npm install --prefix /tmp/cm commonmark@0.31.2
-//   node scripts/dev/adr-commonmark-diff.mjs --commonmark /tmp/cm/node_modules/commonmark [--base develop] [--head HEAD] [--random 1000000] [--seed 1] [--lines 8] [--show 20]
+//   node scripts/dev/adr-commonmark-diff.mjs --commonmark /tmp/cm/node_modules/commonmark [--base origin/develop] [--head HEAD] [--random 1000000] [--seed 1] [--lines 8] [--show 20]
 // COMMONMARK=<dir> works in place of --commonmark. A ref of `worktree` reads scripts/lib of the working tree. The text of each case is
 // `## Status\n\n<case>\n## Context\n`; the expected status is the trimmed lines from the Status heading to the next heading CommonMark
 // puts at the top level of the document. Exit code 1 when a case is worse at the head than at the base.
@@ -19,7 +19,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const { values: args } = parseArgs({
   options: {
     commonmark: { type: 'string', default: process.env.COMMONMARK },
-    base: { type: 'string', default: 'develop' },
+    base: { type: 'string', default: 'origin/develop' },
     head: { type: 'string', default: 'HEAD' },
     random: { type: 'string', default: '1000000' },
     seed: { type: 'string', default: '1' },
@@ -39,8 +39,7 @@ async function adrInfoAt(ref) {
   if (ref === 'worktree') return (await import(pathToFileURL(path.join(ROOT, 'scripts/lib/adr.mjs')))).adrInfo
   const archive = spawnSync('git', ['archive', ref, 'scripts/lib'], { cwd: ROOT, maxBuffer: 256 * 1024 * 1024 })
   if (archive.status !== 0) throw new Error(`git archive ${ref}: ${archive.stderr}`)
-  const dir = path.join(temp, ref.replace(/[^\w.-]/g, '_'))
-  fs.mkdirSync(dir)
+  const dir = fs.mkdtempSync(path.join(temp, 'ref-'))
   const untar = spawnSync('tar', ['-x', '-C', dir], { input: archive.stdout, maxBuffer: 256 * 1024 * 1024 })
   if (untar.status !== 0) throw new Error(`tar: ${untar.stderr}`)
   return (await import(pathToFileURL(path.join(dir, 'scripts/lib/adr.mjs')))).adrInfo
@@ -62,6 +61,8 @@ const FIXED = [
   '- a\nlazy\n\n\n      x\nlazy\n---', '-\n  x\n\n      x\nlazy\n---', '-\n      code\n\n  x\n---', '- a\n\n  > q\nlazy\n\n  c\n---',
   '- a\n    - m\n\n      c\nlazy\n---', '\n -\n      1) b\n\n      3)      b\na\n---', '\n   1. x\nlazy\n\n        3) \na\n  \tlazy\n   ===',
   '2.    lazy\n      a\n     b\nx\n\n        1.      a\nc d\n  + \n--',
+  '-\n<!-- x -->\n---', '* \n<!-- x -->\n ---', '-\n[a]: /u\n ---', '> ###\n[a]: /u "t"\n ---', '1. ```\n[a]: /u\n-', '-\n</div>\n---', '<pre>\n\t~~~\n-',
+  '<!--\n```\n-->\nAccepted\n',
 ]
 const ITEMS = ['- a', '* a', '+ a', '1. a', '1) a', '2. a', '10) a', '-', '*', '1.', '2)', '-     a', '1.      a', '-\ta', '1.\ta', '- \ta', '\t- a',
   ' - a', '  - b', '   - b', '    - b', '     - c', '      - c', '  1) b', '   1. b', '    2. b', '- - a', '1. - a', '- 1) a', '-  a', '- * a', '  -', '    -']
@@ -70,17 +71,21 @@ const QUOTES = ['> q', '  > q', '>', '> - a', '- > q', '  - > q', '  > - q', '> 
 const FENCES = ['```', '~~~', '  ```', '   ~~~', '    ```', '````', '```x', '``` `', '      ```', '\t```', '~~~~', '  ~~~']
 const BLANKS = ['', '', '  ', '\t']
 const BREAKS = ['***', '* * *', '- - -', '___', '# h', '  ---']
+// HTML blocks of the seven kinds, inline tags that are not blocks, and link reference definitions, whole or spread over lines.
+const HTML = ['<!-- x -->', '<!-- c', '-->', '<div>', '</div>', '<div class="a">', '  <p>', '<pre>', '</pre>', '<script>', '</script>', '<x-y>', '</x-y>',
+  '<a href="u">', '<span>x</span>', '<em>', '<![CDATA[', ']]>', '<!DOCTYPE html>', '<?php', '?>', '<x-y a=1 b="2"/>', '    <div>', '<div>x</div>']
+const DEFS = ['[a]: /u', '[a]: /u "t"', "[b]: <u> 't'", '[a]: /u (t)', '[a]:', '/u', '"t"', '[a]: /u "t" x', '[ ]: /u', '[a]: /u\t', '[a]', ': /u', '  [a]: /u', '[a]: (u)']
 const UNDERLINES = ['---', '===', '--', '-', ' ---', '   ===', '----  ']
-const ALPHABET = [...ITEMS, ...TEXT, ...QUOTES, ...FENCES, ...BLANKS, ...BREAKS]
+const ALPHABET = [...ITEMS, ...TEXT, ...QUOTES, ...FENCES, ...BLANKS, ...BREAKS, ...HTML, ...DEFS]
 // The weights of each kind in a random run: lists and text most, so nesting and lazy lines meet often. COMPOSED builds a line from parts.
 const COMPOSED = []
-const KINDS = [[ITEMS, 22], [TEXT, 22], [COMPOSED, 20], [BLANKS, 15], [QUOTES, 8], [FENCES, 10], [BREAKS, 3]]
+const KINDS = [[ITEMS, 20], [TEXT, 18], [COMPOSED, 20], [BLANKS, 15], [QUOTES, 8], [FENCES, 9], [BREAKS, 3], [HTML, 10], [DEFS, 10]]
 const WEIGHT = KINDS.reduce((sum, [, weight]) => sum + weight, 0)
 // Parts of a composed line: an indent of 0 to 8 columns with tabs, up to two quote or list markers each with a gap of 0 to 6 columns, then content.
 const INDENTS = ['', ' ', '  ', '   ', '    ', '     ', '      ', '        ', '\t', ' \t', '  \t', '\t ', '\t\t']
 const MARKERS = ['-', '*', '+', '1.', '1)', '2.', '3)', '10.', '>']
 const GAPS = ['', ' ', '  ', '   ', '    ', '     ', '      ', '\t', ' \t']
-const CONTENTS = ['a', 'lazy', '', '```', '~~~', '---', '# h', 'x y']
+const CONTENTS = ['a', 'lazy', '', '```', '~~~', '---', '# h', 'x y', '<!-- x -->', '<div>', '<pre>', '<x-y>', '[a]: /u', '[a]: /u "t"']
 
 function* cases() {
   yield* FIXED
@@ -112,8 +117,13 @@ function* cases() {
   }
 }
 
-const base = await adrInfoAt(args.base)
-const head = await adrInfoAt(args.head)
+let base, head
+try {
+  base = await adrInfoAt(args.base)
+  head = await adrInfoAt(args.head)
+} finally {
+  fs.rmSync(temp, { recursive: true, force: true })
+}
 const counts = { cases: 0, right: 0, fixed: 0, worse: 0, wrongSame: 0, wrongDifferent: 0 }
 const worse = []
 for (const body of cases()) {
@@ -130,7 +140,6 @@ for (const body of cases()) {
   } else if (before === after) counts.wrongSame++
   else counts.wrongDifferent++
 }
-fs.rmSync(temp, { recursive: true, force: true })
 console.log(`${args.base} -> ${args.head}, commonmark ${createRequire(import.meta.url)(path.join(path.resolve(args.commonmark), 'package.json')).version}`)
 console.log(`cases ${counts.cases}: right on both ${counts.right}, fixed ${counts.fixed}, worse ${counts.worse}, wrong on both ${counts.wrongSame + counts.wrongDifferent} (same answer ${counts.wrongSame}, different ${counts.wrongDifferent})`)
 for (const example of worse) console.log(JSON.stringify(example))

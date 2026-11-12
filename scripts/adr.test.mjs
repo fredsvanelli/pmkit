@@ -1245,3 +1245,42 @@ test('a line belongs to the deepest open item whose content column it reaches, a
     number++
   }
 })
+
+test('an HTML block and a paragraph of link reference definitions end the Status section where CommonMark does (PMK-291 cycle 4 review)', async () => {
+  const cases = {
+    // After an empty item, the comment is an HTML block, not a paragraph, so `---` is a thematic break.
+    'comment after an empty item': ['-\n<!-- x -->\n---\n', '- <!-- x --> ---'],
+    // A paragraph of link reference definitions only is not a setext heading.
+    'definition after an empty item': ['-\n[a]: /u\n---\n', '- [a]: /u ---'],
+    'comment after an empty * item': ['* \n<!-- x -->\n ---\n', '* <!-- x --> ---'],
+    'definition with a title after a quoted heading': ['> ###\n[a]: /u "t"\n ---\n', '> ### [a]: /u "t" ---'],
+    'definition after an item opening a fence': ['1. ```\n[a]: /u\n-\n', '1. ``` [a]: /u -'],
+    'closing tag after an empty item': ['-\n</div>\n---\n', '- </div> ---'],
+    // `<pre>` runs to `</pre>`: the fence and the underline inside it are HTML.
+    'pre block holds a fence': ['<pre>\n\t~~~\n-\n</pre>\n', '<pre> ~~~ - </pre>'],
+    'definition then ===': ['Accepted\n\n[a]: /u\n===\n', 'Accepted [a]: /u ==='],
+    // A definition before text: the text is the heading, and the heading starts at the definition.
+    'definition then text': ['Accepted\n\n[a]: /u\nfoo\n---\n', 'Accepted'],
+    // `<div>` (type 6) interrupts a paragraph; a custom tag (type 7) does not.
+    'div interrupts a paragraph': ['Accepted\n<div>\nb\n---\n', 'Accepted <div> b ---'],
+    'custom tag does not': ['Accepted\n<x-y>\n---\n', null],
+    'fence inside a comment': ['<!--\n```\n-->\nAccepted\n', '<!-- ``` --> Accepted'],
+    'comment across a blank line': ['Accepted\n\n<!-- a\n\n---\n-->\nb\n---\n', 'Accepted <!-- a --- -->'],
+  }
+  const root = repo()
+  let number = 1
+  for (const [name, [tail, status]] of Object.entries(cases)) {
+    const text = `# ${number}. Use U\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
+    assert.equal(adrInfo(text).status, status, name)
+    if (number === 1) {
+      const file = 'docs/adr/0001-use-u.md'
+      writeAdr(root, file, text)
+      assert.equal((await adrGetFrom(root, '1')).data.status, status, name)
+      const written = setAdrStatus(text, 'deprecated').text
+      assert.equal(adrInfo(written).status, 'Deprecated', name)
+      assert.equal((await adrStatus(root, '1', 'deprecated')).code, 0, name)
+      assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), written, name)
+    }
+    number++
+  }
+})
