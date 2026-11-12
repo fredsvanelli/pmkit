@@ -15,4 +15,4 @@
 - `[/Users/x/repo]`, `a,/Users/x`, `a;/Users/x`, `</Users/x>`, `user@/Users/x` show no part of the path, one test each.
 - Quoted forms after the new starts (`['/Users/x y']`, `<'/Users/x y'>`) show no part of the path.
 - Existing tests (O'Brien, `key=/x`, `file:///x`, UNC, `https:<path>`) keep passing.
-- An end-to-end test: a failed `auto_commit` whose git stderr has a path after each new start shows no part of the path in `UPSTREAM`.
+- No new end-to-end test: git cannot be made to print a path after `[` on demand. The PMK-271 end-to-end test already pins that `auto_commit` routes git's stderr through `hideAbsolutePaths`, so unit tests on git-shaped stderr lines carry the criterion.
