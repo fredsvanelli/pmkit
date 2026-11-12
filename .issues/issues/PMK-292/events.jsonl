@@ -3,3 +3,5 @@
 {"at":"2026-11-12T18:55:15Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-12T18:55:21Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-292-read-an-empty-list-item-and-a-long"}
 {"at":"2026-11-12T18:56:54Z","by":"fred","op":"comment","to":"2026-11-12T18-56-54Z-fred.md"}
+{"at":"2026-11-12T19:03:33Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-12T19:03:33Z","by":"fred","op":"update","field":"acceptance_criteria"}
