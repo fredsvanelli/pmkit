@@ -56,6 +56,7 @@ import { redact } from './lib/redact.mjs'
 import { shareDone, topLevelRollup } from './lib/initiatives.mjs'
 import { tailLines } from './lib/tail-lines.mjs'
 import { rightLines, splitDiff } from './lib/diff-files.mjs'
+import { climbsOut } from './lib/paths.mjs'
 
 const TEMPLATES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates')
 const usageError = (message, nextStep = 'node scripts/pmkit.mjs --help') => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -3367,9 +3368,6 @@ const RENDER_FORMATS = ['md', 'html']
 
 const HTML_EXTENSIONS = ['.html', '.htm']
 const MARKDOWN_EXTENSIONS = ['.md', '.markdown']
-
-/** True when `rel`, a relative path, climbs out of its base. A name that only starts with two dots, such as `..board.md`, stays inside. */
-const climbsOut = (rel) => rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)
 
 /** `file` with the symlinks of its nearest existing parent folder resolved, so a link into a folder is seen as that folder. */
 const realParent = (file) => {
