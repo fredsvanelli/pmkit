@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-268-fix-adr-status-paths-and-messages-with-a
 created: 2026-11-12T00:00:31.443Z
-updated: 2026-11-12T00:06:07Z
+updated: 2026-11-12T00:11:06Z
 ---
 
 ## Description
@@ -38,7 +38,7 @@ PMK-257 made `docs adr-status` commit and point to ADRs in a tracker outside the
 
 ## Acceptance criteria
 
-- [ ] When auto_commit fails with a tracker outside the repository, the `UPSTREAM` message names the files relative to the repository or the tracker, never an absolute path
-- [ ] When both ADRs are in a tracker outside the repository, the `--by` reference resolves from the ADR that holds it
-- [ ] `climbsOut` sees a path outside the repository whatever the separator, with a test
-- [ ] At least one other write command has a test that commits into a tracker outside the repository with `auto_commit: true`
+- [x] When auto_commit fails with a tracker outside the repository, the `UPSTREAM` message names the files relative to the repository or the tracker, never an absolute path
+- [x] When both ADRs are in a tracker outside the repository, the `--by` reference resolves from the ADR that holds it
+- [x] `climbsOut` sees a path outside the repository whatever the separator, with a test
+- [x] At least one other write command has a test that commits into a tracker outside the repository with `auto_commit: true`
