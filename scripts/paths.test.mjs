@@ -45,3 +45,25 @@ test("hideAbsolutePaths also starts a path after '=' and ':' (PMK-271 review)", 
   assert.equal(hideAbsolutePaths('url file:///Users/x y/z'), 'url file:<path>')
   assert.equal(hideAbsolutePaths("key='/Users/x y/z' ok"), "key='<path>' ok")
 })
+
+test("hideAbsolutePaths starts a path after '[', ',', ';', '<' and '@' (PMK-277)", () => {
+  assert.equal(hideAbsolutePaths('[/Users/x/repo]'), '[<path>')
+  assert.equal(hideAbsolutePaths('a,/Users/x'), 'a,<path>')
+  assert.equal(hideAbsolutePaths('a;/Users/x'), 'a;<path>')
+  assert.equal(hideAbsolutePaths('</Users/x>'), '<<path>')
+  assert.equal(hideAbsolutePaths('user@/Users/x'), 'user@<path>')
+})
+
+test("hideAbsolutePaths leaves no piece of a path with a space or a closing ']' or '>' after the new starts (PMK-277)", () => {
+  for (const text of ["['/Users/x y']", "<'/Users/x y'>", '[/Users/x y]', '</Users/x y>', 'a,/Users/x y/z', 'a;"/Users/x y"', 'user@/Users/x y/z']) {
+    const shown = hideAbsolutePaths(text)
+    for (const part of ['Users', 'x y', '/z']) assert.ok(!shown.includes(part), `${part} in ${shown} (from ${text})`)
+  }
+  assert.equal(hideAbsolutePaths("['/Users/x y'] and '/b c/d'"), "['<path>'")
+})
+
+test("hideAbsolutePaths keeps the other starts and leaves ordinary text with the new characters alone (PMK-277)", () => {
+  assert.equal(hideAbsolutePaths('https://example.com/a'), 'https:<path>')
+  assert.equal(hideAbsolutePaths('key=/x'), 'key=<path>')
+  for (const text of ['see [docs/a], b;c, <tag> and me@host', 'a,b/c', '[a/b]']) assert.equal(hideAbsolutePaths(text), text)
+})
