@@ -31,3 +31,6 @@ Lições da rodada 7 (os quatro PRs precisaram de mudanças pelos dois primeiros
 
 Lição dos follow-ups (rodadas 16 a 18):
 - Um `rm` com caminho em variável (`rm -f $S/*.md`) para o agente num prompt de segurança do Claude Code e trava a sessão até ser bloqueado. Use `"${S:?}"/*.md` ou o caminho literal.
+
+Lição da rodada 26:
+- O `issues branch` parte do `develop` local quando ele existe (PMK-290), e os worktrees do Orca compartilham as branches do repositório. Se o `develop` local estiver parado, a branch da issue nasce velha. O orquestrador faz `git pull --ff-only` no `develop` do tree principal depois de cada merge; o implementador confere com `git merge-base HEAD origin/develop` antes do primeiro commit e passa `--from origin/develop` se a base estiver atrás.

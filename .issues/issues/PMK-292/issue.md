@@ -2,14 +2,14 @@
 id: PMK-292
 title: Read an empty list item and a long ordered marker as CommonMark does
 type: bug
-status: in_review
+status: done
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-292-read-an-empty-list-item-and-a-long
 created: 2026-11-12T14:41:35.285Z
-updated: 2026-11-12T19:09:55Z
+updated: 2026-11-12T20:41:50Z
 ---
 
 ## Description
