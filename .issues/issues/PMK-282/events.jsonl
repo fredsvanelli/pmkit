@@ -3,3 +3,4 @@
 {"at":"2026-11-12T03:39:19Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-12T03:39:21Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-282-find-an-indented-or-closed-status"}
 {"at":"2026-11-12T03:39:57Z","by":"fred","op":"comment","to":"2026-11-12T03-39-57Z-fred.md"}
+{"at":"2026-11-12T03:40:36Z","by":"fred","op":"update","field":"acceptance_criteria"}

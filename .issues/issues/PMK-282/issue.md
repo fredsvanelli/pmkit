@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-282-find-an-indented-or-closed-status
 created: 2026-11-12T02:12:44.044Z
-updated: 2026-11-12T03:39:21Z
+updated: 2026-11-12T03:40:36Z
 ---
 
 ## Description
@@ -33,5 +33,5 @@ PMK-273 made the end of the Status section and the title use one heading helper,
 
 ## Acceptance criteria
 
-- [ ] `docs adr-get` reads the status under ` ## Status` and `## Status ##`, with a test
-- [ ] `docs adr-status` rewrites it in place, with a test
+- [x] `docs adr-get` reads the status under ` ## Status` and `## Status ##`, with a test
+- [x] `docs adr-status` rewrites it in place, with a test
