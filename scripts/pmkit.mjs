@@ -346,7 +346,10 @@ function branchBase(ctx) {
   const exists = (ref) => { const result = readGit(ctx, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]); return !result.error && result.status === 0 }
   const explicit = ctx.opt('from')
   if (explicit !== undefined) {
-    if (!exists(explicit)) throw usageError(`--from "${explicit}" is not a branch or commit in this repository`, 'Pass --from <an existing branch>, or run git fetch origin first when it is a remote branch')
+    if (!exists(explicit)) {
+      const remote = exists(`refs/remotes/origin/${explicit}`)
+      throw usageError(`--from "${explicit}" is not a branch or commit in this repository`, remote ? `Pass --from origin/${explicit}, the remote branch of that name` : 'Pass --from <an existing branch>, or run git fetch origin first when it is a remote branch')
+    }
     return { from: explicit, note: '' }
   }
   const name = defaultBranch(ctx)
@@ -1947,9 +1950,9 @@ export const COMMANDS = [
     name: 'issues branch', summary: 'creates the issue branch and records it on the issue', usage: '<id> [--from branch]', write: true, args: ['id'], flags: ['from'],
     run: async (ctx) => {
       const host = ctx.host()
-      const { from, note: fromNote } = branchBase(ctx)
       const tracker = await ctx.tracker()
       const issue = await tracker.getIssue(ctx.args[0])
+      const { from, note: fromNote } = branchBase(ctx)
       // A tracker that names branches, such as Linear, keeps its name, so its link to the git host works.
       const branch = ctx.settings().trackerBranch === true && issue.branch ? issue.branch : branchName(issue.id, issue.title)
       // Check the tracker write first, so a refused write leaves git on the branch it was on.

@@ -356,19 +356,37 @@ test('issues branch with no local default branch starts from origin/<default> an
   assert.equal(result.from, 'origin/main')
   assert.equal(git(root, 'branch', '--show-current').stdout.trim(), result.branch)
   assert.equal(git(root, 'rev-parse', result.branch).stdout, git(root, 'rev-parse', 'refs/remotes/origin/main').stdout)
+  // The new branch must not track origin/main, or a bare git push would target the default branch.
+  assert.equal(git(root, 'config', '--get', `branch.${result.branch}.remote`).stdout, '')
+  assert.equal(git(root, 'rev-parse', '--abbrev-ref', `${result.branch}@{upstream}`).status !== 0, true)
+})
+
+test('issues branch --from <name> that only exists as origin/<name> names --from origin/<name> in the next step', async () => {
+  const root = remoteOnlyRepo()
+  const env = envWith(fakeGh({}))
+  const result = await call(root, env, ['issues', 'branch', 'ISS-2X6D', '--from', 'main', '--json'])
+  assert.equal(result.code, 2)
+  assert.match(errorOf(result).nextStep, /--from origin\/main/)
+})
+
+test('issues branch with an unknown issue id is NOT_FOUND even when the base branch is missing', async () => {
+  const root = remoteOnlyRepo()
+  const env = envWith(fakeGh({}))
+  const result = await call(root, env, ['issues', 'branch', 'ISS-0000', '--from', 'nope', '--json'])
+  assert.equal(errorOf(result).code, 'NOT_FOUND')
 })
 
 test('issues branch with a --from that does not exist fails with a next step and writes nothing', async () => {
   const root = remoteOnlyRepo()
   const env = envWith(fakeGh({}))
   for (const args of [['--from', 'nope'], ['--from', 'nope', '--dry-run']]) {
-    const before = hashTree(root)
+    const before = hashTree(root, ['.issues/.cache'])
     const result = await call(root, env, ['issues', 'branch', 'ISS-2X6D', ...args, '--json'])
     assert.equal(result.code, 2)
     assert.equal(errorOf(result).code, 'INVALID_INPUT')
     assert.match(errorOf(result).message, /nope/)
     assert.match(errorOf(result).nextStep, /--from/)
-    assert.equal(hashTree(root), before)
+    assert.equal(hashTree(root, ['.issues/.cache']), before)
   }
 })
 
