@@ -68,6 +68,15 @@ test('a merge that repeats an archive, unarchive, archive, unarchive run made wi
   assert.deepEqual(merged.events.map((event) => event.op), ['archive', 'unarchive'])
 })
 
+test('four real flips in one second, without a merge, show as two events and leave the issue unarchived (PMK-272, known ceiling of PMK-267)', () => {
+  const ev = (op) => JSON.stringify({ at: '2026-10-01T10:00:00Z', by: 'f', op })
+  const run = [ev('archive'), ev('unarchive'), ev('archive'), ev('unarchive')]
+  const { events, problems } = readEvents(write(tmp(), 'events6.jsonl', run.join('\n') + '\n'))
+  assert.deepEqual(problems, [])
+  assert.deepEqual(events.map((event) => event.op), ['archive', 'unarchive'])
+  assert.equal(replay(events).archived, undefined)
+})
+
 test('duplicates ignore key order and ties keep file order', () => {
   const a = { at: '2026-10-01T10:00:00Z', by: 'f', op: 'comment', to: 'one' }
   const b = { at: '2026-10-01T10:00:00Z', by: 'f', op: 'comment', to: 'two' }
