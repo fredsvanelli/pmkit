@@ -891,6 +891,33 @@ test('a list item, a quote or a thematic break above ---, === interrupts the par
   }
 })
 
+test('a list item continuation above --- keeps the Status section open, in adr-get and adr-status alike (PMK-280)', async () => {
+  const cases = {
+    'issue text': ['Accepted\n\n- a\n\n  b\n---\n', 'Accepted - a b ---'],
+    'ordered item': ['Accepted\n\n1. a\n\n   b\n---\n', 'Accepted 1. a b ---'],
+    'two-line continuation': ['Accepted\n\n- a\n\n  b\n  c\n---\n', 'Accepted - a b c ---'],
+    'continuation then ===': ['Accepted\n\n- a\n\n  b\n===\n', 'Accepted - a b ==='],
+  }
+  const root = repo()
+  let number = 5
+  for (const [name, [tail, status]] of Object.entries(cases)) {
+    const text = `# ${number}. Use W\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
+    assert.equal(adrInfo(text).status, status, name)
+    const written = setAdrStatus(text, 'deprecated').text
+    assert.equal(written, `# ${number}. Use W\n\n## Status\n\nDeprecated\n\n## Context\n\nWhy.\n`, name)
+    const file = `docs/adr/000${number}-use-w.md`
+    writeAdr(root, file, text)
+    assert.equal((await adrGetFrom(root, String(number))).data.status, status, name)
+    assert.equal((await adrStatus(root, String(number), 'deprecated')).code, 0, name)
+    assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), written, name)
+    number++
+  }
+  // A line indented less than the item content is not a continuation: it is the setext paragraph, so the section ends at it.
+  assert.equal(adrInfo('# T\n\n## Status\n\nAccepted\n\n- a\n\n b\n---\n').status, 'Accepted - a')
+  // A paragraph at no indent after a list is a setext paragraph too.
+  assert.equal(adrInfo('# T\n\n## Status\n\nAccepted\n\n- a\n\nb\n---\n').status, 'Accepted - a')
+})
+
 test('an indented ## heading is the first section, found by the same test as the end of the Status section (PMK-273 review)', () => {
   // A Status line below an indented `## Context` is not above the first section, so it is not the ADR's status.
   assert.equal(adrInfo('# T\n\n ## Context\n\nStatus: Accepted\n').status, null)
