@@ -2,12 +2,14 @@
 id: PMK-286
 title: Hide the path of a git+file:// URL
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-286-hide-the-path-of-a-git-file-url
 created: 2026-11-12T14:41:34.778Z
-updated: 2026-11-12T14:41:34Z
+updated: 2026-11-12T16:33:19Z
 ---
 
 ## Description
@@ -31,4 +33,4 @@ In `hideAbsolutePaths` only a scheme that is exactly `file` is a local path (`SC
 
 ## Acceptance criteria
 
-- [ ] `git+file://host/Users/a/r.git` and `git+file:///Users/a/r.git` hide the path, with a test
+- [x] `git+file://host/Users/a/r.git` and `git+file:///Users/a/r.git` hide the path, with a test
