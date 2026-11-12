@@ -1,0 +1,1 @@
+{"at":"2026-11-12T14:41:35Z","by":"fred","op":"create","to":{"id":"PMK-293","title":"Read the ADR title with the same closing rule as the Status heading","type":"bug","status":"backlog","priority":"low","estimate":1,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-12T14:41:35.371Z","updated":"2026-11-12T14:41:35Z"}}
