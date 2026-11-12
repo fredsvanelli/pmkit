@@ -4190,7 +4190,7 @@ function commitTracker(config, message, paths) {
     const top2 = top.stdout.trim()
     groups.set(top2, [...(groups.get(top2) ?? []), slash(path.relative(top2, full))])
   }
-  for (const [top, files] of groups) commitIn(top, message, files, files.length <= 5 ? files.join(' ') : 'the tracker files')
+  for (const [top, files] of groups) commitIn(top, message, files, `${files.length <= 5 ? files.join(' ') : 'the tracker files'} (in the git repository that holds the tracker)`)
   if (loose) notes.push('the tracker folder is outside the repository and not in a git repository, so nothing was committed for it')
   return notes
 }
@@ -4199,7 +4199,14 @@ function commitTracker(config, message, paths) {
 function commitIn(cwd, message, paths, named) {
   // --literal-pathspecs keeps a name such as notes/[x].md from matching as a glob.
   const git = (...args) => spawnSync('git', ['--literal-pathspecs', ...args], { cwd, encoding: 'utf8' })
-  const fail = (result) => new PmkitError('UPSTREAM', `the write succeeded but auto_commit failed: ${(result.stderr || result.stdout).trim()}`, `Commit ${named} yourself`)
+  // git quotes the absolute path of what it refused: the repository folder comes out, which leaves the path relative to it, and any other absolute path is hidden (PMK-268).
+  const folders = [...new Set([cwd, fs.realpathSync(cwd)])].flatMap((dir) => [dir.split(path.sep).join('/'), dir]).sort((a, b) => b.length - a.length)
+  const relative = (text) => {
+    let result = text
+    for (const dir of folders) result = result.replaceAll(`${dir}/`, '').replaceAll(`${dir}${path.sep}`, '').replaceAll(dir, '.')
+    return result.replace(/(^|[\s'"(])((?:[A-Za-z]:[\\/]|\/)[^\s'"]+)/g, '$1<path>')
+  }
+  const fail = (result) => new PmkitError('UPSTREAM', `the write succeeded but auto_commit failed: ${relative((result.stderr || result.stdout).trim())}`, `Commit ${named} yourself`)
   // On disk with its exact case: where the file system ignores case, the old name of a case-only rename still "exists".
   const onDisk = (file) => {
     const full = path.join(cwd, file)
