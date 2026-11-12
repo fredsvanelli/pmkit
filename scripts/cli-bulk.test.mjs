@@ -479,6 +479,7 @@ test('bulk unarchive without --archived or with a limit is INVALID_INPUT', async
     assert.match(plain.body.error.message, /needs --archived/)
     const limited = await bulk(root, 'unarchive', '--label', 'legacy', '--archived', '--limit', '1', '--dry-run')
     assert.equal(limited.body.error.code, 'INVALID_INPUT')
+    assert.match(limited.body.error.message, /unknown option --limit for issues bulk/)
   })
 })
 
