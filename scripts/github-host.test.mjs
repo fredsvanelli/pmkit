@@ -167,7 +167,7 @@ test('any other failure becomes UPSTREAM with the first stderr line', () => {
   )
 })
 
-test('PMK-278: a git failure hides the absolute path of its stderr, a gh failure keeps its text, and the HTTP status still parses', () => {
+test('PMK-278: a git failure hides the absolute path of its stderr, a gh failure hides it too (PMK-289), and the HTTP status still parses', () => {
   const stderr = "fatal: '/Users/John Doe/remote.git' does not appear to be a git repository\n"
   assert.throws(
     () => host(fakeExec({ status: 128, stderr }).exec).push('iss-1'),
@@ -179,7 +179,7 @@ test('PMK-278: a git failure hides the absolute path of its stderr, a gh failure
   assert.throws(() => host(fakeExec({ status: 128, stderr: secret }).exec).push('iss-1'), (e) => e.message.includes('https://[redacted]@github.com/o/r.git/') && !e.message.includes('user:pw'))
   assert.throws(
     () => host(fakeExec({ status: 1, stderr: 'gh: see /tmp/x.log (HTTP 404)\n' }).exec).prRefs(1),
-    (e) => e.message.includes('/tmp/x.log') && e.httpStatus === 404,
+    (e) => !e.message.includes('/tmp/x.log') && e.message.includes('<path>') && e.httpStatus === 404,
   )
 })
 
@@ -721,4 +721,29 @@ test('getPullRequest with detail reads only once when the failure is not a refus
   const { exec, calls } = fakeExec({ status: 1, stderr: 'HTTP 502: Bad Gateway\n' })
   assert.throws(() => host(exec).getPullRequest({ head: 'feat' }, { detail: true }), (e) => e.code === 'UPSTREAM')
   assert.equal(calls.length, 1)
+})
+
+// PMK-289: the stderr of gh never shows an absolute path, and the HTTP status is read before the hiding.
+test('a failed gh call hides the absolute path in its stderr, a path with a space too', () => {
+  const { exec } = fakeExec({ status: 1, stderr: 'gh: open /Users/jo smith/work/x.json: no such file or directory\n' })
+  assert.throws(() => host(exec).prRefs(1), (error) => {
+    assert.ok(!/Users|smith|work/.test(error.message), error.message)
+    assert.match(error.message, /<path>/)
+    return true
+  })
+})
+
+test('a gh api error still sets its HTTP status when a path shares the line', () => {
+  const trailing = fakeExec({ status: 1, stderr: 'gh: open /Users/jo/x.json (HTTP 404)\n' })
+  assert.throws(() => host(trailing.exec).prRefs(1), (error) => {
+    assert.ok(!error.message.includes('/Users'), error.message)
+    assert.equal(error.httpStatus, 404)
+    return true
+  })
+  const leading = fakeExec({ status: 1, stderr: 'HTTP 502: Bad Gateway (/home/jo/repo/x)\n' })
+  assert.throws(() => host(leading.exec).prRefs(1), (error) => {
+    assert.ok(!error.message.includes('/home'), error.message)
+    assert.equal(error.httpStatus, 502)
+    return true
+  })
 })
