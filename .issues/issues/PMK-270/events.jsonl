@@ -1,1 +1,4 @@
 {"at":"2026-11-12T00:43:33Z","by":"fred","op":"create","to":{"id":"PMK-270","title":"Write a Supersedes line a reader of the tracker can follow","type":"bug","status":"backlog","priority":"medium","estimate":2,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-12T00:43:33.054Z","updated":"2026-11-12T00:43:33Z"}}
+{"at":"2026-11-12T00:56:25Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-12T00:56:25Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-12T00:56:26Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-270-write-a-supersedes-line-a-reader-of-the"}
