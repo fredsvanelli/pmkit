@@ -2,14 +2,14 @@
 id: PMK-288
 title: Make hideAbsolutePaths linear on long lines
 type: bug
-status: in_progress
+status: in_review
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-288-make-hideabsolutepaths-linear-on-long
 created: 2026-11-12T14:41:34.946Z
-updated: 2026-11-12T18:12:51Z
+updated: 2026-11-12T18:13:08Z
 ---
 
 ## Description
