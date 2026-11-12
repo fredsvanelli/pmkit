@@ -208,8 +208,8 @@ function locate(lines) {
         }
         if (code[j] && code[j - 1]) { paragraph = empty = false; continue }
         const indent = indentColumns(item)
-        // After a blank line, four columns past the innermost item are indented code: it closes nothing and opens nothing.
-        if (j !== top && !paragraph && indent >= (open.at(-1) ?? 0) + 4) continue
+        // After a blank line, four columns past the innermost item are indented code: it closes nothing and opens nothing, and as `top` it does not continue the item (PMK-291 cycle 2).
+        if (!paragraph && indent >= (open.at(-1) ?? 0) + 4) { if (j === top) return false; continue }
         if (j === top) { close(indent); return open.length > 0 }
         // Left of the innermost item, any item (an empty one, `2.`) starts a block; inside its paragraph only INTERRUPTS_PARAGRAPH does.
         const starts = code[j] || THEMATIC_BREAK.test(item) || (indent < (open.at(-1) ?? 0) ? BLOCK_START : INTERRUPTS_PARAGRAPH).test(item)

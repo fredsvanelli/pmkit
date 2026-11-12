@@ -1185,3 +1185,27 @@ test('an empty item and an item that opens with indented code are not paragraphs
     number++
   }
 })
+
+test('indented code inside a list item is not the item continuing, so a lazy line before the underline stays the heading (PMK-291 cycle 2)', async () => {
+  const cases = {
+    'code after a lazy line': ['- a\nlazy\n\n\n      x\nlazy\n---\n', '- a lazy x'],
+    'code, no lazy line before': ['- a\n\n      x\nlazy\n---\n', '- a x'],
+    'five spaces marker, code': ['-     a\n\n\n          x\nlazy\n---\n', '-     a x'],
+    'empty item, code': ['- a\n-\n\n      x\nlazy\n---\n', '- a - x'],
+  }
+  const root = repo()
+  let number = 1
+  for (const [name, [tail, status]] of Object.entries(cases)) {
+    const text = `# ${number}. Use U\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
+    assert.equal(adrInfo(text).status, status, name)
+    if (number === 1) {
+      const file = 'docs/adr/0001-use-u.md'
+      writeAdr(root, file, text)
+      assert.equal((await adrGetFrom(root, '1')).data.status, status, name)
+      const written = setAdrStatus(text, 'deprecated').text
+      assert.equal((await adrStatus(root, '1', 'deprecated')).code, 0, name)
+      assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), written, name)
+    }
+    number++
+  }
+})
