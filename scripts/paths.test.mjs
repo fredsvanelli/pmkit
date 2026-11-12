@@ -74,11 +74,25 @@ test('hideAbsolutePaths keeps a scheme://host URL whole and still hides file:///
     'ssh: connect to ssh://git@github.com/o/r.git failed',
     'fatal: repository git://example.com/o/r.git/ not found',
     'see https://example.com/a',
-    'remote file://server/share/x.git',
   ]) assert.equal(hideAbsolutePaths(text), text)
   assert.equal(hideAbsolutePaths('url file:///Users/x y/z'), 'url file:<path>')
   assert.equal(hideAbsolutePaths("'https://h.com/r.git' is not /Users/John Doe/r"), "'https://h.com/r.git' is not <path>")
   assert.equal(hideAbsolutePaths('error: \\\\host\\share\\a b'), 'error: <path>')
   assert.equal(hideAbsolutePaths('error: //host/share/a'), 'error: <path>')
   assert.equal(hideAbsolutePaths('error: C://Users/a b'), 'error: <path>')
+})
+
+test('hideAbsolutePaths hides the path of every file:// URL, with or without a host, and keeps the other schemes whole (PMK-278 cycle 2)', () => {
+  assert.equal(hideAbsolutePaths("fatal: '/x' and file://localhost/Users/John Doe/r.git"), "fatal: '<path>' and file:<path>")
+  assert.equal(hideAbsolutePaths('remote file://host/abs/r.git'), 'remote file:<path>')
+  assert.equal(hideAbsolutePaths('remote FILE://host/abs/r.git'), 'remote FILE:<path>')
+  assert.equal(hideAbsolutePaths('see https://example.com/a'), 'see https://example.com/a')
+})
+
+test('hideAbsolutePaths replaces the credentials of a URL it keeps whole, with a password or a bare token (PMK-278 cycle 2)', () => {
+  assert.equal(hideAbsolutePaths("fatal: unable to access 'https://user:pw@github.com/o/r.git/': 403"), "fatal: unable to access 'https://[redacted]@github.com/o/r.git/': 403")
+  assert.equal(hideAbsolutePaths('ssh://:pw@host/r.git failed'), 'ssh://[redacted]@host/r.git failed')
+  const token = `ghp_${'a1B2'.repeat(6)}`
+  const shown = hideAbsolutePaths(`fatal: unable to access 'https://${token}@github.com/o/r.git/': 403`)
+  assert.ok(!shown.includes(token) && shown.includes('github.com/o/r.git'), shown)
 })

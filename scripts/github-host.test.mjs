@@ -175,6 +175,8 @@ test('PMK-278: a git failure hides the absolute path of its stderr, a gh failure
   )
   const url = "fatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 403\n"
   assert.throws(() => host(fakeExec({ status: 128, stderr: url }).exec).push('iss-1'), (e) => e.message.includes(url.trim()))
+  const secret = "fatal: unable to access 'https://user:pw@github.com/o/r.git/': The requested URL returned error: 403\n"
+  assert.throws(() => host(fakeExec({ status: 128, stderr: secret }).exec).push('iss-1'), (e) => e.message.includes('https://[redacted]@github.com/o/r.git/') && !e.message.includes('user:pw'))
   assert.throws(
     () => host(fakeExec({ status: 1, stderr: 'gh: see /tmp/x.log (HTTP 404)\n' }).exec).prRefs(1),
     (e) => e.message.includes('/tmp/x.log') && e.httpStatus === 404,
