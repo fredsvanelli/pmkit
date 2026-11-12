@@ -2,14 +2,14 @@
 id: PMK-298
 title: Say when the local default branch is behind origin in issues branch
 type: bug
-status: in_progress
+status: in_review
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-298-say-when-the-local-default-branch-is
 created: 2026-11-12T22:25:13.996Z
-updated: 2026-11-12T22:46:19Z
+updated: 2026-11-12T23:06:17Z
 ---
 
 ## Description
