@@ -2,12 +2,14 @@
 id: PMK-273
 title: "End an ADR's Status section at every heading form"
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-6
+branch: pmk-273-end-an-adr-s-status-section-at-every
 created: 2026-11-12T00:43:33.314Z
-updated: 2026-11-12T00:43:33Z
+updated: 2026-11-12T01:28:48Z
 ---
 
 ## Description
@@ -33,7 +35,7 @@ PMK-269 ends an ADR's `## Status` section at the next ATX heading (`#` to `#####
 
 ## Acceptance criteria
 
-- [ ] `docs adr-get` shows only the status text when a setext heading follows it, with a test
-- [ ] `docs adr-get` shows only the status text when an indented, tab or empty heading follows it, with a test
-- [ ] `docs adr-status` keeps those headings and the text under them
-- [ ] A `---` line that is a thematic break with a blank line above it does not end the section
+- [x] `docs adr-get` shows only the status text when a setext heading follows it, with a test
+- [x] `docs adr-get` shows only the status text when an indented, tab or empty heading follows it, with a test
+- [x] `docs adr-status` keeps those headings and the text under them
+- [x] A `---` line that is a thematic break with a blank line above it does not end the section
