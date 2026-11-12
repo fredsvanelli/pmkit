@@ -867,6 +867,39 @@ test('docs adr-get and docs adr-status end the Status section at a setext headin
   assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0005-use-y.md'), 'utf8'), text.replace('\nAccepted\n', '\nDeprecated\n'))
 })
 
+test('a list item, a quote or a thematic break above ---, === interrupts the paragraph, so the status is kept (PMK-273 review)', async () => {
+  const cases = {
+    'list item then ---': ['Accepted\n- a\n---\n', 'Accepted - a ---'],
+    'quote then ===': ['Accepted\n> n\n===\n', 'Accepted > n ==='],
+    'thematic break, then a setext heading': ['Accepted\n***\nNotes\n---\nmore\n', 'Accepted ***'],
+  }
+  const root = repo()
+  let number = 6
+  for (const [name, [tail, status]] of Object.entries(cases)) {
+    const text = `# ${number}. Use Z\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
+    assert.equal(adrInfo(text).status, status, name)
+    const written = setAdrStatus(text, 'deprecated').text
+    assert.equal(written.match(/^Deprecated$/gm)?.length, 1, name)
+    assert.doesNotMatch(written, /Accepted/, name)
+    // The same ADR through the CLI: adr-get reads the status, adr-status writes one.
+    const file = `docs/adr/000${number}-use-z.md`
+    writeAdr(root, file, text)
+    assert.equal((await adrGetFrom(root, String(number))).data.status, status, name)
+    assert.equal((await adrStatus(root, String(number), 'deprecated')).code, 0, name)
+    assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), written, name)
+    number++
+  }
+})
+
+test('an indented ## heading is the first section, found by the same test as the end of the Status section (PMK-273 review)', () => {
+  // A Status line below an indented `## Context` is not above the first section, so it is not the ADR's status.
+  assert.equal(adrInfo('# T\n\n ## Context\n\nStatus: Accepted\n').status, null)
+  assert.equal(adrInfo('# T\n\n## Context\n\nStatus: Accepted\n').status, null)
+  assert.equal(adrInfo('# T\n\nStatus: Accepted\n\n   ## Context\n').status, 'Accepted')
+  // An indented `# ` heading is the title.
+  assert.equal(adrInfo('  # T\n\n## Status\n\nAccepted\n').title, 'T')
+})
+
 const adrGetFrom = async (root, ...args) => {
   const result = await run(['docs', 'adr-get', ...args, '--json'], { cwd: root, env: childEnv() })
   return { code: result.code, data: result.stdout ? JSON.parse(result.stdout) : null }

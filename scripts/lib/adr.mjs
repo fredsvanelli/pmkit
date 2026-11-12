@@ -109,10 +109,15 @@ export const adrText = (text) => text.replace(/^\uFEFF/, '').replaceAll('\r\n', 
 const STATUS_LINE = /^(\s*[-*]\s+)?(\*\*Status:?\*\*:?|Status:)\s*(.*)$/i
 const STATUS_SECTION = /^##\s+Status\s*$/i
 // An ATX heading (CommonMark): up to three spaces, one to six #, then a blank or the end of the line. An empty heading (`##`) and a tab after the # count.
-const ATX_HEADING = /^ {0,3}#{1,6}([ \t]|$)/
+const ATX_HEADING = /^ {0,3}(#{1,6})([ \t]|$)/
+// The level (1 to 6) of an ATX heading line, 0 for any other line: the one test for `title`, `head`, `## Status` and the end of a section.
+const headingLevel = (item) => ATX_HEADING.exec(item)?.[1].length ?? 0
+// A thematic break (`***`, `---`, `___`, spaces allowed) and a line that starts a quote or a list item: each interrupts a paragraph.
+const THEMATIC_BREAK = /^ {0,3}([-*_])( *\1){2,} *$/
+const INTERRUPTS_PARAGRAPH = /^ {0,3}(>|([-*+]|\d+[.)])([ \t]|$))/
 // The underline of a setext heading: up to three spaces, then = or - only.
 const SETEXT_UNDERLINE = /^ {0,3}(=+|-+)[ \t]*$/
-const NOT_PARAGRAPH_START = /^( {4}|\t| {0,3}>| {0,3}([-*+]|\d+[.)])([ \t]|$))/
+const NOT_PARAGRAPH_START = /^( {4}|\t)/
 const YAML_STATUS = /^status:/i
 const capitalized = (text) => text.charAt(0).toUpperCase() + text.slice(1)
 // Which lines are inside a fenced code block, fences included: a status or a heading there is an example, not the ADR's own (PMK-263).
@@ -153,23 +158,24 @@ function locate(lines) {
   const start = close === -1 ? 0 : close + 1
   const code = fencedLines(lines)
   const at = (test, to = lines.length) => lines.findIndex((item, i) => i >= start && i < to && !code[i] && test(item))
-  const head = at((item) => item.startsWith('## '))
+  const head = at((item) => headingLevel(item) === 2)
   const yaml = close === -1 ? -1 : lines.slice(1, close).findIndex((item) => YAML_STATUS.test(item)) + 1 || -1
   const end = (from) => {
-    const para = (i) => i > from && !code[i] && lines[i].trim() !== '' && !ATX_HEADING.test(lines[i])
+    const para = (i) => i > from && !code[i] && lines[i].trim() !== '' && headingLevel(lines[i]) === 0 && !THEMATIC_BREAK.test(lines[i])
     for (let i = from + 1; i < lines.length; i++) {
       if (code[i]) continue
-      if (ATX_HEADING.test(lines[i])) return i
+      if (headingLevel(lines[i]) > 0) return i
       if (!SETEXT_UNDERLINE.test(lines[i]) || !para(i - 1)) continue
-      // A setext heading is the whole paragraph above its underline. When that paragraph opens with a quote, a list item or indented code,
-      // the underline is a thematic break or a lazy continuation instead.
+      // A setext heading is the whole paragraph above its underline. The paragraph starts after a blank line, a heading or a thematic break,
+      // and at a quote or a list item, which interrupts one. When it opens with a quote or a list item, or indented code, the underline is a
+      // thematic break or a lazy continuation instead.
       let top = i - 1
-      while (para(top - 1)) top--
-      if (!NOT_PARAGRAPH_START.test(lines[top])) return top
+      while (para(top - 1) && !INTERRUPTS_PARAGRAPH.test(lines[top])) top--
+      if (!INTERRUPTS_PARAGRAPH.test(lines[top]) && !NOT_PARAGRAPH_START.test(lines[top])) return top
     }
     return lines.length
   }
-  return { close, start, yaml, head, line: at((item) => STATUS_LINE.test(item), head === -1 ? lines.length : head), section: at((item) => STATUS_SECTION.test(item)), title: at((item) => item.startsWith('# '), head === -1 ? lines.length : head), end }
+  return { close, start, yaml, head, line: at((item) => STATUS_LINE.test(item), head === -1 ? lines.length : head), section: at((item) => STATUS_SECTION.test(item)), title: at((item) => headingLevel(item) === 1, head === -1 ? lines.length : head), end }
 }
 const withoutBlanks = (lines, from) => {
   let at = from
