@@ -196,7 +196,7 @@ export function adrInfo(text) {
   }
   const body = section === -1 ? '' : lines.slice(section + 1, end(section)).map((item) => item.trim()).filter(Boolean).join(' ')
   const statuses = [yaml > 0 ? key('status') : null, line === -1 ? null : STATUS_LINE.exec(lines[line])[3].trim(), body].filter((value) => value)
-  return { title: title === -1 ? key('title') : lines[title].slice(2).trim(), status: statuses[0] ?? null, statuses }
+  return { title: title === -1 ? key('title') : lines[title].replace(/^ {0,3}#/, '').trim(), status: statuses[0] ?? null, statuses }
 }
 
 /**
