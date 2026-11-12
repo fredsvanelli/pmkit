@@ -800,3 +800,15 @@ test('docs adr-status superseded --by with both ADRs in a tracker outside the re
     assert.deepEqual([data.path, data.ref], ['tracker:docs/adr/0001-a.md', `../${path.basename(outside)}/docs/adr/0001-a.md`])
   })
 })
+
+test('a subsection of the ## Status section is not part of the status, and adr-status keeps it (PMK-269)', () => {
+  const text = '# T\n\n## Status\n\nAccepted\n\n### Notes\n\nmore\n\n#### Deeper\n\nx\n\n## Context\n\nWhy.\n'
+  assert.deepEqual(adrInfo(text), { title: 'T', status: 'Accepted', statuses: ['Accepted'] })
+  assert.deepEqual(setAdrStatus(text, 'deprecated'), { text: text.replace('\nAccepted\n', '\nDeprecated\n'), before: 'Accepted', after: 'Deprecated' })
+  // An unchanged status leaves the text as it came.
+  assert.equal(setAdrStatus(text, 'accepted').text, text)
+  // A section with only a subsection has no status text; the subsection stays after the new one.
+  assert.equal(setAdrStatus('# T\n\n## Status\n\n### Notes\n\nmore\n', 'accepted').text, '# T\n\n## Status\n\nAccepted\n\n### Notes\n\nmore\n')
+  // A heading inside a fenced block is an example, so it does not end the section (PMK-263).
+  assert.equal(adrInfo('# T\n\n## Status\n\nAccepted\n\n```md\n### Notes\n```\n\n## Context\n').status, 'Accepted ```md ### Notes ```')
+})

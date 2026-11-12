@@ -2,12 +2,14 @@
 id: PMK-269
 title: "Keep subsections of an ADR's Status section"
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-269-keep-subsections-of-an-adr-s-status
 created: 2026-11-12T00:00:31.526Z
-updated: 2026-11-12T00:00:31Z
+updated: 2026-11-12T00:35:37Z
 ---
 
 ## Description
@@ -31,5 +33,5 @@ The second review of PMK-263 found that a `### ` heading inside an ADR's `## Sta
 
 ## Acceptance criteria
 
-- [ ] `docs adr-get` on an ADR whose `## Status` has a `### ` subsection shows only the status text
-- [ ] `docs adr-status` keeps that subsection when it rewrites the status
+- [x] `docs adr-get` on an ADR whose `## Status` has a `### ` subsection shows only the status text
+- [x] `docs adr-status` keeps that subsection when it rewrites the status
