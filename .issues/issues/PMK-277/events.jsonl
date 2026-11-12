@@ -4,3 +4,5 @@
 {"at":"2026-11-12T02:19:24Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-277-hide-an-absolute-path-that-follows-a"}
 {"at":"2026-11-12T02:20:09Z","by":"fred","op":"comment","to":"2026-11-12T02-20-09Z-fred.md"}
 {"at":"2026-11-12T02:29:15Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-12T02:29:39Z","by":"fred","op":"comment","to":"2026-11-12T02-29-39Z-fred.md"}
+{"at":"2026-11-12T02:29:40Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
