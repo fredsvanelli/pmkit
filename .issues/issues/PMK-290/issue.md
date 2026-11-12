@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-290-create-the-issue-branch-when-the-default
 created: 2026-11-12T14:41:35.114Z
-updated: 2026-11-12T14:50:41Z
+updated: 2026-11-12T15:05:20Z
 ---
 
 ## Description
@@ -34,5 +34,5 @@ updated: 2026-11-12T14:50:41Z
 
 ## Acceptance criteria
 
-- [ ] `issues branch` with no local default branch creates the branch from the remote one and says so, with a test
-- [ ] A missing `--from` branch fails with a next step, with a test
+- [x] `issues branch` with no local default branch creates the branch from the remote one and says so, with a test
+- [x] A missing `--from` branch fails with a next step, with a test

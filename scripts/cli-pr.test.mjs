@@ -311,6 +311,7 @@ test('pr status links a failing check to its ci logs run, and leaves a check wit
 test('issues branch --dry-run prints the branch name and creates no git branch', async () => {
   const root = teamRepo()
   git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'init')
+  git(root, 'branch', '-m', 'main')
   const env = envWith(fakeGh({}))
   const title = (await callJson(root, env, ['issues', 'get', 'ISS-2X6D'])).title
   const before = hashTree(root)
@@ -331,6 +332,56 @@ test('issues branch creates the branch and records it on the issue', async () =>
   assert.equal(result.before.branch, undefined)
   assert.equal(result.after.branch, result.branch)
   assert.equal((await callJson(root, env, ['issues', 'get', 'ISS-2X6D'])).branch, result.branch)
+})
+
+// A repository that has the default branch only as origin/main: the remote ref is there, the local branch is not (PMK-290).
+function remoteOnlyRepo() {
+  const root = teamRepo()
+  git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'init')
+  git(root, 'branch', '-m', 'main')
+  addBareOrigin(root, scratch())
+  assert.equal(git(root, 'push', '-q', 'origin', 'main').status, 0)
+  git(root, 'switch', '-q', '--detach')
+  assert.equal(git(root, 'branch', '-D', 'main').status, 0)
+  return root
+}
+
+test('issues branch with no local default branch starts from origin/<default> and says so', async () => {
+  const root = remoteOnlyRepo()
+  const env = envWith(fakeGh({}))
+  const dry = await callJson(root, env, ['issues', 'branch', 'ISS-2X6D', '--dry-run'])
+  assert.equal(dry.from, 'origin/main')
+  assert.match((await call(root, env, ['issues', 'branch', 'ISS-2X6D', '--dry-run'])).stdout, /from origin\/main \(no local main\)/)
+  const result = await callJson(root, env, ['issues', 'branch', 'ISS-2X6D'])
+  assert.equal(result.from, 'origin/main')
+  assert.equal(git(root, 'branch', '--show-current').stdout.trim(), result.branch)
+  assert.equal(git(root, 'rev-parse', result.branch).stdout, git(root, 'rev-parse', 'refs/remotes/origin/main').stdout)
+})
+
+test('issues branch with a --from that does not exist fails with a next step and writes nothing', async () => {
+  const root = remoteOnlyRepo()
+  const env = envWith(fakeGh({}))
+  for (const args of [['--from', 'nope'], ['--from', 'nope', '--dry-run']]) {
+    const before = hashTree(root)
+    const result = await call(root, env, ['issues', 'branch', 'ISS-2X6D', ...args, '--json'])
+    assert.equal(result.code, 2)
+    assert.equal(errorOf(result).code, 'INVALID_INPUT')
+    assert.match(errorOf(result).message, /nope/)
+    assert.match(errorOf(result).nextStep, /--from/)
+    assert.equal(hashTree(root), before)
+  }
+})
+
+test('issues branch with the default branch neither local nor on origin fails and suggests fetching', async () => {
+  const root = teamRepo()
+  git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'init')
+  git(root, 'branch', '-m', 'other')
+  const env = envWith(fakeGh({}))
+  const result = await call(root, env, ['issues', 'branch', 'ISS-2X6D', '--json'])
+  assert.equal(result.code, 2)
+  assert.equal(errorOf(result).code, 'INVALID_INPUT')
+  assert.match(errorOf(result).nextStep, /git fetch origin/)
+  assert.match(errorOf(result).nextStep, /--from/)
 })
 
 test('pr open without a branch on the issue exits 2 with INVALID_INPUT', async () => {
@@ -771,6 +822,7 @@ function badBranchRepo() {
 test('an invalid git_host.default_branch becomes main with a note in issues branch, pr open and pr diff', async () => {
   const root = badBranchRepo()
   git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'init')
+  git(root, 'branch', '-m', 'main')
   const env = envWith(fakeGh({ [view('feat')]: NO_PR }))
   const branch = await call(root, env, ['issues', 'branch', 'ISS-2X6D', '--dry-run', '--json'])
   assert.equal(JSON.parse(branch.stdout).from, 'main')
@@ -794,6 +846,7 @@ test('a branch with letters outside ASCII is a valid git_host.default_branch', a
   const file = path.join(root, '.pmkit/config.yaml')
   fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('default_branch: main', 'default_branch: développement'))
   git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'init')
+  git(root, 'branch', '-m', 'développement')
   const result = await call(root, envWith(fakeGh({})), ['issues', 'branch', 'ISS-2X6D', '--dry-run', '--json'])
   assert.equal(JSON.parse(result.stdout).from, 'développement')
   assert.ok(!result.stderr.includes('not a valid branch name'), result.stderr)
