@@ -2,12 +2,14 @@
 id: PMK-294
 title: Warn when the Status section is empty and a setext heading follows
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-294-warn-when-the-status-section-is-empty
 created: 2026-11-12T14:41:35.455Z
-updated: 2026-11-12T14:41:35Z
+updated: 2026-11-12T19:48:32Z
 ---
 
 ## Description
