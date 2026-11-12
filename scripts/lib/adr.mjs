@@ -123,7 +123,6 @@ const SETEXT_UNDERLINE = /^ {0,3}(=+|-+)[ \t]*$/
 // A list item line, with the width of its marker: its content starts at the length of the first group, and a later line indented that far belongs to the item (PMK-280).
 // A thematic break such as `- - -` is not an item, so the caller tests THEMATIC_BREAK first.
 const LIST_ITEM = /^( {0,3}(?:[-*+]|\d+[.)])[ \t]+)\S/
-const indentOf = (item) => item.length - item.trimStart().length
 // The columns of leading white space, a tab counting up to the next stop of 4: four or more start an indented code block (PMK-281).
 const indentColumns = (item) => {
   let columns = 0
@@ -181,12 +180,12 @@ function locate(lines) {
     // A line indented to the content of a list item above it, whatever blank lines lie between, continues the item, and CommonMark
     // gives a setext heading no lazy continuation, so an underline under it is a thematic break (PMK-280). Not a list parser: the nearest item that fits decides.
     const continuesItem = (top) => {
-      const indent = indentOf(lines[top])
+      const indent = indentColumns(lines[top])
       for (let j = top - 1; indent > 0 && j > from; j--) {
         if (code[j] || lines[j].trim() === '') continue
         const item = THEMATIC_BREAK.test(lines[j]) ? null : LIST_ITEM.exec(lines[j])
         if (item !== null && item[1].length <= indent) return true
-        if (indentOf(lines[j]) === 0 && item === null) return false
+        if (indentColumns(lines[j]) === 0 && item === null) return false
       }
       return false
     }
@@ -200,7 +199,8 @@ function locate(lines) {
       // paragraph starts at the first line after the code, and with none before the underline there is no heading (PMK-281).
       let top = i - 1
       while (para(top - 1) && !INTERRUPTS_PARAGRAPH.test(lines[top])) top--
-      while (top < i && indentColumns(lines[top]) >= 4) top++
+      // A line of 4 columns that continues a list item above it is not code (PMK-281 review).
+      while (top < i && indentColumns(lines[top]) >= 4 && !continuesItem(top)) top++
       if (top < i && !BLOCK_START.test(lines[top]) && !continuesItem(top)) return top
     }
     return lines.length

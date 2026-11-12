@@ -950,6 +950,29 @@ test('only a line that CommonMark lets interrupt a paragraph does, so 2. foo, an
   }
 })
 
+test('a list item continuation of four columns or a tab is not indented code, so the Status section stays open (PMK-281 review)', async () => {
+  const cases = {
+    'four spaces': 'Accepted\n- a\n\n    b\nc\n---\n',
+    tab: 'Accepted\n- a\n\n\tb\nc\n---\n',
+  }
+  const root = repo()
+  let number = 1
+  for (const [name, tail] of Object.entries(cases)) {
+    const text = `# ${number}. Use U\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
+    assert.equal(adrInfo(text).status, 'Accepted - a b c ---', name)
+    const written = setAdrStatus(text, 'deprecated').text
+    assert.equal(written, `# ${number}. Use U\n\n## Status\n\nDeprecated\n\n## Context\n\nWhy.\n`, name)
+    const file = `docs/adr/000${number}-use-u.md`
+    writeAdr(root, file, text)
+    assert.equal((await adrGetFrom(root, String(number))).data.status, 'Accepted - a b c ---', name)
+    assert.equal((await adrStatus(root, String(number), 'deprecated')).code, 0, name)
+    assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), written, name)
+    number++
+  }
+  // Outside a list item the same lines are indented code, then a paragraph.
+  assert.equal(adrInfo('# T\n\n## Status\n\nAccepted\n\n    b\nc\n---\n').status, 'Accepted b')
+})
+
 test('an indented ## heading is the first section, found by the same test as the end of the Status section (PMK-273 review)', () => {
   // A Status line below an indented `## Context` is not above the first section, so it is not the ADR's status.
   assert.equal(adrInfo('# T\n\n ## Context\n\nStatus: Accepted\n').status, null)
