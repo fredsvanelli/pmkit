@@ -2,14 +2,14 @@
 id: PMK-274
 title: Stop step 2 of record-decision from keeping the old ref for the Supersedes line
 type: chore
-status: in_progress
+status: in_review
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-274-stop-step-2-of-record-decision-from
 created: 2026-11-12T02:12:43.326Z
-updated: 2026-11-12T02:30:05Z
+updated: 2026-11-12T02:30:40Z
 ---
 
 ## Description
