@@ -132,8 +132,11 @@ const itemContent = (line) => {
   const marker = item[1].length + item[2].length
   let column = marker
   for (const char of item[3]) column += char === '\t' ? 4 - (column % 4) : 1
-  return column - marker >= 5 ? marker + 1 : column
+  // Five or more columns open the item with indented code, not a paragraph (PMK-291 review).
+  return { column: column - marker >= 5 ? marker + 1 : column, code: column - marker >= 5 }
 }
+// An item with nothing after its marker: its content column is one past the marker, and a blank line right after it ends it (PMK-291 review).
+const EMPTY_ITEM = /^( {0,3})([-*+]|\d+[.)])[ \t]*$/
 const indentColumns = (item) => {
   let columns = 0
   for (const char of item) {
@@ -195,19 +198,29 @@ function locate(lines) {
       const open = []
       const close = (indent) => { while (open.length > 0 && indent < open.at(-1)) open.pop() }
       let paragraph = false
+      let empty = false
       for (let j = from + 1; j <= top; j++) {
         const item = lines[j]
-        if (item.trim() === '' || (code[j] && code[j - 1])) { paragraph = false; continue }
+        if (item.trim() === '') {
+          if (empty) open.pop()
+          paragraph = empty = false
+          continue
+        }
+        if (code[j] && code[j - 1]) { paragraph = empty = false; continue }
         const indent = indentColumns(item)
         // After a blank line, four columns past the innermost item are indented code: it closes nothing and opens nothing.
         if (j !== top && !paragraph && indent >= (open.at(-1) ?? 0) + 4) continue
         if (j === top) { close(indent); return open.length > 0 }
-        const starts = code[j] || INTERRUPTS_PARAGRAPH.test(item) || THEMATIC_BREAK.test(item)
+        // Left of the innermost item, any item (an empty one, `2.`) starts a block; inside its paragraph only INTERRUPTS_PARAGRAPH does.
+        const starts = code[j] || THEMATIC_BREAK.test(item) || (indent < (open.at(-1) ?? 0) ? BLOCK_START : INTERRUPTS_PARAGRAPH).test(item)
         if (paragraph && !starts) continue
         close(indent)
-        const content = code[j] ? null : itemContent(item)
-        if (content !== null) open.push(content)
-        paragraph = !starts || content !== null
+        const start = code[j] ? null : itemContent(item)
+        const blank = !code[j] && !THEMATIC_BREAK.test(item) && EMPTY_ITEM.exec(item)
+        if (start !== null) open.push(start.column)
+        if (blank) open.push(blank[1].length + blank[2].length + 1)
+        empty = Boolean(blank)
+        paragraph = (!starts && !blank) || (start !== null && !start.code)
       }
       return false
     }

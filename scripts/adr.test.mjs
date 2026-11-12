@@ -1161,3 +1161,27 @@ test('the item that holds the line decides: a wider sibling, a fence at column 0
     number++
   }
 })
+
+test('an empty item and an item that opens with indented code are not paragraphs for the lazy walk (PMK-291 review)', async () => {
+  const cases = {
+    'empty item after an item': ['- a\n-\n\n  x\n---\n', '- a -'],
+    'five spaces, lazy line': ['-     a\nlazy\n\n  x\n---\n', '-     a lazy'],
+    'five spaces, other text': ['-     a\nz\n\n  x\n---\n', '-     a z'],
+    'five spaces, empty item': ['-     a\n-\n\n  x\n---\n', '-     a -'],
+  }
+  const root = repo()
+  let number = 1
+  for (const [name, [tail, status]] of Object.entries(cases)) {
+    const text = `# ${number}. Use U\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
+    assert.equal(adrInfo(text).status, status, name)
+    if (number === 1) {
+      const file = 'docs/adr/0001-use-u.md'
+      writeAdr(root, file, text)
+      assert.equal((await adrGetFrom(root, '1')).data.status, status, name)
+      const written = setAdrStatus(text, 'deprecated').text
+      assert.equal((await adrStatus(root, '1', 'deprecated')).code, 0, name)
+      assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), written, name)
+    }
+    number++
+  }
+})
