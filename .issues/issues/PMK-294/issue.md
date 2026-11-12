@@ -2,12 +2,14 @@
 id: PMK-294
 title: Warn when the Status section is empty and a setext heading follows
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-294-warn-when-the-status-section-is-empty
 created: 2026-11-12T14:41:35.455Z
-updated: 2026-11-12T14:41:35Z
+updated: 2026-11-12T19:57:26Z
 ---
 
 ## Description
@@ -32,5 +34,5 @@ PMK-283 fixed by test what `adr-status` writes for `## Status\nAccepted\n---`: `
 
 ## Acceptance criteria
 
-- [ ] `adr-get` and `adr-status` on `## Status\nAccepted\n---` and `===` say that `Accepted` reads as a heading, with a test
-- [ ] What `adr-status` writes is unchanged, with a test
+- [x] `adr-get` and `adr-status` on `## Status\nAccepted\n---` and `===` say that `Accepted` reads as a heading, with a test
+- [x] What `adr-status` writes is unchanged, with a test

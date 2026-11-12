@@ -409,6 +409,32 @@ export function adrInfo(text) {
 }
 
 /**
+ * The heading that ends an empty `## Status` section, `{ heading, underline }`, null when there is none (PMK-294). `Accepted\n---` under
+ * `## Status` is a setext heading (PMK-273), so the section holds no text and `adrInfo` reads no status. It is decided by `sectionEnd`, the
+ * same walk that ends the section, so a list item, a quote or a thematic break over `---` is never named: the section stops at a setext
+ * heading when its end is a line that is not an ATX heading. As in `sectionEnd`, the paragraph starts at that line, which is text even when
+ * it looks like an underline (`===` first makes `=== Accepted`), and the underline is the first later line that is one and leaves text once
+ * the link reference definitions at the start are taken out (`keepsText`). `heading` is that text, its lines trimmed and joined by a space,
+ * never empty; `underline` is the line as written, trimmed.
+ */
+export function adrStatusHeading(text) {
+  const lines = adrText(text).split('\n')
+  const { section, end } = locate(lines)
+  if (section === -1) return null
+  const stop = end(section)
+  if (stop >= lines.length || headingLevel(lines[stop]) > 0 || lines.slice(section + 1, stop).some((item) => item.trim() !== '')) return null
+  const paragraph = { text: `${lines[stop].trimStart()}\n` }
+  for (let at = stop + 1; at < lines.length; at++) {
+    if (/^ {0,3}\S/.test(lines[at]) && CM_SETEXT.test(lines[at].trim()) && keepsText(paragraph)) {
+      const heading = paragraph.text.split('\n').map((item) => item.trim()).filter(Boolean).join(' ')
+      return heading === '' ? null : { heading, underline: lines[at].trim() }
+    }
+    paragraph.text += `${lines[at].trimStart()}\n`
+  }
+  return null
+}
+
+/**
  * The ADR text with `status` (and `byPath`, the newer ADR, for superseded) written in the form the ADR already uses (PMK-228):
  * the `status:` key of YAML front matter, the body of a `## Status` section (Nygard, adr-tools), or a `Status:` or `**Status:**`
  * line above the first `## ` section. With none of them, a `Status:` line goes under the `# ` title, or under the front matter,

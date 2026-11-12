@@ -1,1 +1,9 @@
 {"at":"2026-11-12T14:41:35Z","by":"fred","op":"create","to":{"id":"PMK-294","title":"Warn when the Status section is empty and a setext heading follows","type":"bug","status":"backlog","priority":"low","estimate":1,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-12T14:41:35.455Z","updated":"2026-11-12T14:41:35Z"}}
+{"at":"2026-11-12T19:48:27Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-12T19:48:27Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-12T19:48:32Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-294-warn-when-the-status-section-is-empty"}
+{"at":"2026-11-12T19:49:14Z","by":"fred","op":"comment","to":"2026-11-12T19-49-14Z-fred.md"}
+{"at":"2026-11-12T19:50:33Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-12T19:50:34Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-12T19:57:26Z","by":"fred","op":"comment","to":"2026-11-12T19-57-26Z-fred.md"}
+{"at":"2026-11-12T19:57:26Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

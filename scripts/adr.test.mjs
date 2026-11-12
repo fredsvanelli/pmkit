@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
-import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrInfo, adrRef } from './lib/adr.mjs'
+import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrInfo, adrRef, adrStatusHeading } from './lib/adr.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo } from './test-helpers.mjs'
 
@@ -722,7 +722,7 @@ test('docs adr-get shows number, title, status and path, notes a disagreement an
   }
   const one = await run1('4')
   assert.equal(one.code, 0, one.stderr)
-  assert.deepEqual({ ...one.data, notes: undefined }, { number: '0004', title: '4. Use X', status: 'accepted', statuses: ['accepted', 'Deprecated'], path: 'docs/adr/0004-use-x.md', ref: 'docs/adr/0004-use-x.md', place: 'repo', supersedesRef: null, notes: undefined })
+  assert.deepEqual({ ...one.data, notes: undefined }, { number: '0004', title: '4. Use X', status: 'accepted', statuses: ['accepted', 'Deprecated'], statusHeading: null, path: 'docs/adr/0004-use-x.md', ref: 'docs/adr/0004-use-x.md', place: 'repo', supersedesRef: null, notes: undefined })
   assert.equal(one.data.notes.length, 1)
   assert.match(one.data.notes[0], /accepted.*Deprecated/)
   assert.match(one.data.notes[0], /status in the JSON is the first/, 'the note matches what the text and the JSON show')
@@ -879,6 +879,12 @@ test('setAdrStatus on a Status section underlined by --- pins the CommonMark rea
   })
 })
 
+test('setAdrStatus on a Status section underlined by === pins the same reading (PMK-294)', () => {
+  const text = '# 1. Use X\n\n## Status\nAccepted\n===\n\n## Context\n\nSome text.\n'
+  assert.deepEqual(adrInfo(text), { title: '1. Use X', status: null, statuses: [] })
+  assert.deepEqual(setAdrStatus(text, 'deprecated'), { text: '# 1. Use X\n\n## Status\n\nDeprecated\n\nAccepted\n===\n\n## Context\n\nSome text.\n', before: null, after: 'Deprecated' })
+})
+
 test('docs adr-status and docs adr-get on a Status section underlined by --- pin what is written (PMK-283)', async () => {
   // The same CommonMark reading as the unit test above: a human reader sees Deprecated and Accepted after the write.
   const root = repo()
@@ -895,6 +901,118 @@ test('docs adr-status and docs adr-get on a Status section underlined by --- pin
   const after = await adrGetFrom(root, '1')
   assert.equal(after.code, 0)
   assert.equal(after.data.status, 'Deprecated')
+})
+
+test('adrStatusHeading names the line a setext heading makes of an empty Status section, and nothing else (PMK-294)', () => {
+  const cases = {
+    '---': ['## Status\nAccepted\n---\n\n## Context\n', 'Accepted'],
+    '===': ['## Status\nAccepted\n===\n\n## Context\n', 'Accepted'],
+    'blank lines before it': ['## Status\n\nAccepted\n===\n', 'Accepted'],
+    'indented': ['## Status\n\n  Accepted  \n  ---\n', 'Accepted'],
+    'a multi-line heading is named whole': ['## Status\nAccepted\nfor now\n---\n', 'Accepted for now'],
+    'indented lines of a multi-line heading': ['## Status\n  Accepted\n   for now  \n===\n', 'Accepted for now'],
+    'link definitions are not the heading': ['## Status\n[a]: /u\nAccepted\n---\n', 'Accepted'],
+    'link definitions with a title and a destination on the next line': ['## Status\n[a]:\n/u "t"\n[b]: /v\nAccepted\nfor now\n---\n', 'Accepted for now'],
+    'a === line first is text of the heading': ['## Status\n===\nAccepted\n---\n', '=== Accepted'],
+    'a lone = first is text of the heading': ['## Status\n=\nAccepted\n---\n', '= Accepted'],
+    'a lone - underlines': ['## Status\nAccepted\n-\n', 'Accepted'],
+    'a lone - alone is an empty item': ['## Status\n-\n', null],
+    'a === alone is text, no heading': ['## Status\n===\n', null],
+    'definitions, then a === line, then text': ['## Status\n[a]: /u\n===\nAccepted\n---\n', '=== Accepted'],
+    'definitions alone are not a heading': ['## Status\n[a]: /u\n---\n', null],
+    'CRLF': ['## Status\r\nAccepted\r\nfor now\r\n---\r\n', 'Accepted for now'],
+    'a filled section': ['## Status\n\nAccepted\n\n---\n\n## Context\n', null],
+    'a thematic break after a blank line': ['## Status\n\n---\n\nAccepted\n===\n', null],
+    'a list item is not a heading': ['## Status\n- Accepted\n---\n', null],
+    'a quote is not a heading': ['## Status\n> Accepted\n---\n', null],
+    'an empty section before ## Context': ['## Status\n\n## Context\n', null],
+    'an empty section at the end': ['## Status\n\n', null],
+    'an empty section before an ATX heading': ['## Status\n### Sub\n', null],
+    'a fence in the section': ['## Status\n```\nAccepted\n===\n```\n', null],
+    'no Status section': ['# T\n\nAccepted\n===\n', null],
+  }
+  for (const [name, [text, expected]] of Object.entries(cases)) assert.equal(adrStatusHeading(`# T\n\n${text}`)?.heading ?? null, expected, name)
+})
+
+for (const underline of ['---', '===']) {
+  test(`docs adr-get and docs adr-status say that Accepted reads as a heading under ${underline} and write what they wrote before (PMK-294)`, async () => {
+    const root = repo()
+    const text = `# 1. Use X\n\n## Status\nAccepted\n${underline}\n\n## Context\n\nSome text.\n`
+    writeAdr(root, 'docs/adr/0001-use-x.md', text)
+    const get = await adrGetFrom(root, '1')
+    assert.equal(get.data.status, null)
+    assert.equal(get.data.statusHeading, 'Accepted')
+    assert.equal(get.data.notes.length, 1)
+    assert.match(get.data.notes[0], /docs\/adr\/0001-use-x\.md: the Status section is empty because "Accepted" reads as a heading/)
+    assert.match(get.data.notes[0], /remove the underline/)
+    const gotText = await run(['docs', 'adr-get', '1'], { cwd: root, env: childEnv() })
+    assert.match(gotText.stdout + gotText.stderr, /"Accepted" reads as a heading/)
+    const dryText = await run(['docs', 'adr-status', '1', 'deprecated', '--dry-run'], { cwd: root, env: childEnv() })
+    assert.match(dryText.stdout + dryText.stderr, /"Accepted" reads as a heading/)
+    const dry = await adrStatus(root, '1', 'deprecated', '--dry-run')
+    assert.equal(dry.data.statusHeading, 'Accepted')
+    assert.match(dry.data.notes.join('\n'), /"Accepted" reads as a heading/)
+    const result = await adrStatus(root, '1', 'deprecated')
+    assert.equal(result.code, 0, result.stderr)
+    assert.equal(result.data.statusHeading, 'Accepted')
+    assert.match(result.data.notes.join('\n'), /"Accepted" reads as a heading/)
+    assert.deepEqual(result.data.status, { before: null, after: 'Deprecated' })
+    assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-use-x.md'), 'utf8'), `# 1. Use X\n\n## Status\n\nDeprecated\n\nAccepted\n${underline}\n\n## Context\n\nSome text.\n`)
+  })
+}
+
+test('the heading note offers both ways out, and does not ask for a second status when another form holds one (PMK-294 review)', async () => {
+  const section = '## Status\nAccepted\nfor now\n---\n\n## Context\n'
+  const cases = {
+    'no other status': [`# 1. Use X\n\n${section}`, true],
+    'a Status: line': [`# 1. Use X\n\nStatus: Old\n\n${section}`, false],
+    'YAML front matter': [`---\nstatus: Old\n---\n\n# 1. Use X\n\n${section}`, false],
+  }
+  for (const [name, [text, empty]] of Object.entries(cases)) {
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-use-x.md', text.replaceAll('\n', name === 'no other status' ? '\r\n' : '\n'))
+    const get = await adrGetFrom(root, '1')
+    assert.equal(get.data.statusHeading, 'Accepted for now', name)
+    const [note] = get.data.notes.filter((item) => item.includes('reads as a heading'))
+    assert.match(note, /because "Accepted for now" reads as a heading/, name)
+    if (empty) {
+      assert.match(note, /remove the underline/, name)
+      assert.match(note, /blank line before the underline/, name)
+      assert.doesNotMatch(note, /the first line/, name)
+    } else {
+      assert.doesNotMatch(note, /remove the underline|so "Accepted for now" is the status/, name)
+      assert.match(note, /another form/, name)
+    }
+    const set = await adrStatus(root, '1', 'deprecated', '--dry-run')
+    const [setNote] = set.data.notes.filter((item) => item.includes('reads as a heading'))
+    assert.equal(/remove the underline/.test(setNote), empty, name)
+    assert.match(setNote, /before the write/, name)
+  }
+})
+
+test('the heading note shows the real underline and heading in its example (PMK-294 review)', async () => {
+  const cases = { '---': 'Accepted for now ---', '=====': 'Accepted for now =====', '===': '=== Accepted ===' }
+  for (const [underline, example] of Object.entries(cases)) {
+    const root = repo()
+    const body = example.startsWith('===') ? `===\nAccepted\n${underline}` : `Accepted\nfor now\n${underline}`
+    writeAdr(root, 'docs/adr/0001-use-x.md', `# 1. Use X\n\n## Status\n${body}\n\n## Context\n`)
+    for (const note of [(await adrGetFrom(root, '1')).data.notes.join('\n'), (await adrStatus(root, '1', 'deprecated', '--dry-run')).data.notes.join('\n')]) {
+      assert.ok(note.includes(`("${example}")`), `${underline}: ${note}`)
+      assert.ok(!note.includes('""'), underline)
+    }
+  }
+  const root = repo()
+  writeAdr(root, 'docs/adr/0001-use-x.md', '# 1. Use X\n\n## Status\n===\n\n## Context\n')
+  assert.deepEqual([(await adrGetFrom(root, '1')).data.statusHeading, (await adrGetFrom(root, '1')).data.notes], [null, []])
+})
+
+test('docs adr-get and docs adr-status give no heading note for an ADR with a status (PMK-294)', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0001-use-x.md', '# 1. Use X\n\n## Status\n\nAccepted\n\n## Context\n')
+  const get = await adrGetFrom(root, '1')
+  assert.deepEqual([get.data.statusHeading, get.data.notes], [null, []])
+  const set = await adrStatus(root, '1', 'deprecated')
+  assert.deepEqual([set.data.statusHeading, set.data.notes.filter((n) => n.includes('heading'))], [null, []])
 })
 
 const headings = {

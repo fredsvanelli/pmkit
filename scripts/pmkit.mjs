@@ -24,7 +24,7 @@ import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, 
 import { pathNote } from './lib/path-notes.mjs'
 import { fileMentions } from './lib/mentions.mjs'
 import { REPO_UNCHECKED } from './lib/delete-refusal.mjs'
-import { ADR_STATUSES, adrFiles, adrInfo, adrRef, isAdrName, adrFolders, adrLocation, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
+import { ADR_STATUSES, adrFiles, adrInfo, adrRef, isAdrName, adrFolders, adrLocation, adrStatusHeading, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
 import { similarResult } from './lib/similar.mjs'
 import { isBlocked } from './lib/model.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
@@ -370,6 +370,14 @@ function adrByNumber(files, number, flag) {
   return found[0]
 }
 
+/**
+ * The note when a setext heading makes the `## Status` section empty (PMK-294): it names the heading and what to do. `hasStatus` is true when
+ * another form (`status:` key, `Status:` line) already holds the status: then the heading is not meant to be one, so no way to make it a second status.
+ * With none, the way out is to remove the underline, or to put a blank line before it, which stops it underlining, and the status then includes it.
+ * Both commands describe the text as it was before any write.
+ */
+const statusHeadingNote = (adrPath, { heading, underline }, hasStatus) => `${adrPath}: the Status section is empty because "${heading}" reads as a heading (an underline, --- or ===, follows it)${hasStatus ? '; the status of this ADR is held in another form, so that heading is not a second status' : `; to make it the status, remove the underline, or put a blank line before the underline, which stops it underlining, and the status then includes it ("${heading} ${underline}")`}`
+
 /** docs adr-get (PMK-263): the number, title, status and path of one ADR. Only reads. `--from` is the path `docs next-adr` gave the new ADR that supersedes it: `supersedesRef` is the path its Supersedes line cites (PMK-270). */
 function runAdrGet(ctx) {
   const { trackerDir, trackerFolder } = adrPlace(ctx)
@@ -382,9 +390,13 @@ function runAdrGet(ctx) {
     if (!folder || !isAdrName(path.posix.basename(from))) throw new PmkitError('INVALID_INPUT', `--from "${from}" is not the path of an ADR in a folder pmkit reads`, 'Pass the path that docs next-adr gave the new ADR')
     supersedesRef = adrRef({ place: folder.place, file: path.join(folder.dir, path.posix.basename(from)) }, adr, trackerFolder)
   }
-  const { title, status, statuses } = adrInfo(fs.readFileSync(adr.file, 'utf8'))
+  const adrSource = fs.readFileSync(adr.file, 'utf8')
+  const { title, status, statuses } = adrInfo(adrSource)
+  const found = adrStatusHeading(adrSource)
+  const statusHeading = found?.heading ?? null
   const notes = new Set(statuses.map((value) => value.toLowerCase())).size > 1 ? [`${adr.path} holds more than one status (${statuses.join(', ')}); status in the JSON is the first, and docs adr-status sets them all`] : []
-  const data = { number: adr.number, title, status, statuses, path: adr.path, ref: adr.ref, place: adr.place, supersedesRef, notes }
+  if (found !== null) notes.push(statusHeadingNote(adr.path, found, statuses.length > 0))
+  const data = { number: adr.number, title, status, statuses, statusHeading, path: adr.path, ref: adr.ref, place: adr.place, supersedesRef, notes }
   return { data, text: fields([['number', data.number], ['title', title ?? '(no title)'], ['status', statuses.length > 1 ? statuses.join(' | ') : status ?? '(no status)'], ['path', data.path], ['place', data.place], ...(supersedesRef === null ? [] : [['supersedes ref', supersedesRef]])]).join('\n'), notes }
 }
 
@@ -411,6 +423,9 @@ async function runAdrStatus(ctx) {
     byPath = adrRef(adr, newer, trackerFolder)
   }
   const before = adrText(fs.readFileSync(adr.file, 'utf8'))
+  const found = adrStatusHeading(before)
+  const statusHeading = found?.heading ?? null
+  if (found !== null) notes.push(`${statusHeadingNote(adr.path, found, adrInfo(before).statuses.length > 0)}; this describes the text before the write, which writes the status above the heading and leaves the heading as it is`)
   const { text: after, before: statusBefore, after: line } = setAdrStatus(before, status, byPath)
   let commit
   if (before !== after && !ctx.dryRun) {
@@ -422,7 +437,7 @@ async function runAdrStatus(ctx) {
       notes.push(`${adr.path} is a repository file and has no commit yet; commit it with the work it belongs to`)
     }
   }
-  const data = { number: adr.number, path: adr.path, ref: adr.ref, place: adr.place, status: { before: statusBefore, after: line }, before, after, notes }
+  const data = { number: adr.number, path: adr.path, ref: adr.ref, place: adr.place, status: { before: statusBefore, after: line }, statusHeading, before, after, notes }
   const verb = before === after ? 'unchanged' : ctx.dryRun ? 'would set' : 'set'
   const text = [`${verb} ${adr.path}: ${statusBefore ?? '(no status)'} -> ${line}`, ...(ctx.dryRun ? ['dry run: nothing was written'] : [])].join('\n')
   return { data, text, notes, commit }
