@@ -2,12 +2,14 @@
 id: PMK-281
 title: Match CommonMark on which lines interrupt the Status paragraph
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-281-match-commonmark-on-which-lines
 created: 2026-11-12T02:12:43.954Z
-updated: 2026-11-12T02:12:43Z
+updated: 2026-11-12T02:52:44Z
 ---
 
 ## Description
