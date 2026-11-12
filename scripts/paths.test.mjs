@@ -172,3 +172,21 @@ test('hideAbsolutePaths ends a quoted file:// URL at its closing quote, as a quo
   assert.equal(hideAbsolutePaths("fatal: 'file:///Users/a/r"), "fatal: 'file:<path>") // never closes: to the end of the line
   assert.equal(hideAbsolutePaths('url file:///Users/a/r: cause'), 'url file:<path>') // unquoted: to the end of the line
 })
+
+test('hideAbsolutePaths hides the path of a <scheme>+file:// URL as file:// is, and keeps git+ssh and git+https whole (PMK-286)', () => {
+  assert.equal(hideAbsolutePaths('remote git+file://host/Users/a/r.git'), 'remote git+file:<path>') // with a host
+  assert.equal(hideAbsolutePaths('remote git+file:///Users/a/r.git'), 'remote git+file:<path>') // without a host
+  assert.equal(hideAbsolutePaths('remote GIT+FILE://host/abs/r.git'), 'remote GIT+FILE:<path>')
+  assert.equal(hideAbsolutePaths("fatal: 'git+file:///Users/a/r': does not appear to be a git repository"), "fatal: 'git+file:<path>': does not appear to be a git repository")
+  assert.equal(hideAbsolutePaths("fatal: 'git+file://host/Users/a/r' (cause)"), "fatal: 'git+file:<path>' (cause)")
+  assert.equal(hideAbsolutePaths('fatal: "git+file://localhost/Users/a b/r": not a repo'), 'fatal: "git+file:<path>": not a repo')
+  assert.equal(hideAbsolutePaths('fatal: `git+file:///Users/a/r` gone'), 'fatal: `git+file:<path>` gone')
+  assert.equal(hideAbsolutePaths("fatal: 'git+file:///Users/O'Brien/r': cause"), "fatal: 'git+file:<path>': cause")
+  assert.equal(hideAbsolutePaths("fatal: 'git+file:///Users/a/r"), "fatal: 'git+file:<path>") // never closes: to the end of the line
+  assert.equal(hideAbsolutePaths('url git+file:///Users/a/r: cause'), 'url git+file:<path>') // unquoted: to the end of the line
+  assert.equal(hideAbsolutePaths('url a+b+file://host/Users/a'), 'url a+b+file:<path>')
+  for (const text of ['x-file://host/abs', 'a.file://host/abs', 'git+filesystem://host/abs']) assert.equal(hideAbsolutePaths(text), text) // only a scheme that ends in +file
+  assert.equal(hideAbsolutePaths('fatal: unable to connect to git+ssh://user:pw@host/o/r.git'), 'fatal: unable to connect to git+ssh://[redacted]@host/o/r.git')
+  assert.equal(hideAbsolutePaths("fatal: unable to access 'git+https://tok:x@host/o/r.git/': 403"), "fatal: unable to access 'git+https://[redacted]@host/o/r.git/': 403")
+  assert.equal(hideAbsolutePaths("error: cannot fetch 'git+ssh://git@github.com/o/r.git': failed"), "error: cannot fetch 'git+ssh://git@github.com/o/r.git': failed")
+})
