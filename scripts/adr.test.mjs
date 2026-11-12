@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
-import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrInfo } from './lib/adr.mjs'
+import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrInfo, adrRef } from './lib/adr.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo } from './test-helpers.mjs'
 
@@ -722,7 +722,7 @@ test('docs adr-get shows number, title, status and path, notes a disagreement an
   }
   const one = await run1('4')
   assert.equal(one.code, 0, one.stderr)
-  assert.deepEqual({ ...one.data, notes: undefined }, { number: '0004', title: '4. Use X', status: 'accepted', statuses: ['accepted', 'Deprecated'], path: 'docs/adr/0004-use-x.md', ref: 'docs/adr/0004-use-x.md', place: 'repo', notes: undefined })
+  assert.deepEqual({ ...one.data, notes: undefined }, { number: '0004', title: '4. Use X', status: 'accepted', statuses: ['accepted', 'Deprecated'], path: 'docs/adr/0004-use-x.md', ref: 'docs/adr/0004-use-x.md', place: 'repo', supersedesRef: null, notes: undefined })
   assert.equal(one.data.notes.length, 1)
   assert.match(one.data.notes[0], /accepted.*Deprecated/)
   assert.match(one.data.notes[0], /status in the JSON is the first/, 'the note matches what the text and the JSON show')
@@ -811,4 +811,54 @@ test('a subsection of the ## Status section is not part of the status, and adr-s
   assert.equal(setAdrStatus('# T\n\n## Status\n\n### Notes\n\nmore\n', 'accepted').text, '# T\n\n## Status\n\nAccepted\n\n### Notes\n\nmore\n')
   // A heading inside a fenced block is an example, so it does not end the section (PMK-263).
   assert.equal(adrInfo('# T\n\n## Status\n\nAccepted\n\n```md\n### Notes\n```\n\n## Context\n').status, 'Accepted ```md ### Notes ```')
+})
+
+const adrGetFrom = async (root, ...args) => {
+  const result = await run(['docs', 'adr-get', ...args, '--json'], { cwd: root, env: childEnv() })
+  return { code: result.code, data: result.stdout ? JSON.parse(result.stdout) : null }
+}
+
+test('adrRef is the name relative to the holder when both ADRs are in a tracker outside the repository, the ref otherwise (PMK-270)', () => {
+  const holder = { place: 'tracker', file: '/o/docs/adr/0003-x.md', ref: '../o/docs/adr/0003-x.md' }
+  const target = { place: 'tracker', file: '/o/docs/adr/0001-a.md', ref: '../o/docs/adr/0001-a.md' }
+  assert.equal(adrRef(holder, target, null), '0001-a.md')
+  assert.equal(adrRef(holder, target, '.issues/docs/adr'), target.ref)
+  assert.equal(adrRef({ ...holder, place: 'repo' }, target, null), target.ref)
+  assert.equal(adrRef(holder, { ...target, place: 'repo' }, null), target.ref)
+})
+
+test('docs adr-get --from gives a Supersedes ref relative to the new ADR, the same base adr-status --by writes (PMK-270)', async () => {
+  await withOutsideTracker(false, async ({ root, outside }) => {
+    const { data, code } = await adrGetFrom(root, '1', '--from', 'tracker:docs/adr/0003-x.md')
+    assert.equal(code, 0)
+    assert.equal(data.supersedesRef, '0001-a.md')
+    assert.equal(data.ref, `../${path.basename(outside)}/docs/adr/0001-a.md`, 'ref keeps the path from the repository root')
+    // The new ADR is written and the old one marked: both lines resolve to the old and the new ADR from the folder that holds them.
+    writeAdr(outside, 'docs/adr/0003-x.md', `# X\n\nSupersedes: ADR 0001, ${data.supersedesRef}\n`)
+    await adrStatus(root, '1', 'superseded', '--by', '3')
+    const dir = path.join(outside, 'docs/adr')
+    const [, supersedes] = /^Supersedes: ADR 0001, (.+)$/m.exec(fs.readFileSync(path.join(dir, '0003-x.md'), 'utf8'))
+    const [, by] = /^Status: superseded by (.+)$/m.exec(fs.readFileSync(path.join(dir, '0001-a.md'), 'utf8'))
+    assert.equal(path.resolve(dir, supersedes), path.join(dir, '0001-a.md'))
+    assert.equal(path.resolve(dir, by), path.join(dir, '0003-x.md'))
+    // A new ADR in the repository keeps the path from the repository root.
+    assert.equal((await adrGetFrom(root, '1', '--from', 'docs/adr/0003-x.md')).data.supersedesRef, data.ref)
+  })
+})
+
+test('docs adr-get --from keeps ref for repository ADRs and a tracker inside the repository, and is null without it (PMK-270)', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0001-a.md')
+  writeAdr(root, '.issues/docs/adr/0002-b.md')
+  const repoOne = await adrGetFrom(root, '1', '--from', 'docs/adr/0003-x.md')
+  assert.deepEqual([repoOne.data.supersedesRef, repoOne.data.ref], ['docs/adr/0001-a.md', 'docs/adr/0001-a.md'])
+  const inside = await adrGetFrom(root, '2', '--from', '.issues/docs/adr/0003-x.md')
+  assert.deepEqual([inside.data.supersedesRef, inside.data.ref], ['.issues/docs/adr/0002-b.md', '.issues/docs/adr/0002-b.md'])
+  assert.equal((await adrGetFrom(root, '1')).data.supersedesRef, null)
+  for (const bad of ['nowhere/0003-x.md', 'docs/adr/notes.md']) {
+    const result = await adrGetFrom(root, '1', '--from', bad)
+    assert.equal(result.code, 2, bad)
+    assert.equal(result.data.error.code, 'INVALID_INPUT', bad)
+  }
+  assert.equal((await adrGetFrom(root, '9', '--from', 'docs/adr/0003-x.md')).data.error.code, 'NOT_FOUND')
 })

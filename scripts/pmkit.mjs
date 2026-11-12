@@ -24,7 +24,7 @@ import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, 
 import { pathNote } from './lib/path-notes.mjs'
 import { fileMentions } from './lib/mentions.mjs'
 import { REPO_UNCHECKED } from './lib/delete-refusal.mjs'
-import { ADR_STATUSES, adrFiles, adrInfo, adrFolders, adrLocation, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
+import { ADR_STATUSES, adrFiles, adrInfo, adrRef, isAdrName, adrFolders, adrLocation, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
 import { similarResult } from './lib/similar.mjs'
 import { isBlocked } from './lib/model.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
@@ -350,14 +350,22 @@ function adrByNumber(files, number, flag) {
   return found[0]
 }
 
-/** docs adr-get (PMK-263): the number, title, status and path of one ADR. Only reads. */
+/** docs adr-get (PMK-263): the number, title, status and path of one ADR. Only reads. `--from` is the path `docs next-adr` gave the new ADR that supersedes it: `supersedesRef` is the path its Supersedes line cites (PMK-270). */
 function runAdrGet(ctx) {
   const { trackerDir, trackerFolder } = adrPlace(ctx)
-  const adr = adrByNumber(adrFiles(adrFolders({ root: ctx.root, trackerDir, trackerFolder })), ctx.args[0], 'number')
+  const folders = adrFolders({ root: ctx.root, trackerDir, trackerFolder })
+  const adr = adrByNumber(adrFiles(folders), ctx.args[0], 'number')
+  const from = ctx.opt('from')
+  let supersedesRef = null
+  if (from !== undefined) {
+    const folder = typeof from === 'string' ? folders.find((item) => path.posix.dirname(from) === item.label) : undefined
+    if (!folder || !isAdrName(path.posix.basename(from))) throw new PmkitError('INVALID_INPUT', `--from "${from}" is not the path of an ADR in a folder pmkit reads`, 'Pass the path that docs next-adr gave the new ADR')
+    supersedesRef = adrRef({ place: folder.place, file: path.join(folder.dir, path.posix.basename(from)) }, adr, trackerFolder)
+  }
   const { title, status, statuses } = adrInfo(fs.readFileSync(adr.file, 'utf8'))
   const notes = new Set(statuses.map((value) => value.toLowerCase())).size > 1 ? [`${adr.path} holds more than one status (${statuses.join(', ')}); status in the JSON is the first, and docs adr-status sets them all`] : []
-  const data = { number: adr.number, title, status, statuses, path: adr.path, ref: adr.ref, place: adr.place, notes }
-  return { data, text: fields([['number', data.number], ['title', title ?? '(no title)'], ['status', statuses.length > 1 ? statuses.join(' | ') : status ?? '(no status)'], ['path', data.path], ['place', data.place]]).join('\n'), notes }
+  const data = { number: adr.number, title, status, statuses, path: adr.path, ref: adr.ref, place: adr.place, supersedesRef, notes }
+  return { data, text: fields([['number', data.number], ['title', title ?? '(no title)'], ['status', statuses.length > 1 ? statuses.join(' | ') : status ?? '(no status)'], ['path', data.path], ['place', data.place], ...(supersedesRef === null ? [] : [['supersedes ref', supersedesRef]])]).join('\n'), notes }
 }
 
 /** docs adr-status (PMK-228): the Status line of one ADR, in the repository folder or the Local tracker's. */
@@ -380,7 +388,7 @@ async function runAdrStatus(ctx) {
     if (newer.number < adr.number) notes.push(`ADR ${newer.number} is older than ADR ${adr.number}; check that --by names the decision that replaces it`)
     // The text of the ADR cites the path without the display label tracker: (PMK-247).
     // Both in a tracker outside the repository: the path from the folder of the ADR that holds the line, so a reader of the tracker alone can follow it (PMK-268).
-    byPath = adr.place === 'tracker' && newer.place === 'tracker' && trackerFolder === null ? slash(path.relative(path.dirname(adr.file), newer.file)) : newer.ref
+    byPath = adrRef(adr, newer, trackerFolder)
   }
   const before = adrText(fs.readFileSync(adr.file, 'utf8'))
   const { text: after, before: statusBefore, after: line } = setAdrStatus(before, status, byPath)
@@ -1704,7 +1712,7 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'docs adr-get', summary: 'the number, title, status and path of one ADR, in the repository folder or the Local tracker\'s; only reads', usage: '<number>', args: ['number'], flags: [], byTracker: true,
+    name: 'docs adr-get', summary: 'the number, title, status and path of one ADR, in the repository folder or the Local tracker\'s, and with --from the path its Supersedes line cites; only reads', usage: '<number> [--from path]', args: ['number'], flags: ['from'], byTracker: true,
     run: (ctx) => runAdrGet(ctx),
   },
   {

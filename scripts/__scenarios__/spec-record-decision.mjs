@@ -42,7 +42,7 @@ export default [
       { step: '6', write: ['issues', 'update', 'ISS-5N1R', '--add-doc', '.issues/docs/adr/0001-keep-estimates-in-points.md'] },
       { step: '6', write: ['issues', 'update', 'ISS-4P8A', '--add-doc', '.issues/docs/adr/0001-keep-estimates-in-points.md'] },
     ],
-    skip: { '2 docs adr-get': NO_OLD, '7 docs adr-status': NO_OLD },
+    skip: { '2 docs adr-get': NO_OLD, '4 docs adr-get': NO_OLD, '7 docs adr-status': NO_OLD },
     notHit: { 'Step 7': NO_OLD },
     expect(repo) {
       const file = added(repo).find((name) => name.endsWith('adr/0001-keep-estimates-in-points.md'))
@@ -80,7 +80,7 @@ export default [
       { confirm: 'Step 6' },
       { step: '6', write: ['issues', 'update', 'ISS-5N1R', '--add-doc', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
     ],
-    skip: { '2 docs adr-get': NO_OLD, '7 docs adr-status': NO_OLD },
+    skip: { '2 docs adr-get': NO_OLD, '4 docs adr-get': NO_OLD, '7 docs adr-status': NO_OLD },
     notHit: { 'Step 7': NO_OLD },
     expect(repo) {
       const files = added(repo).filter((name) => name.includes('docs/adr/'))
@@ -106,6 +106,7 @@ export default [
       { step: '2', read: ['issues', 'get', 'ISS-5N1R'] },
       { step: '2', read: ['docs', 'adr-get', '2'] },
       { step: '3', read: nextAdr },
+      { step: '4', read: ['docs', 'adr-get', '2', '--from', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
       { step: '5', read: nextAdr },
       { step: '5', dryRun: ['docs', 'create', 'adr/0003-keep-estimates-in-points.md', '--body-file', path.join(inputs, 'adr-0003-supersedes.md')] },
       { confirm: 'Step 5' },
@@ -146,6 +147,8 @@ export default [
       { step: '2', read: ['docs', 'adr-get', '1'] },
       { step: '2', read: ['docs', 'adr-get', '2'] },
       { step: '3', read: nextAdr },
+      { step: '4', read: ['docs', 'adr-get', '1', '--from', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
+      { step: '4', read: ['docs', 'adr-get', '2', '--from', '.issues/docs/adr/0003-keep-estimates-in-points.md'] },
       { step: '5', read: nextAdr },
       { step: '5', dryRun: ['docs', 'create', 'adr/0003-keep-estimates-in-points.md', '--body-file', path.join(inputs, 'adr-0003-supersedes-two.md')] },
       { confirm: 'Step 5' },

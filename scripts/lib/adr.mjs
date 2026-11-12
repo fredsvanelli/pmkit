@@ -82,6 +82,16 @@ export function adrFiles(folders) {
   return found.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
 }
 
+/** True when `name` is the file name of a numbered ADR. */
+export const isAdrName = (name) => NUMBERED.test(name)
+
+/**
+ * The path an ADR text cites for `target`, written in `holder` (both { place, file, ref }): from the folder of `holder` when both are
+ * in a tracker outside the repository (`trackerFolder` null), so a reader of the tracker alone can follow it; `target.ref` otherwise (PMK-268, PMK-270).
+ */
+export const adrRef = (holder, target, trackerFolder) =>
+  holder.place === 'tracker' && target.place === 'tracker' && trackerFolder === null ? path.relative(path.dirname(holder.file), target.file).split(path.sep).join('/') : target.ref
+
 /** Every ADR file whose number another file uses, with the paths of those others. */
 export function duplicateAdrs(files) {
   return files.flatMap((file) => {
