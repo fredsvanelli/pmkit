@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-270-write-a-supersedes-line-a-reader-of-the
 created: 2026-11-12T00:43:33.054Z
-updated: 2026-11-12T00:56:26Z
+updated: 2026-11-12T01:08:56Z
 ---
 
 ## Description
@@ -34,6 +34,6 @@ PMK-268 made `docs adr-status --by` write a path relative to the ADR that holds 
 
 ## Acceptance criteria
 
-- [ ] With both ADRs in a tracker outside the repository, the `Supersedes:` line of the new ADR resolves from the folder of the new ADR, with a test
-- [ ] The `Supersedes:` line and the `superseded by` mark of the old ADR use the same base
-- [ ] ADRs inside the repository keep the path from the repository root
+- [x] With both ADRs in a tracker outside the repository, the `Supersedes:` line of the new ADR resolves from the folder of the new ADR, with a test
+- [x] The `Supersedes:` line and the `superseded by` mark of the old ADR use the same base
+- [x] ADRs inside the repository keep the path from the repository root
