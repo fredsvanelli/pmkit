@@ -15,3 +15,16 @@ export const relativeTo = (text, dirs) => {
   }
   return result
 }
+
+const ABSOLUTE = String.raw`(?:[A-Za-z]:[\\/]|\\\\|/)`
+
+/**
+ * `text` with every absolute path (`/x`, `C:\x`, `C:/x`, UNC `\\host\x`) replaced by `<path>`, so no part of a path shows (PMK-271).
+ * A path with a space is ambiguous in git's stderr, so the rule never shows part of one: inside quotes it ends at the matching quote
+ * (git quotes the paths it names), and an unquoted one, or a quote that never closes, ends at the end of the line. That can hide
+ * text after the path, which is the safe side.
+ */
+export const hideAbsolutePaths = (text) =>
+  text
+    .replace(new RegExp(`(['"])${ABSOLUTE}[^\\r\\n]*?\\1`, 'g'), '$1<path>$1')
+    .replace(new RegExp(`(^|[\\s'"(])${ABSOLUTE}[^\\r\\n]*`, 'gm'), '$1<path>')
