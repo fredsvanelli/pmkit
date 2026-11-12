@@ -56,7 +56,7 @@ import { redact } from './lib/redact.mjs'
 import { shareDone, topLevelRollup } from './lib/initiatives.mjs'
 import { tailLines } from './lib/tail-lines.mjs'
 import { rightLines, splitDiff } from './lib/diff-files.mjs'
-import { climbsOut } from './lib/paths.mjs'
+import { climbsOut, relativeTo } from './lib/paths.mjs'
 
 const TEMPLATES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates')
 const usageError = (message, nextStep = 'node scripts/pmkit.mjs --help') => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -4203,9 +4203,7 @@ function commitIn(cwd, message, paths, named) {
   // git quotes the absolute path of what it refused: the repository folder comes out, which leaves the path relative to it, and any other absolute path is hidden (PMK-268).
   const folders = [...new Set([cwd, fs.realpathSync(cwd)])].flatMap((dir) => [dir.split(path.sep).join('/'), dir]).sort((a, b) => b.length - a.length)
   const relative = (text) => {
-    let result = text
-    for (const dir of folders) result = result.replaceAll(`${dir}/`, '').replaceAll(`${dir}${path.sep}`, '').replaceAll(dir, '.')
-    return result.replace(/(^|[\s'"(])((?:[A-Za-z]:[\\/]|\/)[^\s'"]+)/g, '$1<path>')
+    return relativeTo(text, folders).replace(/(^|[\s'"(])((?:[A-Za-z]:[\\/]|\/)[^\s'"]+)/g, '$1<path>')
   }
   const fail = (result) => new PmkitError('UPSTREAM', `the write succeeded but auto_commit failed: ${relative((result.stderr || result.stdout).trim())}`, `Commit ${named} yourself`)
   // On disk with its exact case: where the file system ignores case, the old name of a case-only rename still "exists".

@@ -793,8 +793,9 @@ test('docs adr-status superseded --by with both ADRs in a tracker outside the re
     assert.equal(data.status.after, 'Status: superseded by 0003-x.md')
     const written = fs.readFileSync(path.join(outside, 'docs/adr/0001-a.md'), 'utf8')
     assert.match(written, /^Status: superseded by 0003-x\.md$/m)
-    // Opened from the folder of the ADR that holds it, as a reader of the tracker alone does.
-    assert.ok(fs.existsSync(path.join(outside, 'docs/adr', '0003-x.md')))
+    // Opened from the folder of the ADR that holds it, as a reader of the tracker alone does: the path read from the Status line resolves to a file.
+    const [, cited] = /^Status: superseded by (.+)$/m.exec(written)
+    assert.ok(fs.existsSync(path.resolve(path.dirname(path.join(outside, 'docs/adr/0001-a.md')), cited)), `${cited} does not resolve from the ADR`)
     // path and ref in the JSON keep their meaning.
     assert.deepEqual([data.path, data.ref], ['tracker:docs/adr/0001-a.md', `../${path.basename(outside)}/docs/adr/0001-a.md`])
   })
