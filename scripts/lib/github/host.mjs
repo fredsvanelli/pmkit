@@ -39,7 +39,7 @@ function failure(cmd, args, result) {
     return new PmkitError('RATE_LIMITED', 'GitHub rate limit reached', 'Wait a few minutes and retry')
   }
   const detail = firstLine(stderr) || `exit status ${result.status}`
-  const error = new PmkitError('UPSTREAM', `${cmd} ${args.slice(0, 2).join(' ')} failed: ${cmd === 'git' ? hideAbsolutePaths(detail) : detail}`, 'Check the output of the same command in a terminal')
+  const error = new PmkitError('UPSTREAM', `${cmd} ${args.slice(0, 2).join(' ')} failed: ${hideAbsolutePaths(detail)}`, 'Check the output of the same command in a terminal')
   // gh api ends its error line with "(HTTP 404)" or starts it with "HTTP 502:". The free text may name a branch, so only these two spots count.
   const http = /\(HTTP (\d{3})\)\s*$/.exec(detail) ?? /^(?:gh: )?HTTP (\d{3})\b/.exec(detail)
   if (http) error.httpStatus = Number(http[1])
