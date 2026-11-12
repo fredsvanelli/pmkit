@@ -446,3 +446,40 @@ test('auto_commit true with a tracker outside the repository: a failed commit na
     assert.match(error.nextStep, /issues\/ISS-0G5E\/issue\.md/)
   })
 })
+
+// PMK-271: every absolute path is hidden, and the next step names the tracker folder.
+test('auto_commit true: a git failure that quotes an absolute path with a space shows no part of it (PMK-271)', () => {
+  withRepo('team', { autoCommit: true }, (root) => {
+    const dir = path.join(path.dirname(root), `John Doe-${path.basename(root)}`)
+    fs.mkdirSync(dir)
+    try {
+      // git fails with "fatal: bad config line 1 in file <dir>/.gitconfig".
+      fs.writeFileSync(path.join(dir, '.gitconfig'), 'not a config line\n')
+      const result = run(root, ['issues', 'assign', 'ISS-0G5E', 'fred', '--json'], { env: { GIT_CONFIG_GLOBAL: path.join(dir, '.gitconfig') } })
+      assert.equal(result.status, 2, result.stdout + result.stderr)
+      const { error } = JSON.parse(result.stdout)
+      assert.equal(error.code, 'UPSTREAM')
+      assert.match(error.message, /auto_commit failed: fatal: bad config line 1 in file <path>$/)
+      const everything = result.stdout + result.stderr
+      for (const part of ['John', 'Doe', '.gitconfig', fs.realpathSync(os.tmpdir())]) assert.ok(!everything.includes(part), `${part} in ${everything}`)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+test('auto_commit true with more than 5 files outside the repository: a failed commit names the tracker folder from tracker.path, never an absolute path (PMK-271)', () => {
+  withOutsideTracker(({ root, outside }) => {
+    // The fixture's one issue with conflict markers would stop a bulk write.
+    fs.rmSync(path.join(outside, 'issues/ISS-3Q6T'), { recursive: true })
+    fs.writeFileSync(path.join(outside, '.git/index.lock'), '')
+    const bulk = ['issues', 'bulk', 'priority', 'low', '--category', 'backlog,todo,in_progress,in_review,done', '--json']
+    const { digest } = JSON.parse(run(root, [...bulk, '--dry-run']).stdout)
+    const result = run(root, [...bulk, '--expect', digest])
+    assert.equal(result.status, 2, result.stdout + result.stderr)
+    const { error } = JSON.parse(result.stdout)
+    assert.equal(error.code, 'UPSTREAM', result.stdout)
+    assert.equal(error.nextStep, `Commit the tracker files in ../${path.basename(outside)} (in the git repository that holds the tracker) yourself`)
+    assert.ok(!(result.stdout + result.stderr).includes(fs.realpathSync(os.tmpdir())), 'no absolute path')
+  })
+})
