@@ -2,12 +2,14 @@
 id: PMK-280
 title: Keep the Status section open past an indented list item continuation
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-280-keep-the-status-section-open-past-an
 created: 2026-11-12T02:12:43.866Z
-updated: 2026-11-12T02:12:43Z
+updated: 2026-11-12T02:29:27Z
 ---
 
 ## Description
@@ -32,5 +34,5 @@ PMK-273 ends an ADR's `## Status` section at a setext heading and walks back to 
 
 ## Acceptance criteria
 
-- [ ] `docs adr-get` with a list item continuation right before `---` in the Status section shows the whole section, with a test
-- [ ] `docs adr-status` rewrites the status without leaving that text below it, with a test
+- [x] `docs adr-get` with a list item continuation right before `---` in the Status section shows the whole section, with a test
+- [x] `docs adr-status` rewrites the status without leaving that text below it, with a test

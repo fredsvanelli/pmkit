@@ -1,1 +1,7 @@
 {"at":"2026-11-12T02:12:43Z","by":"fred","op":"create","to":{"id":"PMK-280","title":"Keep the Status section open past an indented list item continuation","type":"bug","status":"backlog","priority":"low","estimate":1,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-12T02:12:43.866Z","updated":"2026-11-12T02:12:43Z"}}
+{"at":"2026-11-12T02:19:39Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-12T02:19:39Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-12T02:19:41Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-280-keep-the-status-section-open-past-an"}
+{"at":"2026-11-12T02:20:08Z","by":"fred","op":"comment","to":"2026-11-12T02-20-08Z-fred.md"}
+{"at":"2026-11-12T02:29:27Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-12T02:29:27Z","by":"fred","op":"update","field":"acceptance_criteria"}

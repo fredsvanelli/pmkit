@@ -116,6 +116,9 @@ const headingLevel = (item) => ATX_HEADING.exec(item)?.[1].length ?? 0
 const THEMATIC_BREAK = /^ {0,3}([-*_])( *\1){2,} *$/
 const INTERRUPTS_PARAGRAPH = /^ {0,3}(>|([-*+]|\d+[.)])([ \t]|$))/
 // The underline of a setext heading: up to three spaces, then = or - only.
+// A list item line, with the width of its marker: its content starts at the length of the first group, and a later line indented that far belongs to the item (PMK-280).
+const LIST_ITEM = /^( {0,3}(?:[-*+]|\d+[.)])[ \t]+)\S/
+const indentOf = (item) => item.length - item.trimStart().length
 const SETEXT_UNDERLINE = /^ {0,3}(=+|-+)[ \t]*$/
 const NOT_PARAGRAPH_START = /^( {4}|\t)/
 const YAML_STATUS = /^status:/i
@@ -162,6 +165,18 @@ function locate(lines) {
   const yaml = close === -1 ? -1 : lines.slice(1, close).findIndex((item) => YAML_STATUS.test(item)) + 1 || -1
   const end = (from) => {
     const para = (i) => i > from && !code[i] && lines[i].trim() !== '' && headingLevel(lines[i]) === 0 && !THEMATIC_BREAK.test(lines[i])
+    // A line indented to the content of a list item above it, whatever blank lines lie between, continues the item, and CommonMark
+    // gives a setext heading no lazy continuation, so an underline under it is a thematic break (PMK-280). Not a list parser: the nearest item that fits decides.
+    const continuesItem = (top) => {
+      const indent = indentOf(lines[top])
+      for (let j = top - 1; indent > 0 && j > from; j--) {
+        if (code[j] || lines[j].trim() === '') continue
+        const item = LIST_ITEM.exec(lines[j])
+        if (item !== null && item[1].length <= indent) return true
+        if (indentOf(lines[j]) === 0 && item === null) return false
+      }
+      return false
+    }
     for (let i = from + 1; i < lines.length; i++) {
       if (code[i]) continue
       if (headingLevel(lines[i]) > 0) return i
@@ -171,7 +186,7 @@ function locate(lines) {
       // thematic break or a lazy continuation instead.
       let top = i - 1
       while (para(top - 1) && !INTERRUPTS_PARAGRAPH.test(lines[top])) top--
-      if (!INTERRUPTS_PARAGRAPH.test(lines[top]) && !NOT_PARAGRAPH_START.test(lines[top])) return top
+      if (!INTERRUPTS_PARAGRAPH.test(lines[top]) && !NOT_PARAGRAPH_START.test(lines[top]) && !continuesItem(top)) return top
     }
     return lines.length
   }
