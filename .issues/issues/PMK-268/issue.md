@@ -2,12 +2,14 @@
 id: PMK-268
 title: Fix adr-status paths and messages with a tracker outside the repo
 type: bug
-status: backlog
+status: in_progress
 priority: medium
 estimate: 3
+assignee: fred
 parent: EPC-6
+branch: pmk-268-fix-adr-status-paths-and-messages-with-a
 created: 2026-11-12T00:00:31.443Z
-updated: 2026-11-12T00:00:31Z
+updated: 2026-11-12T00:06:07Z
 ---
 
 ## Description

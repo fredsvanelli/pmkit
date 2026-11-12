@@ -1,1 +1,4 @@
 {"at":"2026-11-12T00:00:31Z","by":"fred","op":"create","to":{"id":"PMK-268","title":"Fix adr-status paths and messages with a tracker outside the repo","type":"bug","status":"backlog","priority":"medium","estimate":3,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-12T00:00:31.443Z","updated":"2026-11-12T00:00:31Z"}}
+{"at":"2026-11-12T00:06:05Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-12T00:06:05Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-12T00:06:07Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-268-fix-adr-status-paths-and-messages-with-a"}
