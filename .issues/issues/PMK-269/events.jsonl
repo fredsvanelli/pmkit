@@ -3,3 +3,5 @@
 {"at":"2026-11-12T00:31:21Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-12T00:31:23Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-269-keep-subsections-of-an-adr-s-status"}
 {"at":"2026-11-12T00:31:46Z","by":"fred","op":"comment","to":"2026-11-12T00-31-46Z-fred.md"}
+{"at":"2026-11-12T00:35:24Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-12T00:35:24Z","by":"fred","op":"update","field":"acceptance_criteria"}
