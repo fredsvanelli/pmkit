@@ -648,3 +648,25 @@ Fim da rodada 22: PRs #214, #215 e #216 mergeados.
 
 Limpeza da rodada 22: closing PR #217 mergeado (678161f), 7 worktrees removidos, branches provisórias e de issue apagadas, local e no origin.
 - Follow-ups da rodada 22, a pedido do usuário, sob EPC-6: PMK-267 (de PMK-256), PMK-268 (de PMK-257), PMK-269 (de PMK-263).
+
+## Rodada 23
+
+Follow-ups da rodada 22, a pedido do usuário: PMK-267, PMK-268 e PMK-269. Antes, o PR #218 (abre as três) foi mergeado (56c60a4). A PMK-269 só começa depois do merge da PMK-268, porque as duas mexem em `scripts/lib/adr.mjs` (mesmo critério da rodada 22).
+
+Início: 2026-11-11. `develop` em 56c60a4, `npm test` com 4948 testes, 4857 pass, 0 fail, 91 skipped, saída 0. Run Orca `run_4c99b0d03c38`.
+
+| Issue | Est. | Implementador | PR | Revisões | Status |
+|---|---|---|---|---|---|
+| PMK-267 | 2 | sonnet (`ctx_2646e7bebfc4`) | #219 | ciclo 1 (sonnet): APROVADO | mergeado (2498519), done |
+| PMK-268 | 3 | sonnet (`ctx_a9732e2ebfd8`) | #220 | ciclo 1 (opus): APROVADO com correções antes do merge (6a6c1ac) | mergeado (7a798d9), done |
+| PMK-269 | 1 | sonnet (`ctx_ed0c038b3e67`) | #221 | ciclo 1 (sonnet): APROVADO | mergeado (40cc56b), done |
+- PMK-267: PR #219; parseEvents descarta uma sequência archive/unarchive de um segundo repetida pelo merge (segunda metade igual à primeira); bulk unarchive no Linear responde NOT_SUPPORTED antes do checkUsage. Teto: quatro mudanças reais no mesmo segundo, em duas metades iguais, aparecem como duas (estado final certo). Follow-up: desempate por timestamp abaixo do segundo. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-268: PR #220; mensagem UPSTREAM do auto_commit sem caminho absoluto; `--by` com os dois ADRs no tracker externo grava caminho relativo ao ADR que o contém (decisão do implementador, nada no código ou nas docs dava formato); climbsOut em `scripts/lib/paths.mjs` sem depender do separador; testes de issues update, assign e create com commit no tracker externo. Follow-ups: linha Supersedes do record-decision com o mesmo problema; climbsOut num CI Windows. Revisor ciclo 1 (opus) iniciado.
+- PMK-267 ciclo 1 (sonnet): APROVADO. O teto só muda a exibição: events.jsonl não é reescrito, replay idempotente, drift e migração iguais; muda `issues get --history` e a contagem do preview de remoção. Nenhuma regra melhor com {at, by, op}. Não bloqueantes: teto sem teste que o fixe; três cópias ou cópia parcial não descartadas; config lida antes do checkUsage (erro de config em vez de uso); sem teste de que o Local ainda recusa --limit. O npm test do revisor saiu 1 uma vez por `redact-probes.test.mjs:303` (1,19 s contra 1 s, máquina carregada), sem relação com o PR; passou isolado e na segunda execução. Mergeado (2498519).
+- PMK-268 ciclo 1 (opus): APROVADO. `ref` e `path` do JSON iguais, então record-decision.md não muda; todos os chamadores de climbsOut importam de paths.mjs; mensagem UPSTREAM reproduzida sem caminho absoluto e dizendo o que commitar. Pedi antes do merge: troca da pasta por `.` sem conferir o fim do nome (`/tmp/tracker/x` vira `.racker/x`, pmkit.mjs:4207) e teste fraco com existsSync (adr.test.mjs:797). Follow-ups: linha Supersedes do record-decision com tracker externo (bases diferentes no par de ADRs); regex de caminho absoluto para no espaço e não trata UNC (pmkit.mjs:4208); next genérico com mais de 5 arquivos; `..\` e `C:\` contam como fora no POSIX.
+- PMK-268: 6a6c1ac move a limpeza para `relativeTo` em paths.mjs (troca a pasta só antes de separador, aspas, espaço, dois-pontos ou fim) e o teste do `--by` resolve o caminho a partir do dirname do ADR; rebase sobre o #219 (CHANGELOG), npm test 4866 pass, 0 fail, saída 0. Conferido no diff (4 arquivos, +21/-7). Mergeado (7a798d9). PMK-269 iniciada (sonnet).
+- PMK-269: PR #221; `locate().end` em adr.mjs termina a seção Status no primeiro heading de qualquer nível fora de bloco de código; parser único mantido. npm test 4867 pass, 0 fail. Follow-up: headings setext (sublinhados com === ou ---) não encerram a seção. Revisor ciclo 1 (sonnet) iniciado.
+- PMK-269 ciclo 1 (sonnet): APROVADO; conferiu à mão #tag, bloco de código, CRLF e subsecção ###; PMK-263 e PMK-268 seguem passando. Não bloqueantes: heading com tab, indentado ou vazio e heading setext não encerram a seção; uma asserção fixa o status com texto de bloco de código. Mergeado (40cc56b).
+- `pr sync` moveu PMK-267, PMK-268 e PMK-269 para done, com todos os critérios marcados.
+
+Fim da rodada 23: PRs #219, #220 e #221 mergeados.
