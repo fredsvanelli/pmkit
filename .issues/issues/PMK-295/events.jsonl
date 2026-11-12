@@ -5,3 +5,5 @@
 {"at":"2026-11-12T22:39:41Z","by":"fred","op":"comment","to":"2026-11-12T22-39-41Z-fred.md"}
 {"at":"2026-11-12T22:40:08Z","by":"fred","op":"update","field":"acceptance_criteria"}
 {"at":"2026-11-12T22:40:08Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-12T23:26:55Z","by":"fred","op":"comment","to":"2026-11-12T23-26-55Z-fred.md"}
+{"at":"2026-11-12T23:26:59Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
