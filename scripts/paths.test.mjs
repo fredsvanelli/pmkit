@@ -32,3 +32,16 @@ test('hideAbsolutePaths hides UNC paths and drive paths with spaces (PMK-271)', 
 test('hideAbsolutePaths leaves text without an absolute path alone (PMK-271)', () => {
   for (const text of ["can't open file", 'see docs/a b/c and a/b', 'fatal: .git/index.lock exists']) assert.equal(hideAbsolutePaths(text), text)
 })
+
+test("hideAbsolutePaths closes a quote only before the end of the line, a space, ':' or ')', so an apostrophe in a name stays inside the path (PMK-271 review)", () => {
+  assert.equal(hideAbsolutePaths("fatal: bad config in '/Users/O'Brien/x y'"), "fatal: bad config in '<path>'")
+  assert.equal(hideAbsolutePaths("'/Users/O'Brien/x' and '/b c/d': no"), "'<path>' and '<path>': no")
+  assert.equal(hideAbsolutePaths("(\"/Users/O'Brien/x\")"), '("<path>")')
+})
+
+test("hideAbsolutePaths also starts a path after '=' and ':' (PMK-271 review)", () => {
+  assert.equal(hideAbsolutePaths('key=/Users/x y/z'), 'key=<path>')
+  assert.equal(hideAbsolutePaths('in:/Users/x y/z'), 'in:<path>')
+  assert.equal(hideAbsolutePaths('url file:///Users/x y/z'), 'url file:<path>')
+  assert.equal(hideAbsolutePaths("key='/Users/x y/z' ok"), "key='<path>' ok")
+})

@@ -4212,10 +4212,7 @@ function commitIn(cwd, message, paths, named) {
   const git = (...args) => spawnSync('git', ['--literal-pathspecs', ...args], { cwd, encoding: 'utf8' })
   // git quotes the absolute path of what it refused: the repository folder comes out, which leaves the path relative to it, and any other absolute path is hidden (PMK-268).
   const folders = [...new Set([cwd, fs.realpathSync(cwd)])].flatMap((dir) => [dir.split(path.sep).join('/'), dir]).sort((a, b) => b.length - a.length)
-  const relative = (text) => {
-    return hideAbsolutePaths(relativeTo(text, folders))
-  }
-  const fail = (result) => new PmkitError('UPSTREAM', `the write succeeded but auto_commit failed: ${relative((result.stderr || result.stdout).trim())}`, `Commit ${named} yourself`)
+  const fail = (result) => new PmkitError('UPSTREAM', `the write succeeded but auto_commit failed: ${hideAbsolutePaths(relativeTo((result.stderr || result.stdout).trim(), folders))}`, `Commit ${named} yourself`)
   // On disk with its exact case: where the file system ignores case, the old name of a case-only rename still "exists".
   const onDisk = (file) => {
     const full = path.join(cwd, file)
