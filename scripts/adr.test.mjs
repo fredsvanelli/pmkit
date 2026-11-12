@@ -813,6 +813,60 @@ test('a subsection of the ## Status section is not part of the status, and adr-s
   assert.equal(adrInfo('# T\n\n## Status\n\nAccepted\n\n```md\n### Notes\n```\n\n## Context\n').status, 'Accepted ```md ### Notes ```')
 })
 
+const statusWith = (after) => `# T\n\n## Status\n\nAccepted\n${after}\n## Context\n\nWhy.\n`
+
+test('the Status section ends at a setext, indented, tab or empty heading, in adr-get and adr-status alike (PMK-273)', () => {
+  const heads = {
+    'setext ===': '\nNotes\n=====\n\nmore\n',
+    'setext ---': '\nNotes\n-----\n\nmore\n',
+    'setext right under the status text': '\nNotes\n---\nmore\n',
+    'multi-line setext paragraph': '\nNotes\nand more\n===\n\nx\n',
+    'one space': '\n ## Notes\n\nmore\n',
+    'three spaces': '\n   ## Notes\n\nmore\n',
+    'tab after #': '\n##\tNotes\n\nmore\n',
+    'empty ##': '\n##\n\nmore\n',
+    'empty #': '\n#\n\nmore\n',
+  }
+  for (const [name, tail] of Object.entries(heads)) {
+    const text = statusWith(tail)
+    assert.equal(adrInfo(text).status, 'Accepted', name)
+    assert.deepEqual(setAdrStatus(text, 'deprecated'), { text: text.replace('\nAccepted\n', '\nDeprecated\n'), before: 'Accepted', after: 'Deprecated' }, name)
+    assert.equal(setAdrStatus(text, 'accepted').text, text, name)
+  }
+  // A setext heading right under the status text takes the text with it: the status is empty, and the new one goes above.
+  assert.equal(adrInfo('# T\n\n## Status\n\nAccepted\n---\n').status, null)
+})
+
+test('a line that is not a heading does not end the Status section (PMK-273)', () => {
+  const kept = {
+    'four spaces': '\n    ## Notes\n',
+    hashtag: '\n#hashtag\n',
+    'thematic break after a blank line': '\n---\n\nmore\n',
+    'thematic break between blank lines, ***': '\n***\n',
+    'list item then ---': '\n- item\n---\n',
+    'quote then ===': '\n> quote\n===\n',
+    'fenced setext': '\n```\nNotes\n===\n```\n',
+  }
+  for (const [name, tail] of Object.entries(kept)) {
+    const info = adrInfo(statusWith(tail))
+    assert.ok(info.status.startsWith('Accepted ') && info.status.length > 'Accepted '.length, `${name}: ${info.status}`)
+  }
+  // The thematic break and the text after it are part of the section, so adr-status rewrites them with it, as for any other text.
+  assert.equal(setAdrStatus(statusWith('\n---\n\nmore\n'), 'deprecated').text, '# T\n\n## Status\n\nDeprecated\n\n## Context\n\nWhy.\n')
+})
+
+test('docs adr-get and docs adr-status end the Status section at a setext heading (PMK-273)', async () => {
+  const root = repo()
+  const text = '# 5. Use Y\n\n## Status\n\nAccepted\n\nNotes\n=====\n\nmore\n\n   ### Indented\n\nx\n\n## Context\n\nWhy.\n'
+  writeAdr(root, 'docs/adr/0005-use-y.md', text)
+  const get = await adrGetFrom(root, '5')
+  assert.equal(get.code, 0)
+  assert.equal(get.data.status, 'Accepted')
+  const result = await adrStatus(root, '5', 'deprecated')
+  assert.equal(result.code, 0, result.stderr)
+  assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0005-use-y.md'), 'utf8'), text.replace('\nAccepted\n', '\nDeprecated\n'))
+})
+
 const adrGetFrom = async (root, ...args) => {
   const result = await run(['docs', 'adr-get', ...args, '--json'], { cwd: root, env: childEnv() })
   return { code: result.code, data: result.stdout ? JSON.parse(result.stdout) : null }
