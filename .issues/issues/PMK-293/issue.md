@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-293-read-the-adr-title-with-the-same-closing
 created: 2026-11-12T14:41:35.371Z
-updated: 2026-11-12T19:19:02Z
+updated: 2026-11-12T19:26:34Z
 ---
 
 ## Description
@@ -34,5 +34,5 @@ PMK-282 reads the `## Status` heading with `headingText`, which drops a closing 
 
 ## Acceptance criteria
 
-- [ ] `# 5. Use X #` gives the title `5. Use X`, with a test
-- [ ] `## Status #` and `## Status # #` are the Status section and `## Status \#` is not, with a test
+- [x] `# 5. Use X #` gives the title `5. Use X`, with a test
+- [x] `## Status #` is the Status section, and `## Status # #` and `## Status \#` are not (only the last `#` run closes a heading, as in CommonMark), with a test
