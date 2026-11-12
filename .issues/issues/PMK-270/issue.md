@@ -2,14 +2,14 @@
 id: PMK-270
 title: Write a Supersedes line a reader of the tracker can follow
 type: bug
-status: in_review
+status: done
 priority: medium
 estimate: 2
 assignee: fred
 parent: EPC-6
 branch: pmk-270-write-a-supersedes-line-a-reader-of-the
 created: 2026-11-12T00:43:33.054Z
-updated: 2026-11-12T01:09:12Z
+updated: 2026-11-12T01:52:43Z
 ---
 
 ## Description
