@@ -703,3 +703,6 @@ Início: 2026-11-11. `develop` em d1e5139, `npm test` com 4958 testes, 4867 pass
 - `pr sync` moveu PMK-270, PMK-271, PMK-272 e PMK-273 para done.
 
 Fim da rodada 24: PRs #224, #225, #226 e #227 mergeados.
+
+Limpeza da rodada 24: closing PR #228 mergeado (1490559), 10 workers liberados, 10 worktrees removidos, branches provisórias e de issue apagadas, local e no origin. `npm test` em develop 1490559: 4975 testes, 4884 pass, 0 fail, 91 skipped, saída 0.
+- Follow-ups da rodada 24, a pedido do usuário, sob EPC-6, um por item: PMK-274, PMK-275 e PMK-276 (de PMK-270), PMK-277, PMK-278 e PMK-279 (de PMK-271), PMK-280, PMK-281, PMK-282 e PMK-283 (de PMK-273).
