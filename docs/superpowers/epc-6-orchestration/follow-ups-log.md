@@ -670,3 +670,6 @@ Início: 2026-11-11. `develop` em 56c60a4, `npm test` com 4948 testes, 4857 pass
 - `pr sync` moveu PMK-267, PMK-268 e PMK-269 para done, com todos os critérios marcados.
 
 Fim da rodada 23: PRs #219, #220 e #221 mergeados.
+
+Limpeza da rodada 23: closing PR #222 mergeado (3a6fafb), 6 worktrees removidos, branches provisórias e de issue apagadas, local e no origin.
+- Follow-ups da rodada 23, a pedido do usuário, sob EPC-6: PMK-270 e PMK-271 (de PMK-268), PMK-272 (de PMK-267), PMK-273 (de PMK-269).
