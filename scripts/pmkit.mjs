@@ -350,13 +350,23 @@ function branchBase(ctx) {
       const remote = exists(`refs/remotes/origin/${explicit}`)
       throw usageError(`--from "${explicit}" is not a branch or commit in this repository`, remote ? `Pass --from origin/${explicit}, the remote branch of that name` : 'Pass --from <an existing branch>, or run git fetch origin first when it is a remote branch')
     }
-    return { from: explicit, note: '' }
+    return { from: explicit, note: '', behind: 0 }
   }
   const name = defaultBranch(ctx)
-  if (exists(`refs/heads/${name}`)) return { from: name, note: '' }
-  if (exists(`refs/remotes/origin/${name}`)) return { from: `origin/${name}`, note: ` (no local ${name})` }
+  if (exists(`refs/heads/${name}`)) {
+    // The commits of the last fetched origin/<name> that the local branch lacks (PMK-298). Local refs only: nothing is fetched.
+    const count = exists(`refs/remotes/origin/${name}`) ? readGit(ctx, ['rev-list', '--count', `refs/heads/${name}..refs/remotes/origin/${name}`]) : null
+    const behind = count && !count.error && count.status === 0 ? Number.parseInt(count.stdout, 10) || 0 : 0
+    return { from: name, note: '', behind }
+  }
+  if (exists(`refs/remotes/origin/${name}`)) return { from: `origin/${name}`, note: ` (no local ${name})`, behind: 0 }
   throw usageError(`the default branch ${name} is neither a local branch nor origin/${name}`, `Run git fetch origin, or pass --from <an existing branch>`)
 }
+
+/** The note for a local default branch behind origin (PMK-298), or no notes. */
+const behindNotes = (from, behind) => behind > 0
+  ? [`${from} is ${behind} ${behind === 1 ? 'commit' : 'commits'} behind origin/${from} (as of the last fetch), so the new branch starts from an old commit. Run git pull --ff-only on ${from} first, or pass --from origin/${from}`]
+  : []
 
 const adrPlace = (ctx) => adrLocation({ root: ctx.root, issuesDir: ctx.config().issuesDir, hosted: ctx.config().hosted })
 
@@ -1978,16 +1988,18 @@ export const COMMANDS = [
       const host = ctx.host()
       const tracker = await ctx.tracker()
       const issue = await tracker.getIssue(ctx.args[0])
-      const { from, note: fromNote } = branchBase(ctx)
+      const { from, note: fromNote, behind } = branchBase(ctx)
+      const behindNote = behindNotes(from, behind)
+      const behindText = behindNote.map((line) => `\nnote: ${line}`).join('')
       // A tracker that names branches, such as Linear, keeps its name, so its link to the git host works.
       const branch = ctx.settings().trackerBranch === true && issue.branch ? issue.branch : branchName(issue.id, issue.title)
       // Check the tracker write first, so a refused write leaves git on the branch it was on.
       const actor = await ctx.actor()
       await tracker.updateIssue(issue.id, { branch }, actor, { dryRun: true })
-      if (ctx.dryRun) return { data: { branch, from }, text: `would create branch ${branch} from ${from}${fromNote}\ndry run: nothing was written`, notes: ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : [] }
+      if (ctx.dryRun) return { data: { branch, from, ...(behind > 0 ? { notes: behindNote } : {}) }, text: `would create branch ${branch} from ${from}${fromNote}${behindText}\ndry run: nothing was written`, notes: [...behindNote, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : [])] }
       host.createBranch(branch, { from })
       const result = await tracker.updateIssue(issue.id, { branch }, actor)
-      return { data: { branch, from, ...result }, text: `created branch ${branch} from ${from}${fromNote}\n${writeText(result, ctx)}`, commit: issue.id, notes: [...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : []), ...(await capabilityNotesOrNone(ctx))] }
+      return { data: { branch, from, ...(behind > 0 ? { notes: behindNote } : {}), ...result }, text: `created branch ${branch} from ${from}${fromNote}${behindText}\n${writeText(result, ctx)}`, commit: issue.id, notes: [...behindNote, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : []), ...(await capabilityNotesOrNone(ctx))] }
     },
   },
   {

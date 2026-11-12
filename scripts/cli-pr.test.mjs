@@ -361,6 +361,54 @@ test('issues branch with no local default branch starts from origin/<default> an
   assert.equal(git(root, 'rev-parse', '--abbrev-ref', `${result.branch}@{upstream}`).status !== 0, true)
 })
 
+// A local main `behind` commits behind the last fetched origin/main (PMK-298).
+function behindRepo(behind = 2) {
+  const root = teamRepo()
+  const commit = (message) => git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', message)
+  commit('init')
+  git(root, 'branch', '-m', 'main')
+  addBareOrigin(root, scratch())
+  for (let i = 0; i < behind; i++) commit(`c${i}`)
+  assert.equal(git(root, 'push', '-q', 'origin', 'main').status, 0)
+  git(root, 'switch', '-q', '--detach')
+  assert.equal(git(root, 'update-ref', 'refs/heads/main', `HEAD~${behind}`).status, 0)
+  return root
+}
+
+test('issues branch with a local default behind origin says how many commits and what to do, on the dry run and the real run', async () => {
+  const root = behindRepo(2)
+  const env = envWith(fakeGh({}))
+  const dry = await call(root, env, ['issues', 'branch', 'ISS-2X6D', '--dry-run'])
+  assert.match(dry.stdout, /main is 2 commits behind origin\/main.*git pull.*--from origin\/main/)
+  const dryRaw = await call(root, env, ['issues', 'branch', 'ISS-2X6D', '--dry-run', '--json'])
+  const dryJson = JSON.parse(dryRaw.stdout)
+  assert.equal(dryJson.from, 'main')
+  assert.ok(dryJson.notes.some((n) => /main is 2 commits behind origin\/main.*--from origin\/main/.test(n)), JSON.stringify(dryJson))
+  assert.ok(noteLines(dryRaw).some((n) => /2 commits behind/.test(n)), dryRaw.stderr)
+  const real = await call(root, env, ['issues', 'branch', 'ISS-2X6D', '--json'])
+  assert.equal(real.code, 0, real.stdout + real.stderr)
+  assert.ok(JSON.parse(real.stdout).notes.some((n) => /main is 2 commits behind origin\/main/.test(n)), real.stdout)
+})
+
+test('issues branch says "1 commit" for one commit behind', async () => {
+  const out = await call(behindRepo(1), envWith(fakeGh({})), ['issues', 'branch', 'ISS-2X6D', '--dry-run'])
+  assert.match(out.stdout, /main is 1 commit behind origin\/main/)
+})
+
+test('issues branch has no behind note when the local default is up to date or ahead, or --from is given', async () => {
+  const env = envWith(fakeGh({}))
+  const text = async (root, ...extra) => (await call(root, env, ['issues', 'branch', 'ISS-2X6D', '--dry-run', '--json', ...extra])).stdout
+  assert.doesNotMatch(await text(behindRepo(2), '--from', 'main'), /behind/)
+  const same = behindRepo(2)
+  git(same, 'update-ref', 'refs/heads/main', 'refs/remotes/origin/main')
+  assert.doesNotMatch(await text(same), /behind/)
+  const ahead = behindRepo(2)
+  git(ahead, 'update-ref', 'refs/heads/main', 'refs/remotes/origin/main')
+  git(ahead, 'switch', '-q', 'main')
+  git(ahead, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'local only')
+  assert.doesNotMatch(await text(ahead), /behind/)
+})
+
 test('issues branch --from <name> that only exists as origin/<name> names --from origin/<name> in the next step', async () => {
   const root = remoteOnlyRepo()
   const env = envWith(fakeGh({}))
