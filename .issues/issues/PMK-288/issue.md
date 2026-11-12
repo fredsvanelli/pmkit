@@ -2,12 +2,14 @@
 id: PMK-288
 title: Make hideAbsolutePaths linear on long lines
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-288-make-hideabsolutepaths-linear-on-long
 created: 2026-11-12T14:41:34.946Z
-updated: 2026-11-12T14:41:34Z
+updated: 2026-11-12T18:13:08Z
 ---
 
 ## Description
@@ -31,5 +33,5 @@ The URL alternative of `hideAbsolutePaths` (`SCHEME_URL`, `scripts/lib/paths.mjs
 
 ## Acceptance criteria
 
-- [ ] A 200,000-character line without `://` goes through hideAbsolutePaths in under a second, with a test
-- [ ] The existing paths tests pass unchanged
+- [x] A 200,000-character line without `://` goes through hideAbsolutePaths in under a second, with a test
+- [x] The existing paths tests pass unchanged

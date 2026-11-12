@@ -23,9 +23,49 @@ const START = String.raw`^|[\s(=:\[,;<@{|]|(?:^|[\s&>]|(?<![\w~^])\d)>`
 // The scheme of a local path: `file:`, or `<scheme>+file:` such as `git+file:` (PMK-286), in any case.
 const FILE_SCHEME = String.raw`(?:[A-Za-z][A-Za-z0-9+.-]*\+)?[Ff][Ii][Ll][Ee]:`
 // scheme://host...: a URL is not a path and stays whole, except file:// and <scheme>+file://, which are always a local path, with or without a host (PMK-278, PMK-286).
-const SCHEME_URL = String.raw`\b(?!${FILE_SCHEME})[A-Za-z][A-Za-z0-9+.-]+:\/\/(?=[^\/\s])\S*`
+// A URL can only start at the first letter that follows a non-word character in a run of `[A-Za-z0-9+.-]` (a later start in the same run sees the same end of the run, so it fails or is
+// rejected for the same reason). The regex starts only at the start of a run, takes the text before that first letter as a prefix and gives it back, so a run is read once (PMK-288).
+const RUN_START = String.raw`(?<![A-Za-z0-9+.-])`
+const URL_PREFIX = String.raw`(?:(?<!\w)(?=[A-Za-z])|(?:(?<=_)|(?![A-Za-z]))(?:[A-Za-z0-9]|[.+-](?![A-Za-z]))*[.+-](?=[A-Za-z]))`
+const SCHEME_URL = String.raw`${RUN_START}(${URL_PREFIX})((?!${FILE_SCHEME})[A-Za-z][A-Za-z0-9+.-]+:\/\/(?=[^\/\s])\S*)`
 // The user of an http(s) URL, or of a `<scheme>+http(s)` one such as `git+https` (PMK-287): up to the last `@` before the path, a query or a fragment.
 const HTTP_USER = /^((?:[A-Za-z][A-Za-z0-9+.-]*\+)?[Hh][Tt][Tt][Pp][Ss]?:\/\/)[^\/\s?#]+@/
+
+// A quoted path: the opening quote and the start of the path, then the closing quote (PMK-271, PMK-285). The closer is found by hand, not by a lazy
+// `[^\r\n]*?` in the regex, because a quote that never closes made every later opener of the line read to its end again (PMK-288).
+const QUOTED_OPEN = new RegExp(`(?<=${START})(['"\`])((?:${FILE_SCHEME}(?=\\/\\/))?)${ABSOLUTE}`, 'gm')
+const QUOTED_CLOSE = Object.fromEntries(["'", '"', '`'].map((quote) => [quote, new RegExp(`${quote}(?=$|[\\s:)]|[\\]>]+(?=$|[\\s:)]))`, 'my')]))
+
+const LINE_BREAK = /[\r\n]/g
+
+const hideQuotedPaths = (text) => {
+  let result = ''
+  let copied = 0
+  let line = { from: 0, end: -1 } // the line of the last opener: it ends at `end`, the first \r or \n at or after `from`
+  const failed = {} // quote -> the end of the line where a search for its closer failed: no later opener of that quote on that line finds one
+  QUOTED_OPEN.lastIndex = 0
+  for (let open; (open = QUOTED_OPEN.exec(text)); ) {
+    const quote = open[1]
+    const from = open.index + open[0].length
+    if (!(from >= line.from && from <= line.end)) {
+      LINE_BREAK.lastIndex = from
+      line = { from, end: LINE_BREAK.test(text) ? LINE_BREAK.lastIndex - 1 : text.length }
+    }
+    let close = failed[quote] === line.end ? -1 : text.indexOf(quote, from)
+    for (; close !== -1 && close < line.end; close = text.indexOf(quote, close + 1)) {
+      QUOTED_CLOSE[quote].lastIndex = close
+      if (QUOTED_CLOSE[quote].test(text)) break
+    }
+    if (close === -1 || close >= line.end) {
+      failed[quote] = line.end
+      QUOTED_OPEN.lastIndex = open.index + 1
+      continue
+    }
+    result += `${text.slice(copied, open.index)}${quote}${open[2]}<path>${quote}`
+    copied = QUOTED_OPEN.lastIndex = close + 1
+  }
+  return result + text.slice(copied)
+}
 
 /**
  * `text` with every absolute path (`/x`, `C:\x`, `C:/x`, UNC `\\host\x`) replaced by `<path>`, so no part of a path shows (PMK-271).
@@ -36,6 +76,4 @@ const HTTP_USER = /^((?:[A-Za-z][A-Za-z0-9+.-]*\+)?[Hh][Tt][Tt][Pp][Ss]?:\/\/)[^
  * with its credentials redacted (`user:pw@`, a token, and the user of an `http(s)` URL, PMK-287); a `file://` or `<scheme>+file://` URL (PMK-286), a path without a scheme and a UNC path are hidden (PMK-278).
  */
 export const hideAbsolutePaths = (text) =>
-  text
-    .replace(new RegExp(`(?<=${START})(['"\`])((?:${FILE_SCHEME}(?=\\/\\/))?)${ABSOLUTE}[^\\r\\n]*?\\1(?=$|[\\s:)]|[\\]>]+(?=$|[\\s:)]))`, 'gm'), '$1$2<path>$1')
-    .replace(new RegExp(`(${SCHEME_URL})|(?<=${START}|['"]|(?<=${START})\`)${ABSOLUTE}[^\\r\\n]*`, 'gm'), (_, url) => (url === undefined ? '<path>' : redact(url).text.replace(HTTP_USER, '$1[redacted]@')))
+  hideQuotedPaths(text).replace(new RegExp(`${SCHEME_URL}|(?<=${START}|['"]|(?<=${START})\`)${ABSOLUTE}[^\\r\\n]*`, 'gm'), (_, prefix, url) => (url === undefined ? '<path>' : prefix + redact(url).text.replace(HTTP_USER, '$1[redacted]@')))
