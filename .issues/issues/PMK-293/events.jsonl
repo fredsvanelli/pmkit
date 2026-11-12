@@ -1,1 +1,4 @@
 {"at":"2026-11-12T14:41:35Z","by":"fred","op":"create","to":{"id":"PMK-293","title":"Read the ADR title with the same closing rule as the Status heading","type":"bug","status":"backlog","priority":"low","estimate":1,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-12T14:41:35.371Z","updated":"2026-11-12T14:41:35Z"}}
+{"at":"2026-11-12T19:19:00Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-12T19:19:00Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-12T19:19:02Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-293-read-the-adr-title-with-the-same-closing"}

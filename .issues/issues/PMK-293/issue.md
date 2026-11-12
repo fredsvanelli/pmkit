@@ -2,12 +2,14 @@
 id: PMK-293
 title: Read the ADR title with the same closing rule as the Status heading
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-293-read-the-adr-title-with-the-same-closing
 created: 2026-11-12T14:41:35.371Z
-updated: 2026-11-12T14:41:35Z
+updated: 2026-11-12T19:19:02Z
 ---
 
 ## Description
