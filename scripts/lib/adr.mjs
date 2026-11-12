@@ -130,7 +130,7 @@ const unquote = (value) => {
 /**
  * The places of an ADR text that hold its title and status, found once for `adrInfo` and `setAdrStatus` so the two never disagree (PMK-263):
  * `yaml` (index of the `status:` line in the front matter, -1 when none), `line` (a `Status:` line above the first `## ` section),
- * `section` (a `## Status` heading), `title` (the first `# ` heading) and `end(from)`, where the section that starts at `from` stops.
+ * `section` (a `## Status` heading), `title` (the first `# ` heading) and `end(from)`, where the section that starts at `from` stops: at the next heading of any level, so a `### ` subsection is not part of it (PMK-269).
  * Lines inside a fenced code block never count.
  */
 function locate(lines) {
@@ -141,7 +141,7 @@ function locate(lines) {
   const head = at((item) => item.startsWith('## '))
   const yaml = close === -1 ? -1 : lines.slice(1, close).findIndex((item) => YAML_STATUS.test(item)) + 1 || -1
   const end = (from) => {
-    const next = lines.findIndex((item, i) => i > from && !code[i] && /^#{1,2} /.test(item))
+    const next = lines.findIndex((item, i) => i > from && !code[i] && /^#{1,6} /.test(item))
     return next === -1 ? lines.length : next
   }
   return { close, start, yaml, head, line: at((item) => STATUS_LINE.test(item), head === -1 ? lines.length : head), section: at((item) => STATUS_SECTION.test(item)), title: at((item) => item.startsWith('# '), head === -1 ? lines.length : head), end }

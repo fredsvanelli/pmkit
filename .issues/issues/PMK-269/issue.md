@@ -2,12 +2,14 @@
 id: PMK-269
 title: "Keep subsections of an ADR's Status section"
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-269-keep-subsections-of-an-adr-s-status
 created: 2026-11-12T00:00:31.526Z
-updated: 2026-11-12T00:00:31Z
+updated: 2026-11-12T00:31:23Z
 ---
 
 ## Description
