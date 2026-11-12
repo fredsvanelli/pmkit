@@ -2,14 +2,14 @@
 id: PMK-267
 title: Fix unarchive history repeats within one second and the Linear flag check
 type: bug
-status: in_progress
+status: in_review
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
 branch: pmk-267-fix-unarchive-history-repeats-within-one
 created: 2026-11-12T00:00:31.358Z
-updated: 2026-11-12T00:07:13Z
+updated: 2026-11-12T00:10:41Z
 ---
 
 ## Description
