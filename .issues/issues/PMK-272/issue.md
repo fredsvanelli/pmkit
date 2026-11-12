@@ -2,12 +2,14 @@
 id: PMK-272
 title: Pin the one-second unarchive history limit with a test
 type: chore
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-272-pin-the-one-second-unarchive-history
 created: 2026-11-12T00:43:33.227Z
-updated: 2026-11-12T00:43:33Z
+updated: 2026-11-12T01:18:44Z
 ---
 
 ## Description
@@ -32,5 +34,5 @@ PMK-267 hides a one-second archive and unarchive run that a merge repeats whole.
 
 ## Acceptance criteria
 
-- [ ] A test fixes that four real flips in one second show as two events and leave the right final state
-- [ ] A test fixes that `issues bulk unarchive --limit` on the Local tracker answers `INVALID_INPUT`
+- [x] A test fixes that four real flips in one second show as two events and leave the right final state
+- [x] A test fixes that `issues bulk unarchive --limit` on the Local tracker answers `INVALID_INPUT`

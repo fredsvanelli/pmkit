@@ -435,6 +435,16 @@ test('issues unarchive brings an archived issue back: dry run writes nothing, th
   })
 })
 
+// PMK-272: the one-second ceiling of PMK-267, through the real commands.
+test('four real archive and unarchive calls in one second show two history events and leave the issue active (PMK-272)', async () => {
+  await withRepo(async (root, ids) => {
+    for (const verb of ['archive', 'unarchive', 'archive', 'unarchive']) await ok(root, ['issues', verb, ids.A])
+    const { history } = await ok(root, ['issues', 'get', ids.A, '--history'])
+    assert.deepEqual(history.filter((event) => ['archive', 'unarchive'].includes(event.op)).map((event) => event.op), ['archive', 'unarchive'])
+    assert.ok((await ok(root, ['issues', 'list'])).issues.some((issue) => issue.id === ids.A))
+  })
+})
+
 test('issues unarchive says in text that an issue that is not archived is unchanged', async () => {
   await withRepo(async (root, ids) => {
     const result = await run(['issues', 'unarchive', ids.A], { cwd: root, env: ENV, adapters: ADAPTERS })
@@ -469,6 +479,7 @@ test('bulk unarchive without --archived or with a limit is INVALID_INPUT', async
     assert.match(plain.body.error.message, /needs --archived/)
     const limited = await bulk(root, 'unarchive', '--label', 'legacy', '--archived', '--limit', '1', '--dry-run')
     assert.equal(limited.body.error.code, 'INVALID_INPUT')
+    assert.match(limited.body.error.message, /unknown option --limit for issues bulk/)
   })
 })
 
