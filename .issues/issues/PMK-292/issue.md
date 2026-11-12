@@ -2,12 +2,14 @@
 id: PMK-292
 title: Read an empty list item and a long ordered marker as CommonMark does
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-292-read-an-empty-list-item-and-a-long
 created: 2026-11-12T14:41:35.285Z
-updated: 2026-11-12T14:41:35Z
+updated: 2026-11-12T19:09:55Z
 ---
 
 ## Description
@@ -33,5 +35,5 @@ updated: 2026-11-12T14:41:35Z
 
 ## Acceptance criteria
 
-- [ ] An empty item followed by a line and a setext underline ends the section at that line, with a test
-- [ ] A 10-digit ordered marker is read as paragraph text, with a test
+- [x] An empty item followed by a line and a setext underline ends the section at that line, with a test
+- [x] A 10-digit ordered marker is read as paragraph text, with a test

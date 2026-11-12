@@ -1301,3 +1301,62 @@ test('probe: no link reference definition or HTML block pattern takes a second o
     assert.ok(ms < 1000, `${JSON.stringify(body.slice(0, 20))} took ${ms} ms`)
   }
 })
+
+test('an empty item followed by a line and a === or --- underline ends the Status section at that line, in adr-get and adr-status alike (PMK-292)', async () => {
+  const cases = {
+    'empty - then ---': ['Accepted\n\n-\nfoo\n---\n', 'Accepted -'],
+    'empty * then ===': ['Accepted\n\n*\nfoo\n===\n', 'Accepted *'],
+    'empty * then ---': ['Accepted\n\n*\nfoo\n---\n', 'Accepted *'],
+    'empty 1. then ===': ['Accepted\n\n1.\nfoo\n===\n', 'Accepted 1.'],
+    'empty 1. then ---': ['Accepted\n\n1.\nfoo\n---\n', 'Accepted 1.'],
+  }
+  const root = repo()
+  let number = 20
+  for (const [name, [tail, status]] of Object.entries(cases)) {
+    const text = `# ${number}. Use E\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
+    assert.equal(adrInfo(text).status, status, name)
+    const written = setAdrStatus(text, 'deprecated').text
+    assert.match(written, /\n## Status\n\nDeprecated\n/, name)
+    assert.ok(written.endsWith('\n## Context\n\nWhy.\n'), name)
+    const file = `docs/adr/${String(number).padStart(4, '0')}-use-e.md`
+    writeAdr(root, file, text)
+    assert.equal((await adrGetFrom(root, String(number))).data.status, status, name)
+    assert.equal((await adrStatus(root, String(number), 'deprecated')).code, 0, name)
+    assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), written, name)
+    number++
+  }
+})
+
+test('a 10-digit ordered marker is paragraph text, so an underline ends the Status section at it, in adr-get and adr-status alike (PMK-292)', async () => {
+  const cases = {
+    'blank line, then --- underline': ['Accepted\n\n1234567890. a\nb\n---\n', 'Accepted'],
+    'blank line, then === underline': ['Accepted\n\n1234567890. a\nb\n===\n', 'Accepted'],
+    // Glued to the status text, the underline takes the text with it, as a setext heading does (PMK-273).
+    'glued to the status, then ---': ['Accepted\n1234567890. a\nb\n---\n', null],
+  }
+  const root = repo()
+  let number = 30
+  for (const [name, [tail, status]] of Object.entries(cases)) {
+    const text = `# ${number}. Use T\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
+    assert.equal(adrInfo(text).status, status, name)
+    const written = setAdrStatus(text, 'deprecated').text
+    assert.ok(written.endsWith('\n## Context\n\nWhy.\n'), name)
+    const file = `docs/adr/${String(number).padStart(4, '0')}-use-t.md`
+    writeAdr(root, file, text)
+    assert.equal((await adrGetFrom(root, String(number))).data.status, status, name)
+    assert.equal((await adrStatus(root, String(number), 'deprecated')).code, 0, name)
+    assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), written, name)
+    number++
+  }
+})
+
+test('a 9-digit ordered marker is still a list item, so the Status section stays open past it, in adr-get and adr-status alike (PMK-292)', async () => {
+  const text = '# 40. Use N\n\n## Status\n\nAccepted\n\n123456789. a\nb\n---\n\n## Context\n\nWhy.\n'
+  assert.equal(adrInfo(text).status, 'Accepted 123456789. a b ---')
+  const root = repo()
+  const file = 'docs/adr/0040-use-n.md'
+  writeAdr(root, file, text)
+  assert.equal((await adrGetFrom(root, '40')).data.status, 'Accepted 123456789. a b ---')
+  assert.equal((await adrStatus(root, '40', 'deprecated')).code, 0)
+  assert.match(fs.readFileSync(path.join(root, file), 'utf8'), /\n## Status\n\nDeprecated\n\n## Context\n/)
+})
