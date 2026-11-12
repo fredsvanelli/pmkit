@@ -56,6 +56,7 @@ import { redact } from './lib/redact.mjs'
 import { shareDone, topLevelRollup } from './lib/initiatives.mjs'
 import { tailLines } from './lib/tail-lines.mjs'
 import { rightLines, splitDiff } from './lib/diff-files.mjs'
+import { climbsOut, relativeTo } from './lib/paths.mjs'
 
 const TEMPLATES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates')
 const usageError = (message, nextStep = 'node scripts/pmkit.mjs --help') => new PmkitError('INVALID_INPUT', message, nextStep)
@@ -378,7 +379,8 @@ async function runAdrStatus(ctx) {
     // A permanent record: say so when the arguments look swapped, but the user may supersede with an older ADR on purpose.
     if (newer.number < adr.number) notes.push(`ADR ${newer.number} is older than ADR ${adr.number}; check that --by names the decision that replaces it`)
     // The text of the ADR cites the path without the display label tracker: (PMK-247).
-    byPath = newer.ref
+    // Both in a tracker outside the repository: the path from the folder of the ADR that holds the line, so a reader of the tracker alone can follow it (PMK-268).
+    byPath = adr.place === 'tracker' && newer.place === 'tracker' && trackerFolder === null ? slash(path.relative(path.dirname(adr.file), newer.file)) : newer.ref
   }
   const before = adrText(fs.readFileSync(adr.file, 'utf8'))
   const { text: after, before: statusBefore, after: line } = setAdrStatus(before, status, byPath)
@@ -3368,9 +3370,6 @@ const RENDER_FORMATS = ['md', 'html']
 const HTML_EXTENSIONS = ['.html', '.htm']
 const MARKDOWN_EXTENSIONS = ['.md', '.markdown']
 
-/** True when `rel`, a relative path, climbs out of its base. A name that only starts with two dots, such as `..board.md`, stays inside. */
-const climbsOut = (rel) => rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)
-
 /** `file` with the symlinks of its nearest existing parent folder resolved, so a link into a folder is seen as that folder. */
 const realParent = (file) => {
   const rest = []
@@ -4192,7 +4191,7 @@ function commitTracker(config, message, paths) {
     const top2 = top.stdout.trim()
     groups.set(top2, [...(groups.get(top2) ?? []), slash(path.relative(top2, full))])
   }
-  for (const [top, files] of groups) commitIn(top, message, files, files.length <= 5 ? files.join(' ') : 'the tracker files')
+  for (const [top, files] of groups) commitIn(top, message, files, `${files.length <= 5 ? files.join(' ') : 'the tracker files'} (in the git repository that holds the tracker)`)
   if (loose) notes.push('the tracker folder is outside the repository and not in a git repository, so nothing was committed for it')
   return notes
 }
@@ -4201,7 +4200,12 @@ function commitTracker(config, message, paths) {
 function commitIn(cwd, message, paths, named) {
   // --literal-pathspecs keeps a name such as notes/[x].md from matching as a glob.
   const git = (...args) => spawnSync('git', ['--literal-pathspecs', ...args], { cwd, encoding: 'utf8' })
-  const fail = (result) => new PmkitError('UPSTREAM', `the write succeeded but auto_commit failed: ${(result.stderr || result.stdout).trim()}`, `Commit ${named} yourself`)
+  // git quotes the absolute path of what it refused: the repository folder comes out, which leaves the path relative to it, and any other absolute path is hidden (PMK-268).
+  const folders = [...new Set([cwd, fs.realpathSync(cwd)])].flatMap((dir) => [dir.split(path.sep).join('/'), dir]).sort((a, b) => b.length - a.length)
+  const relative = (text) => {
+    return relativeTo(text, folders).replace(/(^|[\s'"(])((?:[A-Za-z]:[\\/]|\/)[^\s'"]+)/g, '$1<path>')
+  }
+  const fail = (result) => new PmkitError('UPSTREAM', `the write succeeded but auto_commit failed: ${relative((result.stderr || result.stdout).trim())}`, `Commit ${named} yourself`)
   // On disk with its exact case: where the file system ignores case, the old name of a case-only rename still "exists".
   const onDisk = (file) => {
     const full = path.join(cwd, file)

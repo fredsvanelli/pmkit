@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { PmkitError } from './errors.mjs'
 import { stripComment } from './yaml.mjs'
+import { climbsOut } from './paths.mjs'
 
 export const ADR_SLUG_MAX = 60
 // The display label of an ADR folder of a tracker outside the repository; never written into an ADR.
@@ -66,8 +67,7 @@ export function adrLocation({ root, issuesDir, hosted }) {
   const trackerDir = hosted || !issuesDir ? null : path.join(issuesDir, 'docs', 'adr')
   if (trackerDir === null) return { trackerDir, trackerFolder: null }
   const relative = path.relative(root, trackerDir)
-  const outside = relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)
-  return { trackerDir, trackerFolder: outside ? null : relative.split(path.sep).join('/') }
+  return { trackerDir, trackerFolder: climbsOut(relative) ? null : relative.split(path.sep).join('/') }
 }
 
 /** The numbered ADR files of the working tree in `folders`, as { number, name, path, ref, place, file }, sorted by path. `ref` is the path an ADR text may cite, from the repository root: `path` without the tracker: label, and `../...` for a tracker outside the repository. */

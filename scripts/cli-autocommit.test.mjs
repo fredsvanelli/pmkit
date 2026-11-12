@@ -388,3 +388,61 @@ test('requests accept --create that fails on a read-only request commits the new
     assert.equal(JSON.parse(linked.stdout).after.target.id, created)
   })
 })
+
+// PMK-268: auto_commit with a tracker outside the repository, in a git repository of its own.
+function withOutsideTracker(fn) {
+  const root = makeRepo('team')
+  const outside = path.join(path.dirname(root), `outside-${path.basename(root)}`)
+  try {
+    const config = path.join(root, '.pmkit/config.yaml')
+    fs.writeFileSync(config, fs.readFileSync(config, 'utf8').replace('path: .issues', `path: ../${path.basename(outside)}`))
+    fs.renameSync(path.join(root, '.issues'), outside)
+    const file = path.join(outside, 'config.yaml')
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^auto_commit: .*$/m, 'auto_commit: true'))
+    git(outside, 'init', '-q')
+    git(outside, 'config', 'user.name', 'Test')
+    git(outside, 'config', 'user.email', 'test@example.com')
+    git(outside, 'add', '-A')
+    git(outside, 'commit', '-q', '-m', 'init')
+    fn({ root, outside })
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+    fs.rmSync(outside, { recursive: true, force: true })
+  }
+}
+
+for (const { args, message } of [
+  { args: ['issues', 'update', 'ISS-3F7H', '--priority', 'urgent'], message: 'pmkit: issues update ISS-3F7H' },
+  { args: ['issues', 'assign', 'ISS-0G5E', 'fred'], message: 'pmkit: issues assign ISS-0G5E' },
+  { args: ['issues', 'create', '--title', 'New'], message: /^pmkit: issues create ISS-[0-9A-Z]{4}$/ },
+]) {
+  test(`auto_commit true: ${label({ args })} with a tracker outside the repository commits in the tracker's git repository (PMK-268)`, () => {
+    withOutsideTracker(({ root, outside }) => {
+      const before = commits(outside)
+      const result = run(root, [...args, '--json'])
+      assert.equal(result.status, 0, result.stderr)
+      assert.equal(commits(outside), before + 1)
+      if (message instanceof RegExp) assert.match(subject(outside), message)
+      else assert.equal(subject(outside), message)
+      assert.ok(committedFiles(outside).every((file) => file.startsWith('issues/ISS-')), committedFiles(outside).join(' '))
+      assert.deepEqual(status(outside), [])
+      assert.ok(!(result.stdout + result.stderr).includes(outside), 'no absolute path')
+    })
+  })
+}
+
+test('auto_commit true with a tracker outside the repository: a failed commit names files relative to the tracker, never an absolute path (PMK-268)', () => {
+  withOutsideTracker(({ root, outside }) => {
+    // A stale lock: git refuses and quotes the absolute path of the lock file.
+    fs.writeFileSync(path.join(outside, '.git/index.lock'), '')
+    const result = run(root, ['issues', 'assign', 'ISS-0G5E', 'fred', '--json'])
+    assert.equal(result.status, 2)
+    const { error } = JSON.parse(result.stdout)
+    assert.equal(error.code, 'UPSTREAM')
+    const everything = result.stdout + result.stderr
+    for (const forbidden of [outside, fs.realpathSync(outside), os.tmpdir(), fs.realpathSync(os.tmpdir())]) assert.ok(!everything.includes(forbidden), `${forbidden} in ${everything}`)
+    assert.match(error.message, /auto_commit failed/)
+    assert.match(error.message, /index\.lock/)
+    assert.match(error.nextStep, /issues\/ISS-0G5E\/issue\.md/)
+  })
+})
