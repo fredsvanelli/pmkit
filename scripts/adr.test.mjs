@@ -1349,3 +1349,14 @@ test('a 10-digit ordered marker is paragraph text, so an underline ends the Stat
     number++
   }
 })
+
+test('a 9-digit ordered marker is still a list item, so the Status section stays open past it, in adr-get and adr-status alike (PMK-292)', async () => {
+  const text = '# 40. Use N\n\n## Status\n\nAccepted\n\n123456789. a\nb\n---\n\n## Context\n\nWhy.\n'
+  assert.equal(adrInfo(text).status, 'Accepted 123456789. a b ---')
+  const root = repo()
+  const file = 'docs/adr/0040-use-n.md'
+  writeAdr(root, file, text)
+  assert.equal((await adrGetFrom(root, '40')).data.status, 'Accepted 123456789. a b ---')
+  assert.equal((await adrStatus(root, '40', 'deprecated')).code, 0)
+  assert.match(fs.readFileSync(path.join(root, file), 'utf8'), /\n## Status\n\nDeprecated\n\n## Context\n/)
+})
