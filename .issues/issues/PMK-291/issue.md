@@ -2,12 +2,14 @@
 id: PMK-291
 title: Follow list nesting when a line continues a list item before an underline
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-6
+branch: pmk-291-follow-list-nesting-when-a-line
 created: 2026-11-12T14:41:35.198Z
-updated: 2026-11-12T14:41:35Z
+updated: 2026-11-12T14:50:45Z
 ---
 
 ## Description
