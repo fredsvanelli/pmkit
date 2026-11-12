@@ -913,6 +913,12 @@ test('adrStatusHeading names the line a setext heading makes of an empty Status 
     'indented lines of a multi-line heading': ['## Status\n  Accepted\n   for now  \n===\n', 'Accepted for now'],
     'link definitions are not the heading': ['## Status\n[a]: /u\nAccepted\n---\n', 'Accepted'],
     'link definitions with a title and a destination on the next line': ['## Status\n[a]:\n/u "t"\n[b]: /v\nAccepted\nfor now\n---\n', 'Accepted for now'],
+    'a === line first is text of the heading': ['## Status\n===\nAccepted\n---\n', '=== Accepted'],
+    'a lone = first is text of the heading': ['## Status\n=\nAccepted\n---\n', '= Accepted'],
+    'a lone - underlines': ['## Status\nAccepted\n-\n', 'Accepted'],
+    'a lone - alone is an empty item': ['## Status\n-\n', null],
+    'a === alone is text, no heading': ['## Status\n===\n', null],
+    'definitions, then a === line, then text': ['## Status\n[a]: /u\n===\nAccepted\n---\n', '=== Accepted'],
     'definitions alone are not a heading': ['## Status\n[a]: /u\n---\n', null],
     'CRLF': ['## Status\r\nAccepted\r\nfor now\r\n---\r\n', 'Accepted for now'],
     'a filled section': ['## Status\n\nAccepted\n\n---\n\n## Context\n', null],
@@ -925,7 +931,7 @@ test('adrStatusHeading names the line a setext heading makes of an empty Status 
     'a fence in the section': ['## Status\n```\nAccepted\n===\n```\n', null],
     'no Status section': ['# T\n\nAccepted\n===\n', null],
   }
-  for (const [name, [text, expected]] of Object.entries(cases)) assert.equal(adrStatusHeading(`# T\n\n${text}`), expected, name)
+  for (const [name, [text, expected]] of Object.entries(cases)) assert.equal(adrStatusHeading(`# T\n\n${text}`)?.heading ?? null, expected, name)
 })
 
 for (const underline of ['---', '===']) {
@@ -982,6 +988,22 @@ test('the heading note offers both ways out, and does not ask for a second statu
     assert.equal(/remove the underline/.test(setNote), empty, name)
     assert.match(setNote, /before the write/, name)
   }
+})
+
+test('the heading note shows the real underline and heading in its example (PMK-294 review)', async () => {
+  const cases = { '---': 'Accepted for now ---', '=====': 'Accepted for now =====', '===': '=== Accepted ===' }
+  for (const [underline, example] of Object.entries(cases)) {
+    const root = repo()
+    const body = example.startsWith('===') ? `===\nAccepted\n${underline}` : `Accepted\nfor now\n${underline}`
+    writeAdr(root, 'docs/adr/0001-use-x.md', `# 1. Use X\n\n## Status\n${body}\n\n## Context\n`)
+    for (const note of [(await adrGetFrom(root, '1')).data.notes.join('\n'), (await adrStatus(root, '1', 'deprecated', '--dry-run')).data.notes.join('\n')]) {
+      assert.ok(note.includes(`("${example}")`), `${underline}: ${note}`)
+      assert.ok(!note.includes('""'), underline)
+    }
+  }
+  const root = repo()
+  writeAdr(root, 'docs/adr/0001-use-x.md', '# 1. Use X\n\n## Status\n===\n\n## Context\n')
+  assert.deepEqual([(await adrGetFrom(root, '1')).data.statusHeading, (await adrGetFrom(root, '1')).data.notes], [null, []])
 })
 
 test('docs adr-get and docs adr-status give no heading note for an ADR with a status (PMK-294)', async () => {

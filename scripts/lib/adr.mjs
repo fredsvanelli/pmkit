@@ -409,11 +409,13 @@ export function adrInfo(text) {
 }
 
 /**
- * The text of the heading that ends an empty `## Status` section, null when there is none (PMK-294). `Accepted\n---` under `## Status`
- * is a setext heading (PMK-273), so the section holds no text and `adrInfo` reads no status. It is decided by `sectionEnd`, the same walk
- * that ends the section, so a list item, a quote or a thematic break over `---` is never named: the section stops at a setext heading when
- * its end is a line that is not an ATX heading. The heading is the paragraph up to its underline without the link reference definitions
- * at its start (as `keepsText` takes them out), its lines trimmed and joined by a space; a paragraph of definitions only is no heading.
+ * The heading that ends an empty `## Status` section, `{ heading, underline }`, null when there is none (PMK-294). `Accepted\n---` under
+ * `## Status` is a setext heading (PMK-273), so the section holds no text and `adrInfo` reads no status. It is decided by `sectionEnd`, the
+ * same walk that ends the section, so a list item, a quote or a thematic break over `---` is never named: the section stops at a setext
+ * heading when its end is a line that is not an ATX heading. As in `sectionEnd`, the paragraph starts at that line, which is text even when
+ * it looks like an underline (`===` first makes `=== Accepted`), and the underline is the first later line that is one and leaves text once
+ * the link reference definitions at the start are taken out (`keepsText`). `heading` is that text, its lines trimmed and joined by a space,
+ * never empty; `underline` is the line as written, trimmed.
  */
 export function adrStatusHeading(text) {
   const lines = adrText(text).split('\n')
@@ -421,11 +423,15 @@ export function adrStatusHeading(text) {
   if (section === -1) return null
   const stop = end(section)
   if (stop >= lines.length || headingLevel(lines[stop]) > 0 || lines.slice(section + 1, stop).some((item) => item.trim() !== '')) return null
-  let underline = stop
-  while (underline < lines.length && !(CM_SETEXT.test(lines[underline].trim()) && /^ {0,3}\S/.test(lines[underline]))) underline++
-  if (underline >= lines.length) return null
-  const paragraph = { text: `${lines.slice(stop, underline).map((item) => item.trimStart()).join('\n')}\n` }
-  return keepsText(paragraph) ? paragraph.text.split('\n').map((item) => item.trim()).filter(Boolean).join(' ') : null
+  const paragraph = { text: `${lines[stop].trimStart()}\n` }
+  for (let at = stop + 1; at < lines.length; at++) {
+    if (/^ {0,3}\S/.test(lines[at]) && CM_SETEXT.test(lines[at].trim()) && keepsText(paragraph)) {
+      const heading = paragraph.text.split('\n').map((item) => item.trim()).filter(Boolean).join(' ')
+      return heading === '' ? null : { heading, underline: lines[at].trim() }
+    }
+    paragraph.text += `${lines[at].trimStart()}\n`
+  }
+  return null
 }
 
 /**
