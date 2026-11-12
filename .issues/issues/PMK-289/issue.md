@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-289-hide-the-absolute-paths-left-in-git-and
 created: 2026-11-12T14:41:35.031Z
-updated: 2026-11-12T14:50:40Z
+updated: 2026-11-12T15:05:16Z
 ---
 
 ## Description
@@ -37,5 +37,5 @@ PMK-278 hides the stderr of git in six places. Its reviews left texts that still
 
 ## Acceptance criteria
 
-- [ ] No message of `link-repo`, `todos` or a failed `gh` call shows an absolute path, with a test per place
-- [ ] A `gh api` error still sets its HTTP status, with a test
+- [x] No message of `link-repo`, `todos` or a failed `gh` call shows an absolute path, with a test per place
+- [x] A `gh api` error still sets its HTTP status, with a test
