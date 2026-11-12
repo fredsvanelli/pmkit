@@ -120,10 +120,19 @@ const INTERRUPTS_PARAGRAPH = /^ {0,3}(>|([-*+]|0*1[.)])[ \t]+\S)/
 const BLOCK_START = /^ {0,3}(>|([-*+]|\d+[.)])([ \t]|$))/
 // The underline of a setext heading: up to three spaces, then = or - only.
 const SETEXT_UNDERLINE = /^ {0,3}(=+|-+)[ \t]*$/
-// A list item line, with the width of its marker: its content starts at the length of the first group, and a later line indented that far belongs to the item (PMK-280).
-// A thematic break such as `- - -` is not an item, so the caller tests THEMATIC_BREAK first.
-const LIST_ITEM = /^( {0,3}(?:[-*+]|\d+[.)])[ \t]+)\S/
+// A list item line: spaces, the marker, the white space after it, then content (PMK-280).
+const LIST_ITEM = /^( {0,3})([-*+]|\d+[.)])([ \t]+)\S/
 // The columns of leading white space, a tab counting up to the next stop of 4: four or more start an indented code block (PMK-281).
+// The column where the content of the list item `line` starts, null when it is not an item (a thematic break such as `- - -` is not one). CommonMark: one to four columns of white
+// space after the marker (a tab goes to the next stop of 4) put the content after them; five or more put it one column after the marker (PMK-281 review).
+const itemContent = (line) => {
+  const item = THEMATIC_BREAK.test(line) ? null : LIST_ITEM.exec(line)
+  if (item === null) return null
+  const marker = item[1].length + item[2].length
+  let column = marker
+  for (const char of item[3]) column += char === '\t' ? 4 - (column % 4) : 1
+  return column - marker >= 5 ? marker + 1 : column
+}
 const indentColumns = (item) => {
   let columns = 0
   for (const char of item) {
@@ -183,9 +192,9 @@ function locate(lines) {
       const indent = indentColumns(lines[top])
       for (let j = top - 1; indent > 0 && j > from; j--) {
         if (code[j] || lines[j].trim() === '') continue
-        const item = THEMATIC_BREAK.test(lines[j]) ? null : LIST_ITEM.exec(lines[j])
-        if (item !== null && item[1].length <= indent) return true
-        if (indentColumns(lines[j]) === 0 && item === null) return false
+        const content = itemContent(lines[j])
+        if (content !== null && content <= indent) return true
+        if (indentColumns(lines[j]) === 0 && content === null) return false
       }
       return false
     }
