@@ -2,14 +2,14 @@
 id: PMK-272
 title: Pin the one-second unarchive history limit with a test
 type: chore
-status: in_review
+status: done
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-272-pin-the-one-second-unarchive-history
 created: 2026-11-12T00:43:33.227Z
-updated: 2026-11-12T01:18:44Z
+updated: 2026-11-12T01:52:44Z
 ---
 
 ## Description
