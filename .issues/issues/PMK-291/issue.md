@@ -2,12 +2,14 @@
 id: PMK-291
 title: Follow list nesting when a line continues a list item before an underline
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-6
+branch: pmk-291-follow-list-nesting-when-a-line
 created: 2026-11-12T14:41:35.198Z
-updated: 2026-11-12T14:41:35Z
+updated: 2026-11-12T15:06:12Z
 ---
 
 ## Description
@@ -39,4 +41,4 @@ Source: PMK-280, PR #231 (review), carried by PMK-281, PR #234.
 
 ## Acceptance criteria
 
-- [ ] A wider sibling item, a fence at column 0 and a lazy continuation each end the section where CommonMark puts the heading or the break, with a test each
+- [x] A wider sibling item, a fence at column 0 and a lazy continuation each end the section where CommonMark puts the heading or the break, with a test each

@@ -1023,7 +1023,8 @@ test('only a line that CommonMark lets interrupt a paragraph does, so 2. foo, an
     'empty ordered item': ['Accepted\n1.\n===\n', null],
     // A lone `-` is the underline of `Accepted` (a setext H2), so it ends the section there whatever the interrupt rule says.
     'lone - underlines Accepted': ['Accepted\n-\nfoo\n===\n', null],
-    'empty - after a blank line, then ===': ['Accepted\n\n-\nfoo\n===\n', 'Accepted - foo ==='],
+    // An empty item holds no line that is not indented into it, so `foo` is a paragraph and `===` underlines it (PMK-291).
+    'empty - after a blank line, then ===': ['Accepted\n\n-\nfoo\n===\n', 'Accepted -'],
     'tab line inside the paragraph': ['Accepted\n\tcode\nmore\n===\n', null],
     'tab code, then a paragraph': ['Accepted\n\n\tcode\nmore\n===\n', 'Accepted code'],
     'space and tab are four columns': ['Accepted\n\n \tcode\nmore\n---\n', 'Accepted code'],
@@ -1135,4 +1136,168 @@ test('docs adr-get --from keeps ref for repository ADRs and a tracker inside the
     assert.equal(result.data.error.code, 'INVALID_INPUT', bad)
   }
   assert.equal((await adrGetFrom(root, '9', '--from', 'docs/adr/0003-x.md')).data.error.code, 'NOT_FOUND')
+})
+
+test('the item that holds the line decides: a wider sibling, a fence at column 0 and a lazy line before the continuation (PMK-291)', async () => {
+  const cases = {
+    // `1. a` closes `- x` and `b` is outside it (content at column 3): `b` is a heading line, `---` underlines it.
+    'wider sibling': ['- x\n\n1. a\n\n  b\n---\n', '- x 1. a'],
+    // The fence at column 0 ends the list: `b` is a paragraph.
+    'fence at column 0': ['- a\n\n```\nz\n```\n  b\n---\n', '- a ``` z ```'],
+    // `lazy` belongs to `- a`, so `b` is inside the item and `---` is a thematic break.
+    'lazy continuation': ['- a\nlazy\n\n  b\n---\n', '- a lazy b ---'],
+  }
+  const root = repo()
+  let number = 1
+  for (const [name, [tail, status]] of Object.entries(cases)) {
+    const text = `# ${number}. Use U\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
+    assert.equal(adrInfo(text).status, status, name)
+    const file = `docs/adr/000${number}-use-u.md`
+    writeAdr(root, file, text)
+    assert.equal((await adrGetFrom(root, String(number))).data.status, status, name)
+    const written = setAdrStatus(text, 'deprecated').text
+    assert.equal(adrInfo(written).status, 'Deprecated', name)
+    assert.equal((await adrStatus(root, String(number), 'deprecated')).code, 0, name)
+    assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), written, name)
+    number++
+  }
+})
+
+test('an empty item and an item that opens with indented code are not paragraphs for the lazy walk (PMK-291 review)', async () => {
+  const cases = {
+    'empty item after an item': ['- a\n-\n\n  x\n---\n', '- a -'],
+    'five spaces, lazy line': ['-     a\nlazy\n\n  x\n---\n', '-     a lazy'],
+    'five spaces, other text': ['-     a\nz\n\n  x\n---\n', '-     a z'],
+    'five spaces, empty item': ['-     a\n-\n\n  x\n---\n', '-     a -'],
+  }
+  const root = repo()
+  let number = 1
+  for (const [name, [tail, status]] of Object.entries(cases)) {
+    const text = `# ${number}. Use U\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
+    assert.equal(adrInfo(text).status, status, name)
+    if (number === 1) {
+      const file = 'docs/adr/0001-use-u.md'
+      writeAdr(root, file, text)
+      assert.equal((await adrGetFrom(root, '1')).data.status, status, name)
+      const written = setAdrStatus(text, 'deprecated').text
+      assert.equal((await adrStatus(root, '1', 'deprecated')).code, 0, name)
+      assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), written, name)
+    }
+    number++
+  }
+})
+
+test('indented code inside a list item is not the item continuing, so a lazy line before the underline stays the heading (PMK-291 cycle 2)', async () => {
+  const cases = {
+    'code after a lazy line': ['- a\nlazy\n\n\n      x\nlazy\n---\n', '- a lazy x'],
+    'code, no lazy line before': ['- a\n\n      x\nlazy\n---\n', '- a x'],
+    'five spaces marker, code': ['-     a\n\n\n          x\nlazy\n---\n', '-     a x'],
+    'empty item, code': ['- a\n-\n\n      x\nlazy\n---\n', '- a - x'],
+  }
+  const root = repo()
+  let number = 1
+  for (const [name, [tail, status]] of Object.entries(cases)) {
+    const text = `# ${number}. Use U\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
+    assert.equal(adrInfo(text).status, status, name)
+    if (number === 1) {
+      const file = 'docs/adr/0001-use-u.md'
+      writeAdr(root, file, text)
+      assert.equal((await adrGetFrom(root, '1')).data.status, status, name)
+      const written = setAdrStatus(text, 'deprecated').text
+      assert.equal((await adrStatus(root, '1', 'deprecated')).code, 0, name)
+      assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), written, name)
+    }
+    number++
+  }
+})
+
+test('a line belongs to the deepest open item whose content column it reaches, as CommonMark nests items, quotes and fences (PMK-291 cycle 3)', async () => {
+  const cases = {
+    // `- m` sits inside `- a` (content at column 2), `c` inside `- m` (content at column 6): `lazy` continues `c` and `---` is a break.
+    'nested item four columns in': ['- a\n    - m\n\n      c\nlazy\n---\n', '- a - m c lazy ---'],
+    'nested ordered items, lazy line': ['\n -\n      1) b\n\n      3)      b\na\n---\n', '- 1) b 3)      b'],
+    'empty ordered item after a blank': ['\n   1. x\nlazy\n\n        3) \na\n  \tlazy\n   ===\n', '1. x lazy 3)'],
+    'item opening with code inside a wide item': ['2.    lazy\n      a\n     b\nx\n\n        1.      a\nc d\n  + \n--\n', '2.    lazy a b x 1.      a'],
+    // The fence at column 0 opens right after the one inside the item closes, so it ends the list and `b` is a paragraph.
+    'fence right after a fence': ['- a\n\n  ```\n  z\n  ```\n```\ny\n```\n  b\n---\n', '- a ``` z ``` ``` y ```'],
+    'code under an item, then a line': ['- a\n\n      code\nmore\n---\n', '- a code'],
+    'empty item opening with code': ['-\n      code\n\n  x\n---\n', '- code x ---'],
+    // `lazy` continues the quote inside the item, so the item stays open and holds `b`.
+    'quote inside an item, lazy line': ['- a\n  > q\nlazy\n\n  b\n---\n', '- a > q lazy b ---'],
+    'quote after a blank, lazy line': ['- a\n\n  > q\nlazy\n\n  c\n---\n', '- a > q lazy c ---'],
+    // A heading inside an item is not a section heading.
+    'heading inside an item': ['- a\n  ## b\n\n  c\n---\n', '- a ## b c ---'],
+  }
+  const root = repo()
+  let number = 1
+  for (const [name, [tail, status]] of Object.entries(cases)) {
+    const text = `# ${number}. Use U\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
+    assert.equal(adrInfo(text).status, status, name)
+    if (number === 1) {
+      const file = 'docs/adr/0001-use-u.md'
+      writeAdr(root, file, text)
+      assert.equal((await adrGetFrom(root, '1')).data.status, status, name)
+      const written = setAdrStatus(text, 'deprecated').text
+      assert.equal(adrInfo(written).status, 'Deprecated', name)
+      assert.equal((await adrStatus(root, '1', 'deprecated')).code, 0, name)
+      assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), written, name)
+    }
+    number++
+  }
+})
+
+test('an HTML block and a paragraph of link reference definitions end the Status section where CommonMark does (PMK-291 cycle 4 review)', async () => {
+  const cases = {
+    // After an empty item, the comment is an HTML block, not a paragraph, so `---` is a thematic break.
+    'comment after an empty item': ['-\n<!-- x -->\n---\n', '- <!-- x --> ---'],
+    // A paragraph of link reference definitions only is not a setext heading.
+    'definition after an empty item': ['-\n[a]: /u\n---\n', '- [a]: /u ---'],
+    'comment after an empty * item': ['* \n<!-- x -->\n ---\n', '* <!-- x --> ---'],
+    'definition with a title after a quoted heading': ['> ###\n[a]: /u "t"\n ---\n', '> ### [a]: /u "t" ---'],
+    'definition after an item opening a fence': ['1. ```\n[a]: /u\n-\n', '1. ``` [a]: /u -'],
+    'closing tag after an empty item': ['-\n</div>\n---\n', '- </div> ---'],
+    // `<pre>` runs to `</pre>`: the fence and the underline inside it are HTML.
+    'pre block holds a fence': ['<pre>\n\t~~~\n-\n</pre>\n', '<pre> ~~~ - </pre>'],
+    'definition then ===': ['Accepted\n\n[a]: /u\n===\n', 'Accepted [a]: /u ==='],
+    // A definition before text: the text is the heading, and the heading starts at the definition.
+    'definition then text': ['Accepted\n\n[a]: /u\nfoo\n---\n', 'Accepted'],
+    // `<div>` (type 6) interrupts a paragraph; a custom tag (type 7) does not.
+    'div interrupts a paragraph': ['Accepted\n<div>\nb\n---\n', 'Accepted <div> b ---'],
+    'custom tag does not': ['Accepted\n<x-y>\n---\n', null],
+    'fence inside a comment': ['<!--\n```\n-->\nAccepted\n', '<!-- ``` --> Accepted'],
+    'comment across a blank line': ['Accepted\n\n<!-- a\n\n---\n-->\nb\n---\n', 'Accepted <!-- a --- -->'],
+  }
+  const root = repo()
+  let number = 1
+  for (const [name, [tail, status]] of Object.entries(cases)) {
+    const text = `# ${number}. Use U\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
+    assert.equal(adrInfo(text).status, status, name)
+    if (number === 1) {
+      const file = 'docs/adr/0001-use-u.md'
+      writeAdr(root, file, text)
+      assert.equal((await adrGetFrom(root, '1')).data.status, status, name)
+      const written = setAdrStatus(text, 'deprecated').text
+      assert.equal(adrInfo(written).status, 'Deprecated', name)
+      assert.equal((await adrStatus(root, '1', 'deprecated')).code, 0, name)
+      assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), written, name)
+    }
+    number++
+  }
+})
+
+// Review of PR #241, cycle 5: an unclosed link title of escapes once made the title pattern backtrack twice per escape. Every
+// pattern of the link reference definition and of the HTML block reads a long line of its own kind in well under a second.
+test('probe: no link reference definition or HTML block pattern takes a second on a long line of its own kind (PMK-291 cycle 5 review)', () => {
+  const n = 5000
+  const bodies = [
+    `[a]: /u "${'\\!'.repeat(n)}`, `[a]: /u '${'\\!'.repeat(n)}`, `[a]: /u (${'\\!'.repeat(n)}`, `[a]: /u "${'\\!'.repeat(n)}"x`,
+    `[${'\\['.repeat(n)}`, `[a${'\\]'.repeat(n)}: /u`, `[a]: ${'('.repeat(n)}`, `[a]: ${'\\('.repeat(n)}(`, `[a]: <${'\\<'.repeat(n)}`,
+    '[a]: /u "t"\n'.repeat(n / 5), `[a]: /u\n"${'\\!'.repeat(n)}`, `<x-y${' a=1'.repeat(n)}`, `<x-y${' a="b'.repeat(n)}`,
+  ]
+  for (const body of bodies) {
+    const start = process.hrtime.bigint()
+    adrInfo(`# T\n\n## Status\n\n${body}\n---\n\n## Context\n`)
+    const ms = Number(process.hrtime.bigint() - start) / 1e6
+    assert.ok(ms < 1000, `${JSON.stringify(body.slice(0, 20))} took ${ms} ms`)
+  }
 })

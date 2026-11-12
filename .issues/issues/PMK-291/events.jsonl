@@ -1,1 +1,11 @@
 {"at":"2026-11-12T14:41:35Z","by":"fred","op":"create","to":{"id":"PMK-291","title":"Follow list nesting when a line continues a list item before an underline","type":"bug","status":"backlog","priority":"low","estimate":2,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-12T14:41:35.198Z","updated":"2026-11-12T14:41:35Z"}}
+{"at":"2026-11-12T14:50:42Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-12T14:50:42Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-12T14:50:45Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-291-follow-list-nesting-when-a-line"}
+{"at":"2026-11-12T14:54:06Z","by":"fred","op":"comment","to":"2026-11-12T14-54-06Z-fred.md"}
+{"at":"2026-11-12T14:55:54Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-12T15:06:12Z","by":"fred","op":"comment","to":"2026-11-12T15-06-12Z-fred.md"}
+{"at":"2026-11-12T15:06:12Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-12T17:31:53Z","by":"fred","op":"comment","to":"2026-11-12T17-31-53Z-fred.md"}
+{"at":"2026-11-12T17:32:03Z","by":"fred","op":"comment","to":"2026-11-12T17-32-03Z-fred.md"}
+{"at":"2026-11-12T18:33:41Z","by":"fred","op":"comment","to":"2026-11-12T18-33-41Z-fred.md"}
