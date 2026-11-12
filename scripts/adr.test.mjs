@@ -1023,7 +1023,8 @@ test('only a line that CommonMark lets interrupt a paragraph does, so 2. foo, an
     'empty ordered item': ['Accepted\n1.\n===\n', null],
     // A lone `-` is the underline of `Accepted` (a setext H2), so it ends the section there whatever the interrupt rule says.
     'lone - underlines Accepted': ['Accepted\n-\nfoo\n===\n', null],
-    'empty - after a blank line, then ===': ['Accepted\n\n-\nfoo\n===\n', 'Accepted - foo ==='],
+    // An empty item holds no line that is not indented into it, so `foo` is a paragraph and `===` underlines it (PMK-291).
+    'empty - after a blank line, then ===': ['Accepted\n\n-\nfoo\n===\n', 'Accepted -'],
     'tab line inside the paragraph': ['Accepted\n\tcode\nmore\n===\n', null],
     'tab code, then a paragraph': ['Accepted\n\n\tcode\nmore\n===\n', 'Accepted code'],
     'space and tab are four columns': ['Accepted\n\n \tcode\nmore\n---\n', 'Accepted code'],
@@ -1203,6 +1204,41 @@ test('indented code inside a list item is not the item continuing, so a lazy lin
       writeAdr(root, file, text)
       assert.equal((await adrGetFrom(root, '1')).data.status, status, name)
       const written = setAdrStatus(text, 'deprecated').text
+      assert.equal((await adrStatus(root, '1', 'deprecated')).code, 0, name)
+      assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), written, name)
+    }
+    number++
+  }
+})
+
+test('a line belongs to the deepest open item whose content column it reaches, as CommonMark nests items, quotes and fences (PMK-291 cycle 3)', async () => {
+  const cases = {
+    // `- m` sits inside `- a` (content at column 2), `c` inside `- m` (content at column 6): `lazy` continues `c` and `---` is a break.
+    'nested item four columns in': ['- a\n    - m\n\n      c\nlazy\n---\n', '- a - m c lazy ---'],
+    'nested ordered items, lazy line': ['\n -\n      1) b\n\n      3)      b\na\n---\n', '- 1) b 3)      b'],
+    'empty ordered item after a blank': ['\n   1. x\nlazy\n\n        3) \na\n  \tlazy\n   ===\n', '1. x lazy 3)'],
+    'item opening with code inside a wide item': ['2.    lazy\n      a\n     b\nx\n\n        1.      a\nc d\n  + \n--\n', '2.    lazy a b x 1.      a'],
+    // The fence at column 0 opens right after the one inside the item closes, so it ends the list and `b` is a paragraph.
+    'fence right after a fence': ['- a\n\n  ```\n  z\n  ```\n```\ny\n```\n  b\n---\n', '- a ``` z ``` ``` y ```'],
+    'code under an item, then a line': ['- a\n\n      code\nmore\n---\n', '- a code'],
+    'empty item opening with code': ['-\n      code\n\n  x\n---\n', '- code x ---'],
+    // `lazy` continues the quote inside the item, so the item stays open and holds `b`.
+    'quote inside an item, lazy line': ['- a\n  > q\nlazy\n\n  b\n---\n', '- a > q lazy b ---'],
+    'quote after a blank, lazy line': ['- a\n\n  > q\nlazy\n\n  c\n---\n', '- a > q lazy c ---'],
+    // A heading inside an item is not a section heading.
+    'heading inside an item': ['- a\n  ## b\n\n  c\n---\n', '- a ## b c ---'],
+  }
+  const root = repo()
+  let number = 1
+  for (const [name, [tail, status]] of Object.entries(cases)) {
+    const text = `# ${number}. Use U\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
+    assert.equal(adrInfo(text).status, status, name)
+    if (number === 1) {
+      const file = 'docs/adr/0001-use-u.md'
+      writeAdr(root, file, text)
+      assert.equal((await adrGetFrom(root, '1')).data.status, status, name)
+      const written = setAdrStatus(text, 'deprecated').text
+      assert.equal(adrInfo(written).status, 'Deprecated', name)
       assert.equal((await adrStatus(root, '1', 'deprecated')).code, 0, name)
       assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), written, name)
     }

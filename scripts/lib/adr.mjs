@@ -109,43 +109,10 @@ export const adrText = (text) => text.replace(/^\uFEFF/, '').replaceAll('\r\n', 
 const STATUS_LINE = /^(\s*[-*]\s+)?(\*\*Status:?\*\*:?|Status:)\s*(.*)$/i
 // An ATX heading (CommonMark): up to three spaces, one to six #, then a blank or the end of the line. An empty heading (`##`) and a tab after the # count.
 const ATX_HEADING = /^ {0,3}(#{1,6})([ \t]|$)/
-// The level (1 to 6) of an ATX heading line, 0 for any other line: the one test for `title`, `head`, `## Status` and the end of a section.
+// The level (1 to 6) of an ATX heading line, 0 for any other line: the one test for `title`, `head` and `## Status`.
 const headingLevel = (item) => ATX_HEADING.exec(item)?.[1].length ?? 0
 // The text of an ATX heading line without the opening #s and the closing sequence: a run of # after a space or tab, or the whole content (PMK-282). `Status#` has none.
 const headingText = (item) => item.replace(/^ {0,3}#{1,6}/, '').trim().replace(/(^|[ \t]+)#+$/, '')
-// A thematic break (`***`, `---`, `___`, spaces allowed).
-const THEMATIC_BREAK = /^ {0,3}([-*_])( *\1){2,} *$/
-// What interrupts a paragraph (CommonMark): a quote, a bullet item with content, an ordered item with content that starts at 1. An empty item and `2. foo` do not (PMK-281).
-const INTERRUPTS_PARAGRAPH = /^ {0,3}(>|([-*+]|0*1[.)])[ \t]+\S)/
-// What starts a block after a blank line, a heading or a break: any list item, empty or not, and a quote.
-const BLOCK_START = /^ {0,3}(>|([-*+]|\d+[.)])([ \t]|$))/
-// The underline of a setext heading: up to three spaces, then = or - only.
-const SETEXT_UNDERLINE = /^ {0,3}(=+|-+)[ \t]*$/
-// A list item line: spaces, the marker, the white space after it, then content (PMK-280).
-const LIST_ITEM = /^( {0,3})([-*+]|\d+[.)])([ \t]+)\S/
-// The columns of leading white space, a tab counting up to the next stop of 4: four or more start an indented code block (PMK-281).
-// The column where the content of the list item `line` starts, null when it is not an item (a thematic break such as `- - -` is not one). CommonMark: one to four columns of white
-// space after the marker (a tab goes to the next stop of 4) put the content after them; five or more put it one column after the marker (PMK-281 review).
-const itemContent = (line) => {
-  const item = THEMATIC_BREAK.test(line) ? null : LIST_ITEM.exec(line)
-  if (item === null) return null
-  const marker = item[1].length + item[2].length
-  let column = marker
-  for (const char of item[3]) column += char === '\t' ? 4 - (column % 4) : 1
-  // Five or more columns open the item with indented code, not a paragraph (PMK-291 review).
-  return { column: column - marker >= 5 ? marker + 1 : column, code: column - marker >= 5 }
-}
-// An item with nothing after its marker: its content column is one past the marker, and a blank line right after it ends it (PMK-291 review).
-const EMPTY_ITEM = /^( {0,3})([-*+]|\d+[.)])[ \t]*$/
-const indentColumns = (item) => {
-  let columns = 0
-  for (const char of item) {
-    if (char === ' ') columns++
-    else if (char === '\t') columns += 4 - (columns % 4)
-    else break
-  }
-  return columns
-}
 const YAML_STATUS = /^status:/i
 const capitalized = (text) => text.charAt(0).toUpperCase() + text.slice(1)
 // Which lines are inside a fenced code block, fences included: a status or a heading there is an example, not the ADR's own (PMK-263).
@@ -175,10 +142,160 @@ const unquote = (value) => {
   return quoted === null ? value.trim() : quoted[1] === "'" ? quoted[2].replaceAll("''", "'") : quoted[2]
 }
 
+// CommonMark block starts, read at the first character after the indent of what is left of a line.
+const CM_ATX = /^#{1,6}(?:[ \t]+|$)/
+const CM_FENCE = /^`{3,}(?!.*`)|^~{3,}/
+const CM_CLOSING_FENCE = /^(?:`{3,}|~{3,})(?=[ \t]*$)/
+const CM_SETEXT = /^(?:=+|-+)[ \t]*$/
+const CM_BREAK = /^(?:\*[ \t]*){3,}$|^(?:_[ \t]*){3,}$|^(?:-[ \t]*){3,}$/
+const CM_MARKER = /^(?:[*+-]|(\d{1,9})[.)])/
+// The open blocks that take the rest of a line as their own, so no block starts inside them.
+const LEAVES = new Set(['paragraph', 'code', 'fence', 'heading', 'break'])
+
+/**
+ * Where the section that starts at line `from` stops: the first heading at the top level of the document after it, ATX or setext (PMK-273),
+ * so a heading inside a list item or a quote is not a section (PMK-291). The walk follows CommonMark's block structure line by line:
+ * a stack of open blocks from the document in, where each line first continues the open ones in order (a quote by its `>`, a list item
+ * by the content column of its marker, a paragraph unless blank, indented code by 4 more columns, a fence until its closing fence), then
+ * starts new blocks in the deepest one it continued, and a line that continues no more than a paragraph is a lazy continuation of it.
+ * A setext underline makes a heading only of a paragraph it continues, so under a list item it is a break or a lazy line (PMK-280).
+ * Columns count a tab to the next stop of 4. Not a Markdown parser: no inline content, no HTML blocks, no link reference definitions.
+ */
+function sectionEnd(lines, from) {
+  const open = [{ type: 'document' }]
+  for (let j = from + 1; j < lines.length; j++) {
+    const line = lines[j]
+    let offset = 0
+    let column = 0
+    let next, nextColumn, indent, blank
+    const findNext = () => {
+      next = offset
+      nextColumn = column
+      while (line[next] === ' ' || line[next] === '\t') nextColumn += line[next++] === '\t' ? 4 - (nextColumn % 4) : 1
+      indent = nextColumn - column
+      blank = next === line.length
+    }
+    const toNext = () => { offset = next; column = nextColumn }
+    // Moves `count` characters, or `count` columns when `columns`, where a tab may be only partly consumed.
+    const advance = (count, columns) => {
+      while (count > 0 && offset < line.length) {
+        const width = line[offset] === '\t' ? 4 - (column % 4) : 1
+        const step = columns ? Math.min(width, count) : width
+        column += step
+        count -= columns ? step : 1
+        if (step === width) offset++
+      }
+    }
+    const spaceOrTab = () => line[offset] === ' ' || line[offset] === '\t'
+
+    // Continue the open blocks; `matched` is the deepest one the line continues.
+    let matched = 0
+    let closedFence = false
+    for (let k = 1; k < open.length; k++) {
+      const block = open[k]
+      findNext()
+      if (block.type === 'quote') {
+        if (indent >= 4 || line[next] !== '>') break
+        toNext()
+        advance(1, false)
+        if (spaceOrTab()) advance(1, true)
+      } else if (block.type === 'item') {
+        if (blank && !block.filled) break
+        if (blank) toNext()
+        else if (indent >= block.width) advance(block.width, true)
+        else break
+      } else if (block.type === 'paragraph') {
+        if (blank) break
+      } else if (block.type === 'code') {
+        if (indent >= 4) advance(4, true)
+        else if (blank) toNext()
+        else break
+      } else if (block.type === 'fence') {
+        const fence = indent <= 3 && line[next] === block.char ? CM_CLOSING_FENCE.exec(line.slice(next)) : null
+        if (fence !== null && fence[0].length >= block.length) {
+          open.length = k
+          closedFence = true
+          break
+        }
+      } else break
+      matched = k
+    }
+    if (closedFence) continue
+
+    // Start new blocks in the deepest continued one; starting one closes the open blocks the line did not continue.
+    let container = matched
+    let allClosed = container === open.length - 1
+    const add = (block) => {
+      open.length = container + 1
+      allClosed = true
+      // A paragraph, a heading or code holds no block: the new one goes beside it.
+      while (LEAVES.has(open.at(-1).type)) open.pop()
+      open.at(-1).filled = true
+      open.push(block)
+      container = open.length - 1
+    }
+    while (!LEAVES.has(open[container].type) || open[container].type === 'paragraph') {
+      findNext()
+      const rest = line.slice(next)
+      const marker = indent < 4 ? CM_MARKER.exec(rest) : null
+      const inParagraph = open[container].type === 'paragraph'
+      if (indent < 4 && rest[0] === '>') {
+        toNext()
+        advance(1, false)
+        if (spaceOrTab()) advance(1, true)
+        add({ type: 'quote' })
+        continue
+      } else if (indent < 4 && CM_ATX.test(rest)) {
+        add({ type: 'heading' })
+        if (container === 1) return j
+      } else if (indent < 4 && CM_FENCE.test(rest)) {
+        const fence = CM_FENCE.exec(rest)[0]
+        add({ type: 'fence', char: fence[0], length: fence.length })
+      } else if (indent < 4 && inParagraph && CM_SETEXT.test(rest)) {
+        // The whole paragraph becomes the heading, so the section stops at its first line.
+        if (container === 1) return open[1].start
+        open[container] = { type: 'heading' }
+      } else if (indent < 4 && CM_BREAK.test(rest)) {
+        add({ type: 'break' })
+      } else if (marker !== null && /^[ \t]?$/.test(rest[marker[0].length] ?? '') && !(inParagraph && (/^[ \t]*$/.test(rest.slice(marker[0].length)) || (marker[1] !== undefined && Number(marker[1]) !== 1)))) {
+        // A list item: an empty one, or an ordered one not at 1, does not interrupt a paragraph. Its content starts after the marker
+        // and 1 to 4 columns of white space; with 5 or more, or nothing after the marker, one column after the marker.
+        const markerOffset = indent
+        toNext()
+        advance(marker[0].length, true)
+        const spacesColumn = column
+        const spacesOffset = offset
+        do advance(1, true)
+        while (column - spacesColumn < 5 && spaceOrTab())
+        const spaces = column - spacesColumn
+        let width = marker[0].length + spaces
+        if (spaces >= 5 || spaces < 1 || offset >= line.length) {
+          width = marker[0].length + 1
+          column = spacesColumn
+          offset = spacesOffset
+          if (spaceOrTab()) advance(1, true)
+        }
+        add({ type: 'item', width: markerOffset + width, filled: false })
+        continue
+      } else if (indent >= 4 && !blank && open.at(-1).type !== 'paragraph') {
+        advance(4, true)
+        add({ type: 'code' })
+      } else toNext()
+      break
+    }
+
+    // What is left is text: a lazy line of the open paragraph, a line of the leaf it reached, or a new paragraph.
+    if (!allClosed && !blank && open.at(-1).type === 'paragraph') continue
+    open.length = container + 1
+    if (!blank && !LEAVES.has(open[container].type)) add({ type: 'paragraph', start: j })
+  }
+  return lines.length
+}
+
 /**
  * The places of an ADR text that hold its title and status, found once for `adrInfo` and `setAdrStatus` so the two never disagree (PMK-263):
  * `yaml` (index of the `status:` line in the front matter, -1 when none), `line` (a `Status:` line above the first `## ` section),
- * `section` (a `## Status` heading: indented up to three spaces, a tab after the `##`, with or without a closing `#` sequence, PMK-282), `title` (the first `# ` heading) and `end(from)`, where the section that starts at `from` stops: at the next heading of any level, so a `### ` subsection is not part of it (PMK-269), in any CommonMark form: ATX (indented up to three spaces, a tab after the `#`, empty) or setext (PMK-273).
+ * `section` (a `## Status` heading: indented up to three spaces, a tab after the `##`, with or without a closing `#` sequence, PMK-282), `title` (the first `# ` heading) and `end(from)`, where the section that starts at `from` stops: at the next heading of any level, so a `### ` subsection is not part of it (PMK-269), in any CommonMark form: ATX (indented up to three spaces, a tab after the `#`, empty) or setext (PMK-273), and at the top level of the document (`sectionEnd`, PMK-291).
  * Lines inside a fenced code block never count.
  */
 function locate(lines) {
@@ -188,58 +305,7 @@ function locate(lines) {
   const at = (test, to = lines.length) => lines.findIndex((item, i) => i >= start && i < to && !code[i] && test(item))
   const head = at((item) => headingLevel(item) === 2)
   const yaml = close === -1 ? -1 : lines.slice(1, close).findIndex((item) => YAML_STATUS.test(item)) + 1 || -1
-  const end = (from) => {
-    const para = (i) => i > from && !code[i] && lines[i].trim() !== '' && headingLevel(lines[i]) === 0 && !THEMATIC_BREAK.test(lines[i])
-    // Whether the line `top` sits inside a list item, so a setext underline below it is a thematic break (CommonMark gives a setext heading no
-    // lazy continuation, PMK-280). A walk from the section start keeps the content columns of the open items: a line indented less than the
-    // innermost one closes it, so a wider sibling item, a fence or any block at a lower column ends the list, unless it is a lazy continuation
-    // of the paragraph above it (PMK-291). Not a list parser: no quotes, no numbering.
-    const continuesItem = (top) => {
-      const open = []
-      const close = (indent) => { while (open.length > 0 && indent < open.at(-1)) open.pop() }
-      let paragraph = false
-      let empty = false
-      for (let j = from + 1; j <= top; j++) {
-        const item = lines[j]
-        if (item.trim() === '') {
-          if (empty) open.pop()
-          paragraph = empty = false
-          continue
-        }
-        if (code[j] && code[j - 1]) { paragraph = empty = false; continue }
-        const indent = indentColumns(item)
-        // After a blank line, four columns past the innermost item are indented code: it closes nothing and opens nothing, and as `top` it does not continue the item (PMK-291 cycle 2).
-        if (!paragraph && indent >= (open.at(-1) ?? 0) + 4) { if (j === top) return false; continue }
-        if (j === top) { close(indent); return open.length > 0 }
-        // Left of the innermost item, any item (an empty one, `2.`) starts a block; inside its paragraph only INTERRUPTS_PARAGRAPH does.
-        const starts = code[j] || THEMATIC_BREAK.test(item) || (indent < (open.at(-1) ?? 0) ? BLOCK_START : INTERRUPTS_PARAGRAPH).test(item)
-        if (paragraph && !starts) continue
-        close(indent)
-        const start = code[j] ? null : itemContent(item)
-        const blank = !code[j] && !THEMATIC_BREAK.test(item) && EMPTY_ITEM.exec(item)
-        if (start !== null) open.push(start.column)
-        if (blank) open.push(blank[1].length + blank[2].length + 1)
-        empty = Boolean(blank)
-        paragraph = (!starts && !blank) || (start !== null && !start.code)
-      }
-      return false
-    }
-    for (let i = from + 1; i < lines.length; i++) {
-      if (code[i]) continue
-      if (headingLevel(lines[i]) > 0) return i
-      if (!SETEXT_UNDERLINE.test(lines[i]) || !para(i - 1)) continue
-      // A setext heading is the whole paragraph above its underline. The paragraph starts after a blank line, a heading or a thematic break,
-      // and at a quote or a list item that interrupts one. When it opens with a quote or a list item, the underline is a thematic break or a
-      // lazy continuation instead. A run of indented code that opens it (a line of 4 columns after a blank line) is not part of it: the
-      // paragraph starts at the first line after the code, and with none before the underline there is no heading (PMK-281).
-      let top = i - 1
-      while (para(top - 1) && !INTERRUPTS_PARAGRAPH.test(lines[top])) top--
-      // A line of 4 columns that continues a list item above it is not code (PMK-281 review).
-      while (top < i && indentColumns(lines[top]) >= 4 && !continuesItem(top)) top++
-      if (top < i && !BLOCK_START.test(lines[top]) && !continuesItem(top)) return top
-    }
-    return lines.length
-  }
+  const end = (from) => sectionEnd(lines, from)
   return { close, start, yaml, head, line: at((item) => STATUS_LINE.test(item), head === -1 ? lines.length : head), section: at((item) => headingLevel(item) === 2 && headingText(item).toLowerCase() === 'status'), title: at((item) => headingLevel(item) === 1, head === -1 ? lines.length : head), end }
 }
 const withoutBlanks = (lines, from) => {
