@@ -112,15 +112,28 @@ const STATUS_SECTION = /^##\s+Status\s*$/i
 const ATX_HEADING = /^ {0,3}(#{1,6})([ \t]|$)/
 // The level (1 to 6) of an ATX heading line, 0 for any other line: the one test for `title`, `head`, `## Status` and the end of a section.
 const headingLevel = (item) => ATX_HEADING.exec(item)?.[1].length ?? 0
-// A thematic break (`***`, `---`, `___`, spaces allowed) and a line that starts a quote or a list item: each interrupts a paragraph.
+// A thematic break (`***`, `---`, `___`, spaces allowed).
 const THEMATIC_BREAK = /^ {0,3}([-*_])( *\1){2,} *$/
-const INTERRUPTS_PARAGRAPH = /^ {0,3}(>|([-*+]|\d+[.)])([ \t]|$))/
+// What interrupts a paragraph (CommonMark): a quote, a bullet item with content, an ordered item with content that starts at 1. An empty item and `2. foo` do not (PMK-281).
+const INTERRUPTS_PARAGRAPH = /^ {0,3}(>|([-*+]|0*1[.)])[ \t]+\S)/
+// What starts a block after a blank line, a heading or a break: any list item, empty or not, and a quote.
+const BLOCK_START = /^ {0,3}(>|([-*+]|\d+[.)])([ \t]|$))/
 // The underline of a setext heading: up to three spaces, then = or - only.
+const SETEXT_UNDERLINE = /^ {0,3}(=+|-+)[ \t]*$/
 // A list item line, with the width of its marker: its content starts at the length of the first group, and a later line indented that far belongs to the item (PMK-280).
+// A thematic break such as `- - -` is not an item, so the caller tests THEMATIC_BREAK first.
 const LIST_ITEM = /^( {0,3}(?:[-*+]|\d+[.)])[ \t]+)\S/
 const indentOf = (item) => item.length - item.trimStart().length
-const SETEXT_UNDERLINE = /^ {0,3}(=+|-+)[ \t]*$/
-const NOT_PARAGRAPH_START = /^( {4}|\t)/
+// The columns of leading white space, a tab counting up to the next stop of 4: four or more start an indented code block (PMK-281).
+const indentColumns = (item) => {
+  let columns = 0
+  for (const char of item) {
+    if (char === ' ') columns++
+    else if (char === '\t') columns += 4 - (columns % 4)
+    else break
+  }
+  return columns
+}
 const YAML_STATUS = /^status:/i
 const capitalized = (text) => text.charAt(0).toUpperCase() + text.slice(1)
 // Which lines are inside a fenced code block, fences included: a status or a heading there is an example, not the ADR's own (PMK-263).
@@ -171,7 +184,7 @@ function locate(lines) {
       const indent = indentOf(lines[top])
       for (let j = top - 1; indent > 0 && j > from; j--) {
         if (code[j] || lines[j].trim() === '') continue
-        const item = LIST_ITEM.exec(lines[j])
+        const item = THEMATIC_BREAK.test(lines[j]) ? null : LIST_ITEM.exec(lines[j])
         if (item !== null && item[1].length <= indent) return true
         if (indentOf(lines[j]) === 0 && item === null) return false
       }
@@ -182,11 +195,13 @@ function locate(lines) {
       if (headingLevel(lines[i]) > 0) return i
       if (!SETEXT_UNDERLINE.test(lines[i]) || !para(i - 1)) continue
       // A setext heading is the whole paragraph above its underline. The paragraph starts after a blank line, a heading or a thematic break,
-      // and at a quote or a list item, which interrupts one. When it opens with a quote or a list item, or indented code, the underline is a
-      // thematic break or a lazy continuation instead.
+      // and at a quote or a list item that interrupts one. When it opens with a quote or a list item, the underline is a thematic break or a
+      // lazy continuation instead. A run of indented code that opens it (a line of 4 columns after a blank line) is not part of it: the
+      // paragraph starts at the first line after the code, and with none before the underline there is no heading (PMK-281).
       let top = i - 1
       while (para(top - 1) && !INTERRUPTS_PARAGRAPH.test(lines[top])) top--
-      if (!INTERRUPTS_PARAGRAPH.test(lines[top]) && !NOT_PARAGRAPH_START.test(lines[top]) && !continuesItem(top)) return top
+      while (top < i && indentColumns(lines[top]) >= 4) top++
+      if (top < i && !BLOCK_START.test(lines[top]) && !continuesItem(top)) return top
     }
     return lines.length
   }

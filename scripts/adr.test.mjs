@@ -918,6 +918,38 @@ test('a list item continuation above --- keeps the Status section open, in adr-g
   assert.equal(adrInfo('# T\n\n## Status\n\nAccepted\n\n- a\n\nb\n---\n').status, 'Accepted - a')
 })
 
+test('only a line that CommonMark lets interrupt a paragraph does, so 2. foo, an empty item and a tab line are part of it (PMK-281)', async () => {
+  const cases = {
+    'ordered item not at 1': ['Accepted\n2. foo\n===\n', null],
+    'empty * item': ['Accepted\n*\n===\n', null],
+    'empty ordered item': ['Accepted\n1.\n===\n', null],
+    'lone -': ['Accepted\n-\n===\n', null],
+    'tab line inside the paragraph': ['Accepted\n\tcode\nmore\n===\n', null],
+    'tab code, then a paragraph': ['Accepted\n\n\tcode\nmore\n===\n', 'Accepted code'],
+    'space and tab are four columns': ['Accepted\n\n \tcode\nmore\n---\n', 'Accepted code'],
+    'item at 1 interrupts': ['Accepted\n1. foo\n===\n', 'Accepted 1. foo ==='],
+    '2. foo after a blank line starts a list': ['Accepted\n\n2. foo\n===\n', 'Accepted 2. foo ==='],
+    'empty item after a blank line starts a list': ['Accepted\n\n-\n===\n', 'Accepted - ==='],
+    'tab code and no paragraph': ['Accepted\n\n\tcode\n===\n', 'Accepted code ==='],
+    'a thematic break is not a list item': ['Accepted\n\n- - -\n\n  b\n---\n', 'Accepted - - -'],
+  }
+  const root = repo()
+  let number = 1
+  for (const [name, [tail, status]] of Object.entries(cases)) {
+    const text = `# ${number}. Use V\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
+    assert.equal(adrInfo(text).status, status, name)
+    const written = setAdrStatus(text, 'deprecated').text
+    assert.match(written, /\n## Status\n\nDeprecated\n/, name)
+    assert.ok(written.endsWith('\n## Context\n\nWhy.\n'), name)
+    const file = `docs/adr/${String(number).padStart(4, "0")}-use-v.md`
+    writeAdr(root, file, text)
+    assert.equal((await adrGetFrom(root, String(number))).data.status, status, name)
+    assert.equal((await adrStatus(root, String(number), 'deprecated')).code, 0, name)
+    assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), written, name)
+    number++
+  }
+})
+
 test('an indented ## heading is the first section, found by the same test as the end of the Status section (PMK-273 review)', () => {
   // A Status line below an indented `## Context` is not above the first section, so it is not the ADR's status.
   assert.equal(adrInfo('# T\n\n ## Context\n\nStatus: Accepted\n').status, null)
