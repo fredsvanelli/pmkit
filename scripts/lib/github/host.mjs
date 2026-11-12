@@ -152,7 +152,7 @@ export function createGithubHost({ root, env, exec = defaultExec({ root, env }) 
 
     createBranch(name, { from }) {
       // --no-track: a remote ref as the base would make git set it as upstream, and a bare git push would then target the default branch.
-      check('git', ['switch', '--no-track', '-c',refArg('branch', name), refArg('from', from)])
+      check('git', ['switch', '--no-track', '-c', refArg('branch', name), refArg('from', from)])
     },
 
     push(branch) {
