@@ -2,14 +2,14 @@
 id: PMK-278
 title: Hide absolute paths in the git errors of other commands
 type: bug
-status: in_progress
+status: in_review
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
 branch: pmk-278-hide-absolute-paths-in-the-git-errors-of
 created: 2026-11-12T02:12:43.682Z
-updated: 2026-11-12T02:30:17Z
+updated: 2026-11-12T02:42:07Z
 ---
 
 ## Description
