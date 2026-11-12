@@ -1326,3 +1326,26 @@ test('an empty item followed by a line and a === or --- underline ends the Statu
     number++
   }
 })
+
+test('a 10-digit ordered marker is paragraph text, so an underline ends the Status section at it, in adr-get and adr-status alike (PMK-292)', async () => {
+  const cases = {
+    'blank line, then --- underline': ['Accepted\n\n1234567890. a\nb\n---\n', 'Accepted'],
+    'blank line, then === underline': ['Accepted\n\n1234567890. a\nb\n===\n', 'Accepted'],
+    // Glued to the status text, the underline takes the text with it, as a setext heading does (PMK-273).
+    'glued to the status, then ---': ['Accepted\n1234567890. a\nb\n---\n', null],
+  }
+  const root = repo()
+  let number = 30
+  for (const [name, [tail, status]] of Object.entries(cases)) {
+    const text = `# ${number}. Use T\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
+    assert.equal(adrInfo(text).status, status, name)
+    const written = setAdrStatus(text, 'deprecated').text
+    assert.ok(written.endsWith('\n## Context\n\nWhy.\n'), name)
+    const file = `docs/adr/${String(number).padStart(4, '0')}-use-t.md`
+    writeAdr(root, file, text)
+    assert.equal((await adrGetFrom(root, String(number))).data.status, status, name)
+    assert.equal((await adrStatus(root, String(number), 'deprecated')).code, 0, name)
+    assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), written, name)
+    number++
+  }
+})
