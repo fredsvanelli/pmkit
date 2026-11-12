@@ -1,1 +1,7 @@
 {"at":"2026-11-12T00:43:33Z","by":"fred","op":"create","to":{"id":"PMK-272","title":"Pin the one-second unarchive history limit with a test","type":"chore","status":"backlog","priority":"low","estimate":1,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-12T00:43:33.227Z","updated":"2026-11-12T00:43:33Z"}}
+{"at":"2026-11-12T00:56:57Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-12T00:56:57Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-12T00:57:00Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-272-pin-the-one-second-unarchive-history"}
+{"at":"2026-11-12T00:58:22Z","by":"fred","op":"comment","to":"2026-11-12T00-58-22Z-fred.md"}
+{"at":"2026-11-12T01:18:18Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-12T01:18:18Z","by":"fred","op":"update","field":"acceptance_criteria"}
