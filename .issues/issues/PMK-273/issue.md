@@ -2,14 +2,14 @@
 id: PMK-273
 title: "End an ADR's Status section at every heading form"
 type: bug
-status: in_progress
+status: in_review
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
 branch: pmk-273-end-an-adr-s-status-section-at-every
 created: 2026-11-12T00:43:33.314Z
-updated: 2026-11-12T01:23:00Z
+updated: 2026-11-12T01:28:48Z
 ---
 
 ## Description
