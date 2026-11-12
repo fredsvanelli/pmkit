@@ -1,1 +1,5 @@
 {"at":"2026-11-12T14:41:34Z","by":"fred","op":"create","to":{"id":"PMK-284","title":"Hide a path after a backtick, a brace, a pipe or a redirect","type":"bug","status":"backlog","priority":"low","estimate":1,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-12T14:41:34.609Z","updated":"2026-11-12T14:41:34Z"}}
+{"at":"2026-11-12T14:50:23Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-12T14:50:23Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-12T14:50:29Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-284-hide-a-path-after-a-backtick-a-brace-a"}
+{"at":"2026-11-12T14:51:08Z","by":"fred","op":"comment","to":"2026-11-12T14-51-08Z-fred.md"}

@@ -59,7 +59,7 @@ test("hideAbsolutePaths leaves no piece of a path with a space or a closing ']' 
     const shown = hideAbsolutePaths(text)
     for (const part of ['Users', 'x y', '/z']) assert.ok(!shown.includes(part), `${part} in ${shown} (from ${text})`)
   }
-  assert.equal(hideAbsolutePaths("['/Users/x y'] and '/b c/d'"), "['<path>'")
+  assert.equal(hideAbsolutePaths("['/Users/x y'] and '/b c/d'"), "['<path>'] and '<path>'") // PMK-284: a quote before ']' closes, so the text after it shows
 })
 
 test("hideAbsolutePaths keeps the other starts and leaves ordinary text with the new characters alone (PMK-277)", () => {
@@ -95,4 +95,30 @@ test('hideAbsolutePaths replaces the credentials of a URL it keeps whole, with a
   const token = `ghp_${'a1B2'.repeat(6)}`
   const shown = hideAbsolutePaths(`fatal: unable to access 'https://${token}@github.com/o/r.git/': 403`)
   assert.ok(!shown.includes(token) && shown.includes('github.com/o/r.git'), shown)
+})
+
+test('hideAbsolutePaths starts a path after a backtick, a brace, a pipe and a redirect (PMK-284)', () => {
+  assert.equal(hideAbsolutePaths('a`/Users/x'), 'a`<path>')
+  assert.equal(hideAbsolutePaths('{/Users/x}'), '{<path>')
+  assert.equal(hideAbsolutePaths('a|/Users/x'), 'a|<path>')
+  assert.equal(hideAbsolutePaths('a>/Users/x'), 'a><path>')
+  assert.equal(hideAbsolutePaths('cmd 2>/Users/x y/log'), 'cmd 2><path>')
+})
+
+test('hideAbsolutePaths closes a backtick-quoted path at its closing backtick, with or without a space in it (PMK-284)', () => {
+  assert.equal(hideAbsolutePaths('x `/Users/a/r` y'), 'x `<path>` y')
+  assert.equal(hideAbsolutePaths('x `/Users/John Doe/r` y'), 'x `<path>` y')
+  assert.equal(hideAbsolutePaths('x `/Users/a/r'), 'x `<path>')
+})
+
+test("hideAbsolutePaths closes a quote before ']' and '>' so the text after it shows, and keeps O'Brien inside (PMK-284)", () => {
+  assert.equal(hideAbsolutePaths("'/Users/a/r'] gone"), "'<path>'] gone")
+  assert.equal(hideAbsolutePaths('"/Users/a b"> ok'), '"<path>"> ok')
+  assert.equal(hideAbsolutePaths("<'/Users/x y'> ok"), "<'<path>'> ok")
+  assert.equal(hideAbsolutePaths('`/Users/a b`] ok'), '`<path>`] ok')
+  assert.equal(hideAbsolutePaths("'/Users/O'Brien/x'] ok"), "'<path>'] ok")
+})
+
+test('hideAbsolutePaths leaves ordinary text with a backtick, a brace, a pipe or a redirect alone (PMK-284)', () => {
+  for (const text of ['a|b', '{a/b}', 'a > b/c', 'run `git status` now', 'x {a} | y', 'docs/a`b/c']) assert.equal(hideAbsolutePaths(text), text)
 })
