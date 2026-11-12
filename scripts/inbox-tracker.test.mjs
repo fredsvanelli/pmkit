@@ -597,6 +597,29 @@ test('PMK-195: when the branches cannot be read the prune keeps every key and sa
   assert.equal(Object.keys(inboxGet(root, 'fred', { env }).seen).length, 1)
 })
 
+test('PMK-278: the note about branches git could not read hides the absolute path of git\'s error', () => {
+  const { tracker, setNow, paths } = setup()
+  const a = tracker.createIssue({ title: 'A' }, 'ana').after.id
+  setNow('2026-10-31T10:00:00Z')
+  tracker.assign(a, 'fred', 'ana')
+  tracker.markRead({ user: 'fred' })
+  fs.rmSync(paths(a).dir, { recursive: true })
+  setNow('2026-12-05T10:00:00Z')
+  const dir = tempDir('pmkit-note paths-')
+  const config = path.join(dir, 'gitconfig')
+  fs.writeFileSync(config, '[broken\n')
+  const before = process.env.GIT_CONFIG_GLOBAL
+  process.env.GIT_CONFIG_GLOBAL = config
+  try {
+    const { note } = tracker.markRead({ user: 'fred' })
+    assert.match(note, /^old seen keys were kept because git could not read the branches \(.*<path>\)$/)
+    assert.ok(!note.includes(dir) && !note.includes(path.basename(dir)), note)
+  } finally {
+    if (before === undefined) delete process.env.GIT_CONFIG_GLOBAL
+    else process.env.GIT_CONFIG_GLOBAL = before
+  }
+})
+
 test('PMK-195: an empty created is no problem, and a repeated unknown key is listed once', () => {
   const { tracker, paths } = setup()
   const { id } = tracker.createIssue({ title: 'Hand' }, 'ana').after
