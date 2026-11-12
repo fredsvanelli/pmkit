@@ -3,3 +3,5 @@
 {"at":"2026-11-12T02:52:38Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-12T02:52:44Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-281-match-commonmark-on-which-lines"}
 {"at":"2026-11-12T02:54:16Z","by":"fred","op":"comment","to":"2026-11-12T02-54-16Z-fred.md"}
+{"at":"2026-11-12T03:04:12Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-12T03:04:12Z","by":"fred","op":"update","field":"acceptance_criteria"}
