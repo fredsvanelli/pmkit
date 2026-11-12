@@ -867,6 +867,74 @@ test('docs adr-get and docs adr-status end the Status section at a setext headin
   assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0005-use-y.md'), 'utf8'), text.replace('\nAccepted\n', '\nDeprecated\n'))
 })
 
+const headings = {
+  'one space': ' ## Status',
+  'three spaces': '   ## Status',
+  'tab after ##': '##\tStatus',
+  closed: '## Status ##',
+  'closed with five': '## Status #####',
+  'closed, trailing blank': '## Status ## ',
+  'closed with a tab': '## Status\t##',
+  'indented and closed': '  ## Status ##',
+  'upper case': '## STATUS ##',
+}
+
+test('an indented or closed ## Status heading is found, and adr-status keeps it as written (PMK-282)', () => {
+  for (const [name, heading] of Object.entries(headings)) {
+    const text = `# T\n\n${heading}\n\nAccepted\n\n## Context\n\nWhy.\n`
+    assert.deepEqual(adrInfo(text), { title: 'T', status: 'Accepted', statuses: ['Accepted'] }, name)
+    assert.deepEqual(setAdrStatus(text, 'deprecated'), { text: text.replace('\nAccepted\n', '\nDeprecated\n'), before: 'Accepted', after: 'Deprecated' }, name)
+    assert.equal(setAdrStatus(text, 'accepted').text, text, name)
+    // With a front matter key too: both change, the heading stays.
+    const both = `---\nstatus: accepted\n---\n\n# T\n\n${heading}\n\nAccepted\n`
+    assert.equal(setAdrStatus(both, 'deprecated').text, `---\nstatus: deprecated\n---\n\n# T\n\n${heading}\n\nDeprecated\n`, name)
+  }
+  // No second Status line is added above the title text.
+  assert.doesNotMatch(setAdrStatus('# T\n\n ## Status\n\nAccepted\n', 'deprecated').text, /^Status:/m)
+})
+
+test('a line that is not a Status heading is not the Status section (PMK-282)', () => {
+  const not = {
+    'no space before the #': '## Status#',
+    'four spaces': '    ## Status',
+    'level 3': '### Status',
+    'level 1': '# Status',
+    'word after': '## Status ## x',
+    'more words': '## Status quo',
+    'setext (PMK-283)': 'Status\n------',
+  }
+  for (const [name, heading] of Object.entries(not)) {
+    const text = `# T\n\n${heading}\n\nAccepted\n`
+    assert.equal(adrInfo(text).status, null, name)
+    assert.match(setAdrStatus(text, 'deprecated').text, /^Status: deprecated$/m, name)
+  }
+  const fenced = '# T\n\n```md\n## Status ##\n\nAccepted\n```\n'
+  assert.equal(adrInfo(fenced).status, null)
+  assert.equal(adrInfo('# T\n\n```md\n ## Status\n\nAccepted\n```\n').status, null)
+})
+
+test('docs adr-get reads and docs adr-status rewrites an indented or closed ## Status heading in place (PMK-282)', async () => {
+  const root = repo()
+  let number = 1
+  for (const [name, heading] of Object.entries(headings)) {
+    const file = `docs/adr/${String(number).padStart(4, '0')}-use-s.md`
+    const text = `# ${number}. Use S\n\n${heading}\n\nAccepted\n\n## Context\n\nWhy.\n`
+    writeAdr(root, file, text)
+    const get = await adrGetFrom(root, String(number))
+    assert.equal(get.code, 0, name)
+    assert.equal(get.data.status, 'Accepted', name)
+    const dry = await adrStatus(root, String(number), 'deprecated', '--dry-run')
+    assert.equal(dry.code, 0, name)
+    assert.equal(dry.data.after, text.replace('\nAccepted\n', '\nDeprecated\n'), name)
+    assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), text, name)
+    const real = await adrStatus(root, String(number), 'deprecated')
+    assert.equal(real.code, 0, name)
+    assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), text.replace('\nAccepted\n', '\nDeprecated\n'), name)
+    assert.equal((await adrGetFrom(root, String(number))).data.status, 'Deprecated', name)
+    number++
+  }
+})
+
 test('a list item, a quote or a thematic break above ---, === interrupts the paragraph, so the status is kept (PMK-273 review)', async () => {
   const cases = {
     'list item then ---': ['Accepted\n- a\n---\n', 'Accepted - a ---'],

@@ -107,11 +107,12 @@ export const adrText = (text) => text.replace(/^\uFEFF/, '').replaceAll('\r\n', 
 
 // A status line above the first section: "Status: x", "**Status:** x", "**Status**: x", optionally as a list item.
 const STATUS_LINE = /^(\s*[-*]\s+)?(\*\*Status:?\*\*:?|Status:)\s*(.*)$/i
-const STATUS_SECTION = /^##\s+Status\s*$/i
 // An ATX heading (CommonMark): up to three spaces, one to six #, then a blank or the end of the line. An empty heading (`##`) and a tab after the # count.
 const ATX_HEADING = /^ {0,3}(#{1,6})([ \t]|$)/
 // The level (1 to 6) of an ATX heading line, 0 for any other line: the one test for `title`, `head`, `## Status` and the end of a section.
 const headingLevel = (item) => ATX_HEADING.exec(item)?.[1].length ?? 0
+// The text of an ATX heading line without the opening #s and the closing sequence: a run of # after a space or tab, or the whole content (PMK-282). `Status#` has none.
+const headingText = (item) => item.replace(/^ {0,3}#{1,6}/, '').trim().replace(/(^|[ \t]+)#+$/, '')
 // A thematic break (`***`, `---`, `___`, spaces allowed).
 const THEMATIC_BREAK = /^ {0,3}([-*_])( *\1){2,} *$/
 // What interrupts a paragraph (CommonMark): a quote, a bullet item with content, an ordered item with content that starts at 1. An empty item and `2. foo` do not (PMK-281).
@@ -174,7 +175,7 @@ const unquote = (value) => {
 /**
  * The places of an ADR text that hold its title and status, found once for `adrInfo` and `setAdrStatus` so the two never disagree (PMK-263):
  * `yaml` (index of the `status:` line in the front matter, -1 when none), `line` (a `Status:` line above the first `## ` section),
- * `section` (a `## Status` heading), `title` (the first `# ` heading) and `end(from)`, where the section that starts at `from` stops: at the next heading of any level, so a `### ` subsection is not part of it (PMK-269), in any CommonMark form: ATX (indented up to three spaces, a tab after the `#`, empty) or setext (PMK-273).
+ * `section` (a `## Status` heading: indented up to three spaces, a tab after the `##`, with or without a closing `#` sequence, PMK-282), `title` (the first `# ` heading) and `end(from)`, where the section that starts at `from` stops: at the next heading of any level, so a `### ` subsection is not part of it (PMK-269), in any CommonMark form: ATX (indented up to three spaces, a tab after the `#`, empty) or setext (PMK-273).
  * Lines inside a fenced code block never count.
  */
 function locate(lines) {
@@ -214,7 +215,7 @@ function locate(lines) {
     }
     return lines.length
   }
-  return { close, start, yaml, head, line: at((item) => STATUS_LINE.test(item), head === -1 ? lines.length : head), section: at((item) => STATUS_SECTION.test(item)), title: at((item) => headingLevel(item) === 1, head === -1 ? lines.length : head), end }
+  return { close, start, yaml, head, line: at((item) => STATUS_LINE.test(item), head === -1 ? lines.length : head), section: at((item) => headingLevel(item) === 2 && headingText(item).toLowerCase() === 'status'), title: at((item) => headingLevel(item) === 1, head === -1 ? lines.length : head), end }
 }
 const withoutBlanks = (lines, from) => {
   let at = from
