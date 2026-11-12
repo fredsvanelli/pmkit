@@ -379,7 +379,8 @@ async function runAdrStatus(ctx) {
     // A permanent record: say so when the arguments look swapped, but the user may supersede with an older ADR on purpose.
     if (newer.number < adr.number) notes.push(`ADR ${newer.number} is older than ADR ${adr.number}; check that --by names the decision that replaces it`)
     // The text of the ADR cites the path without the display label tracker: (PMK-247).
-    byPath = newer.ref
+    // Both in a tracker outside the repository: the path from the folder of the ADR that holds the line, so a reader of the tracker alone can follow it (PMK-268).
+    byPath = adr.place === 'tracker' && newer.place === 'tracker' && trackerFolder === null ? slash(path.relative(path.dirname(adr.file), newer.file)) : newer.ref
   }
   const before = adrText(fs.readFileSync(adr.file, 'utf8'))
   const { text: after, before: statusBefore, after: line } = setAdrStatus(before, status, byPath)

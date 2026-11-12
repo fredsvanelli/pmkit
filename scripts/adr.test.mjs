@@ -784,3 +784,18 @@ test('a fence needs its own character and length to close, and inline triple bac
   assert.equal(adrInfo(mixed).status, 'Accepted')
   assert.equal(adrInfo('# T\n\n```js\ncode\n```  \n\n## Status\n\nProposed\n').status, 'Proposed')
 })
+
+test('docs adr-status superseded --by with both ADRs in a tracker outside the repository writes a path that resolves from the ADR that holds it (PMK-268)', async () => {
+  await withOutsideTracker(false, async ({ root, outside }) => {
+    writeAdr(outside, 'docs/adr/0003-x.md')
+    const { data, code, stderr } = await adrStatus(root, '1', 'superseded', '--by', '3')
+    assert.equal(code, 0, stderr)
+    assert.equal(data.status.after, 'Status: superseded by 0003-x.md')
+    const written = fs.readFileSync(path.join(outside, 'docs/adr/0001-a.md'), 'utf8')
+    assert.match(written, /^Status: superseded by 0003-x\.md$/m)
+    // Opened from the folder of the ADR that holds it, as a reader of the tracker alone does.
+    assert.ok(fs.existsSync(path.join(outside, 'docs/adr', '0003-x.md')))
+    // path and ref in the JSON keep their meaning.
+    assert.deepEqual([data.path, data.ref], ['tracker:docs/adr/0001-a.md', `../${path.basename(outside)}/docs/adr/0001-a.md`])
+  })
+})
