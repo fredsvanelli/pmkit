@@ -2,12 +2,14 @@
 id: PMK-267
 title: Fix unarchive history repeats within one second and the Linear flag check
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-6
+branch: pmk-267-fix-unarchive-history-repeats-within-one
 created: 2026-11-12T00:00:31.358Z
-updated: 2026-11-12T00:00:31Z
+updated: 2026-11-12T00:07:13Z
 ---
 
 ## Description
@@ -32,5 +34,5 @@ PMK-256 fixed four edge cases of `issues unarchive` and `issues bulk unarchive`.
 
 ## Acceptance criteria
 
-- [ ] After a merge that repeats an archive, unarchive, archive, unarchive sequence made within one second, the issue history shows each event once
-- [ ] On Linear, `issues bulk unarchive` with any flag answers `NOT_SUPPORTED`
+- [x] After a merge that repeats an archive, unarchive, archive, unarchive sequence made within one second, the issue history shows each event once
+- [x] On Linear, `issues bulk unarchive` with any flag answers `NOT_SUPPORTED`

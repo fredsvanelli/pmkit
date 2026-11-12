@@ -4340,9 +4340,11 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
       stderr.push(`error: ${message}\n${USAGE}`)
       return { code: 2, stdout: '', stderr: stderr.join('') }
     }
-    checkUsage(command, parsed)
     const { options } = parsed
     const root = path.resolve(typeof options.root === 'string' ? options.root : findRoot(cwd))
+    // PMK-267: Linear refuses bulk unarchive before the flag check, so a flag the command does not take answers NOT_SUPPORTED too.
+    if (command.name === 'issues bulk' && parsed.positionals[0] === 'unarchive' && loadPmkitConfig(root, { adapters }).system !== 'local') throw unarchiveNotSupported()
+    checkUsage(command, parsed)
     const dryRun = last(options['dry-run']) === true
     const now = clock(env)
     const random = randomSource(env)
