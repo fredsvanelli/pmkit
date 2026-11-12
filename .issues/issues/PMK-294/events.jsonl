@@ -3,3 +3,5 @@
 {"at":"2026-11-12T19:48:27Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-12T19:48:32Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-294-warn-when-the-status-section-is-empty"}
 {"at":"2026-11-12T19:49:14Z","by":"fred","op":"comment","to":"2026-11-12T19-49-14Z-fred.md"}
+{"at":"2026-11-12T19:50:33Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-12T19:50:34Z","by":"fred","op":"update","field":"acceptance_criteria"}
