@@ -2,12 +2,14 @@
 id: PMK-293
 title: Read the ADR title with the same closing rule as the Status heading
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-293-read-the-adr-title-with-the-same-closing
 created: 2026-11-12T14:41:35.371Z
-updated: 2026-11-12T14:41:35Z
+updated: 2026-11-12T19:27:01Z
 ---
 
 ## Description
@@ -32,5 +34,5 @@ PMK-282 reads the `## Status` heading with `headingText`, which drops a closing 
 
 ## Acceptance criteria
 
-- [ ] `# 5. Use X #` gives the title `5. Use X`, with a test
-- [ ] `## Status #` and `## Status # #` are the Status section and `## Status \#` is not, with a test
+- [x] `# 5. Use X #` gives the title `5. Use X`, with a test
+- [x] `## Status #` is the Status section, and `## Status # #` and `## Status \#` are not (only the last `#` run closes a heading, as in CommonMark), with a test

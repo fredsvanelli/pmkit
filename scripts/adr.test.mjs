@@ -943,6 +943,43 @@ test('a line that is not a Status heading is not the Status section (PMK-282)', 
   assert.equal(adrInfo('# T\n\n```md\n ## Status\n\nAccepted\n```\n').status, null)
 })
 
+test('the title drops a closing # sequence as the Status heading does (PMK-293)', () => {
+  const titles = {
+    '# 5. Use X #': '5. Use X',
+    '# 5. Use X ###': '5. Use X',
+    '# 5. Use X # #': '5. Use X #',
+    '# 5. Use X\t#': '5. Use X',
+    '   # 5. Use X #': '5. Use X',
+    '#\t5. Use X #  ': '5. Use X',
+    '# 5. Use X#': '5. Use X#',
+    '# 5. Use X \\#': '5. Use X \\#',
+    '# 5. Use X #y': '5. Use X #y',
+    '# #': '',
+    '#': '',
+  }
+  for (const [heading, title] of Object.entries(titles)) assert.equal(adrInfo(`${heading}\n\n## Status\n\nAccepted\n`).title, title, heading)
+})
+
+test('docs adr-get shows a title with a closing # sequence without it (PMK-293)', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0005-use-x.md', '# 5. Use X #\n\n## Status\n\nAccepted\n')
+  const result = await adrGetFrom(root, '5')
+  assert.equal(result.code, 0)
+  assert.equal(result.data.title, '5. Use X')
+})
+
+test('## Status # is the Status section; ## Status # # and ## Status \\# are not, as CommonMark reads them (PMK-293)', () => {
+  const text = '# T\n\n## Status #\n\nAccepted\n\n## Context\n\nWhy.\n'
+  assert.deepEqual(adrInfo(text), { title: 'T', status: 'Accepted', statuses: ['Accepted'] })
+  assert.equal(setAdrStatus(text, 'deprecated').text, text.replace('\nAccepted\n', '\nDeprecated\n'))
+  // Only the last run closes the heading, so `# #` leaves the text `Status #` (the criterion of PMK-293 said otherwise and was corrected).
+  for (const heading of ['## Status # #', '## Status \\#']) {
+    const other = `# T\n\n${heading}\n\nAccepted\n`
+    assert.equal(adrInfo(other).status, null, heading)
+    assert.match(setAdrStatus(other, 'deprecated').text, /^Status: deprecated$/m, heading)
+  }
+})
+
 test('docs adr-get reads and docs adr-status rewrites an indented or closed ## Status heading in place (PMK-282)', async () => {
   const root = repo()
   let number = 1
