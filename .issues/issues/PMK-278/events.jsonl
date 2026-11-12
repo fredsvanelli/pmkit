@@ -2,3 +2,4 @@
 {"at":"2026-11-12T02:19:28Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-12T02:19:28Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-12T02:19:30Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-278-hide-absolute-paths-in-the-git-errors-of"}
+{"at":"2026-11-12T02:20:47Z","by":"fred","op":"comment","to":"2026-11-12T02-20-47Z-fred.md"}
