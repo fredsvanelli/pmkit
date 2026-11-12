@@ -2,14 +2,14 @@
 id: PMK-287
 title: Redact the user name of an https URL in git errors
 type: bug
-status: in_progress
+status: in_review
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-287-redact-the-user-name-of-an-https-url-in
 created: 2026-11-12T14:41:34.861Z
-updated: 2026-11-12T16:49:19Z
+updated: 2026-11-12T16:49:35Z
 ---
 
 ## Description
