@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-278-hide-absolute-paths-in-the-git-errors-of
 created: 2026-11-12T02:12:43.682Z
-updated: 2026-11-12T02:19:30Z
+updated: 2026-11-12T02:30:17Z
 ---
 
 ## Description
@@ -33,5 +33,5 @@ PMK-271 hides absolute paths only in the auto_commit failure message. Other comm
 
 ## Acceptance criteria
 
-- [ ] No command message repeats an absolute path from git's stderr, with a test for at least two commands
-- [ ] The auto_commit message keeps its PMK-271 behaviour
+- [x] No command message repeats an absolute path from git's stderr, with a test for at least two commands
+- [x] The auto_commit message keeps its PMK-271 behaviour
