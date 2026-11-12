@@ -61,7 +61,7 @@ test('issues delete hides the absolute path in the git grep failure it reports a
 test('tagWarning hides the absolute path in git\'s error', () => {
   const { env, secrets } = brokenConfig()
   const warning = tagWarning(repo(), 'v1.0.0', env)
-  assert.match(warning, /^cannot check tag v1\.0\.0: fatal: bad config line 1 in file <path>$|^cannot check tag v1\.0\.0: .*<path>/)
+  assert.match(warning, /^cannot check tag v1\.0\.0: bad config line 1 in file <path>$/)
   assertHidden(warning, secrets)
 })
 

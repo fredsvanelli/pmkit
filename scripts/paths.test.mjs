@@ -63,7 +63,22 @@ test("hideAbsolutePaths leaves no piece of a path with a space or a closing ']' 
 })
 
 test("hideAbsolutePaths keeps the other starts and leaves ordinary text with the new characters alone (PMK-277)", () => {
-  assert.equal(hideAbsolutePaths('https://example.com/a'), 'https:<path>')
   assert.equal(hideAbsolutePaths('key=/x'), 'key=<path>')
   for (const text of ['see [docs/a], b;c, <tag> and me@host', 'a,b/c', '[a/b]']) assert.equal(hideAbsolutePaths(text), text)
+})
+
+test('hideAbsolutePaths keeps a scheme://host URL whole and still hides file:///x, UNC and a path after the URL (PMK-278)', () => {
+  for (const text of [
+    "fatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 403",
+    "fatal: unable to access 'http://example.com:8080/o/r.git/': Could not resolve host",
+    'ssh: connect to ssh://git@github.com/o/r.git failed',
+    'fatal: repository git://example.com/o/r.git/ not found',
+    'see https://example.com/a',
+    'remote file://server/share/x.git',
+  ]) assert.equal(hideAbsolutePaths(text), text)
+  assert.equal(hideAbsolutePaths('url file:///Users/x y/z'), 'url file:<path>')
+  assert.equal(hideAbsolutePaths("'https://h.com/r.git' is not /Users/John Doe/r"), "'https://h.com/r.git' is not <path>")
+  assert.equal(hideAbsolutePaths('error: \\\\host\\share\\a b'), 'error: <path>')
+  assert.equal(hideAbsolutePaths('error: //host/share/a'), 'error: <path>')
+  assert.equal(hideAbsolutePaths('error: C://Users/a b'), 'error: <path>')
 })
