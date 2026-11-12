@@ -338,6 +338,26 @@ function originHead(ctx) {
   return originHeads.get(ctx)
 }
 
+/**
+ * The ref `issues branch` starts from (PMK-290). `--from` must resolve to a commit. Without it the default branch is used, or origin/<default> when only the remote has it.
+ * origin is the remote `pr open` pushes to. Nothing is fetched.
+ */
+function branchBase(ctx) {
+  const exists = (ref) => { const result = readGit(ctx, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]); return !result.error && result.status === 0 }
+  const explicit = ctx.opt('from')
+  if (explicit !== undefined) {
+    if (!exists(explicit)) {
+      const remote = exists(`refs/remotes/origin/${explicit}`)
+      throw usageError(`--from "${explicit}" is not a branch or commit in this repository`, remote ? `Pass --from origin/${explicit}, the remote branch of that name` : 'Pass --from <an existing branch>, or run git fetch origin first when it is a remote branch')
+    }
+    return { from: explicit, note: '' }
+  }
+  const name = defaultBranch(ctx)
+  if (exists(`refs/heads/${name}`)) return { from: name, note: '' }
+  if (exists(`refs/remotes/origin/${name}`)) return { from: `origin/${name}`, note: ` (no local ${name})` }
+  throw usageError(`the default branch ${name} is neither a local branch nor origin/${name}`, `Run git fetch origin, or pass --from <an existing branch>`)
+}
+
 const adrPlace = (ctx) => adrLocation({ root: ctx.root, issuesDir: ctx.config().issuesDir, hosted: ctx.config().hosted })
 
 /** The one ADR file with `number` (1 to 4 digits). NOT_FOUND when none has it, CONFLICT when several do. */
@@ -1932,16 +1952,16 @@ export const COMMANDS = [
       const host = ctx.host()
       const tracker = await ctx.tracker()
       const issue = await tracker.getIssue(ctx.args[0])
+      const { from, note: fromNote } = branchBase(ctx)
       // A tracker that names branches, such as Linear, keeps its name, so its link to the git host works.
       const branch = ctx.settings().trackerBranch === true && issue.branch ? issue.branch : branchName(issue.id, issue.title)
-      const from = ctx.opt('from') ?? defaultBranch(ctx)
       // Check the tracker write first, so a refused write leaves git on the branch it was on.
       const actor = await ctx.actor()
       await tracker.updateIssue(issue.id, { branch }, actor, { dryRun: true })
-      if (ctx.dryRun) return { data: { branch, from }, text: `would create branch ${branch} from ${from}\ndry run: nothing was written`, notes: ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : [] }
+      if (ctx.dryRun) return { data: { branch, from }, text: `would create branch ${branch} from ${from}${fromNote}\ndry run: nothing was written`, notes: ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : [] }
       host.createBranch(branch, { from })
       const result = await tracker.updateIssue(issue.id, { branch }, actor)
-      return { data: { branch, ...result }, text: `created branch ${branch} from ${from}\n${writeText(result, ctx)}`, commit: issue.id, notes: [...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : []), ...(await capabilityNotesOrNone(ctx))] }
+      return { data: { branch, from, ...result }, text: `created branch ${branch} from ${from}${fromNote}\n${writeText(result, ctx)}`, commit: issue.id, notes: [...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : []), ...(await capabilityNotesOrNone(ctx))] }
     },
   },
   {

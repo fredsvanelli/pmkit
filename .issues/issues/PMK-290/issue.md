@@ -2,12 +2,14 @@
 id: PMK-290
 title: Create the issue branch when the default branch is only on the remote
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-290-create-the-issue-branch-when-the-default
 created: 2026-11-12T14:41:35.114Z
-updated: 2026-11-12T14:41:35Z
+updated: 2026-11-12T15:24:10Z
 ---
 
 ## Description
@@ -32,5 +34,5 @@ updated: 2026-11-12T14:41:35Z
 
 ## Acceptance criteria
 
-- [ ] `issues branch` with no local default branch creates the branch from the remote one and says so, with a test
-- [ ] A missing `--from` branch fails with a next step, with a test
+- [x] `issues branch` with no local default branch creates the branch from the remote one and says so, with a test
+- [x] A missing `--from` branch fails with a next step, with a test

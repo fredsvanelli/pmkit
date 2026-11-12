@@ -175,6 +175,8 @@ test('issues branch uses the name Linear suggests', async () => {
   const { fake, fetch } = withIssues(['Fix it'])
   fake.records[0].branchName = 'ada/acme-1-fix-it'
   const context = setup({ edit: (text) => withTeam(text.replace('  system: none', '  system: github')) })
+  // The base branch has to exist now (PMK-290): give the repository a local main.
+  for (const args of [['init', '-q', '-b', 'main'], ['-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'init']]) spawnSync('git', args, { cwd: context.root, env: { ...process.env, GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: '1' } })
   const result = await cli(context, ['issues', 'branch', 'ACME-1', '--as', 'user-1', '--dry-run', '--json'], fetch)
   assert.equal(result.code, 0, result.stdout + result.stderr)
   assert.equal(JSON.parse(result.stdout).branch, 'ada/acme-1-fix-it')
