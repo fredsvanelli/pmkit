@@ -190,3 +190,16 @@ test('hideAbsolutePaths hides the path of a <scheme>+file:// URL as file:// is, 
   assert.equal(hideAbsolutePaths("fatal: unable to access 'git+https://tok:x@host/o/r.git/': 403"), "fatal: unable to access 'git+https://[redacted]@host/o/r.git/': 403")
   assert.equal(hideAbsolutePaths("error: cannot fetch 'git+ssh://git@github.com/o/r.git': failed"), "error: cannot fetch 'git+ssh://git@github.com/o/r.git': failed")
 })
+
+test('hideAbsolutePaths redacts the user name of an http(s) URL, and leaves ssh alone (PMK-287)', () => {
+  assert.equal(hideAbsolutePaths('https://bob@host/r.git'), 'https://[redacted]@host/r.git')
+  assert.equal(hideAbsolutePaths("fatal: unable to access 'https://bob@host/r.git/': 403"), "fatal: unable to access 'https://[redacted]@host/r.git/': 403")
+  assert.equal(hideAbsolutePaths('see http://bob@host:8080/r.git and HTTPS://Bob@host/x'), 'see http://[redacted]@host:8080/r.git and HTTPS://[redacted]@host/x')
+  assert.equal(hideAbsolutePaths("'git+https://bob@host/r.git'"), "'git+https://[redacted]@host/r.git'")
+  assert.equal(hideAbsolutePaths('https://bob@x.com@host/r.git'), 'https://[redacted]@host/r.git') // the user runs to the last @ before the path
+  assert.equal(hideAbsolutePaths('https://bob:pw@host/r.git'), 'https://[redacted]@host/r.git') // with a password: as before
+  assert.equal(hideAbsolutePaths('https://[redacted]@host/r.git'), 'https://[redacted]@host/r.git') // a second pass changes nothing
+  for (const text of ['ssh://git@host/r.git', 'git+ssh://git@host/r.git', 'git@github.com:o/r.git', 'https://host/r.git', 'https://host/p?e=a@b', 'https://host?e=a@b', 'usage: git push <remote>/<branch>']) {
+    assert.equal(hideAbsolutePaths(text), text)
+  }
+})
