@@ -2,12 +2,14 @@
 id: PMK-301
 title: Pass the test suite under Node 26
 type: chore
-status: backlog
+status: in_progress
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-301-pass-the-test-suite-under-node-26
 created: 2026-11-12T22:25:14.338Z
-updated: 2026-11-12T22:25:14Z
+updated: 2026-11-12T22:39:48Z
 ---
 
 ## Description
