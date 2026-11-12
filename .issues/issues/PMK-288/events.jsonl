@@ -1,1 +1,4 @@
 {"at":"2026-11-12T14:41:34Z","by":"fred","op":"create","to":{"id":"PMK-288","title":"Make hideAbsolutePaths linear on long lines","type":"bug","status":"backlog","priority":"low","estimate":1,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-12T14:41:34.946Z","updated":"2026-11-12T14:41:34Z"}}
+{"at":"2026-11-12T17:21:54Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-12T17:21:54Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-12T17:21:59Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-288-make-hideabsolutepaths-linear-on-long"}
