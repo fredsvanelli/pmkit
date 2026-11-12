@@ -24,6 +24,8 @@ const START = String.raw`^|[\s(=:\[,;<@{|]|(?:^|[\s&>]|(?<![\w~^])\d)>`
 const FILE_SCHEME = String.raw`(?:[A-Za-z][A-Za-z0-9+.-]*\+)?[Ff][Ii][Ll][Ee]:`
 // scheme://host...: a URL is not a path and stays whole, except file:// and <scheme>+file://, which are always a local path, with or without a host (PMK-278, PMK-286).
 const SCHEME_URL = String.raw`\b(?!${FILE_SCHEME})[A-Za-z][A-Za-z0-9+.-]+:\/\/(?=[^\/\s])\S*`
+// The user of an http(s) URL, or of a `<scheme>+http(s)` one such as `git+https` (PMK-287): up to the last `@` before the path, a query or a fragment.
+const HTTP_USER = /^((?:[A-Za-z][A-Za-z0-9+.-]*\+)?[Hh][Tt][Tt][Pp][Ss]?:\/\/)[^\/\s?#]+@/
 
 /**
  * `text` with every absolute path (`/x`, `C:\x`, `C:/x`, UNC `\\host\x`) replaced by `<path>`, so no part of a path shows (PMK-271).
@@ -31,9 +33,9 @@ const SCHEME_URL = String.raw`\b(?!${FILE_SCHEME})[A-Za-z][A-Za-z0-9+.-]+:\/\/(?
  * stderr, so the rule never shows part of one: inside quotes (a `file://` URL too, PMK-285) it ends at the closing quote, which is a quote followed by the end of
  * the line, a space, `:` or `)`, or by `]` or `>` (one or more) followed by one of those (so the apostrophe of O'Brien stays inside; a backtick quotes like `'` and `"`); an unquoted one, or a quote that never closes, ends at
  * the end of the line. That can hide text after the path, which is the safe side. A URL `scheme://host/...` is not a path and shows whole
- * with its credentials redacted (`user:pw@`, a token); a `file://` or `<scheme>+file://` URL (PMK-286), a path without a scheme and a UNC path are hidden (PMK-278).
+ * with its credentials redacted (`user:pw@`, a token, and the user of an `http(s)` URL, PMK-287); a `file://` or `<scheme>+file://` URL (PMK-286), a path without a scheme and a UNC path are hidden (PMK-278).
  */
 export const hideAbsolutePaths = (text) =>
   text
     .replace(new RegExp(`(?<=${START})(['"\`])((?:${FILE_SCHEME}(?=\\/\\/))?)${ABSOLUTE}[^\\r\\n]*?\\1(?=$|[\\s:)]|[\\]>]+(?=$|[\\s:)]))`, 'gm'), '$1$2<path>$1')
-    .replace(new RegExp(`(${SCHEME_URL})|(?<=${START}|['"]|(?<=${START})\`)${ABSOLUTE}[^\\r\\n]*`, 'gm'), (_, url) => (url === undefined ? '<path>' : redact(url).text))
+    .replace(new RegExp(`(${SCHEME_URL})|(?<=${START}|['"]|(?<=${START})\`)${ABSOLUTE}[^\\r\\n]*`, 'gm'), (_, url) => (url === undefined ? '<path>' : redact(url).text.replace(HTTP_USER, '$1[redacted]@')))

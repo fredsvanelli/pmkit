@@ -2,12 +2,14 @@
 id: PMK-287
 title: Redact the user name of an https URL in git errors
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-287-redact-the-user-name-of-an-https-url-in
 created: 2026-11-12T14:41:34.861Z
-updated: 2026-11-12T14:41:34Z
+updated: 2026-11-12T16:49:35Z
 ---
 
 ## Description
@@ -32,5 +34,5 @@ PMK-278 shows a `scheme://host` URL through `redact(url).text`, which hides `use
 
 ## Acceptance criteria
 
-- [ ] `https://bob@host/r.git` in a git error shows as `https://[redacted]@host/r.git`, with a test
-- [ ] `ssh://git@host/r.git` is unchanged, with a test
+- [x] `https://bob@host/r.git` in a git error shows as `https://[redacted]@host/r.git`, with a test
+- [x] `ssh://git@host/r.git` is unchanged, with a test
