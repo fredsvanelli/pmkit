@@ -2,14 +2,14 @@
 id: PMK-286
 title: Hide the path of a git+file:// URL
 type: bug
-status: in_progress
+status: in_review
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-286-hide-the-path-of-a-git-file-url
 created: 2026-11-12T14:41:34.778Z
-updated: 2026-11-12T16:25:44Z
+updated: 2026-11-12T16:33:19Z
 ---
 
 ## Description
