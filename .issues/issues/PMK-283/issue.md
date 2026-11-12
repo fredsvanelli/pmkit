@@ -2,12 +2,14 @@
 id: PMK-283
 title: Test adr-status on a status followed by a setext underline
 type: chore
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-283-test-adr-status-on-a-status-followed-by
 created: 2026-11-12T02:12:44.131Z
-updated: 2026-11-12T02:12:44Z
+updated: 2026-11-12T03:56:16Z
 ---
 
 ## Description
@@ -30,4 +32,4 @@ PMK-273 reads `## Status\nAccepted\n---` (no blank line) as a setext heading, as
 
 ## Acceptance criteria
 
-- [ ] A test fixes what `docs adr-status` writes on a Status section whose text is underlined with `---`
+- [x] A test fixes what `docs adr-status` writes on a Status section whose text is underlined with `---`
