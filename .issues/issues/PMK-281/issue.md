@@ -2,12 +2,14 @@
 id: PMK-281
 title: Match CommonMark on which lines interrupt the Status paragraph
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-281-match-commonmark-on-which-lines
 created: 2026-11-12T02:12:43.954Z
-updated: 2026-11-12T02:12:43Z
+updated: 2026-11-12T03:04:29Z
 ---
 
 ## Description
@@ -34,5 +36,5 @@ PMK-273 stops the setext paragraph walk at `INTERRUPTS_PARAGRAPH` (`scripts/lib/
 
 ## Acceptance criteria
 
-- [ ] `2. foo` and a lone `-` do not interrupt the paragraph, with a test
-- [ ] A tab-indented code line before a setext underline is read as CommonMark reads it, with a test
+- [x] `2. foo` and a lone `-` do not interrupt the paragraph, with a test
+- [x] A tab-indented code line before a setext underline is read as CommonMark reads it, with a test
