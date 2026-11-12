@@ -187,15 +187,27 @@ function locate(lines) {
   const yaml = close === -1 ? -1 : lines.slice(1, close).findIndex((item) => YAML_STATUS.test(item)) + 1 || -1
   const end = (from) => {
     const para = (i) => i > from && !code[i] && lines[i].trim() !== '' && headingLevel(lines[i]) === 0 && !THEMATIC_BREAK.test(lines[i])
-    // A line indented to the content of a list item above it, whatever blank lines lie between, continues the item, and CommonMark
-    // gives a setext heading no lazy continuation, so an underline under it is a thematic break (PMK-280). Not a list parser: the nearest item that fits decides.
+    // Whether the line `top` sits inside a list item, so a setext underline below it is a thematic break (CommonMark gives a setext heading no
+    // lazy continuation, PMK-280). A walk from the section start keeps the content columns of the open items: a line indented less than the
+    // innermost one closes it, so a wider sibling item, a fence or any block at a lower column ends the list, unless it is a lazy continuation
+    // of the paragraph above it (PMK-291). Not a list parser: no quotes, no numbering.
     const continuesItem = (top) => {
-      const indent = indentColumns(lines[top])
-      for (let j = top - 1; indent > 0 && j > from; j--) {
-        if (code[j] || lines[j].trim() === '') continue
-        const content = itemContent(lines[j])
-        if (content !== null && content <= indent) return true
-        if (indentColumns(lines[j]) === 0 && content === null) return false
+      const open = []
+      const close = (indent) => { while (open.length > 0 && indent < open.at(-1)) open.pop() }
+      let paragraph = false
+      for (let j = from + 1; j <= top; j++) {
+        const item = lines[j]
+        if (item.trim() === '' || (code[j] && code[j - 1])) { paragraph = false; continue }
+        const indent = indentColumns(item)
+        // After a blank line, four columns past the innermost item are indented code: it closes nothing and opens nothing.
+        if (j !== top && !paragraph && indent >= (open.at(-1) ?? 0) + 4) continue
+        if (j === top) { close(indent); return open.length > 0 }
+        const starts = code[j] || INTERRUPTS_PARAGRAPH.test(item) || THEMATIC_BREAK.test(item)
+        if (paragraph && !starts) continue
+        close(indent)
+        const content = code[j] ? null : itemContent(item)
+        if (content !== null) open.push(content)
+        paragraph = !starts || content !== null
       }
       return false
     }

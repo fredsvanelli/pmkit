@@ -1136,3 +1136,28 @@ test('docs adr-get --from keeps ref for repository ADRs and a tracker inside the
   }
   assert.equal((await adrGetFrom(root, '9', '--from', 'docs/adr/0003-x.md')).data.error.code, 'NOT_FOUND')
 })
+
+test('the item that holds the line decides: a wider sibling, a fence at column 0 and a lazy line before the continuation (PMK-291)', async () => {
+  const cases = {
+    // `1. a` closes `- x` and `b` is outside it (content at column 3): `b` is a heading line, `---` underlines it.
+    'wider sibling': ['- x\n\n1. a\n\n  b\n---\n', '- x 1. a'],
+    // The fence at column 0 ends the list: `b` is a paragraph.
+    'fence at column 0': ['- a\n\n```\nz\n```\n  b\n---\n', '- a ``` z ```'],
+    // `lazy` belongs to `- a`, so `b` is inside the item and `---` is a thematic break.
+    'lazy continuation': ['- a\nlazy\n\n  b\n---\n', '- a lazy b ---'],
+  }
+  const root = repo()
+  let number = 1
+  for (const [name, [tail, status]] of Object.entries(cases)) {
+    const text = `# ${number}. Use U\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
+    assert.equal(adrInfo(text).status, status, name)
+    const file = `docs/adr/000${number}-use-u.md`
+    writeAdr(root, file, text)
+    assert.equal((await adrGetFrom(root, String(number))).data.status, status, name)
+    const written = setAdrStatus(text, 'deprecated').text
+    assert.equal(adrInfo(written).status, 'Deprecated', name)
+    assert.equal((await adrStatus(root, String(number), 'deprecated')).code, 0, name)
+    assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), written, name)
+    number++
+  }
+})
