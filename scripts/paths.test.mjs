@@ -98,7 +98,7 @@ test('hideAbsolutePaths replaces the credentials of a URL it keeps whole, with a
 })
 
 test('hideAbsolutePaths starts a path after a backtick, a brace, a pipe and a redirect (PMK-284)', () => {
-  assert.equal(hideAbsolutePaths('a`/Users/x'), 'a`<path>')
+  assert.equal(hideAbsolutePaths('a `/Users/x'), 'a `<path>')
   assert.equal(hideAbsolutePaths('{/Users/x}'), '{<path>')
   assert.equal(hideAbsolutePaths('a|/Users/x'), 'a|<path>')
   assert.equal(hideAbsolutePaths('cmd 2>/Users/x y/log'), 'cmd 2><path>')
@@ -138,4 +138,27 @@ test("hideAbsolutePaths closes a quote before ']' or '>' only when that characte
   assert.equal(hideAbsolutePaths("['/Users/a/r']] gone"), "['<path>']] gone")
   assert.equal(hideAbsolutePaths("'/Users/a/r'>: gone"), "'<path>'>: gone")
   assert.equal(hideAbsolutePaths("('/Users/a/r'>) gone"), "('<path>'>) gone")
+})
+
+test("hideAbsolutePaths takes a digit before '>' for a redirect only when it is not the end of a word or a revision (PMK-284 cycle 3)", () => {
+  for (const text of ['diff <rev1>/<rev2> failed', 'fatal: <sha1>/<sha2>', 'HEAD~1>/x', 'HEAD^2>/x']) assert.equal(hideAbsolutePaths(text), text)
+  assert.equal(hideAbsolutePaths('2>/x/y'), '2><path>')
+  assert.equal(hideAbsolutePaths('cmd 2>/x/y'), 'cmd 2><path>')
+  assert.equal(hideAbsolutePaths('cmd;2>/x/y'), 'cmd;2><path>')
+})
+
+test("hideAbsolutePaths opens a path after a backtick only when the backtick itself is at a start, so a closing backtick does not (PMK-284 cycle 3)", () => {
+  assert.equal(hideAbsolutePaths('use `git`/`gh` here'), 'use `git`/`gh` here')
+  assert.equal(hideAbsolutePaths('run `/Users/x y/z'), 'run `<path>')
+  assert.equal(hideAbsolutePaths('x `/Users/a/r` y'), 'x `<path>` y')
+  assert.equal(hideAbsolutePaths("a'/Users/x"), "a'<path>")
+})
+
+test('hideAbsolutePaths leaves ordinary git and gh text, revisions, arrows and markdown alone (PMK-284 cycle 3)', () => {
+  for (const text of [
+    'usage: git push <remote>/<branch>', 'diff <rev1>/<rev2> failed', 'HEAD~1>/x', 'origin/main -> origin/main', 'a => b/c',
+    'use `git`/`gh` here', 'run `git status` or `gh pr view` now', 'see `docs/a` and `b/c`', '- `x`/`y`: both', 'refs/heads/main..origin/main',
+    'fatal: ambiguous argument \'HEAD~1..HEAD\'', 'a | b/c', 'a >= b/c', '1>2/3', 'x{a}/y', 'error: src refspec foo/bar does not match any',
+  ]) assert.equal(hideAbsolutePaths(text), text)
+  assert.equal(hideAbsolutePaths('git log > /Users/x y/out'), 'git log > <path>')
 })
