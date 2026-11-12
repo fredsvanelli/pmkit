@@ -8,7 +8,12 @@ PMK-282 reads the `## Status` heading with `headingText`, which drops a closing 
 
 - `adrInfo` gives the title with `headingText(lines[title])`.
 - A test pins `# 5. Use X #` -> `5. Use X`, and the closing forms around it (`##`-style run of any length, tab before the run, `\#` kept, `#` alone, a `#` glued to the word kept, up to three spaces of indent).
-- A test pins `## Status #` and `## Status # #` as the Status section and `## Status \#` as not.
+- A test pins `## Status #` as the Status section, and `## Status # #` and `## Status \#` as not. Only the last `#` run closes a heading (CommonMark), so `## Status # #` has the text `Status #`. The issue's criterion 2 said otherwise and was corrected by the coordinator's decision.
+- A CLI test of `docs adr-get` pins the closed title: `# 5. Use X #` gives `5. Use X`.
+
+## Decision
+
+As CommonMark reads it, `# 5. Use X # #` gives the title `5. Use X #`. `headingText` is unchanged.
 
 ## Non-goals
 

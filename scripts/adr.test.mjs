@@ -960,6 +960,14 @@ test('the title drops a closing # sequence as the Status heading does (PMK-293)'
   for (const [heading, title] of Object.entries(titles)) assert.equal(adrInfo(`${heading}\n\n## Status\n\nAccepted\n`).title, title, heading)
 })
 
+test('docs adr-get shows a title with a closing # sequence without it (PMK-293)', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0005-use-x.md', '# 5. Use X #\n\n## Status\n\nAccepted\n')
+  const result = await adrGetFrom(root, '5')
+  assert.equal(result.code, 0)
+  assert.equal(result.data.title, '5. Use X')
+})
+
 test('## Status # is the Status section; ## Status # # and ## Status \\# are not, as CommonMark reads them (PMK-293)', () => {
   const text = '# T\n\n## Status #\n\nAccepted\n\n## Context\n\nWhy.\n'
   assert.deepEqual(adrInfo(text), { title: 'T', status: 'Accepted', statuses: ['Accepted'] })
