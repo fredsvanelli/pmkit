@@ -12,11 +12,11 @@ exit 0
 ? Step 5  [confirmed]
 $ pmkit issues move ISS-4M2S in_progress --json  [step 5.2, write]
 exit 0
+$ pmkit issues branch ISS-4M2S --dry-run --json  [step 6, dry run]
+exit 0
 $ git branch --show-current  [step 6, git]
 exit 0
 $ git log main..HEAD --oneline  [step 6, git]
-exit 0
-$ pmkit issues branch ISS-4M2S --dry-run --json  [step 6, dry run]
 exit 0
 ? Step 6  [confirmed]
 $ pmkit issues branch ISS-4M2S --json  [step 6, write]

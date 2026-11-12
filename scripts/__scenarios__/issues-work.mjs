@@ -57,10 +57,10 @@ export default {
     { step: '5.2', dryRun: move('in_progress') },
     { confirm: 'Step 5' },
     { step: '5.2', write: move('in_progress') },
-    // Step 6: on main with no extra commits, so the branch starts from main.
+    // Step 6: the dry run gives the base (`from`, main here), then on main with no extra commits the branch starts from main.
+    { step: '6', dryRun: branch },
     { step: '6', git: ['branch', '--show-current'] },
     { step: '6', git: ['log', 'main..HEAD', '--oneline'] },
-    { step: '6', dryRun: branch },
     { confirm: 'Step 6' },
     { step: '6', write: branch },
     // Step 7: the plan is approved, then posted as a comment.
