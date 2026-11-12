@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-277-hide-an-absolute-path-that-follows-a
 created: 2026-11-12T02:12:43.592Z
-updated: 2026-11-12T02:19:24Z
+updated: 2026-11-12T02:29:15Z
 ---
 
 ## Description
@@ -33,4 +33,4 @@ PMK-271 hides absolute paths in the `UPSTREAM` message of a failed auto_commit w
 
 ## Acceptance criteria
 
-- [ ] An absolute path after `[`, `,`, `;`, `<` or `@` in git's stderr shows no part of the path in the `UPSTREAM` message, with a test
+- [x] An absolute path after `[`, `,`, `;`, `<` or `@` in git's stderr shows no part of the path in the `UPSTREAM` message, with a test
