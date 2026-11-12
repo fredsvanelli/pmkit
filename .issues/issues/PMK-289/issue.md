@@ -2,12 +2,14 @@
 id: PMK-289
 title: Hide the absolute paths left in git and gh error texts
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-6
+branch: pmk-289-hide-the-absolute-paths-left-in-git-and
 created: 2026-11-12T14:41:35.031Z
-updated: 2026-11-12T14:41:35Z
+updated: 2026-11-12T14:50:40Z
 ---
 
 ## Description
