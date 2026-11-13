@@ -2,12 +2,14 @@
 id: PMK-305
 title: Say in pr open when the branch is behind origin
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-305-say-in-pr-open-when-the-branch-is-behind
 created: 2026-11-13T16:20:45.502Z
-updated: 2026-11-13T16:20:45Z
+updated: 2026-11-13T16:32:03Z
 ---
 
 ## Description

@@ -384,6 +384,22 @@ function syncNotes(from, sync, created = null) {
   return [`${from} is ${commits(sync.behind)} behind origin/${from} (as of the last fetch), ${early}. ${created === null ? `Run git pull --ff-only on ${from} first, or ${next}` : `Run git fetch origin, then ${next}`}`]
 }
 
+/**
+ * The note for a branch that lacks commits of the last fetched origin/<base> (PMK-305): `pr open` pushes it, and a pull request from an old base may conflict.
+ * Local refs only, nothing is fetched and the push is never refused. No note when origin/<base> is missing or the branch has them all;
+ * `could not compare` when git cannot count, which is not the same as up to date.
+ */
+function behindNotes(ctx, branch, base) {
+  const exists = (ref) => { const result = readGit(ctx, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]); return !result.error && result.status === 0 }
+  const remote = `refs/remotes/origin/${base}`
+  if (!exists(remote)) return []
+  const counted = readGit(ctx, ['rev-list', '--count', `refs/heads/${branch}..${remote}`])
+  const behind = !counted.error && counted.status === 0 ? Number(counted.stdout.trim()) : NaN
+  if (!Number.isInteger(behind)) return [`could not compare ${branch} with origin/${base}, so it may be behind and the pull request may start from an old base. Run git fetch origin, check with git log ${branch}..origin/${base}, and when it is behind run git rebase origin/${base}`]
+  if (behind === 0) return []
+  return [`${branch} is ${behind} ${behind === 1 ? 'commit' : 'commits'} behind origin/${base} (as of the last fetch), so the pull request may conflict or miss fixes. Run git fetch origin, then git rebase origin/${base}`]
+}
+
 const adrPlace = (ctx) => adrLocation({ root: ctx.root, issuesDir: ctx.config().issuesDir, hosted: ctx.config().hosted })
 
 /** The one ADR file with `number` (1 to 4 digits). NOT_FOUND when none has it, CONFLICT when several do. */
@@ -2032,16 +2048,19 @@ export const COMMANDS = [
       // gh refuses a second pull request for a branch, so an open one is pushed to and returned as it is.
       const found = host.getPullRequest({ head: issue.branch })
       const open = found?.state === 'OPEN' ? found : null
+      // In the JSON too, as `issues branch` does: the agent reads the JSON. The push is never refused for it.
+      const behind = behindNotes(ctx, issue.branch, request.base)
+      const behindData = behind.length > 0 ? { notes: behind } : {}
       if (ctx.dryRun) {
         const text = open
           ? `would push ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`
           : `would open a pull request ${request.head} to ${request.base}\n${request.title}\n\n${body}`
-        return { data: { ...request, existing: open !== null, pr: open }, text: `${text}\ndry run: nothing was written`, notes: [...(open ? [] : defaultBranchNotes(ctx)), ...(await capabilityNotesOrNone(ctx))] }
+        return { data: { ...request, existing: open !== null, pr: open, ...behindData }, text: `${text}\ndry run: nothing was written`, notes: [...(open ? [] : defaultBranchNotes(ctx)), ...behindNotes(ctx, issue.branch, request.base), ...(await capabilityNotesOrNone(ctx))] }
       }
       host.push(issue.branch)
-      if (open) return { data: { ...open, existing: true }, text: `pushed ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`, notes: await capabilityNotesOrNone(ctx) }
+      if (open) return { data: { ...open, existing: true, ...behindData }, text: `pushed ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`, notes: [...behind, ...(await capabilityNotesOrNone(ctx))] }
       const pr = host.openPullRequest(request)
-      return { data: { ...pr, existing: false }, text: `opened pull request #${pr.number} ${pr.url}`, notes: [...defaultBranchNotes(ctx), ...(await capabilityNotesOrNone(ctx))] }
+      return { data: { ...pr, existing: false, ...behindData }, text: `opened pull request #${pr.number} ${pr.url}`, notes: [...defaultBranchNotes(ctx), ...behind, ...(await capabilityNotesOrNone(ctx))] }
     },
   },
   {

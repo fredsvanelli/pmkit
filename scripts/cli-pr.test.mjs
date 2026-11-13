@@ -1290,3 +1290,99 @@ test('pr review --redact replaces the secrets of the body and of each inline com
   const plain = await callJson(root, env, [...args.slice(0, -1), '--dry-run'])
   assert.equal(plain.redacted, undefined)
 })
+
+// feat-x branches off main, then origin/main gets `ahead` more commits (PMK-305). The last fetch saw them.
+function branchBehindRepo(ahead = 2) {
+  const root = teamRepo()
+  const commit = (message) => git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', message)
+  commit('init')
+  git(root, 'branch', '-m', 'main')
+  const remote = scratch()
+  addBareOrigin(root, remote)
+  assert.equal(git(root, 'push', '-q', 'origin', 'main').status, 0)
+  git(root, 'switch', '-q', '-c', 'feat-x')
+  git(root, 'switch', '-q', 'main')
+  for (let i = 0; i < ahead; i++) commit(`m${i}`)
+  assert.equal(git(root, 'push', '-q', 'origin', 'main').status, 0)
+  git(root, 'switch', '-q', 'feat-x')
+  return { root, remote }
+}
+
+const noPr = { [view('feat-x')]: { status: 1, stderr: 'no pull requests found for branch "feat-x"\n' } }
+const createKey = 'pr create --title Dead-letter queue for webhooks (ISS-8C4W) --body-file - --head feat-x --base main'
+
+async function prOpenNotes(root, gh, ...extra) {
+  const env = envWith(gh)
+  await callJson(root, env, ['issues', 'update', 'ISS-8C4W', '--branch', 'feat-x'])
+  const raw = await call(root, env, ['pr', 'open', '--issue', 'ISS-8C4W', '--json', ...extra])
+  assert.equal(raw.code, 0, raw.stdout + raw.stderr)
+  return { json: JSON.parse(raw.stdout), raw }
+}
+
+test('pr open on a branch behind origin/<default> says how many commits and what to do, on the dry run and the real run, and still pushes', async () => {
+  const { root, remote } = branchBehindRepo(2)
+  // The last PR of the branch is merged, so pr open takes the new-pull-request path (as in the merged-branch test).
+  const gh = fakeGh({ [view('feat-x')]: { stdout: prJson({ number: 3, headRefName: 'feat-x', state: 'MERGED', mergedAt: '2026-10-20T10:00:00Z' }) }, [createKey]: { stdout: 'https://github.com/o/r/pull/9\n' } })
+  const dry = await prOpenNotes(root, fakeGh(noPr), '--dry-run')
+  assert.ok(dry.json.notes.some((n) => /feat-x is 2 commits behind origin\/main.*git fetch origin.*git rebase origin\/main/.test(n)), JSON.stringify(dry.json.notes))
+  assert.ok(noteLines(dry.raw).some((n) => /2 commits behind/.test(n)), dry.raw.stderr)
+  assert.doesNotMatch((await call(root, envWith(fakeGh(noPr)), ['pr', 'open', '--issue', 'ISS-8C4W', '--dry-run'])).stdout, /behind/)
+  const real = await prOpenNotes(root, gh)
+  assert.equal(real.json.existing, false)
+  assert.ok(real.json.notes.some((n) => /feat-x is 2 commits behind origin\/main.*git rebase origin\/main/.test(n)), JSON.stringify(real.json))
+  assert.ok(noteLines(real.raw).some((n) => /2 commits behind/.test(n)), real.raw.stderr)
+  assert.match(git(remote, 'branch', '--list', 'feat-x').stdout, /feat-x/)
+})
+
+test('pr open says "1 commit" for one commit behind', async () => {
+  const { root } = branchBehindRepo(1)
+  const dry = await prOpenNotes(root, fakeGh(noPr), '--dry-run')
+  assert.ok(dry.json.notes.some((n) => /is 1 commit behind origin\/main/.test(n)), JSON.stringify(dry.json.notes))
+})
+
+test('pr open adds the behind note when the branch already has an open pull request, on the dry run and the real run', async () => {
+  const { root, remote } = branchBehindRepo(3)
+  const gh = fakeGh({ [view('feat-x')]: { stdout: prJson({ number: 9, headRefName: 'feat-x' }) } })
+  for (const extra of [['--dry-run'], []]) {
+    const out = await prOpenNotes(root, gh, ...extra)
+    assert.equal(out.json.existing, true)
+    assert.ok(out.json.notes.some((n) => /3 commits behind origin\/main/.test(n)), JSON.stringify(out.json.notes))
+  }
+  assert.match(git(remote, 'branch', '--list', 'feat-x').stdout, /feat-x/)
+})
+
+test('pr open counts only what the branch lacks: a branch with its own commits is still behind, one with all of origin/<default> is not', async () => {
+  const { root } = branchBehindRepo(2)
+  git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'mine')
+  const diverged = await prOpenNotes(root, fakeGh(noPr), '--dry-run')
+  assert.ok(diverged.json.notes.some((n) => /2 commits behind origin\/main/.test(n)), JSON.stringify(diverged.json.notes))
+  git(root, 'merge', '-q', '--no-edit', 'refs/remotes/origin/main')
+  const level = await prOpenNotes(root, fakeGh(noPr), '--dry-run')
+  assert.doesNotMatch(JSON.stringify(level.json.notes ?? []), /behind|could not compare/)
+})
+
+test('pr open has no behind note when the branch is level with origin/<default>, or there is no origin/<default>', async () => {
+  const { root } = pushableRepo()
+  git(root, 'push', '-q', 'origin', 'HEAD:main')
+  const level = await prOpenNotes(root, fakeGh(noPr), '--dry-run')
+  assert.doesNotMatch(JSON.stringify(level.json.notes ?? []), /behind|could not compare/)
+  assert.doesNotMatch(level.raw.stderr, /behind|could not compare/)
+  const bare = pushableRepo()
+  const none = await prOpenNotes(bare.root, fakeGh(noPr), '--dry-run')
+  assert.doesNotMatch(JSON.stringify(none.json.notes ?? []), /behind|could not compare/)
+  assert.doesNotMatch(none.raw.stderr, /behind|could not compare/)
+})
+
+test('pr open says it could not compare, not "up to date", when git cannot count', async () => {
+  const { root } = branchBehindRepo(2)
+  const env = envWith(fakeGh(noPr))
+  // The issue names a branch that is not a local branch, so rev-list has nothing to count from.
+  await callJson(root, env, ['issues', 'update', 'ISS-8C4W', '--branch', 'feat-x'])
+  git(root, 'switch', '-q', '--detach')
+  git(root, 'branch', '-D', 'feat-x')
+  const raw = await call(root, env, ['pr', 'open', '--issue', 'ISS-8C4W', '--dry-run', '--json'])
+  assert.equal(raw.code, 0, raw.stdout + raw.stderr)
+  const notes = JSON.parse(raw.stdout).notes.join('\n')
+  assert.match(notes, /could not compare feat-x with origin\/main.*git fetch origin.*git log feat-x\.\.origin\/main/)
+  assert.doesNotMatch(notes, /commits? behind|up to date/)
+})
