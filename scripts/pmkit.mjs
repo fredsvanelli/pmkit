@@ -24,7 +24,7 @@ import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, 
 import { pathNote } from './lib/path-notes.mjs'
 import { fileMentions } from './lib/mentions.mjs'
 import { REPO_UNCHECKED } from './lib/delete-refusal.mjs'
-import { ADR_STATUSES, adrFiles, adrInfo, adrRef, isAdrName, adrFolders, adrLocation, adrHtmlHeld, adrStatusHeading, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
+import { ADR_STATUSES, adrFiles, adrInfo, adrRef, isAdrName, adrFolders, adrLocation, adrHtmlHeld, adrFenceHeld, adrStatusHeading, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
 import { similarResult } from './lib/similar.mjs'
 import { isBlocked } from './lib/model.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
@@ -431,6 +431,10 @@ const statusHeadingStaysNote = (adrPath, { heading, underline }, line, dryRun) =
 const HTML_HELD_STEP = 'End the HTML block before the heading: close a comment with -->, or add a blank line after the HTML line; then run the command again'
 const htmlHeldNote = (adrPath, { opener, lines }) => `${adrPath}: the HTML block "${opener}" takes ${lines.map((item) => `"${item}"`).join(', ')} into the Status section, so that text reads as part of the status; ${HTML_HELD_STEP.charAt(0).toLowerCase()}${HTML_HELD_STEP.slice(1)}`
 
+/** The step and the note for PMK-302, the code fence that never closes and takes a heading into the Status section; the same shape as the HTML block's (PMK-299). */
+const FENCE_HELD_STEP = 'Close the code fence before the heading: add a closing line after the status, with the same character as the opening one and at least as many of it; then run the command again'
+const fenceHeldNote = (adrPath, { opener, lines }) => `${adrPath}: the code fence "${opener}" takes ${lines.map((item) => `"${item}"`).join(', ')} into the Status section, so that text reads as part of the status; ${FENCE_HELD_STEP.charAt(0).toLowerCase()}${FENCE_HELD_STEP.slice(1)}`
+
 /** docs adr-get (PMK-263): the number, title, status and path of one ADR. Only reads. `--from` is the path `docs next-adr` gave the new ADR that supersedes it: `supersedesRef` is the path its Supersedes line cites (PMK-270). */
 function runAdrGet(ctx) {
   const { trackerDir, trackerFolder } = adrPlace(ctx)
@@ -451,7 +455,9 @@ function runAdrGet(ctx) {
   if (found !== null) notes.push(statusHeadingNote(adr.path, found, statuses.length > 0))
   const htmlHeld = adrHtmlHeld(adrSource)
   if (htmlHeld !== null) notes.push(htmlHeldNote(adr.path, htmlHeld))
-  const data = { number: adr.number, title, status, statuses, statusHeading, htmlHeld, path: adr.path, ref: adr.ref, place: adr.place, supersedesRef, notes }
+  const fenceHeld = adrFenceHeld(adrSource)
+  if (fenceHeld !== null) notes.push(fenceHeldNote(adr.path, fenceHeld))
+  const data = { number: adr.number, title, status, statuses, statusHeading, htmlHeld, fenceHeld, path: adr.path, ref: adr.ref, place: adr.place, supersedesRef, notes }
   return { data, text: fields([['number', data.number], ['title', title ?? '(no title)'], ['status', statuses.length > 1 ? statuses.join(' | ') : status ?? '(no status)'], ['path', data.path], ['place', data.place], ...(supersedesRef === null ? [] : [['supersedes ref', supersedesRef]])]).join('\n'), notes }
 }
 
@@ -480,6 +486,8 @@ async function runAdrStatus(ctx) {
   const before = adrText(fs.readFileSync(adr.file, 'utf8'))
   const htmlHeld = adrHtmlHeld(before)
   if (htmlHeld !== null) throw new PmkitError('INVALID_INPUT', `${adr.path}: setting the status would delete ${htmlHeld.lines.map((item) => `"${item}"`).join(', ')}, which the HTML block "${htmlHeld.opener}" takes into the Status section; nothing was written`, HTML_HELD_STEP)
+  const fenceHeld = adrFenceHeld(before)
+  if (fenceHeld !== null) throw new PmkitError('INVALID_INPUT', `${adr.path}: setting the status would delete ${fenceHeld.lines.map((item) => `"${item}"`).join(', ')}, which the code fence "${fenceHeld.opener}" takes into the Status section; nothing was written`, FENCE_HELD_STEP)
   const found = adrStatusHeading(before)
   const statusHeading = found?.heading ?? null
   const { text: after, before: statusBefore, after: line } = setAdrStatus(before, status, byPath)

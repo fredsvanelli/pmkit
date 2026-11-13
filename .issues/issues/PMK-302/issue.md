@@ -2,12 +2,14 @@
 id: PMK-302
 title: Refuse to delete the text an unclosed code fence takes into the Status section
 type: bug
-status: backlog
+status: in_review
 priority: medium
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-302-refuse-to-delete-the-text-an-unclosed
 created: 2026-11-13T16:20:45.230Z
-updated: 2026-11-13T16:20:45Z
+updated: 2026-11-13T17:12:18Z
 ---
 
 ## Description
@@ -38,6 +40,6 @@ Reading is right by CommonMark (an unclosed fence runs to the end of the documen
 
 ## Acceptance criteria
 
-- [ ] `adr-status` on a Status section with an unclosed ``` or ~~~ fence before `## Context` writes nothing and gives a next step, with tests
-- [ ] `adr-get` on the same files names the cause in a note, with a test
-- [ ] `adr-status` on a Status section with a closed fence works as before, with a test
+- [x] `adr-status` on a Status section with an unclosed ``` or ~~~ fence before `## Context` writes nothing and gives a next step, with tests
+- [x] `adr-get` on the same files names the cause in a note, with a test
+- [x] `adr-status` on a Status section with a closed fence works as before, with a test

@@ -223,8 +223,8 @@ const keepsText = (paragraph) => {
  * HTML block until its end), then starts new blocks in the deepest one it continued, and a line that continues no more than a paragraph
  * is a lazy continuation of it. A setext underline makes a heading only of a paragraph it continues and that holds more than link
  * reference definitions, so under a list item it is a break or a lazy line (PMK-280). Columns count a tab to the next stop of 4.
- * Not a Markdown parser: no inline content. `held`, when given, collects the non-blank lines an HTML block continues (PMK-299), as `{ at, heading, late, block }` (`late`: after a blank line of the block),
- * and gets `unclosed`: the block of kind 1 to 5 still open at the end of the file, which takes in every later line.
+ * Not a Markdown parser: no inline content. `held`, when given, collects the non-blank lines an HTML block continues (PMK-299), as `{ at, text, late, block }` (`text`: the line without the markers of the containers it is in; `late`, HTML blocks only: after a blank line of the block; `heading` is not in it, `headingLike` adds it for the readers),
+ * and gets `unclosed`: the block of kind 1 to 5 still open at the end of the file, which takes in every later line. The same for a fenced code block (PMK-302): the non-blank lines it continues come in `held` with `block.type === 'fence'`, closed or not, in a quote or a list item too. Its entries are `{ at, text, block }`.
  */
 function sectionEnd(lines, from, held = []) {
   const open = [{ type: 'document' }]
@@ -289,9 +289,10 @@ function sectionEnd(lines, from, held = []) {
     }
     if (closedFence) continue
     // A line the open HTML block continues; the block itself starts on an earlier line.
+    if (matched >= 1 && matched === open.length - 1 && open[matched].type === 'fence' && !blank) held.push({ at: j, text: line.slice(offset), block: open[matched] })
     if (matched >= 1 && matched === open.length - 1 && open[matched].type === 'html') {
       if (blank) open[matched].blank = true
-      else held.push({ at: j, heading: headingLevel(line.slice(offset)) > 0, late: open[matched].blank === true, block: open[matched] })
+      else held.push({ at: j, text: line.slice(offset), late: open[matched].blank === true, block: open[matched] })
     }
 
     // Start new blocks in the deepest continued one; starting one closes the open blocks the line did not continue.
@@ -323,7 +324,7 @@ function sectionEnd(lines, from, held = []) {
         if (container === 1) return j
       } else if (indent < 4 && CM_FENCE.test(rest)) {
         const fence = CM_FENCE.exec(rest)[0]
-        add({ type: 'fence', char: fence[0], length: fence.length })
+        add({ type: 'fence', char: fence[0], length: fence.length, first: rest.trim() })
       } else if (indent < 4 && rest[0] === '<' && (kind = HTML_OPEN.findIndex((start, i) => start.test(rest) && (i < 6 || !(inParagraph || (!allClosed && !blank && open.at(-1).type === 'paragraph')))) + 1) > 0) {
         // The white space before it is part of the HTML block, so `offset` stays.
         add({ type: 'html', kind, first: rest.trim() })
@@ -393,6 +394,10 @@ function locate(lines) {
   const end = (from) => sectionEnd(lines, from)
   return { close, start, yaml, head, line: at((item) => STATUS_LINE.test(item), head === -1 ? lines.length : head), section: at((item) => headingLevel(item) === 2 && headingText(item).toLowerCase() === 'status'), title: at((item) => headingLevel(item) === 1, head === -1 ? lines.length : head), end }
 }
+// The entries of `held` that read as a heading, with `heading` set: an ATX heading, or a line that the next line of the same block underlines as a setext heading
+// (`Context` over `---` or `===`). One test for the HTML block and the fence guards (PMK-302).
+const SETEXT_UNDERLINE = /^ {0,3}(?:=+|-+)[ \t]*$/
+const headingLike = (held) => held.map((item, i) => ({ ...item, heading: headingLevel(item.text) > 0 || (!SETEXT_UNDERLINE.test(item.text) && held[i + 1]?.at === item.at + 1 && held[i + 1].block === item.block && SETEXT_UNDERLINE.test(held[i + 1].text)) }))
 /**
  * What `adr-status` would delete that an HTML block took into the `## Status` section (PMK-299), `{ opener, lines }`, null when nothing: the lines
  * the section replaces that the block continues and that read as an ATX heading, or that come after a blank line in a block of kind 1 to 5
@@ -405,7 +410,22 @@ export function adrHtmlHeld(text) {
   if (section === -1) return null
   const held = []
   sectionEnd(lines, section, held)
-  const risky = held.filter((item) => item.heading || (item.block === held.unclosed && item.late))
+  const risky = headingLike(held).filter((item) => item.block.type === 'html' && (item.heading || (item.block === held.unclosed && item.late)))
+  return risky.length === 0 ? null : { opener: risky[0].block.first, lines: risky.map((item) => lines[item.at].trim()) }
+}
+/**
+ * What `adr-status` would delete that a fenced code block took into the `## Status` section (PMK-302), `{ opener, lines }`, null when nothing: every line inside a
+ * fence, closed or not, in a quote or a list item too, that reads as a heading (ATX, or a line a `---` or `===` underlines), the way the HTML guard counts. A closed
+ * fence that holds `## X` is refused too (rare, and the text is not lost, but the rule is the HTML block's). `opener` is the first line of the first fence at risk,
+ * `lines` the trimmed lines. A fence with no such line costs nothing and is not reported. Reading is unchanged.
+ */
+export function adrFenceHeld(text) {
+  const lines = adrText(text).split('\n')
+  const { section } = locate(lines)
+  if (section === -1) return null
+  const held = []
+  sectionEnd(lines, section, held)
+  const risky = headingLike(held).filter((item) => item.block.type === 'fence' && item.heading)
   return risky.length === 0 ? null : { opener: risky[0].block.first, lines: risky.map((item) => lines[item.at].trim()) }
 }
 const withoutBlanks = (lines, from) => {
