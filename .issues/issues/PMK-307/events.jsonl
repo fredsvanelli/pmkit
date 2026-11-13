@@ -1,1 +1,4 @@
 {"at":"2026-11-13T21:09:10Z","by":"fred","op":"create","to":{"id":"PMK-307","title":"Keep the other fixed 1 s timing probes from failing under load","type":"chore","status":"backlog","priority":"low","estimate":1,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-13T21:09:10.403Z","updated":"2026-11-13T21:09:10Z"}}
+{"at":"2026-11-13T21:21:05Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-13T21:21:05Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-13T21:21:08Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-307-keep-the-other-fixed-1-s-timing-probes"}
