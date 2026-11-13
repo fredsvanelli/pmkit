@@ -2,12 +2,14 @@
 id: PMK-303
 title: Keep the redact timing probes from failing under load
 type: chore
-status: backlog
+status: in_progress
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-303-keep-the-redact-timing-probes-from
 created: 2026-11-13T16:20:45.318Z
-updated: 2026-11-13T16:20:45Z
+updated: 2026-11-13T16:32:05Z
 ---
 
 ## Description
