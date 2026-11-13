@@ -16,8 +16,10 @@
 2. Extend `adrHtmlHeld`'s return shape. Rejected: its callers and message name an HTML block.
 3. A second regex scan of the text. Rejected: would disagree with `sectionEnd` (nesting, 4-backtick fences).
 
+## Review decision (PR #263)
+The guard follows PMK-299's rule, not "unclosed only": it refuses when any heading-looking line that a fence holds falls inside the Status section, closed or not, in any container (a list item or quote closes the fence at the container's end; a loose fence line can close it far below). Consequence: a closed fence holding `## X` inside Status is now refused too, a rare false positive with no loss, the same as the HTML guard. A setext heading (a line over `---` or `===`) counts as heading-looking; the test is shared with the HTML guard (`headingLike`), so that guard counts setext too.
+
 ## Design
-- `sectionEnd` pushes `{ at, heading, block }` into `held` for each non-blank line an open fence continues (the `fence` block now has `first`, the opener line), and sets `held.unclosedFence` (the fence open at the end, else null). The existing HTML filter ignores fence entries.
-- `adrFenceHeld(text)` returns `{ opener, lines }` (trimmed heading-looking lines the unclosed fence takes), else null.
+- `sectionEnd` pushes `{ at, text, block }` into `held` for each non-blank line an open fence continues (the `fence` block has `first`, the opener line). `headingLike(held)` marks ATX and setext lines, for both guards.
+- `adrFenceHeld(text)` returns `{ opener, lines }` (trimmed heading-looking lines any fence holds), else null.
 - `pmkit.mjs`: `runAdrStatus` throws `INVALID_INPUT` after the HTML check; `runAdrGet` adds `fenceHeld` and a note.
-- Heading-looking: `headingLevel(line) > 0` (ATX), as PMK-299.

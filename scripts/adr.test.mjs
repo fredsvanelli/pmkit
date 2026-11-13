@@ -1552,6 +1552,7 @@ const HELD = [
   ['a div (kind 6)', '## Status\n\n<div>\n## Context\n\nWhy.\n', '<div>', ['## Context']],
   ['a custom tag (kind 7)', '## Status\n\n<custom-tag>\n## Context\n\nWhy.\n', '<custom-tag>', ['## Context']],
   ['an unclosed comment with plain text after a blank line', '## Status\n\n<!-- note\nAccepted\n\nWhy we did it.\n', '<!-- note', ['Why we did it.']],
+  ['a setext heading in a div (kind 6)', '## Status\n\n<div>\nContext\n---\n\nWhy.\n', '<div>', ['Context']],
   ['a closed comment that holds a heading', '## Status\n\n<!--\n## Context\n-->\n\nAccepted\n', '<!--', ['## Context']],
 ]
 const HELD_OK = [
@@ -1559,7 +1560,6 @@ const HELD_OK = [
   ['a closed multi-line comment with text', '## Status\n\n<!-- a\n\nb -->\n\nAccepted\n\n## Context\n\nWhy.\n'],
   ['an unclosed comment that ends the file with the status only', '## Status\n\n<!-- note\nAccepted\n'],
   ['a div that ends at a blank line', '## Status\n\n<div>\nAccepted\n\n## Context\n\nWhy.\n'],
-  ['a fenced heading, no HTML', '## Status\n\n```\n## x\n```\n\n## Context\n'],
   ['no Status section', '# T\n\n<!-- note\n## Context\n'],
 ]
 for (const [name, text, opener, lines] of HELD) {
@@ -1601,12 +1601,19 @@ const FENCE_HELD = [
   ['an unclosed ~~~ fence', '## Status\n\nAccepted\n\n~~~\n## Context\n\nWhy.\n', '~~~', ['## Context']],
   ['an unclosed fence with an info string', '## Status\n\n```js\nAccepted\n\n## Context\n\nWhy.\n', '```js', ['## Context']],
   ['a 4-backtick fence that 3 backticks do not close', '## Status\n\n````\nAccepted\n```\n## Context\n\nWhy.\n', '````', ['## Context']],
+  ['a fence a loose fence line closes much later', '## Status\n\n```\nAccepted\n\n## Context\n\nWhy.\n\n```js\nx\n```\n\n## Cons\n', '```', ['## Context']],
+  ['a fence in a list item that the container closes', '## Status\n\n- ```\n  Accepted\n  ## Context\n\nWhy.\n', '```', ['## Context']],
+  ['a fence in a quote that the container closes', '## Status\n\n> ```\n> Accepted\n> ## Context\n\n## Next\n\nWhy.\n', '```', ['> ## Context']],
+  ['a closed fence that holds a heading', '## Status\n\n```\n## x\n```\n\n## Context\n', '```', ['## x']],
+  ['a setext heading in an unclosed fence', '## Status\n\n```\nAccepted\n\nContext\n---\n\nWhy.\n', '```', ['Context']],
+  ['a setext heading (===) in a closed fence', '## Status\n\n~~~\nContext\n===\n~~~\n', '~~~', ['Context']],
   ['an unclosed fence with CRLF line ends', '## Status\r\n\r\n```\r\nAccepted\r\n\r\n## Context\r\n\r\nWhy.\r\n', '```', ['## Context']],
 ]
 const FENCE_OK = [
   ['a closed fence', '## Status\n\n```\nAccepted\n```\n\n## Context\n\nWhy.\n'],
   ['a closed fence with an info string', '## Status\n\n```js\nAccepted\n```\n\n## Context\n\nWhy.\n'],
   ['a 3-backtick fence closed by 4', '## Status\n\n```\nAccepted\n````\n\n## Context\n\nWhy.\n'],
+  ['a closed fence with no heading inside and a heading after it', '## Status\n\n```\nAccepted\n```\n\n## Context\n\nWhy.\n'],
   ['an unclosed fence with no heading after it', '## Status\n\n```\nAccepted\n\nWhy.\n'],
 ]
 for (const [name, text, opener, lines] of FENCE_HELD) {
