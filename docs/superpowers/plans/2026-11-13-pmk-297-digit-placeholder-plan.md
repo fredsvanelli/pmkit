@@ -1,0 +1,31 @@
+# PMK-297 Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (inline, no sub-agents).
+
+**Goal:** A digit that closes a `<placeholder>` is not a redirect in `hideAbsolutePaths`.
+
+**Architecture:** One negative lookbehind in the digit branch of `START` in `scripts/lib/paths.mjs`, bounded to 64 characters so the rule stays linear.
+
+**Tech Stack:** Node 22, `node:test`.
+
+**Spec:** `docs/superpowers/specs/2026-11-13-pmk-297-digit-placeholder-design.md`
+
+## Global Constraints
+
+- `2>/dev/null`, `>/dev/null`, `&>/x`, `cmd 2>/Users/x` keep hiding the path.
+- No quantifier that is quadratic and no per-character repeated group (PMK-288, PMK-295).
+
+## Review Focus
+
+- `cat <in 2>/Users/x/y` (unclosed `<`, then a redirect) must still hide: test in step 1.
+- A long run of `<1` / `<1>` / `<a-1` stays under 1 s: probe in step 3.
+
+---
+
+
+
+1. Test first (`scripts/paths.test.mjs`): `<sha-1>/<x> rest`, `<v1.2>/<x> rest`, `<1>/<2> rest` stay whole; `2>/dev/null`, `>/dev/null`, `&>/x`, `cmd 2>/Users/x`, `cat <in 2>/Users/x` still hide. Run: fails for the first three.
+2. Fix `START` in `scripts/lib/paths.mjs`: add `(?<!<[^<>\s]{0,64})` after the digit; update the comment above it.
+3. Probe in `scripts/paths-timing.test.mjs`: `rep('<1', n/2)`, `rep('<1>', n/3)`, `rep('<1>/', n/4)`, `rep('<a-1', n/4)` under 1 s.
+4. CHANGELOG line under Unreleased; check criteria; battery of 60+ git/gh lines on develop vs branch.
+5. `npm test` in the foreground (exit 0), then PR, comment, `in_review`.
