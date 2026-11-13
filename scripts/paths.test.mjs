@@ -258,3 +258,9 @@ test("hideAbsolutePaths closes before '. , ; }' only when no other quote of the 
   assert.equal(hideAbsolutePaths("'/a'.\n'b'.\n'/c'."), "'<path>'.\n'b'.\n'<path>'.") // the rest of the line only
   assert.equal(hideAbsolutePaths("['/Users/x y'] and '/b c/d'"), "['<path>'] and '<path>'") // ']' and '>' keep the PMK-284 rule
 })
+
+test("hideAbsolutePaths keeps the safe side when the text after the path has an apostrophe (PMK-296)", () => {
+  assert.equal(hideAbsolutePaths("'/Users/x/a'. Don't retry"), "'<path>") // another quote of the same kind follows, so the quote after the path does not close it
+  assert.equal(hideAbsolutePaths("'/Users/x/a'. Don't retry'"), "'<path>'") // a later quote that closes by the old rule ends it
+  assert.equal(hideAbsolutePaths('"/Users/x/a". Don\'t retry'), '"<path>". Don\'t retry') // another kind of quote does not count
+})
