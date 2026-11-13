@@ -49,6 +49,8 @@ const LINKS = {
   duplicate: { field: 'duplicate_of', prop: 'duplicateOf' },
 }
 const BODY_FIELDS = { description: 'description', acceptanceCriteria: 'acceptance_criteria' }
+// The codes a read-only file or folder inside gives on Node 22 (EACCES) and Node 26 (ENOTEMPTY): the warning names permissions for them.
+const PERMISSION_CODES = new Set(['EACCES', 'EPERM', 'ENOTEMPTY'])
 
 const invalid = (message, nextStep) => new PmkitError('INVALID_INPUT', message, nextStep || undefined)
 const isoSeconds = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z')
@@ -692,7 +694,8 @@ export function createLocalTracker(root, {
     try {
       fs.rmSync(trash, { recursive: true })
     } catch (error) {
-      result.warnings.push(`the issue is deleted, but ${rel(trash)} could not be removed: ${error.code ?? error.message}; run pmkit validate for the step to remove it`)
+      const cause = PERMISSION_CODES.has(error.code) ? 'a file or folder inside could not be removed, often for lack of write permission; ' : ''
+      result.warnings.push(`the issue is deleted, but ${rel(trash)} could not be removed: ${error.code ?? error.message}; ${cause}run pmkit validate for the step to remove it`)
     }
     // A read drops an entry whose folder is gone. Reading now keeps the index file in step with the tree.
     if (indexMode === true) {
