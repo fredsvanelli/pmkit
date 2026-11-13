@@ -1523,3 +1523,11 @@ test('pr ready next step works: fetch, rebase, then the force-with-lease push pa
   assert.equal(git(root, 'push', '-q', '--force-with-lease', 'origin', 'feat-x').status, 0)
   assert.equal(git(remote, 'rev-parse', 'feat-x').stdout, git(root, 'rev-parse', 'feat-x').stdout)
 })
+
+test('pr ready falls back to the default branch when baseRefName is empty or missing', async () => {
+  for (const baseRefName of ['', undefined]) {
+    const { root } = branchBehindRepo(2)
+    const out = await prReadyNotes(root, readyGh(baseRefName), '--dry-run')
+    assert.ok(out.json.notes.some((n) => /2 commits behind origin\/main/.test(n)), `${baseRefName}: ${JSON.stringify(out.json.notes)}`)
+  }
+})
