@@ -2,14 +2,14 @@
 id: PMK-308
 title: Say in pr ready when the branch is behind origin
 type: feature
-status: in_progress
+status: in_review
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-308-say-in-pr-ready-when-the-branch-is
 created: 2026-11-13T21:09:10.498Z
-updated: 2026-11-13T21:24:39Z
+updated: 2026-11-13T22:39:01Z
 ---
 
 ## Description
