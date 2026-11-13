@@ -36,5 +36,6 @@ The ADR path, the status before and after, the place, whether the file has a com
 
 - `NOT_FOUND`: no ADR has that number (or the `--by` number). Show `error.message` and ask for another number.
 - `CONFLICT`: two ADR files share the number. Show both paths and offer `/pmkit:local:doctor` on the Local tracker, or `pmkit validate`, to sort out the numbers first.
-- `INVALID_INPUT`: a number that is not one to four digits, a status that is not one of the three, `superseded` without `--by`, `--by` with another status, or `--by` naming the same ADR. Ask for a corrected value.
+- `INVALID_INPUT` with a message that says setting the status "would delete" lines and "nothing was written": the `## Status` section of the ADR holds text besides the status (a comment, a list item such as `Supersedes ...`, a date line, a paragraph, a fence, or an HTML block or fence that takes a heading into it). Show `error.message` and `error.nextStep` to the user as they are and stop. Do not edit the ADR yourself and do not retry: the user moves that text out of the section (or deletes it), and then runs the command again. The dry run in step 1 gives the same refusal, so nothing was written.
+- Any other `INVALID_INPUT`: a number that is not one to four digits, a status that is not one of the three, `superseded` without `--by`, `--by` with another status, or `--by` naming the same ADR. Ask for a corrected value.
 - An error from the CLI: apply the rules for reading errors in the conventions.

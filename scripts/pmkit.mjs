@@ -24,7 +24,7 @@ import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, 
 import { pathNote } from './lib/path-notes.mjs'
 import { fileMentions } from './lib/mentions.mjs'
 import { REPO_UNCHECKED } from './lib/delete-refusal.mjs'
-import { ADR_STATUSES, adrFiles, adrInfo, adrRef, isAdrName, adrFolders, adrLocation, adrHtmlHeld, adrFenceHeld, adrStatusOther, adrStatusHeading, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
+import { ADR_STATUSES, adrFiles, adrInfo, adrRef, isAdrName, adrFolders, adrLocation, adrHtmlHeld, adrFenceHeld, adrStatusDropped, adrStatusHeading, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
 import { similarResult } from './lib/similar.mjs'
 import { isBlocked } from './lib/model.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
@@ -428,12 +428,15 @@ const statusHeadingNote = (adrPath, { heading, underline }, hasStatus) => `${adr
 /** The note when `docs adr-status` writes and leaves the setext heading below the new status (PMK-300): it names the heading, its underline and the status written; `dryRun` says would. */
 const statusHeadingStaysNote = (adrPath, { heading, underline }, line, dryRun) => `${adrPath}: "${heading}" reads as a heading (an underline, ${underline}, follows it) and ${dryRun ? 'would stay' : 'stays'} below the status ${dryRun ? 'this would write' : 'written here'}, "${line}"; docs adr-status does not remove it, so delete "${heading}" and its ${underline} line yourself if it is not part of the status`
 
-const HTML_HELD_STEP = 'End the HTML block before the heading: close a comment with -->, or add a blank line after the HTML line; then run the command again'
+const AGAIN = '; then run the command again'
+const HTML_HELD_FIX = 'End the HTML block before the heading: close a comment with -->, or add a blank line after the HTML line'
+const HTML_HELD_STEP = HTML_HELD_FIX + AGAIN
 const htmlHeldNote = (adrPath, { opener, lines }) => `${adrPath}: the HTML block "${opener}" takes ${lines.map((item) => `"${item}"`).join(', ')} into the Status section, so that text reads as part of the status; ${HTML_HELD_STEP.charAt(0).toLowerCase()}${HTML_HELD_STEP.slice(1)}`
 
 /** The step and the note for PMK-302, the code fence that never closes and takes a heading into the Status section; the same shape as the HTML block's (PMK-299). */
-const FENCE_HELD_STEP = 'Close the code fence before the heading: add a closing line after the status, with the same character as the opening one and at least as many of it; then run the command again'
-const OTHER_TEXT_STEP = 'Move that text out of the Status section (it holds only the status), or delete it by hand; then run the command again'
+const FENCE_HELD_FIX = 'Close the code fence before the heading: add a closing line after the status, with the same character as the opening one and at least as many of it'
+const FENCE_HELD_STEP = FENCE_HELD_FIX + AGAIN
+const OTHER_TEXT_FIX = 'Move that text out of the Status section (it holds only the status), or delete it by hand'
 const fenceHeldNote = (adrPath, { opener, lines }) => `${adrPath}: the code fence "${opener}" takes ${lines.map((item) => `"${item}"`).join(', ')} into the Status section, so that text reads as part of the status; ${FENCE_HELD_STEP.charAt(0).toLowerCase()}${FENCE_HELD_STEP.slice(1)}`
 
 /** docs adr-get (PMK-263): the number, title, status and path of one ADR. Only reads. `--from` is the path `docs next-adr` gave the new ADR that supersedes it: `supersedesRef` is the path its Supersedes line cites (PMK-270). */
@@ -486,23 +489,24 @@ async function runAdrStatus(ctx) {
   }
   const before = adrText(fs.readFileSync(adr.file, 'utf8'))
   // PMK-306: refuse, never delete text of the section besides the status; one refusal names every cause, so one fix and one run are enough.
+  // `adrStatusDropped` reads the same lines the write replaces, so the guard is exactly what the write deletes; the lines a heading guard names are named there, once each.
   const htmlHeld = adrHtmlHeld(before)
   const fenceHeld = adrFenceHeld(before)
-  const named = new Set([...(htmlHeld?.lines ?? []), ...(fenceHeld?.lines ?? [])])
-  const other = adrStatusOther(before).filter((item) => !named.has(item))
+  const other = adrStatusDropped(before)
+  for (const item of [...(htmlHeld?.lines ?? []), ...(fenceHeld?.lines ?? [])]) {
+    const at = other.indexOf(item)
+    if (at !== -1) other.splice(at, 1)
+  }
   const quoted = (lines) => lines.map((item) => `"${item}"`).join(', ')
   const causes = [
-    ...(htmlHeld === null ? [] : [[`${quoted(htmlHeld.lines)}, which the HTML block "${htmlHeld.opener}" takes into the Status section`, HTML_HELD_STEP]]),
-    ...(fenceHeld === null ? [] : [[`${quoted(fenceHeld.lines)}, which the code fence "${fenceHeld.opener}" takes into the Status section`, FENCE_HELD_STEP]]),
-    ...(other.length === 0 ? [] : [[`the other text of the Status section, ${quoted(other)}`, OTHER_TEXT_STEP]]),
+    ...(htmlHeld === null ? [] : [[`${quoted(htmlHeld.lines)}, which the HTML block "${htmlHeld.opener}" takes into the Status section`, HTML_HELD_FIX]]),
+    ...(fenceHeld === null ? [] : [[`${quoted(fenceHeld.lines)}, which the code fence "${fenceHeld.opener}" takes into the Status section`, FENCE_HELD_FIX]]),
+    ...(other.length === 0 ? [] : [[`the other text of the Status section, ${quoted(other)}`, OTHER_TEXT_FIX]]),
   ]
-  if (causes.length > 0) {
-    const again = '; then run the command again'
-    throw new PmkitError('INVALID_INPUT', `${adr.path}: setting the status would delete ${causes.map(([what]) => what).join('; and ')}; nothing was written`, `${causes.map(([, step]) => step.replace(again, '')).join('; ')}${again}`)
-  }
+  if (causes.length > 0) throw new PmkitError('INVALID_INPUT', `${adr.path}: setting the status would delete ${causes.map(([what]) => what).join('; and ')}; nothing was written`, causes.map(([, fix]) => fix).join('; ') + AGAIN)
+  const { text: after, before: statusBefore, after: line } = setAdrStatus(before, status, byPath)
   const found = adrStatusHeading(before)
   const statusHeading = found?.heading ?? null
-  const { text: after, before: statusBefore, after: line } = setAdrStatus(before, status, byPath)
   // PMK-300: the empty section always takes the status, so the write puts it above the heading and leaves the heading below it (a dry run says it would).
   if (found !== null) notes.push(statusHeadingStaysNote(adr.path, found, line, ctx.dryRun))
   let commit
