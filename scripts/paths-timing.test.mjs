@@ -59,3 +59,13 @@ test("probe: a line of 200 thousand characters of quotes followed by '.', ',', '
     assert.ok(ms < 1000, `${JSON.stringify(input.slice(0, 20))} took ${ms} ms`)
   }
 })
+
+test("probe: a line of 200 thousand characters with many quotes before '.', ',', ';' and '}' takes less than a second (PMK-296 review)", () => {
+  const inputs = [rep("'/a', ", n / 6), rep("'/a'. 'b' ", n / 10), `'/a'. ${rep("'x", n / 2)}`, `${rep("'/a'. ", n / 6)}'`, rep("'/a'.\n", n / 6), rep('"/a"} "', n / 7), `'/a ${rep("'. ", n / 3)}`, `${rep("'/a ", n / 4)}'`]
+  for (const input of inputs) {
+    const start = process.hrtime.bigint()
+    hideAbsolutePaths(input)
+    const ms = Number(process.hrtime.bigint() - start) / 1e6
+    assert.ok(ms < 1000, `${JSON.stringify(input.slice(0, 20))} took ${ms} ms`)
+  }
+})
