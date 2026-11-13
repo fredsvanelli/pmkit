@@ -287,28 +287,38 @@ for (const [name, input, output] of PROBES) {
   })
 }
 
-test('probe: no pattern takes more than a second on 80 thousand characters of its own kind', () => {
-  const n = 80000
+const PROBE_SIZE = 160000
+const PROBE_ROW_SIZE = 320000
+const PROBE_CEILING_MS = 10000
+
+function assertFast(fn, input, limitMs) {
+  const start = process.hrtime.bigint()
+  fn(input)
+  const ms = Number(process.hrtime.bigint() - start) / 1e6
+  assert.ok(ms < limitMs, `${JSON.stringify(input.slice(0, 20))} took ${ms} ms`)
+}
+
+// PMK-303: a fixed small limit failed under load (a loaded machine runs the same input 35 times slower), and a growth ratio
+// of two small runs failed too. The probes use a size where a quadratic regex takes tens of seconds or more and linear redact
+// takes well under a second, with a ceiling that only quadratic time reaches even when the machine is loaded.
+test('probe helper: a quadratic regex fails assertFast and a linear one passes', () => {
+  const input = rep('a', 15000)
+  assert.throws(() => assertFast((s) => /a+b/.test(s), input, 20), /took [\d.]+ ms/)
+  assertFast((s) => /a/.test(s), input, PROBE_CEILING_MS)
+})
+
+test('probe: no pattern takes more than ten seconds on 160 thousand characters of its own kind', () => {
+  const n = PROBE_SIZE
   const inputs = [rep('a', n), `token${rep('-', n)}`, `x://${rep(':', n)}`, `a://${rep('b:', n / 2)}`, rep('-----BEGIN A PRIVATE KEY-----', n / 29), rep('sk-', n / 3), `Authorization: ${rep('a', n)}`, rep('a://b', n / 5), rep('password:', n / 9), rep('a=1&', n / 4), rep('token=', n / 6), `token=${rep(')', n)}x`, rep('pwd=/', n / 5), rep('token="', n / 7), rep('password: |\n  a\n', n / 16), rep('token:\n  x\n', n / 10), rep('password=[redacted]', n / 19), rep('curl -u ', n / 8), rep('token=&a=', n / 9), rep('&a', n / 2), `token=${rep('a ', n / 2)}`, rep('|token=[redacted]', n / 17), rep('`password:` ', n / 12), rep('+password: |\n+  a\n', n / 18), rep('(token_limit=5) ', n / 16), rep('PWD=/a?token=[redacted] ', n / 24), rep('  - token:\n      a\n', n / 20), rep('token: ', n / 7), `x${rep(' ', n)}token=a`, rep('sk-', n / 3), rep('-token: ', n / 8), `${rep('-', n)}token=a`, `secrets:\n${rep('  a: b\n', n / 7)}`, rep('secrets:\n  a: [redacted]\n', n / 27), rep('-password: |\n-  a\n', n / 18), rep('a.py:1: ', n / 8), rep('a[password]', n / 11), rep('a[', n / 2), rep('**Password:** ', n / 14), rep('**token=x', n / 9), `token=${rep(')!', n / 2)}`, `(token=${rep(')!x', n / 3)}`, `(token=${rep(')', n)}x`, `(token=${rep(').', n / 2)}x`, rep('`token`: ', n / 9), rep('`password:` [redacted] ', n / 23), rep('**Password:** [redacted] ', n / 25), rep('a[password]=[redacted] ', n / 23)]
-  for (const input of inputs) {
-    const start = process.hrtime.bigint()
-    redact(input)
-    const ms = Number(process.hrtime.bigint() - start) / 1e6
-    assert.ok(ms < 1000, `${JSON.stringify(input.slice(0, 20))} took ${ms} ms`)
-  }
+  for (const input of inputs) assertFast(redact, input, PROBE_CEILING_MS)
 })
 
 // Review of PR #155, cycle 5b: a table row of many keys that are skipped (already redacted, a file location, a directory)
 // reads the row once, at the size the review measured.
-test('probe: a table row of 320 thousand characters of skipped keys takes less than a second', () => {
-  const n = 320000
+test('probe: a table row of 320 thousand characters of skipped keys takes less than ten seconds', () => {
+  const n = PROBE_ROW_SIZE
   const inputs = [`|${rep(' token=[redacted]', n / 17)}`, `|${rep(' token.ts:1', n / 11)}`, `|${rep(' PWD=/a', n / 7)}`, `|${rep(' **Password:** [redacted]', n / 25)}`, `|${rep(' token=[redacted] a.ts:1 PWD=/a', n / 31)}`]
-  for (const input of inputs) {
-    const start = process.hrtime.bigint()
-    redact(input)
-    const ms = Number(process.hrtime.bigint() - start) / 1e6
-    assert.ok(ms < 1000, `${JSON.stringify(input.slice(0, 20))} took ${ms} ms`)
-  }
+  for (const input of inputs) assertFast(redact, input, PROBE_CEILING_MS)
 })
 
 test('probe: redact is idempotent over its own output', () => {

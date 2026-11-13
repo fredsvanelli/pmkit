@@ -2,12 +2,14 @@
 id: PMK-303
 title: Keep the redact timing probes from failing under load
 type: chore
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-303-keep-the-redact-timing-probes-from
 created: 2026-11-13T16:20:45.318Z
-updated: 2026-11-13T16:20:45Z
+updated: 2026-11-13T19:00:40Z
 ---
 
 ## Description
@@ -34,5 +36,5 @@ The worker of PMK-301 suspected that redact grows faster than linear from 80k to
 
 ## Acceptance criteria
 
-- [ ] The redact timing probes pass in full `npm test` runs with other suites running at the same time, with a check over several runs
-- [ ] A sample quadratic regex fails the probe, with a test
+- [x] The redact timing probes pass in full `npm test` runs with other suites running at the same time, with a check over several runs
+- [x] A sample quadratic regex fails the probe, with a test
