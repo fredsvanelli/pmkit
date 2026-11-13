@@ -391,12 +391,13 @@ function syncNotes(from, sync, created = null) {
  * The note for a branch that lacks commits of the last fetched origin/<base> (PMK-305): `pr open` pushes it, and a pull request from an old base may conflict.
  * Local refs only, nothing is fetched and the push is never refused. No note when origin/<base> is missing or the branch has them all;
  * `could not compare` when git cannot count, which is not the same as up to date.
+ * `pushed` is true on the real run, which pushes right after: the branch is on origin by then, so the next step ends with the force push whatever the tracking ref says now.
  */
-function behindNotes(ctx, branch, base) {
+function behindNotes(ctx, branch, base, pushed = false) {
   const remote = `refs/remotes/origin/${base}`
   if (!refExists(ctx, remote)) return []
   // A branch already on origin cannot be pushed after a rebase without a force: pr open pushes plainly, so the next step ends with the push that works (PMK-305).
-  const rebase = refExists(ctx, `refs/remotes/origin/${branch}`) ? `git rebase origin/${base}, then git push --force-with-lease origin ${branch}` : `git rebase origin/${base}`
+  const rebase = pushed || refExists(ctx, `refs/remotes/origin/${branch}`) ? `git rebase origin/${base}, then git push --force-with-lease origin ${branch}` : `git rebase origin/${base}`
   const counted = readGit(ctx, ['rev-list', '--count', `refs/heads/${branch}..${remote}`])
   const behind = !counted.error && counted.status === 0 ? Number(counted.stdout.trim()) : NaN
   if (!Number.isInteger(behind)) return [`could not compare ${branch} with origin/${base}, so it may be behind and the pull request may start from an old base. Run git fetch origin, check with git log ${branch}..origin/${base}, and when it is behind run ${rebase}`]
@@ -2053,7 +2054,7 @@ export const COMMANDS = [
       const found = host.getPullRequest({ head: issue.branch })
       const open = found?.state === 'OPEN' ? found : null
       // In the JSON too, as `issues branch` does: the agent reads the JSON. The push is never refused for it.
-      const behind = behindNotes(ctx, issue.branch, request.base)
+      const behind = behindNotes(ctx, issue.branch, request.base, !ctx.dryRun)
       const behindData = behind.length > 0 ? { notes: behind } : {}
       if (ctx.dryRun) {
         const text = open

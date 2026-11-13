@@ -1425,3 +1425,20 @@ test('pr open could-not-compare note also ends with the force-with-lease push wh
   const notes = (await callJson(root, env, ['pr', 'open', '--issue', 'ISS-8C4W', '--dry-run'])).notes.join('\n')
   assert.match(notes, /could not compare.*git rebase origin\/main, then git push --force-with-lease origin feat-x/)
 })
+
+test('pr open real run on a branch never pushed gives the force-with-lease next step, and following it makes the next push pass', async () => {
+  const { root, remote } = branchBehindRepo(2)
+  git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'mine')
+  assert.equal(git(root, 'rev-parse', '--verify', '--quiet', 'refs/remotes/origin/feat-x').status !== 0, true)
+  const gh = fakeGh({ [view('feat-x')]: { stdout: prJson({ number: 3, headRefName: 'feat-x', state: 'MERGED', mergedAt: '2026-10-20T10:00:00Z' }) }, [createKey]: { stdout: 'https://github.com/o/r/pull/9\n' } })
+  // The dry run does not push, so the branch is not on origin and the step has no push.
+  assert.doesNotMatch((await prOpenNotes(root, fakeGh(noPr), '--dry-run')).json.notes.join('\n'), /force/)
+  const real = await prOpenNotes(root, gh)
+  assert.equal(real.json.existing, false)
+  assert.match(real.json.notes.join('\n'), /2 commits behind origin\/main.*git rebase origin\/main, then git push --force-with-lease origin feat-x/)
+  assert.match(git(remote, 'branch', '--list', 'feat-x').stdout, /feat-x/)
+  assert.equal(git(root, 'fetch', '-q', 'origin').status, 0)
+  assert.equal(git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'rebase', '-q', 'origin/main').status, 0)
+  assert.notEqual(git(root, 'push', '-q', 'origin', 'feat-x').status, 0)
+  assert.equal(git(root, 'push', '-q', '--force-with-lease', 'origin', 'feat-x').status, 0)
+})
