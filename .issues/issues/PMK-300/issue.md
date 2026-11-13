@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-300-say-that-the-old-setext-heading-stays
 created: 2026-11-12T22:25:14.248Z
-updated: 2026-11-13T00:07:55Z
+updated: 2026-11-13T00:20:16Z
 ---
 
 ## Description
@@ -33,5 +33,5 @@ When `## Status` is followed by `Accepted\n---`, the section is empty and `Accep
 
 ## Acceptance criteria
 
-- [ ] `adr-status` on `## Status\nAccepted\n---` says the heading Accepted stays below the new status, with and without a `Status:` line, with tests
-- [ ] `adr-get` keeps its note, with a test
+- [x] `adr-status` on `## Status\nAccepted\n---` says the heading Accepted stays below the new status, with and without a `Status:` line, with tests
+- [x] `adr-get` keeps its note, with a test

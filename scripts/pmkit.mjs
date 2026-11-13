@@ -374,9 +374,12 @@ function adrByNumber(files, number, flag) {
  * The note when a setext heading makes the `## Status` section empty (PMK-294): it names the heading and what to do. `hasStatus` is true when
  * another form (`status:` key, `Status:` line) already holds the status: then the heading is not meant to be one, so no way to make it a second status.
  * With none, the way out is to remove the underline, or to put a blank line before it, which stops it underlining, and the status then includes it.
- * Both commands describe the text as it was before any write.
+ * Only `docs adr-get` uses it: it describes the text as it is. `docs adr-status` writes, and says the heading stays below the new status (`statusHeadingStaysNote`, PMK-300).
  */
 const statusHeadingNote = (adrPath, { heading, underline }, hasStatus) => `${adrPath}: the Status section is empty because "${heading}" reads as a heading (an underline, --- or ===, follows it)${hasStatus ? '; the status of this ADR is held in another form, so that heading is not a second status' : `; to make it the status, remove the underline, or put a blank line before the underline, which stops it underlining, and the status then includes it ("${heading} ${underline}")`}`
+
+/** The note when `docs adr-status` writes and leaves the setext heading below the new status (PMK-300): it names the heading, its underline and the status written; `dryRun` says would. */
+const statusHeadingStaysNote = (adrPath, { heading, underline }, line, dryRun) => `${adrPath}: "${heading}" reads as a heading (an underline, ${underline}, follows it) and ${dryRun ? 'would stay' : 'stays'} below the status ${dryRun ? 'this would write' : 'written here'}, "${line}"; docs adr-status does not remove it, so delete "${heading}" and its ${underline} line yourself if it is not part of the status`
 
 const HTML_HELD_STEP = 'End the HTML block before the heading: close a comment with -->, or add a blank line after the HTML line; then run the command again'
 const htmlHeldNote = (adrPath, { opener, lines }) => `${adrPath}: the HTML block "${opener}" takes ${lines.map((item) => `"${item}"`).join(', ')} into the Status section, so that text reads as part of the status; ${HTML_HELD_STEP.charAt(0).toLowerCase()}${HTML_HELD_STEP.slice(1)}`
@@ -432,8 +435,9 @@ async function runAdrStatus(ctx) {
   if (htmlHeld !== null) throw new PmkitError('INVALID_INPUT', `${adr.path}: setting the status would delete ${htmlHeld.lines.map((item) => `"${item}"`).join(', ')}, which the HTML block "${htmlHeld.opener}" takes into the Status section; nothing was written`, HTML_HELD_STEP)
   const found = adrStatusHeading(before)
   const statusHeading = found?.heading ?? null
-  if (found !== null) notes.push(`${statusHeadingNote(adr.path, found, adrInfo(before).statuses.length > 0)}; this describes the text before the write, which writes the status above the heading and leaves the heading as it is`)
   const { text: after, before: statusBefore, after: line } = setAdrStatus(before, status, byPath)
+  // PMK-300: the empty section always takes the status, so the write puts it above the heading and leaves the heading below it (a dry run says it would).
+  if (found !== null) notes.push(statusHeadingStaysNote(adr.path, found, line, ctx.dryRun))
   let commit
   if (before !== after && !ctx.dryRun) {
     if (adr.place === 'tracker') {

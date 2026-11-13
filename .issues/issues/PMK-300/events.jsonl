@@ -2,3 +2,6 @@
 {"at":"2026-11-13T00:07:49Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
 {"at":"2026-11-13T00:07:52Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-13T00:07:55Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-300-say-that-the-old-setext-heading-stays"}
+{"at":"2026-11-13T00:10:38Z","by":"fred","op":"comment","to":"2026-11-13T00-10-38Z-fred.md"}
+{"at":"2026-11-13T00:20:14Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-13T00:20:16Z","by":"fred","op":"update","field":"acceptance_criteria"}
