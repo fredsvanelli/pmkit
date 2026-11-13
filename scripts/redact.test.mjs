@@ -5,7 +5,7 @@ import path from 'node:path'
 import { redact } from './lib/redact.mjs'
 import { run } from './pmkit.mjs'
 import { makeRepo, tempDir } from './test-helpers.mjs'
-import { assertFast } from './__helpers__/assert-fast.mjs'
+import { assertFast } from './assert-fast.mjs'
 
 const GH = 'a'.repeat(36)
 const CASES = [

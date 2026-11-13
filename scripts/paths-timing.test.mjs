@@ -1,11 +1,10 @@
 // hideAbsolutePaths takes time linear in the line (PMK-288): long lines of the shapes that made the URL and quoted-path rules
-// rescan the same text take about a tenth of a second at 400,000 characters, and the quadratic code of PMK-288 took 43 s at 200,000. The ceiling is the one of
-// redact-probes.test.mjs (PMK-307): a fixed 1 s limit failed under load.
+// rescan the same text take 20 to 460 ms at 400,000 characters (load 30 to 100), and the quadratic code of PMK-288 took 43 s at
+// 200,000. The ceiling is the one of assert-fast.mjs (PMK-307): a fixed 1 s limit failed under load.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { hideAbsolutePaths } from './lib/paths.mjs'
-import { redact } from './lib/redact.mjs'
-import { assertFast } from './__helpers__/assert-fast.mjs'
+import { assertFast } from './assert-fast.mjs'
 
 const rep = (text, n) => text.repeat(n)
 const n = 400000
@@ -25,15 +24,14 @@ test("probe: a line of 400 thousand characters of '!', '|' after a URL, 'a>' and
   for (const input of inputs) assertFast(hideAbsolutePaths, input)
 })
 
-test('probe: a URL of millions of pipes does not overflow the regex stack and takes about as long as redact alone (PMK-295 cycle 2)', () => {
+// PMK-307: the comparison with redact alone (3 * redactMs + 1000) failed once in 24 loaded runs (redact took 106 ms by chance,
+// hideAbsolutePaths 3983 ms). Linear time on 5 million pipes is 0.2 to 4 s at load 100, so the 10 s ceiling is too close; 60 s is
+// 15 times the worst linear run, and the quadratic version does not finish in minutes. A stack overflow still throws.
+const PIPES_CEILING_MS = 60000
+
+test('probe: a URL of millions of pipes does not overflow the regex stack and takes less than a minute (PMK-295 cycle 2)', () => {
   for (const input of ['http://h/' + 'a|'.repeat(5e6), 'http://h/' + '|'.repeat(5e6), 'http://h/' + 'a|b'.repeat(2e6) + '|/Users/x']) {
-    const base = process.hrtime.bigint()
-    redact(input) // the redaction of the URL is most of the time at this size
-    const redactMs = Number(process.hrtime.bigint() - base) / 1e6
-    const start = process.hrtime.bigint()
-    hideAbsolutePaths(input)
-    const ms = Number(process.hrtime.bigint() - start) / 1e6
-    assert.ok(ms < 3 * redactMs + 1000, `${JSON.stringify(input.slice(0, 20))} took ${ms} ms, redact alone ${redactMs} ms`)
+    assertFast(hideAbsolutePaths, input, PIPES_CEILING_MS)
   }
 })
 

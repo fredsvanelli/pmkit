@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { redact } from './lib/redact.mjs'
-import { assertFast, PROBE_CEILING_MS } from './__helpers__/assert-fast.mjs'
+import { assertFast, PROBE_CEILING_MS } from './assert-fast.mjs'
 
 const rep = (text, n) => text.repeat(n)
 const PROBES = [

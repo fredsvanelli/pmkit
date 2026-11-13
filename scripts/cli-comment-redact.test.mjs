@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { run } from './pmkit.mjs'
 import { makeRepo, tempDir } from './test-helpers.mjs'
-import { assertFastAsync } from './__helpers__/assert-fast.mjs'
+import { assertFastAsync } from './assert-fast.mjs'
 
 // PMK-229: `issues comment --redact` replaces the secrets of the body before the tracker gets it.
 

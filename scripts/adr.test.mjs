@@ -9,7 +9,7 @@ import { run } from './pmkit.mjs'
 import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrStatusDropped, adrInfo, adrRef, adrStatusHeading, adrHtmlHeld, adrFenceHeld } from './lib/adr.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo } from './test-helpers.mjs'
-import { assertFast } from './__helpers__/assert-fast.mjs'
+import { assertFast } from './assert-fast.mjs'
 
 const code = (value) => (error) => error.code === value
 
@@ -1463,8 +1463,9 @@ test('an HTML block and a paragraph of link reference definitions end the Status
 })
 
 // Review of PR #241, cycle 5: an unclosed link title of escapes once made the title pattern backtrack twice per escape. Every
-// pattern of the link reference definition and of the HTML block reads a long line of its own kind in well under a second.
-test('probe: no link reference definition or HTML block pattern takes a second on a long line of its own kind (PMK-291 cycle 5 review)', () => {
+// pattern of the link reference definition and of the HTML block reads a long line of its own kind in well under the ceiling of
+// assert-fast.mjs (PMK-307).
+test('probe: no link reference definition or HTML block pattern takes ten seconds on a long line of its own kind (PMK-291 cycle 5 review)', () => {
   const n = 20000
   const bodies = [
     `[a]: /u "${'\\!'.repeat(n)}`, `[a]: /u '${'\\!'.repeat(n)}`, `[a]: /u (${'\\!'.repeat(n)}`, `[a]: /u "${'\\!'.repeat(n)}"x`,
@@ -1472,7 +1473,7 @@ test('probe: no link reference definition or HTML block pattern takes a second o
     '[a]: /u "t"\n'.repeat(n / 5), `[a]: /u\n"${'\\!'.repeat(n)}`, `<x-y${' a=1'.repeat(n)}`, `<x-y${' a="b'.repeat(n)}`,
   ]
   for (const body of bodies) {
-    assertFast((text) => adrInfo(text), `# T\n\n## Status\n\n${body}\n---\n\n## Context\n`)
+    assertFast((b) => adrInfo(`# T\n\n## Status\n\n${b}\n---\n\n## Context\n`), body)
   }
 })
 
