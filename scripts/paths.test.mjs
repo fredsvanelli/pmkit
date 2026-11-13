@@ -227,3 +227,21 @@ test('hideAbsolutePaths hides the path after a pipe that ends a URL to the end o
   assert.equal(hideAbsolutePaths('a https://h/x|b|/Users/y z'), 'a https://h/x|b|<path>')
   assert.equal(hideAbsolutePaths('https://u:p@h/x|/Users/y'), 'https://[redacted]@h/x|<path>')
 })
+
+test("hideAbsolutePaths closes a quote before '.', ',', ';' or '}' when what follows ends the path (PMK-296)", () => {
+  assert.equal(hideAbsolutePaths("'/Users/x/a'. next"), "'<path>'. next")
+  assert.equal(hideAbsolutePaths("Cloning into 'file:///x/y'..."), "Cloning into 'file:<path>'...")
+  for (const punct of ['.', ',', ';', '}', '.}', ';.']) assert.equal(hideAbsolutePaths(`'/Users/x y'${punct} then 'z'`), `'<path>'${punct} then 'z'`, punct)
+  assert.equal(hideAbsolutePaths('see "/a b/c". ok'), 'see "<path>". ok')
+  assert.equal(hideAbsolutePaths("'/x y'.]: gone"), "'<path>'.]: gone")
+  assert.equal(hideAbsolutePaths("'/x y'.x"), "'<path>") // what follows does not end the path and no later quote closes it
+})
+
+test("hideAbsolutePaths shows no part of a path with a quote in its name before '.', ',', ';' or '}' (PMK-296)", () => {
+  for (const punct of ['.', ',', ';', '}']) {
+    const text = `'/Users/x/a'${punct}b c/d'`
+    const shown = hideAbsolutePaths(text)
+    assert.equal(shown, "'<path>'", text)
+    for (const part of ['Users', 'x/a', 'b c', '/d']) assert.ok(!shown.includes(part), `${part} in ${shown}`)
+  }
+})

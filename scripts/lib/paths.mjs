@@ -34,7 +34,7 @@ const HTTP_USER = /^((?:[A-Za-z][A-Za-z0-9+.-]*\+)?[Hh][Tt][Tt][Pp][Ss]?:\/\/)[^
 // A quoted path: the opening quote and the start of the path, then the closing quote (PMK-271, PMK-285). The closer is found by hand, not by a lazy
 // `[^\r\n]*?` in the regex, because a quote that never closes made every later opener of the line read to its end again (PMK-288).
 const QUOTED_OPEN = new RegExp(`(?<=${START})(['"\`])((?:${FILE_SCHEME}(?=\\/\\/))?)${ABSOLUTE}`, 'gm')
-const QUOTED_CLOSE = Object.fromEntries(["'", '"', '`'].map((quote) => [quote, new RegExp(`${quote}(?=$|[\\s:)]|[\\]>]+(?=$|[\\s:)]))`, 'my')]))
+const QUOTED_CLOSE = Object.fromEntries(["'", '"', '`'].map((quote) => [quote, new RegExp(`${quote}(?=$|[\\s:)]|[\\]>.,;}]+(?=$|[\\s:)]))`, 'my')]))
 
 const LINE_BREAK = /[\r\n]/g
 const PIPE_PATH = new RegExp(`\\|(?=${ABSOLUTE})`)
@@ -72,7 +72,7 @@ const hideQuotedPaths = (text) => {
  * `text` with every absolute path (`/x`, `C:\x`, `C:/x`, UNC `\\host\x`) replaced by `<path>`, so no part of a path shows (PMK-271).
  * A path starts where `START` says, or after a quote, or after a backtick that is itself at a start, so the closing backtick of `` `git`/`gh` `` opens nothing (PMK-277 added `[ , ; < @`, PMK-284 added `{ |`, a redirect `>` and the backtick, PMK-295 added `!` and a `>` after a letter that does not close a `<placeholder>`). A path with a space is ambiguous in git's
  * stderr, so the rule never shows part of one: inside quotes (a `file://` URL too, PMK-285) it ends at the closing quote, which is a quote followed by the end of
- * the line, a space, `:` or `)`, or by `]` or `>` (one or more) followed by one of those (so the apostrophe of O'Brien stays inside; a backtick quotes like `'` and `"`); an unquoted one, or a quote that never closes, ends at
+ * the line, a space, `:` or `)`, or by one or more of `] > . , ; }` followed by one of those (PMK-296) (so the apostrophe of O'Brien stays inside; a backtick quotes like `'` and `"`); an unquoted one, or a quote that never closes, ends at
  * the end of the line. That can hide text after the path, which is the safe side. A URL `scheme://host/...` is not a path and shows whole (it ends before a `|` that is followed by an absolute path, which is hidden, PMK-295)
  * with its credentials redacted (`user:pw@`, a token, and the user of an `http(s)` URL, PMK-287); a `file://` or `<scheme>+file://` URL (PMK-286), a path without a scheme and a UNC path are hidden (PMK-278).
  */
