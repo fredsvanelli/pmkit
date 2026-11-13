@@ -350,23 +350,34 @@ function branchBase(ctx) {
       const remote = exists(`refs/remotes/origin/${explicit}`)
       throw usageError(`--from "${explicit}" is not a branch or commit in this repository`, remote ? `Pass --from origin/${explicit}, the remote branch of that name` : 'Pass --from <an existing branch>, or run git fetch origin first when it is a remote branch')
     }
-    return { from: explicit, note: '', behind: 0 }
+    return { from: explicit, note: '', sync: null }
   }
   const name = defaultBranch(ctx)
   if (exists(`refs/heads/${name}`)) {
-    // The commits of the last fetched origin/<name> that the local branch lacks (PMK-298). Local refs only: nothing is fetched.
-    const count = exists(`refs/remotes/origin/${name}`) ? readGit(ctx, ['rev-list', '--count', `refs/heads/${name}..refs/remotes/origin/${name}`]) : null
-    const behind = count && !count.error && count.status === 0 ? Number.parseInt(count.stdout, 10) || 0 : 0
-    return { from: name, note: '', behind }
+    // How far the local branch is from the last fetched origin/<name>, both ways (PMK-298). Local refs only: nothing is fetched.
+    // null when there is no origin/<name> to compare with; `unknown` when git could not count, which is not the same as up to date.
+    let sync = null
+    if (exists(`refs/remotes/origin/${name}`)) {
+      const counted = readGit(ctx, ['rev-list', '--left-right', '--count', `refs/heads/${name}...refs/remotes/origin/${name}`])
+      const [ahead, behind] = !counted.error && counted.status === 0 ? counted.stdout.trim().split(/\s+/).map(Number) : []
+      sync = Number.isInteger(ahead) && Number.isInteger(behind) ? { ahead, behind } : { unknown: true }
+    }
+    return { from: name, note: '', sync }
   }
-  if (exists(`refs/remotes/origin/${name}`)) return { from: `origin/${name}`, note: ` (no local ${name})`, behind: 0 }
+  if (exists(`refs/remotes/origin/${name}`)) return { from: `origin/${name}`, note: ` (no local ${name})`, sync: null }
   throw usageError(`the default branch ${name} is neither a local branch nor origin/${name}`, `Run git fetch origin, or pass --from <an existing branch>`)
 }
 
-/** The note for a local default branch behind origin (PMK-298), or no notes. */
-const behindNotes = (from, behind) => behind > 0
-  ? [`${from} is ${behind} ${behind === 1 ? 'commit' : 'commits'} behind origin/${from} (as of the last fetch), so the new branch starts from an old commit. Run git pull --ff-only on ${from} first, or pass --from origin/${from}`]
-  : []
+/** The notes for a local default branch that is not level with origin (PMK-298): behind (pull), diverged (no pull can fast-forward) or not comparable. No notes when level, ahead only or not checked. */
+function syncNotes(from, sync) {
+  const commits = (n) => `${n} ${n === 1 ? 'commit' : 'commits'}`
+  const fromOrigin = `pass --from origin/${from}`
+  if (sync === null) return []
+  if (sync.unknown) return [`could not compare ${from} with origin/${from}, so it may be behind and the new branch may start from an old commit. Run git fetch origin and try again, or ${fromOrigin}`]
+  if (sync.behind === 0) return []
+  if (sync.ahead > 0) return [`${from} has diverged from origin/${from}: ${commits(sync.ahead)} only here, ${commits(sync.behind)} only there (as of the last fetch), so ${from} cannot fast-forward to it. Rebase or merge ${from} first, or ${fromOrigin}`]
+  return [`${from} is ${commits(sync.behind)} behind origin/${from} (as of the last fetch), so the new branch starts from an old commit. Run git pull --ff-only on ${from} first, or ${fromOrigin}`]
+}
 
 const adrPlace = (ctx) => adrLocation({ root: ctx.root, issuesDir: ctx.config().issuesDir, hosted: ctx.config().hosted })
 
@@ -1988,18 +1999,18 @@ export const COMMANDS = [
       const host = ctx.host()
       const tracker = await ctx.tracker()
       const issue = await tracker.getIssue(ctx.args[0])
-      const { from, note: fromNote, behind } = branchBase(ctx)
-      const behindNote = behindNotes(from, behind)
-      const behindText = behindNote.map((line) => `\nnote: ${line}`).join('')
+      const { from, note: fromNote, sync } = branchBase(ctx)
+      // Like the other notes of this command, it reaches the text as a stderr note, and the JSON as `notes`, which the agent reads.
+      const syncNote = syncNotes(from, sync)
       // A tracker that names branches, such as Linear, keeps its name, so its link to the git host works.
       const branch = ctx.settings().trackerBranch === true && issue.branch ? issue.branch : branchName(issue.id, issue.title)
       // Check the tracker write first, so a refused write leaves git on the branch it was on.
       const actor = await ctx.actor()
       await tracker.updateIssue(issue.id, { branch }, actor, { dryRun: true })
-      if (ctx.dryRun) return { data: { branch, from, ...(behind > 0 ? { notes: behindNote } : {}) }, text: `would create branch ${branch} from ${from}${fromNote}${behindText}\ndry run: nothing was written`, notes: [...behindNote, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : [])] }
+      if (ctx.dryRun) return { data: { branch, from, ...(syncNote.length > 0 ? { notes: syncNote } : {}) }, text: `would create branch ${branch} from ${from}${fromNote}\ndry run: nothing was written`, notes: [...syncNote, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : [])] }
       host.createBranch(branch, { from })
       const result = await tracker.updateIssue(issue.id, { branch }, actor)
-      return { data: { branch, from, ...(behind > 0 ? { notes: behindNote } : {}), ...result }, text: `created branch ${branch} from ${from}${fromNote}${behindText}\n${writeText(result, ctx)}`, commit: issue.id, notes: [...behindNote, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : []), ...(await capabilityNotesOrNone(ctx))] }
+      return { data: { branch, from, ...result, ...(syncNote.length > 0 ? { notes: syncNote } : {}) }, text: `created branch ${branch} from ${from}${fromNote}\n${writeText(result, ctx)}`, commit: issue.id, notes: [...syncNote, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : []), ...(await capabilityNotesOrNone(ctx))] }
     },
   },
   {

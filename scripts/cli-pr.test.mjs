@@ -379,7 +379,9 @@ test('issues branch with a local default behind origin says how many commits and
   const root = behindRepo(2)
   const env = envWith(fakeGh({}))
   const dry = await call(root, env, ['issues', 'branch', 'ISS-2X6D', '--dry-run'])
-  assert.match(dry.stdout, /main is 2 commits behind origin\/main.*git pull.*--from origin\/main/)
+  // Like defaultBranchNotes and capabilityNotes, the note goes to stderr in text mode and is not repeated in stdout.
+  assert.match(noteLines(dry).join('\n'), /main is 2 commits behind origin\/main.*git pull --ff-only.*--from origin\/main/)
+  assert.doesNotMatch(dry.stdout, /behind/)
   const dryRaw = await call(root, env, ['issues', 'branch', 'ISS-2X6D', '--dry-run', '--json'])
   const dryJson = JSON.parse(dryRaw.stdout)
   assert.equal(dryJson.from, 'main')
@@ -392,7 +394,7 @@ test('issues branch with a local default behind origin says how many commits and
 
 test('issues branch says "1 commit" for one commit behind', async () => {
   const out = await call(behindRepo(1), envWith(fakeGh({})), ['issues', 'branch', 'ISS-2X6D', '--dry-run'])
-  assert.match(out.stdout, /main is 1 commit behind origin\/main/)
+  assert.match(out.stderr, /main is 1 commit behind origin\/main/)
 })
 
 test('issues branch has no behind note when the local default is up to date or ahead, or --from is given', async () => {
@@ -406,7 +408,38 @@ test('issues branch has no behind note when the local default is up to date or a
   git(ahead, 'update-ref', 'refs/heads/main', 'refs/remotes/origin/main')
   git(ahead, 'switch', '-q', 'main')
   git(ahead, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'local only')
-  assert.doesNotMatch(await text(ahead), /behind/)
+  assert.doesNotMatch(await text(ahead), /behind|diverged/)
+})
+
+test('issues branch with a local default that diverged from origin says how many commits on each side and does not suggest a pull', async () => {
+  const root = behindRepo(3)
+  git(root, 'switch', '-q', 'main')
+  git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'local only')
+  const env = envWith(fakeGh({}))
+  for (const extra of [['--dry-run'], []]) {
+    const result = await call(root, env, ['issues', 'branch', 'ISS-2X6D', ...extra, '--json'])
+    assert.equal(result.code, 0, result.stdout + result.stderr)
+    const data = JSON.parse(result.stdout)
+    assert.equal(data.from, 'main')
+    assert.equal(data.notes.length, 1)
+    assert.match(data.notes[0], /main has diverged from origin\/main: 1 commit only here, 3 commits only there.*--from origin\/main/)
+    assert.doesNotMatch(data.notes[0], /pull|behind/)
+    assert.ok(noteLines(result).some((n) => /diverged/.test(n)), result.stderr)
+  }
+})
+
+test('issues branch says it could not compare with origin when rev-list fails, and never reads that as up to date', async () => {
+  const root = behindRepo(2)
+  git(root, 'update-ref', 'refs/heads/main', 'origin/main~1')
+  // A missing parent object: both refs resolve to commits, but the history between them cannot be walked.
+  const root0 = git(root, 'rev-list', '--max-parents=0', 'origin/main').stdout.trim()
+  fs.rmSync(path.join(root, '.git', 'objects', root0.slice(0, 2), root0.slice(2)), { force: true })
+  const result = await call(root, envWith(fakeGh({})), ['issues', 'branch', 'ISS-2X6D', '--dry-run', '--json'])
+  assert.equal(result.code, 0, result.stdout + result.stderr)
+  const data = JSON.parse(result.stdout)
+  assert.equal(data.from, 'main')
+  assert.match(data.notes.join('\n'), /could not compare main with origin\/main.*--from origin\/main/)
+  assert.ok(noteLines(result).some((n) => /could not compare/.test(n)), result.stderr)
 })
 
 test('issues branch --from <name> that only exists as origin/<name> names --from origin/<name> in the next step', async () => {
