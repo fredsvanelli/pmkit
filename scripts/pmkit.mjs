@@ -2083,12 +2083,17 @@ export const COMMANDS = [
       const host = ctx.host()
       const issue = await (await ctx.tracker()).getIssue(ctx.opt('issue'))
       if (!issue.branch) throw usageError(`${issue.id} has no branch`, `pmkit issues branch ${issue.id}`)
-      const pr = host.getPullRequest({ head: issue.branch })
+      // The detail read gives the base of the pull request in the same gh call (PMK-308); the default branch only when gh leaves it out.
+      const found = host.getPullRequest({ head: issue.branch }, { detail: true })
+      const pr = withoutDetail(found)
       if (pr?.state !== 'OPEN') throw usageError(`${issue.branch} has no open pull request`, `pmkit pr open --issue ${issue.id}`)
       if (!pr.isDraft) throw usageError(`pull request #${pr.number} is not a draft, it is already ready for review`, `pmkit pr status --branch ${issue.branch}`)
-      if (ctx.dryRun) return { data: { ...pr, isDraft: false }, text: `would mark pull request #${pr.number} ready for review ${pr.url}\ndry run: nothing was written`, notes: await capabilityNotesOrNone(ctx) }
+      // The pull request is open, so the branch is on origin: the next step ends with the force push on both runs. Nothing is fetched or refused.
+      const behind = behindNotes(ctx, issue.branch, found.detail?.baseRefName || defaultBranch(ctx), true)
+      const behindData = behind.length > 0 ? { notes: behind } : {}
+      if (ctx.dryRun) return { data: { ...pr, isDraft: false, ...behindData }, text: `would mark pull request #${pr.number} ready for review ${pr.url}\ndry run: nothing was written`, notes: [...behind, ...(await capabilityNotesOrNone(ctx))] }
       const ready = host.markReady(pr.number)
-      return { data: ready, text: `marked pull request #${ready.number} ready for review ${ready.url}`, notes: await capabilityNotesOrNone(ctx) }
+      return { data: { ...ready, ...behindData }, text: `marked pull request #${ready.number} ready for review ${ready.url}`, notes: [...behind, ...(await capabilityNotesOrNone(ctx))] }
     },
   },
   {

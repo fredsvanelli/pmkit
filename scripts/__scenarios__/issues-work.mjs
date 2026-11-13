@@ -31,6 +31,8 @@ export default {
   github: true,
   gh: {
     [`pr view ${BRANCH} --json ${VIEW}`]: { stdout: JSON.stringify(draft) },
+    // pr ready reads the base of the pull request in the same call (PMK-308).
+    [`pr view ${BRANCH} --json ${VIEW},reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName`]: { stdout: JSON.stringify({ ...draft, reviews: [], reviewRequests: [], mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', reviewDecision: '', baseRefName: 'main' }) },
     'pr ready 7': { stdout: '' },
     [`pr view 7 --json ${VIEW}`]: { stdout: JSON.stringify({ ...draft, isDraft: false }) },
   },

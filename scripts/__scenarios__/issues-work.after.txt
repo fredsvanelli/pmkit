@@ -134,7 +134,7 @@ exit 0
 --- gh calls
 pr view iss-4m2s-fix-csv-column-order --json number,url,title,state,isDraft,headRefName,author,mergedAt
 pr view iss-4m2s-fix-csv-column-order --json number,url,title,state,isDraft,headRefName,author,mergedAt
-pr view iss-4m2s-fix-csv-column-order --json number,url,title,state,isDraft,headRefName,author,mergedAt
-pr view iss-4m2s-fix-csv-column-order --json number,url,title,state,isDraft,headRefName,author,mergedAt
+pr view iss-4m2s-fix-csv-column-order --json number,url,title,state,isDraft,headRefName,author,mergedAt,reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName
+pr view iss-4m2s-fix-csv-column-order --json number,url,title,state,isDraft,headRefName,author,mergedAt,reviews,reviewRequests,mergeable,mergeStateStatus,reviewDecision,baseRefName
 pr ready 7
 pr view 7 --json number,url,title,state,isDraft,headRefName,author,mergedAt
