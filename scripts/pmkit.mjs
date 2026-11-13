@@ -338,12 +338,15 @@ function originHead(ctx) {
   return originHeads.get(ctx)
 }
 
+/** Whether `ref` resolves to a commit. Reads local refs only. */
+const refExists = (ctx, ref) => { const result = readGit(ctx, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]); return !result.error && result.status === 0 }
+
 /**
  * The ref `issues branch` starts from (PMK-290). `--from` must resolve to a commit. Without it the default branch is used, or origin/<default> when only the remote has it.
  * origin is the remote `pr open` pushes to. Nothing is fetched.
  */
 function branchBase(ctx) {
-  const exists = (ref) => { const result = readGit(ctx, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]); return !result.error && result.status === 0 }
+  const exists = (ref) => refExists(ctx, ref)
   const explicit = ctx.opt('from')
   if (explicit !== undefined) {
     if (!exists(explicit)) {
@@ -382,6 +385,24 @@ function syncNotes(from, sync, created = null) {
   if (sync.behind === 0) return []
   if (sync.ahead > 0) return [`${from} has diverged from origin/${from}: ${commits(sync.ahead)} only here, ${commits(sync.behind)} only there (as of the last fetch), so ${from} cannot fast-forward to it and ${created === null ? 'the new branch would carry' : `${created} carries`} the local-only commits. ${created === null ? `Rebase or merge ${from} first, or ${next}` : `Run git fetch origin, then ${next}`}`]
   return [`${from} is ${commits(sync.behind)} behind origin/${from} (as of the last fetch), ${early}. ${created === null ? `Run git pull --ff-only on ${from} first, or ${next}` : `Run git fetch origin, then ${next}`}`]
+}
+
+/**
+ * The note for a branch that lacks commits of the last fetched origin/<base> (PMK-305): `pr open` pushes it, and a pull request from an old base may conflict.
+ * Local refs only, nothing is fetched and the push is never refused. No note when origin/<base> is missing or the branch has them all;
+ * `could not compare` when git cannot count, which is not the same as up to date.
+ * `pushed` is true on the real run, which pushes right after: the branch is on origin by then, so the next step ends with the force push whatever the tracking ref says now.
+ */
+function behindNotes(ctx, branch, base, pushed = false) {
+  const remote = `refs/remotes/origin/${base}`
+  if (!refExists(ctx, remote)) return []
+  // A branch already on origin cannot be pushed after a rebase without a force: pr open pushes plainly, so the next step ends with the push that works (PMK-305).
+  const rebase = pushed || refExists(ctx, `refs/remotes/origin/${branch}`) ? `git rebase origin/${base}, then git push --force-with-lease origin ${branch}` : `git rebase origin/${base}`
+  const counted = readGit(ctx, ['rev-list', '--count', `refs/heads/${branch}..${remote}`])
+  const behind = !counted.error && counted.status === 0 ? Number(counted.stdout.trim()) : NaN
+  if (!Number.isInteger(behind)) return [`could not compare ${branch} with origin/${base}, so it may be behind and the pull request may start from an old base. Run git fetch origin, check with git log ${branch}..origin/${base}, and when it is behind run ${rebase}`]
+  if (behind === 0) return []
+  return [`${branch} is ${behind} ${behind === 1 ? 'commit' : 'commits'} behind origin/${base} (as of the last fetch), so the pull request may conflict or miss fixes. Run git fetch origin, then ${rebase}`]
 }
 
 const adrPlace = (ctx) => adrLocation({ root: ctx.root, issuesDir: ctx.config().issuesDir, hosted: ctx.config().hosted })
@@ -2032,16 +2053,19 @@ export const COMMANDS = [
       // gh refuses a second pull request for a branch, so an open one is pushed to and returned as it is.
       const found = host.getPullRequest({ head: issue.branch })
       const open = found?.state === 'OPEN' ? found : null
+      // In the JSON too, as `issues branch` does: the agent reads the JSON. The push is never refused for it.
+      const behind = behindNotes(ctx, issue.branch, request.base, !ctx.dryRun)
+      const behindData = behind.length > 0 ? { notes: behind } : {}
       if (ctx.dryRun) {
         const text = open
           ? `would push ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`
           : `would open a pull request ${request.head} to ${request.base}\n${request.title}\n\n${body}`
-        return { data: { ...request, existing: open !== null, pr: open }, text: `${text}\ndry run: nothing was written`, notes: [...(open ? [] : defaultBranchNotes(ctx)), ...(await capabilityNotesOrNone(ctx))] }
+        return { data: { ...request, existing: open !== null, pr: open, ...behindData }, text: `${text}\ndry run: nothing was written`, notes: [...(open ? [] : defaultBranchNotes(ctx)), ...behind, ...(await capabilityNotesOrNone(ctx))] }
       }
       host.push(issue.branch)
-      if (open) return { data: { ...open, existing: true }, text: `pushed ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`, notes: await capabilityNotesOrNone(ctx) }
+      if (open) return { data: { ...open, existing: true, ...behindData }, text: `pushed ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`, notes: [...behind, ...(await capabilityNotesOrNone(ctx))] }
       const pr = host.openPullRequest(request)
-      return { data: { ...pr, existing: false }, text: `opened pull request #${pr.number} ${pr.url}`, notes: [...defaultBranchNotes(ctx), ...(await capabilityNotesOrNone(ctx))] }
+      return { data: { ...pr, existing: false, ...behindData }, text: `opened pull request #${pr.number} ${pr.url}`, notes: [...defaultBranchNotes(ctx), ...behind, ...(await capabilityNotesOrNone(ctx))] }
     },
   },
   {

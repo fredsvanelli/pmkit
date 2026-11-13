@@ -1,0 +1,33 @@
+# PMK-305 pr open behind-origin note Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (inline, chosen by the orchestrator).
+
+**Goal:** `pr open` says, in text notes and JSON `notes`, how many commits of `origin/<default>` the branch lacks.
+
+**Architecture:** One helper `behindNotes(ctx, branch, base)` in `scripts/pmkit.mjs` using local refs only (`rev-list --count`), added to the notes of the three return paths of `pr open`.
+
+**Tech Stack:** Node 22, node:test, real git repos with a bare origin and `fakeGh`.
+
+**Global Constraints:** never fetch, rebase or refuse the push; `unknown` is not "up to date"; trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`; issue ID in commits.
+
+## Review Focus
+
+- `origin/<default>` missing: no note.
+- git cannot count: "could not compare", not "up to date".
+- A PR already open: note still shown.
+- Diverged branch (ahead and behind): note counts only what the branch lacks.
+
+---
+
+Spec: `docs/superpowers/specs/2026-11-13-pmk-305-pr-open-behind-origin-design.md`
+
+1. Tests first (`scripts/cli-pr.test.mjs`), real git repos with a bare origin, `fakeGh`:
+   - behind by 2: dry run and real run give a note with the count and `git fetch origin`, `git rebase origin/main`, in `notes` of the JSON and on stderr, not in the text; singular for 1.
+   - open PR already (dry and real): same note.
+   - up to date (branch has all of origin/main), branch ahead only: no note.
+   - no `origin/main` ref: no note.
+   - git cannot count (branch ref not a local branch): "could not compare" note, no "behind".
+   - the push still happens when behind.
+2. Implement `behindNotes(ctx, branch, base)` in `scripts/pmkit.mjs` near `syncNotes`; add it to the notes of the three return paths of `pr open`.
+3. Docs: `commands/issues/work.md` step 9, `README.md` row of `pr open`, `CHANGELOG.md` line; check scenarios/goldens that quote `pr open` notes.
+4. `npm test` in foreground (exit code 0), check criteria (`issues update --check`), commit `.issues/`, open PR.
