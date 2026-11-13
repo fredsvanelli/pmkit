@@ -333,11 +333,15 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
 
   // Issues
   const LEFTOVER = '.deleting-'
+  // POSIX single quotes: a space or an apostrophe in the path cannot split or end the argument.
+  const shellQuote = (text) => `'${text.replace(/'/g, "'\\''")}'`
   const allFolders = subdirs(path.join(issuesDir, 'issues'))
   // A failed cleanup of `issues delete` leaves one of these. It is not an issue: report it as a leftover, with the step to remove it.
   for (const name of allFolders.filter((folder) => folder.startsWith(LEFTOVER))) {
     const dir = path.join(issuesDir, 'issues', name)
-    add(dir, 'leftover', `it is what a failed issues delete left behind, not an issue; remove it by hand with rm -rf ${rel(dir)}`)
+    // chmod first: a read-only subfolder makes rm -rf fail the same way.
+    const q = shellQuote(rel(dir))
+    add(dir, 'leftover', `it is what a failed issues delete left behind, not an issue; remove it with: chmod -R u+w ${q} && rm -rf ${q}`)
   }
   const folders = allFolders.filter((folder) => !folder.startsWith(LEFTOVER))
   const byNormalized = new Map()

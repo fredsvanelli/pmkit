@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { TRACKERS, pmkitConfigMessages, unsupportedTracker } from './lib/config.mjs'
 import { parseYaml } from './lib/yaml.mjs'
 import { validateRepo } from './lib/validate.mjs'
@@ -23,8 +24,27 @@ test('a leftover of a failed delete is reported as one, not as an invalid issue'
   assert.deepEqual(after.problems.filter((problem) => !before.problems.some((old) => old.path === problem.path && old.code === problem.code)), [{
     path: '.issues/issues/.deleting-ISS-X-4242',
     code: 'leftover',
-    message: 'it is what a failed issues delete left behind, not an issue; remove it by hand with rm -rf .issues/issues/.deleting-ISS-X-4242',
+    message: 'it is what a failed issues delete left behind, not an issue; remove it with: chmod -R u+w \'.issues/issues/.deleting-ISS-X-4242\' && rm -rf \'.issues/issues/.deleting-ISS-X-4242\'',
   }])
+})
+
+test('the leftover step removes a read-only leftover, with spaces and an apostrophe in its path', { skip: process.getuid?.() === 0 || process.platform === 'win32' }, () => {
+  const root = makeRepo('basic')
+  const leftover = path.join(root, '.issues', 'issues', ".deleting-ISS-X 4'2")
+  const locked = path.join(leftover, 'comments')
+  fs.mkdirSync(locked, { recursive: true })
+  fs.writeFileSync(path.join(locked, 'c.md'), 'x')
+  fs.chmodSync(locked, 0o555)
+  try {
+    const problem = validateRepo(root).problems.find((item) => item.code === 'leftover')
+    const step = problem.message.split('remove it with: ')[1]
+    const run = spawnSync('sh', ['-c', step], { cwd: root, encoding: 'utf8' })
+    assert.equal(run.status, 0, run.stderr)
+    assert.equal(fs.existsSync(leftover), false)
+  } finally {
+    if (fs.existsSync(locked)) fs.chmodSync(locked, 0o755)
+    fs.rmSync(leftover, { recursive: true, force: true })
+  }
 })
 
 test('broken fixture returns exactly one problem of each kind, at the right path', () => {
