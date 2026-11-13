@@ -227,3 +227,40 @@ test('hideAbsolutePaths hides the path after a pipe that ends a URL to the end o
   assert.equal(hideAbsolutePaths('a https://h/x|b|/Users/y z'), 'a https://h/x|b|<path>')
   assert.equal(hideAbsolutePaths('https://u:p@h/x|/Users/y'), 'https://[redacted]@h/x|<path>')
 })
+
+test("hideAbsolutePaths closes a quote before '.', ',', ';' or '}' when what follows ends the path (PMK-296)", () => {
+  assert.equal(hideAbsolutePaths("'/Users/x/a'. next"), "'<path>'. next")
+  assert.equal(hideAbsolutePaths("Cloning into 'file:///x/y'..."), "Cloning into 'file:<path>'...")
+  for (const punct of ['.', ',', ';', '}', '.}', ';.']) assert.equal(hideAbsolutePaths(`'/Users/x y'${punct} then z`), `'<path>'${punct} then z`, punct)
+  assert.equal(hideAbsolutePaths('see "/a b/c". ok'), 'see "<path>". ok')
+  assert.equal(hideAbsolutePaths("'/x y'.]: gone"), "'<path>'.]: gone")
+  assert.equal(hideAbsolutePaths("'/x y'.x"), "'<path>") // what follows does not end the path and no later quote closes it
+})
+
+test("hideAbsolutePaths shows no part of a path with a quote in its name before '.', ',', ';' or '}' (PMK-296)", () => {
+  for (const punct of ['.', ',', ';', '}']) {
+    const text = `'/Users/x/a'${punct}b c/d'`
+    const shown = hideAbsolutePaths(text)
+    assert.equal(shown, "'<path>'", text)
+    for (const part of ['Users', 'x/a', 'b c', '/d']) assert.ok(!shown.includes(part), `${part} in ${shown}`)
+  }
+})
+
+test("hideAbsolutePaths closes before '. , ; }' only when no other quote of the same kind follows on the line (PMK-296 review)", () => {
+  for (const text of ["'/Users/x/a', b/c'", '"/Users/x/a"} y/z"', "'/Users/x/a'. b c/d'", "'/Users/x/a'; b/c'", "`/Users/x/a`, b/c`"]) {
+    const shown = hideAbsolutePaths(text)
+    assert.equal(shown, text[0] + '<path>' + text[0], text)
+  }
+  assert.equal(hideAbsolutePaths("Cloning into 'file:///x/y'..."), "Cloning into 'file:<path>'...")
+  assert.equal(hideAbsolutePaths("'/Users/x/a'. next"), "'<path>'. next")
+  assert.equal(hideAbsolutePaths("'/a', 'b'"), "'<path>'") // two quotes of one kind: the safe side of develop
+  assert.equal(hideAbsolutePaths("'/a', then \"b\""), "'<path>', then \"b\"") // another kind does not count
+  assert.equal(hideAbsolutePaths("'/a'.\n'b'.\n'/c'."), "'<path>'.\n'b'.\n'<path>'.") // the rest of the line only
+  assert.equal(hideAbsolutePaths("['/Users/x y'] and '/b c/d'"), "['<path>'] and '<path>'") // ']' and '>' keep the PMK-284 rule
+})
+
+test("hideAbsolutePaths keeps the safe side when the text after the path has an apostrophe (PMK-296)", () => {
+  assert.equal(hideAbsolutePaths("'/Users/x/a'. Don't retry"), "'<path>") // another quote of the same kind follows, so the quote after the path does not close it
+  assert.equal(hideAbsolutePaths("'/Users/x/a'. Don't retry'"), "'<path>'") // a later quote that closes by the old rule ends it
+  assert.equal(hideAbsolutePaths('"/Users/x/a". Don\'t retry'), '"<path>". Don\'t retry') // another kind of quote does not count
+})

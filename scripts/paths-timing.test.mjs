@@ -49,3 +49,23 @@ test('probe: a URL of millions of pipes does not overflow the regex stack and ta
     assert.ok(ms < 3 * redactMs + 1000, `${JSON.stringify(input.slice(0, 20))} took ${ms} ms, redact alone ${redactMs} ms`)
   }
 })
+
+test("probe: a line of 200 thousand characters of quotes followed by '.', ',', ';' and '}' takes less than a second (PMK-296)", () => {
+  const inputs = [rep("'/a'.", n / 5), rep("'/a'.x", n / 6), `'/a'${rep('.', n)}x`, `'/a'${rep('.,;}', n / 4)}x`, rep(" '/a'.,;}x", n / 10), rep(' "/a b".', n / 8), `'/a ${rep("'.", n / 2)}x`]
+  for (const input of inputs) {
+    const start = process.hrtime.bigint()
+    hideAbsolutePaths(input)
+    const ms = Number(process.hrtime.bigint() - start) / 1e6
+    assert.ok(ms < 1000, `${JSON.stringify(input.slice(0, 20))} took ${ms} ms`)
+  }
+})
+
+test("probe: a line of 200 thousand characters with many quotes before '.', ',', ';' and '}' takes less than a second (PMK-296 review)", () => {
+  const inputs = [rep("'/a', ", n / 6), rep("'/a'. 'b' ", n / 10), `'/a'. ${rep("'x", n / 2)}`, `${rep("'/a'. ", n / 6)}'`, rep("'/a'.\n", n / 6), rep('"/a"} "', n / 7), `'/a ${rep("'. ", n / 3)}`, `${rep("'/a ", n / 4)}'`]
+  for (const input of inputs) {
+    const start = process.hrtime.bigint()
+    hideAbsolutePaths(input)
+    const ms = Number(process.hrtime.bigint() - start) / 1e6
+    assert.ok(ms < 1000, `${JSON.stringify(input.slice(0, 20))} took ${ms} ms`)
+  }
+})
