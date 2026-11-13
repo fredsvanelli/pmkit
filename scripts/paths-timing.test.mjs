@@ -3,6 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { hideAbsolutePaths } from './lib/paths.mjs'
+import { redact } from './lib/redact.mjs'
 
 const rep = (text, n) => text.repeat(n)
 const n = 200000
@@ -34,5 +35,17 @@ test("probe: a line of 200 thousand characters of '!', '|' after a URL, 'a>' and
     hideAbsolutePaths(input)
     const ms = Number(process.hrtime.bigint() - start) / 1e6
     assert.ok(ms < 1000, `${JSON.stringify(input.slice(0, 20))} took ${ms} ms`)
+  }
+})
+
+test('probe: a URL of millions of pipes does not overflow the regex stack and takes about as long as redact alone (PMK-295 cycle 2)', () => {
+  for (const input of ['http://h/' + 'a|'.repeat(5e6), 'http://h/' + '|'.repeat(5e6), 'http://h/' + 'a|b'.repeat(2e6) + '|/Users/x']) {
+    const base = process.hrtime.bigint()
+    redact(input) // the redaction of the URL is most of the time at this size
+    const redactMs = Number(process.hrtime.bigint() - base) / 1e6
+    const start = process.hrtime.bigint()
+    hideAbsolutePaths(input)
+    const ms = Number(process.hrtime.bigint() - start) / 1e6
+    assert.ok(ms < 3 * redactMs + 1000, `${JSON.stringify(input.slice(0, 20))} took ${ms} ms, redact alone ${redactMs} ms`)
   }
 })

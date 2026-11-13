@@ -221,3 +221,9 @@ test('hideAbsolutePaths keeps a <placeholder with spaces>/x and Map<string, numb
   assert.equal(hideAbsolutePaths('"http://h/a|/b" next'), '"http://h/a|<path>')
   assert.equal(hideAbsolutePaths('Done!/tmp/x'), 'Done!<path>')
 })
+
+test('hideAbsolutePaths hides the path after a pipe that ends a URL to the end of the line, and the text of the next line stays (PMK-295 cycle 2)', () => {
+  assert.equal(hideAbsolutePaths('https://h/x|/Users/a b c\nnext https://h/y|z'), 'https://h/x|<path>\nnext https://h/y|z')
+  assert.equal(hideAbsolutePaths('a https://h/x|b|/Users/y z'), 'a https://h/x|b|<path>')
+  assert.equal(hideAbsolutePaths('https://u:p@h/x|/Users/y'), 'https://[redacted]@h/x|<path>')
+})

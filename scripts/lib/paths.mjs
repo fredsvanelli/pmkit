@@ -27,7 +27,7 @@ const FILE_SCHEME = String.raw`(?:[A-Za-z][A-Za-z0-9+.-]*\+)?[Ff][Ii][Ll][Ee]:`
 // rejected for the same reason). The regex starts only at the start of a run, takes the text before that first letter as a prefix and gives it back, so a run is read once (PMK-288).
 const RUN_START = String.raw`(?<![A-Za-z0-9+.-])`
 const URL_PREFIX = String.raw`(?:(?<!\w)(?=[A-Za-z])|(?:(?<=_)|(?![A-Za-z]))(?:[A-Za-z0-9]|[.+-](?![A-Za-z]))*[.+-](?=[A-Za-z]))`
-const SCHEME_URL = String.raw`${RUN_START}(${URL_PREFIX})((?!${FILE_SCHEME})[A-Za-z][A-Za-z0-9+.-]+:\/\/(?=[^\/\s])[^\s|]*(?:\|(?!${ABSOLUTE})[^\s|]*)*)`
+const SCHEME_URL = String.raw`${RUN_START}(${URL_PREFIX})((?!${FILE_SCHEME})[A-Za-z][A-Za-z0-9+.-]+:\/\/(?=[^\/\s])\S*)`
 // The user of an http(s) URL, or of a `<scheme>+http(s)` one such as `git+https` (PMK-287): up to the last `@` before the path, a query or a fragment.
 const HTTP_USER = /^((?:[A-Za-z][A-Za-z0-9+.-]*\+)?[Hh][Tt][Tt][Pp][Ss]?:\/\/)[^\/\s?#]+@/
 
@@ -37,6 +37,7 @@ const QUOTED_OPEN = new RegExp(`(?<=${START})(['"\`])((?:${FILE_SCHEME}(?=\\/\\/
 const QUOTED_CLOSE = Object.fromEntries(["'", '"', '`'].map((quote) => [quote, new RegExp(`${quote}(?=$|[\\s:)]|[\\]>]+(?=$|[\\s:)]))`, 'my')]))
 
 const LINE_BREAK = /[\r\n]/g
+const PIPE_PATH = new RegExp(ABSOLUTE, 'y')
 
 const hideQuotedPaths = (text) => {
   let result = ''
@@ -75,5 +76,34 @@ const hideQuotedPaths = (text) => {
  * the end of the line. That can hide text after the path, which is the safe side. A URL `scheme://host/...` is not a path and shows whole (it ends before a `|` that is followed by an absolute path, which is hidden, PMK-295)
  * with its credentials redacted (`user:pw@`, a token, and the user of an `http(s)` URL, PMK-287); a `file://` or `<scheme>+file://` URL (PMK-286), a path without a scheme and a UNC path are hidden (PMK-278).
  */
-export const hideAbsolutePaths = (text) =>
-  hideQuotedPaths(text).replace(new RegExp(`${SCHEME_URL}|(?<=${START}|['"]|(?<=${START})\`)${ABSOLUTE}[^\\r\\n]*`, 'gm'), (_, prefix, url) => (url === undefined ? '<path>' : prefix + redact(url).text.replace(HTTP_USER, '$1[redacted]@')))
+export const hideAbsolutePaths = (text) => {
+  const text2 = hideQuotedPaths(text)
+  const re = new RegExp(`${SCHEME_URL}|(?<=${START}|['"]|(?<=${START})\`)${ABSOLUTE}[^\\r\\n]*`, 'gm')
+  let result = ''
+  let copied = 0
+  for (let m; (m = re.exec(text2)); ) {
+    const [whole, prefix, url] = m
+    if (url === undefined) {
+      result += `${text2.slice(copied, m.index)}<path>`
+      copied = re.lastIndex
+      continue
+    }
+    // A URL ends before a `|` that is followed by an absolute path, and the path after it is hidden to the end of the line (PMK-295). The end is found by a loop,
+    // not by a repeated group in the regex, because a group repeated once per `|` grew the regex stack with the line (a RangeError at millions of pipes).
+    let cut = url.indexOf('|')
+    for (; cut !== -1; cut = url.indexOf('|', cut + 1)) {
+      PIPE_PATH.lastIndex = cut + 1
+      if (PIPE_PATH.test(url)) break
+    }
+    const kept = cut === -1 ? url : url.slice(0, cut)
+    result += text2.slice(copied, m.index) + prefix + redact(kept).text.replace(HTTP_USER, '$1[redacted]@')
+    copied = re.lastIndex
+    if (cut !== -1) {
+      LINE_BREAK.lastIndex = re.lastIndex
+      const end = LINE_BREAK.test(text2) ? LINE_BREAK.lastIndex - 1 : text2.length
+      result += '|<path>'
+      copied = re.lastIndex = end
+    }
+  }
+  return result + text2.slice(copied)
+}
