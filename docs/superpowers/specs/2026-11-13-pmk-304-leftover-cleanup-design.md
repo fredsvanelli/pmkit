@@ -28,7 +28,7 @@ The user should read the warning and know that a file inside is the problem, mos
 
 1. **Change the message text only.** Smallest change, but the step still fails on a read-only leftover. Rejected: the second criterion is not met.
 2. **Remove the leftover from `validate --fix`-style code.** Works, but it is automatic removal, which the brief rules out. Rejected.
-3. **Chosen: name the cause in the warning, and make the step `chmod -R u+w` then `rm -rf`, both on the quoted relative path.** Each part is a plain shell command the user can read. The step changes only the leftover's own permissions.
+3. **Chosen: name the cause in the warning, and make the step `chmod -R u+rwX` then `rm -rf`, both on the quoted relative path.** Each part is a plain shell command the user can read. The step changes only the leftover's own permissions.
 
 ## Design
 
@@ -40,14 +40,19 @@ For other codes the warning keeps its current text. A small `PERMISSION_CODES` s
 
 **Step** (`validate.mjs`). The leftover message becomes:
 
-`it is what a failed issues delete left behind, not an issue; remove it with: chmod -R u+w '<rel>' && rm -rf '<rel>'`
+`it is what a failed issues delete left behind, not an issue; remove it with: chmod -R u+rwX '<rel>' && rm -rf '<rel>'`
 
 `<rel>` is the relative path as today, wrapped in single quotes, with any `'` in it written as `'\''`. The path always starts with `.issues/issues/.deleting-`, so pasting it wrong cannot reach `/`, and quoting keeps a space from splitting it.
 
 ## Tests
 
-- **Warning** (`scripts/tracker-delete.test.mjs`): make a comments subfolder read-only, delete, and check that the warning matches `could not be removed: <code>; a file or folder inside could not be removed, often for lack of write permission`, with any of the three codes. Skip as root.
-- **Step** (`scripts/validate.test.mjs`): make a leftover with a read-only subfolder inside a folder whose name has a space. Read the step from `validateRepo`, run it with `sh -c` in the temp root, and check the folder is gone. Restore permissions in `finally`. Skip as root. Update the existing expected message.
+- **Warning** (`scripts/tracker-delete.test.mjs`): make a comments subfolder read-only, delete, and check that the warning matches `could not be removed: <code>; a file or folder inside could not be removed, often for lack of write permission`, with `EACCES`, `EPERM` or `ENOTEMPTY`. A second test forces a code outside that set (`EBUSY`) and checks the warning keeps its old text. Skip as root for the permission test.
+- **Step** (`scripts/validate.test.mjs`): make a leftover with a read-only subfolder and a mode 000 subfolder, inside a folder whose name has a space and an apostrophe. Read the step from `validateRepo`, run it with `sh -c` in the temp root, and check the folder is gone. Restore permissions in `finally`. Skip as root. Update the existing expected message.
+
+## Later change: the step adds the execute bit, and validate does not read inside leftovers
+
+- The step uses `chmod -R u+rwX`, not `u+w`: `X` adds the execute bit a folder needs to be entered, so a mode 000 subfolder is removed too.
+- The whole-tree scan of `validate` (conflict markers) prunes `.deleting-*` folders. A leftover is not an issue, and an unreadable folder inside it used to stop the whole check with `EACCES`.
 
 ## What is left to the builder
 

@@ -4,7 +4,7 @@
 
 **Goal:** When `issues delete` cannot remove its leftover, the warning names a file inside and permissions as the likely cause, and the `validate` step removes a read-only leftover.
 
-**Architecture:** Two small edits. The warning in `tracker.mjs` appends a cause sentence when the code is `EACCES`, `EPERM` or `ENOTEMPTY`. The `validate` leftover message in `validate.mjs` becomes `chmod -R u+w '<rel>' && rm -rf '<rel>'`, with the path shell-quoted.
+**Architecture:** Two small edits. The warning in `tracker.mjs` appends a cause sentence when the code is `EACCES`, `EPERM` or `ENOTEMPTY`. The `validate` leftover message in `validate.mjs` becomes `chmod -R u+rwX '<rel>' && rm -rf '<rel>'`, with the path shell-quoted.
 
 **Tech Stack:** Node.js (ESM), `node:test`, `node:assert/strict`. No new dependencies.
 
@@ -14,7 +14,7 @@
 
 - Warning cause text, verbatim: `a file or folder inside could not be removed, often for lack of write permission`
 - Warning codes that get the cause: `EACCES`, `EPERM`, `ENOTEMPTY`. Other codes keep the current text.
-- Step text, verbatim: `remove it with: chmod -R u+w <q> && rm -rf <q>`, where `<q>` is the relative path wrapped in single quotes, `'` written as `'\''`.
+- Step text, verbatim: `remove it with: chmod -R u+rwX <q> && rm -rf <q>`, where `<q>` is the relative path wrapped in single quotes, `'` written as `'\''`.
 - Permission tests skip when `process.getuid?.() === 0` or on win32.
 - Restore permissions in `finally` so the temp-folder leak guard in `scripts/run-tests.mjs` passes.
 
@@ -80,14 +80,14 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: the leftover problem message `... remove it with: chmod -R u+w <q> && rm -rf <q>`.
+- Produces: the leftover problem message `... remove it with: chmod -R u+rwX <q> && rm -rf <q>`.
 
 - [ ] **Step 1: Update the expected message and add the failing test**
 
 In `scripts/validate.test.mjs`, change the expected `message` on line 26 to:
 
 ```js
-    message: 'it is what a failed issues delete left behind, not an issue; remove it with: chmod -R u+w \'.issues/issues/.deleting-ISS-X-4242\' && rm -rf \'.issues/issues/.deleting-ISS-X-4242\'',
+    message: 'it is what a failed issues delete left behind, not an issue; remove it with: chmod -R u+rwX \'.issues/issues/.deleting-ISS-X-4242\' && rm -rf \'.issues/issues/.deleting-ISS-X-4242\'',
 ```
 
 Add `import { spawnSync } from 'node:child_process'` at the top if it is missing. Add after the first test:
@@ -120,7 +120,7 @@ Expected: FAIL, the message still says `rm -rf`, and the new test's step fails o
 
 - [ ] **Step 3: Implement the quoted step in `validate.mjs`**
 
-Near the top of the issues section, next to `const LEFTOVER`, add `const shellQuote = (text) => \`'${text.replace(/'/g, "'\\\\''")}'\``. Replace line 340 so its message is `it is what a failed issues delete left behind, not an issue; remove it with: chmod -R u+w ${q} && rm -rf ${q}`, where `const q = shellQuote(rel(dir))`.
+Near the top of the issues section, next to `const LEFTOVER`, add `const shellQuote = (text) => \`'${text.replace(/'/g, "'\\\\''")}'\``. Replace line 340 so its message is `it is what a failed issues delete left behind, not an issue; remove it with: chmod -R u+rwX ${q} && rm -rf ${q}`, where `const q = shellQuote(rel(dir))`.
 
 - [ ] **Step 4: Run it and see it pass**
 
