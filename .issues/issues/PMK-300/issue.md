@@ -2,12 +2,14 @@
 id: PMK-300
 title: Say that the old setext heading stays below the status adr-status writes
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-300-say-that-the-old-setext-heading-stays
 created: 2026-11-12T22:25:14.248Z
-updated: 2026-11-12T22:25:14Z
+updated: 2026-11-13T00:39:03Z
 ---
 
 ## Description
@@ -31,5 +33,5 @@ When `## Status` is followed by `Accepted\n---`, the section is empty and `Accep
 
 ## Acceptance criteria
 
-- [ ] `adr-status` on `## Status\nAccepted\n---` says the heading Accepted stays below the new status, with and without a `Status:` line, with tests
-- [ ] `adr-get` keeps its note, with a test
+- [x] `adr-status` on `## Status\nAccepted\n---` says the heading Accepted stays below the new status, with and without a `Status:` line, with tests
+- [x] `adr-get` keeps its note, with a test

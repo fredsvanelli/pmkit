@@ -985,9 +985,37 @@ test('the heading note offers both ways out, and does not ask for a second statu
     }
     const set = await adrStatus(root, '1', 'deprecated', '--dry-run')
     const [setNote] = set.data.notes.filter((item) => item.includes('reads as a heading'))
-    assert.equal(/remove the underline/.test(setNote), empty, name)
-    assert.match(setNote, /before the write/, name)
+    assert.doesNotMatch(setNote, /remove the underline|blank line before/, name)
+    assert.match(setNote, /would stay below the status this would write, "[^"]*Deprecated"/, name)
   }
+})
+
+for (const underline of ['---', '===']) {
+  for (const [form, head] of [['no other status', ''], ['a Status: line', 'Status: Old\n\n'], ['a status: key', '---\nstatus: Old\n---\n\n']]) {
+    test(`docs adr-status says the ${underline} heading stays below the status it writes, with ${form} (PMK-300)`, async () => {
+      const root = repo()
+      writeAdr(root, 'docs/adr/0001-use-x.md', `${head}# 1. Use X\n\n## Status\nAccepted\n${underline}\n\n## Context\n`)
+      const get = (await adrGetFrom(root, '1')).data.notes.join('\n')
+      const dry = (await adrStatus(root, '1', 'deprecated', '--dry-run')).data.notes.filter((n) => n.includes('"Accepted"'))
+      assert.equal(dry.length, 1)
+      assert.match(dry[0], new RegExp(`^docs/adr/0001-use-x\\.md: "Accepted" reads as a heading \\(an underline, ${underline}, follows it\\) and would stay below the status this would write, "[^"]*Deprecated"; docs adr-status does not remove it, so delete "Accepted" and its ${underline} line yourself if it is not part of the status$`))
+      const real = (await adrStatus(root, '1', 'deprecated')).data.notes.filter((n) => n.includes('"Accepted"'))
+      assert.equal(real.length, 1)
+      assert.match(real[0], new RegExp(`"Accepted" reads as a heading \\(an underline, ${underline}, follows it\\) and stays below the status written here, "[^"]*Deprecated"; `))
+      assert.doesNotMatch(real[0], /would|before the write|not a second status|remove the underline/)
+      assert.match(get, /remove the underline|not a second status/, 'adr-get keeps its note')
+      assert.doesNotMatch(get, /stays below/)
+    })
+  }
+}
+
+test('docs adr-status run again on the ADR it wrote says nothing about the heading below the status (PMK-300)', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0001-use-x.md', '# 1. Use X\n\n## Status\nAccepted\n---\n\n## Context\n')
+  await adrStatus(root, '1', 'deprecated')
+  const again = await adrStatus(root, '1', 'deprecated')
+  assert.equal(again.data.before, again.data.after)
+  assert.deepEqual([again.data.statusHeading, again.data.notes.filter((n) => n.includes('heading'))], [null, []])
 })
 
 test('the heading note shows the real underline and heading in its example (PMK-294 review)', async () => {
@@ -996,10 +1024,12 @@ test('the heading note shows the real underline and heading in its example (PMK-
     const root = repo()
     const body = example.startsWith('===') ? `===\nAccepted\n${underline}` : `Accepted\nfor now\n${underline}`
     writeAdr(root, 'docs/adr/0001-use-x.md', `# 1. Use X\n\n## Status\n${body}\n\n## Context\n`)
-    for (const note of [(await adrGetFrom(root, '1')).data.notes.join('\n'), (await adrStatus(root, '1', 'deprecated', '--dry-run')).data.notes.join('\n')]) {
-      assert.ok(note.includes(`("${example}")`), `${underline}: ${note}`)
-      assert.ok(!note.includes('""'), underline)
-    }
+    const note = (await adrGetFrom(root, '1')).data.notes.join('\n')
+    assert.ok(note.includes(`("${example}")`), `${underline}: ${note}`)
+    assert.ok(!note.includes('""'), underline)
+    const heading = example.startsWith('===') ? '=== Accepted' : 'Accepted for now'
+    const setNote = (await adrStatus(root, '1', 'deprecated', '--dry-run')).data.notes.join('\n')
+    assert.ok(setNote.includes(`"${heading}" reads as a heading (an underline, ${underline}, follows it)`) && setNote.includes(`delete "${heading}" and its ${underline} line`), `${underline}: ${setNote}`)
   }
   const root = repo()
   writeAdr(root, 'docs/adr/0001-use-x.md', '# 1. Use X\n\n## Status\n===\n\n## Context\n')
