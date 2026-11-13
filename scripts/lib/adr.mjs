@@ -223,8 +223,8 @@ const keepsText = (paragraph) => {
  * HTML block until its end), then starts new blocks in the deepest one it continued, and a line that continues no more than a paragraph
  * is a lazy continuation of it. A setext underline makes a heading only of a paragraph it continues and that holds more than link
  * reference definitions, so under a list item it is a break or a lazy line (PMK-280). Columns count a tab to the next stop of 4.
- * Not a Markdown parser: no inline content. `held`, when given, collects the non-blank lines an HTML block continues (PMK-299), as `{ at, heading, late, block }` (`late`: after a blank line of the block),
- * and gets `unclosed`: the block of kind 1 to 5 still open at the end of the file, which takes in every later line. The same for a fenced code block (PMK-302): the non-blank lines it continues come in `held` with `block.type === 'fence'`, closed or not, in a quote or a list item too. Each entry has its `text` (the line without the containers' markers).
+ * Not a Markdown parser: no inline content. `held`, when given, collects the non-blank lines an HTML block continues (PMK-299), as `{ at, text, late, block }` (`text`: the line without the markers of the containers it is in; `late`, HTML blocks only: after a blank line of the block; `heading` is not in it, `headingLike` adds it for the readers),
+ * and gets `unclosed`: the block of kind 1 to 5 still open at the end of the file, which takes in every later line. The same for a fenced code block (PMK-302): the non-blank lines it continues come in `held` with `block.type === 'fence'`, closed or not, in a quote or a list item too. Its entries are `{ at, text, block }`.
  */
 function sectionEnd(lines, from, held = []) {
   const open = [{ type: 'document' }]
