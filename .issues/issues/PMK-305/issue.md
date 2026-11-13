@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-305-say-in-pr-open-when-the-branch-is-behind
 created: 2026-11-13T16:20:45.502Z
-updated: 2026-11-13T16:32:03Z
+updated: 2026-11-13T17:08:14Z
 ---
 
 ## Description
@@ -34,5 +34,5 @@ PMK-298 made `issues branch` say when the local default branch is behind `origin
 
 ## Acceptance criteria
 
-- [ ] `pr open` on a branch behind origin/<default> says how many commits and gives the next step, on the dry run too, with a test
-- [ ] `pr open` on an up-to-date branch, or without origin/<default>, has no such note, with a test
+- [x] `pr open` on a branch behind origin/<default> says how many commits and gives the next step, on the dry run too, with a test
+- [x] `pr open` on an up-to-date branch, or without origin/<default>, has no such note, with a test
