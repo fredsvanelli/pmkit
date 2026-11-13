@@ -3,3 +3,4 @@
 {"at":"2026-11-13T16:32:02Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-13T16:32:05Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-303-keep-the-redact-timing-probes-from"}
 {"at":"2026-11-13T16:37:15Z","by":"fred","op":"comment","to":"2026-11-13T16-37-15Z-fred.md"}
+{"at":"2026-11-13T18:09:23Z","by":"fred","op":"update","field":"acceptance_criteria"}

@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-303-keep-the-redact-timing-probes-from
 created: 2026-11-13T16:20:45.318Z
-updated: 2026-11-13T16:32:05Z
+updated: 2026-11-13T18:09:23Z
 ---
 
 ## Description
@@ -36,5 +36,5 @@ The worker of PMK-301 suspected that redact grows faster than linear from 80k to
 
 ## Acceptance criteria
 
-- [ ] The redact timing probes pass in full `npm test` runs with other suites running at the same time, with a check over several runs
-- [ ] A sample quadratic regex fails the probe, with a test
+- [x] The redact timing probes pass in full `npm test` runs with other suites running at the same time, with a check over several runs
+- [x] A sample quadratic regex fails the probe, with a test
