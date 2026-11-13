@@ -197,7 +197,7 @@ test('a cleanup that fails after the delete leaves the issue gone, never half th
   fs.chmodSync(comments, 0o555)
   try {
     const result = tracker.delete(a, 'fred')
-    assert.match(result.warnings.join('\n'), /could not be removed: (EACCES|ENOTEMPTY)/)
+    assert.match(result.warnings.join('\n'), /could not be removed: (EACCES|ENOTEMPTY); a file or folder inside could not be removed, often for lack of write permission; run pmkit validate/)
     assert.equal(fs.existsSync(issuePaths(issuesDir, a).dir), false)
     assert.throws(() => tracker.getIssue(a), { code: 'NOT_FOUND' })
     assert.deepEqual(tracker.searchIssues({ archived: true }).issues.map((issue) => issue.id), rest)
