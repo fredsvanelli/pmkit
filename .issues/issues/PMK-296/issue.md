@@ -2,12 +2,14 @@
 id: PMK-296
 title: "Close a quoted path before a period, comma, semicolon or brace"
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-296-close-a-quoted-path-before-a-period
 created: 2026-11-12T22:25:13.781Z
-updated: 2026-11-12T22:25:13Z
+updated: 2026-11-13T02:23:43Z
 ---
 
 ## Description
