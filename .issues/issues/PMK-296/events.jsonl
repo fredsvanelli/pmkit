@@ -3,3 +3,5 @@
 {"at":"2026-11-13T02:23:39Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-13T02:23:43Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-296-close-a-quoted-path-before-a-period"}
 {"at":"2026-11-13T02:24:03Z","by":"fred","op":"comment","to":"2026-11-13T02-24-03Z-fred.md"}
+{"at":"2026-11-13T02:37:51Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-13T02:37:51Z","by":"fred","op":"update","field":"acceptance_criteria"}

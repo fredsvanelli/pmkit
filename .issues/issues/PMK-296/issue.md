@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-296-close-a-quoted-path-before-a-period
 created: 2026-11-12T22:25:13.781Z
-updated: 2026-11-13T02:23:43Z
+updated: 2026-11-13T02:37:51Z
 ---
 
 ## Description
@@ -34,5 +34,5 @@ A quoted path closes at its quote only when the quote is followed by the line en
 
 ## Acceptance criteria
 
-- [ ] `'/Users/x/a'. next` and `Cloning into 'file:///x/y'...` keep the text after the quote, with tests
-- [ ] A path with a quote in its name followed by one of these characters shows no part of the path, with a test
+- [x] `'/Users/x/a'. next` and `Cloning into 'file:///x/y'...` keep the text after the quote, with tests
+- [x] A path with a quote in its name followed by one of these characters shows no part of the path, with a test
