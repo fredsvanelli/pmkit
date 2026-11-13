@@ -2,14 +2,14 @@
 id: PMK-302
 title: Refuse to delete the text an unclosed code fence takes into the Status section
 type: bug
-status: in_progress
+status: in_review
 priority: medium
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-302-refuse-to-delete-the-text-an-unclosed
 created: 2026-11-13T16:20:45.230Z
-updated: 2026-11-13T16:48:52Z
+updated: 2026-11-13T17:12:18Z
 ---
 
 ## Description
