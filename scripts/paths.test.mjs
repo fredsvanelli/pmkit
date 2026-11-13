@@ -214,3 +214,10 @@ test("hideAbsolutePaths hides a path after '!', after a letter and '>' that is n
 test('hideAbsolutePaths keeps <remote>/<branch>, <rev1>/<rev2>, HEAD~1>/x and a closing backtick (PMK-295)', () => {
   for (const text of ['<remote>/<branch>', '<rev1>/<rev2>', 'push <remote>/<branch> now', 'HEAD~1>/x', 'use `git`/`gh` here']) assert.equal(hideAbsolutePaths(text), text)
 })
+
+test('hideAbsolutePaths keeps a <placeholder with spaces>/x and Map<string, number>/x, and hides a path after a > that closes none (PMK-295 review)', () => {
+  for (const text of ['<a b>/x', '<remote name>/<branch> failed', 'Map<string, number>/Users/x']) assert.equal(hideAbsolutePaths(text), text)
+  assert.equal(hideAbsolutePaths(`<${'a'.repeat(70)}>/Users/x`), `<${'a'.repeat(70)}><path>`) // more than 64 characters back: not a placeholder
+  assert.equal(hideAbsolutePaths('"http://h/a|/b" next'), '"http://h/a|<path>')
+  assert.equal(hideAbsolutePaths('Done!/tmp/x'), 'Done!<path>')
+})

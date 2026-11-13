@@ -26,3 +26,13 @@ test('probe: a line of 200 thousand characters of quotes and backticks that neve
     assert.ok(ms < 1000, `${JSON.stringify(input.slice(0, 20))} took ${ms} ms`)
   }
 })
+
+test("probe: a line of 200 thousand characters of '!', '|' after a URL, 'a>' and '<a b>' takes less than a second (PMK-295)", () => {
+  const inputs = [rep('!', n), rep('a!/', n / 3), rep('https://h/x|', n / 12), rep('https://h/|/', n / 12), rep('a|', n / 2), rep('a>', n / 2), rep('a>/', n / 3), rep('<a b>', n / 5), rep('<a b', n / 4), rep('<', n), rep('a b>', n / 4)]
+  for (const input of inputs) {
+    const start = process.hrtime.bigint()
+    hideAbsolutePaths(input)
+    const ms = Number(process.hrtime.bigint() - start) / 1e6
+    assert.ok(ms < 1000, `${JSON.stringify(input.slice(0, 20))} took ${ms} ms`)
+  }
+})
