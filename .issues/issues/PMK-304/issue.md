@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-304-name-the-cause-and-a-working-step-when
 created: 2026-11-13T16:20:45.410Z
-updated: 2026-11-13T16:32:06Z
+updated: 2026-11-13T16:54:29Z
 ---
 
 ## Description
@@ -34,5 +34,5 @@ When `issues delete` cannot remove the renamed folder, it warns `the issue is de
 
 ## Acceptance criteria
 
-- [ ] The warning of a failed cleanup says that a file inside could not be removed and names permissions as the likely cause, on Node 22 and Node 26, with a test
-- [ ] The step from `validate` removes a read-only leftover when run, with a test
+- [x] The warning of a failed cleanup says that a file inside could not be removed and names permissions as the likely cause, on Node 22 and Node 26, with a test
+- [x] The step from `validate` removes a read-only leftover when run, with a test
