@@ -2,14 +2,14 @@
 id: PMK-306
 title: "Keep or refuse, never silently delete, the other text of the Status section in adr-status"
 type: bug
-status: in_progress
+status: in_review
 priority: medium
 estimate: 2
 assignee: fred
 parent: EPC-6
 branch: pmk-306-keep-or-refuse-never-silently-delete-the
 created: 2026-11-13T21:09:10.315Z
-updated: 2026-11-13T22:07:55Z
+updated: 2026-11-13T22:08:44Z
 ---
 
 ## Description
