@@ -88,7 +88,7 @@ export const hideAbsolutePaths = (text) => {
       copied = re.lastIndex
       continue
     }
-    // A URL ends before a `|` that is followed by an absolute path, and the path after it is hidden to the end of the line (PMK-295). The end is found by a loop,
+    // A URL ends before a `|` that is followed by an absolute path, and the path after it is hidden to the end of the line (PMK-295). The end is found by one scan of the URL (`search`),
     // not by a repeated group in the regex, because a group repeated once per `|` grew the regex stack with the line (a RangeError at millions of pipes).
     const cut = url.search(PIPE_PATH)
     const kept = cut === -1 ? url : url.slice(0, cut)

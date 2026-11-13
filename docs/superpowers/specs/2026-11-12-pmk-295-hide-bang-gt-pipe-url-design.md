@@ -9,4 +9,4 @@ Approaches: (a) regex edits only; the URL body as a repeated group stops at `|`+
 Design, in `scripts/lib/paths.mjs`:
 - `!` joins the START class.
 - A `>` after a letter starts a path unless it closes a placeholder: `(?<!<[^<>\r\n]{0,64})`, a `<` up to 64 characters back with no `<`, `>` or line break between. This keeps `<a b>/x` and `<remote name>/<branch>`; the 64 bounds the lookbehind, so it is linear. A placeholder longer than 64 is not one.
-- The URL regex keeps `\S*`. `hideAbsolutePaths` runs a loop over the matches: in a URL it looks for the first `|` followed by an absolute path (`indexOf` plus a sticky test), keeps the URL before it, writes `|<path>` and skips to the end of the line.
+- The URL regex keeps `\S*`. `hideAbsolutePaths` runs a loop over the matches: in a URL it looks for the first `|` followed by an absolute path (one `search`), keeps the URL before it, writes `|<path>` and skips to the end of the line.
