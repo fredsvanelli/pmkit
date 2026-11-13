@@ -277,3 +277,10 @@ test("hideAbsolutePaths still hides the path after a redirect, also next to a '<
   assert.equal(hideAbsolutePaths('cat <in 2>/Users/x/y'), 'cat <in 2><path>')
   assert.equal(hideAbsolutePaths('a <1>/<2> b 2>/Users/x/y'), 'a <1>/<2> b 2><path>')
 })
+
+test("hideAbsolutePaths hides the path after a redirect when a shell separator sits between '<' and the digit or letter (PMK-297 review)", () => {
+  const redirects = ['cmd <in&2>/Users/x/y', 'cat<in;2>/Users/x/y', 'cat <in.txt;1>/Users/x/o', 'cmd <$f;2>/Users/x/y', '(<f)2>/Users/x/y', 'cmd <in|2>/Users/x/y', 'cmd <(f)2>/Users/x/y', 'cat <in;echo>/Users/x', 'cmd <a&b>/Users/x', 'x <$f|y>/Users/x', 'cmd <a(b)c>/Users/x', 'cmd <a`b`c>/Users/x']
+  for (const text of redirects) assert.ok(hideAbsolutePaths(text).endsWith('<path>') && !hideAbsolutePaths(text).includes('/Users'), text)
+  assert.equal(hideAbsolutePaths('cmd <in&2>/Users/x/y'), 'cmd <in&2><path>')
+  for (const text of ['<remote name>/<branch>', '<a b>/x', 'Map<string, number>/x', '<sha-1>/<x> r', '<v1.2>/<x> r', '<1>/<2> r']) assert.equal(hideAbsolutePaths(text), text)
+})
