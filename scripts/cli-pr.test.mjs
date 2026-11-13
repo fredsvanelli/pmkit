@@ -389,7 +389,12 @@ test('issues branch with a local default behind origin says how many commits and
   assert.ok(noteLines(dryRaw).some((n) => /2 commits behind/.test(n)), dryRaw.stderr)
   const real = await call(root, env, ['issues', 'branch', 'ISS-2X6D', '--json'])
   assert.equal(real.code, 0, real.stdout + real.stderr)
-  assert.ok(JSON.parse(real.stdout).notes.some((n) => /main is 2 commits behind origin\/main/.test(n)), real.stdout)
+  // The branch exists by now, so a pull on main no longer helps: the note gives the rebase of the new branch.
+  const realNotes = JSON.parse(real.stdout).notes.join('\n')
+  assert.match(realNotes, /main is 2 commits behind origin\/main/)
+  assert.match(realNotes, /git rebase --onto origin\/main main iss-2x6d\S*/i)
+  assert.doesNotMatch(realNotes, /pull|pass --from/)
+  assert.ok(noteLines(real).some((n) => /git rebase --onto/.test(n)), real.stderr)
 })
 
 test('issues branch says "1 commit" for one commit behind', async () => {
@@ -422,8 +427,17 @@ test('issues branch with a local default that diverged from origin says how many
     const data = JSON.parse(result.stdout)
     assert.equal(data.from, 'main')
     assert.equal(data.notes.length, 1)
-    assert.match(data.notes[0], /main has diverged from origin\/main: 1 commit only here, 3 commits only there.*--from origin\/main/)
+    assert.match(data.notes[0], /main has diverged from origin\/main: 1 commit only here, 3 commits only there/)
     assert.doesNotMatch(data.notes[0], /pull|behind/)
+    // Dry run: nothing is created yet, so --from is the way. Real run: the branch exists, so rebase it onto origin and leave the local-only commits behind.
+    if (extra.length > 0) assert.match(data.notes[0], /--from origin\/main/)
+    else {
+      assert.match(data.notes[0], /git rebase --onto origin\/main main iss-2x6d\S*/i)
+      // The command of the note does what it says: the new branch ends on origin/main, without the commit only main has.
+      const [, branch] = data.notes[0].match(/git rebase --onto origin\/main main (\S+)/)
+      assert.equal(git(root, 'rebase', '--onto', 'origin/main', 'main', branch).status, 0)
+      assert.equal(tipOf(root, branch), tipOf(root, 'origin/main'))
+    }
     assert.ok(noteLines(result).some((n) => /diverged/.test(n)), result.stderr)
   }
 })
@@ -434,11 +448,15 @@ test('issues branch says it could not compare with origin when rev-list fails, a
   // A missing parent object: both refs resolve to commits, but the history between them cannot be walked.
   const root0 = git(root, 'rev-list', '--max-parents=0', 'origin/main').stdout.trim()
   fs.rmSync(path.join(root, '.git', 'objects', root0.slice(0, 2), root0.slice(2)), { force: true })
-  const result = await call(root, envWith(fakeGh({})), ['issues', 'branch', 'ISS-2X6D', '--dry-run', '--json'])
+  const env = envWith(fakeGh({}))
+  const result = await call(root, env, ['issues', 'branch', 'ISS-2X6D', '--dry-run', '--json'])
   assert.equal(result.code, 0, result.stdout + result.stderr)
   const data = JSON.parse(result.stdout)
   assert.equal(data.from, 'main')
   assert.match(data.notes.join('\n'), /could not compare main with origin\/main.*--from origin\/main/)
+  const real = await call(root, env, ['issues', 'branch', 'ISS-2X6D', '--json'])
+  assert.equal(real.code, 0, real.stdout + real.stderr)
+  assert.match(JSON.parse(real.stdout).notes.join('\n'), /could not compare main with origin\/main.*git rebase --onto origin\/main main iss-2x6d/i)
   assert.ok(noteLines(result).some((n) => /could not compare/.test(n)), result.stderr)
 })
 

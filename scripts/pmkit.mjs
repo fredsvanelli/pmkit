@@ -368,15 +368,20 @@ function branchBase(ctx) {
   throw usageError(`the default branch ${name} is neither a local branch nor origin/${name}`, `Run git fetch origin, or pass --from <an existing branch>`)
 }
 
-/** The notes for a local default branch that is not level with origin (PMK-298): behind (pull), diverged (no pull can fast-forward) or not comparable. No notes when level, ahead only or not checked. */
-function syncNotes(from, sync) {
+/**
+ * The notes for a local default branch that is not level with origin (PMK-298): behind, diverged (no pull can fast-forward) or not comparable.
+ * No notes when level, ahead only or not checked. `created` is the new branch once it exists: a pull of the default branch no longer helps it,
+ * so the next step is one path for every case, moving the branch onto origin/<default> and leaving the commits only the local default has behind.
+ */
+function syncNotes(from, sync, created = null) {
   const commits = (n) => `${n} ${n === 1 ? 'commit' : 'commits'}`
-  const fromOrigin = `pass --from origin/${from}`
+  const next = created === null ? `pass --from origin/${from}` : `run git rebase --onto origin/${from} ${from} ${created}`
+  const early = created === null ? 'so the new branch starts from an old commit' : `so ${created} started from an old commit`
   if (sync === null) return []
-  if (sync.unknown) return [`could not compare ${from} with origin/${from}, so it may be behind and the new branch may start from an old commit. Run git fetch origin and try again, or ${fromOrigin}`]
+  if (sync.unknown) return [`could not compare ${from} with origin/${from}, so it may be behind and ${created ?? 'the new branch'} may start from an old commit. ${created === null ? `Run git fetch origin and try again, or ${next}` : `Run git fetch origin, check with git log ${from}..origin/${from}, and when it is behind ${next}`}`]
   if (sync.behind === 0) return []
-  if (sync.ahead > 0) return [`${from} has diverged from origin/${from}: ${commits(sync.ahead)} only here, ${commits(sync.behind)} only there (as of the last fetch), so ${from} cannot fast-forward to it. Rebase or merge ${from} first, or ${fromOrigin}`]
-  return [`${from} is ${commits(sync.behind)} behind origin/${from} (as of the last fetch), so the new branch starts from an old commit. Run git pull --ff-only on ${from} first, or ${fromOrigin}`]
+  if (sync.ahead > 0) return [`${from} has diverged from origin/${from}: ${commits(sync.ahead)} only here, ${commits(sync.behind)} only there (as of the last fetch), so ${from} cannot fast-forward to it and ${created === null ? 'the new branch would carry' : `${created} carries`} the local-only commits. ${created === null ? `Rebase or merge ${from} first, or ${next}` : `Run git fetch origin, then ${next}`}`]
+  return [`${from} is ${commits(sync.behind)} behind origin/${from} (as of the last fetch), ${early}. ${created === null ? `Run git pull --ff-only on ${from} first, or ${next}` : `Run git fetch origin, then ${next}`}`]
 }
 
 const adrPlace = (ctx) => adrLocation({ root: ctx.root, issuesDir: ctx.config().issuesDir, hosted: ctx.config().hosted })
@@ -2001,16 +2006,18 @@ export const COMMANDS = [
       const issue = await tracker.getIssue(ctx.args[0])
       const { from, note: fromNote, sync } = branchBase(ctx)
       // Like the other notes of this command, it reaches the text as a stderr note, and the JSON as `notes`, which the agent reads.
-      const syncNote = syncNotes(from, sync)
       // A tracker that names branches, such as Linear, keeps its name, so its link to the git host works.
       const branch = ctx.settings().trackerBranch === true && issue.branch ? issue.branch : branchName(issue.id, issue.title)
+      // The dry run is before the branch exists (pull or --from help); the real run is after (only moving the new branch does).
+      const syncNote = syncNotes(from, sync)
+      const createdNote = syncNotes(from, sync, branch)
       // Check the tracker write first, so a refused write leaves git on the branch it was on.
       const actor = await ctx.actor()
       await tracker.updateIssue(issue.id, { branch }, actor, { dryRun: true })
       if (ctx.dryRun) return { data: { branch, from, ...(syncNote.length > 0 ? { notes: syncNote } : {}) }, text: `would create branch ${branch} from ${from}${fromNote}\ndry run: nothing was written`, notes: [...syncNote, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : [])] }
       host.createBranch(branch, { from })
       const result = await tracker.updateIssue(issue.id, { branch }, actor)
-      return { data: { branch, from, ...result, ...(syncNote.length > 0 ? { notes: syncNote } : {}) }, text: `created branch ${branch} from ${from}${fromNote}\n${writeText(result, ctx)}`, commit: issue.id, notes: [...syncNote, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : []), ...(await capabilityNotesOrNone(ctx))] }
+      return { data: { branch, from, ...result, ...(createdNote.length > 0 ? { notes: createdNote } : {}) }, text: `created branch ${branch} from ${from}${fromNote}\n${writeText(result, ctx)}`, commit: issue.id, notes: [...createdNote, ...(ctx.opt('from') === undefined ? defaultBranchNotes(ctx) : []), ...(await capabilityNotesOrNone(ctx))] }
     },
   },
   {
