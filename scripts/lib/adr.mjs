@@ -428,6 +428,20 @@ export function adrFenceHeld(text) {
   const risky = headingLike(held).filter((item) => item.block.type === 'fence' && item.heading)
   return risky.length === 0 ? null : { opener: risky[0].block.first, lines: risky.map((item) => lines[item.at].trim()) }
 }
+/**
+ * The text of the `## Status` section that `adr-status` would delete besides the status (PMK-306): the trimmed non-blank lines after the first paragraph
+ * of the section (the status, which may span lines, as `adrInfo` joins them), `[]` when there are none or no section. The same walk that ends the section
+ * decides where it stops, so lines a fence or an HTML block takes in count, a line indented 4 spaces included. Reading is unchanged.
+ */
+export function adrStatusOther(text) {
+  const lines = adrText(text).split('\n')
+  const { section, end } = locate(lines)
+  if (section === -1) return []
+  const body = lines.slice(section + 1, end(section))
+  const first = body.findIndex((item) => item.trim() !== '')
+  const gap = first === -1 ? -1 : body.findIndex((item, i) => i > first && item.trim() === '')
+  return gap === -1 ? [] : body.slice(gap).map((item) => item.trim()).filter(Boolean)
+}
 const withoutBlanks = (lines, from) => {
   let at = from
   while (at < lines.length && lines[at].trim() === '') at++

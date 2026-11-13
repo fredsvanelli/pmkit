@@ -24,7 +24,7 @@ import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, 
 import { pathNote } from './lib/path-notes.mjs'
 import { fileMentions } from './lib/mentions.mjs'
 import { REPO_UNCHECKED } from './lib/delete-refusal.mjs'
-import { ADR_STATUSES, adrFiles, adrInfo, adrRef, isAdrName, adrFolders, adrLocation, adrHtmlHeld, adrFenceHeld, adrStatusHeading, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
+import { ADR_STATUSES, adrFiles, adrInfo, adrRef, isAdrName, adrFolders, adrLocation, adrHtmlHeld, adrFenceHeld, adrStatusOther, adrStatusHeading, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
 import { similarResult } from './lib/similar.mjs'
 import { isBlocked } from './lib/model.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
@@ -433,6 +433,7 @@ const htmlHeldNote = (adrPath, { opener, lines }) => `${adrPath}: the HTML block
 
 /** The step and the note for PMK-302, the code fence that never closes and takes a heading into the Status section; the same shape as the HTML block's (PMK-299). */
 const FENCE_HELD_STEP = 'Close the code fence before the heading: add a closing line after the status, with the same character as the opening one and at least as many of it; then run the command again'
+const OTHER_TEXT_STEP = 'Move that text out of the Status section (it holds only the status), or delete it by hand; then run the command again'
 const fenceHeldNote = (adrPath, { opener, lines }) => `${adrPath}: the code fence "${opener}" takes ${lines.map((item) => `"${item}"`).join(', ')} into the Status section, so that text reads as part of the status; ${FENCE_HELD_STEP.charAt(0).toLowerCase()}${FENCE_HELD_STEP.slice(1)}`
 
 /** docs adr-get (PMK-263): the number, title, status and path of one ADR. Only reads. `--from` is the path `docs next-adr` gave the new ADR that supersedes it: `supersedesRef` is the path its Supersedes line cites (PMK-270). */
@@ -484,10 +485,21 @@ async function runAdrStatus(ctx) {
     byPath = adrRef(adr, newer, trackerFolder)
   }
   const before = adrText(fs.readFileSync(adr.file, 'utf8'))
+  // PMK-306: refuse, never delete text of the section besides the status; one refusal names every cause, so one fix and one run are enough.
   const htmlHeld = adrHtmlHeld(before)
-  if (htmlHeld !== null) throw new PmkitError('INVALID_INPUT', `${adr.path}: setting the status would delete ${htmlHeld.lines.map((item) => `"${item}"`).join(', ')}, which the HTML block "${htmlHeld.opener}" takes into the Status section; nothing was written`, HTML_HELD_STEP)
   const fenceHeld = adrFenceHeld(before)
-  if (fenceHeld !== null) throw new PmkitError('INVALID_INPUT', `${adr.path}: setting the status would delete ${fenceHeld.lines.map((item) => `"${item}"`).join(', ')}, which the code fence "${fenceHeld.opener}" takes into the Status section; nothing was written`, FENCE_HELD_STEP)
+  const named = new Set([...(htmlHeld?.lines ?? []), ...(fenceHeld?.lines ?? [])])
+  const other = adrStatusOther(before).filter((item) => !named.has(item))
+  const quoted = (lines) => lines.map((item) => `"${item}"`).join(', ')
+  const causes = [
+    ...(htmlHeld === null ? [] : [[`${quoted(htmlHeld.lines)}, which the HTML block "${htmlHeld.opener}" takes into the Status section`, HTML_HELD_STEP]]),
+    ...(fenceHeld === null ? [] : [[`${quoted(fenceHeld.lines)}, which the code fence "${fenceHeld.opener}" takes into the Status section`, FENCE_HELD_STEP]]),
+    ...(other.length === 0 ? [] : [[`the other text of the Status section, ${quoted(other)}`, OTHER_TEXT_STEP]]),
+  ]
+  if (causes.length > 0) {
+    const again = '; then run the command again'
+    throw new PmkitError('INVALID_INPUT', `${adr.path}: setting the status would delete ${causes.map(([what]) => what).join('; and ')}; nothing was written`, `${causes.map(([, step]) => step.replace(again, '')).join('; ')}${again}`)
+  }
   const found = adrStatusHeading(before)
   const statusHeading = found?.heading ?? null
   const { text: after, before: statusBefore, after: line } = setAdrStatus(before, status, byPath)
