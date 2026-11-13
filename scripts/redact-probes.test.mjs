@@ -3,6 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { redact } from './lib/redact.mjs'
+import { assertFast, PROBE_CEILING_MS } from './__helpers__/assert-fast.mjs'
 
 const rep = (text, n) => text.repeat(n)
 const PROBES = [
@@ -289,23 +290,6 @@ for (const [name, input, output] of PROBES) {
 
 const PROBE_SIZE = 160000
 const PROBE_ROW_SIZE = 320000
-const PROBE_CEILING_MS = 10000
-
-function assertFast(fn, input, limitMs) {
-  const start = process.hrtime.bigint()
-  fn(input)
-  const ms = Number(process.hrtime.bigint() - start) / 1e6
-  assert.ok(ms < limitMs, `${JSON.stringify(input.slice(0, 20))} took ${ms} ms`)
-}
-
-// PMK-303: a fixed small limit failed under load (a loaded machine runs the same input 35 times slower), and a growth ratio
-// of two small runs failed too. The probes use a size where a quadratic regex takes tens of seconds or more and linear redact
-// takes well under a second, with a ceiling that only quadratic time reaches even when the machine is loaded.
-test('probe helper: a quadratic regex fails assertFast and a linear one passes', () => {
-  const input = rep('a', 15000)
-  assert.throws(() => assertFast((s) => /a+b/.test(s), input, 20), /took [\d.]+ ms/)
-  assertFast((s) => /a/.test(s), input, PROBE_CEILING_MS)
-})
 
 test('probe: no pattern takes more than ten seconds on 160 thousand characters of its own kind', () => {
   const n = PROBE_SIZE
