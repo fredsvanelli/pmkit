@@ -197,7 +197,7 @@ test('a cleanup that fails after the delete leaves the issue gone, never half th
   fs.chmodSync(comments, 0o555)
   try {
     const result = tracker.delete(a, 'fred')
-    assert.match(result.warnings.join('\n'), /could not be removed: (EACCES|ENOTEMPTY); a file or folder inside could not be removed, often for lack of write permission; run pmkit validate/)
+    assert.match(result.warnings.join('\n'), /could not be removed: (EACCES|EPERM|ENOTEMPTY); a file or folder inside could not be removed, often for lack of write permission; run pmkit validate/)
     assert.equal(fs.existsSync(issuePaths(issuesDir, a).dir), false)
     assert.throws(() => tracker.getIssue(a), { code: 'NOT_FOUND' })
     assert.deepEqual(tracker.searchIssues({ archived: true }).issues.map((issue) => issue.id), rest)
@@ -205,6 +205,26 @@ test('a cleanup that fails after the delete leaves the issue gone, never half th
     for (const entry of fs.readdirSync(path.join(issuesDir, 'issues'))) {
       const leftover = path.join(issuesDir, 'issues', entry, 'comments')
       if (entry.startsWith('.deleting-') && fs.existsSync(leftover)) fs.chmodSync(leftover, 0o755)
+      if (entry.startsWith('.deleting-')) fs.rmSync(path.join(issuesDir, 'issues', entry), { recursive: true, force: true })
+    }
+  }
+})
+
+test('a failed cleanup with a code outside the permission set keeps the warning without the cause', (t) => {
+  const { tracker, issuesDir, ids: [a] } = setup()
+  const realRm = fs.rmSync
+  t.mock.method(fs, 'rmSync', (target, ...rest) => {
+    if (String(target).includes('.deleting-')) throw Object.assign(new Error('busy'), { code: 'EBUSY' })
+    return realRm(target, ...rest)
+  })
+  try {
+    const result = tracker.delete(a, 'fred')
+    const warning = result.warnings.find((text) => text.includes('could not be removed'))
+    assert.match(warning, /could not be removed: EBUSY; run pmkit validate for the step to remove it$/)
+    assert.doesNotMatch(warning, /inside/)
+  } finally {
+    t.mock.restoreAll()
+    for (const entry of fs.readdirSync(path.join(issuesDir, 'issues'))) {
       if (entry.startsWith('.deleting-')) fs.rmSync(path.join(issuesDir, 'issues', entry), { recursive: true, force: true })
     }
   }

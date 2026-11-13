@@ -24,7 +24,7 @@ test('a leftover of a failed delete is reported as one, not as an invalid issue'
   assert.deepEqual(after.problems.filter((problem) => !before.problems.some((old) => old.path === problem.path && old.code === problem.code)), [{
     path: '.issues/issues/.deleting-ISS-X-4242',
     code: 'leftover',
-    message: 'it is what a failed issues delete left behind, not an issue; remove it with: chmod -R u+w \'.issues/issues/.deleting-ISS-X-4242\' && rm -rf \'.issues/issues/.deleting-ISS-X-4242\'',
+    message: 'it is what a failed issues delete left behind, not an issue; remove it with: chmod -R u+rwX \'.issues/issues/.deleting-ISS-X-4242\' && rm -rf \'.issues/issues/.deleting-ISS-X-4242\'',
   }])
 })
 
@@ -35,6 +35,10 @@ test('the leftover step removes a read-only leftover, with spaces and an apostro
   fs.mkdirSync(locked, { recursive: true })
   fs.writeFileSync(path.join(locked, 'c.md'), 'x')
   fs.chmodSync(locked, 0o555)
+  const noAccess = path.join(leftover, 'nested')
+  fs.mkdirSync(noAccess)
+  fs.writeFileSync(path.join(noAccess, 'd.md'), 'y')
+  fs.chmodSync(noAccess, 0o000)
   try {
     const problem = validateRepo(root).problems.find((item) => item.code === 'leftover')
     const step = problem.message.split('remove it with: ')[1]
@@ -43,6 +47,7 @@ test('the leftover step removes a read-only leftover, with spaces and an apostro
     assert.equal(fs.existsSync(leftover), false)
   } finally {
     if (fs.existsSync(locked)) fs.chmodSync(locked, 0o755)
+    if (fs.existsSync(noAccess)) fs.chmodSync(noAccess, 0o755)
     fs.rmSync(leftover, { recursive: true, force: true })
   }
 })

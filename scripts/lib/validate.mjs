@@ -25,13 +25,15 @@ const read = (file) => fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').repl
 const subdirs = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort() : [])
 const files = (dir, ext) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((name) => name.endsWith(ext)).sort() : [])
 
-function walkFiles(dir) {
+// skip(dir) prunes a folder: a leftover of a failed delete is not an issue, and may hold a folder nobody can read.
+function walkFiles(dir, skip = () => false) {
   if (!fs.existsSync(dir)) return []
   return fs.readdirSync(dir, { withFileTypes: true })
     .sort((a, b) => (a.name < b.name ? -1 : 1))
     .flatMap((entry) => {
       const full = path.join(dir, entry.name)
-      return entry.isDirectory() ? walkFiles(full) : [full]
+      if (!entry.isDirectory()) return [full]
+      return skip(full) ? [] : walkFiles(full, skip)
     })
 }
 
@@ -158,7 +160,7 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
 
   const configFile = path.join(issuesDir, 'config.yaml')
   const conflicted = new Set()
-  for (const file of walkFiles(issuesDir).filter((name) => name.endsWith('.md') || name.endsWith('.yaml'))) {
+  for (const file of walkFiles(issuesDir, (dir) => path.basename(dir).startsWith('.deleting-')).filter((name) => name.endsWith('.md') || name.endsWith('.yaml'))) {
     if (!hasConflictMarkers(read(file))) continue
     conflicted.add(file)
     add(file, 'conflict', 'the file contains git conflict markers')
@@ -339,9 +341,9 @@ export function validateRepo(root, { config, migrations, adapters = ADAPTERS } =
   // A failed cleanup of `issues delete` leaves one of these. It is not an issue: report it as a leftover, with the step to remove it.
   for (const name of allFolders.filter((folder) => folder.startsWith(LEFTOVER))) {
     const dir = path.join(issuesDir, 'issues', name)
-    // chmod first: a read-only subfolder makes rm -rf fail the same way.
+    // chmod first: a read-only or no-access subfolder makes rm -rf fail the same way. X gives the execute bit a folder needs to be entered.
     const q = shellQuote(rel(dir))
-    add(dir, 'leftover', `it is what a failed issues delete left behind, not an issue; remove it with: chmod -R u+w ${q} && rm -rf ${q}`)
+    add(dir, 'leftover', `it is what a failed issues delete left behind, not an issue; remove it with: chmod -R u+rwX ${q} && rm -rf ${q}`)
   }
   const folders = allFolders.filter((folder) => !folder.startsWith(LEFTOVER))
   const byNormalized = new Map()
