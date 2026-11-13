@@ -590,11 +590,11 @@ test('pr open opens a new pull request when the last one on the branch is merged
 test('pr ready marks the open draft pull request ready, and refuses a ready one or a missing one', async () => {
   const root = teamRepo()
   const gh = fakeGh({
-    [view('draft-branch')]: { stdout: prJson({ number: 7, isDraft: true }) },
+    [detailView('draft-branch')]: { stdout: detailJson({ number: 7, isDraft: true }) },
     'pr ready 7': { stdout: '' },
     [view(7)]: { stdout: prJson({ number: 7, isDraft: false }) },
-    [view('ready-branch')]: { stdout: prJson({ number: 8, isDraft: false }) },
-    [view('none-branch')]: { status: 1, stderr: 'no pull requests found for branch "none-branch"\n' },
+    [detailView('ready-branch')]: { stdout: detailJson({ number: 8, isDraft: false }) },
+    [detailView('none-branch')]: { status: 1, stderr: 'no pull requests found for branch "none-branch"\n' },
   })
   const env = envWith(gh)
   await callJson(root, env, ['issues', 'update', 'ISS-2X6D', '--branch', 'draft-branch'])
@@ -1441,4 +1441,85 @@ test('pr open real run on a branch never pushed gives the force-with-lease next 
   assert.equal(git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'rebase', '-q', 'origin/main').status, 0)
   assert.notEqual(git(root, 'push', '-q', 'origin', 'feat-x').status, 0)
   assert.equal(git(root, 'push', '-q', '--force-with-lease', 'origin', 'feat-x').status, 0)
+})
+
+// pr ready (PMK-308): the same note as pr open, for a draft that fell behind. The base is the PR's own, from the same gh call.
+const readyGh = (base = 'main') => fakeGh({ [detailView('feat-x')]: { stdout: detailJson({ number: 9, headRefName: 'feat-x', isDraft: true }, { baseRefName: base }) }, 'pr ready 9': { stdout: '' }, [view(9)]: { stdout: prJson({ number: 9, isDraft: false }) } })
+
+async function prReadyNotes(root, gh, ...extra) {
+  const env = envWith(gh)
+  await callJson(root, env, ['issues', 'update', 'ISS-8C4W', '--branch', 'feat-x'])
+  const raw = await call(root, env, ['pr', 'ready', '--issue', 'ISS-8C4W', '--json', ...extra])
+  assert.equal(raw.code, 0, raw.stdout + raw.stderr)
+  return { json: JSON.parse(raw.stdout), raw }
+}
+
+test('pr ready on a branch behind origin/<base> says how many commits and ends with the force-with-lease push, on the dry run and the real run', async () => {
+  const { root, remote } = branchBehindRepo(2)
+  assert.equal(git(root, 'push', '-q', 'origin', 'feat-x').status, 0)
+  for (const extra of [['--dry-run'], []]) {
+    const out = await prReadyNotes(root, readyGh(), ...extra)
+    assert.ok(out.json.notes.some((n) => /feat-x is 2 commits behind origin\/main.*git fetch origin.*git rebase origin\/main, then git push --force-with-lease origin feat-x/.test(n)), JSON.stringify(out.json.notes))
+    assert.ok(noteLines(out.raw).some((n) => /2 commits behind.*--force-with-lease origin feat-x/.test(n)), out.raw.stderr)
+    assert.equal(out.json.number, 9)
+  }
+  // Not refused, nothing fetched or pushed by pr ready.
+  assert.equal(git(remote, 'rev-parse', 'feat-x').stdout, git(root, 'rev-parse', 'feat-x').stdout)
+})
+
+test('pr ready ends with the force push even when the tracking ref is missing, and says "1 commit"', async () => {
+  const { root } = branchBehindRepo(1)
+  const out = await prReadyNotes(root, readyGh(), '--dry-run')
+  assert.ok(out.json.notes.some((n) => /is 1 commit behind origin\/main.*then git push --force-with-lease origin feat-x/.test(n)), JSON.stringify(out.json.notes))
+})
+
+test('pr ready counts against the base of the pull request, not the default branch', async () => {
+  const { root } = branchBehindRepo(2)
+  git(root, 'branch', 'release', 'feat-x')
+  git(root, 'push', '-q', 'origin', 'release')
+  const out = await prReadyNotes(root, readyGh('release'), '--dry-run')
+  assert.doesNotMatch(JSON.stringify(out.json.notes ?? []), /behind|could not compare/)
+  const behindRelease = branchBehindRepo(2)
+  git(behindRelease.root, 'push', '-q', 'origin', 'main:release')
+  const other = await prReadyNotes(behindRelease.root, readyGh('release'), '--dry-run')
+  assert.ok(other.json.notes.some((n) => /2 commits behind origin\/release/.test(n)), JSON.stringify(other.json.notes))
+})
+
+test('pr ready has no behind note when the branch is level with origin/<base>, or there is no origin/<base>', async () => {
+  const { root } = pushableRepo()
+  git(root, 'push', '-q', 'origin', 'HEAD:main')
+  for (const extra of [['--dry-run'], []]) {
+    const level = await prReadyNotes(root, readyGh(), ...extra)
+    assert.doesNotMatch(JSON.stringify(level.json.notes ?? []), /behind|could not compare/)
+    assert.doesNotMatch(level.raw.stderr, /behind|could not compare/)
+  }
+  const bare = pushableRepo()
+  const none = await prReadyNotes(bare.root, readyGh(), '--dry-run')
+  assert.doesNotMatch(JSON.stringify(none.json.notes ?? []), /behind|could not compare/)
+})
+
+test('pr ready says it could not compare, not "up to date", when git cannot count, and still goes on', async () => {
+  const { root } = branchBehindRepo(2)
+  const env = envWith(readyGh())
+  await callJson(root, env, ['issues', 'update', 'ISS-8C4W', '--branch', 'feat-x'])
+  git(root, 'switch', '-q', '--detach')
+  git(root, 'branch', '-D', 'feat-x')
+  const raw = await call(root, env, ['pr', 'ready', '--issue', 'ISS-8C4W', '--json'])
+  assert.equal(raw.code, 0, raw.stdout + raw.stderr)
+  const notes = JSON.parse(raw.stdout).notes.join('\n')
+  assert.match(notes, /could not compare feat-x with origin\/main.*git log feat-x\.\.origin\/main.*git push --force-with-lease origin feat-x/)
+  assert.doesNotMatch(notes, /commits? behind|up to date/)
+})
+
+test('pr ready next step works: fetch, rebase, then the force-with-lease push passes where a plain push is refused', async () => {
+  const { root, remote } = branchBehindRepo(2)
+  git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'mine')
+  assert.equal(git(root, 'push', '-q', 'origin', 'feat-x').status, 0)
+  const note = (await prReadyNotes(root, readyGh(), '--dry-run')).json.notes.join('\n')
+  assert.match(note, /git rebase origin\/main, then git push --force-with-lease origin feat-x/)
+  assert.equal(git(root, 'fetch', '-q', 'origin').status, 0)
+  assert.equal(git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'rebase', '-q', 'origin/main').status, 0)
+  assert.notEqual(git(root, 'push', '-q', 'origin', 'feat-x').status, 0)
+  assert.equal(git(root, 'push', '-q', '--force-with-lease', 'origin', 'feat-x').status, 0)
+  assert.equal(git(remote, 'rev-parse', 'feat-x').stdout, git(root, 'rev-parse', 'feat-x').stdout)
 })

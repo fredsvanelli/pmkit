@@ -2,12 +2,14 @@
 id: PMK-308
 title: Say in pr ready when the branch is behind origin
 type: feature
-status: backlog
+status: in_progress
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-308-say-in-pr-ready-when-the-branch-is
 created: 2026-11-13T21:09:10.498Z
-updated: 2026-11-13T21:09:10Z
+updated: 2026-11-13T21:24:39Z
 ---
 
 ## Description
@@ -32,5 +34,5 @@ PMK-305 made `pr open` add a note when the branch lacks commits of the last fetc
 
 ## Acceptance criteria
 
-- [ ] `pr ready` on a branch behind origin/<default> says how many commits and gives the next step with the force-with-lease push, on the dry run too, with a test
-- [ ] `pr ready` on an up-to-date branch, or without origin/<default>, has no such note, with a test
+- [x] `pr ready` on a branch behind origin/<default> says how many commits and gives the next step with the force-with-lease push, on the dry run too, with a test
+- [x] `pr ready` on an up-to-date branch, or without origin/<default>, has no such note, with a test
