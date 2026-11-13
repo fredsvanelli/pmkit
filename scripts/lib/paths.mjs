@@ -37,7 +37,7 @@ const QUOTED_OPEN = new RegExp(`(?<=${START})(['"\`])((?:${FILE_SCHEME}(?=\\/\\/
 const QUOTED_CLOSE = Object.fromEntries(["'", '"', '`'].map((quote) => [quote, new RegExp(`${quote}(?=$|[\\s:)]|[\\]>]+(?=$|[\\s:)]))`, 'my')]))
 
 const LINE_BREAK = /[\r\n]/g
-const PIPE_PATH = new RegExp(ABSOLUTE, 'y')
+const PIPE_PATH = new RegExp(`\\|(?=${ABSOLUTE})`)
 
 const hideQuotedPaths = (text) => {
   let result = ''
@@ -90,11 +90,7 @@ export const hideAbsolutePaths = (text) => {
     }
     // A URL ends before a `|` that is followed by an absolute path, and the path after it is hidden to the end of the line (PMK-295). The end is found by a loop,
     // not by a repeated group in the regex, because a group repeated once per `|` grew the regex stack with the line (a RangeError at millions of pipes).
-    let cut = url.indexOf('|')
-    for (; cut !== -1; cut = url.indexOf('|', cut + 1)) {
-      PIPE_PATH.lastIndex = cut + 1
-      if (PIPE_PATH.test(url)) break
-    }
+    const cut = url.search(PIPE_PATH)
     const kept = cut === -1 ? url : url.slice(0, cut)
     result += text2.slice(copied, m.index) + prefix + redact(kept).text.replace(HTTP_USER, '$1[redacted]@')
     copied = re.lastIndex
