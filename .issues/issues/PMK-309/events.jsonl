@@ -1,0 +1,1 @@
+{"at":"2026-11-13T21:09:10Z","by":"fred","op":"create","to":{"id":"PMK-309","title":"Keep npm test output in TAP when piped on Node 26","type":"chore","status":"backlog","priority":"low","estimate":1,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-13T21:09:10.587Z","updated":"2026-11-13T21:09:10Z"}}
