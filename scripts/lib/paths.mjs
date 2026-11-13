@@ -18,8 +18,8 @@ export const relativeTo = (text, dirs) => {
 }
 
 const ABSOLUTE = String.raw`(?:[A-Za-z]:[\\/]|\\\\|/)`
-// Where a path may start (PMK-277, PMK-284, PMK-295): the beginning of a line, one of ` (=:[,;<@{|!`, or a `>` that is a redirect (after a line start, a space, `&`, another `>`, a digit that is not the end of a word or a revision, or a letter, as in `from>/x`: `2>/x`, `&>/x`, ` >/x`, `>>/x`, but not `<rev1>/x` or `HEAD~1>/x`). A `>` after a letter that closes a placeholder (`<remote>/<branch>`, `<remote name>/x`: a `<` up to 64 characters back with no `<` or `>` between) starts nothing; the 64 keeps the lookbehind linear in the line.
-const START = String.raw`^|[\s(=:\[,;<@{|!]|(?:^|[\s&>]|(?<![\w~^])\d|(?<=[A-Za-z])(?<!<[^<>\r\n]{0,64}))>`
+// Where a path may start (PMK-277, PMK-284, PMK-295): the beginning of a line, one of ` (=:[,;<@{|!`, or a `>` that is a redirect (after a line start, a space, `&`, another `>`, a digit that is not the end of a word or a revision, or a letter, as in `from>/x`: `2>/x`, `&>/x`, ` >/x`, `>>/x`, but not `<rev1>/x` or `HEAD~1>/x`). A `>` after a digit that closes a placeholder with no space in it (`<sha-1>/<x>`, `<v1.2>/<x>`, `<1>/<2>`: a `<` up to 64 characters back with no `<`, `>` or space between, PMK-297) starts nothing; `cat <in 2>/x` still does. A `>` after a letter that closes a placeholder (`<remote>/<branch>`, `<remote name>/x`: a `<` up to 64 characters back with no `<` or `>` between) starts nothing; the 64 keeps the lookbehind linear in the line.
+const START = String.raw`^|[\s(=:\[,;<@{|!]|(?:^|[\s&>]|(?<![\w~^])\d(?<!<[^<>\s]{0,64})|(?<=[A-Za-z])(?<!<[^<>\r\n]{0,64}))>`
 // The scheme of a local path: `file:`, or `<scheme>+file:` such as `git+file:` (PMK-286), in any case.
 const FILE_SCHEME = String.raw`(?:[A-Za-z][A-Za-z0-9+.-]*\+)?[Ff][Ii][Ll][Ee]:`
 // scheme://host...: a URL is not a path and stays whole, except file:// and <scheme>+file://, which are always a local path, with or without a host (PMK-278, PMK-286).

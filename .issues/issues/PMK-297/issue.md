@@ -2,12 +2,14 @@
 id: PMK-297
 title: Keep `<sha-1>/<x>` and other placeholders with a digit before `>` visible
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-297-keep-sha-1-x-and-other-placeholders-with
 created: 2026-11-12T22:25:13.901Z
-updated: 2026-11-12T22:25:13Z
+updated: 2026-11-13T03:29:26Z
 ---
 
 ## Description

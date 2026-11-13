@@ -264,3 +264,16 @@ test("hideAbsolutePaths keeps the safe side when the text after the path has an 
   assert.equal(hideAbsolutePaths("'/Users/x/a'. Don't retry'"), "'<path>'") // a later quote that closes by the old rule ends it
   assert.equal(hideAbsolutePaths('"/Users/x/a". Don\'t retry'), '"<path>". Don\'t retry') // another kind of quote does not count
 })
+
+test("hideAbsolutePaths keeps <sha-1>/<x>, <v1.2>/<x> and <1>/<2>: a digit that closes a <placeholder> is not a redirect (PMK-297)", () => {
+  for (const text of ['<sha-1>/<x> rest', '<v1.2>/<x> rest', '<1>/<2> rest', 'git log <sha-1>/<x> --oneline', 'git push <remote-2>/<branch> now']) assert.equal(hideAbsolutePaths(text), text)
+})
+
+test("hideAbsolutePaths still hides the path after a redirect, also next to a '<' (PMK-297)", () => {
+  assert.equal(hideAbsolutePaths('cmd 2>/dev/null'), 'cmd 2><path>')
+  assert.equal(hideAbsolutePaths('>/dev/null'), '><path>')
+  assert.equal(hideAbsolutePaths('cmd &>/x'), 'cmd &><path>')
+  assert.equal(hideAbsolutePaths('cmd 2>/Users/x'), 'cmd 2><path>')
+  assert.equal(hideAbsolutePaths('cat <in 2>/Users/x/y'), 'cat <in 2><path>')
+  assert.equal(hideAbsolutePaths('a <1>/<2> b 2>/Users/x/y'), 'a <1>/<2> b 2><path>')
+})
