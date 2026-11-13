@@ -1,1 +1,4 @@
 {"at":"2026-11-12T22:25:14Z","by":"fred","op":"create","to":{"id":"PMK-300","title":"Say that the old setext heading stays below the status adr-status writes","type":"bug","status":"backlog","priority":"low","estimate":1,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-12T22:25:14.248Z","updated":"2026-11-12T22:25:14Z"}}
+{"at":"2026-11-13T00:07:49Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-13T00:07:52Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-13T00:07:55Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-300-say-that-the-old-setext-heading-stays"}
