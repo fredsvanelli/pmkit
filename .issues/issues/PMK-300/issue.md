@@ -2,14 +2,14 @@
 id: PMK-300
 title: Say that the old setext heading stays below the status adr-status writes
 type: bug
-status: in_review
+status: done
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-300-say-that-the-old-setext-heading-stays
 created: 2026-11-12T22:25:14.248Z
-updated: 2026-11-13T00:39:03Z
+updated: 2026-11-13T04:15:08Z
 ---
 
 ## Description
