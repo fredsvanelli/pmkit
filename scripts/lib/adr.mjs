@@ -224,7 +224,7 @@ const keepsText = (paragraph) => {
  * is a lazy continuation of it. A setext underline makes a heading only of a paragraph it continues and that holds more than link
  * reference definitions, so under a list item it is a break or a lazy line (PMK-280). Columns count a tab to the next stop of 4.
  * Not a Markdown parser: no inline content. `held`, when given, collects the non-blank lines an HTML block continues (PMK-299), as `{ at, heading, late, block }` (`late`: after a blank line of the block),
- * and gets `unclosed`: the block of kind 1 to 5 still open at the end of the file, which takes in every later line.
+ * and gets `unclosed`: the block of kind 1 to 5 still open at the end of the file, which takes in every later line. The same for a fenced code block (PMK-302): the lines it continues come in `held` with `block.type === 'fence'`, and `unclosedFence` is the fence still open at the end of the file.
  */
 function sectionEnd(lines, from, held = []) {
   const open = [{ type: 'document' }]
@@ -289,6 +289,7 @@ function sectionEnd(lines, from, held = []) {
     }
     if (closedFence) continue
     // A line the open HTML block continues; the block itself starts on an earlier line.
+    if (matched >= 1 && matched === open.length - 1 && open[matched].type === 'fence' && !blank) held.push({ at: j, heading: headingLevel(line.slice(offset)) > 0, block: open[matched] })
     if (matched >= 1 && matched === open.length - 1 && open[matched].type === 'html') {
       if (blank) open[matched].blank = true
       else held.push({ at: j, heading: headingLevel(line.slice(offset)) > 0, late: open[matched].blank === true, block: open[matched] })
@@ -323,7 +324,7 @@ function sectionEnd(lines, from, held = []) {
         if (container === 1) return j
       } else if (indent < 4 && CM_FENCE.test(rest)) {
         const fence = CM_FENCE.exec(rest)[0]
-        add({ type: 'fence', char: fence[0], length: fence.length })
+        add({ type: 'fence', char: fence[0], length: fence.length, first: rest.trim() })
       } else if (indent < 4 && rest[0] === '<' && (kind = HTML_OPEN.findIndex((start, i) => start.test(rest) && (i < 6 || !(inParagraph || (!allClosed && !blank && open.at(-1).type === 'paragraph')))) + 1) > 0) {
         // The white space before it is part of the HTML block, so `offset` stays.
         add({ type: 'html', kind, first: rest.trim() })
@@ -373,6 +374,7 @@ function sectionEnd(lines, from, held = []) {
     else if (leaf.type === 'html' && leaf.kind <= 5 && HTML_CLOSE[leaf.kind].test(rest)) open.length = container
     else if (!blank && !LEAVES.has(leaf.type)) add({ type: 'paragraph', start: j, text: `${rest}\n` })
   }
+  held.unclosedFence = open.at(-1).type === 'fence' ? open.at(-1) : null
   held.unclosed = open.at(-1).type === 'html' && open.at(-1).kind <= 5 ? open.at(-1) : null
   return lines.length
 }
@@ -405,8 +407,22 @@ export function adrHtmlHeld(text) {
   if (section === -1) return null
   const held = []
   sectionEnd(lines, section, held)
-  const risky = held.filter((item) => item.heading || (item.block === held.unclosed && item.late))
+  const risky = held.filter((item) => item.block.type === 'html' && (item.heading || (item.block === held.unclosed && item.late)))
   return risky.length === 0 ? null : { opener: risky[0].block.first, lines: risky.map((item) => lines[item.at].trim()) }
+}
+/**
+ * What `adr-status` would delete that a fenced code block which never closes took into the `## Status` section (PMK-302), `{ opener, lines }`, null when
+ * nothing: the fence runs to the end of the file (CommonMark), so a line inside it that reads as an ATX heading is text of the status. `opener` is the
+ * fence line, `lines` the trimmed heading-looking lines at risk. An unclosed fence with no such line costs nothing and is not reported. Reading is unchanged.
+ */
+export function adrFenceHeld(text) {
+  const lines = adrText(text).split('\n')
+  const { section } = locate(lines)
+  if (section === -1) return null
+  const held = []
+  sectionEnd(lines, section, held)
+  const risky = held.filter((item) => item.block === held.unclosedFence && item.heading)
+  return risky.length === 0 ? null : { opener: held.unclosedFence.first, lines: risky.map((item) => lines[item.at].trim()) }
 }
 const withoutBlanks = (lines, from) => {
   let at = from

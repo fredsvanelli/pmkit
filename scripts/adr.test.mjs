@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
-import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrInfo, adrRef, adrStatusHeading, adrHtmlHeld } from './lib/adr.mjs'
+import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrInfo, adrRef, adrStatusHeading, adrHtmlHeld, adrFenceHeld } from './lib/adr.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo } from './test-helpers.mjs'
 
@@ -722,7 +722,7 @@ test('docs adr-get shows number, title, status and path, notes a disagreement an
   }
   const one = await run1('4')
   assert.equal(one.code, 0, one.stderr)
-  assert.deepEqual({ ...one.data, notes: undefined }, { number: '0004', title: '4. Use X', status: 'accepted', statuses: ['accepted', 'Deprecated'], statusHeading: null, htmlHeld: null, path: 'docs/adr/0004-use-x.md', ref: 'docs/adr/0004-use-x.md', place: 'repo', supersedesRef: null, notes: undefined })
+  assert.deepEqual({ ...one.data, notes: undefined }, { number: '0004', title: '4. Use X', status: 'accepted', statuses: ['accepted', 'Deprecated'], statusHeading: null, htmlHeld: null, fenceHeld: null, path: 'docs/adr/0004-use-x.md', ref: 'docs/adr/0004-use-x.md', place: 'repo', supersedesRef: null, notes: undefined })
   assert.equal(one.data.notes.length, 1)
   assert.match(one.data.notes[0], /accepted.*Deprecated/)
   assert.match(one.data.notes[0], /status in the JSON is the first/, 'the note matches what the text and the JSON show')
@@ -1592,5 +1592,53 @@ for (const [name, text] of HELD_OK) {
     const result = await adrStatus(root, '1', 'deprecated')
     assert.equal(result.code, 0, result.stderr)
     if (text.includes('## Status')) assert.match(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), /## Status\n\nDeprecated\n/)
+  })
+}
+
+// PMK-302: a code fence that is not closed takes a heading into the Status section; adr-status never deletes it.
+const FENCE_HELD = [
+  ['an unclosed ``` fence', '## Status\n\n```\nAccepted\n\n## Context\n\nWhy.\n', '```', ['## Context']],
+  ['an unclosed ~~~ fence', '## Status\n\nAccepted\n\n~~~\n## Context\n\nWhy.\n', '~~~', ['## Context']],
+  ['an unclosed fence with an info string', '## Status\n\n```js\nAccepted\n\n## Context\n\nWhy.\n', '```js', ['## Context']],
+  ['a 4-backtick fence that 3 backticks do not close', '## Status\n\n````\nAccepted\n```\n## Context\n\nWhy.\n', '````', ['## Context']],
+  ['an unclosed fence with CRLF line ends', '## Status\r\n\r\n```\r\nAccepted\r\n\r\n## Context\r\n\r\nWhy.\r\n', '```', ['## Context']],
+]
+const FENCE_OK = [
+  ['a closed fence', '## Status\n\n```\nAccepted\n```\n\n## Context\n\nWhy.\n'],
+  ['a closed fence with an info string', '## Status\n\n```js\nAccepted\n```\n\n## Context\n\nWhy.\n'],
+  ['a 3-backtick fence closed by 4', '## Status\n\n```\nAccepted\n````\n\n## Context\n\nWhy.\n'],
+  ['an unclosed fence with no heading after it', '## Status\n\n```\nAccepted\n\nWhy.\n'],
+]
+for (const [name, text, opener, lines] of FENCE_HELD) {
+  test(`adrFenceHeld, docs adr-status and docs adr-get name ${name} and refuse to delete what it holds (PMK-302)`, async () => {
+    assert.deepEqual(adrFenceHeld(text), { opener, lines })
+    assert.equal(adrHtmlHeld(text), null)
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    const get = await adrGetFrom(root, '1')
+    assert.equal(get.code, 0)
+    assert.deepEqual(get.data.fenceHeld, { opener, lines })
+    assert.ok(get.data.notes.join('\n').includes(`the code fence "${opener}" takes ${lines.map((item) => `"${item}"`).join(', ')} into the Status section`))
+    assert.equal(get.data.status, adrInfo(text).status)
+    for (const flags of [['--dry-run'], []]) {
+      const result = await adrStatus(root, '1', 'deprecated', ...flags)
+      assert.equal(result.code, 2, flags.join(' '))
+      assert.equal(result.data.error.code, 'INVALID_INPUT')
+      assert.match(result.data.error.message, /would delete/)
+      assert.match(result.data.error.message, /nothing was written/)
+      assert.match(result.data.error.nextStep, /Close the code fence/)
+      assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+    }
+  })
+}
+for (const [name, text] of FENCE_OK) {
+  test(`adrFenceHeld is null and docs adr-status writes as before for ${name} (PMK-302)`, async () => {
+    assert.equal(adrFenceHeld(text), null)
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    assert.equal((await adrGetFrom(root, '1')).data.fenceHeld, null)
+    const result = await adrStatus(root, '1', 'deprecated')
+    assert.equal(result.code, 0, result.stderr)
+    assert.match(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), /## Status\n\nDeprecated\n/)
   })
 }
