@@ -2,12 +2,14 @@
 id: PMK-298
 title: Say when the local default branch is behind origin in issues branch
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-298-say-when-the-local-default-branch-is
 created: 2026-11-12T22:25:13.996Z
-updated: 2026-11-12T22:25:13Z
+updated: 2026-11-12T23:06:17Z
 ---
 
 ## Description
@@ -33,5 +35,5 @@ updated: 2026-11-12T22:25:13Z
 
 ## Acceptance criteria
 
-- [ ] `issues branch` with a local default behind origin says so with the count and a next step, also on the dry run, with a test
-- [ ] With the local default up to date, or with --from, there is no such note, with a test
+- [x] `issues branch` with a local default behind origin says so with the count and a next step, also on the dry run, with a test
+- [x] With the local default up to date, or with --from, there is no such note, with a test
