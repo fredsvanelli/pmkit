@@ -2,12 +2,14 @@
 id: PMK-306
 title: "Keep or refuse, never silently delete, the other text of the Status section in adr-status"
 type: bug
-status: backlog
+status: in_progress
 priority: medium
 estimate: 2
+assignee: fred
 parent: EPC-6
+branch: pmk-306-keep-or-refuse-never-silently-delete-the
 created: 2026-11-13T21:09:10.315Z
-updated: 2026-11-13T21:09:10Z
+updated: 2026-11-13T22:07:55Z
 ---
 
 ## Description
@@ -41,6 +43,6 @@ updated: 2026-11-13T21:09:10Z
 
 ## Acceptance criteria
 
-- [ ] `adr-status` on a Status section with text after the status (a plain paragraph, text after a fence that never closes, a line indented 4 spaces) deletes none of it without saying so: it keeps the text or refuses with a next step, dry run included, with tests
-- [ ] `adr-status` on a Status section that holds only the status writes as before, with a test
-- [ ] With an HTML block and a code fence that both take a heading into the Status section, one refusal names both, with a test
+- [x] `adr-status` on a Status section with text after the status (a plain paragraph, text after a fence that never closes, a line indented 4 spaces) deletes none of it without saying so: it keeps the text or refuses with a next step, dry run included, with tests
+- [x] `adr-status` on a Status section that holds only the status writes as before, with a test
+- [x] With an HTML block and a code fence that both take a heading into the Status section, one refusal names both, with a test
