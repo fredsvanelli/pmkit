@@ -2,12 +2,14 @@
 id: PMK-301
 title: Pass the test suite under Node 26
 type: chore
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-301-pass-the-test-suite-under-node-26
 created: 2026-11-12T22:25:14.338Z
-updated: 2026-11-12T22:25:14Z
+updated: 2026-11-13T02:25:53Z
 ---
 
 ## Description
@@ -37,5 +39,5 @@ Source: PMK-291, PR #241 (implementer, cycle 5).
 
 ## Acceptance criteria
 
-- [ ] `npm test` exits 0 under Node 22 and under Node 26
-- [ ] The delete test still checks that the cleanup failure is reported
+- [x] `npm test` exits 0 under Node 22 and under Node 26
+- [x] The delete test still checks that the cleanup failure is reported

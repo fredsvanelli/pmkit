@@ -743,7 +743,7 @@ function spawnEntry(args, extra = {}) {
   const env = { ...process.env, ...extra }
   delete env.NODE_TEST_CONTEXT
   for (const name of ['PMKIT_LIVE', 'PMKIT_LIVE_WORKSPACE', 'LINEAR_API_KEY']) if (!(name in extra)) delete env[name]
-  return spawnSync(process.execPath, [ENTRY, ...args], { cwd: root, env, encoding: 'utf8' })
+  return spawnSync(process.execPath, ['--test-reporter=tap', ENTRY, ...args], { cwd: root, env, encoding: 'utf8' })
 }
 
 const skippedCount = (output) => Number(/^# skipped (\d+)/m.exec(output)?.[1])

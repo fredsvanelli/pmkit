@@ -1,1 +1,9 @@
 {"at":"2026-11-12T22:25:14Z","by":"fred","op":"create","to":{"id":"PMK-301","title":"Pass the test suite under Node 26","type":"chore","status":"backlog","priority":"low","estimate":1,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-12T22:25:14.338Z","updated":"2026-11-12T22:25:14Z"}}
+{"at":"2026-11-12T22:39:42Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-12T22:39:42Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-12T22:39:48Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-301-pass-the-test-suite-under-node-26"}
+{"at":"2026-11-12T22:40:52Z","by":"fred","op":"comment","to":"2026-11-12T22-40-52Z-fred.md"}
+{"at":"2026-11-13T02:25:07Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-13T02:25:07Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-13T02:25:52Z","by":"fred","op":"comment","to":"2026-11-13T02-25-52Z-fred.md"}
+{"at":"2026-11-13T02:25:53Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
