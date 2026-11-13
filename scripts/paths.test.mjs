@@ -203,3 +203,27 @@ test('hideAbsolutePaths redacts the user name of an http(s) URL, and leaves ssh 
     assert.equal(hideAbsolutePaths(text), text)
   }
 })
+
+test("hideAbsolutePaths hides a path after '!', after a letter and '>' that is not <placeholder>, and after a '|' that ends a URL (PMK-295)", () => {
+  assert.equal(hideAbsolutePaths('!/Users/x'), '!<path>')
+  assert.equal(hideAbsolutePaths('from>/Users/x'), 'from><path>')
+  assert.equal(hideAbsolutePaths('https://h.com/x|/Users/y'), 'https://h.com/x|<path>')
+  assert.equal(hideAbsolutePaths('see https://h.com/a|b and https://h.com/c'), 'see https://h.com/a|b and https://h.com/c')
+})
+
+test('hideAbsolutePaths keeps <remote>/<branch>, <rev1>/<rev2>, HEAD~1>/x and a closing backtick (PMK-295)', () => {
+  for (const text of ['<remote>/<branch>', '<rev1>/<rev2>', 'push <remote>/<branch> now', 'HEAD~1>/x', 'use `git`/`gh` here']) assert.equal(hideAbsolutePaths(text), text)
+})
+
+test('hideAbsolutePaths keeps a <placeholder with spaces>/x and Map<string, number>/x, and hides a path after a > that closes none (PMK-295 review)', () => {
+  for (const text of ['<a b>/x', '<remote name>/<branch> failed', 'Map<string, number>/Users/x']) assert.equal(hideAbsolutePaths(text), text)
+  assert.equal(hideAbsolutePaths(`<${'a'.repeat(70)}>/Users/x`), `<${'a'.repeat(70)}><path>`) // more than 64 characters back: not a placeholder
+  assert.equal(hideAbsolutePaths('"http://h/a|/b" next'), '"http://h/a|<path>')
+  assert.equal(hideAbsolutePaths('Done!/tmp/x'), 'Done!<path>')
+})
+
+test('hideAbsolutePaths hides the path after a pipe that ends a URL to the end of the line, and the text of the next line stays (PMK-295 cycle 2)', () => {
+  assert.equal(hideAbsolutePaths('https://h/x|/Users/a b c\nnext https://h/y|z'), 'https://h/x|<path>\nnext https://h/y|z')
+  assert.equal(hideAbsolutePaths('a https://h/x|b|/Users/y z'), 'a https://h/x|b|<path>')
+  assert.equal(hideAbsolutePaths('https://u:p@h/x|/Users/y'), 'https://[redacted]@h/x|<path>')
+})
