@@ -2,12 +2,14 @@
 id: PMK-304
 title: Name the cause and a working step when issues delete cannot remove its leftover
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-304-name-the-cause-and-a-working-step-when
 created: 2026-11-13T16:20:45.410Z
-updated: 2026-11-13T16:20:45Z
+updated: 2026-11-13T16:32:06Z
 ---
 
 ## Description
