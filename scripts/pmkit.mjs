@@ -338,12 +338,15 @@ function originHead(ctx) {
   return originHeads.get(ctx)
 }
 
+/** Whether `ref` resolves to a commit. Reads local refs only. */
+const refExists = (ctx, ref) => { const result = readGit(ctx, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]); return !result.error && result.status === 0 }
+
 /**
  * The ref `issues branch` starts from (PMK-290). `--from` must resolve to a commit. Without it the default branch is used, or origin/<default> when only the remote has it.
  * origin is the remote `pr open` pushes to. Nothing is fetched.
  */
 function branchBase(ctx) {
-  const exists = (ref) => { const result = readGit(ctx, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]); return !result.error && result.status === 0 }
+  const exists = (ref) => refExists(ctx, ref)
   const explicit = ctx.opt('from')
   if (explicit !== undefined) {
     if (!exists(explicit)) {
@@ -390,14 +393,15 @@ function syncNotes(from, sync, created = null) {
  * `could not compare` when git cannot count, which is not the same as up to date.
  */
 function behindNotes(ctx, branch, base) {
-  const exists = (ref) => { const result = readGit(ctx, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]); return !result.error && result.status === 0 }
   const remote = `refs/remotes/origin/${base}`
-  if (!exists(remote)) return []
+  if (!refExists(ctx, remote)) return []
+  // A branch already on origin cannot be pushed after a rebase without a force: pr open pushes plainly, so the next step ends with the push that works (PMK-305).
+  const rebase = refExists(ctx, `refs/remotes/origin/${branch}`) ? `git rebase origin/${base}, then git push --force-with-lease origin ${branch}` : `git rebase origin/${base}`
   const counted = readGit(ctx, ['rev-list', '--count', `refs/heads/${branch}..${remote}`])
   const behind = !counted.error && counted.status === 0 ? Number(counted.stdout.trim()) : NaN
-  if (!Number.isInteger(behind)) return [`could not compare ${branch} with origin/${base}, so it may be behind and the pull request may start from an old base. Run git fetch origin, check with git log ${branch}..origin/${base}, and when it is behind run git rebase origin/${base}`]
+  if (!Number.isInteger(behind)) return [`could not compare ${branch} with origin/${base}, so it may be behind and the pull request may start from an old base. Run git fetch origin, check with git log ${branch}..origin/${base}, and when it is behind run ${rebase}`]
   if (behind === 0) return []
-  return [`${branch} is ${behind} ${behind === 1 ? 'commit' : 'commits'} behind origin/${base} (as of the last fetch), so the pull request may conflict or miss fixes. Run git fetch origin, then git rebase origin/${base}`]
+  return [`${branch} is ${behind} ${behind === 1 ? 'commit' : 'commits'} behind origin/${base} (as of the last fetch), so the pull request may conflict or miss fixes. Run git fetch origin, then ${rebase}`]
 }
 
 const adrPlace = (ctx) => adrLocation({ root: ctx.root, issuesDir: ctx.config().issuesDir, hosted: ctx.config().hosted })
@@ -2055,7 +2059,7 @@ export const COMMANDS = [
         const text = open
           ? `would push ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`
           : `would open a pull request ${request.head} to ${request.base}\n${request.title}\n\n${body}`
-        return { data: { ...request, existing: open !== null, pr: open, ...behindData }, text: `${text}\ndry run: nothing was written`, notes: [...(open ? [] : defaultBranchNotes(ctx)), ...behindNotes(ctx, issue.branch, request.base), ...(await capabilityNotesOrNone(ctx))] }
+        return { data: { ...request, existing: open !== null, pr: open, ...behindData }, text: `${text}\ndry run: nothing was written`, notes: [...(open ? [] : defaultBranchNotes(ctx)), ...behind, ...(await capabilityNotesOrNone(ctx))] }
       }
       host.push(issue.branch)
       if (open) return { data: { ...open, existing: true, ...behindData }, text: `pushed ${issue.branch} to the open pull request #${open.number}${open.isDraft ? ' (draft)' : ''} ${open.url}`, notes: [...behind, ...(await capabilityNotesOrNone(ctx))] }

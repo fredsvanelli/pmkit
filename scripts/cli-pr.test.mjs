@@ -1386,3 +1386,42 @@ test('pr open says it could not compare, not "up to date", when git cannot count
   assert.match(notes, /could not compare feat-x with origin\/main.*git fetch origin.*git log feat-x\.\.origin\/main/)
   assert.doesNotMatch(notes, /commits? behind|up to date/)
 })
+
+test('pr open next step ends with the force-with-lease push when the branch is already on origin, and following it makes the push pass', async () => {
+  const { root, remote } = branchBehindRepo(2)
+  git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'commit', '--allow-empty', '-qm', 'mine')
+  assert.equal(git(root, 'push', '-q', 'origin', 'feat-x').status, 0)
+  const env = envWith(fakeGh({ [view('feat-x')]: { stdout: prJson({ number: 9, headRefName: 'feat-x' }) } }))
+  await callJson(root, env, ['issues', 'update', 'ISS-8C4W', '--branch', 'feat-x'])
+  const note = (await callJson(root, env, ['pr', 'open', '--issue', 'ISS-8C4W', '--dry-run'])).notes.join('\n')
+  assert.match(note, /2 commits behind origin\/main.*git fetch origin.*git rebase origin\/main, then git push --force-with-lease origin feat-x/)
+  // Follow the steps in order: fetch, rebase, push. A plain push would now be refused as non-fast-forward.
+  assert.equal(git(root, 'fetch', '-q', 'origin').status, 0)
+  assert.equal(git(root, '-c', 'user.name=t', '-c', 'user.email=t@x.dev', 'rebase', '-q', 'origin/main').status, 0)
+  assert.notEqual(git(root, 'push', '-q', 'origin', 'feat-x').status, 0)
+  assert.equal(git(root, 'push', '-q', '--force-with-lease', 'origin', 'feat-x').status, 0)
+  const pr = await callJson(root, env, ['pr', 'open', '--issue', 'ISS-8C4W'])
+  assert.equal(pr.existing, true)
+  assert.equal(pr.notes, undefined)
+  assert.equal(git(remote, 'rev-parse', 'feat-x').stdout, git(root, 'rev-parse', 'feat-x').stdout)
+})
+
+test('pr open next step has no push when the branch is not on origin yet', async () => {
+  const { root } = branchBehindRepo(2)
+  const dry = await prOpenNotes(root, fakeGh(noPr), '--dry-run')
+  const note = dry.json.notes.join('\n')
+  assert.match(note, /git rebase origin\/main$/m)
+  assert.doesNotMatch(note, /push|force/)
+})
+
+test('pr open could-not-compare note also ends with the force-with-lease push when the branch is on origin', async () => {
+  const { root } = branchBehindRepo(2)
+  git(root, 'push', '-q', 'origin', 'feat-x')
+  const env = envWith(fakeGh(noPr))
+  await callJson(root, env, ['issues', 'update', 'ISS-8C4W', '--branch', 'feat-x'])
+  git(root, 'switch', '-q', '--detach')
+  git(root, 'branch', '-D', 'feat-x')
+  git(root, 'update-ref', 'refs/remotes/origin/feat-x', 'refs/remotes/origin/main')
+  const notes = (await callJson(root, env, ['pr', 'open', '--issue', 'ISS-8C4W', '--dry-run'])).notes.join('\n')
+  assert.match(notes, /could not compare.*git rebase origin\/main, then git push --force-with-lease origin feat-x/)
+})
