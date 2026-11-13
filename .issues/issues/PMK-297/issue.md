@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-297-keep-sha-1-x-and-other-placeholders-with
 created: 2026-11-12T22:25:13.901Z
-updated: 2026-11-13T03:29:26Z
+updated: 2026-11-13T03:32:44Z
 ---
 
 ## Description
@@ -34,5 +34,5 @@ Since PMK-284, a digit before `>` is a redirect (`2>/dev/null`) unless a word ch
 
 ## Acceptance criteria
 
-- [ ] `<sha-1>/<x>`, `<v1.2>/<x>` and `<1>/<2>` stay as they are, with tests
-- [ ] `2>/dev/null` and `>/dev/null` still hide the path, with a test
+- [x] `<sha-1>/<x>`, `<v1.2>/<x>` and `<1>/<2>` stay as they are, with tests
+- [x] `2>/dev/null` and `>/dev/null` still hide the path, with a test
