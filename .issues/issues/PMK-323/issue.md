@@ -2,14 +2,14 @@
 id: PMK-323
 title: Write in place past an HTML block its quote or list item holds at the end of the file
 type: bug
-status: in_progress
+status: in_review
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-323-write-in-place-past-an-html-block-its
 created: 2026-11-14T20:46:32.738Z
-updated: 2026-11-14T21:36:09Z
+updated: 2026-11-14T21:52:01Z
 ---
 
 ## Description
