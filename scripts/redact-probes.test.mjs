@@ -291,18 +291,18 @@ for (const [name, input, output] of PROBES) {
 const PROBE_SIZE = 160000
 const PROBE_ROW_SIZE = 320000
 
-test('probe: no pattern takes more than ten seconds on 160 thousand characters of its own kind', () => {
+test('probe: no pattern takes more than ten seconds on 160 thousand characters of its own kind', async () => {
   const n = PROBE_SIZE
   const inputs = [rep('a', n), `token${rep('-', n)}`, `x://${rep(':', n)}`, `a://${rep('b:', n / 2)}`, rep('-----BEGIN A PRIVATE KEY-----', n / 29), rep('sk-', n / 3), `Authorization: ${rep('a', n)}`, rep('a://b', n / 5), rep('password:', n / 9), rep('a=1&', n / 4), rep('token=', n / 6), `token=${rep(')', n)}x`, rep('pwd=/', n / 5), rep('token="', n / 7), rep('password: |\n  a\n', n / 16), rep('token:\n  x\n', n / 10), rep('password=[redacted]', n / 19), rep('curl -u ', n / 8), rep('token=&a=', n / 9), rep('&a', n / 2), `token=${rep('a ', n / 2)}`, rep('|token=[redacted]', n / 17), rep('`password:` ', n / 12), rep('+password: |\n+  a\n', n / 18), rep('(token_limit=5) ', n / 16), rep('PWD=/a?token=[redacted] ', n / 24), rep('  - token:\n      a\n', n / 20), rep('token: ', n / 7), `x${rep(' ', n)}token=a`, rep('sk-', n / 3), rep('-token: ', n / 8), `${rep('-', n)}token=a`, `secrets:\n${rep('  a: b\n', n / 7)}`, rep('secrets:\n  a: [redacted]\n', n / 27), rep('-password: |\n-  a\n', n / 18), rep('a.py:1: ', n / 8), rep('a[password]', n / 11), rep('a[', n / 2), rep('**Password:** ', n / 14), rep('**token=x', n / 9), `token=${rep(')!', n / 2)}`, `(token=${rep(')!x', n / 3)}`, `(token=${rep(')', n)}x`, `(token=${rep(').', n / 2)}x`, rep('`token`: ', n / 9), rep('`password:` [redacted] ', n / 23), rep('**Password:** [redacted] ', n / 25), rep('a[password]=[redacted] ', n / 23)]
-  for (const input of inputs) assertFast(redact, input, PROBE_CEILING_MS)
+  await assertFast('lib/redact.mjs#redact', inputs, PROBE_CEILING_MS)
 })
 
 // Review of PR #155, cycle 5b: a table row of many keys that are skipped (already redacted, a file location, a directory)
 // reads the row once, at the size the review measured.
-test('probe: a table row of 320 thousand characters of skipped keys takes less than ten seconds', () => {
+test('probe: a table row of 320 thousand characters of skipped keys takes less than ten seconds', async () => {
   const n = PROBE_ROW_SIZE
   const inputs = [`|${rep(' token=[redacted]', n / 17)}`, `|${rep(' token.ts:1', n / 11)}`, `|${rep(' PWD=/a', n / 7)}`, `|${rep(' **Password:** [redacted]', n / 25)}`, `|${rep(' token=[redacted] a.ts:1 PWD=/a', n / 31)}`]
-  for (const input of inputs) assertFast(redact, input, PROBE_CEILING_MS)
+  await assertFast('lib/redact.mjs#redact', inputs, PROBE_CEILING_MS)
 })
 
 test('probe: redact is idempotent over its own output', () => {

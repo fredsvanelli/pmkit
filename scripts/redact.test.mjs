@@ -152,8 +152,7 @@ test('the summary line uses the singular for 1 and the plural otherwise', () => 
   assert.equal(redact('nothing here').summary, 'Redacted 0 values.')
 })
 
-test('a long run of word characters is redacted in linear time', () => {
-  for (const unit of ['a', 'token', 'token=', 'password_', 'a.']) {
-    assertFast(redact, unit.repeat(Math.ceil(160000 / unit.length)))
-  }
+test('a long run of word characters is redacted in linear time', async () => {
+  const inputs = ['a', 'token', 'token=', 'password_', 'a.'].map((unit) => unit.repeat(Math.ceil(160000 / unit.length)))
+  await assertFast('lib/redact.mjs#redact', inputs)
 })

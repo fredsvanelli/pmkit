@@ -2,12 +2,14 @@
 id: PMK-312
 title: Make a timing probe fail within its ceiling instead of hanging on a regression
 type: chore
-status: backlog
+status: in_review
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-6
+branch: pmk-312-make-a-timing-probe-fail-within-its
 created: 2026-11-14T01:43:01.862Z
-updated: 2026-11-14T01:43:01Z
+updated: 2026-11-14T02:54:25Z
 ---
 
 ## Description
@@ -40,5 +42,5 @@ The 1 s probes had the same limit before PMK-307. Source: PMK-307, PR #269 (revi
 
 ## Acceptance criteria
 
-- [ ] A probe whose function runs past its ceiling fails within a few seconds of the ceiling, with the message that names the input and the time, shown by a test of the helper with a function that runs much longer than the ceiling
-- [ ] Every probe moved by PMK-307 uses the bounded helper and still passes in full `npm test` runs under load
+- [x] A probe whose function runs past its ceiling fails within a few seconds of the ceiling, with the message that names the input and the time, shown by a test of the helper with a function that runs much longer than the ceiling
+- [x] Every probe moved by PMK-307 uses the bounded helper and still passes in full `npm test` runs under load
