@@ -1,1 +1,10 @@
 {"at":"2026-11-14T15:52:57Z","by":"fred","op":"create","to":{"id":"PMK-317","title":"Write in place past a fence closed by the end of its quote or list item","type":"bug","status":"backlog","priority":"low","estimate":2,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-14T15:52:57.253Z","updated":"2026-11-14T15:52:57Z"}}
+{"at":"2026-11-14T18:35:17Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-14T18:35:17Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-14T18:35:19Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-317-write-in-place-past-a-fence-closed-by"}
+{"at":"2026-11-14T18:38:06Z","by":"fred","op":"comment","to":"2026-11-14T18-38-06Z-fred.md"}
+{"at":"2026-11-14T18:44:13Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T18:44:13Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T18:44:13Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T18:44:42Z","by":"fred","op":"comment","to":"2026-11-14T18-44-42Z-fred.md"}
+{"at":"2026-11-14T18:44:42Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

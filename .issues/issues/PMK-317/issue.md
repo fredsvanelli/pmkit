@@ -2,12 +2,14 @@
 id: PMK-317
 title: Write in place past a fence closed by the end of its quote or list item
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-6
+branch: pmk-317-write-in-place-past-a-fence-closed-by
 created: 2026-11-14T15:52:57.253Z
-updated: 2026-11-14T15:52:57Z
+updated: 2026-11-14T18:44:42Z
 ---
 
 ## Description
@@ -37,6 +39,6 @@ Since PMK-314, a fence or HTML block that closes after a status on a plain line 
 
 ## Acceptance criteria
 
-- [ ] A status on a plain line followed by a fence in a quote, and in a list item, that ends with its container and holds a heading-like line is written in place, real and dry run, with no refusal and no note in `adr-get`, with tests
-- [ ] A fence in a quote or item that is still open at the next top-level heading keeps refusing, and the guard keeps refusing when the whole section would be replaced, with the existing tests passing
-- [ ] `scripts/dev/adr-commonmark-diff.mjs` run in full reports 0 worse, with the run in the PR
+- [x] A status on a plain line followed by a fence in a quote, and in a list item, that ends with its container and holds a heading-like line is written in place, real and dry run, with no refusal and no note in `adr-get`, with tests
+- [x] A fence in a quote or item that is still open at the next top-level heading keeps refusing, and the guard keeps refusing when the whole section would be replaced, with the existing tests passing
+- [x] `scripts/dev/adr-commonmark-diff.mjs` run in full reports 0 worse, with the run in the PR

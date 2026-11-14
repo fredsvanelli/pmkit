@@ -2094,6 +2094,15 @@ for (const [name, text] of [
   ['a closed fence holding a heading', '## Status\n\nAccepted\n\n```\n## X\n```\n\n## Context\n'],
   ['a closed fence holding a setext heading', '## Status\n\nAccepted\n\n~~~\nX\n---\n~~~\n\n## Context\n'],
   ['a closed fence in a quote', '## Status\n\nAccepted\n\n> ```\n> ## X\n> ```\n\n## Context\n'],
+  // PMK-317: a fence its quote or list item closes, with a line of the section after it.
+  ['a fence a quote closes with a blank line', '## Status\n\nAccepted\n\n> ```\n> ## X\n\nDate: 2024-01-02\n\n## Context\n'],
+  ['a fence a list item closes with a blank line', '## Status\n\nAccepted\n\n- ```\n  ## X\n\nDate: 2024-01-02\n\n## Context\n'],
+  ['a ~~~ fence a quote closes with a line that has no marker', '## Status\n\nAccepted\n\n> ~~~\n> ## X\nDate: 2024-01-02\n\n## Context\n'],
+  ['a fence a quote closes with a date line before a setext heading', '## Status\n\nAccepted\n\n> ```\n> ## X\n\nDate: 2024-01-02\n\nFoo\n---\n'],
+  ['a fence a list item closes with a date line before a setext heading', '## Status\n\nAccepted\n\n- ```\n  ## X\n\nDate: 2024-01-02\n\nFoo\n===\n'],
+  ['a fence a list item closes after a blank line and an indented line', '## Status\n\nAccepted\n\n- ```\n  a\n\n  ## X\n\nDate: 2024-01-02\n\n## Context\n'],
+  ['a setext heading in a fence a quote closes', '## Status\n\nAccepted\n\n> ```\n> X\n> ---\n\nDate: 2024-01-02\n\n## Context\n'],
+  ['a fence in a quote in a list item that the item closes', '## Status\n\nAccepted\n\n- > ```\n  > ## X\n\nDate: 2024-01-02\n\n## Context\n'],
 ]) {
   test(`${name} after a status line of its own is written in place, real and dry run, with no note in adr-get (PMK-314)`, async () => {
     assert.equal(adrHtmlHeld(text), null)
@@ -2113,11 +2122,33 @@ for (const [name, text] of [
     assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text.replace('Accepted', 'Deprecated'))
   })
 }
+test('a fence a quote closes is exempt with CRLF line ends too (PMK-317)', () => {
+  const text = '## Status\r\n\r\nAccepted\r\n\r\n> ```\r\n> ## X\r\n\r\nDate: 2024-01-02\r\n\r\n## Context\r\n'
+  assert.equal(adrFenceHeld(text), null)
+  assert.deepEqual(adrFenceBlocks(text), [])
+})
 // The guards still refuse when the whole section is replaced: an unclosed comment or fence, no known status line, a status in an item, an ambiguous section.
 for (const [name, text, guard] of [
   ['an unclosed comment after the status line', '## Status\n\nAccepted\n\n<!--\n## X\n', 'HTML'],
   ['an unclosed fence after the status line', '## Status\n\nAccepted\n\n```\n## X\n', 'fence'],
   ['a quoted fence the quote closes after the status line', '## Status\n\nAccepted\n\n> ```\n> ## X\n\n## Context\n', 'fence'],
+  // PMK-317: a container that is still open at the heading that ends the section, or at the end of the file, and the whole-section replacements.
+  // PMK-317 review: a setext heading that ends the section is the heading, as `## Context` is: the `Foo` line is not a line of the section.
+  ['a quoted fence a setext heading ends the section after (---)', '## Status\n\nAccepted\n\n> ```\n> ## X\n\nFoo\n---\n', 'fence'],
+  ['a quoted fence a setext heading ends the section after, no blank line (---)', '## Status\n\nAccepted\n\n> ```\n> ## X\nFoo\n---\n', 'fence'],
+  ['a quoted fence a setext heading ends the section after (===)', '## Status\n\nAccepted\n\n> ~~~\n> ## X\n\nFoo\n===\n\nWhy.\n', 'fence'],
+  ['an item fence a setext heading ends the section after', '## Status\n\nAccepted\n\n- ```\n  ## X\n\nFoo\n---\n', 'fence'],
+  ['an item fence a setext heading ends the section after, no blank line', '## Status\n\nAccepted\n\n- ```\n  ## X\nFoo\n---\n', 'fence'],
+  ['an item fence a setext heading ends the section after, the underlined paragraph starting at the line that ends the item', '## Status\n\nAccepted\n\n- ```\n  ## X\nDate: 2024-01-02\nFoo\n---\n', 'fence'],
+  ['an item fence the item closes only at the heading', '## Status\n\nAccepted\n\n- ```\n  ## X\n\n## Context\n', 'fence'],
+  ['a quoted fence open at the end of the file', '## Status\n\nAccepted\n\n> ```\n> ## X\n', 'fence'],
+  ['an item fence open at the end of the file', '## Status\n\nAccepted\n\n- ```\n  ## X\n', 'fence'],
+  ['an item fence kept open by an indented line up to the heading', '## Status\n\nAccepted\n\n- ```\n  a\n\n  ## X\n\n## Context\n', 'fence'],
+  ['a fence a quote closes, with a status in a quote', '## Status\n\n> Accepted\n\n> ```\n> ## X\n\nDate: 2024-01-02\n', 'fence'],
+  ['a fence an item closes, with a status in an item', '## Status\n\n- Accepted\n\n- ```\n  ## X\n\nDate: 2024-01-02\n', 'fence'],
+  ['a fence a quote closes, with no known status line', '## Status\n\nMaybe\n\n> ```\n> ## X\n\nDate: 2024-01-02\n', 'fence'],
+  ['a fence a quote closes, with two status lines', '## Status\n\nAccepted\n\nDeprecated\n\n> ```\n> ## X\n\nDate: 2024-01-02\n', 'fence'],
+  ['a fence a quote closes, before the status', '## Status\n\n> ```\n> ## X\n\nAccepted\n\nDate: 2024-01-02\n', 'fence'],
   ['an unclosed comment before the status', '## Status\n\n<!--\nAccepted\n\n## X\n-->\n', 'HTML'],
   ['a closed comment before the status', '## Status\n\n<!--\n## X\n-->\n\nAccepted\n', 'HTML'],
   ['a closed fence before the status', '## Status\n\n```\n## X\n```\n\nAccepted\n', 'fence'],
