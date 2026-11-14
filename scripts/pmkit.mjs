@@ -439,6 +439,9 @@ const FENCE_HELD_STEP = FENCE_HELD_FIX + AGAIN
 const OTHER_TEXT_FIX = 'Move that text out of the Status section (it holds only the status), or delete it by hand'
 const fenceHeldNote = (adrPath, { opener, lines }) => `${adrPath}: the code fence "${opener}" takes ${lines.map((item) => `"${item}"`).join(', ')} into the Status section, so that text reads as part of the status; ${FENCE_HELD_STEP.charAt(0).toLowerCase()}${FENCE_HELD_STEP.slice(1)}`
 
+/** What `docs adr-get --from` says when it has no path (PMK-275). checkUsage and runAdrGet both use it. */
+const ADR_FROM_HINT = { message: '--from needs a path', nextStep: 'Pass the path docs next-adr gave the new ADR, such as --from docs/adr/0003-x.md' }
+
 /** docs adr-get (PMK-263): the number, title, status and path of one ADR. Only reads. `--from` is the path `docs next-adr` gave the new ADR that supersedes it: `supersedesRef` is the path its Supersedes line cites (PMK-270). */
 function runAdrGet(ctx) {
   const { trackerDir, trackerFolder } = adrPlace(ctx)
@@ -447,9 +450,13 @@ function runAdrGet(ctx) {
   const from = ctx.opt('from')
   let supersedesRef = null
   if (from !== undefined) {
-    const folder = typeof from === 'string' ? folders.find((item) => path.posix.dirname(from) === item.label) : undefined
-    if (!folder || !isAdrName(path.posix.basename(from))) throw new PmkitError('INVALID_INPUT', `--from "${from}" is not the path of an ADR in a folder pmkit reads`, 'Pass the path that docs next-adr gave the new ADR')
-    supersedesRef = adrRef({ place: folder.place, file: path.join(folder.dir, path.posix.basename(from)) }, adr, trackerFolder)
+    if (typeof from !== 'string' || from.trim() === '') throw usageError(ADR_FROM_HINT.message, ADR_FROM_HINT.nextStep)
+    // Matched on the normalised path: `\` as `/`, `.` and repeated `/` collapsed, the `tracker:` label kept (PMK-275).
+    const [, label = '', rest] = /^(tracker:)?(.*)$/s.exec(from)
+    const normal = label + path.posix.normalize(rest.replace(/\\/g, '/'))
+    const folder = folders.find((item) => path.posix.dirname(normal) === item.label)
+    if (!folder || !isAdrName(path.posix.basename(normal))) throw new PmkitError('INVALID_INPUT', `--from "${from}" is not the path of an ADR in a folder pmkit reads`, 'Pass the path that docs next-adr gave the new ADR')
+    supersedesRef = adrRef({ place: folder.place, file: path.join(folder.dir, path.posix.basename(normal)) }, adr, trackerFolder)
   }
   const adrSource = fs.readFileSync(adr.file, 'utf8')
   const { title, status, statuses } = adrInfo(adrSource)
@@ -1829,7 +1836,7 @@ export const COMMANDS = [
     },
   },
   {
-    name: 'docs adr-get', summary: 'the number, title, status and path of one ADR, in the repository folder or the Local tracker\'s, and with --from the path its Supersedes line cites; only reads', usage: '<number> [--from path]', args: ['number'], flags: ['from'], byTracker: true,
+    name: 'docs adr-get', summary: 'the number, title, status and path of one ADR, in the repository folder or the Local tracker\'s, and with --from the path its Supersedes line cites; only reads', usage: '<number> [--from path]', args: ['number'], flags: ['from'], valueHints: { from: ADR_FROM_HINT }, byTracker: true,
     run: (ctx) => runAdrGet(ctx),
   },
   {
@@ -4386,7 +4393,8 @@ function checkUsage(command, { options, positionals }) {
   for (const key of Object.keys(options)) {
     if (!allowed.has(key)) throw usageError(`unknown option --${key} for ${command.name}`, `pmkit.mjs --help (${command.name}${command.usage ? ` ${command.usage}` : ''})`)
     if (options[key] === true && !BOOLEANS.has(key)) {
-      throw usageError(`--${key} needs a value`, `pmkit.mjs --help (${command.name})`)
+      const hint = command.valueHints?.[key]
+      throw hint ? usageError(hint.message, hint.nextStep) : usageError(`--${key} needs a value`, `pmkit.mjs --help (${command.name})`)
     }
   }
   const expected = command.args ?? []
