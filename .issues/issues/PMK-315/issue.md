@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-315-exercise-the-status-line-choice-in-adr
 created: 2026-11-14T05:29:38.227Z
-updated: 2026-11-14T05:41:54Z
+updated: 2026-11-14T05:49:52Z
 ---
 
 ## Description
@@ -37,6 +37,6 @@ updated: 2026-11-14T05:41:54Z
 
 ## Acceptance criteria
 
-- [ ] Run from 3f24c7e6 to 5d09c170, the script reports a non-zero count of bodies where the status is one line of the section and 0 bodies where the head removes text the base kept, with the run in the PR
-- [ ] A mutation that makes the in-place write drop a kept line (in a temporary copy) makes the script report it and exit 1, shown in the PR
-- [ ] An empty status is counted on its own line of the report
+- [x] Run from 3f24c7e6 to 5d09c170, the script reports a non-zero count of bodies where the status is one line of the section and 0 bodies where the head removes text the base kept, with the run in the PR
+- [x] A mutation that makes the in-place write drop a kept line (in a temporary copy) makes the script report it and exit 1, shown in the PR
+- [x] An empty status is counted on its own line of the report
