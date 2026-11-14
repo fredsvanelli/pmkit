@@ -440,17 +440,21 @@ const statusLineOf = (raw) => {
   return at > 0 && hostsLazy(raw[at - 1]) ? at - 1 : at
 }
 // The line of a `## Status` section that `setAdrStatus` replaces in place and `adrInfo` reads as the status (PMK-311), an index into its lines, -1 when there is none. It is a paragraph line at the
-// top level: not indented 4 columns (code), not a block opener (comment, quote, item, fence, heading, table, HTML), not a `Key: value` or `Supersedes` line (a date is not a status), and with only
+// top level: not indented 4 columns (code), not a block opener (comment, quote, item, fence, heading, table, HTML), not a `Key: value` or `Supersedes` line (a date is not a status), and reading as a known status, and with only
 // blank lines or one-line comments before it, so it is never inside a comment, a fence, a list item or a quote. Without such a line the section is read whole and a write is refused, as before PMK-311.
 const ONE_LINE_COMMENT = /^<!--.*-->$/
 const KEY_VALUE = /^(?:[A-Za-z][\w ]{0,30}:|supersedes\b)/i
 // A link reference definition and a thematic break are not paragraph text either.
 const NOT_TEXT = /^(?:\[[^\]]*\]:|(?:[-*_][ \t]*){3,}$)/
+// The line must also read as a known status: with the emphasis and punctuation around it removed, its first word is one of `ADR_STATUSES` or a common ADR status, in any case (PMK-311 review).
+// Anything else (a date, a `**Date:**`, a status word nobody listed) is not replaced: the section is read whole and a write is refused, as before PMK-311.
+const KNOWN_STATUS = new Set([...ADR_STATUSES, 'proposed', 'rejected', 'draft'])
+const readsAsStatus = (item) => KNOWN_STATUS.has(/^[^\p{L}\p{N}]*(\p{L}+)/u.exec(item)?.[1].toLowerCase() ?? '')
 const topLevelStatus = (orig) => {
   for (let i = 0; i < orig.length; i++) {
     const item = orig[i].trim()
     if (item === '' || (ONE_LINE_COMMENT.test(item) && /^ {0,3}\S/.test(orig[i]))) continue
-    return /^ {0,3}\S/.test(orig[i]) && !OPENS_BLOCK.test(item) && !KEY_VALUE.test(item) && !NOT_TEXT.test(item) ? i : -1
+    return /^ {0,3}\S/.test(orig[i]) && !OPENS_BLOCK.test(item) && !KEY_VALUE.test(item) && !NOT_TEXT.test(item) && readsAsStatus(item) ? i : -1
   }
   return -1
 }

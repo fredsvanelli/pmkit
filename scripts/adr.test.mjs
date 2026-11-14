@@ -1775,6 +1775,12 @@ const UNSAFE = [
   ['a Supersedes line before the status', '## Status\n\nSupersedes [ADR 3](0003-x.md)\n\nAccepted\n\n## Context\n'],
   ['a list item status with a continuation line', '## Status\n\n- Accepted\n  Date: 2024-01-02\n\n## Context\n'],
   ['a quote status with a date line', '## Status\n\n> Accepted\nDate: 2024-01-02\n\n## Context\n'],
+  ['an emphasised date line before the status', '## Status\n\n**Date:** 2024-01-02\n\nAccepted\n\n## Context\n'],
+  ['an italic date line before the status', '## Status\n\n_Date:_ 2024-01-02\nAccepted\n\n## Context\n'],
+  ['a bare date before the status', '## Status\n\n2024-01-02\n\nAccepted\n\n## Context\n'],
+  ['an emphasised Supersedes line before the status', '## Status\n\n**Supersedes** [ADR 2](0002-x.md)\n\nAccepted\n\n## Context\n'],
+  ['a date line with a non-ASCII key before the status', '## Status\n\nDécidé le: 2024\n\nAccepted\n\n## Context\n'],
+  ['an unknown status word, then a date', '## Status\n\nPending review\nDate: 2024-01-02\n\n## Context\n'],
 ]
 for (const [name, text] of UNSAFE) {
   test(`adr-status refuses ${name}, reads the whole section, and writes nothing (PMK-311 review)`, async () => {
@@ -1791,6 +1797,13 @@ for (const [name, text] of UNSAFE) {
     }
   })
 }
+test('a status word with emphasis, any case, or a common ADR status (proposed, rejected, draft) is the status line (PMK-311 review)', async () => {
+  for (const [line, other] of [['**Accepted**', 'Date: 2024-01-02'], ['_proposed_', 'Date: x'], ['Rejected.', 'Date: x'], ['draft', 'Date: x'], ['Superseded by [ADR 5](0005-x.md)', 'Date: x']]) {
+    const text = `## Status\n\n${line}\n${other}\n\n## Context\n`
+    assert.equal(adrInfo(text).status, line, line)
+    assert.equal(setAdrStatus(text, 'deprecated').text, `## Status\n\nDeprecated\n${other}\n\n## Context\n`, line)
+  }
+})
 test('a Status section of one line writes as before PMK-311, whatever the line looks like (PMK-311 review)', async () => {
   for (const line of ['- Accepted', '> Accepted', '<!-- Accepted -->', 'Date: 2024-01-02', '    Accepted']) {
     const root = repo()
