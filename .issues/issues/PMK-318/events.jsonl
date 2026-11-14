@@ -3,3 +3,6 @@
 {"at":"2026-11-14T17:25:59Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-14T17:26:01Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-318-catch-a-wrong-replaced-line-and"}
 {"at":"2026-11-14T17:26:40Z","by":"fred","op":"comment","to":"2026-11-14T17-26-40Z-fred.md"}
+{"at":"2026-11-14T17:35:29Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T17:35:29Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T17:35:29Z","by":"fred","op":"update","field":"acceptance_criteria"}
