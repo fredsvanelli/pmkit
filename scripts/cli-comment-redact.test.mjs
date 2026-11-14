@@ -22,7 +22,7 @@ function setup() {
     const result = await run(['issues', 'comment', 'ISS-5N1R', '--body-file', file, ...extra, '--json'], { env, cwd: root })
     return { ...result, data: JSON.parse(result.stdout) }
   }
-  return { comment, root }
+  return { comment, root, file }
 }
 
 test('issues comment --redact replaces the secret, adds the count line and reports it in the JSON', async () => {
@@ -67,8 +67,7 @@ test('issues comment --redact on a body that is only a secret posts the mark and
 })
 
 test('issues comment --redact is linear in the blanks inside the body (200k spaces in the middle)', async () => {
-  const { root } = setup()
-  const file = path.join(tempDir('pmkit-comment-redact-'), 'body.md')
+  const { root, file } = setup()
   // PMK-307: the call includes the cold start of the CLI; the ceiling is the one of the other probes, and the `/\s+$/` trim of
   // PMK-229 took 28 s at 50k blanks. PMK-312: the call runs in a Worker (probe-targets.mjs) that stops at the ceiling.
   const body = `before${' '.repeat(200000)}after ${SECRET}\n`

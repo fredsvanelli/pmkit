@@ -3,6 +3,7 @@
 import { parentPort, workerData } from 'node:worker_threads'
 
 const fn = (await import(workerData.module))[workerData.name]
+if (typeof fn !== 'function') throw new Error(`${workerData.module} has no function export ${workerData.name}`)
 parentPort.on('message', async ({ input }) => {
   try {
     await fn(input)

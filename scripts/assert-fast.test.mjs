@@ -40,3 +40,25 @@ test('assertFast: an error thrown by the function is the failure, and `names` re
   await assert.rejects(assertFast(`${targets}#throws`, 'x'), /boom/)
   await assert.rejects(assertFast(`${targets}#quadratic`, input, 10, ['the name']), /"the name" took/)
 })
+
+test('assertFast: a module that never finishes its import fails at the start ceiling, and one that ends the Worker fails at once', async () => {
+  const start = Date.now()
+  await assert.rejects(assertFast('assert-fast-hangs.mjs#never', 'x', 1000, 'x', 500), /did not start in 500 ms/)
+  await assert.rejects(assertFast('assert-fast-dies.mjs#x', 'x', 1000, 'x', 20000), /exited with code 4 before it started/)
+  await assert.rejects(assertFast(`${targets}#exits`, 'x', 20000), /exited with code 3 while it ran/)
+  assert.ok(Date.now() - start < 5000, `took ${Date.now() - start} ms`)
+})
+
+test('assertFast: a start error keeps its cause, and a name that is not a function says so', async () => {
+  await assert.rejects(assertFast('no-such-module.mjs#x', 'x'), /no-such-module/)
+  await assert.rejects(assertFast(`${targets}#neverImported`, 'x'), /no function export neverImported/)
+})
+
+test('assertFast: an input that is an array is one input, not several', async () => {
+  await assertFast(`${targets}#lengths`, [['a', 'b', 'c']])
+  await assert.rejects(assertFast(`${targets}#lengths`, ['a', 'b', 'c']), /not an array/)
+})
+
+test('assertFast: the stack of the Worker is the size of the main thread (1 MB): deep recursion overflows at about the same depth', async () => {
+  await assert.rejects(assertFast(`${targets}#recurse`, 1e6), /Maximum call stack/)
+})

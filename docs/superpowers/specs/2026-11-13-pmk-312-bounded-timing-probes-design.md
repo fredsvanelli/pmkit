@@ -35,6 +35,10 @@ passes on Node 22.22.0). The probe has to fail a few seconds after its ceiling.
 - Two small modules for probes that were closures: `scripts/probe-targets.mjs` exports `adrInfoBody` (the ADR document around a
   body) and `commentRedact` (the CLI probe, in a Worker; the repo and the body file are made by the test in the main thread, so
   the temp folder is cleaned as before).
+- Review cycle 1: the wait for the Worker start has its own ceiling (`START_CEILING_MS`, 30 s) and listens to `exit`, so a module
+  that never ends its import, or a Worker that dies, fails with the cause and does not hang; a start error passes its message on;
+  `inputs` is an array or one value, never flattened; the Worker gets `resourceLimits.stackSizeMb: 1`, the stack of the main
+  thread (its default is 4 MB), so a regex that overflows the stack there overflows in the probe too.
 
 ## Checks
 
