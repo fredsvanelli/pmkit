@@ -326,7 +326,7 @@ function sectionEnd(lines, from, held = []) {
         if (container === 1) return j
       } else if (indent < 4 && CM_FENCE.test(rest)) {
         const fence = CM_FENCE.exec(rest)[0]
-        add({ type: 'fence', char: fence[0], length: fence.length, first: rest.trim() })
+        add({ type: 'fence', char: fence[0], length: fence.length, first: rest.trim(), start: j })
       } else if (indent < 4 && rest[0] === '<' && (kind = HTML_OPEN.findIndex((start, i) => start.test(rest) && (i < 6 || !(inParagraph || (!allClosed && !blank && open.at(-1).type === 'paragraph')))) + 1) > 0) {
         // The white space before it is part of the HTML block, so `offset` stays.
         add({ type: 'html', kind, first: rest.trim() })
@@ -427,9 +427,13 @@ export function adrFenceHeld(text) {
   const risky = fenceRisk(text)
   return risky.length === 0 ? null : { opener: risky[0].block.first, lines: risky.map((item) => item.line) }
 }
-/** The trimmed closing line of each closed fence `adrFenceHeld` names, in order: it goes with its fence in the refusal, not as other text (PMK-313). */
+/** The line (an index into the lines of the text) of the closing line of each closed fence `adrFenceHeld` names, in order: it goes with its fence in the refusal, not as other text (PMK-313, by position PMK-316). */
 export function adrFenceClosers(text) {
-  return [...new Set(fenceRisk(text).map((item) => item.block))].filter((block) => block.closer !== undefined).map((block) => block.closerLine)
+  return [...new Set(fenceRisk(text).map((item) => item.block))].filter((block) => block.closer !== undefined).map((block) => block.closer)
+}
+/** The lines (indices into the lines of the text) of the opening and closing line of every fence `adrFenceHeld` names: they go with their fence in the refusal, taken out of the other text by position, not by text (PMK-316). */
+export function adrFenceLines(text) {
+  return [...new Set(fenceRisk(text).map((item) => item.block))].flatMap((block) => [block.start, block.closer]).filter((at) => at !== undefined)
 }
 const fenceRisk = (text) => {
   const lines = adrText(text).split('\n')
@@ -460,9 +464,14 @@ const hostsLazy = (item) => {
   return rest !== '' && !OPENS_BLOCK.test(rest)
 }
 // The first line after one-line comments that is an item or quote with text is the status a reader sees, whatever follows it, a blank line, a date or a lazy line (PMK-313).
+// When that first item or quote does not read as a known status (`readsAsStatus`, the rule of `topLevelStatus`) and a later line does, the later line is the status and the item is text to move (PMK-316);
+// when no line reads as one, the first item or quote stays the status.
 const statusLineOf = (raw) => {
   const first = raw.findIndex((item) => item !== '' && !/^<!--.*-->$/.test(item))
-  if (first !== -1 && hostsLazy(raw[first])) return first
+  if (first !== -1 && hostsLazy(raw[first])) {
+    const later = readsAsStatus(raw[first]) ? -1 : raw.findIndex((item, i) => i > first && item !== '' && !/^<!--.*-->$/.test(item) && readsAsStatus(item))
+    return later === -1 ? first : later
+  }
   const at = raw.findIndex((item) => item !== '' && !OPENS_BLOCK.test(item))
   if (at === -1) return raw.findIndex((item) => item !== '')
   return at > 0 && hostsLazy(raw[at - 1]) ? at - 1 : at
@@ -510,11 +519,15 @@ const replacesInPlace = (lines, section) => statusSection(lines, section, sectio
  * of more than one line is refused as before: a comment, quote, list item or fence glued to the status or before it counts, a line indented 4 spaces too.
  */
 export function adrStatusDropped(text) {
+  return adrStatusDroppedAt(text).map((item) => item.line)
+}
+/** `adrStatusDropped` with the line of each, `{ at, line }`: `at` an index into the lines of the text, the same index `adrFenceLines` gives, so the refusal takes a fence line out by position (PMK-316). */
+export function adrStatusDroppedAt(text) {
   const lines = adrText(text).split('\n')
   const { section, end } = locate(lines)
   if (section === -1) return []
   const { raw, at, safe, count } = statusSection(lines, section, end(section))
-  return count <= 1 || safe !== -1 ? [] : raw.filter((item, i) => item !== '' && i !== at)
+  return count <= 1 || safe !== -1 ? [] : raw.flatMap((item, i) => (item !== '' && i !== at ? [{ at: section + 1 + i, line: item }] : []))
 }
 /** The whole `## Status` section, its trimmed non-blank lines joined by a space, null when there is none: where the section ends, which is what the CommonMark check of `scripts/dev` compares. `adrInfo` reads one line of it when it has a top-level status line (PMK-311). */
 export function adrSectionText(text) {
