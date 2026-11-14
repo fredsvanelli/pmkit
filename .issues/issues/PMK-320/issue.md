@@ -2,12 +2,14 @@
 id: PMK-320
 title: Write in place past a fence its quote or list item closes at the heading or the end of the file
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-6
+branch: pmk-320-write-in-place-past-a-fence-its-quote-or
 created: 2026-11-14T19:16:52.784Z
-updated: 2026-11-14T19:16:52Z
+updated: 2026-11-14T20:08:32Z
 ---
 
 ## Description
@@ -40,6 +42,6 @@ A fence in a quote or list item cannot take a top-level heading: the heading is 
 
 ## Acceptance criteria
 
-- [ ] A status on a plain line followed by a fence in a quote, and in a list item, that holds a heading-like line and whose container ends at a blank line before the heading, at the heading, or at the end of the file, is written in place, real and dry run, with no refusal and no note in `adr-get`, with tests (ATX and setext heading)
-- [ ] A top-level fence that does not close keeps refusing, and the guard keeps refusing when the whole section would be replaced (status in an item or quote, no known status line, two status lines), with the existing tests passing
-- [ ] A develop x branch comparison on random Status sections, checked against commonmark.js, shows the only new writes are this case and no new write deletes a line, and `scripts/dev/adr-commonmark-diff.mjs` run in full reports 0 worse, both in the PR
+- [x] A status on a plain line followed by a fence in a quote, and in a list item, that holds a heading-like line and whose container ends at a blank line before the heading, at the heading, or at the end of the file, is written in place, real and dry run, with no refusal and no note in `adr-get`, with tests (ATX and setext heading)
+- [x] A top-level fence that does not close keeps refusing, and the guard keeps refusing when the whole section would be replaced (status in an item or quote, no known status line, two status lines), with the existing tests passing
+- [x] A develop x branch comparison on random Status sections, checked against commonmark.js, shows the only new writes are this case and no new write deletes a line, and `scripts/dev/adr-commonmark-diff.mjs` run in full reports 0 worse, both in the PR
