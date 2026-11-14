@@ -2,13 +2,14 @@
 id: PMK-324
 title: Put status lines with a hard break in the adr-commonmark-diff corpus
 type: chore
-status: backlog
+status: in_review
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
+branch: pmk-324-put-status-lines-with-a-hard-break-in
 created: 2026-11-14T20:46:32.811Z
-updated: 2026-11-14T20:46:32Z
+updated: 2026-11-14T22:10:15Z
 ---
 
 ## Description

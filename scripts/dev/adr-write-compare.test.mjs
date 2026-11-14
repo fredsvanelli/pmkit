@@ -1,8 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { createHash } from 'node:crypto'
 import { ADR_STATUSES, adrKeptLines, setAdrStatus } from '../lib/adr.mjs'
-import { KNOWN_STATUS, compareWrites, expectedLine, hardBreak, readsAsStatus, removedLines, writeShape } from './adr-write-compare.mjs'
+import { KNOWN_STATUS, STATUS_BREAKS, breakPairs, breakRuns, breakTriples, cases, compareWrites, expectedLine, hardBreak, readsAsStatus, removedLines, writeShape } from './adr-write-compare.mjs'
 
 const doc = (body) => `## Status\n\n${body}\n## Context\n`
 const SENTINEL = 'Superseded by sentinel.md'
@@ -207,4 +208,28 @@ test('a one-line section written as the plain status is a whole-section write, a
   assert.equal(cmp({ base, head: inPlace('  Accepted', 2, 'foo'), section: ['Accepted'] }).outcome, 'worse')
   assert.equal(cmp({ base, head: inPlace('  Accepted', 2, ''), section: ['Accepted'] }).outcome, 'worse')
   assert.equal(cmp({ base, head: inPlace('Accepted  ', 2, 'Superseded by x'), section: ['Accepted'] }).outcome, 'worse')
+})
+
+test('the corpus writes over status lines with a hard break in pairs, triples and random runs (PMK-324)', () => {
+  // Only the status lines of STATUS_BREAKS count (an underline such as `----  ` must not stand in for them), classified by the helper's own `hardBreak`:
+  // a space break, a backslash break and an even run of backslashes that is not a break, each in each part, so a later edit cannot drop them.
+  const kind = (line) => (hardBreak(line) === '\\' ? 'backslash' : hardBreak(line) ? 'spaces' : line.endsWith('\\') ? 'two backslashes' : 'none')
+  for (const [part, bodies] of [['pairs', breakPairs()], ['triples', breakTriples()], ['random runs', breakRuns({ seed: 1, count: 2000, lines: 8 })]]) {
+    const seen = new Set()
+    for (const body of bodies) for (const line of body.split('\n')) if (STATUS_BREAKS.includes(line)) seen.add(kind(line))
+    assert.deepEqual([...seen].sort(), ['backslash', 'spaces', 'two backslashes'], part)
+  }
+})
+
+test('the cases before PMK-324 are the same and in the same order as in the script before the corpus moved (PMK-324)', () => {
+  // The sha256 of `JSON.stringify(case) + '\n'` for each case of `cases()` in adr-commonmark-diff.mjs at 3fb6707b (before the move), with --seed 1 --random 2000 --status-random 2000 --lines 8:
+  // the fixed cases, the pairs and triples, the first 2,000 of each random part (each part has its own seed) and the container cases, 1,194,400 in all. The PMK-324 cases come after them.
+  const hash = createHash('sha256')
+  let n = 0
+  for (const item of cases({ seed: 1, random: 2000, statusRandom: 2000, breakRandom: 0, lines: 8 })) {
+    if (n++ === 1194400) break
+    hash.update(`${JSON.stringify(item)}\n`)
+  }
+  assert.equal(n, 1194401)
+  assert.equal(hash.digest('hex'), '9f2f6b6c75dd2f2b93b9b11b8a1616bc7111b3d68bdbf4fbaa62913a83a8fdf5')
 })

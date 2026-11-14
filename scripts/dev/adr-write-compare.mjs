@@ -1,4 +1,4 @@
-// Pure helpers of adr-commonmark-diff.mjs (PMK-315, PMK-318), kept apart so `npm test` can run them without commonmark.
+// Pure helpers and the corpus of adr-commonmark-diff.mjs (PMK-315, PMK-318, PMK-324), kept apart so `npm test` can run them without commonmark.
 
 const lines = (text) => text.split('\n').map((line) => line.trim()).filter(Boolean)
 /** The multiset difference `a` minus `b`, in the order of `a`. */
@@ -78,4 +78,131 @@ export function compareWrites({ base, head, section, span, status }) {
   const extra = head.inPlace ? [] : minus(minus(head.removed, base.refused ? [] : base.removed), only)
   if (extra.length > 0) return { outcome: 'worse', extra, written: head.written }
   return { outcome: base.refused ? 'acceptedWhereRefused' : 'same', extra }
+}
+
+// The corpus of adr-commonmark-diff.mjs (moved here by PMK-324 so `npm test` can read it). A case is the body of `## Status\n\n<body>\n## Context\n` (`textOf`).
+export const textOf = (body) => `## Status\n\n${body}\n## Context\n`
+
+// The cases: each cycle of the PR #241 review and the issue, every pair of lines, then random runs of lines.
+const FIXED = [
+  '- x\n\n1. a\n\n  b\n---', '- a\n\n```\nz\n```\n  b\n---', '- a\nlazy\n\n  b\n---',
+  '- a\n-\n\n  x\n---', '-     a\nlazy\n\n  x\n---', '-     a\nz\n\n  x\n---', '-     a\n-\n\n  x\n---',
+  '- a\n\n      code\nmore\n---', '- a\n\n  ```\n  z\n  ```\n```\ny\n```\n  b\n---', '- a\n  > q\nlazy\n\n  b\n---',
+  '- a\nlazy\n\n\n      x\nlazy\n---', '-\n  x\n\n      x\nlazy\n---', '-\n      code\n\n  x\n---', '- a\n\n  > q\nlazy\n\n  c\n---',
+  '- a\n    - m\n\n      c\nlazy\n---', '\n -\n      1) b\n\n      3)      b\na\n---', '\n   1. x\nlazy\n\n        3) \na\n  \tlazy\n   ===',
+  '2.    lazy\n      a\n     b\nx\n\n        1.      a\nc d\n  + \n--',
+  '-\n<!-- x -->\n---', '* \n<!-- x -->\n ---', '-\n[a]: /u\n ---', '> ###\n[a]: /u "t"\n ---', '1. ```\n[a]: /u\n-', '-\n</div>\n---', '<pre>\n\t~~~\n-',
+  '<!--\n```\n-->\nAccepted\n',
+]
+const ITEMS = ['- a', '* a', '+ a', '1. a', '1) a', '2. a', '10) a', '-', '*', '1.', '2)', '-     a', '1.      a', '-\ta', '1.\ta', '- \ta', '\t- a',
+  ' - a', '  - b', '   - b', '    - b', '     - c', '      - c', '  1) b', '   1. b', '    2. b', '- - a', '1. - a', '- 1) a', '-  a', '- * a', '  -', '    -']
+const TEXT = ['a', 'lazy', ' x', '  x', '   x', '    x', '     x', '      x', '        x', '\tx', '\t\tx', ' \tx', '  \tx', '\t  x', '  # h']
+const QUOTES = ['> q', '  > q', '>', '> - a', '- > q', '  - > q', '  > - q', '>     x', '>\tx', '    > q']
+const FENCES = ['```', '~~~', '  ```', '   ~~~', '    ```', '````', '```x', '``` `', '      ```', '\t```', '~~~~', '  ~~~']
+const BLANKS = ['', '', '  ', '\t']
+const BREAKS = ['***', '* * *', '- - -', '___', '# h', '  ---']
+// HTML blocks of the seven kinds, inline tags that are not blocks, and link reference definitions, whole or spread over lines.
+const HTML = ['<!-- x -->', '<!-- c', '-->', '<div>', '</div>', '<div class="a">', '  <p>', '<pre>', '</pre>', '<script>', '</script>', '<x-y>', '</x-y>',
+  '<a href="u">', '<span>x</span>', '<em>', '<![CDATA[', ']]>', '<!DOCTYPE html>', '<?php', '?>', '<x-y a=1 b="2"/>', '    <div>', '<div>x</div>']
+const DEFS = ['[a]: /u', '[a]: /u "t"', "[b]: <u> 't'", '[a]: /u (t)', '[a]:', '/u', '"t"', '[a]: /u "t" x', '[ ]: /u', '[a]: /u\t', '[a]', ': /u', '  [a]: /u', '[a]: (u)']
+const UNDERLINES = ['---', '===', '--', '-', ' ---', '   ===', '----  ']
+// PMK-315: the lines that make the status line choice matter: known status words with and without emphasis, a date, `Supersedes`, `Key: value`, and a status with its own date.
+const STATUS_WORDS = ['Accepted', 'accepted', '**Accepted**', '*Proposed*', '_Deprecated_', 'Proposed', 'Rejected', 'Draft', 'Superseded by ADR 2', '**Superseded by ADR 2**', 'Superseded by [ADR 2](0002-x.md)', '  Accepted', '    Accepted']
+const STATUS_OTHER = ['Date: 2024-01-02', '2024-01-02', '- Date: 2024-01-02', 'Supersedes ADR 1', 'Supersedes: ADR 1', '**Supersedes** ADR 1', 'Status: Accepted', 'Deciders: a, b', 'Key: value', 'Accepted Date: 2024-01-02', 'Proposed by a']
+const STATUSY = [...STATUS_WORDS, ...STATUS_OTHER]
+const ALPHABET = [...ITEMS, ...TEXT, ...QUOTES, ...FENCES, ...BLANKS, ...BREAKS, ...HTML, ...DEFS]
+// The weights of each kind in a random run: lists and text most, so nesting and lazy lines meet often. COMPOSED builds a line from parts.
+const COMPOSED = []
+const KINDS = [[ITEMS, 20], [TEXT, 18], [COMPOSED, 20], [BLANKS, 15], [QUOTES, 8], [FENCES, 9], [BREAKS, 3], [HTML, 10], [DEFS, 10]]
+// Parts of a composed line: an indent of 0 to 8 columns with tabs, up to two quote or list markers each with a gap of 0 to 6 columns, then content.
+const INDENTS = ['', ' ', '  ', '   ', '    ', '     ', '      ', '        ', '\t', ' \t', '  \t', '\t ', '\t\t']
+const MARKERS = ['-', '*', '+', '1.', '1)', '2.', '3)', '10.', '>']
+const GAPS = ['', ' ', '  ', '   ', '    ', '     ', '      ', '\t', ' \t']
+const CONTENTS = ['a', 'lazy', '', '```', '~~~', '---', '# h', 'x y', '<!-- x -->', '<div>', '<pre>', '<x-y>', '[a]: /u', '[a]: /u "t"']
+
+// Each case is a body, or `{ text, end }` with its own text and the way its block ends (`end` tallies the outcomes apart, PMK-321).
+const CONTAINERS = []
+for (const status of ['Accepted', '  Accepted  ']) for (const gap of [[], ['']]) {
+  for (const open of ['> ```', '- ```', '> <div>', '- <div>']) {
+    const inside = [open, open.startsWith('>') ? '> ## X' : '  ## X']
+    const ends = { 'later line': ['', 'Date: 2024-01-02'], blank: [''], 'ATX heading': ['## Y'], 'setext heading': ['Title', '---'], 'end of file': [] }
+    for (const [end, tail] of Object.entries(ends)) {
+      const own = end === 'setext heading' || end === 'end of file'
+      const body = [status, ...gap, ...inside, ...tail].join('\n')
+      CONTAINERS.push({ text: own ? `## Status\n\n${body}\n` : textOf(body), end })
+    }
+  }
+}
+
+/** Mulberry32: the random numbers of the runs, from `seed`. */
+const prng = (seed) => () => {
+  seed = (seed + 0x6d2b79f5) >>> 0
+  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+}
+/** One random run: 1 to `lines` lines drawn from `kinds` by weight (COMPOSED builds a line from parts), then an underline with the chance `underline`. */
+function randomRun(random, kinds, lines, underline) {
+  const pick = (list) => list[Math.floor(random() * list.length)]
+  const weight = kinds.reduce((sum, [, w]) => sum + w, 0)
+  const run = []
+  const count = 1 + Math.floor(random() * lines)
+  for (let i = 0; i < count; i++) {
+    let roll = random() * weight
+    const [kind] = kinds.find(([, w]) => (roll -= w) < 0)
+    if (kind !== COMPOSED) run.push(pick(kind))
+    else {
+      let line = pick(INDENTS)
+      for (let m = Math.floor(random() * 3); m > 0; m--) line += pick(MARKERS) + pick(GAPS)
+      run.push(line + pick(CONTENTS))
+    }
+  }
+  if (random() < underline) run.push(pick(UNDERLINES))
+  return run.join('\n')
+}
+const STATUS_KINDS = [[STATUSY, 35], [BLANKS, 15], [ITEMS, 8], [TEXT, 6], [COMPOSED, 6], [QUOTES, 4], [FENCES, 4], [HTML, 6], [DEFS, 3], [BREAKS, 3]]
+
+// PMK-324: status lines ending in a hard line break or a near miss: two or three spaces, one backslash (a break), two (not a break) and three (a break). The cases below are only the combinations
+// of the PMK-315 status cases with one of them in a status place (the others are already in the corpus), after all the older cases, so those stay the same and in order.
+export const STATUS_BREAKS = ['Accepted  ', '**Accepted**   ', '  Proposed  ', 'Accepted\\', '**Superseded by ADR 2**\\', '  Proposed\\', 'Accepted\\\\', '_Deprecated_\\\\', 'Accepted\\\\\\']
+const STATUS_ALL = [...STATUSY, ...STATUS_BREAKS]
+const isBreak = (line) => STATUS_BREAKS.includes(line)
+export function* breakPairs() {
+  for (const b of STATUS_BREAKS) for (const a of [...STATUS_ALL, ...ALPHABET]) for (const u of UNDERLINES) yield `${b}\n${a}\n${u}`
+  for (const a of ALPHABET) for (const b of STATUS_BREAKS) for (const u of UNDERLINES) yield `${a}\n${b}\n${u}`
+}
+export function* breakTriples() {
+  for (const s of STATUS_ALL) for (const t of STATUS_ALL) if (isBreak(s) || isBreak(t)) for (const a of [...STATUS_ALL, ...ALPHABET]) for (const u of UNDERLINES) yield `${s}\n${t}\n${a}\n${u}`
+  for (const s of STATUS_ALL) for (const a of ALPHABET) for (const t of STATUS_ALL) if (isBreak(s) || isBreak(t)) for (const u of UNDERLINES) yield `${s}\n${a}\n${t}\n${u}`
+}
+/** `count` random status runs like the PMK-315 ones, their status lines drawn from STATUS_ALL, with their own seed. */
+export function* breakRuns({ seed, count, lines }) {
+  const random = prng((seed + 2) >>> 0)
+  const kinds = STATUS_KINDS.map(([kind, w]) => [kind === STATUSY ? STATUS_ALL : kind, w])
+  for (let n = 0; n < count; n++) yield randomRun(random, kinds, lines, 0.3)
+}
+
+/**
+ * The whole corpus, in order: each cycle of the PR #241 review and the issue, every pair and triple of lines, `random` random runs (seed `seed`, 1 to `lines` lines), the PMK-315 status pairs, triples and
+ * `statusRandom` runs (seed `seed + 1`), the PMK-321 container cases, then the PMK-324 hard-break pairs, triples and `breakRandom` runs (seed `seed + 2`). A case is a body or `{ text, end }`.
+ */
+export function* cases({ seed, random: runs, statusRandom, breakRandom, lines }) {
+  yield* FIXED
+  for (const a of ALPHABET) for (const u of UNDERLINES) yield `${a}\n${u}`
+  for (const a of ALPHABET) for (const b of ALPHABET) for (const u of UNDERLINES) yield `${a}\n${b}\n${u}`
+  let random = prng(seed >>> 0)
+  for (let n = 0; n < runs; n++) yield randomRun(random, KINDS, lines, 0.9)
+  // PMK-315: bodies with status words. Pairs and triples with a status line in them, then random runs weighted to status lines, blanks between them and a few other blocks.
+  for (const s of STATUSY) for (const a of [...STATUSY, ...ALPHABET]) for (const u of UNDERLINES) yield `${s}\n${a}\n${u}`
+  for (const a of ALPHABET) for (const s of STATUSY) for (const u of UNDERLINES) yield `${a}\n${s}\n${u}`
+  for (const s of STATUSY) for (const t of STATUSY) for (const a of [...STATUSY, ...ALPHABET]) for (const u of UNDERLINES) yield `${s}\n${t}\n${a}\n${u}`
+  for (const s of STATUSY) for (const a of ALPHABET) for (const t of STATUSY) for (const u of UNDERLINES) yield `${s}\n${a}\n${t}\n${u}`
+  random = prng((seed + 1) >>> 0)
+  for (let n = 0; n < statusRandom; n++) yield randomRun(random, STATUS_KINDS, lines, 0.3)
+  // PMK-321: the in-place write past a block that a quote or list item holds and closes (PMK-317). A status on a plain line, a fence or an HTML block in a quote or list item with a heading-like line in it, then the end of the block
+  // by a later line, a blank line, an ATX heading, a setext heading or the end of the file. The last two have their own end, so the text is not the default `## Status ... ## Context` one.
+  yield* CONTAINERS
+  yield* breakPairs()
+  yield* breakTriples()
+  yield* breakRuns({ seed, count: breakRandom, lines })
 }
