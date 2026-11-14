@@ -434,11 +434,17 @@ export function adrFenceHeld(text) {
 }
 /**
  * The fences `adrFenceHeld` names, in order, `{ opener, start, closer }`: `opener` the trimmed opening line without its quote or list prefix, `start` and `closer` the lines (indices into the
- * lines of the text) of the opening and closing line, `closer` undefined for a fence with no closing line: one that never closes, or one its quote or list item ends (PMK-317). The refusal names each opener with its fence and takes both lines out of the other
+ * lines of the text) of the opening and closing line, `closer` undefined for a fence with no closing line: one that never closes, or one its quote or list item ends (PMK-317), `lines` the trimmed lines it takes, as `adrFenceHeld` gives them (PMK-322). The refusal names each opener with its fence and takes both lines out of the other
  * text by their line, not their text (PMK-316; the closing line, PMK-313).
  */
 export function adrFenceBlocks(text) {
-  return [...new Set(fenceRisk(text).map((item) => item.block))].map((block) => ({ opener: block.first, start: block.start, closer: block.closer }))
+  // One pass: each fence once, in order, with the trimmed lines it takes (PMK-322: two fences with the same opener read apart).
+  const fences = new Map()
+  for (const item of fenceRisk(text)) {
+    if (!fences.has(item.block)) fences.set(item.block, { opener: item.block.first, start: item.block.start, closer: item.block.closer, lines: [] })
+    fences.get(item.block).lines.push(item.line)
+  }
+  return [...fences.values()]
 }
 const fenceRisk = (text) => {
   const lines = adrText(text).split('\n')

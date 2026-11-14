@@ -437,7 +437,8 @@ const htmlHeldNote = (adrPath, { opener, lines }) => `${adrPath}: the HTML block
 const FENCE_HELD_FIX = 'Close the code fence before the heading: add a closing line after the status, with the same character as the opening one and at least as many of it'
 const FENCE_HELD_STEP = FENCE_HELD_FIX + AGAIN
 const OTHER_TEXT_FIX = 'Put the status on a plain line of its own at the top of the Status section (not inside a comment, a code fence, indented code, a list item or a quote, not after a Key: value or Supersedes line, and starting with a known status such as Accepted, Proposed or Superseded by: a word that is not a known status, and two lines that read as a status, are refused); other lines may follow it, or move the other text out of the section'
-const fenceHeldNote = (adrPath, { opener, lines }) => `${adrPath}: the code fence "${opener}" takes ${lines.map((item) => `"${item}"`).join(', ')} into the Status section, so that text reads as part of the status; ${FENCE_HELD_STEP.charAt(0).toLowerCase()}${FENCE_HELD_STEP.slice(1)}`
+// Each fence with the lines it takes, so two with the same opener read apart and are counted as the refusal counts them (PMK-322).
+const fenceHeldNote = (adrPath, fences) => `${adrPath}: ${fences.map(({ opener, lines }) => `the code fence "${opener}" takes ${lines.map((item) => `"${item}"`).join(', ')}`).join(' and ')} into the Status section, so that text reads as part of the status; ${FENCE_HELD_STEP.charAt(0).toLowerCase()}${FENCE_HELD_STEP.slice(1)}`
 
 /** What `docs adr-get --from` says when it has no path (PMK-275). checkUsage and runAdrGet both use it. */
 const ADR_FROM_HINT = { message: '--from needs a path', nextStep: 'Pass the path docs next-adr gave the new ADR, such as --from docs/adr/0003-x.md' }
@@ -468,7 +469,7 @@ function runAdrGet(ctx) {
   const htmlHeld = adrHtmlHeld(adrSource)
   if (htmlHeld !== null) notes.push(htmlHeldNote(adr.path, htmlHeld))
   const fenceHeld = adrFenceHeld(adrSource)
-  if (fenceHeld !== null) notes.push(fenceHeldNote(adr.path, fenceHeld))
+  if (fenceHeld !== null) notes.push(fenceHeldNote(adr.path, adrFenceBlocks(adrSource)))
   const data = { number: adr.number, title, status, statuses, statusHeading, htmlHeld, fenceHeld, path: adr.path, ref: adr.ref, place: adr.place, supersedesRef, notes }
   return { data, text: fields([['number', data.number], ['title', title ?? '(no title)'], ['status', statuses.length > 1 ? statuses.join(' | ') : status ?? '(no status)'], ['path', data.path], ['place', data.place], ...(supersedesRef === null ? [] : [['supersedes ref', supersedesRef]])]).join('\n'), notes }
 }
@@ -499,29 +500,27 @@ async function runAdrStatus(ctx) {
   // PMK-306: refuse, never delete text of the section besides the status; one refusal names every cause, so one fix and one run are enough.
   // `adrStatusDropped` reads the same lines the write replaces, so the guard is exactly what the write deletes; the lines a heading guard names are named there, once each.
   const htmlHeld = adrHtmlHeld(before)
-  const fenceHeld = adrFenceHeld(before)
   const droppedAt = adrStatusDroppedAt(before)
   // The opening and closing line of every fence a guard names go with that fence, not with the other text; taken out by their line, not their text, so a line with the same text stays (PMK-313, PMK-316).
   const fences = adrFenceBlocks(before)
   const fenceLines = new Set(fences.flatMap((fence) => [fence.start, fence.closer]))
   const other = droppedAt.filter((item) => !fenceLines.has(item.at)).map((item) => item.line)
   // The opener of an HTML block, and a heading line a guard names, go with that block, not with the other text (PMK-310).
-  for (const item of [...(htmlHeld?.lines ?? []), ...(fenceHeld?.lines ?? [])]) {
+  for (const item of [...(htmlHeld?.lines ?? []), ...fences.flatMap((fence) => fence.lines)]) {
     const at = other.indexOf(item)
     if (at !== -1) other.splice(at, 1)
   }
   // The guard gives the opener of an HTML block without its quote or list prefix (`> ` + a comment), the other text keeps it.
   const htmlAt = htmlHeld === null ? -1 : other.findIndex((item) => item.replace(/^(?:\s*(?:>|[-+*]|\d+[.)]))*\s*/, '') === htmlHeld.opener)
   if (htmlAt !== -1) other.splice(htmlAt, 1)
-  // Each fence the guard names is named by its opening line, once for each fence by its block, not by its text: two fences with the same opening line are two (PMK-316, PMK-319).
-  const openers = fences.map((fence) => fence.opener)
+  // Each fence the guard names is one cause, by its block, not by its text, with the lines it takes: two fences with the same opening line are two and read apart (PMK-316, PMK-319, PMK-322).
   const quoted = (lines) => lines.map((item) => `"${item}"`).join(', ')
   const causes = [
     ...(htmlHeld === null ? [] : [[`${quoted(htmlHeld.lines)}, which the HTML block "${htmlHeld.opener}" takes into the Status section`, HTML_HELD_FIX]]),
-    ...(fenceHeld === null ? [] : [[`${quoted(fenceHeld.lines)}, which ${openers.length === 1 ? `the code fence ${quoted(openers)} takes` : `the code fences ${quoted(openers)} take`} into the Status section`, FENCE_HELD_FIX]]),
+    ...fences.map((fence) => [`${quoted(fence.lines)}, which the code fence "${fence.opener}" takes into the Status section`, FENCE_HELD_FIX]),
     ...(other.length === 0 ? [] : [[`the other text of the Status section, ${quoted(other)}`, OTHER_TEXT_FIX]]),
   ]
-  if (causes.length > 0) throw new PmkitError('INVALID_INPUT', `${adr.path}: setting the status would delete ${causes.map(([what]) => what).join('; and ')}; nothing was written`, causes.map(([, fix]) => fix).join('; ') + AGAIN)
+  if (causes.length > 0) throw new PmkitError('INVALID_INPUT', `${adr.path}: setting the status would delete ${causes.map(([what]) => what).join('; and ')}; nothing was written`, [...new Set(causes.map(([, fix]) => fix))].join('; ') + AGAIN)
   const { text: after, before: statusBefore, after: line } = setAdrStatus(before, status, byPath)
   // PMK-311: a plain line glued under the status may be the rest of a status broken over two lines, which is read as its first line only (ADR 0006).
   const continuation = adrStatusContinuation(before)

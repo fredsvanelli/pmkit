@@ -2149,25 +2149,43 @@ for (const [name, text, dropped] of [
   })
 }
 
-// PMK-319: two closed fences that share their opener are two fences in the refusal, not one.
-for (const [name, text, count] of [
-  ['a list item', '## Status\n\n- Accepted\n\n```\n## X\n```\n\nDate: 2024-01-02\n\n```\n## Y\n```\n\n## Context\n', 2],
-  ['a quote', '## Status\n\n> Accepted\n\n> ```\n> ## X\n> ```\n\nDate: 2024-01-02\n\n> ```\n> ## Y\n> ```\n\n## Context\n', 2],
-  ['three fences', '## Status\n\n- Accepted\n\n```\n## X\n```\n\n```\n## Y\n```\n\n```\n## Z\n```\n\n## Context\n', 3],
+// PMK-319: two closed fences that share their opener are two fences in the refusal, not one. PMK-322: each is named with the lines it takes, so they read apart
+// (PMK-319 asserted `the code fences "```", "```" take "## X", "## Y"`, which does not say which fence takes which line), and the adr-get note counts them the same way.
+const TICKS = '"```"'
+for (const [name, text, lines] of [
+  ['a list item', '## Status\n\n- Accepted\n\n```\n## X\n```\n\nDate: 2024-01-02\n\n```\n## Y\n```\n\n## Context\n', ['## X', '## Y']],
+  ['a quote', '## Status\n\n> Accepted\n\n> ```\n> ## X\n> ```\n\nDate: 2024-01-02\n\n> ```\n> ## Y\n> ```\n\n## Context\n', ['> ## X', '> ## Y']],
+  ['three fences', '## Status\n\n- Accepted\n\n```\n## X\n```\n\n```\n## Y\n```\n\n```\n## Z\n```\n\n## Context\n', ['## X', '## Y', '## Z']],
 ]) {
-  test(`the refusal names two fences with the same opening line after ${name} as ${count} fences (PMK-319)`, async () => {
+  test(`the refusal and the adr-get note name each of ${lines.length} fences with the same opening line after ${name} with the line it takes (PMK-319, PMK-322)`, async () => {
     const root = repo()
     writeAdr(root, 'docs/adr/0001-a.md', text)
     for (const args of [['--dry-run'], []]) {
       const result = await adrStatus(root, '1', 'deprecated', ...args)
       assert.equal(result.code, 2)
-      const { message } = result.data.error
-      assert.ok(message.includes(`the code fences ${Array(count).fill('"```"').join(', ')} take`), message)
-      assert.ok(!message.includes('the code fence "```" takes'), message)
+      const { message, nextStep } = result.data.error
+      assert.ok(message.includes(lines.map((line) => `"${line}", which the code fence ${TICKS} takes into the Status section`).join('; and ')), message)
+      assert.ok(!message.includes('the code fences'), message)
+      assert.equal(nextStep.split('Close the code fence').length - 1, 1, nextStep)
     }
     assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+    const get = await adrGetFrom(root, '1')
+    assert.ok(get.data.notes.join('\n').includes(`: ${lines.map((line) => `the code fence ${TICKS} takes "${line}"`).join(' and ')} into the Status section, so that text`), get.data.notes.join('\n'))
+    assert.deepEqual(get.data.fenceHeld, { opener: '```', lines })
   })
 }
+// PMK-322: one fence reads as before, byte for byte, in the refusal, its next step and the adr-get note, and `fenceHeld` keeps its shape.
+test('the refusal and the adr-get note for one fence are as before (PMK-322)', async () => {
+  const text = '# A\n\n## Status\n\n- Accepted\n\n```\n## X\n```\n\nDate: 2024-01-02\n\n## Context\n'
+  const root = repo()
+  writeAdr(root, 'docs/adr/0001-a.md', text)
+  const { message, nextStep } = (await adrStatus(root, '1', 'deprecated', '--dry-run')).data.error
+  assert.equal(message, 'docs/adr/0001-a.md: setting the status would delete "## X", which the code fence "```" takes into the Status section; and the other text of the Status section, "Date: 2024-01-02"; nothing was written')
+  assert.equal(nextStep, 'Close the code fence before the heading: add a closing line after the status, with the same character as the opening one and at least as many of it; Put the status on a plain line of its own at the top of the Status section (not inside a comment, a code fence, indented code, a list item or a quote, not after a Key: value or Supersedes line, and starting with a known status such as Accepted, Proposed or Superseded by: a word that is not a known status, and two lines that read as a status, are refused); other lines may follow it, or move the other text out of the section; then run the command again')
+  const get = await adrGetFrom(root, '1')
+  assert.deepEqual(get.data.notes, ['docs/adr/0001-a.md: the code fence "```" takes "## X" into the Status section, so that text reads as part of the status; close the code fence before the heading: add a closing line after the status, with the same character as the opening one and at least as many of it; then run the command again'])
+  assert.deepEqual(get.data.fenceHeld, { opener: '```', lines: ['## X'] })
+})
 
 // PMK-319: a plain first line that is not a status, before many lines in a fence or a quote, is read in one pass (the set of held lines is worked out once).
 test('probe: a plain line that is not a status before a long fence or quote of status words is read in well under the ceiling (PMK-319)', async () => {
@@ -2177,6 +2195,12 @@ test('probe: a plain line that is not a status before a long fence or quote of s
     `Date: 2024-01-02\n\n${'> Accepted\n'.repeat(n)}`, `Date: 2024-01-02\n\n<!--\n${'Proposed\n'.repeat(n)}-->`,
   ]
   await assertFast('probe-targets.mjs#adrInfoBody', bodies)
+})
+
+// PMK-322: many lazy lines that read as a status after a quote are read in one pass (the lazy lines join the held lines worked out once).
+test('probe: a quote followed by many lazy lines of status words is read in well under the ceiling (PMK-322)', async () => {
+  const n = 20000
+  await assertFast('probe-targets.mjs#adrInfoBody', [`Date: x\n\n> see ADR 3\n${'Accepted\n'.repeat(n)}`, `Date: x\n\n- see ADR 3\n${'Accepted\n'.repeat(n)}`])
 })
 
 // A fence line is taken out by its position, not its text: a line of other text with the same text as a closing line stays named.
