@@ -1794,3 +1794,27 @@ for (const [name, text, dropped, status] of STATUS_NAMED) {
     assert.ok(!message.includes(`"${status}"`), message)
   })
 }
+
+// PMK-310 review: a fence opener inside a quote is named once, and an empty list item has no lazy line.
+test('the refusal names the opener of a fence in a quote once (PMK-310)', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0001-a.md', '## Status\n\nAccepted\n\n> ```\n> ## Context\n')
+  const { message } = (await adrStatus(root, '1', 'deprecated', '--dry-run')).data.error
+  assert.match(message, /the code fence "```"/)
+  assert.ok(!message.includes('"> ```"'), message)
+  assert.ok(!message.includes('the other text'), message)
+})
+for (const [name, text, status, dropped] of [
+  ['an empty list item then a line', '## Status\n\n-\nfoo\n\n## Context\n', '-', ['foo']],
+  ['an empty quote then a line', '## Status\n\n>\nfoo\n\n## Context\n', '>', ['foo']],
+]) {
+  test(`${name} is not a lazy line: the refusal names the line after it, the item is the other text (PMK-310)`, async () => {
+    // `foo` is the status a reader takes, so the empty marker is what the user has to move.
+    assert.deepEqual(adrStatusDropped(text), [status])
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    const { message } = (await adrStatus(root, '1', 'deprecated', '--dry-run')).data.error
+    assert.ok(message.includes(`"${status}"`), message)
+    assert.ok(!message.includes(`"${dropped[0]}"`), message)
+  })
+}

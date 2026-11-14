@@ -502,8 +502,13 @@ async function runAdrStatus(ctx) {
   const fenceHeld = adrFenceHeld(before)
   const other = adrStatusDropped(before)
   // The opener of a block a guard names goes with that block, not with the other text (PMK-310).
-  for (const item of [...(htmlHeld?.lines ?? []), ...(fenceHeld?.lines ?? []), ...(htmlHeld ? [htmlHeld.opener] : []), ...(fenceHeld ? [fenceHeld.opener] : [])]) {
+  for (const item of [...(htmlHeld?.lines ?? []), ...(fenceHeld?.lines ?? [])]) {
     const at = other.indexOf(item)
+    if (at !== -1) other.splice(at, 1)
+  }
+  // The guard gives the opener without its quote or list prefix (`> ` + a fence), the other text keeps it.
+  for (const opener of [htmlHeld?.opener, fenceHeld?.opener]) {
+    const at = opener === undefined ? -1 : other.findIndex((item) => item.replace(/^(?:\s*(?:>|[-+*]|\d+[.)]))*\s*/, '') === opener)
     if (at !== -1) other.splice(at, 1)
   }
   const quoted = (lines) => lines.map((item) => `"${item}"`).join(', ')

@@ -431,7 +431,7 @@ export function adrFenceHeld(text) {
 // The line of a Status section body that is the status, an index into its trimmed lines (blanks kept): the first that does not open a block (a comment, quote, list item,
 // fence, heading, table), else the first. A code span (`Accepted`) is text, not a fence; a line right after a list item or quote continues it, so the item is the status (PMK-310).
 const OPENS_BLOCK = /^(?:<|>|`{3,}[^`]*$|~{3,}|#|\||=|[-+*](?:\s|$)|\d+[.)](?:\s|$))/
-const LAZY_HOST = /^(?:>|[-+*](?:\s|$)|\d+[.)](?:\s|$))/
+const LAZY_HOST = /^(?:>|[-+*]\s|\d+[.)]\s)\s*\S/ // an empty item or quote holds no paragraph, so the next line is not its lazy line
 const statusLineOf = (raw) => {
   const at = raw.findIndex((item) => item !== '' && !OPENS_BLOCK.test(item))
   if (at === -1) return raw.findIndex((item) => item !== '')
