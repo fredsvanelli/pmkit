@@ -495,8 +495,10 @@ const statusLineOf = (raw, paragraphOf) => {
   if (first !== -1 && (hostsLazy(raw[first]) || !OPENS_BLOCK.test(raw[first]))) {
     // Paragraph text the reader sees, as the block walk decides it (`paragraphOf`, PMK-322): a line that starts a paragraph of the section's text or the first one of a quote or item, not a
     // definition, not indented code, a fence, an HTML block, a lazy or a continuation line; or a line glued to the first line's paragraph, which is out of scope and chosen as before.
-    // A glued line counts only when the first line itself starts a paragraph the reader sees: a definition's later lines are part of it.
-    const sees = (i) => paragraphOf(i) === i || (paragraphOf(first) === first && paragraphOf(i) === first)
+    // A glued line is one of the first paragraph the reader sees: the first line's own, or the one after the definitions it opens (review cycle 2). A definition's later lines
+    // (`[Draft]:`, `Rejected`) belong to no shown paragraph, so they are never glued.
+    const glued = paragraphOf(first) === first ? first : paragraphOf.after(first)
+    const sees = (i) => paragraphOf(i) === i || (glued !== undefined && paragraphOf(i) === glued)
     const text = (item, i) => i > first && (OPENS_BLOCK.test(item) ? hostsLazy(item) : !KEY_VALUE.test(item)) && readsAsStatus(item) && sees(i)
     const later = readsAsStatus(raw[first]) && sees(first) ? -1 : raw.findIndex(text)
     return later === -1 ? first : later
@@ -542,11 +544,13 @@ const statusSection = (lines, section, end) => {
   // quote or item that shows (definitions are not shown, so a paragraph after definitions only is that block too), its own leading definitions left out.
   // One walk, worked out once and only when a refusal names the lines (`at` is read only then), so reading and writing never pay for it (a walk for each candidate was quadratic, PMK-316).
   let starts
-  const paragraphOf = (i) => (starts ??= (() => {
+  const walk = () => (starts ??= (() => {
     const held = []
     held.paragraphs = []
     sectionEnd(lines, section, held)
     const map = new Map()
+    // For the first line of a paragraph that opens with definitions, the first line shown after them.
+    const after = new Map()
     // The paragraphs of definitions only, by the block they are in.
     const hidden = new Map()
     for (const paragraph of held.paragraphs) {
@@ -565,10 +569,13 @@ const statusSection = (lines, section, end) => {
       if (paragraph.parent.type !== 'document' && paragraph.index - 1 !== (hidden.get(paragraph.parent) ?? 0)) continue
       const start = paragraph.lines[skip] - section - 1
       map.set(start, start)
+      if (skip > 0) after.set(paragraph.lines[0] - section - 1, start)
       for (const j of paragraph.lines.slice(skip + 1)) if (!paragraph.lazy.has(j)) map.set(j - section - 1, start)
     }
-    return map
-  })()).get(i)
+    return { map, after }
+  })())
+  const paragraphOf = (i) => walk().map.get(i)
+  paragraphOf.after = (i) => walk().after.get(i)
   return { raw, get at() { return statusLineOf(raw, paragraphOf) }, safe, count, brk, text: only === -1 ? null : (brk === '\\' ? raw[only].slice(0, -1).trimEnd() : raw[only]) }
 }
 // Whether the write replaces one line and keeps the rest, so nothing is deleted and the guards for what a replaced section loses do not run (PMK-314).

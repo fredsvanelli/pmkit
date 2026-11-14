@@ -2132,8 +2132,15 @@ for (const [name, text, dropped, kept] of [
   ['a definition in an item as the first line', '## Status\n\n- [Accepted]: /u\n\n> Proposed\n\n## Context\n', ['- [Accepted]: /u'], '> Proposed'],
   // A definition over two lines: its destination line is part of it, not a line glued to the first line's paragraph.
   ['a definition over two lines as the first line', '## Status\n\n[Draft]:\nRejected\n\n> Proposed\n\n## Context\n', ['[Draft]:', 'Rejected'], '> Proposed'],
+  // Review cycle 2: unchanged by the fix above, the destination line of a definition is part of it and never a glued line.
+  ['a definition over two lines with no later status', '## Status\n\n[Draft]:\nRejected\n\nsee ADR 3\n\n## Context\n', ['Rejected', 'see ADR 3'], '[Draft]:'],
   // A definition is not shown, so the paragraph after it is the first one the reader sees in its item or quote.
   ['an item that opens with a definition', '## Status\n\n- [Accepted]: /u\n\n  Proposed\n\n## Context\n', ['- [Accepted]: /u'], 'Proposed'],
+  // Review cycle 2: a definition is hidden, so the first paragraph the reader sees starts after it, and its glued line is chosen as for a plain first line (as on develop).
+  ['a definition before a paragraph with a glued status', '## Status\n\n[a]: /u\nDate: x\nAccepted\n\n> see\n\n## Context\n', ['[a]: /u', 'Date: x', '> see'], 'Accepted'],
+  ['a definition before a paragraph with a glued status in a quote', '## Status\n\n> [a]: /u\n> Date: x\n> Accepted\n\n> see\n\n## Context\n', ['> [a]: /u', '> Date: x', '> see'], '> Accepted'],
+  ['a definition before a paragraph with a glued status in an item', '## Status\n\n- [a]: /u\n  Date: x\n  Accepted\n\n> see\n\n## Context\n', ['- [a]: /u', 'Date: x', '> see'], 'Accepted'],
+  ['a definition before a note with a glued status', '## Status\n\n[a]: /u\nsee ADR 3\nProposed\n\nDate: x\n\n## Context\n', ['[a]: /u', 'see ADR 3', 'Date: x'], 'Proposed'],
   ['a quote that opens with a definition', '## Status\n\n> [Accepted]: /u\n>\n> Proposed\n\n## Context\n', ['> [Accepted]: /u', '>'], '> Proposed'],
   // The walk, not a regex, decides: a later line that only looks like a definition is seen, and a line glued to the first line's paragraph is chosen indented or not (it renders the same).
   ['a later line that only looks like a definition', '## Status\n\nDate: x\n\n[Accepted]:\n\n> see ADR 3\n\n## Context\n', ['Date: x', '> see ADR 3'], '[Accepted]:'],
