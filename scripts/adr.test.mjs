@@ -1987,7 +1987,6 @@ for (const [name, text, dropped] of [
   ['a nested item, a blank line and a status', '## Status\n\n- - see ADR 3\n\nAccepted\n\n## Context\n', ['- - see ADR 3']],
   ['a one-line comment, an item and a status', '## Status\n\n<!-- c -->\n- see ADR 3\n\nAccepted\n\n## Context\n', ['<!-- c -->', '- see ADR 3']],
   ['an item, a date and a status item', '## Status\n\n- see ADR 3\n\nDate: 2024-01-02\n\n- Accepted\n\n## Context\n', ['- see ADR 3', 'Date: 2024-01-02']],
-  ['an item and a status in a lazy line', '## Status\n\n- see ADR 3\nAccepted\n\n## Context\n', ['- see ADR 3']],
 ]) {
   test(`the refusal for ${name} names the item as text to move and the known status is left out (PMK-316)`, async () => {
     assert.deepEqual(adrStatusDropped(text), dropped)
@@ -2111,6 +2110,41 @@ for (const [name, text, dropped] of [
   ['a known status in indented code', '## Status\n\nDate: 2024-01-02\n\n    Accepted\n\n## Context\n', ['Accepted']],
 ]) {
   test(`with ${name} the plain first line keeps its place as the choice (PMK-319)`, () => {
+    assert.deepEqual(adrStatusDropped(text), dropped)
+  })
+}
+
+// PMK-322: indented code, a link reference definition and a lazy continuation line are not paragraph text the reader sees as the status.
+for (const [name, text, dropped, kept] of [
+  ['a first line in indented code', '## Status\n\n    Accepted\n\n> Proposed\n\n## Context\n', ['Accepted'], '> Proposed'],
+  ['a first line that is a link reference definition', '## Status\n\n[Accepted]: /u\n\n> Proposed\n\n## Context\n', ['[Accepted]: /u'], '> Proposed'],
+  ['a lazy line of a quote', '## Status\n\nDate: x\n\n> see ADR 3\nAccepted\n\n## Context\n', ['> see ADR 3', 'Accepted'], 'Date: x'],
+  ['a lazy line of a list item', '## Status\n\nDate: x\n\n- see ADR 3\nAccepted\n\n## Context\n', ['- see ADR 3', 'Accepted'], 'Date: x'],
+  // Was PMK-316's 'an item and a status in a lazy line' (the lazy line named as the status): the reader sees it as part of the item, so the item is the status.
+  ['an item and a status in its lazy line', '## Status\n\n- see ADR 3\nAccepted\n\n## Context\n', ['Accepted'], '- see ADR 3'],
+]) {
+  test(`the refusal for ${name} names the status the reader sees as kept and every other line as text (PMK-322)`, async () => {
+    assert.deepEqual(adrStatusDropped(text), dropped)
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    for (const args of [['--dry-run'], []]) {
+      const result = await adrStatus(root, '1', 'deprecated', ...args)
+      assert.equal(result.code, 2)
+      const { message } = result.data.error
+      assert.ok(message.includes(`the other text of the Status section, ${dropped.map((line) => `"${line}"`).join(', ')}; nothing`), message)
+      assert.ok(!message.includes(`"${kept}"`), message)
+    }
+    assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+  })
+}
+// Unchanged: no later line reads as a status, a glued line of the first paragraph is not lazy (out of scope), and a `Key: value` status first line still settles it.
+for (const [name, text, dropped] of [
+  ['indented code and no later status', '## Status\n\n    Accepted\n\nsome text\n\n## Context\n', ['some text']],
+  ['a line glued to a date', '## Status\n\nDate: x\nAccepted\n\n> see ADR 3\n\n## Context\n', ['Date: x', '> see ADR 3']],
+  ['a Superseded by first line', '## Status\n\nSuperseded by: ADR 3\n\n> Proposed\n\n## Context\n', ['> Proposed']],
+  ['a lazy line that is not a status', '## Status\n\n> Accepted\nsee ADR 3\n\nDate: x\n\n## Context\n', ['see ADR 3', 'Date: x']],
+]) {
+  test(`with ${name} the choice of the status line is as before (PMK-322)`, () => {
     assert.deepEqual(adrStatusDropped(text), dropped)
   })
 }

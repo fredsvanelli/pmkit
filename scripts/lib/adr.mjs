@@ -367,6 +367,8 @@ function sectionEnd(lines, from, held = []) {
     const rest = line.slice(offset)
     if (!allClosed && !blank && open.at(-1).type === 'paragraph') {
       open.at(-1).text += `${rest}\n`
+      // A lazy continuation line: part of a paragraph in a quote or list item it does not continue by its markers (PMK-322).
+      held.lazy?.push(j)
       continue
     }
     open.length = container + 1
@@ -471,13 +473,16 @@ const hostsLazy = (item) => {
 // When that first item, quote or plain line (PMK-319) does not read as a known status (`readsAsStatus`, the rule of `topLevelStatus`) and a later line does, the later line is the status and the item is text to move (PMK-316);
 // when no line reads as one, the first item, quote or plain line stays the status.
 // The later line must be text the reader sees at the top of the section, as `topLevelStatus` asks: not in a fence or an HTML block (`inBlock` gives their lines), not indented 4 columns (code), not a block
-// opener or a `Key: value` or reference line; an item or quote with text counts (PMK-316 review).
+// opener or a `Key: value` or reference line; an item or quote with text counts (PMK-316 review). Not a lazy continuation line either, and a first line that is code or a reference does not settle it (PMK-322).
 const statusLineOf = (raw, orig, inBlock) => {
   const first = raw.findIndex((item) => item !== '' && !ONE_LINE_COMMENT.test(item))
   // A first line that is plain text (not a block opener) takes the same preference: its old choice is that line, so without a later known status nothing changes (PMK-319).
   if (first !== -1 && (hostsLazy(raw[first]) || !OPENS_BLOCK.test(raw[first]))) {
-    const text = (item, i) => i > first && /^ {0,3}\S/.test(orig[i]) && (OPENS_BLOCK.test(item) ? hostsLazy(item) : !KEY_VALUE.test(item) && !NOT_TEXT.test(item)) && !ONE_LINE_COMMENT.test(item) && readsAsStatus(item)
-    const later = readsAsStatus(raw[first]) ? -1 : raw.findIndex((item, i) => text(item, i) && !inBlock().has(i))
+    // Paragraph text the reader sees: not indented code, not a link reference definition, not a line a fence or an HTML block holds and not a lazy continuation line (`inBlock`).
+    // The first line can be neither of the last two, so it skips the walk; it settles the choice only when it is paragraph text (PMK-322).
+    const paragraph = (i) => /^ {0,3}\S/.test(orig[i]) && !NOT_TEXT.test(raw[i]) && (i === first || !inBlock().has(i))
+    const text = (item, i) => i > first && (OPENS_BLOCK.test(item) ? hostsLazy(item) : !KEY_VALUE.test(item)) && !ONE_LINE_COMMENT.test(item) && readsAsStatus(item) && paragraph(i)
+    const later = readsAsStatus(raw[first]) && paragraph(first) ? -1 : raw.findIndex(text)
     return later === -1 ? first : later
   }
   const at = raw.findIndex((item) => item !== '' && !OPENS_BLOCK.test(item))
@@ -517,12 +522,13 @@ const statusSection = (lines, section, end) => {
   // The status line when it is read alone (the in-place line, or the only line of a one-line section), without its hard line break (PMK-314).
   const only = safe !== -1 ? safe : count === 1 ? raw.findIndex(Boolean) : -1
   const brk = only === -1 ? '' : hardBreak(orig[only])
-  // The lines a fence or an HTML block holds, as indices of `raw`: worked out once, and only when a later line is looked for (a walk for each candidate was quadratic, PMK-316).
+  // The lines a fence or an HTML block holds, and the lazy continuation lines (PMK-322), as indices of `raw`: worked out once, and only when a later line is looked for (a walk for each candidate was quadratic, PMK-316).
   let blockLines
   const inBlock = () => (blockLines ??= (() => {
     const held = []
+    held.lazy = []
     sectionEnd(lines, section, held)
-    return new Set(held.map((item) => item.at - section - 1))
+    return new Set([...held.map((item) => item.at), ...held.lazy].map((at) => at - section - 1))
   })())
   return { raw, at: statusLineOf(raw, orig, inBlock), safe, count, brk, text: only === -1 ? null : (brk === '\\' ? raw[only].slice(0, -1).trimEnd() : raw[only]) }
 }
