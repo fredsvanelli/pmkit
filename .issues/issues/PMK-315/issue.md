@@ -2,12 +2,14 @@
 id: PMK-315
 title: Exercise the status line choice in adr-commonmark-diff
 type: chore
-status: backlog
+status: in_progress
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-315-exercise-the-status-line-choice-in-adr
 created: 2026-11-14T05:29:38.227Z
-updated: 2026-11-14T05:29:38Z
+updated: 2026-11-14T05:41:54Z
 ---
 
 ## Description
