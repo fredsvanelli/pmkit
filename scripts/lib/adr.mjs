@@ -228,14 +228,6 @@ const keepsText = (paragraph) => {
  */
 function sectionEnd(lines, from, held = []) {
   const open = [{ type: 'document' }]
-  // The fences their quote or list item dropped, `droppedAt` the line that did (PMK-317). Whether each is `ended` is decided where the section ends: a non-blank line of the section from that line on.
-  const dropped = []
-  const finish = (end) => {
-    let last = end - 1
-    while (last > from && lines[last].trim() === '') last--
-    for (const block of dropped) if (block.droppedAt <= last) block.ended = true
-    return end
-  }
   for (let j = from + 1; j < lines.length; j++) {
     const line = lines[j]
     let offset = 0
@@ -297,8 +289,6 @@ function sectionEnd(lines, from, held = []) {
       matched = k
     }
     if (closedFence) continue
-    // A fence is a leaf, so one the line did not continue is dropped with its quote or list item, not by a closing line.
-    if (matched < open.length - 1 && open.at(-1).type === 'fence') dropped.push(Object.assign(open.at(-1), { droppedAt: j }))
     // A line the open HTML block continues; the block itself starts on an earlier line.
     if (matched >= 1 && matched === open.length - 1 && open[matched].type === 'fence' && !blank) held.push({ at: j, text: line.slice(offset), block: open[matched] })
     if (matched >= 1 && matched === open.length - 1 && open[matched].type === 'html') {
@@ -332,7 +322,7 @@ function sectionEnd(lines, from, held = []) {
         continue
       } else if (indent < 4 && CM_ATX.test(rest)) {
         add({ type: 'heading' })
-        if (container === 1) return finish(j)
+        if (container === 1) return j
       } else if (indent < 4 && CM_FENCE.test(rest)) {
         const fence = CM_FENCE.exec(rest)[0]
         add({ type: 'fence', char: fence[0], length: fence.length, first: rest.trim(), start: j })
@@ -341,7 +331,7 @@ function sectionEnd(lines, from, held = []) {
         add({ type: 'html', kind, first: rest.trim() })
       } else if (indent < 4 && inParagraph && CM_SETEXT.test(rest) && keepsText(open[container])) {
         // The whole paragraph becomes the heading, so the section stops at its first line.
-        if (container === 1) return finish(open[1].start)
+        if (container === 1) return open[1].start
         open[container] = { type: 'heading' }
       } else if (indent < 4 && CM_BREAK.test(rest)) {
         add({ type: 'break' })
@@ -386,7 +376,9 @@ function sectionEnd(lines, from, held = []) {
     else if (!blank && !LEAVES.has(leaf.type)) add({ type: 'paragraph', start: j, text: `${rest}\n` })
   }
   held.unclosed = open.at(-1).type === 'html' && open.at(-1).kind <= 5 ? open.at(-1) : null
-  return finish(lines.length)
+  // A fence is a leaf, so a quote or list item that ends drops it: only one directly in the document is still open here, and it takes in every later line (PMK-320).
+  held.openFence = open.length === 2 && open[1].type === 'fence' ? open[1] : null
+  return lines.length
 }
 
 /**
@@ -450,10 +442,10 @@ const fenceRisk = (text) => {
   if (section === -1) return []
   const held = []
   sectionEnd(lines, section, held)
-  // In place a fence that closes holds its lines and deletes nothing: one with a closing line, or one its quote or list item ends before a later line of the section (`ended`, PMK-317). One that never closes,
-  // or whose container ends only at the heading that ends the section or at the end of the file, is still named (PMK-314).
+  // In place a fence that ends holds its lines and deletes nothing: one with a closing line, or one its quote or list item ends, at a later line, a blank line, the heading that ends the section or the end of the file
+  // (PMK-317, PMK-320). Only a top-level fence that never closes is still named, as the HTML block that never closes: it takes the headings after it into the section (PMK-314).
   const inPlace = replacesInPlace(lines, section)
-  return headingLike(held).filter((item) => item.block.type === 'fence' && item.heading && !(inPlace && (item.block.closer !== undefined || item.block.ended))).map((item) => ({ ...item, line: lines[item.at].trim() }))
+  return headingLike(held).filter((item) => item.block.type === 'fence' && item.heading && !(inPlace && item.block !== held.openFence)).map((item) => ({ ...item, line: lines[item.at].trim() }))
 }
 // The line of a Status section body that is the status, an index into its trimmed lines (blanks kept): the first that does not open a block (a comment, quote, list item,
 // fence, heading, table), else the first. A code span (`Accepted`) is text, not a fence; a line right after a list item or quote continues it, so the item is the status (PMK-310).
