@@ -2,12 +2,14 @@
 id: PMK-316
 title: Name a non-status item and a repeated fence closer right in the adr-status refusal
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-6
+branch: pmk-316-name-a-non-status-item-and-a-repeated
 created: 2026-11-14T15:52:57.182Z
-updated: 2026-11-14T15:52:57Z
+updated: 2026-11-14T17:40:30Z
 ---
 
 ## Description
@@ -38,6 +40,6 @@ Nothing is written or lost in either case: only the named lines are wrong. Sourc
 
 ## Acceptance criteria
 
-- [ ] With `- see ADR 3`, a blank line and `Accepted`, the refusal names `Accepted` as the status and `- see ADR 3` as text to move, with a test, real and dry run
-- [ ] With two closed fences that share their closing line, each closing line is named once, with its fence, and none as other text, with a test
-- [ ] Every case refused before is still refused and nothing new is refused or written, with the existing tests unchanged in outcome and a develop x branch comparison on random Status sections in the PR
+- [x] With `- see ADR 3`, a blank line and `Accepted`, the refusal names `Accepted` as the status and `- see ADR 3` as text to move, with a test, real and dry run
+- [x] With two closed fences that share their closing line, each closing line is named once, with its fence, and none as other text, with a test
+- [x] Every case refused before is still refused and nothing new is refused or written, with the existing tests unchanged in outcome and a develop x branch comparison on random Status sections in the PR

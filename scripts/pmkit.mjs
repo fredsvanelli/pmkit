@@ -24,7 +24,7 @@ import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, 
 import { pathNote } from './lib/path-notes.mjs'
 import { fileMentions } from './lib/mentions.mjs'
 import { REPO_UNCHECKED } from './lib/delete-refusal.mjs'
-import { ADR_STATUSES, adrFiles, adrInfo, adrRef, isAdrName, adrFolders, adrLocation, adrHtmlHeld, adrFenceHeld, adrFenceClosers, adrStatusDropped, adrKeptLines, adrStatusContinuation, adrStatusHeading, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
+import { ADR_STATUSES, adrFiles, adrInfo, adrRef, isAdrName, adrFolders, adrLocation, adrHtmlHeld, adrFenceHeld, adrFenceBlocks, adrStatusDroppedAt, adrKeptLines, adrStatusContinuation, adrStatusHeading, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
 import { similarResult } from './lib/similar.mjs'
 import { isBlocked } from './lib/model.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
@@ -500,26 +500,25 @@ async function runAdrStatus(ctx) {
   // `adrStatusDropped` reads the same lines the write replaces, so the guard is exactly what the write deletes; the lines a heading guard names are named there, once each.
   const htmlHeld = adrHtmlHeld(before)
   const fenceHeld = adrFenceHeld(before)
-  const other = adrStatusDropped(before)
-  // The opener of a block a guard names goes with that block, not with the other text (PMK-310).
+  const droppedAt = adrStatusDroppedAt(before)
+  // The opening and closing line of every fence a guard names go with that fence, not with the other text; taken out by their line, not their text, so a line with the same text stays (PMK-313, PMK-316).
+  const fences = adrFenceBlocks(before)
+  const fenceLines = new Set(fences.flatMap((fence) => [fence.start, fence.closer]))
+  const other = droppedAt.filter((item) => !fenceLines.has(item.at)).map((item) => item.line)
+  // The opener of an HTML block, and a heading line a guard names, go with that block, not with the other text (PMK-310).
   for (const item of [...(htmlHeld?.lines ?? []), ...(fenceHeld?.lines ?? [])]) {
     const at = other.indexOf(item)
     if (at !== -1) other.splice(at, 1)
   }
-  // The guard gives the opener without its quote or list prefix (`> ` + a fence), the other text keeps it.
-  for (const opener of [htmlHeld?.opener, fenceHeld?.opener]) {
-    const at = opener === undefined ? -1 : other.findIndex((item) => item.replace(/^(?:\s*(?:>|[-+*]|\d+[.)]))*\s*/, '') === opener)
-    if (at !== -1) other.splice(at, 1)
-  }
-  // The closing line of a fence a guard names goes with that fence too (PMK-313).
-  for (const closer of adrFenceClosers(before)) {
-    const at = other.indexOf(closer)
-    if (at !== -1) other.splice(at, 1)
-  }
+  // The guard gives the opener of an HTML block without its quote or list prefix (`> ` + a comment), the other text keeps it.
+  const htmlAt = htmlHeld === null ? -1 : other.findIndex((item) => item.replace(/^(?:\s*(?:>|[-+*]|\d+[.)]))*\s*/, '') === htmlHeld.opener)
+  if (htmlAt !== -1) other.splice(htmlAt, 1)
+  // Each fence the guard names is named by its opening line (the same text once), so no line the write deletes drops out of the refusal (PMK-316).
+  const openers = [...new Set(fences.map((fence) => fence.opener))]
   const quoted = (lines) => lines.map((item) => `"${item}"`).join(', ')
   const causes = [
     ...(htmlHeld === null ? [] : [[`${quoted(htmlHeld.lines)}, which the HTML block "${htmlHeld.opener}" takes into the Status section`, HTML_HELD_FIX]]),
-    ...(fenceHeld === null ? [] : [[`${quoted(fenceHeld.lines)}, which the code fence "${fenceHeld.opener}" takes into the Status section`, FENCE_HELD_FIX]]),
+    ...(fenceHeld === null ? [] : [[`${quoted(fenceHeld.lines)}, which ${openers.length === 1 ? `the code fence ${quoted(openers)} takes` : `the code fences ${quoted(openers)} take`} into the Status section`, FENCE_HELD_FIX]]),
     ...(other.length === 0 ? [] : [[`the other text of the Status section, ${quoted(other)}`, OTHER_TEXT_FIX]]),
   ]
   if (causes.length > 0) throw new PmkitError('INVALID_INPUT', `${adr.path}: setting the status would delete ${causes.map(([what]) => what).join('; and ')}; nothing was written`, causes.map(([, fix]) => fix).join('; ') + AGAIN)
