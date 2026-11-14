@@ -450,7 +450,8 @@ function runAdrGet(ctx) {
   const from = ctx.opt('from')
   let supersedesRef = null
   if (from !== undefined) {
-    if (typeof from !== 'string' || from.trim() === '') throw usageError(ADR_FROM_HINT.message, ADR_FROM_HINT.nextStep)
+    // A bare flag never gets here (checkUsage refuses it), and a repeated one takes its last value (`opt`), so `from` is a string (`--from=` gives '').
+    if (from.trim() === '') throw usageError(ADR_FROM_HINT.message, ADR_FROM_HINT.nextStep)
     // Matched on the normalised path: `\` as `/`, `.` and repeated `/` collapsed, the `tracker:` label kept (PMK-275).
     const [, label = '', rest] = /^(tracker:)?(.*)$/s.exec(from)
     const normal = label + path.posix.normalize(rest.replace(/\\/g, '/'))

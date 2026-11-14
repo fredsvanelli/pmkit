@@ -1362,6 +1362,18 @@ test('docs adr-get --from gives the same supersedesRef for every spelling of the
   })
 })
 
+test('docs adr-get --from normalises `..` inside the folder and refuses a path that climbs out of it (PMK-275)', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0001-a.md')
+  const plain = await adrGetFrom(root, '1', '--from', 'docs/adr/0003-x.md')
+  const inside = await adrGetFrom(root, '1', '--from', 'docs/adr/../adr/0003-x.md')
+  assert.equal(inside.code, 0)
+  assert.equal(inside.data.supersedesRef, plain.data.supersedesRef)
+  const climbs = await adrGetFrom(root, '1', '--from', '../docs/adr/0003-x.md')
+  assert.equal(climbs.code, 2)
+  assert.equal(climbs.data.error.code, 'INVALID_INPUT')
+})
+
 test('the item that holds the line decides: a wider sibling, a fence at column 0 and a lazy line before the continuation (PMK-291)', async () => {
   const cases = {
     // `1. a` closes `- x` and `b` is outside it (content at column 3): `b` is a heading line, `---` underlines it.
