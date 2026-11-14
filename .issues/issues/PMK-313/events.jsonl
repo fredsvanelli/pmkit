@@ -1,0 +1,1 @@
+{"at":"2026-11-14T05:29:38Z","by":"fred","op":"create","to":{"id":"PMK-313","title":"Name the extra text, not the status, in the adr-status refusal of a list item or quote","type":"bug","status":"backlog","priority":"low","estimate":2,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-14T05:29:38.033Z","updated":"2026-11-14T05:29:38Z"}}
