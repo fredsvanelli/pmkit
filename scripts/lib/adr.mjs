@@ -431,9 +431,9 @@ export function adrHtmlHeld(text) {
  * fence that holds `## X` is refused too (rare, and the text is not lost, but the rule is the HTML block's). `opener` is the first line of the first fence at risk,
  * `lines` the trimmed lines. A fence with no such line costs nothing and is not reported. Reading is unchanged.
  */
-export function adrFenceHeld(text) {
-  const risky = fenceRisk(text)
-  return risky.length === 0 ? null : { opener: risky[0].block.first, lines: risky.map((item) => item.line) }
+// A projection of `adrFenceBlocks`, so the CLI and the dev check read one implementation; `fences` lets a caller that has them skip the walk (PMK-322 review).
+export function adrFenceHeld(text, fences = adrFenceBlocks(text)) {
+  return fences.length === 0 ? null : { opener: fences[0].opener, lines: fences.flatMap((fence) => fence.lines) }
 }
 /**
  * The fences `adrFenceHeld` names, in order, `{ opener, start, closer }`: `opener` the trimmed opening line without its quote or list prefix, `start` and `closer` the lines (indices into the

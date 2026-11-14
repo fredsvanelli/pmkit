@@ -2196,9 +2196,12 @@ test('the refusal and the adr-get note for one fence are as before (PMK-322)', a
   const text = '# A\n\n## Status\n\n- Accepted\n\n```\n## X\n```\n\nDate: 2024-01-02\n\n## Context\n'
   const root = repo()
   writeAdr(root, 'docs/adr/0001-a.md', text)
-  const { message, nextStep } = (await adrStatus(root, '1', 'deprecated', '--dry-run')).data.error
-  assert.equal(message, 'docs/adr/0001-a.md: setting the status would delete "## X", which the code fence "```" takes into the Status section; and the other text of the Status section, "Date: 2024-01-02"; nothing was written')
-  assert.equal(nextStep, 'Close the code fence before the heading: add a closing line after the status, with the same character as the opening one and at least as many of it; Put the status on a plain line of its own at the top of the Status section (not inside a comment, a code fence, indented code, a list item or a quote, not after a Key: value or Supersedes line, and starting with a known status such as Accepted, Proposed or Superseded by: a word that is not a known status, and two lines that read as a status, are refused); other lines may follow it, or move the other text out of the section; then run the command again')
+  for (const args of [['--dry-run'], []]) {
+    const { message, nextStep } = (await adrStatus(root, '1', 'deprecated', ...args)).data.error
+    assert.equal(message, 'docs/adr/0001-a.md: setting the status would delete "## X", which the code fence "```" takes into the Status section; and the other text of the Status section, "Date: 2024-01-02"; nothing was written')
+    assert.equal(nextStep, 'Close the code fence before the heading: add a closing line after the status, with the same character as the opening one and at least as many of it; Put the status on a plain line of its own at the top of the Status section (not inside a comment, a code fence, indented code, a list item or a quote, not after a Key: value or Supersedes line, and starting with a known status such as Accepted, Proposed or Superseded by: a word that is not a known status, and two lines that read as a status, are refused); other lines may follow it, or move the other text out of the section; then run the command again')
+  }
+  assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
   const get = await adrGetFrom(root, '1')
   assert.deepEqual(get.data.notes, ['docs/adr/0001-a.md: the code fence "```" takes "## X" into the Status section, so that text reads as part of the status; close the code fence before the heading: add a closing line after the status, with the same character as the opening one and at least as many of it; then run the command again'])
   assert.deepEqual(get.data.fenceHeld, { opener: '```', lines: ['## X'] })
@@ -2214,10 +2217,10 @@ test('probe: a plain line that is not a status before a long fence or quote of s
   await assertFast('probe-targets.mjs#adrInfoBody', bodies)
 })
 
-// PMK-322: many lazy lines that read as a status after a quote are read in one pass (the lazy lines join the held lines worked out once).
-test('probe: a quote followed by many lazy lines of status words is read in well under the ceiling (PMK-322)', async () => {
+// PMK-322: many lazy or continuation lines that read as a status after a quote or item are read in one pass (the paragraph starts are worked out once).
+test('probe: a quote or item followed by many lazy or continuation lines of status words is read in well under the ceiling (PMK-322)', async () => {
   const n = 20000
-  await assertFast('probe-targets.mjs#adrInfoBody', [`Date: x\n\n> see ADR 3\n${'Accepted\n'.repeat(n)}`, `Date: x\n\n- see ADR 3\n${'Accepted\n'.repeat(n)}`])
+  await assertFast('probe-targets.mjs#adrInfoBody', [`Date: x\n\n> see ADR 3\n${'Accepted\n'.repeat(n)}`, `Date: x\n\n- see ADR 3\n${'Accepted\n'.repeat(n)}`, `Date: x\n\n${'> Accepted\n'.repeat(n)}`, `Date: x\n\n- see ADR 3\n${'  Accepted\n'.repeat(n)}`])
 })
 
 // A fence line is taken out by its position, not its text: a line of other text with the same text as a closing line stays named.
