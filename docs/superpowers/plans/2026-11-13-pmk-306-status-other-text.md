@@ -15,7 +15,7 @@ CRLF; 4-space line in a fence; HTML+fence together; status-only section; dry run
 - [ ] Add tests: paragraph after status; unclosed fence with text, no heading; `    ## Context` in fence; HTML+fence refusal naming both; status-only writes; CRLF; dry-run and real leave the file unchanged.
 - [ ] Update HELD_OK/FENCE_OK cases that now refuse. Run `node --test scripts/adr.test.mjs`: new tests FAIL.
 
-### Task 2: `adrStatusOther` in scripts/lib/adr.mjs, one refusal in `runAdrStatus` (scripts/pmkit.mjs)
+### Task 2: `adrStatusDropped` in scripts/lib/adr.mjs, one refusal in `runAdrStatus` (scripts/pmkit.mjs)
 - [ ] Implement per the spec; run adr tests: PASS.
 
 ### Task 3: docs and delivery

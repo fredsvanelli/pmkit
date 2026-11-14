@@ -1761,3 +1761,36 @@ test('docs adr-status names the HTML block, the fence and the other text in one 
     assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
   }
 })
+
+// PMK-310: the refusal names each line once, under the cause that takes it, and names the line a reader takes as the status as the status.
+const NAMED = [
+  ['an HTML block that takes a heading', '## Status\n\n<!-- note\nAccepted\n\n## Context\n\nWhy.\n', ['<!-- note', '## Context', 'Why.'], ['the HTML block "<!-- note"']],
+  ['a fence that takes a heading', '## Status\n\n```\nAccepted\n\n## Context\n', ['```', '## Context'], ['the code fence "```"']],
+]
+for (const [name, text, quoted, causes] of NAMED) {
+  test(`the refusal names the opener of ${name} once, with its block (PMK-310)`, async () => {
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    const { message, nextStep } = (await adrStatus(root, '1', 'deprecated', '--dry-run')).data.error
+    for (const cause of causes) assert.ok(message.includes(cause), cause)
+    assert.equal(message.split(`"${quoted[0]}"`).length - 1, 1, message)
+    assert.equal(nextStep.match(/Move that text out/g)?.length ?? 0, 0, nextStep)
+  })
+}
+const STATUS_NAMED = [
+  ['a code span then a line', '## Status\n\n`Accepted`\nDate: 2020\n\n## Context\n', ['Date: 2020'], '`Accepted`'],
+  ['a list item then a lazy line', '## Status\n\n- Accepted\nlazy\n\n## Context\n', ['lazy'], '- Accepted'],
+  ['a quote then a lazy line', '## Status\n\n> Accepted\nlazy\n\n## Context\n', ['lazy'], '> Accepted'],
+]
+for (const [name, text, dropped, status] of STATUS_NAMED) {
+  test(`the refusal for ${name} names the extra line, not the status (PMK-310)`, async () => {
+    assert.deepEqual(adrStatusDropped(text), dropped)
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    const result = await adrStatus(root, '1', 'deprecated', '--dry-run')
+    assert.equal(result.code, 2)
+    const { message } = result.data.error
+    for (const line of dropped) assert.ok(message.includes(`"${line}"`), line)
+    assert.ok(!message.includes(`"${status}"`), message)
+  })
+}

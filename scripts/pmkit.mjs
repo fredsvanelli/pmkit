@@ -501,7 +501,8 @@ async function runAdrStatus(ctx) {
   const htmlHeld = adrHtmlHeld(before)
   const fenceHeld = adrFenceHeld(before)
   const other = adrStatusDropped(before)
-  for (const item of [...(htmlHeld?.lines ?? []), ...(fenceHeld?.lines ?? [])]) {
+  // The opener of a block a guard names goes with that block, not with the other text (PMK-310).
+  for (const item of [...(htmlHeld?.lines ?? []), ...(fenceHeld?.lines ?? []), ...(htmlHeld ? [htmlHeld.opener] : []), ...(fenceHeld ? [fenceHeld.opener] : [])]) {
     const at = other.indexOf(item)
     if (at !== -1) other.splice(at, 1)
   }

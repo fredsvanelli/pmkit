@@ -2,12 +2,14 @@
 id: PMK-310
 title: Name the right lines in the adr-status refusal
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-310-name-the-right-lines-in-the-adr-status
 created: 2026-11-14T01:43:01.589Z
-updated: 2026-11-14T01:43:01Z
+updated: 2026-11-14T02:52:47Z
 ---
 
 ## Description
@@ -41,6 +43,6 @@ Source: PMK-306, PR #267 (review cycle 2).
 
 ## Acceptance criteria
 
-- [ ] An HTML block or a fence that takes a heading into the Status section is named once in the refusal, with its opener, and its opener is not repeated as other text, with tests for both
-- [ ] With the status in a code span followed by a line, or in a list item followed by a lazy line, the refusal names the extra line, not the status, with a test
-- [ ] Every case refused before is still refused and nothing new is refused, with the existing tests unchanged in outcome
+- [x] An HTML block or a fence that takes a heading into the Status section is named once in the refusal, with its opener, and its opener is not repeated as other text, with tests for both
+- [x] With the status in a code span followed by a line, or in a list item followed by a lazy line, the refusal names the extra line, not the status, with a test
+- [x] Every case refused before is still refused and nothing new is refused, with the existing tests unchanged in outcome
