@@ -224,7 +224,7 @@ const keepsText = (paragraph) => {
  * is a lazy continuation of it. A setext underline makes a heading only of a paragraph it continues and that holds more than link
  * reference definitions, so under a list item it is a break or a lazy line (PMK-280). Columns count a tab to the next stop of 4.
  * Not a Markdown parser: no inline content. `held`, when given, collects the non-blank lines an HTML block continues (PMK-299), as `{ at, text, late, block }` (`text`: the line without the markers of the containers it is in; `late`, HTML blocks only: after a blank line of the block; `heading` is not in it, `headingLike` adds it for the readers),
- * and gets `unclosed`: the block of kind 1 to 5 still open at the end of the file, which takes in every later line. The same for a fenced code block (PMK-302): the non-blank lines it continues come in `held` with `block.type === 'fence'`, closed or not, in a quote or a list item too. Its entries are `{ at, text, block }`.
+ * and gets `unclosed`: the innermost block of kind 1 to 5 still open at the end of the file, and `openHtml`: that block when it is directly in the document, the only one that takes in every later line (PMK-323). The same for a fenced code block (PMK-302): the non-blank lines it continues come in `held` with `block.type === 'fence'`, closed or not, in a quote or a list item too. Its entries are `{ at, text, block }`.
  */
 function sectionEnd(lines, from, held = []) {
   const open = [{ type: 'document' }]
@@ -378,6 +378,8 @@ function sectionEnd(lines, from, held = []) {
   held.unclosed = open.at(-1).type === 'html' && open.at(-1).kind <= 5 ? open.at(-1) : null
   // A fence is a leaf, so a quote or list item that ends drops it: only one directly in the document is still open here, and it takes in every later line (PMK-320).
   held.openFence = open.length === 2 && open[1].type === 'fence' ? open[1] : null
+  // The same for an HTML block of kind 1 to 5 on the in-place write (PMK-323): one its quote or list item holds ends with the container, at the end of the file too. `unclosed` keeps the innermost block for a whole-section replacement.
+  held.openHtml = open.length === 2 && open[1].type === 'html' && open[1].kind <= 5 ? open[1] : null
   return lines.length
 }
 
@@ -413,9 +415,9 @@ export function adrHtmlHeld(text) {
   if (section === -1) return null
   const held = []
   sectionEnd(lines, section, held)
-  // In place only a block that never closes is named: it swallows the headings after it, so the section is not where the reader sees it end (PMK-314).
+  // In place only a top-level block that never closes is named: it swallows the headings after it, so the section is not where the reader sees it end (PMK-314); one its quote or list item holds ends with the container (PMK-323).
   const inPlace = replacesInPlace(lines, section)
-  const risky = headingLike(held).filter((item) => item.block.type === 'html' && (!inPlace || item.block === held.unclosed) && (item.heading || (item.block === held.unclosed && item.late)))
+  const risky = headingLike(held).filter((item) => item.block.type === 'html' && (!inPlace || item.block === held.openHtml) && (item.heading || (item.block === held.unclosed && item.late)))
   return risky.length === 0 ? null : { opener: risky[0].block.first, lines: risky.map((item) => lines[item.at].trim()) }
 }
 /**

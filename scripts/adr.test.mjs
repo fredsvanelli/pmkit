@@ -2190,6 +2190,10 @@ for (const [name, text] of [
   ['a fence an item keeps open by an indented line, closed at the heading', '## Status\n\nAccepted\n\n- ```\n  a\n\n  ## X\n\n## Context\n'],
   ['a fence in a quote in a list item, closed at the heading', '## Status\n\nAccepted\n\n- > ```\n  > ## X\n\n## Context\n'],
   ['a fence a quote closes after an earlier fence a quote closes', '## Status\n\nAccepted\n\n> ```\n> ## X\n\n> ```\n> ## Y\n\n## Context\n'],
+  // PMK-323: an HTML block of kind 1 to 5 its quote or list item holds at the end of the file. The container ends with the file and ends the block, so nothing comes after it to take,
+  // as for a fence (PMK-320): only a top-level block still open at the end of the walk is named in place.
+  ...['<!--', '<?php', '<![CDATA[', '<!X', '<script>'].flatMap((opener) => [['quote', '> ', '> '], ['list item', '- ', '  ']].flatMap(([container, first, rest]) => [['', 'with no final newline'], ['\n', 'with a final newline']].map(([end, how]) =>
+    [`an HTML block ${opener} a ${container} holds at the end of the file ${how}`, `## Status\n\nAccepted\n\n${first}${opener}\n${rest}## X${end}`]))),
 ]) {
   test(`${name} after a status line of its own is written in place, real and dry run, with no note in adr-get (PMK-314)`, async () => {
     assert.equal(adrHtmlHeld(text), null)
@@ -2222,6 +2226,11 @@ for (const [name, text] of [
 // The guards still refuse when the whole section is replaced: an unclosed comment or fence, no known status line, a status in an item, an ambiguous section.
 for (const [name, text, guard] of [
   ['an unclosed comment after the status line', '## Status\n\nAccepted\n\n<!--\n## X\n', 'HTML'],
+  // PMK-323: a top-level block of kind 1 to 5 that never closes, with and without a final newline, after a block of the same kind its quote or list item holds.
+  ...['<!--', '<?php', '<![CDATA[', '<!X', '<script>'].flatMap((opener) => [
+    [`an unclosed top-level ${opener} block at the end of the file`, `## Status\n\nAccepted\n\n${opener}\n## X`, 'HTML'],
+    [`an unclosed top-level ${opener} block after one a list item holds`, `## Status\n\nAccepted\n\n- ${opener}\n  ## Y\n\n${opener}\n## X\n`, 'HTML'],
+  ]),
   ['an unclosed fence after the status line', '## Status\n\nAccepted\n\n```\n## X\n', 'fence'],
   ['an unclosed top-level fence after a fence a quote closes', '## Status\n\nAccepted\n\n> ```\n> ## Y\n\n```\n## X\n', 'fence'],
   ['a fence a quote closes, with a status in a quote', '## Status\n\n> Accepted\n\n> ```\n> ## X\n\nDate: 2024-01-02\n', 'fence'],
@@ -2248,6 +2257,20 @@ for (const [name, text, guard] of [
     assert.ok((await adrGetFrom(root, '1')).data.notes.length > 0)
   })
 }
+// PMK-323: a whole-section replacement keeps its refusal, message and note as before: the lines after a blank line of an HTML block its list item holds at the end of the file are still named.
+test('a whole-section replacement still names the late lines of an HTML block a list item holds at the end of the file (PMK-323)', async () => {
+  const text = '## Status\n\n- Accepted\n\n- <!--\n\n  text'
+  assert.deepEqual(adrHtmlHeld(text), { opener: '<!--', lines: ['text'] })
+  const root = repo()
+  writeAdr(root, 'docs/adr/0001-a.md', text)
+  for (const flag of [['--dry-run'], []]) {
+    const result = await adrStatus(root, '1', 'deprecated', ...flag)
+    assert.equal(result.code, 2)
+    assert.equal(result.data.error.message, 'docs/adr/0001-a.md: setting the status would delete "text", which the HTML block "<!--" takes into the Status section; nothing was written')
+  }
+  assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+  assert.deepEqual((await adrGetFrom(root, '1')).data.htmlHeld, { opener: '<!--', lines: ['text'] })
+})
 // A hard line break at the end of the status line is kept and read without.
 for (const [name, brk] of [['two spaces', '  '], ['four spaces', '    '], ['a backslash', '\\']]) {
   test(`a status line that ends with ${name} keeps the break after the write, and adr-get reads the status without it (PMK-314)`, async () => {
