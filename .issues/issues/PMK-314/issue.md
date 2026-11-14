@@ -2,12 +2,14 @@
 id: PMK-314
 title: Keep a hard line break and skip guards that delete nothing in the in-place adr-status write
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-6
+branch: pmk-314-keep-a-hard-line-break-and-skip-guards
 created: 2026-11-14T05:29:38.136Z
-updated: 2026-11-14T05:29:38Z
+updated: 2026-11-14T06:15:37Z
 ---
 
 ## Description
@@ -41,6 +43,6 @@ Source: PMK-311 (PR #278, review cycles 2 and 3).
 
 ## Acceptance criteria
 
-- [ ] A closed HTML comment or a closed fence that holds a heading-like line after a status on a line of its own is written in place, real and dry run, with no refusal and no note in `adr-get`, with tests; the guards still refuse when the whole section would be replaced, with the existing tests passing
-- [ ] A status line that ends with a hard line break (two spaces, or a backslash) keeps it after the write, and `adr-get` reads the status without it, with tests
-- [ ] The continuation note does not name `***` or `___`, with a test
+- [x] A closed HTML comment or a closed fence that holds a heading-like line after a status on a line of its own is written in place, real and dry run, with no refusal and no note in `adr-get`, with tests; the guards still refuse when the whole section would be replaced, with the existing tests passing
+- [x] A status line that ends with a hard line break (two spaces, or a backslash) keeps it after the write, and `adr-get` reads the status without it, with tests
+- [x] The continuation note does not name `***` or `___`, with a test

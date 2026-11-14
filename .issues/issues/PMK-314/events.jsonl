@@ -1,1 +1,10 @@
 {"at":"2026-11-14T05:29:38Z","by":"fred","op":"create","to":{"id":"PMK-314","title":"Keep a hard line break and skip guards that delete nothing in the in-place adr-status write","type":"bug","status":"backlog","priority":"low","estimate":2,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-14T05:29:38.136Z","updated":"2026-11-14T05:29:38Z"}}
+{"at":"2026-11-14T06:01:16Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-14T06:01:16Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-14T06:01:19Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-314-keep-a-hard-line-break-and-skip-guards"}
+{"at":"2026-11-14T06:02:21Z","by":"fred","op":"comment","to":"2026-11-14T06-02-21Z-fred.md"}
+{"at":"2026-11-14T06:09:11Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T06:09:11Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T06:09:11Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T06:15:37Z","by":"fred","op":"comment","to":"2026-11-14T06-15-37Z-fred.md"}
+{"at":"2026-11-14T06:15:37Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
