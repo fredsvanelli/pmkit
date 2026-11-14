@@ -516,3 +516,27 @@ test('auto_commit true with a tracker outside the repository and outside any git
     assert.ok(!(result.stdout + result.stderr).includes(outside), 'no absolute path')
   }, { init: false })
 })
+
+test('auto_commit true with a tracker outside any git repository keeps the note when git is localized (PMK-279 review)', () => {
+  const realGit = spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim()
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'pmk279-bin-'))
+  // A git that answers rev-parse in Portuguese unless LC_ALL is C, and passes everything else to the real git.
+  fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh
+for arg in "$@"; do
+  if [ "$arg" = rev-parse ] && [ "$LC_ALL" != C ]; then
+    echo 'fatal: não é um repositório git (nem qualquer dos diretórios pais): .git' >&2
+    exit 128
+  fi
+done
+exec '${realGit}' "$@"
+`, { mode: 0o755 })
+  try {
+    withOutsideTracker(({ root }) => {
+      const result = run(root, ['issues', 'assign', 'ISS-0G5E', 'fred', '--json'], { env: { PATH: `${bin}${path.delimiter}${process.env.PATH}`, LC_ALL: 'pt_BR.UTF-8' } })
+      assert.equal(result.status, 0, result.stdout + result.stderr)
+      assert.match(result.stderr, /^note: .*not in a git repository, so nothing was committed/m)
+    }, { init: false })
+  } finally {
+    fs.rmSync(bin, { recursive: true, force: true })
+  }
+})

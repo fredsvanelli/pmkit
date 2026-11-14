@@ -4331,7 +4331,12 @@ function commitTracker(config, message, paths) {
     const full = realParent(path.resolve(config.root, file))
     let dir = path.dirname(full)
     while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir)
-    const top = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, encoding: 'utf8' })
+    const top = spawnSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: dir,
+      encoding: 'utf8',
+      // The message is matched below, so git must not translate it; LC_ALL=C also makes gettext ignore LANGUAGE.
+      env: { ...process.env, LC_ALL: 'C' },
+    })
     if (top.status !== 0 || top.stdout.trim() === '') {
       // Only git's "not a git repository" is the quiet note; a spawn error or any other failure (a bad gitconfig) is reported (PMK-279).
       if (!top.error && /not a git repository/i.test(top.stderr ?? '')) {
