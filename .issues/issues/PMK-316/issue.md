@@ -2,14 +2,14 @@
 id: PMK-316
 title: Name a non-status item and a repeated fence closer right in the adr-status refusal
 type: bug
-status: in_review
+status: done
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
 branch: pmk-316-name-a-non-status-item-and-a-repeated
 created: 2026-11-14T15:52:57.182Z
-updated: 2026-11-14T17:40:30Z
+updated: 2026-11-14T19:12:30Z
 ---
 
 ## Description
