@@ -2,12 +2,14 @@
 id: PMK-275
 title: Reject an empty or differently spelled --from in docs adr-get
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-275-reject-an-empty-or-differently-spelled
 created: 2026-11-12T02:12:43.418Z
-updated: 2026-11-12T02:12:43Z
+updated: 2026-11-14T02:43:41Z
 ---
 
 ## Description
@@ -32,5 +34,5 @@ PMK-270 added `docs adr-get <number> --from <path>`. The review found two rough 
 
 ## Acceptance criteria
 
-- [ ] `docs adr-get <n> --from` with no value answers `INVALID_INPUT` with a message that says the flag needs a path, with a test
-- [ ] `--from ./docs/adr/<file>` gives the same `supersedesRef` as `--from docs/adr/<file>`, with a test
+- [x] `docs adr-get <n> --from` with no value answers `INVALID_INPUT` with a message that says the flag needs a path, with a test
+- [x] `--from ./docs/adr/<file>` gives the same `supersedesRef` as `--from docs/adr/<file>`, with a test
