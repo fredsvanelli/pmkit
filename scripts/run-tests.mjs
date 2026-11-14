@@ -28,9 +28,14 @@ export function finish(privateDir, status) {
   return 1
 }
 
+/** Returns the node --test arguments: the TAP reporter only when stdout is not a terminal. */
+export function testArgs(isTTY) {
+  return ['--test', ...(isTTY ? [] : ['--test-reporter=tap']), 'scripts/**/*.test.mjs']
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const privateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pmkit-run-'))
-  const result = spawnSync(process.execPath, ['--test', 'scripts/**/*.test.mjs'], {
+  const result = spawnSync(process.execPath, testArgs(process.stdout.isTTY === true), {
     stdio: 'inherit',
     cwd: root,
     env: childEnv(process.env, privateDir),
