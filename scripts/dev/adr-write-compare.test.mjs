@@ -1,8 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import { ADR_STATUSES, adrKeptLines } from '../lib/adr.mjs'
-import { KNOWN_STATUS, compareWrites, readsAsStatus, removedLines, writeShape } from './adr-write-compare.mjs'
+import { ADR_STATUSES, adrKeptLines, setAdrStatus } from '../lib/adr.mjs'
+import { KNOWN_STATUS, compareWrites, expectedLine, hardBreak, readsAsStatus, removedLines, writeShape } from './adr-write-compare.mjs'
 
 const doc = (body) => `## Status\n\n${body}\n## Context\n`
 const SENTINEL = 'Superseded by sentinel.md'
@@ -52,9 +52,10 @@ test('writeShape: a head that changes nothing is not inPlace and writes nothing'
   assert.deepEqual([same.inPlace, same.rewritten, same.written], [false, [], []])
 })
 
-const cmp = (args) => compareWrites({ span: [1, 4], ...args })
-const inPlace = (line, at = 2) => ({ removed: [line], rewritten: [line], written: [SENTINEL], inPlace: true, at })
-const whole = (...lines) => ({ removed: lines, rewritten: lines, written: [SENTINEL], inPlace: false })
+const cmp = (args) => compareWrites({ span: [1, 4], status: SENTINEL, ...args })
+// An in-place write puts the requested status on the old line with its indent and hard line break kept (PMK-321); `newLine` overrides it.
+const inPlace = (line, at = 2, newLine = expectedLine(line, SENTINEL)) => ({ removed: [line], rewritten: [line], written: [SENTINEL], inPlace: true, at, oldLine: line, newLine })
+const whole = (...lines) => ({ removed: lines, rewritten: lines, written: [SENTINEL], inPlace: false, outside: true })
 
 test('both refuse and a base that writes while the head refuses are their own outcomes', () => {
   assert.equal(cmp({ base: { refused: true }, head: { refused: true }, section: [] }).outcome, 'refusedBoth')
@@ -75,7 +76,7 @@ test('the head replacing a line that is not a known status is worse (the line it
 })
 
 test('a duplicated, reordered or moved line is worse, even when the base wrote the same removal', () => {
-  const written = { removed: ['Accepted'], rewritten: ['Accepted'], inPlace: false }
+  const written = { removed: ['Accepted'], rewritten: ['Accepted'], inPlace: false, outside: true }
   for (const lines of [[SENTINEL, 'Date: x', 'Date: x'], ['Date: x', SENTINEL], [SENTINEL, '## Context', 'Date: x']]) {
     for (const base of [{ refused: true }, { removed: ['Accepted'] }]) {
       assert.equal(cmp({ base, head: { ...written, written: lines }, section: ['Accepted', 'Date: x'] }).outcome, 'worse', JSON.stringify(lines))
@@ -92,7 +93,7 @@ test('a whole-section replacement: the one line of a one-line section is not ext
 })
 
 test('a head that removes nothing is not worse (empty section)', () => {
-  assert.equal(cmp({ base: { removed: [] }, head: { removed: [], rewritten: [], written: [SENTINEL], inPlace: false }, section: [] }).outcome, 'same')
+  assert.equal(cmp({ base: { removed: [] }, head: { removed: [], rewritten: [], written: [SENTINEL], inPlace: false, outside: true }, section: [] }).outcome, 'same')
 })
 
 test('an exception is its own outcome, never a refusal or a removal', () => {
@@ -115,15 +116,15 @@ test('an in-place write of a known status line outside the Status section is wor
   const outside = writeShape(before, before.replace('\nAccepted\n## Context', `\n${SENTINEL}\n## Context`))
   assert.deepEqual([outside.inPlace, outside.at], [true, 5])
   for (const base of [{ refused: true }, whole('Accepted')]) {
-    const worse = compareWrites({ base, head: outside, section, span })
+    const worse = compareWrites({ base, head: outside, section, span, status: SENTINEL })
     assert.deepEqual([worse.outcome, worse.extra], ['worse', ['Accepted']])
   }
   const inside = writeShape(before, before.replace('Accepted\nDate', `${SENTINEL}\nDate`))
   assert.deepEqual([inside.inPlace, inside.at], [true, 2])
-  assert.equal(compareWrites({ base: { refused: true }, head: inside, section, span }).outcome, 'acceptedWhereRefused')
+  assert.equal(compareWrites({ base: { refused: true }, head: inside, section, span, status: SENTINEL }).outcome, 'acceptedWhereRefused')
   // The Status heading itself is not the section, and the line after its end is not either.
-  assert.equal(compareWrites({ base: { refused: true }, head: inPlace('Accepted', 0), section, span }).outcome, 'worse')
-  assert.equal(compareWrites({ base: { refused: true }, head: inPlace('Accepted', 4), section, span }).outcome, 'worse')
+  assert.equal(compareWrites({ base: { refused: true }, head: inPlace('Accepted', 0), section, span, status: SENTINEL }).outcome, 'worse')
+  assert.equal(compareWrites({ base: { refused: true }, head: inPlace('Accepted', 4), section, span, status: SENTINEL }).outcome, 'worse')
 })
 
 test('the helper copy of the known status rule has not drifted from scripts/lib/adr.mjs', () => {
@@ -139,4 +140,71 @@ test('the helper copy of the known status rule has not drifted from scripts/lib/
     const kept = adrKeptLines(`## Status\n\n${line}\nDate: x\n## Context\n`).length > 0
     assert.equal(readsAsStatus(line), kept, JSON.stringify(line))
   }
+})
+
+test('writeShape gives the raw old and new line of an in-place write', () => {
+  const body = '  Accepted  \nDate: x'
+  const placed = shape(body, inPlaceAfter(body, 'Accepted', 'Superseded by sentinel.md'))
+  assert.deepEqual([placed.inPlace, placed.oldLine, placed.newLine], [true, '  Accepted  ', '  Superseded by sentinel.md  '])
+})
+
+test('an in-place write puts the requested status with the indent and hard line break of the old line, anything else is worse (PMK-321)', () => {
+  const section = ['Accepted', 'Date: 1']
+  const base = { refused: true }
+  const outcome = (line, newLine) => cmp({ base, head: inPlace(line, 2, newLine), section }).outcome
+  assert.equal(outcome('Accepted'), 'acceptedWhereRefused')
+  assert.equal(outcome('  Accepted  '), 'acceptedWhereRefused')
+  assert.equal(outcome('**Accepted**\\'), 'acceptedWhereRefused')
+  for (const [line, wrong] of [['Accepted', ''], ['Accepted', 'foo'], ['Accepted', 'Superseded by x'], ['Accepted', ' Superseded by sentinel.md'], ['Accepted', 'Superseded by sentinel.md  '],
+    ['Accepted  ', 'Superseded by sentinel.md'], ['  Accepted', 'Superseded by sentinel.md'], ['  Accepted', '    Superseded by sentinel.md'], ['Accepted\\', 'Superseded by sentinel.md'], ['Accepted', 'Accepted']]) {
+    assert.equal(outcome(line, wrong), 'worse', JSON.stringify([line, wrong]))
+    assert.equal(cmp({ base: whole('Accepted', 'Date: 1'), head: inPlace(line, 2, wrong), section }).outcome, 'worse')
+  }
+})
+
+test('writeShape says whether the raw lines outside the span are unchanged', () => {
+  const before = '## Status\n\nDate: 1\n## Context\n    indented\n'
+  const section = (after) => writeShape(before, after, [1, 3]).outside
+  assert.equal(section(`## Status\n\n${SENTINEL}\n\n## Context\n    indented\n`), true)
+  assert.equal(section(`## Status\n\n${SENTINEL}\n\n## Context\nindented\n`), false)
+  assert.equal(section(`## Status\n\n${SENTINEL}\n\n## Context\n    indented \n`), false)
+  assert.equal(section(`## Status \n\n${SENTINEL}\n\n## Context\n    indented\n`), false)
+  // At the end of the file the span runs to the last line: nothing after it to compare.
+  assert.equal(writeShape('## Status\n\nDate: 1\n', `## Status\n\n${SENTINEL}\n`, [1, 4]).outside, true)
+  assert.equal(writeShape('## Status\n\nDate: 1\n', `## X\n\n${SENTINEL}\n`, [1, 4]).outside, false)
+})
+
+test('a whole-section write that changes a raw line outside the section is worse, even one that only moves its indent (PMK-321)', () => {
+  const section = ['Date: 1']
+  assert.equal(cmp({ base: whole('Date: 1'), head: whole('Date: 1'), section }).outcome, 'same')
+  for (const base of [{ refused: true }, whole('Date: 1')]) {
+    assert.equal(cmp({ base, head: { ...whole('Date: 1'), outside: false }, section }).outcome, 'worse')
+    assert.equal(cmp({ base, head: { ...whole('Date: 1'), outside: undefined }, section }).outcome, 'worse')
+  }
+})
+
+test('the helper copy of the hard line break rule has not drifted from scripts/lib/adr.mjs', () => {
+  // adr.mjs keeps the break of the replaced line: indent + the requested status + the break, whatever the line ends with.
+  const status = 'Superseded by sentinel.md'
+  const ends = ['', ' ', '  ', '   ', '\t', ' \t', '\\', '\\\\', '\\\\\\', ' \\', '\\ ', '\\  ', '  \\', '\\\\ ']
+  for (const indent of ['', ' ', '  ', '   ']) for (const word of ['Accepted', '**Accepted**', 'Superseded by ADR 2']) for (const end of ends) {
+    const line = indent + word + end
+    const wrote = setAdrStatus(doc(`${line}\nDate: x`), 'superseded', 'sentinel.md').text.split('\n')[2]
+    assert.equal(wrote, expectedLine(line, status), JSON.stringify(line))
+  }
+  assert.deepEqual([hardBreak('a  '), hardBreak('a\\'), hardBreak('a\\\\'), hardBreak('a')], ['  ', '\\', '', ''])
+})
+
+test('a one-line section written as the plain status is a whole-section write, a longer section needs the indent and break (PMK-321)', () => {
+  const base = { refused: true }
+  for (const line of ['  Accepted', '    Accepted', 'Accepted  ', '**Accepted**\\', '  Accepted  ']) {
+    assert.equal(cmp({ base, head: inPlace(line, 2, SENTINEL), section: [line.trim()] }).outcome, 'acceptedWhereRefused', line)
+    assert.equal(cmp({ base, head: inPlace(line, 2, expectedLine(line, SENTINEL)), section: [line.trim()] }).outcome, 'acceptedWhereRefused', line)
+    // Two lines in the section: the strict rule, no exception.
+    assert.equal(cmp({ base, head: inPlace(line, 2, SENTINEL), section: [line.trim(), 'Date: 1'] }).outcome, expectedLine(line, SENTINEL) === SENTINEL ? 'acceptedWhereRefused' : 'worse', line)
+  }
+  // Even in a one-line section, anything but the plain status or the kept shape is worse.
+  assert.equal(cmp({ base, head: inPlace('  Accepted', 2, 'foo'), section: ['Accepted'] }).outcome, 'worse')
+  assert.equal(cmp({ base, head: inPlace('  Accepted', 2, ''), section: ['Accepted'] }).outcome, 'worse')
+  assert.equal(cmp({ base, head: inPlace('Accepted  ', 2, 'Superseded by x'), section: ['Accepted'] }).outcome, 'worse')
 })

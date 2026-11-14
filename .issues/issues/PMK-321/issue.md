@@ -2,12 +2,14 @@
 id: PMK-321
 title: "Check the new line and the lines outside the section in the adr-commonmark-diff write check, and exercise container fences"
 type: chore
-status: backlog
+status: in_review
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-6
+branch: pmk-321-check-the-new-line-and-the-lines-outside
 created: 2026-11-14T19:16:52.893Z
-updated: 2026-11-14T19:16:52Z
+updated: 2026-11-14T19:45:48Z
 ---
 
 ## Description
@@ -41,6 +43,6 @@ Source: PMK-318 (PR #286, review cycles 1 and 2) and PMK-317 (PR #288, review cy
 
 ## Acceptance criteria
 
-- [ ] `compareWrites` reports worse for an in-place write whose new line is not the requested status with the old line's indent and hard line break, and for a whole-section write that changes a line outside the section, with tests in `scripts/dev/adr-write-compare.test.mjs`
-- [ ] The corpus has the container fence and HTML cases, and a full run from 3f24c7e6 to the current develop reports 0 worse, exits 0 and counts writes where the base refused for them, with the run in the PR
-- [ ] A mutation in a temporary copy that drops the hard line break on the in-place write, and one that strips the indent of a line after the section on a whole-section write, each make the script exit 1, shown in the PR
+- [x] `compareWrites` reports worse for an in-place write whose new line is not the requested status with the old line's indent and hard line break, and for a whole-section write that changes a line outside the section, with tests in `scripts/dev/adr-write-compare.test.mjs`
+- [x] The corpus has the container fence and HTML cases, and a full run from 3f24c7e6 to the current develop reports 0 worse, exits 0 and counts writes where the base refused for them, with the run in the PR
+- [x] A mutation in a temporary copy that drops the hard line break on the in-place write, and one that strips the indent of a line after the section on a whole-section write, each make the script exit 1, shown in the PR
