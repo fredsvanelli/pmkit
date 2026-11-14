@@ -225,6 +225,7 @@ const keepsText = (paragraph) => {
  * reference definitions, so under a list item it is a break or a lazy line (PMK-280). Columns count a tab to the next stop of 4.
  * Not a Markdown parser: no inline content. `held`, when given, collects the non-blank lines an HTML block continues (PMK-299), as `{ at, text, late, block }` (`text`: the line without the markers of the containers it is in; `late`, HTML blocks only: after a blank line of the block; `heading` is not in it, `headingLike` adds it for the readers),
  * and gets `unclosed`: the innermost block of kind 1 to 5 still open at the end of the file, and `openHtml`: that block when it is directly in the document, the only one that takes in every later line (PMK-323). The same for a fenced code block (PMK-302): the non-blank lines it continues come in `held` with `block.type === 'fence'`, closed or not, in a quote or a list item too. Its entries are `{ at, text, block }`.
+ * When `held.lazy` is an array, it gets the lazy continuation lines (PMK-322).
  */
 function sectionEnd(lines, from, held = []) {
   const open = [{ type: 'document' }]

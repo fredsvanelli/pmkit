@@ -24,7 +24,7 @@ import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, 
 import { pathNote } from './lib/path-notes.mjs'
 import { fileMentions } from './lib/mentions.mjs'
 import { REPO_UNCHECKED } from './lib/delete-refusal.mjs'
-import { ADR_STATUSES, adrFiles, adrInfo, adrRef, isAdrName, adrFolders, adrLocation, adrHtmlHeld, adrFenceHeld, adrFenceBlocks, adrStatusDroppedAt, adrKeptLines, adrStatusContinuation, adrStatusHeading, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
+import { ADR_STATUSES, adrFiles, adrInfo, adrRef, isAdrName, adrFolders, adrLocation, adrHtmlHeld, adrFenceBlocks, adrStatusDroppedAt, adrKeptLines, adrStatusContinuation, adrStatusHeading, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
 import { similarResult } from './lib/similar.mjs'
 import { isBlocked } from './lib/model.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
@@ -468,8 +468,10 @@ function runAdrGet(ctx) {
   if (found !== null) notes.push(statusHeadingNote(adr.path, found, statuses.length > 0))
   const htmlHeld = adrHtmlHeld(adrSource)
   if (htmlHeld !== null) notes.push(htmlHeldNote(adr.path, htmlHeld))
-  const fenceHeld = adrFenceHeld(adrSource)
-  if (fenceHeld !== null) notes.push(fenceHeldNote(adr.path, adrFenceBlocks(adrSource)))
+  // `fenceHeld` from the same fences the note names, one walk: the first opener and every line, in order, as `adrFenceHeld` gives them.
+  const fences = adrFenceBlocks(adrSource)
+  const fenceHeld = fences.length === 0 ? null : { opener: fences[0].opener, lines: fences.flatMap((fence) => fence.lines) }
+  if (fenceHeld !== null) notes.push(fenceHeldNote(adr.path, fences))
   const data = { number: adr.number, title, status, statuses, statusHeading, htmlHeld, fenceHeld, path: adr.path, ref: adr.ref, place: adr.place, supersedesRef, notes }
   return { data, text: fields([['number', data.number], ['title', title ?? '(no title)'], ['status', statuses.length > 1 ? statuses.join(' | ') : status ?? '(no status)'], ['path', data.path], ['place', data.place], ...(supersedesRef === null ? [] : [['supersedes ref', supersedesRef]])]).join('\n'), notes }
 }
