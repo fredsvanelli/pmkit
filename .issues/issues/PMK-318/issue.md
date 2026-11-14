@@ -2,12 +2,14 @@
 id: PMK-318
 title: Catch a wrong replaced line and duplicated or moved lines in the adr-commonmark-diff write check
 type: chore
-status: backlog
+status: in_progress
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-318-catch-a-wrong-replaced-line-and
 created: 2026-11-14T15:52:57.323Z
-updated: 2026-11-14T15:52:57Z
+updated: 2026-11-14T17:26:01Z
 ---
 
 ## Description
