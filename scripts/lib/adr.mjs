@@ -428,9 +428,17 @@ export function adrFenceHeld(text) {
   const risky = headingLike(held).filter((item) => item.block.type === 'fence' && item.heading)
   return risky.length === 0 ? null : { opener: risky[0].block.first, lines: risky.map((item) => lines[item.at].trim()) }
 }
-// The line of a Status section body that is the status: the first that does not open a block (a comment, quote, list item, fence, heading, table), else the first.
-const OPENS_BLOCK = /^(?:<|>|`|~|#|\||=|[-+*](?:\s|$)|\d+[.)](?:\s|$))/
-const statusLineOf = (body) => { const at = body.findIndex((item) => !OPENS_BLOCK.test(item)); return at === -1 ? 0 : at }
+// The line of a Status section body that is the status, an index into its trimmed lines (blanks kept): the first that does not open a block (a comment, quote, list item,
+// fence, heading, table), else the first. A code span (`Accepted`) is text, not a fence; a line right after a list item or quote continues it, so the item is the status (PMK-310).
+const OPENS_BLOCK = /^(?:<|>|`{3,}[^`]*$|~{3,}|#|\||=|[-+*](?:\s|$)|\d+[.)](?:\s|$))/
+// Only an open paragraph takes a lazy line: an item or quote hosts one only when what follows its marker is text, not a block start (comment, heading, fence, nested marker, thematic break).
+const MARKER = /^(?:>|[-+*]\s|\d+[.)]\s)\s*/
+const hostsLazy = (item) => { const rest = MARKER.test(item) ? item.replace(MARKER, '') : ''; return rest !== '' && !OPENS_BLOCK.test(rest) && !/^(?:[-*_][ \t]*){3,}$/.test(rest) }
+const statusLineOf = (raw) => {
+  const at = raw.findIndex((item) => item !== '' && !OPENS_BLOCK.test(item))
+  if (at === -1) return raw.findIndex((item) => item !== '')
+  return at > 0 && hostsLazy(raw[at - 1]) ? at - 1 : at
+}
 // What `setAdrStatus` replaces in a `## Status` section: its trimmed non-blank lines. `adrStatusDropped` reads the same slice, so the guard and the write never disagree.
 const statusBody = (lines, section, end) => lines.slice(section + 1, end).map((item) => item.trim()).filter(Boolean)
 /**
@@ -441,8 +449,9 @@ export function adrStatusDropped(text) {
   const lines = adrText(text).split('\n')
   const { section, end } = locate(lines)
   if (section === -1) return []
-  const body = statusBody(lines, section, end(section))
-  return body.filter((_, i) => i !== statusLineOf(body))
+  const raw = lines.slice(section + 1, end(section)).map((item) => item.trim())
+  const status = statusLineOf(raw)
+  return raw.filter((item, i) => item !== '' && i !== status)
 }
 const withoutBlanks = (lines, from) => {
   let at = from

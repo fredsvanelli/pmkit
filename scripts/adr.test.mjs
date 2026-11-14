@@ -1761,3 +1761,70 @@ test('docs adr-status names the HTML block, the fence and the other text in one 
     assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
   }
 })
+
+// PMK-310: the refusal names each line once, under the cause that takes it, and names the line a reader takes as the status as the status.
+const NAMED = [
+  ['an HTML block that takes a heading', '## Status\n\n<!-- note\nAccepted\n\n## Context\n\nWhy.\n', ['<!-- note', '## Context', 'Why.'], ['the HTML block "<!-- note"']],
+  ['a fence that takes a heading', '## Status\n\n```\nAccepted\n\n## Context\n', ['```', '## Context'], ['the code fence "```"']],
+]
+for (const [name, text, quoted, causes] of NAMED) {
+  test(`the refusal names the opener of ${name} once, with its block (PMK-310)`, async () => {
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    const { message, nextStep } = (await adrStatus(root, '1', 'deprecated', '--dry-run')).data.error
+    for (const cause of causes) assert.ok(message.includes(cause), cause)
+    assert.equal(message.split(`"${quoted[0]}"`).length - 1, 1, message)
+    assert.equal(nextStep.match(/Move that text out/g)?.length ?? 0, 0, nextStep)
+  })
+}
+const STATUS_NAMED = [
+  ['a code span then a line', '## Status\n\n`Accepted`\nDate: 2020\n\n## Context\n', ['Date: 2020'], '`Accepted`'],
+  ['a list item then a lazy line', '## Status\n\n- Accepted\nlazy\n\n## Context\n', ['lazy'], '- Accepted'],
+  ['a quote then a lazy line', '## Status\n\n> Accepted\nlazy\n\n## Context\n', ['lazy'], '> Accepted'],
+]
+for (const [name, text, dropped, status] of STATUS_NAMED) {
+  test(`the refusal for ${name} names the extra line, not the status (PMK-310)`, async () => {
+    assert.deepEqual(adrStatusDropped(text), dropped)
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    const result = await adrStatus(root, '1', 'deprecated', '--dry-run')
+    assert.equal(result.code, 2)
+    const { message } = result.data.error
+    for (const line of dropped) assert.ok(message.includes(`"${line}"`), line)
+    assert.ok(!message.includes(`"${status}"`), message)
+  })
+}
+
+// PMK-310 review: a fence opener inside a quote is named once, and an empty list item has no lazy line.
+test('the refusal names the opener of a fence in a quote once (PMK-310)', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0001-a.md', '## Status\n\nAccepted\n\n> ```\n> ## Context\n')
+  const { message } = (await adrStatus(root, '1', 'deprecated', '--dry-run')).data.error
+  assert.match(message, /the code fence "```"/)
+  assert.ok(!message.includes('"> ```"'), message)
+  assert.ok(!message.includes('the other text'), message)
+})
+for (const [name, text, status, dropped] of [
+  ['an empty list item then a line', '## Status\n\n-\nfoo\n\n## Context\n', '-', ['foo']],
+  ['an empty quote then a line', '## Status\n\n>\nfoo\n\n## Context\n', '>', ['foo']],
+]) {
+  test(`${name} is not a lazy line: the refusal names the line after it, the item is the other text (PMK-310)`, async () => {
+    // `foo` is the status a reader takes, so the empty marker is what the user has to move.
+    assert.deepEqual(adrStatusDropped(text), [status])
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    const { message } = (await adrStatus(root, '1', 'deprecated', '--dry-run')).data.error
+    assert.ok(message.includes(`"${status}"`), message)
+    assert.ok(!message.includes(`"${dropped[0]}"`), message)
+  })
+}
+
+// PMK-310 review cycle 2: only an open paragraph takes a lazy line, so an item or quote whose content is a block (HTML, heading, fence, thematic break) has none.
+for (const block of ['<!-- c -->', '# H', '```', '~~~', '---', '* * *', '<div>']) {
+  for (const host of ['> ', '- ', '1. ']) {
+    test(`"${host}${block}" then a line: the refusal names the block line, foo is the status (PMK-310)`, async () => {
+      const text = `## Status\n\n${host}${block}\nfoo\n\n## Context\n`
+      assert.deepEqual(adrStatusDropped(text), [`${host}${block}`])
+    })
+  }
+}

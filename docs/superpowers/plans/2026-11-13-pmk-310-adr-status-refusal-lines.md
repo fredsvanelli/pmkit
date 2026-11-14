@@ -1,0 +1,18 @@
+# PMK-310 plan: name the right lines in the adr-status refusal
+
+**Spec:** docs/superpowers/specs/2026-11-13-pmk-310-adr-status-refusal-lines-design.md
+
+### Task 1: red tests (scripts/adr.test.mjs)
+- HTML (`<!-- note`) and fence opener named once, with its block, not in the other-text clause.
+- Code span + `Date: 2020`, list item + lazy line: the refusal names the extra line, not the status.
+- Run: they fail. Existing PMK-306 tests keep their outcome.
+
+### Task 2: fix
+- `statusLineOf` in scripts/lib/adr.mjs: blank-aware, real fence opener only, lazy line joins its list item or quote.
+- `runAdrStatus` in scripts/pmkit.mjs: also remove the guard opener once from the other text.
+
+### Task 3: docs
+- PMK-306 spec and plan: `adrStatusOther` -> `adrStatusDropped`. CHANGELOG line.
+
+### Task 4: verify
+- `node scripts/dev/adr-commonmark-diff.mjs` before and after; `npm test` in the foreground, exit 0.
