@@ -2027,8 +2027,8 @@ for (const [name, text, other] of [
       const { message } = result.data.error
       const fences = text.split('## X').length - 1
       assert.equal(message.match(/"(?:> )?## X"/g).length, fences, message)
-      // The fence is named once, by its opener; neither an opener nor a closing line comes again as other text.
-      assert.equal(message.split('"```"').length - 1, 1, message)
+      // Each fence is named once, by its opener (PMK-319: two fences with the same opener are two names); neither an opener nor a closing line comes again as other text.
+      assert.equal(message.split('"```"').length - 1, fences, message)
       assert.ok(!message.includes('"> ```"'), message)
       assert.equal(message.includes('the other text'), other.length > 0, message)
       for (const line of other) assert.ok(message.includes(`"${line}"`), message)
@@ -2077,6 +2077,72 @@ for (const [name, text, dropped] of [
     }
   })
 }
+
+// PMK-319: a first line that is plain text and not a known status, before a quote, item or line that reads as one, is text to move; the later line is the status the refusal leaves out.
+for (const [name, text, dropped] of [
+  ['a date, a blank line and a quote', '## Status\n\nDate: 2024-01-02\n\n> Accepted\n\n## Context\n', ['Date: 2024-01-02']],
+  ['a date, a blank line and an item', '## Status\n\nDate: 2024-01-02\n\n- Accepted\n\n## Context\n', ['Date: 2024-01-02']],
+  ['a date, a blank line and a nested item', '## Status\n\nDate: 2024-01-02\n\n- > Accepted\n\n## Context\n', ['Date: 2024-01-02']],
+  ['a one-line comment, a date and a quote', '## Status\n\n<!-- c -->\nDate: 2024-01-02\n\n> Accepted\n\n## Context\n', ['<!-- c -->', 'Date: 2024-01-02']],
+  ['a plain note and a plain status', '## Status\n\nsee ADR 3\n\nAccepted\n\n## Context\n', ['see ADR 3']],
+  ['a date, a quote that is not a status and an item', '## Status\n\nDate: 2024-01-02\n\n> see ADR 3\n\n- Accepted\n\n## Context\n', ['Date: 2024-01-02', '> see ADR 3']],
+]) {
+  test(`the refusal for ${name} names the first line as text to move and the known status is left out (PMK-319)`, async () => {
+    assert.deepEqual(adrStatusDropped(text), dropped)
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    for (const args of [['--dry-run'], []]) {
+      const result = await adrStatus(root, '1', 'deprecated', ...args)
+      assert.equal(result.code, 2)
+      const { message } = result.data.error
+      for (const line of dropped) assert.ok(message.includes(`"${line}"`), message)
+      assert.ok(!message.includes('"Accepted"') && !message.includes('"> Accepted"') && !message.includes('"- Accepted"') && !message.includes('"- > Accepted"'), message)
+    }
+    assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+  })
+}
+// Nothing changes where no later line reads as a known status, where the first line already does, or where the later one is not text at the top of the section.
+for (const [name, text, dropped] of [
+  ['no known status after a date', '## Status\n\nDate: 2024-01-02\n\n> see ADR 3\n\n## Context\n', ['> see ADR 3']],
+  ['a first line that reads as a status', '## Status\n\nAccepted\n\n> Rejected\n\n## Context\n', ['> Rejected']],
+  ['a known status in a fence', '## Status\n\nDate: 2024-01-02\n\n```\nAccepted\n```\n\n## Context\n', ['```', 'Accepted', '```']],
+  ['a known status in an HTML comment', '## Status\n\nDate: 2024-01-02\n\n<!--\nAccepted\n-->\n\n## Context\n', ['<!--', 'Accepted', '-->']],
+  ['a known status in indented code', '## Status\n\nDate: 2024-01-02\n\n    Accepted\n\n## Context\n', ['Accepted']],
+]) {
+  test(`with ${name} the plain first line keeps its place as the choice (PMK-319)`, () => {
+    assert.deepEqual(adrStatusDropped(text), dropped)
+  })
+}
+
+// PMK-319: two closed fences that share their opener are two fences in the refusal, not one.
+for (const [name, text, count] of [
+  ['a list item', '## Status\n\n- Accepted\n\n```\n## X\n```\n\nDate: 2024-01-02\n\n```\n## Y\n```\n\n## Context\n', 2],
+  ['a quote', '## Status\n\n> Accepted\n\n> ```\n> ## X\n> ```\n\nDate: 2024-01-02\n\n> ```\n> ## Y\n> ```\n\n## Context\n', 2],
+  ['three fences', '## Status\n\n- Accepted\n\n```\n## X\n```\n\n```\n## Y\n```\n\n```\n## Z\n```\n\n## Context\n', 3],
+]) {
+  test(`the refusal names two fences with the same opening line after ${name} as ${count} fences (PMK-319)`, async () => {
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    for (const args of [['--dry-run'], []]) {
+      const result = await adrStatus(root, '1', 'deprecated', ...args)
+      assert.equal(result.code, 2)
+      const { message } = result.data.error
+      assert.ok(message.includes(`the code fences ${Array(count).fill('"```"').join(', ')} take`), message)
+      assert.ok(!message.includes('the code fence "```" takes'), message)
+    }
+    assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+  })
+}
+
+// PMK-319: a plain first line that is not a status, before many lines in a fence or a quote, is read in one pass (the set of held lines is worked out once).
+test('probe: a plain line that is not a status before a long fence or quote of status words is read in well under the ceiling (PMK-319)', async () => {
+  const n = 20000
+  const bodies = [
+    `Date: 2024-01-02\n\n\`\`\`\n${'Accepted\n'.repeat(n)}\`\`\``, `Date: 2024-01-02\n\n> ~~~\n${'> Accepted\n'.repeat(n)}> ~~~`,
+    `Date: 2024-01-02\n\n${'> Accepted\n'.repeat(n)}`, `Date: 2024-01-02\n\n<!--\n${'Proposed\n'.repeat(n)}-->`,
+  ]
+  await assertFast('probe-targets.mjs#adrInfoBody', bodies)
+})
 
 // A fence line is taken out by its position, not its text: a line of other text with the same text as a closing line stays named.
 test('a closing fence line is not taken out of the other text in place of a line with the same text (PMK-316)', async () => {

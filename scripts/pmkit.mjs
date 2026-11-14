@@ -513,8 +513,8 @@ async function runAdrStatus(ctx) {
   // The guard gives the opener of an HTML block without its quote or list prefix (`> ` + a comment), the other text keeps it.
   const htmlAt = htmlHeld === null ? -1 : other.findIndex((item) => item.replace(/^(?:\s*(?:>|[-+*]|\d+[.)]))*\s*/, '') === htmlHeld.opener)
   if (htmlAt !== -1) other.splice(htmlAt, 1)
-  // Each fence the guard names is named by its opening line (the same text once), so no line the write deletes drops out of the refusal (PMK-316).
-  const openers = [...new Set(fences.map((fence) => fence.opener))]
+  // Each fence the guard names is named by its opening line, once for each fence by its block, not by its text: two fences with the same opening line are two (PMK-316, PMK-319).
+  const openers = fences.map((fence) => fence.opener)
   const quoted = (lines) => lines.map((item) => `"${item}"`).join(', ')
   const causes = [
     ...(htmlHeld === null ? [] : [[`${quoted(htmlHeld.lines)}, which the HTML block "${htmlHeld.opener}" takes into the Status section`, HTML_HELD_FIX]]),
