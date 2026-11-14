@@ -2,14 +2,14 @@
 id: PMK-320
 title: Write in place past a fence its quote or list item closes at the heading or the end of the file
 type: bug
-status: in_review
+status: done
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
 branch: pmk-320-write-in-place-past-a-fence-its-quote-or
 created: 2026-11-14T19:16:52.784Z
-updated: 2026-11-14T20:08:32Z
+updated: 2026-11-14T20:19:34Z
 ---
 
 ## Description
