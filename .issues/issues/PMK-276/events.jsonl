@@ -1,1 +1,7 @@
 {"at":"2026-11-12T02:12:43Z","by":"fred","op":"create","to":{"id":"PMK-276","title":"Test the Supersedes line of a repository ADR that replaces a tracker ADR","type":"chore","status":"backlog","priority":"low","estimate":1,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-12T02:12:43.504Z","updated":"2026-11-12T02:12:43Z"}}
+{"at":"2026-11-14T02:06:08Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-14T02:06:08Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-14T02:06:16Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-276-test-the-supersedes-line-of-a-repository"}
+{"at":"2026-11-14T02:07:15Z","by":"fred","op":"comment","to":"2026-11-14T02-07-15Z-fred.md"}
+{"at":"2026-11-14T02:42:50Z","by":"fred","op":"comment","to":"2026-11-14T02-42-50Z-fred.md"}
+{"at":"2026-11-14T02:42:52Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}

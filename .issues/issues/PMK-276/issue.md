@@ -2,12 +2,14 @@
 id: PMK-276
 title: Test the Supersedes line of a repository ADR that replaces a tracker ADR
 type: chore
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-276-test-the-supersedes-line-of-a-repository
 created: 2026-11-12T02:12:43.504Z
-updated: 2026-11-12T02:12:43Z
+updated: 2026-11-14T02:42:52Z
 ---
 
 ## Description
