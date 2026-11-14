@@ -18,21 +18,22 @@ In place, the HTML guard names a block of kind 1 to 5 only when it is `held.uncl
 
 ## Design
 
-One line in `sectionEnd` (`scripts/lib/adr.mjs`), the PMK-320 criterion: `held.unclosed` is the block directly in the document (`open.length === 2`) when it is an HTML block of kind 1 to 5, else `null`. A quote or list item that ends ends the block it holds; at the end of the file every container ends, so only a top-level block still takes in later lines. `adrHtmlHeld` is unchanged. The doc comment of `sectionEnd` says it.
+Approved by the coordinator with one correction: whole-section replacement stays byte-identical (refusals, messages, `adr-get` notes), so `held.unclosed` keeps its meaning and only the in-place guard takes the top-level criterion.
 
-### Side effect on whole-section replacement (stated, not hidden)
+- `sectionEnd` (`scripts/lib/adr.mjs`): next to `held.openFence`, set `held.openHtml`, the PMK-320 criterion for an HTML block: the block directly in the document (`open.length === 2`) when it is an HTML block of kind 1 to 5, else `null`. A quote or list item that ends ends the block it holds; at the end of the file every container ends, so only a top-level block still takes in later lines. `held.unclosed` is unchanged.
+- `adrHtmlHeld`: in place, a line is named only when its block is `held.openHtml` (was `held.unclosed`). The `late` clause and the replacement path keep `held.unclosed`, so replacement is unchanged. When the block is top level, `held.openHtml === held.unclosed` (an HTML block is a leaf, the last open block), so the top-level in-place refusals are unchanged too.
 
-`adrHtmlHeld` uses `held.unclosed` in a second place: the `late` lines (after a blank line of the block) of an unclosed block are named in any mode. With the change, a nested block open at the end of the file no longer names its late non-heading lines, as a nested block its container ends earlier already did not. Probe at this branch: `- Accepted`, blank, `- <!--`, blank, `  text` was refused by the HTML guard and by the other-text guard (`adrStatusDroppedAt`); now only by the other-text guard. It still refuses, nothing new is written; only the refusal message changes from naming the HTML block to naming the other text, and `adr-get` loses the note for it. Heading-like lines are still named in replacement mode whatever holds them. A whole-section replacement always drops the block's lines, so the other-text guard always covers them. The comparison below checks that 0 replacement bodies become writes.
+Rejected: redefining `held.unclosed` to the top-level block. It also drops the `late` lines of a nested block open at the end of the file from replacement refusals (`- Accepted`, blank, `- <!--`, blank, `  text`: the cause and the `adr-get` note change), which the issue keeps out of scope.
 
 ## Tests (scripts/adr.test.mjs, scripts/cli.test.mjs)
 
 - New: for each kind 1 to 5, quote (`> <opener>`, `> ## X`) and list item (`- <opener>`, `  ## X`), with and without a final newline: `adrHtmlHeld` is null, `docs adr-status` writes in place (dry run and real, one line changed), `docs adr-get` has no note and `htmlHeld: null`.
-- Controls kept: top-level kind 1 to 5 block that never closes refuses; whole-section replacement refuses (existing tests).
-- Existing tests: running the full suite with the change gives 0 failures, so no test pinned the old refusal; none changes.
+- Controls kept: top-level kind 1 to 5 block that never closes refuses; whole-section replacement refuses (existing tests). New: the replacement message for `- Accepted`, blank, `- <!--`, blank, `  text` at the end of the file is pinned (it names the HTML block and `text`).
+- Existing tests: none pinned the old in-place refusal; none changes.
 
 ## Proof
 
-- Scratchpad script (outside the repo): develop x branch on random Status bodies (quote and list prefixes, kinds 1 to 7 openers and closers, headings, endings with and without final newline, CRLF), checked against commonmark.js 0.31.2: new writes only where commonmark.js puts a kind 1 to 5 `html_block` in a container ending at the last line and no top-level unclosed one; no new write changes more than one line or deletes a line; 0 new refusals; `adrInfo` equal everywhere. Probe of 200,000 bodies: 59 new writes, all in place and all this case, 0 others. The PR runs 2,000,000.
+- Scratchpad script (outside the repo): develop x branch on random Status bodies (quote and list prefixes, kinds 1 to 7 openers and closers, headings, endings with and without final newline, CRLF), checked against commonmark.js 0.31.2: new writes only where commonmark.js puts a kind 1 to 5 `html_block` in a container ending at the last line and no top-level unclosed one; no new write changes more than one line or deletes a line; 0 new refusals; `adrInfo` equal everywhere; for every body both refuse, the `adrHtmlHeld`, `adrFenceHeld` and `adrStatusDroppedAt` results (message and note inputs) are equal; every body the head writes and the base wrote gives the same text. Probe of 200,000 bodies: 59 new writes, all in place and all this case, 0 others. The PR runs 2,000,000.
 - `node scripts/dev/adr-commonmark-diff.mjs` in full: 0 worse.
 
 ## Docs
