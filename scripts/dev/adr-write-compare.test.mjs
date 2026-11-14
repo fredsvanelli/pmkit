@@ -27,3 +27,12 @@ test('both write: text only the head removes is worse, counted as a multiset', (
 test('a head that removes nothing is not worse (empty section)', () => {
   assert.equal(compareWrites({ base: { removed: [] }, head: { removed: [] }, headStatus: '' }).outcome, 'same')
 })
+
+test('an exception is its own outcome, never a refusal or a removal', () => {
+  const headThrew = compareWrites({ base: { removed: ['a'] }, head: { threw: 'boom' }, headStatus: 'a' })
+  assert.deepEqual([headThrew.outcome, headThrew.error], ['headThrew', 'boom'])
+  assert.equal(compareWrites({ base: { refused: true }, head: { threw: 'boom' }, headStatus: 'a' }).outcome, 'headThrew')
+  assert.equal(compareWrites({ base: { threw: 'boom' }, head: { threw: 'boom' }, headStatus: '' }).outcome, 'headThrew')
+  assert.equal(compareWrites({ base: { threw: 'boom' }, head: { removed: ['a'] }, headStatus: 'a' }).outcome, 'baseThrew')
+  assert.equal(compareWrites({ base: { threw: 'boom' }, head: { refused: true }, headStatus: '' }).outcome, 'baseThrew')
+})

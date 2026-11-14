@@ -12,6 +12,7 @@ The corpus has no status words, so after PMK-311 `adrInfo` reads the whole secti
 
 ## Definitions
 - **Refusal.** A ref refuses a body the way `docs adr-status` does: its guards `adrHtmlHeld`, `adrFenceHeld` or `adrStatusDropped` (all exported at both refs) report something, so `setAdrStatus` is never called. A refusal is its own outcome, never "removed".
+- **Threw.** An exception from a guard or from `setAdrStatus` is a bug, not a refusal: counted as `threw` (with an example), its own outcome. The run exits 1 when the head throws on a body; a base that throws is only counted and reported (review of PR #282).
 - **Removed text.** For a write, the multiset of trimmed non-blank lines of the document before minus those after. The write adds `Superseded by <sentinel>`, which no corpus line equals, so nothing cancels. The line the write replaces is always removed; that is the status line.
 - **Status line allowance.** The head's own status line (`adrInfo(text).status` at the head, the line the head replaces) is not counted as "extra" removed text.
 - **Head removes text the base kept or refused** (`worse`):

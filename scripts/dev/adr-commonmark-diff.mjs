@@ -2,13 +2,13 @@
 // Compares where `adrInfo` ends the `## Status` section at two refs with where CommonMark ends it (PMK-291). A developer check, not part
 // of `npm test`, with no dependency of the repository: the oracle is a commonmark.js installed outside it, for example
 //   npm install --prefix /tmp/cm commonmark@0.31.2
-//   node scripts/dev/adr-commonmark-diff.mjs --commonmark /tmp/cm/node_modules/commonmark [--base origin/develop] [--head HEAD] [--random 1000000] [--seed 1] [--lines 8] [--show 20]
+//   node scripts/dev/adr-commonmark-diff.mjs --commonmark /tmp/cm/node_modules/commonmark [--base origin/develop] [--head HEAD] [--random 1000000] [--status-random 500000] [--seed 1] [--lines 8] [--show 20]
 // COMMONMARK=<dir> works in place of --commonmark. A ref of `worktree` reads scripts/lib of the working tree. The text of each case is
 // `## Status\n\n<case>\n## Context\n`; the expected status is the trimmed lines from the Status heading to the next heading CommonMark
 // puts at the top level of the document. Exit code 1 when a case is worse at the head than at the base, or (PMK-315) when the head's write removes text the base kept or refused.
 //
 // The write check (PMK-315) runs `setAdrStatus` at both refs on every body and compares what each deletes (adr-write-compare.mjs). A ref refuses a body the way `docs adr-status`
-// does: `adrHtmlHeld`, `adrFenceHeld` or `adrStatusDropped` reports something (or `setAdrStatus` throws), so nothing is written; a refusal is its own result, never "removed".
+// does: `adrHtmlHeld`, `adrFenceHeld` or `adrStatusDropped` reports something (so nothing is written; a refusal is its own result, never "removed". An exception from a guard or from `setAdrStatus` is not a refusal (the guards are what refuse), it is a bug: it is counted as `threw` with an example, and the run exits 1 when the head throws on a body (a base that throws is only counted and reported).
 // The text a write removes is the trimmed non-blank lines of the document before it minus those after, as a multiset; the write adds `Superseded by <sentinel>`, a line
 // no body has. The head always removes the one line it replaces (its status line, `adrInfo(text).status`), which is not counted. "The head removes text the base kept or
 // refused" (the `worse` count, which fails the run) is the section text that disappears at the head and stayed at the base: both write and the head removes a line the base
@@ -47,7 +47,7 @@ const parser = new Parser()
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'adr-commonmark-diff-'))
 // The reading of the whole section at a ref: `adrSectionText` when it has one (PMK-311: `adrInfo` then reads one line of it), else `adrInfo` (before PMK-311 its status was the section). `line` is that `adrInfo` status.
-// `write` is what `docs adr-status` does with a body: `{ refused: true }` when a guard names something or `setAdrStatus` throws, else the lines the write removes (PMK-315).
+// `write` is what `docs adr-status` does with a body: `{ refused: true }` when a guard names something, `{ threw }` when a guard or `setAdrStatus` throws, else the lines the write removes (PMK-315).
 const SENTINEL = 'sentinel.md'
 const readerOf = (mod) => ({
   section: (text) => (mod.adrSectionText ? mod.adrSectionText(text) : mod.adrInfo(text).status) ?? '',
@@ -56,8 +56,8 @@ const readerOf = (mod) => ({
     try {
       if (mod.adrHtmlHeld(text) || mod.adrFenceHeld(text) || mod.adrStatusDropped(text).length > 0) return { refused: true }
       return { removed: removedLines(text, mod.setAdrStatus(text, 'superseded', SENTINEL).text) }
-    } catch {
-      return { refused: true }
+    } catch (error) {
+      return { threw: String(error?.message ?? error) }
     }
   },
 })
@@ -178,9 +178,10 @@ try {
 } finally {
   fs.rmSync(temp, { recursive: true, force: true })
 }
-const counts = { empty: 0, writeRefusedBoth: 0, writeNewlyRefused: 0, writeAcceptedWhereRefused: 0, writeSame: 0, writeWorse: 0, lineOfSection: 0, lineChanged: 0, lineOutside: 0, cases: 0, right: 0, fixed: 0, worse: 0, wrongSame: 0, wrongDifferent: 0 }
+const counts = { empty: 0, writeRefusedBoth: 0, writeNewlyRefused: 0, writeAcceptedWhereRefused: 0, writeSame: 0, writeWorse: 0, writeHeadThrew: 0, writeBaseThrew: 0, lineOfSection: 0, lineChanged: 0, lineOutside: 0, cases: 0, right: 0, fixed: 0, worse: 0, wrongSame: 0, wrongDifferent: 0 }
 const worse = []
 const writeWorse = []
+const threw = []
 for (const body of cases()) {
   const text = textOf(body)
   const want = expected(text)
@@ -195,6 +196,7 @@ for (const body of cases()) {
   counts.cases++
   const compared = compareWrites({ base: base.write(text), head: head.write(text), headStatus: line })
   counts[`write${compared.outcome[0].toUpperCase()}${compared.outcome.slice(1)}`]++
+  if (compared.error !== undefined && threw.length < Number(args.show)) threw.push({ body, [compared.outcome === 'headThrew' ? args.head : args.base]: `threw: ${compared.error}` })
   if (compared.outcome === 'worse' && writeWorse.length < Number(args.show)) writeWorse.push({ body, removedExtra: compared.extra })
   if (before === want && after === want) counts.right++
   else if (after === want) counts.fixed++
@@ -207,7 +209,8 @@ for (const body of cases()) {
 console.log(`${args.base} -> ${args.head}, commonmark ${createRequire(import.meta.url)(path.join(path.resolve(args.commonmark), 'package.json')).version}`)
 console.log(`cases ${counts.cases}: right on both ${counts.right}, fixed ${counts.fixed}, worse ${counts.worse}, wrong on both ${counts.wrongSame + counts.wrongDifferent} (same answer ${counts.wrongSame}, different ${counts.wrongDifferent})`)
 console.log(`adrInfo status at ${args.head}: empty status ${counts.empty}, the whole section ${counts.lineOfSection}, one line of it ${counts.lineChanged}, text from outside the section ${counts.lineOutside}`)
-console.log(`setAdrStatus at ${args.base} vs ${args.head}: same removal ${counts.writeSame}, refused on both ${counts.writeRefusedBoth}, newly refused at the head ${counts.writeNewlyRefused}, written at the head where the base refused ${counts.writeAcceptedWhereRefused}, head removes text the base kept or refused ${counts.writeWorse}`)
+console.log(`setAdrStatus at ${args.base} vs ${args.head}: same removal ${counts.writeSame}, refused on both ${counts.writeRefusedBoth}, newly refused at the head ${counts.writeNewlyRefused}, written at the head where the base refused ${counts.writeAcceptedWhereRefused}, head removes text the base kept or refused ${counts.writeWorse}, threw at the head ${counts.writeHeadThrew}, threw at the base ${counts.writeBaseThrew}`)
 for (const example of worse) console.log(JSON.stringify(example))
 for (const example of writeWorse) console.log(JSON.stringify(example))
-process.exit(counts.worse > 0 || counts.lineOutside > 0 || counts.writeWorse > 0 ? 1 : 0)
+for (const example of threw) console.log(JSON.stringify(example))
+process.exit(counts.worse > 0 || counts.lineOutside > 0 || counts.writeWorse > 0 || counts.writeHeadThrew > 0 ? 1 : 0)
