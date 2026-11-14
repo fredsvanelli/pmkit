@@ -8,3 +8,4 @@
 {"at":"2026-11-13T22:47:10Z","by":"fred","op":"comment","to":"2026-11-13T22-47-10Z-fred.md"}
 {"at":"2026-11-13T22:47:14Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
 {"at":"2026-11-13T23:40:24Z","by":"fred","op":"comment","to":"2026-11-13T23-40-24Z-fred.md"}
+{"at":"2026-11-14T01:45:44Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}

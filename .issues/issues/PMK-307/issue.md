@@ -2,14 +2,14 @@
 id: PMK-307
 title: Keep the other fixed 1 s timing probes from failing under load
 type: chore
-status: in_review
+status: done
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-307-keep-the-other-fixed-1-s-timing-probes
 created: 2026-11-13T21:09:10.403Z
-updated: 2026-11-13T22:47:14Z
+updated: 2026-11-14T01:45:44Z
 ---
 
 ## Description
