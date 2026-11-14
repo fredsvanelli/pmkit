@@ -2,14 +2,14 @@
 id: PMK-311
 title: Keep a date or Supersedes line of the Status section in adr-status
 type: feature
-status: in_progress
+status: in_review
 priority: medium
 estimate: 3
 assignee: fred
 parent: EPC-6
 branch: pmk-311-keep-a-date-or-supersedes-line-of-the
 created: 2026-11-14T01:43:01.712Z
-updated: 2026-11-14T04:23:47Z
+updated: 2026-11-14T04:27:47Z
 ---
 
 ## Description
