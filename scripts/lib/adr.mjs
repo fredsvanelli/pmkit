@@ -225,8 +225,8 @@ const keepsText = (paragraph) => {
  * reference definitions, so under a list item it is a break or a lazy line (PMK-280). Columns count a tab to the next stop of 4.
  * Not a Markdown parser: no inline content. `held`, when given, collects the non-blank lines an HTML block continues (PMK-299), as `{ at, text, late, block }` (`text`: the line without the markers of the containers it is in; `late`, HTML blocks only: after a blank line of the block; `heading` is not in it, `headingLike` adds it for the readers),
  * and gets `unclosed`: the innermost block of kind 1 to 5 still open at the end of the file, and `openHtml`: that block when it is directly in the document, the only one that takes in every later line (PMK-323). The same for a fenced code block (PMK-302): the non-blank lines it continues come in `held` with `block.type === 'fence'`, closed or not, in a quote or a list item too. Its entries are `{ at, text, block }`.
- * When `held.paragraphs` is an array, it gets each paragraph that starts the document's text or a quote or list item (its first block), with `more`: the lines that continue it,
- * a lazy line excluded (PMK-322). A paragraph that is a later block of its quote or item, or a lazy or continuation line, is not one of them.
+ * When `held.paragraphs` is an array, it gets each paragraph that starts the document's text or a quote or list item (its first block), with `lines`: its lines in order, and
+ * `lazy`: those of them that are lazy continuation lines (PMK-322). A paragraph that is a later block of its quote or item is not one of them.
  */
 function sectionEnd(lines, from, held = []) {
   const open = [{ type: 'document' }]
@@ -306,7 +306,7 @@ function sectionEnd(lines, from, held = []) {
       allClosed = true
       // A paragraph, a heading or code holds no block: the new one goes beside it.
       while (LEAVES.has(open.at(-1).type)) open.pop()
-      if (block.type === 'paragraph' && held.paragraphs && (open.length === 1 || !open.at(-1).filled)) held.paragraphs.push(Object.assign(block, { more: [] }))
+      if (block.type === 'paragraph' && held.paragraphs && (open.length === 1 || !open.at(-1).filled)) held.paragraphs.push(Object.assign(block, { lines: [j], lazy: new Set() }))
       open.at(-1).filled = true
       open.push(block)
       container = open.length - 1
@@ -370,13 +370,15 @@ function sectionEnd(lines, from, held = []) {
     const rest = line.slice(offset)
     if (!allClosed && !blank && open.at(-1).type === 'paragraph') {
       open.at(-1).text += `${rest}\n`
+      open.at(-1).lines?.push(j)
+      open.at(-1).lazy?.add(j)
       continue
     }
     open.length = container + 1
     const leaf = open[container]
     if (leaf.type === 'paragraph') {
       leaf.text += `${rest}\n`
-      leaf.more?.push(j)
+      leaf.lines?.push(j)
     } else if (leaf.type === 'html' && leaf.kind <= 5 && HTML_CLOSE[leaf.kind].test(rest)) open.length = container
     else if (!blank && !LEAVES.has(leaf.type)) add({ type: 'paragraph', start: j, text: `${rest}\n` })
   }
@@ -542,9 +544,18 @@ const statusSection = (lines, section, end) => {
     sectionEnd(lines, section, held)
     const map = new Map()
     for (const paragraph of held.paragraphs) {
-      const start = paragraph.start - section - 1
-      if (referenceLength(paragraph.text) === 0) map.set(start, start)
-      for (const j of paragraph.more) map.set(j - section - 1, start)
+      // The definitions at its start are not shown: the paragraph the reader sees starts on the line after them, if any text is left.
+      let { text } = paragraph
+      let skip = 0
+      let length
+      while (text[0] === '[' && (length = referenceLength(text)) > 0) {
+        for (let k = 0; k < length; k++) if (text[k] === '\n') skip++
+        text = text.slice(length)
+      }
+      if (text === '') continue
+      const start = paragraph.lines[skip] - section - 1
+      map.set(start, start)
+      for (const j of paragraph.lines.slice(skip + 1)) if (!paragraph.lazy.has(j)) map.set(j - section - 1, start)
     }
     return map
   })()).get(i)

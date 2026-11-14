@@ -2165,6 +2165,8 @@ for (const [name, text, dropped] of [
   ['a lazy line that is not a status', '## Status\n\n> Accepted\nsee ADR 3\n\nDate: x\n\n## Context\n', ['see ADR 3', 'Date: x']],
   ['a line glued to an item that is not a status', '## Status\n\n- Date: x\n  Accepted\n\n> see ADR 3\n\n## Context\n', ['- Date: x', '> see ADR 3']],
   ['a new quote after a blank line', '## Status\n\nDate: x\n\n> see ADR 3\n\n> Accepted\n\n## Context\n', ['Date: x', '> see ADR 3']],
+  ['a paragraph after a definition on the first line', '## Status\n\n[x]: /u "t"\n  Draft\n\n> see ADR 3\n\n## Context\n', ['[x]: /u "t"', '> see ADR 3']],
+  ['a paragraph after a definition in a later paragraph', '## Status\n\nDate: x\n\n[x]: /u\nAccepted\n\n## Context\n', ['Date: x', '[x]: /u']],
 ]) {
   test(`with ${name} the choice of the status line is as before (PMK-322)`, () => {
     assert.deepEqual(adrStatusDropped(text), dropped)
@@ -2225,7 +2227,7 @@ test('probe: a plain line that is not a status before a long fence or quote of s
 // PMK-322: many lazy or continuation lines that read as a status after a quote or item are read in one pass (the paragraph starts are worked out once).
 test('probe: a quote or item followed by many lazy or continuation lines of status words is read in well under the ceiling (PMK-322)', async () => {
   const n = 20000
-  await assertFast('probe-targets.mjs#adrInfoBody', [`Date: x\n\n> see ADR 3\n${'Accepted\n'.repeat(n)}`, `Date: x\n\n- see ADR 3\n${'Accepted\n'.repeat(n)}`, `Date: x\n\n${'> Accepted\n'.repeat(n)}`, `Date: x\n\n- see ADR 3\n${'  Accepted\n'.repeat(n)}`])
+  await assertFast('probe-targets.mjs#adrInfoBody', [`Date: x\n\n> see ADR 3\n${'Accepted\n'.repeat(n)}`, `Date: x\n\n- see ADR 3\n${'Accepted\n'.repeat(n)}`, `Date: x\n\n${'> Accepted\n'.repeat(n)}`, `Date: x\n\n- see ADR 3\n${'  Accepted\n'.repeat(n)}`, `Date: x\n\n${'[a]: /u\n'.repeat(n)}Accepted`])
 })
 
 // A fence line is taken out by its position, not its text: a line of other text with the same text as a closing line stays named.
