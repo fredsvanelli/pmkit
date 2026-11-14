@@ -1818,3 +1818,13 @@ for (const [name, text, status, dropped] of [
     assert.ok(!message.includes(`"${dropped[0]}"`), message)
   })
 }
+
+// PMK-310 review cycle 2: only an open paragraph takes a lazy line, so an item or quote whose content is a block (HTML, heading, fence, thematic break) has none.
+for (const block of ['<!-- c -->', '# H', '```', '~~~', '---', '* * *', '<div>']) {
+  for (const host of ['> ', '- ', '1. ']) {
+    test(`"${host}${block}" then a line: the refusal names the block line, foo is the status (PMK-310)`, async () => {
+      const text = `## Status\n\n${host}${block}\nfoo\n\n## Context\n`
+      assert.deepEqual(adrStatusDropped(text), [`${host}${block}`])
+    })
+  }
+}

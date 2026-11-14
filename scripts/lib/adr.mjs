@@ -431,11 +431,13 @@ export function adrFenceHeld(text) {
 // The line of a Status section body that is the status, an index into its trimmed lines (blanks kept): the first that does not open a block (a comment, quote, list item,
 // fence, heading, table), else the first. A code span (`Accepted`) is text, not a fence; a line right after a list item or quote continues it, so the item is the status (PMK-310).
 const OPENS_BLOCK = /^(?:<|>|`{3,}[^`]*$|~{3,}|#|\||=|[-+*](?:\s|$)|\d+[.)](?:\s|$))/
-const LAZY_HOST = /^(?:>|[-+*]\s|\d+[.)]\s)\s*\S/ // an empty item or quote holds no paragraph, so the next line is not its lazy line
+// Only an open paragraph takes a lazy line: an item or quote hosts one only when what follows its marker is text, not a block start (comment, heading, fence, nested marker, thematic break).
+const MARKER = /^(?:>|[-+*]\s|\d+[.)]\s)\s*/
+const hostsLazy = (item) => { const rest = MARKER.test(item) ? item.replace(MARKER, '') : ''; return rest !== '' && !OPENS_BLOCK.test(rest) && !/^(?:[-*_][ \t]*){3,}$/.test(rest) }
 const statusLineOf = (raw) => {
   const at = raw.findIndex((item) => item !== '' && !OPENS_BLOCK.test(item))
   if (at === -1) return raw.findIndex((item) => item !== '')
-  return at > 0 && LAZY_HOST.test(raw[at - 1]) ? at - 1 : at
+  return at > 0 && hostsLazy(raw[at - 1]) ? at - 1 : at
 }
 // What `setAdrStatus` replaces in a `## Status` section: its trimmed non-blank lines. `adrStatusDropped` reads the same slice, so the guard and the write never disagree.
 const statusBody = (lines, section, end) => lines.slice(section + 1, end).map((item) => item.trim()).filter(Boolean)
