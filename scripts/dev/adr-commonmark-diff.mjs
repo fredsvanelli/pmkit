@@ -2,7 +2,7 @@
 // Compares where `adrInfo` ends the `## Status` section at two refs with where CommonMark ends it (PMK-291). A developer check, not part
 // of `npm test`, with no dependency of the repository: the oracle is a commonmark.js installed outside it, for example
 //   npm install --prefix /tmp/cm commonmark@0.31.2
-//   node scripts/dev/adr-commonmark-diff.mjs --commonmark /tmp/cm/node_modules/commonmark [--base origin/develop] [--head HEAD] [--random 1000000] [--status-random 500000] [--seed 1] [--lines 8] [--show 20]
+//   node scripts/dev/adr-commonmark-diff.mjs --commonmark /tmp/cm/node_modules/commonmark [--base origin/develop] [--head HEAD] [--random 1000000] [--status-random 500000] [--break-random 250000] [--seed 1] [--lines 8] [--show 20]
 // COMMONMARK=<dir> works in place of --commonmark. A ref of `worktree` reads scripts/lib of the working tree. The text of each case is
 // `## Status\n\n<case>\n## Context\n`; the expected status is the trimmed lines from the Status heading to the next heading CommonMark
 // puts at the top level of the document. Exit code 1 when a case is worse at the head than at the base, or (PMK-315, PMK-318) when the head's write removes text the base kept or refused, replaces a line that is not a known status, or duplicates, reorders or moves a line.
@@ -19,6 +19,8 @@
 // The corpus ends with the status on a plain line, then a fence or an HTML block in a quote or list item holding a heading-like line, closed by a later line, a blank line, an ATX or setext heading or the end of the file; the summary tallies them by that end.
 // The corpus of PMK-315 (status words with and without emphasis, `Superseded by ADR 2`, dates, `Supersedes`, `Key: value`) is added after the cases of PMK-291 and
 // PMK-311, which are unchanged and in the same order; `--status-random` sets its random part.
+// PMK-324: then pairs, triples and random status runs with status lines ending in a hard line break (two or more spaces, one or three backslashes) or two backslashes (not a break), the older cases unchanged
+// and in the same order; `--break-random` sets its random part. The corpus (`cases`) lives in adr-write-compare.mjs, so `npm test` checks it holds those lines.
 
 import fs from 'node:fs'
 import os from 'node:os'
@@ -27,7 +29,7 @@ import { createRequire } from 'node:module'
 import { spawnSync } from 'node:child_process'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
-import { compareWrites, writeShape } from './adr-write-compare.mjs'
+import { cases, compareWrites, textOf, writeShape } from './adr-write-compare.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const { values: args } = parseArgs({
@@ -37,6 +39,7 @@ const { values: args } = parseArgs({
     head: { type: 'string', default: 'HEAD' },
     random: { type: 'string', default: '1000000' },
     'status-random': { type: 'string', default: '500000' },
+    'break-random': { type: 'string', default: '250000' },
     seed: { type: 'string', default: '1' },
     lines: { type: 'string', default: '8' },
     show: { type: 'string', default: '20' },
@@ -77,122 +80,12 @@ async function adrInfoAt(ref) {
   return readerOf(await import(pathToFileURL(path.join(dir, 'scripts/lib/adr.mjs'))))
 }
 
-const textOf = (body) => `## Status\n\n${body}\n## Context\n`
 function expected(text) {
   const lines = text.split('\n')
   let next = parser.parse(text).firstChild.next
   while (next !== null && next.type !== 'heading') next = next.next
   const end = next === null ? lines.length : next.sourcepos[0][0] - 1
   return { section: lines.slice(1, end).map((line) => line.trim()).filter(Boolean), span: [1, end] }
-}
-
-// The cases: each cycle of the PR #241 review and the issue, every pair of lines, then random runs of lines.
-const FIXED = [
-  '- x\n\n1. a\n\n  b\n---', '- a\n\n```\nz\n```\n  b\n---', '- a\nlazy\n\n  b\n---',
-  '- a\n-\n\n  x\n---', '-     a\nlazy\n\n  x\n---', '-     a\nz\n\n  x\n---', '-     a\n-\n\n  x\n---',
-  '- a\n\n      code\nmore\n---', '- a\n\n  ```\n  z\n  ```\n```\ny\n```\n  b\n---', '- a\n  > q\nlazy\n\n  b\n---',
-  '- a\nlazy\n\n\n      x\nlazy\n---', '-\n  x\n\n      x\nlazy\n---', '-\n      code\n\n  x\n---', '- a\n\n  > q\nlazy\n\n  c\n---',
-  '- a\n    - m\n\n      c\nlazy\n---', '\n -\n      1) b\n\n      3)      b\na\n---', '\n   1. x\nlazy\n\n        3) \na\n  \tlazy\n   ===',
-  '2.    lazy\n      a\n     b\nx\n\n        1.      a\nc d\n  + \n--',
-  '-\n<!-- x -->\n---', '* \n<!-- x -->\n ---', '-\n[a]: /u\n ---', '> ###\n[a]: /u "t"\n ---', '1. ```\n[a]: /u\n-', '-\n</div>\n---', '<pre>\n\t~~~\n-',
-  '<!--\n```\n-->\nAccepted\n',
-]
-const ITEMS = ['- a', '* a', '+ a', '1. a', '1) a', '2. a', '10) a', '-', '*', '1.', '2)', '-     a', '1.      a', '-\ta', '1.\ta', '- \ta', '\t- a',
-  ' - a', '  - b', '   - b', '    - b', '     - c', '      - c', '  1) b', '   1. b', '    2. b', '- - a', '1. - a', '- 1) a', '-  a', '- * a', '  -', '    -']
-const TEXT = ['a', 'lazy', ' x', '  x', '   x', '    x', '     x', '      x', '        x', '\tx', '\t\tx', ' \tx', '  \tx', '\t  x', '  # h']
-const QUOTES = ['> q', '  > q', '>', '> - a', '- > q', '  - > q', '  > - q', '>     x', '>\tx', '    > q']
-const FENCES = ['```', '~~~', '  ```', '   ~~~', '    ```', '````', '```x', '``` `', '      ```', '\t```', '~~~~', '  ~~~']
-const BLANKS = ['', '', '  ', '\t']
-const BREAKS = ['***', '* * *', '- - -', '___', '# h', '  ---']
-// HTML blocks of the seven kinds, inline tags that are not blocks, and link reference definitions, whole or spread over lines.
-const HTML = ['<!-- x -->', '<!-- c', '-->', '<div>', '</div>', '<div class="a">', '  <p>', '<pre>', '</pre>', '<script>', '</script>', '<x-y>', '</x-y>',
-  '<a href="u">', '<span>x</span>', '<em>', '<![CDATA[', ']]>', '<!DOCTYPE html>', '<?php', '?>', '<x-y a=1 b="2"/>', '    <div>', '<div>x</div>']
-const DEFS = ['[a]: /u', '[a]: /u "t"', "[b]: <u> 't'", '[a]: /u (t)', '[a]:', '/u', '"t"', '[a]: /u "t" x', '[ ]: /u', '[a]: /u\t', '[a]', ': /u', '  [a]: /u', '[a]: (u)']
-const UNDERLINES = ['---', '===', '--', '-', ' ---', '   ===', '----  ']
-// PMK-315: the lines that make the status line choice matter: known status words with and without emphasis, a date, `Supersedes`, `Key: value`, and a status with its own date.
-const STATUS_WORDS = ['Accepted', 'accepted', '**Accepted**', '*Proposed*', '_Deprecated_', 'Proposed', 'Rejected', 'Draft', 'Superseded by ADR 2', '**Superseded by ADR 2**', 'Superseded by [ADR 2](0002-x.md)', '  Accepted', '    Accepted']
-const STATUS_OTHER = ['Date: 2024-01-02', '2024-01-02', '- Date: 2024-01-02', 'Supersedes ADR 1', 'Supersedes: ADR 1', '**Supersedes** ADR 1', 'Status: Accepted', 'Deciders: a, b', 'Key: value', 'Accepted Date: 2024-01-02', 'Proposed by a']
-const STATUSY = [...STATUS_WORDS, ...STATUS_OTHER]
-const ALPHABET = [...ITEMS, ...TEXT, ...QUOTES, ...FENCES, ...BLANKS, ...BREAKS, ...HTML, ...DEFS]
-// The weights of each kind in a random run: lists and text most, so nesting and lazy lines meet often. COMPOSED builds a line from parts.
-const COMPOSED = []
-const KINDS = [[ITEMS, 20], [TEXT, 18], [COMPOSED, 20], [BLANKS, 15], [QUOTES, 8], [FENCES, 9], [BREAKS, 3], [HTML, 10], [DEFS, 10]]
-const WEIGHT = KINDS.reduce((sum, [, weight]) => sum + weight, 0)
-// Parts of a composed line: an indent of 0 to 8 columns with tabs, up to two quote or list markers each with a gap of 0 to 6 columns, then content.
-const INDENTS = ['', ' ', '  ', '   ', '    ', '     ', '      ', '        ', '\t', ' \t', '  \t', '\t ', '\t\t']
-const MARKERS = ['-', '*', '+', '1.', '1)', '2.', '3)', '10.', '>']
-const GAPS = ['', ' ', '  ', '   ', '    ', '     ', '      ', '\t', ' \t']
-const CONTENTS = ['a', 'lazy', '', '```', '~~~', '---', '# h', 'x y', '<!-- x -->', '<div>', '<pre>', '<x-y>', '[a]: /u', '[a]: /u "t"']
-
-// Each case is a body, or `{ text, end }` with its own text and the way its block ends (`end` tallies the outcomes apart, PMK-321).
-const CONTAINERS = []
-for (const status of ['Accepted', '  Accepted  ']) for (const gap of [[], ['']]) {
-  for (const open of ['> ```', '- ```', '> <div>', '- <div>']) {
-    const inside = [open, open.startsWith('>') ? '> ## X' : '  ## X']
-    const ends = { 'later line': ['', 'Date: 2024-01-02'], blank: [''], 'ATX heading': ['## Y'], 'setext heading': ['Title', '---'], 'end of file': [] }
-    for (const [end, tail] of Object.entries(ends)) {
-      const own = end === 'setext heading' || end === 'end of file'
-      const body = [status, ...gap, ...inside, ...tail].join('\n')
-      CONTAINERS.push({ text: own ? `## Status\n\n${body}\n` : textOf(body), end })
-    }
-  }
-}
-
-function* cases() {
-  yield* FIXED
-  for (const a of ALPHABET) for (const u of UNDERLINES) yield `${a}\n${u}`
-  for (const a of ALPHABET) for (const b of ALPHABET) for (const u of UNDERLINES) yield `${a}\n${b}\n${u}`
-  let seed = Number(args.seed) >>> 0
-  const random = () => {
-    seed = (seed + 0x6d2b79f5) >>> 0
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-  const pick = (list) => list[Math.floor(random() * list.length)]
-  for (let n = 0; n < Number(args.random); n++) {
-    const lines = []
-    const count = 1 + Math.floor(random() * Number(args.lines))
-    for (let i = 0; i < count; i++) {
-      let roll = random() * WEIGHT
-      const [kind] = KINDS.find(([, weight]) => (roll -= weight) < 0)
-      if (kind !== COMPOSED) lines.push(pick(kind))
-      else {
-        let line = pick(INDENTS)
-        for (let m = Math.floor(random() * 3); m > 0; m--) line += pick(MARKERS) + pick(GAPS)
-        lines.push(line + pick(CONTENTS))
-      }
-    }
-    if (random() < 0.9) lines.push(pick(UNDERLINES))
-    yield lines.join('\n')
-  }
-  // PMK-315: bodies with status words. Pairs and triples with a status line in them, then random runs weighted to status lines, blanks between them and a few other blocks.
-  for (const s of STATUSY) for (const a of [...STATUSY, ...ALPHABET]) for (const u of UNDERLINES) yield `${s}\n${a}\n${u}`
-  for (const a of ALPHABET) for (const s of STATUSY) for (const u of UNDERLINES) yield `${a}\n${s}\n${u}`
-  for (const s of STATUSY) for (const t of STATUSY) for (const a of [...STATUSY, ...ALPHABET]) for (const u of UNDERLINES) yield `${s}\n${t}\n${a}\n${u}`
-  for (const s of STATUSY) for (const a of ALPHABET) for (const t of STATUSY) for (const u of UNDERLINES) yield `${s}\n${a}\n${t}\n${u}`
-  const STATUS_KINDS = [[STATUSY, 35], [BLANKS, 15], [ITEMS, 8], [TEXT, 6], [COMPOSED, 6], [QUOTES, 4], [FENCES, 4], [HTML, 6], [DEFS, 3], [BREAKS, 3]]
-  const statusWeight = STATUS_KINDS.reduce((sum, [, weight]) => sum + weight, 0)
-  seed = (Number(args.seed) + 1) >>> 0
-  for (let n = 0; n < Number(args['status-random']); n++) {
-    const lines = []
-    const count = 1 + Math.floor(random() * Number(args.lines))
-    for (let i = 0; i < count; i++) {
-      let roll = random() * statusWeight
-      const [kind] = STATUS_KINDS.find(([, weight]) => (roll -= weight) < 0)
-      if (kind !== COMPOSED) lines.push(pick(kind))
-      else {
-        let line = pick(INDENTS)
-        for (let m = Math.floor(random() * 3); m > 0; m--) line += pick(MARKERS) + pick(GAPS)
-        lines.push(line + pick(CONTENTS))
-      }
-    }
-    if (random() < 0.3) lines.push(pick(UNDERLINES))
-    yield lines.join('\n')
-  }
-  // PMK-321: the in-place write past a block that a quote or list item holds and closes (PMK-317). A status on a plain line, a fence or an HTML block in a quote or list item with a heading-like line in it, then the end of the block
-  // by a later line, a blank line, an ATX heading, a setext heading or the end of the file. The last two have their own end, so the text is not the default `## Status ... ## Context` one.
-  yield* CONTAINERS
 }
 
 let base, head
@@ -207,7 +100,7 @@ const worse = []
 const writeWorse = []
 const threw = []
 const containers = {}
-for (const item of cases()) {
+for (const item of cases({ seed: Number(args.seed), random: Number(args.random), statusRandom: Number(args['status-random']), breakRandom: Number(args['break-random']), lines: Number(args.lines) })) {
   const body = item.text ?? item
   const text = item.text ?? textOf(body)
   const { section, span } = expected(text)

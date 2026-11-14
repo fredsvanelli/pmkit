@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { ADR_STATUSES, adrKeptLines, setAdrStatus } from '../lib/adr.mjs'
-import { KNOWN_STATUS, compareWrites, expectedLine, hardBreak, readsAsStatus, removedLines, writeShape } from './adr-write-compare.mjs'
+import { KNOWN_STATUS, breakPairs, breakRuns, breakTriples, compareWrites, expectedLine, hardBreak, readsAsStatus, removedLines, writeShape } from './adr-write-compare.mjs'
 
 const doc = (body) => `## Status\n\n${body}\n## Context\n`
 const SENTINEL = 'Superseded by sentinel.md'
@@ -207,4 +207,14 @@ test('a one-line section written as the plain status is a whole-section write, a
   assert.equal(cmp({ base, head: inPlace('  Accepted', 2, 'foo'), section: ['Accepted'] }).outcome, 'worse')
   assert.equal(cmp({ base, head: inPlace('  Accepted', 2, ''), section: ['Accepted'] }).outcome, 'worse')
   assert.equal(cmp({ base, head: inPlace('Accepted  ', 2, 'Superseded by x'), section: ['Accepted'] }).outcome, 'worse')
+})
+
+test('the corpus writes over status lines with a hard break in pairs, triples and random runs (PMK-324)', () => {
+  // Two or more spaces and one backslash are a break, two backslashes are not: each kind in each part, so a later edit cannot drop them.
+  const ends = { spaces: /[^ ] {2,}$/, backslash: /[^\\]\\$/, 'two backslashes': /[^\\]\\\\$/ }
+  for (const [part, bodies] of [['pairs', breakPairs()], ['triples', breakTriples()], ['random runs', breakRuns({ seed: 1, count: 2000, lines: 8 })]]) {
+    const seen = new Set()
+    for (const body of bodies) for (const line of body.split('\n')) for (const [kind, end] of Object.entries(ends)) if (end.test(line)) seen.add(kind)
+    assert.deepEqual([...seen].sort(), Object.keys(ends).sort(), part)
+  }
 })
