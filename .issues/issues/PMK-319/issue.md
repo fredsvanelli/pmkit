@@ -2,14 +2,14 @@
 id: PMK-319
 title: "Name a status in a quote or item after a plain first line, and each fence once, in the adr-status refusal"
 type: bug
-status: in_progress
+status: in_review
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
 branch: pmk-319-name-a-status-in-a-quote-or-item-after-a
 created: 2026-11-14T19:16:52.687Z
-updated: 2026-11-14T19:35:48Z
+updated: 2026-11-14T19:39:21Z
 ---
 
 ## Description
