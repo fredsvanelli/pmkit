@@ -474,13 +474,14 @@ const hostsLazy = (item) => {
   return rest !== '' && !OPENS_BLOCK.test(rest)
 }
 // The first line after one-line comments that is an item or quote with text is the status a reader sees, whatever follows it, a blank line, a date or a lazy line (PMK-313).
-// When that first item or quote does not read as a known status (`readsAsStatus`, the rule of `topLevelStatus`) and a later line does, the later line is the status and the item is text to move (PMK-316);
-// when no line reads as one, the first item or quote stays the status.
+// When that first item, quote or plain line (PMK-319) does not read as a known status (`readsAsStatus`, the rule of `topLevelStatus`) and a later line does, the later line is the status and the item is text to move (PMK-316);
+// when no line reads as one, the first item, quote or plain line stays the status.
 // The later line must be text the reader sees at the top of the section, as `topLevelStatus` asks: not in a fence or an HTML block (`inBlock` gives their lines), not indented 4 columns (code), not a block
 // opener or a `Key: value` or reference line; an item or quote with text counts (PMK-316 review).
 const statusLineOf = (raw, orig, inBlock) => {
   const first = raw.findIndex((item) => item !== '' && !ONE_LINE_COMMENT.test(item))
-  if (first !== -1 && hostsLazy(raw[first])) {
+  // A first line that is plain text (not a block opener) takes the same preference: its old choice is that line, so without a later known status nothing changes (PMK-319).
+  if (first !== -1 && (hostsLazy(raw[first]) || !OPENS_BLOCK.test(raw[first]))) {
     const text = (item, i) => i > first && /^ {0,3}\S/.test(orig[i]) && (OPENS_BLOCK.test(item) ? hostsLazy(item) : !KEY_VALUE.test(item) && !NOT_TEXT.test(item)) && !ONE_LINE_COMMENT.test(item) && readsAsStatus(item)
     const later = readsAsStatus(raw[first]) ? -1 : raw.findIndex((item, i) => text(item, i) && !inBlock().has(i))
     return later === -1 ? first : later

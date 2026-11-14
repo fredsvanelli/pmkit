@@ -2,12 +2,14 @@
 id: PMK-319
 title: "Name a status in a quote or item after a plain first line, and each fence once, in the adr-status refusal"
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-6
+branch: pmk-319-name-a-status-in-a-quote-or-item-after-a
 created: 2026-11-14T19:16:52.687Z
-updated: 2026-11-14T19:16:52Z
+updated: 2026-11-14T19:39:21Z
 ---
 
 ## Description
@@ -38,6 +40,6 @@ Nothing is written or lost in either case: only the named lines are wrong. Sourc
 
 ## Acceptance criteria
 
-- [ ] With `Date: 2024-01-02`, a blank line and `> Accepted`, and the same with `- Accepted`, the refusal names the quote or item as the status and `Date: 2024-01-02` as text to move, with a test, real and dry run
-- [ ] With two closed fences that share their opener, the refusal names two fences, with a test
-- [ ] Every case refused before is still refused and nothing new is refused or written, with the existing tests unchanged in outcome and a develop x branch comparison on random Status sections in the PR that checks every line `adrStatusDropped` returns is named once in the refusal
+- [x] With `Date: 2024-01-02`, a blank line and `> Accepted`, and the same with `- Accepted`, the refusal names the quote or item as the status and `Date: 2024-01-02` as text to move, with a test, real and dry run
+- [x] With two closed fences that share their opener, the refusal names two fences, with a test
+- [x] Every case refused before is still refused and nothing new is refused or written, with the existing tests unchanged in outcome and a develop x branch comparison on random Status sections in the PR that checks every line `adrStatusDropped` returns is named once in the refusal
