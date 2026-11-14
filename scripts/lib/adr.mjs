@@ -228,8 +228,16 @@ const keepsText = (paragraph) => {
  */
 function sectionEnd(lines, from, held = []) {
   const open = [{ type: 'document' }]
+  // The fences their container dropped, until a later non-blank line of the section settles them as `ended` (PMK-317): the line that ends the section returns before it settles, and so does the end of the file.
+  let dropped = []
+  let afterBlank = true
+  const settle = () => {
+    if (!afterBlank) for (const block of dropped.splice(0)) block.ended = true
+  }
   for (let j = from + 1; j < lines.length; j++) {
+    settle()
     const line = lines[j]
+    afterBlank = line.trim() === ''
     let offset = 0
     let column = 0
     let next, nextColumn, indent, blank
@@ -289,6 +297,8 @@ function sectionEnd(lines, from, held = []) {
       matched = k
     }
     if (closedFence) continue
+    // A fence is a leaf, so one the line did not continue is dropped with its quote or list item, not by a closing line.
+    if (matched < open.length - 1 && open.at(-1).type === 'fence') dropped.push(open.at(-1))
     // A line the open HTML block continues; the block itself starts on an earlier line.
     if (matched >= 1 && matched === open.length - 1 && open[matched].type === 'fence' && !blank) held.push({ at: j, text: line.slice(offset), block: open[matched] })
     if (matched >= 1 && matched === open.length - 1 && open[matched].type === 'html') {
@@ -375,6 +385,7 @@ function sectionEnd(lines, from, held = []) {
     else if (leaf.type === 'html' && leaf.kind <= 5 && HTML_CLOSE[leaf.kind].test(rest)) open.length = container
     else if (!blank && !LEAVES.has(leaf.type)) add({ type: 'paragraph', start: j, text: `${rest}\n` })
   }
+  settle()
   held.unclosed = open.at(-1).type === 'html' && open.at(-1).kind <= 5 ? open.at(-1) : null
   return lines.length
 }
@@ -440,9 +451,10 @@ const fenceRisk = (text) => {
   if (section === -1) return []
   const held = []
   sectionEnd(lines, section, held)
-  // In place a fence that closes holds its lines and deletes nothing; one that never closes (or that its container closes) is still named (PMK-314).
+  // In place a fence that closes holds its lines and deletes nothing: one with a closing line, or one its quote or list item ends before a later line of the section (`ended`, PMK-317). One that never closes,
+  // or whose container ends only at the heading that ends the section or at the end of the file, is still named (PMK-314).
   const inPlace = replacesInPlace(lines, section)
-  return headingLike(held).filter((item) => item.block.type === 'fence' && item.heading && !(inPlace && item.block.closer !== undefined)).map((item) => ({ ...item, line: lines[item.at].trim() }))
+  return headingLike(held).filter((item) => item.block.type === 'fence' && item.heading && !(inPlace && (item.block.closer !== undefined || item.block.ended))).map((item) => ({ ...item, line: lines[item.at].trim() }))
 }
 // The line of a Status section body that is the status, an index into its trimmed lines (blanks kept): the first that does not open a block (a comment, quote, list item,
 // fence, heading, table), else the first. A code span (`Accepted`) is text, not a fence; a line right after a list item or quote continues it, so the item is the status (PMK-310).
