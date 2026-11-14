@@ -2,12 +2,14 @@
 id: PMK-318
 title: Catch a wrong replaced line and duplicated or moved lines in the adr-commonmark-diff write check
 type: chore
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-318-catch-a-wrong-replaced-line-and
 created: 2026-11-14T15:52:57.323Z
-updated: 2026-11-14T15:52:57Z
+updated: 2026-11-14T17:36:02Z
 ---
 
 ## Description
@@ -38,6 +40,6 @@ Source: PMK-315 (PR #282, review cycle 1).
 
 ## Acceptance criteria
 
-- [ ] `compareWrites` (or its replacement) reports worse for a head that replaces a line that is not a known status, and for a duplicated, reordered or moved line, with tests in `scripts/dev/adr-write-compare.test.mjs`
-- [ ] Run from 3f24c7e6 to 46e15ecd in full, the script reports 0 worse and exits 0, with the run in the PR
-- [ ] A mutation in a temporary copy that makes the in-place write replace the date line instead of the status makes the script exit 1, shown in the PR
+- [x] `compareWrites` (or its replacement) reports worse for a head that replaces a line that is not a known status, and for a duplicated, reordered or moved line, with tests in `scripts/dev/adr-write-compare.test.mjs`
+- [x] Run from 3f24c7e6 to 46e15ecd in full, the script reports 0 worse and exits 0, with the run in the PR
+- [x] A mutation in a temporary copy that makes the in-place write replace the date line instead of the status makes the script exit 1, shown in the PR
