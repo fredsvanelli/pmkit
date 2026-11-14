@@ -1320,6 +1320,16 @@ test('docs adr-get --from keeps ref for repository ADRs and a tracker inside the
   assert.equal((await adrGetFrom(root, '9', '--from', 'docs/adr/0003-x.md')).data.error.code, 'NOT_FOUND')
 })
 
+test('docs adr-get --from of a repository ADR that replaces a tracker ADR outside the repository gives supersedesRef equal to ref (PMK-276)', async () => {
+  await withOutsideTracker(false, async ({ root, outside }) => {
+    writeAdr(root, 'docs/adr/0003-x.md')
+    const { code, data } = await adrGetFrom(root, '1', '--from', 'docs/adr/0003-x.md')
+    assert.equal(code, 0)
+    assert.equal(data.ref, `../${path.basename(outside)}/docs/adr/0001-a.md`)
+    assert.equal(data.supersedesRef, data.ref)
+  })
+})
+
 test('the item that holds the line decides: a wider sibling, a fence at column 0 and a lazy line before the continuation (PMK-291)', async () => {
   const cases = {
     // `1. a` closes `- x` and `b` is outside it (content at column 3): `b` is a heading line, `---` underlines it.
