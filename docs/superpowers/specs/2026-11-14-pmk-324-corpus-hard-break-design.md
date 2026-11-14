@@ -1,6 +1,6 @@
 # PMK-324: status lines with a hard break in the adr-commonmark-diff corpus (design)
 
-Small change (estimate 1). Only `scripts/dev/adr-commonmark-diff.mjs` (the corpus), plus a CHANGELOG line. `scripts/lib/adr.mjs`, `adr-write-compare.mjs` and its test do not change.
+Small change (estimate 1). Only `scripts/dev/` and a CHANGELOG line; `scripts/lib/adr.mjs` does not change. Addition at approval (coordinator): a test in `adr-write-compare.test.mjs`, red first, that the generator yields the three kinds of line in pairs, triples and random runs. For that, the corpus (its lists and `cases`) moves unchanged from `adr-commonmark-diff.mjs` into `adr-write-compare.mjs`, the module `npm test` can import without commonmark; the new parts are exported as `breakPairs`, `breakTriples` and `breakRuns`.
 
 ## Why
 Since PMK-321 `compareWrites` checks that an in-place write keeps the old line's hard break (`hardBreak`: two or more trailing spaces, or an odd number of trailing backslashes). The corpus has no backslash at all and trailing spaces only in the 40 `  Accepted  ` container cases, so a head that drops a `\` break passes the full run, and the pairs, triples and random status runs never write over any hard break.
@@ -14,7 +14,7 @@ Since PMK-321 `compareWrites` checks that an in-place write keeps the old line's
 - The old cases stay byte for byte and in order: `STATUS_WORDS`, `STATUSY` and the random state of the old runs are not touched (the new random runs reseed after `CONTAINERS`).
 
 ## Non-goals
-- No change to `adr.mjs` or to `compareWrites`/`hardBreak`; no loosening if develop gives worse cases (that goes to the coordinator).
+- No change to `adr.mjs` or to `compareWrites`/`hardBreak` (the corpus move is the only change to `adr-write-compare.mjs`); no loosening if develop gives worse cases (that goes to the coordinator).
 - The other PMK-321 notes (spec exception, `STATUS` drift test, tautological expectation).
 
 ## Approaches
@@ -26,7 +26,7 @@ Since PMK-321 `compareWrites` checks that an in-place write keeps the old line's
 2,690,400 + 1,232,926 = 3,923,326 cases; `--base 3f24c7e6 --head origin/develop` exits 0 with 0 worse in 2 min 25 s (was ~1 min 45 s, about 1.4x, under the 2x bound). The count can be lowered with `--break-random`.
 
 ## Tests
-No unit test changes: the corpus lives in the script, outside `npm test` (it needs commonmark). The red/green is the mutation run: with `hardBreak` in a temporary copy of `adr.mjs` dropping the `\` break (and, separately, the space break), the full run must exit 1 at the head `worktree`, where the old corpus exits 0 for the `\` one.
+The new unit test (see above) keeps the lines in the corpus. The red/green of the check itself is the mutation run: with `hardBreak` in a temporary copy of `adr.mjs` dropping the `\` break (and, separately, the space break), the full run must exit 1 at the head `worktree`, where the old corpus exits 0 for the `\` one.
 
 ## Evidence for the PR
 - Old prefix: a scratch script (outside the repo) hashes the case sequence of the script at develop and the first 2,690,400 cases of the new one: same count, same hash; new total 3,923,326.
