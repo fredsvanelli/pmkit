@@ -280,6 +280,8 @@ function sectionEnd(lines, from, held = []) {
       } else if (block.type === 'fence') {
         const fence = indent <= 3 && line[next] === block.char ? CM_CLOSING_FENCE.exec(line.slice(next)) : null
         if (fence !== null && fence[0].length >= block.length) {
+          block.closer = j
+          block.closerLine = line.trim()
           open.length = k
           closedFence = true
           break
@@ -420,21 +422,41 @@ export function adrHtmlHeld(text) {
  * `lines` the trimmed lines. A fence with no such line costs nothing and is not reported. Reading is unchanged.
  */
 export function adrFenceHeld(text) {
+  const risky = fenceRisk(text)
+  return risky.length === 0 ? null : { opener: risky[0].block.first, lines: risky.map((item) => item.line) }
+}
+/** The trimmed closing line of each closed fence `adrFenceHeld` names, in order: it goes with its fence in the refusal, not as other text (PMK-313). */
+export function adrFenceClosers(text) {
+  return [...new Set(fenceRisk(text).map((item) => item.block))].filter((block) => block.closer !== undefined).map((block) => block.closerLine)
+}
+const fenceRisk = (text) => {
   const lines = adrText(text).split('\n')
   const { section } = locate(lines)
-  if (section === -1) return null
+  if (section === -1) return []
   const held = []
   sectionEnd(lines, section, held)
-  const risky = headingLike(held).filter((item) => item.block.type === 'fence' && item.heading)
-  return risky.length === 0 ? null : { opener: risky[0].block.first, lines: risky.map((item) => lines[item.at].trim()) }
+  return headingLike(held).filter((item) => item.block.type === 'fence' && item.heading).map((item) => ({ ...item, line: lines[item.at].trim() }))
 }
 // The line of a Status section body that is the status, an index into its trimmed lines (blanks kept): the first that does not open a block (a comment, quote, list item,
 // fence, heading, table), else the first. A code span (`Accepted`) is text, not a fence; a line right after a list item or quote continues it, so the item is the status (PMK-310).
 const OPENS_BLOCK = /^(?:<|>|`{3,}[^`]*$|~{3,}|#|\||=|[-+*](?:\s|$)|\d+[.)](?:\s|$))/
 // Only an open paragraph takes a lazy line: an item or quote hosts one only when what follows its marker is text, not a block start (comment, heading, fence, nested marker, thematic break).
 const MARKER = /^(?:>|[-+*]\s|\d+[.)]\s)\s*/
-const hostsLazy = (item) => { const rest = MARKER.test(item) ? item.replace(MARKER, '') : ''; return rest !== '' && !OPENS_BLOCK.test(rest) && !/^(?:[-*_][ \t]*){3,}$/.test(rest) }
+const THEMATIC = /^(?:[-*_][ \t]*){3,}$/
+// Nested markers (`- - Accepted`, `- > Accepted`) are stripped one by one: the innermost content is the paragraph that takes the lazy line (PMK-313).
+const hostsLazy = (item) => {
+  let rest = item
+  if (!MARKER.test(rest)) return false
+  while (MARKER.test(rest)) {
+    rest = rest.replace(MARKER, '')
+    if (THEMATIC.test(rest)) return false
+  }
+  return rest !== '' && !OPENS_BLOCK.test(rest)
+}
+// The first line after one-line comments that is an item or quote with text is the status a reader sees, whatever follows it, a blank line, a date or a lazy line (PMK-313).
 const statusLineOf = (raw) => {
+  const first = raw.findIndex((item) => item !== '' && !/^<!--.*-->$/.test(item))
+  if (first !== -1 && hostsLazy(raw[first])) return first
   const at = raw.findIndex((item) => item !== '' && !OPENS_BLOCK.test(item))
   if (at === -1) return raw.findIndex((item) => item !== '')
   return at > 0 && hostsLazy(raw[at - 1]) ? at - 1 : at

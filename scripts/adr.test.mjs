@@ -1928,3 +1928,43 @@ test('a code span then a Key: value line: the code span is the status and the li
   assert.deepEqual(adrStatusDropped(text), [])
   assert.equal(adrInfo(text).status, '`Accepted`')
 })
+
+// PMK-313: a status in a list item or a quote is the status the refusal shows, so the extra line (a date, Supersedes, a lazy line) is the text to move.
+for (const [name, text, dropped, status] of [
+  ['a list item, a blank line and a date', '## Status\n\n- Accepted\n\nDate: 2024-01-02\n\n## Context\n', ['Date: 2024-01-02'], '- Accepted'],
+  ['a star item, a blank line and a Supersedes line', '## Status\n\n* Accepted\n\nSupersedes [ADR 3](0003-x.md)\n\n## Context\n', ['Supersedes [ADR 3](0003-x.md)'], '* Accepted'],
+  ['a quote, a blank line and a date', '## Status\n\n> Accepted\n\nDate: 2024-01-02\n\n## Context\n', ['Date: 2024-01-02'], '> Accepted'],
+  ['a one-line comment, an item, a blank line and a date', '## Status\n\n<!-- c -->\n- Accepted\n\nDate: 2024-01-02\n\n## Context\n', ['<!-- c -->', 'Date: 2024-01-02'], '- Accepted'],
+  ['a nested item then a lazy line', '## Status\n\n- - Accepted\nbar\n\n## Context\n', ['bar'], '- - Accepted'],
+  ['a nested quote in an item then a lazy line', '## Status\n\n- > Accepted\nbar\n\n## Context\n', ['bar'], '- > Accepted'],
+]) {
+  test(`the refusal for ${name} names the extra line, not the status (PMK-313)`, async () => {
+    assert.deepEqual(adrStatusDropped(text), dropped)
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    const result = await adrStatus(root, '1', 'deprecated', '--dry-run')
+    assert.equal(result.code, 2)
+    const { message } = result.data.error
+    for (const line of dropped) assert.ok(message.includes(`"${line}"`), line)
+    assert.ok(!message.includes(`"${status}"`), message)
+  })
+}
+
+// PMK-313: the closing line of a fence the heading guard names goes with the fence, in a list item and in a quote.
+for (const [name, text] of [
+  ['a list item', '## Status\n\n- Accepted\n\n```\n## X\n```\n\n## Context\n'],
+  ['a quote', '## Status\n\n> Accepted\n\n> ```\n> ## X\n> ```\n\n## Context\n'],
+]) {
+  test(`the refusal names the closing fence of a fence after ${name} once, with its fence (PMK-313)`, async () => {
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    const result = await adrStatus(root, '1', 'deprecated', '--dry-run')
+    assert.equal(result.code, 2)
+    const { message } = result.data.error
+    assert.match(message, /## X".*the code fence/)
+    assert.ok(!message.includes('the other text'), message)
+    // The fence is named once, by its opener, and neither it nor the closing line comes again as other text.
+    assert.equal(message.split('"```"').length - 1, 1, message)
+    assert.ok(!message.includes('"> ```"'), message)
+  })
+}
