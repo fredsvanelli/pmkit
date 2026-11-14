@@ -16,11 +16,11 @@
 // that shape failing, or a whole-section write that removes a line the base did not, or, where the base refuses, any line but the one of a one-line section (the section as CommonMark reads it). A base that wrote and a head that refuses is `newly refused`, counted apart.
 // PMK-321: the new line of an in-place write has to be the line it replaced with the status asked for (`Superseded by sentinel.md`) in place of the status, the indent and the hard line break of the old line kept, or it is `worse`;
 // in a section of one line CommonMark reads, the plain status is also right (the section is replaced whole, nothing is lost). A whole-section write keeps every raw line outside the section, not trimmed, or it is `worse`.
-// The corpus ends with the status on a plain line, then a fence or an HTML block in a quote or list item holding a heading-like line, closed by a later line, a blank line, an ATX or setext heading or the end of the file; the summary tallies them by that end.
+// The PMK-321 cases (after the PMK-315 ones below) have the status on a plain line, then a fence or an HTML block in a quote or list item holding a heading-like line, closed by a later line, a blank line, an ATX or setext heading or the end of the file; the summary tallies them by that end.
 // The corpus of PMK-315 (status words with and without emphasis, `Superseded by ADR 2`, dates, `Supersedes`, `Key: value`) is added after the cases of PMK-291 and
 // PMK-311, which are unchanged and in the same order; `--status-random` sets its random part.
-// PMK-324: then pairs, triples and random status runs with status lines ending in a hard line break (two or more spaces, one or three backslashes) or two backslashes (not a break), the older cases unchanged
-// and in the same order; `--break-random` sets its random part. The corpus (`cases`) lives in adr-write-compare.mjs, so `npm test` checks it holds those lines.
+// PMK-324: after the PMK-321 cases, pairs, triples and random status runs with status lines ending in a hard line break (two or more spaces, one or three backslashes) or two backslashes (not a break), the older cases unchanged
+// and in the same order; `--break-random` sets its random part. The corpus (`cases`) lives in adr-write-compare.mjs, so `npm test` checks it holds those lines and that the older cases do not change.
 
 import fs from 'node:fs'
 import os from 'node:os'
