@@ -2,14 +2,14 @@
 id: PMK-313
 title: "Name the extra text, not the status, in the adr-status refusal of a list item or quote"
 type: bug
-status: in_review
+status: done
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
 branch: pmk-313-name-the-extra-text-not-the-status-in
 created: 2026-11-14T05:29:38.033Z
-updated: 2026-11-14T05:51:30Z
+updated: 2026-11-14T06:31:10Z
 ---
 
 ## Description
