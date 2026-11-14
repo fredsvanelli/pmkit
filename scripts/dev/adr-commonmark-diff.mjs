@@ -14,6 +14,9 @@
 // A duplicated, reordered or moved line, a replaced line that is not a known status or is outside the section, or a part of the section replaced by one line, is `worse`. A whole-section write is compared with the base as before: the text a write removes is the trimmed non-blank lines of the
 // document before it minus those after, as a multiset (the write adds `Superseded by <sentinel>`, a line no body has). "The head removes text the base kept or refused" (the `worse` count, which fails the run) is then
 // that shape failing, or a whole-section write that removes a line the base did not, or, where the base refuses, any line but the one of a one-line section (the section as CommonMark reads it). A base that wrote and a head that refuses is `newly refused`, counted apart.
+// PMK-321: the new line of an in-place write has to be the line it replaced with the status asked for (`Superseded by sentinel.md`) in place of the status, the indent and the hard line break of the old line kept, or it is `worse`;
+// in a section of one line CommonMark reads, the plain status is also right (the section is replaced whole, nothing is lost). A whole-section write keeps every raw line outside the section, not trimmed, or it is `worse`.
+// The corpus ends with the status on a plain line, then a fence or an HTML block in a quote or list item holding a heading-like line, closed by a later line, a blank line, an ATX or setext heading or the end of the file; the summary tallies them by that end.
 // The corpus of PMK-315 (status words with and without emphasis, `Superseded by ADR 2`, dates, `Supersedes`, `Key: value`) is added after the cases of PMK-291 and
 // PMK-311, which are unchanged and in the same order; `--status-random` sets its random part.
 
@@ -48,15 +51,17 @@ const parser = new Parser()
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'adr-commonmark-diff-'))
 // The reading of the whole section at a ref: `adrSectionText` when it has one (PMK-311: `adrInfo` then reads one line of it), else `adrInfo` (before PMK-311 its status was the section). `line` is that `adrInfo` status.
-// `write` is what `docs adr-status` does with a body: `{ refused: true }` when a guard names something, `{ threw }` when a guard or `setAdrStatus` throws, else the shape of the write (`writeShape`: PMK-315, PMK-318).
+// `write` is what `docs adr-status` does with a body: `{ refused: true }` when a guard names something, `{ threw }` when a guard or `setAdrStatus` throws, else the shape of the write (`writeShape`: PMK-315, PMK-318, with the `span` of the section, PMK-321).
 const SENTINEL = 'sentinel.md'
+// The status the write is asked for, as it has to be written (PMK-321).
+const STATUS = `Superseded by ${SENTINEL}`
 const readerOf = (mod) => ({
   section: (text) => (mod.adrSectionText ? mod.adrSectionText(text) : mod.adrInfo(text).status) ?? '',
   line: (text) => mod.adrInfo(text).status ?? '',
-  write(text) {
+  write(text, span) {
     try {
       if (mod.adrHtmlHeld(text) || mod.adrFenceHeld(text) || mod.adrStatusDropped(text).length > 0) return { refused: true }
-      return writeShape(text, mod.setAdrStatus(text, 'superseded', SENTINEL).text)
+      return writeShape(text, mod.setAdrStatus(text, 'superseded', SENTINEL).text, span)
     } catch (error) {
       return { threw: String(error?.message ?? error) }
     }
@@ -119,6 +124,20 @@ const MARKERS = ['-', '*', '+', '1.', '1)', '2.', '3)', '10.', '>']
 const GAPS = ['', ' ', '  ', '   ', '    ', '     ', '      ', '\t', ' \t']
 const CONTENTS = ['a', 'lazy', '', '```', '~~~', '---', '# h', 'x y', '<!-- x -->', '<div>', '<pre>', '<x-y>', '[a]: /u', '[a]: /u "t"']
 
+// Each case is a body, or `{ text, end }` with its own text and the way its block ends (`end` tallies the outcomes apart, PMK-321).
+const CONTAINERS = []
+for (const status of ['Accepted', '  Accepted  ']) for (const gap of [[], ['']]) {
+  for (const open of ['> ```', '- ```', '> <div>', '- <div>']) {
+    const inside = [open, open.startsWith('>') ? '> ## X' : '  ## X']
+    const ends = { 'later line': ['', 'Date: 2024-01-02'], blank: [''], 'ATX heading': ['## Y'], 'setext heading': ['Title', '---'], 'end of file': [] }
+    for (const [end, tail] of Object.entries(ends)) {
+      const own = end === 'setext heading' || end === 'end of file'
+      const body = [status, ...gap, ...inside, ...tail].join('\n')
+      CONTAINERS.push({ text: own ? `## Status\n\n${body}\n` : textOf(body), end })
+    }
+  }
+}
+
 function* cases() {
   yield* FIXED
   for (const a of ALPHABET) for (const u of UNDERLINES) yield `${a}\n${u}`
@@ -171,6 +190,9 @@ function* cases() {
     if (random() < 0.3) lines.push(pick(UNDERLINES))
     yield lines.join('\n')
   }
+  // PMK-321: the in-place write past a block that a quote or list item holds and closes (PMK-317). A status on a plain line, a fence or an HTML block in a quote or list item with a heading-like line in it, then the end of the block
+  // by a later line, a blank line, an ATX heading, a setext heading or the end of the file. The last two have their own end, so the text is not the default `## Status ... ## Context` one.
+  yield* CONTAINERS
 }
 
 let base, head
@@ -184,8 +206,10 @@ const counts = { empty: 0, writeRefusedBoth: 0, writeNewlyRefused: 0, writeAccep
 const worse = []
 const writeWorse = []
 const threw = []
-for (const body of cases()) {
-  const text = textOf(body)
+const containers = {}
+for (const item of cases()) {
+  const body = item.text ?? item
+  const text = item.text ?? textOf(body)
   const { section, span } = expected(text)
   const want = section.join(' ')
   const before = base.section(text)
@@ -197,10 +221,14 @@ for (const body of cases()) {
   else if (line === '' || after.includes(line)) counts.lineChanged++
   else counts.lineOutside++
   counts.cases++
-  const compared = compareWrites({ base: base.write(text), head: head.write(text), section, span })
+  const compared = compareWrites({ base: base.write(text, span), head: head.write(text, span), section, span, status: STATUS })
+  if (item.end) {
+    const tally = (containers[item.end] ??= {})
+    tally[compared.outcome] = (tally[compared.outcome] ?? 0) + 1
+  }
   counts[`write${compared.outcome[0].toUpperCase()}${compared.outcome.slice(1)}`]++
   if (compared.error !== undefined && threw.length < Number(args.show)) threw.push({ body, [compared.outcome === 'headThrew' ? args.head : args.base]: `threw: ${compared.error}` })
-  if (compared.outcome === 'worse' && writeWorse.length < Number(args.show)) writeWorse.push({ body, removedExtra: compared.extra, written: compared.written })
+  if (compared.outcome === 'worse' && writeWorse.length < Number(args.show)) writeWorse.push({ body, removedExtra: compared.extra, written: compared.written, reason: compared.reason })
   if (before === want && after === want) counts.right++
   else if (after === want) counts.fixed++
   else if (before === want) {
@@ -213,6 +241,7 @@ console.log(`${args.base} -> ${args.head}, commonmark ${createRequire(import.met
 console.log(`cases ${counts.cases}: right on both ${counts.right}, fixed ${counts.fixed}, worse ${counts.worse}, wrong on both ${counts.wrongSame + counts.wrongDifferent} (same answer ${counts.wrongSame}, different ${counts.wrongDifferent})`)
 console.log(`adrInfo status at ${args.head}: empty status ${counts.empty}, the whole section ${counts.lineOfSection}, one line of it ${counts.lineChanged}, text from outside the section ${counts.lineOutside}`)
 console.log(`setAdrStatus at ${args.base} vs ${args.head}: same removal ${counts.writeSame}, refused on both ${counts.writeRefusedBoth}, newly refused at the head ${counts.writeNewlyRefused}, written at the head where the base refused ${counts.writeAcceptedWhereRefused}, head removes text the base kept or refused ${counts.writeWorse}, threw at the head ${counts.writeHeadThrew}, threw at the base ${counts.writeBaseThrew}`)
+for (const [end, outcomes] of Object.entries(containers)) console.log(`container cases ending at ${end} (PMK-321): ${Object.entries(outcomes).map(([outcome, n]) => `${outcome} ${n}`).join(', ')}`)
 for (const example of worse) console.log(JSON.stringify(example))
 for (const example of writeWorse) console.log(JSON.stringify(example))
 for (const example of threw) console.log(JSON.stringify(example))
