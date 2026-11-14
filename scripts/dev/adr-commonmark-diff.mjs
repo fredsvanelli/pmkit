@@ -9,9 +9,9 @@
 //
 // The write check (PMK-315) runs `setAdrStatus` at both refs on every body and compares what each deletes (adr-write-compare.mjs). A ref refuses a body the way `docs adr-status`
 // does: `adrHtmlHeld`, `adrFenceHeld` or `adrStatusDropped` reports something, so nothing is written; a refusal is its own result, never "removed". An exception from a guard or from `setAdrStatus` is not a refusal (the guards are what refuse), it is a bug: it is counted as `threw` with an example, and the run exits 1 when the head throws on a body (a base that throws is only counted and reported).
-// A write is checked by its shape (PMK-318, `writeShape` in adr-write-compare.mjs): the head either replaces exactly one line in place, a line that reads as a known status (the helper has its own copy of the PMK-311 rule,
-// never the head's), keeping every other line of the document in order and byte for byte (a hard line break stays on that line, PMK-314); or it replaces the whole section by one new line, as the base does or refuses.
-// A duplicated, reordered or moved line, or a replaced line that is not a known status, is `worse`. A whole-section write is compared with the base as before: the text a write removes is the trimmed non-blank lines of the
+// A write is checked by its shape (PMK-318, `writeShape` in adr-write-compare.mjs): the head either replaces exactly one line in place, a line of the section as CommonMark ends it that reads as a known status (the helper has its own copy of the PMK-311 rule,
+// never the head's), keeping every other line of the document in order and byte for byte (a hard line break stays on that line, PMK-314); or it replaces the whole section (the lines CommonMark puts in it, no fewer) by one new line, as the base does or refuses.
+// A duplicated, reordered or moved line, a replaced line that is not a known status or is outside the section, or a part of the section replaced by one line, is `worse`. A whole-section write is compared with the base as before: the text a write removes is the trimmed non-blank lines of the
 // document before it minus those after, as a multiset (the write adds `Superseded by <sentinel>`, a line no body has). "The head removes text the base kept or refused" (the `worse` count, which fails the run) is then
 // that shape failing, or a whole-section write that removes a line the base did not, or, where the base refuses, any line but the one of a one-line section (the section as CommonMark reads it). A base that wrote and a head that refuses is `newly refused`, counted apart.
 // The corpus of PMK-315 (status words with and without emphasis, `Superseded by ADR 2`, dates, `Supersedes`, `Key: value`) is added after the cases of PMK-291 and
@@ -77,7 +77,8 @@ function expected(text) {
   const lines = text.split('\n')
   let next = parser.parse(text).firstChild.next
   while (next !== null && next.type !== 'heading') next = next.next
-  return lines.slice(1, next === null ? lines.length : next.sourcepos[0][0] - 1).map((line) => line.trim()).filter(Boolean)
+  const end = next === null ? lines.length : next.sourcepos[0][0] - 1
+  return { section: lines.slice(1, end).map((line) => line.trim()).filter(Boolean), span: [1, end] }
 }
 
 // The cases: each cycle of the PR #241 review and the issue, every pair of lines, then random runs of lines.
@@ -185,7 +186,7 @@ const writeWorse = []
 const threw = []
 for (const body of cases()) {
   const text = textOf(body)
-  const section = expected(text)
+  const { section, span } = expected(text)
   const want = section.join(' ')
   const before = base.section(text)
   const after = head.section(text)
@@ -196,7 +197,7 @@ for (const body of cases()) {
   else if (line === '' || after.includes(line)) counts.lineChanged++
   else counts.lineOutside++
   counts.cases++
-  const compared = compareWrites({ base: base.write(text), head: head.write(text), section })
+  const compared = compareWrites({ base: base.write(text), head: head.write(text), section, span })
   counts[`write${compared.outcome[0].toUpperCase()}${compared.outcome.slice(1)}`]++
   if (compared.error !== undefined && threw.length < Number(args.show)) threw.push({ body, [compared.outcome === 'headThrew' ? args.head : args.base]: `threw: ${compared.error}` })
   if (compared.outcome === 'worse' && writeWorse.length < Number(args.show)) writeWorse.push({ body, removedExtra: compared.extra, written: compared.written })

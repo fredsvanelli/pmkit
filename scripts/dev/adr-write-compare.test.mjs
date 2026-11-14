@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { compareWrites, removedLines, writeShape } from './adr-write-compare.mjs'
+import fs from 'node:fs'
+import { ADR_STATUSES, adrKeptLines } from '../lib/adr.mjs'
+import { KNOWN_STATUS, compareWrites, readsAsStatus, removedLines, writeShape } from './adr-write-compare.mjs'
 
 const doc = (body) => `## Status\n\n${body}\n## Context\n`
 const SENTINEL = 'Superseded by sentinel.md'
@@ -50,51 +52,91 @@ test('writeShape: a head that changes nothing is not inPlace and writes nothing'
   assert.deepEqual([same.inPlace, same.rewritten, same.written], [false, [], []])
 })
 
-const inPlace = (line) => ({ removed: [line], rewritten: [line], written: [SENTINEL], inPlace: true })
+const cmp = (args) => compareWrites({ span: [1, 4], ...args })
+const inPlace = (line, at = 2) => ({ removed: [line], rewritten: [line], written: [SENTINEL], inPlace: true, at })
 const whole = (...lines) => ({ removed: lines, rewritten: lines, written: [SENTINEL], inPlace: false })
 
 test('both refuse and a base that writes while the head refuses are their own outcomes', () => {
-  assert.equal(compareWrites({ base: { refused: true }, head: { refused: true }, section: [] }).outcome, 'refusedBoth')
-  assert.equal(compareWrites({ base: whole('a'), head: { refused: true }, section: ['a'] }).outcome, 'newlyRefused')
+  assert.equal(cmp({ base: { refused: true }, head: { refused: true }, section: [] }).outcome, 'refusedBoth')
+  assert.equal(cmp({ base: whole('a'), head: { refused: true }, section: ['a'] }).outcome, 'newlyRefused')
 })
 
 test('a legitimate in-place write is not worse, with and without a hard line break', () => {
-  assert.equal(compareWrites({ base: { refused: true }, head: inPlace('Accepted'), section: ['Accepted', 'Date: 1'] }).outcome, 'acceptedWhereRefused')
-  assert.equal(compareWrites({ base: whole('Accepted', 'Date: 1'), head: inPlace('Accepted  '), section: ['Accepted', 'Date: 1'] }).outcome, 'same')
+  assert.equal(cmp({ base: { refused: true }, head: inPlace('Accepted'), section: ['Accepted', 'Date: 1'] }).outcome, 'acceptedWhereRefused')
+  assert.equal(cmp({ base: whole('Accepted', 'Date: 1'), head: inPlace('Accepted  '), section: ['Accepted', 'Date: 1'] }).outcome, 'same')
 })
 
 test('the head replacing a line that is not a known status is worse (the line it picks does not excuse it)', () => {
-  const worse = compareWrites({ base: { refused: true }, head: whole('Date: 2024-01-02'), section: ['Accepted', 'Date: 2024-01-02'] })
+  const worse = cmp({ base: { refused: true }, head: whole('Date: 2024-01-02'), section: ['Accepted', 'Date: 2024-01-02'] })
   assert.deepEqual([worse.outcome, worse.extra], ['worse', ['Date: 2024-01-02']])
-  assert.equal(compareWrites({ base: whole('Date: 2024-01-02'), head: whole('Date: 2024-01-02'), section: ['Accepted', 'Date: 2024-01-02'] }).outcome, 'same')
+  // Replacing only the Date line is a whole-section write only when the section is that one line, even when the base wrote the same line.
+  assert.equal(cmp({ base: whole('Date: 2024-01-02'), head: whole('Date: 2024-01-02'), section: ['Accepted', 'Date: 2024-01-02'] }).outcome, 'worse')
+  assert.equal(cmp({ base: whole('Date: 2024-01-02'), head: whole('Date: 2024-01-02'), section: ['Date: 2024-01-02'] }).outcome, 'same')
 })
 
 test('a duplicated, reordered or moved line is worse, even when the base wrote the same removal', () => {
   const written = { removed: ['Accepted'], rewritten: ['Accepted'], inPlace: false }
   for (const lines of [[SENTINEL, 'Date: x', 'Date: x'], ['Date: x', SENTINEL], [SENTINEL, '## Context', 'Date: x']]) {
     for (const base of [{ refused: true }, { removed: ['Accepted'] }]) {
-      assert.equal(compareWrites({ base, head: { ...written, written: lines }, section: ['Accepted', 'Date: x'] }).outcome, 'worse', JSON.stringify(lines))
+      assert.equal(cmp({ base, head: { ...written, written: lines }, section: ['Accepted', 'Date: x'] }).outcome, 'worse', JSON.stringify(lines))
     }
   }
 })
 
 test('a whole-section replacement: the one line of a one-line section is not extra, a longer section is compared with the base', () => {
-  assert.equal(compareWrites({ base: { refused: true }, head: whole('Date: 1'), section: ['Date: 1'] }).outcome, 'acceptedWhereRefused')
-  assert.equal(compareWrites({ base: whole('Date: 1'), head: whole('Date: 1'), section: ['Date: 1'] }).outcome, 'same')
-  assert.equal(compareWrites({ base: { refused: true }, head: whole('a', 'b'), section: ['a', 'b'] }).outcome, 'worse')
-  const worse = compareWrites({ base: whole('a'), head: whole('a', 'b'), section: ['a', 'b'] })
+  assert.equal(cmp({ base: { refused: true }, head: whole('Date: 1'), section: ['Date: 1'] }).outcome, 'acceptedWhereRefused')
+  assert.equal(cmp({ base: whole('Date: 1'), head: whole('Date: 1'), section: ['Date: 1'] }).outcome, 'same')
+  assert.equal(cmp({ base: { refused: true }, head: whole('a', 'b'), section: ['a', 'b'] }).outcome, 'worse')
+  const worse = cmp({ base: whole('a'), head: whole('a', 'b'), section: ['a', 'b'] })
   assert.deepEqual([worse.outcome, worse.extra], ['worse', ['b']])
 })
 
 test('a head that removes nothing is not worse (empty section)', () => {
-  assert.equal(compareWrites({ base: { removed: [] }, head: { removed: [], rewritten: [], written: [SENTINEL], inPlace: false }, section: [] }).outcome, 'same')
+  assert.equal(cmp({ base: { removed: [] }, head: { removed: [], rewritten: [], written: [SENTINEL], inPlace: false }, section: [] }).outcome, 'same')
 })
 
 test('an exception is its own outcome, never a refusal or a removal', () => {
-  const headThrew = compareWrites({ base: whole('a'), head: { threw: 'boom' }, section: [] })
+  const headThrew = cmp({ base: whole('a'), head: { threw: 'boom' }, section: [] })
   assert.deepEqual([headThrew.outcome, headThrew.error], ['headThrew', 'boom'])
-  assert.equal(compareWrites({ base: { refused: true }, head: { threw: 'boom' }, section: [] }).outcome, 'headThrew')
-  assert.equal(compareWrites({ base: { threw: 'boom' }, head: { threw: 'boom' }, section: [] }).outcome, 'headThrew')
-  assert.equal(compareWrites({ base: { threw: 'boom' }, head: whole('a'), section: ['a'] }).outcome, 'baseThrew')
-  assert.equal(compareWrites({ base: { threw: 'boom' }, head: { refused: true }, section: [] }).outcome, 'baseThrew')
+  assert.equal(cmp({ base: { refused: true }, head: { threw: 'boom' }, section: [] }).outcome, 'headThrew')
+  assert.equal(cmp({ base: { threw: 'boom' }, head: { threw: 'boom' }, section: [] }).outcome, 'headThrew')
+  assert.equal(cmp({ base: { threw: 'boom' }, head: whole('a'), section: ['a'] }).outcome, 'baseThrew')
+  assert.equal(cmp({ base: { threw: 'boom' }, head: { refused: true }, section: [] }).outcome, 'baseThrew')
+})
+
+test('writeShape gives the raw line of an in-place write', () => {
+  assert.equal(shape('Accepted\nDate: x', inPlaceAfter('Accepted\nDate: x', 'Accepted', SENTINEL)).at, 2)
+})
+
+test('an in-place write of a known status line outside the Status section is worse (PMK-318 review)', () => {
+  const before = '## Status\n\nAccepted\nDate: x\n## X\nAccepted\n## Context\n'
+  const section = ['Accepted', 'Date: x']
+  const span = [1, 4]
+  const outside = writeShape(before, before.replace('\nAccepted\n## Context', `\n${SENTINEL}\n## Context`))
+  assert.deepEqual([outside.inPlace, outside.at], [true, 5])
+  for (const base of [{ refused: true }, whole('Accepted')]) {
+    const worse = compareWrites({ base, head: outside, section, span })
+    assert.deepEqual([worse.outcome, worse.extra], ['worse', ['Accepted']])
+  }
+  const inside = writeShape(before, before.replace('Accepted\nDate', `${SENTINEL}\nDate`))
+  assert.deepEqual([inside.inPlace, inside.at], [true, 2])
+  assert.equal(compareWrites({ base: { refused: true }, head: inside, section, span }).outcome, 'acceptedWhereRefused')
+  // The Status heading itself is not the section, and the line after its end is not either.
+  assert.equal(compareWrites({ base: { refused: true }, head: inPlace('Accepted', 0), section, span }).outcome, 'worse')
+  assert.equal(compareWrites({ base: { refused: true }, head: inPlace('Accepted', 4), section, span }).outcome, 'worse')
+})
+
+test('the helper copy of the known status rule has not drifted from scripts/lib/adr.mjs', () => {
+  // The set: adr.mjs builds it as ADR_STATUSES plus the words listed in its source.
+  const source = fs.readFileSync(new URL('../lib/adr.mjs', import.meta.url), 'utf8')
+  const extra = /const KNOWN_STATUS = new Set\(\[\.\.\.ADR_STATUSES((?:, '[a-z]+')+)\]\)/.exec(source)
+  assert.ok(extra, 'KNOWN_STATUS of adr.mjs has a new shape: update the helper copy and this test')
+  const theirs = new Set([...ADR_STATUSES, ...[...extra[1].matchAll(/'([a-z]+)'/g)].map((match) => match[1])])
+  assert.deepEqual([...KNOWN_STATUS].sort(), [...theirs].sort())
+  // The rule: adr.mjs keeps the other lines of a section (adrKeptLines is not empty) only when its top-level line reads as a known status.
+  const lines = [...KNOWN_STATUS, 'date', 'status', 'accept', 'supersedes ADR 1', 'unknown'].flatMap((word) => [word, `**${word}**`, `_${word}_ x`, `${word}.`, `  ${word.toUpperCase()}`, `Superseded by ADR 2`])
+  for (const line of lines) {
+    const kept = adrKeptLines(`## Status\n\n${line}\nDate: x\n## Context\n`).length > 0
+    assert.equal(readsAsStatus(line), kept, JSON.stringify(line))
+  }
 })
