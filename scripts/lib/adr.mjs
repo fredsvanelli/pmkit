@@ -225,6 +225,8 @@ const keepsText = (paragraph) => {
  * reference definitions, so under a list item it is a break or a lazy line (PMK-280). Columns count a tab to the next stop of 4.
  * Not a Markdown parser: no inline content. `held`, when given, collects the non-blank lines an HTML block continues (PMK-299), as `{ at, text, late, block }` (`text`: the line without the markers of the containers it is in; `late`, HTML blocks only: after a blank line of the block; `heading` is not in it, `headingLike` adds it for the readers),
  * and gets `unclosed`: the innermost block of kind 1 to 5 still open at the end of the file, and `openHtml`: that block when it is directly in the document, the only one that takes in every later line (PMK-323). The same for a fenced code block (PMK-302): the non-blank lines it continues come in `held` with `block.type === 'fence'`, closed or not, in a quote or a list item too. Its entries are `{ at, text, block }`.
+ * When `held.paragraphs` is an array, it gets every paragraph, with `parent`: the block it is in, `index`: its place among the blocks of that parent (1 for the first),
+ * `lines`: its lines in order, and `lazy`: those of them that are lazy continuation lines (PMK-322).
  */
 function sectionEnd(lines, from, held = []) {
   const open = [{ type: 'document' }]
@@ -304,6 +306,11 @@ function sectionEnd(lines, from, held = []) {
       allClosed = true
       // A paragraph, a heading or code holds no block: the new one goes beside it.
       while (LEAVES.has(open.at(-1).type)) open.pop()
+      if (held.paragraphs) {
+        const parent = open.at(-1)
+        block.index = parent.children = (parent.children ?? 0) + 1
+        if (block.type === 'paragraph') held.paragraphs.push(Object.assign(block, { parent, lines: [j], lazy: new Set() }))
+      }
       open.at(-1).filled = true
       open.push(block)
       container = open.length - 1
@@ -367,12 +374,16 @@ function sectionEnd(lines, from, held = []) {
     const rest = line.slice(offset)
     if (!allClosed && !blank && open.at(-1).type === 'paragraph') {
       open.at(-1).text += `${rest}\n`
+      open.at(-1).lines?.push(j)
+      open.at(-1).lazy?.add(j)
       continue
     }
     open.length = container + 1
     const leaf = open[container]
-    if (leaf.type === 'paragraph') leaf.text += `${rest}\n`
-    else if (leaf.type === 'html' && leaf.kind <= 5 && HTML_CLOSE[leaf.kind].test(rest)) open.length = container
+    if (leaf.type === 'paragraph') {
+      leaf.text += `${rest}\n`
+      leaf.lines?.push(j)
+    } else if (leaf.type === 'html' && leaf.kind <= 5 && HTML_CLOSE[leaf.kind].test(rest)) open.length = container
     else if (!blank && !LEAVES.has(leaf.type)) add({ type: 'paragraph', start: j, text: `${rest}\n` })
   }
   held.unclosed = open.at(-1).type === 'html' && open.at(-1).kind <= 5 ? open.at(-1) : null
@@ -424,19 +435,25 @@ export function adrHtmlHeld(text) {
  * What `adr-status` would delete that a fenced code block took into the `## Status` section (PMK-302), `{ opener, lines }`, null when nothing: every line inside a
  * fence, closed or not, in a quote or a list item too, that reads as a heading (ATX, or a line a `---` or `===` underlines), the way the HTML guard counts. A closed
  * fence that holds `## X` is refused too (rare, and the text is not lost, but the rule is the HTML block's). `opener` is the first line of the first fence at risk,
- * `lines` the trimmed lines. A fence with no such line costs nothing and is not reported. Reading is unchanged.
+ * `lines` the trimmed lines. A fence with no such line costs nothing and is not reported. Reading is unchanged. A projection of `adrFenceBlocks`, so the CLI and the dev check
+ * read one implementation; `fences` lets a caller that has them skip the walk (PMK-322 review).
  */
-export function adrFenceHeld(text) {
-  const risky = fenceRisk(text)
-  return risky.length === 0 ? null : { opener: risky[0].block.first, lines: risky.map((item) => item.line) }
+export function adrFenceHeld(text, fences = adrFenceBlocks(text)) {
+  return fences.length === 0 ? null : { opener: fences[0].opener, lines: fences.flatMap((fence) => fence.lines) }
 }
 /**
  * The fences `adrFenceHeld` names, in order, `{ opener, start, closer }`: `opener` the trimmed opening line without its quote or list prefix, `start` and `closer` the lines (indices into the
- * lines of the text) of the opening and closing line, `closer` undefined for a fence with no closing line: one that never closes, or one its quote or list item ends (PMK-317). The refusal names each opener with its fence and takes both lines out of the other
+ * lines of the text) of the opening and closing line, `closer` undefined for a fence with no closing line: one that never closes, or one its quote or list item ends (PMK-317), `lines` the trimmed lines it takes, as `adrFenceHeld` gives them (PMK-322). The refusal names each opener with its fence and takes both lines out of the other
  * text by their line, not their text (PMK-316; the closing line, PMK-313).
  */
 export function adrFenceBlocks(text) {
-  return [...new Set(fenceRisk(text).map((item) => item.block))].map((block) => ({ opener: block.first, start: block.start, closer: block.closer }))
+  // One pass: each fence once, in order, with the trimmed lines it takes (PMK-322: two fences with the same opener read apart).
+  const fences = new Map()
+  for (const item of fenceRisk(text)) {
+    if (!fences.has(item.block)) fences.set(item.block, { opener: item.block.first, start: item.block.start, closer: item.block.closer, lines: [] })
+    fences.get(item.block).lines.push(item.line)
+  }
+  return [...fences.values()]
 }
 const fenceRisk = (text) => {
   const lines = adrText(text).split('\n')
@@ -470,14 +487,20 @@ const hostsLazy = (item) => {
 // The first line after one-line comments that is an item or quote with text is the status a reader sees, whatever follows it, a blank line, a date or a lazy line (PMK-313).
 // When that first item, quote or plain line (PMK-319) does not read as a known status (`readsAsStatus`, the rule of `topLevelStatus`) and a later line does, the later line is the status and the item is text to move (PMK-316);
 // when no line reads as one, the first item, quote or plain line stays the status.
-// The later line must be text the reader sees at the top of the section, as `topLevelStatus` asks: not in a fence or an HTML block (`inBlock` gives their lines), not indented 4 columns (code), not a block
-// opener or a `Key: value` or reference line; an item or quote with text counts (PMK-316 review).
-const statusLineOf = (raw, orig, inBlock) => {
+// The later line must be text the reader sees at the top of the section: a line that starts a paragraph, or the first paragraph of a quote or item, as the block walk decides (`paragraphOf`), not a
+// `Key: value` line; an item or quote with text counts (PMK-316 review). The first line settles the choice only when it is such a line too: indented code, a definition, a lazy or continuation line never is (PMK-322).
+const statusLineOf = (raw, paragraphOf) => {
   const first = raw.findIndex((item) => item !== '' && !ONE_LINE_COMMENT.test(item))
   // A first line that is plain text (not a block opener) takes the same preference: its old choice is that line, so without a later known status nothing changes (PMK-319).
   if (first !== -1 && (hostsLazy(raw[first]) || !OPENS_BLOCK.test(raw[first]))) {
-    const text = (item, i) => i > first && /^ {0,3}\S/.test(orig[i]) && (OPENS_BLOCK.test(item) ? hostsLazy(item) : !KEY_VALUE.test(item) && !NOT_TEXT.test(item)) && !ONE_LINE_COMMENT.test(item) && readsAsStatus(item)
-    const later = readsAsStatus(raw[first]) ? -1 : raw.findIndex((item, i) => text(item, i) && !inBlock().has(i))
+    // Paragraph text the reader sees, as the block walk decides it (`paragraphOf`, PMK-322): a line that starts a paragraph of the section's text or the first one of a quote or item, not a
+    // definition, not indented code, a fence, an HTML block, a lazy or a continuation line; or a line glued to the first line's paragraph, which is out of scope and chosen as before.
+    // A glued line is one of the first paragraph the reader sees: the first line's own, or the one after the definitions it opens (review cycle 2). A definition's later lines
+    // (`[Draft]:`, `Rejected`) belong to no shown paragraph, so they are never glued.
+    const glued = paragraphOf(first) === first ? first : paragraphOf.after(first)
+    const sees = (i) => paragraphOf(i) === i || (glued !== undefined && paragraphOf(i) === glued)
+    const text = (item, i) => i > first && (OPENS_BLOCK.test(item) ? hostsLazy(item) : !KEY_VALUE.test(item)) && readsAsStatus(item) && sees(i)
+    const later = readsAsStatus(raw[first]) && sees(first) ? -1 : raw.findIndex(text)
     return later === -1 ? first : later
   }
   const at = raw.findIndex((item) => item !== '' && !OPENS_BLOCK.test(item))
@@ -517,14 +540,43 @@ const statusSection = (lines, section, end) => {
   // The status line when it is read alone (the in-place line, or the only line of a one-line section), without its hard line break (PMK-314).
   const only = safe !== -1 ? safe : count === 1 ? raw.findIndex(Boolean) : -1
   const brk = only === -1 ? '' : hardBreak(orig[only])
-  // The lines a fence or an HTML block holds, as indices of `raw`: worked out once, and only when a later line is looked for (a walk for each candidate was quadratic, PMK-316).
-  let blockLines
-  const inBlock = () => (blockLines ??= (() => {
+  // For each line of a paragraph the reader sees as a status, the index of its first shown line, as indices of `raw` (PMK-322): a paragraph of the section's text, or the first block of a
+  // quote or item that shows (definitions are not shown, so a paragraph after definitions only is that block too), its own leading definitions left out.
+  // One walk, worked out once and only when a refusal names the lines (`at` is read only then), so reading and writing never pay for it (a walk for each candidate was quadratic, PMK-316).
+  let starts
+  const walk = () => (starts ??= (() => {
     const held = []
+    held.paragraphs = []
     sectionEnd(lines, section, held)
-    return new Set(held.map((item) => item.at - section - 1))
+    const map = new Map()
+    // For the first line of a paragraph that opens with definitions, the first line shown after them.
+    const after = new Map()
+    // The paragraphs of definitions only, by the block they are in.
+    const hidden = new Map()
+    for (const paragraph of held.paragraphs) {
+      // The definitions at its start are not shown: the paragraph the reader sees starts on the line after them, if any text is left.
+      let { text } = paragraph
+      let skip = 0
+      let length
+      while (text[0] === '[' && (length = referenceLength(text)) > 0) {
+        for (let k = 0; k < length; k++) if (text[k] === '\n') skip++
+        text = text.slice(length)
+      }
+      if (text === '') {
+        hidden.set(paragraph.parent, (hidden.get(paragraph.parent) ?? 0) + 1)
+        continue
+      }
+      if (paragraph.parent.type !== 'document' && paragraph.index - 1 !== (hidden.get(paragraph.parent) ?? 0)) continue
+      const start = paragraph.lines[skip] - section - 1
+      map.set(start, start)
+      if (skip > 0) after.set(paragraph.lines[0] - section - 1, start)
+      for (const j of paragraph.lines.slice(skip + 1)) if (!paragraph.lazy.has(j)) map.set(j - section - 1, start)
+    }
+    return { map, after }
   })())
-  return { raw, at: statusLineOf(raw, orig, inBlock), safe, count, brk, text: only === -1 ? null : (brk === '\\' ? raw[only].slice(0, -1).trimEnd() : raw[only]) }
+  const paragraphOf = (i) => walk().map.get(i)
+  paragraphOf.after = (i) => walk().after.get(i)
+  return { raw, get at() { return statusLineOf(raw, paragraphOf) }, safe, count, brk, text: only === -1 ? null : (brk === '\\' ? raw[only].slice(0, -1).trimEnd() : raw[only]) }
 }
 // Whether the write replaces one line and keeps the rest, so nothing is deleted and the guards for what a replaced section loses do not run (PMK-314).
 const replacesInPlace = (lines, section) => statusSection(lines, section, sectionEnd(lines, section)).safe !== -1
@@ -541,8 +593,10 @@ export function adrStatusDroppedAt(text) {
   const lines = adrText(text).split('\n')
   const { section, end } = locate(lines)
   if (section === -1) return []
-  const { raw, at, safe, count } = statusSection(lines, section, end(section))
-  return count <= 1 || safe !== -1 ? [] : raw.flatMap((item, i) => (item !== '' && i !== at ? [{ at: section + 1 + i, line: item }] : []))
+  const status = statusSection(lines, section, end(section))
+  if (status.count <= 1 || status.safe !== -1) return []
+  const at = status.at
+  return status.raw.flatMap((item, i) => (item !== '' && i !== at ? [{ at: section + 1 + i, line: item }] : []))
 }
 /** The whole `## Status` section, its trimmed non-blank lines joined by a space, null when there is none: where the section ends, which is what the CommonMark check of `scripts/dev` compares. `adrInfo` reads one line of it when it has a top-level status line (PMK-311). */
 export function adrSectionText(text) {

@@ -1987,7 +1987,6 @@ for (const [name, text, dropped] of [
   ['a nested item, a blank line and a status', '## Status\n\n- - see ADR 3\n\nAccepted\n\n## Context\n', ['- - see ADR 3']],
   ['a one-line comment, an item and a status', '## Status\n\n<!-- c -->\n- see ADR 3\n\nAccepted\n\n## Context\n', ['<!-- c -->', '- see ADR 3']],
   ['an item, a date and a status item', '## Status\n\n- see ADR 3\n\nDate: 2024-01-02\n\n- Accepted\n\n## Context\n', ['- see ADR 3', 'Date: 2024-01-02']],
-  ['an item and a status in a lazy line', '## Status\n\n- see ADR 3\nAccepted\n\n## Context\n', ['- see ADR 3']],
 ]) {
   test(`the refusal for ${name} names the item as text to move and the known status is left out (PMK-316)`, async () => {
     assert.deepEqual(adrStatusDropped(text), dropped)
@@ -2115,25 +2114,115 @@ for (const [name, text, dropped] of [
   })
 }
 
-// PMK-319: two closed fences that share their opener are two fences in the refusal, not one.
-for (const [name, text, count] of [
-  ['a list item', '## Status\n\n- Accepted\n\n```\n## X\n```\n\nDate: 2024-01-02\n\n```\n## Y\n```\n\n## Context\n', 2],
-  ['a quote', '## Status\n\n> Accepted\n\n> ```\n> ## X\n> ```\n\nDate: 2024-01-02\n\n> ```\n> ## Y\n> ```\n\n## Context\n', 2],
-  ['three fences', '## Status\n\n- Accepted\n\n```\n## X\n```\n\n```\n## Y\n```\n\n```\n## Z\n```\n\n## Context\n', 3],
+// PMK-322: indented code, a link reference definition and a lazy continuation line are not paragraph text the reader sees as the status.
+for (const [name, text, dropped, kept] of [
+  ['a first line in indented code', '## Status\n\n    Accepted\n\n> Proposed\n\n## Context\n', ['Accepted'], '> Proposed'],
+  ['a first line that is a link reference definition', '## Status\n\n[Accepted]: /u\n\n> Proposed\n\n## Context\n', ['[Accepted]: /u'], '> Proposed'],
+  ['a lazy line of a quote', '## Status\n\nDate: x\n\n> see ADR 3\nAccepted\n\n## Context\n', ['> see ADR 3', 'Accepted'], 'Date: x'],
+  ['a lazy line of a list item', '## Status\n\nDate: x\n\n- see ADR 3\nAccepted\n\n## Context\n', ['- see ADR 3', 'Accepted'], 'Date: x'],
+  // Was PMK-316's 'an item and a status in a lazy line' (the lazy line named as the status): the reader sees it as part of the item, so the item is the status.
+  ['an item and a status in its lazy line', '## Status\n\n- see ADR 3\nAccepted\n\n## Context\n', ['Accepted'], '- see ADR 3'],
+  // Review cycle 1: a line that only looks like a definition is paragraph text the reader sees, so it stays the status, as on develop.
+  ['a first line with text after a definition', '## Status\n\n[Accepted]: /u extra words\n\n> Proposed\n\n## Context\n', ['> Proposed'], '[Accepted]: /u extra words'],
+  ['a first line that is a label and a colon alone', '## Status\n\n[Accepted]:\n\n> Proposed\n\n## Context\n', ['> Proposed'], '[Accepted]:'],
+  // Review cycle 1: indented code or a definition in a quote or list item is not paragraph text either.
+  ['indented code in a quote as the first line', '## Status\n\n>     Accepted\n\n> Proposed\n\n## Context\n', ['>     Accepted'], '> Proposed'],
+  ['indented code in an item as the first line', '## Status\n\n-     Accepted\n\n> Proposed\n\n## Context\n', ['-     Accepted'], '> Proposed'],
+  ['a definition in a quote as the first line', '## Status\n\n> [Accepted]: /u\n\n> Proposed\n\n## Context\n', ['> [Accepted]: /u'], '> Proposed'],
+  ['a definition in an item as the first line', '## Status\n\n- [Accepted]: /u\n\n> Proposed\n\n## Context\n', ['- [Accepted]: /u'], '> Proposed'],
+  // A definition over two lines: its destination line is part of it, not a line glued to the first line's paragraph.
+  ['a definition over two lines as the first line', '## Status\n\n[Draft]:\nRejected\n\n> Proposed\n\n## Context\n', ['[Draft]:', 'Rejected'], '> Proposed'],
+  // Review cycle 2: unchanged by the fix above, the destination line of a definition is part of it and never a glued line.
+  ['a definition over two lines with no later status', '## Status\n\n[Draft]:\nRejected\n\nsee ADR 3\n\n## Context\n', ['Rejected', 'see ADR 3'], '[Draft]:'],
+  // A definition is not shown, so the paragraph after it is the first one the reader sees in its item or quote.
+  ['an item that opens with a definition', '## Status\n\n- [Accepted]: /u\n\n  Proposed\n\n## Context\n', ['- [Accepted]: /u'], 'Proposed'],
+  // Review cycle 2: a definition is hidden, so the first paragraph the reader sees starts after it, and its glued line is chosen as for a plain first line (as on develop).
+  ['a definition before a paragraph with a glued status', '## Status\n\n[a]: /u\nDate: x\nAccepted\n\n> see\n\n## Context\n', ['[a]: /u', 'Date: x', '> see'], 'Accepted'],
+  ['a definition before a paragraph with a glued status in a quote', '## Status\n\n> [a]: /u\n> Date: x\n> Accepted\n\n> see\n\n## Context\n', ['> [a]: /u', '> Date: x', '> see'], '> Accepted'],
+  ['a definition before a paragraph with a glued status in an item', '## Status\n\n- [a]: /u\n  Date: x\n  Accepted\n\n> see\n\n## Context\n', ['- [a]: /u', 'Date: x', '> see'], 'Accepted'],
+  ['a definition before a note with a glued status', '## Status\n\n[a]: /u\nsee ADR 3\nProposed\n\nDate: x\n\n## Context\n', ['[a]: /u', 'see ADR 3', 'Date: x'], 'Proposed'],
+  ['a quote that opens with a definition', '## Status\n\n> [Accepted]: /u\n>\n> Proposed\n\n## Context\n', ['> [Accepted]: /u', '>'], '> Proposed'],
+  // The walk, not a regex, decides: a later line that only looks like a definition is seen, and a line glued to the first line's paragraph is chosen indented or not (it renders the same).
+  ['a later line that only looks like a definition', '## Status\n\nDate: x\n\n[Accepted]:\n\n> see ADR 3\n\n## Context\n', ['Date: x', '> see ADR 3'], '[Accepted]:'],
+  ['a tab-indented line glued to the first line', '## Status\n\nDate: x\n\tAccepted\n\n> see ADR 3\n\n## Context\n', ['Date: x', '> see ADR 3'], 'Accepted'],
+  // Review cycle 1: a line that continues a later paragraph (not lazily) does not start one, as its lazy form does not; only the first line's own glued line is out of scope.
+  ['a continuation line of a quote', '## Status\n\nDate: x\n\n> see ADR 3\n> Accepted\n\n## Context\n', ['> see ADR 3', '> Accepted'], 'Date: x'],
+  ['a continuation line of an item', '## Status\n\nDate: x\n\n- see ADR 3\n  Accepted\n\n## Context\n', ['- see ADR 3', 'Accepted'], 'Date: x'],
+  ['a continuation line of a later paragraph', '## Status\n\nDate: x\n\nsee ADR 3\nAccepted\n\n## Context\n', ['see ADR 3', 'Accepted'], 'Date: x'],
+  // The first paragraph of a quote or item is what the reader sees as its status; a later paragraph of the same quote or item is not.
+  ['a second paragraph of a quote', '## Status\n\nDate: x\n\n> see ADR 3\n>\n> Accepted\n\n## Context\n', ['> see ADR 3', '>', '> Accepted'], 'Date: x'],
+  ['a second paragraph of an item', '## Status\n\nDate: x\n\n- see ADR 3\n\n  Accepted\n\n## Context\n', ['- see ADR 3', 'Accepted'], 'Date: x'],
 ]) {
-  test(`the refusal names two fences with the same opening line after ${name} as ${count} fences (PMK-319)`, async () => {
+  test(`the refusal for ${name} names the status the reader sees as kept and every other line as text (PMK-322)`, async () => {
+    assert.deepEqual(adrStatusDropped(text), dropped)
     const root = repo()
     writeAdr(root, 'docs/adr/0001-a.md', text)
     for (const args of [['--dry-run'], []]) {
       const result = await adrStatus(root, '1', 'deprecated', ...args)
       assert.equal(result.code, 2)
       const { message } = result.data.error
-      assert.ok(message.includes(`the code fences ${Array(count).fill('"```"').join(', ')} take`), message)
-      assert.ok(!message.includes('the code fence "```" takes'), message)
+      assert.ok(message.includes(`the other text of the Status section, ${dropped.map((line) => `"${line}"`).join(', ')}; nothing`), message)
+      assert.ok(!message.includes(`"${kept}"`), message)
     }
     assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
   })
 }
+// Unchanged: no later line reads as a status, a glued line of the first paragraph is not lazy (out of scope), and a `Key: value` status first line still settles it.
+for (const [name, text, dropped] of [
+  ['indented code and no later status', '## Status\n\n    Accepted\n\nsome text\n\n## Context\n', ['some text']],
+  ['a line glued to a date', '## Status\n\nDate: x\nAccepted\n\n> see ADR 3\n\n## Context\n', ['Date: x', '> see ADR 3']],
+  ['a Superseded by first line', '## Status\n\nSuperseded by: ADR 3\n\n> Proposed\n\n## Context\n', ['> Proposed']],
+  ['a lazy line that is not a status', '## Status\n\n> Accepted\nsee ADR 3\n\nDate: x\n\n## Context\n', ['see ADR 3', 'Date: x']],
+  ['a line glued to an item that is not a status', '## Status\n\n- Date: x\n  Accepted\n\n> see ADR 3\n\n## Context\n', ['- Date: x', '> see ADR 3']],
+  ['a new quote after a blank line', '## Status\n\nDate: x\n\n> see ADR 3\n\n> Accepted\n\n## Context\n', ['Date: x', '> see ADR 3']],
+  ['a paragraph after a definition on the first line', '## Status\n\n[x]: /u "t"\n  Draft\n\n> see ADR 3\n\n## Context\n', ['[x]: /u "t"', '> see ADR 3']],
+  ['a paragraph after a definition in a later paragraph', '## Status\n\nDate: x\n\n[x]: /u\nAccepted\n\n## Context\n', ['Date: x', '[x]: /u']],
+]) {
+  test(`with ${name} the choice of the status line is as before (PMK-322)`, () => {
+    assert.deepEqual(adrStatusDropped(text), dropped)
+  })
+}
+
+// PMK-319: two closed fences that share their opener are two fences in the refusal, not one. PMK-322: each is named with the lines it takes, so they read apart
+// (PMK-319 asserted `the code fences "```", "```" take "## X", "## Y"`, which does not say which fence takes which line), and the adr-get note counts them the same way.
+const TICKS = '"```"'
+for (const [name, text, lines] of [
+  ['a list item', '## Status\n\n- Accepted\n\n```\n## X\n```\n\nDate: 2024-01-02\n\n```\n## Y\n```\n\n## Context\n', ['## X', '## Y']],
+  ['a quote', '## Status\n\n> Accepted\n\n> ```\n> ## X\n> ```\n\nDate: 2024-01-02\n\n> ```\n> ## Y\n> ```\n\n## Context\n', ['> ## X', '> ## Y']],
+  ['three fences', '## Status\n\n- Accepted\n\n```\n## X\n```\n\n```\n## Y\n```\n\n```\n## Z\n```\n\n## Context\n', ['## X', '## Y', '## Z']],
+]) {
+  test(`the refusal and the adr-get note name each of ${lines.length} fences with the same opening line after ${name} with the line it takes (PMK-319, PMK-322)`, async () => {
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    for (const args of [['--dry-run'], []]) {
+      const result = await adrStatus(root, '1', 'deprecated', ...args)
+      assert.equal(result.code, 2)
+      const { message, nextStep } = result.data.error
+      assert.ok(message.includes(lines.map((line) => `"${line}", which the code fence ${TICKS} takes into the Status section`).join('; and ')), message)
+      assert.ok(!message.includes('the code fences'), message)
+      assert.equal(nextStep.split('Close the code fence').length - 1, 1, nextStep)
+    }
+    assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+    const get = await adrGetFrom(root, '1')
+    assert.ok(get.data.notes.join('\n').includes(`: ${lines.map((line) => `the code fence ${TICKS} takes "${line}"`).join(' and ')} into the Status section, so that text`), get.data.notes.join('\n'))
+    assert.deepEqual(get.data.fenceHeld, { opener: '```', lines })
+  })
+}
+// PMK-322: one fence reads as before, byte for byte, in the refusal, its next step and the adr-get note, and `fenceHeld` keeps its shape.
+test('the refusal and the adr-get note for one fence are as before (PMK-322)', async () => {
+  const text = '# A\n\n## Status\n\n- Accepted\n\n```\n## X\n```\n\nDate: 2024-01-02\n\n## Context\n'
+  const root = repo()
+  writeAdr(root, 'docs/adr/0001-a.md', text)
+  for (const args of [['--dry-run'], []]) {
+    const { message, nextStep } = (await adrStatus(root, '1', 'deprecated', ...args)).data.error
+    assert.equal(message, 'docs/adr/0001-a.md: setting the status would delete "## X", which the code fence "```" takes into the Status section; and the other text of the Status section, "Date: 2024-01-02"; nothing was written')
+    assert.equal(nextStep, 'Close the code fence before the heading: add a closing line after the status, with the same character as the opening one and at least as many of it; Put the status on a plain line of its own at the top of the Status section (not inside a comment, a code fence, indented code, a list item or a quote, not after a Key: value or Supersedes line, and starting with a known status such as Accepted, Proposed or Superseded by: a word that is not a known status, and two lines that read as a status, are refused); other lines may follow it, or move the other text out of the section; then run the command again')
+  }
+  assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+  const get = await adrGetFrom(root, '1')
+  assert.deepEqual(get.data.notes, ['docs/adr/0001-a.md: the code fence "```" takes "## X" into the Status section, so that text reads as part of the status; close the code fence before the heading: add a closing line after the status, with the same character as the opening one and at least as many of it; then run the command again'])
+  assert.deepEqual(get.data.fenceHeld, { opener: '```', lines: ['## X'] })
+})
 
 // PMK-319: a plain first line that is not a status, before many lines in a fence or a quote, is read in one pass (the set of held lines is worked out once).
 test('probe: a plain line that is not a status before a long fence or quote of status words is read in well under the ceiling (PMK-319)', async () => {
@@ -2143,6 +2232,12 @@ test('probe: a plain line that is not a status before a long fence or quote of s
     `Date: 2024-01-02\n\n${'> Accepted\n'.repeat(n)}`, `Date: 2024-01-02\n\n<!--\n${'Proposed\n'.repeat(n)}-->`,
   ]
   await assertFast('probe-targets.mjs#adrInfoBody', bodies)
+})
+
+// PMK-322: many lazy or continuation lines that read as a status after a quote or item are read in one pass (the paragraph starts are worked out once).
+test('probe: a quote or item followed by many lazy or continuation lines of status words is read in well under the ceiling (PMK-322)', async () => {
+  const n = 20000
+  await assertFast('probe-targets.mjs#adrInfoBody', [`Date: x\n\n> see ADR 3\n${'Accepted\n'.repeat(n)}`, `Date: x\n\n- see ADR 3\n${'Accepted\n'.repeat(n)}`, `Date: x\n\n${'> Accepted\n'.repeat(n)}`, `Date: x\n\n- see ADR 3\n${'  Accepted\n'.repeat(n)}`, `Date: x\n\n${'[a]: /u\n'.repeat(n)}Accepted`])
 })
 
 // A fence line is taken out by its position, not its text: a line of other text with the same text as a closing line stays named.
