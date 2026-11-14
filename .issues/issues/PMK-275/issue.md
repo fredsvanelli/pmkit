@@ -2,14 +2,14 @@
 id: PMK-275
 title: Reject an empty or differently spelled --from in docs adr-get
 type: bug
-status: in_progress
+status: in_review
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-275-reject-an-empty-or-differently-spelled
 created: 2026-11-12T02:12:43.418Z
-updated: 2026-11-14T02:43:41Z
+updated: 2026-11-14T02:44:29Z
 ---
 
 ## Description
