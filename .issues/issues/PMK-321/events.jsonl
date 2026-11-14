@@ -3,3 +3,6 @@
 {"at":"2026-11-14T19:25:09Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-14T19:25:11Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-321-check-the-new-line-and-the-lines-outside"}
 {"at":"2026-11-14T19:26:50Z","by":"fred","op":"comment","to":"2026-11-14T19-26-50Z-fred.md"}
+{"at":"2026-11-14T19:41:39Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T19:41:40Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T19:41:41Z","by":"fred","op":"update","field":"acceptance_criteria"}
