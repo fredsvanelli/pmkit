@@ -428,6 +428,22 @@ export function adrFenceHeld(text) {
   const risky = headingLike(held).filter((item) => item.block.type === 'fence' && item.heading)
   return risky.length === 0 ? null : { opener: risky[0].block.first, lines: risky.map((item) => lines[item.at].trim()) }
 }
+// The line of a Status section body that is the status: the first that does not open a block (a comment, quote, list item, fence, heading, table), else the first.
+const OPENS_BLOCK = /^(?:<|>|`|~|#|\||=|[-+*](?:\s|$)|\d+[.)](?:\s|$))/
+const statusLineOf = (body) => { const at = body.findIndex((item) => !OPENS_BLOCK.test(item)); return at === -1 ? 0 : at }
+// What `setAdrStatus` replaces in a `## Status` section: its trimmed non-blank lines. `adrStatusDropped` reads the same slice, so the guard and the write never disagree.
+const statusBody = (lines, section, end) => lines.slice(section + 1, end).map((item) => item.trim()).filter(Boolean)
+/**
+ * The trimmed non-blank lines `setAdrStatus` deletes from the `## Status` section besides the line that is the status (PMK-306), in order, `[]` when the section
+ * holds only the status or there is none. A comment, quote, list item or fence glued to the status or before it counts, a line indented 4 spaces too.
+ */
+export function adrStatusDropped(text) {
+  const lines = adrText(text).split('\n')
+  const { section, end } = locate(lines)
+  if (section === -1) return []
+  const body = statusBody(lines, section, end(section))
+  return body.filter((_, i) => i !== statusLineOf(body))
+}
 const withoutBlanks = (lines, from) => {
   let at = from
   while (at < lines.length && lines[at].trim() === '') at++
@@ -513,7 +529,7 @@ export function setAdrStatus(text, status, byPath) {
     }
     if (section !== -1) {
       const end = endOf(section)
-      const body = lines.slice(section + 1, end).map((item) => item.trim()).filter(Boolean)
+      const body = statusBody(lines, section, end)
       if (body.length !== 1 || !same(body[0])) unchanged = false
       const label = befores.length > 0 ? '## Status: ' : ''
       if (body.length > 0) befores.push(`${label}${body.join(' ')}`)
