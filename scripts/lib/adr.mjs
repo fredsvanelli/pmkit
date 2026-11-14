@@ -412,7 +412,9 @@ export function adrHtmlHeld(text) {
   if (section === -1) return null
   const held = []
   sectionEnd(lines, section, held)
-  const risky = headingLike(held).filter((item) => item.block.type === 'html' && (item.heading || (item.block === held.unclosed && item.late)))
+  // In place only a block that never closes is named: it swallows the headings after it, so the section is not where the reader sees it end (PMK-314).
+  const inPlace = replacesInPlace(lines, section)
+  const risky = headingLike(held).filter((item) => item.block.type === 'html' && (!inPlace || item.block === held.unclosed) && (item.heading || (item.block === held.unclosed && item.late)))
   return risky.length === 0 ? null : { opener: risky[0].block.first, lines: risky.map((item) => lines[item.at].trim()) }
 }
 /**
@@ -435,7 +437,9 @@ const fenceRisk = (text) => {
   if (section === -1) return []
   const held = []
   sectionEnd(lines, section, held)
-  return headingLike(held).filter((item) => item.block.type === 'fence' && item.heading).map((item) => ({ ...item, line: lines[item.at].trim() }))
+  // In place a fence that closes holds its lines and deletes nothing; one that never closes (or that its container closes) is still named (PMK-314).
+  const inPlace = replacesInPlace(lines, section)
+  return headingLike(held).filter((item) => item.block.type === 'fence' && item.heading && !(inPlace && item.block.closer !== undefined)).map((item) => ({ ...item, line: lines[item.at].trim() }))
 }
 // The line of a Status section body that is the status, an index into its trimmed lines (blanks kept): the first that does not open a block (a comment, quote, list item,
 // fence, heading, table), else the first. A code span (`Accepted`) is text, not a fence; a line right after a list item or quote continues it, so the item is the status (PMK-310).
@@ -482,6 +486,8 @@ const topLevelStatus = (orig) => {
 }
 // The lines of a `## Status` section: `raw` trimmed, `at` the line `statusLineOf` names for a refusal, `safe` the line that is replaced in place (-1 for none), `count` the non-blank lines.
 // `adrInfo`, `setAdrStatus`, `adrStatusDropped` and `adrKeptLines` all read it here, so reading and writing never disagree.
+// A hard line break at the end of a line: two or more spaces, or one backslash (an even run is escaped backslashes), PMK-314.
+const hardBreak = (line) => / {2,}$/.exec(line)?.[0] ?? (((/\\+$/.exec(line)?.[0].length ?? 0) % 2 === 1) ? '\\' : '')
 const statusSection = (lines, section, end) => {
   const orig = lines.slice(section + 1, end)
   const raw = orig.map((item) => item.trim())
@@ -489,8 +495,13 @@ const statusSection = (lines, section, end) => {
   const top = count > 1 ? topLevelStatus(orig) : -1
   // Another line that reads as a known status makes the section ambiguous (two statuses): it is read whole and a write is refused, as before PMK-311.
   const safe = top !== -1 && raw.some((item, i) => i !== top && item !== '' && readsAsStatus(item)) ? -1 : top
-  return { raw, at: statusLineOf(raw), safe, count }
+  // The status line when it is read alone (the in-place line, or the only line of a one-line section), without its hard line break (PMK-314).
+  const only = safe !== -1 ? safe : count === 1 ? raw.findIndex(Boolean) : -1
+  const brk = only === -1 ? '' : hardBreak(orig[only])
+  return { raw, at: statusLineOf(raw), safe, count, brk, text: only === -1 ? null : raw[only].slice(0, raw[only].length - (brk === '\\' ? 1 : 0)) }
 }
+// Whether the write replaces one line and keeps the rest, so nothing is deleted and the guards for what a replaced section loses do not run (PMK-314).
+const replacesInPlace = (lines, section) => statusSection(lines, section, sectionEnd(lines, section)).safe !== -1
 /**
  * The trimmed non-blank lines `setAdrStatus` deletes from the `## Status` section besides the line that is the status (PMK-306), in order, `[]` when the section
  * holds only the status or there is none. Since PMK-311 a section with a top-level status line keeps every other line (`topLevelStatus`), so this is `[]` for it; any other section
@@ -524,7 +535,7 @@ export function adrStatusContinuation(text) {
   if (section === -1) return null
   const { raw, safe } = statusSection(lines, section, end(section))
   const next = safe === -1 ? undefined : raw[safe + 1]
-  return next && !OPENS_BLOCK.test(next) && !KEY_VALUE.test(next) ? next : null
+  return next && !OPENS_BLOCK.test(next) && !KEY_VALUE.test(next) && !THEMATIC.test(next) ? next : null
 }
 const withoutBlanks = (lines, from) => {
   let at = from
@@ -543,7 +554,7 @@ export function adrInfo(text) {
     const found = close === -1 ? undefined : lines.slice(1, close).find((item) => new RegExp(`^${name}:`, 'i').test(item))
     return found === undefined ? null : unquote(splitYaml(found.slice(name.length + 1)).value) || null
   }
-  const body = section === -1 ? '' : (({ raw, safe }) => (safe === -1 ? raw.filter(Boolean).join(' ') : raw[safe]))(statusSection(lines, section, end(section)))
+  const body = section === -1 ? '' : (({ raw, text }) => text ?? raw.filter(Boolean).join(' '))(statusSection(lines, section, end(section)))
   const statuses = [yaml > 0 ? key('status') : null, line === -1 ? null : STATUS_LINE.exec(lines[line])[3].trim(), body].filter((value) => value)
   return { title: title === -1 ? key('title') : headingText(lines[title]), status: statuses[0] ?? null, statuses }
 }
@@ -611,16 +622,16 @@ export function setAdrStatus(text, status, byPath) {
     }
     if (section !== -1) {
       const end = endOf(section)
-      const { raw, safe, count } = statusSection(lines, section, end)
+      const { raw, safe, count, brk, text: only } = statusSection(lines, section, end)
       const label = befores.length > 0 ? '## Status: ' : ''
       // More than the status in the section (a date, a Supersedes line) and a top-level status line: only that line is replaced, the rest stays (PMK-311).
       const keeps = safe !== -1
-      const body = keeps ? raw[safe] : raw.filter(Boolean).join(' ')
+      const body = only ?? raw.filter(Boolean).join(' ')
       if (keeps ? !same(body) : count !== 1 || !same(body)) unchanged = false
       if (count > 0) befores.push(`${label}${body}`)
       afters.push(`${label}${capitalized(value)}`)
       // The indent stays, so the line keeps the shape it had.
-      if (keeps) lines[section + 1 + safe] = /^\s*/.exec(lines[section + 1 + safe])[0] + capitalized(value)
+      if (keeps) lines[section + 1 + safe] = /^\s*/.exec(lines[section + 1 + safe])[0] + capitalized(value) + brk
       else lines.splice(section + 1, end - section - 1, '', capitalized(value), '')
     }
     // A status that does not change reports the same text on both sides.

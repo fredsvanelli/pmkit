@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
-import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrStatusDropped, adrKeptLines, adrSectionText, adrInfo, adrRef, adrStatusHeading, adrHtmlHeld, adrFenceHeld } from './lib/adr.mjs'
+import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrStatusDropped, adrFenceClosers, adrStatusContinuation, adrKeptLines, adrSectionText, adrInfo, adrRef, adrStatusHeading, adrHtmlHeld, adrFenceHeld } from './lib/adr.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo } from './test-helpers.mjs'
 import { assertFast } from './assert-fast.mjs'
@@ -1968,3 +1968,95 @@ for (const [name, text] of [
     assert.ok(!message.includes('"> ```"'), message)
   })
 }
+
+// PMK-314: a section with a top-level status line is written in place and nothing is deleted, so the HTML block and fence guards and the adr-get notes do not run for it.
+for (const [name, text] of [
+  ['a closed comment holding a heading', '## Status\n\nAccepted\n\n<!--\n## X\n-->\n\n## Context\n'],
+  ['a closed fence holding a heading', '## Status\n\nAccepted\n\n```\n## X\n```\n\n## Context\n'],
+  ['a closed fence holding a setext heading', '## Status\n\nAccepted\n\n~~~\nX\n---\n~~~\n\n## Context\n'],
+  ['a closed fence in a quote', '## Status\n\nAccepted\n\n> ```\n> ## X\n> ```\n\n## Context\n'],
+]) {
+  test(`${name} after a status line of its own is written in place, real and dry run, with no note in adr-get (PMK-314)`, async () => {
+    assert.equal(adrHtmlHeld(text), null)
+    assert.equal(adrFenceHeld(text), null)
+    assert.deepEqual(adrFenceClosers(text), [])
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    const get = await adrGetFrom(root, '1')
+    assert.equal(get.data.status, 'Accepted')
+    assert.deepEqual(get.data.notes, [])
+    assert.equal(get.data.htmlHeld, null)
+    assert.equal(get.data.fenceHeld, null)
+    const dry = await adrStatus(root, '1', 'deprecated', '--dry-run')
+    assert.equal(dry.code, 0, dry.stderr)
+    assert.equal(dry.data.after, text.replace('Accepted', 'Deprecated'))
+    assert.equal((await adrStatus(root, '1', 'deprecated')).code, 0)
+    assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text.replace('Accepted', 'Deprecated'))
+  })
+}
+// The guards still refuse when the whole section is replaced: an unclosed comment or fence, no known status line, a status in an item, an ambiguous section.
+for (const [name, text, guard] of [
+  ['an unclosed comment after the status line', '## Status\n\nAccepted\n\n<!--\n## X\n', 'HTML'],
+  ['an unclosed fence after the status line', '## Status\n\nAccepted\n\n```\n## X\n', 'fence'],
+  ['a quoted fence the quote closes after the status line', '## Status\n\nAccepted\n\n> ```\n> ## X\n\n## Context\n', 'fence'],
+  ['an unclosed comment before the status', '## Status\n\n<!--\nAccepted\n\n## X\n-->\n', 'HTML'],
+  ['a closed comment before the status', '## Status\n\n<!--\n## X\n-->\n\nAccepted\n', 'HTML'],
+  ['a closed fence before the status', '## Status\n\n```\n## X\n```\n\nAccepted\n', 'fence'],
+  ['an item status then a closed fence', '## Status\n\n- Accepted\n\n```\n## X\n```\n', 'fence'],
+  ['no known status line and a closed comment', '## Status\n\nMaybe\n\n<!--\n## X\n-->\n', 'HTML'],
+  ['two status lines and a closed fence', '## Status\n\nAccepted\n\nDeprecated\n\n```\n## X\n```\n', 'fence'],
+]) {
+  test(`the ${guard} guard still refuses ${name}, real and dry run (PMK-314)`, async () => {
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    for (const flag of [['--dry-run'], []]) {
+      const result = await adrStatus(root, '1', 'deprecated', ...flag)
+      assert.equal(result.code, 2)
+      assert.match(result.data.error.message, /## X/)
+    }
+    assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+    assert.ok((await adrGetFrom(root, '1')).data.notes.length > 0)
+  })
+}
+// A hard line break at the end of the status line is kept and read without.
+for (const [name, brk] of [['two spaces', '  '], ['four spaces', '    '], ['a backslash', '\\']]) {
+  test(`a status line that ends with ${name} keeps the break after the write, and adr-get reads the status without it (PMK-314)`, async () => {
+    const text = `## Status\n\nAccepted${brk}\nDate: 2024-01-02\n\n## Context\n`
+    assert.equal(adrInfo(text).status, 'Accepted')
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    assert.equal((await adrGetFrom(root, '1')).data.status, 'Accepted')
+    const dry = await adrStatus(root, '1', 'deprecated', '--dry-run')
+    assert.equal(dry.data.status.before, 'Accepted')
+    assert.equal(dry.data.after, `## Status\n\nDeprecated${brk}\nDate: 2024-01-02\n\n## Context\n`)
+    assert.equal((await adrStatus(root, '1', 'deprecated')).code, 0)
+    assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), `## Status\n\nDeprecated${brk}\nDate: 2024-01-02\n\n## Context\n`)
+    // The status is already the requested one: the file is not rewritten.
+    const written = fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8')
+    assert.equal(setAdrStatus(written, 'deprecated').text, written)
+  })
+}
+test('a backslash pair is an escaped backslash, not a break, and one space is not a break (PMK-314)', () => {
+  assert.equal(adrSectionText('## Status\n\nAccepted\\\\\nDate: 2024-01-02\n'), 'Accepted\\\\ Date: 2024-01-02')
+  assert.equal(adrInfo('## Status\n\nAccepted\\\\\nDate: 2024-01-02\n').status, 'Accepted\\\\')
+  assert.equal(setAdrStatus('## Status\n\nAccepted \nDate: 2024-01-02\n', 'deprecated').text, '## Status\n\nDeprecated\nDate: 2024-01-02\n')
+})
+test('a section of one line with a break at its end reads without it and is written whole (PMK-314)', () => {
+  for (const brk of ['  ', '\\']) {
+    const text = `## Status\n\nAccepted${brk}\n\n## Context\n`
+    assert.equal(adrInfo(text).status, 'Accepted')
+    assert.equal(setAdrStatus(text, 'deprecated').text, '## Status\n\nDeprecated\n\n## Context\n')
+    assert.equal(setAdrStatus(text, 'accepted').after, 'Accepted')
+  }
+})
+// `***` and `___` are thematic breaks, not the rest of a status.
+test('the continuation note does not name a thematic break (PMK-314)', async () => {
+  for (const line of ['***', '___', '* * *', '_ _ _', '- - -', '**********']) assert.equal(adrStatusContinuation(`## Status\n\nAccepted\n${line}\n\n## Context\n`), null, line)
+  assert.equal(adrStatusContinuation('## Status\n\nAccepted\nwith conditions\n\n## Context\n'), 'with conditions')
+  const root = repo()
+  writeAdr(root, 'docs/adr/0001-a.md', '## Status\n\nAccepted\n***\n\n## Context\n')
+  const result = await adrStatus(root, '1', 'deprecated', '--dry-run')
+  assert.equal(result.code, 0, result.stderr)
+  assert.ok(!result.data.notes.some((item) => item.includes('continues the paragraph')), result.data.notes.join('\n'))
+  assert.equal(result.data.after, '## Status\n\nDeprecated\n***\n\n## Context\n')
+})
