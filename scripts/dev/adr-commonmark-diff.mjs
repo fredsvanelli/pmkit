@@ -5,14 +5,15 @@
 //   node scripts/dev/adr-commonmark-diff.mjs --commonmark /tmp/cm/node_modules/commonmark [--base origin/develop] [--head HEAD] [--random 1000000] [--status-random 500000] [--seed 1] [--lines 8] [--show 20]
 // COMMONMARK=<dir> works in place of --commonmark. A ref of `worktree` reads scripts/lib of the working tree. The text of each case is
 // `## Status\n\n<case>\n## Context\n`; the expected status is the trimmed lines from the Status heading to the next heading CommonMark
-// puts at the top level of the document. Exit code 1 when a case is worse at the head than at the base, or (PMK-315) when the head's write removes text the base kept or refused.
+// puts at the top level of the document. Exit code 1 when a case is worse at the head than at the base, or (PMK-315, PMK-318) when the head's write removes text the base kept or refused, replaces a line that is not a known status, or duplicates, reorders or moves a line.
 //
 // The write check (PMK-315) runs `setAdrStatus` at both refs on every body and compares what each deletes (adr-write-compare.mjs). A ref refuses a body the way `docs adr-status`
 // does: `adrHtmlHeld`, `adrFenceHeld` or `adrStatusDropped` reports something, so nothing is written; a refusal is its own result, never "removed". An exception from a guard or from `setAdrStatus` is not a refusal (the guards are what refuse), it is a bug: it is counted as `threw` with an example, and the run exits 1 when the head throws on a body (a base that throws is only counted and reported).
-// The text a write removes is the trimmed non-blank lines of the document before it minus those after, as a multiset; the write adds `Superseded by <sentinel>`, a line
-// no body has. The head always removes the one line it replaces (its status line, `adrInfo(text).status`), which is not counted. "The head removes text the base kept or
-// refused" (the `worse` count, which fails the run) is the section text that disappears at the head and stayed at the base: both write and the head removes a line the base
-// did not, or the base refuses and the head removes any line besides its status line. A base that wrote and a head that refuses is `newly refused`, counted apart.
+// A write is checked by its shape (PMK-318, `writeShape` in adr-write-compare.mjs): the head either replaces exactly one line in place, a line that reads as a known status (the helper has its own copy of the PMK-311 rule,
+// never the head's), keeping every other line of the document in order and byte for byte (a hard line break stays on that line, PMK-314); or it replaces the whole section by one new line, as the base does or refuses.
+// A duplicated, reordered or moved line, or a replaced line that is not a known status, is `worse`. A whole-section write is compared with the base as before: the text a write removes is the trimmed non-blank lines of the
+// document before it minus those after, as a multiset (the write adds `Superseded by <sentinel>`, a line no body has). "The head removes text the base kept or refused" (the `worse` count, which fails the run) is then
+// that shape failing, or a whole-section write that removes a line the base did not, or, where the base refuses, any line but the one of a one-line section (the section as CommonMark reads it). A base that wrote and a head that refuses is `newly refused`, counted apart.
 // The corpus of PMK-315 (status words with and without emphasis, `Superseded by ADR 2`, dates, `Supersedes`, `Key: value`) is added after the cases of PMK-291 and
 // PMK-311, which are unchanged and in the same order; `--status-random` sets its random part.
 
@@ -23,7 +24,7 @@ import { createRequire } from 'node:module'
 import { spawnSync } from 'node:child_process'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
-import { compareWrites, removedLines } from './adr-write-compare.mjs'
+import { compareWrites, writeShape } from './adr-write-compare.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const { values: args } = parseArgs({
@@ -47,7 +48,7 @@ const parser = new Parser()
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'adr-commonmark-diff-'))
 // The reading of the whole section at a ref: `adrSectionText` when it has one (PMK-311: `adrInfo` then reads one line of it), else `adrInfo` (before PMK-311 its status was the section). `line` is that `adrInfo` status.
-// `write` is what `docs adr-status` does with a body: `{ refused: true }` when a guard names something, `{ threw }` when a guard or `setAdrStatus` throws, else the lines the write removes (PMK-315).
+// `write` is what `docs adr-status` does with a body: `{ refused: true }` when a guard names something, `{ threw }` when a guard or `setAdrStatus` throws, else the shape of the write (`writeShape`: PMK-315, PMK-318).
 const SENTINEL = 'sentinel.md'
 const readerOf = (mod) => ({
   section: (text) => (mod.adrSectionText ? mod.adrSectionText(text) : mod.adrInfo(text).status) ?? '',
@@ -55,7 +56,7 @@ const readerOf = (mod) => ({
   write(text) {
     try {
       if (mod.adrHtmlHeld(text) || mod.adrFenceHeld(text) || mod.adrStatusDropped(text).length > 0) return { refused: true }
-      return { removed: removedLines(text, mod.setAdrStatus(text, 'superseded', SENTINEL).text) }
+      return writeShape(text, mod.setAdrStatus(text, 'superseded', SENTINEL).text)
     } catch (error) {
       return { threw: String(error?.message ?? error) }
     }
@@ -76,7 +77,7 @@ function expected(text) {
   const lines = text.split('\n')
   let next = parser.parse(text).firstChild.next
   while (next !== null && next.type !== 'heading') next = next.next
-  return lines.slice(1, next === null ? lines.length : next.sourcepos[0][0] - 1).map((line) => line.trim()).filter(Boolean).join(' ')
+  return lines.slice(1, next === null ? lines.length : next.sourcepos[0][0] - 1).map((line) => line.trim()).filter(Boolean)
 }
 
 // The cases: each cycle of the PR #241 review and the issue, every pair of lines, then random runs of lines.
@@ -184,7 +185,8 @@ const writeWorse = []
 const threw = []
 for (const body of cases()) {
   const text = textOf(body)
-  const want = expected(text)
+  const section = expected(text)
+  const want = section.join(' ')
   const before = base.section(text)
   const after = head.section(text)
   // PMK-311: the status `adrInfo` reads at the head is one line of the section: the same text for a one-line section, else a part of it, never text from outside it.
@@ -194,10 +196,10 @@ for (const body of cases()) {
   else if (line === '' || after.includes(line)) counts.lineChanged++
   else counts.lineOutside++
   counts.cases++
-  const compared = compareWrites({ base: base.write(text), head: head.write(text), headStatus: line })
+  const compared = compareWrites({ base: base.write(text), head: head.write(text), section })
   counts[`write${compared.outcome[0].toUpperCase()}${compared.outcome.slice(1)}`]++
   if (compared.error !== undefined && threw.length < Number(args.show)) threw.push({ body, [compared.outcome === 'headThrew' ? args.head : args.base]: `threw: ${compared.error}` })
-  if (compared.outcome === 'worse' && writeWorse.length < Number(args.show)) writeWorse.push({ body, removedExtra: compared.extra })
+  if (compared.outcome === 'worse' && writeWorse.length < Number(args.show)) writeWorse.push({ body, removedExtra: compared.extra, written: compared.written })
   if (before === want && after === want) counts.right++
   else if (after === want) counts.fixed++
   else if (before === want) {
