@@ -2,14 +2,14 @@
 id: PMK-279
 title: Report a failing git rev-parse for a tracker outside the repository
 type: bug
-status: in_review
+status: done
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-279-report-a-failing-git-rev-parse-for-a
 created: 2026-11-12T02:12:43.770Z
-updated: 2026-11-14T03:06:34Z
+updated: 2026-11-14T05:19:09Z
 ---
 
 ## Description

@@ -2,14 +2,14 @@
 id: PMK-310
 title: Name the right lines in the adr-status refusal
 type: bug
-status: in_review
+status: done
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-310-name-the-right-lines-in-the-adr-status
 created: 2026-11-14T01:43:01.589Z
-updated: 2026-11-14T02:53:35Z
+updated: 2026-11-14T05:19:09Z
 ---
 
 ## Description

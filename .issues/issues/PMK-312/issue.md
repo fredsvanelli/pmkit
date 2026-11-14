@@ -2,14 +2,14 @@
 id: PMK-312
 title: Make a timing probe fail within its ceiling instead of hanging on a regression
 type: chore
-status: in_review
+status: done
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
 branch: pmk-312-make-a-timing-probe-fail-within-its
 created: 2026-11-14T01:43:01.862Z
-updated: 2026-11-14T02:54:25Z
+updated: 2026-11-14T05:19:11Z
 ---
 
 ## Description
