@@ -225,7 +225,8 @@ const keepsText = (paragraph) => {
  * reference definitions, so under a list item it is a break or a lazy line (PMK-280). Columns count a tab to the next stop of 4.
  * Not a Markdown parser: no inline content. `held`, when given, collects the non-blank lines an HTML block continues (PMK-299), as `{ at, text, late, block }` (`text`: the line without the markers of the containers it is in; `late`, HTML blocks only: after a blank line of the block; `heading` is not in it, `headingLike` adds it for the readers),
  * and gets `unclosed`: the innermost block of kind 1 to 5 still open at the end of the file, and `openHtml`: that block when it is directly in the document, the only one that takes in every later line (PMK-323). The same for a fenced code block (PMK-302): the non-blank lines it continues come in `held` with `block.type === 'fence'`, closed or not, in a quote or a list item too. Its entries are `{ at, text, block }`.
- * When `held.lazy` is an array, it gets the lazy continuation lines (PMK-322).
+ * When `held.paragraphs` is an array, it gets each paragraph that starts the document's text or a quote or list item (its first block), with `more`: the lines that continue it,
+ * a lazy line excluded (PMK-322). A paragraph that is a later block of its quote or item, or a lazy or continuation line, is not one of them.
  */
 function sectionEnd(lines, from, held = []) {
   const open = [{ type: 'document' }]
@@ -305,6 +306,7 @@ function sectionEnd(lines, from, held = []) {
       allClosed = true
       // A paragraph, a heading or code holds no block: the new one goes beside it.
       while (LEAVES.has(open.at(-1).type)) open.pop()
+      if (block.type === 'paragraph' && held.paragraphs && (open.length === 1 || !open.at(-1).filled)) held.paragraphs.push(Object.assign(block, { more: [] }))
       open.at(-1).filled = true
       open.push(block)
       container = open.length - 1
@@ -368,14 +370,14 @@ function sectionEnd(lines, from, held = []) {
     const rest = line.slice(offset)
     if (!allClosed && !blank && open.at(-1).type === 'paragraph') {
       open.at(-1).text += `${rest}\n`
-      // A lazy continuation line: part of a paragraph in a quote or list item it does not continue by its markers (PMK-322).
-      held.lazy?.push(j)
       continue
     }
     open.length = container + 1
     const leaf = open[container]
-    if (leaf.type === 'paragraph') leaf.text += `${rest}\n`
-    else if (leaf.type === 'html' && leaf.kind <= 5 && HTML_CLOSE[leaf.kind].test(rest)) open.length = container
+    if (leaf.type === 'paragraph') {
+      leaf.text += `${rest}\n`
+      leaf.more?.push(j)
+    } else if (leaf.type === 'html' && leaf.kind <= 5 && HTML_CLOSE[leaf.kind].test(rest)) open.length = container
     else if (!blank && !LEAVES.has(leaf.type)) add({ type: 'paragraph', start: j, text: `${rest}\n` })
   }
   held.unclosed = open.at(-1).type === 'html' && open.at(-1).kind <= 5 ? open.at(-1) : null
@@ -479,17 +481,17 @@ const hostsLazy = (item) => {
 // The first line after one-line comments that is an item or quote with text is the status a reader sees, whatever follows it, a blank line, a date or a lazy line (PMK-313).
 // When that first item, quote or plain line (PMK-319) does not read as a known status (`readsAsStatus`, the rule of `topLevelStatus`) and a later line does, the later line is the status and the item is text to move (PMK-316);
 // when no line reads as one, the first item, quote or plain line stays the status.
-// The later line must be text the reader sees at the top of the section, as `topLevelStatus` asks: not in a fence or an HTML block (`inBlock` gives their lines), not indented 4 columns (code), not a block
-// opener or a `Key: value` or reference line; an item or quote with text counts (PMK-316 review). Not a lazy continuation line either, and a first line that is code or a reference does not settle it (PMK-322).
-const statusLineOf = (raw, orig, inBlock) => {
+// The later line must be text the reader sees at the top of the section: a line that starts a paragraph, or the first paragraph of a quote or item, as the block walk decides (`paragraphOf`), not a
+// `Key: value` line; an item or quote with text counts (PMK-316 review). The first line settles the choice only when it is such a line too: indented code, a definition, a lazy or continuation line never is (PMK-322).
+const statusLineOf = (raw, orig, paragraphOf) => {
   const first = raw.findIndex((item) => item !== '' && !ONE_LINE_COMMENT.test(item))
   // A first line that is plain text (not a block opener) takes the same preference: its old choice is that line, so without a later known status nothing changes (PMK-319).
   if (first !== -1 && (hostsLazy(raw[first]) || !OPENS_BLOCK.test(raw[first]))) {
-    // Paragraph text the reader sees: not indented code, not a link reference definition, not a line a fence or an HTML block holds and not a lazy continuation line (`inBlock`).
-    // The first line can be neither of the last two, so it skips the walk; it settles the choice only when it is paragraph text (PMK-322).
-    const paragraph = (i) => /^ {0,3}\S/.test(orig[i]) && !NOT_TEXT.test(raw[i]) && (i === first || !inBlock().has(i))
-    const text = (item, i) => i > first && (OPENS_BLOCK.test(item) ? hostsLazy(item) : !KEY_VALUE.test(item)) && !ONE_LINE_COMMENT.test(item) && readsAsStatus(item) && paragraph(i)
-    const later = readsAsStatus(raw[first]) && paragraph(first) ? -1 : raw.findIndex(text)
+    // Paragraph text the reader sees, as the block walk decides it (`paragraphOf`, PMK-322): a line that starts a paragraph of the section's text or the first one of a quote or item, not a
+    // definition, not indented code, a fence, an HTML block, a lazy or a continuation line; or a line glued to the first line's paragraph, which is out of scope and chosen as before.
+    const sees = (i) => paragraphOf(i) === i || paragraphOf(i) === first
+    const text = (item, i) => i > first && (OPENS_BLOCK.test(item) ? hostsLazy(item) : !KEY_VALUE.test(item)) && readsAsStatus(item) && sees(i)
+    const later = readsAsStatus(raw[first]) && sees(first) ? -1 : raw.findIndex(text)
     return later === -1 ? first : later
   }
   const at = raw.findIndex((item) => item !== '' && !OPENS_BLOCK.test(item))
@@ -530,14 +532,22 @@ const statusSection = (lines, section, end) => {
   const only = safe !== -1 ? safe : count === 1 ? raw.findIndex(Boolean) : -1
   const brk = only === -1 ? '' : hardBreak(orig[only])
   // The lines a fence or an HTML block holds, and the lazy continuation lines (PMK-322), as indices of `raw`: worked out once, and only when a later line is looked for (a walk for each candidate was quadratic, PMK-316).
-  let blockLines
-  const inBlock = () => (blockLines ??= (() => {
+  // For each line of a paragraph the reader sees as a status (`held.paragraphs`), the index of its first line, as indices of `raw`; a definition's first line is left out (PMK-322).
+  // One walk, worked out once and only when a refusal names the lines (`at` is read only then), so reading and writing never pay for it (a walk for each candidate was quadratic, PMK-316).
+  let starts
+  const paragraphOf = (i) => (starts ??= (() => {
     const held = []
-    held.lazy = []
+    held.paragraphs = []
     sectionEnd(lines, section, held)
-    return new Set([...held.map((item) => item.at), ...held.lazy].map((at) => at - section - 1))
-  })())
-  return { raw, at: statusLineOf(raw, orig, inBlock), safe, count, brk, text: only === -1 ? null : (brk === '\\' ? raw[only].slice(0, -1).trimEnd() : raw[only]) }
+    const map = new Map()
+    for (const paragraph of held.paragraphs) {
+      const start = paragraph.start - section - 1
+      if (referenceLength(paragraph.text) === 0) map.set(start, start)
+      for (const j of paragraph.more) map.set(j - section - 1, start)
+    }
+    return map
+  })()).get(i)
+  return { raw, get at() { return statusLineOf(raw, orig, paragraphOf) }, safe, count, brk, text: only === -1 ? null : (brk === '\\' ? raw[only].slice(0, -1).trimEnd() : raw[only]) }
 }
 // Whether the write replaces one line and keeps the rest, so nothing is deleted and the guards for what a replaced section loses do not run (PMK-314).
 const replacesInPlace = (lines, section) => statusSection(lines, section, sectionEnd(lines, section)).safe !== -1
@@ -554,8 +564,10 @@ export function adrStatusDroppedAt(text) {
   const lines = adrText(text).split('\n')
   const { section, end } = locate(lines)
   if (section === -1) return []
-  const { raw, at, safe, count } = statusSection(lines, section, end(section))
-  return count <= 1 || safe !== -1 ? [] : raw.flatMap((item, i) => (item !== '' && i !== at ? [{ at: section + 1 + i, line: item }] : []))
+  const status = statusSection(lines, section, end(section))
+  if (status.count <= 1 || status.safe !== -1) return []
+  const at = status.at
+  return status.raw.flatMap((item, i) => (item !== '' && i !== at ? [{ at: section + 1 + i, line: item }] : []))
 }
 /** The whole `## Status` section, its trimmed non-blank lines joined by a space, null when there is none: where the section ends, which is what the CommonMark check of `scripts/dev` compares. `adrInfo` reads one line of it when it has a top-level status line (PMK-311). */
 export function adrSectionText(text) {

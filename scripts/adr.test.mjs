@@ -2122,6 +2122,21 @@ for (const [name, text, dropped, kept] of [
   ['a lazy line of a list item', '## Status\n\nDate: x\n\n- see ADR 3\nAccepted\n\n## Context\n', ['- see ADR 3', 'Accepted'], 'Date: x'],
   // Was PMK-316's 'an item and a status in a lazy line' (the lazy line named as the status): the reader sees it as part of the item, so the item is the status.
   ['an item and a status in its lazy line', '## Status\n\n- see ADR 3\nAccepted\n\n## Context\n', ['Accepted'], '- see ADR 3'],
+  // Review cycle 1: a line that only looks like a definition is paragraph text the reader sees, so it stays the status, as on develop.
+  ['a first line with text after a definition', '## Status\n\n[Accepted]: /u extra words\n\n> Proposed\n\n## Context\n', ['> Proposed'], '[Accepted]: /u extra words'],
+  ['a first line that is a label and a colon alone', '## Status\n\n[Accepted]:\n\n> Proposed\n\n## Context\n', ['> Proposed'], '[Accepted]:'],
+  // Review cycle 1: indented code or a definition in a quote or list item is not paragraph text either.
+  ['indented code in a quote as the first line', '## Status\n\n>     Accepted\n\n> Proposed\n\n## Context\n', ['>     Accepted'], '> Proposed'],
+  ['indented code in an item as the first line', '## Status\n\n-     Accepted\n\n> Proposed\n\n## Context\n', ['-     Accepted'], '> Proposed'],
+  ['a definition in a quote as the first line', '## Status\n\n> [Accepted]: /u\n\n> Proposed\n\n## Context\n', ['> [Accepted]: /u'], '> Proposed'],
+  ['a definition in an item as the first line', '## Status\n\n- [Accepted]: /u\n\n> Proposed\n\n## Context\n', ['- [Accepted]: /u'], '> Proposed'],
+  // Review cycle 1: a line that continues a later paragraph (not lazily) does not start one, as its lazy form does not; only the first line's own glued line is out of scope.
+  ['a continuation line of a quote', '## Status\n\nDate: x\n\n> see ADR 3\n> Accepted\n\n## Context\n', ['> see ADR 3', '> Accepted'], 'Date: x'],
+  ['a continuation line of an item', '## Status\n\nDate: x\n\n- see ADR 3\n  Accepted\n\n## Context\n', ['- see ADR 3', 'Accepted'], 'Date: x'],
+  ['a continuation line of a later paragraph', '## Status\n\nDate: x\n\nsee ADR 3\nAccepted\n\n## Context\n', ['see ADR 3', 'Accepted'], 'Date: x'],
+  // The first paragraph of a quote or item is what the reader sees as its status; a later paragraph of the same quote or item is not.
+  ['a second paragraph of a quote', '## Status\n\nDate: x\n\n> see ADR 3\n>\n> Accepted\n\n## Context\n', ['> see ADR 3', '>', '> Accepted'], 'Date: x'],
+  ['a second paragraph of an item', '## Status\n\nDate: x\n\n- see ADR 3\n\n  Accepted\n\n## Context\n', ['- see ADR 3', 'Accepted'], 'Date: x'],
 ]) {
   test(`the refusal for ${name} names the status the reader sees as kept and every other line as text (PMK-322)`, async () => {
     assert.deepEqual(adrStatusDropped(text), dropped)
@@ -2143,6 +2158,8 @@ for (const [name, text, dropped] of [
   ['a line glued to a date', '## Status\n\nDate: x\nAccepted\n\n> see ADR 3\n\n## Context\n', ['Date: x', '> see ADR 3']],
   ['a Superseded by first line', '## Status\n\nSuperseded by: ADR 3\n\n> Proposed\n\n## Context\n', ['> Proposed']],
   ['a lazy line that is not a status', '## Status\n\n> Accepted\nsee ADR 3\n\nDate: x\n\n## Context\n', ['see ADR 3', 'Date: x']],
+  ['a line glued to an item that is not a status', '## Status\n\n- Date: x\n  Accepted\n\n> see ADR 3\n\n## Context\n', ['- Date: x', '> see ADR 3']],
+  ['a new quote after a blank line', '## Status\n\nDate: x\n\n> see ADR 3\n\n> Accepted\n\n## Context\n', ['Date: x', '> see ADR 3']],
 ]) {
   test(`with ${name} the choice of the status line is as before (PMK-322)`, () => {
     assert.deepEqual(adrStatusDropped(text), dropped)
