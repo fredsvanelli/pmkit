@@ -4310,6 +4310,9 @@ async function runInitLinear(ctx) {
   return { data, text: lines.join('\n') }
 }
 
+// tracker.path is relative for a folder next to the repository; an absolute one is never shown (PMK-271).
+const folderName = (folder) => (path.isAbsolute(folder) || path.win32.isAbsolute(folder) ? 'the tracker files' : `the tracker files in ${folder}`)
+
 /**
  * Commits exactly `paths` (root-relative, `/` separators). Nothing staged for them means no commit. A path that climbs out of the
  * repository (a tracker folder outside it, PMK-257) is committed in the git repository that holds it, with paths relative to that
@@ -4328,16 +4331,25 @@ function commitTracker(config, message, paths) {
     const full = realParent(path.resolve(config.root, file))
     let dir = path.dirname(full)
     while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir)
-    const top = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, encoding: 'utf8' })
+    const top = spawnSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: dir,
+      encoding: 'utf8',
+      // The message is matched below, so git must not translate it; LC_ALL=C also makes gettext ignore LANGUAGE.
+      env: { ...process.env, LC_ALL: 'C' },
+    })
     if (top.status !== 0 || top.stdout.trim() === '') {
-      loose = true
-      continue
+      // Only git's "not a git repository" is the quiet note; a spawn error or any other failure (a bad gitconfig) is reported (PMK-279).
+      if (!top.error && /not a git repository/i.test(top.stderr ?? '')) {
+        loose = true
+        continue
+      }
+      const why = top.error ? top.error.message : (top.stderr || top.stdout || '').trim()
+      throw new PmkitError('UPSTREAM', `the write succeeded but auto_commit failed: ${hideAbsolutePaths(why.split(/\r?\n/)[0]) || `git exited with ${top.status}`}`, `Commit ${folderName(folder)} yourself`)
     }
     const top2 = top.stdout.trim()
     groups.set(top2, [...(groups.get(top2) ?? []), slash(path.relative(top2, full))])
   }
-  // tracker.path is relative for a folder next to the repository; an absolute one is never shown (PMK-271).
-  const outsideName = path.isAbsolute(folder) || path.win32.isAbsolute(folder) ? 'the tracker files' : `the tracker files in ${folder}`
+  const outsideName = folderName(folder)
   for (const [top, files] of groups) commitIn(top, message, files, `${files.length <= 5 ? files.join(' ') : outsideName} (in the git repository that holds the tracker)`)
   if (loose) notes.push('the tracker folder is outside the repository and not in a git repository, so nothing was committed for it')
   return notes

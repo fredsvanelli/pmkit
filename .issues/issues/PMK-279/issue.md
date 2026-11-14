@@ -2,12 +2,14 @@
 id: PMK-279
 title: Report a failing git rev-parse for a tracker outside the repository
 type: bug
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-279-report-a-failing-git-rev-parse-for-a
 created: 2026-11-12T02:12:43.770Z
-updated: 2026-11-12T02:12:43Z
+updated: 2026-11-14T03:06:34Z
 ---
 
 ## Description
@@ -31,5 +33,5 @@ When auto_commit writes files in a tracker outside the repository, it runs `git 
 
 ## Acceptance criteria
 
-- [ ] A `rev-parse` failure other than "not a git repository" in the tracker folder is reported, not shown as "nothing was committed", with a test
-- [ ] A tracker folder outside any git repository keeps the current note
+- [x] A `rev-parse` failure other than "not a git repository" in the tracker folder is reported, not shown as "nothing was committed", with a test
+- [x] A tracker folder outside any git repository keeps the current note

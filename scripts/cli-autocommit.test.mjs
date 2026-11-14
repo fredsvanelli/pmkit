@@ -390,7 +390,7 @@ test('requests accept --create that fails on a read-only request commits the new
 })
 
 // PMK-268: auto_commit with a tracker outside the repository, in a git repository of its own.
-function withOutsideTracker(fn) {
+function withOutsideTracker(fn, { init = true } = {}) {
   const root = makeRepo('team')
   const outside = path.join(path.dirname(root), `outside-${path.basename(root)}`)
   try {
@@ -399,11 +399,13 @@ function withOutsideTracker(fn) {
     fs.renameSync(path.join(root, '.issues'), outside)
     const file = path.join(outside, 'config.yaml')
     fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^auto_commit: .*$/m, 'auto_commit: true'))
-    git(outside, 'init', '-q')
-    git(outside, 'config', 'user.name', 'Test')
-    git(outside, 'config', 'user.email', 'test@example.com')
-    git(outside, 'add', '-A')
-    git(outside, 'commit', '-q', '-m', 'init')
+    if (init) {
+      git(outside, 'init', '-q')
+      git(outside, 'config', 'user.name', 'Test')
+      git(outside, 'config', 'user.email', 'test@example.com')
+      git(outside, 'add', '-A')
+      git(outside, 'commit', '-q', '-m', 'init')
+    }
     fn({ root, outside })
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
@@ -482,4 +484,59 @@ test('auto_commit true with more than 5 files outside the repository: a failed c
     assert.equal(error.nextStep, `Commit the tracker files in ../${path.basename(outside)} (in the git repository that holds the tracker) yourself`)
     assert.ok(!(result.stdout + result.stderr).includes(fs.realpathSync(os.tmpdir())), 'no absolute path')
   })
+})
+
+// PMK-279: only "not a git repository" is the quiet note; any other rev-parse failure in the tracker folder is an error.
+test('auto_commit true with a tracker outside the repository: a rev-parse failure that is not "not a git repository" is an UPSTREAM error, the write stays (PMK-279)', () => {
+  withOutsideTracker(({ root, outside }) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pmk279-'))
+    try {
+      fs.writeFileSync(path.join(dir, '.gitconfig'), 'not a config line\n')
+      const result = run(root, ['issues', 'assign', 'ISS-0G5E', 'fred', '--json'], { env: { GIT_CONFIG_GLOBAL: path.join(dir, '.gitconfig') } })
+      assert.equal(result.status, 2, result.stdout + result.stderr)
+      const { error } = JSON.parse(result.stdout)
+      assert.equal(error.code, 'UPSTREAM')
+      assert.match(error.message, /the write succeeded but auto_commit failed: fatal: bad config line 1 in file <path>$/)
+      assert.match(error.nextStep, /^Commit the tracker files .*yourself$/)
+      assert.ok(!/nothing was committed/.test(result.stdout + result.stderr))
+      assert.match(fs.readFileSync(path.join(outside, 'issues/ISS-0G5E/issue.md'), 'utf8'), /assignee: fred/)
+      const everything = result.stdout + result.stderr
+      for (const forbidden of [dir, fs.realpathSync(dir), outside, fs.realpathSync(outside), '.gitconfig']) assert.ok(!everything.includes(forbidden), `${forbidden} in ${everything}`)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+test('auto_commit true with a tracker outside the repository and outside any git repository keeps the note (PMK-279)', () => {
+  withOutsideTracker(({ root, outside }) => {
+    const result = run(root, ['issues', 'assign', 'ISS-0G5E', 'fred', '--json'])
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+    assert.match(result.stderr, /^note: .*not in a git repository, so nothing was committed/m)
+    assert.ok(!(result.stdout + result.stderr).includes(outside), 'no absolute path')
+  }, { init: false })
+})
+
+test('auto_commit true with a tracker outside any git repository keeps the note when git is localized (PMK-279 review)', () => {
+  const realGit = spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim()
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'pmk279-bin-'))
+  // A git that answers rev-parse in Portuguese unless LC_ALL is C, and passes everything else to the real git.
+  fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh
+for arg in "$@"; do
+  if [ "$arg" = rev-parse ] && [ "$LC_ALL" != C ]; then
+    echo 'fatal: não é um repositório git (nem qualquer dos diretórios pais): .git' >&2
+    exit 128
+  fi
+done
+exec '${realGit}' "$@"
+`, { mode: 0o755 })
+  try {
+    withOutsideTracker(({ root }) => {
+      const result = run(root, ['issues', 'assign', 'ISS-0G5E', 'fred', '--json'], { env: { PATH: `${bin}${path.delimiter}${process.env.PATH}`, LC_ALL: 'pt_BR.UTF-8' } })
+      assert.equal(result.status, 0, result.stdout + result.stderr)
+      assert.match(result.stderr, /^note: .*not in a git repository, so nothing was committed/m)
+    }, { init: false })
+  } finally {
+    fs.rmSync(bin, { recursive: true, force: true })
+  }
 })
