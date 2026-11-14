@@ -3,3 +3,6 @@
 {"at":"2026-11-14T19:48:44Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-14T19:48:48Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-320-write-in-place-past-a-fence-its-quote-or"}
 {"at":"2026-11-14T19:50:52Z","by":"fred","op":"comment","to":"2026-11-14T19-50-52Z-fred.md"}
+{"at":"2026-11-14T20:04:36Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T20:04:36Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T20:04:36Z","by":"fred","op":"update","field":"acceptance_criteria"}
