@@ -2098,6 +2098,8 @@ for (const [name, text] of [
   ['a fence a quote closes with a blank line', '## Status\n\nAccepted\n\n> ```\n> ## X\n\nDate: 2024-01-02\n\n## Context\n'],
   ['a fence a list item closes with a blank line', '## Status\n\nAccepted\n\n- ```\n  ## X\n\nDate: 2024-01-02\n\n## Context\n'],
   ['a ~~~ fence a quote closes with a line that has no marker', '## Status\n\nAccepted\n\n> ~~~\n> ## X\nDate: 2024-01-02\n\n## Context\n'],
+  ['a fence a quote closes with a date line before a setext heading', '## Status\n\nAccepted\n\n> ```\n> ## X\n\nDate: 2024-01-02\n\nFoo\n---\n'],
+  ['a fence a list item closes with a date line before a setext heading', '## Status\n\nAccepted\n\n- ```\n  ## X\n\nDate: 2024-01-02\n\nFoo\n===\n'],
   ['a fence a list item closes after a blank line and an indented line', '## Status\n\nAccepted\n\n- ```\n  a\n\n  ## X\n\nDate: 2024-01-02\n\n## Context\n'],
   ['a setext heading in a fence a quote closes', '## Status\n\nAccepted\n\n> ```\n> X\n> ---\n\nDate: 2024-01-02\n\n## Context\n'],
   ['a fence in a quote in a list item that the item closes', '## Status\n\nAccepted\n\n- > ```\n  > ## X\n\nDate: 2024-01-02\n\n## Context\n'],
@@ -2131,6 +2133,13 @@ for (const [name, text, guard] of [
   ['an unclosed fence after the status line', '## Status\n\nAccepted\n\n```\n## X\n', 'fence'],
   ['a quoted fence the quote closes after the status line', '## Status\n\nAccepted\n\n> ```\n> ## X\n\n## Context\n', 'fence'],
   // PMK-317: a container that is still open at the heading that ends the section, or at the end of the file, and the whole-section replacements.
+  // PMK-317 review: a setext heading that ends the section is the heading, as `## Context` is: the `Foo` line is not a line of the section.
+  ['a quoted fence a setext heading ends the section after (---)', '## Status\n\nAccepted\n\n> ```\n> ## X\n\nFoo\n---\n', 'fence'],
+  ['a quoted fence a setext heading ends the section after, no blank line (---)', '## Status\n\nAccepted\n\n> ```\n> ## X\nFoo\n---\n', 'fence'],
+  ['a quoted fence a setext heading ends the section after (===)', '## Status\n\nAccepted\n\n> ~~~\n> ## X\n\nFoo\n===\n\nWhy.\n', 'fence'],
+  ['an item fence a setext heading ends the section after', '## Status\n\nAccepted\n\n- ```\n  ## X\n\nFoo\n---\n', 'fence'],
+  ['an item fence a setext heading ends the section after, no blank line', '## Status\n\nAccepted\n\n- ```\n  ## X\nFoo\n---\n', 'fence'],
+  ['an item fence a setext heading ends the section after, the underlined paragraph starting at the line that ends the item', '## Status\n\nAccepted\n\n- ```\n  ## X\nDate: 2024-01-02\nFoo\n---\n', 'fence'],
   ['an item fence the item closes only at the heading', '## Status\n\nAccepted\n\n- ```\n  ## X\n\n## Context\n', 'fence'],
   ['a quoted fence open at the end of the file', '## Status\n\nAccepted\n\n> ```\n> ## X\n', 'fence'],
   ['an item fence open at the end of the file', '## Status\n\nAccepted\n\n- ```\n  ## X\n', 'fence'],

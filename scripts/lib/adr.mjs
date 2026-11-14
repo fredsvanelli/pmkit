@@ -228,16 +228,16 @@ const keepsText = (paragraph) => {
  */
 function sectionEnd(lines, from, held = []) {
   const open = [{ type: 'document' }]
-  // The fences their container dropped, until a later non-blank line of the section settles them as `ended` (PMK-317): the line that ends the section returns before it settles, and so does the end of the file.
-  let dropped = []
-  let afterBlank = true
-  const settle = () => {
-    if (!afterBlank) for (const block of dropped.splice(0)) block.ended = true
+  // The fences their quote or list item dropped, `droppedAt` the line that did (PMK-317). Whether each is `ended` is decided where the section ends: a non-blank line of the section from that line on.
+  const dropped = []
+  const finish = (end) => {
+    let last = end - 1
+    while (last > from && lines[last].trim() === '') last--
+    for (const block of dropped) if (block.droppedAt <= last) block.ended = true
+    return end
   }
   for (let j = from + 1; j < lines.length; j++) {
-    settle()
     const line = lines[j]
-    afterBlank = line.trim() === ''
     let offset = 0
     let column = 0
     let next, nextColumn, indent, blank
@@ -298,7 +298,7 @@ function sectionEnd(lines, from, held = []) {
     }
     if (closedFence) continue
     // A fence is a leaf, so one the line did not continue is dropped with its quote or list item, not by a closing line.
-    if (matched < open.length - 1 && open.at(-1).type === 'fence') dropped.push(open.at(-1))
+    if (matched < open.length - 1 && open.at(-1).type === 'fence') dropped.push(Object.assign(open.at(-1), { droppedAt: j }))
     // A line the open HTML block continues; the block itself starts on an earlier line.
     if (matched >= 1 && matched === open.length - 1 && open[matched].type === 'fence' && !blank) held.push({ at: j, text: line.slice(offset), block: open[matched] })
     if (matched >= 1 && matched === open.length - 1 && open[matched].type === 'html') {
@@ -332,7 +332,7 @@ function sectionEnd(lines, from, held = []) {
         continue
       } else if (indent < 4 && CM_ATX.test(rest)) {
         add({ type: 'heading' })
-        if (container === 1) return j
+        if (container === 1) return finish(j)
       } else if (indent < 4 && CM_FENCE.test(rest)) {
         const fence = CM_FENCE.exec(rest)[0]
         add({ type: 'fence', char: fence[0], length: fence.length, first: rest.trim(), start: j })
@@ -341,7 +341,7 @@ function sectionEnd(lines, from, held = []) {
         add({ type: 'html', kind, first: rest.trim() })
       } else if (indent < 4 && inParagraph && CM_SETEXT.test(rest) && keepsText(open[container])) {
         // The whole paragraph becomes the heading, so the section stops at its first line.
-        if (container === 1) return open[1].start
+        if (container === 1) return finish(open[1].start)
         open[container] = { type: 'heading' }
       } else if (indent < 4 && CM_BREAK.test(rest)) {
         add({ type: 'break' })
@@ -385,9 +385,8 @@ function sectionEnd(lines, from, held = []) {
     else if (leaf.type === 'html' && leaf.kind <= 5 && HTML_CLOSE[leaf.kind].test(rest)) open.length = container
     else if (!blank && !LEAVES.has(leaf.type)) add({ type: 'paragraph', start: j, text: `${rest}\n` })
   }
-  settle()
   held.unclosed = open.at(-1).type === 'html' && open.at(-1).kind <= 5 ? open.at(-1) : null
-  return lines.length
+  return finish(lines.length)
 }
 
 /**
@@ -439,7 +438,7 @@ export function adrFenceHeld(text) {
 }
 /**
  * The fences `adrFenceHeld` names, in order, `{ opener, start, closer }`: `opener` the trimmed opening line without its quote or list prefix, `start` and `closer` the lines (indices into the
- * lines of the text) of the opening and closing line, `closer` undefined for a fence that never closes. The refusal names each opener with its fence and takes both lines out of the other
+ * lines of the text) of the opening and closing line, `closer` undefined for a fence with no closing line: one that never closes, or one its quote or list item ends (PMK-317). The refusal names each opener with its fence and takes both lines out of the other
  * text by their line, not their text (PMK-316; the closing line, PMK-313).
  */
 export function adrFenceBlocks(text) {
