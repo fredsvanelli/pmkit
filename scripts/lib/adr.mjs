@@ -464,7 +464,10 @@ const statusSection = (lines, section, end) => {
   const orig = lines.slice(section + 1, end)
   const raw = orig.map((item) => item.trim())
   const count = raw.filter(Boolean).length
-  return { raw, at: statusLineOf(raw), safe: count > 1 ? topLevelStatus(orig) : -1, count }
+  const top = count > 1 ? topLevelStatus(orig) : -1
+  // Another line that reads as a known status makes the section ambiguous (two statuses): it is read whole and a write is refused, as before PMK-311.
+  const safe = top !== -1 && raw.some((item, i) => i !== top && item !== '' && readsAsStatus(item)) ? -1 : top
+  return { raw, at: statusLineOf(raw), safe, count }
 }
 /**
  * The trimmed non-blank lines `setAdrStatus` deletes from the `## Status` section besides the line that is the status (PMK-306), in order, `[]` when the section

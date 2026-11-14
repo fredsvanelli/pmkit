@@ -326,7 +326,7 @@ test('setAdrStatus replaces the body of a ## Status section, the Nygard format, 
   const nygard = '# 4. Use X\n\nDate: 2026-11-10\n\n## Status\n\nAccepted\n\n## Context\n\nWhy.\n'
   assert.deepEqual(setAdrStatus(nygard, 'deprecated'), { text: '# 4. Use X\n\nDate: 2026-11-10\n\n## Status\n\nDeprecated\n\n## Context\n\nWhy.\n', before: 'Accepted', after: 'Deprecated' })
   const twoLines = '# T\n\n## Status\n\nProposed\nAccepted after review\n\n## Context\n'
-  assert.deepEqual(setAdrStatus(twoLines, 'superseded', 'docs/adr/0009-b.md'), { text: '# T\n\n## Status\n\nSuperseded by docs/adr/0009-b.md\nAccepted after review\n\n## Context\n', before: 'Proposed', after: 'Superseded by docs/adr/0009-b.md' })
+  assert.deepEqual(setAdrStatus(twoLines, 'superseded', 'docs/adr/0009-b.md'), { text: '# T\n\n## Status\n\nSuperseded by docs/adr/0009-b.md\n\n## Context\n', before: 'Proposed Accepted after review', after: 'Superseded by docs/adr/0009-b.md' })
   assert.equal(setAdrStatus('# T\n\n## status\n\naccepted\n', 'deprecated').text, '# T\n\n## status\n\nDeprecated\n')
   assert.deepEqual(setAdrStatus('# T\n\n## Status\n\n## Context\n', 'accepted'), { text: '# T\n\n## Status\n\nAccepted\n\n## Context\n', before: null, after: 'Accepted' })
 })
@@ -1740,7 +1740,7 @@ test('docs adr-status ... superseded --by N keeps a Supersedes line and adds no 
 })
 test('a kept line that already names the --by ADR (by number or file name) gets a note, never a second line (PMK-311)', async () => {
   const root = repo()
-  writeAdr(root, 'docs/adr/0005-a.md', '# A\n\n## Status\n\nAccepted\nSuperseded by [ADR 7](0007-b.md)\n')
+  writeAdr(root, 'docs/adr/0005-a.md', '# A\n\n## Status\n\nAccepted\nSee [ADR 7](0007-b.md)\n')
   writeAdr(root, 'docs/adr/0007-b.md', '# B\n')
   const result = await adrStatus(root, '5', 'superseded', '--by', '7', '--dry-run')
   assert.equal(result.code, 0, result.stderr)
@@ -1781,6 +1781,8 @@ const UNSAFE = [
   ['an emphasised Supersedes line before the status', '## Status\n\n**Supersedes** [ADR 2](0002-x.md)\n\nAccepted\n\n## Context\n'],
   ['a date line with a non-ASCII key before the status', '## Status\n\nDécidé le: 2024\n\nAccepted\n\n## Context\n'],
   ['an unknown status word, then a date', '## Status\n\nPending review\nDate: 2024-01-02\n\n## Context\n'],
+  ['a second line that also reads as a known status', '## Status\n\nAccepted\n\nSuperseded by [ADR 5](0005-x.md)\n\n## Context\n'],
+  ['a second line that reads as a status in another case, with emphasis', '## Status\n\nProposed\n**Accepted**\n\n## Context\n'],
 ]
 for (const [name, text] of UNSAFE) {
   test(`adr-status refuses ${name}, reads the whole section, and writes nothing (PMK-311 review)`, async () => {
@@ -1803,6 +1805,14 @@ test('a status word with emphasis, any case, or a common ADR status (proposed, r
     assert.equal(adrInfo(text).status, line, line)
     assert.equal(setAdrStatus(text, 'deprecated').text, `## Status\n\nDeprecated\n${other}\n\n## Context\n`, line)
   }
+})
+test('an ambiguous section is refused without the note about a continuation, and the refusal also covers an unknown status word (PMK-311 review)', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0001-a.md', '## Status\n\nAccepted\n\nSuperseded by [ADR 5](0005-x.md)\n')
+  const refusal = (await adrStatus(root, '1', 'deprecated', '--dry-run')).data.error
+  assert.match(refusal.message, /"Superseded by \[ADR 5\]\(0005-x\.md\)"/)
+  assert.match(refusal.nextStep, /word that is not a known status/)
+  assert.match(refusal.nextStep, /two lines that read as a status/)
 })
 test('a Status section of one line writes as before PMK-311, whatever the line looks like (PMK-311 review)', async () => {
   for (const line of ['- Accepted', '> Accepted', '<!-- Accepted -->', 'Date: 2024-01-02', '    Accepted']) {

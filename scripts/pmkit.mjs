@@ -436,7 +436,7 @@ const htmlHeldNote = (adrPath, { opener, lines }) => `${adrPath}: the HTML block
 /** The step and the note for PMK-302, the code fence that never closes and takes a heading into the Status section; the same shape as the HTML block's (PMK-299). */
 const FENCE_HELD_FIX = 'Close the code fence before the heading: add a closing line after the status, with the same character as the opening one and at least as many of it'
 const FENCE_HELD_STEP = FENCE_HELD_FIX + AGAIN
-const OTHER_TEXT_FIX = 'Put the status on a plain line of its own at the top of the Status section (not inside a comment, a code fence, indented code, a list item or a quote, and not after a Key: value or Supersedes line; other lines may follow it), or move the other text out of the section'
+const OTHER_TEXT_FIX = 'Put the status on a plain line of its own at the top of the Status section (not inside a comment, a code fence, indented code, a list item or a quote, not after a Key: value or Supersedes line, and starting with a known status such as Accepted, Proposed or Superseded by: a word that is not a known status, and two lines that read as a status, are refused); other lines may follow it, or move the other text out of the section'
 const fenceHeldNote = (adrPath, { opener, lines }) => `${adrPath}: the code fence "${opener}" takes ${lines.map((item) => `"${item}"`).join(', ')} into the Status section, so that text reads as part of the status; ${FENCE_HELD_STEP.charAt(0).toLowerCase()}${FENCE_HELD_STEP.slice(1)}`
 
 /** What `docs adr-get --from` says when it has no path (PMK-275). checkUsage and runAdrGet both use it. */
