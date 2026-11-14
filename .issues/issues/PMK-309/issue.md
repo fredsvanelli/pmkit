@@ -2,12 +2,14 @@
 id: PMK-309
 title: Keep npm test output in TAP when piped on Node 26
 type: chore
-status: backlog
+status: in_progress
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-309-keep-npm-test-output-in-tap-when-piped
 created: 2026-11-13T21:09:10.587Z
-updated: 2026-11-13T21:09:10Z
+updated: 2026-11-14T00:11:29Z
 ---
 
 ## Description
@@ -32,5 +34,5 @@ updated: 2026-11-13T21:09:10Z
 
 ## Acceptance criteria
 
-- [ ] A piped `npm test` ends with the `# tests`, `# pass` and `# fail` lines on Node 22 and on Node 26, with a test of the arguments `run-tests.mjs` builds
-- [ ] In a terminal the reporter is not forced, with a test
+- [x] A piped `npm test` ends with the `# tests`, `# pass` and `# fail` lines on Node 22 and on Node 26, with a test of the arguments `run-tests.mjs` builds
+- [x] In a terminal the reporter is not forced, with a test
