@@ -2130,6 +2130,11 @@ for (const [name, text, dropped, kept] of [
   ['indented code in an item as the first line', '## Status\n\n-     Accepted\n\n> Proposed\n\n## Context\n', ['-     Accepted'], '> Proposed'],
   ['a definition in a quote as the first line', '## Status\n\n> [Accepted]: /u\n\n> Proposed\n\n## Context\n', ['> [Accepted]: /u'], '> Proposed'],
   ['a definition in an item as the first line', '## Status\n\n- [Accepted]: /u\n\n> Proposed\n\n## Context\n', ['- [Accepted]: /u'], '> Proposed'],
+  // A definition over two lines: its destination line is part of it, not a line glued to the first line's paragraph.
+  ['a definition over two lines as the first line', '## Status\n\n[Draft]:\nRejected\n\n> Proposed\n\n## Context\n', ['[Draft]:', 'Rejected'], '> Proposed'],
+  // The walk, not a regex, decides: a later line that only looks like a definition is seen, and a line glued to the first line's paragraph is chosen indented or not (it renders the same).
+  ['a later line that only looks like a definition', '## Status\n\nDate: x\n\n[Accepted]:\n\n> see ADR 3\n\n## Context\n', ['Date: x', '> see ADR 3'], '[Accepted]:'],
+  ['a tab-indented line glued to the first line', '## Status\n\nDate: x\n\tAccepted\n\n> see ADR 3\n\n## Context\n', ['Date: x', '> see ADR 3'], 'Accepted'],
   // Review cycle 1: a line that continues a later paragraph (not lazily) does not start one, as its lazy form does not; only the first line's own glued line is out of scope.
   ['a continuation line of a quote', '## Status\n\nDate: x\n\n> see ADR 3\n> Accepted\n\n## Context\n', ['> see ADR 3', '> Accepted'], 'Date: x'],
   ['a continuation line of an item', '## Status\n\nDate: x\n\n- see ADR 3\n  Accepted\n\n## Context\n', ['- see ADR 3', 'Accepted'], 'Date: x'],

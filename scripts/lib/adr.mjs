@@ -489,7 +489,8 @@ const statusLineOf = (raw, orig, paragraphOf) => {
   if (first !== -1 && (hostsLazy(raw[first]) || !OPENS_BLOCK.test(raw[first]))) {
     // Paragraph text the reader sees, as the block walk decides it (`paragraphOf`, PMK-322): a line that starts a paragraph of the section's text or the first one of a quote or item, not a
     // definition, not indented code, a fence, an HTML block, a lazy or a continuation line; or a line glued to the first line's paragraph, which is out of scope and chosen as before.
-    const sees = (i) => paragraphOf(i) === i || paragraphOf(i) === first
+    // A glued line counts only when the first line itself starts a paragraph the reader sees: a definition's later lines are part of it.
+    const sees = (i) => paragraphOf(i) === i || (paragraphOf(first) === first && paragraphOf(i) === first)
     const text = (item, i) => i > first && (OPENS_BLOCK.test(item) ? hostsLazy(item) : !KEY_VALUE.test(item)) && readsAsStatus(item) && sees(i)
     const later = readsAsStatus(raw[first]) && sees(first) ? -1 : raw.findIndex(text)
     return later === -1 ? first : later
