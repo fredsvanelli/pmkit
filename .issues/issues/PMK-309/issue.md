@@ -2,14 +2,14 @@
 id: PMK-309
 title: Keep npm test output in TAP when piped on Node 26
 type: chore
-status: in_review
+status: done
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-309-keep-npm-test-output-in-tap-when-piped
 created: 2026-11-13T21:09:10.587Z
-updated: 2026-11-14T00:25:17Z
+updated: 2026-11-14T01:45:45Z
 ---
 
 ## Description
