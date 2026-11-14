@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { run } from './pmkit.mjs'
 import { makeRepo, tempDir } from './test-helpers.mjs'
-import { assertFastAsync } from './assert-fast.mjs'
+import { assertFast } from './assert-fast.mjs'
 
 // PMK-229: `issues comment --redact` replaces the secrets of the body before the tracker gets it.
 
@@ -67,12 +67,10 @@ test('issues comment --redact on a body that is only a secret posts the mark and
 })
 
 test('issues comment --redact is linear in the blanks inside the body (200k spaces in the middle)', async () => {
-  const { comment } = setup()
+  const { root } = setup()
+  const file = path.join(tempDir('pmkit-comment-redact-'), 'body.md')
   // PMK-307: the call includes the cold start of the CLI; the ceiling is the one of the other probes, and the `/\s+$/` trim of
-  // PMK-229 took 28 s at 50k blanks.
-  await assertFastAsync(async (body) => {
-    const { code, data } = await comment(body, ['--redact'])
-    assert.equal(code, 0)
-    assert.ok(data.body.endsWith('Redacted 1 value.'))
-  }, `before${' '.repeat(200000)}after ${SECRET}\n`)
+  // PMK-229 took 28 s at 50k blanks. PMK-312: the call runs in a Worker (probe-targets.mjs) that stops at the ceiling.
+  const body = `before${' '.repeat(200000)}after ${SECRET}\n`
+  await assertFast('probe-targets.mjs#commentRedact', { root, file, env, body }, undefined, body)
 })

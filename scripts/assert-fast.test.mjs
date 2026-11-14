@@ -1,18 +1,42 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { assertFast, assertFastAsync, PROBE_CEILING_MS } from './assert-fast.mjs'
+import { assertFast, PROBE_CEILING_MS } from './assert-fast.mjs'
 
 // PMK-303, PMK-307: a fixed small limit failed under load (a loaded machine runs the same input 35 times slower), and a growth
 // ratio of two small runs failed too. The probes use a size where a quadratic regex takes tens of seconds or more and linear code
 // takes well under a second, with a ceiling that only quadratic time reaches even when the machine is loaded.
+// PMK-312: the function runs in a Worker that is terminated at the ceiling, so a slow one fails at it and does not hold the run.
 const input = 'a'.repeat(8000)
+const targets = 'assert-fast-targets.mjs'
 
-test('assertFast: a quadratic regex fails it and a linear one passes', () => {
-  assert.throws(() => assertFast((s) => /a+b/.test(s), input, 10), /took [\d.]+ ms/)
-  assertFast((s) => /a/.test(s), input, PROBE_CEILING_MS)
+test('assertFast: a quadratic regex fails it and a linear one passes', async () => {
+  await assert.rejects(assertFast(`${targets}#quadratic`, input, 10), /took [\d.]+ ms/)
+  await assertFast(`${targets}#linear`, [input, input], PROBE_CEILING_MS)
 })
 
-test('assertFastAsync: awaits the call, a quadratic regex fails it and a linear one passes', async () => {
-  await assert.rejects(assertFastAsync(async (s) => /a+b/.test(s), input, 10), /took [\d.]+ ms/)
-  await assertFastAsync(async (s) => /a/.test(s), input)
+test('assertFast: awaits an async export', async () => {
+  await assert.rejects(assertFast(`${targets}#asyncQuadratic`, input, 10), /took [\d.]+ ms/)
+  await assertFast(`${targets}#asyncLinear`, input)
+})
+
+test('assertFast: a function that runs 60 s fails within a few seconds of a 1 s ceiling, names the input and leaves nothing running', async () => {
+  const start = Date.now()
+  await assert.rejects(assertFast(`${targets}#busy60s`, 'long input that is cut', 1000), /^AssertionError.*"long input that is c" took [\d.]+ ms \(stopped at the ceiling of 1000 ms\)/)
+  assert.ok(Date.now() - start < 5000, `took ${Date.now() - start} ms`)
+  // A Worker left in its loop would burn a CPU of this process: the process CPU time over half a second stays far below that.
+  const cpu = process.cpuUsage()
+  await new Promise((r) => setTimeout(r, 500))
+  const { user, system } = process.cpuUsage(cpu)
+  assert.ok((user + system) / 1000 < 250, `the process used ${(user + system) / 1000} ms of CPU in 500 ms`)
+})
+
+test('assertFast: a quadratic regex on a long input stops at the ceiling', async () => {
+  const start = Date.now()
+  await assert.rejects(assertFast(`${targets}#quadratic`, 'a'.repeat(300000), 1000), /stopped at the ceiling/)
+  assert.ok(Date.now() - start < 5000, `took ${Date.now() - start} ms`)
+})
+
+test('assertFast: an error thrown by the function is the failure, and `names` replaces the input in the message', async () => {
+  await assert.rejects(assertFast(`${targets}#throws`, 'x'), /boom/)
+  await assert.rejects(assertFast(`${targets}#quadratic`, input, 10, ['the name']), /"the name" took/)
 })

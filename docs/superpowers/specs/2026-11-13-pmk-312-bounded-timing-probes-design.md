@@ -25,7 +25,7 @@ passes on Node 22.22.0). The probe has to fail a few seconds after its ceiling.
 ## Design
 
 - `assertFast(spec, inputs, limitMs = PROBE_CEILING_MS, names = inputs)` is async. `spec` is `'lib/redact.mjs#redact'`, a module
-  relative to `scripts/` and the export to call (sync or async). A Worner takes no closures, so the probe names the export.
+  relative to `scripts/` and the export to call (sync or async). A Worker takes no closures, so the probe names the export.
   `assertFastAsync` goes away: an async export is awaited in the Worker.
 - One Worker per call runs the inputs in order. The input is posted as a string (cloned: 10 MB for the biggest, a few ms), so
   nothing is built in the Worker. A parent timer ends the wait at the ceiling and terminates the Worker; the Worker start is not
@@ -41,3 +41,14 @@ passes on Node 22.22.0). The probe has to fail a few seconds after its ceiling.
 - Helper test: a 60 s loop with a 1 s ceiling fails in under 5 s; a quadratic regex stops at the ceiling; a linear call passes;
   an error thrown in the export surfaces; no Worker is left (`process.getActiveResourcesInfo()` has no new `Worker`).
 - Time of the probe files before and after, unloaded and with two parallel `npm test`, on Node 22.22.0 and 26.4.0.
+
+## Measurements (load average about 150 from other agents; seconds per probe file, base then new)
+
+| file | Node 22.22.0 | Node 26.4.0 |
+|---|---|---|
+| paths-timing | 34 / 32 | 27 / 33 |
+| redact-probes | 21 / 24 | 19 / 21 |
+| cli-comment-redact | 13 / 14 | 6 / 7 |
+| redact | 7 / 8 | 4 / 4 |
+
+The Worker start is 0.2 to 0.7 s per call; the difference is within the noise of the load. A probe that is slow now fails at its ceiling plus about 0.3 s (60 s loop and a quadratic regex at a 1 s ceiling, `assert-fast.test.mjs`).

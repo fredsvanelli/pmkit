@@ -1465,16 +1465,14 @@ test('an HTML block and a paragraph of link reference definitions end the Status
 // Review of PR #241, cycle 5: an unclosed link title of escapes once made the title pattern backtrack twice per escape. Every
 // pattern of the link reference definition and of the HTML block reads a long line of its own kind in well under the ceiling of
 // assert-fast.mjs (PMK-307).
-test('probe: no link reference definition or HTML block pattern takes ten seconds on a long line of its own kind (PMK-291 cycle 5 review)', () => {
+test('probe: no link reference definition or HTML block pattern takes ten seconds on a long line of its own kind (PMK-291 cycle 5 review)', async () => {
   const n = 20000
   const bodies = [
     `[a]: /u "${'\\!'.repeat(n)}`, `[a]: /u '${'\\!'.repeat(n)}`, `[a]: /u (${'\\!'.repeat(n)}`, `[a]: /u "${'\\!'.repeat(n)}"x`,
     `[${'\\['.repeat(n)}`, `[a${'\\]'.repeat(n)}: /u`, `[a]: ${'('.repeat(n)}`, `[a]: ${'\\('.repeat(n)}(`, `[a]: <${'\\<'.repeat(n)}`,
     '[a]: /u "t"\n'.repeat(n / 5), `[a]: /u\n"${'\\!'.repeat(n)}`, `<x-y${' a=1'.repeat(n)}`, `<x-y${' a="b'.repeat(n)}`,
   ]
-  for (const body of bodies) {
-    assertFast((b) => adrInfo(`# T\n\n## Status\n\n${b}\n---\n\n## Context\n`), body)
-  }
+  await assertFast('probe-targets.mjs#adrInfoBody', bodies)
 })
 
 test('an empty item followed by a line and a === or --- underline ends the Status section at that line, in adr-get and adr-status alike (PMK-292)', async () => {
