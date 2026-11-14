@@ -2,12 +2,14 @@
 id: PMK-311
 title: Keep a date or Supersedes line of the Status section in adr-status
 type: feature
-status: backlog
+status: in_review
 priority: medium
 estimate: 3
+assignee: fred
 parent: EPC-6
+branch: pmk-311-keep-a-date-or-supersedes-line-of-the
 created: 2026-11-14T01:43:01.712Z
-updated: 2026-11-14T01:43:01Z
+updated: 2026-11-14T04:27:47Z
 ---
 
 ## Description
@@ -42,7 +44,7 @@ This reverses the choice of PMK-306 for these lines, so it needs its own design:
 
 ## Acceptance criteria
 
-- [ ] `adr-status` on a MADR ADR (`Accepted` and a date line) and on a Nygard ADR (`Accepted` and a `Supersedes` line) writes the new status and keeps the other line, real and dry run, with tests
-- [ ] `adr-get` on those ADRs reads the status alone (`Accepted`), and a Status section of one line reads as before, with tests
-- [ ] `adr-status ... superseded --by N` on an ADR that already has a `Supersedes` line keeps it and adds no duplicate, with a test
-- [ ] A write that would delete a heading taken in by an HTML block or a code fence is still refused, with the existing tests passing
+- [x] `adr-status` on a MADR ADR (`Accepted` and a date line) and on a Nygard ADR (`Accepted` and a `Supersedes` line) writes the new status and keeps the other line, real and dry run, with tests
+- [x] `adr-get` on those ADRs reads the status alone (`Accepted`), and a Status section of one line reads as before, with tests
+- [x] `adr-status ... superseded --by N` on an ADR that already has a `Supersedes` line keeps it and adds no duplicate, with a test
+- [x] A write that would delete a heading taken in by an HTML block or a code fence is still refused, with the existing tests passing

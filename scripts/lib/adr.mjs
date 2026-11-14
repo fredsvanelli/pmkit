@@ -439,19 +439,70 @@ const statusLineOf = (raw) => {
   if (at === -1) return raw.findIndex((item) => item !== '')
   return at > 0 && hostsLazy(raw[at - 1]) ? at - 1 : at
 }
-// What `setAdrStatus` replaces in a `## Status` section: its trimmed non-blank lines. `adrStatusDropped` reads the same slice, so the guard and the write never disagree.
-const statusBody = (lines, section, end) => lines.slice(section + 1, end).map((item) => item.trim()).filter(Boolean)
+// The line of a `## Status` section that `setAdrStatus` replaces in place and `adrInfo` reads as the status (PMK-311), an index into its lines, -1 when there is none. It is a paragraph line at the
+// top level: not indented 4 columns (code), not a block opener (comment, quote, item, fence, heading, table, HTML), not a `Key: value` or `Supersedes` line (a date is not a status), and reading as a known status, and with only
+// blank lines or one-line comments before it, so it is never inside a comment, a fence, a list item or a quote. Without such a line the section is read whole and a write is refused, as before PMK-311.
+const ONE_LINE_COMMENT = /^<!--.*-->$/
+const KEY_VALUE = /^(?:[A-Za-z][\w ]{0,30}:|supersedes\b)/i
+// A link reference definition and a thematic break are not paragraph text either.
+const NOT_TEXT = /^(?:\[[^\]]*\]:|(?:[-*_][ \t]*){3,}$)/
+// The line must also read as a known status: with the emphasis and punctuation around it removed, its first word is one of `ADR_STATUSES` or a common ADR status, in any case (PMK-311 review).
+// Anything else (a date, a `**Date:**`, a status word nobody listed) is not replaced: the section is read whole and a write is refused, as before PMK-311.
+const KNOWN_STATUS = new Set([...ADR_STATUSES, 'proposed', 'rejected', 'draft'])
+const readsAsStatus = (item) => KNOWN_STATUS.has(/^[^\p{L}\p{N}]*(\p{L}+)/u.exec(item)?.[1].toLowerCase() ?? '')
+const topLevelStatus = (orig) => {
+  for (let i = 0; i < orig.length; i++) {
+    const item = orig[i].trim()
+    if (item === '' || (ONE_LINE_COMMENT.test(item) && /^ {0,3}\S/.test(orig[i]))) continue
+    return /^ {0,3}\S/.test(orig[i]) && !OPENS_BLOCK.test(item) && !KEY_VALUE.test(item) && !NOT_TEXT.test(item) && readsAsStatus(item) ? i : -1
+  }
+  return -1
+}
+// The lines of a `## Status` section: `raw` trimmed, `at` the line `statusLineOf` names for a refusal, `safe` the line that is replaced in place (-1 for none), `count` the non-blank lines.
+// `adrInfo`, `setAdrStatus`, `adrStatusDropped` and `adrKeptLines` all read it here, so reading and writing never disagree.
+const statusSection = (lines, section, end) => {
+  const orig = lines.slice(section + 1, end)
+  const raw = orig.map((item) => item.trim())
+  const count = raw.filter(Boolean).length
+  const top = count > 1 ? topLevelStatus(orig) : -1
+  // Another line that reads as a known status makes the section ambiguous (two statuses): it is read whole and a write is refused, as before PMK-311.
+  const safe = top !== -1 && raw.some((item, i) => i !== top && item !== '' && readsAsStatus(item)) ? -1 : top
+  return { raw, at: statusLineOf(raw), safe, count }
+}
 /**
  * The trimmed non-blank lines `setAdrStatus` deletes from the `## Status` section besides the line that is the status (PMK-306), in order, `[]` when the section
- * holds only the status or there is none. A comment, quote, list item or fence glued to the status or before it counts, a line indented 4 spaces too.
+ * holds only the status or there is none. Since PMK-311 a section with a top-level status line keeps every other line (`topLevelStatus`), so this is `[]` for it; any other section
+ * of more than one line is refused as before: a comment, quote, list item or fence glued to the status or before it counts, a line indented 4 spaces too.
  */
 export function adrStatusDropped(text) {
   const lines = adrText(text).split('\n')
   const { section, end } = locate(lines)
   if (section === -1) return []
-  const raw = lines.slice(section + 1, end(section)).map((item) => item.trim())
-  const status = statusLineOf(raw)
-  return raw.filter((item, i) => item !== '' && i !== status)
+  const { raw, at, safe, count } = statusSection(lines, section, end(section))
+  return count <= 1 || safe !== -1 ? [] : raw.filter((item, i) => item !== '' && i !== at)
+}
+/** The whole `## Status` section, its trimmed non-blank lines joined by a space, null when there is none: where the section ends, which is what the CommonMark check of `scripts/dev` compares. `adrInfo` reads one line of it when it has a top-level status line (PMK-311). */
+export function adrSectionText(text) {
+  const lines = adrText(text).split('\n')
+  const { section, end } = locate(lines)
+  return section === -1 ? null : statusSection(lines, section, end(section)).raw.filter(Boolean).join(' ') || null
+}
+/** The trimmed non-blank lines of the `## Status` section that `setAdrStatus` keeps, `[]` when it replaces the whole section (PMK-311). */
+export function adrKeptLines(text) {
+  const lines = adrText(text).split('\n')
+  const { section, end } = locate(lines)
+  if (section === -1) return []
+  const { raw, safe } = statusSection(lines, section, end(section))
+  return safe === -1 ? [] : raw.filter((item, i) => item !== '' && i !== safe)
+}
+/** The line glued right under the status line that is a plain line (not `Key: value`, not a block) and so may be the rest of a status broken over two lines, null when there is none (PMK-311). */
+export function adrStatusContinuation(text) {
+  const lines = adrText(text).split('\n')
+  const { section, end } = locate(lines)
+  if (section === -1) return null
+  const { raw, safe } = statusSection(lines, section, end(section))
+  const next = safe === -1 ? undefined : raw[safe + 1]
+  return next && !OPENS_BLOCK.test(next) && !KEY_VALUE.test(next) ? next : null
 }
 const withoutBlanks = (lines, from) => {
   let at = from
@@ -470,7 +521,7 @@ export function adrInfo(text) {
     const found = close === -1 ? undefined : lines.slice(1, close).find((item) => new RegExp(`^${name}:`, 'i').test(item))
     return found === undefined ? null : unquote(splitYaml(found.slice(name.length + 1)).value) || null
   }
-  const body = section === -1 ? '' : lines.slice(section + 1, end(section)).map((item) => item.trim()).filter(Boolean).join(' ')
+  const body = section === -1 ? '' : (({ raw, safe }) => (safe === -1 ? raw.filter(Boolean).join(' ') : raw[safe]))(statusSection(lines, section, end(section)))
   const statuses = [yaml > 0 ? key('status') : null, line === -1 ? null : STATUS_LINE.exec(lines[line])[3].trim(), body].filter((value) => value)
   return { title: title === -1 ? key('title') : headingText(lines[title]), status: statuses[0] ?? null, statuses }
 }
@@ -538,12 +589,17 @@ export function setAdrStatus(text, status, byPath) {
     }
     if (section !== -1) {
       const end = endOf(section)
-      const body = statusBody(lines, section, end)
-      if (body.length !== 1 || !same(body[0])) unchanged = false
+      const { raw, safe, count } = statusSection(lines, section, end)
       const label = befores.length > 0 ? '## Status: ' : ''
-      if (body.length > 0) befores.push(`${label}${body.join(' ')}`)
+      // More than the status in the section (a date, a Supersedes line) and a top-level status line: only that line is replaced, the rest stays (PMK-311).
+      const keeps = safe !== -1
+      const body = keeps ? raw[safe] : raw.filter(Boolean).join(' ')
+      if (keeps ? !same(body) : count !== 1 || !same(body)) unchanged = false
+      if (count > 0) befores.push(`${label}${body}`)
       afters.push(`${label}${capitalized(value)}`)
-      lines.splice(section + 1, end - section - 1, '', capitalized(value), '')
+      // The indent stays, so the line keeps the shape it had.
+      if (keeps) lines[section + 1 + safe] = /^\s*/.exec(lines[section + 1 + safe])[0] + capitalized(value)
+      else lines.splice(section + 1, end - section - 1, '', capitalized(value), '')
     }
     // A status that does not change reports the same text on both sides.
     return done(befores.length === 0 ? null : befores.join('; '), unchanged ? befores.join('; ') : afters.join('; '), unchanged)
