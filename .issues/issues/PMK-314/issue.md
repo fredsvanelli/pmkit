@@ -2,14 +2,14 @@
 id: PMK-314
 title: Keep a hard line break and skip guards that delete nothing in the in-place adr-status write
 type: bug
-status: in_review
+status: done
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
 branch: pmk-314-keep-a-hard-line-break-and-skip-guards
 created: 2026-11-14T05:29:38.136Z
-updated: 2026-11-14T06:15:37Z
+updated: 2026-11-14T06:31:11Z
 ---
 
 ## Description
