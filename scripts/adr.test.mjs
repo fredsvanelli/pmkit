@@ -2060,3 +2060,14 @@ test('the continuation note does not name a thematic break (PMK-314)', async () 
   assert.ok(!result.data.notes.some((item) => item.includes('continues the paragraph')), result.data.notes.join('\n'))
   assert.equal(result.data.after, '## Status\n\nDeprecated\n***\n\n## Context\n')
 })
+// PMK-314 review: a space before a break backslash is not part of the status, and only one repeated character is a thematic break.
+test('a status with a space before the break backslash reads without the space, and the write keeps the line as written (PMK-314)', () => {
+  const text = '## Status\n\nAccepted \\\nDate: 2024-01-02\n'
+  assert.equal(adrInfo(text).status, 'Accepted')
+  assert.equal(setAdrStatus(text, 'accepted').text, text)
+  assert.equal(setAdrStatus(text, 'deprecated').text, '## Status\n\nDeprecated\\\nDate: 2024-01-02\n')
+  assert.equal(adrInfo('## Status\n\nAccepted \\\n').status, 'Accepted')
+})
+test('the continuation note still names a line of mixed thematic characters, which CommonMark takes as text (PMK-314)', () => {
+  for (const line of ['-_-', '*-*', '_*_', '-*_']) assert.equal(adrStatusContinuation(`## Status\n\nAccepted\n${line}\n\n## Context\n`), line, line)
+})

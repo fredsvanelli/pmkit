@@ -447,6 +447,8 @@ const OPENS_BLOCK = /^(?:<|>|`{3,}[^`]*$|~{3,}|#|\||=|[-+*](?:\s|$)|\d+[.)](?:\s
 // Only an open paragraph takes a lazy line: an item or quote hosts one only when what follows its marker is text, not a block start (comment, heading, fence, nested marker, thematic break).
 const MARKER = /^(?:>|[-+*]\s|\d+[.)]\s)\s*/
 const THEMATIC = /^(?:[-*_][ \t]*){3,}$/
+// A thematic break is one character repeated (`-_-` is text); the continuation note (PMK-314) uses this one, the two above keep their reading so the choice of the status line is as in develop.
+const THEMATIC_BREAK = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/
 // Nested markers (`- - Accepted`, `- > Accepted`) are stripped one by one: the innermost content is the paragraph that takes the lazy line (PMK-313).
 const hostsLazy = (item) => {
   let rest = item
@@ -498,7 +500,7 @@ const statusSection = (lines, section, end) => {
   // The status line when it is read alone (the in-place line, or the only line of a one-line section), without its hard line break (PMK-314).
   const only = safe !== -1 ? safe : count === 1 ? raw.findIndex(Boolean) : -1
   const brk = only === -1 ? '' : hardBreak(orig[only])
-  return { raw, at: statusLineOf(raw), safe, count, brk, text: only === -1 ? null : raw[only].slice(0, raw[only].length - (brk === '\\' ? 1 : 0)) }
+  return { raw, at: statusLineOf(raw), safe, count, brk, text: only === -1 ? null : (brk === '\\' ? raw[only].slice(0, -1).trimEnd() : raw[only]) }
 }
 // Whether the write replaces one line and keeps the rest, so nothing is deleted and the guards for what a replaced section loses do not run (PMK-314).
 const replacesInPlace = (lines, section) => statusSection(lines, section, sectionEnd(lines, section)).safe !== -1
@@ -535,7 +537,7 @@ export function adrStatusContinuation(text) {
   if (section === -1) return null
   const { raw, safe } = statusSection(lines, section, end(section))
   const next = safe === -1 ? undefined : raw[safe + 1]
-  return next && !OPENS_BLOCK.test(next) && !KEY_VALUE.test(next) && !THEMATIC.test(next) ? next : null
+  return next && !OPENS_BLOCK.test(next) && !KEY_VALUE.test(next) && !THEMATIC_BREAK.test(next) ? next : null
 }
 const withoutBlanks = (lines, from) => {
   let at = from
