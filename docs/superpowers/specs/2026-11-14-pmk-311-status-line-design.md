@@ -13,14 +13,17 @@ PMK-306 refused when the `## Status` section holds text besides the status, beca
 
 ## Approaches
 1. First paragraph as status. Rejected: MADR `Accepted` and `Date:` are adjacent lines, one paragraph.
-2. One line (chosen): `statusLineOf` (PMK-310): first non-blank line that does not open a block, else the first.
+2. One top-level paragraph line (chosen, review cycle 1): `topLevelStatus`, see Design. The first version took `statusLineOf` (PMK-310) and wrote inside comments, fences and code, or took a date for the status.
 3. Keep refusing. Rejected: the issue.
 
 ## Design
-- `adrInfo`: the section part of `statuses` is `statusLineOf(trimmed section lines)` (empty section: none). One line sections read as before; a wrapped status reads as its first line.
-- `setAdrStatus`: in a section with exactly one non-blank line, write as before (`''`, status, `''`). With more, replace only the status line in place, other lines (and blanks) untouched; `before` is that line, not the joined section. Unchanged check compares that line.
-- `adrStatusDropped` (`adrStatusDropped` of PMK-306) keeps a single remaining cause: a section whose lines all open a block (no plain line) and has more than one non-blank line. There the first line is not a safe replacement (swapping a fence opener would leave its closing line to open a fence that swallows the next heading), so the write refuses with the OTHER_TEXT fix. Everything else it used to name is kept now.
-- Guards: `adrHtmlHeld` and `adrFenceHeld` unchanged and still refuse, conservatively, whenever a block takes a heading into the section.
-- `--by N`: `adr-status` writes only `Superseded by <path>` as the status; it never writes a `Supersedes` line (the new ADR has it), so nothing is duplicated. A kept line that already cites ADR N (by number `ADR N` or the path's file name) adds a note, never a second line.
-- adr-commonmark-diff: the oracle reads the whole section, so every multi-line section reads differently on purpose; one-line sections must stay right. Report counts.
+- `topLevelStatus(lines)` (adr.mjs): the status line is the first non-blank line of the section after blanks and one-line comments, when it is indented under 4 columns, does not open a block (`OPENS_BLOCK`), is not a link reference definition or thematic break, and is not `Key: value` or `Supersedes ...`; else none. It applies only when the section has more than one non-blank line.
+- `adrInfo`: the section part of `statuses` is that line; with none (or one non-blank line) it is the section joined, as before PMK-311. A status broken over two lines is read as its first line only.
+- `setAdrStatus`: with a top-level status line, replace only it (indent kept), the rest of the section untouched; `before` is that line. Otherwise as before PMK-311 (a one-line section is rewritten as `''`, status, `''`).
+- `adrStatusDropped`: `[]` for one line or a top-level status line; otherwise the lines the old write deleted (as in PMK-306 and PMK-310), so a multi-line section with no such line is refused as before PMK-311. Its next step (`OTHER_TEXT_FIX`) says to put the status on a plain line of its own at the top; other lines may follow.
+- Nothing that was written before PMK-311 is refused now: a one-line section (`- Accepted` alone) writes as before.
+- A plain line glued under the status (not `Key: value`) is kept and noted in the dry run: it may be the rest of a status broken over two lines (read as the first line only, ADR 0006).
+- Guards: `adrHtmlHeld` and `adrFenceHeld` unchanged and still refuse when a block takes a heading into the section.
+- `--by N`: `adr-status` writes only `Superseded by <path>` as the status and never a `Supersedes` line (the new ADR has it), so nothing is duplicated. A kept line that already cites ADR N (`ADR N` or the file name) adds a note.
+- adr-commonmark-diff compares `adrSectionText` (the whole section) with CommonMark and counts how `adrInfo` reads it.
 - Docs: record-decision step 7 and its scenario/golden, adr-status.md, README, CHANGELOG.

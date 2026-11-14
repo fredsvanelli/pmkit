@@ -1588,8 +1588,8 @@ test('a 9-digit ordered marker is still a list item, so the Status section stays
 
 // PMK-306: the fixture says whether the Status section holds more than the status (its `status` is neither null nor just Accepted): then adr-status refuses and the file stays as it was, else it writes `written`.
 async function statusWrites(root, number, file, text, written, name, status) {
-  // PMK-311: refused when no line is safe to replace (all open a block) or the write would change how the kept lines read.
-  const refused = adrStatusDropped(text).length > 0 || JSON.stringify(adrKeptLines(written)) !== JSON.stringify(adrKeptLines(text))
+  // PMK-311: refused when the section has more than the status and no top-level status line to replace.
+  const refused = adrStatusDropped(text).length > 0
   assert.equal((await adrStatus(root, number, 'deprecated')).code, refused ? 2 : 0, name)
   assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), refused ? text : written, name)
 }
@@ -1692,8 +1692,6 @@ for (const [name, text] of FENCE_OK) {
 // PMK-311 (reverses PMK-306): adr-status replaces only the status line and keeps every other line of the Status section; adrStatusDropped is empty for these.
 const OTHER = [
   ['a paragraph after the status', '## Status\n\nAccepted\n\nWhy this was chosen.\n'],
-  ['text after a fence that never closes (no heading)', '## Status\n\n```\nAccepted\n\nWhy this was chosen.\n'],
-  ['a line indented 4 spaces in a fence', '## Status\n\n```\nAccepted\n\n    ## Context\n\nWhy.\n'],
   ['a comment before the status', '## Status\n\n<!-- note -->\n\nAccepted\n\n## Context\n'],
   ['CRLF line ends', '## Status\r\n\r\nAccepted\r\n\r\nWhy this was chosen.\r\n'],
   ['a list item glued to the status', '## Status\n\nAccepted\n- Supersedes ADR 3\n\n## Context\n'],
@@ -1701,7 +1699,6 @@ const OTHER = [
   ['a comment glued to the status', '## Status\n\nAccepted\n<!-- x -->\n\n## Context\n'],
   ['a closed fence glued to the status', '## Status\n\nAccepted\n```\ncode\n```\n\n## Context\n'],
   ['a lazy line glued to the status', '## Status\n\nAccepted\nWhy.\n\n## Context\n'],
-  ['a closed fence around the status', '## Status\n\n```\nAccepted\n```\n\n## Context\n'],
   ['a MADR date line (PMK-311)', '# T\n\n## Status\n\nAccepted\nDate: 2024-01-02\n\n## Context\n'],
   ['a Nygard Supersedes line (PMK-311)', '# T\n\n## Status\n\nAccepted\n\nSupersedes [ADR 3](0003-x.md)\n\n## Context\n'],
 ]
@@ -1759,20 +1756,58 @@ test('a Status section whose lines all open a block, with more than one line, is
     const result = await adrStatus(root, '1', 'deprecated', ...flags)
     assert.equal(result.code, 2)
     assert.match(result.data.error.message, /the other text of the Status section, "> more"/)
-    assert.match(result.data.error.nextStep, /Move that text out of the Status section/)
+    assert.match(result.data.error.nextStep, /Put the status on a plain line of its own/)
     assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
   }
 })
-test('a write that would change how the kept lines read is refused, dry run too, and writes nothing (PMK-311)', async () => {
-  const text = '## Status\n\n- a\nlazy\n\n  b\n---\n\n## Context\n'
-  const root = repo()
-  writeAdr(root, 'docs/adr/0001-a.md', text)
-  for (const flags of [['--dry-run'], []]) {
-    const result = await adrStatus(root, '1', 'deprecated', ...flags)
-    assert.equal(result.code, 2)
-    assert.match(result.data.error.message, /would change how the rest of the Status section reads.*nothing was written/)
-    assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+// PMK-311 review: the line is replaced in place only when it is a paragraph line at the top level (no comment, fence, code, item, quote or HTML around it, only blanks or one-line comments before it, and not a `Key: value` or `Supersedes` line); else the write is refused as before PMK-311 and the reading is the whole section.
+const UNSAFE = [
+  ['a multi-line comment around a template hint', '## Status\n\n<!--\nProposed | Accepted | Deprecated\n-->\nAccepted\n\n## Context\n'],
+  ['a fence around the status and a visible line after it', '## Status\n\n```\nAccepted\n```\nProposed\n\n## Context\n'],
+  ['indented code before the status', '## Status\n\n    code\nAccepted\n\n## Context\n'],
+  ['a list item status, a blank line and a date', '## Status\n\n- Accepted\n\nDate: 2024-01-02\n\n## Context\n'],
+  ['a * item status, a blank line and a date', '## Status\n\n* Accepted\n\nDate: 2024-01-02\n\n## Context\n'],
+  ['an ordered item status, a blank line and a date', '## Status\n\n1. Accepted\n\nDate: 2024-01-02\n\n## Context\n'],
+  ['a quote status, a blank line and a Supersedes line', '## Status\n\n> Accepted\n\nSupersedes [ADR 3](0003-x.md)\n\n## Context\n'],
+  ['an HTML status, a blank line and a date', '## Status\n\n<b>Accepted</b>\n\nDate: 2024-01-02\n\n## Context\n'],
+  ['a table status, a blank line and a date', '## Status\n\n| Accepted |\n\nDate: 2024-01-02\n\n## Context\n'],
+  ['a date line before the status', '## Status\n\nDate: 2024-01-02\n\nAccepted\n\n## Context\n'],
+  ['a Supersedes line before the status', '## Status\n\nSupersedes [ADR 3](0003-x.md)\n\nAccepted\n\n## Context\n'],
+  ['a list item status with a continuation line', '## Status\n\n- Accepted\n  Date: 2024-01-02\n\n## Context\n'],
+  ['a quote status with a date line', '## Status\n\n> Accepted\nDate: 2024-01-02\n\n## Context\n'],
+]
+for (const [name, text] of UNSAFE) {
+  test(`adr-status refuses ${name}, reads the whole section, and writes nothing (PMK-311 review)`, async () => {
+    assert.ok(adrStatusDropped(text).length > 0, 'names the other text')
+    assert.equal(adrInfo(text).status, adrSectionText(text))
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    assert.equal((await adrGetFrom(root, '1')).data.status, adrSectionText(text))
+    for (const flags of [['--dry-run'], []]) {
+      const result = await adrStatus(root, '1', 'deprecated', ...flags)
+      assert.equal(result.code, 2, flags.join(' '))
+      assert.match(result.data.error.message, /the other text of the Status section/)
+      assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+    }
+  })
+}
+test('a Status section of one line writes as before PMK-311, whatever the line looks like (PMK-311 review)', async () => {
+  for (const line of ['- Accepted', '> Accepted', '<!-- Accepted -->', 'Date: 2024-01-02', '    Accepted']) {
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', `## Status\n\n${line}\n\n## Context\n`)
+    assert.equal((await adrStatus(root, '1', 'deprecated')).code, 0, line)
+    assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), '## Status\n\nDeprecated\n\n## Context\n', line)
   }
+})
+test('a one-line comment before the status is skipped, and the line after the status that continues its paragraph gets a note (PMK-311 review)', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0001-a.md', '## Status\n\n<!-- pick one -->\nAccepted\nwith conditions\n\n## Context\n')
+  const result = await adrStatus(root, '1', 'deprecated', '--dry-run')
+  assert.equal(result.code, 0, result.stderr)
+  assert.equal(result.data.after, '## Status\n\n<!-- pick one -->\nDeprecated\nwith conditions\n\n## Context\n')
+  assert.ok(result.data.notes.some((item) => item.includes('"with conditions"') && item.includes('rest of the old status')), result.data.notes.join('\n'))
+  writeAdr(root, 'docs/adr/0002-b.md', '## Status\n\nAccepted\nDate: 2024-01-02\n\n## Context\n')
+  assert.ok(!(await adrStatus(root, '2', 'deprecated', '--dry-run')).data.notes.some((item) => item.includes('rest of the old status')))
 })
 test('docs adr-status writes as before for a section that holds only the status (PMK-306)', async () => {
   for (const text of ['## Status\n\nAccepted\n\n## Context\n\nWhy.\n', '## Status\r\n\r\nAccepted\r\n', '# T\n\nNo section\n']) assert.deepEqual(adrStatusDropped(text), [])
@@ -1781,7 +1816,7 @@ test('docs adr-status writes as before for a section that holds only the status 
   assert.equal((await adrStatus(root, '1', 'deprecated')).code, 0)
   assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), '## Status\n\nDeprecated\n\n## Context\n\nWhy.\n')
 })
-test('docs adr-status names the HTML block and the fence in one refusal, and no other text (PMK-306, PMK-311)', async () => {
+test('docs adr-status names the HTML block, the fence and the other text in one refusal (PMK-306)', async () => {
   const text = '## Status\n\n```\n## A\n```\n\nAccepted\n\n<div>\n## B\n\nWhy.\n'
   const root = repo()
   writeAdr(root, 'docs/adr/0001-a.md', text)
@@ -1791,9 +1826,10 @@ test('docs adr-status names the HTML block and the fence in one refusal, and no 
     const { message, nextStep } = result.data.error
     assert.match(message, /the HTML block "<div>"/)
     assert.match(message, /the code fence "```"/)
-    assert.ok(!message.includes('the other text'), message)
+    assert.match(message, /the other text of the Status section/)
     assert.match(nextStep, /close a comment with -->/)
     assert.match(nextStep, /Close the code fence/)
+    assert.match(nextStep, /Put the status on a plain line of its own/)
     assert.equal(nextStep.match(/then run the command again/g).length, 1)
     assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
   }
@@ -1811,23 +1847,23 @@ for (const [name, text, quoted, causes] of NAMED) {
     const { message, nextStep } = (await adrStatus(root, '1', 'deprecated', '--dry-run')).data.error
     for (const cause of causes) assert.ok(message.includes(cause), cause)
     assert.equal(message.split(`"${quoted[0]}"`).length - 1, 1, message)
-    assert.equal(nextStep.match(/Move that text out/g)?.length ?? 0, 0, nextStep)
+    assert.equal(nextStep.match(/Put the status on a plain line/g)?.length ?? 0, 0, nextStep)
   })
 }
 const STATUS_NAMED = [
-  ['a code span then a line', '## Status\n\n`Accepted`\nDate: 2020\n\n## Context\n', '`Accepted`'],
-  ['a list item then a lazy line', '## Status\n\n- Accepted\nlazy\n\n## Context\n', '- Accepted'],
-  ['a quote then a lazy line', '## Status\n\n> Accepted\nlazy\n\n## Context\n', '> Accepted'],
+  ['a list item then a lazy line', '## Status\n\n- Accepted\nlazy\n\n## Context\n', ['lazy'], '- Accepted'],
+  ['a quote then a lazy line', '## Status\n\n> Accepted\nlazy\n\n## Context\n', ['lazy'], '> Accepted'],
 ]
-for (const [name, text, status] of STATUS_NAMED) {
-  test(`${name}: the status is the first line, the rest is kept (PMK-310, PMK-311)`, async () => {
-    assert.deepEqual(adrStatusDropped(text), [])
-    assert.equal(adrInfo(text).status, status)
+for (const [name, text, dropped, status] of STATUS_NAMED) {
+  test(`the refusal for ${name} names the extra line, not the status (PMK-310)`, async () => {
+    assert.deepEqual(adrStatusDropped(text), dropped)
     const root = repo()
     writeAdr(root, 'docs/adr/0001-a.md', text)
     const result = await adrStatus(root, '1', 'deprecated', '--dry-run')
-    assert.equal(result.code, 0, result.stderr)
-    assert.equal(result.data.after, text.replace(status, 'Deprecated'))
+    assert.equal(result.code, 2)
+    const { message } = result.data.error
+    for (const line of dropped) assert.ok(message.includes(`"${line}"`), line)
+    assert.ok(!message.includes(`"${status}"`), message)
   })
 }
 
@@ -1840,23 +1876,32 @@ test('the refusal names the opener of a fence in a quote once (PMK-310)', async 
   assert.ok(!message.includes('"> ```"'), message)
   assert.ok(!message.includes('the other text'), message)
 })
-for (const [name, text] of [
-  ['an empty list item then a line', '## Status\n\n-\nfoo\n\n## Context\n'],
-  ['an empty quote then a line', '## Status\n\n>\nfoo\n\n## Context\n'],
+for (const [name, text, status, dropped] of [
+  ['an empty list item then a line', '## Status\n\n-\nfoo\n\n## Context\n', '-', ['foo']],
+  ['an empty quote then a line', '## Status\n\n>\nfoo\n\n## Context\n', '>', ['foo']],
 ]) {
-  test(`${name}: foo is the status and the empty marker is kept (PMK-310, PMK-311)`, async () => {
-    assert.deepEqual(adrStatusDropped(text), [])
-    assert.equal(adrInfo(text).status, 'foo')
+  test(`${name} is not a lazy line: the refusal names the line after it, the item is the other text (PMK-310)`, async () => {
+    // `foo` is the status a reader takes, so the empty marker is what the user has to move.
+    assert.deepEqual(adrStatusDropped(text), [status])
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    const { message } = (await adrStatus(root, '1', 'deprecated', '--dry-run')).data.error
+    assert.ok(message.includes(`"${status}"`), message)
+    assert.ok(!message.includes(`"${dropped[0]}"`), message)
   })
 }
 
-// PMK-310 review cycle 2: only an open paragraph takes a lazy line, so an item or quote whose content is a block (HTML, heading, fence, thematic break) has none: foo is the status.
+// PMK-310 review cycle 2: only an open paragraph takes a lazy line, so an item or quote whose content is a block (HTML, heading, fence, thematic break) has none.
 for (const block of ['<!-- c -->', '# H', '```', '~~~', '---', '* * *', '<div>']) {
   for (const host of ['> ', '- ', '1. ']) {
-    test(`"${host}${block}" then a line: foo is the status (PMK-310, PMK-311)`, async () => {
+    test(`"${host}${block}" then a line: the refusal names the block line, foo is the status (PMK-310)`, async () => {
       const text = `## Status\n\n${host}${block}\nfoo\n\n## Context\n`
-      assert.deepEqual(adrStatusDropped(text), [])
-      assert.equal(adrInfo(text).status, 'foo')
+      assert.deepEqual(adrStatusDropped(text), [`${host}${block}`])
     })
   }
 }
+test('a code span then a Key: value line: the code span is the status and the line is kept (PMK-310, PMK-311)', async () => {
+  const text = '## Status\n\n`Accepted`\nDate: 2020\n\n## Context\n'
+  assert.deepEqual(adrStatusDropped(text), [])
+  assert.equal(adrInfo(text).status, '`Accepted`')
+})
