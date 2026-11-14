@@ -2,12 +2,14 @@
 id: PMK-313
 title: "Name the extra text, not the status, in the adr-status refusal of a list item or quote"
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-6
+branch: pmk-313-name-the-extra-text-not-the-status-in
 created: 2026-11-14T05:29:38.033Z
-updated: 2026-11-14T05:29:38Z
+updated: 2026-11-14T05:50:43Z
 ---
 
 ## Description
@@ -39,6 +41,6 @@ Following the refusal would move the status out of the section and keep the extr
 
 ## Acceptance criteria
 
-- [ ] With the status in a list item or a quote followed by a blank line and a date or Supersedes line, and with a nested item followed by a lazy line, the refusal names the extra line, not the status, with tests
-- [ ] The closing line of a fence held in the Status section is named once, with its fence, with a test in a list and in a quote
-- [ ] Every case refused before is still refused and nothing new is refused, with the existing tests unchanged in outcome
+- [x] With the status in a list item or a quote followed by a blank line and a date or Supersedes line, and with a nested item followed by a lazy line, the refusal names the extra line, not the status, with tests
+- [x] The closing line of a fence held in the Status section is named once, with its fence, with a test in a list and in a quote
+- [x] Every case refused before is still refused and nothing new is refused, with the existing tests unchanged in outcome

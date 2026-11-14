@@ -24,7 +24,7 @@ import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, 
 import { pathNote } from './lib/path-notes.mjs'
 import { fileMentions } from './lib/mentions.mjs'
 import { REPO_UNCHECKED } from './lib/delete-refusal.mjs'
-import { ADR_STATUSES, adrFiles, adrInfo, adrRef, isAdrName, adrFolders, adrLocation, adrHtmlHeld, adrFenceHeld, adrStatusDropped, adrKeptLines, adrStatusContinuation, adrStatusHeading, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
+import { ADR_STATUSES, adrFiles, adrInfo, adrRef, isAdrName, adrFolders, adrLocation, adrHtmlHeld, adrFenceHeld, adrFenceClosers, adrStatusDropped, adrKeptLines, adrStatusContinuation, adrStatusHeading, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
 import { similarResult } from './lib/similar.mjs'
 import { isBlocked } from './lib/model.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
@@ -509,6 +509,11 @@ async function runAdrStatus(ctx) {
   // The guard gives the opener without its quote or list prefix (`> ` + a fence), the other text keeps it.
   for (const opener of [htmlHeld?.opener, fenceHeld?.opener]) {
     const at = opener === undefined ? -1 : other.findIndex((item) => item.replace(/^(?:\s*(?:>|[-+*]|\d+[.)]))*\s*/, '') === opener)
+    if (at !== -1) other.splice(at, 1)
+  }
+  // The closing line of a fence a guard names goes with that fence too (PMK-313).
+  for (const closer of adrFenceClosers(before)) {
+    const at = other.indexOf(closer)
     if (at !== -1) other.splice(at, 1)
   }
   const quoted = (lines) => lines.map((item) => `"${item}"`).join(', ')

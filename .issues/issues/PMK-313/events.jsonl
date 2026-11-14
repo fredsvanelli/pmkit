@@ -1,1 +1,8 @@
 {"at":"2026-11-14T05:29:38Z","by":"fred","op":"create","to":{"id":"PMK-313","title":"Name the extra text, not the status, in the adr-status refusal of a list item or quote","type":"bug","status":"backlog","priority":"low","estimate":2,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-14T05:29:38.033Z","updated":"2026-11-14T05:29:38Z"}}
+{"at":"2026-11-14T05:41:48Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-14T05:41:48Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-14T05:41:51Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-313-name-the-extra-text-not-the-status-in"}
+{"at":"2026-11-14T05:50:42Z","by":"fred","op":"comment","to":"2026-11-14T05-50-42Z-fred.md"}
+{"at":"2026-11-14T05:50:43Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T05:50:43Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T05:50:43Z","by":"fred","op":"update","field":"acceptance_criteria"}
