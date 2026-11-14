@@ -3,3 +3,7 @@
 {"at":"2026-11-14T04:10:08Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
 {"at":"2026-11-14T04:10:10Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-311-keep-a-date-or-supersedes-line-of-the"}
 {"at":"2026-11-14T04:11:08Z","by":"fred","op":"comment","to":"2026-11-14T04-11-08Z-fred.md"}
+{"at":"2026-11-14T04:23:46Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T04:23:47Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T04:23:47Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T04:23:47Z","by":"fred","op":"update","field":"acceptance_criteria"}

@@ -24,7 +24,7 @@ import { blockedIssues, epicRisks, epicsUpdatesNotChecked, failingPullRequests, 
 import { pathNote } from './lib/path-notes.mjs'
 import { fileMentions } from './lib/mentions.mjs'
 import { REPO_UNCHECKED } from './lib/delete-refusal.mjs'
-import { ADR_STATUSES, adrFiles, adrInfo, adrRef, isAdrName, adrFolders, adrLocation, adrHtmlHeld, adrFenceHeld, adrStatusDropped, adrStatusHeading, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
+import { ADR_STATUSES, adrFiles, adrInfo, adrRef, isAdrName, adrFolders, adrLocation, adrHtmlHeld, adrFenceHeld, adrStatusDropped, adrKeptLines, adrStatusHeading, adrText, planNextAdr, setAdrStatus } from './lib/adr.mjs'
 import { similarResult } from './lib/similar.mjs'
 import { isBlocked } from './lib/model.mjs'
 import { chooseUnit, noMoveMessage, proposeMoves, teamLoad } from './lib/team-load.mjs'
@@ -519,6 +519,15 @@ async function runAdrStatus(ctx) {
   ]
   if (causes.length > 0) throw new PmkitError('INVALID_INPUT', `${adr.path}: setting the status would delete ${causes.map(([what]) => what).join('; and ')}; nothing was written`, causes.map(([, fix]) => fix).join('; ') + AGAIN)
   const { text: after, before: statusBefore, after: line } = setAdrStatus(before, status, byPath)
+  // PMK-311: the other lines are kept, so the write must leave them reading as before (a status in a list item, or one a setext underline takes in, would not): else nothing is written.
+  const keptBefore = adrKeptLines(before)
+  if (keptBefore.length > 0 && JSON.stringify(adrKeptLines(after)) !== JSON.stringify(keptBefore)) throw new PmkitError('INVALID_INPUT', `${adr.path}: setting the status would change how the rest of the Status section reads, ${quoted(keptBefore)}; nothing was written`, OTHER_TEXT_FIX + AGAIN)
+  // PMK-311: the write adds no Supersedes line (the newer ADR holds it); a kept line that already names the newer ADR, by number or by file name, is said, never doubled.
+  if (by !== undefined) {
+    const newer = adrByNumber(files, by, '--by')
+    const names = new RegExp(`\\bADR[ -]?0*${Number(newer.number)}\\b|${newer.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i')
+    for (const kept of adrKeptLines(before).filter((item) => names.test(item))) notes.push(`${adr.path} keeps the line "${kept}", which already names ADR ${Number(newer.number)}; the status line does not repeat it as a second Supersedes line`)
+  }
   const found = adrStatusHeading(before)
   const statusHeading = found?.heading ?? null
   // PMK-300: the empty section always takes the status, so the write puts it above the heading and leaves the heading below it (a dry run says it would).

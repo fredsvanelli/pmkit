@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
-import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrStatusDropped, adrInfo, adrRef, adrStatusHeading, adrHtmlHeld, adrFenceHeld } from './lib/adr.mjs'
+import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrStatusDropped, adrKeptLines, adrSectionText, adrInfo, adrRef, adrStatusHeading, adrHtmlHeld, adrFenceHeld } from './lib/adr.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo } from './test-helpers.mjs'
 import { assertFast } from './assert-fast.mjs'
@@ -326,7 +326,7 @@ test('setAdrStatus replaces the body of a ## Status section, the Nygard format, 
   const nygard = '# 4. Use X\n\nDate: 2026-11-10\n\n## Status\n\nAccepted\n\n## Context\n\nWhy.\n'
   assert.deepEqual(setAdrStatus(nygard, 'deprecated'), { text: '# 4. Use X\n\nDate: 2026-11-10\n\n## Status\n\nDeprecated\n\n## Context\n\nWhy.\n', before: 'Accepted', after: 'Deprecated' })
   const twoLines = '# T\n\n## Status\n\nProposed\nAccepted after review\n\n## Context\n'
-  assert.deepEqual(setAdrStatus(twoLines, 'superseded', 'docs/adr/0009-b.md'), { text: '# T\n\n## Status\n\nSuperseded by docs/adr/0009-b.md\n\n## Context\n', before: 'Proposed Accepted after review', after: 'Superseded by docs/adr/0009-b.md' })
+  assert.deepEqual(setAdrStatus(twoLines, 'superseded', 'docs/adr/0009-b.md'), { text: '# T\n\n## Status\n\nSuperseded by docs/adr/0009-b.md\nAccepted after review\n\n## Context\n', before: 'Proposed', after: 'Superseded by docs/adr/0009-b.md' })
   assert.equal(setAdrStatus('# T\n\n## status\n\naccepted\n', 'deprecated').text, '# T\n\n## status\n\nDeprecated\n')
   assert.deepEqual(setAdrStatus('# T\n\n## Status\n\n## Context\n', 'accepted'), { text: '# T\n\n## Status\n\nAccepted\n\n## Context\n', before: null, after: 'Accepted' })
 })
@@ -495,7 +495,7 @@ test('setAdrStatus leaves an ADR untouched when its status does not change, what
   assert.equal(setAdrStatus(sup, 'superseded', 'docs/adr/0009-b.md').text, sup)
   // A section that is empty or holds more than the status is still a change.
   assert.notEqual(setAdrStatus('# T\n\n## Status\n\n## Context\n', 'accepted').text, '# T\n\n## Status\n\n## Context\n')
-  assert.notEqual(setAdrStatus('# T\n\n## Status\n\nAccepted\nafter review\n\n## Context\n', 'accepted').text, '# T\n\n## Status\n\nAccepted\nafter review\n\n## Context\n')
+  assert.equal(setAdrStatus('# T\n\n## Status\n\nAccepted\nafter review\n\n## Context\n', 'accepted').text, '# T\n\n## Status\n\nAccepted\nafter review\n\n## Context\n')
 })
 
 test('setAdrStatus changes the front matter key and the ## Status section together (PMK-248)', () => {
@@ -811,7 +811,7 @@ test('a subsection of the ## Status section is not part of the status, and adr-s
   // A section with only a subsection has no status text; the subsection stays after the new one.
   assert.equal(setAdrStatus('# T\n\n## Status\n\n### Notes\n\nmore\n', 'accepted').text, '# T\n\n## Status\n\nAccepted\n\n### Notes\n\nmore\n')
   // A heading inside a fenced block is an example, so it does not end the section (PMK-263).
-  assert.equal(adrInfo('# T\n\n## Status\n\nAccepted\n\n```md\n### Notes\n```\n\n## Context\n').status, 'Accepted ```md ### Notes ```')
+  assert.equal(adrSectionText('# T\n\n## Status\n\nAccepted\n\n```md\n### Notes\n```\n\n## Context\n'), 'Accepted ```md ### Notes ```')
 })
 
 const statusWith = (after) => `# T\n\n## Status\n\nAccepted\n${after}\n## Context\n\nWhy.\n`
@@ -849,11 +849,11 @@ test('a line that is not a heading does not end the Status section (PMK-273)', (
     'fenced setext': '\n```\nNotes\n===\n```\n',
   }
   for (const [name, tail] of Object.entries(kept)) {
-    const info = adrInfo(statusWith(tail))
+    const info = { status: adrSectionText(statusWith(tail)) }
     assert.ok(info.status.startsWith('Accepted ') && info.status.length > 'Accepted '.length, `${name}: ${info.status}`)
   }
   // The thematic break and the text after it are part of the section, so adr-status rewrites them with it, as for any other text.
-  assert.equal(setAdrStatus(statusWith('\n---\n\nmore\n'), 'deprecated').text, '# T\n\n## Status\n\nDeprecated\n\n## Context\n\nWhy.\n')
+  assert.equal(setAdrStatus(statusWith('\n---\n\nmore\n'), 'deprecated').text, '# T\n\n## Status\n\nDeprecated\n\n---\n\nmore\n\n## Context\n\nWhy.\n')
 })
 
 test('docs adr-get and docs adr-status end the Status section at a setext heading (PMK-273)', async () => {
@@ -1161,14 +1161,14 @@ test('a list item, a quote or a thematic break above ---, === interrupts the par
   let number = 6
   for (const [name, [tail, status]] of Object.entries(cases)) {
     const text = `# ${number}. Use Z\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
-    assert.equal(adrInfo(text).status, status, name)
+    assert.equal(adrSectionText(text), status, name)
     const written = setAdrStatus(text, 'deprecated').text
     assert.equal(written.match(/^Deprecated$/gm)?.length, 1, name)
     assert.doesNotMatch(written, /Accepted/, name)
     // The same ADR through the CLI: adr-get reads the status, adr-status writes one.
     const file = `docs/adr/000${number}-use-z.md`
     writeAdr(root, file, text)
-    assert.equal((await adrGetFrom(root, String(number))).data.status, status, name)
+    assert.equal((await adrGetFrom(root, String(number))).data.status, adrInfo(text).status, name)
     await statusWrites(root, String(number), file, text, written, name, status)
     number++
   }
@@ -1185,19 +1185,19 @@ test('a list item continuation above --- keeps the Status section open, in adr-g
   let number = 5
   for (const [name, [tail, status]] of Object.entries(cases)) {
     const text = `# ${number}. Use W\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
-    assert.equal(adrInfo(text).status, status, name)
+    assert.equal(adrSectionText(text), status, name)
     const written = setAdrStatus(text, 'deprecated').text
-    assert.equal(written, `# ${number}. Use W\n\n## Status\n\nDeprecated\n\n## Context\n\nWhy.\n`, name)
+    assert.equal(written, text.replace('Accepted', 'Deprecated'), name)
     const file = `docs/adr/000${number}-use-w.md`
     writeAdr(root, file, text)
-    assert.equal((await adrGetFrom(root, String(number))).data.status, status, name)
+    assert.equal((await adrGetFrom(root, String(number))).data.status, adrInfo(text).status, name)
     await statusWrites(root, String(number), file, text, written, name, status)
     number++
   }
   // A line indented less than the item content is not a continuation: it is the setext paragraph, so the section ends at it.
-  assert.equal(adrInfo('# T\n\n## Status\n\nAccepted\n\n- a\n\n b\n---\n').status, 'Accepted - a')
+  assert.equal(adrSectionText('# T\n\n## Status\n\nAccepted\n\n- a\n\n b\n---\n'), 'Accepted - a')
   // A paragraph at no indent after a list is a setext paragraph too.
-  assert.equal(adrInfo('# T\n\n## Status\n\nAccepted\n\n- a\n\nb\n---\n').status, 'Accepted - a')
+  assert.equal(adrSectionText('# T\n\n## Status\n\nAccepted\n\n- a\n\nb\n---\n'), 'Accepted - a')
 })
 
 test('only a line that CommonMark lets interrupt a paragraph does, so 2. foo, an empty item and a tab line are part of it (PMK-281)', async () => {
@@ -1222,13 +1222,13 @@ test('only a line that CommonMark lets interrupt a paragraph does, so 2. foo, an
   let number = 1
   for (const [name, [tail, status]] of Object.entries(cases)) {
     const text = `# ${number}. Use V\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
-    assert.equal(adrInfo(text).status, status, name)
+    assert.equal(adrSectionText(text), status, name)
     const written = setAdrStatus(text, 'deprecated').text
     assert.match(written, /\n## Status\n\nDeprecated\n/, name)
     assert.ok(written.endsWith('\n## Context\n\nWhy.\n'), name)
     const file = `docs/adr/${String(number).padStart(4, "0")}-use-v.md`
     writeAdr(root, file, text)
-    assert.equal((await adrGetFrom(root, String(number))).data.status, status, name)
+    assert.equal((await adrGetFrom(root, String(number))).data.status, adrInfo(text).status, name)
     await statusWrites(root, String(number), file, text, written, name, status)
     number++
   }
@@ -1248,17 +1248,17 @@ test('a list item continuation of four columns or a tab is not indented code, so
   for (const [name, tail] of Object.entries(cases)) {
     const text = `# ${number}. Use U\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
     const status = tail.split('\n').filter((item) => item.trim() !== '').map((item) => item.trim()).join(' ')
-    assert.equal(adrInfo(text).status, status, name)
+    assert.equal(adrSectionText(text), status, name)
     const written = setAdrStatus(text, 'deprecated').text
-    assert.equal(written, `# ${number}. Use U\n\n## Status\n\nDeprecated\n\n## Context\n\nWhy.\n`, name)
+    assert.equal(written, text.replace('Accepted', 'Deprecated'), name)
     const file = `docs/adr/000${number}-use-u.md`
     writeAdr(root, file, text)
-    assert.equal((await adrGetFrom(root, String(number))).data.status, status, name)
+    assert.equal((await adrGetFrom(root, String(number))).data.status, adrInfo(text).status, name)
     await statusWrites(root, String(number), file, text, written, name, status)
     number++
   }
   // Outside a list item the same lines are indented code, then a paragraph.
-  assert.equal(adrInfo('# T\n\n## Status\n\nAccepted\n\n    b\nc\n---\n').status, 'Accepted b')
+  assert.equal(adrSectionText('# T\n\n## Status\n\nAccepted\n\n    b\nc\n---\n'), 'Accepted b')
 })
 
 test('an indented ## heading is the first section, found by the same test as the end of the Status section (PMK-273 review)', () => {
@@ -1387,10 +1387,10 @@ test('the item that holds the line decides: a wider sibling, a fence at column 0
   let number = 1
   for (const [name, [tail, status]] of Object.entries(cases)) {
     const text = `# ${number}. Use U\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
-    assert.equal(adrInfo(text).status, status, name)
+    assert.equal(adrSectionText(text), status, name)
     const file = `docs/adr/000${number}-use-u.md`
     writeAdr(root, file, text)
-    assert.equal((await adrGetFrom(root, String(number))).data.status, status, name)
+    assert.equal((await adrGetFrom(root, String(number))).data.status, adrInfo(text).status, name)
     const written = setAdrStatus(text, 'deprecated').text
     assert.equal(adrInfo(written).status, 'Deprecated', name)
     await statusWrites(root, String(number), file, text, written, name, status)
@@ -1409,11 +1409,11 @@ test('an empty item and an item that opens with indented code are not paragraphs
   let number = 1
   for (const [name, [tail, status]] of Object.entries(cases)) {
     const text = `# ${number}. Use U\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
-    assert.equal(adrInfo(text).status, status, name)
+    assert.equal(adrSectionText(text), status, name)
     if (number === 1) {
       const file = 'docs/adr/0001-use-u.md'
       writeAdr(root, file, text)
-      assert.equal((await adrGetFrom(root, '1')).data.status, status, name)
+      assert.equal((await adrGetFrom(root, '1')).data.status, adrInfo(text).status, name)
       const written = setAdrStatus(text, 'deprecated').text
       await statusWrites(root, '1', file, text, written, name, status)
     }
@@ -1432,11 +1432,11 @@ test('indented code inside a list item is not the item continuing, so a lazy lin
   let number = 1
   for (const [name, [tail, status]] of Object.entries(cases)) {
     const text = `# ${number}. Use U\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
-    assert.equal(adrInfo(text).status, status, name)
+    assert.equal(adrSectionText(text), status, name)
     if (number === 1) {
       const file = 'docs/adr/0001-use-u.md'
       writeAdr(root, file, text)
-      assert.equal((await adrGetFrom(root, '1')).data.status, status, name)
+      assert.equal((await adrGetFrom(root, '1')).data.status, adrInfo(text).status, name)
       const written = setAdrStatus(text, 'deprecated').text
       await statusWrites(root, '1', file, text, written, name, status)
     }
@@ -1465,11 +1465,11 @@ test('a line belongs to the deepest open item whose content column it reaches, a
   let number = 1
   for (const [name, [tail, status]] of Object.entries(cases)) {
     const text = `# ${number}. Use U\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
-    assert.equal(adrInfo(text).status, status, name)
+    assert.equal(adrSectionText(text), status, name)
     if (number === 1) {
       const file = 'docs/adr/0001-use-u.md'
       writeAdr(root, file, text)
-      assert.equal((await adrGetFrom(root, '1')).data.status, status, name)
+      assert.equal((await adrGetFrom(root, '1')).data.status, adrInfo(text).status, name)
       const written = setAdrStatus(text, 'deprecated').text
       assert.equal(adrInfo(written).status, 'Deprecated', name)
       await statusWrites(root, '1', file, text, written, name, status)
@@ -1503,11 +1503,11 @@ test('an HTML block and a paragraph of link reference definitions end the Status
   let number = 1
   for (const [name, [tail, status]] of Object.entries(cases)) {
     const text = `# ${number}. Use U\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
-    assert.equal(adrInfo(text).status, status, name)
+    assert.equal(adrSectionText(text), status, name)
     if (number === 1) {
       const file = 'docs/adr/0001-use-u.md'
       writeAdr(root, file, text)
-      assert.equal((await adrGetFrom(root, '1')).data.status, status, name)
+      assert.equal((await adrGetFrom(root, '1')).data.status, adrInfo(text).status, name)
       const written = setAdrStatus(text, 'deprecated').text
       assert.equal(adrInfo(written).status, 'Deprecated', name)
       await statusWrites(root, '1', file, text, written, name, status)
@@ -1541,13 +1541,13 @@ test('an empty item followed by a line and a === or --- underline ends the Statu
   let number = 20
   for (const [name, [tail, status]] of Object.entries(cases)) {
     const text = `# ${number}. Use E\n\n## Status\n\n${tail}\n## Context\n\nWhy.\n`
-    assert.equal(adrInfo(text).status, status, name)
+    assert.equal(adrSectionText(text), status, name)
     const written = setAdrStatus(text, 'deprecated').text
     assert.match(written, /\n## Status\n\nDeprecated\n/, name)
     assert.ok(written.endsWith('\n## Context\n\nWhy.\n'), name)
     const file = `docs/adr/${String(number).padStart(4, '0')}-use-e.md`
     writeAdr(root, file, text)
-    assert.equal((await adrGetFrom(root, String(number))).data.status, status, name)
+    assert.equal((await adrGetFrom(root, String(number))).data.status, adrInfo(text).status, name)
     await statusWrites(root, String(number), file, text, written, name, status)
     number++
   }
@@ -1569,7 +1569,7 @@ test('a 10-digit ordered marker is paragraph text, so an underline ends the Stat
     assert.ok(written.endsWith('\n## Context\n\nWhy.\n'), name)
     const file = `docs/adr/${String(number).padStart(4, '0')}-use-t.md`
     writeAdr(root, file, text)
-    assert.equal((await adrGetFrom(root, String(number))).data.status, status, name)
+    assert.equal((await adrGetFrom(root, String(number))).data.status, adrInfo(text).status, name)
     await statusWrites(root, String(number), file, text, written, name, status)
     number++
   }
@@ -1577,18 +1577,19 @@ test('a 10-digit ordered marker is paragraph text, so an underline ends the Stat
 
 test('a 9-digit ordered marker is still a list item, so the Status section stays open past it, in adr-get and adr-status alike (PMK-292)', async () => {
   const text = '# 40. Use N\n\n## Status\n\nAccepted\n\n123456789. a\nb\n---\n\n## Context\n\nWhy.\n'
-  assert.equal(adrInfo(text).status, 'Accepted 123456789. a b ---')
+  assert.equal(adrSectionText(text), 'Accepted 123456789. a b ---')
   const root = repo()
   const file = 'docs/adr/0040-use-n.md'
   writeAdr(root, file, text)
-  assert.equal((await adrGetFrom(root, '40')).data.status, 'Accepted 123456789. a b ---')
-  assert.equal((await adrStatus(root, '40', 'deprecated')).code, 2)
-  assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), text)
+  assert.equal((await adrGetFrom(root, '40')).data.status, 'Accepted')
+  assert.equal((await adrStatus(root, '40', 'deprecated')).code, 0)
+  assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), text.replace('Accepted', 'Deprecated'))
 })
 
 // PMK-306: the fixture says whether the Status section holds more than the status (its `status` is neither null nor just Accepted): then adr-status refuses and the file stays as it was, else it writes `written`.
 async function statusWrites(root, number, file, text, written, name, status) {
-  const refused = status !== null && status !== 'Accepted'
+  // PMK-311: refused when no line is safe to replace (all open a block) or the write would change how the kept lines read.
+  const refused = adrStatusDropped(text).length > 0 || JSON.stringify(adrKeptLines(written)) !== JSON.stringify(adrKeptLines(text))
   assert.equal((await adrStatus(root, number, 'deprecated')).code, refused ? 2 : 0, name)
   assert.equal(fs.readFileSync(path.join(root, file), 'utf8'), refused ? text : written, name)
 }
@@ -1688,53 +1689,90 @@ for (const [name, text] of FENCE_OK) {
   })
 }
 
-// PMK-306: adr-status refuses, never silently deletes, the other text of the Status section; one refusal names every cause.
-// `dropped` is what setAdrStatus deletes besides the status line, read from the same slice.
+// PMK-311 (reverses PMK-306): adr-status replaces only the status line and keeps every other line of the Status section; adrStatusDropped is empty for these.
 const OTHER = [
-  ['a paragraph after the status', '## Status\n\nAccepted\n\nWhy this was chosen.\n', ['Why this was chosen.']],
-  ['text after a fence that never closes (no heading)', '## Status\n\n```\nAccepted\n\nWhy this was chosen.\n', ['```', 'Why this was chosen.']],
-  ['a line indented 4 spaces in a fence', '## Status\n\n```\nAccepted\n\n    ## Context\n\nWhy.\n', ['```', '## Context', 'Why.']],
-  ['a comment before the status', '## Status\n\n<!-- note -->\n\nAccepted\n\n## Context\n', ['<!-- note -->']],
-  ['CRLF line ends', '## Status\r\n\r\nAccepted\r\n\r\nWhy this was chosen.\r\n', ['Why this was chosen.']],
-  ['a list item glued to the status', '## Status\n\nAccepted\n- Supersedes ADR 3\n\n## Context\n', ['- Supersedes ADR 3']],
-  ['a quote glued to the status', '## Status\n\nAccepted\n> n\n\n## Context\n', ['> n']],
-  ['a comment glued to the status', '## Status\n\nAccepted\n<!-- x -->\n\n## Context\n', ['<!-- x -->']],
-  ['a closed fence glued to the status', '## Status\n\nAccepted\n```\ncode\n```\n\n## Context\n', ['```', 'code', '```']],
-  ['a lazy line glued to the status', '## Status\n\nAccepted\nWhy.\n\n## Context\n', ['Why.']],
-  ['a closed fence around the status', '## Status\n\n```\nAccepted\n```\n\n## Context\n', ['```', '```']],
+  ['a paragraph after the status', '## Status\n\nAccepted\n\nWhy this was chosen.\n'],
+  ['text after a fence that never closes (no heading)', '## Status\n\n```\nAccepted\n\nWhy this was chosen.\n'],
+  ['a line indented 4 spaces in a fence', '## Status\n\n```\nAccepted\n\n    ## Context\n\nWhy.\n'],
+  ['a comment before the status', '## Status\n\n<!-- note -->\n\nAccepted\n\n## Context\n'],
+  ['CRLF line ends', '## Status\r\n\r\nAccepted\r\n\r\nWhy this was chosen.\r\n'],
+  ['a list item glued to the status', '## Status\n\nAccepted\n- Supersedes ADR 3\n\n## Context\n'],
+  ['a quote glued to the status', '## Status\n\nAccepted\n> n\n\n## Context\n'],
+  ['a comment glued to the status', '## Status\n\nAccepted\n<!-- x -->\n\n## Context\n'],
+  ['a closed fence glued to the status', '## Status\n\nAccepted\n```\ncode\n```\n\n## Context\n'],
+  ['a lazy line glued to the status', '## Status\n\nAccepted\nWhy.\n\n## Context\n'],
+  ['a closed fence around the status', '## Status\n\n```\nAccepted\n```\n\n## Context\n'],
+  ['a MADR date line (PMK-311)', '# T\n\n## Status\n\nAccepted\nDate: 2024-01-02\n\n## Context\n'],
+  ['a Nygard Supersedes line (PMK-311)', '# T\n\n## Status\n\nAccepted\n\nSupersedes [ADR 3](0003-x.md)\n\n## Context\n'],
 ]
-for (const [name, text, dropped] of OTHER) {
-  test(`adr-status refuses ${name}, dry run too, and writes nothing (PMK-306)`, async () => {
-    assert.deepEqual(adrStatusDropped(text), dropped)
+for (const [name, text] of OTHER) {
+  test(`adr-status keeps ${name}, dry run writes nothing, real writes only the status (PMK-311)`, async () => {
+    assert.deepEqual(adrStatusDropped(text), [])
+    assert.equal(adrInfo(text).status, 'Accepted')
     const root = repo()
     writeAdr(root, 'docs/adr/0001-a.md', text)
-    for (const flags of [['--dry-run'], []]) {
-      const result = await adrStatus(root, '1', 'deprecated', ...flags)
-      assert.equal(result.code, 2, flags.join(' '))
-      assert.equal(result.data.error.code, 'INVALID_INPUT')
-      const { message, nextStep } = result.data.error
-      assert.match(message, /would delete the other text of the Status section/)
-      for (const line of dropped) assert.ok(message.includes(`"${line}"`), line)
-      assert.match(message, /nothing was written/)
-      assert.match(nextStep, /Move that text out of the Status section/)
-      assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
-    }
+    const dry = await adrStatus(root, '1', 'deprecated', '--dry-run')
+    assert.equal(dry.code, 0, dry.stderr)
+    assert.equal(dry.data.status.before, 'Accepted')
+    assert.equal(dry.data.after, text.replaceAll('\r\n', '\n').replace('Accepted', 'Deprecated'))
+    assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+    assert.equal((await adrStatus(root, '1', 'deprecated')).code, 0)
+    assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text.replaceAll('\r\n', '\n').replace('Accepted', 'Deprecated'))
   })
 }
-test('the refusal for text before the status names that text, not the status (PMK-306)', async () => {
+test('docs adr-get reads the status line alone for MADR and Nygard, and a one-line section as before (PMK-311)', async () => {
   const root = repo()
-  writeAdr(root, 'docs/adr/0001-a.md', '## Status\n\n<!-- note -->\n\nAccepted\n')
-  const { message } = (await adrStatus(root, '1', 'deprecated', '--dry-run')).data.error
-  assert.ok(message.includes('"<!-- note -->"'))
-  assert.ok(!message.includes('"Accepted"'))
+  writeAdr(root, 'docs/adr/0001-a.md', '# A\n\n## Status\n\nAccepted\nDate: 2024-01-02\n')
+  writeAdr(root, 'docs/adr/0002-b.md', '# B\n\n## Status\n\nAccepted\n\nSupersedes [ADR 3](0003-x.md)\n')
+  writeAdr(root, 'docs/adr/0003-c.md', '# C\n\n## Status\n\nAccepted\n')
+  for (const n of ['1', '2', '3']) assert.equal((await adrGetFrom(root, n)).data.status, 'Accepted', n)
+  assert.deepEqual(adrInfo('## Status\n\n<!-- c -->\n').statuses, ['<!-- c -->'])
+  assert.deepEqual(adrInfo('## Status\n\n\n').statuses, [])
 })
-test('a line repeated in the section is named once per place it is deleted from (PMK-306)', async () => {
-  const text = '## Status\n\nAccepted\n\nWhy.\n\nWhy.\n'
-  assert.deepEqual(adrStatusDropped(text), ['Why.', 'Why.'])
+test('docs adr-status ... superseded --by N keeps a Supersedes line and adds no second one (PMK-311)', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0003-x.md', '# X\n\n## Status\n\nAccepted\n')
+  writeAdr(root, 'docs/adr/0005-a.md', '# A\n\n## Status\n\nAccepted\n\nSupersedes [ADR 3](0003-x.md)\n')
+  writeAdr(root, 'docs/adr/0007-b.md', '# B\n')
+  const result = await adrStatus(root, '5', 'superseded', '--by', '7')
+  assert.equal(result.code, 0, result.stderr)
+  const after = fs.readFileSync(path.join(root, 'docs/adr/0005-a.md'), 'utf8')
+  assert.equal(after, '# A\n\n## Status\n\nSuperseded by docs/adr/0007-b.md\n\nSupersedes [ADR 3](0003-x.md)\n')
+  assert.equal(after.match(/Supersedes/g).length, 1)
+  assert.equal(result.data.notes.filter((item) => item.includes('already names')).length, 0)
+})
+test('a kept line that already names the --by ADR (by number or file name) gets a note, never a second line (PMK-311)', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0005-a.md', '# A\n\n## Status\n\nAccepted\nSuperseded by [ADR 7](0007-b.md)\n')
+  writeAdr(root, 'docs/adr/0007-b.md', '# B\n')
+  const result = await adrStatus(root, '5', 'superseded', '--by', '7', '--dry-run')
+  assert.equal(result.code, 0, result.stderr)
+  assert.ok(result.data.notes.some((item) => item.includes('already names ADR 7;')), result.data.notes.join('\n'))
+  assert.equal(result.data.after.match(/0007-b/g).length, 2)
+})
+test('a Status section whose lines all open a block, with more than one line, is still refused as other text (PMK-311)', async () => {
+  const text = '## Status\n\n> Accepted\n> more\n\n## Context\n'
+  assert.deepEqual(adrStatusDropped(text), ['> more'])
   const root = repo()
   writeAdr(root, 'docs/adr/0001-a.md', text)
-  const { message } = (await adrStatus(root, '1', 'deprecated', '--dry-run')).data.error
-  assert.equal(message.split('"Why."').length - 1, 2)
+  for (const flags of [['--dry-run'], []]) {
+    const result = await adrStatus(root, '1', 'deprecated', ...flags)
+    assert.equal(result.code, 2)
+    assert.match(result.data.error.message, /the other text of the Status section, "> more"/)
+    assert.match(result.data.error.nextStep, /Move that text out of the Status section/)
+    assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+  }
+})
+test('a write that would change how the kept lines read is refused, dry run too, and writes nothing (PMK-311)', async () => {
+  const text = '## Status\n\n- a\nlazy\n\n  b\n---\n\n## Context\n'
+  const root = repo()
+  writeAdr(root, 'docs/adr/0001-a.md', text)
+  for (const flags of [['--dry-run'], []]) {
+    const result = await adrStatus(root, '1', 'deprecated', ...flags)
+    assert.equal(result.code, 2)
+    assert.match(result.data.error.message, /would change how the rest of the Status section reads.*nothing was written/)
+    assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+  }
 })
 test('docs adr-status writes as before for a section that holds only the status (PMK-306)', async () => {
   for (const text of ['## Status\n\nAccepted\n\n## Context\n\nWhy.\n', '## Status\r\n\r\nAccepted\r\n', '# T\n\nNo section\n']) assert.deepEqual(adrStatusDropped(text), [])
@@ -1743,7 +1781,7 @@ test('docs adr-status writes as before for a section that holds only the status 
   assert.equal((await adrStatus(root, '1', 'deprecated')).code, 0)
   assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), '## Status\n\nDeprecated\n\n## Context\n\nWhy.\n')
 })
-test('docs adr-status names the HTML block, the fence and the other text in one refusal (PMK-306)', async () => {
+test('docs adr-status names the HTML block and the fence in one refusal, and no other text (PMK-306, PMK-311)', async () => {
   const text = '## Status\n\n```\n## A\n```\n\nAccepted\n\n<div>\n## B\n\nWhy.\n'
   const root = repo()
   writeAdr(root, 'docs/adr/0001-a.md', text)
@@ -1753,10 +1791,9 @@ test('docs adr-status names the HTML block, the fence and the other text in one 
     const { message, nextStep } = result.data.error
     assert.match(message, /the HTML block "<div>"/)
     assert.match(message, /the code fence "```"/)
-    assert.match(message, /the other text of the Status section/)
+    assert.ok(!message.includes('the other text'), message)
     assert.match(nextStep, /close a comment with -->/)
     assert.match(nextStep, /Close the code fence/)
-    assert.match(nextStep, /Move that text out/)
     assert.equal(nextStep.match(/then run the command again/g).length, 1)
     assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
   }
@@ -1778,20 +1815,19 @@ for (const [name, text, quoted, causes] of NAMED) {
   })
 }
 const STATUS_NAMED = [
-  ['a code span then a line', '## Status\n\n`Accepted`\nDate: 2020\n\n## Context\n', ['Date: 2020'], '`Accepted`'],
-  ['a list item then a lazy line', '## Status\n\n- Accepted\nlazy\n\n## Context\n', ['lazy'], '- Accepted'],
-  ['a quote then a lazy line', '## Status\n\n> Accepted\nlazy\n\n## Context\n', ['lazy'], '> Accepted'],
+  ['a code span then a line', '## Status\n\n`Accepted`\nDate: 2020\n\n## Context\n', '`Accepted`'],
+  ['a list item then a lazy line', '## Status\n\n- Accepted\nlazy\n\n## Context\n', '- Accepted'],
+  ['a quote then a lazy line', '## Status\n\n> Accepted\nlazy\n\n## Context\n', '> Accepted'],
 ]
-for (const [name, text, dropped, status] of STATUS_NAMED) {
-  test(`the refusal for ${name} names the extra line, not the status (PMK-310)`, async () => {
-    assert.deepEqual(adrStatusDropped(text), dropped)
+for (const [name, text, status] of STATUS_NAMED) {
+  test(`${name}: the status is the first line, the rest is kept (PMK-310, PMK-311)`, async () => {
+    assert.deepEqual(adrStatusDropped(text), [])
+    assert.equal(adrInfo(text).status, status)
     const root = repo()
     writeAdr(root, 'docs/adr/0001-a.md', text)
     const result = await adrStatus(root, '1', 'deprecated', '--dry-run')
-    assert.equal(result.code, 2)
-    const { message } = result.data.error
-    for (const line of dropped) assert.ok(message.includes(`"${line}"`), line)
-    assert.ok(!message.includes(`"${status}"`), message)
+    assert.equal(result.code, 0, result.stderr)
+    assert.equal(result.data.after, text.replace(status, 'Deprecated'))
   })
 }
 
@@ -1804,27 +1840,23 @@ test('the refusal names the opener of a fence in a quote once (PMK-310)', async 
   assert.ok(!message.includes('"> ```"'), message)
   assert.ok(!message.includes('the other text'), message)
 })
-for (const [name, text, status, dropped] of [
-  ['an empty list item then a line', '## Status\n\n-\nfoo\n\n## Context\n', '-', ['foo']],
-  ['an empty quote then a line', '## Status\n\n>\nfoo\n\n## Context\n', '>', ['foo']],
+for (const [name, text] of [
+  ['an empty list item then a line', '## Status\n\n-\nfoo\n\n## Context\n'],
+  ['an empty quote then a line', '## Status\n\n>\nfoo\n\n## Context\n'],
 ]) {
-  test(`${name} is not a lazy line: the refusal names the line after it, the item is the other text (PMK-310)`, async () => {
-    // `foo` is the status a reader takes, so the empty marker is what the user has to move.
-    assert.deepEqual(adrStatusDropped(text), [status])
-    const root = repo()
-    writeAdr(root, 'docs/adr/0001-a.md', text)
-    const { message } = (await adrStatus(root, '1', 'deprecated', '--dry-run')).data.error
-    assert.ok(message.includes(`"${status}"`), message)
-    assert.ok(!message.includes(`"${dropped[0]}"`), message)
+  test(`${name}: foo is the status and the empty marker is kept (PMK-310, PMK-311)`, async () => {
+    assert.deepEqual(adrStatusDropped(text), [])
+    assert.equal(adrInfo(text).status, 'foo')
   })
 }
 
-// PMK-310 review cycle 2: only an open paragraph takes a lazy line, so an item or quote whose content is a block (HTML, heading, fence, thematic break) has none.
+// PMK-310 review cycle 2: only an open paragraph takes a lazy line, so an item or quote whose content is a block (HTML, heading, fence, thematic break) has none: foo is the status.
 for (const block of ['<!-- c -->', '# H', '```', '~~~', '---', '* * *', '<div>']) {
   for (const host of ['> ', '- ', '1. ']) {
-    test(`"${host}${block}" then a line: the refusal names the block line, foo is the status (PMK-310)`, async () => {
+    test(`"${host}${block}" then a line: foo is the status (PMK-310, PMK-311)`, async () => {
       const text = `## Status\n\n${host}${block}\nfoo\n\n## Context\n`
-      assert.deepEqual(adrStatusDropped(text), [`${host}${block}`])
+      assert.deepEqual(adrStatusDropped(text), [])
+      assert.equal(adrInfo(text).status, 'foo')
     })
   }
 }

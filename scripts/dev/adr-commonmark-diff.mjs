@@ -35,14 +35,16 @@ const { Parser } = createRequire(import.meta.url)(path.resolve(args.commonmark))
 const parser = new Parser()
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'adr-commonmark-diff-'))
+// The reading of the whole section at a ref: `adrSectionText` when it has one (PMK-311: `adrInfo` then reads one line of it), else `adrInfo` (before PMK-311 its status was the section). `line` is that `adrInfo` status.
+const readerOf = (mod) => ({ section: (text) => (mod.adrSectionText ? mod.adrSectionText(text) : mod.adrInfo(text).status) ?? '', line: (text) => mod.adrInfo(text).status ?? '' })
 async function adrInfoAt(ref) {
-  if (ref === 'worktree') return (await import(pathToFileURL(path.join(ROOT, 'scripts/lib/adr.mjs')))).adrInfo
+  if (ref === 'worktree') return readerOf(await import(pathToFileURL(path.join(ROOT, 'scripts/lib/adr.mjs'))))
   const archive = spawnSync('git', ['archive', ref, 'scripts/lib'], { cwd: ROOT, maxBuffer: 256 * 1024 * 1024 })
   if (archive.status !== 0) throw new Error(`git archive ${ref}: ${archive.stderr}`)
   const dir = fs.mkdtempSync(path.join(temp, 'ref-'))
   const untar = spawnSync('tar', ['-x', '-C', dir], { input: archive.stdout, maxBuffer: 256 * 1024 * 1024 })
   if (untar.status !== 0) throw new Error(`tar: ${untar.stderr}`)
-  return (await import(pathToFileURL(path.join(dir, 'scripts/lib/adr.mjs')))).adrInfo
+  return readerOf(await import(pathToFileURL(path.join(dir, 'scripts/lib/adr.mjs'))))
 }
 
 const textOf = (body) => `## Status\n\n${body}\n## Context\n`
@@ -124,13 +126,18 @@ try {
 } finally {
   fs.rmSync(temp, { recursive: true, force: true })
 }
-const counts = { cases: 0, right: 0, fixed: 0, worse: 0, wrongSame: 0, wrongDifferent: 0 }
+const counts = { lineOfSection: 0, lineChanged: 0, lineOutside: 0, cases: 0, right: 0, fixed: 0, worse: 0, wrongSame: 0, wrongDifferent: 0 }
 const worse = []
 for (const body of cases()) {
   const text = textOf(body)
   const want = expected(text)
-  const before = base(text).status ?? ''
-  const after = head(text).status ?? ''
+  const before = base.section(text)
+  const after = head.section(text)
+  // PMK-311: the status `adrInfo` reads at the head is one line of the section: the same text for a one-line section, else a part of it, never text from outside it.
+  const line = head.line(text)
+  if (line === after) counts.lineOfSection++
+  else if (line === '' || after.includes(line)) counts.lineChanged++
+  else counts.lineOutside++
   counts.cases++
   if (before === want && after === want) counts.right++
   else if (after === want) counts.fixed++
@@ -142,5 +149,6 @@ for (const body of cases()) {
 }
 console.log(`${args.base} -> ${args.head}, commonmark ${createRequire(import.meta.url)(path.join(path.resolve(args.commonmark), 'package.json')).version}`)
 console.log(`cases ${counts.cases}: right on both ${counts.right}, fixed ${counts.fixed}, worse ${counts.worse}, wrong on both ${counts.wrongSame + counts.wrongDifferent} (same answer ${counts.wrongSame}, different ${counts.wrongDifferent})`)
+console.log(`adrInfo status at ${args.head}: the whole section ${counts.lineOfSection}, one line of it ${counts.lineChanged}, text from outside the section ${counts.lineOutside}`)
 for (const example of worse) console.log(JSON.stringify(example))
-process.exit(counts.worse > 0 ? 1 : 0)
+process.exit(counts.worse > 0 || counts.lineOutside > 0 ? 1 : 0)
