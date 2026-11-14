@@ -8,7 +8,7 @@
 // puts at the top level of the document. Exit code 1 when a case is worse at the head than at the base, or (PMK-315) when the head's write removes text the base kept or refused.
 //
 // The write check (PMK-315) runs `setAdrStatus` at both refs on every body and compares what each deletes (adr-write-compare.mjs). A ref refuses a body the way `docs adr-status`
-// does: `adrHtmlHeld`, `adrFenceHeld` or `adrStatusDropped` reports something (so nothing is written; a refusal is its own result, never "removed". An exception from a guard or from `setAdrStatus` is not a refusal (the guards are what refuse), it is a bug: it is counted as `threw` with an example, and the run exits 1 when the head throws on a body (a base that throws is only counted and reported).
+// does: `adrHtmlHeld`, `adrFenceHeld` or `adrStatusDropped` reports something, so nothing is written; a refusal is its own result, never "removed". An exception from a guard or from `setAdrStatus` is not a refusal (the guards are what refuse), it is a bug: it is counted as `threw` with an example, and the run exits 1 when the head throws on a body (a base that throws is only counted and reported).
 // The text a write removes is the trimmed non-blank lines of the document before it minus those after, as a multiset; the write adds `Superseded by <sentinel>`, a line
 // no body has. The head always removes the one line it replaces (its status line, `adrInfo(text).status`), which is not counted. "The head removes text the base kept or
 // refused" (the `worse` count, which fails the run) is the section text that disappears at the head and stayed at the base: both write and the head removes a line the base
