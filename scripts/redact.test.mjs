@@ -5,6 +5,7 @@ import path from 'node:path'
 import { redact } from './lib/redact.mjs'
 import { run } from './pmkit.mjs'
 import { makeRepo, tempDir } from './test-helpers.mjs'
+import { assertFast } from './assert-fast.mjs'
 
 const GH = 'a'.repeat(36)
 const CASES = [
@@ -153,10 +154,6 @@ test('the summary line uses the singular for 1 and the plural otherwise', () => 
 
 test('a long run of word characters is redacted in linear time', () => {
   for (const unit of ['a', 'token', 'token=', 'password_', 'a.']) {
-    const text = unit.repeat(Math.ceil(80000 / unit.length))
-    const start = process.hrtime.bigint()
-    redact(text)
-    const ms = Number(process.hrtime.bigint() - start) / 1e6
-    assert.ok(ms < 1000, `${JSON.stringify(unit)} took ${ms} ms`)
+    assertFast(redact, unit.repeat(Math.ceil(160000 / unit.length)))
   }
 })

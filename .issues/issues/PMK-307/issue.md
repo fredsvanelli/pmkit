@@ -2,12 +2,14 @@
 id: PMK-307
 title: Keep the other fixed 1 s timing probes from failing under load
 type: chore
-status: backlog
+status: in_review
 priority: low
 estimate: 1
+assignee: fred
 parent: EPC-6
+branch: pmk-307-keep-the-other-fixed-1-s-timing-probes
 created: 2026-11-13T21:09:10.403Z
-updated: 2026-11-13T21:09:10Z
+updated: 2026-11-13T22:47:14Z
 ---
 
 ## Description
@@ -39,5 +41,5 @@ In round 28 the paths-timing probes (`no ://` at 1009 ms, quotes and backticks, 
 
 ## Acceptance criteria
 
-- [ ] The probes listed pass in full `npm test` runs with other suites running at the same time, with a check over several runs
-- [ ] Each probe still fails on a quadratic input of its kind, shown by a test of the shared helper and by the size each probe uses
+- [x] The probes listed pass in full `npm test` runs with other suites running at the same time, with a check over several runs
+- [x] Each probe still fails on a quadratic input of its kind, shown by a test of the shared helper and by the size each probe uses
