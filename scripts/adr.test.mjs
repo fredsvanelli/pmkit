@@ -1330,6 +1330,50 @@ test('docs adr-get --from of a repository ADR that replaces a tracker ADR outsid
   })
 })
 
+test('docs adr-get --from with no path is refused as INVALID_INPUT, saying it needs a path, with a next step (PMK-275)', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0001-a.md')
+  for (const args of [['--from'], ['--from='], ['--from', '']]) {
+    const result = await adrGetFrom(root, '1', ...args)
+    assert.equal(result.code, 2, args.join(' '))
+    assert.equal(result.data.error.code, 'INVALID_INPUT', args.join(' '))
+    assert.match(result.data.error.message, /--from needs a path/, args.join(' '))
+    assert.match(result.data.error.nextStep, /--from docs\/adr\/0003-x\.md/, args.join(' '))
+  }
+})
+
+test('docs adr-get --from gives the same supersedesRef for every spelling of the path, in the repository and a tracker (PMK-275)', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0001-a.md')
+  const plain = await adrGetFrom(root, '1', '--from', 'docs/adr/0003-x.md')
+  for (const spelling of ['./docs/adr/0003-x.md', 'docs//adr/0003-x.md', 'docs\\adr\\0003-x.md']) {
+    const result = await adrGetFrom(root, '1', '--from', spelling)
+    assert.equal(result.code, 0, spelling)
+    assert.equal(result.data.supersedesRef, plain.data.supersedesRef, spelling)
+  }
+  await withOutsideTracker(false, async ({ root: outsideRoot }) => {
+    const plainTracker = await adrGetFrom(outsideRoot, '1', '--from', 'tracker:docs/adr/0003-x.md')
+    assert.equal(plainTracker.code, 0)
+    for (const spelling of ['tracker:./docs/adr/0003-x.md', 'tracker:docs//adr/0003-x.md']) {
+      const result = await adrGetFrom(outsideRoot, '1', '--from', spelling)
+      assert.equal(result.code, 0, spelling)
+      assert.equal(result.data.supersedesRef, plainTracker.data.supersedesRef, spelling)
+    }
+  })
+})
+
+test('docs adr-get --from normalises `..` inside the folder and refuses a path that climbs out of it (PMK-275)', async () => {
+  const root = repo()
+  writeAdr(root, 'docs/adr/0001-a.md')
+  const plain = await adrGetFrom(root, '1', '--from', 'docs/adr/0003-x.md')
+  const inside = await adrGetFrom(root, '1', '--from', 'docs/adr/../adr/0003-x.md')
+  assert.equal(inside.code, 0)
+  assert.equal(inside.data.supersedesRef, plain.data.supersedesRef)
+  const climbs = await adrGetFrom(root, '1', '--from', '../docs/adr/0003-x.md')
+  assert.equal(climbs.code, 2)
+  assert.equal(climbs.data.error.code, 'INVALID_INPUT')
+})
+
 test('the item that holds the line decides: a wider sibling, a fence at column 0 and a lazy line before the continuation (PMK-291)', async () => {
   const cases = {
     // `1. a` closes `- x` and `b` is outside it (content at column 3): `b` is a heading line, `---` underlines it.
