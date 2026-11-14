@@ -511,12 +511,13 @@ const statusSection = (lines, section, end) => {
   // The status line when it is read alone (the in-place line, or the only line of a one-line section), without its hard line break (PMK-314).
   const only = safe !== -1 ? safe : count === 1 ? raw.findIndex(Boolean) : -1
   const brk = only === -1 ? '' : hardBreak(orig[only])
-  // The lines a fence or an HTML block holds, as indices of `raw`: worked out only when a later line is looked for.
-  const inBlock = () => {
+  // The lines a fence or an HTML block holds, as indices of `raw`: worked out once, and only when a later line is looked for (a walk for each candidate was quadratic, PMK-316).
+  let blockLines
+  const inBlock = () => (blockLines ??= (() => {
     const held = []
     sectionEnd(lines, section, held)
     return new Set(held.map((item) => item.at - section - 1))
-  }
+  })())
   return { raw, at: statusLineOf(raw, orig, inBlock), safe, count, brk, text: only === -1 ? null : (brk === '\\' ? raw[only].slice(0, -1).trimEnd() : raw[only]) }
 }
 // Whether the write replaces one line and keeps the rest, so nothing is deleted and the guards for what a replaced section loses do not run (PMK-314).
@@ -529,7 +530,7 @@ const replacesInPlace = (lines, section) => statusSection(lines, section, sectio
 export function adrStatusDropped(text) {
   return adrStatusDroppedAt(text).map((item) => item.line)
 }
-/** `adrStatusDropped` with the line of each, `{ at, line }`: `at` an index into the lines of the text, the same index `adrFenceLines` gives, so the refusal takes a fence line out by position (PMK-316). */
+/** `adrStatusDropped` with the line of each, `{ at, line }`: `at` an index into the lines of the text, the same index `adrFenceBlocks` gives, so the refusal takes a fence line out by position (PMK-316). */
 export function adrStatusDroppedAt(text) {
   const lines = adrText(text).split('\n')
   const { section, end } = locate(lines)

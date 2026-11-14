@@ -1529,6 +1529,16 @@ test('probe: no link reference definition or HTML block pattern takes ten second
   await assertFast('probe-targets.mjs#adrInfoBody', bodies)
 })
 
+// PMK-316 review cycle 2: a note that is not a status, then lines that read as a status inside a fence or a comment, once made `statusLineOf` walk the section again for each of them (O(n^2) in adr-get and adr-status).
+test('probe: a list item that is not a status before a long fence or comment of status words is read in well under the ceiling (PMK-316 cycle 2 review)', async () => {
+  const n = 20000
+  const bodies = [
+    `- see ADR 3\n\n\`\`\`\n${'Accepted\n'.repeat(n)}\`\`\``, `- see ADR 3\n\n<!--\n${'Proposed\n'.repeat(n)}-->`,
+    `> see ADR 3\n\n> ~~~\n${'> Accepted\n'.repeat(n)}> ~~~`, `- see ADR 3\n\n    Accepted\n${'- Draft\n'.repeat(n)}`,
+  ]
+  await assertFast('probe-targets.mjs#adrInfoBody', bodies)
+})
+
 test('an empty item followed by a line and a === or --- underline ends the Status section at that line, in adr-get and adr-status alike (PMK-292)', async () => {
   const cases = {
     'empty - then ---': ['Accepted\n\n-\nfoo\n---\n', 'Accepted -'],
