@@ -34,3 +34,6 @@ Lição dos follow-ups (rodadas 16 a 18):
 
 Lição da rodada 26:
 - O `issues branch` parte do `develop` local quando ele existe (PMK-290), e os worktrees do Orca compartilham as branches do repositório. Se o `develop` local estiver parado, a branch da issue nasce velha. O orquestrador faz `git pull --ff-only` no `develop` do tree principal depois de cada merge; o implementador confere com `git merge-base HEAD origin/develop` antes do primeiro commit e passa `--from origin/develop` se a base estiver atrás.
+
+Lição da rodada 30:
+- Os worktrees do Orca rodam na mesma máquina. Um `pkill -f "scripts/run-tests.mjs"` (ou qualquer `pkill`/`killall` com padrão) mata o `npm test` dos outros workers. Mate só os PIDs que você mesmo começou (`$!`, ou um `pgrep` filtrado pelo caminho do seu worktree).
