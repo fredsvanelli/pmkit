@@ -281,7 +281,6 @@ function sectionEnd(lines, from, held = []) {
         const fence = indent <= 3 && line[next] === block.char ? CM_CLOSING_FENCE.exec(line.slice(next)) : null
         if (fence !== null && fence[0].length >= block.length) {
           block.closer = j
-          block.closerLine = line.trim()
           open.length = k
           closedFence = true
           break
@@ -427,13 +426,13 @@ export function adrFenceHeld(text) {
   const risky = fenceRisk(text)
   return risky.length === 0 ? null : { opener: risky[0].block.first, lines: risky.map((item) => item.line) }
 }
-/** The line (an index into the lines of the text) of the closing line of each closed fence `adrFenceHeld` names, in order: it goes with its fence in the refusal, not as other text (PMK-313, by position PMK-316). */
-export function adrFenceClosers(text) {
-  return [...new Set(fenceRisk(text).map((item) => item.block))].filter((block) => block.closer !== undefined).map((block) => block.closer)
-}
-/** The lines (indices into the lines of the text) of the opening and closing line of every fence `adrFenceHeld` names: they go with their fence in the refusal, taken out of the other text by position, not by text (PMK-316). */
-export function adrFenceLines(text) {
-  return [...new Set(fenceRisk(text).map((item) => item.block))].flatMap((block) => [block.start, block.closer]).filter((at) => at !== undefined)
+/**
+ * The fences `adrFenceHeld` names, in order, `{ opener, start, closer }`: `opener` the trimmed opening line without its quote or list prefix, `start` and `closer` the lines (indices into the
+ * lines of the text) of the opening and closing line, `closer` undefined for a fence that never closes. The refusal names each opener with its fence and takes both lines out of the other
+ * text by their line, not their text (PMK-316; the closing line, PMK-313).
+ */
+export function adrFenceBlocks(text) {
+  return [...new Set(fenceRisk(text).map((item) => item.block))].map((block) => ({ opener: block.first, start: block.start, closer: block.closer }))
 }
 const fenceRisk = (text) => {
   const lines = adrText(text).split('\n')
@@ -466,10 +465,13 @@ const hostsLazy = (item) => {
 // The first line after one-line comments that is an item or quote with text is the status a reader sees, whatever follows it, a blank line, a date or a lazy line (PMK-313).
 // When that first item or quote does not read as a known status (`readsAsStatus`, the rule of `topLevelStatus`) and a later line does, the later line is the status and the item is text to move (PMK-316);
 // when no line reads as one, the first item or quote stays the status.
-const statusLineOf = (raw) => {
-  const first = raw.findIndex((item) => item !== '' && !/^<!--.*-->$/.test(item))
+// The later line must be text the reader sees at the top of the section, as `topLevelStatus` asks: not in a fence or an HTML block (`inBlock` gives their lines), not indented 4 columns (code), not a block
+// opener or a `Key: value` or reference line; an item or quote with text counts (PMK-316 review).
+const statusLineOf = (raw, orig, inBlock) => {
+  const first = raw.findIndex((item) => item !== '' && !ONE_LINE_COMMENT.test(item))
   if (first !== -1 && hostsLazy(raw[first])) {
-    const later = readsAsStatus(raw[first]) ? -1 : raw.findIndex((item, i) => i > first && item !== '' && !/^<!--.*-->$/.test(item) && readsAsStatus(item))
+    const text = (item, i) => i > first && /^ {0,3}\S/.test(orig[i]) && (OPENS_BLOCK.test(item) ? hostsLazy(item) : !KEY_VALUE.test(item) && !NOT_TEXT.test(item)) && !ONE_LINE_COMMENT.test(item) && readsAsStatus(item)
+    const later = readsAsStatus(raw[first]) ? -1 : raw.findIndex((item, i) => text(item, i) && !inBlock().has(i))
     return later === -1 ? first : later
   }
   const at = raw.findIndex((item) => item !== '' && !OPENS_BLOCK.test(item))
@@ -509,7 +511,13 @@ const statusSection = (lines, section, end) => {
   // The status line when it is read alone (the in-place line, or the only line of a one-line section), without its hard line break (PMK-314).
   const only = safe !== -1 ? safe : count === 1 ? raw.findIndex(Boolean) : -1
   const brk = only === -1 ? '' : hardBreak(orig[only])
-  return { raw, at: statusLineOf(raw), safe, count, brk, text: only === -1 ? null : (brk === '\\' ? raw[only].slice(0, -1).trimEnd() : raw[only]) }
+  // The lines a fence or an HTML block holds, as indices of `raw`: worked out only when a later line is looked for.
+  const inBlock = () => {
+    const held = []
+    sectionEnd(lines, section, held)
+    return new Set(held.map((item) => item.at - section - 1))
+  }
+  return { raw, at: statusLineOf(raw, orig, inBlock), safe, count, brk, text: only === -1 ? null : (brk === '\\' ? raw[only].slice(0, -1).trimEnd() : raw[only]) }
 }
 // Whether the write replaces one line and keeps the rest, so nothing is deleted and the guards for what a replaced section loses do not run (PMK-314).
 const replacesInPlace = (lines, section) => statusSection(lines, section, sectionEnd(lines, section)).safe !== -1

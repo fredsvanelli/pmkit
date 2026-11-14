@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { run } from './pmkit.mjs'
-import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrStatusDropped, adrFenceClosers, adrStatusContinuation, adrKeptLines, adrSectionText, adrInfo, adrRef, adrStatusHeading, adrHtmlHeld, adrFenceHeld } from './lib/adr.mjs'
+import { ADR_SLUG_MAX, adrFiles, adrFolders, adrLocation, adrSlug, duplicateAdrs, highestAdr, setAdrStatus, adrStatusDropped, adrFenceBlocks, adrStatusContinuation, adrKeptLines, adrSectionText, adrInfo, adrRef, adrStatusHeading, adrHtmlHeld, adrFenceHeld } from './lib/adr.mjs'
 import { childEnv } from './golden-helpers.mjs'
 import { makeRepo } from './test-helpers.mjs'
 import { assertFast } from './assert-fast.mjs'
@@ -2026,6 +2026,48 @@ for (const [name, text, other] of [
     assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
   })
 }
+// PMK-316 review: the opening line of a second fence that is not the first one's is named with its fence, once; no line the write deletes drops out of the refusal.
+for (const [name, text, openers] of [
+  ['a fence of three backticks and one of tildes with an info string', '## Status\n\n- Accepted\n\n```\n## X\n```\n\n~~~js\n## Y\n~~~\n\n## Context\n', ['```', '~~~js']],
+  ['a fence of three backticks and one of four', '## Status\n\n- Accepted\n\n```\n## X\n```\n\n````\n## Y\n````\n\n## Context\n', ['```', '````']],
+  ['a fence of backticks and one of tildes', '## Status\n\n- Accepted\n\n```\n## X\n```\n\n~~~\n## Y\n~~~\n\n## Context\n', ['```', '~~~']],
+  ['a fence in a quote and one of tildes in a quote', '## Status\n\n> Accepted\n\n> ```\n> ## X\n> ```\n\n> ~~~py\n> ## Y\n> ~~~\n\n## Context\n', ['```', '~~~py']],
+  ['a fence in an item and one of tildes in an item', '## Status\n\n- Accepted\n\n- ```\n  ## X\n  ```\n- ~~~py\n  ## Y\n  ~~~\n\n## Context\n', ['```', '~~~py']],
+]) {
+  test(`the refusal names the opening line of each fence for ${name}, once, and loses no line (PMK-316)`, async () => {
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    for (const args of [['--dry-run'], []]) {
+      const result = await adrStatus(root, '1', 'deprecated', ...args)
+      assert.equal(result.code, 2)
+      const { message } = result.data.error
+      for (const opener of openers) assert.equal(message.split(`"${opener}"`).length - 1, 1, `${opener}: ${message}`)
+      assert.equal(message.match(/"(?:> )?## [XY]"/g).length, 2, message)
+      assert.ok(!message.includes('the other text'), message)
+    }
+    assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+  })
+}
+// A later line is the status only when it is text at the top of the section: not in a fence, a comment or indented code, not a Key: value line.
+for (const [name, text, dropped] of [
+  ['a fence', '## Status\n\n- see ADR 3\n\n```\nAccepted\n```\n\n## Context\n', ['```', 'Accepted', '```']],
+  ['a tilde fence in a quote', '## Status\n\n> see ADR 3\n\n> ~~~\n> Accepted\n> ~~~\n\n## Context\n', ['> ~~~', '> Accepted', '> ~~~']],
+  ['an HTML comment', '## Status\n\n- see ADR 3\n\n<!--\nAccepted\n-->\n\n## Context\n', ['<!--', 'Accepted', '-->']],
+  ['indented code', '## Status\n\n- see ADR 3\n\n    Accepted\n\n## Context\n', ['Accepted']],
+  ['a Key: value line', '## Status\n\n- see ADR 3\n\nDraft notes: x\n\n## Context\n', ['Draft notes: x']],
+]) {
+  test(`after a note that is not a status, a known status in ${name} is not the status: it is named (PMK-316)`, async () => {
+    assert.deepEqual(adrStatusDropped(text), dropped)
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    for (const args of [['--dry-run'], []]) {
+      const result = await adrStatus(root, '1', 'deprecated', ...args)
+      assert.equal(result.code, 2)
+      for (const line of dropped) assert.ok(result.data.error.message.includes(`"${line}"`), result.data.error.message)
+    }
+  })
+}
+
 // A fence line is taken out by its position, not its text: a line of other text with the same text as a closing line stays named.
 test('a closing fence line is not taken out of the other text in place of a line with the same text (PMK-316)', async () => {
   const text = '## Status\n\n- Accepted\n\n    ```\n\n```\n## X\n```\n\n## Context\n'
@@ -2046,7 +2088,7 @@ for (const [name, text] of [
   test(`${name} after a status line of its own is written in place, real and dry run, with no note in adr-get (PMK-314)`, async () => {
     assert.equal(adrHtmlHeld(text), null)
     assert.equal(adrFenceHeld(text), null)
-    assert.deepEqual(adrFenceClosers(text), [])
+    assert.deepEqual(adrFenceBlocks(text), [])
     const root = repo()
     writeAdr(root, 'docs/adr/0001-a.md', text)
     const get = await adrGetFrom(root, '1')
