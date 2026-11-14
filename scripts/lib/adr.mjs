@@ -431,9 +431,9 @@ export function adrHtmlHeld(text) {
  * What `adr-status` would delete that a fenced code block took into the `## Status` section (PMK-302), `{ opener, lines }`, null when nothing: every line inside a
  * fence, closed or not, in a quote or a list item too, that reads as a heading (ATX, or a line a `---` or `===` underlines), the way the HTML guard counts. A closed
  * fence that holds `## X` is refused too (rare, and the text is not lost, but the rule is the HTML block's). `opener` is the first line of the first fence at risk,
- * `lines` the trimmed lines. A fence with no such line costs nothing and is not reported. Reading is unchanged.
+ * `lines` the trimmed lines. A fence with no such line costs nothing and is not reported. Reading is unchanged. A projection of `adrFenceBlocks`, so the CLI and the dev check
+ * read one implementation; `fences` lets a caller that has them skip the walk (PMK-322 review).
  */
-// A projection of `adrFenceBlocks`, so the CLI and the dev check read one implementation; `fences` lets a caller that has them skip the walk (PMK-322 review).
 export function adrFenceHeld(text, fences = adrFenceBlocks(text)) {
   return fences.length === 0 ? null : { opener: fences[0].opener, lines: fences.flatMap((fence) => fence.lines) }
 }
@@ -485,7 +485,7 @@ const hostsLazy = (item) => {
 // when no line reads as one, the first item, quote or plain line stays the status.
 // The later line must be text the reader sees at the top of the section: a line that starts a paragraph, or the first paragraph of a quote or item, as the block walk decides (`paragraphOf`), not a
 // `Key: value` line; an item or quote with text counts (PMK-316 review). The first line settles the choice only when it is such a line too: indented code, a definition, a lazy or continuation line never is (PMK-322).
-const statusLineOf = (raw, orig, paragraphOf) => {
+const statusLineOf = (raw, paragraphOf) => {
   const first = raw.findIndex((item) => item !== '' && !ONE_LINE_COMMENT.test(item))
   // A first line that is plain text (not a block opener) takes the same preference: its old choice is that line, so without a later known status nothing changes (PMK-319).
   if (first !== -1 && (hostsLazy(raw[first]) || !OPENS_BLOCK.test(raw[first]))) {
@@ -534,7 +534,6 @@ const statusSection = (lines, section, end) => {
   // The status line when it is read alone (the in-place line, or the only line of a one-line section), without its hard line break (PMK-314).
   const only = safe !== -1 ? safe : count === 1 ? raw.findIndex(Boolean) : -1
   const brk = only === -1 ? '' : hardBreak(orig[only])
-  // The lines a fence or an HTML block holds, and the lazy continuation lines (PMK-322), as indices of `raw`: worked out once, and only when a later line is looked for (a walk for each candidate was quadratic, PMK-316).
   // For each line of a paragraph the reader sees as a status (`held.paragraphs`), the index of its first line, as indices of `raw`; a definition's first line is left out (PMK-322).
   // One walk, worked out once and only when a refusal names the lines (`at` is read only then), so reading and writing never pay for it (a walk for each candidate was quadratic, PMK-316).
   let starts
@@ -559,7 +558,7 @@ const statusSection = (lines, section, end) => {
     }
     return map
   })()).get(i)
-  return { raw, get at() { return statusLineOf(raw, orig, paragraphOf) }, safe, count, brk, text: only === -1 ? null : (brk === '\\' ? raw[only].slice(0, -1).trimEnd() : raw[only]) }
+  return { raw, get at() { return statusLineOf(raw, paragraphOf) }, safe, count, brk, text: only === -1 ? null : (brk === '\\' ? raw[only].slice(0, -1).trimEnd() : raw[only]) }
 }
 // Whether the write replaces one line and keeps the rest, so nothing is deleted and the guards for what a replaced section loses do not run (PMK-314).
 const replacesInPlace = (lines, section) => statusSection(lines, section, sectionEnd(lines, section)).safe !== -1
