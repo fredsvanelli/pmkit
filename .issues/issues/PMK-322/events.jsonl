@@ -1,1 +1,3 @@
 {"at":"2026-11-14T20:46:32Z","by":"fred","op":"create","to":{"id":"PMK-322","title":"Name the status the reader sees, and each fence apart, in the adr-status refusal","type":"bug","status":"backlog","priority":"low","estimate":2,"assignee":"fred","labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-14T20:46:32.664Z","updated":"2026-11-14T20:46:32Z"}}
+{"at":"2026-11-14T21:35:55Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-14T21:36:01Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-322-name-the-status-the-reader-sees-and-each"}

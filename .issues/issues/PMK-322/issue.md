@@ -2,13 +2,14 @@
 id: PMK-322
 title: "Name the status the reader sees, and each fence apart, in the adr-status refusal"
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
+branch: pmk-322-name-the-status-the-reader-sees-and-each
 created: 2026-11-14T20:46:32.664Z
-updated: 2026-11-14T20:46:32Z
+updated: 2026-11-14T21:36:01Z
 ---
 
 ## Description
