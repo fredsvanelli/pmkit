@@ -1,1 +1,8 @@
 {"at":"2026-11-14T15:52:57Z","by":"fred","op":"create","to":{"id":"PMK-316","title":"Name a non-status item and a repeated fence closer right in the adr-status refusal","type":"bug","status":"backlog","priority":"low","estimate":2,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-14T15:52:57.182Z","updated":"2026-11-14T15:52:57Z"}}
+{"at":"2026-11-14T17:23:57Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-14T17:23:57Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-14T17:23:59Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-316-name-a-non-status-item-and-a-repeated"}
+{"at":"2026-11-14T17:25:38Z","by":"fred","op":"comment","to":"2026-11-14T17-25-38Z-fred.md"}
+{"at":"2026-11-14T17:39:56Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T17:39:56Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T17:39:57Z","by":"fred","op":"update","field":"acceptance_criteria"}
