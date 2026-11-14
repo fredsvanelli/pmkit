@@ -225,8 +225,8 @@ const keepsText = (paragraph) => {
  * reference definitions, so under a list item it is a break or a lazy line (PMK-280). Columns count a tab to the next stop of 4.
  * Not a Markdown parser: no inline content. `held`, when given, collects the non-blank lines an HTML block continues (PMK-299), as `{ at, text, late, block }` (`text`: the line without the markers of the containers it is in; `late`, HTML blocks only: after a blank line of the block; `heading` is not in it, `headingLike` adds it for the readers),
  * and gets `unclosed`: the innermost block of kind 1 to 5 still open at the end of the file, and `openHtml`: that block when it is directly in the document, the only one that takes in every later line (PMK-323). The same for a fenced code block (PMK-302): the non-blank lines it continues come in `held` with `block.type === 'fence'`, closed or not, in a quote or a list item too. Its entries are `{ at, text, block }`.
- * When `held.paragraphs` is an array, it gets each paragraph that starts the document's text or a quote or list item (its first block), with `lines`: its lines in order, and
- * `lazy`: those of them that are lazy continuation lines (PMK-322). A paragraph that is a later block of its quote or item is not one of them.
+ * When `held.paragraphs` is an array, it gets every paragraph, with `parent`: the block it is in, `index`: its place among the blocks of that parent (1 for the first),
+ * `lines`: its lines in order, and `lazy`: those of them that are lazy continuation lines (PMK-322).
  */
 function sectionEnd(lines, from, held = []) {
   const open = [{ type: 'document' }]
@@ -306,7 +306,11 @@ function sectionEnd(lines, from, held = []) {
       allClosed = true
       // A paragraph, a heading or code holds no block: the new one goes beside it.
       while (LEAVES.has(open.at(-1).type)) open.pop()
-      if (block.type === 'paragraph' && held.paragraphs && (open.length === 1 || !open.at(-1).filled)) held.paragraphs.push(Object.assign(block, { lines: [j], lazy: new Set() }))
+      if (held.paragraphs) {
+        const parent = open.at(-1)
+        block.index = parent.children = (parent.children ?? 0) + 1
+        if (block.type === 'paragraph') held.paragraphs.push(Object.assign(block, { parent, lines: [j], lazy: new Set() }))
+      }
       open.at(-1).filled = true
       open.push(block)
       container = open.length - 1
@@ -534,7 +538,8 @@ const statusSection = (lines, section, end) => {
   // The status line when it is read alone (the in-place line, or the only line of a one-line section), without its hard line break (PMK-314).
   const only = safe !== -1 ? safe : count === 1 ? raw.findIndex(Boolean) : -1
   const brk = only === -1 ? '' : hardBreak(orig[only])
-  // For each line of a paragraph the reader sees as a status (`held.paragraphs`), the index of its first line, as indices of `raw`; a definition's first line is left out (PMK-322).
+  // For each line of a paragraph the reader sees as a status, the index of its first shown line, as indices of `raw` (PMK-322): a paragraph of the section's text, or the first block of a
+  // quote or item that shows (definitions are not shown, so a paragraph after definitions only is that block too), its own leading definitions left out.
   // One walk, worked out once and only when a refusal names the lines (`at` is read only then), so reading and writing never pay for it (a walk for each candidate was quadratic, PMK-316).
   let starts
   const paragraphOf = (i) => (starts ??= (() => {
@@ -542,6 +547,8 @@ const statusSection = (lines, section, end) => {
     held.paragraphs = []
     sectionEnd(lines, section, held)
     const map = new Map()
+    // The paragraphs of definitions only, by the block they are in.
+    const hidden = new Map()
     for (const paragraph of held.paragraphs) {
       // The definitions at its start are not shown: the paragraph the reader sees starts on the line after them, if any text is left.
       let { text } = paragraph
@@ -551,7 +558,11 @@ const statusSection = (lines, section, end) => {
         for (let k = 0; k < length; k++) if (text[k] === '\n') skip++
         text = text.slice(length)
       }
-      if (text === '') continue
+      if (text === '') {
+        hidden.set(paragraph.parent, (hidden.get(paragraph.parent) ?? 0) + 1)
+        continue
+      }
+      if (paragraph.parent.type !== 'document' && paragraph.index - 1 !== (hidden.get(paragraph.parent) ?? 0)) continue
       const start = paragraph.lines[skip] - section - 1
       map.set(start, start)
       for (const j of paragraph.lines.slice(skip + 1)) if (!paragraph.lazy.has(j)) map.set(j - section - 1, start)
