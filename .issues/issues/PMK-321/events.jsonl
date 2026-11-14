@@ -1,1 +1,5 @@
 {"at":"2026-11-14T19:16:52Z","by":"fred","op":"create","to":{"id":"PMK-321","title":"Check the new line and the lines outside the section in the adr-commonmark-diff write check, and exercise container fences","type":"chore","status":"backlog","priority":"low","estimate":2,"labels":[],"parent":"EPC-6","blocked_by":[],"related":[],"duplicate_of":[],"created":"2026-11-14T19:16:52.893Z","updated":"2026-11-14T19:16:52Z"}}
+{"at":"2026-11-14T19:25:09Z","by":"fred","op":"assign","field":"assignee","from":null,"to":"fred"}
+{"at":"2026-11-14T19:25:09Z","by":"fred","op":"move","field":"status","from":"backlog","to":"in_progress"}
+{"at":"2026-11-14T19:25:11Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-321-check-the-new-line-and-the-lines-outside"}
+{"at":"2026-11-14T19:26:50Z","by":"fred","op":"comment","to":"2026-11-14T19-26-50Z-fred.md"}

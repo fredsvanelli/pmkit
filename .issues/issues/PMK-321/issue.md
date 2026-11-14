@@ -2,12 +2,14 @@
 id: PMK-321
 title: "Check the new line and the lines outside the section in the adr-commonmark-diff write check, and exercise container fences"
 type: chore
-status: backlog
+status: in_progress
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-6
+branch: pmk-321-check-the-new-line-and-the-lines-outside
 created: 2026-11-14T19:16:52.893Z
-updated: 2026-11-14T19:16:52Z
+updated: 2026-11-14T19:25:11Z
 ---
 
 ## Description
