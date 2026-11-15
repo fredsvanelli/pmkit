@@ -2215,6 +2215,8 @@ for (const [name, text, dropped, kept] of [
 for (const [name, text, dropped] of [
   ['a definition and a thematic break before a paragraph with a glued status', '## Status\n\n[a]: /u\n---\nDate: x\nAccepted\n\n## Context\n', ['---', 'Date: x', 'Accepted']],
   ['indented code before a paragraph with a glued status', '## Status\n\n    code\n\nDate: x\nAccepted\n\n## Context\n', ['Date: x', 'Accepted']],
+  // The paragraph after the definitions is the first one shown; a later paragraph of the same quote (here in an inner quote) is not, so its glued line is not chosen.
+  ['a definitions block before a quote whose later inner quote has a glued status', '## Status\n\n[a]: /u\n\n> Foo\n>\n> > Date: x\n> > Accepted\n\n> Proposed\n\n## Context\n', ['[a]: /u', '> Foo', '>', '> > Date: x', '> > Accepted']],
   ['a definitions block after the first paragraph', '## Status\n\nDate: x\n\n[x]: /u\n\nsee ADR 3\nAccepted\n\n## Context\n', ['[x]: /u', 'see ADR 3', 'Accepted']],
 ]) {
   test(`with ${name} the choice of the status line is as before (PMK-325)`, () => {
