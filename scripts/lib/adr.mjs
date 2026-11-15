@@ -583,14 +583,12 @@ const statusSection = (lines, section, end) => {
       map.set(start, start)
       if (skip > 0) after.set(paragraph.lines[0] - section - 1, start)
       // Definitions closed by a blank line, right before this paragraph or before the quote or item it opens (at any depth), are not shown either: the paragraph
-      // is the first one shown after them (PMK-325). Only the section's first line is ever looked up, so a run that does not open the section changes nothing.
+      // is the first one shown after them (PMK-325). The climb goes on while every earlier block of the parent is hidden, so definitions that open the section and
+      // then the quote or item after it both lead here (review cycle 1). Only the section's first line is ever looked up, so a run that does not open the section changes nothing.
       for (let node = paragraph; ; node = node.parent) {
         const run = runs.get(node.parent)
-        if (run?.index === node.index - 1) {
-          after.set(run.line - section - 1, start)
-          break
-        }
-        if (node.parent.type === 'document' || node.index !== 1) break
+        if (run?.index === node.index - 1) after.set(run.line - section - 1, start)
+        if (node.parent.type === 'document' || node.index - 1 !== (hidden.get(node.parent) ?? 0)) break
       }
       for (const j of paragraph.lines.slice(skip + 1)) if (!paragraph.lazy.has(j)) map.set(j - section - 1, start)
     }

@@ -2194,6 +2194,11 @@ for (const [name, text, dropped, kept] of [
   ['a definitions block and no later status in a quote', '## Status\n\n> [a]: /u\n>\n> Date: x\n> Accepted\n\n## Context\n', ['> [a]: /u', '>', '> Date: x'], '> Accepted'],
   ['a definitions block before a quote with a glued status', '## Status\n\n[a]: /u\n\n> Date: x\n> Accepted\n\n> Proposed\n\n## Context\n', ['[a]: /u', '> Date: x', '> Proposed'], '> Accepted'],
   ['a definitions block before a quote and no later status', '## Status\n\n[a]: /u\n\n> Date: x\n> Accepted\n\n## Context\n', ['[a]: /u', '> Date: x'], '> Accepted'],
+  // Review cycle 1: definitions that open the section and then the quote or item after it are both left out, so the first paragraph of that quote or item is the first one shown.
+  ['a definitions block before a quote that opens with definitions', '## Status\n\n[a]: /u\n\n> [b]: /v\n>\n> Date: x\n> Accepted\n\n## Context\n', ['[a]: /u', '> [b]: /v', '>', '> Date: x'], '> Accepted'],
+  ['a definitions block before a quote that opens with definitions, then a later status', '## Status\n\n[a]: /u\n\n> [b]: /v\n>\n> Date: x\n> Accepted\n\n> Proposed\n\n## Context\n', ['[a]: /u', '> [b]: /v', '>', '> Date: x', '> Proposed'], '> Accepted'],
+  ['a definitions block before an item that opens with definitions', '## Status\n\n[a]: /u\n\n- [b]: /v\n\n  Date: x\n  Accepted\n\n## Context\n', ['[a]: /u', '- [b]: /v', 'Date: x'], 'Accepted'],
+  ['a definitions block before an item that opens with definitions, then a later status', '## Status\n\n[a]: /u\n\n- [b]: /v\n\n  Date: x\n  Accepted\n\n> Proposed\n\n## Context\n', ['[a]: /u', '- [b]: /v', 'Date: x', '> Proposed'], 'Accepted'],
   ['a definitions block in a quote before an inner quote', '## Status\n\n> [a]: /u\n>\n> > Date: x\n> > Accepted\n\n## Context\n', ['> [a]: /u', '>', '> > Date: x'], '> > Accepted'],
 ]) {
   test(`the refusal for ${name} names the status the reader sees as kept and every other line as text (PMK-325)`, async () => {
