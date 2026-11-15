@@ -415,10 +415,12 @@ function locate(lines) {
 const SETEXT_UNDERLINE = /^ {0,3}(?:=+|-+)[ \t]*$/
 const headingLike = (held) => held.map((item, i) => ({ ...item, heading: headingLevel(item.text) > 0 || (!SETEXT_UNDERLINE.test(item.text) && held[i + 1]?.at === item.at + 1 && held[i + 1].block === item.block && SETEXT_UNDERLINE.test(held[i + 1].text)) }))
 /**
- * What `adr-status` would delete that an HTML block took into the `## Status` section (PMK-299), `{ opener, lines }`, null when nothing: the lines
- * the section replaces that the block continues and that read as an ATX heading, or that come after a blank line in a block of kind 1 to 5
- * that never closes. `opener` is the first line of the block, `lines` the trimmed lines at risk. Found by the walk that ends the section, so
- * reading is unchanged and the first line of the block (the status the user wrote) is never counted.
+ * What `adr-status` would delete that an HTML block took into the `## Status` section (PMK-299), `{ opener, lines }`, null when nothing. When the whole
+ * section is replaced: the lines the section replaces that an HTML block continues and that read as a heading, and the lines after a blank line in
+ * `held.unclosed`, the innermost block of kind 1 to 5 that never closes, in a quote or a list item too. When the status line is written in place
+ * (PMK-314): only the lines of `held.openHtml`, the block of kind 1 to 5 directly in the document still open at the end of the walk; one a quote or
+ * list item holds ends with its container and takes nothing (PMK-323). `opener` is the first line of the block, `lines` the trimmed lines at risk.
+ * Found by the walk that ends the section, so reading is unchanged and the first line of the block (the status the user wrote) is never counted.
  */
 export function adrHtmlHeld(text) {
   const lines = adrText(text).split('\n')
