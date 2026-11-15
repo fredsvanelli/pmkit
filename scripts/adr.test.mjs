@@ -2182,6 +2182,52 @@ for (const [name, text, dropped] of [
     assert.deepEqual(adrStatusDropped(text), dropped)
   })
 }
+// PMK-325: definitions that open the section as a block of their own, closed by a blank line, are not shown, so the first shown paragraph is the one after them
+// (also the first paragraph of a quote or item right after them), and its glued status is kept as with no definition. The definition is never kept when it does.
+for (const [name, text, dropped, kept] of [
+  ['a definitions block before a paragraph with a glued status', '## Status\n\n[a]: /u\n\nDate: x\nAccepted\n\n> Proposed\n\n## Context\n', ['[a]: /u', 'Date: x', '> Proposed'], 'Accepted'],
+  ['two glued definitions before a paragraph with a glued status', '## Status\n\n[a]: /u\n[b]: /v\n\nDate: x\nAccepted\n\n> Proposed\n\n## Context\n', ['[a]: /u', '[b]: /v', 'Date: x', '> Proposed'], 'Accepted'],
+  ['two definitions blocks before a paragraph with a glued status', '## Status\n\n[a]: /u\n\n[b]: /v\n\nDate: x\nAccepted\n\n> Proposed\n\n## Context\n', ['[a]: /u', '[b]: /v', 'Date: x', '> Proposed'], 'Accepted'],
+  ['a definitions block before a paragraph with a glued status in a quote', '## Status\n\n> [a]: /u\n>\n> Date: x\n> Accepted\n\n> Proposed\n\n## Context\n', ['> [a]: /u', '>', '> Date: x', '> Proposed'], '> Accepted'],
+  ['a definitions block before a paragraph with a glued status in an item', '## Status\n\n- [a]: /u\n\n  Date: x\n  Accepted\n\n> Proposed\n\n## Context\n', ['- [a]: /u', 'Date: x', '> Proposed'], 'Accepted'],
+  ['a definitions block and no later status', '## Status\n\n[a]: /u\n\nDate: x\nAccepted\n\n## Context\n', ['[a]: /u', 'Date: x'], 'Accepted'],
+  ['a definitions block and no later status in a quote', '## Status\n\n> [a]: /u\n>\n> Date: x\n> Accepted\n\n## Context\n', ['> [a]: /u', '>', '> Date: x'], '> Accepted'],
+  ['a definitions block before a quote with a glued status', '## Status\n\n[a]: /u\n\n> Date: x\n> Accepted\n\n> Proposed\n\n## Context\n', ['[a]: /u', '> Date: x', '> Proposed'], '> Accepted'],
+  ['a definitions block before a quote and no later status', '## Status\n\n[a]: /u\n\n> Date: x\n> Accepted\n\n## Context\n', ['[a]: /u', '> Date: x'], '> Accepted'],
+  // Review cycle 1: definitions that open the section and then the quote or item after it are both left out, so the first paragraph of that quote or item is the first one shown.
+  ['a definitions block before a quote that opens with definitions', '## Status\n\n[a]: /u\n\n> [b]: /v\n>\n> Date: x\n> Accepted\n\n## Context\n', ['[a]: /u', '> [b]: /v', '>', '> Date: x'], '> Accepted'],
+  ['a definitions block before a quote that opens with definitions, then a later status', '## Status\n\n[a]: /u\n\n> [b]: /v\n>\n> Date: x\n> Accepted\n\n> Proposed\n\n## Context\n', ['[a]: /u', '> [b]: /v', '>', '> Date: x', '> Proposed'], '> Accepted'],
+  ['a definitions block before an item that opens with definitions', '## Status\n\n[a]: /u\n\n- [b]: /v\n\n  Date: x\n  Accepted\n\n## Context\n', ['[a]: /u', '- [b]: /v', 'Date: x'], 'Accepted'],
+  ['a definitions block before an item that opens with definitions, then a later status', '## Status\n\n[a]: /u\n\n- [b]: /v\n\n  Date: x\n  Accepted\n\n> Proposed\n\n## Context\n', ['[a]: /u', '- [b]: /v', 'Date: x', '> Proposed'], 'Accepted'],
+  ['a definitions block in a quote before an inner quote', '## Status\n\n> [a]: /u\n>\n> > Date: x\n> > Accepted\n\n## Context\n', ['> [a]: /u', '>', '> > Date: x'], '> > Accepted'],
+]) {
+  test(`the refusal for ${name} names the status the reader sees as kept and every other line as text (PMK-325)`, async () => {
+    assert.deepEqual(adrStatusDropped(text), dropped)
+    const root = repo()
+    writeAdr(root, 'docs/adr/0001-a.md', text)
+    for (const args of [['--dry-run'], []]) {
+      const result = await adrStatus(root, '1', 'deprecated', ...args)
+      assert.equal(result.code, 2)
+      const { message } = result.data.error
+      assert.ok(message.includes(`the other text of the Status section, ${dropped.map((line) => `"${line}"`).join(', ')}; nothing`), message)
+      assert.ok(!message.includes(`"${kept}"`), message)
+    }
+    assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+  })
+}
+// PMK-325, unchanged: a shown block between the definitions and the paragraph (a thematic break, indented code) keeps the first line as the fallback,
+// and a definitions block that does not open the section is not the first line, so it changes nothing.
+for (const [name, text, dropped] of [
+  ['a definition and a thematic break before a paragraph with a glued status', '## Status\n\n[a]: /u\n---\nDate: x\nAccepted\n\n## Context\n', ['---', 'Date: x', 'Accepted']],
+  ['indented code before a paragraph with a glued status', '## Status\n\n    code\n\nDate: x\nAccepted\n\n## Context\n', ['Date: x', 'Accepted']],
+  // The paragraph after the definitions is the first one shown; a later paragraph of the same quote (here in an inner quote) is not, so its glued line is not chosen.
+  ['a definitions block before a quote whose later inner quote has a glued status', '## Status\n\n[a]: /u\n\n> Foo\n>\n> > Date: x\n> > Accepted\n\n> Proposed\n\n## Context\n', ['[a]: /u', '> Foo', '>', '> > Date: x', '> > Accepted']],
+  ['a definitions block after the first paragraph', '## Status\n\nDate: x\n\n[x]: /u\n\nsee ADR 3\nAccepted\n\n## Context\n', ['[x]: /u', 'see ADR 3', 'Accepted']],
+]) {
+  test(`with ${name} the choice of the status line is as before (PMK-325)`, () => {
+    assert.deepEqual(adrStatusDropped(text), dropped)
+  })
+}
 
 // PMK-319: two closed fences that share their opener are two fences in the refusal, not one. PMK-322: each is named with the lines it takes, so they read apart
 // (PMK-319 asserted `the code fences "```", "```" take "## X", "## Y"`, which does not say which fence takes which line), and the adr-get note counts them the same way.

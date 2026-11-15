@@ -225,7 +225,7 @@ const keepsText = (paragraph) => {
  * reference definitions, so under a list item it is a break or a lazy line (PMK-280). Columns count a tab to the next stop of 4.
  * Not a Markdown parser: no inline content. `held`, when given, collects the non-blank lines an HTML block continues (PMK-299), as `{ at, text, late, block }` (`text`: the line without the markers of the containers it is in; `late`, HTML blocks only: after a blank line of the block; `heading` is not in it, `headingLike` adds it for the readers),
  * and gets `unclosed`: the innermost block of kind 1 to 5 still open at the end of the file, and `openHtml`: that block when it is directly in the document, the only one that takes in every later line (PMK-323). The same for a fenced code block (PMK-302): the non-blank lines it continues come in `held` with `block.type === 'fence'`, closed or not, in a quote or a list item too. Its entries are `{ at, text, block }`.
- * When `held.paragraphs` is an array, it gets every paragraph, with `parent`: the block it is in, `index`: its place among the blocks of that parent (1 for the first),
+ * When `held.paragraphs` is an array, it gets every paragraph, with `parent`: the block it is in (every block gets one, PMK-325), `index`: its place among the blocks of that parent (1 for the first),
  * `lines`: its lines in order, and `lazy`: those of them that are lazy continuation lines (PMK-322).
  */
 function sectionEnd(lines, from, held = []) {
@@ -309,7 +309,8 @@ function sectionEnd(lines, from, held = []) {
       if (held.paragraphs) {
         const parent = open.at(-1)
         block.index = parent.children = (parent.children ?? 0) + 1
-        if (block.type === 'paragraph') held.paragraphs.push(Object.assign(block, { parent, lines: [j], lazy: new Set() }))
+        block.parent = parent
+        if (block.type === 'paragraph') held.paragraphs.push(Object.assign(block, { lines: [j], lazy: new Set() }))
       }
       open.at(-1).filled = true
       open.push(block)
@@ -500,7 +501,8 @@ const statusLineOf = (raw, paragraphOf) => {
   if (first !== -1 && (hostsLazy(raw[first]) || !OPENS_BLOCK.test(raw[first]))) {
     // Paragraph text the reader sees, as the block walk decides it (`paragraphOf`, PMK-322): a line that starts a paragraph of the section's text or the first one of a quote or item, not a
     // definition, not indented code, a fence, an HTML block, a lazy or a continuation line; or a line glued to the first line's paragraph, which is out of scope and chosen as before.
-    // A glued line is one of the first paragraph the reader sees: the first line's own, or the one after the definitions it opens (review cycle 2). A definition's later lines
+    // A glued line is one of the first paragraph the reader sees: the first line's own, or the one after the definitions it opens (review cycle 2), also when they are a block
+    // of their own closed by a blank line, before a paragraph or the quote or item it opens (PMK-325). A definition's later lines
     // (`[Draft]:`, `Rejected`) belong to no shown paragraph, so they are never glued.
     const glued = paragraphOf(first) === first ? first : paragraphOf.after(first)
     const sees = (i) => paragraphOf(i) === i || (glued !== undefined && paragraphOf(i) === glued)
@@ -554,10 +556,12 @@ const statusSection = (lines, section, end) => {
     held.paragraphs = []
     sectionEnd(lines, section, held)
     const map = new Map()
-    // For the first line of a paragraph that opens with definitions, the first line shown after them.
+    // For the first line of a paragraph that opens with definitions, or of a run of paragraphs of definitions only, the first line shown after them.
     const after = new Map()
     // The paragraphs of definitions only, by the block they are in.
     const hidden = new Map()
+    // By the block they are in, the last run of paragraphs of definitions only that follow each other: its first line and the index of its last paragraph (PMK-325).
+    const runs = new Map()
     for (const paragraph of held.paragraphs) {
       // The definitions at its start are not shown: the paragraph the reader sees starts on the line after them, if any text is left.
       let { text } = paragraph
@@ -569,12 +573,23 @@ const statusSection = (lines, section, end) => {
       }
       if (text === '') {
         hidden.set(paragraph.parent, (hidden.get(paragraph.parent) ?? 0) + 1)
+        const run = runs.get(paragraph.parent)
+        if (run?.index === paragraph.index - 1) run.index = paragraph.index
+        else runs.set(paragraph.parent, { line: paragraph.lines[0], index: paragraph.index })
         continue
       }
       if (paragraph.parent.type !== 'document' && paragraph.index - 1 !== (hidden.get(paragraph.parent) ?? 0)) continue
       const start = paragraph.lines[skip] - section - 1
       map.set(start, start)
       if (skip > 0) after.set(paragraph.lines[0] - section - 1, start)
+      // Definitions closed by a blank line, right before this paragraph or before the quote or item it opens (at any depth), are not shown either: the paragraph
+      // is the first one shown after them (PMK-325). The climb goes on while every earlier block of the parent is hidden, so definitions that open the section and
+      // then the quote or item after it both lead here (review cycle 1). Only the section's first line is ever looked up, so a run that does not open the section changes nothing.
+      for (let node = paragraph; ; node = node.parent) {
+        const run = runs.get(node.parent)
+        if (run?.index === node.index - 1) after.set(run.line - section - 1, start)
+        if (node.parent.type === 'document' || node.index - 1 !== (hidden.get(node.parent) ?? 0)) break
+      }
       for (const j of paragraph.lines.slice(skip + 1)) if (!paragraph.lazy.has(j)) map.set(j - section - 1, start)
     }
     return { map, after }
