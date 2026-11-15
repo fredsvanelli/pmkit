@@ -3,3 +3,6 @@
 {"at":"2026-11-14T21:36:24Z","by":"fred","op":"update","field":"branch","from":null,"to":"pmk-324-put-status-lines-with-a-hard-break-in"}
 {"at":"2026-11-14T22:10:15Z","by":"fred","op":"comment","to":"2026-11-14T22-10-15Z-fred.md"}
 {"at":"2026-11-14T22:10:15Z","by":"fred","op":"move","field":"status","from":"in_progress","to":"in_review"}
+{"at":"2026-11-14T23:11:29Z","by":"fred","op":"move","field":"status","from":"in_review","to":"done"}
+{"at":"2026-11-14T23:11:54Z","by":"fred","op":"update","field":"acceptance_criteria"}
+{"at":"2026-11-14T23:11:54Z","by":"fred","op":"update","field":"acceptance_criteria"}

@@ -2,14 +2,14 @@
 id: PMK-322
 title: "Name the status the reader sees, and each fence apart, in the adr-status refusal"
 type: bug
-status: in_review
+status: done
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
 branch: pmk-322-name-the-status-the-reader-sees-and-each
 created: 2026-11-14T20:46:32.664Z
-updated: 2026-11-14T21:59:42Z
+updated: 2026-11-14T23:11:53Z
 ---
 
 ## Description
@@ -42,6 +42,6 @@ Source: PMK-319 (PR #291, review cycle 1, findings 1, 3 and 4).
 
 ## Acceptance criteria
 
-- [ ] `    Accepted` or `[Accepted]: /u` followed by `> Proposed`, and `Date: x`, blank, `> see ADR 3`, `Accepted`, refuse naming the status the reader sees (not the code, the definition or the lazy line) as kept and every other line as text to delete, real and dry run, with tests
-- [ ] Two fences with the same opener are named each with the lines it takes, in the refusal and in the `adr-get` note, with the PMK-319 tests that count fences changed on purpose
-- [ ] A develop x branch comparison on random Status bodies shows refusal, text written and `adr-get` status equal, and only names differ, each difference explained, in the PR
+- [x] `    Accepted` or `[Accepted]: /u` followed by `> Proposed`, and `Date: x`, blank, `> see ADR 3`, `Accepted`, refuse naming the status the reader sees (not the code, the definition or the lazy line) as kept and every other line as text to delete, real and dry run, with tests
+- [x] Two fences with the same opener are named each with the lines it takes, in the refusal and in the `adr-get` note, with the PMK-319 tests that count fences changed on purpose
+- [x] A develop x branch comparison on random Status bodies shows refusal, text written and `adr-get` status equal, and only names differ, each difference explained, in the PR

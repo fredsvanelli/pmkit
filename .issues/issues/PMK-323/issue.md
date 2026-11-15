@@ -2,14 +2,14 @@
 id: PMK-323
 title: Write in place past an HTML block its quote or list item holds at the end of the file
 type: bug
-status: in_review
+status: done
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-323-write-in-place-past-an-html-block-its
 created: 2026-11-14T20:46:32.738Z
-updated: 2026-11-14T21:52:01Z
+updated: 2026-11-14T23:11:53Z
 ---
 
 ## Description
@@ -41,6 +41,6 @@ Root cause: `sectionEnd` in `scripts/lib/adr.mjs` sets `held.unclosed` from the 
 
 ## Acceptance criteria
 
-- [ ] A status on a plain line followed by an HTML block of kind 1 to 5 in a quote, and in a list item, that holds a heading-like line and is open at the end of the file, with and without a final newline, is written in place, real and dry run, with no refusal and no note in `adr-get`, with tests
-- [ ] A top-level HTML block of kind 1 to 5 that never closes keeps refusing, and the guard keeps refusing when the whole section would be replaced, with the existing tests passing
-- [ ] A develop x branch comparison on random Status sections, checked against commonmark.js, shows the only new writes are this case and no new write deletes a line, and `scripts/dev/adr-commonmark-diff.mjs` run in full reports 0 worse, both in the PR
+- [x] A status on a plain line followed by an HTML block of kind 1 to 5 in a quote, and in a list item, that holds a heading-like line and is open at the end of the file, with and without a final newline, is written in place, real and dry run, with no refusal and no note in `adr-get`, with tests
+- [x] A top-level HTML block of kind 1 to 5 that never closes keeps refusing, and the guard keeps refusing when the whole section would be replaced, with the existing tests passing
+- [x] A develop x branch comparison on random Status sections, checked against commonmark.js, shows the only new writes are this case and no new write deletes a line, and `scripts/dev/adr-commonmark-diff.mjs` run in full reports 0 worse, both in the PR

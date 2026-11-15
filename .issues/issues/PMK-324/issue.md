@@ -2,14 +2,14 @@
 id: PMK-324
 title: Put status lines with a hard break in the adr-commonmark-diff corpus
 type: chore
-status: in_review
+status: done
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
 branch: pmk-324-put-status-lines-with-a-hard-break-in
 created: 2026-11-14T20:46:32.811Z
-updated: 2026-11-14T22:10:15Z
+updated: 2026-11-14T23:11:54Z
 ---
 
 ## Description
@@ -40,5 +40,5 @@ Source: PMK-321 (PR #292, implementer follow-up and review cycle 1).
 
 ## Acceptance criteria
 
-- [ ] The corpus holds status lines ending in two or more spaces, in one backslash and in two backslashes, in the pairs, triples and random status runs, and the old cases stay the same and in order
-- [ ] A write that drops the `\` hard break, and one that drops the space break, each exit 1 on the full run, and with no mutation the run from 3f24c7e6 to develop exits 0 with 0 worse, with the counts and run time in the PR
+- [x] The corpus holds status lines ending in two or more spaces, in one backslash and in two backslashes, in the pairs, triples and random status runs, and the old cases stay the same and in order
+- [x] A write that drops the `\` hard break, and one that drops the space break, each exit 1 on the full run, and with no mutation the run from 3f24c7e6 to develop exits 0 with 0 worse, with the counts and run time in the PR
