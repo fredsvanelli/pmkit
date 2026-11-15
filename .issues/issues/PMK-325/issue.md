@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-325-name-the-status-after-link-definitions-a
 created: 2026-11-15T00:13:35.885Z
-updated: 2026-11-15T03:38:13Z
+updated: 2026-11-15T03:58:56Z
 ---
 
 ## Description
@@ -42,6 +42,6 @@ Source: PMK-322 (PR #297, review cycle 3, optional follow-up).
 
 ## Acceptance criteria
 
-- [ ] `[a]: /u` (or two definitions), blank, `Date: x`, `Accepted`, blank, `> Proposed`, and the same in a quote, refuse keeping `Accepted` (`> Accepted`) and naming every other line as text to delete, as with no definition, real and dry run, with tests
-- [ ] `[a]: /u`, blank, `Date: x`, `Accepted` with no later status keeps `Accepted`, not the definition, with a test; `[a]: /u`, `---`, `Date: x`, `Accepted` and indented code first keep their names, with tests
-- [ ] A develop x branch comparison on random Status bodies shows refusal, text written and `adr-get` status equal, and only names differ, each difference explained, in the PR
+- [x] `[a]: /u` (or two definitions), blank, `Date: x`, `Accepted`, blank, `> Proposed`, and the same in a quote, refuse keeping `Accepted` (`> Accepted`) and naming every other line as text to delete, as with no definition, real and dry run, with tests
+- [x] `[a]: /u`, blank, `Date: x`, `Accepted` with no later status keeps `Accepted`, not the definition, with a test; `[a]: /u`, `---`, `Date: x`, `Accepted` and indented code first keep their names, with tests
+- [x] A develop x branch comparison on random Status bodies shows refusal, text written and `adr-get` status equal, and only names differ, each difference explained, in the PR
