@@ -417,9 +417,12 @@ const headingLike = (held) => held.map((item, i) => ({ ...item, heading: heading
 /**
  * What `adr-status` would delete that an HTML block took into the `## Status` section (PMK-299), `{ opener, lines }`, null when nothing. When the whole
  * section is replaced: the lines the section replaces that an HTML block continues and that read as a heading, and the lines after a blank line in
- * `held.unclosed`, the innermost block of kind 1 to 5 that never closes, in a quote or a list item too. When the status line is written in place
- * (PMK-314): only the lines of `held.openHtml`, the block of kind 1 to 5 directly in the document still open at the end of the walk; one a quote or
- * list item holds ends with its container and takes nothing (PMK-323). `opener` is the first line of the block, `lines` the trimmed lines at risk.
+ * `held.unclosed`, the innermost block of kind 1 to 5 still open at the end of the walk: one directly in the document, one a list item holds, or one a
+ * quote holds when the quote runs to the last line of a file with no final newline (with one, the empty last line ends the quote and the block). When
+ * the status line is written in place (PMK-314): the same lines, but only those of `held.openHtml`, the block of kind 1 to 5 directly in the document
+ * still open at the end of the walk (then also `held.unclosed`), so its heading-like lines and its lines after a blank line; a plain line before any
+ * blank is not named. One a quote or list item holds ends with its container and takes nothing (PMK-323). `opener` is the first line of the block,
+ * `lines` the trimmed lines at risk.
  * Found by the walk that ends the section, so reading is unchanged and the first line of the block (the status the user wrote) is never counted.
  */
 export function adrHtmlHeld(text) {

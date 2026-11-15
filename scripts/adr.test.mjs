@@ -2318,7 +2318,7 @@ for (const [name, text] of [
     assert.deepEqual(adrFenceBlocks(text), [])
   })
 }
-// PMK-326: the PMK-323 cases with CRLF line ends. adr-status writes the file back with LF line ends (PMK-311, `adr-status keeps CRLF line ends`), so the expected text is the LF one.
+// PMK-326: the PMK-323 cases with CRLF line ends. adr-status writes the file back with LF line ends (the PMK-311 `OTHER` loop: `adr-status keeps CRLF line ends, dry run writes nothing, real writes only the status (PMK-311)`), so the expected text is the LF one.
 const HTML_KINDS = ['<!--', '<?php', '<![CDATA[', '<!X', '<script>']
 const ENDINGS = [['', 'with no final newline'], ['\r\n', 'with a final newline']]
 for (const opener of HTML_KINDS) {
