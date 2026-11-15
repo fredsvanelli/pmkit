@@ -15,7 +15,9 @@ New cases appended after `breakRuns` in `cases()`, in this order; every older ca
 3. `statusBreakTriples()`: `s, t, b, u` with `s`, `t` in `STATUS_NEAR` (26 x 26 x 9 x 7 = 42,588).
 4. `ONE_SPACE = ['Accepted ', '  Proposed ']`: status lines ending in one space (not a break, `hardBreak` gives `''`), a new list so `STATUS_BREAKS` and the PMK-324 cases do not change. They come before a break line in the pairs and triples above.
 
-Corpus total at the defaults: 3,923,326 + 44,466 = 3,967,792 (a few seconds more on a run of about 2.5 min).
+5. `oneSpacePairs()` (added in execution, see the correction below): `o, a, u` (o in `ONE_SPACE`, a in `STATUS_ALL` + `ALPHABET`) and `a, o, u` (a in `ALPHABET`), as `breakPairs` does for the break lines (2 x 151 x 7 + 118 x 2 x 7 = 3,766).
+
+Corpus total at the defaults: 3,923,326 + 48,232 = 3,971,558 (a few seconds more on a run of about 2.5 min).
 
 ## Non-goals
 - No change to `scripts/lib`, `compareWrites`, `hardBreak` or the comparison rules. A worse case found at develop goes to the coordinator, not into a fix.
@@ -33,3 +35,6 @@ Red first: the new test fails until the code exists. Then each loop is dropped i
 ## Evidence for the PR (runs in the foreground, commonmark 0.31.2 in the scratchpad `PMK-327/cm`)
 - AC2: `--base 3fb6707b --head HEAD`: the container tally `end of file` (list item) and `end of file, no final newline` (quote and list item) shows `acceptedWhereRefused` for the HTML kinds (a probe already shows 15 such bodies: 5 kinds x {quote no newline, item with, item without}), and 0 worse.
 - AC3: `hardBreak` mutated in a temporary copy of `scripts/lib/adr.mjs` to keep one space (`/ {1,}$/`, reverted), `--head worktree`: exit 1 with its worse count (before this change it exits 0, shown on the old corpus if time allows). No mutation, `--base 3f24c7e6 --head HEAD`: exit 0, 0 worse, counts and run time.
+
+## Correction in execution
+The first mutation run (`/ {1,}$/`, `--head worktree`, 3,967,792 cases) exited 0 with 0 worse. Cause: `setAdrStatus` writes in place only when the section has exactly one known-status line; next to a break line (also a status line) it adds a new line instead, so a one-space line in the status-then-break pairs and triples is never written over. `oneSpacePairs()` puts the one-space lines next to every corpus line, as `breakPairs` does, so some sections have one as their only status line (812 of its 3,766 bodies are written differently by the mutation). The pairs and triples of goals 2 and 3 stay: they cover the shape the issue names.

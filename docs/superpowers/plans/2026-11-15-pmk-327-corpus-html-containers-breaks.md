@@ -55,6 +55,10 @@
 
 - [ ] **Step 6: Commit** `test+feat: HTML containers, status-then-break and one-space corpus cases (PMK-327)`.
 
+### Task 1b (ruling in execution): `oneSpacePairs()`
+
+The one-space mutation exited 0: next to a break line the section has two status lines, so `setAdrStatus` adds a line instead of writing in place. Add `oneSpacePairs()` (mirror of `breakPairs` with `ONE_SPACE`, 3,766 cases, yielded last), test first: its count, `cases()` total 2,221,588, and a body with a one-space line before `Date: 2024-01-02` and after `lazy`. Rerun the loop drops (26, all fail).
+
 ### Task 2: Evidence runs (foreground, long timeout; commonmark 0.31.2 at scratchpad `PMK-327/cm/node_modules/commonmark`)
 
 - [ ] `--base 3fb6707b --head HEAD`: container tallies for `end of file` and `end of file, no final newline` show `acceptedWhereRefused`, 0 worse, exit 0. Record time.
