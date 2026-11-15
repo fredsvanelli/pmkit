@@ -2,13 +2,14 @@
 id: PMK-325
 title: Name the status after link definitions a blank line closes in the adr-status refusal
 type: bug
-status: backlog
+status: in_progress
 priority: low
 estimate: 1
 assignee: fred
 parent: EPC-6
+branch: pmk-325-name-the-status-after-link-definitions-a
 created: 2026-11-15T00:13:35.885Z
-updated: 2026-11-15T00:13:35Z
+updated: 2026-11-15T03:38:13Z
 ---
 
 ## Description
