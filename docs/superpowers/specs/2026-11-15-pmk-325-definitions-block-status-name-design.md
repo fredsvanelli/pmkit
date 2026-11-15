@@ -14,17 +14,20 @@ In the existing walk of `statusSection` (`scripts/lib/adr.mjs`), which already l
 - Quote and list item: the shown-paragraph rule for them (`index - 1 === hidden count`) is unchanged; the run only adds the `after` entry.
 - Other approaches dropped: a second walk, or a test in `statusLineOf` on raw lines (a second way of deciding block kind), both ruled out by the issue.
 
-## Out of scope / follow-up candidate
-- Definitions at the top level followed by a quote or item whose first paragraph holds the status (`[a]: /u`, blank, `> Date: x`, `> Accepted`, blank, `> Proposed` keeps `> Proposed`): different parents, not this issue's case. Noted as a follow-up.
+### Definitions before a quote or item (coordinator condition)
+On develop `[a]: /u`, blank, `> Date: x`, `> Accepted` names `"> Date: x", "> Accepted"`, so it keeps the definition, and with `> Proposed` after it keeps `> Proposed`. The scope says the hidden definition is never kept, so this is fixed here, in the same loop: `add` gives every block its `parent` (not only paragraphs), and from the shown paragraph the loop climbs while the block is the first of its quote or item (`index === 1`); at each level, a run of definitions right before the block (`run.index === node.index - 1`) maps the run's first line to the paragraph. `[a]: /u`, blank, `> Date: x`, `> Accepted`, blank, `> Proposed` then keeps `> Accepted`, as without the definition.
+
+The run's first line is only ever read as `after(first)`, the first non-blank line of the section, so a run that does not open the section changes nothing.
 
 ## Files and functions
-- `scripts/lib/adr.mjs`: the `walk` closure in `statusSection` (a few lines), its comment and `statusLineOf`'s comment.
+- `scripts/lib/adr.mjs`: `add` in `sectionEnd` (`parent` on every block when `held.paragraphs` is asked for), the `walk` closure in `statusSection` (a few lines), their comments and `statusLineOf`'s comment.
 - `scripts/adr.test.mjs`: new tests. `CHANGELOG.md`: one line.
 
 ## Tests
 New, failing first (`adrStatusDropped` and the CLI `docs adr-status`, dry run and real, file unchanged):
 1. `[a]: /u`, blank, `Date: x`, `Accepted`, blank, `> Proposed` → `["[a]: /u", "Date: x", "> Proposed"]`; with `[b]: /v` glued and as its own block; in a quote → `["> [a]: /u", ">", "> Date: x", "> Proposed"]`; in a list item.
-2. `[a]: /u`, blank, `Date: x`, `Accepted` → `["[a]: /u", "Date: x"]`.
+2. `[a]: /u`, blank, `Date: x`, `Accepted` → `["[a]: /u", "Date: x"]`; in a quote (`> [a]: /u`, `>`, `> Date: x`, `> Accepted`) → `["> [a]: /u", ">", "> Date: x"]`.
+3. Before a quote: `[a]: /u`, blank, `> Date: x`, `> Accepted` → `["[a]: /u", "> Date: x"]`; with blank, `> Proposed` after → `["[a]: /u", "> Date: x", "> Proposed"]`.
 Controls (pass before and after): `[a]: /u`, `---`, `Date: x`, `Accepted` → `["---", "Date: x", "Accepted"]`; `    code`, blank, `Date: x`, `Accepted` → `["Date: x", "Accepted"]`.
 Tests that change on purpose: none expected; any that pins an old name will be listed with its reason.
 
