@@ -80,7 +80,7 @@ export function compareWrites({ base, head, section, span, status }) {
   return { outcome: base.refused ? 'acceptedWhereRefused' : 'same', extra }
 }
 
-// The corpus of adr-commonmark-diff.mjs (moved here by PMK-324 so `npm test` can read it). A case is the body of `## Status\n\n<body>\n## Context\n` (`textOf`).
+// The corpus of adr-commonmark-diff.mjs (moved here by PMK-324, PMK-327 cases at the end so `npm test` can read it). A case is the body of `## Status\n\n<body>\n## Context\n` (`textOf`).
 export const textOf = (body) => `## Status\n\n${body}\n## Context\n`
 
 // The cases: each cycle of the PR #241 review and the issue, every pair of lines, then random runs of lines.
@@ -121,18 +121,25 @@ const GAPS = ['', ' ', '  ', '   ', '    ', '     ', '      ', '\t', ' \t']
 const CONTENTS = ['a', 'lazy', '', '```', '~~~', '---', '# h', 'x y', '<!-- x -->', '<div>', '<pre>', '<x-y>', '[a]: /u', '[a]: /u "t"']
 
 // Each case is a body, or `{ text, end }` with its own text and the way its block ends (`end` tallies the outcomes apart, PMK-321).
-const CONTAINERS = []
-for (const status of ['Accepted', '  Accepted  ']) for (const gap of [[], ['']]) {
-  for (const open of ['> ```', '- ```', '> <div>', '- <div>']) {
-    const inside = [open, open.startsWith('>') ? '> ## X' : '  ## X']
-    const ends = { 'later line': ['', 'Date: 2024-01-02'], blank: [''], 'ATX heading': ['## Y'], 'setext heading': ['Title', '---'], 'end of file': [] }
-    for (const [end, tail] of Object.entries(ends)) {
-      const own = end === 'setext heading' || end === 'end of file'
-      const body = [status, ...gap, ...inside, ...tail].join('\n')
-      CONTAINERS.push({ text: own ? `## Status\n\n${body}\n` : textOf(body), end })
+const ENDS = { 'later line': ['', 'Date: 2024-01-02'], blank: [''], 'ATX heading': ['## Y'], 'setext heading': ['Title', '---'], 'end of file': [] }
+/** The container cases of each of `opens` (a quote or list item line), each end of `ends`: the status, maybe a blank line, the open line, a heading-like line in the same container, then the end. */
+function containerCases(opens, ends) {
+  const out = []
+  for (const status of ['Accepted', '  Accepted  ']) for (const gap of [[], ['']]) {
+    for (const open of opens) {
+      const inside = [open, open.startsWith('>') ? '> ## X' : '  ## X']
+      for (const [end, tail] of Object.entries(ends)) {
+        const body = [status, ...gap, ...inside, ...tail].join('\n')
+        const text = end === 'end of file, no final newline' ? `## Status\n\n${body}` : end === 'setext heading' || end === 'end of file' ? `## Status\n\n${body}\n` : textOf(body)
+        out.push({ text, end })
+      }
     }
   }
+  return out
 }
+const CONTAINERS = containerCases(['> ```', '- ```', '> <div>', '- <div>'], ENDS)
+// PMK-327: an HTML block of kind 1 to 5 (`<script>`, `<!--`, `<?`, `<!X`, `<![CDATA[`) in a quote or list item, which only its end line closes, with the ends above and the end of the file with no final newline (PMK-323).
+export const HTML_CONTAINERS = containerCases(['<!-- x', '<?php', '<![CDATA[', '<!X', '<script>'].flatMap((open) => [`> ${open}`, `- ${open}`]), { ...ENDS, 'end of file, no final newline': [] })
 
 /** Mulberry32: the random numbers of the runs, from `seed`. */
 const prng = (seed) => () => {
@@ -182,9 +189,19 @@ export function* breakRuns({ seed, count, lines }) {
   for (let n = 0; n < count; n++) yield randomRun(random, kinds, lines, 0.3)
 }
 
+// PMK-327: status lines that end in one space, not a hard break (`hardBreak` gives ''), so a write that keeps one space fails the run; and status lines right before a break line, in pairs and triples.
+export const ONE_SPACE = ['Accepted ', '  Proposed ']
+export const STATUS_NEAR = [...STATUSY, ...ONE_SPACE]
+export function* statusBreakPairs() {
+  for (const s of STATUS_NEAR) for (const b of STATUS_BREAKS) for (const u of UNDERLINES) yield `${s}\n${b}\n${u}`
+}
+export function* statusBreakTriples() {
+  for (const s of STATUS_NEAR) for (const t of STATUS_NEAR) for (const b of STATUS_BREAKS) for (const u of UNDERLINES) yield `${s}\n${t}\n${b}\n${u}`
+}
+
 /**
  * The whole corpus, in order: each cycle of the PR #241 review and the issue, every pair and triple of lines, `random` random runs (seed `seed`, 1 to `lines` lines), the PMK-315 status pairs, triples and
- * `statusRandom` runs (seed `seed + 1`), the PMK-321 container cases, then the PMK-324 hard-break pairs, triples and `breakRandom` runs (seed `seed + 2`). A case is a body or `{ text, end }`.
+ * `statusRandom` runs (seed `seed + 1`), the PMK-321 container cases, then the PMK-324 hard-break pairs, triples and `breakRandom` runs (seed `seed + 2`), then the PMK-327 HTML container cases and the status-then-break pairs and triples. A case is a body or `{ text, end }`.
  */
 export function* cases({ seed, random: runs, statusRandom, breakRandom, lines }) {
   yield* FIXED
@@ -205,4 +222,7 @@ export function* cases({ seed, random: runs, statusRandom, breakRandom, lines })
   yield* breakPairs()
   yield* breakTriples()
   yield* breakRuns({ seed, count: breakRandom, lines })
+  yield* HTML_CONTAINERS
+  yield* statusBreakPairs()
+  yield* statusBreakTriples()
 }
