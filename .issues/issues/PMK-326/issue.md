@@ -9,7 +9,7 @@ assignee: fred
 parent: EPC-6
 branch: pmk-326-say-the-in-place-rule-in-the-adrhtmlheld
 created: 2026-11-15T00:13:35.957Z
-updated: 2026-11-15T03:37:37Z
+updated: 2026-11-15T03:43:54Z
 ---
 
 ## Description
@@ -39,5 +39,5 @@ Source: PMK-323 (PR #296, review cycle 1, notes 3 and 4).
 
 ## Acceptance criteria
 
-- [ ] The `adrHtmlHeld` doc comment states the in-place rule (`held.openHtml`) and the whole-section rule
-- [ ] With CRLF line ends, a status line followed by an HTML block of kind 1 to 5 in a quote, and in a list item, holding a heading-like line and open at the end of the file, with and without a final newline, has no `adrHtmlHeld` and is written in place with no note, and a top-level block of kind 1 to 5 that never closes still refuses, with tests; no other code changes
+- [x] The `adrHtmlHeld` doc comment states the in-place rule (`held.openHtml`) and the whole-section rule
+- [x] With CRLF line ends, a status line followed by an HTML block of kind 1 to 5 in a quote, and in a list item, holding a heading-like line and open at the end of the file, with and without a final newline, has no `adrHtmlHeld` and is written in place with no note, and a top-level block of kind 1 to 5 that never closes still refuses, with tests; no other code changes
