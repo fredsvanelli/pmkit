@@ -2318,6 +2318,48 @@ for (const [name, text] of [
     assert.deepEqual(adrFenceBlocks(text), [])
   })
 }
+// PMK-326: the PMK-323 cases with CRLF line ends. adr-status writes the file back with LF line ends (the PMK-311 `OTHER` loop: `adr-status keeps CRLF line ends, dry run writes nothing, real writes only the status (PMK-311)`), so the expected text is the LF one.
+const HTML_KINDS = ['<!--', '<?php', '<![CDATA[', '<!X', '<script>']
+const ENDINGS = [['', 'with no final newline'], ['\r\n', 'with a final newline']]
+for (const opener of HTML_KINDS) {
+  for (const [container, first, rest] of [['quote', '> ', '> '], ['list item', '- ', '  ']]) {
+    for (const [end, how] of ENDINGS) {
+      test(`an HTML block ${opener} a ${container} holds at the end of the file ${how} is written in place with CRLF line ends too, real and dry run, with no note in adr-get (PMK-326)`, async () => {
+        const text = `## Status\r\n\r\nAccepted\r\n\r\n${first}${opener}\r\n${rest}## X${end}`
+        const after = text.replaceAll('\r\n', '\n').replace('Accepted', 'Deprecated')
+        assert.equal(adrHtmlHeld(text), null)
+        const root = repo()
+        writeAdr(root, 'docs/adr/0001-a.md', text)
+        const get = await adrGetFrom(root, '1')
+        assert.equal(get.data.status, 'Accepted')
+        assert.deepEqual(get.data.notes, [])
+        assert.equal(get.data.htmlHeld, null)
+        const dry = await adrStatus(root, '1', 'deprecated', '--dry-run')
+        assert.equal(dry.code, 0, dry.stderr)
+        assert.equal(dry.data.after, after)
+        assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+        assert.equal((await adrStatus(root, '1', 'deprecated')).code, 0)
+        assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), after)
+      })
+    }
+  }
+  for (const [end, how] of ENDINGS) {
+    test(`the HTML guard still refuses an unclosed top-level ${opener} block ${how} with CRLF line ends, real and dry run (PMK-326)`, async () => {
+      const text = `## Status\r\n\r\nAccepted\r\n\r\n${opener}\r\n## X${end}`
+      const held = { opener, lines: ['## X'] }
+      assert.deepEqual(adrHtmlHeld(text), held)
+      const root = repo()
+      writeAdr(root, 'docs/adr/0001-a.md', text)
+      for (const flag of [['--dry-run'], []]) {
+        const result = await adrStatus(root, '1', 'deprecated', ...flag)
+        assert.equal(result.code, 2)
+        assert.equal(result.data.error.message, `docs/adr/0001-a.md: setting the status would delete "## X", which the HTML block "${opener}" takes into the Status section; nothing was written`)
+      }
+      assert.equal(fs.readFileSync(path.join(root, 'docs/adr/0001-a.md'), 'utf8'), text)
+      assert.deepEqual((await adrGetFrom(root, '1')).data.htmlHeld, held)
+    })
+  }
+}
 // The guards still refuse when the whole section is replaced: an unclosed comment or fence, no known status line, a status in an item, an ambiguous section.
 for (const [name, text, guard] of [
   ['an unclosed comment after the status line', '## Status\n\nAccepted\n\n<!--\n## X\n', 'HTML'],
