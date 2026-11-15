@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { createHash } from 'node:crypto'
 import { ADR_STATUSES, adrKeptLines, setAdrStatus } from '../lib/adr.mjs'
-import { HTML_CONTAINERS, KNOWN_STATUS, ONE_SPACE, STATUS_BREAKS, STATUS_NEAR, breakPairs, breakRuns, breakTriples, cases, compareWrites, expectedLine, hardBreak, readsAsStatus, removedLines, statusBreakPairs, statusBreakTriples, writeShape } from './adr-write-compare.mjs'
+import { HTML_CONTAINERS, KNOWN_STATUS, ONE_SPACE, STATUS_BREAKS, STATUS_NEAR, breakPairs, breakRuns, breakTriples, cases, compareWrites, expectedLine, hardBreak, readsAsStatus, removedLines, oneSpacePairs, statusBreakPairs, statusBreakTriples, writeShape } from './adr-write-compare.mjs'
 
 const doc = (body) => `## Status\n\n${body}\n## Context\n`
 const SENTINEL = 'Superseded by sentinel.md'
@@ -241,10 +241,12 @@ test('each generator loop of the corpus has its own size, so dropping one fails 
   assert.equal(count(breakTriples()), 513 * 151 * 7 + 513 * 118 * 7)
   assert.equal(count(statusBreakPairs()), 26 * 9 * 7)
   assert.equal(count(statusBreakTriples()), 26 * 26 * 9 * 7)
+  // 2 ONE_SPACE lines before each of the 151 lines, and after each of the 118 ALPHABET lines.
+  assert.equal(count(oneSpacePairs()), 2 * 151 * 7 + 118 * 2 * 7)
   // 2 statuses, with and without a blank line, 5 kinds after `> ` and `- `, 6 ends.
   assert.equal(HTML_CONTAINERS.length, 2 * 2 * 10 * 6)
   // Every loop of `cases`: 2,173,356 cases before PMK-327 with these counts, then 240 + 1,638 + 42,588.
-  assert.equal(count(cases({ seed: 1, random: 10, statusRandom: 10, breakRandom: 10, lines: 8 })), 2173356 + 240 + 1638 + 42588)
+  assert.equal(count(cases({ seed: 1, random: 10, statusRandom: 10, breakRandom: 10, lines: 8 })), 2173356 + 240 + 1638 + 42588 + 3766)
 })
 
 test('the corpus holds HTML blocks of kinds 1 to 5 in containers, status lines before a break and one-space status lines (PMK-327)', () => {
@@ -269,5 +271,8 @@ test('the corpus holds HTML blocks of kinds 1 to 5 in containers, status lines b
   for (const line of ONE_SPACE) {
     assert.ok(/[^ ] $/.test(line) && hardBreak(line) === '' && readsAsStatus(line), line)
     assert.ok(firstLines.has(line), line)
+    // setAdrStatus writes in place only over the one status line of a section: a one-space line has to be the only one, or a write that keeps its space passes.
+    assert.ok([...oneSpacePairs()].some((body) => body.startsWith(`${line}\nDate: 2024-01-02\n`)), line)
+    assert.ok([...oneSpacePairs()].some((body) => body.startsWith(`lazy\n${line}\n`)), line)
   }
 })

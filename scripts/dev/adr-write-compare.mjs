@@ -198,10 +198,16 @@ export function* statusBreakPairs() {
 export function* statusBreakTriples() {
   for (const s of STATUS_NEAR) for (const t of STATUS_NEAR) for (const b of STATUS_BREAKS) for (const u of UNDERLINES) yield `${s}\n${t}\n${b}\n${u}`
 }
+// `setAdrStatus` writes in place only over the one status line of a section (next to a break line, which is a status line too, it adds a new line): the one-space lines also come next to each
+// line of the corpus, as the break lines do in `breakPairs`, so a section where one is the only status line is written over.
+export function* oneSpacePairs() {
+  for (const o of ONE_SPACE) for (const a of [...STATUS_ALL, ...ALPHABET]) for (const u of UNDERLINES) yield `${o}\n${a}\n${u}`
+  for (const a of ALPHABET) for (const o of ONE_SPACE) for (const u of UNDERLINES) yield `${a}\n${o}\n${u}`
+}
 
 /**
  * The whole corpus, in order: each cycle of the PR #241 review and the issue, every pair and triple of lines, `random` random runs (seed `seed`, 1 to `lines` lines), the PMK-315 status pairs, triples and
- * `statusRandom` runs (seed `seed + 1`), the PMK-321 container cases, then the PMK-324 hard-break pairs, triples and `breakRandom` runs (seed `seed + 2`), then the PMK-327 HTML container cases and the status-then-break pairs and triples. A case is a body or `{ text, end }`.
+ * `statusRandom` runs (seed `seed + 1`), the PMK-321 container cases, then the PMK-324 hard-break pairs, triples and `breakRandom` runs (seed `seed + 2`), then the PMK-327 HTML container cases, the status-then-break pairs and triples and the one-space pairs. A case is a body or `{ text, end }`.
  */
 export function* cases({ seed, random: runs, statusRandom, breakRandom, lines }) {
   yield* FIXED
@@ -225,4 +231,5 @@ export function* cases({ seed, random: runs, statusRandom, breakRandom, lines })
   yield* HTML_CONTAINERS
   yield* statusBreakPairs()
   yield* statusBreakTriples()
+  yield* oneSpacePairs()
 }
