@@ -2,14 +2,14 @@
 id: PMK-327
 title: "Put HTML blocks in containers, status lines next to breaks and one-space lines in the adr-commonmark-diff corpus"
 type: chore
-status: in_progress
+status: in_review
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
 branch: pmk-327-put-html-blocks-in-containers-status
 created: 2026-11-15T00:13:36.029Z
-updated: 2026-11-15T04:45:38Z
+updated: 2026-11-15T04:46:23Z
 ---
 
 ## Description
