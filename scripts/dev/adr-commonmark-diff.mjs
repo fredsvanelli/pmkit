@@ -21,6 +21,8 @@
 // PMK-311, which are unchanged and in the same order; `--status-random` sets its random part.
 // PMK-324: after the PMK-321 cases, pairs, triples and random status runs with status lines ending in a hard line break (two or more spaces, one or three backslashes) or two backslashes (not a break), the older cases unchanged
 // and in the same order; `--break-random` sets its random part. The corpus (`cases`) lives in adr-write-compare.mjs, so `npm test` checks it holds those lines and that the older cases do not change.
+// PMK-327: after the PMK-324 cases, an HTML block of kind 1 to 5 in a quote or list item holding `## X`, with the PMK-321 ends and the end of the file with no final newline (tallied as its own end), then pairs of a status line
+// then a break line and triples of two status lines then a break line, with status lines that end in exactly one space (not a break) among them, then those one-space lines next to each line of the corpus (as the only status line of a section, the one `setAdrStatus` writes in place). The older cases are unchanged and in the same order.
 
 import fs from 'node:fs'
 import os from 'node:os'

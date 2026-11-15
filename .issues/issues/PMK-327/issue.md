@@ -2,13 +2,14 @@
 id: PMK-327
 title: "Put HTML blocks in containers, status lines next to breaks and one-space lines in the adr-commonmark-diff corpus"
 type: chore
-status: backlog
+status: in_review
 priority: low
 estimate: 2
 assignee: fred
 parent: EPC-6
+branch: pmk-327-put-html-blocks-in-containers-status
 created: 2026-11-15T00:13:36.029Z
-updated: 2026-11-15T00:13:36Z
+updated: 2026-11-15T04:46:23Z
 ---
 
 ## Description
@@ -43,6 +44,6 @@ Source: PMK-323 (PR #296, review cycle 1) and PMK-324 (PR #298, review cycles 1 
 
 ## Acceptance criteria
 
-- [ ] The corpus holds the HTML container cases for kinds 1 to 5, the status-then-break pairs and triples and a one-space status line, after the older cases, which stay the same and in order, and a test fails when any generator loop is dropped
-- [ ] A run with `--base 3fb6707b` (before PMK-323) shows the end-of-file cases PMK-323 changed (a quote with no final newline, a list item with or without one) written by the head where the base refuses, and none worse
-- [ ] A write that keeps one trailing space as a hard break exits 1 on the full run, and with no mutation the run from 3f24c7e6 to develop exits 0 with 0 worse, with the counts and run time in the PR
+- [x] The corpus holds the HTML container cases for kinds 1 to 5, the status-then-break pairs and triples and a one-space status line, after the older cases, which stay the same and in order, and a test fails when any generator loop is dropped
+- [x] A run with `--base 3fb6707b` (before PMK-323) shows the end-of-file cases PMK-323 changed (a quote with no final newline, a list item with or without one) written by the head where the base refuses, and none worse
+- [x] A write that keeps one trailing space as a hard break exits 1 on the full run, and with no mutation the run from 3f24c7e6 to develop exits 0 with 0 worse, with the counts and run time in the PR

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { createHash } from 'node:crypto'
 import { ADR_STATUSES, adrKeptLines, setAdrStatus } from '../lib/adr.mjs'
-import { KNOWN_STATUS, STATUS_BREAKS, breakPairs, breakRuns, breakTriples, cases, compareWrites, expectedLine, hardBreak, readsAsStatus, removedLines, writeShape } from './adr-write-compare.mjs'
+import { HTML_CONTAINERS, KNOWN_STATUS, ONE_SPACE, STATUS_BREAKS, STATUS_NEAR, breakPairs, breakRuns, breakTriples, cases, compareWrites, expectedLine, hardBreak, readsAsStatus, removedLines, oneSpacePairs, statusBreakPairs, statusBreakTriples, writeShape } from './adr-write-compare.mjs'
 
 const doc = (body) => `## Status\n\n${body}\n## Context\n`
 const SENTINEL = 'Superseded by sentinel.md'
@@ -232,4 +232,47 @@ test('the cases before PMK-324 are the same and in the same order as in the scri
   }
   assert.equal(n, 1194401)
   assert.equal(hash.digest('hex'), '9f2f6b6c75dd2f2b93b9b11b8a1616bc7111b3d68bdbf4fbaa62913a83a8fdf5')
+})
+
+test('each generator loop of the corpus has its own size, so dropping one fails (PMK-327)', () => {
+  const count = (items) => { let n = 0; for (const _ of items) n++; return n }
+  // 151 = 33 status lines (STATUS_ALL) + 118 ALPHABET lines; 513 = 33 * 33 - 24 * 24 status pairs with a break; 26 = STATUSY + ONE_SPACE; 9 STATUS_BREAKS; 7 UNDERLINES.
+  assert.equal(count(breakPairs()), 9 * 151 * 7 + 118 * 9 * 7)
+  assert.equal(count(breakTriples()), 513 * 151 * 7 + 513 * 118 * 7)
+  assert.equal(count(statusBreakPairs()), 26 * 9 * 7)
+  assert.equal(count(statusBreakTriples()), 26 * 26 * 9 * 7)
+  // 2 ONE_SPACE lines before each of the 151 lines, and after each of the 118 ALPHABET lines.
+  assert.equal(count(oneSpacePairs()), 2 * 151 * 7 + 118 * 2 * 7)
+  // 2 statuses, with and without a blank line, 5 kinds after `> ` and `- `, 6 ends.
+  assert.equal(HTML_CONTAINERS.length, 2 * 2 * 10 * 6)
+  // Every loop of `cases`: 2,173,356 cases before PMK-327 with these counts, then 240 + 1,638 + 42,588.
+  assert.equal(count(cases({ seed: 1, random: 10, statusRandom: 10, breakRandom: 10, lines: 8 })), 2173356 + 240 + 1638 + 42588 + 3766)
+})
+
+test('the corpus holds HTML blocks of kinds 1 to 5 in containers, status lines before a break and one-space status lines (PMK-327)', () => {
+  const ends = ['later line', 'blank', 'ATX heading', 'setext heading', 'end of file', 'end of file, no final newline']
+  for (const open of ['<!-- x', '<?php', '<![CDATA[', '<!X', '<script>']) for (const prefix of ['> ', '- ']) for (const end of ends) {
+    const found = HTML_CONTAINERS.filter((item) => item.end === end && item.text.split('\n').includes(prefix + open))
+    assert.equal(found.length, 4, JSON.stringify([open, prefix, end]))
+    for (const item of found) assert.equal(item.text.endsWith('\n'), end !== 'end of file, no final newline')
+  }
+  // A status line: a PMK-315 one (STATUSY) or a one-space one, never a break line.
+  const isStatus = (line) => STATUS_NEAR.includes(line) && !STATUS_BREAKS.includes(line)
+  assert.equal(STATUS_NEAR.length, 26)
+  for (const body of statusBreakPairs()) {
+    const [s, b] = body.split('\n')
+    assert.ok(isStatus(s) && STATUS_BREAKS.includes(b), body)
+  }
+  for (const body of statusBreakTriples()) {
+    const [s, t, b] = body.split('\n')
+    assert.ok(isStatus(s) && isStatus(t) && STATUS_BREAKS.includes(b), body)
+  }
+  const firstLines = new Set([...statusBreakPairs()].map((body) => body.split('\n')[0]))
+  for (const line of ONE_SPACE) {
+    assert.ok(/[^ ] $/.test(line) && hardBreak(line) === '' && readsAsStatus(line), line)
+    assert.ok(firstLines.has(line), line)
+    // setAdrStatus writes in place only over the one status line of a section: a one-space line has to be the only one, or a write that keeps its space passes.
+    assert.ok([...oneSpacePairs()].some((body) => body.startsWith(`${line}\nDate: 2024-01-02\n`)), line)
+    assert.ok([...oneSpacePairs()].some((body) => body.startsWith(`lazy\n${line}\n`)), line)
+  }
 })
