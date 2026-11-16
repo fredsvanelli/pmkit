@@ -124,7 +124,12 @@ test('the runbook names the commands this test runs', () => {
     'issues list --json',
     'issues move 1 todo --json',
     'issues move 1 in_progress --json',
+    'issues update 2 --priority high --label bug --json',
+    'issues assign 2 me --json',
+    'issues assign 2 none --json',
     'issues link 2 1 --kind blocks --json',
+    'issues link 2 1 --kind blocks --remove --json',
+    'issues get 1 --json',
     'issues list --blocked --json',
     'issues parent 2 1 --json',
     'issues link 3 1 --kind duplicate --json',
@@ -145,7 +150,7 @@ test('the runbook names the commands this test runs', () => {
   }
 })
 
-test('runbook: the issue flows on GitHub Issues, steps 1 to 8 and 10 to 13', () => {
+test('runbook: the issue flows on GitHub Issues, steps 1 to 11 and 13 to 16', () => {
   const { root, fake, pmkit } = runbookRepo()
 
   // Step 1: three issues, the first a bug with criteria.
@@ -171,22 +176,40 @@ test('runbook: the issue flows on GitHub Issues, steps 1 to 8 and 10 to 13', () 
   assert.deepEqual(json(pmkit('issues', 'move', '1', 'in_progress', '--json')).after.status, { name: 'In Progress', category: 'in_progress' })
   assert.equal(githubIssue(fake, 1).state, 'OPEN')
 
-  // Step 4: a blocker, and the blocked list.
+  // Step 4: the priority writes P1 to the issue field Priority, and the label bug.
+  const updated = json(pmkit('issues', 'update', '2', '--priority', 'high', '--label', 'bug', '--json'))
+  assert.equal(updated.after.priority, 'high')
+  assert.deepEqual(updated.after.labels, ['bug'])
+  assert.deepEqual(githubIssue(fake, 2).fieldValues.IF_1, { optionId: 'O2' })
+  assert.deepEqual(githubIssue(fake, 2).labelIds, ['LA_1'])
+
+  // Step 5: me assigns the gh login, none removes every assignee.
+  assert.equal(json(pmkit('issues', 'assign', '2', 'me', '--json')).after.assignee, 'octocat')
+  assert.deepEqual(githubIssue(fake, 2).assigneeIds, ['U_1'])
+  assert.equal(json(pmkit('issues', 'assign', '2', 'none', '--json')).after.assignee, undefined)
+  assert.deepEqual(githubIssue(fake, 2).assigneeIds, [])
+
+  // Step 6: a blocker, and the blocked list.
   assert.deepEqual(json(pmkit('issues', 'link', '2', '1', '--kind', 'blocks', '--json')).after.blocks, ['1'])
   const blocked = json(pmkit('issues', 'list', '--blocked', '--json'))
   assert.deepEqual(blocked.issues.map((issue) => [issue.id, issue.blockedBy]), [['1', ['2']]])
 
-  // Step 5: the parent.
+  // Step 7: the blocker removed.
+  assert.deepEqual(json(pmkit('issues', 'link', '2', '1', '--kind', 'blocks', '--remove', '--json')).after.blocks, [])
+  assert.deepEqual(json(pmkit('issues', 'get', '1', '--json')).blockedBy, [])
+  assert.deepEqual(githubIssue(fake, 1).blockedByIds, [])
+
+  // Step 8: the parent.
   assert.equal(json(pmkit('issues', 'parent', '2', '1', '--json')).after.parent, '1')
 
-  // Step 6: the duplicate closes as canceled, with the note.
+  // Step 9: the duplicate closes as canceled, with the note.
   const duplicate = json(pmkit('issues', 'link', '3', '1', '--kind', 'duplicate', '--json'))
   assert.deepEqual(duplicate.after.duplicateOf, ['1'])
   assert.deepEqual(duplicate.after.status, { name: 'Closed as not planned', category: 'canceled' })
   assert.deepEqual(duplicate.notes, ['GitHub closed 3 as a duplicate of 1'])
   assert.equal(githubIssue(fake, 3).state, 'CLOSED')
 
-  // Step 7: the comment, and the refused reply.
+  // Step 10: the comment, and the refused reply.
   const comment = json(pmkit('issues', 'comment', '1', '--body-file', 'tmp/comment-1.txt', '--json'))
   assert.equal(comment.issue, '1')
   assert.equal(comment.author, 'octocat')
@@ -195,7 +218,7 @@ test('runbook: the issue flows on GitHub Issues, steps 1 to 8 and 10 to 13', () 
   assert.equal(reply.code, 2, reply.stdout + reply.stderr)
   assert.equal(JSON.parse(reply.stdout).error.code, 'NOT_SUPPORTED')
 
-  // Step 8: the dry run writes nothing; the real run links the branch at main's head on GitHub, with no push note.
+  // Step 11: the dry run writes nothing; the real run links the branch at main's head on GitHub, with no push note.
   const dry = json(pmkit('issues', 'branch', '1', '--dry-run', '--json'))
   assert.equal(dry.branch, BRANCH)
   assert.equal(dry.from, 'main')
@@ -213,26 +236,26 @@ test('runbook: the issue flows on GitHub Issues, steps 1 to 8 and 10 to 13', () 
   assert.equal(git(root, 'branch', '--show-current'), BRANCH)
   assert.equal(json(pmkit('issues', 'get', '1', '--json')).branch, BRANCH)
 
-  // Step 10: done closes the issue as completed.
+  // Step 13: done closes the issue as completed.
   assert.deepEqual(json(pmkit('issues', 'move', '1', 'done', '--json')).after.status, { name: 'Done', category: 'done' })
   assert.deepEqual([githubIssue(fake, 1).state, githubIssue(fake, 1).stateReason], ['CLOSED', 'COMPLETED'])
 
-  // Step 11: the history, in time order.
+  // Step 14: the history, in time order.
   const { history } = json(pmkit('issues', 'get', '1', '--history', '--json'))
   const entries = history.map((entry) => [entry.op, entry.field ?? null, entry.to?.id ?? entry.to])
-  for (const expected of [['create', null, '1'], ['update', 'type', 'bug'], ['move', 'status', 'Todo'], ['move', 'status', 'In Progress'], ['move', 'status', 'Done'], ['link', 'blockedBy', '2'], ['link', 'children', '2'], ['comment', null, comment.id]]) {
+  for (const expected of [['create', null, '1'], ['update', 'type', 'bug'], ['move', 'status', 'Todo'], ['move', 'status', 'In Progress'], ['move', 'status', 'Done'], ['link', 'blockedBy', '2'], ['unlink', 'blockedBy', '2'], ['link', 'children', '2'], ['comment', null, comment.id]]) {
     assert.ok(entries.some((entry) => JSON.stringify(entry) === JSON.stringify(expected)), `${JSON.stringify(expected)} in ${JSON.stringify(entries)}`)
   }
   assert.deepEqual(history.map((entry) => entry.at), [...history.map((entry) => entry.at)].sort())
 
-  // Step 12: archive hides the issue from the list; --archived lists it with the others.
+  // Step 15: archive hides the issue from the list; --archived lists it with the others.
   const archived = json(pmkit('issues', 'archive', '1', '--json'))
   assert.equal(archived.after.archived, true)
   assert.equal(githubIssue(fake, 1).state, 'CLOSED')
   assert.deepEqual(json(pmkit('issues', 'list', '--json')).issues.map((issue) => issue.id), ['2', '3'])
   assert.deepEqual(json(pmkit('issues', 'list', '--archived', '--json')).issues.map((issue) => [issue.id, issue.archived]), [['1', true], ['2', false], ['3', false]])
 
-  // Step 13: unarchive is not supported and points at the Project.
+  // Step 16: unarchive is not supported and points at the Project.
   const unarchive = pmkit('issues', 'unarchive', '1', '--json')
   assert.equal(unarchive.code, 2)
   assert.deepEqual(JSON.parse(unarchive.stdout).error, {
@@ -244,7 +267,7 @@ test('runbook: the issue flows on GitHub Issues, steps 1 to 8 and 10 to 13', () 
   assertNoToken(fake)
 })
 
-test('runbook: a main behind origin/main gets the push note, and --from origin/main avoids it (step 9)', () => {
+test('runbook: a main behind origin/main gets the push note, and --from origin/main avoids it (step 12)', () => {
   const { root, fake, pmkit } = runbookRepo({ behind: 1 })
   json(pmkit('issues', 'create', '--title-file', 'tmp/title-1.txt', '--type', 'bug', '--criteria-file', 'tmp/criteria-1.txt', '--json'))
   const head = git(root, 'rev-parse', 'refs/remotes/origin/main')
@@ -261,7 +284,7 @@ test('runbook: a main behind origin/main gets the push note, and --from origin/m
   assertNoToken(fake)
 })
 
-test('runbook: the real run from a main behind origin/main names the rebase (step 9)', () => {
+test('runbook: the real run from a main behind origin/main names the rebase (step 12)', () => {
   const { fake, pmkit } = runbookRepo({ behind: 1 })
   json(pmkit('issues', 'create', '--title-file', 'tmp/title-1.txt', '--json'))
   const real = json(pmkit('issues', 'branch', '1', '--json'))

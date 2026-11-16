@@ -1,6 +1,6 @@
 # Runbook: issue flows on GitHub Issues
 
-The issue commands on a repository whose tracker is GitHub Issues: create, list, move, link, parent, duplicate, comment, history, branch and archive. `scripts/runbook-issues-github.test.mjs` runs every step below with the real CLI and a fake `gh` first on `PATH`. The fake keeps the state of GitHub in a file between runs, so `npm test` checks this runbook.
+The issue commands on a repository whose tracker is GitHub Issues: create, list, move, update, assign, link and unlink, parent, duplicate, comment, history, branch and archive. `scripts/runbook-issues-github.test.mjs` runs every step below with the real CLI and a fake `gh` first on `PATH`. The fake keeps the state of GitHub in a file between runs, so `npm test` checks this runbook.
 
 ## Before you start
 
@@ -24,7 +24,7 @@ The issue commands on a repository whose tracker is GitHub Issues: create, list,
    node scripts/pmkit.mjs issues create --title-file tmp/title-3.txt --json
    ```
 
-   Expect `before: null` and the new issue in `after`, with ids `1`, `2` and `3`. An issue of the scope repository is its number alone. Issue 1 has `type: bug` and two `acceptanceCriteria`, none done. A new issue has no Project item yet, so its status reads `Open`, category `todo`.
+   Expect `before: null` and the new issue in `after`, with ids `1`, `2` and `3`. An issue of the scope repository is its number alone. Issue 1 has `type: bug` and two `acceptanceCriteria`, none done. pmkit adds each new issue to the Project with no Status, so its status reads `Open`, category `todo`.
 
 2. List the issues:
 
@@ -43,11 +43,30 @@ The issue commands on a repository whose tracker is GitHub Issues: create, list,
    node scripts/pmkit.mjs issues move 1 in_progress --json
    ```
 
-   The first move adds the issue to the Project and sets its Status to `Todo`. The second sets `In Progress`, category `in_progress`. The issue stays open.
+   The first move sets the Status of the issue's Project item to `Todo`. The second sets `In Progress`, category `in_progress`. The issue stays open.
+
+## Update and assign
+
+4. Set the priority and a label of issue 2:
+
+   ```
+   node scripts/pmkit.mjs issues update 2 --priority high --label bug --json
+   ```
+
+   Expect `after.priority: "high"` and `after.labels: ["bug"]`. The mapped issue field `Priority` has two options, `P0` and `P1`. Neither is named after a priority, so they map by position, and `high` writes `P1`.
+
+5. Assign issue 2 to yourself, then remove the assignee:
+
+   ```
+   node scripts/pmkit.mjs issues assign 2 me --json
+   node scripts/pmkit.mjs issues assign 2 none --json
+   ```
+
+   `me` stands for the `gh` login, so the first command gives `after.assignee` that login. `none` removes every assignee on GitHub, so the second gives an `after` with no `assignee`.
 
 ## Relations
 
-4. Mark issue 2 as a blocker of issue 1, then list the blocked issues:
+6. Mark issue 2 as a blocker of issue 1, then list the blocked issues:
 
    ```
    node scripts/pmkit.mjs issues link 2 1 --kind blocks --json
@@ -56,7 +75,16 @@ The issue commands on a repository whose tracker is GitHub Issues: create, list,
 
    Expect `after.blocks: ["1"]` on issue 2. The list holds issue 1 alone, with `blockedBy: ["2"]`.
 
-5. Make issue 2 a sub-issue of issue 1:
+7. Remove the blocker:
+
+   ```
+   node scripts/pmkit.mjs issues link 2 1 --kind blocks --remove --json
+   node scripts/pmkit.mjs issues get 1 --json
+   ```
+
+   Expect `after.blocks: []` on issue 2. `issues get 1` shows `blockedBy: []`.
+
+8. Make issue 2 a sub-issue of issue 1:
 
    ```
    node scripts/pmkit.mjs issues parent 2 1 --json
@@ -64,7 +92,7 @@ The issue commands on a repository whose tracker is GitHub Issues: create, list,
 
    Expect `after.parent: "1"` on issue 2.
 
-6. Mark issue 3 as a duplicate of issue 1:
+9. Mark issue 3 as a duplicate of issue 1:
 
    ```
    node scripts/pmkit.mjs issues link 3 1 --kind duplicate --json
@@ -74,42 +102,42 @@ The issue commands on a repository whose tracker is GitHub Issues: create, list,
 
 ## Comment
 
-7. Comment on issue 1:
+10. Comment on issue 1:
 
-   ```
-   node scripts/pmkit.mjs issues comment 1 --body-file tmp/comment-1.txt --json
-   ```
+    ```
+    node scripts/pmkit.mjs issues comment 1 --body-file tmp/comment-1.txt --json
+    ```
 
-   Expect the comment with `issue: "1"`, the `author` of the `gh` login and the text of the file as `body`. GitHub issue comments are flat, so `--reply-to` answers `NOT_SUPPORTED`.
+    Expect the comment with `issue: "1"`, the `author` of the `gh` login and the text of the file as `body`. GitHub issue comments are flat, so `--reply-to` answers `NOT_SUPPORTED`.
 
 ## Branch
 
-8. Preview the branch of issue 1, then create it:
+11. Preview the branch of issue 1, then create it:
 
-   ```
-   node scripts/pmkit.mjs issues branch 1 --dry-run --json
-   node scripts/pmkit.mjs issues branch 1 --json
-   ```
+    ```
+    node scripts/pmkit.mjs issues branch 1 --dry-run --json
+    node scripts/pmkit.mjs issues branch 1 --json
+    ```
 
-   The dry run gives `branch: "1-login-fails-on-safari"`, the name `gh issue develop` uses, and `from: "main"`, and writes nothing. The real run creates the linked branch on GitHub at the head there of `main`, the branch it starts from, then creates and checks out the local branch. Expect `after.branch` and `linked: { branch, base: "main" }`. GitHub lists the branch in the Development section of the issue, and `issues get 1 --json` reads it as `branch`. With `main` level with `origin/main`, neither run has a note about the push.
+    The dry run gives `branch: "1-login-fails-on-safari"`, the name `gh issue develop` uses, and `from: "main"`, and writes nothing. The real run creates the linked branch on GitHub at the head there of `main`, the branch it starts from, then creates and checks out the local branch. Expect `after.branch` and `linked: { branch, base: "main" }`. GitHub lists the branch in the Development section of the issue, and `issues get 1 --json` reads it as `branch`. With `main` level with `origin/main`, neither run has a note about the push.
 
-9. When the local `main` lacks commits of `origin/main` (as of the last fetch), the branch on GitHub starts at a commit the local branch does not hold, and GitHub would refuse the push of `pr open` as non-fast-forward. Both runs then carry a note. The dry run says:
+12. When the local `main` lacks commits of `origin/main` (as of the last fetch), the branch on GitHub starts at a commit the local branch does not hold, and GitHub would refuse the push of `pr open` as non-fast-forward. Both runs then carry a note. The dry run says:
 
-   ```
-   GitHub creates 1-login-fails-on-safari on origin at the head of main there, and main lacks commits of origin/main (as of the last fetch), so the push of pr open would be refused. Pass --from origin/main
-   ```
+    ```
+    GitHub creates 1-login-fails-on-safari on origin at the head of main there, and main lacks commits of origin/main (as of the last fetch), so the push of pr open would be refused. Pass --from origin/main
+    ```
 
-   The real run ends with `Run git fetch origin, then git rebase --onto origin/main main 1-login-fails-on-safari` instead. To start the branch at the head of `origin/main` from the beginning, pass `--from`:
+    The real run ends with `Run git fetch origin, then git rebase --onto origin/main main 1-login-fails-on-safari` instead. To start the branch at the head of `origin/main` from the beginning, pass `--from`:
 
-   ```
-   node scripts/pmkit.mjs issues branch 1 --from origin/main --json
-   ```
+    ```
+    node scripts/pmkit.mjs issues branch 1 --from origin/main --json
+    ```
 
-   Expect `from: "origin/main"`, the link at the head of `main` on GitHub, and no note about the push.
+    Expect `from: "origin/main"`, the link at the head of `main` on GitHub, and no note about the push.
 
 ## Close, history and archive
 
-10. Move issue 1 to done:
+13. Move issue 1 to done:
 
     ```
     node scripts/pmkit.mjs issues move 1 done --json
@@ -117,15 +145,15 @@ The issue commands on a repository whose tracker is GitHub Issues: create, list,
 
     Expect `Done`, category `done`. GitHub closes the issue as completed.
 
-11. Read the history of issue 1:
+14. Read the history of issue 1:
 
     ```
     node scripts/pmkit.mjs issues get 1 --history --json
     ```
 
-    Expect `history` in time order: `create`, the type set to `bug`, the moves to `Todo`, `In Progress` and `Done`, the `blockedBy` link to `2`, the `children` link to `2` and the `comment`. On GitHub Enterprise Server before 3.21, Status option changes have no events, so the command warns that moves show only as opens and closes.
+    Expect `history` in time order: `create`, the type set to `bug`, the moves to `Todo`, `In Progress` and `Done`, the `blockedBy` link to `2` and its unlink, the `children` link to `2` and the `comment`. On GitHub Enterprise Server before 3.21, Status option changes have no events, so the command warns that moves show only as opens and closes.
 
-12. Archive issue 1:
+15. Archive issue 1:
 
     ```
     node scripts/pmkit.mjs issues archive 1 --json
@@ -135,7 +163,7 @@ The issue commands on a repository whose tracker is GitHub Issues: create, list,
 
     `archive` archives the item of the issue in the Project, and the issue stays open or closed as it was. Expect `after.archived: true`. `issues list` leaves issue 1 out. `issues list --archived` also lists archived issues, so it holds issues 1, 2 and 3, with `archived: true` on issue 1 alone. A repository with `tracker.scope.project: none` has no item to archive, so `archive` answers `NOT_SUPPORTED`.
 
-13. Try to unarchive it:
+16. Try to unarchive it:
 
     ```
     node scripts/pmkit.mjs issues unarchive 1 --json
