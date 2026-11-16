@@ -7,7 +7,7 @@ import { hideAbsolutePaths } from '../paths.mjs'
 import { defaultExec, INSTALL_STEP } from './host.mjs'
 
 // Labels of letters, digits and dashes, joined by dots, with an optional port. A value that starts with - never matches.
-const HOST_NAME = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*(?::\d{1,5})?$/i
+export const HOST_NAME = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*(?::\d{1,5})?$/i
 const MAX_PAGE = 100
 const DELAYS = [500, 2000]
 const RETRY_STEP = 'Retry, and check githubstatus.com if it keeps failing'

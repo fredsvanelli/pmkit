@@ -3,6 +3,7 @@
 // loads only when a repository uses it. linear/adapter.mjs imports config.mjs, which imports this module; that cycle is safe
 // because no descriptor calls into config.mjs while the modules load.
 
+import { githubDescriptor } from './github/adapter.mjs'
 import { linearDescriptor } from './linear/adapter.mjs'
 
 /**
@@ -28,6 +29,7 @@ export const ADAPTERS = {
     },
   },
   linear: linearDescriptor(),
+  github: githubDescriptor(),
 }
 
 /** The descriptor of a system, or null when the registry has none. */

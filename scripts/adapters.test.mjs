@@ -13,8 +13,9 @@ import { fixedNow, makeRepo, tempDir, userStoreEnv } from './test-helpers.mjs'
 
 const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 
-test('the product registry holds local and linear', () => {
-  assert.deepEqual(Object.keys(ADAPTERS), ['local', 'linear'])
+test('the product registry holds local, linear and github', () => {
+  assert.deepEqual(Object.keys(ADAPTERS), ['local', 'linear', 'github'])
+  assert.equal(adapterFor('github').hosted, true)
   assert.equal(adapterFor('local'), ADAPTERS.local)
   assert.equal(ADAPTERS.local.hosted, false)
   assert.equal(adapterFor('linear').hosted, true)
