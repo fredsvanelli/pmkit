@@ -66,11 +66,11 @@ export function fakeGhExec(fixture) {
 
 const page = (nodes, hasNextPage = false) => ({ nodes, pageInfo: { hasNextPage } })
 
-/** A repository reply: the viewer, the repository with its issue types, issue fields and labels. */
+/** A repository reply: the viewer, the repository with its id, issue types, issue fields and labels. */
 export function repoReply({ owner = 'acme', name = 'widgets', ownerType = 'Organization', types, fields, labels, typesMore = false, fieldsMore = false } = {}) {
   return {
     data: {
-      viewer: { login: 'octocat', name: 'The Octocat' },
+      viewer: { id: 'U_1', login: 'octocat', name: 'The Octocat' },
       repository: {
         id: 'R_1',
         nameWithOwner: `${owner}/${name}`,
@@ -89,7 +89,7 @@ export function repoReply({ owner = 'acme', name = 'widgets', ownerType = 'Organ
             { __typename: 'IssueFieldDate', id: 'IF_4', name: 'Target date', dataType: 'DATE' },
           ], fieldsMore),
         }),
-        labels: page((labels ?? ['bug', 'documentation']).map((label) => ({ name: label }))),
+        labels: page((labels ?? ['bug', 'documentation']).map((label, index) => ({ id: `LA_${index + 1}`, name: label }))),
       },
     },
   }
@@ -119,6 +119,11 @@ export function projectReply({ number = 7, title = 'Roadmap', status = ['Backlog
   }
 }
 
+/** The users of the repository GitHub can assign, on one page. */
+export function assignableReply(users = [{ id: 'U_1', login: 'octocat', name: 'The Octocat' }, { id: 'U_2', login: 'hubot', name: 'Hubot' }]) {
+  return { data: { repository: { assignableUsers: { nodes: users, pageInfo: { hasNextPage: false, endCursor: null } } } } }
+}
+
 /** The linked Projects of the repository. */
 export function linkedReply(projects = [{ number: 7, title: 'Roadmap', owner: 'acme' }]) {
   return { data: { repository: { projectsV2: page(projects.map(({ number, title, owner }) => ({ number, title, owner: { login: owner } }))) } } }
@@ -132,7 +137,7 @@ export const SCOPE_ERROR = {
 export function standardFixture(overrides = {}) {
   return {
     meta: null,
-    graphql: { PmkitRepo: repoReply(), PmkitProject: projectReply(), PmkitLinkedProjects: linkedReply() },
+    graphql: { PmkitRepo: repoReply(), PmkitProject: projectReply(), PmkitLinkedProjects: linkedReply(), PmkitAssignableUsers: assignableReply() },
     ...overrides,
   }
 }

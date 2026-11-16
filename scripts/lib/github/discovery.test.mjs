@@ -225,3 +225,64 @@ test('discoveryView warns about a Project without a Status field', async () => {
   assert.deepEqual(view.statuses, [])
   assert.ok(view.warnings.includes('GitHub Project acme/7 has no single-select Status field'))
 })
+
+/** An exec that answers PmkitAssignableUsers by page from users, two per page, and everything else from the fixture. */
+function pagedUsers(users, fixture = standardFixture()) {
+  const fake = fakeGhExec(fixture)
+  const exec = (cmd, args, options = {}) => {
+    const body = args.includes('graphql') ? JSON.parse(options.input) : null
+    if (!body?.query.startsWith('query PmkitAssignableUsers(')) return fake.exec(cmd, args, options)
+    fake.calls.push({ cmd, args, input: options.input })
+    const start = body.variables.after ? Number(body.variables.after) : 0
+    const nodes = users.slice(start, start + 2)
+    const hasNextPage = start + 2 < users.length
+    const reply = { data: { repository: { assignableUsers: { nodes, pageInfo: { hasNextPage, endCursor: hasNextPage ? String(start + 2) : null } } } } }
+    return { status: 0, stdout: `HTTP/2.0 200 OK\r\n\r\n${JSON.stringify(reply)}`, stderr: '' }
+  }
+  return { ...fake, exec, client: createGithubClient({ root: '/repo', env: {}, exec, host: 'github.com', sleep: async () => {} }) }
+}
+
+const THREE_USERS = [{ id: 'U_1', login: 'octocat', name: 'The Octocat' }, { id: 'U_2', login: 'hubot', name: 'Hubot' }, { id: 'U_3', login: 'monalisa', name: null }]
+
+test('fetchDiscovery with users reads the ids and pages the assignable users', async () => {
+  const { client, calls } = pagedUsers(THREE_USERS)
+  const raw = await fetchDiscovery(client, { host: 'github.com', repo: 'acme/widgets', project: 'acme/7', users: true })
+  const names = calls.map((call) => /query (\w+)/.exec(JSON.parse(call.input).query)[1])
+  assert.deepEqual(names, ['PmkitRepo', 'PmkitAssignableUsers', 'PmkitAssignableUsers', 'PmkitProject'])
+  assert.deepEqual(JSON.parse(calls[1].input).variables, { owner: 'acme', name: 'widgets', first: 100, after: null })
+  assert.equal(raw.repositoryId, 'R_1')
+  assert.deepEqual(raw.viewer, { id: 'U_1', login: 'octocat', name: 'The Octocat' })
+  assert.deepEqual(raw.labels, [{ id: 'LA_1', name: 'bug' }, { id: 'LA_2', name: 'documentation' }])
+  assert.deepEqual(raw.users, THREE_USERS)
+  assert.deepEqual(raw.features, { issueFields: true, relatesTo: true, statusEvents: true })
+  assert.match(JSON.parse(calls[0].input).query, /viewer \{ id login name \}/)
+  assert.match(JSON.parse(calls[0].input).query, /labels\(first: 100\) \{ nodes \{ id name \}/)
+  const view = discoveryView(raw, pmkitWith({}))
+  assert.deepEqual(view.members, [
+    { id: 'octocat', name: 'The Octocat', email: null },
+    { id: 'hubot', name: 'Hubot', email: null },
+    { id: 'monalisa', name: null, email: null },
+  ])
+  assert.deepEqual(view.labels, ['bug', 'documentation'])
+})
+
+test('fetchDiscovery without users sends no user query and keeps users empty', async () => {
+  const { client, calls } = setup(standardFixture(), 'github.com')
+  const raw = await fetchDiscovery(client, { host: 'github.com', repo: 'acme/widgets', project: 'none' })
+  assert.equal(calls.length, 1)
+  assert.deepEqual(raw.users, [])
+})
+
+test('discoveryView puts the viewer first when the assignable users leave the viewer out', async () => {
+  const { client } = pagedUsers(THREE_USERS.slice(1))
+  const view = discoveryView(await fetchDiscovery(client, { host: 'github.com', repo: 'acme/widgets', project: 'none', users: true }), pmkitWith({}, 'none'))
+  assert.deepEqual(view.members.map((member) => member.id), ['octocat', 'hubot', 'monalisa'])
+})
+
+test('discoveryView warns when GitHub has more assignable users than discovery reads', async () => {
+  const many = Array.from({ length: 21 }, (_, index) => ({ id: `U_${index}`, login: `user${index}`, name: null }))
+  const { client } = pagedUsers(many)
+  const raw = await fetchDiscovery(client, { host: 'github.com', repo: 'acme/widgets', project: 'none', users: true })
+  assert.equal(raw.users.length, 20)
+  assert.ok(discoveryView(raw, pmkitWith({}, 'none')).warnings.includes('GitHub has more assignable users than discovery reads; it kept the first 1000'))
+})

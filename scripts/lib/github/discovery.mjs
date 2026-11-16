@@ -3,6 +3,7 @@
 
 import { PmkitError } from '../errors.mjs'
 import { hideAbsolutePaths } from '../paths.mjs'
+import { hostFeatures, issueDocuments } from './documents.mjs'
 import { INSTALL_STEP } from './host.mjs'
 import { brokenGithubMappings, fieldOf, NONE } from './mappings.mjs'
 
@@ -11,6 +12,9 @@ export const MINIMUM_GHES = '3.19'
 const ISSUE_FIELDS_GHES = '3.21'
 const FIRST = 50
 const LABELS_FIRST = 100
+const USERS_PAGE = 100
+// paginate stops after ten pages without a limit.
+const USERS_MAX = USERS_PAGE * 10
 const PRIORITIES = ['urgent', 'high', 'medium', 'low']
 
 const PAGE = 'pageInfo { hasNextPage }'
@@ -18,10 +22,10 @@ const ISSUE_FIELD_NODES = 'nodes { __typename ... on IssueFieldDate { id name da
 
 /** The repository query. Issue fields are asked only where the schema has them. */
 export const repoQuery = ({ issueFields }) =>
-  'query PmkitRepo($owner: String!, $name: String!) { viewer { login name } repository(owner: $owner, name: $name) { id nameWithOwner owner { login __typename } ' +
+  'query PmkitRepo($owner: String!, $name: String!) { viewer { id login name } repository(owner: $owner, name: $name) { id nameWithOwner owner { login __typename } ' +
   `issueTypes(first: ${FIRST}) { nodes { id name description isEnabled } ${PAGE} } ` +
   (issueFields ? `issueFields(first: ${FIRST}) { ${ISSUE_FIELD_NODES} ${PAGE} } ` : '') +
-  `labels(first: ${LABELS_FIRST}) { nodes { name } ${PAGE} } } }`
+  `labels(first: ${LABELS_FIRST}) { nodes { id name } ${PAGE} } } }`
 
 /** The Project query: the Project of an owner, user or organization, with its fields. */
 export const projectQuery = ({ issueFields }) => {
@@ -136,11 +140,18 @@ export async function fetchProject(client, project, { issueFields = true } = {})
   }
 }
 
+/** The users GitHub can assign issues of the repository to, as { users: [{ id, login, name }], truncated }. */
+async function fetchAssignableUsers(client, features, { owner, name }) {
+  const { nodes, hasMore } = await client.paginate(issueDocuments(features).ASSIGNABLE_USERS, { owner, name }, { select: (data) => data.repository.assignableUsers, pageSize: USERS_PAGE })
+  return { users: nodes.filter((node) => node?.login).map((node) => ({ id: node.id, login: node.login, name: node.name ?? null })), truncated: hasMore }
+}
+
 /**
  * Reads the repository, then the Project when `project` is owner/number, and returns the raw data setup and discover read.
+ * With users, it also pages the assignable users; setup leaves them out and gets users: [].
  * exec runs the GHES check; a host that needs none never calls it.
  */
-export async function fetchDiscovery(client, { host, repo, project, exec }) {
+export async function fetchDiscovery(client, { host, repo, project, exec, users = false }) {
   const ghesVersion = await checkGhesVersion({ exec, host })
   const issueFields = hasIssueFields(ghesVersion)
   const { owner, name } = parseRepo(repo) ?? {}
@@ -151,6 +162,13 @@ export async function fetchDiscovery(client, { host, repo, project, exec }) {
   if (repository.issueTypes?.pageInfo?.hasNextPage) truncated.push('issue types')
   if (repository.issueFields?.pageInfo?.hasNextPage) truncated.push('issue fields')
   if (repository.labels?.pageInfo?.hasNextPage) truncated.push('labels')
+  const features = hostFeatures({ host, ghesVersion })
+  let assignable = []
+  if (users) {
+    const read = await fetchAssignableUsers(client, features, { owner, name })
+    if (read.truncated) truncated.push('assignable users')
+    assignable = read.users
+  }
 
   let projectData = null
   if (parseProject(project)) {
@@ -163,12 +181,15 @@ export async function fetchDiscovery(client, { host, repo, project, exec }) {
     version: 1,
     host,
     repo: repository.nameWithOwner,
+    repositoryId: repository.id,
     ghesVersion,
-    viewer: { login: data.viewer?.login ?? null, name: data.viewer?.name ?? null },
+    features,
+    viewer: { id: data.viewer?.id ?? null, login: data.viewer?.login ?? null, name: data.viewer?.name ?? null },
     owner: { login: repository.owner?.login ?? null, type: repository.owner?.__typename ?? null },
     issueTypes: (repository.issueTypes?.nodes ?? []).filter((node) => node?.isEnabled !== false).map((node) => ({ id: node.id, name: node.name, description: node.description ?? null })),
     issueFields: (repository.issueFields?.nodes ?? []).filter((node) => node?.name).map(field),
-    labels: (repository.labels?.nodes ?? []).map((node) => node.name),
+    labels: (repository.labels?.nodes ?? []).filter((node) => node?.name).map((node) => ({ id: node.id, name: node.name })),
+    users: assignable,
     project: projectData,
     truncated,
   }
@@ -188,7 +209,7 @@ export const statusFieldOf = (project) => project?.fields.find((item) => item.na
 const plainField = ({ name, dataType, options }) => ({ name, dataType, options: options.map((item) => item.name) })
 
 /** The estimate unit and scale of the mapped estimate field: sizes for a single select, points otherwise. */
-function estimateOf(raw, pmkit) {
+export function estimateOf(raw, pmkit) {
   const found = fieldOf(raw, pmkit?.mappings?.fields?.estimate)
   if (found?.dataType === 'SINGLE_SELECT') return { unit: 'sizes', scale: found.options.map((item) => item.name) }
   return { unit: 'points', scale: [] }
@@ -210,9 +231,19 @@ function statusesOf(raw, status, warnings) {
   })
 }
 
+/** The assignable users as members, ids by login, with the viewer first when GitHub leaves the viewer out. */
+function membersOf(raw) {
+  const member = (user) => ({ id: user.login, name: user.name ?? null, email: null })
+  const users = (raw.users ?? []).map(member)
+  const { login } = raw.viewer
+  if (login && !users.some((user) => user.id === login)) users.unshift(member(raw.viewer))
+  return users
+}
+
 /** The discover result. pmkit is config.pmkit; the raw discovery stays on it as a hidden property. */
 export function discoveryView(raw, pmkit = {}) {
-  const warnings = raw.truncated.map((kind) => `GitHub has more ${kind} than discovery reads; it kept the first ${kind === 'labels' ? LABELS_FIRST : FIRST}`)
+  const keptOf = { labels: LABELS_FIRST, 'assignable users': USERS_MAX }
+  const warnings = raw.truncated.map((kind) => `GitHub has more ${kind} than discovery reads; it kept the first ${keptOf[kind] ?? FIRST}`)
   const statusOptions = (statusFieldOf(raw.project)?.options ?? []).map((item) => item.name)
   const statuses = statusesOf(raw, pmkit?.mappings?.status ?? {}, warnings)
   warnings.push(...brokenGithubMappings(raw, pmkit).map((item) => item.problem))
@@ -231,8 +262,8 @@ export function discoveryView(raw, pmkit = {}) {
     statuses,
     types,
     priorities: [...PRIORITIES],
-    labels: [...raw.labels],
-    members: raw.viewer.login ? [{ id: raw.viewer.login, name: raw.viewer.name, email: null }] : [],
+    labels: raw.labels.map((label) => label.name),
+    members: membersOf(raw),
     estimate: estimateOf(raw, pmkit),
     warnings,
   }
