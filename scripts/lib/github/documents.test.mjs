@@ -16,7 +16,7 @@ const MUTATIONS = {
 }
 const QUERIES = {
   ISSUE: 'PmkitIssue', ISSUES: 'PmkitIssues', TIMELINE: 'PmkitTimeline', TIMELINES: 'PmkitTimelines', COMMENTS: 'PmkitComments',
-  DEFAULT_BRANCH: 'PmkitDefaultBranch', ASSIGNABLE_USERS: 'PmkitAssignableUsers',
+  BRANCH_HEAD: 'PmkitBranchHead', ASSIGNABLE_USERS: 'PmkitAssignableUsers',
 }
 
 test('hostFeatures per host', () => {
@@ -102,7 +102,11 @@ test('issue reads declare their variables and page', () => {
   assert.match(docs.TIMELINE, /\$since: DateTime, \$itemTypes: \[IssueTimelineItemsItemType!\]/)
   assert.match(docs.TIMELINES, /\$ids: \[ID!\]!/)
   assert.match(docs.TIMELINES, /timelineItems\(first: 100/)
-  assert.match(docs.DEFAULT_BRANCH, /defaultBranchRef \{ name target \{ oid \} \}/)
+  assert.match(docs.BRANCH_HEAD, /\$qualifiedName: String!/)
+  assert.match(docs.BRANCH_HEAD, /ref\(qualifiedName: \$qualifiedName\) \{ name target \{ oid \} \}/)
+  assert.doesNotMatch(docs.BRANCH_HEAD, /defaultBranchRef/)
+  assert.match(docs.ADD_COMMENT, /commentEdge \{ node \{ id author \{ login \} body createdAt \} \}/)
+  assert.match(docs.UNMARK_DUPLICATE, /duplicate \{ \.\.\. on Issue \{ id number \} \}/)
   assert.match(docs.blockedByStatus ?? docs.ISSUE, /blockedBy\(first: 50\)[\s\S]*projectItems\(first: 20\)[\s\S]*status: fieldValueByName/)
 })
 

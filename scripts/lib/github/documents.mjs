@@ -130,8 +130,8 @@ ${fragment}`,
     COMMENTS: `query PmkitComments($id: ID!, $first: Int!, $after: String) {
   node(id: $id) { ... on Issue { comments(first: $first, after: $after) { nodes { id author { login } body createdAt isMinimized minimizedReason } ${PAGE} } } }
 }`,
-    DEFAULT_BRANCH: `query PmkitDefaultBranch($owner: String!, $name: String!) {
-  repository(owner: $owner, name: $name) { id defaultBranchRef { name target { oid } } }
+    BRANCH_HEAD: `query PmkitBranchHead($owner: String!, $name: String!, $qualifiedName: String!) {
+  repository(owner: $owner, name: $name) { id ref(qualifiedName: $qualifiedName) { name target { oid } } }
 }`,
     ASSIGNABLE_USERS: `query PmkitAssignableUsers($owner: String!, $name: String!, $first: Int!, $after: String) {
   repository(owner: $owner, name: $name) { assignableUsers(first: $first, after: $after) { nodes { id login name } ${PAGE} } }
@@ -147,16 +147,16 @@ ${fragment}`,
     DELETE_ISSUE: simple('PmkitDeleteIssue', 'DeleteIssueInput', 'deleteIssue(input: $input) { repository { id } }'),
     ADD_BLOCKED_BY: simple('PmkitAddBlockedBy', 'AddBlockedByInput', `addBlockedBy(input: $input) { issue ${ids} blockingIssue ${ids} }`),
     REMOVE_BLOCKED_BY: simple('PmkitRemoveBlockedBy', 'RemoveBlockedByInput', `removeBlockedBy(input: $input) { issue ${ids} blockingIssue ${ids} }`),
-    UNMARK_DUPLICATE: simple('PmkitUnmarkDuplicate', 'UnmarkIssueAsDuplicateInput', 'unmarkIssueAsDuplicate(input: $input) { clientMutationId }'),
+    UNMARK_DUPLICATE: simple('PmkitUnmarkDuplicate', 'UnmarkIssueAsDuplicateInput', 'unmarkIssueAsDuplicate(input: $input) { duplicate { ... on Issue { id number } } }'),
     ADD_SUB_ISSUE: simple('PmkitAddSubIssue', 'AddSubIssueInput', `addSubIssue(input: $input) { issue ${ids} subIssue ${ids} }`),
     REMOVE_SUB_ISSUE: simple('PmkitRemoveSubIssue', 'RemoveSubIssueInput', `removeSubIssue(input: $input) { issue ${ids} subIssue ${ids} }`),
-    ADD_COMMENT: simple('PmkitAddComment', 'AddCommentInput', 'addComment(input: $input) { comment { id author { login } body createdAt } }'),
+    ADD_COMMENT: simple('PmkitAddComment', 'AddCommentInput', 'addComment(input: $input) { commentEdge { node { id author { login } body createdAt } } }'),
     CREATE_LINKED_BRANCH: simple('PmkitCreateLinkedBranch', 'CreateLinkedBranchInput', 'createLinkedBranch(input: $input) { linkedBranch { ref { name } } }'),
   }
   if (features.issueFields) documents.SET_ISSUE_FIELD = simple('PmkitSetIssueField', 'SetIssueFieldValueInput', `setIssueFieldValue(input: $input) { issue ${ids} }`)
   if (features.relatesTo) {
-    documents.ADD_RELATES_TO = simple('PmkitAddRelatesTo', 'AddRelatesToInput', `addRelatesTo(input: $input) { issue ${ids} }`)
-    documents.REMOVE_RELATES_TO = simple('PmkitRemoveRelatesTo', 'RemoveRelatesToInput', `removeRelatesTo(input: $input) { issue ${ids} }`)
+    documents.ADD_RELATES_TO = simple('PmkitAddRelatesTo', 'AddRelatesToInput', `addRelatesTo(input: $input) { issue ${ids} relatedIssue ${ids} }`)
+    documents.REMOVE_RELATES_TO = simple('PmkitRemoveRelatesTo', 'RemoveRelatesToInput', `removeRelatesTo(input: $input) { issue ${ids} relatedIssue ${ids} }`)
   }
   return documents
 }
