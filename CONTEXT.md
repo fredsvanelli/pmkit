@@ -92,6 +92,10 @@ _Avoid_: custom field
 A Projects v2 board that a GitHub user or organization owns, named in `tracker.scope.project` as `owner/number`, or `none` when the repository uses no board. The GitHub Issues adapter reads each issue's status from the board's single-select Status field plus the issue's open or closed state, and setup asks which Status option stands for each category.
 _Avoid_: project (alone, which reads as an Epic or a Linear project), board
 
+**Linked branch**:
+A branch that GitHub links to an issue in the issue's Development section. On GitHub Issues, `issues branch` creates it on GitHub at the head there of the branch it starts from, pmkit's default branch or `--from`, and the issue's `branch` reads it (ADR 0008).
+_Avoid_: issue branch (alone)
+
 **Blocked**:
 The state of an issue when one of its `blocked_by` issues is not in a terminal category, or is missing. It is computed on each read. It is not a category and not a stored field.
 _Avoid_: on hold, stuck, waiting
