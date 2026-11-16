@@ -5,18 +5,22 @@ import { PmkitError } from '../errors.mjs'
 import { checkFilter, issueComparator } from '../issue-filter.mjs'
 import { issueDocuments } from './documents.mjs'
 import { translateFilter } from './filter.mjs'
-import { isIssueId, notFound, parseIssueId } from './ids.mjs'
+import { notFound, parseIssueId } from './ids.mjs'
 import { toIssue } from './issues.mjs'
 
 const PAGE_SIZE = 100
+// A search reads at most this many pages of issues, 1000 issues.
+const MAX_PAGES = 10
 // The nested connections of the issue fragment that may have more pages than the fragment reads.
 const NESTED = ['labels', 'subIssues', 'blockedBy', 'blocking', 'relatesTo']
+const brokenPage = () => new PmkitError('UPSTREAM', 'GitHub returned a broken page for PmkitIssues', 'Retry, and check githubstatus.com if it keeps failing')
 const NOTHING = () => ({ issues: [], problems: [], hasMore: false })
 
 /**
  * The issue operations over a GitHub client. getContext({ refresh }) returns the context of makeContext; the tracker
  * passes one over its discovery memo, and refresh rereads GitHub.
  */
+// config is unused by the reads; the writes of later tasks need it.
 export function issueOperations({ client, config, getContext }) {
   const documents = new WeakMap()
   /** The documents of a context's host and Project fields, built once per context. */
@@ -40,9 +44,10 @@ export function issueOperations({ client, config, getContext }) {
 
   /** The node and the issue of an id, in the scope repository or another one. A malformed id is NOT_FOUND with no request. */
   async function readNode(id) {
-    if (!isIssueId(id, config.pmkit?.tracker?.scope?.repo ?? '')) throw notFound(id)
     const context = await getContext()
-    const { repo, number } = parseIssueId(id, context.repo)
+    const parsed = parseIssueId(id, context.repo)
+    if (!parsed) throw notFound(id)
+    const { repo, number } = parsed
     const [owner, name] = repo.split('/')
     let data
     try {
@@ -71,21 +76,34 @@ export function issueOperations({ client, config, getContext }) {
     const translated = translateFilter(filter, context, viewer)
     if (filter.limit === 0 || translated.empty) return NOTHING()
     const [owner, name] = context.repo.split('/')
-    const { nodes, hasMore } = await client.paginate(
-      docsOf(context).ISSUES,
-      { owner, name, ...translated.variables, ...context.fieldVariables },
-      { select: (data) => data.repository.issues, pageSize: PAGE_SIZE, limit: translated.serverLimit },
-    )
-    const issues = []
-    for (const node of nodes) {
-      await completeNested(node, context)
-      const issue = toIssue(node, context)
-      if (translated.clientSteps.every((step) => step(issue, node))) issues.push(issue)
+    const variables = { owner, name, ...translated.variables, ...context.fieldVariables }
+    // GitHub's order (created, oldest first) is pmkit's order for the created sort, so that read stops once limit issues passed.
+    const enough = translated.sort === 'created' && translated.limit !== undefined ? translated.limit : Infinity
+    const kept = []
+    let hasMore = false
+    let after = null
+    for (let page = 1; ; page += 1) {
+      const first = translated.serverLimit === undefined ? PAGE_SIZE : Math.min(PAGE_SIZE, translated.serverLimit - kept.length)
+      const connection = (await client.request(docsOf(context).ISSUES, { ...variables, first, after }))?.repository?.issues
+      if (!Array.isArray(connection?.nodes) || typeof connection.pageInfo !== 'object' || connection.pageInfo === null) throw brokenPage()
+      for (const node of connection.nodes) {
+        await completeNested(node, context)
+        const issue = toIssue(node, context)
+        if (translated.clientSteps.every((step) => step(issue, node))) kept.push(issue)
+      }
+      if (kept.length >= enough || connection.pageInfo.hasNextPage !== true) break
+      // The cap cut a read that still needed issues.
+      if (page >= MAX_PAGES) {
+        hasMore = true
+        break
+      }
+      const cursor = connection.pageInfo.endCursor
+      if (typeof cursor !== 'string' || cursor === '' || cursor === after) throw brokenPage()
+      after = cursor
     }
-    issues.sort(issueComparator(translated.sort, context.priorities))
+    const issues = kept.sort(issueComparator(translated.sort, context.priorities))
     const cut = translated.limit === undefined ? issues : issues.slice(0, translated.limit)
-    // With a limit sent to GitHub, paginate's hasMore says the limit cut the read; only the page cap sets hasMore.
-    return { issues: cut, problems: [], hasMore: translated.serverLimit === undefined && hasMore }
+    return { issues: cut, problems: [], hasMore }
   }
 
   return { getIssue, searchIssues, readNode }

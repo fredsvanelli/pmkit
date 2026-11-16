@@ -62,7 +62,15 @@ test('an empty categories list is empty, so no request is needed', () => {
 test('assignee me uses the viewer login, a login goes as is', () => {
   assert.equal(translate({ assignee: 'me' }).variables.filterBy.assignee, 'octocat')
   assert.equal(translate({ assignee: 'hubot' }).variables.filterBy.assignee, 'hubot')
-  assert.deepEqual(translate({ assignee: 'hubot' }).clientSteps, [])
+})
+
+test('an assignee login also keeps only issues whose first assignee is that login', () => {
+  const translated = translate({ assignee: 'hubot' })
+  assert.equal(translated.clientSteps.length, 1)
+  const both = (logins) => node({ assignees: { nodes: logins.map((login) => ({ login })) } })
+  assert.equal(keeps(translated, both(['hubot', 'octocat'])), true)
+  assert.equal(keeps(translated, both(['octocat', 'hubot'])), false)
+  assert.equal(keeps(translated, node()), false)
 })
 
 test('assignee none is a client step that keeps unassigned issues', () => {
@@ -94,6 +102,7 @@ test('labels go to filterBy.labels, and several labels keep only issues with eve
   assert.deepEqual(two.variables.filterBy.labels, ['bug', 'ui'])
   assert.equal(keeps(two, node({ labels: { nodes: [{ name: 'ui' }, { name: 'bug' }] } })), true)
   assert.equal(keeps(two, node({ labels: { nodes: [{ name: 'bug' }] } })), false)
+  assert.equal(keeps(translate({ labels: ['Bug', 'UI'] }), node({ labels: { nodes: [{ name: 'ui' }, { name: 'bug' }] } })), true)
 })
 
 test('updatedAfter sets since and a client step that drops the exact instant', () => {

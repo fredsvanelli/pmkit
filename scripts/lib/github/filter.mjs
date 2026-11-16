@@ -36,7 +36,12 @@ export function translateFilter(filter, context, viewerLogin) {
     clientSteps.push((issue) => filter.categories.includes(issue.status.category))
   }
   if (filter.assignee === 'none') clientSteps.push((issue) => issue.assignee === undefined)
-  else if (filter.assignee !== undefined) filterBy.assignee = filter.assignee === 'me' ? viewerLogin : filter.assignee
+  else if (filter.assignee !== undefined) {
+    // GitHub matches any assignee; pmkit shows the first one, so search keeps only issues whose shown assignee matches.
+    const login = filter.assignee === 'me' ? viewerLogin : filter.assignee
+    filterBy.assignee = login
+    clientSteps.push((issue) => issue.assignee !== undefined && issue.assignee.toLowerCase() === String(login).toLowerCase())
+  }
   if (filter.types !== undefined) {
     if (filter.types.length === 1) filterBy.type = context.pmkit.mappings.types[filter.types[0]]
     else clientSteps.push((issue) => filter.types.includes(issue.type))
@@ -44,7 +49,12 @@ export function translateFilter(filter, context, viewerLogin) {
   if (filter.labels !== undefined && filter.labels.length > 0) {
     // GitHub's labels filter matches any label; pmkit keeps the issues that have every one.
     filterBy.labels = [...filter.labels]
-    if (filter.labels.length > 1) clientSteps.push((issue) => filter.labels.every((label) => issue.labels.includes(label)))
+    if (filter.labels.length > 1) {
+      clientSteps.push((issue) => {
+        const names = new Set(issue.labels.map((label) => label.toLowerCase()))
+        return filter.labels.every((label) => names.has(label.toLowerCase()))
+      })
+    }
   }
   if (filter.updatedAfter !== undefined) {
     // since includes the instant itself, and pmkit's updatedAfter does not.

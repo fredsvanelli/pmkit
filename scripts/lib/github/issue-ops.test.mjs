@@ -157,3 +157,28 @@ test('the cap of 10 pages stops the read with hasMore true', async () => {
   assert.equal(result.hasMore, true)
   assert.equal(names(fake).length, 10)
 })
+
+test('with the created sort, a search stops reading once limit issues passed every step', async () => {
+  const { fake, ops } = await setup()
+  for (let index = 0; index < 250; index += 1) fake.seed({ item: { status: 'Todo' } })
+  const result = await ops.searchIssues({ limit: 5, sort: 'created' })
+  assert.deepEqual(result.issues.map((issue) => issue.id), ['1', '2', '3', '4', '5'])
+  assert.equal(result.hasMore, false)
+  assert.deepEqual(names(fake), ['PmkitIssues'])
+})
+
+test('another sort reads every page up to the cap before the limit', async () => {
+  const { fake, ops } = await setup()
+  for (let index = 0; index < 250; index += 1) fake.seed({})
+  const result = await ops.searchIssues({ limit: 5, sort: 'updated' })
+  assert.deepEqual(result.issues.map((issue) => issue.id), ['250', '249', '248', '247', '246'])
+  assert.equal(result.hasMore, false)
+  assert.deepEqual(names(fake), ['PmkitIssues', 'PmkitIssues', 'PmkitIssues'])
+})
+
+test('a search by assignee keeps only issues whose first assignee is that login', async () => {
+  const { fake, ops } = await setup()
+  fake.seed({ title: 'Both', assignees: ['octocat', 'hubot'] })
+  assert.deepEqual((await ops.searchIssues({ assignee: 'hubot' })).issues, [])
+  assert.deepEqual((await ops.searchIssues({ assignee: 'octocat' })).issues.map((issue) => issue.id), ['1'])
+})
