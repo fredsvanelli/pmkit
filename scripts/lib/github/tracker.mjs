@@ -1,16 +1,20 @@
 // The GitHub Issues tracker. discover reads the repository and its Project (PMK-86); capabilities builds the manifest from the
-// discovery. Every other contract operation runs through guarded, the scope and mapping check (PMK-87), and stays a stub
-// until its task plugs the operation in.
+// discovery. The Issues, Relations, History and Comments families read and write issues (PMK-87). Every operation but
+// discover and capabilities runs through guarded, the scope and mapping check; the operations of later issues stay stubs.
 // See docs/specs/2026-11-16-pmk-87-github-issues-relations-history-design.md, "Discovery, cache and mapping check".
 
 import { TRACKER_OPERATIONS } from '../contract.mjs'
-import { PmkitError } from '../errors.mjs'
+import { PmkitError, unarchiveNotSupported } from '../errors.mjs'
 import { cacheGet, cachePut, repoHash } from '../user-store.mjs'
 import { createGithubClient } from './client.mjs'
 import { discoveryView, fetchDiscovery, parseProject } from './discovery.mjs'
+import { historyOperations } from './history-ops.mjs'
 import { defaultExec } from './host.mjs'
+import { issueOperations } from './issue-ops.mjs'
+import { makeContext } from './issues.mjs'
 import { buildGithubCapabilities } from './manifest.mjs'
 import { brokenGithubMappings } from './mappings.mjs'
+import { relationOperations } from './relation-ops.mjs'
 
 const CACHE_TTL_SECONDS = 3600
 const isoSeconds = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z')
@@ -25,6 +29,8 @@ export function createGithubTracker(config, { env, now = () => new Date(), exec 
   const scope = config.pmkit?.tracker?.scope ?? {}
   const run = exec ?? defaultExec({ root: config.root, env })
   const store = { env, now }
+  // One client per tracker. Discovery and every operation read GitHub through it.
+  const client = createGithubClient({ root: config.root, env, host: scope.host, exec: run })
 
   function requireScope() {
     for (const key of ['host', 'repo']) {
@@ -49,7 +55,6 @@ export function createGithubTracker(config, { env, now = () => new Date(), exec 
   }
 
   async function fetchFresh() {
-    const client = createGithubClient({ root: config.root, env, host: scope.host, exec: run })
     const raw = await fetchDiscovery(client, { host: scope.host, repo: scope.repo, project: scope.project, exec: run, users: true })
     const warnings = []
     try {
@@ -136,6 +141,55 @@ export function createGithubTracker(config, { env, now = () => new Date(), exec 
     guarded(async () => {
       throw new PmkitError('NOT_SUPPORTED', `the GitHub adapter does not implement ${operation} yet`, 'Set tracker.system to local in .pmkit/config.yaml to use this command now')
     })
-  const implemented = { discover, capabilities }
+
+  // Operations GitHub has no capability for. The refusal carries the manifest's hint, as Linear's stubs do.
+  const ABSENT_CAPABILITY = { delegate: 'agent_delegation', logTime: 'time_tracking', listTimeEntries: 'time_tracking' }
+  const absent = (operation) =>
+    guarded(async () => {
+      const { raw } = await discovery()
+      const entry = buildGithubCapabilities(raw, config.pmkit).find((candidate) => candidate.id === ABSENT_CAPABILITY[operation])
+      throw new PmkitError('NOT_SUPPORTED', entry.enableHint, entry.enableHint)
+    })
+
+  // The context of the operations: makeContext over the discovery, built once per raw discovery.
+  const contexts = new WeakMap()
+  async function getContext({ refresh = false } = {}) {
+    const { raw } = await discovery({ refresh })
+    if (!contexts.has(raw)) contexts.set(raw, makeContext(raw, config.pmkit))
+    return contexts.get(raw)
+  }
+
+  const issues = issueOperations({ client, config, getContext })
+  const relations = relationOperations({ client, ops: issues, getContext })
+  const history = historyOperations({ client, ops: issues, getContext, now })
+  const contract = {
+    getIssue: issues.getIssue,
+    searchIssues: issues.searchIssues,
+    createIssue: issues.createIssue,
+    updateIssue: issues.updateIssue,
+    moveToCategory: issues.moveToCategory,
+    assign: issues.assign,
+    archive: issues.archive,
+    delete: issues.delete,
+    link: relations.link,
+    unlink: relations.unlink,
+    setParent: relations.setParent,
+    getHistory: history.getHistory,
+    listComments: history.listComments,
+    comment: history.comment,
+    resolveThread: history.resolveThread,
+    metricEvents: history.metricEvents,
+  }
+  const refused = {
+    // Archive works on the Project item; unarchive is Local only, as on Linear (PMK-250).
+    unarchive: guarded(async () => {
+      throw unarchiveNotSupported('github')
+    }),
+    restore: guarded(async () => {
+      throw new PmkitError('NOT_SUPPORTED', 'GitHub has no trash, so a deleted issue cannot come back', 'pmkit issues create')
+    }),
+    ...Object.fromEntries(Object.keys(ABSENT_CAPABILITY).map((operation) => [operation, absent(operation)])),
+  }
+  const implemented = { discover, capabilities, ...refused, ...Object.fromEntries(Object.entries(contract).map(([operation, body]) => [operation, guarded(body)])) }
   return Object.fromEntries(TRACKER_OPERATIONS.map((operation) => [operation, implemented[operation] ?? stub(operation)]))
 }

@@ -66,7 +66,7 @@ test('capabilities builds the manifest from the discovery and the mappings', asy
 
 test('a stub answers NOT_SUPPORTED once the mapping check passes', async () => {
   const { tracker, calls } = await trackerOf()
-  await assert.rejects(tracker.searchIssues({}), (error) => error.code === 'NOT_SUPPORTED' && error.message === 'the GitHub adapter does not implement searchIssues yet')
+  await assert.rejects(tracker.listCycles(), (error) => error.code === 'NOT_SUPPORTED' && error.message === 'the GitHub adapter does not implement listCycles yet')
   assert.ok(calls.length > 0)
   assert.ok(calls.every((call) => !String(call.input).includes('mutation')))
 })
@@ -104,9 +104,9 @@ test('a second tracker reads the discovery from the cache, while discover with r
   await githubTracker(context, fake).discover({ refresh: true })
   assert.equal(readsOf(fake, 'PmkitRepo'), 1)
   const second = githubTracker(context, fake)
-  await assert.rejects(second.getIssue('1'), { code: 'NOT_SUPPORTED' })
+  await assert.rejects(second.getIssue('1'), { code: 'NOT_FOUND' })
   await second.capabilities()
-  assert.equal(readsOf(fake, 'PmkitRepo'), 1, 'the guarded stub and capabilities read the cache')
+  assert.equal(readsOf(fake, 'PmkitRepo'), 1, 'the guarded read and capabilities read the cache')
   await second.discover({ refresh: true })
   assert.equal(readsOf(fake, 'PmkitRepo'), 2, 'discover with refresh reads GitHub')
 })
@@ -127,8 +127,8 @@ test('discover reads a primed cache without a GitHub read, and discover with ref
 test('one tracker reads GitHub once per run', async () => {
   const fake = fakeGithubIssues()
   const tracker = githubTracker(issuesContext(), fake)
-  await assert.rejects(tracker.getIssue('1'), { code: 'NOT_SUPPORTED' })
-  await assert.rejects(tracker.comment('1', 'x'), { code: 'NOT_SUPPORTED' })
+  await assert.rejects(tracker.getIssue('1'), { code: 'NOT_FOUND' })
+  await assert.rejects(tracker.comment('1', 'x', 'octocat'), { code: 'NOT_FOUND' })
   await tracker.capabilities()
   assert.equal(readsOf(fake, 'PmkitRepo'), 1)
 })
@@ -168,6 +168,35 @@ test('a cached discovery of another format or another Project counts as a miss',
   const fake = fakeGithubIssues()
   await githubTracker(context, fake).discover({ refresh: true })
   const other = createGithubTracker({ root: context.root, pmkit: pmkit({ ...SCOPE, project: 'none' }, {}) }, { env: context.env, exec: fake.exec })
-  await assert.rejects(other.getIssue('1'), { code: 'NOT_SUPPORTED' })
+  await assert.rejects(other.getIssue('1'), { code: 'NOT_FOUND' })
   assert.equal(readsOf(fake, 'PmkitRepo'), 2)
+})
+
+test('the tracker serves the issue, relation and history operations through one discovery', async () => {
+  const fake = fakeGithubIssues()
+  const tracker = githubTracker(issuesContext(), fake)
+  const a = (await tracker.createIssue({ title: 'A' }, 'octocat')).after.id
+  const b = (await tracker.createIssue({ title: 'B' }, 'octocat')).after.id
+  await tracker.link(a, b, 'blocks', 'octocat')
+  await tracker.comment(b, 'Waiting on A', 'octocat')
+  assert.deepEqual((await tracker.getIssue(b)).blockedBy, [a])
+  assert.deepEqual((await tracker.listComments(b)).map((comment) => comment.body), ['Waiting on A'])
+  assert.ok((await tracker.getHistory(b)).some((event) => event.op === 'comment'))
+  assert.deepEqual((await tracker.searchIssues({})).issues.map((issue) => issue.id).sort(), [a, b].sort())
+  assert.equal(readsOf(fake, 'PmkitRepo'), 1)
+})
+
+test('unarchive, restore, delegate, logTime and listTimeEntries answer NOT_SUPPORTED after the mapping check', async () => {
+  const fake = fakeGithubIssues()
+  const tracker = githubTracker(issuesContext(), fake)
+  await assert.rejects(tracker.unarchive('1', 'octocat'), { code: 'NOT_SUPPORTED', message: 'unarchive works on the Local tracker only', nextStep: 'Restore the item from the archived items of the Project on GitHub' })
+  await assert.rejects(tracker.restore('1', 'octocat'), { code: 'NOT_SUPPORTED', message: 'GitHub has no trash, so a deleted issue cannot come back', nextStep: 'pmkit issues create' })
+  const delegation = 'The GitHub adapter does not delegate to agents yet'
+  await assert.rejects(tracker.delegate('1', 'agent:bot', 'octocat'), { code: 'NOT_SUPPORTED', message: delegation, nextStep: delegation })
+  for (const refused of [tracker.logTime('1', { minutes: 30 }, 'octocat'), tracker.listTimeEntries({})]) {
+    await assert.rejects(refused, { code: 'NOT_SUPPORTED', message: 'GitHub has no time tracking', nextStep: 'GitHub has no time tracking' })
+  }
+  assert.equal(fake.mutations.length, 0)
+  const broken = githubTracker(issuesContext(), fake, { status: { ...STATUS, done: 'Gone' } })
+  await assert.rejects(broken.restore('1', 'octocat'), { code: 'NOT_CONFIGURED' })
 })
