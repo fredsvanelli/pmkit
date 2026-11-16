@@ -2,13 +2,15 @@
 id: PMK-84
 title: Decide GitHub Issues authentication and the minimum GHES version
 type: task
-status: backlog
+status: in_progress
 priority: low
 estimate: 2
+assignee: fred
 parent: EPC-8
 milestone: github-issues
+branch: pmk-84-decide-github-issues-authentication-and
 created: 2026-10-25T19:13:23Z
-updated: 2026-10-25T19:13:23Z
+updated: 2026-11-16T17:39:14Z
 ---
 
 ## Description
