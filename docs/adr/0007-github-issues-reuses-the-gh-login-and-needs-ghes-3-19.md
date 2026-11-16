@@ -34,3 +34,10 @@ Each field role reads from one source that setup picks: an org issue field first
 - `/pmkit:setup` runs `discover`. On `AUTH` it shows the next step (`gh auth login`, or `gh auth refresh -s project`) and asks the user to run setup again. On `NOT_SUPPORTED` it names the GHES version found and 3.19.
 - When GitHub ends support for 3.19 on 2026-12-09, the minimum may move to 3.20 with a new ADR that supersedes this one.
 - Left open: which GHES host the config names (`gh` takes it from the remote or `GH_HOST`), for PMK-85 and PMK-86; GitHub's issue status as the status source once it leaves preview.
+
+## Note, 2026-11-16 (PMK-86)
+
+Two statements above were wrong about `gh`, and PMK-85 checked both with gh 2.93.0. The decision does not change.
+
+- `gh api` never reads the git remote. It sends a call to the host of `--hostname`, else `GH_HOST`, else github.com. The Consequences line "`gh` takes it from the remote or `GH_HOST`" does not hold for `gh api`. PMK-86 stores the host in `tracker.scope.host`, which setup fills from the origin remote, and the client passes it as `--hostname` on every call.
+- `-h <host>` belongs on every `gh auth` step for any host but github.com, GHE.com (`*.ghe.com`) included, not only on GHES, because `gh auth` without `-h` acts on github.com.

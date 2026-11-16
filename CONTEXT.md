@@ -88,6 +88,10 @@ _Avoid_: binding, alias
 A field that a GitHub organization defines on its issues, such as Priority or Effort, with a value on the issue itself. A Project field, by contrast, exists only on a Projects v2 board and only for the issues added to it. On GitHub Issues, the mapping of each field role reads an issue field first, then a Project field, then `none` (ADR 0007).
 _Avoid_: custom field
 
+**GitHub Project**:
+A Projects v2 board that a GitHub user or organization owns, named in `tracker.scope.project` as `owner/number`, or `none` when the repository uses no board. The GitHub Issues adapter reads each issue's status from the board's single-select Status field plus the issue's open or closed state, and setup asks which Status option stands for each category.
+_Avoid_: project (alone, which reads as an Epic or a Linear project), board
+
 **Blocked**:
 The state of an issue when one of its `blocked_by` issues is not in a terminal category, or is missing. It is computed on each read. It is not a category and not a stored field.
 _Avoid_: on hold, stuck, waiting

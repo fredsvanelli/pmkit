@@ -28,7 +28,7 @@
         },
         "scope": {
           "title": "Tracker scope",
-          "description": "Hosted trackers only: the names that pick the team, project or space, such as team: ENG. Ignored by the local tracker.",
+          "description": "Hosted trackers only: the names that pick the team, project or space, such as team: ENG. GitHub Issues uses host (such as github.com), repo (owner/name) and project (the Project's owner/number, or none). Ignored by the local tracker.",
           "type": "object",
           "properties": {
             "workspace": {
@@ -98,7 +98,7 @@
       "properties": {
         "status": {
           "title": "Status mappings",
-          "description": "A category, or blocked, to the tracker's status name, such as in_review: In Review. none means this team has no such status.",
+          "description": "A category, or blocked, to the tracker's status name, such as in_review: In Review. On GitHub Issues it is an option of the Project's Status field. none means this team has no such status.",
           "type": "object",
           "propertyNames": {
             "enum": ["triage", "backlog", "todo", "in_progress", "in_review", "done", "canceled", "blocked"]
@@ -112,7 +112,7 @@
         },
         "fields": {
           "title": "Field mappings",
-          "description": "A field role to the tracker's field name, native for the tracker's own field, or none for no field.",
+          "description": "A field role to the tracker's field name, native for the tracker's own field, or none for no field. GitHub Issues names the source: issue:<name> for an issue field, project:<name> for a field of the Project.",
           "type": "object",
           "propertyNames": {
             "enum": ["estimate", "priority", "target_date", "start_date", "assignee", "acceptance_criteria", "time_spent"]
@@ -126,7 +126,7 @@
         },
         "types": {
           "title": "Type mappings",
-          "description": "A pmkit issue type to the name of one label of the tracker, such as bug: Bug. A type without a label is left out.",
+          "description": "A pmkit issue type to the name of one label of the tracker, or of one issue type on GitHub Issues, such as bug: Bug. A type without one is left out.",
           "type": "object",
           "additionalProperties": {
             "title": "Label name",

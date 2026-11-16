@@ -82,3 +82,20 @@ test('CONTEXT.md defines Issue field against a Project field', () => {
   assert.ok(match, 'Issue field term is missing')
   assert.match(match[1], /Project field/)
 })
+
+test('ADR-0007 has a dated note that corrects the host wording (PMK-86)', () => {
+  const note = adr().split(/^## Note, 2026-11-16 \(PMK-86\)$/m)[1]
+  assert.ok(note, 'the PMK-86 note is missing')
+  assert.match(note, /never reads the git remote/)
+  assert.match(note, /--hostname/)
+  assert.match(note, /tracker\.scope\.host/)
+  assert.match(note, /GHE\.com/)
+  assert.match(note, /decision does not change/)
+})
+
+test('CONTEXT.md defines GitHub Project', () => {
+  const match = context().match(/^\*\*GitHub Project\*\*:\n(.+)$/m)
+  assert.ok(match, 'GitHub Project term is missing')
+  assert.match(match[1], /tracker\.scope\.project/)
+  assert.match(match[1], /Status field/)
+})

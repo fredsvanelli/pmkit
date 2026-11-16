@@ -31,6 +31,14 @@ const LINEAR_EXISTING = [
   'Existing Linear config 2 validate', 'Existing Linear config 3 init', 'Existing Linear config 4 init', 'Existing Linear config 5 init',
   'Existing Linear config 7 validate', 'Existing Linear config 7 discover', 'Existing Linear config 7 capabilities',
 ]
+const GITHUB_CALLS = [
+  'GitHub first run 3 init', 'GitHub first run 6 init', 'GitHub first run 9 validate', 'GitHub first run 9 discover', 'GitHub first run 9 capabilities',
+  'Existing GitHub config 2 validate', 'Existing GitHub config 3 init', 'Existing GitHub config 4 init', 'Existing GitHub config 5 init',
+  'Existing GitHub config 7 validate', 'Existing GitHub config 7 discover', 'Existing GitHub config 7 capabilities',
+]
+// The GitHub paths run against a fake gh in scripts/runbook-setup-github.test.mjs, which follows docs/runbooks/setup-github.md.
+const notGithub = 'step 1 never reaches the GitHub paths here; scripts/runbook-setup-github.test.mjs runs them against a fake gh'
+const GITHUB_NOT_HIT = { 'GitHub first run': notGithub, 'Existing GitHub config': notGithub }
 const LOCAL_CALLS = [
   'First run 6 init', 'First run 9 validate', 'First run 9 discover', 'First run 9 capabilities',
   'Existing config 2 validate', 'Existing config 3 discover', 'Existing config 3 issues list', 'Existing config 3 issues update',
@@ -102,8 +110,9 @@ export default [
       'Existing config 9 discover': firstRun,
       'Existing config 9 capabilities': firstRun,
       ...skipAll([...LINEAR_FIRST, ...LINEAR_EXISTING], notLinear),
+      ...skipAll(GITHUB_CALLS, notGithub),
     },
-    notHit: { 'Existing config': firstRun, 'Existing config step 3': firstRun, 'Linear first run': notLinear, 'Existing Linear config': notLinear },
+    notHit: { 'Existing config': firstRun, 'Existing config step 3': firstRun, 'Linear first run': notLinear, 'Existing Linear config': notLinear, ...GITHUB_NOT_HIT },
     expect(repo, saved) {
       assert.ok(repo.file('.pmkit/config.yaml'), '.pmkit/config.yaml exists')
       assert.match(repo.file('.issues/config.yaml'), /^id_prefix: ISS$/m)
@@ -142,8 +151,10 @@ export default [
       'First run 9 capabilities': existing,
       'Existing config 3 issues update': 'no issue uses a label, so there is no label name to rename',
       ...skipAll([...LINEAR_FIRST, ...LINEAR_EXISTING], linearOnly),
+      ...skipAll(GITHUB_CALLS, notGithub),
     },
     notHit: {
+      ...GITHUB_NOT_HIT,
       'Linear first run': linearOnly,
       'Existing Linear config': linearOnly,
       'First run': existing,
@@ -186,8 +197,9 @@ export default [
     ],
     skip: {
       ...skipAll([...LOCAL_CALLS, ...LINEAR_EXISTING], 'a first run has no config yet, so step 1 never reaches this path'),
+      ...skipAll(GITHUB_CALLS, notGithub),
     },
-    notHit: { 'First run': 'the user picks Linear', 'Existing config': firstRun, 'Existing config step 3': firstRun, 'Existing Linear config': firstRun },
+    notHit: { 'First run': 'the user picks Linear', 'Existing config': firstRun, 'Existing config step 3': firstRun, 'Existing Linear config': firstRun, ...GITHUB_NOT_HIT },
     expect(repo, saved) {
       assert.deepEqual(saved.first.questions.map((q) => q.path), ['tracker.scope.team'])
       assert.deepEqual(saved.first.questions[0].candidates, ['ACME', 'BETA'])
@@ -232,9 +244,10 @@ export default [
     ],
     skip: {
       ...skipAll([...LOCAL_CALLS, ...LINEAR_FIRST], linearConfigExists),
+      ...skipAll(GITHUB_CALLS, notGithub),
       'Existing Linear config 4 init': 'the file names a team the workspace still has, so there is no team question',
     },
-    notHit: { 'First run': existing, 'Existing config': linearConfigExists, 'Existing config step 3': linearConfigExists, 'Linear first run': existing },
+    notHit: { 'First run': existing, 'Existing config': linearConfigExists, 'Existing config step 3': linearConfigExists, 'Linear first run': existing, ...GITHUB_NOT_HIT },
     expect(repo, saved) {
       assert.deepEqual(saved.before.problems, [])
       assert.deepEqual(saved.broken.broken, [{ path: 'mappings.status.in_review', value: 'Peer Review', problem: 'mappings.status.in_review names Peer Review, which team ACME no longer has' }])
