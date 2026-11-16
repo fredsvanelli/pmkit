@@ -2,9 +2,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { answerGh, fakeGhExec, repoReply, standardFixture } from './fake-github-api.mjs'
-import { fakeGithubIssues, fakeGithubIssuesFrom } from './fake-github-issues.mjs'
+import { fakeGithubIssues, fakeGithubIssuesFrom, TIMELINE_TYPENAMES } from './fake-github-issues.mjs'
 import { createGithubClient } from './lib/github/client.mjs'
-import { hostFeatures, issueDocuments } from './lib/github/documents.mjs'
+import { hostFeatures, issueDocuments, ITEM_TYPES } from './lib/github/documents.mjs'
 
 const VARS = { fStatus: 'Status', fEstimate: 'Story points', fDue: 'Due' }
 const REPO = { owner: 'acme', name: 'widgets' }
@@ -205,7 +205,11 @@ test('branch heads answer by qualified name, and createLinkedBranch adds the bra
   await create({ title: 'A' })
   await client.request(docs.CREATE_LINKED_BRANCH, { input: { issueId: 'I_1', repositoryId: 'R_1', name: '1-a', oid: 'b'.repeat(40) } })
   assert.deepEqual((await read(1)).linkedBranches.nodes, [{ ref: { name: '1-a' } }])
-  assert.equal(fake.state.branches['1-a'], 'b'.repeat(40))
+  assert.equal(fake.state.repositories[0].branches['1-a'], 'b'.repeat(40))
+  fake.seedBranch('develop', 'c'.repeat(40), 'acme/other')
+  const other = (await client.request(docs.BRANCH_HEAD, { owner: 'acme', name: 'other', qualifiedName: 'refs/heads/develop' })).repository
+  assert.deepEqual(other, { id: 'R_2', ref: { name: 'develop', target: { oid: 'c'.repeat(40) } } })
+  assert.equal((await head('refs/heads/develop')).ref.target.oid, 'b'.repeat(40))
 })
 
 test('assignable users page, and the repository, Project and linked Projects answer from the state', async () => {
@@ -272,4 +276,34 @@ test('answerGh with fixture.issues answers from the fake and writes the new stat
   assert.equal(JSON.parse(read.stdout.split('\r\n\r\n')[1]).data.repository.issue.title, 'A')
   assert.equal(fixture.issues.issues.length, 1)
   assert.equal(JSON.parse(call('query PmkitRepo { x }', REPO).stdout.split('\r\n\r\n')[1]).data.viewer.name, 'The Octocat')
+})
+
+test('itemTypes filters keep every item type of ITEM_TYPES, the Status change event included', async () => {
+  const { fake, docs, client, create } = setup()
+  const all = ITEM_TYPES(hostFeatures({ host: 'github.com' }))
+  assert.deepEqual(Object.keys(TIMELINE_TYPENAMES).sort(), [...all].sort())
+  for (const itemType of all) {
+    const typename = TIMELINE_TYPENAMES[itemType]
+    assert.equal(typename.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase(), itemType)
+  }
+  await create({ title: 'A' })
+  const item = (await client.request(docs.ADD_PROJECT_ITEM, { input: { projectId: 'PVT_1', contentId: 'I_1' } })).addProjectV2ItemById.item
+  await client.request(docs.SET_PROJECT_FIELD, { input: { projectId: 'PVT_1', itemId: item.id, fieldId: 'PF_1', value: { singleSelectOptionId: 'S2' } } })
+  const items = (await client.request(docs.TIMELINE, { id: 'I_1', first: 10, itemTypes: ['PROJECT_V2_ITEM_STATUS_CHANGED_EVENT'] })).node.timelineItems.nodes
+  assert.deepEqual(items.map((node) => [node.__typename, node.previousStatus, node.status]), [['ProjectV2ItemStatusChangedEvent', null, 'In Progress']])
+  const filtered = (await client.request(docs.TIMELINE, { id: 'I_1', first: 10, itemTypes: all })).node.timelineItems.nodes
+  assert.equal(filtered.length, fake.state.issues[0].timeline.length)
+})
+
+test('closing as a duplicate of the same issue twice records one event and keeps updatedAt', async () => {
+  const { docs, client, create, read } = setup()
+  await create({ title: 'A' })
+  await create({ title: 'B' })
+  const close = () => client.request(docs.CLOSE_ISSUE, { input: { issueId: 'I_1', stateReason: 'DUPLICATE', duplicateIssueId: 'I_2' }, ...VARS })
+  await close()
+  const updated = (await read(1)).updatedAt
+  await close()
+  assert.equal((await read(1)).updatedAt, updated)
+  const items = (await client.request(docs.TIMELINE, { id: 'I_1', first: 10 })).node.timelineItems.nodes
+  assert.deepEqual(items.map((node) => node.__typename), ['MarkedAsDuplicateEvent', 'ClosedEvent'])
 })

@@ -27,8 +27,17 @@ const refuse = (type, message) => {
 const unknownNode = (id) => refuse('NOT_FOUND', `Could not resolve to a node with the global id of '${id}'`)
 const unprocessable = (message) => refuse('UNPROCESSABLE', message)
 
-/** The timeline item type enum of a typename: RenamedTitleEvent becomes RENAMED_TITLE_EVENT. */
-const itemTypeOf = (typename) => typename.replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/([A-Z])([0-9])/g, '$1_$2').toUpperCase()
+/** The typename of each timeline item type, named one by one so no case rule can get one wrong. */
+export const TIMELINE_TYPENAMES = {
+  ISSUE_COMMENT: 'IssueComment', RENAMED_TITLE_EVENT: 'RenamedTitleEvent', ASSIGNED_EVENT: 'AssignedEvent', UNASSIGNED_EVENT: 'UnassignedEvent',
+  LABELED_EVENT: 'LabeledEvent', UNLABELED_EVENT: 'UnlabeledEvent', CLOSED_EVENT: 'ClosedEvent', REOPENED_EVENT: 'ReopenedEvent',
+  ISSUE_TYPE_ADDED_EVENT: 'IssueTypeAddedEvent', ISSUE_TYPE_CHANGED_EVENT: 'IssueTypeChangedEvent', ISSUE_TYPE_REMOVED_EVENT: 'IssueTypeRemovedEvent',
+  BLOCKED_BY_ADDED_EVENT: 'BlockedByAddedEvent', BLOCKED_BY_REMOVED_EVENT: 'BlockedByRemovedEvent', BLOCKING_ADDED_EVENT: 'BlockingAddedEvent',
+  BLOCKING_REMOVED_EVENT: 'BlockingRemovedEvent', PARENT_ISSUE_ADDED_EVENT: 'ParentIssueAddedEvent', PARENT_ISSUE_REMOVED_EVENT: 'ParentIssueRemovedEvent',
+  SUB_ISSUE_ADDED_EVENT: 'SubIssueAddedEvent', SUB_ISSUE_REMOVED_EVENT: 'SubIssueRemovedEvent', MARKED_AS_DUPLICATE_EVENT: 'MarkedAsDuplicateEvent',
+  UNMARKED_AS_DUPLICATE_EVENT: 'UnmarkedAsDuplicateEvent', PROJECT_V2_ITEM_STATUS_CHANGED_EVENT: 'ProjectV2ItemStatusChangedEvent',
+}
+const typenamesOf = (itemTypes) => new Set(itemTypes.map((itemType) => TIMELINE_TYPENAMES[itemType]))
 
 /** A Relay connection over list: the cursor is the index of a node, as a string. first undefined returns every node. */
 function connection(list, first, after) {
@@ -62,13 +71,12 @@ function initialState({
     ghesVersion,
     repo,
     viewer,
-    repositories: [{ nameWithOwner: repo, id: repositoryId, next: 1 }],
+    repositories: [{ nameWithOwner: repo, id: repositoryId, next: 1, branches: { ...branches } }],
     project: projectOf(project, repo),
     issueFields: structuredClone(issueFields ?? defaults.issueFields.nodes),
     issueTypes: structuredClone(issueTypes ?? defaults.issueTypes.nodes),
     labels: labels.map((label, index) => (typeof label === 'string' ? { id: `LA_${index + 1}`, name: label } : { ...label })),
     users: structuredClone(users),
-    branches: { ...branches },
     clock: new Date(now).toISOString(),
     counters: { comment: 0, item: 0, event: 0 },
     issues: [],
@@ -89,7 +97,7 @@ function projectOf(project, repo) {
  * A stateful fake GitHub. Options and defaults: host 'github.com', ghesVersion null, repo 'acme/widgets', repositoryId 'R_1',
  * project { id: 'PVT_1', owner, number: 7, title: 'Roadmap', statusOptions, fields } (null for none), issueFields and
  * issueTypes (repoReply's), labels ['bug', 'documentation'], users (octocat, hubot), viewer 'octocat',
- * branches { main: <oid> }, now '2026-11-16T12:00:00.000Z' (the clock start).
+ * branches { main: <oid> } (the scope repository's branch heads; seedBranch adds more, in any repository), now '2026-11-16T12:00:00.000Z' (the clock start).
  */
 export function fakeGithubIssues(options = {}) {
   return build(initialState(options))
@@ -208,7 +216,8 @@ function build(state) {
   }
 
   function timelineOf(record, { since, itemTypes }) {
-    return record.timeline.filter((item) => (!since || item.createdAt >= since) && (!Array.isArray(itemTypes) || itemTypes.includes(itemTypeOf(item.__typename))))
+    const kept = Array.isArray(itemTypes) ? typenamesOf(itemTypes) : null
+    return record.timeline.filter((item) => (!since || item.createdAt >= since) && (!kept || kept.has(item.__typename)))
   }
 
   // Timeline events and writes.
@@ -279,6 +288,7 @@ function build(state) {
       if (!duplicateIssueId) unprocessable('A duplicate close needs duplicateIssueId')
       const canonical = issueById(duplicateIssueId)
       if (canonical.id === record.id) unprocessable('An issue cannot be a duplicate of itself')
+      if (record.state === 'CLOSED' && record.stateReason === reason && record.duplicateOfId === canonical.id) return
       record.duplicateOfId = canonical.id
       event(record, 'MarkedAsDuplicateEvent', { canonical: { __typename: 'Issue', ...linkOf(canonical) } }, at)
     }
@@ -404,7 +414,7 @@ function build(state) {
     PmkitBranchHead(vars) {
       const entry = requireRepository(vars)
       const name = String(vars.qualifiedName ?? '').replace(/^refs\/heads\//, '')
-      const oid = entry.nameWithOwner === state.repo ? state.branches[name] : undefined
+      const oid = entry.branches[name]
       return { repository: { id: entry.id, ref: oid ? { name, target: { oid } } : null } }
     },
     PmkitAssignableUsers(vars) {
@@ -552,11 +562,11 @@ function build(state) {
     },
     PmkitCreateLinkedBranch: (input) => {
       const record = issueById(input.issueId)
-      repositoryById(input.repositoryId)
+      const entry = repositoryById(input.repositoryId)
       if (typeof input.name !== 'string' || input.name === '') unprocessable("Name can't be blank")
       if (typeof input.oid !== 'string' || !/^[0-9a-f]{40}$/.test(input.oid)) unprocessable('The oid is not a commit')
-      if (state.branches[input.name]) unprocessable(`Reference refs/heads/${input.name} already exists`)
-      state.branches[input.name] = input.oid
+      if (entry.branches[input.name]) unprocessable(`Reference refs/heads/${input.name} already exists`)
+      entry.branches[input.name] = input.oid
       record.linkedBranches.push(input.name)
       return { createLinkedBranch: { issue: ids(record), linkedBranch: { ref: { name: input.name } } } }
     },
@@ -661,12 +671,23 @@ function build(state) {
    * item ({ status, archived, values: { <Project field name>: option name, number or date } }), fields ({ <issue field name>: value }).
    * Returns { id, number }.
    */
-  function seed({ repo = state.repo, number, title = 'Seeded issue', body = '', state: issueState = 'OPEN', stateReason = null, author = state.viewer, type, assignees = [], labels = [], createdAt, updatedAt, branches = [], parent, blockedBy = [], duplicateOf, item, fields = {} } = {}) {
+  /** The repository entry of repo, registered with the next id R_<n> on first use. */
+  function register(repo) {
     let entry = state.repositories.find((candidate) => sameName(candidate.nameWithOwner, repo))
     if (!entry) {
-      entry = { nameWithOwner: repo, id: `R_${state.repositories.length + 1}`, next: 1 }
+      entry = { nameWithOwner: repo, id: `R_${state.repositories.length + 1}`, next: 1, branches: {} }
       state.repositories.push(entry)
     }
+    return entry
+  }
+
+  /** Sets the head of a branch on GitHub, in the scope repository or another one. */
+  function seedBranch(name, oid, repo = state.repo) {
+    register(repo).branches[name] = oid
+  }
+
+  function seed({ repo = state.repo, number, title = 'Seeded issue', body = '', state: issueState = 'OPEN', stateReason = null, author = state.viewer, type, assignees = [], labels = [], createdAt, updatedAt, branches = [], parent, blockedBy = [], duplicateOf, item, fields = {} } = {}) {
+    const entry = register(repo)
     const record = newIssue(entry, { number, title, body, author, createdAt, updatedAt })
     Object.assign(record, { state: issueState, stateReason })
     record.issueTypeId = type ? byName(state.issueTypes, type, 'issue type').id : null
@@ -699,5 +720,5 @@ function build(state) {
     }
   }
 
-  return { state, exec, handle, mutations, reads, seed, failNext, features, toJSON: () => structuredClone(state) }
+  return { state, exec, handle, mutations, reads, seed, seedBranch, failNext, features, toJSON: () => structuredClone(state) }
 }
