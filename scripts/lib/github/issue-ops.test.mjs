@@ -528,3 +528,19 @@ test('an update whose first mutation fails keeps the client error', async () => 
   fake.failNext('PmkitUpdateIssue')
   await assert.rejects(ops.updateIssue('1', { title: 'New' }, ME), (error) => error.code === 'UPSTREAM' && !error.message.startsWith('GitHub updated'))
 })
+
+test('a null payload after the create still throws UPSTREAM naming the new issue', async () => {
+  const { fake, ops } = await writeSetup()
+  fake.failNext('PmkitAddProjectItem', { data: { addProjectV2ItemById: null } })
+  await assert.rejects(ops.createIssue({ title: 'A' }, ME), (error) =>
+    error.code === 'UPSTREAM' && error.message.startsWith('GitHub created issue 1, but adding it to acme/7 failed:') && error.details.cause === 'TypeError')
+})
+
+test('moveToCategory canceled keeps an issue closed as a duplicate', async () => {
+  const { fake, ops } = await writeSetup()
+  fake.seed({ title: 'Canonical' })
+  fake.seed({ state: 'CLOSED', stateReason: 'DUPLICATE', duplicateOf: 1 })
+  const result = await ops.moveToCategory('2', 'canceled', ME)
+  assert.deepEqual(fake.mutations, [])
+  assert.deepEqual(result.after, result.before)
+})

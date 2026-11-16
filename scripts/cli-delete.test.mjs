@@ -244,3 +244,14 @@ test('a delete of an ID with ../ exits 2 and writes nothing', () => {
     assert.equal(hashTree(root), before)
   })
 })
+
+test('deleteText of a GitHub delete says the issue goes for good and lists the duplicates check as not checked', async () => {
+  const { deleteText } = await import('./pmkit.mjs')
+  const before = { id: '1', title: 'Gone', status: { name: 'Todo', category: 'todo' }, labels: [], blockedBy: [], blocks: [], related: [], duplicateOf: [], children: [], archived: false, description: '', acceptanceCriteria: [], created: '2026-11-16T12:00:00Z', updated: '2026-11-16T12:00:00Z' }
+  const text = deleteText({ before, after: null, removes: { issue: true }, references: [], mentions: [], warnings: [], unchecked: ['issues marked as duplicates of it', 'the bodies and comments of other issues'] }, { dryRun: true })
+  assert.match(text, /^would delete 1 {2}Gone$/m)
+  assert.match(text, /^removes: GitHub deletes the issue for good, and nothing can bring it back$/m)
+  assert.match(text, /^references: no other issue lists it as blocked by, related or parent$/m)
+  assert.match(text, /^not checked: issues marked as duplicates of it, the bodies and comments of other issues$/m)
+  assert.match(text, /^dry run: nothing was written$/m)
+})

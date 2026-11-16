@@ -642,9 +642,11 @@ function grepFailure(result) {
 }
 
 /** Text of an issue delete: the full record, what goes, the warnings, and the way to keep the issue instead. A dry run is the preview. */
-function deleteText({ before, removes, warnings, mentions, files = [], unchecked }, { dryRun }) {
+export function deleteText({ before, removes, warnings, mentions, files = [], unchecked }, { dryRun }) {
   const lines = [`${dryRun ? 'would delete' : 'deleted'} ${before.id}  ${before.title}`, issueRecord(before), '']
-  if (removes.trash) {
+  if (removes.issue) {
+    lines.push('removes: GitHub deletes the issue for good, and nothing can bring it back')
+  } else if (removes.trash) {
     lines.push(`removes: the issue moves to Linear's trash, where the workspace can restore it for a while: pmkit issues restore ${before.id}`)
   } else {
     lines.push('removes:', ...removes.files.map((file) => `  ${file}`))
@@ -652,7 +654,8 @@ function deleteText({ before, removes, warnings, mentions, files = [], unchecked
     const recovery = removes.autoCommit ? 'Only git history can bring them back.' : 'Nothing commits this delete (auto_commit is off), so git can bring them back only if you committed them before.'
     lines.push(`${count(removes.events, 'event')} and ${count(removes.comments, 'comment')} go with it. ${recovery}`)
   }
-  lines.push('references: no other issue lists it as blocked by, related, duplicate of or parent')
+  // GitHub shows no list of the issues marked as duplicates of an issue, so that check is under not checked there.
+  lines.push(removes.issue ? 'references: no other issue lists it as blocked by, related or parent' : 'references: no other issue lists it as blocked by, related, duplicate of or parent')
   if (warnings.length > 0) lines.push('warnings:', ...warnings.map((warning) => `  ${warning}`))
   if (mentions.length > 0) lines.push(`mentioned in the text of: ${mentions.map((mention) => `${mention.id} (${mention.in})`).join(', ')}. The text stays as it is.`)
   if (files.length > 0) {

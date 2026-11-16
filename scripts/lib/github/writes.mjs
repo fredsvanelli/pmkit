@@ -285,6 +285,7 @@ export function planMove(node, category, { status } = {}, context) {
   } else if (node.state !== 'CLOSED') {
     steps.push({ op: 'close', reason })
   } else if (statusOf(node, context).category !== category) {
+    // A closed DUPLICATE issue already reads as canceled, so a move to canceled keeps it closed as a duplicate.
     steps.push({ op: 'reopen' }, { op: 'close', reason })
   }
 

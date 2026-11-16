@@ -151,12 +151,13 @@ export function issueOperations({ client, config, getContext }) {
       try {
         await step.run()
       } catch (error) {
-        if (!(error instanceof PmkitError) || (!created && done.length === 0)) throw error
+        // After a create, any failure is wrapped, a TypeError from a broken payload too, so the user learns the issue exists.
+        if (!created && (!(error instanceof PmkitError) || done.length === 0)) throw error
         const rest = steps.slice(index + 1).map((item) => item.doing)
         const head = created ? `created issue ${id}` : done.join(', then ')
         const tail = rest.length > 0 ? `. pmkit did not try ${rest.join(', ')}` : ''
         throw new PmkitError('UPSTREAM', `GitHub ${head}, but ${step.doing} failed: ${error.message}${tail}`, `pmkit issues get ${id}, then repeat the step that failed`, {
-          done, failed: step.doing, notDone: rest, cause: error.code,
+          done, failed: step.doing, notDone: rest, cause: error.code ?? error.name,
         })
       }
       done.push(step.done)
@@ -165,10 +166,7 @@ export function issueOperations({ client, config, getContext }) {
 
   /** The step of one move op. item holds the Project item id, which addItem sets. */
   function moveStep(op, id, nodeId, item, context) {
-    const project = context.project && projectName(context)
-    if (op.op === 'addItem') {
-      return { done: `added ${id} to ${project}`, doing: `adding it to ${project}`, run: async () => { item.id = await addItem(nodeId, context) } }
-    }
+    if (op.op === 'addItem') return addItemStep(id, nodeId, item, context)
     if (op.op === 'setStatus') {
       const input = () => ({ projectId: context.project.id, itemId: item.id, fieldId: context.project.statusField.id, value: { singleSelectOptionId: op.option.id } })
       return { done: `set the Status of ${id} to ${op.option.name}`, doing: `setting its Status to ${op.option.name}`, run: () => send(context, 'SET_PROJECT_FIELD', input()) }
@@ -186,6 +184,12 @@ export function issueOperations({ client, config, getContext }) {
       return write.write === null ? send(context, 'CLEAR_PROJECT_FIELD', target) : send(context, 'SET_PROJECT_FIELD', { ...target, value: write.write })
     }
     return { done: `wrote the ${write.role} of ${id}`, doing: `writing its ${write.role}`, run }
+  }
+
+  /** The step that adds the issue to the configured Project and keeps the new item's id in item. */
+  function addItemStep(id, nodeId, item, context) {
+    const project = projectName(context)
+    return { done: `added ${id} to ${project}`, doing: `adding it to ${project}`, run: async () => { item.id = await addItem(nodeId, context) } }
   }
 
   async function addItem(nodeId, context) {
@@ -212,7 +216,7 @@ export function issueOperations({ client, config, getContext }) {
     const id = issueIdOf(node, context.repo)
     const item = { id: null }
     const steps = [
-      ...(context.project ? [{ done: `added ${id} to ${projectName(context)}`, doing: `adding it to ${projectName(context)}`, run: async () => { item.id = await addItem(node.id, context) } }] : []),
+      ...(context.project ? [addItemStep(id, node.id, item, context)] : []),
       ...plan.fields.map((write) => fieldStep(write, id, node.id, item, context)),
       ...plan.move.map((op) => moveStep(op, id, node.id, item, context)),
     ]
@@ -257,7 +261,7 @@ export function issueOperations({ client, config, getContext }) {
     const steps = []
     if (Object.keys(plan.input).length > 0) steps.push({ done: `updated ${before.id}`, doing: 'updating it', run: () => send(context, 'UPDATE_ISSUE', { id: node.id, ...plan.input }, true) })
     if (item.id === null && plan.fields.some((write) => write.source === 'project')) {
-      steps.push({ done: `added ${before.id} to ${projectName(context)}`, doing: `adding it to ${projectName(context)}`, run: async () => { item.id = await addItem(node.id, context) } })
+      steps.push(addItemStep(before.id, node.id, item, context))
     }
     steps.push(...plan.fields.map((write) => fieldStep(write, before.id, node.id, item, context)))
     if (branch) {
