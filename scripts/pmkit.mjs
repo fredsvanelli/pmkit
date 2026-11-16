@@ -841,11 +841,13 @@ export function capWarning(kind, id, system) {
   if (kind === 'comments') return `${name} has more comments for ${id} than the 1000 pmkit read`
   return `${name} has more issues than the 1000 pmkit read; the result covers the 1000 most recently updated`
 }
-const capWarnings = (list, kind, id, system) => (list.truncated === true ? [capWarning(kind, id, system)] : [])
+/** The warnings of a read list: the cut warning when the tracker set the hidden truncated, then the tracker's own hidden warnings (GitHub on an older GHES). */
+const capWarnings = (list, kind, id, system) => [...(list.truncated === true ? [capWarning(kind, id, system)] : []), ...(Array.isArray(list.warnings) ? list.warnings : [])]
 
 /** The one note for a metric command: the path native_metrics took, and for velocity the sprint count and the estimates. */
 async function metricNotes(tracker, metric, extra = {}) {
-  return metricNotesFrom((await tracker.capabilities()).capabilities, metric, extra)
+  const manifest = await tracker.capabilities()
+  return metricNotesFrom(manifest.capabilities, metric, { tracker: manifest.tracker, ...extra })
 }
 
 /** metricNotes over a manifest already read, for a command that reads the manifest once. */
@@ -2942,7 +2944,7 @@ const PER_ISSUE_CODES = ['INVALID_INPUT', 'NOT_FOUND', 'CONFLICT']
 async function runBulk(ctx) {
   const [kind, value] = ctx.args
   // PMK-256: Linear refuses unarchive before anything else is read or checked, whatever the other flags are.
-  if (kind === 'unarchive' && ctx.config().system !== 'local') throw unarchiveNotSupported()
+  if (kind === 'unarchive' && ctx.config().system !== 'local') throw unarchiveNotSupported(ctx.config().system)
   const tracker = await ctx.tracker()
   const view = ctx.opt('view')
   // A hosted tracker's view keeps the tracker's own filter, which pmkit cannot check narrows the set, so it is refused before any read.
@@ -4710,7 +4712,10 @@ export async function run(argv, { env = process.env, cwd = process.cwd(), adapte
     const { options } = parsed
     const root = path.resolve(typeof options.root === 'string' ? options.root : findRoot(cwd))
     // PMK-267: Linear refuses bulk unarchive before the flag check, so a flag the command does not take answers NOT_SUPPORTED too.
-    if (command.name === 'issues bulk' && parsed.positionals[0] === 'unarchive' && loadPmkitConfig(root, { adapters }).system !== 'local') throw unarchiveNotSupported()
+    if (command.name === 'issues bulk' && parsed.positionals[0] === 'unarchive') {
+      const { system } = loadPmkitConfig(root, { adapters })
+      if (system !== 'local') throw unarchiveNotSupported(system)
+    }
     checkUsage(command, parsed)
     const dryRun = last(options['dry-run']) === true
     const now = clock(env)
