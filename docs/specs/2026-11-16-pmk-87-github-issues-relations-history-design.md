@@ -32,7 +32,7 @@ ADR 0007 and the PMK-84, PMK-85 and PMK-86 specs settle these, and this spec doe
 3. **Related and duplicate.** `duplicate` maps to `closeIssue(stateReason: DUPLICATE, duplicateIssueId)` and its unlink to `unmarkIssueAsDuplicate`. GitHub closes the duplicate, so it then reads as `canceled`, and the result carries a note that says so. `related` uses `addRelatesTo` and `removeRelatesTo` on github.com and GHE.com, and answers `NOT_SUPPORTED` on GHES, which has no related issues in any published schema.
 4. **Comment threads.** GitHub issue comments are flat. `comment` with `replyTo` and `resolveThread` answer `NOT_SUPPORTED`, `GitHub issue comments have no threads`. The contract suite splits a `threads` family out of `history`. Local and Linear list it; GitHub leaves it out, so it still runs the comment and history tests.
 5. **Search.** `searchIssues` reads `repository.issues` for every search: `filterBy` narrows by state, assignee, type and update date on the server, and a client step applies the rest. The page cap and `hasMore` work as on Linear.
-6. **Branch.** `updateIssue(id, { branch })` runs `createLinkedBranch` at the head commit of the repository's default branch on GitHub, and `issue.branch` reads the first linked branch. The branch then exists on GitHub before the first push. When the local base lacks that commit, the push of `pr open` is refused as non-fast-forward, so `issues branch` on a GitHub tracker says so in a note and names the fix. A test covers the note.
+6. **Branch.** `updateIssue(id, { branch })` runs `createLinkedBranch` at the head commit, on GitHub, of the branch the new branch starts from (see the note below), and `issue.branch` reads the first linked branch. The branch then exists on GitHub before the first push. When the local base lacks that commit, the push of `pr open` is refused as non-fast-forward, so `issues branch` on a GitHub tracker says so in a note and names the fix. A test covers the note.
 
 ## Facts checked against GitHub
 
@@ -52,7 +52,7 @@ Checked on 2026-11-16 with gh 2.93.0: schema introspection on github.com, and th
 | Timeline item types on 3.19 | `ISSUE_COMMENT`, `RENAMED_TITLE_EVENT`, `ASSIGNED_EVENT`, `UNASSIGNED_EVENT`, `LABELED_EVENT`, `UNLABELED_EVENT`, `CLOSED_EVENT`, `REOPENED_EVENT`, `ISSUE_TYPE_ADDED_EVENT`, `ISSUE_TYPE_CHANGED_EVENT`, `ISSUE_TYPE_REMOVED_EVENT`, `BLOCKED_BY_ADDED_EVENT`, `BLOCKED_BY_REMOVED_EVENT`, `BLOCKING_ADDED_EVENT`, `BLOCKING_REMOVED_EVENT`, `PARENT_ISSUE_ADDED_EVENT`, `PARENT_ISSUE_REMOVED_EVENT`, `SUB_ISSUE_ADDED_EVENT`, `SUB_ISSUE_REMOVED_EVENT`, `MARKED_AS_DUPLICATE_EVENT`, `UNMARKED_AS_DUPLICATE_EVENT`. `ProjectV2ItemStatusChangedEvent` arrives in 3.21. |
 | Comments | `IssueComment { id author body createdAt isMinimized minimizedReason }`. No parent and no replies on any host. `addComment { subjectId, body }`. |
 | Members | `Repository.assignableUsers` on 3.19. |
-| Branches | `createLinkedBranch { issueId, oid, name, repositoryId }` creates the branch on GitHub at `oid`. `LinkedBranch { ref { name } }`. `Repository.defaultBranchRef { name target { oid } }`. |
+| Branches | `createLinkedBranch { issueId, oid, name, repositoryId }` creates the branch on GitHub at `oid`. `LinkedBranch { ref { name } }`. `Repository.ref(qualifiedName) { name target { oid } }`. |
 
 ## Goals
 
@@ -282,9 +282,11 @@ The client pages up to 10 pages, 1000 issues. The result is `{ issues, problems:
 
 - When `issue.branch` equals `branch`, it succeeds and sends nothing.
 - When the issue has another linked branch, it fails with `INVALID_INPUT`, `GitHub links <id> to branch <name> already`. `settings().trackerBranch: true` makes `issues branch` use that name, so this happens only when a user picks another name by hand.
-- Otherwise it reads `repository.defaultBranchRef { name target { oid } }` and sends `createLinkedBranch(issueId, repositoryId, name, oid)`. A dry run reads the oid and sends nothing.
+- Otherwise it reads `repository.ref(qualifiedName: "refs/heads/<base>") { target { oid } }` and sends `createLinkedBranch(issueId, repositoryId, name, oid)`. A dry run reads the oid and sends nothing.
 
-`issues branch` with `settings().remoteBranch: true` checks, with local refs only, whether `from` contains `origin/<default>`: `git merge-base --is-ancestor origin/<default> <from>`. When it does not, the result carries the note: `GitHub creates <branch> on origin at the head of <default> there, and <from> lacks commits of origin/<default> (as of the last fetch), so the push of pr open would be refused. Run git fetch origin, then git rebase --onto origin/<default> <from> <branch>` (the dry run says `pass --from origin/<default>` instead). This also covers `--from` a feature branch. The existing PMK-298 notes stay as they are.
+`base` comes from the caller as `updateIssue(id, { branch }, actor, { base })`. `issues branch` passes the branch it starts from, without `origin/`: pmkit's default branch, the `branch` of `default-branch --json` (`git_host.default_branch`, else `origin/HEAD`), or the `--from` ref. GitHub's own default branch (`defaultBranchRef`) is never used, because a repository whose GitHub default is `main` while pmkit works from `develop` would get a branch linked at `main`, and the first push of a branch started from `develop` would be non-fast-forward. When `--from` names a ref GitHub does not have, the adapter falls back to pmkit's default branch on GitHub, and the result carries the note `GitHub has no branch <from>, so pmkit linked <branch> at the head of <default> there`. When GitHub lacks that one too, the write fails with `INVALID_INPUT`, `GitHub has no branch <default> to start <branch> from`, next step `Push <default> to origin, or pass --from <a branch on GitHub>` **(correction from the coordinator, 2026-11-16)**.
+
+`issues branch` with `settings().remoteBranch: true` checks, with local refs only, whether `from` contains `origin/<base>`, where `<base>` is the branch the linked branch starts at: `git merge-base --is-ancestor origin/<base> <from>`. When it does not, the result carries the note: `GitHub creates <branch> on origin at the head of <default> there, and <from> lacks commits of origin/<default> (as of the last fetch), so the push of pr open would be refused. Run git fetch origin, then git rebase --onto origin/<default> <from> <branch>` (the dry run says `pass --from origin/<default>` instead). This also covers `--from` a feature branch. The existing PMK-298 notes stay as they are.
 
 ### Capabilities
 
@@ -308,7 +310,7 @@ The client pages up to 10 pages, 1000 issues. The result is `{ issues, problems:
 
 `scripts/lib/github/contract.test.mjs` runs `runTrackerContract` with `families: ['discovery', 'issues', 'relations', 'history']`, over the stateful fake on github.com with a Project whose Status options are Triage, Backlog, Todo, In Progress, In Review, Done and Canceled, each mapped, and three types. `actor` is the fake viewer `octocat`.
 
-`fakeGithubIssues(options)` keeps issues, Project items, comments, timelines, linked branches and the default branch head in memory, answers pmkit's documents by operation name, and records each mutation so tests can assert that a dry run sent none. It answers a document it does not know with a GraphQL validation error, so a typo in a query fails the test. It refuses `relatesTo` and `issueFieldValues` when its host is GHES below their version, so the per-host documents are tested too. The fake's behavior comes from the schema facts above, not from GitHub; a live run is a follow-up.
+`fakeGithubIssues(options)` keeps issues, Project items, comments, timelines, linked branches and the branch heads on GitHub in memory, answers pmkit's documents by operation name, and records each mutation so tests can assert that a dry run sent none. It answers a document it does not know with a GraphQL validation error, so a typo in a query fails the test. It refuses `relatesTo` and `issueFieldValues` when its host is GHES below their version, so the per-host documents are tested too. The fake's behavior comes from the schema facts above, not from GitHub; a live run is a follow-up.
 
 ### Runbook
 
