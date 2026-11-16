@@ -2,8 +2,11 @@
 // Unit tests call answerGh through an injected exec; the E2E test puts a gh wrapper that calls it first on PATH.
 // scripts/fake-gh.mjs is a different fake: it serves the git host commands (pr, run, api) of scripts/lib/github/host.mjs.
 //
-// A fixture: { meta: { installed_version } | null, graphql: { <operation name>: <reply body> }, login: false }
-// A reply body is what GitHub returns, { data } or { errors }. An operation the fixture lacks answers with an UPSTREAM-shaped error.
+// A fixture: { meta: { installed_version } | null, graphql: { <operation name>: <reply body> }, login: false, issues }
+// A reply body is what GitHub returns, { data } or { errors }. An operation the fixture lacks answers with an UPSTREAM-shaped error,
+// unless the fixture has `issues`, the toJSON() of a fake GitHub (scripts/fake-github-issues.mjs): that fake answers, and its new
+// state replaces fixture.issues, so a caller that saves the fixture keeps the state between runs.
+import { fakeGithubIssuesFrom } from './fake-github-issues.mjs'
 
 const operationOf = (query) => /^\s*(?:query|mutation)\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(query ?? '')?.[1] ?? null
 
@@ -15,6 +18,19 @@ export const hostnameOf = (args) => {
 
 /** What gh prints for args and stdin under the fixture: { status, stdout, stderr }. */
 export function answerGh(args, input, fixture) {
+  return answerGhWith(args, input, fixture, (name, body) => {
+    const canned = fixture.graphql?.[name]
+    if (canned !== undefined && canned !== null) return canned
+    if (!fixture.issues) return { errors: [{ message: `fake gh has no answer for ${name}` }] }
+    const fake = fakeGithubIssuesFrom(fixture.issues)
+    const reply = fake.handle(name, body.variables ?? {}, body.query)
+    fixture.issues = fake.toJSON()
+    return reply
+  })
+}
+
+/** What gh prints for args and stdin, with each GraphQL reply from answer(operationName, body): { status, stdout, stderr }. */
+export function answerGhWith(args, input, fixture, answer) {
   if (args[0] !== 'api') return { status: 1, stdout: '', stderr: `fake gh: unknown command ${args[0]}` }
   if (fixture.login === false) return { status: 4, stdout: '', stderr: 'To get started with GitHub CLI, please run:  gh auth login' }
   const rest = args.slice(1).filter((arg, index, list) => arg !== '--hostname' && list[index - 1] !== '--hostname')
@@ -30,7 +46,7 @@ export function answerGh(args, input, fixture) {
       return { status: 1, stdout: '', stderr: 'fake gh: stdin is not JSON' }
     }
     const name = operationOf(body.query)
-    const reply = fixture.graphql?.[name] ?? { errors: [{ message: `fake gh has no answer for ${name}` }] }
+    const reply = answer(name, body)
     const failed = Array.isArray(reply.errors)
     const head = 'HTTP/2.0 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nX-Ratelimit-Limit: 5000\r\nX-Ratelimit-Remaining: 4999\r\n\r\n'
     return { status: failed ? 1 : 0, stdout: `${head}${JSON.stringify(reply)}`, stderr: failed ? `gh: ${reply.errors[0].message}` : '' }
